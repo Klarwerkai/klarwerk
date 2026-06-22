@@ -1,0 +1,24 @@
+name: CI
+on:
+  push: { branches: [main] }
+  pull_request: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - name: build
+        run: npm run build
+      - name: lint
+        run: npm run lint
+      - name: architecture
+        run: npm run arch
+      - name: test
+        run: npm run test
+# Regel: Nichts kommt nach main, das diese Pipeline nicht grün durchläuft.

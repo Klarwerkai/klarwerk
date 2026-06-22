@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# tools/check — Gesamtgate: Build + Lint + Architektur + Tests. Nur grün = lieferbar.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+echo "▶ build";        ./tools/build
+echo "▶ lint";         ./tools/lint
+echo "▶ architecture"; npx depcruise --config .dependency-cruiser.cjs services || { echo "✖ Architekturregeln verletzt"; exit 1; }
+echo "▶ test";         ./tools/test
+echo "✓ check grün"
