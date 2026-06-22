@@ -47,10 +47,11 @@ Bereits im Projektordner angelegt:
 | **Notion** (Doku + Logbuch) | ✔ verfügbar | ✅ eingerichtet | Verbindung in Cowork bestätigen, dann spiegelt der Doku-Agent `/docs` → Notion. |
 | **Jira** (Board) | ✅ Board vollständig | `klarwerk.atlassian.net`, Projekt `klarwerk` (Key SCRUM). 14 Epics (SCRUM-5…18) + **78 FR-Stories** (SCRUM-19…96), je unter Epic mit Akzeptanzkriterium + Priorität. Sprintfähig. |
 
-## Phase 0+ — Erstes Modul gebaut ✅
-- ✅ **Modul `auth`** implementiert (`services/auth/`): Fastify-Routen, PBKDF2-Hashing, Sessions, RBAC-Adminschutz.
-- ✅ Deckt FR-AUTH-01…06 ab; 11 Vitest-Tests grün. **Alle Gates grün:** Build · Lint (Biome) · Architektur (dependency-cruiser) · Tests.
-- Persistenz aktuell In-Memory-Repo (`UserRepo`/`SessionRepo`-Interfaces). **Offen:** Postgres-Adapter + Testcontainers-Integrationstests (mit Docker), HttpOnly-Cookie-Härtung/Secure-Flag, FR-AUTH-07 (SSO/OIDC, SOLL) und FR-AUTH-08 (E-Mail-Reset, KANN).
+## Phase 0+ — Erste Module gebaut ✅
+- ✅ **Modul `auth`** (`services/auth/`): Fastify-Routen, PBKDF2-Hashing, Sessions, Onboarding. Deckt FR-AUTH-01…06 (Jira: Done). 11 Tests.
+- ✅ **Modul `rbac`** (`services/rbac/`): Rechtematrix Viewer/Experte/Controller/Admin, `can()`-Policy, Admin-Selbstschutz, Fastify-`requirePermission`-Guard. Deckt FR-RBAC-01/03/04 (Jira: Done), FR-RBAC-02 in Arbeit (Löschen + Audit fehlen). 6 Tests.
+- **Alle Gates grün** (17 Tests gesamt): Build · Lint (Biome) · Architektur (dependency-cruiser, inkl. Modulgrenze `rbac → auth` nur über index) · Tests.
+- Persistenz aktuell In-Memory hinter Interfaces. **Offen:** Postgres-Adapter + Testcontainers (Docker), Cookie-Härtung (Secure-Flag), FR-AUTH-07/08, Audit-Modul (für FR-RBAC-02), Modul `knowledge-object` als Nächstes.
 
 ## Phase 4 — Determinismus/Qualität 🟡 (mit erstem Modul)
 - 🟡 Testcontainers-Setup je Modul · WireMock für externe Systeme · Coverage-Gate scharf stellen (braucht Docker).
