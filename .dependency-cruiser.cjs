@@ -36,6 +36,8 @@ module.exports = {
   options: {
     doNotFollow: { path: "node_modules" },
     tsConfig: { fileName: "tsconfig.json" },
+    // Typ-Importe mitverfolgen, damit Modulgrenzen auch für `import type` gelten.
+    tsPreCompilationDeps: true,
     enhancedResolveOptions: { exportsFields: ["exports"], conditionNames: ["import", "require"] },
   },
 };

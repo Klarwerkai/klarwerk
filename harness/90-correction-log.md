@@ -7,3 +7,4 @@ Jede wiederkehrende Abweichung wird hier als behobene Harness-Lücke dokumentier
 | 2026-06-22 | (Initialer Aufbau — noch keine Korrekturen) | — | — |
 | 2026-06-22 | Unvollständiges `npm install` ließ Fastify-Typdeklarationen fehlen → `tsc`-Fehler „Could not find declaration file". | Build-Schritt muss `npm ci` (deterministisch, vollständig) statt partiellem `npm install` nutzen. | behoben |
 | 2026-06-22 | „Done" überstrapaziert: FR-RBAC-02 hat offene Akzeptanzteile (Löschen, Audit). | DoD-Regel: Story erst „Done", wenn **alle** Akzeptanzkriterien als Tests grün sind; sonst „In Progress". | angewandt |
+| 2026-06-22 | `no-orphans`-Warnung für rein per `import type` genutzte Dateien; Modulgrenzen prüften Typ-Importe nicht. | `tsPreCompilationDeps: true` in `.dependency-cruiser.cjs` — Architekturregeln decken jetzt auch Typ-Importe ab. | behoben |

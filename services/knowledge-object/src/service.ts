@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type { KoFilter, KoRepo } from "./repo";
-import { KNOWLEDGE_TYPES, type KnowledgeObject, type KnowledgeType, KoError } from "./types";
+import {
+  KNOWLEDGE_TYPES,
+  type KnowledgeObject,
+  type KnowledgeType,
+  KoError,
+  type KoStatus,
+} from "./types";
 
 const DEFAULT_NEEDED_VALIDATIONS = 3; // FR-CAP-08: 1–5, Standard 3.
 
@@ -120,6 +126,17 @@ export class KoService {
   async updateTags(id: string, tags: string[]): Promise<KnowledgeObject> {
     const ko = await this.require(id);
     const updated = { ...ko, tags };
+    await this.repo.update(updated);
+    return updated;
+  }
+
+  // Von der Validierung gesetzt (FR-VAL-01/02): Trust + Status nach Bewertungslage.
+  async setValidationState(
+    id: string,
+    state: { trust: number; status: KoStatus },
+  ): Promise<KnowledgeObject> {
+    const ko = await this.require(id);
+    const updated = { ...ko, trust: state.trust, status: state.status };
     await this.repo.update(updated);
     return updated;
   }
