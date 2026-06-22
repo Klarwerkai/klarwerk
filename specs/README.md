@@ -14,19 +14,19 @@
 | Modul | Bereich | FR-IDs | Prio-Schwerpunkt | Spec | Jira-Epic | Team |
 |---|---|---|---|---|---|---|
 | `auth` | Authentifizierung & Onboarding | FR-AUTH-01…08 | MUSS | ✅ `stories/auth.md` | KW-AUTH | A |
-| `rbac` | Rollen & Rechte | FR-RBAC-01…04 | MUSS | ⬜ geplant | KW-RBAC | A |
-| `capture` | Erfassung | FR-CAP-01…09 | MUSS | ⬜ geplant | KW-CAP | A |
-| `structure` | Strukturierung & Editor | FR-STR-01…06 | MUSS | ⬜ geplant | KW-STR | A |
-| `knowledge-object` | Wissensobjekt & Wissensarten | FR-KO-01…04 | MUSS | ⬜ geplant | KW-KO | A |
-| `validation` | Validierung & Zuweisung | FR-VAL-01…07 | MUSS | ⬜ geplant | KW-VAL | A |
-| `conflicts` | Konflikte | FR-CON-01…04 | MUSS | ⬜ geplant | KW-CON | B |
-| `ask` | Abfrage & Wissenslücken | FR-ASK-01…06 | MUSS | ⬜ geplant | KW-ASK | B |
-| `library-analytics` | Bibliothek, Risiko, Graph, Analytics, Audit | FR-LIB/ANA/AUD | MUSS/SOLL | ⬜ geplant | KW-LIB | B |
-| `lifecycle` | Lebenszyklus & Governance | FR-LIF-01…04 | MUSS/SOLL | ⬜ geplant | KW-LIF | B |
-| `reasoner` | Reasoner (KI-Schicht) | FR-RSN-01…06 | MUSS | ⬜ geplant | KW-RSN | B |
-| `mobile` | Mobile / PWA | FR-MOB-01…03 | MUSS | ⬜ geplant | KW-MOB | A |
-| `i18n` | Internationalisierung | FR-I18N-01…02 | MUSS/SOLL | ⬜ geplant | KW-I18N | A |
-| `extensions` | Strategische Erweiterungen | FR-EXT-01…07 | KANN (Roadmap) | ⬜ geplant | KW-EXT | — |
+| `rbac` | Rollen & Rechte | FR-RBAC-01…04 | MUSS | ✅ vorhanden | KW-RBAC | A |
+| `capture` | Erfassung | FR-CAP-01…09 | MUSS | ✅ vorhanden | KW-CAP | A |
+| `structure` | Strukturierung & Editor | FR-STR-01…06 | MUSS | ✅ vorhanden | KW-STR | A |
+| `knowledge-object` | Wissensobjekt & Wissensarten | FR-KO-01…04 | MUSS | ✅ vorhanden | KW-KO | A |
+| `validation` | Validierung & Zuweisung | FR-VAL-01…07 | MUSS | ✅ vorhanden | KW-VAL | A |
+| `conflicts` | Konflikte | FR-CON-01…04 | MUSS | ✅ vorhanden | KW-CON | B |
+| `ask` | Abfrage & Wissenslücken | FR-ASK-01…06 | MUSS | ✅ vorhanden | KW-ASK | B |
+| `library-analytics` | Bibliothek, Risiko, Graph, Analytics, Audit | FR-LIB/ANA/AUD | MUSS/SOLL | ✅ vorhanden | KW-LIB | B |
+| `lifecycle` | Lebenszyklus & Governance | FR-LIF-01…04 | MUSS/SOLL | ✅ vorhanden | KW-LIF | B |
+| `reasoner` | Reasoner (KI-Schicht) | FR-RSN-01…06 | MUSS | ✅ vorhanden | KW-RSN | B |
+| `mobile` | Mobile / PWA | FR-MOB-01…03 | MUSS | ✅ vorhanden | KW-MOB | A |
+| `i18n` | Internationalisierung | FR-I18N-01…02 | MUSS/SOLL | ✅ vorhanden | KW-I18N | A |
+| `extensions` | Strategische Erweiterungen | FR-EXT-01…07 | KANN (Roadmap) | ✅ vorhanden | KW-EXT | — |
 
 *Team-Spalte = Vorschlag für die spätere Aufteilung auf zwei externe Teams (A = Erfassen→Validieren-Vertikale, B = Wissen-Nutzen+KI-Vertikale). Anpassbar.*
 

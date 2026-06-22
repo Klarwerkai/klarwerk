@@ -27,7 +27,7 @@ Bereits im Projektordner angelegt:
 | **Gitea** | 🟡 | Installiert. Finalisieren nach `docs/operations/gitea-setup.md` (Org+Repo anlegen, push, Branch-Protection, Actions-Runner). |
 | **Node 20 + Abhängigkeiten** | 🟡 | `npm install` lokal. Danach `tools/check` lauffähig. |
 | **Docker Desktop** | 🟡 | Installieren, dann `docker compose up -d`. |
-| **CI-Runner** | 🟡 | Gitea Actions: act_runner registrieren (siehe Gitea-Doku). |
+| **CI-Runner** | ⬜ bewusst aufgeschoben | Gitea Actions ist aktiv, der `check`-Job wartet auf einen Runner. Runner + Docker werden in der **Build-Umgebung** eingerichtet, sobald das erste Modul mit Tests gebaut wird (Testcontainers braucht Docker ohnehin). CI-Lauf auf leerem Code hätte keinen Aussagewert. |
 | **Coding-Agent** | 🟡 | Claude Code auf der Arbeitsmaschine, liest `CLAUDE.md`. |
 
 ## Phase 2 — Agenten & Orchestrierung 🟡 (Connectors verfügbar)
