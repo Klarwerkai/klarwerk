@@ -34,7 +34,7 @@ Bereits im Projektordner angelegt:
 
 | Service | Connector | Status | Aktion |
 |---|---|---|---|
-| **n8n** | ✔ verfügbar | ⬜ später | Registrierung hat aktuell Probleme — Pedi macht es später. |
+| **n8n** | ✅ verbunden + aktiv | Connector aktiv (`klarwerkai.app.n8n.cloud`). Intake-Workflow **W-SPEC-01** **aktiviert** (Formular-URL live) + Data Table `klarwerk_ideas`. Review-Panel folgt mit API-Keys. Siehe `workflows/README.md`. |
 | **Anthropic API** (Claude Opus 4.8) | — | ⬜ später | API-Key bei Bedarf in `.env`. |
 | **OpenAI API** (GPT-5.x) | — | ⬜ später | API-Key bei Bedarf in `.env`. |
 | **Perplexity API** | — | ⬜ später | API-Key bei Bedarf in `.env`. |
@@ -45,10 +45,15 @@ Bereits im Projektordner angelegt:
 | Service | Connector | Status | Aktion |
 |---|---|---|---|
 | **Notion** (Doku + Logbuch) | ✔ verfügbar | ✅ eingerichtet | Verbindung in Cowork bestätigen, dann spiegelt der Doku-Agent `/docs` → Notion. |
-| **Jira** (Board) | ✔ Atlassian Rovo | ✅ eingerichtet | `klarwerk.atlassian.net`. Verbindung in Cowork bestätigen, dann Board-Aufbau. |
+| **Jira** (Board) | ✅ Board vollständig | `klarwerk.atlassian.net`, Projekt `klarwerk` (Key SCRUM). 14 Epics (SCRUM-5…18) + **78 FR-Stories** (SCRUM-19…96), je unter Epic mit Akzeptanzkriterium + Priorität. Sprintfähig. |
 
-## Phase 4 — Determinismus/Qualität ⬜ (mit erstem Modul)
-- ⬜ Testcontainers-Setup je Modul · WireMock für externe Systeme · Coverage-Gate scharf stellen.
+## Phase 0+ — Erstes Modul gebaut ✅
+- ✅ **Modul `auth`** implementiert (`services/auth/`): Fastify-Routen, PBKDF2-Hashing, Sessions, RBAC-Adminschutz.
+- ✅ Deckt FR-AUTH-01…06 ab; 11 Vitest-Tests grün. **Alle Gates grün:** Build · Lint (Biome) · Architektur (dependency-cruiser) · Tests.
+- Persistenz aktuell In-Memory-Repo (`UserRepo`/`SessionRepo`-Interfaces). **Offen:** Postgres-Adapter + Testcontainers-Integrationstests (mit Docker), HttpOnly-Cookie-Härtung/Secure-Flag, FR-AUTH-07 (SSO/OIDC, SOLL) und FR-AUTH-08 (E-Mail-Reset, KANN).
+
+## Phase 4 — Determinismus/Qualität 🟡 (mit erstem Modul)
+- 🟡 Testcontainers-Setup je Modul · WireMock für externe Systeme · Coverage-Gate scharf stellen (braucht Docker).
 
 ## Phase 5 — Monitoring & Feedback-Loop ⬜
 - ⬜ Logs, Fehlerraten, Testresultate, Token-/Kosten-Metriken zentral → zurück in den Harness.
