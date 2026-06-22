@@ -120,7 +120,7 @@ export function authRoutes(service: AuthService): FastifyPluginAsync {
         return;
       }
       try {
-        reply.code(200).send(await service.approveUser(request.params.id));
+        reply.code(200).send(await service.approveUser(request.params.id, admin.id));
       } catch (error) {
         sendError(reply, error);
       }
@@ -134,12 +134,25 @@ export function authRoutes(service: AuthService): FastifyPluginAsync {
           return;
         }
         try {
-          await service.resetPassword(request.params.id, request.body.password);
+          await service.resetPassword(request.params.id, request.body.password, admin.id);
           reply.code(204).send();
         } catch (error) {
           sendError(reply, error);
         }
       },
     );
+
+    app.delete<{ Params: { id: string } }>("/api/auth/users/:id", async (request, reply) => {
+      const admin = await requireAdmin(request, reply);
+      if (!admin) {
+        return;
+      }
+      try {
+        await service.deleteUser(request.params.id, admin.id);
+        reply.code(204).send();
+      } catch (error) {
+        sendError(reply, error);
+      }
+    });
   };
 }

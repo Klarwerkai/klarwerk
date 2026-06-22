@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance } from "fastify";
+import { AuditService, InMemoryAuditRepo } from "../../audit";
 import { AuthService, InMemorySessionRepo, InMemoryUserRepo, authRoutes } from "../../auth";
 import { InMemoryKoRepo, KoService } from "../../knowledge-object";
 import { type RoleResolver, requirePermission } from "../../rbac";
@@ -10,16 +11,20 @@ export interface AppServices {
   auth: AuthService;
   ko: KoService;
   reasoner: Reasoner;
+  audit: AuditService;
 }
 
 export function buildServices(): AppServices {
+  const audit = new AuditService({ repo: new InMemoryAuditRepo() });
   return {
     auth: new AuthService({
       users: new InMemoryUserRepo(),
       sessions: new InMemorySessionRepo(),
+      audit,
     }),
     ko: new KoService({ repo: new InMemoryKoRepo() }),
     reasoner: new Reasoner(),
+    audit,
   };
 }
 

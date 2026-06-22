@@ -8,6 +8,7 @@ export interface UserRepo {
   findById(id: string): Promise<User | undefined>;
   insert(user: User): Promise<void>;
   update(user: User): Promise<void>;
+  delete(id: string): Promise<void>;
 }
 
 export interface SessionRepo {
@@ -45,6 +46,11 @@ export class InMemoryUserRepo implements UserRepo {
 
   update(user: User): Promise<void> {
     this.users.set(user.id, user);
+    return Promise.resolve();
+  }
+
+  delete(id: string): Promise<void> {
+    this.users.delete(id);
     return Promise.resolve();
   }
 }

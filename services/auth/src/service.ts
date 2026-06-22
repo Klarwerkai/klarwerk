@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import type { AuditService } from "../../audit";
 import { hashPassword, verifyPassword } from "./password";
 import type { SessionRepo, UserRepo } from "./repo";
 import { AuthError, type PublicUser, type Role, type User } from "./types";
@@ -9,6 +10,7 @@ const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000; // 14 Tage
 export interface AuthServiceDeps {
   users: UserRepo;
   sessions: SessionRepo;
+  audit?: AuditService;
   now?: () => number;
   genId?: () => string;
   genToken?: () => string;
@@ -33,6 +35,7 @@ function toPublic(user: User): PublicUser {
 export class AuthService {
   private readonly users: UserRepo;
   private readonly sessions: SessionRepo;
+  private readonly audit: AuditService | undefined;
   private readonly now: () => number;
   private readonly genId: () => string;
   private readonly genToken: () => string;
@@ -40,6 +43,7 @@ export class AuthService {
   constructor(deps: AuthServiceDeps) {
     this.users = deps.users;
     this.sessions = deps.sessions;
+    this.audit = deps.audit;
     this.now = deps.now ?? (() => Date.now());
     this.genId = deps.genId ?? (() => randomUUID());
     this.genToken = deps.genToken ?? (() => randomBytes(32).toString("hex"));
@@ -106,23 +110,25 @@ export class AuthService {
   }
 
   // FR-AUTH-02 / FR-RBAC-02: Admin gibt Konto frei.
-  async approveUser(userId: string): Promise<PublicUser> {
+  async approveUser(userId: string, actorId: string): Promise<PublicUser> {
     const user = await this.requireUser(userId);
     user.approved = true;
     await this.users.update(user);
+    await this.record(actorId, "user.approve", userId);
     return toPublic(user);
   }
 
   // FR-RBAC-02: Rolle ändern.
-  async changeRole(userId: string, role: Role): Promise<PublicUser> {
+  async changeRole(userId: string, role: Role, actorId: string): Promise<PublicUser> {
     const user = await this.requireUser(userId);
     user.role = role;
     await this.users.update(user);
+    await this.record(actorId, "user.role-change", userId, { role });
     return toPublic(user);
   }
 
   // FR-AUTH-06: Admin-Passwort-Reset; bestehende Sitzungen des Nutzers werden ungültig.
-  async resetPassword(userId: string, newPassword: string): Promise<void> {
+  async resetPassword(userId: string, newPassword: string, actorId: string): Promise<void> {
     if (newPassword.length < MIN_PASSWORD_LENGTH) {
       throw new AuthError("WEAK_PASSWORD", "Passwort muss mindestens 8 Zeichen haben.");
     }
@@ -132,6 +138,29 @@ export class AuthService {
     user.passwordHash = hash;
     await this.users.update(user);
     await this.sessions.deleteByUser(userId);
+    await this.record(actorId, "user.password-reset", userId);
+  }
+
+  // FR-RBAC-02: Admin löscht Nutzer; Sitzungen verfallen.
+  async deleteUser(userId: string, actorId: string): Promise<void> {
+    await this.requireUser(userId);
+    await this.users.delete(userId);
+    await this.sessions.deleteByUser(userId);
+    await this.record(actorId, "user.delete", userId);
+  }
+
+  // FR-RBAC-02: Audit-Eintrag je Admin-Aktion (sofern Audit verdrahtet).
+  private async record(
+    actor: string,
+    action: string,
+    target: string,
+    payload?: Record<string, unknown>,
+  ): Promise<void> {
+    if (this.audit) {
+      await this.audit.record(
+        payload ? { actor, action, target, payload } : { actor, action, target },
+      );
+    }
   }
 
   private async requireUser(userId: string): Promise<User> {

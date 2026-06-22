@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import { beforeEach, describe, expect, it } from "vitest";
+import { AuditService, InMemoryAuditRepo } from "../../audit";
 import { verifyPassword } from "./password";
 import { InMemorySessionRepo, InMemoryUserRepo } from "./repo";
 import { authRoutes } from "./routes";
@@ -42,7 +43,7 @@ describe("AuthService", () => {
       },
     );
 
-    await service.approveUser(second.id);
+    await service.approveUser(second.id, "admin");
     const ok = await service.login({ email: "bob@x.de", password: "secret123" });
     expect(ok.token).toBeTruthy();
   });
@@ -81,7 +82,7 @@ describe("AuthService", () => {
     });
     const { token } = await service.login({ email: "admin@x.de", password: "secret123" });
 
-    await service.resetPassword(admin.id, "neuespass1");
+    await service.resetPassword(admin.id, "neuespass1", admin.id);
 
     expect(await service.authenticate(token)).toBeUndefined();
     await expect(
@@ -158,7 +159,7 @@ describe("authRoutes (HTTP)", () => {
 
     await service.register({ name: "Admin", email: "admin@x.de", password: "secret123" });
     const bob = await service.register({ name: "Bob", email: "bob@x.de", password: "secret123" });
-    await service.approveUser(bob.id);
+    await service.approveUser(bob.id, "admin");
     const bobLogin = await service.login({ email: "bob@x.de", password: "secret123" });
 
     const res = await app.inject({
@@ -169,5 +170,38 @@ describe("authRoutes (HTTP)", () => {
     expect(res.statusCode).toBe(403);
 
     await app.close();
+  });
+});
+
+describe("FR-RBAC-02: Admin-Aktionen mit Audit", () => {
+  it("löscht Nutzer und schreibt je Aktion einen Audit-Eintrag", async () => {
+    const users = new InMemoryUserRepo();
+    const sessions = new InMemorySessionRepo();
+    const audit = new AuditService({ repo: new InMemoryAuditRepo() });
+    const service = new AuthService({ users, sessions, audit });
+
+    const admin = await service.register({ name: "Admin", email: "a@x.de", password: "secret123" });
+    const bob = await service.register({ name: "Bob", email: "bob@x.de", password: "secret123" });
+
+    await service.approveUser(bob.id, admin.id);
+    await service.changeRole(bob.id, "controller", admin.id);
+    await service.resetPassword(bob.id, "neuespass1", admin.id);
+    await service.deleteUser(bob.id, admin.id);
+
+    // Nutzer ist gelöscht.
+    await expect(service.approveUser(bob.id, admin.id)).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
+
+    // Vier Admin-Aktionen → vier Audit-Einträge; Kette intakt.
+    const entries = await audit.list();
+    expect(entries).toHaveLength(4);
+    expect(entries.map((e) => e.action)).toEqual([
+      "user.approve",
+      "user.role-change",
+      "user.password-reset",
+      "user.delete",
+    ]);
+    expect(await audit.verify()).toBe(true);
   });
 });
