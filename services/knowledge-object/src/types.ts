@@ -39,6 +39,7 @@ export interface KnowledgeObject {
   status: KoStatus;
   version: number;
   originalAuthor: string;
+  author: string;
   neededValidations: number;
   assignments: string[];
   asset: string | null;

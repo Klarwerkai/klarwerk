@@ -73,6 +73,7 @@ export class KoService {
       status: "offen",
       version: 1,
       originalAuthor: input.author,
+      author: input.author,
       neededValidations: needed,
       assignments: [],
       asset: input.asset ?? null,
@@ -137,6 +138,14 @@ export class KoService {
   ): Promise<KnowledgeObject> {
     const ko = await this.require(id);
     const updated = { ...ko, trust: state.trust, status: state.status };
+    await this.repo.update(updated);
+    return updated;
+  }
+
+  // FR-LIF-02: Autor-Übergabe — current author ändert sich, originalAuthor bleibt erhalten.
+  async setAuthor(id: string, author: string): Promise<KnowledgeObject> {
+    const ko = await this.require(id);
+    const updated = { ...ko, author };
     await this.repo.update(updated);
     return updated;
   }
