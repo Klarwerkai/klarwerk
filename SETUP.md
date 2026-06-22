@@ -50,8 +50,9 @@ Bereits im Projektordner angelegt:
 ## Phase 0+ — Erste Module gebaut ✅
 - ✅ **Modul `auth`** (`services/auth/`): Fastify-Routen, PBKDF2-Hashing, Sessions, Onboarding. Deckt FR-AUTH-01…06 (Jira: Done). 11 Tests.
 - ✅ **Modul `rbac`** (`services/rbac/`): Rechtematrix Viewer/Experte/Controller/Admin, `can()`-Policy, Admin-Selbstschutz, Fastify-`requirePermission`-Guard. Deckt FR-RBAC-01/03/04 (Jira: Done), FR-RBAC-02 in Arbeit (Löschen + Audit fehlen). 6 Tests.
-- **Alle Gates grün** (17 Tests gesamt): Build · Lint (Biome) · Architektur (dependency-cruiser, inkl. Modulgrenze `rbac → auth` nur über index) · Tests.
-- Persistenz aktuell In-Memory hinter Interfaces. **Offen:** Postgres-Adapter + Testcontainers (Docker), Cookie-Härtung (Secure-Flag), FR-AUTH-07/08, Audit-Modul (für FR-RBAC-02), Modul `knowledge-object` als Nächstes.
+- ✅ **Modul `knowledge-object`** (`services/knowledge-object/`): KO-Entität mit allen Pflichtfeldern, fünf Wissensarten, Kategorie/Tags-Pflege, Versionierung mit Historie + Bewertungs-Reset, Filter-Liste. Deckt FR-KO-01…04 (Jira: Done). 6 Tests.
+- **Alle Gates grün** (23 Tests gesamt): Build · Lint (Biome) · Architektur (dependency-cruiser, inkl. Modulgrenze `rbac → auth` nur über index) · Tests.
+- Persistenz aktuell In-Memory hinter Interfaces. **Offen:** Postgres-Adapter + Testcontainers (Docker), Cookie-Härtung (Secure-Flag), FR-AUTH-07/08, Audit-Modul (für FR-RBAC-02). **Nächste Vertikale:** `capture` → `structure` → `validation`.
 
 ## Phase 4 — Determinismus/Qualität 🟡 (mit erstem Modul)
 - 🟡 Testcontainers-Setup je Modul · WireMock für externe Systeme · Coverage-Gate scharf stellen (braucht Docker).
