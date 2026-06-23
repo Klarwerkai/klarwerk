@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { AuditService } from "../../audit";
 import type { KoFilter, KoRepo } from "./repo";
 import {
   KNOWLEDGE_TYPES,
@@ -12,6 +13,7 @@ const DEFAULT_NEEDED_VALIDATIONS = 3; // FR-CAP-08: 1–5, Standard 3.
 
 export interface KoServiceDeps {
   repo: KoRepo;
+  audit?: AuditService;
   now?: () => number;
   genId?: () => string;
 }
@@ -40,11 +42,13 @@ export interface ReviseKoInput {
 
 export class KoService {
   private readonly repo: KoRepo;
+  private readonly audit: AuditService | undefined;
   private readonly now: () => number;
   private readonly genId: () => string;
 
   constructor(deps: KoServiceDeps) {
     this.repo = deps.repo;
+    this.audit = deps.audit;
     this.now = deps.now ?? (() => Date.now());
     this.genId = deps.genId ?? (() => randomUUID());
   }
@@ -81,6 +85,7 @@ export class KoService {
       history: [{ version: 1, at, author: input.author, note: "erstellt" }],
     };
     await this.repo.insert(ko);
+    await this.audit?.record({ actor: input.author, action: "ko.created", target: ko.id });
     return ko;
   }
 
@@ -113,6 +118,12 @@ export class KoService {
       history: [...ko.history, { version, at, author, note: "überarbeitet" }],
     };
     await this.repo.update(revised);
+    await this.audit?.record({
+      actor: author,
+      action: "ko.revised",
+      target: id,
+      payload: { version },
+    });
     return revised;
   }
 

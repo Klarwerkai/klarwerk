@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { AuditService, InMemoryAuditRepo } from "../../audit";
 import { type CreateKoInput, InMemoryKoRepo, KoService } from "../../knowledge-object";
 import { InMemoryAssignmentRepo, InMemoryRatingRepo } from "./repo";
 import { ValidationService } from "./service";
@@ -88,5 +89,20 @@ describe("ValidationService", () => {
     const overview = await service.overview();
     const u1 = overview.find((s) => s.userId === "u1");
     expect(u1).toEqual({ userId: "u1", open: 1, done: 1 });
+  });
+
+  it("FR-AUD-01: Bewertung erzeugt einen Audit-Eintrag", async () => {
+    const audit = new AuditService({ repo: new InMemoryAuditRepo() });
+    const withAudit = new ValidationService({
+      koService,
+      ratings: new InMemoryRatingRepo(),
+      assignments: new InMemoryAssignmentRepo(),
+      audit,
+    });
+    const ko = await koService.create(koInput());
+    await withAudit.rate(ko.id, "u1", "up");
+    const entries = await audit.list({ action: "ko.rated" });
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.actor).toBe("u1");
   });
 });

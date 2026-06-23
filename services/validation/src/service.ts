@@ -1,3 +1,4 @@
+import type { AuditService } from "../../audit";
 import type { KnowledgeObject, KoFilter, KoService } from "../../knowledge-object";
 import type { AssignmentRepo, RatingRepo } from "./repo";
 import { type ValidationOutcome, computeOutcome } from "./trust";
@@ -15,6 +16,7 @@ export interface ValidationServiceDeps {
   koService: KoService;
   ratings: RatingRepo;
   assignments: AssignmentRepo;
+  audit?: AuditService;
   now?: () => number;
 }
 
@@ -22,12 +24,14 @@ export class ValidationService {
   private readonly koService: KoService;
   private readonly ratings: RatingRepo;
   private readonly assignments: AssignmentRepo;
+  private readonly audit: AuditService | undefined;
   private readonly now: () => number;
 
   constructor(deps: ValidationServiceDeps) {
     this.koService = deps.koService;
     this.ratings = deps.ratings;
     this.assignments = deps.assignments;
+    this.audit = deps.audit;
     this.now = deps.now ?? (() => Date.now());
   }
 
@@ -51,6 +55,12 @@ export class ValidationService {
     await this.koService.setValidationState(koId, {
       trust: outcome.trust,
       status: outcome.status,
+    });
+    await this.audit?.record({
+      actor: userId,
+      action: "ko.rated",
+      target: koId,
+      payload: { verdict },
     });
     // FR-VAL-05: Bewertung erledigt eine offene Zuweisung des Nutzers.
     const assignment = await this.assignments.find(koId, userId);

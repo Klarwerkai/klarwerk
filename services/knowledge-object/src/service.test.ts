@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { AuditService, InMemoryAuditRepo } from "../../audit";
 import { InMemoryKoRepo } from "./repo";
 import { type CreateKoInput, KoService } from "./service";
 
@@ -87,5 +88,18 @@ describe("KoService", () => {
     await expect(service.create(base({ neededValidations: 9 }))).rejects.toMatchObject({
       code: "INVALID_NEEDED",
     });
+  });
+});
+
+describe("KoService — Audit-Verdrahtung (FR-AUD-01)", () => {
+  it("protokolliert Anlegen und Überarbeiten", async () => {
+    const audit = new AuditService({ repo: new InMemoryAuditRepo() });
+    const service = new KoService({ repo: new InMemoryKoRepo(), audit });
+    const ko = await service.create(base());
+    await service.revise(ko.id, { statement: "neu" }, "controller");
+
+    const entries = await audit.list();
+    expect(entries.map((e) => e.action)).toEqual(["ko.created", "ko.revised"]);
+    expect(await audit.verify()).toBe(true);
   });
 });

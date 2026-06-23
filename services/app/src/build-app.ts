@@ -22,7 +22,7 @@ export function buildServices(): AppServices {
       sessions: new InMemorySessionRepo(),
       audit,
     }),
-    ko: new KoService({ repo: new InMemoryKoRepo() }),
+    ko: new KoService({ repo: new InMemoryKoRepo(), audit }),
     reasoner: new Reasoner(),
     audit,
   };
