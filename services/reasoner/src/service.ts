@@ -16,13 +16,13 @@ export class Reasoner {
     this.fallback = fallback;
   }
 
-  private active(): ReasonerProvider {
-    return this.primary.isAvailable() ? this.primary : this.fallback;
+  private usingPrimary(): boolean {
+    return this.primary.isAvailable() && this.primary !== this.fallback;
   }
 
   // FR-RSN-05: server-echte Statusanzeige.
   status(): ReasonerStatus {
-    const usingPrimary = this.primary.isAvailable() && this.primary !== this.fallback;
+    const usingPrimary = this.usingPrimary();
     return {
       active: usingPrimary,
       provider: usingPrimary ? this.primary.name : this.fallback.name,
@@ -30,15 +30,31 @@ export class Reasoner {
     };
   }
 
-  structure(rawText: string): StructureResult {
-    return this.active().structure(rawText);
+  // FR-RSN-04: Modellfehler dürfen den Betrieb nicht stoppen → deterministischer Fallback.
+  async structure(rawText: string): Promise<StructureResult> {
+    if (this.usingPrimary()) {
+      try {
+        return await this.primary.structure(rawText);
+      } catch {
+        // Fällt auf den deterministischen Provider zurück.
+      }
+    }
+    return this.fallback.structure(rawText);
   }
 
-  answer(question: string, context: readonly KnowledgeRef[]): AnswerResult {
-    return this.active().answer(question, context);
+  async answer(question: string, context: readonly KnowledgeRef[]): Promise<AnswerResult> {
+    if (this.usingPrimary()) {
+      try {
+        return await this.primary.answer(question, context);
+      } catch {
+        // Fällt auf den deterministischen Provider zurück.
+      }
+    }
+    return this.fallback.answer(question, context);
   }
 
   select(question: string, candidates: readonly KnowledgeRef[]): KnowledgeRef[] {
-    return this.active().select(question, candidates);
+    const provider = this.usingPrimary() ? this.primary : this.fallback;
+    return provider.select(question, candidates);
   }
 }

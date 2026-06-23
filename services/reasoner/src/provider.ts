@@ -5,8 +5,10 @@ import type { AnswerResult, KnowledgeRef, StructureResult } from "./types";
 export interface ReasonerProvider {
   readonly name: string;
   isAvailable(): boolean;
-  structure(rawText: string): StructureResult;
-  answer(question: string, context: readonly KnowledgeRef[]): AnswerResult;
+  // structure/answer sind async — ein echtes Modell ruft über das Netz.
+  structure(rawText: string): Promise<StructureResult>;
+  answer(question: string, context: readonly KnowledgeRef[]): Promise<AnswerResult>;
+  // select ist reines Ranking (synchron, kein Netzaufruf).
   select(question: string, candidates: readonly KnowledgeRef[]): KnowledgeRef[];
 }
 
@@ -28,6 +30,20 @@ function overlap(a: readonly string[], b: readonly string[]): number {
   return count;
 }
 
+// Semantische Vorauswahl über Keyword-Überschneidung — synchron, modellunabhängig.
+// Von beiden Providern genutzt, damit Antworten immer in echten KOs verankert bleiben.
+export function keywordSelect(
+  question: string,
+  candidates: readonly KnowledgeRef[],
+): KnowledgeRef[] {
+  const words = tokenize(question);
+  return candidates
+    .map((c) => ({ c, score: overlap(words, tokenize(`${c.title} ${c.statement}`)) }))
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map((x) => x.c);
+}
+
 // FR-RSN-04: deterministischer Fallback ohne Modell. Immer verfügbar, Ergebnisse
 // klar als Demo markiert; semantische Auswahl über Keyword-Überschneidung.
 export class DeterministicProvider implements ReasonerProvider {
@@ -37,7 +53,7 @@ export class DeterministicProvider implements ReasonerProvider {
     return true;
   }
 
-  structure(rawText: string): StructureResult {
+  async structure(rawText: string): Promise<StructureResult> {
     const firstSentence = rawText.split(/[.!?]/)[0]?.trim() ?? rawText.trim();
     return {
       title: firstSentence,
@@ -51,15 +67,10 @@ export class DeterministicProvider implements ReasonerProvider {
   }
 
   select(question: string, candidates: readonly KnowledgeRef[]): KnowledgeRef[] {
-    const words = tokenize(question);
-    return candidates
-      .map((c) => ({ c, score: overlap(words, tokenize(`${c.title} ${c.statement}`)) }))
-      .filter((x) => x.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .map((x) => x.c);
+    return keywordSelect(question, candidates);
   }
 
-  answer(question: string, context: readonly KnowledgeRef[]): AnswerResult {
+  async answer(question: string, context: readonly KnowledgeRef[]): Promise<AnswerResult> {
     const relevant = this.select(question, context);
     // FR-RSN-03: keine Rateantwort ohne belastbares Wissen.
     if (relevant.length === 0) {
@@ -91,7 +102,7 @@ export class DeterministicProvider implements ReasonerProvider {
       knowledgeClass: best.status === "validiert" ? "gesichert" : "ungeprueft",
       trust: best.trust,
       sources: relevant.map((r) => r.id),
-      steps: [{ description: `Quelle: ${best.title}`, sourceId: best.id }],
+      steps: [{ description: `Quelle: ${best.title}`, sourceId: best.id, snippet: best.statement }],
       demo: true,
     };
   }

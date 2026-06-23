@@ -11,6 +11,7 @@ export interface KoRepo {
   insert(ko: KnowledgeObject): Promise<void>;
   findById(id: string): Promise<KnowledgeObject | undefined>;
   update(ko: KnowledgeObject): Promise<void>;
+  delete(id: string): Promise<void>;
   list(filter: KoFilter): Promise<KnowledgeObject[]>;
 }
 
@@ -44,6 +45,11 @@ export class InMemoryKoRepo implements KoRepo {
 
   update(ko: KnowledgeObject): Promise<void> {
     this.items.set(ko.id, ko);
+    return Promise.resolve();
+  }
+
+  delete(id: string): Promise<void> {
+    this.items.delete(id);
     return Promise.resolve();
   }
 

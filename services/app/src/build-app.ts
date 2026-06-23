@@ -1,56 +1,213 @@
 import Fastify, { type FastifyInstance } from "fastify";
-import { AuditService, InMemoryAuditRepo } from "../../audit";
-import { AuthService, InMemorySessionRepo, InMemoryUserRepo, authRoutes } from "../../auth";
-import { InMemoryKoRepo, KoService } from "../../knowledge-object";
-import { type RoleResolver, requirePermission } from "../../rbac";
-import { Reasoner } from "../../reasoner";
+import type { Pool } from "pg";
+import { AskService, type GapRepo, InMemoryGapRepo, PgGapRepo } from "../../ask";
+import { type AuditRepo, AuditService, InMemoryAuditRepo, PgAuditRepo } from "../../audit";
+import {
+  AuthService,
+  InMemoryPasswordResetRepo,
+  InMemorySessionRepo,
+  InMemoryUserRepo,
+  type PasswordResetRepo,
+  PgPasswordResetRepo,
+  PgSessionRepo,
+  PgUserRepo,
+  type SessionRepo,
+  type UserRepo,
+  authRoutes,
+  createOidcVerifierFromEnv,
+} from "../../auth";
+import { CaptureService, type DraftRepo, InMemoryDraftRepo, PgDraftRepo } from "../../capture";
+import {
+  type ConflictRepo,
+  ConflictService,
+  InMemoryConflictRepo,
+  PgConflictRepo,
+} from "../../conflicts";
+import { I18nService } from "../../i18n";
+import { InMemoryKoRepo, type KoRepo, KoService, PgKoRepo } from "../../knowledge-object";
+import { LibraryService } from "../../library-analytics";
+import {
+  InMemoryLifecycleRepo,
+  type LifecycleRepo,
+  LifecycleService,
+  PgLifecycleRepo,
+} from "../../lifecycle";
+import { ConsoleMailer, type Mailer, createMailerFromEnv } from "../../notifications";
+import { ModelProvider, Reasoner, createModelClientFromEnv } from "../../reasoner";
+import {
+  type AssignmentRepo,
+  InMemoryAssignmentRepo,
+  InMemoryRatingRepo,
+  PgAssignmentRepo,
+  PgRatingRepo,
+  type RatingRepo,
+  ValidationService,
+} from "../../validation";
+import { makeGuards } from "./http";
+import { impactReport } from "./impact";
+import { makeAssignmentNotifier } from "./notify";
+import { askRoutes } from "./routes/ask-routes";
+import { auditRoutes } from "./routes/audit-routes";
+import { captureRoutes } from "./routes/capture-routes";
+import { conflictRoutes } from "./routes/conflicts-routes";
+import { i18nRoutes } from "./routes/i18n-routes";
+import { koRoutes } from "./routes/ko-routes";
+import { libraryRoutes } from "./routes/library-routes";
+import { lifecycleRoutes } from "./routes/lifecycle-routes";
+import { reasonerRoutes } from "./routes/reasoner-routes";
+import { validationRoutes } from "./routes/validation-routes";
 
-// Composition-Root des modularen Monolithen: verdrahtet die Module zu EINER App.
+// Composition-Root des modularen Monolithen: verdrahtet ALLE Module zu EINER App.
 // Jeder Import läuft über die öffentliche index.ts des jeweiligen Moduls.
 export interface AppServices {
   auth: AuthService;
   ko: KoService;
   reasoner: Reasoner;
   audit: AuditService;
+  capture: CaptureService;
+  ask: AskService;
+  validation: ValidationService;
+  conflicts: ConflictService;
+  library: LibraryService;
+  lifecycle: LifecycleService;
+  i18n: I18nService;
+  mailer: Mailer;
 }
 
-export function buildServices(): AppServices {
-  const audit = new AuditService({ repo: new InMemoryAuditRepo() });
+// Alle Repositories der App. Sie sind der einzige Unterschied zwischen In-Memory und
+// Postgres — die Service-Verdrahtung darüber ist identisch.
+interface AppRepos {
+  auditRepo: AuditRepo;
+  koRepo: KoRepo;
+  users: UserRepo;
+  sessions: SessionRepo;
+  resetTokens: PasswordResetRepo;
+  drafts: DraftRepo;
+  gaps: GapRepo;
+  ratings: RatingRepo;
+  assignments: AssignmentRepo;
+  conflictsRepo: ConflictRepo;
+  lifecycleRepo: LifecycleRepo;
+}
+
+// Verdrahtet aus den Repos die vollständige Service-Landschaft. Ein gemeinsames
+// Audit-Log und ein KO-Repository für alle Module, die auf denselben Bestand wirken.
+function assembleServices(repos: AppRepos): AppServices {
+  const audit = new AuditService({ repo: repos.auditRepo });
+  const ko = new KoService({ repo: repos.koRepo, audit });
+  // FR-RSN-02/06: echtes Modell, wenn ANTHROPIC_API_KEY gesetzt ist; sonst deterministisch.
+  const modelClient = createModelClientFromEnv();
+  const reasoner = new Reasoner(modelClient ? new ModelProvider(modelClient) : undefined);
+
   return {
+    audit,
+    reasoner,
+    ko,
     auth: new AuthService({
-      users: new InMemoryUserRepo(),
-      sessions: new InMemorySessionRepo(),
+      users: repos.users,
+      sessions: repos.sessions,
+      resetTokens: repos.resetTokens,
       audit,
     }),
-    ko: new KoService({ repo: new InMemoryKoRepo(), audit }),
-    reasoner: new Reasoner(),
-    audit,
+    capture: new CaptureService({ repo: repos.drafts }),
+    ask: new AskService({ reasoner, koService: ko, gaps: repos.gaps, audit }),
+    validation: new ValidationService({
+      koService: ko,
+      ratings: repos.ratings,
+      assignments: repos.assignments,
+      audit,
+    }),
+    conflicts: new ConflictService({ repo: repos.conflictsRepo, audit }),
+    library: new LibraryService({ koService: ko, audit }),
+    lifecycle: new LifecycleService({ koService: ko, repo: repos.lifecycleRepo }),
+    i18n: new I18nService(),
+    // FR-AUTH-08/FR-VAL-07: SMTP, wenn konfiguriert; sonst sammelnder Fallback ohne Versand.
+    mailer: createMailerFromEnv() ?? new ConsoleMailer(),
   };
+}
+
+// In-Memory-Komposition (Tests, Dev ohne Datenbank).
+export function buildServices(): AppServices {
+  return assembleServices({
+    auditRepo: new InMemoryAuditRepo(),
+    koRepo: new InMemoryKoRepo(),
+    users: new InMemoryUserRepo(),
+    sessions: new InMemorySessionRepo(),
+    resetTokens: new InMemoryPasswordResetRepo(),
+    drafts: new InMemoryDraftRepo(),
+    gaps: new InMemoryGapRepo(),
+    ratings: new InMemoryRatingRepo(),
+    assignments: new InMemoryAssignmentRepo(),
+    conflictsRepo: new InMemoryConflictRepo(),
+    lifecycleRepo: new InMemoryLifecycleRepo(),
+  });
+}
+
+// Postgres-Komposition: dieselbe App, alle Repos gegen eine echte Datenbank.
+export function buildPgServices(pool: Pool): AppServices {
+  return assembleServices({
+    auditRepo: new PgAuditRepo(pool),
+    koRepo: new PgKoRepo(pool),
+    users: new PgUserRepo(pool),
+    sessions: new PgSessionRepo(pool),
+    resetTokens: new PgPasswordResetRepo(pool),
+    drafts: new PgDraftRepo(pool),
+    gaps: new PgGapRepo(pool),
+    ratings: new PgRatingRepo(pool),
+    assignments: new PgAssignmentRepo(pool),
+    conflictsRepo: new PgConflictRepo(pool),
+    lifecycleRepo: new PgLifecycleRepo(pool),
+  });
 }
 
 export function buildApp(services: AppServices = buildServices()): FastifyInstance {
   const app = Fastify();
-
-  // Verbindet rbac mit auth: Rolle des Requests kommt aus der Sitzung (FR-RBAC-04).
-  const resolveRole: RoleResolver = async (request) => {
-    const header = request.headers.authorization;
-    const token = header?.startsWith("Bearer ") ? header.slice("Bearer ".length) : undefined;
-    if (!token) {
-      return undefined;
-    }
-    const user = await services.auth.authenticate(token);
-    return user?.role;
-  };
+  const guards = makeGuards(services.auth);
 
   app.get("/health", async () => ({ status: "ok" }));
   app.get("/api/reasoner/status", async () => services.reasoner.status()); // FR-RSN-05
+  app.get("/api/ai-status", async () => ({ ai: services.reasoner.status() })); // §2.1: ist die KI verfügbar?
 
-  app.register(authRoutes(services.auth));
-
-  // Beispiel-Endpunkt: KO-Liste, geschützt durch die Rechtematrix (auth + rbac + knowledge-object).
-  app.get("/api/kos", { preHandler: requirePermission("ko.read", resolveRole) }, () =>
-    services.ko.list(),
+  // HTTP-Oberfläche der Module. Auth bringt seine eigenen Routen mit; die übrigen
+  // Module werden über App-Routen verdrahtet, die den gemeinsamen Guard nutzen.
+  const resetBaseUrl = process.env.APP_BASE_URL ? `${process.env.APP_BASE_URL}/reset` : undefined;
+  app.register(
+    authRoutes(services.auth, {
+      mailer: services.mailer,
+      resetBaseUrl,
+      oidc: createOidcVerifierFromEnv(),
+    }),
   );
+  app.register(
+    koRoutes(
+      {
+        ko: services.ko,
+        validation: services.validation,
+        conflicts: services.conflicts,
+        lifecycle: services.lifecycle,
+        notifyAssignment: makeAssignmentNotifier(services.auth, services.mailer),
+      },
+      guards,
+    ),
+  );
+  app.register(validationRoutes(services.validation, guards));
+  app.register(conflictRoutes(services.conflicts, guards));
+  app.register(captureRoutes(services, guards));
+  app.register(askRoutes(services.ask, guards));
+  app.register(libraryRoutes(services.library, guards));
+  app.register(lifecycleRoutes(services.lifecycle, guards));
+  app.register(auditRoutes(services.audit, guards));
+  app.register(reasonerRoutes(services, guards));
+  app.register(i18nRoutes(services.i18n));
+
+  // FR-ANA-02: Wirkungs-Dashboard (orchestriert KO-Bestand + Ask-Telemetrie aus dem Audit).
+  app.get("/api/analytics/impact", async (request, reply) => {
+    const user = await guards.requirePermission("ko.read", request, reply);
+    if (!user) {
+      return;
+    }
+    reply.code(200).send(await impactReport(services.ko, services.audit));
+  });
 
   return app;
 }

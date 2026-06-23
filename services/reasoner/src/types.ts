@@ -19,6 +19,7 @@ export type KnowledgeClass =
 export interface AnswerStep {
   description: string;
   sourceId: string | null;
+  snippet: string | null; // FR-ASK-06: konkrete Belegstelle/Textstelle der Quelle.
 }
 
 export interface AnswerResult {

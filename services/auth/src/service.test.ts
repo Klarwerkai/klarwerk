@@ -115,6 +115,44 @@ describe("AuthService", () => {
     clock += 15 * 24 * 60 * 60 * 1000; // > 14 Tage
     expect(await ctx.service.authenticate(token)).toBeUndefined();
   });
+
+  it("Self-Service: eigenes Passwort ändern (altes nötig), alte Sitzung verfällt", async () => {
+    const user = await service.register({ name: "A", email: "a@x.de", password: "secret123" });
+    const { token } = await service.login({ email: "a@x.de", password: "secret123" });
+
+    await expect(service.changePassword(user.id, "falsch", "neuespass1")).rejects.toMatchObject({
+      code: "INVALID_CREDENTIALS",
+    });
+
+    await service.changePassword(user.id, "secret123", "neuespass1");
+    expect(await service.authenticate(token)).toBeUndefined();
+    const ok = await service.login({ email: "a@x.de", password: "neuespass1" });
+    expect(ok.token).toBeTruthy();
+  });
+
+  it("FR-AUTH-08: Reset per Token; unbekannte E-Mail verschwiegen, Token einmalig", async () => {
+    await service.register({ name: "A", email: "a@x.de", password: "secret123" });
+    const { token } = await service.login({ email: "a@x.de", password: "secret123" });
+
+    // Unbekannte E-Mail → undefined (Existenz wird nicht verraten).
+    expect(await service.requestPasswordReset("nope@x.de")).toBeUndefined();
+
+    const req = await service.requestPasswordReset("a@x.de");
+    if (!req) {
+      throw new Error("Reset-Token erwartet");
+    }
+    await service.resetPasswordWithToken(req.token, "neuespass1");
+
+    // Alte Sitzung verfällt, neues Passwort gilt.
+    expect(await service.authenticate(token)).toBeUndefined();
+    const ok = await service.login({ email: "a@x.de", password: "neuespass1" });
+    expect(ok.token).toBeTruthy();
+
+    // Token ist verbraucht.
+    await expect(service.resetPasswordWithToken(req.token, "nochmal12")).rejects.toMatchObject({
+      code: "INVALID_CREDENTIALS",
+    });
+  });
 });
 
 describe("authRoutes (HTTP)", () => {
@@ -219,5 +257,88 @@ describe("FR-RBAC-02: Admin-Aktionen mit Audit", () => {
     const logout = await audit.list({ action: "auth.logout" });
     expect(logout).toHaveLength(1);
     expect(logout[0]?.actor).toBe(admin.id);
+  });
+});
+
+describe("authRoutes — Setup, Status & Users (§2.1/2.2)", () => {
+  async function freshApp() {
+    const { service } = build();
+    const app = Fastify();
+    await app.register(authRoutes(service));
+    return app;
+  }
+
+  it("Status zeigt needsSetup; Setup legt Admin an und sperrt erneutes Setup", async () => {
+    const app = await freshApp();
+
+    const before = await app.inject({ method: "GET", url: "/api/auth/status" });
+    expect(before.json().needsSetup).toBe(true);
+
+    const setup = await app.inject({
+      method: "POST",
+      url: "/api/auth/setup",
+      payload: { name: "Pedi", email: "a@x.de", password: "secret123" },
+    });
+    expect(setup.statusCode).toBe(201);
+    expect(setup.json().user.role).toBe("admin");
+    expect(setup.json().token).toBeTruthy();
+
+    const after = await app.inject({ method: "GET", url: "/api/auth/status" });
+    expect(after.json().needsSetup).toBe(false);
+
+    const again = await app.inject({
+      method: "POST",
+      url: "/api/auth/setup",
+      payload: { name: "X", email: "b@x.de", password: "secret123" },
+    });
+    expect(again.statusCode).toBe(409);
+
+    await app.close();
+  });
+
+  it("Admin verwaltet Nutzer: anlegen (freigegeben), listen, Rolle ändern, löschen", async () => {
+    const app = await freshApp();
+    const setup = await app.inject({
+      method: "POST",
+      url: "/api/auth/setup",
+      payload: { name: "Admin", email: "admin@x.de", password: "secret123" },
+    });
+    const headers = { authorization: `Bearer ${setup.json().token}` };
+
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/users",
+      headers,
+      payload: { name: "Bob", email: "bob@x.de", password: "secret123", role: "controller" },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json().role).toBe("controller");
+    expect(created.json().approved).toBe(true);
+    const bobId = created.json().id as string;
+
+    const list = await app.inject({ method: "GET", url: "/api/users", headers });
+    expect(list.statusCode).toBe(200);
+    expect(list.json()).toHaveLength(2);
+
+    const put = await app.inject({
+      method: "PUT",
+      url: `/api/users/${bobId}`,
+      headers,
+      payload: { role: "experte" },
+    });
+    expect(put.statusCode).toBe(200);
+    expect(put.json().role).toBe("experte");
+
+    const del = await app.inject({ method: "DELETE", url: `/api/users/${bobId}`, headers });
+    expect(del.statusCode).toBe(204);
+
+    const list2 = await app.inject({ method: "GET", url: "/api/users", headers });
+    expect(list2.json()).toHaveLength(1);
+
+    // Ohne Anmeldung kein Zugriff auf die Nutzerverwaltung.
+    const anon = await app.inject({ method: "GET", url: "/api/users" });
+    expect(anon.statusCode).toBe(401);
+
+    await app.close();
   });
 });

@@ -173,6 +173,13 @@ export class KoService {
     return updated;
   }
 
+  // FR-RBAC-02: KO löschen (nur Controller/Admin, serverseitig erzwungen) mit Audit-Eintrag.
+  async delete(id: string, actor = "system"): Promise<void> {
+    await this.require(id);
+    await this.repo.delete(id);
+    await this.audit?.record({ actor, action: "ko.deleted", target: id });
+  }
+
   private async require(id: string): Promise<KnowledgeObject> {
     const ko = await this.repo.findById(id);
     if (!ko) {

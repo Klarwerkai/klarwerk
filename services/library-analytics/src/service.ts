@@ -50,6 +50,35 @@ export class LibraryService {
     return items.map((ko) => `== ${ko.title} ==\n${ko.statement}`).join("\n\n");
   }
 
+  // FR-LIB-02: druckfertiges HTML — der Browser erzeugt daraus per „Als PDF sichern" das PDF.
+  async exportHtml(ids?: readonly string[]): Promise<string> {
+    const items = await this.exportJson(ids);
+    const esc = (s: string): string =>
+      s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const li = (xs: readonly string[]): string => xs.map((x) => `<li>${esc(x)}</li>`).join("");
+    const articles = items
+      .map((ko) => {
+        const conditions = ko.conditions.length
+          ? `<p><strong>Wann es gilt</strong></p><ul>${li(ko.conditions)}</ul>`
+          : "";
+        const measures = ko.measures.length
+          ? `<p><strong>Vorgehen</strong></p><ul>${li(ko.measures)}</ul>`
+          : "";
+        const author =
+          ko.author === ko.originalAuthor
+            ? esc(ko.author)
+            : `${esc(ko.author)} (urspr. ${esc(ko.originalAuthor)})`;
+        return `<article><h2>${esc(ko.title)}</h2><p class="meta">${esc(ko.type)} · ${esc(ko.category)} · Trust ${ko.trust} · ${esc(ko.status)}</p><p>${esc(ko.statement)}</p>${conditions}${measures}<p class="src">Autor: ${author}</p></article>`;
+      })
+      .join("\n");
+    const style =
+      "body{font-family:system-ui,sans-serif;max-width:800px;margin:2rem auto;color:#1f2a37}" +
+      "h2{margin-bottom:.2rem}.meta{color:#666;font-size:.85rem;margin-top:0}" +
+      "article{break-inside:avoid;border-bottom:1px solid #eee;padding:1rem 0}" +
+      ".src{color:#888;font-size:.8rem}@media print{body{margin:0}}";
+    return `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>KLARWERK Export</title><style>${style}</style></head><body><h1>KLARWERK — Wissensexport</h1>${articles}</body></html>`;
+  }
+
   // FR-LIB-02: Import per JSON ohne Duplikate.
   async importJson(items: readonly ImportItem[], defaultAuthor = "import"): Promise<ImportResult> {
     const existing = await this.koService.list();

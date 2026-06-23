@@ -1,0 +1,46 @@
+# Produktions-Setup: App + Postgres. Für Coolify oder einen Ein-Befehl-Deploy
+# (`docker compose -f docker-compose.prod.yml up -d --build`). Werte aus .env.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: klarwerk
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD setzen}
+      POSTGRES_DB: klarwerk
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U klarwerk"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgresql://klarwerk:${POSTGRES_PASSWORD}@db:5432/klarwerk
+      COOKIE_SECURE: "true"
+      APP_BASE_URL: ${APP_BASE_URL:-https://app.klarwerk.ai}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      REASONER_MODEL: ${REASONER_MODEL:-claude-sonnet-4-6}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-noreply@klarwerk.ai}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-}
+      OIDC_JWKS_URI: ${OIDC_JWKS_URI:-}
+      OIDC_AUTOPROVISION: ${OIDC_AUTOPROVISION:-false}
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:

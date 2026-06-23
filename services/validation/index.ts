@@ -9,5 +9,6 @@ export {
   type RatingRepo,
   type AssignmentRepo,
 } from "./src/repo";
+export { PgRatingRepo, PgAssignmentRepo, VALIDATION_SCHEMA } from "./src/repo-pg";
 export { ValidationError } from "./src/types";
 export type { Verdict, Rating, Assignment, ValidationErrorCode } from "./src/types";

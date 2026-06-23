@@ -1,0 +1,31 @@
+import { Pool } from "pg";
+import { ASK_SCHEMA } from "../../ask";
+import { AUDIT_SCHEMA } from "../../audit";
+import { AUTH_SCHEMA } from "../../auth";
+import { CAPTURE_SCHEMA } from "../../capture";
+import { CONFLICTS_SCHEMA } from "../../conflicts";
+import { KO_SCHEMA } from "../../knowledge-object";
+import { LIFECYCLE_SCHEMA } from "../../lifecycle";
+import { VALIDATION_SCHEMA } from "../../validation";
+
+// Querschnitt-Infrastruktur: ein Pool, geteilt von allen Modul-Adaptern.
+export function createPool(connectionString?: string): Pool {
+  return new Pool(connectionString ? { connectionString } : {});
+}
+
+// Führt die DDL aller Module aus. Jedes Modul liefert seine eigenen Tabellen (Datenhoheit).
+export async function migrate(pool: Pool): Promise<void> {
+  const schemas = [
+    AUTH_SCHEMA,
+    KO_SCHEMA,
+    AUDIT_SCHEMA,
+    CAPTURE_SCHEMA,
+    ASK_SCHEMA,
+    VALIDATION_SCHEMA,
+    CONFLICTS_SCHEMA,
+    LIFECYCLE_SCHEMA,
+  ];
+  for (const ddl of schemas) {
+    await pool.query(ddl);
+  }
+}

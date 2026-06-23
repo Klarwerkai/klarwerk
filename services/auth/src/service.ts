@@ -1,15 +1,23 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
+import type { OidcClaims } from "./oidc";
 import { hashPassword, verifyPassword } from "./password";
-import type { SessionRepo, UserRepo } from "./repo";
+import {
+  InMemoryPasswordResetRepo,
+  type PasswordResetRepo,
+  type SessionRepo,
+  type UserRepo,
+} from "./repo";
 import { AuthError, type PublicUser, type Role, type User } from "./types";
 
 const MIN_PASSWORD_LENGTH = 8;
 const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000; // 14 Tage
+const RESET_TTL_MS = 60 * 60 * 1000; // FR-AUTH-08: Reset-Token 1 Stunde gültig
 
 export interface AuthServiceDeps {
   users: UserRepo;
   sessions: SessionRepo;
+  resetTokens?: PasswordResetRepo;
   audit?: AuditService;
   now?: () => number;
   genId?: () => string;
@@ -39,6 +47,7 @@ export class AuthService {
   private readonly now: () => number;
   private readonly genId: () => string;
   private readonly genToken: () => string;
+  private readonly resetTokens: PasswordResetRepo;
 
   constructor(deps: AuthServiceDeps) {
     this.users = deps.users;
@@ -47,6 +56,18 @@ export class AuthService {
     this.now = deps.now ?? (() => Date.now());
     this.genId = deps.genId ?? (() => randomUUID());
     this.genToken = deps.genToken ?? (() => randomBytes(32).toString("hex"));
+    this.resetTokens = deps.resetTokens ?? new InMemoryPasswordResetRepo();
+  }
+
+  // FR-AUTH-01: Ist noch kein Konto vorhanden? Dann ist Ersteinrichtung nötig (Setup-Screen).
+  async needsSetup(): Promise<boolean> {
+    return (await this.users.count()) === 0;
+  }
+
+  // FR-RBAC-01: Nutzerliste (ohne Passwort-Hash) für die Admin-Verwaltung.
+  async listUsers(): Promise<PublicUser[]> {
+    const users = await this.users.list();
+    return users.map(toPublic);
   }
 
   // FR-AUTH-01 (erstes Konto = Admin) + FR-AUTH-02 (Selbstregistrierung, gesperrt bis Freigabe).
@@ -90,6 +111,47 @@ export class AuthService {
     });
     await this.record(user.id, "auth.login", user.id);
     return { token, user: toPublic(user) };
+  }
+
+  // FR-AUTH-07: SSO-Login. Bereits verifizierte OIDC-Claims → Sitzung. Optional
+  // Auto-Provisionierung neuer Nutzer (sonst muss der Admin das Konto anlegen).
+  async loginWithOidc(
+    claims: OidcClaims,
+    autoProvision: boolean,
+  ): Promise<{ token: string; user: PublicUser }> {
+    let account = await this.users.findByEmail(claims.email);
+    if (!account) {
+      if (!autoProvision) {
+        throw new AuthError(
+          "NOT_APPROVED",
+          "Kein Konto für diese E-Mail. Bitte vom Admin anlegen lassen.",
+        );
+      }
+      const isFirstAccount = (await this.users.count()) === 0;
+      account = {
+        id: this.genId(),
+        name: claims.name,
+        email: claims.email,
+        passwordSalt: "", // SSO-Konto: kein Passwort-Login möglich.
+        passwordHash: "",
+        role: isFirstAccount ? "admin" : "experte",
+        approved: true,
+        createdAt: new Date(this.now()).toISOString(),
+      };
+      await this.users.insert(account);
+      await this.record(account.id, "user.oidc-provisioned", account.id);
+    }
+    if (!account.approved) {
+      throw new AuthError("NOT_APPROVED", "Konto ist noch nicht freigegeben.");
+    }
+    const token = this.genToken();
+    await this.sessions.create({
+      token,
+      userId: account.id,
+      expiresAt: this.now() + SESSION_TTL_MS,
+    });
+    await this.record(account.id, "auth.login", account.id, { method: "oidc" });
+    return { token, user: toPublic(account) };
   }
 
   // FR-AUTH-04: Logout beendet die Sitzung serverseitig.
@@ -144,6 +206,57 @@ export class AuthService {
     await this.users.update(user);
     await this.sessions.deleteByUser(userId);
     await this.record(actorId, "user.password-reset", userId);
+  }
+
+  // Self-Service: angemeldeter Nutzer ändert sein eigenes Passwort (altes Passwort nötig).
+  // Andere Sitzungen werden ungültig; die aktuelle bleibt erhalten (Caller setzt sie neu, falls nötig).
+  async changePassword(userId: string, oldPassword: string, newPassword: string): Promise<void> {
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      throw new AuthError("WEAK_PASSWORD", "Passwort muss mindestens 8 Zeichen haben.");
+    }
+    const user = await this.requireUser(userId);
+    if (!verifyPassword(oldPassword, user.passwordSalt, user.passwordHash)) {
+      throw new AuthError("INVALID_CREDENTIALS", "Aktuelles Passwort ist falsch.");
+    }
+    const { salt, hash } = hashPassword(newPassword);
+    user.passwordSalt = salt;
+    user.passwordHash = hash;
+    await this.users.update(user);
+    await this.sessions.deleteByUser(userId);
+    await this.record(userId, "user.password-changed", userId);
+  }
+
+  // FR-AUTH-08: Reset anfordern — erzeugt einen kurzlebigen Token. Unbekannte E-Mail → undefined
+  // (Existenz wird nicht verraten). Der Versand der E-Mail erfolgt in der Route über den Mailer.
+  async requestPasswordReset(
+    email: string,
+  ): Promise<{ token: string; user: PublicUser } | undefined> {
+    const user = await this.users.findByEmail(email);
+    if (!user) {
+      return undefined;
+    }
+    const token = this.genToken();
+    await this.resetTokens.create({ token, userId: user.id, expiresAt: this.now() + RESET_TTL_MS });
+    return { token, user: toPublic(user) };
+  }
+
+  // FR-AUTH-08: Reset einlösen — Token muss gültig (nicht abgelaufen) sein.
+  async resetPasswordWithToken(token: string, newPassword: string): Promise<void> {
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      throw new AuthError("WEAK_PASSWORD", "Passwort muss mindestens 8 Zeichen haben.");
+    }
+    const entry = await this.resetTokens.find(token);
+    if (!entry || entry.expiresAt <= this.now()) {
+      throw new AuthError("INVALID_CREDENTIALS", "Reset-Token ungültig oder abgelaufen.");
+    }
+    const user = await this.requireUser(entry.userId);
+    const { salt, hash } = hashPassword(newPassword);
+    user.passwordSalt = salt;
+    user.passwordHash = hash;
+    await this.users.update(user);
+    await this.sessions.deleteByUser(user.id);
+    await this.resetTokens.delete(token);
+    await this.record(user.id, "user.password-reset-email", user.id);
   }
 
   // FR-RBAC-02: Admin löscht Nutzer; Sitzungen verfallen.

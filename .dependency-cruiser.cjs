@@ -15,8 +15,7 @@ module.exports = {
     {
       name: "module-boundaries",
       severity: "error",
-      comment:
-        "Cross-Modul-Imports nur über die öffentliche index.ts des Zielmoduls.",
+      comment: "Cross-Modul-Imports nur über die öffentliche index.ts des Zielmoduls.",
       from: { path: "^services/([^/]+)/.+" },
       to: {
         path: "^services/([^/]+)/.+",
@@ -29,7 +28,7 @@ module.exports = {
     {
       name: "no-orphans",
       severity: "warn",
-      from: { orphan: true, pathNot: ["\\.d\\.ts$", "index\\.ts$"] },
+      from: { orphan: true, pathNot: ["\\.d\\.ts$", "index\\.ts$", "server\\.ts$"] },
       to: {},
     },
   ],

@@ -39,7 +39,7 @@ export class AskService {
   }
 
   // FR-ASK-01/02/03: begründete Antwort über den Reasoner; ehrliche Verweigerung → Wissenslücke.
-  async ask(question: string): Promise<AskResult> {
+  async ask(question: string, actor = "system"): Promise<AskResult> {
     const kos = await this.koService.list();
     const refs: KnowledgeRef[] = kos.map((ko) => ({
       id: ko.id,
@@ -48,7 +48,14 @@ export class AskService {
       status: ko.status,
       trust: ko.trust,
     }));
-    const result = this.reasoner.answer(question, refs);
+    const result = await this.reasoner.answer(question, refs);
+    // FR-ANA-02: Telemetrie für die Antwortquote ohne Lücke.
+    await this.audit?.record({
+      actor,
+      action: "ask.query",
+      target: result.sources[0] ?? "-",
+      payload: { answered: result.answered },
+    });
     if (!result.answered) {
       const gap = await this.createGap(question);
       return { result, gap };

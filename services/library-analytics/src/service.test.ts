@@ -42,6 +42,9 @@ describe("LibraryService", () => {
     expect(json).toHaveLength(2);
     const wiki = await ctx.library.exportMediaWiki();
     expect(wiki).toContain("== Ventil schließen ==");
+    const html = await ctx.library.exportHtml();
+    expect(html).toContain("<!doctype html>");
+    expect(html).toContain("<h2>Ventil schließen</h2>");
   });
 
   it("FR-LIB-02: Import ohne Duplikate", async () => {

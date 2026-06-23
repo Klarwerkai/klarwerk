@@ -4,6 +4,7 @@ import type { Session, User } from "./types";
 // der Postgres-Adapter (Testcontainers-Integrationstests) folgt, sobald Docker bereitsteht.
 export interface UserRepo {
   count(): Promise<number>;
+  list(): Promise<User[]>;
   findByEmail(email: string): Promise<User | undefined>;
   findById(id: string): Promise<User | undefined>;
   insert(user: User): Promise<void>;
@@ -18,11 +19,28 @@ export interface SessionRepo {
   deleteByUser(userId: string): Promise<void>;
 }
 
+// FR-AUTH-08: kurzlebige Reset-Token (E-Mail-Passwort-Reset).
+export interface ResetToken {
+  token: string;
+  userId: string;
+  expiresAt: number;
+}
+
+export interface PasswordResetRepo {
+  create(entry: ResetToken): Promise<void>;
+  find(token: string): Promise<ResetToken | undefined>;
+  delete(token: string): Promise<void>;
+}
+
 export class InMemoryUserRepo implements UserRepo {
   private readonly users = new Map<string, User>();
 
   count(): Promise<number> {
     return Promise.resolve(this.users.size);
+  }
+
+  list(): Promise<User[]> {
+    return Promise.resolve([...this.users.values()]);
   }
 
   findByEmail(email: string): Promise<User | undefined> {
@@ -78,6 +96,24 @@ export class InMemorySessionRepo implements SessionRepo {
         this.sessions.delete(token);
       }
     }
+    return Promise.resolve();
+  }
+}
+
+export class InMemoryPasswordResetRepo implements PasswordResetRepo {
+  private readonly tokens = new Map<string, ResetToken>();
+
+  create(entry: ResetToken): Promise<void> {
+    this.tokens.set(entry.token, entry);
+    return Promise.resolve();
+  }
+
+  find(token: string): Promise<ResetToken | undefined> {
+    return Promise.resolve(this.tokens.get(token));
+  }
+
+  delete(token: string): Promise<void> {
+    this.tokens.delete(token);
     return Promise.resolve();
   }
 }
