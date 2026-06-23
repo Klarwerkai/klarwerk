@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { AuditService, InMemoryAuditRepo } from "../../audit";
 import { InMemoryKoRepo, KoService } from "../../knowledge-object";
 import { LibraryService } from "./service";
 
@@ -83,5 +84,20 @@ describe("LibraryService", () => {
     expect(a.byStatus.offen).toBe(2);
     expect(a.byType.best_practice).toBe(1);
     expect(a.byCategory["Anlage 1"]).toBe(1);
+  });
+});
+
+describe("LibraryService — Audit (FR-AUD-01)", () => {
+  it("protokolliert den Import", async () => {
+    const audit = new AuditService({ repo: new InMemoryAuditRepo() });
+    const koService = new KoService({ repo: new InMemoryKoRepo() });
+    const library = new LibraryService({ koService, audit });
+    await library.importJson(
+      [{ title: "X", statement: "Y", type: "lernkurve", category: "A" }],
+      "importer",
+    );
+    const entries = await audit.list({ action: "library.import" });
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.actor).toBe("importer");
   });
 });

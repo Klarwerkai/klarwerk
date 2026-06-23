@@ -1,26 +1,30 @@
 import { randomUUID } from "node:crypto";
+import type { AuditService } from "../../audit";
 import type { ConflictRepo } from "./repo";
 import { type Conflict, ConflictError, type ConflictInput } from "./types";
 
 export interface ConflictServiceDeps {
   repo: ConflictRepo;
+  audit?: AuditService;
   now?: () => number;
   genId?: () => string;
 }
 
 export class ConflictService {
   private readonly repo: ConflictRepo;
+  private readonly audit: AuditService | undefined;
   private readonly now: () => number;
   private readonly genId: () => string;
 
   constructor(deps: ConflictServiceDeps) {
     this.repo = deps.repo;
+    this.audit = deps.audit;
     this.now = deps.now ?? (() => Date.now());
     this.genId = deps.genId ?? (() => randomUUID());
   }
 
   // FR-CON-01: Widerspruch erzeugt einen klassifizierten Konflikt, kein stilles Überschreiben.
-  async create(input: ConflictInput): Promise<Conflict> {
+  async create(input: ConflictInput, actor = "system"): Promise<Conflict> {
     const conflict: Conflict = {
       id: this.genId(),
       koA: input.koA,
@@ -34,11 +38,12 @@ export class ConflictService {
       createdAt: new Date(this.now()).toISOString(),
     };
     await this.repo.insert(conflict);
+    await this.audit?.record({ actor, action: "conflict.created", target: conflict.id });
     return conflict;
   }
 
   // FR-CON-02: nur Wahrheitskonflikte eskalieren an einen Menschen.
-  async escalate(id: string): Promise<Conflict> {
+  async escalate(id: string, actor = "system"): Promise<Conflict> {
     const conflict = await this.require(id);
     if (conflict.type !== "truth") {
       throw new ConflictError(
@@ -46,19 +51,25 @@ export class ConflictService {
         "Nur Wahrheitskonflikte werden an einen Menschen eskaliert.",
       );
     }
-    return this.save({ ...conflict, status: "eskaliert" });
+    const saved = await this.save({ ...conflict, status: "eskaliert" });
+    await this.audit?.record({ actor, action: "conflict.escalated", target: id });
+    return saved;
   }
 
   // FR-CON-03: Zweitmeinung als Zwischenschritt.
-  async secondOpinion(id: string, opinion: string): Promise<Conflict> {
+  async secondOpinion(id: string, opinion: string, actor = "system"): Promise<Conflict> {
     const conflict = await this.requireOpen(id);
-    return this.save({ ...conflict, status: "zweitmeinung", secondOpinion: opinion });
+    const saved = await this.save({ ...conflict, status: "zweitmeinung", secondOpinion: opinion });
+    await this.audit?.record({ actor, action: "conflict.second-opinion", target: id });
+    return saved;
   }
 
   // FR-CON-03: Controller-Entscheidung schließt den Wahrheitskonflikt ab.
   async resolve(id: string, decidedBy: string, decision: string): Promise<Conflict> {
     const conflict = await this.requireOpen(id);
-    return this.save({ ...conflict, status: "geloest", decidedBy, decision });
+    const saved = await this.save({ ...conflict, status: "geloest", decidedBy, decision });
+    await this.audit?.record({ actor: decidedBy, action: "conflict.resolved", target: id });
+    return saved;
   }
 
   // FR-CON-04: alle ungelösten Konflikte (jeder Status außer gelöst).

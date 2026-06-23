@@ -88,12 +88,17 @@ export class AuthService {
       userId: user.id,
       expiresAt: this.now() + SESSION_TTL_MS,
     });
+    await this.record(user.id, "auth.login", user.id);
     return { token, user: toPublic(user) };
   }
 
   // FR-AUTH-04: Logout beendet die Sitzung serverseitig.
   async logout(token: string): Promise<void> {
+    const session = await this.sessions.find(token);
     await this.sessions.delete(token);
+    if (session) {
+      await this.record(session.userId, "auth.logout", session.userId);
+    }
   }
 
   async authenticate(token: string): Promise<PublicUser | undefined> {

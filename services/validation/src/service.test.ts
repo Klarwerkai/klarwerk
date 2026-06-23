@@ -100,9 +100,12 @@ describe("ValidationService", () => {
       audit,
     });
     const ko = await koService.create(koInput());
+    await withAudit.assign(ko.id, ["u1"], "controller");
     await withAudit.rate(ko.id, "u1", "up");
-    const entries = await audit.list({ action: "ko.rated" });
-    expect(entries).toHaveLength(1);
-    expect(entries[0]?.actor).toBe("u1");
+
+    expect(await audit.list({ action: "ko.assigned" })).toHaveLength(1);
+    const rated = await audit.list({ action: "ko.rated" });
+    expect(rated).toHaveLength(1);
+    expect(rated[0]?.actor).toBe("u1");
   });
 });

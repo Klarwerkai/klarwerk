@@ -1,3 +1,4 @@
+import type { AuditService } from "../../audit";
 import type { KnowledgeObject, KoFilter, KoService } from "../../knowledge-object";
 import type {
   Analytics,
@@ -10,6 +11,7 @@ import type {
 
 export interface LibraryServiceDeps {
   koService: KoService;
+  audit?: AuditService;
 }
 
 function increment(map: Record<string, number>, key: string): void {
@@ -18,9 +20,11 @@ function increment(map: Record<string, number>, key: string): void {
 
 export class LibraryService {
   private readonly koService: KoService;
+  private readonly audit: AuditService | undefined;
 
   constructor(deps: LibraryServiceDeps) {
     this.koService = deps.koService;
+    this.audit = deps.audit;
   }
 
   // FR-LIB-01: Suche + Filter.
@@ -69,6 +73,12 @@ export class LibraryService {
       seen.add(key);
       imported += 1;
     }
+    await this.audit?.record({
+      actor: defaultAuthor,
+      action: "library.import",
+      target: "library",
+      payload: { imported, skipped },
+    });
     return { imported, skipped };
   }
 

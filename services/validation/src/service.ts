@@ -76,7 +76,7 @@ export class ValidationService {
   }
 
   // FR-VAL-05: KO an ≥1 Person zuweisen.
-  async assign(koId: string, userIds: string[]): Promise<void> {
+  async assign(koId: string, userIds: string[], actor = "system"): Promise<void> {
     const ko = await this.koService.get(koId);
     if (!ko) {
       throw new ValidationError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
@@ -84,6 +84,12 @@ export class ValidationService {
     for (const userId of userIds) {
       await this.assignments.create({ koId, userId, status: "open" });
     }
+    await this.audit?.record({
+      actor,
+      action: "ko.assigned",
+      target: koId,
+      payload: { userIds },
+    });
   }
 
   // FR-VAL-06: Übersicht offen/erledigt pro Person.

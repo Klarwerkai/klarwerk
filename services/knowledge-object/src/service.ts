@@ -128,10 +128,16 @@ export class KoService {
   }
 
   // FR-KO-03: Kategorie/Tags nachträglich änderbar (Metadaten, ohne Versions-Bump).
-  async updateCategory(id: string, category: string): Promise<KnowledgeObject> {
+  async updateCategory(id: string, category: string, actor = "system"): Promise<KnowledgeObject> {
     const ko = await this.require(id);
     const updated = { ...ko, category };
     await this.repo.update(updated);
+    await this.audit?.record({
+      actor,
+      action: "ko.category-changed",
+      target: id,
+      payload: { category },
+    });
     return updated;
   }
 
@@ -154,10 +160,16 @@ export class KoService {
   }
 
   // FR-LIF-02: Autor-Übergabe — current author ändert sich, originalAuthor bleibt erhalten.
-  async setAuthor(id: string, author: string): Promise<KnowledgeObject> {
+  async setAuthor(id: string, author: string, actor = "system"): Promise<KnowledgeObject> {
     const ko = await this.require(id);
     const updated = { ...ko, author };
     await this.repo.update(updated);
+    await this.audit?.record({
+      actor,
+      action: "ko.author-transferred",
+      target: id,
+      payload: { author },
+    });
     return updated;
   }
 

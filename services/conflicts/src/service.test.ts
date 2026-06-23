@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { AuditService, InMemoryAuditRepo } from "../../audit";
 import { InMemoryConflictRepo } from "./repo";
 import { ConflictService } from "./service";
 import type { ConflictInput } from "./types";
@@ -65,5 +66,26 @@ describe("ConflictService", () => {
     const open = await service.unresolved();
     expect(open).toHaveLength(1);
     expect(await service.badgeCount()).toBe(1);
+  });
+});
+
+describe("ConflictService — Audit (FR-AUD-01)", () => {
+  it("protokolliert Konflikt-Lebenszyklus", async () => {
+    const audit = new AuditService({ repo: new InMemoryAuditRepo() });
+    const service = new ConflictService({ repo: new InMemoryConflictRepo(), audit });
+    const c = await service.create(
+      { koA: "a", koB: "b", type: "truth", description: "x" },
+      "system",
+    );
+    await service.escalate(c.id, "controller");
+    await service.secondOpinion(c.id, "Meinung", "controller");
+    await service.resolve(c.id, "controller", "Entschieden");
+
+    expect((await audit.list()).map((e) => e.action)).toEqual([
+      "conflict.created",
+      "conflict.escalated",
+      "conflict.second-opinion",
+      "conflict.resolved",
+    ]);
   });
 });

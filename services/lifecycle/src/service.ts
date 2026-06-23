@@ -46,8 +46,8 @@ export class LifecycleService {
   }
 
   // FR-LIF-02: Admin-Autor-Übergabe; Originalautor bleibt sichtbar.
-  async transferAuthor(koId: string, newAuthor: string): Promise<KnowledgeObject> {
-    return this.koService.setAuthor(koId, newAuthor);
+  async transferAuthor(koId: string, newAuthor: string, actor = "admin"): Promise<KnowledgeObject> {
+    return this.koService.setAuthor(koId, newAuthor, actor);
   }
 
   // FR-LIF-03: Lernpfade — rollenspezifische Einarbeitung.

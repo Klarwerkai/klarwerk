@@ -97,9 +97,16 @@ describe("KoService — Audit-Verdrahtung (FR-AUD-01)", () => {
     const service = new KoService({ repo: new InMemoryKoRepo(), audit });
     const ko = await service.create(base());
     await service.revise(ko.id, { statement: "neu" }, "controller");
+    await service.updateCategory(ko.id, "Anlage 9", "admin");
+    await service.setAuthor(ko.id, "bob", "admin");
 
     const entries = await audit.list();
-    expect(entries.map((e) => e.action)).toEqual(["ko.created", "ko.revised"]);
+    expect(entries.map((e) => e.action)).toEqual([
+      "ko.created",
+      "ko.revised",
+      "ko.category-changed",
+      "ko.author-transferred",
+    ]);
     expect(await audit.verify()).toBe(true);
   });
 });

@@ -204,4 +204,20 @@ describe("FR-RBAC-02: Admin-Aktionen mit Audit", () => {
     ]);
     expect(await audit.verify()).toBe(true);
   });
+
+  it("FR-AUD-01: Login und Logout werden protokolliert", async () => {
+    const users = new InMemoryUserRepo();
+    const sessions = new InMemorySessionRepo();
+    const audit = new AuditService({ repo: new InMemoryAuditRepo() });
+    const service = new AuthService({ users, sessions, audit });
+
+    const admin = await service.register({ name: "A", email: "a@x.de", password: "secret123" });
+    const { token } = await service.login({ email: "a@x.de", password: "secret123" });
+    await service.logout(token);
+
+    expect(await audit.list({ action: "auth.login" })).toHaveLength(1);
+    const logout = await audit.list({ action: "auth.logout" });
+    expect(logout).toHaveLength(1);
+    expect(logout[0]?.actor).toBe(admin.id);
+  });
 });
