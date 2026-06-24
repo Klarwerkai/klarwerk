@@ -1,6 +1,7 @@
 import { LogOut } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { NavLink } from "react-router-dom";
+import { useSession } from "../app/AuthContext";
 import { useRole } from "../app/RoleContext";
 import { FOOT_ITEMS, NAV_GROUPS, type NavItem, ROLES, type Role, canSee } from "../app/navigation";
 import { useNavBadges } from "../app/useNavBadges";
@@ -99,8 +100,11 @@ function RoleSwitcher(): JSX.Element {
 export function Sidebar(): JSX.Element {
   const { t } = useTranslation();
   const { role, stufe2 } = useRole();
+  const { user, signOut } = useSession();
   const badges = useNavBadges();
   const help = FOOT_ITEMS.find((i) => i.id === "hilfe");
+  const name = user?.name ?? "—";
+  const initials = (user?.name ?? "?").slice(0, 2).toUpperCase();
 
   return (
     <aside className="flex h-full w-[252px] shrink-0 flex-col border-r border-hairline bg-surface">
@@ -140,15 +144,16 @@ export function Sidebar(): JSX.Element {
 
       <div className="flex items-center gap-2.5 border-t border-hairline px-4 py-3">
         <span className="grid h-8 w-8 place-items-center rounded-full bg-ink text-[11px] font-semibold text-white">
-          MB
+          {initials}
         </span>
         <NavLink to="/profil" className="min-w-0 flex-1 leading-tight hover:opacity-80">
-          <span className="block truncate text-[13px] font-semibold text-text">M. Brandt</span>
+          <span className="block truncate text-[13px] font-semibold text-text">{name}</span>
           <span className="block truncate text-[11px] text-muted-2">{t(`role.name.${role}`)}</span>
         </NavLink>
         <button
           type="button"
           title={t("action.logout")}
+          onClick={() => void signOut()}
           className="grid h-8 w-8 place-items-center rounded-btn text-muted hover:bg-hairline-soft hover:text-text"
         >
           <LogOut size={16} />

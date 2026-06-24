@@ -1,13 +1,12 @@
-import { useMutation } from "@tanstack/react-query";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { authApi } from "../api/auth";
 import { useSession } from "../app/AuthContext";
 import { Avatar, Button, Card, Field, PageHeader } from "../components/ui";
 
 export function Profile(): JSX.Element {
   const { t, i18n } = useTranslation();
-  const { user, refresh } = useSession();
-  const logout = useMutation({ mutationFn: () => authApi.logout(), onSuccess: () => refresh() });
+  const { user, signOut } = useSession();
+  const [busy, setBusy] = useState(false);
   const initials = (user?.name ?? "??").slice(0, 2).toUpperCase();
 
   return (
@@ -45,7 +44,13 @@ export function Profile(): JSX.Element {
         </Field>
 
         <div className="border-t border-hairline pt-4">
-          <Button onClick={() => logout.mutate()} disabled={logout.isPending}>
+          <Button
+            onClick={() => {
+              setBusy(true);
+              void signOut();
+            }}
+            disabled={busy}
+          >
             {t("action.logout")}
           </Button>
         </div>

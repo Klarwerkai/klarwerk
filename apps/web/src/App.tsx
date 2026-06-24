@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { AuthProvider, useSession } from "./app/AuthContext";
 import { RoleProvider } from "./app/RoleContext";
 import { AuthScreens } from "./auth/AuthScreens";
+import { ResetScreen } from "./auth/ResetScreen";
 import { AppRoutes } from "./routes";
 import { AppShell } from "./shell/AppShell";
 
@@ -18,6 +19,10 @@ function Gate(): JSX.Element {
   const s = useSession();
   const devPreview = import.meta.env.DEV && s.error && !s.user;
 
+  // Passwort-Reset (E-Mail-Link) ist ohne Anmeldung erreichbar.
+  if (window.location.pathname === "/reset") {
+    return <ResetScreen />;
+  }
   if (s.isLoading) {
     return <Splash />;
   }

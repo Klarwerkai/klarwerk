@@ -6,7 +6,7 @@ import { ApiError } from "../api/client";
 import { useSession } from "../app/AuthContext";
 import { Button, Field, TextInput } from "../components/ui";
 
-type Mode = "login" | "register" | "waiting" | "setup";
+type Mode = "login" | "register" | "waiting" | "setup" | "forgot" | "forgotSent";
 
 // Auth/Onboarding (BRIEF §6.1 / §7.2). Vollbild, 2-spaltig: dunkles Marken-
 // Panel links, Formular rechts. Sub-Zustände inkl. Ersteinrichtung.
@@ -37,8 +37,13 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
     onSuccess: () => refresh(),
     onError,
   });
+  const forgot = useMutation({
+    mutationFn: () => authApi.forgot(email),
+    onSuccess: () => setMode("forgotSent"),
+    onError,
+  });
 
-  const busy = login.isPending || register.isPending || setup.isPending;
+  const busy = login.isPending || register.isPending || setup.isPending || forgot.isPending;
   const go = (m: Mode): void => {
     setErr(null);
     setMode(m);
@@ -73,10 +78,10 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
           <h1 className="text-2xl font-semibold text-ink">{t(`auth.title.${mode}`)}</h1>
           <p className="mt-1.5 text-sm text-muted">{t(`auth.sub.${mode}`)}</p>
 
-          {mode === "waiting" ? (
+          {mode === "waiting" || mode === "forgotSent" ? (
             <div className="mt-6 space-y-4">
               <div className="rounded-card border border-trust-warn-fill/30 bg-trust-warn-bg p-4 text-[13px] text-trust-warn-text">
-                {t("auth.waitingNote")}
+                {t(mode === "waiting" ? "auth.waitingNote" : "auth.forgotNote")}
               </div>
               <Button variant="ghost" onClick={() => go("login")}>
                 {t("auth.backToLogin")}
@@ -92,12 +97,14 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
                   login.mutate();
                 } else if (mode === "register") {
                   register.mutate();
+                } else if (mode === "forgot") {
+                  forgot.mutate();
                 } else {
                   setup.mutate();
                 }
               }}
             >
-              {mode !== "login" ? (
+              {mode === "register" || mode === "setup" ? (
                 <Field label={t("auth.name")}>
                   <TextInput value={name} onChange={(e) => setName(e.target.value)} required />
                 </Field>
@@ -110,15 +117,17 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
                   required
                 />
               </Field>
-              <Field label={t("auth.password")}>
-                <TextInput
-                  type="password"
-                  value={pw}
-                  onChange={(e) => setPw(e.target.value)}
-                  minLength={mode === "login" ? undefined : 8}
-                  required
-                />
-              </Field>
+              {mode !== "forgot" ? (
+                <Field label={t("auth.password")}>
+                  <TextInput
+                    type="password"
+                    value={pw}
+                    onChange={(e) => setPw(e.target.value)}
+                    minLength={mode === "login" ? undefined : 8}
+                    required
+                  />
+                </Field>
+              ) : null}
 
               {err ? (
                 <div className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
@@ -132,25 +141,31 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
             </form>
           )}
 
-          {!needsSetup && mode !== "waiting" ? (
+          {!needsSetup && mode === "login" ? (
+            <div className="mt-5 space-y-2 text-center text-[13px] text-muted">
+              <button
+                type="button"
+                className="font-semibold text-ink"
+                onClick={() => go("register")}
+              >
+                {t("auth.toRegister")}
+              </button>
+              <div>
+                <button
+                  type="button"
+                  className="text-muted hover:text-ink"
+                  onClick={() => go("forgot")}
+                >
+                  {t("auth.toForgot")}
+                </button>
+              </div>
+            </div>
+          ) : null}
+          {!needsSetup && (mode === "register" || mode === "forgot") ? (
             <div className="mt-5 text-center text-[13px] text-muted">
-              {mode === "login" ? (
-                <button
-                  type="button"
-                  className="font-semibold text-ink"
-                  onClick={() => go("register")}
-                >
-                  {t("auth.toRegister")}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="font-semibold text-ink"
-                  onClick={() => go("login")}
-                >
-                  {t("auth.toLogin")}
-                </button>
-              )}
+              <button type="button" className="font-semibold text-ink" onClick={() => go("login")}>
+                {t("auth.toLogin")}
+              </button>
             </div>
           ) : null}
         </div>

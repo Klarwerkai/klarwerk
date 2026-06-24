@@ -11,6 +11,8 @@ interface AuthState {
   /** Status-Abfrage fehlgeschlagen (z. B. Backend im Dev nicht erreichbar). */
   error: boolean;
   refresh: () => void;
+  /** Abmelden: Session serverseitig beenden und den gesamten Query-Cache leeren. */
+  signOut: () => Promise<void>;
 }
 
 const AuthCtx = createContext<AuthState | null>(null);
@@ -41,6 +43,16 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
     error: status.isError,
     refresh: () => {
       void queryClient.invalidateQueries({ queryKey: ["auth"] });
+    },
+    // Wichtig: nach dem Logout den Cache komplett leeren. Sonst behält React Query
+    // die alten /auth/me-Daten (401 beim Refetch lässt vorhandene Daten stehen),
+    // und der Nutzer wirkt weiterhin angemeldet.
+    signOut: async () => {
+      try {
+        await authApi.logout();
+      } finally {
+        queryClient.clear();
+      }
     },
   };
 
