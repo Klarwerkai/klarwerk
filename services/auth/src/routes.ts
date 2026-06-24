@@ -157,11 +157,17 @@ export function authRoutes(
       if (result && options.mailer) {
         const base = options.resetBaseUrl ?? "http://localhost:5173/reset";
         const link = `${base}?token=${result.token}`;
-        await options.mailer.send({
-          to: result.user.email,
-          subject: "KLARWERK: Passwort zurücksetzen",
-          text: `Hallo ${result.user.name},\n\nzum Zurücksetzen deines Passworts öffne diesen Link (1 Stunde gültig):\n${link}\n\nWenn du das nicht warst, ignoriere diese E-Mail.\n\n— KLARWERK`,
-        });
+        // Mailfehler dürfen die Antwort nicht verändern: immer 204, sonst würde
+        // die Existenz der E-Mail (und SMTP-Fehlkonfiguration) nach außen sichtbar.
+        try {
+          await options.mailer.send({
+            to: result.user.email,
+            subject: "KLARWERK: Passwort zurücksetzen",
+            text: `Hallo ${result.user.name},\n\nzum Zurücksetzen deines Passworts öffne diesen Link (1 Stunde gültig):\n${link}\n\nWenn du das nicht warst, ignoriere diese E-Mail.\n\n— KLARWERK`,
+          });
+        } catch (error) {
+          request.log.error({ err: error }, "Passwort-Reset-Mail konnte nicht gesendet werden");
+        }
       }
       reply.code(204).send();
     });
