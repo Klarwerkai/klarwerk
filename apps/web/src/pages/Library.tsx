@@ -1,7 +1,7 @@
 import { Download } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useKos } from "../api/hooks";
 import { ConfidenceBar, KnowledgeTypeTag, StatusPill } from "../components/trust";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
@@ -9,7 +9,9 @@ import { deriveStatus } from "../lib/displayStatus";
 
 export function Library(): JSX.Element {
   const { t } = useTranslation();
-  const [q, setQ] = useState("");
+  // Startfilter aus der URL (?q=…), gesetzt von der globalen Topbar-Suche.
+  const [params] = useSearchParams();
+  const [q, setQ] = useState(params.get("q") ?? "");
   const [status, setStatus] = useState("");
   const query = useKos(status ? { status } : undefined);
 
