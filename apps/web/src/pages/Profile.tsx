@@ -33,7 +33,9 @@ export function Profile(): JSX.Element {
                 type="button"
                 onClick={() => void i18n.changeLanguage(l)}
                 className={`rounded-btn px-3 py-1.5 text-[13px] font-semibold uppercase ${
-                  i18n.language.startsWith(l) ? "bg-ink text-white" : "border border-hairline text-muted"
+                  i18n.language.startsWith(l)
+                    ? "bg-ink text-white"
+                    : "border border-hairline text-muted"
                 }`}
               >
                 {l}

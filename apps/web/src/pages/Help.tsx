@@ -26,7 +26,9 @@ export function Help(): JSX.Element {
         {visible.map((topic) => (
           <Card key={topic}>
             <h3 className="text-[14px] font-semibold text-ink">{t(`help.${topic}.title`)}</h3>
-            <p className="mt-1.5 text-[13px] leading-relaxed text-muted">{t(`help.${topic}.body`)}</p>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-muted">
+              {t(`help.${topic}.body`)}
+            </p>
           </Card>
         ))}
       </div>

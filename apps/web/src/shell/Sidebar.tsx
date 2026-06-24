@@ -1,26 +1,25 @@
 import { LogOut } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { NavLink } from "react-router-dom";
-import {
-  canSee,
-  FOOT_ITEMS,
-  NAV_GROUPS,
-  type NavItem,
-  ROLES,
-  type Role,
-} from "../app/navigation";
 import { useRole } from "../app/RoleContext";
+import { FOOT_ITEMS, NAV_GROUPS, type NavItem, ROLES, type Role, canSee } from "../app/navigation";
 import { useNavBadges } from "../app/useNavBadges";
 import { Logo } from "./Logo";
 
-function Badge({ count, tone, active }: { count: number; tone?: "neutral" | "crit"; active: boolean }): JSX.Element {
+function Badge({
+  count,
+  tone,
+  active,
+}: { count: number; tone?: "neutral" | "crit"; active: boolean }): JSX.Element {
   const cls = active
     ? "bg-white/20 text-white"
     : tone === "crit"
       ? "bg-trust-crit-bg text-trust-crit-text"
       : "bg-hairline text-muted";
   return (
-    <span className={`ml-auto rounded-pill px-1.5 py-0.5 font-mono text-[10.5px] font-semibold ${cls}`}>
+    <span
+      className={`ml-auto rounded-pill px-1.5 py-0.5 font-mono text-[10.5px] font-semibold ${cls}`}
+    >
       {count}
     </span>
   );
@@ -51,7 +50,9 @@ function NavRow({ item, badge }: { item: NavItem; badge?: number }): JSX.Element
             <Icon size={16} strokeWidth={2} />
           </span>
           <span className="truncate">{t(item.labelKey)}</span>
-          {item.badgeKey && badge ? <Badge count={badge} tone={item.badgeTone} active={isActive} /> : null}
+          {item.badgeKey && badge ? (
+            <Badge count={badge} tone={item.badgeTone} active={isActive} />
+          ) : null}
         </>
       )}
     </NavLink>
@@ -121,7 +122,11 @@ export function Sidebar(): JSX.Element {
               </div>
               <div className="space-y-0.5">
                 {items.map((item) => (
-                  <NavRow key={item.id} item={item} badge={item.badgeKey ? badges[item.badgeKey] : undefined} />
+                  <NavRow
+                    key={item.id}
+                    item={item}
+                    badge={item.badgeKey ? badges[item.badgeKey] : undefined}
+                  />
                 ))}
               </div>
             </div>

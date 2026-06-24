@@ -63,8 +63,7 @@ const de = {
   "ktype.negativwissen": "Negativwissen",
   "reasoner.draftLabel": "Reasoner-Entwurf · nicht validiert",
   "provenance.original": "ursprünglich",
-  "uikit.sampleStatement":
-    "Druckabfall an Presse P2 sitzt meist an Ventil V4, nicht an der Pumpe.",
+  "uikit.sampleStatement": "Druckabfall an Presse P2 sitzt meist an Ventil V4, nicht an der Pumpe.",
   "state.loading": "Lädt …",
   "state.error": "Etwas ist schiefgelaufen.",
   "state.empty": "Nichts vorhanden.",
@@ -307,8 +306,7 @@ const en: typeof de = {
   "ktype.negativwissen": "Negative knowledge",
   "reasoner.draftLabel": "Reasoner draft · not validated",
   "provenance.original": "originally",
-  "uikit.sampleStatement":
-    "Pressure loss on press P2 usually sits at valve V4, not at the pump.",
+  "uikit.sampleStatement": "Pressure loss on press P2 usually sits at valve V4, not at the pump.",
   "state.loading": "Loading …",
   "state.error": "Something went wrong.",
   "state.empty": "Nothing here.",
@@ -481,7 +479,8 @@ const en: typeof de = {
   "s2.kicker": "Advanced · Stage 2",
   "s2.output":
     "Generate work instructions/checklists from validated objects — active once the output logic is in place.",
-  "s2.import": "Import and review documents — active once the import/source-review API is in place.",
+  "s2.import":
+    "Import and review documents — active once the import/source-review API is in place.",
   "s2.capital":
     "Knowledge-capital metrics on real live data — active once the metrics logic is in place.",
   "s2.graphEmpty": "No graph data.",

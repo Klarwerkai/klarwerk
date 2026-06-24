@@ -11,12 +11,18 @@ export function Admin(): JSX.Element {
   const query = useUsers();
   const qc = useQueryClient();
   const invalidate = () => void qc.invalidateQueries({ queryKey: ["users"] });
-  const approve = useMutation({ mutationFn: (id: string) => endpoints.users.approve(id), onSuccess: invalidate });
+  const approve = useMutation({
+    mutationFn: (id: string) => endpoints.users.approve(id),
+    onSuccess: invalidate,
+  });
   const setRole = useMutation({
     mutationFn: (v: { id: string; role: Role }) => endpoints.users.setRole(v.id, v.role),
     onSuccess: invalidate,
   });
-  const remove = useMutation({ mutationFn: (id: string) => endpoints.users.remove(id), onSuccess: invalidate });
+  const remove = useMutation({
+    mutationFn: (id: string) => endpoints.users.remove(id),
+    onSuccess: invalidate,
+  });
 
   return (
     <div className="mx-auto max-w-4xl">

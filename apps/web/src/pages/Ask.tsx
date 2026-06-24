@@ -59,11 +59,16 @@ export function Ask(): JSX.Element {
               <div className="mt-4">
                 <SectionLabel>{t("ask.steps")}</SectionLabel>
                 <ul className="space-y-2">
-                  {result.steps.map((s, i) => (
-                    <li key={i} className="rounded-btn bg-page p-2.5 text-[13px] text-text">
+                  {result.steps.map((s) => (
+                    <li
+                      key={s.description}
+                      className="rounded-btn bg-page p-2.5 text-[13px] text-text"
+                    >
                       {s.description}
                       {s.snippet ? (
-                        <span className="mt-1 block font-mono text-[11px] text-muted-2">“{s.snippet}”</span>
+                        <span className="mt-1 block font-mono text-[11px] text-muted-2">
+                          “{s.snippet}”
+                        </span>
                       ) : null}
                     </li>
                   ))}
@@ -93,7 +98,10 @@ export function Ask(): JSX.Element {
           <Card className="mt-5 border-dashed">
             <p className="text-[15px] font-semibold text-text">{t("ask.noBasisTitle")}</p>
             <p className="mt-1 text-sm text-muted">{t("ask.noBasisBody")}</p>
-            <Link to="/risiko" className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-semibold text-brand">
+            <Link
+              to="/risiko"
+              className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-semibold text-brand"
+            >
               {t("ask.toGaps")}
               <ArrowRight size={15} />
             </Link>

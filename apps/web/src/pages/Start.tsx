@@ -32,7 +32,9 @@ export function Start(): JSX.Element {
   const cta = CTA[role] ?? CTA.viewer;
 
   const todo = [
-    ...(board.data ?? []).slice(0, 3).map((k) => ({ id: k.id, label: k.title, to: `/wissen/${k.id}` })),
+    ...(board.data ?? [])
+      .slice(0, 3)
+      .map((k) => ({ id: k.id, label: k.title, to: `/wissen/${k.id}` })),
     ...(gaps.data ?? []).slice(0, 2).map((g) => ({ id: g.id, label: g.question, to: "/risiko" })),
   ];
 

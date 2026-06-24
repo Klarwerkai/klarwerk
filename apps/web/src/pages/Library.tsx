@@ -59,8 +59,12 @@ export function Library(): JSX.Element {
                   >
                     <StatusPill status={deriveStatus(k)} />
                     <KnowledgeTypeTag type={k.type} />
-                    <span className="min-w-0 flex-1 truncate text-[13.5px] text-text">{k.title}</span>
-                    <span className="hidden font-mono text-[11px] text-muted-2 sm:block">{k.category}</span>
+                    <span className="min-w-0 flex-1 truncate text-[13.5px] text-text">
+                      {k.title}
+                    </span>
+                    <span className="hidden font-mono text-[11px] text-muted-2 sm:block">
+                      {k.category}
+                    </span>
                     <div className="hidden sm:block">
                       <ConfidenceBar value={k.confidence} showLabel={false} />
                     </div>

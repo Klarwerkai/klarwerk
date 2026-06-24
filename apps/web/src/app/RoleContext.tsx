@@ -1,4 +1,4 @@
-import { createContext, type ReactNode, useContext, useMemo, useState } from "react";
+import { type ReactNode, createContext, useContext, useMemo, useState } from "react";
 import type { Role } from "./navigation";
 
 // Rollen-/Stufe-2-Zustand. Im Prototyp per Schalter umschaltbar (BRIEF §4/§7);

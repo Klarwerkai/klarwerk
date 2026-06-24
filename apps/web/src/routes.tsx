@@ -1,7 +1,7 @@
 import type { ComponentType } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
-import { ALL_ITEMS, canSee, type NavItem } from "./app/navigation";
 import { useRole } from "./app/RoleContext";
+import { ALL_ITEMS, type NavItem, canSee } from "./app/navigation";
 import { Admin } from "./pages/Admin";
 import { Analytics } from "./pages/Analytics";
 import { Ask } from "./pages/Ask";

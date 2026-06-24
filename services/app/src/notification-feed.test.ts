@@ -19,8 +19,20 @@ describe("buildNotifications", () => {
         },
       ],
       gaps: [
-        { id: "g1", question: "Frage?", status: "offen", assignee: null, createdAt: "2026-06-04T00:00:00Z" },
-        { id: "g2", question: "Zu?", status: "geschlossen", assignee: null, createdAt: "2026-06-05T00:00:00Z" },
+        {
+          id: "g1",
+          question: "Frage?",
+          status: "offen",
+          assignee: null,
+          createdAt: "2026-06-04T00:00:00Z",
+        },
+        {
+          id: "g2",
+          question: "Zu?",
+          status: "geschlossen",
+          assignee: null,
+          createdAt: "2026-06-05T00:00:00Z",
+        },
       ],
     });
 

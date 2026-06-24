@@ -1,15 +1,10 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
-import { endpoints, type KoAction } from "../api/endpoints";
+import { type KoAction, endpoints } from "../api/endpoints";
 import { useKo } from "../api/hooks";
 import { useRole } from "../app/RoleContext";
-import {
-  ConfidenceBar,
-  KnowledgeTypeTag,
-  ProvenanceLine,
-  StatusPill,
-} from "../components/trust";
+import { ConfidenceBar, KnowledgeTypeTag, ProvenanceLine, StatusPill } from "../components/trust";
 import { Button, Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import { deriveStatus } from "../lib/displayStatus";
 
@@ -57,8 +52,8 @@ export function KnowledgeDetail(): JSX.Element {
                   <div>
                     <SectionLabel>{t("ko.conditions")}</SectionLabel>
                     <ul className="list-inside list-disc text-[13.5px] text-text">
-                      {ko.conditions.map((c, i) => (
-                        <li key={i}>{c}</li>
+                      {ko.conditions.map((c) => (
+                        <li key={c}>{c}</li>
                       ))}
                     </ul>
                   </div>
@@ -67,8 +62,8 @@ export function KnowledgeDetail(): JSX.Element {
                   <div className="rounded-card bg-trust-pos-bg p-3">
                     <SectionLabel>{t("ko.measures")}</SectionLabel>
                     <ul className="list-inside list-disc text-[13.5px] text-trust-pos-text">
-                      {ko.measures.map((m, i) => (
-                        <li key={i}>{m}</li>
+                      {ko.measures.map((m) => (
+                        <li key={m}>{m}</li>
                       ))}
                     </ul>
                   </div>
@@ -76,7 +71,10 @@ export function KnowledgeDetail(): JSX.Element {
                 {ko.tags.length > 0 ? (
                   <div className="flex flex-wrap gap-1.5">
                     {ko.tags.map((tag) => (
-                      <span key={tag} className="rounded-pill bg-page px-2 py-0.5 font-mono text-[11px] text-muted">
+                      <span
+                        key={tag}
+                        className="rounded-pill bg-page px-2 py-0.5 font-mono text-[11px] text-muted"
+                      >
                         #{tag}
                       </span>
                     ))}
@@ -86,11 +84,18 @@ export function KnowledgeDetail(): JSX.Element {
 
               <div className="mt-5 flex flex-wrap gap-2 border-t border-hairline pt-4">
                 {role === "controller" || role === "admin" ? (
-                  <Button variant="primary" disabled={act.isPending} onClick={() => act.mutate({ action: "rate", verdict: "up" })}>
+                  <Button
+                    variant="primary"
+                    disabled={act.isPending}
+                    onClick={() => act.mutate({ action: "rate", verdict: "up" })}
+                  >
                     {t("ko.validate")}
                   </Button>
                 ) : null}
-                <Button disabled={act.isPending} onClick={() => act.mutate({ action: "revalidate" })}>
+                <Button
+                  disabled={act.isPending}
+                  onClick={() => act.mutate({ action: "revalidate" })}
+                >
                   {t("ko.stillValid")}
                 </Button>
               </div>

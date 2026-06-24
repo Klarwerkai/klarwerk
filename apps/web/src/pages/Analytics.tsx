@@ -38,7 +38,10 @@ export function Analytics(): JSX.Element {
                     <div key={k} className="flex items-center gap-3">
                       <span className="w-32 truncate text-[13px] text-text">{t(`ktype.${k}`)}</span>
                       <div className="h-2 flex-1 overflow-hidden rounded-full bg-page">
-                        <div className="h-full rounded-full bg-brand" style={{ width: `${(v / maxType) * 100}%` }} />
+                        <div
+                          className="h-full rounded-full bg-brand"
+                          style={{ width: `${(v / maxType) * 100}%` }}
+                        />
                       </div>
                       <span className="font-mono text-[11px] text-muted-2">{v}</span>
                     </div>
@@ -56,14 +59,19 @@ export function Analytics(): JSX.Element {
           {(entries) => (
             <Card className="p-0">
               <div className="divide-y divide-hairline">
-                {entries.slice(-20).reverse().map((e) => (
-                  <div key={e.seq} className="flex items-center gap-3 px-4 py-2 text-[12.5px]">
-                    <span className="font-mono text-[11px] text-muted-2">{new Date(e.at).toLocaleString()}</span>
-                    <span className="font-semibold text-text">{e.action}</span>
-                    <span className="truncate text-muted">{e.target}</span>
-                    <span className="ml-auto font-mono text-[11px] text-muted-2">{e.actor}</span>
-                  </div>
-                ))}
+                {entries
+                  .slice(-20)
+                  .reverse()
+                  .map((e) => (
+                    <div key={e.seq} className="flex items-center gap-3 px-4 py-2 text-[12.5px]">
+                      <span className="font-mono text-[11px] text-muted-2">
+                        {new Date(e.at).toLocaleString()}
+                      </span>
+                      <span className="font-semibold text-text">{e.action}</span>
+                      <span className="truncate text-muted">{e.target}</span>
+                      <span className="ml-auto font-mono text-[11px] text-muted-2">{e.actor}</span>
+                    </div>
+                  ))}
               </div>
             </Card>
           )}

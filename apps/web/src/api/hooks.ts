@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { endpoints, type KoFilter } from "./endpoints";
+import { type KoFilter, endpoints } from "./endpoints";
 
 // Lese-Hooks (TanStack Query) gegen die Modul-Endpunkte. Mutationen werden je
 // Screen mit useMutation gebaut (mit Invalidierung der passenden Keys).

@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { createContext, type ReactNode, useContext } from "react";
-import { authApi, type SessionUser } from "../api/auth";
+import { type ReactNode, createContext, useContext } from "react";
+import { type SessionUser, authApi } from "../api/auth";
 
 // Echte Sitzung aus dem Backend (/auth/status + /auth/me). Login/Logout-Screens
 // (#61) nutzen diesen Context; die Shell wird später dahinter gesperrt.

@@ -29,13 +29,19 @@ export function Conflicts(): JSX.Element {
                   <span className="rounded-pill bg-trust-crit-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-crit-text">
                     {t(`con.type.${c.type}`)}
                   </span>
-                  <span className="font-mono text-[11px] uppercase text-muted-2">{t(`con.status.${c.status}`)}</span>
+                  <span className="font-mono text-[11px] uppercase text-muted-2">
+                    {t(`con.status.${c.status}`)}
+                  </span>
                 </div>
                 <p className="text-[14px] font-medium text-text">{c.description}</p>
                 <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-                  <div className="rounded-card bg-page p-2.5 font-mono text-[12px] text-text">{c.koA}</div>
+                  <div className="rounded-card bg-page p-2.5 font-mono text-[12px] text-text">
+                    {c.koA}
+                  </div>
                   <span className="font-mono text-[11px] text-muted-2">vs</span>
-                  <div className="rounded-card bg-page p-2.5 font-mono text-[12px] text-text">{c.koB}</div>
+                  <div className="rounded-card bg-page p-2.5 font-mono text-[12px] text-text">
+                    {c.koB}
+                  </div>
                 </div>
 
                 {c.type === "truth" ? (

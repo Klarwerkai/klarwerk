@@ -37,7 +37,11 @@ export function Lifecycle(): JSX.Element {
                     {id}
                   </Link>
                 </div>
-                <Button variant="primary" disabled={confirm.isPending} onClick={() => confirm.mutate(id)}>
+                <Button
+                  variant="primary"
+                  disabled={confirm.isPending}
+                  onClick={() => confirm.mutate(id)}
+                >
                   {t("lcy.stillValid")}
                 </Button>
               </Card>

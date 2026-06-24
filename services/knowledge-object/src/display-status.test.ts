@@ -9,7 +9,11 @@ describe("displayStatus", () => {
     expect(displayStatus({ status: "validiert", assignments: [] }, { revalidation: true })).toBe(
       "revalidierung",
     );
-    expect(displayStatus({ status: "offen", assignments: [] }, { conflict: true })).toBe("konflikt");
-    expect(displayStatus({ status: "offen", assignments: [] }, { rejected: true })).toBe("abgelehnt");
+    expect(displayStatus({ status: "offen", assignments: [] }, { conflict: true })).toBe(
+      "konflikt",
+    );
+    expect(displayStatus({ status: "offen", assignments: [] }, { rejected: true })).toBe(
+      "abgelehnt",
+    );
   });
 });

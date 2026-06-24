@@ -53,7 +53,9 @@ export function MyTasks(): JSX.Element {
         {groups.map((g) => (
           <div key={g.key}>
             <div className="mb-2 flex items-center gap-2">
-              <span className={`rounded-pill px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase ${g.tone}`}>
+              <span
+                className={`rounded-pill px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase ${g.tone}`}
+              >
                 {t(g.key)}
               </span>
               <span className="text-[12px] text-muted-2">{g.items.length}</span>

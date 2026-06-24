@@ -45,7 +45,9 @@ export function Card({
 
 export function SectionLabel({ children }: { children: ReactNode }): JSX.Element {
   return (
-    <div className="mb-2 font-mono text-micro uppercase tracking-wider text-muted-2">{children}</div>
+    <div className="mb-2 font-mono text-micro uppercase tracking-wider text-muted-2">
+      {children}
+    </div>
   );
 }
 
@@ -72,7 +74,10 @@ export function Button({ variant = "outline", className, ...props }: ButtonProps
   );
 }
 
-export function TextInput({ className, ...props }: InputHTMLAttributes<HTMLInputElement>): JSX.Element {
+export function TextInput({
+  className,
+  ...props
+}: InputHTMLAttributes<HTMLInputElement>): JSX.Element {
   return (
     <input
       className={cx(
@@ -86,6 +91,7 @@ export function TextInput({ className, ...props }: InputHTMLAttributes<HTMLInput
 
 export function Field({ label, children }: { label: string; children: ReactNode }): JSX.Element {
   return (
+    // biome-ignore lint/a11y/noLabelWithoutControl: Das Eingabefeld wird als children im Label gerendert.
     <label className="block space-y-1.5">
       <span className="block text-[12.5px] font-medium text-muted">{label}</span>
       {children}

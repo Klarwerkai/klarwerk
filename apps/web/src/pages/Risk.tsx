@@ -11,8 +11,14 @@ export function Risk(): JSX.Element {
   const gaps = useGaps();
   const qc = useQueryClient();
   const invalidate = () => void qc.invalidateQueries({ queryKey: ["gaps"] });
-  const close = useMutation({ mutationFn: (id: string) => endpoints.gaps.close(id), onSuccess: invalidate });
-  const remove = useMutation({ mutationFn: (id: string) => endpoints.gaps.remove(id), onSuccess: invalidate });
+  const close = useMutation({
+    mutationFn: (id: string) => endpoints.gaps.close(id),
+    onSuccess: invalidate,
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => endpoints.gaps.remove(id),
+    onSuccess: invalidate,
+  });
 
   const maxKo = Math.max(1, ...(bus.data ?? []).map((b) => b.koCount));
 
@@ -55,8 +61,12 @@ export function Risk(): JSX.Element {
               <div className="divide-y divide-hairline">
                 {items.map((g) => (
                   <div key={g.id} className="flex items-center gap-3 px-4 py-2.5">
-                    <span className="min-w-0 flex-1 truncate text-[13.5px] text-text">{g.question}</span>
-                    <span className="font-mono text-[10.5px] uppercase text-muted-2">{t(`risk.gapStatus.${g.status}`)}</span>
+                    <span className="min-w-0 flex-1 truncate text-[13.5px] text-text">
+                      {g.question}
+                    </span>
+                    <span className="font-mono text-[10.5px] uppercase text-muted-2">
+                      {t(`risk.gapStatus.${g.status}`)}
+                    </span>
                     {g.status === "offen" ? (
                       <button
                         type="button"

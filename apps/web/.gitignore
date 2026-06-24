@@ -3,3 +3,5 @@ dist
 dist-ssr
 *.local
 .vite
+*.tsbuildinfo
+vite.config.ts.timestamp-*.mjs

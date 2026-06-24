@@ -43,7 +43,10 @@ export function Validation(): JSX.Element {
                       <KnowledgeTypeTag type={k.type} />
                       <span className="font-mono text-[11px] text-muted-2">{k.category}</span>
                     </div>
-                    <Link to={`/wissen/${k.id}`} className="block truncate text-[14px] font-medium text-text hover:text-ink">
+                    <Link
+                      to={`/wissen/${k.id}`}
+                      className="block truncate text-[14px] font-medium text-text hover:text-ink"
+                    >
                       {k.title}
                     </Link>
                     <div className="mt-1.5 flex items-center gap-3">

@@ -15,5 +15,15 @@
     "indentWidth": 2,
     "lineWidth": 100
   },
-  "files": { "ignore": ["dist", "node_modules", "docs/generated"] }
+  "files": {
+    "ignore": [
+      "**/dist",
+      "**/node_modules",
+      "docs/generated",
+      "UI:UX",
+      "Blueprint",
+      "**/*.tsbuildinfo",
+      "**/vite.config.ts.timestamp-*.mjs"
+    ]
+  }
 }

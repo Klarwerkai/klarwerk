@@ -52,14 +52,17 @@ export function UiKit(): JSX.Element {
 
       <Section title="KI-Kennung (Reasoner-Entwurf)">
         <ReasonerDraft>
-          <p className="text-sm text-text">
-            {t("uikit.sampleStatement")}
-          </p>
+          <p className="text-sm text-text">{t("uikit.sampleStatement")}</p>
         </ReasonerDraft>
       </Section>
 
       <Section title="Herkunftszeile">
-        <ProvenanceLine author="M. Brandt" originalAuthor="D. Roth" domain="Presse P2" version={3} />
+        <ProvenanceLine
+          author="M. Brandt"
+          originalAuthor="D. Roth"
+          domain="Presse P2"
+          version={3}
+        />
       </Section>
     </div>
   );

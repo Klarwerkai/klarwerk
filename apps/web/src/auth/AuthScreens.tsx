@@ -19,7 +19,8 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
   const [pw, setPw] = useState("");
   const [err, setErr] = useState<string | null>(null);
 
-  const onError = (e: unknown): void => setErr(e instanceof ApiError ? e.message : t("state.error"));
+  const onError = (e: unknown): void =>
+    setErr(e instanceof ApiError ? e.message : t("state.error"));
 
   const login = useMutation({
     mutationFn: () => authApi.login(email, pw),
@@ -48,7 +49,7 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
       <div className="hidden w-1/2 flex-col justify-between bg-ink p-10 text-white lg:flex">
         <div className="flex items-center gap-2.5">
           <span className="grid h-9 w-9 place-items-center rounded-[10px] bg-white">
-            <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden role="img">
+            <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
               <circle cx="10" cy="10" r="6.5" fill="none" stroke="#ED7D0E" strokeWidth="3.4" />
               <circle cx="10" cy="10" r="3" fill="#ED7D0E" />
             </svg>
@@ -134,11 +135,19 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
           {!needsSetup && mode !== "waiting" ? (
             <div className="mt-5 text-center text-[13px] text-muted">
               {mode === "login" ? (
-                <button type="button" className="font-semibold text-ink" onClick={() => go("register")}>
+                <button
+                  type="button"
+                  className="font-semibold text-ink"
+                  onClick={() => go("register")}
+                >
                   {t("auth.toRegister")}
                 </button>
               ) : (
-                <button type="button" className="font-semibold text-ink" onClick={() => go("login")}>
+                <button
+                  type="button"
+                  className="font-semibold text-ink"
+                  onClick={() => go("login")}
+                >
                   {t("auth.toLogin")}
                 </button>
               )}

@@ -19,9 +19,7 @@ function Stufe2Header({ titleKey, ticket }: { titleKey: string; ticket: string }
 
 function Notice({ textKey }: { textKey: string }): JSX.Element {
   const { t } = useTranslation();
-  return (
-    <Card className="border-dashed text-center text-sm text-muted">{t(textKey)}</Card>
-  );
+  return <Card className="border-dashed text-center text-sm text-muted">{t(textKey)}</Card>;
 }
 
 export function Output(): JSX.Element {
@@ -64,8 +62,11 @@ export function GraphView(): JSX.Element {
               {t("s2.graphCount", { nodes: g.nodes.length, edges: g.edges.length })}
             </p>
             <div className="space-y-1.5">
-              {g.edges.slice(0, 30).map((e, i) => (
-                <div key={i} className="flex items-center gap-2 font-mono text-[12px] text-text">
+              {g.edges.slice(0, 30).map((e) => (
+                <div
+                  key={`${e.a}-${e.via}-${e.b}`}
+                  className="flex items-center gap-2 font-mono text-[12px] text-text"
+                >
                   <span className="truncate">{e.a}</span>
                   <span className="text-muted-2">—{e.via}→</span>
                   <span className="truncate">{e.b}</span>
