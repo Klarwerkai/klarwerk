@@ -1,0 +1,3 @@
+# KLARWERK ist nicht für Suchmaschinen bestimmt.
+User-agent: *
+Disallow: /

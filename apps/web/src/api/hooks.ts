@@ -1,0 +1,30 @@
+import { useQuery } from "@tanstack/react-query";
+import { endpoints, type KoFilter } from "./endpoints";
+
+// Lese-Hooks (TanStack Query) gegen die Modul-Endpunkte. Mutationen werden je
+// Screen mit useMutation gebaut (mit Invalidierung der passenden Keys).
+export const useKos = (f?: KoFilter) =>
+  useQuery({ queryKey: ["kos", f], queryFn: () => endpoints.ko.list(f) });
+export const useKo = (id: string) =>
+  useQuery({ queryKey: ["ko", id], queryFn: () => endpoints.ko.get(id), enabled: id.length > 0 });
+export const useValidationBoard = (f?: KoFilter) =>
+  useQuery({ queryKey: ["validation", "board", f], queryFn: () => endpoints.validation.board(f) });
+export const useValidationOverview = () =>
+  useQuery({ queryKey: ["validation", "overview"], queryFn: endpoints.validation.overview });
+export const useConflicts = () =>
+  useQuery({ queryKey: ["conflicts"], queryFn: endpoints.conflicts.list });
+export const useGaps = () => useQuery({ queryKey: ["gaps"], queryFn: endpoints.gaps.list });
+export const useDrafts = () => useQuery({ queryKey: ["drafts"], queryFn: endpoints.drafts.list });
+export const useAnalytics = () =>
+  useQuery({ queryKey: ["analytics"], queryFn: endpoints.analytics.overview });
+export const useBusFactor = () =>
+  useQuery({ queryKey: ["busfactor"], queryFn: endpoints.analytics.busfactor });
+export const useAudit = () => useQuery({ queryKey: ["audit"], queryFn: endpoints.audit.list });
+export const useLifecyclePending = () =>
+  useQuery({ queryKey: ["lifecycle", "pending"], queryFn: endpoints.lifecycle.pending });
+export const useUsers = () => useQuery({ queryKey: ["users"], queryFn: endpoints.users.list });
+export const useGraph = () => useQuery({ queryKey: ["graph"], queryFn: endpoints.library.graph });
+export const useNotifications = () =>
+  useQuery({ queryKey: ["notifications"], queryFn: endpoints.notifications.list });
+export const useReasonerStatus = () =>
+  useQuery({ queryKey: ["reasoner", "status"], queryFn: endpoints.reasoner.status });

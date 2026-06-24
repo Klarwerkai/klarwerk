@@ -1,0 +1,5 @@
+{
+  "//": "Ungenutzt. Vite/Tailwind-Configs werden von Vite (esbuild/jiti) geladen, nicht von tsc. Build nutzt tsconfig.json (include: src).",
+  "compilerOptions": { "noEmit": true },
+  "include": []
+}

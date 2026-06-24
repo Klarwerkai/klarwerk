@@ -1,0 +1,86 @@
+import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
+import { useConflicts, useGaps, useLifecyclePending, useValidationBoard } from "../api/hooks";
+import { Card, PageHeader } from "../components/ui";
+
+interface Task {
+  id: string;
+  label: string;
+  typeKey: string;
+  to: string;
+}
+
+export function MyTasks(): JSX.Element {
+  const { t } = useTranslation();
+  const board = useValidationBoard();
+  const conflicts = useConflicts();
+  const lifecycle = useLifecyclePending();
+  const gaps = useGaps();
+
+  const critical: Task[] = [
+    ...(conflicts.data ?? [])
+      .filter((c) => c.status !== "geloest")
+      .map((c) => ({ id: c.id, label: c.description, typeKey: "task.conflict", to: "/konflikte" })),
+  ];
+  const today: Task[] = [
+    ...(board.data ?? []).map((k) => ({
+      id: k.id,
+      label: k.title,
+      typeKey: "task.validation",
+      to: `/wissen/${k.id}`,
+    })),
+    ...(lifecycle.data ?? []).map((id) => ({
+      id: `lc-${id}`,
+      label: id,
+      typeKey: "task.revalidation",
+      to: "/lebenszyklus",
+    })),
+  ];
+  const later: Task[] = (gaps.data ?? [])
+    .filter((g) => g.status === "offen")
+    .map((g) => ({ id: g.id, label: g.question, typeKey: "task.gap", to: "/risiko" }));
+
+  const groups: Array<{ key: string; tone: string; items: Task[] }> = [
+    { key: "task.critical", tone: "bg-trust-crit-bg text-trust-crit-text", items: critical },
+    { key: "task.today", tone: "bg-trust-warn-bg text-trust-warn-text", items: today },
+    { key: "task.later", tone: "bg-page text-muted", items: later },
+  ];
+
+  return (
+    <div className="mx-auto max-w-4xl">
+      <PageHeader kicker={t("task.kicker")} title={t("nav.tasks")} />
+      <div className="space-y-6">
+        {groups.map((g) => (
+          <div key={g.key}>
+            <div className="mb-2 flex items-center gap-2">
+              <span className={`rounded-pill px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase ${g.tone}`}>
+                {t(g.key)}
+              </span>
+              <span className="text-[12px] text-muted-2">{g.items.length}</span>
+            </div>
+            <Card className="p-0">
+              {g.items.length === 0 ? (
+                <p className="p-4 text-sm text-muted">{t("task.none")}</p>
+              ) : (
+                <div className="divide-y divide-hairline">
+                  {g.items.map((it) => (
+                    <Link
+                      key={it.id}
+                      to={it.to}
+                      className="flex items-center gap-3 px-4 py-3 hover:bg-hairline-soft"
+                    >
+                      <span className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-[10.5px] text-muted">
+                        {t(it.typeKey)}
+                      </span>
+                      <span className="truncate text-[13.5px] text-text">{it.label}</span>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </Card>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

@@ -54,6 +54,7 @@ import { i18nRoutes } from "./routes/i18n-routes";
 import { koRoutes } from "./routes/ko-routes";
 import { libraryRoutes } from "./routes/library-routes";
 import { lifecycleRoutes } from "./routes/lifecycle-routes";
+import { notificationsRoutes } from "./routes/notifications-routes";
 import { reasonerRoutes } from "./routes/reasoner-routes";
 import { validationRoutes } from "./routes/validation-routes";
 
@@ -196,6 +197,7 @@ export function buildApp(services: AppServices = buildServices()): FastifyInstan
   app.register(askRoutes(services.ask, guards));
   app.register(libraryRoutes(services.library, guards));
   app.register(lifecycleRoutes(services.lifecycle, guards));
+  app.register(notificationsRoutes({ conflicts: services.conflicts, ask: services.ask }, guards));
   app.register(auditRoutes(services.audit, guards));
   app.register(reasonerRoutes(services, guards));
   app.register(i18nRoutes(services.i18n));
