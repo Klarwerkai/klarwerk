@@ -44,14 +44,16 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
     refresh: () => {
       void queryClient.invalidateQueries({ queryKey: ["auth"] });
     },
-    // Wichtig: nach dem Logout den Cache komplett leeren. Sonst behält React Query
-    // die alten /auth/me-Daten (401 beim Refetch lässt vorhandene Daten stehen),
-    // und der Nutzer wirkt weiterhin angemeldet.
+    // Nach dem Logout den Cache leeren UND hart auf "/" neu laden. Ein reines
+    // invalidate/clear reicht nicht zuverlässig (React Query behält bei 401 die
+    // alten /auth/me-Daten, der Nutzer wirkt weiter angemeldet). Der harte Reload
+    // bootet die App frisch; da die Server-Session beendet ist, erscheint der Login.
     signOut: async () => {
       try {
         await authApi.logout();
       } finally {
         queryClient.clear();
+        window.location.assign("/");
       }
     },
   };
