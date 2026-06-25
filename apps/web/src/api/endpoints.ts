@@ -40,6 +40,8 @@ export type KoAction =
   | { action: "assign"; userIds: string[] }
   | { action: "revise"; changes: DraftPayload }
   | { action: "comment"; text: string }
+  | { action: "attach"; attachment: { name: string; mime: string; dataUrl: string } }
+  | { action: "detach"; attachmentId: string }
   | { action: "category"; category: string }
   | { action: "tags"; tags: string[] }
   | {

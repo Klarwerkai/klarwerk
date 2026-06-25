@@ -217,6 +217,11 @@ const de = {
   "ko.commentsEmpty": "Noch keine Kommentare.",
   "ko.commentPlaceholder": "Kommentar schreiben …",
   "ko.commentAdd": "Kommentieren",
+  "ko.attachments": "Anhänge / Fotos",
+  "ko.attachmentsEmpty": "Noch keine Anhänge.",
+  "ko.attachmentAdd": "Foto anhängen",
+  "ko.attachmentUploading": "Wird hochgeladen …",
+  "ko.attachmentRemove": "Anhang entfernen",
   "val.kicker": "Validation Board",
   "val.intro":
     "Peer-Bewertung grün / gelb / rot. Ab der Schwelle (Standard 3× grün, 0× rot) gilt ein Objekt als validiert.",
@@ -542,6 +547,11 @@ const en: typeof de = {
   "ko.commentsEmpty": "No comments yet.",
   "ko.commentPlaceholder": "Write a comment …",
   "ko.commentAdd": "Comment",
+  "ko.attachments": "Attachments / photos",
+  "ko.attachmentsEmpty": "No attachments yet.",
+  "ko.attachmentAdd": "Attach photo",
+  "ko.attachmentUploading": "Uploading …",
+  "ko.attachmentRemove": "Remove attachment",
   "val.kicker": "Validation board",
   "val.intro":
     "Peer rating green / amber / red. At the threshold (default 3× green, 0× red) an object is validated.",

@@ -25,6 +25,15 @@ export interface KoComment {
   at: string;
 }
 
+export interface KoAttachment {
+  id: string;
+  name: string;
+  mime: string;
+  dataUrl: string;
+  author: string;
+  at: string;
+}
+
 export interface KnowledgeObject {
   id: string;
   title: string;
@@ -46,6 +55,7 @@ export interface KnowledgeObject {
   createdAt: string;
   history: HistoryEntry[];
   comments?: KoComment[];
+  attachments?: KoAttachment[];
 }
 
 export type Verdict = "up" | "warn" | "down";

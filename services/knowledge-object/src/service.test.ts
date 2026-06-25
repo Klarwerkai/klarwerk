@@ -45,6 +45,20 @@ describe("KoService", () => {
     expect(revised.comments).toHaveLength(1);
   });
 
+  it("FR-CAP-05: Anhänge anfügen und entfernen", async () => {
+    const ko = await service.create(base());
+    expect(ko.attachments).toEqual([]);
+    const withAtt = await service.addAttachment(ko.id, "pedi", {
+      name: "foto.jpg",
+      mime: "image/jpeg",
+      dataUrl: "data:image/jpeg;base64,AAAA",
+    });
+    expect(withAtt.attachments).toHaveLength(1);
+    const attId = withAtt.attachments[0]?.id ?? "";
+    const removed = await service.removeAttachment(ko.id, attId, "pedi");
+    expect(removed.attachments).toHaveLength(0);
+  });
+
   it("FR-KO-02: Wissensart setzbar und filterbar", async () => {
     await service.create(base({ type: "best_practice" }));
     await service.create(base({ type: "negativwissen" }));

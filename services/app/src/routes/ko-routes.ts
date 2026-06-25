@@ -1,11 +1,13 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { ConflictInput, ConflictService } from "../../../conflicts";
-import type {
-  CreateKoInput,
-  KnowledgeType,
-  KoService,
-  KoStatus,
-  ReviseKoInput,
+import {
+  type CreateKoInput,
+  type KnowledgeType,
+  type KoService,
+  type KoStatus,
+  MAX_ATTACHMENTS,
+  MAX_ATTACHMENT_BYTES,
+  type ReviseKoInput,
 } from "../../../knowledge-object";
 import type { LifecycleService } from "../../../lifecycle";
 import type { ValidationService, Verdict } from "../../../validation";
@@ -42,6 +44,8 @@ interface PutBody {
   decision?: string;
   newAuthor?: string;
   text?: string;
+  attachment?: { name?: string; mime?: string; dataUrl?: string };
+  attachmentId?: string;
 }
 
 export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync {
@@ -144,6 +148,46 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               return badRequest("text fehlt.");
             }
             reply.code(200).send(await ko.addComment(id, user.id, body.text.trim()));
+            return;
+          }
+          case "attach": {
+            // FR-CAP-05: Anhang (Thumbnail-Daten-URL) hinzufügen.
+            const user = await guards.requirePermission("ko.create", request, reply);
+            if (!user) {
+              return;
+            }
+            const att = body.attachment;
+            if (!att?.name || !att.mime || !att.dataUrl) {
+              return badRequest("attachment {name, mime, dataUrl} fehlt.");
+            }
+            if (!att.mime.startsWith("image/") || !att.dataUrl.startsWith("data:")) {
+              return badRequest("Nur Bild-Daten-URLs erlaubt.");
+            }
+            if (att.dataUrl.length > MAX_ATTACHMENT_BYTES) {
+              return badRequest("Anhang zu groß (Pilot-Limit überschritten).");
+            }
+            const current = await ko.get(id);
+            if ((current?.attachments?.length ?? 0) >= MAX_ATTACHMENTS) {
+              return badRequest(`Maximal ${MAX_ATTACHMENTS} Anhänge je Objekt.`);
+            }
+            reply.code(200).send(
+              await ko.addAttachment(id, user.id, {
+                name: att.name,
+                mime: att.mime,
+                dataUrl: att.dataUrl,
+              }),
+            );
+            return;
+          }
+          case "detach": {
+            const user = await guards.requirePermission("ko.create", request, reply);
+            if (!user) {
+              return;
+            }
+            if (!body.attachmentId) {
+              return badRequest("attachmentId fehlt.");
+            }
+            reply.code(200).send(await ko.removeAttachment(id, body.attachmentId, user.id));
             return;
           }
           case "category": {

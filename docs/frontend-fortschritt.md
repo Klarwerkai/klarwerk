@@ -40,8 +40,12 @@
 - ✅ **FE-RSN-03 Schreibhilfe (`assist`)**: neue Backend-Aktion `POST /api/reasoner {task:"assist"}` (Modell glättet/präzisiert; deterministischer Fallback markiert `demo:true`). Vitest + Spec ergänzt. Frontend: „Aussage präzisieren"-Button im Capture-Editor.
 - 🐞 **Bugfix:** `reasoner.structure` sendete kein `task`-Feld → „Strukturieren" wäre serverseitig auf 400 gelaufen. Jetzt `task:"structure"` gesetzt.
 
-### Noch offen (Frontend, ohne neue Backend-Endpunkte machbar)
-- FE-VAL-02: zusätzliche Filter (Domäne/Tags). FE-LIB-Detailfilter (Tag/Kategorie), Mobile-responsive Shell (Hamburger).
+### Nachtrag (5. Batch — Anhänge/Fotos)
+- ✅ **FE-CAP-05 Anhänge/Fotos** (Pilot, ohne Objektspeicher): Bild wird **client-seitig** auf ein Thumbnail (JPEG, max. 1024px, Canvas) verkleinert und als Daten-URL im KO-JSONB gespeichert. Backend-Aktionen `attach`/`detach` mit Größen-/Anzahl-/MIME-Guards (≤700 KB, ≤8, nur `image/*`), Audit `ko.attached`/`ko.detached`. Vitest + Spec ergänzt. Frontend: Foto-Anhängen + Thumbnail-Galerie mit Entfernen im KO-Detail.
+- **Stufe-2-Upgrade dokumentiert:** Voll-Bilder/Dokumente über S3-Objektspeicher.
+
+### Noch offen
+- FE-CAP-06 OCR/Dokument-Parsing (clientseitig, größere Lib). FE-OUT/IMP/MGMT (Stufe-2-Module). Mobile-responsive Shell (Hamburger). Kleinere Zusatzfilter (FE-VAL-02/FE-LIB).
 
 ### Offen — benötigt zuerst Backend-Endpunkte (Stufe 2 / BE-Lücke)
 - FE-CAP-05 Anhänge/Foto-Upload (Objektspeicher), FE-CAP-06 OCR.

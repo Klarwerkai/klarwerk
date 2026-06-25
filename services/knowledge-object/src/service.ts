@@ -5,6 +5,7 @@ import {
   KNOWLEDGE_TYPES,
   type KnowledgeObject,
   type KnowledgeType,
+  type KoAttachment,
   type KoComment,
   KoError,
   type KoStatus,
@@ -85,6 +86,7 @@ export class KoService {
       createdAt: at,
       history: [{ version: 1, at, author: input.author, note: "erstellt" }],
       comments: [],
+      attachments: [],
     };
     await this.repo.insert(ko);
     await this.audit?.record({ actor: input.author, action: "ko.created", target: ko.id });
@@ -103,6 +105,45 @@ export class KoService {
     const updated: KnowledgeObject = { ...ko, comments: [...(ko.comments ?? []), comment] };
     await this.repo.update(updated);
     await this.audit?.record({ actor: author, action: "ko.commented", target: id });
+    return updated;
+  }
+
+  // FR-CAP-05: Anhang (Thumbnail-Daten-URL) anfügen. Größen-/Anzahlgrenzen prüft die Route.
+  async addAttachment(
+    id: string,
+    author: string,
+    input: { name: string; mime: string; dataUrl: string },
+  ): Promise<KnowledgeObject> {
+    const ko = await this.require(id);
+    const attachment: KoAttachment = {
+      id: this.genId(),
+      name: input.name,
+      mime: input.mime,
+      dataUrl: input.dataUrl,
+      author,
+      at: new Date(this.now()).toISOString(),
+    };
+    const updated: KnowledgeObject = {
+      ...ko,
+      attachments: [...(ko.attachments ?? []), attachment],
+    };
+    await this.repo.update(updated);
+    await this.audit?.record({ actor: author, action: "ko.attached", target: id });
+    return updated;
+  }
+
+  async removeAttachment(
+    id: string,
+    attachmentId: string,
+    actor: string,
+  ): Promise<KnowledgeObject> {
+    const ko = await this.require(id);
+    const updated: KnowledgeObject = {
+      ...ko,
+      attachments: (ko.attachments ?? []).filter((a) => a.id !== attachmentId),
+    };
+    await this.repo.update(updated);
+    await this.audit?.record({ actor, action: "ko.detached", target: id });
     return updated;
   }
 

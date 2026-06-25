@@ -31,6 +31,21 @@ export interface KoComment {
   at: string;
 }
 
+// FR-CAP-05: Anhang/Foto am Objekt. Pilot: client-seitig verkleinertes Thumbnail
+// als Daten-URL (keine Objektspeicher-Infrastruktur nötig, größenbegrenzt).
+export interface KoAttachment {
+  id: string;
+  name: string;
+  mime: string;
+  dataUrl: string;
+  author: string;
+  at: string;
+}
+
+// Obergrenzen für den Pilot (kleine Thumbnails, JSONB bleibt handhabbar).
+export const MAX_ATTACHMENT_BYTES = 700_000; // ~700 KB Daten-URL
+export const MAX_ATTACHMENTS = 8;
+
 // FR-KO-01: Datenmodell inkl. version/history/originalAuthor/needed/assignments/asset
 // (Pflichtenheft §3.5, Technischer Anhang §1).
 export interface KnowledgeObject {
@@ -54,6 +69,7 @@ export interface KnowledgeObject {
   createdAt: string;
   history: HistoryEntry[];
   comments: KoComment[];
+  attachments: KoAttachment[];
 }
 
 export type KoErrorCode = "NOT_FOUND" | "INVALID_TYPE" | "INVALID_NEEDED";

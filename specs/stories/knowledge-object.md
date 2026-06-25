@@ -28,6 +28,11 @@ Versioniertes Wissensobjekt mit klarem Datenmodell, fünf Wissensarten, Kategori
 - [ ] **Gegeben** ein KO mit Kommentaren, **wenn** es überarbeitet wird (`revise`), **dann** bleiben die Kommentare erhalten.
 - Persistenz als Teil des KO-JSONB (keine separate Tabelle); Audit-Eintrag `ko.commented`. API: `PUT /api/kos/:id` mit `{action:"comment", text}`.
 
+### FR-CAP-05 · Anhänge / Fotos am Objekt (MUSS, Pilot)
+- [ ] **Gegeben** ein Bild, **wenn** es angehängt wird, **dann** wird es client-seitig auf ein Thumbnail (JPEG, max. ~1024px) verkleinert und als Daten-URL im KO-JSONB gespeichert; Größe (~700 KB) und Anzahl (max. 8) sind serverseitig begrenzt, nur `image/*` erlaubt.
+- [ ] **Gegeben** ein Anhang, **dann** kann er entfernt werden; Audit `ko.attached` / `ko.detached`. API: `PUT /api/kos/:id` mit `{action:"attach", attachment}` bzw. `{action:"detach", attachmentId}`.
+- **Stufe-2-Upgrade:** Voll-Bild/Dokument über Objektspeicher (S3) statt Daten-URL.
+
 ## Datenmodell (Auszug, Technischer Anhang §1)
 `kos(id, title, statement, conditions, measures, type, category, tags[], confidence, trust, status, version, original_author, needed_validations, asset_ref, created_at)` + `ko_history`. Wissensart als Enum.
 

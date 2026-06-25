@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Pencil } from "lucide-react";
-import { useState } from "react";
+import { Paperclip, Pencil, X } from "lucide-react";
+import { type ChangeEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 import { ApiError } from "../api/client";
@@ -54,6 +54,36 @@ interface ConflictForm {
   description: string;
 }
 
+// FR-CAP-05: Bild client-seitig auf ein kleines Thumbnail (JPEG) verkleinern —
+// kein Server-Bildlib, kein Objektspeicher nötig. Ergebnis ist eine Daten-URL.
+function fileToThumbDataUrl(file: File, maxPx = 1024, quality = 0.7): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
+      const w = Math.max(1, Math.round(img.width * scale));
+      const h = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      URL.revokeObjectURL(url);
+      if (!ctx) {
+        reject(new Error("no-canvas"));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("img-error"));
+    };
+    img.src = url;
+  });
+}
+
 export function KnowledgeDetail(): JSX.Element {
   const { t } = useTranslation();
   const { id = "" } = useParams();
@@ -90,6 +120,36 @@ export function KnowledgeDetail(): JSX.Element {
     },
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
   });
+
+  const attach = useMutation({
+    mutationFn: (att: { name: string; mime: string; dataUrl: string }) =>
+      endpoints.ko.act(id, { action: "attach", attachment: att }),
+    onSuccess: () => {
+      invalidate();
+      setErr(null);
+    },
+    onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
+  });
+
+  const detach = useMutation({
+    mutationFn: (attachmentId: string) => endpoints.ko.act(id, { action: "detach", attachmentId }),
+    onSuccess: invalidate,
+    onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
+  });
+
+  const onPickFile = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) {
+      return;
+    }
+    try {
+      const dataUrl = await fileToThumbDataUrl(file);
+      attach.mutate({ name: file.name, mime: "image/jpeg", dataUrl });
+    } catch {
+      setErr(t("state.error"));
+    }
+  };
 
   const report = useMutation({
     mutationFn: () => {
@@ -459,6 +519,50 @@ export function KnowledgeDetail(): JSX.Element {
                     </Button>
                   </div>
                 </div>
+              </Card>
+
+              <Card>
+                <SectionLabel>{t("ko.attachments")}</SectionLabel>
+                {(ko.attachments ?? []).length === 0 ? (
+                  <p className="text-[13px] text-muted">{t("ko.attachmentsEmpty")}</p>
+                ) : (
+                  <div className="grid grid-cols-3 gap-2">
+                    {(ko.attachments ?? []).map((a) => (
+                      <div key={a.id} className="group relative">
+                        <a href={a.dataUrl} target="_blank" rel="noreferrer">
+                          <img
+                            src={a.dataUrl}
+                            alt={a.name}
+                            className="h-20 w-full rounded-card border border-hairline object-cover"
+                          />
+                        </a>
+                        {canEdit ? (
+                          <button
+                            type="button"
+                            aria-label={t("ko.attachmentRemove")}
+                            onClick={() => detach.mutate(a.id)}
+                            className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-ink/70 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                          >
+                            <X size={12} />
+                          </button>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {canEdit ? (
+                  <label className="mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
+                    <Paperclip size={14} />
+                    {attach.isPending ? t("ko.attachmentUploading") : t("ko.attachmentAdd")}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      disabled={attach.isPending}
+                      onChange={(e) => void onPickFile(e)}
+                    />
+                  </label>
+                ) : null}
               </Card>
             </div>
           </div>
