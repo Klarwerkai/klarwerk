@@ -1534,3 +1534,29 @@ Datum: 2026-06-25
 **Restlücken:** Nur `kind: "external"` (Stufe 2) — interne/peer-validierte Quelltypen bleiben Roadmap. Kein Wiki-/Confluence-Linkmodell (SCRUM-130 / FE-KO-02 separat). Kein Import-Pipeline-Bezug.
 
 **Jira-Empfehlung:** Nach grünem Gate dürfen SCRUM-129 sowie SCRUM-102 / FE-KO-01 und FE-KO-07 auf erledigt. SCRUM-102 bleibt danach voraussichtlich nur wegen FE-KO-02 / SCRUM-130 offen. Ich setze keine Jira-Checkbox/Status selbst; Codex/Peter haken nach Gate ab.
+
+---
+
+## 2026-06-25 · SCRUM-130 + SCRUM-142 — Wissensnetz (verwandte KOs) & Lineage/Herkunft im KO-Detail
+
+**Ticket(s):** SCRUM-130 (KO-Rest: „wiki-/confluence-artige" Struktur — hier definiert als verlinkbares Wissensnetz, KEIN Confluence-Klon/Seitenbaum/Page-Editor) + SCRUM-142 (Analytics-Rest: Lineage-/Herkunftssicht). Gemeinsam umgesetzt, da derselbe KO-Kontext (Quellen/Versionen/Herkunft/Beziehungen/Audit/Graph). Umsetzung exakt nach freigegebener Vorab-Meldung.
+
+**Genutzte vorhandene Daten (keine neuen Modelle):** KnowledgeObject (originalAuthor, author, version, history[], tags[], category, sources[], createdAt), useKos() (Gesamtbestand für Beziehungsableitung), useAudit() (Ereignisse je KO über target===ko.id), useGraph()/Tags (Beziehungssignal). Kein Backend, keine Migration, keine Hash-Chain-Änderung.
+
+**Änderung (geänderte/neue Dateien):**
+- `apps/web/src/lib/koLineage.ts` — neu, DOM-frei: `relatedKos` (verwandte KOs über geteilte Tags / gleiche Kategorie / geteilte Quelle; Selbstausschluss, Dedup, Ranking nach Beziehungsstärke, Limit), `koAuditEvents` (target-Filter, nach seq sortiert), `lineageSummary` (Originalautor/Autor/authorTransferred/Versionen/History/Quellen/Verwandte).
+- `apps/web/src/pages/KnowledgeDetail.tsx` — neue „Herkunft & Verlauf (Lineage)"-Card (SCRUM-142: Ursprung→aktueller Autor inkl. Transfer-Hinweis, Versionen/Änderungen, Quellenzahl, Verwandt-Zahl, letzte echte Audit-Ereignisse dieses KO, Link zur GraphView) und „Verwandte Wissensobjekte"-Card (SCRUM-130: verlinkte KOs mit Beziehungs-Badge Tag/Kategorie/Quelle + konkrete geteilte Werte, Navigation zu /wissen/:id). useAudit + Link ergänzt.
+- `apps/web/src/i18n.ts` — `ko.lineage*` / `ko.related*` (DE+EN).
+- `tests/ko/ko-lineage.test.ts` — 5 Tests (Tag/Kategorie/Quelle-Match + Selbstausschluss; Ranking mehrfach-verwandter zuerst; Limit; Audit-Filter+Sortierung; Lineage-Kennzahlen).
+
+**Erfüllt SCRUM-130?** JA (im definierten Scope): verlinkbares Wissensnetz im KO-Kontext — verwandte KOs, Beziehungsgrund, nachvollziehbare Navigation + Graph-Link. KEIN Confluence-Klon/Seitenbaum/Editor (bewusst, scope-konform).
+
+**Erfüllt SCRUM-142?** JA: datenbasierte Lineage/Herkunft aus echten Signalen (originalAuthor/author/version/history/sources/createdAt + Audit über target===ko.id + Beziehungen über Tags/Kategorie/Quellen), Verknüpfung KO-Detail ↔ Graph. Keine statische Demo-Karte.
+
+**Genutzte Endpoints:** GET /api/kos, GET /api/audit, GET /api/graph (alle bestehend; nur clientseitige Ableitung).
+
+**Tests/Gates:** `npm run check` GRÜN — 37 Testdateien / 178 Tests (5 neu). apps/web `tsc --noEmit` EXIT=0. depcruise sauber. Biome grün.
+
+**Restlücken / separates Restticket-Vorschlag:** Beziehungen & Lineage sind aktuell **ungerichtet** (Tag/Kategorie/Quellen-Ähnlichkeit), keine gerichtete Ableitung „KO B entstand aus KO A". Falls fachlich gewünscht, braucht das ein NEUES gerichtetes Beziehungsfeld am KO (z. B. `derivedFrom: koId[]`) inkl. Backend-Action/Audit — bewusst NICHT improvisiert. **Vorschlag: separates Restticket „Gerichtete KO-Herkunftskanten (derivedFrom)"** als echtes Modell-/API-Thema (analog SCRUM-129).
+
+**Jira-Empfehlung:** Nach grünem Gate + Git-Sync dürfen SCRUM-130 und SCRUM-142 auf erledigt (im definierten Scope). Gerichtete Lineage als neues Restticket anlegen. Ich setze keine Jira-Checkbox/Status selbst; Codex/Peter haken nach Gate ab.

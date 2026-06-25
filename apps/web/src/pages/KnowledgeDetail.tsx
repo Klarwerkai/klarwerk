@@ -2,10 +2,10 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Paperclip, Pencil, X } from "lucide-react";
 import { type ChangeEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { type KoAction, endpoints } from "../api/endpoints";
-import { useDirectory, useKo, useKos } from "../api/hooks";
+import { useAudit, useDirectory, useKo, useKos } from "../api/hooks";
 import type { ConflictType, KnowledgeObject, KnowledgeType } from "../api/types";
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
@@ -29,6 +29,7 @@ import {
 import { deriveStatus } from "../lib/displayStatus";
 import { fileToThumbDataUrl } from "../lib/files";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
+import { koAuditEvents, lineageSummary, relatedKos } from "../lib/koLineage";
 import {
   EMPTY_SOURCE_FORM,
   type SourceFormInput,
@@ -75,6 +76,7 @@ export function KnowledgeDetail(): JSX.Element {
   const { role } = useRole();
   const query = useKo(id);
   const koList = useKos();
+  const audit = useAudit();
   const dir = useDirectory();
   const nameOf = (uid: string): string => dir.data?.find((d) => d.id === uid)?.name || uid;
   const qc = useQueryClient();
@@ -674,6 +676,121 @@ export function KnowledgeDetail(): JSX.Element {
                   </div>
                 ) : null}
               </Card>
+
+              {/* SCRUM-142: Herkunft & Verlauf (Lineage) — datenbasiert */}
+              {(() => {
+                const related = relatedKos(ko, koList.data ?? []);
+                const summary = lineageSummary(ko, related.length);
+                const events = koAuditEvents(audit.data ?? [], ko.id)
+                  .slice(-6)
+                  .reverse();
+                return (
+                  <>
+                    <Card className="space-y-3">
+                      <SectionLabel>{t("ko.lineageTitle")}</SectionLabel>
+                      <div className="grid grid-cols-2 gap-2 text-[12.5px]">
+                        <div className="rounded-input bg-page p-2">
+                          <div className="font-mono text-micro uppercase tracking-wider text-muted-2">
+                            {t("ko.lineageOrigin")}
+                          </div>
+                          <div className="text-text">{nameOf(ko.originalAuthor)}</div>
+                          {summary.authorTransferred ? (
+                            <div className="text-[11px] text-muted">
+                              → {nameOf(ko.author)} {t("ko.lineageTransferred")}
+                            </div>
+                          ) : null}
+                        </div>
+                        <div className="rounded-input bg-page p-2">
+                          <div className="font-mono text-micro uppercase tracking-wider text-muted-2">
+                            {t("ko.lineageVersions")}
+                          </div>
+                          <div className="text-text">
+                            v{summary.versions} · {summary.historyCount} {t("ko.lineageChanges")}
+                          </div>
+                        </div>
+                        <div className="rounded-input bg-page p-2">
+                          <div className="font-mono text-micro uppercase tracking-wider text-muted-2">
+                            {t("ko.sourcesTitle")}
+                          </div>
+                          <div className="text-text">{summary.sourceCount}</div>
+                        </div>
+                        <div className="rounded-input bg-page p-2">
+                          <div className="font-mono text-micro uppercase tracking-wider text-muted-2">
+                            {t("ko.lineageRelated")}
+                          </div>
+                          <div className="text-text">{summary.relatedCount}</div>
+                        </div>
+                      </div>
+                      {events.length > 0 ? (
+                        <div>
+                          <div className="mb-1.5 font-mono text-micro uppercase tracking-wider text-muted-2">
+                            {t("ko.lineageAudit")}
+                          </div>
+                          <ul className="space-y-1">
+                            {events.map((e) => (
+                              <li
+                                key={e.seq}
+                                className="flex items-center gap-2 text-[11.5px] text-muted"
+                              >
+                                <span className="font-mono text-muted-2">
+                                  {new Date(e.at).toLocaleDateString()}
+                                </span>
+                                <span className="font-semibold text-text">{e.action}</span>
+                                <span className="ml-auto font-mono text-muted-2">
+                                  {nameOf(e.actor)}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                      <Link
+                        to="/graph"
+                        className="inline-block text-[12px] font-semibold text-ai hover:underline"
+                      >
+                        {t("ko.lineageGraphLink")} →
+                      </Link>
+                    </Card>
+
+                    {/* SCRUM-130: verlinkbares Wissensnetz — verwandte Wissensobjekte */}
+                    <Card className="space-y-2">
+                      <SectionLabel>{t("ko.relatedTitle")}</SectionLabel>
+                      {related.length === 0 ? (
+                        <p className="text-[13px] text-muted">{t("ko.relatedEmpty")}</p>
+                      ) : (
+                        <ul className="space-y-2">
+                          {related.map((r) => (
+                            <li key={r.id}>
+                              <Link
+                                to={`/wissen/${r.id}`}
+                                className="block rounded-input bg-page p-2 hover:bg-hairline-soft"
+                              >
+                                <div className="truncate text-[13px] text-text">{r.title}</div>
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {r.reasons.map((reason) => (
+                                    <span
+                                      key={reason}
+                                      className="rounded-pill bg-ai-surface-1 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai"
+                                    >
+                                      {t(`ko.relatedReason.${reason}`)}
+                                    </span>
+                                  ))}
+                                  {r.via.length > 0 ? (
+                                    <span className="font-mono text-[10.5px] text-muted-2">
+                                      {r.via.slice(0, 3).join(" · ")}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </Link>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </Card>
+                  </>
+                );
+              })()}
+
               <Card>
                 <SectionLabel>{t("ko.history")}</SectionLabel>
                 <ol className="space-y-3">
