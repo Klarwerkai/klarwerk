@@ -183,6 +183,12 @@ export interface AnswerResult {
   demo: boolean;
 }
 
+// Realer Backend-Shape von POST /api/ask: Antwort + ggf. erzeugte Wissenslücke.
+export interface AskResponse {
+  result: AnswerResult;
+  gap: Gap | null;
+}
+
 export interface StructureResult {
   title: string;
   statement: string;

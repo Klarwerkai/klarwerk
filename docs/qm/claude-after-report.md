@@ -1046,3 +1046,33 @@ Geprüfte Dateien: pages/Capture.tsx, lib/files.ts, lib/docx.ts, components/edit
 - Resttickets/Blocker: SCRUM-121 (Objektspeicher/FE-CAP-05), SCRUM-122 (PDF) + SCRUM-123 (OCR) für FE-CAP-06, SCRUM-113 (Mobile) + Desktop-Resume-UI für FE-CAP-07, reasoner-getriebenes Interview für FE-CAP-04.
 - Statusvorschlag SCRUM-100: „In Progress" — 5 von 9 setzbar.
 - Bestätigung: kein Produktcode geändert; nur `docs/qm/claude-after-report.md` append-only ergänzt.
+
+---
+
+## SCRUM-138 — Ask-Response-Shape-Fix — Nachbericht
+Datum: 2026-06-25
+### Geänderte Dateien
+- `apps/web/src/api/types.ts`: neuer Typ `AskResponse = { result: AnswerResult; gap: Gap | null }` (spiegelt realen Backend-Shape).
+- `apps/web/src/api/endpoints.ts`: `ask.ask` Rückgabetyp `AnswerResult` → `AskResponse` (Import entsprechend umgestellt).
+- `apps/web/src/lib/askResponse.ts` (neu, DOM-frei): reine Selektoren `selectAnswer(r)` (→ `r.result`) und `selectGap(r)` (→ `r.gap`).
+- `apps/web/src/pages/Ask.tsx`: `onSuccess` entpackt jetzt sauber via `setResult(selectAnswer(r))`; restliche UI unverändert.
+- `tests/ask/ask-response.test.ts` (neu): Adaptervertrag-Test.
+- `docs/qm/claude-after-report.md`: dieser Nachbericht.
+### Erfüllte Akzeptanzkriterien
+- Ask-UI zeigt beantwortete Fragen wieder als Antwortkarte (`result.answered` ist jetzt der echte Wert aus `r.result`).
+- Quellen/Steps/Trust/„Hat geholfen" funktionieren wieder (UI liest jetzt das echte `AnswerResult`).
+- Unbeantwortbare Fragen zeigen weiterhin No-Basis-/Gaps-Karte (Link zu `/risiko`).
+- TypeScript-Typen spiegeln den echten Backend-Response (`AskResponse`).
+- Test deckt den Shape-Fehler ab (beantwortet → Antwortdaten; unbeantwortbar → No-Basis + Gap).
+- Kein Backend-Redesign; AskService/Reasoner/Gap-Features/Mobile/Analytics nicht angefasst.
+### Tests / Gate
+- Gezielter Lauf: `vitest run tests/ask/ask-response.test.ts` → 2/2 grün.
+- `npm run check`: GRÜN (exit 0) — build (`tsc --noEmit`), lint (`biome check .`), arch (`depcruise services`), test (`vitest run`, 22 Dateien / 117 Tests).
+- Hinweis: `vite build` und `git push` sind nicht Teil von `npm run check` bzw. nicht aus der Sandbox ausführbar (Commit/Push durch Stakeholder).
+### Restlücken
+- `gap` wird im Adapter bereitgestellt (`selectGap`), aber in der UI bewusst NICHT zusätzlich angezeigt (keine Feature-Ausweitung gemäß Scope). Optional späteres Restticket: erzeugte Gap direkt in der No-Basis-Karte sichtbar machen.
+- FE-ASK-03 (Evidenz-Level/`knowledgeClass` in der UI anzeigen) bleibt separater Punkt aus SCRUM-105 (nicht Teil von SCRUM-138).
+### Jira-Empfehlung
+- SCRUM-138 darf nach grünem Gate auf erledigt gesetzt werden (Shape-Fix gebaut + getestet, `npm run check` grün).
+- Folge für SCRUM-105: FE-ASK-01/02/04/05 sind jetzt nicht mehr durch den Shape-Bug blockiert und sollten in einem Folge-Audit erneut bewertet werden; FE-ASK-03 bleibt offen (Evidenz-Level-Anzeige).
+- Keine Jira-Änderung durch Claude vorgenommen.

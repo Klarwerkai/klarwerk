@@ -1,7 +1,7 @@
 import { api } from "./client";
 import type {
   Analytics,
-  AnswerResult,
+  AskResponse,
   AssignmentSummary,
   AssistResult,
   AuditEntry,
@@ -85,7 +85,7 @@ export const endpoints = {
     promote: (id: string) => api.post<KnowledgeObject>(`/drafts/${id}/promote`),
   },
   ask: {
-    ask: (question: string) => api.post<AnswerResult>("/ask", { question }),
+    ask: (question: string) => api.post<AskResponse>("/ask", { question }),
     helpful: (koId: string) => api.post<void>("/ask/helpful", { koId }),
   },
   reasoner: {

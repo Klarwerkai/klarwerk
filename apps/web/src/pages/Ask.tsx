@@ -7,6 +7,7 @@ import { endpoints } from "../api/endpoints";
 import type { AnswerResult } from "../api/types";
 import { ConfidenceBar } from "../components/trust";
 import { Button, Card, PageHeader, SectionLabel } from "../components/ui";
+import { selectAnswer } from "../lib/askResponse";
 
 export function Ask(): JSX.Element {
   const { t } = useTranslation();
@@ -15,7 +16,8 @@ export function Ask(): JSX.Element {
 
   const ask = useMutation({
     mutationFn: () => endpoints.ask.ask(q),
-    onSuccess: (r) => setResult(r),
+    // SCRUM-138: Backend liefert { result, gap } — Antwort sauber entpacken.
+    onSuccess: (r) => setResult(selectAnswer(r)),
   });
   const helpful = useMutation({ mutationFn: (koId: string) => endpoints.ask.helpful(koId) });
 
