@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, createContext, useContext } from "react";
 import { type SessionUser, authApi } from "../api/auth";
+import { SESSION_REFRESH_MS, resolveSessionUser } from "../lib/sessionState";
 
 // Echte Sitzung aus dem Backend (/auth/status + /auth/me). Login/Logout-Screens
 // (#61) nutzen diesen Context; die Shell wird später dahinter gesperrt.
@@ -24,6 +25,9 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
     queryKey: ["auth", "status"],
     queryFn: authApi.status,
     retry: false,
+    // FE-FND-08: Session frisch halten — periodisch + bei Fenster-Fokus.
+    refetchInterval: SESSION_REFRESH_MS,
+    refetchOnWindowFocus: true,
   });
 
   const needsSetup = status.data?.needsSetup ?? false;
@@ -34,10 +38,14 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
     retry: false,
     // Vor Ersteinrichtung gibt es keinen Nutzer abzufragen.
     enabled: status.isSuccess && !needsSetup,
+    // FE-FND-08: periodisches Nachladen + Fokus-Refetch gegen stale Session.
+    refetchInterval: SESSION_REFRESH_MS,
+    refetchOnWindowFocus: true,
   });
 
   const value: AuthState = {
-    user: me.data ?? null,
+    // FE-FND-08: bei Abfragefehler (abgelaufene Session/401) kein stale User.
+    user: resolveSessionUser({ data: me.data, isError: me.isError }),
     needsSetup,
     isLoading: status.isLoading || (status.isSuccess && !needsSetup && me.isLoading),
     error: status.isError,

@@ -1133,3 +1133,33 @@ Datum: 2026-06-25
 - SCRUM-150 darf nach grünem Gate auf erledigt gesetzt werden.
 - Folge für SCRUM-98/FE-FND-02: Navigation/Routing nutzen jetzt die echte Session-Rolle → FE-FND-02 kann von „teilweise" auf erfüllt neu bewertet werden.
 - Keine Jira-Änderung durch Claude vorgenommen.
+
+---
+
+## SCRUM-152 — Session-Polling + sicherer Auth-Zustand (FE-FND-08) — Nachbericht
+Datum: 2026-06-25
+### Geänderte Dateien
+- `apps/web/src/lib/sessionState.ts` (neu, DOM-frei, ohne API-Client-Import): `SESSION_REFRESH_MS = 5 min`; generisch `resolveSessionUser<T>({ data, isError })` → bei Fehler `null` (kein stale User).
+- `apps/web/src/app/AuthContext.tsx`: `status`- und `me`-Query mit `refetchInterval: SESSION_REFRESH_MS` + `refetchOnWindowFocus: true`; `user` = `resolveSessionUser({ data: me.data, isError: me.isError })`.
+- `tests/foundation/session-state.test.ts` (neu): Ableitung + Intervall.
+- `docs/qm/claude-after-report.md`: dieser Nachbericht.
+- Unverändert: RoleContext (SCRUM-150-Logik), Navigation, Auth-API, Backend.
+### Erfüllte Akzeptanzkriterien
+- Session konsistent nach Login/Logout/Refresh: Login → `refresh()` (invalidate `["auth"]`) bestand; jetzt zusätzlich periodisches Nachladen (5 min) + Fokus-Refetch. Logout (`signOut`) leert Cache + Hard-Reload (bestand).
+- Session-Ablauf/Backend-Fehler → kein stale User: `me.isError` ⇒ `user = null` (sicherer Zustand → Login-Gate).
+- Profil-/Passwortänderung: `Profile.tsx` löst nach Passwortwechsel `signOut` aus (relevante Session-Daten werden invalidiert/zurückgesetzt) — unverändert, AK erfüllt.
+- Verhalten getestet: neuer gezielter Test (4 Fälle) + bestehende Auth-Service-Tests (`auth/service.test.ts` FR-AUTH-04 Logout, „me ohne Token → 401").
+- `npm run check` grün; zusätzlich apps/web-`tsc` grün.
+- Kein Backend-Auth-Redesign, kein neues Rollenmodell, keine Navigation-/Sidebar-Änderung, SCRUM-150 unangetastet.
+### Gelaufene Checks
+- Gezielter Lauf: `vitest run tests/foundation/session-state.test.ts` → 4/4 grün.
+- `npm run check`: GRÜN (exit 0) — build/lint/arch/test (25 Dateien / 126 Tests).
+- apps/web `tsc --noEmit`: grün (deckt `AuthContext.tsx` im DOM-Kontext ab; `npm run check`/Root-tsc erreicht apps/web nur über Tests).
+- Hinweis aufgetreten und behoben: `resolveSessionUser` zunächst mit `api/auth`-Import → zog `api/client.ts` (latente `exactOptionalPropertyTypes`-Strictness) in den Root-Typecheck. Durch generische, importfreie Variante gelöst — `client.ts` NICHT geändert (außerhalb Scope).
+### Restlücken
+- „Optimistische Updates" sind konservativ umgesetzt: Login/Logout aktualisieren den Zustand sofort über `refresh()`/`signOut` + Refetch; ein feiner-granularer optimistischer Cache-Write für Session wurde bewusst nicht ergänzt (UX/Test-Stabilität). Kein Blocker.
+- Refetch-Intervall fix (5 min); falls gewünscht später konfigurierbar.
+### Jira-Empfehlung
+- SCRUM-152 darf nach grünem Gate auf erledigt gesetzt werden.
+- FE-FND-08 (SCRUM-98) kann von „teilweise" auf erfüllt neu bewertet werden: periodisches Nachladen + Fokus-Refetch + stale-sicherer User-Zustand sind jetzt vorhanden und getestet.
+- Keine Jira-Änderung durch Claude vorgenommen.
