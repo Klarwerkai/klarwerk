@@ -806,3 +806,66 @@ Modus: Read-only Evidence-Audit, kein Feature-Code
 - Offen: FE-MOB-01, FE-MOB-02, FE-MOB-03, FE-MOB-04, FE-MOB-05, FE-MOB-06, FE-MOB-07.
 - Statusvorschlag SCRUM-113: „To Do" (UI-Vorschau vorhanden, Funktion/PWA unbebaut). Keine Checkbox/kein Status durch mich geändert.
 - Bestätigung: kein Produktcode geändert; nur `docs/qm/claude-after-report.md` append-only ergänzt.
+
+---
+
+## SCRUM-114 Evidence-Audit — Management-/Kapital-Sichten (Stufe 2)
+Datum: 2026-06-25
+Modus: Read-only Evidence-Audit, kein Feature-Code
+### Gate
+- git status vor Audit: clean (HEAD 7e7acfc; nur ignorierte `*.timestamp-*.mjs`).
+- npm run check: GRÜN (exit 0) — build (`tsc --noEmit`), lint (`biome check .`), arch (`depcruise services`), test (`vitest run`, 21 Dateien / 115 Tests).
+- Produktcode geändert: nein.
+- Geänderte Dateien: nur `docs/qm/claude-after-report.md` (dieser Bericht).
+### Vorbefund (Codex) — verifiziert
+- `Capital` (`Stufe2.tsx`) = reiner Stufe-2-Notice „…aktiv, sobald die Kennzahlen-Logik steht" (`s2.capital`), Label SCRUM-120 — BESTÄTIGT.
+- `analytics()` aggregiert nur Status/Art/Kategorie — BESTÄTIGT (SCRUM-110/FE-ANA-01).
+- `impact.ts` + `GET /api/analytics/impact` existieren backendseitig + getestet, aber KEIN FE-Endpoint/Hook/UI — BESTÄTIGT (SCRUM-110/FE-ANA-02).
+- KEINE Kapital-/Management-Endpunkte in `endpoints.ts`/`hooks.ts` — BESTÄTIGT (grep leer).
+- `GraphView` ist textuelle Kantenliste (SCRUM-119), kein Knowledge House — BESTÄTIGT.
+- Keine Web-Umsetzung von Wissens-Priorisierung/Knowledge House — BESTÄTIGT (grep nach capital/valuation/statement/maturity/hero/house/priorisier im Source leer außer Nav-Label/Notice).
+### FE-MGMT-01 · Overview / operativer Snapshot
+- Entscheidung: offen.
+- Evidenz: Nur Basis-Analytics (`Analytics.tsx` total/offen/validiert/Kategorien) — separat als FE-ANA-01 (teilweise) bewertet; kein dedizierter operativer Management-Snapshot. Per Regel zählen Basis-Analytics nicht als Management-Sicht.
+- Grenze/Lücke: kein Management-Snapshot.
+### FE-MGMT-02 · Pilot-Bericht (30/60/90, echte Kennzahlen, Druck/PDF)
+- Entscheidung: offen.
+- Evidenz: Backend `impact.ts` (`validatedByWeek`/`answerRate`) + `GET /api/analytics/impact` getestet (`build-app.test.ts` FR-ANA-02), aber KEIN 30/60/90-Bericht, kein FE-Endpoint/Hook/UI, kein Druck/PDF.
+- Grenze/Lücke: kein Pilot-Bericht, keine PDF-Ausgabe, Impact nicht im FE angebunden.
+### FE-MGMT-03 · Knowledge Capital Score (datenbasiert)
+- Entscheidung: offen.
+- Evidenz: Keine Score-Logik im Code (kein `capitalScore`/Regeln/Test). Stufe-2-Platzhalter; Backend-Gegenstück SCRUM-120.
+- Grenze/Lücke: nicht vorhanden.
+### FE-MGMT-04 · Knowledge Valuation (€-Modell)
+- Entscheidung: offen.
+- Evidenz: Kein €-Valuation-Modell, keine Annahmen/Transparenz, kein Code/Test.
+- Grenze/Lücke: nicht vorhanden.
+### FE-MGMT-05 · Knowledge Statement (Aktiva/Risiken/Netto)
+- Entscheidung: offen.
+- Evidenz: Kein Knowledge Statement (Aktiva/Risiken/Netto) im Code/UI/Test.
+- Grenze/Lücke: nicht vorhanden.
+### FE-MGMT-06 · Maturity Journey
+- Entscheidung: offen.
+- Evidenz: Keine Maturity-Journey-Sicht (i18n erwähnt „maturity grade" als Satz, aber keine Journey-Ansicht/Logik).
+- Grenze/Lücke: nicht vorhanden.
+### FE-MGMT-07 · Hero Assist (Handlungsempfehlungen)
+- Entscheidung: offen.
+- Evidenz: Keine Hero-Assist-/Empfehlungslogik (kein datenbasierter Empfehlungs-Generator) im Code/UI/Test.
+- Grenze/Lücke: nicht vorhanden.
+### FE-MGMT-08 · Knowledge House (Unternehmensgedächtnis visuell)
+- Entscheidung: offen.
+- Evidenz: Nur `GraphView` (textuelle Kantenliste, Stufe 2, SCRUM-119) — erfüllt die House-Anforderung NICHT; keine visuelle House-Darstellung.
+- Grenze/Lücke: kein Knowledge House.
+### FE-MGMT-09 · Wissens-Priorisierung (9-Faktoren-Score)
+- Entscheidung: offen.
+- Evidenz: Pflichtenheft/Extensions nennen die 9-Faktoren-Priorisierung, aber KEINE Web-/Service-Umsetzung (kein Priorisierungs-Score im Code/Test).
+- Grenze/Lücke: nicht vorhanden.
+### Resttickets / empfohlene Jira-Lücken (nur Nennung)
+- SCRUM-114 bleibt der Sammel-/Umsetzungsträger (Stufe 2, datenbasiert), abhängig vom Kapital-/Kennzahlen-Backend (SCRUM-120) und Impact-FE-Anbindung (SCRUM-110/FE-ANA-02).
+- Knowledge House visuell = eigener Ausbau (über GraphView/SCRUM-119 hinaus).
+- 9-Faktoren-Priorisierung: Backend-Regelwerk + UI fehlen vollständig.
+### Zusammenfassung für Codex/Jira
+- Abhakbar: keine.
+- Offen: FE-MGMT-01 bis FE-MGMT-09 (alle).
+- Statusvorschlag SCRUM-114: „To Do/Stufe 2" — nur Platzhalter; keine datenbasierte Management-/Kapital-Sicht umgesetzt. Keine Checkbox/kein Status durch mich geändert.
+- Bestätigung: kein Produktcode geändert; nur `docs/qm/claude-after-report.md` append-only ergänzt.
