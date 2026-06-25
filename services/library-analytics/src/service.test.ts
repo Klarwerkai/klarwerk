@@ -47,6 +47,14 @@ describe("LibraryService", () => {
     expect(html).toContain("<h2>Ventil schließen</h2>");
   });
 
+  it("FR-LIB-02: Export als Text-Markdown", async () => {
+    const md = await ctx.library.exportMarkdown();
+    expect(md).toContain("# Ventil schließen");
+    // Trennlinie zwischen Objekten + Herkunfts-Fußzeile.
+    expect(md).toContain("\n---\n");
+    expect(md).toMatch(/_.*Trust \d+.*Autor:/);
+  });
+
   it("FR-LIB-02: Import ohne Duplikate", async () => {
     const items = [
       {

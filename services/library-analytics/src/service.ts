@@ -50,6 +50,31 @@ export class LibraryService {
     return items.map((ko) => `== ${ko.title} ==\n${ko.statement}`).join("\n\n");
   }
 
+  // FR-LIB-02: echtes Text-Markdown (Überschrift, Listen, Herkunfts-Fußzeile).
+  async exportMarkdown(ids?: readonly string[]): Promise<string> {
+    const items = await this.exportJson(ids);
+    return items
+      .map((ko) => {
+        const lines: string[] = [`# ${ko.title}`, "", ko.statement];
+        if (ko.conditions.length > 0) {
+          lines.push("", "**Wann es gilt**", ...ko.conditions.map((c) => `- ${c}`));
+        }
+        if (ko.measures.length > 0) {
+          lines.push("", "**Vorgehen**", ...ko.measures.map((m) => `- ${m}`));
+        }
+        const author =
+          ko.author === ko.originalAuthor
+            ? ko.author
+            : `${ko.author} (urspr. ${ko.originalAuthor})`;
+        lines.push(
+          "",
+          `_${ko.type} · ${ko.category} · Trust ${ko.trust} · ${ko.status} · Autor: ${author}_`,
+        );
+        return lines.join("\n");
+      })
+      .join("\n\n---\n\n");
+  }
+
   // FR-LIB-02: druckfertiges HTML — der Browser erzeugt daraus per „Als PDF sichern" das PDF.
   async exportHtml(ids?: readonly string[]): Promise<string> {
     const items = await this.exportJson(ids);

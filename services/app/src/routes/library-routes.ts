@@ -23,6 +23,13 @@ export function libraryRoutes(library: LibraryService, guards: Guards): FastifyP
       if (!user) {
         return;
       }
+      if (request.query.format === "markdown") {
+        reply
+          .header("content-type", "text/markdown; charset=utf-8")
+          .code(200)
+          .send(await library.exportMarkdown());
+        return;
+      }
       if (request.query.format === "mediawiki") {
         reply
           .header("content-type", "text/plain; charset=utf-8")

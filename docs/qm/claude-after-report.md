@@ -1234,3 +1234,39 @@ Datum: 2026-06-25
 - SCRUM-134 darf nach grünem Gate auf erledigt gesetzt werden.
 - FE-LIB-01 (SCRUM-107) kann jetzt abgehakt werden: Volltextsuche + strukturierte Filter (Art/Status/Domäne/Tags) sind sichtbar, kombinierbar, über den getesteten Server-Search-/Filterpfad wirksam.
 - Keine Jira-Änderung durch Claude vorgenommen.
+
+---
+
+## SCRUM-135 — Bibliothek: Text-MD-Export + Format-Auswahl (FE-LIB-03) — Nachbericht
+Datum: 2026-06-25
+### Geänderte Dateien
+- `services/library-analytics/src/service.ts`: neue `exportMarkdown(ids?)` (echtes Text-Markdown: `# Titel`, Listen für Bedingungen/Maßnahmen, Herkunfts-Fußzeile, `---`-Trenner).
+- `services/app/src/routes/library-routes.ts`: Route-Zweig `format=markdown` → `content-type: text/markdown; charset=utf-8`.
+- `services/library-analytics/src/service.test.ts`: Backend-Test „Export als Text-Markdown".
+- `apps/web/src/lib/libraryExport.ts` (neu, DOM-frei): `EXPORT_FORMATS`, `exportUrl(format)`, `exportFilename(format)`, `exportFormatMeta`.
+- `apps/web/src/pages/Library.tsx`: Format-Auswahl (Select JSON/Text-MD/MediaWiki/HTML) + Download-Anchor mit `download`-Dateinamen.
+- `apps/web/src/i18n.ts`: `lib.exportFormat` + `lib.format.{json,markdown,mediawiki,html}` (DE/EN).
+- `tests/library/library-export.test.ts` (neu): Format-/URL-/Dateinamen-Logik.
+- `docs/qm/claude-after-report.md`: dieser Nachbericht.
+### Implementierte Exportformate
+- **JSON** (Default), **Text (Markdown)** — neu, **MediaWiki**, **HTML (Druck/PDF)**. Alle über `GET /api/library/export?format=…` mit korrekten Content-Types; FE setzt `download`-Dateinamen (`klarwerk-export.{json,md,wiki,html}`).
+### PDF-Entscheidung
+- **Option B gewählt:** HTML ist bewusst die Druck-/„print to PDF"-Ansicht (`exportHtml`, `@media print`), KEIN dedizierter PDF-Export. Kein schweres PDF/NPM-Paket eingeführt, keine Fake-`.pdf`-Datei. In der UI klar als „HTML (Druck/PDF)" / „HTML (print/PDF)" beschriftet.
+### Erfüllte Akzeptanzkriterien
+- UI bietet Format-Auswahl (Select) — ja.
+- JSON, MediaWiki, HTML/Print und Text-MD erreichbar — ja.
+- Text-MD implementiert UND getestet (Backend-Test `exportMarkdown`; FE-URL-/Format-Test) — ja.
+- PDF fachlich sauber entschieden + dokumentiert (Option B) — ja.
+- Tests belegen Exportformate + Format-/URL-/MIME-Logik — ja.
+- `npm run check` grün — ja.
+- Kein Import/Re-Import (SCRUM-108), keine Re-Validierung (SCRUM-136), keine große Export-Architektur, kein schweres PDF-Paket.
+### Gelaufene Checks
+- Gezielter Lauf: `vitest run tests/library/library-export.test.ts services/library-analytics/src/service.test.ts` → 11/11 grün.
+- apps/web `tsc --noEmit`: grün.
+- `npm run check`: GRÜN (exit 0) — build/lint/arch/test (28 Dateien / 138 Tests).
+### Restlücken
+- Echter, eigenständiger PDF-Export (nicht Druck) bleibt bewusst offen (kein passendes leichtgewichtiges Paket im Scope) — falls fachlich gefordert, eigenes Ticket.
+- Export immer über den gesamten Bestand (keine ID-Auswahl im UI) — `exportJson(ids?)` unterstützt IDs serverseitig; UI-Selektion wäre separater Ausbau.
+### Jira-Empfehlung
+- SCRUM-135 darf nach grünem Gate auf erledigt gesetzt werden.
+- FE-LIB-03 (SCRUM-107): JSON/Text-MD/MediaWiki/HTML+Format-Auswahl sind erfüllt. Für „PDF" empfehle ich, die Checkbox als HTML/Druck-PDF zu interpretieren (Option B) ODER FE-LIB-03 als „erfüllt mit Hinweis: PDF = Druckansicht" abzuhaken; ein dedizierter PDF-Export wäre ein separates Ticket. Keine Jira-Änderung durch Claude.

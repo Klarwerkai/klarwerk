@@ -6,6 +6,7 @@ import { useKos, useLibrarySearch } from "../api/hooks";
 import { ConfidenceBar, KNOWLEDGE_TYPES, KnowledgeTypeTag, StatusPill } from "../components/trust";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
 import { deriveStatus } from "../lib/displayStatus";
+import { EXPORT_FORMATS, type ExportFormat, exportFilename, exportUrl } from "../lib/libraryExport";
 import { EMPTY_LIBRARY_FILTER, buildLibraryQuery } from "../lib/libraryQuery";
 import { categoryOptions, tagOptions } from "../lib/validationFilters";
 
@@ -16,6 +17,7 @@ export function Library(): JSX.Element {
   // Startfilter aus der URL (?q=…), gesetzt von der globalen Topbar-Suche.
   const [params] = useSearchParams();
   const [filter, setFilter] = useState({ ...EMPTY_LIBRARY_FILTER, q: params.get("q") ?? "" });
+  const [exportFormat, setExportFormat] = useState<ExportFormat>("json");
 
   // Optionen (Domäne/Tags) aus dem ungefilterten Bestand, damit sie stabil bleiben.
   const all = useKos();
@@ -34,12 +36,26 @@ export function Library(): JSX.Element {
         kicker={t("lib.kicker")}
         title={t("nav.library")}
         actions={
-          <a href="/api/library/export" className="inline-flex">
-            <Button>
-              <Download size={15} />
-              {t("lib.export")}
-            </Button>
-          </a>
+          <div className="flex items-center gap-2">
+            <select
+              aria-label={t("lib.exportFormat")}
+              value={exportFormat}
+              onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
+              className="h-9 rounded-input border border-hairline bg-surface px-2 text-[13px] text-text outline-none focus:border-ink/30"
+            >
+              {EXPORT_FORMATS.map((fmt) => (
+                <option key={fmt} value={fmt}>
+                  {t(`lib.format.${fmt}`)}
+                </option>
+              ))}
+            </select>
+            <a href={exportUrl(exportFormat)} download={exportFilename(exportFormat)}>
+              <Button>
+                <Download size={15} />
+                {t("lib.export")}
+              </Button>
+            </a>
+          </div>
         }
       />
       <div className="mb-4 flex flex-wrap gap-2">
