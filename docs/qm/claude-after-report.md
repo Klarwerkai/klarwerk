@@ -984,3 +984,65 @@ Geprüfte Dateien: App.tsx, app/AuthContext.tsx, auth/AuthScreens.tsx, auth/Rese
 - Resttickets/Blocker: FE-OIDC-Login-Anbindung + claim-basiertes Rollen-Mapping (FE-AUTH-07, Stufe 2).
 - Statusvorschlag SCRUM-99: „In Progress/In Review" — 6 von 7 setzbar.
 - Bestätigung: kein Produktcode geändert; nur `docs/qm/claude-after-report.md` append-only ergänzt.
+
+---
+
+## SCRUM-100 Evidence-Audit — Capture / Expert Studio
+Datum: 2026-06-25
+Modus: Read-only Evidence-Audit, kein Feature-Code
+Geprüfte Dateien: pages/Capture.tsx, lib/files.ts, lib/docx.ts, components/editors.tsx, components/trust/ReasonerDraft.tsx, api/endpoints.ts, api/types.ts, i18n.ts, tests/capture/docx-extract.test.ts; services/capture/src/{service.ts,interview.ts,service.test.ts}, services/app/src/routes/{capture-routes.ts,reasoner-routes.ts}, services/app/src/build-app.test.ts, services/knowledge-object/src/{service.ts,service.test.ts}, specs/stories/capture.md.
+### Gate
+- git status vor Audit: clean (HEAD 83b0a7c; nur ignorierte `*.timestamp-*.mjs`).
+- npm run check: GRÜN (exit 0) — build/lint/arch/test (21 Dateien / 115 Tests).
+- Produktcode geändert: nein. Geänderte Dateien: nur `docs/qm/claude-after-report.md`.
+### FE-CAP-01 · Erfassungsmodus Freitext
+- Status: abhakbar.
+- Source-Evidenz: `Capture.tsx` Mode "freitext" → Rohtext-Textarea → `endpoints.reasoner.structure(raw)` → Draft → `submit` → `endpoints.ko.create`.
+- Test-/Gate-Evidenz: `reasoner/service.test.ts` FR-RSN-01 (structure); `knowledge-object/service.test.ts` FR-KO-01 (KO-Erstellung). Gate grün.
+- Restlücke: keine.
+### FE-CAP-02 · Erfassungsmodus Strukturiertes Formular
+- Status: abhakbar.
+- Source-Evidenz: Mode "formular" → `setDraft({...EMPTY_DRAFT})` → rechtes Editor-Panel mit editierbaren Feldern (Titel/Aussage via TextInput, Bedingungen/Maßnahmen via `ListEditor`, Tags via `TagEditor`) → `submit` erzeugt KO. Strukturierte Felder erstellbar/prüfbar/korrigierbar.
+- Test-/Gate-Evidenz: KO-Erstellung getestet (FR-KO-01). Gate grün.
+- Restlücke: keine wesentliche.
+### FE-CAP-03 · Diktat/Spracheingabe (Web Speech)
+- Status: abhakbar (mit Hinweis).
+- Source-Evidenz: `speechCtor()` (`SpeechRecognition`/`webkitSpeechRecognition`), `toggleDictation` (`rec.onresult` hängt Transkript an Rohtext), `speechSupported`-Flag + Fallback-Hinweis `capture.diktatUnsupported`.
+- Test-/Gate-Evidenz: Gate grün; kein Unit-Test (Browser-API).
+- Restlücke: Browser-Support nur Chrome/Edge (Web Speech) — ehrlich per Fallback-Hinweis abgedeckt.
+### FE-CAP-04 · Geführtes Wissens-Interview (Reasoner-Rückfragen)
+- Status: teilweise.
+- Source-Evidenz: Mode "interview" mit festen `IV_STEPS`; Backend `services/capture/src/interview.ts` `InterviewSession` mit **fester** `QUESTIONS`-Liste (Kommentar: „Deterministische Variante (ohne Modell); der Reasoner kann die Fragenfolge später ersetzen"). KEINE echten Reasoner-Rückfragen.
+- Test-/Gate-Evidenz: `capture/service.test.ts` FR-CAP-02 (InterviewSession: eine Frage pro Schritt) — deterministisch. Gate grün.
+- Restlücke: reasoner-getriebene Interview-Rückfragen (eigener Ausbau; vgl. SCRUM-101/FE-RSN-02).
+### FE-CAP-05 · Anhänge/Fotos (+ Thumbnail) — Objektspeicher nötig
+- Status: teilweise.
+- Source-Evidenz: Bild-Upload → `fileToThumbDataUrl` (lokales JPEG-Thumbnail als Daten-URL) → beim Einreichen via `ko.act({action:"attach"})` ans KO; Backend `attach`/`detach` mit MIME-/Größen-/Anzahl-Guards. KEIN echter Objektspeicher.
+- Test-/Gate-Evidenz: `knowledge-object/service.test.ts` FR-CAP-05 (Anhänge anfügen/entfernen). Gate grün.
+- Restlücke: echter Objektspeicher (S3) — SCRUM-121.
+### FE-CAP-06 · OCR + Dokument-Parsing (Text/MD/PDF/DOCX)
+- Status: teilweise.
+- Source-Evidenz: `onDocs` liest txt/md/csv/json/log (`readTextFile`) und **DOCX** (`readDocxFile`/`lib/docx.ts` mammoth) als Volltext. PDF + Bild-OCR NICHT umgesetzt.
+- Test-/Gate-Evidenz: `tests/capture/docx-extract.test.ts` (DOCX-Extraktion + Typ-Erkennung). Gate grün.
+- Restlücke: PDF-Textextraktion (SCRUM-122) + Bild-OCR (SCRUM-123) offen → NICHT komplett abhaken.
+### FE-CAP-07 · Entwürfe speichern/fortsetzen (Desktop ↔ Mobile)
+- Status: teilweise.
+- Source-Evidenz: `saveDraft` → `endpoints.drafts.create`; Backend Draft-Pool `capture-routes.ts` (`POST/GET/PUT/DELETE /api/drafts`, `/promote`), `continueDraft`. ABER: keine Desktop-UI zum Auflisten/Fortsetzen gespeicherter Entwürfe in Capture; Mobile = statische Vorschau (SCRUM-113).
+- Test-/Gate-Evidenz: `capture/service.test.ts` FR-CAP-06 (Entwurf im gemeinsamen Pool), FR-CAP-07 (Fortsetzen erhält Originalautor; KO-Eingabe trägt Entwurfs-Autor). Gate grün.
+- Restlücke: Desktop-Fortsetzen-UI (Entwurfsliste/Resume) + Mobile-Abdeckung (SCRUM-113).
+### FE-CAP-08 · Metadaten (Domäne, Asset/Anlage, Re-Validierung)
+- Status: abhakbar.
+- Source-Evidenz: `Capture.tsx` Felder Kategorie/Domäne (`category`), Anlage/Asset (`asset`), Tags (`TagEditor`), Nötige Validierungen (`neededValidations`); werden bei `ko.create`/`drafts.create` mitgesendet.
+- Test-/Gate-Evidenz: `capture/service.test.ts` FR-CAP-08 (ungültige Validierungsanzahl abgewiesen); `knowledge-object` validiert neededValidations (1–5). Gate grün.
+- Restlücke: keine wesentliche (Begriff „Re-Validierung" = nötige Validierungsanzahl).
+### FE-CAP-09 · Strukturiertes Ergebnis im Editor prüfen/korrigieren
+- Status: abhakbar.
+- Source-Evidenz: rechtes Panel `ReasonerDraft` mit editierbarem Titel/Aussage (TextInput/Textarea), Bedingungen/Maßnahmen (`ListEditor`), „Aussage präzisieren" (`assistStatement`), `submit`. Reasoner-Ergebnis sichtbar + editierbar + korrigierbar.
+- Test-/Gate-Evidenz: Gate grün; KO-Erstellung aus korrigiertem Draft (FR-KO-01).
+- Restlücke: keine.
+### Empfehlung für Codex/Jira
+- Abhakbar: FE-CAP-01, FE-CAP-02, FE-CAP-03, FE-CAP-08, FE-CAP-09.
+- Nicht setzen (teilweise): FE-CAP-04 (deterministisches Interview), FE-CAP-05 (kein Objektspeicher), FE-CAP-06 (PDF/OCR offen), FE-CAP-07 (Desktop-Resume-UI + Mobile).
+- Resttickets/Blocker: SCRUM-121 (Objektspeicher/FE-CAP-05), SCRUM-122 (PDF) + SCRUM-123 (OCR) für FE-CAP-06, SCRUM-113 (Mobile) + Desktop-Resume-UI für FE-CAP-07, reasoner-getriebenes Interview für FE-CAP-04.
+- Statusvorschlag SCRUM-100: „In Progress" — 5 von 9 setzbar.
+- Bestätigung: kein Produktcode geändert; nur `docs/qm/claude-after-report.md` append-only ergänzt.
