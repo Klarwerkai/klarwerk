@@ -1560,3 +1560,31 @@ Datum: 2026-06-25
 **Restlücken / separates Restticket-Vorschlag:** Beziehungen & Lineage sind aktuell **ungerichtet** (Tag/Kategorie/Quellen-Ähnlichkeit), keine gerichtete Ableitung „KO B entstand aus KO A". Falls fachlich gewünscht, braucht das ein NEUES gerichtetes Beziehungsfeld am KO (z. B. `derivedFrom: koId[]`) inkl. Backend-Action/Audit — bewusst NICHT improvisiert. **Vorschlag: separates Restticket „Gerichtete KO-Herkunftskanten (derivedFrom)"** als echtes Modell-/API-Thema (analog SCRUM-129).
 
 **Jira-Empfehlung:** Nach grünem Gate + Git-Sync dürfen SCRUM-130 und SCRUM-142 auf erledigt (im definierten Scope). Gerichtete Lineage als neues Restticket anlegen. Ich setze keine Jira-Checkbox/Status selbst; Codex/Peter haken nach Gate ab.
+
+---
+
+## 2026-06-25 · SCRUM-127 + SCRUM-128 — Conflict Board: echte KO-Gegenüberstellung & definierte Auflösungswirkung
+
+**Ticket(s):** SCRUM-127 (KO-Positionen/Quellen gegenüberstellen) + SCRUM-128 (Auflösungswirkung definieren+testen). Umsetzung exakt nach freigegebener Vorab-Meldung. KEINE Backend-Änderung, KEINE KO-Status-/Trust-Mutation, Conflict-Service-Vertrag erhalten.
+
+**Befund (read-only):** Conflicts.tsx zeigte koA/koB nur als rohe IDs. ConflictService.resolve setzt nur Konflikt-Felder (status/decision/decidedBy) + Audit conflict.resolved und hat KEINE koService-Abhängigkeit → kann KO-Status/Trust strukturell nicht mutieren. useKos() liefert den Bestand für die Gegenüberstellung; KOs tragen Quellen seit SCRUM-129.
+
+**Änderung (geänderte/neue Dateien):**
+- `apps/web/src/lib/conflictView.ts` — neu, DOM-frei: `conflictKoPair(conflict, kos)` (koA/koB → echte KOs, null wenn fehlt — kein Fake); `resolutionEffect(conflict)` (codifiziert SCRUM-128: documented=true, koStatusChanged=false, koTrustChanged=false, revalidationRecommended = type==="truth").
+- `apps/web/src/pages/Conflicts.tsx` — `KoPanel` zeigt echte KO-Daten (Titel, Aussage, Bedingungen, Maßnahmen, Quellen mit „extern · nicht peer-validiert"-Badge) + Link zu /wissen/:id; die zwei ID-Boxen ersetzt durch zwei Vergleichspanels; im Resolve-Formular Hinweis „Entscheidung wird dokumentiert/protokolliert, Trust/Status werden NICHT automatisch geändert" + Revalidierungs-Empfehlung bei Wahrheitskonflikten. Eskalations-/Zweitmeinungs-/Resolve-Flow unverändert.
+- `apps/web/src/i18n.ts` — `con.versus/conditions/measures/sources/openKo/koMissing/resolveEffect/resolveRevalidate` (DE+EN).
+- `tests/conflicts/conflict-view.test.ts` — 4 Tests (Pairing beide gefunden / einer fehlt→null; resolutionEffect ohne Status-/Trust-Mutation; Revalidierungs-Empfehlung nur bei truth).
+
+**Backend:** UNVERÄNDERT. Conflict-Service-Vertrag (FR-CON-01..04) bleibt; bestehende Service-Tests belegen weiterhin, dass resolve nur Konflikt-Felder + Audit setzt.
+
+**Erfüllt SCRUM-127?** JA — echte KO-Gegenüberstellung (Titel/Aussage/Bedingungen/Maßnahmen/Quellen/Link) statt roher IDs; fehlt ein KO, klarer Fallback statt Fake.
+
+**Erfüllt SCRUM-128?** JA — Auflösungswirkung fachlich definiert und getestet: dokumentierend (Entscheidung + Audit) + hinweisend (Revalidierung bei truth), bewusst KEINE automatische KO-Status-/Trust-Mutation (Freitext-Entscheidung ⇒ kein maschinell eindeutiger Gewinner ⇒ kein stilles Überschreiben). Codifiziert in resolutionEffect + Test.
+
+**Genutzte Endpoints:** GET /api/kos (bestehend, clientseitige Auflösung). Resolve weiterhin über PUT /api/kos/:id action resolve-conflict (unverändert).
+
+**Tests/Gates:** `npm run check` GRÜN — 38 Testdateien / 182 Tests (4 neu). apps/web `tsc --noEmit` EXIT=0. depcruise sauber. Biome grün.
+
+**Restlücke (nicht improvisiert):** Ein echtes, maschinell-eindeutiges Trust-/Status-Resolutionskonzept (obsiegendes KO bestätigen / unterlegenes herabstufen oder zur Revalidierung markieren) wäre ein NEUES Backend-Konzept (KO-Mutation + Audit + Regeln). **Vorschlag: separates Restticket „Konfliktauflösung mit KO-Status-/Trust-/Revalidierungswirkung (Backend)"** — bewusst hier nicht gebaut.
+
+**Jira-Empfehlung:** Nach grünem Gate + Git-Sync dürfen SCRUM-127 und SCRUM-128 auf erledigt. Echte Trust-/Status-Auflösungswirkung als neues Restticket. Ich setze keine Jira-Checkbox/Status selbst; Codex/Peter haken nach Gate ab.

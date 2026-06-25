@@ -1,17 +1,96 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import { useConflicts } from "../api/hooks";
-import type { ConflictStatus } from "../api/types";
+import { useConflicts, useKos } from "../api/hooks";
+import type { ConflictStatus, KnowledgeObject } from "../api/types";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
+import { conflictKoPair, resolutionEffect } from "../lib/conflictView";
 
 const PATH: ConflictStatus[] = ["eskaliert", "zweitmeinung", "geloest"];
+
+// SCRUM-127: echte KO-Daten gegenüberstellen (Titel, Aussage, Bedingungen/Maßnahmen, Quellen).
+function KoPanel({
+  ko,
+  fallbackId,
+}: {
+  ko: KnowledgeObject | null;
+  fallbackId: string;
+}): JSX.Element {
+  const { t } = useTranslation();
+  if (!ko) {
+    return (
+      <div className="rounded-card border border-dashed border-hairline bg-page p-3 text-[12px] text-muted">
+        {t("con.koMissing", { id: fallbackId })}
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-2 rounded-card bg-page p-3">
+      <Link
+        to={`/wissen/${ko.id}`}
+        className="block text-[13.5px] font-semibold text-text hover:text-ink"
+      >
+        {ko.title}
+      </Link>
+      <p className="text-[12.5px] text-muted">{ko.statement}</p>
+      {ko.conditions.length > 0 ? (
+        <div>
+          <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+            {t("con.conditions")}
+          </div>
+          <ul className="list-disc pl-4 text-[12px] text-text">
+            {ko.conditions.map((c) => (
+              <li key={c}>{c}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {ko.measures.length > 0 ? (
+        <div>
+          <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+            {t("con.measures")}
+          </div>
+          <ul className="list-disc pl-4 text-[12px] text-text">
+            {ko.measures.map((m) => (
+              <li key={m}>{m}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {(ko.sources ?? []).length > 0 ? (
+        <div>
+          <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+            {t("con.sources")}
+          </div>
+          <ul className="space-y-1">
+            {(ko.sources ?? []).map((s) => (
+              <li key={s.id} className="flex flex-wrap items-center gap-1.5 text-[12px] text-text">
+                <span>{s.label}</span>
+                <span className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-trust-warn-text">
+                  {t("ko.sourceUnvalidated")}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      <Link
+        to={`/wissen/${ko.id}`}
+        className="inline-block text-[11.5px] font-semibold text-ai hover:underline"
+      >
+        {t("con.openKo")} →
+      </Link>
+    </div>
+  );
+}
 
 export function Conflicts(): JSX.Element {
   const { t } = useTranslation();
   const query = useConflicts();
+  const kos = useKos();
   const qc = useQueryClient();
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [decision, setDecision] = useState("");
@@ -75,15 +154,18 @@ export function Conflicts(): JSX.Element {
                   </span>
                 </div>
                 <p className="text-[14px] font-medium text-text">{c.description}</p>
-                <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-                  <div className="rounded-card bg-page p-2.5 font-mono text-[12px] text-text">
-                    {c.koA}
-                  </div>
-                  <span className="font-mono text-[11px] text-muted-2">vs</span>
-                  <div className="rounded-card bg-page p-2.5 font-mono text-[12px] text-text">
-                    {c.koB}
-                  </div>
-                </div>
+                {(() => {
+                  const pair = conflictKoPair(c, kos.data ?? []);
+                  return (
+                    <div className="mt-3 grid grid-cols-1 items-start gap-3 sm:grid-cols-[1fr_auto_1fr]">
+                      <KoPanel ko={pair.a} fallbackId={c.koA} />
+                      <span className="self-center text-center font-mono text-[11px] text-muted-2">
+                        {t("con.versus")}
+                      </span>
+                      <KoPanel ko={pair.b} fallbackId={c.koB} />
+                    </div>
+                  );
+                })()}
 
                 {c.type === "truth" ? (
                   <div className="mt-4">
@@ -176,6 +258,13 @@ export function Conflicts(): JSX.Element {
 
                 {resolvingId === c.id ? (
                   <div className="mt-3 space-y-2">
+                    {/* SCRUM-128: Auflösung wirkt dokumentierend, nicht mutierend */}
+                    <div className="rounded-input bg-trust-warn-bg p-2.5 text-[12px] text-trust-warn-text">
+                      {t("con.resolveEffect")}
+                      {resolutionEffect(c).revalidationRecommended ? (
+                        <span> {t("con.resolveRevalidate")}</span>
+                      ) : null}
+                    </div>
                     <textarea
                       value={decision}
                       onChange={(e) => setDecision(e.target.value)}
