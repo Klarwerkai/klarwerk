@@ -60,29 +60,39 @@ function NavRow({ item, badge }: { item: NavItem; badge?: number }): JSX.Element
   );
 }
 
-function RoleSwitcher(): JSX.Element {
+function RoleSwitcher(): JSX.Element | null {
   const { t } = useTranslation();
-  const { role, setRole, stufe2, setStufe2 } = useRole();
+  const { role, setRole, stufe2, setStufe2, isSessionRole } = useRole();
+  // Eingeloggt: keine Rollen-Vorschau-Umschaltung; die echte Session-Rolle gilt.
+  const showPreviewSwitch = !isSessionRole;
+  const showStufe2 = role === "admin";
+  if (!showPreviewSwitch && !showStufe2) {
+    return null;
+  }
   return (
     <div className="border-t border-hairline px-3 pt-3">
-      <div className="px-1 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
-        {t("role.viewAs")}
-      </div>
-      <div className="mt-2 grid grid-cols-4 gap-1">
-        {ROLES.map((r: Role) => (
-          <button
-            key={r}
-            type="button"
-            onClick={() => setRole(r)}
-            className={`rounded-pill px-1 py-1 text-[11px] font-semibold transition-colors ${
-              role === r ? "bg-brand text-white" : "bg-hairline-soft text-muted hover:text-text"
-            }`}
-          >
-            {t(`role.short.${r}`)}
-          </button>
-        ))}
-      </div>
-      {role === "admin" ? (
+      {showPreviewSwitch ? (
+        <>
+          <div className="px-1 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+            {t("role.viewAs")}
+          </div>
+          <div className="mt-2 grid grid-cols-4 gap-1">
+            {ROLES.map((r: Role) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setRole(r)}
+                className={`rounded-pill px-1 py-1 text-[11px] font-semibold transition-colors ${
+                  role === r ? "bg-brand text-white" : "bg-hairline-soft text-muted hover:text-text"
+                }`}
+              >
+                {t(`role.short.${r}`)}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
+      {showStufe2 ? (
         <label className="mt-2 flex cursor-pointer items-center gap-2 px-1 py-1 text-[11px] text-muted">
           <input
             type="checkbox"

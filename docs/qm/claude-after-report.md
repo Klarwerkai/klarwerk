@@ -1103,3 +1103,33 @@ Datum: 2026-06-25
 - SCRUM-137 darf nach grünem Gate auf erledigt gesetzt werden.
 - Folge für SCRUM-105/FE-ASK-03: Evidenz-Level ist jetzt in der Ask-Antwort sichtbar — FE-ASK-03 kann (zusammen mit dem SCRUM-138-Shape-Fix) neu bewertet/abgehakt werden.
 - Keine Jira-Änderung durch Claude vorgenommen.
+
+---
+
+## SCRUM-150 — Echte Auth-Rolle an Navigation/Routing — Nachbericht
+Datum: 2026-06-25
+### Geänderte Dateien
+- `apps/web/src/lib/effectiveRole.ts` (neu, DOM-frei): `effectiveRole(sessionRole, previewRole)` (Session gewinnt, sonst Preview) + `effectiveStufe2(role, toggle)` (nur Admin).
+- `apps/web/src/app/RoleContext.tsx`: `RoleProvider` liest jetzt `useSession()`; effektive Rolle = `user.role ?? previewRole`; `setRole` ändert nur den lokalen Preview-Wert; Stufe-2 über `effectiveStufe2`; neuer Flag `isSessionRole`.
+- `apps/web/src/shell/Sidebar.tsx`: Rollen-Vorschau-Schalter nur noch im Preview (`!isSessionRole`); Stufe-2-Toggle bleibt für (effektive) Admin-Rolle. Keine UI-Neugestaltung.
+- `tests/foundation/effective-role.test.ts` (neu): Rollenableitung.
+- `docs/qm/claude-after-report.md`: dieser Nachbericht.
+- Unverändert (konsumieren dieselbe `useRole()`-API → automatisch effektive Rolle): `CommandPalette.tsx`, `routes.tsx`, `Start.tsx`, `KnowledgeDetail.tsx`, `navigation.ts`.
+### Erfüllte Akzeptanzkriterien
+- Eingeloggte User: Navigation/Routen folgen der echten Session-Rolle (`user.role`), da diese in `effectiveRole` gewinnt.
+- Lokaler Dev-/Preview-Schalter überschreibt eingeloggte User nicht mehr (`setRole` wirkt nur auf `previewRole`; Session dominiert) — und ist für eingeloggte User in der Sidebar ausgeblendet.
+- CommandPalette + Route-Guards (`routes.tsx`) + Sidebar nutzen konsistent dieselbe effektive Rolle aus `useRole()`.
+- Stufe-2 bleibt Admin-gebunden (`effectiveStufe2` → nur bei `role==="admin"`).
+- Test deckt die Rollenableitung ab (Session gewinnt; Fallback ohne Session; Stufe-2 nur Admin inkl. Override-Fall).
+- Kein Backend/Permission-System geändert (serverseitiges RBAC unangetastet).
+### Tests / Gate
+- Gezielter Lauf: `vitest run tests/foundation/effective-role.test.ts` → 3/3 grün.
+- `npm run check`: GRÜN (exit 0) — build/lint/arch/test (24 Dateien / 122 Tests).
+- `vite build`/`git push` nicht Teil von `npm run check` bzw. nicht aus Sandbox (Stakeholder-Schritt).
+### Restlücken
+- Dev-/Preview-Schalter bleibt absichtlich erhalten (nur ohne Session aktiv) — gewünschter Komfort, klar getrennt.
+- Reiner Logik-/Helper-Test; eine FE-Komponentenrendertest-Abdeckung von Sidebar/RoleProvider gibt es projektweit nicht (FE ohne Komponententests) — kein Blocker.
+### Jira-Empfehlung
+- SCRUM-150 darf nach grünem Gate auf erledigt gesetzt werden.
+- Folge für SCRUM-98/FE-FND-02: Navigation/Routing nutzen jetzt die echte Session-Rolle → FE-FND-02 kann von „teilweise" auf erfüllt neu bewertet werden.
+- Keine Jira-Änderung durch Claude vorgenommen.
