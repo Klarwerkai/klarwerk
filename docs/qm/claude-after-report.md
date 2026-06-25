@@ -581,3 +581,41 @@ Modus: Read-only Evidence-Audit, kein Feature-Code
 - Checkboxen, die offen bleiben: FE-ANA-01 (Trust/Aufgaben fehlen), FE-ANA-02 (keine UI-Anbindung), FE-ANA-03 (kein Health-Konzept), FE-ANA-05 (keine Lineage-Sicht).
 - Empfohlene Resttickets: Trust/Aufgaben im Dashboard; Impact-UI; Knowledge-Health; Lineage-Sicht; optional Audit-Filter-UI.
 - Statusvorschlag für SCRUM-110: bleibt „In Progress" — 1 von 5 Checkboxen erfüllt. Keine Checkbox/kein Status durch mich geändert.
+
+---
+
+## SCRUM-108 Evidence-Audit — Import / Source-Review (Stufe 2)
+Datum: 2026-06-25
+Modus: Read-only Evidence-Audit, kein Feature-Code
+### Gate
+- git status vor Audit: clean (HEAD ee6e5b5; nur ignorierte `*.timestamp-*.mjs`).
+- npm run check: GRÜN (exit 0) — build (`tsc --noEmit`), lint (`biome check .`), arch (`depcruise services`), test (`vitest run`, 21 Dateien / 115 Tests).
+- Produktcode geändert: nein.
+- Geänderte Dateien: nur `docs/qm/claude-after-report.md` (dieser Bericht).
+### FE-IMP-01 · Dateiannahme + Text/OCR-Extraktion
+- Empfehlung: offen.
+- Code-/Test-Evidenz: KEINE Import-Dateiannahme/Dropzone. `apps/web/src/pages/Stufe2.tsx` `ImportReview` ist ein reiner Stufe-2-Platzhalter (`Stufe2Header` + `Notice textKey="s2.import"`). Die DOCX-/Text-Extraktion (`apps/web/src/lib/docx.ts`/`files.ts`, `Capture.tsx`) gehört zum **Capture-Flow** (FE-CAP-06), nicht zum Import/Source-Review; PDF/OCR sind weiterhin separat offen (vgl. SCRUM-100-Resttickets).
+- Restlücke: Datei-Dropzone + Extraktion für den Import-Pfad. SCRUM-108 bleibt Umsetzungsträger.
+### FE-IMP-02 · Importkandidaten erzeugen + Queue
+- Empfehlung: offen.
+- Code-/Test-Evidenz: Es gibt keine Kandidaten-/Queue-Logik. `services/library-analytics/src/service.ts` `importJson` erzeugt **direkt KOs** (`koService.create`, Dedupe per `title|statement`), keine persistierte/sichtbare Queue, kein `ImportCandidate`-Typ (`types.ts` kennt nur `ImportItem`/`ImportResult={imported,skipped}`).
+- Restlücke: Kandidaten + Review-Queue (persistiert/sichtbar). SCRUM-108 bleibt Umsetzungsträger.
+### FE-IMP-03 · Source-Review: annehmen/ablehnen/Info anfordern
+- Empfehlung: offen.
+- Code-/Test-Evidenz: Nur Stufe-2-Platzhalter (`ImportReview` → `Notice`). Kein Review-UI/-Flow (annehmen/ablehnen/Nachinfo), kein Status-/Reviewmodell, keine Tests.
+- Restlücke: vollständiger Source-Review-Flow. SCRUM-108 bleibt Umsetzungsträger.
+### FE-IMP-04 · Akzeptierte Kandidaten → Validierung/Wissensobjektfluss
+- Empfehlung: TEILWEISE.
+- Code-/Test-Evidenz: `importJson` legt importierte Einträge als echte KOs an (`koService.create`) — diese landen im normalen Wissensobjekt-/Validierungsfluss (Status offen → erscheinen im Validation Board). Route `POST /api/library/import`. Test: `library-analytics/service.test.ts` FR-LIB-02 (Import ohne Duplikate, `{imported:1,skipped:1}`) + „protokolliert den Import" (Audit `library.import`). ABER: **kein Review-/Akzeptanz-Übergang** (kein Kandidat→Review→Annahme→Validierung); es ist ein direkter Bulk-JSON-Import.
+- Restlücke: Review-/Validierungsübergang aus akzeptierten Kandidaten. Per Regel höchstens teilweise.
+### Querbezug SCRUM-107 / FE-LIB-04
+- Bestätigt: JSON-Import existiert Service-/API-seitig + getestet, aber UI/Source-Review fehlt. Diese Lücke ist mit FE-IMP-02/03 deckungsgleich und sollte hier (SCRUM-108) umgesetzt werden.
+### Offene Restlücken / Resttickets
+- FE-IMP-01/02/03 sind unbebaut (nur Platzhalter) → KEIN separates Restticket nötig; **SCRUM-108 bleibt der Sammel-/Umsetzungsträger** (Stufe 2), mit `SCRUM-116` als Backend-Lücke-Gegenstück.
+- FE-IMP-04 teilweise: Review→Validierungs-Übergang ergänzen (Teil von SCRUM-108).
+- FE-LIB-04 (SCRUM-107) als hier umzusetzende UI-Lücke verknüpfen.
+### Zusammenfassung für Codex/Jira
+- Checkboxen, die gesetzt werden dürfen: keine.
+- Checkboxen, die offen bleiben: FE-IMP-01, FE-IMP-02, FE-IMP-03 (offen); FE-IMP-04 (teilweise).
+- Empfohlene Resttickets: keine neuen — SCRUM-108 bleibt Umsetzungsträger (Stufe 2); FE-LIB-04 verknüpfen; SCRUM-116 = Backend-Gegenstück.
+- Statusvorschlag für SCRUM-108: bleibt „To Do/Stufe 2" (Backend-JSON-Import vorhanden, FE-Import/Review unbebaut). Keine Checkbox/kein Status durch mich geändert.
