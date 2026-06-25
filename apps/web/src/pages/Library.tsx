@@ -56,6 +56,9 @@ export function Library(): JSX.Element {
         title={t("nav.library")}
         actions={
           <div className="flex items-center gap-2">
+            <Link to="/import">
+              <Button variant="ghost">{t("lib.reimport")}</Button>
+            </Link>
             <select
               aria-label={t("lib.exportFormat")}
               value={exportFormat}

@@ -14,6 +14,34 @@ export interface ImportResult {
   skipped: number;
 }
 
+// SCRUM-116: Import-/Source-Review-Kandidaten (JSON-Re-Import mit Review-Queue).
+export type ReviewStatus = "neu" | "angenommen" | "abgelehnt" | "info-angefragt";
+export type ReviewAction = "accept" | "reject" | "info";
+
+export interface ImportCandidate {
+  id: string;
+  item: ImportItem;
+  status: ReviewStatus;
+  // Gleiche title|statement existiert bereits → wird beim Annehmen NICHT überschrieben.
+  duplicate: boolean;
+  note: string | null;
+  // Bei „angenommen" und nicht-Dublette: das erzeugte Wissensobjekt.
+  koId: string | null;
+  createdAt: string;
+}
+
+export type LibraryErrorCode = "NOT_FOUND" | "ALREADY_REVIEWED" | "BAD_REQUEST";
+
+export class LibraryError extends Error {
+  readonly code: LibraryErrorCode;
+
+  constructor(code: LibraryErrorCode, message: string) {
+    super(message);
+    this.code = code;
+    this.name = "LibraryError";
+  }
+}
+
 // FR-LIB-03: Bus-Faktor — Domänen/Kategorien mit Einzelquelle.
 export interface BusFactorEntry {
   category: string;

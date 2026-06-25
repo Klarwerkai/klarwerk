@@ -10,6 +10,11 @@ export const useLibrarySearch = (params: KoFilter & { q?: string }) =>
     queryKey: ["library", "search", params],
     queryFn: () => endpoints.library.search(params),
   });
+export const useImportCandidates = () =>
+  useQuery({
+    queryKey: ["import-candidates"],
+    queryFn: () => endpoints.library.importCandidates.list(),
+  });
 export const useKo = (id: string) =>
   useQuery({ queryKey: ["ko", id], queryFn: () => endpoints.ko.get(id), enabled: id.length > 0 });
 export const useValidationBoard = (f?: KoFilter) =>

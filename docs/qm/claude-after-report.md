@@ -1341,3 +1341,37 @@ Datum: 2026-06-25
 - SCRUM-147, SCRUM-148, SCRUM-149 dürfen nach grünem Gate auf erledigt gesetzt werden.
 - FE-ADM-02 (Anlegen) + FE-ADM-05 (Admin-Reset) + FE-ADM-07 (Audit-Einsicht) aus SCRUM-112 können entsprechend abgehakt werden.
 - Keine Jira-Änderung durch Claude vorgenommen.
+
+---
+
+## 2026-06-25 · SCRUM-108 + SCRUM-116 + FE-LIB-04 — Import/Re-Import-MVP (JSON + Source-Review-Queue)
+
+**Ticket(s):** SCRUM-116 (Backend Import-/Source-Review-API) · SCRUM-108 (FE Import/Source-Review) · SCRUM-107/FE-LIB-04 (Re-Import JSON inkl. Merge ohne Dubletten). Bewusst begrenzter MVP: nur JSON, kein PDF/OCR.
+
+**Änderung (geänderte/neue Dateien):**
+- `services/library-analytics/src/types.ts` — neu: `ReviewStatus`, `ReviewAction`, `ImportCandidate`, `LibraryError` (code-basiert).
+- `services/library-analytics/src/service.ts` — In-Memory-Candidate-Queue (kein neuer Persistenz-Layer); Methoden `createImportCandidates` (Dubletten-Erkennung über title|statement), `listImportCandidates`, `reviewImportCandidate` (accept→echtes KO via koService.create außer Dublette; reject; info+Notiz). Optionale deps genId/now (default randomUUID/Date). Audit-Events import.candidates-created / import.candidate-{accept,reject,info}.
+- `services/library-analytics/index.ts` — Exporte ergänzt (ImportCandidate/ReviewStatus/ReviewAction/LibraryError).
+- `services/app/src/routes/library-routes.ts` — POST /api/library/import/candidates (ko.create), GET /api/library/import/candidates (ko.read), PUT /api/library/import/candidates/:id (ko.validate). Bestehende /api/library/import (importJson) unangetastet.
+- `services/library-analytics/src/service.test.ts` — 3 neue Tests (Kandidaten+Dublettenflag; accept erzeugt KO / Dublette übersprungen; reject/info + kein Doppel-Review).
+- `apps/web/src/api/types.ts` — `ImportItemInput`, `ReviewStatus`, `ReviewAction`, `ImportCandidate`.
+- `apps/web/src/api/endpoints.ts` — `library.importCandidates.{create,list,review}`.
+- `apps/web/src/api/hooks.ts` — `useImportCandidates()`.
+- `apps/web/src/lib/importReview.ts` — neu, DOM-frei: `parseImportItems` (strenge JSON-Validierung) + `ImportParseError`.
+- `tests/library/import-review.test.ts` — 4 Tests (gültige Liste; ungültiges JSON; kein Array; fehlende/ungültige Felder).
+- `apps/web/src/pages/Stufe2.tsx` — `ImportReview` als echte Seite: Datei-Upload (.json) → parse → Kandidaten erzeugen (Toast); Review-Queue mit Status-/Dubletten-Badge, Annehmen/Ablehnen/Info-anfordern (+Notizfeld); invalidiert import-candidates/kos/library/validation.
+- `apps/web/src/pages/Library.tsx` — Header-Link „Re-Import (JSON)" → /import (FE-LIB-04: Re-Import über echten Review-Flow, keine stille Bulk-Anlage).
+- `apps/web/src/i18n.ts` — `imp.*` + `lib.reimport` (DE+EN).
+
+**Erfüllte AK:**
+- SCRUM-116: Kandidaten erzeugen ✓ · listen ✓ · Review-Status verwalten ✓ · Aktionen annehmen/ablehnen/Info ✓ · angenommene → echte KOs im bestehenden Wissensobjektfluss ✓ · Dubletten nachvollziehbar (Flag, kein stilles Überschreiben) ✓ · keine neue Persistenzarchitektur (In-Memory) ✓ · keine Mock-API ✓.
+- SCRUM-108: JSON-Dateiannahme/Re-Import-UI ✓ · erzeugt Kandidaten statt stiller Bulk-Anlage ✓ · Queue/Review mit Status ✓ · annehmen/ablehnen/Info ✓ · Erfolg/Fehler via Toast-Bus ✓ · echte API aus SCRUM-116 ✓ · keine Platzhalter-UI ✓.
+- FE-LIB-04 (SCRUM-107): Bibliothek bietet JSON-Re-Import über echten Review-Flow ✓ · keine stille Bulk-Anlage ✓ · Dubletten/Merge sichtbar ✓ · akzeptierter Kandidat → echtes KO ✓.
+
+**Genutzte Endpoints:** POST /api/library/import/candidates · GET /api/library/import/candidates · PUT /api/library/import/candidates/:id (+ bestehende /api/library/import unverändert).
+
+**Tests/Gates:** `npm run check` GRÜN — 31 Testdateien / 149 Tests (7 neu). apps/web `tsc --noEmit` EXIT=0. depcruise: keine Verstöße (114 Module). Biome grün.
+
+**Restlücken:** PDF/OCR weiterhin offen — bewusst NICHT Teil dieses MVP; bleibt separates Capture/Import-Restticket (FE-IMP-01 hier nur für JSON adressiert). Candidate-Queue ist In-Memory (MVP) — bei Server-Neustart leer; ggf. späteres Persistenz-Restticket. Merge-Strategie: Dublette wird übersprungen (kein Feld-Merge) — bewusst konservativ.
+
+**Jira-Empfehlung:** Nach grünem Gate dürfen SCRUM-116 und SCRUM-108 auf erledigt; FE-LIB-04 erfüllt → SCRUM-107 schließbar. Ich setze keine Jira-Checkbox/Status selbst; Codex/Peter haken nach Gate ab. Commit/Push bleibt Peters Schritt.

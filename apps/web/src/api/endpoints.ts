@@ -12,10 +12,13 @@ import type {
   DraftPayload,
   Gap,
   Graph,
+  ImportCandidate,
+  ImportItemInput,
   KnowledgeObject,
   Notification,
   PublicUser,
   ReasonerStatus,
+  ReviewAction,
   Role,
   StructureResult,
   Verdict,
@@ -107,6 +110,14 @@ export const endpoints = {
     // FE-LIB-01: Server-Volltextsuche + strukturierte Filter (Art/Status/Kategorie/Tag).
     search: (params: KoFilter & { q?: string }) =>
       api.get<KnowledgeObject[]>(`/library/search${qs(params)}`),
+    // SCRUM-116/108: Import-/Source-Review (JSON-Re-Import mit Review-Queue).
+    importCandidates: {
+      create: (items: ImportItemInput[]) =>
+        api.post<ImportCandidate[]>("/library/import/candidates", { items }),
+      list: () => api.get<ImportCandidate[]>("/library/import/candidates"),
+      review: (id: string, action: ReviewAction, note?: string) =>
+        api.put<ImportCandidate>(`/library/import/candidates/${id}`, { action, note }),
+    },
   },
   users: {
     list: () => api.get<PublicUser[]>("/users"),

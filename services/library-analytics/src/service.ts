@@ -1,17 +1,23 @@
+import { randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
 import type { KnowledgeObject, KoFilter, KoService } from "../../knowledge-object";
-import type {
-  Analytics,
-  BusFactorEntry,
-  Graph,
-  GraphEdge,
-  ImportItem,
-  ImportResult,
+import {
+  type Analytics,
+  type BusFactorEntry,
+  type Graph,
+  type GraphEdge,
+  type ImportCandidate,
+  type ImportItem,
+  type ImportResult,
+  LibraryError,
+  type ReviewAction,
 } from "./types";
 
 export interface LibraryServiceDeps {
   koService: KoService;
   audit?: AuditService;
+  genId?: () => string;
+  now?: () => number;
 }
 
 function increment(map: Record<string, number>, key: string): void {
@@ -21,10 +27,90 @@ function increment(map: Record<string, number>, key: string): void {
 export class LibraryService {
   private readonly koService: KoService;
   private readonly audit: AuditService | undefined;
+  private readonly genId: () => string;
+  private readonly now: () => number;
+  // SCRUM-116: In-Memory-Queue für Import-/Source-Review-Kandidaten (MVP).
+  private readonly candidates: ImportCandidate[] = [];
 
   constructor(deps: LibraryServiceDeps) {
     this.koService = deps.koService;
     this.audit = deps.audit;
+    this.genId = deps.genId ?? (() => randomUUID());
+    this.now = deps.now ?? (() => Date.now());
+  }
+
+  // SCRUM-116: JSON-Re-Import erzeugt Review-Kandidaten (keine stille Bulk-Anlage).
+  async createImportCandidates(
+    items: readonly ImportItem[],
+    actor = "system",
+  ): Promise<ImportCandidate[]> {
+    const existing = await this.koService.list();
+    const seen = new Set(existing.map((ko) => `${ko.title}|${ko.statement}`));
+    const at = new Date(this.now()).toISOString();
+    const created = items.map<ImportCandidate>((item) => ({
+      id: this.genId(),
+      item,
+      status: "neu",
+      duplicate: seen.has(`${item.title}|${item.statement}`),
+      note: null,
+      koId: null,
+      createdAt: at,
+    }));
+    this.candidates.push(...created);
+    await this.audit?.record({
+      actor,
+      action: "import.candidates-created",
+      target: "library",
+      payload: { count: created.length },
+    });
+    return created;
+  }
+
+  listImportCandidates(): Promise<ImportCandidate[]> {
+    return Promise.resolve([...this.candidates]);
+  }
+
+  // SCRUM-116: Review-Aktion. accept → echtes KO (außer Dublette, dann übersprungen).
+  async reviewImportCandidate(
+    id: string,
+    action: ReviewAction,
+    actor = "system",
+    note?: string,
+  ): Promise<ImportCandidate> {
+    const candidate = this.candidates.find((c) => c.id === id);
+    if (!candidate) {
+      throw new LibraryError("NOT_FOUND", "Importkandidat nicht gefunden.");
+    }
+    if (candidate.status !== "neu") {
+      throw new LibraryError("ALREADY_REVIEWED", "Kandidat wurde bereits bearbeitet.");
+    }
+    if (action === "reject") {
+      candidate.status = "abgelehnt";
+    } else if (action === "info") {
+      candidate.status = "info-angefragt";
+      candidate.note = note?.trim() ? note.trim() : null;
+    } else {
+      // accept: nicht-Dublette → echtes KO im normalen Wissensobjekt-/Validierungsfluss.
+      candidate.status = "angenommen";
+      if (!candidate.duplicate) {
+        const ko = await this.koService.create({
+          title: candidate.item.title,
+          statement: candidate.item.statement,
+          type: candidate.item.type,
+          category: candidate.item.category,
+          author: candidate.item.author ?? actor,
+          tags: candidate.item.tags ?? [],
+        });
+        candidate.koId = ko.id;
+      }
+    }
+    await this.audit?.record({
+      actor,
+      action: `import.candidate-${action}`,
+      target: candidate.id,
+      payload: { duplicate: candidate.duplicate, koId: candidate.koId },
+    });
+    return { ...candidate };
   }
 
   // FR-LIB-01: Suche + Filter.

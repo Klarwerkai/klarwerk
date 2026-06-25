@@ -159,6 +159,29 @@ export interface PublicUser {
   createdAt: string;
 }
 
+// SCRUM-116/108: Import-/Source-Review-Kandidaten (JSON-Re-Import).
+export interface ImportItemInput {
+  title: string;
+  statement: string;
+  type: KnowledgeType;
+  category: string;
+  author?: string;
+  tags?: string[];
+}
+
+export type ReviewStatus = "neu" | "angenommen" | "abgelehnt" | "info-angefragt";
+export type ReviewAction = "accept" | "reject" | "info";
+
+export interface ImportCandidate {
+  id: string;
+  item: ImportItemInput;
+  status: ReviewStatus;
+  duplicate: boolean;
+  note: string | null;
+  koId: string | null;
+  createdAt: string;
+}
+
 export type KnowledgeClass =
   | "gesichert"
   | "ungeprueft"

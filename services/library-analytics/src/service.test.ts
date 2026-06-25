@@ -47,6 +47,64 @@ describe("LibraryService", () => {
     expect(html).toContain("<h2>Ventil schließen</h2>");
   });
 
+  it("SCRUM-116: Re-Import erzeugt Review-Kandidaten, markiert Dubletten", async () => {
+    const cands = await ctx.library.createImportCandidates([
+      { title: "Neu A", statement: "Frischer Inhalt.", type: "technik", category: "X" },
+      {
+        title: "Ventil schließen",
+        statement: "Bei Überdruck Ventil X schließen.",
+        type: "best_practice",
+        category: "Anlage 1",
+      },
+    ]);
+    expect(cands).toHaveLength(2);
+    expect(cands[0]?.duplicate).toBe(false);
+    expect(cands[1]?.duplicate).toBe(true); // existiert bereits
+    expect((await ctx.library.listImportCandidates()).every((c) => c.status === "neu")).toBe(true);
+  });
+
+  it("SCRUM-116: annehmen erzeugt KO (Nicht-Dublette), Dublette wird nicht überschrieben", async () => {
+    const before = (await ctx.koService.list()).length;
+    const [fresh, dup] = await ctx.library.createImportCandidates([
+      { title: "Neu B", statement: "Inhalt B.", type: "technik", category: "X" },
+      {
+        title: "Pumpe schmieren",
+        statement: "Pumpe alle 200h schmieren.",
+        type: "technik",
+        category: "Anlage 2",
+      },
+    ]);
+    if (!fresh || !dup) {
+      throw new Error("Kandidaten fehlen.");
+    }
+    const acceptedFresh = await ctx.library.reviewImportCandidate(fresh.id, "accept", "controller");
+    expect(acceptedFresh.status).toBe("angenommen");
+    expect(acceptedFresh.koId).not.toBeNull();
+    expect((await ctx.koService.list()).length).toBe(before + 1);
+
+    const acceptedDup = await ctx.library.reviewImportCandidate(dup.id, "accept", "controller");
+    expect(acceptedDup.status).toBe("angenommen");
+    expect(acceptedDup.koId).toBeNull(); // Dublette → übersprungen, kein neues KO
+    expect((await ctx.koService.list()).length).toBe(before + 1);
+  });
+
+  it("SCRUM-116: ablehnen/Info anfordern + kein Doppel-Review", async () => {
+    const [c] = await ctx.library.createImportCandidates([
+      { title: "Neu C", statement: "Inhalt C.", type: "technik", category: "X" },
+    ]);
+    if (!c) {
+      throw new Error("Kandidat fehlt.");
+    }
+    const info = await ctx.library.reviewImportCandidate(c.id, "info", "controller", "Quelle?");
+    expect(info.status).toBe("info-angefragt");
+    expect(info.note).toBe("Quelle?");
+    await expect(
+      ctx.library.reviewImportCandidate(c.id, "reject", "controller"),
+    ).rejects.toMatchObject({
+      code: "ALREADY_REVIEWED",
+    });
+  });
+
   it("FR-LIB-02: Export als Text-Markdown", async () => {
     const md = await ctx.library.exportMarkdown();
     expect(md).toContain("# Ventil schließen");
