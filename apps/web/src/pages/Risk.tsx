@@ -2,17 +2,23 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { endpoints } from "../api/endpoints";
-import { useBusFactor, useGaps } from "../api/hooks";
+import { useBusFactor, useGaps, useUsers } from "../api/hooks";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 
 export function Risk(): JSX.Element {
   const { t } = useTranslation();
   const bus = useBusFactor();
   const gaps = useGaps();
+  const users = useUsers();
   const qc = useQueryClient();
   const invalidate = () => void qc.invalidateQueries({ queryKey: ["gaps"] });
   const close = useMutation({
     mutationFn: (id: string) => endpoints.gaps.close(id),
+    onSuccess: invalidate,
+  });
+  const assign = useMutation({
+    mutationFn: ({ id, expertId }: { id: string; expertId: string }) =>
+      endpoints.gaps.assign(id, expertId),
     onSuccess: invalidate,
   });
   const remove = useMutation({
@@ -65,17 +71,36 @@ export function Risk(): JSX.Element {
                       {g.question}
                     </span>
                     <span className="font-mono text-[10.5px] uppercase text-muted-2">
-                      {t(`risk.gapStatus.${g.status}`)}
+                      {g.assignee ? `→ ${g.assignee}` : t(`risk.gapStatus.${g.status}`)}
                     </span>
                     {g.status === "offen" ? (
-                      <button
-                        type="button"
-                        title={t("risk.close")}
-                        onClick={() => close.mutate(g.id)}
-                        className="grid h-8 w-8 place-items-center rounded-btn text-trust-pos-text hover:bg-trust-pos-bg"
-                      >
-                        <Check size={15} />
-                      </button>
+                      <>
+                        <select
+                          value=""
+                          disabled={assign.isPending}
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              assign.mutate({ id: g.id, expertId: e.target.value });
+                            }
+                          }}
+                          className="h-8 w-36 rounded-input border border-hairline bg-surface px-2 text-[12px] text-muted"
+                        >
+                          <option value="">{t("risk.assign")}</option>
+                          {(users.data ?? []).map((u) => (
+                            <option key={u.id} value={u.id}>
+                              {u.name ?? u.email ?? u.id}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          title={t("risk.close")}
+                          onClick={() => close.mutate(g.id)}
+                          className="grid h-8 w-8 place-items-center rounded-btn text-trust-pos-text hover:bg-trust-pos-bg"
+                        >
+                          <Check size={15} />
+                        </button>
+                      </>
                     ) : null}
                     <button
                       type="button"

@@ -27,9 +27,14 @@
 ### Geänderte/neue Dateien
 `app/AuthContext.tsx`, `shell/Topbar.tsx`, `shell/AppShell.tsx`, `shell/Sidebar.tsx`, `shell/CommandPalette.tsx` (neu), `pages/Capture.tsx`, `pages/KnowledgeDetail.tsx`, `pages/Library.tsx`, `pages/Profile.tsx`, `auth/ResetScreen.tsx`, `components/editors.tsx` (neu), `api/auth.ts`, `api/endpoints.ts`, `i18n.ts`; Backend: `services/auth/src/routes.ts`.
 
+### Nachtrag (gleiche Session, 2. Batch)
+- ✅ **FE-CON Konflikt-Auflösung**: Konflikt-Board kann jetzt mit Entscheidung auflösen (`resolve-conflict`), zeigt die Entscheidung bei gelösten Fällen; Eskalation bleibt.
+- ✅ **FE-VAL-05 Zuweisung zur Validierung**: pro Objekt Experte/Controller aus Nutzerliste zuweisen (`assign` → E-Mail via FR-VAL-07).
+- ✅ **FE-RISK Lücken-Zuweisung**: offene Wissenslücke an Experten zuweisen (`gaps.assign`), Zuweisung wird angezeigt.
+
 ### Noch offen (Frontend, ohne neue Backend-Endpunkte machbar)
-- FE-VAL-02/05/06: zusätzliche Filter (Domäne/Tags/Zuweisung), Zuweisung zur Validierung im UI, Revisions-Schleife mit Kommentaren.
-- FE-ASK/RISK/LIB-Detailfilter, Mobile-responsive Shell (Hamburger).
+- FE-VAL-02/06: zusätzliche Filter (Domäne/Tags), Revisions-Schleife mit Kommentaren (Kommentar-Endpunkt fehlt im BE).
+- FE-LIB-Detailfilter (Tag/Kategorie), Mobile-responsive Shell (Hamburger).
 
 ### Offen — benötigt zuerst Backend-Endpunkte (Stufe 2 / BE-Lücke)
 - FE-CAP-05 Anhänge/Foto-Upload (Objektspeicher), FE-CAP-06 OCR.
