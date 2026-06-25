@@ -1471,3 +1471,33 @@ Datum: 2026-06-25
 - Kein neues Trust-/Lifecycle-Statusmodell, kein „Beitrag/Quelle"-Flow.
 
 **Jira-Empfehlung:** Nach grünem Gate darf SCRUM-111 (FE-LCY-03) auf erledigt. SCRUM-131 NICHT vollständig schließen — nur den Helpful-Teil als erledigt vermerken, „Beitrag/Quelle" bleibt offen. Ich setze keine Jira-Checkbox/Status selbst; Codex/Peter haken nach Gate ab.
+
+---
+
+## 2026-06-25 · SCRUM-131 (Rest) — „Quelle/Beitrag melden" im KO-Detail
+
+**Ticket(s):** SCRUM-131 letzter offener Teil (Beitrag/Quelle). Der „Hat geholfen"-Teil ist bereits durch Commit 6c2c7f6 erledigt. Bezug: FE-KO-06 (SCRUM-102).
+
+**Befund (read-only):** KnowledgeObject hat KEIN sources/external-Feld (bestätigt in services/knowledge-object/src/types.ts). Vorhandene KO-Aktion `comment` (FE: { action: "comment"; text }). → bewusst KEIN Fake-Quellenfeld, KEIN Backend-Redesign; Persistenz über Kommentar-Pfad.
+
+**Änderung (geänderte/neue Dateien):**
+- `apps/web/src/lib/sourceContribution.ts` — neu, DOM-frei: `isSourceContributionValid` (Pflichttext nicht leer), `formatSourceComment` (maschinenlesbare Präfixe `Quellenbeitrag:` / `Quelle/Referenz:`, Quelle-Zeile nur wenn ausgefüllt, getrimmt).
+- `apps/web/src/pages/KnowledgeDetail.tsx` — neue Card „Quelle/Beitrag melden": Pflicht-Textarea + optionales Quelle/URL-Feld + Hinweis „Review-Kommentar, keine validierte Quelle"; Submit über bestehende comment-Aktion (formatSourceComment); Button bis gültiger Pflichttext gesperrt; Toast-Erfolg/-Fehler; Invalidierung wie bei Kommentaren (ko/validation/kos/conflicts).
+- `apps/web/src/i18n.ts` — `ko.source*` (Title/Contribution/Ref/Hint/Submit/Saved), DE+EN.
+- `tests/ko/source-contribution.test.ts` — 4 Tests (Pflichtvalidierung, Formatierung mit/ohne Quelle, Trim).
+
+**Backend:** UNVERÄNDERT. Kein neues sources/external-Feld, keine neue Route, keine Fake-Provenance. Beiträge sind normale KO-Kommentare.
+
+**Erfüllte AK:**
+- KO-Detail bietet „Quelle/Beitrag melden" sichtbar an ✓ · Pflichttext validiert ✓ · optionaler Quellen-/URL-Text übernommen ✓ · Submit über vorhandene comment-Aktion ✓ · kein neues Backend/Feld/Fake-Provenance ✓ · UI macht klar: Review-Kommentar, keine validierte Quelle ✓ · Test deckt Helper/Formatierung/Validierung ab ✓.
+
+**Genutzte Endpoints:** PUT /api/kos/:id (action comment) — bestehend.
+
+**Tests/Gates:** `npm run check` GRÜN — 35 Testdateien / 168 Tests (4 neu). apps/web `tsc --noEmit` EXIT=0. depcruise sauber. Biome grün.
+
+**Status / Restlücken:**
+- SCRUM-131: jetzt VOLLSTÄNDIG erfüllbar — „Hat geholfen" (6c2c7f6) + „Quelle/Beitrag" (dieser Block).
+- SCRUM-102 / FE-KO-06: nach grünem Gate abhakbar, da die Beitrags-/Quellenfunktion im KO-Detail nun vorhanden ist.
+- Echtes strukturiertes sources/external-Datenmodell bleibt Roadmap (separat, falls fachlich gewünscht) — hier bewusst nicht gebaut.
+
+**Jira-Empfehlung:** Nach grünem Gate dürfen SCRUM-131 vollständig und SCRUM-102/FE-KO-06 auf erledigt. Ich setze keine Jira-Checkbox/Status selbst; Codex/Peter haken nach Gate ab. Commit/Push bleibt Peters Schritt.

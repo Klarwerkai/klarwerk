@@ -29,6 +29,11 @@ import {
 import { deriveStatus } from "../lib/displayStatus";
 import { fileToThumbDataUrl } from "../lib/files";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
+import {
+  type SourceContributionInput,
+  formatSourceComment,
+  isSourceContributionValid,
+} from "../lib/sourceContribution";
 
 interface EditState {
   title: string;
@@ -71,6 +76,8 @@ export function KnowledgeDetail(): JSX.Element {
   const [commentText, setCommentText] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [newAuthor, setNewAuthor] = useState("");
+  // SCRUM-131 / FE-KO-06: Quelle/Beitrag melden (über Kommentar-Pfad).
+  const [source, setSource] = useState<SourceContributionInput>({ contribution: "", source: "" });
   const { push } = useToast();
   const canEdit = role !== "viewer";
   const canReview = role === "controller" || role === "admin";
@@ -110,6 +117,18 @@ export function KnowledgeDetail(): JSX.Element {
       invalidate();
       setNewAuthor("");
       push("success", t("ko.transferDone"));
+    },
+    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
+  });
+
+  // SCRUM-131 / FE-KO-06: Beitrag/Quelle als Review-Kommentar speichern (kein neues Quellenfeld).
+  const sourceContribution = useMutation({
+    mutationFn: () =>
+      endpoints.ko.act(id, { action: "comment", text: formatSourceComment(source) }),
+    onSuccess: () => {
+      invalidate();
+      setSource({ contribution: "", source: "" });
+      push("success", t("ko.sourceSaved"));
     },
     onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
   });
@@ -484,6 +503,32 @@ export function KnowledgeDetail(): JSX.Element {
                   )}
                 </Button>
               </Card>
+
+              {/* SCRUM-131 / FE-KO-06: Quelle/Beitrag melden (Review-Kommentar) */}
+              <Card className="space-y-2">
+                <SectionLabel>{t("ko.sourceTitle")}</SectionLabel>
+                <textarea
+                  value={source.contribution}
+                  onChange={(e) => setSource((s) => ({ ...s, contribution: e.target.value }))}
+                  placeholder={t("ko.sourceContribution")}
+                  rows={3}
+                  className={textareaCls}
+                />
+                <TextInput
+                  value={source.source ?? ""}
+                  onChange={(e) => setSource((s) => ({ ...s, source: e.target.value }))}
+                  placeholder={t("ko.sourceRef")}
+                />
+                <p className="text-[11.5px] text-muted-2">{t("ko.sourceHint")}</p>
+                <Button
+                  variant="primary"
+                  disabled={sourceContribution.isPending || !isSourceContributionValid(source)}
+                  onClick={() => sourceContribution.mutate()}
+                >
+                  {t("ko.sourceSubmit")}
+                </Button>
+              </Card>
+
               <Card>
                 <SectionLabel>{t("ko.provenance")}</SectionLabel>
                 <ProvenanceLine
