@@ -8,6 +8,7 @@ import { type KoAction, endpoints } from "../api/endpoints";
 import { useDirectory, useKo, useKos } from "../api/hooks";
 import type { ConflictType, KnowledgeObject, KnowledgeType } from "../api/types";
 import { useRole } from "../app/RoleContext";
+import { useToast } from "../app/ToastContext";
 import { ListEditor, TagEditor } from "../components/editors";
 import {
   ConfidenceBar,
@@ -68,8 +69,12 @@ export function KnowledgeDetail(): JSX.Element {
   const [conflict, setConflict] = useState<ConflictForm | null>(null);
   const [commentText, setCommentText] = useState("");
   const [err, setErr] = useState<string | null>(null);
+  const [newAuthor, setNewAuthor] = useState("");
+  const { push } = useToast();
   const canEdit = role !== "viewer";
   const canReview = role === "controller" || role === "admin";
+  // SCRUM-144: Autor-Übergabe nutzt users.manage-Pfad → nur Admin.
+  const canTransfer = role === "admin";
 
   const invalidate = (): void => {
     void qc.invalidateQueries({ queryKey: ["ko", id] });
@@ -82,6 +87,18 @@ export function KnowledgeDetail(): JSX.Element {
     mutationFn: (body: KoAction) => endpoints.ko.act(id, body),
     onSuccess: invalidate,
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
+  });
+
+  // SCRUM-144: Autorenübergabe über bestehende KO-Action transfer-author.
+  const transfer = useMutation({
+    mutationFn: (nextAuthor: string) =>
+      endpoints.ko.act(id, { action: "transfer-author", newAuthor: nextAuthor }),
+    onSuccess: () => {
+      invalidate();
+      setNewAuthor("");
+      push("success", t("ko.transferDone"));
+    },
+    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
   });
 
   const comment = useMutation({
@@ -443,6 +460,40 @@ export function KnowledgeDetail(): JSX.Element {
                   domain={ko.category}
                   version={ko.version}
                 />
+                {canTransfer ? (
+                  <div className="mt-3 border-t border-hairline pt-3">
+                    <div className="mb-1.5 font-mono text-micro uppercase tracking-wider text-muted-2">
+                      {t("ko.transferTitle")}
+                    </div>
+                    <div className="mb-2 text-[12px] text-muted">
+                      {t("ko.transferOriginal")}: {nameOf(ko.originalAuthor)}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        aria-label={t("ko.transferTitle")}
+                        value={newAuthor}
+                        onChange={(e) => setNewAuthor(e.target.value)}
+                        className="h-9 flex-1 rounded-input border border-hairline bg-surface px-2 text-[13px] text-text outline-none focus:border-ink/30"
+                      >
+                        <option value="">{t("ko.transferPick")}</option>
+                        {(dir.data ?? [])
+                          .filter((d) => d.id !== ko.author)
+                          .map((d) => (
+                            <option key={d.id} value={d.id}>
+                              {d.name}
+                            </option>
+                          ))}
+                      </select>
+                      <Button
+                        variant="primary"
+                        disabled={transfer.isPending || !newAuthor}
+                        onClick={() => transfer.mutate(newAuthor)}
+                      >
+                        {t("ko.transfer")}
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
               </Card>
               <Card>
                 <SectionLabel>{t("ko.history")}</SectionLabel>

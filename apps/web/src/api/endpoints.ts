@@ -16,6 +16,7 @@ import type {
   ImportCandidate,
   ImportItemInput,
   KnowledgeObject,
+  LearningPath,
   Notification,
   PublicUser,
   ReasonerStatus,
@@ -107,7 +108,19 @@ export const endpoints = {
     impact: () => api.get<ImpactReport>("/analytics/impact"),
   },
   audit: { list: () => api.get<AuditEntry[]>("/audit") },
-  lifecycle: { pending: () => api.get<string[]>("/lifecycle/pending") },
+  lifecycle: {
+    pending: () => api.get<string[]>("/lifecycle/pending"),
+    // SCRUM-146: vorhandener Asset-Change-Pfad → markiert gekoppelte KOs als „prüfen".
+    assetChanged: (assetRef: string) =>
+      api.post<string[]>("/lifecycle/asset-changed", { assetRef }),
+  },
+  // SCRUM-145: vorhandene Learning-Path-API (rollenbasiert, Fortschritt serverseitig).
+  learningPaths: {
+    byRole: (role: string) => api.get<LearningPath>(`/learning-paths/${role}`),
+    progress: (pathId: string) => api.get<string[]>(`/learning-paths/${pathId}/progress`),
+    complete: (pathId: string, stepId: string) =>
+      api.post<string[]>(`/learning-paths/${pathId}/complete`, { stepId }),
+  },
   library: {
     graph: () => api.get<Graph>("/graph"),
     // FE-LIB-01: Server-Volltextsuche + strukturierte Filter (Art/Status/Kategorie/Tag).

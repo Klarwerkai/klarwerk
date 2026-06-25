@@ -156,6 +156,18 @@ export interface AuditFilter {
   target?: string;
 }
 
+// FR-LIF-03: Rollenbasierte Lernpfade (Shape spiegelt services/lifecycle).
+export interface LearningStep {
+  id: string;
+  title: string;
+}
+
+export interface LearningPath {
+  id: string;
+  role: string;
+  steps: LearningStep[];
+}
+
 // FR-ANA-02: Wirkungs-/Impact-Report (Shape spiegelt services/app/src/impact.ts).
 export interface ImpactReport {
   validatedTotal: number;

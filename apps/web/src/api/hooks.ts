@@ -34,6 +34,18 @@ export const useBusFactor = () =>
 export const useAudit = () => useQuery({ queryKey: ["audit"], queryFn: endpoints.audit.list });
 export const useLifecyclePending = () =>
   useQuery({ queryKey: ["lifecycle", "pending"], queryFn: endpoints.lifecycle.pending });
+export const useLearningPath = (role: string) =>
+  useQuery({
+    queryKey: ["learning-path", role],
+    queryFn: () => endpoints.learningPaths.byRole(role),
+    retry: false,
+  });
+export const useLearningProgress = (pathId: string | undefined) =>
+  useQuery({
+    queryKey: ["learning-progress", pathId],
+    queryFn: () => endpoints.learningPaths.progress(pathId ?? ""),
+    enabled: !!pathId,
+  });
 export const useUsers = () => useQuery({ queryKey: ["users"], queryFn: endpoints.users.list });
 export const useDirectory = () =>
   useQuery({ queryKey: ["directory"], queryFn: endpoints.directory.list });

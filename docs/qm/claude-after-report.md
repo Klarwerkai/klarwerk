@@ -1405,3 +1405,38 @@ Datum: 2026-06-25
 **Restlücken:** Audit-Filter clientseitig (über die geladene Liste) statt serverseitiger Query — bewusst, um Chain/Service nicht zu berühren; bei sehr großen Logs ggf. späterer Server-Filter-Umstieg. SCRUM-141 (Knowledge-Health-Score) und SCRUM-142 (Lineage/Herkunft) bleiben bewusst SEPARAT und unangetastet. Kein Management-/Capital-Dashboard.
 
 **Jira-Empfehlung:** Nach grünem Gate dürfen SCRUM-139, SCRUM-140, SCRUM-143 auf erledigt. SCRUM-141/142 bleiben offen. Ich setze keine Jira-Checkbox/Status selbst; Codex/Peter haken nach Gate ab. Commit/Push bleibt Peters Schritt.
+
+---
+
+## 2026-06-25 · SCRUM-144 + SCRUM-145 + SCRUM-146 — Lifecycle-/KO-Governance-Block (Autorenübergabe · Lernpfade · Asset-Change)
+
+**Ticket(s):** SCRUM-144 (Autorenübergabe-UI) · SCRUM-145 (Lernpfad-UI je Rolle) · SCRUM-146 (Asset-Change/Revalidierungs-Auslöser). Reine FE-Anbindung an vorhandene Backend-Pfade; KEIN neues Autoren-/Provenance-/LMS-/Asset-Modell, keine Lineage (SCRUM-142), kein Management/Capital.
+
+**Befund (read-only):** Alle Pfade existieren backendseitig:
+- transfer-author: KO-Action `transfer-author` (ko-routes, Permission users.manage → Admin) → `lifecycle.transferAuthor` → `koService.setAuthor` (originalAuthor bleibt erhalten).
+- Lernpfade: GET /api/learning-paths/:role · GET /api/learning-paths/:pathId/progress · POST /api/learning-paths/:pathId/complete.
+- Asset-Change: POST /api/lifecycle/asset-changed (markiert gekoppelte KOs pending), GET /api/lifecycle/pending.
+→ Kein Backend-Ausbau nötig.
+
+**Änderung (geänderte/neue Dateien):**
+- `apps/web/src/api/types.ts` — neu: `LearningStep`, `LearningPath` (spiegelt services/lifecycle).
+- `apps/web/src/api/endpoints.ts` — `lifecycle.assetChanged`; `learningPaths.{byRole,progress,complete}`.
+- `apps/web/src/api/hooks.ts` — `useLearningPath(role)` (retry:false), `useLearningProgress(pathId)` (enabled-gated).
+- `apps/web/src/lib/learningPath.ts` — neu, DOM-frei: isStepDone, progressPercent, completedCount, nextOpenStep.
+- `apps/web/src/pages/KnowledgeDetail.tsx` — SCRUM-144: Autor-Übergabe im Herkunfts-Card (Admin-only, Nutzerauswahl aus useDirectory ohne aktuellen Autor), transfer-author-Action, Toast-Erfolg/-Fehler, Queries invalidiert; Originalautor weiterhin via ProvenanceLine sichtbar + explizite „Originalautor"-Zeile.
+- `apps/web/src/pages/Lifecycle.tsx` — SCRUM-146: Asset-Change-Auslöser (assetRef-Eingabe → assetChanged → Trefferzahl-Hinweis + invalidate lifecycle); bestehende Pending-Liste & „Noch gültig" unverändert erhalten. SCRUM-145: rollenspezifischer Lernpfad (Rolle aus useSession), Schritte mit Fortschrittsbalken/Abhaken (complete → invalidate progress), Leer-Zustand ohne Mock.
+- `apps/web/src/i18n.ts` — `ko.transfer*` + `lcy.*` (asset/path/step), DE+EN.
+- `tests/lifecycle/learning-path-ui.test.ts` — 4 Tests über die reine Lernpfad-Logik.
+
+**Erfüllte AK:**
+- SCRUM-144: nutzt echte KO-Action transfer-author ✓ · Nutzerauswahl aus vorhandener Directory-API ✓ · Originalautor sichtbar erhalten ✓ · neuer + ursprünglicher Autor nachvollziehbar ✓ · Rollenbeachtung (Admin) ohne neue Rechte-Logik ✓ · Toast + Invalidierung ✓.
+- SCRUM-145: Learning-Path-API typisiert/angebunden ✓ · rollenspezifischer Pfad sichtbar ✓ · Schritte angezeigt ✓ · Fortschritt abhakbar/serverseitig gespeichert ✓ · echte API, keine Mock-Pfade, kein LMS/KI ✓.
+- SCRUM-146: UI-Auslöser für Asset-Change/Revalidierung ✓ · nutzt vorhandenen asset-changed-Pfad ✓ · Pending-Liste aktualisiert (invalidate) ✓ · Nachvollziehbarkeit (Banner + Trefferzahl je Asset) ✓ · keine Regression bei „Noch gültig"/Library-Revalidierung ✓.
+
+**Genutzte Endpoints:** PUT /api/kos/:id (action transfer-author) · GET /api/learning-paths/:role · GET /api/learning-paths/:pathId/progress · POST /api/learning-paths/:pathId/complete · POST /api/lifecycle/asset-changed · GET /api/lifecycle/pending · PUT /api/kos/:id (revalidate, bestehend) · GET /api/directory.
+
+**Tests/Gates:** `npm run check` GRÜN — 33 Testdateien / 161 Tests (4 neu). apps/web `tsc --noEmit` EXIT=0. depcruise sauber. Biome grün.
+
+**Restlücken:** FE-LCY-03 „hat geholfen" bleibt bewusst SEPARAT und wurde hier nicht gebaut. Lernpfad-Anlage/-Pflege (createPath) bleibt Admin-/Seed-Aufgabe — diese UI zeigt/bearbeitet nur den rollenspezifischen Pfad; ohne hinterlegten Pfad erscheint ein ehrlicher Leer-Zustand (kein Mock). Asset-Kopplung (couple) wird hier nicht über UI gepflegt; nur der Change-Auslöser ist angebunden. SCRUM-142 (Lineage) unberührt.
+
+**Jira-Empfehlung:** Nach grünem Gate dürfen SCRUM-144, SCRUM-145, SCRUM-146 auf erledigt. FE-LCY-03 bleibt offen. Ich setze keine Jira-Checkbox/Status selbst; Codex/Peter haken nach Gate ab. Commit/Push bleibt Peters Schritt.
