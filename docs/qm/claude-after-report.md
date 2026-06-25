@@ -1375,3 +1375,33 @@ Datum: 2026-06-25
 **Restlücken:** PDF/OCR weiterhin offen — bewusst NICHT Teil dieses MVP; bleibt separates Capture/Import-Restticket (FE-IMP-01 hier nur für JSON adressiert). Candidate-Queue ist In-Memory (MVP) — bei Server-Neustart leer; ggf. späteres Persistenz-Restticket. Merge-Strategie: Dublette wird übersprungen (kein Feld-Merge) — bewusst konservativ.
 
 **Jira-Empfehlung:** Nach grünem Gate dürfen SCRUM-116 und SCRUM-108 auf erledigt; FE-LIB-04 erfüllt → SCRUM-107 schließbar. Ich setze keine Jira-Checkbox/Status selbst; Codex/Peter haken nach Gate ab. Commit/Push bleibt Peters Schritt.
+
+---
+
+## 2026-06-25 · SCRUM-139 + SCRUM-140 + SCRUM-143 — Analytics-Kompaktblock (Trust/Aufgaben · Impact · Audit-Filter)
+
+**Ticket(s):** SCRUM-139 (Trust & Aufgaben im Dashboard) · SCRUM-140 (Impact-Metriken anbinden) · SCRUM-143 (Audit-Filter). Bewusst kompakt; KEIN Knowledge-Health (SCRUM-141), KEINE Lineage (SCRUM-142), kein Management/Capital, kein Audit-Service-Redesign.
+
+**Befund (read-only):** Impact-API existiert bereits (`GET /api/analytics/impact` → ImpactReport in services/app/src/impact.ts). Audit-Route unterstützt bereits AuditFilter (actor/action/target) als Querystring. → Block ist FE-/Mapping-Arbeit, kein Backend-Ausbau nötig.
+
+**Änderung (geänderte/neue Dateien):**
+- `apps/web/src/api/types.ts` — neu: `AuditFilter`, `ImpactReport` (spiegelt Backend-Shape).
+- `apps/web/src/api/endpoints.ts` — `analytics.impact()` → /analytics/impact.
+- `apps/web/src/api/hooks.ts` — `useImpact()`.
+- `apps/web/src/lib/analyticsMetrics.ts` — neu, DOM-frei: averageTrust, validationRate, workloadSummary, formatRate, weeklyValidated, auditActors, auditActions, filterAudit.
+- `apps/web/src/pages/Analytics.tsx` — Trust-/Validierungsquote-/Aufgaben-KPIs (datenbasiert aus useKos + useValidationOverview); Impact-Sektion (validatedTotal/askTotal/answeredWithoutGap/answerRate + validatedByWeek-Balken); Audit-Filterleiste (Actor-/Action-Dropdowns aus echten Daten, Target-Textfilter), leerer Filter = volle Liste, Trefferzähler.
+- `apps/web/src/i18n.ts` — `ana.*` (avgTrust/validationRate/openTasks/doneTasks/impact*/weekly/filter*/auditCount/auditNoMatch), DE+EN.
+- `tests/analytics/analytics-metrics.test.ts` — 8 Tests über die reinen Helfer.
+
+**Erfüllte AK:**
+- SCRUM-139: Trust-Kennzahl (Ø Vertrauen) + Validierungsquote sichtbar & datenbasiert ✓ · Aufgaben/Arbeitslast (offen/erledigt aus Validation-Overview) ✓ · keine Mock-/Demo-Zahlen ✓ · nur FE/Mapping, kein API-Ausbau ✓.
+- SCRUM-140: Impact-API typisiert/angebunden ✓ · validatedByWeek, askTotal, answeredWithoutGap, answerRate sichtbar ✓ · keine neue Wirkungslogik ✓ · kein PDF/Management/Capital ✓.
+- SCRUM-143: Audit filterbar nach Actor/Action/Target ✓ · Chain/Service unverändert ✓ · leerer Filter = aktuelle Liste ✓ · echte Daten, keine Mocks ✓ · keine Admin-UI-Änderung ✓.
+
+**Genutzte Endpoints:** GET /api/analytics (bestehend) · GET /api/analytics/impact (neu angebunden) · GET /api/audit (bestehend, clientseitig gefiltert) · GET /api/kos · GET /api/validation/overview.
+
+**Tests/Gates:** `npm run check` GRÜN — 32 Testdateien / 157 Tests (8 neu). apps/web `tsc --noEmit` EXIT=0. depcruise sauber. Biome grün.
+
+**Restlücken:** Audit-Filter clientseitig (über die geladene Liste) statt serverseitiger Query — bewusst, um Chain/Service nicht zu berühren; bei sehr großen Logs ggf. späterer Server-Filter-Umstieg. SCRUM-141 (Knowledge-Health-Score) und SCRUM-142 (Lineage/Herkunft) bleiben bewusst SEPARAT und unangetastet. Kein Management-/Capital-Dashboard.
+
+**Jira-Empfehlung:** Nach grünem Gate dürfen SCRUM-139, SCRUM-140, SCRUM-143 auf erledigt. SCRUM-141/142 bleiben offen. Ich setze keine Jira-Checkbox/Status selbst; Codex/Peter haken nach Gate ab. Commit/Push bleibt Peters Schritt.

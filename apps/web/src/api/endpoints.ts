@@ -12,6 +12,7 @@ import type {
   DraftPayload,
   Gap,
   Graph,
+  ImpactReport,
   ImportCandidate,
   ImportItemInput,
   KnowledgeObject,
@@ -102,6 +103,8 @@ export const endpoints = {
   analytics: {
     overview: () => api.get<Analytics>("/analytics"),
     busfactor: () => api.get<BusFactorEntry[]>("/analytics/busfactor"),
+    // SCRUM-140: vorhandene Wirkungs-API anbinden (FR-ANA-02).
+    impact: () => api.get<ImpactReport>("/analytics/impact"),
   },
   audit: { list: () => api.get<AuditEntry[]>("/audit") },
   lifecycle: { pending: () => api.get<string[]>("/lifecycle/pending") },

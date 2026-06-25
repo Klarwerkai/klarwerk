@@ -150,6 +150,21 @@ export interface AuditEntry {
   hash: string;
 }
 
+export interface AuditFilter {
+  actor?: string;
+  action?: string;
+  target?: string;
+}
+
+// FR-ANA-02: Wirkungs-/Impact-Report (Shape spiegelt services/app/src/impact.ts).
+export interface ImpactReport {
+  validatedTotal: number;
+  validatedByWeek: Record<string, number>;
+  askTotal: number;
+  answeredWithoutGap: number;
+  answerRate: number;
+}
+
 export interface PublicUser {
   id: string;
   name: string;

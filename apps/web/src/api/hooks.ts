@@ -27,6 +27,8 @@ export const useGaps = () => useQuery({ queryKey: ["gaps"], queryFn: endpoints.g
 export const useDrafts = () => useQuery({ queryKey: ["drafts"], queryFn: endpoints.drafts.list });
 export const useAnalytics = () =>
   useQuery({ queryKey: ["analytics"], queryFn: endpoints.analytics.overview });
+export const useImpact = () =>
+  useQuery({ queryKey: ["analytics", "impact"], queryFn: endpoints.analytics.impact });
 export const useBusFactor = () =>
   useQuery({ queryKey: ["busfactor"], queryFn: endpoints.analytics.busfactor });
 export const useAudit = () => useQuery({ queryKey: ["audit"], queryFn: endpoints.audit.list });
