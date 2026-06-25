@@ -695,3 +695,58 @@ Modus: Read-only Evidence-Audit, kein Feature-Code
 - Checkboxen, die offen bleiben: FE-LCY-03 (Ask-Shape/teilweise), FE-LCY-04 (keine UI/teilweise), FE-LCY-06 (keine UI/Stufe 2).
 - Empfohlene Resttickets: Autorenübergabe-UI (LCY-04), Lernpfad-UI (LCY-06), Asset-Change-UI (LCY-01-Rest); LCY-03 via SCRUM-105. Keine neuen Tickets zwingend — unter SCRUM-111 umsetzbar.
 - Statusvorschlag für SCRUM-111: „In Progress" — 3 von 6 setzbar. Keine Checkbox/kein Status durch mich geändert.
+
+---
+
+## SCRUM-112 Evidence-Audit — Admin / Nutzerverwaltung
+Datum: 2026-06-25
+Modus: Read-only Evidence-Audit, kein Feature-Code
+### Gate
+- git status vor Audit: clean (HEAD 516b8e3; nur ignorierte `*.timestamp-*.mjs`).
+- npm run check: GRÜN (exit 0) — build (`tsc --noEmit`), lint (`biome check .`), arch (`depcruise services`), test (`vitest run`, 21 Dateien / 115 Tests).
+- Produktcode geändert: nein.
+- Geänderte Dateien: nur `docs/qm/claude-after-report.md` (dieser Bericht).
+### Vorbefund (Codex) — verifiziert
+- `Admin.tsx` zeigt Nutzerliste, Freigabe, Rollenwechsel, Löschen — BESTÄTIGT.
+- Keine UI für „Nutzer anlegen" — BESTÄTIGT.
+- Keine UI für Admin-Passwort-Reset — BESTÄTIGT.
+- Backend-Routen können mehr: `GET/POST /api/users`, `PUT /api/users/:id {role?/approve?/password?}`, `DELETE /api/auth/users/:id`, `POST /api/auth/users/:id/approve`, `POST /api/auth/users/:id/reset` — BESTÄTIGT (`services/auth/src/routes.ts`).
+- `endpoints.users.create` existiert, wird in `Admin.tsx` NICHT genutzt — BESTÄTIGT.
+- `endpoints.users.resetPassword` fehlt im FE-Wrapper — BESTÄTIGT (grep leer).
+### FE-ADM-01 · Nutzerliste
+- Entscheidung: abhakbar.
+- Evidenz: UI `Admin.tsx` (`useUsers`); API `GET /api/users` (admin-gated, `routes.ts:279`); Service-Liste. RBAC admin-only getestet (`rbac/policy.test.ts` FR-RBAC-01/02). 
+- Grenze: keine wesentliche.
+### FE-ADM-02 · Nutzer anlegen
+- Entscheidung: teilweise (Backend/Endpoint vorhanden, UI fehlt).
+- Evidenz: `endpoints.users.create` (POST `/api/users`); Route erstellt+freigibt+setzt Rolle (`routes.ts:299`); Service `register`/`approveUser`/`changeRole` getestet (`auth/service.test.ts` FR-AUTH-01/02). **Keine Anlegen-UI in `Admin.tsx`** (Endpoint ungenutzt).
+- Grenze/Lücke: Admin-UI „Nutzer anlegen" fehlt.
+### FE-ADM-03 · Freigabe erteilen
+- Entscheidung: abhakbar.
+- Evidenz: UI `Admin.tsx` `approve` → `POST /api/auth/users/:id/approve`; Service `approveUser`; Tests `auth/service.test.ts` FR-AUTH-02 (Freigabe), FR-RBAC-04 (Approve ohne Adminrecht → 403).
+- Grenze: keine.
+### FE-ADM-04 · Rolle ändern
+- Entscheidung: abhakbar.
+- Evidenz: UI `Admin.tsx` `setRole` → `PUT /api/users/:id {role}`; Service `changeRole`; RBAC `canChangeRole` (`rbac/policy.test.ts` FR-RBAC-03: Admin kann sich nicht selbst entziehen).
+- Grenze: keine.
+### FE-ADM-05 · Passwort-Reset (Admin)
+- Entscheidung: teilweise (Backend/Service/Test vorhanden, FE-Endpoint + UI fehlen).
+- Evidenz: Backend `service.resetPassword(id, pw, adminId)`; Routen `PUT /api/users/:id {password}` + `POST /api/auth/users/:id/reset`; **Test `auth/service.test.ts` FR-AUTH-06** (Admin-Reset macht alte Sitzungen ungültig, neues Passwort gilt). ABER: kein `endpoints.users.resetPassword`-Wrapper, keine Admin-UI. Self-Service-Reset (`/api/auth/reset` Token, FR-AUTH-08) ist NICHT der Admin-Reset.
+- Grenze/Lücke: FE-Endpoint-Wrapper + Admin-UI für Passwort-Reset fehlen.
+### FE-ADM-06 · Nutzer löschen
+- Entscheidung: abhakbar.
+- Evidenz: UI `Admin.tsx` `remove` → `DELETE /api/users/:id` (→ `/api/auth/users/:id`); Service `deleteUser`; Test `auth/service.test.ts` „löscht Nutzer und schreibt je Aktion einen Audit-Eintrag".
+- Grenze: keine.
+### FE-ADM-07 · Audit-Einsicht
+- Entscheidung: teilweise (vorhanden, aber nicht Admin-spezifisch).
+- Evidenz: Audit-Einsicht existiert in `Analytics.tsx` (Audit-Abschnitt, `useAudit` → `GET /api/audit`), Service + Hash-Kette + Tests (`audit/service.test.ts` FR-AUD-01/02, Manipulationserkennung) — vgl. SCRUM-110/FE-ANA-04 (abhakbar). **In `Admin.tsx` gibt es KEINE eigene Audit-Einsicht.**
+- Grenze/Lücke: Audit-Einsicht ist über Analytics abgedeckt, aber nicht in der Admin-Seite. Codex/Peter entscheidet, ob das für FE-ADM-07 genügt oder eine Admin-spezifische Sicht gefordert ist.
+### Resttickets / empfohlene Jira-Lücken (nur Nennung)
+- FE-ADM-02: Admin-UI „Nutzer anlegen" (Endpoint `users.create` existiert).
+- FE-ADM-05: FE-Endpoint `users.resetPassword` + Admin-UI für Passwort-Reset (Backend/Service/Test fertig, FR-AUTH-06).
+- FE-ADM-07: Admin-spezifische Audit-Einsicht ODER Scope-Klärung (Analytics genügt).
+### Zusammenfassung für Codex/Jira
+- Abhakbar: FE-ADM-01, FE-ADM-03, FE-ADM-04, FE-ADM-06.
+- Teilweise: FE-ADM-02 (UI fehlt), FE-ADM-05 (FE-Endpoint+UI fehlen), FE-ADM-07 (nicht Admin-spezifisch).
+- Statusvorschlag SCRUM-112: „In Progress" — 4 von 7 setzbar. Keine Checkbox/kein Status durch mich geändert.
+- Bestätigung: kein Produktcode geändert; nur `docs/qm/claude-after-report.md` append-only ergänzt.
