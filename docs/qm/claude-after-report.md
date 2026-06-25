@@ -750,3 +750,59 @@ Modus: Read-only Evidence-Audit, kein Feature-Code
 - Teilweise: FE-ADM-02 (UI fehlt), FE-ADM-05 (FE-Endpoint+UI fehlen), FE-ADM-07 (nicht Admin-spezifisch).
 - Statusvorschlag SCRUM-112: „In Progress" — 4 von 7 setzbar. Keine Checkbox/kein Status durch mich geändert.
 - Bestätigung: kein Produktcode geändert; nur `docs/qm/claude-after-report.md` append-only ergänzt.
+
+---
+
+## SCRUM-113 Evidence-Audit — Mobile / PWA
+Datum: 2026-06-25
+Modus: Read-only Evidence-Audit, kein Feature-Code
+### Gate
+- git status vor Audit: clean (HEAD 5d3b725; nur ignorierte `*.timestamp-*.mjs`).
+- npm run check: GRÜN (exit 0) — build (`tsc --noEmit`), lint (`biome check .`), arch (`depcruise services`), test (`vitest run`, 21 Dateien / 115 Tests).
+- Produktcode geändert: nein.
+- Geänderte Dateien: nur `docs/qm/claude-after-report.md` (dieser Bericht).
+### Vorbefund (Codex) — verifiziert
+- `Mobile.tsx` = statische Mobile/PWA-Vorschau im Geräterahmen — BESTÄTIGT (Imports nur Icons + `useTranslation`; KEINE `endpoints`/`useMutation`/`useQuery`/`navigate`/`Link`/`mutate`).
+- `index.html` hat viewport + theme-color, aber KEINEN Manifest-Link — BESTÄTIGT.
+- `apps/web/public/` enthält nur `robots.txt` (kein Manifest, keine Icons, kein Service Worker) — BESTÄTIGT.
+- `vite.config.ts`/`package.json` ohne PWA-Plugin — BESTÄTIGT (kein VitePWA/workbox/registerSW).
+- `/mobile`-Route + Topbar-Button existieren, Sonderroute (nicht Hauptnavigation) — BESTÄTIGT.
+### FE-MOB-01 · Installierbare PWA (Vollbild, Icon, Offline-Start)
+- Entscheidung: offen.
+- Evidenz: `index.html` nur `viewport` + `theme-color` (kein `<link rel="manifest">`); `public/` nur `robots.txt`; kein `*.webmanifest`, keine App-Icons, kein Service Worker; kein PWA-Plugin in `vite.config.ts`.
+- Grenze/Lücke: keine PWA-Infrastruktur (Manifest/Icons/SW/Offline-Shell). Nicht installierbar, kein Offline-Start.
+### FE-MOB-02 · Mobile Erfassung (Entwurf als Primäraktion)
+- Entscheidung: offen.
+- Evidenz: `Mobile.tsx` zeigt statische Buttons (Diktat/Notiz/Foto/Interview) OHNE Handler/API. Kein Aufruf der Draft-/Capture-API aus dem mobilen Kontext. (Desktop-`Capture.tsx` existiert, ist aber nicht die mobile Aktion.)
+- Grenze/Lücke: keine echte mobile Erfassung; Entwurf nicht als funktionale Primäraktion verdrahtet.
+### FE-MOB-03 · Mobile Fragen/Abfrage
+- Entscheidung: offen.
+- Evidenz: kein mobiles Ask-UI; nur statischer „Nachschlagen"-Button. Desktop-`Ask.tsx` ist zudem durch den bestätigten Ask-Response-Shape-Bug (SCRUM-105) blockiert.
+- Grenze/Lücke: keine mobile Abfrage gebaut.
+### FE-MOB-04 · Mobile Entwürfe
+- Entscheidung: offen.
+- Evidenz: keine mobile Entwurfsliste/-fortsetzen in `Mobile.tsx`; nur allgemeine Draft-Endpoints (`endpoints.drafts`) + Desktop-Capture.
+- Grenze/Lücke: keine mobile Entwurfsansicht.
+### FE-MOB-05 · Mobile Wissenszugriff
+- Entscheidung: offen.
+- Evidenz: kein mobiler Wissenszugriff (statischer „Nachschlagen"-Button ohne Navigation). Desktop-`Library.tsx`/`KnowledgeDetail.tsx` sind responsive, aber nicht mobil-spezifisch im Mobile-Screen angebunden.
+- Grenze/Lücke: kein mobiler Wissenszugriff verdrahtet.
+### FE-MOB-06 · In-App-Bestätigung bei mobilen Aktionen
+- Entscheidung: offen.
+- Evidenz: Es gibt keine mobilen Aktionen (statische Vorschau) → keine In-App-Bestätigungen vorhanden. Abwesenheit destruktiver Aktionen zählt nicht als erfüllt.
+- Grenze/Lücke: nicht vorhanden.
+### FE-MOB-07 · Offline-Queue/Sync (Stufe 2)
+- Entscheidung: offen.
+- Evidenz: keine Offline-Queue/Sync-Logik (kein SW, kein lokaler Queue-Store). Stufe 2.
+- Grenze/Lücke: nicht vorhanden.
+### Resttickets / empfohlene Jira-Lücken (nur Nennung)
+- PWA-Infrastruktur: Manifest + App-Icons + Service Worker/Offline-Shell + Vite-PWA-Plugin (FE-MOB-01).
+- Mobile-Funktionsanbindung: Erfassung/Fragen/Entwürfe/Wissenszugriff real verdrahten (FE-MOB-02..05); FE-MOB-03 hängt zusätzlich an SCRUM-105.
+- In-App-Bestätigungen für mobile Aktionen (FE-MOB-06).
+- Offline-Queue/Sync (FE-MOB-07, Stufe 2).
+- Empfehlung: SCRUM-113 bleibt der Sammel-/Umsetzungsträger; `Mobile.tsx` ist aktuell nur Vorschau.
+### Zusammenfassung für Codex/Jira
+- Abhakbar: keine.
+- Offen: FE-MOB-01, FE-MOB-02, FE-MOB-03, FE-MOB-04, FE-MOB-05, FE-MOB-06, FE-MOB-07.
+- Statusvorschlag SCRUM-113: „To Do" (UI-Vorschau vorhanden, Funktion/PWA unbebaut). Keine Checkbox/kein Status durch mich geändert.
+- Bestätigung: kein Produktcode geändert; nur `docs/qm/claude-after-report.md` append-only ergänzt.
