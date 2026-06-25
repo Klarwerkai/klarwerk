@@ -484,3 +484,58 @@ Modus: Read-only Evidence-Audit, kein Feature-Code
 - Checkboxen, die offen bleiben: FE-LIB-01 (UI-Filter unvollständig), FE-LIB-03 (MD+PDF fehlen), FE-LIB-04 (UI fehlt, Stufe 2), FE-LIB-05 (keine Bibliotheksfunktion).
 - Empfohlene Resttickets: UI-Filter+Server-Search (FE-LIB-01); MD/PDF-Export+Format-Auswahl (FE-LIB-03); Import-UI (FE-LIB-04); Re-Validierung aus Bibliothek (FE-LIB-05).
 - Statusvorschlag für SCRUM-107: „In Progress" — 1 von 5 Checkboxen erfüllt. Keine Checkbox/kein Status durch mich geändert.
+
+---
+
+## SCRUM-105 Evidence-Audit — Ask / Query Console
+Datum: 2026-06-25
+Modus: Read-only Evidence-Audit, kein Feature-Code
+### Gate
+- git status vor Audit: clean (HEAD 6de12b9; nur ignorierte `*.timestamp-*.mjs`).
+- npm run check: GRÜN (exit 0) — build (`tsc --noEmit`), lint (`biome check .`), arch (`depcruise services`), test (`vitest run`, 21 Dateien / 115 Tests).
+- Produktcode geändert: nein.
+- Geänderte Dateien: nur `docs/qm/claude-after-report.md` (dieser Bericht).
+### Kritischer Shape-Check / UI-Funktion
+- Backend-Response: `POST /api/ask` sendet `await ask.ask(...)` = **`AskResult = { result: AnswerResult, gap: Gap|null }`** (`services/app/src/routes/ask-routes.ts`, `services/ask/src/service.ts` Z. 42/61/63, `types.ts` `AskResult`).
+- Frontend-Erwartung: `apps/web/src/api/endpoints.ts` `ask.ask` ist als **`AnswerResult`** typisiert; `apps/web/src/pages/Ask.tsx` setzt `setResult(r)` und liest direkt `result.answered/answer/trust/steps/sources`.
+- Ergebnis: **Shape-Mismatch BESTÄTIGT.** Die echte Antwort ist in `r.result` verschachtelt; `r.answered` ist `undefined` → in `Ask.tsx` immer falsy → es wird **immer die „keine Grundlage"-Karte** gerendert, auch wenn die Frage tatsächlich beantwortet ist. Antwort, Quellen, Trust, Schritte und der „Hat geholfen"-Button werden nie angezeigt. `npm run check`/tsc fängt das NICHT, weil `endpoints` per Generic `<AnswerResult>` castet (Laufzeit-Mismatch, kein Typfehler). Die Integration `build-app.test.ts` prüft nur `statusCode 200`, nicht die FE-Shape.
+- Auswirkung auf Checkboxen: UI-abhängige FE-ASK-Punkte (01–05) dürfen trotz grüner Service-Tests NICHT voll gesetzt werden (Regel 8).
+### FE-ASK-01 · Betriebliche Frage stellen
+- Ergebnis: TEILWEISE.
+- Code-Evidenz: UI-Formular + `endpoints.ask.ask` → `POST /api/ask` (API liefert 200). Frage-Senden funktioniert; ABER Ergebnisanzeige durch Shape-Mismatch gebrochen.
+- Test-Evidenz: `ask/service.test.ts` FR-ASK-01/02 (begründete Antwort); Integration build-app (`POST /api/ask` → 200).
+- Jira-Empfehlung: NICHT voll setzen (Senden ok, Anzeige gebrochen). Abhängig vom Shape-Fix.
+### FE-ASK-02 · Relevante Wissensobjekte heranziehen (Retrieval)
+- Ergebnis: TEILWEISE.
+- Code-Evidenz: Retrieval server-seitig — `ask.ask` baut Refs aus validierten KOs, `reasoner.answer(question, refs)`; Antwort bleibt in Quellen verankert. UI würde Quellen anzeigen, tut es aber wegen Shape-Mismatch nicht.
+- Test-Evidenz: `reasoner/provider-model.test.ts` („answer bleibt in den Quellen verankert; Trust/Quellen aus den Daten", `sources` enthält ko1); `ask/service.test.ts` FR-ASK-01/02.
+- Jira-Empfehlung: NICHT voll setzen (Retrieval+Test ja, UI-Anzeige gebrochen).
+### FE-ASK-03 · Antwort mit Quellen, Evidenz-Level, Konfidenz
+- Ergebnis: NICHT setzen / offen.
+- Code-Evidenz: `AnswerResult` trägt `sources`, `knowledgeClass` (Evidenz-Level), `trust`. ABER: (a) Shape-Mismatch → in der UI nichts davon sichtbar; (b) selbst bei Fix rendert `Ask.tsx` nur Trust (`ConfidenceBar`) + Quellen-IDs, **nicht** `knowledgeClass`/Evidenz-Level.
+- Test-Evidenz: `provider-model.test.ts` (`knowledgeClass === "gesichert"`, sources, trust) — Datenebene ja, UI-Anzeige nein.
+- Jira-Empfehlung: NICHT setzen. Restticket: Shape-Fix + Evidenz-Level/KnowledgeClass in der UI anzeigen.
+### FE-ASK-04 · Konflikt/Unsicherheit/fehlende Grundlage explizit
+- Ergebnis: TEILWEISE.
+- Code-Evidenz: Backend-Anti-Halluzination solide — ohne belastbare Quelle keine erfundene Antwort (`answered:false`), Gap entsteht. UI hat eine „keine Grundlage"-Karte, die aber durch den Shape-Mismatch UNZUVERLÄSSIG ist (wird immer angezeigt, auch bei beantworteter Frage).
+- Test-Evidenz: `ask/service.test.ts` FR-ASK-03 (keine erfundene Antwort, Gap entsteht); `reasoner/provider-model.test.ts` FR-RSN-03 (ohne Quelle keine Rateantwort, `answered:false`).
+- Jira-Empfehlung: NICHT voll setzen (Backend ja+getestet; UI-Trigger durch Shape-Mismatch unzuverlässig). Abhängig vom Shape-Fix.
+### FE-ASK-05 · Feedback zur Antwort erfassen
+- Ergebnis: TEILWEISE / offen.
+- Code-Evidenz: Backend `markHelpful` → Trust hoch + Audit; Route `POST /api/ask/helpful`; UI-Button vorhanden. ABER der „Hat geholfen"-Button liegt im `answered`-Zweig, der wegen Shape-Mismatch nie rendert; zudem greift `result.sources[0]` auf `undefined` zu → faktisch unerreichbar.
+- Test-Evidenz: `ask/service.test.ts` FR-ASK-04 („'Hat geholfen' erhöht Trust und erzeugt Audit-Eintrag", `answer.helpful`).
+- Jira-Empfehlung: NICHT setzen (Backend ja+getestet, UI durch Shape-Mismatch unerreichbar). Abhängig vom Shape-Fix.
+### FE-ASK-06 · Bei fehlendem Wissen Wissenslücke anlegen
+- Ergebnis: gebaut JA.
+- Code-Evidenz: `ask.ask` legt bei `!answered` server-seitig eine Gap an (`createGap`), unabhängig vom UI-Anzeigefehler; Gap ist in Risiko/Gaps sichtbar/auffindbar (`Risk.tsx` `useGaps`, FE-RISK-01). UI-„keine Grundlage"-Karte verlinkt zu `/risiko`.
+- Test-Evidenz: `ask/service.test.ts` FR-ASK-03 (Gap entsteht, `listGaps` Länge 1) + FR-ASK-05 (Gap zuweisen/schließen/löschen); Integration build-app `GET /api/gaps` → 200.
+- Jira-Empfehlung: darf gesetzt werden (Gap-Anlage + Auffindbarkeit unabhängig vom Ask-Shape-Bug). Hinweis: optional die erzeugte Gap direkt in der Ask-noBasis-Karte anzeigen.
+### Offene Restlücken / Resttickets
+- **Ask-Response-Shape-Fix (Hauptpunkt):** `endpoints.ask.ask` muss `{ result, gap }` entpacken (oder Route flach senden). Blockiert die UI-Funktion von FE-ASK-01/02/03/04/05.
+- FE-ASK-03: Evidenz-Level/KnowledgeClass in der UI anzeigen (zusätzlich zum Shape-Fix).
+- Optional: erzeugte Gap direkt in der Ask-„keine Grundlage"-Karte sichtbar machen.
+### Zusammenfassung für Codex/Jira
+- Checkboxen, die gesetzt werden dürfen: FE-ASK-06.
+- Checkboxen, die offen bleiben: FE-ASK-01, FE-ASK-02, FE-ASK-04, FE-ASK-05 (teilweise — durch Response-Shape-Mismatch), FE-ASK-03 (offen — Shape + fehlende Evidenz-Level-Anzeige).
+- Empfohlene Resttickets: Ask-Response-Shape-Fix (Bug, hohe Priorität); Evidenz-Level/KnowledgeClass-Anzeige; optional Gap-Anzeige in der noBasis-Karte.
+- Statusvorschlag für SCRUM-105: bleibt „In Progress". 1 von 6 setzbar; Kern (Ask-UI) durch bestätigten Shape-Bug blockiert. Keine Checkbox/kein Status durch mich geändert.
