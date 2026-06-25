@@ -539,3 +539,45 @@ Modus: Read-only Evidence-Audit, kein Feature-Code
 - Checkboxen, die offen bleiben: FE-ASK-01, FE-ASK-02, FE-ASK-04, FE-ASK-05 (teilweise — durch Response-Shape-Mismatch), FE-ASK-03 (offen — Shape + fehlende Evidenz-Level-Anzeige).
 - Empfohlene Resttickets: Ask-Response-Shape-Fix (Bug, hohe Priorität); Evidenz-Level/KnowledgeClass-Anzeige; optional Gap-Anzeige in der noBasis-Karte.
 - Statusvorschlag für SCRUM-105: bleibt „In Progress". 1 von 6 setzbar; Kern (Ask-UI) durch bestätigten Shape-Bug blockiert. Keine Checkbox/kein Status durch mich geändert.
+
+---
+
+## SCRUM-110 Evidence-Audit — Analytics / Audit
+Datum: 2026-06-25
+Modus: Read-only Evidence-Audit, kein Feature-Code
+### Gate
+- git status vor Audit: clean (HEAD 7ff888c; nur ignorierte `*.timestamp-*.mjs`).
+- npm run check: GRÜN (exit 0) — build (`tsc --noEmit`), lint (`biome check .`), arch (`depcruise services`), test (`vitest run`, 21 Dateien / 115 Tests).
+- Produktcode geändert: nein.
+- Geänderte Dateien: nur `docs/qm/claude-after-report.md` (dieser Bericht).
+### FE-ANA-01 · Analytics-Dashboard (Status/Trust/Aufgaben/Kategorien)
+- Empfehlung: TEILWEISE.
+- Code-/Test-Evidenz: `apps/web/src/pages/Analytics.tsx` zeigt Total, Status (offen/validiert), Kategorien-Anzahl und Verteilung nach Wissensart (`a.byType`-Balken). Backend `library-analytics/service.ts` `analytics()` liefert `{ total, byStatus, byType, byCategory }` (`apps/web/src/api/types.ts` `Analytics`). Test: `service.test.ts` FR-ANA-01 (Aggregation nach Status/Art/Kategorie). **Trust und Aufgaben FEHLEN** im Dashboard (kein `byTrust`/`tasks` im `Analytics`-Typ, nicht in der UI).
+- Restlücke: Trust- und Aufgaben-Dimension. Restticket nötig.
+### FE-ANA-02 · Wirkungsmetriken (validierte/Woche, Antwortquote ohne Lücke, Zeitverlauf)
+- Empfehlung: TEILWEISE / offen.
+- Code-/Test-Evidenz: Backend vollständig — `services/app/src/impact.ts` `impactReport` (`validatedByWeek`, `askTotal`, `answeredWithoutGap`, `answerRate`); Route `GET /api/analytics/impact` (`build-app.ts:206`). Test: `build-app.test.ts` FR-ANA-02 (askTotal=2, answeredWithoutGap=1, answerRate≈0.5). **Keine UI-Anbindung**: `endpoints.ts` `analytics` kennt nur `overview`+`busfactor` (kein `impact`), kein Hook, keine Anzeige in `Analytics.tsx` (grep „impact" im FE leer).
+- Restlücke: Impact-Endpoint/Hook + UI (Wirkungsmetriken/Zeitverlauf). Restticket nötig.
+### FE-ANA-03 · Knowledge Health (datenbasiert, Stufe 2)
+- Empfehlung: offen.
+- Code-/Test-Evidenz: Kein eigenständiges Knowledge-Health-Konzept (kein Score/Zustand/Health-Ableitung). Nur Bestandszahlen (`analytics()`) + Bus-Faktor. Keine Health-Tests.
+- Restlücke: datenbasiertes Knowledge-Health (Score/Zustand). Restticket (Stufe 2).
+### FE-ANA-04 · Audit-Log (sicherheits-/wissensrelevante Aktionen)
+- Empfehlung: abhaken (darf gesetzt werden).
+- Code-/Test-Evidenz: UI — `Analytics.tsx` Audit-Abschnitt listet Einträge (Zeit/Aktion/Ziel/Actor = wer/was/wann), `useAudit`. API — `GET /api/audit` mit `AuditFilter` (actor/action) (`audit-routes.ts`). Service + Hash-Kette — `services/audit/src/chain.ts` `hashEntry`/`verifyChain` (prevHash-Kette, GENESIS), `types.ts` „append-only Hash-Kette" (seq/actor/action/target/at/prevHash/hash). Tests — `audit/service.test.ts`: FR-AUD-01 (wer/was/wann + Sequenz + Kette `prevHash===prev.hash`), FR-AUD-02 (append-only eingefroren; intakte Kette verifiziert; **Manipulationserkennung**: geänderter Eintrag → `verifyChain === false`), „filtert nach Aktion". Audit-Einträge entstehen breit (ko.created/validated/conflict.*/library.import/answer.helpful usw.).
+- Restlücke: minimal — die UI exponiert keine Filter-Controls (Filter existiert + getestet auf API-Ebene; UI zeigt die letzten 20 unfiltered). Kein Blocker; optionaler Restpunkt „Audit-Filter in der UI".
+### FE-ANA-05 · Lineage/Herkunftssicht (Stufe 2)
+- Empfehlung: offen.
+- Code-/Test-Evidenz: Nur einzelne Provenance-Felder im KO-Detail (`KnowledgeDetail.tsx` `ProvenanceLine`: author/originalAuthor/domain/version). KEINE eigenständige Lineage-/Herkunftssicht (keine Abstammungs-/Verknüpfungsansicht). Keine Lineage-Tests.
+- Restlücke: echte Lineage-/Herkunftssicht. Restticket (Stufe 2).
+### Offene Restlücken / Resttickets
+- FE-ANA-01: Trust- + Aufgaben-Dimension im Analytics-Dashboard.
+- FE-ANA-02: Impact-Endpoint/Hook + UI (validatedByWeek/answerRate/Zeitverlauf).
+- FE-ANA-03: datenbasiertes Knowledge-Health (Score/Zustand) — Stufe 2.
+- FE-ANA-05: Lineage-/Herkunftssicht — Stufe 2.
+- Optional FE-ANA-04: Audit-Filter-Controls in der UI.
+### Zusammenfassung für Codex/Jira
+- Checkboxen, die gesetzt werden dürfen: FE-ANA-04.
+- Checkboxen, die offen bleiben: FE-ANA-01 (Trust/Aufgaben fehlen), FE-ANA-02 (keine UI-Anbindung), FE-ANA-03 (kein Health-Konzept), FE-ANA-05 (keine Lineage-Sicht).
+- Empfohlene Resttickets: Trust/Aufgaben im Dashboard; Impact-UI; Knowledge-Health; Lineage-Sicht; optional Audit-Filter-UI.
+- Statusvorschlag für SCRUM-110: bleibt „In Progress" — 1 von 5 Checkboxen erfüllt. Keine Checkbox/kein Status durch mich geändert.
