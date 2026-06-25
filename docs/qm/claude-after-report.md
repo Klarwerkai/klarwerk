@@ -1200,3 +1200,37 @@ Datum: 2026-06-25
 - SCRUM-151 darf nach grünem Gate auf erledigt gesetzt werden.
 - FE-FND-04 (SCRUM-98) kann von „teilweise/offen" auf erfüllt neu bewertet werden (wiederverwendbarer Toast-Bus + zentrale Anzeige + Pilot vorhanden und getestet).
 - Keine Jira-Änderung durch Claude vorgenommen.
+
+---
+
+## SCRUM-134 — Bibliothek: UI-Filter + Server-Search (FE-LIB-01) — Nachbericht
+Datum: 2026-06-25
+### Geänderte Dateien
+- `apps/web/src/api/endpoints.ts`: neuer `library.search(params: KoFilter & { q?: string })` → `GET /api/library/search?q=&type=&status=&category=&tag=` (über `qs`).
+- `apps/web/src/api/hooks.ts`: neuer Hook `useLibrarySearch(params)`.
+- `apps/web/src/lib/libraryQuery.ts` (neu, DOM-frei, ohne API-Client-Import): `LibraryFilterState`, `EMPTY_LIBRARY_FILTER`, `buildLibraryQuery(state)` (trimmt Volltext, lässt leere Felder weg).
+- `apps/web/src/pages/Library.tsx`: kompakte Filterleiste (Volltext + Art + Status + Domäne/Kategorie + Tags); Ergebnisse via `useLibrarySearch`; Optionen Art/Status aus Konstanten, Domäne/Tags aus ungefiltertem Bestand (`useKos` + `categoryOptions`/`tagOptions`).
+- `apps/web/src/i18n.ts`: `lib.allTypes`, `lib.allCategories`, `lib.allTags` (DE/EN).
+- `tests/library/library-query.test.ts` (neu): Query-Builder.
+- `docs/qm/claude-after-report.md`: dieser Nachbericht.
+### Gewählter Such-/Filterpfad
+- **Server-Search-/Filterpfad**: `GET /api/library/search` → `LibraryService.search(q, KoFilter)` (Volltext über Titel+Aussage + `koService.list`-Filter Art/Status/Kategorie/Tag). Belegt durch bestehende Backend-Tests: `library-analytics/service.test.ts` FR-LIB-01 (Volltext), `knowledge-object/service.test.ts` FR-KO-02 (Wissensart filterbar) + FR-KO-03 (Kategorie/Tags filterbar). FE-seitig getestet: `buildLibraryQuery` (Querystring-Aufbau, Trim, Weglassen leerer Felder).
+### Erfüllte Akzeptanzkriterien
+- UI-Suche + Filter sichtbar (Volltext + 4 Selects).
+- Filter kombinierbar und wirken tatsächlich (alle als Query-Parameter an den Server; AND serverseitig).
+- Server-Search-/Filterpfad belegt (Endpoint + Service + Tests); keine Fake-Filter (Backend filtert real, getestet).
+- FE-LIB-01 erfüllt: Volltext (Titel/Aussage) + Art + Status + Domäne/Kategorie + Tags, kombinierbar.
+- Test + Gate-Evidenz vorhanden; `npm run check` grün.
+- Kein Export/Import (SCRUM-135/108), keine Re-Validierung (SCRUM-136), kein Backend-Redesign, keine Library-Neugestaltung.
+### Gelaufene Checks
+- Gezielter Lauf: `vitest run tests/library/library-query.test.ts` → 4/4 grün.
+- apps/web `tsc --noEmit`: grün (Library.tsx/Endpoint/Hook im DOM-Kontext).
+- `npm run check`: GRÜN (exit 0) — build/lint/arch/test (27 Dateien / 134 Tests).
+### Restlücken
+- Volltext serverseitig über Titel+Aussage (nicht zusätzlich Tags/Autor) — der vorhandene `LibraryService.search` deckt Titel/Aussage; Tag ist als eigener Filter abgedeckt. Erweiterung auf Autor/Tags im Volltext wäre ein kleines Backend-Restticket (außerhalb Scope).
+- Domäne/Tag-Optionen aus dem ungefilterten Bestand (`useKos`) abgeleitet — stabil; bei sehr großen Beständen ggf. später ein dedizierter Facetten-Endpoint.
+- Optionaler Toast für Fehler nicht ergänzt (QueryState zeigt Fehlerzustand); bewusst minimal.
+### Jira-Empfehlung
+- SCRUM-134 darf nach grünem Gate auf erledigt gesetzt werden.
+- FE-LIB-01 (SCRUM-107) kann jetzt abgehakt werden: Volltextsuche + strukturierte Filter (Art/Status/Domäne/Tags) sind sichtbar, kombinierbar, über den getesteten Server-Search-/Filterpfad wirksam.
+- Keine Jira-Änderung durch Claude vorgenommen.

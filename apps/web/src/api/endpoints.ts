@@ -102,7 +102,12 @@ export const endpoints = {
   },
   audit: { list: () => api.get<AuditEntry[]>("/audit") },
   lifecycle: { pending: () => api.get<string[]>("/lifecycle/pending") },
-  library: { graph: () => api.get<Graph>("/graph") },
+  library: {
+    graph: () => api.get<Graph>("/graph"),
+    // FE-LIB-01: Server-Volltextsuche + strukturierte Filter (Art/Status/Kategorie/Tag).
+    search: (params: KoFilter & { q?: string }) =>
+      api.get<KnowledgeObject[]>(`/library/search${qs(params)}`),
+  },
   users: {
     list: () => api.get<PublicUser[]>("/users"),
     create: (name: string, email: string, password: string, role?: Role) =>

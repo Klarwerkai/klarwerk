@@ -5,6 +5,11 @@ import { type KoFilter, endpoints } from "./endpoints";
 // Screen mit useMutation gebaut (mit Invalidierung der passenden Keys).
 export const useKos = (f?: KoFilter) =>
   useQuery({ queryKey: ["kos", f], queryFn: () => endpoints.ko.list(f) });
+export const useLibrarySearch = (params: KoFilter & { q?: string }) =>
+  useQuery({
+    queryKey: ["library", "search", params],
+    queryFn: () => endpoints.library.search(params),
+  });
 export const useKo = (id: string) =>
   useQuery({ queryKey: ["ko", id], queryFn: () => endpoints.ko.get(id), enabled: id.length > 0 });
 export const useValidationBoard = (f?: KoFilter) =>
