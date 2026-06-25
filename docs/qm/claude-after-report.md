@@ -619,3 +619,33 @@ Modus: Read-only Evidence-Audit, kein Feature-Code
 - Checkboxen, die offen bleiben: FE-IMP-01, FE-IMP-02, FE-IMP-03 (offen); FE-IMP-04 (teilweise).
 - Empfohlene Resttickets: keine neuen — SCRUM-108 bleibt Umsetzungsträger (Stufe 2); FE-LIB-04 verknüpfen; SCRUM-116 = Backend-Gegenstück.
 - Statusvorschlag für SCRUM-108: bleibt „To Do/Stufe 2" (Backend-JSON-Import vorhanden, FE-Import/Review unbebaut). Keine Checkbox/kein Status durch mich geändert.
+
+---
+
+## SCRUM-109 Evidence-Audit — Output Factory / Instruction Builder (Stufe 2)
+Datum: 2026-06-25
+Modus: Read-only Evidence-Audit, kein Feature-Code
+### Gate
+- git status vor Audit: clean (HEAD f23f14b; nur ignorierte `*.timestamp-*.mjs`).
+- npm run check: GRÜN (exit 0) — build (`tsc --noEmit`), lint (`biome check .`), arch (`depcruise services`), test (`vitest run`, 21 Dateien / 115 Tests).
+- Produktcode geändert: nein.
+- Geänderte Dateien: nur `docs/qm/claude-after-report.md` (dieser Bericht).
+### FE-OUT-01 · Instruction Builder: validierte Objekte → Arbeitsanweisung (MD-Export)
+- Empfehlung: offen.
+- Code-/Test-Evidenz: KEIN Instruction Builder. `apps/web/src/pages/Stufe2.tsx` `Output` ist ein reiner Stufe-2-Platzhalter (`Stufe2Header` ticket "SCRUM-117" + `Notice textKey="s2.output"`; i18n: „aktiv, sobald die Output-Logik steht"). Keine Quellenauswahl (nur validierte), keine MD-Arbeitsanweisungs-Erzeugung. Die `LibraryService`-Exporte (JSON/MediaWiki/HTML) sind Bibliotheks-Export, KEIN Instruction Builder und kein MD-Export.
+- Restlücke: echter Instruction Builder (validierte Objekte auswählen → Arbeitsanweisung als MD). SCRUM-109 bleibt Umsetzungsträger.
+### FE-OUT-02 · Output Factory: Checkliste/Troubleshooting/Schulung/Management-Summary
+- Empfehlung: offen.
+- Code-/Test-Evidenz: Keine Output-Typen/Factory im Code (grep nach instruction/SOP/Checkliste/Troubleshooting/Schulung/Management-Summary/Arbeitsanweisung findet nur Nav-Labels + Platzhalter-Notice-Text, keine Logik). Kein Service/Builder, keine Tests.
+- Restlücke: Output-Factory mit den Output-Typen. SCRUM-109 bleibt Umsetzungsträger.
+### FE-OUT-03 · Herkunftskennzeichnung an jedem Output (Quelle/Status/Trust/Version/Gültigkeit/Rolle)
+- Empfehlung: offen.
+- Code-/Test-Evidenz: Es wird kein Output erzeugt → keine Output-Herkunftskennzeichnung. Einzelne Provenance-Felder existieren nur im KO-Detail (`KnowledgeDetail.tsx` `ProvenanceLine`: author/originalAuthor/domain/version) bzw. als Export-Meta im HTML-Export (`service.ts`: „Trust … · Status … · Autor …"), aber das sind keine generierten Outputs mit vollständiger Kennzeichnung (Quelle/Status/Trust/Version/Gültigkeit/Rolle).
+- Restlücke: vollständige Herkunftskennzeichnung an erzeugten Outputs (setzt FE-OUT-01/02 voraus). SCRUM-109 bleibt Umsetzungsträger.
+### Offene Restlücken / Resttickets
+- FE-OUT-01/02/03 sind unbebaut (nur Stufe-2-Platzhalter) → KEIN separates Restticket nötig; **SCRUM-109 bleibt der Sammel-/Umsetzungsträger** (Stufe 2), Aktivierung laut Jira erst, wenn Output-Logik / `SCRUM-117` steht.
+### Zusammenfassung für Codex/Jira
+- Checkboxen, die gesetzt werden dürfen: keine.
+- Checkboxen, die offen bleiben: FE-OUT-01, FE-OUT-02, FE-OUT-03 (alle offen).
+- Empfohlene Resttickets: keine neuen — SCRUM-109 bleibt Umsetzungsträger; Backend-Gegenstück Output-Logik = SCRUM-117.
+- Statusvorschlag für SCRUM-109: bleibt „To Do/Stufe 2" (blockiert durch Output-Logik SCRUM-117). Keine Checkbox/kein Status durch mich geändert.
