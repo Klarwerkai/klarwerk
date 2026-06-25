@@ -48,6 +48,7 @@ const de = {
   "cmd.close": "Schließen",
   "cmd.placeholder": "Zu Seite springen … (⌘K)",
   "cmd.empty": "Kein Treffer.",
+  "toast.dismiss": "Schließen",
   "page.placeholder":
     "Dieser Screen wird in einem späteren Task gebaut. App-Shell, Navigation und Rollenlogik stehen.",
   "status.entwurf": "Entwurf",
@@ -421,6 +422,7 @@ const en: typeof de = {
   "cmd.close": "Close",
   "cmd.placeholder": "Jump to page … (⌘K)",
   "cmd.empty": "No match.",
+  "toast.dismiss": "Dismiss",
   "page.placeholder":
     "This screen will be built in a later task. App shell, navigation and role logic are in place.",
   "status.entwurf": "Draft",

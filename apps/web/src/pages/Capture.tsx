@@ -8,6 +8,7 @@ import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import type { KnowledgeType, StructureResult } from "../api/types";
 import { useSession } from "../app/AuthContext";
+import { useToast } from "../app/ToastContext";
 import { HelpTip } from "../components/HelpTip";
 import { ListEditor, TagEditor } from "../components/editors";
 import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
@@ -74,6 +75,7 @@ export function Capture(): JSX.Element {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { user } = useSession();
+  const { push } = useToast();
   const authorName = user?.name ?? user?.email ?? "—";
 
   const [mode, setMode] = useState<Mode>("freitext");
@@ -187,8 +189,13 @@ export function Capture(): JSX.Element {
     onSuccess: () => {
       setNotice(t("capture.draftSaved"));
       setErr(null);
+      // FE-FND-04 Pilot: einheitliche Erfolgsmeldung über den Toast-Bus.
+      push("success", t("capture.draftSaved"));
     },
-    onError: fail,
+    onError: (e) => {
+      fail(e);
+      push("error", t("state.error"));
+    },
   });
 
   const switchMode = (m: Mode): void => {

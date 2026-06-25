@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { CommandPalette } from "./CommandPalette";
 import { Sidebar } from "./Sidebar";
+import { ToastViewport } from "./ToastViewport";
 import { Topbar } from "./Topbar";
 
 // App-Chrome (eingeloggt): Sidebar 252px + Topbar 60px + scrollbarer Content.
@@ -14,6 +15,7 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
         <main className="flex-1 overflow-y-auto px-9 py-7">{children}</main>
       </div>
       <CommandPalette />
+      <ToastViewport />
     </div>
   );
 }

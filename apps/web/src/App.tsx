@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { AuthProvider, useSession } from "./app/AuthContext";
 import { RoleProvider } from "./app/RoleContext";
+import { ToastProvider } from "./app/ToastContext";
 import { AuthScreens } from "./auth/AuthScreens";
 import { ResetScreen } from "./auth/ResetScreen";
 import { AppRoutes } from "./routes";
@@ -43,7 +44,9 @@ export default function App(): JSX.Element {
   return (
     <AuthProvider>
       <RoleProvider>
-        <Gate />
+        <ToastProvider>
+          <Gate />
+        </ToastProvider>
       </RoleProvider>
     </AuthProvider>
   );

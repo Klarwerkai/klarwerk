@@ -1163,3 +1163,40 @@ Datum: 2026-06-25
 - SCRUM-152 darf nach grünem Gate auf erledigt gesetzt werden.
 - FE-FND-08 (SCRUM-98) kann von „teilweise" auf erfüllt neu bewertet werden: periodisches Nachladen + Fokus-Refetch + stale-sicherer User-Zustand sind jetzt vorhanden und getestet.
 - Keine Jira-Änderung durch Claude vorgenommen.
+
+---
+
+## SCRUM-151 — Toaster-/Benachrichtigungs-Bus (FE-FND-04) — Nachbericht
+Datum: 2026-06-25
+### Geänderte Dateien
+- `apps/web/src/lib/toastBus.ts` (neu, DOM-frei): Queue-/Reducer-Logik (`addToast`/`removeToast`, `MAX_TOASTS`-Cap, Typen `ToastKind=success|error|info`).
+- `apps/web/src/app/ToastContext.tsx` (neu): `ToastProvider` + `useToast()` (`push(kind,message)`, `dismiss(id)`, Auto-Dismiss nach 4 s via `useReducer` über die reine Logik).
+- `apps/web/src/shell/ToastViewport.tsx` (neu): zentraler Viewport (fixed unten rechts), schließbar (`<output>`-Element, Tone-Stile success/error/info).
+- `apps/web/src/App.tsx`: `ToastProvider` um `Gate` (app-weit verfügbar, auch auf Auth-Screens).
+- `apps/web/src/shell/AppShell.tsx`: `<ToastViewport/>` zentral gemountet.
+- `apps/web/src/pages/Capture.tsx`: Pilot — „Als Entwurf speichern" pusht Erfolg-/Fehler-Toast.
+- `apps/web/src/i18n.ts`: `toast.dismiss` (DE/EN).
+- `tests/foundation/toast-bus.test.ts` (neu): Reducer/Queue/Cap.
+- `docs/qm/claude-after-report.md`: dieser Nachbericht.
+### Pilot-Anbindung
+- Capture „Als Entwurf speichern" (`saveDraft`): `onSuccess` → `push("success", capture.draftSaved)`, `onError` → `push("error", state.error)`. Bestehende lokale `notice`/`err` bleiben erhalten (keine Flow-Änderung).
+### Erfüllte Akzeptanzkriterien
+- Wiederverwendbarer Bus: `useToast().push(kind, message)` app-weit.
+- Einheitliche Erfolg/Fehler/Info-Meldungen (3 Tones).
+- Toasts werden sichtbar gerendert (Viewport), sind schließbar (X) und verschwinden automatisch (4 s).
+- Mindestens eine echte UI-Aktion nutzt den Bus (Capture-Speichern).
+- Notification-Glocke/Feed (Konflikte/Lücken) unverändert — strikt getrennt vom Toast-Bus.
+- Tests + Gate-Evidenz: reiner Reducer/Queue getestet (4 Fälle); apps/web-`tsc` deckt Provider/Viewport/Mount im DOM-Kontext ab.
+- `npm run check` grün; kein Backend-Notification-Redesign.
+### Gelaufene Checks
+- Gezielter Lauf: `vitest run tests/foundation/toast-bus.test.ts` → 4/4 grün.
+- apps/web `tsc --noEmit`: grün (Provider/Viewport/App/AppShell/Capture).
+- `npm run check`: GRÜN (exit 0) — build/lint/arch/test (26 Dateien / 130 Tests).
+- Lint-Hinweis behoben: `role="status"` → semantisches `<output>` (Biome `useSemanticElements`).
+### Restlücken
+- Nur eine Pilot-Anbindung (Capture-Speichern). Weitere Stellen (Profil/Login/Validation/Konflikt-Aktionen) können den Bus schrittweise nutzen — bewusst nicht breit refactored (Scope).
+- Kein FE-Komponenten-Rendertest für den Viewport (FE projektweit ohne Komponententests); reine Bus-Logik ist getestet.
+### Jira-Empfehlung
+- SCRUM-151 darf nach grünem Gate auf erledigt gesetzt werden.
+- FE-FND-04 (SCRUM-98) kann von „teilweise/offen" auf erfüllt neu bewertet werden (wiederverwendbarer Toast-Bus + zentrale Anzeige + Pilot vorhanden und getestet).
+- Keine Jira-Änderung durch Claude vorgenommen.
