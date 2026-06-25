@@ -8,6 +8,15 @@ import type { AnswerResult } from "../api/types";
 import { ConfidenceBar } from "../components/trust";
 import { Button, Card, PageHeader, SectionLabel } from "../components/ui";
 import { selectAnswer } from "../lib/askResponse";
+import { type EvidenceTone, knowledgeClassMeta } from "../lib/knowledgeClass";
+
+// Tone → Badge-Stil (Tailwind-Tokens), bewusst in der Komponente gehalten.
+const EVIDENCE_TONE: Record<EvidenceTone, string> = {
+  pos: "bg-trust-pos-bg text-trust-pos-text",
+  warn: "bg-trust-warn-bg text-trust-warn-text",
+  crit: "bg-trust-crit-bg text-trust-crit-text",
+  neutral: "bg-page text-muted",
+};
 
 export function Ask(): JSX.Element {
   const { t } = useTranslation();
@@ -50,10 +59,17 @@ export function Ask(): JSX.Element {
       {result ? (
         result.answered ? (
           <Card className="mt-5">
-            <div className="mb-3 flex items-center justify-between">
-              <span className="rounded-pill bg-trust-pos-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-pos-text">
-                {t("ask.fromValidated")}
-              </span>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="rounded-pill bg-trust-pos-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-pos-text">
+                  {t("ask.fromValidated")}
+                </span>
+                <span
+                  className={`rounded-pill px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase ${EVIDENCE_TONE[knowledgeClassMeta(result.knowledgeClass).tone]}`}
+                >
+                  {t("ask.evidence")}: {t(knowledgeClassMeta(result.knowledgeClass).labelKey)}
+                </span>
+              </div>
               <ConfidenceBar value={result.trust} />
             </div>
             <p className="text-[15px] leading-relaxed text-text">{result.answer}</p>

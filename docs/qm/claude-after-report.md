@@ -1076,3 +1076,30 @@ Datum: 2026-06-25
 - SCRUM-138 darf nach grünem Gate auf erledigt gesetzt werden (Shape-Fix gebaut + getestet, `npm run check` grün).
 - Folge für SCRUM-105: FE-ASK-01/02/04/05 sind jetzt nicht mehr durch den Shape-Bug blockiert und sollten in einem Folge-Audit erneut bewertet werden; FE-ASK-03 bleibt offen (Evidenz-Level-Anzeige).
 - Keine Jira-Änderung durch Claude vorgenommen.
+
+---
+
+## SCRUM-137 — Evidenz-Level/KnowledgeClass in Ask-Antwort — Nachbericht
+Datum: 2026-06-25
+### Geänderte Dateien
+- `apps/web/src/lib/knowledgeClass.ts` (neu, DOM-frei): `KNOWLEDGE_CLASS_META: Record<KnowledgeClass, { labelKey; tone }>` (Record erzwingt Vollständigkeit) + `knowledgeClassMeta()`.
+- `apps/web/src/pages/Ask.tsx`: Evidenz-Pill neben `ask.fromValidated`; `EVIDENCE_TONE`-Map (Tone→Tailwind-Tokens). Trust/ConfidenceBar, Schritte, Quellen, Helpful, No-Basis-Karte unverändert.
+- `apps/web/src/i18n.ts`: DE/EN-Keys `ask.evidence` + `ask.knowledgeClass.{gesichert,ungeprueft,meinung,extern,annahme,unbekannt}` (verständliche Labels).
+- `tests/ask/knowledge-class.test.ts` (neu): Mapping-Vollständigkeit + Tones.
+- `docs/qm/claude-after-report.md`: dieser Nachbericht.
+### Erfüllte Akzeptanzkriterien
+- Ask-Antwortkarte zeigt KnowledgeClass/Evidenz-Level als Badge.
+- Trust/ConfidenceBar bleibt sichtbar; Quellen + Argumentationsschritte bleiben sichtbar; Helpful-Button unverändert; No-Basis-Karte unverändert.
+- DE/EN-i18n vollständig (alle 6 Klassen + allgemeines Label).
+- Test deckt Mapping/Anzeige-Vorbereitung ab (alle Werte, Vollständigkeit, Tone für gesichert/unbekannt).
+- Kein Backend/Reasoner/Gap/Mobile/Analytics angefasst.
+### Tests / Gate
+- Gezielter Lauf: `vitest run tests/ask/knowledge-class.test.ts` → 2/2 grün.
+- `npm run check`: GRÜN (exit 0) — build/lint/arch/test (23 Dateien / 119 Tests).
+- `vite build`/`git push` nicht Teil von `npm run check` bzw. nicht aus Sandbox (Stakeholder-Schritt).
+### Restlücken
+- Keine funktionalen. Optional: Evidenz-Badge auch im KO-Detail/anderen Stellen (separater Scope, nicht Teil von SCRUM-137).
+### Jira-Empfehlung
+- SCRUM-137 darf nach grünem Gate auf erledigt gesetzt werden.
+- Folge für SCRUM-105/FE-ASK-03: Evidenz-Level ist jetzt in der Ask-Antwort sichtbar — FE-ASK-03 kann (zusammen mit dem SCRUM-138-Shape-Fix) neu bewertet/abgehakt werden.
+- Keine Jira-Änderung durch Claude vorgenommen.
