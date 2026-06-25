@@ -1306,3 +1306,38 @@ Datum: 2026-06-25
 - SCRUM-136 darf nach grünem Gate auf erledigt gesetzt werden.
 - FE-LIB-05 (SCRUM-107) kann abgehakt werden: Re-Validierung ist nun direkt aus der Bibliotheksliste pro KO startbar (für validierte Objekte), mit Rückmeldung.
 - Keine Jira-Änderung durch Claude vorgenommen.
+
+---
+
+## SCRUM-147 + SCRUM-148 + SCRUM-149 — Admin-Restpaket — Nachbericht
+Datum: 2026-06-25
+### Geänderte Dateien
+- `apps/web/src/pages/Admin.tsx`: Create-User-Formular, per-Nutzer Passwort-Reset-Flow, Audit-Sektion. Bestehende Liste/Freigabe/Rolle/Löschen unverändert übernommen.
+- `apps/web/src/api/endpoints.ts`: neuer Wrapper `users.resetPassword(id, password)` → `POST /api/auth/users/:id/reset`.
+- `apps/web/src/lib/adminForms.ts` (neu, DOM-frei): `isNewUserValid`, `isPasswordResetValid`, `isUserAuditAction`, `MIN_PASSWORD`.
+- `apps/web/src/i18n.ts`: `adm.*`-Keys (DE/EN) für Anlegen/Reset/Audit.
+- `tests/foundation/admin-forms.test.ts` (neu): Validierung + Audit-Filter.
+- `docs/qm/claude-after-report.md`: dieser Nachbericht.
+### SCRUM-147 — Nutzer anlegen
+- Formular Name/E-Mail/Passwort(≥8)/Rolle; Submit gesperrt bis `isNewUserValid`. Endpoint `endpoints.users.create` → `POST /api/users`. Erfolg → `["users"]` invalidiert + Erfolgs-Toast + Formular-Reset; Fehler → Fehler-Toast.
+- AK erfüllt: UI gebaut, nutzt echte API, Liste invalidiert, Erfolg/Fehler sichtbar; kein neues Nutzermodell/RBAC-Redesign.
+### SCRUM-148 — Admin-Passwort-Reset
+- FE-Wrapper ergänzt (`users.resetPassword`) → bestehender Backend-Pfad `POST /api/auth/users/:id/reset` → `service.resetPassword(id, pw, admin.id)` (invalidiert Sitzungen, FR-AUTH-06). Per-Nutzer „Schlüssel"-Button öffnet inline Neues-Passwort + „Zurücksetzen" (gesperrt bis ≥8). Erfolg-Toast „…alle Sitzungen beendet"; Fehler-Toast.
+- Self-Service-Reset (Token, `/auth/reset`) bleibt getrennt und unangetastet.
+- AK erfüllt: sicherer Admin-Reset-Flow, echter Backend-Pfad, Sessions invalidiert (wie Backend-Test), Erfolg/Fehler sichtbar.
+### SCRUM-149 — Admin-Audit-Einsicht
+- **Entscheidung: kleine echte Audit-Sektion in Admin** (ohne Service-Umbau), gespeist aus der echten Audit-API `useAudit()` → `GET /api/audit`, gefiltert via `isUserAuditAction` (Aktionen mit Präfix `user.`/`auth.`: login/logout/approve/role-change/password-reset/delete/oidc-provisioned). Letzte 15, neueste zuerst; Leerzustand sonst. KEINE Mockdaten, kein Audit-Service-Redesign. (Analytics bleibt zusätzlich die globale Audit-Sicht.)
+- AK erfüllt: Audit aus echter API, keine Mocks, kein Redesign; Entscheidung dokumentiert.
+### Genutzte Endpoints
+- `POST /api/users` (Anlegen), `POST /api/auth/users/:id/reset` (Reset), `GET /api/audit` (Audit), bestehende `approve`/`PUT /users/:id`/`DELETE`.
+### Tests / Gates
+- Gezielter Lauf: `vitest run tests/foundation/admin-forms.test.ts` → 3/3 grün. Backend-Reset getestet: `auth/service.test.ts` FR-AUTH-06 + „löscht Nutzer und schreibt Audit".
+- apps/web `tsc --noEmit`: grün. `npm run check`: GRÜN (exit 0) — build/lint/arch/test (30 Dateien / 142 Tests).
+### Restlücken
+- Audit-Sektion zeigt globale user-/auth-Audit-Aktionen (nicht je-Nutzer gefiltert) — bewusst kompakt; je-Nutzer-Drilldown wäre ein kleiner Folgeausbau.
+- „user.create" wird serverseitig nicht als eigene Audit-Aktion geführt (Register/Setup loggen keinen create-Event) — außerhalb dieses FE-Scopes; optionales Backend-Restticket.
+- Reset-Passwort wird vom Admin in ein Feld eingegeben (kein generiertes Einmal-Link-Verfahren) — entspricht dem vorhandenen Backend-Pfad.
+### Jira-Empfehlung
+- SCRUM-147, SCRUM-148, SCRUM-149 dürfen nach grünem Gate auf erledigt gesetzt werden.
+- FE-ADM-02 (Anlegen) + FE-ADM-05 (Admin-Reset) + FE-ADM-07 (Audit-Einsicht) aus SCRUM-112 können entsprechend abgehakt werden.
+- Keine Jira-Änderung durch Claude vorgenommen.

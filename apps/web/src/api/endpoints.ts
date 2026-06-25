@@ -115,5 +115,8 @@ export const endpoints = {
     approve: (id: string) => api.post<void>(`/auth/users/${id}/approve`),
     setRole: (id: string, role: Role) => api.put<void>(`/users/${id}`, { role }),
     remove: (id: string) => api.del<void>(`/users/${id}`),
+    // SCRUM-148: Admin-Passwort-Reset (eigener Pfad; invalidiert Sitzungen serverseitig).
+    resetPassword: (id: string, password: string) =>
+      api.post<void>(`/auth/users/${id}/reset`, { password }),
   },
 };
