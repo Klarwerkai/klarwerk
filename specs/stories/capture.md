@@ -21,7 +21,11 @@ gemeinsamem Entwurfs-Pool und Metadaten.
 - [ ] **Gegeben** Kamera **oder** Mediathek, **dann** Anhang wählbar; Thumbnails entfernbar.
 
 ### FR-CAP-05 · Dokumentanhang + OCR (SOLL)
-- [ ] **Gegeben** txt/md/pdf/docx/Bild, **dann** fließt OCR-Text in Strukturierung/Interview ein.
+- [x] **Gegeben** txt/md/csv/json/log, **dann** wird der Klartext client-seitig in Rohtext/Strukturierung übernommen (`readTextFile`).
+- [x] **Gegeben** eine .docx, **dann** wird der Text client-seitig per `mammoth` (lazy) extrahiert und übernommen (`extractDocxText`/`readDocxFile`; Test `tests/capture/docx-extract.test.ts`).
+- [ ] **Offen (eigenes Restticket):** PDF-Textextraktion — `pdfjs-dist@6` verlangt Node ≥22 (Konflikt zu Node ≥20) und ist nicht build-verifiziert; bei Umsetzung auf eine Node-20-kompatible Version pinnen.
+- [ ] **Offen (eigenes Restticket):** Bild-OCR — nur mit lazy geladener, performanter und testbarer Lösung (z. B. tesseract.js als separater Worker).
+- Hinweis: altes Binärformat `.doc` wird von `mammoth` nicht unterstützt; nur `.docx`.
 
 ### FR-CAP-06 · Gemeinsamer Entwurfs-Pool (MUSS)
 - [ ] **Gegeben** ein geparkter Entwurf, **dann** für alle Schreibberechtigten sichtbar und fortsetzbar (mit Autoranzeige).

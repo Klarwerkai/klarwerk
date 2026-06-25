@@ -1,4 +1,7 @@
 // Datei-Helfer für die Erfassung — alles client-seitig, ohne Server-/Objektspeicher.
+// DOM-Modul (nutzt File/Image/document/FileReader). Der DOM-freie DOCX-Kern liegt
+// in `./docx` und wird hier nur als Browser-Wrapper umhüllt.
+import { extractDocxText, isDocxDocumentLike } from "./docx";
 
 // FR-CAP-05: Bild auf ein kleines Thumbnail (JPEG) verkleinern → Daten-URL.
 export function fileToThumbDataUrl(file: File, maxPx = 1024, quality = 0.7): Promise<string> {
@@ -44,6 +47,16 @@ const TEXT_EXTS = [".txt", ".md", ".markdown", ".csv", ".log", ".json"];
 export function isTextDocument(file: File): boolean {
   const name = file.name.toLowerCase();
   return file.type.startsWith("text/") || TEXT_EXTS.some((e) => name.endsWith(e));
+}
+
+// FR-CAP-06: .docx-Erkennung als dünner Browser-Wrapper um die DOM-freie Logik.
+export function isWordDocument(file: File): boolean {
+  return isDocxDocumentLike({ name: file.name, type: file.type });
+}
+
+// Browser-Wrapper: liest die Datei und extrahiert den Text über den DOM-freien Kern.
+export async function readDocxFile(file: File): Promise<string> {
+  return extractDocxText(await file.arrayBuffer());
 }
 
 export function isImage(file: File): boolean {

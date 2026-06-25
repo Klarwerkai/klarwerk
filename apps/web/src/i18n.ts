@@ -142,7 +142,8 @@ const de = {
   "capture.author": "Autor",
   "capture.documents": "Dokumente (Kontext / Anhang)",
   "capture.documentsUpload": "Dateien hochladen",
-  "capture.documentsHint": "txt, md, csv → Volltext · pdf, docx, OCR: Parser-Lib erforderlich",
+  "capture.documentsHint":
+    "txt, md, csv, json, log, docx → Volltext · pdf & OCR: noch nicht unterstützt",
   "capture.images": "Bilder (Anhang)",
   "capture.imagesUpload": "Bilder anhängen",
   "capture.imagesHint": "Auch aus der Mobile-App. Werden am Objekt angehängt.",
@@ -152,8 +153,9 @@ const de = {
   "capture.loadExample": "Beispiel laden",
   "capture.exampleLoaded": "Beispiel geladen.",
   "capture.docAdded": "{{name}} als Kontext übernommen.",
+  "capture.docParseError": "{{name}} konnte nicht gelesen werden.",
   "capture.docUnsupported":
-    "{{name}}: Volltext-Extraktion (pdf/docx/OCR) erfordert eine Parser-Lib.",
+    "{{name}}: nur txt/md/csv/json/log und docx werden als Volltext gelesen (pdf/OCR folgen).",
   "capture.help.category.title": "Kategorie & #Tags",
   "capture.help.category.body":
     "Die Kategorie ist eine frei vergebbare fachliche Einordnung (z. B. „Instandhaltung“, „Qualität“, „Einkauf“). Tags sind freie Schlagworte zur Auffindbarkeit.",
@@ -247,6 +249,10 @@ const de = {
   "val.intro":
     "Peer-Bewertung grün / gelb / rot. Ab der Schwelle (Standard 3× grün, 0× rot) gilt ein Objekt als validiert.",
   "val.filter": "Volltext filtern …",
+  "val.filterAllTypes": "Alle Wissensarten",
+  "val.filterAllCategories": "Alle Kategorien",
+  "val.filterAllTags": "Alle Tags",
+  "val.filterMine": "Mir zugewiesen",
   "val.empty": "Keine offenen Objekte.",
   "val.target": "Ziel: {{n}}× grün",
   "val.confirm": "Bestätigen",
@@ -495,7 +501,8 @@ const en: typeof de = {
   "capture.author": "Author",
   "capture.documents": "Documents (context / attachment)",
   "capture.documentsUpload": "Upload files",
-  "capture.documentsHint": "txt, md, csv → full text · pdf, docx, OCR: parser lib required",
+  "capture.documentsHint":
+    "txt, md, csv, json, log, docx → full text · pdf & OCR: not yet supported",
   "capture.images": "Images (attachment)",
   "capture.imagesUpload": "Attach images",
   "capture.imagesHint": "Also from the mobile app. Attached to the object.",
@@ -505,7 +512,9 @@ const en: typeof de = {
   "capture.loadExample": "Load example",
   "capture.exampleLoaded": "Example loaded.",
   "capture.docAdded": "{{name}} added as context.",
-  "capture.docUnsupported": "{{name}}: full-text extraction (pdf/docx/OCR) requires a parser lib.",
+  "capture.docParseError": "{{name}} could not be read.",
+  "capture.docUnsupported":
+    "{{name}}: only txt/md/csv/json/log and docx are read as full text (pdf/OCR to follow).",
   "capture.help.category.title": "Category & #tags",
   "capture.help.category.body":
     'The category is a free domain classification (e.g. "Maintenance", "Quality", "Procurement"). Tags are free keywords for findability.',
@@ -599,6 +608,10 @@ const en: typeof de = {
   "val.intro":
     "Peer rating green / amber / red. At the threshold (default 3× green, 0× red) an object is validated.",
   "val.filter": "Filter full text …",
+  "val.filterAllTypes": "All knowledge types",
+  "val.filterAllCategories": "All categories",
+  "val.filterAllTags": "All tags",
+  "val.filterMine": "Assigned to me",
   "val.empty": "No open objects.",
   "val.target": "Target: {{n}}× green",
   "val.confirm": "Confirm",

@@ -64,7 +64,23 @@ Fokus-Überarbeitung der Capture-Seite zur 100%-Parität mit der Vorgänger-App:
 - **FE-OUT/IMP/MGMT (Stufe 2)**: je ein neues Backend-Modul (Neubau, war auch in der Vorgänger-App nur Stufe-2-Platzhalter).
 - Mobile-responsive Shell (Hamburger); kleinere Zusatzfilter (FE-VAL-02/FE-LIB).
 
+### Nachtrag (8. Batch — FE-CAP-06 stabilisiert: DOCX echt, Dependencies bereinigt) — SCRUM-100
+Auftrag aus Codex-QM-Logbuch Abschnitt 6 (Freigabe Option A):
+- ✅ **DOCX-Textextraktion** echt, client-seitig: `mammoth` wird **lazy** geladen (`await import("mammoth")`). Neuer Kern `extractDocxText(ArrayBuffer)` (in Node testbar) + Browser-Wrapper `readDocxFile(File)` + `isWordDocument()` in `apps/web/src/lib/files.ts`. `Capture.tsx` (`onDocs`) hängt DOCX wie Textdateien als Kontext an; `accept` um `.docx` erweitert. **Kein Capture-Flow-Umbau** — gleiche Upload-Fläche/Logik.
+- ✅ **Engine-/Bundle-Risiko entfernt:** `pdfjs-dist@6` (verlangte Node ≥22, Konflikt zu Node ≥20) und `tesseract.js` aus `apps/web/package.json` **entfernt**; `package-lock.json` via `npm install --package-lock-only` konsistent regeneriert (0 Referenzen, kein `22.13.0` mehr). Keine ungenutzten schweren Dependencies.
+- ✅ **Ehrliche UI-Texte** (DE/EN): `capture.documentsHint`/`docUnsupported` nennen unterstützte Typen (txt/md/csv/json/log/docx) und „pdf & OCR: noch nicht unterstützt"; neuer `capture.docParseError`.
+- ✅ **Test:** `tests/capture/docx-extract.test.ts` (+ Fixture `tests/fixtures/sample.docx`) — extrahiert Klartext, prüft Typ-Erkennung. **Lauf nur auf Mac** (`vitest` in Sandbox nicht ausführbar).
+- ✅ **Spec** `specs/stories/capture.md` (FR-CAP-05) aktualisiert: txt+docx erledigt, PDF/OCR als eigene Resttickets.
+- **Verifiziert (Sandbox):** `tsc` (apps/web), Biome (geänderte Dateien), dependency-cruiser. **Mac-Gate offen:** `npm install` + `npm run check` (inkl. `vitest` + `vite build`).
+- **Restticket-Vorschlag (Jira):** PDF-Extraktion (pdfjs Node-20-kompatibel pinnen) und Bild-OCR (lazy/performant/testbar) als eigene Tickets unter SCRUM-100/FE-CAP-06.
+
+### Nachtrag (9. Batch — FE-VAL-02 Validierungsfilter) — SCRUM-103
+- ✅ **Kombinierbare Filter im Validation Board** (AND): Volltextsuche über Titel, Aussage, Bedingungen, Maßnahmen, Kategorie und Tags (case-insensitive) + Filter Wissensart/Kategorie/Tag + „Mir zugewiesen" (`assignments.includes(user.id)`, null-User-sicher).
+- ✅ Reine, DOM-freie Logik in `apps/web/src/lib/validationFilters.ts` (`matchesValidationFilter`, `categoryOptions`/`tagOptions`/`typeOptions` — stabil sortiert, dedupliziert); Optionen aus den geladenen Board-Items abgeleitet. Test `tests/validation/validation-filters.test.ts` (6 Fälle).
+- ✅ `Validation.tsx`: kompakte, responsive Filterleiste; **Board-Karten, Rating-Buttons und Zuweisungs-Select unverändert** (keine Regression). i18n DE/EN ergänzt.
+- Kein Backend/Status-Filter neu erfunden (Board liefert offene KOs); leerer Filter = unveränderte Liste.
+
 ### Offen — benötigt zuerst Backend-Endpunkte (Stufe 2 / BE-Lücke)
-- FE-CAP-05 Anhänge/Foto-Upload (Objektspeicher), FE-CAP-06 OCR.
+- FE-CAP-05 Anhänge/Foto-Upload (Objektspeicher); PDF-Extraktion + Bild-OCR (FE-CAP-06, neue Resttickets).
 - FE-OUT (Output Factory), FE-IMP (Import/Review), FE-MGMT/Kapital-Sichten.
 - FE-RSN-03 `assistText`, voll reasoner-getriebenes Interview (eigener Endpunkt).

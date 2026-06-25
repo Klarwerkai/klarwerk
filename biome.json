@@ -23,7 +23,7 @@
       "UI:UX",
       "Blueprint",
       "**/*.tsbuildinfo",
-      "**/vite.config.ts.timestamp-*.mjs"
+      "**/*.timestamp-*.mjs"
     ]
   }
 }

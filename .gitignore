@@ -5,3 +5,6 @@ dist/
 docs/generated/coverage/
 *.log
 .DS_Store
+
+# Vite/Vitest erzeugen beim Transpilieren der TS-Configs flüchtige Temp-Dateien.
+*.timestamp-*.mjs

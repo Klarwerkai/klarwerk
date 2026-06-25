@@ -12,7 +12,14 @@ import { HelpTip } from "../components/HelpTip";
 import { ListEditor, TagEditor } from "../components/editors";
 import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
 import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
-import { fileToThumbDataUrl, isImage, isTextDocument, readTextFile } from "../lib/files";
+import {
+  fileToThumbDataUrl,
+  isImage,
+  isTextDocument,
+  isWordDocument,
+  readDocxFile,
+  readTextFile,
+} from "../lib/files";
 
 const MODES = ["freitext", "formular", "diktat", "interview"] as const;
 type Mode = (typeof MODES)[number];
@@ -231,14 +238,14 @@ export function Capture(): JSX.Element {
     for (const f of files) {
       if (isImage(f)) {
         await addImage(f);
-      } else if (isTextDocument(f)) {
+      } else if (isTextDocument(f) || isWordDocument(f)) {
         try {
-          const text = await readTextFile(f);
+          const text = isWordDocument(f) ? await readDocxFile(f) : await readTextFile(f);
           setRaw((prev) => (prev ? `${prev}\n\n[${f.name}]\n${text}` : `[${f.name}]\n${text}`));
           setDocs((d) => [...d, { id: crypto.randomUUID(), name: f.name }]);
           setNotice(t("capture.docAdded", { name: f.name }));
         } catch {
-          setErr(t("state.error"));
+          setErr(t("capture.docParseError", { name: f.name }));
         }
       } else {
         setErr(t("capture.docUnsupported", { name: f.name }));
@@ -496,7 +503,7 @@ export function Capture(): JSX.Element {
               <input
                 type="file"
                 multiple
-                accept=".txt,.md,.markdown,.csv,.log,.json,image/*"
+                accept=".txt,.md,.markdown,.csv,.log,.json,.docx,image/*"
                 className="hidden"
                 onChange={(e) => void onDocs(e)}
               />
