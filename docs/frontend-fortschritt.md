@@ -80,7 +80,15 @@ Auftrag aus Codex-QM-Logbuch Abschnitt 6 (Freigabe Option A):
 - ✅ `Validation.tsx`: kompakte, responsive Filterleiste; **Board-Karten, Rating-Buttons und Zuweisungs-Select unverändert** (keine Regression). i18n DE/EN ergänzt.
 - Kein Backend/Status-Filter neu erfunden (Board liefert offene KOs); leerer Filter = unveränderte Liste.
 
+### Nachtrag (10. Batch — FE-VAL-06 Revisionsfeedback) — SCRUM-103
+- ✅ **Pflicht-Feedback bei Gelb/Bedingt und Rot/Ablehnen**: Klick öffnet pro KO ein kompaktes Feedbackfeld an der Karte; Submit erst aktiv, wenn Text vorhanden; Abbrechen möglich; klar erkennbar „Bedingt" vs. „Ablehnung".
+- ✅ **Reihenfolge beim Submit**: erst `comment` (mit neutralem Präfix „Validierungsfeedback (Bedingt|Ablehnung): …"), dann `rate` (`warn`/`down`), dann invalidieren + Form schließen. Grün/Bestätigen bleibt 1-Klick.
+- ✅ Reiner, DOM-freier Helfer `apps/web/src/lib/validationFeedback.ts` (`buildValidationFeedback`, `feedbackPrefix`, `isFeedbackSubmittable`) + Test `tests/validation/validation-feedback.test.ts` (3 Fälle).
+- ✅ `Validation.tsx`: Karte um optionales Feedback-Panel ergänzt (Wrapper-`div`), **Filterleiste, Zuweisungsselect, Grün-Button und Rating-Mechanik unverändert**; Buttons/Form während Submit deaktiviert; minimale Fehleranzeige. i18n DE/EN ergänzt.
+- **Kein neues Backend-Statusmodell**: nutzt vorhandene Aktionen `comment`+`rate`. **Restlücke (nicht improvisiert):** eine echte „Rückgabe an Autor" als eigene Aufgabe/Status existiert im Backend nicht — das Feedback ist als KO-Kommentar nachvollziehbar, eine Aufgaben-/Statusrückgabe wäre ein separates Backend-Ticket.
+
 ### Offen — benötigt zuerst Backend-Endpunkte (Stufe 2 / BE-Lücke)
 - FE-CAP-05 Anhänge/Foto-Upload (Objektspeicher); PDF-Extraktion + Bild-OCR (FE-CAP-06, neue Resttickets).
+- FE-VAL-06 „Rückgabe an Autor" als eigene Aufgabe/Status (Backend-Restlücke; aktuell als KO-Kommentar gelöst).
 - FE-OUT (Output Factory), FE-IMP (Import/Review), FE-MGMT/Kapital-Sichten.
 - FE-RSN-03 `assistText`, voll reasoner-getriebenes Interview (eigener Endpunkt).
