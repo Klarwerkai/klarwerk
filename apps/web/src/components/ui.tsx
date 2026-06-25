@@ -89,7 +89,7 @@ export function TextInput({
   );
 }
 
-export function Field({ label, children }: { label: string; children: ReactNode }): JSX.Element {
+export function Field({ label, children }: { label: ReactNode; children: ReactNode }): JSX.Element {
   return (
     // biome-ignore lint/a11y/noLabelWithoutControl: Das Eingabefeld wird als children im Label gerendert.
     <label className="block space-y-1.5">

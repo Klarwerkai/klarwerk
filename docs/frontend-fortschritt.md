@@ -48,6 +48,17 @@
 - ✅ **Anzeigenamen statt UUIDs**: Kommentare, Historie, Herkunft (KO-Detail) und Lücken-Zuweisung zeigen jetzt den Nutzernamen.
 - ✅ **Bugfix:** `GET /api/users` ist admin-only → Zuweisungs-Dropdowns (Validierung/Risiko) funktionierten für Controller nicht. Neuer `GET /api/directory` (id+name, requireUser) für alle Rollen; `useDirectory()`-Hook. Live-Befund aus der Verifikation behoben.
 
+### Nachtrag (7. Batch — Wissenserfassung vollständig ausgebaut)
+Fokus-Überarbeitung der Capture-Seite zur 100%-Parität mit der Vorgänger-App:
+- ✅ **Autor**-Feld (read-only, aktueller Nutzer).
+- ✅ **Metadaten vorab**: Wissensart, Kategorie, Anlage/Asset, #Tags, Nötige Validierungen — mit **Hilfe-Tooltips** („?"-Popover inkl. „Im Hilfe-Center öffnen", `HelpTip`-Komponente, FE-FND-05).
+- ✅ **KI-Hilfe** (Reasoner-`assist`) auf Rohtext **und** Aussage.
+- ✅ **Bilder anhängen** (FR-CAP-05): client-seitige Verkleinerung, Vorschau-Galerie, werden beim Einreichen am erzeugten Objekt angehängt.
+- ✅ **Dokumente** (FR-CAP-06, Teil): txt/md/csv werden client-seitig als Volltext gelesen und als Kontext übernommen.
+- ✅ **Als Entwurf speichern** (echte drafts-API) und **Beispiel laden**.
+- Geteilte Helfer: `lib/files.ts` (Thumbnail/Text-Lesen), `components/HelpTip.tsx`; `Field`-Label akzeptiert jetzt ReactNode.
+- **Ehrliche Grenze:** pdf/docx-Volltext + Bild-OCR brauchen eine Parser-Lib (z. B. `pdfjs-dist`, `mammoth`, `tesseract.js`) → npm-Install durch Stakeholder; die Upload-UI ist vorbereitet. Große Dateien/Video brauchen Objektspeicher (S3).
+
 ### Noch offen
 - **FE-CAP-06 OCR**: braucht eine neue Client-Lib (z. B. tesseract.js) — npm-Install nötig (kann ich im Sandbox nicht sicher ausführen) → Stakeholder installiert.
 - **FE-OUT/IMP/MGMT (Stufe 2)**: je ein neues Backend-Modul (Neubau, war auch in der Vorgänger-App nur Stufe-2-Platzhalter).
