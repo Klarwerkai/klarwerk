@@ -1501,3 +1501,36 @@ Datum: 2026-06-25
 - Echtes strukturiertes sources/external-Datenmodell bleibt Roadmap (separat, falls fachlich gewünscht) — hier bewusst nicht gebaut.
 
 **Jira-Empfehlung:** Nach grünem Gate dürfen SCRUM-131 vollständig und SCRUM-102/FE-KO-06 auf erledigt. Ich setze keine Jira-Checkbox/Status selbst; Codex/Peter haken nach Gate ab. Commit/Push bleibt Peters Schritt.
+
+---
+
+## 2026-06-25 · SCRUM-129 — Echtes Quellen-/External-Modell am Wissensobjekt (FR-KO-07 / FE-KO-01+07)
+
+**Ticket(s):** SCRUM-129. Elternpunkte: SCRUM-102 / FE-KO-01 (Detailseite zeigt Quellen) + FE-KO-07 (externe Quelle anhängen, klar als nicht peer-validiert / Stufe 2). NICHT vermischt mit SCRUM-130 / FE-KO-02 (Wiki-/Confluence) — kein Wiki-/Hierarchie-/Backlink-Modell.
+
+**Befund (read-only):** KnowledgeObject hatte KEIN sources/external-Feld. Beide Repos speichern das Vollobjekt (InMemory Map / pg `data jsonb`) → neues Feld transparent, KEINE DDL/Migration nötig.
+
+**Änderung (geänderte/neue Dateien):**
+- `services/knowledge-object/src/types.ts` — neu: `KoSourceKind = "external"`, `KoSource` (id/label/url/excerpt/kind/peerValidated/author/at); `sources: KoSource[]` an KnowledgeObject; KoErrorCode +`INVALID_SOURCE`.
+- `services/knowledge-object/src/service.ts` — create initialisiert `sources: []`; revise erhält sources (`ko.sources ?? []`); neu `addSource` (Label-Pflicht, external → peerValidated=false, Audit `ko.source-added`) und `removeSource` (Audit `ko.source-removed`).
+- `services/knowledge-object/index.ts` — exportiert KoSource/KoSourceKind/KoAttachment.
+- `services/app/src/routes/ko-routes.ts` — PutBody +source/sourceId; neue Actions `add-source` / `remove-source` (Permission ko.create = Bearbeiterpfad; Label-Validierung).
+- `services/knowledge-object/src/service.test.ts` — 2 neue Tests (Quelle hinzufügen → nie peer-validiert + über revise erhalten + Audit; leeres Label abgelehnt + entfernbar).
+- `apps/web/src/api/types.ts` — `KoSource` + `sources?: KoSource[]`.
+- `apps/web/src/api/endpoints.ts` — KoAction +`add-source`/`remove-source`.
+- `apps/web/src/lib/koSource.ts` — neu, DOM-frei: isSourceFormValid, toSourcePayload, sourceBadgeKey, EMPTY_SOURCE_FORM.
+- `apps/web/src/pages/KnowledgeDetail.tsx` — neue „Quellen"-Card: Liste mit Label/URL/Excerpt + Badge „extern · nicht peer-validiert", Add-Form (Label Pflicht, URL/Excerpt optional) und Entfernen (nur Bearbeiter), Toast + Invalidierung. Klar getrennt von der bestehenden „Quelle/Beitrag melden"-Review-Kommentar-Card (keine Migration).
+- `apps/web/src/i18n.ts` — `ko.sources*` / `ko.source*` (DE+EN).
+- `tests/ko/ko-source.test.ts` — 3 Tests (Label-Pflicht, Payload-Bau, Badge = nicht peer-validiert).
+
+**Backend:** ERWEITERT (echtes Modell + API + Audit), wie in der Vorab-Meldung skizziert. Keine DDL/Migration, kein Import-Pipeline-Umbau, kein automatisches Peer-Validation-Verfahren.
+
+**Erfüllte AK:** neues KoSource-Modell mit Minimalfeldern ✓ · sources:[] bei create ✓ · revise bewahrt sources ✓ · addSource/removeSource + Audit ko.source-added/-removed ✓ · externe Quelle peerValidated=false ✓ · KO-Action add-source/remove-source ✓ · Pflichtfeld (Label) validiert ✓ · FE zeigt Quellen + markiert klar „nicht peer-validiert / Stufe 2" ✓ · Review-Kommentare NICHT als echte Quelle migriert ✓ · keine Fake-Provenance, keine UI die extern als validiert zeigt ✓.
+
+**Genutzte Endpoints:** PUT /api/kos/:id (action add-source / remove-source) — neu.
+
+**Tests/Gates:** `npm run check` GRÜN — 36 Testdateien / 173 Tests (5 neu). Root-tsc grün, apps/web `tsc --noEmit` EXIT=0, depcruise sauber (Vollobjekt-JSONB, keine neuen Modulgrenzen-Verstöße), Biome grün.
+
+**Restlücken:** Nur `kind: "external"` (Stufe 2) — interne/peer-validierte Quelltypen bleiben Roadmap. Kein Wiki-/Confluence-Linkmodell (SCRUM-130 / FE-KO-02 separat). Kein Import-Pipeline-Bezug.
+
+**Jira-Empfehlung:** Nach grünem Gate dürfen SCRUM-129 sowie SCRUM-102 / FE-KO-01 und FE-KO-07 auf erledigt. SCRUM-102 bleibt danach voraussichtlich nur wegen FE-KO-02 / SCRUM-130 offen. Ich setze keine Jira-Checkbox/Status selbst; Codex/Peter haken nach Gate ab.

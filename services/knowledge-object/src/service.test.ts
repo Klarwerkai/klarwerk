@@ -45,6 +45,46 @@ describe("KoService", () => {
     expect(revised.comments).toHaveLength(1);
   });
 
+  it("SCRUM-129 / FR-KO-07: externe Quelle anfügen — nie peer-validiert, über revise erhalten", async () => {
+    const audit = new AuditService({ repo: new InMemoryAuditRepo() });
+    const svc = new KoService({ repo: new InMemoryKoRepo(), audit });
+    const ko = await svc.create(base());
+    expect(ko.sources).toEqual([]);
+
+    const withSource = await svc.addSource(ko.id, "experte", {
+      label: "Wartungshandbuch P2",
+      url: "https://wiki/p2",
+      excerpt: "Kapitel 4.2",
+    });
+    expect(withSource.sources).toHaveLength(1);
+    const src = withSource.sources[0];
+    expect(src?.kind).toBe("external");
+    expect(src?.peerValidated).toBe(false); // externe Quelle ist NIE peer-validiert
+    expect(src?.label).toBe("Wartungshandbuch P2");
+    expect(src?.url).toBe("https://wiki/p2");
+
+    // Quelle bleibt über eine Überarbeitung erhalten.
+    const revised = await svc.revise(ko.id, { statement: "neu" }, "experte");
+    expect(revised.sources).toHaveLength(1);
+
+    // Audit-Eintrag entstanden.
+    const entries = await audit.list({ action: "ko.source-added" });
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.target).toBe(ko.id);
+  });
+
+  it("SCRUM-129: leeres Label wird abgelehnt; Quelle entfernbar", async () => {
+    const ko = await service.create(base());
+    await expect(service.addSource(ko.id, "experte", { label: "   " })).rejects.toMatchObject({
+      code: "INVALID_SOURCE",
+    });
+    const withSource = await service.addSource(ko.id, "experte", { label: "Norm DIN 1234" });
+    const sid = withSource.sources[0]?.id ?? "";
+    expect(withSource.sources[0]?.url).toBeNull();
+    const removed = await service.removeSource(ko.id, sid, "experte");
+    expect(removed.sources).toHaveLength(0);
+  });
+
   it("FR-CAP-05: Anhänge anfügen und entfernen", async () => {
     const ko = await service.create(base());
     expect(ko.attachments).toEqual([]);

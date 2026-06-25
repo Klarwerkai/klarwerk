@@ -55,6 +55,8 @@ export type KoAction =
     }
   | { action: "resolve-conflict"; conflictId: string; decision: string }
   | { action: "transfer-author"; newAuthor: string }
+  | { action: "add-source"; source: { label: string; url?: string; excerpt?: string } }
+  | { action: "remove-source"; sourceId: string }
   | { action: "revalidate" };
 
 export const endpoints = {

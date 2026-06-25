@@ -46,6 +46,8 @@ interface PutBody {
   text?: string;
   attachment?: { name?: string; mime?: string; dataUrl?: string };
   attachmentId?: string;
+  source?: { label?: string; url?: string; excerpt?: string };
+  sourceId?: string;
 }
 
 export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync {
@@ -188,6 +190,35 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               return badRequest("attachmentId fehlt.");
             }
             reply.code(200).send(await ko.removeAttachment(id, body.attachmentId, user.id));
+            return;
+          }
+          case "add-source": {
+            // SCRUM-129 / FR-KO-07: externe Quelle anhängen (Bearbeiterpfad).
+            const user = await guards.requirePermission("ko.create", request, reply);
+            if (!user) {
+              return;
+            }
+            if (!body.source?.label?.trim()) {
+              return badRequest("source.label fehlt.");
+            }
+            reply.code(200).send(
+              await ko.addSource(id, user.id, {
+                label: body.source.label,
+                url: body.source.url ?? null,
+                excerpt: body.source.excerpt ?? null,
+              }),
+            );
+            return;
+          }
+          case "remove-source": {
+            const user = await guards.requirePermission("ko.create", request, reply);
+            if (!user) {
+              return;
+            }
+            if (!body.sourceId) {
+              return badRequest("sourceId fehlt.");
+            }
+            reply.code(200).send(await ko.removeSource(id, body.sourceId, user.id));
             return;
           }
           case "category": {

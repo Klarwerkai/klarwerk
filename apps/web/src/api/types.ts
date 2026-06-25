@@ -25,6 +25,18 @@ export interface KoComment {
   at: string;
 }
 
+// SCRUM-129 / FR-KO-07: echte externe Quelle am Objekt (Stufe 2, nie peer-validiert).
+export interface KoSource {
+  id: string;
+  label: string;
+  url: string | null;
+  excerpt: string | null;
+  kind: "external";
+  peerValidated: boolean;
+  author: string;
+  at: string;
+}
+
 export interface KoAttachment {
   id: string;
   name: string;
@@ -56,6 +68,7 @@ export interface KnowledgeObject {
   history: HistoryEntry[];
   comments?: KoComment[];
   attachments?: KoAttachment[];
+  sources?: KoSource[];
 }
 
 export type Verdict = "up" | "warn" | "down";

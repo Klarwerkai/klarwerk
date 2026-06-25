@@ -46,6 +46,21 @@ export interface KoAttachment {
 export const MAX_ATTACHMENT_BYTES = 700_000; // ~700 KB Daten-URL
 export const MAX_ATTACHMENTS = 8;
 
+// SCRUM-129 / FR-KO-07: echte Quelle am Objekt. Externe Quellen sind NIE peer-validiert
+// (klare Stufe-2-Markierung); kein automatisches Peer-Validation-Verfahren.
+export type KoSourceKind = "external";
+
+export interface KoSource {
+  id: string;
+  label: string;
+  url: string | null;
+  excerpt: string | null;
+  kind: KoSourceKind;
+  peerValidated: boolean;
+  author: string;
+  at: string;
+}
+
 // FR-KO-01: Datenmodell inkl. version/history/originalAuthor/needed/assignments/asset
 // (Pflichtenheft §3.5, Technischer Anhang §1).
 export interface KnowledgeObject {
@@ -70,9 +85,10 @@ export interface KnowledgeObject {
   history: HistoryEntry[];
   comments: KoComment[];
   attachments: KoAttachment[];
+  sources: KoSource[];
 }
 
-export type KoErrorCode = "NOT_FOUND" | "INVALID_TYPE" | "INVALID_NEEDED";
+export type KoErrorCode = "NOT_FOUND" | "INVALID_TYPE" | "INVALID_NEEDED" | "INVALID_SOURCE";
 
 export class KoError extends Error {
   readonly code: KoErrorCode;

@@ -11,5 +11,8 @@ export type {
   KoStatus,
   HistoryEntry,
   KoComment,
+  KoAttachment,
+  KoSource,
+  KoSourceKind,
   KoErrorCode,
 } from "./src/types";

@@ -8,6 +8,7 @@ import {
   type KoAttachment,
   type KoComment,
   KoError,
+  type KoSource,
   type KoStatus,
 } from "./types";
 
@@ -87,6 +88,7 @@ export class KoService {
       history: [{ version: 1, at, author: input.author, note: "erstellt" }],
       comments: [],
       attachments: [],
+      sources: [],
     };
     await this.repo.insert(ko);
     await this.audit?.record({ actor: input.author, action: "ko.created", target: ko.id });
@@ -147,6 +149,44 @@ export class KoService {
     return updated;
   }
 
+  // SCRUM-129 / FR-KO-07: externe Quelle anfügen. Externe Quellen sind NIE peer-validiert.
+  async addSource(
+    id: string,
+    author: string,
+    input: { label: string; url?: string | null; excerpt?: string | null },
+  ): Promise<KnowledgeObject> {
+    const label = input.label?.trim() ?? "";
+    if (label.length === 0) {
+      throw new KoError("INVALID_SOURCE", "Quellen-Label fehlt.");
+    }
+    const ko = await this.require(id);
+    const source: KoSource = {
+      id: this.genId(),
+      label,
+      url: input.url?.trim() ? input.url.trim() : null,
+      excerpt: input.excerpt?.trim() ? input.excerpt.trim() : null,
+      kind: "external",
+      peerValidated: false,
+      author,
+      at: new Date(this.now()).toISOString(),
+    };
+    const updated: KnowledgeObject = { ...ko, sources: [...(ko.sources ?? []), source] };
+    await this.repo.update(updated);
+    await this.audit?.record({ actor: author, action: "ko.source-added", target: id });
+    return updated;
+  }
+
+  async removeSource(id: string, sourceId: string, actor: string): Promise<KnowledgeObject> {
+    const ko = await this.require(id);
+    const updated: KnowledgeObject = {
+      ...ko,
+      sources: (ko.sources ?? []).filter((s) => s.id !== sourceId),
+    };
+    await this.repo.update(updated);
+    await this.audit?.record({ actor, action: "ko.source-removed", target: id });
+    return updated;
+  }
+
   get(id: string): Promise<KnowledgeObject | undefined> {
     return this.repo.findById(id);
   }
@@ -174,6 +214,7 @@ export class KoService {
       trust: 0, // Bewertungen zurückgesetzt
       status: "offen", // muss neu validiert werden
       history: [...ko.history, { version, at, author, note: "überarbeitet" }],
+      sources: ko.sources ?? [], // SCRUM-129: Quellen über Revisionen erhalten
     };
     await this.repo.update(revised);
     await this.audit?.record({

@@ -30,6 +30,13 @@ import { deriveStatus } from "../lib/displayStatus";
 import { fileToThumbDataUrl } from "../lib/files";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
 import {
+  EMPTY_SOURCE_FORM,
+  type SourceFormInput,
+  isSourceFormValid,
+  sourceBadgeKey,
+  toSourcePayload,
+} from "../lib/koSource";
+import {
   type SourceContributionInput,
   formatSourceComment,
   isSourceContributionValid,
@@ -78,6 +85,8 @@ export function KnowledgeDetail(): JSX.Element {
   const [newAuthor, setNewAuthor] = useState("");
   // SCRUM-131 / FE-KO-06: Quelle/Beitrag melden (über Kommentar-Pfad).
   const [source, setSource] = useState<SourceContributionInput>({ contribution: "", source: "" });
+  // SCRUM-129 / FE-KO-07: echte externe Quelle anhängen.
+  const [sourceForm, setSourceForm] = useState<SourceFormInput>({ ...EMPTY_SOURCE_FORM });
   const { push } = useToast();
   const canEdit = role !== "viewer";
   const canReview = role === "controller" || role === "admin";
@@ -106,6 +115,23 @@ export function KnowledgeDetail(): JSX.Element {
       void qc.invalidateQueries({ queryKey: ["audit"] });
       push("success", t("ko.helpfulThanks"));
     },
+    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
+  });
+
+  // SCRUM-129 / FE-KO-07: echte externe Quelle hinzufügen/entfernen.
+  const addSource = useMutation({
+    mutationFn: () =>
+      endpoints.ko.act(id, { action: "add-source", source: toSourcePayload(sourceForm) }),
+    onSuccess: () => {
+      invalidate();
+      setSourceForm({ ...EMPTY_SOURCE_FORM });
+      push("success", t("ko.sourceAdded"));
+    },
+    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
+  });
+  const removeSource = useMutation({
+    mutationFn: (sourceId: string) => endpoints.ko.act(id, { action: "remove-source", sourceId }),
+    onSuccess: invalidate,
     onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
   });
 
@@ -502,6 +528,82 @@ export function KnowledgeDetail(): JSX.Element {
                     t("ko.helpfulDone"),
                   )}
                 </Button>
+              </Card>
+
+              {/* SCRUM-129 / FE-KO-01+07: echte externe Quellen (nie peer-validiert) */}
+              <Card className="space-y-3">
+                <SectionLabel>{t("ko.sourcesTitle")}</SectionLabel>
+                {(ko.sources ?? []).length === 0 ? (
+                  <p className="text-[13px] text-muted">{t("ko.sourcesEmpty")}</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {(ko.sources ?? []).map((s) => (
+                      <li key={s.id} className="rounded-input bg-page p-2.5">
+                        <div className="flex items-start gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="text-[13.5px] font-medium text-text">{s.label}</span>
+                              <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
+                                {t(sourceBadgeKey(s))}
+                              </span>
+                            </div>
+                            {s.url ? (
+                              <a
+                                href={s.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="block truncate font-mono text-[11px] text-ai hover:underline"
+                              >
+                                {s.url}
+                              </a>
+                            ) : null}
+                            {s.excerpt ? (
+                              <p className="mt-1 text-[12px] text-muted">{s.excerpt}</p>
+                            ) : null}
+                          </div>
+                          {canEdit ? (
+                            <button
+                              type="button"
+                              title={t("ko.sourceRemove")}
+                              disabled={removeSource.isPending}
+                              onClick={() => removeSource.mutate(s.id)}
+                              className="grid h-7 w-7 shrink-0 place-items-center rounded-btn text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
+                            >
+                              <X size={14} />
+                            </button>
+                          ) : null}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {canEdit ? (
+                  <div className="space-y-2 border-t border-hairline pt-3">
+                    <TextInput
+                      value={sourceForm.label}
+                      onChange={(e) => setSourceForm((s) => ({ ...s, label: e.target.value }))}
+                      placeholder={t("ko.sourceLabel")}
+                    />
+                    <TextInput
+                      value={sourceForm.url}
+                      onChange={(e) => setSourceForm((s) => ({ ...s, url: e.target.value }))}
+                      placeholder={t("ko.sourceUrl")}
+                    />
+                    <TextInput
+                      value={sourceForm.excerpt}
+                      onChange={(e) => setSourceForm((s) => ({ ...s, excerpt: e.target.value }))}
+                      placeholder={t("ko.sourceExcerpt")}
+                    />
+                    <p className="text-[11.5px] text-muted-2">{t("ko.sourcesHint")}</p>
+                    <Button
+                      variant="primary"
+                      disabled={addSource.isPending || !isSourceFormValid(sourceForm)}
+                      onClick={() => addSource.mutate()}
+                    >
+                      {t("ko.sourceAdd")}
+                    </Button>
+                  </div>
+                ) : null}
               </Card>
 
               {/* SCRUM-131 / FE-KO-06: Quelle/Beitrag melden (Review-Kommentar) */}
