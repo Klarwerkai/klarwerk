@@ -125,6 +125,14 @@ export function Topbar(): JSX.Element {
           placeholder={t("topbar.search")}
           className="w-full bg-transparent text-[13px] text-text outline-none placeholder:text-muted-2"
         />
+        <button
+          type="button"
+          aria-label={t("cmd.open")}
+          onClick={() => window.dispatchEvent(new Event("open-command-palette"))}
+          className="hidden shrink-0 rounded border border-hairline px-1.5 font-mono text-[11px] text-muted-2 hover:text-text sm:block"
+        >
+          ⌘K
+        </button>
       </form>
 
       <div className="ml-auto flex items-center gap-2">

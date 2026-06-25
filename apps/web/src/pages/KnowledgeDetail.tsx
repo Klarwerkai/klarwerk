@@ -5,8 +5,8 @@ import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { type KoAction, endpoints } from "../api/endpoints";
-import { useKo } from "../api/hooks";
-import type { KnowledgeObject, KnowledgeType } from "../api/types";
+import { useKo, useKos } from "../api/hooks";
+import type { ConflictType, KnowledgeObject, KnowledgeType } from "../api/types";
 import { useRole } from "../app/RoleContext";
 import { ListEditor, TagEditor } from "../components/editors";
 import {
@@ -40,25 +40,66 @@ interface EditState {
 const textareaCls =
   "w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none focus:border-ink/30";
 
+const CONFLICT_TYPES: readonly ConflictType[] = [
+  "truth",
+  "experience",
+  "context",
+  "temporal",
+  "role",
+];
+
+interface ConflictForm {
+  koB: string;
+  type: ConflictType;
+  description: string;
+}
+
 export function KnowledgeDetail(): JSX.Element {
   const { t } = useTranslation();
   const { id = "" } = useParams();
   const { role } = useRole();
   const query = useKo(id);
+  const koList = useKos();
   const qc = useQueryClient();
   const [edit, setEdit] = useState<EditState | null>(null);
+  const [conflict, setConflict] = useState<ConflictForm | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const canEdit = role !== "viewer";
+  const canReview = role === "controller" || role === "admin";
 
   const invalidate = (): void => {
     void qc.invalidateQueries({ queryKey: ["ko", id] });
     void qc.invalidateQueries({ queryKey: ["validation"] });
     void qc.invalidateQueries({ queryKey: ["kos"] });
+    void qc.invalidateQueries({ queryKey: ["conflicts"] });
   };
 
   const act = useMutation({
     mutationFn: (body: KoAction) => endpoints.ko.act(id, body),
     onSuccess: invalidate,
+    onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
+  });
+
+  const report = useMutation({
+    mutationFn: () => {
+      if (!conflict || !conflict.koB) {
+        throw new Error("no target");
+      }
+      return endpoints.ko.act(id, {
+        action: "conflict",
+        conflict: {
+          koA: id,
+          koB: conflict.koB,
+          type: conflict.type,
+          description: conflict.description,
+        },
+      });
+    },
+    onSuccess: () => {
+      invalidate();
+      setConflict(null);
+      setErr(null);
+    },
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
   });
 
@@ -274,7 +315,72 @@ export function KnowledgeDetail(): JSX.Element {
                     >
                       {t("ko.stillValid")}
                     </Button>
+                    {canReview ? (
+                      <Button
+                        variant="ghost"
+                        onClick={() =>
+                          setConflict(conflict ? null : { koB: "", type: "truth", description: "" })
+                        }
+                      >
+                        {t("ko.reportConflict")}
+                      </Button>
+                    ) : null}
                   </div>
+
+                  {conflict ? (
+                    <div className="mt-4 space-y-3 rounded-card border border-trust-crit-fill/30 bg-trust-crit-bg/40 p-4">
+                      <SectionLabel>{t("ko.conflictTitle")}</SectionLabel>
+                      <Field label={t("ko.conflictTarget")}>
+                        <select
+                          value={conflict.koB}
+                          onChange={(e) => setConflict({ ...conflict, koB: e.target.value })}
+                          className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
+                        >
+                          <option value="">{t("ko.conflictTargetPlaceholder")}</option>
+                          {(koList.data ?? [])
+                            .filter((k) => k.id !== id)
+                            .map((k) => (
+                              <option key={k.id} value={k.id}>
+                                {k.title}
+                              </option>
+                            ))}
+                        </select>
+                      </Field>
+                      <Field label={t("ko.conflictType")}>
+                        <select
+                          value={conflict.type}
+                          onChange={(e) =>
+                            setConflict({ ...conflict, type: e.target.value as ConflictType })
+                          }
+                          className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
+                        >
+                          {CONFLICT_TYPES.map((ct) => (
+                            <option key={ct} value={ct}>
+                              {t(`con.type.${ct}`)}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                      <Field label={t("ko.conflictDesc")}>
+                        <textarea
+                          value={conflict.description}
+                          onChange={(e) =>
+                            setConflict({ ...conflict, description: e.target.value })
+                          }
+                          rows={2}
+                          className={textareaCls}
+                        />
+                      </Field>
+                      <Button
+                        variant="primary"
+                        disabled={report.isPending || !conflict.koB}
+                        onClick={() => report.mutate()}
+                      >
+                        {t("ko.conflictSubmit")}
+                      </Button>
+                    </div>
+                  ) : null}
+
                   {err ? (
                     <div className="mt-3 rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
                       {err}

@@ -6,6 +6,7 @@ import type {
   AuditEntry,
   BusFactorEntry,
   Conflict,
+  ConflictType,
   Draft,
   DraftPayload,
   Gap,
@@ -39,7 +40,10 @@ export type KoAction =
   | { action: "revise"; changes: DraftPayload }
   | { action: "category"; category: string }
   | { action: "tags"; tags: string[] }
-  | { action: "conflict"; conflict: unknown }
+  | {
+      action: "conflict";
+      conflict: { koA: string; koB: string; type: ConflictType; description: string };
+    }
   | { action: "resolve-conflict"; conflictId: string; decision: string }
   | { action: "transfer-author"; newAuthor: string }
   | { action: "revalidate" };
