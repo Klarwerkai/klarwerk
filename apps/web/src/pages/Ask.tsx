@@ -8,6 +8,7 @@ import type { AnswerResult } from "../api/types";
 import { ConfidenceBar } from "../components/trust";
 import { Button, Card, PageHeader, SectionLabel } from "../components/ui";
 import { selectAnswer } from "../lib/askResponse";
+import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
 import { type EvidenceTone, knowledgeClassMeta } from "../lib/knowledgeClass";
 
 // Tone → Badge-Stil (Tailwind-Tokens), bewusst in der Komponente gehalten.
@@ -105,11 +106,14 @@ export function Ask(): JSX.Element {
             ) : null}
             <Button
               className="mt-4"
-              disabled={helpful.isPending || helpful.isSuccess || result.sources.length === 0}
+              disabled={helpfulDisabled(
+                { pending: helpful.isPending, success: helpful.isSuccess },
+                result.sources.length === 0,
+              )}
               onClick={() => result.sources[0] && helpful.mutate(result.sources[0])}
             >
               <ThumbsUp size={15} />
-              {helpful.isSuccess ? t("ask.thanked") : t("ask.helpful")}
+              {helpfulLabel({ success: helpful.isSuccess }, t("ask.helpful"), t("ask.thanked"))}
             </Button>
           </Card>
         ) : (

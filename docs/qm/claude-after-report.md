@@ -1440,3 +1440,34 @@ Datum: 2026-06-25
 **Restlücken:** FE-LCY-03 „hat geholfen" bleibt bewusst SEPARAT und wurde hier nicht gebaut. Lernpfad-Anlage/-Pflege (createPath) bleibt Admin-/Seed-Aufgabe — diese UI zeigt/bearbeitet nur den rollenspezifischen Pfad; ohne hinterlegten Pfad erscheint ein ehrlicher Leer-Zustand (kein Mock). Asset-Kopplung (couple) wird hier nicht über UI gepflegt; nur der Change-Auslöser ist angebunden. SCRUM-142 (Lineage) unberührt.
 
 **Jira-Empfehlung:** Nach grünem Gate dürfen SCRUM-144, SCRUM-145, SCRUM-146 auf erledigt. FE-LCY-03 bleibt offen. Ich setze keine Jira-Checkbox/Status selbst; Codex/Peter haken nach Gate ab. Commit/Push bleibt Peters Schritt.
+
+---
+
+## 2026-06-25 · SCRUM-111/FE-LCY-03 + SCRUM-131 (Teil) — Bewährungssignal „Hat geholfen" im KO-Detail
+
+**Ticket(s):** SCRUM-111 / FE-LCY-03 (Signal „hat geholfen") · SCRUM-131 NUR den „hat geholfen"-Teil im KO-Detail. „Beitrag/Quelle" wurde bewusst NICHT improvisiert.
+
+**Befund (read-only):** Helpful-Pfad existiert backendseitig vollständig: POST /api/ask/helpful → ask.markHelpful → Trust +HELPFUL_TRUST_STEP (+2, gedeckelt) → Audit action answer.helpful; getestet in FR-ASK-04. Ask-UI hatte den Button bereits; KO-Detail nicht. → reine FE-Wiederverwendung, KEIN Backend-Eingriff.
+
+**Änderung (geänderte/neue Dateien):**
+- `apps/web/src/lib/helpfulSignal.ts` — neu, DOM-frei: helpfulDisabled (während Mutation/nach Erfolg/zusätzlicher Grund), helpfulLabel (Dank-/Aktions-Text).
+- `apps/web/src/pages/KnowledgeDetail.tsx` — neue Bewährungs-Card mit Button „Hat geholfen" → endpoints.ask.helpful(ko.id); Button via helpfulDisabled während/nach Mutation gesperrt; Toast-Dank bei Erfolg/Fehler; invalidiert ko/validation/kos/conflicts + analytics + audit.
+- `apps/web/src/pages/Ask.tsx` — bestehender Helpful-Button auf denselben Helper umgestellt (Vereinheitlichung, identisches Verhalten; ask.helpful/ask.thanked unverändert).
+- `apps/web/src/i18n.ts` — `ko.helpful*` (Title/Hint/helpful/Done/Thanks), DE+EN.
+- `tests/ko/helpful-signal.test.ts` — 3 Tests (Disabled-Logik, Zusatzgrund, Label-Wechsel).
+
+**Backend:** UNVERÄNDERT. Trust/Audit-Pfad bleibt durch FR-ASK-04 belegt; keine neue Route, kein neues Trust-/Lifecycle-Statusmodell.
+
+**Erfüllte AK:**
+- KO-Detail zeigt „Hat geholfen" sichtbar ✓ · Klick ruft vorhandenen Helpful-Endpoint mit KO-ID ✓ · Button während Mutation deaktiviert (und nach Erfolg) ✓ · Erfolg → Toast-Dank + Button-Dank-Text ✓ · Trust/Audit backendseitig unverändert (FR-ASK-04) ✓ · Test deckt Helper-/Button-Entscheidung ab ✓.
+
+**Genutzte Endpoints:** POST /api/ask/helpful (bestehend, mit KO-ID).
+
+**Tests/Gates:** `npm run check` GRÜN — 34 Testdateien / 164 Tests (3 neu). apps/web `tsc --noEmit` EXIT=0. depcruise sauber. Biome grün.
+
+**Status / Restlücken:**
+- SCRUM-111 / FE-LCY-03: erfüllt — Signal „hat geholfen" jetzt in Ask UND KO-Detail.
+- SCRUM-131: nur TEILWEISE erfüllt — der „hat geholfen"-Teil im KO-Detail ist fertig; „Beitrag/Quelle" bleibt bewusst OFFEN (nicht improvisiert) und ist separat zu bauen.
+- Kein neues Trust-/Lifecycle-Statusmodell, kein „Beitrag/Quelle"-Flow.
+
+**Jira-Empfehlung:** Nach grünem Gate darf SCRUM-111 (FE-LCY-03) auf erledigt. SCRUM-131 NICHT vollständig schließen — nur den Helpful-Teil als erledigt vermerken, „Beitrag/Quelle" bleibt offen. Ich setze keine Jira-Checkbox/Status selbst; Codex/Peter haken nach Gate ab.

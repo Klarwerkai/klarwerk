@@ -28,6 +28,7 @@ import {
 } from "../components/ui";
 import { deriveStatus } from "../lib/displayStatus";
 import { fileToThumbDataUrl } from "../lib/files";
+import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
 
 interface EditState {
   title: string;
@@ -87,6 +88,18 @@ export function KnowledgeDetail(): JSX.Element {
     mutationFn: (body: KoAction) => endpoints.ko.act(id, body),
     onSuccess: invalidate,
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
+  });
+
+  // FE-LCY-03 / SCRUM-111: „Hat geholfen" nutzt den bestehenden Ask-Helpful-Pfad (Trust +2, Audit).
+  const helpful = useMutation({
+    mutationFn: () => endpoints.ask.helpful(id),
+    onSuccess: () => {
+      invalidate();
+      void qc.invalidateQueries({ queryKey: ["analytics"] });
+      void qc.invalidateQueries({ queryKey: ["audit"] });
+      push("success", t("ko.helpfulThanks"));
+    },
+    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
   });
 
   // SCRUM-144: Autorenübergabe über bestehende KO-Action transfer-author.
@@ -452,6 +465,25 @@ export function KnowledgeDetail(): JSX.Element {
             </Card>
 
             <div className="space-y-5">
+              {/* FE-LCY-03 / SCRUM-111: Bewährungssignal „Hat geholfen" */}
+              <Card className="space-y-2">
+                <SectionLabel>{t("ko.helpfulTitle")}</SectionLabel>
+                <p className="text-[12.5px] text-muted">{t("ko.helpfulHint")}</p>
+                <Button
+                  variant="primary"
+                  disabled={helpfulDisabled({
+                    pending: helpful.isPending,
+                    success: helpful.isSuccess,
+                  })}
+                  onClick={() => helpful.mutate()}
+                >
+                  {helpfulLabel(
+                    { success: helpful.isSuccess },
+                    t("ko.helpful"),
+                    t("ko.helpfulDone"),
+                  )}
+                </Button>
+              </Card>
               <Card>
                 <SectionLabel>{t("ko.provenance")}</SectionLabel>
                 <ProvenanceLine
