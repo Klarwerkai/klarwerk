@@ -1270,3 +1270,39 @@ Datum: 2026-06-25
 ### Jira-Empfehlung
 - SCRUM-135 darf nach grünem Gate auf erledigt gesetzt werden.
 - FE-LIB-03 (SCRUM-107): JSON/Text-MD/MediaWiki/HTML+Format-Auswahl sind erfüllt. Für „PDF" empfehle ich, die Checkbox als HTML/Druck-PDF zu interpretieren (Option B) ODER FE-LIB-03 als „erfüllt mit Hinweis: PDF = Druckansicht" abzuhaken; ein dedizierter PDF-Export wäre ein separates Ticket. Keine Jira-Änderung durch Claude.
+
+---
+
+## SCRUM-136 — Bibliothek: Re-Validierung pro KO (FE-LIB-05) — Nachbericht
+Datum: 2026-06-25
+### Geänderte Dateien
+- `apps/web/src/lib/revalidation.ts` (neu, DOM-frei): `canRevalidate(status)` — nur validierte KOs.
+- `apps/web/src/pages/Library.tsx`: pro Zeile (nur `validiert`) Button „Re-Validierung starten"; Zeile von einzelnem `<Link>` zu `<div>` mit `<Link>`(Info) + Button (Sibling, kein Navigations-Bubbling). Mutation + Toast + Query-Invalidierung.
+- `apps/web/src/i18n.ts`: `lib.revalidate`, `lib.revalidateDone` (DE/EN).
+- `tests/library/revalidation.test.ts` (neu): `canRevalidate`.
+- `docs/qm/claude-after-report.md`: dieser Nachbericht.
+### Genutzter Endpoint/Service
+- **Vorhandener Pfad** `endpoints.ko.act(id, { action: "revalidate" })` → KO-Dispatcher `ko-routes.ts` `case "revalidate"` → `lifecycle.confirmStillValid` → `koService.revise` (neue Version, Status zurück auf `offen`, Pending geleert). Kein neuer Endpoint, kein neues Statusmodell. Backend-getestet: `lifecycle/service.test.ts` FR-LIF-01, `knowledge-object/service.test.ts` FR-KO-04.
+### UI-Verhalten
+- Button nur bei `status === "validiert"` (kein widersprüchlicher Re-Validieren-Knopf für bereits offene/in-Prüfung-KOs; vorhandene Display-/Statuslogik respektiert).
+- Während der Mutation für genau dieses KO deaktiviert (`isPending && variables === id`).
+- Erfolg → Toast „Re-Validierung gestartet." + Invalidierung von `library`/`kos`/`validation`/`lifecycle` (das KO erscheint danach wieder im Validation Board). Fehler → Fehler-Toast.
+### Erfüllte Akzeptanzkriterien
+- Sichtbare Re-Validierungsaktion pro KO (für validierte) — ja.
+- Nutzt vorhandenen Lifecycle-/KO-Pfad (`revalidate`) — ja.
+- Erfolg-/Fehler-Rückmeldung über Toast-Bus (SCRUM-151) — ja.
+- Kein neues Statusmodell, keine neuen Statuslabels — ja.
+- Tests + Gate-Evidenz: `canRevalidate`-Test + bestehende Backend-Tests des revalidate-Pfads; apps/web-tsc deckt UI-Wiring ab.
+- `npm run check` grün — ja.
+- Kein Import/Re-Import, keine Bulk-Auswahl, keine Library-Neugestaltung.
+### Gelaufene Checks
+- Gezielter Lauf: `vitest run tests/library/revalidation.test.ts` → 1/1 grün.
+- apps/web `tsc --noEmit`: grün.
+- `npm run check`: GRÜN (exit 0) — build/lint/arch/test (29 Dateien / 139 Tests).
+### Restlücken
+- Keine Bulk-Re-Validierung (bewusst, Einzelaktion gefordert).
+- Semantik: `revalidate` = `confirmStillValid` (Revise → zurück in Prüfung). Falls fachlich zwischen „noch gültig bestätigen" und „aktiv neu prüfen lassen" unterschieden werden soll, wäre das ein eigenes Lifecycle-Ticket (kein neues Statusmodell in diesem Scope).
+### Jira-Empfehlung
+- SCRUM-136 darf nach grünem Gate auf erledigt gesetzt werden.
+- FE-LIB-05 (SCRUM-107) kann abgehakt werden: Re-Validierung ist nun direkt aus der Bibliotheksliste pro KO startbar (für validierte Objekte), mit Rückmeldung.
+- Keine Jira-Änderung durch Claude vorgenommen.

@@ -1,13 +1,17 @@
-import { Download } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Download, RotateCw } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
+import { endpoints } from "../api/endpoints";
 import { useKos, useLibrarySearch } from "../api/hooks";
+import { useToast } from "../app/ToastContext";
 import { ConfidenceBar, KNOWLEDGE_TYPES, KnowledgeTypeTag, StatusPill } from "../components/trust";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
 import { deriveStatus } from "../lib/displayStatus";
 import { EXPORT_FORMATS, type ExportFormat, exportFilename, exportUrl } from "../lib/libraryExport";
 import { EMPTY_LIBRARY_FILTER, buildLibraryQuery } from "../lib/libraryQuery";
+import { canRevalidate } from "../lib/revalidation";
 import { categoryOptions, tagOptions } from "../lib/validationFilters";
 
 const KO_STATUSES = ["offen", "validiert"] as const;
@@ -26,6 +30,21 @@ export function Library(): JSX.Element {
 
   // Ergebnisse über den Server-Search-/Filterpfad (Volltext + KoFilter).
   const query = useLibrarySearch(buildLibraryQuery(filter));
+
+  const qc = useQueryClient();
+  const { push } = useToast();
+  // SCRUM-136: Re-Validierung über den vorhandenen KO-/Lifecycle-Pfad (revalidate).
+  const revalidate = useMutation({
+    mutationFn: (id: string) => endpoints.ko.act(id, { action: "revalidate" }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["library"] });
+      void qc.invalidateQueries({ queryKey: ["kos"] });
+      void qc.invalidateQueries({ queryKey: ["validation"] });
+      void qc.invalidateQueries({ queryKey: ["lifecycle"] });
+      push("success", t("lib.revalidateDone"));
+    },
+    onError: () => push("error", t("state.error")),
+  });
 
   const selectCls =
     "h-10 rounded-input border border-hairline bg-surface px-2 text-sm text-text outline-none focus:border-ink/30";
@@ -120,21 +139,36 @@ export function Library(): JSX.Element {
           <Card className="p-0">
             <div className="divide-y divide-hairline">
               {items.map((k) => (
-                <Link
+                <div
                   key={k.id}
-                  to={`/wissen/${k.id}`}
                   className="flex items-center gap-3 px-4 py-2.5 hover:bg-hairline-soft"
                 >
-                  <StatusPill status={deriveStatus(k)} />
-                  <KnowledgeTypeTag type={k.type} />
-                  <span className="min-w-0 flex-1 truncate text-[13.5px] text-text">{k.title}</span>
-                  <span className="hidden font-mono text-[11px] text-muted-2 sm:block">
-                    {k.category}
-                  </span>
-                  <div className="hidden sm:block">
-                    <ConfidenceBar value={k.confidence} showLabel={false} />
-                  </div>
-                </Link>
+                  <Link to={`/wissen/${k.id}`} className="flex min-w-0 flex-1 items-center gap-3">
+                    <StatusPill status={deriveStatus(k)} />
+                    <KnowledgeTypeTag type={k.type} />
+                    <span className="min-w-0 flex-1 truncate text-[13.5px] text-text">
+                      {k.title}
+                    </span>
+                    <span className="hidden font-mono text-[11px] text-muted-2 sm:block">
+                      {k.category}
+                    </span>
+                    <div className="hidden sm:block">
+                      <ConfidenceBar value={k.confidence} showLabel={false} />
+                    </div>
+                  </Link>
+                  {canRevalidate(k.status) ? (
+                    <button
+                      type="button"
+                      title={t("lib.revalidate")}
+                      disabled={revalidate.isPending && revalidate.variables === k.id}
+                      onClick={() => revalidate.mutate(k.id)}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text disabled:opacity-50"
+                    >
+                      <RotateCw size={13} />
+                      {t("lib.revalidate")}
+                    </button>
+                  ) : null}
+                </div>
               ))}
             </div>
           </Card>
