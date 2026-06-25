@@ -649,3 +649,49 @@ Modus: Read-only Evidence-Audit, kein Feature-Code
 - Checkboxen, die offen bleiben: FE-OUT-01, FE-OUT-02, FE-OUT-03 (alle offen).
 - Empfohlene Resttickets: keine neuen — SCRUM-109 bleibt Umsetzungsträger; Backend-Gegenstück Output-Logik = SCRUM-117.
 - Statusvorschlag für SCRUM-109: bleibt „To Do/Stufe 2" (blockiert durch Output-Logik SCRUM-117). Keine Checkbox/kein Status durch mich geändert.
+
+---
+
+## SCRUM-111 Evidence-Audit — Wissenslebenszyklus
+Datum: 2026-06-25
+Modus: Read-only Evidence-Audit, kein Feature-Code
+### Gate
+- git status vor Audit: clean (HEAD cdfe879; nur ignorierte `*.timestamp-*.mjs`).
+- npm run check: GRÜN (exit 0) — build (`tsc --noEmit`), lint (`biome check .`), arch (`depcruise services`), test (`vitest run`, 21 Dateien / 115 Tests).
+- Produktcode geändert: nein.
+- Geänderte Dateien: nur `docs/qm/claude-after-report.md` (dieser Bericht).
+### FE-LCY-01 · Re-Validierung / Gültigkeitsprüfung
+- Empfehlung: darf gesetzt werden (mit Restpunkt).
+- Code-/Test-Evidenz: UI `apps/web/src/pages/Lifecycle.tsx` (Pending-Liste via `useLifecyclePending` → `GET /api/lifecycle/pending`, „revalidierung"-Pill, Banner `lcy.banner`), KO-Detail Re-Validierung (`act({action:"revalidate"})`). Service `lifecycle/service.ts` `assetChanged`→`markPending`, `pendingRevalidation`, `confirmStillValid`. Test `lifecycle/service.test.ts` FR-LIF-01 (Anlagenänderung markiert gekoppelte KOs, in Pending, Bestätigung erzeugt Version, danach nicht mehr pending).
+- Restlücke: Die **Anlagenänderungs-Kopplung** (`couple`/`asset-changed`) ist nur API/Service (Routen `/api/lifecycle/couple`, `/asset-changed`) — KEIN UI-Auslöser/„Stimmt das noch?"-Banner an konkrete Anlagenänderung gebunden. Restpunkt (kein Blocker für die Re-Validierungs-Liste).
+### FE-LCY-02 · „Noch gültig" bestätigen
+- Empfehlung: darf gesetzt werden.
+- Code-/Test-Evidenz: UI-Aktion in `Lifecycle.tsx` (Button „Noch gültig" → `revalidate`) und `KnowledgeDetail.tsx` (`act({action:"revalidate"})`). Dispatcher `ko-routes.ts` `case "revalidate"` → `lifecycle.confirmStillValid` → `koService.revise` (neue Version) + `clearPending`. Test `lifecycle/service.test.ts` FR-LIF-01 (Version erzeugt, Pending geleert); `knowledge-object/service.test.ts` FR-KO-04 (revise: Version+1).
+- Restlücke: keine wesentliche.
+### FE-LCY-03 · Signal „hat geholfen"
+- Empfehlung: TEILWEISE / offen.
+- Code-/Test-Evidenz: „Hat geholfen" existiert nur im Ask-Kontext (`apps/web/src/pages/Ask.tsx`, `POST /api/ask/helpful`, Service `ask.markHelpful` → Trust+Audit, getestet FR-ASK-04). Kein Lifecycle-/Bewährungs-spezifisches Signal. Zudem ist der Ask-Helpful-Button durch den bestätigten **Ask-Response-Shape-Bug (SCRUM-105)** in der UI faktisch unerreichbar.
+- Restlücke: hängt am Ask-Shape-Fix (SCRUM-105); „hat geholfen" im Lifecycle-Kontext nicht eigenständig vorhanden.
+### FE-LCY-04 · Autorenübergabe (Herkunft bleibt erhalten)
+- Empfehlung: TEILWEISE.
+- Code-/Test-Evidenz: Service `lifecycle.transferAuthor` → `koService.setAuthor` (Originalautor bleibt); Dispatcher `ko-routes.ts` `case "transfer-author"` (Permission `users.manage`); `KoAction` kennt `transfer-author`. Test `lifecycle/service.test.ts` FR-LIF-02 (Autor geändert, Originalautor bleibt). **Keine UI** — kein Autorenübergabe-Button/-Dialog in `KnowledgeDetail.tsx`/Admin (grep leer).
+- Restlücke: Frontend-UI für Admin-Autorenübergabe. Backend+Test fertig.
+### FE-LCY-05 · Versionen/Revisionen/Pflegebedarf sichtbar
+- Empfehlung: darf gesetzt werden.
+- Code-/Test-Evidenz: Versionen/Revisionen sichtbar — `KnowledgeDetail.tsx` Versionsnummer + Historie-Karte (`ko.history`); Backend `revise` erhöht Version + History (FR-KO-04). Pflegebedarf sichtbar — Lifecycle-Pending-Liste + `MyTasks.tsx` (Re-Validierungs-Aufgaben aus `useLifecyclePending`).
+- Restlücke: detaillierte Pflegebedarf-Metriken (z. B. Fälligkeiten/Alter) fehlen; Kern (Version/History/Pending) ist sichtbar.
+### FE-LCY-06 · Lernpfade je Rolle (datenbasiert, Stufe 2)
+- Empfehlung: TEILWEISE / offen.
+- Code-/Test-Evidenz: Service + Routen vollständig — `lifecycle.createPath`/`getPath`/`completeStep`/`progress`; Routen `/api/learning-paths`, `/:role`, `/:pathId/complete`, `/:pathId/progress`. Test `lifecycle/service.test.ts` FR-LIF-03 (Lernpfad mit Fortschritt). **Keine UI** im Frontend (grep nach learningPath/Lernpfad leer).
+- Restlücke: Frontend für Lernpfade je Rolle (Stufe 2). Service/API/Test fertig.
+### Offene Restlücken / Resttickets
+- FE-LCY-03: Ask-Shape-Fix (SCRUM-105) Voraussetzung; ggf. „hat geholfen"-Sicht im Lifecycle.
+- FE-LCY-04: Admin-Autorenübergabe-UI (Backend fertig).
+- FE-LCY-06: Lernpfad-UI je Rolle (Backend fertig, Stufe 2).
+- FE-LCY-01: optionaler Asset-Change-UI-Auslöser/Banner.
+- Diese UI-Lücken können unter SCRUM-111 umgesetzt werden; FE-LCY-03 hängt zusätzlich an SCRUM-105.
+### Zusammenfassung für Codex/Jira
+- Checkboxen, die gesetzt werden dürfen: FE-LCY-01 (mit Restpunkt asset-change-UI), FE-LCY-02, FE-LCY-05.
+- Checkboxen, die offen bleiben: FE-LCY-03 (Ask-Shape/teilweise), FE-LCY-04 (keine UI/teilweise), FE-LCY-06 (keine UI/Stufe 2).
+- Empfohlene Resttickets: Autorenübergabe-UI (LCY-04), Lernpfad-UI (LCY-06), Asset-Change-UI (LCY-01-Rest); LCY-03 via SCRUM-105. Keine neuen Tickets zwingend — unter SCRUM-111 umsetzbar.
+- Statusvorschlag für SCRUM-111: „In Progress" — 3 von 6 setzbar. Keine Checkbox/kein Status durch mich geändert.
