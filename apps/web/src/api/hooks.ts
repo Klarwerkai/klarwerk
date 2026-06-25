@@ -23,6 +23,8 @@ export const useAudit = () => useQuery({ queryKey: ["audit"], queryFn: endpoints
 export const useLifecyclePending = () =>
   useQuery({ queryKey: ["lifecycle", "pending"], queryFn: endpoints.lifecycle.pending });
 export const useUsers = () => useQuery({ queryKey: ["users"], queryFn: endpoints.users.list });
+export const useDirectory = () =>
+  useQuery({ queryKey: ["directory"], queryFn: endpoints.directory.list });
 export const useGraph = () => useQuery({ queryKey: ["graph"], queryFn: endpoints.library.graph });
 export const useNotifications = () =>
   useQuery({ queryKey: ["notifications"], queryFn: endpoints.notifications.list });

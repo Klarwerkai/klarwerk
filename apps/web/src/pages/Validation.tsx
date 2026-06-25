@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
-import { useUsers, useValidationBoard } from "../api/hooks";
+import { useDirectory, useValidationBoard } from "../api/hooks";
 import type { Verdict } from "../api/types";
 import { ConfidenceBar, KnowledgeTypeTag } from "../components/trust";
 import { Card, PageHeader, QueryState } from "../components/ui";
@@ -12,7 +12,7 @@ import { Card, PageHeader, QueryState } from "../components/ui";
 export function Validation(): JSX.Element {
   const { t } = useTranslation();
   const query = useValidationBoard();
-  const users = useUsers();
+  const users = useDirectory();
   const qc = useQueryClient();
   const [filter, setFilter] = useState("");
 
@@ -105,7 +105,7 @@ export function Validation(): JSX.Element {
                       <option value="">{t("val.assign")}</option>
                       {(users.data ?? []).map((u) => (
                         <option key={u.id} value={u.id}>
-                          {u.name ?? u.email ?? u.id}
+                          {u.name || u.id}
                         </option>
                       ))}
                     </select>

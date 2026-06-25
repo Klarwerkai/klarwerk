@@ -2,14 +2,14 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { endpoints } from "../api/endpoints";
-import { useBusFactor, useGaps, useUsers } from "../api/hooks";
+import { useBusFactor, useDirectory, useGaps } from "../api/hooks";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 
 export function Risk(): JSX.Element {
   const { t } = useTranslation();
   const bus = useBusFactor();
   const gaps = useGaps();
-  const users = useUsers();
+  const users = useDirectory();
   const qc = useQueryClient();
   const invalidate = () => void qc.invalidateQueries({ queryKey: ["gaps"] });
   const close = useMutation({
@@ -27,6 +27,7 @@ export function Risk(): JSX.Element {
   });
 
   const maxKo = Math.max(1, ...(bus.data ?? []).map((b) => b.koCount));
+  const nameOf = (uid: string): string => users.data?.find((u) => u.id === uid)?.name || uid;
 
   return (
     <div className="mx-auto max-w-4xl space-y-7">
@@ -71,7 +72,7 @@ export function Risk(): JSX.Element {
                       {g.question}
                     </span>
                     <span className="font-mono text-[10.5px] uppercase text-muted-2">
-                      {g.assignee ? `→ ${g.assignee}` : t(`risk.gapStatus.${g.status}`)}
+                      {g.assignee ? `→ ${nameOf(g.assignee)}` : t(`risk.gapStatus.${g.status}`)}
                     </span>
                     {g.status === "offen" ? (
                       <>
@@ -88,7 +89,7 @@ export function Risk(): JSX.Element {
                           <option value="">{t("risk.assign")}</option>
                           {(users.data ?? []).map((u) => (
                             <option key={u.id} value={u.id}>
-                              {u.name ?? u.email ?? u.id}
+                              {u.name || u.id}
                             </option>
                           ))}
                         </select>

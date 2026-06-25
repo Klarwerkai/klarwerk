@@ -44,8 +44,14 @@
 - ✅ **FE-CAP-05 Anhänge/Fotos** (Pilot, ohne Objektspeicher): Bild wird **client-seitig** auf ein Thumbnail (JPEG, max. 1024px, Canvas) verkleinert und als Daten-URL im KO-JSONB gespeichert. Backend-Aktionen `attach`/`detach` mit Größen-/Anzahl-/MIME-Guards (≤700 KB, ≤8, nur `image/*`), Audit `ko.attached`/`ko.detached`. Vitest + Spec ergänzt. Frontend: Foto-Anhängen + Thumbnail-Galerie mit Entfernen im KO-Detail.
 - **Stufe-2-Upgrade dokumentiert:** Voll-Bilder/Dokumente über S3-Objektspeicher.
 
+### Nachtrag (6. Batch — Namensauflösung + Verzeichnis-Endpunkt)
+- ✅ **Anzeigenamen statt UUIDs**: Kommentare, Historie, Herkunft (KO-Detail) und Lücken-Zuweisung zeigen jetzt den Nutzernamen.
+- ✅ **Bugfix:** `GET /api/users` ist admin-only → Zuweisungs-Dropdowns (Validierung/Risiko) funktionierten für Controller nicht. Neuer `GET /api/directory` (id+name, requireUser) für alle Rollen; `useDirectory()`-Hook. Live-Befund aus der Verifikation behoben.
+
 ### Noch offen
-- FE-CAP-06 OCR/Dokument-Parsing (clientseitig, größere Lib). FE-OUT/IMP/MGMT (Stufe-2-Module). Mobile-responsive Shell (Hamburger). Kleinere Zusatzfilter (FE-VAL-02/FE-LIB).
+- **FE-CAP-06 OCR**: braucht eine neue Client-Lib (z. B. tesseract.js) — npm-Install nötig (kann ich im Sandbox nicht sicher ausführen) → Stakeholder installiert.
+- **FE-OUT/IMP/MGMT (Stufe 2)**: je ein neues Backend-Modul (Neubau, war auch in der Vorgänger-App nur Stufe-2-Platzhalter).
+- Mobile-responsive Shell (Hamburger); kleinere Zusatzfilter (FE-VAL-02/FE-LIB).
 
 ### Offen — benötigt zuerst Backend-Endpunkte (Stufe 2 / BE-Lücke)
 - FE-CAP-05 Anhänge/Foto-Upload (Objektspeicher), FE-CAP-06 OCR.

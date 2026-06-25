@@ -95,6 +95,7 @@ export const endpoints = {
     status: () => api.get<ReasonerStatus>("/reasoner/status"),
   },
   notifications: { list: () => api.get<Notification[]>("/notifications") },
+  directory: { list: () => api.get<{ id: string; name: string }[]>("/directory") },
   analytics: {
     overview: () => api.get<Analytics>("/analytics"),
     busfactor: () => api.get<BusFactorEntry[]>("/analytics/busfactor"),

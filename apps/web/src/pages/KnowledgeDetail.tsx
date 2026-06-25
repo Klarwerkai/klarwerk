@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { type KoAction, endpoints } from "../api/endpoints";
-import { useKo, useKos } from "../api/hooks";
+import { useDirectory, useKo, useKos } from "../api/hooks";
 import type { ConflictType, KnowledgeObject, KnowledgeType } from "../api/types";
 import { useRole } from "../app/RoleContext";
 import { ListEditor, TagEditor } from "../components/editors";
@@ -90,6 +90,8 @@ export function KnowledgeDetail(): JSX.Element {
   const { role } = useRole();
   const query = useKo(id);
   const koList = useKos();
+  const dir = useDirectory();
+  const nameOf = (uid: string): string => dir.data?.find((d) => d.id === uid)?.name || uid;
   const qc = useQueryClient();
   const [edit, setEdit] = useState<EditState | null>(null);
   const [conflict, setConflict] = useState<ConflictForm | null>(null);
@@ -465,8 +467,8 @@ export function KnowledgeDetail(): JSX.Element {
               <Card>
                 <SectionLabel>{t("ko.provenance")}</SectionLabel>
                 <ProvenanceLine
-                  author={ko.author}
-                  originalAuthor={ko.originalAuthor}
+                  author={nameOf(ko.author)}
+                  originalAuthor={nameOf(ko.originalAuthor)}
                   domain={ko.category}
                   version={ko.version}
                 />
@@ -479,7 +481,7 @@ export function KnowledgeDetail(): JSX.Element {
                       <div className="font-mono text-[11px] text-muted-2">
                         v{h.version} · {new Date(h.at).toLocaleDateString()}
                       </div>
-                      <div className="text-[12.5px] text-text">{h.note || h.author}</div>
+                      <div className="text-[12.5px] text-text">{h.note || nameOf(h.author)}</div>
                     </li>
                   ))}
                 </ol>
@@ -495,7 +497,7 @@ export function KnowledgeDetail(): JSX.Element {
                       {(ko.comments ?? []).map((cm) => (
                         <li key={cm.id} className="border-l-2 border-hairline pl-3">
                           <div className="font-mono text-[11px] text-muted-2">
-                            {cm.author} · {new Date(cm.at).toLocaleDateString()}
+                            {nameOf(cm.author)} · {new Date(cm.at).toLocaleDateString()}
                           </div>
                           <div className="text-[13px] text-text">{cm.text}</div>
                         </li>

@@ -284,6 +284,17 @@ export function authRoutes(
       reply.code(200).send(await service.listUsers());
     });
 
+    // Schlankes Verzeichnis (nur id + Anzeigename) für Anzeige (Autorennamen) und
+    // Zuweisung — für ALLE angemeldeten Nutzer, ohne Adminrecht.
+    app.get("/api/directory", async (request, reply) => {
+      const user = await requireUser(request, reply);
+      if (!user) {
+        return;
+      }
+      const users = await service.listUsers();
+      reply.code(200).send(users.map((u) => ({ id: u.id, name: u.name })));
+    });
+
     // Admin legt einen Nutzer direkt an (sofort freigegeben), optional mit Rolle.
     app.post<{ Body: { name: string; email: string; password: string; role?: Role } }>(
       "/api/users",
