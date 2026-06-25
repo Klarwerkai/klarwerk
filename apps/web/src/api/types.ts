@@ -18,6 +18,13 @@ export interface HistoryEntry {
   note: string;
 }
 
+export interface KoComment {
+  id: string;
+  author: string;
+  text: string;
+  at: string;
+}
+
 export interface KnowledgeObject {
   id: string;
   title: string;
@@ -38,6 +45,7 @@ export interface KnowledgeObject {
   asset: string | null;
   createdAt: string;
   history: HistoryEntry[];
+  comments?: KoComment[];
 }
 
 export type Verdict = "up" | "warn" | "down";

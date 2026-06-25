@@ -41,6 +41,7 @@ interface PutBody {
   conflictId?: string;
   decision?: string;
   newAuthor?: string;
+  text?: string;
 }
 
 export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync {
@@ -131,6 +132,18 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               return;
             }
             reply.code(200).send(await ko.revise(id, body.changes ?? {}, user.id));
+            return;
+          }
+          case "comment": {
+            // FR-KO-06: jeder angemeldete Nutzer darf kommentieren.
+            const user = await guards.requireUser(request, reply);
+            if (!user) {
+              return;
+            }
+            if (!body.text?.trim()) {
+              return badRequest("text fehlt.");
+            }
+            reply.code(200).send(await ko.addComment(id, user.id, body.text.trim()));
             return;
           }
           case "category": {

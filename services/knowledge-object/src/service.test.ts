@@ -32,6 +32,17 @@ describe("KoService", () => {
     expect(ko.asset).toBeNull();
     expect(ko.history).toHaveLength(1);
     expect(ko.history[0]?.note).toBe("erstellt");
+    expect(ko.comments).toEqual([]);
+  });
+
+  it("FR-KO-06: fügt Kommentare an und bewahrt sie über revise", async () => {
+    const ko = await service.create(base());
+    const c1 = await service.addComment(ko.id, "controller", "Bitte Quelle ergänzen.");
+    expect(c1.comments).toHaveLength(1);
+    expect(c1.comments[0]?.author).toBe("controller");
+    expect(c1.comments[0]?.text).toBe("Bitte Quelle ergänzen.");
+    const revised = await service.revise(ko.id, { statement: "neu" }, "controller");
+    expect(revised.comments).toHaveLength(1);
   });
 
   it("FR-KO-02: Wissensart setzbar und filterbar", async () => {

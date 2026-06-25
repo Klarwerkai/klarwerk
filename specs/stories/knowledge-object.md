@@ -23,6 +23,11 @@ Versioniertes Wissensobjekt mit klarem Datenmodell, fünf Wissensarten, Kategori
 ## API / Schnittstellen (Entwurf)
 `POST/GET/PATCH /api/kos` · `GET /api/kos/:id/history` · Statusfeld (offen/validiert) wird von `validation` gepflegt; Events `ko.created`, `ko.revised`.
 
+### FR-KO-06 · Kommentare am Objekt (MUSS)
+- [ ] **Gegeben** ein angemeldeter Nutzer, **wenn** er einen nicht-leeren Kommentar anfügt, **dann** wird `{id, author, text, at}` am KO gespeichert (leerer Text → 400).
+- [ ] **Gegeben** ein KO mit Kommentaren, **wenn** es überarbeitet wird (`revise`), **dann** bleiben die Kommentare erhalten.
+- Persistenz als Teil des KO-JSONB (keine separate Tabelle); Audit-Eintrag `ko.commented`. API: `PUT /api/kos/:id` mit `{action:"comment", text}`.
+
 ## Datenmodell (Auszug, Technischer Anhang §1)
 `kos(id, title, statement, conditions, measures, type, category, tags[], confidence, trust, status, version, original_author, needed_validations, asset_ref, created_at)` + `ko_history`. Wissensart als Enum.
 

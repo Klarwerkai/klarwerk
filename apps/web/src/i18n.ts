@@ -212,6 +212,10 @@ const de = {
   "ko.conflictSubmit": "Konflikt eröffnen",
   "ko.provenance": "Herkunft",
   "ko.history": "Versionen",
+  "ko.comments": "Kommentare",
+  "ko.commentsEmpty": "Noch keine Kommentare.",
+  "ko.commentPlaceholder": "Kommentar schreiben …",
+  "ko.commentAdd": "Kommentieren",
   "val.kicker": "Validation Board",
   "val.intro":
     "Peer-Bewertung grün / gelb / rot. Ab der Schwelle (Standard 3× grün, 0× rot) gilt ein Objekt als validiert.",
@@ -528,6 +532,10 @@ const en: typeof de = {
   "ko.conflictSubmit": "Open conflict",
   "ko.provenance": "Provenance",
   "ko.history": "Versions",
+  "ko.comments": "Comments",
+  "ko.commentsEmpty": "No comments yet.",
+  "ko.commentPlaceholder": "Write a comment …",
+  "ko.commentAdd": "Comment",
   "val.kicker": "Validation board",
   "val.intro":
     "Peer rating green / amber / red. At the threshold (default 3× green, 0× red) an object is validated.",

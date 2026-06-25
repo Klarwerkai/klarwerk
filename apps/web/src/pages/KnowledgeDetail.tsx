@@ -63,6 +63,7 @@ export function KnowledgeDetail(): JSX.Element {
   const qc = useQueryClient();
   const [edit, setEdit] = useState<EditState | null>(null);
   const [conflict, setConflict] = useState<ConflictForm | null>(null);
+  const [commentText, setCommentText] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const canEdit = role !== "viewer";
   const canReview = role === "controller" || role === "admin";
@@ -77,6 +78,16 @@ export function KnowledgeDetail(): JSX.Element {
   const act = useMutation({
     mutationFn: (body: KoAction) => endpoints.ko.act(id, body),
     onSuccess: invalidate,
+    onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
+  });
+
+  const comment = useMutation({
+    mutationFn: () => endpoints.ko.act(id, { action: "comment", text: commentText.trim() }),
+    onSuccess: () => {
+      invalidate();
+      setCommentText("");
+      setErr(null);
+    },
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
   });
 
@@ -412,6 +423,42 @@ export function KnowledgeDetail(): JSX.Element {
                     </li>
                   ))}
                 </ol>
+              </Card>
+
+              <Card>
+                <SectionLabel>{t("ko.comments")}</SectionLabel>
+                <div className="space-y-3">
+                  {(ko.comments ?? []).length === 0 ? (
+                    <p className="text-[13px] text-muted">{t("ko.commentsEmpty")}</p>
+                  ) : (
+                    <ul className="space-y-2.5">
+                      {(ko.comments ?? []).map((cm) => (
+                        <li key={cm.id} className="border-l-2 border-hairline pl-3">
+                          <div className="font-mono text-[11px] text-muted-2">
+                            {cm.author} · {new Date(cm.at).toLocaleDateString()}
+                          </div>
+                          <div className="text-[13px] text-text">{cm.text}</div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <div className="space-y-2 border-t border-hairline pt-3">
+                    <textarea
+                      value={commentText}
+                      onChange={(e) => setCommentText(e.target.value)}
+                      rows={2}
+                      placeholder={t("ko.commentPlaceholder")}
+                      className={textareaCls}
+                    />
+                    <Button
+                      variant="primary"
+                      disabled={comment.isPending || commentText.trim().length === 0}
+                      onClick={() => comment.mutate()}
+                    >
+                      {t("ko.commentAdd")}
+                    </Button>
+                  </div>
+                </div>
               </Card>
             </div>
           </div>

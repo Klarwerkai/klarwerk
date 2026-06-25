@@ -23,6 +23,14 @@ export interface HistoryEntry {
   note: string;
 }
 
+// FR-KO-06: Diskussion/Kommentare am Objekt (Peer-Austausch, Revisions-Schleife).
+export interface KoComment {
+  id: string;
+  author: string;
+  text: string;
+  at: string;
+}
+
 // FR-KO-01: Datenmodell inkl. version/history/originalAuthor/needed/assignments/asset
 // (Pflichtenheft §3.5, Technischer Anhang §1).
 export interface KnowledgeObject {
@@ -45,6 +53,7 @@ export interface KnowledgeObject {
   asset: string | null;
   createdAt: string;
   history: HistoryEntry[];
+  comments: KoComment[];
 }
 
 export type KoErrorCode = "NOT_FOUND" | "INVALID_TYPE" | "INVALID_NEEDED";

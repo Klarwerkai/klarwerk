@@ -38,6 +38,7 @@ export type KoAction =
   | { action: "rate"; verdict: Verdict }
   | { action: "assign"; userIds: string[] }
   | { action: "revise"; changes: DraftPayload }
+  | { action: "comment"; text: string }
   | { action: "category"; category: string }
   | { action: "tags"; tags: string[] }
   | {

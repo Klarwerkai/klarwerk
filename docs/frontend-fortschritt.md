@@ -32,9 +32,11 @@
 - ✅ **FE-VAL-05 Zuweisung zur Validierung**: pro Objekt Experte/Controller aus Nutzerliste zuweisen (`assign` → E-Mail via FR-VAL-07).
 - ✅ **FE-RISK Lücken-Zuweisung**: offene Wissenslücke an Experten zuweisen (`gaps.assign`), Zuweisung wird angezeigt.
 
+### Nachtrag (3. Batch — Backend + Frontend)
+- ✅ **Kommentare am Wissensobjekt** (FR-KO-06 / FE-KO-06 / FE-VAL-06): neue Backend-Aktion `comment` (jeder Angemeldete), Persistenz als Teil des KO-JSONB (keine Migration), bleiben über `revise` erhalten, Audit `ko.commented`. Vitest ergänzt, Spec ergänzt (`specs/stories/knowledge-object.md`). Frontend: Kommentar-Liste + Eingabe im KO-Detail.
+
 ### Noch offen (Frontend, ohne neue Backend-Endpunkte machbar)
-- FE-VAL-02/06: zusätzliche Filter (Domäne/Tags), Revisions-Schleife mit Kommentaren (Kommentar-Endpunkt fehlt im BE).
-- FE-LIB-Detailfilter (Tag/Kategorie), Mobile-responsive Shell (Hamburger).
+- FE-VAL-02: zusätzliche Filter (Domäne/Tags). FE-LIB-Detailfilter (Tag/Kategorie), Mobile-responsive Shell (Hamburger).
 
 ### Offen — benötigt zuerst Backend-Endpunkte (Stufe 2 / BE-Lücke)
 - FE-CAP-05 Anhänge/Foto-Upload (Objektspeicher), FE-CAP-06 OCR.

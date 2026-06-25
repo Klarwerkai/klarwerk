@@ -5,6 +5,7 @@ import {
   KNOWLEDGE_TYPES,
   type KnowledgeObject,
   type KnowledgeType,
+  type KoComment,
   KoError,
   type KoStatus,
 } from "./types";
@@ -83,10 +84,26 @@ export class KoService {
       asset: input.asset ?? null,
       createdAt: at,
       history: [{ version: 1, at, author: input.author, note: "erstellt" }],
+      comments: [],
     };
     await this.repo.insert(ko);
     await this.audit?.record({ actor: input.author, action: "ko.created", target: ko.id });
     return ko;
+  }
+
+  // FR-KO-06: Kommentar am Objekt anfügen (Diskussion / Revisions-Schleife).
+  async addComment(id: string, author: string, text: string): Promise<KnowledgeObject> {
+    const ko = await this.require(id);
+    const comment: KoComment = {
+      id: this.genId(),
+      author,
+      text,
+      at: new Date(this.now()).toISOString(),
+    };
+    const updated: KnowledgeObject = { ...ko, comments: [...(ko.comments ?? []), comment] };
+    await this.repo.update(updated);
+    await this.audit?.record({ actor: author, action: "ko.commented", target: id });
+    return updated;
   }
 
   get(id: string): Promise<KnowledgeObject | undefined> {

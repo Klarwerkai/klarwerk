@@ -10,5 +10,6 @@ export type {
   KnowledgeType,
   KoStatus,
   HistoryEntry,
+  KoComment,
   KoErrorCode,
 } from "./src/types";
