@@ -869,3 +869,118 @@ Modus: Read-only Evidence-Audit, kein Feature-Code
 - Offen: FE-MGMT-01 bis FE-MGMT-09 (alle).
 - Statusvorschlag SCRUM-114: „To Do/Stufe 2" — nur Platzhalter; keine datenbasierte Management-/Kapital-Sicht umgesetzt. Keine Checkbox/kein Status durch mich geändert.
 - Bestätigung: kein Produktcode geändert; nur `docs/qm/claude-after-report.md` append-only ergänzt.
+
+---
+
+## SCRUM-98 Evidence-Audit — Foundation
+Datum: 2026-06-25
+Modus: Read-only Evidence-Audit, kein Feature-Code
+Geprüfte Dateien: App.tsx, main.tsx, routes.tsx, shell/AppShell.tsx, shell/Sidebar.tsx, shell/Topbar.tsx, shell/CommandPalette.tsx, app/navigation.ts, app/RoleContext.tsx, app/AuthContext.tsx, app/useNavBadges.ts, auth/AuthScreens.tsx, auth/ResetScreen.tsx, pages/Start.tsx, pages/Help.tsx, pages/Mobile.tsx, pages/Profile.tsx, pages/UiKit.tsx, components/ui.tsx, components/HelpTip.tsx, i18n.ts; Tests services/** + tests/**.
+### Gate
+- git status vor Audit: clean (HEAD 6797bc1; nur ignorierte `*.timestamp-*.mjs`).
+- npm run check: GRÜN (exit 0) — build (`tsc --noEmit`), lint (`biome check .`), arch (`depcruise services`), test (`vitest run`, 21 Dateien / 115 Tests). FE selbst hat keine eigenen Komponententests (vitest scannt nur `tests/**`+`services/**`).
+- Produktcode geändert: nein. Geänderte Dateien: nur `docs/qm/claude-after-report.md`.
+### FE-FND-01 · App-Shells (Login, Desktop-Control-Room, Mobile)
+- Status: teilweise.
+- Source-Evidenz: Login-Shell (`App.tsx` `Gate` → `AuthScreens`/`ResetScreen`), Desktop-Control-Room (`AppShell.tsx`: Sidebar 252px + Topbar + Content + CommandPalette). Mobile: `Mobile.tsx` ist eine statische Vorschau-Seite INNERHALB der AppShell, keine eigene Mobile-Shell (vgl. SCRUM-113).
+- Test-/Gate-Evidenz: Gate grün (tsc/biome); keine FE-Komponententests.
+- Restlücke: echte Mobile-Shell fehlt (hängt an SCRUM-113).
+### FE-FND-02 · Rollenabhängige Navigation / Sidebar
+- Status: teilweise.
+- Source-Evidenz: `Sidebar.tsx` + `navigation.ts` `canSee(item, role, stufe2)` + Routen-Gating (`routes.tsx`). ABER Rolle kommt aus `RoleContext.tsx` (`useState<Role>("experte")` + `setRole`-Dev-Schalter in der Sidebar), NICHT aus der echten Auth-Session (`session.user.role`).
+- Test-/Gate-Evidenz: RBAC-Rechtematrix auf Service-Ebene getestet (`rbac/policy.test.ts` FR-RBAC-01/02); `canSee` (Nav-Sichtbarkeit) selbst nicht getestet.
+- Restlücke: Nav-Rolle aus echter Session statt Dev-Schalter (Backend-RBAC erzwingt Rechte ohnehin; FE-Nav-Sichtbarkeit ist nur Vorschau-gesteuert).
+### FE-FND-03 · Command Palette (⌘K)
+- Status: abhakbar.
+- Source-Evidenz: `CommandPalette.tsx` (⌘K/Strg+K, rollengefiltert via `canSee`, Pfeiltasten/Enter/Esc, Event `open-command-palette`); eingebunden in `AppShell`.
+- Test-/Gate-Evidenz: Gate grün; funktional über Source belegt (kein eigener Unit-Test, da FE-Komponente).
+- Restlücke: optional ein FE-Test; kein Blocker.
+### FE-FND-04 · Toaster / Benachrichtigungs-Bus
+- Status: teilweise/offen.
+- Source-Evidenz: Es gibt einen Notification-Bell + Feed in `Topbar.tsx` (`useNotifications` → `/api/notifications`, aggregiert Konflikte/Lücken, `notification-feed.ts`). KEIN generischer Toaster-/Benachrichtigungs-Bus (grep nach toast/Toaster/Snackbar/useToast leer).
+- Test-/Gate-Evidenz: Notification-Feed getestet (`app/notification-feed.test.ts`).
+- Restlücke: generischer Toaster-/Event-Bus für UI-Rückmeldungen fehlt (Feed ≠ Toaster-Bus).
+### FE-FND-05 · In-App-Hilfe (zweisprachig, durchsuchbar)
+- Status: abhakbar.
+- Source-Evidenz: `Help.tsx` Suchfeld (`q`-Filter über Topic-Titel+Body), Inhalte via `t(\`help.<topic>.*\`)` (DE/EN aus `i18n.ts`); zusätzlich `HelpTip.tsx` (Inline-„?"-Popover mit Link ins Hilfe-Center).
+- Test-/Gate-Evidenz: Gate grün; i18n-DE/EN-Ressourcen vorhanden.
+- Restlücke: keine wesentliche.
+### FE-FND-06 · i18n DE/EN inkl. Umschalter
+- Status: abhakbar (mit kleinem Restpunkt).
+- Source-Evidenz: `i18n.ts` (DE+EN, `lng:"de"`); Umschalter in `Topbar.tsx` und `Profile.tsx` (`i18n.changeLanguage`); Status/Wissensarten/Formulare über `t(...)`.
+- Test-/Gate-Evidenz: Gate grün.
+- Restlücke: vereinzelte harte Strings (z. B. „KLARWERK", „Stufe 2 · SCRUM-xxx" im Stufe2-Header, „online"/„klarwerk.ai"). Marginal.
+### FE-FND-07 · Design-System / UI-Bausteine
+- Status: abhakbar.
+- Source-Evidenz: `components/ui.tsx` (Button/Card/Field/TextInput/PageHeader/SectionLabel/QueryState/Avatar), `UiKit.tsx` (Showcase), `HelpTip.tsx`, `components/editors.tsx`, `components/trust/*`; durchgängig in allen Seiten genutzt; Tailwind-Tokens.
+- Test-/Gate-Evidenz: Gate grün (tsc/biome/dep-cruiser über apps/web/src sauber). Keine FE-Komponententests.
+- Restlücke: optional Komponententests; kein Blocker.
+### FE-FND-08 · Auth-/Session-Context, optimistische Updates + periodisches Nachladen
+- Status: teilweise.
+- Source-Evidenz: `AuthContext.tsx` echte Session (`/auth/status` + `/auth/me` via react-query), `signOut` invalidiert `["auth"]` + Hard-Reload. KEIN `refetchInterval`/Polling (bestätigt), keine expliziten optimistischen Updates.
+- Test-/Gate-Evidenz: Auth-Service getestet (`auth/service.test.ts` FR-AUTH-01..08, „register→login→me happy path; me ohne Token → 401").
+- Restlücke: periodisches Nachladen (refetchInterval) + optimistische Updates fehlen.
+### FE-FND-09 · „Missions"-Einstiegsseiten (optional)
+- Status: offen / optional.
+- Source-Evidenz: `Start.tsx` = normale Startseite mit rollenabhängigem CTA (`/fragen`/`/erfassen`/`/validierung`) + KPIs + Heute-zu-tun. Keine dedizierten Missions-Einstiegs-Flows.
+- Test-/Gate-Evidenz: Gate grün.
+- Restlücke: echte „Missions"-Einstiegsseiten (optional) nicht umgesetzt.
+### Empfehlung für Codex/Jira
+- Abhakbar: FE-FND-03, FE-FND-05, FE-FND-06, FE-FND-07.
+- Nicht setzen (teilweise): FE-FND-01 (Mobile-Shell fehlt), FE-FND-02 (Nav-Rolle aus Dev-Schalter statt Session), FE-FND-04 (kein Toaster-Bus), FE-FND-08 (kein Polling/optimistic).
+- Offen/optional: FE-FND-09.
+- Resttickets/Blocker: echte Mobile-Shell (SCRUM-113); Nav-Rolle aus Auth-Session; generischer Toaster-Bus; AuthContext-Polling/optimistische Updates; optional Missions-Einstiegsseiten + FE-Komponententests.
+- Statusvorschlag SCRUM-98: „In Progress" — 4 von 9 setzbar.
+- Bestätigung: kein Produktcode geändert; nur `docs/qm/claude-after-report.md` append-only ergänzt.
+
+---
+
+## SCRUM-99 Evidence-Audit — Auth & Onboarding
+Datum: 2026-06-25
+Modus: Read-only Evidence-Audit, kein Feature-Code
+Geprüfte Dateien: App.tsx, app/AuthContext.tsx, auth/AuthScreens.tsx, auth/ResetScreen.tsx, api/auth.ts, pages/Profile.tsx, pages/Admin.tsx, api/endpoints.ts, api/hooks.ts, i18n.ts; services/auth/src/{service.ts,routes.ts,service.test.ts,oidc.ts,oidc.test.ts}; services/app/src/build-app.test.ts.
+### Gate
+- git status vor Audit: nur `docs/qm/claude-after-report.md` geändert (SCRUM-98-Report aus Vorturn, uncommitted) — kein Produktcode.
+- npm run check: GRÜN (exit 0) — build/lint/arch/test (21 Dateien / 115 Tests).
+- Produktcode geändert: nein. Geänderte Dateien: nur `docs/qm/claude-after-report.md`.
+### FE-AUTH-01 · Ersteinrichtung → erstes Konto = Admin
+- Status: abhakbar.
+- Source-Evidenz: `AuthScreens.tsx` Mode "setup" (`authApi.setup`); `App.tsx` `Gate` zeigt Setup bei `s.needsSetup` (aus `/auth/status`); `api/auth.ts` `status`/`setup`.
+- Test-/Gate-Evidenz: `auth/service.test.ts` FR-AUTH-01 (erstes Konto wird Admin, approved). Gate grün.
+- Restlücke: keine.
+### FE-AUTH-02 · Registrierung (Name, E-Mail, Passwort ≥ 8)
+- Status: abhakbar.
+- Source-Evidenz: `AuthScreens.tsx` Mode "register" (Name/E-Mail/Passwort, `minLength={8}` für register/setup); `authApi.register`.
+- Test-/Gate-Evidenz: `auth/service.test.ts` FR-AUTH-02 + „weist zu kurze Passwörter ab"; Integration `build-app.test.ts` (Registrierung→Login→KO-Liste). Gate grün.
+- Restlücke: keine.
+### FE-AUTH-03 · „Wartet auf Freigabe"-Hinweisbildschirm
+- Status: abhakbar.
+- Source-Evidenz: `AuthScreens.tsx` `register.onSuccess → setMode("waiting")`, Anzeige `auth.waitingNote`.
+- Test-/Gate-Evidenz: `auth/service.test.ts` FR-AUTH-02 (weitere Konten Experte + bis Freigabe gesperrt). Freigabe-Kontext siehe SCRUM-112/FE-ADM-03 (nicht doppelt gezählt). Gate grün.
+- Restlücke: keine.
+### FE-AUTH-04 · Login / Logout / Session-Status
+- Status: abhakbar.
+- Source-Evidenz: `AuthScreens.tsx` login-Mutation (`authApi.login`); `AuthContext.tsx` `signOut` (Logout + Cache-Invalidate + Hard-Reload) + Session via `/auth/status`+`/auth/me`.
+- Test-/Gate-Evidenz: `auth/service.test.ts` FR-AUTH-03/04 (falsche Daten abgewiesen; Logout beendet Sitzung) + „register→login→me happy path; me ohne Token → 401"; Integration build-app (geschützte KO-Liste 401 ohne Token). Gate grün.
+- Restlücke: keine.
+### FE-AUTH-05 · Eigenes Profil / „Me"
+- Status: abhakbar.
+- Source-Evidenz: `Profile.tsx` zeigt `useSession().user` (Name/E-Mail/Rolle, Initialen) + Sprache; zusätzlich **Passwortwechsel** (`authApi.changePassword` alt/neu, `prof.passwordTitle`). `AuthContext` `/auth/me`.
+- Test-/Gate-Evidenz: `auth/service.test.ts` „Self-Service: eigenes Passwort ändern (altes nötig), alte Sitzung verfällt"; me-happy-path. Gate grün.
+- Restlücke: keine. (Passwortwechsel im Profil vorhanden.)
+### FE-AUTH-06 · Self-Service-Passwort-Reset per E-Mail (Stufe 2)
+- Status: abhakbar.
+- Source-Evidenz: Request-Flow `AuthScreens.tsx` Mode "forgot" → `authApi.forgot` → "forgotSent" (`auth.forgotNote`); Token-Reset-UI `ResetScreen.tsx` (`authApi.reset(token, newPassword)`, erreichbar über `/reset` ohne Login). Route `/api/auth/forgot` (immer 204, kein Existenz-Leak) + `/api/auth/reset`.
+- Test-/Gate-Evidenz: `auth/service.test.ts` FR-AUTH-08 (Reset per Token; unbekannte E-Mail verschwiegen; Token einmalig); Mailer `notifications/mailer.test.ts`. Gate grün.
+- Restlücke: keine funktionale (Brevo-Versand live durch Stakeholder konfiguriert).
+### FE-AUTH-07 · SSO/OIDC-Login + Rollen-Mapping (Stufe 2)
+- Status: teilweise.
+- Source-Evidenz: Backend vorhanden — `services/auth/src/oidc.ts` (Verifier), Route `POST /api/auth/oidc` (`routes.ts`), `loginWithOidc`. ABER: KEINE FE-Anbindung — kein SSO/OIDC-Login-Button, kein `authApi.oidc`/idToken-Handling in `apps/web/src` (grep leer). Rollen-Mapping ist „erstes Konto → Admin" (Auto-Provisionierung), KEIN claim-basiertes Rollen-Mapping.
+- Test-/Gate-Evidenz: `auth/oidc.test.ts` FR-AUTH-07 (gültiges Token/Claims, falsche Audience abgewiesen, loginWithOidc → erstes Konto Admin). Gate grün.
+- Restlücke: FE-OIDC-Login-Flow + claim-basiertes Rollen-Mapping fehlen.
+### Empfehlung für Codex/Jira
+- Abhakbar: FE-AUTH-01, FE-AUTH-02, FE-AUTH-03, FE-AUTH-04, FE-AUTH-05, FE-AUTH-06.
+- Nicht setzen (teilweise): FE-AUTH-07 (Backend-OIDC + Tests vorhanden, FE-Login-Flow + Rollen-Mapping fehlen).
+- Resttickets/Blocker: FE-OIDC-Login-Anbindung + claim-basiertes Rollen-Mapping (FE-AUTH-07, Stufe 2).
+- Statusvorschlag SCRUM-99: „In Progress/In Review" — 6 von 7 setzbar.
+- Bestätigung: kein Produktcode geändert; nur `docs/qm/claude-after-report.md` append-only ergänzt.
