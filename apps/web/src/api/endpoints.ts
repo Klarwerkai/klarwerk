@@ -3,6 +3,7 @@ import type {
   Analytics,
   AnswerResult,
   AssignmentSummary,
+  AssistResult,
   AuditEntry,
   BusFactorEntry,
   Conflict,
@@ -65,6 +66,8 @@ export const endpoints = {
     list: () => api.get<Conflict[]>("/conflicts"),
     get: (id: string) => api.get<Conflict>(`/conflicts/${id}`),
     escalate: (id: string) => api.post<Conflict>(`/conflicts/${id}/escalate`),
+    secondOpinion: (id: string, opinion: string) =>
+      api.post<Conflict>(`/conflicts/${id}/second-opinion`, { opinion }),
   },
   gaps: {
     list: () => api.get<Gap[]>("/gaps"),
@@ -84,7 +87,9 @@ export const endpoints = {
     helpful: (koId: string) => api.post<void>("/ask/helpful", { koId }),
   },
   reasoner: {
-    structure: (text: string) => api.post<StructureResult>("/reasoner", { text }),
+    structure: (text: string) =>
+      api.post<StructureResult>("/reasoner", { task: "structure", text }),
+    assist: (text: string) => api.post<AssistResult>("/reasoner", { task: "assist", text }),
     status: () => api.get<ReasonerStatus>("/reasoner/status"),
   },
   notifications: { list: () => api.get<Notification[]>("/notifications") },

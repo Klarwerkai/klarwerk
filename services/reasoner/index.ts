@@ -13,5 +13,6 @@ export type {
   AnswerResult,
   AnswerStep,
   StructureResult,
+  AssistResult,
   ReasonerStatus,
 } from "./src/types";

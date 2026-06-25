@@ -1,4 +1,4 @@
-import type { AnswerResult, KnowledgeRef, StructureResult } from "./types";
+import type { AnswerResult, AssistResult, KnowledgeRef, StructureResult } from "./types";
 
 // FR-RSN-02: anbieteragnostisch — jede Implementierung (lokales Modell, Cloud, Mock)
 // erfüllt diese Schnittstelle und ist ohne Änderung der Fachlogik austauschbar.
@@ -8,6 +8,8 @@ export interface ReasonerProvider {
   // structure/answer sind async — ein echtes Modell ruft über das Netz.
   structure(rawText: string): Promise<StructureResult>;
   answer(question: string, context: readonly KnowledgeRef[]): Promise<AnswerResult>;
+  // FR-RSN-03: Text sprachlich präzisieren (ohne Inhalt zu erfinden).
+  assistText(text: string): Promise<AssistResult>;
   // select ist reines Ranking (synchron, kein Netzaufruf).
   select(question: string, candidates: readonly KnowledgeRef[]): KnowledgeRef[];
 }
@@ -64,6 +66,18 @@ export class DeterministicProvider implements ReasonerProvider {
       confidence: 0,
       demo: true,
     };
+  }
+
+  // Ohne Modell: deterministische Glättung (Whitespace, Großschreibung, Satzabschluss).
+  // Verändert keinen Inhalt — markiert als Demo.
+  async assistText(text: string): Promise<AssistResult> {
+    const cleaned = text.replace(/\s+/g, " ").trim();
+    if (!cleaned) {
+      return { text: "", demo: true };
+    }
+    const cased = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+    const ended = /[.!?]$/.test(cased) ? cased : `${cased}.`;
+    return { text: ended, demo: true };
   }
 
   select(question: string, candidates: readonly KnowledgeRef[]): KnowledgeRef[] {

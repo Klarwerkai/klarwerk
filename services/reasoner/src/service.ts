@@ -1,5 +1,11 @@
 import { DeterministicProvider, type ReasonerProvider } from "./provider";
-import type { AnswerResult, KnowledgeRef, ReasonerStatus, StructureResult } from "./types";
+import type {
+  AnswerResult,
+  AssistResult,
+  KnowledgeRef,
+  ReasonerStatus,
+  StructureResult,
+} from "./types";
 
 // FR-RSN-01: gebündelte Aufgaben über die Reasoner-Schicht.
 // FR-RSN-06: der KI-Schlüssel lebt ausschließlich im Provider (serverseitig),
@@ -51,6 +57,18 @@ export class Reasoner {
       }
     }
     return this.fallback.answer(question, context);
+  }
+
+  // FR-RSN-03: Text präzisieren; Modellfehler → deterministischer Fallback.
+  async assistText(text: string): Promise<AssistResult> {
+    if (this.usingPrimary()) {
+      try {
+        return await this.primary.assistText(text);
+      } catch {
+        // Fällt auf den deterministischen Provider zurück.
+      }
+    }
+    return this.fallback.assistText(text);
   }
 
   select(question: string, candidates: readonly KnowledgeRef[]): KnowledgeRef[] {

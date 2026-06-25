@@ -14,7 +14,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
   const { reasoner, ask } = deps;
 
   return async (app) => {
-    app.post<{ Body: { task: "structure" | "ask"; text: string } }>(
+    app.post<{ Body: { task: "structure" | "ask" | "assist"; text: string } }>(
       "/api/reasoner",
       async (request, reply) => {
         const user = await guards.requirePermission("ko.read", request, reply);
@@ -30,9 +30,15 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
           reply.code(200).send(await ask.ask(text ?? ""));
           return;
         }
-        reply
-          .code(400)
-          .send({ error: "BAD_REQUEST", message: "task muss 'structure' oder 'ask' sein." });
+        if (task === "assist") {
+          // FR-RSN-03: Text präzisieren/glätten.
+          reply.code(200).send(await reasoner.assistText(text ?? ""));
+          return;
+        }
+        reply.code(400).send({
+          error: "BAD_REQUEST",
+          message: "task muss 'structure', 'ask' oder 'assist' sein.",
+        });
       },
     );
   };

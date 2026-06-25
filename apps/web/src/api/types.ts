@@ -189,6 +189,11 @@ export interface ReasonerStatus {
   mode: "model" | "deterministic";
 }
 
+export interface AssistResult {
+  text: string;
+  demo: boolean;
+}
+
 export type NotificationKind = "conflict" | "gap";
 
 export interface Notification {

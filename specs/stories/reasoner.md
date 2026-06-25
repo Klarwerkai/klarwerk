@@ -17,6 +17,7 @@ und serverseitiger Schlüsselhaltung.
 
 ### FR-RSN-03 · Anti-Halluzination (MUSS)
 - [ ] **Gegeben** fehlendes belastbares Wissen, **dann** keine Rateantwort; Trennung gesichert/ungeprüft/Meinung/extern/Annahme; Unwissen wird benannt.
+- [ ] **Gegeben** die Schreibhilfe `assist` (`POST /api/reasoner` mit `task:"assist"`), **dann** wird der Text nur sprachlich geglättet/präzisiert, ohne Inhalt/Fakten zu erfinden; ohne Modell liefert der deterministische Fallback eine markierte (`demo:true`) Glättung.
 
 ### FR-RSN-04 · Deterministischer Fallback (MUSS)
 - [ ] **Gegeben** kein Modell, **dann** laufen alle Seiten; Antworten sind als Demo erkennbar.

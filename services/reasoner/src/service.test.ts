@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DeterministicProvider, type ReasonerProvider } from "./provider";
 import { Reasoner } from "./service";
-import type { AnswerResult, KnowledgeRef, StructureResult } from "./types";
+import type { AnswerResult, AssistResult, KnowledgeRef, StructureResult } from "./types";
 
 const KOS: KnowledgeRef[] = [
   {
@@ -39,6 +39,12 @@ describe("DeterministicProvider", () => {
     expect(res.answered).toBe(false);
     expect(res.answer).toBeNull();
     expect(res.knowledgeClass).toBe("unbekannt");
+  });
+
+  it("FR-RSN-03: assistText glättet deterministisch ohne Inhalt zu erfinden", async () => {
+    const res = await p.assistText("  ventil   bei überdruck schliessen  ");
+    expect(res.demo).toBe(true);
+    expect(res.text).toBe("Ventil bei überdruck schliessen.");
   });
 
   it("klassifiziert validiertes Wissen als gesichert mit Quellen", async () => {
@@ -85,6 +91,7 @@ describe("Reasoner", () => {
         steps: [],
         demo: false,
       }),
+      assistText: async (): Promise<AssistResult> => ({ text: "Modell-Text", demo: false }),
       select: () => [],
     };
     const reasoner = new Reasoner(fakeModel);
@@ -101,6 +108,9 @@ describe("Reasoner", () => {
         throw new Error("sollte nicht aufgerufen werden");
       },
       answer: () => {
+        throw new Error("sollte nicht aufgerufen werden");
+      },
+      assistText: () => {
         throw new Error("sollte nicht aufgerufen werden");
       },
       select: () => {
@@ -122,6 +132,9 @@ describe("Reasoner", () => {
       answer: async (): Promise<AnswerResult> => {
         throw new Error("Netzfehler");
       },
+      assistText: async (): Promise<AssistResult> => {
+        throw new Error("Netzfehler");
+      },
       select: () => [],
     };
     const reasoner = new Reasoner(flakyModel);
@@ -131,5 +144,7 @@ describe("Reasoner", () => {
     expect(res.demo).toBe(true);
     const structured = await reasoner.structure("Pumpe alle 200h schmieren.");
     expect(structured.demo).toBe(true);
+    const assisted = await reasoner.assistText("pumpe schmieren");
+    expect(assisted.demo).toBe(true);
   });
 });

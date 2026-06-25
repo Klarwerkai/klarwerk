@@ -35,6 +35,11 @@
 ### Nachtrag (3. Batch — Backend + Frontend)
 - ✅ **Kommentare am Wissensobjekt** (FR-KO-06 / FE-KO-06 / FE-VAL-06): neue Backend-Aktion `comment` (jeder Angemeldete), Persistenz als Teil des KO-JSONB (keine Migration), bleiben über `revise` erhalten, Audit `ko.commented`. Vitest ergänzt, Spec ergänzt (`specs/stories/knowledge-object.md`). Frontend: Kommentar-Liste + Eingabe im KO-Detail.
 
+### Nachtrag (4. Batch — Konflikt-Workflow + Reasoner-Schreibhilfe)
+- ✅ **FE-CON-05 Zweitmeinung**: Conflict-Board kann eine Zweitmeinung erfassen (Backend-Endpunkt war vorhanden), Anzeige am Konflikt.
+- ✅ **FE-RSN-03 Schreibhilfe (`assist`)**: neue Backend-Aktion `POST /api/reasoner {task:"assist"}` (Modell glättet/präzisiert; deterministischer Fallback markiert `demo:true`). Vitest + Spec ergänzt. Frontend: „Aussage präzisieren"-Button im Capture-Editor.
+- 🐞 **Bugfix:** `reasoner.structure` sendete kein `task`-Feld → „Strukturieren" wäre serverseitig auf 400 gelaufen. Jetzt `task:"structure"` gesetzt.
+
 ### Noch offen (Frontend, ohne neue Backend-Endpunkte machbar)
 - FE-VAL-02: zusätzliche Filter (Domäne/Tags). FE-LIB-Detailfilter (Tag/Kategorie), Mobile-responsive Shell (Hamburger).
 

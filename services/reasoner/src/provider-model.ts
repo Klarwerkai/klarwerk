@@ -1,5 +1,5 @@
 import { type ReasonerProvider, keywordSelect } from "./provider";
-import type { AnswerResult, KnowledgeRef, StructureResult } from "./types";
+import type { AnswerResult, AssistResult, KnowledgeRef, StructureResult } from "./types";
 
 // Abstrakter Modell-Client: kapselt den eigentlichen (anbieterspezifischen) Aufruf.
 // FR-RSN-02/06: anbieteragnostisch; der Schlüssel lebt nur im Client (serverseitig).
@@ -16,6 +16,11 @@ const STRUCTURE_SYSTEM =
 const ANSWER_SYSTEM =
   "Beantworte die Frage NUR auf Basis der nummerierten Quellen. Reichen die Quellen nicht, " +
   "sage das ehrlich. Erfinde keine Fakten und keine Zahlen.";
+
+const ASSIST_SYSTEM =
+  "Du präzisierst und glättest industrielles Erfahrungswissen sprachlich. Verändere oder " +
+  "erfinde KEINE Inhalte, Zahlen oder Fakten. Gib AUSSCHLIESSLICH den überarbeiteten Text " +
+  "zurück, ohne Vorbemerkung oder Anführungszeichen.";
 
 function extractJson(raw: string): string {
   const start = raw.indexOf("{");
@@ -68,6 +73,12 @@ export class ModelProvider implements ReasonerProvider {
       confidence: clamp01(Number(parsed.confidence ?? 0)),
       demo: false,
     };
+  }
+
+  async assistText(text: string): Promise<AssistResult> {
+    const client = this.requireClient();
+    const improved = (await client.complete(ASSIST_SYSTEM, text)).trim();
+    return { text: improved || text.trim(), demo: false };
   }
 
   async answer(question: string, context: readonly KnowledgeRef[]): Promise<AnswerResult> {

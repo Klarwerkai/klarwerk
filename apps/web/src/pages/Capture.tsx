@@ -107,6 +107,16 @@ export function Capture(): JSX.Element {
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
   });
 
+  // FR-RSN-03: Aussage sprachlich präzisieren lassen.
+  const assist = useMutation({
+    mutationFn: () => endpoints.reasoner.assist(draft?.statement ?? ""),
+    onSuccess: (r) => {
+      setDraft((d) => (d ? { ...d, statement: r.text } : d));
+      setErr(null);
+    },
+    onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
+  });
+
   const switchMode = (m: Mode): void => {
     setErr(null);
     setMode(m);
@@ -303,6 +313,15 @@ export function Capture(): JSX.Element {
                     rows={3}
                     className={textareaCls}
                   />
+                  <button
+                    type="button"
+                    disabled={assist.isPending || draft.statement.trim().length === 0}
+                    onClick={() => assist.mutate()}
+                    className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-semibold text-ai hover:opacity-80 disabled:opacity-50"
+                  >
+                    <Sparkles size={13} />
+                    {t("capture.assist")}
+                  </button>
                 </Field>
                 <ListEditor
                   label={t("capture.fConditions")}

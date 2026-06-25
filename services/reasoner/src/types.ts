@@ -42,6 +42,12 @@ export interface StructureResult {
   demo: boolean;
 }
 
+// FR-RSN-03: sprachliche Präzisierung/Glättung eines Textes (ohne Inhalt zu erfinden).
+export interface AssistResult {
+  text: string;
+  demo: boolean;
+}
+
 export interface ReasonerStatus {
   active: boolean; // FR-RSN-05: spiegelt tatsächliche Modell-Verfügbarkeit.
   provider: string;

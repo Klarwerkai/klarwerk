@@ -15,6 +15,8 @@ export function Conflicts(): JSX.Element {
   const qc = useQueryClient();
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [decision, setDecision] = useState("");
+  const [opinionId, setOpinionId] = useState<string | null>(null);
+  const [opinion, setOpinion] = useState("");
   const [err, setErr] = useState<string | null>(null);
 
   const invalidate = (): void => {
@@ -25,6 +27,17 @@ export function Conflicts(): JSX.Element {
   const escalate = useMutation({
     mutationFn: (id: string) => endpoints.conflicts.escalate(id),
     onSuccess: invalidate,
+    onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
+  });
+
+  const secondOpinion = useMutation({
+    mutationFn: (id: string) => endpoints.conflicts.secondOpinion(id, opinion.trim()),
+    onSuccess: () => {
+      invalidate();
+      setOpinionId(null);
+      setOpinion("");
+      setErr(null);
+    },
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
   });
 
@@ -95,11 +108,29 @@ export function Conflicts(): JSX.Element {
                   </div>
                 ) : null}
 
+                {c.secondOpinion ? (
+                  <div className="mt-4 rounded-card bg-page p-3 text-[13px] text-text">
+                    <span className="font-semibold">{t("con.secondOpinion")}:</span>{" "}
+                    {c.secondOpinion}
+                  </div>
+                ) : null}
+
                 {c.status !== "geloest" ? (
                   <div className="mt-4 flex flex-wrap gap-2 border-t border-hairline pt-3">
                     {c.type === "truth" && c.status === "offen" ? (
                       <Button disabled={escalate.isPending} onClick={() => escalate.mutate(c.id)}>
                         {t("con.escalate")}
+                      </Button>
+                    ) : null}
+                    {c.status !== "zweitmeinung" ? (
+                      <Button
+                        onClick={() => {
+                          setErr(null);
+                          setOpinion("");
+                          setOpinionId(opinionId === c.id ? null : c.id);
+                        }}
+                      >
+                        {t("con.secondOpinionAdd")}
                       </Button>
                     ) : null}
                     <Button
@@ -116,6 +147,30 @@ export function Conflicts(): JSX.Element {
                 ) : c.decision ? (
                   <div className="mt-4 rounded-card bg-trust-pos-bg p-3 text-[13px] text-trust-pos-text">
                     <span className="font-semibold">{t("con.decision")}:</span> {c.decision}
+                  </div>
+                ) : null}
+
+                {opinionId === c.id ? (
+                  <div className="mt-3 space-y-2">
+                    <textarea
+                      value={opinion}
+                      onChange={(e) => setOpinion(e.target.value)}
+                      rows={2}
+                      placeholder={t("con.secondOpinionPlaceholder")}
+                      className="w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none focus:border-ink/30"
+                    />
+                    {err ? (
+                      <div className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
+                        {err}
+                      </div>
+                    ) : null}
+                    <Button
+                      variant="primary"
+                      disabled={secondOpinion.isPending || opinion.trim().length === 0}
+                      onClick={() => secondOpinion.mutate(c.id)}
+                    >
+                      {t("con.secondOpinionConfirm")}
+                    </Button>
                   </div>
                 ) : null}
 
