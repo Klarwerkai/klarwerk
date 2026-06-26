@@ -38,6 +38,7 @@ import {
   TextInput,
 } from "../components/ui";
 import { deriveStatus } from "../lib/displayStatus";
+import { analyzeEvidenceConsistency } from "../lib/evidenceConsistency";
 import { validityProtectionView } from "../lib/extConcept";
 import { toSourcePayload as externalToSourcePayload } from "../lib/externalSearch";
 import { fileToThumbDataUrl, readFileAsDataUrl } from "../lib/files";
@@ -1022,6 +1023,60 @@ export function KnowledgeDetail(): JSX.Element {
 
               <Card>
                 <SectionLabel>{t("ko.evidenceTitle")}</SectionLabel>
+                {/* SCRUM-168: read-only Evidence-/Source-Konsistenzstatus (keine Datenänderung). */}
+                {!evidence.isLoading && !evidence.isError
+                  ? (() => {
+                      const consistency = analyzeEvidenceConsistency(ko, evidence.data ?? []);
+                      return (
+                        <div className="mb-3 rounded-card border border-hairline bg-surface p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-[12px] font-semibold text-text">
+                              {t("ko.evCons.title")}
+                            </span>
+                            <span
+                              className={`rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${
+                                consistency.status === "ok"
+                                  ? "bg-trust-pos-bg text-trust-pos-text"
+                                  : "bg-trust-warn-bg text-trust-warn-text"
+                              }`}
+                            >
+                              {t(`ko.evCons.status.${consistency.status}`)}
+                            </span>
+                          </div>
+                          <div className="mt-1 font-mono text-[10.5px] text-muted-2">
+                            {t("ko.evCons.counts", {
+                              sources: String(consistency.sourceCount),
+                              attachments: String(consistency.attachmentCount),
+                              evidence: String(consistency.evidenceCount),
+                            })}
+                          </div>
+                          {consistency.findings.length > 0 ? (
+                            <ul className="mt-2 space-y-1">
+                              {consistency.findings.map((f) => (
+                                <li
+                                  key={`${f.kind}:${f.ref}`}
+                                  className="flex items-start gap-2 text-[11.5px] text-muted"
+                                >
+                                  <span
+                                    className={`mt-0.5 rounded-pill px-1.5 py-0.5 font-mono text-[9.5px] uppercase ${
+                                      f.severity === "warning"
+                                        ? "bg-trust-warn-bg text-trust-warn-text"
+                                        : "bg-hairline-soft text-muted-2"
+                                    }`}
+                                  >
+                                    {t(`ko.evCons.finding.${f.kind}`)}
+                                  </span>
+                                  <span className="break-words">{f.label}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="mt-2 text-[11.5px] text-muted">{t("ko.evCons.allOk")}</p>
+                          )}
+                        </div>
+                      );
+                    })()
+                  : null}
                 {evidence.isLoading ? (
                   <p className="text-[13px] text-muted">{t("state.loading")}</p>
                 ) : evidence.isError ? (

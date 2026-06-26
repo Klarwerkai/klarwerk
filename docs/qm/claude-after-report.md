@@ -2566,3 +2566,33 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-168 — Evidence-/Source-Konsistenz read-only prüfen
+
+**Vorab-Befund (read-only):** EvidenceRecords entstehen im Backend deterministisch: `addSource` → `kind:"source"` mit `sourceId` (+ url/provider); `addAttachment` → `kind:"attachment"` mit `attachmentId`+`objectId`, **nur wenn `objectId` gesetzt ist**. Legacy-Inline-Anhänge (`dataUrl` ohne `objectId`) erzeugen bewusst keine Evidence. `koEvidence.ts`/KO-Detail zeigten Evidence bereits, aber ohne Konsistenzabgleich gegen Quellen/Anhänge.
+
+**Umsetzung (rein read-only, keine Datenänderung):**
+- Neuer DOM-freier Helper `apps/web/src/lib/evidenceConsistency.ts` mit `analyzeEvidenceConsistency(ko, evidence)`. Match-Regeln spiegeln die Backend-Logik: Source ↔ `sourceId` (Fallback url/label), Attachment ↔ `attachmentId`/`objectId`.
+- `EvidenceConsistencyResult`: `status "ok"|"warning"`, `sourceCount`, `attachmentCount`, `evidenceCount`, `findings[]`. Finding-Arten: `source-without-evidence`, `attachment-without-evidence`, `evidence-without-source`, `evidence-without-attachment` (alle `warning`) und `legacy-inline-attachment` (`info`, **kein** Fehler → status bleibt ok).
+- KO-Detail: kompakter read-only Konsistenzblock in der bestehenden Evidence-Card — Status-Badge (trust-Tokens), Counts, Findings-Liste mit erklärenden Labels. Keine klickbaren Links, kein HTML-Rendering.
+- i18n DE/EN `ko.evCons.*` (Titel, Status ok/warning, Counts mit `{{…}}`-Interpolation, allOk, 5 Finding-Labels).
+
+**Geänderte/neue Dateien:** neu `apps/web/src/lib/evidenceConsistency.ts`, `tests/ko/evidence-consistency.test.ts`; geändert `apps/web/src/pages/KnowledgeDetail.tsx`, `apps/web/src/i18n.ts`, `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — **79 Dateien / 434 Tests** (+6: vollständige Konsistenz, Source ohne Evidence, Object-Attachment ohne Evidence, Evidence ohne Gegenstück [source+attachment], Legacy-DataUrl-Ausnahme, url-Fallback-Match). apps/web `tsc --noEmit` EXIT=0. Biome + depcruise sauber. Bestehende `ko-evidence`-Tests unverändert grün.
+
+**Restlücken (bewusst, Nicht-Ziele):** kein Auto-Backfill, kein Delete/Edit von Evidence, kein neues Evidence-Modell, keine Migration, keine Audit-Hash-Änderung, kein KO-übergreifender Browser. Analyse ist reine Lesesicht pro KO.
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check && (cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/evidenceConsistency.ts apps/web/src/pages/KnowledgeDetail.tsx \
+  apps/web/src/i18n.ts tests/ko/evidence-consistency.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(ko): read-only evidence/source consistency check (SCRUM-168)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
