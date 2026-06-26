@@ -2426,3 +2426,57 @@ git add services/model-runs services/reasoner/src/service.ts services/reasoner/s
 git commit -m "feat(model-runs): add ModelRun protocol v1 for reasoner calls (SCRUM-164)" && git push
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## After-Report — SCRUM-165 · ModelRun read-only Endpoint & Stufe-2-Übersicht — 2026-06-26
+
+### Vorab-Befund
+SCRUM-164 persistiert ModelRun-Metadaten; bisher kein Lesezugriff. Read-only-Routen-Muster
+vorhanden (management/output). `model-runs`-Modul hatte nur Repo, keinen Service. **Nebenbefund:**
+`KnowledgeDetail.tsx` nutzte `diffForVersion` (SCRUM-162) ohne Import — vom Root-Gate (`tsc` ohne
+DOM-Pages) nicht erfasst, erst durch apps/web-tsc sichtbar.
+
+### Umsetzung
+- **Backend** `services/model-runs`: `ModelRunService.recent(limit?)` + `normalizeModelRunLimit`
+  (Default 50, Max 200, ungültig/negativ → Default); nur Lesen (kein Write/Delete/Replay).
+  Route `GET /api/model-runs?limit=` mit `ko.read` (`routes/model-runs-routes.ts`), in build-app
+  registriert; `AppServices.modelRuns` über dasselbe Protokoll-Repo wie der Reasoner. API liefert
+  ausschließlich `ModelRunRecord`-Metadaten.
+- **Frontend**: `ModelRunRecord`-Typen, `endpoints.modelRuns.recent`, `useModelRuns(limit?)`,
+  DOM-freier Helper `lib/modelRuns.ts` (`summarizeModelRuns`, `modelRunStatusTone`,
+  `limitModelRuns`). Kompakte read-only Card `ReasonerRunsCard` in der Stufe-2-`Capital`-Seite:
+  Summary (total/errors/fallbacks/demo) + letzte Läufe (Task, Status, Provider, Locale,
+  Fallback/Demo-Marker, Zeit), ehrlicher Leer-/Lade-/Fehlerzustand, **keine** Prompt-/Antworttexte.
+- **i18n** DE/EN `mrun.*`.
+- **Minimalkorrektur**: fehlender Import `diffForVersion` in `KnowledgeDetail.tsx` ergänzt
+  (latenter SCRUM-162-apps/web-tsc-Fehler; nötig für „apps/web-tsc grün").
+
+### Geänderte/neue Dateien
+neu: `services/model-runs/src/{service,service.test}.ts`, `services/app/src/routes/model-runs-routes.ts`,
+`apps/web/src/lib/modelRuns.ts`, `tests/reasoner/model-runs-view.test.ts`;
+geändert: `services/model-runs/index.ts`, `services/app/src/build-app.ts`,
+`apps/web/src/api/{types,endpoints,hooks}.ts`, `apps/web/src/pages/Stufe2.tsx`,
+`apps/web/src/pages/KnowledgeDetail.tsx` (Import-Fix), `apps/web/src/i18n.ts`,
+`docs/qm/claude-after-report.md`.
+
+### Tests / Gates
+- model-runs/service.test.ts: Limit default/max/negativ/NaN, recent read-only, **nur Metadaten
+  (kein prompt/answer/text/input-Feld)**. tests/reasoner/model-runs-view.test.ts: summary/counts,
+  tone, limit. 
+- apps/web-tsc EXIT=0 · `npm run check` grün: **77 Dateien / 418 Tests**, Biome + depcruise sauber.
+  Reasoner-Ausführung unverändert; keine KO-/Audit-/Evidence-Änderung.
+
+### Restlücken
+- Kein großes Dashboard, kein Token-/Kosten-Accounting, kein Delete/Edit/Replay (Nicht-Ziele).
+- Echte Pg-Persistenz über Testcontainers auf Mac/CI (Unit-Gate nutzt In-Memory/Fake-Pool).
+
+### Commit-/Push-Hinweis für Pedi/Codex
+cd /Users/peterkohnert/Documents/dev_Klarwerk && npm run check
+git add services/model-runs services/app/src/routes/model-runs-routes.ts services/app/src/build-app.ts \
+  apps/web/src/api/types.ts apps/web/src/api/endpoints.ts apps/web/src/api/hooks.ts \
+  apps/web/src/lib/modelRuns.ts apps/web/src/pages/Stufe2.tsx apps/web/src/pages/KnowledgeDetail.tsx \
+  apps/web/src/i18n.ts tests/reasoner/model-runs-view.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(model-runs): read-only endpoint + stage-2 overview (SCRUM-165)" && git push
+
+No Jira changes by Claude. No tickets closed. No new tickets.

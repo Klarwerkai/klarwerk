@@ -9,6 +9,7 @@ import {
   useImportCandidates,
   useKos,
   useManagementSnapshot,
+  useModelRuns,
   useOutputSources,
 } from "../api/hooks";
 import type {
@@ -31,6 +32,7 @@ import {
   estimateValuation,
   formatEur,
 } from "../lib/knowledgeValuation";
+import { limitModelRuns, modelRunStatusTone, summarizeModelRuns } from "../lib/modelRuns";
 import { OUTPUT_KIND_OPTIONS, downloadFilename, orderedSelection } from "../lib/outputDoc";
 
 function Stufe2Header({ titleKey, ticket }: { titleKey: string; ticket: string }): JSX.Element {
@@ -675,6 +677,71 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
   );
 }
 
+// SCRUM-165: kompakte, read-only Sicht auf die jüngsten Reasoner-/ModelRuns (nur Metadaten).
+function ReasonerRunsCard(): JSX.Element {
+  const { t } = useTranslation();
+  const runs = useModelRuns(50);
+  const records = limitModelRuns(runs.data ?? [], 12);
+  const summary = summarizeModelRuns(runs.data ?? []);
+  return (
+    <Card className="mt-4">
+      <SectionLabel>{t("mrun.title")}</SectionLabel>
+      {runs.isLoading ? (
+        <p className="text-[13px] text-muted">{t("state.loading")}</p>
+      ) : runs.isError ? (
+        <p className="text-[13px] text-danger">{t("state.error")}</p>
+      ) : records.length === 0 ? (
+        <p className="text-[13px] text-muted">{t("mrun.empty")}</p>
+      ) : (
+        <>
+          <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-muted-2">
+            <span>{t("mrun.total", { n: summary.total })}</span>
+            <span className={summary.errors > 0 ? "text-trust-crit-text" : undefined}>
+              {t("mrun.errors", { n: summary.errors })}
+            </span>
+            <span>{t("mrun.fallbacks", { n: summary.fallbacks })}</span>
+            <span>{t("mrun.demo", { n: summary.demo })}</span>
+          </div>
+          <ul className="divide-y divide-hairline">
+            {records.map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center gap-2 py-2">
+                <span className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted">
+                  {t(`mrun.task.${r.task}`)}
+                </span>
+                <span
+                  className={`rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${
+                    modelRunStatusTone(r) === "crit"
+                      ? "bg-trust-crit-bg text-trust-crit-text"
+                      : "bg-trust-pos-bg text-trust-pos-text"
+                  }`}
+                >
+                  {t(`mrun.status.${r.status}`)}
+                </span>
+                <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-2">
+                  {r.provider} · {r.locale ?? "—"}
+                </span>
+                {r.fallback ? (
+                  <span className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-trust-warn-text">
+                    {t("mrun.fallback")}
+                  </span>
+                ) : null}
+                {r.demo ? (
+                  <span className="rounded-pill bg-ai-surface-1 px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-ai">
+                    {t("mrun.demoTag")}
+                  </span>
+                ) : null}
+                <span className="font-mono text-[10px] text-muted-2">
+                  {new Date(r.startedAt).toLocaleString()}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </Card>
+  );
+}
+
 export function Capital(): JSX.Element {
   const snapshot = useManagementSnapshot();
   return (
@@ -689,6 +756,8 @@ export function Capital(): JSX.Element {
           )
         }
       </QueryState>
+      {/* SCRUM-165: ModelRun-Übersicht — unabhängig vom Snapshot, auch bei leerem Bestand sichtbar. */}
+      <ReasonerRunsCard />
     </div>
   );
 }

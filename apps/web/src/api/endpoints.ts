@@ -23,6 +23,7 @@ import type {
   KoVersionSnapshot,
   LearningPath,
   ManagementSnapshot,
+  ModelRunRecord,
   Notification,
   ObjectContent,
   ObjectRef,
@@ -193,6 +194,11 @@ export const endpoints = {
   // SCRUM-120 / FE-MGMT: Management-/Wissenskapital-Snapshot (read-only).
   management: {
     snapshot: () => api.get<ManagementSnapshot>("/management/snapshot"),
+  },
+  // SCRUM-165: read-only Einsicht in jüngste ModelRuns (nur Metadaten).
+  modelRuns: {
+    recent: (limit?: number) =>
+      api.get<ModelRunRecord[]>(`/model-runs${qs({ limit: limit?.toString() })}`),
   },
   // SCRUM-118 / FR-EXT-02: externer Such-Proxy (optional; 501 wenn deaktiviert).
   external: {

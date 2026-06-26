@@ -24,6 +24,12 @@ export const useManagementSnapshot = () =>
     queryKey: ["management", "snapshot"],
     queryFn: () => endpoints.management.snapshot(),
   });
+// SCRUM-165: read-only Einsicht in jüngste ModelRuns.
+export const useModelRuns = (limit?: number) =>
+  useQuery({
+    queryKey: ["model-runs", limit],
+    queryFn: () => endpoints.modelRuns.recent(limit),
+  });
 export const useKo = (id: string) =>
   useQuery({ queryKey: ["ko", id], queryFn: () => endpoints.ko.get(id), enabled: id.length > 0 });
 export const useKoVersions = (id: string) =>

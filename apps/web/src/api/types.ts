@@ -83,6 +83,24 @@ export interface KoVersionSnapshot {
   note: string;
 }
 
+// SCRUM-164/165: technisches ModelRun-Protokoll (nur Metadaten, keine Prompt-/Antworttexte).
+export type ModelRunTask = "structure" | "assist" | "interview";
+export type ModelRunStatus = "success" | "error";
+
+export interface ModelRunRecord {
+  id: string;
+  task: ModelRunTask;
+  provider: string;
+  demo: boolean;
+  fallback: boolean;
+  locale?: string;
+  startedAt: string;
+  finishedAt: string;
+  status: ModelRunStatus;
+  error?: string;
+  model?: string;
+}
+
 export type EvidenceKind = "source" | "attachment";
 
 export interface EvidenceRecord {

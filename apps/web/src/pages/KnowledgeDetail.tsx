@@ -51,6 +51,7 @@ import {
   sourceBadgeKey,
   toSourcePayload,
 } from "../lib/koSource";
+import { diffForVersion } from "../lib/koVersionDiff";
 import { koVersionRows } from "../lib/koVersionSnapshots";
 import {
   type SourceContributionInput,
