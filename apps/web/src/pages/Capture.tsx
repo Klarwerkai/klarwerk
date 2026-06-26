@@ -16,10 +16,13 @@ import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../com
 import {
   fileToThumbDataUrl,
   isImage,
+  isPdfDocument,
   isTextDocument,
   isWordDocument,
   readDocxFile,
+  readPdfFile,
   readTextFile,
+  runImageOcr,
 } from "../lib/files";
 
 const MODES = ["freitext", "formular", "diktat", "interview"] as const;
@@ -95,6 +98,8 @@ export function Capture(): JSX.Element {
 
   const [err, setErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // SCRUM-123: laufende Bild-OCR (für ehrlichen Status / Button-Sperre).
+  const [ocrBusy, setOcrBusy] = useState<string | null>(null);
 
   // Diktat
   const [listening, setListening] = useState(false);
@@ -254,6 +259,22 @@ export function Capture(): JSX.Element {
         } catch {
           setErr(t("capture.docParseError", { name: f.name }));
         }
+      } else if (isPdfDocument(f)) {
+        // SCRUM-122: PDF lazy als Text-Kontext übernehmen; Status ehrlich anzeigen.
+        setErr(null);
+        setNotice(t("capture.docExtracting", { name: f.name }));
+        try {
+          const text = await readPdfFile(f);
+          if (text.length === 0) {
+            setErr(t("capture.docEmpty", { name: f.name }));
+            continue;
+          }
+          setRaw((prev) => (prev ? `${prev}\n\n[${f.name}]\n${text}` : `[${f.name}]\n${text}`));
+          setDocs((d) => [...d, { id: crypto.randomUUID(), name: f.name }]);
+          setNotice(t("capture.docAdded", { name: f.name }));
+        } catch {
+          setErr(t("capture.docParseError", { name: f.name }));
+        }
       } else {
         setErr(t("capture.docUnsupported", { name: f.name }));
       }
@@ -276,6 +297,30 @@ export function Capture(): JSX.Element {
       if (isImage(f)) {
         await addImage(f);
       }
+    }
+  };
+
+  // SCRUM-123: optionale Bild-OCR, NUR auf Nutzeraktion. Status ehrlich anzeigen.
+  const onOcr = async (img: { id: string; name: string; dataUrl: string }): Promise<void> => {
+    setErr(null);
+    setOcrBusy(img.id);
+    setNotice(t("capture.ocrRunning", { name: img.name }));
+    try {
+      const res = await runImageOcr(img.dataUrl);
+      if (res.status === "success" && res.text.length > 0) {
+        setRaw((prev) =>
+          prev ? `${prev}\n\n[OCR: ${img.name}]\n${res.text}` : `[OCR: ${img.name}]\n${res.text}`,
+        );
+        setNotice(t("capture.ocrDone", { name: img.name }));
+      } else if (res.status === "success") {
+        setErr(t("capture.ocrEmpty", { name: img.name }));
+      } else if (res.status === "unavailable") {
+        setErr(t("capture.ocrUnavailable"));
+      } else {
+        setErr(t("capture.ocrFailed", { name: img.name }));
+      }
+    } finally {
+      setOcrBusy(null);
     }
   };
 
@@ -510,7 +555,7 @@ export function Capture(): JSX.Element {
               <input
                 type="file"
                 multiple
-                accept=".txt,.md,.markdown,.csv,.log,.json,.docx,image/*"
+                accept=".txt,.md,.markdown,.csv,.log,.json,.docx,.pdf,application/pdf,image/*"
                 className="hidden"
                 onChange={(e) => void onDocs(e)}
               />
@@ -569,6 +614,15 @@ export function Capture(): JSX.Element {
                       className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-ink/70 text-white opacity-0 group-hover:opacity-100"
                     >
                       <X size={12} />
+                    </button>
+                    {/* SCRUM-123: OCR nur auf Klick, mit sichtbarem Lade-/Fehlerstatus */}
+                    <button
+                      type="button"
+                      disabled={ocrBusy === img.id}
+                      onClick={() => void onOcr(img)}
+                      className="absolute inset-x-1 bottom-1 truncate rounded-btn bg-ink/70 px-1 py-0.5 text-center text-[9.5px] font-semibold text-white opacity-0 group-hover:opacity-100 disabled:opacity-100"
+                    >
+                      {ocrBusy === img.id ? t("capture.ocrRunningShort") : t("capture.ocr")}
                     </button>
                   </div>
                 ))}

@@ -1651,3 +1651,36 @@ Datum: 2026-06-25
 - Bekannt (vorbestehend, nicht Teil dieses Blocks): `revise` setzt Ratings nicht zurück — nach Revalidierung zählt eine Neubewertung alte Verdicts mit. Falls fachlich „frische Validierung" gewünscht, eigenes Restticket „Ratings bei revise zurücksetzen".
 
 **Jira-Empfehlung:** Nach grünem Gate + Peters Mac-Commit/Push dürfen SCRUM-124, SCRUM-125, SCRUM-126 auf erledigt. Hard-rejected / Assignment-reason / Rating-Reset als separate Resttickets. Ich setze keine Jira-Checkbox/Status selbst.
+
+---
+
+## 2026-06-26 · SCRUM-122 + SCRUM-123 — PDF-Textextraktion & optionale Bild-OCR in Capture
+
+**Ticket(s):** SCRUM-122 (PDF→Text-Kontext) + SCRUM-123 (Bild-OCR optional). Gemeinsam, additiv. Knüpft an FE-CAP-06 an (DOCX bereits real; pdfjs/tesseract dort bewusst entfernt → hier nachgeliefert).
+
+**Bibliotheks-/Engine-Befund:**
+- `pdfjs-dist@4.10.38` — `engines.node = ">=20"` → passt exakt zum Projektziel Node ≥20, KEIN Engine-Konflikt (v6 verlangt ≥22.13 → bewusst nicht verwendet). Legacy build vorhanden (`legacy/build/pdf.mjs` + `pdf.worker.mjs`).
+- `tesseract.js@5.1.1` — keine `engines`-Restriktion → kompatibel. Worker/WASM/Sprachdaten werden on-demand geladen.
+
+**Architektur (additiv, DI-testbar):**
+- `apps/web/src/lib/extract.ts` (neu, DOM-frei): `detectFileKind` (text/docx/pdf/image/unsupported, spiegelt bestehende Erkennung + pdf), `joinPdfPages`, `ExtractionStatus`.
+- `apps/web/src/lib/pdf.ts` (neu, DOM-frei): `extractPdfText(buffer, engine)` mit **injizierbarer PdfEngine** (kein pdfjs-Import → in Node mit Stub testbar).
+- `apps/web/src/lib/ocr.ts` (neu, DOM-frei): `recognizeImage(input, recognizer)` → Status success/failed/unavailable (kein tesseract-Import).
+- `apps/web/src/lib/files.ts` (Browser-Wrapper): `isPdfDocument`/`readPdfFile` (lazy `import("pdfjs-dist/legacy/build/pdf.mjs")`, Worker via `new URL(..., import.meta.url)` — Vite-kompatibel, kein `?url`-Typproblem); `isOcrCandidate`/`runImageOcr` (lazy `import("tesseract.js")`, Engine nicht ladbar → `unavailable`). Lokale Typ-Verträge statt Lib-Typen (analog mammoth).
+- `apps/web/src/pages/Capture.tsx`: `onDocs` um PDF-Zweig erweitert (Status: liest…/übernommen/leer/Fehler); pro Bild optionaler **OCR-Button (nur auf Klick)** mit Lade-/Erfolg-/Fehler-/Unavailable-Status; accept um `.pdf` ergänzt. Text/DOCX/Thumbnail-Pfade unverändert.
+- `apps/web/src/i18n.ts`: `capture.docExtracting/docEmpty/ocr*` + Hint aktualisiert (DE+EN).
+- `apps/web/package.json` + `package-lock.json`: `pdfjs-dist@^4`, `tesseract.js@^5` ergänzt, Lock regeneriert.
+
+**Tests (DI-Stubs, keine echte Lib im Gate):**
+- `tests/capture/extract-detect.test.ts` (8): File-Kind text/docx/pdf/image/unsupported + joinPdfPages.
+- `tests/capture/pdf-extract.test.ts` (3): Seiten-Join, Trim, leeres PDF, Engine-Fehler propagiert.
+- `tests/capture/ocr-extract.test.ts` (3): success/failed/unavailable.
+- **Regression:** `tests/capture/docx-extract.test.ts` unverändert grün; detect-Test bestätigt Text/DOCX-Erkennung unberührt; Bild-Thumbnail-Pfad (`fileToThumbDataUrl`/`addImage`) nicht angefasst.
+
+**Ehrliche UI-Status:** „läuft" (PDF liest…/OCR läuft inkl. Worker-Lade-Hinweis), „erfolgreich", „fehlgeschlagen", „kein Text/leer" (gescanntes PDF → OCR-Hinweis), „nicht unterstützt", „OCR nicht verfügbar". Keine Fake-OCR/Fake-PDF.
+
+**Tests/Gates (Sandbox):** `npm run check` GRÜN — 44 Testdateien / 214 Tests (14 neu). apps/web `tsc --noEmit` EXIT=0. depcruise sauber. Biome grün. **Echte Browser-/Bundle-Verifikation (lazy chunks, Worker, WASM-Last) = Peters Mac-Gate** (`cd apps/web && npm install` + `npm run build`).
+
+**Restlücken:** OCR-Qualität/Sprachpaket (deu+eng) und Bundle-Größe der lazy chunks erst am Mac/Build final bewertbar. Gescanntes PDF ohne Textebene liefert leeren PDF-Text (ehrlicher Hinweis → Bild-OCR) — kein automatisches PDF-Seiten-Rendering+OCR (separates Restticket, falls gewünscht).
+
+**Jira-Empfehlung:** Nach grünem Mac-Gate + Commit/Push dürfen SCRUM-122 und SCRUM-123 auf erledigt. Ich setze keine Jira-Checkbox/Status selbst.

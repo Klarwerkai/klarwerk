@@ -2,6 +2,9 @@
 // DOM-Modul (nutzt File/Image/document/FileReader). Der DOM-freie DOCX-Kern liegt
 // in `./docx` und wird hier nur als Browser-Wrapper umhüllt.
 import { extractDocxText, isDocxDocumentLike } from "./docx";
+import { detectFileKind } from "./extract";
+import { type OcrResult, recognizeImage } from "./ocr";
+import { type PdfEngine, extractPdfText } from "./pdf";
 
 // FR-CAP-05: Bild auf ein kleines Thumbnail (JPEG) verkleinern → Daten-URL.
 export function fileToThumbDataUrl(file: File, maxPx = 1024, quality = 0.7): Promise<string> {
@@ -61,4 +64,60 @@ export async function readDocxFile(file: File): Promise<string> {
 
 export function isImage(file: File): boolean {
   return file.type.startsWith("image/");
+}
+
+// SCRUM-122: PDF-Erkennung als dünner Wrapper um den DOM-freien Kern.
+export function isPdfDocument(file: File): boolean {
+  return detectFileKind({ name: file.name, type: file.type }) === "pdf";
+}
+
+// Schlanke lokale Verträge für die lazy geladenen Engines (keine Abhängigkeit von
+// pdfjs/tesseract-Typen im Typecheck; echte Auflösung beim Vite-Build).
+type PdfjsModule = PdfEngine & {
+  GlobalWorkerOptions: { workerSrc: string };
+};
+type TesseractModule = {
+  recognize(input: unknown, lang?: string): Promise<{ data: { text: string } }>;
+};
+
+let pdfEnginePromise: Promise<PdfEngine> | null = null;
+
+// pdfjs-dist@4 legacy build lazy laden + Worker Vite-kompatibel (new URL(..., import.meta.url)).
+async function pdfEngine(): Promise<PdfEngine> {
+  if (!pdfEnginePromise) {
+    pdfEnginePromise = (async () => {
+      const pdfjs = (await import("pdfjs-dist/legacy/build/pdf.mjs")) as unknown as PdfjsModule;
+      pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+        "pdfjs-dist/legacy/build/pdf.worker.mjs",
+        import.meta.url,
+      ).href;
+      return { getDocument: (src) => pdfjs.getDocument(src) };
+    })();
+  }
+  return pdfEnginePromise;
+}
+
+// SCRUM-122: PDF client-seitig als Text-Kontext extrahieren (lazy, kein Main-Bundle).
+export async function readPdfFile(file: File): Promise<string> {
+  const engine = await pdfEngine();
+  return extractPdfText(await file.arrayBuffer(), engine);
+}
+
+// SCRUM-123: OCR-Kandidat = Bild. OCR wird NIE automatisch beim Upload gestartet.
+export function isOcrCandidate(file: File): boolean {
+  return file.type.startsWith("image/");
+}
+
+// SCRUM-123: optionale Bild-OCR (lazy tesseract.js@5, Worker/WASM). Engine nicht ladbar
+// → ehrlich „unavailable", kein Vortäuschen. Nur auf explizite Nutzeraktion aufrufen.
+export async function runImageOcr(input: File | string, lang = "deu+eng"): Promise<OcrResult> {
+  try {
+    const mod = (await import("tesseract.js")) as unknown as TesseractModule & {
+      default?: TesseractModule;
+    };
+    const tesseract = mod.default ?? mod;
+    return recognizeImage(input, { recognize: (img) => tesseract.recognize(img, lang) });
+  } catch {
+    return { status: "unavailable", text: "" };
+  }
 }
