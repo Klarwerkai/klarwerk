@@ -24,6 +24,7 @@ describe("buildNotifications", () => {
           question: "Frage?",
           status: "offen",
           assignee: null,
+          priority: "mittel",
           createdAt: "2026-06-04T00:00:00Z",
         },
         {
@@ -31,6 +32,7 @@ describe("buildNotifications", () => {
           question: "Zu?",
           status: "geschlossen",
           assignee: null,
+          priority: "mittel",
           createdAt: "2026-06-05T00:00:00Z",
         },
       ],
