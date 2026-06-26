@@ -55,6 +55,7 @@ describe("KoService", () => {
       label: "Wartungshandbuch P2",
       url: "https://wiki/p2",
       excerpt: "Kapitel 4.2",
+      provider: "Wikipedia", // SCRUM-118
     });
     expect(withSource.sources).toHaveLength(1);
     const src = withSource.sources[0];
@@ -62,6 +63,7 @@ describe("KoService", () => {
     expect(src?.peerValidated).toBe(false); // externe Quelle ist NIE peer-validiert
     expect(src?.label).toBe("Wartungshandbuch P2");
     expect(src?.url).toBe("https://wiki/p2");
+    expect(src?.provider).toBe("Wikipedia"); // SCRUM-118: Provider gespeichert
 
     // Quelle bleibt über eine Überarbeitung erhalten.
     const revised = await svc.revise(ko.id, { statement: "neu" }, "experte");

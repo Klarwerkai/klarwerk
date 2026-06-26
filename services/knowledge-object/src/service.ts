@@ -164,13 +164,19 @@ export class KoService {
   async addSource(
     id: string,
     author: string,
-    input: { label: string; url?: string | null; excerpt?: string | null },
+    input: {
+      label: string;
+      url?: string | null;
+      excerpt?: string | null;
+      provider?: string | null;
+    },
   ): Promise<KnowledgeObject> {
     const label = input.label?.trim() ?? "";
     if (label.length === 0) {
       throw new KoError("INVALID_SOURCE", "Quellen-Label fehlt.");
     }
     const ko = await this.require(id);
+    const provider = input.provider?.trim() ? input.provider.trim() : null;
     const source: KoSource = {
       id: this.genId(),
       label,
@@ -178,6 +184,8 @@ export class KoService {
       excerpt: input.excerpt?.trim() ? input.excerpt.trim() : null,
       kind: "external",
       peerValidated: false,
+      // SCRUM-118: externe Quelle trägt optional ihren Anbieter; bleibt external/nicht peer-validiert.
+      ...(provider ? { provider } : {}),
       author,
       at: new Date(this.now()).toISOString(),
     };

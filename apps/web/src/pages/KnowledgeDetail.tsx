@@ -6,7 +6,7 @@ import { Link, useParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { type KoAction, endpoints } from "../api/endpoints";
 import { useAudit, useDirectory, useKo, useKos } from "../api/hooks";
-import type { ConflictType, KnowledgeObject, KnowledgeType } from "../api/types";
+import type { ConflictType, ExternalResult, KnowledgeObject, KnowledgeType } from "../api/types";
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
 import { ListEditor, TagEditor } from "../components/editors";
@@ -27,6 +27,7 @@ import {
   TextInput,
 } from "../components/ui";
 import { deriveStatus } from "../lib/displayStatus";
+import { toSourcePayload as externalToSourcePayload } from "../lib/externalSearch";
 import { fileToThumbDataUrl, readFileAsDataUrl } from "../lib/files";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
 import { koAuditEvents, lineageSummary, relatedKos } from "../lib/koLineage";
@@ -135,6 +136,24 @@ export function KnowledgeDetail(): JSX.Element {
   const removeSource = useMutation({
     mutationFn: (sourceId: string) => endpoints.ko.act(id, { action: "remove-source", sourceId }),
     onSuccess: invalidate,
+    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
+  });
+
+  // SCRUM-118 / FR-EXT-02: externe Quellensuche (Server-Proxy) — kein Auto-Anhängen.
+  const [extQuery, setExtQuery] = useState("");
+  const [extResults, setExtResults] = useState<ExternalResult[]>([]);
+  const extSearch = useMutation({
+    mutationFn: (q: string) => endpoints.external.search(q),
+    onSuccess: (results) => setExtResults(results),
+    onError: (e) => push("error", e instanceof ApiError ? e.message : t("ext.unavailable")),
+  });
+  const attachExternal = useMutation({
+    mutationFn: (result: ExternalResult) =>
+      endpoints.ko.act(id, { action: "add-source", source: externalToSourcePayload(result) }),
+    onSuccess: () => {
+      invalidate();
+      push("success", t("ko.sourceAdded"));
+    },
     onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
   });
 
@@ -596,6 +615,11 @@ export function KnowledgeDetail(): JSX.Element {
                               <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
                                 {t(sourceBadgeKey(s))}
                               </span>
+                              {s.provider ? (
+                                <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted">
+                                  {s.provider}
+                                </span>
+                              ) : null}
                             </div>
                             {s.url ? (
                               <a
@@ -652,6 +676,74 @@ export function KnowledgeDetail(): JSX.Element {
                     >
                       {t("ko.sourceAdd")}
                     </Button>
+                  </div>
+                ) : null}
+
+                {/* SCRUM-118 / FR-EXT-02: externe Quellensuche (Server-Proxy) */}
+                {canEdit ? (
+                  <div className="space-y-2 border-t border-hairline pt-3">
+                    <SectionLabel>{t("ext.title")}</SectionLabel>
+                    <p className="text-[11.5px] text-muted-2">{t("ext.hint")}</p>
+                    <form
+                      className="flex gap-2"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (extQuery.trim()) {
+                          extSearch.mutate(extQuery.trim());
+                        }
+                      }}
+                    >
+                      <TextInput
+                        value={extQuery}
+                        onChange={(e) => setExtQuery(e.target.value)}
+                        placeholder={t("ext.placeholder")}
+                      />
+                      <Button
+                        type="submit"
+                        variant="ghost"
+                        disabled={extSearch.isPending || extQuery.trim().length === 0}
+                      >
+                        {t("ext.search")}
+                      </Button>
+                    </form>
+                    {extResults.length > 0 ? (
+                      <ul className="space-y-1.5">
+                        {extResults.map((r) => (
+                          <li key={r.url} className="rounded-input border border-hairline p-2.5">
+                            <div className="flex items-start gap-2">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className="text-[13px] font-medium text-text">
+                                    {r.title}
+                                  </span>
+                                  <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted">
+                                    {r.provider}
+                                  </span>
+                                </div>
+                                {r.snippet ? (
+                                  <p className="mt-0.5 text-[11.5px] text-muted">{r.snippet}</p>
+                                ) : null}
+                                <a
+                                  href={r.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="block truncate font-mono text-[10.5px] text-ai hover:underline"
+                                >
+                                  {r.url}
+                                </a>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                disabled={attachExternal.isPending}
+                                onClick={() => attachExternal.mutate(r)}
+                              >
+                                {t("ext.attach")}
+                              </Button>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
                   </div>
                 ) : null}
               </Card>

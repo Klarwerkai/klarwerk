@@ -10,6 +10,7 @@ import type {
   ConflictType,
   Draft,
   DraftPayload,
+  ExternalResult,
   Gap,
   GapPriority,
   Graph,
@@ -177,6 +178,10 @@ export const endpoints = {
   // SCRUM-120 / FE-MGMT: Management-/Wissenskapital-Snapshot (read-only).
   management: {
     snapshot: () => api.get<ManagementSnapshot>("/management/snapshot"),
+  },
+  // SCRUM-118 / FR-EXT-02: externer Such-Proxy (optional; 501 wenn deaktiviert).
+  external: {
+    search: (q: string) => api.get<ExternalResult[]>(`/external/search${qs({ q })}`),
   },
   users: {
     list: () => api.get<PublicUser[]>("/users"),

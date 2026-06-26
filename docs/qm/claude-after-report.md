@@ -1984,3 +1984,34 @@ Datum: 2026-06-25
 **Gelaufene Checks:** apps/web `tsc --noEmit` EXIT=0 · `npm run check` GRÜN — **59 Testdateien / 311 Tests** (8 neu) · Biome grün · depcruise sauber.
 
 **Empfehlung:** Nach grünem Mac-Gate + Commit/Push darf **FE-RISK-02** vollständig abgehakt werden → **SCRUM-115** auf Done (und damit SCRUM-106 vollständig). Ich setze keine Jira-Checkbox/Status selbst.
+
+---
+
+## 2026-06-26 · SCRUM-118 — External-Knowledge-Proxy (FR-EXT-02)
+
+**Ticket(s):** SCRUM-118 / FR-EXT-02. Optionaler Server-Proxy für externe Quellensuche; Ergebnis als externe, nicht peer-validierte Quelle anhängbar. Entscheidungen: Wikipedia/MediaWiki-Default (Lang `de`, Env `EXTERNAL_SEARCH_LANG`, abschaltbar `EXTERNAL_SEARCH=off`); Provider als optionales additives `KoSource.provider?`.
+
+**Befund:** `KoSource` (external/peerValidated) + `addSource`/`add-source`-Pfad vollständig vorhanden → Anhängen wird wiederverwendet. KO als JSON persistiert → optionales `provider`-Feld ohne Migration. Fetch-Injektions-Muster (OIDC/PDF) als Vorlage; keine Live-Netzwerk-Tests im Repo.
+
+**Backend — neues optionales Modul `services/external-search` (stateless, kein KO-Bezug):**
+- `types.ts`: `ExternalResult {title,url,snippet,provider}`, `SearchProvider`, `ExternalSearchError`, injizierbarer `FetchLike`.
+- `wikipedia.ts`: `createWikipediaProvider({lang?,fetchImpl?})` → MediaWiki-Such-API (kein Key); `stripHtml` (Tags+Entities) und `articleUrl` (Leerzeichen→`_`, encode). Ergebnis `provider:"Wikipedia"`.
+- `service.ts`: `ExternalSearchService.search(q)` — leere Query → `[]`, Begrenzung auf 10, reicht echte Treffer durch; `createExternalSearchFromEnv` (undefined bei `EXTERNAL_SEARCH=off`).
+- `index.ts`, `service.test.ts`, `wikipedia.test.ts` (injizierter Fetch, **kein Live-Netzwerk**).
+- Route `external-routes.ts` `GET /api/external/search?q=` (Guard `ko.read`; deaktiviert → **501**). Wiring `build-app.ts` (`AppServices.externalSearch?` optional + `app.register`).
+
+**Quellenmodell (additiv wiederverwendet):**
+- `KoSource.provider?: string | null` (BE+FE), `addSource`-Input + `add-source`-Body um `provider?` erweitert. Quelle bleibt **immer** `kind:"external"` / `peerValidated:false`.
+
+**Frontend (`KnowledgeDetail.tsx`):**
+- `endpoints.external.search`; DOM-freier `lib/externalSearch.ts` (`toSourcePayload` Mapping + Excerpt-Cap + `isAttachable`) + `tests/ko/external-search.test.ts`.
+- Panel „Externe Quelle suchen": Eingabe + Suche → Trefferliste (Titel, **Provider**, Snippet, Link); je Treffer „Als Quelle anhängen" → **bestehender** `add-source`-Pfad (label/url/excerpt/provider). Kein Auto-Anhängen. Provider-Badge auch an vorhandenen Quellen. Honest-Hinweis „externe, nicht peer-validierte Quelle — kein Ersatz für interne Validierung".
+- i18n `ext.*` (DE+EN). `.env.example` ergänzt.
+
+**Erfüllte AK:** Server-seitige externe Suche (Wikipedia) ✓ · nie auto-übernommen (nur per Klick) ✓ · Anhängen über bestehendes Quellenmodell, immer external/nicht peer-validiert ✓ · URL/Label/Excerpt/Provider sichtbar ✓ · Provider-Abstraktion mit injizierbarem Fetch, kein Live-Netzwerk in Tests ✓ · keine schwere Search-/Scraping-Lib ✓ · kein neues Quellenmodell (nur additives provider) ✓ · optional via Env (501 wenn aus) ✓ · kein Backend-Redesign ✓.
+
+**Gelaufene Checks:** apps/web `tsc --noEmit` EXIT=0 · `npm run check` GRÜN — **62 Testdateien / 321 Tests** (10 neu: 4 wikipedia + 3 service + 3 FE-Mapping; KO-Service-Test um provider erweitert) · Biome grün · depcruise sauber (`external-search` ohne interne Cross-Modul-Deps).
+
+**Abgrenzung (nicht gebaut):** kein Auto-Anhängen, keine Browser-Direktabfrage, keine schwere Such-/Scraping-Library, kein neues Quellenmodell, kein Live-Netzwerk in Tests, kein Backend-Redesign anderer Module.
+
+**Empfehlung:** Nach grünem Mac-Gate + Commit/Push darf **SCRUM-118 / FR-EXT-02** abgehakt → auf Done. Externe Suche ist standardmäßig aktiv (Wikipedia); per `EXTERNAL_SEARCH=off` deaktivierbar. Ich setze keine Jira-Checkbox/Status selbst.

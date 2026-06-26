@@ -53,7 +53,7 @@ interface PutBody {
     size?: number;
   };
   attachmentId?: string;
-  source?: { label?: string; url?: string; excerpt?: string };
+  source?: { label?: string; url?: string; excerpt?: string; provider?: string };
   sourceId?: string;
 }
 
@@ -234,6 +234,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
                 label: body.source.label,
                 url: body.source.url ?? null,
                 excerpt: body.source.excerpt ?? null,
+                provider: body.source.provider ?? null,
               }),
             );
             return;

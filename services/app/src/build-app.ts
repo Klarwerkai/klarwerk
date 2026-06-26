@@ -23,6 +23,7 @@ import {
   InMemoryConflictRepo,
   PgConflictRepo,
 } from "../../conflicts";
+import { type ExternalSearchService, createExternalSearchFromEnv } from "../../external-search";
 import { I18nService } from "../../i18n";
 import { InMemoryKoRepo, type KoRepo, KoService, PgKoRepo } from "../../knowledge-object";
 import { LibraryService } from "../../library-analytics";
@@ -53,6 +54,7 @@ import { askRoutes } from "./routes/ask-routes";
 import { auditRoutes } from "./routes/audit-routes";
 import { captureRoutes } from "./routes/capture-routes";
 import { conflictRoutes } from "./routes/conflicts-routes";
+import { externalRoutes } from "./routes/external-routes";
 import { i18nRoutes } from "./routes/i18n-routes";
 import { koRoutes } from "./routes/ko-routes";
 import { libraryRoutes } from "./routes/library-routes";
@@ -78,6 +80,8 @@ export interface AppServices {
   library: LibraryService;
   output: OutputService;
   management: ManagementService;
+  // SCRUM-118: optionaler externer Such-Proxy (undefined, wenn EXTERNAL_SEARCH=off).
+  externalSearch: ExternalSearchService | undefined;
   lifecycle: LifecycleService;
   i18n: I18nService;
   objects: ObjectStore;
@@ -146,6 +150,8 @@ function assembleServices(repos: AppRepos): AppServices {
       pendingRevalidation: () => lifecycle.pendingRevalidation(),
       busFactor: () => library.busFactor(),
     }),
+    // SCRUM-118: externer Such-Proxy (Wikipedia) — optional via Env abschaltbar.
+    externalSearch: createExternalSearchFromEnv(),
     lifecycle,
     i18n: new I18nService(),
     // SCRUM-121: interner Objekt-/Attachment-Speicher (In-Memory; Pg/Disk = Folge-Ticket).
@@ -229,6 +235,7 @@ export function buildApp(services: AppServices = buildServices()): FastifyInstan
   app.register(libraryRoutes(services.library, guards));
   app.register(outputRoutes(services.output, guards));
   app.register(managementRoutes(services.management, guards));
+  app.register(externalRoutes(services.externalSearch, guards));
   app.register(lifecycleRoutes(services.lifecycle, guards));
   app.register(notificationsRoutes({ conflicts: services.conflicts, ask: services.ask }, guards));
   app.register(auditRoutes(services.audit, guards));

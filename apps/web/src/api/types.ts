@@ -33,8 +33,17 @@ export interface KoSource {
   excerpt: string | null;
   kind: "external";
   peerValidated: boolean;
+  provider?: string | null; // SCRUM-118: optionaler Anbieter externer Quellen
   author: string;
   at: string;
+}
+
+// SCRUM-118 / FR-EXT-02: Treffer aus dem externen Such-Proxy (z. B. Wikipedia).
+export interface ExternalResult {
+  title: string;
+  url: string;
+  snippet: string;
+  provider: string;
 }
 
 // SCRUM-121: Anhang rückwärtskompatibel — Alt: dataUrl (Inline); Neu: objectId + thumbnail.

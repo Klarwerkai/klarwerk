@@ -62,6 +62,9 @@ export interface KoSource {
   excerpt: string | null;
   kind: KoSourceKind;
   peerValidated: boolean;
+  // SCRUM-118: optionaler Anbieter externer Quellen (z. B. "Wikipedia"). Additiv,
+  // JSON-persistiert → keine Migration; Altquellen ohne provider bleiben gültig.
+  provider?: string | null;
   author: string;
   at: string;
 }
