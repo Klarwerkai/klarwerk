@@ -2,13 +2,21 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { endpoints } from "../api/endpoints";
-import { useBusFactor, useDirectory, useGaps } from "../api/hooks";
+import { useBusFactor, useDirectory, useGaps, useKos } from "../api/hooks";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
+import { type RiskLevel, domainRisk } from "../lib/knowledgeHealth";
+
+const RISK_TONE: Record<RiskLevel, string> = {
+  kritisch: "bg-trust-crit-bg text-trust-crit-text",
+  mittel: "bg-trust-warn-bg text-trust-warn-text",
+  gut: "bg-trust-pos-bg text-trust-pos-text",
+};
 
 export function Risk(): JSX.Element {
   const { t } = useTranslation();
   const bus = useBusFactor();
   const gaps = useGaps();
+  const kos = useKos();
   const users = useDirectory();
   const qc = useQueryClient();
   const invalidate = () => void qc.invalidateQueries({ queryKey: ["gaps"] });
@@ -32,6 +40,61 @@ export function Risk(): JSX.Element {
   return (
     <div className="mx-auto max-w-4xl space-y-7">
       <PageHeader kicker={t("risk.kicker")} title={t("nav.risk")} />
+
+      {/* SCRUM-133: Risiko-Cockpit nach Domäne/Kategorie */}
+      <div>
+        <SectionLabel>{t("risk.cockpit")}</SectionLabel>
+        <QueryState query={kos} emptyText={t("risk.cockpitEmpty")}>
+          {(items) => {
+            const rows = domainRisk(items, bus.data ?? []);
+            if (rows.length === 0) {
+              return (
+                <Card className="border-dashed text-center text-sm text-muted">
+                  {t("risk.cockpitEmpty")}
+                </Card>
+              );
+            }
+            return (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {rows.map((r) => (
+                  <Card key={r.category} className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="min-w-0 truncate text-[13.5px] font-medium text-text">
+                        {r.category}
+                      </span>
+                      <span
+                        className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${RISK_TONE[r.level]}`}
+                      >
+                        {t(`risk.level.${r.level}`)}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11.5px] text-muted">
+                      <span>
+                        {t("risk.koCount")}: <span className="text-text">{r.koCount}</span>
+                      </span>
+                      <span>
+                        {t("risk.validated")}:{" "}
+                        <span className="text-text">{r.validatedRatio}%</span>
+                      </span>
+                      <span>
+                        {t("risk.openKo")}: <span className="text-text">{r.openCount}</span>
+                      </span>
+                      <span>
+                        {t("risk.experts")}: <span className="text-text">{r.authorCount}</span>
+                      </span>
+                    </div>
+                    {r.singleSource ? (
+                      <div className="text-[11px] font-semibold text-trust-crit-text">
+                        {t("risk.singleSource")}
+                      </div>
+                    ) : null}
+                  </Card>
+                ))}
+              </div>
+            );
+          }}
+        </QueryState>
+      </div>
 
       <div>
         <SectionLabel>{t("risk.busfactor")}</SectionLabel>

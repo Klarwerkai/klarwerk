@@ -1,6 +1,16 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useAnalytics, useAudit, useImpact, useKos, useValidationOverview } from "../api/hooks";
+import {
+  useAnalytics,
+  useAudit,
+  useBusFactor,
+  useConflicts,
+  useGaps,
+  useImpact,
+  useKos,
+  useLifecyclePending,
+  useValidationOverview,
+} from "../api/hooks";
 import type { AuditFilter } from "../api/types";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import {
@@ -13,6 +23,13 @@ import {
   weeklyValidated,
   workloadSummary,
 } from "../lib/analyticsMetrics";
+import { type HealthBand, knowledgeHealth } from "../lib/knowledgeHealth";
+
+const BAND_TONE: Record<HealthBand, string> = {
+  gut: "bg-trust-pos-bg text-trust-pos-text",
+  mittel: "bg-trust-warn-bg text-trust-warn-text",
+  kritisch: "bg-trust-crit-bg text-trust-crit-text",
+};
 
 function Kpi({ label, value }: { label: string; value: string | number }): JSX.Element {
   return (
@@ -30,10 +47,23 @@ export function Analytics(): JSX.Element {
   const kos = useKos();
   const overview = useValidationOverview();
   const impact = useImpact();
+  const gaps = useGaps();
+  const conflicts = useConflicts();
+  const pending = useLifecyclePending();
+  const busFactor = useBusFactor();
 
   // SCRUM-139: datenbasierte Trust-/Arbeitslast-Kennzahlen aus realem Bestand.
   const trust = averageTrust(kos.data ?? []);
   const work = workloadSummary(overview.data ?? []);
+
+  // SCRUM-141: erklärbarer Knowledge-Health-Score aus echten Signalen.
+  const health = knowledgeHealth({
+    kos: kos.data ?? [],
+    gaps: gaps.data ?? [],
+    conflicts: conflicts.data ?? [],
+    pendingRevalidation: pending.data ?? [],
+    busFactor: busFactor.data ?? [],
+  });
 
   // SCRUM-143: Audit-Filter über echte Daten (clientseitig, ohne Chain-Umbau).
   const [filter, setFilter] = useState<AuditFilter>({});
@@ -42,6 +72,45 @@ export function Analytics(): JSX.Element {
   return (
     <div className="mx-auto max-w-4xl space-y-7">
       <PageHeader kicker={t("ana.kicker")} title={t("nav.analytics")} />
+
+      {/* SCRUM-141: Knowledge Health — datenbasiert & erklärbar */}
+      <div>
+        <SectionLabel>{t("health.title")}</SectionLabel>
+        <Card className="space-y-4">
+          <div className="flex items-center gap-4">
+            <div className="flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-card bg-page">
+              <span className="text-2xl font-semibold text-ink">{health.score}</span>
+              <span className="font-mono text-[9px] uppercase text-muted-2">/100</span>
+            </div>
+            <div className="min-w-0 flex-1">
+              <span
+                className={`inline-block rounded-pill px-2.5 py-0.5 font-mono text-[11px] font-semibold uppercase ${BAND_TONE[health.band]}`}
+              >
+                {t(`health.band.${health.band}`)}
+              </span>
+              <p className="mt-1.5 text-[12.5px] text-muted">
+                {t(`health.explain.${health.band}`)}
+              </p>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            {health.factors.map((f) => (
+              <div key={f.key} className="flex items-center gap-2 text-[12.5px]">
+                <span
+                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                    f.direction === "positive" ? "bg-trust-pos-fill" : "bg-trust-crit-fill"
+                  }`}
+                />
+                <span className="flex-1 text-text">{t(`health.factor.${f.key}`)}</span>
+                <span className="font-mono text-muted-2">
+                  {f.value}
+                  {f.unit === "percent" ? "%" : ""}
+                </span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
 
       <QueryState query={analytics}>
         {(a) => {

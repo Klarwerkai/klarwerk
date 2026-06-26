@@ -1588,3 +1588,33 @@ Datum: 2026-06-25
 **Restlücke (nicht improvisiert):** Ein echtes, maschinell-eindeutiges Trust-/Status-Resolutionskonzept (obsiegendes KO bestätigen / unterlegenes herabstufen oder zur Revalidierung markieren) wäre ein NEUES Backend-Konzept (KO-Mutation + Audit + Regeln). **Vorschlag: separates Restticket „Konfliktauflösung mit KO-Status-/Trust-/Revalidierungswirkung (Backend)"** — bewusst hier nicht gebaut.
 
 **Jira-Empfehlung:** Nach grünem Gate + Git-Sync dürfen SCRUM-127 und SCRUM-128 auf erledigt. Echte Trust-/Status-Auflösungswirkung als neues Restticket. Ich setze keine Jira-Checkbox/Status selbst; Codex/Peter haken nach Gate ab.
+
+---
+
+## 2026-06-26 · SCRUM-133 + SCRUM-141 — Risiko-Cockpit (Domäne) & datenbasiertes Knowledge Health
+
+**Ticket(s):** SCRUM-133 (Risiko-Cockpit nach Bereichen/Domänen) + SCRUM-141 (Knowledge-Health-Konzept). Gemeinsam über EIN DOM-freies Modul (keine doppelte Logik). Umsetzung exakt nach freigegebener Vorab-Meldung. KEIN Backend-Umbau.
+
+**Genutzte Datenquellen (alle bestehend, clientseitig):** useKos (status/trust/category), useGaps, useConflicts, useValidationOverview, useLifecyclePending (stale), useBusFactor (Single-Source je Kategorie). Keine Mock-/Demo-Zahlen.
+
+**Änderung (geänderte/neue Dateien):**
+- `apps/web/src/lib/knowledgeHealth.ts` — neu, DOM-frei, EIN Modul für beide: `knowledgeHealth(input)` (Score 0–100, Band gut/mittel/kritisch, erklärbare `factors[]` mit Richtung) und `domainRisk(kos, busFactor)` (je Kategorie: KO-Zahl, Validierungsquote, offene KOs, Autorenzahl, Single-Source, Risikolevel; nach Risiko sortiert) + `bandForScore`.
+- `apps/web/src/pages/Analytics.tsx` — Knowledge-Health-Card oben: Score + Band + Klartext-Erklärung + Faktor-Aufschlüsselung (positiv/negativ). Ergänzt useGaps/useConflicts/useLifecyclePending/useBusFactor.
+- `apps/web/src/pages/Risk.tsx` — Domänen-Risiko-Cockpit oben (Karten je Kategorie mit Risiko-Badge, Validierungsquote, offene KOs, Experten, Single-Source-Warnung). Ergänzt useKos. Bestehende Bus-Faktor-/Gaps-Sektionen unverändert.
+- `apps/web/src/i18n.ts` — `health.*` + `risk.cockpit/level/...` (DE+EN).
+- `tests/analytics/knowledge-health.test.ts` — 7 Tests.
+
+**Health-Score-Modell (erklärbar, deterministisch):** Basis = Validierungsquote; Abzüge für staleRatio (×0,4), Single-Source-Anteil (×0,3), offene Gaps (×4, max 20) und offene Konflikte (×5, max 20); geklemmt 0–100. Bänder: ≥70 gut, ≥40 mittel, sonst kritisch. Jeder Faktor wird mit Wert + Richtung angezeigt → „warum gut/mittel/kritisch" ist sichtbar.
+
+**Risk-Cockpit-Modell:** je Kategorie Risikolevel = kritisch bei Single-Source ODER Validierungsquote <40 %, mittel bei <70 %, sonst gut; Sortierung kritisch→gut.
+
+**Erfüllt SCRUM-133?** JA — Risiko nach Domäne/Kategorie strukturiert, datenbasiert.
+**Erfüllt SCRUM-141?** JA — datenbasierter, erklärbarer Health-Score (kein Mock).
+
+**Genutzte Endpoints:** GET /api/kos, /api/gaps, /api/conflicts, /api/validation/overview, /api/lifecycle/pending, /api/analytics/busfactor (alle bestehend).
+
+**Tests/Gates:** `npm run check` GRÜN — 39 Testdateien / 189 Tests (7 neu). apps/web `tsc --noEmit` EXIT=0. depcruise sauber. Biome grün.
+
+**Restlücke (nicht improvisiert):** Health-/Risiko-TREND über Zeit fehlt — bräuchte historische Snapshots, die das Modell nicht führt. **Vorschlag: separates Restticket „Knowledge-Health-Trend (Snapshots/Zeitreihe)"**. Hier bewusst nur der aktuelle datenbasierte Stand.
+
+**Jira-Empfehlung:** Nach grünem Gate + Git-Sync dürfen SCRUM-133 und SCRUM-141 auf erledigt. Trend als neues Restticket. Ich setze keine Jira-Checkbox/Status selbst; Codex/Peter haken nach Gate ab.
