@@ -2238,3 +2238,38 @@ ein `CandidateRepo`-Interface ziehen (InMemory für Dev/Test, Pg für Betrieb), 
 ### Jira-Empfehlung
 SCRUM-157 nach grünem Mac-Gate auf Done. Schließt die Import-Kandidaten-Persistenzlücke aus
 SCRUM-153/154. Claude setzt Jira nicht selbst.
+
+---
+
+## After-Report — SCRUM-158 · Stabilize: Bibliothek-Virtualisierung & Aufgaben-Filter — 2026-06-26
+
+### UI-/Helfer-Entscheidung
+Zwei additive DOM-freie Helfer statt schwerer Virtualisierungs-Lib oder Backend-/Such-Umbau:
+- **`apps/web/src/lib/libraryDisplay.ts`** — `windowList(items, limit=200)` → `{ visible, total,
+  shown, limited }`. Begrenzt die gerenderte Menge und meldet ehrlich „N von M".
+- **`apps/web/src/lib/taskFilters.ts`** — Typ-Filter (`all/validation/returned/conflict/gap/
+  revalidation`) rein aus den vorhandenen Task-`typeKey`s + ehrliche Zähler je Filter.
+
+### Umsetzung
+- **Library.tsx**: Ergebnisse via `windowList` gefenstert; Kopfzeile „Treffer: M" + bei
+  Begrenzung „zeige erste N von M" (warn-Farbe). Filter/StatusPill/Typ/Trust/Autor/Links/Export
+  unverändert. Keine API-Änderung.
+- **MyTasks.tsx**: Filter-Chips über allen Gruppen mit ehrlichem Zähler je Typ; `filterTasks`
+  reduziert je Gruppe; leere gefilterte Gruppe zeigt `task.noneFiltered` (kein stilles
+  Verschwinden). Aufgaben weiter aus bestehenden Hooks abgeleitet; Links/Aktionen unverändert,
+  keine Batch-Mutation.
+- **i18n** DE/EN: `lib.resultCount`, `lib.showingFirst`, `task.filter.*`, `task.noneFiltered`.
+
+### Tests / Gates
+- `tests/library/library-display.test.ts`: unter/über/genau Limit, Default-Limit.
+- `tests/foundation/task-filters.test.ts`: matches/filter/count, Summe Typ-Filter = Gesamt.
+- apps/web-tsc EXIT=0 · `npm run check` grün (**71 Dateien / 382 Tests**) · Biome · depcruise sauber.
+
+### Restlücken
+- Keine echte Virtualisierung/Pagination (bewusst: nur Limit + ehrlicher Hinweis); echte
+  Server-Pagination/Virtual-Scroll wäre ein größeres, separates Ticket.
+- Keine semantische/Volltext-Engine (Nicht-Ziel).
+
+### Jira-Empfehlung
+SCRUM-158 nach grünem Mac-Gate auf Done. Damit ist der Stabilize-Block (SCRUM-153…158)
+abgeschlossen. Claude setzt Jira nicht selbst.

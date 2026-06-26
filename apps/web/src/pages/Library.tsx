@@ -16,6 +16,7 @@ import {
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
 import { deriveStatus } from "../lib/displayStatus";
 import { koAuthorParts } from "../lib/koAuthor";
+import { windowList } from "../lib/libraryDisplay";
 import { EXPORT_FORMATS, type ExportFormat, exportFilename, exportUrl } from "../lib/libraryExport";
 import { EMPTY_LIBRARY_FILTER, buildLibraryQuery } from "../lib/libraryQuery";
 import { canRevalidate } from "../lib/revalidation";
@@ -148,45 +149,62 @@ export function Library(): JSX.Element {
       </div>
 
       <QueryState query={query} emptyText={t("lib.empty")}>
-        {(items) => (
-          <Card className="p-0">
-            <div className="divide-y divide-hairline">
-              {items.map((k) => (
-                <div
-                  key={k.id}
-                  className="flex items-center gap-3 px-4 py-2.5 hover:bg-hairline-soft"
-                >
-                  <Link to={`/wissen/${k.id}`} className="flex min-w-0 flex-1 items-center gap-3">
-                    <StatusPill status={deriveStatus(k)} />
-                    <KnowledgeTypeTag type={k.type} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13.5px] text-text">{k.title}</span>
-                      <KoAuthorLine {...koAuthorParts(k, nameOf)} />
-                    </span>
-                    <span className="hidden font-mono text-[11px] text-muted-2 sm:block">
-                      {k.category}
-                    </span>
-                    <div className="hidden sm:block">
-                      <ConfidenceBar value={k.confidence} showLabel={false} />
-                    </div>
-                  </Link>
-                  {canRevalidate(k.status) ? (
-                    <button
-                      type="button"
-                      title={t("lib.revalidate")}
-                      disabled={revalidate.isPending && revalidate.variables === k.id}
-                      onClick={() => revalidate.mutate(k.id)}
-                      className="inline-flex shrink-0 items-center gap-1 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text disabled:opacity-50"
+        {(items) => {
+          // SCRUM-158: große Bestände bedienbar halten + ehrlich begrenzen.
+          const win = windowList(items);
+          return (
+            <>
+              <div className="mb-2 flex items-center justify-between gap-2 font-mono text-[11px] text-muted-2">
+                <span>{t("lib.resultCount", { n: win.total })}</span>
+                {win.limited ? (
+                  <span className="text-trust-warn-text">
+                    {t("lib.showingFirst", { shown: win.shown, total: win.total })}
+                  </span>
+                ) : null}
+              </div>
+              <Card className="p-0">
+                <div className="divide-y divide-hairline">
+                  {win.visible.map((k) => (
+                    <div
+                      key={k.id}
+                      className="flex items-center gap-3 px-4 py-2.5 hover:bg-hairline-soft"
                     >
-                      <RotateCw size={13} />
-                      {t("lib.revalidate")}
-                    </button>
-                  ) : null}
+                      <Link
+                        to={`/wissen/${k.id}`}
+                        className="flex min-w-0 flex-1 items-center gap-3"
+                      >
+                        <StatusPill status={deriveStatus(k)} />
+                        <KnowledgeTypeTag type={k.type} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[13.5px] text-text">{k.title}</span>
+                          <KoAuthorLine {...koAuthorParts(k, nameOf)} />
+                        </span>
+                        <span className="hidden font-mono text-[11px] text-muted-2 sm:block">
+                          {k.category}
+                        </span>
+                        <div className="hidden sm:block">
+                          <ConfidenceBar value={k.confidence} showLabel={false} />
+                        </div>
+                      </Link>
+                      {canRevalidate(k.status) ? (
+                        <button
+                          type="button"
+                          title={t("lib.revalidate")}
+                          disabled={revalidate.isPending && revalidate.variables === k.id}
+                          onClick={() => revalidate.mutate(k.id)}
+                          className="inline-flex shrink-0 items-center gap-1 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text disabled:opacity-50"
+                        >
+                          <RotateCw size={13} />
+                          {t("lib.revalidate")}
+                        </button>
+                      ) : null}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </Card>
-        )}
+              </Card>
+            </>
+          );
+        }}
       </QueryState>
     </div>
   );

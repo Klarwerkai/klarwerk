@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import {
@@ -13,6 +14,12 @@ import { useSession } from "../app/AuthContext";
 import { KoAuthorLine } from "../components/trust";
 import { Card, PageHeader } from "../components/ui";
 import { type KoAuthorParts, koAuthorParts } from "../lib/koAuthor";
+import {
+  TASK_FILTERS,
+  type TaskFilterKey,
+  countTasksByFilter,
+  filterTasks,
+} from "../lib/taskFilters";
 import { returnedToAuthor } from "../lib/validationStatus";
 
 interface Task {
@@ -84,45 +91,70 @@ export function MyTasks(): JSX.Element {
     { key: "task.later", tone: "bg-page text-muted", items: later },
   ];
 
+  // SCRUM-158: Typ-Filter über alle Gruppen; ehrliche Zähler je Chip.
+  const [taskFilter, setTaskFilter] = useState<TaskFilterKey>("all");
+  const counts = countTasksByFilter([...critical, ...today, ...later]);
+
   return (
     <div className="mx-auto max-w-4xl">
       <PageHeader kicker={t("task.kicker")} title={t("nav.tasks")} />
-      <div className="space-y-6">
-        {groups.map((g) => (
-          <div key={g.key}>
-            <div className="mb-2 flex items-center gap-2">
-              <span
-                className={`rounded-pill px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase ${g.tone}`}
-              >
-                {t(g.key)}
-              </span>
-              <span className="text-[12px] text-muted-2">{g.items.length}</span>
-            </div>
-            <Card className="p-0">
-              {g.items.length === 0 ? (
-                <p className="p-4 text-sm text-muted">{t("task.none")}</p>
-              ) : (
-                <div className="divide-y divide-hairline">
-                  {g.items.map((it) => (
-                    <Link
-                      key={it.id}
-                      to={it.to}
-                      className="flex items-center gap-3 px-4 py-3 hover:bg-hairline-soft"
-                    >
-                      <span className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-[10.5px] text-muted">
-                        {t(it.typeKey)}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[13.5px] text-text">{it.label}</span>
-                        {it.author ? <KoAuthorLine {...it.author} /> : null}
-                      </span>
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </Card>
-          </div>
+      <div className="mb-4 flex flex-wrap gap-1.5">
+        {TASK_FILTERS.map((f) => (
+          <button
+            key={f.key}
+            type="button"
+            onClick={() => setTaskFilter(f.key)}
+            className={`rounded-pill border px-2.5 py-1 font-mono text-[11px] font-semibold ${
+              taskFilter === f.key
+                ? "border-ink bg-ink text-white"
+                : "border-hairline text-muted hover:text-text"
+            }`}
+          >
+            {t(`task.filter.${f.key}`)} · {counts[f.key]}
+          </button>
         ))}
+      </div>
+      <div className="space-y-6">
+        {groups.map((g) => {
+          const visible = filterTasks(g.items, taskFilter);
+          return (
+            <div key={g.key}>
+              <div className="mb-2 flex items-center gap-2">
+                <span
+                  className={`rounded-pill px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase ${g.tone}`}
+                >
+                  {t(g.key)}
+                </span>
+                <span className="text-[12px] text-muted-2">{visible.length}</span>
+              </div>
+              <Card className="p-0">
+                {visible.length === 0 ? (
+                  <p className="p-4 text-sm text-muted">
+                    {taskFilter === "all" ? t("task.none") : t("task.noneFiltered")}
+                  </p>
+                ) : (
+                  <div className="divide-y divide-hairline">
+                    {visible.map((it) => (
+                      <Link
+                        key={it.id}
+                        to={it.to}
+                        className="flex items-center gap-3 px-4 py-3 hover:bg-hairline-soft"
+                      >
+                        <span className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-[10.5px] text-muted">
+                          {t(it.typeKey)}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[13.5px] text-text">{it.label}</span>
+                          {it.author ? <KoAuthorLine {...it.author} /> : null}
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
