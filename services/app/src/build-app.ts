@@ -35,7 +35,7 @@ import {
 } from "../../lifecycle";
 import { ManagementService } from "../../management";
 import { ConsoleMailer, type Mailer, createMailerFromEnv } from "../../notifications";
-import { InMemoryObjectRepo, type ObjectRepo, ObjectStore } from "../../object-store";
+import { InMemoryObjectRepo, type ObjectRepo, ObjectStore, PgObjectRepo } from "../../object-store";
 import { OutputService } from "../../output";
 import { ModelProvider, Reasoner, createModelClientFromEnv } from "../../reasoner";
 import {
@@ -193,8 +193,8 @@ export function buildPgServices(pool: Pool): AppServices {
     assignments: new PgAssignmentRepo(pool),
     conflictsRepo: new PgConflictRepo(pool),
     lifecycleRepo: new PgLifecycleRepo(pool),
-    // SCRUM-121: Object-Store bleibt vorerst In-Memory (kein Pg-/Disk-Adapter in diesem Ticket).
-    objects: new InMemoryObjectRepo(),
+    // SCRUM-155: Object-Store jetzt persistent (Attachment-/Evidence-Originale überleben Neustart).
+    objects: new PgObjectRepo(pool),
   });
 }
 

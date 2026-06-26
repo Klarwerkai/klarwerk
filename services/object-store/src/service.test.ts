@@ -1,5 +1,7 @@
+import type { Pool } from "pg";
 import { describe, expect, it } from "vitest";
 import { InMemoryObjectRepo } from "./repo";
+import { PgObjectRepo } from "./repo-pg";
 import { ObjectStore, decodeDataUrl, inferKind } from "./service";
 
 describe("SCRUM-45/46/48: decodeDataUrl (raw-Bild-Endpoint)", () => {
@@ -71,5 +73,51 @@ describe("ObjectStore (SCRUM-121)", () => {
     expect(inferKind("application/pdf")).toBe("document");
     expect(inferKind("text/plain")).toBe("document");
     expect(inferKind("application/octet-stream")).toBe("binary");
+  });
+});
+
+// SCRUM-155: Fake-Pool, der die objects-Tabelle nachbildet (INSERT/SELECT). Simuliert die
+// jsonb-Auto-Parsing-Semantik von pg: ref wird als String gespeichert, beim SELECT geparst.
+function fakePool() {
+  const rows = new Map<string, { ref: string; data: string }>();
+  return {
+    query: async (sql: string, params: unknown[] = []) => {
+      if (sql.startsWith("INSERT INTO objects")) {
+        const [id, ref, data] = params as [string, string, string];
+        rows.set(id, { ref, data });
+        return { rows: [] };
+      }
+      if (sql.startsWith("SELECT ref,data FROM objects")) {
+        const [id] = params as [string];
+        const row = rows.get(id);
+        return { rows: row ? [{ ref: JSON.parse(row.ref), data: row.data }] : [] };
+      }
+      return { rows: [] };
+    },
+  } as unknown as Pool;
+}
+
+describe("SCRUM-155: PgObjectRepo — Persistenz über Store-/Repo-Instanzen", () => {
+  it("put → neue Store-Instanz über denselben Pool → read/metadata funktioniert", async () => {
+    const pool = fakePool();
+    const ref = await new ObjectStore({ repo: new PgObjectRepo(pool) }).put({
+      name: "foto.png",
+      mime: "image/png",
+      data: "data:image/png;base64,AAAA",
+    });
+    // Frische Store- UND Repo-Instanz — Persistenz liegt im Pool, nicht in der Instanz.
+    const store2 = new ObjectStore({ repo: new PgObjectRepo(pool) });
+    const obj = await store2.read(ref.id);
+    expect(obj?.data).toBe("data:image/png;base64,AAAA");
+    expect(obj?.ref.kind).toBe("image");
+    const meta = await store2.metadata(ref.id);
+    expect(meta?.id).toBe(ref.id);
+    expect(meta?.mime).toBe("image/png");
+    expect(meta?.name).toBe("foto.png");
+  });
+
+  it("unbekannte ID → undefined", async () => {
+    const repo = new PgObjectRepo(fakePool());
+    expect(await repo.findById("nope")).toBeUndefined();
   });
 });

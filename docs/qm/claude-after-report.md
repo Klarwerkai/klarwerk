@@ -2132,3 +2132,27 @@ Keine neue Import-Engine, keine Migration, keine Fake-Bewertung, kein erfundenes
 
 ### Gates
 apps/web-tsc EXIT=0 · Biome · depcruise · `npm run check` grün (**68 Dateien / 368 Tests**).
+
+---
+
+## After-Report — SCRUM-155 · Stabilize: Object-Store persistent machen — 2026-06-26
+
+### Persistenzentscheidung: Postgres (kein Disk/S3/MinIO)
+Befund (SCRUM-153/154): `buildPgServices` setzte `objects` fest auf `InMemoryObjectRepo` — es gab kein `PgObjectRepo` und keine Migration. Attachment-/Evidence-Originale (`/api/objects/:id/raw`) verschwanden bei Neustart; KO behielt nur ObjectRef + Thumbnail. Das berührte Knowledge-OS-Invariante #8 (Herkunft/Evidence langfristig nachvollziehbar). Entscheidung: Pg-Adapter analog zu `PgDraftRepo` — niedrigstes Risiko, gleiche Konvention, kein neuer Storage-Stack.
+
+### Umsetzung
+- **Neu** `services/object-store/src/repo-pg.ts`: `OBJECTSTORE_SCHEMA` (`objects(id text PK, ref jsonb, data text)` — Metadaten als JSONB, Base64-Original getrennt im `text`-Feld, NICHT im KO-JSON) + `PgObjectRepo` (`insert`/`findById`, erfüllt das bestehende `ObjectRepo`-Interface unverändert).
+- `services/object-store/index.ts`: `PgObjectRepo` + `OBJECTSTORE_SCHEMA` exportiert.
+- `services/app/src/db.ts`: `OBJECTSTORE_SCHEMA` in `migrate()` aufgenommen (additive Tabelle, keine Migration anderer Module betroffen).
+- `services/app/src/build-app.ts`: `buildPgServices` nutzt jetzt `new PgObjectRepo(pool)`; `buildServices` (Dev/Test) bleibt `InMemoryObjectRepo`. `ObjectStore.put/read/metadata` und FE-API unverändert.
+
+### Tests / Gates
+- `services/object-store/src/service.test.ts` +2 Tests: Persistenz über frische Store-/Repo-Instanzen am selben (Fake-)Pool (`put → neue Instanz → read/metadata`), unbekannte ID → undefined. Bestehende ObjectStore-/decodeDataUrl-Tests unverändert grün.
+- `npm run check` grün: **68 Dateien / 370 Tests**, tsc + Biome + depcruise sauber. FE nicht berührt (kein apps/web-tsc nötig).
+
+### Restlücken
+- Echte Postgres-Persistenz wird durch den Testcontainers-Integrationstest auf Mac/CI abgedeckt (Unit-Gate nutzt Fake-Pool, kein Docker im Sandbox). Empfehlung: `build-app.integration.test.ts` bei nächstem Mac-Lauf gegen die neue `objects`-Tabelle gegenprüfen.
+- 5-MB-Pilotlimit unverändert. Import-Kandidaten-Persistenz bleibt eigenes Ticket (nicht Teil von SCRUM-155).
+
+### Jira-Empfehlung
+SCRUM-155 nach grünem Mac-Gate auf Done. Object-Store-Persistenzlücke aus SCRUM-153/154 ist damit geschlossen. Claude setzt Jira nicht selbst.
