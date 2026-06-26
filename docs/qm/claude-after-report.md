@@ -2662,3 +2662,34 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-171 — KO-Provenance-/Lineage-Index read-only für Stufe 2
+
+**Vorab-Befund (read-only):** Per-KO-Herkunft existiert bereits (`koLineage.lineageSummary`: author/originalAuthor/Transfer, Version/History, Quellen, verwandte KOs). Es fehlte nur die KO-übergreifende Aggregation. Stufe 2 hat bereits `useKos()` und `useEvidenceIndex()` — keine neuen Backend-Endpoints/Modelle nötig.
+
+**Umsetzung (rein read-only, additiv):**
+- Neuer DOM-freier Helper `apps/web/src/lib/provenanceIndex.ts` mit `buildProvenanceIndex({ kos, evidence? })`. Aggregiert **nur vorhandene Signale**: Transfer (`author !== originalAuthor`), `version`/`history`, `sources`/`attachments`, Evidence-Counts je `koId`.
+- `ProvenanceIndexSummary` (totalKOs, withTransfer, withSources, withAttachments, withEvidence, withoutEvidence, multiVersion, warningCount) + `ProvenanceIndexRow` (Counts + `warningKinds[]`). Warnungen: `transferred-author`, `multi-version`, `no-evidence`.
+- **Ehrlichkeit:** `no-evidence` wird NUR behauptet, wenn der Evidence-Stand bekannt ist (evidence-Argument übergeben) UND das KO Quellen/Anhänge ohne Evidence trägt. Ohne evidence-Argument bleibt der Stand „unbekannt" — keine Falschmeldung. Deterministische Sortierung (meiste Warnungen → höchste Version → Titel → koId).
+- Stufe 2 (`Capital`): read-only `ProvenanceIndexCard` — Summary-Counts und auffälligste KOs zuerst, Version/Counts/Badges, KO-interner Link zu `/wissen/:id`. Keine Fremd-URLs, kein Edit/Restore/Backfill. Evidence-Stand wird nur als „bekannt" gewertet, wenn der Evidence-Index erfolgreich geladen ist (`isSuccess`).
+- i18n DE/EN `prov.*` vollständig.
+
+**Geänderte/neue Dateien:** neu `apps/web/src/lib/provenanceIndex.ts`, `tests/ko/provenance-index.test.ts`; geändert `apps/web/src/pages/Stufe2.tsx`, `apps/web/src/i18n.ts`, `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — **82 Dateien / 454 Tests** (+7: Leerzustand, Transfer-Erkennung, Multi-Version, EvidenceCount je koId, no-evidence nur bei bekanntem Stand+Signalen, sauberes KO ohne Warnung, deterministische Sortierung). apps/web `tsc --noEmit` EXIT=0. Biome + depcruise sauber.
+
+**Restlücken (bewusst, Nicht-Ziele):** kein gerichtetes Lineage-Modell (`derivedFrom`), kein globaler Graph-Umbau, kein Edit/Restore/Backfill, kein Audit-Hash-Umbau, kein Prompt-/Object-Rohdatenzugriff. `no-evidence` spiegelt das geladene Evidence-Fenster (max. 500 jüngste).
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check && (cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/provenanceIndex.ts apps/web/src/pages/Stufe2.tsx \
+  apps/web/src/i18n.ts tests/ko/provenance-index.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(ko): read-only provenance/lineage index for Stufe 2 (SCRUM-171)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

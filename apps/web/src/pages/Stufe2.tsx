@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Building2, Copy, Download, FileText, Printer, Upload } from "lucide-react";
 import { type ChangeEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
 import {
   useConflicts,
@@ -9,6 +10,7 @@ import {
   useGraph,
   useImportCandidates,
   useKos,
+  // SCRUM-171 nutzt useKos + useEvidenceIndex (beide bereits vorhanden).
   useManagementSnapshot,
   useModelRuns,
   useOutputSources,
@@ -37,6 +39,7 @@ import {
 } from "../lib/knowledgeValuation";
 import { limitModelRuns, modelRunStatusTone, summarizeModelRuns } from "../lib/modelRuns";
 import { OUTPUT_KIND_OPTIONS, downloadFilename, orderedSelection } from "../lib/outputDoc";
+import { buildProvenanceIndex } from "../lib/provenanceIndex";
 import { isModelConfigured, reasonerModeTone } from "../lib/reasonerStatus";
 
 function Stufe2Header({ titleKey, ticket }: { titleKey: string; ticket: string }): JSX.Element {
@@ -876,6 +879,82 @@ function EvidenceIndexCard(): JSX.Element {
   );
 }
 
+// SCRUM-171: KO-übergreifender read-only Provenance-/Lineage-Index (QM/Stufe 2). Aggregiert
+// nur vorhandene Signale (Autor/Transfer, Version/History, Quellen/Anhänge, Evidence-Counts).
+function ProvenanceIndexCard(): JSX.Element {
+  const { t } = useTranslation();
+  const kos = useKos();
+  const evidence = useEvidenceIndex(500);
+  const loading = kos.isLoading || evidence.isLoading;
+  const error = kos.isError || evidence.isError;
+  const index = buildProvenanceIndex({
+    kos: kos.data ?? [],
+    // Evidence-Stand nur „bekannt", wenn der Index erfolgreich geladen wurde.
+    ...(evidence.isSuccess ? { evidence: evidence.data ?? [] } : {}),
+  });
+  const rows = index.rows.slice(0, 12);
+  return (
+    <Card className="mt-4">
+      <SectionLabel>{t("prov.title")}</SectionLabel>
+      {loading ? (
+        <p className="text-[13px] text-muted">{t("state.loading")}</p>
+      ) : error ? (
+        <p className="text-[13px] text-danger">{t("state.error")}</p>
+      ) : rows.length === 0 ? (
+        <p className="text-[13px] text-muted">{t("prov.empty")}</p>
+      ) : (
+        <>
+          <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-muted-2">
+            <span>{t("prov.total", { n: index.summary.totalKOs })}</span>
+            <span>{t("prov.transfer", { n: index.summary.withTransfer })}</span>
+            <span>{t("prov.multiVersion", { n: index.summary.multiVersion })}</span>
+            <span>{t("prov.withEvidence", { n: index.summary.withEvidence })}</span>
+            <span
+              className={index.summary.withoutEvidence > 0 ? "text-trust-warn-text" : undefined}
+            >
+              {t("prov.noEvidence", { n: index.summary.withoutEvidence })}
+            </span>
+          </div>
+          <ul className="divide-y divide-hairline">
+            {rows.map((r) => (
+              <li key={r.koId} className="flex flex-wrap items-center gap-2 py-2">
+                <Link
+                  to={`/wissen/${r.koId}`}
+                  className="min-w-0 flex-1 truncate text-[12px] font-semibold text-text hover:text-ai"
+                >
+                  {r.title}
+                </Link>
+                <span className="rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-[10px] text-muted-2">
+                  {t("prov.version", { n: String(r.version) })}
+                </span>
+                <span className="font-mono text-[10px] text-muted-2">
+                  {t("prov.counts", {
+                    sources: String(r.sourceCount),
+                    attachments: String(r.attachmentCount),
+                    evidence: String(r.evidenceCount),
+                  })}
+                </span>
+                {r.warningKinds.map((w) => (
+                  <span
+                    key={w}
+                    className={`rounded-pill px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase ${
+                      w === "no-evidence"
+                        ? "bg-trust-warn-bg text-trust-warn-text"
+                        : "bg-ai-surface-1 text-ai"
+                    }`}
+                  >
+                    {t(`prov.badge.${w}`)}
+                  </span>
+                ))}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </Card>
+  );
+}
+
 export function Capital(): JSX.Element {
   const snapshot = useManagementSnapshot();
   return (
@@ -896,6 +975,8 @@ export function Capital(): JSX.Element {
       <ReasonerRunsCard />
       {/* SCRUM-169: KO-übergreifender read-only Evidence-Index (QM). */}
       <EvidenceIndexCard />
+      {/* SCRUM-171: KO-übergreifender read-only Provenance-/Lineage-Index (QM). */}
+      <ProvenanceIndexCard />
     </div>
   );
 }
