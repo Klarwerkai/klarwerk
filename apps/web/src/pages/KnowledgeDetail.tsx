@@ -10,6 +10,7 @@ import {
   useConflicts,
   useDirectory,
   useKo,
+  useKoEvidence,
   useKoVersions,
   useKos,
   useLifecyclePending,
@@ -41,6 +42,7 @@ import { validityProtectionView } from "../lib/extConcept";
 import { toSourcePayload as externalToSourcePayload } from "../lib/externalSearch";
 import { fileToThumbDataUrl, readFileAsDataUrl } from "../lib/files";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
+import { evidenceRows } from "../lib/koEvidence";
 import { koAuditEvents, lineageSummary, relatedKos } from "../lib/koLineage";
 import {
   EMPTY_SOURCE_FORM,
@@ -90,6 +92,7 @@ export function KnowledgeDetail(): JSX.Element {
   const { id = "" } = useParams();
   const { role } = useRole();
   const query = useKo(id);
+  const evidence = useKoEvidence(id);
   const versions = useKoVersions(id);
   const koList = useKos();
   const audit = useAudit();
@@ -1014,6 +1017,50 @@ export function KnowledgeDetail(): JSX.Element {
                     </li>
                   ))}
                 </ol>
+              </Card>
+
+              <Card>
+                <SectionLabel>{t("ko.evidenceTitle")}</SectionLabel>
+                {evidence.isLoading ? (
+                  <p className="text-[13px] text-muted">{t("state.loading")}</p>
+                ) : evidence.isError ? (
+                  <p className="text-[13px] text-danger">{t("state.error")}</p>
+                ) : evidenceRows(evidence.data ?? []).length === 0 ? (
+                  <p className="text-[13px] text-muted">{t("ko.evidenceEmpty")}</p>
+                ) : (
+                  <ul className="space-y-2.5">
+                    {evidenceRows(evidence.data ?? []).map((ev) => (
+                      <li
+                        key={ev.key}
+                        className="rounded-card border border-hairline bg-surface p-3"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-[13px] font-semibold text-text">{ev.title}</div>
+                            <div className="mt-1 font-mono text-[10.5px] text-muted-2">
+                              {nameOf(ev.createdBy)} · {new Date(ev.createdAt).toLocaleDateString()}
+                            </div>
+                          </div>
+                          <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai">
+                            {t(`ko.evidenceKind.${ev.kind}`)}
+                          </span>
+                        </div>
+                        {ev.meta.length > 0 ? (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {ev.meta.map((m) => (
+                              <span
+                                key={m}
+                                className="rounded-pill bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-muted-2"
+                              >
+                                {m}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </Card>
 
               <Card>

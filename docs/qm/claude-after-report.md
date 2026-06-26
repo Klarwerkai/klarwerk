@@ -2360,3 +2360,18 @@ Versions-Immutabilitäts-Risiko aus SCRUM-153. Claude setzt Jira nicht selbst.
 **5. Tests/Gates:** +4 Evidence-Tests (Source-Evidence, ObjectAttachment-Evidence, Leerzustand ohne Repo, Pg-Fake-Pool Round-Trip + Immutabilität). `npm run check` grün — 73 Dateien / 399 Tests, root-tsc 0, Biome grün, depcruise sauber (148 Module / 451 Dependencies).
 
 **6. Restlücken:** Kein UI Evidence-Browser, kein Peer-Validation-Verfahren, kein vollständiges Source/Evidence/Version-Großmodell, kein Retrieval/ModelAdapter/ModelRun.
+
+
+## SCRUM-163 — Evidence-Records read-only im KO-Detail anzeigen
+
+**1. Vorab-Befund:** SCRUM-160 erzeugt EvidenceRecords und `KoService.evidenceOf(id)` liefert sie read-only. Es fehlten Route, FE-Typen/Hook und eine sichtbare KO-Detail-Darstellung. Kein neues Modell und keine Mutation nötig.
+
+**2. Umsetzung:** Route `GET /api/kos/:id/evidence` mit `ko.read`-Guard, FE-Typ `EvidenceRecord`, Endpoint/Hook `useKoEvidence`, DOM-freier Helper `koEvidence.ts`, KnowledgeDetail-Card mit Quelle/Anhang-Badge, Ersteller/Zeitpunkt und Metadaten (Version, Provider, Mime, ObjectRef, URL).
+
+**3. Geänderte Dateien:** `services/app/src/routes/ko-routes.ts`, `apps/web/src/api/types.ts`, `apps/web/src/api/endpoints.ts`, `apps/web/src/api/hooks.ts`, `apps/web/src/lib/koEvidence.ts`, `tests/ko/ko-evidence.test.ts`, `apps/web/src/pages/KnowledgeDetail.tsx`, `apps/web/src/i18n.ts`, `docs/qm/claude-after-report.md`.
+
+**4. Technische Entscheidung:** Read-only KO-lokale Evidence-Card statt globalem Evidence-Browser. Bestehende Source-/Attachment-UI bleibt unverändert. Keine Mutation, kein Peer-Validation-Verfahren, kein Audit-Umbau.
+
+**5. Tests/Gates:** `npm run check` grün — 74 Dateien / 401 Tests, root-tsc 0, Biome grün, depcruise sauber (148 Module / 451 Dependencies).
+
+**6. Restlücken:** Kein globaler Evidence-Browser, kein Editieren/Löschen von Evidence, kein Retrieval/ModelAdapter/ModelRun.

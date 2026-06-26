@@ -83,6 +83,24 @@ export interface KoVersionSnapshot {
   note: string;
 }
 
+export type EvidenceKind = "source" | "attachment";
+
+export interface EvidenceRecord {
+  id: string;
+  koId: string;
+  koVersion: number;
+  kind: EvidenceKind;
+  sourceId?: string;
+  attachmentId?: string;
+  objectId?: string;
+  label: string;
+  mime?: string;
+  url?: string | null;
+  provider?: string | null;
+  createdBy: string;
+  createdAt: string;
+}
+
 export interface KnowledgeObject {
   id: string;
   title: string;

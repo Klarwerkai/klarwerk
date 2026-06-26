@@ -32,6 +32,12 @@ export const useKoVersions = (id: string) =>
     queryFn: () => endpoints.ko.versions(id),
     enabled: id.length > 0,
   });
+export const useKoEvidence = (id: string) =>
+  useQuery({
+    queryKey: ["ko", id, "evidence"],
+    queryFn: () => endpoints.ko.evidence(id),
+    enabled: id.length > 0,
+  });
 export const useValidationBoard = (f?: KoFilter) =>
   useQuery({ queryKey: ["validation", "board", f], queryFn: () => endpoints.validation.board(f) });
 export const useValidationOverview = () =>
