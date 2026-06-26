@@ -2725,3 +2725,33 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-173 — KnowledgeHealth in Knowledge-OS-QM-Hinweise integrieren
+
+**Vorab-Befund (read-only):** `buildKnowledgeOsHints` (SCRUM-172) unterstützte `knowledgeHealth` bereits (health-critical/health-mittel), wurde aber von der Stufe-2-`KnowledgeOsHintsCard` nicht gefüttert → Health blieb faktisch ungenutzt. Die Health-Logik existiert als DOM-freier Helper `knowledgeHealth({ kos, gaps, conflicts, pendingRevalidation, busFactor })` (SCRUM-141), in `Analytics.tsx` exakt so verdrahtet (Hooks `useKos`/`useGaps`/`useConflicts`/`useLifecyclePending`/`useBusFactor`). `unknownSources` führte „health" bisher nicht.
+
+**Umsetzung (read-only-Aggregation, keine neue Engine):**
+- `KnowledgeOsHintsCard` lädt jetzt zusätzlich `useGaps`/`useConflicts`/`useLifecyclePending`/`useBusFactor` und berechnet `knowledgeHealth(...)` mit demselben bestehenden Helper wie Analytics — keine neue Logik.
+- `knowledgeHealth` wird nur übergeben, wenn **alle** benötigten Signale `isSuccess` sind (`healthKnown`). Sonst bleibt Health ehrlich unbekannt.
+- Helper `knowledgeOsHints.ts`: `unknownSources` führt „health", wenn kein Score übergeben wurde; OK-Hinweis-Schwelle auf 5 Kernsignale erweitert. Keine Health-Hinweise/False-Positives ohne Daten.
+- Keine UI-Neugestaltung, kein Backend, keine Persistenz, kein Trend/Snapshot.
+
+**Geänderte Dateien:** `apps/web/src/pages/Stufe2.tsx`, `apps/web/src/lib/knowledgeOsHints.ts`, `tests/analytics/knowledge-os-hints.test.ts`, `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — **83 Dateien / 465 Tests** (+4: Health kritisch→critical, Health mittel→warning, Health gut→kein Warnhinweis, Health bleibt nur unknown ohne Daten; 2 bestehende SCRUM-172-Asserts an „health" in unknownSources angepasst). apps/web `tsc --noEmit` EXIT=0. Biome + depcruise sauber. Bestehende `knowledge-health`-Tests unverändert grün.
+
+**Restlücken/Nicht-Ziele:** keine neue Health-Engine, kein Backend, keine Persistenz, kein Trend/Snapshot, keine Stufe-2-UI-Neugestaltung. Health gilt nur als „bekannt", wenn alle fünf Live-Signale geladen sind — bis dahin ehrlich „unknown" ohne Falschmeldung.
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check && (cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/pages/Stufe2.tsx apps/web/src/lib/knowledgeOsHints.ts \
+  tests/analytics/knowledge-os-hints.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(qm): feed KnowledgeHealth into Knowledge-OS QA hints (SCRUM-173)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

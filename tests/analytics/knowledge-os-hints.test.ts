@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ReasonerConfigStatus } from "../../apps/web/src/api/types";
 import type { EvidenceIndexSummary } from "../../apps/web/src/lib/evidenceIndex";
+import type { HealthBand, KnowledgeHealth } from "../../apps/web/src/lib/knowledgeHealth";
 import { buildKnowledgeOsHints } from "../../apps/web/src/lib/knowledgeOsHints";
 import type { ModelRunSummary } from "../../apps/web/src/lib/modelRuns";
 import type { ProvenanceIndexResult } from "../../apps/web/src/lib/provenanceIndex";
@@ -55,6 +56,22 @@ const evidence = (total: number): EvidenceIndexSummary => ({
   distinctKos: 0,
 });
 
+function health(band: HealthBand): KnowledgeHealth {
+  const score = band === "gut" ? 85 : band === "mittel" ? 55 : 20;
+  return {
+    score,
+    band,
+    validatedRatio: 80,
+    staleRatio: 0,
+    singleSourceShare: 0,
+    openKos: 0,
+    openGaps: 0,
+    openConflicts: 0,
+    avgTrust: 70,
+    factors: [],
+  };
+}
+
 describe("SCRUM-172: buildKnowledgeOsHints", () => {
   it("leerer Input → keine Fehler, alle Kernsignale unknown, keine ok-Behauptung", () => {
     const res = buildKnowledgeOsHints({});
@@ -62,18 +79,20 @@ describe("SCRUM-172: buildKnowledgeOsHints", () => {
     expect(res.summary).toMatchObject({ total: 0, critical: 0, warnings: 0 });
     expect(res.unknownSources.sort()).toEqual([
       "evidence",
+      "health",
       "modelRuns",
       "provenance",
       "reasonerConfig",
     ]);
   });
 
-  it("alles bekannt & sauber → genau ein ok-Hinweis", () => {
+  it("alles bekannt & sauber (inkl. Health) → genau ein ok-Hinweis", () => {
     const res = buildKnowledgeOsHints({
       modelRunSummary: modelRuns({}),
       reasonerConfig: reasoner("model"),
       provenance: provenance({}),
       evidenceSummary: evidence(3),
+      knowledgeHealth: health("gut"),
     });
     expect(res.hints).toHaveLength(1);
     expect(res.hints[0]).toMatchObject({ id: "all-clear", severity: "ok" });
@@ -127,5 +146,33 @@ describe("SCRUM-172: buildKnowledgeOsHints", () => {
     const order = { critical: 0, warning: 1, info: 2, ok: 3 } as const;
     const numeric = ranks.map((r) => order[r]);
     expect(numeric).toEqual([...numeric].sort((a, b) => a - b));
+  });
+
+  // SCRUM-173: KnowledgeHealth in die Hinweise integriert.
+  it("Health kritisch → critical-Hinweis", () => {
+    const res = buildKnowledgeOsHints({ knowledgeHealth: health("kritisch") });
+    const hint = res.hints.find((h) => h.id === "health-critical");
+    expect(hint).toMatchObject({ severity: "critical", count: 20, source: "health" });
+    expect(res.unknownSources).not.toContain("health");
+  });
+
+  it("Health mittel → warning-Hinweis", () => {
+    const res = buildKnowledgeOsHints({ knowledgeHealth: health("mittel") });
+    const hint = res.hints.find((h) => h.id === "health-mittel");
+    expect(hint).toMatchObject({ severity: "warning", count: 55, source: "health" });
+  });
+
+  it("Health gut → kein falscher Warnhinweis", () => {
+    const res = buildKnowledgeOsHints({ knowledgeHealth: health("gut") });
+    expect(res.hints.some((h) => h.source === "health")).toBe(false);
+    expect(res.summary.critical).toBe(0);
+    expect(res.summary.warnings).toBe(0);
+  });
+
+  it("Health bleibt nur unknown, wenn keine Health-Daten übergeben werden", () => {
+    expect(buildKnowledgeOsHints({}).unknownSources).toContain("health");
+    expect(buildKnowledgeOsHints({ knowledgeHealth: health("gut") }).unknownSources).not.toContain(
+      "health",
+    );
   });
 });

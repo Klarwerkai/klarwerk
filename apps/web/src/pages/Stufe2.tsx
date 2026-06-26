@@ -5,11 +5,14 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
 import {
+  useBusFactor,
   useConflicts,
   useEvidenceIndex,
+  useGaps,
   useGraph,
   useImportCandidates,
   useKos,
+  useLifecyclePending,
   // SCRUM-171 nutzt useKos + useEvidenceIndex (beide bereits vorhanden).
   useManagementSnapshot,
   useModelRuns,
@@ -31,6 +34,7 @@ import { evidenceKindTone, limitEvidence, summarizeEvidence } from "../lib/evide
 import { IMPORT_PIPELINE_STEPS, candidateFindings, summarizeImportQueue } from "../lib/extConcept";
 import { layoutConflicts, layoutGraph, limitGraph } from "../lib/graphLayout";
 import { ImportParseError, parseImportItems } from "../lib/importReview";
+import { knowledgeHealth } from "../lib/knowledgeHealth";
 import { buildKnowledgeOsHints } from "../lib/knowledgeOsHints";
 import {
   DEFAULT_ASSUMPTIONS,
@@ -971,6 +975,18 @@ function KnowledgeOsHintsCard(): JSX.Element {
   const evidence = useEvidenceIndex(500);
   const runs = useModelRuns(50);
   const config = useReasonerConfig();
+  // SCRUM-173: dieselben Live-Signale wie Analytics für den KnowledgeHealth-Score.
+  const gaps = useGaps();
+  const conflicts = useConflicts();
+  const pending = useLifecyclePending();
+  const busFactor = useBusFactor();
+  // KnowledgeHealth nur als „bekannt" werten, wenn ALLE benötigten Signale geladen sind.
+  const healthKnown =
+    kos.isSuccess &&
+    gaps.isSuccess &&
+    conflicts.isSuccess &&
+    pending.isSuccess &&
+    busFactor.isSuccess;
   const result = buildKnowledgeOsHints({
     ...(kos.isSuccess
       ? {
@@ -983,6 +999,17 @@ function KnowledgeOsHintsCard(): JSX.Element {
     ...(evidence.isSuccess ? { evidenceSummary: summarizeEvidence(evidence.data ?? []) } : {}),
     ...(runs.isSuccess ? { modelRunSummary: summarizeModelRuns(runs.data ?? []) } : {}),
     ...(config.isSuccess && config.data ? { reasonerConfig: config.data } : {}),
+    ...(healthKnown
+      ? {
+          knowledgeHealth: knowledgeHealth({
+            kos: kos.data ?? [],
+            gaps: gaps.data ?? [],
+            conflicts: conflicts.data ?? [],
+            pendingRevalidation: pending.data ?? [],
+            busFactor: busFactor.data ?? [],
+          }),
+        }
+      : {}),
   });
   const loading = kos.isLoading || evidence.isLoading || runs.isLoading || config.isLoading;
   const top = result.hints.slice(0, 5);

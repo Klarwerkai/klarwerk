@@ -151,7 +151,7 @@ export function buildKnowledgeOsHints(input: KnowledgeOsHintsInput): KnowledgeOs
     });
   }
 
-  // Welche Kernsignale fehlen (unbekannt, NICHT als Fehler werten)?
+  // Welche Signale fehlen (unbekannt, NICHT als Fehler werten)?
   const unknownSources: KnowledgeOsHintSource[] = [];
   if (!input.modelRunSummary) {
     unknownSources.push("modelRuns");
@@ -165,9 +165,14 @@ export function buildKnowledgeOsHints(input: KnowledgeOsHintsInput): KnowledgeOs
   if (!input.evidenceSummary) {
     unknownSources.push("evidence");
   }
+  // SCRUM-173: KnowledgeHealth ist optional — fehlt der Score, ehrlich als unbekannt führen.
+  if (!input.knowledgeHealth) {
+    unknownSources.push("health");
+  }
 
   // OK-Hinweis nur, wenn mindestens ein Signal bekannt ist und keine echten Hinweise anfielen.
-  const knownCount = 4 - unknownSources.length;
+  const KNOWN_SOURCE_COUNT = 5;
+  const knownCount = KNOWN_SOURCE_COUNT - unknownSources.length;
   if (hints.length === 0 && knownCount > 0) {
     hints.push({
       id: "all-clear",
