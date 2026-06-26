@@ -101,6 +101,8 @@ export const endpoints = {
     list: () => api.get<Draft[]>("/drafts"),
     get: (id: string) => api.get<Draft>(`/drafts/${id}`),
     create: (payload: DraftPayload) => api.post<Draft>("/drafts", { payload }),
+    // SCRUM-113 / FE-CAP-07: Entwurf fortsetzen (continueDraft, Originalautor bleibt).
+    update: (id: string, payload: DraftPayload) => api.put<Draft>(`/drafts/${id}`, payload),
     remove: (id: string) => api.del<void>(`/drafts/${id}`),
     promote: (id: string) => api.post<KnowledgeObject>(`/drafts/${id}/promote`),
   },

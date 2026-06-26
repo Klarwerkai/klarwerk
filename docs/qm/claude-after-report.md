@@ -1741,3 +1741,31 @@ Datum: 2026-06-25
 **Restlücken:** Object-Store ist In-Memory → Inhalt überlebt keinen Neustart (bewusst; Pg-/Disk-Persistenz = klar abgegrenztes Folge-Restticket, Interface steht). Größenlimit 5 MB pro Objekt (Pilot). Keine Original-Bild-Komprimierung (Original wird 1:1 abgelegt); Thumbnail bleibt klein am KO.
 
 **Empfehlung:** Nach grünem Mac-Gate + Commit/Push dürfen **SCRUM-121 erledigt** und **SCRUM-100 / FE-CAP-05 abgehakt** werden (Anhänge laufen sauber über ObjectRef + Thumbnail, kein großes Base64 mehr im KO-Modell). Pg-/Disk-Persistenz als Folge-Restticket. Ich setze keine Jira-Checkbox/Status selbst.
+
+---
+
+## 2026-06-26 · SCRUM-113 (Block 1) — FE-CAP-07 + FE-MOB-02/04/06 (Mobile-Erfassung & Draft-Resume)
+
+**Ticket(s):** SCRUM-113 erster Umsetzungsblock; schließt FE-CAP-07 (Draft-Resume) und FE-MOB-02/04/06. Umsetzung exakt nach freigegebener Vorab-Meldung.
+
+**Befund:** Draft-Pool backendseitig vollständig (CaptureService createDraft/listDrafts/getDraft/**continueDraft (FR-CAP-07)**/deleteDraft/toKoInput; Routen GET/POST/PUT/DELETE /api/drafts + promote). FE-Lücke: kein `drafts.update` (PUT) angebunden; Mobile.tsx rein statisch; kein Desktop-Resume.
+
+**Geänderte/neue Dateien:**
+- `apps/web/src/api/endpoints.ts` — `drafts.update(id, payload)` → PUT /api/drafts/:id (continueDraft).
+- `apps/web/src/lib/draftForm.ts` (neu, DOM-frei) — formToPayload, draftToForm, isDraftFormFillable, draftTitle, isPromotable.
+- `apps/web/src/pages/Mobile.tsx` — von statischer Vorschau zu echter mobiler Erfassung: Formular (Titel/Aussage) → Entwurf speichern (drafts.create) bzw. fortsetzen (drafts.update), Entwurfsliste (useDrafts) mit Fortsetzen/Verwerfen, alle Aktionen mit Toast-Bestätigung. Gleicher Draft-Pool wie Desktop.
+- `apps/web/src/pages/Capture.tsx` — Desktop-„Entwürfe fortsetzen"-Card (Liste, Fortsetzen lädt payload ins Formular + setzt draftId, Verwerfen via drafts.remove); saveDraft aktualisiert bei aktivem draftId (drafts.update) statt neu, mit Toast; invalidiert ["drafts"].
+- `apps/web/src/i18n.ts` — `mob.*` (formTitle/save/saved/update/updated/drafts/resume/discard/...) + `capture.draftUpdated/draftDiscarded/resumeTitle/resume/discardDraft/editingDraft/editingBadge` (DE+EN).
+- `tests/capture/draft-form.test.ts` (neu) — 5 Tests.
+
+**Genutzte Endpoints:** GET /api/drafts, POST /api/drafts, **PUT /api/drafts/:id** (neu im FE), DELETE /api/drafts/:id. Kein Backend-Redesign, keine neue Backend-Route.
+
+**Erfüllte AK:** drafts.update ergänzt ✓ · DOM-freies draftForm (Mapping/Resume/Vollständigkeit) ✓ · Mobile echt (speichern/listen/fortsetzen, Toast) ✓ · Desktop-Resume (anzeigen/fortsetzen/weiter speichern via update/verwerfen via remove) ✓ · Desktop+Mobile teilen denselben Draft-Pool ✓ · kein Backend-Redesign ✓ · keine statische Mobile-Demo mehr ✓.
+
+**Nicht in diesem Block (leitplankenkonform):** PWA/Manifest/Service Worker (FE-MOB-01), Mobile Ask (FE-MOB-03), Mobile Wissenszugriff (FE-MOB-05), Offline/Sync (FE-MOB-07) — unangetastet. Promote-zu-KO bewusst nicht in Mobile mitgenommen (Fokus Speichern/Fortsetzen; isPromotable als Helper vorbereitet/getestet).
+
+**Gelaufene Checks:** `npm run check` GRÜN — 48 Testdateien / 236 Tests (5 neu). apps/web `tsc --noEmit` EXIT=0. depcruise sauber. Biome grün. Bestehende Capture-/Draft-Service-Tests bleiben grün.
+
+**Restlücken:** Mobile-Formular ist schlank (Titel/Aussage) — volle Metadaten/Anhänge/Diktat bleiben Desktop bzw. spätere Mobile-Ausbaustufe. SCRUM-113 bleibt offen für FE-MOB-01/03/05/07.
+
+**Empfehlung:** Nach grünem Mac-Gate + Commit/Push dürfen **FE-CAP-07** abgehakt und damit **SCRUM-100 auf Done** gesetzt werden; **FE-MOB-02/04/06** in SCRUM-113 abhaken. **SCRUM-113 bleibt offen** für FE-MOB-01 (PWA), FE-MOB-03 (Ask), FE-MOB-05 (Wissenszugriff), FE-MOB-07 (Offline). Ich setze keine Jira-Checkbox/Status selbst.

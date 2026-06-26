@@ -1,18 +1,26 @@
-import { useMutation } from "@tanstack/react-query";
-import { FileText, Mic, Paperclip, Save, Sparkles, X } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { FileText, Mic, Paperclip, RotateCcw, Save, Sparkles, Trash2, X } from "lucide-react";
 import { useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import type { InterviewResult, KnowledgeType, StructureResult } from "../api/types";
+import { useDrafts } from "../api/hooks";
+import type {
+  Draft,
+  DraftPayload,
+  InterviewResult,
+  KnowledgeType,
+  StructureResult,
+} from "../api/types";
 import { useSession } from "../app/AuthContext";
 import { useToast } from "../app/ToastContext";
 import { HelpTip } from "../components/HelpTip";
 import { ListEditor, TagEditor } from "../components/editors";
 import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
 import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
+import { draftTitle } from "../lib/draftForm";
 import {
   fileToThumbDataUrl,
   isImage,
@@ -101,6 +109,10 @@ export function Capture(): JSX.Element {
   const [notice, setNotice] = useState<string | null>(null);
   // SCRUM-123: laufende Bild-OCR (für ehrlichen Status / Button-Sperre).
   const [ocrBusy, setOcrBusy] = useState<string | null>(null);
+  // SCRUM-113 / FE-CAP-07: aktuell fortgesetzter Entwurf (null = neuer Entwurf).
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const qc = useQueryClient();
+  const drafts = useDrafts();
 
   // Diktat
   const [listening, setListening] = useState(false);
@@ -206,7 +218,7 @@ export function Capture(): JSX.Element {
   const saveDraft = useMutation({
     mutationFn: () => {
       const n = parsedValidations();
-      return endpoints.drafts.create({
+      const payload: DraftPayload = {
         title: draft?.title || raw.split("\n")[0]?.slice(0, 80) || t("capture.draftFallbackTitle"),
         statement: draft?.statement || raw,
         type,
@@ -216,18 +228,54 @@ export function Capture(): JSX.Element {
         measures: draft?.measures.filter((x) => x.trim()),
         asset: asset.trim() ? asset.trim() : undefined,
         ...(n ? { neededValidations: n } : {}),
-      });
+      };
+      // SCRUM-113 / FE-CAP-07: fortgesetzten Entwurf aktualisieren, sonst neu anlegen.
+      return draftId ? endpoints.drafts.update(draftId, payload) : endpoints.drafts.create(payload);
     },
-    onSuccess: () => {
-      setNotice(t("capture.draftSaved"));
+    onSuccess: (d) => {
+      setDraftId(d.id);
+      void qc.invalidateQueries({ queryKey: ["drafts"] });
       setErr(null);
-      // FE-FND-04 Pilot: einheitliche Erfolgsmeldung über den Toast-Bus.
-      push("success", t("capture.draftSaved"));
+      const msg = draftId ? t("capture.draftUpdated") : t("capture.draftSaved");
+      setNotice(msg);
+      push("success", msg);
     },
     onError: (e) => {
       fail(e);
       push("error", t("state.error"));
     },
+  });
+
+  // SCRUM-113 / FE-CAP-07: bestehenden Entwurf ins Formular laden (gemeinsamer Pool).
+  const loadDraft = (d: Draft): void => {
+    setErr(null);
+    setMode("formular");
+    setDraft({
+      ...EMPTY_DRAFT,
+      title: d.payload.title ?? "",
+      statement: d.payload.statement ?? "",
+      conditions: d.payload.conditions ?? [],
+      measures: d.payload.measures ?? [],
+    });
+    setType(d.payload.type ?? "best_practice");
+    setCategory(d.payload.category ?? "");
+    setTags(d.payload.tags ?? []);
+    setAsset(d.payload.asset ?? "");
+    setNeededValidations(d.payload.neededValidations ? String(d.payload.neededValidations) : "");
+    setDraftId(d.id);
+    setNotice(t("capture.editingDraft"));
+  };
+
+  const discardDraft = useMutation({
+    mutationFn: (id: string) => endpoints.drafts.remove(id),
+    onSuccess: (_d, id) => {
+      void qc.invalidateQueries({ queryKey: ["drafts"] });
+      push("success", t("capture.draftDiscarded"));
+      if (draftId === id) {
+        setDraftId(null);
+      }
+    },
+    onError: fail,
   });
 
   const switchMode = (m: Mode): void => {
@@ -381,6 +429,45 @@ export function Capture(): JSX.Element {
   return (
     <div className="mx-auto max-w-5xl">
       <PageHeader kicker={t("capture.kicker")} title={t("capture.title")} />
+
+      {/* SCRUM-113 / FE-CAP-07: Entwürfe fortsetzen (gemeinsamer Pool mit Mobile) */}
+      {(drafts.data ?? []).length > 0 ? (
+        <Card className="mb-4 space-y-2">
+          <SectionLabel>{t("capture.resumeTitle")}</SectionLabel>
+          <ul className="divide-y divide-hairline">
+            {(drafts.data ?? []).map((d) => (
+              <li key={d.id} className="flex items-center gap-2 py-1.5">
+                <span className="min-w-0 flex-1 truncate text-[13px] text-text">
+                  {draftTitle(d, t("capture.draftFallbackTitle"))}
+                  {draftId === d.id ? (
+                    <span className="ml-2 font-mono text-[10px] uppercase text-ai">
+                      {t("capture.editingBadge")}
+                    </span>
+                  ) : null}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => loadDraft(d)}
+                  className="inline-flex items-center gap-1 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
+                >
+                  <RotateCcw size={13} />
+                  {t("capture.resume")}
+                </button>
+                <button
+                  type="button"
+                  title={t("capture.discardDraft")}
+                  disabled={discardDraft.isPending}
+                  onClick={() => discardDraft.mutate(d.id)}
+                  className="grid h-7 w-7 place-items-center rounded-btn text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
+
       <div className="mb-4 flex flex-wrap gap-1.5">
         {MODES.map((m) => (
           <button
