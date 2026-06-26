@@ -1857,3 +1857,27 @@ Datum: 2026-06-25
 **Risiken/Grenzen:** SSO erfordert vollständige Provider-Config (sonst UI ehrlich deaktiviert, Route 501). Implicit bewusst nicht verwendet. client_secret nur für confidential clients optional. Token-Exchange nutzt globales `fetch` (Node 20), in Tests injiziert.
 
 **Empfehlung:** Nach grünem Mac-Gate + Commit/Push darf **FE-AUTH-07** abgehakt werden → **SCRUM-99 auf Done**, sofern die übrigen Auth-Checkboxen erledigt sind. Ich setze keine Jira-Checkbox/Status selbst.
+
+---
+
+## 2026-06-26 · SCRUM-98 — Foundation abschließen: FE-FND-01 (App-Shells) + FE-FND-09 (Missionen)
+
+**Ticket(s):** SCRUM-98 / FE-FND-01 + FE-FND-09. Freigegeben: Option A (minimaler echter Missions-Block). Ziel: SCRUM-98 lückenlos schließen.
+
+**Befund (Re-Audit vs. Erstprüfung Z. 883–934):** Die seinerzeit offenen Foundation-Punkte sind durch Folgetickets geschlossen: **FE-FND-02** (Nav-Rolle aus Session) via `RoleContext`/`effectiveRole` (SCRUM-150); **FE-FND-04** (Toaster-Bus) via `ToastContext`/`useToast` (SCRUM-151); **FE-FND-08** (periodisches Nachladen) via `AuthContext` `refetchInterval`+`refetchOnWindowFocus`. FE-FND-03/05/06/07 bereits abhakbar. Verblieben: FND-01 und FND-09.
+
+**FE-FND-01 (App-Shells) — abhakbar, Evidenz:** Login-Shell (`App.tsx` Gate → AuthScreens/ResetScreen/SsoCallback), Desktop-Control-Room (`AppShell.tsx`: Sidebar+Topbar+Content+CommandPalette, Navigation aus `navigation.ts` als einzige Quelle), **Mobile/PWA-Shell** real durch SCRUM-113 (installierbare PWA: Manifest/standalone/Icons/Service-Worker/Offline-Start + echte mobile Erfassung/Fragen/Wissenszugriff + Offline-Queue). Der ursprüngliche Blocker („Mobile statische Vorschau") ist behoben.
+
+**FE-FND-09 (Missionen) — umgesetzt (echt, kein Demo):**
+- `apps/web/src/lib/missions.ts` (neu, DOM-frei) — `missionsForRole(role, stufe2)`: leitet kuratierte Deep-Links **aus den vorhandenen `NAV_GROUPS` + `canSee`** ab (keine zweite Berechtigungslogik), aufgaben-orientierte Reihenfolge (erfassen→validierung→risiko→fragen→bibliothek), max. 4, gefiltert nach Rollen-Sichtbarkeit. Liefert nur `id/path/labelKey/descKey` echter Flows.
+- `apps/web/src/pages/Start.tsx` — neue rollenbewusste „Missionen"-Sektion (2–4 Kacheln) **über** den bestehenden KPIs/CTA/Todo; Kacheln sind `<Link>` auf echte Routen (`/erfassen`,`/validierung`,`/risiko`,`/fragen`,`/bibliothek`). Bestehende CTA/KPIs/Todo unverändert. Keine neuen Routen, keine Platzhalterseiten, kein Fake-Inhalt, keine Backend-Änderung.
+- `apps/web/src/i18n.ts` — `missions.title` + `missions.<id>.desc` (DE+EN).
+- `tests/app/missions.test.ts` (neu) — 5 Tests: viewer→[fragen,bibliothek]; experte→[erfassen,fragen,bibliothek]; controller/admin→[erfassen,validierung,risiko,fragen] (max 4, admin==controller); jede Mission echter Pfad+descKey; je Rolle 2–4 Missionen.
+
+**Sichtbarkeitslogik (kein Doppel-RBAC):** ausschließlich `canSee(item, role, stufe2)` aus `navigation.ts`; Missionen sind eine Sicht auf bestehende Nav-Items, kein neues Rechtemodell. Backend-RBAC bleibt serverseitig maßgeblich.
+
+**Gelaufene Checks:** apps/web `tsc --noEmit` EXIT=0 · `npm run check` GRÜN — **52 Testdateien / 262 Tests** (5 neu) · Biome grün · depcruise sauber.
+
+**Erfüllte AK:** rollenbewusste Missionen aus echter Nav/Role-Logik ✓ · 2–4 Kacheln je Rolle ✓ · nur Deep-Links in existierende Flows ✓ · Sichtbarkeit an Rollenrecht gebunden ✓ · keine neuen Routen/Platzhalter/Fake/Marketing ✓ · keine Backend-Änderung ✓ · KPIs/CTA unbeschädigt ✓.
+
+**Empfehlung:** Nach grünem Mac-Gate + Commit/Push dürfen **FE-FND-01** und **FE-FND-09** abgehakt werden → **SCRUM-98 auf Done** (die übrigen FND-Punkte sind belegt erledigt). Ich setze keine Jira-Checkbox/Status selbst.

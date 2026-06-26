@@ -5,6 +5,7 @@ import { useAnalytics, useGaps, useValidationBoard } from "../api/hooks";
 import { useSession } from "../app/AuthContext";
 import { useRole } from "../app/RoleContext";
 import { Card, PageHeader } from "../components/ui";
+import { missionsForRole } from "../lib/missions";
 
 const CTA: Record<string, { to: string; key: string }> = {
   viewer: { to: "/fragen", key: "start.ctaAsk" },
@@ -24,12 +25,14 @@ function Kpi({ label, value }: { label: string; value: string | number }): JSX.E
 
 export function Start(): JSX.Element {
   const { t } = useTranslation();
-  const { role } = useRole();
+  const { role, stufe2 } = useRole();
   const { user } = useSession();
   const analytics = useAnalytics();
   const board = useValidationBoard();
   const gaps = useGaps();
   const cta = CTA[role] ?? CTA.viewer;
+  // FE-FND-09: rollenbewusste Missionen — Deep-Links in echte Flows (keine neuen Seiten).
+  const missions = missionsForRole(role, stufe2);
 
   const todo = [
     ...(board.data ?? [])
@@ -53,6 +56,29 @@ export function Start(): JSX.Element {
           </Link>
         }
       />
+      {missions.length > 0 ? (
+        <div className="mb-5">
+          <h2 className="mb-3 text-[15px] font-semibold text-ink">{t("missions.title")}</h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {missions.map((m) => (
+              <Link
+                key={m.id}
+                to={m.path}
+                className="group rounded-card border border-hairline bg-surface p-4 transition hover:border-ink/30"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[14px] font-semibold text-ink">{t(m.labelKey)}</span>
+                  <ArrowRight
+                    size={16}
+                    className="text-muted-2 transition group-hover:translate-x-0.5 group-hover:text-ink"
+                  />
+                </div>
+                <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">{t(m.descKey)}</p>
+              </Link>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <div className="grid gap-5 lg:grid-cols-[1.6fr_1fr]">
         <Card>
           <div className="mb-3 flex items-center justify-between">
