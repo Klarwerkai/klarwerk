@@ -26,11 +26,14 @@ import {
 import { type ExternalSearchService, createExternalSearchFromEnv } from "../../external-search";
 import { I18nService } from "../../i18n";
 import {
+  type EvidenceRepo,
+  InMemoryEvidenceRepo,
   InMemoryKoRepo,
   InMemoryKoVersionRepo,
   type KoRepo,
   KoService,
   type KoVersionRepo,
+  PgEvidenceRepo,
   PgKoRepo,
   PgKoVersionRepo,
 } from "../../knowledge-object";
@@ -107,6 +110,7 @@ interface AppRepos {
   auditRepo: AuditRepo;
   koRepo: KoRepo;
   koVersions: KoVersionRepo;
+  evidence: EvidenceRepo;
   users: UserRepo;
   sessions: SessionRepo;
   resetTokens: PasswordResetRepo;
@@ -124,7 +128,12 @@ interface AppRepos {
 // Audit-Log und ein KO-Repository für alle Module, die auf denselben Bestand wirken.
 function assembleServices(repos: AppRepos): AppServices {
   const audit = new AuditService({ repo: repos.auditRepo });
-  const ko = new KoService({ repo: repos.koRepo, audit, versions: repos.koVersions });
+  const ko = new KoService({
+    repo: repos.koRepo,
+    audit,
+    versions: repos.koVersions,
+    evidence: repos.evidence,
+  });
   // FR-RSN-02/06: echtes Modell, wenn ANTHROPIC_API_KEY gesetzt ist; sonst deterministisch.
   const modelClient = createModelClientFromEnv();
   const reasoner = new Reasoner(modelClient ? new ModelProvider(modelClient) : undefined);
@@ -182,6 +191,7 @@ export function buildServices(): AppServices {
     auditRepo: new InMemoryAuditRepo(),
     koRepo: new InMemoryKoRepo(),
     koVersions: new InMemoryKoVersionRepo(),
+    evidence: new InMemoryEvidenceRepo(),
     users: new InMemoryUserRepo(),
     sessions: new InMemorySessionRepo(),
     resetTokens: new InMemoryPasswordResetRepo(),
@@ -202,6 +212,7 @@ export function buildPgServices(pool: Pool): AppServices {
     auditRepo: new PgAuditRepo(pool),
     koRepo: new PgKoRepo(pool),
     koVersions: new PgKoVersionRepo(pool),
+    evidence: new PgEvidenceRepo(pool),
     users: new PgUserRepo(pool),
     sessions: new PgSessionRepo(pool),
     resetTokens: new PgPasswordResetRepo(pool),

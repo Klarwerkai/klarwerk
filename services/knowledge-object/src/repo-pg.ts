@@ -1,6 +1,6 @@
 import type { Pool } from "pg";
-import type { KoFilter, KoRepo, KoVersionRepo } from "./repo";
-import type { KnowledgeObject, KoVersionSnapshot } from "./types";
+import type { EvidenceRepo, KoFilter, KoRepo, KoVersionRepo } from "./repo";
+import type { EvidenceRecord, KnowledgeObject, KoVersionSnapshot } from "./types";
 
 // Postgres-Adapter für knowledge-object. Vollobjekt als JSONB; Filterspalten indiziert.
 export const KO_SCHEMA = `
@@ -27,6 +27,20 @@ CREATE TABLE IF NOT EXISTS ko_versions (
   note text NOT NULL,
   PRIMARY KEY (ko_id, version)
 );
+`;
+
+// SCRUM-160: Evidence-Records für Quellen/Anhänge, separat vom KO-JSON.
+export const KO_EVIDENCE_SCHEMA = `
+CREATE TABLE IF NOT EXISTS ko_evidence (
+  id text PRIMARY KEY,
+  ko_id text NOT NULL,
+  ko_version int NOT NULL,
+  kind text NOT NULL,
+  data jsonb NOT NULL,
+  created_at text NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ko_evidence_ko_id ON ko_evidence(ko_id);
+CREATE INDEX IF NOT EXISTS idx_ko_evidence_kind ON ko_evidence(kind);
 `;
 
 interface DataRow {
@@ -131,5 +145,37 @@ export class PgKoVersionRepo implements KoVersionRepo {
       author: row.author,
       note: row.note,
     }));
+  }
+}
+
+interface EvidenceRow {
+  data: EvidenceRecord;
+}
+
+// SCRUM-160: Postgres-Adapter der Evidence-Records (append-only, nie überschreibend).
+export class PgEvidenceRepo implements EvidenceRepo {
+  constructor(private readonly pool: Pool) {}
+
+  async append(record: EvidenceRecord): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO ko_evidence(id,ko_id,ko_version,kind,data,created_at)
+       VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING`,
+      [
+        record.id,
+        record.koId,
+        record.koVersion,
+        record.kind,
+        JSON.stringify(record),
+        record.createdAt,
+      ],
+    );
+  }
+
+  async listByKo(koId: string): Promise<EvidenceRecord[]> {
+    const res = await this.pool.query<EvidenceRow>(
+      "SELECT data FROM ko_evidence WHERE ko_id=$1 ORDER BY created_at,id",
+      [koId],
+    );
+    return res.rows.map((row) => row.data);
   }
 }

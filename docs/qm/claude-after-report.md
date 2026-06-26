@@ -2345,3 +2345,18 @@ Versions-Immutabilitäts-Risiko aus SCRUM-153. Claude setzt Jira nicht selbst.
 **5. Tests/Gates:** `npm run check` grün — 73 Dateien / 395 Tests, root-tsc 0, Biome grün, depcruise sauber (148 Module / 451 Dependencies).
 
 **6. Restlücken:** Kein Restore/Rollback, kein Side-by-Side-Diff und kein Wortdiff — bewusst separate, größere UI-/Governance-Themen.
+
+
+## SCRUM-160 — Evidence-Records v1 für KO-Quellen und Anhänge
+
+**1. Vorab-Befund:** KOs hatten `sources[]` und `attachments[]`; Audit protokolliert Aktionen, ist aber kein fachliches Evidence-Modell. Nach SCRUM-159 existiert persistente Versionierung, aber Quellen/Anhänge hatten keine separate, stabile Evidence-Schicht. Kein UI-/API-Bruch nötig.
+
+**2. Umsetzung:** Additiver `EvidenceRecord` mit `kind: source|attachment`, KO-ID, KO-Version, Source-/Attachment-/ObjectRef, Label, Mime/URL/Provider, Ersteller und Zeitpunkt. Neues `EvidenceRepo` mit InMemory/Pg-Adapter, Tabelle `ko_evidence`. `KoService.addSource` erzeugt immer Evidence; `addAttachment` erzeugt Evidence für Object-Store-Anhänge mit `objectId`. `evidenceOf(id)` als minimaler read-only Service-Vertrag für Tests.
+
+**3. Geänderte Dateien:** `services/knowledge-object/src/types.ts`, `repo.ts`, `repo-pg.ts`, `service.ts`, `service.test.ts`, `index.ts`, `services/app/src/db.ts`, `services/app/src/build-app.ts`, `docs/qm/claude-after-report.md`.
+
+**4. Technische Entscheidung:** Evidence bleibt separat vom KO-JSON und append-only; bestehende Quellen/Anhänge bleiben canonical UI/API. Pg-Tabelle `ko_evidence(id, ko_id, ko_version, kind, data, created_at)` mit `ON CONFLICT DO NOTHING`. Inline-Altanhänge ohne `objectId` erzeugen bewusst keine Object-Evidence.
+
+**5. Tests/Gates:** +4 Evidence-Tests (Source-Evidence, ObjectAttachment-Evidence, Leerzustand ohne Repo, Pg-Fake-Pool Round-Trip + Immutabilität). `npm run check` grün — 73 Dateien / 399 Tests, root-tsc 0, Biome grün, depcruise sauber (148 Module / 451 Dependencies).
+
+**6. Restlücken:** Kein UI Evidence-Browser, kein Peer-Validation-Verfahren, kein vollständiges Source/Evidence/Version-Großmodell, kein Retrieval/ModelAdapter/ModelRun.

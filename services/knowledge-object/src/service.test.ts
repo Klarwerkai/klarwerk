@@ -1,8 +1,8 @@
 import type { Pool } from "pg";
 import { beforeEach, describe, expect, it } from "vitest";
 import { AuditService, InMemoryAuditRepo } from "../../audit";
-import { InMemoryKoRepo, InMemoryKoVersionRepo } from "./repo";
-import { PgKoVersionRepo } from "./repo-pg";
+import { InMemoryEvidenceRepo, InMemoryKoRepo, InMemoryKoVersionRepo } from "./repo";
+import { PgEvidenceRepo, PgKoVersionRepo } from "./repo-pg";
 import { type CreateKoInput, KoService } from "./service";
 
 function base(overrides: Partial<CreateKoInput> = {}): CreateKoInput {
@@ -342,5 +342,122 @@ describe("SCRUM-161: KO-Version-Snapshots lesbar", () => {
       versions: new InMemoryKoVersionRepo(),
     });
     await expect(svc.versionsOf("missing")).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+});
+
+// SCRUM-160: Fake-Pool, der ko_evidence nachbildet (INSERT … ON CONFLICT DO NOTHING / SELECT).
+function fakeEvidencePool() {
+  const rows = new Map<string, { data: unknown; created_at: string }>();
+  return {
+    query: async (sql: string, params: unknown[] = []) => {
+      if (sql.includes("INSERT INTO ko_evidence")) {
+        const [id, _koId, _koVersion, _kind, data, createdAt] = params as [
+          string,
+          string,
+          number,
+          string,
+          string,
+          string,
+        ];
+        if (!rows.has(id)) {
+          rows.set(id, { data: JSON.parse(data), created_at: createdAt });
+        }
+        return { rows: [] };
+      }
+      if (sql.includes("SELECT data FROM ko_evidence")) {
+        const [koId] = params as [string];
+        const out = [...rows.values()]
+          .filter((row) => (row.data as { koId: string }).koId === koId)
+          .sort((a, b) => a.created_at.localeCompare(b.created_at))
+          .map((row) => ({ data: row.data }));
+        return { rows: out };
+      }
+      return { rows: [] };
+    },
+  } as unknown as Pool;
+}
+
+describe("SCRUM-160: Evidence-Records v1", () => {
+  it("addSource erzeugt einen EvidenceRecord", async () => {
+    const evidence = new InMemoryEvidenceRepo();
+    const svc = new KoService({ repo: new InMemoryKoRepo(), evidence });
+    const ko = await svc.create(base());
+    const withSource = await svc.addSource(ko.id, "experte", {
+      label: "Wikipedia Ventil",
+      url: "https://de.wikipedia.org/wiki/Ventil",
+      provider: "Wikipedia",
+    });
+
+    const records = await evidence.listByKo(ko.id);
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      koId: ko.id,
+      koVersion: 1,
+      kind: "source",
+      sourceId: withSource.sources[0]?.id,
+      label: "Wikipedia Ventil",
+      url: "https://de.wikipedia.org/wiki/Ventil",
+      provider: "Wikipedia",
+      createdBy: "experte",
+    });
+  });
+
+  it("addAttachment erzeugt Evidence nur für Object-Store-Anhänge", async () => {
+    const evidence = new InMemoryEvidenceRepo();
+    const svc = new KoService({ repo: new InMemoryKoRepo(), evidence });
+    const ko = await svc.create(base());
+
+    await svc.addAttachment(ko.id, "pedi", {
+      name: "inline.jpg",
+      mime: "image/jpeg",
+      dataUrl: "data:image/jpeg;base64,AAAA",
+    });
+    expect(await evidence.listByKo(ko.id)).toHaveLength(0);
+
+    const withRef = await svc.addAttachment(ko.id, "pedi", {
+      name: "foto.jpg",
+      mime: "image/jpeg",
+      objectId: "obj-123",
+      thumbnail: "data:image/jpeg;base64,THUMB",
+      size: 1234,
+    });
+    const record = (await evidence.listByKo(ko.id))[0];
+    expect(record).toMatchObject({
+      koId: ko.id,
+      koVersion: 1,
+      kind: "attachment",
+      attachmentId: withRef.attachments.at(-1)?.id,
+      objectId: "obj-123",
+      label: "foto.jpg",
+      mime: "image/jpeg",
+      createdBy: "pedi",
+    });
+  });
+
+  it("evidenceOf liefert ohne Evidence-Repo einen ehrlichen Leerzustand", async () => {
+    const svc = new KoService({ repo: new InMemoryKoRepo() });
+    const ko = await svc.create(base());
+    await expect(svc.evidenceOf(ko.id)).resolves.toEqual([]);
+  });
+
+  it("PgEvidenceRepo: Round-Trip + Immutabilität über denselben Fake-Pool", async () => {
+    const pool = fakeEvidencePool();
+    const evidence = new PgEvidenceRepo(pool);
+    const svc = new KoService({ repo: new InMemoryKoRepo(), evidence });
+    const ko = await svc.create(base());
+    await svc.addSource(ko.id, "experte", { label: "Quelle" });
+
+    const list = await new PgEvidenceRepo(pool).listByKo(ko.id);
+    expect(list).toHaveLength(1);
+    expect(list[0]?.kind).toBe("source");
+    expect(list[0]?.label).toBe("Quelle");
+
+    const first = list[0];
+    if (!first) {
+      throw new Error("Evidence fehlt.");
+    }
+    await new PgEvidenceRepo(pool).append({ ...first, label: "Überschrieben?" });
+    const again = await new PgEvidenceRepo(pool).listByKo(ko.id);
+    expect(again[0]?.label).toBe("Quelle");
   });
 });

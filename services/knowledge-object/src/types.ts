@@ -110,6 +110,26 @@ export interface KoVersionSnapshot {
   note: string;
 }
 
+// SCRUM-160 (Knowledge-OS-Foundation): separate Evidence-Records für externe Quellen
+// und Objekt-Anhänge. Additiv zur bestehenden KO-Struktur; keine UI-/API-Änderung.
+export type EvidenceKind = "source" | "attachment";
+
+export interface EvidenceRecord {
+  id: string;
+  koId: string;
+  koVersion: number;
+  kind: EvidenceKind;
+  sourceId?: string;
+  attachmentId?: string;
+  objectId?: string;
+  label: string;
+  mime?: string;
+  url?: string | null;
+  provider?: string | null;
+  createdBy: string;
+  createdAt: string;
+}
+
 export type KoErrorCode = "NOT_FOUND" | "INVALID_TYPE" | "INVALID_NEEDED" | "INVALID_SOURCE";
 
 export class KoError extends Error {

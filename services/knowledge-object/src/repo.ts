@@ -1,4 +1,10 @@
-import type { KnowledgeObject, KnowledgeType, KoStatus, KoVersionSnapshot } from "./types";
+import type {
+  EvidenceRecord,
+  KnowledgeObject,
+  KnowledgeType,
+  KoStatus,
+  KoVersionSnapshot,
+} from "./types";
 
 export interface KoFilter {
   type?: KnowledgeType;
@@ -82,5 +88,30 @@ export class InMemoryKoVersionRepo implements KoVersionRepo {
     const byVersion = this.items.get(koId);
     const list = byVersion ? [...byVersion.values()] : [];
     return Promise.resolve(list.sort((a, b) => a.version - b.version));
+  }
+}
+
+// SCRUM-160: Evidence-Records separat vom KO-JSON. Append-only; vorhandene Evidence-ID wird
+// nicht überschrieben. Damit bleiben Quellen-/Anhang-Nachweise stabil referenzierbar.
+export interface EvidenceRepo {
+  append(record: EvidenceRecord): Promise<void>;
+  listByKo(koId: string): Promise<EvidenceRecord[]>;
+}
+
+export class InMemoryEvidenceRepo implements EvidenceRepo {
+  private readonly items = new Map<string, EvidenceRecord>();
+
+  append(record: EvidenceRecord): Promise<void> {
+    if (!this.items.has(record.id)) {
+      this.items.set(record.id, record);
+    }
+    return Promise.resolve();
+  }
+
+  listByKo(koId: string): Promise<EvidenceRecord[]> {
+    const records = [...this.items.values()]
+      .filter((record) => record.koId === koId)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+    return Promise.resolve(records);
   }
 }

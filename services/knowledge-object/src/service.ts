@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
 import { htmlToPlainText, sanitizeHtml } from "../../structure";
-import type { KoFilter, KoRepo, KoVersionRepo } from "./repo";
+import type { EvidenceRepo, KoFilter, KoRepo, KoVersionRepo } from "./repo";
 import {
+  type EvidenceRecord,
   KNOWLEDGE_TYPES,
   type KnowledgeObject,
   type KnowledgeType,
@@ -21,6 +22,9 @@ export interface KoServiceDeps {
   // SCRUM-159: optionales Versions-Repo. Ist es gesetzt, werden bei create/revise
   // vollständige, unveränderliche Snapshots geschrieben (Knowledge-OS-Foundation).
   versions?: KoVersionRepo;
+  // SCRUM-160: optionales Evidence-Repo. Ist es gesetzt, werden Quellen/Objekt-Anhänge
+  // als fachliche Evidence-Records zusätzlich zum KO-JSON persistiert.
+  evidence?: EvidenceRepo;
   now?: () => number;
   genId?: () => string;
 }
@@ -62,6 +66,7 @@ export class KoService {
   private readonly repo: KoRepo;
   private readonly audit: AuditService | undefined;
   private readonly versions: KoVersionRepo | undefined;
+  private readonly evidence: EvidenceRepo | undefined;
   private readonly now: () => number;
   private readonly genId: () => string;
 
@@ -69,6 +74,7 @@ export class KoService {
     this.repo = deps.repo;
     this.audit = deps.audit;
     this.versions = deps.versions;
+    this.evidence = deps.evidence;
     this.now = deps.now ?? (() => Date.now());
     this.genId = deps.genId ?? (() => randomUUID());
   }
@@ -88,6 +94,15 @@ export class KoService {
       author,
       note,
     });
+  }
+
+  // SCRUM-160: Evidence-Records append-only schreiben. No-op ohne Evidence-Repo;
+  // bestehende KO-Flows bleiben dadurch rückwärtskompatibel.
+  private async appendEvidence(record: Omit<EvidenceRecord, "id">): Promise<void> {
+    if (!this.evidence) {
+      return;
+    }
+    await this.evidence.append({ id: this.genId(), ...record });
   }
 
   // FR-KO-01: vollständiges Datenmodell; FR-KO-02: Wissensart gesetzt.
@@ -182,6 +197,19 @@ export class KoService {
       attachments: [...(ko.attachments ?? []), attachment],
     };
     await this.repo.update(updated);
+    if (attachment.objectId) {
+      await this.appendEvidence({
+        koId: id,
+        koVersion: ko.version,
+        kind: "attachment",
+        attachmentId: attachment.id,
+        objectId: attachment.objectId,
+        label: attachment.name,
+        mime: attachment.mime,
+        createdBy: author,
+        createdAt: attachment.at,
+      });
+    }
     await this.audit?.record({ actor: author, action: "ko.attached", target: id });
     return updated;
   }
@@ -232,6 +260,17 @@ export class KoService {
     };
     const updated: KnowledgeObject = { ...ko, sources: [...(ko.sources ?? []), source] };
     await this.repo.update(updated);
+    await this.appendEvidence({
+      koId: id,
+      koVersion: ko.version,
+      kind: "source",
+      sourceId: source.id,
+      label: source.label,
+      url: source.url,
+      provider: source.provider ?? null,
+      createdBy: author,
+      createdAt: source.at,
+    });
     await this.audit?.record({ actor: author, action: "ko.source-added", target: id });
     return updated;
   }
@@ -260,6 +299,12 @@ export class KoService {
   async versionsOf(id: string) {
     await this.require(id);
     return this.versions?.listByKo(id) ?? [];
+  }
+
+  // SCRUM-160: minimaler read-only Zugriff für Service-Vertrag/Tests. UI bleibt außerhalb Scope.
+  async evidenceOf(id: string) {
+    await this.require(id);
+    return this.evidence?.listByKo(id) ?? [];
   }
 
   // FR-KO-04: Überarbeiten erhöht Version, setzt Bewertungen zurück, erzeugt History-Eintrag.
