@@ -1,4 +1,4 @@
-import type { KnowledgeObject, KnowledgeType, KoStatus } from "./types";
+import type { KnowledgeObject, KnowledgeType, KoStatus, KoVersionSnapshot } from "./types";
 
 export interface KoFilter {
   type?: KnowledgeType;
@@ -55,5 +55,32 @@ export class InMemoryKoRepo implements KoRepo {
 
   list(filter: KoFilter): Promise<KnowledgeObject[]> {
     return Promise.resolve([...this.items.values()].filter((ko) => matches(ko, filter)));
+  }
+}
+
+// SCRUM-159: Persistenz der KO-Version-Snapshots. Append-only; ein bereits gespeicherter
+// (koId, version) wird NIE überschrieben (frühere Versionen bleiben unveränderlich).
+export interface KoVersionRepo {
+  append(snapshot: KoVersionSnapshot): Promise<void>;
+  listByKo(koId: string): Promise<KoVersionSnapshot[]>;
+}
+
+export class InMemoryKoVersionRepo implements KoVersionRepo {
+  // koId → version → Snapshot. Map bewahrt Reihenfolge; vorhandene Version wird nicht ersetzt.
+  private readonly items = new Map<string, Map<number, KoVersionSnapshot>>();
+
+  append(snapshot: KoVersionSnapshot): Promise<void> {
+    const byVersion = this.items.get(snapshot.koId) ?? new Map<number, KoVersionSnapshot>();
+    if (!byVersion.has(snapshot.version)) {
+      byVersion.set(snapshot.version, snapshot);
+    }
+    this.items.set(snapshot.koId, byVersion);
+    return Promise.resolve();
+  }
+
+  listByKo(koId: string): Promise<KoVersionSnapshot[]> {
+    const byVersion = this.items.get(koId);
+    const list = byVersion ? [...byVersion.values()] : [];
+    return Promise.resolve(list.sort((a, b) => a.version - b.version));
   }
 }

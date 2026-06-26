@@ -2273,3 +2273,45 @@ Zwei additive DOM-freie Helfer statt schwerer Virtualisierungs-Lib oder Backend-
 ### Jira-Empfehlung
 SCRUM-158 nach grünem Mac-Gate auf Done. Damit ist der Stabilize-Block (SCRUM-153…158)
 abgeschlossen. Claude setzt Jira nicht selbst.
+
+---
+
+## After-Report — SCRUM-159 · Foundation: Persistente KO-Version-Snapshots — 2026-06-26
+
+### Technische Entscheidung
+Knowledge-OS-Foundation: vollständige, **unveränderliche** KO-Snapshots je Version, additiv
+neben dem bestehenden Modell. Aktuelles KO bleibt canonical current state; `history[]` und
+KO-JSON-Schema unverändert. Snapshot hinter `KoVersionRepo` (InMemory + Pg), DB-seitige
+Immutabilität über `PRIMARY KEY (ko_id, version)` + `ON CONFLICT DO NOTHING`. Snapshot wird per
+JSON-Deep-Copy abgelegt → spätere KO-Änderungen berühren frühere Versionen nie.
+
+### Umsetzung
+- `services/knowledge-object/src/types.ts`: neuer Typ `KoVersionSnapshot` (Voll-KO + Metadaten).
+- `services/knowledge-object/src/repo.ts`: `KoVersionRepo` (append/listByKo) + `InMemoryKoVersionRepo`
+  (überschreibt vorhandene Version nicht).
+- `services/knowledge-object/src/repo-pg.ts`: `KO_VERSIONS_SCHEMA` (`ko_versions`, PK (ko_id,version))
+  + `PgKoVersionRepo` (append-only, ON CONFLICT DO NOTHING).
+- `services/knowledge-object/src/service.ts`: optionale `versions`-Dep; private `snapshot()`
+  (JSON-Deep-Copy, No-op ohne Repo); `create` legt Version-1-Snapshot an, `revise` Version-N.
+- `services/knowledge-object/index.ts`: Exporte (Typ/Repos/Schema).
+- `services/app/src/db.ts`: `KO_VERSIONS_SCHEMA` in `migrate()`.
+- `services/app/src/build-app.ts`: `AppRepos.koVersions`; `KoService` bekommt `versions`;
+  `buildServices` → InMemory, `buildPgServices` → `PgKoVersionRepo`.
+- Keine Änderung an API/Routes/UI/Ask/Output/Audit-Hash-Kette/Reasoner/RBAC.
+
+### Tests / Gates
+- `service.test.ts` +5 Tests: create→V1; revise→V2 + V1 unverändert; Snapshot ist echte Kopie
+  (spätere Revision berührt V1 nicht); No-op ohne Versions-Repo; `PgKoVersionRepo`-Round-Trip +
+  Immutabilität über Fake-Pool. Bestehende KO-/Library-/Output-Tests unverändert grün.
+- `npm run check` grün: **71 Dateien / 387 Tests**, tsc + Biome + depcruise sauber. FE nicht berührt.
+
+### Restlücken
+- Kein UI-Version-Browser/Diff (bewusst, Nicht-Ziel; Foundation-Infrastruktur).
+- Snapshots erfassen den Stand bei Versions-Erstellung (create/revise); reine Status-/Trust-
+  Änderungen ohne Versions-Bump erzeugen bewusst keinen neuen Snapshot.
+- Kein Backfill für Alt-KOs (Read-Fallback bleibt: aktuelles KO unverändert nutzbar).
+- Echte Pg-Persistenz über Testcontainers auf Mac/CI (Unit-Gate nutzt Fake-Pool).
+
+### Jira-Empfehlung
+SCRUM-159 nach grünem Mac-Gate auf Done. Erstes Foundation-Work-Item; schließt das
+Versions-Immutabilitäts-Risiko aus SCRUM-153. Claude setzt Jira nicht selbst.

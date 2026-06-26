@@ -98,6 +98,18 @@ export interface KnowledgeObject {
   sources: KoSource[];
 }
 
+// SCRUM-159 (Knowledge-OS-Foundation): unveränderlicher Voll-Snapshot eines KO je Version.
+// Hält den kompletten Stand bei Versions-Erstellung (create/revise) fest. Aktuelles KO bleibt
+// canonical current state; Snapshots sind reine Foundation-Infrastruktur (kein UI-Feature).
+export interface KoVersionSnapshot {
+  koId: string;
+  version: number;
+  snapshot: KnowledgeObject; // vollständiger Stand dieser Version
+  at: string;
+  author: string;
+  note: string;
+}
+
 export type KoErrorCode = "NOT_FOUND" | "INVALID_TYPE" | "INVALID_NEEDED" | "INVALID_SOURCE";
 
 export class KoError extends Error {

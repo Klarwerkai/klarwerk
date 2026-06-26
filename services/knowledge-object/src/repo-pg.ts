@@ -1,6 +1,6 @@
 import type { Pool } from "pg";
-import type { KoFilter, KoRepo } from "./repo";
-import type { KnowledgeObject } from "./types";
+import type { KoFilter, KoRepo, KoVersionRepo } from "./repo";
+import type { KnowledgeObject, KoVersionSnapshot } from "./types";
 
 // Postgres-Adapter für knowledge-object. Vollobjekt als JSONB; Filterspalten indiziert.
 export const KO_SCHEMA = `
@@ -13,6 +13,20 @@ CREATE TABLE IF NOT EXISTS kos (
 );
 CREATE INDEX IF NOT EXISTS idx_kos_type ON kos(type);
 CREATE INDEX IF NOT EXISTS idx_kos_status ON kos(status);
+`;
+
+// SCRUM-159: unveränderliche KO-Version-Snapshots. PK (ko_id, version) + ON CONFLICT DO NOTHING
+// garantieren, dass eine einmal geschriebene Version nie überschrieben wird.
+export const KO_VERSIONS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS ko_versions (
+  ko_id text NOT NULL,
+  version int NOT NULL,
+  snapshot jsonb NOT NULL,
+  at text NOT NULL,
+  author text NOT NULL,
+  note text NOT NULL,
+  PRIMARY KEY (ko_id, version)
+);
 `;
 
 interface DataRow {
@@ -74,5 +88,48 @@ export class PgKoRepo implements KoRepo {
     const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
     const res = await this.pool.query<DataRow>(`SELECT data FROM kos${where}`, params);
     return res.rows.map((row) => row.data);
+  }
+}
+
+interface SnapshotRow {
+  snapshot: KnowledgeObject;
+  version: number;
+  at: string;
+  author: string;
+  note: string;
+}
+
+// SCRUM-159: Postgres-Adapter der KO-Version-Snapshots (append-only, nie überschreibend).
+export class PgKoVersionRepo implements KoVersionRepo {
+  constructor(private readonly pool: Pool) {}
+
+  async append(snapshot: KoVersionSnapshot): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO ko_versions(ko_id,version,snapshot,at,author,note)
+       VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT (ko_id, version) DO NOTHING`,
+      [
+        snapshot.koId,
+        snapshot.version,
+        JSON.stringify(snapshot.snapshot),
+        snapshot.at,
+        snapshot.author,
+        snapshot.note,
+      ],
+    );
+  }
+
+  async listByKo(koId: string): Promise<KoVersionSnapshot[]> {
+    const res = await this.pool.query<SnapshotRow>(
+      "SELECT snapshot,version,at,author,note FROM ko_versions WHERE ko_id=$1 ORDER BY version",
+      [koId],
+    );
+    return res.rows.map((row) => ({
+      koId,
+      version: row.version,
+      snapshot: row.snapshot,
+      at: row.at,
+      author: row.author,
+      note: row.note,
+    }));
   }
 }

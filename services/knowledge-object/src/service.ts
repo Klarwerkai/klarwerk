@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
 import { htmlToPlainText, sanitizeHtml } from "../../structure";
-import type { KoFilter, KoRepo } from "./repo";
+import type { KoFilter, KoRepo, KoVersionRepo } from "./repo";
 import {
   KNOWLEDGE_TYPES,
   type KnowledgeObject,
@@ -18,6 +18,9 @@ const DEFAULT_NEEDED_VALIDATIONS = 3; // FR-CAP-08: 1–5, Standard 3.
 export interface KoServiceDeps {
   repo: KoRepo;
   audit?: AuditService;
+  // SCRUM-159: optionales Versions-Repo. Ist es gesetzt, werden bei create/revise
+  // vollständige, unveränderliche Snapshots geschrieben (Knowledge-OS-Foundation).
+  versions?: KoVersionRepo;
   now?: () => number;
   genId?: () => string;
 }
@@ -58,14 +61,33 @@ function cleanBody(bodyHtml: string | null | undefined): string | null {
 export class KoService {
   private readonly repo: KoRepo;
   private readonly audit: AuditService | undefined;
+  private readonly versions: KoVersionRepo | undefined;
   private readonly now: () => number;
   private readonly genId: () => string;
 
   constructor(deps: KoServiceDeps) {
     this.repo = deps.repo;
     this.audit = deps.audit;
+    this.versions = deps.versions;
     this.now = deps.now ?? (() => Date.now());
     this.genId = deps.genId ?? (() => randomUUID());
+  }
+
+  // SCRUM-159: vollständigen, unveränderlichen Voll-Snapshot ablegen (JSON-Deep-Copy, damit
+  // spätere Änderungen am Live-KO frühere Versionen nicht berühren). No-op ohne Versions-Repo.
+  private async snapshot(ko: KnowledgeObject, author: string, note: string): Promise<void> {
+    if (!this.versions) {
+      return;
+    }
+    const at = new Date(this.now()).toISOString();
+    await this.versions.append({
+      koId: ko.id,
+      version: ko.version,
+      snapshot: JSON.parse(JSON.stringify(ko)) as KnowledgeObject,
+      at,
+      author,
+      note,
+    });
   }
 
   // FR-KO-01: vollständiges Datenmodell; FR-KO-02: Wissensart gesetzt.
@@ -108,6 +130,8 @@ export class KoService {
       sources: [],
     };
     await this.repo.insert(ko);
+    // SCRUM-159: Version-1-Snapshot persistieren (Foundation; aktuelles KO bleibt canonical).
+    await this.snapshot(ko, input.author, "erstellt");
     await this.audit?.record({ actor: input.author, action: "ko.created", target: ko.id });
     return ko;
   }
@@ -260,6 +284,8 @@ export class KoService {
       sources: ko.sources ?? [], // SCRUM-129: Quellen über Revisionen erhalten
     };
     await this.repo.update(revised);
+    // SCRUM-159: neuen Versions-Snapshot persistieren; frühere Versionen bleiben unverändert.
+    await this.snapshot(revised, author, "überarbeitet");
     await this.audit?.record({
       actor: author,
       action: "ko.revised",

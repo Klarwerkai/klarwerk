@@ -1,6 +1,8 @@
+import type { Pool } from "pg";
 import { beforeEach, describe, expect, it } from "vitest";
 import { AuditService, InMemoryAuditRepo } from "../../audit";
-import { InMemoryKoRepo } from "./repo";
+import { InMemoryKoRepo, InMemoryKoVersionRepo } from "./repo";
+import { PgKoVersionRepo } from "./repo-pg";
 import { type CreateKoInput, KoService } from "./service";
 
 function base(overrides: Partial<CreateKoInput> = {}): CreateKoInput {
@@ -217,5 +219,100 @@ describe("KoService — Audit-Verdrahtung (FR-AUD-01)", () => {
       "ko.author-transferred",
     ]);
     expect(await audit.verify()).toBe(true);
+  });
+});
+
+// SCRUM-159: Fake-Pool, der ko_versions nachbildet (INSERT … ON CONFLICT DO NOTHING / SELECT).
+function fakeVersionPool() {
+  const rows = new Map<
+    string,
+    { version: number; snapshot: unknown; at: string; author: string; note: string }
+  >();
+  return {
+    query: async (sql: string, params: unknown[] = []) => {
+      if (sql.includes("INSERT INTO ko_versions")) {
+        const [koId, version, snapshot, at, author, note] = params as [
+          string,
+          number,
+          string,
+          string,
+          string,
+          string,
+        ];
+        const key = `${koId}#${version}`;
+        if (!rows.has(key)) {
+          rows.set(key, { version, snapshot: JSON.parse(snapshot), at, author, note });
+        }
+        return { rows: [] };
+      }
+      if (sql.includes("SELECT snapshot,version,at,author,note FROM ko_versions")) {
+        const [koId] = params as [string];
+        const out = [...rows.entries()]
+          .filter(([k]) => k.startsWith(`${koId}#`))
+          .map(([, v]) => v)
+          .sort((a, b) => a.version - b.version);
+        return { rows: out };
+      }
+      return { rows: [] };
+    },
+  } as unknown as Pool;
+}
+
+describe("SCRUM-159: KO-Version-Snapshots", () => {
+  it("create erzeugt Version-1-Snapshot", async () => {
+    const versions = new InMemoryKoVersionRepo();
+    const svc = new KoService({ repo: new InMemoryKoRepo(), versions });
+    const ko = await svc.create(base());
+    const list = await versions.listByKo(ko.id);
+    expect(list).toHaveLength(1);
+    expect(list[0]?.version).toBe(1);
+    expect(list[0]?.snapshot.title).toBe(ko.title);
+    expect(list[0]?.note).toBe("erstellt");
+  });
+
+  it("revise erzeugt Version-2-Snapshot; Version-1-Snapshot bleibt unverändert", async () => {
+    const versions = new InMemoryKoVersionRepo();
+    const svc = new KoService({ repo: new InMemoryKoRepo(), versions });
+    const ko = await svc.create(base({ title: "Original" }));
+    await svc.revise(ko.id, { title: "Überarbeitet" }, "carla");
+
+    const list = await versions.listByKo(ko.id);
+    expect(list.map((v) => v.version)).toEqual([1, 2]);
+    // V1 hält den Original-Stand fest (kein stilles Überschreiben durch Revise).
+    expect(list[0]?.snapshot.title).toBe("Original");
+    expect(list[0]?.snapshot.version).toBe(1);
+    expect(list[1]?.snapshot.title).toBe("Überarbeitet");
+    expect(list[1]?.snapshot.version).toBe(2);
+  });
+
+  it("Snapshot ist eine echte Kopie (spätere KO-Änderungen berühren ihn nicht)", async () => {
+    const versions = new InMemoryKoVersionRepo();
+    const svc = new KoService({ repo: new InMemoryKoRepo(), versions });
+    const ko = await svc.create(base());
+    // Folge-Revision verändert das Live-KO; der V1-Snapshot muss Original-Status behalten.
+    await svc.revise(ko.id, { statement: "Neue Aussage." }, "carla");
+    const v1 = (await versions.listByKo(ko.id))[0];
+    expect(v1?.snapshot.status).toBe("offen");
+    expect(v1?.snapshot.statement).toBe(base().statement);
+  });
+
+  it("ohne Versions-Repo bleibt create/revise funktionsfähig (No-op-Snapshot)", async () => {
+    const svc = new KoService({ repo: new InMemoryKoRepo() });
+    const ko = await svc.create(base());
+    const rev = await svc.revise(ko.id, { title: "X" }, "carla");
+    expect(rev.version).toBe(2);
+  });
+
+  it("PgKoVersionRepo: Round-Trip + Immutabilität über denselben Fake-Pool", async () => {
+    const pool = fakeVersionPool();
+    const svc = new KoService({ repo: new InMemoryKoRepo(), versions: new PgKoVersionRepo(pool) });
+    const ko = await svc.create(base({ title: "PG-Original" }));
+    await svc.revise(ko.id, { title: "PG-Revidiert" }, "carla");
+
+    // Frische Repo-Instanz über denselben Pool → beide Versionen persistent + unveränderlich.
+    const list = await new PgKoVersionRepo(pool).listByKo(ko.id);
+    expect(list.map((v) => v.version)).toEqual([1, 2]);
+    expect(list[0]?.snapshot.title).toBe("PG-Original");
+    expect(list[1]?.snapshot.title).toBe("PG-Revidiert");
   });
 });
