@@ -42,6 +42,7 @@ import {
   formatSourceComment,
   isSourceContributionValid,
 } from "../lib/sourceContribution";
+import { isReturnedForRework } from "../lib/validationStatus";
 
 interface EditState {
   title: string;
@@ -272,6 +273,12 @@ export function KnowledgeDetail(): JSX.Element {
         {(ko) => (
           <div className="grid gap-5 lg:grid-cols-[1.7fr_1fr]">
             <Card>
+              {/* SCRUM-124: sichtbarer Rückgabe-/Nacharbeit-Hinweis aus Validierungsfeedback */}
+              {isReturnedForRework(audit.data ?? [], ko.id) ? (
+                <div className="mb-3 rounded-card border border-trust-warn-fill/30 bg-trust-warn-bg p-3 text-[12.5px] text-trust-warn-text">
+                  {t("ko.returnedBanner")}
+                </div>
+              ) : null}
               <div className="flex flex-wrap items-center gap-2">
                 <StatusPill status={deriveStatus(ko)} />
                 <KnowledgeTypeTag type={ko.type} />

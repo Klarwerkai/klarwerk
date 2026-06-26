@@ -1618,3 +1618,36 @@ Datum: 2026-06-25
 **Restlücke (nicht improvisiert):** Health-/Risiko-TREND über Zeit fehlt — bräuchte historische Snapshots, die das Modell nicht führt. **Vorschlag: separates Restticket „Knowledge-Health-Trend (Snapshots/Zeitreihe)"**. Hier bewusst nur der aktuelle datenbasierte Stand.
 
 **Jira-Empfehlung:** Nach grünem Gate + Git-Sync dürfen SCRUM-133 und SCRUM-141 auf erledigt. Trend als neues Restticket. Ich setze keine Jira-Checkbox/Status selbst; Codex/Peter haken nach Gate ab.
+
+---
+
+## 2026-06-26 · SCRUM-124 + SCRUM-125 + SCRUM-126 — Autor-Rückgabe, Statusmodell-Präzisierung & Revalidierung
+
+**Ticket(s):** SCRUM-124 (Autor-Rückgabe aus Validierungsfeedback als Aufgabe/Status/Workflow) · SCRUM-125 (Validation-Statusmodell klären) · SCRUM-126 (validiert → erneut in Prüfung end-to-end belegen). Gemeinsam umgesetzt. Schemafreie Audit-Variante nach freigegebener Vorab-Meldung.
+
+**Fachliche Entscheidung (SCRUM-125):** Kein neues Kern-Enum. `KoStatus` bleibt `offen | validiert`; kein Hard-`rejected`. Die feineren Anzeigestufen bleiben abgeleitet (display-status). Echte Workflow-Marker werden über vorhandene Modelle (Assignment + Audit + abgeleitete Flags) ergänzt — mit Service/API/Tests, kein UI-only-Status.
+
+**Änderung (geänderte/neue Dateien):**
+- `services/validation/src/service.ts` — `rate()`: bei `warn`/`down` Rückgabe an den Autor über neue private `returnToAuthor()` → deduplizierte offene Zuweisung an `ko.author` (Key (koId,author)) + Audit `ko.returned-to-author` (payload verdict/author). Grün (`up`) erzeugt nichts. `computeOutcome`/Trust/Status UNVERÄNDERT, bestehender Rating-/Kommentarflow erhalten.
+- `services/validation/src/service.test.ts` — 4 neue Tests (down→Autor-Aufgabe+Audit+Kernstatus offen; warn gibt zurück / up nicht; Deduplizierung).
+- `tests/validation/return-and-revalidate.test.ts` — neu, end-to-end (KoService+ValidationService+LifecycleService In-Memory): warn→Autor-Rückgabe; **validiert → revalidate(confirmStillValid) → status offen + version+1 + wieder im Board** (SCRUM-126).
+- `apps/web/src/lib/validationStatus.ts` — neu, DOM-frei: `deriveDisplayStatus` (konsistente Anzeige-Ableitung), `isReturnedForRework` (aktuelle Nacharbeit aus Audit; spätere ko.revised/ko.rated beenden sie), `returnedToAuthor` (eigene zurückgegebene KOs).
+- `tests/validation/validation-status.test.ts` — neu, 6 Tests (Display-Ableitung offen/pruefung/validiert/revalidierung/konflikt/abgelehnt; Rückgabe-Erkennung; Reset durch Überarbeitung; autor-gefilterte Liste).
+- `apps/web/src/pages/MyTasks.tsx` — neue „Nacharbeit (zurückgegeben)"-Aufgaben in der kritischen Gruppe (aus Audit `ko.returned-to-author`, gefiltert auf KOs des aktuellen Nutzers via useSession+useKos+useAudit). Keine neuen Endpoints.
+- `apps/web/src/pages/KnowledgeDetail.tsx` — sichtbares Rückgabe-Banner „zur Nacharbeit zurückgegeben" wenn das KO aktuell zurückgegeben ist.
+- `apps/web/src/i18n.ts` — `task.returned`, `ko.returnedBanner` (DE+EN).
+
+**Wie erreicht Gelb/Rot den Autor wirklich?** Als echte, deduplizierte **offene Zuweisung** an `ko.author` (sichtbar in Validierungs-Overview und in „Meine Aufgaben") + Audit-Event — nicht nur Kommentar. Keine E-Mail/Push vorgetäuscht (nur In-App/Audit).
+
+**validiert → erneut in Prüfung:** über den bestehenden `revalidate`→`confirmStillValid`→`revise`-Pfad (version+1, status offen, trust 0); end-to-end getestet und im KO-Detail/Board sichtbar.
+
+**Genutzte Endpoints:** PUT /api/kos/:id (rate / revalidate) — unverändert. FE nutzt GET /api/audit, /api/kos, Session — keine neuen Endpoints.
+
+**Tests/Gates:** `npm run check` GRÜN — 41 Testdateien / 200 Tests (11 neu). apps/web `tsc --noEmit` EXIT=0. depcruise sauber. Biome grün.
+
+**Restlücken (nicht improvisiert):**
+- Kein Hard-`rejected`-Kernstatus (bewusst; Kern bleibt offen|validiert). Echter `rejected`-Zustand = separates Kern-Enum-Restticket, falls fachlich gewünscht.
+- `Assignment` ohne `reason`-Feld → Unterscheidung validate/rework rein über Audit (schemafrei, wie freigegeben). Optionale `reason`-Erweiterung = separates Restticket.
+- Bekannt (vorbestehend, nicht Teil dieses Blocks): `revise` setzt Ratings nicht zurück — nach Revalidierung zählt eine Neubewertung alte Verdicts mit. Falls fachlich „frische Validierung" gewünscht, eigenes Restticket „Ratings bei revise zurücksetzen".
+
+**Jira-Empfehlung:** Nach grünem Gate + Peters Mac-Commit/Push dürfen SCRUM-124, SCRUM-125, SCRUM-126 auf erledigt. Hard-rejected / Assignment-reason / Rating-Reset als separate Resttickets. Ich setze keine Jira-Checkbox/Status selbst.

@@ -108,4 +108,59 @@ describe("ValidationService", () => {
     expect(rated).toHaveLength(1);
     expect(rated[0]?.actor).toBe("u1");
   });
+
+  it("SCRUM-124: Rot (down) gibt das Objekt als offene Aufgabe an den Autor zurück + Audit", async () => {
+    const audit = new AuditService({ repo: new InMemoryAuditRepo() });
+    const svc = new ValidationService({
+      koService,
+      ratings: new InMemoryRatingRepo(),
+      assignments: new InMemoryAssignmentRepo(),
+      audit,
+    });
+    const ko = await koService.create(koInput({ author: "anna" }));
+    await svc.rate(ko.id, "controller", "down");
+
+    // Echte offene Zuweisung an den Autor (sichtbar in der Übersicht).
+    const overview = await svc.overview();
+    expect(overview).toEqual([{ userId: "anna", open: 1, done: 0 }]);
+    // Audit-Event ko.returned-to-author mit Verdict.
+    const returned = await audit.list({ action: "ko.returned-to-author" });
+    expect(returned).toHaveLength(1);
+    expect(returned[0]?.target).toBe(ko.id);
+    expect(returned[0]?.payload.verdict).toBe("down");
+    // Kern-Status bleibt offen (kein Hard-rejected).
+    expect((await koService.get(ko.id))?.status).toBe("offen");
+  });
+
+  it("SCRUM-124: Gelb (warn) gibt ebenfalls zurück; Grün (up) erzeugt keine Autor-Rückgabe", async () => {
+    const audit = new AuditService({ repo: new InMemoryAuditRepo() });
+    const svc = new ValidationService({
+      koService,
+      ratings: new InMemoryRatingRepo(),
+      assignments: new InMemoryAssignmentRepo(),
+      audit,
+    });
+    const warnKo = await koService.create(koInput({ author: "bob" }));
+    await svc.rate(warnKo.id, "controller", "warn");
+    expect(await audit.list({ action: "ko.returned-to-author" })).toHaveLength(1);
+
+    const upKo = await koService.create(koInput({ author: "carla" }));
+    await svc.rate(upKo.id, "controller", "up");
+    // Keine Rückgabe an carla → nur die eine Rückgabe (an bob) existiert.
+    const returned = await audit.list({ action: "ko.returned-to-author" });
+    expect(returned).toHaveLength(1);
+    expect(returned[0]?.payload.author).toBe("bob");
+  });
+
+  it("SCRUM-124: doppeltes Gelb/Rot dedupliziert die Autor-Zuweisung (bleibt 1 offen)", async () => {
+    const ko = await koService.create(koInput({ author: "anna" }));
+    await service.rate(ko.id, "u1", "warn");
+    await service.rate(ko.id, "u2", "down");
+    const overview = await service.overview();
+    expect(overview.find((s) => s.userId === "anna")).toEqual({
+      userId: "anna",
+      open: 1,
+      done: 0,
+    });
+  });
 });

@@ -67,7 +67,35 @@ export class ValidationService {
     if (assignment && assignment.status === "open") {
       await this.assignments.update({ ...assignment, status: "done" });
     }
+    // SCRUM-124: Gelb/Rot (warn/down) gibt das Objekt zur Nacharbeit an den Autor zurück.
+    // Schemafrei über das vorhandene Assignment-Modell + Audit; Grün (up) erzeugt nichts.
+    if (verdict === "warn" || verdict === "down") {
+      await this.returnToAuthor(koId, ko.author, userId, verdict);
+    }
     return outcome;
+  }
+
+  // SCRUM-124: dedupliziert eine offene Zuweisung an den Autor + Audit-Event.
+  private async returnToAuthor(
+    koId: string,
+    author: string,
+    by: string,
+    verdict: Verdict,
+  ): Promise<void> {
+    const existing = await this.assignments.find(koId, author);
+    if (existing) {
+      if (existing.status !== "open") {
+        await this.assignments.update({ ...existing, status: "open" });
+      }
+    } else {
+      await this.assignments.create({ koId, userId: author, status: "open" });
+    }
+    await this.audit?.record({
+      actor: by,
+      action: "ko.returned-to-author",
+      target: koId,
+      payload: { verdict, author },
+    });
   }
 
   // FR-VAL-03/04: Board zeigt nur offene KOs, Filter kombinierbar.

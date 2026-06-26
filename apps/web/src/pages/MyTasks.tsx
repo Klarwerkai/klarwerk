@@ -1,7 +1,16 @@
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
-import { useConflicts, useGaps, useLifecyclePending, useValidationBoard } from "../api/hooks";
+import {
+  useAudit,
+  useConflicts,
+  useGaps,
+  useKos,
+  useLifecyclePending,
+  useValidationBoard,
+} from "../api/hooks";
+import { useSession } from "../app/AuthContext";
 import { Card, PageHeader } from "../components/ui";
+import { returnedToAuthor } from "../lib/validationStatus";
 
 interface Task {
   id: string;
@@ -16,8 +25,23 @@ export function MyTasks(): JSX.Element {
   const conflicts = useConflicts();
   const lifecycle = useLifecyclePending();
   const gaps = useGaps();
+  const audit = useAudit();
+  const kos = useKos();
+  const { user } = useSession();
+
+  // SCRUM-124: KOs, die mir (als Autor) nach Gelb/Rot zur Nacharbeit zurückgegeben wurden.
+  const kosById = new Map((kos.data ?? []).map((k) => [k.id, k]));
+  const returned: Task[] = user
+    ? returnedToAuthor(audit.data ?? [], kos.data ?? [], user.id).map((r) => ({
+        id: `rw-${r.koId}`,
+        label: kosById.get(r.koId)?.title ?? r.koId,
+        typeKey: "task.returned",
+        to: `/wissen/${r.koId}`,
+      }))
+    : [];
 
   const critical: Task[] = [
+    ...returned,
     ...(conflicts.data ?? [])
       .filter((c) => c.status !== "geloest")
       .map((c) => ({ id: c.id, label: c.description, typeKey: "task.conflict", to: "/konflikte" })),
