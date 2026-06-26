@@ -1046,6 +1046,32 @@ export function KnowledgeDetail(): JSX.Element {
                           </span>
                         </div>
                         <p className="mt-2 text-[12.5px] text-muted">{v.excerpt}</p>
+                        {(() => {
+                          const diff = diffForVersion(versions.data ?? [], v.version);
+                          if (!diff || diff.fromVersion === null) {
+                            return (
+                              <p className="mt-2 font-mono text-[10.5px] text-muted-2">
+                                {t("ko.snapshotInitial")}
+                              </p>
+                            );
+                          }
+                          return diff.changed.length === 0 ? (
+                            <p className="mt-2 font-mono text-[10.5px] text-muted-2">
+                              {t("ko.snapshotNoChanges")}
+                            </p>
+                          ) : (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {diff.changed.map((field) => (
+                                <span
+                                  key={field}
+                                  className="rounded-pill bg-warn-surface px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-warn"
+                                >
+                                  {t(`ko.snapshotField.${field}`)}
+                                </span>
+                              ))}
+                            </div>
+                          );
+                        })()}
                         <p className="mt-1 font-mono text-[10.5px] text-muted-2">{v.note}</p>
                       </li>
                     ))}

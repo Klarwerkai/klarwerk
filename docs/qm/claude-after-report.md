@@ -2330,3 +2330,18 @@ Versions-Immutabilitäts-Risiko aus SCRUM-153. Claude setzt Jira nicht selbst.
 **5. Tests/Gates:** Gezielter Check grün: `services/knowledge-object/src/service.test.ts` + `tests/ko/ko-version-snapshots.test.ts` = 25 Tests. Root-`tsc --noEmit` grün. Voller Gate folgt im Codex-Lauf.
 
 **6. Restlücken:** Kein Versionsdiff/Restore und keine Nachbefüllung historischer KOs ohne Snapshot — bewusst außerhalb Scope.
+
+
+## SCRUM-162 — KO-Version-Snapshot-Diff read-only anzeigen
+
+**1. Vorab-Befund:** Nach SCRUM-161 sind KO-Version-Snapshots per API/FE lesbar. Ein Feldvergleich zwischen direkt aufeinanderfolgenden Snapshots existierte noch nicht; Backend-Modell und API reichen dafür vollständig aus. Kein Backend-Umbau nötig.
+
+**2. Umsetzung:** DOM-freier Helper `koVersionDiff.ts` ergänzt (`versionDiffs`, `diffForVersion`) für deterministischen Vergleich von Titel, Aussage, Bedingungen, Maßnahmen, Typ und Status. KnowledgeDetail Snapshot-Card zeigt pro Version ehrliche Änderungsmarker gegen die direkte Vorgängerversion; erste Version zeigt "kein Vorgänger-Diff", unveränderte Hauptfelder zeigen "keine Änderung".
+
+**3. Geänderte Dateien:** `apps/web/src/lib/koVersionDiff.ts`, `tests/ko/ko-version-diff.test.ts`, `apps/web/src/pages/KnowledgeDetail.tsx`, `apps/web/src/i18n.ts`, `docs/qm/claude-after-report.md`.
+
+**4. Technische Entscheidung:** Read-only Feld-Diff statt Wort-/Textdiff oder Restore. Keine Backend-/API-Änderung, kein neues Versionsmodell, kein Backfill.
+
+**5. Tests/Gates:** `npm run check` grün — 73 Dateien / 395 Tests, root-tsc 0, Biome grün, depcruise sauber (148 Module / 451 Dependencies).
+
+**6. Restlücken:** Kein Restore/Rollback, kein Side-by-Side-Diff und kein Wortdiff — bewusst separate, größere UI-/Governance-Themen.
