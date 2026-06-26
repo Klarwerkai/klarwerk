@@ -50,7 +50,12 @@ import {
   PgLifecycleRepo,
 } from "../../lifecycle";
 import { ManagementService } from "../../management";
-import { InMemoryModelRunRepo, type ModelRunRepo, PgModelRunRepo } from "../../model-runs";
+import {
+  InMemoryModelRunRepo,
+  type ModelRunRepo,
+  ModelRunService,
+  PgModelRunRepo,
+} from "../../model-runs";
 import { ConsoleMailer, type Mailer, createMailerFromEnv } from "../../notifications";
 import { InMemoryObjectRepo, type ObjectRepo, ObjectStore, PgObjectRepo } from "../../object-store";
 import { OutputService } from "../../output";
@@ -77,6 +82,7 @@ import { koRoutes } from "./routes/ko-routes";
 import { libraryRoutes } from "./routes/library-routes";
 import { lifecycleRoutes } from "./routes/lifecycle-routes";
 import { managementRoutes } from "./routes/management-routes";
+import { modelRunRoutes } from "./routes/model-runs-routes";
 import { notificationsRoutes } from "./routes/notifications-routes";
 import { objectRoutes } from "./routes/object-routes";
 import { outputRoutes } from "./routes/output-routes";
@@ -102,6 +108,8 @@ export interface AppServices {
   lifecycle: LifecycleService;
   i18n: I18nService;
   objects: ObjectStore;
+  // SCRUM-165: read-only Einsicht in das ModelRun-Protokoll.
+  modelRuns: ModelRunService;
   mailer: Mailer;
 }
 
@@ -187,6 +195,8 @@ function assembleServices(repos: AppRepos): AppServices {
     i18n: new I18nService(),
     // SCRUM-121: interner Objekt-/Attachment-Speicher (In-Memory; Pg/Disk = Folge-Ticket).
     objects: new ObjectStore({ repo: repos.objects }),
+    // SCRUM-165: read-only ModelRun-Sicht über dasselbe Protokoll-Repo wie der Reasoner.
+    modelRuns: new ModelRunService({ repo: repos.modelRuns }),
     // FR-AUTH-08/FR-VAL-07: SMTP, wenn konfiguriert; sonst sammelnder Fallback ohne Versand.
     mailer: createMailerFromEnv() ?? new ConsoleMailer(),
   };
@@ -276,6 +286,7 @@ export function buildApp(services: AppServices = buildServices()): FastifyInstan
   app.register(libraryRoutes(services.library, guards));
   app.register(outputRoutes(services.output, guards));
   app.register(managementRoutes(services.management, guards));
+  app.register(modelRunRoutes(services.modelRuns, guards));
   app.register(externalRoutes(services.externalSearch, guards));
   app.register(lifecycleRoutes(services.lifecycle, guards));
   app.register(notificationsRoutes({ conflicts: services.conflicts, ask: services.ask }, guards));
