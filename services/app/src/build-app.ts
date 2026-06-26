@@ -50,6 +50,7 @@ import {
   PgLifecycleRepo,
 } from "../../lifecycle";
 import { ManagementService } from "../../management";
+import { InMemoryModelRunRepo, type ModelRunRepo, PgModelRunRepo } from "../../model-runs";
 import { ConsoleMailer, type Mailer, createMailerFromEnv } from "../../notifications";
 import { InMemoryObjectRepo, type ObjectRepo, ObjectStore, PgObjectRepo } from "../../object-store";
 import { OutputService } from "../../output";
@@ -122,6 +123,7 @@ interface AppRepos {
   lifecycleRepo: LifecycleRepo;
   objects: ObjectRepo;
   candidates: CandidateRepo;
+  modelRuns: ModelRunRepo;
 }
 
 // Verdrahtet aus den Repos die vollständige Service-Landschaft. Ein gemeinsames
@@ -136,7 +138,12 @@ function assembleServices(repos: AppRepos): AppServices {
   });
   // FR-RSN-02/06: echtes Modell, wenn ANTHROPIC_API_KEY gesetzt ist; sonst deterministisch.
   const modelClient = createModelClientFromEnv();
-  const reasoner = new Reasoner(modelClient ? new ModelProvider(modelClient) : undefined);
+  // SCRUM-164: ModelRun-Protokoll mitgeben (No-op-fähig); API-Shape des Reasoners unverändert.
+  const reasoner = new Reasoner(
+    modelClient ? new ModelProvider(modelClient) : undefined,
+    undefined,
+    repos.modelRuns,
+  );
 
   // Vorab erstellt, da das Management-Modul (SCRUM-120) deren Live-Daten aggregiert.
   const ask = new AskService({ reasoner, koService: ko, gaps: repos.gaps, audit });
@@ -203,6 +210,7 @@ export function buildServices(): AppServices {
     lifecycleRepo: new InMemoryLifecycleRepo(),
     objects: new InMemoryObjectRepo(),
     candidates: new InMemoryCandidateRepo(),
+    modelRuns: new InMemoryModelRunRepo(),
   });
 }
 
@@ -226,6 +234,8 @@ export function buildPgServices(pool: Pool): AppServices {
     objects: new PgObjectRepo(pool),
     // SCRUM-157: Import-/Source-Review-Queue persistent (Review-Stand überlebt Neustart).
     candidates: new PgCandidateRepo(pool),
+    // SCRUM-164: ModelRun-Protokoll persistent (KI-Aufrufe nachvollziehbar).
+    modelRuns: new PgModelRunRepo(pool),
   });
 }
 

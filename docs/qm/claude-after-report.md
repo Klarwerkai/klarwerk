@@ -2375,3 +2375,54 @@ Versions-Immutabilitäts-Risiko aus SCRUM-153. Claude setzt Jira nicht selbst.
 **5. Tests/Gates:** `npm run check` grün — 74 Dateien / 401 Tests, root-tsc 0, Biome grün, depcruise sauber (148 Module / 451 Dependencies).
 
 **6. Restlücken:** Kein globaler Evidence-Browser, kein Editieren/Löschen von Evidence, kein Retrieval/ModelAdapter/ModelRun.
+
+---
+
+## After-Report — SCRUM-164 · Foundation: ModelRun-Protokoll v1 für Reasoner-Aufrufe — 2026-06-26
+
+### Vorab-Befund
+Der Reasoner steuert primary/fallback intern in `structure/assistText/interview` (try primary →
+catch → deterministischer Fallback). Bisher kein Trace der KI-Läufe. `answer`/Ask sind nicht im
+Scope (eigener `ask.query`-Audit). Reasoner-Konstruktor positional `(primary?, fallback?)` → für
+Rückwärtskompatibilität additiv erweitern.
+
+### Umsetzung
+- **Neues Modul `services/model-runs`**: `ModelRunRecord`/`ModelRunTask`/`ModelRunStatus` (Typen,
+  nur Metadaten — **keine** Prompt-/Antworttexte), `ModelRunRepo` + `InMemoryModelRunRepo` +
+  `PgModelRunRepo` + `MODEL_RUNS_SCHEMA` (`model_runs(id text PK, data jsonb)`), `index.ts`.
+- **Reasoner**: optionaler 3. Ctor-Param `modelRuns?: ModelRunRepo` (No-op ohne Repo). Neue private
+  `runTask(...)` kapselt die unveränderte primary→fallback-Logik und schreibt je Lauf einen Record:
+  `success` (normal), `fallback:true`/`demo:true` (primary verfügbar, scheiterte → deterministisch),
+  `status:"error"` (auch Fallback scheitert; generische `error`-Message, nie Prompttext). `provider`/
+  `model` aus dem genutzten Provider; `locale` mitgeschrieben. `structure/assistText/interview` laufen
+  jetzt über `runTask`. API-Shape der Reasoner-Endpunkte unverändert; `answer`/`select` unangetastet.
+- **Migration** `MODEL_RUNS_SCHEMA` in `services/app/src/db.ts#migrate`.
+- **Composition Root** `services/app/src/build-app.ts`: `AppRepos.modelRuns`; `buildServices` →
+  InMemory, `buildPgServices` → `PgModelRunRepo`; Reasoner erhält das Repo.
+
+### Geänderte/neue Dateien
+neu: `services/model-runs/src/{types,repo,repo-pg,repo.test}.ts`, `services/model-runs/index.ts`;
+geändert: `services/reasoner/src/service.ts`, `services/reasoner/src/service.test.ts`,
+`services/app/src/db.ts`, `services/app/src/build-app.ts`, `docs/qm/claude-after-report.md`.
+
+### Tests / Gates
+- reasoner/service.test.ts +5: erfolgreicher structure-Run (success/kein Fallback/kein Demo,
+  provider+model+locale); Fallback-Pfad (fallback:true, demo:true, provider deterministic);
+  interview-Locale; Fehlerpfad (status error, kein Prompttext im Record); No-op ohne Repo.
+- model-runs/repo.test.ts +2: InMemory append/recent (jüngste zuerst), Pg-Fake-Pool-Round-Trip.
+- `npm run check` grün: **75 Dateien / 408 Tests**, tsc + Biome + depcruise sauber. Bestehende
+  Reasoner-/Ask-/Capture-Tests unverändert grün. Keine Audit-Hash-/KO-/Evidence-Änderung.
+
+### Restlücken
+- Kein UI-Dashboard, kein Token-/Kosten-Accounting, kein Read-Endpoint/HTTP-Route (nur Service-/
+  Repo-`recent()`-Vertrag) — bewusst Nicht-Ziele.
+- `answer`/Ask wird (scope-konform) nicht protokolliert.
+- Echte Pg-Persistenz über Testcontainers auf Mac/CI (Unit-Gate nutzt Fake-Pool).
+
+### Commit-/Push-Hinweis für Pedi/Codex
+cd /Users/peterkohnert/Documents/dev_Klarwerk && npm run check
+git add services/model-runs services/reasoner/src/service.ts services/reasoner/src/service.test.ts \
+  services/app/src/db.ts services/app/src/build-app.ts docs/qm/claude-after-report.md
+git commit -m "feat(model-runs): add ModelRun protocol v1 for reasoner calls (SCRUM-164)" && git push
+
+No Jira changes by Claude. No tickets closed. No new tickets.

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { InMemoryModelRunRepo } from "../../model-runs";
 import { DeterministicProvider, INTERVIEW_QUESTIONS, type ReasonerProvider } from "./provider";
 import { Reasoner } from "./service";
 import type {
@@ -271,5 +272,126 @@ describe("DeterministicProvider.interview (SCRUM-132)", () => {
     expect(res.draft.measures).toEqual(["Hand-Ventil zu"]);
     expect(res.draft.tags).toEqual(["ventil", "druck"]);
     expect(res.draft.demo).toBe(true);
+  });
+});
+
+// SCRUM-164: ModelRun-Protokoll für structure/assist/interview.
+function okModel(): ReasonerProvider {
+  return {
+    name: "anthropic:test-model",
+    isAvailable: () => true,
+    structure: async (): Promise<StructureResult> => ({
+      title: "T",
+      statement: "S",
+      conditions: [],
+      measures: [],
+      tags: [],
+      confidence: 0,
+      demo: false,
+    }),
+    answer: async (): Promise<AnswerResult> => ({
+      answered: false,
+      answer: null,
+      knowledgeClass: "unbekannt",
+      trust: 0,
+      sources: [],
+      steps: [],
+      demo: false,
+    }),
+    assistText: async (): Promise<AssistResult> => ({ text: "x", demo: false }),
+    interview: async (): Promise<InterviewResult> => ({
+      question: null,
+      done: true,
+      draft: {
+        title: "",
+        statement: "",
+        conditions: [],
+        measures: [],
+        tags: [],
+        confidence: 0,
+        demo: false,
+      },
+      demo: false,
+    }),
+    select: () => [],
+  };
+}
+
+function throwingProvider(name: string): ReasonerProvider {
+  const boom = async (): Promise<never> => {
+    throw new Error("Netzfehler");
+  };
+  return {
+    name,
+    isAvailable: () => true,
+    structure: boom,
+    answer: boom,
+    assistText: boom,
+    interview: boom,
+    select: () => [],
+  };
+}
+
+describe("SCRUM-164: ModelRun-Protokoll", () => {
+  it("erfolgreicher structure-Run erzeugt einen Record (success, kein Fallback, kein Demo)", async () => {
+    const runs = new InMemoryModelRunRepo();
+    const reasoner = new Reasoner(okModel(), undefined, runs);
+    await reasoner.structure("Rohtext.", "de");
+    const recent = await runs.recent();
+    expect(recent).toHaveLength(1);
+    expect(recent[0]).toMatchObject({
+      task: "structure",
+      status: "success",
+      fallback: false,
+      demo: false,
+      provider: "anthropic:test-model",
+      model: "anthropic:test-model",
+      locale: "de",
+    });
+  });
+
+  it("Fallback-Pfad: primary scheitert → Record mit fallback:true, demo:true", async () => {
+    const runs = new InMemoryModelRunRepo();
+    // Default-Fallback = DeterministicProvider (liefert demo:true).
+    const reasoner = new Reasoner(throwingProvider("flaky-model"), undefined, runs);
+    await reasoner.structure("Rohtext.", "de");
+    const recent = await runs.recent();
+    expect(recent[0]).toMatchObject({
+      task: "structure",
+      status: "success",
+      fallback: true,
+      demo: true,
+      provider: "deterministic",
+    });
+    expect(recent[0]?.model).toBeUndefined();
+  });
+
+  it("interview mit Locale schreibt die Locale in den Record", async () => {
+    const runs = new InMemoryModelRunRepo();
+    const reasoner = new Reasoner(okModel(), undefined, runs);
+    await reasoner.interview([], "en");
+    const recent = await runs.recent();
+    expect(recent[0]).toMatchObject({ task: "interview", locale: "en", status: "success" });
+  });
+
+  it("Fehlerpfad: primary UND fallback scheitern → status error, KEIN Prompttext", async () => {
+    const runs = new InMemoryModelRunRepo();
+    const reasoner = new Reasoner(
+      throwingProvider("flaky-model"),
+      throwingProvider("broken-fallback"),
+      runs,
+    );
+    const secret = "GEHEIMER ROHTEXT 4711";
+    await expect(reasoner.structure(secret, "de")).rejects.toThrow();
+    const recent = await runs.recent();
+    expect(recent[0]).toMatchObject({ task: "structure", status: "error", fallback: true });
+    // Niemals Prompt-/Antwortinhalt im Record.
+    expect(JSON.stringify(recent[0])).not.toContain(secret);
+  });
+
+  it("ohne ModelRun-Repo bleibt der Reasoner funktionsfähig (No-op)", async () => {
+    const reasoner = new Reasoner(okModel());
+    const res = await reasoner.structure("Rohtext.", "de");
+    expect(res.title).toBe("T");
   });
 });
