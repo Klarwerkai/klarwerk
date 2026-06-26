@@ -1795,3 +1795,33 @@ Datum: 2026-06-25
 **Restlücken:** Mobile-Ask zeigt Quellen-IDs kompakt (Link zu KO-Detail); Steps werden bewusst nicht ausgerollt (Platz). Such-Liste auf 20 Treffer begrenzt (Pilot). SCRUM-113 bleibt offen für FE-MOB-01 (PWA) + FE-MOB-07 (Offline).
 
 **Empfehlung:** Nach grünem Mac-Gate + Commit/Push dürfen **FE-MOB-03** und **FE-MOB-05** in SCRUM-113 abgehakt werden. **SCRUM-113 bleibt offen** nur noch für FE-MOB-01 (PWA) und FE-MOB-07 (Offline). Ich setze keine Jira-Checkbox/Status selbst.
+
+---
+
+## 2026-06-26 · SCRUM-113 (Block 3, final) — FE-MOB-01 PWA + FE-MOB-07 Offline-Queue/Sync
+
+**Ticket(s):** SCRUM-113 finaler Block; schließt FE-MOB-01 (installierbare PWA) und FE-MOB-07 (Offline-Queue/Sync). Umsetzung exakt nach freigegebener Vorab-Meldung. **Keine neue npm-Dependency.**
+
+**Befund:** Keine PWA-/SW-Infrastruktur vorhanden (kein Manifest/SW/Registrierung, kein Workbox/vite-plugin-pwa). SPA wird single-origin via `@fastify/static` aus `apps/web/dist` ausgeliefert (`/assets/*` immutable, sonst no-cache → passt für `sw.js`/Manifest). Online-Indikator in Mobile.tsx war hartkodiert. pdfjs/tesseract nur lazy dynamisch (`files.ts`). ImageMagick (`convert`) im Sandbox → PNG-Icons nativ erzeugt.
+
+**PWA (FE-MOB-01) — neue/geänderte Dateien:**
+- `apps/web/public/manifest.webmanifest` (neu) — name/short_name KLARWERK, start_url/scope „/", display standalone, theme/background #16222c, lang de, Icons (192/512 any + 512 maskable).
+- `apps/web/public/icon.svg` (Quelle) + generierte PNGs `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `apple-touch-icon-180.png` (statisch committed, kein Runtime-Dep).
+- `apps/web/public/sw.js` (neu, handgeschrieben, kein Workbox): versionierter Cache; **`/api` + `/health` strikt network-only (nie gecacht)**; Navigationen network-first mit App-Shell-Fallback (`index.html`); statische Assets stale-while-revalidate; alte Caches bei `activate` gelöscht.
+- `apps/web/index.html` — Manifest-Link, `icon.svg`, `apple-touch-icon`, `apple-mobile-web-app-capable`/`-status-bar-style`/`-title`.
+- `apps/web/src/main.tsx` — SW-Registrierung **nur in Produktion** (`import.meta.env.PROD`) auf `load` (CSP-konform, kein Inline-Script; Fehler schluckt App still).
+
+**Offline-Queue/Sync (FE-MOB-07) — neue/geänderte Dateien:**
+- `apps/web/src/lib/offlineQueue.ts` (neu, DOM-frei) — reine Queue-Logik: enqueue/replacePayload/markPending/markSynced/markFailed/clearSynced/syncableOps/pendingCount/countByStatus; Update auf nicht-synchronisierten Op desselben Drafts ersetzt Payload in place (kein Duplikat).
+- `apps/web/src/app/useOfflineQueue.ts` (neu, dünner DOM-Hook) — Persistenz **localStorage `kw.offlineQueue.v1`**; echter Sync ruft `endpoints.drafts.create/update` (keine Fake-Sync, Stati spiegeln das fetch-Ergebnis); Auto-Sync bei `online`-Event + Tab-`focus`; `navigator.onLine`-Status; invalidiert `["drafts"]` nach Erfolg.
+- `apps/web/src/pages/Mobile.tsx` — echter Online/Offline-Indikator; **Draft-Save geht offline in die Queue** statt direktem API-Call (create/update), Toast „offline gespeichert"; Warteschlangen-Sektion mit Stati **queued/pending/synced/failed** + Pending-Zähler + manueller „Synchronisieren"-Button; **Ask (FE-MOB-03) und Suche (FE-MOB-05) zeigen offline eine ehrliche Offline-Meldung** statt Ergebnissen (kein Fake-Offline); Toast bei Sync-Ergebnis.
+- `apps/web/src/i18n.ts` — `mob.online/offline/queued/queue/syncNow/syncOk/syncFail/offlineSaveHint/offlineAsk/offlineSearch/offlineNeedsConn`, `mob.status.{queued,pending,synced,failed}` (DE+EN).
+- `tests/capture/offline-queue.test.ts` (neu) — 6 Tests (enqueue→queued; Update-in-place; Status-Übergänge; failed bleibt synchronisierbar/synced nicht; replacePayload; clearSynced/pendingCount/countByStatus).
+
+**Erfüllte AK:** Manifest/Icon/Theme/Standalone/SW/Offline-Start gebaut + per echtem Vite-Build geprüft ✓ · Queue nur für mobiles Draft-Speichern (create/update) ✓ · Delete/Promote nicht gequeued ✓ · Ask/Library offline ehrliche Meldung, kein Fake ✓ · Sync via online-Event/Focus/Button ✓ · sichtbare Stati queued/offline/pending/synced/failed ✓ · Toast bei Sync-Ergebnis ✓ · localStorage `kw.offlineQueue.v1` + DOM-freie Logik + Test ✓ · keine schwere Dependency ✓ · SW cached keine API-Responses ✓.
+
+**Akzeptierte Grenzen (dokumentiert):** Offline-Start erst nach erstem Online-Besuch (gehashte Chunks via stale-while-revalidate on-demand gecacht, kein Precache-Manifest → keine neue Dependency). Queue ist pro Gerät/Browser, kein Cross-Device-Sync. Keine Background-Sync-API (Sync nur bei geöffneter App + online). Offline-Create bekommt temporäre lokale ID, beim Sync via `create` ersetzt.
+
+**Gelaufene Checks:** apps/web `tsc --noEmit` EXIT=0 · root `tsc` EXIT=0 · Biome grün (Manifest formatiert) · depcruise sauber · `npm run check` GRÜN — **50 Testdateien / 244 Tests** (6 neu) · **zwingend zusätzlich** `cd apps/web && npm run build` GRÜN (tsc + vite build, EXIT=0): Manifest/SW/Icons in `dist` verifiziert, pdfjs/tesseract-Lazy-Chunks (`pdf.worker`, `pdf`) bauen sauber.
+
+**Empfehlung:** Nach grünem Mac-Gate + Commit/Push dürfen **FE-MOB-01** und **FE-MOB-07** in SCRUM-113 abgehakt werden → **SCRUM-113 auf Done**. Ich setze keine Jira-Checkbox/Status selbst.

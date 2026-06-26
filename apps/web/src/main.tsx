@@ -24,3 +24,12 @@ createRoot(root).render(
     </QueryClientProvider>
   </StrictMode>,
 );
+
+// PWA (FE-MOB-01): Service Worker nur in Produktion registrieren (im Dev stört er HMR).
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {
+      // Registrierung fehlgeschlagen → App läuft normal online weiter.
+    });
+  });
+}

@@ -1,5 +1,15 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, Check, FilePlus2, RotateCcw, Search, Trash2 } from "lucide-react";
+import {
+  ArrowRight,
+  Check,
+  CloudOff,
+  FilePlus2,
+  RefreshCw,
+  RotateCcw,
+  Search,
+  Trash2,
+  WifiOff,
+} from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
@@ -8,6 +18,7 @@ import { endpoints } from "../api/endpoints";
 import { useDrafts, useLibrarySearch } from "../api/hooks";
 import type { AnswerResult } from "../api/types";
 import { useToast } from "../app/ToastContext";
+import { type SyncResult, useOfflineQueue } from "../app/useOfflineQueue";
 import { ConfidenceBar, KnowledgeTypeTag, StatusPill } from "../components/trust";
 import { selectAnswer } from "../lib/askResponse";
 import { deriveStatus } from "../lib/displayStatus";
@@ -21,6 +32,7 @@ import {
 } from "../lib/draftForm";
 import type { EvidenceTone } from "../lib/knowledgeClass";
 import { summarizeAnswer } from "../lib/mobileAsk";
+import type { QueueStatus } from "../lib/offlineQueue";
 
 type MobileTab = "capture" | "ask" | "lookup";
 
@@ -31,13 +43,30 @@ const EVIDENCE_TONE: Record<EvidenceTone, string> = {
   neutral: "bg-page text-muted",
 };
 
-// SCRUM-113: echte mobile Erfassung (FE-MOB-02/04/06) + Fragen (FE-MOB-03) + Wissenszugriff (FE-MOB-05).
-// Alle Aktionen über bestehende APIs/State; Bestätigung über den Toast-Bus.
+const QUEUE_TONE: Record<QueueStatus, string> = {
+  queued: "bg-page text-muted",
+  pending: "bg-trust-warn-bg text-trust-warn-text",
+  synced: "bg-trust-pos-bg text-trust-pos-text",
+  failed: "bg-trust-crit-bg text-trust-crit-text",
+};
+
+// SCRUM-113: echte mobile Erfassung (FE-MOB-02/04/06) + Fragen (FE-MOB-03) + Wissenszugriff
+// (FE-MOB-05) + PWA/Offline-Queue (FE-MOB-01/07). Offline werden nur Draft-Saves gequeued;
+// Ask/Library zeigen offline eine ehrliche Meldung (kein Fake-Offline).
 export function Mobile(): JSX.Element {
   const { t } = useTranslation();
   const { push } = useToast();
   const qc = useQueryClient();
   const [tab, setTab] = useState<MobileTab>("capture");
+
+  const notifySync = (r: SyncResult): void => {
+    if (r.failed > 0) {
+      push("error", `${t("mob.syncFail")} (${r.failed})`);
+    } else if (r.synced > 0) {
+      push("success", `${t("mob.syncOk")} (${r.synced})`);
+    }
+  };
+  const queue = useOfflineQueue(notifySync);
 
   // --- Erfassen (FE-MOB-02/04) ---
   const drafts = useDrafts();
@@ -50,6 +79,9 @@ export function Mobile(): JSX.Element {
   const invalidateDrafts = (): void => void qc.invalidateQueries({ queryKey: ["drafts"] });
   const fail = (e: unknown): void =>
     push("error", e instanceof ApiError ? e.message : t("state.error"));
+
+  const formTitle = (): string =>
+    form.title.trim() || form.statement.trim().slice(0, 60) || t("capture.draftFallbackTitle");
 
   const save = useMutation({
     mutationFn: () => {
@@ -65,6 +97,25 @@ export function Mobile(): JSX.Element {
     },
     onError: fail,
   });
+
+  // FE-MOB-07: offline → in die lokale Queue statt direkter API-Aufruf.
+  const onSave = (): void => {
+    if (!queue.online) {
+      queue.enqueue({
+        id: crypto.randomUUID(),
+        kind: editingId ? "draft.update" : "draft.create",
+        draftId: editingId,
+        payload: formToPayload(form),
+        title: formTitle(),
+        createdAt: new Date().toISOString(),
+      });
+      push("info", t("mob.queued"));
+      resetForm();
+      return;
+    }
+    save.mutate();
+  };
+
   const discard = useMutation({
     mutationFn: (id: string) => endpoints.drafts.remove(id),
     onSuccess: (_d, id) => {
@@ -110,10 +161,17 @@ export function Mobile(): JSX.Element {
       <div className="w-[340px] overflow-hidden rounded-[34px] border-4 border-ink bg-surface p-5">
         <div className="mb-3 flex items-center justify-between">
           <span className="font-sans text-[15px] font-bold tracking-[2px] text-ink">KLARWERK</span>
-          <span className="flex items-center gap-1 font-mono text-[11px] text-trust-pos-text">
-            <span className="h-1.5 w-1.5 rounded-full bg-trust-pos-fill" />
-            online
-          </span>
+          {queue.online ? (
+            <span className="flex items-center gap-1 font-mono text-[11px] text-trust-pos-text">
+              <span className="h-1.5 w-1.5 rounded-full bg-trust-pos-fill" />
+              {t("mob.online")}
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 font-mono text-[11px] text-trust-warn-text">
+              <WifiOff size={12} />
+              {t("mob.offline")}
+            </span>
+          )}
         </div>
 
         {/* Tabs */}
@@ -160,7 +218,7 @@ export function Mobile(): JSX.Element {
                 <button
                   type="button"
                   disabled={save.isPending || !isDraftFormFillable(form)}
-                  onClick={() => save.mutate()}
+                  onClick={onSave}
                   className="flex flex-1 items-center justify-center gap-1.5 rounded-btn bg-ink py-2.5 text-[13px] font-semibold text-white disabled:opacity-50"
                 >
                   <Check size={15} />
@@ -177,7 +235,45 @@ export function Mobile(): JSX.Element {
                   </button>
                 ) : null}
               </div>
+              {!queue.online ? (
+                <p className="flex items-center gap-1.5 text-[11.5px] text-trust-warn-text">
+                  <CloudOff size={12} />
+                  {t("mob.offlineSaveHint")}
+                </p>
+              ) : null}
             </div>
+
+            {/* Offline-Warteschlange (FE-MOB-07) */}
+            {queue.queue.length > 0 ? (
+              <div className="mt-4 rounded-card border border-hairline p-2.5">
+                <div className="mb-1.5 flex items-center justify-between">
+                  <span className="font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+                    {t("mob.queue")} · {queue.pending}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={!queue.online || queue.syncing || queue.pending === 0}
+                    onClick={() => void queue.syncNow().then(notifySync)}
+                    className="flex items-center gap-1 rounded-btn bg-ink px-2 py-1 text-[11px] font-semibold text-white disabled:opacity-40"
+                  >
+                    <RefreshCw size={12} className={queue.syncing ? "animate-spin" : ""} />
+                    {t("mob.syncNow")}
+                  </button>
+                </div>
+                <ul className="space-y-1">
+                  {queue.queue.map((op) => (
+                    <li key={op.id} className="flex items-center gap-2 text-[12px]">
+                      <span className="min-w-0 flex-1 truncate text-text">{op.title}</span>
+                      <span
+                        className={`rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${QUEUE_TONE[op.status]}`}
+                      >
+                        {t(`mob.status.${op.status}`)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
 
             <div className="mt-4">
               <div className="mb-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
@@ -224,117 +320,143 @@ export function Mobile(): JSX.Element {
 
         {tab === "ask" ? (
           <div>
-            <form
-              className="flex gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (q.trim()) {
-                  ask.mutate(q.trim());
-                }
-              }}
-            >
-              <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder={t("ask.placeholder")}
-                className="h-10 flex-1 rounded-input border border-hairline bg-page px-3 text-sm outline-none focus:border-ink/30"
-              />
-              <button
-                type="submit"
-                disabled={ask.isPending || q.trim().length === 0}
-                className="grid h-10 w-10 place-items-center rounded-btn bg-ink text-white disabled:opacity-50"
-              >
-                <ArrowRight size={16} />
-              </button>
-            </form>
+            {!queue.online ? (
+              <div className="rounded-card border border-dashed border-hairline p-3">
+                <p className="flex items-center gap-1.5 text-[13px] font-semibold text-text">
+                  <WifiOff size={14} />
+                  {t("mob.offlineAsk")}
+                </p>
+                <p className="mt-1 text-[12px] text-muted">{t("mob.offlineNeedsConn")}</p>
+              </div>
+            ) : (
+              <>
+                <form
+                  className="flex gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (q.trim()) {
+                      ask.mutate(q.trim());
+                    }
+                  }}
+                >
+                  <input
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    placeholder={t("ask.placeholder")}
+                    className="h-10 flex-1 rounded-input border border-hairline bg-page px-3 text-sm outline-none focus:border-ink/30"
+                  />
+                  <button
+                    type="submit"
+                    disabled={ask.isPending || q.trim().length === 0}
+                    className="grid h-10 w-10 place-items-center rounded-btn bg-ink text-white disabled:opacity-50"
+                  >
+                    <ArrowRight size={16} />
+                  </button>
+                </form>
 
-            {answer
-              ? (() => {
-                  const s = summarizeAnswer(answer);
-                  return s.answered ? (
-                    <div className="mt-3 rounded-card border border-hairline p-3">
-                      <div className="mb-2 flex items-center justify-between gap-2">
-                        <span
-                          className={`rounded-pill px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase ${EVIDENCE_TONE[s.evidence.tone]}`}
-                        >
-                          {t("ask.evidence")}: {t(s.evidence.labelKey)}
-                        </span>
-                        <span className="shrink-0">
-                          <ConfidenceBar value={s.trust} showLabel={false} />
-                        </span>
-                      </div>
-                      <p className="text-[14px] leading-relaxed text-text">{s.text}</p>
-                      {s.sources.length > 0 ? (
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <span className="font-mono text-[10px] uppercase text-muted-2">
-                            {t("ask.sources")}
-                          </span>
-                          {s.sources.map((id) => (
-                            <Link
-                              key={id}
-                              to={`/wissen/${id}`}
-                              className="font-mono text-[11px] text-brand"
+                {answer
+                  ? (() => {
+                      const s = summarizeAnswer(answer);
+                      return s.answered ? (
+                        <div className="mt-3 rounded-card border border-hairline p-3">
+                          <div className="mb-2 flex items-center justify-between gap-2">
+                            <span
+                              className={`rounded-pill px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase ${EVIDENCE_TONE[s.evidence.tone]}`}
                             >
-                              {id}
-                            </Link>
-                          ))}
+                              {t("ask.evidence")}: {t(s.evidence.labelKey)}
+                            </span>
+                            <span className="shrink-0">
+                              <ConfidenceBar value={s.trust} showLabel={false} />
+                            </span>
+                          </div>
+                          <p className="text-[14px] leading-relaxed text-text">{s.text}</p>
+                          {s.sources.length > 0 ? (
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                              <span className="font-mono text-[10px] uppercase text-muted-2">
+                                {t("ask.sources")}
+                              </span>
+                              {s.sources.map((id) => (
+                                <Link
+                                  key={id}
+                                  to={`/wissen/${id}`}
+                                  className="font-mono text-[11px] text-brand"
+                                >
+                                  {id}
+                                </Link>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <div className="mt-3 rounded-card border border-dashed border-hairline p-3">
-                      <p className="text-[14px] font-semibold text-text">{t("ask.noBasisTitle")}</p>
-                      <p className="mt-1 text-[12.5px] text-muted">{t("ask.noBasisBody")}</p>
-                      <Link
-                        to="/risiko"
-                        className="mt-2 inline-flex items-center gap-1 text-[12.5px] font-semibold text-brand"
-                      >
-                        {t("ask.toGaps")}
-                        <ArrowRight size={14} />
-                      </Link>
-                    </div>
-                  );
-                })()
-              : null}
+                      ) : (
+                        <div className="mt-3 rounded-card border border-dashed border-hairline p-3">
+                          <p className="text-[14px] font-semibold text-text">
+                            {t("ask.noBasisTitle")}
+                          </p>
+                          <p className="mt-1 text-[12.5px] text-muted">{t("ask.noBasisBody")}</p>
+                          <Link
+                            to="/risiko"
+                            className="mt-2 inline-flex items-center gap-1 text-[12.5px] font-semibold text-brand"
+                          >
+                            {t("ask.toGaps")}
+                            <ArrowRight size={14} />
+                          </Link>
+                        </div>
+                      );
+                    })()
+                  : null}
+              </>
+            )}
           </div>
         ) : null}
 
         {tab === "lookup" ? (
           <div>
-            <div className="flex items-center gap-2 rounded-input border border-hairline bg-page px-3">
-              <Search size={15} className="text-muted-2" />
-              <input
-                value={sq}
-                onChange={(e) => setSq(e.target.value)}
-                placeholder={t("mob.searchPlaceholder")}
-                className="h-10 flex-1 bg-transparent text-sm outline-none"
-              />
-            </div>
-            <div className="mt-3">
-              {(search.data ?? []).length === 0 ? (
-                <p className="text-[12.5px] text-muted">{t("mob.searchEmpty")}</p>
-              ) : (
-                <ul className="space-y-1.5">
-                  {(search.data ?? []).slice(0, 20).map((k) => (
-                    <li key={k.id}>
-                      <Link
-                        to={`/wissen/${k.id}`}
-                        className="block rounded-input border border-hairline p-2.5 hover:bg-hairline-soft"
-                      >
-                        <div className="mb-1 flex items-center gap-1.5">
-                          <StatusPill status={deriveStatus(k)} />
-                          <KnowledgeTypeTag type={k.type} />
-                          <span className="ml-auto font-mono text-[10px] text-muted-2">
-                            T{k.trust}
-                          </span>
-                        </div>
-                        <div className="truncate text-[13px] text-text">{k.title}</div>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            {!queue.online ? (
+              <div className="rounded-card border border-dashed border-hairline p-3">
+                <p className="flex items-center gap-1.5 text-[13px] font-semibold text-text">
+                  <WifiOff size={14} />
+                  {t("mob.offlineSearch")}
+                </p>
+                <p className="mt-1 text-[12px] text-muted">{t("mob.offlineNeedsConn")}</p>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 rounded-input border border-hairline bg-page px-3">
+                  <Search size={15} className="text-muted-2" />
+                  <input
+                    value={sq}
+                    onChange={(e) => setSq(e.target.value)}
+                    placeholder={t("mob.searchPlaceholder")}
+                    className="h-10 flex-1 bg-transparent text-sm outline-none"
+                  />
+                </div>
+                <div className="mt-3">
+                  {(search.data ?? []).length === 0 ? (
+                    <p className="text-[12.5px] text-muted">{t("mob.searchEmpty")}</p>
+                  ) : (
+                    <ul className="space-y-1.5">
+                      {(search.data ?? []).slice(0, 20).map((k) => (
+                        <li key={k.id}>
+                          <Link
+                            to={`/wissen/${k.id}`}
+                            className="block rounded-input border border-hairline p-2.5 hover:bg-hairline-soft"
+                          >
+                            <div className="mb-1 flex items-center gap-1.5">
+                              <StatusPill status={deriveStatus(k)} />
+                              <KnowledgeTypeTag type={k.type} />
+                              <span className="ml-auto font-mono text-[10px] text-muted-2">
+                                T{k.trust}
+                              </span>
+                            </div>
+                            <div className="truncate text-[13px] text-text">{k.title}</div>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         ) : null}
       </div>
