@@ -29,6 +29,7 @@ const gap: Gap = {
   question: "Wie hoch ist der Wechselkurs?",
   status: "offen",
   assignee: null,
+  priority: "mittel",
   createdAt: "2026-01-01",
 };
 

@@ -114,11 +114,14 @@ export interface Conflict {
   createdAt: string;
 }
 
+export type GapPriority = "hoch" | "mittel" | "niedrig";
+
 export interface Gap {
   id: string;
   question: string;
   status: "offen" | "geschlossen";
   assignee: string | null;
+  priority: GapPriority;
   createdAt: string;
 }
 

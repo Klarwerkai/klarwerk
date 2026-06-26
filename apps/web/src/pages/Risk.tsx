@@ -3,13 +3,26 @@ import { Check, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { endpoints } from "../api/endpoints";
 import { useBusFactor, useDirectory, useGaps, useKos } from "../api/hooks";
+import type { GapPriority } from "../api/types";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
+import {
+  GAP_PRIORITIES,
+  type PriorityTone,
+  priorityTone,
+  sortGapsByPriority,
+} from "../lib/gapPriority";
 import { type RiskLevel, domainRisk } from "../lib/knowledgeHealth";
 
 const RISK_TONE: Record<RiskLevel, string> = {
   kritisch: "bg-trust-crit-bg text-trust-crit-text",
   mittel: "bg-trust-warn-bg text-trust-warn-text",
   gut: "bg-trust-pos-bg text-trust-pos-text",
+};
+
+const PRIORITY_TONE: Record<PriorityTone, string> = {
+  crit: "bg-trust-crit-bg text-trust-crit-text",
+  warn: "bg-trust-warn-bg text-trust-warn-text",
+  neutral: "bg-page text-muted",
 };
 
 export function Risk(): JSX.Element {
@@ -31,6 +44,11 @@ export function Risk(): JSX.Element {
   });
   const remove = useMutation({
     mutationFn: (id: string) => endpoints.gaps.remove(id),
+    onSuccess: invalidate,
+  });
+  const setPriority = useMutation({
+    mutationFn: ({ id, priority }: { id: string; priority: GapPriority }) =>
+      endpoints.gaps.setPriority(id, priority),
     onSuccess: invalidate,
   });
 
@@ -129,8 +147,13 @@ export function Risk(): JSX.Element {
           {(items) => (
             <Card className="p-0">
               <div className="divide-y divide-hairline">
-                {items.map((g) => (
+                {sortGapsByPriority(items).map((g) => (
                   <div key={g.id} className="flex items-center gap-3 px-4 py-2.5">
+                    <span
+                      className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase ${PRIORITY_TONE[priorityTone(g.priority)]}`}
+                    >
+                      {t(`risk.priority.${g.priority}`)}
+                    </span>
                     <span className="min-w-0 flex-1 truncate text-[13.5px] text-text">
                       {g.question}
                     </span>
@@ -139,6 +162,24 @@ export function Risk(): JSX.Element {
                     </span>
                     {g.status === "offen" ? (
                       <>
+                        <select
+                          value={g.priority}
+                          disabled={setPriority.isPending}
+                          onChange={(e) =>
+                            setPriority.mutate({
+                              id: g.id,
+                              priority: e.target.value as GapPriority,
+                            })
+                          }
+                          title={t("risk.priorityLabel")}
+                          className="h-8 w-28 rounded-input border border-hairline bg-surface px-2 text-[12px] text-muted"
+                        >
+                          {GAP_PRIORITIES.map((p) => (
+                            <option key={p} value={p}>
+                              {t(`risk.priority.${p}`)}
+                            </option>
+                          ))}
+                        </select>
                         <select
                           value=""
                           disabled={assign.isPending}

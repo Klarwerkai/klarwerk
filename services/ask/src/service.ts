@@ -3,9 +3,15 @@ import type { AuditService } from "../../audit";
 import type { KoService } from "../../knowledge-object";
 import type { AnswerResult, KnowledgeRef, Reasoner } from "../../reasoner";
 import type { GapRepo } from "./repo";
-import { AskError, type Gap } from "./types";
+import { AskError, type Gap, type GapPriority, isGapPriority } from "./types";
 
 const HELPFUL_TRUST_STEP = 2;
+
+// SCRUM-115: Lücken ohne gespeicherte Priorität (Altdaten) erhalten beim Lesen
+// den sicheren Default "mittel" — keine stille undefined-Priorität nach außen.
+function withPriority(gap: Gap): Gap {
+  return isGapPriority(gap.priority) ? gap : { ...gap, priority: "mittel" };
+}
 
 export interface AskServiceDeps {
   reasoner: Reasoner;
@@ -85,6 +91,17 @@ export class AskService {
     return this.save({ ...gap, status: "geschlossen" });
   }
 
+  // SCRUM-115 / FE-RISK-02: Priorität einer Wissenslücke setzen.
+  async setGapPriority(id: string, priority: GapPriority): Promise<Gap> {
+    if (!isGapPriority(priority)) {
+      throw new AskError("BAD_REQUEST", "Ungültige Priorität.");
+    }
+    const gap = await this.require(id);
+    const saved = await this.save({ ...gap, priority });
+    await this.audit?.record({ actor: "system", action: "gap.priority-changed", target: id });
+    return saved;
+  }
+
   async deleteGap(id: string, confirm: boolean): Promise<void> {
     if (!confirm) {
       throw new AskError("CONFIRM_REQUIRED", "Löschen erfordert Bestätigung.");
@@ -93,8 +110,9 @@ export class AskService {
     await this.gaps.delete(id);
   }
 
-  listGaps(): Promise<Gap[]> {
-    return this.gaps.all();
+  async listGaps(): Promise<Gap[]> {
+    const gaps = await this.gaps.all();
+    return gaps.map(withPriority);
   }
 
   private async createGap(question: string): Promise<Gap> {
@@ -103,6 +121,7 @@ export class AskService {
       question,
       status: "offen",
       assignee: null,
+      priority: "mittel",
       createdAt: new Date(this.now()).toISOString(),
     };
     await this.gaps.insert(gap);
@@ -116,10 +135,11 @@ export class AskService {
   }
 
   private async require(id: string): Promise<Gap> {
-    const gap = await this.gaps.findById(id);
-    if (!gap) {
+    const found = await this.gaps.findById(id);
+    if (!found) {
       throw new AskError("NOT_FOUND", "Wissenslücke nicht gefunden.");
     }
+    const gap = withPriority(found);
     return gap;
   }
 }

@@ -1956,3 +1956,31 @@ Datum: 2026-06-25
 **Abgrenzung (nicht gebaut):** kein Backend/Payload-Umbau, keine schwere Graph-Lib, keine Force-Physik, keine Fake-Daten, keine Änderung an Output/Capital/Import.
 
 **Empfehlung:** Nach grünem Mac-Gate + Commit/Push darf **SCRUM-119 / FR-ANA-03** abgehakt → auf Done. Ich setze keine Jira-Checkbox/Status selbst.
+
+---
+
+## 2026-06-26 · SCRUM-115 — Gap-Priorität (FE-RISK-02) + Close-Endpoint-Fix
+
+**Ticket(s):** SCRUM-115 / FE-RISK-02 (letzte offene SCRUM-106-Lücke). Freigegeben: Priorisierung ergänzen UND den Close-Endpoint-Mismatch im selben Block klein mitfixen.
+
+**Befund:** `Gap` ohne Priorität. `PgGapRepo` speichert das ganze Gap als JSON (`gaps(id,data)`) → **keine Migration** für ein neues Feld. Nebenbefund bestätigt: `endpoints.gaps.close` sendete `{action:"close"}`, Route prüfte `body.close` → Close FE/API-seitig nicht gekoppelt.
+
+**Backend (services/ask):**
+- `types.ts`: `GapPriority = "hoch"|"mittel"|"niedrig"`, `GAP_PRIORITIES`, `isGapPriority`, `Gap.priority`, AskErrorCode `+BAD_REQUEST`.
+- `service.ts`: `createGap` setzt `priority:"mittel"`; neue `setGapPriority(id, priority)` (validiert, Audit `gap.priority-changed`); **Read-Normalisierung** `withPriority` in `require` + `listGaps` → **Legacy-Gaps ohne priority → Default "mittel"** auf allen Rückgabepfaden (list/assign/close/setPriority).
+- `index.ts`: `GapPriority`/`GAP_PRIORITIES`/`isGapPriority` exportiert.
+- `ask-routes.ts` `PUT /api/gaps/:id`: neuer `priority`-Zweig (ungültig → 400); **Close akzeptiert jetzt `{close:true}` UND `{action:"close"}`** (rückwärtskompatibel, keine neue Semantik); Assign/Delete unverändert.
+
+**Frontend:**
+- `api/types.ts`: `GapPriority` + `Gap.priority`. `endpoints.gaps.setPriority` (PUT `{priority}`); `gaps.close` sendet nun `{close:true}` (passt zur Route).
+- `lib/gapPriority.ts` (neu, DOM-frei): `GAP_PRIORITIES`, `priorityRank`, `sortGapsByPriority` (hoch→mittel→niedrig→createdAt, Eingabe unverändert), `priorityTone`.
+- `pages/Risk.tsx`: je Gap **Prioritäts-Badge** (Farbe nach Tone) + **Select zum Ändern** (offene Gaps), Liste **nach Priorität sortiert**. Assign/Close/Delete unverändert.
+- `i18n.ts`: `risk.priority.*`, `risk.priorityLabel` (DE+EN).
+
+**Tests:** `services/ask/src/service.test.ts` (+4): Default „mittel" bei neuer Lücke; `setGapPriority` ändert + Audit; ungültige Priorität → BAD_REQUEST; Legacy-Gap ohne priority → beim Lesen/Zuweisen „mittel". `tests/ask/gap-priority.test.ts` (neu, DOM-frei, 4): GAP_PRIORITIES, priorityRank, sortGapsByPriority (inkl. Unveränderlichkeit), priorityTone. Bestehende Gap-Literale (`notification-feed.test.ts`, `ask-response.test.ts`) um `priority` ergänzt.
+
+**Erfüllte AK:** Datenmodell enthält Priorität ✓ · API setzt/ändert Priorität (400 bei ungültig) ✓ · Risk-UI zeigt Priorität + ändert + sortiert ✓ · Assign/Close/Delete unverändert (Close jetzt korrekt gekoppelt) ✓ · Service/API/DOM-freie Tests ✓ · Legacy-Default „mittel" ✓ · keine neue Gap-Engine, keine Demo-Prioritäten, keine Migration, kein Backend-Redesign ✓.
+
+**Gelaufene Checks:** apps/web `tsc --noEmit` EXIT=0 · `npm run check` GRÜN — **59 Testdateien / 311 Tests** (8 neu) · Biome grün · depcruise sauber.
+
+**Empfehlung:** Nach grünem Mac-Gate + Commit/Push darf **FE-RISK-02** vollständig abgehakt werden → **SCRUM-115** auf Done (und damit SCRUM-106 vollständig). Ich setze keine Jira-Checkbox/Status selbst.

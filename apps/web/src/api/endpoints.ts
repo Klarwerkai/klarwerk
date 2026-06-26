@@ -11,6 +11,7 @@ import type {
   Draft,
   DraftPayload,
   Gap,
+  GapPriority,
   Graph,
   ImpactReport,
   ImportCandidate,
@@ -97,8 +98,10 @@ export const endpoints = {
   },
   gaps: {
     list: () => api.get<Gap[]>("/gaps"),
-    close: (id: string) => api.put<Gap>(`/gaps/${id}`, { action: "close" }),
+    close: (id: string) => api.put<Gap>(`/gaps/${id}`, { close: true }),
     assign: (id: string, expertId: string) => api.put<Gap>(`/gaps/${id}`, { expertId }),
+    // SCRUM-115 / FE-RISK-02: Priorität der Wissenslücke setzen.
+    setPriority: (id: string, priority: GapPriority) => api.put<Gap>(`/gaps/${id}`, { priority }),
     remove: (id: string) => api.del<void>(`/gaps/${id}?confirm=true`),
   },
   drafts: {

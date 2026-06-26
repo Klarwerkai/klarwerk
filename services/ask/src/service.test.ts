@@ -4,6 +4,7 @@ import { InMemoryKoRepo, KoService } from "../../knowledge-object";
 import { Reasoner } from "../../reasoner";
 import { InMemoryGapRepo } from "./repo";
 import { AskService } from "./service";
+import type { Gap } from "./types";
 
 async function setup() {
   const koRepo = new InMemoryKoRepo();
@@ -16,13 +17,14 @@ async function setup() {
     author: "anna",
   });
   const audit = new AuditService({ repo: new InMemoryAuditRepo() });
+  const gaps = new InMemoryGapRepo();
   const ask = new AskService({
     reasoner: new Reasoner(),
     koService,
-    gaps: new InMemoryGapRepo(),
+    gaps,
     audit,
   });
-  return { ask, koService, audit };
+  return { ask, koService, audit, gaps };
 }
 
 describe("AskService", () => {
@@ -76,5 +78,49 @@ describe("AskService", () => {
     });
     await ctx.ask.deleteGap(gap.id, true);
     expect(await ctx.ask.listGaps()).toHaveLength(0);
+  });
+
+  it("SCRUM-115: neue Lücke hat Default-Priorität 'mittel'", async () => {
+    const { gap } = await ctx.ask.ask("Noch eine unbekannte Frage?");
+    expect(gap?.priority).toBe("mittel");
+    expect((await ctx.ask.listGaps())[0]?.priority).toBe("mittel");
+  });
+
+  it("SCRUM-115: setGapPriority ändert die Priorität + Audit-Eintrag", async () => {
+    const { gap } = await ctx.ask.ask("Frage ohne Antwort?");
+    if (!gap) {
+      throw new Error("Lücke erwartet.");
+    }
+    const updated = await ctx.ask.setGapPriority(gap.id, "hoch");
+    expect(updated.priority).toBe("hoch");
+    expect((await ctx.ask.listGaps())[0]?.priority).toBe("hoch");
+    expect(await ctx.audit.list({ action: "gap.priority-changed" })).toHaveLength(1);
+  });
+
+  it("SCRUM-115: ungültige Priorität wird abgewiesen", async () => {
+    const { gap } = await ctx.ask.ask("Wieder eine offene Frage?");
+    if (!gap) {
+      throw new Error("Lücke erwartet.");
+    }
+    await expect(
+      // @ts-expect-error: ungültiger Wert wird zur Laufzeit abgewiesen
+      ctx.ask.setGapPriority(gap.id, "dringend"),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("SCRUM-115: Legacy-Lücke ohne priority wird beim Lesen auf 'mittel' normalisiert", async () => {
+    // Direkt ins Repo geschrieben, ohne priority (Altdaten).
+    const legacy = {
+      id: "legacy-1",
+      question: "Alte Lücke",
+      status: "offen",
+      assignee: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    } as unknown as Gap;
+    await ctx.gaps.insert(legacy);
+    const listed = (await ctx.ask.listGaps()).find((g) => g.id === "legacy-1");
+    expect(listed?.priority).toBe("mittel");
+    const assigned = await ctx.ask.assignGap("legacy-1", "experte-1");
+    expect(assigned.priority).toBe("mittel");
   });
 });
