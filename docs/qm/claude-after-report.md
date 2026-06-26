@@ -2693,3 +2693,35 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-172 — Knowledge-OS QM-Hinweise aus vorhandenen Signalen bündeln
+
+**Vorab-Befund (read-only):** Alle Foundation-Signale liegen bereits als DOM-freie Helper-Ergebnisse vor: `buildProvenanceIndex` (SCRUM-171), `summarizeEvidence` (169), `summarizeModelRuns` (165), `ReasonerConfigStatus`/`reasonerModeTone` (166), optional `knowledgeHealth` (141). Sie sind über mehrere Stufe-2-Cards verteilt — es fehlte nur die Bündelung.
+
+**Umsetzung (rein read-only, additiv):**
+- Neuer DOM-freier Helper `apps/web/src/lib/knowledgeOsHints.ts` mit `buildKnowledgeOsHints(input)`. Alle Eingaben optional; aggregiert nur strukturierte Helper-Ergebnisse (keine String-Heuristik aus UI-Texten).
+- `KnowledgeOsHint` (id, severity, titleKey, detailKey, count?, source) + Summary (total/critical/warnings/info/ok) + `unknownSources[]`.
+- **Priorisierung** (deterministisch, stabiler Sort nach Severity-Rang, Push-Reihenfolge als Tiebreak): ModelRun-Errors (critical) → Health kritisch → Reasoner Demo/Fallback → ModelRun-Fallbacks → KOs ohne Evidence → Health mittel → Transfer/Multi-Version (info) → keine Evidence (info). Sauberer Bestand mit mind. einem bekannten Signal → genau ein `ok`-Hinweis.
+- **Ehrlichkeit:** Nicht übergebene Kernsignale (modelRuns/reasonerConfig/provenance/evidence) landen in `unknownSources` und werden NICHT als Fehler gezählt; ohne bekanntes Signal kein `ok`-Hinweis.
+- Stufe 2 (`Capital`): read-only `KnowledgeOsHintsCard` ganz oben — Severity-Counts, Top-5-Hinweise mit Severity-Badge, ehrlicher Unknown-Hinweis. Quellen aus bestehenden Hooks (`useKos`/`useEvidenceIndex`/`useModelRuns`/`useReasonerConfig`), nur bei `isSuccess` als „bekannt" gewertet. Keine Buttons, keine Ticket-Erstellung, kein Alerting.
+- i18n DE/EN `kos.*` vollständig (Titel, Severity, alle Hinweis-Texte, Unknown/None).
+
+**Geänderte/neue Dateien:** neu `apps/web/src/lib/knowledgeOsHints.ts`, `tests/analytics/knowledge-os-hints.test.ts`; geändert `apps/web/src/pages/Stufe2.tsx`, `apps/web/src/i18n.ts`, `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — **83 Dateien / 461 Tests** (+7: Leerzustand/unknown, alles-sauber→ok, ModelRun-Errors critical+oben, Reasoner-Demo-Warnung, Provenance no-evidence+lineage-Priorisierung, unknown nicht als Fehler, deterministische Severity-Sortierung). apps/web `tsc --noEmit` EXIT=0. Biome + depcruise sauber.
+
+**Restlücken (bewusst, Nicht-Ziele):** kein neues Backend-Modell, kein Ticket-Auto-Create, kein Alerting/Notification-System, keine Datenänderung/Backfill, kein Dashboard-Umbau, keine neue Risiko-Engine. KnowledgeHealth wird vom Helper unterstützt, in der Card aber (mangels geladener gaps/conflicts/busFactor auf der Capital-Seite) noch nicht gespeist — bleibt als „unknown" ohne Falschmeldung.
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check && (cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/knowledgeOsHints.ts apps/web/src/pages/Stufe2.tsx \
+  apps/web/src/i18n.ts tests/analytics/knowledge-os-hints.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(qm): bundle Knowledge-OS QA hints from existing signals (SCRUM-172)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

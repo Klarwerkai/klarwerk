@@ -31,6 +31,7 @@ import { evidenceKindTone, limitEvidence, summarizeEvidence } from "../lib/evide
 import { IMPORT_PIPELINE_STEPS, candidateFindings, summarizeImportQueue } from "../lib/extConcept";
 import { layoutConflicts, layoutGraph, limitGraph } from "../lib/graphLayout";
 import { ImportParseError, parseImportItems } from "../lib/importReview";
+import { buildKnowledgeOsHints } from "../lib/knowledgeOsHints";
 import {
   DEFAULT_ASSUMPTIONS,
   type ValuationAssumptions,
@@ -955,6 +956,88 @@ function ProvenanceIndexCard(): JSX.Element {
   );
 }
 
+// SCRUM-172: bündelt vorhandene Foundation-Signale zu kompakten read-only QM-Hinweisen.
+// Nur Aggregation bereits geladener Helper-Ergebnisse — kein Alerting, keine Ticket-Erstellung.
+const HINT_SEVERITY_CLASS: Record<string, string> = {
+  critical: "bg-trust-crit-bg text-trust-crit-text",
+  warning: "bg-trust-warn-bg text-trust-warn-text",
+  info: "bg-ai-surface-1 text-ai",
+  ok: "bg-trust-pos-bg text-trust-pos-text",
+};
+
+function KnowledgeOsHintsCard(): JSX.Element {
+  const { t } = useTranslation();
+  const kos = useKos();
+  const evidence = useEvidenceIndex(500);
+  const runs = useModelRuns(50);
+  const config = useReasonerConfig();
+  const result = buildKnowledgeOsHints({
+    ...(kos.isSuccess
+      ? {
+          provenance: buildProvenanceIndex({
+            kos: kos.data ?? [],
+            ...(evidence.isSuccess ? { evidence: evidence.data ?? [] } : {}),
+          }),
+        }
+      : {}),
+    ...(evidence.isSuccess ? { evidenceSummary: summarizeEvidence(evidence.data ?? []) } : {}),
+    ...(runs.isSuccess ? { modelRunSummary: summarizeModelRuns(runs.data ?? []) } : {}),
+    ...(config.isSuccess && config.data ? { reasonerConfig: config.data } : {}),
+  });
+  const loading = kos.isLoading || evidence.isLoading || runs.isLoading || config.isLoading;
+  const top = result.hints.slice(0, 5);
+  return (
+    <Card className="mt-4">
+      <SectionLabel>{t("kos.hintsTitle")}</SectionLabel>
+      {loading ? (
+        <p className="text-[13px] text-muted">{t("state.loading")}</p>
+      ) : (
+        <>
+          <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-muted-2">
+            <span className={result.summary.critical > 0 ? "text-trust-crit-text" : undefined}>
+              {t("kos.sevCount.critical", { n: result.summary.critical })}
+            </span>
+            <span className={result.summary.warnings > 0 ? "text-trust-warn-text" : undefined}>
+              {t("kos.sevCount.warning", { n: result.summary.warnings })}
+            </span>
+            <span>{t("kos.sevCount.info", { n: result.summary.info })}</span>
+          </div>
+          {top.length === 0 ? (
+            <p className="text-[13px] text-muted">{t("kos.hints.none")}</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {top.map((h) => (
+                <li key={h.id} className="flex items-start gap-2 text-[12px] text-muted">
+                  <span
+                    className={`mt-0.5 shrink-0 rounded-pill px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase ${
+                      HINT_SEVERITY_CLASS[h.severity] ?? "bg-surface text-muted-2"
+                    }`}
+                  >
+                    {t(`kos.sev.${h.severity}`)}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="font-semibold text-text">
+                      {t(h.titleKey, h.count !== undefined ? { n: h.count } : {})}
+                    </span>{" "}
+                    <span className="text-muted-2">
+                      {t(h.detailKey, h.count !== undefined ? { n: h.count } : {})}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {result.unknownSources.length > 0 ? (
+            <p className="mt-2 border-t border-hairline pt-2 text-[11px] text-muted-2">
+              {t("kos.hints.unknown", { sources: result.unknownSources.join(", ") })}
+            </p>
+          ) : null}
+        </>
+      )}
+    </Card>
+  );
+}
+
 export function Capital(): JSX.Element {
   const snapshot = useManagementSnapshot();
   return (
@@ -969,6 +1052,8 @@ export function Capital(): JSX.Element {
           )
         }
       </QueryState>
+      {/* SCRUM-172: gebündelte read-only QM-Hinweise aus allen Foundation-Signalen. */}
+      <KnowledgeOsHintsCard />
       {/* SCRUM-166: Reasoner-/Provider-Konfiguration (read-only, unabhängig vom Snapshot). */}
       <ReasonerConfigCard />
       {/* SCRUM-165: ModelRun-Übersicht — unabhängig vom Snapshot, auch bei leerem Bestand sichtbar. */}
