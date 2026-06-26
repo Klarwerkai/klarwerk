@@ -26,6 +26,12 @@ export const useManagementSnapshot = () =>
   });
 export const useKo = (id: string) =>
   useQuery({ queryKey: ["ko", id], queryFn: () => endpoints.ko.get(id), enabled: id.length > 0 });
+export const useKoVersions = (id: string) =>
+  useQuery({
+    queryKey: ["ko", id, "versions"],
+    queryFn: () => endpoints.ko.versions(id),
+    enabled: id.length > 0,
+  });
 export const useValidationBoard = (f?: KoFilter) =>
   useQuery({ queryKey: ["validation", "board", f], queryFn: () => endpoints.validation.board(f) });
 export const useValidationOverview = () =>

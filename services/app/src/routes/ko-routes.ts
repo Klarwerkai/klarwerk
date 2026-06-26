@@ -82,6 +82,18 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       reply.code(200).send(item);
     });
 
+    app.get<{ Params: { id: string } }>("/api/kos/:id/versions", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      try {
+        reply.code(200).send(await ko.versionsOf(request.params.id));
+      } catch (error) {
+        sendError(reply, error);
+      }
+    });
+
     app.post<{ Body: Omit<CreateKoInput, "author"> }>("/api/kos", async (request, reply) => {
       const user = await guards.requirePermission("ko.create", request, reply);
       if (!user) {

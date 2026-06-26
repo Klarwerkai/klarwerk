@@ -74,6 +74,15 @@ export interface ObjectContent {
   data: string;
 }
 
+export interface KoVersionSnapshot {
+  koId: string;
+  version: number;
+  snapshot: KnowledgeObject;
+  at: string;
+  author: string;
+  note: string;
+}
+
 export interface KnowledgeObject {
   id: string;
   title: string;

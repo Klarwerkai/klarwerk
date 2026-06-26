@@ -19,6 +19,7 @@ import type {
   ImportItemInput,
   InterviewResult,
   KnowledgeObject,
+  KoVersionSnapshot,
   LearningPath,
   ManagementSnapshot,
   Notification,
@@ -82,6 +83,7 @@ export const endpoints = {
   ko: {
     list: (f?: KoFilter) => api.get<KnowledgeObject[]>(`/kos${qs(f)}`),
     get: (id: string) => api.get<KnowledgeObject>(`/kos/${id}`),
+    versions: (id: string) => api.get<KoVersionSnapshot[]>(`/kos/${id}/versions`),
     create: (body: DraftPayload) => api.post<KnowledgeObject>("/kos", body),
     act: (id: string, body: KoAction) => api.put<KnowledgeObject>(`/kos/${id}`, body),
     remove: (id: string) => api.del<void>(`/kos/${id}`),

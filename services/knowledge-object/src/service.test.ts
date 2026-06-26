@@ -316,3 +316,31 @@ describe("SCRUM-159: KO-Version-Snapshots", () => {
     expect(list[1]?.snapshot.title).toBe("PG-Revidiert");
   });
 });
+
+describe("SCRUM-161: KO-Version-Snapshots lesbar", () => {
+  it("versionsOf liefert gespeicherte Snapshots über den Service", async () => {
+    const versions = new InMemoryKoVersionRepo();
+    const svc = new KoService({ repo: new InMemoryKoRepo(), versions });
+    const ko = await svc.create(base({ title: "V1" }));
+    await svc.revise(ko.id, { title: "V2" }, "carla");
+
+    const list = await svc.versionsOf(ko.id);
+    expect(list.map((v) => v.version)).toEqual([1, 2]);
+    expect(list[0]?.snapshot.title).toBe("V1");
+    expect(list[1]?.snapshot.title).toBe("V2");
+  });
+
+  it("versionsOf liefert ohne Versions-Repo einen ehrlichen Leerzustand", async () => {
+    const svc = new KoService({ repo: new InMemoryKoRepo() });
+    const ko = await svc.create(base());
+    await expect(svc.versionsOf(ko.id)).resolves.toEqual([]);
+  });
+
+  it("versionsOf prüft, ob das KO existiert", async () => {
+    const svc = new KoService({
+      repo: new InMemoryKoRepo(),
+      versions: new InMemoryKoVersionRepo(),
+    });
+    await expect(svc.versionsOf("missing")).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+});

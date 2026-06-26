@@ -10,6 +10,7 @@ import {
   useConflicts,
   useDirectory,
   useKo,
+  useKoVersions,
   useKos,
   useLifecyclePending,
 } from "../api/hooks";
@@ -48,6 +49,7 @@ import {
   sourceBadgeKey,
   toSourcePayload,
 } from "../lib/koSource";
+import { koVersionRows } from "../lib/koVersionSnapshots";
 import {
   type SourceContributionInput,
   formatSourceComment,
@@ -88,6 +90,7 @@ export function KnowledgeDetail(): JSX.Element {
   const { id = "" } = useParams();
   const { role } = useRole();
   const query = useKo(id);
+  const versions = useKoVersions(id);
   const koList = useKos();
   const audit = useAudit();
   // SCRUM-95/96: Signale für die abgeleitete Gültigkeit-/Schutz-Sicht.
@@ -1011,6 +1014,43 @@ export function KnowledgeDetail(): JSX.Element {
                     </li>
                   ))}
                 </ol>
+              </Card>
+
+              <Card>
+                <SectionLabel>{t("ko.snapshotsTitle")}</SectionLabel>
+                {versions.isLoading ? (
+                  <p className="text-[13px] text-muted">{t("state.loading")}</p>
+                ) : versions.isError ? (
+                  <p className="text-[13px] text-danger">{t("state.error")}</p>
+                ) : koVersionRows(versions.data ?? []).length === 0 ? (
+                  <p className="text-[13px] text-muted">{t("ko.snapshotsEmpty")}</p>
+                ) : (
+                  <ol className="space-y-3">
+                    {koVersionRows(versions.data ?? []).map((v) => (
+                      <li
+                        key={v.key}
+                        className="rounded-card border border-hairline bg-surface p-3"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="font-mono text-[11px] text-muted-2">
+                              v{v.version} · {new Date(v.at).toLocaleDateString()} ·{" "}
+                              {nameOf(v.author)}
+                            </div>
+                            <div className="mt-1 text-[13px] font-semibold text-text">
+                              {v.title}
+                            </div>
+                          </div>
+                          <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai">
+                            {v.status}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-[12.5px] text-muted">{v.excerpt}</p>
+                        <p className="mt-1 font-mono text-[10.5px] text-muted-2">{v.note}</p>
+                      </li>
+                    ))}
+                  </ol>
+                )}
               </Card>
 
               <Card>

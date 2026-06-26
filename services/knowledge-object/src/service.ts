@@ -255,6 +255,13 @@ export class KoService {
     return this.repo.list(filter);
   }
 
+  // SCRUM-161: read-only Zugriff auf die in SCRUM-159 persistierten Voll-Snapshots.
+  // Ohne Versions-Repo liefert der Service einen ehrlichen Leerzustand.
+  async versionsOf(id: string) {
+    await this.require(id);
+    return this.versions?.listByKo(id) ?? [];
+  }
+
   // FR-KO-04: Überarbeiten erhöht Version, setzt Bewertungen zurück, erzeugt History-Eintrag.
   async revise(id: string, changes: ReviseKoInput, author: string): Promise<KnowledgeObject> {
     const ko = await this.require(id);

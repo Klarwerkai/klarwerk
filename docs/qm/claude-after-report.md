@@ -2315,3 +2315,18 @@ JSON-Deep-Copy abgelegt → spätere KO-Änderungen berühren frühere Versionen
 ### Jira-Empfehlung
 SCRUM-159 nach grünem Mac-Gate auf Done. Erstes Foundation-Work-Item; schließt das
 Versions-Immutabilitäts-Risiko aus SCRUM-153. Claude setzt Jira nicht selbst.
+
+
+## SCRUM-161 — KO-Version-Snapshots sichtbar machen
+
+**1. Vorab-Befund:** SCRUM-159 persistiert unveränderliche Voll-Snapshots über `KoVersionRepo`, aber `KoService`/API/FE legten sie nicht lesbar frei. `KnowledgeDetail` zeigte nur `history[]`-Metadaten, nicht die echten Snapshot-Stände. Kein Backend-Modellumbau nötig.
+
+**2. Umsetzung:** Read-only Service-Methode `versionsOf(id)` ergänzt (prüft KO-Existenz, liefert ohne Versions-Repo einen ehrlichen Leerzustand), Route `GET /api/kos/:id/versions`, FE-Endpunkt/Hook `useKoVersions`, DOM-freier Helper `koVersionRows`, Snapshot-Card im KO-Detail mit Version, Zeitpunkt, Autor, Titel, Status, Kurzinhalt und Notiz.
+
+**3. Geänderte Dateien:** `services/knowledge-object/src/service.ts`, `services/knowledge-object/src/service.test.ts`, `services/app/src/routes/ko-routes.ts`, `apps/web/src/api/types.ts`, `apps/web/src/api/endpoints.ts`, `apps/web/src/api/hooks.ts`, `apps/web/src/lib/koVersionSnapshots.ts`, `apps/web/src/pages/KnowledgeDetail.tsx`, `apps/web/src/i18n.ts`, `tests/ko/ko-version-snapshots.test.ts`, `docs/qm/claude-after-report.md`.
+
+**4. Technische Entscheidung:** Nur read-only Sichtbarkeit der bestehenden Snapshots; kein Diff, kein Restore, kein Backfill, keine Änderung an create/revise oder Versions-Persistenz. Anzeige sortiert neueste Version zuerst und bleibt bei fehlenden Snapshots ehrlich leer.
+
+**5. Tests/Gates:** Gezielter Check grün: `services/knowledge-object/src/service.test.ts` + `tests/ko/ko-version-snapshots.test.ts` = 25 Tests. Root-`tsc --noEmit` grün. Voller Gate folgt im Codex-Lauf.
+
+**6. Restlücken:** Kein Versionsdiff/Restore und keine Nachbefüllung historischer KOs ohne Snapshot — bewusst außerhalb Scope.
