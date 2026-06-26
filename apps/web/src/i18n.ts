@@ -667,6 +667,11 @@ const de = {
   "mgmt.days": "Tage",
   "s2.graphEmpty": "Keine Graph-Daten.",
   "s2.graphCount": "{{nodes}} Knoten · {{edges}} Kanten",
+  "graph.truncated": "Anzeige auf die {{n}} am stärksten verbundenen Knoten begrenzt",
+  "graph.legendValidated": "validiert",
+  "graph.legendOpen": "offen / in Prüfung",
+  "graph.legendTag": "Tag-Relation",
+  "graph.legendConflict": "Konflikt",
 };
 
 const en: typeof de = {
@@ -1330,6 +1335,11 @@ const en: typeof de = {
   "mgmt.days": "days",
   "s2.graphEmpty": "No graph data.",
   "s2.graphCount": "{{nodes}} nodes · {{edges}} edges",
+  "graph.truncated": "View limited to the {{n}} most connected nodes",
+  "graph.legendValidated": "validated",
+  "graph.legendOpen": "open / in review",
+  "graph.legendTag": "tag relation",
+  "graph.legendConflict": "conflict",
 };
 
 void i18n.use(initReactI18next).init({

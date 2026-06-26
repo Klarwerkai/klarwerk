@@ -1934,3 +1934,25 @@ Datum: 2026-06-25
 **Abgrenzung (nicht gebaut):** keine Bilanzbewertung, keine Snapshot-Persistenz/Zeitreihen über `createdAt`-Fenster hinaus, kein PDF-Paket, keine Duplizierung der Health-/Risk-Formeln.
 
 **Empfehlung:** Nach grünem Mac-Gate + Commit/Push dürfen **FE-MGMT-01…09** abgehakt werden → **SCRUM-120** und **SCRUM-114** auf Done. Ich setze keine Jira-Checkbox/Status selbst.
+
+---
+
+## 2026-06-26 · SCRUM-119 — SVG-Wissensgraph aus Live-Daten (FR-ANA-03)
+
+**Ticket(s):** SCRUM-119. Freigegeben: textuelle `GraphView` durch echten SVG-Graph ersetzen, Konfliktkanten-Overlay aus echten Daten. Kein Backend-Umbau.
+
+**Befund:** `Graph { nodes:{id,title}[], edges:{a,b,via}[] }`; `LibraryService.graph()` baut echte Tag-Kanten (`via`=geteilter Tag, getestet). Knoten-Payload ohne Status → Knotenfärbung per FE-Join `useKos()`+`deriveStatus`. `Conflict{koA,koB}` via `useConflicts()` → echte Konfliktkanten. Keine vorhandene Layout-/SVG-Graph-Logik.
+
+**Umsetzung:**
+- `apps/web/src/lib/graphLayout.ts` (neu, rein/DOM-frei, deterministisch): `layoutGraph` (Kreis-Layout, Knoten stabil nach id sortiert, Koordinaten gerundet → reproduzierbar; Einzelknoten mittig; leerer Graph sicher; Kanten ohne existierende Endpunkte verworfen), `layoutConflicts` (nur Paare mit beiden vorhandenen Knoten), `limitGraph` (ehrliche Anzeige-Begrenzung großer Graphen auf die am stärksten verbundenen Knoten — keine Fake-Daten). Keine Force-Simulation, keine Graph-Library.
+- `apps/web/src/pages/Stufe2.tsx` `GraphView`: Textliste → **SVG** (`<svg viewBox>`): Tag-Relationen als graue Linien (mit `via`-Tooltip), **Konfliktkanten rot/gestrichelt** (eigener Typ, aus `useConflicts` koA/koB), Knoten als Kreise gefärbt nach abgeleitetem Status (`deriveStatus`, `currentColor`-Fill), gekürzte Titel-Labels. **Legende** (validiert/offen, Tag-Relation, Konflikt). Echter `nodes/edges`-Count; bei >60 Knoten ehrlicher Truncate-Hinweis. Leerzustand (`s2.graphEmpty`) bleibt.
+- `apps/web/src/i18n.ts`: `graph.truncated`, `graph.legend*` (DE+EN).
+- `tests/analytics/graph-layout.test.ts` (neu, 10 Tests): Determinismus, id-Sortierung, Bounds + paarweise verschieden, Einzel-/Leer-Sonderfälle, Kanten-Endpunkte, verworfene Geister-Kanten, Konflikt-Mapping, limitGraph (unverändert unter Limit / behält Top-Grad-Knoten).
+
+**Erfüllte AK:** Knoten/Kanten visuell als SVG ✓ · echte Live-Daten aus `/api/graph` (+ FE-Join KO-Status, echte Konflikte) ✓ · Legende sichtbar ✓ · Knotenstatus aus vorhandenen Daten abgeleitet ✓ · deterministisches, ohne DOM testbares Layout ✓ · keine Fake-Knoten/-Kanten ✓ · kein Backend-Umbau, keine neuen Payload-Felder, keine anderen Stufe-2-Sichten verändert ✓.
+
+**Gelaufene Checks:** apps/web `tsc --noEmit` EXIT=0 · `npm run check` GRÜN — **58 Testdateien / 303 Tests** (10 neu) · Biome grün · depcruise sauber.
+
+**Abgrenzung (nicht gebaut):** kein Backend/Payload-Umbau, keine schwere Graph-Lib, keine Force-Physik, keine Fake-Daten, keine Änderung an Output/Capital/Import.
+
+**Empfehlung:** Nach grünem Mac-Gate + Commit/Push darf **SCRUM-119 / FR-ANA-03** abgehakt → auf Done. Ich setze keine Jira-Checkbox/Status selbst.

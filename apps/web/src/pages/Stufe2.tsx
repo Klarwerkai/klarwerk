@@ -4,8 +4,10 @@ import { type ChangeEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { endpoints } from "../api/endpoints";
 import {
+  useConflicts,
   useGraph,
   useImportCandidates,
+  useKos,
   useManagementSnapshot,
   useOutputSources,
 } from "../api/hooks";
@@ -19,6 +21,8 @@ import type {
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
 import { Button, Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
+import { deriveStatus } from "../lib/displayStatus";
+import { layoutConflicts, layoutGraph, limitGraph } from "../lib/graphLayout";
 import { ImportParseError, parseImportItems } from "../lib/importReview";
 import {
   DEFAULT_ASSUMPTIONS,
@@ -628,32 +632,124 @@ export function Capital(): JSX.Element {
   );
 }
 
+const MAX_GRAPH_NODES = 60;
+
+// Knotenfarbe aus abgeleitetem Anzeigestatus (FE-Join über useKos), currentColor → fill.
+const STATUS_NODE_COLOR: Record<string, string> = {
+  validiert: "text-trust-pos-fill",
+  offen: "text-muted-2",
+  pruefung: "text-trust-warn-fill",
+  revalidierung: "text-trust-warn-fill",
+  konflikt: "text-trust-crit-fill",
+  abgelehnt: "text-trust-crit-fill",
+};
+
+function LegendDot({ colorClass, label }: { colorClass: string; label: string }): JSX.Element {
+  return (
+    <span className="flex items-center gap-1.5 text-[11.5px] text-muted">
+      <span className={`h-2.5 w-2.5 rounded-full ${colorClass}`} />
+      {label}
+    </span>
+  );
+}
+
+// SCRUM-119 / FR-ANA-03: echter SVG-Wissensgraph aus Live-Daten. Tag-Kanten aus
+// /api/graph, Knotenstatus per FE-Join, Konfliktkanten aus echten Conflict-Daten.
 export function GraphView(): JSX.Element {
   const { t } = useTranslation();
-  const query = useGraph();
+  const graphQ = useGraph();
+  const kosQ = useKos();
+  const conflictsQ = useConflicts();
+
   return (
     <div className="mx-auto max-w-3xl">
       <Stufe2Header titleKey="nav.graph" ticket="SCRUM-119" />
-      <QueryState query={query} emptyText={t("s2.graphEmpty")}>
-        {(g) => (
-          <Card>
-            <p className="mb-3 text-[13px] text-muted">
-              {t("s2.graphCount", { nodes: g.nodes.length, edges: g.edges.length })}
-            </p>
-            <div className="space-y-1.5">
-              {g.edges.slice(0, 30).map((e) => (
-                <div
-                  key={`${e.a}-${e.via}-${e.b}`}
-                  className="flex items-center gap-2 font-mono text-[12px] text-text"
-                >
-                  <span className="truncate">{e.a}</span>
-                  <span className="text-muted-2">—{e.via}→</span>
-                  <span className="truncate">{e.b}</span>
-                </div>
-              ))}
-            </div>
-          </Card>
-        )}
+      <QueryState query={graphQ} emptyText={t("s2.graphEmpty")}>
+        {(raw) => {
+          if (raw.nodes.length === 0) {
+            return <Notice textKey="s2.graphEmpty" />;
+          }
+          const statusOf = new Map((kosQ.data ?? []).map((k) => [k.id, deriveStatus(k)]));
+          const { graph: g, truncated } = limitGraph(raw, MAX_GRAPH_NODES);
+          const layout = layoutGraph(g);
+          const conflicts = layoutConflicts(
+            (conflictsQ.data ?? []).map((c) => ({ a: c.koA, b: c.koB })),
+            layout.positions,
+          );
+
+          return (
+            <Card>
+              <p className="mb-2 text-[13px] text-muted">
+                {t("s2.graphCount", { nodes: raw.nodes.length, edges: raw.edges.length })}
+                {truncated ? ` · ${t("graph.truncated", { n: MAX_GRAPH_NODES })}` : ""}
+              </p>
+              <svg
+                viewBox={`0 0 ${layout.width} ${layout.height}`}
+                className="w-full"
+                role="img"
+                aria-label={t("nav.graph")}
+              >
+                <title>{t("nav.graph")}</title>
+                {/* Tag-Relationen (grau) */}
+                {layout.edges.map((e) => (
+                  <line
+                    key={`tag-${e.a}-${e.via}-${e.b}`}
+                    x1={e.x1}
+                    y1={e.y1}
+                    x2={e.x2}
+                    y2={e.y2}
+                    className="text-hairline"
+                    stroke="currentColor"
+                    strokeWidth={1}
+                  >
+                    <title>{e.via}</title>
+                  </line>
+                ))}
+                {/* Konfliktkanten (rot, gestrichelt) */}
+                {conflicts.map((c) => (
+                  <line
+                    key={`conf-${c.a}-${c.b}`}
+                    x1={c.x1}
+                    y1={c.y1}
+                    x2={c.x2}
+                    y2={c.y2}
+                    className="text-trust-crit-fill"
+                    stroke="currentColor"
+                    strokeWidth={1.6}
+                    strokeDasharray="5 4"
+                  />
+                ))}
+                {/* Knoten */}
+                {layout.nodes.map((n) => (
+                  <g key={n.id}>
+                    <circle
+                      cx={n.x}
+                      cy={n.y}
+                      r={7}
+                      className={STATUS_NODE_COLOR[statusOf.get(n.id) ?? "offen"] ?? "text-muted-2"}
+                      fill="currentColor"
+                    />
+                    <text x={n.x} y={n.y - 11} textAnchor="middle" className="fill-text text-[9px]">
+                      {n.title.length > 16 ? `${n.title.slice(0, 15)}…` : n.title}
+                    </text>
+                  </g>
+                ))}
+              </svg>
+              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
+                <LegendDot colorClass="bg-trust-pos-fill" label={t("graph.legendValidated")} />
+                <LegendDot colorClass="bg-muted-2" label={t("graph.legendOpen")} />
+                <span className="flex items-center gap-1.5 text-[11.5px] text-muted">
+                  <span className="h-0.5 w-5 bg-hairline" />
+                  {t("graph.legendTag")}
+                </span>
+                <span className="flex items-center gap-1.5 text-[11.5px] text-muted">
+                  <span className="h-0 w-5 border-t-2 border-dashed border-trust-crit-fill" />
+                  {t("graph.legendConflict")}
+                </span>
+              </div>
+            </Card>
+          );
+        }}
       </QueryState>
     </div>
   );
