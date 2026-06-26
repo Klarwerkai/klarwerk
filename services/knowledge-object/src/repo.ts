@@ -96,6 +96,8 @@ export class InMemoryKoVersionRepo implements KoVersionRepo {
 export interface EvidenceRepo {
   append(record: EvidenceRecord): Promise<void>;
   listByKo(koId: string): Promise<EvidenceRecord[]>;
+  // SCRUM-169: KO-übergreifende, read-only Sicht (jüngste zuerst) für den QM-Evidence-Index.
+  recent(limit: number): Promise<EvidenceRecord[]>;
 }
 
 export class InMemoryEvidenceRepo implements EvidenceRepo {
@@ -112,6 +114,13 @@ export class InMemoryEvidenceRepo implements EvidenceRepo {
     const records = [...this.items.values()]
       .filter((record) => record.koId === koId)
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+    return Promise.resolve(records);
+  }
+
+  recent(limit: number): Promise<EvidenceRecord[]> {
+    const records = [...this.items.values()]
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))
+      .slice(0, Math.max(0, limit));
     return Promise.resolve(records);
   }
 }

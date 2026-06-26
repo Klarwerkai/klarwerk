@@ -178,4 +178,13 @@ export class PgEvidenceRepo implements EvidenceRepo {
     );
     return res.rows.map((row) => row.data);
   }
+
+  // SCRUM-169: jüngste Evidence über alle KOs (read-only, defensiv limitiert).
+  async recent(limit: number): Promise<EvidenceRecord[]> {
+    const res = await this.pool.query<EvidenceRow>(
+      "SELECT data FROM ko_evidence ORDER BY created_at DESC,id DESC LIMIT $1",
+      [Math.max(0, limit)],
+    );
+    return res.rows.map((row) => row.data);
+  }
 }

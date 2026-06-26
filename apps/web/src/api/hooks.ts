@@ -30,6 +30,12 @@ export const useModelRuns = (limit?: number) =>
     queryKey: ["model-runs", limit],
     queryFn: () => endpoints.modelRuns.recent(limit),
   });
+// SCRUM-169: KO-übergreifender read-only Evidence-Index (QM/Stufe 2).
+export const useEvidenceIndex = (limit?: number) =>
+  useQuery({
+    queryKey: ["evidence", "index", limit],
+    queryFn: () => endpoints.evidence.recent(limit),
+  });
 export const useKo = (id: string) =>
   useQuery({ queryKey: ["ko", id], queryFn: () => endpoints.ko.get(id), enabled: id.length > 0 });
 export const useKoVersions = (id: string) =>

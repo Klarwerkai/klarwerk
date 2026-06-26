@@ -2596,3 +2596,39 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-169 — Evidence-Index read-only für QM/Stufe 2
+
+**Vorab-Befund (read-only):** `EvidenceRepo` hatte nur `append`/`listByKo`; kein KO-übergreifender Zugriff. Evidence wird bereits append-only persistiert (InMemory + Pg, `ko_evidence`) — keine Migration nötig. ModelRuns liefern bereits ein bewährtes `recent(limit)`-Muster (Route + `normalize*Limit` + Stufe-2-Card), das ich gespiegelt habe.
+
+**Umsetzung (read-only, additiv):**
+- `EvidenceRepo.recent(limit)` ergänzt: InMemory (jüngste zuerst, `slice`) und Pg (`ORDER BY created_at DESC,id DESC LIMIT $1`). Bestehende KO-spezifische Evidence-Routen/Methoden unverändert.
+- `KoService.recentEvidence(limit?)` + `normalizeEvidenceLimit` (Default 100, Max 500) — exportiert aus dem Modul-Index. No-op-Leerzustand ohne Evidence-Repo.
+- Route `GET /api/evidence?limit=` in `ko-routes.ts` mit `ko.read`-Guard; liefert nur `EvidenceRecord`-Metadaten (keine Object-Rohdaten, kein dataUrl, kein Laden externer Inhalte).
+- FE: `endpoints.evidence.recent`, `useEvidenceIndex`, DOM-freier Helper `lib/evidenceIndex.ts` (`summarizeEvidence`/`evidenceKindTone`/`limitEvidence`).
+- Stufe 2 (`Capital`): neue read-only `EvidenceIndexCard` — Counts (Total/Quellen/Anhänge/distinkte KOs), jüngste Records mit Kind-Badge, KO-Ref, Provider/MIME/ObjectId/URL als Text-Pills. **URL nur als Text, nicht klickbar.** Kein Edit/Delete/Backfill. Ehrliche Loading/Error/Empty-States.
+- i18n DE/EN `evx.*` vollständig.
+
+**Geänderte/neue Dateien:** neu `apps/web/src/lib/evidenceIndex.ts`, `tests/ko/evidence-index.test.ts`; geändert `services/knowledge-object/src/{repo,repo-pg,service,service.test}.ts`, `services/knowledge-object/index.ts`, `services/app/src/routes/ko-routes.ts`, `apps/web/src/api/{endpoints,hooks}.ts`, `apps/web/src/pages/Stufe2.tsx`, `apps/web/src/i18n.ts`, `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — **80 Dateien / 442 Tests** (+8: Backend normalizeEvidenceLimit default/max/invalid, recentEvidence KO-übergreifend+limitiert, „nur Metadaten/kein dataUrl/THUMB", No-op ohne Repo; FE-Helper Summary/leer/Tone/limit). apps/web `tsc --noEmit` EXIT=0. Biome + depcruise sauber. Bestehende KO-/Evidence-/Konsistenztests unverändert grün.
+
+**Restlücken (bewusst, Nicht-Ziele):** kein Edit/Delete/Backfill, kein Evidence-Browser mit Suche/Pagination, keine Migration, keine Änderung am Evidence-Modell, keine klickbaren Fremd-URLs, keine Object-Store-Rohdaten.
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check && (cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add services/knowledge-object/src/repo.ts services/knowledge-object/src/repo-pg.ts \
+  services/knowledge-object/src/service.ts services/knowledge-object/src/service.test.ts \
+  services/knowledge-object/index.ts services/app/src/routes/ko-routes.ts \
+  apps/web/src/api/endpoints.ts apps/web/src/api/hooks.ts apps/web/src/lib/evidenceIndex.ts \
+  apps/web/src/pages/Stufe2.tsx apps/web/src/i18n.ts tests/ko/evidence-index.test.ts \
+  docs/qm/claude-after-report.md
+git commit -m "feat(ko): read-only evidence index for QA/Stufe 2 (SCRUM-169)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

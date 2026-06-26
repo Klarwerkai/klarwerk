@@ -3,7 +3,14 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { AuditService, InMemoryAuditRepo } from "../../audit";
 import { InMemoryEvidenceRepo, InMemoryKoRepo, InMemoryKoVersionRepo } from "./repo";
 import { PgEvidenceRepo, PgKoVersionRepo } from "./repo-pg";
-import { type CreateKoInput, KoService } from "./service";
+import {
+  type CreateKoInput,
+  DEFAULT_EVIDENCE_LIMIT,
+  KoService,
+  MAX_EVIDENCE_LIMIT,
+  normalizeEvidenceLimit,
+} from "./service";
+import type { EvidenceRecord } from "./types";
 
 function base(overrides: Partial<CreateKoInput> = {}): CreateKoInput {
   return {
@@ -459,5 +466,81 @@ describe("SCRUM-160: Evidence-Records v1", () => {
     await new PgEvidenceRepo(pool).append({ ...first, label: "Überschrieben?" });
     const again = await new PgEvidenceRepo(pool).listByKo(ko.id);
     expect(again[0]?.label).toBe("Quelle");
+  });
+});
+
+describe("SCRUM-169: Evidence-Index (recentEvidence)", () => {
+  it("normalizeEvidenceLimit: default/max/invalid", () => {
+    expect(normalizeEvidenceLimit(undefined)).toBe(DEFAULT_EVIDENCE_LIMIT);
+    expect(normalizeEvidenceLimit(0)).toBe(DEFAULT_EVIDENCE_LIMIT);
+    expect(normalizeEvidenceLimit(-5)).toBe(DEFAULT_EVIDENCE_LIMIT);
+    expect(normalizeEvidenceLimit(Number.NaN)).toBe(DEFAULT_EVIDENCE_LIMIT);
+    expect(normalizeEvidenceLimit(10_000)).toBe(MAX_EVIDENCE_LIMIT);
+    expect(normalizeEvidenceLimit(7.8)).toBe(7);
+  });
+
+  it("recentEvidence liefert KO-übergreifend, jüngste zuerst, defensiv limitiert", async () => {
+    const evidence = new InMemoryEvidenceRepo();
+    const svc = new KoService({ repo: new InMemoryKoRepo(), evidence });
+    const a = await svc.create(base({ title: "KO A xx" }));
+    const b = await svc.create(base({ title: "KO B yy" }));
+    const older: EvidenceRecord = {
+      id: "ev-older",
+      koId: a.id,
+      koVersion: 1,
+      kind: "source",
+      sourceId: "src-a",
+      label: "Quelle A",
+      url: "https://example.org/a",
+      createdBy: "experte",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+    const newer: EvidenceRecord = {
+      id: "ev-newer",
+      koId: b.id,
+      koVersion: 1,
+      kind: "source",
+      sourceId: "src-b",
+      label: "Quelle B",
+      createdBy: "experte",
+      createdAt: "2026-01-02T00:00:00.000Z",
+    };
+    await evidence.append(older);
+    await evidence.append(newer);
+
+    const all = await svc.recentEvidence();
+    expect(all).toHaveLength(2);
+    expect(new Set(all.map((r) => r.koId))).toEqual(new Set([a.id, b.id]));
+    // jüngste zuerst (Quelle B wurde zuletzt angelegt)
+    expect(all[0]?.label).toBe("Quelle B");
+
+    const limited = await svc.recentEvidence(1);
+    expect(limited).toHaveLength(1);
+    expect(limited[0]?.label).toBe("Quelle B");
+  });
+
+  it("recentEvidence enthält nur Metadaten — kein dataUrl/raw object data", async () => {
+    const evidence = new InMemoryEvidenceRepo();
+    const svc = new KoService({ repo: new InMemoryKoRepo(), evidence });
+    const ko = await svc.create(base());
+    await svc.addAttachment(ko.id, "pedi", {
+      name: "foto.jpg",
+      mime: "image/jpeg",
+      objectId: "obj-7",
+      thumbnail: "data:image/jpeg;base64,THUMB",
+      size: 99,
+    });
+    const records = await svc.recentEvidence();
+    expect(records).toHaveLength(1);
+    const json = JSON.stringify(records);
+    expect(json).not.toContain("dataUrl");
+    expect(json).not.toContain("data:image");
+    expect(json).not.toContain("THUMB");
+    expect(records[0]).toMatchObject({ kind: "attachment", objectId: "obj-7", mime: "image/jpeg" });
+  });
+
+  it("recentEvidence ohne Evidence-Repo → ehrlicher Leerzustand", async () => {
+    const svc = new KoService({ repo: new InMemoryKoRepo() });
+    await expect(svc.recentEvidence()).resolves.toEqual([]);
   });
 });

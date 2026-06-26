@@ -1,5 +1,10 @@
 // Öffentliche API des Moduls knowledge-object.
-export { KoService } from "./src/service";
+export {
+  KoService,
+  normalizeEvidenceLimit,
+  DEFAULT_EVIDENCE_LIMIT,
+  MAX_EVIDENCE_LIMIT,
+} from "./src/service";
 export type { KoServiceDeps, CreateKoInput, ReviseKoInput } from "./src/service";
 export {
   InMemoryEvidenceRepo,

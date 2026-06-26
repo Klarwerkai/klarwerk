@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { endpoints } from "../api/endpoints";
 import {
   useConflicts,
+  useEvidenceIndex,
   useGraph,
   useImportCandidates,
   useKos,
@@ -24,6 +25,7 @@ import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
 import { Button, Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import { deriveStatus } from "../lib/displayStatus";
+import { evidenceKindTone, limitEvidence, summarizeEvidence } from "../lib/evidenceIndex";
 import { IMPORT_PIPELINE_STEPS, candidateFindings, summarizeImportQueue } from "../lib/extConcept";
 import { layoutConflicts, layoutGraph, limitGraph } from "../lib/graphLayout";
 import { ImportParseError, parseImportItems } from "../lib/importReview";
@@ -804,6 +806,76 @@ function ReasonerConfigCard(): JSX.Element {
   );
 }
 
+// SCRUM-169: KO-übergreifender read-only Evidence-Index (QM/Stufe 2). Nur Metadaten —
+// keine Object-Rohdaten, URLs nur als Text (nicht klickbar), kein Edit/Delete/Backfill.
+function EvidenceIndexCard(): JSX.Element {
+  const { t } = useTranslation();
+  const index = useEvidenceIndex(100);
+  const records = limitEvidence(index.data ?? [], 12);
+  const summary = summarizeEvidence(index.data ?? []);
+  return (
+    <Card className="mt-4">
+      <SectionLabel>{t("evx.title")}</SectionLabel>
+      {index.isLoading ? (
+        <p className="text-[13px] text-muted">{t("state.loading")}</p>
+      ) : index.isError ? (
+        <p className="text-[13px] text-danger">{t("state.error")}</p>
+      ) : records.length === 0 ? (
+        <p className="text-[13px] text-muted">{t("evx.empty")}</p>
+      ) : (
+        <>
+          <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-muted-2">
+            <span>{t("evx.total", { n: summary.total })}</span>
+            <span>{t("evx.sources", { n: summary.sources })}</span>
+            <span>{t("evx.attachments", { n: summary.attachments })}</span>
+            <span>{t("evx.kos", { n: summary.distinctKos })}</span>
+          </div>
+          <ul className="divide-y divide-hairline">
+            {records.map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center gap-2 py-2">
+                <span
+                  className={`rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${
+                    evidenceKindTone(r) === "source"
+                      ? "bg-ai-surface-1 text-ai"
+                      : "bg-trust-info-bg text-trust-info-text"
+                  }`}
+                >
+                  {t(`evx.kind.${r.kind}`)}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-[12px] text-text">{r.label}</span>
+                <span className="font-mono text-[10px] text-muted-2">
+                  {t("evx.koRef", { id: r.koId })}
+                </span>
+                {r.provider ? (
+                  <span className="rounded-pill bg-surface px-1.5 py-0.5 font-mono text-[9.5px] text-muted-2 ring-1 ring-hairline">
+                    {t("evx.providerPill", { v: r.provider })}
+                  </span>
+                ) : null}
+                {r.mime ? (
+                  <span className="rounded-pill bg-surface px-1.5 py-0.5 font-mono text-[9.5px] text-muted-2 ring-1 ring-hairline">
+                    {r.mime}
+                  </span>
+                ) : null}
+                {r.objectId ? (
+                  <span className="rounded-pill bg-surface px-1.5 py-0.5 font-mono text-[9.5px] text-muted-2 ring-1 ring-hairline">
+                    {t("evx.objectPill", { v: r.objectId })}
+                  </span>
+                ) : null}
+                {r.url ? (
+                  // URL bewusst nur als Text (nicht klickbar) — fremde Links werden nicht verlinkt.
+                  <span className="max-w-[40%] truncate rounded-pill bg-surface px-1.5 py-0.5 font-mono text-[9.5px] text-muted-2 ring-1 ring-hairline">
+                    {r.url}
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </Card>
+  );
+}
+
 export function Capital(): JSX.Element {
   const snapshot = useManagementSnapshot();
   return (
@@ -822,6 +894,8 @@ export function Capital(): JSX.Element {
       <ReasonerConfigCard />
       {/* SCRUM-165: ModelRun-Übersicht — unabhängig vom Snapshot, auch bei leerem Bestand sichtbar. */}
       <ReasonerRunsCard />
+      {/* SCRUM-169: KO-übergreifender read-only Evidence-Index (QM). */}
+      <EvidenceIndexCard />
     </div>
   );
 }

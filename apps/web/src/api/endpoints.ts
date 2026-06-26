@@ -203,6 +203,11 @@ export const endpoints = {
     recent: (limit?: number) =>
       api.get<ModelRunRecord[]>(`/model-runs${qs({ limit: limit?.toString() })}`),
   },
+  // SCRUM-169: KO-übergreifender read-only Evidence-Index (QM/Stufe 2; nur Metadaten).
+  evidence: {
+    recent: (limit?: number) =>
+      api.get<EvidenceRecord[]>(`/evidence${qs({ limit: limit?.toString() })}`),
+  },
   // SCRUM-118 / FR-EXT-02: externer Such-Proxy (optional; 501 wenn deaktiviert).
   external: {
     search: (q: string) => api.get<ExternalResult[]>(`/external/search${qs({ q })}`),

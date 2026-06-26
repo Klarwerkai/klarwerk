@@ -16,6 +16,16 @@ import {
 
 const DEFAULT_NEEDED_VALIDATIONS = 3; // FR-CAP-08: 1–5, Standard 3.
 
+// SCRUM-169: defensives Limit für den read-only Evidence-Index (QM/Stufe 2).
+export const DEFAULT_EVIDENCE_LIMIT = 100;
+export const MAX_EVIDENCE_LIMIT = 500;
+export function normalizeEvidenceLimit(limit?: number): number {
+  if (limit === undefined || !Number.isFinite(limit) || limit <= 0) {
+    return DEFAULT_EVIDENCE_LIMIT;
+  }
+  return Math.min(Math.floor(limit), MAX_EVIDENCE_LIMIT);
+}
+
 export interface KoServiceDeps {
   repo: KoRepo;
   audit?: AuditService;
@@ -305,6 +315,12 @@ export class KoService {
   async evidenceOf(id: string) {
     await this.require(id);
     return this.evidence?.listByKo(id) ?? [];
+  }
+
+  // SCRUM-169: KO-übergreifender read-only Evidence-Index (QM/Stufe 2). Nur Metadaten —
+  // keine Object-Rohdaten, kein Laden externer Inhalte. Limit defensiv normalisiert.
+  async recentEvidence(limit?: number): Promise<EvidenceRecord[]> {
+    return this.evidence?.recent(normalizeEvidenceLimit(limit)) ?? [];
   }
 
   // FR-KO-04: Überarbeiten erhöht Version, setzt Bewertungen zurück, erzeugt History-Eintrag.

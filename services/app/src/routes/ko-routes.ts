@@ -106,6 +106,22 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       }
     });
 
+    // SCRUM-169: KO-übergreifender read-only Evidence-Index (QM/Stufe 2). Nur Metadaten,
+    // defensiv limitiert; keine Object-Rohdaten, keine externen Inhalte.
+    app.get<{ Querystring: { limit?: string } }>("/api/evidence", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      const raw = request.query.limit;
+      const limit = raw !== undefined ? Number(raw) : undefined;
+      try {
+        reply.code(200).send(await ko.recentEvidence(limit));
+      } catch (error) {
+        sendError(reply, error);
+      }
+    });
+
     app.post<{ Body: Omit<CreateKoInput, "author"> }>("/api/kos", async (request, reply) => {
       const user = await guards.requirePermission("ko.create", request, reply);
       if (!user) {
