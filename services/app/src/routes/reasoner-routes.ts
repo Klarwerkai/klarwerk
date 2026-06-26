@@ -57,5 +57,14 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         message: "task muss 'structure', 'ask', 'assist' oder 'interview' sein.",
       });
     });
+
+    // SCRUM-166: read-only Provider-/Model-Konfiguration (nur Metadaten, keine Secrets).
+    app.get("/api/reasoner/config", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      reply.code(200).send(reasoner.configStatus());
+    });
   };
 }

@@ -2480,3 +2480,57 @@ git add services/model-runs services/app/src/routes/model-runs-routes.ts service
 git commit -m "feat(model-runs): read-only endpoint + stage-2 overview (SCRUM-165)" && git push
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## After-Report — SCRUM-166 · Reasoner Provider-/Model-Konfiguration sichtbar machen — 2026-06-26
+
+### Vorab-Befund
+`Reasoner.status()` (FR-RSN-05, active/provider/mode) existiert und wird von der Topbar genutzt —
+unangetastet gelassen. Eine reichere Konfigurationssicht (model?, configured, supportsLocales,
+tasks) fehlte. `provider.name` des Anthropic-Clients enthält das Modell-Label, NICHT den Schlüssel.
+
+### Umsetzung (additiv, keine Reasoner-Execution-Änderung)
+- **Backend** `services/reasoner`: neuer Typ `ReasonerConfigStatus` (provider, model?, configured,
+  mode "model|fallback|demo", fallbackAvailable, supportsLocales, tasks) + `Reasoner.configStatus()`
+  — ohne Modell ehrlich `configured:false`/`mode:"demo"`, mit Modell `configured:true`/`mode:"model"`.
+  Nur Metadaten, keine Secrets/Prompttexte. Export via `reasoner/index.ts`.
+- **Route** `GET /api/reasoner/config` (in `reasoner-routes.ts`, Guard `ko.read`). Bestehende
+  `/api/reasoner` und `/api/reasoner/status` unverändert.
+- **Frontend**: `ReasonerConfigStatus`-Typ, `endpoints.reasoner.config()`, `useReasonerConfig()`,
+  DOM-freier Helper `lib/reasonerStatus.ts` (`reasonerModeTone`, `reasonerStatusSummary`,
+  `isModelConfigured`). Kompakte `ReasonerConfigCard` in der Stufe-2-`Capital`-Seite (neben der
+  ModelRun-Card): Modus-Badge, Provider, Modell oder „nicht konfiguriert", Sprachen, Tasks,
+  ehrlicher Fallback/Demo-Hinweis. Keine Secrets/Prompttexte.
+- **i18n** DE/EN `rcfg.*`.
+
+### Geänderte/neue Dateien
+neu: `apps/web/src/lib/reasonerStatus.ts`, `tests/reasoner/reasoner-status.test.ts`;
+geändert: `services/reasoner/src/{types,service,service.test}.ts`, `services/reasoner/index.ts`,
+`services/app/src/routes/reasoner-routes.ts`, `apps/web/src/api/{types,endpoints,hooks}.ts`,
+`apps/web/src/pages/Stufe2.tsx`, `apps/web/src/i18n.ts`, `docs/qm/claude-after-report.md`.
+
+### Tests / Gates
+- reasoner/service.test.ts +3: ohne Modell (configured false/mode demo/Fallback), mit Modell
+  (configured true/mode model/provider+model), **keine key/secret/token/prompt-Felder**.
+- tests/reasoner/reasoner-status.test.ts: isModelConfigured, Mode-Tone (model→pos, demo/fallback→warn),
+  Summary (model null bei Demo).
+- apps/web-tsc EXIT=0 · `npm run check` grün: **78 Dateien / 424 Tests**, Biome + depcruise sauber.
+  Reasoner-Execution & ModelRun-Protokoll unverändert; bestehende `status()`/Topbar intakt.
+
+### Restlücken
+- Kein neuer Modellanbieter, keine Provider-Auswahl im UI, kein Token-/Kosten-Accounting
+  (Nicht-Ziele). `mode:"fallback"` ist im Typ vorgesehen, wird aber als statischer Config-Snapshot
+  nicht emittiert (Fallback ist ein Laufzeit-Ereignis, im ModelRun-Protokoll erfasst).
+
+### Commit-/Push-Hinweis für Pedi/Codex
+cd /Users/peterkohnert/Documents/dev_Klarwerk && npm run check
+cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit && cd ../..
+git add services/reasoner/src/types.ts services/reasoner/src/service.ts services/reasoner/src/service.test.ts \
+  services/reasoner/index.ts services/app/src/routes/reasoner-routes.ts \
+  apps/web/src/api/types.ts apps/web/src/api/endpoints.ts apps/web/src/api/hooks.ts \
+  apps/web/src/lib/reasonerStatus.ts apps/web/src/pages/Stufe2.tsx apps/web/src/i18n.ts \
+  tests/reasoner/reasoner-status.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(reasoner): expose read-only provider/model config (SCRUM-166)" && git push
+
+No Jira changes by Claude. No tickets closed. No new tickets.

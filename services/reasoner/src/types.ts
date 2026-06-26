@@ -66,3 +66,18 @@ export interface ReasonerStatus {
   provider: string;
   mode: "model" | "deterministic";
 }
+
+// SCRUM-166: read-only Provider-/Model-Konfigurationssicht. Nur technische Metadaten —
+// KEINE Secrets/API-Keys, keine Prompt-/Antwortinhalte. provider/model sind Anzeige-Labels.
+export type ReasonerConfigMode = "model" | "fallback" | "demo";
+export type ReasonerTask = "structure" | "assist" | "interview" | "answer" | "select";
+
+export interface ReasonerConfigStatus {
+  provider: string; // Label des aktiven Providers (kein Schlüssel)
+  model?: string; // Modell-Label, falls ein echtes Modell konfiguriert ist
+  configured: boolean; // ist ein echtes Modell verdrahtet & verfügbar?
+  mode: ReasonerConfigMode; // "model" konfiguriert · sonst "demo" (deterministisch)
+  fallbackAvailable: boolean; // deterministischer Fallback immer verfügbar (FR-RSN-04)
+  supportsLocales: ReasonerLocale[];
+  tasks: ReasonerTask[];
+}

@@ -429,6 +429,20 @@ export interface ReasonerStatus {
   mode: "model" | "deterministic";
 }
 
+// SCRUM-166: read-only Provider-/Model-Konfiguration (nur Metadaten, keine Secrets).
+export type ReasonerConfigMode = "model" | "fallback" | "demo";
+export type ReasonerTask = "structure" | "assist" | "interview" | "answer" | "select";
+
+export interface ReasonerConfigStatus {
+  provider: string;
+  model?: string;
+  configured: boolean;
+  mode: ReasonerConfigMode;
+  fallbackAvailable: boolean;
+  supportsLocales: ("de" | "en")[];
+  tasks: ReasonerTask[];
+}
+
 export interface AssistResult {
   text: string;
   demo: boolean;

@@ -395,3 +395,35 @@ describe("SCRUM-164: ModelRun-Protokoll", () => {
     expect(res.title).toBe("T");
   });
 });
+
+describe("SCRUM-166: Reasoner configStatus", () => {
+  it("ohne Modell → configured false, mode demo, Fallback verfügbar", () => {
+    const cfg = new Reasoner().configStatus();
+    expect(cfg.configured).toBe(false);
+    expect(cfg.mode).toBe("demo");
+    expect(cfg.fallbackAvailable).toBe(true);
+    expect(cfg.provider).toBe("deterministic");
+    expect(cfg.model).toBeUndefined();
+    expect(cfg.supportsLocales).toEqual(["de", "en"]);
+    expect(cfg.tasks).toContain("structure");
+    expect(cfg.tasks).toContain("answer");
+  });
+
+  it("mit Modell → configured true, mode model, provider/model gesetzt", () => {
+    const cfg = new Reasoner(okModel()).configStatus();
+    expect(cfg.configured).toBe(true);
+    expect(cfg.mode).toBe("model");
+    expect(cfg.provider).toBe("anthropic:test-model");
+    expect(cfg.model).toBe("anthropic:test-model");
+  });
+
+  it("liefert keinerlei Secret-/Key-/Prompt-Felder", () => {
+    const cfg = new Reasoner(okModel()).configStatus();
+    const json = JSON.stringify(cfg).toLowerCase();
+    expect(json).not.toContain("key");
+    expect(json).not.toContain("secret");
+    expect(json).not.toContain("token");
+    expect(json).not.toContain("prompt");
+    expect("apiKey" in cfg).toBe(false);
+  });
+});

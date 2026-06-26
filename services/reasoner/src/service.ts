@@ -6,6 +6,7 @@ import type {
   AssistResult,
   InterviewResult,
   KnowledgeRef,
+  ReasonerConfigStatus,
   ReasonerLocale,
   ReasonerStatus,
   StructureResult,
@@ -109,6 +110,21 @@ export class Reasoner {
       active: usingPrimary,
       provider: usingPrimary ? this.primary.name : this.fallback.name,
       mode: usingPrimary ? "model" : "deterministic",
+    };
+  }
+
+  // SCRUM-166: read-only Provider-/Model-Konfiguration. Nur Metadaten — keine Secrets,
+  // keine Prompt-/Antwortinhalte. Ohne konfiguriertes Modell ehrlich Demo-Modus.
+  configStatus(): ReasonerConfigStatus {
+    const configured = this.usingPrimary();
+    return {
+      provider: configured ? this.primary.name : this.fallback.name,
+      ...(configured ? { model: this.primary.name } : {}),
+      configured,
+      mode: configured ? "model" : "demo",
+      fallbackAvailable: true,
+      supportsLocales: ["de", "en"],
+      tasks: ["structure", "assist", "interview", "answer", "select"],
     };
   }
 

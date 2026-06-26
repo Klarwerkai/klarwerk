@@ -31,6 +31,7 @@ import type {
   OutputKind,
   OutputSource,
   PublicUser,
+  ReasonerConfigStatus,
   ReasonerStatus,
   ReviewAction,
   Role,
@@ -142,6 +143,8 @@ export const endpoints = {
         ...(locale ? { locale } : {}),
       }),
     status: () => api.get<ReasonerStatus>("/reasoner/status"),
+    // SCRUM-166: read-only Provider-/Model-Konfiguration (nur Metadaten).
+    config: () => api.get<ReasonerConfigStatus>("/reasoner/config"),
   },
   notifications: { list: () => api.get<Notification[]>("/notifications") },
   directory: { list: () => api.get<{ id: string; name: string }[]>("/directory") },

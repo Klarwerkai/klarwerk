@@ -11,6 +11,7 @@ import {
   useManagementSnapshot,
   useModelRuns,
   useOutputSources,
+  useReasonerConfig,
 } from "../api/hooks";
 import type {
   ImportItemInput,
@@ -34,6 +35,7 @@ import {
 } from "../lib/knowledgeValuation";
 import { limitModelRuns, modelRunStatusTone, summarizeModelRuns } from "../lib/modelRuns";
 import { OUTPUT_KIND_OPTIONS, downloadFilename, orderedSelection } from "../lib/outputDoc";
+import { isModelConfigured, reasonerModeTone } from "../lib/reasonerStatus";
 
 function Stufe2Header({ titleKey, ticket }: { titleKey: string; ticket: string }): JSX.Element {
   const { t } = useTranslation();
@@ -742,6 +744,66 @@ function ReasonerRunsCard(): JSX.Element {
   );
 }
 
+// SCRUM-166: read-only Provider-/Model-Konfiguration (nur Metadaten, keine Secrets).
+function ReasonerConfigCard(): JSX.Element {
+  const { t } = useTranslation();
+  const config = useReasonerConfig();
+  return (
+    <Card className="mt-4">
+      <SectionLabel>{t("rcfg.title")}</SectionLabel>
+      {config.isLoading ? (
+        <p className="text-[13px] text-muted">{t("state.loading")}</p>
+      ) : config.isError || !config.data ? (
+        <p className="text-[13px] text-danger">{t("state.error")}</p>
+      ) : (
+        (() => {
+          const c = config.data;
+          const warn = reasonerModeTone(c) === "warn";
+          return (
+            <div className="space-y-2 text-[12.5px]">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted">{t("rcfg.mode")}</span>
+                <span
+                  className={`rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${
+                    warn
+                      ? "bg-trust-warn-bg text-trust-warn-text"
+                      : "bg-trust-pos-bg text-trust-pos-text"
+                  }`}
+                >
+                  {t(`rcfg.modeLabel.${c.mode}`)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted">{t("rcfg.provider")}</span>
+                <span className="font-mono text-text">{c.provider}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted">{t("rcfg.model")}</span>
+                <span className="font-mono text-text">
+                  {isModelConfigured(c) && c.model ? c.model : t("rcfg.notConfigured")}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted">{t("rcfg.locales")}</span>
+                <span className="font-mono text-muted-2">{c.supportsLocales.join(", ")}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted">{t("rcfg.tasks")}</span>
+                <span className="font-mono text-muted-2">{c.tasks.join(", ")}</span>
+              </div>
+              {warn ? (
+                <p className="border-t border-hairline pt-2 text-[12px] text-trust-warn-text">
+                  {t("rcfg.fallbackHint")}
+                </p>
+              ) : null}
+            </div>
+          );
+        })()
+      )}
+    </Card>
+  );
+}
+
 export function Capital(): JSX.Element {
   const snapshot = useManagementSnapshot();
   return (
@@ -756,6 +818,8 @@ export function Capital(): JSX.Element {
           )
         }
       </QueryState>
+      {/* SCRUM-166: Reasoner-/Provider-Konfiguration (read-only, unabhängig vom Snapshot). */}
+      <ReasonerConfigCard />
       {/* SCRUM-165: ModelRun-Übersicht — unabhängig vom Snapshot, auch bei leerem Bestand sichtbar. */}
       <ReasonerRunsCard />
     </div>

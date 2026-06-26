@@ -17,4 +17,7 @@ export type {
   AssistResult,
   InterviewResult,
   ReasonerStatus,
+  ReasonerConfigStatus,
+  ReasonerConfigMode,
+  ReasonerTask,
 } from "./src/types";

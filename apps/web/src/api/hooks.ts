@@ -81,3 +81,6 @@ export const useNotifications = () =>
   useQuery({ queryKey: ["notifications"], queryFn: endpoints.notifications.list });
 export const useReasonerStatus = () =>
   useQuery({ queryKey: ["reasoner", "status"], queryFn: endpoints.reasoner.status });
+// SCRUM-166: read-only Reasoner-/Provider-Konfiguration.
+export const useReasonerConfig = () =>
+  useQuery({ queryKey: ["reasoner", "config"], queryFn: endpoints.reasoner.config });
