@@ -45,6 +45,16 @@ export function readTextFile(file: File): Promise<string> {
   });
 }
 
+// SCRUM-121: Original-Datei als Daten-URL lesen (geht in den Object-Store, NICHT ins KO).
+export function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(new Error("read-error"));
+    reader.readAsDataURL(file);
+  });
+}
+
 const TEXT_EXTS = [".txt", ".md", ".markdown", ".csv", ".log", ".json"];
 
 export function isTextDocument(file: File): boolean {

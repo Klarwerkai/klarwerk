@@ -114,16 +114,27 @@ export class KoService {
   async addAttachment(
     id: string,
     author: string,
-    input: { name: string; mime: string; dataUrl: string },
+    input: {
+      name: string;
+      mime: string;
+      dataUrl?: string;
+      objectId?: string;
+      thumbnail?: string;
+      size?: number;
+    },
   ): Promise<KnowledgeObject> {
     const ko = await this.require(id);
+    // SCRUM-121: nur gesetzte Felder übernehmen (kein leeres dataUrl bei Objekt-Referenz).
     const attachment: KoAttachment = {
       id: this.genId(),
       name: input.name,
       mime: input.mime,
-      dataUrl: input.dataUrl,
       author,
       at: new Date(this.now()).toISOString(),
+      ...(input.dataUrl ? { dataUrl: input.dataUrl } : {}),
+      ...(input.objectId ? { objectId: input.objectId } : {}),
+      ...(input.thumbnail ? { thumbnail: input.thumbnail } : {}),
+      ...(input.size !== undefined ? { size: input.size } : {}),
     };
     const updated: KnowledgeObject = {
       ...ko,

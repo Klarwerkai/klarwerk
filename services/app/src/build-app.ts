@@ -33,6 +33,7 @@ import {
   PgLifecycleRepo,
 } from "../../lifecycle";
 import { ConsoleMailer, type Mailer, createMailerFromEnv } from "../../notifications";
+import { InMemoryObjectRepo, type ObjectRepo, ObjectStore } from "../../object-store";
 import { ModelProvider, Reasoner, createModelClientFromEnv } from "../../reasoner";
 import {
   type AssignmentRepo,
@@ -55,6 +56,7 @@ import { koRoutes } from "./routes/ko-routes";
 import { libraryRoutes } from "./routes/library-routes";
 import { lifecycleRoutes } from "./routes/lifecycle-routes";
 import { notificationsRoutes } from "./routes/notifications-routes";
+import { objectRoutes } from "./routes/object-routes";
 import { reasonerRoutes } from "./routes/reasoner-routes";
 import { validationRoutes } from "./routes/validation-routes";
 
@@ -72,6 +74,7 @@ export interface AppServices {
   library: LibraryService;
   lifecycle: LifecycleService;
   i18n: I18nService;
+  objects: ObjectStore;
   mailer: Mailer;
 }
 
@@ -89,6 +92,7 @@ interface AppRepos {
   assignments: AssignmentRepo;
   conflictsRepo: ConflictRepo;
   lifecycleRepo: LifecycleRepo;
+  objects: ObjectRepo;
 }
 
 // Verdrahtet aus den Repos die vollständige Service-Landschaft. Ein gemeinsames
@@ -122,6 +126,8 @@ function assembleServices(repos: AppRepos): AppServices {
     library: new LibraryService({ koService: ko, audit }),
     lifecycle: new LifecycleService({ koService: ko, repo: repos.lifecycleRepo }),
     i18n: new I18nService(),
+    // SCRUM-121: interner Objekt-/Attachment-Speicher (In-Memory; Pg/Disk = Folge-Ticket).
+    objects: new ObjectStore({ repo: repos.objects }),
     // FR-AUTH-08/FR-VAL-07: SMTP, wenn konfiguriert; sonst sammelnder Fallback ohne Versand.
     mailer: createMailerFromEnv() ?? new ConsoleMailer(),
   };
@@ -141,6 +147,7 @@ export function buildServices(): AppServices {
     assignments: new InMemoryAssignmentRepo(),
     conflictsRepo: new InMemoryConflictRepo(),
     lifecycleRepo: new InMemoryLifecycleRepo(),
+    objects: new InMemoryObjectRepo(),
   });
 }
 
@@ -158,6 +165,8 @@ export function buildPgServices(pool: Pool): AppServices {
     assignments: new PgAssignmentRepo(pool),
     conflictsRepo: new PgConflictRepo(pool),
     lifecycleRepo: new PgLifecycleRepo(pool),
+    // SCRUM-121: Object-Store bleibt vorerst In-Memory (kein Pg-/Disk-Adapter in diesem Ticket).
+    objects: new InMemoryObjectRepo(),
   });
 }
 
@@ -200,6 +209,7 @@ export function buildApp(services: AppServices = buildServices()): FastifyInstan
   app.register(notificationsRoutes({ conflicts: services.conflicts, ask: services.ask }, guards));
   app.register(auditRoutes(services.audit, guards));
   app.register(reasonerRoutes(services, guards));
+  app.register(objectRoutes(services.objects, guards));
   app.register(i18nRoutes(services.i18n));
 
   // FR-ANA-02: Wirkungs-Dashboard (orchestriert KO-Bestand + Ask-Telemetrie aus dem Audit).

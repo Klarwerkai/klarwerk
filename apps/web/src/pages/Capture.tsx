@@ -20,6 +20,7 @@ import {
   isTextDocument,
   isWordDocument,
   readDocxFile,
+  readFileAsDataUrl,
   readPdfFile,
   readTextFile,
   runImageOcr,
@@ -42,7 +43,9 @@ const EMPTY_DRAFT: StructureResult = {
 interface LocalImage {
   id: string;
   name: string;
-  dataUrl: string;
+  mime: string;
+  dataUrl: string; // kleine Vorschau (Thumbnail)
+  original: string; // Original-Daten-URL (→ Object-Store)
 }
 
 // Web-Speech-API (Diktat) — minimale Typen statt any.
@@ -175,11 +178,23 @@ export function Capture(): JSX.Element {
         asset: asset.trim() ? asset.trim() : null,
         ...(n ? { neededValidations: n } : {}),
       });
-      // Gesammelte Bilder am neu erstellten Objekt anhängen (FR-CAP-05).
+      // SCRUM-121: Original in den Object-Store; am KO nur Referenz + kleine Vorschau.
       for (const img of images) {
+        const ref = await endpoints.objects.upload({
+          name: img.name,
+          mime: img.mime,
+          data: img.original,
+          kind: "image",
+        });
         await endpoints.ko.act(ko.id, {
           action: "attach",
-          attachment: { name: img.name, mime: "image/jpeg", dataUrl: img.dataUrl },
+          attachment: {
+            name: img.name,
+            mime: img.mime,
+            objectId: ref.id,
+            thumbnail: img.dataUrl,
+            size: ref.size,
+          },
         });
       }
       return ko;
@@ -297,8 +312,12 @@ export function Capture(): JSX.Element {
 
   const addImage = async (f: File): Promise<void> => {
     try {
-      const dataUrl = await fileToThumbDataUrl(f);
-      setImages((im) => [...im, { id: crypto.randomUUID(), name: f.name, dataUrl }]);
+      // SCRUM-121: kleine Vorschau lokal + Original separat (geht beim Submit in den Object-Store).
+      const [dataUrl, original] = await Promise.all([fileToThumbDataUrl(f), readFileAsDataUrl(f)]);
+      setImages((im) => [
+        ...im,
+        { id: crypto.randomUUID(), name: f.name, mime: f.type || "image/jpeg", dataUrl, original },
+      ]);
     } catch {
       setErr(t("state.error"));
     }

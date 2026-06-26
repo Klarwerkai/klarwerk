@@ -99,6 +99,22 @@ describe("KoService", () => {
     expect(removed.attachments).toHaveLength(0);
   });
 
+  it("SCRUM-121: neuer Anhang speichert Objekt-Referenz + Vorschau, KEIN großes dataUrl", async () => {
+    const ko = await service.create(base());
+    const withRef = await service.addAttachment(ko.id, "pedi", {
+      name: "foto.jpg",
+      mime: "image/jpeg",
+      objectId: "obj-123",
+      thumbnail: "data:image/jpeg;base64,THUMB",
+      size: 2_000_000,
+    });
+    const a = withRef.attachments[0];
+    expect(a?.objectId).toBe("obj-123");
+    expect(a?.thumbnail).toBe("data:image/jpeg;base64,THUMB");
+    expect(a?.size).toBe(2_000_000);
+    expect(a?.dataUrl).toBeUndefined(); // kein Inline-Original im KO-Modell
+  });
+
   it("FR-KO-02: Wissensart setzbar und filterbar", async () => {
     await service.create(base({ type: "best_practice" }));
     await service.create(base({ type: "negativwissen" }));

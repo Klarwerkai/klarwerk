@@ -27,7 +27,7 @@ import {
   TextInput,
 } from "../components/ui";
 import { deriveStatus } from "../lib/displayStatus";
-import { fileToThumbDataUrl } from "../lib/files";
+import { fileToThumbDataUrl, readFileAsDataUrl } from "../lib/files";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
 import { koAuditEvents, lineageSummary, relatedKos } from "../lib/koLineage";
 import {
@@ -172,9 +172,31 @@ export function KnowledgeDetail(): JSX.Element {
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
   });
 
+  // SCRUM-121: Original in den Object-Store hochladen, am KO nur Referenz + Vorschau.
   const attach = useMutation({
-    mutationFn: (att: { name: string; mime: string; dataUrl: string }) =>
-      endpoints.ko.act(id, { action: "attach", attachment: att }),
+    mutationFn: async (input: {
+      name: string;
+      mime: string;
+      thumbnail: string;
+      original: string;
+    }) => {
+      const ref = await endpoints.objects.upload({
+        name: input.name,
+        mime: input.mime,
+        data: input.original,
+        kind: "image",
+      });
+      return endpoints.ko.act(id, {
+        action: "attach",
+        attachment: {
+          name: input.name,
+          mime: input.mime,
+          objectId: ref.id,
+          thumbnail: input.thumbnail,
+          size: ref.size,
+        },
+      });
+    },
     onSuccess: () => {
       invalidate();
       setErr(null);
@@ -195,10 +217,29 @@ export function KnowledgeDetail(): JSX.Element {
       return;
     }
     try {
-      const dataUrl = await fileToThumbDataUrl(file);
-      attach.mutate({ name: file.name, mime: "image/jpeg", dataUrl });
+      const [thumbnail, original] = await Promise.all([
+        fileToThumbDataUrl(file),
+        readFileAsDataUrl(file),
+      ]);
+      attach.mutate({ name: file.name, mime: file.type || "image/jpeg", thumbnail, original });
     } catch {
       setErr(t("state.error"));
+    }
+  };
+
+  // SCRUM-121: Original öffnen — neue Anhänge via Objekt-Store, Alt-Anhänge via dataUrl.
+  const openAttachment = async (a: { dataUrl?: string; objectId?: string }): Promise<void> => {
+    if (a.dataUrl) {
+      window.open(a.dataUrl, "_blank", "noopener");
+      return;
+    }
+    if (a.objectId) {
+      try {
+        const obj = await endpoints.objects.read(a.objectId);
+        window.open(obj.data, "_blank", "noopener");
+      } catch (e) {
+        setErr(e instanceof ApiError ? e.message : t("state.error"));
+      }
     }
   };
 
@@ -856,13 +897,19 @@ export function KnowledgeDetail(): JSX.Element {
                   <div className="grid grid-cols-3 gap-2">
                     {(ko.attachments ?? []).map((a) => (
                       <div key={a.id} className="group relative">
-                        <a href={a.dataUrl} target="_blank" rel="noreferrer">
+                        {/* SCRUM-121: Vorschau aus thumbnail (neu) oder dataUrl (alt); Original via Objekt-Ref */}
+                        <button
+                          type="button"
+                          className="block w-full"
+                          onClick={() => void openAttachment(a)}
+                          title={a.name}
+                        >
                           <img
-                            src={a.dataUrl}
+                            src={a.thumbnail ?? a.dataUrl ?? ""}
                             alt={a.name}
                             className="h-20 w-full rounded-card border border-hairline object-cover"
                           />
-                        </a>
+                        </button>
                         {canEdit ? (
                           <button
                             type="button"

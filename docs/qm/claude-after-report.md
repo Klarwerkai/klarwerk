@@ -1713,3 +1713,31 @@ Datum: 2026-06-25
 **Restlücken:** Modellpfad (echtes LLM) wird im Gate nur über deterministischen Fallback geprüft (kein Key in Sandbox/CI) — der Modellpfad ist via Provider-Stub getestet, eine echte Live-Modellprüfung bleibt Betrieb/Mac. Verdichtung ist bewusst 1:1 (Antwort→Feld), keine modellbasierte Mehrfach-Antwort-Fusion (separates Restticket, falls gewünscht).
 
 **Jira-Empfehlung:** Nach grünem Mac-Gate + Commit/Push darf SCRUM-132 auf erledigt. Ich setze keine Jira-Checkbox/Status selbst.
+
+---
+
+## 2026-06-26 · SCRUM-121 — Objekt-/Dateispeicher für Capture-Anhänge (schließt FE-CAP-05)
+
+**Ticket:** SCRUM-121. Anhänge laufen jetzt über eine echte Objekt-/Attachment-Referenz statt als großes Inline-dataUrl im KO-Modell. In-Memory-Default, KEIN S3/Cloud/Pg/Disk in diesem Ticket.
+
+**Storage-Entscheidung:** Neues internes Modul `services/object-store` (Repo-Pattern wie die anderen Module). `ObjectRef { id, name, mime, size, kind: image|document|binary, createdAt }` = nur Metadaten; `StoredObject = ref + data`. `ObjectStore`: `put` (Validierung name/mime/Inhalt + MAX_OBJECT_BYTES=5 MB → ObjectRef), `read` (ref+data), `metadata` (nur ref). In-Memory-Repo; Interface bereit für späteren Pg-/Disk-Adapter.
+
+**Geänderte/neue Dateien:**
+- Neu: `services/object-store/{index.ts, src/types.ts, src/repo.ts, src/service.ts, src/service.test.ts}`.
+- `services/app/src/routes/object-routes.ts` (neu) + `services/app/src/build-app.ts` (AppServices/AppRepos +objects, In-Memory in beiden Kompositionen, Route registriert).
+- `services/app/src/routes/ko-routes.ts` — attach-Case akzeptiert objectId+thumbnail+size (neu) ODER dataUrl (alt, rückwärtskompatibel).
+- `services/knowledge-object/src/types.ts` — KoAttachment: dataUrl optional + objectId?/thumbnail?/size?.
+- `services/knowledge-object/src/service.ts` — addAttachment übernimmt nur gesetzte Felder.
+- `services/knowledge-object/src/service.test.ts` — Referenz-Anhang-Test (objectId+thumbnail+size, kein dataUrl).
+- FE: `api/types.ts` (KoAttachment optional + ObjectRef/ObjectContent), `api/endpoints.ts` (objects.upload/read; KoAction attach optional), `lib/files.ts` (readFileAsDataUrl), `lib/attachment.ts` (neu: attachmentPreview/isObjectAttachment), `pages/Capture.tsx` (Original behalten → Object-Store-Upload → attach mit Ref+Thumbnail), `pages/KnowledgeDetail.tsx` (Upload via Store, Vorschau aus thumbnail??dataUrl, Original öffnen via objectId/dataUrl).
+- Tests: `tests/capture/attachment-preview.test.ts` (neu).
+
+**Endpoints:** POST /api/objects (ko.create) → ObjectRef · GET /api/objects/:id (ko.read) → {ref,data}|404. Anhängen weiterhin über PUT /api/kos/:id (action attach) — jetzt mit objectId.
+
+**Erfüllte AK:** interner Object-/Attachment-Store ✓ · POST/GET /api/objects ✓ · KoAttachment rückwärtskompatibel (dataUrl? alt; objectId?/thumbnail?/size? neu) ✓ · neue Capture-Uploads speichern Original via ObjectRef ✓ · KO speichert nur Referenz + kleine Vorschau ✓ · Alt-dataUrl-Anhänge bleiben lesbar (Render fällt auf dataUrl zurück) ✓ · kein Pg/Disk/S3 ✓ · keine Migration ✓ · PDF/DOCX/OCR/Text unverändert (kein Eingriff) ✓ · Tests für Store + Referenz-Anhang + Preview ✓.
+
+**Gelaufene Checks:** `npm run check` GRÜN — 47 Testdateien / 231 Tests (10 neu: ObjectStore 5, KO-Referenz 1, FE-Preview 3, +1). apps/web `tsc --noEmit` EXIT=0. depcruise sauber (120 Module, neues Modul ohne Verstöße). Biome grün. DOCX/PDF/OCR/Text-Tests bleiben grün.
+
+**Restlücken:** Object-Store ist In-Memory → Inhalt überlebt keinen Neustart (bewusst; Pg-/Disk-Persistenz = klar abgegrenztes Folge-Restticket, Interface steht). Größenlimit 5 MB pro Objekt (Pilot). Keine Original-Bild-Komprimierung (Original wird 1:1 abgelegt); Thumbnail bleibt klein am KO.
+
+**Empfehlung:** Nach grünem Mac-Gate + Commit/Push dürfen **SCRUM-121 erledigt** und **SCRUM-100 / FE-CAP-05 abgehakt** werden (Anhänge laufen sauber über ObjectRef + Thumbnail, kein großes Base64 mehr im KO-Modell). Pg-/Disk-Persistenz als Folge-Restticket. Ich setze keine Jira-Checkbox/Status selbst.

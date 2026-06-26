@@ -44,7 +44,14 @@ interface PutBody {
   decision?: string;
   newAuthor?: string;
   text?: string;
-  attachment?: { name?: string; mime?: string; dataUrl?: string };
+  attachment?: {
+    name?: string;
+    mime?: string;
+    dataUrl?: string;
+    objectId?: string;
+    thumbnail?: string;
+    size?: number;
+  };
   attachmentId?: string;
   source?: { label?: string; url?: string; excerpt?: string };
   sourceId?: string;
@@ -153,24 +160,45 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             return;
           }
           case "attach": {
-            // FR-CAP-05: Anhang (Thumbnail-Daten-URL) hinzufügen.
+            // FR-CAP-05 / SCRUM-121: Anhang anfügen. Neu: Objekt-Referenz + kleine Vorschau;
+            // alt (rückwärtskompatibel): Inline-Daten-URL.
             const user = await guards.requirePermission("ko.create", request, reply);
             if (!user) {
               return;
             }
             const att = body.attachment;
-            if (!att?.name || !att.mime || !att.dataUrl) {
-              return badRequest("attachment {name, mime, dataUrl} fehlt.");
+            if (!att?.name || !att.mime) {
+              return badRequest("attachment {name, mime} fehlt.");
+            }
+            const current = await ko.get(id);
+            if ((current?.attachments?.length ?? 0) >= MAX_ATTACHMENTS) {
+              return badRequest(`Maximal ${MAX_ATTACHMENTS} Anhänge je Objekt.`);
+            }
+            if (att.objectId) {
+              // SCRUM-121: Original liegt im Object-Store; am KO nur Referenz + kleine Vorschau.
+              if (att.thumbnail && att.thumbnail.length > MAX_ATTACHMENT_BYTES) {
+                return badRequest("Vorschau zu groß (Pilot-Limit überschritten).");
+              }
+              reply.code(200).send(
+                await ko.addAttachment(id, user.id, {
+                  name: att.name,
+                  mime: att.mime,
+                  objectId: att.objectId,
+                  ...(att.thumbnail ? { thumbnail: att.thumbnail } : {}),
+                  ...(att.size !== undefined ? { size: att.size } : {}),
+                }),
+              );
+              return;
+            }
+            // Alt-Pfad: Inline-Daten-URL (Bild-Thumbnail).
+            if (!att.dataUrl) {
+              return badRequest("attachment braucht objectId oder dataUrl.");
             }
             if (!att.mime.startsWith("image/") || !att.dataUrl.startsWith("data:")) {
               return badRequest("Nur Bild-Daten-URLs erlaubt.");
             }
             if (att.dataUrl.length > MAX_ATTACHMENT_BYTES) {
               return badRequest("Anhang zu groß (Pilot-Limit überschritten).");
-            }
-            const current = await ko.get(id);
-            if ((current?.attachments?.length ?? 0) >= MAX_ATTACHMENTS) {
-              return badRequest(`Maximal ${MAX_ATTACHMENTS} Anhänge je Objekt.`);
             }
             reply.code(200).send(
               await ko.addAttachment(id, user.id, {

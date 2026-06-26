@@ -33,11 +33,16 @@ export interface KoComment {
 
 // FR-CAP-05: Anhang/Foto am Objekt. Pilot: client-seitig verkleinertes Thumbnail
 // als Daten-URL (keine Objektspeicher-Infrastruktur nötig, größenbegrenzt).
+// SCRUM-121: Anhang rückwärtskompatibel. Alt-Anhänge tragen `dataUrl` (Inline-Original);
+// neue Anhänge tragen `objectId` (Referenz auf den Object-Store) + kleine `thumbnail`-Vorschau.
 export interface KoAttachment {
   id: string;
   name: string;
   mime: string;
-  dataUrl: string;
+  dataUrl?: string; // Alt-Anhänge (Inline)
+  objectId?: string; // neue Anhänge: Referenz ins object-store
+  thumbnail?: string; // kleine Vorschau (Daten-URL)
+  size?: number; // Originalgröße im Object-Store
   author: string;
   at: string;
 }

@@ -37,13 +37,32 @@ export interface KoSource {
   at: string;
 }
 
+// SCRUM-121: Anhang rückwärtskompatibel — Alt: dataUrl (Inline); Neu: objectId + thumbnail.
 export interface KoAttachment {
   id: string;
   name: string;
   mime: string;
-  dataUrl: string;
+  dataUrl?: string;
+  objectId?: string;
+  thumbnail?: string;
+  size?: number;
   author: string;
   at: string;
+}
+
+// SCRUM-121: Objekt-Referenz (nur Metadaten) aus dem Object-Store.
+export interface ObjectRef {
+  id: string;
+  name: string;
+  mime: string;
+  size: number;
+  kind: "image" | "document" | "binary";
+  createdAt: string;
+}
+
+export interface ObjectContent {
+  ref: ObjectRef;
+  data: string;
 }
 
 export interface KnowledgeObject {

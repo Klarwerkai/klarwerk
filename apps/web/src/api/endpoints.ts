@@ -19,6 +19,8 @@ import type {
   KnowledgeObject,
   LearningPath,
   Notification,
+  ObjectContent,
+  ObjectRef,
   PublicUser,
   ReasonerStatus,
   ReviewAction,
@@ -46,7 +48,17 @@ export type KoAction =
   | { action: "assign"; userIds: string[] }
   | { action: "revise"; changes: DraftPayload }
   | { action: "comment"; text: string }
-  | { action: "attach"; attachment: { name: string; mime: string; dataUrl: string } }
+  | {
+      action: "attach";
+      attachment: {
+        name: string;
+        mime: string;
+        dataUrl?: string;
+        objectId?: string;
+        thumbnail?: string;
+        size?: number;
+      };
+    }
   | { action: "detach"; attachmentId: string }
   | { action: "category"; category: string }
   | { action: "tags"; tags: string[] }
@@ -114,6 +126,12 @@ export const endpoints = {
     impact: () => api.get<ImpactReport>("/analytics/impact"),
   },
   audit: { list: () => api.get<AuditEntry[]>("/audit") },
+  // SCRUM-121: Objekt-/Attachment-Speicher — Original via Referenz statt Inline im KO.
+  objects: {
+    upload: (input: { name: string; mime: string; data: string; kind?: ObjectRef["kind"] }) =>
+      api.post<ObjectRef>("/objects", input),
+    read: (id: string) => api.get<ObjectContent>(`/objects/${id}`),
+  },
   lifecycle: {
     pending: () => api.get<string[]>("/lifecycle/pending"),
     // SCRUM-146: vorhandener Asset-Change-Pfad → markiert gekoppelte KOs als „prüfen".
