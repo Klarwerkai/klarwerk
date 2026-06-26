@@ -1881,3 +1881,30 @@ Datum: 2026-06-25
 **Erfüllte AK:** rollenbewusste Missionen aus echter Nav/Role-Logik ✓ · 2–4 Kacheln je Rolle ✓ · nur Deep-Links in existierende Flows ✓ · Sichtbarkeit an Rollenrecht gebunden ✓ · keine neuen Routen/Platzhalter/Fake/Marketing ✓ · keine Backend-Änderung ✓ · KPIs/CTA unbeschädigt ✓.
 
 **Empfehlung:** Nach grünem Mac-Gate + Commit/Push dürfen **FE-FND-01** und **FE-FND-09** abgehakt werden → **SCRUM-98 auf Done** (die übrigen FND-Punkte sind belegt erledigt). Ich setze keine Jira-Checkbox/Status selbst.
+
+---
+
+## 2026-06-26 · SCRUM-117 + SCRUM-109 — Output Factory (Backend-Modul + Frontend)
+
+**Ticket(s):** SCRUM-117 (Backend-Modul `services/output`) + SCRUM-109 (Frontend-Factory in `Stufe2.tsx`). FR-EXT-03 / FE-OUT-01/02/03. Umsetzung exakt nach freigegebenem Read-only-Plan.
+
+**Befund:** `Stufe2.tsx` `Output()` war reiner Platzhalter (`s2.output`-Notice). `LibraryService.exportMarkdown/Html/Json` ist roher KO-Dump ohne Status-Filter → laut Leitplanke **kein** Output-Ersatz. KO-Modell hat status/trust/version/originalAuthor/category/type/conditions/measures/createdAt, aber **kein** `validity_until` (FR-EXT-07 = Konzept) → Gültigkeit muss abgeleitet werden. Modulmuster (`index.ts`+`src/*`, Route, build-app-Wiring) und `KoService.list({status})` vorhanden.
+
+**Backend — neues Modul `services/output` (SCRUM-117), stateless, keine Persistenz, keine KO-Mutation:**
+- `src/types.ts` — `OutputKind` (5), `OUTPUT_KINDS`, `UNCERTAIN_TRUST_BELOW=60`, `OutputSource`, `OutputProvenance`, `OutputDocument`, `GenerateOutputInput`, `OutputError`.
+- `src/render.ts` (rein, DOM-frei) — `toSource`/`toProvenance` + 5 Renderer (instruction/SOP, checklist, troubleshooting, training, management_summary) + `renderProvenance`. Gültigkeit ehrlich: `validiert · v{version} · Stand {createdAt}`, **kein Ablaufdatum**.
+- `src/service.ts` — `OutputService`: `listEligible()` liefert **nur** `status:"validiert"`; `generate()` weist nicht-validierte/unbekannte IDs, leere Auswahl, unbekannten Typ ab (`OutputError`), baut Markdown (Kopf mit Adressat/Datum + Körper + Herkunftsblock) + strukturierte `provenance[]`. Deterministisch via injizierbarem `now`.
+- `index.ts`, `src/service.test.ts` (8 Tests). Route `services/app/src/routes/output-routes.ts` (`GET /api/output/sources`, `POST /api/output/generate`, Guard `ko.read`, `sendError`-Mapping). Wiring in `build-app.ts` (`AppServices.output`, `assembleServices`, `app.register`).
+
+**Frontend — Output Factory (SCRUM-109):**
+- `api/types.ts` (`OutputKind/Source/Provenance/Document`), `api/endpoints.ts` (`output.sources/generate`), `api/hooks.ts` (`useOutputSources`).
+- `pages/Stufe2.tsx` `Output()` ersetzt Platzhalter: Typ-Auswahl (5 Kacheln), Mehrfachauswahl **validierter** Quellen (ehrlicher Leerzustand via `QueryState`/`out.noValidated`), „Output erzeugen" → **Markdown-Vorschau** + **Herkunfts-Panel** (KO-ID·Status·Trust·Gültigkeit, Unsicherheit markiert) + **Kopieren** & **Download .md** (Blob). Adressat = aktuelle Rolle (`useRole`). Fehler über Toast.
+- `lib/outputDoc.ts` (DOM-frei) — `OUTPUT_KIND_OPTIONS`, `downloadFilename`, `orderedSelection` + `tests/output/output-doc.test.ts` (3 Tests). i18n `out.*` (DE+EN).
+
+**Erfüllte AK:** nur validierte KOs als Quelle (Service-Guard + UI) ✓ · kein Library-Export-Ersatz (eigene strukturierte Renderer) ✓ · 5 echte Output-Typen ✓ · Markdown-Export (Vorschau+Copy+Download) ✓ · Provenance je Quelle: KO-ID/Titel/Status/Trust/Version/Autor/Originalautor/Kategorie/Typ/abgeleitete Gültigkeit ✓ · Gültigkeit ehrlich (validiert+Version+Stand, kein Ablaufdatum) ✓ · keine Persistenz/PDF/KO-Mutation ✓.
+
+**Gelaufene Checks:** apps/web `tsc --noEmit` EXIT=0 · `npm run check` GRÜN — **54 Testdateien / 272 Tests** (11 neu: 8 Backend-Service + 3 FE-Helfer) · Biome grün · depcruise sauber (neues Modul `output`→`knowledge-object` über öffentliche index.ts erlaubt).
+
+**Abgrenzung (nicht gebaut):** kein PDF/Print, keine Persistenz erzeugter Outputs (`generated_outputs` bleibt Konzept), kein `validity_until`/`freshness`/`ip_sensitivity`-Datenmodell, kein Backend-Redesign.
+
+**Empfehlung:** Nach grünem Mac-Gate + Commit/Push dürfen **FE-OUT-01/02/03** abgehakt werden → **SCRUM-117** und **SCRUM-109** auf Done. Ein kombinierter Commit wie gewünscht. Ich setze keine Jira-Checkbox/Status selbst.

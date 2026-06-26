@@ -34,6 +34,7 @@ import {
 } from "../../lifecycle";
 import { ConsoleMailer, type Mailer, createMailerFromEnv } from "../../notifications";
 import { InMemoryObjectRepo, type ObjectRepo, ObjectStore } from "../../object-store";
+import { OutputService } from "../../output";
 import { ModelProvider, Reasoner, createModelClientFromEnv } from "../../reasoner";
 import {
   type AssignmentRepo,
@@ -57,6 +58,7 @@ import { libraryRoutes } from "./routes/library-routes";
 import { lifecycleRoutes } from "./routes/lifecycle-routes";
 import { notificationsRoutes } from "./routes/notifications-routes";
 import { objectRoutes } from "./routes/object-routes";
+import { outputRoutes } from "./routes/output-routes";
 import { reasonerRoutes } from "./routes/reasoner-routes";
 import { validationRoutes } from "./routes/validation-routes";
 
@@ -72,6 +74,7 @@ export interface AppServices {
   validation: ValidationService;
   conflicts: ConflictService;
   library: LibraryService;
+  output: OutputService;
   lifecycle: LifecycleService;
   i18n: I18nService;
   objects: ObjectStore;
@@ -124,6 +127,8 @@ function assembleServices(repos: AppRepos): AppServices {
     }),
     conflicts: new ConflictService({ repo: repos.conflictsRepo, audit }),
     library: new LibraryService({ koService: ko, audit }),
+    // SCRUM-117: Output Factory — stateless, nur validierte KOs als Quelle.
+    output: new OutputService({ koService: ko }),
     lifecycle: new LifecycleService({ koService: ko, repo: repos.lifecycleRepo }),
     i18n: new I18nService(),
     // SCRUM-121: interner Objekt-/Attachment-Speicher (In-Memory; Pg/Disk = Folge-Ticket).
@@ -205,6 +210,7 @@ export function buildApp(services: AppServices = buildServices()): FastifyInstan
   app.register(captureRoutes(services, guards));
   app.register(askRoutes(services.ask, guards));
   app.register(libraryRoutes(services.library, guards));
+  app.register(outputRoutes(services.output, guards));
   app.register(lifecycleRoutes(services.lifecycle, guards));
   app.register(notificationsRoutes({ conflicts: services.conflicts, ask: services.ask }, guards));
   app.register(auditRoutes(services.audit, guards));

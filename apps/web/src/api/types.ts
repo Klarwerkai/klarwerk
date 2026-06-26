@@ -271,6 +271,47 @@ export interface AskResponse {
   gap: Gap | null;
 }
 
+// FR-EXT-03 / FE-OUT: Output Factory (SCRUM-117/109).
+export type OutputKind =
+  | "instruction"
+  | "checklist"
+  | "troubleshooting"
+  | "training"
+  | "management_summary";
+
+export interface OutputSource {
+  id: string;
+  title: string;
+  status: string;
+  trust: number;
+  version: number;
+  category: string;
+  type: string;
+}
+
+export interface OutputProvenance {
+  koId: string;
+  title: string;
+  status: string;
+  trust: number;
+  version: number;
+  author: string;
+  originalAuthor: string;
+  category: string;
+  type: string;
+  validity: string;
+  uncertain: boolean;
+}
+
+export interface OutputDocument {
+  kind: OutputKind;
+  title: string;
+  audienceRole: string | null;
+  generatedAt: string;
+  markdown: string;
+  provenance: OutputProvenance[];
+}
+
 export interface StructureResult {
   title: string;
   statement: string;

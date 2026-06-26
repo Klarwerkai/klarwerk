@@ -21,6 +21,9 @@ import type {
   Notification,
   ObjectContent,
   ObjectRef,
+  OutputDocument,
+  OutputKind,
+  OutputSource,
   PublicUser,
   ReasonerStatus,
   ReviewAction,
@@ -160,6 +163,12 @@ export const endpoints = {
       review: (id: string, action: ReviewAction, note?: string) =>
         api.put<ImportCandidate>(`/library/import/candidates/${id}`, { action, note }),
     },
+  },
+  // FR-EXT-03 / SCRUM-117: Output Factory — Quellen (nur validiert) + Generierung.
+  output: {
+    sources: () => api.get<OutputSource[]>("/output/sources"),
+    generate: (body: { kind: OutputKind; koIds: string[]; audienceRole?: string | null }) =>
+      api.post<OutputDocument>("/output/generate", body),
   },
   users: {
     list: () => api.get<PublicUser[]>("/users"),

@@ -15,6 +15,9 @@ export const useImportCandidates = () =>
     queryKey: ["import-candidates"],
     queryFn: () => endpoints.library.importCandidates.list(),
   });
+// FR-EXT-03 / SCRUM-117: nur validierte KOs als Output-Quellen.
+export const useOutputSources = () =>
+  useQuery({ queryKey: ["output", "sources"], queryFn: () => endpoints.output.sources() });
 export const useKo = (id: string) =>
   useQuery({ queryKey: ["ko", id], queryFn: () => endpoints.ko.get(id), enabled: id.length > 0 });
 export const useValidationBoard = (f?: KoFilter) =>

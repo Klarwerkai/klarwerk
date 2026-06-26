@@ -1,13 +1,15 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Upload } from "lucide-react";
+import { Copy, Download, FileText, Upload } from "lucide-react";
 import { type ChangeEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { endpoints } from "../api/endpoints";
-import { useGraph, useImportCandidates } from "../api/hooks";
-import type { ImportItemInput, ReviewAction } from "../api/types";
+import { useGraph, useImportCandidates, useOutputSources } from "../api/hooks";
+import type { ImportItemInput, OutputDocument, OutputKind, ReviewAction } from "../api/types";
+import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
 import { Button, Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import { ImportParseError, parseImportItems } from "../lib/importReview";
+import { OUTPUT_KIND_OPTIONS, downloadFilename, orderedSelection } from "../lib/outputDoc";
 
 function Stufe2Header({ titleKey, ticket }: { titleKey: string; ticket: string }): JSX.Element {
   const { t } = useTranslation();
@@ -29,11 +31,144 @@ function Notice({ textKey }: { textKey: string }): JSX.Element {
   return <Card className="border-dashed text-center text-sm text-muted">{t(textKey)}</Card>;
 }
 
+// FR-EXT-03 / SCRUM-117+109: echte Output Factory — Dokumente NUR aus validierten KOs,
+// mit Markdown-Export und voller Herkunft. Kein roher Library-Export, kein Fake.
 export function Output(): JSX.Element {
+  const { t } = useTranslation();
+  const { push } = useToast();
+  const { role } = useRole();
+  const sources = useOutputSources();
+  const [kind, setKind] = useState<OutputKind>("instruction");
+  const [selected, setSelected] = useState<string[]>([]);
+  const [doc, setDoc] = useState<OutputDocument | null>(null);
+
+  const sourceIds = (sources.data ?? []).map((s) => s.id);
+  const toggle = (id: string): void =>
+    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
+  const generate = useMutation({
+    mutationFn: () =>
+      endpoints.output.generate({
+        kind,
+        koIds: orderedSelection(selected, sourceIds),
+        audienceRole: role,
+      }),
+    onSuccess: (d) => setDoc(d),
+    onError: () => push("error", t("out.genError")),
+  });
+
+  const copy = (): void => {
+    if (doc) {
+      void navigator.clipboard
+        ?.writeText(doc.markdown)
+        .then(() => push("success", t("out.copied")));
+    }
+  };
+  const download = (): void => {
+    if (!doc) {
+      return;
+    }
+    const blob = new Blob([doc.markdown], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = downloadFilename(doc);
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="mx-auto max-w-3xl">
       <Stufe2Header titleKey="nav.output" ticket="SCRUM-117" />
-      <Notice textKey="s2.output" />
+
+      <Card className="mb-4">
+        <SectionLabel>{t("out.kindTitle")}</SectionLabel>
+        <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {OUTPUT_KIND_OPTIONS.map((o) => (
+            <button
+              key={o.kind}
+              type="button"
+              onClick={() => setKind(o.kind)}
+              className={`rounded-card border p-2.5 text-left ${
+                kind === o.kind ? "border-ink bg-page" : "border-hairline hover:border-ink/30"
+              }`}
+            >
+              <div className="text-[13px] font-semibold text-ink">{t(o.labelKey)}</div>
+              <div className="mt-0.5 text-[11.5px] text-muted">{t(o.descKey)}</div>
+            </button>
+          ))}
+        </div>
+      </Card>
+
+      <Card className="mb-4">
+        <SectionLabel>{t("out.sourcesTitle")}</SectionLabel>
+        <QueryState query={sources} emptyText={t("out.noValidated")}>
+          {(list) => (
+            <ul className="mt-2 space-y-1.5">
+              {list.map((s) => (
+                <li key={s.id}>
+                  <label className="flex cursor-pointer items-center gap-2.5 rounded-input border border-hairline px-2.5 py-2 hover:bg-hairline-soft">
+                    <input
+                      type="checkbox"
+                      checked={selected.includes(s.id)}
+                      onChange={() => toggle(s.id)}
+                    />
+                    <span className="min-w-0 flex-1 truncate text-[13px] text-text">{s.title}</span>
+                    <span className="shrink-0 font-mono text-[10px] text-muted-2">
+                      {s.type} · {s.category} · T{s.trust} · v{s.version}
+                    </span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          )}
+        </QueryState>
+        <div className="mt-3">
+          <Button
+            variant="primary"
+            disabled={selected.length === 0 || generate.isPending}
+            onClick={() => generate.mutate()}
+          >
+            <FileText size={15} />
+            {t("out.generate")}
+          </Button>
+        </div>
+      </Card>
+
+      {doc ? (
+        <Card>
+          <div className="mb-2 flex items-center justify-between">
+            <SectionLabel>{t("out.previewTitle")}</SectionLabel>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={copy}>
+                <Copy size={14} />
+                {t("out.copy")}
+              </Button>
+              <Button variant="ghost" onClick={download}>
+                <Download size={14} />
+                {t("out.download")}
+              </Button>
+            </div>
+          </div>
+          <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap rounded-card bg-page p-3 text-[12.5px] leading-relaxed text-text">
+            {doc.markdown}
+          </pre>
+          <div className="mt-3">
+            <SectionLabel>{t("out.provenanceTitle")}</SectionLabel>
+            <ul className="mt-1.5 space-y-1">
+              {doc.provenance.map((p) => (
+                <li key={p.koId} className="text-[12px] text-muted">
+                  <span className="font-mono text-[11px] text-ink">{p.koId}</span> · {p.status} · T
+                  {p.trust} · {p.validity}
+                  {p.uncertain ? (
+                    <span className="text-trust-warn-text"> · {t("out.uncertain")}</span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </Card>
+      ) : null}
     </div>
   );
 }
