@@ -30,6 +30,7 @@ import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
 import { Button, Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import { deriveStatus } from "../lib/displayStatus";
+import { analyzeEvidenceFreshness } from "../lib/evidenceFreshness";
 import { evidenceKindTone, limitEvidence, summarizeEvidence } from "../lib/evidenceIndex";
 import { IMPORT_PIPELINE_STEPS, candidateFindings, summarizeImportQueue } from "../lib/extConcept";
 import { layoutConflicts, layoutGraph, limitGraph } from "../lib/graphLayout";
@@ -997,6 +998,15 @@ function KnowledgeOsHintsCard(): JSX.Element {
         }
       : {}),
     ...(evidence.isSuccess ? { evidenceSummary: summarizeEvidence(evidence.data ?? []) } : {}),
+    // SCRUM-174: Evidence-Freshness braucht KOs UND den geladenen Evidence-Stand.
+    ...(kos.isSuccess && evidence.isSuccess
+      ? {
+          evidenceFreshness: analyzeEvidenceFreshness({
+            kos: kos.data ?? [],
+            evidence: evidence.data ?? [],
+          }),
+        }
+      : {}),
     ...(runs.isSuccess ? { modelRunSummary: summarizeModelRuns(runs.data ?? []) } : {}),
     ...(config.isSuccess && config.data ? { reasonerConfig: config.data } : {}),
     ...(healthKnown

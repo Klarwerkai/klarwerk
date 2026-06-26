@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ReasonerConfigStatus } from "../../apps/web/src/api/types";
+import type { EvidenceFreshnessResult } from "../../apps/web/src/lib/evidenceFreshness";
 import type { EvidenceIndexSummary } from "../../apps/web/src/lib/evidenceIndex";
 import type { HealthBand, KnowledgeHealth } from "../../apps/web/src/lib/knowledgeHealth";
 import { buildKnowledgeOsHints } from "../../apps/web/src/lib/knowledgeOsHints";
@@ -56,6 +57,15 @@ const evidence = (total: number): EvidenceIndexSummary => ({
   distinctKos: 0,
 });
 
+function freshness(
+  overrides: Partial<EvidenceFreshnessResult["summary"]>,
+): EvidenceFreshnessResult {
+  return {
+    rows: [],
+    summary: { total: 0, current: 0, outdated: 0, missing: 0, neutral: 0, ...overrides },
+  };
+}
+
 function health(band: HealthBand): KnowledgeHealth {
   const score = band === "gut" ? 85 : band === "mittel" ? 55 : 20;
   return {
@@ -79,6 +89,7 @@ describe("SCRUM-172: buildKnowledgeOsHints", () => {
     expect(res.summary).toMatchObject({ total: 0, critical: 0, warnings: 0 });
     expect(res.unknownSources.sort()).toEqual([
       "evidence",
+      "evidenceFreshness",
       "health",
       "modelRuns",
       "provenance",
@@ -86,12 +97,13 @@ describe("SCRUM-172: buildKnowledgeOsHints", () => {
     ]);
   });
 
-  it("alles bekannt & sauber (inkl. Health) → genau ein ok-Hinweis", () => {
+  it("alles bekannt & sauber (inkl. Health & Freshness) → genau ein ok-Hinweis", () => {
     const res = buildKnowledgeOsHints({
       modelRunSummary: modelRuns({}),
       reasonerConfig: reasoner("model"),
       provenance: provenance({}),
       evidenceSummary: evidence(3),
+      evidenceFreshness: freshness({ current: 3 }),
       knowledgeHealth: health("gut"),
     });
     expect(res.hints).toHaveLength(1);
@@ -174,5 +186,32 @@ describe("SCRUM-172: buildKnowledgeOsHints", () => {
     expect(buildKnowledgeOsHints({ knowledgeHealth: health("gut") }).unknownSources).not.toContain(
       "health",
     );
+  });
+
+  // SCRUM-174: Evidence-Freshness in die Hinweise integriert.
+  it("Freshness outdated → warning-Hinweis", () => {
+    const res = buildKnowledgeOsHints({ evidenceFreshness: freshness({ outdated: 2 }) });
+    const hint = res.hints.find((h) => h.id === "evidence-outdated");
+    expect(hint).toMatchObject({ severity: "warning", count: 2, source: "evidenceFreshness" });
+    expect(res.unknownSources).not.toContain("evidenceFreshness");
+  });
+
+  it("Freshness missing → warning-Hinweis", () => {
+    const res = buildKnowledgeOsHints({ evidenceFreshness: freshness({ missing: 3 }) });
+    const hint = res.hints.find((h) => h.id === "evidence-missing");
+    expect(hint).toMatchObject({ severity: "warning", count: 3, source: "evidenceFreshness" });
+  });
+
+  it("Freshness sauber (nur current/neutral) → kein falscher Warnhinweis", () => {
+    const res = buildKnowledgeOsHints({ evidenceFreshness: freshness({ current: 4, neutral: 2 }) });
+    expect(res.hints.some((h) => h.source === "evidenceFreshness")).toBe(false);
+    expect(res.summary.warnings).toBe(0);
+  });
+
+  it("Freshness bleibt nur unknown, wenn nicht übergeben", () => {
+    expect(buildKnowledgeOsHints({}).unknownSources).toContain("evidenceFreshness");
+    expect(
+      buildKnowledgeOsHints({ evidenceFreshness: freshness({ current: 1 }) }).unknownSources,
+    ).not.toContain("evidenceFreshness");
   });
 });

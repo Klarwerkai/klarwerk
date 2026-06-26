@@ -805,6 +805,12 @@ const de = {
   "kos.hint.provenance-no-evidence.title": "KOs ohne Evidence ({{n}})",
   "kos.hint.provenance-no-evidence.detail":
     "Quellen/Anhänge vorhanden, aber keine Evidence-Records.",
+  "kos.hint.evidence-outdated.title": "Evidence veraltet ({{n}})",
+  "kos.hint.evidence-outdated.detail":
+    "Aktuelle KO-Version ohne Evidence — nur ältere Versionen belegt.",
+  "kos.hint.evidence-missing.title": "Evidence fehlt ({{n}})",
+  "kos.hint.evidence-missing.detail":
+    "Quellen/Object-Anhänge vorhanden, aber keine Evidence für irgendeine Version.",
   "kos.hint.provenance-lineage.title": "Transfer/Mehrfach-Version ({{n}})",
   "kos.hint.provenance-lineage.detail": "KOs mit Autorentransfer oder mehreren Versionen.",
   "kos.hint.evidence-empty.title": "Keine Evidence-Records",
@@ -1655,6 +1661,12 @@ const en: typeof de = {
   "kos.hint.reasoner-demo.detail": "No real model configured — answers are deterministic.",
   "kos.hint.provenance-no-evidence.title": "KOs without evidence ({{n}})",
   "kos.hint.provenance-no-evidence.detail": "Sources/attachments present but no evidence records.",
+  "kos.hint.evidence-outdated.title": "Evidence outdated ({{n}})",
+  "kos.hint.evidence-outdated.detail":
+    "Current KO version has no evidence — only older versions are backed.",
+  "kos.hint.evidence-missing.title": "Evidence missing ({{n}})",
+  "kos.hint.evidence-missing.detail":
+    "Sources/object attachments present but no evidence for any version.",
   "kos.hint.provenance-lineage.title": "Transfer/multi-version ({{n}})",
   "kos.hint.provenance-lineage.detail": "KOs with author transfer or multiple versions.",
   "kos.hint.evidence-empty.title": "No evidence records",

@@ -2755,3 +2755,36 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-174 — Evidence-Freshness für aktuelle KO-Versionen ausweisen
+
+**Vorab-Befund (read-only):** `EvidenceRecord.koVersion` und `KnowledgeObject.version` existieren; Evidence-Index (169) liefert KO-übergreifende Records, Evidence-nach-Version (170) gruppiert im KO-Detail strikt nach `koVersion`. Es fehlte die KO-übergreifende Freshness-Auswertung: hat die aktuelle Version Evidence, nur ältere, oder gar keine?
+
+**Umsetzung (rein read-only, additiv):**
+- Neuer DOM-freier Helper `apps/web/src/lib/evidenceFreshness.ts` mit `analyzeEvidenceFreshness({ kos, evidence })`. Matching strikt über `koVersion` vs. `ko.version`.
+- Pro KO: `currentCount` (koVersion === version), `olderCount` (koVersion < version), `sourceCount`, `objectAttachmentCount` (nur Anhänge mit `objectId` — Legacy-`dataUrl` zählt NICHT), `expectsEvidence`. Status: `current` (aktuelle Version belegt) → ok, `outdated` (nur ältere Versionen belegt) → warning, `missing` (Quellen/Object-Anhänge aber gar keine Evidence) → warning, `neutral` (kein Evidence-Anlass) → kein Fehler. Deterministische Sortierung (outdated < missing < current < neutral, dann Version desc, Titel, koId).
+- In `knowledgeOsHints.ts` integriert: neue Quelle `evidenceFreshness`, Hinweise `evidence-outdated`/`evidence-missing` (beide warning, nach provenance-no-evidence). Fehlt das Signal → `unknownSources` führt „evidenceFreshness" (ehrlich, kein Fehler); OK-Schwelle auf 6 Kernsignale erweitert.
+- Stufe-2-`KnowledgeOsHintsCard` speist Freshness aus den bereits geladenen `useKos`+`useEvidenceIndex(500)`. Keine neue UI-Card.
+- i18n DE/EN `kos.hint.evidence-outdated.*`/`kos.hint.evidence-missing.*`.
+
+**Geänderte/neue Dateien:** neu `apps/web/src/lib/evidenceFreshness.ts`, `tests/ko/evidence-freshness.test.ts`; geändert `apps/web/src/lib/knowledgeOsHints.ts`, `apps/web/src/pages/Stufe2.tsx`, `apps/web/src/i18n.ts`, `tests/analytics/knowledge-os-hints.test.ts`, `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — **84 Dateien / 476 Tests** (+7 Freshness-Helper: current/outdated/missing-Quelle/missing-Objekt/Legacy-neutral/KO-neutral/Sortierung; +4 Hints: outdated→warning, missing→warning, sauber→kein Warnhinweis, unknown ohne Freshness; 2 bestehende SCRUM-172/173-Asserts an „evidenceFreshness" angepasst). apps/web `tsc --noEmit` EXIT=0. Biome + depcruise sauber. Bestehende evidence-by-version/-index/knowledge-os-hints-Tests grün.
+
+**Restlücken/Nicht-Ziele:** keine Datenänderung, kein Backfill, kein Auto-Fix, kein Backend, keine Migration, keine neue große UI-Card. „missing" überschneidet sich bewusst mit dem provenance-no-evidence-Hinweis, ergänzt aber die Versions-Dimension (`outdated`).
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check && (cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/evidenceFreshness.ts apps/web/src/lib/knowledgeOsHints.ts \
+  apps/web/src/pages/Stufe2.tsx apps/web/src/i18n.ts \
+  tests/ko/evidence-freshness.test.ts tests/analytics/knowledge-os-hints.test.ts \
+  docs/qm/claude-after-report.md
+git commit -m "feat(qm): evidence freshness vs current KO version (SCRUM-174)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

@@ -4,6 +4,7 @@
 // KEIN neues Backend-Modell, kein Alerting, keine Datenänderung. Nicht geladene Signale
 // werden als „unbekannt" geführt und NICHT als Fehler gezählt.
 import type { ReasonerConfigStatus } from "../api/types";
+import type { EvidenceFreshnessResult } from "./evidenceFreshness";
 import type { EvidenceIndexSummary } from "./evidenceIndex";
 import type { KnowledgeHealth } from "./knowledgeHealth";
 import type { ModelRunSummary } from "./modelRuns";
@@ -16,6 +17,7 @@ export type KnowledgeOsHintSource =
   | "reasonerConfig"
   | "provenance"
   | "evidence"
+  | "evidenceFreshness"
   | "health";
 
 export interface KnowledgeOsHint {
@@ -45,6 +47,7 @@ export interface KnowledgeOsHintsResult {
 export interface KnowledgeOsHintsInput {
   provenance?: ProvenanceIndexResult;
   evidenceSummary?: EvidenceIndexSummary;
+  evidenceFreshness?: EvidenceFreshnessResult;
   modelRunSummary?: ModelRunSummary;
   reasonerConfig?: ReasonerConfigStatus;
   knowledgeHealth?: KnowledgeHealth;
@@ -115,6 +118,28 @@ export function buildKnowledgeOsHints(input: KnowledgeOsHintsInput): KnowledgeOs
       source: "provenance",
     });
   }
+  // 5b) Evidence nur für ältere KO-Versionen (aktuelle Version ohne Evidence).
+  if (input.evidenceFreshness && input.evidenceFreshness.summary.outdated > 0) {
+    hints.push({
+      id: "evidence-outdated",
+      severity: "warning",
+      titleKey: "kos.hint.evidence-outdated.title",
+      detailKey: "kos.hint.evidence-outdated.detail",
+      count: input.evidenceFreshness.summary.outdated,
+      source: "evidenceFreshness",
+    });
+  }
+  // 5c) Quellen/Object-Anhänge ganz ohne Evidence (version-aware).
+  if (input.evidenceFreshness && input.evidenceFreshness.summary.missing > 0) {
+    hints.push({
+      id: "evidence-missing",
+      severity: "warning",
+      titleKey: "kos.hint.evidence-missing.title",
+      detailKey: "kos.hint.evidence-missing.detail",
+      count: input.evidenceFreshness.summary.missing,
+      source: "evidenceFreshness",
+    });
+  }
   // 6) KnowledgeHealth mittel (optional).
   if (input.knowledgeHealth && input.knowledgeHealth.band === "mittel") {
     hints.push({
@@ -165,13 +190,17 @@ export function buildKnowledgeOsHints(input: KnowledgeOsHintsInput): KnowledgeOs
   if (!input.evidenceSummary) {
     unknownSources.push("evidence");
   }
+  // SCRUM-174: Evidence-Freshness ist optional — fehlt sie, ehrlich als unbekannt führen.
+  if (!input.evidenceFreshness) {
+    unknownSources.push("evidenceFreshness");
+  }
   // SCRUM-173: KnowledgeHealth ist optional — fehlt der Score, ehrlich als unbekannt führen.
   if (!input.knowledgeHealth) {
     unknownSources.push("health");
   }
 
   // OK-Hinweis nur, wenn mindestens ein Signal bekannt ist und keine echten Hinweise anfielen.
-  const KNOWN_SOURCE_COUNT = 5;
+  const KNOWN_SOURCE_COUNT = 6;
   const knownCount = KNOWN_SOURCE_COUNT - unknownSources.length;
   if (hints.length === 0 && knownCount > 0) {
     hints.push({
