@@ -14,7 +14,8 @@
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "check": "npm run build && npm run lint && npm run arch && npm run test",
-    "start": "tsx services/app/src/server.ts"
+    "start": "tsx services/app/src/server.ts",
+    "seed:demo": "tsx services/app/src/seed.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

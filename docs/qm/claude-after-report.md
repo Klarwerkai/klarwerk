@@ -2156,3 +2156,43 @@ Befund (SCRUM-153/154): `buildPgServices` setzte `objects` fest auf `InMemoryObj
 
 ### Jira-Empfehlung
 SCRUM-155 nach grünem Mac-Gate auf Done. Object-Store-Persistenzlücke aus SCRUM-153/154 ist damit geschlossen. Claude setzt Jira nicht selbst.
+
+---
+
+## After-Report — SCRUM-156 · Stabilize: Demo-Seed/Fixture-Datensatz — 2026-06-26
+
+### Seed-Entscheidung: Service-getriebener Seed (kein Fixture-Insert, kein Fake)
+`seedDemo(services)` schreibt AUSSCHLIESSLICH über die echten Module (auth/ko/validation/ask/
+conflicts/lifecycle/object-store). Dadurch entstehen Status, Trust, Zuweisungen, Konflikte,
+Revalidierungssignale und **Audit-Events** ausschließlich über reale Service-Aktionen — nichts
+wird manuell gefälscht. Idempotent über `auth.needsSetup()` (nur leere Instanz wird geseedet;
+zweiter Lauf → skipped, keine Duplikate). Manuell via `npm run seed:demo`, in Produktion gesperrt
+(außer `SEED_ALLOW_PROD=1`).
+
+### Sichtbar gemachte Flows
+3 Nutzer (Admin/Controller/Experte) · 5 KOs (Kategorien Anlage 1–3, alle Wissensarten-Mix, Trust
+30–80, Tags) · 1 validiertes KO (2 echte „up"-Bewertungen) · 1 offenes KO als zugewiesene
+Validierungsaufgabe · 1 Wissenslücke mit Priorität „hoch" (bestandsfremde Frage → echte Lücke) ·
+1 Wahrheitskonflikt (Vorwärmung nötig vs. nicht) · 1 Revalidierungssignal (Asset-Kopplung +
+Asset-Änderung) · 1 kleiner Bild-Anhang (1×1 PNG) im jetzt persistenten Object-Store. Deckt
+Start/Library/Ask/Validation/Risk/Lifecycle/Analytics/MyTasks/KnowledgeDetail ab.
+
+### Geänderte Dateien
+- **Neu** `services/app/src/seed.ts` (`seedDemo` + CLI-`runSeed`, Prod-Guard, Main-Guard).
+- **Neu** `services/app/src/seed.test.ts` (Mindestsignale + Audit-Verify + Idempotenz).
+- `package.json`: Script `seed:demo`.
+
+### Ausführung / Befehl
+`DATABASE_URL=… npm run seed:demo` (persistent). Ohne `DATABASE_URL` läuft es In-Memory mit
+Warnhinweis (nur Smoke, nicht persistent).
+
+### Tests / Gates
+`npm run check` grün: **69 Dateien / 372 Tests**, tsc + Biome + depcruise sauber. FE nicht berührt.
+
+### Restlücken
+- Seed setzt voraus, dass die Instanz leer ist (keine Nutzer). Für „nachträglich in bestehende
+  DB" wäre ein separater Merge-Seed nötig (nicht Teil von SCRUM-156).
+- Import-Kandidaten/Stufe-2-Tiefe weiterhin außerhalb des Scopes.
+
+### Jira-Empfehlung
+SCRUM-156 nach grünem Mac-Gate auf Done. Claude setzt Jira nicht selbst.
