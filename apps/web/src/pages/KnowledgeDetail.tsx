@@ -38,6 +38,7 @@ import {
   TextInput,
 } from "../components/ui";
 import { deriveStatus } from "../lib/displayStatus";
+import { groupEvidenceByVersion } from "../lib/evidenceByVersion";
 import { analyzeEvidenceConsistency } from "../lib/evidenceConsistency";
 import { validityProtectionView } from "../lib/extConcept";
 import { toSourcePayload as externalToSourcePayload } from "../lib/externalSearch";
@@ -1073,6 +1074,59 @@ export function KnowledgeDetail(): JSX.Element {
                           ) : (
                             <p className="mt-2 text-[11.5px] text-muted">{t("ko.evCons.allOk")}</p>
                           )}
+                        </div>
+                      );
+                    })()
+                  : null}
+                {/* SCRUM-170: read-only Gruppierung der Evidence nach KO-Version (via koVersion). */}
+                {!evidence.isLoading && !evidence.isError
+                  ? (() => {
+                      const byVersion = groupEvidenceByVersion(
+                        evidence.data ?? [],
+                        versions.data ?? [],
+                      );
+                      if (byVersion.groups.length === 0) {
+                        return null;
+                      }
+                      return (
+                        <div className="mb-3 rounded-card border border-hairline bg-surface p-3">
+                          <span className="text-[12px] font-semibold text-text">
+                            {t("ko.evVer.title")}
+                          </span>
+                          <ul className="mt-2 space-y-1.5">
+                            {byVersion.groups.map((g) => (
+                              <li
+                                key={g.version}
+                                className="flex flex-wrap items-center gap-2 text-[11.5px] text-muted"
+                              >
+                                <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai">
+                                  {t("ko.evVer.version", { n: String(g.version) })}
+                                </span>
+                                <span className="font-mono text-[10.5px] text-muted-2">
+                                  {t("ko.evVer.counts", {
+                                    sources: String(g.sourceCount),
+                                    attachments: String(g.attachmentCount),
+                                  })}
+                                </span>
+                                {g.latestAt ? (
+                                  <span className="font-mono text-[10px] text-muted-2">
+                                    {t("ko.evVer.latest", {
+                                      at: new Date(g.latestAt).toLocaleDateString(),
+                                    })}
+                                  </span>
+                                ) : null}
+                              </li>
+                            ))}
+                          </ul>
+                          {byVersion.versionsWithoutEvidence.length > 0 ? (
+                            <p className="mt-2 text-[11px] text-muted-2">
+                              {t("ko.evVer.without", {
+                                versions: byVersion.versionsWithoutEvidence
+                                  .map((v) => `v${v}`)
+                                  .join(", "),
+                              })}
+                            </p>
+                          ) : null}
                         </div>
                       );
                     })()

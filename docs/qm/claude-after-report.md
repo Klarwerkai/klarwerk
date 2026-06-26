@@ -2632,3 +2632,33 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-170 — Evidence nach KO-Version read-only gruppieren
+
+**Vorab-Befund (read-only):** `EvidenceRecord` trägt bereits `koVersion`; KO-Versions-Snapshots (SCRUM-159) liefern die bekannten Versionen über `useKoVersions`. Bestehende Helper (`koEvidence`, `evidenceConsistency`, `evidenceIndex`) decken Sortierung/Counts ab, aber keine Version-Gruppierung. Versions-/Snapshot-Card sortiert Versionen absteigend (`b.version - a.version`) — diese Konvention wurde gespiegelt.
+
+**Umsetzung (rein read-only, keine Datenänderung):**
+- Neuer DOM-freier Helper `apps/web/src/lib/evidenceByVersion.ts` mit `groupEvidenceByVersion(evidence, versions?)`. Gruppierung **ausschließlich** über `EvidenceRecord.koVersion` (keine Zeitfenster-Heuristik).
+- `EvidenceVersionGroup`: `version`, `total`, `sourceCount`, `attachmentCount`, `latestAt?`, `items`. Versionen absteigend; Items je Gruppe jüngste zuerst (id als Tiebreak). Optionales `versionsWithoutEvidence` (absteigend), wenn die bekannten Versionen übergeben werden.
+- KO-Detail: read-only Subsektion „Evidence nach Version" in der Evidence-Card — Version-Badge, Counts (Quellen/Anhänge), letzte Evidence, ehrlicher Hinweis auf Versionen ohne Evidence. Keine klickbaren Fremd-URLs, keine Restore/Edit/Delete/Backfill-Buttons.
+- i18n DE/EN `ko.evVer.*` (Titel, Version, Counts, Latest, Without).
+
+**Geänderte/neue Dateien:** neu `apps/web/src/lib/evidenceByVersion.ts`, `tests/ko/evidence-by-version.test.ts`; geändert `apps/web/src/pages/KnowledgeDetail.tsx`, `apps/web/src/i18n.ts`, `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — **81 Dateien / 447 Tests** (+5: Gruppierung+Kind-Counts, deterministische Item-Sortierung+latestAt, leere Evidence, Versionen-ohne-Evidence-Markierung, ohne versions-Argument leer). apps/web `tsc --noEmit` EXIT=0. Biome + depcruise sauber. Bestehende KO-Version-/Evidence-Tests unverändert grün.
+
+**Restlücken (bewusst, Nicht-Ziele):** kein Diff von Evidence-Inhalten, kein Restore/Edit/Delete, kein neues Evidence-/Version-Modell, kein globaler Browser, keine klickbaren Fremd-URLs.
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check && (cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/evidenceByVersion.ts apps/web/src/pages/KnowledgeDetail.tsx \
+  apps/web/src/i18n.ts tests/ko/evidence-by-version.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(ko): read-only evidence grouping by KO version (SCRUM-170)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
