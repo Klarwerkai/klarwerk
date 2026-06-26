@@ -7,15 +7,17 @@ import {
 } from "../../apps/web/src/lib/richText";
 
 describe("KW-STR FE: sanitizeHtml (Defense-in-Depth, gleiche Allowlist)", () => {
-  it("behält Allowlist, entfernt script + on*-Handler + style", () => {
+  it("behält Allowlist, entfernt script-Inhalt + on*-Handler + style", () => {
     expect(sanitizeHtml("<h2>T</h2><p>x</p>")).toBe("<h2>T</h2><p>x</p>");
-    expect(sanitizeHtml('<p onclick="x" style="y">a</p><script>b</script>')).toBe("<p>a</p>b");
+    expect(sanitizeHtml('<p onclick="x" style="y">a</p><script>b</script>')).toBe("<p>a</p>");
   });
 
-  it("img nur object-raw/data:image; sonst verworfen", () => {
+  it("img: object-raw/sichere data:image-Raster; SVG + fremde URL verworfen", () => {
     expect(sanitizeHtml('<img src="/api/objects/x-1/raw" alt="a">')).toContain(
       "/api/objects/x-1/raw",
     );
+    expect(sanitizeHtml('<img src="data:image/webp;base64,AAAA">')).toContain("data:image/webp");
+    expect(sanitizeHtml('<img src="data:image/svg+xml;base64,PHN2Zz4=">')).toBe("");
     expect(sanitizeHtml('<img src="https://evil/x">')).toBe("");
   });
 

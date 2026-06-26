@@ -33,9 +33,12 @@ function isSafeHref(value: string): boolean {
   return !/^[a-z][a-z0-9+.-]*:/i.test(v);
 }
 
+// img src: Object-Store-raw oder data:image für SICHERE Rastertypen (kein SVG → XSS).
 function isSafeImgSrc(value: string): boolean {
   const v = value.trim();
-  return /^\/api\/objects\/[\w-]+\/raw$/.test(v) || /^data:image\/[a-z0-9.+-]+;base64,/i.test(v);
+  return (
+    /^\/api\/objects\/[\w-]+\/raw$/.test(v) || /^data:image\/(png|jpe?g|gif|webp);base64,/i.test(v)
+  );
 }
 
 function sanitizeDivClass(value: string): string | null {
@@ -94,6 +97,9 @@ function renderAttrs(tag: string, raw: string): string {
   return out.length > 0 ? ` ${out.join(" ")}` : "";
 }
 
+// Tags, deren INHALT komplett verworfen wird (gespiegelt zu services/structure).
+const DROP_CONTENT_TAGS = new Set(["script", "style", "iframe"]);
+
 export function sanitizeHtml(html: string): string {
   if (!html) {
     return "";
@@ -102,17 +108,30 @@ export function sanitizeHtml(html: string): string {
   const openStack: string[] = [];
   const tagRe = /<\/?([a-zA-Z][a-zA-Z0-9]*)((?:[^<>"']|"[^"]*"|'[^']*')*)>/g;
   let last = 0;
+  let dropUntil: string | null = null;
   let m: RegExpExecArray | null = tagRe.exec(html);
   while (m !== null) {
-    const text = html.slice(last, m.index);
-    if (text) {
-      out.push(escapeText(text));
-    }
-    last = tagRe.lastIndex;
     const full = m[0];
     const tag = (m[1] ?? "").toLowerCase();
     const isClose = full.startsWith("</");
-    if (ALLOWED_TAGS.has(tag)) {
+    const text = html.slice(last, m.index);
+    last = tagRe.lastIndex;
+
+    if (dropUntil) {
+      if (isClose && tag === dropUntil) {
+        dropUntil = null;
+      }
+      m = tagRe.exec(html);
+      continue;
+    }
+
+    if (text) {
+      out.push(escapeText(text));
+    }
+
+    if (DROP_CONTENT_TAGS.has(tag) && !isClose) {
+      dropUntil = tag;
+    } else if (ALLOWED_TAGS.has(tag)) {
       if (isClose) {
         if (!VOID_TAGS.has(tag)) {
           const idx = openStack.lastIndexOf(tag);
@@ -135,9 +154,11 @@ export function sanitizeHtml(html: string): string {
     }
     m = tagRe.exec(html);
   }
-  const tail = html.slice(last);
-  if (tail) {
-    out.push(escapeText(tail));
+  if (!dropUntil) {
+    const tail = html.slice(last);
+    if (tail) {
+      out.push(escapeText(tail));
+    }
   }
   for (let i = openStack.length - 1; i >= 0; i -= 1) {
     out.push(`</${openStack[i]}>`);

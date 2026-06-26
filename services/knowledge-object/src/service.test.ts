@@ -39,8 +39,9 @@ describe("KoService", () => {
     const ko = await service.create(
       base({ bodyHtml: '<p>ok</p><script>alert(1)</script><img src="https://evil/x">' }),
     );
-    expect(ko.bodyHtml).toBe("<p>ok</p>alert(1)");
+    expect(ko.bodyHtml).toBe("<p>ok</p>");
     expect(ko.bodyHtml).not.toContain("<script");
+    expect(ko.bodyHtml).not.toContain("alert(1)");
     expect(ko.bodyHtml).not.toContain("evil");
   });
 
@@ -54,10 +55,10 @@ describe("KoService", () => {
   it("KW-STR: revise sanitisiert neuen bodyHtml + bewahrt vorhandenen", async () => {
     const ko = await service.create(base({ bodyHtml: "<p>v1</p>" }));
     const rev = await service.revise(ko.id, { bodyHtml: "<p>v2</p><script>x</script>" }, "pedi");
-    expect(rev.bodyHtml).toBe("<p>v2</p>x");
+    expect(rev.bodyHtml).toBe("<p>v2</p>");
     // ohne bodyHtml-Änderung bleibt der bestehende Body erhalten
     const rev2 = await service.revise(ko.id, { statement: "nur text" }, "pedi");
-    expect(rev2.bodyHtml).toBe("<p>v2</p>x");
+    expect(rev2.bodyHtml).toBe("<p>v2</p>");
   });
 
   it("FR-KO-06: fügt Kommentare an und bewahrt sie über revise", async () => {

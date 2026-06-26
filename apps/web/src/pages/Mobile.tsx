@@ -9,6 +9,7 @@ import {
   Search,
   Trash2,
   WifiOff,
+  X,
 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -32,6 +33,13 @@ import {
 } from "../lib/draftForm";
 import type { EvidenceTone } from "../lib/knowledgeClass";
 import { summarizeAnswer } from "../lib/mobileAsk";
+import {
+  type ConfirmState,
+  NO_CONFIRM,
+  clearConfirm,
+  isPending,
+  requestConfirm,
+} from "../lib/mobileConfirm";
 import type { QueueStatus } from "../lib/offlineQueue";
 
 type MobileTab = "capture" | "ask" | "lookup";
@@ -116,11 +124,14 @@ export function Mobile(): JSX.Element {
     save.mutate();
   };
 
+  // SCRUM-87 / FR-MOB-03: Inline-Bestätigung statt nativem Dialog.
+  const [confirm, setConfirm] = useState<ConfirmState>(NO_CONFIRM);
   const discard = useMutation({
     mutationFn: (id: string) => endpoints.drafts.remove(id),
     onSuccess: (_d, id) => {
       invalidateDrafts();
       push("success", t("mob.discarded"));
+      setConfirm(clearConfirm());
       if (editingId === id) {
         resetForm();
       }
@@ -293,23 +304,49 @@ export function Mobile(): JSX.Element {
                       <span className="min-w-0 flex-1 truncate text-[13px] text-text">
                         {draftTitle(d, t("capture.draftFallbackTitle"))}
                       </span>
-                      <button
-                        type="button"
-                        title={t("mob.resume")}
-                        onClick={() => resume(d.id)}
-                        className="grid h-7 w-7 place-items-center rounded-btn text-muted hover:bg-hairline-soft hover:text-text"
-                      >
-                        <RotateCcw size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        title={t("mob.discard")}
-                        disabled={discard.isPending}
-                        onClick={() => discard.mutate(d.id)}
-                        className="grid h-7 w-7 place-items-center rounded-btn text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      {isPending(confirm, d.id) ? (
+                        <>
+                          <span className="text-[11px] text-trust-crit-text">
+                            {t("mob.discardConfirmHint")}
+                          </span>
+                          <button
+                            type="button"
+                            title={t("mob.confirmDiscard")}
+                            disabled={discard.isPending}
+                            onClick={() => discard.mutate(d.id)}
+                            className="grid h-7 w-7 place-items-center rounded-btn bg-trust-crit-bg text-trust-crit-text hover:opacity-80"
+                          >
+                            <Check size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            title={t("mob.cancelDiscard")}
+                            onClick={() => setConfirm(clearConfirm())}
+                            className="grid h-7 w-7 place-items-center rounded-btn text-muted hover:bg-hairline-soft hover:text-text"
+                          >
+                            <X size={14} />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            title={t("mob.resume")}
+                            onClick={() => resume(d.id)}
+                            className="grid h-7 w-7 place-items-center rounded-btn text-muted hover:bg-hairline-soft hover:text-text"
+                          >
+                            <RotateCcw size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            title={t("mob.discard")}
+                            onClick={() => setConfirm(requestConfirm(d.id))}
+                            className="grid h-7 w-7 place-items-center rounded-btn text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </>
+                      )}
                     </li>
                   ))}
                 </ul>

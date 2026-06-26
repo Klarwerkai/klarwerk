@@ -8,10 +8,12 @@ describe("KW-STR / NFR-SEC-04: sanitizeHtml", () => {
     expect(sanitizeHtml(html)).toBe(html);
   });
 
-  it("entfernt script/style/iframe komplett", () => {
-    expect(sanitizeHtml("<p>ok</p><script>alert(1)</script>")).toBe("<p>ok</p>alert(1)");
-    expect(sanitizeHtml("<style>x{}</style><p>ok</p>")).toBe("x{}<p>ok</p>");
-    expect(sanitizeHtml('<iframe src="evil"></iframe><p>ok</p>')).toBe("<p>ok</p>");
+  it("entfernt script/style/iframe inklusive Inhalt (kein Text-Leak)", () => {
+    expect(sanitizeHtml("<p>ok</p><script>alert(1)</script>")).toBe("<p>ok</p>");
+    expect(sanitizeHtml("<style>x{color:red}</style><p>ok</p>")).toBe("<p>ok</p>");
+    expect(sanitizeHtml('<iframe src="evil">drin</iframe><p>ok</p>')).toBe("<p>ok</p>");
+    // unbalanciertes script verwirft auch den Rest
+    expect(sanitizeHtml("<p>ok</p><script>noch offen")).toBe("<p>ok</p>");
   });
 
   it("entfernt on*-Handler und style-Attribute", () => {
@@ -30,15 +32,24 @@ describe("KW-STR / NFR-SEC-04: sanitizeHtml", () => {
     expect(safe).toContain('target="_blank"');
   });
 
-  it("img src: nur object-raw oder data:image, sonst Bild verworfen", () => {
+  it("img src: object-raw oder sichere data:image-Rastertypen, sonst verworfen", () => {
     expect(sanitizeHtml('<img src="/api/objects/abc-1/raw" alt="x">')).toBe(
       '<img src="/api/objects/abc-1/raw" alt="x">',
     );
-    expect(sanitizeHtml('<img src="data:image/png;base64,AAAA" alt="y">')).toContain(
-      "data:image/png",
-    );
+    for (const mime of ["png", "jpeg", "jpg", "gif", "webp"]) {
+      expect(sanitizeHtml(`<img src="data:image/${mime};base64,AAAA" alt="y">`)).toContain(
+        `data:image/${mime}`,
+      );
+    }
     expect(sanitizeHtml('<img src="https://evil/x.png">')).toBe("");
     expect(sanitizeHtml('<img src="javascript:alert(1)">')).toBe("");
+  });
+
+  it("NFR-SEC-04: data:image/svg+xml wird abgelehnt (SVG kann Skripte tragen)", () => {
+    expect(sanitizeHtml('<img src="data:image/svg+xml;base64,PHN2Zz4=" alt="z">')).toBe("");
+    expect(sanitizeHtml('<img src="data:image/svg+xml;utf8,<svg onload=alert(1)>" alt="z">')).toBe(
+      "",
+    );
   });
 
   it("div nur als panel/callout-Container", () => {

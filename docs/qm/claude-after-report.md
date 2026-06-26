@@ -2043,3 +2043,22 @@ Datum: 2026-06-25
 **Abgrenzung:** keine schwere Editor-Suite, kein Markdown-Roundtrip, keine Tabellen, kein kollaboratives Editing, kein HTML in `statement`, kein Backend-Redesign über bodyHtml + raw-Endpoint hinaus.
 
 **Empfehlung:** Nach grünem Mac-Gate + Commit/Push dürfen **SCRUM-45/46/48 (FR-STR-02/03/05/06)** abgehakt → auf Done. Ich setze keine Jira-Checkbox/Status selbst.
+
+---
+
+## After-Report — SCRUM-87 (FR-MOB-03) + STR-Sanitizer-Härtung (NFR-SEC-04) — 2026-06-26
+
+### SCRUM-87 / FR-MOB-03 — Mobile „Entwurf verwerfen" Inline-Bestätigung
+- **Was:** destruktive Aktion bestätigt jetzt inline (kein window.confirm / nativer Dialog). Erster Klick auf „Verwerfen" zeigt nur für diesen Draft eine Bestätigung (✓/✗), zweiter Klick löscht über `endpoints.drafts.remove`, „Abbrechen" setzt zurück. Ein anderer Draft ersetzt die Markierung sauber (nur einer aktiv).
+- **DOM-frei + testbar:** neuer Helfer `apps/web/src/lib/mobileConfirm.ts` (`ConfirmState`, `requestConfirm`/`clearConfirm`/`isPending`/`needsConfirmation`/`confirmsDelete`). Test `tests/capture/mobile-confirm.test.ts`.
+- **Unverändert:** Draft-/Offline-/Toast-Logik, keine neue Draft-Architektur, keine Offline-Queue-Änderung.
+- **i18n:** DE/EN `mob.discardConfirmHint`, `mob.confirmDiscard`, `mob.cancelDiscard`.
+
+### STR-Sanitizer-Härtung — NFR-SEC-04
+- **data:image-Allowlist verschärft:** nur noch sichere Rastertypen (png, jpeg, jpg, gif, webp). `image/svg+xml` explizit abgelehnt (SVG kann Skripte tragen → XSS). Server-autoritär in `services/structure/src/sanitize.ts`, FE-Spiegel in `apps/web/src/lib/richText.ts`.
+- **script/style/iframe:** Inhalt wird jetzt komplett verworfen (`dropUntil`-Logik im Tokenizer) statt als Text behalten — kein Text-Leak; unbalancierte Drop-Tags verwerfen auch den Rest. Beidseitig gespiegelt.
+- **Tests:** `sanitize.test.ts` + `tests/structure/rich-text.test.ts` erweitert (svg verworfen, alle Rastertypen erlaubt, script/style-Inhalt komplett entfernt, Idempotenz bleibt). KO-Service-Tests an das gehärtete Verhalten angepasst.
+- **Abgrenzung gehalten:** keine neue Sanitizer-Lib, kein Editor-Umbau, nur Allowlist-Härtung.
+
+### Gates
+apps/web-tsc EXIT=0 · `npm run check` grün (**65 Dateien / 347 Tests**) · Biome · depcruise sauber.

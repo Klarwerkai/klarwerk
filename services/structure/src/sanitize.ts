@@ -39,10 +39,13 @@ function isSafeHref(value: string): boolean {
   return !/^[a-z][a-z0-9+.-]*:/i.test(v);
 }
 
-// img src: nur interner Object-Store-Raw-Pfad oder data:image.
+// img src: nur interner Object-Store-Raw-Pfad oder data:image für SICHERE Rastertypen.
+// image/svg+xml ist bewusst NICHT erlaubt (SVG kann Skripte tragen → XSS).
 function isSafeImgSrc(value: string): boolean {
   const v = value.trim();
-  return /^\/api\/objects\/[\w-]+\/raw$/.test(v) || /^data:image\/[a-z0-9.+-]+;base64,/i.test(v);
+  return (
+    /^\/api\/objects\/[\w-]+\/raw$/.test(v) || /^data:image\/(png|jpe?g|gif|webp);base64,/i.test(v)
+  );
 }
 
 // div nur als Panel/Callout-Container.
@@ -103,6 +106,9 @@ function renderAttrs(tag: string, raw: string): string {
   return out.length > 0 ? ` ${out.join(" ")}` : "";
 }
 
+// Tags, deren INHALT komplett verworfen wird (nicht als Text behalten) — XSS/Style-Leaks.
+const DROP_CONTENT_TAGS = new Set(["script", "style", "iframe"]);
+
 // Allowlist-Tokenizer: läuft das HTML einmal durch, gibt nur erlaubte Tags + Text aus.
 export function sanitizeHtml(html: string): string {
   if (!html) {
@@ -112,21 +118,34 @@ export function sanitizeHtml(html: string): string {
   const openStack: string[] = [];
   const tagRe = /<\/?([a-zA-Z][a-zA-Z0-9]*)((?:[^<>"']|"[^"]*"|'[^']*')*)>/g;
   let last = 0;
+  let dropUntil: string | null = null; // wenn gesetzt: Inhalt bis zum Close-Tag verwerfen
   let m: RegExpExecArray | null;
   // biome-ignore lint/suspicious/noAssignInExpressions: Standard-Regex-Iteration.
   while ((m = tagRe.exec(html)) !== null) {
-    const text = html.slice(last, m.index);
-    if (text) {
-      out.push(escapeText(text));
-    }
-    last = tagRe.lastIndex;
-
     const full = m[0];
     const tag = (m[1] ?? "").toLowerCase();
     const isClose = full.startsWith("</");
+    const text = html.slice(last, m.index);
+    last = tagRe.lastIndex;
 
+    // Innerhalb von script/style/iframe: Text + alle Tags verwerfen, bis zum Close.
+    if (dropUntil) {
+      if (isClose && tag === dropUntil) {
+        dropUntil = null;
+      }
+      continue;
+    }
+
+    if (text) {
+      out.push(escapeText(text));
+    }
+
+    if (DROP_CONTENT_TAGS.has(tag) && !isClose) {
+      dropUntil = tag; // Inhalt komplett verwerfen
+      continue;
+    }
     if (!ALLOWED_TAGS.has(tag)) {
-      continue; // unbekannte/gefährliche Tags (script, style, iframe, …) verwerfen
+      continue; // unbekannte/gefährliche Tags verwerfen (Inhalt bleibt als Text)
     }
     if (isClose) {
       if (VOID_TAGS.has(tag)) {
@@ -154,9 +173,12 @@ export function sanitizeHtml(html: string): string {
       openStack.push(tag);
     }
   }
-  const tail = html.slice(last);
-  if (tail) {
-    out.push(escapeText(tail));
+  // Tail nur ausgeben, wenn nicht in einem Drop-Block (unbalanciertes script o. Ä.).
+  if (!dropUntil) {
+    const tail = html.slice(last);
+    if (tail) {
+      out.push(escapeText(tail));
+    }
   }
   // Noch offene Tags sauber schließen.
   for (let i = openStack.length - 1; i >= 0; i -= 1) {
