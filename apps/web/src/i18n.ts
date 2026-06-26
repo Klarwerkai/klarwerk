@@ -547,6 +547,11 @@ const de = {
   "mob.resume": "Fortsetzen",
   "mob.discard": "Verwerfen",
   "mob.discarded": "Entwurf verworfen.",
+  "mob.tabCapture": "Erfassen",
+  "mob.tabAsk": "Fragen",
+  "mob.tabLookup": "Suchen",
+  "mob.searchPlaceholder": "Wissen durchsuchen …",
+  "mob.searchEmpty": "Keine Treffer.",
   "s2.kicker": "Erweitert · Stufe 2",
   "s2.output":
     "Aus validierten Objekten Arbeitsanweisungen/Checklisten erzeugen — aktiv, sobald die Output-Logik steht.",
@@ -1099,6 +1104,11 @@ const en: typeof de = {
   "mob.resume": "Resume",
   "mob.discard": "Discard",
   "mob.discarded": "Draft discarded.",
+  "mob.tabCapture": "Capture",
+  "mob.tabAsk": "Ask",
+  "mob.tabLookup": "Search",
+  "mob.searchPlaceholder": "Search knowledge …",
+  "mob.searchEmpty": "No matches.",
   "s2.kicker": "Advanced · Stage 2",
   "s2.output":
     "Generate work instructions/checklists from validated objects — active once the output logic is in place.",

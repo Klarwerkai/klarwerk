@@ -1,11 +1,16 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, FilePlus2, RotateCcw, Trash2 } from "lucide-react";
+import { ArrowRight, Check, FilePlus2, RotateCcw, Search, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import { useDrafts } from "../api/hooks";
+import { useDrafts, useLibrarySearch } from "../api/hooks";
+import type { AnswerResult } from "../api/types";
 import { useToast } from "../app/ToastContext";
+import { ConfidenceBar, KnowledgeTypeTag, StatusPill } from "../components/trust";
+import { selectAnswer } from "../lib/askResponse";
+import { deriveStatus } from "../lib/displayStatus";
 import {
   type DraftFormState,
   EMPTY_DRAFT_FORM,
@@ -14,23 +19,35 @@ import {
   formToPayload,
   isDraftFormFillable,
 } from "../lib/draftForm";
+import type { EvidenceTone } from "../lib/knowledgeClass";
+import { summarizeAnswer } from "../lib/mobileAsk";
 
-// SCRUM-113 / FE-MOB-02/04/06: echte mobile Erfassung (Entwurf speichern/fortsetzen)
-// auf demselben Draft-Pool wie Desktop. Bestätigung über den Toast-Bus.
+type MobileTab = "capture" | "ask" | "lookup";
+
+const EVIDENCE_TONE: Record<EvidenceTone, string> = {
+  pos: "bg-trust-pos-bg text-trust-pos-text",
+  warn: "bg-trust-warn-bg text-trust-warn-text",
+  crit: "bg-trust-crit-bg text-trust-crit-text",
+  neutral: "bg-page text-muted",
+};
+
+// SCRUM-113: echte mobile Erfassung (FE-MOB-02/04/06) + Fragen (FE-MOB-03) + Wissenszugriff (FE-MOB-05).
+// Alle Aktionen über bestehende APIs/State; Bestätigung über den Toast-Bus.
 export function Mobile(): JSX.Element {
   const { t } = useTranslation();
   const { push } = useToast();
   const qc = useQueryClient();
-  const drafts = useDrafts();
+  const [tab, setTab] = useState<MobileTab>("capture");
 
+  // --- Erfassen (FE-MOB-02/04) ---
+  const drafts = useDrafts();
   const [form, setForm] = useState<DraftFormState>({ ...EMPTY_DRAFT_FORM });
   const [editingId, setEditingId] = useState<string | null>(null);
-
-  const reset = (): void => {
+  const resetForm = (): void => {
     setForm({ ...EMPTY_DRAFT_FORM });
     setEditingId(null);
   };
-  const invalidate = (): void => void qc.invalidateQueries({ queryKey: ["drafts"] });
+  const invalidateDrafts = (): void => void qc.invalidateQueries({ queryKey: ["drafts"] });
   const fail = (e: unknown): void =>
     push("error", e instanceof ApiError ? e.message : t("state.error"));
 
@@ -42,25 +59,23 @@ export function Mobile(): JSX.Element {
         : endpoints.drafts.create(payload);
     },
     onSuccess: () => {
-      invalidate();
+      invalidateDrafts();
       push("success", editingId ? t("mob.updated") : t("mob.saved"));
-      reset();
+      resetForm();
     },
     onError: fail,
   });
-
   const discard = useMutation({
     mutationFn: (id: string) => endpoints.drafts.remove(id),
     onSuccess: (_d, id) => {
-      invalidate();
+      invalidateDrafts();
       push("success", t("mob.discarded"));
       if (editingId === id) {
-        reset();
+        resetForm();
       }
     },
     onError: fail,
   });
-
   const resume = (id: string): void => {
     const d = (drafts.data ?? []).find((x) => x.id === id);
     if (d) {
@@ -69,10 +84,31 @@ export function Mobile(): JSX.Element {
     }
   };
 
+  // --- Fragen (FE-MOB-03) ---
+  const [q, setQ] = useState("");
+  const [answer, setAnswer] = useState<AnswerResult | null>(null);
+  const ask = useMutation({
+    mutationFn: (question: string) => endpoints.ask.ask(question),
+    onSuccess: (res) => setAnswer(selectAnswer(res)),
+    onError: (e) => {
+      setAnswer(null);
+      push("error", e instanceof ApiError ? e.message : t("state.error"));
+    },
+  });
+
+  // --- Suchen (FE-MOB-05) ---
+  const [sq, setSq] = useState("");
+  const search = useLibrarySearch(sq.trim() ? { q: sq.trim() } : {});
+
+  const tabCls = (active: boolean): string =>
+    `flex-1 rounded-btn py-1.5 text-[12px] font-semibold ${
+      active ? "bg-ink text-white" : "text-muted"
+    }`;
+
   return (
     <div className="grid min-h-[520px] place-items-center rounded-card bg-page p-6">
       <div className="w-[340px] overflow-hidden rounded-[34px] border-4 border-ink bg-surface p-5">
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-3 flex items-center justify-between">
           <span className="font-sans text-[15px] font-bold tracking-[2px] text-ink">KLARWERK</span>
           <span className="flex items-center gap-1 font-mono text-[11px] text-trust-pos-text">
             <span className="h-1.5 w-1.5 rounded-full bg-trust-pos-fill" />
@@ -80,88 +116,227 @@ export function Mobile(): JSX.Element {
           </span>
         </div>
 
-        <h2 className="text-xl font-semibold text-ink">{t("mob.title")}</h2>
-        <p className="mt-1 text-[13px] text-muted">{editingId ? t("mob.editing") : t("mob.sub")}</p>
-
-        {/* FE-MOB-02: echte Erfassung */}
-        <div className="mt-4 space-y-2">
-          <input
-            value={form.title}
-            onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-            placeholder={t("mob.formTitle")}
-            className="h-10 w-full rounded-input border border-hairline bg-page px-3 text-sm outline-none focus:border-ink/30"
-          />
-          <textarea
-            value={form.statement}
-            onChange={(e) => setForm((f) => ({ ...f, statement: e.target.value }))}
-            placeholder={t("mob.formStatement")}
-            rows={3}
-            className="w-full resize-y rounded-input border border-hairline bg-page p-2.5 text-sm outline-none focus:border-ink/30"
-          />
-          <div className="flex gap-2">
-            <button
-              type="button"
-              disabled={save.isPending || !isDraftFormFillable(form)}
-              onClick={() => save.mutate()}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-btn bg-ink py-2.5 text-[13px] font-semibold text-white disabled:opacity-50"
-            >
-              <Check size={15} />
-              {editingId ? t("mob.update") : t("mob.save")}
-            </button>
-            {editingId ? (
-              <button
-                type="button"
-                onClick={reset}
-                className="flex items-center gap-1.5 rounded-btn border border-hairline px-3 py-2.5 text-[13px] font-semibold text-muted hover:text-text"
-              >
-                <FilePlus2 size={15} />
-                {t("mob.new")}
-              </button>
-            ) : null}
-          </div>
+        {/* Tabs */}
+        <div className="mb-3 flex gap-1 rounded-btn bg-page p-1">
+          <button
+            type="button"
+            className={tabCls(tab === "capture")}
+            onClick={() => setTab("capture")}
+          >
+            {t("mob.tabCapture")}
+          </button>
+          <button type="button" className={tabCls(tab === "ask")} onClick={() => setTab("ask")}>
+            {t("mob.tabAsk")}
+          </button>
+          <button
+            type="button"
+            className={tabCls(tab === "lookup")}
+            onClick={() => setTab("lookup")}
+          >
+            {t("mob.tabLookup")}
+          </button>
         </div>
 
-        {/* FE-MOB-04: Entwürfe listen & fortsetzen (gemeinsamer Pool) */}
-        <div className="mt-5">
-          <div className="mb-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
-            {t("mob.drafts")}
-          </div>
-          {(drafts.data ?? []).length === 0 ? (
-            <p className="text-[12.5px] text-muted">{t("mob.draftsEmpty")}</p>
-          ) : (
-            <ul className="space-y-1.5">
-              {(drafts.data ?? []).map((d) => (
-                <li
-                  key={d.id}
-                  className={`flex items-center gap-2 rounded-input border px-2.5 py-2 ${
-                    editingId === d.id ? "border-ink bg-page" : "border-hairline"
-                  }`}
+        {tab === "capture" ? (
+          <div>
+            <p className="mb-2 text-[13px] text-muted">
+              {editingId ? t("mob.editing") : t("mob.sub")}
+            </p>
+            <div className="space-y-2">
+              <input
+                value={form.title}
+                onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+                placeholder={t("mob.formTitle")}
+                className="h-10 w-full rounded-input border border-hairline bg-page px-3 text-sm outline-none focus:border-ink/30"
+              />
+              <textarea
+                value={form.statement}
+                onChange={(e) => setForm((f) => ({ ...f, statement: e.target.value }))}
+                placeholder={t("mob.formStatement")}
+                rows={3}
+                className="w-full resize-y rounded-input border border-hairline bg-page p-2.5 text-sm outline-none focus:border-ink/30"
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={save.isPending || !isDraftFormFillable(form)}
+                  onClick={() => save.mutate()}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-btn bg-ink py-2.5 text-[13px] font-semibold text-white disabled:opacity-50"
                 >
-                  <span className="min-w-0 flex-1 truncate text-[13px] text-text">
-                    {draftTitle(d, t("capture.draftFallbackTitle"))}
-                  </span>
+                  <Check size={15} />
+                  {editingId ? t("mob.update") : t("mob.save")}
+                </button>
+                {editingId ? (
                   <button
                     type="button"
-                    title={t("mob.resume")}
-                    onClick={() => resume(d.id)}
-                    className="grid h-7 w-7 place-items-center rounded-btn text-muted hover:bg-hairline-soft hover:text-text"
+                    onClick={resetForm}
+                    className="flex items-center gap-1.5 rounded-btn border border-hairline px-3 py-2.5 text-[13px] font-semibold text-muted hover:text-text"
                   >
-                    <RotateCcw size={14} />
+                    <FilePlus2 size={15} />
+                    {t("mob.new")}
                   </button>
-                  <button
-                    type="button"
-                    title={t("mob.discard")}
-                    disabled={discard.isPending}
-                    onClick={() => discard.mutate(d.id)}
-                    className="grid h-7 w-7 place-items-center rounded-btn text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <div className="mb-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+                {t("mob.drafts")}
+              </div>
+              {(drafts.data ?? []).length === 0 ? (
+                <p className="text-[12.5px] text-muted">{t("mob.draftsEmpty")}</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {(drafts.data ?? []).map((d) => (
+                    <li
+                      key={d.id}
+                      className={`flex items-center gap-2 rounded-input border px-2.5 py-2 ${
+                        editingId === d.id ? "border-ink bg-page" : "border-hairline"
+                      }`}
+                    >
+                      <span className="min-w-0 flex-1 truncate text-[13px] text-text">
+                        {draftTitle(d, t("capture.draftFallbackTitle"))}
+                      </span>
+                      <button
+                        type="button"
+                        title={t("mob.resume")}
+                        onClick={() => resume(d.id)}
+                        className="grid h-7 w-7 place-items-center rounded-btn text-muted hover:bg-hairline-soft hover:text-text"
+                      >
+                        <RotateCcw size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        title={t("mob.discard")}
+                        disabled={discard.isPending}
+                        onClick={() => discard.mutate(d.id)}
+                        className="grid h-7 w-7 place-items-center rounded-btn text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        ) : null}
+
+        {tab === "ask" ? (
+          <div>
+            <form
+              className="flex gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (q.trim()) {
+                  ask.mutate(q.trim());
+                }
+              }}
+            >
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder={t("ask.placeholder")}
+                className="h-10 flex-1 rounded-input border border-hairline bg-page px-3 text-sm outline-none focus:border-ink/30"
+              />
+              <button
+                type="submit"
+                disabled={ask.isPending || q.trim().length === 0}
+                className="grid h-10 w-10 place-items-center rounded-btn bg-ink text-white disabled:opacity-50"
+              >
+                <ArrowRight size={16} />
+              </button>
+            </form>
+
+            {answer
+              ? (() => {
+                  const s = summarizeAnswer(answer);
+                  return s.answered ? (
+                    <div className="mt-3 rounded-card border border-hairline p-3">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <span
+                          className={`rounded-pill px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase ${EVIDENCE_TONE[s.evidence.tone]}`}
+                        >
+                          {t("ask.evidence")}: {t(s.evidence.labelKey)}
+                        </span>
+                        <span className="shrink-0">
+                          <ConfidenceBar value={s.trust} showLabel={false} />
+                        </span>
+                      </div>
+                      <p className="text-[14px] leading-relaxed text-text">{s.text}</p>
+                      {s.sources.length > 0 ? (
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-[10px] uppercase text-muted-2">
+                            {t("ask.sources")}
+                          </span>
+                          {s.sources.map((id) => (
+                            <Link
+                              key={id}
+                              to={`/wissen/${id}`}
+                              className="font-mono text-[11px] text-brand"
+                            >
+                              {id}
+                            </Link>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="mt-3 rounded-card border border-dashed border-hairline p-3">
+                      <p className="text-[14px] font-semibold text-text">{t("ask.noBasisTitle")}</p>
+                      <p className="mt-1 text-[12.5px] text-muted">{t("ask.noBasisBody")}</p>
+                      <Link
+                        to="/risiko"
+                        className="mt-2 inline-flex items-center gap-1 text-[12.5px] font-semibold text-brand"
+                      >
+                        {t("ask.toGaps")}
+                        <ArrowRight size={14} />
+                      </Link>
+                    </div>
+                  );
+                })()
+              : null}
+          </div>
+        ) : null}
+
+        {tab === "lookup" ? (
+          <div>
+            <div className="flex items-center gap-2 rounded-input border border-hairline bg-page px-3">
+              <Search size={15} className="text-muted-2" />
+              <input
+                value={sq}
+                onChange={(e) => setSq(e.target.value)}
+                placeholder={t("mob.searchPlaceholder")}
+                className="h-10 flex-1 bg-transparent text-sm outline-none"
+              />
+            </div>
+            <div className="mt-3">
+              {(search.data ?? []).length === 0 ? (
+                <p className="text-[12.5px] text-muted">{t("mob.searchEmpty")}</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {(search.data ?? []).slice(0, 20).map((k) => (
+                    <li key={k.id}>
+                      <Link
+                        to={`/wissen/${k.id}`}
+                        className="block rounded-input border border-hairline p-2.5 hover:bg-hairline-soft"
+                      >
+                        <div className="mb-1 flex items-center gap-1.5">
+                          <StatusPill status={deriveStatus(k)} />
+                          <KnowledgeTypeTag type={k.type} />
+                          <span className="ml-auto font-mono text-[10px] text-muted-2">
+                            T{k.trust}
+                          </span>
+                        </div>
+                        <div className="truncate text-[13px] text-text">{k.title}</div>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

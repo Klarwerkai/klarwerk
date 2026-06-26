@@ -1769,3 +1769,29 @@ Datum: 2026-06-25
 **Restlücken:** Mobile-Formular ist schlank (Titel/Aussage) — volle Metadaten/Anhänge/Diktat bleiben Desktop bzw. spätere Mobile-Ausbaustufe. SCRUM-113 bleibt offen für FE-MOB-01/03/05/07.
 
 **Empfehlung:** Nach grünem Mac-Gate + Commit/Push dürfen **FE-CAP-07** abgehakt und damit **SCRUM-100 auf Done** gesetzt werden; **FE-MOB-02/04/06** in SCRUM-113 abhaken. **SCRUM-113 bleibt offen** für FE-MOB-01 (PWA), FE-MOB-03 (Ask), FE-MOB-05 (Wissenszugriff), FE-MOB-07 (Offline). Ich setze keine Jira-Checkbox/Status selbst.
+
+---
+
+## 2026-06-26 · SCRUM-113 (Block 2) — FE-MOB-03 + FE-MOB-05 (Mobile Ask & Wissenszugriff)
+
+**Ticket(s):** SCRUM-113 zweiter Umsetzungsblock; schließt FE-MOB-03 (Mobile Fragen/Abfrage) und FE-MOB-05 (Mobile Wissenszugriff). Umsetzung exakt nach freigegebener Vorab-Meldung.
+
+**Befund:** Ask- und Library-Pfade backendseitig + im FE vollständig vorhanden. Wiederverwendbar: `endpoints.ask.ask(question)` → `AskResponse {result, gap}`; `selectAnswer/selectGap`; `knowledgeClassMeta` (Evidenz-Badge); `useLibrarySearch({q})` → `KnowledgeObject[]`; `deriveStatus` + `StatusPill`/`KnowledgeTypeTag`/`ConfidenceBar`. Mobile.tsx hatte nach Block 1 nur die Erfassungs-Sektion. Keine Backend-Lücke.
+
+**Geänderte/neue Dateien:**
+- `apps/web/src/lib/mobileAsk.ts` (neu, DOM-frei) — `summarizeAnswer(AnswerResult)` → kompaktes Mobile-View-Model (answered/text/trust/evidence via knowledgeClassMeta/sources/stepCount); keine Logikdopplung.
+- `apps/web/src/pages/Mobile.tsx` — schlanker Tab-Umschalter **Erfassen · Fragen · Suchen** im bestehenden Geräterahmen. **Fragen:** Eingabe + Button → `endpoints.ask.ask`, `selectAnswer`; bei Antwort: Antworttext, Trust (ConfidenceBar), Evidenz-/KnowledgeClass-Badge, Quellen als Links zu `/wissen/:id`; bei `answered=false`: ehrliche No-Basis-Meldung (`ask.noBasisTitle/Body`) + Link zu `/risiko`; Fehler über Toast. **Suchen:** Suchfeld → `useLibrarySearch({q})`, kompakte KO-Liste mit StatusPill (deriveStatus) + Typ-Tag + Trust + Link `/wissen/:id`; ehrlicher Leer-/Kein-Treffer-Zustand.
+- `apps/web/src/i18n.ts` — `mob.tabCapture/tabAsk/tabLookup`, `mob.searchPlaceholder/searchEmpty` (DE+EN). Ask-Anzeige nutzt bestehende `ask.*`-Keys (placeholder/evidence/sources/noBasisTitle/noBasisBody/toGaps/knowledgeClass.*).
+- `tests/capture/mobile-ask.test.ts` (neu) — 2 Tests (beantwortet inkl. Evidenz/Trust/Quellen/Steps; No-Basis answered=false → Evidenz kritisch, keine Quellen/Steps).
+
+**Genutzte Endpoints/Hooks:** POST /api/ask (`endpoints.ask.ask`), GET /api/library/search (`useLibrarySearch`). Keine neuen APIs, kein Backend-Redesign.
+
+**Erfüllte AK:** Mobile Ask echt über bestehenden Ask-Shape ✓ · Antwort/Trust/Evidenz-Badge/Quellen/No-Basis ✓ · Fehler über Toast ✓ · Mobile Wissenszugriff über Library-Daten (Suche/Liste, Status/Trust/Typ, Link zu KO-Detail) ✓ · ehrlicher Leerzustand ✓ · DOM-freier Helper + Test ✓ · keine statische Vorschau ✓.
+
+**Nicht in diesem Block (leitplankenkonform):** PWA/Manifest/Service Worker (FE-MOB-01), Offline-Queue/Sync (FE-MOB-07), Backend-Redesign, neue Ask-/Library-APIs — unangetastet.
+
+**Gelaufene Checks:** `npm run check` GRÜN — 49 Testdateien / 238 Tests (2 neu). apps/web `tsc --noEmit` EXIT=0. depcruise sauber (120 Module). Biome grün.
+
+**Restlücken:** Mobile-Ask zeigt Quellen-IDs kompakt (Link zu KO-Detail); Steps werden bewusst nicht ausgerollt (Platz). Such-Liste auf 20 Treffer begrenzt (Pilot). SCRUM-113 bleibt offen für FE-MOB-01 (PWA) + FE-MOB-07 (Offline).
+
+**Empfehlung:** Nach grünem Mac-Gate + Commit/Push dürfen **FE-MOB-03** und **FE-MOB-05** in SCRUM-113 abgehakt werden. **SCRUM-113 bleibt offen** nur noch für FE-MOB-01 (PWA) und FE-MOB-07 (Offline). Ich setze keine Jira-Checkbox/Status selbst.
