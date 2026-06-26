@@ -2196,3 +2196,45 @@ Warnhinweis (nur Smoke, nicht persistent).
 
 ### Jira-Empfehlung
 SCRUM-156 nach grünem Mac-Gate auf Done. Claude setzt Jira nicht selbst.
+
+---
+
+## After-Report — SCRUM-157 · Stabilize: Import-Kandidaten persistent machen — 2026-06-26
+
+### Persistenzentscheidung: Postgres-Repo (analog Object-Store/Capture)
+Befund (SCRUM-153/154): Import-/Source-Review-Kandidaten lagen im `LibraryService` in einem
+privaten `ImportCandidate[]` → Review-Queue ging bei Neustart verloren. Entscheidung: Queue hinter
+ein `CandidateRepo`-Interface ziehen (InMemory für Dev/Test, Pg für Betrieb), kein Import-Flow-Umbau.
+
+### Umsetzung
+- **Neu** `services/library-analytics/src/repo.ts`: `CandidateRepo` (insert/findById/update/all) +
+  `InMemoryCandidateRepo` (Map, bewahrt Einfügereihenfolge).
+- **Neu** `services/library-analytics/src/repo-pg.ts`: `IMPORT_CANDIDATES_SCHEMA`
+  (`import_candidates(id text PK, data jsonb)`) + `PgCandidateRepo` (Vollkandidat als JSONB).
+- `services/library-analytics/src/service.ts`: privates Array → `CandidateRepo`-Dep (optional,
+  Default InMemory → rückwärtskompatibel). `createImportCandidates` insert(), `listImportCandidates`
+  all(), `reviewImportCandidate` findById()+update() — Status/koId/Note werden persistiert.
+  Review-Prinzip unverändert (keine stille Bulk-Anlage; accept→echtes KO nur bei nicht-Dublette).
+- `services/library-analytics/index.ts`: Repo-Exporte + Schema.
+- `services/app/src/db.ts`: `IMPORT_CANDIDATES_SCHEMA` in `migrate()`.
+- `services/app/src/build-app.ts`: `AppRepos.candidates`; `buildServices` → InMemory,
+  `buildPgServices` → `PgCandidateRepo(pool)`; `LibraryService` bekommt `candidates`.
+- API unverändert (`POST/GET/PUT /api/library/import/candidates*`), FE unberührt.
+
+### Tests / Gates
+- `services/library-analytics/src/service.test.ts` +3 Tests: Kandidaten überleben neue
+  Service-Instanz am selben Repo; Review-Status accept/reject/info + Duplicate/Note/koId/createdAt
+  bleiben erhalten; `PgCandidateRepo`-Round-Trip über denselben Fake-Pool. Bestehende
+  Import-Review-Tests unverändert grün.
+- `npm run check` grün: **69 Dateien / 375 Tests**, tsc + Biome + depcruise sauber. FE nicht berührt.
+- Hinweis: Sandbox-Umgebung verlor zwischenzeitlich die plattform-nativen Optional-Binaries
+  (rollup/biome, arm64); per gezieltem `npm install @rollup/rollup-linux-arm64-gnu
+  @biomejs/cli-linux-arm64 --no-save` wiederhergestellt — kein Code-/Lock-Effekt.
+
+### Restlücken
+- Echte Pg-Persistenz über Testcontainers-Integrationstest auf Mac/CI (Unit-Gate nutzt Fake-Pool).
+- Kein Feld-Merge/PDF-OCR-Reimport (außerhalb Scope).
+
+### Jira-Empfehlung
+SCRUM-157 nach grünem Mac-Gate auf Done. Schließt die Import-Kandidaten-Persistenzlücke aus
+SCRUM-153/154. Claude setzt Jira nicht selbst.

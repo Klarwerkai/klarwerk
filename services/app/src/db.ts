@@ -5,6 +5,7 @@ import { AUTH_SCHEMA } from "../../auth";
 import { CAPTURE_SCHEMA } from "../../capture";
 import { CONFLICTS_SCHEMA } from "../../conflicts";
 import { KO_SCHEMA } from "../../knowledge-object";
+import { IMPORT_CANDIDATES_SCHEMA } from "../../library-analytics";
 import { LIFECYCLE_SCHEMA } from "../../lifecycle";
 import { OBJECTSTORE_SCHEMA } from "../../object-store";
 import { VALIDATION_SCHEMA } from "../../validation";
@@ -26,6 +27,7 @@ export async function migrate(pool: Pool): Promise<void> {
     CONFLICTS_SCHEMA,
     LIFECYCLE_SCHEMA,
     OBJECTSTORE_SCHEMA,
+    IMPORT_CANDIDATES_SCHEMA,
   ];
   for (const ddl of schemas) {
     await pool.query(ddl);

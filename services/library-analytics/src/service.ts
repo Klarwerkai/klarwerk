@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
 import type { KnowledgeObject, KoFilter, KoService } from "../../knowledge-object";
+import { type CandidateRepo, InMemoryCandidateRepo } from "./repo";
 import {
   type Analytics,
   type BusFactorEntry,
@@ -16,6 +17,8 @@ import {
 export interface LibraryServiceDeps {
   koService: KoService;
   audit?: AuditService;
+  // SCRUM-157: persistente Import-Queue. Optional; ohne Angabe In-Memory (Dev/Test).
+  candidates?: CandidateRepo;
   genId?: () => string;
   now?: () => number;
 }
@@ -29,12 +32,13 @@ export class LibraryService {
   private readonly audit: AuditService | undefined;
   private readonly genId: () => string;
   private readonly now: () => number;
-  // SCRUM-116: In-Memory-Queue für Import-/Source-Review-Kandidaten (MVP).
-  private readonly candidates: ImportCandidate[] = [];
+  // SCRUM-116/157: Import-/Source-Review-Queue über ein Repo (persistent via Pg, sonst In-Memory).
+  private readonly candidates: CandidateRepo;
 
   constructor(deps: LibraryServiceDeps) {
     this.koService = deps.koService;
     this.audit = deps.audit;
+    this.candidates = deps.candidates ?? new InMemoryCandidateRepo();
     this.genId = deps.genId ?? (() => randomUUID());
     this.now = deps.now ?? (() => Date.now());
   }
@@ -56,7 +60,9 @@ export class LibraryService {
       koId: null,
       createdAt: at,
     }));
-    this.candidates.push(...created);
+    for (const candidate of created) {
+      await this.candidates.insert(candidate);
+    }
     await this.audit?.record({
       actor,
       action: "import.candidates-created",
@@ -67,7 +73,7 @@ export class LibraryService {
   }
 
   listImportCandidates(): Promise<ImportCandidate[]> {
-    return Promise.resolve([...this.candidates]);
+    return this.candidates.all();
   }
 
   // SCRUM-116: Review-Aktion. accept → echtes KO (außer Dublette, dann übersprungen).
@@ -77,7 +83,7 @@ export class LibraryService {
     actor = "system",
     note?: string,
   ): Promise<ImportCandidate> {
-    const candidate = this.candidates.find((c) => c.id === id);
+    const candidate = await this.candidates.findById(id);
     if (!candidate) {
       throw new LibraryError("NOT_FOUND", "Importkandidat nicht gefunden.");
     }
@@ -104,6 +110,8 @@ export class LibraryService {
         candidate.koId = ko.id;
       }
     }
+    // SCRUM-157: geänderten Status/koId/Note persistieren (kein stiller Verlust).
+    await this.candidates.update(candidate);
     await this.audit?.record({
       actor,
       action: `import.candidate-${action}`,

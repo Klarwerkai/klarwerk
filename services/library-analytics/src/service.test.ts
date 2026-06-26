@@ -1,6 +1,9 @@
+import type { Pool } from "pg";
 import { beforeEach, describe, expect, it } from "vitest";
 import { AuditService, InMemoryAuditRepo } from "../../audit";
 import { InMemoryKoRepo, KoService } from "../../knowledge-object";
+import { InMemoryCandidateRepo } from "./repo";
+import { PgCandidateRepo } from "./repo-pg";
 import { LibraryService } from "./service";
 
 async function setup() {
@@ -168,5 +171,109 @@ describe("LibraryService — Audit (FR-AUD-01)", () => {
     const entries = await audit.list({ action: "library.import" });
     expect(entries).toHaveLength(1);
     expect(entries[0]?.actor).toBe("importer");
+  });
+});
+
+// SCRUM-157: Fake-Pool, der die import_candidates-Tabelle nachbildet (INSERT/UPDATE/SELECT).
+function fakePool() {
+  const rows = new Map<string, string>(); // id → JSON-String (wie pg jsonb)
+  return {
+    query: async (sql: string, params: unknown[] = []) => {
+      if (sql.startsWith("INSERT INTO import_candidates")) {
+        const [id, data] = params as [string, string];
+        rows.set(id, data);
+        return { rows: [] };
+      }
+      if (sql.startsWith("UPDATE import_candidates")) {
+        const [id, data] = params as [string, string];
+        rows.set(id, data);
+        return { rows: [] };
+      }
+      if (sql.startsWith("SELECT data FROM import_candidates WHERE id=")) {
+        const [id] = params as [string];
+        const data = rows.get(id);
+        return { rows: data ? [{ data: JSON.parse(data) }] : [] };
+      }
+      if (sql.startsWith("SELECT data FROM import_candidates ORDER BY")) {
+        return { rows: [...rows.values()].map((d) => ({ data: JSON.parse(d) })) };
+      }
+      return { rows: [] };
+    },
+  } as unknown as Pool;
+}
+
+describe("SCRUM-157: Import-Kandidaten persistent (CandidateRepo)", () => {
+  async function koCtx() {
+    const koService = new KoService({ repo: new InMemoryKoRepo() });
+    await koService.create({
+      title: "Bestehend",
+      statement: "Schon da.",
+      type: "best_practice",
+      category: "A",
+      author: "anna",
+    });
+    return koService;
+  }
+
+  it("Kandidaten überleben eine neue Service-Instanz am selben Repo (In-Memory)", async () => {
+    const koService = await koCtx();
+    const repo = new InMemoryCandidateRepo();
+    const lib1 = new LibraryService({ koService, candidates: repo });
+    const [created] = await lib1.createImportCandidates([
+      { title: "Neu", statement: "Frisch.", type: "lernkurve", category: "B" },
+    ]);
+
+    // Frische Service-Instanz über DASSELBE Repo → Queue ist noch da.
+    const lib2 = new LibraryService({ koService, candidates: repo });
+    const listed = await lib2.listImportCandidates();
+    expect(listed).toHaveLength(1);
+    expect(listed[0]?.id).toBe(created?.id);
+    expect(listed[0]?.status).toBe("neu");
+  });
+
+  it("Review-Status + koId/Note/Duplicate/createdAt bleiben nach Persistenz erhalten", async () => {
+    const koService = await koCtx();
+    const repo = new InMemoryCandidateRepo();
+    const lib1 = new LibraryService({ koService, candidates: repo });
+    const [fresh, dup, info] = await lib1.createImportCandidates([
+      { title: "Frisch", statement: "Inhalt A.", type: "lernkurve", category: "B" },
+      { title: "Bestehend", statement: "Schon da.", type: "best_practice", category: "A" }, // Dublette
+      { title: "Unklar", statement: "Inhalt C.", type: "technik", category: "C" },
+    ]);
+    await lib1.reviewImportCandidate(fresh?.id ?? "", "accept", "controller");
+    await lib1.reviewImportCandidate(dup?.id ?? "", "accept", "controller");
+    await lib1.reviewImportCandidate(info?.id ?? "", "info", "controller", "Quelle?");
+
+    // Neue Instanz am selben Repo: alle Review-Stände persistent.
+    const lib2 = new LibraryService({ koService, candidates: repo });
+    const byId = new Map((await lib2.listImportCandidates()).map((c) => [c.id, c]));
+    const freshC = byId.get(fresh?.id ?? "");
+    const dupC = byId.get(dup?.id ?? "");
+    const infoC = byId.get(info?.id ?? "");
+    expect(freshC?.status).toBe("angenommen");
+    expect(freshC?.koId).toBeTruthy(); // nicht-Dublette → echtes KO erzeugt
+    expect(dupC?.status).toBe("angenommen");
+    expect(dupC?.duplicate).toBe(true);
+    expect(dupC?.koId).toBeNull(); // Dublette → kein KO
+    expect(infoC?.status).toBe("info-angefragt");
+    expect(infoC?.note).toBe("Quelle?");
+    expect(freshC?.createdAt).toBe(fresh?.createdAt);
+  });
+
+  it("PgCandidateRepo: round-trip über denselben Fake-Pool (insert/update/all)", async () => {
+    const koService = await koCtx();
+    const pool = fakePool();
+    const lib1 = new LibraryService({ koService, candidates: new PgCandidateRepo(pool) });
+    const [c] = await lib1.createImportCandidates([
+      { title: "PG", statement: "Inhalt.", type: "lernkurve", category: "B" },
+    ]);
+    await lib1.reviewImportCandidate(c?.id ?? "", "reject", "controller");
+
+    // Frische Service- + Repo-Instanz über DENSELBEN Pool → persistenter Reject-Stand.
+    const lib2 = new LibraryService({ koService, candidates: new PgCandidateRepo(pool) });
+    const listed = await lib2.listImportCandidates();
+    expect(listed).toHaveLength(1);
+    expect(listed[0]?.id).toBe(c?.id);
+    expect(listed[0]?.status).toBe("abgelehnt");
   });
 });

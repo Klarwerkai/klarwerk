@@ -26,7 +26,12 @@ import {
 import { type ExternalSearchService, createExternalSearchFromEnv } from "../../external-search";
 import { I18nService } from "../../i18n";
 import { InMemoryKoRepo, type KoRepo, KoService, PgKoRepo } from "../../knowledge-object";
-import { LibraryService } from "../../library-analytics";
+import {
+  type CandidateRepo,
+  InMemoryCandidateRepo,
+  LibraryService,
+  PgCandidateRepo,
+} from "../../library-analytics";
 import {
   InMemoryLifecycleRepo,
   type LifecycleRepo,
@@ -103,6 +108,7 @@ interface AppRepos {
   conflictsRepo: ConflictRepo;
   lifecycleRepo: LifecycleRepo;
   objects: ObjectRepo;
+  candidates: CandidateRepo;
 }
 
 // Verdrahtet aus den Repos die vollständige Service-Landschaft. Ein gemeinsames
@@ -117,7 +123,7 @@ function assembleServices(repos: AppRepos): AppServices {
   // Vorab erstellt, da das Management-Modul (SCRUM-120) deren Live-Daten aggregiert.
   const ask = new AskService({ reasoner, koService: ko, gaps: repos.gaps, audit });
   const conflicts = new ConflictService({ repo: repos.conflictsRepo, audit });
-  const library = new LibraryService({ koService: ko, audit });
+  const library = new LibraryService({ koService: ko, audit, candidates: repos.candidates });
   const lifecycle = new LifecycleService({ koService: ko, repo: repos.lifecycleRepo });
 
   return {
@@ -176,6 +182,7 @@ export function buildServices(): AppServices {
     conflictsRepo: new InMemoryConflictRepo(),
     lifecycleRepo: new InMemoryLifecycleRepo(),
     objects: new InMemoryObjectRepo(),
+    candidates: new InMemoryCandidateRepo(),
   });
 }
 
@@ -195,6 +202,8 @@ export function buildPgServices(pool: Pool): AppServices {
     lifecycleRepo: new PgLifecycleRepo(pool),
     // SCRUM-155: Object-Store jetzt persistent (Attachment-/Evidence-Originale überleben Neustart).
     objects: new PgObjectRepo(pool),
+    // SCRUM-157: Import-/Source-Review-Queue persistent (Review-Stand überlebt Neustart).
+    candidates: new PgCandidateRepo(pool),
   });
 }
 
