@@ -2534,3 +2534,35 @@ git add services/reasoner/src/types.ts services/reasoner/src/service.ts services
 git commit -m "feat(reasoner): expose read-only provider/model config (SCRUM-166)" && git push
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-167 — ModelRun-Protokoll für Ask/answer/select vervollständigen
+
+**Vorab-Befund (read-only):** `structure`/`assist`/`interview` liefen bereits über `runTask` (SCRUM-164) und erzeugten ModelRunRecords. `answer` nutzte noch das alte inline primary→fallback-Muster ohne Protokoll; `select` war synchron (reines Keyword-Ranking, kein Modell-/Netzaufruf) und schrieb keinen Record. `ModelRunTask` kannte nur `structure|assist|interview`.
+
+**Umsetzung:**
+- `ModelRunTask` (Backend + FE-Types) um `answer` und `select` erweitert.
+- `Reasoner.answer` auf `runTask("answer", …)` umgestellt — gleiches Verhalten, jetzt protokolliert (success/fallback/demo/error ehrlich aus der bestehenden Provider-Logik). `recordRun` nimmt `locale?` optional an (für sprach-agnostisches select via Conditional-Spread).
+- `Reasoner.select` bleibt **synchron** (keine API-Änderung); ModelRun wird fire-and-forget protokolliert (`logSelect`): `demo:true` (deterministisches Keyword-Ranking), `fallback:false`, kein `locale`, `status:"error"` bei echtem Fehler.
+- Records enthalten weiterhin nur Metadaten — keine Frage-/Antwort-/Kandidaten-/Inhaltstexte.
+- FE: `summarizeModelRuns.byTask` um `answer`/`select` ergänzt; i18n `mrun.task.answer`/`mrun.task.select` DE/EN. Stufe-2-Card unverändert, zeigt Labels statt Roh-Keys.
+
+**Geänderte/neue Dateien:** `services/model-runs/src/types.ts`, `services/reasoner/src/service.ts`, `services/reasoner/src/service.test.ts`, `apps/web/src/api/types.ts`, `apps/web/src/lib/modelRuns.ts`, `apps/web/src/i18n.ts`, `tests/reasoner/model-runs-view.test.ts`, `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — **78 Dateien / 428 Tests** (+4: answer-Record, answer-Fallback, select-Record ohne Inhaltstext, select-No-op ohne Repo; +2 byTask-Erwartungen angepasst). apps/web `tsc --noEmit` EXIT=0. Biome + depcruise sauber.
+
+**Restlücken (bewusst):** Kein Token-/Kosten-Accounting, kein Prompt-/Antwort-Volltext, kein UI-Dashboard-Ausbau, keine Änderung an Ask-Antwortlogik/Wissenssuche/KO-Modellen, kein Provider-Umbau. `select` läuft nie über ein echtes Modell → immer `demo:true` (ehrlich, keine künstliche Fallback-Simulation).
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check && (cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add services/model-runs/src/types.ts services/reasoner/src/service.ts services/reasoner/src/service.test.ts \
+  apps/web/src/api/types.ts apps/web/src/lib/modelRuns.ts apps/web/src/i18n.ts \
+  tests/reasoner/model-runs-view.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(reasoner): log answer/select in ModelRun protocol (SCRUM-167)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

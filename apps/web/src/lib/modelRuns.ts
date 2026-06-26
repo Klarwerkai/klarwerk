@@ -12,7 +12,13 @@ export interface ModelRunSummary {
 }
 
 export function summarizeModelRuns(records: readonly ModelRunRecord[]): ModelRunSummary {
-  const byTask: Record<ModelRunTask, number> = { structure: 0, assist: 0, interview: 0 };
+  const byTask: Record<ModelRunTask, number> = {
+    structure: 0,
+    assist: 0,
+    interview: 0,
+    answer: 0,
+    select: 0,
+  };
   for (const r of records) {
     byTask[r.task] += 1;
   }

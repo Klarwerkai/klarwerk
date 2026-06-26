@@ -427,3 +427,58 @@ describe("SCRUM-166: Reasoner configStatus", () => {
     expect("apiKey" in cfg).toBe(false);
   });
 });
+
+describe("SCRUM-167: ModelRun-Protokoll für answer/select", () => {
+  it("answer erzeugt einen Record (success, kein Demo bei Modell) ohne Frage-/Antworttext", async () => {
+    const runs = new InMemoryModelRunRepo();
+    const reasoner = new Reasoner(okModel(), undefined, runs);
+    await reasoner.answer("Was tun bei Überdruck am Ventil?", KOS, "de");
+    const recent = await runs.recent();
+    const rec = recent.find((r) => r.task === "answer");
+    expect(rec).toMatchObject({
+      task: "answer",
+      status: "success",
+      fallback: false,
+      demo: false,
+      provider: "anthropic:test-model",
+      locale: "de",
+    });
+    // Niemals Frage-/Antwort-/Kandidatentext im Record.
+    const json = JSON.stringify(rec);
+    expect(json).not.toContain("Überdruck");
+    expect(json).not.toContain("Ventil");
+  });
+
+  it("answer-Fallback: primary scheitert → fallback:true, demo:true", async () => {
+    const runs = new InMemoryModelRunRepo();
+    const reasoner = new Reasoner(throwingProvider("flaky-model"), undefined, runs);
+    await reasoner.answer("Frage?", KOS, "de");
+    const rec = (await runs.recent()).find((r) => r.task === "answer");
+    expect(rec).toMatchObject({ status: "success", fallback: true, demo: true });
+  });
+
+  it("select erzeugt einen Record (demo:true, kein Fallback) ohne Kandidaten-/Inhaltstext", async () => {
+    const runs = new InMemoryModelRunRepo();
+    const reasoner = new Reasoner(okModel(), undefined, runs);
+    reasoner.select("Ventil Überdruck", KOS);
+    const recent = await runs.recent();
+    const rec = recent.find((r) => r.task === "select");
+    expect(rec).toMatchObject({
+      task: "select",
+      status: "success",
+      fallback: false,
+      demo: true,
+    });
+    expect(rec?.locale).toBeUndefined(); // select ist sprach-agnostisch
+    const json = JSON.stringify(rec);
+    expect(json).not.toContain("Überdruck");
+    expect(json).not.toContain("Ventil");
+    expect(json).not.toContain("Pumpe");
+  });
+
+  it("select bleibt funktionsfähig ohne ModelRun-Repo (No-op)", () => {
+    const reasoner = new Reasoner(new DeterministicProvider());
+    const hits = reasoner.select("Ventil", KOS);
+    expect(hits[0]?.id).toBe("ko1");
+  });
+});

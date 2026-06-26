@@ -1,6 +1,7 @@
 // SCRUM-164 (Knowledge-OS-Foundation): technisches ModelRun-Protokoll v1. Macht KI-/Reasoner-
 // Aufrufe nachvollziehbar, OHNE Prompt-/Antworttexte oder KO-Inhalte zu speichern. Nur Metadaten.
-export type ModelRunTask = "structure" | "assist" | "interview";
+// SCRUM-167: answer/select ergänzt — Ask-/Auswahlpfade ebenso nachvollziehbar.
+export type ModelRunTask = "structure" | "assist" | "interview" | "answer" | "select";
 export type ModelRunStatus = "success" | "error";
 
 export interface ModelRunRecord {

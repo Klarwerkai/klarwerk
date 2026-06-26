@@ -80,7 +80,7 @@ export class Reasoner {
 
   private async recordRun(
     task: ModelRunTask,
-    locale: ReasonerLocale,
+    locale: ReasonerLocale | undefined,
     startedAt: string,
     status: ModelRunStatus,
     extra: { fallback: boolean; demo: boolean; provider: string; model?: string; error?: string },
@@ -94,7 +94,7 @@ export class Reasoner {
       provider: extra.provider,
       demo: extra.demo,
       fallback: extra.fallback,
-      locale,
+      ...(locale ? { locale } : {}),
       startedAt,
       finishedAt: new Date().toISOString(),
       status,
@@ -139,19 +139,18 @@ export class Reasoner {
     );
   }
 
+  // SCRUM-167: Ask-/Antwortpfad ebenfalls über runTask protokolliert (nur Metadaten).
   async answer(
     question: string,
     context: readonly KnowledgeRef[],
     locale: ReasonerLocale = "de",
   ): Promise<AnswerResult> {
-    if (this.usingPrimary()) {
-      try {
-        return await this.primary.answer(question, context, locale);
-      } catch {
-        // Fällt auf den deterministischen Provider zurück.
-      }
-    }
-    return this.fallback.answer(question, context, locale);
+    return this.runTask(
+      "answer",
+      locale,
+      () => this.primary.answer(question, context, locale),
+      () => this.fallback.answer(question, context, locale),
+    );
   }
 
   // FR-RSN-03: Text präzisieren; Modellfehler → deterministischer Fallback.
@@ -177,8 +176,39 @@ export class Reasoner {
     );
   }
 
+  // SCRUM-167: select bleibt synchron (reines Keyword-Ranking, kein Modell-/Netzaufruf).
+  // ModelRun wird fire-and-forget protokolliert; demo=true, kein Fallback-Pfad. Nur Metadaten.
   select(question: string, candidates: readonly KnowledgeRef[]): KnowledgeRef[] {
-    const provider = this.usingPrimary() ? this.primary : this.fallback;
-    return provider.select(question, candidates);
+    const usePrimary = this.usingPrimary();
+    const provider = usePrimary ? this.primary : this.fallback;
+    const startedAt = new Date().toISOString();
+    try {
+      const result = provider.select(question, candidates);
+      this.logSelect(startedAt, provider.name, "success");
+      return result;
+    } catch (err) {
+      this.logSelect(
+        startedAt,
+        provider.name,
+        "error",
+        err instanceof Error ? err.message : "unknown",
+      );
+      throw err;
+    }
+  }
+
+  // Fire-and-forget-Protokollierung für das synchrone select (kein await im sync-Pfad).
+  private logSelect(
+    startedAt: string,
+    provider: string,
+    status: ModelRunStatus,
+    error?: string,
+  ): void {
+    void this.recordRun("select", undefined, startedAt, status, {
+      fallback: false,
+      demo: true, // deterministisches Keyword-Ranking, kein echtes Modell
+      provider,
+      ...(error ? { error } : {}),
+    }).catch(() => undefined);
   }
 }

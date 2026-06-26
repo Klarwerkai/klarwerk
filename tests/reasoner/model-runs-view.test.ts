@@ -34,13 +34,13 @@ describe("SCRUM-165: summarizeModelRuns", () => {
     expect(s.errors).toBe(1);
     expect(s.fallbacks).toBe(2);
     expect(s.demo).toBe(3);
-    expect(s.byTask).toEqual({ structure: 2, assist: 1, interview: 1 });
+    expect(s.byTask).toEqual({ structure: 2, assist: 1, interview: 1, answer: 0, select: 0 });
   });
 
   it("leere Liste → Nullwerte", () => {
     const s = summarizeModelRuns([]);
     expect(s.total).toBe(0);
-    expect(s.byTask).toEqual({ structure: 0, assist: 0, interview: 0 });
+    expect(s.byTask).toEqual({ structure: 0, assist: 0, interview: 0, answer: 0, select: 0 });
   });
 });
 
