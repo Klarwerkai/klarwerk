@@ -98,6 +98,7 @@ export class CaptureService {
       tags: p.tags ?? [],
       neededValidations: p.neededValidations ?? 3,
       asset: p.asset ?? null,
+      bodyHtml: p.bodyHtml ?? null, // KW-STR: Body in den KO übernehmen (wird dort sanitisiert)
     };
   }
 

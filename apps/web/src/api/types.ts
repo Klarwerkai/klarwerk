@@ -78,6 +78,8 @@ export interface KnowledgeObject {
   id: string;
   title: string;
   statement: string;
+  // KW-STR / SCRUM-45/46/48: optionaler WYSIWYG-Body als sanitisiertes HTML.
+  bodyHtml?: string | null;
   conditions: string[];
   measures: string[];
   type: KnowledgeType;
@@ -144,6 +146,7 @@ export interface DraftPayload {
   measures?: string[];
   neededValidations?: number;
   asset?: string | null;
+  bodyHtml?: string | null; // KW-STR: WYSIWYG-Body
 }
 
 export interface Draft {

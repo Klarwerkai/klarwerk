@@ -74,7 +74,9 @@ export interface KoSource {
 export interface KnowledgeObject {
   id: string;
   title: string; // Titel als Aussage
-  statement: string;
+  statement: string; // bleibt Plaintext-Kurzfassung (Output/Ask/Suche)
+  // KW-STR / SCRUM-45/46/48: optionaler WYSIWYG-Body als sanitisiertes HTML (additiv).
+  bodyHtml?: string | null;
   conditions: string[];
   measures: string[];
   type: KnowledgeType;

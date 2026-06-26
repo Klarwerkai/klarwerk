@@ -1,6 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { InMemoryObjectRepo } from "./repo";
-import { ObjectStore, inferKind } from "./service";
+import { ObjectStore, decodeDataUrl, inferKind } from "./service";
+
+describe("SCRUM-45/46/48: decodeDataUrl (raw-Bild-Endpoint)", () => {
+  it("zerlegt base64-Data-URL in MIME + Bytes", () => {
+    const bytes = Buffer.from("hello");
+    const dataUrl = `data:image/png;base64,${bytes.toString("base64")}`;
+    const out = decodeDataUrl(dataUrl);
+    expect(out?.mime).toBe("image/png");
+    expect(out?.bytes.toString()).toBe("hello");
+  });
+
+  it("gibt null bei nicht-base64/ungültigen Data-URLs", () => {
+    expect(decodeDataUrl("https://x/y.png")).toBeNull();
+    expect(decodeDataUrl("data:image/png,plain")).toBeNull();
+    expect(decodeDataUrl("")).toBeNull();
+  });
+});
 
 function store() {
   return new ObjectStore({ repo: new InMemoryObjectRepo() });

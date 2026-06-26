@@ -21,3 +21,32 @@
     @apply bg-page text-text font-sans antialiased;
   }
 }
+
+/* KW-STR / SCRUM-45/46/48: leichte Typo für den sanitisierten WYSIWYG-Body. */
+.prose-kw h2 {
+  @apply mb-1 mt-3 text-[16px] font-semibold;
+}
+.prose-kw h3 {
+  @apply mb-1 mt-2.5 text-[14px] font-semibold;
+}
+.prose-kw p {
+  @apply my-1.5;
+}
+.prose-kw ul {
+  @apply my-1.5 list-disc pl-5;
+}
+.prose-kw ol {
+  @apply my-1.5 list-decimal pl-5;
+}
+.prose-kw a {
+  @apply text-ai underline;
+}
+.prose-kw img {
+  @apply my-2 max-w-full rounded-card;
+}
+.prose-kw blockquote {
+  @apply my-2 border-l-2 border-hairline pl-3 text-muted;
+}
+.prose-kw .panel {
+  @apply my-2 rounded-card border border-hairline bg-page p-3;
+}

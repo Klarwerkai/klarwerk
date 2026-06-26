@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
+import { htmlToPlainText, sanitizeHtml } from "../../structure";
 import type { KoFilter, KoRepo } from "./repo";
 import {
   KNOWLEDGE_TYPES,
@@ -33,6 +34,7 @@ export interface CreateKoInput {
   confidence?: number;
   neededValidations?: number;
   asset?: string | null;
+  bodyHtml?: string | null; // KW-STR: WYSIWYG-Body, serverseitig sanitisiert
 }
 
 export interface ReviseKoInput {
@@ -41,6 +43,16 @@ export interface ReviseKoInput {
   type?: KnowledgeType;
   conditions?: string[];
   measures?: string[];
+  bodyHtml?: string | null; // KW-STR: WYSIWYG-Body, serverseitig sanitisiert
+}
+
+// KW-STR / NFR-SEC-04: bodyHtml IMMER serverseitig sanitisieren; statement aus dem
+// HTML ableiten, falls leer (statement bleibt führende Plaintext-Kurzfassung).
+function cleanBody(bodyHtml: string | null | undefined): string | null {
+  if (!bodyHtml || !bodyHtml.trim()) {
+    return null;
+  }
+  return sanitizeHtml(bodyHtml);
 }
 
 export class KoService {
@@ -66,10 +78,15 @@ export class KoService {
       throw new KoError("INVALID_NEEDED", "Nötige Validierungen müssen zwischen 1 und 5 liegen.");
     }
     const at = new Date(this.now()).toISOString();
+    const bodyHtml = cleanBody(input.bodyHtml);
+    // statement bleibt führend; falls leer, aus dem HTML-Body ableiten.
+    const statement =
+      input.statement.trim() || (bodyHtml ? htmlToPlainText(bodyHtml) : input.statement);
     const ko: KnowledgeObject = {
       id: this.genId(),
       title: input.title,
-      statement: input.statement,
+      statement,
+      ...(bodyHtml ? { bodyHtml } : {}),
       conditions: input.conditions ?? [],
       measures: input.measures ?? [],
       type: input.type,
@@ -222,10 +239,17 @@ export class KoService {
     }
     const version = ko.version + 1;
     const at = new Date(this.now()).toISOString();
+    // KW-STR: neuer Body wird sanitisiert; statement ggf. daraus abgeleitet.
+    const nextBody =
+      changes.bodyHtml !== undefined ? cleanBody(changes.bodyHtml) : (ko.bodyHtml ?? null);
+    const nextStatement =
+      changes.statement ??
+      (changes.bodyHtml !== undefined && nextBody ? htmlToPlainText(nextBody) : ko.statement);
     const revised: KnowledgeObject = {
       ...ko,
       title: changes.title ?? ko.title,
-      statement: changes.statement ?? ko.statement,
+      statement: nextStatement,
+      bodyHtml: nextBody,
       type: changes.type ?? ko.type,
       conditions: changes.conditions ?? ko.conditions,
       measures: changes.measures ?? ko.measures,

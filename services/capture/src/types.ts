@@ -11,6 +11,7 @@ export interface DraftPayload {
   measures?: string[];
   neededValidations?: number;
   asset?: string | null;
+  bodyHtml?: string | null; // KW-STR: WYSIWYG-Body übersteht Entwurf/Resume/Promote
 }
 
 export interface Draft {

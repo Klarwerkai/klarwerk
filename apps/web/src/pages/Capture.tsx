@@ -17,6 +17,7 @@ import type {
 import { useSession } from "../app/AuthContext";
 import { useToast } from "../app/ToastContext";
 import { HelpTip } from "../components/HelpTip";
+import { RichTextEditor } from "../components/RichTextEditor";
 import { ListEditor, TagEditor } from "../components/editors";
 import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
 import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
@@ -93,6 +94,8 @@ export function Capture(): JSX.Element {
   const [mode, setMode] = useState<Mode>("freitext");
   const [raw, setRaw] = useState("");
   const [draft, setDraft] = useState<StructureResult | null>(null);
+  // KW-STR / SCRUM-45/46/48: WYSIWYG-Body (sanitisiertes HTML), separat vom Reasoner-Draft.
+  const [bodyHtml, setBodyHtml] = useState("");
 
   // Metadaten (vorab erfassbar, FR-CAP-08)
   const [type, setType] = useState<KnowledgeType>("best_practice");
@@ -188,6 +191,7 @@ export function Capture(): JSX.Element {
         type,
         category: category.trim() || "Allgemein",
         asset: asset.trim() ? asset.trim() : null,
+        ...(bodyHtml.trim() ? { bodyHtml } : {}),
         ...(n ? { neededValidations: n } : {}),
       });
       // SCRUM-121: Original in den Object-Store; am KO nur Referenz + kleine Vorschau.
@@ -227,6 +231,7 @@ export function Capture(): JSX.Element {
         conditions: draft?.conditions.filter((x) => x.trim()),
         measures: draft?.measures.filter((x) => x.trim()),
         asset: asset.trim() ? asset.trim() : undefined,
+        ...(bodyHtml.trim() ? { bodyHtml } : {}),
         ...(n ? { neededValidations: n } : {}),
       };
       // SCRUM-113 / FE-CAP-07: fortgesetzten Entwurf aktualisieren, sonst neu anlegen.
@@ -257,6 +262,7 @@ export function Capture(): JSX.Element {
       conditions: d.payload.conditions ?? [],
       measures: d.payload.measures ?? [],
     });
+    setBodyHtml(d.payload.bodyHtml ?? "");
     setType(d.payload.type ?? "best_practice");
     setCategory(d.payload.category ?? "");
     setTags(d.payload.tags ?? []);
@@ -284,6 +290,7 @@ export function Capture(): JSX.Element {
     setMode(m);
     if (m === "formular" && !draft) {
       setDraft({ ...EMPTY_DRAFT });
+      setBodyHtml("");
     }
     if (m === "interview") {
       // SCRUM-132: Interview startet mit der ersten reasoner-getriebenen Frage.
@@ -777,6 +784,10 @@ export function Capture(): JSX.Element {
                     <Sparkles size={13} />
                     {t("capture.assist")}
                   </button>
+                </Field>
+                {/* KW-STR / FR-STR-02: optionaler WYSIWYG-Body (Bilder erst im KO-Detail platzierbar) */}
+                <Field label={t("capture.fBody")}>
+                  <RichTextEditor value={bodyHtml} onChange={setBodyHtml} />
                 </Field>
                 <ListEditor
                   label={t("capture.fConditions")}

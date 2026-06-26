@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
-import type { ObjectKind, ObjectStore } from "../../../object-store";
+import { type ObjectKind, type ObjectStore, decodeDataUrl } from "../../../object-store";
 import { type Guards, sendError } from "../http";
 
 // SCRUM-121: Objekt-/Attachment-Speicher. Upload liefert eine ObjectRef (nur Metadaten);
@@ -33,6 +33,29 @@ export function objectRoutes(store: ObjectStore, guards: Guards): FastifyPluginA
         return;
       }
       reply.code(200).send(obj);
+    });
+
+    // SCRUM-45/46/48 (KW-STR): rohe Bytes für <img src="/api/objects/:id/raw"> im Editor-Body.
+    app.get<{ Params: { id: string } }>("/api/objects/:id/raw", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      const obj = await store.read(request.params.id);
+      if (!obj) {
+        reply.code(404).send({ error: "NOT_FOUND", message: "Objekt nicht gefunden." });
+        return;
+      }
+      const decoded = decodeDataUrl(obj.data);
+      if (!decoded) {
+        reply.code(415).send({ error: "UNSUPPORTED", message: "Kein dekodierbares Objekt." });
+        return;
+      }
+      reply
+        .header("Content-Type", obj.ref.mime || decoded.mime)
+        .header("Cache-Control", "private, max-age=31536000, immutable")
+        .code(200)
+        .send(decoded.bytes);
     });
   };
 }

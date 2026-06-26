@@ -2015,3 +2015,31 @@ Datum: 2026-06-25
 **Abgrenzung (nicht gebaut):** kein Auto-Anhängen, keine Browser-Direktabfrage, keine schwere Such-/Scraping-Library, kein neues Quellenmodell, kein Live-Netzwerk in Tests, kein Backend-Redesign anderer Module.
 
 **Empfehlung:** Nach grünem Mac-Gate + Commit/Push darf **SCRUM-118 / FR-EXT-02** abgehakt → auf Done. Externe Suche ist standardmäßig aktiv (Wikipedia); per `EXTERNAL_SEARCH=off` deaktivierbar. Ich setze keine Jira-Checkbox/Status selbst.
+
+---
+
+## 2026-06-26 · SCRUM-45/46/48 — KW-STR WYSIWYG-Editor (bodyHtml + Sanitizer + Bilder)
+
+**Ticket(s):** SCRUM-45/46/48 (KW-STR / FR-STR-02/03/05/06, NFR-SEC-04). Freigegeben: bodyHtml additiv, server-autoritärer DOM-freier Allowlist-Sanitizer + FE-Defense, nativer contentEditable, `/api/objects/:id/raw`, in einem Rutsch sauber geschichtet.
+
+**Befund:** KO-Inhalt war Plaintext (`statement`, `<p>{statement}</p>`); kein HTML-Feld, kein Sanitizer im Repo. Spec verlangt sanitisiertes HTML mit Bild-Refs auf den Asset-Store. Object-Store-Read lieferte nur JSON (keine einbettbare Bild-URL). KO/Draft sind JSON-persistiert → additives Feld ohne Migration.
+
+**Schicht 1 — Sanitizer (`services/structure`, server-autoritär):**
+- `sanitizeHtml` (rein, DOM-frei, Allowlist-Tokenizer): erlaubt p/br/h2/h3/strong/em/u/ul/ol/li/a/img/blockquote/div.panel; entfernt script/style/iframe, `on*`-Handler, `style`-Attribute, unbekannte Tags/Attrs; href nur sichere Schemes (kein `javascript:`); img-src nur `/api/objects/:id/raw` oder `data:image`; schließt offene Tags, idempotent, malformed-tolerant. `htmlToPlainText` für die statement-Ableitung. 10 Tests.
+
+**Schicht 2 — KO-Modell + Service:**
+- `KnowledgeObject.bodyHtml?`, `CreateKoInput`/`ReviseKoInput`/`DraftPayload` um `bodyHtml?` erweitert (additiv, keine Migration). `KoService.create`/`revise` sanitisieren `bodyHtml` **serverseitig** und leiten `statement` aus dem HTML ab, wenn leer (statement bleibt führend für Output/Ask/Suche). Capture `toKoInput` reicht bodyHtml an `create` (wird dort sanitisiert). 3 neue KO-Tests.
+
+**Schicht 3 — Bild-Endpoint:** reiner `decodeDataUrl` (object-store) + `GET /api/objects/:id/raw` (Bytes + Content-Type, `ko.read`). 2 Tests.
+
+**Schicht 4 — Frontend:**
+- `lib/richText.ts` (DOM-frei): `sanitizeHtml`-Spiegel (Defense-in-Depth), `htmlToPlainText`, `isEmptyHtml`, `insertImageHtml`. `components/SanitizedHtml.tsx` (einziger `dangerouslySetInnerHTML`-Ort, sanitisiert). `components/RichTextEditor.tsx`: nativer `contentEditable` + Toolbar (Fett/Kursiv, H2/H3, UL/OL, Link, Panel/Callout, Bild-aus-Anhang), **Vorschau↔Bearbeiten ohne State-Verlust** (FR-STR-05). `.prose-kw`-Typo in `index.css`.
+- `Capture.tsx`: `bodyHtml`-State, im Submit/saveDraft/Resume persistiert; Submit erzeugt KO „offen", Entwurf wie bisher entfernt (FR-STR-06). `KnowledgeDetail.tsx`: zeigt sanitisiertes `bodyHtml` (Fallback statement), Edit-Modus bearbeitet bodyHtml verlustfrei, Bildpalette nutzt vorhandene Image-Anhänge (`objectId` → `/api/objects/:id/raw`, FR-STR-03). i18n `editor.*`/`capture.fBody` (DE+EN). `tests/structure/rich-text.test.ts` (3 Gruppen).
+
+**Erfüllte AK:** minimaler echter WYSIWYG (FR-STR-02) ✓ · Bilder via ObjectRef/raw-Endpoint platzierbar (FR-STR-03) ✓ · Vorschau/Bearbeiten verlustfrei (FR-STR-05) ✓ · Submit → KO offen + Entwurf entfernt (FR-STR-06) ✓ · sanitisiertes HTML server-autoritär + FE-Defense (NFR-SEC-04) ✓ · DOM-freie Sanitizer-/Editor-State-Helfer + Tests ✓ · statement bleibt Plaintext, bodyHtml additiv, keine Migration ✓.
+
+**Gelaufene Checks:** apps/web `tsc` EXIT=0 · `npm run check` GRÜN — **64 Testdateien / 342 Tests** (~18 neu) · Biome grün · depcruise sauber (`knowledge-object`→`structure`, `app`→`structure`/`external-search`/`object-store` über öffentliche index.ts).
+
+**Abgrenzung:** keine schwere Editor-Suite, kein Markdown-Roundtrip, keine Tabellen, kein kollaboratives Editing, kein HTML in `statement`, kein Backend-Redesign über bodyHtml + raw-Endpoint hinaus.
+
+**Empfehlung:** Nach grünem Mac-Gate + Commit/Push dürfen **SCRUM-45/46/48 (FR-STR-02/03/05/06)** abgehakt → auf Done. Ich setze keine Jira-Checkbox/Status selbst.

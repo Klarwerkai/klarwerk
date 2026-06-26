@@ -1,0 +1,175 @@
+// KW-STR / SCRUM-45/46/48: DOM-freie Richtext-Helfer für den WYSIWYG-Editor.
+// Der Server ist die autoritative Sanitizing-Instanz; dies hier ist Defense-in-Depth
+// für Preview/UX (gleiche Allowlist) plus Editor-State-Helfer. Rein/testbar ohne DOM.
+
+const ALLOWED_TAGS = new Set([
+  "p",
+  "br",
+  "h2",
+  "h3",
+  "strong",
+  "em",
+  "u",
+  "ul",
+  "ol",
+  "li",
+  "a",
+  "img",
+  "blockquote",
+  "div",
+]);
+const VOID_TAGS = new Set(["br", "img"]);
+const ALLOWED_ATTRS: Record<string, Set<string>> = {
+  a: new Set(["href", "title"]),
+  img: new Set(["src", "alt"]),
+  div: new Set(["class"]),
+};
+
+function isSafeHref(value: string): boolean {
+  const v = value.trim();
+  if (/^(https?:|mailto:|#|\/)/i.test(v)) {
+    return true;
+  }
+  return !/^[a-z][a-z0-9+.-]*:/i.test(v);
+}
+
+function isSafeImgSrc(value: string): boolean {
+  const v = value.trim();
+  return /^\/api\/objects\/[\w-]+\/raw$/.test(v) || /^data:image\/[a-z0-9.+-]+;base64,/i.test(v);
+}
+
+function sanitizeDivClass(value: string): string | null {
+  const classes = value.split(/\s+/).filter((c) => c === "panel" || c === "callout");
+  return classes.length > 0 ? classes.join(" ") : null;
+}
+
+function escapeText(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function parseAttrs(raw: string): Map<string, string> {
+  const attrs = new Map<string, string>();
+  const re = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g;
+  let m: RegExpExecArray | null = re.exec(raw);
+  while (m !== null) {
+    const name = (m[1] ?? "").toLowerCase();
+    const value = m[2] ?? m[3] ?? m[4] ?? "";
+    if (name && !attrs.has(name)) {
+      attrs.set(name, value);
+    }
+    m = re.exec(raw);
+  }
+  return attrs;
+}
+
+function renderAttrs(tag: string, raw: string): string {
+  const allowed = ALLOWED_ATTRS[tag];
+  if (!allowed) {
+    return "";
+  }
+  const out: string[] = [];
+  for (const [name, value] of parseAttrs(raw)) {
+    if (name.startsWith("on") || !allowed.has(name)) {
+      continue;
+    }
+    if (tag === "a" && name === "href" && !isSafeHref(value)) {
+      continue;
+    }
+    if (tag === "img" && name === "src" && !isSafeImgSrc(value)) {
+      return "__INVALID_IMG__";
+    }
+    if (tag === "div" && name === "class") {
+      const cls = sanitizeDivClass(value);
+      if (!cls) {
+        continue;
+      }
+      out.push(`class="${escapeText(cls)}"`);
+      continue;
+    }
+    out.push(`${name}="${escapeText(value)}"`);
+  }
+  if (tag === "a") {
+    out.push('rel="noopener noreferrer nofollow"', 'target="_blank"');
+  }
+  return out.length > 0 ? ` ${out.join(" ")}` : "";
+}
+
+export function sanitizeHtml(html: string): string {
+  if (!html) {
+    return "";
+  }
+  const out: string[] = [];
+  const openStack: string[] = [];
+  const tagRe = /<\/?([a-zA-Z][a-zA-Z0-9]*)((?:[^<>"']|"[^"]*"|'[^']*')*)>/g;
+  let last = 0;
+  let m: RegExpExecArray | null = tagRe.exec(html);
+  while (m !== null) {
+    const text = html.slice(last, m.index);
+    if (text) {
+      out.push(escapeText(text));
+    }
+    last = tagRe.lastIndex;
+    const full = m[0];
+    const tag = (m[1] ?? "").toLowerCase();
+    const isClose = full.startsWith("</");
+    if (ALLOWED_TAGS.has(tag)) {
+      if (isClose) {
+        if (!VOID_TAGS.has(tag)) {
+          const idx = openStack.lastIndexOf(tag);
+          if (idx >= 0) {
+            for (let i = openStack.length - 1; i >= idx; i -= 1) {
+              out.push(`</${openStack[i]}>`);
+            }
+            openStack.splice(idx);
+          }
+        }
+      } else {
+        const attrs = renderAttrs(tag, m[2] ?? "");
+        if (attrs !== "__INVALID_IMG__") {
+          out.push(`<${tag}${attrs}>`);
+          if (!VOID_TAGS.has(tag)) {
+            openStack.push(tag);
+          }
+        }
+      }
+    }
+    m = tagRe.exec(html);
+  }
+  const tail = html.slice(last);
+  if (tail) {
+    out.push(escapeText(tail));
+  }
+  for (let i = openStack.length - 1; i >= 0; i -= 1) {
+    out.push(`</${openStack[i]}>`);
+  }
+  return out.join("");
+}
+
+export function htmlToPlainText(html: string): string {
+  return html
+    .replace(/<\/(p|h2|h3|li|blockquote|div)>/gi, " ")
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Leer = kein sichtbarer Inhalt (nur Whitespace/leere Tags).
+export function isEmptyHtml(html: string | null | undefined): boolean {
+  if (!html) {
+    return true;
+  }
+  return htmlToPlainText(html).length === 0 && !/<img\b/i.test(html);
+}
+
+// Bild aus dem Object-Store als <img>-Markup (für insert-at-cursor im Editor).
+export function insertImageHtml(objectId: string, alt: string): string {
+  const safeAlt = alt.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  return `<img src="/api/objects/${objectId}/raw" alt="${safeAlt}">`;
+}

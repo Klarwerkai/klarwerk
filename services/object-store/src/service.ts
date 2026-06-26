@@ -14,6 +14,16 @@ export interface ObjectStoreDeps {
   genId?: () => string;
 }
 
+// SCRUM-45/46/48: Data-URL in rohe Bytes + MIME zerlegen (für den /raw-Bild-Endpoint).
+// Rein/DOM-frei; gibt null bei nicht-base64-Data-URLs zurück.
+export function decodeDataUrl(dataUrl: string): { mime: string; bytes: Buffer } | null {
+  const m = /^data:([^;,]+);base64,([\s\S]*)$/.exec(dataUrl);
+  if (!m) {
+    return null;
+  }
+  return { mime: m[1] as string, bytes: Buffer.from(m[2] as string, "base64") };
+}
+
 export interface PutObjectInput {
   name: string;
   mime: string;

@@ -9,6 +9,8 @@ import { useAudit, useDirectory, useKo, useKos } from "../api/hooks";
 import type { ConflictType, ExternalResult, KnowledgeObject, KnowledgeType } from "../api/types";
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
+import { RichTextEditor } from "../components/RichTextEditor";
+import { SanitizedHtml } from "../components/SanitizedHtml";
 import { ListEditor, TagEditor } from "../components/editors";
 import {
   ConfidenceBar,
@@ -48,6 +50,7 @@ import { isReturnedForRework } from "../lib/validationStatus";
 interface EditState {
   title: string;
   statement: string;
+  bodyHtml: string; // KW-STR: WYSIWYG-Body
   type: KnowledgeType;
   category: string;
   conditions: string[];
@@ -295,6 +298,7 @@ export function KnowledgeDetail(): JSX.Element {
         changes: {
           title: edit.title,
           statement: edit.statement,
+          bodyHtml: edit.bodyHtml, // KW-STR: Body verlustfrei mitspeichern (Server sanitisiert)
           type: edit.type,
           conditions: edit.conditions.filter((x) => x.trim()),
           measures: edit.measures.filter((x) => x.trim()),
@@ -318,6 +322,7 @@ export function KnowledgeDetail(): JSX.Element {
     setEdit({
       title: ko.title,
       statement: ko.statement,
+      bodyHtml: ko.bodyHtml ?? "",
       type: ko.type,
       category: ko.category,
       conditions: [...ko.conditions],
@@ -372,6 +377,16 @@ export function KnowledgeDetail(): JSX.Element {
                       onChange={(e) => setEdit({ ...edit, statement: e.target.value })}
                       rows={3}
                       className={textareaCls}
+                    />
+                  </Field>
+                  {/* KW-STR / FR-STR-02/03/05: WYSIWYG-Body verlustfrei, Bildpalette aus Anhängen */}
+                  <Field label={t("capture.fBody")}>
+                    <RichTextEditor
+                      value={edit.bodyHtml}
+                      onChange={(bodyHtml) => setEdit({ ...edit, bodyHtml })}
+                      images={(ko.attachments ?? [])
+                        .filter((a) => a.objectId && a.mime.startsWith("image/"))
+                        .map((a) => ({ objectId: a.objectId as string, name: a.name }))}
                     />
                   </Field>
                   <ListEditor
@@ -437,7 +452,15 @@ export function KnowledgeDetail(): JSX.Element {
                   <div className="mt-5 space-y-4">
                     <div>
                       <SectionLabel>{t("ko.statement")}</SectionLabel>
-                      <p className="text-[14.5px] leading-relaxed text-text">{ko.statement}</p>
+                      {ko.bodyHtml ? (
+                        // KW-STR / FR-STR-05: sanitisierter WYSIWYG-Body; Fallback auf statement.
+                        <SanitizedHtml
+                          html={ko.bodyHtml}
+                          className="prose-kw text-[14.5px] leading-relaxed text-text"
+                        />
+                      ) : (
+                        <p className="text-[14.5px] leading-relaxed text-text">{ko.statement}</p>
+                      )}
                     </div>
                     {ko.conditions.length > 0 ? (
                       <div>
