@@ -18,6 +18,7 @@ import type {
   InterviewResult,
   KnowledgeObject,
   LearningPath,
+  ManagementSnapshot,
   Notification,
   ObjectContent,
   ObjectRef,
@@ -169,6 +170,10 @@ export const endpoints = {
     sources: () => api.get<OutputSource[]>("/output/sources"),
     generate: (body: { kind: OutputKind; koIds: string[]; audienceRole?: string | null }) =>
       api.post<OutputDocument>("/output/generate", body),
+  },
+  // SCRUM-120 / FE-MGMT: Management-/Wissenskapital-Snapshot (read-only).
+  management: {
+    snapshot: () => api.get<ManagementSnapshot>("/management/snapshot"),
   },
   users: {
     list: () => api.get<PublicUser[]>("/users"),

@@ -18,6 +18,12 @@ export const useImportCandidates = () =>
 // FR-EXT-03 / SCRUM-117: nur validierte KOs als Output-Quellen.
 export const useOutputSources = () =>
   useQuery({ queryKey: ["output", "sources"], queryFn: () => endpoints.output.sources() });
+// SCRUM-120 / FE-MGMT: Management-/Wissenskapital-Snapshot (Live-Daten).
+export const useManagementSnapshot = () =>
+  useQuery({
+    queryKey: ["management", "snapshot"],
+    queryFn: () => endpoints.management.snapshot(),
+  });
 export const useKo = (id: string) =>
   useQuery({ queryKey: ["ko", id], queryFn: () => endpoints.ko.get(id), enabled: id.length > 0 });
 export const useValidationBoard = (f?: KoFilter) =>

@@ -312,6 +312,47 @@ export interface OutputDocument {
   provenance: OutputProvenance[];
 }
 
+// SCRUM-120 / FE-MGMT: Management-/Wissenskapital-Snapshot (Spiegel des Backend-Modells).
+export type MgmtBand = "gut" | "mittel" | "kritisch";
+
+export interface MgmtScorePart {
+  key: string;
+  value: number;
+  weight: number;
+}
+
+export interface ManagementSnapshot {
+  generatedAt: string;
+  overview: {
+    totalKos: number;
+    validated: number;
+    open: number;
+    openGaps: number;
+    openConflicts: number;
+    avgTrust: number;
+    healthScore: number;
+    healthBand: MgmtBand;
+  };
+  capital: { score: number; band: MgmtBand; parts: MgmtScorePart[] };
+  valuationFacts: { validatedKos: number; totalKos: number; avgTrust: number };
+  statement: {
+    assets: number;
+    riskItems: number;
+    riskBreakdown: {
+      singleSourceCategories: number;
+      stale: number;
+      openGaps: number;
+      openConflicts: number;
+    };
+    net: number;
+  };
+  maturity: { stage: number; stageKey: string; progressPct: number };
+  priorities: { category: string; score: number; factors: { key: string; value: number }[] }[];
+  recommendations: { key: string; severity: "hoch" | "mittel"; count: number }[];
+  house: { category: string; koCount: number; validatedRatio: number; fragile: boolean }[];
+  pilot: { days: number; created: number; validated: number }[];
+}
+
 export interface StructureResult {
   title: string;
   statement: string;

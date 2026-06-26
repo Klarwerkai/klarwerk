@@ -32,6 +32,7 @@ import {
   LifecycleService,
   PgLifecycleRepo,
 } from "../../lifecycle";
+import { ManagementService } from "../../management";
 import { ConsoleMailer, type Mailer, createMailerFromEnv } from "../../notifications";
 import { InMemoryObjectRepo, type ObjectRepo, ObjectStore } from "../../object-store";
 import { OutputService } from "../../output";
@@ -56,6 +57,7 @@ import { i18nRoutes } from "./routes/i18n-routes";
 import { koRoutes } from "./routes/ko-routes";
 import { libraryRoutes } from "./routes/library-routes";
 import { lifecycleRoutes } from "./routes/lifecycle-routes";
+import { managementRoutes } from "./routes/management-routes";
 import { notificationsRoutes } from "./routes/notifications-routes";
 import { objectRoutes } from "./routes/object-routes";
 import { outputRoutes } from "./routes/output-routes";
@@ -75,6 +77,7 @@ export interface AppServices {
   conflicts: ConflictService;
   library: LibraryService;
   output: OutputService;
+  management: ManagementService;
   lifecycle: LifecycleService;
   i18n: I18nService;
   objects: ObjectStore;
@@ -107,6 +110,12 @@ function assembleServices(repos: AppRepos): AppServices {
   const modelClient = createModelClientFromEnv();
   const reasoner = new Reasoner(modelClient ? new ModelProvider(modelClient) : undefined);
 
+  // Vorab erstellt, da das Management-Modul (SCRUM-120) deren Live-Daten aggregiert.
+  const ask = new AskService({ reasoner, koService: ko, gaps: repos.gaps, audit });
+  const conflicts = new ConflictService({ repo: repos.conflictsRepo, audit });
+  const library = new LibraryService({ koService: ko, audit });
+  const lifecycle = new LifecycleService({ koService: ko, repo: repos.lifecycleRepo });
+
   return {
     audit,
     reasoner,
@@ -118,18 +127,26 @@ function assembleServices(repos: AppRepos): AppServices {
       audit,
     }),
     capture: new CaptureService({ repo: repos.drafts }),
-    ask: new AskService({ reasoner, koService: ko, gaps: repos.gaps, audit }),
+    ask,
     validation: new ValidationService({
       koService: ko,
       ratings: repos.ratings,
       assignments: repos.assignments,
       audit,
     }),
-    conflicts: new ConflictService({ repo: repos.conflictsRepo, audit }),
-    library: new LibraryService({ koService: ko, audit }),
+    conflicts,
+    library,
     // SCRUM-117: Output Factory — stateless, nur validierte KOs als Quelle.
     output: new OutputService({ koService: ko }),
-    lifecycle: new LifecycleService({ koService: ko, repo: repos.lifecycleRepo }),
+    // SCRUM-120: Management/Kapital — stateless, aggregiert echte Live-Daten.
+    management: new ManagementService({
+      koService: ko,
+      listGaps: () => ask.listGaps(),
+      countOpenConflicts: async () => (await conflicts.unresolved()).length,
+      pendingRevalidation: () => lifecycle.pendingRevalidation(),
+      busFactor: () => library.busFactor(),
+    }),
+    lifecycle,
     i18n: new I18nService(),
     // SCRUM-121: interner Objekt-/Attachment-Speicher (In-Memory; Pg/Disk = Folge-Ticket).
     objects: new ObjectStore({ repo: repos.objects }),
@@ -211,6 +228,7 @@ export function buildApp(services: AppServices = buildServices()): FastifyInstan
   app.register(askRoutes(services.ask, guards));
   app.register(libraryRoutes(services.library, guards));
   app.register(outputRoutes(services.output, guards));
+  app.register(managementRoutes(services.management, guards));
   app.register(lifecycleRoutes(services.lifecycle, guards));
   app.register(notificationsRoutes({ conflicts: services.conflicts, ask: services.ask }, guards));
   app.register(auditRoutes(services.audit, guards));

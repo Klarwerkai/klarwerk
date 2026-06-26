@@ -1908,3 +1908,29 @@ Datum: 2026-06-25
 **Abgrenzung (nicht gebaut):** kein PDF/Print, keine Persistenz erzeugter Outputs (`generated_outputs` bleibt Konzept), kein `validity_until`/`freshness`/`ip_sensitivity`-Datenmodell, kein Backend-Redesign.
 
 **Empfehlung:** Nach grünem Mac-Gate + Commit/Push dürfen **FE-OUT-01/02/03** abgehakt werden → **SCRUM-117** und **SCRUM-109** auf Done. Ein kombinierter Commit wie gewünscht. Ich setze keine Jira-Checkbox/Status selbst.
+
+---
+
+## 2026-06-26 · SCRUM-120 + SCRUM-114 — Management/Wissenskapital (Backend-Modul + Frontend-Dashboard)
+
+**Ticket(s):** SCRUM-120 (Backend-Modul `services/management`) + SCRUM-114 (Frontend `Capital()` in `Stufe2.tsx`). FE-MGMT-01…09. Freigegebene risikoarme Variante: bestehende FE-Primitives `knowledgeHealth`/`domainRisk` bleiben unverändert; Analytics/Risk nicht umgebaut; minimaler Rohquoten-Overlap akzeptiert.
+
+**Befund:** `Capital()` war reiner Platzhalter (`s2.capital`). Datenquellen live vorhanden (`KoService.list`, `AskService.listGaps`, `ConflictService.unresolved`, `LifecycleService.pendingRevalidation`, `LibraryService.busFactor`). KO-Modell hat kein €-Feld → Valuation nur als Schätzmodell.
+
+**Backend — neues Modul `services/management` (SCRUM-120), stateless, keine Persistenz/Snapshots, keine KO-Mutation:**
+- `src/metrics.ts` (rein, DOM-frei, deterministisch, kein NaN bei leerem Bestand): `capitalScore` (5 gewichtete Teil-Scores, Σ Gewichte=1), `overview`, `valuationFacts` (nur Fakten), `statement` (Aktiva/Risiken/Netto + Breakdown), `maturity` (Stufen 1–5 aus Quoten), `priorities` (9-Faktoren-Dringlichkeit je Kategorie, gewichtet+sortiert), `recommendations` (deterministisch aus schlechtesten Signalen, nach Anzahl sortiert), `house` (Domänen-Stockwerke, fragil-Flag), `pilot` (30/60/90 aus `createdAt`), `computeSnapshot`.
+- `src/service.ts` — `ManagementService` sammelt Live-Daten (Promise.all) und ruft `computeSnapshot`; `now` injizierbar; `GET`-tauglicher `snapshot()`.
+- `index.ts`, `src/metrics.test.ts` (13 Tests), `src/service.test.ts` (2 Tests). Route `management-routes.ts` (`GET /api/management/snapshot`, Guard `ko.read`). Wiring in `build-app.ts`: ask/conflicts/library/lifecycle als Consts vorgezogen, `management`-Service mit deren Live-Lesern verdrahtet, `AppServices.management` + `app.register`.
+
+**Frontend — `Capital()` (SCRUM-114):**
+- `api/types.ts` `ManagementSnapshot`, `endpoints.management.snapshot`, `hooks.useManagementSnapshot`.
+- `Capital()` ersetzt Platzhalter durch `CapitalDashboard`: **Overview-Snapshot** (FE-MGMT-01), **Capital Score** mit Teil-Score-Balken (03), **Valuation** (04) mit sichtbaren/änderbaren Annahmen + Formel + Disclaimer „Schätzmodell, keine Bilanzbewertung", **Statement** Aktiva/Risiken/Netto + Breakdown (05), **Maturity Journey** (06), **Knowledge House** mit fragil-Markierung (08), **Hero-Assist-Empfehlungen** (07), **Prioritäten (9 Faktoren)** (09), **Pilot 30/60/90** als Tabelle mit `window.print()` + ehrlichem Hinweis „Druck-/HTML-Ansicht, kein zertifiziertes PDF" (02). Ehrlicher Leerzustand bei `totalKos===0`.
+- `lib/knowledgeValuation.ts` (DOM-frei): `estimateValuation(facts, assumptions)` = validierte Objekte × €/Std × Std/Objekt × Wiederverwendung × (Ø-Trust/100), Default-Annahmen offengelegt + im UI editierbar. `tests/management/knowledge-valuation.test.ts` (6 Tests). i18n `mgmt.*` (DE+EN).
+
+**Erfüllte AK:** nur echte Live-Daten (keine Demo-/Beispielzahlen; leerer Bestand → Leeransicht) ✓ · Valuation als transparentes Schätzmodell mit Formel/Annahmen + „keine Bilanzbewertung" ✓ · Pilot als HTML-/Druckansicht ohne PDF-Paket ✓ · FE-Primitives `knowledgeHealth`/`domainRisk` unverändert, Analytics/Risk nicht umgebaut ✓ · keine Persistenz/Snapshots, keine KO-Mutation, kein Backend-Redesign ✓.
+
+**Gelaufene Checks:** apps/web `tsc --noEmit` EXIT=0 · `npm run check` GRÜN — **57 Testdateien / 293 Tests** (21 neu: 13 metrics + 2 service + 6 valuation) · Biome grün · depcruise sauber (`management`→`knowledge-object` über öffentliche index.ts erlaubt).
+
+**Abgrenzung (nicht gebaut):** keine Bilanzbewertung, keine Snapshot-Persistenz/Zeitreihen über `createdAt`-Fenster hinaus, kein PDF-Paket, keine Duplizierung der Health-/Risk-Formeln.
+
+**Empfehlung:** Nach grünem Mac-Gate + Commit/Push dürfen **FE-MGMT-01…09** abgehakt werden → **SCRUM-120** und **SCRUM-114** auf Done. Ich setze keine Jira-Checkbox/Status selbst.
