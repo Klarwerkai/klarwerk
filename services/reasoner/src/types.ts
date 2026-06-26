@@ -48,6 +48,15 @@ export interface AssistResult {
   demo: boolean;
 }
 
+// SCRUM-132: reasoner-getriebenes Interview. Stateless: Antworten rein, nächste Frage +
+// aus den Antworten verdichteter Entwurf raus. Eine Frage pro Turn. demo=true → Fallback.
+export interface InterviewResult {
+  question: string | null; // nächste Frage; null, wenn ausreichend Inhalt
+  done: boolean; // Abschluss erreicht
+  draft: StructureResult; // nachvollziehbar aus den Antworten verdichtet
+  demo: boolean; // deterministischer Fallback klar markiert
+}
+
 export interface ReasonerStatus {
   active: boolean; // FR-RSN-05: spiegelt tatsächliche Modell-Verfügbarkeit.
   provider: string;

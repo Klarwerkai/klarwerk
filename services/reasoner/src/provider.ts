@@ -1,4 +1,10 @@
-import type { AnswerResult, AssistResult, KnowledgeRef, StructureResult } from "./types";
+import type {
+  AnswerResult,
+  AssistResult,
+  InterviewResult,
+  KnowledgeRef,
+  StructureResult,
+} from "./types";
 
 // FR-RSN-02: anbieteragnostisch — jede Implementierung (lokales Modell, Cloud, Mock)
 // erfüllt diese Schnittstelle und ist ohne Änderung der Fachlogik austauschbar.
@@ -10,8 +16,56 @@ export interface ReasonerProvider {
   answer(question: string, context: readonly KnowledgeRef[]): Promise<AnswerResult>;
   // FR-RSN-03: Text sprachlich präzisieren (ohne Inhalt zu erfinden).
   assistText(text: string): Promise<AssistResult>;
+  // SCRUM-132: nächste Interview-Frage + aus den Antworten verdichteter Entwurf.
+  interview(answers: readonly string[]): Promise<InterviewResult>;
   // select ist reines Ranking (synchron, kein Netzaufruf).
   select(question: string, candidates: readonly KnowledgeRef[]): KnowledgeRef[];
+}
+
+// SCRUM-132: feste Fragenfolge (eine Frage pro Turn) — vom Modell nur umformulierbar,
+// nie inhaltlich erfunden. Index = Anzahl bisher gegebener Antworten.
+export const INTERVIEW_QUESTIONS: readonly string[] = [
+  "Worum geht es? Formuliere die Kernaussage in einem Satz.",
+  "Unter welchen Bedingungen oder ab wann gilt das?",
+  "Welche Maßnahme oder Konsequenz folgt daraus?",
+  "Welche Stichworte/Tags helfen beim Wiederfinden? (kommagetrennt)",
+];
+
+// Verdichtet die bisherigen Antworten nachvollziehbar zu einem KO-Entwurf.
+// Rein deterministisch — erfindet keinen Inhalt, mappt nur Antwort → Feld.
+export function condenseInterview(answers: readonly string[], demo: boolean): StructureResult {
+  const a = answers.map((s) => s.trim());
+  const tags = a[3]
+    ? a[3]
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean)
+    : [];
+  return {
+    title: a[0] ?? "",
+    statement: a[0] ?? "",
+    conditions: a[1] ? [a[1]] : [],
+    measures: a[2] ? [a[2]] : [],
+    tags,
+    confidence: 0,
+    demo,
+  };
+}
+
+// SCRUM-132: deterministischer Interview-Turn — nächste Standardfrage + Abschluss bei
+// ausreichendem Inhalt (Kernaussage + Bedingung + Maßnahme). Basis für beide Provider.
+export function deterministicInterview(answers: readonly string[], demo: boolean): InterviewResult {
+  const core = (answers[0]?.trim().length ?? 0) > 0;
+  const hasCond = (answers[1]?.trim().length ?? 0) > 0;
+  const hasMeas = (answers[2]?.trim().length ?? 0) > 0;
+  const sufficient = core && hasCond && hasMeas;
+  const done = answers.length >= INTERVIEW_QUESTIONS.length || sufficient;
+  return {
+    question: done ? null : (INTERVIEW_QUESTIONS[answers.length] ?? null),
+    done,
+    draft: condenseInterview(answers, demo),
+    demo,
+  };
 }
 
 function tokenize(text: string): string[] {
@@ -78,6 +132,11 @@ export class DeterministicProvider implements ReasonerProvider {
     const cased = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
     const ended = /[.!?]$/.test(cased) ? cased : `${cased}.`;
     return { text: ended, demo: true };
+  }
+
+  // SCRUM-132: deterministischer Fallback, klar als Demo markiert.
+  async interview(answers: readonly string[]): Promise<InterviewResult> {
+    return deterministicInterview(answers, true);
   }
 
   select(question: string, candidates: readonly KnowledgeRef[]): KnowledgeRef[] {

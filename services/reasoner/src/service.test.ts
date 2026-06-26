@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { DeterministicProvider, type ReasonerProvider } from "./provider";
+import { DeterministicProvider, INTERVIEW_QUESTIONS, type ReasonerProvider } from "./provider";
 import { Reasoner } from "./service";
-import type { AnswerResult, AssistResult, KnowledgeRef, StructureResult } from "./types";
+import type {
+  AnswerResult,
+  AssistResult,
+  InterviewResult,
+  KnowledgeRef,
+  StructureResult,
+} from "./types";
 
 const KOS: KnowledgeRef[] = [
   {
@@ -92,6 +98,20 @@ describe("Reasoner", () => {
         demo: false,
       }),
       assistText: async (): Promise<AssistResult> => ({ text: "Modell-Text", demo: false }),
+      interview: async (): Promise<InterviewResult> => ({
+        question: "Modell-Frage?",
+        done: false,
+        draft: {
+          title: "",
+          statement: "",
+          conditions: [],
+          measures: [],
+          tags: [],
+          confidence: 0,
+          demo: false,
+        },
+        demo: false,
+      }),
       select: () => [],
     };
     const reasoner = new Reasoner(fakeModel);
@@ -111,6 +131,9 @@ describe("Reasoner", () => {
         throw new Error("sollte nicht aufgerufen werden");
       },
       assistText: () => {
+        throw new Error("sollte nicht aufgerufen werden");
+      },
+      interview: () => {
         throw new Error("sollte nicht aufgerufen werden");
       },
       select: () => {
@@ -135,6 +158,9 @@ describe("Reasoner", () => {
       assistText: async (): Promise<AssistResult> => {
         throw new Error("Netzfehler");
       },
+      interview: async (): Promise<InterviewResult> => {
+        throw new Error("Netzfehler");
+      },
       select: () => [],
     };
     const reasoner = new Reasoner(flakyModel);
@@ -146,5 +172,85 @@ describe("Reasoner", () => {
     expect(structured.demo).toBe(true);
     const assisted = await reasoner.assistText("pumpe schmieren");
     expect(assisted.demo).toBe(true);
+    // SCRUM-132: auch Interview fällt deterministisch zurück, klar als demo markiert.
+    const iv = await reasoner.interview(["Kernaussage", "Bedingung", "Maßnahme"]);
+    expect(iv.demo).toBe(true);
+    expect(iv.done).toBe(true);
+  });
+
+  it("SCRUM-132: nutzt das Modell zum Umformulieren der Frage (Verdichtung deterministisch)", async () => {
+    const phrasingModel: ReasonerProvider = {
+      name: "phrasing-model",
+      isAvailable: () => true,
+      structure: async (): Promise<StructureResult> => {
+        throw new Error("ungenutzt");
+      },
+      answer: async (): Promise<AnswerResult> => {
+        throw new Error("ungenutzt");
+      },
+      assistText: async (): Promise<AssistResult> => {
+        throw new Error("ungenutzt");
+      },
+      interview: async (answers): Promise<InterviewResult> => ({
+        question: "Modell-Frage?",
+        done: false,
+        // Verdichtung bleibt deterministisch nachvollziehbar (hier: erste Antwort = Titel).
+        draft: {
+          title: answers[0] ?? "",
+          statement: answers[0] ?? "",
+          conditions: [],
+          measures: [],
+          tags: [],
+          confidence: 0,
+          demo: false,
+        },
+        demo: false,
+      }),
+      select: () => [],
+    };
+    const reasoner = new Reasoner(phrasingModel);
+    const res = await reasoner.interview(["Kernaussage"]);
+    expect(res.demo).toBe(false);
+    expect(res.question).toBe("Modell-Frage?");
+    expect(res.draft.title).toBe("Kernaussage");
+  });
+});
+
+describe("DeterministicProvider.interview (SCRUM-132)", () => {
+  const p = new DeterministicProvider();
+
+  it("eine Frage pro Turn entlang der Fragenfolge", async () => {
+    const t0 = await p.interview([]);
+    expect(t0.question).toBe(INTERVIEW_QUESTIONS[0]);
+    expect(t0.done).toBe(false);
+    expect(t0.demo).toBe(true);
+
+    const t1 = await p.interview(["Bei Überdruck Ventil X schließen."]);
+    expect(t1.question).toBe(INTERVIEW_QUESTIONS[1]);
+    expect(t1.done).toBe(false);
+
+    const t2 = await p.interview(["Aussage", "Bedingung"]);
+    expect(t2.question).toBe(INTERVIEW_QUESTIONS[2]);
+  });
+
+  it("Abschluss bei ausreichendem Inhalt (Kernaussage + Bedingung + Maßnahme)", async () => {
+    const res = await p.interview(["Aussage", "Bedingung", "Maßnahme"]);
+    expect(res.done).toBe(true);
+    expect(res.question).toBeNull();
+  });
+
+  it("verdichtet die Antworten nachvollziehbar zum Entwurf", async () => {
+    const res = await p.interview([
+      "Ventil schließen",
+      "Bei Überdruck",
+      "Hand-Ventil zu",
+      "ventil, druck",
+    ]);
+    expect(res.draft.title).toBe("Ventil schließen");
+    expect(res.draft.statement).toBe("Ventil schließen");
+    expect(res.draft.conditions).toEqual(["Bei Überdruck"]);
+    expect(res.draft.measures).toEqual(["Hand-Ventil zu"]);
+    expect(res.draft.tags).toEqual(["ventil", "druck"]);
+    expect(res.draft.demo).toBe(true);
   });
 });

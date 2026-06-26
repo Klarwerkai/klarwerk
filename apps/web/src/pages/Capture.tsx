@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import type { KnowledgeType, StructureResult } from "../api/types";
+import type { InterviewResult, KnowledgeType, StructureResult } from "../api/types";
 import { useSession } from "../app/AuthContext";
 import { useToast } from "../app/ToastContext";
 import { HelpTip } from "../components/HelpTip";
@@ -24,6 +24,7 @@ import {
   readTextFile,
   runImageOcr,
 } from "../lib/files";
+import { appendAnswer, interviewSourceKey, isInterviewDone } from "../lib/interviewFlow";
 
 const MODES = ["freitext", "formular", "diktat", "interview"] as const;
 type Mode = (typeof MODES)[number];
@@ -71,9 +72,6 @@ function speechCtor(): SpeechCtor | undefined {
 const textareaCls =
   "w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none placeholder:text-muted-2 focus:border-ink/30";
 
-const IV_STEPS = ["title", "statement", "conditions", "measures", "tags"] as const;
-type IvField = (typeof IV_STEPS)[number];
-
 export function Capture(): JSX.Element {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -106,10 +104,10 @@ export function Capture(): JSX.Element {
   const recRef = useRef<SpeechRec | null>(null);
   const speechSupported = Boolean(speechCtor());
 
-  // Interview
-  const [ivStep, setIvStep] = useState(0);
+  // SCRUM-132: reasoner-getriebenes Interview (stateless; Antworten → nächste Frage).
+  const [ivAnswers, setIvAnswers] = useState<string[]>([]);
   const [ivAnswer, setIvAnswer] = useState("");
-  const [iv, setIv] = useState<StructureResult>({ ...EMPTY_DRAFT });
+  const [ivResult, setIvResult] = useState<InterviewResult | null>(null);
 
   const fail = (e: unknown): void => setErr(e instanceof ApiError ? e.message : t("state.error"));
 
@@ -119,6 +117,20 @@ export function Capture(): JSX.Element {
       setDraft(r);
       setTags((prev) => (prev.length > 0 ? prev : r.tags));
       setErr(null);
+    },
+    onError: fail,
+  });
+
+  // SCRUM-132: ein Interview-Turn — Antworten rein, nächste Frage + Draft raus.
+  const interview = useMutation({
+    mutationFn: (answers: string[]) => endpoints.reasoner.interview(answers),
+    onSuccess: (res) => {
+      setIvResult(res);
+      setErr(null);
+      if (isInterviewDone(res)) {
+        setDraft(res.draft);
+        setTags((prev) => (prev.length > 0 ? prev : res.draft.tags));
+      }
     },
     onError: fail,
   });
@@ -211,9 +223,11 @@ export function Capture(): JSX.Element {
       setDraft({ ...EMPTY_DRAFT });
     }
     if (m === "interview") {
-      setIvStep(0);
+      // SCRUM-132: Interview startet mit der ersten reasoner-getriebenen Frage.
+      setIvAnswers([]);
       setIvAnswer("");
-      setIv({ ...EMPTY_DRAFT });
+      setIvResult(null);
+      interview.mutate([]);
     }
   };
 
@@ -324,35 +338,12 @@ export function Capture(): JSX.Element {
     }
   };
 
-  const ivField = IV_STEPS[ivStep] as IvField;
-  const ivAdvance = (): void => {
-    const next: StructureResult = { ...iv };
-    const val = ivAnswer.trim();
-    const lines = (sep: string): string[] =>
-      val
-        ? val
-            .split(sep)
-            .map((s) => s.trim())
-            .filter(Boolean)
-        : [];
-    if (ivField === "title") {
-      next.title = val;
-    } else if (ivField === "statement") {
-      next.statement = val;
-    } else if (ivField === "conditions") {
-      next.conditions = lines("\n");
-    } else if (ivField === "measures") {
-      next.measures = lines("\n");
-    } else {
-      setTags((prev) => (prev.length > 0 ? prev : lines(",")));
-    }
-    setIv(next);
-    if (ivStep + 1 < IV_STEPS.length) {
-      setIvStep(ivStep + 1);
-      setIvAnswer("");
-    } else {
-      setDraft(next);
-    }
+  // SCRUM-132: Antwort senden → nächster reasoner-getriebener Turn.
+  const ivSend = (): void => {
+    const answers = appendAnswer(ivAnswers, ivAnswer);
+    setIvAnswers(answers);
+    setIvAnswer("");
+    interview.mutate(answers);
   };
 
   const loadExample = (): void => {
@@ -466,39 +457,41 @@ export function Capture(): JSX.Element {
           ) : null}
 
           {mode === "interview" ? (
-            draft ? (
+            ivResult && isInterviewDone(ivResult) ? (
               <p className="rounded-card border border-dashed border-hairline p-3 text-[13px] text-trust-pos-text">
                 {t("capture.ivDone")}
               </p>
             ) : (
               <div className="space-y-3">
-                <div className="font-mono text-[11px] uppercase tracking-wider text-muted-2">
-                  {t("capture.ivStep", { n: ivStep + 1, total: IV_STEPS.length })}
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-[11px] uppercase tracking-wider text-muted-2">
+                    {t("capture.ivTurn", { n: ivAnswers.length + 1 })}
+                  </span>
+                  {ivResult ? (
+                    <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai">
+                      {t(interviewSourceKey(ivResult))}
+                    </span>
+                  ) : null}
                 </div>
-                <p className="text-[14px] font-medium text-text">{t(`capture.ivQ.${ivField}`)}</p>
+                <p className="text-[14px] font-medium text-text">
+                  {interview.isPending
+                    ? t("capture.ivThinking")
+                    : (ivResult?.question ?? t("capture.ivThinking"))}
+                </p>
                 <textarea
                   value={ivAnswer}
                   onChange={(e) => setIvAnswer(e.target.value)}
-                  rows={ivField === "statement" ? 4 : 2}
-                  placeholder={t(`capture.ivQHint.${ivField}`)}
+                  rows={2}
+                  placeholder={t("capture.ivAnswerHint")}
                   className={textareaCls}
                 />
-                <div className="flex gap-2">
-                  {ivStep > 0 ? (
-                    <Button
-                      variant="ghost"
-                      onClick={() => {
-                        setIvStep(ivStep - 1);
-                        setIvAnswer("");
-                      }}
-                    >
-                      {t("capture.ivBack")}
-                    </Button>
-                  ) : null}
-                  <Button variant="primary" onClick={ivAdvance}>
-                    {ivStep + 1 < IV_STEPS.length ? t("capture.ivNext") : t("capture.ivFinish")}
-                  </Button>
-                </div>
+                <Button
+                  variant="primary"
+                  disabled={interview.isPending || ivAnswer.trim().length === 0 || !ivResult}
+                  onClick={ivSend}
+                >
+                  {t("capture.ivSend")}
+                </Button>
               </div>
             )
           ) : null}

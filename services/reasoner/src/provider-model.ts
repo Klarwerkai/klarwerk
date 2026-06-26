@@ -1,5 +1,11 @@
-import { type ReasonerProvider, keywordSelect } from "./provider";
-import type { AnswerResult, AssistResult, KnowledgeRef, StructureResult } from "./types";
+import { type ReasonerProvider, deterministicInterview, keywordSelect } from "./provider";
+import type {
+  AnswerResult,
+  AssistResult,
+  InterviewResult,
+  KnowledgeRef,
+  StructureResult,
+} from "./types";
 
 // Abstrakter Modell-Client: kapselt den eigentlichen (anbieterspezifischen) Aufruf.
 // FR-RSN-02/06: anbieteragnostisch; der Schlüssel lebt nur im Client (serverseitig).
@@ -21,6 +27,11 @@ const ASSIST_SYSTEM =
   "Du präzisierst und glättest industrielles Erfahrungswissen sprachlich. Verändere oder " +
   "erfinde KEINE Inhalte, Zahlen oder Fakten. Gib AUSSCHLIESSLICH den überarbeiteten Text " +
   "zurück, ohne Vorbemerkung oder Anführungszeichen.";
+
+const INTERVIEW_SYSTEM =
+  "Du führst ein kurzes Redakteur-Interview, um industrielles Erfahrungswissen zu erfassen. " +
+  "Formuliere genau EINE nächste, konkrete Frage, die auf den bisherigen Antworten aufbaut. " +
+  "Erfinde KEINE fachlichen Inhalte oder Fakten. Gib AUSSCHLIESSLICH die Frage zurück.";
 
 function extractJson(raw: string): string {
   const start = raw.indexOf("{");
@@ -79,6 +90,24 @@ export class ModelProvider implements ReasonerProvider {
     const client = this.requireClient();
     const improved = (await client.complete(ASSIST_SYSTEM, text)).trim();
     return { text: improved || text.trim(), demo: false };
+  }
+
+  // SCRUM-132: Modell formuliert nur die nächste Frage; Abschluss + Draft-Verdichtung
+  // bleiben deterministisch (kein Erfinden von Inhalt). demo=false, da Modell genutzt.
+  async interview(answers: readonly string[]): Promise<InterviewResult> {
+    const base = deterministicInterview(answers, false);
+    if (base.done || base.question === null) {
+      return base;
+    }
+    const client = this.requireClient();
+    const prior = answers.map((a, i) => `A${i + 1}: ${a}`).join("\n");
+    const phrased = (
+      await client.complete(
+        INTERVIEW_SYSTEM,
+        `Bisherige Antworten:\n${prior || "(noch keine)"}\n\nLeitfrage: ${base.question}`,
+      )
+    ).trim();
+    return { ...base, question: phrased || base.question };
   }
 
   async answer(question: string, context: readonly KnowledgeRef[]): Promise<AnswerResult> {

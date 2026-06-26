@@ -1684,3 +1684,32 @@ Datum: 2026-06-25
 **Restlücken:** OCR-Qualität/Sprachpaket (deu+eng) und Bundle-Größe der lazy chunks erst am Mac/Build final bewertbar. Gescanntes PDF ohne Textebene liefert leeren PDF-Text (ehrlicher Hinweis → Bild-OCR) — kein automatisches PDF-Seiten-Rendering+OCR (separates Restticket, falls gewünscht).
 
 **Jira-Empfehlung:** Nach grünem Mac-Gate + Commit/Push dürfen SCRUM-122 und SCRUM-123 auf erledigt. Ich setze keine Jira-Checkbox/Status selbst.
+
+---
+
+## 2026-06-26 · SCRUM-132 — Reasoner-getriebene Interview-Turns
+
+**Ticket:** SCRUM-132. Neuer Reasoner-Task `interview` (stateless), exakt nach freigegebener Architektur. Ersetzt den alten statischen FE-`IV_STEPS`-Hauptpfad.
+
+**Geänderte/neue Dateien:**
+- `services/reasoner/src/types.ts` — `InterviewResult { question|null, done, draft, demo }`.
+- `services/reasoner/src/provider.ts` — Interface +`interview(answers)`; `INTERVIEW_QUESTIONS`, `condenseInterview` (deterministische, nachvollziehbare Verdichtung Antwort→Feld), `deterministicInterview` (eine Frage/Turn, Abschluss bei Kernaussage+Bedingung+Maßnahme); `DeterministicProvider.interview` (demo:true).
+- `services/reasoner/src/provider-model.ts` — `ModelProvider.interview`: Modell formuliert NUR die nächste Frage (INTERVIEW_SYSTEM), Abschluss + Draft-Verdichtung bleiben deterministisch (kein Erfinden von Inhalt); demo:false.
+- `services/reasoner/src/service.ts` — `Reasoner.interview()` primary→fallback wie die anderen Tasks.
+- `services/reasoner/index.ts` — Export `InterviewResult`.
+- `services/app/src/routes/reasoner-routes.ts` — `task: "interview"`, Body `{ answers }`, Response `InterviewResult`.
+- `apps/web/src/api/types.ts` — FE `InterviewResult`; `apps/web/src/api/endpoints.ts` — `reasoner.interview(answers)`.
+- `apps/web/src/lib/interviewFlow.ts` (neu, DOM-frei) — appendAnswer, isInterviewDone, interviewSourceKey, answeredTurns.
+- `apps/web/src/pages/Capture.tsx` — Interviewmodus auf Server-Turns umgestellt: `interview`-Mutation, eine Server-Frage pro Turn, Antwort senden, Draft aus `result.draft` übernommen, Quelle-Badge (Modell vs. deterministischer Fallback), „denkt…"-Status. Statische `IV_STEPS`/`IvField`/`ivAdvance` entfernt. Submit-/Draft-/KO-Flow unverändert.
+- `apps/web/src/i18n.ts` — `capture.ivTurn/ivThinking/ivAnswerHint/ivSend/ivModel/ivFallback` (DE+EN).
+- Tests: `services/reasoner/src/service.test.ts` (erweitert; bestehende Provider-Stubs um `interview` ergänzt) + `tests/capture/interview-flow.test.ts` (neu).
+
+**Erfüllte AK:** neuer Reasoner-Task `interview` ✓ · stateless (answers rein → question/done/draft/demo raus) ✓ · eine Frage pro Turn ✓ · Modell formuliert nur, erfindet keinen Inhalt (Verdichtung deterministisch) ✓ · Draft nachvollziehbar aus Antworten verdichtet ✓ · deterministischer Fallback markiert (demo:true + Quelle-Badge + Reasoner-Status) ✓ · Submit-/Draft-/KO-Flow unverändert ✓ · keine UI-only-Simulation (Service-/Task-Logik dahinter) ✓ · `assist` nicht umgebaut, keine neue UI-Insel ✓.
+
+**Gelaufene Checks:** `npm run check` GRÜN — 45 Testdateien / 222 Tests (10 neu: Reasoner-Interview Turn-Folge/Abschluss/Verdichtung/Modell-Umformulierung/Fallback-demo + 4 FE-Flow). apps/web `tsc --noEmit` EXIT=0. depcruise sauber. Biome grün. Bestehende Capture-/Reasoner-/`InterviewSession`-Tests bleiben grün.
+
+**Statischer FE-Hauptpfad ersetzt:** JA — der alte `IV_STEPS`-Durchklick ist entfernt; der Interviewmodus ruft jetzt pro Turn `endpoints.reasoner.interview(answers)` (echte Service-/Task-Logik). Der bestehende deterministische `InterviewSession` (capture, FR-CAP-02) bleibt unangetastet und grün, ist aber nicht mehr der „reasoner-getriebene" FE-Hauptpfad.
+
+**Restlücken:** Modellpfad (echtes LLM) wird im Gate nur über deterministischen Fallback geprüft (kein Key in Sandbox/CI) — der Modellpfad ist via Provider-Stub getestet, eine echte Live-Modellprüfung bleibt Betrieb/Mac. Verdichtung ist bewusst 1:1 (Antwort→Feld), keine modellbasierte Mehrfach-Antwort-Fusion (separates Restticket, falls gewünscht).
+
+**Jira-Empfehlung:** Nach grünem Mac-Gate + Commit/Push darf SCRUM-132 auf erledigt. Ich setze keine Jira-Checkbox/Status selbst.

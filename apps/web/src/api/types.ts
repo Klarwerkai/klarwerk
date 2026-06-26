@@ -273,6 +273,14 @@ export interface AssistResult {
   demo: boolean;
 }
 
+// SCRUM-132: reasoner-getriebenes Interview (stateless: Antworten rein, nächste Frage raus).
+export interface InterviewResult {
+  question: string | null;
+  done: boolean;
+  draft: StructureResult;
+  demo: boolean;
+}
+
 export type NotificationKind = "conflict" | "gap";
 
 export interface Notification {

@@ -14,32 +14,40 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
   const { reasoner, ask } = deps;
 
   return async (app) => {
-    app.post<{ Body: { task: "structure" | "ask" | "assist"; text: string } }>(
-      "/api/reasoner",
-      async (request, reply) => {
-        const user = await guards.requirePermission("ko.read", request, reply);
-        if (!user) {
-          return;
-        }
-        const { task, text } = request.body;
-        if (task === "structure") {
-          reply.code(200).send(await reasoner.structure(text ?? ""));
-          return;
-        }
-        if (task === "ask") {
-          reply.code(200).send(await ask.ask(text ?? ""));
-          return;
-        }
-        if (task === "assist") {
-          // FR-RSN-03: Text präzisieren/glätten.
-          reply.code(200).send(await reasoner.assistText(text ?? ""));
-          return;
-        }
-        reply.code(400).send({
-          error: "BAD_REQUEST",
-          message: "task muss 'structure', 'ask' oder 'assist' sein.",
-        });
-      },
-    );
+    app.post<{
+      Body: {
+        task: "structure" | "ask" | "assist" | "interview";
+        text?: string;
+        answers?: string[];
+      };
+    }>("/api/reasoner", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      const { task, text } = request.body;
+      if (task === "structure") {
+        reply.code(200).send(await reasoner.structure(text ?? ""));
+        return;
+      }
+      if (task === "ask") {
+        reply.code(200).send(await ask.ask(text ?? ""));
+        return;
+      }
+      if (task === "assist") {
+        // FR-RSN-03: Text präzisieren/glätten.
+        reply.code(200).send(await reasoner.assistText(text ?? ""));
+        return;
+      }
+      if (task === "interview") {
+        // SCRUM-132: reasoner-getriebenes Interview, stateless (Antworten rein).
+        reply.code(200).send(await reasoner.interview(request.body.answers ?? []));
+        return;
+      }
+      reply.code(400).send({
+        error: "BAD_REQUEST",
+        message: "task muss 'structure', 'ask', 'assist' oder 'interview' sein.",
+      });
+    });
   };
 }

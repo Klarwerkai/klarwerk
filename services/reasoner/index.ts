@@ -14,5 +14,6 @@ export type {
   AnswerStep,
   StructureResult,
   AssistResult,
+  InterviewResult,
   ReasonerStatus,
 } from "./src/types";

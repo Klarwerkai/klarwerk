@@ -15,6 +15,7 @@ import type {
   ImpactReport,
   ImportCandidate,
   ImportItemInput,
+  InterviewResult,
   KnowledgeObject,
   LearningPath,
   Notification,
@@ -99,6 +100,9 @@ export const endpoints = {
     structure: (text: string) =>
       api.post<StructureResult>("/reasoner", { task: "structure", text }),
     assist: (text: string) => api.post<AssistResult>("/reasoner", { task: "assist", text }),
+    // SCRUM-132: reasoner-getriebenes Interview, stateless.
+    interview: (answers: string[]) =>
+      api.post<InterviewResult>("/reasoner", { task: "interview", answers }),
     status: () => api.get<ReasonerStatus>("/reasoner/status"),
   },
   notifications: { list: () => api.get<Notification[]>("/notifications") },

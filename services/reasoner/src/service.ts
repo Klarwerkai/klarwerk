@@ -2,6 +2,7 @@ import { DeterministicProvider, type ReasonerProvider } from "./provider";
 import type {
   AnswerResult,
   AssistResult,
+  InterviewResult,
   KnowledgeRef,
   ReasonerStatus,
   StructureResult,
@@ -69,6 +70,18 @@ export class Reasoner {
       }
     }
     return this.fallback.assistText(text);
+  }
+
+  // SCRUM-132: reasoner-getriebenes Interview; Modellfehler → deterministischer Fallback.
+  async interview(answers: readonly string[]): Promise<InterviewResult> {
+    if (this.usingPrimary()) {
+      try {
+        return await this.primary.interview(answers);
+      } catch {
+        // Fällt auf den deterministischen Provider zurück.
+      }
+    }
+    return this.fallback.interview(answers);
   }
 
   select(question: string, candidates: readonly KnowledgeRef[]): KnowledgeRef[] {
