@@ -4,6 +4,7 @@ import type {
   AssistResult,
   InterviewResult,
   KnowledgeRef,
+  ReasonerLocale,
   ReasonerStatus,
   StructureResult,
 } from "./types";
@@ -37,51 +38,59 @@ export class Reasoner {
     };
   }
 
-  // FR-RSN-04: Modellfehler dürfen den Betrieb nicht stoppen → deterministischer Fallback.
-  async structure(rawText: string): Promise<StructureResult> {
+  // FR-RSN-04/FR-I18N-01: Modellfehler dürfen den Betrieb nicht stoppen → deterministischer
+  // Fallback. locale wird an primary UND fallback identisch durchgereicht (Default "de").
+  async structure(rawText: string, locale: ReasonerLocale = "de"): Promise<StructureResult> {
     if (this.usingPrimary()) {
       try {
-        return await this.primary.structure(rawText);
+        return await this.primary.structure(rawText, locale);
       } catch {
         // Fällt auf den deterministischen Provider zurück.
       }
     }
-    return this.fallback.structure(rawText);
+    return this.fallback.structure(rawText, locale);
   }
 
-  async answer(question: string, context: readonly KnowledgeRef[]): Promise<AnswerResult> {
+  async answer(
+    question: string,
+    context: readonly KnowledgeRef[],
+    locale: ReasonerLocale = "de",
+  ): Promise<AnswerResult> {
     if (this.usingPrimary()) {
       try {
-        return await this.primary.answer(question, context);
+        return await this.primary.answer(question, context, locale);
       } catch {
         // Fällt auf den deterministischen Provider zurück.
       }
     }
-    return this.fallback.answer(question, context);
+    return this.fallback.answer(question, context, locale);
   }
 
   // FR-RSN-03: Text präzisieren; Modellfehler → deterministischer Fallback.
-  async assistText(text: string): Promise<AssistResult> {
+  async assistText(text: string, locale: ReasonerLocale = "de"): Promise<AssistResult> {
     if (this.usingPrimary()) {
       try {
-        return await this.primary.assistText(text);
+        return await this.primary.assistText(text, locale);
       } catch {
         // Fällt auf den deterministischen Provider zurück.
       }
     }
-    return this.fallback.assistText(text);
+    return this.fallback.assistText(text, locale);
   }
 
   // SCRUM-132: reasoner-getriebenes Interview; Modellfehler → deterministischer Fallback.
-  async interview(answers: readonly string[]): Promise<InterviewResult> {
+  async interview(
+    answers: readonly string[],
+    locale: ReasonerLocale = "de",
+  ): Promise<InterviewResult> {
     if (this.usingPrimary()) {
       try {
-        return await this.primary.interview(answers);
+        return await this.primary.interview(answers, locale);
       } catch {
         // Fällt auf den deterministischen Provider zurück.
       }
     }
-    return this.fallback.interview(answers);
+    return this.fallback.interview(answers, locale);
   }
 
   select(question: string, candidates: readonly KnowledgeRef[]): KnowledgeRef[] {

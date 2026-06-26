@@ -35,6 +35,7 @@ import {
   runImageOcr,
 } from "../lib/files";
 import { appendAnswer, interviewSourceKey, isInterviewDone } from "../lib/interviewFlow";
+import { toReasonerLocale } from "../lib/reasonerLocale";
 
 const MODES = ["freitext", "formular", "diktat", "interview"] as const;
 type Mode = (typeof MODES)[number];
@@ -85,7 +86,7 @@ const textareaCls =
   "w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none placeholder:text-muted-2 focus:border-ink/30";
 
 export function Capture(): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { user } = useSession();
   const { push } = useToast();
@@ -129,8 +130,11 @@ export function Capture(): JSX.Element {
 
   const fail = (e: unknown): void => setErr(e instanceof ApiError ? e.message : t("state.error"));
 
+  // FR-I18N-01: Reasoner-Aufrufe folgen der aktuellen UI-Sprache (Quelleninhalt bleibt original).
+  const locale = toReasonerLocale(i18n.language);
+
   const structure = useMutation({
-    mutationFn: () => endpoints.reasoner.structure(raw),
+    mutationFn: () => endpoints.reasoner.structure(raw, locale),
     onSuccess: (r) => {
       setDraft(r);
       setTags((prev) => (prev.length > 0 ? prev : r.tags));
@@ -141,7 +145,7 @@ export function Capture(): JSX.Element {
 
   // SCRUM-132: ein Interview-Turn — Antworten rein, nächste Frage + Draft raus.
   const interview = useMutation({
-    mutationFn: (answers: string[]) => endpoints.reasoner.interview(answers),
+    mutationFn: (answers: string[]) => endpoints.reasoner.interview(answers, locale),
     onSuccess: (res) => {
       setIvResult(res);
       setErr(null);
@@ -154,7 +158,7 @@ export function Capture(): JSX.Element {
   });
 
   const assistRaw = useMutation({
-    mutationFn: () => endpoints.reasoner.assist(raw),
+    mutationFn: () => endpoints.reasoner.assist(raw, locale),
     onSuccess: (r) => {
       setRaw(r.text);
       setErr(null);
@@ -163,7 +167,7 @@ export function Capture(): JSX.Element {
   });
 
   const assistStatement = useMutation({
-    mutationFn: () => endpoints.reasoner.assist(draft?.statement ?? ""),
+    mutationFn: () => endpoints.reasoner.assist(draft?.statement ?? "", locale),
     onSuccess: (r) => {
       setDraft((d) => (d ? { ...d, statement: r.text } : d));
       setErr(null);

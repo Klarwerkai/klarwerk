@@ -115,16 +115,27 @@ export const endpoints = {
     promote: (id: string) => api.post<KnowledgeObject>(`/drafts/${id}/promote`),
   },
   ask: {
-    ask: (question: string) => api.post<AskResponse>("/ask", { question }),
+    // FR-I18N-01: aktuelle UI-Sprache mitsenden (Default serverseitig "de").
+    ask: (question: string, locale?: "de" | "en") =>
+      api.post<AskResponse>("/ask", { question, ...(locale ? { locale } : {}) }),
     helpful: (koId: string) => api.post<void>("/ask/helpful", { koId }),
   },
   reasoner: {
-    structure: (text: string) =>
-      api.post<StructureResult>("/reasoner", { task: "structure", text }),
-    assist: (text: string) => api.post<AssistResult>("/reasoner", { task: "assist", text }),
+    structure: (text: string, locale?: "de" | "en") =>
+      api.post<StructureResult>("/reasoner", {
+        task: "structure",
+        text,
+        ...(locale ? { locale } : {}),
+      }),
+    assist: (text: string, locale?: "de" | "en") =>
+      api.post<AssistResult>("/reasoner", { task: "assist", text, ...(locale ? { locale } : {}) }),
     // SCRUM-132: reasoner-getriebenes Interview, stateless.
-    interview: (answers: string[]) =>
-      api.post<InterviewResult>("/reasoner", { task: "interview", answers }),
+    interview: (answers: string[], locale?: "de" | "en") =>
+      api.post<InterviewResult>("/reasoner", {
+        task: "interview",
+        answers,
+        ...(locale ? { locale } : {}),
+      }),
     status: () => api.get<ReasonerStatus>("/reasoner/status"),
   },
   notifications: { list: () => api.get<Notification[]>("/notifications") },

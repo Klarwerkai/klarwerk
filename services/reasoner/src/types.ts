@@ -1,3 +1,7 @@
+// SCRUM-88 / FR-I18N-01: sprachbewusste Reasoner-Steuerung. Nur DE/EN; Default "de".
+// Steuert Prompting, Interview-Fragen und Step-Labels — NICHT den Quelleninhalt.
+export type ReasonerLocale = "de" | "en";
+
 // Minimaler Wissens-Bezug (entkoppelt: reasoner kennt knowledge-object nicht direkt).
 export interface KnowledgeRef {
   id: string;

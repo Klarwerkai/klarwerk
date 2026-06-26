@@ -5,13 +5,18 @@ import { type Guards, sendError } from "../http";
 // Fragen & Wissenslücken (§2.4 / FR-ASK).
 export function askRoutes(ask: AskService, guards: Guards): FastifyPluginAsync {
   return async (app) => {
-    app.post<{ Body: { question: string } }>("/api/ask", async (request, reply) => {
-      const user = await guards.requirePermission("ko.read", request, reply);
-      if (!user) {
-        return;
-      }
-      reply.code(200).send(await ask.ask(request.body.question ?? "", user.id));
-    });
+    app.post<{ Body: { question: string; locale?: "de" | "en" } }>(
+      "/api/ask",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        // FR-I18N-01: UI-Sprache an den Reasoner; ungültig → "de".
+        const locale = request.body.locale === "en" ? "en" : "de";
+        reply.code(200).send(await ask.ask(request.body.question ?? "", user.id, locale));
+      },
+    );
 
     // FR-ASK-04: „Hat geholfen" — Bewährung durch Nutzung.
     app.post<{ Body: { koId: string } }>("/api/ask/helpful", async (request, reply) => {

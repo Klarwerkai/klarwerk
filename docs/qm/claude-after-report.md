@@ -2062,3 +2062,73 @@ Datum: 2026-06-25
 
 ### Gates
 apps/web-tsc EXIT=0 · `npm run check` grün (**65 Dateien / 347 Tests**) · Biome · depcruise sauber.
+
+---
+
+## After-Report — SCRUM-70 (FR-LIF-04) · Autor überall am KO sichtbar — 2026-06-26
+
+### Was
+Vermächtnis-Framing vervollständigt: der Autorenname ist jetzt auch in den kompakten KO-Darstellungen sichtbar, nicht nur im KO-Detail/Capture.
+- **Library.tsx** — kompakte Autorzeile unter jedem Titel (`Autor: <Name>`, bei Transfer `· Original: <Name>`).
+- **Validation.tsx** — Autorzeile je KO-Karte unter Trust/Ziel.
+- **MyTasks.tsx** — Autorzeile bei KO-bezogenen Tasks (Validierung, Revalidierung, zurückgegeben); Gaps/Conflicts ohne KO unverändert. Revalidierungs-Label nutzt jetzt den KO-Titel (Fallback ID).
+
+### Wie (sauber geschichtet, kein Backend)
+- **DOM-frei + testbar:** `apps/web/src/lib/koAuthor.ts` → `koAuthorParts(ko, nameOf?)` löst Autor + Originalautor (nur bei Transfer/Abweichung) zu Anzeigenamen auf, Fallback auf ID. Test `tests/ko/ko-author.test.ts` (current-only, current+original, ID-Fallback).
+- **Präsentationskomponente:** `components/trust/KoAuthorLine.tsx` (bekommt aufgelöste Namen, i18n `ko.author`/`ko.originalAuthor`). Keine `api/hooks`-Importe in components → Architektur sauber; Namensauflösung (`useDirectory` + `nameOf`) bleibt in den Seiten.
+- **i18n:** DE/EN `ko.author`, `ko.originalAuthor`.
+
+### Abgrenzung gehalten
+Kein Backend, keine neue Autor-Transfer-Logik, keine KO-Modell-Umbenennung, kein Listen-Redesign — nur kompakte Herkunftszeile an bestehenden Karten/Zeilen.
+
+### Gates
+apps/web-tsc EXIT=0 · Biome · depcruise · `npm run check` grün (**66 Dateien / 350 Tests**).
+
+---
+
+## After-Report — SCRUM-88 (FR-I18N-01) · DE/EN vollständig inkl. KI/Reasoner — 2026-06-26
+
+### Befund
+UI-i18n (apps/web/src/i18n.ts, useTranslation, Sprachumschaltung in Topbar/Profile) war breit vorhanden. Lücke: Reasoner/Ask waren hart deutsch (Interview-Fragen, Systemprompts, Step-Labels) und nicht sprachbewusst steuerbar.
+
+### Umsetzung (sprachbewusst, ohne Inhaltsübersetzung)
+- **Reasoner locale-typisiert:** `ReasonerLocale = "de" | "en"` (types.ts, exportiert via index.ts).
+- **Provider-Interface locale-aware:** `structure/answer/assistText/interview` nehmen optional `locale` (Default "de"). `INTERVIEW_QUESTIONS` ist jetzt eine `Record<ReasonerLocale, …>`-Map (echte EN-Fragen); `sourceLabel(title, locale)` → "Quelle:"/"Source:"; `deterministicInterview` folgt der Sprache.
+- **ModelProvider locale-aware:** Systemprompts als Funktionen `structureSystem/answerSystem/assistSystem/interviewSystem(locale)` (EN-Varianten: "Answer ONLY based on the numbered sources…", "Ask exactly ONE next question…", "Improve wording without changing content…", JSON-Contract identisch). User-Prompt-Labels lokalisiert (Frage/Quellen/Bisherige Antworten/Leitfrage ↔ Question/Sources/Previous answers/Guiding question). Quellen werden NICHT übersetzt.
+- **Reasoner-Service:** reicht `locale` an primary UND fallback identisch durch; Modellfehler → deterministischer Fallback behält die Sprache.
+- **AskService:** `ask(question, actor, locale="de")` → `reasoner.answer(question, refs, locale)`; Gap-Erzeugung/-Frage unverändert.
+- **Routes:** `/api/reasoner` + `/api/ask` akzeptieren `locale?: "de"|"en"`, normalisieren ungültige Werte sauber auf "de" (keine 400).
+- **FE:** `endpoints.ask.ask` + `endpoints.reasoner.{structure,assist,interview}` senden optional `locale`. DOM-freier Helper `apps/web/src/lib/reasonerLocale.ts` (`toReasonerLocale`); Ask.tsx, Capture.tsx (structure/assist/interview), Mobile.tsx (Ask) senden die aktuelle UI-Sprache.
+
+### Tests
+- reasoner/service.test.ts: EN-Interview-Frage, EN-Answer-Steps ("Source:"), Fallback behält Sprache; bestehende INTERVIEW_QUESTIONS-Asserts auf `.de` umgestellt.
+- reasoner/provider-model.test.ts: capturing-Client prüft EN-System-/User-Prompts (answer/interview/structure/assist), DE bleibt Default.
+- ask/service.test.ts: `ask(..., "en")` reicht locale an den Reasoner durch (capturing provider).
+- tests/i18n/reasoner-locale.test.ts: `toReasonerLocale` (de/de-DE→de, en/en-US/EN-GB→en, leer/unbekannt→de).
+
+### Abgrenzung gehalten
+Keine automatische Übersetzung existierender KOs, kein neues i18n-Backend, kein Datenmodellumbau, nur DE/EN. Reasoner antwortet auf Basis der Quellen; Quelleninhalte bleiben in Originalsprache.
+
+### Gates
+apps/web-tsc EXIT=0 · Biome · depcruise · `npm run check` grün (**67 Dateien / 360 Tests**).
+
+---
+
+## After-Report — EXT-Restblock SCRUM-90/91/95/96 · Import-Pipeline & Validity/Protection-Konzept — 2026-06-26
+
+### Was (risikoarmer Konzept-/Sicht-Block, keine Engine/Migration)
+Ein einziges DOM-freies Konzeptmodul `apps/web/src/lib/extConcept.ts` plus zwei sichtbare Karten — alles ehrlich aus vorhandenen Daten abgeleitet.
+
+- **SCRUM-90 — Import-Pipeline sichtbar:** `IMPORT_PIPELINE_STEPS` (upload → extract → structure → review → validate → release → reuse) als Pipeline-Card vor der Queue in Stufe2/ImportReview.
+- **SCRUM-91 — Importstatus/Befunde/Quelle:** `summarizeImportQueue` (total/open/accepted/rejected/infoRequested/duplicates) als Queue-Zusammenfassung; `candidateFindings` als kompakte Badges je Kandidat (Dublette, Angaben fehlen, Info angefragt, KO erzeugt, Abgelehnt). Bestehende Review-Actions unverändert; angenommener Kandidat bleibt normaler KO-Flow (koId).
+- **SCRUM-95 — Validity & Protection:** neue Card „Gültigkeit & Schutz" in KnowledgeDetail aus `useLifecyclePending` + `useConflicts` + `validityProtectionView`. Zeigt Aktualität (validiert / Revalidierung fällig / offen / Konflikt / unbekannt), IP-Sensitivität = „nicht bewertet" (bewusst NICHT erfunden), Output-Eignung (nur wenn validiert) und eine abgeleitete Empfehlung. Konflikt hat Vorrang vor Revalidierung.
+- **SCRUM-96 — Konzeptfelder:** als Typ-Vertrag im genutzten FE-Modul dokumentiert (`FreshnessStatus`, `IpSensitivity`, `ValidityProtectionView`). Bewusst KEINE backend-`ext-concept.ts`: ein nirgends importiertes Modul würde depcruise-Orphan/„ungenutzte Exports" auslösen; keine Persistenz/Migration nötig.
+
+### Tests
+`tests/library/ext-concept.test.ts`: Pipeline-Reihenfolge, Queue-Summary, Candidate-Findings, Validity-Ableitung (validiert→outputEligible true; pending→revalidierung-faellig; conflict→konflikt mit Vorrang; gelöster Konflikt zählt nicht; offen→outputEligible false). i18n DE/EN für ext.pipeline.*/queue.*/finding.*/validity.*/freshness.*/protection.*/outputEligible.*/recommendation.*.
+
+### Abgrenzung gehalten / Restlücke
+Keine neue Import-Engine, keine Migration, keine Fake-Bewertung, kein erfundenes Ablaufdatum, keine IP-Klassifizierung. Echte IP-Klassifizierung und persistente `validityUntil`/`generatedOutputs` bleiben separate Modell-/Governance-Tickets.
+
+### Gates
+apps/web-tsc EXIT=0 · Biome · depcruise · `npm run check` grün (**68 Dateien / 368 Tests**).

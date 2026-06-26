@@ -4,11 +4,18 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
-import { useKos, useLibrarySearch } from "../api/hooks";
+import { useDirectory, useKos, useLibrarySearch } from "../api/hooks";
 import { useToast } from "../app/ToastContext";
-import { ConfidenceBar, KNOWLEDGE_TYPES, KnowledgeTypeTag, StatusPill } from "../components/trust";
+import {
+  ConfidenceBar,
+  KNOWLEDGE_TYPES,
+  KnowledgeTypeTag,
+  KoAuthorLine,
+  StatusPill,
+} from "../components/trust";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
 import { deriveStatus } from "../lib/displayStatus";
+import { koAuthorParts } from "../lib/koAuthor";
 import { EXPORT_FORMATS, type ExportFormat, exportFilename, exportUrl } from "../lib/libraryExport";
 import { EMPTY_LIBRARY_FILTER, buildLibraryQuery } from "../lib/libraryQuery";
 import { canRevalidate } from "../lib/revalidation";
@@ -27,6 +34,9 @@ export function Library(): JSX.Element {
   const all = useKos();
   const cats = categoryOptions(all.data ?? []);
   const tags = tagOptions(all.data ?? []);
+  // FR-LIF-04: Autor in jeder KO-Zeile sichtbar (Namen via Directory, Fallback ID).
+  const dir = useDirectory();
+  const nameOf = (uid: string): string => dir.data?.find((d) => d.id === uid)?.name || uid;
 
   // Ergebnisse über den Server-Search-/Filterpfad (Volltext + KoFilter).
   const query = useLibrarySearch(buildLibraryQuery(filter));
@@ -149,8 +159,9 @@ export function Library(): JSX.Element {
                   <Link to={`/wissen/${k.id}`} className="flex min-w-0 flex-1 items-center gap-3">
                     <StatusPill status={deriveStatus(k)} />
                     <KnowledgeTypeTag type={k.type} />
-                    <span className="min-w-0 flex-1 truncate text-[13.5px] text-text">
-                      {k.title}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13.5px] text-text">{k.title}</span>
+                      <KoAuthorLine {...koAuthorParts(k, nameOf)} />
                     </span>
                     <span className="hidden font-mono text-[11px] text-muted-2 sm:block">
                       {k.category}

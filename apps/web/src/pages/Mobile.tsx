@@ -41,6 +41,7 @@ import {
   requestConfirm,
 } from "../lib/mobileConfirm";
 import type { QueueStatus } from "../lib/offlineQueue";
+import { toReasonerLocale } from "../lib/reasonerLocale";
 
 type MobileTab = "capture" | "ask" | "lookup";
 
@@ -62,7 +63,7 @@ const QUEUE_TONE: Record<QueueStatus, string> = {
 // (FE-MOB-05) + PWA/Offline-Queue (FE-MOB-01/07). Offline werden nur Draft-Saves gequeued;
 // Ask/Library zeigen offline eine ehrliche Meldung (kein Fake-Offline).
 export function Mobile(): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { push } = useToast();
   const qc = useQueryClient();
   const [tab, setTab] = useState<MobileTab>("capture");
@@ -150,7 +151,7 @@ export function Mobile(): JSX.Element {
   const [q, setQ] = useState("");
   const [answer, setAnswer] = useState<AnswerResult | null>(null);
   const ask = useMutation({
-    mutationFn: (question: string) => endpoints.ask.ask(question),
+    mutationFn: (question: string) => endpoints.ask.ask(question, toReasonerLocale(i18n.language)),
     onSuccess: (res) => setAnswer(selectAnswer(res)),
     onError: (e) => {
       setAnswer(null);

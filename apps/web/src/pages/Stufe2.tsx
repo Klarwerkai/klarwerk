@@ -22,6 +22,7 @@ import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
 import { Button, Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import { deriveStatus } from "../lib/displayStatus";
+import { IMPORT_PIPELINE_STEPS, candidateFindings, summarizeImportQueue } from "../lib/extConcept";
 import { layoutConflicts, layoutGraph, limitGraph } from "../lib/graphLayout";
 import { ImportParseError, parseImportItems } from "../lib/importReview";
 import {
@@ -268,6 +269,38 @@ export function ImportReview(): JSX.Element {
         </label>
       </Card>
 
+      {/* SCRUM-90/91: konzeptioneller Pipeline-Fluss + ehrliche Queue-Zusammenfassung. */}
+      <Card className="mb-4">
+        <SectionLabel>{t("ext.pipeline.title")}</SectionLabel>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {IMPORT_PIPELINE_STEPS.map((step, i) => (
+            <span key={step} className="flex items-center gap-1.5">
+              <span className="rounded-pill border border-hairline bg-page px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-muted">
+                {t(`ext.pipeline.${step}`)}
+              </span>
+              {i < IMPORT_PIPELINE_STEPS.length - 1 ? (
+                <span className="text-muted-2">→</span>
+              ) : null}
+            </span>
+          ))}
+        </div>
+        {query.data && query.data.length > 0
+          ? (() => {
+              const s = summarizeImportQueue(query.data);
+              return (
+                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-hairline pt-2 font-mono text-[11.5px] text-muted-2">
+                  <span>{t("ext.queue.total", { n: s.total })}</span>
+                  <span>{t("ext.queue.open", { n: s.open })}</span>
+                  <span>{t("ext.queue.accepted", { n: s.accepted })}</span>
+                  <span>{t("ext.queue.rejected", { n: s.rejected })}</span>
+                  <span>{t("ext.queue.infoRequested", { n: s.infoRequested })}</span>
+                  <span>{t("ext.queue.duplicates", { n: s.duplicates })}</span>
+                </div>
+              );
+            })()
+          : null}
+      </Card>
+
       <SectionLabel>{t("imp.queueTitle")}</SectionLabel>
       <QueryState query={query} emptyText={t("imp.queueEmpty")}>
         {(candidates) =>
@@ -287,11 +320,39 @@ export function ImportReview(): JSX.Element {
                     >
                       {t(`imp.status.${c.status}`)}
                     </span>
-                    {c.duplicate ? (
-                      <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-warn-text">
-                        {t("imp.duplicate")}
-                      </span>
-                    ) : null}
+                    {(() => {
+                      // SCRUM-91: kompakte, ehrlich abgeleitete Befund-Badges.
+                      const f = candidateFindings(c);
+                      return (
+                        <>
+                          {f.duplicate ? (
+                            <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-warn-text">
+                              {t("ext.finding.duplicate")}
+                            </span>
+                          ) : null}
+                          {f.missingInfo ? (
+                            <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-warn-text">
+                              {t("ext.finding.missingInfo")}
+                            </span>
+                          ) : null}
+                          {f.infoRequested ? (
+                            <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-muted">
+                              {t("ext.finding.infoRequested")}
+                            </span>
+                          ) : null}
+                          {f.acceptedKo ? (
+                            <span className="rounded-pill bg-trust-pos-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-pos-text">
+                              {t("ext.finding.acceptedKo")}
+                            </span>
+                          ) : null}
+                          {f.rejected ? (
+                            <span className="rounded-pill bg-trust-crit-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-crit-text">
+                              {t("ext.finding.rejected")}
+                            </span>
+                          ) : null}
+                        </>
+                      );
+                    })()}
                     <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-text">
                       {c.item.title}
                     </span>

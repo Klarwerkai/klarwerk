@@ -10,6 +10,7 @@ export {
 export type {
   KnowledgeRef,
   KnowledgeClass,
+  ReasonerLocale,
   AnswerResult,
   AnswerStep,
   StructureResult,

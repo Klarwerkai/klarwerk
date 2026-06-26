@@ -3,33 +3,52 @@ import type {
   AssistResult,
   InterviewResult,
   KnowledgeRef,
+  ReasonerLocale,
   StructureResult,
 } from "./types";
 
 // FR-RSN-02: anbieteragnostisch — jede Implementierung (lokales Modell, Cloud, Mock)
 // erfüllt diese Schnittstelle und ist ohne Änderung der Fachlogik austauschbar.
+// FR-I18N-01: optionale locale steuert Sprache von Prompt/Frage/Label (Default "de").
 export interface ReasonerProvider {
   readonly name: string;
   isAvailable(): boolean;
   // structure/answer sind async — ein echtes Modell ruft über das Netz.
-  structure(rawText: string): Promise<StructureResult>;
-  answer(question: string, context: readonly KnowledgeRef[]): Promise<AnswerResult>;
+  structure(rawText: string, locale?: ReasonerLocale): Promise<StructureResult>;
+  answer(
+    question: string,
+    context: readonly KnowledgeRef[],
+    locale?: ReasonerLocale,
+  ): Promise<AnswerResult>;
   // FR-RSN-03: Text sprachlich präzisieren (ohne Inhalt zu erfinden).
-  assistText(text: string): Promise<AssistResult>;
+  assistText(text: string, locale?: ReasonerLocale): Promise<AssistResult>;
   // SCRUM-132: nächste Interview-Frage + aus den Antworten verdichteter Entwurf.
-  interview(answers: readonly string[]): Promise<InterviewResult>;
+  interview(answers: readonly string[], locale?: ReasonerLocale): Promise<InterviewResult>;
   // select ist reines Ranking (synchron, kein Netzaufruf).
   select(question: string, candidates: readonly KnowledgeRef[]): KnowledgeRef[];
 }
 
-// SCRUM-132: feste Fragenfolge (eine Frage pro Turn) — vom Modell nur umformulierbar,
-// nie inhaltlich erfunden. Index = Anzahl bisher gegebener Antworten.
-export const INTERVIEW_QUESTIONS: readonly string[] = [
-  "Worum geht es? Formuliere die Kernaussage in einem Satz.",
-  "Unter welchen Bedingungen oder ab wann gilt das?",
-  "Welche Maßnahme oder Konsequenz folgt daraus?",
-  "Welche Stichworte/Tags helfen beim Wiederfinden? (kommagetrennt)",
-];
+// SCRUM-132 / FR-I18N-01: feste Fragenfolge je Sprache (eine Frage pro Turn) — vom Modell
+// nur umformulierbar, nie inhaltlich erfunden. Index = Anzahl bisher gegebener Antworten.
+export const INTERVIEW_QUESTIONS: Record<ReasonerLocale, readonly string[]> = {
+  de: [
+    "Worum geht es? Formuliere die Kernaussage in einem Satz.",
+    "Unter welchen Bedingungen oder ab wann gilt das?",
+    "Welche Maßnahme oder Konsequenz folgt daraus?",
+    "Welche Stichworte/Tags helfen beim Wiederfinden? (kommagetrennt)",
+  ],
+  en: [
+    "What is this about? State the core message in one sentence.",
+    "Under what conditions or from when does this apply?",
+    "What action or consequence follows from it?",
+    "Which keywords/tags help to find it again? (comma-separated)",
+  ],
+};
+
+// FR-I18N-01: sprachbewusstes Label für eine Beleg-/Quellenangabe (kein Quelleninhalt).
+export function sourceLabel(title: string, locale: ReasonerLocale = "de"): string {
+  return locale === "en" ? `Source: ${title}` : `Quelle: ${title}`;
+}
 
 // Verdichtet die bisherigen Antworten nachvollziehbar zu einem KO-Entwurf.
 // Rein deterministisch — erfindet keinen Inhalt, mappt nur Antwort → Feld.
@@ -52,16 +71,21 @@ export function condenseInterview(answers: readonly string[], demo: boolean): St
   };
 }
 
-// SCRUM-132: deterministischer Interview-Turn — nächste Standardfrage + Abschluss bei
-// ausreichendem Inhalt (Kernaussage + Bedingung + Maßnahme). Basis für beide Provider.
-export function deterministicInterview(answers: readonly string[], demo: boolean): InterviewResult {
+// SCRUM-132 / FR-I18N-01: deterministischer Interview-Turn — nächste Standardfrage (in der
+// gewählten Sprache) + Abschluss bei ausreichendem Inhalt (Kernaussage + Bedingung + Maßnahme).
+export function deterministicInterview(
+  answers: readonly string[],
+  demo: boolean,
+  locale: ReasonerLocale = "de",
+): InterviewResult {
+  const questions = INTERVIEW_QUESTIONS[locale];
   const core = (answers[0]?.trim().length ?? 0) > 0;
   const hasCond = (answers[1]?.trim().length ?? 0) > 0;
   const hasMeas = (answers[2]?.trim().length ?? 0) > 0;
   const sufficient = core && hasCond && hasMeas;
-  const done = answers.length >= INTERVIEW_QUESTIONS.length || sufficient;
+  const done = answers.length >= questions.length || sufficient;
   return {
-    question: done ? null : (INTERVIEW_QUESTIONS[answers.length] ?? null),
+    question: done ? null : (questions[answers.length] ?? null),
     done,
     draft: condenseInterview(answers, demo),
     demo,
@@ -134,16 +158,23 @@ export class DeterministicProvider implements ReasonerProvider {
     return { text: ended, demo: true };
   }
 
-  // SCRUM-132: deterministischer Fallback, klar als Demo markiert.
-  async interview(answers: readonly string[]): Promise<InterviewResult> {
-    return deterministicInterview(answers, true);
+  // SCRUM-132 / FR-I18N-01: deterministischer Fallback, klar als Demo markiert.
+  async interview(
+    answers: readonly string[],
+    locale: ReasonerLocale = "de",
+  ): Promise<InterviewResult> {
+    return deterministicInterview(answers, true, locale);
   }
 
   select(question: string, candidates: readonly KnowledgeRef[]): KnowledgeRef[] {
     return keywordSelect(question, candidates);
   }
 
-  async answer(question: string, context: readonly KnowledgeRef[]): Promise<AnswerResult> {
+  async answer(
+    question: string,
+    context: readonly KnowledgeRef[],
+    locale: ReasonerLocale = "de",
+  ): Promise<AnswerResult> {
     const relevant = this.select(question, context);
     // FR-RSN-03: keine Rateantwort ohne belastbares Wissen.
     if (relevant.length === 0) {
@@ -175,7 +206,13 @@ export class DeterministicProvider implements ReasonerProvider {
       knowledgeClass: best.status === "validiert" ? "gesichert" : "ungeprueft",
       trust: best.trust,
       sources: relevant.map((r) => r.id),
-      steps: [{ description: `Quelle: ${best.title}`, sourceId: best.id, snippet: best.statement }],
+      steps: [
+        {
+          description: sourceLabel(best.title, locale),
+          sourceId: best.id,
+          snippet: best.statement,
+        },
+      ],
       demo: true,
     };
   }

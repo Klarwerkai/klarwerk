@@ -5,7 +5,14 @@ import { useTranslation } from "react-i18next";
 import { Link, useParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { type KoAction, endpoints } from "../api/endpoints";
-import { useAudit, useDirectory, useKo, useKos } from "../api/hooks";
+import {
+  useAudit,
+  useConflicts,
+  useDirectory,
+  useKo,
+  useKos,
+  useLifecyclePending,
+} from "../api/hooks";
 import type { ConflictType, ExternalResult, KnowledgeObject, KnowledgeType } from "../api/types";
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
@@ -29,6 +36,7 @@ import {
   TextInput,
 } from "../components/ui";
 import { deriveStatus } from "../lib/displayStatus";
+import { validityProtectionView } from "../lib/extConcept";
 import { toSourcePayload as externalToSourcePayload } from "../lib/externalSearch";
 import { fileToThumbDataUrl, readFileAsDataUrl } from "../lib/files";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
@@ -82,6 +90,9 @@ export function KnowledgeDetail(): JSX.Element {
   const query = useKo(id);
   const koList = useKos();
   const audit = useAudit();
+  // SCRUM-95/96: Signale für die abgeleitete Gültigkeit-/Schutz-Sicht.
+  const pending = useLifecyclePending();
+  const conflicts = useConflicts();
   const dir = useDirectory();
   const nameOf = (uid: string): string => dir.data?.find((d) => d.id === uid)?.name || uid;
   const qc = useQueryClient();
@@ -839,6 +850,40 @@ export function KnowledgeDetail(): JSX.Element {
                   </div>
                 ) : null}
               </Card>
+
+              {/* SCRUM-95/96: Gültigkeit & Schutz — ehrlich abgeleitete Sicht, keine Persistenz. */}
+              {(() => {
+                const v = validityProtectionView(ko, pending.data ?? [], conflicts.data ?? []);
+                return (
+                  <Card className="space-y-2">
+                    <SectionLabel>{t("ext.validity.title")}</SectionLabel>
+                    <dl className="space-y-1.5 text-[12.5px]">
+                      <div className="flex items-center justify-between gap-2">
+                        <dt className="text-muted">{t("ext.validity.freshness")}</dt>
+                        <dd className="font-mono text-text">
+                          {t(`ext.freshness.${v.freshnessStatus}`)}
+                        </dd>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <dt className="text-muted">{t("ext.protection.ip")}</dt>
+                        <dd className="font-mono text-muted-2">{t("ext.protection.notRated")}</dd>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <dt className="text-muted">{t("ext.validity.outputEligible")}</dt>
+                        <dd
+                          className={`font-mono ${v.outputEligible ? "text-trust-pos-text" : "text-muted-2"}`}
+                        >
+                          {t(v.outputEligible ? "ext.outputEligible.yes" : "ext.outputEligible.no")}
+                        </dd>
+                      </div>
+                    </dl>
+                    <p className="border-t border-hairline pt-2 text-[12.5px] text-text">
+                      {t("ext.validity.recommendation")}:{" "}
+                      {t(`ext.recommendation.${v.recommendation}`)}
+                    </p>
+                  </Card>
+                );
+              })()}
 
               {/* SCRUM-142: Herkunft & Verlauf (Lineage) — datenbasiert */}
               {(() => {

@@ -59,6 +59,57 @@ describe("ModelProvider", () => {
   });
 });
 
+// SCRUM-88 / FR-I18N-01: System-/User-Prompts folgen der locale.
+describe("ModelProvider locale-aware prompts", () => {
+  function capturingClient(): { client: ModelClient; calls: { system: string; user: string }[] } {
+    const calls: { system: string; user: string }[] = [];
+    const client: ModelClient = {
+      name: "capture",
+      complete: async (system, user) => {
+        calls.push({ system, user });
+        return "Modellausgabe";
+      },
+    };
+    return { client, calls };
+  }
+
+  it("answer: englische System-/User-Prompts bei locale 'en'", async () => {
+    const { client, calls } = capturingClient();
+    await new ModelProvider(client).answer("Überdruck Ventil", KOS, "en");
+    expect(calls[0]?.system).toContain("Answer ONLY based on the numbered sources");
+    expect(calls[0]?.user).toContain("Question:");
+    expect(calls[0]?.user).toContain("Sources:");
+  });
+
+  it("answer: deutsche Prompts bleiben Default", async () => {
+    const { client, calls } = capturingClient();
+    await new ModelProvider(client).answer("Überdruck Ventil", KOS);
+    expect(calls[0]?.system).toContain("nummerierten Quellen");
+    expect(calls[0]?.user).toContain("Frage:");
+    expect(calls[0]?.user).toContain("Quellen:");
+  });
+
+  it("interview: englischer System-Prompt + Labels bei locale 'en'", async () => {
+    const { client, calls } = capturingClient();
+    // Nur eine Antwort → noch nicht abgeschlossen → Modell wird zum Umformulieren befragt.
+    const res = await new ModelProvider(client).interview(["Core message"], "en");
+    expect(res.demo).toBe(false);
+    expect(calls[0]?.system).toContain("Ask exactly ONE next");
+    expect(calls[0]?.user).toContain("Previous answers:");
+    expect(calls[0]?.user).toContain("Guiding question:");
+  });
+
+  it("structure/assist: englische System-Prompts bei locale 'en'", async () => {
+    const struct = capturingClient();
+    await new ModelProvider(struct.client).structure("Raw text.", "en").catch(() => undefined);
+    expect(struct.calls[0]?.system).toContain("Respond ONLY with JSON");
+
+    const assist = capturingClient();
+    await new ModelProvider(assist.client).assistText("text", "en");
+    expect(assist.calls[0]?.system).toContain("Improve wording without changing content");
+  });
+});
+
 describe("model-client", () => {
   it("createModelClientFromEnv: ohne Schlüssel undefined, mit Schlüssel definiert", () => {
     expect(createModelClientFromEnv({})).toBeUndefined();

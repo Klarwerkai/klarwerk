@@ -1,7 +1,14 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { AuditService, InMemoryAuditRepo } from "../../audit";
 import { InMemoryKoRepo, KoService } from "../../knowledge-object";
-import { Reasoner } from "../../reasoner";
+import {
+  type AnswerResult,
+  type KnowledgeRef,
+  Reasoner,
+  type ReasonerLocale,
+  type ReasonerProvider,
+  type StructureResult,
+} from "../../reasoner";
 import { InMemoryGapRepo } from "./repo";
 import { AskService } from "./service";
 import type { Gap } from "./types";
@@ -106,6 +113,59 @@ describe("AskService", () => {
       // @ts-expect-error: ungültiger Wert wird zur Laufzeit abgewiesen
       ctx.ask.setGapPriority(gap.id, "dringend"),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  // SCRUM-88 / FR-I18N-01: AskService reicht die UI-Sprache an den Reasoner durch.
+  it("FR-I18N-01: ask(..., 'en') übergibt locale an den Reasoner", async () => {
+    const seen: (ReasonerLocale | undefined)[] = [];
+    const capturing: ReasonerProvider = {
+      name: "capture",
+      isAvailable: () => true,
+      structure: async (): Promise<StructureResult> => {
+        throw new Error("ungenutzt");
+      },
+      answer: async (
+        _q: string,
+        _ctx: readonly KnowledgeRef[],
+        locale?: ReasonerLocale,
+      ): Promise<AnswerResult> => {
+        seen.push(locale);
+        return {
+          answered: true,
+          answer: "ok",
+          knowledgeClass: "gesichert",
+          trust: 50,
+          sources: ["x"],
+          steps: [],
+          demo: false,
+        };
+      },
+      assistText: async () => ({ text: "", demo: false }),
+      interview: async () => ({
+        question: null,
+        done: true,
+        draft: {
+          title: "",
+          statement: "",
+          conditions: [],
+          measures: [],
+          tags: [],
+          confidence: 0,
+          demo: false,
+        },
+        demo: false,
+      }),
+      select: () => [],
+    };
+    const ask = new AskService({
+      reasoner: new Reasoner(capturing),
+      koService: ctx.koService,
+      gaps: ctx.gaps,
+      audit: ctx.audit,
+    });
+    await ask.ask("Frage", "tester", "en");
+    await ask.ask("Frage");
+    expect(seen).toEqual(["en", "de"]);
   });
 
   it("SCRUM-115: Legacy-Lücke ohne priority wird beim Lesen auf 'mittel' normalisiert", async () => {

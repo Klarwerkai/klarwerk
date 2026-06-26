@@ -176,6 +176,10 @@ describe("Reasoner", () => {
     const iv = await reasoner.interview(["Kernaussage", "Bedingung", "Maßnahme"]);
     expect(iv.demo).toBe(true);
     expect(iv.done).toBe(true);
+    // SCRUM-88 / FR-I18N-01: der Fallback behält die geforderte Sprache.
+    const enFb = await reasoner.answer("Überdruck Ventil", KOS, "en");
+    expect(enFb.demo).toBe(true);
+    expect(enFb.steps[0]?.description.startsWith("Source:")).toBe(true);
   });
 
   it("SCRUM-132: nutzt das Modell zum Umformulieren der Frage (Verdichtung deterministisch)", async () => {
@@ -221,16 +225,31 @@ describe("DeterministicProvider.interview (SCRUM-132)", () => {
 
   it("eine Frage pro Turn entlang der Fragenfolge", async () => {
     const t0 = await p.interview([]);
-    expect(t0.question).toBe(INTERVIEW_QUESTIONS[0]);
+    expect(t0.question).toBe(INTERVIEW_QUESTIONS.de[0]);
     expect(t0.done).toBe(false);
     expect(t0.demo).toBe(true);
 
     const t1 = await p.interview(["Bei Überdruck Ventil X schließen."]);
-    expect(t1.question).toBe(INTERVIEW_QUESTIONS[1]);
+    expect(t1.question).toBe(INTERVIEW_QUESTIONS.de[1]);
     expect(t1.done).toBe(false);
 
     const t2 = await p.interview(["Aussage", "Bedingung"]);
-    expect(t2.question).toBe(INTERVIEW_QUESTIONS[2]);
+    expect(t2.question).toBe(INTERVIEW_QUESTIONS.de[2]);
+  });
+
+  // SCRUM-88 / FR-I18N-01: deterministisches Interview folgt der Sprache.
+  it("liefert die nächste Frage auf Englisch bei locale 'en'", async () => {
+    const t0 = await p.interview([], "en");
+    expect(t0.question).toBe(INTERVIEW_QUESTIONS.en[0]);
+    const t1 = await p.interview(["Close valve X on overpressure."], "en");
+    expect(t1.question).toBe(INTERVIEW_QUESTIONS.en[1]);
+  });
+
+  it("Answer-Steps nutzen 'Source:' bei locale 'en', 'Quelle:' sonst", async () => {
+    const de = await p.answer("Überdruck Ventil", KOS);
+    expect(de.steps[0]?.description.startsWith("Quelle:")).toBe(true);
+    const en = await p.answer("Überdruck Ventil", KOS, "en");
+    expect(en.steps[0]?.description.startsWith("Source:")).toBe(true);
   });
 
   it("Abschluss bei ausreichendem Inhalt (Kernaussage + Bedingung + Maßnahme)", async () => {

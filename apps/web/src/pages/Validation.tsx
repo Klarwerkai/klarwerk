@@ -7,8 +7,9 @@ import { endpoints } from "../api/endpoints";
 import { useDirectory, useValidationBoard } from "../api/hooks";
 import type { Verdict } from "../api/types";
 import { useSession } from "../app/AuthContext";
-import { ConfidenceBar, KnowledgeTypeTag } from "../components/trust";
+import { ConfidenceBar, KnowledgeTypeTag, KoAuthorLine } from "../components/trust";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
+import { koAuthorParts } from "../lib/koAuthor";
 import {
   type FeedbackVerdict,
   buildValidationFeedback,
@@ -28,6 +29,8 @@ export function Validation(): JSX.Element {
   const users = useDirectory();
   const { user } = useSession();
   const qc = useQueryClient();
+  // FR-LIF-04: Autor je KO-Karte (Namen via Directory, Fallback ID).
+  const nameOf = (uid: string): string => users.data?.find((d) => d.id === uid)?.name || uid;
   const [filter, setFilter] = useState(EMPTY_VALIDATION_FILTER);
   // Offenes Feedback-Formular (FE-VAL-06): pro KO + gewählter Verdict.
   const [feedback, setFeedback] = useState<{ id: string; verdict: FeedbackVerdict } | null>(null);
@@ -159,6 +162,9 @@ export function Validation(): JSX.Element {
                           <span className="font-mono text-[11px] text-muted-2">
                             {t("val.target", { n: k.neededValidations })}
                           </span>
+                        </div>
+                        <div className="mt-1">
+                          <KoAuthorLine {...koAuthorParts(k, nameOf)} />
                         </div>
                       </div>
                       <div className="flex shrink-0 flex-col items-end gap-1.5">

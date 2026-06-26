@@ -10,6 +10,7 @@ import { Button, Card, PageHeader, SectionLabel } from "../components/ui";
 import { selectAnswer } from "../lib/askResponse";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
 import { type EvidenceTone, knowledgeClassMeta } from "../lib/knowledgeClass";
+import { toReasonerLocale } from "../lib/reasonerLocale";
 
 // Tone → Badge-Stil (Tailwind-Tokens), bewusst in der Komponente gehalten.
 const EVIDENCE_TONE: Record<EvidenceTone, string> = {
@@ -20,12 +21,12 @@ const EVIDENCE_TONE: Record<EvidenceTone, string> = {
 };
 
 export function Ask(): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [q, setQ] = useState("");
   const [result, setResult] = useState<AnswerResult | null>(null);
 
   const ask = useMutation({
-    mutationFn: () => endpoints.ask.ask(q),
+    mutationFn: () => endpoints.ask.ask(q, toReasonerLocale(i18n.language)),
     // SCRUM-138: Backend liefert { result, gap } — Antwort sauber entpacken.
     onSuccess: (r) => setResult(selectAnswer(r)),
   });

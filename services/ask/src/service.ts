@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
 import type { KoService } from "../../knowledge-object";
-import type { AnswerResult, KnowledgeRef, Reasoner } from "../../reasoner";
+import type { AnswerResult, KnowledgeRef, Reasoner, ReasonerLocale } from "../../reasoner";
 import type { GapRepo } from "./repo";
 import { AskError, type Gap, type GapPriority, isGapPriority } from "./types";
 
@@ -45,7 +45,8 @@ export class AskService {
   }
 
   // FR-ASK-01/02/03: begründete Antwort über den Reasoner; ehrliche Verweigerung → Wissenslücke.
-  async ask(question: string, actor = "system"): Promise<AskResult> {
+  // FR-I18N-01: locale steuert die Antwortsprache des Reasoners (Quelleninhalt bleibt original).
+  async ask(question: string, actor = "system", locale: ReasonerLocale = "de"): Promise<AskResult> {
     const kos = await this.koService.list();
     const refs: KnowledgeRef[] = kos.map((ko) => ({
       id: ko.id,
@@ -54,7 +55,7 @@ export class AskService {
       status: ko.status,
       trust: ko.trust,
     }));
-    const result = await this.reasoner.answer(question, refs);
+    const result = await this.reasoner.answer(question, refs, locale);
     // FR-ANA-02: Telemetrie für die Antwortquote ohne Lücke.
     await this.audit?.record({
       actor,

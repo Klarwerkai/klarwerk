@@ -1,9 +1,15 @@
-import { type ReasonerProvider, deterministicInterview, keywordSelect } from "./provider";
+import {
+  type ReasonerProvider,
+  deterministicInterview,
+  keywordSelect,
+  sourceLabel,
+} from "./provider";
 import type {
   AnswerResult,
   AssistResult,
   InterviewResult,
   KnowledgeRef,
+  ReasonerLocale,
   StructureResult,
 } from "./types";
 
@@ -14,24 +20,52 @@ export interface ModelClient {
   complete(system: string, user: string): Promise<string>;
 }
 
-const STRUCTURE_SYSTEM =
-  "Du strukturierst industrielles Erfahrungswissen. Antworte AUSSCHLIESSLICH mit JSON: " +
-  '{"title": string, "statement": string, "conditions": string[], "measures": string[], ' +
-  '"tags": string[], "confidence": number (0..1)}. Erfinde nichts dazu.';
+// FR-I18N-01: Systemprompts sprachbewusst. JSON-Contract der structure-Aufgabe bleibt
+// in beiden Sprachen identisch — nur die Anweisung ist lokalisiert.
+function structureSystem(locale: ReasonerLocale): string {
+  const contract =
+    '{"title": string, "statement": string, "conditions": string[], "measures": string[], ' +
+    '"tags": string[], "confidence": number (0..1)}';
+  return locale === "en"
+    ? `You structure industrial experiential knowledge. Respond ONLY with JSON: ${contract}. Do not invent anything.`
+    : `Du strukturierst industrielles Erfahrungswissen. Antworte AUSSCHLIESSLICH mit JSON: ${contract}. Erfinde nichts dazu.`;
+}
 
-const ANSWER_SYSTEM =
-  "Beantworte die Frage NUR auf Basis der nummerierten Quellen. Reichen die Quellen nicht, " +
-  "sage das ehrlich. Erfinde keine Fakten und keine Zahlen.";
+function answerSystem(locale: ReasonerLocale): string {
+  return locale === "en"
+    ? "Answer ONLY based on the numbered sources. If the sources are not enough, say so honestly. Do not invent facts or numbers."
+    : "Beantworte die Frage NUR auf Basis der nummerierten Quellen. Reichen die Quellen nicht, sage das ehrlich. Erfinde keine Fakten und keine Zahlen.";
+}
 
-const ASSIST_SYSTEM =
-  "Du präzisierst und glättest industrielles Erfahrungswissen sprachlich. Verändere oder " +
-  "erfinde KEINE Inhalte, Zahlen oder Fakten. Gib AUSSCHLIESSLICH den überarbeiteten Text " +
-  "zurück, ohne Vorbemerkung oder Anführungszeichen.";
+function assistSystem(locale: ReasonerLocale): string {
+  return locale === "en"
+    ? "Improve wording without changing content. Do NOT alter or invent any content, numbers or facts. Return ONLY the revised text, without preamble or quotation marks."
+    : "Du präzisierst und glättest industrielles Erfahrungswissen sprachlich. Verändere oder erfinde KEINE Inhalte, Zahlen oder Fakten. Gib AUSSCHLIESSLICH den überarbeiteten Text zurück, ohne Vorbemerkung oder Anführungszeichen.";
+}
 
-const INTERVIEW_SYSTEM =
-  "Du führst ein kurzes Redakteur-Interview, um industrielles Erfahrungswissen zu erfassen. " +
-  "Formuliere genau EINE nächste, konkrete Frage, die auf den bisherigen Antworten aufbaut. " +
-  "Erfinde KEINE fachlichen Inhalte oder Fakten. Gib AUSSCHLIESSLICH die Frage zurück.";
+function interviewSystem(locale: ReasonerLocale): string {
+  return locale === "en"
+    ? "You run a short editorial interview to capture industrial experiential knowledge. Ask exactly ONE next, concrete question that builds on the previous answers. Do NOT invent any technical content or facts. Return ONLY the question."
+    : "Du führst ein kurzes Redakteur-Interview, um industrielles Erfahrungswissen zu erfassen. Formuliere genau EINE nächste, konkrete Frage, die auf den bisherigen Antworten aufbaut. Erfinde KEINE fachlichen Inhalte oder Fakten. Gib AUSSCHLIESSLICH die Frage zurück.";
+}
+
+// Sprachbewusste User-Prompt-Labels (kein Quelleninhalt wird übersetzt).
+const LABELS: Record<ReasonerLocale, Record<string, string>> = {
+  de: {
+    question: "Frage",
+    sources: "Quellen",
+    priorAnswers: "Bisherige Antworten",
+    guiding: "Leitfrage",
+    none: "(noch keine)",
+  },
+  en: {
+    question: "Question",
+    sources: "Sources",
+    priorAnswers: "Previous answers",
+    guiding: "Guiding question",
+    none: "(none yet)",
+  },
+};
 
 function extractJson(raw: string): string {
   const start = raw.indexOf("{");
@@ -70,9 +104,9 @@ export class ModelProvider implements ReasonerProvider {
     return keywordSelect(question, candidates);
   }
 
-  async structure(rawText: string): Promise<StructureResult> {
+  async structure(rawText: string, locale: ReasonerLocale = "de"): Promise<StructureResult> {
     const client = this.requireClient();
-    const raw = await client.complete(STRUCTURE_SYSTEM, rawText);
+    const raw = await client.complete(structureSystem(locale), rawText);
     const parsed = JSON.parse(extractJson(raw)) as Record<string, unknown>;
     const firstSentence = rawText.split(/[.!?]/)[0]?.trim() ?? rawText.trim();
     return {
@@ -86,31 +120,39 @@ export class ModelProvider implements ReasonerProvider {
     };
   }
 
-  async assistText(text: string): Promise<AssistResult> {
+  async assistText(text: string, locale: ReasonerLocale = "de"): Promise<AssistResult> {
     const client = this.requireClient();
-    const improved = (await client.complete(ASSIST_SYSTEM, text)).trim();
+    const improved = (await client.complete(assistSystem(locale), text)).trim();
     return { text: improved || text.trim(), demo: false };
   }
 
   // SCRUM-132: Modell formuliert nur die nächste Frage; Abschluss + Draft-Verdichtung
   // bleiben deterministisch (kein Erfinden von Inhalt). demo=false, da Modell genutzt.
-  async interview(answers: readonly string[]): Promise<InterviewResult> {
-    const base = deterministicInterview(answers, false);
+  async interview(
+    answers: readonly string[],
+    locale: ReasonerLocale = "de",
+  ): Promise<InterviewResult> {
+    const base = deterministicInterview(answers, false, locale);
     if (base.done || base.question === null) {
       return base;
     }
     const client = this.requireClient();
+    const labels = LABELS[locale];
     const prior = answers.map((a, i) => `A${i + 1}: ${a}`).join("\n");
     const phrased = (
       await client.complete(
-        INTERVIEW_SYSTEM,
-        `Bisherige Antworten:\n${prior || "(noch keine)"}\n\nLeitfrage: ${base.question}`,
+        interviewSystem(locale),
+        `${labels.priorAnswers}:\n${prior || labels.none}\n\n${labels.guiding}: ${base.question}`,
       )
     ).trim();
     return { ...base, question: phrased || base.question };
   }
 
-  async answer(question: string, context: readonly KnowledgeRef[]): Promise<AnswerResult> {
+  async answer(
+    question: string,
+    context: readonly KnowledgeRef[],
+    locale: ReasonerLocale = "de",
+  ): Promise<AnswerResult> {
     const relevant = keywordSelect(question, context);
     // FR-RSN-03: ohne belastbares Wissen keine Rateantwort — Modell wird gar nicht erst befragt.
     const best = relevant[0];
@@ -126,9 +168,13 @@ export class ModelProvider implements ReasonerProvider {
       };
     }
     const client = this.requireClient();
+    const labels = LABELS[locale];
     const grounding = relevant.map((r, i) => `[${i + 1}] ${r.title}: ${r.statement}`).join("\n");
     const answerText = (
-      await client.complete(ANSWER_SYSTEM, `Frage: ${question}\n\nQuellen:\n${grounding}`)
+      await client.complete(
+        answerSystem(locale),
+        `${labels.question}: ${question}\n\n${labels.sources}:\n${grounding}`,
+      )
     ).trim();
     return {
       answered: true,
@@ -137,7 +183,7 @@ export class ModelProvider implements ReasonerProvider {
       trust: best.trust,
       sources: relevant.map((r) => r.id),
       steps: relevant.map((r) => ({
-        description: `Quelle: ${r.title}`,
+        description: sourceLabel(r.title, locale),
         sourceId: r.id,
         snippet: r.statement,
       })),

@@ -3,13 +3,16 @@ import { Link } from "react-router-dom";
 import {
   useAudit,
   useConflicts,
+  useDirectory,
   useGaps,
   useKos,
   useLifecyclePending,
   useValidationBoard,
 } from "../api/hooks";
 import { useSession } from "../app/AuthContext";
+import { KoAuthorLine } from "../components/trust";
 import { Card, PageHeader } from "../components/ui";
+import { type KoAuthorParts, koAuthorParts } from "../lib/koAuthor";
 import { returnedToAuthor } from "../lib/validationStatus";
 
 interface Task {
@@ -17,6 +20,8 @@ interface Task {
   label: string;
   typeKey: string;
   to: string;
+  // FR-LIF-04: Autor sichtbar, wo ein KO hinter der Aufgabe steht.
+  author?: KoAuthorParts;
 }
 
 export function MyTasks(): JSX.Element {
@@ -27,16 +32,23 @@ export function MyTasks(): JSX.Element {
   const gaps = useGaps();
   const audit = useAudit();
   const kos = useKos();
+  const dir = useDirectory();
   const { user } = useSession();
 
+  const nameOf = (uid: string): string => dir.data?.find((d) => d.id === uid)?.name || uid;
   // SCRUM-124: KOs, die mir (als Autor) nach Gelb/Rot zur Nacharbeit zurückgegeben wurden.
   const kosById = new Map((kos.data ?? []).map((k) => [k.id, k]));
+  const authorOf = (koId: string): KoAuthorParts | undefined => {
+    const ko = kosById.get(koId);
+    return ko ? koAuthorParts(ko, nameOf) : undefined;
+  };
   const returned: Task[] = user
     ? returnedToAuthor(audit.data ?? [], kos.data ?? [], user.id).map((r) => ({
         id: `rw-${r.koId}`,
         label: kosById.get(r.koId)?.title ?? r.koId,
         typeKey: "task.returned",
         to: `/wissen/${r.koId}`,
+        author: authorOf(r.koId),
       }))
     : [];
 
@@ -52,12 +64,14 @@ export function MyTasks(): JSX.Element {
       label: k.title,
       typeKey: "task.validation",
       to: `/wissen/${k.id}`,
+      author: koAuthorParts(k, nameOf),
     })),
     ...(lifecycle.data ?? []).map((id) => ({
       id: `lc-${id}`,
-      label: id,
+      label: kosById.get(id)?.title ?? id,
       typeKey: "task.revalidation",
       to: "/lebenszyklus",
+      author: authorOf(id),
     })),
   ];
   const later: Task[] = (gaps.data ?? [])
@@ -98,7 +112,10 @@ export function MyTasks(): JSX.Element {
                       <span className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-[10.5px] text-muted">
                         {t(it.typeKey)}
                       </span>
-                      <span className="truncate text-[13.5px] text-text">{it.label}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13.5px] text-text">{it.label}</span>
+                        {it.author ? <KoAuthorLine {...it.author} /> : null}
+                      </span>
                     </Link>
                   ))}
                 </div>
