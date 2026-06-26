@@ -1825,3 +1825,35 @@ Datum: 2026-06-25
 **Gelaufene Checks:** apps/web `tsc --noEmit` EXIT=0 · root `tsc` EXIT=0 · Biome grün (Manifest formatiert) · depcruise sauber · `npm run check` GRÜN — **50 Testdateien / 244 Tests** (6 neu) · **zwingend zusätzlich** `cd apps/web && npm run build` GRÜN (tsc + vite build, EXIT=0): Manifest/SW/Icons in `dist` verifiziert, pdfjs/tesseract-Lazy-Chunks (`pdf.worker`, `pdf`) bauen sauber.
 
 **Empfehlung:** Nach grünem Mac-Gate + Commit/Push dürfen **FE-MOB-01** und **FE-MOB-07** in SCRUM-113 abgehakt werden → **SCRUM-113 auf Done**. Ich setze keine Jira-Checkbox/Status selbst.
+
+---
+
+## 2026-06-26 · SCRUM-99 — FE-AUTH-07 SSO/OIDC-Login (Auth-Code + PKCE) + Rollen-Mapping
+
+**Ticket(s):** SCRUM-99 / FE-AUTH-07. Freigegebener Weg: **Authorization Code + PKCE (S256)** — kein Implicit, kein id_token im Browser-Fragment. Umsetzung exakt nach freigegebenem Ziel-Flow.
+
+**Befund (read-only):** Backend hatte OIDC-Verifier (jose/JWKS, iss/aud, getestet), Route `POST /api/auth/oidc` (verify-only, idToken), `loginWithOidc` (Auto-Provision). Lücken: (1) **kein Claim-basiertes Rollen-Mapping** (Rolle nur „erstes Konto=admin, sonst experte"), (2) **keine FE-Anbindung** (`authApi.oidc`/Button/Callback), (3) **kein echter Login-Flow** (nur Token-Verify, kein Authorize/Token-Exchange). SCRUM-25: kein lokaler/Spec-Treffer, kein Blocker.
+
+**Backend — geänderte/neue Dateien:**
+- `services/auth/src/oidc.ts` — Auth-Code+PKCE: `createPkcePair`/`codeChallengeS256` (S256), `OidcConfig` um authorize/token/clientId/redirectUri/clientSecret/roles erweitert, `OidcClaims.roles`, **lazy** JWKS, `verify(idToken, expectedNonce?)` mit **nonce-Prüfung**, injizierbarer `createTokenExchanger` (Form-POST an Token-Endpoint, optional client_secret), `createOidcProvider` (authorizeUrl/exchange/verify/mapRole), `createOidcProviderFromEnv` (nur aktiv bei vollständiger Config). **Rollen-Mapping**: reine `mapOidcRole(groups,cfg)` + `parseRolesClaim` — Default `viewer`, Präzedenz admin>controller>experte>viewer, **Admin nur bei exakt konfigurierter Gruppe** (kein stiller Admin).
+- `services/auth/src/service.ts` — `loginWithOidc(claims, autoProvision, mappedRole?)`: mappedRole nur beim **Provisionieren** neuer Konten; Bootstrap-Erstkonto bleibt Admin; **bestehende Konten behalten ihre Admin-Rolle** (Claims überschreiben nie still).
+- `services/auth/src/routes.ts` — `GET /api/auth/oidc/start` (state/nonce/PKCE-verifier als kurzlebige HttpOnly/SameSite-Cookies → Redirect zum IdP, response_type=code, S256); `POST /api/auth/oidc` (state==Cookie, Code-Tausch mit verifier, id_token+nonce-Verify, Rollen-Mapping, Session; Flow-Cookies werden gelöscht). `/api/auth/status` liefert zusätzlich `oidcEnabled`.
+- `services/auth/index.ts`, `services/app/src/build-app.ts` — neue Exporte/`createOidcProviderFromEnv`-Wiring.
+- `services/auth/src/oidc.test.ts` — erweitert: nonce-Reject, PKCE-S256, Rollen-Mapping (Präzedenz + kein stiller Admin + parseRolesClaim), Provider-Code-Flow (Exchange injiziert/stubbar, nonce-Verify, Rolle aus Claims), loginWithOidc (Provision mit mappedRole, bestehender Nutzer behält Admin-Rolle).
+
+**Frontend — geänderte/neue Dateien:**
+- `apps/web/src/lib/oidcCallback.ts` (neu, DOM-frei) `parseOidcCallback`/`isCompleteCallback` + `tests/auth/oidc-callback.test.ts`.
+- `apps/web/src/api/auth.ts` — `AuthStatus.oidcEnabled`, `authApi.ssoStartUrl`, `authApi.oidc(code,state)`.
+- `apps/web/src/app/AuthContext.tsx` — `oidcEnabled` aus Status durchgereicht.
+- `apps/web/src/auth/AuthScreens.tsx` — SSO-Abschnitt im Login: Button „Mit SSO anmelden" **nur aktiv wenn `oidcEnabled`**, sonst ehrlicher Hinweis „nicht konfiguriert".
+- `apps/web/src/auth/SsoCallback.tsx` (neu) — Callback **vor** dem Auth-Gate (`App.tsx` Pfad `/sso/callback`): verarbeitet code/state, postet, Fehler ehrlich, leitet weiter.
+- `apps/web/src/App.tsx`, `i18n.ts` (`auth.sso*`, DE+EN).
+- `.env.example` + `docs/operations/deploy-hetzner.md` — neue OIDC-Variablen (authorize/token/clientId/redirectUri/optional secret + Rollen-Gruppen), Flow-Beschreibung aktualisiert. **Keine echten Secrets im Repo.**
+
+**Erfüllte AK:** Auth-Code+PKCE-Flow (start→IdP→/sso/callback→exchange) ✓ · state/nonce/PKCE serverseitig geprüft ✓ · Rollen-Mapping deterministisch + getestet, Default viewer, Admin nur via exakter Gruppe ✓ · bestehende Rollen nicht still überschrieben ✓ · Provision mit mappedRole, Bootstrap-Erstkonto bleibt ✓ · `oidcEnabled` im Status, SSO-UI ehrlich aktiv/deaktiviert ✓ · kein Fake-SSO, kein Implicit, keine hardcodierten Secrets ✓ · Passwort-/Setup-/Register-/Reset-Flows unverändert (nur additiv) ✓.
+
+**Gelaufene Checks:** apps/web `tsc --noEmit` EXIT=0 · `npm run check` GRÜN — **51 Testdateien / 257 Tests** (neu: oidc-Erweiterungen + `oidc-callback.test.ts`) · Biome grün · depcruise sauber.
+
+**Risiken/Grenzen:** SSO erfordert vollständige Provider-Config (sonst UI ehrlich deaktiviert, Route 501). Implicit bewusst nicht verwendet. client_secret nur für confidential clients optional. Token-Exchange nutzt globales `fetch` (Node 20), in Tests injiziert.
+
+**Empfehlung:** Nach grünem Mac-Gate + Commit/Push darf **FE-AUTH-07** abgehakt werden → **SCRUM-99 auf Done**, sofern die übrigen Auth-Checkboxen erledigt sind. Ich setze keine Jira-Checkbox/Status selbst.

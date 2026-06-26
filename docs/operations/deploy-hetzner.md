@@ -67,7 +67,7 @@ Optional (schalten Funktionen scharf):
 
 - `ANTHROPIC_API_KEY` → echtes KI-Modell (sonst deterministisch)
 - `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` → E-Mail (siehe §7)
-- `OIDC_ISSUER` / `OIDC_AUDIENCE` / `OIDC_JWKS_URI` / `OIDC_AUTOPROVISION` → SSO
+- `OIDC_ISSUER` / `OIDC_AUDIENCE` / `OIDC_JWKS_URI` / `OIDC_AUTHORIZE_URL` / `OIDC_TOKEN_URL` / `OIDC_CLIENT_ID` / `OIDC_REDIRECT_URI` (+ optional `OIDC_CLIENT_SECRET`) → SSO (Auth Code + PKCE). Rollen-Mapping: `OIDC_ROLE_CLAIM` / `OIDC_GROUP_ADMIN` / `OIDC_GROUP_CONTROLLER` / `OIDC_GROUP_EXPERTE`.
 
 Deploy auslösen. Smoke-Test: `https://app.klarwerk.ai/health` muss `{"status":"ok"}` liefern,
 `https://app.klarwerk.ai/api/auth/status` zeigt `needsSetup`. Danach Ersteinrichtung
@@ -94,9 +94,11 @@ Deploy auslösen. Smoke-Test: `https://app.klarwerk.ai/health` muss `{"status":"
 
 ## 8. SSO später (FR-AUTH-07)
 
-Beim IdP (Azure AD/Entra, Auth0, Keycloak …) eine App registrieren, dann `OIDC_ISSUER`,
-`OIDC_AUDIENCE` (Client-ID) und `OIDC_JWKS_URI` als Secrets setzen. Der Endpunkt
-`POST /api/auth/oidc` nimmt das vom Frontend gelieferte ID-Token entgegen und verifiziert es.
+Beim IdP (Azure AD/Entra, Auth0, Keycloak …) eine App als OIDC-Client registrieren,
+Redirect-URI `…/sso/callback` eintragen, dann die OIDC_*-Variablen setzen. Flow:
+`GET /api/auth/oidc/start` leitet mit PKCE (S256) zum IdP; der Provider ruft `…/sso/callback`
+mit `code`+`state`; das Frontend postet beides an `POST /api/auth/oidc`, das den Code
+serverseitig gegen das id_token tauscht, es inkl. `nonce` verifiziert und die Sitzung anlegt.
 
 ## 9. Was wohin gehört (Verwaltungs-Landkarte)
 

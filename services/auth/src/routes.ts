@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import type { Mailer } from "../../notifications";
-import type { OidcVerifier } from "./oidc";
+import { type OidcProvider, createPkcePair, randomToken } from "./oidc";
 import type { AuthService } from "./service";
 import { AuthError, type AuthErrorCode, type PublicUser, type Role } from "./types";
 
@@ -28,22 +28,42 @@ function clearSessionCookie(): string {
   return COOKIE_SECURE ? `${base}; Secure` : base;
 }
 
-function tokenFromRequest(request: FastifyRequest): string | undefined {
-  const auth = request.headers.authorization;
-  if (auth?.startsWith("Bearer ")) {
-    return auth.slice("Bearer ".length);
-  }
+// FR-AUTH-07: kurzlebige OIDC-Cookies (state/nonce/PKCE-verifier) für den Code-Flow.
+const OIDC_STATE_COOKIE = "kw_oidc_state";
+const OIDC_NONCE_COOKIE = "kw_oidc_nonce";
+const OIDC_VERIFIER_COOKIE = "kw_oidc_verifier";
+const OIDC_FLOW_MAX_AGE = 600; // 10 Minuten
+
+function flowCookie(name: string, value: string): string {
+  const base = `${name}=${value}; HttpOnly; Path=/; Max-Age=${OIDC_FLOW_MAX_AGE}; SameSite=Lax`;
+  return COOKIE_SECURE ? `${base}; Secure` : base;
+}
+
+function clearFlowCookie(name: string): string {
+  const base = `${name}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax`;
+  return COOKIE_SECURE ? `${base}; Secure` : base;
+}
+
+function readCookie(request: FastifyRequest, wanted: string): string | undefined {
   const cookie = request.headers.cookie;
   if (!cookie) {
     return undefined;
   }
   for (const part of cookie.split(";")) {
     const [name, ...rest] = part.trim().split("=");
-    if (name === SESSION_COOKIE) {
+    if (name === wanted) {
       return rest.join("=");
     }
   }
   return undefined;
+}
+
+function tokenFromRequest(request: FastifyRequest): string | undefined {
+  const auth = request.headers.authorization;
+  if (auth?.startsWith("Bearer ")) {
+    return auth.slice("Bearer ".length);
+  }
+  return readCookie(request, SESSION_COOKIE);
 }
 
 function sendError(reply: FastifyReply, error: unknown): void {
@@ -59,7 +79,7 @@ export function authRoutes(
   options: {
     mailer?: Mailer | undefined;
     resetBaseUrl?: string | undefined;
-    oidc?: OidcVerifier | undefined;
+    oidc?: OidcProvider | undefined;
   } = {},
 ): FastifyPluginAsync {
   return async (app) => {
@@ -185,25 +205,75 @@ export function authRoutes(
       },
     );
 
-    // FR-AUTH-07: SSO — verifiziertes ID-Token gegen den IdP, dann KLARWERK-Sitzung.
-    app.post<{ Body: { idToken: string } }>("/api/auth/oidc", async (request, reply) => {
+    // FR-AUTH-07: SSO-Start — Authorization-Code-Flow mit PKCE (S256). Erzeugt
+    // state/nonce/code_verifier, legt sie kurzlebig als HttpOnly-Cookies ab und
+    // leitet zum IdP weiter. Kein Implicit, kein id_token im Browser-Fragment.
+    app.get("/api/auth/oidc/start", async (_request, reply) => {
       if (!options.oidc) {
         reply.code(501).send({ error: "OIDC_DISABLED", message: "SSO ist nicht konfiguriert." });
         return;
       }
-      try {
-        const claims = await options.oidc.verify(request.body.idToken);
-        const { token, user } = await service.loginWithOidc(claims, options.oidc.autoProvision);
-        reply.header("set-cookie", sessionCookie(token));
-        reply.code(200).send({ user, token });
-      } catch (error) {
-        if (error instanceof AuthError) {
-          sendError(reply, error);
+      const state = randomToken(16);
+      const nonce = randomToken(16);
+      const { verifier, challenge } = createPkcePair();
+      reply.header("set-cookie", [
+        flowCookie(OIDC_STATE_COOKIE, state),
+        flowCookie(OIDC_NONCE_COOKIE, nonce),
+        flowCookie(OIDC_VERIFIER_COOKIE, verifier),
+      ]);
+      reply.redirect(options.oidc.authorizeUrl({ state, nonce, codeChallenge: challenge }));
+    });
+
+    // FR-AUTH-07: SSO-Callback — FE liefert { code, state }. Backend prüft state gegen
+    // Cookie, tauscht den Code (mit PKCE-verifier) am Token-Endpoint, verifiziert das
+    // id_token inkl. nonce, mappt die Rolle aus Claims und legt die Sitzung an.
+    app.post<{ Body: { code: string; state: string } }>(
+      "/api/auth/oidc",
+      async (request, reply) => {
+        if (!options.oidc) {
+          reply.code(501).send({ error: "OIDC_DISABLED", message: "SSO ist nicht konfiguriert." });
           return;
         }
-        reply.code(401).send({ error: "OIDC_INVALID", message: "ID-Token ungültig." });
-      }
-    });
+        const stateCookie = readCookie(request, OIDC_STATE_COOKIE);
+        const nonceCookie = readCookie(request, OIDC_NONCE_COOKIE);
+        const verifierCookie = readCookie(request, OIDC_VERIFIER_COOKIE);
+        const clearFlow = [
+          clearFlowCookie(OIDC_STATE_COOKIE),
+          clearFlowCookie(OIDC_NONCE_COOKIE),
+          clearFlowCookie(OIDC_VERIFIER_COOKIE),
+        ];
+        if (
+          !stateCookie ||
+          !nonceCookie ||
+          !verifierCookie ||
+          !request.body.state ||
+          request.body.state !== stateCookie
+        ) {
+          reply.header("set-cookie", clearFlow);
+          reply.code(400).send({ error: "OIDC_INVALID", message: "SSO-Status ungültig." });
+          return;
+        }
+        try {
+          const idToken = await options.oidc.exchange(request.body.code, verifierCookie);
+          const claims = await options.oidc.verify(idToken, nonceCookie);
+          const mappedRole = options.oidc.mapRole(claims);
+          const { token, user } = await service.loginWithOidc(
+            claims,
+            options.oidc.autoProvision,
+            mappedRole,
+          );
+          reply.header("set-cookie", [...clearFlow, sessionCookie(token)]);
+          reply.code(200).send({ user, token });
+        } catch (error) {
+          reply.header("set-cookie", clearFlow);
+          if (error instanceof AuthError) {
+            sendError(reply, error);
+            return;
+          }
+          reply.code(401).send({ error: "OIDC_INVALID", message: "SSO-Anmeldung fehlgeschlagen." });
+        }
+      },
+    );
 
     app.post<{ Params: { id: string } }>("/api/auth/users/:id/approve", async (request, reply) => {
       const admin = await requireAdmin(request, reply);
@@ -246,9 +316,12 @@ export function authRoutes(
       }
     });
 
-    // FR-AUTH-01: Status der Instanz — ist die Ersteinrichtung (erstes Admin-Konto) nötig?
+    // FR-AUTH-01: Status der Instanz — Ersteinrichtung nötig? Und ist SSO konfiguriert
+    // (FR-AUTH-07: oidcEnabled steuert die ehrliche Sichtbarkeit des SSO-Logins im UI)?
     app.get("/api/auth/status", async (_request, reply) => {
-      reply.code(200).send({ needsSetup: await service.needsSetup() });
+      reply
+        .code(200)
+        .send({ needsSetup: await service.needsSetup(), oidcEnabled: Boolean(options.oidc) });
     });
 
     // FR-AUTH-01: Ersteinrichtung — legt das erste Konto (Admin) an und startet die Sitzung.

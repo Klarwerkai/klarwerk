@@ -4,6 +4,7 @@ import { RoleProvider } from "./app/RoleContext";
 import { ToastProvider } from "./app/ToastContext";
 import { AuthScreens } from "./auth/AuthScreens";
 import { ResetScreen } from "./auth/ResetScreen";
+import { SsoCallback } from "./auth/SsoCallback";
 import { AppRoutes } from "./routes";
 import { AppShell } from "./shell/AppShell";
 
@@ -23,6 +24,10 @@ function Gate(): JSX.Element {
   // Passwort-Reset (E-Mail-Link) ist ohne Anmeldung erreichbar.
   if (window.location.pathname === "/reset") {
     return <ResetScreen />;
+  }
+  // FR-AUTH-07: SSO-Callback liegt vor dem Auth-Gate (Code/State → Sitzung).
+  if (window.location.pathname === "/sso/callback") {
+    return <SsoCallback />;
   }
   if (s.isLoading) {
     return <Splash />;

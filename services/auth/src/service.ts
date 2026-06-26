@@ -115,9 +115,13 @@ export class AuthService {
 
   // FR-AUTH-07: SSO-Login. Bereits verifizierte OIDC-Claims → Sitzung. Optional
   // Auto-Provisionierung neuer Nutzer (sonst muss der Admin das Konto anlegen).
+  // mappedRole: aus OIDC-Claims abgeleitete Rolle (FR-AUTH-07). Wird NUR beim
+  // Provisionieren neuer SSO-Konten angewandt. Bestehende Konten behalten ihre
+  // vom Admin vergebene Rolle — Claims überschreiben nie still (kein Privilege-Injection).
   async loginWithOidc(
     claims: OidcClaims,
     autoProvision: boolean,
+    mappedRole?: Role,
   ): Promise<{ token: string; user: PublicUser }> {
     let account = await this.users.findByEmail(claims.email);
     if (!account) {
@@ -128,13 +132,15 @@ export class AuthService {
         );
       }
       const isFirstAccount = (await this.users.count()) === 0;
+      // Bootstrap: erstes Konto wird Admin. Sonst gilt die gemappte Rolle (Default viewer).
+      const role: Role = isFirstAccount ? "admin" : (mappedRole ?? "viewer");
       account = {
         id: this.genId(),
         name: claims.name,
         email: claims.email,
         passwordSalt: "", // SSO-Konto: kein Passwort-Login möglich.
         passwordHash: "",
-        role: isFirstAccount ? "admin" : "experte",
+        role,
         approved: true,
         createdAt: new Date(this.now()).toISOString(),
       };

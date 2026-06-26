@@ -12,7 +12,7 @@ type Mode = "login" | "register" | "waiting" | "setup" | "forgot" | "forgotSent"
 // Panel links, Formular rechts. Sub-Zustände inkl. Ersteinrichtung.
 export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Element {
   const { t } = useTranslation();
-  const { refresh } = useSession();
+  const { refresh, oidcEnabled } = useSession();
   const [mode, setMode] = useState<Mode>(needsSetup ? "setup" : "login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -140,6 +140,27 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
               </Button>
             </form>
           )}
+
+          {mode === "login" && !needsSetup ? (
+            <div className="mt-5">
+              <div className="mb-3 flex items-center gap-3 text-[11px] uppercase tracking-wider text-muted-2">
+                <span className="h-px flex-1 bg-hairline" />
+                {t("auth.or")}
+                <span className="h-px flex-1 bg-hairline" />
+              </div>
+              {oidcEnabled ? (
+                <Button
+                  variant="ghost"
+                  className="w-full"
+                  onClick={() => window.location.assign(authApi.ssoStartUrl)}
+                >
+                  {t("auth.ssoButton")}
+                </Button>
+              ) : (
+                <p className="text-center text-[12px] text-muted-2">{t("auth.ssoUnavailable")}</p>
+              )}
+            </div>
+          ) : null}
 
           {!needsSetup && mode === "login" ? (
             <div className="mt-5 space-y-2 text-center text-[13px] text-muted">

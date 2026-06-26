@@ -14,7 +14,7 @@ import {
   type SessionRepo,
   type UserRepo,
   authRoutes,
-  createOidcVerifierFromEnv,
+  createOidcProviderFromEnv,
 } from "../../auth";
 import { CaptureService, type DraftRepo, InMemoryDraftRepo, PgDraftRepo } from "../../capture";
 import {
@@ -185,7 +185,7 @@ export function buildApp(services: AppServices = buildServices()): FastifyInstan
     authRoutes(services.auth, {
       mailer: services.mailer,
       resetBaseUrl,
-      oidc: createOidcVerifierFromEnv(),
+      oidc: createOidcProviderFromEnv(),
     }),
   );
   app.register(

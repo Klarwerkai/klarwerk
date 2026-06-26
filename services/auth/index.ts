@@ -13,10 +13,20 @@ export {
 export { PgUserRepo, PgSessionRepo, PgPasswordResetRepo, AUTH_SCHEMA } from "./src/repo-pg";
 export {
   createOidcVerifier,
-  createOidcVerifierFromEnv,
+  createOidcProvider,
+  createOidcProviderFromEnv,
+  createTokenExchanger,
+  createPkcePair,
+  codeChallengeS256,
+  mapOidcRole,
+  parseRolesClaim,
+  randomToken,
   type OidcClaims,
   type OidcConfig,
+  type OidcRoleConfig,
   type OidcVerifier,
+  type OidcProvider,
+  type TokenExchanger,
 } from "./src/oidc";
 export { AuthError } from "./src/types";
 export type { Role, User, PublicUser, Session, AuthErrorCode } from "./src/types";

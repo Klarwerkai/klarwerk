@@ -8,6 +8,8 @@ import { SESSION_REFRESH_MS, resolveSessionUser } from "../lib/sessionState";
 interface AuthState {
   user: SessionUser | null;
   needsSetup: boolean;
+  /** FR-AUTH-07: SSO im Server konfiguriert? Steuert die ehrliche SSO-UI. */
+  oidcEnabled: boolean;
   isLoading: boolean;
   /** Status-Abfrage fehlgeschlagen (z. B. Backend im Dev nicht erreichbar). */
   error: boolean;
@@ -47,6 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
     // FE-FND-08: bei Abfragefehler (abgelaufene Session/401) kein stale User.
     user: resolveSessionUser({ data: me.data, isError: me.isError }),
     needsSetup,
+    oidcEnabled: status.data?.oidcEnabled ?? false,
     isLoading: status.isLoading || (status.isSuccess && !needsSetup && me.isLoading),
     error: status.isError,
     refresh: () => {
