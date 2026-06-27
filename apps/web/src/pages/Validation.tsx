@@ -11,6 +11,7 @@ import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { ConfidenceBar, KnowledgeTypeTag, KoAuthorLine, StatusPill } from "../components/trust";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
 import { koAuthorParts } from "../lib/koAuthor";
+import { REVIEW_DECISIONS, type ReviewTone } from "../lib/reviewDecision";
 import { type TrustBand, reviewSignals, sortByReviewPriority } from "../lib/reviewSignals";
 import {
   type FeedbackVerdict,
@@ -30,6 +31,13 @@ const TRUST_TONE: Record<TrustBand, string> = {
   low: "bg-trust-crit-bg text-trust-crit-text",
   mid: "bg-trust-warn-bg text-trust-warn-text",
   high: "bg-trust-pos-bg text-trust-pos-text",
+};
+
+// SCRUM-258: Tönung der drei Review-Entscheidungs-Schaltflächen (Freigeben/Rückfrage/Ablehnen).
+const DECISION_TONE: Record<ReviewTone, string> = {
+  pos: "bg-trust-pos-bg text-trust-pos-text",
+  warn: "bg-trust-warn-bg text-trust-warn-text",
+  crit: "bg-trust-crit-bg text-trust-crit-text",
 };
 
 export function Validation(): JSX.Element {
@@ -213,44 +221,49 @@ export function Validation(): JSX.Element {
                             {t(`val.decision.${sig.trustBand}`)}
                           </p>
                         </div>
-                        <div className="flex shrink-0 flex-col items-end gap-1.5">
-                          <div className="flex gap-1.5">
-                            <button
-                              type="button"
-                              title={t("val.confirm")}
-                              disabled={rate.isPending || reviewWithFeedback.isPending}
-                              onClick={() => rate.mutate({ id: k.id, verdict: "up" })}
-                              className="grid h-9 w-9 place-items-center rounded-btn bg-trust-pos-bg text-trust-pos-text hover:opacity-80 disabled:opacity-50"
-                            >
-                              <Check size={16} />
-                            </button>
-                            <button
-                              type="button"
-                              title={t("val.conditional")}
-                              disabled={reviewWithFeedback.isPending}
-                              onClick={() => openFeedback(k.id, "warn")}
-                              className={`grid h-9 w-9 place-items-center rounded-btn bg-trust-warn-bg text-trust-warn-text hover:opacity-80 disabled:opacity-50 ${
-                                feedback?.id === k.id && feedback.verdict === "warn"
-                                  ? "ring-2 ring-trust-warn-text"
-                                  : ""
-                              }`}
-                            >
-                              <Minus size={16} />
-                            </button>
-                            <button
-                              type="button"
-                              title={t("val.reject")}
-                              disabled={reviewWithFeedback.isPending}
-                              onClick={() => openFeedback(k.id, "down")}
-                              className={`grid h-9 w-9 place-items-center rounded-btn bg-trust-crit-bg text-trust-crit-text hover:opacity-80 disabled:opacity-50 ${
-                                feedback?.id === k.id && feedback.verdict === "down"
-                                  ? "ring-2 ring-trust-crit-text"
-                                  : ""
-                              }`}
-                            >
-                              <X size={16} />
-                            </button>
+                        <div className="flex shrink-0 flex-col items-stretch gap-1.5 sm:items-end">
+                          {/* SCRUM-258: Review-Entscheidung textlich geführt — gleiche Mutationen
+                              (up/warn/down), Rückfrage/Ablehnen öffnen weiterhin das Pflicht-Feedback. */}
+                          <div className="flex flex-wrap gap-1.5 sm:justify-end">
+                            {REVIEW_DECISIONS.map((d) => {
+                              const active =
+                                feedback?.id === k.id && feedback.verdict === d.verdict;
+                              return (
+                                <button
+                                  key={d.verdict}
+                                  type="button"
+                                  title={t(d.labelKey)}
+                                  disabled={
+                                    d.verdict === "up"
+                                      ? rate.isPending || reviewWithFeedback.isPending
+                                      : reviewWithFeedback.isPending
+                                  }
+                                  onClick={() =>
+                                    d.verdict === "up"
+                                      ? rate.mutate({ id: k.id, verdict: "up" })
+                                      : openFeedback(k.id, d.verdict)
+                                  }
+                                  className={`flex h-9 items-center gap-1.5 rounded-btn px-2.5 text-[12.5px] font-semibold hover:opacity-80 disabled:opacity-50 ${DECISION_TONE[d.tone]} ${
+                                    active ? "ring-2 ring-current" : ""
+                                  }`}
+                                >
+                                  {d.verdict === "up" ? (
+                                    <Check size={15} />
+                                  ) : d.verdict === "warn" ? (
+                                    <Minus size={15} />
+                                  ) : (
+                                    <X size={15} />
+                                  )}
+                                  <span>{t(d.labelKey)}</span>
+                                  {d.requiresFeedback ? <sup className="-mr-0.5">*</sup> : null}
+                                </button>
+                              );
+                            })}
                           </div>
+                          {/* SCRUM-258: Pflicht-Feedback sichtbar machen (Rückfrage/Ablehnen). */}
+                          <p className="text-[10.5px] text-muted-2 sm:text-right">
+                            {t("val.feedbackRequiredHint")}
+                          </p>
                           <select
                             value=""
                             disabled={assign.isPending}

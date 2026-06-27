@@ -3959,3 +3959,30 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-258 — Validierung: Review-Entscheidung klarer und textlich führen
+**Datum:** 2026-06-27 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung).
+
+**Vorab-Befund (read-only):** `Validation.tsx` zeigt pro Karte Status/Trust/Version/Ziel/Transfer/Assigned + Entscheidungs-Hinweis. Die drei Review-Aktionen waren aber rein icon-lastig (grüner Check / gelbes Minus / rotes X) mit nur `title`-Tooltip. Mutationen: `up` → `rate(verdict:"up")`; `warn`/`down` → `openFeedback(...)` → öffnen das Pflicht-Feedback-Formular, das über `isFeedbackSubmittable`/`buildValidationFeedback` (`validationFeedback.ts`) eine Begründung erzwingt (warn=Bedingt, down=Ablehnung). Filter, `reviewSignals`, Trust/Status/Version, Zuweisung und `sortByReviewPriority` vorhanden. Kein P0/P1, keine Backend-Lücke.
+
+**Umsetzung (minimal, FE-Text/Buttons):** Die drei Entscheidungen in einen DOM-freien Helper `apps/web/src/lib/reviewDecision.ts` ausgelagert (`REVIEW_DECISIONS`: verdict/labelKey/tone/requiresFeedback). In `Validation.tsx` werden die Icon-Buttons durch eine textlich geführte Entscheidungsleiste ersetzt: Icon + sichtbares Label **Freigeben / Rückfrage / Ablehnen**, getönt (pos/warn/crit). Warn/Ablehnen tragen ein „*" und darunter steht sichtbar „* Rückfrage und Ablehnung brauchen eine Begründung." Bestehende Verdict-Mutationen unverändert: `up` → dieselbe `rate`-Mutation; `warn`/`down` → dieselbe `openFeedback`-Logik → unverändertes Pflicht-Feedback-Formular (gleiche Texte, gleicher Guard). Aktiv-Ring bleibt, wenn das Feedback-Formular zur jeweiligen Entscheidung offen ist. Assign-Select, Filter, Signale, Sortierung unverändert. Keine Backend-Änderung, keine neue Validierungs-/Workflow-Logik.
+
+**Geänderte Dateien:** NEU `apps/web/src/lib/reviewDecision.ts`, NEU `tests/validation/review-decision.test.ts` (3 Tests); geändert `apps/web/src/pages/Validation.tsx` (Entscheidungsleiste + DECISION_TONE), `apps/web/src/i18n.ts` (`val.actionApprove/Query/Reject`, `val.feedbackRequiredHint` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — 120 Dateien / 647 Tests (+1 Datei, +3 Tests). `apps/web` `tsc --noEmit` grün. Biome + dependency-cruiser sauber. Der neue Test sichert: genau drei Entscheidungen in Reihenfolge up→warn→down, nur warn/down `requiresFeedback`, Tönung pos/warn/crit, korrekte Label-Keys.
+
+**Restlücken/Nicht-Ziele:** keine Backend-Änderung, keine neue Validierungsengine, keine neue Workflow-Logik, keine Stufe-2-Arbeit, kein RAG/Vector/Reasoner-Umbau, keine Ticketserie, keine große Neugestaltung. Die Mutationen (up/warn/down/assign) und das Pflicht-Feedback bleiben exakt wie zuvor; nur die Entscheidung ist jetzt textlich klar geführt.
+
+**Commit-/Push-Hinweis:**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/reviewDecision.ts tests/validation/review-decision.test.ts apps/web/src/pages/Validation.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(validation): label review decisions (approve/query/reject) with required-reason hint (SCRUM-258)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
