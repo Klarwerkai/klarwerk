@@ -3025,3 +3025,34 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-219 — Hilfe-Seite mit echten Inhalten und Suche produktnäher machen
+
+**Vorab-Befund (read-only):** `/hilfe` (`pages/Help.tsx`) hatte eine funktionierende, aber inline implementierte Suche über 6 generische Topics (title+body), KEINE Links auf echte Routen, keinen DOM-freien Helper/Test, keinen ehrlichen Leerzustand. Nav-Key `hilfe` → `/hilfe`. Es gibt etablierte UI-Patterns (`Card`, `PageHeader`, Pill-Chips, `Link`) und reale Zielrouten in `routes.tsx`/`navigation.ts`.
+
+**Entscheidung:** Kein Redesign — die bestehende Card/Search-Struktur beibehalten und produktnah füllen. Such-/Datenlogik in einen DOM-freien Helper auslagern (testbar), 10 echte Hilfekapitel definieren, jeweils mit Tags und Link nur auf vorhandene App-Routen. Kein Backend, kein CMS, keine KI-Suche.
+
+**Umsetzung:**
+- Neuer DOM-freier Helper `apps/web/src/lib/helpTopics.ts`: `HELP_TOPICS` (10 Kapitel: Erststart/Demodaten, Erfassen, Fragen, Bibliothek, Validierung, Aufgaben, Risiko/Lücken/Konflikte, Lebenszyklus/Lernpfade, Stufe 2/QM/Kapital/Output, Mobil/Offline) mit `to` (echte Route) + Tags; `filterHelpTopics(items, query)` sucht case-insensitiv über Titel/Text/Tags, leere Query → alle, kein Treffer → leeres Ergebnis.
+- `Help.tsx` neu verdrahtet: löst i18n-Texte auf, filtert über den Helper, rendert Kapitel-Cards mit Tag-Chips und „Bereich öffnen"-Link (react-router `Link` auf die echte Route), ehrlicher Leerzustand (`help.noResults`).
+- i18n DE/EN: `help.intro`, `help.noResults`, `help.openRoute` + 8 neue Kapitel (firststart/library/tasks/risk/lifecycle/validation/stufe2/mobile); `help.capture`/`help.ask` wiederverwendet. Bestehende Alt-Keys unangetastet.
+
+**Geänderte/neue Dateien:** neu `apps/web/src/lib/helpTopics.ts`, `tests/analytics/help-topics.test.ts`; geändert `apps/web/src/pages/Help.tsx`, `apps/web/src/i18n.ts`, `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — **91 Dateien / 512 Tests** (+6 Helper: leere/whitespace-Query → alle, Match in Titel/Text/Tags case-insensitiv, kein-Treffer-Leerzustand, 10 eindeutige Kapitel mit nur internen Routen). apps/web `tsc --noEmit` EXIT=0. Biome + depcruise sauber.
+
+**Restlücken/Nicht-Ziele:** kein Backend, kein CMS/Confluence, keine KI-Suche, keine Alt-App-Parität, kein UI-Redesign, keine externen Links als Kernfunktion. Hilfeinhalte sind statisch/i18n-gepflegt (keine Server-Quelle). Verwaiste Alt-Help-Keys (validate/conflict/roles/trust) blieben bewusst stehen (mögliche Nutzung im Hilfe-Center) und können später separat aufgeräumt werden.
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check && (cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/helpTopics.ts apps/web/src/pages/Help.tsx apps/web/src/i18n.ts \
+  tests/analytics/help-topics.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(help): product-near help chapters with client-side search and route links (SCRUM-219)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

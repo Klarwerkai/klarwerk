@@ -640,6 +640,34 @@ const de = {
   "help.open": "Hilfe öffnen",
   "help.openCenter": "Im Hilfe-Center öffnen",
   "help.search": "Hilfe durchsuchen …",
+  "help.intro":
+    "Kurze Einstiegshilfe zu den wichtigsten Klarwerk-Abläufen. Suche nach Stichwort oder springe direkt in den passenden Bereich.",
+  "help.noResults": "Keine Hilfe zu diesem Stichwort gefunden.",
+  "help.openRoute": "Bereich öffnen",
+  "help.firststart.title": "Erststart & Demodaten",
+  "help.firststart.body":
+    "Frische Instanzen sind zunächst leer. Als Admin kannst du unter Admin 'Demodaten laden', um Beispiel-Wissen, Validierung, Lücken und Konflikte sichtbar zu machen — ideal für Review und Einarbeitung.",
+  "help.library.title": "Bibliothek & Wissensobjekt",
+  "help.library.body":
+    "Die Bibliothek durchsucht und filtert den Bestand (Art, Status, Kategorie, Tag). Ein Klick öffnet das Wissensobjekt mit Aussage, Quellen/Anhängen, Versionen und Evidenz.",
+  "help.tasks.title": "Meine Aufgaben",
+  "help.tasks.body":
+    "Hier sammeln sich die dir zugewiesenen Validierungs- und Rückfrage-Aufgaben. Von dort springst du direkt ins jeweilige Wissensobjekt zur Bearbeitung.",
+  "help.risk.title": "Risiko, Lücken & Konflikte",
+  "help.risk.body":
+    "Risiko zeigt Wissenslücken, Bus-Faktor und Single-Source-Bereiche. Lücken lassen sich priorisieren, zuweisen oder schließen; Widersprüche werden als Konflikte geführt aufgelöst.",
+  "help.lifecycle.title": "Lebenszyklus & Lernpfade",
+  "help.lifecycle.body":
+    "Lebenszyklus zeigt fällige Revalidierungen (z. B. nach Asset-Änderungen) und rollenspezifische Lernpfade zum Abhaken. Nach dem Demo-Seed ist ein Beispiel-Lernpfad sichtbar.",
+  "help.validation.title": "Validierung",
+  "help.validation.body":
+    "Bewerte Objekte grün/gelb/rot. Ab der Schwelle gilt ein Objekt als validiert; gelb/rot erfordern einen Kommentar und gehen an den Autor zurück.",
+  "help.stufe2.title": "Stufe 2: QM, Kapital & Output",
+  "help.stufe2.body":
+    "Die erweiterten QM-Sichten (Kapital/Management, Evidence- und Provenance-Index, ModelRun-Protokoll) sind read-only und fensterbasiert. Output erzeugt Dokumente nur aus validiertem Wissen.",
+  "help.mobile.title": "Mobil & Offline",
+  "help.mobile.body":
+    "Die mobile Ansicht bündelt Erfassen, Fragen und Nachschlagen. Entwürfe lassen sich offline anlegen und werden synchronisiert, sobald wieder Verbindung besteht.",
   "help.capture.title": "Wissen erfassen",
   "help.capture.body":
     "Halte Erfahrung roh fest — per Text, Diktat oder Foto. Der Reasoner strukturiert, du prüfst und reichst ein.",
@@ -1540,6 +1568,34 @@ const en: typeof de = {
   "help.open": "Open help",
   "help.openCenter": "Open in help center",
   "help.search": "Search help …",
+  "help.intro":
+    "A short starter guide to the most important Klarwerk flows. Search by keyword or jump straight into the relevant area.",
+  "help.noResults": "No help found for this keyword.",
+  "help.openRoute": "Open area",
+  "help.firststart.title": "First run & demo data",
+  "help.firststart.body":
+    "Fresh instances start empty. As admin you can use 'Load demo data' under Admin to make example knowledge, validation, gaps and conflicts visible — ideal for review and onboarding.",
+  "help.library.title": "Library & knowledge object",
+  "help.library.body":
+    "The library searches and filters the stock (type, status, category, tag). One click opens the knowledge object with statement, sources/attachments, versions and evidence.",
+  "help.tasks.title": "My tasks",
+  "help.tasks.body":
+    "Your assigned validation and follow-up tasks collect here. From there you jump straight into the relevant knowledge object to act.",
+  "help.risk.title": "Risk, gaps & conflicts",
+  "help.risk.body":
+    "Risk shows knowledge gaps, bus factor and single-source areas. Gaps can be prioritised, assigned or closed; contradictions are resolved as guided conflicts.",
+  "help.lifecycle.title": "Lifecycle & learning paths",
+  "help.lifecycle.body":
+    "Lifecycle shows due revalidations (e.g. after asset changes) and role-specific learning paths to tick off. After the demo seed an example learning path is visible.",
+  "help.validation.title": "Validation",
+  "help.validation.body":
+    "Rate objects green/yellow/red. At the threshold an object counts as validated; yellow/red require a comment and return to the author.",
+  "help.stufe2.title": "Stage 2: QA, capital & output",
+  "help.stufe2.body":
+    "The advanced QA views (capital/management, evidence and provenance index, ModelRun protocol) are read-only and window-based. Output generates documents only from validated knowledge.",
+  "help.mobile.title": "Mobile & offline",
+  "help.mobile.body":
+    "The mobile view bundles capture, ask and lookup. Drafts can be created offline and sync once a connection is available.",
   "help.capture.title": "Capture knowledge",
   "help.capture.body":
     "Capture experience raw — via text, dictation or photo. The reasoner structures it, you review and submit.",
