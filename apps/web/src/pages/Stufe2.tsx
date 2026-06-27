@@ -1,5 +1,15 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Building2, Copy, Download, FileText, Printer, Upload } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  Building2,
+  Copy,
+  Download,
+  FileText,
+  Printer,
+  Upload,
+  X,
+} from "lucide-react";
 import { type ChangeEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
@@ -47,7 +57,8 @@ import {
   formatEur,
 } from "../lib/knowledgeValuation";
 import { limitModelRuns, modelRunStatusTone, summarizeModelRuns } from "../lib/modelRuns";
-import { OUTPUT_KIND_OPTIONS, downloadFilename, orderedSelection } from "../lib/outputDoc";
+import { buildCompositionPreview, moveInOrder, sanitizeOrder } from "../lib/outputComposition";
+import { OUTPUT_KIND_OPTIONS, downloadFilename } from "../lib/outputDoc";
 import { buildProvenanceIndex } from "../lib/provenanceIndex";
 import { evaluateDataWindow } from "../lib/qmDataWindow";
 import { isModelConfigured, reasonerModeTone } from "../lib/reasonerStatus";
@@ -83,15 +94,24 @@ export function Output(): JSX.Element {
   const [selected, setSelected] = useState<string[]>([]);
   const [doc, setDoc] = useState<OutputDocument | null>(null);
 
-  const sourceIds = (sources.data ?? []).map((s) => s.id);
+  const sourceList = sources.data ?? [];
+  const sourceIds = sourceList.map((s) => s.id);
   const toggle = (id: string): void =>
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
+  // Nutzer-Reihenfolge beibehalten (unbekannte IDs verwerfen) — diese Ordnung geht 1:1 an
+  // das Backend, das in genau dieser koIds-Reihenfolge rendert (SCRUM-226).
+  const orderedIds = sanitizeOrder(selected, sourceIds);
+  const move = (index: number, dir: -1 | 1): void =>
+    setSelected((prev) => moveInOrder(sanitizeOrder(prev, sourceIds), index, dir));
+  const remove = (id: string): void => setSelected((prev) => prev.filter((x) => x !== id));
+  const preview = buildCompositionPreview({ kind, orderedIds, sources: sourceList });
 
   const generate = useMutation({
     mutationFn: () =>
       endpoints.output.generate({
         kind,
-        koIds: orderedSelection(selected, sourceIds),
+        koIds: orderedIds,
         audienceRole: role,
       }),
     onSuccess: (d) => setDoc(d),
@@ -164,17 +184,95 @@ export function Output(): JSX.Element {
             </ul>
           )}
         </QueryState>
-        <div className="mt-3">
-          <Button
-            variant="primary"
-            disabled={selected.length === 0 || generate.isPending}
-            onClick={() => generate.mutate()}
-          >
-            <FileText size={15} />
-            {t("out.generate")}
-          </Button>
-        </div>
       </Card>
+
+      {/* SCRUM-226: Reihenfolge der Auswahl + ehrliche Kompositionsvorschau VOR dem Generieren. */}
+      {preview.items.length > 0 ? (
+        <Card className="mb-4">
+          <SectionLabel>{t("out.composeTitle")}</SectionLabel>
+          <p className="mb-2 mt-1 text-[11.5px] text-muted">{t("out.composeHint")}</p>
+          <ol className="space-y-1.5">
+            {preview.items.map((it, i) => (
+              <li
+                key={it.id}
+                className="flex items-center gap-2 rounded-input border border-hairline px-2.5 py-2"
+              >
+                <span className="w-5 shrink-0 text-center font-mono text-[11px] text-muted-2">
+                  {i + 1}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-[13px] text-text">
+                  {it.title}
+                  {it.uncertain ? (
+                    <span className="ml-1.5 font-mono text-[10px] text-trust-warn-text">
+                      {t("out.uncertain")}
+                    </span>
+                  ) : null}
+                </span>
+                <span className="shrink-0 font-mono text-[10px] text-muted-2">
+                  T{it.trust} · v{it.version}
+                </span>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button
+                    type="button"
+                    aria-label={t("out.moveUp")}
+                    disabled={i === 0}
+                    onClick={() => move(i, -1)}
+                    className="rounded p-1 text-muted hover:bg-hairline-soft hover:text-ink disabled:opacity-30"
+                  >
+                    <ArrowUp size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={t("out.moveDown")}
+                    disabled={i === preview.items.length - 1}
+                    onClick={() => move(i, 1)}
+                    className="rounded p-1 text-muted hover:bg-hairline-soft hover:text-ink disabled:opacity-30"
+                  >
+                    <ArrowDown size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={t("out.removeFromOrder")}
+                    onClick={() => remove(it.id)}
+                    className="rounded p-1 text-muted hover:bg-hairline-soft hover:text-ink"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ol>
+
+          <div className="mt-3 rounded-card bg-page p-3">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-2">
+              {t("out.previewCompositionTitle")}
+            </div>
+            <p className="mt-1 text-[12.5px] text-muted">
+              {t("out.previewSummary", {
+                kind: t(`out.kind.${preview.kind}`),
+                n: preview.sourceCount,
+              })}
+            </p>
+            <p className="mt-1 text-[11.5px] text-muted-2">
+              {preview.uncertainCount > 0
+                ? t("out.previewUncertain", { n: preview.uncertainCount })
+                : t("out.previewProvenance")}
+            </p>
+            <p className="mt-1 text-[11px] italic text-muted-2">{t("out.previewDisclaimer")}</p>
+          </div>
+
+          <div className="mt-3">
+            <Button
+              variant="primary"
+              disabled={preview.items.length === 0 || generate.isPending}
+              onClick={() => generate.mutate()}
+            >
+              <FileText size={15} />
+              {t("out.generate")}
+            </Button>
+          </div>
+        </Card>
+      ) : null}
 
       {doc ? (
         <Card>

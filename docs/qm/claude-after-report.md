@@ -3199,3 +3199,29 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-226 — Output Factory: KO-Reihenfolge & Live-Kompositionsvorschau
+
+**Vorab-Befund (read-only):** (1) Der Backend-Vertrag nimmt geordnete `koIds` bereits ehrlich entgegen: `OutputService.generate` iteriert `input.koIds` **in Reihenfolge** und baut `selected` genau so auf; die Renderer (`render.ts`) nummerieren in dieser Reihenfolge (`## ${i+1}. …`). **Kein Backend-Redesign, kein neuer Endpoint nötig.** (2) FE-seitig überschrieb die Output Factory die Nutzerwahl: `koIds: orderedSelection(selected, sourceIds)` sortierte die Auswahl zurück in **Quellenlistenreihenfolge** — bewusstes Ordnen war damit unmöglich. (3) Es gab keine Vorschau vor dem Generieren; die Markdown-Vorschau erscheint erst nach dem Generieren. (4) `endpoints.output.generate`, Copy und Download funktionieren und bleiben unangetastet.
+
+**Umsetzung (kleinster sauberer Eingriff):** Neuer DOM-freier Helper `apps/web/src/lib/outputComposition.ts` — `sanitizeOrder` (behält Nutzer-Reihenfolge, verwirft Unbekanntes/Dubletten), `moveInOrder` (Hoch/Runter, randstabil), `buildCompositionPreview` (Output-Typ + geordnete KO-Liste + Provenance-/Unsicherheits-Signal, Schwelle `UNCERTAIN_TRUST_BELOW=60` analog Backend). In `Stufe2.tsx#Output`: Auswahl bleibt nutzer-geordnet; `koIds` an die Generation = exakt diese Reihenfolge (`sanitizeOrder(selected, sourceIds)`). Neue Card „Reihenfolge & Komposition" mit geordneter Liste (Position, Titel, Trust/Version, ↑/↓/×-Buttons) + ehrlicher Kompositionsvorschau (Typ, Anzahl Bausteine, Provenance-Hinweis, Unsicherheits-Zähler) und einem klaren Disclaimer „Vorschau der Komposition, nicht das fertige Dokument". Der Generieren-Button wandert in diese Card. **Keine DnD-Library, kein Editor.**
+
+**Geänderte/neue Dateien:** neu `apps/web/src/lib/outputComposition.ts`, `tests/output/output-composition.test.ts`; geändert `apps/web/src/pages/Stufe2.tsx` (Order-UI + Vorschau, Generation nutzt Nutzer-Reihenfolge, lucide-Icons ArrowUp/ArrowDown/X), `apps/web/src/i18n.ts` (out.compose*/out.preview* DE/EN), `docs/qm/claude-after-report.md`. `orderedSelection` in `outputDoc.ts` bleibt erhalten (weiter exportiert + getestet), wird nur nicht mehr für die Ordnung verwendet.
+
+**Tests/Gates:** `npm run check` grün — **97 Dateien / 540 Tests** (+1 Datei, +5 Tests für outputComposition). apps/web DOM-`tsc --noEmit` grün. Biome + depcruise sauber. Bestehender `tests/output/output-doc.test.ts` (inkl. orderedSelection) unverändert grün.
+
+**Restlücken/Nicht-Ziele:** kein vollwertiger Editor, keine DnD-Library, kein Backend-Redesign, keine Output-Persistenz, kein PDF-Export. Die Vorschau zeigt die Komposition (Typ + geordnete Bausteine + Provenance-Signal), nicht das gerenderte Enddokument — die echte Markdown-Erzeugung bleibt serverseitig und erscheint nach „Generieren" (Copy/Download unverändert).
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/outputComposition.ts tests/output/output-composition.test.ts apps/web/src/pages/Stufe2.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(output): orderable KO selection + honest composition preview before generate (SCRUM-226)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
