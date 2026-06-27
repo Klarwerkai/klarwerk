@@ -3757,3 +3757,29 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-251 — KO-Detail: Handlungsübersicht und Nutzbarkeit produktnäher
+
+**Vorab-Befund (read-only):** `KnowledgeDetail.tsx` (~1300 Zeilen) rendert bereits alle Bausteine — `StatusPill(deriveStatus(ko))` + `v{version}`, Confidence, Statement/Bedingungen/Maßnahmen, Helpful, Quellen, Provenance, Lineage, Related, History, Evidence, Snapshots, Kommentare, Anhänge — sowie die echten Aktionen (edit, add-source/remove-source, comment, conflict melden, transfer, attach, revalidate, helpful). **Lücke:** die Info ist über **viele Karten verteilt**; es gab **keine kompakte „auf einen Blick"-Übersicht** (Zustand + Nutzbarkeit + nächste Handlung). Der DOM-freie `reviewSignals` (SCRUM-249) liefert bereits status/trust/trustBand/version. Kein P0/P1. KO-Felder `sources`/`attachments` sind bereits geladen.
+
+**Umsetzung (minimal, ehrlich, DOM-frei):** Neuer Helfer `apps/web/src/lib/koOverview.ts` — `koOverview(ko)` (nutzt `reviewSignals`) leitet aus **bereits geladenen Feldern** ab: `usability` (validiert→`ready`, pruefung/revalidierung→`in-review`, sonst→`needs-work`), `status`, `trust`+`trustBand`, `version`, `sourceCount`/`attachmentCount`/`hasEvidence` sowie **genau eine** `nextAction`, die nur auf bestehende echte Aktionen verweist: `ready`→`use` (nutzbar), `in-review`→`review` (Bewertung abschließen), offen ohne Belege→`addSource` (Quelle ergänzen), offen mit Belegen→`validate` (zur Freigabe bewerten lassen). In `KnowledgeDetail.tsx`: ein **kompaktes Übersichts-Banner** ganz oben (Usability-Plakette getönt, `StatusPill`, Trust, Version, Quellen/Anhänge-Zähler + Hinweis „Nächste Handlung: …"). **Keine** Mutation, **keine** neue Card unter Stufe-2, **keine** falsche Validierungs-/Evidence-Behauptung (nutzbar nur bei status „validiert"); alle bestehenden Karten/Aktionen unverändert.
+
+**Geänderte/neue Dateien:** neu `apps/web/src/lib/koOverview.ts`, `tests/ko/ko-overview.test.ts`; geändert `apps/web/src/pages/KnowledgeDetail.tsx` (Übersichts-Banner), `apps/web/src/i18n.ts` (`ko.use.*`/`ko.ov*`/`ko.next*` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — **118 Dateien / 630 Tests** (+1 Datei, +5 koOverview-Tests: validiert→ready/use, zugewiesen→in-review/review, offen ohne Belege→needs-work/addSource, offen mit Beleg→validate, Quellen-/Anhang-Zähler). apps/web `tsc --noEmit` grün. Biome + depcruise sauber. Bestehende `tests/ko/*`, `tests/validation/*`, `tests/analytics/*` unverändert grün.
+
+**Restlücken/Nicht-Ziele:** kein neues KO-Modell, kein Source/Evidence/Version-Großumbau, keine neue Stufe-2-Card, kein RAG, keine Vector-DB, kein Reasoner-/ModelAdapter-/Conductor-Umbau, kein Backend-Redesign, keine Ticketserie, keine UI-Politur ohne Produktwirkung. Die nächste Handlung ist eine ehrliche Orientierung (kein Mutations-Button) und verweist auf vorhandene Aktionen (Quellen-Card / Validierungsboard). `nextAction:"use"` wird bewusst nur bei status „validiert" gesetzt — keine Nutzbarkeits-Behauptung für offene/ungeprüfte KOs.
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/koOverview.ts tests/ko/ko-overview.test.ts apps/web/src/pages/KnowledgeDetail.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(ko-detail): compact action/status overview banner + honest next-action (SCRUM-251)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
