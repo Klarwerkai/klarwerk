@@ -39,6 +39,7 @@ import { layoutConflicts, layoutGraph, limitGraph } from "../lib/graphLayout";
 import { ImportParseError, parseImportItems } from "../lib/importReview";
 import { knowledgeHealth } from "../lib/knowledgeHealth";
 import { buildKnowledgeOsHints } from "../lib/knowledgeOsHints";
+import { buildKnowledgeOsReadiness } from "../lib/knowledgeOsReadiness";
 import {
   DEFAULT_ASSUMPTIONS,
   type ValuationAssumptions,
@@ -993,6 +994,13 @@ const HINT_SEVERITY_CLASS: Record<string, string> = {
   ok: "bg-trust-pos-bg text-trust-pos-text",
 };
 
+const READINESS_TONE_CLASS: Record<string, string> = {
+  ready: "bg-trust-pos-bg text-trust-pos-text",
+  attention: "bg-trust-warn-bg text-trust-warn-text",
+  critical: "bg-trust-crit-bg text-trust-crit-text",
+  incomplete: "bg-hairline-soft text-muted-2",
+};
+
 function KnowledgeOsHintsCard(): JSX.Element {
   const { t } = useTranslation();
   const kos = useKos();
@@ -1046,8 +1054,31 @@ function KnowledgeOsHintsCard(): JSX.Element {
   });
   const loading = kos.isLoading || evidence.isLoading || runs.isLoading || config.isLoading;
   const top = result.hints.slice(0, 5);
+  // SCRUM-178: knappe Readiness-Aggregation aus den vorhandenen QM-Signalen (inkl. Fenster).
+  const readiness = buildKnowledgeOsReadiness({
+    hints: result,
+    windows: [
+      evaluateDataWindow({ loaded: runs.data?.length ?? 0, limit: 50, source: "modelRuns" }),
+      evaluateDataWindow({ loaded: evidence.data?.length ?? 0, limit: 500, source: "evidence" }),
+    ],
+  });
   return (
     <Card className="mt-4">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <SectionLabel>{t("readiness.title")}</SectionLabel>
+        <span
+          className={`rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${
+            READINESS_TONE_CLASS[readiness.readiness] ?? "bg-hairline-soft text-muted-2"
+          }`}
+        >
+          {t(`readiness.${readiness.readiness}`)}
+        </span>
+      </div>
+      {readiness.reasons.length > 0 ? (
+        <p className="mb-2 text-[11.5px] text-muted">
+          {readiness.reasons.map((r) => t(`readiness.reason.${r}`)).join(" · ")}
+        </p>
+      ) : null}
       <SectionLabel>{t("kos.hintsTitle")}</SectionLabel>
       {loading ? (
         <p className="text-[13px] text-muted">{t("state.loading")}</p>

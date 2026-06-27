@@ -2876,3 +2876,34 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-178 — Knowledge-OS Readiness-Summary aus QM-Signalen ableiten
+
+**Vorab-Befund (read-only):** `buildKnowledgeOsHints` (172/173/174) liefert bereits Summary (critical/warnings/info/ok), Hints und `unknownSources`; `evaluateDataWindow` (177) liefert den Fenster-Status. Die Stufe-2-`KnowledgeOsHintsCard` baut das Hints-Ergebnis bereits. Es fehlte nur eine knappe Readiness-Aggregation für den Review.
+
+**Umsetzung (rein read-only, additiv, keine neue Engine):**
+- Neuer DOM-freier Helper `apps/web/src/lib/knowledgeOsReadiness.ts` mit `buildKnowledgeOsReadiness({ hints, windows? })`. Aggregiert nur die strukturierten Helper-Ergebnisse.
+- `readiness: "ready" | "attention" | "critical" | "incomplete"`, deterministische Regeln: critical-Hints → `critical`; sonst warnings ODER windowLimited → `attention`; sonst unknown-Kernsignale → `incomplete`; sonst → `ready`. Fenster-Limit ist kein Fehler, kann aber `attention` auslösen.
+- `counts` (critical/warnings/unknown/windowLimited) + `reasons` (max. 3, feste Priorität critical > warning > window > unknown).
+- Stufe 2: kompakter Readiness-Header direkt in der `KnowledgeOsHintsCard` (Badge + bis zu 3 Gründe) — reusing das schon vorhandene Hints-Ergebnis und die Fenster aus ModelRuns(50)/Evidence(500). Keine neuen Hooks/Datenquellen, bestehende Cards unverändert.
+- i18n DE/EN `readiness.title/ready/attention/critical/incomplete` + `readiness.reason.*`.
+
+**Geänderte/neue Dateien:** neu `apps/web/src/lib/knowledgeOsReadiness.ts`, `tests/analytics/knowledge-os-readiness.test.ts`; geändert `apps/web/src/pages/Stufe2.tsx`, `apps/web/src/i18n.ts`, `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — **88 Dateien / 498 Tests** (+6 Readiness: critical→critical, warning→attention, window→attention, unknown→incomplete, all-clear→ready, Gründe max 3 + deterministisch). apps/web `tsc --noEmit` EXIT=0. Biome + depcruise sauber. Bestehende Hints-/Window-/Index-Tests unverändert grün.
+
+**Restlücken/Nicht-Ziele:** keine neue fachliche Engine, keine neuen Datenquellen, kein Backend, keine Persistenz, kein Ticket-Auto-Create, keine Ersetzung bestehender Cards. Readiness aggregiert nur die bereits geladenen, fensterbasierten QM-Signale.
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check && (cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/knowledgeOsReadiness.ts apps/web/src/pages/Stufe2.tsx \
+  apps/web/src/i18n.ts tests/analytics/knowledge-os-readiness.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(qm): Knowledge-OS readiness summary from QA signals (SCRUM-178)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
