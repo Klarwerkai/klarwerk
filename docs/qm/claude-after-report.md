@@ -3480,3 +3480,19 @@ Kein Git, kein Commit/Push, kein Jira durch Claude. No tickets closed. No new ti
 **Restlücken/Nicht-Ziele:** kein neuer Import-Parser, kein OCR-/PDF-/DOCX-Umbau, kein Browser-E2E, kein UI-Redesign, keine Alt-App-Parität. Nicht abgedeckt (bewusst): FE-JSON-Datei-Parsing (`parseImportItems`, separat im Lib-Test) und Pg-Persistenz (In-Memory prozesslokal). Der Kern-Datenpfad Erzeugen→Listen→Accept(→echtes KO)/Reject/Info inkl. Dublette-, Guard- und ALREADY_REVIEWED-Fällen ist jetzt routennah abgesichert.
 
 Kein Git, kein Commit/Push, kein Jira durch Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-239 — Output Factory: HTTP-Workflow routennah absichern
+
+**Vorab-Befund (read-only):** Zwei HTTP-Routen (`services/app/src/routes/output-routes.ts`): **Quellen** `GET /api/output/sources` → Permission `ko.read` → `listEligible()` = `koService.list({status:"validiert"})` → nur validierte KOs als `OutputSource`. **Generieren** `POST /api/output/generate` `{kind, koIds, audienceRole?}` → `ko.read`. Erlaubte Typen (`OUTPUT_KINDS`): `instruction`, `checklist`, `troubleshooting`, `training`, `management_summary`. `generate` (services/output/src/service.ts): prüft Typ (`UNKNOWN_KIND`), nicht-leere koIds (`NO_SOURCES`), je KO Existenz (`UNKNOWN_KO`) und Status `validiert` (`NOT_VALIDATED`); iteriert koIds **in Reihenfolge** → Renderer nummerieren entsprechend, Provenance in derselben Ordnung. **Provenance** je Quelle: `koId, title, status("validiert"), trust, version, author, originalAuthor, category, type, validity (abgeleitet, kein Ablaufdatum), uncertain (trust<60)`. `OutputError`-Codes werden über `sendError` zu ≥400 gemappt. Coverage bislang: nur `services/output/src/service.test.ts` (Service) + FE (`outputComposition`/`outputDoc`) — **kein Route-Level-Test**. **Kein Produktbug** — Route-Level-Smoke genügt.
+
+**Umsetzung (nur Test, kein Produktcode):** Neuer Route-Level-Test `services/app/src/output-routes.test.ts` über `buildApp`/`app.inject`, ohne Repo-Manipulation. Setup: Admin + Demo-Seed (Carla=controller als zweiter Validator); validierte KOs werden **über echte HTTP-Aktionen** vorbereitet (`POST /api/kos` mit `neededValidations:2` → Admin+Carla je `PUT …{action:"rate",verdict:"up"}` → Status „validiert" per GET bestätigt). (1) Hauptpfad: `GET /api/output/sources` enthält die zwei validierten, **nicht** das offene KO, alle `status==="validiert"`; `POST …/generate {kind:"instruction", koIds:[koB,koA]}` → 200, `doc.kind==="instruction"`, nicht-leeres Markdown, **Provenance exakt in Reihenfolge [koB,koA]** mit strukturierten Feldern (status/validity/trust/version/uncertain), Markdown enthält beide Titel und respektiert die Reihenfolge (Beta vor Alpha). (2) Negativfälle: nicht-validiert (`NOT_VALIDATED`), unbekanntes KO (`UNKNOWN_KO`), leere Auswahl (`NO_SOURCES`), unbekannter Typ (`UNKNOWN_KIND`) → je ≥400. (3) Guard: anonym darf weder Quellen lesen noch generieren → ≥400. **Kein Produktcode geändert.**
+
+**Geänderte/neue Dateien:** neu `services/app/src/output-routes.test.ts`; geändert `docs/qm/claude-after-report.md`. Kein Produktcode, kein FE.
+
+**Tests/Gates:** `npm run check` grün — **108 Dateien / 578 Tests** (+1 Datei, +3 Output-Route-Tests). Biome + depcruise + tsc (services/tests) sauber (Test-Helper-Param `Record<string, unknown>` statt `unknown` wegen Inject-Payload-Typ). apps/web `tsc --noEmit` nicht nötig (kein FE berührt). Bestehende Service-/FE-Tests unverändert grün.
+
+**Restlücken/Nicht-Ziele:** kein neuer Output-Typ, kein PDF-Export, keine Output-Persistenz, kein Browser-E2E, kein UI-Redesign, keine Alt-App-Parität. Nicht abgedeckt (bewusst): typ-spezifische Markdown-Feinheiten je Renderer (Service-getestet) und FE-Copy/Download (DOM-only). Der Kern-Datenpfad Eligible→Generate(Typ+geordnete Provenance) inkl. aller Negativ-/Guardfälle ist jetzt routennah abgesichert.
+
+Kein Git, kein Commit/Push, kein Jira durch Claude. No tickets closed. No new tickets.
