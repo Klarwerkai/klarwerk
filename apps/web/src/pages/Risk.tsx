@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { endpoints } from "../api/endpoints";
-import { useBusFactor, useDirectory, useGaps, useKos } from "../api/hooks";
+import { useBusFactor, useConflicts, useDirectory, useGaps, useKos } from "../api/hooks";
 import type { GapPriority } from "../api/types";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import {
@@ -12,6 +12,7 @@ import {
   sortGapsByPriority,
 } from "../lib/gapPriority";
 import { type RiskLevel, domainRisk } from "../lib/knowledgeHealth";
+import { buildRiskCockpit } from "../lib/riskCockpit";
 
 const RISK_TONE: Record<RiskLevel, string> = {
   kritisch: "bg-trust-crit-bg text-trust-crit-text",
@@ -29,6 +30,7 @@ export function Risk(): JSX.Element {
   const { t } = useTranslation();
   const bus = useBusFactor();
   const gaps = useGaps();
+  const conflicts = useConflicts();
   const kos = useKos();
   const users = useDirectory();
   const qc = useQueryClient();
@@ -55,9 +57,51 @@ export function Risk(): JSX.Element {
   const maxKo = Math.max(1, ...(bus.data ?? []).map((b) => b.koCount));
   const nameOf = (uid: string): string => users.data?.find((u) => u.id === uid)?.name || uid;
 
+  // SCRUM-230: kompakter Cockpit-Einstieg aus echten Gap-/Conflict-Daten (kein Score, keine Engine).
+  const cockpit = buildRiskCockpit(gaps.data ?? [], conflicts.data ?? []);
+  const cockpitTiles: { key: string; label: string; value: number; crit?: boolean }[] = [
+    { key: "openGaps", label: t("risk.kpiOpenGaps"), value: cockpit.openGaps },
+    {
+      key: "high",
+      label: t("risk.kpiHigh"),
+      value: cockpit.highPriority,
+      crit: cockpit.highPriority > 0,
+    },
+    { key: "unassigned", label: t("risk.kpiUnassigned"), value: cockpit.unassigned },
+    { key: "assigned", label: t("risk.kpiAssigned"), value: cockpit.assigned },
+    {
+      key: "conflicts",
+      label: t("risk.kpiOpenConflicts"),
+      value: cockpit.openConflicts,
+      crit: cockpit.openConflicts > 0,
+    },
+    { key: "closed", label: t("risk.kpiClosedGaps"), value: cockpit.closedGaps },
+  ];
+
   return (
     <div className="mx-auto max-w-4xl space-y-7">
       <PageHeader kicker={t("risk.kicker")} title={t("nav.risk")} />
+
+      {/* SCRUM-230: kompakter Cockpit-Einstieg — aggregierte Kennzahlen aus vorhandenen Daten. */}
+      <div>
+        <SectionLabel>{t("risk.summary")}</SectionLabel>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+          {cockpitTiles.map((tile) => (
+            <Card key={tile.key} className="p-3">
+              <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+                {tile.label}
+              </div>
+              <div
+                className={`mt-1 text-2xl font-semibold ${
+                  tile.crit ? "text-trust-crit-text" : "text-ink"
+                }`}
+              >
+                {tile.value}
+              </div>
+            </Card>
+          ))}
+        </div>
+      </div>
 
       {/* SCRUM-133: Risiko-Cockpit nach Domäne/Kategorie */}
       <div>

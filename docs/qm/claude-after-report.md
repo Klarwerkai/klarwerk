@@ -3303,3 +3303,29 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-230 — Risiko-Seite: Cockpit-Kennzahlen als kompakter Einstieg
+
+**Vorab-Befund (read-only):** `Risk.tsx` hatte bereits eine Sektion „Risiko-Cockpit nach Domäne" (`risk.cockpit`, `domainRisk`-Grid pro Kategorie) sowie Bus-Faktor und die Gap-Liste mit voll funktionsfähigen Aktionen (Priorität via `setPriority`, Zuweisen, Schließen `close`, Löschen `remove`; SCRUM-115-Sortierung via `sortGapsByPriority`). **Es fehlte** ein kompakter, aggregierter Cockpit-Einstieg ganz oben. Die Seite lud **keine** Konflikte (`useConflicts` ungenutzt). Datentypen: `Gap{status:"offen"|"geschlossen", assignee, priority:"hoch"|…}`, `Conflict{status:"offen"|"eskaliert"|"zweitmeinung"|"geloest"}`. Hooks `useGaps`/`useConflicts` vorhanden.
+
+**Umsetzung (kleinster sauberer Eingriff):** Neuer DOM-freier Helper `apps/web/src/lib/riskCockpit.ts` — `buildRiskCockpit(gaps, conflicts)` leitet rein aus vorhandenen Daten ab: offene Lücken, hohe Priorität (offen+hoch), zugewiesen/unzugewiesen (offen), geschlossene Lücken, offene Konflikte (alles außer `geloest`). **Kein Score, keine Engine.** In `Risk.tsx`: `useConflicts()` ergänzt; oben eine kompakte 6er-KPI-Kachelzeile (`risk.summary`), kritische Kennzahlen (hohe Priorität / offene Konflikte > 0) in Warnfarbe. Bestehende Domänen-Cockpit-, Bus-Faktor- und Gap-Sektion inkl. aller Aktionen unverändert.
+
+**Geänderte/neue Dateien:** neu `apps/web/src/lib/riskCockpit.ts`, `tests/analytics/risk-cockpit.test.ts`; geändert `apps/web/src/pages/Risk.tsx` (Konflikte-Hook + KPI-Zeile), `apps/web/src/i18n.ts` (`risk.summary` + 6 `risk.kpi*` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — **101 Dateien / 553 Tests** (+1 Datei, +3 Tests für riskCockpit). apps/web DOM-`tsc --noEmit` grün. Biome + depcruise sauber. Bestehende Risk-/Gap-/Conflict-Pfade unverändert.
+
+**Restlücken/Nicht-Ziele:** keine neue Risiko-Engine, kein erfundener Score, kein Backend-Umbau, kein Konflikt-Workflow-Umbau, keine Alt-App-Pixel-Parität. Die KPI-Zeile ist rein additiv/abgeleitet; alle Gap-Aktionen (Priorität, Zuweisen, Schließen, Löschen) bleiben voll funktionsfähig. Bei noch ladenden Daten zeigen die Kacheln 0 und füllen sich nach dem Fetch.
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/riskCockpit.ts tests/analytics/risk-cockpit.test.ts apps/web/src/pages/Risk.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(risk): compact cockpit summary row from existing gap/conflict data (SCRUM-230)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
