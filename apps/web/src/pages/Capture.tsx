@@ -21,6 +21,7 @@ import { RichTextEditor } from "../components/RichTextEditor";
 import { ListEditor, TagEditor } from "../components/editors";
 import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
 import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
+import { captureReadiness } from "../lib/captureReadiness";
 import { draftTitle } from "../lib/draftForm";
 import {
   fileToThumbDataUrl,
@@ -439,6 +440,18 @@ export function Capture(): JSX.Element {
 
   const busy = structure.isPending || assistRaw.isPending || saveDraft.isPending;
 
+  // SCRUM-248: ehrlicher Speicher-Check — was landet im KO, was fehlt noch? (nur echte Felder)
+  const readiness = draft
+    ? captureReadiness({
+        title: draft.title,
+        statement: draft.statement,
+        bodyHtml,
+        category,
+        type,
+        attachmentCount: images.length,
+      })
+    : null;
+
   return (
     <div className="mx-auto max-w-5xl">
       <PageHeader kicker={t("capture.kicker")} title={t("capture.title")} />
@@ -809,10 +822,49 @@ export function Capture(): JSX.Element {
                   items={draft.measures}
                   onChange={(measures) => setDraft({ ...draft, measures })}
                 />
+                {/* SCRUM-248: Speicher-Check — Pflicht-/Kernfelder + mitgenommene Anhänge ehrlich sichtbar. */}
+                {readiness ? (
+                  <div className="rounded-card border border-hairline bg-page p-3">
+                    <SectionLabel>{t("capture.readyTitle")}</SectionLabel>
+                    <ul className="mt-1.5 space-y-1">
+                      {readiness.checks.map((c) => (
+                        <li key={c.key} className="flex items-center gap-2 text-[12.5px]">
+                          <span
+                            className={`grid h-4 w-4 shrink-0 place-items-center rounded-full text-[10px] font-bold ${
+                              c.ok
+                                ? "bg-trust-pos-bg text-trust-pos-text"
+                                : c.required
+                                  ? "bg-trust-warn-bg text-trust-warn-text"
+                                  : "bg-hairline-soft text-muted-2"
+                            }`}
+                          >
+                            {c.ok ? "✓" : c.required ? "!" : "–"}
+                          </span>
+                          <span className="flex-1 text-text">
+                            {t(`capture.ready.${c.key}`)}
+                            {c.key === "attachments" ? ` (${images.length})` : ""}
+                          </span>
+                          <span className="font-mono text-[10.5px] uppercase text-muted-2">
+                            {c.ok
+                              ? t("capture.readyDone")
+                              : c.required
+                                ? t("capture.readyMissing")
+                                : t("capture.readyOptional")}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    {!readiness.canSave ? (
+                      <p className="mt-2 text-[11.5px] text-trust-warn-text">
+                        {t("capture.readyHint")}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
                 <Button
                   variant="primary"
                   className="w-full"
-                  disabled={submit.isPending || draft.title.trim().length === 0}
+                  disabled={submit.isPending || !readiness?.canSave}
                   onClick={() => submit.mutate()}
                 >
                   {t("capture.submit")}

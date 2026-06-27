@@ -3679,3 +3679,29 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-248 — Capture produktnäher: von Rohinput zu sauberem KO sichtbar glätten
+
+**Vorab-Befund (read-only):** `Capture.tsx` führt Rohinput (Freitext/Formular/Diktat/Interview/Upload) über `reasoner.structure` zu einem `draft: StructureResult` (Titel/Aussage/Body/Bedingungen/Maßnahmen), den der Nutzer rechts editiert; `submit` erzeugt daraus per `endpoints.ko.create` das KO und hängt Bilder als Objekt-Anhänge an. **Lücke (P2/Klarheit):** Der „Einreichen"-Button war **nur** durch `draft.title.trim()` gegated — eine leere **Aussage** rutschte durch (das Backend leitet sie zwar aus `bodyHtml` ab, aber bei leerem Body entsteht ein dünnes KO), und es gab **keine** sichtbare Übersicht „was landet im KO / was fehlt / welche Anhänge". Kein P0/P1 (Speichern, Modi, Anhänge funktionieren). `richText.isEmptyHtml` existiert zur Body-Inhaltsprüfung. Bestehende Capture-Tests: `tests/capture/*` (draft-form, extract, ocr/pdf/docx, interview, speech, attachment-preview) + Service/Route-Tests.
+
+**Umsetzung (klein, ehrlich, DOM-frei):** Neuer Helfer `apps/web/src/lib/captureReadiness.ts` — `captureReadiness({title, statement, bodyHtml, category, type, attachmentCount})` → fünf Checks (`title`*, `content`*, `category`, `type`, `attachments`; * = Pflicht), `canSave` (alle Pflicht ok) und `missingRequired`. `content` ist erfüllt, wenn die Aussage Text trägt **oder** der WYSIWYG-Body echten Inhalt hat (`!isEmptyHtml`) — gleiche Ableitung wie das Backend. In `Capture.tsx`: kompakte **„Speicher-Check"-Liste** im Entwurfspanel (je Feld ✓ ok / ! fehlt / – optional, Anhänge mit Anzahl) plus ehrlicher Hinweis, wenn nicht speicherbereit; der Einreichen-Button wird jetzt aus `readiness.canSave` gegated (Titel **und** Inhalt statt nur Titel — kleiner, sicherer Guard-Fix). **Kein** Umbau des Speicherns/KO-Erstellens, **keine** neue Capture-/Reasoner-/OCR-Engine, **keine** Auto-Klassifikation behauptet; alle Modi + Anhang-/Quellen-Verhalten unverändert.
+
+**Geänderte/neue Dateien:** neu `apps/web/src/lib/captureReadiness.ts`, `tests/capture/capture-readiness.test.ts`; geändert `apps/web/src/pages/Capture.tsx` (Speicher-Check-Liste + Submit-Guard via canSave), `apps/web/src/i18n.ts` (`capture.ready*` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — **115 Dateien / 616 Tests** (+1 Datei, +8 captureReadiness-Tests: vollständig→speicherbereit, fehlender Titel, fehlende Aussage+leerer Body, Body-only-Inhalt zählt, Kategorie/Anhänge optional, Anhang-Zähler, leerer Entwurf→beide Pflichtfelder, stabile Check-Reihenfolge). apps/web `tsc --noEmit` grün. Biome + depcruise sauber. Bestehende Capture-Tests unverändert grün.
+
+**Restlücken/Nicht-Ziele:** keine neue Capture-Engine, keine neue OCR/PDF/DOCX-Engine, keine neue Upload-Pipeline, keine KI-/Reasoner-Architektur, keine Auto-Erkennung/-Klassifikation, keine Knowledge-OS-Metamorphose, keine Stufe-2-Arbeit, keine UI-Politur jenseits der Klarheit. Bewusst nur ein additiver, ehrlicher Status (kein blockierendes „Magie"-Gating über Pflichtfelder hinaus); Kategorie bleibt optional (Server-Default „Allgemein"), Wissensart immer gesetzt. Dokumente (docx/pdf/txt) fließen weiter in den Rohtext (keine Anhänge), Bilder bleiben Anhänge — Verhalten unverändert.
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/captureReadiness.ts tests/capture/capture-readiness.test.ts apps/web/src/pages/Capture.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(capture): honest save-readiness checklist + title+content guard (SCRUM-248)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
