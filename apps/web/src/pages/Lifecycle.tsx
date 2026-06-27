@@ -4,11 +4,12 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
-import { useLearningPath, useLearningProgress, useLifecyclePending } from "../api/hooks";
+import { useKos, useLearningPath, useLearningProgress, useLifecyclePending } from "../api/hooks";
 import { useSession } from "../app/AuthContext";
 import { StatusPill } from "../components/trust";
 import { Button, Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import { completedCount, isStepDone, progressPercent } from "../lib/learningPath";
+import { revalidationView } from "../lib/revalidation";
 
 export function Lifecycle(): JSX.Element {
   const { t } = useTranslation();
@@ -17,6 +18,7 @@ export function Lifecycle(): JSX.Element {
   const role = user?.role ?? "viewer";
 
   const query = useLifecyclePending();
+  const kos = useKos();
   const path = useLearningPath(role);
   const pathId = path.data?.id;
   const progress = useLearningProgress(pathId);
@@ -83,28 +85,49 @@ export function Lifecycle(): JSX.Element {
         <QueryState query={query} emptyText={t("lcy.empty")}>
           {(ids) => (
             <div className="space-y-3">
-              {ids.map((id) => (
-                <Card key={id} className="flex items-center gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="mb-1">
-                      <StatusPill status="revalidierung" />
+              {ids.map((id) => {
+                // SCRUM-254: ID gegen geladenen Bestand auflösen → Titel, Anlagenbezug, Status, Schritt.
+                const view = revalidationView(id, kos.data ?? []);
+                return (
+                  <Card key={id} className="flex items-center gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                        <StatusPill status="revalidierung" />
+                        {view.asset ? (
+                          <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-2">
+                            {t("lcy.revalAsset")}: {view.asset}
+                          </span>
+                        ) : null}
+                      </div>
+                      <Link
+                        to={`/wissen/${id}`}
+                        className="block truncate text-[13.5px] font-medium text-text hover:text-ink"
+                      >
+                        {view.title}
+                      </Link>
+                      {/* SCRUM-254: ehrliche nächste Handlung + Hinweis, wenn Details fehlen. */}
+                      <div className="mt-0.5 text-[11.5px] text-muted">
+                        <span className="font-mono uppercase tracking-wider text-muted-2">
+                          {t("lcy.revalNextLabel")}:
+                        </span>{" "}
+                        {t(`lcy.revalNext.${view.nextStep}`)}
+                      </div>
+                      {!view.found ? (
+                        <div className="mt-0.5 text-[11px] text-trust-warn-text">
+                          {t("lcy.revalMissing")}
+                        </div>
+                      ) : null}
                     </div>
-                    <Link
-                      to={`/wissen/${id}`}
-                      className="block truncate font-mono text-[13px] text-text hover:text-ink"
+                    <Button
+                      variant="primary"
+                      disabled={confirm.isPending}
+                      onClick={() => confirm.mutate(id)}
                     >
-                      {id}
-                    </Link>
-                  </div>
-                  <Button
-                    variant="primary"
-                    disabled={confirm.isPending}
-                    onClick={() => confirm.mutate(id)}
-                  >
-                    {t("lcy.stillValid")}
-                  </Button>
-                </Card>
-              ))}
+                      {t("lcy.stillValid")}
+                    </Button>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </QueryState>

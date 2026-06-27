@@ -3831,3 +3831,27 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-254 — Lebenszyklus: Revalidierung und nächste Handlung produktnäher machen
+**Datum:** 2026-06-27 · **Rolle:** Claude setzt um (Codex führt, Pedi entscheidet Richtung).
+
+**Vorab-Befund (read-only):** `Lifecycle.tsx` bietet drei Blöcke: Anlagenänderung melden (`assetChanged` → markiert gekoppelte KOs „prüfen"), Pending-Revalidierung und rollenspezifischen Lernpfad. Die Pending-Liste rendert bislang nur **rohe KO-IDs** (`lifecycle.pending()` liefert `string[]`) mit StatusPill „revalidierung", Detail-Link und der echten Aktion „Noch gültig → neue Version" (`ko.act(revalidate)`). `revalidation.ts` enthielt nur `canRevalidate`. Backend (`services/lifecycle`: Kopplungen asset_ref→ko_id, Pending-Set, Lernpfade) unverändert tragfähig; das KO trägt ein optionales `asset`-Feld. Lücke: aus der ID ist weder Titel noch Anlagenbezug noch ein nächster Schritt erkennbar. Kein P0/P1.
+
+**Umsetzung (minimal, ehrlich, DOM-frei):** Helfer `revalidationView(id, kos)` in `revalidation.ts` erweitert: löst die Pending-ID gegen den geladenen KO-Bestand auf und liefert `{found, title, asset, status, nextStep}`. `nextStep` ehrlich aus dem realen KO-Status abgeleitet — `validiert`→`review` (prüfen, ob nach Änderung noch gültig → dann über den vorhandenen „Noch gültig"-Button bestätigen), `offen`→`validate` (zuerst regulär validieren), nicht auflösbar→`openKo` (öffnen, Details liegen nicht vor). In `Lifecycle.tsx` zeigt jede Pending-Karte jetzt Titel statt ID, einen Anlagenbezug-Chip (nur falls vorhanden), den „Nächster Schritt"-Hinweis und einen ehrlichen „Details nicht im geladenen Bestand"-Hinweis, wenn das KO nicht auflösbar ist. Bestehender Revalidate-Button und Asset-Change-Flow unverändert. Keine neue Engine, keine Persistenz, keine automatische Mutation.
+
+**Geänderte Dateien:** `apps/web/src/lib/revalidation.ts` (Helper+Typen), `tests/library/revalidation.test.ts` (+3 Tests), `apps/web/src/pages/Lifecycle.tsx` (Pending-Karte + `useKos`), `apps/web/src/i18n.ts` (`lcy.revalAsset`, `lcy.revalNextLabel`, `lcy.revalNext.*`, `lcy.revalMissing` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — 118 Dateien / 639 Tests (+3). `apps/web` `tsc --noEmit` grün. Biome + dependency-cruiser sauber.
+
+**Restlücken/Nicht-Ziele:** Kein neues Lifecycle-Modell, kein Backend-Großumbau, keine neue Persistenz, keine automatische Revalidierung/Mutation, keine neue Stufe-2-Card, kein RAG/Vector-DB/Reasoner-Umbau, keine Ticketserie, keine UI-Politur ohne Produktwirkung. Der Anlagenbezug stammt aus dem KO-Feld `asset` (Bezug des Objekts, nicht zwingend der konkrete Änderungsauslöser — daher neutral als „Anlagenbezug" benannt, keine falsche Kausalbehauptung). Keine Aussage über Gültigkeit/Aktualität; der Hinweis ist reine Orientierung, die Bestätigung bleibt manuell.
+
+**Commit-/Push-Hinweis:**
+```
+git add apps/web/src/lib/revalidation.ts tests/library/revalidation.test.ts apps/web/src/pages/Lifecycle.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(lifecycle): resolve pending revalidation IDs to title/asset + honest next-step (SCRUM-254)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
