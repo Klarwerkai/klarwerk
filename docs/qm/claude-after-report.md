@@ -3355,3 +3355,29 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-233 — Ask: Reasoner-Modus sichtbar machen
+
+**Vorab-Befund (read-only):** `Ask.tsx` ist funktional vollständig (Frage → belegte Antwort, Quellen, Vertrauen, Lücken-Pfad), zeigte aber **nicht**, ob die Antwort über ein echtes Modell oder den deterministischen Fallback lief. Der passende Endpoint existiert bereits: `GET /reasoner/status` → `ReasonerStatus { active, provider, mode: "model" | "deterministic" }` (api/types.ts), Hook `useReasonerStatus` vorhanden, bislang in Ask ungenutzt. Backend `services/reasoner` nutzt Anthropic-`primary` nur bei gesetztem `ANTHROPIC_API_KEY`, sonst deterministischen Fallback — exakt dieser Modus soll ehrlich sichtbar werden. **Kein Backend-Bedarf** (Status reicht).
+
+**Umsetzung (kleinster sauberer Eingriff):** Neuer DOM-freier Helper `apps/web/src/lib/reasonerBadge.ts` — `reasonerBadge({status, isLoading, isError})` bildet den Query-Zustand ehrlich auf einen Badge ab: `model`→pos, `deterministic`→warn (kein Fehler), `loading`/`unknown`→neutral und unaufdringlich; liefert `labelKey` (`ask.reasoner.<kind>`). In `Ask.tsx`: `useReasonerStatus()` eingebunden, kleiner Status-Pill neben der Intro-Zeile (Tonskala `REASONER_TONE`), Tooltip via `ask.reasoner.hint`. **Keine** Prompt-/Antwortdaten, keine Provider-Auswahl, kein Token-/Kosten-Accounting, kein Backend-/Engine-Umbau. Der Ask-Flow selbst ist unverändert.
+
+**Geänderte/neue Dateien:** neu `apps/web/src/lib/reasonerBadge.ts`, `tests/reasoner/reasoner-badge.test.ts`; geändert `apps/web/src/pages/Ask.tsx` (Status-Hook + Badge), `apps/web/src/i18n.ts` (`ask.reasoner.*` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — **102 Dateien / 557 Tests** (+1 Datei, +4 Tests für reasonerBadge; deckt model/deterministic/loading/unknown ab). apps/web DOM-`tsc --noEmit` grün. Biome + depcruise sauber. Hinweis: Helper-Signatur `status: … | null | undefined` wegen `exactOptionalPropertyTypes` (Query-`data` ist `ReasonerStatus | undefined`).
+
+**Restlücken/Nicht-Ziele:** keine neue Reasoner-Engine, kein Provider-Switching im UI, kein Prompt-/Antwort-Logging, kein Token-/Kosten-Accounting, kein Backend-Redesign. Der Badge spiegelt nur den read-only Modus; Quellen/Validierung der Antworten bleiben unverändert. Lade-/Fehlerzustand wird neutral statt alarmierend dargestellt (ehrlich, unaufdringlich).
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/reasonerBadge.ts tests/reasoner/reasoner-badge.test.ts apps/web/src/pages/Ask.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(ask): honest reasoner mode badge (model vs deterministic) from existing status (SCRUM-233)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

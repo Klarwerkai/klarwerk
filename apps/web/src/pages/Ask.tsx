@@ -4,12 +4,14 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
+import { useReasonerStatus } from "../api/hooks";
 import type { AnswerResult } from "../api/types";
 import { ConfidenceBar } from "../components/trust";
 import { Button, Card, PageHeader, SectionLabel } from "../components/ui";
 import { selectAnswer } from "../lib/askResponse";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
 import { type EvidenceTone, knowledgeClassMeta } from "../lib/knowledgeClass";
+import { type ReasonerBadgeTone, reasonerBadge } from "../lib/reasonerBadge";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 
 // Tone → Badge-Stil (Tailwind-Tokens), bewusst in der Komponente gehalten.
@@ -20,10 +22,25 @@ const EVIDENCE_TONE: Record<EvidenceTone, string> = {
   neutral: "bg-page text-muted",
 };
 
+// SCRUM-233: Modus-Badge-Tönung (eigene Skala, neutral inklusive Lade-/Unbekannt-Zustand).
+const REASONER_TONE: Record<ReasonerBadgeTone, string> = {
+  pos: "bg-trust-pos-bg text-trust-pos-text",
+  warn: "bg-trust-warn-bg text-trust-warn-text",
+  neutral: "bg-page text-muted",
+};
+
 export function Ask(): JSX.Element {
   const { t, i18n } = useTranslation();
   const [q, setQ] = useState("");
   const [result, setResult] = useState<AnswerResult | null>(null);
+
+  // SCRUM-233: ehrlicher Reasoner-Modus aus vorhandenem read-only Status (kein Backend-Umbau).
+  const reasonerStatus = useReasonerStatus();
+  const badge = reasonerBadge({
+    status: reasonerStatus.data,
+    isLoading: reasonerStatus.isLoading,
+    isError: reasonerStatus.isError,
+  });
 
   const ask = useMutation({
     mutationFn: () => endpoints.ask.ask(q, toReasonerLocale(i18n.language)),
@@ -35,7 +52,15 @@ export function Ask(): JSX.Element {
   return (
     <div className="mx-auto max-w-3xl">
       <PageHeader kicker={t("ask.kicker")} title={t("ask.title")} />
-      <p className="-mt-3 mb-5 text-sm text-muted">{t("ask.intro")}</p>
+      <div className="-mt-3 mb-5 flex flex-wrap items-center gap-2">
+        <p className="text-sm text-muted">{t("ask.intro")}</p>
+        <span
+          title={t("ask.reasoner.hint")}
+          className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${REASONER_TONE[badge.tone]}`}
+        >
+          {t(badge.labelKey)}
+        </span>
+      </div>
 
       <form
         className="flex gap-2"
