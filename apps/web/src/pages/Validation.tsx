@@ -8,9 +8,10 @@ import { useDirectory, useValidationBoard } from "../api/hooks";
 import type { Verdict } from "../api/types";
 import { useSession } from "../app/AuthContext";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
-import { ConfidenceBar, KnowledgeTypeTag, KoAuthorLine } from "../components/trust";
+import { ConfidenceBar, KnowledgeTypeTag, KoAuthorLine, StatusPill } from "../components/trust";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
 import { koAuthorParts } from "../lib/koAuthor";
+import { type TrustBand, reviewSignals, sortByReviewPriority } from "../lib/reviewSignals";
 import {
   type FeedbackVerdict,
   buildValidationFeedback,
@@ -23,6 +24,13 @@ import {
   tagOptions,
   typeOptions,
 } from "../lib/validationFilters";
+
+// SCRUM-249: Trust-Band → Tönung der Trust-Plakette (kritisch/mittel/gut).
+const TRUST_TONE: Record<TrustBand, string> = {
+  low: "bg-trust-crit-bg text-trust-crit-text",
+  mid: "bg-trust-warn-bg text-trust-warn-text",
+  high: "bg-trust-pos-bg text-trust-pos-text",
+};
 
 export function Validation(): JSX.Element {
   const { t } = useTranslation();
@@ -92,7 +100,11 @@ export function Validation(): JSX.Element {
           const cats = categoryOptions(items);
           const tags = tagOptions(items);
           const types = typeOptions(items);
-          const visible = items.filter((k) => matchesValidationFilter(k, filter, user?.id ?? null));
+          // SCRUM-249: handlungsnah priorisieren (Autor-Transfer/niedriger Trust zuerst) — Filter
+          // bleiben unverändert, es wird nichts verworfen, nur die Reihenfolge geschärft.
+          const visible = sortByReviewPriority(
+            items.filter((k) => matchesValidationFilter(k, filter, user?.id ?? null)),
+          );
           return (
             <>
               <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -148,137 +160,167 @@ export function Validation(): JSX.Element {
                 </label>
               </div>
               <div className="space-y-3">
-                {visible.map((k) => (
-                  <div key={k.id} className="space-y-2">
-                    <Card className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                      <div className="min-w-0 flex-1">
-                        <div className="mb-1 flex items-center gap-2">
-                          <KnowledgeTypeTag type={k.type} />
-                          <span className="font-mono text-[11px] text-muted-2">{k.category}</span>
-                        </div>
-                        <Link
-                          to={`/wissen/${k.id}`}
-                          className="block truncate text-[14px] font-medium text-text hover:text-ink"
-                        >
-                          {k.title}
-                        </Link>
-                        <div className="mt-1.5 flex items-center gap-3">
-                          <ConfidenceBar value={k.confidence} showLabel={false} />
-                          <span className="font-mono text-[11px] text-muted-2">
-                            {t("val.target", { n: k.neededValidations })}
-                          </span>
-                        </div>
-                        <div className="mt-1">
-                          <KoAuthorLine {...koAuthorParts(k, nameOf)} />
-                        </div>
-                      </div>
-                      <div className="flex shrink-0 flex-col items-end gap-1.5">
-                        <div className="flex gap-1.5">
-                          <button
-                            type="button"
-                            title={t("val.confirm")}
-                            disabled={rate.isPending || reviewWithFeedback.isPending}
-                            onClick={() => rate.mutate({ id: k.id, verdict: "up" })}
-                            className="grid h-9 w-9 place-items-center rounded-btn bg-trust-pos-bg text-trust-pos-text hover:opacity-80 disabled:opacity-50"
-                          >
-                            <Check size={16} />
-                          </button>
-                          <button
-                            type="button"
-                            title={t("val.conditional")}
-                            disabled={reviewWithFeedback.isPending}
-                            onClick={() => openFeedback(k.id, "warn")}
-                            className={`grid h-9 w-9 place-items-center rounded-btn bg-trust-warn-bg text-trust-warn-text hover:opacity-80 disabled:opacity-50 ${
-                              feedback?.id === k.id && feedback.verdict === "warn"
-                                ? "ring-2 ring-trust-warn-text"
-                                : ""
-                            }`}
-                          >
-                            <Minus size={16} />
-                          </button>
-                          <button
-                            type="button"
-                            title={t("val.reject")}
-                            disabled={reviewWithFeedback.isPending}
-                            onClick={() => openFeedback(k.id, "down")}
-                            className={`grid h-9 w-9 place-items-center rounded-btn bg-trust-crit-bg text-trust-crit-text hover:opacity-80 disabled:opacity-50 ${
-                              feedback?.id === k.id && feedback.verdict === "down"
-                                ? "ring-2 ring-trust-crit-text"
-                                : ""
-                            }`}
-                          >
-                            <X size={16} />
-                          </button>
-                        </div>
-                        <select
-                          value=""
-                          disabled={assign.isPending}
-                          onChange={(e) => {
-                            if (e.target.value) {
-                              assign.mutate({ id: k.id, userId: e.target.value });
-                            }
-                          }}
-                          className="h-8 w-40 rounded-input border border-hairline bg-surface px-2 text-[12px] text-muted"
-                        >
-                          <option value="">{t("val.assign")}</option>
-                          {(users.data ?? []).map((u) => (
-                            <option key={u.id} value={u.id}>
-                              {u.name || u.id}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </Card>
-                    {feedback?.id === k.id ? (
-                      <Card className="border-hairline/80">
-                        <div className="mb-2 text-[12.5px] font-semibold text-text">
-                          {feedback.verdict === "warn"
-                            ? t("val.feedback.condTitle")
-                            : t("val.feedback.rejTitle")}
-                        </div>
-                        <textarea
-                          value={feedbackText}
-                          onChange={(e) => setFeedbackText(e.target.value)}
-                          placeholder={t("val.feedback.placeholder")}
-                          rows={3}
-                          className="w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none placeholder:text-muted-2 focus:border-ink/30"
-                        />
-                        {reviewWithFeedback.isError ? (
-                          <div className="mt-2 rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
-                            {t("val.feedback.error")}
+                {visible.map((k) => {
+                  const sig = reviewSignals(k);
+                  return (
+                    <div key={k.id} className="space-y-2">
+                      <Card className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                        <div className="min-w-0 flex-1">
+                          <div className="mb-1 flex flex-wrap items-center gap-2">
+                            <KnowledgeTypeTag type={k.type} />
+                            <StatusPill status={sig.status} />
+                            <span className="font-mono text-[11px] text-muted-2">{k.category}</span>
                           </div>
-                        ) : null}
-                        <div className="mt-2 flex items-center justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            disabled={reviewWithFeedback.isPending}
-                            onClick={() => {
-                              setFeedback(null);
-                              setFeedbackText("");
+                          <Link
+                            to={`/wissen/${k.id}`}
+                            className="block truncate text-[14px] font-medium text-text hover:text-ink"
+                          >
+                            {k.title}
+                          </Link>
+                          {/* SCRUM-249: Review-Signale kompakt — Trust, Version, Ziel, Provenance. */}
+                          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                            <ConfidenceBar value={k.confidence} showLabel={false} />
+                            <span
+                              className={`rounded-pill px-1.5 py-0.5 font-mono text-[10px] font-semibold ${TRUST_TONE[sig.trustBand]}`}
+                            >
+                              {t("val.trust")} {sig.trust}
+                            </span>
+                            <span className="font-mono text-[10px] text-muted-2">
+                              v{sig.version}
+                            </span>
+                            <span className="font-mono text-[11px] text-muted-2">
+                              {t("val.target", { n: sig.needed })}
+                            </span>
+                            {sig.authorTransferred ? (
+                              <span className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-trust-warn-text">
+                                {t("val.transferred")}
+                              </span>
+                            ) : null}
+                            {sig.assigned ? (
+                              <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted">
+                                {t("val.assigned")}
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="mt-1">
+                            <KoAuthorLine {...koAuthorParts(k, nameOf)} />
+                          </div>
+                          {/* SCRUM-249: ehrlicher Entscheidungs-Hinweis (aus Trust-Band abgeleitet). */}
+                          <p className="mt-1 text-[11.5px] text-muted">
+                            <span className="font-semibold text-text">
+                              {t("val.decisionLabel")}{" "}
+                            </span>
+                            {t(`val.decision.${sig.trustBand}`)}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 flex-col items-end gap-1.5">
+                          <div className="flex gap-1.5">
+                            <button
+                              type="button"
+                              title={t("val.confirm")}
+                              disabled={rate.isPending || reviewWithFeedback.isPending}
+                              onClick={() => rate.mutate({ id: k.id, verdict: "up" })}
+                              className="grid h-9 w-9 place-items-center rounded-btn bg-trust-pos-bg text-trust-pos-text hover:opacity-80 disabled:opacity-50"
+                            >
+                              <Check size={16} />
+                            </button>
+                            <button
+                              type="button"
+                              title={t("val.conditional")}
+                              disabled={reviewWithFeedback.isPending}
+                              onClick={() => openFeedback(k.id, "warn")}
+                              className={`grid h-9 w-9 place-items-center rounded-btn bg-trust-warn-bg text-trust-warn-text hover:opacity-80 disabled:opacity-50 ${
+                                feedback?.id === k.id && feedback.verdict === "warn"
+                                  ? "ring-2 ring-trust-warn-text"
+                                  : ""
+                              }`}
+                            >
+                              <Minus size={16} />
+                            </button>
+                            <button
+                              type="button"
+                              title={t("val.reject")}
+                              disabled={reviewWithFeedback.isPending}
+                              onClick={() => openFeedback(k.id, "down")}
+                              className={`grid h-9 w-9 place-items-center rounded-btn bg-trust-crit-bg text-trust-crit-text hover:opacity-80 disabled:opacity-50 ${
+                                feedback?.id === k.id && feedback.verdict === "down"
+                                  ? "ring-2 ring-trust-crit-text"
+                                  : ""
+                              }`}
+                            >
+                              <X size={16} />
+                            </button>
+                          </div>
+                          <select
+                            value=""
+                            disabled={assign.isPending}
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                assign.mutate({ id: k.id, userId: e.target.value });
+                              }
                             }}
+                            className="h-8 w-40 rounded-input border border-hairline bg-surface px-2 text-[12px] text-muted"
                           >
-                            {t("val.feedback.cancel")}
-                          </Button>
-                          <Button
-                            variant="primary"
-                            disabled={
-                              reviewWithFeedback.isPending || !isFeedbackSubmittable(feedbackText)
-                            }
-                            onClick={() =>
-                              reviewWithFeedback.mutate({
-                                id: k.id,
-                                verdict: feedback.verdict,
-                                text: feedbackText,
-                              })
-                            }
-                          >
-                            {t("val.feedback.submit")}
-                          </Button>
+                            <option value="">{t("val.assign")}</option>
+                            {(users.data ?? []).map((u) => (
+                              <option key={u.id} value={u.id}>
+                                {u.name || u.id}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                       </Card>
-                    ) : null}
-                  </div>
-                ))}
+                      {feedback?.id === k.id ? (
+                        <Card className="border-hairline/80">
+                          <div className="mb-2 text-[12.5px] font-semibold text-text">
+                            {feedback.verdict === "warn"
+                              ? t("val.feedback.condTitle")
+                              : t("val.feedback.rejTitle")}
+                          </div>
+                          <textarea
+                            value={feedbackText}
+                            onChange={(e) => setFeedbackText(e.target.value)}
+                            placeholder={t("val.feedback.placeholder")}
+                            rows={3}
+                            className="w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none placeholder:text-muted-2 focus:border-ink/30"
+                          />
+                          {reviewWithFeedback.isError ? (
+                            <div className="mt-2 rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
+                              {t("val.feedback.error")}
+                            </div>
+                          ) : null}
+                          <div className="mt-2 flex items-center justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              disabled={reviewWithFeedback.isPending}
+                              onClick={() => {
+                                setFeedback(null);
+                                setFeedbackText("");
+                              }}
+                            >
+                              {t("val.feedback.cancel")}
+                            </Button>
+                            <Button
+                              variant="primary"
+                              disabled={
+                                reviewWithFeedback.isPending || !isFeedbackSubmittable(feedbackText)
+                              }
+                              onClick={() =>
+                                reviewWithFeedback.mutate({
+                                  id: k.id,
+                                  verdict: feedback.verdict,
+                                  text: feedbackText,
+                                })
+                              }
+                            >
+                              {t("val.feedback.submit")}
+                            </Button>
+                          </div>
+                        </Card>
+                      ) : null}
+                    </div>
+                  );
+                })}
               </div>
             </>
           );

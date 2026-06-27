@@ -3705,3 +3705,29 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-249 — Validierung: Review-Entscheidung produktnäher und handlungsfähiger
+
+**Vorab-Befund (read-only):** `Validation.tsx` zeigt pro Review-Karte: Wissensart + Kategorie, Titel (Link zum KO-Detail), `ConfidenceBar` (Autor-**Confidence**), Validierungsziel (`neededValidations`), Autor/Originalautor (`KoAuthorLine`) und die Aktionen ✓/⚠/✗ (mit Pflicht-Kommentar bei Gelb/Rot) + Zuweisen. Filter (`validationFilters`) und Feedback (`validationFeedback`) sind getestet. **Lücke:** der für die Entscheidung zentrale **Trust** wird **nicht** angezeigt (nur Confidence), ebenso fehlen **Status-Pill**, **Version** und ein **„welche Entscheidung steht an"**-Hinweis; die Reihenfolge war unsortiert. `deriveStatus` (lib/displayStatus) + `StatusPill` existieren bereits. Kein P0/P1 — reine Produktreife/Klarheit.
+
+**Umsetzung (minimal, ehrlich, DOM-frei):** Neuer Helfer `apps/web/src/lib/reviewSignals.ts` — `reviewSignals(ko)` leitet aus **vorhandenen Feldern** ab: `status` (deriveStatus), `trust`+`trustBand` (low<40/mid 40–69/high≥70), `version`, `needed`, `assigned` (Zuweisung vorhanden → „pruefung"), `authorTransferred` (Autor≠Originalautor); `sortByReviewPriority` (Autor-Transfer zuerst, dann niedrigster Trust, dann Titel/ID — deterministisch, verwirft nichts). In `Validation.tsx`: kompakter **Review-Signal-Strip** pro Karte — `StatusPill`, getönte **Trust**-Plakette, **v{version}**, Ziel, sowie „Autor übertragen"/„zugewiesen"-Chips — plus ein ehrlicher **Entscheidungs-Hinweis** je Trust-Band (low/mid/high), und das Board wird per `sortByReviewPriority` handlungsnah geordnet. **Keine** neue Bewertungslogik, **keine** neuen Backend-Felder, **kein** Pseudo-Workflow; bestehende Filter, ✓/⚠/✗-Bewertung (inkl. Pflicht-Feedback) und Zuweisen unverändert.
+
+**Geänderte/neue Dateien:** neu `apps/web/src/lib/reviewSignals.ts`, `tests/validation/review-signals.test.ts`; geändert `apps/web/src/pages/Validation.tsx` (Signal-Strip + Entscheidungshinweis + Priorisierung), `apps/web/src/i18n.ts` (`val.trust`/`val.transferred`/`val.assigned`/`val.decision*` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — **116 Dateien / 621 Tests** (+1 Datei, +5 reviewSignals-Tests: trustBand-Schwellen, Signal-Ableitung, Zuweisung→pruefung + Autor-Transfer, Priorisierung Transfer/Trust, Determinismus/Leerzustand). apps/web `tsc --noEmit` grün. Biome + depcruise sauber. Bestehende `tests/validation/*` (filters/feedback/status/return-revalidate) unverändert grün.
+
+**Restlücken/Nicht-Ziele:** kein neues Validierungsmodell, kein Backend-Großumbau, keine neue Workflow-Engine, keine Knowledge-OS-Metamorphose, keine Stufe-2-Arbeit, keine Vector/RAG/Reasoner-Arbeit, keine Ticketserie, keine UI-Politur jenseits der Klarheit. Der Entscheidungs-Hinweis ist eine ehrliche, aus dem Trust-Band abgeleitete Orientierung (kein erfundener Score, keine Auto-Entscheidung). „Noch X Freigaben nötig" wird bewusst NICHT angezeigt, da der Rating-Breakdown nicht im Board-DTO liegt (kein neues Backend-Feld) — Trust-Band + Ziel geben den ehrlichen Näherungswert.
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/reviewSignals.ts tests/validation/review-signals.test.ts apps/web/src/pages/Validation.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(validation): compact review signals (status/trust/version/transfer) + decision hint + priority sort (SCRUM-249)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
