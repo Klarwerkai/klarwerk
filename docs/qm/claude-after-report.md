@@ -3464,3 +3464,19 @@ Kein Git, kein Commit/Push, kein Jira durch Claude. No tickets closed. No new ti
 **Restlücken/Nicht-Ziele:** kein neues Validierungsmodell, kein Status-Redesign, kein Browser-E2E, kein UI-Redesign, keine Alt-App-Parität. Nicht abgedeckt (bewusst): „warn"/return-to-author-Pfad (SCRUM-124) und Pg-Persistenz (In-Memory prozesslokal). Der Kern-Datenpfad Zuweisen→Bewerten→Status/Trust inkl. Guard-/Negativfällen ist jetzt routennah abgesichert.
 
 Kein Git, kein Commit/Push, kein Jira durch Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-238 — Import/Review: HTTP-Workflow routennah absichern
+
+**Vorab-Befund (read-only):** Drei HTTP-Routen (`services/app/src/routes/library-routes.ts`): **Kandidaten erzeugen** `POST /api/library/import/candidates` `{items: ImportItem[]}` → Permission `ko.create` → **201**, liefert `ImportCandidate[]` (Status `"neu"`, `duplicate`-Flag aus `title|statement`-Abgleich gegen Bestand, `koId: null`). **Listen** `GET /api/library/import/candidates` → `ko.read`. **Prüfen** `PUT /api/library/import/candidates/:id` `{action: "accept"|"reject"|"info", note?}` → `ko.validate`. Service-Regeln (`library-analytics/src/service.ts`): `accept` einer **Nicht-Dublette** ruft `koService.create(...)` → echtes KO im normalen Fluss (Status `"offen"`), `candidate.koId` = neue KO-ID, Status `"angenommen"`; **Dublette**-accept → `"angenommen"` aber `koId` bleibt `null` (kein KO); `reject` → `"abgelehnt"`; `info` → `"info-angefragt"` + Note; erneutes Prüfen (Status ≠ `"neu"`) → `ALREADY_REVIEWED`; unbekannte ID → `NOT_FOUND`. Coverage bislang: nur `library-analytics/src/service.test.ts` (Service) + FE-`importReview`-Helfer — **kein Route-Level-Test**. **Kein Produktbug** — Route-Level-Smoke genügt.
+
+**Umsetzung (nur Test, kein Produktcode):** Neuer Route-Level-Test `services/app/src/import-review-routes.test.ts` über `buildApp`/`app.inject`, ohne Repo-Manipulation. Setup: Admin registrieren/login + Demo-Seed (für Erik=experte als Review-Guard). (1) Hauptpfad: 2 Kandidaten erzeugen (201, `neu`/keine Dublette/`koId` null) → Liste enthält sie → Erik (experte) `accept` → ≥400 (Guard) → Admin `accept` → `angenommen`, `koId` gesetzt → `GET /api/kos/:koId` liefert echtes KO (Titel passt, Status `offen`) → erneutes Prüfen → ≥400 (ALREADY_REVIEWED). (2) `reject` → `abgelehnt`/koId null; `info` + Note → `info-angefragt` + Note. (3) Dublette: erst echtes KO anlegen, dann gleicher Inhalt als Kandidat → `duplicate:true`, accept → `angenommen` aber `koId` null (kein neues KO). (4) Guards: anonym `POST` → ≥400; Review auf unbekannte ID → ≥400. **Kein Produktcode geändert.**
+
+**Geänderte/neue Dateien:** neu `services/app/src/import-review-routes.test.ts`; geändert `docs/qm/claude-after-report.md`. Kein Produktcode, kein FE.
+
+**Tests/Gates:** `npm run check` grün — **107 Dateien / 575 Tests** (+1 Datei, +4 Import-Review-Route-Tests). Biome + depcruise + tsc (services/tests) sauber (kleiner Test-Typfix: `created[0]/[1]` explizit getypt wegen `noUncheckedIndexedAccess`). apps/web `tsc --noEmit` nicht nötig (kein FE berührt). Bestehende Service-/FE-Tests unverändert grün.
+
+**Restlücken/Nicht-Ziele:** kein neuer Import-Parser, kein OCR-/PDF-/DOCX-Umbau, kein Browser-E2E, kein UI-Redesign, keine Alt-App-Parität. Nicht abgedeckt (bewusst): FE-JSON-Datei-Parsing (`parseImportItems`, separat im Lib-Test) und Pg-Persistenz (In-Memory prozesslokal). Der Kern-Datenpfad Erzeugen→Listen→Accept(→echtes KO)/Reject/Info inkl. Dublette-, Guard- und ALREADY_REVIEWED-Fällen ist jetzt routennah abgesichert.
+
+Kein Git, kein Commit/Push, kein Jira durch Claude. No tickets closed. No new tickets.
