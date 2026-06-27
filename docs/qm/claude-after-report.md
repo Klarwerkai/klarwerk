@@ -3087,3 +3087,30 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-221 — Auth-Recovery runtime-smoke: Forgot/Reset mit Test-Mailer
+
+**Vorab-Befund (read-only):** Der Service implementiert den Token-Flow bereits vollständig und sicher: `requestPasswordReset(email)` erzeugt einen Token (TTL), `resetPasswordWithToken(token, pw)` setzt das Passwort und **löscht den Token** (einmalig). Die Routen sind sauber: `POST /api/auth/forgot` antwortet **immer 204** (keine Existenz-Preisgabe) und stellt den Reset-Link nur per Mailer zu — der Token wird **NICHT** über die Produkt-API zurückgegeben; `POST /api/auth/reset` nimmt `{token, newPassword}`. Es existiert ein sammelnder Test-Mailer `ConsoleMailer` (`.sent[]`), und `buildServices().mailer` ist ohne SMTP-Env genau dieser. Die bestehenden `service.test`-Fälle decken login/logout/admin-reset ab, aber **nicht** den HTTP-Forgot→Reset→Login-Flow mit Token-Zustellung — genau die SCRUM-216-Lücke.
+
+**Entscheidung:** Option A/B — keine Produktänderung nötig. Ein neuer **Route-Level-Smoke** über die echten HTTP-Routen (`app.inject`) schließt die Lücke: der Token wird ausschließlich aus dem injizierten `ConsoleMailer` (Mail-Text, `?token=…`) gelesen, nie aus einer API-Antwort. Kein SMTP, kein Secret, keine Produkt-API-Schwächung.
+
+**Umsetzung:** Neuer Test `services/app/src/auth-recovery.test.ts`: baut die App mit einem eigenen `ConsoleMailer`, registriert einen Nutzer, löst `forgot` aus (prüft 204 + kein „token" im Body + genau eine Mail an die Adresse), extrahiert den Token aus der Mail, löst `reset` ein, verifiziert: altes Passwort-Login scheitert (≥400), neues Passwort-Login = 200 (Token erhalten), zweite Token-Einlösung scheitert (einmalig). Zweiter Test: `forgot` für unbekannte E-Mail → 204 und **keine** Mail (keine Existenz-Preisgabe).
+
+**Geänderte/neue Dateien:** neu `services/app/src/auth-recovery.test.ts`; geändert `docs/qm/claude-after-report.md`. (Kein Produktcode, kein FE berührt.)
+
+**Tests/Gates:** `npm run check` grün — **93 Dateien / 517 Tests** (+2 Recovery-Route-Smoke). Bestehende Auth-/OIDC-/Mailer-Tests unverändert grün. Biome + depcruise sauber. apps/web `tsc` nicht nötig (kein FE).
+
+**Restlücken/Nicht-Ziele:** kein echtes Mail-Provider-Setup, kein OIDC/SSO, kein neues Auth-System, keine UI-Neugestaltung, keine Secrets. Token-TTL-Ablauf wird nicht zeitgesteuert geprüft (würde Zeitmanipulation erfordern) — Einmaligkeit und Erfolg/Fehler-Pfade sind abgedeckt. FE-Reset-Screen wurde nicht im Browser geprüft (Sandbox ohne Browser; siehe SCRUM-218-Pfad).
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+git add services/app/src/auth-recovery.test.ts docs/qm/claude-after-report.md
+git commit -m "test(auth): HTTP forgot→reset→login recovery smoke via ConsoleMailer (SCRUM-221)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
