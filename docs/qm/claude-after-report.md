@@ -3783,3 +3783,27 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-252 — Konflikte: Klärungsfluss und nächste Handlung produktnäher machen
+**Datum:** 2026-06-27 · **Rolle:** Claude setzt um (Codex führt, Pedi entscheidet Richtung).
+
+**Vorab-Befund (read-only):** `Conflicts.tsx` stellt bereits Art-/Status-Pills, Beschreibung, beide KO-Panels (Titel/Aussage/Bedingungen/Maßnahmen/Quellen + Detail-Link, ehrlicher „Objekt nicht gefunden"-Hinweis), den Eskalationspfad (nur Wahrheitskonflikt) und die echten Aktionen escalate/secondOpinion/resolve dar. `conflictView.ts` liefert `conflictKoPair` + `resolutionEffect` (dokumentierend, keine KO-Mutation). Lücke: keine **explizit empfohlene nächste Handlung** — die Buttons stehen flach nebeneinander, der sinnvolle nächste Schritt muss vom Nutzer selbst erschlossen werden. Backend (`services/conflicts`, KO-Dispatcher `resolve-conflict`, `conflicts-routes.ts`) unverändert tragfähig; non-truth ist serverseitig nicht eskalierbar. Kein P0/P1.
+
+**Umsetzung (minimal, ehrlich, DOM-frei):** Neuer reiner Helfer `conflictNextStep(conflict)` in `conflictView.ts`: leitet aus Art+Status **genau eine** empfohlene nächste Handlung ab (`escalate` | `secondOpinion` | `resolve` | `done`), die nur auf bestehende echte Aktionen zeigt und die vorhandene Button-Verfügbarkeit spiegelt (Wahrheitskonflikt: offen→eskalieren, eskaliert→Zweitmeinung, zweitmeinung→entscheiden; Nicht-Wahrheit, nicht eskalierbar: offen→Zweitmeinung, zweitmeinung→entscheiden; gelöst→keine offene Handlung). In `Conflicts.tsx` ein kompakter „Nächster Schritt"-Hinweis über der Aktionsleiste (nur bei nicht gelösten Konflikten); bestehende Aktionen/Formulare unverändert. Keine automatische Lösung, keine neue Logik, keine neue Stufe-2-Card.
+
+**Geänderte Dateien:** `apps/web/src/lib/conflictView.ts` (Helper+Typ), `tests/conflicts/conflict-view.test.ts` (+3 Tests), `apps/web/src/pages/Conflicts.tsx` (Hinweiszeile), `apps/web/src/i18n.ts` (`con.nextLabel`, `con.next.*` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — 118 Dateien / 633 Tests (+3). `apps/web` `tsc --noEmit` grün. Biome + dependency-cruiser sauber.
+
+**Restlücken/Nicht-Ziele:** Kein neues Konfliktmodell, kein Backend-Großumbau, keine automatische Konfliktlösung, keine neue Stufe-2-Card, kein RAG/Vector-DB/Reasoner-Umbau, keine Ticketserie, keine UI-Politur ohne Produktwirkung. Der Hinweis ist Orientierung (kein Auto-Trigger); fehlende KO-Referenzen bleiben über den bestehenden „Objekt nicht gefunden"-Hinweis ehrlich.
+
+**Commit-/Push-Hinweis:**
+```
+git add apps/web/src/lib/conflictView.ts tests/conflicts/conflict-view.test.ts apps/web/src/pages/Conflicts.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(conflicts): honest next-step recommendation per conflict (SCRUM-252)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

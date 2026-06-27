@@ -7,7 +7,7 @@ import { endpoints } from "../api/endpoints";
 import { useConflicts, useKos } from "../api/hooks";
 import type { ConflictStatus, KnowledgeObject } from "../api/types";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
-import { conflictKoPair, resolutionEffect } from "../lib/conflictView";
+import { conflictKoPair, conflictNextStep, resolutionEffect } from "../lib/conflictView";
 
 const PATH: ConflictStatus[] = ["eskaliert", "zweitmeinung", "geloest"];
 
@@ -198,33 +198,44 @@ export function Conflicts(): JSX.Element {
                 ) : null}
 
                 {c.status !== "geloest" ? (
-                  <div className="mt-4 flex flex-wrap gap-2 border-t border-hairline pt-3">
-                    {c.type === "truth" && c.status === "offen" ? (
-                      <Button disabled={escalate.isPending} onClick={() => escalate.mutate(c.id)}>
-                        {t("con.escalate")}
-                      </Button>
-                    ) : null}
-                    {c.status !== "zweitmeinung" ? (
+                  <div className="mt-4 border-t border-hairline pt-3">
+                    {/* SCRUM-252: genau eine empfohlene nächste Handlung, abgeleitet aus Art+Status. */}
+                    <p className="mb-2 text-[12.5px] text-muted">
+                      <span className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+                        {t("con.nextLabel")}:
+                      </span>{" "}
+                      <span className="font-medium text-text">
+                        {t(`con.next.${conflictNextStep(c)}`)}
+                      </span>
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {c.type === "truth" && c.status === "offen" ? (
+                        <Button disabled={escalate.isPending} onClick={() => escalate.mutate(c.id)}>
+                          {t("con.escalate")}
+                        </Button>
+                      ) : null}
+                      {c.status !== "zweitmeinung" ? (
+                        <Button
+                          onClick={() => {
+                            setErr(null);
+                            setOpinion("");
+                            setOpinionId(opinionId === c.id ? null : c.id);
+                          }}
+                        >
+                          {t("con.secondOpinionAdd")}
+                        </Button>
+                      ) : null}
                       <Button
+                        variant="primary"
                         onClick={() => {
                           setErr(null);
-                          setOpinion("");
-                          setOpinionId(opinionId === c.id ? null : c.id);
+                          setDecision("");
+                          setResolvingId(resolvingId === c.id ? null : c.id);
                         }}
                       >
-                        {t("con.secondOpinionAdd")}
+                        {t("con.resolve")}
                       </Button>
-                    ) : null}
-                    <Button
-                      variant="primary"
-                      onClick={() => {
-                        setErr(null);
-                        setDecision("");
-                        setResolvingId(resolvingId === c.id ? null : c.id);
-                      }}
-                    >
-                      {t("con.resolve")}
-                    </Button>
+                    </div>
                   </div>
                 ) : c.decision ? (
                   <div className="mt-4 rounded-card bg-trust-pos-bg p-3 text-[13px] text-trust-pos-text">

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { Conflict, KnowledgeObject } from "../../apps/web/src/api/types";
-import { conflictKoPair, resolutionEffect } from "../../apps/web/src/lib/conflictView";
+import {
+  conflictKoPair,
+  conflictNextStep,
+  resolutionEffect,
+} from "../../apps/web/src/lib/conflictView";
 
 const ko = (id: string): KnowledgeObject =>
   ({
@@ -65,5 +69,28 @@ describe("SCRUM-128: Auflösungswirkung (dokumentierend, keine KO-Mutation)", ()
   it("empfiehlt Re-Validierung nur bei Wahrheitskonflikten", () => {
     expect(resolutionEffect(conflict({ type: "truth" })).revalidationRecommended).toBe(true);
     expect(resolutionEffect(conflict({ type: "context" })).revalidationRecommended).toBe(false);
+  });
+});
+
+describe("SCRUM-252: nächste Handlung pro Konflikt", () => {
+  it("Wahrheitskonflikt durchläuft eskalieren → Zweitmeinung → entscheiden", () => {
+    expect(conflictNextStep(conflict({ type: "truth", status: "offen" }))).toBe("escalate");
+    expect(conflictNextStep(conflict({ type: "truth", status: "eskaliert" }))).toBe(
+      "secondOpinion",
+    );
+    expect(conflictNextStep(conflict({ type: "truth", status: "zweitmeinung" }))).toBe("resolve");
+  });
+
+  it("Nicht-Wahrheitskonflikt ist nicht eskalierbar: offen → Zweitmeinung, dann entscheiden", () => {
+    expect(conflictNextStep(conflict({ type: "context", status: "offen" }))).toBe("secondOpinion");
+    expect(conflictNextStep(conflict({ type: "experience", status: "eskaliert" }))).toBe(
+      "secondOpinion",
+    );
+    expect(conflictNextStep(conflict({ type: "role", status: "zweitmeinung" }))).toBe("resolve");
+  });
+
+  it("gelöster Konflikt hat keine offene Handlung", () => {
+    expect(conflictNextStep(conflict({ type: "truth", status: "geloest" }))).toBe("done");
+    expect(conflictNextStep(conflict({ type: "temporal", status: "geloest" }))).toBe("done");
   });
 });

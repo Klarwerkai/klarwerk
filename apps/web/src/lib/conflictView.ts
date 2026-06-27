@@ -36,3 +36,30 @@ export function resolutionEffect(conflict: Pick<Conflict, "type">): ResolutionEf
     revalidationRecommended: conflict.type === "truth",
   };
 }
+
+// SCRUM-252: genau EINE sinnvolle nächste Handlung aus Art + Status ableiten.
+// Verweist nur auf bestehende echte Aktionen (escalate/secondOpinion/resolve) — keine neue Logik,
+// keine automatische Lösung. Spiegelt die Aktionsverfügbarkeit der Konfliktseite wider:
+//  - gelöst                       → keine offene Handlung (done)
+//  - Wahrheitskonflikt, offen     → an einen Menschen eskalieren
+//  - Wahrheitskonflikt, eskaliert → Zweitmeinung einholen
+//  - Wahrheitskonflikt, Zweitm.   → entscheiden/lösen
+//  - Nicht-Wahrheit (nicht eskalierbar): offen → Zweitmeinung, Zweitm. → entscheiden/lösen.
+export type ConflictNextStep = "escalate" | "secondOpinion" | "resolve" | "done";
+
+export function conflictNextStep(conflict: Pick<Conflict, "type" | "status">): ConflictNextStep {
+  if (conflict.status === "geloest") {
+    return "done";
+  }
+  if (conflict.type === "truth") {
+    if (conflict.status === "offen") {
+      return "escalate";
+    }
+    if (conflict.status === "eskaliert") {
+      return "secondOpinion";
+    }
+    return "resolve"; // zweitmeinung
+  }
+  // Nicht-Wahrheitskonflikte sind nicht eskalierbar: erst Zweitmeinung, dann entscheiden.
+  return conflict.status === "zweitmeinung" ? "resolve" : "secondOpinion";
+}
