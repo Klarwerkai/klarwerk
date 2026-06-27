@@ -13,6 +13,15 @@ describe("SCRUM-156: seedDemo", () => {
     // SCRUM-244: mindestens ZWEI validierte, output-fähige KOs.
     expect(r.validated).toBeGreaterThanOrEqual(2);
     expect(r.gaps).toBeGreaterThanOrEqual(1); // mindestens eine Wissenslücke
+
+    // Stage-1 Produktnähe: die Wissenslücke ist eine industrielle Betriebsfrage,
+    // KEIN generisches Testbeispiel (keine „Australien/Hauptstadt"-Lücke mehr).
+    const gaps = await services.ask.listGaps();
+    expect(gaps.some((g) => /Dosierwert|Linie L4|Schichtwechsel/.test(g.question))).toBe(true);
+    expect(gaps.some((g) => /Australien|Hauptstadt/i.test(g.question))).toBe(false);
+    // Industrielle Lücke ist priorisiert (wie geseedet auf „hoch").
+    expect(gaps.some((g) => g.priority === "hoch")).toBe(true);
+
     expect(r.conflicts).toBeGreaterThanOrEqual(1); // mindestens eine Konfliktlage
     expect(r.pendingRevalidation).toBeGreaterThanOrEqual(1); // mindestens ein Revalidierungssignal
     expect(r.attachments).toBeGreaterThanOrEqual(1); // mindestens ein Anhang

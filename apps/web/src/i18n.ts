@@ -171,10 +171,10 @@ const de = {
   "capture.mode.formular": "Formular",
   "capture.mode.diktat": "Diktat",
   "capture.mode.interview": "Geführtes Interview",
-  "capture.raw": "Rohtext",
+  "capture.raw": "Erfahrungsnotiz",
   "capture.rawPlaceholder":
-    "Roh festhalten — der Reasoner strukturiert. Du prüfst und reichst ein.",
-  "capture.structure": "Mit Reasoner strukturieren",
+    "Erfahrung formlos festhalten — die KI strukturiert daraus einen Entwurf. Du prüfst und reichst ein.",
+  "capture.structure": "Mit KI strukturieren",
   "capture.assist": "KI-Hilfe",
   "capture.author": "Autor",
   "capture.documents": "Dokumente (Kontext / Anhang)",
@@ -245,7 +245,8 @@ const de = {
   "capture.readyMissing": "fehlt",
   "capture.readyOptional": "optional",
   "capture.readyHint": "Titel und Aussage/Inhalt sind nötig, um speichern zu können.",
-  "capture.draftHint": "Erst Rohtext eingeben und strukturieren — der Entwurf erscheint hier.",
+  "capture.draftHint":
+    "Erst Erfahrungsnotiz eingeben und mit KI strukturieren — der Entwurf erscheint hier.",
   "capture.fConditions": "Bedingungen",
   "capture.fMeasures": "Maßnahmen",
   "capture.fTags": "Schlagwörter",
@@ -267,7 +268,7 @@ const de = {
   "capture.ivFinish": "Entwurf erstellen",
   "capture.ivDone": "Interview abgeschlossen — prüfe den Entwurf rechts und reiche ihn ein.",
   "capture.ivTurn": "Frage {{n}}",
-  "capture.ivThinking": "Der Reasoner formuliert die nächste Frage …",
+  "capture.ivThinking": "Die KI formuliert die nächste Frage …",
   "capture.ivAnswerHint": "Deine Antwort …",
   "capture.ivSend": "Antwort senden",
   "capture.ivModel": "Reasoner-Modell",
@@ -767,7 +768,7 @@ const de = {
     "Die mobile Ansicht bündelt Erfassen, Fragen und Nachschlagen. Entwürfe lassen sich offline anlegen und werden synchronisiert, sobald wieder Verbindung besteht.",
   "help.capture.title": "Wissen erfassen",
   "help.capture.body":
-    "Halte Erfahrung roh fest — per Text, Diktat oder Foto. Der Reasoner strukturiert, du prüfst und reichst ein.",
+    "Halte Erfahrungswissen formlos fest — per Text, Diktat oder Foto. Die KI strukturiert es, du prüfst und reichst ein.",
   "help.validate.title": "Validieren",
   "help.validate.body":
     "Bewerte Objekte grün/gelb/rot. Ab der Schwelle gilt ein Objekt als validiert; rote Bewertungen gehen zurück an den Autor.",
@@ -1216,9 +1217,10 @@ const en: typeof de = {
   "capture.mode.formular": "Form",
   "capture.mode.diktat": "Dictation",
   "capture.mode.interview": "Guided interview",
-  "capture.raw": "Raw text",
-  "capture.rawPlaceholder": "Capture it raw — the reasoner structures it. You review and submit.",
-  "capture.structure": "Structure with reasoner",
+  "capture.raw": "Experience note",
+  "capture.rawPlaceholder":
+    "Capture experience informally — the AI structures it into a draft. You review and submit.",
+  "capture.structure": "Structure with AI",
   "capture.assist": "AI help",
   "capture.author": "Author",
   "capture.documents": "Documents (context / attachment)",
@@ -1288,7 +1290,8 @@ const en: typeof de = {
   "capture.readyMissing": "missing",
   "capture.readyOptional": "optional",
   "capture.readyHint": "Title and statement/content are required to save.",
-  "capture.draftHint": "Enter raw text and structure it — the draft appears here.",
+  "capture.draftHint":
+    "Enter an experience note and structure it with AI — the draft appears here.",
   "capture.fConditions": "Conditions",
   "capture.fMeasures": "Measures",
   "capture.fTags": "Tags",
@@ -1310,7 +1313,7 @@ const en: typeof de = {
   "capture.ivFinish": "Create draft",
   "capture.ivDone": "Interview complete — review the draft on the right and submit it.",
   "capture.ivTurn": "Question {{n}}",
-  "capture.ivThinking": "The reasoner is forming the next question …",
+  "capture.ivThinking": "The AI is forming the next question …",
   "capture.ivAnswerHint": "Your answer …",
   "capture.ivSend": "Send answer",
   "capture.ivModel": "Reasoner model",
@@ -1807,7 +1810,7 @@ const en: typeof de = {
     "The mobile view bundles capture, ask and lookup. Drafts can be created offline and sync once a connection is available.",
   "help.capture.title": "Capture knowledge",
   "help.capture.body":
-    "Capture experience raw — via text, dictation or photo. The reasoner structures it, you review and submit.",
+    "Capture experience knowledge informally — via text, dictation or photo. The AI structures it, you review and submit.",
   "help.validate.title": "Validate",
   "help.validate.body":
     "Rate objects green/amber/red. At the threshold an object is validated; red ratings go back to the author.",

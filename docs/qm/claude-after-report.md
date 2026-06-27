@@ -3855,3 +3855,41 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## Stage-1 Product Readiness — Industrial Knowledge Workflow schärfen
+**Datum:** 2026-06-27 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung). Kein Demo-Hack — produktnahe Schärfung des echten Stage-1-Kerns.
+
+**Vorab-Befund (read-only):** `seed-demo.ts` baut den Stage-1-Bestand ausschließlich über echte Services (KOs, Validierung, Quelle+Anhang, Konflikt, Lifecycle-Kopplung/Revalidierung, Lernpfade) — Guards/Idempotenz/Produktionsschutz intakt. Einziger testdatenhafter Störpunkt: die Wissenslücke „Welche Hauptstadt hat Australien?". `Capture`-i18n nutzte an Stage-1-Stellen technische Begriffe („Rohtext", „Mit Reasoner strukturieren", „Der Reasoner …"). Der Reasoner-Fallback (`services/reasoner/provider.ts`) entscheidet „Lücke" über Token-Überschneidung (`tokenize` filtert nur Wörter ≤2 Zeichen — KEIN Stoppwort-Filter) zwischen Frage und KO-Titel+Statement. Keine P0/P1.
+
+**Umsetzung:**
+1. *Seed-Lücke industriell ersetzt.* Neue Frage: „Warum schwankt der Dosierwert an Linie L4 nach jedem Schichtwechsel?" — empirisch gegen alle fünf geseedeten KOs geprüft (eigenes Token-Overlap-Skript mit der echten Reasoner-Logik): **null Überschneidung**, bleibt also eine echte Lücke. Bewusst NICHT die wörtlich vorgeschlagene Beispielformulierung „…die Dosiermenge … nach dem Schichtwechsel", weil deren Stoppwörter „die"/„dem" in geseedeten KO-Statements vorkommen und die Lücke aufgehoben hätten. Priorität wie gefordert auf „hoch".
+2. *Capture-Texte produktnäher (nur Labels/Texte, keine Funktionsänderung, DE+EN):* „Rohtext" → „Erfahrungsnotiz", „Mit Reasoner strukturieren" → „Mit KI strukturieren", Platzhalter/Hilfe/Interview-Hinweis von „der Reasoner …" → „die KI …". Ehrliche Grundaussage erhalten: **KI strukturiert, Mensch prüft und reicht ein.** Technische Engine-Labels `capture.ivModel`/`capture.ivFallback` („Reasoner-Modell"/„Deterministischer Fallback") bewusst unverändert — sie tragen echte QM-/Stufe-2-Bedeutung.
+3. *Ask/Risk/Validation/Lifecycle:* keine Logikänderung. Durch die Seed-Anpassung zeigt Ask bei Unbeantwortbarkeit eine industrielle Lücke statt Testbeispiel; Risk/Gap, Start/MyTasks und das Risiko-Cockpit zeigen denselben echten Betriebsfall.
+
+**Geänderte Dateien:** `services/app/src/seed-demo.ts` (Lücke + Kommentar), `services/app/src/seed.test.ts` (Assertions), `apps/web/src/i18n.ts` (Capture-Texte DE+EN), `docs/qm/claude-after-report.md`.
+
+**Entfernte Test-/Demo-Daten:** generische Wissenslücke „Welche Hauptstadt hat Australien?" vollständig entfernt (Seed + via Test gegen Regression abgesichert).
+
+**Ergänzte produktnahe Industrieinhalte:** industrielle Wissenslücke „Warum schwankt der Dosierwert an Linie L4 nach jedem Schichtwechsel?" (Priorität hoch); produktnähere Capture-Sprache („Erfahrungsnotiz", „Mit KI strukturieren").
+
+**Wirkung auf die Flows:** *Start/MyTasks* — offene Validierungsaufgabe + industrielle Lücke statt Testdaten. *Capture* — wirkt als „Expertenwissen sichern", ehrlich (KI strukturiert, Mensch prüft). *Library/KO-Detail* — unverändert (KOs waren bereits industriell: Ventil/Pumpe/Filter/Kaltstart, mit Quelle+Anhang+Trust+Status). *Ask* — unbeantwortbare Frage erzeugt eine betriebliche Lücke, keine Fake-Antwort; beantwortbare Fragen weiter auf validierte KOs+Quellen gestützt. *Validation* — echte Prüfobjekte (koOpen zugewiesen, koWarm in Teil-Review). *Lifecycle* — koValid an ANL-01 gekoppelt, Asset-Änderung → Revalidierung fällig, Lernpfade sichtbar.
+
+**Tests/Gates:** `npm run check` grün — 118 Dateien / 639 Tests. `apps/web` `tsc --noEmit` grün. Biome + dependency-cruiser sauber. seed.test prüft jetzt zusätzlich: industrielle Lücke vorhanden, keine Australien-/Hauptstadt-Lücke, gaps ≥ 1, eine Lücke mit Priorität „hoch".
+
+**Lokaler Review-Hinweis:** Vor einem lokalen UI-Review mit `npm run start` muss bei UI-Änderungen `apps/web` frisch gebaut sein (`apps/web` Build), sonst kann ein veraltetes `apps/web/dist` ausgeliefert/angezeigt werden (stale Bundle). Kein neues Runbook nötig.
+
+**Restlücken/Nicht-Ziele:** keine neue Architektur, kein RAG, keine neue Suchmaschine/Retrieval-Logik, keine Stufe-2-Integration, kein Refactoring ohne Produktnutzen, keine neuen Module, kein ModelAdapter/Conductor, keine Ticketserie. Reine Inhalts-/Textschärfung des Stage-1-Kerns; Backend-Verhalten, Guards, Idempotenz und Produktionsschutz unverändert.
+
+**Commit-/Push-Hinweis:**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add services/app/src/seed-demo.ts services/app/src/seed.test.ts apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(seed,capture): sharpen Stage-1 industrial knowledge workflow"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

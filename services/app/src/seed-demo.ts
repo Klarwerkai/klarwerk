@@ -194,9 +194,14 @@ async function buildDemoContent(
   // --- Offene Validierungsaufgabe: koOpen Carla zuweisen (erscheint im Board/MyTasks) ---
   await validation.assign(koOpen.id, [carlaId], adminId);
 
-  // --- Wissenslücke: bewusst bestandsfremde Frage (keine Token-Überschneidung mit den KOs)
-  // → echte Lücke statt Antwort; danach Priorität setzen. ---
-  const asked = await ask.ask("Welche Hauptstadt hat Australien?", adminId);
+  // --- Wissenslücke: plausible industrielle Betriebsfrage ohne Token-Überschneidung mit den
+  // vorhandenen KOs (Ventil/Überdruck/Pumpe/Filter/Kaltstart/Vorwärmung samt deren Stoppwörtern
+  // wie „die"/„dem"). Der deterministische Reasoner-Fallback findet daher keinen Treffer →
+  // echte Wissenslücke statt Antwort; danach Priorität wie bisher auf „hoch". ---
+  const asked = await ask.ask(
+    "Warum schwankt der Dosierwert an Linie L4 nach jedem Schichtwechsel?",
+    adminId,
+  );
   if (asked.gap) {
     await ask.setGapPriority(asked.gap.id, "hoch");
   }
