@@ -3986,3 +3986,30 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-259 — KO-Detail: nächste Handlung als echten Arbeitsfluss führen
+**Datum:** 2026-06-27 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung).
+
+**Vorab-Befund (read-only):** Nach SCRUM-251 zeigt das KO-Detail-Banner (`KnowledgeDetail.tsx`, um Zeile 370) bereits Usability-Plakette, StatusPill, Trust, Version, Quellen/Anhänge und die abgeleitete `nextAction` (`koOverview.ts`, Typ `KoNextAction = "use"|"review"|"addSource"|"validate"`) — aber nur als erklärenden Text (`ko.next.*`). Vorhandene Routen (`navigation.ts`/`routes.tsx`): `/validierung`, `/fragen`, `/bibliothek`, `/wissen/:id`. `Link` ist bereits importiert. Es existiert ein echter Quellenbereich (`<Card>` mit `ko.sourcesTitle` + Add-Source-Formular), aber ohne Anker-id. Kein P0/P1.
+
+**Umsetzung (minimal, ehrlich, DOM-frei):** Neuer reiner Helfer `apps/web/src/lib/koCta.ts`: `koCta(action) → { labelKey, href, kind: "route"|"anchor", tone }`. Abbildung nur auf vorhandene Ziele: `validate`/`review` → `/validierung` (offene/zu prüfende KOs ehrlich zur Validierung), `use` → `/fragen` (validiertes Wissen wird dort quellengebunden genutzt), `addSource` → lokaler Anker `#ko-sources` auf den vorhandenen Quellenbereich (KEIN neuer Import-/Source-Workflow, nur Orientierung). Im Banner wird neben dem Next-Action-Text die CTA gerendert: `route` → `<Link>` mit „→", `anchor` → `<a href="#ko-sources">` mit „↓"; getönt (primary/neutral). Am Quellenbereich `id="ko-sources"` + `scroll-mt-20` als Anker-Ziel ergänzt. Keine neue Mutation, kein Backend, keine neue Workflow-Engine.
+
+**Geänderte Dateien:** NEU `apps/web/src/lib/koCta.ts`, NEU `tests/ko/ko-cta.test.ts` (4 Tests); geändert `apps/web/src/pages/KnowledgeDetail.tsx` (Banner-CTA + `#ko-sources`-Anker), `apps/web/src/i18n.ts` (`ko.cta.*` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — 121 Dateien / 651 Tests (+1 Datei, +4 Tests). `apps/web` `tsc --noEmit` grün. Biome + dependency-cruiser sauber. Der neue Test sichert: validate/review → /validierung (route, primary), use → /fragen (route, primary), addSource → #ko-sources (anchor, neutral), jede Handlung mit nicht-leerem Label/Ziel.
+
+**Restlücken/Nicht-Ziele:** keine neue Mutation, keine Backend-Änderung, keine neue Workflow-Engine, keine Stufe-2-Arbeit, keine Metamorphose, kein RAG/Vector/Reasoner-Umbau, keine Ticketserie. „Quelle ergänzen" bleibt bewusst lokale Orientierung (Anker zum vorhandenen Quellenformular), kein Fake-/Import-Flow. `use` führt zu `/fragen` (Ask nutzt validiertes Wissen quellengebunden) statt `/bibliothek`, da der aktive Nutzungsfluss fachlich ehrlicher ist; eine spätere Variante Richtung Bibliothek/Output bliebe möglich.
+
+**Commit-/Push-Hinweis:**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/koCta.ts tests/ko/ko-cta.test.ts apps/web/src/pages/KnowledgeDetail.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(ko-detail): turn next action into an honest CTA into existing flows (SCRUM-259)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

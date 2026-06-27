@@ -46,6 +46,7 @@ import { validityProtectionView } from "../lib/extConcept";
 import { toSourcePayload as externalToSourcePayload } from "../lib/externalSearch";
 import { fileToThumbDataUrl, readFileAsDataUrl } from "../lib/files";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
+import { koCta } from "../lib/koCta";
 import { evidenceRows } from "../lib/koEvidence";
 import { koAuditEvents, lineageSummary, relatedKos } from "../lib/koLineage";
 import { type KoUsability, koOverview } from "../lib/koOverview";
@@ -387,10 +388,30 @@ export function KnowledgeDetail(): JSX.Element {
                     {t("ko.ovAttachments", { n: ov.attachmentCount })}
                   </span>
                 </div>
-                <p className="mt-2 text-[12.5px] text-muted">
-                  <span className="font-semibold text-text">{t("ko.nextLabel")} </span>
-                  {t(`ko.next.${ov.nextAction}`)}
-                </p>
+                {/* SCRUM-259: nächste Handlung als ehrliche CTA auf vorhandene Routen/Bereiche. */}
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                  <p className="text-[12.5px] text-muted">
+                    <span className="font-semibold text-text">{t("ko.nextLabel")} </span>
+                    {t(`ko.next.${ov.nextAction}`)}
+                  </p>
+                  {(() => {
+                    const cta = koCta(ov.nextAction);
+                    const cls = `inline-flex items-center gap-1 rounded-btn px-2.5 py-1 text-[12px] font-semibold ${
+                      cta.tone === "primary"
+                        ? "bg-ink text-white hover:opacity-90"
+                        : "border border-hairline text-text hover:bg-hairline-soft"
+                    }`;
+                    return cta.kind === "route" ? (
+                      <Link to={cta.href} className={cls}>
+                        {t(cta.labelKey)} <span aria-hidden="true">→</span>
+                      </Link>
+                    ) : (
+                      <a href={cta.href} className={cls}>
+                        {t(cta.labelKey)} <span aria-hidden="true">↓</span>
+                      </a>
+                    );
+                  })()}
+                </div>
               </Card>
               <div className="grid gap-5 lg:grid-cols-[1.7fr_1fr]">
                 <Card>
@@ -683,7 +704,8 @@ export function KnowledgeDetail(): JSX.Element {
                   </Card>
 
                   {/* SCRUM-129 / FE-KO-01+07: echte externe Quellen (nie peer-validiert) */}
-                  <Card className="space-y-3">
+                  {/* SCRUM-259: Anker-Ziel für die „Quelle ergänzen"-CTA (lokale Orientierung). */}
+                  <Card id="ko-sources" className="scroll-mt-20 space-y-3">
                     <SectionLabel>{t("ko.sourcesTitle")}</SectionLabel>
                     {(ko.sources ?? []).length === 0 ? (
                       <p className="text-[13px] text-muted">{t("ko.sourcesEmpty")}</p>
