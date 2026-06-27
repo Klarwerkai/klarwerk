@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Gap } from "../../apps/web/src/api/types";
 import {
   GAP_PRIORITIES,
+  gapNextStep,
   priorityRank,
   priorityTone,
   sortGapsByPriority,
@@ -43,5 +44,23 @@ describe("FE-RISK-02 / SCRUM-115: gapPriority", () => {
     expect(priorityTone("mittel")).toBe("warn");
     expect(priorityTone("niedrig")).toBe("neutral");
     expect(priorityTone(undefined)).toBe("warn");
+  });
+});
+
+describe("SCRUM-253: gapNextStep", () => {
+  it("geschlossene Lücke → erledigt", () => {
+    expect(gapNextStep(gap({ id: "a", status: "geschlossen" }))).toBe("done");
+    expect(gapNextStep(gap({ id: "b", status: "geschlossen", assignee: "u1" }))).toBe("done");
+  });
+
+  it("offen + zugewiesen → Wissen erfassen", () => {
+    expect(gapNextStep(gap({ id: "a", assignee: "u1", priority: "mittel" }))).toBe("capture");
+    expect(gapNextStep(gap({ id: "b", assignee: "u1", priority: "hoch" }))).toBe("capture");
+  });
+
+  it("offen + ohne Owner: hoch → zuweisen, sonst → priorisieren", () => {
+    expect(gapNextStep(gap({ id: "a", assignee: null, priority: "hoch" }))).toBe("assign");
+    expect(gapNextStep(gap({ id: "b", assignee: null, priority: "mittel" }))).toBe("prioritize");
+    expect(gapNextStep(gap({ id: "c", assignee: null, priority: "niedrig" }))).toBe("prioritize");
   });
 });

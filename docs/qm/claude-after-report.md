@@ -3807,3 +3807,27 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-253 — Wissenslücken: Priorisierung und nächste Handlung produktnäher machen
+**Datum:** 2026-06-27 · **Rolle:** Claude setzt um (Codex führt, Pedi entscheidet Richtung).
+
+**Vorab-Befund (read-only):** `Risk.tsx` zeigt die Gap-Liste bereits mit Prioritäts-Pill, Frage, Zuweisung/Status und (bei `offen`) den echten Aktionen: Prioritäts-Select, Zuweisen-Select, Schließen, Löschen. `gapPriority.ts` liefert `GAP_PRIORITIES`, `priorityRank`, `sortGapsByPriority`, `priorityTone`. `riskCockpit.ts` aggregiert Kennzahlen (offene/hoch/zugewiesen/…). Gap-Modell (`api/types.ts`): `{id, question, status: offen|geschlossen, assignee: string|null, priority: hoch|mittel|niedrig, createdAt}` — kein separates Origin-Feld (die Lücke entsteht aus der unbeantworteten Ask-Frage, deren Text die Karte zeigt). Lücke: **keine ausgewiesene nächste Handlung** je Gap; der nächste Schritt muss erschlossen werden. Backend (Ask-/Gap-Service, `ask-routes.ts`) unverändert tragfähig. Kein P0/P1.
+
+**Umsetzung (minimal, ehrlich, DOM-frei):** Neuer reiner Helfer `gapNextStep(gap)` in `gapPriority.ts`: leitet aus Status+Priorität+Zuweisung **genau eine** nächste Handlung ab (`prioritize`/`assign`/`capture`/`done`), die nur auf bestehende echte Aktionen zeigt und dem Lebenszyklus folgt (geschlossen→erledigt; offen+zugewiesen→Wissen erfassen; offen ohne Owner & Prio hoch→zuweisen; offen ohne Owner & Prio<hoch→priorisieren). In `Risk.tsx` je offener Gap-Zeile ein kompakter „Nächster Schritt"-Hinweis unter der Frage; bestehende Controls (Priorität/Zuweisen/Schließen/Löschen) unverändert. Keine neue Engine, keine automatische KO-Erzeugung, keine Auto-Mutation. „close" wird bewusst NICHT automatisch empfohlen (ohne KO-Verknüpfung nicht ehrlich entscheidbar) — die Schließen-Aktion bleibt manuell.
+
+**Geänderte Dateien:** `apps/web/src/lib/gapPriority.ts` (Helper+Typ), `tests/ask/gap-priority.test.ts` (+3 Tests), `apps/web/src/pages/Risk.tsx` (Hinweiszeile), `apps/web/src/i18n.ts` (`risk.gapNextLabel`, `risk.gapNext.*` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — 118 Dateien / 636 Tests (+3). `apps/web` `tsc --noEmit` grün. Biome + dependency-cruiser sauber.
+
+**Restlücken/Nicht-Ziele:** Keine neue Risiko-Engine, kein Backend-Großumbau, keine automatische KO-/Ticket-Erzeugung, keine neue Stufe-2-Card, kein RAG/Vector-DB/Reasoner-Umbau, keine Ticketserie, keine UI-Politur ohne Produktwirkung. Der Hinweis ist Orientierung (kein Auto-Trigger). „Herkunft aus Frage" = der vorhandene Fragetext (kein separates Origin-Feld im Modell — ehrlich so belassen). Geschlossene Lücken zeigen keinen Schritt (nur die bestehende Löschen-Aktion).
+
+**Commit-/Push-Hinweis:**
+```
+git add apps/web/src/lib/gapPriority.ts tests/ask/gap-priority.test.ts apps/web/src/pages/Risk.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(risk): honest next-step recommendation per knowledge gap (SCRUM-253)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

@@ -8,6 +8,7 @@ import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import {
   GAP_PRIORITIES,
   type PriorityTone,
+  gapNextStep,
   priorityTone,
   sortGapsByPriority,
 } from "../lib/gapPriority";
@@ -198,10 +199,19 @@ export function Risk(): JSX.Element {
                     >
                       {t(`risk.priority.${g.priority}`)}
                     </span>
-                    <span className="min-w-0 flex-1 truncate text-[13.5px] text-text">
-                      {g.question}
-                    </span>
-                    <span className="font-mono text-[10.5px] uppercase text-muted-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[13.5px] text-text">{g.question}</div>
+                      {/* SCRUM-253: ehrliche nächste Handlung je offener Lücke (priorisieren/zuweisen/erfassen). */}
+                      {g.status === "offen" ? (
+                        <div className="mt-0.5 text-[11px] text-muted">
+                          <span className="font-mono uppercase tracking-wider text-muted-2">
+                            {t("risk.gapNextLabel")}:
+                          </span>{" "}
+                          {t(`risk.gapNext.${gapNextStep(g)}`)}
+                        </div>
+                      ) : null}
+                    </div>
+                    <span className="shrink-0 font-mono text-[10.5px] uppercase text-muted-2">
                       {g.assignee ? `→ ${nameOf(g.assignee)}` : t(`risk.gapStatus.${g.status}`)}
                     </span>
                     {g.status === "offen" ? (

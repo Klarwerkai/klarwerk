@@ -31,3 +31,23 @@ export function priorityTone(priority: GapPriority | undefined): PriorityTone {
       return "warn";
   }
 }
+
+// SCRUM-253: genau EINE sinnvolle nächste Handlung pro Wissenslücke aus vorhandenen Feldern
+// (Status, Priorität, Zuweisung) ableiten. Verweist nur auf bestehende echte Aktionen der
+// Risiko-Seite (priorisieren/zuweisen/erfassen/schließen) — keine neue Engine, keine Auto-Mutation,
+// keine automatische KO-Erzeugung. Lebenszyklus: triagieren → zuweisen → Wissen erfassen → schließen.
+//  - geschlossen                     → erledigt (done)
+//  - offen, zugewiesen               → Wissen erfassen (Owner schließt die Lücke)
+//  - offen, ohne Owner, Prio hoch    → zuweisen (bereits dringend eingestuft)
+//  - offen, ohne Owner, Prio < hoch  → priorisieren (Dringlichkeit einschätzen)
+export type GapNextStep = "prioritize" | "assign" | "capture" | "done";
+
+export function gapNextStep(gap: Pick<Gap, "status" | "priority" | "assignee">): GapNextStep {
+  if (gap.status === "geschlossen") {
+    return "done";
+  }
+  if (gap.assignee) {
+    return "capture";
+  }
+  return gap.priority === "hoch" ? "assign" : "prioritize";
+}
