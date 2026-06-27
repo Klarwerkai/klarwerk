@@ -3173,3 +3173,29 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-225 — External-Knowledge-Einstieg auf vorhandener Suche
+
+**Vorab-Befund (read-only):** (1) Backend `GET /api/external/search?q=` existiert (`services/app/src/routes/external-routes.ts`, Guard `ko.read`); ist der Proxy nicht konfiguriert (`EXTERNAL_SEARCH=off`), antwortet die Route mit **501** `{error:"EXTERNAL_SEARCH_DISABLED"}`. Modul `services/external-search` liefert `ExternalResult{title,url,snippet,provider}` (stateless, kein KO-Bezug, kein Auto-Import). (2) FE-Endpoint `endpoints.external.search(q)` vorhanden; `ApiError` trägt `.status`+`.code`. (3) Bisher war die externe Suche **nur** im KO-Detail (`KnowledgeDetail.tsx`, „Als Quelle anhängen") erreichbar — exakt die SCRUM-224-Lücke. (4) Navigation/Routing leiten zentral aus `app/navigation.ts` ab (`ALL_ITEMS` → `routes.tsx` + Sidebar + Command Palette). (5) i18n hat einen `ext.*`-Block (DE/EN).
+
+**Umsetzung (kleinster sauberer Eingriff):** Eigenständige Seite `apps/web/src/pages/ExternalKnowledge.tsx` unter Route `/extern`, Nav-Eintrag „Externes Wissen" in der Gruppe Arbeitsbereich (minRole `viewer`, Icon Globe). Nutzt **ausschließlich** `endpoints.external.search`. Suchfeld + Ergebnisliste mit Provider, Titel, Snippet, URL. **Kein** „Anhängen"-Button und **kein** Import ohne KO-Kontext. Sichtzustände werden über einen DOM-freien Helper `apps/web/src/lib/externalKnowledge.ts` abgeleitet (`buildExternalSearchView`: idle/loading/disabled/error/empty/results; `isSearchDisabled` erkennt 501 + `EXTERNAL_SEARCH_DISABLED`; `dedupeResults` entfernt URL-Dubletten). 501/off wird ehrlich als eigener „deaktiviert"-Zustand angezeigt. KO-Detail-Add-Source bleibt unverändert.
+
+**Geänderte/neue Dateien:** neu `apps/web/src/pages/ExternalKnowledge.tsx`, `apps/web/src/lib/externalKnowledge.ts`, `tests/analytics/external-knowledge.test.ts`; geändert `apps/web/src/app/navigation.ts` (Nav-Item + Globe-Import), `apps/web/src/routes.tsx` (Route), `apps/web/src/i18n.ts` (nav.external + extpage.* DE/EN), `scripts/smoke-browser.mjs` (Route `/extern` im Tour), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — **96 Dateien / 535 Tests** (+1 Datei, +8 Tests für externalKnowledge). apps/web DOM-`tsc --noEmit` grün. Biome + depcruise sauber. Bestehende `tests/ko/external-search.test.ts` (KO-Detail-Mapping) unverändert grün.
+
+**Restlücken/Nicht-Ziele:** kein neues Backend, kein neuer Provider (weiter nur der konfigurierte Server-Proxy), kein Auto-Import, keine Peer-Validierung, keine Persistenz der Suchhistorie. Ohne KO-Kontext bewusst kein Anhängen — Übernahme bleibt der KO-Detail-Strecke vorbehalten. Live-Render von `/extern` lokal über den Browser-Smoke (SCRUM-218) prüfbar; im 501-Fall greift der ehrliche „deaktiviert"-Zustand.
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/pages/ExternalKnowledge.tsx apps/web/src/lib/externalKnowledge.ts tests/analytics/external-knowledge.test.ts apps/web/src/app/navigation.ts apps/web/src/routes.tsx apps/web/src/i18n.ts scripts/smoke-browser.mjs docs/qm/claude-after-report.md
+git commit -m "feat(external): standalone external-knowledge entry on existing search (SCRUM-225)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

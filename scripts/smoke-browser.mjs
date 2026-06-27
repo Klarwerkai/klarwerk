@@ -37,6 +37,7 @@ const ROUTES = [
   ["/erfassen", null],
   ["/fragen", null],
   ["/bibliothek", null],
+  ["/extern", null], // SCRUM-225: eigenständiger External-Knowledge-Einstieg lädt in der Shell
   ["/validierung", null],
   ["/aufgaben", null],
   ["/risiko", null],

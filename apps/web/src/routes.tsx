@@ -7,6 +7,7 @@ import { Analytics } from "./pages/Analytics";
 import { Ask } from "./pages/Ask";
 import { Capture } from "./pages/Capture";
 import { Conflicts } from "./pages/Conflicts";
+import { ExternalKnowledge } from "./pages/ExternalKnowledge";
 import { Help } from "./pages/Help";
 import { KnowledgeDetail } from "./pages/KnowledgeDetail";
 import { Library } from "./pages/Library";
@@ -27,6 +28,7 @@ const PAGES: Record<string, ComponentType> = {
   erfassen: Capture,
   fragen: Ask,
   bibliothek: Library,
+  extern: ExternalKnowledge,
   validierung: Validation,
   konflikte: Conflicts,
   risiko: Risk,
