@@ -3146,3 +3146,30 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-223 — Lifecycle-Lernpfad-Fortschritt end-to-end runtime-verifizieren
+
+**Vorab-Befund (read-only):** (1) `POST /api/learning-paths/:pathId/complete` (Body `{stepId}`, Guard `ko.read`) markiert einen Schritt über `lifecycle.completeStep(pathId, user.id, stepId)` und gibt die Liste erledigter Schritt-IDs zurück; `GET /api/learning-paths/:pathId/progress` liefert sie. (2) Fortschritt wird **pro Nutzer** gespeichert (Schlüssel pathId + userId, `getProgress`/`setProgress`). (3) `GET /api/learning-paths/:role` liefert die **Pfad-Definition** (Schritte), nicht den Fortschritt — der Completed-State kommt aus `/progress` bzw. der Complete-Antwort. (4) FE ist korrekt verdrahtet (`endpoints.learningPaths.complete/progress`, Hooks, `Lifecycle.tsx`-Complete-Button). Service-Tests decken `completeStep`/`progress`/Idempotenz ab — es fehlte nur ein **Route-Level-HTTP-Test**.
+
+**Entscheidung:** Option A — der kleinste saubere Fix ist genau dieser fehlende HTTP-Route-Smoke. Kein Produkt-/FE-Code, kein Editor, kein LMS.
+
+**Umsetzung:** Neuer Test `services/app/src/learning-path-progress.test.ts` über `buildApp`/`app.inject`: Admin registrieren+login → Demo-Seed (legt Admin-Lernpfad an) → `GET /learning-paths/admin` (Pfad+Schritte) → `progress` anfangs `[]` → `complete` Schritt 1 (Antwort enthält Schritt) → `progress` = `[step1]` (persistent) → gleicher Schritt erneut → weiterhin Länge 1 (idempotent) → Schritt 2 → `progress` = beide. Zweiter Test: per-Nutzer-Trennung — erik (Seed-Account) sieht für denselben pathId `[]`.
+
+**Geänderte/neue Dateien:** neu `services/app/src/learning-path-progress.test.ts`; geändert `docs/qm/claude-after-report.md`. (Kein Produkt-/FE-Code.)
+
+**Tests/Gates:** `npm run check` grün — **95 Dateien / 527 Tests** (+2 Lernpfad-Route-E2E). Bestehende Lifecycle-/Seed-/Admin-Tests unverändert grün. Biome + depcruise sauber. apps/web `tsc` nicht nötig (kein FE berührt).
+
+**Restlücken/Nicht-Ziele:** kein Lernpfad-Editor, kein LMS, kein Browser-E2E-Framework, keine Mobile-/Offline-Änderung, keine Alt-App-Parität. Die FE-Klickstrecke (Button → Mutation) ist verdrahtet und über den Browser-Smoke (`/lebenszyklus`, SCRUM-218) lokal prüfbar; der HTTP-Datenpfad ist jetzt voll abgedeckt. Persistenz über Reload/Server-Neustart greift nur im Postgres-Betrieb (In-Memory bleibt prozesslokal — bestehende Eigenschaft).
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+git add services/app/src/learning-path-progress.test.ts docs/qm/claude-after-report.md
+git commit -m "test(lifecycle): HTTP end-to-end learning-path progress (complete → progress, per-user, idempotent) (SCRUM-223)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
