@@ -195,7 +195,8 @@ const de = {
   "capture.editingDraft": "Entwurf geladen — Änderungen werden im selben Entwurf gespeichert.",
   "capture.editingBadge": "in Bearbeitung",
   "capture.loadExample": "Beispiel laden",
-  "capture.exampleLoaded": "Beispiel geladen.",
+  "capture.exampleLoaded":
+    "Erfahrungsnotiz geladen — jetzt mit KI strukturieren und den Entwurf prüfen.",
   "capture.docAdded": "{{name}} als Kontext übernommen.",
   "capture.docExtracting": "{{name}} wird gelesen …",
   "capture.docEmpty": "{{name}}: kein Text gefunden (evtl. gescanntes PDF — Bild-OCR nutzen).",
@@ -1240,7 +1241,8 @@ const en: typeof de = {
   "capture.editingDraft": "Draft loaded — changes are saved to the same draft.",
   "capture.editingBadge": "editing",
   "capture.loadExample": "Load example",
-  "capture.exampleLoaded": "Example loaded.",
+  "capture.exampleLoaded":
+    "Experience note loaded — now structure it with AI and review the draft.",
   "capture.docAdded": "{{name}} added as context.",
   "capture.docExtracting": "Reading {{name}} …",
   "capture.docEmpty": "{{name}}: no text found (maybe a scanned PDF — use image OCR).",

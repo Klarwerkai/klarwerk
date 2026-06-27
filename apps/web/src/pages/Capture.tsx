@@ -21,6 +21,7 @@ import { RichTextEditor } from "../components/RichTextEditor";
 import { ListEditor, TagEditor } from "../components/editors";
 import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
 import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
+import { CAPTURE_EXAMPLE } from "../lib/captureExample";
 import { captureReadiness } from "../lib/captureReadiness";
 import { draftTitle } from "../lib/draftForm";
 import {
@@ -427,15 +428,14 @@ export function Capture(): JSX.Element {
     interview.mutate(answers);
   };
 
+  // SCRUM-257: produktnaher Beispielpfad — lädt eine industrielle Erfahrungsnotiz (Linie L4 /
+  // Dosierwert / Schichtwechsel) aus dem DOM-freien Helper und nennt den nächsten Schritt.
   const loadExample = (): void => {
-    setRaw(
-      "Bei Außentemperaturen unter -5 °C die Pumpe P-12 vor dem Start 10 Minuten vorwärmen, " +
-        "sonst drohen Kavitationsschäden am Laufrad. Gilt für alle baugleichen Pumpen P-12/P-13.",
-    );
-    setCategory("Instandhaltung");
-    setAsset("Pumpe P-12");
-    setTags(["Frost", "Pumpe", "Winter"]);
-    setNotice(t("capture.exampleLoaded"));
+    setRaw(CAPTURE_EXAMPLE.raw);
+    setCategory(CAPTURE_EXAMPLE.category);
+    setAsset(CAPTURE_EXAMPLE.asset);
+    setTags(CAPTURE_EXAMPLE.tags);
+    setNotice(t(CAPTURE_EXAMPLE.noticeKey));
   };
 
   const busy = structure.isPending || assistRaw.isPending || saveDraft.isPending;

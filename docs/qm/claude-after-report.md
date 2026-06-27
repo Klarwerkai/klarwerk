@@ -3926,3 +3926,36 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-257 — Capture: Beispielpfad für Expertenwissen produktnäher führen
+**Datum:** 2026-06-27 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung).
+
+**Vorab-Befund (read-only):** `Capture.tsx#loadExample()` setzte ein hartkodiertes Frost/Pumpe-P-12-Beispiel (Rohnotiz „Pumpe P-12 bei Frost vorwärmen … Kavitationsschäden", Kategorie „Instandhaltung", Asset „Pumpe P-12", Tags „Frost/Pumpe/Winter") und meldete nur „Beispiel geladen." Plausibel, aber nicht an die aktuelle Stage-1-Story (industrielle Lücke Linie L4 / Dosierwert / Schichtwechsel aus dem Seed) angeschlossen; der nächste Schritt blieb generisch. Kein eigener Capture-Beispiel-Helfer vorhanden (nur `captureReadiness.ts`). Alle übrigen Modi (Freitext/Formular/Diktat/Interview/Uploads/Draft/Strukturieren/Submit) unberührt. Kein P0/P1.
+
+**Umsetzung (minimal, produktnah):** Beispielinhalt in einen DOM-freien Helper `apps/web/src/lib/captureExample.ts` ausgelagert (`CAPTURE_EXAMPLE`: raw/category/asset/tags/noticeKey). Inhalt industrialisiert und an die Stage-1-Story angeschlossen — eine ehrliche ROHE Erfahrungsnotiz: „Nach dem Schichtwechsel an Linie L4 schwankt der Dosierwert der Klebstoffdosierung. In der Praxis stabilisiert sich die Linie, wenn vor dem ersten Auftrag der Nullpunkt am HMI geprüft und die Dosierpumpe DP-4 entlüftet wird. Gilt besonders nach Gebindewechsel oder längerer Pause." Metadaten produktnah: Kategorie „Qualität", Asset „Linie L4 / Dosierstation DP-4", Tags „Dosierung, Linie L4, Schichtwechsel, Qualität". Wissensart bewusst unverändert (keine unerwartete Logikänderung). `loadExample()` nutzt jetzt diesen Helper. Notice `capture.exampleLoaded` (DE/EN) erklärt den nächsten Schritt: „Erfahrungsnotiz geladen — jetzt mit KI strukturieren und den Entwurf prüfen." Ehrliche Grundaussage erhalten: KI strukturiert, Mensch prüft und reicht ein.
+
+**Geänderte Dateien:** NEU `apps/web/src/lib/captureExample.ts`, NEU `tests/capture/capture-example.test.ts` (4 Tests); geändert `apps/web/src/pages/Capture.tsx` (loadExample nutzt Helper), `apps/web/src/i18n.ts` (`capture.exampleLoaded` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Ersetzte alte Beispiel-/Testdaten:** Frost/Pumpe-P-12-Spielzeugbeispiel komplett entfernt (Rohnotiz, Kategorie „Instandhaltung", Asset „Pumpe P-12", Tags „Frost/Pumpe/Winter", Kavitations-Formulierung) — per Test gegen Rückkehr abgesichert (kein „Frost"/„P-12"/„Kavitation" mehr).
+
+**Ergänzte produktnahe Industrieinhalte:** industrielle Erfahrungsnotiz Linie L4 / Klebstoffdosierung / Dosierpumpe DP-4 / Nullpunkt am HMI / Gebinde- und Schichtwechsel; Kategorie „Qualität", Asset „Linie L4 / Dosierstation DP-4", Tags „Dosierung, Linie L4, Schichtwechsel, Qualität".
+
+**Wirkung auf Capture und Stage-1-Flow:** Der wichtigste Einstieg in den Knowledge-OS-Kreis wirkt jetzt als „echte Betriebserfahrung sichern" statt Spielzeugformular und ist inhaltlich an dieselbe industrielle Lücke angeschlossen, die in Ask/Risk/Start sichtbar ist — der Reviewer erlebt einen durchgängigen Stage-1-Fall. Nach „Beispiel laden" ist der nächste Schritt explizit benannt (strukturieren → Entwurf prüfen → einreichen).
+
+**Tests/Gates:** `npm run check` grün — 119 Dateien / 644 Tests (+1 Datei, +4 Tests). `apps/web` `tsc --noEmit` grün. Biome + dependency-cruiser sauber. Der neue Test prüft: produktnaher Inhalt (Linie L4 / Dosierwert|Dosierung / Schichtwechsel), Kategorie/Asset/Tags gesetzt und nicht leer, keine alten Frost/Pumpe-P12-Daten, Notice-Key vorhanden.
+
+**Restlücken/Nicht-Ziele:** kein Capture-Redesign, kein Backend-Umbau, keine automatische Lücken-Schließung/KO-Erzeugung, keine neue KI-/Reasoner-Architektur, kein RAG/Vector, keine Stufe-2-Arbeit, keine Ticketserie. Das Beispiel bleibt eine rohe Erfahrungsnotiz (kein fertig validiertes Wissen); alle bestehenden Modi/Uploads/Diktat/Interview/Draft/Submit unverändert funktionsfähig.
+
+**Commit-/Push-Hinweis:**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/captureExample.ts tests/capture/capture-example.test.ts apps/web/src/pages/Capture.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(capture): guide example path with industrial experience note (SCRUM-257)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
