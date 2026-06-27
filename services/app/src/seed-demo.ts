@@ -206,15 +206,19 @@ async function buildDemoContent(
   await lifecycle.couple("ANL-01", koValid.id);
   await lifecycle.assetChanged("ANL-01");
 
-  // SCRUM-217: ein rollenspezifischer Beispiel-Lernpfad (Experte), damit der Lifecycle-Lernpfad
-  // nach dem Demo-Seed sichtbar ist statt 404. Über die echte createPath-Methode — kein Fake,
-  // kein Editor. Andere Rollen liefern unverändert 404 → FE zeigt dort weiter eine Leer-Karte.
-  await lifecycle.createPath("experte", [
+  // SCRUM-217/218: rollenspezifische Beispiel-Lernpfade, damit der Lifecycle-Lernpfad nach dem
+  // Demo-Seed sichtbar ist statt 404. Über die echte createPath-Methode — kein Fake, kein Editor.
+  // Die Lifecycle-Seite ist controller+ gesichert; daher bekommen auch controller/admin einen
+  // Pfad, sonst sähe der reviewende Admin/Controller dort weiter nur die Leer-Karte (SCRUM-218).
+  const learningSteps = [
     { title: "Wissensobjekte lesen und Vertrauensstufen verstehen" },
     { title: "Erstes Wissensobjekt erfassen (Formular oder Interview)" },
     { title: "Quelle/Anhang als Evidence anhängen" },
     { title: "Eine Validierungsaufgabe bearbeiten" },
-  ]);
+  ];
+  for (const role of ["experte", "controller", "admin"]) {
+    await lifecycle.createPath(role, learningSteps);
+  }
 
   // --- Anhang/Quelle: kleines Bild in den (jetzt persistenten) Object-Store + Referenz am KO ---
   const ref = await objects.put({ name: "skizze.png", mime: "image/png", data: TINY_PNG });

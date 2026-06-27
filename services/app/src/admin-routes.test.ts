@@ -46,20 +46,30 @@ describe("SCRUM-181: POST /api/admin/demo-seed", () => {
     expect(after.json().length).toBe(before);
   });
 
-  // SCRUM-217: nach dem Demo-Seed ist der Experte-Lernpfad sichtbar (kein 404 mehr).
-  it("nach Demo-Seed: GET /api/learning-paths/experte liefert 200 mit Schritten", async () => {
+  // SCRUM-217/218: nach dem Demo-Seed sind Lernpfade für die relevanten Rollen sichtbar (kein
+  // 404 mehr) — inkl. der controller+-gesicherten Lifecycle-Seite (controller/admin).
+  it("nach Demo-Seed: learning-paths für experte/controller/admin = 200 mit Schritten", async () => {
     const { app, headers } = await adminApp();
     await app.inject({ method: "POST", url: "/api/admin/demo-seed", headers });
 
-    const path = await app.inject({
+    for (const role of ["experte", "controller", "admin"]) {
+      const path = await app.inject({
+        method: "GET",
+        url: `/api/learning-paths/${role}`,
+        headers,
+      });
+      expect(path.statusCode).toBe(200);
+      const body = path.json();
+      expect(body.role).toBe(role);
+      expect(body.steps.length).toBeGreaterThanOrEqual(1);
+    }
+
+    // Rolle ohne Seed-Pfad bleibt bewusst 404 (FE zeigt dort die Leer-Karte).
+    const viewer = await app.inject({
       method: "GET",
-      url: "/api/learning-paths/experte",
+      url: "/api/learning-paths/viewer",
       headers,
     });
-    expect(path.statusCode).toBe(200);
-    const body = path.json();
-    expect(body.role).toBe("experte");
-    expect(Array.isArray(body.steps)).toBe(true);
-    expect(body.steps.length).toBeGreaterThanOrEqual(1);
+    expect(viewer.statusCode).toBe(404);
   });
 });

@@ -23,7 +23,8 @@
       "UI:UX",
       "Blueprint",
       "**/*.tsbuildinfo",
-      "**/*.timestamp-*.mjs"
+      "**/*.timestamp-*.mjs",
+      "scripts"
     ]
   }
 }

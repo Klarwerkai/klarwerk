@@ -2987,3 +2987,41 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-218 — Headless Browser-Smoke-light für Kernrouten
+
+**Vorab-Befund (read-only):** Kein Browser-Tooling im Repo (kein Playwright/Puppeteer/Cypress/jsdom), kein System-Chromium, vitest läuft in Node-Env. FE-API-Client nutzt `credentials:"include"` gegen same-origin `/api`; Login setzt ein HttpOnly-Cookie `kw_session`; AuthContext bootstrappt über `/auth/status`+`/auth/me`. Vite proxyt `/api` → `VITE_API_TARGET`. Kein FE-ErrorBoundary. **Wichtig:** `/lebenszyklus` ist controller+-gesichert, SCRUM-217 hatte aber nur einen `experte`-Lernpfad geseedet → der reviewende Admin/Controller sah dort weiter die Leer-Karte.
+
+**Entscheidung:** Option C (Sandbox kann keinen Browser starten) + ein kleiner, begründeter Testability-Fix. Statt einer schweren Blind-Dependency: ein eigenständiges, **lokal ausführbares** Playwright-Skript mit dynamischem Import (kein Eintrag in package-Dependencies, kein CI-Zwang). Zusätzlich SCRUM-217-Seed minimal erweitert, damit die Lifecycle-gesicherten Rollen (controller/admin) ebenfalls einen Pfad haben — sonst wäre das Smoke-Kriterium „/lebenszyklus kein 404-Datenloch" für die zugriffsberechtigten Rollen nicht erfüllbar.
+
+**Umsetzung:**
+- `scripts/smoke-browser.mjs`: launcht Chromium (headless), richtet via `context.request` ersten Admin ein (register→login→`POST /api/admin/demo-seed`, Cookie landet im Context), besucht die 10 Kernrouten und prüft je Route: App-Shell-Landmark (`a[href="/start"]`) sichtbar, URL nicht vom Auth-Gate zurückgeworfen, keine neuen `pageerror`-Crashes; für `/lebenszyklus` zusätzlich ein sichtbarer Lernpfad-Schritt. Fehlt Playwright/App → sauberer Exit-Code 2 mit Anleitung (kein Fake-Pass).
+- `npm run smoke:browser` ergänzt; `scripts` in Biome-Ignore (Utility außerhalb der Lint-Surface). Root-`tsc` umfasst nur `services`/`tests` → Skript bricht den Build nicht.
+- `seed-demo.ts`: SCRUM-217-`createPath("experte", …)` zu einer Schleife über `experte/controller/admin` erweitert (gleiche Schritte, echte Service-Methode). `viewer` bleibt bewusst ohne Pfad (404→Leer-Karte).
+
+**Was lief wo:** In-Sandbox **verifiziert** — Skript-Syntax (`node --check`), sauberer Blocker-Exit (2) ohne Browser, und per In-Process-HTTP, dass nach Seed `learning-paths` für experte/controller/admin = **200 (4 Schritte)** und viewer = 404 liefert. **Lokal nötig (nicht im Sandbox):** der eigentliche Browser-Rundgang (`npm run smoke:browser`) — Chromium ist hier nicht verfügbar.
+
+**Geänderte/neue Dateien:** neu `scripts/smoke-browser.mjs`; geändert `package.json` (Script), `biome.json` (Ignore), `services/app/src/seed-demo.ts`, `services/app/src/admin-routes.test.ts`, `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — **90 Dateien / 506 Tests** (SCRUM-217-Test auf experte/controller/admin=200 + viewer=404 erweitert). `seed.test` unverändert grün. Biome + depcruise sauber. Kein apps/web-FE berührt → apps/web-`tsc` nicht nötig.
+
+**Restlücken/Nicht-Ziele:** kein E2E-Framework, keine Pixel-Screenshots, keine externen Secrets, keine Alt-App-Parität, kein Mobile/PWA-Offline-Test, kein Browser-Run im Sandbox. Playwright bleibt bewusst optionale lokale Dev-Dependency (kein Repo-Dependency-Eintrag). Der Browser-Smoke deckt Render/Navigation/Crash ab, nicht funktionale Tiefenpfade.
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+# Browser-Smoke lokal:
+PORT=3001 npm start &                                   # Terminal 1
+VITE_API_TARGET=http://localhost:3001 npm --prefix apps/web run dev &   # Terminal 2
+npm i -D playwright && npx playwright install chromium
+npm run smoke:browser
+git add scripts/smoke-browser.mjs package.json biome.json \
+  services/app/src/seed-demo.ts services/app/src/admin-routes.test.ts docs/qm/claude-after-report.md
+git commit -m "test(smoke): locally-runnable headless browser smoke for core routes + seed lifecycle paths for gated roles (SCRUM-218)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
