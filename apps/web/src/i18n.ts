@@ -244,6 +244,7 @@ const de = {
   "capture.diktatStop": "Diktat stoppen",
   "capture.diktatUnsupported":
     "Spracheingabe wird von diesem Browser nicht unterstützt. Nutze Chrome/Edge oder gib den Text manuell ein.",
+  "capture.diktatNa": "nicht verfügbar",
   "capture.ivStep": "Frage {{n}} von {{total}}",
   "capture.ivBack": "Zurück",
   "capture.ivNext": "Weiter",
@@ -1223,6 +1224,7 @@ const en: typeof de = {
   "capture.diktatStop": "Stop dictation",
   "capture.diktatUnsupported":
     "Speech input is not supported by this browser. Use Chrome/Edge or type the text manually.",
+  "capture.diktatNa": "not available",
   "capture.ivStep": "Question {{n}} of {{total}}",
   "capture.ivBack": "Back",
   "capture.ivNext": "Next",

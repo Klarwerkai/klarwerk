@@ -36,6 +36,7 @@ import {
 } from "../lib/files";
 import { appendAnswer, interviewSourceKey, isInterviewDone } from "../lib/interviewFlow";
 import { toReasonerLocale } from "../lib/reasonerLocale";
+import { hasSpeechRecognition } from "../lib/speechSupport";
 
 const MODES = ["freitext", "formular", "diktat", "interview"] as const;
 type Mode = (typeof MODES)[number];
@@ -121,7 +122,8 @@ export function Capture(): JSX.Element {
   // Diktat
   const [listening, setListening] = useState(false);
   const recRef = useRef<SpeechRec | null>(null);
-  const speechSupported = Boolean(speechCtor());
+  // SCRUM-236: ehrliche, DOM-freie Feature-Detection statt inline-window-Zugriff.
+  const speechSupported = hasSpeechRecognition(window);
 
   // SCRUM-132: reasoner-getriebenes Interview (stateless; Antworten → nächste Frage).
   const [ivAnswers, setIvAnswers] = useState<string[]>([]);
@@ -485,11 +487,15 @@ export function Capture(): JSX.Element {
             key={m}
             type="button"
             onClick={() => switchMode(m)}
+            title={m === "diktat" && !speechSupported ? t("capture.diktatUnsupported") : undefined}
             className={`rounded-btn px-3 py-1.5 text-[13px] font-semibold ${
               mode === m ? "bg-ink text-white" : "border border-hairline text-muted hover:text-text"
             }`}
           >
             {t(`capture.mode.${m}`)}
+            {m === "diktat" && !speechSupported ? (
+              <span className="ml-1 text-[11px] opacity-70">·{t("capture.diktatNa")}</span>
+            ) : null}
           </button>
         ))}
       </div>

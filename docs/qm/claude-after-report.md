@@ -3432,3 +3432,19 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-236 — Erfassen: fehlende Sprach-API ehrlich anzeigen
+
+**Vorab-Befund (read-only):** Diktat nutzt die Web-Speech-API (`SpeechRecognition`/`webkitSpeechRecognition`) — Erkennung bislang **inline** in `Capture.tsx` via `speechCtor()` + `const speechSupported = Boolean(speechCtor())` (Zeile 124), DOM-gekoppelt und **untestbar**. Im Diktat-Modus war der Negativzustand bereits teilweise ehrlich: bei `speechSupported` erscheint der Mic-Button (`toggleDictation`), sonst ein Warnhinweis `capture.diktatUnsupported` — also **kein** stiller Button (der Button rendert nur bei Support; `toggleDictation` hatte zusätzlich einen `if (!Ctor) return`-Guard). Lücken: (1) Feature-Detection nicht DOM-frei/getestet (genau der Ticket-Auftrag), (2) der Diktat-**Modus-Tab** signalisierte die Nichtverfügbarkeit erst nach Auswahl. **Interview** nutzt den Reasoner per Text (`endpoints.reasoner.interview`), **keine** Sprach-API → nicht betroffen. Freitext/Formular/Upload/Strukturieren/Speichern hängen nicht an Speech. **Kein Backend-Change nötig (bestätigt).**
+
+**Umsetzung (kleinster sauberer Eingriff):** Neuer DOM-freier Helper `apps/web/src/lib/speechSupport.ts` — `hasSpeechRecognition(win: unknown)` narrowt selbst auf die beiden optionalen Konstruktoren (akzeptiert `window` ohne Cast, testbar mit Fake-Objekten). In `Capture.tsx`: `speechSupported = hasSpeechRecognition(window)` statt Inline-`Boolean(speechCtor())`; der Diktat-Modus-Tab trägt jetzt bei fehlender API einen `title` (voller Hinweis) plus sichtbaren Suffix „· nicht verfügbar" (`capture.diktatNa`). Der bestehende In-Modus-Warnhinweis + gegateter Mic-Button bleiben. **Keine Fake-Diktatfunktion, kein Cloud-STT, kein Backend, kein Interview-Redesign.** Manuelle Eingabe, Upload, Strukturieren, Interview-Textfluss und Speichern unverändert.
+
+**Geänderte/neue Dateien:** neu `apps/web/src/lib/speechSupport.ts`, `tests/capture/speech-support.test.ts`; geändert `apps/web/src/pages/Capture.tsx` (Helper-Nutzung + Tab-Hinweis), `apps/web/src/i18n.ts` (`capture.diktatNa` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — **105 Dateien / 568 Tests** (+1 Datei, +4 Tests: Standard-/webkit-/keine-API/null-window). apps/web DOM-`tsc --noEmit` grün (Helper auf `unknown` umgestellt wegen `exactOptionalPropertyTypes` beim Übergeben von `window`). Biome + depcruise sauber.
+
+**Restlücken/Nicht-Ziele:** kein neues Speech-to-Text-System, kein Cloud-STT, kein Backend-Audio-Upload, kein Interview-Redesign, keine Alt-App-Parität. Der `speechCtor()` (Instanziierung in `toggleDictation`) bleibt unverändert; nur die Verfügbarkeitsprüfung ist jetzt ausgelagert/getestet. Echtes Mikrofon-Verhalten ist umgebungsabhängig und nur im Browser testbar — die reine Verfügbarkeitslogik ist unit-abgedeckt.
+
+Kein Git, kein Commit/Push, kein Jira durch Claude. No tickets closed. No new tickets.
