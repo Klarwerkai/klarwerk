@@ -3448,3 +3448,19 @@ No Jira changes by Claude. No tickets closed. No new tickets.
 **Restlücken/Nicht-Ziele:** kein neues Speech-to-Text-System, kein Cloud-STT, kein Backend-Audio-Upload, kein Interview-Redesign, keine Alt-App-Parität. Der `speechCtor()` (Instanziierung in `toggleDictation`) bleibt unverändert; nur die Verfügbarkeitsprüfung ist jetzt ausgelagert/getestet. Echtes Mikrofon-Verhalten ist umgebungsabhängig und nur im Browser testbar — die reine Verfügbarkeitslogik ist unit-abgedeckt.
 
 Kein Git, kein Commit/Push, kein Jira durch Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-237 — Validierung: HTTP-Workflow routennah absichern
+
+**Vorab-Befund (read-only):** Zuweisen UND Bewerten laufen über den **KO-Dispatcher** `PUT /api/kos/:id` — `{action:"assign", userIds}` (Permission `ko.assign`) und `{action:"rate", verdict:"up"|"warn"|"down"}` (Permission `ko.validate`). Lese-Sichten: `GET /api/validation/board` (offene KOs) und `GET /api/validation/overview` (offen/erledigt je Nutzer), beide `ko.read`. RBAC (`services/rbac/src/policy.ts`): `ko.validate`/`ko.assign` haben **nur controller + admin**; experte nur `ko.create`. Status/Trust-Regeln (`services/validation/src/trust.ts`, bestätigt durch `service.test.ts`): `trust = clamp(round((up-down)/max(needed,1)*100))`, Status `"validiert"` **nur** bei `up >= neededValidations` UND `down === 0`; Bewertungen sind **pro Nutzer** (Upsert) → `needed` distinkte Validatoren nötig. KO-Default `neededValidations = 3` (1–5 erlaubt, im Body setzbar). Coverage bislang: nur `services/validation/src/service.test.ts` (Service-Direkt) + FE — **kein Route-Level-Test**. **Kein Produktbug** — ein Route-Level-Smoke genügt.
+
+**Umsetzung (nur Test, kein Produktcode):** Neuer Route-Level-Test `services/app/src/validation-routes.test.ts` über `buildApp`/`app.inject`, ohne Repo-Manipulation. Setup: Admin registrieren/login + Demo-Seed (legt Carla=controller, Erik=experte an), IDs via `GET /api/auth/me`. (1) Hauptpfad: KO erstellen (`neededValidations:2`, offen/trust 0) → an Carla+Erik zuweisen (204) → Overview zeigt offene Zuweisung → Erik (experte) `rate up` → ≥400 (Guard) → Admin `up` → bleibt offen (1<2) → Carla `up` → `validiert`, trust 100; Carlas Zuweisung ist danach `done`. (2) Eine rote Bewertung: Admin `up` + Carla `down` → trotz grüner Bewertung **nicht** validiert, trust 0. (3) Guards: anonym `rate` → ≥400; `rate` auf unbekanntes KO → ≥400 (NOT_FOUND). **Kein Produktcode geändert.**
+
+**Geänderte/neue Dateien:** neu `services/app/src/validation-routes.test.ts`; geändert `docs/qm/claude-after-report.md`. Kein Produktcode, kein FE.
+
+**Tests/Gates:** `npm run check` grün — **106 Dateien / 571 Tests** (+1 Datei, +3 Validierungs-Route-Tests). Biome + depcruise + tsc (services/tests) sauber. apps/web `tsc --noEmit` nicht nötig (kein FE berührt). Bestehende Service-/FE-Tests unverändert grün.
+
+**Restlücken/Nicht-Ziele:** kein neues Validierungsmodell, kein Status-Redesign, kein Browser-E2E, kein UI-Redesign, keine Alt-App-Parität. Nicht abgedeckt (bewusst): „warn"/return-to-author-Pfad (SCRUM-124) und Pg-Persistenz (In-Memory prozesslokal). Der Kern-Datenpfad Zuweisen→Bewerten→Status/Trust inkl. Guard-/Negativfällen ist jetzt routennah abgesichert.
+
+Kein Git, kein Commit/Push, kein Jira durch Claude. No tickets closed. No new tickets.
