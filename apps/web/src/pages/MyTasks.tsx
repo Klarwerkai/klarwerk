@@ -22,14 +22,22 @@ import {
   filterTasks,
 } from "../lib/taskFilters";
 import { returnedToAuthor } from "../lib/validationStatus";
+import { type WorkSeverity, groupTasks, severityForType } from "../lib/workCenter";
 
 interface Task {
   id: string;
   label: string;
   typeKey: string;
   to: string;
+  // SCRUM-247: Dringlichkeit aus der Quelle abgeleitet (DOM-freier Helper) → testbare Gruppierung.
+  severity: WorkSeverity;
   // FR-LIF-04: Autor sichtbar, wo ein KO hinter der Aufgabe steht.
   author?: KoAuthorParts;
+}
+
+// Aufgabe mit aus dem typeKey abgeleiteter Severity bauen (eine Quelle der Wahrheit).
+function task(input: Omit<Task, "severity">): Task {
+  return { ...input, severity: severityForType(input.typeKey) };
 }
 
 export function MyTasks(): JSX.Element {
@@ -50,51 +58,62 @@ export function MyTasks(): JSX.Element {
     const ko = kosById.get(koId);
     return ko ? koAuthorParts(ko, nameOf) : undefined;
   };
-  const returned: Task[] = user
-    ? returnedToAuthor(audit.data ?? [], kos.data ?? [], user.id).map((r) => ({
-        id: `rw-${r.koId}`,
-        label: kosById.get(r.koId)?.title ?? r.koId,
-        typeKey: "task.returned",
-        to: `/wissen/${r.koId}`,
-        author: authorOf(r.koId),
-      }))
-    : [];
-
-  const critical: Task[] = [
-    ...returned,
+  // SCRUM-247: alle echten Signale zu EINER flachen Aufgabenliste (Quelle → Severity) verdichten,
+  // danach über den DOM-freien Helper nach Dringlichkeit gruppieren (kein Vermischen der Arten).
+  const tasks: Task[] = [
+    ...(user
+      ? returnedToAuthor(audit.data ?? [], kos.data ?? [], user.id).map((r) =>
+          task({
+            id: `rw-${r.koId}`,
+            label: kosById.get(r.koId)?.title ?? r.koId,
+            typeKey: "task.returned",
+            to: `/wissen/${r.koId}`,
+            author: authorOf(r.koId),
+          }),
+        )
+      : []),
     ...(conflicts.data ?? [])
       .filter((c) => c.status !== "geloest")
-      .map((c) => ({ id: c.id, label: c.description, typeKey: "task.conflict", to: "/konflikte" })),
+      .map((c) =>
+        task({ id: c.id, label: c.description, typeKey: "task.conflict", to: "/konflikte" }),
+      ),
+    ...(board.data ?? []).map((k) =>
+      task({
+        id: k.id,
+        label: k.title,
+        typeKey: "task.validation",
+        to: `/wissen/${k.id}`,
+        author: koAuthorParts(k, nameOf),
+      }),
+    ),
+    ...(lifecycle.data ?? []).map((id) =>
+      task({
+        id: `lc-${id}`,
+        label: kosById.get(id)?.title ?? id,
+        typeKey: "task.revalidation",
+        to: "/lebenszyklus",
+        author: authorOf(id),
+      }),
+    ),
+    ...(gaps.data ?? [])
+      .filter((g) => g.status === "offen")
+      .map((g) => task({ id: g.id, label: g.question, typeKey: "task.gap", to: "/risiko" })),
   ];
-  const today: Task[] = [
-    ...(board.data ?? []).map((k) => ({
-      id: k.id,
-      label: k.title,
-      typeKey: "task.validation",
-      to: `/wissen/${k.id}`,
-      author: koAuthorParts(k, nameOf),
-    })),
-    ...(lifecycle.data ?? []).map((id) => ({
-      id: `lc-${id}`,
-      label: kosById.get(id)?.title ?? id,
-      typeKey: "task.revalidation",
-      to: "/lebenszyklus",
-      author: authorOf(id),
-    })),
-  ];
-  const later: Task[] = (gaps.data ?? [])
-    .filter((g) => g.status === "offen")
-    .map((g) => ({ id: g.id, label: g.question, typeKey: "task.gap", to: "/risiko" }));
+  const grouped = groupTasks(tasks);
 
   const groups: Array<{ key: string; tone: string; items: Task[] }> = [
-    { key: "task.critical", tone: "bg-trust-crit-bg text-trust-crit-text", items: critical },
-    { key: "task.today", tone: "bg-trust-warn-bg text-trust-warn-text", items: today },
-    { key: "task.later", tone: "bg-page text-muted", items: later },
+    {
+      key: "task.critical",
+      tone: "bg-trust-crit-bg text-trust-crit-text",
+      items: grouped.critical,
+    },
+    { key: "task.today", tone: "bg-trust-warn-bg text-trust-warn-text", items: grouped.today },
+    { key: "task.later", tone: "bg-page text-muted", items: grouped.later },
   ];
 
   // SCRUM-158: Typ-Filter über alle Gruppen; ehrliche Zähler je Chip.
   const [taskFilter, setTaskFilter] = useState<TaskFilterKey>("all");
-  const counts = countTasksByFilter([...critical, ...today, ...later]);
+  const counts = countTasksByFilter(tasks);
 
   return (
     <div className="mx-auto max-w-4xl">

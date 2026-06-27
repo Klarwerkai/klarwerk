@@ -3653,3 +3653,29 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets. Danach Stopp.
+
+---
+
+## SCRUM-247 — Start/MyTasks: echte Arbeitszentrale aus vorhandenen Signalen
+
+**Vorab-Befund (read-only):** `MyTasks.tsx` gruppierte Aufgaben bereits in **kritisch/heute/später** (Nacharbeit+Konflikte / Board+Revalidierung / offene Gaps) mit Typ-Filtern + Zählern (`taskFilters` getestet), aber die **Gruppierungslogik lag inline** im Component (nicht DOM-frei/testbar). `Start.tsx` zeigte eine **vermischte** „Heute zu tun"-Liste (erste 3 Board-KOs + erste 2 Gaps in EINER Liste) und blendete Konflikte/Revalidierung/Lernpfad **gar nicht** ein. Vorhandene echte Signale + Hooks: `useValidationBoard` (offene KOs), `useConflicts`, `useLifecyclePending` (Revalidierung), `useGaps` (inkl. Priorität), `useLearningPath`/`useLearningProgress`. Tests: `tests/foundation/task-filters.test.ts`, `tests/app/missions.test.ts`. **Kein Backend-Bedarf.**
+
+**Umsetzung (minimal, produktnah, DOM-frei):** Neuer Helfer `apps/web/src/lib/workCenter.ts` — **Start**: `workSignalsFrom(rohdaten)` → echte Zähler (validationOpen, conflictsOpen, revalidationPending, **criticalGaps**=offen+hoch, learningOpenSteps); `learningOpenSteps(path, done)`; `buildWorkOverview(signals)` → **getrennte, nach Dringlichkeit geordnete** Kategorien (kritisch: Konflikte/kritische Lücken → heute: Revalidierung/Validierung → später: Lernpfad), **nur count>0** (keine Fake-Zeilen). **MyTasks**: `severityForType(typeKey)` (Quelle→Dringlichkeit) + `groupTasks(tasks)` (stabile Partition kritisch/heute/später). In `Start.tsx` ersetzt die getrennte „Nächste Handlungen"-Übersicht (Severity-Punkt + Label + Zähler + Link je Kategorie) die vermischte Todo-Liste; „Alle Aufgaben →"-Link, motivierender Leerzustand + `EmptyStateCtas` und die KPI-Spalte bleiben. In `MyTasks.tsx` läuft die Gruppierung jetzt über den testbaren Helfer (gleiches visuelles Ergebnis, gleiche Links/Filter/Aktionen). **Keine** neue Task-Engine, **keine** Fake-Aufgaben, Arten bleiben getrennt.
+
+**Geänderte/neue Dateien:** neu `apps/web/src/lib/workCenter.ts`, `tests/app/work-center.test.ts`; geändert `apps/web/src/pages/Start.tsx` (getrennte Work-Overview + Signal-Hooks), `apps/web/src/pages/MyTasks.tsx` (Gruppierung via Helfer), `apps/web/src/i18n.ts` (`start.workTitle` + `work.*` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — **114 Dateien / 608 Tests** (+1 Datei, +7 workCenter-Tests: Start-Übersicht geordnet/getrennt, Leerzustand, Signal-Ableitung, Lernpfad-Restschritte, Severity-Zuordnung, Gruppierung stabil, leere Gruppen). apps/web `tsc --noEmit` grün. Biome + depcruise sauber. Bestehende `task-filters`/`missions`-Tests unverändert grün.
+
+**Restlücken/Nicht-Ziele:** keine neue Task-Engine, kein Backend-Großumbau, keine Knowledge-OS-Metamorphose, keine Stufe-2-Feinschliffe, keine Vector/RAG/Reasoner-Arbeit, keine Ticketserie, keine UI-Politur jenseits notwendiger Klarheit. Start zeigt bewusst die **aggregierten Kategorien** (Zähler+Link), nicht einzelne Items — Detail/Aktion bleibt MyTasks/den Zielseiten überlassen (Links erhalten). `criticalGaps` = offen+Priorität „hoch" (nicht-kritische offene Lücken bleiben als KPI/Risk sichtbar). Lernpfad-Hinweis erscheint nur bei vorhandenem Rollen-Pfad mit offenen Schritten.
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/workCenter.ts tests/app/work-center.test.ts apps/web/src/pages/Start.tsx apps/web/src/pages/MyTasks.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(start,tasks): data-driven separated work overview + testable task grouping (SCRUM-247)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

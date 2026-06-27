@@ -1,13 +1,34 @@
 import { ArrowRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
-import { useAnalytics, useGaps, useValidationBoard } from "../api/hooks";
+import {
+  useAnalytics,
+  useConflicts,
+  useGaps,
+  useLearningPath,
+  useLearningProgress,
+  useLifecyclePending,
+  useValidationBoard,
+} from "../api/hooks";
 import { useSession } from "../app/AuthContext";
 import { useRole } from "../app/RoleContext";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { Card, PageHeader } from "../components/ui";
 import { missionsForRole } from "../lib/missions";
 import { stufe2FeatureLabelKeys, stufe2HintKind } from "../lib/stufe2Hint";
+import {
+  type WorkSeverity,
+  buildWorkOverview,
+  learningOpenSteps,
+  workSignalsFrom,
+} from "../lib/workCenter";
+
+// Severity → Farbton der Punkt-Markierung (kritisch/heute/später).
+const WORK_TONE: Record<WorkSeverity, string> = {
+  critical: "bg-trust-crit-fill",
+  today: "bg-trust-warn-fill",
+  later: "bg-muted-2",
+};
 
 const CTA: Record<string, { to: string; key: string }> = {
   viewer: { to: "/fragen", key: "start.ctaAsk" },
@@ -32,6 +53,11 @@ export function Start(): JSX.Element {
   const analytics = useAnalytics();
   const board = useValidationBoard();
   const gaps = useGaps();
+  // SCRUM-247: echte Signale für die Arbeitsübersicht (Konflikte, Revalidierung, Lernpfad).
+  const conflicts = useConflicts();
+  const pending = useLifecyclePending();
+  const learningPath = useLearningPath(role);
+  const learningProgress = useLearningProgress(learningPath.data?.id);
   const cta = CTA[role] ?? CTA.viewer;
   // FE-FND-09: rollenbewusste Missionen — Deep-Links in echte Flows (keine neuen Seiten).
   const missions = missionsForRole(role, stufe2);
@@ -41,12 +67,16 @@ export function Start(): JSX.Element {
     .map((k) => t(k))
     .join(", ");
 
-  const todo = [
-    ...(board.data ?? [])
-      .slice(0, 3)
-      .map((k) => ({ id: k.id, label: k.title, to: `/wissen/${k.id}` })),
-    ...(gaps.data ?? []).slice(0, 2).map((g) => ({ id: g.id, label: g.question, to: "/risiko" })),
-  ];
+  // SCRUM-247: getrennte, datengetriebene Arbeitsübersicht (keine vermischte Todo-Liste, keine Fakes).
+  const overview = buildWorkOverview(
+    workSignalsFrom({
+      board: board.data ?? [],
+      conflicts: conflicts.data ?? [],
+      revalidation: pending.data ?? [],
+      gaps: gaps.data ?? [],
+      learningOpenSteps: learningOpenSteps(learningPath.data, learningProgress.data),
+    }),
+  );
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -98,25 +128,31 @@ export function Start(): JSX.Element {
       <div className="grid gap-5 lg:grid-cols-[1.6fr_1fr]">
         <Card>
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-[15px] font-semibold text-ink">{t("start.todo")}</h2>
+            <h2 className="text-[15px] font-semibold text-ink">{t("start.workTitle")}</h2>
             <Link to="/aufgaben" className="text-[12.5px] font-semibold text-brand">
               {t("start.allTasks")}
             </Link>
           </div>
           <div className="divide-y divide-hairline">
-            {todo.length === 0 ? (
+            {overview.length === 0 ? (
               <div className="py-4">
                 <p className="text-sm text-muted">{t("start.todoEmpty")}</p>
                 <EmptyStateCtas context="start" />
               </div>
             ) : (
-              todo.map((it) => (
+              overview.map((it) => (
                 <Link
-                  key={it.id}
+                  key={it.key}
                   to={it.to}
-                  className="flex items-center justify-between gap-3 py-2.5 hover:opacity-80"
+                  className="flex items-center gap-3 py-2.5 hover:opacity-80"
                 >
-                  <span className="truncate text-[13.5px] text-text">{it.label}</span>
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${WORK_TONE[it.severity]}`} />
+                  <span className="min-w-0 flex-1 truncate text-[13.5px] text-text">
+                    {t(`work.${it.key}`)}
+                  </span>
+                  <span className="shrink-0 font-mono text-[13px] font-semibold text-ink">
+                    {it.count}
+                  </span>
                   <ArrowRight size={15} className="shrink-0 text-muted-2" />
                 </Link>
               ))
