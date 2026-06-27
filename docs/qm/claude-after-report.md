@@ -3056,3 +3056,34 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-220 — Notifications interaktiv: gelesen markieren und Zielnavigation
+
+**Vorab-Befund (read-only):** Benachrichtigungen sind **abgeleitet**, nicht persistiert: `notification-feed.ts#buildNotifications({ conflicts, gaps })` aggregiert offene Konflikte + offene Wissenslücken zu `Notification { id, kind, title, at }` mit stabilen IDs `con-<id>`/`gap-<id>`. Route `GET /api/notifications` ist read-only; es gibt KEIN notifications-Repo und kein `read`/`seen`-Feld (das `notifications`-Modul ist nur der Mailer). Die Topbar-Glocke navigierte bereits per Klick (`/konflikte`/`/risiko`), zählte aber ALLE Items als Badge — ohne Gelesen-Konzept und ohne mark-read.
+
+**Entscheidung:** Da Benachrichtigungen abgeleitet sind (kein Repo, kein Server-Status), wäre Server-Persistenz von „gelesen" ein neues Modell und semantisch fragwürdig (das Signal existiert ja weiter) → **kein** Backend-Eingriff. Stattdessen: client-seitiger Gelesen-Status pro Sitzung (stabil über die festen IDs) + Unread-Badge + Zielnavigation aus den vorhandenen Daten. Die Navigation wird in einen DOM-freien, getesteten Helper zentralisiert.
+
+**Umsetzung:**
+- Neuer DOM-freier Helper `apps/web/src/lib/notificationTarget.ts`: `notificationTarget(n)` → conflict `/konflikte`, gap `/risiko`, sonst `null` (kein Fake-Ziel).
+- Topbar `NotificationBell`: `readIds`-State (Set), Badge = Unread-Count, „Alle gelesen"-Button, pro Zeile ✓-Button (mark-read ohne Navigation) und Klick auf den Titel = navigiert (per Helper-Ziel) **und** markiert gelesen. Gelesene Zeilen werden ausgegraut. `Link` durch `useNavigate` ersetzt (kein verschachteltes Interaktiv-Element). Badge aktualisiert sich sofort nach jeder Aktion.
+- i18n DE/EN `topbar.notifMarkAll`/`notifMarkRead`/`notifOpen`.
+
+**Geänderte/neue Dateien:** neu `apps/web/src/lib/notificationTarget.ts`, `tests/analytics/notification-target.test.ts`; geändert `apps/web/src/shell/Topbar.tsx`, `apps/web/src/i18n.ts`, `docs/qm/claude-after-report.md`. (Kein Backend berührt.)
+
+**Tests/Gates:** `npm run check` grün — **92 Dateien / 515 Tests** (+3 Helper: conflict→/konflikte, gap→/risiko, unbekannt→null). apps/web `tsc --noEmit` EXIT=0. Biome + depcruise sauber. Bestehende Notification-/Feed-Tests unverändert grün.
+
+**Restlücken/Nicht-Ziele:** kein Notification-Center, keine Push/WebPush/Realtime-Infrastruktur, keine E-Mail-Notifications, kein Backend-Read-Status. Gelesen-Status ist sitzungslokal (nach Reload zurückgesetzt) — bewusst, da Benachrichtigungen abgeleitet sind und beim Lösen/Schließen des Signals ohnehin verschwinden. Server-seitige Persistenz wäre ein eigenes Ticket (neues Modell).
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check && (cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/notificationTarget.ts apps/web/src/shell/Topbar.tsx apps/web/src/i18n.ts \
+  tests/analytics/notification-target.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(notifications): client-side mark-read + unread badge + tested target navigation (SCRUM-220)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

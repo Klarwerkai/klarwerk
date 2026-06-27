@@ -1,8 +1,9 @@
 import { Bell, HelpCircle, Search, Smartphone } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useNotifications, useReasonerStatus } from "../api/hooks";
+import { notificationTarget } from "../lib/notificationTarget";
 
 function LangPill(): JSX.Element {
   const { i18n } = useTranslation();
@@ -27,9 +28,20 @@ function LangPill(): JSX.Element {
 
 function NotificationBell(): JSX.Element {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  // SCRUM-220: client-seitiger Gelesen-Status. Benachrichtigungen sind abgeleitet (aus offenen
+  // Konflikten/Lücken) und haben keine Server-Persistenz — Gelesen-Markierung daher pro Sitzung,
+  // stabil über die festen IDs (con-…/gap-…). Wird das zugrunde liegende Signal gelöst/geschlossen,
+  // verschwindet die Benachrichtigung ohnehin.
+  const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const { data } = useNotifications();
   const items = data ?? [];
+  const unreadCount = items.filter((n) => !readIds.has(n.id)).length;
+
+  const markRead = (id: string): void => setReadIds((prev) => new Set(prev).add(id));
+  const markAll = (): void => setReadIds(new Set(items.map((n) => n.id)));
+
   return (
     <div className="relative">
       <button
@@ -39,37 +51,79 @@ function NotificationBell(): JSX.Element {
         aria-label={t("topbar.notifications")}
       >
         <Bell size={18} />
-        {items.length > 0 ? (
+        {unreadCount > 0 ? (
           <span className="absolute right-1.5 top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 font-mono text-[10px] font-bold text-white">
-            {items.length}
+            {unreadCount}
           </span>
         ) : null}
       </button>
       {open ? (
         <div className="absolute right-0 top-11 z-20 w-80 rounded-card border border-hairline bg-surface p-3 shadow-popover">
-          <div className="mb-2 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
-            {t("topbar.notifications")}
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+              {t("topbar.notifications")}
+            </span>
+            {unreadCount > 0 ? (
+              <button
+                type="button"
+                onClick={markAll}
+                className="text-[11px] font-semibold text-ai hover:opacity-80"
+              >
+                {t("topbar.notifMarkAll")}
+              </button>
+            ) : null}
           </div>
           {items.length === 0 ? (
             <p className="py-3 text-[13px] text-muted">{t("topbar.notificationsEmpty")}</p>
           ) : (
             <ul className="space-y-0.5">
-              {items.slice(0, 8).map((n) => (
-                <li key={n.id}>
-                  <Link
-                    to={n.kind === "conflict" ? "/konflikte" : "/risiko"}
-                    onClick={() => setOpen(false)}
-                    className="flex items-start gap-2 rounded-btn px-1.5 py-1.5 text-[13px] text-text hover:bg-hairline-soft"
+              {items.slice(0, 8).map((n) => {
+                const read = readIds.has(n.id);
+                const target = notificationTarget(n);
+                const openTarget = (): void => {
+                  markRead(n.id);
+                  setOpen(false);
+                  if (target) {
+                    navigate(target);
+                  }
+                };
+                return (
+                  <li
+                    key={n.id}
+                    className={`flex items-start gap-2 rounded-btn px-1.5 py-1.5 ${
+                      read ? "opacity-50" : ""
+                    }`}
                   >
                     <span
                       className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${
-                        n.kind === "conflict" ? "bg-trust-crit-fill" : "bg-trust-info-text"
+                        read
+                          ? "bg-hairline"
+                          : n.kind === "conflict"
+                            ? "bg-trust-crit-fill"
+                            : "bg-trust-info-text"
                       }`}
                     />
-                    <span className="truncate">{n.title}</span>
-                  </Link>
-                </li>
-              ))}
+                    <button
+                      type="button"
+                      onClick={openTarget}
+                      className="min-w-0 flex-1 truncate text-left text-[13px] text-text hover:text-ai"
+                      title={target ? t("topbar.notifOpen") : undefined}
+                    >
+                      {n.title}
+                    </button>
+                    {read ? null : (
+                      <button
+                        type="button"
+                        onClick={() => markRead(n.id)}
+                        className="shrink-0 rounded-btn px-1 text-[11px] font-semibold text-muted-2 hover:text-text"
+                        title={t("topbar.notifMarkRead")}
+                      >
+                        ✓
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
