@@ -2847,3 +2847,32 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-177 — QM-Fenstertransparenz für limitierte Indizes
+
+**Vorab-Befund (read-only):** Mehrere Stufe-2-QM-Karten beruhen bewusst auf limitierten Queries: ModelRuns `useModelRuns(50)`, Evidence `useEvidenceIndex(500)`; EvidenceFreshness und Provenance leiten sich aus dem 500er-Evidence-Fenster ab. Korrekt, aber bisher ohne konsistenten Hinweis, ob ein Fenster abgeschnitten sein könnte.
+
+**Umsetzung (rein read-only, additiv):**
+- Neuer DOM-freier Helper `apps/web/src/lib/qmDataWindow.ts` mit `evaluateDataWindow({ loaded, limit, source })` → `withinWindow` (loaded < limit) bzw. `potentiallyLimited` (loaded >= limit). `limit <= 0` und nicht-finite Werte werden defensiv als `withinWindow` behandelt. **Kein Fehler** — zählt nicht in kritische QM-Hints.
+- Kleine `WindowNote`-Komponente in `Stufe2.tsx` (nutzt den Helper) ergänzt eine kompakte, ehrliche Fenster-Zeile in: ModelRuns-Card (50), EvidenceIndex-Card (500), EvidenceFreshness-Card (500) und ProvenanceIndex-Card (500, da Evidence als „bekannt" genutzt). Text z. B. „Fenster: 500 jüngste EvidenceRecords · innerhalb des geladenen Fensters" bzw. „möglicherweise abgeschnitten".
+- i18n DE/EN `qmWindow.within/limited/modelRuns/evidence`.
+
+**Geänderte/neue Dateien:** neu `apps/web/src/lib/qmDataWindow.ts`, `tests/analytics/qm-data-window.test.ts`; geändert `apps/web/src/pages/Stufe2.tsx`, `apps/web/src/i18n.ts`, `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — **87 Dateien / 492 Tests** (+7 Window-Helper: within/limited bei <,==,>; Limit 0/negativ defensiv; loaded/limit/source-Übernahme + Floor; nicht-finite loaded). apps/web `tsc --noEmit` EXIT=0. Biome + depcruise sauber. Bestehende Index-/Hint-Tests unverändert grün.
+
+**Restlücken/Nicht-Ziele:** keine neuen Endpoints, keine Total-Count-API, keine Pagination, kein Backend, keine Persistenz. Der Hinweis ist heuristisch (loaded≥limit) — ohne Server-Gesamtzahl kann „möglicherweise abgeschnitten" auch genau-am-Limit bedeuten; das ist bewusst so formuliert.
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check && (cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/qmDataWindow.ts apps/web/src/pages/Stufe2.tsx \
+  apps/web/src/i18n.ts tests/analytics/qm-data-window.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(qm): data-window transparency for limited indexes (SCRUM-177)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

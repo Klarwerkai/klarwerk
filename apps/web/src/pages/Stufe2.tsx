@@ -48,6 +48,7 @@ import {
 import { limitModelRuns, modelRunStatusTone, summarizeModelRuns } from "../lib/modelRuns";
 import { OUTPUT_KIND_OPTIONS, downloadFilename, orderedSelection } from "../lib/outputDoc";
 import { buildProvenanceIndex } from "../lib/provenanceIndex";
+import { evaluateDataWindow } from "../lib/qmDataWindow";
 import { isModelConfigured, reasonerModeTone } from "../lib/reasonerStatus";
 
 function Stufe2Header({ titleKey, ticket }: { titleKey: string; ticket: string }): JSX.Element {
@@ -692,6 +693,22 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
   );
 }
 
+// SCRUM-177: kompakte, ehrliche Fenster-Transparenz für limitierte QM-Indizes (kein Fehler).
+function WindowNote({
+  loaded,
+  limit,
+  source,
+}: { loaded: number; limit: number; source: string }): JSX.Element {
+  const { t } = useTranslation();
+  const w = evaluateDataWindow({ loaded, limit, source });
+  return (
+    <p className="mb-2 font-mono text-[10px] text-muted-2">
+      {t(`qmWindow.${source}`, { n: w.limit })} ·{" "}
+      {t(w.status === "potentiallyLimited" ? "qmWindow.limited" : "qmWindow.within")}
+    </p>
+  );
+}
+
 // SCRUM-165: kompakte, read-only Sicht auf die jüngsten Reasoner-/ModelRuns (nur Metadaten).
 function ReasonerRunsCard(): JSX.Element {
   const { t } = useTranslation();
@@ -701,6 +718,7 @@ function ReasonerRunsCard(): JSX.Element {
   return (
     <Card className="mt-4">
       <SectionLabel>{t("mrun.title")}</SectionLabel>
+      <WindowNote loaded={runs.data?.length ?? 0} limit={50} source="modelRuns" />
       {runs.isLoading ? (
         <p className="text-[13px] text-muted">{t("state.loading")}</p>
       ) : runs.isError ? (
@@ -827,6 +845,7 @@ function EvidenceIndexCard(): JSX.Element {
   return (
     <Card className="mt-4">
       <SectionLabel>{t("evx.title")}</SectionLabel>
+      <WindowNote loaded={index.data?.length ?? 0} limit={500} source="evidence" />
       {index.isLoading ? (
         <p className="text-[13px] text-muted">{t("state.loading")}</p>
       ) : index.isError ? (
@@ -904,6 +923,8 @@ function ProvenanceIndexCard(): JSX.Element {
   return (
     <Card className="mt-4">
       <SectionLabel>{t("prov.title")}</SectionLabel>
+      {/* SCRUM-177: Provenance nutzt den Evidence-Stand als bekannt → Fenster-Hinweis. */}
+      <WindowNote loaded={evidence.data?.length ?? 0} limit={500} source="evidence" />
       {loading ? (
         <p className="text-[13px] text-muted">{t("state.loading")}</p>
       ) : error ? (
@@ -1098,7 +1119,8 @@ function EvidenceFreshnessCard(): JSX.Element {
   return (
     <Card className="mt-4">
       <SectionLabel>{t("evFresh.title")}</SectionLabel>
-      <p className="mb-2 text-[12px] text-muted">{t("evFresh.subtitle")}</p>
+      <p className="mb-1 text-[12px] text-muted">{t("evFresh.subtitle")}</p>
+      <WindowNote loaded={evidence.data?.length ?? 0} limit={500} source="evidence" />
       {loading ? (
         <p className="text-[13px] text-muted">{t("state.loading")}</p>
       ) : error ? (
