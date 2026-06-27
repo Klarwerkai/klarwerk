@@ -32,12 +32,15 @@ export function PageHeader({
 export function Card({
   children,
   className,
+  id,
 }: {
   children: ReactNode;
   className?: string;
+  // Optionaler Anker für Deep-Links/Sprungmarken (SCRUM-227). Rein additiv.
+  id?: string;
 }): JSX.Element {
   return (
-    <div className={cx("rounded-card border border-hairline bg-surface p-5", className)}>
+    <div id={id} className={cx("rounded-card border border-hairline bg-surface p-5", className)}>
       {children}
     </div>
   );

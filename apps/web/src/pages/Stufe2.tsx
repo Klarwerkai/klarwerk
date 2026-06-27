@@ -39,6 +39,7 @@ import type {
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
 import { Button, Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
+import { CAPITAL_SECTIONS, sectionAnchor, sectionHref } from "../lib/capitalSections";
 import { deriveStatus } from "../lib/displayStatus";
 import { analyzeEvidenceFreshness } from "../lib/evidenceFreshness";
 import { buildEvidenceFreshnessIndex } from "../lib/evidenceFreshnessIndex";
@@ -565,8 +566,24 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
   const o = snap.overview;
   return (
     <div className="space-y-4">
-      {/* FE-MGMT-01: operativer Snapshot */}
+      {/* SCRUM-227: Sprungmarken zu den konsolidierten Alt-App-Management-Sektionen. */}
       <Card>
+        <SectionLabel>{t("mgmt.jumpTitle")}</SectionLabel>
+        <nav aria-label={t("mgmt.jumpTitle")} className="mt-2 flex flex-wrap gap-1.5">
+          {CAPITAL_SECTIONS.map((s) => (
+            <a
+              key={s.id}
+              href={sectionHref(s.id)}
+              className="rounded-pill border border-hairline bg-page px-2.5 py-1 text-[11.5px] text-muted hover:border-ink/30 hover:text-ink"
+            >
+              {t(s.labelKey)}
+            </a>
+          ))}
+        </nav>
+      </Card>
+
+      {/* FE-MGMT-01: operativer Snapshot */}
+      <Card id={sectionAnchor("overview")} className="scroll-mt-4">
         <SectionLabel>{t("mgmt.overview")}</SectionLabel>
         <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
           <MgmtKpi label={t("mgmt.kpiTotal")} value={o.totalKos} />
@@ -579,7 +596,7 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
       </Card>
 
       {/* FE-MGMT-03: Knowledge Capital Score */}
-      <Card>
+      <Card id={sectionAnchor("capital")} className="scroll-mt-4">
         <SectionLabel>{t("mgmt.capital")}</SectionLabel>
         <div className="mt-2 flex items-baseline gap-2">
           <span className={`text-4xl font-bold ${BAND_TEXT[snap.capital.band] ?? "text-ink"}`}>
@@ -605,7 +622,7 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
       </Card>
 
       {/* FE-MGMT-04: Valuation als Schätzmodell */}
-      <Card>
+      <Card id={sectionAnchor("valuation")} className="scroll-mt-4">
         <SectionLabel>{t("mgmt.valuation")}</SectionLabel>
         <div className="mt-2 rounded-card bg-trust-warn-bg px-3 py-2 text-[12px] text-trust-warn-text">
           {t("mgmt.valuationDisclaimer")}
@@ -652,7 +669,7 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
       </Card>
 
       {/* FE-MGMT-05: Knowledge Statement */}
-      <Card>
+      <Card id={sectionAnchor("statement")} className="scroll-mt-4">
         <SectionLabel>{t("mgmt.statement")}</SectionLabel>
         <div className="mt-2 grid grid-cols-3 gap-2">
           <MgmtKpi label={t("mgmt.assets")} value={snap.statement.assets} />
@@ -670,7 +687,7 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
       </Card>
 
       {/* FE-MGMT-06: Maturity Journey */}
-      <Card>
+      <Card id={sectionAnchor("maturity")} className="scroll-mt-4">
         <SectionLabel>{t("mgmt.maturity")}</SectionLabel>
         <div className="mt-2 flex items-center gap-2">
           <span className="text-sm font-semibold text-ink">
@@ -687,7 +704,7 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
       </Card>
 
       {/* FE-MGMT-08: Knowledge House */}
-      <Card>
+      <Card id={sectionAnchor("house")} className="scroll-mt-4">
         <SectionLabel>{t("mgmt.house")}</SectionLabel>
         {snap.house.length === 0 ? (
           <p className="mt-2 text-[12.5px] text-muted">{t("mgmt.empty")}</p>
@@ -713,7 +730,7 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
       </Card>
 
       {/* FE-MGMT-07: Hero Assist / Empfehlungen */}
-      <Card>
+      <Card id={sectionAnchor("recommendations")} className="scroll-mt-4">
         <SectionLabel>{t("mgmt.recommendations")}</SectionLabel>
         {snap.recommendations.length === 0 ? (
           <p className="mt-2 text-[12.5px] text-muted">{t("mgmt.noRecs")}</p>
@@ -738,7 +755,7 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
       </Card>
 
       {/* FE-MGMT-09: Wissens-Priorisierung (9 Faktoren) */}
-      <Card>
+      <Card id={sectionAnchor("priorities")} className="scroll-mt-4">
         <SectionLabel>{t("mgmt.priorities")}</SectionLabel>
         {snap.priorities.length === 0 ? (
           <p className="mt-2 text-[12.5px] text-muted">{t("mgmt.empty")}</p>
@@ -758,7 +775,7 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
       </Card>
 
       {/* FE-MGMT-02: Pilot 30/60/90 — Druck-/HTML-Ansicht */}
-      <Card>
+      <Card id={sectionAnchor("pilot")} className="scroll-mt-4">
         <div className="flex items-center justify-between">
           <SectionLabel>{t("mgmt.pilot")}</SectionLabel>
           <Button variant="ghost" onClick={() => window.print()}>

@@ -3225,3 +3225,29 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-227 — Kapital-Dashboard: Sprungmarken für konsolidierte Alt-App-Sektionen
+
+**Vorab-Befund (read-only):** Das Kapital-Dashboard (`Stufe2.tsx#CapitalDashboard`) rendert die in der Stufe-2-Kapital-Sicht konsolidierten Alt-App-Management-Flächen als 9 aufeinanderfolgende `<Card>`-Sektionen mit `SectionLabel`: Operativer Snapshot (`mgmt.overview`), Capital Score (`mgmt.capital`), Valuation (`mgmt.valuation`), Statement (`mgmt.statement`), Maturity (`mgmt.maturity`), Knowledge House (`mgmt.house`), Empfehlungen (`mgmt.recommendations`), Prioritäten (`mgmt.priorities`), Pilot 30/60/90 (`mgmt.pilot`). Es gab **keine** Anker-IDs und keine Orientierungsleiste. Die shared `Card`-Komponente (`components/ui.tsx`) akzeptierte kein `id`. Alle mgmt.*-Labels existieren bereits (DE/EN). Routing nutzt react-router; Hash-Anker innerhalb der Seite sind ausreichend (kein neuer Route-Eintrag nötig).
+
+**Umsetzung (kleinster sauberer Eingriff):** (1) `Card` um eine **optionale, rein additive** `id`-Prop erweitert (kein Default-Verhalten geändert). (2) Neuer DOM-freier Helper `apps/web/src/lib/capitalSections.ts` als einzige Quelle: `CAPITAL_SECTIONS` (id + mgmt.*-labelKey in Renderreihenfolge), `sectionAnchor(id)` → `kapital-<id>` (Präfix gegen ID-Kollisionen), `sectionHref(id)` → `#kapital-<id>`. (3) In `CapitalDashboard` oben eine kompakte Sprungmarken-Leiste (`<nav>` mit Pill-Links aus `CAPITAL_SECTIONS`) ergänzt; jede der 9 vorhandenen Sektions-Cards bekommt `id={sectionAnchor(...)}` + `scroll-mt-4`. Klick springt nativ per Hash-Anker zur vorhandenen Sektion — **kein** UI-Redesign, keine neuen Seiten/Routen, keine neuen Daten.
+
+**Geänderte/neue Dateien:** neu `apps/web/src/lib/capitalSections.ts`, `tests/analytics/capital-sections.test.ts`; geändert `apps/web/src/pages/Stufe2.tsx` (Jump-Bar + 9 Anker-IDs), `apps/web/src/components/ui.tsx` (Card optionale `id`-Prop), `apps/web/src/i18n.ts` (`mgmt.jumpTitle` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — **98 Dateien / 544 Tests** (+1 Datei, +4 Tests für capitalSections). apps/web DOM-`tsc --noEmit` grün. Biome + depcruise sauber. Bestehende Kapital-/Snapshot-Anzeige unverändert (nur additive Anker + Leiste).
+
+**Restlücken/Nicht-Ziele:** keine Wiederherstellung der alten Einzelseiten, kein Redesign, keine neue Management-Engine, keine neuen Backend-Daten, keine Pixel-Parität. Kein Scroll-Spy/aktiver Zustand (bewusst minimal — reine Orientierung + Deep-Link). Die Anker greifen innerhalb der bestehenden `/kapital`-Seite; ein direkter Deep-Link `…/kapital#kapital-pilot` funktioniert nach dem Laden.
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/capitalSections.ts tests/analytics/capital-sections.test.ts apps/web/src/pages/Stufe2.tsx apps/web/src/components/ui.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(capital): section jump-bar + stable anchors for consolidated management sections (SCRUM-227)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

@@ -785,6 +785,7 @@ const de = {
     "Dokumente importieren und prüfen — aktiv, sobald die Import-/Source-Review-API steht.",
   "s2.capital":
     "Wissenskapital-Kennzahlen auf echten Live-Daten — aktiv, sobald die Kennzahlen-Logik steht.",
+  "mgmt.jumpTitle": "Abschnitte",
   "mgmt.overview": "Operativer Snapshot",
   "mgmt.kpiTotal": "Objekte",
   "mgmt.kpiValidated": "Validiert",
@@ -1738,6 +1739,7 @@ const en: typeof de = {
     "Import and review documents — active once the import/source-review API is in place.",
   "s2.capital":
     "Knowledge-capital metrics on real live data — active once the metrics logic is in place.",
+  "mgmt.jumpTitle": "Sections",
   "mgmt.overview": "Operational snapshot",
   "mgmt.kpiTotal": "Objects",
   "mgmt.kpiValidated": "Validated",
