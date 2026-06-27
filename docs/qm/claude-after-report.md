@@ -3329,3 +3329,29 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-231 — Startseite: Hero-Assist-Ersatz durch rollenbasierte „Nächste Schritte"
+
+**Vorab-Befund (read-only):** Der Hero-Assist-Ersatz existiert bereits und ist sauber: `Start.tsx` rendert oben rollenbewusste „Missionen" aus `missionsForRole(role, stufe2)` (`lib/missions.ts`). Diese sind **DOM-frei, rollengesteuert** (Sichtbarkeit ausschließlich über die vorhandene `canSee`-Logik — keine zweite Berechtigungslogik), referenzieren **echte NavItems/Routen** (erfassen/validierung/risiko/fragen/bibliothek, aufgaben-orientiert, max. 4) und tragen je eine kurze Beschreibung (`missions.<id>.desc`). `tests/app/missions.test.ts` deckt Rollenfilter, echte Pfade und 2–4 Missionen ab. **Keine Logiklücke** — die einzige Schwäche war die Wiedererkennbarkeit: Überschrift „Missionen" kommuniziert nicht klar den „nächste Schritte für deine Rolle"-Charakter.
+
+**Umsetzung (kleinster sauberer Eingriff, nur Beschriftung/Text):** `missions.title` zu „Nächste Schritte" / „Next steps" geschärft; neuer erklärender Untertitel `missions.subtitle` („Für deine Rolle empfohlene nächste Schritte — direkt in echte Abläufe, keine Demo." / EN analog), in `Start.tsx` unter der Überschrift gerendert. **Keine** neue Komponente, keine neue Logik, keine Fake-Aufgaben, kein Backend, keine Reasoner-Engine. Der Missions-Helper bleibt unverändert (DOM-frei, rollengesteuert) — daher kein neuer Helper/Test nötig.
+
+**Geänderte/neue Dateien:** geändert `apps/web/src/pages/Start.tsx` (Untertitel + Heading-Abstand), `apps/web/src/i18n.ts` (`missions.title` neu betextet + `missions.subtitle` DE/EN), `docs/qm/claude-after-report.md`. Keine neuen Dateien.
+
+**Tests/Gates:** `npm run check` grün — **101 Dateien / 553 Tests** (unverändert; reine Text-/Label-Änderung, keine neue Logik). apps/web DOM-`tsc --noEmit` grün. Biome + depcruise sauber. Bestehender `tests/app/missions.test.ts` unverändert grün; Start-KPIs/Todos/EmptyState unberührt.
+
+**Restlücken/Nicht-Ziele:** keine Wiederherstellung von `HeroAssist.jsx`, keine neue Demo-Fläche, keine KI-/Reasoner-Next-Step-Engine, kein Backend-Umbau, keine Alt-App-Pixel-Parität, keine Fake-Aufgaben. Die „Nächsten Schritte" bleiben strikt aus Navigation/Rollenlogik abgeleitet; gezeigt werden nur echte, für die Rolle erlaubte Produktaktionen.
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/pages/Start.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(start): reframe role-based missions as explicit next-steps assist (SCRUM-231)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

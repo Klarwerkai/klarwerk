@@ -119,7 +119,9 @@ const de = {
   "auth.ssoTitle": "SSO-Anmeldung",
   "auth.ssoBusy": "Anmeldung wird abgeschlossen …",
   "auth.ssoIncomplete": "Unvollständige SSO-Antwort. Bitte erneut anmelden.",
-  "missions.title": "Missionen",
+  "missions.title": "Nächste Schritte",
+  "missions.subtitle":
+    "Für deine Rolle empfohlene nächste Schritte — direkt in echte Abläufe, keine Demo.",
   "missions.erfassen.desc": "Erfahrungswissen erfassen, bevor es verloren geht.",
   "missions.fragen.desc": "Eine Frage stellen und belegte Antworten erhalten.",
   "missions.validierung.desc": "Offene Wissensobjekte prüfen und freigeben.",
@@ -1089,7 +1091,9 @@ const en: typeof de = {
   "auth.ssoTitle": "SSO sign-in",
   "auth.ssoBusy": "Completing sign-in …",
   "auth.ssoIncomplete": "Incomplete SSO response. Please sign in again.",
-  "missions.title": "Missions",
+  "missions.title": "Next steps",
+  "missions.subtitle":
+    "Next steps recommended for your role — straight into real flows, not a demo.",
   "missions.erfassen.desc": "Capture experience knowledge before it is lost.",
   "missions.fragen.desc": "Ask a question and get evidence-backed answers.",
   "missions.validierung.desc": "Review and approve open knowledge objects.",

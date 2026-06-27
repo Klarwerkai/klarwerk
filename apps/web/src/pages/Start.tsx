@@ -59,7 +59,8 @@ export function Start(): JSX.Element {
       />
       {missions.length > 0 ? (
         <div className="mb-5">
-          <h2 className="mb-3 text-[15px] font-semibold text-ink">{t("missions.title")}</h2>
+          <h2 className="text-[15px] font-semibold text-ink">{t("missions.title")}</h2>
+          <p className="mb-3 mt-0.5 text-[12.5px] text-muted">{t("missions.subtitle")}</p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {missions.map((m) => (
               <Link
