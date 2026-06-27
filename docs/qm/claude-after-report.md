@@ -3381,3 +3381,28 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-234 — Konflikt-Workflow per HTTP-Routentest absichern
+
+**Vorab-Befund (read-only):** Konflikt-Service (`services/conflicts/src/service.ts`) bietet `create/escalate/secondOpinion/resolve/unresolved/get`. HTTP-Oberfläche ist auf zwei Route-Dateien verteilt: `conflicts-routes.ts` (GET `/api/conflicts` ungelöst, GET `/api/conflicts/:id`, POST `/escalate` [conflict.resolve, nur `truth`], POST `/second-opinion` [ko.validate]) und der KO-Dispatcher `ko-routes.ts` (PUT `/api/kos/:id` mit `{action:"conflict"}` → 201 [ko.validate], `{action:"resolve-conflict", conflictId, decision}` → 200 [conflict.resolve]). Bisher gab es nur `services/conflicts/src/service.test.ts` (Service-Direkt) und `tests/conflicts/conflict-view.test.ts` (FE-Helfer) — **kein Route-Level-Test**. Auth-Pattern (register→login→Bearer, Demo-Seed) aus `admin-routes.test.ts`/`learning-path-progress.test.ts` übernommen.
+
+**Umsetzung (nur Test, kein Produktcode):** Neuer Route-Level-Test `services/app/src/conflict-routes.test.ts` über `buildApp`/`app.inject`. (1) Hauptworkflow: Admin-Setup + Demo-Seed → echte KO-IDs → Konflikt anlegen (`PUT /api/kos/:id {action:"conflict", type:"truth"}` → 201, Status `offen`) → in `GET /api/conflicts` enthalten → Zweitmeinung (`POST /second-opinion` → `zweitmeinung`, Opinion gesetzt, im GET verifiziert) → lösen (`PUT … {action:"resolve-conflict"}` → `geloest`, Entscheidung gesetzt, im GET verifiziert) → fällt aus der Ungelöst-Liste. (2) Eskalation: `truth`-Konflikt → `eskaliert`; `context`-Konflikt → ≥400 (NOT_ESCALATABLE, FR-CON-02). (3) Guard: anonym `GET /api/conflicts` → ≥400. **Kein Kopplungsbug gefunden** — alle Routen verhalten sich erwartungsgemäß, daher **kein Produktcode geändert**.
+
+**Geänderte/neue Dateien:** neu `services/app/src/conflict-routes.test.ts`; geändert `docs/qm/claude-after-report.md`. Kein Produktcode, kein FE.
+
+**Tests/Gates:** `npm run check` grün — **103 Dateien / 560 Tests** (+1 Datei, +3 Konflikt-Route-Tests). Biome + depcruise + tsc (services/tests) sauber. apps/web `tsc --noEmit` nicht nötig (kein FE berührt).
+
+**Restlücken/Nicht-Ziele:** keine Browser-E2E-Suite, kein neuer Konflikt-Workflow, kein Backend-/UI-Redesign, keine neue Persistenz. Nicht abgedeckt (bewusst, da Aufwand/kein Routenpfad): Konflikt-Erzeugung aus dem KO-Detail-FE (nur Datenpfad getestet), sowie reine Pg-Persistenz (In-Memory ist prozesslokal — bestehende Eigenschaft). Der zentrale Status-Workflow (offen→zweitmeinung→geloest, plus Eskalation + Guard) ist jetzt routennah abgesichert.
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+git add services/app/src/conflict-routes.test.ts docs/qm/claude-after-report.md
+git commit -m "test(conflicts): HTTP route-level workflow (create → second-opinion → resolve, escalate, guard) (SCRUM-234)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
