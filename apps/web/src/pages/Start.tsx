@@ -7,6 +7,7 @@ import { useRole } from "../app/RoleContext";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { Card, PageHeader } from "../components/ui";
 import { missionsForRole } from "../lib/missions";
+import { stufe2FeatureLabelKeys, stufe2HintKind } from "../lib/stufe2Hint";
 
 const CTA: Record<string, { to: string; key: string }> = {
   viewer: { to: "/fragen", key: "start.ctaAsk" },
@@ -34,6 +35,11 @@ export function Start(): JSX.Element {
   const cta = CTA[role] ?? CTA.viewer;
   // FE-FND-09: rollenbewusste Missionen — Deep-Links in echte Flows (keine neuen Seiten).
   const missions = missionsForRole(role, stufe2);
+  // SCRUM-235: ehrlicher Stufe-2-Auffindbarkeits-Hinweis — nur für Admins mit ausgeschaltetem Schalter.
+  const showStufe2Hint = stufe2HintKind(role, stufe2) === "enable";
+  const stufe2Features = stufe2FeatureLabelKeys()
+    .map((k) => t(k))
+    .join(", ");
 
   const todo = [
     ...(board.data ?? [])
@@ -80,6 +86,14 @@ export function Start(): JSX.Element {
             ))}
           </div>
         </div>
+      ) : null}
+      {showStufe2Hint ? (
+        <Card className="mb-5 border-dashed">
+          <h2 className="text-[14px] font-semibold text-ink">{t("start.stufe2.title")}</h2>
+          <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
+            {t("start.stufe2.body", { features: stufe2Features, toggle: t("role.stage2") })}
+          </p>
+        </Card>
       ) : null}
       <div className="grid gap-5 lg:grid-cols-[1.6fr_1fr]">
         <Card>

@@ -3406,3 +3406,29 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-235 — Stufe-2-Funktionen für Admins besser auffindbar machen
+
+**Vorab-Befund (read-only):** Stufe-2-Zugang ist doppelt gated: `effectiveStufe2(role, toggle)` (lib/effectiveRole.ts) liefert den Schalter-Wert **nur** bei `role === "admin"`, sonst `false`. Der Schalter selbst ist die Checkbox `role.stage2` im Sidebar-`RoleSwitcher` (nur bei Admin sichtbar). Die Nav-Gruppe „erweitert" (Items `output/import/graph/kapital`, je `stufe2:true`) erscheint erst, wenn der Schalter AN ist; Routen sind über `canSee` in `routes.tsx` hart gegated (Direktlink bei Schalter AUS → Redirect auf /start). Ergebnis: Ein Admin mit ausgeschaltetem Schalter sieht **keinerlei Hinweis**, dass Kapital/Output/Import/Graph existieren. `Start.tsx` kennt `role`+`stufe2` bereits (Missionen) — idealer Hinweis-Ort.
+
+**Umsetzung (kleinster sauberer Eingriff):** Neuer DOM-freier Helper `apps/web/src/lib/stufe2Hint.ts` — `stufe2HintKind(role, stufe2)` → `"enable"` nur bei Admin + Schalter AUS, sonst `"none"`; `stufe2FeatureLabelKeys()` leitet die Stufe-2-Modul-Labels aus `NAV_GROUPS` ab (keine Hardcodes). In `Start.tsx`: dezente gestrichelte Hinweis-Card **nur** wenn `"enable"` — erklärt, dass erweiterte Funktionen (aus Nav abgeleitete Liste) existieren und über „Stufe 2" in der Seitenleiste eingeblendet werden. **Keine Links** auf die noch gesperrten Routen (kein Dead-Link), **kein** Hinweis für Nicht-Admins (kein falsches Versprechen), **keine** Entsperrung/Rechteänderung. Backend-RBAC und Gating unverändert.
+
+**Geänderte/neue Dateien:** neu `apps/web/src/lib/stufe2Hint.ts`, `tests/app/stufe2-hint.test.ts`; geändert `apps/web/src/pages/Start.tsx` (Hinweis-Card), `apps/web/src/i18n.ts` (`start.stufe2.title/body` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — **104 Dateien / 564 Tests** (+1 Datei, +4 Tests für stufe2Hint; deckt admin/aus→enable, admin/an→none, Nicht-Admins→none, Label-Ableitung). apps/web DOM-`tsc --noEmit` grün. Biome + depcruise sauber. Sidebar-Schalter, Navigation und Stufe-2-Seiten unverändert.
+
+**Restlücken/Nicht-Ziele:** kein neues Rollen-/Berechtigungsmodell, kein Backend-Umbau, keine neuen Stufe-2-Funktionen/Engine, kein UI-Redesign, keine umgangene Berechtigungslogik. Der Hinweis ist rein orientierend; das Einschalten bleibt eine bewusste Admin-Aktion am vorhandenen Schalter. Bei Schalter AN erscheint kein Hinweis (Navigation zeigt die Gruppe bereits).
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/stufe2Hint.ts tests/app/stufe2-hint.test.ts apps/web/src/pages/Start.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(start): honest admin-only Stage-2 discoverability hint (no unlock, no fake links) (SCRUM-235)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

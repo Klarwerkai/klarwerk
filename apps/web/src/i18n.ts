@@ -135,6 +135,9 @@ const de = {
   "start.todo": "Heute zu tun",
   "start.allTasks": "Alle Aufgaben →",
   "start.todoEmpty": "Nichts offen. Gut gemacht.",
+  "start.stufe2.title": "Erweiterte Funktionen (Stufe 2)",
+  "start.stufe2.body":
+    "Als Admin stehen dir erweiterte Funktionen zur Verfügung: {{features}}. Schalte dazu „{{toggle}}' unten in der Seitenleiste ein.",
   "start.kpiTotal": "Wissensobjekte",
   "start.kpiOpen": "Offen",
   "start.kpiValidated": "Validiert",
@@ -1113,6 +1116,9 @@ const en: typeof de = {
   "start.todo": "To do today",
   "start.allTasks": "All tasks →",
   "start.todoEmpty": "Nothing open. Well done.",
+  "start.stufe2.title": "Advanced features (Stage 2)",
+  "start.stufe2.body":
+    "As an admin you have advanced features available: {{features}}. Turn on '{{toggle}}' in the sidebar to show them.",
   "start.kpiTotal": "Knowledge objects",
   "start.kpiOpen": "Open",
   "start.kpiValidated": "Validated",
