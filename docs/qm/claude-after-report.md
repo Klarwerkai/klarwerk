@@ -2818,3 +2818,32 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-176 — Evidence-Freshness-Index in Stufe 2 anzeigen
+
+**Vorab-Befund (read-only):** `analyzeEvidenceFreshness({ kos, evidence })` (174) und der View-Mapper `evidenceFreshnessTone`/`evidenceFreshnessLabelKey` (175) existieren. Stufe 2 lädt bereits `useKos()` + `useEvidenceIndex(500)` für die QM-Hints. Global sah man bisher nur die Freshness-Counts in den QM-Hinweisen, aber nicht, welche KOs betroffen sind.
+
+**Umsetzung (rein read-only, additiv):**
+- Neuer DOM-freier Helper `apps/web/src/lib/evidenceFreshnessIndex.ts` mit `buildEvidenceFreshnessIndex({ kos, evidence }, limit=20)` — wiederverwendet `analyzeEvidenceFreshness`, filtert betroffene KOs (nur `outdated`/`missing`), behält die vollständige Summary und liefert `affectedTotal` vor dem Limit. Deterministische Sortierung kommt unverändert aus `analyzeEvidenceFreshness`.
+- Stufe 2 (`Capital`): read-only `EvidenceFreshnessCard` (nach dem Evidence-Index) — Summary-Counts (outdated/missing/current/neutral), Liste der betroffenen KOs mit Titel, Version, Status-Badge (View-Mapper), Counts `aktuell/älter`, KO-interner Link `/wissen/:id`. `current`/`neutral` nur als Counts, keine lange Liste. Echte Daten aus den vorhandenen Hooks — keine neue API, keine Fremd-URLs, keine Rohdaten.
+- i18n DE/EN `evFresh.*` (Titel, Subtitle, Empty, Summary-Counts, Version, Counts, openKo).
+
+**Geänderte/neue Dateien:** neu `apps/web/src/lib/evidenceFreshnessIndex.ts`, `tests/ko/evidence-freshness-index.test.ts`; geändert `apps/web/src/pages/Stufe2.tsx`, `apps/web/src/i18n.ts`, `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — **86 Dateien / 485 Tests** (+4 Index-Helper: affected nur outdated/missing + Summary vollständig, sauberer Bestand → keine affected, deterministische Sortierung outdated<missing, Limit kappt affected aber nicht affectedTotal). apps/web `tsc --noEmit` EXIT=0. Biome + depcruise sauber. Bestehende Freshness-Tests unverändert grün.
+
+**Restlücken/Nicht-Ziele:** keine neue API, keine Fremd-URLs, keine Rohdaten, kein Backfill, kein Auto-Fix, kein Backend, keine Migration. Freshness spiegelt das geladene Evidence-Fenster (max. 500 jüngste).
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check && (cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/evidenceFreshnessIndex.ts apps/web/src/pages/Stufe2.tsx \
+  apps/web/src/i18n.ts tests/ko/evidence-freshness-index.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(qm): evidence freshness index card in Stufe 2 (SCRUM-176)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

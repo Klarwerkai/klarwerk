@@ -31,6 +31,8 @@ import { useToast } from "../app/ToastContext";
 import { Button, Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import { deriveStatus } from "../lib/displayStatus";
 import { analyzeEvidenceFreshness } from "../lib/evidenceFreshness";
+import { buildEvidenceFreshnessIndex } from "../lib/evidenceFreshnessIndex";
+import { evidenceFreshnessLabelKey, evidenceFreshnessTone } from "../lib/evidenceFreshnessView";
 import { evidenceKindTone, limitEvidence, summarizeEvidence } from "../lib/evidenceIndex";
 import { IMPORT_PIPELINE_STEPS, candidateFindings, summarizeImportQueue } from "../lib/extConcept";
 import { layoutConflicts, layoutGraph, limitGraph } from "../lib/graphLayout";
@@ -1075,6 +1077,82 @@ function KnowledgeOsHintsCard(): JSX.Element {
   );
 }
 
+// SCRUM-176: read-only Index der KOs mit veralteter/fehlender Evidence zur aktuellen Version.
+// current/neutral nur als Summary-Counts; betroffene KOs (outdated/missing) als kurze Liste.
+const FRESH_TONE_CLASS: Record<string, string> = {
+  pos: "bg-trust-pos-bg text-trust-pos-text",
+  warn: "bg-trust-warn-bg text-trust-warn-text",
+  neutral: "bg-hairline-soft text-muted-2",
+};
+
+function EvidenceFreshnessCard(): JSX.Element {
+  const { t } = useTranslation();
+  const kos = useKos();
+  const evidence = useEvidenceIndex(500);
+  const loading = kos.isLoading || evidence.isLoading;
+  const error = kos.isError || evidence.isError;
+  const index = buildEvidenceFreshnessIndex({
+    kos: kos.data ?? [],
+    evidence: evidence.data ?? [],
+  });
+  return (
+    <Card className="mt-4">
+      <SectionLabel>{t("evFresh.title")}</SectionLabel>
+      <p className="mb-2 text-[12px] text-muted">{t("evFresh.subtitle")}</p>
+      {loading ? (
+        <p className="text-[13px] text-muted">{t("state.loading")}</p>
+      ) : error ? (
+        <p className="text-[13px] text-danger">{t("state.error")}</p>
+      ) : (
+        <>
+          <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-muted-2">
+            <span className={index.summary.outdated > 0 ? "text-trust-warn-text" : undefined}>
+              {t("evFresh.summary.outdated", { n: index.summary.outdated })}
+            </span>
+            <span className={index.summary.missing > 0 ? "text-trust-warn-text" : undefined}>
+              {t("evFresh.summary.missing", { n: index.summary.missing })}
+            </span>
+            <span>{t("evFresh.summary.current", { n: index.summary.current })}</span>
+            <span>{t("evFresh.summary.neutral", { n: index.summary.neutral })}</span>
+          </div>
+          {index.affected.length === 0 ? (
+            <p className="text-[13px] text-muted">{t("evFresh.empty")}</p>
+          ) : (
+            <ul className="divide-y divide-hairline">
+              {index.affected.map((r) => (
+                <li key={r.koId} className="flex flex-wrap items-center gap-2 py-2">
+                  <Link
+                    to={`/wissen/${r.koId}`}
+                    className="min-w-0 flex-1 truncate text-[12px] font-semibold text-text hover:text-ai"
+                  >
+                    {r.title}
+                  </Link>
+                  <span className="rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-[10px] text-muted-2">
+                    {t("evFresh.version", { n: String(r.version) })}
+                  </span>
+                  <span
+                    className={`rounded-pill px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase ${
+                      FRESH_TONE_CLASS[evidenceFreshnessTone(r.status)] ?? "bg-surface text-muted-2"
+                    }`}
+                  >
+                    {t(evidenceFreshnessLabelKey(r.status))}
+                  </span>
+                  <span className="font-mono text-[10px] text-muted-2">
+                    {t("evFresh.counts", {
+                      current: String(r.currentCount),
+                      older: String(r.olderCount),
+                    })}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </Card>
+  );
+}
+
 export function Capital(): JSX.Element {
   const snapshot = useManagementSnapshot();
   return (
@@ -1097,6 +1175,8 @@ export function Capital(): JSX.Element {
       <ReasonerRunsCard />
       {/* SCRUM-169: KO-übergreifender read-only Evidence-Index (QM). */}
       <EvidenceIndexCard />
+      {/* SCRUM-176: read-only Index der KOs mit veralteter/fehlender Evidence. */}
+      <EvidenceFreshnessCard />
       {/* SCRUM-171: KO-übergreifender read-only Provenance-/Lineage-Index (QM). */}
       <ProvenanceIndexCard />
     </div>
