@@ -456,6 +456,18 @@ export interface InterviewResult {
   demo: boolean;
 }
 
+// SCRUM-181: Rückgabe des admin-getriebenen Demo-Seeds (ehrlich: seeded vs. skipped).
+export interface DemoSeedResult {
+  skipped: boolean;
+  users: number;
+  kos: number;
+  validated: number;
+  gaps: number;
+  conflicts: number;
+  pendingRevalidation: number;
+  attachments: number;
+}
+
 export type NotificationKind = "conflict" | "gap";
 
 export interface Notification {

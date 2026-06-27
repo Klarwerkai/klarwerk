@@ -11,6 +11,7 @@ import {
   useValidationBoard,
 } from "../api/hooks";
 import { useSession } from "../app/AuthContext";
+import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { KoAuthorLine } from "../components/trust";
 import { Card, PageHeader } from "../components/ui";
 import { type KoAuthorParts, koAuthorParts } from "../lib/koAuthor";
@@ -129,9 +130,12 @@ export function MyTasks(): JSX.Element {
               </div>
               <Card className="p-0">
                 {visible.length === 0 ? (
-                  <p className="p-4 text-sm text-muted">
-                    {taskFilter === "all" ? t("task.none") : t("task.noneFiltered")}
-                  </p>
+                  <div className="p-4">
+                    <p className="text-sm text-muted">
+                      {taskFilter === "all" ? t("task.none") : t("task.noneFiltered")}
+                    </p>
+                    {taskFilter === "all" ? <EmptyStateCtas context="tasks" /> : null}
+                  </div>
                 ) : (
                   <div className="divide-y divide-hairline">
                     {visible.map((it) => (

@@ -72,6 +72,7 @@ import {
 import { makeGuards } from "./http";
 import { impactReport } from "./impact";
 import { makeAssignmentNotifier } from "./notify";
+import { adminRoutes } from "./routes/admin-routes";
 import { askRoutes } from "./routes/ask-routes";
 import { auditRoutes } from "./routes/audit-routes";
 import { captureRoutes } from "./routes/capture-routes";
@@ -294,6 +295,7 @@ export function buildApp(services: AppServices = buildServices()): FastifyInstan
   app.register(reasonerRoutes(services, guards));
   app.register(objectRoutes(services.objects, guards));
   app.register(i18nRoutes(services.i18n));
+  app.register(adminRoutes(services, guards)); // SCRUM-181: admin-only Demo-Seed
 
   // FR-ANA-02: Wirkungs-Dashboard (orchestriert KO-Bestand + Ask-Telemetrie aus dem Audit).
   app.get("/api/analytics/impact", async (request, reply) => {

@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { useAnalytics, useGaps, useValidationBoard } from "../api/hooks";
 import { useSession } from "../app/AuthContext";
 import { useRole } from "../app/RoleContext";
+import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { Card, PageHeader } from "../components/ui";
 import { missionsForRole } from "../lib/missions";
 
@@ -89,7 +90,10 @@ export function Start(): JSX.Element {
           </div>
           <div className="divide-y divide-hairline">
             {todo.length === 0 ? (
-              <p className="py-4 text-sm text-muted">{t("start.todoEmpty")}</p>
+              <div className="py-4">
+                <p className="text-sm text-muted">{t("start.todoEmpty")}</p>
+                <EmptyStateCtas context="start" />
+              </div>
             ) : (
               todo.map((it) => (
                 <Link

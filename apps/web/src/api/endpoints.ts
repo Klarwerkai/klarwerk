@@ -8,6 +8,7 @@ import type {
   BusFactorEntry,
   Conflict,
   ConflictType,
+  DemoSeedResult,
   Draft,
   DraftPayload,
   EvidenceRecord,
@@ -211,6 +212,10 @@ export const endpoints = {
   // SCRUM-118 / FR-EXT-02: externer Such-Proxy (optional; 501 wenn deaktiviert).
   external: {
     search: (q: string) => api.get<ExternalResult[]>(`/external/search${qs({ q })}`),
+  },
+  // SCRUM-181: admin-only Demo-Seed für leere Instanzen (ehrliche seeded/skipped-Rückgabe).
+  admin: {
+    demoSeed: () => api.post<DemoSeedResult>("/admin/demo-seed", {}),
   },
   users: {
     list: () => api.get<PublicUser[]>("/users"),

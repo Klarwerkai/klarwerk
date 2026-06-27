@@ -111,10 +111,13 @@ function StateShell({ children }: { children: ReactNode }): JSX.Element {
 export function QueryState<T>({
   query,
   emptyText,
+  emptyExtra,
   children,
 }: {
   query: UseQueryResult<T>;
   emptyText?: string;
+  // SCRUM-181: optionaler Slot unter dem Leer-Text (z. B. „nächste Schritte"-CTAs).
+  emptyExtra?: ReactNode;
   children: (data: T) => ReactNode;
 }): JSX.Element {
   const { t } = useTranslation();
@@ -129,7 +132,12 @@ export function QueryState<T>({
   const data = query.data;
   const empty = data == null || (Array.isArray(data) && data.length === 0);
   if (empty) {
-    return <StateShell>{emptyText ?? t("state.empty")}</StateShell>;
+    return (
+      <StateShell>
+        {emptyText ?? t("state.empty")}
+        {emptyExtra}
+      </StateShell>
+    );
   }
   return <>{children(data as T)}</>;
 }

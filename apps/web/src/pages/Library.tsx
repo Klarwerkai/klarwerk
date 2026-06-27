@@ -6,6 +6,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
 import { useDirectory, useKos, useLibrarySearch } from "../api/hooks";
 import { useToast } from "../app/ToastContext";
+import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import {
   ConfidenceBar,
   KNOWLEDGE_TYPES,
@@ -148,7 +149,11 @@ export function Library(): JSX.Element {
         </select>
       </div>
 
-      <QueryState query={query} emptyText={t("lib.empty")}>
+      <QueryState
+        query={query}
+        emptyText={t("lib.empty")}
+        emptyExtra={<EmptyStateCtas context="library" />}
+      >
         {(items) => {
           // SCRUM-158: große Bestände bedienbar halten + ehrlich begrenzen.
           const win = windowList(items);

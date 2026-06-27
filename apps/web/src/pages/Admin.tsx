@@ -75,9 +75,46 @@ export function Admin(): JSX.Element {
     onError: fail,
   });
 
+  // SCRUM-181: Demodaten in eine LEERE Instanz laden (admin-only). Ehrliche skipped/seeded-Meldung.
+  const demoSeed = useMutation({
+    mutationFn: () => endpoints.admin.demoSeed(),
+    onSuccess: (r) => {
+      for (const key of [
+        ["users"],
+        ["kos"],
+        ["gaps"],
+        ["conflicts"],
+        ["validation"],
+        ["notifications"],
+        ["analytics"],
+        ["evidence"],
+      ]) {
+        void qc.invalidateQueries({ queryKey: key });
+      }
+      if (r.skipped) {
+        push("info", t("adm.seedSkipped"));
+      } else {
+        push("success", t("adm.seedDone", { kos: r.kos, users: r.users }));
+      }
+    },
+    onError: fail,
+  });
+
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <PageHeader kicker={t("adm.kicker")} title={t("nav.admin")} />
+
+      {/* SCRUM-181: Demodaten laden (nur leere Instanz; idempotent, ehrliche Rückmeldung). */}
+      <Card className="space-y-2">
+        <SectionLabel>{t("adm.seedTitle")}</SectionLabel>
+        <p className="text-[12.5px] text-muted">{t("adm.seedHint")}</p>
+        <div>
+          <Button variant="ghost" disabled={demoSeed.isPending} onClick={() => demoSeed.mutate()}>
+            <UserPlus size={15} />
+            {t("adm.seedButton")}
+          </Button>
+        </div>
+      </Card>
 
       {/* SCRUM-147: Nutzer anlegen */}
       <Card className="space-y-3">

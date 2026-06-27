@@ -2923,3 +2923,40 @@ No Jira changes by Claude. No tickets closed. No new tickets.
 **Restlücken/Nicht-Ziele:** keine Codeänderung (außer wäre ein Doc-Link nötig gewesen — der bestehende Dossier-Link wurde im Dokument referenziert), keine Jira-Änderung, keine Tickets geschlossen, keine Behauptung der Gesamt-Produkt-/Frontend-Reife.
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-181 — Erststart sichtbar machen: Admin-Demodaten + Empty-State-CTAs
+
+**Vorab-Befund (read-only):** `seedDemo` schreibt über echte Services, guardet aber auf `auth.needsSetup()` → für eine BEREITS eingerichtete Instanz (Login existiert) hätte er immer übersprungen. RBAC kennt `users.manage` (admin). Route-Plugins erhalten teils die vollen `services` (z. B. reasoner/capture). Empty-States existierten (QueryState/inline), führten aber nicht zu nächsten Handlungen. seed.ts importiert build-app → ein Route→seed-Import hätte einen Zyklus erzeugt (`no-circular`, `tsPreCompilationDeps:true`).
+
+**Umsetzung:**
+- Seed entkoppelt: neue `services/app/src/seed-demo.ts` (DOM-/build-app-frei, strukturelles `DemoSeedServices`-Interface aus den Modul-Indizes) enthält `seedDemo`, neue `seedDemoForAdmin(services, adminId)` und den geteilten `buildDemoContent`. `seed.ts` bleibt CLI-Runner und re-exportiert — `seed.test.ts` unverändert grün.
+- `seedDemoForAdmin`: Idempotenz-Guard „Wissensbasis leer"; legt Demo-Mitnutzer über den **real angemeldeten Admin** an (keine gefälschten Rechte); ehrliche `seeded/skipped`-Rückgabe inkl. Counts.
+- Backend-Route `POST /api/admin/demo-seed` (`admin-routes.ts`, Guard `users.manage`), in build-app registriert. Kein Auto-Seed, kein anonymer Zugriff.
+- Frontend: `endpoints.admin.demoSeed` + `DemoSeedResult`-Typ; Admin-Card „Demodaten laden" (admin-only Seite) mit Query-Invalidierung (users/kos/gaps/conflicts/validation/notifications/analytics/evidence) und ehrlichem Toast (seeded mit Counts vs. skipped).
+- Empty-State-CTAs: DOM-freier Helper `emptyStateActions.ts` (filtert Kandidaten über die vorhandene `ALL_ITEMS`+`canSee`-Logik nach Rolle/Stufe-2), kleine `EmptyStateCtas`-Komponente, `QueryState` um optionalen `emptyExtra`-Slot erweitert. Eingebunden in Start/MyTasks (inline) und Validation/Library (QueryState).
+- i18n DE/EN `adm.seed*` + `empty.cta.*`.
+
+**Geänderte/neue Dateien:** neu `services/app/src/seed-demo.ts`, `services/app/src/routes/admin-routes.ts`, `services/app/src/admin-routes.test.ts`, `apps/web/src/lib/emptyStateActions.ts`, `apps/web/src/components/EmptyStateCtas.tsx`, `tests/analytics/empty-state-actions.test.ts`; geändert `services/app/src/seed.ts`, `services/app/src/build-app.ts`, `apps/web/src/api/{endpoints,types}.ts`, `apps/web/src/components/ui.tsx`, `apps/web/src/pages/{Admin,Start,MyTasks,Validation,Library}.tsx`, `apps/web/src/i18n.ts`, `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — **90 Dateien / 505 Tests** (+ admin-route: anonym→kein 200, Admin seeded auf leerer Instanz, zweiter Lauf skipped/keine Duplikate; + emptyStateActions: Rollen-/Stufe-2-Filter, echte Pfade; seed.test unverändert). apps/web `tsc --noEmit` EXIT=0. Biome + depcruise sauber (kein Zyklus dank seed-demo-Trennung).
+
+**Restlücken/Nicht-Ziele:** kein Auto-Seed beim App-Start, keine Demo-Daten ohne Admin-Aktion, keine Alt-App-Parität, kein Live-Smoke-Pass, keine UI-Neugestaltung. `seedDemoForAdmin` setzt eine LEERE Wissensbasis voraus (sonst ehrlich „skipped").
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check && (cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add services/app/src/seed-demo.ts services/app/src/seed.ts services/app/src/build-app.ts \
+  services/app/src/routes/admin-routes.ts services/app/src/admin-routes.test.ts \
+  apps/web/src/api/endpoints.ts apps/web/src/api/types.ts apps/web/src/components/ui.tsx \
+  apps/web/src/components/EmptyStateCtas.tsx apps/web/src/lib/emptyStateActions.ts \
+  apps/web/src/pages/Admin.tsx apps/web/src/pages/Start.tsx apps/web/src/pages/MyTasks.tsx \
+  apps/web/src/pages/Validation.tsx apps/web/src/pages/Library.tsx apps/web/src/i18n.ts \
+  tests/analytics/empty-state-actions.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(admin): demo-seed action + empty-state CTAs for first-run visibility (SCRUM-181)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

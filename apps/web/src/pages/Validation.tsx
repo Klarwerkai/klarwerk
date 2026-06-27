@@ -7,6 +7,7 @@ import { endpoints } from "../api/endpoints";
 import { useDirectory, useValidationBoard } from "../api/hooks";
 import type { Verdict } from "../api/types";
 import { useSession } from "../app/AuthContext";
+import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { ConfidenceBar, KnowledgeTypeTag, KoAuthorLine } from "../components/trust";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
 import { koAuthorParts } from "../lib/koAuthor";
@@ -82,7 +83,11 @@ export function Validation(): JSX.Element {
     <div className="mx-auto max-w-4xl">
       <PageHeader kicker={t("val.kicker")} title={t("nav.validation")} />
       <p className="-mt-3 mb-4 text-sm text-muted">{t("val.intro")}</p>
-      <QueryState query={query} emptyText={t("val.empty")}>
+      <QueryState
+        query={query}
+        emptyText={t("val.empty")}
+        emptyExtra={<EmptyStateCtas context="validation" />}
+      >
         {(items) => {
           const cats = categoryOptions(items);
           const tags = tagOptions(items);
