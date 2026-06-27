@@ -43,6 +43,7 @@ const ROUTES = [
   ["/lebenszyklus", "Wissensobjekte lesen"], // SCRUM-217/218: Lernpfad-Schritt sichtbar
   ["/admin", null],
   ["/kapital", null],
+  ["/mobile", null], // SCRUM-222: Mobile-Ansicht lädt in der Shell (kein Crash)
 ];
 const SHELL = 'a[href="/start"]';
 

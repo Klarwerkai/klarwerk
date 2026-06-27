@@ -3114,3 +3114,35 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-222 — Mobile/PWA-Runtime-Smoke: Service Worker & Offline-Queue verifizieren
+
+**Vorab-Befund (read-only):** Alle PWA-Artefakte vorhanden: `apps/web/public/sw.js` (handgeschrieben, kein Workbox), `manifest.webmanifest` (standalone, 192/512 + maskable Icons), Icons. SW-Strategie sauber: `/api` + `/health` network-only (früher return, kein respondWith), Navigationen network-first → App-Shell-Fallback (`/index.html`), statische Assets stale-while-revalidate, nur GET behandelt. SW-Registrierung in `main.tsx` ist **PROD-only**. Offline-Queue-Kernlogik liegt als pure Funktionen in `lib/offlineQueue.ts` mit bestehendem Test `tests/capture/offline-queue.test.ts` (6 Tests). `/mobile` rendert innerhalb der AppShell (Shell-Landmark vorhanden). Browser-/SW-Runtime ist im Sandbox nicht ausführbar (kein Chromium) — SCRUM-218-Lücke.
+
+**Entscheidung:** Kombination der kleinsten sinnvollen Schritte ohne Browser-Hack: (A) DOM-freier SW-Regel-Vertragstest über den Quelltext, (C) `/mobile` in den vorhandenen Browser-Smoke aufnehmen, (D) Production-Build-Artefakte nachweisen. Keine neue PWA-Architektur, kein Background-Sync, keine Push.
+
+**Umsetzung:**
+- Neuer Test `tests/capture/sw-rules.test.ts` (DOM-frei): liest `public/sw.js` + `manifest.webmanifest` und prüft die Kern-Invarianten statisch — `/api`/`/health` als nicht-cachebar erkannt, network-only-Early-Return, nur-GET, Navigation network-first + Shell-Fallback, Precache von Shell/manifest/Icons, stale-while-revalidate; Manifest standalone + 192/512 + maskable. Robust gegen Regressionen, ohne SW-Runtime.
+- `scripts/smoke-browser.mjs`: `/mobile` zu den Smoke-Routen ergänzt (lädt in der Shell, kein Crash). Exit-2-Blocker ohne Playwright bleibt unverändert.
+- Production-Build (Option D) ausgeführt und verifiziert: `dist/` enthält `sw.js`, `manifest.webmanifest`, `icon-192/512`, `icon-maskable-512`, `apple-touch-icon-180`; `index.html` referenziert manifest + apple-touch-icon. (dist danach wieder entfernt — regenerierbar/gitignored.)
+
+**Geänderte/neue Dateien:** neu `tests/capture/sw-rules.test.ts`; geändert `scripts/smoke-browser.mjs`, `docs/qm/claude-after-report.md`. (Kein Produkt-/FE-Quellcode geändert.)
+
+**Tests/Gates:** `npm run check` grün — **94 Dateien / 524 Tests** (+7 SW-Regel-Vertrag; offline-queue-6 unverändert grün). `node --check scripts/smoke-browser.mjs` ok. `cd apps/web && npm run build` erfolgreich, PWA-Artefakte im dist nachgewiesen. Biome + depcruise sauber. apps/web `tsc` nicht nötig (kein FE-Quellcode berührt).
+
+**Restlücken/Nicht-Ziele:** kein PWA-E2E-Framework, keine Background-Sync-API, keine Push, kein neuer Offline-Speicher, keine Mobile-UI-Neugestaltung. Das **tatsächliche** Offline-/SW-Laufzeitverhalten (Cache-Hit offline, Install-Prompt, Sync-Trigger nach Reconnect) ist nur lokal im Browser-Smoke (`npm run smoke:browser`, SCRUM-218) bzw. manuell prüfbar — im Sandbox mangels Chromium nicht. Der SW-Vertragstest sichert die Regeln statisch; die Queue-Logik ist unit-getestet.
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+node --check scripts/smoke-browser.mjs
+(cd apps/web && npm run build && ls dist/sw.js dist/manifest.webmanifest)
+git add tests/capture/sw-rules.test.ts scripts/smoke-browser.mjs docs/qm/claude-after-report.md
+git commit -m "test(pwa): static SW-rule contract + /mobile in smoke + build-artifact verification (SCRUM-222)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
