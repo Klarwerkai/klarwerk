@@ -3585,3 +3585,29 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-245 — Bibliothek: Suche produktnäher machen ohne große Sucharchitektur
+
+**Vorab-Befund (read-only):** `Library.tsx` holt Treffer über den **Server-Such-/Filterpfad** `useLibrarySearch(buildLibraryQuery(filter))` → `GET /api/library/search` (`library-analytics/src/service.ts#search`: filtert `q` als Substring auf **title ODER statement** + KoFilter type/status/category/tag) und rendert sie **unsortiert** in Empfangsreihenfolge, danach `windowList` (Limit 200, SCRUM-158). Vorhandene DOM-freie Helfer: `libraryQuery` (Query-Builder), `libraryDisplay` (Fenster/Limit), `libraryExport` (Export). Aktionen: Export (JSON/MD/MediaWiki/HTML), Re-Import-Link, KO-Detail-Links (`/wissen/:id`), Revalidieren, Facetten-Filter. **Lücke**: keine nachvollziehbare Relevanz-Sortierung, keine sichtbaren Match-Gründe, generischer Leerzustand. `tests/library/*` decken Query/Display/Export ab. **Kein Produktbug** — nur Produktreife-Hebel.
+
+**Umsetzung (DOM-frei, keine neue Suchmaschine):** Neuer Helfer `apps/web/src/lib/librarySearch.ts` — `searchLibrary(kos, query)` **re-rankt** die bereits gelieferten Treffer (verwirft nichts) nach transparentem Substring-/Token-Score: **Titel (6/Token 3) > Tag (3) / Kategorie (2) / Wissensart (2) > Text/Statement (2/1)**; Tie-Breaker **nur** Status (validiert zuerst) → Trust desc → Titel → ID (deterministisch). `scoreKo` liefert zusätzlich die **Match-Gründe** (`title/tag/category/type/text`) in Prioritätsreihenfolge. Leere/whitespace-Query → Score 0 → stabile Default-Ordnung, keine Match-Gründe. In `Library.tsx`: Treffer werden vor `windowList` re-gerankt; je Zeile ein kompakter **„Treffer in: Titel/Tag/…"**-Hinweis (nur bei aktiver Suche); **query-bewusster ehrlicher Leerzustand** (`lib.emptyQuery` mit Tipp). **Keine** Vector-/RAG-/semantische Suche behauptet, **keine** Fake-Treffer, Export/Filter/KO-Links/Limit/Revalidieren unverändert.
+
+**Geänderte/neue Dateien:** neu `apps/web/src/lib/librarySearch.ts`, `tests/library/library-search.test.ts`; geändert `apps/web/src/pages/Library.tsx` (Re-Rank + Match-Hints + Leerzustand), `apps/web/src/i18n.ts` (`lib.match.*` + `lib.matchIn` + `lib.emptyQuery` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — **113 Dateien / 601 Tests** (+1 Datei, +7 librarySearch-Tests: Titel>Text, Match-Gründe+Reihenfolge, Tag/Kategorie/Typ-Signale, Trust/Status nur Tie-Break, leere Query/Default-Ordnung, verwirft nichts, deterministisch). apps/web `tsc --noEmit` grün. Biome + depcruise sauber. Bestehende `tests/library/*` (query/display/export/revalidation) unverändert grün.
+
+**Restlücken/Nicht-Ziele:** keine Vector-DB, keine RAG-/Reasoner-Suche, kein neues Backend-Großmodell, kein Bibliotheks-Redesign, keine neue Ticketserie, keine weiteren HTTP-Smoke-/Audit-Tickets. Bewusst: das Re-Ranking arbeitet auf der **Server-gefilterten Menge** (Server matcht q weiterhin auf title/statement) — Tag-/Kategorie-/Typ-only-Treffer werden also nicht zusätzlich eingeblendet, aber als Match-Signal transparent gemacht, wenn der Treffer ohnehin geliefert wurde. Demo-Seed-Bestand (SCRUM-244) ist damit nach Stichwort (z. B. „ventil", „pumpe", „filter") besser sortiert + erklärbar auffindbar.
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/librarySearch.ts tests/library/library-search.test.ts apps/web/src/pages/Library.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(library): transparent relevance ranking + match reasons + honest empty state (SCRUM-245)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

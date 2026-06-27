@@ -20,6 +20,7 @@ import { koAuthorParts } from "../lib/koAuthor";
 import { windowList } from "../lib/libraryDisplay";
 import { EXPORT_FORMATS, type ExportFormat, exportFilename, exportUrl } from "../lib/libraryExport";
 import { EMPTY_LIBRARY_FILTER, buildLibraryQuery } from "../lib/libraryQuery";
+import { type MatchField, searchLibrary } from "../lib/librarySearch";
 import { canRevalidate } from "../lib/revalidation";
 import { categoryOptions, tagOptions } from "../lib/validationFilters";
 
@@ -42,6 +43,11 @@ export function Library(): JSX.Element {
 
   // Ergebnisse über den Server-Search-/Filterpfad (Volltext + KoFilter).
   const query = useLibrarySearch(buildLibraryQuery(filter));
+  // SCRUM-245: aktuelle Volltext-Query für client-seitiges Re-Ranking + Match-Hinweise.
+  const trimmedQ = filter.q.trim();
+
+  // Match-Grund → kompaktes, ehrliches Label (kein „semantisch", keine Fake-Treffer).
+  const matchLabel = (field: MatchField): string => t(`lib.match.${field}`);
 
   const qc = useQueryClient();
   const { push } = useToast();
@@ -151,12 +157,14 @@ export function Library(): JSX.Element {
 
       <QueryState
         query={query}
-        emptyText={t("lib.empty")}
+        emptyText={trimmedQ ? t("lib.emptyQuery", { q: trimmedQ }) : t("lib.empty")}
         emptyExtra={<EmptyStateCtas context="library" />}
       >
         {(items) => {
+          // SCRUM-245: client-seitig nach nachvollziehbarer Relevanz re-ranken (verwirft nichts).
+          const ranked = searchLibrary(items, trimmedQ);
           // SCRUM-158: große Bestände bedienbar halten + ehrlich begrenzen.
-          const win = windowList(items);
+          const win = windowList(ranked);
           return (
             <>
               <div className="mb-2 flex items-center justify-between gap-2 font-mono text-[11px] text-muted-2">
@@ -169,7 +177,7 @@ export function Library(): JSX.Element {
               </div>
               <Card className="p-0">
                 <div className="divide-y divide-hairline">
-                  {win.visible.map((k) => (
+                  {win.visible.map(({ ko: k, matches }) => (
                     <div
                       key={k.id}
                       className="flex items-center gap-3 px-4 py-2.5 hover:bg-hairline-soft"
@@ -183,6 +191,22 @@ export function Library(): JSX.Element {
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[13.5px] text-text">{k.title}</span>
                           <KoAuthorLine {...koAuthorParts(k, nameOf)} />
+                          {/* SCRUM-245: kompakte, ehrliche Match-Gründe (nur bei aktiver Suche). */}
+                          {trimmedQ && matches.length > 0 ? (
+                            <span className="mt-0.5 flex flex-wrap items-center gap-1">
+                              <span className="font-mono text-[9.5px] uppercase tracking-wide text-muted-2">
+                                {t("lib.matchIn")}
+                              </span>
+                              {matches.map((field) => (
+                                <span
+                                  key={field}
+                                  className="rounded-pill bg-hairline-soft px-1.5 py-0.5 text-[10px] text-muted"
+                                >
+                                  {matchLabel(field)}
+                                </span>
+                              ))}
+                            </span>
+                          ) : null}
                         </span>
                         <span className="hidden font-mono text-[11px] text-muted-2 sm:block">
                           {k.category}
