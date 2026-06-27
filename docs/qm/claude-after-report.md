@@ -2907,3 +2907,19 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-179 — Knowledge-OS Readiness-Reconciliation dokumentieren
+
+**Vorab-Befund (read-only):** `docs/knowledge-os/` existiert (mit `current-state-dossier-2026-06-26.md`). Der Foundation-/QM-Strang SCRUM-164…178 ist im Repo und im After-Report durchgängig dokumentiert; Persistenz vorhanden für ModelRun-Protokoll (`MODEL_RUNS_SCHEMA`) und Evidence (`KO_EVIDENCE_SCHEMA`), alle Auswertungs-Sichten sind DOM-freie, abgeleitete Helper ohne eigene Persistenz. Es fehlte eine kompakte Reconciliation-Matrix vor dem Meilensteinwechsel.
+
+**Dokument erstellt:** `docs/knowledge-os/foundation-readiness-2026-06-27.md` — Reference document mit klarem Status-Header (kein Backlog, schließt keine Tickets, Jira bleibt Source of Truth). Abschnitte: (1) Kurzüberblick, (2) Ticket-/Signal-Matrix SCRUM-164…178 mit Spalten Ticket/Signal/Zweck/Datenquelle/UI-Ort/Persistenz/Fenster-Limit/Status/Restlücke, (3) Readiness-Stand (grün / aufmerksam / bewusst unvollständig / nur im geladenen Fenster gültig), (4) Nicht-Ziele, (5) Empfehlung nächster Meilenstein = Frontend-Funktionsinventar/Produktionsreife-Audit (route-by-route), (6) Prüfhinweise. Ehrlicher Schlusssatz: Foundation-/QM-Strang abgeschlossen, Produkt-/Frontend-Reife NICHT behauptet, eigenes Audit nötig.
+
+**Geänderte/neue Dateien:** neu `docs/knowledge-os/foundation-readiness-2026-06-27.md`; geändert `docs/qm/claude-after-report.md`. **Keine Codeänderung.**
+
+**Tests/Gates:** root `npm run check` grün — **88 Dateien / 498 Tests** (unverändert, reine Doku). apps/web-`tsc` nicht nötig (keine Web-Codeänderung).
+
+**Restlücken/Nicht-Ziele:** keine Codeänderung (außer wäre ein Doc-Link nötig gewesen — der bestehende Dossier-Link wurde im Dokument referenziert), keine Jira-Änderung, keine Tickets geschlossen, keine Behauptung der Gesamt-Produkt-/Frontend-Reife.
+
+No Jira changes by Claude. No tickets closed. No new tickets.
