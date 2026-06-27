@@ -3251,3 +3251,29 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-228 — Knowledge Graph: Knoten-Klick zum KO-Detail
+
+**Vorab-Befund (read-only):** Der SVG-Graph (`Stufe2.tsx#GraphView`) rendert Knoten als `<g><circle/><text/></g>` — **bisher ohne Interaktion**. Das Layout (`lib/graphLayout.ts`, deterministisches Kreislayout) und seine Tests bleiben unberührt. Entscheidend: Graph-Knoten tragen die **echte KO-ID** (`services/library-analytics/src/service.ts`: `nodes = list.map((ko) => ({ id: ko.id, title: ko.title }))`), und die KO-Detail-Route `/wissen/:id` existiert (`routes.tsx`). `useNavigate` ist das etablierte Navigations-Pattern (Capture, CommandPalette, Topbar). Konflikt-/Tag-Kanten, Legende und Truncate-Hinweis sind eigenständig und bleiben read-only.
+
+**Umsetzung (kleinster sauberer Eingriff):** Neuer DOM-freier Helper `apps/web/src/lib/graphNav.ts` — `koDetailPath(koId)` (`/wissen/<id>`, ID URL-kodiert) und `isNavigableNode(id, knownKoIds)` (navigierbar nur bei bekanntem KO im Bestand). In `GraphView`: `knownKoIds`-Set aus `useKos()`; jeder navigierbare Knoten-`<g>` erhält `role="link"`, `tabIndex={0}`, `aria-label` (`graph.openNode`), `cursor-pointer`, `onClick` → `navigate(koDetailPath(id))` sowie `onKeyDown` für Enter/Space (mit `preventDefault`). Knoten **ohne** passendes KO bleiben ehrlich neutral: kein role/tabIndex/Handler — sicher deaktiviert. Kleiner sichtbarer Hinweis `graph.clickHint` in der Kopfzeile. **Keine** Graph-Library, kein Editor, kein Zoom/Pan, kein Backend-Code.
+
+**Geänderte/neue Dateien:** neu `apps/web/src/lib/graphNav.ts`, `tests/analytics/graph-nav.test.ts`; geändert `apps/web/src/pages/Stufe2.tsx` (interaktive Knoten + `useNavigate`), `apps/web/src/i18n.ts` (`graph.openNode`/`graph.clickHint` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — **99 Dateien / 547 Tests** (+1 Datei, +3 Tests für graphNav). apps/web DOM-`tsc --noEmit` grün. Biome + depcruise sauber. Bestehender `tests/analytics/graph-layout.test.ts` unverändert grün.
+
+**Restlücken/Nicht-Ziele:** kein Graph-Editor, keine neue Layout-Engine, kein Drag/Zoom/Pan, kein Backend-Umbau, keine Alt-App-Pixel-Parität, keine Fake-Knoten/Kanten. Konflikt-/Tag-Kanten bleiben read-only. Während `useKos()` noch lädt, sind Knoten bewusst (kurz) nicht klickbar — sichere Deaktivierung statt Navigation ins Leere. Die Klickstrecke ist lokal über den Browser-Smoke (`/graph`) prüfbar; die ID-/Navigationslogik ist unit-getestet.
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/graphNav.ts tests/analytics/graph-nav.test.ts apps/web/src/pages/Stufe2.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(graph): clickable/keyboard nodes navigate to KO detail /wissen/:id (SCRUM-228)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

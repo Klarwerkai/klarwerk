@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { type ChangeEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
 import {
   useBusFactor,
@@ -47,6 +47,7 @@ import { evidenceFreshnessLabelKey, evidenceFreshnessTone } from "../lib/evidenc
 import { evidenceKindTone, limitEvidence, summarizeEvidence } from "../lib/evidenceIndex";
 import { IMPORT_PIPELINE_STEPS, candidateFindings, summarizeImportQueue } from "../lib/extConcept";
 import { layoutConflicts, layoutGraph, limitGraph } from "../lib/graphLayout";
+import { isNavigableNode, koDetailPath } from "../lib/graphNav";
 import { ImportParseError, parseImportItems } from "../lib/importReview";
 import { knowledgeHealth } from "../lib/knowledgeHealth";
 import { buildKnowledgeOsHints } from "../lib/knowledgeOsHints";
@@ -1376,6 +1377,7 @@ function LegendDot({ colorClass, label }: { colorClass: string; label: string })
 // /api/graph, Knotenstatus per FE-Join, Konfliktkanten aus echten Conflict-Daten.
 export function GraphView(): JSX.Element {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const graphQ = useGraph();
   const kosQ = useKos();
   const conflictsQ = useConflicts();
@@ -1389,6 +1391,7 @@ export function GraphView(): JSX.Element {
             return <Notice textKey="s2.graphEmpty" />;
           }
           const statusOf = new Map((kosQ.data ?? []).map((k) => [k.id, deriveStatus(k)]));
+          const knownKoIds = new Set((kosQ.data ?? []).map((k) => k.id));
           const { graph: g, truncated } = limitGraph(raw, MAX_GRAPH_NODES);
           const layout = layoutGraph(g);
           const conflicts = layoutConflicts(
@@ -1401,6 +1404,7 @@ export function GraphView(): JSX.Element {
               <p className="mb-2 text-[13px] text-muted">
                 {t("s2.graphCount", { nodes: raw.nodes.length, edges: raw.edges.length })}
                 {truncated ? ` · ${t("graph.truncated", { n: MAX_GRAPH_NODES })}` : ""}
+                {` · ${t("graph.clickHint")}`}
               </p>
               <svg
                 viewBox={`0 0 ${layout.width} ${layout.height}`}
@@ -1438,21 +1442,53 @@ export function GraphView(): JSX.Element {
                     strokeDasharray="5 4"
                   />
                 ))}
-                {/* Knoten */}
-                {layout.nodes.map((n) => (
-                  <g key={n.id}>
-                    <circle
-                      cx={n.x}
-                      cy={n.y}
-                      r={7}
-                      className={STATUS_NODE_COLOR[statusOf.get(n.id) ?? "offen"] ?? "text-muted-2"}
-                      fill="currentColor"
-                    />
-                    <text x={n.x} y={n.y - 11} textAnchor="middle" className="fill-text text-[9px]">
-                      {n.title.length > 16 ? `${n.title.slice(0, 15)}…` : n.title}
-                    </text>
-                  </g>
-                ))}
+                {/* Knoten — navigierbar zum KO-Detail, wenn das KO im Bestand bekannt ist. */}
+                {layout.nodes.map((n) => {
+                  const navigable = isNavigableNode(n.id, knownKoIds);
+                  const go = (): void => {
+                    if (navigable) {
+                      navigate(koDetailPath(n.id));
+                    }
+                  };
+                  return (
+                    <g
+                      key={n.id}
+                      role={navigable ? "link" : undefined}
+                      aria-label={navigable ? t("graph.openNode", { title: n.title }) : undefined}
+                      tabIndex={navigable ? 0 : undefined}
+                      className={navigable ? "cursor-pointer outline-none" : undefined}
+                      onClick={go}
+                      onKeyDown={
+                        navigable
+                          ? (e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                go();
+                              }
+                            }
+                          : undefined
+                      }
+                    >
+                      <circle
+                        cx={n.x}
+                        cy={n.y}
+                        r={7}
+                        className={
+                          STATUS_NODE_COLOR[statusOf.get(n.id) ?? "offen"] ?? "text-muted-2"
+                        }
+                        fill="currentColor"
+                      />
+                      <text
+                        x={n.x}
+                        y={n.y - 11}
+                        textAnchor="middle"
+                        className="fill-text text-[9px]"
+                      >
+                        {n.title.length > 16 ? `${n.title.slice(0, 15)}…` : n.title}
+                      </text>
+                    </g>
+                  );
+                })}
               </svg>
               <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
                 <LegendDot colorClass="bg-trust-pos-fill" label={t("graph.legendValidated")} />

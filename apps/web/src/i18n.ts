@@ -960,6 +960,8 @@ const de = {
   "graph.legendOpen": "offen / in Prüfung",
   "graph.legendTag": "Tag-Relation",
   "graph.legendConflict": "Konflikt",
+  "graph.clickHint": "Knoten anklicken, um das Wissensobjekt zu öffnen",
+  "graph.openNode": "Wissensobjekt öffnen: {{title}}",
 };
 
 const en: typeof de = {
@@ -1911,6 +1913,8 @@ const en: typeof de = {
   "graph.legendOpen": "open / in review",
   "graph.legendTag": "tag relation",
   "graph.legendConflict": "conflict",
+  "graph.clickHint": "Click a node to open the knowledge object",
+  "graph.openNode": "Open knowledge object: {{title}}",
 };
 
 void i18n.use(initReactI18next).init({
