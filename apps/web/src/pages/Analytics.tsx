@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useLocation } from "react-router-dom";
 import {
   useAnalytics,
   useAudit,
@@ -23,6 +24,7 @@ import {
   weeklyValidated,
   workloadSummary,
 } from "../lib/analyticsMetrics";
+import { ANALYTICS_AUDIT_ANCHOR, hashToElementId } from "../lib/analyticsSections";
 import { type HealthBand, knowledgeHealth } from "../lib/knowledgeHealth";
 
 const BAND_TONE: Record<HealthBand, string> = {
@@ -68,6 +70,21 @@ export function Analytics(): JSX.Element {
   // SCRUM-143: Audit-Filter über echte Daten (clientseitig, ohne Chain-Umbau).
   const [filter, setFilter] = useState<AuditFilter>({});
   const allEntries = audit.data ?? [];
+
+  // SCRUM-229: Deep-Link auf einen Abschnitt (z. B. /analytics#analytics-audit) zuverlässig
+  // anspringen. react-router scrollt nicht automatisch zu Hash-Ankern; der Abschnitts-Wrapper
+  // existiert sofort (unabhängig vom Datenladen), daher genügt scrollIntoView nach dem Mount.
+  const location = useLocation();
+  useEffect(() => {
+    const id = hashToElementId(location.hash);
+    if (!id) {
+      return;
+    }
+    const handle = window.setTimeout(() => {
+      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+    return () => window.clearTimeout(handle);
+  }, [location.hash]);
 
   return (
     <div className="mx-auto max-w-4xl space-y-7">
@@ -198,7 +215,8 @@ export function Analytics(): JSX.Element {
       </div>
 
       {/* SCRUM-143: Audit-Log mit Filtern (Actor/Action/Target) über echte Daten */}
-      <div>
+      {/* SCRUM-229: stabiler Deep-Link-Anker für den Audit-Abschnitt. */}
+      <div id={ANALYTICS_AUDIT_ANCHOR} className="scroll-mt-4">
         <SectionLabel>{t("ana.audit")}</SectionLabel>
         <div className="mb-3 flex flex-wrap gap-2">
           <select

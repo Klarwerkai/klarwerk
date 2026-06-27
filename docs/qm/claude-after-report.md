@@ -3277,3 +3277,29 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-229 — Audit-Log als Deep-Link in Analytics auffindbar
+
+**Vorab-Befund (read-only):** Der Audit-Bereich lebt konsolidiert in `Analytics.tsx` (Abschnitt „SCRUM-143: Audit-Log mit Filtern", `<div>`-Wrapper mit `SectionLabel` + Actor/Action/Target-Filter + Audit-Liste über echte Daten). Er hatte **keine** stabile Anker-ID und war nicht verlinkbar. CommandPalette (`shell/CommandPalette.tsx`) leitet ihre Ziele aus `ALL_ITEMS` (navigation.ts) ab. Wichtig: react-router **scrollt nicht automatisch** zu Hash-Ankern beim Navigieren — ein Deep-Link braucht einen kleinen Scroll-Effekt. Audit-Daten kommen aus `useAudit()` (kein Backend-Bezug für diese Aufgabe).
+
+**Umsetzung (kleinster sauberer Eingriff):** (1) Neuer DOM-freier Helper `apps/web/src/lib/analyticsSections.ts` — `ANALYTICS_AUDIT_ANCHOR="analytics-audit"`, `ANALYTICS_AUDIT_PATH="/analytics#analytics-audit"`, `hashToElementId(hash)` (sichere Element-ID aus Location-Hash). (2) Audit-Abschnitt erhält `id={ANALYTICS_AUDIT_ANCHOR}` + `scroll-mt-4` — der Wrapper rendert sofort (unabhängig vom Datenladen), daher ist der Anker stabil vorhanden. (3) Scroll-to-Hash-Effekt in `Analytics` (`useLocation` + `useEffect`): bei vorhandenem Hash `scrollIntoView` nach dem Mount → Deep-Link landet zuverlässig. (4) CommandPalette-Eintrag „Audit-Log (in Analytics)" → `ANALYTICS_AUDIT_PATH`, sichtbar nur, wenn Analytics für die Rolle sichtbar ist (gleiche `canSee`-Logik). **Keine** neue Route/Seite, kein neues Audit-System, kein Audit-Editor, keine Backend-Änderung.
+
+**Geänderte/neue Dateien:** neu `apps/web/src/lib/analyticsSections.ts`, `tests/analytics/analytics-sections.test.ts`; geändert `apps/web/src/pages/Analytics.tsx` (Anker + Scroll-to-Hash), `apps/web/src/shell/CommandPalette.tsx` (Deep-Link-Eintrag, rollen-gated), `apps/web/src/i18n.ts` (`cmd.audit` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — **100 Dateien / 550 Tests** (+1 Datei, +3 Tests für analyticsSections). apps/web DOM-`tsc --noEmit` grün. Biome + depcruise sauber. Bestehender Analytics-/Audit-Renderpfad (SCRUM-143-Filter/Liste) unverändert.
+
+**Restlücken/Nicht-Ziele:** kein neues Audit-System, kein Audit-Editor, keine eigene Audit-Route (Hash-Deep-Link genügt), keine Backend-Änderung, kein Audit-Modell-Umbau, keine Alt-App-Pixel-Parität, keine separate Alt-Audit-Seite wiederhergestellt. Kein Scroll-Spy/aktiver Zustand (bewusst minimal). Direkter Deep-Link `…/analytics#analytics-audit` springt nach dem Laden zum Abschnitt; per ⌘K als „Audit-Log (in Analytics)" auffindbar.
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/analyticsSections.ts tests/analytics/analytics-sections.test.ts apps/web/src/pages/Analytics.tsx apps/web/src/shell/CommandPalette.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(analytics): stable audit deep-link anchor + scroll-to-hash + command-palette entry (SCRUM-229)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

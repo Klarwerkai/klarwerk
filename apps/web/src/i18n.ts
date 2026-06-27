@@ -52,6 +52,7 @@ const de = {
   "cmd.close": "Schließen",
   "cmd.placeholder": "Zu Seite springen … (⌘K)",
   "cmd.empty": "Kein Treffer.",
+  "cmd.audit": "Audit-Log (in Analytics)",
   "toast.dismiss": "Schließen",
   "page.placeholder":
     "Dieser Screen wird in einem späteren Task gebaut. App-Shell, Navigation und Rollenlogik stehen.",
@@ -1014,6 +1015,7 @@ const en: typeof de = {
   "cmd.close": "Close",
   "cmd.placeholder": "Jump to page … (⌘K)",
   "cmd.empty": "No match.",
+  "cmd.audit": "Audit log (in Analytics)",
   "toast.dismiss": "Dismiss",
   "page.placeholder":
     "This screen will be built in a later task. App shell, navigation and role logic are in place.",
