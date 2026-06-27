@@ -3611,3 +3611,45 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-246 — Live Basics Triage: Kernflüsse + P0/P1-Blocker
+
+**Vorab-Befund (read-only; Live-Browser nicht ausführbar):** In dieser Sandbox ist **kein** echter Live-/Browser-Smoke möglich — `command -v chromium/google-chrome` = nicht vorhanden, `node_modules/playwright` = nicht installiert, keine bereitgestellte Live-URL. Daher wie vom Ticket vorgesehen **Ersatz-Triage** über Start-/Smoke-/Routing-/Auth-Pfad + bestehende Tests:
+- **Start/Server-Auslieferung** (`services/app/src/server.ts`): Single-Origin, Security-Header (Helmet/HSTS/CSP), Kanonik-Redirect, **SPA-Fallback** (`setNotFoundHandler` → `index.html` für alles außer `/api`+`/health`) → Deep-Links/Refresh funktionieren; gehashte Assets immutable, `index.html` no-cache. Sauber.
+- **FE-Bootstrap** (`main.tsx`, `App.tsx`, `AuthContext.tsx`): Auth-Gate Ersteinrichtung→Login→Shell, `/reset`+`/sso/callback` vor dem Gate, Splash bei Laden, Dev-Preview bei Backend-Fehler, robuster Logout (Hard-Reload). Kein Whitescreen-Pfad.
+- **Netzwerk/CSP**: Einziger FE-Fetch ist `api/client.ts` → `/api` (**same-origin**), kompatibel zu `connectSrc 'self'`; `imgSrc 'self'+data:` deckt Objekt-Raw + Daten-URL-Thumbnails. Keine CSP-Blocker.
+- **Routing**: alle Nav-Items in `routes.tsx` gemappt (inkl. `extern`), keine toten Routen; Topbar-Suche → `/bibliothek?q=` wird von Library gelesen.
+- **Whitescreen-Risiken**: `grep` auf unguarded `.data.` zeigt nur **bewusst geschützte** Stellen (`Lifecycle` hinter `path.data ?`, `Stufe2` hinter `query.data && …`). Keine TODO/FIXME im Produktcode.
+- **Backend-Kernflüsse**: durch die Route-Level-Smokes (SCRUM-234/237/238/239/240/241/242/243) end-to-end belegt — Auth/Login, KO-Create, Bibliothek/Suche, KO-Detail/Evidence, Ask/Gap, Validierung/Aufgaben, Demo-Seed-Sichtbarkeit (SCRUM-244): **113 Dateien / 601 Tests grün**.
+
+**P0/P1/P2-Einstufung:**
+- **P0 (blockiert Nutzung/Demo/Kernfluss): keine gefunden.** Server-Auslieferung, Auth-Gate, Routing und alle Kern-Backend-Endpunkte sind funktionsfähig und testabgedeckt.
+- **P1 (stark sichtbar/produkthemmend): keine gefunden.**
+- **P2 (später/Ops/Komfort, NICHT-Blocker, nur Notiz):**
+  1. **Echter Browser-Live-Smoke** ist in dieser Umgebung nicht ausführbar (kein Chromium/Playwright). `scripts/smoke-browser.mjs` braucht eine lokale Maschine mit Browser → bei Pedi/Codex lokal laufen lassen, um die FE-Render-Strecke gegen das Live-Backend zu bestätigen.
+  2. **Kanonik-Redirect** (`server.ts`: `app.<host>` → `<host>`, Default `CANONICAL_HOST=klarwerk.ai`): konsistent gedacht (App lebt auf der Apex-Domain, `app.` ist Alias). Ops-seitig EINMAL verifizieren, dass die Apex-Domain wirklich die App ausliefert und nicht nur die Marketing-Seite — reine Konfig-/Deployment-Prüfung, kein Codefehler.
+  3. **Erststart-Sichtbarkeit**: frische Prod-Instanz ist bewusst leer; Demodaten kommen erst über Admin → „Demodaten laden" (SCRUM-181/244). Ehrlich, kein Blocker.
+
+**Umsetzung:** **Kein Fix** — es wurde **kein** klarer P0/P1 gefunden. Gemäß Ticket-Regel (Schritt 6: nur P2/Kosmetik → keinen Fix, Befund dokumentieren) wird bewusst **kein** spekulativer Eingriff gemacht. Kein Produktcode, kein FE geändert.
+
+**Geänderte/neue Dateien:** nur `docs/qm/claude-after-report.md` (dieser Befund, append-only). Kein Code.
+
+**Tests/Gates:** `npm run check` grün — **113 Dateien / 601 Tests** (unverändert; kein Code berührt). apps/web `tsc --noEmit` nicht nötig (kein FE geändert). Biome + depcruise unverändert grün.
+
+**Restlücken/Nicht-Ziele:** keine Ticket-Fabrik, keine 20 neuen Tickets, keine Jira-/Board-Änderung, keine Stufe-2-Feinschliffe, keine neuen Module/Features, keine Vector/RAG/Semantik. Echter Browser-/Live-Smoke bleibt offen (umgebungsbedingt) und sollte lokal mit Browser gegen die Live-URL nachgeholt werden; die P2-Punkte 2–3 sind Ops-/Konfig-Verifikationen, keine Codefixes.
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+git add docs/qm/claude-after-report.md
+git commit -m "docs(qm): SCRUM-246 live-basics triage — no P0/P1 found, P2 ops notes only"
+git push
+# Lokal (mit Browser) zur Live-Bestätigung:
+#   PORT=3001 npm start    &    VITE_API_TARGET=http://localhost:3001 npm --prefix apps/web run dev
+#   npm run smoke:browser
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets. Danach Stopp.
