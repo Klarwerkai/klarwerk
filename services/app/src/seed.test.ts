@@ -10,21 +10,31 @@ describe("SCRUM-156: seedDemo", () => {
     expect(r.skipped).toBe(false);
     expect(r.users).toBeGreaterThanOrEqual(3);
     expect(r.kos).toBeGreaterThanOrEqual(5);
-    expect(r.validated).toBeGreaterThanOrEqual(1); // mindestens ein validiertes KO
+    // SCRUM-244: mindestens ZWEI validierte, output-fähige KOs.
+    expect(r.validated).toBeGreaterThanOrEqual(2);
     expect(r.gaps).toBeGreaterThanOrEqual(1); // mindestens eine Wissenslücke
     expect(r.conflicts).toBeGreaterThanOrEqual(1); // mindestens eine Konfliktlage
     expect(r.pendingRevalidation).toBeGreaterThanOrEqual(1); // mindestens ein Revalidierungssignal
-    expect(r.attachments).toBeGreaterThanOrEqual(1); // mindestens ein Anhang/Quelle
+    expect(r.attachments).toBeGreaterThanOrEqual(1); // mindestens ein Anhang
+    expect(r.sources).toBeGreaterThanOrEqual(1); // mindestens eine Quelle
 
     // Audit entsteht über echte Aktionen (nicht gefälscht): Einträge müssen existieren + verifizierbar.
     const audit = await services.audit.list();
     expect(audit.length).toBeGreaterThan(0);
     expect(await services.audit.verify()).toBe(true);
 
-    // Es gibt sowohl ein validiertes als auch ein offenes KO (Validierungsaufgabe).
+    // Es gibt sowohl validierte als auch offene KOs (Validierungsaufgabe) — und echte Trust-Varianz.
     const kos = await services.ko.list();
-    expect(kos.some((k) => k.status === "validiert")).toBe(true);
+    expect(kos.filter((k) => k.status === "validiert").length).toBeGreaterThanOrEqual(2);
     expect(kos.some((k) => k.status === "offen")).toBe(true);
+    expect(kos.some((k) => k.trust > 0 && k.trust < 100)).toBe(true); // Teil-Review (in Prüfung)
+
+    // SCRUM-244: mindestens ein KO trägt Quelle UND Anhang → beide Evidence-Arten sichtbar.
+    const rich = kos.find((k) => (k.sources?.length ?? 0) > 0 && (k.attachments?.length ?? 0) > 0);
+    expect(rich).toBeDefined();
+    const evidence = await services.ko.evidenceOf((rich as { id: string }).id);
+    expect(evidence.some((e) => e.kind === "source")).toBe(true);
+    expect(evidence.some((e) => e.kind === "attachment")).toBe(true);
   });
 
   it("ist idempotent: zweiter Lauf überspringt, keine Duplikate", async () => {

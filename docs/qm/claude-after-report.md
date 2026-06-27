@@ -3560,3 +3560,28 @@ Kein Git, kein Commit/Push, kein Jira durch Claude. No tickets closed. No new ti
 **Restlücken/Nicht-Ziele:** kein neuer Upload-Parser, kein OCR-/PDF-/DOCX-Umbau, kein Browser-E2E, kein UI-Redesign, keine Alt-App-Parität. Nicht abgedeckt (bewusst): Inline-`dataUrl`-Anhang (legacy, erzeugt absichtlich keine Evidence), `MAX_ATTACHMENTS`-/Größen-Limits (service-/route-validiert, hier nicht durchgespielt) und Pg-/persistenter Object-Store (In-Memory prozesslokal). Der Kern-Datenpfad Capture→KO→Object/Attachment/Source→Evidence inkl. raw-Auslieferung und Guard-/Negativfällen ist jetzt routennah abgesichert.
 
 Kein Git, kein Commit/Push, kein Jira durch Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-244 — Demo-Datensatz: reale Review-/Demo-Flows sichtbar machen
+
+**Vorab-Befund (read-only):** Der Seed (`services/app/src/seed-demo.ts`) erzeugt schon AUSSCHLIESSLICH über echte Services (`auth/ko/validation/ask/conflicts/lifecycle/objects`) einen ehrlichen Bestand: 5 KOs, 1 validiertes (koValid, 2× grün), 1 offene Validierungs-/Review-Aufgabe (koOpen Carla zugewiesen), 1 priorisierte Gap (Ask „hoch"), 1 Wahrheitskonflikt (Vorwärmung), 1 pending Revalidation (`lifecycle.couple`+`assetChanged`), Lernpfade für experte/controller/admin, 1 Attachment via Object-Store + Attachment-Evidence. Guards: `seedDemo` (needsSetup + leere KB), `seedDemoForAdmin` (leere KB), idempotent (zweiter Lauf → `EMPTY_RESULT`), produktionsgeschützt (kein Auto-Start). **Zwei Akzeptanz-Lücken**: (1) nur **1** validiertes KO statt ≥2; (2) koValid trug nur ein **Attachment**, keine **Quelle** → keine „source"-Evidence. Alles andere war bereits erfüllt. Bestehende Tests (`seed.test.ts`, `admin-routes.test.ts`) nutzen `>=`-Schwellen → additivverträglich.
+
+**Umsetzung (nur echte Services, keine Repo-Inserts):** In `buildDemoContent`: (1) `koFilter` als Variable erfasst und über `validation.rate(koFilter, carla, "up")` + `(…, admin, "up")` zu einem **zweiten validierten, output-fähigen KO** gemacht. (2) `validation.rate(koWarm, admin, "up")` → ein KO mit **mittlerem Trust** (≈50, bleibt „offen" = in Prüfung) → echte Trust-Varianz (100/50/0). (3) `ko.addSource(koValid, erik, {label, url, excerpt, provider})` → koValid trägt jetzt **Quelle UND Anhang**, der Evidence-Stand enthält beide Arten (`kind:"source"` + `kind:"attachment"`). (4) `SeedResult`/`EMPTY_RESULT` um das Feld `sources` (Zähler aus echten KO-Reads) ergänzt. Guards/Idempotenz/Produktionsschutz unverändert. **Keine** UI-Neugestaltung, **kein** neues Backend-Modell, **keine** Repo-Manipulation.
+
+**Geänderte/neue Dateien:** geändert `services/app/src/seed-demo.ts` (2. Validierung, Teil-Review, addSource, `sources`-Feld), `services/app/src/seed.test.ts` (Assertions: `validated≥2`, `sources≥1`, Trust-Varianz, KO mit Quelle+Anhang + beide Evidence-Arten), `docs/qm/claude-after-report.md`. Kein FE.
+
+**Tests/Gates:** `npm run check` grün — **112 Dateien / 594 Tests** (seed.test um 5 Assertions erweitert; `admin-routes.test`/`learning-path-progress.test` weiter grün). apps/web `tsc --noEmit` grün (FE-`DemoSeedResult` ist hand-getippt und ignoriert das additive `sources`-Feld — kein FE berührt). Biome + depcruise sauber.
+
+**Restlücken/Nicht-Ziele:** keine direkten Repo-Inserts, kein Auto-Start, Produktionsschutz/Idempotenz unverändert, keine UI-Neugestaltung, kein Browser-E2E, kein neues Backend-Modell, keine Knowledge-OS-Metamorphose-Dokumente, keine weitere HTTP-/Audit-Ticketserie. Nach dem Seed sichtbar: ≥2 validierte/output-fähige KOs, ≥1 KO mit Quelle+Attachment+Evidence (beide Arten), offene Review-Aufgabe (MyTasks/Validation), priorisierte Gap (Risk/Ask), Konflikt (Risk/Graph/Conflict), pending Revalidation (Lifecycle), Lernpfade, Trust-Varianz (in Prüfung). Nicht erweitert (bewusst): mehrstufige Konflikt-Lösung/Zweitmeinung und Lernpfad-Fortschritt (separat route-getestet).
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+git add services/app/src/seed-demo.ts services/app/src/seed.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(seed): 2nd validated KO + source+attachment evidence + trust variance in demo seed (SCRUM-244)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

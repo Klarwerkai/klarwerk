@@ -38,6 +38,7 @@ export interface SeedResult {
   conflicts: number;
   pendingRevalidation: number;
   attachments: number;
+  sources: number;
 }
 
 const EMPTY_RESULT: SeedResult = {
@@ -49,6 +50,7 @@ const EMPTY_RESULT: SeedResult = {
   conflicts: 0,
   pendingRevalidation: 0,
   attachments: 0,
+  sources: 0,
 };
 
 interface SeedActors {
@@ -166,7 +168,7 @@ async function buildDemoContent(
     confidence: 30,
     neededValidations: 2,
   });
-  await ko.create({
+  const koFilter = await ko.create({
     title: "Filter F3 monatlich auf Verschmutzung prüfen.",
     statement: "Filter F3 einmal pro Monat auf Verschmutzung prüfen und bei Bedarf tauschen.",
     type: "best_practice",
@@ -180,6 +182,14 @@ async function buildDemoContent(
   // --- Validierung: koValid bekommt 2 grüne Bewertungen → Status „validiert" (echte Logik) ---
   await validation.rate(koValid.id, carlaId, "up");
   await validation.rate(koValid.id, adminId, "up");
+
+  // SCRUM-244: zweites validiertes, output-fähiges KO — koFilter ebenfalls 2× grün → „validiert".
+  await validation.rate(koFilter.id, carlaId, "up");
+  await validation.rate(koFilter.id, adminId, "up");
+
+  // SCRUM-244: Teil-Review für einen mittleren Trust-Zustand — koWarm erhält eine grüne Bewertung
+  // (1/2 nötig) → Trust ~50, bleibt „offen" (sichtbar „in Prüfung", echte Trust-Varianz).
+  await validation.rate(koWarm.id, adminId, "up");
 
   // --- Offene Validierungsaufgabe: koOpen Carla zuweisen (erscheint im Board/MyTasks) ---
   await validation.assign(koOpen.id, [carlaId], adminId);
@@ -230,6 +240,15 @@ async function buildDemoContent(
     size: ref.size,
   });
 
+  // SCRUM-244: zusätzlich zur Anhang-Evidence eine externe Quelle → koValid trägt Quelle UND
+  // Anhang, der Evidence-Stand enthält damit beide Arten (source + attachment).
+  await ko.addSource(koValid.id, erikId, {
+    label: "Anlagenhandbuch Abschnitt 4.2",
+    url: "https://intern.klarwerk/handbuch#4-2",
+    excerpt: "Ventil X bei Überdruck manuell schließen.",
+    provider: "Intern",
+  });
+
   // --- Kennzahlen aus echten Service-Reads ableiten ---
   const allKos = await ko.list();
   return {
@@ -241,5 +260,6 @@ async function buildDemoContent(
     conflicts: (await conflicts.unresolved()).length,
     pendingRevalidation: (await lifecycle.pendingRevalidation()).length,
     attachments: allKos.reduce((n, k) => n + (k.attachments?.length ?? 0), 0),
+    sources: allKos.reduce((n, k) => n + (k.sources?.length ?? 0), 0),
   };
 }
