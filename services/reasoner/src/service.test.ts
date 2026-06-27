@@ -61,6 +61,40 @@ describe("DeterministicProvider", () => {
     expect(res.steps[0]?.sourceId).toBe("ko1");
     expect(res.steps[0]?.snippet).toBe(KOS[0]?.statement); // FR-ASK-06: Belegstelle
   });
+
+  // SCRUM-256: Die deterministische Antwort stammt aus genau EINEM KO (best). Auch wenn weitere
+  // KOs lose mitmatchen, dürfen sie NICHT als gleichwertige Antwortquellen erscheinen.
+  it("SCRUM-256: meldet nur die tatsächlich genutzte Quelle, nicht lose Treffer", async () => {
+    const kos: KnowledgeRef[] = [
+      {
+        id: "ko-strong",
+        title: "Ventil bei Überdruck schließen",
+        statement: "Bei Überdruck Ventil X manuell schließen, bis die Anlage entlastet ist.",
+        status: "validiert",
+        trust: 90,
+      },
+      {
+        id: "ko-weak",
+        title: "Ventil reinigen",
+        statement: "Ventil regelmäßig reinigen.", // teilt nur das schwache Token „ventil"
+        status: "offen",
+        trust: 20,
+      },
+    ];
+    // Beide KOs matchen (Token „ventil"); ko-strong hat die höhere Überschneidung → best.
+    expect(p.select("Überdruck Ventil schließen", kos).map((k) => k.id)).toEqual([
+      "ko-strong",
+      "ko-weak",
+    ]);
+
+    const res = await p.answer("Überdruck Ventil schließen", kos);
+    expect(res.answered).toBe(true);
+    expect(res.answer).toBe(kos[0]?.statement); // Antwort kommt aus ko-strong
+    expect(res.sources).toEqual(["ko-strong"]); // nur die genutzte Quelle
+    expect(res.sources).not.toContain("ko-weak"); // loser Treffer ist KEINE Antwortquelle
+    expect(res.steps).toHaveLength(1);
+    expect(res.steps[0]?.sourceId).toBe("ko-strong");
+  });
 });
 
 describe("Reasoner", () => {

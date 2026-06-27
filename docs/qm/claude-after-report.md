@@ -3893,3 +3893,36 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-256 — Ask: Antwortquellen auf tatsächlich genutztes Wissen fokussieren
+**Datum:** 2026-06-27 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung).
+
+**Vorab-Befund (read-only):**
+1. `AnswerResult.sources` entsteht im Reasoner-Provider (`services/reasoner/src/provider.ts` / `provider-model.ts`), NICHT im Ask-Service. `services/ask/src/service.ts` reicht `result` unverändert durch (nutzt nur `result.sources[0]` als Audit-Target).
+2. Im **deterministischen** Provider (`DeterministicProvider.answer`, der Stage-1-Default ohne `ANTHROPIC_API_KEY`) wird die Antwort AUSSCHLIESSLICH aus `best = relevant[0]` gebildet: `answer = best.statement`, `trust`/`knowledgeClass` aus `best`, `steps = [best]` (genau ein Schritt). Aber `sources` war `relevant.map(r => r.id)` — also ALLE per `keywordSelect` lose gematchten KOs. Das ist die Ursache, dass bei der Überdruck-/Ventil-Frage thematisch schwächere Kaltstart-/Filter-KOs als gleichwertige Quellen erschienen.
+3. Ein „tatsächlich genutztes" KO existiert bereits eindeutig: `best` (und der einzelne `steps`-Eintrag verweist nur auf `best`). Im **Modell**-Provider werden dagegen alle relevanten KOs real als nummerierte Grounding-Quellen an das Modell übergeben (mehrere Quellen tragen dort echt bei).
+4. Kleinste korrekte Änderung: **Backend-seitig**, nur im deterministischen Provider — `sources` an die tatsächlich genutzte Quelle angleichen. Kein FE-Eingriff nötig (`askView.ts`/`Ask.tsx` rendern `sources` korrekt).
+
+**Umsetzung:** In `DeterministicProvider.answer` `sources: relevant.map(...)` → `sources: [best.id]`. Damit sind `answer`, `trust`, `knowledgeClass`, `steps` UND `sources` konsistent aus genau dem einen verwendeten KO abgeleitet. Der Modell-Provider bleibt unverändert (dort speisen mehrere KOs nachweislich den Antwort-Prompt → mehrere Quellen sind ehrlich). Kein neues Retrieval/Ranking, kein RAG, keine Vector-Suche, keine API-Änderung. Helpful-/Gap-Pfad unberührt (unbeantwortbare Frage → weiterhin `answered:false`, `sources:[]` → Wissenslücke).
+
+**Geänderte Dateien:** `services/reasoner/src/provider.ts` (fokussierte Quelle + Kommentar), `services/reasoner/src/service.test.ts` (+1 Test), `docs/qm/claude-after-report.md`.
+
+**Warum das die Quellen-Ehrlichkeit verbessert:** Die deterministische Antwort IST der Statement-Text genau eines KOs; sekundäre Keyword-Treffer tragen nichts zur Antwort bei. Sie nicht mehr als Quellen auszuweisen, macht die angezeigte Evidenz belastbar und nachvollziehbar (eine klare Frage zu einem validierten KO zeigt dieses KO als benutzte Quelle statt einer breiten Kandidatenliste) und grenzt Klarwerk gegen die Chatbot-Wahrnehmung ab — Antwort bleibt quellengebunden. Bestehende Tests blieben grün, weil ihre Fixtures nur ein KO matchten; der neue Test belegt den Mehrfach-Match-Fall (starkes + schwaches KO → nur das genutzte erscheint).
+
+**Tests/Gates:** `npm run check` grün — 118 Dateien / 640 Tests (+1). Kein FE berührt → DOM-tsc nicht erforderlich. Biome + dependency-cruiser sauber.
+
+**Restlücken/Nicht-Ziele:** keine neue Retrieval-Engine, kein RAG, keine Vector-Suche, keine neue Sucharchitektur, kein ModelAdapter/Conductor, keine Stufe-2-Arbeit, keine Ticketserie, keine UI-Politur ohne Produktwirkung, keine Fake-Quellen, kein Speichern von Antworttexten/Prompt-Volltext. Der Modell-Provider behält bewusst Mehrfach-Quellen (echtes Multi-KO-Grounding); eine spätere Verfeinerung dort ist möglich, war hier aber nicht der minimal-sichere Eingriff.
+
+**Commit-/Push-Hinweis:**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add services/reasoner/src/provider.ts services/reasoner/src/service.test.ts docs/qm/claude-after-report.md
+git commit -m "fix(ask): focus answer sources on actually used knowledge objects (SCRUM-256)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

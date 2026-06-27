@@ -205,7 +205,11 @@ export class DeterministicProvider implements ReasonerProvider {
       answer: best.statement,
       knowledgeClass: best.status === "validiert" ? "gesichert" : "ungeprueft",
       trust: best.trust,
-      sources: relevant.map((r) => r.id),
+      // SCRUM-256: Die deterministische Antwort (answer/trust/knowledgeClass/steps) wird
+      // AUSSCHLIESSLICH aus `best` abgeleitet. Daher nur die tatsächlich genutzte Quelle melden —
+      // lose gematchte Kandidaten erscheinen nicht als gleichwertige Antwortquellen (Quellen-
+      // ehrlichkeit, Abgrenzung gegen Chatbot-Wahrnehmung). Kein Ranking-/Retrieval-Umbau.
+      sources: [best.id],
       steps: [
         {
           description: sourceLabel(best.title, locale),
