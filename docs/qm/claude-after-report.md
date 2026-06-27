@@ -2788,3 +2788,33 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-175 — KO-Detail zeigt versionierte Evidence-Freshness im Kontext
+
+**Vorab-Befund (read-only):** `analyzeEvidenceFreshness({ kos, evidence })` existiert aus SCRUM-174 (Status current/outdated/missing/neutral, Matching strikt über `koVersion`). KO-Detail lädt bereits KO + EvidenceRecords und zeigt Evidence-Konsistenz (168) und Evidence-nach-Version (170). Es fehlte nur die kompakte Freshness-Anzeige für genau dieses eine KO.
+
+**Umsetzung (rein read-only, additiv):**
+- Bestehenden Helper wiederverwendet: `analyzeEvidenceFreshness({ kos: [ko], evidence }).rows[0]` liefert den Status dieses KO.
+- Keine Freshness-Logik im JSX dupliziert: neuer DOM-freier View-Mapper `apps/web/src/lib/evidenceFreshnessView.ts` (`evidenceFreshnessTone` → pos/warn/neutral, `evidenceFreshnessLabelKey` → `ko.evFresh.<status>`).
+- KO-Detail: kompakte Freshness-Zeile in der bestehenden Evidence-Card (zwischen Konsistenz-Block und Evidence-nach-Version) — Status-Badge + Counts (`vN · aktuell X · älter Y`). Konsistenz- und Versions-Gruppen-Anzeige bleiben unverändert daneben.
+- i18n DE/EN `ko.evFresh.title/current/outdated/missing/neutral/counts`.
+
+**Geänderte/neue Dateien:** neu `apps/web/src/lib/evidenceFreshnessView.ts`, `tests/ko/evidence-freshness-view.test.ts`; geändert `apps/web/src/pages/KnowledgeDetail.tsx`, `apps/web/src/i18n.ts`, `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — **85 Dateien / 481 Tests** (+5 View-Mapper: current→pos, outdated→warn, missing→warn, neutral→neutral, Label-Key-Schema). apps/web `tsc --noEmit` EXIT=0. Biome + depcruise sauber. Bestehende evidence-freshness/-by-version/-consistency-Tests unverändert grün.
+
+**Restlücken/Nicht-Ziele:** keine Datenänderung, kein Backfill, kein Auto-Fix, kein Backend, keine Migration. Konsistenz- und Evidence-nach-Version-Anzeige werden nicht ersetzt, nur ergänzt.
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check && (cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/evidenceFreshnessView.ts apps/web/src/pages/KnowledgeDetail.tsx \
+  apps/web/src/i18n.ts tests/ko/evidence-freshness-view.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(ko): versioned evidence freshness badge in KO detail (SCRUM-175)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

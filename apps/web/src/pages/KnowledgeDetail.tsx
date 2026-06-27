@@ -40,6 +40,8 @@ import {
 import { deriveStatus } from "../lib/displayStatus";
 import { groupEvidenceByVersion } from "../lib/evidenceByVersion";
 import { analyzeEvidenceConsistency } from "../lib/evidenceConsistency";
+import { analyzeEvidenceFreshness } from "../lib/evidenceFreshness";
+import { evidenceFreshnessLabelKey, evidenceFreshnessTone } from "../lib/evidenceFreshnessView";
 import { validityProtectionView } from "../lib/extConcept";
 import { toSourcePayload as externalToSourcePayload } from "../lib/externalSearch";
 import { fileToThumbDataUrl, readFileAsDataUrl } from "../lib/files";
@@ -1074,6 +1076,44 @@ export function KnowledgeDetail(): JSX.Element {
                           ) : (
                             <p className="mt-2 text-[11.5px] text-muted">{t("ko.evCons.allOk")}</p>
                           )}
+                        </div>
+                      );
+                    })()
+                  : null}
+                {/* SCRUM-175: kompakter versionierter Evidence-Freshness-Status für dieses KO. */}
+                {!evidence.isLoading && !evidence.isError
+                  ? (() => {
+                      const row = analyzeEvidenceFreshness({
+                        kos: [ko],
+                        evidence: evidence.data ?? [],
+                      }).rows[0];
+                      if (!row) {
+                        return null;
+                      }
+                      const tone = evidenceFreshnessTone(row.status);
+                      const toneClass =
+                        tone === "pos"
+                          ? "bg-trust-pos-bg text-trust-pos-text"
+                          : tone === "warn"
+                            ? "bg-trust-warn-bg text-trust-warn-text"
+                            : "bg-hairline-soft text-muted-2";
+                      return (
+                        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-card border border-hairline bg-surface p-3">
+                          <span className="text-[12px] font-semibold text-text">
+                            {t("ko.evFresh.title")}
+                          </span>
+                          <span
+                            className={`rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${toneClass}`}
+                          >
+                            {t(evidenceFreshnessLabelKey(row.status))}
+                          </span>
+                          <span className="font-mono text-[10.5px] text-muted-2">
+                            {t("ko.evFresh.counts", {
+                              version: String(row.version),
+                              current: String(row.currentCount),
+                              older: String(row.olderCount),
+                            })}
+                          </span>
                         </div>
                       );
                     })()
