@@ -3731,3 +3731,29 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-250 — Ask: Antwort, Quellen und Wissenslücke verständlicher
+
+**Vorab-Befund (read-only):** `Ask.tsx` zeigt bereits Reasoner-Modus-Badge (SCRUM-233), eine Antwort-Karte (Evidence-Pill aus `knowledgeClassMeta`, `ConfidenceBar(trust)`, Antworttext, Schritte, Quellen, Helpful) und eine Gap-Karte (`noBasisTitle/Body` + Link `/risiko`). `AnswerResult = { answered, answer, knowledgeClass, trust, sources, steps, demo }`; `KNOWLEDGE_CLASS_META` mappt jede Klasse ehrlich auf Ton+Label. **Zwei Klarheits-/Ehrlichkeitslücken:** (1) der Antwort-Header zeigte **immer** die grüne Plakette „Aus validiertem Wissen" (`ask.fromValidated`) — auch wenn `knowledgeClass` `ungeprueft`/`meinung`/`annahme`/`extern`/`unbekannt` ist → potenziell falsche „validiert"-Behauptung; (2) Quellen wurden als **rohe KO-IDs** gerendert (nicht handlungsnah). Kein P0/P1. Tests: `tests/ask/*`, `tests/reasoner/*`.
+
+**Umsetzung (minimal, ehrlich, DOM-frei):** Neuer Helfer `apps/web/src/lib/askView.ts` — `answerStatus(knowledgeClass)` → nur `gesichert` ⇒ `verified/pos`, alles andere ⇒ `unverified/warn` (aus vorhandener Klasse abgeleitet, keine neue Antwortlogik); `sourceRefs(ids, kos)` löst Quellen-IDs in lesbare KO-Titel auf (Fallback = ID, `known`-Flag, Reihenfolge stabil). In `Ask.tsx`: die irreführende `fromValidated`-Plakette durch eine **ehrliche Status-Plakette** (`ask.status.verified`/`unverified`, tone-getönt) ersetzt; die Evidence-Pill (Klassenlabel) bleibt komplementär; Quellen werden als **KO-Titel mit Link** (`useKos()`-Map, kein neuer Endpoint) statt roher IDs gerendert; die Gap-Karte erhält ein „Wissenslücke"-Badge + einen klaren **nächsten Schritt** (`ask.gapNext`). **Bestehende** Frage-/Helpful-/Gap-Funktion, Reasoner-Badge, Trust-Bar und Schritte unverändert.
+
+**Geänderte/neue Dateien:** neu `apps/web/src/lib/askView.ts`, `tests/ask/ask-view.test.ts`; geändert `apps/web/src/pages/Ask.tsx` (Status-Pill + lesbare Quellen + Gap-Schritt), `apps/web/src/i18n.ts` (`ask.status.*`/`ask.gapBadge`/`ask.gapNext` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — **117 Dateien / 625 Tests** (+1 Datei, +4 askView-Tests: answerStatus gesichert vs. alle anderen, sourceRefs Titelauflösung/Reihenfolge, unbekannte-ID-Fallback+known=false, leere Quellen). apps/web `tsc --noEmit` grün. Biome + depcruise sauber. Bestehende `tests/ask/*` (ask-response/knowledge-class/gap-priority) + `tests/reasoner/*` unverändert grün.
+
+**Restlücken/Nicht-Ziele:** kein neuer Reasoner, kein RAG, keine Vector-DB, kein ModelAdapter/Conductor, kein Backend-Großumbau, keine Metamorphose, keine Stufe-2-Arbeit, keine Ticketserie, keine UI-Politur jenseits der Klarheit. Der `ask.fromValidated`-Schlüssel bleibt in i18n erhalten (nur nicht mehr verwendet) — kein Aufräumen nötig. Quellen-Titel kommen aus dem bereits geladenen KO-Bestand; ist die Liste noch nicht geladen, greift ehrlich der ID-Fallback (kein Fake-Titel).
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/askView.ts tests/ask/ask-view.test.ts apps/web/src/pages/Ask.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(ask): honest verified/unverified status + readable KO sources + clear gap next step (SCRUM-250)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

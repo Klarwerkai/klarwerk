@@ -4,11 +4,12 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
-import { useReasonerStatus } from "../api/hooks";
+import { useKos, useReasonerStatus } from "../api/hooks";
 import type { AnswerResult } from "../api/types";
 import { ConfidenceBar } from "../components/trust";
 import { Button, Card, PageHeader, SectionLabel } from "../components/ui";
 import { selectAnswer } from "../lib/askResponse";
+import { answerStatus, sourceRefs } from "../lib/askView";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
 import { type EvidenceTone, knowledgeClassMeta } from "../lib/knowledgeClass";
 import { type ReasonerBadgeTone, reasonerBadge } from "../lib/reasonerBadge";
@@ -41,6 +42,9 @@ export function Ask(): JSX.Element {
     isLoading: reasonerStatus.isLoading,
     isError: reasonerStatus.isError,
   });
+
+  // SCRUM-250: KO-Bestand für lesbare Quellen-Titel (kein neuer Endpoint).
+  const kos = useKos();
 
   const ask = useMutation({
     mutationFn: () => endpoints.ask.ask(q, toReasonerLocale(i18n.language)),
@@ -88,8 +92,11 @@ export function Ask(): JSX.Element {
           <Card className="mt-5">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="rounded-pill bg-trust-pos-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-pos-text">
-                  {t("ask.fromValidated")}
+                {/* SCRUM-250: ehrlicher Antwort-Status aus der Knowledge-Class (gesichert vs ungeprüft). */}
+                <span
+                  className={`rounded-pill px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase ${EVIDENCE_TONE[answerStatus(result.knowledgeClass).tone]}`}
+                >
+                  {t(`ask.status.${answerStatus(result.knowledgeClass).key}`)}
                 </span>
                 <span
                   className={`rounded-pill px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase ${EVIDENCE_TONE[knowledgeClassMeta(result.knowledgeClass).tone]}`}
@@ -121,13 +128,22 @@ export function Ask(): JSX.Element {
               </div>
             ) : null}
             {result.sources.length > 0 ? (
-              <div className="mt-4 flex flex-wrap items-center gap-2">
+              <div className="mt-4">
                 <SectionLabel>{t("ask.sources")}</SectionLabel>
-                {result.sources.map((id) => (
-                  <Link key={id} to={`/wissen/${id}`} className="font-mono text-[12px] text-brand">
-                    {id}
-                  </Link>
-                ))}
+                {/* SCRUM-250: Quellen handlungsnah — KO-Titel statt roher ID, Link zum Detail. */}
+                <ul className="mt-1.5 space-y-1">
+                  {sourceRefs(result.sources, kos.data ?? []).map((s) => (
+                    <li key={s.id}>
+                      <Link
+                        to={`/wissen/${s.id}`}
+                        className="inline-flex items-center gap-1.5 text-[13px] text-brand hover:underline"
+                      >
+                        <ArrowRight size={12} className="shrink-0 text-muted-2" />
+                        <span className="text-text">{s.label}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
               </div>
             ) : null}
             <Button
@@ -144,8 +160,13 @@ export function Ask(): JSX.Element {
           </Card>
         ) : (
           <Card className="mt-5 border-dashed">
-            <p className="text-[15px] font-semibold text-text">{t("ask.noBasisTitle")}</p>
+            <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-warn-text">
+              {t("ask.gapBadge")}
+            </span>
+            <p className="mt-2 text-[15px] font-semibold text-text">{t("ask.noBasisTitle")}</p>
             <p className="mt-1 text-sm text-muted">{t("ask.noBasisBody")}</p>
+            {/* SCRUM-250: klarer nächster Schritt — die Lücke ist erfasst und im Risiko-Board handelbar. */}
+            <p className="mt-1 text-[13px] text-muted">{t("ask.gapNext")}</p>
             <Link
               to="/risiko"
               className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-semibold text-brand"

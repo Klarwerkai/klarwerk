@@ -306,6 +306,11 @@ const de = {
   "ask.sources": "Quellen",
   "ask.helpful": "Hat geholfen",
   "ask.thanked": "Danke!",
+  "ask.status.verified": "Gesichert",
+  "ask.status.unverified": "Noch ungeprüft",
+  "ask.gapBadge": "Wissenslücke",
+  "ask.gapNext":
+    "Nächster Schritt: Lücke im Risiko-Board priorisieren oder einem Experten zuweisen.",
   "ask.noBasisTitle": "Keine belastbare Grundlage.",
   "ask.noBasisBody":
     "Es gibt kein validiertes Wissen zu dieser Frage. Statt einer erfundenen Antwort wurde eine Wissenslücke angelegt.",
@@ -1317,6 +1322,10 @@ const en: typeof de = {
   "ask.sources": "Sources",
   "ask.helpful": "This helped",
   "ask.thanked": "Thanks!",
+  "ask.status.verified": "Verified",
+  "ask.status.unverified": "Not yet verified",
+  "ask.gapBadge": "Knowledge gap",
+  "ask.gapNext": "Next step: prioritise the gap in the risk board or assign it to an expert.",
   "ask.noBasisTitle": "No reliable basis.",
   "ask.noBasisBody":
     "There is no validated knowledge for this question. Instead of a made-up answer, a knowledge gap was created.",
