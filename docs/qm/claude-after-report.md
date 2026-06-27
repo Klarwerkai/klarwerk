@@ -2960,3 +2960,30 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-217 — Lifecycle-Lernpfad nach Demo-Seed sichtbar machen
+
+**Vorab-Befund (read-only):** (1) Es gibt bereits eine echte Service-Methode `LifecycleService.createPath(role, steps)` (FR-LIF-03) samt Repo (`savePath`/`getPathByRole`) und unverändertem Progress-/Complete-Flow. (2) Der 404 in `GET /api/learning-paths/:role` ist bewusst („Lernpfad nicht gefunden"), aber der Demo-Seed erzeugte schlicht keinen Pfad → nach Seed 404. (3) Das FE (`Lifecycle.tsx`) crasht nicht: bei fehlendem `path.data` rendert es eine ehrliche Leer-Karte (`lcy.pathEmpty`).
+
+**Entscheidung:** Option A (kleinster sauberer Fix). Der Demo-Seed legt über die **echte** `createPath`-Methode einen rollenspezifischen Beispiel-Lernpfad für `experte` an. Kein 200-Leer-Kontrakt-Umbau (Route/Status bleiben rückwärtskompatibel — andere Rollen liefern weiter 404 → FE-Leer-Karte), kein Editor, kein neues UI, kein neues Modell.
+
+**Umsetzung:** In `seed-demo.ts#buildDemoContent` nach dem Lifecycle-Kopplungs-Block ein `await lifecycle.createPath("experte", [4 Schritte])`. Ausschließlich über den Service (nicht am UI/Repo vorbei). `SeedResult`-Typ unverändert (kein FE-Vertragsbruch). Route, Service-Verhalten, Progress/Complete und FE bleiben unangetastet.
+
+**Geänderte Dateien:** `services/app/src/seed-demo.ts`, `services/app/src/admin-routes.test.ts`, `docs/qm/claude-after-report.md`. (Keine FE-Änderung.)
+
+**Tests/Gates:** `npm run check` grün — **90 Dateien / 506 Tests** (+1: voller HTTP-Pfad register→login→demo-seed→`GET /api/learning-paths/experte` = 200 mit `role:"experte"` und ≥1 Schritt; deckt den SCRUM-216-Befund ab). Bestehende `seed.test`/Lifecycle-Tests unverändert grün. Biome + depcruise sauber. apps/web `tsc` nicht nötig (kein FE berührt).
+
+**Restlücken/Nicht-Ziele:** kein Lernpfad-Editor, kein LMS, kein Browser-Smoke-Framework, keine Alt-App-Parität, kein Seed-Auto-Run. Lernpfade existieren nur für `experte` (per Ticket „bevorzugt experte, mindestens einen"); für andere Rollen bleibt der 404→Leer-Karte-Pfad bewusst unverändert. Persistenz nur, wenn der Seed gegen Postgres läuft (In-Memory-Seed ist nicht persistent — bestehende Eigenschaft).
+
+**Commit-/Push-Hinweis für Pedi/Codex (Sandbox pusht nicht):**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+git add services/app/src/seed-demo.ts services/app/src/admin-routes.test.ts docs/qm/claude-after-report.md
+git commit -m "fix(lifecycle): seed an experte learning path so the path section is visible after demo-seed (SCRUM-217)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

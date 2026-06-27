@@ -45,4 +45,21 @@ describe("SCRUM-181: POST /api/admin/demo-seed", () => {
     const after = await app.inject({ method: "GET", url: "/api/kos", headers });
     expect(after.json().length).toBe(before);
   });
+
+  // SCRUM-217: nach dem Demo-Seed ist der Experte-Lernpfad sichtbar (kein 404 mehr).
+  it("nach Demo-Seed: GET /api/learning-paths/experte liefert 200 mit Schritten", async () => {
+    const { app, headers } = await adminApp();
+    await app.inject({ method: "POST", url: "/api/admin/demo-seed", headers });
+
+    const path = await app.inject({
+      method: "GET",
+      url: "/api/learning-paths/experte",
+      headers,
+    });
+    expect(path.statusCode).toBe(200);
+    const body = path.json();
+    expect(body.role).toBe("experte");
+    expect(Array.isArray(body.steps)).toBe(true);
+    expect(body.steps.length).toBeGreaterThanOrEqual(1);
+  });
 });
