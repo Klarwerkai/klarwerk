@@ -5152,3 +5152,44 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-204 — RAG-Pipeline bauen (Embeddings + Retrieval) — Readiness-/Entscheidungsprüfung
+**Datum:** 2026-06-27 · **Rolle:** Claude prüft/dokumentiert (Codex steuert, Pedi entscheidet Richtung). Docs-only; **keine** Embeddings/Vector-DB/RAG gebaut; kein Produktcode.
+
+### 1. Vorab-Befund
+- **Retrieval heute = lexikalisch** (`services/reasoner/src/provider.ts` → `keywordSelect`/`tokenize`/`overlap`): Fragetokens vs. KO-Titel+Aussage, nach Überschneidung sortiert. Synchron, modellunabhängig.
+- **Quellenbindung real:** `AnswerResult` mit `sources` (KO-IDs), `steps` + `snippet` (Belegstelle FR-ASK-06), `knowledgeClass` (`gesichert` nur validiert). Ohne Treffer → ehrliche Wissenslücke (getestet, SCRUM-206).
+- **Kein RAG-Stack:** **keine** Embeddings/Vector-DB/Chunking/Framework — grep nach `embedding|pgvector|qdrant|chroma|weaviate|pinecone|faiss|langchain|llamaindex|haystack` im Code **leer**; vorhandene „RAG/Vector"-Nennungen sind Kommentare, die diese Ansätze **ausschließen**.
+- **Evidence (live, In-Memory+Seed):** „Ventil X/Überdruck" → `answered=true, gesichert, 1 Quelle`; eine umformulierte Variante traf ebenfalls (Keyword-Toleranz). → Kontext+Quellen-Antworten funktionieren **lexikalisch**.
+- **Kein** `docs/operations/rag-readiness-decision.md` → Doku-Gap.
+
+### 2. Entscheidung
+**Jetzt keine RAG-Pipeline bauen.** Klarwerk erfüllt das fachliche Ziel „Antworten mit Kontext + Quellen aus eigenen Daten" bereits **lexikalisch + KO-quellengebunden** — das ist aber **ausdrücklich keine** RAG-Pipeline (keine Embeddings/Vektor-Retrieval). Das wörtliche Akzeptanzkriterium „RAG **gebaut**" ist damit **nicht** erfüllt; ein Bau ist in diesem Item untersagt und aktuell auch nicht erforderlich. Reihenfolge bleibt: **Quellenbindung (✓) → RAG (bei Bedarf) → Fine-Tuning (zuletzt)**.
+
+### 3. Minimaler Fix
+**Neu:** `docs/operations/rag-readiness-decision.md` — Readiness-/Entscheidungsnotiz mit: aktuellem Zustand (KO-Quellenbindung + Keyword); was erfüllt ist; **was NICHT RAG ist** (keine Embeddings/Vector/Chunking); Problem-Mehrwert von RAG (semantischer Recall, Skalierung, Chunking, Ranking); **Risiken für Klarwerk** (untergräbt Validierung, falsche Autorität, DSGVO/Infra); **fehlende Bausteine** (Embedding-Modell, Vector-Store/pgvector, Chunking, Hybrid-Retrieval, Index-Lifecycle, Eval/Rollback); **Architektur-Skizze für später** (Hybrid → Re-Ranking nur validierte KOs → Reasoner → ehrliche Lücke); **Eval-/Datenschutz-/Retention-Anforderungen**; **klare Empfehlung „jetzt nicht / später unter Bedingungen"**; Nicht-Ziele. **Kein Produktcode** (kein Konfig-Bug).
+
+### 4. Geänderte Dateien
+NEU `docs/operations/rag-readiness-decision.md`; `docs/qm/claude-after-report.md` (dieser Eintrag). Kein Produktcode, kein FE.
+
+### 5. Tests/Gates
+`npm run check` grün — 128 Dateien / 700 Tests. Kein FE berührt → `apps/web tsc --noEmit` nicht erforderlich.
+
+### 6. Restlücken / Nicht-Ziele
+- **Keine** Vector-DB/Embeddings/RAG-Pipeline/LangChain/LlamaIndex/Haystack gebaut; keine neue Sucharchitektur.
+- Spätere RAG-Einführung nur unter den dokumentierten Bedingungen (großer KO-Bestand, gemessenes Recall-Defizit, DSGVO-/Eval-/Rollback-Pfad), unter Erhalt von Quellenbindung/Validierung/ehrlicher Lücke.
+
+### 7. Empfehlung: **PARTIAL / Blocked-on-product-architecture-decision** (nicht Done)
+**Begründung (Ehrlichkeit):** Das **fachliche Teilziel** (Kontext+Quellen aus eigenen Daten) ist über **lexikalisches Retrieval + KO-Quellenbindung** bereits erfüllt und belegt — aber das **wörtliche Akzeptanzkriterium „RAG-Pipeline (Embeddings + Retrieval) gebaut" ist NICHT erfüllt**, und ein Bau ist in diesem Item ausgeschlossen (zu Recht: nicht jetzt nötig). Die vorhandene Lösung darf **nicht** „RAG" genannt werden (keine Embeddings/Vektor-Retrieval). **Empfehlung:** SCRUM-204 als **Partial/Blocked-on-product-architecture-decision** führen — Readiness/Entscheidung dokumentiert; eine echte RAG-Pipeline bleibt eine bewusste, später zu treffende Architekturentscheidung.
+
+### 8. Commit-/Push-Hinweis (nur Doku)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add docs/operations/rag-readiness-decision.md docs/qm/claude-after-report.md
+git commit -m "docs(ops): RAG readiness & decision note (source-binding today, RAG not built) (SCRUM-204)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
