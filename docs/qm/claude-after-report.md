@@ -5910,3 +5910,52 @@ git push
 
 ### 9. Stop-Status
 **Slice abgeschlossen, Gates grün, gestoppt.** Keine Jira-Änderungen durch Claude. Codex übernimmt Commit, Push, Jira-Kommentar und Status.
+
+---
+
+## SCRUM-284 — Ask/Risk/Capture: Gap-Fragen datensparsam begrenzen & lesbar halten
+**Datum:** 2026-06-28 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung). **Backend-Produkt-Slice** (reiner Helper + Anwendung in createGap + Tests); keine PII-Erkennung/Schwärzung; keine Persistenzarchitekturänderung; kein RAG/Vector/Suche.
+
+### 1. Ziel des Workflow-Slice
+Gespeicherte Gap-Fragen datensparsam, lesbar, handhabbar halten: sehr lange Freitexte/Kontext-Blobs sollen nicht unkontrolliert als Wissenslücke gespeichert und in Risk/Capture unübersichtlich angezeigt werden.
+
+### 2. Vorab-Befund / Root Cause
+- `AskService.createGap(question)` speicherte den Fragetext **verbatim** — **kein** Trim, **keine** Whitespace-Normalisierung, **kein** Längenlimit (`services/ask/src/service.ts`).
+- Folge: ein langer Blob landet voll in der Persistenz (`Gap.question`) und wird unverändert an Risk (`g.question`) und Capture (`captureGapHref(g.question)`) weitergereicht (in Risk nur per CSS visuell truncatet, aber voll gespeichert/übergeben).
+- **Kleinster sicherer Ort:** ein reiner Helper, angewandt an EINER Stelle (`createGap`) → Risk/Capture erben den begrenzten Text; kein Routen-/Persistenzumbau.
+
+### 3. Geänderte Dateien
+- `services/ask/src/gap-text.ts` (neu) — reiner Helper `normalizeGapQuestion()` + `MAX_GAP_QUESTION_LENGTH=200`: trimmt, zieht Whitespace/Zeilenumbrüche zusammen, begrenzt deterministisch an Wortgrenze (sonst harter Schnitt) mit Ellipse „…". Keine PII-Erkennung/semantische Analyse.
+- `services/ask/src/service.ts` — `createGap` nutzt `normalizeGapQuestion(question)`.
+- `services/ask/src/gap-text.test.ts` (neu) — 6 DOM-/service-freie Tests (kurz unverändert; Whitespace/Trim; Langbegrenzung+Ellipse; Wortgrenze; eigene Maxlen; leere Eingabe).
+- `services/ask/src/service.test.ts` — 1 Integrationstest (lange unbeantwortbare Frage → Gap.question ≤ 201 + endet mit „…").
+
+### 4. Was verbessert wurde
+- **Datensparsam + lesbar:** sehr lange/Offtopic-/Kontext-Fragen erzeugen keine überlange Gap-Frage mehr in Persistenz/Anzeige (deterministisch auf ≤ 200 + Ellipse begrenzt, Whitespace normalisiert).
+- **Kurze normale Fragen unverändert** (z. B. „Wie kalibriere ich das Quantenflux ZZZ?" bleibt 1:1).
+- **Risk/Capture erben** automatisch den begrenzten Text (eine Quelle, kein FE-Eingriff nötig).
+- **Ask→Gap→Risk→Capture** bleibt funktional; **keine** Antwort-/Retrieval-Logik berührt (Normalisierung nur beim Speichern, nach der Antwortentscheidung).
+- **Live verifiziert** (In-Memory + Seed): 1113-Zeichen-Blob → gespeicherte Gap-Frage **195 Zeichen**, endet mit „…", Anfang lesbar; kurze Frage **39 Zeichen** unverändert.
+
+### 5. Gates
+`npm run check` grün — **129 Dateien / 712 Tests** (+1 Datei, +7 Tests). Biome/tsc/depcruise grün. FE **nicht** berührt (Risk/Capture rendern bereits `g.question`) → `apps/web tsc --noEmit` nicht erforderlich.
+
+### 6. Commit-/Push-Hinweis
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add services/ask/src/gap-text.ts services/ask/src/gap-text.test.ts services/ask/src/service.ts services/ask/src/service.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(ask): normalise & length-limit stored gap questions (data-minimising, readable) (SCRUM-284)"
+git push
+```
+
+### 7. Offene Risiken
+- Reine **Längen-/Whitespace-Normalisierung** — **keine** semantische Beurteilung, **keine** PII-Erkennung (bewusst außer Scope); sensible Details in der ersten ~200 Zeichen bleiben erhalten (vgl. SCRUM-283 Hinweistext als ergänzende Maßnahme).
+- Bestehende Alt-Gaps in der DB werden **nicht** rückwirkend normalisiert (nur neue beim Anlegen) — bewusst keine Migration/Persistenzänderung.
+- `MAX_GAP_QUESTION_LENGTH=200` ist eine konservative, lesbare Wahl; bei Bedarf zentral anpassbar.
+
+### 8. Empfehlung nächster sinnvoller Slice
+- Optional: gleiche Normalisierung defensiv auch beim **Capture-Startkontext** (`readGapContext`/`gapContextDraft`) anwenden, falls Gap-Fragen aus Altbeständen/extern kommen.
+- Optional: einmaliger Wartungs-Task (Codex/Ops) zur Normalisierung bestehender überlanger Alt-Gaps — bewusst getrennt, kein Auto-Migrationscode hier.
+
+### 9. Stop-Status
+**Slice abgeschlossen, Gates grün, gestoppt.** Keine Jira-Änderungen durch Claude. Codex übernimmt Commit, Push, Jira-Kommentar und Status.

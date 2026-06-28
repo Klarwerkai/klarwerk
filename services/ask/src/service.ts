@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
 import type { KoService } from "../../knowledge-object";
 import type { AnswerResult, KnowledgeRef, Reasoner, ReasonerLocale } from "../../reasoner";
+import { normalizeGapQuestion } from "./gap-text";
 import type { GapRepo } from "./repo";
 import { AskError, type Gap, type GapPriority, isGapPriority } from "./types";
 
@@ -119,7 +120,8 @@ export class AskService {
   private async createGap(question: string): Promise<Gap> {
     const gap: Gap = {
       id: this.genId(),
-      question,
+      // SCRUM-284: datensparsam + lesbar — gespeicherte Gap-Frage normalisieren/begrenzen.
+      question: normalizeGapQuestion(question),
       status: "offen",
       assignee: null,
       priority: "mittel",

@@ -57,6 +57,16 @@ describe("AskService", () => {
     expect(gaps).toHaveLength(1);
   });
 
+  it("SCRUM-284: speichert eine sehr lange Gap-Frage datensparsam begrenzt", async () => {
+    const long = `Bitte beachte folgenden Kontext: ${"lorem ipsum dolor sit amet ".repeat(40)}`;
+    const { result, gap } = await ctx.ask.ask(long);
+    expect(result.answered).toBe(false);
+    expect(gap).not.toBeNull();
+    // Persistierte Frage ist begrenzt + endet mit Ellipse (Risk/Capture erben diesen Text).
+    expect((gap?.question.length ?? 0) <= 201).toBe(true);
+    expect(gap?.question.endsWith("…")).toBe(true);
+  });
+
   it("FR-ASK-04: 'Hat geholfen' erhöht Trust und erzeugt Audit-Eintrag", async () => {
     const list = await ctx.koService.list();
     const ko = list[0];
