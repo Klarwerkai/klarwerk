@@ -4906,3 +4906,52 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-209 — Backups & Disaster Recovery (Bestandsprüfung + Runbook + ehrliche Evidence)
+**Datum:** 2026-06-27 · **Rolle:** Claude prüft/dokumentiert (Codex steuert, Pedi entscheidet Richtung). Docs-only + sandbox-sichere Evidence; kein Produktcode, keine Infrastruktur, keine produktiven Backups erzeugt/vorgetäuscht.
+
+### 1. Vorab-Befund
+- **Persistenz vollständig Postgres-basiert** (`services/app/src/db.ts#migrate` führt 13 Modul-Schemas mit `IF NOT EXISTS`-DDL aus): Auth, KO + Versionen + Evidence, Audit, Capture, Ask, Validation, Conflicts, Lifecycle, **Object-Store (`objects`-Tabelle = Anhänge)**, Import-Candidates, Model-Runs. **In-Memory** (ohne `DATABASE_URL`) = keine Persistenz (nur Dev/Smoke).
+- **Kern-Erkenntnis:** Ein vollständiger `pg_dump` sichert **KOs, Anhänge UND Audit gemeinsam** — kein separater Datei-/Objektspeicher. Secrets + Coolify-Config liegen **außerhalb** der DB.
+- **Bestehende Backup-Hinweise** (`deploy-hetzner.md`): Hetzner-Snapshots + `pg_dump`-Scheduled-Task, verschlüsselt ablegen; Health-Smoke `/health`.
+- **Logischer Export** vorhanden: `GET /api/library/export` (JSON/Markdown/MediaWiki/HTML).
+- **Kein** `docs/operations/backup-disaster-recovery.md`, **kein** konsolidiertes Artefakt-Inventar/RTO-RPO/Restore-Runbook/Drill-Protokoll → Doku-Gap.
+
+### 2. Was ist bereits erfüllt
+- Automatische Backup-Hinweise (Snapshots + `pg_dump`) und Health-Smoke dokumentiert.
+- Schema-Wiederherstellung code-seitig belegt (`migrate`, idempotente DDL).
+- Anhänge in Postgres → durch DB-Backup automatisch mitgesichert (kein separater Datei-Restore).
+- Logischer Content-Backup-Pfad (Export) **funktioniert** (siehe Evidence).
+
+### 3. Minimaler Fix / bzw. Evidence
+**Neu:** `docs/operations/backup-disaster-recovery.md` — Runbook mit: **Artefakt-Inventar** (Postgres inkl. Anhänge+Audit, Env/Secrets, Coolify/Deploy-Config, Git, logische Exporte); **Backup-Zeitplan**; **Aufbewahrung/Offsite/Verschlüsselung**; **RTO/RPO** (Vorschlag RPO ≤ 24 h / RTO ≤ 4 h, vom Betreiber zu bestätigen); **Restore-Runbook** (Stop → Restore → `migrate` → Redeploy → Smoke → Audit-`verify`); **Restore-Drill-Protokoll** (Vorlage, **noch nicht produktiv ausgeführt**); **Objekt-/Attachment-Hinweis**; **Audit-Besonderheit** (nur vollständiger Restore, sonst Kette gebrochen); **Notfall-Kommunikation**; **Sandbox-Evidence**; **offene Betreiberpflichten**.
+
+**Sandbox-Evidence (ehrlich):** Realer **logischer Export-Smoke** gegen lokale In-Memory-Instanz nach Demo-Seed: `GET /api/library/export` → **5 KOs als JSON (4264 Bytes)** mit `title/status/sources` + Markdown-Export. → **Logischer Content-Backup-Pfad belegt.** **NICHT** geprüft (nicht möglich): produktiver `pg_dump`/`pg_restore`-Drill — **kein Postgres/Docker im Sandbox**. „Restore getestet" gilt **ausschließlich** für den logischen Export, **nicht** für Postgres.
+
+**Kein Produktcode** — kein echter Backup-/Restore-Bug gefunden.
+
+### 4. Geänderte Dateien
+NEU `docs/operations/backup-disaster-recovery.md`; `docs/qm/claude-after-report.md` (dieser Eintrag). Kein Produktcode, kein FE.
+
+### 5. Tests/Gates
+`npm run check` grün — 128 Dateien / 700 Tests. Kein FE berührt → `apps/web tsc --noEmit` nicht erforderlich. Zusätzlich: realer logischer Export-Smoke (siehe Evidence) erfolgreich.
+
+### 6. Restlücken / Nicht-Ziele
+- **Produktiver `pg_dump`/Restore-Drill** gegen isolierte Test-DB: **steht aus** (Sandbox-Limit) → Betreiber-/Ops-Aufgabe.
+- **Offsite-Kopie + Verschlüsselung** tatsächlich einrichten; **verbindliche RTO/RPO** festlegen und per Drill bestätigen; **Coolify-Config-Export** etablieren.
+- Keine Infrastrukturänderung, keine produktiven Backups erzeugt/vorgetäuscht, keine Tickets.
+
+### 7. Empfehlung: **PARTIAL** (nicht voll Done)
+**Begründung (gemäß Ehrlichkeits-Leitplanke):** Der **Dokumentations-/Konzept-Teil ist vollständig** (Artefakt-Inventar, Zeitplan, Offsite/Verschlüsselung, RTO/RPO-Vorschlag, Restore-Runbook, Drill-Vorlage) und der **logische Backup-Pfad ist real verifiziert**. ABER das Akzeptanzkriterium „Restore prüfbar/getestet" ist für den **produktiven Postgres-Restore NICHT erfüllt** — ein echter `pg_dump`-Restore-Drill war in der Sandbox nicht möglich und ist nicht durchgeführt. **Empfehlung:** SCRUM-209 als **Partial/Blocked-on-Ops** führen — Doku-Teil abschließbar, aber **erst nach einem protokollierten produktiven Restore-Drill** voll „Done". Das Restore-Drill-Protokoll (§7 des Runbooks) ist die offene Pflicht.
+
+### 8. Commit-/Push-Hinweis (nur Doku)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add docs/operations/backup-disaster-recovery.md docs/qm/claude-after-report.md
+git commit -m "docs(ops): backup & disaster recovery runbook + honest restore-drill status (SCRUM-209)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
