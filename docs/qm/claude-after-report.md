@@ -5056,3 +5056,57 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-206 — Evaluation & Qualitätssicherung (Bestandsprüfung + Runbook + Evidence)
+**Datum:** 2026-06-27 · **Rolle:** Claude prüft/dokumentiert (Codex steuert, Pedi entscheidet Richtung). Docs-only; kein Produktcode; keine Eval-Infrastruktur gebaut.
+
+### 1. Vorab-Befund
+- **Reasoner-QA** (`services/reasoner/src/service.test.ts`): FR-RSN-01..05 — Aufgaben verfügbar, semantische Auswahl, **keine Halluzination ohne Grundlage**, deterministisches Assist, validiert→`gesichert` mit Quelle, **fokussierte Quelle (SCRUM-256)**, Fallback bei Modell-Offline/-Fehler, Status spiegelt Modell, Interview-Turns, **ModelRun-Protokoll** (success/fallback/error, **kein Prompttext**), configStatus (**keine Secrets**).
+- **Ask-QA** (`services/ask/src/service.test.ts`): FR-ASK-01..05 — begründete Antwort mit Quelle; ohne Grundlage → Lücke; Helpful→Trust+Audit; Gap-Lebenszyklus/Priorität.
+- **HTTP-E2E** (`services/app/src/ask-routes.test.ts`, SCRUM-242): validiertes KO → Antwort+Quelle, keine Gap; unbeantwortbar → Gap erzeugt+gelistet; Helpful +2; anonym → Guard.
+- **DOM-frei** (`tests/ask/*`): ask-view, ask-response, knowledge-class, ask-examples (seed-sicher), gap-priority.
+- **Seed** als wiederholbares Eval-Szenario (Ventil X→gesichert; Dosierwert/Quantenflux→Gap), durch `seed.test.ts` gegen Regression gesichert.
+- **CI-Gate** (`ci.yml`): kein Merge nach `main` ohne grünen `check` → Qualitätseigenschaften regressionsgeschützt.
+- **Kein** `docs/operations/evaluation-quality-assurance.md` → Doku-Gap.
+
+### 2. Was ist bereits erfüllt
+- **Wiederholbares, gated Eval-Verfahren vorhanden** = die Test-Suiten (reasoner/ask/HTTP-e2e + DOM-frei), laufen in CI + lokal (`npm run check`).
+- **Typische Fragen + erwartetes Verhalten** über den Demo-Seed (Baseline-Paar), live verifiziert.
+- **Quellenbindung, Wissenslücke, Trust/Klasse, fokussierte Quelle, Fallback-Stabilität** sind getestet.
+- **Regression-Gates** bei Code-/Datenänderung vorhanden (CI + seed.test).
+- **ModelRun-Protokoll** als Run-Level-QA (ohne Inhalte).
+- Es fehlte nur das **konsolidierte QA-/Eval-Runbook** (Baseline, Metriken, manuelles Review, Modell-Update-Eval) — ergänzt.
+
+### 3. Minimaler Fix / Evidence
+**Neu:** `docs/operations/evaluation-quality-assurance.md` — QA-Runbook mit: Eval-Zielen; **Baseline-Fragen** (B1–B4, seed-sicher); **erwartetem Verhalten**; **Metriken** (Answered-Rate, Gap-Honesty, Quellenbindung, Knowledge-Class, Fallback-/Fehlerrate, Latenz); **wiederholbarem Verfahren** (automatisiert via `npm run check`/gezielter Vitest-Lauf + manuelles Review); **Regression-Gates**; **Modell-/Provider-Update-Eval** (Verweis Wartungs-Runbook §8); **Halluzinations-/Quellenbindungsregeln** (geprüft); **ModelRun-Nachweise**; **Evidence**; **P2/Nicht-Ziele** (LLM-as-judge explizit ausgeschlossen).
+
+**Evidence (real ausgeführt):** Gezielter Eval-Testlauf (reasoner+ask+ask-routes+`tests/ask`) → **9 Dateien / 68 Tests grün**. Live-Eval-Paar (In-Memory+Seed): B1 „Ventil X/Überdruck" → `answered=true, gesichert, trust=100, sources#=1`; B2 „Quantenflux ZZZ" → `answered=false, gap=JA`. Gesamtgate `npm run check` grün — 128 Dateien / 700 Tests.
+
+**Kein Produktcode / kein neuer Test** — die vorhandene Abdeckung (FR-RSN/FR-ASK + SCRUM-242 HTTP-e2e + SCRUM-256) ist breit genug; ein zusätzlicher Test wäre redundant.
+
+### 4. Geänderte Dateien
+NEU `docs/operations/evaluation-quality-assurance.md`; `docs/qm/claude-after-report.md` (dieser Eintrag). Kein Produktcode, kein FE.
+
+### 5. Tests/Gates
+`npm run check` grün — 128 Dateien / 700 Tests. Gezielter Eval-Lauf 9/68 grün. Kein FE berührt → `apps/web tsc --noEmit` nicht erforderlich.
+
+### 6. Restlücken / Nicht-Ziele
+- **LLM-as-judge / qualitatives Scoring** großer Korpora — bewusstes Nicht-Ziel.
+- **Größeres Eval-Korpus** mit Snapshots — optionales P2.
+- **Automatisiertes Modellmodus-Eval** (echter Key, Token/Kosten/Latenz-Schwellen) — P2/Ops (Sandbox ohne Key/Netz).
+- Keine RAG-/Vector-/ModelAdapter-Arbeit, keine neue Architektur, kein Framework.
+
+### 7. Empfehlung: **DONE**
+**Begründung:** Anders als bei rein ops-/produktabhängigen Items (SCRUM-207/208/209) existiert hier das geforderte **wiederholbare Eval-Verfahren bereits real** — als CI-gated Test-Suite (Reasoner-/Ask-Eigenschaften + HTTP-e2e + seed-sicheres Baseline-Paar) — und die **Baseline ist dokumentiert** (neues Runbook). Quellenbindung, ehrliche Wissenslücke, Trust/Klasse und Fallback-Stabilität sind getestet und gegen Regression gesichert; das fehlende Stück (geschriebenes QA-Runbook) ist ergänzt. Tieferes qualitatives Scoring (LLM-as-judge) ist ausdrücklich Nicht-Ziel und als P2 dokumentiert. → **SCRUM-206 ist schließbar (Done).**
+
+### 8. Commit-/Push-Hinweis (nur Doku)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add docs/operations/evaluation-quality-assurance.md docs/qm/claude-after-report.md
+git commit -m "docs(qa): evaluation & quality-assurance runbook + evidence (SCRUM-206)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
