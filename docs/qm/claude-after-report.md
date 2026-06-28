@@ -5312,3 +5312,45 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-200 — API-Endpoint mit Authentifizierung bereitstellen — API/Auth-Readiness
+**Datum:** 2026-06-27 · **Rolle:** Claude prüft/dokumentiert (Codex steuert, Pedi entscheidet Richtung). Docs-only; **keine** API-Key-Infrastruktur/Proxy/Domain/Rate-Limit provisioniert; kein SDK; kein Produktcode.
+
+### 1. Vorab-Befund
+- **Reale auth-geschützte REST-API** (`/api/*`, Fastify, Single-Origin). Öffentlich nur `health`/`reasoner/status`/`ai-status` (Status, keine Daten); alles übrige RBAC-geschützt.
+- **Auth:** Session-**Bearer** (`login`→token, `Authorization: Bearer`) via `http.ts` (`tokenFromRequest`→`auth.authenticate`); **Guards** `requireUser`→**401**, `requirePermission`→**403**; RBAC Viewer/Experte/Controller/Admin; zusätzlich **OIDC/PKCE**.
+- **Transport (App):** `@fastify/helmet` (HSTS+CSP), **HTTPS-Kanonik-Redirect**, `noindex`. **TLS-Terminierung via Coolify-Proxy** (Ops), nicht im App-Prozess.
+- **Keine inbound API-Key-/Service-Token-Auth** (`apiKey`/`x-api-key` nur **ausgehend** = ANTHROPIC_API_KEY zum Modell). **Kein Rate-Limit/Quota. Kein CORS** (same-origin).
+- **Abweisung getestet:** 401/403 in nahezu allen Route-Test-Suiten + Auth-Service-Tests + build-app.
+- Keine `api-auth-readiness.md` → Doku-Gap.
+- **Lokaler In-Memory-Smoke (real, kein Live-Netz):** anonym `/api/kos`→**401**, anonym `/api/ask`→**401**, **falscher** Bearer→**401**, `/health`→**200**; autorisiert `/api/kos`→**200**, `/api/ask`→**200**, `/api/library/export`→**200**.
+
+### 2. Entscheidung
+Auth/RBAC real, getestet und Smoke-belegt; HTTPS deploy-/ops-abhängig (Coolify); externe Public-API-Schicht (API-Key/Quota/CORS) fehlt. Doku-Gap mit Readiness-Runbook schließen; **Partial** empfehlen.
+
+### 3. Minimaler Fix
+**Neu:** `docs/operations/api-auth-readiness.md` — API-Fläche (Tabelle), Auth/RBAC, Abweisungs-Tests+**Smoke-Evidence**, **fehlende Service-Token/API-Keys** (ehrlich), **fehlendes Rate-Limit/Quota**, **TLS/Proxy-Verantwortung** (Coolify), externe Nutzbarkeit, Public/Partner-API-Anforderungen, Nicht-Ziele, Empfehlung. **Kein Produktcode** (kein Doku-/Konfig-Bug aufgefallen).
+
+### 4. Geänderte Dateien
+NEU `docs/operations/api-auth-readiness.md`; `docs/qm/claude-after-report.md`. Kein Produktcode/FE.
+
+### 5. Tests/Gates
+`npm run check` grün — 128 Dateien / 700 Tests. Kein FE berührt → `apps/web tsc --noEmit` nicht erforderlich. Zusätzlich lokaler In-Memory-HTTP-Smoke (401/403/200), Server danach gestoppt.
+
+### 6. Restlücken / Nicht-Ziele
+Keine API-Key-/Service-Token-Auth, kein Rate-Limit/Quota, kein CORS, keine Domain/Proxy/SDK gebaut/provisioniert. Späteres Public/Partner-API-Setup: Maschinen-Token+Scopes+Rotation → Rate-Limit/Quota → CORS → gehärteter Proxy/TLS+Domain → API-Versionierung/Doku → Missbrauchs-Monitoring.
+
+### 7. Empfehlung: **PARTIAL** (nicht Done)
+**Begründung (Ehrlichkeit):** Der **Auth-Teil** des Kriteriums ist **real erfüllt** (Bearer+OIDC, RBAC, 401/403 getestet+Smoke). Der **HTTPS-Teil** ist **deploy-/ops-abhängig** (Coolify-TLS, in diesem Item nicht provisioniert), und eine **produktive externe/öffentliche** API-Schicht (API-Key, Quota, CORS) ist **nicht aktiv**. Daher **Partial**; offene Stücke teils Produkt-, teils Ops-Aufgaben.
+
+### 8. Commit-/Push-Hinweis (nur Doku)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add docs/operations/api-auth-readiness.md docs/qm/claude-after-report.md
+git commit -m "docs(ops): API auth readiness (internal auth real, public API layer not active) (SCRUM-200)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
