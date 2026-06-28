@@ -4567,3 +4567,31 @@ Keine. (Voraussetzung: Demo läuft gegen eine frisch geseedete Instanz — der S
 „**Geführter Demo-Pfad / Stage-1-Storyline**": ein kurzes, seed-gestütztes Demo-Skript (Klickpfad Capture → Validate → Use → Maintain) + minimaler Leerzustands-/Sprachhinweis — KEIN neues Feature, kein Stage-2. Damit wird der bereits vollständig verdrahtete Kernzyklus für Investor/Pedi reibungslos vorführbar; die offenen Punkte sind Präsentation/Führung, nicht fehlende Funktion.
 
 **Gates/Hinweis:** Kein Code-Fix, kein Commit durch Claude. `npm run check` grün, `apps/web tsc --noEmit` grün (nur zur Bestätigung der Demo-Build-Gesundheit ausgeführt). Codex übernimmt Commit/Push/Jira; dieser Review-Eintrag ist append-only dokumentiert.
+
+---
+
+## SCRUM-280 — Geführter Demo-Pfad: Stage-1-Storyline (Capture → Validate → Use → Maintain)
+**Datum:** 2026-06-27 · **Rolle:** Claude dokumentiert (Codex steuert, Pedi entscheidet Richtung). Docs-only, kein Feature-Code.
+
+**Vorab-Befund (read-only):** `seed-demo.ts`/`seed.test.ts` liefern einen reproduzierbaren, industrienahen Demo-Bestand: User **Demo Admin** (`admin@demo.klarwerk` / `demo-admin-pass`), **Carla Controller** (controller), **Erik Experte** (experte); KOs „Ventil X bei Überdruck…" (validiert), „Filter F3…" (validiert), „Pumpe P2…" (offen/zugewiesen), Kaltstart/Vorwärmung (Konflikt), Wissenslücke „Warum schwankt der Dosierwert an Linie L4 nach jedem Schichtwechsel?" (Prio hoch), Revalidierung über Anlage ANL-01, Quelle „Anlagenhandbuch 4.2" + Anhang „skizze.png". Routen `/start /erfassen /validierung /fragen /bibliothek /wissen/:id /risiko /lebenszyklus` vorhanden; alle Kernzyklus-Cross-CTAs (SCRUM-251…278) verdrahtet; SCRUM-279-Review im QM-Log als Grundlage genutzt. Seed-Trigger: CLI (`seedDemo`) oder `POST /api/admin/demo-seed`.
+
+**Dokument erstellt:** `docs/demo/stage-1-demo-path.md` (neu).
+
+**Wichtigste Inhalte:** (1) Demo-Ziel — Klarwerk ist kein Chatbot, sondern Knowledge OS; Leitsatz „The AI may change. Your knowledge never does." (2) Vorbedingungen — frisch geseedete Instanz, Demo-User/Rollen, Reasoner-Modus (deterministisch ohne / Modell mit API-Key), Demo-Sprache deutsch. (3) 7–10-Minuten-Klickpfad in 8 Schritten (Start-Kreis → Capture-Beispiel+Success → Validation-Entscheidung+Next-Step → Ask Ventil X/Überdruck+Quellen → Library/KO-Detail Reife/Trust/Version/Use-CTA → Risk Linie-L4-Lücke→Capture → Lifecycle Revalidierung), je mit Route/Aktion/sichtbarem Beleg/Sprecherhinweis. (4) Seed-Begriffe als Tabelle. (5) P2-Hinweise transparent (EN/DE-Mix, deterministischer Reasoner, Risk/Lifecycle-Dichte). (6) Abschluss-/Entscheidungsfragen für Pedi + genau ein vorgeschlagener nächster Block (Demo-Politur/EN-Seed ODER definierter Stage-1.5-Schritt) — bewusst ohne automatisches Folge-Ticket.
+
+**Geänderte Dateien:** NEU `docs/demo/stage-1-demo-path.md`, `docs/qm/claude-after-report.md` (dieser Eintrag). Kein Produktcode, keine FE-Dateien.
+
+**Gates:** `npm run check` grün — 128 Dateien / 700 Tests (zur Bestätigung der Demo-Build-Gesundheit; kein Code geändert). `apps/web tsc --noEmit` nicht nötig (keine FE-Dateien berührt). Biome/dependency-cruiser unverändert.
+
+**Restlücken/Nicht-Ziele:** kein Produktcode geändert, kein UI-Fix, kein Refactoring, keine Jira-Strukturänderung, keine Ticketserie, keine Stufe-2-/Metamorphose-/RAG-/Vector-/Reasoner-Arbeit. Das Dokument führt durch die bestehende Oberfläche; die genannten P2-Punkte werden bewusst nur benannt, nicht gelöst. Der Live-Klickpfad sollte vor der echten Demo einmal manuell auf einer frisch geseedeten Instanz verifiziert werden (Sandbox ohne Chromium, vgl. SCRUM-279).
+
+**Commit-/Push-Hinweis:**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+git add docs/demo/stage-1-demo-path.md docs/qm/claude-after-report.md
+git commit -m "docs(demo): guided Stage-1 demo path (capture→validate→use→maintain) (SCRUM-280)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
