@@ -4391,3 +4391,30 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-274 — Bibliothek: nutzbares Wissen direkt als Ask-Startfrage verwenden
+**Datum:** 2026-06-27 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung).
+
+**Vorab-Befund (read-only):** `Library.tsx` rendert je Treffer eine Zeile mit Detail-`<Link>` (Reife-Plakette, StatusPill, TypeTag, Titel, Autor, Match-Gründe, Kategorie, ConfidenceBar) und — nur für validierte KOs — dem Revalidate-Button. Reife-Filter (SCRUM-267), Match-Gründe, Export und Revalidate sind intakt. `askQuestionHref(question)` (SCRUM-272, `askQuestion.ts`) baut `/fragen?q=<encoded>`. Es fehlte ein direkter Sprung aus einem Treffer in den Ask-/Use-Flow. Kein P0/P1.
+
+**Umsetzung (minimal, FE-only):** `askQuestionHref` in `Library.tsx` importiert und je Trefferzeile eine kleine CTA „Fragen" / „Ask" als `<Link to={askQuestionHref(k.title)}>` ergänzt — als Geschwister NEBEN dem Detail-Link (eigener Klickbereich, führt nach `/fragen?q=<KO-Titel>`, nicht ins KO-Detail). Die Startfrage ist der KO-Titel: KO-spezifisch, lesbar, URL-encodiert, ohne falsche Behauptung; Ask füllt nur das Eingabefeld vor (kein Auto-Submit, siehe SCRUM-272). Detail-Links, Reife-Filter/-Plakette, Match-Gründe, Export und Revalidate unverändert. Kein Backend, keine neue Suche, kein Reasoner/RAG/Vector.
+
+**Geänderte Dateien:** `apps/web/src/pages/Library.tsx` (Import + Ask-CTA je Zeile), `apps/web/src/i18n.ts` (`lib.ask` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — 127 Dateien / 692 Tests. `apps/web` `tsc --noEmit` grün. Biome + dependency-cruiser sauber. Kein neuer Test nötig: die CTA nutzt ausschließlich den bereits getesteten `askQuestionHref` (`tests/ask/ask-question.test.ts`); die UI-Verdrahtung ist durch tsc abgesichert; alle bestehenden Library-Tests bleiben grün.
+
+**Restlücken/Nicht-Ziele:** kein Auto-Submit, kein Backend, keine neue Suche, keine RAG-/Vector-/Reasoner-Architektur, keine Stufe-2-Arbeit, keine Ticketserie. Die Startfrage ist bewusst der KO-Titel (Topic) statt einer generierten Frage — keine grammatische Umformung, damit keine falsche Behauptung entsteht; der Nutzer verfeinert die Frage in Ask frei. Die CTA erscheint für ALLE sichtbaren Treffer (auch offene/in Prüfung) — das ist ehrlich, da Ask selbst die Quellenbindung/Lücke transparent macht; eine spätere Beschränkung auf „nutzbare" Treffer wäre möglich, war hier aber nicht gefordert.
+
+**Commit-/Push-Hinweis:**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/pages/Library.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(library): use a knowledge result directly as an ask question (SCRUM-274)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

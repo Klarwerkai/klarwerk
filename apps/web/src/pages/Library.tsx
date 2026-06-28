@@ -15,6 +15,7 @@ import {
   StatusPill,
 } from "../components/trust";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
+import { askQuestionHref } from "../lib/askQuestion";
 import { deriveStatus } from "../lib/displayStatus";
 import { koAuthorParts } from "../lib/koAuthor";
 import { windowList } from "../lib/libraryDisplay";
@@ -262,6 +263,14 @@ export function Library(): JSX.Element {
                           <div className="hidden sm:block">
                             <ConfidenceBar value={k.confidence} showLabel={false} />
                           </div>
+                        </Link>
+                        {/* SCRUM-274: nutzbares Wissen direkt als Ask-Startfrage (kein Auto-Submit). */}
+                        <Link
+                          to={askQuestionHref(k.title)}
+                          title={t("lib.ask")}
+                          className="inline-flex shrink-0 items-center gap-1 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
+                        >
+                          {t("lib.ask")}
                         </Link>
                         {canRevalidate(k.status) ? (
                           <button
