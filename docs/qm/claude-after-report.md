@@ -5723,3 +5723,47 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-189 — Open-Source-Modell auswählen und vergleichen — Auswahl/Vergleich
+**Datum:** 2026-06-27 · **Rolle:** Claude prüft/dokumentiert (Codex steuert, Pedi entscheidet Richtung). Docs-only; **kein** Modell-Download/Runtime/GPU; **keine** erfundenen Benchmarks; kein Produktcode.
+
+### 1. Vorab-Befund
+- **Use-Cases (aus `provider-model.ts`):** Modell **formuliert nur** — `structure`→JSON („do not invent"), `answer` **nur aus nummerierten Quellen** (ehrliche Lücke), `assist` Wortlaut ohne Inhaltsänderung, `interview` eine Frage. Deutsch/industriell; **KOs = Wahrheit**, deterministischer Fallback bleibt Sicherheitsnetz → **kleines, permissives Modell genügt**.
+- Keine `open-source-model-selection.md` → Doku-Gap.
+
+### 2. Kandidaten / Bewertungsmatrix (Lizenz primärquellen-verifiziert)
+- **Qwen2.5-7B-Instruct** Apache 2.0 (außer 3B/72B) · **Mistral-7B-Instruct/Mixtral** Apache 2.0 (neuere Mistral teils **MNPL**) · **Llama 3.1-8B** Community License (custom, 700M-MAU-Klausel) · **Gemma** Gemma Terms (custom) · **Phi-3-mini** MIT. GGUF/Ollama für alle; 7B Q4 ~5–6 GB. Deutsch-/Reasoning-Qualität **nicht** als Zahlen (keine erfundenen Benchmarks).
+
+### 3. Zielmodell + Fallback: **empfohlen, nicht verbindlich festgelegt**
+- **Ziel (Empfehlung): Qwen2.5-7B-Instruct (Apache 2.0)** — sauberste Lizenz, mehrsprachig inkl. DE, gutes Instruction-Following/JSON, passt auf Mac ≥16 GB.
+- **Fallback: Mistral-7B-Instruct (Apache 2.0)**; Sparoption **Phi-3-mini (MIT)**; Llama/Gemma nur mit Custom-Lizenzakzeptanz.
+
+### 4. Lizenz-/Hardware-/Runtime-Abhängigkeiten
+Lizenz am konkreten Tag final prüfen (Versionsabweichungen). Hardware (Mac) + Runtime (Ollama) + Budget alle **Partial/unverifiziert**; Tokens/sec nicht gemessen. DSGVO: lokal = Daten im Haus (Vorteil), VVT/DSFA bei Aktivierung.
+
+### 5. Minimaler Fix
+**Neu:** `docs/operations/open-source-model-selection.md` — Anforderungen, Kandidatenmatrix (verifizierte Lizenzen + Quellen), Shortlist, Ziel/Fallback, Abhängigkeiten, Lizenz-/DSGVO-Prüfpunkte, Testplan (Klarwerk-Tasks + Eval-Baseline), Done-Kriterien, Nicht-Ziele, **Quellenliste** (HF/Mistral/Meta/Google/Microsoft). **Kein Produktcode.**
+
+### 6. Geänderte Dateien
+NEU `docs/operations/open-source-model-selection.md`; `docs/qm/claude-after-report.md`. Kein Produktcode/FE.
+
+### 7. Tests/Gates
+`npm run check` grün — 128 Dateien / 700 Tests. Kein FE berührt → `apps/web tsc --noEmit` nicht erforderlich. Lizenz-Recherche über offizielle Quellen (Web), als „vor Einsatz final zu prüfen" markiert.
+
+### 8. Restlücken / Nicht-Ziele
+Deutsch-/Aufgabenqualität nicht gemessen; Hardware/Runtime/Budget unverifiziert; Tokens/sec offen; keine harte Lizenzzusage ohne Tag-Verifikation; kein Download/Runtime/GPU.
+
+### 9. Empfehlung: **PARTIAL** (nicht Done)
+**Begründung (Ehrlichkeit):** Kandidatenmatrix mit **primärquellen-verifizierten Lizenzen** + Shortlist + **empfohlenes Ziel (Qwen2.5-7B, Apache 2.0)/Fallback (Mistral-7B, Apache 2.0)** sind dokumentiert (verantwortbar, da Modell nur formuliert). Aber **Qualität nicht gemessen** und **Hardware/Runtime/Budget fehlen** → begründete Empfehlung, **keine** verbindliche Festlegung → **Partial**; verbindlich erst nach lokalem Test + Lizenz-Final-Check des Tags.
+
+### 10. Commit-/Push-Hinweis (nur Doku)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add docs/operations/open-source-model-selection.md docs/qm/claude-after-report.md
+git commit -m "docs(ops): open-source model selection (target Qwen2.5-7B / fallback Mistral-7B, licenses verified) (SCRUM-189)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
