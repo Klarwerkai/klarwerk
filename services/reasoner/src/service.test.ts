@@ -48,6 +48,26 @@ describe("DeterministicProvider", () => {
     expect(res.knowledgeClass).toBe("unbekannt");
   });
 
+  it("SCRUM-282: langer/offtopic Kontext erzeugt KEINE Scheinquelle (answered=false)", async () => {
+    // Lange, fachfremde Frage: überschneidet sich höchstens über Funktionswörter (ist/die/von …)
+    // mit den KOs. Diese dürfen NICHT als belegte Antwort durchkommen → ehrliche Wissenslücke.
+    const offtopic = `Bitte beachte folgenden langen irrelevanten Kontext: ${"lorem ipsum dolor sit amet ".repeat(
+      20,
+    )} Was ist die Hauptstadt von Australien?`;
+    const res = await p.answer(offtopic, KOS);
+    expect(res.answered).toBe(false);
+    expect(res.answer).toBeNull();
+    expect(res.knowledgeClass).toBe("unbekannt");
+    expect(res.sources).toEqual([]);
+  });
+
+  it("SCRUM-282: seed-sichere Fachfragen bleiben quellengebunden beantwortbar", async () => {
+    const ventil = await p.answer("Wann muss Ventil X bei Überdruck geschlossen werden?", KOS);
+    expect(ventil.answered).toBe(true);
+    expect(ventil.knowledgeClass).toBe("gesichert");
+    expect(ventil.sources).toEqual(["ko1"]); // nur tatsächlich genutztes KO (SCRUM-256)
+  });
+
   it("FR-RSN-03: assistText glättet deterministisch ohne Inhalt zu erfinden", async () => {
     const res = await p.assistText("  ventil   bei überdruck schliessen  ");
     expect(res.demo).toBe(true);

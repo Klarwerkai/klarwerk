@@ -5815,3 +5815,48 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-282 — Ask-Qualität: Offtopic-Kontext ehrlich als Wissenslücke statt Scheinquelle
+**Datum:** 2026-06-28 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung). **Produkt-Code-Fix** (Reasoner + Test); kein RAG/Vector/Embedding; kein Reasoner-/Provider-Refactor; keine Modelladapter-Änderung; keine UI-Änderung.
+
+### 1. Ziel des Workflow-Slice
+Flow Ask → Quellen/Trust → ehrliche Wissenslücke → Capture härten: lange/offtopic Fragen dürfen im deterministischen Fallback nicht über lose Keyword-Überschneidung als belegte Antwort erscheinen.
+
+### 2. Vorab-Befund / Root Cause
+- `keywordSelect`/`tokenize`/`overlap` (`services/reasoner/src/provider.ts`): `tokenize` filterte nur `length>2`. Dadurch zählten **Funktions-/Stoppwörter** (z. B. „ist", „die", „von") als Treffer. Eine lange Offtopic-Frage überschnitt sich über solche Stopwörter mit KOs → `score>0` → `answered=true` mit Scheinquelle (P1 aus `local-function-performance-baseline.md`).
+- Numerisches Repro (Seed): Offtopic-Frage → base-Tokenizer k1/k3/k4:1 (Stopwort-Treffer); mit Stopwort-Filter → **(none)**. B1 (k1:2) und B3 (k5:1) bleiben erhalten.
+
+### 3. Geänderte Dateien
+- `services/reasoner/src/provider.ts` — **Stopwort-Set (DE/EN)** + `tokenize` filtert Stopwörter (nur generische Funktionswörter, keine Fach-/Domänenbegriffe).
+- `services/reasoner/src/service.test.ts` — 2 DOM-freie Tests: Offtopic-Langkontext → `answered=false`+leere Quellen; seed-sichere Fachfrage (Ventil/Überdruck) bleibt `gesichert` mit genau einer Quelle.
+
+### 4. Was verbessert wurde
+- **Offtopic-/Langkontext → `answered=false` + Gap** (ehrliche Wissenslücke) statt Scheinquelle.
+- **B1 Ventil/Überdruck** und **B3 Filter F3** weiterhin quellengebunden beantwortet (gesichert, je 1 Quelle).
+- **B2 Quantenflux** bleibt Gap. **Quellen bleiben fokussiert** (SCRUM-256 intakt: nur tatsächlich genutztes KO).
+- **Gap→Capture-Pfad unverändert** (keine FE-Änderung).
+- Live über `/api/ask` verifiziert (In-Memory + Seed): B1 answered=true/gesichert/1 Quelle; B3 answered=true/gesichert/1 Quelle; B2 gap; Offtopic-Langkontext **gap**.
+
+### 5. Gates
+`npm run check` grün — **128 Dateien / 702 Tests** (2 neue). Biome/tsc/depcruise grün. FE nicht berührt → `apps/web tsc --noEmit` nicht erforderlich.
+
+### 6. Commit-/Push-Hinweis
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add services/reasoner/src/provider.ts services/reasoner/src/service.test.ts docs/qm/claude-after-report.md
+git commit -m "fix(reasoner): offtopic/long context yields honest gap, not pseudo-source (stopword filter) (SCRUM-282)"
+git push
+```
+
+### 7. Offene Risiken
+- Stopwort-Liste ist bewusst klein/generisch; eine **einzelne seltene Inhaltswort-Überschneidung** in einem langen Blob könnte theoretisch noch einen schwachen Treffer erzeugen. Mitigation heute ausreichend (Stopwörter waren die reale Ursache); robusteres semantisches Retrieval wäre erst mit RAG (bewusst außer Scope).
+- Stopwort-Filter wirkt auch auf `keywordSelect` (Kandidatenauswahl beider Provider) — Verhalten verbessert (keine Stopwort-Treffer), durch Gates abgedeckt; keine Architektur-/Modelladapter-Änderung.
+
+### 8. Empfehlung nächster Slice
+- Eval-Set in `evaluation-quality-assurance.md` um „langer Offtopic-Kontext → erwartete Gap" als festen Regressionsfall ergänzen (B5).
+- Optional: schwacher Mindest-Relevanz-Score (ratio) als zusätzliche Leitplanke, falls künftig längere Freitext-Fragen auftreten.
+
+### 9. Stop-Status
+**Slice abgeschlossen, Gates grün, gestoppt.** Keine Jira-Änderungen durch Claude. Codex übernimmt Commit, Push, Jira-Kommentar und Status.
