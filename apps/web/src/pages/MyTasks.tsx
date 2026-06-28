@@ -15,6 +15,7 @@ import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { KoAuthorLine } from "../components/trust";
 import { Card, PageHeader } from "../components/ui";
 import { type KoAuthorParts, koAuthorParts } from "../lib/koAuthor";
+import { type TaskTone, taskAction } from "../lib/taskAction";
 import {
   TASK_FILTERS,
   type TaskFilterKey,
@@ -23,6 +24,13 @@ import {
 } from "../lib/taskFilters";
 import { returnedToAuthor } from "../lib/validationStatus";
 import { type WorkSeverity, groupTasks, severityForType } from "../lib/workCenter";
+
+// SCRUM-260: Tönung der sichtbaren nächsten Handlung je Aufgabe (passend zur Dringlichkeit).
+const ACTION_TONE: Record<TaskTone, string> = {
+  crit: "text-trust-crit-text",
+  warn: "text-trust-warn-text",
+  neutral: "text-muted",
+};
 
 interface Task {
   id: string;
@@ -157,21 +165,32 @@ export function MyTasks(): JSX.Element {
                   </div>
                 ) : (
                   <div className="divide-y divide-hairline">
-                    {visible.map((it) => (
-                      <Link
-                        key={it.id}
-                        to={it.to}
-                        className="flex items-center gap-3 px-4 py-3 hover:bg-hairline-soft"
-                      >
-                        <span className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-[10.5px] text-muted">
-                          {t(it.typeKey)}
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[13.5px] text-text">{it.label}</span>
-                          {it.author ? <KoAuthorLine {...it.author} /> : null}
-                        </span>
-                      </Link>
-                    ))}
+                    {visible.map((it) => {
+                      // SCRUM-260: sichtbare nächste Handlung je Aufgabe (DOM-freier Helper).
+                      const action = taskAction(it.typeKey);
+                      return (
+                        <Link
+                          key={it.id}
+                          to={it.to}
+                          className="flex items-center gap-3 px-4 py-3 hover:bg-hairline-soft"
+                        >
+                          <span className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-[10.5px] text-muted">
+                            {t(it.typeKey)}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[13.5px] text-text">
+                              {it.label}
+                            </span>
+                            {it.author ? <KoAuthorLine {...it.author} /> : null}
+                          </span>
+                          <span
+                            className={`inline-flex shrink-0 items-center gap-1 text-[12px] font-semibold ${ACTION_TONE[action.tone]}`}
+                          >
+                            {t(action.actionLabelKey)} <span aria-hidden="true">→</span>
+                          </span>
+                        </Link>
+                      );
+                    })}
                   </div>
                 )}
               </Card>

@@ -1,0 +1,32 @@
+// SCRUM-260: DOM-freie View-Beschreibung der nächsten Handlung je Aufgaben-Typ. Macht aus
+// „Typ + Titel + Link" eine handlungsnahe Arbeitskarte im Stage-1-Kreis Capture → Validate →
+// Use → Maintain. Leitet AUSSCHLIESSLICH aus dem vorhandenen `typeKey` ab — keine neue
+// Task-Engine, keine Fake-Aufgaben, keine neue Mutation. Reine Funktion → testbar ohne DOM.
+
+export type TaskTone = "crit" | "warn" | "neutral";
+
+export interface TaskActionView {
+  actionLabelKey: string; // i18n-Key für die sichtbare nächste Handlung
+  tone: TaskTone; // Tönung passend zur Dringlichkeit der Quelle
+}
+
+// Quelle (typeKey) → nächste Handlung. Bewusst an die bestehenden Ziel-Flows angelehnt:
+//  - Nacharbeit    → Entwurf überarbeiten   (/wissen/:id)
+//  - Konflikt      → Konflikt entscheiden    (/konflikte)
+//  - Validierung   → Wissen bewerten         (/wissen/:id bzw. Validierungsboard)
+//  - Revalidierung → Gültigkeit prüfen        (/lebenszyklus)
+//  - Wissenslücke  → Lücke priorisieren       (/risiko)
+const TASK_ACTION: Record<string, TaskActionView> = {
+  "task.returned": { actionLabelKey: "task.action.returned", tone: "crit" },
+  "task.conflict": { actionLabelKey: "task.action.conflict", tone: "crit" },
+  "task.validation": { actionLabelKey: "task.action.validation", tone: "warn" },
+  "task.revalidation": { actionLabelKey: "task.action.revalidation", tone: "warn" },
+  "task.gap": { actionLabelKey: "task.action.gap", tone: "neutral" },
+};
+
+// Defensiver Fallback für unbekannte Typen: neutral „öffnen" (keine stille Falschbehauptung).
+const FALLBACK: TaskActionView = { actionLabelKey: "task.action.open", tone: "neutral" };
+
+export function taskAction(typeKey: string): TaskActionView {
+  return TASK_ACTION[typeKey] ?? FALLBACK;
+}

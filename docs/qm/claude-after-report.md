@@ -4013,3 +4013,30 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-260 — MyTasks: Aufgaben als handlungsnahe Arbeitskarten führen
+**Datum:** 2026-06-27 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung).
+
+**Vorab-Befund (read-only):** `/aufgaben` (`MyTasks.tsx`) verdichtet bereits echte Signale zu einer flachen Aufgabenliste mit `typeKey` (`task.returned`/`task.conflict`/`task.validation`/`task.revalidation`/`task.gap`), Severity (`workCenter.ts#severityForType`), Gruppierung (`groupTasks` → kritisch/heute/später), Typ-Filter + Counts (`taskFilters.ts`). Jede Zeile ist bereits ein `<Link to={it.to}>` in den passenden Flow (`/wissen/:id`, `/konflikte`, `/lebenszyklus`, `/risiko`). Lücke: die Zeile zeigt nur Typ-Chip + Titel (+ Autorzeile) — keine sichtbare nächste Handlung. Kein P0/P1.
+
+**Umsetzung (minimal, DOM-frei):** Neuer reiner Helfer `apps/web/src/lib/taskAction.ts`: `taskAction(typeKey) → { actionLabelKey, tone }` mit Fallback für unbekannte Typen. Abbildung an die bestehenden Ziel-Flows: Nacharbeit → „Entwurf überarbeiten" (crit), Konflikt → „Konflikt entscheiden" (crit), Validierung → „Wissen bewerten" (warn), Revalidierung → „Gültigkeit prüfen" (warn), Wissenslücke → „Lücke priorisieren" (neutral). In `MyTasks.tsx` zeigt jede Row die nächste Handlung rechtsbündig (getöntes Label + „→"); die Row bleibt derselbe `<Link>` zum vorhandenen Ziel. Typ-Chip, Titel, Autorzeile, Gruppierung, Filter und Counts unverändert. Keine neue Mutation, keine neue Task-Engine, keine neuen Datenquellen, kein Backend.
+
+**Geänderte Dateien:** NEU `apps/web/src/lib/taskAction.ts`, NEU `tests/app/task-action.test.ts` (2 Tests); geändert `apps/web/src/pages/MyTasks.tsx` (Row-Handlung + ACTION_TONE), `apps/web/src/i18n.ts` (`task.action.*` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — 122 Dateien / 653 Tests (+1 Datei, +2 Tests). `apps/web` `tsc --noEmit` grün. Biome + dependency-cruiser sauber. Der neue Test sichert die Abbildung aller fünf Aufgaben-Typen auf Label/Tönung und den neutralen Fallback für unbekannte Typen.
+
+**Restlücken/Nicht-Ziele:** keine Fake-Aufgaben, keine neuen Mutationen, keine neue Task-Engine, keine Backend-Änderung, keine neuen Datenquellen, keine Stufe-2-Arbeit, keine Metamorphose, kein RAG/Vector/Reasoner-Umbau, keine Ticketserie. Die Aufgaben stammen weiterhin ausschließlich aus den vorhandenen Signalen; die nächste Handlung ist reine Orientierung über den bestehenden Row-Link.
+
+**Commit-/Push-Hinweis:**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/taskAction.ts tests/app/task-action.test.ts apps/web/src/pages/MyTasks.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(tasks): show next action per task row in work center (SCRUM-260)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
