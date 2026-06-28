@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check } from "lucide-react";
+import { Check, X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
@@ -9,7 +9,7 @@ import { useSession } from "../app/AuthContext";
 import { StatusPill } from "../components/trust";
 import { Button, Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import { completedCount, isStepDone, progressPercent } from "../lib/learningPath";
-import { revalidationCta, revalidationView } from "../lib/revalidation";
+import { revalidationCta, revalidationNextSteps, revalidationView } from "../lib/revalidation";
 
 export function Lifecycle(): JSX.Element {
   const { t } = useTranslation();
@@ -24,9 +24,20 @@ export function Lifecycle(): JSX.Element {
   const progress = useLearningProgress(pathId);
   const done = progress.data ?? [];
 
+  // SCRUM-278: letzte erfolgreiche Revalidierung → Rückmeldung + nächster Schritt (KO ansehen/nutzen).
+  const [lastRevalidated, setLastRevalidated] = useState<{
+    id: string;
+    title: string;
+    found: boolean;
+  } | null>(null);
   const confirm = useMutation({
-    mutationFn: (id: string) => endpoints.ko.act(id, { action: "revalidate" }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["lifecycle"] }),
+    // SCRUM-278: KO-Kontext mitführen → Rückmeldung kann das betroffene KO benennen/verlinken.
+    mutationFn: ({ id }: { id: string; title: string; found: boolean }) =>
+      endpoints.ko.act(id, { action: "revalidate" }),
+    onSuccess: (_data, vars) => {
+      void qc.invalidateQueries({ queryKey: ["lifecycle"] });
+      setLastRevalidated({ id: vars.id, title: vars.title, found: vars.found });
+    },
   });
 
   // SCRUM-146: Asset-Change-Auslöser → markiert gekoppelte KOs „prüfen".
@@ -82,6 +93,39 @@ export function Lifecycle(): JSX.Element {
         <div className="mb-3 rounded-card border border-trust-warn-fill/30 bg-trust-warn-bg p-3 text-[13px] text-trust-warn-text">
           {t("lcy.banner")}
         </div>
+        {/* SCRUM-278: Rückmeldung nach Revalidierung + nächster Schritt (KO ansehen / optional nutzen). */}
+        {lastRevalidated ? (
+          <Card className="mb-3 border-trust-pos-fill/40 bg-trust-pos-bg">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-[13px] font-semibold text-trust-pos-text">
+                  {t("lcy.revalSaved")}
+                </div>
+                <p className="mt-0.5 truncate text-[12.5px] text-trust-pos-text/90">
+                  {lastRevalidated.title}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLastRevalidated(null)}
+                className="shrink-0 text-trust-pos-text/70 hover:text-trust-pos-text"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {revalidationNextSteps(lastRevalidated).map((s) => (
+                <Link
+                  key={s.to}
+                  to={s.to}
+                  className="inline-flex items-center gap-1 rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
+                >
+                  {t(s.labelKey)} <span aria-hidden="true">→</span>
+                </Link>
+              ))}
+            </div>
+          </Card>
+        ) : null}
         <QueryState query={query} emptyText={t("lcy.empty")}>
           {(ids) => (
             <div className="space-y-3">
@@ -132,7 +176,7 @@ export function Lifecycle(): JSX.Element {
                     <Button
                       variant="primary"
                       disabled={confirm.isPending}
-                      onClick={() => confirm.mutate(id)}
+                      onClick={() => confirm.mutate({ id, title: view.title, found: view.found })}
                     >
                       {t("lcy.stillValid")}
                     </Button>

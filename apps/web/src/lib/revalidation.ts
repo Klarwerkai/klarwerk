@@ -1,6 +1,7 @@
 // Reine, DOM-freie Regel für die Re-Validierung aus der Bibliothek (SCRUM-136 / FE-LIB-05).
 // Nur bereits validierte Objekte sinnvoll re-validierbar; kein neues Statusmodell.
 import type { KnowledgeObject, KoStatus } from "../api/types";
+import { askQuestionHref } from "./askQuestion";
 
 export function canRevalidate(status: KoStatus): boolean {
   return status === "validiert";
@@ -58,4 +59,25 @@ export function revalidationCta(view: Pick<RevalidationView, "nextStep">): Reval
     default:
       return null; // openKo → keine falsche CTA
   }
+}
+
+// SCRUM-278: nach einer erfolgreichen Revalidierungsaktion den nächsten Schritt zeigen. Immer:
+// das betroffene KO ansehen (/wissen/:id). NUR wenn der Titel bekannt ist (KO im geladenen Bestand
+// auflösbar, `found`) zusätzlich der Use-Schritt „Wissen nutzen/fragen" (/fragen?q=<Titel> via
+// askQuestionHref) — kein Auto-Submit, keine automatische Nutzung. Reine, testbare Logik.
+export interface RevalidationNextStep {
+  labelKey: string;
+  to: string; // vorhandene Route
+}
+
+export function revalidationNextSteps(done: {
+  id: string;
+  title: string;
+  found: boolean;
+}): RevalidationNextStep[] {
+  const steps: RevalidationNextStep[] = [{ labelKey: "lcy.nextViewKo", to: `/wissen/${done.id}` }];
+  if (done.found) {
+    steps.push({ labelKey: "lcy.nextUse", to: askQuestionHref(done.title) });
+  }
+  return steps;
 }

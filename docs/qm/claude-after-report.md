@@ -4499,3 +4499,30 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-278 — Lifecycle: nach Revalidierung den nächsten Detail-/Use-Schritt sichtbar machen
+**Datum:** 2026-06-27 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung).
+
+**Vorab-Befund (read-only):** `Lifecycle.tsx#confirm` führt die Revalidierung über `endpoints.ko.act(id, {action:"revalidate"})` aus und invalidierte im Erfolg NUR `["lifecycle"]` — keine Rückmeldung/Next-Step. Jede Pending-Karte löst die ID per `revalidationView(id, kos)` auf (`view.found`, `view.title`); `Link` ist importiert, `askQuestionHref` (SCRUM-272) vorhanden, Routen `/wissen/:id` und `/fragen` existieren. Pending-Liste, Asset-Change-Flow und Lernpfad sonst intakt. Kein P0/P1.
+
+**Umsetzung (minimal, DOM-frei + UI):** `revalidation.ts` um `revalidationNextSteps({id,title,found}) → RevalidationNextStep[]` erweitert: immer „Objekt ansehen" (`/wissen/:id`); NUR wenn der Titel bekannt ist (`found`, KO im geladenen Bestand auflösbar) zusätzlich „Wissen nutzen (fragen)" via `askQuestionHref(title)` (`/fragen?q=<KO-Titel>`). In `Lifecycle.tsx` führt `confirm` jetzt den KO-Kontext mit (`{id, title, found}` aus dem vorhandenen `view`); `onSuccess` setzt zusätzlich zum bestehenden Invalidate `lastRevalidated`. Eine kompakte Success-Card oben in der Pending-Sektion meldet „Revalidierung erfasst." + KO-Titel und rendert die nächsten Schritte als `<Link>`-CTAs (+ Schließen-„×"). Keine automatische Navigation, keine zusätzliche/automatische Revalidierung, keine automatische Nutzung (Ask-CTA prefilled nur, kein Auto-Submit). Pending-Liste, Asset-Change-Flow und Lernpfad unverändert. Kein Backend, keine neue Engine, kein Redesign.
+
+**Geänderte Dateien:** `apps/web/src/lib/revalidation.ts` (revalidationNextSteps + Import askQuestionHref), `tests/library/revalidation.test.ts` (+2 Tests), `apps/web/src/pages/Lifecycle.tsx` (lastRevalidated-State, confirm trägt KO-Kontext, Next-Step-Card, X-Import), `apps/web/src/i18n.ts` (`lcy.revalSaved`/`lcy.nextViewKo`/`lcy.nextUse` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — 128 Dateien / 700 Tests (+2 Tests). `apps/web` `tsc --noEmit` grün. Biome + dependency-cruiser sauber. Die neuen Tests sichern: auflösbares KO (found) → KO ansehen (`/wissen/:id`) + Wissen nutzen (`/fragen?q=` mit URL-encodiertem Titel); nicht auflösbares KO (found=false) → nur KO-Detail-Link.
+
+**Restlücken/Nicht-Ziele:** kein Backend, keine automatische Revalidierung über die bestehende Aktion hinaus, keine automatische Nutzung, keine neue Lifecycle-/Task-Engine, keine RAG-/Vector-/Reasoner-Architektur, keine Stufe-2-Arbeit, keine Ticketserie, kein UI-Redesign. Der Use-CTA erscheint nur bei auflösbarem KO (Titel bekannt); bei nicht auflösbarem KO bleibt der ehrliche KO-Detail-Link (über die ID). Die Rückmeldung benennt das KO über den Titel.
+
+**Commit-/Push-Hinweis:**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/revalidation.ts tests/library/revalidation.test.ts apps/web/src/pages/Lifecycle.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(lifecycle): show next detail/use step after revalidation (SCRUM-278)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

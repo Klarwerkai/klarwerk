@@ -3,6 +3,7 @@ import type { KnowledgeObject } from "../../apps/web/src/api/types";
 import {
   canRevalidate,
   revalidationCta,
+  revalidationNextSteps,
   revalidationView,
 } from "../../apps/web/src/lib/revalidation";
 
@@ -80,5 +81,24 @@ describe("SCRUM-268: revalidationCta", () => {
 
   it("openKo (nicht auflösbar) → KEINE CTA (kein Fake-Review-Link)", () => {
     expect(revalidationCta({ nextStep: "openKo" })).toBeNull();
+  });
+});
+
+describe("SCRUM-278: revalidationNextSteps", () => {
+  const done = { id: "ko-9", title: "Filter F3 monatlich auf Verschmutzung prüfen." };
+
+  it("auflösbares KO (found): KO ansehen + Wissen nutzen (Ask mit KO-Titel)", () => {
+    const steps = revalidationNextSteps({ ...done, found: true });
+    expect(steps.map((s) => s.labelKey)).toEqual(["lcy.nextViewKo", "lcy.nextUse"]);
+    expect(steps[0]?.to).toBe("/wissen/ko-9");
+    expect(steps[1]?.to.startsWith("/fragen?q=")).toBe(true);
+    expect(steps[1]?.to).toContain(encodeURIComponent(done.title));
+  });
+
+  it("nicht auflösbares KO (found=false): nur KO ansehen, kein Use-Schritt", () => {
+    const steps = revalidationNextSteps({ ...done, found: false });
+    expect(steps).toHaveLength(1);
+    expect(steps[0]?.labelKey).toBe("lcy.nextViewKo");
+    expect(steps[0]?.to).toBe("/wissen/ko-9");
   });
 });
