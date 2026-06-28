@@ -4202,3 +4202,30 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-267 — Library: Reife-Filter für nutzbares Wissen
+**Datum:** 2026-06-27 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung).
+
+**Vorab-Befund (read-only):** `Library.tsx` rankt server-gefilterte Treffer client-seitig (`searchLibrary` → `ScoredKo[] = {ko, score, matches}`), fenstert dann mit `windowList` (`libraryDisplay.ts`) und zeigt die Count-Linie aus `win.total`. `libraryMaturity.ts` (SCRUM-262) leitet die Reife (`koOverview(ko).usability`: ready/in-review/needs-work) inkl. Plaketten-Label/Tönung ab. Es gab nur die Plakette pro Treffer, keinen Reife-Filter. Kein P0/P1.
+
+**Umsetzung (minimal, DOM-frei):** `libraryMaturity.ts` erweitert um `MaturityFilter` (`all` + die drei Reifearten), `MATURITY_FILTERS`, `filterByMaturity(items, filter)` (generisch über `{ ko }`, `all` lässt unverändert, sonst exakt die Plaketten-Reife → `ready` enthält nie offene/ungeprüfte KOs), `countByMaturity(items)` (ehrliche Zähler, `all` = Gesamtzahl) und `maturityFilterLabelKey(filter)` (gleiche Labels wie die Plakette, `all` eigener Key). In `Library.tsx` Reihenfolge geschärft: `ranked → countByMaturity(ranked) → filterByMaturity(ranked, maturity) → windowList(filtered)` — Reife-Zähler über die volle gerankte Liste, Count-/Limit-Linie passend zur sichtbaren (gefilterten) Menge. Filter-Chips „Alle / Nutzbar / In Prüfung / Zu prüfen" mit Counts ergänzt; aktiver Chip hervorgehoben. ReRanking, Match-Gründe, Windowing, Export, Links, Revalidate, Status-/Typ-/Domäne-/Tag-Filter unverändert. Keine neue Suche, kein Backend, keine Vector-/RAG-/Semantik-Suche.
+
+**Geänderte Dateien:** `apps/web/src/lib/libraryMaturity.ts` (Filter-Logik + Typen), `tests/library/library-maturity.test.ts` (+6 Tests), `apps/web/src/pages/Library.tsx` (Filter-State + Chips + Reihenfolge), `apps/web/src/i18n.ts` (`lib.maturity.all` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — 126 Dateien / 675 Tests (+6 Tests). `apps/web` `tsc --noEmit` grün. Biome + dependency-cruiser sauber. Die neuen Tests sichern: Filterumfang (all + drei Reifearten), `all` unverändert, `ready` nur validierte (nie offene), `in-review`/`needs-work` unterscheidbar, ehrliche Counts (`all` = Gesamtzahl), korrekte Label-Keys.
+
+**Restlücken/Nicht-Ziele:** kein Backend, keine neue Suchmaschine, keine Vector-/RAG-/Semantik-Suche, kein Redesign, keine Stufe-2-Arbeit, keine Ticketserie. Der Reife-Filter nutzt exakt dieselbe `libraryMaturity`/`koOverview`-Logik wie die Plakette (eine Quelle der Wahrheit) und arbeitet rein client-seitig auf der bereits gelieferten/gerankten Liste; der bestehende serverseitige Status-Filter bleibt unabhängig nutzbar.
+
+**Commit-/Push-Hinweis:**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/libraryMaturity.ts tests/library/library-maturity.test.ts apps/web/src/pages/Library.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(library): maturity filter for usable knowledge (SCRUM-267)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

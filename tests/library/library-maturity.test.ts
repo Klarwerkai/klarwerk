@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { KnowledgeObject } from "../../apps/web/src/api/types";
-import { libraryMaturity } from "../../apps/web/src/lib/libraryMaturity";
+import {
+  MATURITY_FILTERS,
+  countByMaturity,
+  filterByMaturity,
+  libraryMaturity,
+  maturityFilterLabelKey,
+} from "../../apps/web/src/lib/libraryMaturity";
 
 function ko(overrides: Partial<KnowledgeObject>): KnowledgeObject {
   return {
@@ -48,5 +54,50 @@ describe("SCRUM-262: libraryMaturity", () => {
     expect(m.usability).toBe("needs-work");
     expect(m.labelKey).toBe("lib.maturity.open");
     expect(m.labelKey).not.toBe("lib.maturity.usable");
+  });
+});
+
+// SCRUM-267: Reife-Filter über die gerankte Trefferliste.
+describe("SCRUM-267: filterByMaturity / countByMaturity", () => {
+  const scored = [
+    { ko: ko({ id: "a", status: "validiert", trust: 100 }) }, // ready
+    { ko: ko({ id: "b", status: "validiert", trust: 80 }) }, // ready
+    { ko: ko({ id: "c", status: "offen", assignments: ["u-2"] }) }, // in-review
+    { ko: ko({ id: "d", status: "offen", assignments: [] }) }, // needs-work
+  ];
+
+  it("bietet Alle plus die drei Reifearten", () => {
+    expect(MATURITY_FILTERS).toEqual(["all", "ready", "in-review", "needs-work"]);
+  });
+
+  it("'all' lässt die Liste unverändert", () => {
+    expect(filterByMaturity(scored, "all")).toHaveLength(4);
+  });
+
+  it("'ready' (nutzbar) zeigt nur validierte, nie offene/ungeprüfte KOs", () => {
+    const ready = filterByMaturity(scored, "ready");
+    expect(ready.map((s) => s.ko.id)).toEqual(["a", "b"]);
+    expect(ready.every((s) => s.ko.status === "validiert")).toBe(true);
+  });
+
+  it("'in-review' und 'needs-work' sind unterscheidbar", () => {
+    expect(filterByMaturity(scored, "in-review").map((s) => s.ko.id)).toEqual(["c"]);
+    expect(filterByMaturity(scored, "needs-work").map((s) => s.ko.id)).toEqual(["d"]);
+  });
+
+  it("countByMaturity zählt ehrlich je Reife; all = Gesamtzahl", () => {
+    expect(countByMaturity(scored)).toEqual({
+      all: 4,
+      ready: 2,
+      "in-review": 1,
+      "needs-work": 1,
+    });
+  });
+
+  it("maturityFilterLabelKey: all eigener Key, sonst Plaketten-Label", () => {
+    expect(maturityFilterLabelKey("all")).toBe("lib.maturity.all");
+    expect(maturityFilterLabelKey("ready")).toBe("lib.maturity.usable");
+    expect(maturityFilterLabelKey("in-review")).toBe("lib.maturity.review");
+    expect(maturityFilterLabelKey("needs-work")).toBe("lib.maturity.open");
   });
 });

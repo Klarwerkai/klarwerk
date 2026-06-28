@@ -19,7 +19,15 @@ import { deriveStatus } from "../lib/displayStatus";
 import { koAuthorParts } from "../lib/koAuthor";
 import { windowList } from "../lib/libraryDisplay";
 import { EXPORT_FORMATS, type ExportFormat, exportFilename, exportUrl } from "../lib/libraryExport";
-import { type MaturityTone, libraryMaturity } from "../lib/libraryMaturity";
+import {
+  MATURITY_FILTERS,
+  type MaturityFilter,
+  type MaturityTone,
+  countByMaturity,
+  filterByMaturity,
+  libraryMaturity,
+  maturityFilterLabelKey,
+} from "../lib/libraryMaturity";
 import { EMPTY_LIBRARY_FILTER, buildLibraryQuery } from "../lib/libraryQuery";
 import { type MatchField, searchLibrary } from "../lib/librarySearch";
 import { canRevalidate } from "../lib/revalidation";
@@ -40,6 +48,8 @@ export function Library(): JSX.Element {
   const [params] = useSearchParams();
   const [filter, setFilter] = useState({ ...EMPTY_LIBRARY_FILTER, q: params.get("q") ?? "" });
   const [exportFormat, setExportFormat] = useState<ExportFormat>("json");
+  // SCRUM-267: einfacher Reife-Filter (Alle/Nutzbar/In Prüfung/Zu prüfen) auf der gerankten Liste.
+  const [maturity, setMaturity] = useState<MaturityFilter>("all");
 
   // Optionen (Domäne/Tags) aus dem ungefilterten Bestand, damit sie stabil bleiben.
   const all = useKos();
@@ -171,10 +181,30 @@ export function Library(): JSX.Element {
         {(items) => {
           // SCRUM-245: client-seitig nach nachvollziehbarer Relevanz re-ranken (verwirft nichts).
           const ranked = searchLibrary(items, trimmedQ);
-          // SCRUM-158: große Bestände bedienbar halten + ehrlich begrenzen.
-          const win = windowList(ranked);
+          // SCRUM-267: Reife-Zähler über die gerankte Liste; dann nach Reife filtern …
+          const maturityCounts = countByMaturity(ranked);
+          const filtered = filterByMaturity(ranked, maturity);
+          // SCRUM-158: … erst danach fenstern + zählen (Count-Linie passt zur sichtbaren Menge).
+          const win = windowList(filtered);
           return (
             <>
+              {/* SCRUM-267: Reife-Filter — dieselbe Logik wie die Plakette (libraryMaturity). */}
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {MATURITY_FILTERS.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setMaturity(m)}
+                    className={`rounded-pill border px-2.5 py-1 font-mono text-[11px] font-semibold ${
+                      maturity === m
+                        ? "border-ink bg-ink text-white"
+                        : "border-hairline text-muted hover:text-text"
+                    }`}
+                  >
+                    {t(maturityFilterLabelKey(m))} · {maturityCounts[m]}
+                  </button>
+                ))}
+              </div>
               <div className="mb-2 flex items-center justify-between gap-2 font-mono text-[11px] text-muted-2">
                 <span>{t("lib.resultCount", { n: win.total })}</span>
                 {win.limited ? (

@@ -25,3 +25,48 @@ export function libraryMaturity(ko: KnowledgeObject): LibraryMaturity {
   const usability = koOverview(ko).usability;
   return { usability, ...META[usability] };
 }
+
+// SCRUM-267: einfacher Reife-Filter für die Bibliothek. „all" + die drei Reifearten — dieselbe
+// Logik wie die Plakette (libraryMaturity → koOverview). Arbeitet auf der bereits server-gefilterten
+// und client-seitig gerankten Trefferliste; keine neue Suche, kein Backend.
+export type MaturityFilter = "all" | KoUsability;
+
+export const MATURITY_FILTERS: readonly MaturityFilter[] = [
+  "all",
+  "ready",
+  "in-review",
+  "needs-work",
+];
+
+// i18n-Label je Filter (für die Chips). „all" eigener Key; sonst dasselbe Label wie die Plakette.
+export function maturityFilterLabelKey(filter: MaturityFilter): string {
+  return filter === "all" ? "lib.maturity.all" : META[filter].labelKey;
+}
+
+// Filtert eine Liste von Treffern (alles mit `.ko`) nach Reife. „all" lässt unverändert (keine
+// stille Ausblendung); sonst exakt die Reife der Plakette — „ready" enthält nie offene/ungeprüfte KOs.
+export function filterByMaturity<T extends { ko: KnowledgeObject }>(
+  items: readonly T[],
+  filter: MaturityFilter,
+): T[] {
+  if (filter === "all") {
+    return [...items];
+  }
+  return items.filter((item) => libraryMaturity(item.ko).usability === filter);
+}
+
+// Ehrliche Zähler je Reife (für die Chips). „all" = Gesamtzahl.
+export function countByMaturity<T extends { ko: KnowledgeObject }>(
+  items: readonly T[],
+): Record<MaturityFilter, number> {
+  const counts: Record<MaturityFilter, number> = {
+    all: items.length,
+    ready: 0,
+    "in-review": 0,
+    "needs-work": 0,
+  };
+  for (const item of items) {
+    counts[libraryMaturity(item.ko).usability] += 1;
+  }
+  return counts;
+}
