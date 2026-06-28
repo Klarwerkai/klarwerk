@@ -39,3 +39,23 @@ export function revalidationView(id: string, kos: readonly KnowledgeObject[]): R
     nextStep: ko.status === "validiert" ? "review" : "validate",
   };
 }
+
+// SCRUM-268: CTA in den bestehenden Validierungs-/Review-Fluss. Für review/validate führt sie auf
+// die vorhandene Route /validierung; für openKo (nicht auflösbares KO) gibt es KEINE CTA (kein
+// Fake-Review-Link) — dort bleiben nur Detail-Link und Missing-Hinweis. Keine neue Mutation,
+// keine automatische Revalidierung, kein Backend.
+export interface RevalidationCta {
+  labelKey: string;
+  href: string; // vorhandene Route
+}
+
+export function revalidationCta(view: Pick<RevalidationView, "nextStep">): RevalidationCta | null {
+  switch (view.nextStep) {
+    case "review":
+      return { labelKey: "lcy.revalCta.review", href: "/validierung" };
+    case "validate":
+      return { labelKey: "lcy.revalCta.validate", href: "/validierung" };
+    default:
+      return null; // openKo → keine falsche CTA
+  }
+}

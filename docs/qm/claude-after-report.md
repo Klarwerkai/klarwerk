@@ -4229,3 +4229,30 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-268 — Lifecycle: Pending-Revalidierungen mit Validierungs-CTA führen
+**Datum:** 2026-06-27 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung).
+
+**Vorab-Befund (read-only):** `Lifecycle.tsx` zeigt je fälliger Revalidierung (aus SCRUM-254) StatusPill „revalidierung", Anlagenbezug-Chip, Titel als Detail-Link (`/wissen/:id`), den nächsten Schritt (`revalidationView.nextStep`: review|validate|openKo), einen Missing-Hinweis bei nicht auflösbarem KO und den bestehenden „Noch gültig → neue Version"-Button (`confirm` → `revalidate`). `revalidation.ts` lieferte `revalidationView`, aber keine geführte CTA in den Review-/Validierungsfluss. Route `/validierung` vorhanden. Kein P0/P1.
+
+**Umsetzung (minimal, DOM-frei):** `revalidation.ts` um `revalidationCta(view) → { labelKey, href } | null` erweitert: `review` (validiert) → „Zur Prüfung" / `/validierung`, `validate` (offen) → „Zur Validierung" / `/validierung`, `openKo` (nicht auflösbar) → `null` (KEIN Fake-Review-Link). In `Lifecycle.tsx` je auflösbarer Pending-Karte eine sichtbare CTA (`<Link>` auf die bestehende Route) unter dem Nächster-Schritt-Hinweis; bei nicht gefundenem KO erscheint keine CTA, nur Detail-Link + Missing-Hinweis. Der bestehende Detail-Link und der „Noch gültig"-Button bleiben unverändert (keine Auto-Bestätigung, keine automatische Revalidierung). Kein Backend, keine neue Workflow-Engine.
+
+**Geänderte Dateien:** `apps/web/src/lib/revalidation.ts` (CTA-Helper + Typ), `tests/library/revalidation.test.ts` (+3 Tests), `apps/web/src/pages/Lifecycle.tsx` (CTA-Link), `apps/web/src/i18n.ts` (`lcy.revalCta.*` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — 126 Dateien / 678 Tests (+3 Tests). `apps/web` `tsc --noEmit` grün. Biome + dependency-cruiser sauber. Die neuen Tests sichern: review→/validierung, validate→/validierung (nicht zur Auto-Bestätigung), openKo→null (keine CTA).
+
+**Restlücken/Nicht-Ziele:** kein Backend, keine automatische Revalidierung, keine neue Lifecycle-/Workflow-Engine, kein Redesign, keine Stufe-2-Arbeit, keine Ticketserie. Beide Review-Pfade (validiert wie offen) führen ehrlich in den vorhandenen Validierungsfluss; die endgültige Bestätigung bleibt der manuelle „Noch gültig"-Button. Nicht auflösbare KOs erhalten bewusst keine CTA.
+
+**Commit-/Push-Hinweis:**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/revalidation.ts tests/library/revalidation.test.ts apps/web/src/pages/Lifecycle.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(lifecycle): guide pending revalidations with a validation CTA (SCRUM-268)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

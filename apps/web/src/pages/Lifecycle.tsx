@@ -9,7 +9,7 @@ import { useSession } from "../app/AuthContext";
 import { StatusPill } from "../components/trust";
 import { Button, Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import { completedCount, isStepDone, progressPercent } from "../lib/learningPath";
-import { revalidationView } from "../lib/revalidation";
+import { revalidationCta, revalidationView } from "../lib/revalidation";
 
 export function Lifecycle(): JSX.Element {
   const { t } = useTranslation();
@@ -88,6 +88,8 @@ export function Lifecycle(): JSX.Element {
               {ids.map((id) => {
                 // SCRUM-254: ID gegen geladenen Bestand auflösen → Titel, Anlagenbezug, Status, Schritt.
                 const view = revalidationView(id, kos.data ?? []);
+                // SCRUM-268: CTA in den bestehenden Validierungsfluss (null bei nicht auflösbarem KO).
+                const cta = revalidationCta(view);
                 return (
                   <Card key={id} className="flex items-center gap-3">
                     <div className="min-w-0 flex-1">
@@ -116,6 +118,15 @@ export function Lifecycle(): JSX.Element {
                         <div className="mt-0.5 text-[11px] text-trust-warn-text">
                           {t("lcy.revalMissing")}
                         </div>
+                      ) : null}
+                      {/* SCRUM-268: CTA in den bestehenden Validierungs-/Review-Fluss (kein Auto-Confirm). */}
+                      {cta ? (
+                        <Link
+                          to={cta.href}
+                          className="mt-1.5 inline-flex items-center gap-1 rounded-btn bg-ink px-2.5 py-1 text-[12px] font-semibold text-white hover:opacity-90"
+                        >
+                          {t(cta.labelKey)} <span aria-hidden="true">→</span>
+                        </Link>
                       ) : null}
                     </div>
                     <Button

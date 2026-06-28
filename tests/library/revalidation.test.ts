@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { KnowledgeObject } from "../../apps/web/src/api/types";
-import { canRevalidate, revalidationView } from "../../apps/web/src/lib/revalidation";
+import {
+  canRevalidate,
+  revalidationCta,
+  revalidationView,
+} from "../../apps/web/src/lib/revalidation";
 
 // SCRUM-136: Re-Validierung aus der Bibliothek nur für validierte Objekte.
 describe("SCRUM-136: canRevalidate", () => {
@@ -56,5 +60,25 @@ describe("SCRUM-254: revalidationView", () => {
     expect(v.asset).toBeNull();
     expect(v.status).toBeNull();
     expect(v.nextStep).toBe("openKo");
+  });
+});
+
+describe("SCRUM-268: revalidationCta", () => {
+  it("review (validiert) → CTA in den Validierungsfluss", () => {
+    expect(revalidationCta({ nextStep: "review" })).toEqual({
+      labelKey: "lcy.revalCta.review",
+      href: "/validierung",
+    });
+  });
+
+  it("validate (offen) → CTA in den Validierungsfluss, nicht zur Auto-Bestätigung", () => {
+    expect(revalidationCta({ nextStep: "validate" })).toEqual({
+      labelKey: "lcy.revalCta.validate",
+      href: "/validierung",
+    });
+  });
+
+  it("openKo (nicht auflösbar) → KEINE CTA (kein Fake-Review-Link)", () => {
+    expect(revalidationCta({ nextStep: "openKo" })).toBeNull();
   });
 });
