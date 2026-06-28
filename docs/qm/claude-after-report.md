@@ -5556,3 +5556,45 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-193 — Runtime installieren (Ollama / llama.cpp) — Readiness/Verifikation
+**Datum:** 2026-06-27 · **Rolle:** Claude prüft/dokumentiert (Codex steuert, Pedi entscheidet Richtung). Docs-only; **keine** Runtime-Installation/Modell-Download/Docker/GPU/Autostart; kein Produktcode.
+
+### 1. Vorab-Befund
+- **Prüfumgebung ≠ Zielrechner:** Shell läuft in **Linux-Sandbox** (`uname`: Linux aarch64), **kein** macOS, **kein** ollama; `system_profiler` nicht vorhanden. → `which ollama`/`curl :11434`/`system_profiler` **können den Mac nicht prüfen**; Terminal-Eingabe auf dem Mac gesperrt. **Maschinen-Verifikation aus dieser Umgebung nicht möglich** — kein erfundener „installiert"-Befund.
+- **Repo:** Runtime **nirgends verdrahtet** (grep `ollama|llama.cpp|11434|GGUF|Metal|OLLAMA|MODEL_PATH` leer). Heute deterministischer Reasoner (kein Modell).
+- Keine `local-runtime-readiness.md` → Doku-Gap.
+
+### 2. Durchgeführte Checks
+`uname`/`which` (Umgebung einordnen), Repo-Suche nach Runtime-Verdrahtung, Doku-Kontext (`inference-server-readiness.md`, `gpu-provider-decision.md`, `local-chat-ui-readiness.md`, `local-function-performance-baseline.md`).
+
+### 3. Ergebnisse
+- **Installation/Runtime vorhanden:** **nicht verifizierbar aus dieser Umgebung** (Sandbox≠Mac); im Repo **nicht** verdrahtet.
+- **Modellantwort / GPU-Metal-Verifikation:** **nein/nicht belegt** (kein Zugriff auf den Mac, kein Modellcall).
+
+### 4. Minimaler Fix
+**Neu:** `docs/operations/local-runtime-readiness.md` — Prüfumgebungs-Einschränkung (ehrlich), prüfbarer Repo-Befund, **Ollama-vs-llama.cpp** (Ollama zuerst), macOS/Apple-Silicon-Installpfad (Konzept), **Modell-Speicherort** (`~/.ollama/models`), Größen/RAM (Unified Memory), **Metal/GPU-Verifikation**, **Selbst-Verifikationsbefehle** für Pedi, Datenschutz/Logging, Done-Kriterien, Blocker/Nicht-Ziele. **Kein Produktcode.**
+
+### 5. Geänderte Dateien
+NEU `docs/operations/local-runtime-readiness.md`; `docs/qm/claude-after-report.md`. Kein Produktcode/FE.
+
+### 6. Tests/Gates
+`npm run check` grün — 128 Dateien / 700 Tests. Kein FE berührt → `apps/web tsc --noEmit` nicht erforderlich.
+
+### 7. Restlücken / Nicht-Ziele
+Keine Runtime/Modell installiert; keine Mac-Verifikation möglich; keine Produkt-Anbindung (Adapter fehlt). Verifikation/Installation = Pedi lokal (Befehle §7 der Doku) + späterer Inferenz-Adapter.
+
+### 8. Empfehlung: **PARTIAL / Blocked-on-local-verification** (nicht Done)
+**Begründung (Ehrlichkeit):** Im Repo ist keine Runtime verdrahtet; ob auf dem Mac Ollama/llama.cpp installiert/lauffähig ist, **kann aus der Linux-Sandbox nicht geprüft werden** (kein Terminal-Zugriff auf den Mac). Kein Nachweis für laufende Runtime/Modellantwort/Metal → **kein Fake-Done**. Entscheidung (Ollama zuerst) + Install-/Verifikationspfad dokumentiert → **Partial**; Verifikation durch Pedi lokal.
+
+### 9. Commit-/Push-Hinweis (nur Doku)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add docs/operations/local-runtime-readiness.md docs/qm/claude-after-report.md
+git commit -m "docs(ops): local runtime (Ollama/llama.cpp) readiness (not verifiable from sandbox; Ollama preferred) (SCRUM-193)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
