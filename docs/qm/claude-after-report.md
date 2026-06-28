@@ -4633,3 +4633,54 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-214 — Audit-Logging & Nachvollziehbarkeit (Bestandsprüfung, kein Neubau)
+**Datum:** 2026-06-27 · **Rolle:** Claude prüft (Codex steuert, Pedi entscheidet Richtung). Read-only Nachweis; kein Code geändert.
+
+### 1. Vorab-Befund
+Eigenständiges Audit-Modul `services/audit/*` mit append-only **Hash-Kette**:
+- `types.ts`: `AuditEntry { seq, at (ISO-Zeit), actor (wer), action, target (ziel), payload, prevHash, hash }`.
+- `service.ts`: `record(actor/action/target/payload)` (verkettet via `prevHash`/`hashEntry`), `list(filter: actor/action/target)`, `verify()` (Integrität der Kette).
+- `chain.ts`: `GENESIS`, `hashEntry`, `verifyChain` (Manipulationserkennung). Repos: `InMemoryAuditRepo` + `PgAuditRepo` (Persistenz vorhanden).
+- Verdrahtung (`build-app.ts`): EINE Audit-Instanz wird an auth, ko, validation, conflicts, ask, library injiziert. Route `auditRoutes` registriert.
+- **Event-Abdeckung** (real `audit.record(...)` quer durch die Services): `auth.login/logout`, `ko.created/rated/assigned/attached/commented/revised/deleted/detached`, `conflict.created/escalated/resolved`, `gap.created`, `ask.query`/`answer.helpful`, `library.import`, `user.approve/delete`.
+- **Route + RBAC** (`routes/audit-routes.ts`): `GET /api/audit` (mit Filter-Querystring) hinter `guards.requirePermission("ko.validate")` → nur Controller/Admin.
+- **UI/Report** (`Analytics.tsx`): Audit-Sektion mit Filtern (Actor/Action/Target), Anzahl „N von M", ehrlicher Leer-/Kein-Treffer-Zustand; stabiler Deep-Link-Anker `#analytics-audit` (SCRUM-229). Zusätzlich Impact-Report-Route nutzt das Audit.
+- **Tests** (`services/audit/src/service.test.ts`): FR-AUD-01 (wer/was/wann + fortlaufende Sequenz), append-only (Einträge eingefroren), intakte Kette verifiziert, Filter nach Aktion, **Manipulationserkennung** (nachträglich geänderter Eintrag bricht die Kette → `verifyChain=false`). `seed.test.ts` prüft, dass der Demo-Seed echte Audit-Einträge erzeugt und `audit.verify()===true`. Routen-Tests (`build-app.test`/`.integration.test`) belegen `GET /api/audit` → 200 mit Einträgen.
+
+### 2. Was ist bereits erfüllt (gegen Jira-Akzeptanzkriterien)
+- **Audit-Events definiert (wer/wann/Aktion/Ziel):** ✓ `AuditEntry` mit actor/at/action/target/payload; breite, echte Event-Abdeckung.
+- **Logs vorhanden & auswertbar:** ✓ append-only Hash-Kette, filterbares `list`, `verify`; In-Memory + Postgres-Repo.
+- **UI/Report-Sicht vorhanden/erreichbar:** ✓ Analytics-Audit-Sektion mit Filtern + Deep-Link `#analytics-audit`.
+- **Zugriff/RBAC geschützt:** ✓ `GET /api/audit` nur mit `ko.validate` (Controller/Admin).
+- **Integrität/Nachvollziehbarkeit (NFR-TAI-01):** ✓ Hash-Kette + Manipulationserkennung getestet; jede Datenänderung ist über die Action-Events rückverfolgbar.
+
+Damit sind die FR-AUD-01/02 und die kerntechnischen SCRUM-214-Kriterien **erfüllt**.
+
+### 3. Ggf. minimaler Fix
+**Keiner.** Die bestehende Umsetzung reicht für die technischen Akzeptanzkriterien; es wurde kein echter Code-Gap gefunden. Die offenen Punkte sind ausschließlich Dokumentations-/Scope-Aspekte (siehe Restlücken) — gemäß Auftrag werden sie ehrlich dokumentiert, nicht „gefixt".
+
+### 4. Geänderte Dateien
+Nur `docs/qm/claude-after-report.md` (dieser Nachweis-Eintrag). Kein Produktcode, kein FE.
+
+### 5. Tests/Gates
+`npm run check` grün — 128 Dateien / 700 Tests (build/lint/arch/test). Kein FE berührt → `apps/web tsc --noEmit` nicht erforderlich.
+
+### 6. Restlücken / Nicht-Ziele (ehrlich dokumentiert)
+- **Aufbewahrung/DSGVO:** Das Audit-Log ist **bewusst append-only/unveränderlich** (FR-AUD-02) — es gibt **keine** Lösch-/Purge-/Retention-Mechanik, und das ist Absicht (Manipulationsschutz). Eine selektive DSGVO-Löschung einzelner Audit-Einträge ist damit **technisch nicht vorgesehen**; die breitere DSGVO-Anforderung **NFR-PRV-04** (Auskunft/Löschung/Verarbeitungsverzeichnis) ist ein **separates, noch offenes** Produktthema und nicht Teil von SCRUM-214. Keine Rechtsberatung, keine Persistenz-Migration in diesem Ticket.
+- **Missbrauchs-/Anomalie-Erkennung:** **nicht vorhanden** → bewusst als **P2/Nicht-Ziel** dokumentiert (kein neues Audit-/Erkennungssystem in diesem Ticket).
+- **Integritäts-Anzeige in der UI:** `verify()` ist serverseitig/getestet, aber in der Analytics-UI gibt es (noch) keinen „Kette geprüft"-Indikator → optionales P2, kein Blocker.
+
+**Empfehlung:** SCRUM-214 ist aus Code-/Test-Sicht schließbar (FR-AUD-01/02 erfüllt). Die DSGVO-/Anomalie-Punkte gehören in eigene, separate Items (NFR-PRV-04 bzw. Security-P2), nicht in dieses Bestandsticket.
+
+### 7. Commit-/Push-Hinweis (nur Nachweis-Doc, kein Code)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add docs/qm/claude-after-report.md
+git commit -m "docs(qm): SCRUM-214 audit-logging evidence (sufficient, no code change)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
