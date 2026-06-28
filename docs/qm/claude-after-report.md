@@ -4067,3 +4067,30 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-262 — Bibliothek: Nutzbarkeit und Reife je Treffer klarer anzeigen
+**Datum:** 2026-06-27 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung).
+
+**Vorab-Befund (read-only):** `Library.tsx` rendert pro Treffer StatusPill (`deriveStatus(k)`), `KnowledgeTypeTag`, Titel, Autorzeile, Match-Gründe (bei aktiver Suche), Kategorie, `ConfidenceBar` und — nur für validierte KOs (`canRevalidate`) — den Revalidate-Button. Server-Search/Filter (`buildLibraryQuery`/`useLibrarySearch`), client-seitiges Re-Ranking (`searchLibrary`) und Fensterung/Limit (`windowList`) sind intakt. `koOverview(ko).usability` (ready/in-review/needs-work) liefert bereits die ehrliche Reife (validiert → ready, pruefung → in-review, offen → needs-work). Lücke: die Zeile zeigt keine Klartext-Reife/Nutzbarkeit. Kein P0/P1.
+
+**Umsetzung (minimal, DOM-frei):** Neuer reiner Helfer `apps/web/src/lib/libraryMaturity.ts`: `libraryMaturity(ko) → { usability, labelKey, tone }`, abgeleitet über `koOverview` — `ready` → „Nutzbar" (pos), `in-review` → „In Prüfung" (warn), `needs-work` → „Zu prüfen" (neutral). In `Library.tsx` zeigt jede Trefferzeile zusätzlich eine kompakte Reife-Plakette (links neben StatusPill). Offene KOs erscheinen damit nie als „Nutzbar". StatusPill, KnowledgeTypeTag, Match-Gründe, ConfidenceBar, Revalidate-Button, Export, Filter und Limit-Hinweis unverändert. Keine neue Suche/Mutation, kein Backend.
+
+**Geänderte Dateien:** NEU `apps/web/src/lib/libraryMaturity.ts`, NEU `tests/library/library-maturity.test.ts` (3 Tests); geändert `apps/web/src/pages/Library.tsx` (Reife-Plakette + MATURITY_TONE), `apps/web/src/i18n.ts` (`lib.maturity.*` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — 124 Dateien / 659 Tests (+1 Datei, +3 Tests). `apps/web` `tsc --noEmit` grün. Biome + dependency-cruiser sauber. Der neue Test sichert: validiert → nutzbar/pos, zugewiesen-offen → in Prüfung/warn, offen → zu prüfen/neutral und nie „nutzbar".
+
+**Restlücken/Nicht-Ziele:** keine neue Suche, keine Vector-/RAG-/Semantik-Suche, keine Backend-Änderung, keine neue Mutation außer dem bestehenden Revalidate-Button, keine Stufe-2-Arbeit, kein Redesign, keine Ticketserie. Die Reife wird ehrlich aus dem vorhandenen KO abgeleitet (kein neues Statusmodell). „Aktuell halten/revalidieren" bleibt über den vorhandenen Revalidate-Button (für validierte KOs) abgebildet; die Reife-Plakette ergänzt die Klartext-Nutzbarkeit, ohne ihn zu duplizieren.
+
+**Commit-/Push-Hinweis:**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/libraryMaturity.ts tests/library/library-maturity.test.ts apps/web/src/pages/Library.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(library): show maturity/usability per result (SCRUM-262)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

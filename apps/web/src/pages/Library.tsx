@@ -19,12 +19,20 @@ import { deriveStatus } from "../lib/displayStatus";
 import { koAuthorParts } from "../lib/koAuthor";
 import { windowList } from "../lib/libraryDisplay";
 import { EXPORT_FORMATS, type ExportFormat, exportFilename, exportUrl } from "../lib/libraryExport";
+import { type MaturityTone, libraryMaturity } from "../lib/libraryMaturity";
 import { EMPTY_LIBRARY_FILTER, buildLibraryQuery } from "../lib/libraryQuery";
 import { type MatchField, searchLibrary } from "../lib/librarySearch";
 import { canRevalidate } from "../lib/revalidation";
 import { categoryOptions, tagOptions } from "../lib/validationFilters";
 
 const KO_STATUSES = ["offen", "validiert"] as const;
+
+// SCRUM-262: Tönung der Reife-/Nutzbarkeits-Plakette (nutzbar/in Prüfung/zu prüfen).
+const MATURITY_TONE: Record<MaturityTone, string> = {
+  pos: "bg-trust-pos-bg text-trust-pos-text",
+  warn: "bg-trust-warn-bg text-trust-warn-text",
+  neutral: "bg-page text-muted",
+};
 
 export function Library(): JSX.Element {
   const { t } = useTranslation();
@@ -177,58 +185,69 @@ export function Library(): JSX.Element {
               </div>
               <Card className="p-0">
                 <div className="divide-y divide-hairline">
-                  {win.visible.map(({ ko: k, matches }) => (
-                    <div
-                      key={k.id}
-                      className="flex items-center gap-3 px-4 py-2.5 hover:bg-hairline-soft"
-                    >
-                      <Link
-                        to={`/wissen/${k.id}`}
-                        className="flex min-w-0 flex-1 items-center gap-3"
+                  {win.visible.map(({ ko: k, matches }) => {
+                    // SCRUM-262: ehrliche Reife/Nutzbarkeit je Treffer (DOM-freier Helper).
+                    const maturity = libraryMaturity(k);
+                    return (
+                      <div
+                        key={k.id}
+                        className="flex items-center gap-3 px-4 py-2.5 hover:bg-hairline-soft"
                       >
-                        <StatusPill status={deriveStatus(k)} />
-                        <KnowledgeTypeTag type={k.type} />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[13.5px] text-text">{k.title}</span>
-                          <KoAuthorLine {...koAuthorParts(k, nameOf)} />
-                          {/* SCRUM-245: kompakte, ehrliche Match-Gründe (nur bei aktiver Suche). */}
-                          {trimmedQ && matches.length > 0 ? (
-                            <span className="mt-0.5 flex flex-wrap items-center gap-1">
-                              <span className="font-mono text-[9.5px] uppercase tracking-wide text-muted-2">
-                                {t("lib.matchIn")}
-                              </span>
-                              {matches.map((field) => (
-                                <span
-                                  key={field}
-                                  className="rounded-pill bg-hairline-soft px-1.5 py-0.5 text-[10px] text-muted"
-                                >
-                                  {matchLabel(field)}
-                                </span>
-                              ))}
-                            </span>
-                          ) : null}
-                        </span>
-                        <span className="hidden font-mono text-[11px] text-muted-2 sm:block">
-                          {k.category}
-                        </span>
-                        <div className="hidden sm:block">
-                          <ConfidenceBar value={k.confidence} showLabel={false} />
-                        </div>
-                      </Link>
-                      {canRevalidate(k.status) ? (
-                        <button
-                          type="button"
-                          title={t("lib.revalidate")}
-                          disabled={revalidate.isPending && revalidate.variables === k.id}
-                          onClick={() => revalidate.mutate(k.id)}
-                          className="inline-flex shrink-0 items-center gap-1 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text disabled:opacity-50"
+                        <Link
+                          to={`/wissen/${k.id}`}
+                          className="flex min-w-0 flex-1 items-center gap-3"
                         >
-                          <RotateCw size={13} />
-                          {t("lib.revalidate")}
-                        </button>
-                      ) : null}
-                    </div>
-                  ))}
+                          <span
+                            className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${MATURITY_TONE[maturity.tone]}`}
+                          >
+                            {t(maturity.labelKey)}
+                          </span>
+                          <StatusPill status={deriveStatus(k)} />
+                          <KnowledgeTypeTag type={k.type} />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[13.5px] text-text">
+                              {k.title}
+                            </span>
+                            <KoAuthorLine {...koAuthorParts(k, nameOf)} />
+                            {/* SCRUM-245: kompakte, ehrliche Match-Gründe (nur bei aktiver Suche). */}
+                            {trimmedQ && matches.length > 0 ? (
+                              <span className="mt-0.5 flex flex-wrap items-center gap-1">
+                                <span className="font-mono text-[9.5px] uppercase tracking-wide text-muted-2">
+                                  {t("lib.matchIn")}
+                                </span>
+                                {matches.map((field) => (
+                                  <span
+                                    key={field}
+                                    className="rounded-pill bg-hairline-soft px-1.5 py-0.5 text-[10px] text-muted"
+                                  >
+                                    {matchLabel(field)}
+                                  </span>
+                                ))}
+                              </span>
+                            ) : null}
+                          </span>
+                          <span className="hidden font-mono text-[11px] text-muted-2 sm:block">
+                            {k.category}
+                          </span>
+                          <div className="hidden sm:block">
+                            <ConfidenceBar value={k.confidence} showLabel={false} />
+                          </div>
+                        </Link>
+                        {canRevalidate(k.status) ? (
+                          <button
+                            type="button"
+                            title={t("lib.revalidate")}
+                            disabled={revalidate.isPending && revalidate.variables === k.id}
+                            onClick={() => revalidate.mutate(k.id)}
+                            className="inline-flex shrink-0 items-center gap-1 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text disabled:opacity-50"
+                          >
+                            <RotateCw size={13} />
+                            {t("lib.revalidate")}
+                          </button>
+                        ) : null}
+                      </div>
+                    );
+                  })}
                 </div>
               </Card>
             </>
