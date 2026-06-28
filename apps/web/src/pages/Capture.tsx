@@ -22,7 +22,7 @@ import { ListEditor, TagEditor } from "../components/editors";
 import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
 import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
 import { CAPTURE_EXAMPLE } from "../lib/captureExample";
-import { readGapContext } from "../lib/captureFromGap";
+import { gapContextDraft, readGapContext } from "../lib/captureFromGap";
 import { captureReadiness } from "../lib/captureReadiness";
 import { draftTitle } from "../lib/draftForm";
 import {
@@ -102,7 +102,15 @@ export function Capture(): JSX.Element {
   const gapContext = readGapContext(params);
 
   const [mode, setMode] = useState<Mode>("freitext");
-  const [raw, setRaw] = useState(() => gapContext ?? "");
+  // SCRUM-270: Gap-Frage als OFFENE-Frage-Vorlage übernehmen (kein fertiges Wissen); ohne Gap leer.
+  const [raw, setRaw] = useState(() =>
+    gapContext
+      ? gapContextDraft(gapContext, {
+          question: t("capture.gapDraftQuestion"),
+          experience: t("capture.gapDraftExperience"),
+        })
+      : "",
+  );
   const [draft, setDraft] = useState<StructureResult | null>(null);
   // KW-STR / SCRUM-45/46/48: WYSIWYG-Body (sanitisiertes HTML), separat vom Reasoner-Draft.
   const [bodyHtml, setBodyHtml] = useState("");

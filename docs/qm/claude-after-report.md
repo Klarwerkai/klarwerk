@@ -4283,3 +4283,30 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-270 — Capture: Gap-Kontext als offene Frage statt fertige Rohnotiz kennzeichnen
+**Datum:** 2026-06-27 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung).
+
+**Vorab-Befund (read-only):** `captureFromGap.ts` (SCRUM-263) liefert `captureGapHref`/`readGapContext`. `Capture.tsx` seedet bei `?gap=…` die Rohnotiz `raw` (lazy init) mit der BLOSSEN Gap-Frage und zeigt einen Kontext-Banner (`capture.gapContext*`). Das konnte in der Demo als „fertige Rohnotiz/Wissen" missverstanden werden — eine Frage ist noch kein Wissen. Kein P0/P1.
+
+**Umsetzung (minimal, DOM-frei):** Helper `captureFromGap.ts` um `gapContextDraft(question, labels) → string` erweitert: erzeugt eine klare Schreibvorlage „`<Offene Frage>`: <Frage>\n\n`<Eigene Erfahrung/Beobachtung ergänzen>`:\n" — die Frage ist explizit als offene Frage markiert, darunter lädt eine leere Zeile zur eigenen Erfahrung ein. Labels werden übergeben (DOM-frei, i18n-fähig). In `Capture.tsx` nutzt die `raw`-Lazy-Init jetzt `gapContextDraft(gapContext, { question: t("capture.gapDraftQuestion"), experience: t("capture.gapDraftExperience") })`; ohne `?gap=` startet `raw` unverändert leer. Banner-Body (DE/EN) geschärft: „Das ist eine offene Frage, noch kein Wissen — sie dient nur als Startkontext. …". Submit/Strukturieren/Reasoner und der gesamte normale Capture-Flow unverändert. Keine KO-Erzeugung, keine Lücken-Schließung, kein Backend.
+
+**Geänderte Dateien:** `apps/web/src/lib/captureFromGap.ts` (Vorlage-Helper + Typ), `tests/capture/capture-from-gap.test.ts` (+2 Tests), `apps/web/src/pages/Capture.tsx` (raw-Seed als Vorlage), `apps/web/src/i18n.ts` (`capture.gapDraftQuestion`/`Experience` + geschärfter `gapContextBody` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — 126 Dateien / 682 Tests (+2 Tests). `apps/web` `tsc --noEmit` grün. Biome + dependency-cruiser sauber. Die neuen Tests sichern: die Vorlage kennzeichnet die Frage als „Offene Frage", enthält die Erfahrungs-Aufforderung, trennt beides per Leerzeile und endet offen für Eingabe; die Frage wird getrimmt.
+
+**Restlücken/Nicht-Ziele:** kein automatisches KO, keine automatische Gap-Schließung, kein Backend, keine Reasoner-/RAG-/Vector-Architektur, kein Redesign, keine Ticketserie. Die Vorlage ist reiner Startkontext (vom Nutzer frei editierbar); der Nutzer sieht die Gap-Frage weiterhin im Banner. Normaler Capture ohne Gap bleibt exakt wie zuvor (leerer Start).
+
+**Commit-/Push-Hinweis:**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/captureFromGap.ts tests/capture/capture-from-gap.test.ts apps/web/src/pages/Capture.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(capture): mark gap context as an open question, not finished note (SCRUM-270)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

@@ -15,3 +15,16 @@ export function readGapContext(params: URLSearchParams): string | null {
   const value = params.get(GAP_PARAM)?.trim();
   return value && value.length > 0 ? value : null;
 }
+
+// SCRUM-270: Rohnotiz-Vorlage aus einer Gap-Frage. Macht klar, dass die Frage ein OFFENER
+// Startkontext ist (kein fertiges Wissen): die Frage steht als „Offene Frage", darunter eine
+// leere Zeile für die eigene Erfahrung/Beobachtung. Labels werden übergeben (DOM-frei, i18n-fähig).
+// Keine KO-Erzeugung, keine Lücken-Schließung — nur eine Schreibvorlage für den Menschen.
+export interface GapDraftLabels {
+  question: string; // z. B. „Offene Frage"
+  experience: string; // z. B. „Eigene Erfahrung/Beobachtung ergänzen"
+}
+
+export function gapContextDraft(question: string, labels: GapDraftLabels): string {
+  return `${labels.question}: ${question.trim()}\n\n${labels.experience}:\n`;
+}

@@ -185,7 +185,9 @@ const de = {
   "capture.title": "Erfahrungswissen festhalten",
   "capture.gapContextTitle": "Aus offener Wissenslücke",
   "capture.gapContextBody":
-    "Diese offene Frage ist als Notiz übernommen. Ergänze deine Erfahrung dazu — die KI strukturiert daraus einen Entwurf, du prüfst und reichst ein.",
+    "Das ist eine offene Frage, noch kein Wissen — sie dient nur als Startkontext. Ergänze deine Erfahrung/Beobachtung; die KI strukturiert daraus einen Entwurf, du prüfst und reichst ein.",
+  "capture.gapDraftQuestion": "Offene Frage",
+  "capture.gapDraftExperience": "Eigene Erfahrung/Beobachtung ergänzen",
   "capture.mode.freitext": "Freitext",
   "capture.mode.formular": "Formular",
   "capture.mode.diktat": "Diktat",
@@ -1273,7 +1275,9 @@ const en: typeof de = {
   "capture.title": "Capture experience knowledge",
   "capture.gapContextTitle": "From an open knowledge gap",
   "capture.gapContextBody":
-    "This open question has been taken in as a note. Add your experience — the AI structures it into a draft, you review and submit.",
+    "This is an open question, not knowledge yet — it only serves as a starting context. Add your experience/observation; the AI structures it into a draft, you review and submit.",
+  "capture.gapDraftQuestion": "Open question",
+  "capture.gapDraftExperience": "Add your own experience/observation",
   "capture.mode.freitext": "Free text",
   "capture.mode.formular": "Form",
   "capture.mode.diktat": "Dictation",
