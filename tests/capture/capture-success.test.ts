@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { captureNextSteps } from "../../apps/web/src/lib/captureSuccess";
+import i18n from "../../apps/web/src/i18n";
+import { captureNextSteps, captureSavedStatus } from "../../apps/web/src/lib/captureSuccess";
 
 // SCRUM-276: nach dem Einreichen den nächsten Schritt im Kernfluss sichtbar machen.
 describe("SCRUM-276: captureNextSteps", () => {
@@ -18,5 +19,35 @@ describe("SCRUM-276: captureNextSteps", () => {
   it("bettet die KO-ID in den Detail-Link ein", () => {
     const [viewKo] = captureNextSteps("abc-123");
     expect(viewKo?.to).toBe("/wissen/abc-123");
+  });
+});
+
+// SCRUM-286: nach dem Speichern ehrlich führen — gespeichert, aber noch offen/nicht validiert;
+// die Validierung/Prüfung ist die betonte (primary) nächste Handlung.
+describe("SCRUM-286: Capture→Validation-Führung", () => {
+  it("betont die Validierung als primäre nächste Handlung (nur dieser Schritt)", () => {
+    const steps = captureNextSteps("ko-7");
+    const validate = steps.find((s) => s.to === "/validierung");
+    const viewKo = steps.find((s) => s.to.startsWith("/wissen/"));
+    expect(validate?.primary).toBe(true);
+    expect(viewKo?.primary).toBeFalsy();
+  });
+
+  it("liefert Status-Schlüssel für offen / noch nicht validiert", () => {
+    const status = captureSavedStatus();
+    expect(status.badgeKey).toBe("capture.savedStatusBadge");
+    expect(status.hintKey).toBe("capture.savedBody");
+  });
+
+  const text = (lng: string, key: string) =>
+    String(i18n.getResource(lng, "translation", key) ?? "").toLowerCase();
+
+  it("Status-Texte benennen DE/EN ehrlich: nicht validiert + erst nach Bewertung nutzbar", () => {
+    const { badgeKey, hintKey } = captureSavedStatus();
+    expect(text("de", badgeKey)).toContain("nicht validiert");
+    expect(text("de", hintKey)).toContain("nicht validiert");
+    expect(text("de", hintKey)).toContain("prüfung");
+    expect(text("en", badgeKey)).toContain("not yet validated");
+    expect(text("en", hintKey)).toContain("review");
   });
 });

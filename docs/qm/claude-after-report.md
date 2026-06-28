@@ -6006,3 +6006,51 @@ git push
 
 ### 9. Stop-Status
 **Slice abgeschlossen, Gates grün, gestoppt.** Keine Jira-Änderungen durch Claude. Codex übernimmt Commit, Push, Jira-Kommentar und Status.
+
+---
+
+## SCRUM-286 — Capture→Validation→Use: frisch erfasstes Wissen bis zur Nutzung führen
+**Datum:** 2026-06-28 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung). **FE-Produkt-Slice** (DOM-freier Helper + Texte + Test); kein neues Statusmodell/Engine; keine automatische Validierung/Nutzung; kein Backend; kein RAG/Suche.
+
+### 1. Ziel des Workflow-Slice
+Kernfluss Capture → Validation → Use für frisch erfasste KOs sichtbarer/verständlicher: nach dem Speichern klar machen, dass das KO gespeichert, aber **offen/zu prüfen** ist, in den Validierungsfluss gehört, erst nach ausreichender Bewertung nutzbar wird, und der Nutzer eine klare nächste Handlung Richtung Review hat.
+
+### 2. Vorab-Befund / Root Cause
+- Capture-Success-Card sagte „gespeichert" + „automatisch validiert wird nichts", aber **nicht explizit**, dass das KO **offen / noch nicht validiert** ist und erst nach Bewertung nutzbar wird → Hauptlücke.
+- Die beiden Next-Steps (Objekt ansehen / Zur Validierung) waren visuell gleichwertig → Review nicht betont.
+- **KO-Detail** (`koOverview`/`koCta`) zeigt offene KOs bereits ehrlich: usability „Noch in Arbeit" + nextAction „zur Freigabe bewerten lassen (Validierung)" / „Quelle/Beleg ergänzen, bevor validiert wird" → ausreichend, **nicht** verändert.
+- **Validation/MyTasks** zeigen offene Arbeit bereits → kompatibel, **nicht** verändert.
+
+### 3. Geänderte Dateien
+- `apps/web/src/lib/captureSuccess.ts` — `CaptureNextStep.primary?` (Validierung = primäre Handlung); neuer DOM-freier `captureSavedStatus()` → `{badgeKey, hintKey}` für „offen — noch nicht validiert".
+- `apps/web/src/i18n.ts` — neuer `capture.savedStatusBadge` (DE+EN); `capture.savedBody` geschärft („Gespeichert, aber noch nicht validiert. Erst nach ausreichender Bewertung … bitte zur Prüfung geben."); `capture.savedValidate` → „Zur Prüfung geben" / „Send for review" (DE+EN).
+- `apps/web/src/pages/Capture.tsx` — Success-Card: Status-Badge neben Titel; primäre vs. neutrale CTA-Styles.
+- `tests/capture/capture-success.test.ts` — 3 neue DOM-freie Tests (Validierung primary; captureSavedStatus-Schlüssel; DE/EN-Texte benennen „nicht validiert" + „Prüfung"/„review").
+
+### 4. Was verbessert wurde
+- Nach Capture ist **explizit klar**: gespeichert, aber **offen/nicht validiert**, erst nach Bewertung nutzbar, **„zur Prüfung geben"** als betonte (primary) nächste Handlung.
+- Status-Badge „Status: offen — noch nicht validiert" direkt in der Success-Card.
+- **Keine** automatische Validierung/Nutzung; **kein** neues Statusmodell (nutzt vorhandenes `status: offen`); **kein** Backend.
+- KO-Detail/Validation/MyTasks unverändert kompatibel (offene KOs bereits ehrlich als Review-Arbeit).
+
+### 5. Gates
+`npm run check` grün — **129 Dateien / 721 Tests** (+3). `apps/web tsc --noEmit` grün. Biome/depcruise grün.
+
+### 6. Commit-/Push-Hinweis
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/captureSuccess.ts apps/web/src/i18n.ts apps/web/src/pages/Capture.tsx tests/capture/capture-success.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(capture): honest 'open/not validated' status + emphasised review step after save (SCRUM-286)"
+git push
+```
+
+### 7. Offene Risiken
+- Status-Badge nimmt an, dass ein frisch erfasstes KO „offen" ist (per Datenmodell-Default `status: "offen"` korrekt) — kein Live-Status-Fetch (bewusst, kein Backend-Call). Falls künftig Capture KOs in anderem Status anlegt, Badge nachziehen.
+- Reine Anzeige-/Führungsverbesserung — keine erzwungene Validierung; Nutzer kann das KO weiterhin liegen lassen (gewollt: keine Automatik).
+
+### 8. Empfehlung nächster sinnvoller Slice
+- Optional: In MyTasks/Validation den **gerade erfassten** offenen KO leicht hervorheben (z. B. „neu erfasst"), damit der Review-Übergang noch direkter ist — kleiner FE-Slice.
+- Optional: KO-Detail-Banner für offene KOs sprachlich minimal angleichen an die neue Capture-Formulierung (Konsistenz), falls Nutzertests Bedarf zeigen.
+
+### 9. Stop-Status
+**Slice abgeschlossen, Gates grün, gestoppt.** Keine Jira-Änderungen durch Claude. Codex übernimmt Commit, Push, Jira-Kommentar und Status.

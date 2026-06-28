@@ -190,10 +190,12 @@ const de = {
   "capture.gapDraftQuestion": "Offene Frage",
   "capture.gapDraftExperience": "Eigene Erfahrung/Beobachtung ergänzen",
   "capture.savedTitle": "Wissensobjekt gespeichert.",
+  // SCRUM-286: ehrlich — gespeichert, aber noch offen/nicht validiert; erst nach Bewertung nutzbar.
+  "capture.savedStatusBadge": "Status: offen — noch nicht validiert",
   "capture.savedBody":
-    "Nächster Schritt: Objekt ansehen oder zur Validierung — automatisch validiert wird nichts.",
+    "Gespeichert, aber noch nicht validiert. Erst nach ausreichender Bewertung wird es nutzbares Wissen — bitte zur Prüfung geben. Automatisch validiert wird nichts.",
   "capture.savedViewKo": "Objekt ansehen",
-  "capture.savedValidate": "Zur Validierung",
+  "capture.savedValidate": "Zur Prüfung geben",
   "capture.savedAgain": "Weiteres erfassen",
   "capture.mode.freitext": "Freitext",
   "capture.mode.formular": "Formular",
@@ -1297,10 +1299,12 @@ const en: typeof de = {
   "capture.gapDraftQuestion": "Open question",
   "capture.gapDraftExperience": "Add your own experience/observation",
   "capture.savedTitle": "Knowledge object saved.",
+  // SCRUM-286: honest — saved but still open/not validated; usable only after review.
+  "capture.savedStatusBadge": "Status: open — not yet validated",
   "capture.savedBody":
-    "Next step: view the object or go to validation — nothing is validated automatically.",
+    "Saved, but not yet validated. It becomes usable knowledge only after sufficient review — please send it for review. Nothing is validated automatically.",
   "capture.savedViewKo": "View object",
-  "capture.savedValidate": "Go to validation",
+  "capture.savedValidate": "Send for review",
   "capture.savedAgain": "Capture another",
   "capture.mode.freitext": "Free text",
   "capture.mode.formular": "Form",

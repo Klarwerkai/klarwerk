@@ -24,7 +24,7 @@ import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../com
 import { CAPTURE_EXAMPLE } from "../lib/captureExample";
 import { gapContextDraft, readGapContext } from "../lib/captureFromGap";
 import { captureReadiness } from "../lib/captureReadiness";
-import { captureNextSteps } from "../lib/captureSuccess";
+import { captureNextSteps, captureSavedStatus } from "../lib/captureSuccess";
 import { draftTitle } from "../lib/draftForm";
 import {
   fileToThumbDataUrl,
@@ -493,8 +493,14 @@ export function Capture(): JSX.Element {
       {/* SCRUM-276: nach erfolgreichem Einreichen „gespeichert" + nächster Schritt (kein Auto-Redirect). */}
       {savedKoId ? (
         <Card className="mb-4 border-trust-pos-fill/40 bg-trust-pos-bg">
-          <div className="text-[13px] font-semibold text-trust-pos-text">
-            {t("capture.savedTitle")}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="text-[13px] font-semibold text-trust-pos-text">
+              {t("capture.savedTitle")}
+            </div>
+            {/* SCRUM-286: ehrlicher Status — gespeichert, aber noch offen/nicht validiert. */}
+            <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
+              {t(captureSavedStatus().badgeKey)}
+            </span>
           </div>
           <p className="mt-1 text-[12.5px] text-trust-pos-text/90">{t("capture.savedBody")}</p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -502,7 +508,9 @@ export function Capture(): JSX.Element {
               <Link
                 key={s.to}
                 to={s.to}
-                className="inline-flex items-center gap-1 rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
+                className={`inline-flex items-center gap-1 rounded-btn px-3 py-1.5 text-[12.5px] font-semibold hover:opacity-90 ${
+                  s.primary ? "bg-ink text-white" : "border border-hairline bg-page text-text"
+                }`}
               >
                 {t(s.labelKey)} <span aria-hidden="true">→</span>
               </Link>
