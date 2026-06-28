@@ -4733,3 +4733,45 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-210 — Dokumentation & Onboarding für Nutzer (Bestandsprüfung + kleiner Doku-Fix)
+**Datum:** 2026-06-27 · **Rolle:** Claude prüft/dokumentiert (Codex steuert, Pedi entscheidet Richtung). Docs-only, kein Produktcode.
+
+### 1. Vorab-Befund
+- **Architektur-/Betriebsdoku:** `README.md` (Harness-/Struktur-Überblick, „Loslegen"), `SETUP.md`, `docs/operations/*` (`deploy-hetzner.md`, `gitea-setup.md`, `governance-and-teams.md`, `pre-launch-protection.md`), `docs/knowledge-os/*` (Dossier + Projekt-Status), `docs/demo/stage-1-demo-path.md` (SCRUM-280).
+- **Nutzer-facing Hilfe (in-App):** `apps/web/src/pages/Help.tsx` + `apps/web/src/lib/helpTopics.ts` — **10 durchsuchbare Kapitel** (Erststart/Demodaten **„firststart/onboarding"**, Capture, Ask, Library, Validation, Tasks, Risk, Lifecycle, Stufe-2, Mobile), jedes mit Direktlink auf eine echte App-Route, DOM-freie Suche über Titel/Text/Tags, ehrlicher Leerzustand. Getestet: `tests/analytics/help-topics.test.ts` (SCRUM-219: leere/Treffer/Tag/Kein-Treffer).
+- **Beispiele:** Capture „Beispiel laden", Ask-Beispielchips mit Ergebnis-Erwartung, geführter Demo-Pfad.
+- **Datenschutz/Grenzen:** in Teilen vorhanden (Quellenbindung/Lücke, Reasoner-Modus-Badge, append-only Audit), aber **nicht konsolidiert nutzerseitig** benannt.
+
+### 2. Was ist bereits erfüllt (gegen Jira-Akzeptanzkriterien)
+- **Architektur-/Betriebsdoku vorhanden:** ✓ README/SETUP/operations/knowledge-os.
+- **Nutzer-Anleitung vorhanden:** ✓ in-App Hilfe (10 Kapitel, durchsuchbar) + Demo-Pfad — ergänzt durch das neue Schnellstart-Dokument (siehe 3).
+- **Beispiele vorhanden:** ✓ Capture-/Ask-Beispiele + Demo-Pfad.
+- **FAQ/Support bzw. Hilfe-Einstieg vorhanden:** ✓ Hilfe-Seite als zentraler Einstieg (dedizierter Support-Kontakt/FAQ = Restlücke, benannt).
+- **Nutzer können selbstständig starten:** ✓ „firststart"-Hilfekapitel + Demo-Seed-Hinweis + Schnellstart.
+
+### 3. Minimaler Doku-Fix
+**Neu:** `docs/onboarding/user-quickstart.md` — ein konsolidierter **Nutzer-Schnellstart**, der die vorhandenen Bausteine zusammenführt: Was ist Klarwerk (kein Chatbot), 5-Minuten-Start (Anmelden, Demo-Seed via `/admin`, Hilfe öffnen), Arbeitskreis **Capture→Validate→Use→Maintain** mit Rollen-Wer-darf-was-Tabelle, In-App-Hilfe als Einstieg, Beispiele (Verweis Demo-Pfad), **Grenzen** (Quellenbindung statt Bluff, deterministischer vs. Modellmodus, Demo-Sprache, Mensch entscheidet) und **Datenschutz/Nachvollziehbarkeit** (append-only Audit, RBAC, keine Secrets im Client; DSGVO-Betroffenenrechte als offene Betreiber-Pflicht ehrlich benannt — keine Rechtsberatung) sowie FAQ/Support + Support-Restlücke. Verweist ausschließlich auf vorhandene Routen/Doku. **Kein Produktcode**, kein UI-Eingriff.
+
+### 4. Geänderte Dateien
+NEU `docs/onboarding/user-quickstart.md`; `docs/qm/claude-after-report.md` (dieser Eintrag). Kein Produktcode, kein FE.
+
+### 5. Tests/Gates
+`npm run check` grün — 128 Dateien / 700 Tests. Kein FE berührt → `apps/web tsc --noEmit` nicht erforderlich. (Bestehende Hilfe-Logik bleibt durch `help-topics.test.ts` abgedeckt.)
+
+### 6. Restlücken / Nicht-Ziele (ehrlich dokumentiert)
+- **Dedizierter Support-Kontakt/FAQ im Produkt:** nicht eingebaut (Support-Weg pro Instanz organisatorisch) → P2/Nicht-Ziel; im Schnellstart benannt.
+- **DSGVO-Selbstbedienung (Auskunft/Löschung/Verarbeitungsverzeichnis, NFR-PRV-04):** organisatorisch beim Betreiber, nicht als Produktfunktion → bewusst nur dokumentiert (keine Rechtsberatung, vgl. SCRUM-214).
+- **In-App-Verlinkung des neuen Schnellstarts:** Das Onboarding-Dokument liegt im Repo (`docs/onboarding/`); eine zusätzliche Verlinkung aus der Hilfe-Seite wäre ein optionaler FE-Schritt (P2), wurde hier bewusst NICHT gemacht (kein Produktcode).
+
+### 7. Commit-/Push-Hinweis (nur Doku)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add docs/onboarding/user-quickstart.md docs/qm/claude-after-report.md
+git commit -m "docs(onboarding): user quickstart guide (SCRUM-210)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
