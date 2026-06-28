@@ -6,7 +6,7 @@ import { endpoints } from "../api/endpoints";
 import { useBusFactor, useConflicts, useDirectory, useGaps, useKos } from "../api/hooks";
 import type { GapPriority } from "../api/types";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
-import { captureGapHref } from "../lib/captureFromGap";
+import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
 import {
   GAP_PRIORITIES,
   type PriorityTone,
@@ -190,6 +190,9 @@ export function Risk(): JSX.Element {
 
       <div>
         <SectionLabel>{t("risk.gaps")}</SectionLabel>
+        {/* SCRUM-283: ehrlich + datensparsam — gespeicherte Fragen sind offene Lücken (keine Antwort/
+            kein validiertes Wissen); beim Erfassen keine sensiblen Details, geprüfte Erfahrung ergänzen. */}
+        <p className="mb-2 text-[12px] text-muted-2">{t(gapPrivacyNoticeKey())}</p>
         <QueryState query={gaps} emptyText={t("risk.gapsEmpty")}>
           {(items) => (
             <Card className="p-0">

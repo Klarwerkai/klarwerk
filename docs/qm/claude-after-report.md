@@ -5860,3 +5860,53 @@ git push
 
 ### 9. Stop-Status
 **Slice abgeschlossen, Gates grün, gestoppt.** Keine Jira-Änderungen durch Claude. Codex übernimmt Commit, Push, Jira-Kommentar und Status.
+
+---
+
+## SCRUM-283 — Ask/Risk/Capture: gespeicherte Wissenslücken datensparsam & verständlich führen
+**Datum:** 2026-06-28 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung). **FE-Produkt-Slice** (Anzeigetext + DOM-freier Helper + Test); kein Backend/Persistenz; kein RAG/Suche; keine PII-Erkennung; keine DSGVO-Self-Service-Funktion.
+
+### 1. Ziel des Workflow-Slice
+Flow Ask → Wissenslücke/Risk → Capture datensparsam & verständlich schärfen: bei einer gespeicherten unbeantworteten Frage soll klar sein — Fragetext wird als Lücke gespeichert, ist keine Antwort/kein validiertes Wissen, sensible/personenbezogene Details vermeiden, in Capture nur Startkontext + eigene geprüfte Erfahrung ergänzen.
+
+### 2. Vorab-Befund / Root Cause
+- **Ask-Gap-Karte:** zeigte bereits „kein validiertes Wissen … Wissenslücke angelegt" (Gap≠Antwort/Wissen), aber **keinen Datensparsamkeits-Hinweis** (keine sensiblen Details) → die eigentliche Lücke.
+- **Capture:** `capture.gapContextBody` (SCRUM-270) deckt „offene Frage, kein Wissen, Startkontext, eigene Erfahrung ergänzen, prüfen & einreichen" bereits **voll** ab → **bewusst nicht verändert** (nicht verwässern).
+- **Risk:** Gaps bereits als „Offene Wissenslücken" + Status „offen" + handlungsfähig; ein knapper, konsistenter Hinweis ergänzt Produktwirkung.
+- Wiederverwendbare Helfer vorhanden (`captureFromGap.ts`) — idealer Ort für einen gemeinsamen Hinweis.
+
+### 3. Geänderte Dateien
+- `apps/web/src/lib/captureFromGap.ts` — DOM-freier Helper `gapPrivacyNoticeKey()` + `GAP_PRIVACY_NOTICE_KEY` (eine Quelle der Wahrheit für Ask + Risk).
+- `apps/web/src/i18n.ts` — neuer Schlüssel `gap.privacyNotice` (DE + EN): „Frage wird als Wissenslücke gespeichert — keine Antwort und kein validiertes Wissen. Bitte keine sensiblen/personenbezogenen Details; ergänze später geprüfte Erfahrung."
+- `apps/web/src/pages/Ask.tsx` — Hinweis in der Gap-Karte (unter „nächster Schritt").
+- `apps/web/src/pages/Risk.tsx` — Hinweis als kompakte Subline unter der „Offene Wissenslücken"-Überschrift.
+- `tests/capture/capture-from-gap.test.ts` — 3 neue DOM-freie Tests (Helper stabil; DE/EN benennen Lücke + Datensparsamkeit + Erfahrung).
+
+### 4. Was verbessert wurde
+- **Ask:** bei Wissenslücke jetzt explizit datensparsam + ehrlich (Frage wird als Lücke gespeichert, keine Antwort, keine sensiblen Details, später geprüfte Erfahrung).
+- **Risk:** gespeicherte Frage bleibt handlungsfähig, jetzt mit ehrlichem Kontext „offene Lücke, keine Antwort/kein validiertes Wissen".
+- **Capture:** unverändert (SCRUM-270-Kontext bleibt; Gap = Startkontext + eigene Erfahrung).
+- **Bestehende Gap→Capture-Links** (`captureGapHref`) unverändert; **keine** Backend-/Persistenzänderung.
+- Konsistenz: Ask + Risk teilen denselben i18n-Schlüssel (eine Quelle der Wahrheit).
+
+### 5. Gates
+`npm run check` grün — **128 Dateien / 705 Tests** (3 neue). `apps/web tsc --noEmit` grün (nur Sandbox-Junk-Duplikate `@types/* 2` entfernt — kein Repo-Code; null Fehler in Quelldateien). Biome/depcruise grün.
+
+### 6. Commit-/Push-Hinweis
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/captureFromGap.ts apps/web/src/i18n.ts apps/web/src/pages/Ask.tsx apps/web/src/pages/Risk.tsx tests/capture/capture-from-gap.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(ask/risk): honest, data-minimising notice for stored knowledge gaps (SCRUM-283)"
+git push
+```
+
+### 7. Offene Risiken
+- Reiner Hinweis-Text — **keine** technische Durchsetzung der Datensparsamkeit (Nutzer kann weiterhin sensible Details eingeben). Bewusst so (keine PII-Erkennung/Schwärzung im Scope). Backend speichert die Gap-Frage weiterhin verbatim (vgl. SCRUM-190 Befund) — unverändert.
+- Hinweis erscheint generisch (nicht pro Gap-Zeile in Risk, sondern einmal pro Sektion) → bewusst, um Cluttering zu vermeiden.
+
+### 8. Empfehlung nächster sinnvoller Slice
+- Optionales Produkt-Item: serverseitige **Gap-Frage-Datenminimierung** (z. B. Längenhinweis/optionale Kürzung beim Anlegen) — als bewusste Produktentscheidung, nicht automatische PII-Erkennung.
+- Capture: kurze Inline-Erinnerung „keine sensiblen Details" direkt am Rohtext-Feld, falls Nutzertests Bedarf zeigen.
+
+### 9. Stop-Status
+**Slice abgeschlossen, Gates grün, gestoppt.** Keine Jira-Änderungen durch Claude. Codex übernimmt Commit, Push, Jira-Kommentar und Status.

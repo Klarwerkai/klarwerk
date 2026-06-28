@@ -350,6 +350,9 @@ const de = {
   "ask.noBasisTitle": "Keine belastbare Grundlage.",
   "ask.noBasisBody":
     "Es gibt kein validiertes Wissen zu dieser Frage. Statt einer erfundenen Antwort wurde eine Wissenslücke angelegt.",
+  // SCRUM-283: datensparsamer, ehrlicher Hinweis zur gespeicherten Wissenslücke (Ask + Risk).
+  "gap.privacyNotice":
+    "Die Frage wird als Wissenslücke gespeichert — keine Antwort und kein validiertes Wissen. Bitte keine sensiblen oder personenbezogenen Details erfassen; ergänze später geprüfte Erfahrung.",
   "ask.toGaps": "Zu den Wissenslücken",
   "ask.toCapture": "Wissen erfassen",
   "ko.kicker": "Wissensobjekt",
@@ -1453,6 +1456,9 @@ const en: typeof de = {
   "ask.noBasisTitle": "No reliable basis.",
   "ask.noBasisBody":
     "There is no validated knowledge for this question. Instead of a made-up answer, a knowledge gap was created.",
+  // SCRUM-283: data-minimising, honest notice about the stored knowledge gap (Ask + Risk).
+  "gap.privacyNotice":
+    "The question is stored as a knowledge gap — not an answer and not validated knowledge. Please avoid sensitive or personal details; add reviewed experience later.",
   "ask.toGaps": "To the knowledge gaps",
   "ask.toCapture": "Capture knowledge",
   "ko.kicker": "Knowledge object",

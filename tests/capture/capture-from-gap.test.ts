@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
+import i18n from "../../apps/web/src/i18n";
 import {
+  GAP_PRIVACY_NOTICE_KEY,
   captureGapHref,
   gapContextDraft,
+  gapPrivacyNoticeKey,
   readGapContext,
 } from "../../apps/web/src/lib/captureFromGap";
 
@@ -50,5 +53,32 @@ describe("SCRUM-270: gapContextDraft", () => {
     const draft = gapContextDraft("  Temperaturdrift an Linie L4?  ", labels);
     expect(draft).toContain("Offene Frage: Temperaturdrift an Linie L4?");
     expect(draft).not.toContain("Frage:   ");
+  });
+});
+
+// SCRUM-283: datensparsamer, ehrlicher Hinweis zur gespeicherten Wissenslücke (Ask + Risk teilen
+// denselben i18n-Schlüssel → einheitliche Aussage). Der Helper ist die einzige Quelle der Wahrheit.
+describe("SCRUM-283: gapPrivacyNoticeKey", () => {
+  it("liefert einen stabilen i18n-Schlüssel", () => {
+    expect(gapPrivacyNoticeKey()).toBe(GAP_PRIVACY_NOTICE_KEY);
+    expect(gapPrivacyNoticeKey()).toBe("gap.privacyNotice");
+  });
+
+  const text = (lng: string) =>
+    String(i18n.getResource(lng, "translation", gapPrivacyNoticeKey()) ?? "");
+
+  it("ist in DE vorhanden und benennt Lücke, fehlende Validierung und Datensparsamkeit", () => {
+    const de = text("de").toLowerCase();
+    expect(de.length).toBeGreaterThan(0);
+    expect(de).toContain("wissenslücke");
+    expect(de).toContain("sensibl"); // datensparsam: keine sensiblen Details
+    expect(de).toContain("erfahrung"); // später geprüfte Erfahrung ergänzen
+  });
+
+  it("ist in EN vorhanden und transportiert dieselbe ehrliche Aussage", () => {
+    const en = text("en").toLowerCase();
+    expect(en.length).toBeGreaterThan(0);
+    expect(en).toContain("gap");
+    expect(en).toContain("sensitive");
   });
 });

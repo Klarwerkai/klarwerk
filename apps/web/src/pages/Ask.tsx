@@ -12,7 +12,7 @@ import { ASK_EXAMPLES, type AskExpectationTone, askExpectation } from "../lib/as
 import { readAskQuestion } from "../lib/askQuestion";
 import { selectAnswer } from "../lib/askResponse";
 import { answerStatus, sourceRefs } from "../lib/askView";
-import { captureGapHref } from "../lib/captureFromGap";
+import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
 import { type EvidenceTone, knowledgeClassMeta } from "../lib/knowledgeClass";
 import { type ReasonerBadgeTone, reasonerBadge } from "../lib/reasonerBadge";
@@ -207,6 +207,11 @@ export function Ask(): JSX.Element {
             <p className="mt-1 text-sm text-muted">{t("ask.noBasisBody")}</p>
             {/* SCRUM-250: klarer nächster Schritt — die Lücke ist erfasst und im Risiko-Board handelbar. */}
             <p className="mt-1 text-[13px] text-muted">{t("ask.gapNext")}</p>
+            {/* SCRUM-283: ehrlich + datensparsam — Frage wird als Lücke gespeichert, keine Antwort,
+                keine sensiblen Details; geprüfte Erfahrung später ergänzen. */}
+            <p className="mt-2 rounded-btn bg-page px-2.5 py-2 text-[12px] text-muted-2">
+              {t(gapPrivacyNoticeKey())}
+            </p>
             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
               {/* SCRUM-264: direkt Wissen erfassen — die gestellte Frage als Capture-Kontext (kein Auto-KO). */}
               {asked ? (

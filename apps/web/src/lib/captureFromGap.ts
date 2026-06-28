@@ -28,3 +28,15 @@ export interface GapDraftLabels {
 export function gapContextDraft(question: string, labels: GapDraftLabels): string {
   return `${labels.question}: ${question.trim()}\n\n${labels.experience}:\n`;
 }
+
+// SCRUM-283: Einheitlicher, datensparsamer Hinweis zu gespeicherten Wissenslücken. Eine
+// unbeantwortete Frage wird als Wissenslücke gespeichert — das ist KEINE Antwort und KEIN
+// validiertes Wissen. Nutzer sollen keine sensiblen/personenbezogenen Details erfassen und
+// später geprüfte Erfahrung ergänzen. DOM-frei: liefert nur den i18n-Schlüssel, damit Ask und
+// Risk denselben ehrlichen Wortlaut zeigen (eine Quelle der Wahrheit). Kein Backend, keine
+// PII-Erkennung — reiner Anzeigetext.
+export const GAP_PRIVACY_NOTICE_KEY = "gap.privacyNotice";
+
+export function gapPrivacyNoticeKey(): string {
+  return GAP_PRIVACY_NOTICE_KEY;
+}
