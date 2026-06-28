@@ -4148,3 +4148,30 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-265 — Ask: produktnahe Beispielfragen als Startimpuls
+**Datum:** 2026-06-27 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung).
+
+**Vorab-Befund (read-only):** `Ask.tsx` hat ein Eingabefeld (`q`/`setQ`) + Submit; der Platzhalter („Warum verliert Presse P2 Druck?") war NICHT seed-konform (Presse P2 existiert nicht im Demo-Bestand). Bestehende Ask-Helfer: `askResponse.ts`, `askView.ts`, `mobileAsk.ts`. Der Seed (SCRUM-257) enthält validierte KOs (Ventil X/Überdruck, Filter F3 — beide 2× grün → validiert) und die offene Industrie-Lücke „Warum schwankt der Dosierwert an Linie L4 nach jedem Schichtwechsel?". Diese Daten erlauben ehrliche Beispiele für beide Ausgänge (quellengebundene Antwort vs. Wissenslücke). Kein P0/P1.
+
+**Umsetzung (minimal, DOM-frei):** Neuer reiner Helfer `apps/web/src/lib/askExamples.ts` (`ASK_EXAMPLES`: drei produktnahe Beispiele mit `id`/`questionKey`/`kind`): `valve` & `filter` (kind „answerable" → treffen validiertes Demo-Wissen → quellengebundene Antwort), `dosing` (kind „gap" → Linie L4 / Dosierwert / Schichtwechsel → ehrliche Wissenslücke → Capture-Folge). In `Ask.tsx` werden die Beispiele als klickbare Chips direkt unter dem Eingabefeld gerendert; ein Klick setzt NUR `q` (`setQ(t(questionKey))`) und löst KEINE Anfrage aus (`type="button"`). Platzhalter (DE/EN) produktnäher und seed-konform aktualisiert. Antwort-/Gap-/Capture-CTA-/Helpful-Pfade unverändert. Kein Backend, kein Reasoner-/RAG-/Vector-Umbau, keine Auto-Ausführung.
+
+**Geänderte Dateien:** NEU `apps/web/src/lib/askExamples.ts`, NEU `tests/ask/ask-examples.test.ts` (3 Tests); geändert `apps/web/src/pages/Ask.tsx` (Beispiel-Chips + Import), `apps/web/src/i18n.ts` (`ask.examplesLabel`, `ask.example.*` + Platzhalter DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — 126 Dateien / 666 Tests (+1 Datei, +3 Tests). `apps/web` `tsc --noEmit` grün. Biome + dependency-cruiser sauber. Der neue Test sichert: 2–3 Beispiele mit eindeutigen IDs und `ask.example.`-Keys, beide Ausgänge (answerable + gap) vertreten, Linie-L4-Dosing-Beispiel als „gap".
+
+**Restlücken/Nicht-Ziele:** kein Backend, keine Reasoner-/RAG-/Vector-Architektur, keine automatische Frage-Ausführung, keine neue Suchmaschine, keine Stufe-2-Arbeit, kein Redesign, keine Ticketserie. Hinweis: Die „answerable"-Beispiele treffen das deutschsprachige Demo-Wissen über Token-Überschneidung; in EN-Locale kann dieselbe Frage zur Lücke führen (Seed ist deutsch) — bewusst akzeptiert, da der Stage-1-Demo-Bestand deutschsprachig ist. Die Chips sind reine Vorlagen; der Nutzer entscheidet, ob/wann er fragt.
+
+**Commit-/Push-Hinweis:**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/askExamples.ts tests/ask/ask-examples.test.ts apps/web/src/pages/Ask.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(ask): product-near example questions as starting impulse (SCRUM-265)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

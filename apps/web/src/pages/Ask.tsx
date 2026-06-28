@@ -8,6 +8,7 @@ import { useKos, useReasonerStatus } from "../api/hooks";
 import type { AnswerResult } from "../api/types";
 import { ConfidenceBar } from "../components/trust";
 import { Button, Card, PageHeader, SectionLabel } from "../components/ui";
+import { ASK_EXAMPLES } from "../lib/askExamples";
 import { selectAnswer } from "../lib/askResponse";
 import { answerStatus, sourceRefs } from "../lib/askView";
 import { captureGapHref } from "../lib/captureFromGap";
@@ -90,6 +91,23 @@ export function Ask(): JSX.Element {
           <ArrowRight size={15} />
         </Button>
       </form>
+
+      {/* SCRUM-265: produktnahe Beispiel-Fragen — Klick setzt nur das Eingabefeld (kein Auto-Ask). */}
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <span className="font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+          {t("ask.examplesLabel")}
+        </span>
+        {ASK_EXAMPLES.map((ex) => (
+          <button
+            key={ex.id}
+            type="button"
+            onClick={() => setQ(t(ex.questionKey))}
+            className="rounded-pill border border-hairline px-2.5 py-1 text-[12px] text-muted hover:border-ink/30 hover:text-text"
+          >
+            {t(ex.questionKey)}
+          </button>
+        ))}
+      </div>
 
       {result ? (
         result.answered ? (
