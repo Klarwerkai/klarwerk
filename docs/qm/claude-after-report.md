@@ -5193,3 +5193,43 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-203 — Vektor-Datenbank aufsetzen — Readiness-/Entscheidungsprüfung
+**Datum:** 2026-06-27 · **Rolle:** Claude prüft/dokumentiert (Codex steuert, Pedi entscheidet Richtung). Docs-only; **keine** Vector-DB/Embeddings/Extension erzeugt; kein Produktcode.
+
+### 1. Vorab-Befund
+- **Keine Vektor-DB vorhanden:** grep nach `pgvector|qdrant|chroma|weaviate|pinecone|faiss|hnsw|ivfflat|embedding` in Code/Deps/Compose **leer**. `package.json` enthält nur `pg`/`@types/pg`. Keine Embedding-Daten/Collections/Schemas.
+- **Postgres = zentrale Persistenz:** `postgres:16` (Dev) / `postgres:16-alpine` (Prod); `db.ts#migrate` legt 13 Modul-Schemas an (inkl. Object-Store/Audit) — alles in einer DB.
+- Retrieval heute **lexikalisch** + KO-quellengebunden (`rag-readiness-decision.md`).
+- **Kein** `docs/operations/vector-db-readiness-decision.md` → Doku-Gap.
+
+### 2. Entscheidung
+**Jetzt keine Vector-DB aufsetzen.** Eine Vektor-Schicht ist erst nach **positiver RAG-Entscheidung** sinnvoll. **Bevorzugte Option für Klarwerk dann: `pgvector`** (Postgres-Extension) statt eines separaten Dienstes (Qdrant/Chroma/Weaviate) — minimale neue Backup-/Security-/Betriebsfläche, transaktionale Konsistenz mit KOs, einheitliche DSGVO-Löschpfade. Das Jira-Kriterium „Vektor-DB **aufgesetzt**" ist **nicht** erfüllt.
+
+### 3. Minimaler Fix
+**Neu:** `docs/operations/vector-db-readiness-decision.md` — Readiness-/Entscheidungsnotiz mit: aktuellem Zustand; Entscheidung/Empfehlung; **Vergleich pgvector vs. Qdrant/Chroma/Weaviate** (Infra/Backup/Auth/Konsistenz/DSGVO/Skalierung); bevorzugter Option (pgvector); **Collection-/Schema-Vorschlag** (`ko_embeddings`, nur Konzept) + **Metadata-Pflichtfelder** (ko_id/version/status/chunk/model/dim); **Indexing-/Embedding-Lifecycle** (Re-Embedding bei Änderung/Revalidierung, Löschung spiegelt KO); **Backup-/Restore-Auswirkung** (in `pg_dump`; Extension + ANN-Index-Neuaufbau beim Restore); **Security/DSGVO/Retention**; **offene Voraussetzungen**; **Nicht-Ziele**; klare Partial/Blocked-Empfehlung. **Kein Produktcode** (kein Konfig-Bug; SQL nur als Konzept, nicht ausgeführt).
+
+### 4. Geänderte Dateien
+NEU `docs/operations/vector-db-readiness-decision.md`; `docs/qm/claude-after-report.md` (dieser Eintrag). Kein Produktcode, kein FE.
+
+### 5. Tests/Gates
+`npm run check` grün — 128 Dateien / 700 Tests. Kein FE berührt → `apps/web tsc --noEmit` nicht erforderlich.
+
+### 6. Restlücken / Nicht-Ziele
+- **Keine** Vector-DB/Embeddings/Extension/Integration gebaut; kein Schema angelegt; keine neue Sucharchitektur.
+- Spätere Einrichtung nur nach positiver RAG-Entscheidung + entschiedenem Embedding-Modell/Chunking + Eval-Baseline + Betriebspfad (Extension/Index/Re-Embedding/Backup-Erweiterung).
+
+### 7. Empfehlung: **PARTIAL / Blocked-on-product-architecture-decision** (nicht Done)
+**Begründung (Ehrlichkeit):** Es läuft **keine** Vektor-DB und es gibt **keine** Embeddings/Collections — das Jira-Kriterium „aufgesetzt" ist **nicht** erfüllt, und ein Aufbau ist in diesem Item ausgeschlossen (sowie ohne positive RAG-Entscheidung nicht sinnvoll). **Entschieden ist die Option** (pgvector auf vorhandener Postgres) inkl. Schema/Backup/Security-Anforderungen. **Empfehlung:** SCRUM-203 als **Partial/Blocked-on-product-architecture-decision** führen — Readiness/Entscheidung dokumentiert; das tatsächliche Aufsetzen bleibt eine spätere Architekturentscheidung, abhängig von SCRUM-204 (RAG).
+
+### 8. Commit-/Push-Hinweis (nur Doku)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add docs/operations/vector-db-readiness-decision.md docs/qm/claude-after-report.md
+git commit -m "docs(ops): vector-DB readiness & decision note (pgvector preferred, not set up) (SCRUM-203)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
