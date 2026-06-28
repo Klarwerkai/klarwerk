@@ -4775,3 +4775,40 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-215 — DSGVO-/Compliance-Konformität laufend sicherstellen (Betreiber-Runbook, docs-only)
+**Datum:** 2026-06-27 · **Rolle:** Claude dokumentiert (Codex steuert, Pedi entscheidet Richtung). Docs-only, keine Rechtsberatung, kein Produktcode.
+
+### 1. Vorab-Befund
+Kein `docs/compliance/`-Verzeichnis und **kein konsolidiertes DSGVO-Runbook** vorhanden; DSGVO-/Privacy-Bezüge lagen verstreut (Dossier, `user-quickstart.md` Datenschutz-Abschnitt, After-Report SCRUM-214/212, `pre-launch-protection.md`). Technische Grundlagen belegt: append-only Audit-Hash-Kette (SCRUM-214), RBAC/Auth + OIDC (SCRUM-212), keine Secrets im Client, Vorab-Schutz (noindex + Basic-Auth-Gate). Datenfelder geprüft: `users` (Name/E-Mail/Passwort-Hash+Salt/Rolle/approved), `password_resets`, KO (inkl. Autorbezug/Quellen/Anhänge/Historie/Kommentare), Audit-Einträge; vorhandene Aktionen `user.delete`, `ko.deleted`, Passwort-Reset, KO-/Bibliotheks-Export (fachbezogen).
+
+### 2. Was ist bereits erfüllt
+- **Technische Schutzmaßnahmen** (Nachweis, kein Neubau): RBAC/Auth/OIDC, append-only Audit + Manipulationserkennung, keine Client-Secrets, noindex/Pre-Launch-Gate, TLS/Backups über Hosting.
+- **Teil-Doku** vorhanden: Datenschutz-Hinweis im User-Quickstart, Audit-/RBAC-Nachweise im After-Report, Betriebsschutz in `docs/operations/*`.
+- Es fehlte die **bündige Betreiber-Sicht** (VVT-Check, DSFA-Entscheidungshilfe, Betroffenenrechte, AUP, Review-Kadenz) — genau das wurde ergänzt.
+
+### 3. Minimaler Doku-Fix
+**Neu:** `docs/compliance/gdpr-compliance-runbook.md` — kompaktes, betreiberorientiertes Runbook (keine Rechtsberatung) mit: Rollen/Verantwortung (Verantwortlicher = Betreiber; ggf. AVV); **VVT-Check** (Verarbeitungen + Datenkategorien als Tabelle + Betreiber-To-dos); **DSFA-Entscheidungshilfe** (Schwellwert-Checkliste, insb. Modellmodus/externer KI-Anbieter); **Betroffenenrechte** (Auskunft/Berichtigung/Löschung/Einschränkung/Export/Widerspruch — was das Produkt heute unterstützt vs. manuell, inkl. ehrlichem Hinweis auf unveränderliches Audit + fehlenden Self-Service-Export); **technische Schutznachweise** (Verweise SCRUM-212/214, G-7, Pre-Launch); **AUP/Nutzungsrichtlinie** für KI-/Knowledge-OS-Nutzung (Datenminimierung, Quellenbindung, KI≠Wahrheit, Modellmodus-Hinweis); **Review-Kadenz** (quartalsweise Checkliste + Trigger-Events + Terminierungsempfehlung); **offene Betreiberpflichten/Restlücken**. Verweist klar auf Audit append-only/Analytics-Audit, RBAC/Auth, `user-quickstart.md` und offene Pflichten.
+
+### 4. Geänderte Dateien
+NEU `docs/compliance/gdpr-compliance-runbook.md`; `docs/qm/claude-after-report.md` (dieser Eintrag). Kein Produktcode, kein FE.
+
+### 5. Tests/Gates
+`npm run check` grün — 128 Dateien / 700 Tests. Kein FE berührt → `apps/web tsc --noEmit` nicht erforderlich.
+
+### 6. Restlücken / Nicht-Ziele (ehrlich)
+- **Keine Rechtsberatung:** Rechtsgrundlagen, AVV/Subprozessoren, DSFA-Pflicht und Löschfristen verantwortet der Betreiber/DSB.
+- **Self-Service DSGVO-Workflows** (personenbezogener Komplettexport/Auskunft, Löschung im unveränderlichen Audit) sind **nicht** als Produktfeature umgesetzt (NFR-PRV-04) → manuell durch Admin/DSB; mögliches künftiges Item, nicht Teil dieses Runbooks.
+- **Server-/Proxy-Logs/IP** außerhalb des App-Audits = Betreiber-Logging-Policy. **Betriebsvereinbarung** zur Audit-Zweckbindung = organisatorisch.
+
+### 7. Commit-/Push-Hinweis (nur Doku)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add docs/compliance/gdpr-compliance-runbook.md docs/qm/claude-after-report.md
+git commit -m "docs(compliance): GDPR/compliance operator runbook (SCRUM-215)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
