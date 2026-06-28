@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
 import {
   GAP_PRIVACY_NOTICE_KEY,
+  MAX_GAP_CONTEXT_LENGTH,
   captureGapHref,
   gapContextDraft,
   gapPrivacyNoticeKey,
+  normalizeGapContext,
   readGapContext,
 } from "../../apps/web/src/lib/captureFromGap";
 
@@ -53,6 +55,48 @@ describe("SCRUM-270: gapContextDraft", () => {
     const draft = gapContextDraft("  Temperaturdrift an Linie L4?  ", labels);
     expect(draft).toContain("Offene Frage: Temperaturdrift an Linie L4?");
     expect(draft).not.toContain("Frage:   ");
+  });
+});
+
+// SCRUM-285: Gap-Startkontext auch bei Direkt-CTA / externen Links datensparsam begrenzen.
+describe("SCRUM-285: normalizeGapContext + captureGapHref/readGapContext", () => {
+  const longBlob = `Bitte beachte folgenden Kontext: ${"lorem ipsum dolor sit amet ".repeat(40)}`;
+
+  it("lässt kurze, normale Fragen unverändert", () => {
+    const q = "Warum schwankt der Dosierwert an Linie L4?";
+    expect(normalizeGapContext(q)).toBe(q);
+  });
+
+  it("trimmt + zieht Whitespace/Zeilenumbrüche zusammen", () => {
+    expect(normalizeGapContext("  Wann   schließt\n das  Ventil?  ")).toBe(
+      "Wann schließt das Ventil?",
+    );
+  });
+
+  it("begrenzt sehr lange Fragen deterministisch mit Ellipse", () => {
+    const out = normalizeGapContext(longBlob);
+    expect(out.length).toBeLessThanOrEqual(MAX_GAP_CONTEXT_LENGTH + 1);
+    expect(out.endsWith("…")).toBe(true);
+    expect(normalizeGapContext(longBlob)).toBe(out); // deterministisch
+  });
+
+  it("captureGapHref begrenzt den rohen Ask-CTA-Text (kein überlanger URL-Kontext)", () => {
+    const href = captureGapHref(longBlob);
+    const param = new URLSearchParams(href.split("?")[1]).get("gap") ?? "";
+    expect(param.length).toBeLessThanOrEqual(MAX_GAP_CONTEXT_LENGTH + 1);
+    expect(param.endsWith("…")).toBe(true);
+  });
+
+  it("readGapContext normalisiert auch externe/alte überlange Links", () => {
+    const params = new URLSearchParams(`gap=${encodeURIComponent(longBlob)}`);
+    const ctx = readGapContext(params) ?? "";
+    expect(ctx.length).toBeLessThanOrEqual(MAX_GAP_CONTEXT_LENGTH + 1);
+    expect(ctx.endsWith("…")).toBe(true);
+  });
+
+  it("Konsistenz: roher Text und gleich-normalisierter Text liefern denselben Link", () => {
+    // normalize(asked) === gap.question (gleiche Regel) → CTA-Text deckt sich mit Persistenz.
+    expect(captureGapHref(longBlob)).toBe(captureGapHref(normalizeGapContext(longBlob)));
   });
 });
 

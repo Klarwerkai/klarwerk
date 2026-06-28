@@ -5,15 +5,41 @@
 
 const GAP_PARAM = "gap";
 
-// Link von einer Gap-Frage zur Erfassung (Frage URL-encodiert als Kontext).
-export function captureGapHref(question: string): string {
-  return `/erfassen?${GAP_PARAM}=${encodeURIComponent(question.trim())}`;
+// SCRUM-285: FE-seitige, DOM-freie Normalisierung des Gap-Startkontexts. SPIEGELT bewusst die
+// Backend-Regel (services/ask/src/gap-text.ts → normalizeGapQuestion, MAX 200) wider, OHNE
+// cross-package Import (Architekturgrenze). Damit rutschen lange Originalfragen weder über die
+// Ask-Direkt-CTA (roher `asked`-Text) noch über externe/alte /erfassen?gap=…-Links als überlanger
+// URL-/Capture-Kontext durch. Trimmt + zieht Whitespace zusammen + begrenzt deterministisch an
+// Wortgrenze (sonst harter Schnitt) mit Ellipse. KEINE PII-Erkennung, keine semantische Analyse.
+// Kurze normale Fragen bleiben unverändert; das Ergebnis ist identisch zur persistierten
+// gap.question (gleiche Regel) → konsistenter Ask→Gap→Risk→Capture-Fluss.
+export const MAX_GAP_CONTEXT_LENGTH = 200;
+
+const ELLIPSIS = "…";
+
+export function normalizeGapContext(
+  question: string,
+  maxLength: number = MAX_GAP_CONTEXT_LENGTH,
+): string {
+  const collapsed = question.replace(/\s+/g, " ").trim();
+  if (collapsed.length <= maxLength) {
+    return collapsed;
+  }
+  const window = collapsed.slice(0, maxLength);
+  const lastSpace = window.lastIndexOf(" ");
+  const cut = lastSpace > Math.floor(maxLength * 0.6) ? window.slice(0, lastSpace) : window;
+  return `${cut.trimEnd()}${ELLIPSIS}`;
 }
 
-// Startkontext aus den Query-Parametern lesen (null, wenn kein/leerer Parameter → kein Banner).
+// Link von einer Gap-Frage zur Erfassung (normalisiert + URL-encodiert als Kontext).
+export function captureGapHref(question: string): string {
+  return `/erfassen?${GAP_PARAM}=${encodeURIComponent(normalizeGapContext(question))}`;
+}
+
+// Startkontext aus den Query-Parametern lesen (defensiv normalisiert; null bei leer → kein Banner).
 export function readGapContext(params: URLSearchParams): string | null {
-  const value = params.get(GAP_PARAM)?.trim();
-  return value && value.length > 0 ? value : null;
+  const value = normalizeGapContext(params.get(GAP_PARAM) ?? "");
+  return value.length > 0 ? value : null;
 }
 
 // SCRUM-270: Rohnotiz-Vorlage aus einer Gap-Frage. Macht klar, dass die Frage ein OFFENER

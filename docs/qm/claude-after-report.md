@@ -5959,3 +5959,50 @@ git push
 
 ### 9. Stop-Status
 **Slice abgeschlossen, Gates grün, gestoppt.** Keine Jira-Änderungen durch Claude. Codex übernimmt Commit, Push, Jira-Kommentar und Status.
+
+---
+
+## SCRUM-285 — Ask/Capture: Gap-Startkontext auch bei Direkt-CTA normalisieren
+**Datum:** 2026-06-28 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung). **FE-Produkt-Slice** (DOM-freier Helper + Anwendung in captureGapHref/readGapContext + Tests); keine PII-Erkennung/Schwärzung; keine Backend-/Persistenzänderung; kein RAG/Suche.
+
+### 1. Ziel des Workflow-Slice
+Ask → Wissenslücke → Capture vollständig konsistent: nicht nur gespeicherte Gap-Fragen (SCRUM-284), sondern auch **direkt per Ask-CTA** übergebene Gap-Startkontexte normalisieren/begrenzen. Lange Originalfragen dürfen nicht über `/erfassen?gap=…` als langer URL-/Capture-Kontext durchrutschen.
+
+### 2. Vorab-Befund / Root Cause
+- Ask-Gap-Karte „Wissen erfassen" baute `captureGapHref(asked)` mit **rohem** `asked`-State (nur `q.trim()`, gesetzt in `onSubmit`) → langer Originaltext → langer `?gap=…`-Kontext.
+- `captureGapHref`/`readGapContext` **normalisierten nicht** (nur trim).
+- `gap.question` (vom Backend per SCRUM-284 bereits normalisiert) ist im Ask-Result vorhanden, wurde aber nicht genutzt.
+- **Risk→Capture** nutzt `g.question` aus der Persistenz (bereits begrenzt) → war schon sicher.
+- **Kleinster sicherer Ort:** Normalisierung defensiv in `captureGapHref` (Schreiben) **und** `readGapContext` (Lesen) → deckt Ask-Direkt-CTA, externe/alte Links und Risk (idempotent) ab, ohne State-Umbau. Kein cross-package Import (Architekturgrenze) → FE-Helper spiegelt die Backend-Regel.
+
+### 3. Geänderte Dateien
+- `apps/web/src/lib/captureFromGap.ts` — neuer DOM-freier Helper `normalizeGapContext()` + `MAX_GAP_CONTEXT_LENGTH=200` (Spiegel von `services/ask/gap-text.ts`, gleiche Regel/MAX, ohne Import); `captureGapHref` und `readGapContext` normalisieren jetzt defensiv.
+- `tests/capture/capture-from-gap.test.ts` — 6 neue DOM-freie Tests (kurz unverändert; Whitespace/Trim; Langbegrenzung+Ellipse; captureGapHref begrenzt rohen CTA-Text; readGapContext normalisiert externe Links; Konsistenz roh == normalisiert).
+
+### 4. Was verbessert wurde
+- **Ask→Capture Direkt-CTA** nutzt keinen überlangen Rohtext mehr — `captureGapHref(asked)` begrenzt deterministisch (≤ 200 + Ellipse). Da die FE-Regel die Backend-Regel spiegelt, ist der CTA-Kontext **identisch** zur persistierten `gap.question` (konsistenter Fluss).
+- **Externe/alte `/erfassen?gap=…`-Links** werden beim Lesen defensiv normalisiert.
+- **Kurze normale Gap-Fragen** bleiben unverändert; **Risk→Capture** unverändert kompatibel (idempotent); **Capture-Gap-Draft** bleibt „Offene Frage" + eigene Erfahrung (`gapContextDraft` unberührt).
+- **Keine** Backend-/Persistenzänderung.
+
+### 5. Gates
+`npm run check` grün — **129 Dateien / 718 Tests** (+6). `apps/web tsc --noEmit` grün (keine Quellfehler). Biome/depcruise grün.
+
+### 6. Commit-/Push-Hinweis
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/captureFromGap.ts tests/capture/capture-from-gap.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(ask/capture): normalise gap start-context on direct CTA & external links (SCRUM-285)"
+git push
+```
+
+### 7. Offene Risiken
+- FE-Regel **spiegelt** die Backend-Regel (zwei Stellen, gleiche Logik/MAX) — bewusst dupliziert wegen Architekturgrenze; bei künftiger Regeländerung beide Stellen pflegen (Tests sichern beide ab).
+- Reine Längen-/Whitespace-Normalisierung — keine PII-Erkennung (außer Scope); SCRUM-283-Hinweistext ergänzt die Datensparsamkeit.
+
+### 8. Empfehlung nächster sinnvoller Slice
+- Optional: gemeinsame Regel als geteiltes, architekturkonformes Util (z. B. `packages/shared`) extrahieren, um die Duplikation FE/Backend zu beseitigen — größerer, separat zu planender Refactor (kein Quick-Fix).
+- Optional: einmaliger Ops-Task zur Normalisierung bestehender überlanger Alt-Gaps (wie SCRUM-284 empfohlen).
+
+### 9. Stop-Status
+**Slice abgeschlossen, Gates grün, gestoppt.** Keine Jira-Änderungen durch Claude. Codex übernimmt Commit, Push, Jira-Kommentar und Status.
