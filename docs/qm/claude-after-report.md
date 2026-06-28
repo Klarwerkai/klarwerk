@@ -4684,3 +4684,52 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-212 — Zugriffs- & Rechtekonzept (Bestandsprüfung, kein Neubau)
+**Datum:** 2026-06-27 · **Rolle:** Claude prüft (Codex steuert, Pedi entscheidet Richtung). Read-only Nachweis; kein Code geändert.
+
+### 1. Vorab-Befund
+- **Rollenmodell** (`services/auth`): `Role = viewer | experte | controller | admin`; Nutzer mit `approved`-Flag (Freigabe-Workflow), Passwort-Login + OIDC.
+- **Rechtematrix** (`services/rbac/src/policy.ts`): `Permission = ko.read | ko.create | ko.validate | ko.assign | conflict.resolve | users.manage`; `ROLE_PERMISSIONS` (viewer→read; experte→read/create; controller→+validate/assign/conflict.resolve; admin→+users.manage). `can(role, perm)`, `canManageUsers`, `canChangeRole` (Admin kann sich nicht selbst die Admin-Rolle entziehen).
+- **Server-Guards** (`services/app/src/http.ts#makeGuards`): `requireUser` → 401 `UNAUTHENTICATED`; `requirePermission(perm)` → 403 `FORBIDDEN: Recht fehlt: <perm>`; Rolle wird aus dem Auth-Token aufgelöst.
+- **Routen-Schutz** (`services/app/src/routes/*`): durchgängige Guards — `ko.read` (31×), `ko.create` (20×), `ko.validate` (8×), `ko.assign` (2×), `conflict.resolve` (2×), `users.manage` (2×). Audit-Route ebenfalls `ko.validate`-gated.
+- **Auth/OIDC** (`services/auth`): Passwort-Login, Freigabe/Approve, Rollenwechsel, Passwort-Reset, generisches OIDC (`loginWithOidc`, PKCE-Pair, State/Nonce/Verifier-Cookies). 
+- **FE-Gating** (`apps/web/src/app/navigation.ts` + `lib/effectiveRole.ts`): `ROLE_RANK` (viewer 0 … admin 3), `minRole` je Nav-Sektion/Item (Erfassen=experte, Validierung/Konflikte/Risiko=controller, Admin=admin, Lesen/Fragen/Bibliothek=viewer), `stufe2`-Flag für Stufe-2-Items; rollengefilterte Command Palette (`canSee`).
+- **Tests:** `rbac/policy.test.ts` FR-RBAC-01 (Matrix je Rolle), FR-RBAC-02 (nur Admin verwaltet Nutzer), FR-RBAC-03 (kein Selbst-Entzug), FR-RBAC-04 (`requirePermission`-Guard: Admin 200 / Experte 403 / anonym 401). `auth/service.test.ts` (Approve, FR-RBAC-04 Approve-ohne-Adminrecht→403), `auth/oidc.test.ts` (FR-AUTH-07). Route-Tests (`build-app.test`, diverse `*-routes.test`) belegen Guard-Wirkung (anonym → ≥400, geschützte Routen → 401/403).
+
+### 2. Was ist bereits erfüllt (gegen Jira-Akzeptanzkriterien)
+- **Rollen definiert:** ✓ viewer/experte/controller/admin + Rechtematrix.
+- **Authentifizierung angebunden:** ✓ Passwort-Login + OIDC (PKCE) + Freigabe-Workflow.
+- **Rechte pro Rolle/Datenbereich technisch umgesetzt:** ✓ `ROLE_PERMISSIONS` + `can` + Guards je Aktion/Datenbereich.
+- **API-/Routen-Zugriffe geschützt:** ✓ `requirePermission`/`requireUser` durchgängig, 401/403 belegt.
+- **UI-Gating konsistent mit Backend-Gating:** ✓ `minRole`-Mapping spiegelt die Backend-Permissions (Erfassen=experte↔ko.create, Validierung=controller↔ko.validate, Admin=admin↔users.manage); Backend ist die autoritative Durchsetzung.
+
+Damit sind FR-RBAC-01…04 + FR-AUTH-07 und die SCRUM-212-Kernkriterien **erfüllt**.
+
+### 3. Ggf. minimaler Fix
+**Keiner.** Kein echter Code-Gap; die bestehende Umsetzung deckt die Akzeptanzkriterien ab. Offene Punkte sind betrieblich/Scope (siehe Restlücken) und werden ehrlich dokumentiert, nicht „gefixt".
+
+### 4. Geänderte Dateien
+Nur `docs/qm/claude-after-report.md` (dieser Nachweis). Kein Produktcode, kein FE.
+
+### 5. Tests/Gates
+`npm run check` grün — 128 Dateien / 700 Tests. Kein FE berührt → `apps/web tsc --noEmit` nicht erforderlich.
+
+### 6. Restlücken / Nicht-Ziele (ehrlich dokumentiert)
+- **OIDC/SSO scharfschalten:** OIDC ist implementiert + getestet, aber für den Live-Betrieb noch zu **konfigurieren/aktivieren** (bekannte Betriebs-Aufgabe, separates Item — kein Code-Gap in SCRUM-212).
+- **Zugriffsreview/Least-Privilege-Report:** keine periodische **Access-Review-/Re-Zertifizierungs**-Funktion vorhanden → **P2/Nicht-Ziel** (betrieblich; Admin sieht Nutzer/Rollen live in `Admin.tsx`, aber kein dedizierter Review-Report).
+- **FE-Nav-Sichtbarkeit (`canSee`) ist Komfort-Schicht:** in der Vorab-Phase teils über Rollen-Vorschau steuerbar; die **echte Durchsetzung erfolgt serverseitig** (RBAC-Guards) und ist getestet — die FE-`canSee`-Logik selbst ist nicht separat unit-getestet (optionales P2). Keine Sicherheitslücke, da Backend autoritativ.
+
+**Empfehlung:** SCRUM-212 ist aus Code-/Test-Sicht schließbar (Rollen/Auth/RBAC dokumentiert + technisch durchgesetzt, UI konsistent). OIDC-Aktivierung und Access-Review gehören in eigene Betriebs-/P2-Items.
+
+### 7. Commit-/Push-Hinweis (nur Nachweis-Doc, kein Code)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add docs/qm/claude-after-report.md
+git commit -m "docs(qm): SCRUM-212 access & permission concept evidence (sufficient, no code change)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
