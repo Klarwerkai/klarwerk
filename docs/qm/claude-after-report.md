@@ -5767,3 +5767,51 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-188 — Ziele & Use-Cases für das interne LLM definieren — Definition
+**Datum:** 2026-06-27 · **Rolle:** Claude prüft/dokumentiert (Codex steuert, Pedi entscheidet Richtung). Docs-only; **keine** Modell-/Runtime-/RAG-/Fine-Tuning-Arbeit; **keine** erfundenen Benchmarks; **keine** vorgetäuschte Freigabe; kein Produktcode.
+
+### 1. Vorab-Befund
+- **Reale LLM-Aufgaben** (`ModelRunTask`): `structure | assist | interview | answer | select`. **Anti-Halluzination** in jedem Systemprompt (`provider-model.ts`: „Do not invent", „NUR auf Basis der nummerierten Quellen", „without changing content", „ask exactly ONE").
+- **RBAC-Nutzergruppen:** viewer/experte/controller/admin.
+- Prinzip belegt: **Modell formuliert, KOs = Wahrheit, deterministischer Fallback** als Sicherheitsnetz.
+- Keine `internal-llm-use-cases.md` → Doku-Gap.
+
+### 2. Use-Cases / Nutzergruppen / KPIs
+- **Use-Cases:** Capture-Strukturierung (`structure`, JSON), Ask-Antwort (`answer`, nur aus Quellen, ehrliche Lücke), Text-Assist (`assist`, keine Inhaltsänderung), Erfassungs-Interview (`interview`, eine Frage), Quellenauswahl (`select`).
+- **Nutzergruppen:** Experte (Capture/Interview/Assist), Controller (Review-Vorschlag), Admin (Betrieb), Management/Viewer (Ask/Lesen), Entwickler (separater Dev-Use-Case, kein Produkt-Wissenszugang).
+- **KPIs:** Quellenbindungsrate, Gap-statt-Halluzination, JSON-Validität, hilfreiche Capture-Strukturierung, Review-Akzeptanz, Latenz, **keine Prompt-/Antwort-Persistenz** — verankert an Eval-Baseline B1–B4.
+- **Volumen:** nicht gemessen → als **Annahmen/Szenarien** (Pilot/Abteilung/Werk) markiert.
+
+### 3. Abgrenzung / Nicht-Ziele
+Modell als Wissensspeicher; generischer Chat als Ask-Ersatz; ungeprüfte Entscheidungen; ungeprüfte PII/sensible Freitexte; Code-Hilfe/Kundensupport als Produktkern (nicht beschlossen).
+
+### 4. Abstimmung/Freigabe: **nicht vorhanden**
+Keine dokumentierte Pedi-/Stakeholder-Freigabe; Volumen nicht erhoben; Umsetzungs-Abhängigkeiten (Modell/Runtime/Hardware/Budget) offen.
+
+### 5. Minimaler Fix
+**Neu:** `docs/operations/internal-llm-use-cases.md` — Zweck, Nutzergruppen, Use-Cases (Code-belegt), Volumenannahmen, funktionale Anforderungen (Deutsch/Quellenbindung/JSON/Assist/Latenz/Kontext/Datenschutz/Fallback), KPIs (an Eval-Baseline), Nicht-Ziele, Abhängigkeiten, Done-Kriterien. **Kein Produktcode.**
+
+### 6. Geänderte Dateien
+NEU `docs/operations/internal-llm-use-cases.md`; `docs/qm/claude-after-report.md`. Kein Produktcode/FE.
+
+### 7. Tests/Gates
+`npm run check` grün — 128 Dateien / 700 Tests. Kein FE berührt → `apps/web tsc --noEmit` nicht erforderlich.
+
+### 8. Restlücken / Nicht-Ziele
+Keine Stakeholder-Freigabe, kein gemessenes Volumen, offene Abhängigkeiten; keine Modell-/Runtime-Arbeit.
+
+### 9. Empfehlung: **PARTIAL** (nicht Done)
+**Begründung (Ehrlichkeit):** Ziele/Nutzergruppen/Use-Cases/Anforderungen/KPIs/Nicht-Ziele sind **dokumentiert und code-belegt** (Prinzip gewahrt) — aber es liegt **keine** dokumentierte Abstimmung/Freigabe vor und Volumen ist **nicht gemessen**. Dokumentationsseitig erfüllt, freigabeseitig offen → **Partial**.
+
+### 10. Commit-/Push-Hinweis (nur Doku)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add docs/operations/internal-llm-use-cases.md docs/qm/claude-after-report.md
+git commit -m "docs(ops): internal LLM goals & use-cases (model formulates, KOs stay truth) (SCRUM-188)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
