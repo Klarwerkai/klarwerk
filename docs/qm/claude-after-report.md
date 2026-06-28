@@ -4418,3 +4418,30 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-275 — Start: Use-Schritt im Knowledge-OS-Kreis mit Ask-Beispielfrage verknüpfen
+**Datum:** 2026-06-27 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung).
+
+**Vorab-Befund (read-only):** `knowledgeCycle.ts` (SCRUM-261) beschreibt die vier Schritte Capture→Validate→Use→Maintain mit fixen Routen; `use` zeigte generisch auf `/fragen`. `Start.tsx` rendert jeden Schritt als `<Link to={step.to}>`. `askQuestionHref(question)` (SCRUM-272) baut `/fragen?q=<encoded>`. Das Ask-Beispiel `valve` (SCRUM-265/269) nutzt die Seed-Tokens „Ventil X"/„Überdruck", die das deutschsprachige validierte Demo-Wissen treffen. Kein P0/P1.
+
+**Umsetzung (minimal, DOM-frei):** `knowledgeCycle.ts` um `askQuestionHref` ergänzt und den `use`-Schritt von `to: "/fragen"` auf `to: askQuestionHref(USE_QUESTION)` umgestellt. `USE_QUESTION = "Wann muss Ventil X bei Überdruck geschlossen werden?"` — demo-/seed-sicher (enthält „Ventil X"/„Überdruck" → quellengebundene Antwort statt Lücke), lesbar, in der URL encodiert. Capture (`/erfassen`), Validate (`/validierung`) und Maintain (`/lebenszyklus`) unverändert. `Start.tsx` rendert den `to`-Wert unverändert als Link → kein Auto-Submit (Ask füllt nur das Eingabefeld vor), kein UI-Redesign. Kein Backend, keine neue Suche, kein Reasoner/RAG/Vector.
+
+**Geänderte Dateien:** `apps/web/src/lib/knowledgeCycle.ts` (use-Ziel via askQuestionHref + USE_QUESTION), `tests/app/knowledge-cycle.test.ts` (use-Erwartung aktualisiert), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — 127 Dateien / 693 Tests. `apps/web` `tsc --noEmit` grün. Biome + dependency-cruiser sauber. Die Tests sichern: vier Schritte in Reihenfolge capture→validate→use→maintain; Capture/Validate/Maintain unverändert auf ihren Routen; Use → `/fragen?q=…` mit URL-encodierten Seed-Tokens („Ventil X"/„Überdruck"); nicht-leere Label-/Beschreibungs-Keys.
+
+**Restlücken/Nicht-Ziele:** kein Auto-Submit, kein Backend, keine neue Suche, keine RAG-/Vector-/Reasoner-Architektur, keine Stufe-2-Arbeit, keine Ticketserie, kein UI-Redesign. Die Startfrage ist eine feste, demo-sichere literale Frage mit Seed-Tokens (nicht der i18n-Beispieltext, da `knowledgeCycle.ts` bewusst DOM-/i18n-frei bleibt); inhaltlich deckt sie sich mit dem Ask-Beispiel `valve`. Da der Seed deutschsprachig ist, bleibt die Frage auch im EN-UI seed-sicher (gleiche Begründung wie SCRUM-269).
+
+**Commit-/Push-Hinweis:**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/knowledgeCycle.ts tests/app/knowledge-cycle.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(start): link knowledge-cycle use step to ask with a demo-safe question (SCRUM-275)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
