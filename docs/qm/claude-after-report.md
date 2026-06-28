@@ -5639,3 +5639,46 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-191 — Budget- & Kostenplanung (Hardware + Cloud) — Readiness
+**Datum:** 2026-06-27 · **Rolle:** Claude prüft/dokumentiert (Codex steuert, Pedi entscheidet Richtung). Docs-only; **keine** Buchung/Installation; **keine** verbindlichen Preise; **keine** vorgetäuschte Budgetfreigabe; kein Produktcode.
+
+### 1. Vorab-Befund
+- **Status quo:** deterministisch (0 € Modellkosten) oder optional Anthropic-API (extern/pro Token, intern nicht erfasst). **Keine** GPU/Cloud/lokale Runtime. Hosting/Postgres/Backups bestehen bereits.
+- **Keine Budgetfreigabe** und **keine** verbindlichen Preise in Docs/Repo.
+- Keine `budget-cost-planning-readiness.md` → Doku-Gap.
+
+### 2. Kostenübersicht / Szenarien
+- **Kategorien K1–K8:** vorhandene HW, Zusatz-HW, lokale Runtime/Storage, Cloud-GPU on-demand, Cloud-GPU 24/7, API-Modellkosten, Hosting/Backups/Monitoring, DSGVO/AVV/Ops.
+- **Szenarien S0–S4:** S0 Status quo (0 €) · S1 lokaler PoC vorhandene HW · S2 + Zusatzhardware · S3 Cloud-GPU on-demand · S4 Cloud-GPU 24/7. Reihenfolge: **S0→S1→S3→S4** (24/7 nur bei Lastnachweis).
+- **Kostenformeln statt Preise** (on-demand/24-7/API/Break-even); konkrete Zahlen live einzusetzen.
+
+### 3. Budgetfreigabe: **nicht vorhanden**
+Kein bestätigter Bedarf, keine verifizierten Live-Preise, keine dokumentierte Freigabe.
+
+### 4. Minimaler Fix
+**Neu:** `docs/operations/budget-cost-planning-readiness.md` — heutiger Stand, Kostenkategorien, Szenario-Matrix (einmalig/laufend/DSGVO), Kostenformeln, einmalig-vs-laufend, **Budgetfreigabe-Checkliste**, Entscheidungspunkte Pedi, Nicht-Ziele, Done-Kriterien. **Kein Produktcode** (kein Doku-/Konfig-Bug aufgefallen).
+
+### 5. Geänderte Dateien
+NEU `docs/operations/budget-cost-planning-readiness.md`; `docs/qm/claude-after-report.md`. Kein Produktcode/FE.
+
+### 6. Tests/Gates
+`npm run check` grün — 128 Dateien / 700 Tests. Kein FE berührt → `apps/web tsc --noEmit` nicht erforderlich.
+
+### 7. Restlücken / Nicht-Ziele
+Keine verifizierten Preise, keine Budgetfreigabe, kein bestätigter Bedarf; keine Buchung/Installation. Verbindliche Planung = Pedi-/Budget-Entscheidung (Checkliste §6, Done §9 der Doku).
+
+### 8. Empfehlung: **PARTIAL** (nicht Done)
+**Begründung (Ehrlichkeit):** Kategorien, Szenario-Matrix, **Kostenformeln statt erfundener Preise**, Freigabe-Checkliste und Entscheidungspunkte sind dokumentiert — aber **keine** verifizierten Live-Preise und **keine** Budgetfreigabe; Bedarf unbestätigt (heute S0 = kostenneutral). „Budget- & Kostenplanung abgeschlossen/freigegeben" **nicht** erfüllt → **Partial**.
+
+### 9. Commit-/Push-Hinweis (nur Doku)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add docs/operations/budget-cost-planning-readiness.md docs/qm/claude-after-report.md
+git commit -m "docs(ops): budget & cost planning readiness (formulas+scenarios, no binding prices/approval) (SCRUM-191)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
