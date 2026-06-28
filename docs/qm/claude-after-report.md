@@ -4861,3 +4861,48 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-211 — Wartungs- & Update-Prozess etablieren (Betreiber-Runbook, docs-only)
+**Datum:** 2026-06-27 · **Rolle:** Claude dokumentiert (Codex steuert, Pedi entscheidet Richtung). Docs-only; keine Infrastruktur-/Runtime-/Modell-Installation; kein Produktcode.
+
+### 1. Vorab-Befund
+- **CI-Gates** (`.github/workflows/ci.yml`): build (`tsc --noEmit`) · lint (Biome) · arch (dependency-cruiser) · test (Vitest); Regel „nichts nach `main` ohne grüne Pipeline". Lokal äquivalent `npm run check`.
+- **package.json scripts:** `check`, `build`, `lint`, `arch`, `test`, `test:integration`, `start`, `seed:demo`, `smoke:browser`.
+- **Deploy/Backup** (`docs/operations/deploy-hetzner.md`): Hetzner + **Coolify** (Git-verbundener Deploy → Push baut/rollt aus), Postgres, Cloudflare; **Backups** (Hetzner-Snapshots + `pg_dump`-Scheduled-Task); Post-Deploy-Smoke `GET /health` → `{"status":"ok"}`; Verwaltungs-Landkarte.
+- **Reasoner/Provider** (`build-app.ts` + `reasoner/service.ts`): anbieteragnostisch — ohne `ANTHROPIC_API_KEY` deterministischer Fallback, mit Key Modellmodus (`ModelProvider`/`createModelClientFromEnv`); `Reasoner.status()` exponiert Modus/Provider/Modell (Badge auf `/fragen`). Provider-/Modellwechsel = **Env-Änderung**, kein Umbau.
+- **Bezugsdoku** vorhanden: `secrets-management.md`, `gdpr-compliance-runbook.md`, `pre-launch-protection.md`, `governance-and-teams.md`.
+- **Kein** `docs/operations/maintenance-update-process.md` → Doku-Gap (Wartungsrhythmus/Rollback/Staging-Verfahren nicht konsolidiert).
+
+### 2. Was ist bereits erfüllt
+- **Pflicht-Gates vor Produktiv-Update** vorhanden (CI + `npm run check`).
+- **Backups + Health-Smoke + Git-Deploy** dokumentiert.
+- **Modell-/Provider-Wechsel ohne Architektur** technisch gegeben (Env + Status-Badge).
+- **Security-/Secrets-/DSGVO-/Backup-Bezüge** existieren (separate Runbooks).
+- Es fehlte nur das **konsolidierte Wartungs-/Update-Runbook** (Rhythmus, Update-Klassen, Staging, Rollback, Fenster/Rollen, Provider-Evaluation, Post-Update-Monitoring, Notfallpfad) — ergänzt.
+
+### 3. Minimaler Fix
+**Neu:** `docs/operations/maintenance-update-process.md` — Betreiber-Runbook mit: Verwaltungs-Landkarte; **Wartungsrhythmus** (wöchentlich/monatlich/quartalsweise/jährlich/ad-hoc); **Update-Klassen** (App, Dependencies, OS/Runtime, DB, Reasoner/Model-Provider, Secrets/Zertifikate); **Vorab-Checkliste**; **Test-/Staging-Verfahren** (Smoke `/health` + Kernpfad); **Pflicht-Gates** (CI/`npm run check`); **Backup-/Rollback-Schritte** (Snapshot/`pg_dump`, Coolify-Redeploy-previous/Git-Revert, DB-Restore, Provider-Env-Rollback); **Wartungsfenster & Rollen**; **Modell-/Provider-Evaluation** (Env-basiert, Status-Badge, DSFA-Check, Fallback-Rollback — keine Architektur); **Security-/Compliance-Review** (an Updates gekoppelt); **Post-Update-Monitoring**; **Notfallpfad**; **offene Betreiberpflichten**. Verweist auf CI-Gates, Deploy-, Secrets- und Compliance-Doku sowie den Demo-Kernpfad.
+
+**Kein Produktcode** — kein echter Betriebs-Bug gefunden (Gates, Backups, Rollback-via-Redeploy, Health, Provider-Switch vorhanden).
+
+### 4. Geänderte Dateien
+NEU `docs/operations/maintenance-update-process.md`; `docs/qm/claude-after-report.md` (dieser Eintrag). Kein Produktcode, kein FE.
+
+### 5. Tests/Gates
+`npm run check` grün — 128 Dateien / 700 Tests. Kein FE berührt → `apps/web tsc --noEmit` nicht erforderlich.
+
+### 6. Restlücken / Nicht-Ziele
+- **Staging-Umgebung real bereitstellen**, **Restore-Probe regelmäßig durchführen**, **Monitoring/Alerting einrichten**, **Wartungstermine + namentliche Rollen festlegen** — alles **Betreiber-/Ops-Aufgaben** (im Runbook benannt, hier nicht ausgeführt).
+- Keine neue Runtime/Infrastruktur, keine Modellinstallation, keine RAG/Vector/Conductor-Arbeit, keine Tickets/Strukturänderung.
+
+### 7. Commit-/Push-Hinweis (nur Doku)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add docs/operations/maintenance-update-process.md docs/qm/claude-after-report.md
+git commit -m "docs(ops): maintenance & update process runbook (SCRUM-211)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
