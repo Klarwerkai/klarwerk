@@ -5233,3 +5233,42 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-202 — Datenquellen sammeln & aufbereiten — Datenquellen-/RAG-Input-Readiness
+**Datum:** 2026-06-27 · **Rolle:** Claude prüft/dokumentiert (Codex steuert, Pedi entscheidet Richtung). Docs-only; **keine** Ingestion/Chunking/Embedding/Scraping/Massenimport; kein Produktcode.
+
+### 1. Vorab-Befund
+- **Reale Quellenflächen vorhanden:** Capture (Rohnotiz→KO); **FE-Dokument-Volltext** `txt/md/csv/json/log/docx/pdf` (`apps/web/src/lib/extract.ts`/`docx.ts`/`pdf.ts`/`files.ts`); **Bild-OCR** optional (`ocr.ts`); **Object-Store** (`services/object-store`, MIME→`image/document/binary`); **KoSource** (url/excerpt/provider, `peerValidated=false`); **EvidenceRecord** (source/attachment, objectId/mime/url/provider); **Import-Kandidaten** (`services/library-analytics`, `/api/library/import(/candidates)`); **Export** (`json/markdown/mediawiki/html`); externe Suche (Proxy, in Sandbox 400/kein Netz).
+- **Metadaten reichhaltig:** KO mit type(5)/category/tags/status/version/confidence/trust/author/asset/history/comments/attachments/sources; Evidence mit koVersion/kind/objectId/mime/url/provider.
+- **Kein bereinigter/chunkbarer Bestand:** `chunk` im Code **leer**; keine Normalisierung/Anonymisierung/Ingestion-Pipeline. Dokument-/OCR-Extraktion läuft **clientseitig** (keine serverseitige OCR/PDF/DOCX-Pipeline). Bestand klein (Demo-Seed).
+- Keine `data-sources-ingestion-readiness.md` → Doku-Gap.
+
+### 2. Entscheidung
+„Sammeln/Verwalten" ist real und metadatenreich belegt; „**Aufbereiten** für RAG" (bereinigt + chunkbar + embedding-fertig) **fehlt**. Doku-Gap mit Readiness-Runbook schließen; **Partial** empfehlen.
+
+### 3. Minimaler Fix
+**Neu:** `docs/operations/data-sources-ingestion-readiness.md` — vorhandene Quellenflächen (Tabelle), belegte Formate, Metadaten (KO/Evidence/Attachment), Rechte/PII/DSGVO, Qualität/Validierung, **Befund „kein chunkbarer Bestand"**, Chunking-Konzept (Konzept), Anonymisierung/Bereinigung, RAG-/Vector-Voraussetzungskette, offene Datenowner-Entscheidungen, Nicht-Ziele, Empfehlung. **Kein Produktcode** (kein Doku-/Konfig-Bug aufgefallen; FE-Extract deckt sich mit i18n-Labels).
+
+### 4. Geänderte Dateien
+NEU `docs/operations/data-sources-ingestion-readiness.md`; `docs/qm/claude-after-report.md`. Kein Produktcode/FE.
+
+### 5. Tests/Gates
+`npm run check` grün — 128 Dateien / 700 Tests. Kein FE berührt → `apps/web tsc --noEmit` nicht erforderlich.
+
+### 6. Restlücken / Nicht-Ziele
+Keine Ingestion-/OCR-/Chunking-/Embedding-/Vector-Pipeline gebaut; kein Scraping/Massenimport; keine externen Systeme angezapft. Spätere RAG-Aufbereitung erst nach RAG-/Vector-Entscheidung + Bereinigung/Anonymisierung + Chunking + Eval-Baseline.
+
+### 7. Empfehlung: **PARTIAL** (nicht Done)
+**Begründung (Ehrlichkeit):** Die „Sammeln/Verwalten"-Hälfte ist **real** und mit reichen Metadaten belegt (Capture inkl. Dokument-Volltext/OCR, Anhänge/Object-Store, Quellen/Evidence, Import, Export). Aber ein **bereinigter, chunkbarer, RAG-tauglicher** Datenbestand **existiert nicht** (kein Chunking/Normalisierung/Anonymisierung/Ingestion), und der Bestand ist klein. Das Kriterium „**aufbereitet**" ist daher **nicht** erfüllt → **Partial**, abhängig von SCRUM-204 (RAG) / SCRUM-203 (Vector-DB).
+
+### 8. Commit-/Push-Hinweis (nur Doku)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add docs/operations/data-sources-ingestion-readiness.md docs/qm/claude-after-report.md
+git commit -m "docs(ops): data-sources & ingestion readiness (collect real, RAG-prep missing) (SCRUM-202)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
