@@ -6212,3 +6212,42 @@ Demo-/Pilot-Storyline verdichten: Start → Ask-Beispiel → Library/KO-Detail �
 
 ### 9. Stop-Status
 **Slice implementiert, Gates grün.** Codex übernimmt Commit, Push, GitHub-CI, Jira-Kommentar und Status.
+
+---
+
+## SCRUM-290 — Demo-/Pilotpfad: Start → Ask → KO-Detail → Validation sichtbar führen
+**Datum:** 2026-06-28 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung). **FE-Produkt-Slice** (DOM-freier Helper + Start-Karte + i18n + Test); keine neue Route/Search/Architektur; kein neues Statusmodell; keine Backend-Änderung; keine automatische Validierung; **kein Git/Jira durch Claude**.
+
+### 1. Vorab-Befund
+- Start rendert bereits den **Knowledge-OS-Kreis** (`KNOWLEDGE_CYCLE`) und die **SCRUM-289-Guidance** (gesichert vs. zu prüfen vs. quellengebunden). Ein konkreter, schrittweiser Demo-/Pilot-*Pfad* fehlte.
+- Vorhandene Bausteine wiederverwendbar: `askQuestionHref` (Deep-Link `/fragen?q=…`, kein Auto-Submit), demo-sichere Frage „Ventil X / Überdruck" (trifft validiertes Seed-Wissen), Routen `/fragen`, `/bibliothek`, `/validierung`.
+- KO-Detail braucht eine KO-ID → statisch nicht verfügbar; daher Schritt 2 über **Library** (führt zu KO-Detail), kein toter Deep-Link.
+
+### 2. Umsetzung
+- **Neuer DOM-freier Helper** `demoPilotPath.ts` mit 3 nummerierten Schritten auf **vorhandenen Routen**: (1) Ask quellengebunden via demo-sicherer Startfrage, (2) Library → Quelle/Trust/Status/Reife/Version, (3) Validation → offenes/ungeprüftes Wissen prüfen.
+- **Start-Karte** „Demo-/Pilotpfad in 3 Schritten" direkt nach der SCRUM-289-Guidance (gestrichelte Karte, nummerierte Links) — kompakt, stört die normale Nutzung nicht.
+- **i18n DE/EN** für Titel/Untertitel + je Schritt Label/Beschreibung; Texte machen sichtbar: Ask quellengebunden, Library zeigt Quelle/Trust/Status/Version, Validation ist der Ort für offene Inhalte.
+- **Bewusst nur Start angefasst** (eine Stelle verbindet Ask/Library/Validation) statt überall Text zu verteilen; Ask/Library/Validation/KO-Detail unverändert (bereits ehrlich quellengebunden bzw. Review-Ort).
+
+### 3. Geänderte Dateien
+- NEU `apps/web/src/lib/demoPilotPath.ts` — `DEMO_PILOT_PATH` + `demoPilotPath()`.
+- `apps/web/src/pages/Start.tsx` — kompakte Demo-Pfad-Karte.
+- `apps/web/src/i18n.ts` — `demo.*` Schlüssel (DE+EN).
+- NEU `tests/app/demo-pilot-path.test.ts` — 6 DOM-freie Tests (Schrittfolge/Nummern; Ask quellengebunden/?q=/Ventil-Überdruck; Library/Validation-Routen; nur vorhandene Routen; i18n DE/EN vollständig; Knowledge-OS-Kernbegriffe sichtbar).
+
+### 4. Tests/Gates
+`npm run check` grün — **131 Dateien / 742 Tests** (+6 neu). `apps/web tsc --noEmit` grün (keine Quellfehler). Biome/depcruise grün.
+
+### 5. Restlücken/Nicht-Ziele
+- Schritt 2 nutzt **Library** als Einstieg zu KO-Detail (kein statischer KO-Deep-Link, da KO-ID dynamisch) — bewusst, kein toter Link.
+- Keine neue Route/Search/RAG/Architektur; kein neues Statusmodell; keine automatische Validierung; validiertes Wissen bleibt nutzbar, offene Inhalte bleiben Review-Arbeit; normale Nutzung unverändert.
+- Optionale Ask-„Das zeigt dieser Schritt"-Orientierung bewusst weggelassen (Ask hat bereits SCRUM-289-Guidance → nicht überladen).
+
+### 6. Commit-/Push-Hinweis (nur Hinweis — Claude führt NICHT aus)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/demoPilotPath.ts apps/web/src/pages/Start.tsx apps/web/src/i18n.ts tests/app/demo-pilot-path.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(start): visible Stage-1 demo/pilot path Start→Ask→Library→Validation (SCRUM-290)"
+git push
+```
+Keine Jira-Änderungen durch Claude. Codex prüft Diff, führt Gates, committet, pusht, wartet CI ab, schließt Jira.

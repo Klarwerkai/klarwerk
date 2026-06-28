@@ -14,6 +14,7 @@ import { useSession } from "../app/AuthContext";
 import { useRole } from "../app/RoleContext";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { Card, PageHeader } from "../components/ui";
+import { DEMO_PILOT_PATH } from "../lib/demoPilotPath";
 import { KNOWLEDGE_CYCLE } from "../lib/knowledgeCycle";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { missionsForRole } from "../lib/missions";
@@ -156,6 +157,33 @@ export function Start(): JSX.Element {
             </Link>
           ))}
         </div>
+      </Card>
+      {/* SCRUM-290: konkreter Stage-1 Demo-/Pilotpfad — Start → Ask → Library/KO-Detail → Validation,
+          nur vorhandene Routen, demo-sichere Frage. Zeigt: quellengebunden fragen → Quelle/Trust/
+          Status/Version sehen → ungeprüftes Wissen zur Validierung (kein Chatbot). */}
+      <Card className="mb-5 border-dashed">
+        <div className="mb-3">
+          <h2 className="text-[15px] font-semibold text-ink">{t("demo.title")}</h2>
+          <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{t("demo.subtitle")}</p>
+        </div>
+        <ol className="grid gap-2 sm:grid-cols-3">
+          {DEMO_PILOT_PATH.map((step) => (
+            <li key={step.id}>
+              <Link
+                to={step.to}
+                className="group block h-full rounded-card border border-hairline bg-surface p-3 transition hover:border-ink/30"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-ink font-mono text-[10px] font-semibold text-white">
+                    {step.n}
+                  </span>
+                  <span className="text-[13.5px] font-semibold text-ink">{t(step.labelKey)}</span>
+                </div>
+                <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">{t(step.descKey)}</p>
+              </Link>
+            </li>
+          ))}
+        </ol>
       </Card>
       {missions.length > 0 ? (
         <div className="mb-5">

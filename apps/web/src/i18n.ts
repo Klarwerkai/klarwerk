@@ -121,6 +121,19 @@ const de = {
   "auth.ssoIncomplete": "Unvollständige SSO-Antwort. Bitte erneut anmelden.",
   "cycle.title": "Der Klarwerk-Wissenskreis",
   "cycle.subtitle": "Kein Chatbot: Wissen wird erfasst, validiert, genutzt und aktuell gehalten.",
+  // SCRUM-290: kompakter Stage-1 Demo-/Pilotpfad (Start → Ask → Library/KO-Detail → Validation).
+  "demo.title": "Demo-/Pilotpfad in 3 Schritten",
+  "demo.subtitle":
+    "Ein kleiner realer Ablauf: quellengebunden fragen, Quelle/Trust/Status/Version ansehen, ungeprüftes Wissen zur Validierung geben.",
+  "demo.ask.label": "1 · Fragen",
+  "demo.ask.desc":
+    "Stell eine belegte Frage (Ventil X / Überdruck) — die Antwort kommt quellengebunden mit Trust und Status, nicht frei erfunden.",
+  "demo.library.label": "2 · Wissen ansehen",
+  "demo.library.desc":
+    "Im Wissensbestand Quelle, Trust, Status und Reife sehen — ein Objekt öffnen zeigt Belege und Version.",
+  "demo.validation.label": "3 · Validieren",
+  "demo.validation.desc":
+    "Offenes/ungeprüftes Wissen gehört in die Validierung — bewerten, bis es gesichert und nutzbar ist.",
   "cycle.capture.label": "Erfassen",
   "cycle.capture.desc": "Erfahrungswissen als Knowledge Object sichern.",
   "cycle.validate.label": "Validieren",
@@ -1264,6 +1277,19 @@ const en: typeof de = {
   "auth.ssoIncomplete": "Incomplete SSO response. Please sign in again.",
   "cycle.title": "The Klarwerk knowledge cycle",
   "cycle.subtitle": "Not a chatbot: knowledge is captured, validated, used and kept current.",
+  // SCRUM-290: compact Stage-1 demo/pilot path (Start → Ask → Library/KO detail → Validation).
+  "demo.title": "Demo/pilot path in 3 steps",
+  "demo.subtitle":
+    "A small real walkthrough: ask source-bound, see source/trust/status/version, send unverified knowledge to validation.",
+  "demo.ask.label": "1 · Ask",
+  "demo.ask.desc":
+    "Ask a backed question (valve X / overpressure) — the answer comes source-bound with trust and status, not made up.",
+  "demo.library.label": "2 · See knowledge",
+  "demo.library.desc":
+    "In the library see source, trust, status and maturity — opening an object shows evidence and version.",
+  "demo.validation.label": "3 · Validate",
+  "demo.validation.desc":
+    "Open/unverified knowledge belongs in validation — rate it until it is secured and usable.",
   "cycle.capture.label": "Capture",
   "cycle.capture.desc": "Save experience knowledge as a knowledge object.",
   "cycle.validate.label": "Validate",
