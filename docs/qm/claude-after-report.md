@@ -4595,3 +4595,41 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-281 — Stage-1 Demo-Dry-Run
+**Datum:** 2026-06-27 · **Rolle:** Claude prüft (Codex steuert, Pedi entscheidet Richtung). Kein neuer Produktbau.
+
+**Dry-Run-Art: ECHTE RUNTIME (Backend/HTTP), KEIN Browser-Klickpfad.** Die Klarwerk-App wurde im Sandbox real gestartet (`tsx services/app/src/server.ts`, In-Memory ohne DATABASE_URL), frisch über die Admin-Route demo-geseedet und der komplette Demo-Pfad auf API-/Routen-Ebene durchgeprüft. Ein visueller Browser-Klickpfad ist im Sandbox weiterhin nicht möglich (kein Chromium); die ausgelieferte SPA stammt aus dem vorhandenen `apps/web/dist` (ggf. nicht tagesaktuell — vor echter Demo `apps/web` frisch bauen, vgl. SCRUM-255).
+
+**Ablauf & Belege (live gegen die laufende App):**
+- Server-Start grün (`GET /health` → `{status:"ok"}`); SPA-Fallback liefert alle Kernrouten aus: `/start /erfassen /validierung /fragen /bibliothek /risiko /lebenszyklus` → je HTTP 200.
+- Admin registriert (erstes Konto), `POST /api/admin/demo-seed` → `{skipped:false, users:3, kos:5, validated:2, gaps:1, conflicts:1, pendingRevalidation:1, attachments:1, sources:1}` — exakt die erwarteten Stage-1-Signale.
+- **Capture/Library-Bestand** (`/api/kos`): 5 KOs, validiert = „Ventil X bei Überdruck manuell schließen." + „Filter F3 monatlich auf Verschmutzung prüfen.".
+- **Validate** (`/api/validation/board`): echte Prüfobjekte „Pumpe P2…" (trust 0), „Bei Kaltstart… Vorwärmung…" (trust 50, Teil-Review), „Vorwärmung… nicht nötig." (trust 0).
+- **Use** (`/api/ask`): „Wann muss Ventil X bei Überdruck geschlossen werden?" → **answered=true, knowledgeClass=gesichert, trust=100, sources=[KO]**, keine Lücke. „…Dosierwert an Linie L4 nach jedem Schichtwechsel?" → **answered=false, ehrliche Wissenslücke erzeugt**. Der quellengebundene/Gap-Kern funktioniert auch im deterministischen Default (ohne API-Key).
+- **Risk/Gaps** (`/api/gaps`): „hoch: Warum schwankt der Dosierwert an Linie L4 nach jedem Schichtwechsel?".
+- **Konflikt** (`/api/conflicts`): „truth: Widerspruch: Vorwärmung bei Kaltstart nötig vs. nicht nötig.".
+- **Maintain** (`/api/lifecycle/pending`): 1 fällige Revalidierung (KO „Ventil X", Kopplung ANL-01).
+- **Analytics** (`/api/analytics`): total=5, byStatus `{validiert:2, offen:3}`.
+
+**Befund:**
+- **P0/P1-Blocker: KEINE.** Capture → Validate → Use → Maintain ist gegen die real laufende App praktisch funktionsfähig; Trust, Quellen, Status, Version und die quellengebundene Antwort vs. ehrliche Lücke sind über die API belegt. (Ein 415 beim Seeden im Zwischenlauf war ein Fehler im Prüf-curl — fehlender `content-type` —, KEIN Produktdefekt; mit korrektem Header seedet die Route sauber.)
+- **P2 (nur dokumentiert, kein Fix):** (1) Demo muss gegen frisch geseedete Instanz laufen; sonst leere Oberfläche (Seed idempotent/produktionsgeschützt — kein Defekt). (2) Ausgeliefertes `apps/web/dist` ist potenziell stale → vor echter Demo `apps/web` frisch bauen. (3) Deterministischer Reasoner wirkt „dünner" als Modellmodus (ehrlich, funktional). (4) EN/DE-Seed-Mix. (5) Informationsdichte auf Risk/Lifecycle. (6) Visueller Browser-Klickpfad im Sandbox nicht verifizierbar → vor der echten Demo einmal manuell durchklicken.
+
+**Umgesetzter Fix:** keiner (nur P2/Kosmetik gefunden → laut Regel kein Fix, nur Dokumentation).
+
+**Gates:** `npm run check` grün — 128 Dateien / 700 Tests. Kein FE berührt → `apps/web tsc --noEmit` nicht erforderlich. Kein Produktcode geändert.
+
+**Restlücken:** Browser-/Visual-Dry-Run steht aus (Umgebungslimit); empfohlen als manueller Schritt vor der echten Demo auf frisch gebautem `apps/web` + geseedeter Instanz. Funktional/Daten-seitig sind alle vier Kernzyklus-Stationen live bestätigt.
+
+**Commit-/Push-Hinweis:** (nur dieser After-Report-Eintrag, kein Code)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add docs/qm/claude-after-report.md
+git commit -m "docs(qm): Stage-1 demo dry-run report (real runtime, no blockers) (SCRUM-281)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
