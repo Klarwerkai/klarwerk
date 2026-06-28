@@ -5272,3 +5272,43 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-201 — Skalierung & Kostenkontrolle einrichten — Readiness
+**Datum:** 2026-06-27 · **Rolle:** Claude prüft/dokumentiert (Codex steuert, Pedi entscheidet Richtung). Docs-only; **keine** Cloud-/GPU-Provisionierung, **keine** Auto-Scaling-/Budget-Alerts, **kein** Lasttest gegen fremde Systeme; kein Produktcode.
+
+### 1. Vorab-Befund
+- **Single-Instance-Deploy:** App + Postgres (`docker-compose.prod.yml`, `restart: unless-stopped`) über Coolify/Hetzner; **keine** Replikas/Load-Balancer/Auto-Scaling/Ressourcen-Limits/Idle-Shutdown. **Kein GPU** (Reasoner = externer Provider **oder** deterministischer Fallback; kein self-hosted Modell).
+- **Reale Signale:** `/health`, `/api/reasoner/status`, `/api/ai-status`, `/api/model-runs`, `/api/management/snapshot`. `ModelRunRecord`-Keys: `id,task,provider,demo,fallback,locale,startedAt,finishedAt,status` → **Latenz/Fallback/Fehlerquote/Provider-Mix ableitbar**.
+- **Keine Token-/Kostenerfassung** im Produkt (ModelRun ohne tokens/cost/usage). **Kein Rate-Limit/Quota** (bestätigt `integration-workflows.md`). **Keine** aktiven Kosten-/Budget-Alerts. **Kein** durchgeführter Lasttest.
+- Keine `scaling-cost-control-readiness.md` → Doku-Gap.
+- **Lokaler In-Memory-Smoke (sicher, real):** `/health`=ok; status=deterministic; 3× `POST /api/ask` http=200; `/api/model-runs`=4 Records, Latenz ableitbar, provider=deterministic, fallback=false, status=success. Kein Loadtest, keine fremde Infrastruktur.
+
+### 2. Entscheidung
+Signale sind real und teilweise nutzbar (Latenz/Fallback/Fehler), aber Kostenerfassung/Rate-Limit/Scaling/Alerts/Lasttest sind **nicht aktiv**. Doku-Gap mit Readiness-Runbook schließen; **Partial** empfehlen (Honesty-Leitplanke: nicht „eingerichtet" behaupten).
+
+### 3. Minimaler Fix
+**Neu:** `docs/operations/scaling-cost-control-readiness.md` — heutiger Runtime-/Deploy-Zustand, verfügbare Messsignale (+Smoke-Evidence), **fehlende Token-/Kostenerfassung** (ehrlich), Rate-Limit-/Quota-Konzept, Auto-Scaling-/Idle-Shutdown-Optionen, **Kosten-Alerts/Budget als Betreiberpflicht**, Lasttest-Strategie (nur Staging), Aktivierungs-Runbook (Reihenfolge), Nicht-Ziele, Empfehlung. **Kein Produktcode** (kein Doku-/Konfig-Bug aufgefallen).
+
+### 4. Geänderte Dateien
+NEU `docs/operations/scaling-cost-control-readiness.md`; `docs/qm/claude-after-report.md`. Kein Produktcode/FE.
+
+### 5. Tests/Gates
+`npm run check` grün — 128 Dateien / 700 Tests. Kein FE berührt → `apps/web tsc --noEmit` nicht erforderlich. Zusätzlich lokaler In-Memory-HTTP-Smoke (health/status/ask/model-runs), Server danach gestoppt.
+
+### 6. Restlücken / Nicht-Ziele
+Keine Token-/Kostenerfassung, kein Rate-Limit/Quota, kein Auto-Scaling/Idle-Shutdown, keine Budget-Alerts gebaut/aktiviert; kein Lasttest; keine Infrastruktur/GPU provisioniert; kein RAG/Vector/ModelAdapter/Conductor. Spätere Aktivierung in dokumentierter Reihenfolge (Rate-Limit → Usage-Felder → Provider-Budget-Alerts → Staging-Lasttest → Scaling-Entscheidung → Alerts).
+
+### 7. Empfehlung: **PARTIAL** (nicht Done)
+**Begründung (Ehrlichkeit):** Reale Mess-Signale (Liveness/KI-Status/Latenz/Fallback/Fehler) sind vorhanden und der modulare Monolith ist gut skalierbar — aber **produktinterne Kostenmessung, Rate-Limit/Quota, Auto-Scaling/Idle-Shutdown, aktive Kosten-/Budget-Alerts und ein Lasttest fehlen**. Das Kriterium „eingerichtet" ist **nicht** erfüllt → **Partial**; offene Stücke sind teils Produkt- (Rate-Limit/Usage-Felder), teils Betreiber-/Ops-Aufgaben, bewusst nicht provisioniert.
+
+### 8. Commit-/Push-Hinweis (nur Doku)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add docs/operations/scaling-cost-control-readiness.md docs/qm/claude-after-report.md
+git commit -m "docs(ops): scaling & cost-control readiness (signals real, cost/scaling not active) (SCRUM-201)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
