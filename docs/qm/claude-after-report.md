@@ -4526,3 +4526,44 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-279 — End-to-End Demo-Review: Kernzyklus Capture → Validate → Use → Maintain (read-only, kein Code-Fix)
+**Datum:** 2026-06-27 · **Rolle:** Claude prüft (Codex steuert, Pedi entscheidet Richtung). Nur Prüfung/Dokumentation.
+
+**Prüfumfang & -methode:** Code-/Route-/Test-Level-Review (kein Live-Klickpfad — der Sandbox fehlt Chromium/Live-Server, dokumentiert seit SCRUM-241/246). Geprüft: `npm run check` (128 Dateien / 700 Tests grün), `apps/web tsc --noEmit` grün; Seed-Garantien (`seed.test`); Verdrahtung aller Kernzyklus-Verknüpfungen (SCRUM-251…278) per Quellsichtung.
+
+### 1. Kurzfazit
+Der Stage-1-Kernzyklus Capture → Validate → Use → Maintain ist durchgängig verdrahtet und mit echten, getesteten Cross-CTAs verbunden. Der Seed liefert einen vollständigen industriellen Demo-Zustand (≥5 KOs, ≥2 validiert, 1 industrielle Wissenslücke „Dosierwert/Linie L4/Schichtwechsel", ≥1 Konflikt, ≥1 fällige Revalidierung, ≥1 Quelle + ≥1 Anhang). Klarwerk präsentiert sich klar als Knowledge OS, nicht als Chatbot. Keine P0/P1-Demo-Blocker auf Code-/Test-Ebene gefunden.
+
+### 2. Demo-Readiness: GELB-GRÜN
+Grün auf Code-/Test-Ebene (Build/Tests grün, Flows verdrahtet, Seed vollständig). „Gelb"-Vorbehalt rein umgebungsbedingt: (a) Live-Klickpfad im Sandbox nicht verifizierbar → vor der echten Demo ein manueller Durchklick auf frisch geseedeter Instanz nötig; (b) Reasoner läuft per Default als deterministischer Fallback (ohne `ANTHROPIC_API_KEY`) — ehrlich und funktional, wirkt aber „dünn" als KI; (c) EN-Locale zeigt gemischte Sprache (deutscher Demo-Seed). Keiner dieser Punkte ist ein Blocker.
+
+### 3. P0/P1-Blocker
+Keine. (Voraussetzung: Demo läuft gegen eine frisch geseedete Instanz — der Seed ist idempotent und produktionsgeschützt. Ohne Seed wirkt die Oberfläche leer, das ist aber kein Code-Defekt.)
+
+### 4. P2-Verbesserungen (sammeln, nicht jetzt fixen)
+- EN-Locale: KO-Titel/Inhalte des Seeds bleiben deutsch → gemischtsprachige Demo im EN-UI. Ask-Beispiele sind dank Seed-Tokens (SCRUM-269) weiter treffsicher, aber die Inhalte nicht. Option: EN-konsistenter Demo-Seed ODER kurzer „Demo-Sprache: DE"-Hinweis.
+- Ask-Startfrage aus KO-Titel: ehrlicher KO-Titel (Aussage) statt grammatischer Frage — leicht holprig als „Frage". Bewusst so gewählt (keine Falschbehauptung), aber als Demo-Feinschliff vermerkbar.
+- Library-Ask-CTA auf ALLEN Treffern (auch offen/in Prüfung): ehrlich (Ask zeigt selbst Status/Lücke), könnte aber „nutzbar?"-Erwartung verwischen; optional auf „nutzbare" Treffer beschränken.
+- Deterministischer Reasoner-Default: für eine starke KI-Wirkung in der Demo optional Modell-Key-Pfad vorbereiten (kein Stage-2-Umbau).
+- Informationsdichte auf Risk (Cockpit + Busfactor + Domänenrisiko + Gaps) und Lifecycle (Asset-Change + Pending + Lernpfad) — für Investorenblick ggf. straffen.
+- Capture-Success setzt das Formular zurück (inkl. Gap-Banner); für „weitere Lücke erfassen" muss erneut navigiert werden — minor.
+
+### 5. Gut funktionierende Screens/Flows
+- Start: Knowledge-OS-Kreis (4 Schritte mit Routen, Use→`/fragen?q=…`), „Bester nächster Einstieg", Arbeitsübersicht, KPIs — vermittelt „kein Chatbot" sofort.
+- KO-Detail: Übersichtsbanner (Nutzbarkeit/Status/Trust/Version/Quellen/Anhänge) + ehrliche Next-Action-CTA (Use→Ask mit KO-Frage, review/validate→Validierung, addSource→Anker).
+- Ask: Reasoner-Modus-Badge, Beispielchips mit Ergebnis-Erwartung, quellengebundene Antwort (fokussierte Quelle, SCRUM-256), ehrliche Gap-Karte mit „Wissen erfassen"→Capture.
+- Validation: textlich geführte Entscheidungen (Freigeben/Rückfrage/Ablehnen) + Pflicht-Feedback + Next-Step-Card.
+- Library: Reife-Plakette + Reife-Filter + Ask-CTA je Treffer.
+
+### 6. Schwächer wirkende Screens/Flows
+- Lifecycle: funktional vollständig (Asset-Change → Pending → Revalidierung → Next-Step), aber dicht gestapelt.
+- Risk/Gaps: sehr informationsdicht für einen Investorenblick.
+- EN-Locale: gemischte Sprache (deutscher Seed) wirkt unrund.
+
+### 7. Empfehlung für genau EINEN nächsten Block
+„**Geführter Demo-Pfad / Stage-1-Storyline**": ein kurzes, seed-gestütztes Demo-Skript (Klickpfad Capture → Validate → Use → Maintain) + minimaler Leerzustands-/Sprachhinweis — KEIN neues Feature, kein Stage-2. Damit wird der bereits vollständig verdrahtete Kernzyklus für Investor/Pedi reibungslos vorführbar; die offenen Punkte sind Präsentation/Führung, nicht fehlende Funktion.
+
+**Gates/Hinweis:** Kein Code-Fix, kein Commit durch Claude. `npm run check` grün, `apps/web tsc --noEmit` grün (nur zur Bestätigung der Demo-Build-Gesundheit ausgeführt). Codex übernimmt Commit/Push/Jira; dieser Review-Eintrag ist append-only dokumentiert.
