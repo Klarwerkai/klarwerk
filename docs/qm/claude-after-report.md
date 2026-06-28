@@ -5598,3 +5598,44 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-192 — Hardware prüfen & vorbereiten (GPU/RAM/Storage) — Readiness/Selbstverifikation
+**Datum:** 2026-06-27 · **Rolle:** Claude prüft/dokumentiert (Codex steuert, Pedi entscheidet Richtung). Docs-only; **keine** Treiber-/OS-/CUDA-/Metal-/Runtime-/Modell-Installation; kein Produktcode.
+
+### 1. Vorab-Befund / Durchgeführte Checks
+- `uname -a`/`arch`: **Linux aarch64** (Sandbox). `sw_vers`/`sysctl hw.memsize`/`system_profiler`: **nicht vorhanden** (kein macOS). `nvidia-smi`: **nicht vorhanden**. Sandbox-RAM ~4 GB / Disk ~9,6 GB — **Sandbox-Werte, NICHT der Mac**.
+- → **Zielhardware (Mac) aus dieser Umgebung nicht prüfbar**; keine erfundenen Mac-Werte.
+- Repo/Deploy belegbar: App braucht **keine** GPU (Node+Postgres); keine lokale Runtime verdrahtet; GPU nur für separaten Inferenz-Server relevant.
+- Keine `local-hardware-readiness.md` → Doku-Gap.
+
+### 2. Ergebnisse
+- **Hardware-Eignung (Mac): nicht belegt** (Sandbox≠Mac).
+- **Treiber/Metal/CUDA: nicht belegt** (macOS-Tools fehlen; kein NVIDIA in Sandbox; kein Mac-Zugriff).
+- **Modellgrößen-Einschätzung:** nur als **Beispielmatrix** (16 GB→3B–8B Q4 vorsichtig; 24/32 GB→7B–13B Q4; 64 GB+→größer/mehr Kontext) — verbindlich erst mit echten Werten.
+
+### 3. Minimaler Fix
+**Neu:** `docs/operations/local-hardware-readiness.md` — Prüfumgebungsgrenze (Tabelle), belegbarer Repo/Deploy-Stand, **Selbst-Verifikationsbefehle** (sw_vers/system_profiler/sysctl/df/SPStorage), **Hardware-Eignungsmatrix** (RAM-Klassen), **Storage-Bedarf pro Modellklasse**, Metal/GPU-Verifikation, Done-Kriterien, Blocker/Nicht-Ziele. **Kein Produktcode.**
+
+### 4. Geänderte Dateien
+NEU `docs/operations/local-hardware-readiness.md`; `docs/qm/claude-after-report.md`. Kein Produktcode/FE.
+
+### 5. Tests/Gates
+`npm run check` grün — 128 Dateien / 700 Tests. Kein FE berührt → `apps/web tsc --noEmit` nicht erforderlich.
+
+### 6. Restlücken / Nicht-Ziele
+Mac-Hardware nicht verifizierbar aus Sandbox; keine Treiber-/OS-/Runtime-/Modell-Arbeit. Verifikation = Pedi lokal (§3 der Doku), danach verbindliche Modellklasse.
+
+### 7. Empfehlung: **PARTIAL / Blocked-on-local-hardware-verification** (nicht Done)
+**Begründung (Ehrlichkeit):** Reale Mac-GPU/Metal/RAM/Storage sind **aus der Linux-Sandbox nicht belegbar** — keine erfundenen Werte. Belegbar nur: App braucht keine GPU; GPU-Eignung betrifft nur späteren lokalen LLM-PoC. Selbst-Verifikation + Eignungs-/Storage-Matrix + Done-Kriterien dokumentiert → **Partial**; Hardware-Check durch Pedi lokal.
+
+### 8. Commit-/Push-Hinweis (nur Doku)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add docs/operations/local-hardware-readiness.md docs/qm/claude-after-report.md
+git commit -m "docs(ops): local hardware readiness (Mac not verifiable from sandbox; suitability matrix) (SCRUM-192)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
