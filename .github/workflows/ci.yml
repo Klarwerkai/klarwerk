@@ -13,6 +13,7 @@ jobs:
           node-version: "20"
           cache: "npm"
       - run: npm ci
+      - run: npm ci --prefix apps/web
       - name: build
         run: npm run build
       - name: lint
