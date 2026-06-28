@@ -5110,3 +5110,45 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-205 — Optional: Fine-Tuning / LoRA auf eigenen Daten (Entscheidungsnotiz, docs-only)
+**Datum:** 2026-06-27 · **Rolle:** Claude prüft/dokumentiert (Codex steuert, Pedi entscheidet Richtung). Docs-only; kein Training/Adapter/GPU/RAG; kein Produktcode.
+
+### 1. Vorab-Befund
+- **Reasoner anbieteragnostisch:** `ModelProvider` (mit `ANTHROPIC_API_KEY`/`REASONER_MODEL`) **oder** `DeterministicProvider`-Fallback. Schlüssel nur serverseitig. Modell ist **optional**.
+- **Anti-Halluzination by design:** das Modell **formuliert nur**, „Quellen/Trust kommen aus den Daten" (vorhandene, validierte KOs) — Antworten sind **quellengebunden**, ohne Beleg → ehrliche **Wissenslücke** (getestet, SCRUM-206).
+- **Kein RAG/Vector/Embedding/Fine-Tuning/LoRA im Code** — die einzigen Treffer sind Kommentare, die diese Ansätze **bewusst ausschließen** (`askView.ts`, `askExamples.ts`, `librarySearch.ts`). Retrieval = deterministische Keyword-/KO-Auswahl.
+- **Eval-Baseline vorhanden** (`evaluation-quality-assurance.md`, B1–B4) + ModelRun-Protokoll (Run-Level-QA, ohne Inhalte).
+- **Kuratierte Trainingsdaten:** Stage-1-Seed = wenige KOs → zu klein für Training.
+- **Kein** `docs/operations/fine-tuning-decision.md` → Doku-Gap.
+
+### 2. Entscheidung
+**Fine-Tuning/LoRA ist jetzt NICHT nötig und wird NICHT durchgeführt.** Begründung: Klarwerk verankert Wissen in **Knowledge Objects + Quellenbindung + Validierung + Revalidierung**, nicht in Modellgewichten (Leitprinzip „The AI may change. Your knowledge never does."). RAG/Vector ist nicht einmal vorhanden — die richtige Reihenfolge ist Quellenbindung (✓) → ggf. Retrieval/RAG → **erst zuletzt** ggf. LoRA für **Stil/Strukturierung** (nie zum Faktenspeichern). Es gibt kein gemessenes Qualitätsproblem, das nur Training löste; Datenmenge, DSGVO-Pfad und Eval-Vorher/Nachher fehlen. Fine-Tuning würde Risiken bringen (Overfitting, Wissensverfall, falsche Autorität, DSGVO-Konflikt durch eingebackenes/nicht löschbares Wissen, Lock-in/Kosten).
+
+### 3. Minimaler Fix
+**Neu:** `docs/operations/fine-tuning-decision.md` — Entscheidungsnotiz mit: Entscheidung; Begründung (Quellenbindung statt Gewichte); Problem-Gegenüberstellung (was FT löste vs. was Klarwerk schon besser macht); RAG-vor-FT-Reihenfolge; **Datenanforderungen**; **Eval-Anforderungen** (Baseline + Vorher/Nachher); **Datenschutz/Compliance** (DSFA, nicht löschbare Gewichte); **Risiken**; **Kriterien, wann LoRA später erwogen werden könnte** (§9); **Overfitting-/Rollback-Regeln** (Adapter per Env deaktivierbar); **Nicht-Ziele**; Fazit. **Kein Produktcode** (kein Konfig-Bug gefunden).
+
+### 4. Geänderte Dateien
+NEU `docs/operations/fine-tuning-decision.md`; `docs/qm/claude-after-report.md` (dieser Eintrag). Kein Produktcode, kein FE.
+
+### 5. Tests/Gates
+`npm run check` grün — 128 Dateien / 700 Tests. Kein FE berührt → `apps/web tsc --noEmit` nicht erforderlich.
+
+### 6. Restlücken / Nicht-Ziele
+- Kein Training/Adapter/GPU/RAG/Vector/Embedding erzeugt; keine Modellarchitektur; keine produktive Modellumstellung.
+- Spätere LoRA-Erwägung nur unter den dokumentierten Kriterien (§9): großer validierter Korpus, RAG ausgereizt, gemessenes Stil-/Strukturierungs-Defizit, DSGVO-Pfad, Eval-Baseline, abschaltbarer Adapter.
+
+### 7. Empfehlung: **DONE**
+**Begründung:** Das Item ist explizit ein **Entscheidungsitem** („optional"). Die Architektur erlaubt eine **klare, begründete Entscheidung („jetzt nicht nötig")**, und die geforderten Inhalte (Begründung, Wann-später-Kriterien, Daten-/Eval-/Datenschutz-/Rollback-Regeln, Nicht-Ziele) sind dokumentiert. Es gibt **keinen Blocker** — kein Training war beauftragt, und die Entscheidung ist final dokumentiert. → **SCRUM-205 ist schließbar (Done).**
+
+### 8. Commit-/Push-Hinweis (nur Doku)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add docs/operations/fine-tuning-decision.md docs/qm/claude-after-report.md
+git commit -m "docs(ops): fine-tuning/LoRA decision note (not needed now + later criteria) (SCRUM-205)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
