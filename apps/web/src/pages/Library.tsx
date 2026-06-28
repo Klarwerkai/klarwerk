@@ -6,6 +6,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
 import { useDirectory, useKos, useLibrarySearch } from "../api/hooks";
 import { useToast } from "../app/ToastContext";
+import { DemoBanner } from "../components/DemoBanner";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import {
   ConfidenceBar,
@@ -15,6 +16,7 @@ import {
   StatusPill,
 } from "../components/trust";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
+import { isDemoContext } from "../lib/demoPilotPath";
 import { deriveStatus } from "../lib/displayStatus";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { koAuthorParts } from "../lib/koAuthor";
@@ -126,6 +128,8 @@ export function Library(): JSX.Element {
           </div>
         }
       />
+      {/* SCRUM-291: Demo-/Pilotpfad auf der Zielseite wiedererkennbar (nur bei ?demo=stage1). */}
+      {isDemoContext(params) ? <DemoBanner surface="library" /> : null}
       <div className="mb-4 flex flex-wrap gap-2">
         <input
           value={filter.q}

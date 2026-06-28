@@ -6,6 +6,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
 import { useKos, useReasonerStatus } from "../api/hooks";
 import type { AnswerResult } from "../api/types";
+import { DemoBanner } from "../components/DemoBanner";
 import { ConfidenceBar } from "../components/trust";
 import { Button, Card, PageHeader, SectionLabel } from "../components/ui";
 import { ASK_EXAMPLES, type AskExpectationTone, askExpectation } from "../lib/askExamples";
@@ -13,6 +14,7 @@ import { readAskQuestion } from "../lib/askQuestion";
 import { selectAnswer } from "../lib/askResponse";
 import { answerReviewGuard, answerStatus, sourceRefs } from "../lib/askView";
 import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
+import { isDemoContext } from "../lib/demoPilotPath";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
 import { type EvidenceTone, knowledgeClassMeta } from "../lib/knowledgeClass";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
@@ -82,6 +84,8 @@ export function Ask(): JSX.Element {
   return (
     <div className="mx-auto max-w-3xl">
       <PageHeader kicker={t("ask.kicker")} title={t("ask.title")} />
+      {/* SCRUM-291: Demo-/Pilotpfad auf der Zielseite wiedererkennbar (nur bei ?demo=stage1). */}
+      {isDemoContext(params) ? <DemoBanner surface="ask" /> : null}
       <div className="-mt-3 mb-5 flex flex-wrap items-center gap-2">
         <p className="text-sm text-muted">{t("ask.intro")}</p>
         <span

@@ -2,14 +2,16 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Minus, X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
 import { useDirectory, useValidationBoard } from "../api/hooks";
 import type { Verdict } from "../api/types";
 import { useSession } from "../app/AuthContext";
+import { DemoBanner } from "../components/DemoBanner";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { ConfidenceBar, KnowledgeTypeTag, KoAuthorLine, StatusPill } from "../components/trust";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
+import { isDemoContext } from "../lib/demoPilotPath";
 import { koAuthorParts } from "../lib/koAuthor";
 import {
   REVIEW_DECISIONS,
@@ -60,6 +62,7 @@ const REVIEW_WORK_TONE: Record<ReviewWorkTone, string> = {
 
 export function Validation(): JSX.Element {
   const { t } = useTranslation();
+  const [params] = useSearchParams();
   const query = useValidationBoard();
   const users = useDirectory();
   const { user } = useSession();
@@ -127,6 +130,8 @@ export function Validation(): JSX.Element {
   return (
     <div className="mx-auto max-w-4xl">
       <PageHeader kicker={t("val.kicker")} title={t("nav.validation")} />
+      {/* SCRUM-291: Demo-/Pilotpfad auf der Zielseite wiedererkennbar (nur bei ?demo=stage1). */}
+      {isDemoContext(params) ? <DemoBanner surface="validation" /> : null}
       <p className="-mt-3 mb-4 text-sm text-muted">{t("val.intro")}</p>
       {/* SCRUM-277: Rückmeldung nach der Entscheidung + nächster Schritt (KO ansehen / optional nutzen). */}
       {lastDecision ? (

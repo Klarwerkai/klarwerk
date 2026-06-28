@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
-import { DEMO_PILOT_PATH, demoPilotPath } from "../../apps/web/src/lib/demoPilotPath";
+import {
+  DEMO_PILOT_PATH,
+  DEMO_VALUE,
+  type DemoSurface,
+  demoPilotPath,
+  demoSurfaceBanner,
+  isDemoContext,
+  withDemo,
+} from "../../apps/web/src/lib/demoPilotPath";
 
 // SCRUM-290: kompakter Demo-/Pilotpfad Start → Ask → Library/KO-Detail → Validation.
 describe("SCRUM-290: demoPilotPath", () => {
@@ -19,8 +27,14 @@ describe("SCRUM-290: demoPilotPath", () => {
   });
 
   it("Schritt 2/3 zeigen Wissensbestand und Validierung über vorhandene Routen", () => {
-    expect(DEMO_PILOT_PATH[1]?.to).toBe("/bibliothek");
-    expect(DEMO_PILOT_PATH[2]?.to).toBe("/validierung");
+    expect(DEMO_PILOT_PATH[1]?.to.split("?")[0]).toBe("/bibliothek");
+    expect(DEMO_PILOT_PATH[2]?.to.split("?")[0]).toBe("/validierung");
+  });
+
+  it("SCRUM-291: jeder Schritt trägt den Demo-Kontext (?demo=stage1) weiter", () => {
+    for (const s of DEMO_PILOT_PATH) {
+      expect(s.to).toContain(`demo=${DEMO_VALUE}`);
+    }
   });
 
   it("nutzt ausschließlich vorhandene Routen (keine neue Navigation)", () => {
@@ -51,5 +65,52 @@ describe("SCRUM-290: demoPilotPath", () => {
     expect(text("de", "demo.validation.desc")).toContain("validierung");
     expect(text("en", "demo.ask.desc")).toContain("source-bound");
     expect(text("en", "demo.validation.desc")).toContain("validation");
+  });
+});
+
+// SCRUM-291: Demo-Kontext auf den Zielseiten wiedererkennbar (Query-Param + Banner).
+describe("SCRUM-291: Demo-Kontext (withDemo/isDemoContext/demoSurfaceBanner)", () => {
+  it("withDemo hängt ?demo=stage1 an und bewahrt eine bestehende Query", () => {
+    expect(withDemo("/bibliothek")).toBe("/bibliothek?demo=stage1");
+    expect(withDemo("/fragen?q=Ventil")).toBe("/fragen?q=Ventil&demo=stage1");
+    expect(withDemo("/fragen?q=Ventil&demo=stage1")).toBe("/fragen?q=Ventil&demo=stage1");
+  });
+
+  it("isDemoContext erkennt nur den exakten Demo-Wert (normale Nutzung bleibt unberührt)", () => {
+    expect(isDemoContext(new URLSearchParams("demo=stage1"))).toBe(true);
+    expect(isDemoContext(new URLSearchParams("demo=x"))).toBe(false);
+    expect(isDemoContext(new URLSearchParams(""))).toBe(false);
+    expect(isDemoContext(new URLSearchParams("q=Ventil"))).toBe(false);
+  });
+
+  const surfaces: DemoSurface[] = ["ask", "library", "validation"];
+  const text = (lng: string, key: string) =>
+    String(i18n.getResource(lng, "translation", key) ?? "").toLowerCase();
+
+  it("liefert je Zielseite eine Banner-Struktur mit korrekter Schrittnummer", () => {
+    expect(surfaces.map((s) => demoSurfaceBanner(s).n)).toEqual([1, 2, 3]);
+    for (const s of surfaces) {
+      const b = demoSurfaceBanner(s);
+      expect(b.surface).toBe(s);
+      expect(b.titleKey.length).toBeGreaterThan(0);
+      expect(b.bodyKey.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("nächster Schritt (Ask→Library, Library→Validation) trägt den Demo-Kontext weiter; Validation endet", () => {
+    expect(demoSurfaceBanner("ask").next?.to).toBe("/bibliothek?demo=stage1");
+    expect(demoSurfaceBanner("library").next?.to).toBe("/validierung?demo=stage1");
+    expect(demoSurfaceBanner("validation").next).toBeUndefined();
+  });
+
+  it("Banner-i18n in DE/EN vorhanden (Titel/Body je Seite + Tag)", () => {
+    for (const lng of ["de", "en"]) {
+      expect(text(lng, "demo.banner.tag").length).toBeGreaterThan(0);
+      for (const s of surfaces) {
+        const b = demoSurfaceBanner(s);
+        expect(text(lng, b.titleKey).length).toBeGreaterThan(0);
+        expect(text(lng, b.bodyKey).length).toBeGreaterThan(0);
+      }
+    }
   });
 });

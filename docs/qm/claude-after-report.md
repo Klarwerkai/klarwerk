@@ -6251,3 +6251,41 @@ git commit -m "feat(start): visible Stage-1 demo/pilot path Start→Ask→Librar
 git push
 ```
 Keine Jira-Änderungen durch Claude. Codex prüft Diff, führt Gates, committet, pusht, wartet CI ab, schließt Jira.
+
+---
+
+## SCRUM-291 — Demo-/Pilotpfad auf Zielseiten wiedererkennbar machen
+**Datum:** 2026-06-28 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung). **FE-Produkt-Slice** (DOM-freie Helper + kleine Komponente + i18n + Tests); keine neue Route/Search/RAG; keine Reasoner-/Backend-Änderung; kein neues Statusmodell; **kein Git/Jira durch Claude**.
+
+### 1. Vorab-Befund
+- SCRUM-290 brachte den Demo-Pfad nur auf **Start**. Ask/Library nutzen bereits `useSearchParams`; Validation noch nicht; KO-Detail nutzt `useParams` (Route-ID).
+- Query-Param-Muster vorhanden (`?q=` askQuestion, `?gap=` captureFromGap) → konsistentes Vorbild für `?demo=stage1`.
+- KO-Detail braucht KO-ID → pro Ticket lieber **Ask + Library + Validation** sauber verbinden (kein statischer Fake-KO-Link).
+
+### 2. Umsetzung
+- `demoPilotPath.ts` erweitert: `DEMO_PARAM`/`DEMO_VALUE`, **`withDemo(href)`** (hängt `?demo=stage1` an, bewahrt bestehende Query), **`isDemoContext(params)`**, **`demoSurfaceBanner(surface)`** (DOM-frei). Jeder Pfad-Schritt trägt jetzt den Demo-Kontext weiter.
+- Neue kleine Komponente `DemoBanner.tsx` — kompakte, wiedererkennbare Hinweisbox (Schrittnummer, „was hier zu sehen ist", optional „nächster Schritt" mit erhaltenem Demo-Kontext).
+- **Ask/Library/Validation**: rendern den Banner **nur** bei `isDemoContext(params)` (Validation: `useSearchParams` ergänzt). Ohne Demo-Kontext **keinerlei** Änderung der normalen Nutzung.
+- i18n DE/EN: `demo.banner.*` (Tag + je Seite Titel/Body + Ask/Library „nächster Schritt").
+
+### 3. Geänderte Dateien
+- `apps/web/src/lib/demoPilotPath.ts` (erweitert), NEU `apps/web/src/components/DemoBanner.tsx`.
+- `apps/web/src/pages/Ask.tsx`, `Library.tsx`, `Validation.tsx` (je Banner + Gate; Validation zusätzlich `useSearchParams`).
+- `apps/web/src/i18n.ts` (`demo.banner.*` DE+EN).
+- `tests/app/demo-pilot-path.test.ts` (erweitert: +Demo-Kontext-Tests; bestehende Pfad-`to`-Assertions auf `split("?")[0]` umgestellt).
+
+### 4. Tests/Gates
+`npm run check` grün — **131 Dateien / 748 Tests** (Demo-Pfad-Suite jetzt 12 Tests). `apps/web tsc --noEmit` grün (keine Quellfehler). Biome/depcruise grün.
+
+### 5. Restlücken/Nicht-Ziele
+- **KO-Detail bewusst ausgelassen** (kein stabiler statischer Demo-Link ohne KO-ID); Library deckt „Quelle/Trust/Status/Reife/Version" + Übergang zur Validierung ab.
+- Demo-Kontext ist reine **Anzeige-/Orientierungsschicht** (Query-Param + Banner); keine neue Route/Search/RAG, keine Reasoner-/Backend-/Statusmodell-Änderung, keine automatische Validierung. **Normale Nutzung ohne `?demo=stage1` unverändert.** Ask bleibt quellengebunden; Validation bleibt Review-Ort.
+
+### 6. Commit-/Push-Hinweis (nur Hinweis — Claude führt NICHT aus)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/demoPilotPath.ts apps/web/src/components/DemoBanner.tsx apps/web/src/pages/Ask.tsx apps/web/src/pages/Library.tsx apps/web/src/pages/Validation.tsx apps/web/src/i18n.ts tests/app/demo-pilot-path.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(demo): recognisable Stage-1 pilot path banners on Ask/Library/Validation via ?demo=stage1 (SCRUM-291)"
+git push
+```
+Keine Jira-Änderungen durch Claude. Codex prüft Diff, führt Gates, korrigiert minimal, committet, pusht, wartet CI ab, schließt Jira.

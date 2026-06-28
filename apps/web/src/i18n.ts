@@ -134,6 +134,19 @@ const de = {
   "demo.validation.label": "3 · Validieren",
   "demo.validation.desc":
     "Offenes/ungeprüftes Wissen gehört in die Validierung — bewerten, bis es gesichert und nutzbar ist.",
+  // SCRUM-291: wiedererkennbare Pfad-Hinweisboxen auf den Zielseiten (nur bei ?demo=stage1).
+  "demo.banner.tag": "Demo-Pfad",
+  "demo.banner.ask.title": "Schritt 1: Quellengebunden fragen",
+  "demo.banner.ask.body":
+    "Die Antwort kommt mit Trust und Quelle — nicht frei erfunden. Achte auf Status/Trust und sieh dann die Quelle/das Objekt an.",
+  "demo.banner.ask.next": "Weiter: Wissen ansehen",
+  "demo.banner.library.title": "Schritt 2: Quelle, Trust, Status, Reife ansehen",
+  "demo.banner.library.body":
+    "Hier siehst du je Objekt Quelle, Trust, Status und Reife/Version. Bei offener/ungeprüfter Quelle geht es weiter zur Validierung.",
+  "demo.banner.library.next": "Weiter: Validieren",
+  "demo.banner.validation.title": "Schritt 3: Offenes Wissen bewerten",
+  "demo.banner.validation.body":
+    "Hier wird offenes/ungeprüftes Wissen bewertet. Ziel: aus Review-Arbeit gesichertes, nutzbares Wissen machen.",
   "cycle.capture.label": "Erfassen",
   "cycle.capture.desc": "Erfahrungswissen als Knowledge Object sichern.",
   "cycle.validate.label": "Validieren",
@@ -1290,6 +1303,19 @@ const en: typeof de = {
   "demo.validation.label": "3 · Validate",
   "demo.validation.desc":
     "Open/unverified knowledge belongs in validation — rate it until it is secured and usable.",
+  // SCRUM-291: recognisable path hint boxes on the target pages (only with ?demo=stage1).
+  "demo.banner.tag": "Demo path",
+  "demo.banner.ask.title": "Step 1: Ask source-bound",
+  "demo.banner.ask.body":
+    "The answer comes with trust and source — not made up. Watch status/trust, then look at the source/object.",
+  "demo.banner.ask.next": "Next: see knowledge",
+  "demo.banner.library.title": "Step 2: See source, trust, status, maturity",
+  "demo.banner.library.body":
+    "Here each object shows source, trust, status and maturity/version. If a source is open/unverified, continue to validation.",
+  "demo.banner.library.next": "Next: validate",
+  "demo.banner.validation.title": "Step 3: Rate open knowledge",
+  "demo.banner.validation.body":
+    "Here open/unverified knowledge is rated. Goal: turn review work into secured, usable knowledge.",
   "cycle.capture.label": "Capture",
   "cycle.capture.desc": "Save experience knowledge as a knowledge object.",
   "cycle.validate.label": "Validate",
