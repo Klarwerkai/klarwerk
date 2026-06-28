@@ -4472,3 +4472,30 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-277 — Validation: nach Entscheidung den nächsten Use-/Detail-Schritt sichtbar machen
+**Datum:** 2026-06-27 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung).
+
+**Vorab-Befund (read-only):** `Validation.tsx` hat zwei Entscheidungs-Mutationen — `rate` (grün/up) und `reviewWithFeedback` (gelb/rot = warn/down, mit Pflicht-Kommentar) — die im Erfolg NUR `invalidate()` (und beim Feedback das Formular schließen) ausführten; keine Rückmeldung/Next-Step. `Verdict = "up"|"warn"|"down"` = `ReviewVerdict` (`reviewDecision.ts`). `Link` ist importiert, die KO-Karte (`k`) trägt `k.id`/`k.title`. `askQuestionHref` (SCRUM-272) baut `/fragen?q=…`. Routen `/wissen/:id` und `/fragen` vorhanden. Kein P0/P1.
+
+**Umsetzung (minimal, DOM-frei + UI):** `reviewDecision.ts` um `reviewNextSteps({id,title,verdict}) → ReviewNextStep[]` erweitert: immer „Objekt ansehen" (`/wissen/:id`); NUR bei Freigabe-Stimme (`up`) zusätzlich „Wissen nutzen (fragen)" via `askQuestionHref(title)` (`/fragen?q=<KO-Titel>`). In `Validation.tsx` führen `rate`/`reviewWithFeedback` jetzt den `title` mit; ihre `onSuccess` setzen `lastDecision = {id,title,verdict}` (zusätzlich zum bestehenden `invalidate`/Feedback-Reset). Eine kompakte Success-Card oben am Board meldet „Bewertung erfasst." + den KO-Titel und rendert die nächsten Schritte als `<Link>`-CTAs (+ Schließen-„×"). Keine automatische Navigation, keine automatische Freigabe/Nutzung (der Ask-CTA prefilled nur das Eingabefeld — kein Auto-Submit; Ask zeigt selbst den echten Status/Lücke). Warn/Ablehnen-Feedback-Flow, Pflichtbegründung, Review-Aktionen, Zuweisung, Filter und Sortierung unverändert. Kein Backend, keine neue Engine, kein Redesign.
+
+**Geänderte Dateien:** `apps/web/src/lib/reviewDecision.ts` (reviewNextSteps + Import askQuestionHref), `tests/validation/review-decision.test.ts` (+2 Tests), `apps/web/src/pages/Validation.tsx` (lastDecision-State, title in Mutationen, Next-Step-Card, Imports), `apps/web/src/i18n.ts` (`val.decisionSaved`/`val.nextViewKo`/`val.nextUse` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — 128 Dateien / 698 Tests (+2 Tests). `apps/web` `tsc --noEmit` grün. Biome + dependency-cruiser sauber. Die neuen Tests sichern: Freigabe (up) → KO ansehen (`/wissen/:id`) + Wissen nutzen (`/fragen?q=` mit URL-encodiertem KO-Titel); Rückfrage/Ablehnung (warn/down) → nur KO-Detail-Link, kein Use-Schritt.
+
+**Restlücken/Nicht-Ziele:** kein Backend, keine neue Validierungsengine, keine automatische Freigabe/Nutzung, keine neue Task-Engine, keine RAG-/Vector-/Reasoner-Architektur, keine Stufe-2-Arbeit, keine Ticketserie, kein UI-Redesign. Der Use-CTA erscheint bewusst nur bei der Freigabe-Stimme — und auch dann ohne Anspruch auf „validiert" (mehrere Stimmen können nötig sein); die Wortwahl bleibt „Bewertung erfasst" + „Wissen nutzen (fragen)". Die Rückmeldung referenziert das KO über den Titel; das KO-Detail bleibt jederzeit verlinkt.
+
+**Commit-/Push-Hinweis:**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/reviewDecision.ts tests/validation/review-decision.test.ts apps/web/src/pages/Validation.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(validation): show next use/detail step after a review decision (SCRUM-277)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

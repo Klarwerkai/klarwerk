@@ -11,7 +11,12 @@ import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { ConfidenceBar, KnowledgeTypeTag, KoAuthorLine, StatusPill } from "../components/trust";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
 import { koAuthorParts } from "../lib/koAuthor";
-import { REVIEW_DECISIONS, type ReviewTone } from "../lib/reviewDecision";
+import {
+  REVIEW_DECISIONS,
+  type ReviewTone,
+  type ReviewVerdict,
+  reviewNextSteps,
+} from "../lib/reviewDecision";
 import { type TrustBand, reviewSignals, sortByReviewPriority } from "../lib/reviewSignals";
 import {
   type FeedbackVerdict,
@@ -52,15 +57,25 @@ export function Validation(): JSX.Element {
   // Offenes Feedback-Formular (FE-VAL-06): pro KO + gewählter Verdict.
   const [feedback, setFeedback] = useState<{ id: string; verdict: FeedbackVerdict } | null>(null);
   const [feedbackText, setFeedbackText] = useState("");
+  // SCRUM-277: letzte erfolgreiche Entscheidung → Rückmeldung + nächster Schritt (KO ansehen/nutzen).
+  const [lastDecision, setLastDecision] = useState<{
+    id: string;
+    title: string;
+    verdict: ReviewVerdict;
+  } | null>(null);
   const selectCls =
     "h-10 rounded-input border border-hairline bg-surface px-2 text-sm text-text outline-none focus:border-ink/30";
 
   const invalidate = (): void => void qc.invalidateQueries({ queryKey: ["validation"] });
 
   const rate = useMutation({
-    mutationFn: ({ id, verdict }: { id: string; verdict: Verdict }) =>
+    // SCRUM-277: Titel mitführen → Rückmeldung/Next-Step benennt das betroffene KO.
+    mutationFn: ({ id, verdict }: { id: string; title: string; verdict: Verdict }) =>
       endpoints.ko.act(id, { action: "rate", verdict }),
-    onSuccess: invalidate,
+    onSuccess: (_data, vars) => {
+      invalidate();
+      setLastDecision({ id: vars.id, title: vars.title, verdict: vars.verdict });
+    },
   });
 
   // Gelb/Rot: erst Pflicht-Kommentar, dann Bewertung (FE-VAL-06).
@@ -69,17 +84,18 @@ export function Validation(): JSX.Element {
       id,
       verdict,
       text,
-    }: { id: string; verdict: FeedbackVerdict; text: string }) => {
+    }: { id: string; title: string; verdict: FeedbackVerdict; text: string }) => {
       await endpoints.ko.act(id, {
         action: "comment",
         text: buildValidationFeedback(verdict, text),
       });
       await endpoints.ko.act(id, { action: "rate", verdict });
     },
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       invalidate();
       setFeedback(null);
       setFeedbackText("");
+      setLastDecision({ id: vars.id, title: vars.title, verdict: vars.verdict });
     },
   });
 
@@ -99,6 +115,40 @@ export function Validation(): JSX.Element {
     <div className="mx-auto max-w-4xl">
       <PageHeader kicker={t("val.kicker")} title={t("nav.validation")} />
       <p className="-mt-3 mb-4 text-sm text-muted">{t("val.intro")}</p>
+      {/* SCRUM-277: Rückmeldung nach der Entscheidung + nächster Schritt (KO ansehen / optional nutzen). */}
+      {lastDecision ? (
+        <Card className="mb-4 border-trust-pos-fill/40 bg-trust-pos-bg">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="text-[13px] font-semibold text-trust-pos-text">
+                {t("val.decisionSaved")}
+              </div>
+              <p className="mt-0.5 truncate text-[12.5px] text-trust-pos-text/90">
+                {lastDecision.title}
+              </p>
+            </div>
+            <button
+              type="button"
+              title={t("val.feedback.cancel")}
+              onClick={() => setLastDecision(null)}
+              className="shrink-0 text-trust-pos-text/70 hover:text-trust-pos-text"
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {reviewNextSteps(lastDecision).map((s) => (
+              <Link
+                key={s.to}
+                to={s.to}
+                className="inline-flex items-center gap-1 rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
+              >
+                {t(s.labelKey)} <span aria-hidden="true">→</span>
+              </Link>
+            ))}
+          </div>
+        </Card>
+      ) : null}
       <QueryState
         query={query}
         emptyText={t("val.empty")}
@@ -240,7 +290,7 @@ export function Validation(): JSX.Element {
                                   }
                                   onClick={() =>
                                     d.verdict === "up"
-                                      ? rate.mutate({ id: k.id, verdict: "up" })
+                                      ? rate.mutate({ id: k.id, title: k.title, verdict: "up" })
                                       : openFeedback(k.id, d.verdict)
                                   }
                                   className={`flex h-9 items-center gap-1.5 rounded-btn px-2.5 text-[12.5px] font-semibold hover:opacity-80 disabled:opacity-50 ${DECISION_TONE[d.tone]} ${
@@ -321,6 +371,7 @@ export function Validation(): JSX.Element {
                               onClick={() =>
                                 reviewWithFeedback.mutate({
                                   id: k.id,
+                                  title: k.title,
                                   verdict: feedback.verdict,
                                   text: feedbackText,
                                 })
