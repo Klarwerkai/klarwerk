@@ -15,7 +15,6 @@ import {
   StatusPill,
 } from "../components/trust";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
-import { askQuestionHref } from "../lib/askQuestion";
 import { deriveStatus } from "../lib/displayStatus";
 import { koAuthorParts } from "../lib/koAuthor";
 import { windowList } from "../lib/libraryDisplay";
@@ -27,6 +26,7 @@ import {
   countByMaturity,
   filterByMaturity,
   libraryMaturity,
+  libraryUseCta,
   maturityFilterLabelKey,
 } from "../lib/libraryMaturity";
 import { EMPTY_LIBRARY_FILTER, buildLibraryQuery } from "../lib/libraryQuery";
@@ -219,6 +219,7 @@ export function Library(): JSX.Element {
                   {win.visible.map(({ ko: k, matches }) => {
                     // SCRUM-262: ehrliche Reife/Nutzbarkeit je Treffer (DOM-freier Helper).
                     const maturity = libraryMaturity(k);
+                    const useCta = libraryUseCta(k);
                     return (
                       <div
                         key={k.id}
@@ -264,13 +265,17 @@ export function Library(): JSX.Element {
                             <ConfidenceBar value={k.confidence} showLabel={false} />
                           </div>
                         </Link>
-                        {/* SCRUM-274: nutzbares Wissen direkt als Ask-Startfrage (kein Auto-Submit). */}
+                        {/* SCRUM-288: nur nutzbares/validiertes Wissen direkt in Ask; offene KOs → Review. */}
                         <Link
-                          to={askQuestionHref(k.title)}
-                          title={t("lib.ask")}
-                          className="inline-flex shrink-0 items-center gap-1 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
+                          to={useCta.href}
+                          title={t(useCta.labelKey)}
+                          className={`inline-flex shrink-0 items-center gap-1 rounded-btn border px-2.5 py-1 text-[12px] font-semibold hover:text-text ${
+                            useCta.kind === "ask"
+                              ? "border-ink bg-ink text-white hover:text-white"
+                              : "border-hairline text-muted"
+                          }`}
                         >
-                          {t("lib.ask")}
+                          {t(useCta.labelKey)}
                         </Link>
                         {canRevalidate(k.status) ? (
                           <button

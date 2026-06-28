@@ -11,7 +11,7 @@ import { Button, Card, PageHeader, SectionLabel } from "../components/ui";
 import { ASK_EXAMPLES, type AskExpectationTone, askExpectation } from "../lib/askExamples";
 import { readAskQuestion } from "../lib/askQuestion";
 import { selectAnswer } from "../lib/askResponse";
-import { answerStatus, sourceRefs } from "../lib/askView";
+import { answerReviewGuard, answerStatus, sourceRefs } from "../lib/askView";
 import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
 import { type EvidenceTone, knowledgeClassMeta } from "../lib/knowledgeClass";
@@ -58,6 +58,10 @@ export function Ask(): JSX.Element {
 
   // SCRUM-250: KO-Bestand für lesbare Quellen-Titel (kein neuer Endpoint).
   const kos = useKos();
+  const answerSources = result?.answered ? sourceRefs(result.sources, kos.data ?? []) : [];
+  const reviewGuard = result?.answered
+    ? answerReviewGuard(result.knowledgeClass, answerSources)
+    : null;
 
   const ask = useMutation({
     mutationFn: () => endpoints.ask.ask(q, toReasonerLocale(i18n.language)),
@@ -147,6 +151,19 @@ export function Ask(): JSX.Element {
               <ConfidenceBar value={result.trust} />
             </div>
             <p className="text-[15px] leading-relaxed text-text">{result.answer}</p>
+            {reviewGuard ? (
+              <div className="mt-3 rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
+                <div className="font-semibold">{t(reviewGuard.labelKey)}</div>
+                <p className="mt-0.5">{t(reviewGuard.hintKey)}</p>
+                <Link
+                  to={reviewGuard.ctaTo}
+                  className="mt-2 inline-flex items-center gap-1 rounded-btn bg-surface px-2.5 py-1 text-[12px] font-semibold text-text hover:opacity-90"
+                >
+                  {t(reviewGuard.ctaKey)}
+                  <ArrowRight size={13} />
+                </Link>
+              </div>
+            ) : null}
             {result.steps.length > 0 ? (
               <div className="mt-4">
                 <SectionLabel>{t("ask.steps")}</SectionLabel>
@@ -172,7 +189,7 @@ export function Ask(): JSX.Element {
                 <SectionLabel>{t("ask.sources")}</SectionLabel>
                 {/* SCRUM-250: Quellen handlungsnah — KO-Titel statt roher ID, Link zum Detail. */}
                 <ul className="mt-1.5 space-y-1">
-                  {sourceRefs(result.sources, kos.data ?? []).map((s) => (
+                  {answerSources.map((s) => (
                     <li key={s.id}>
                       <Link
                         to={`/wissen/${s.id}`}

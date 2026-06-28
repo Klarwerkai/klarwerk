@@ -6105,3 +6105,57 @@ Ask/Library/KO-Detail Konsistenz: Wenn ein Nutzer ein noch offenes KO fragt/nutz
 
 ### 9. Stop-Status
 **Slice implementiert, Gates grün.** Codex übernimmt Commit, Push, GitHub-CI, Jira-Kommentar und Status.
+
+---
+
+## SCRUM-288 — Ask→Library→KO Detail: offene KOs beim Nutzen klar von gesichertem Wissen trennen
+**Datum:** 2026-06-28 · **Rolle:** Codex setzt den Team-1-Workflow-Slice um. **FE-Produkt-Slice** (DOM-freie Helper + Library/Ask + Texte + Tests); kein RAG; keine neue Suche; kein neues Statusmodell; keine automatische Validierung; kein Backend.
+
+### 1. Ziel des Workflow-Slice
+Den Nutzungsfluss gegen Missverständnisse absichern: Offene/ungeprüfte KOs dürfen beim Fragen/Nutzen nicht wie gesichertes Wissen wirken. Validiertes Wissen soll weiterhin direkt nutzbar sein; offene/in Prüfung befindliche Treffer führen Richtung Review/Validation.
+
+### 2. Vorab-Befund / Root Cause
+- **KO Detail** war bereits sauber: `koOverview/koCta` führt nur `ready`/validierte KOs in Ask; offene KOs gehen zu Quelle ergänzen oder Validierung.
+- **Library** hatte zwar Reife-Plaketten/Filter, bot aber die CTA „Fragen" für **alle** Treffer an — auch offene/in Prüfung befindliche KOs.
+- **Ask** zeigte bei nicht-gesicherten Antworten bereits „Noch ungeprüft", aber ohne klaren Review-/Validierungs-Hinweis und ohne Auswertung, ob die angezeigte Quelle selbst offen ist.
+
+### 3. Geänderte Dateien
+- `apps/web/src/lib/askView.ts` — `sourceRefs` liefert zusätzlich `validated`; neuer DOM-freier `answerReviewGuard(knowledgeClass, sources)` für ungeprüfte/offene Antworten.
+- `apps/web/src/lib/libraryMaturity.ts` — neuer DOM-freier `libraryUseCta(ko)`: validiert → Ask-Deep-Link; offen/in Prüfung → `/validierung`.
+- `apps/web/src/pages/Ask.tsx` — Review-Warnbox + CTA „Zur Validierung" bei ungeprüften/offenen Antworten; Quellen bleiben sichtbar.
+- `apps/web/src/pages/Library.tsx` — Zeilen-CTA nutzt `libraryUseCta`: nur nutzbare KOs zeigen „Fragen"; offene/in Prüfung zeigen „Prüfen".
+- `apps/web/src/i18n.ts` — `ask.reviewGuard.*` und `lib.review` in DE/EN.
+- `tests/ask/ask-view.test.ts` — 3 neue Tests für Review-Guard + Quellenvalidierung in `sourceRefs`.
+- `tests/library/library-maturity.test.ts` — 3 neue Tests für Library-CTA-Entscheidung.
+
+### 4. Was verbessert wurde
+- Library trennt nun **Use** von **Review**: validiertes Wissen geht in Ask, offene KOs in die Validierung.
+- Ask bleibt quellengebunden, zeigt aber bei ungeprüfter/offener Quelle jetzt zusätzlich: nicht als gesichertes Wissen nutzen, erst prüfen/bewerten.
+- KO-Detail musste nicht geändert werden, weil die bestehende `koOverview/koCta`-Führung bereits dem Ziel entspricht.
+- Keine neue Antwortlogik, keine Retrieval-Änderung, keine Backend-Mutation — nur ehrliche Arbeitsführung auf bestehenden Feldern/Knowledge-Class.
+
+### 5. Tests/Gates
+- `npm run check` grün — **129 Dateien / 731 Tests** (+6).
+- `apps/web tsc --noEmit` grün.
+- Biome + dependency-cruiser grün.
+- Hinweis: Der erste Gate-Lauf in der Sandbox traf erneut EPERM beim temporären Vite/Vitest-Config-File; der vollständige Gate-Lauf außerhalb der Sandbox war grün.
+
+### 6. Commit-/Push-Hinweis
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/askView.ts apps/web/src/lib/libraryMaturity.ts apps/web/src/pages/Ask.tsx apps/web/src/pages/Library.tsx apps/web/src/i18n.ts tests/ask/ask-view.test.ts tests/library/library-maturity.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(use): route open knowledge to review, not ask (SCRUM-288)"
+git push
+```
+
+### 7. Offene Risiken
+- Ask-Review-Hinweis basiert auf Knowledge-Class und bekannten KO-Quellen. Unbekannte Quellen bleiben generisch „ungeprüft" und führen ebenfalls zur Validierung.
+- Library führt offene KOs pauschal zum Validierungsboard, nicht direkt zur konkreten Karte. Das ist konsistent mit vorhandenen Routen, aber ein späterer Deep-Link ins Board wäre möglich.
+
+### 8. Empfehlung nächster sinnvoller Slice
+Demo-/Pilot-Führung: Start/Library/Ask können einen kurzen „gesichert vs. zu prüfen"-Leitfaden oder Demo-Hinweis bekommen, damit Investor/Pilotnutzer den Unterschied sofort verstehen — ohne neue Architektur.
+
+### 9. Stop-Status
+**Slice implementiert, Gates grün.** Codex übernimmt Commit, Push, GitHub-CI, Jira-Kommentar und Status.

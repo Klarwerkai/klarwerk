@@ -3,6 +3,7 @@
 // übersetzt sie in eine ehrliche Klartext-Aussage: nutzbar (validiert) · in Prüfung · zu prüfen.
 // Offene KOs erscheinen damit NIE als „nutzbar". Keine neue Suche, keine Mutation, kein Backend.
 import type { KnowledgeObject } from "../api/types";
+import { askQuestionHref } from "./askQuestion";
 import { type KoUsability, koOverview } from "./koOverview";
 
 export type MaturityTone = "pos" | "warn" | "neutral";
@@ -11,6 +12,12 @@ export interface LibraryMaturity {
   usability: KoUsability;
   labelKey: string;
   tone: MaturityTone;
+}
+
+export interface LibraryUseCta {
+  labelKey: string;
+  href: string;
+  kind: "ask" | "review";
 }
 
 // Usability → Klartext-Label + Tönung. „ready" (validiert) = nutzbar; „in-review" (in Prüfung /
@@ -24,6 +31,17 @@ const META: Record<KoUsability, { labelKey: string; tone: MaturityTone }> = {
 export function libraryMaturity(ko: KnowledgeObject): LibraryMaturity {
   const usability = koOverview(ko).usability;
   return { usability, ...META[usability] };
+}
+
+// SCRUM-288: In der Bibliothek führt nur nutzbares/validiertes Wissen in den Ask-Flow. Alles,
+// was noch offen oder in Prüfung ist, wird ehrlich Richtung Validierung geführt — keine neue
+// Suche, keine Mutation, nur sichere CTA-Wahl aus der vorhandenen Reife.
+export function libraryUseCta(ko: KnowledgeObject): LibraryUseCta {
+  const maturity = libraryMaturity(ko);
+  if (maturity.usability === "ready") {
+    return { labelKey: "lib.ask", href: askQuestionHref(ko.title), kind: "ask" };
+  }
+  return { labelKey: "lib.review", href: "/validierung", kind: "review" };
 }
 
 // SCRUM-267: einfacher Reife-Filter für die Bibliothek. „all" + die drei Reifearten — dieselbe

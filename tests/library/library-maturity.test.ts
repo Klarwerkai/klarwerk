@@ -5,6 +5,7 @@ import {
   countByMaturity,
   filterByMaturity,
   libraryMaturity,
+  libraryUseCta,
   maturityFilterLabelKey,
 } from "../../apps/web/src/lib/libraryMaturity";
 
@@ -99,5 +100,28 @@ describe("SCRUM-267: filterByMaturity / countByMaturity", () => {
     expect(maturityFilterLabelKey("ready")).toBe("lib.maturity.usable");
     expect(maturityFilterLabelKey("in-review")).toBe("lib.maturity.review");
     expect(maturityFilterLabelKey("needs-work")).toBe("lib.maturity.open");
+  });
+});
+
+// SCRUM-288: Bibliothek trennt Nutzung (Ask) von Review: nur validierte KOs direkt fragen.
+describe("SCRUM-288: libraryUseCta", () => {
+  it("validiertes/nutzbares KO führt in Ask mit KO-Titel als Startfrage", () => {
+    const cta = libraryUseCta(
+      ko({ title: "Ventil X bei Überdruck schließen", status: "validiert" }),
+    );
+    expect(cta.kind).toBe("ask");
+    expect(cta.labelKey).toBe("lib.ask");
+    expect(cta.href).toContain("/fragen?q=");
+    expect(decodeURIComponent(cta.href)).toContain("Ventil X");
+  });
+
+  it("offenes KO führt nicht in Ask, sondern zur Validierung", () => {
+    const cta = libraryUseCta(ko({ status: "offen", assignments: [] }));
+    expect(cta).toEqual({ labelKey: "lib.review", href: "/validierung", kind: "review" });
+  });
+
+  it("KO in Prüfung führt ebenfalls zur Validierung statt Ask", () => {
+    const cta = libraryUseCta(ko({ status: "offen", assignments: ["controller"] }));
+    expect(cta).toEqual({ labelKey: "lib.review", href: "/validierung", kind: "review" });
   });
 });

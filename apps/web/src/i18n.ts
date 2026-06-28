@@ -346,6 +346,13 @@ const de = {
   "ask.thanked": "Danke!",
   "ask.status.verified": "Gesichert",
   "ask.status.unverified": "Noch ungeprüft",
+  "ask.reviewGuard.openLabel": "Noch nicht als gesichertes Wissen nutzen",
+  "ask.reviewGuard.openHint":
+    "Mindestens eine Quelle ist offen oder noch in Prüfung. Erst prüfen/bewerten, bevor diese Aussage als gesichert genutzt wird.",
+  "ask.reviewGuard.unverifiedLabel": "Antwort ist noch ungeprüft",
+  "ask.reviewGuard.unverifiedHint":
+    "Diese Antwort ist nicht als gesichert eingestuft. Prüfe Quellen und Bewertung, bevor du sie weiterverwendest.",
+  "ask.reviewGuard.cta": "Zur Validierung",
   "ask.gapBadge": "Wissenslücke",
   "ask.gapNext":
     "Nächster Schritt: Lücke im Risiko-Board priorisieren oder einem Experten zuweisen.",
@@ -593,6 +600,7 @@ const de = {
   "lib.allTags": "Alle Tags",
   "lib.revalidate": "Re-Validierung starten",
   "lib.ask": "Fragen",
+  "lib.review": "Prüfen",
   "lib.revalidateDone": "Re-Validierung gestartet.",
   "lib.reimport": "Re-Import (JSON)",
   "lib.empty": "Keine Treffer.",
@@ -1463,6 +1471,13 @@ const en: typeof de = {
   "ask.thanked": "Thanks!",
   "ask.status.verified": "Verified",
   "ask.status.unverified": "Not yet verified",
+  "ask.reviewGuard.openLabel": "Do not use as verified knowledge yet",
+  "ask.reviewGuard.openHint":
+    "At least one source is open or still in review. Review/rate it before using this statement as verified knowledge.",
+  "ask.reviewGuard.unverifiedLabel": "Answer is not verified yet",
+  "ask.reviewGuard.unverifiedHint":
+    "This answer is not classified as verified. Check sources and review status before reusing it.",
+  "ask.reviewGuard.cta": "Go to validation",
   "ask.gapBadge": "Knowledge gap",
   "ask.gapNext": "Next step: prioritise the gap in the risk board or assign it to an expert.",
   "ask.noBasisTitle": "No reliable basis.",
@@ -1708,6 +1723,7 @@ const en: typeof de = {
   "lib.allTags": "All tags",
   "lib.revalidate": "Start re-validation",
   "lib.ask": "Ask",
+  "lib.review": "Review",
   "lib.revalidateDone": "Re-validation started.",
   "lib.reimport": "Re-import (JSON)",
   "lib.empty": "No matches.",
