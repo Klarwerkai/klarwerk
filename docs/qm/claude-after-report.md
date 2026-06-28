@@ -5512,3 +5512,47 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-195 — Lokale Funktions- & Performance-Tests — Baseline
+**Datum:** 2026-06-27 · **Rolle:** Claude prüft/misst/dokumentiert (Codex steuert, Pedi entscheidet Richtung). Docs-only; **keine** WebUI/Ollama/Modell/Docker/GPU; **kein** Live-Lasttest; kein Produktcode.
+
+### 1. Vorab-Befund
+- Lokales Setup = In-Memory-Runtime, **deterministischer** Reasoner (kein Key), **keine** lokale Modellruntime. ModelRun ohne tokens/cost. Keine `local-function-performance-baseline.md` → Doku-Gap.
+
+### 2. Durchgeführte Tests/Messungen
+- `npm run check`; gezielter Eval-Lauf (reasoner/ask/ask-routes/tests-ask); Live-Ask-Latenz je Fragetyp (5 Läufe); 5 parallele Asks; Langkontext (~4 KB); ModelRun-Metadaten.
+
+### 3. Ergebnisse (real gemessen, In-Memory/deterministisch)
+- **Gates grün:** 128 Dateien / 700 Tests (Vitest ~19 s, Gesamt ~24 s wall). Eval-Suiten grün.
+- **Ask-Latenz:** B1 Ventil ~1,5 ms (answered, gesichert, trust 100, 1 Quelle); B3 Filter ~0,9 ms (answered, gesichert); B2 Quantenflux ~0,5 ms (**Gap**); B4 Dosierwert L4 ~0,6 ms (**Gap**).
+- **Parallel 5 (wall):** ~2,5 ms. **Langkontext ~4 142 Z.:** ~0,8 ms.
+- **ModelRun:** 28 Records, `provider=deterministic`, `fallback=false`, `status=success`; Latenz ~0–1 ms; **keine tokens/cost**.
+
+### 4. Nicht messbar / Blocker
+- **Tokens/sec & Modell-Generierungslatenz: NICHT messbar** (keine lokale Modellruntime; deterministisch generiert keine Tokens) → blocked, **nicht geschätzt**.
+- Modellmodus-Qualität/-Latenz (echter Key) in Sandbox nicht prüfbar; produktiver Lasttest nicht durchgeführt (per Vorgabe).
+- **P1-Qualitätsbeobachtung:** langer **Offtopic**-Kontext → fälschlich `answered=true` statt Gap (lexikalische Über-Überschneidung, bekannte Keyword-Grenze, vgl. `rag-readiness-decision.md`). Empfehlung: Eval-Set erweitern; semantisches Retrieval würde es adressieren. **Kein P0** (Trust/Klasse bleiben KO-gebunden, keine freie Halluzination).
+
+### 5. Geänderte Dateien
+NEU `docs/operations/local-function-performance-baseline.md`; `docs/qm/claude-after-report.md`. Kein Produktcode/FE.
+
+### 6. Tests/Gates
+`npm run check` grün — 128 Dateien / 700 Tests. Kein FE berührt → `apps/web tsc --noEmit` nicht erforderlich. Lokale In-Memory-Smokes ausgeführt, Server danach gestoppt.
+
+### 7. Restlücken / Nicht-Ziele
+Keine Tokens/sec-/Modellgenerierungs-Messung (kein lokales Modell); kein Modellmodus-Eval; kein Lasttest; keine WebUI/Runtime/GPU. Offene Teile abhängig von lokaler Modellruntime + späterem Eval-/Lasttest.
+
+### 8. Empfehlung: **PARTIAL** (nicht Done)
+**Begründung (Ehrlichkeit):** Funktions-/Latenz-Baseline des deterministischen lokalen Setups ist **real gemessen** und belastbar (Gates grün, Sub-ms–wenige ms, korrekte Quellenbindung, ehrliche Gaps, kleine Parallelität ok). Aber **Performance-/Modellseite (Tokens/sec) ist mangels lokaler Runtime nicht messbar (blocked)** und es gibt eine **P1-Qualitätsbeobachtung**. „Funktions- **& Performance**-Tests" daher **funktional erfüllt, performance-seitig blockiert** → **Partial**.
+
+### 9. Commit-/Push-Hinweis (nur Doku)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add docs/operations/local-function-performance-baseline.md docs/qm/claude-after-report.md
+git commit -m "docs(ops): local function & performance baseline (deterministic measured; tokens/sec blocked) (SCRUM-195)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
