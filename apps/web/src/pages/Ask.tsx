@@ -10,6 +10,7 @@ import { ConfidenceBar } from "../components/trust";
 import { Button, Card, PageHeader, SectionLabel } from "../components/ui";
 import { selectAnswer } from "../lib/askResponse";
 import { answerStatus, sourceRefs } from "../lib/askView";
+import { captureGapHref } from "../lib/captureFromGap";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
 import { type EvidenceTone, knowledgeClassMeta } from "../lib/knowledgeClass";
 import { type ReasonerBadgeTone, reasonerBadge } from "../lib/reasonerBadge";
@@ -34,6 +35,8 @@ export function Ask(): JSX.Element {
   const { t, i18n } = useTranslation();
   const [q, setQ] = useState("");
   const [result, setResult] = useState<AnswerResult | null>(null);
+  // SCRUM-264: zuletzt gestellte Frage festhalten → bei Lücke als Capture-Kontext übergeben.
+  const [asked, setAsked] = useState("");
 
   // SCRUM-233: ehrlicher Reasoner-Modus aus vorhandenem read-only Status (kein Backend-Umbau).
   const reasonerStatus = useReasonerStatus();
@@ -71,6 +74,7 @@ export function Ask(): JSX.Element {
         onSubmit={(e) => {
           e.preventDefault();
           if (q.trim()) {
+            setAsked(q.trim());
             ask.mutate();
           }
         }}
@@ -167,13 +171,25 @@ export function Ask(): JSX.Element {
             <p className="mt-1 text-sm text-muted">{t("ask.noBasisBody")}</p>
             {/* SCRUM-250: klarer nächster Schritt — die Lücke ist erfasst und im Risiko-Board handelbar. */}
             <p className="mt-1 text-[13px] text-muted">{t("ask.gapNext")}</p>
-            <Link
-              to="/risiko"
-              className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-semibold text-brand"
-            >
-              {t("ask.toGaps")}
-              <ArrowRight size={15} />
-            </Link>
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+              {/* SCRUM-264: direkt Wissen erfassen — die gestellte Frage als Capture-Kontext (kein Auto-KO). */}
+              {asked ? (
+                <Link
+                  to={captureGapHref(asked)}
+                  className="inline-flex items-center gap-1.5 rounded-btn bg-ink px-3 py-1.5 text-[13px] font-semibold text-white hover:opacity-90"
+                >
+                  {t("ask.toCapture")}
+                  <ArrowRight size={15} />
+                </Link>
+              ) : null}
+              <Link
+                to="/risiko"
+                className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-brand"
+              >
+                {t("ask.toGaps")}
+                <ArrowRight size={15} />
+              </Link>
+            </div>
           </Card>
         )
       ) : null}

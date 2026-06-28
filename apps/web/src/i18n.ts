@@ -336,6 +336,7 @@ const de = {
   "ask.noBasisBody":
     "Es gibt kein validiertes Wissen zu dieser Frage. Statt einer erfundenen Antwort wurde eine Wissenslücke angelegt.",
   "ask.toGaps": "Zu den Wissenslücken",
+  "ask.toCapture": "Wissen erfassen",
   "ko.kicker": "Wissensobjekt",
   "ko.use.ready": "Produktionsnah nutzbar",
   "ko.use.in-review": "In Prüfung",
@@ -1412,6 +1413,7 @@ const en: typeof de = {
   "ask.noBasisBody":
     "There is no validated knowledge for this question. Instead of a made-up answer, a knowledge gap was created.",
   "ask.toGaps": "To the knowledge gaps",
+  "ask.toCapture": "Capture knowledge",
   "ko.kicker": "Knowledge object",
   "ko.use.ready": "Ready to use",
   "ko.use.in-review": "In review",

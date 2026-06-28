@@ -4121,3 +4121,30 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-264 — Ask: unbeantwortete Frage direkt in Capture-Kontext führen
+**Datum:** 2026-06-27 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung).
+
+**Vorab-Befund (read-only):** `Ask.tsx` zeigt bei unbeantworteter Frage (`result.answered === false`) eine Gap-Karte mit Badge, Titel/Body, Nächster-Schritt-Text und genau EINEM Link „Zu den Wissenslücken" (`/risiko`). Der beantwortete Pfad (Antwort/Trust/Quellen/Helpful) ist davon getrennt. Die gestellte Frage liegt im `q`-State (wird nach dem Fragen nicht geleert, könnte aber vom Nutzer im Eingabefeld nachträglich editiert werden). `captureGapHref(question)` aus SCRUM-263 (`lib/captureFromGap.ts`) baut bereits `/erfassen?gap=<encoded>`. Kein P0/P1, keine Backend-Lücke.
+
+**Umsetzung (minimal, FE-only):** Neuer `asked`-State hält die zuletzt tatsächlich gestellte Frage (gesetzt im Submit-Handler vor `ask.mutate()`), damit der Capture-Kontext exakt die gestellte Frage ist — unabhängig von späterer Eingabe-Bearbeitung. In der Gap-Karte eine zweite klare CTA „Wissen erfassen" als `<Link>` auf `captureGapHref(asked)` ergänzt (gefüllter Button), daneben bleibt der bestehende Link „Zu den Wissenslücken" erhalten (beide in einer flex-wrap-Reihe). Damit nutzt Ask exakt denselben Mechanismus wie SCRUM-263 (`?gap=` → Capture-Banner + Rohnotiz-Seed). Der beantwortete Pfad und Helpful/Quellen sind komplett unverändert. Kein automatisches KO, keine Lücken-Schließung, kein Backend, kein Reasoner-/RAG-Umbau.
+
+**Geänderte Dateien:** `apps/web/src/pages/Ask.tsx` (asked-State + zweite CTA + Import `captureGapHref`), `apps/web/src/i18n.ts` (`ask.toCapture` DE/EN), `docs/qm/claude-after-report.md`. (Helper/Tests aus SCRUM-263 wiederverwendet — `tests/capture/capture-from-gap.test.ts` deckt `captureGapHref` bereits ab.)
+
+**Tests/Gates:** `npm run check` grün — 125 Dateien / 663 Tests. `apps/web` `tsc --noEmit` grün. Biome + dependency-cruiser sauber. Kein neuer Test nötig: die CTA verwendet ausschließlich den bereits getesteten `captureGapHref`; die UI-Verdrahtung ist trivial und durch tsc abgesichert.
+
+**Restlücken/Nicht-Ziele:** keine Backend-Änderung, keine neue Reasoner-/RAG-/Vector-Architektur, kein automatisches KO, keine automatische Lücken-Schließung, keine Stufe-2-Arbeit, kein Redesign, keine Ticketserie. Die „Wissen erfassen"-CTA erscheint nur, wenn eine gestellte Frage vorliegt (`asked` gesetzt); beantwortete Fragen zeigen weiterhin ausschließlich Antwort/Quellen/Helpful.
+
+**Commit-/Push-Hinweis:**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/pages/Ask.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(ask): offer capture-from-question CTA on unanswered gap card (SCRUM-264)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
