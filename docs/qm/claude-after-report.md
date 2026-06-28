@@ -4364,3 +4364,30 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-273 — KO-Detail: Use-CTA mit Ask-Startfrage vorbefüllen
+**Datum:** 2026-06-27 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung).
+
+**Vorab-Befund (read-only):** `koCta(action)` (SCRUM-259) bildet `KoNextAction` auf eine CTA ab: `use` → `/fragen`, `review`/`validate` → `/validierung`, `addSource` → `#ko-sources` (Anker). `KnowledgeDetail.tsx` rief `koCta(ov.nextAction)` im Banner auf (Link/Anchor). `askQuestionHref(question)` aus SCRUM-272 (`askQuestion.ts`) baut bereits `/fragen?q=<encoded>`. Bisher führte die Use-CTA nur generisch nach `/fragen` ohne KO-spezifische Startfrage. Kein P0/P1.
+
+**Umsetzung (minimal, DOM-frei):** `koCta` um einen optionalen KO-Kontext erweitert: `koCta(action, ko?: { title: string })`. Für `action === "use"` mit nicht-leerem Titel wird der `href` über `askQuestionHref(ko.title)` zu `/fragen?q=<URL-encodierter KO-Titel>`; ohne KO-Kontext bleibt es neutral `/fragen` (Fallback). `review`/`validate` (→ `/validierung`) und `addSource` (→ `#ko-sources`) unverändert, auch mit KO-Kontext. Die Startfrage ist der KO-Titel — KO-spezifisch, lesbar und ohne falsche Behauptung (nur Vorbefüllung, kein Auto-Submit). In `KnowledgeDetail.tsx` Aufruf auf `koCta(ov.nextAction, ko)` umgestellt; das bestehende Link-Rendering trägt den Query-Parameter unverändert. Kein Backend, keine Suche, kein Reasoner/RAG/Vector.
+
+**Geänderte Dateien:** `apps/web/src/lib/koCta.ts` (optionaler ko-Param + use-Deep-Link), `tests/ko/ko-cta.test.ts` (+2 Tests, use-Fall aktualisiert), `apps/web/src/pages/KnowledgeDetail.tsx` (`koCta(ov.nextAction, ko)`), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — 127 Dateien / 692 Tests (+2 Tests). `apps/web` `tsc --noEmit` grün. Biome + dependency-cruiser sauber. Die Tests sichern: `use` ohne KO → neutral `/fragen`; `use` + KO → `/fragen?q=…` mit URL-encodierter KO-spezifischer Startfrage; `review`/`validate` bleiben `/validierung`; `addSource` bleibt `#ko-sources` (auch mit KO-Kontext).
+
+**Restlücken/Nicht-Ziele:** kein Auto-Submit (der Nutzer klickt in Ask selbst „Fragen"), kein Backend, keine neue Suche, keine RAG-/Vector-/Reasoner-Architektur, keine Stufe-2-Arbeit, keine Ticketserie. Die Startfrage ist bewusst der KO-Titel (Topic) statt einer generierten Frage — keine grammatische Umformung, damit keine falsche Behauptung entsteht; der Nutzer verfeinert die Frage in Ask frei.
+
+**Commit-/Push-Hinweis:**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/koCta.ts tests/ko/ko-cta.test.ts apps/web/src/pages/KnowledgeDetail.tsx docs/qm/claude-after-report.md
+git commit -m "feat(ko-detail): prefill ask question on use CTA (SCRUM-273)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

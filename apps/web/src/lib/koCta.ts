@@ -2,6 +2,7 @@
 // `KoNextAction` (siehe koOverview.ts) eine ehrliche, klare Arbeitsführung im Stage-1-Kreis
 // Capture → Validate → Use → Maintain. Verweist AUSSCHLIESSLICH auf vorhandene Routen/Bereiche —
 // keine neue Mutation, kein neuer Flow, kein Backend.
+import { askQuestionHref } from "./askQuestion";
 import type { KoNextAction } from "./koOverview";
 
 // route → echte vorhandene Seite; anchor → lokale Orientierung auf derselben Detailseite.
@@ -18,6 +19,8 @@ export interface KoCta {
 // Abbildung der nächsten Handlung auf eine vorhandene Ziel-/Orientierungsaktion:
 //  - validate/review → Validierungsboard (/validierung): offene/zu prüfende KOs ehrlich dorthin.
 //  - use            → Fragen (/fragen): validiertes Wissen wird dort quellengebunden genutzt.
+//                     SCRUM-273: mit KO-Kontext wird die Frage vorbefüllt (/fragen?q=<Titel>) —
+//                     kein Auto-Submit, keine falsche Behauptung (der KO-Titel ist nur Startfrage).
 //  - addSource      → lokaler Anker (#ko-sources) auf den vorhandenen Quellenbereich derselben
 //                     Seite — KEIN neuer Import-/Source-Workflow, nur Orientierung.
 const CTA: Record<KoNextAction, KoCta> = {
@@ -27,6 +30,10 @@ const CTA: Record<KoNextAction, KoCta> = {
   addSource: { labelKey: "ko.cta.addSource", href: "#ko-sources", kind: "anchor", tone: "neutral" },
 };
 
-export function koCta(action: KoNextAction): KoCta {
+export function koCta(action: KoNextAction, ko?: { title: string }): KoCta {
+  // „use" + KO-Kontext → Ask-Deep-Link mit der KO-Frage als Startfrage (sonst neutral /fragen).
+  if (action === "use" && ko && ko.title.trim().length > 0) {
+    return { ...CTA.use, href: askQuestionHref(ko.title) };
+  }
   return CTA[action];
 }

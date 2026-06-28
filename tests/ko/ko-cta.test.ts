@@ -13,8 +13,25 @@ describe("SCRUM-259: koCta", () => {
     expect(koCta("review")).toMatchObject({ href: "/validierung", kind: "route", tone: "primary" });
   });
 
-  it("validierte KOs führen zum Nutzungsfluss (Fragen)", () => {
+  it("validierte KOs führen zum Nutzungsfluss (Fragen) — ohne KO-Kontext neutral /fragen", () => {
     expect(koCta("use")).toMatchObject({ href: "/fragen", kind: "route", tone: "primary" });
+  });
+
+  // SCRUM-273: mit KO-Kontext befüllt „use" die Ask-Startfrage (kein Auto-Submit).
+  it("use + KO-Kontext → /fragen?q=… mit URL-encodierter KO-spezifischer Startfrage", () => {
+    const title = "Ventil X bei Überdruck manuell schließen.";
+    const cta = koCta("use", { title });
+    expect(cta.kind).toBe("route");
+    expect(cta.tone).toBe("primary");
+    expect(cta.href.startsWith("/fragen?q=")).toBe(true);
+    expect(cta.href).toContain(encodeURIComponent(title));
+  });
+
+  it("review/validate bleiben /validierung; addSource bleibt #ko-sources — auch mit KO-Kontext", () => {
+    const ko = { title: "Ventil X bei Überdruck manuell schließen." };
+    expect(koCta("review", ko).href).toBe("/validierung");
+    expect(koCta("validate", ko).href).toBe("/validierung");
+    expect(koCta("addSource", ko).href).toBe("#ko-sources");
   });
 
   it("Quelle ergänzen bleibt lokale Orientierung (Anker), kein neuer Workflow", () => {

@@ -395,7 +395,7 @@ export function KnowledgeDetail(): JSX.Element {
                     {t(`ko.next.${ov.nextAction}`)}
                   </p>
                   {(() => {
-                    const cta = koCta(ov.nextAction);
+                    const cta = koCta(ov.nextAction, ko);
                     const cls = `inline-flex items-center gap-1 rounded-btn px-2.5 py-1 text-[12px] font-semibold ${
                       cta.tone === "primary"
                         ? "bg-ink text-white hover:opacity-90"
