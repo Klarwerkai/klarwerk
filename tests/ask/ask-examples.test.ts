@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import i18n from "../../apps/web/src/i18n";
 import { ASK_EXAMPLES, askExpectation } from "../../apps/web/src/lib/askExamples";
 
 // SCRUM-265: produktnahe Beispiel-Fragen als Startimpuls (kein Auto-Ask, nur Vorlage).
@@ -42,6 +43,31 @@ describe("SCRUM-266: askExpectation", () => {
   it("jedes Beispiel hat eine auflösbare Erwartung", () => {
     for (const e of ASK_EXAMPLES) {
       expect(askExpectation(e.kind).labelKey.startsWith("ask.expect.")).toBe(true);
+    }
+  });
+});
+
+// SCRUM-269: Beispiele bleiben in DE UND EN seed-sicher — die technischen Seed-Begriffe
+// (Ventil X, Überdruck, Filter F3, Linie L4, Dosierwert, Schichtwechsel) gehen durch die
+// Übersetzung nicht verloren, damit „answerable" ehrlich answerable bleibt.
+describe("SCRUM-269: askExamples seed-sicher (DE/EN)", () => {
+  const text = (lng: string, key: string): string =>
+    String(i18n.getResource(lng, "translation", key) ?? "");
+
+  it("jedes Beispiel deklariert seine Seed-Tokens", () => {
+    for (const e of ASK_EXAMPLES) {
+      expect(e.seedTokens.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("DE und EN Beispieltexte enthalten alle deklarierten Seed-Tokens", () => {
+    for (const lng of ["de", "en"]) {
+      for (const e of ASK_EXAMPLES) {
+        const q = text(lng, e.questionKey).toLowerCase();
+        for (const token of e.seedTokens) {
+          expect(q).toContain(token.toLowerCase());
+        }
+      }
     }
   });
 });

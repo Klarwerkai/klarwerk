@@ -1396,9 +1396,10 @@ const en: typeof de = {
     "Answers come only from validated knowledge — with sources and trust. If there is no basis, the gap is named openly.",
   "ask.placeholder": "e.g. When must valve X be closed on overpressure?",
   "ask.examplesLabel": "Examples:",
-  "ask.example.valve": "What to do when valve X must close on overpressure?",
-  "ask.example.filter": "How often must filter F3 be checked?",
-  "ask.example.dosing": "Why does the dosing value on line L4 fluctuate after each shift change?",
+  "ask.example.valve": "What to do when Ventil X must close on Überdruck (overpressure)?",
+  "ask.example.filter": "How often must Filter F3 be checked?",
+  "ask.example.dosing":
+    "Why does the Dosierwert on Linie L4 fluctuate after each Schichtwechsel (shift change)?",
   "ask.expect.answer": "finds validated knowledge",
   "ask.expect.gap": "shows a knowledge gap",
   "ask.submit": "Ask",

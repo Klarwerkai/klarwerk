@@ -4256,3 +4256,30 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-269 — Ask: Beispiel-Fragen seed-sicher auch in EN-Locale halten
+**Datum:** 2026-06-27 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung).
+
+**Vorab-Befund (read-only):** `askExamples.ts` (SCRUM-265/266) liefert drei Beispiele mit `kind` + Erwartungs-Badge; `Ask.tsx` rendert Chips (Klick setzt nur `q`). Die Beispieltexte liegen als i18n-Keys (`ask.example.*`) in DE/EN. Der Reasoner-Fallback entscheidet „Treffer vs. Lücke" über Token-Überschneidung (`tokenize`, Wörter >2 Zeichen) zwischen Frage und KO-Titel+Statement. Der Demo-Seed ist deutschsprachig (Ventil X/Überdruck, Filter F3, …). Empirisch geprüft: die bisherige EN-Frage „What to do when valve X must close on overpressure?" verliert „Ventil"/„Überdruck" → erzeugt eine LÜCKE, obwohl das Badge „finds validated knowledge" sagt — ein Ehrlichkeitsbruch in der EN-Demo. EN-Filter (enthält „filter") und EN-Dosing (Lücke) waren bereits konsistent. Kein P0/P1.
+
+**Umsetzung (minimal, DOM-frei + i18n-Konvention):** `AskExample` um `seedTokens: readonly string[]` erweitert — die technischen Seed-Begriffe, die in JEDER Sprache wörtlich erhalten bleiben müssen (valve → „Ventil X"/„Überdruck", filter → „Filter F3", dosing → „Dosierwert"/„Linie L4"/„Schichtwechsel"). Die EN-Strings `ask.example.valve` und `ask.example.dosing` so umformuliert, dass sie die deutschen Seed-Begriffe behalten (Anlagen-/Prozessnamen sind im Werk ohnehin deutsch), mit englischer Klammer-Erklärung wo sinnvoll: „What to do when Ventil X must close on Überdruck (overpressure)?" / „Why does the Dosierwert on Linie L4 fluctuate after each Schichtwechsel (shift change)?". Empirisch verifiziert: valve EN → Treffer KO1 (ventil, überdruck), filter EN → Treffer KO5 (filter), dosing EN → weiterhin Lücke (korrekt). Erwartungs-Badges und Klickverhalten (nur `setQ`, kein Auto-Ask) unverändert. Kein Backend, kein Reasoner/RAG/Vector, keine Übersetzungsengine.
+
+**Geänderte Dateien:** `apps/web/src/lib/askExamples.ts` (seedTokens), `apps/web/src/i18n.ts` (EN `ask.example.valve`/`ask.example.dosing`), `tests/ask/ask-examples.test.ts` (+2 Tests inkl. DE/EN-Seed-Token-Prüfung), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — 126 Dateien / 680 Tests (+2 Tests). `apps/web` `tsc --noEmit` grün. Biome + dependency-cruiser sauber. Der neue Test liest beide Locales über die i18n-Instanz (`i18n.getResource`) und sichert: jedes Beispiel deklariert Seed-Tokens, und DE- wie EN-Beispieltext enthalten alle deklarierten Seed-Tokens (case-insensitiv) — antwortbare Beispiele verlieren ihre Treffer also nie durch Übersetzung.
+
+**Restlücken/Nicht-Ziele:** kein Backend, keine neue Retrieval-/Matching-Logik, keine Übersetzungsengine, keine neue Suchmaschine, keine Stufe-2-Arbeit, keine Ticketserie. Die Lösung folgt der „originale Seed-Begriffe erhalten"-Variante (sichtbarer Text = gesetzte Query, voll ehrlich) statt sichtbaren Text und Query zu trennen. Der Test prüft die Token-Präsenz in den Strings, nicht den Reasoner-Lauf selbst (kein Backend im Test); die tatsächliche Treffer-Wirkung wurde separat empirisch gegen den Seed bestätigt.
+
+**Commit-/Push-Hinweis:**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/askExamples.ts apps/web/src/i18n.ts tests/ask/ask-examples.test.ts docs/qm/claude-after-report.md
+git commit -m "fix(ask): keep example questions seed-safe in EN locale (SCRUM-269)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
