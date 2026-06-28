@@ -4094,3 +4094,30 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-263 — Risk/Gaps: Wissenslücke in Capture-Kontext überführen
+**Datum:** 2026-06-27 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung).
+
+**Vorab-Befund (read-only):** `Risk.tsx` zeigt offene Gap-Zeilen mit Prioritäts-Pill, Frage, nächster Handlung (`gapNextStep`) und den Controls (Priorität/Zuweisen/Schließen/Löschen) — aber keinen Übergang nach `/erfassen`; der Nutzer müsste die Frage manuell kopieren. `Capture.tsx` seedet `raw` über `setRaw` (Beispiel/Diktat/Upload), las aber KEINEN Query-Parameter; `useNavigate` ist importiert, `useSearchParams` nicht. Kein P0/P1, keine Backend-Lücke.
+
+**Umsetzung (minimal, DOM-frei):** Neuer reiner Helfer `apps/web/src/lib/captureFromGap.ts`: `captureGapHref(question)` baut `/erfassen?gap=<encoded>`, `readGapContext(params)` liest die Frage zurück (null bei leer/fehlend). In `Risk.tsx` erhält jede OFFENE Gap-Zeile einen sichtbaren CTA „Wissen erfassen" (`<Link>` auf `captureGapHref(g.question)`) — geschlossene Gaps (Controls nur bei `status==="offen"`) bekommen keinen CTA. In `Capture.tsx` wird `?gap=` via `useSearchParams` gelesen: die Rohnotiz `raw` startet (lazy init) mit der Frage als Startkontext, und ein gestrichelter Kontext-Banner zeigt die Frage + den ehrlichen Hinweis „Ergänze deine Erfahrung — die KI strukturiert daraus einen Entwurf, du prüfst und reichst ein." Kein automatisches KO, keine Lücken-Schließung, kein Backend; der bestehende Capture-Flow (Modi/Uploads/Diktat/Interview/Draft/Strukturieren/Submit) bleibt unverändert (ohne `?gap=` startet `raw` leer wie bisher).
+
+**Geänderte Dateien:** NEU `apps/web/src/lib/captureFromGap.ts`, NEU `tests/capture/capture-from-gap.test.ts` (4 Tests); geändert `apps/web/src/pages/Risk.tsx` (Link-Import + CTA), `apps/web/src/pages/Capture.tsx` (`useSearchParams` + raw-Seed + Banner), `apps/web/src/i18n.ts` (`risk.gapCapture`, `capture.gapContext*` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — 125 Dateien / 663 Tests (+1 Datei, +4 Tests). `apps/web` `tsc --noEmit` grün. Biome + dependency-cruiser sauber. Der neue Test sichert: Link mit URL-encodierter Frage, Round-Trip read/build, Trimmen, leerer/fehlender Parameter → kein Kontext.
+
+**Restlücken/Nicht-Ziele:** keine Backend-Änderung, keine neue Task-Engine, keine automatische KO-Erzeugung/Lücken-Schließung, keine Stufe-2-Arbeit, kein RAG/Vector/Reasoner-Umbau, kein Redesign, keine Ticketserie. Der Nutzer bleibt in Kontrolle (Kontext sehen → Erfahrung ergänzen → mit KI strukturieren → Entwurf prüfen → einreichen). Die Gap-Frage ist nur Startkontext für die Rohnotiz, kein fertiges Wissen; die Lücke wird nicht automatisch geschlossen.
+
+**Commit-/Push-Hinweis:**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/captureFromGap.ts tests/capture/capture-from-gap.test.ts apps/web/src/pages/Risk.tsx apps/web/src/pages/Capture.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(risk,capture): start capture from an open knowledge gap (SCRUM-263)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

@@ -3,7 +3,7 @@ import { FileText, Mic, Paperclip, RotateCcw, Save, Sparkles, Trash2, X } from "
 import { useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useDrafts } from "../api/hooks";
@@ -22,6 +22,7 @@ import { ListEditor, TagEditor } from "../components/editors";
 import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
 import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
 import { CAPTURE_EXAMPLE } from "../lib/captureExample";
+import { readGapContext } from "../lib/captureFromGap";
 import { captureReadiness } from "../lib/captureReadiness";
 import { draftTitle } from "../lib/draftForm";
 import {
@@ -95,8 +96,13 @@ export function Capture(): JSX.Element {
   const { push } = useToast();
   const authorName = user?.name ?? user?.email ?? "—";
 
+  // SCRUM-263: optionaler Startkontext aus einer offenen Wissenslücke (?gap=…) — nur Anstoß für
+  // die Rohnotiz, kein automatisches KO. Der Mensch ergänzt die Erfahrung, die KI strukturiert nur.
+  const [params] = useSearchParams();
+  const gapContext = readGapContext(params);
+
   const [mode, setMode] = useState<Mode>("freitext");
-  const [raw, setRaw] = useState("");
+  const [raw, setRaw] = useState(() => gapContext ?? "");
   const [draft, setDraft] = useState<StructureResult | null>(null);
   // KW-STR / SCRUM-45/46/48: WYSIWYG-Body (sanitisiertes HTML), separat vom Reasoner-Draft.
   const [bodyHtml, setBodyHtml] = useState("");
@@ -455,6 +461,21 @@ export function Capture(): JSX.Element {
   return (
     <div className="mx-auto max-w-5xl">
       <PageHeader kicker={t("capture.kicker")} title={t("capture.title")} />
+
+      {/* SCRUM-263: Startkontext aus einer offenen Wissenslücke — ehrlich: Mensch erfasst, KI strukturiert. */}
+      {gapContext ? (
+        <Card className="mb-4 border-dashed">
+          <div className="text-[12.5px] font-semibold text-text">
+            {t("capture.gapContextTitle")}
+          </div>
+          <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
+            {t("capture.gapContextBody")}
+          </p>
+          <p className="mt-1.5 rounded-input bg-page px-2.5 py-1.5 text-[12.5px] text-text">
+            „{gapContext}“
+          </p>
+        </Card>
+      ) : null}
 
       {/* SCRUM-113 / FE-CAP-07: Entwürfe fortsetzen (gemeinsamer Pool mit Mobile) */}
       {(drafts.data ?? []).length > 0 ? (

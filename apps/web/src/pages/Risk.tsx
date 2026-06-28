@@ -1,10 +1,12 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
 import { useBusFactor, useConflicts, useDirectory, useGaps, useKos } from "../api/hooks";
 import type { GapPriority } from "../api/types";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
+import { captureGapHref } from "../lib/captureFromGap";
 import {
   GAP_PRIORITIES,
   type PriorityTone,
@@ -216,6 +218,13 @@ export function Risk(): JSX.Element {
                     </span>
                     {g.status === "offen" ? (
                       <>
+                        {/* SCRUM-263: offene Lücke direkt als Erfassungskontext starten. */}
+                        <Link
+                          to={captureGapHref(g.question)}
+                          className="inline-flex shrink-0 items-center rounded-btn bg-ink px-2.5 py-1 text-[12px] font-semibold text-white hover:opacity-90"
+                        >
+                          {t("risk.gapCapture")}
+                        </Link>
                         <select
                           value={g.priority}
                           disabled={setPriority.isPending}
