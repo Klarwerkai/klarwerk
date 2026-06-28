@@ -4955,3 +4955,55 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-208 — Monitoring & Logging einrichten (Bestandsprüfung + Runbook + ehrliche Evidence)
+**Datum:** 2026-06-27 · **Rolle:** Claude prüft/dokumentiert (Codex steuert, Pedi entscheidet Richtung). Docs-only + sandbox-sichere Evidence; kein Produktcode, kein Dashboard/Alert installiert oder vorgetäuscht.
+
+### 1. Vorab-Befund
+- **Health/Status real vorhanden:** `GET /health` → `{status:"ok"}`; `GET /api/reasoner/status` (FR-RSN-05); `GET /api/ai-status`; `GET /api/reasoner/config`.
+- **KI-Betriebsprotokoll:** `GET /api/model-runs` (SCRUM-164/165, RBAC `ko.read`) — pro Reasoner-Lauf Metadaten (`task/provider/model?/status/fallback/demo/startedAt/finishedAt/error?`), **explizit ohne Prompt-/Antworttexte**.
+- **Audit (fachlich):** append-only Hash-Kette + Analytics-Audit + `GET /api/audit`.
+- **Technische Logs:** `Fastify()` läuft **ohne aktivierten Request-Logger** → Runtime-/Access-Logs entstehen auf **Coolify/Traefik/Container-Ebene** (kein App-interner Request-Log).
+- **Kein Prompt-/Content-Logging** im Code (grep leer) — Datenschutz-by-design.
+- **Retention:** Session-TTL 14 d, Reset-Token 1 h; keine explizite Audit-/ModelRun-/Log-Retention (Audit append-only by design).
+- **Kein** `docs/operations/monitoring-logging.md` → Doku-Gap.
+
+### 2. Was ist bereits erfüllt
+- Liveness-/KI-Status-Endpunkte + KI-Betriebsprotokoll + fachliches Audit **vorhanden und real abrufbar** (siehe Evidence).
+- **Datenschutzkonforme Logging-Politik** (keine Inhalte/Secrets) belegt.
+- Post-Deploy-Smoke (`/health`) bereits im Deploy-/Wartungs-Runbook.
+- Es fehlte die **konsolidierte Monitoring-/Logging-Doku** (Scope, Metriken-Katalog, Dashboards/Alerts, Retention, Incident-Triage) — ergänzt.
+
+### 3. Minimaler Fix / Evidence
+**Neu:** `docs/operations/monitoring-logging.md` — Runbook mit: Monitoring-Scope; vorhandene Health-/Status-Signale; Audit vs. technische Logs; **datenschutzkonforme Logging-Regeln** (kein Content/Secret); **Metriken-Katalog** (inkl. „Token/Kosten nicht erfasst" P2 und „Latenz ableitbar, nicht aggregiert"); **empfohlene Dashboards** (nicht installiert); **Alert-Regeln** (nicht aktiv, Vorschlag); **Aufbewahrungsfristen**; **Incident-Triage**; **Post-Deploy-Smoke**; **offene Betreiberpflichten**; **Sandbox-Evidence**.
+
+**Sandbox-Evidence (ehrlich, lokal gegen In-Memory):** `/health` → ok; `/api/reasoner/status` & `/api/ai-status` → `{active:false, provider:"deterministic", mode:"deterministic"}`; `/api/model-runs?limit=5` → **3 Läufe** (task=answer, provider=deterministic, status=success, fallback=false, demo=true) **ohne** question/answer/prompt-Felder; `/api/audit` → **24 lückenlos verkettete Events**. → Health/KI-Status/ModelRun/Audit **funktionieren**. **NICHT** geprüft/aktiv: Dashboards, Produktiv-Alerts, externes Uptime-Monitoring, zentrales Log-Management.
+
+**Kein Produktcode** — kein echter Observability-Bug (das fehlende Fastify-Request-Logging ist eine bewusste, ops-delegierte Konstellation, als P2-Option dokumentiert, nicht „gefixt").
+
+### 4. Geänderte Dateien
+NEU `docs/operations/monitoring-logging.md`; `docs/qm/claude-after-report.md` (dieser Eintrag). Kein Produktcode, kein FE.
+
+### 5. Tests/Gates
+`npm run check` grün — 128 Dateien / 700 Tests. Kein FE berührt → `apps/web tsc --noEmit` nicht erforderlich. Zusätzlich: realer Health/Status/ModelRun/Audit-Smoke erfolgreich.
+
+### 6. Restlücken / Nicht-Ziele
+- **Dashboards + Produktiv-Alerts + externes Uptime-Monitoring + zentrales Log-Management:** **ops-seitig offen** (im Runbook benannt).
+- **KI-Token/Kosten-Tracking:** nicht erfasst (P2, Provider-Usage nötig).
+- Optional Fastify-Request-Logger aktivieren (strukturierte App-Logs) — bewusst nicht in diesem Doku-Ticket geändert.
+- Keine Prometheus/Grafana/Cloud-Installation, keine vorgetäuschten Alerts, keine Tickets.
+
+### 7. Empfehlung: **PARTIAL** (nicht voll Done)
+**Begründung (Ehrlichkeits-Leitplanke):** Die **Observability-Grundlagen sind real vorhanden und lokal belegt** (Health, KI-Status, KI-Betriebsprotokoll, fachliches Audit, datenschutzkonforme Logging-Politik) und die **Doku ist konsolidiert**. ABER ein zentrales Akzeptanzkriterium — **aktives Monitoring-Dashboard + Produktiv-Alerts** — ist **nicht real aktiv** (in der Sandbox auch nicht herstellbar). **Empfehlung:** SCRUM-208 als **Partial/Blocked-on-Ops** führen; der Code-/Endpunkt-/Doku-Teil ist abschließbar, voll „Done" erst nach Einrichtung von Uptime-Monitor, Dashboard und Alerts durch den Betreiber.
+
+### 8. Commit-/Push-Hinweis (nur Doku)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add docs/operations/monitoring-logging.md docs/qm/claude-after-report.md
+git commit -m "docs(ops): monitoring & logging runbook + honest dashboards/alerts status (SCRUM-208)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
