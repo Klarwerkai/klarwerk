@@ -3,7 +3,7 @@ import { FileText, Mic, Paperclip, RotateCcw, Save, Sparkles, Trash2, X } from "
 import { useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useDrafts } from "../api/hooks";
@@ -24,6 +24,7 @@ import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../com
 import { CAPTURE_EXAMPLE } from "../lib/captureExample";
 import { gapContextDraft, readGapContext } from "../lib/captureFromGap";
 import { captureReadiness } from "../lib/captureReadiness";
+import { captureNextSteps } from "../lib/captureSuccess";
 import { draftTitle } from "../lib/draftForm";
 import {
   fileToThumbDataUrl,
@@ -91,7 +92,6 @@ const textareaCls =
 
 export function Capture(): JSX.Element {
   const { t, i18n } = useTranslation();
-  const navigate = useNavigate();
   const { user } = useSession();
   const { push } = useToast();
   const authorName = user?.name ?? user?.email ?? "—";
@@ -128,6 +128,8 @@ export function Capture(): JSX.Element {
 
   const [err, setErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // SCRUM-276: nach erfolgreichem Einreichen die ID des gespeicherten KO (für die Success-Card).
+  const [savedKoId, setSavedKoId] = useState<string | null>(null);
   // SCRUM-123: laufende Bild-OCR (für ehrlichen Status / Button-Sperre).
   const [ocrBusy, setOcrBusy] = useState<string | null>(null);
   // SCRUM-113 / FE-CAP-07: aktuell fortgesetzter Entwurf (null = neuer Entwurf).
@@ -237,7 +239,25 @@ export function Capture(): JSX.Element {
       }
       return ko;
     },
-    onSuccess: (ko) => navigate(`/wissen/${ko.id}`),
+    // SCRUM-276: kein stilles Weiterleiten — „gespeichert" + nächster Schritt sichtbar machen.
+    // Formular zurücksetzen (kein versehentlicher Doppel-Submit); Modus bleibt erhalten.
+    onSuccess: (ko) => {
+      setSavedKoId(ko.id);
+      push("success", t("capture.savedTitle"));
+      void qc.invalidateQueries({ queryKey: ["validation"] });
+      void qc.invalidateQueries({ queryKey: ["kos"] });
+      setDraft(null);
+      setRaw("");
+      setBodyHtml("");
+      setTags([]);
+      setImages([]);
+      setDocs([]);
+      setCategory("");
+      setAsset("");
+      setNeededValidations("");
+      setDraftId(null);
+      setNotice(null);
+    },
     onError: fail,
   });
 
@@ -469,6 +489,30 @@ export function Capture(): JSX.Element {
   return (
     <div className="mx-auto max-w-5xl">
       <PageHeader kicker={t("capture.kicker")} title={t("capture.title")} />
+
+      {/* SCRUM-276: nach erfolgreichem Einreichen „gespeichert" + nächster Schritt (kein Auto-Redirect). */}
+      {savedKoId ? (
+        <Card className="mb-4 border-trust-pos-fill/40 bg-trust-pos-bg">
+          <div className="text-[13px] font-semibold text-trust-pos-text">
+            {t("capture.savedTitle")}
+          </div>
+          <p className="mt-1 text-[12.5px] text-trust-pos-text/90">{t("capture.savedBody")}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {captureNextSteps(savedKoId).map((s) => (
+              <Link
+                key={s.to}
+                to={s.to}
+                className="inline-flex items-center gap-1 rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
+              >
+                {t(s.labelKey)} <span aria-hidden="true">→</span>
+              </Link>
+            ))}
+            <Button variant="ghost" onClick={() => setSavedKoId(null)}>
+              {t("capture.savedAgain")}
+            </Button>
+          </div>
+        </Card>
+      ) : null}
 
       {/* SCRUM-263: Startkontext aus einer offenen Wissenslücke — ehrlich: Mensch erfasst, KI strukturiert. */}
       {gapContext ? (

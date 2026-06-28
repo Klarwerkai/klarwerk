@@ -4445,3 +4445,30 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-276 — Capture: nach Einreichen den nächsten Schritt zur Validierung sichtbar machen
+**Datum:** 2026-06-27 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung).
+
+**Vorab-Befund (read-only):** `Capture.tsx#submit` erstellt das KO über `endpoints.ko.create` (+ optional Anhänge) und leitete bei Erfolg **still um** (`onSuccess: (ko) => navigate(\`/wissen/${ko.id}\`)`). Der Nutzer sah auf Capture selbst keine „gespeichert"-Bestätigung und keinen sichtbaren nächsten Schritt zur Validierung. `useNavigate`/`useToast`/`useQueryClient` vorhanden; Routen `/wissen/:id` und `/validierung` existieren. Kein P0/P1.
+
+**Umsetzung (minimal, DOM-frei + UI):** Neuer reiner Helfer `apps/web/src/lib/captureSuccess.ts` mit `captureNextSteps(koId) → [{labelKey:"capture.savedViewKo", to:/wissen/:id}, {labelKey:"capture.savedValidate", to:/validierung}]`. `submit.onSuccess` setzt jetzt `savedKoId`, zeigt einen Erfolgs-Toast, invalidiert `["validation"]`/`["kos"]` und **setzt das Formular zurück** (kein versehentlicher Doppel-Submit; Modus bleibt) — KEIN stilles Weiterleiten mehr. Eine Success-Card oben auf Capture meldet „Wissensobjekt gespeichert." + ehrlichen Hinweis „automatisch validiert wird nichts" und rendert die echten nächsten Schritte als `<Link>`-CTAs (Objekt ansehen / Zur Validierung) plus „Weiteres erfassen" (verwirft nur die Card). Der nun ungenutzte `useNavigate`-Import/`navigate` wurde entfernt. Bestehende Modi, Strukturieren, Anhänge, Save-Readiness und Gap-Kontext unverändert. Kein Backend, keine automatische Validierung, keine neue Engine, kein Redesign.
+
+**Geänderte Dateien:** NEU `apps/web/src/lib/captureSuccess.ts`, NEU `tests/capture/capture-success.test.ts` (3 Tests); geändert `apps/web/src/pages/Capture.tsx` (savedKoId-State, onSuccess→Success-Card+Reset, Link-Import, navigate entfernt), `apps/web/src/i18n.ts` (`capture.saved*` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — 128 Dateien / 696 Tests (+1 Datei, +3 Tests). `apps/web` `tsc --noEmit` grün. Biome + dependency-cruiser sauber. Die neuen Tests sichern: nächste Schritte führen zum erstellten KO (`/wissen/:id`) und zur Validierung (`/validierung`), nicht-leere Labels/Ziele, KO-ID korrekt im Detail-Link.
+
+**Restlücken/Nicht-Ziele:** kein Backend, keine automatische Validierung (nur „gespeichert / nächster Schritt", keine Fake-Erledigung), keine neue Task-Engine, keine neue Capture-/OCR-/Reasoner-Architektur, keine Stufe-2-Arbeit, keine Ticketserie, kein UI-Redesign. Das bisherige stille Auto-Weiterleiten wurde bewusst durch die explizite, nutzergesteuerte Success-Card ersetzt (entspricht „Kein automatisches Weiterleiten" und macht den Speichern-Erfolg auf Capture klar sichtbar). Das Formular wird nach Erfolg geleert, um Doppel-Submits zu vermeiden; der Modus bleibt erhalten.
+
+**Commit-/Push-Hinweis:**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/captureSuccess.ts tests/capture/capture-success.test.ts apps/web/src/pages/Capture.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(capture): show next step to validation after submit (SCRUM-276)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
