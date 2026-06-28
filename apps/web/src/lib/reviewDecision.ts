@@ -41,3 +41,27 @@ export function reviewNextSteps(decision: {
   }
   return steps;
 }
+
+// SCRUM-292: ehrliche „was passiert jetzt mit dem Wissen"-Aussage je Verdict — OHNE zu behaupten,
+// dass eine einzelne Freigabe-Stimme automatisch vollständig validiert (das garantiert das
+// Datenmodell nicht). `usable` markiert NUR, dass bei „up" grundsätzlich der Weg in die
+// quellengebundene Nutzung offensteht, WENN Status/Trust es tragen — Ask/KO-Detail zeigen den
+// echten Status selbst. Reine, DOM-freie Logik; keine Backend-/Mutationsänderung, keine Freigabe.
+export type ReviewOutcomeTone = "pos" | "warn" | "crit";
+
+export interface ReviewOutcome {
+  verdict: ReviewVerdict;
+  statusKey: string; // i18n-Key: ehrliche Folge-Aussage
+  tone: ReviewOutcomeTone;
+  usable: boolean; // up → grundsätzlich nutzbarer Weg (status/trust-abhängig); sonst Review-Arbeit
+}
+
+const OUTCOMES: Record<ReviewVerdict, ReviewOutcome> = {
+  up: { verdict: "up", statusKey: "val.outcome.up", tone: "pos", usable: true },
+  warn: { verdict: "warn", statusKey: "val.outcome.warn", tone: "warn", usable: false },
+  down: { verdict: "down", statusKey: "val.outcome.down", tone: "crit", usable: false },
+};
+
+export function reviewOutcome(verdict: ReviewVerdict): ReviewOutcome {
+  return OUTCOMES[verdict];
+}

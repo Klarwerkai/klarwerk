@@ -589,6 +589,12 @@ const de = {
   "val.actionReject": "Ablehnen",
   "val.feedbackRequiredHint": "* Rückfrage und Ablehnung brauchen eine Begründung.",
   "val.decisionSaved": "Bewertung erfasst.",
+  // SCRUM-292: ehrliche Folge-Aussage je Verdict — keine automatische/Fake-Validierung.
+  "val.outcome.up":
+    "Positiv bewertet. Wenn Status und Trust es tragen, kann es als nächster Schritt quellengebunden genutzt oder geprüft werden — automatisch validiert wird dadurch nichts.",
+  "val.outcome.warn":
+    "Rückfrage dokumentiert. Bleibt Review-Arbeit, bis die offenen Punkte geklärt sind.",
+  "val.outcome.down": "Ablehnung dokumentiert. Bleibt Review-/Feedback-Arbeit.",
   "val.nextViewKo": "Objekt ansehen",
   "val.nextUse": "Wissen nutzen (fragen)",
   "val.assign": "Zuweisen …",
@@ -1754,6 +1760,11 @@ const en: typeof de = {
   "val.actionReject": "Reject",
   "val.feedbackRequiredHint": "* Query and rejection require a reason.",
   "val.decisionSaved": "Review recorded.",
+  // SCRUM-292: honest follow-up per verdict — no automatic/fake validation.
+  "val.outcome.up":
+    "Positively rated. If status and trust support it, it can be used source-bound or checked as a next step — this does not validate it automatically.",
+  "val.outcome.warn": "Query documented. Stays review work until the open points are resolved.",
+  "val.outcome.down": "Rejection documented. Stays review/feedback work.",
   "val.nextViewKo": "View object",
   "val.nextUse": "Use knowledge (ask)",
   "val.assign": "Assign …",

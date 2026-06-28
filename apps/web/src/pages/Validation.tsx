@@ -15,9 +15,11 @@ import { isDemoContext } from "../lib/demoPilotPath";
 import { koAuthorParts } from "../lib/koAuthor";
 import {
   REVIEW_DECISIONS,
+  type ReviewOutcomeTone,
   type ReviewTone,
   type ReviewVerdict,
   reviewNextSteps,
+  reviewOutcome,
 } from "../lib/reviewDecision";
 import {
   type ReviewWorkTone,
@@ -58,6 +60,31 @@ const REVIEW_WORK_TONE: Record<ReviewWorkTone, string> = {
   warn: "bg-trust-warn-bg text-trust-warn-text",
   neutral: "bg-page text-muted",
   pos: "bg-trust-pos-bg text-trust-pos-text",
+};
+
+// SCRUM-292: Success-/Outcome-Card passend zum Verdict tönen (up/warn/down).
+const OUTCOME_TONE: Record<
+  ReviewOutcomeTone,
+  { card: string; text: string; subtle: string; close: string }
+> = {
+  pos: {
+    card: "border-trust-pos-fill/40 bg-trust-pos-bg",
+    text: "text-trust-pos-text",
+    subtle: "text-trust-pos-text/90",
+    close: "text-trust-pos-text/70 hover:text-trust-pos-text",
+  },
+  warn: {
+    card: "border-trust-warn-fill/40 bg-trust-warn-bg",
+    text: "text-trust-warn-text",
+    subtle: "text-trust-warn-text/90",
+    close: "text-trust-warn-text/70 hover:text-trust-warn-text",
+  },
+  crit: {
+    card: "border-trust-crit-fill/40 bg-trust-crit-bg",
+    text: "text-trust-crit-text",
+    subtle: "text-trust-crit-text/90",
+    close: "text-trust-crit-text/70 hover:text-trust-crit-text",
+  },
 };
 
 export function Validation(): JSX.Element {
@@ -134,39 +161,50 @@ export function Validation(): JSX.Element {
       {isDemoContext(params) ? <DemoBanner surface="validation" /> : null}
       <p className="-mt-3 mb-4 text-sm text-muted">{t("val.intro")}</p>
       {/* SCRUM-277: Rückmeldung nach der Entscheidung + nächster Schritt (KO ansehen / optional nutzen). */}
-      {lastDecision ? (
-        <Card className="mb-4 border-trust-pos-fill/40 bg-trust-pos-bg">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <div className="text-[13px] font-semibold text-trust-pos-text">
-                {t("val.decisionSaved")}
-              </div>
-              <p className="mt-0.5 truncate text-[12.5px] text-trust-pos-text/90">
-                {lastDecision.title}
-              </p>
-            </div>
-            <button
-              type="button"
-              title={t("val.feedback.cancel")}
-              onClick={() => setLastDecision(null)}
-              className="shrink-0 text-trust-pos-text/70 hover:text-trust-pos-text"
-            >
-              <X size={16} />
-            </button>
-          </div>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {reviewNextSteps(lastDecision).map((s) => (
-              <Link
-                key={s.to}
-                to={s.to}
-                className="inline-flex items-center gap-1 rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
-              >
-                {t(s.labelKey)} <span aria-hidden="true">→</span>
-              </Link>
-            ))}
-          </div>
-        </Card>
-      ) : null}
+      {lastDecision
+        ? (() => {
+            const outcome = reviewOutcome(lastDecision.verdict);
+            const tone = OUTCOME_TONE[outcome.tone];
+            return (
+              <Card className={`mb-4 ${tone.card}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className={`text-[13px] font-semibold ${tone.text}`}>
+                      {t("val.decisionSaved")}
+                    </div>
+                    <p className={`mt-0.5 truncate text-[12.5px] ${tone.subtle}`}>
+                      {lastDecision.title}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    title={t("val.feedback.cancel")}
+                    onClick={() => setLastDecision(null)}
+                    className={`shrink-0 ${tone.close}`}
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+                {/* SCRUM-292: ehrliche Folge-Aussage je Verdict — up nutzbar (wenn Status/Trust tragen),
+                    warn/down bleiben Review-/Feedback-Arbeit; keine automatische/Fake-Validierung. */}
+                <p className={`mt-2 text-[12px] leading-relaxed ${tone.subtle}`}>
+                  {t(outcome.statusKey)}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {reviewNextSteps(lastDecision).map((s) => (
+                    <Link
+                      key={s.to}
+                      to={s.to}
+                      className="inline-flex items-center gap-1 rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
+                    >
+                      {t(s.labelKey)} <span aria-hidden="true">→</span>
+                    </Link>
+                  ))}
+                </div>
+              </Card>
+            );
+          })()
+        : null}
       <QueryState
         query={query}
         emptyText={t("val.empty")}

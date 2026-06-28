@@ -6289,3 +6289,40 @@ git commit -m "feat(demo): recognisable Stage-1 pilot path banners on Ask/Librar
 git push
 ```
 Keine Jira-Änderungen durch Claude. Codex prüft Diff, führt Gates, korrigiert minimal, committet, pusht, wartet CI ab, schließt Jira.
+
+---
+
+## SCRUM-292 — Validation → Use: nach Bewertung Nutzbarkeit & nächste Verwendung klar führen
+**Datum:** 2026-06-28 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung). **FE-Produkt-Slice** (DOM-freier Helper + Card-Status-Zeile + i18n + Tests); keine Backend-/Reasoner-Änderung; keine Review-Mutationsänderung; kein neues Statusmodell; keine automatische/Fake-Validierung.
+
+### 1. Vorab-Befund
+- SCRUM-277-Success-Card zeigt nach `rate` `val.decisionSaved` („Bewertung erfasst.") + KO-Titel + `reviewNextSteps` (KO ansehen immer; „Wissen nutzen" nur bei `up`).
+- **Fehlte:** ehrliche, verdict-abhängige **Folge-Aussage** („was passiert jetzt mit dem Wissen") — bei `up` nutzbar (wenn Status/Trust tragen), bei `warn`/`down` weiter Review-Arbeit.
+- KO-Detail (`koOverview`/`koCta`) zeigt Nutzbarkeit bereits ehrlich (Produktionsnah nutzbar/In Prüfung/Noch in Arbeit) → konsistent, **unverändert**. Review-Mutation/Pflicht-Feedback unverändert.
+
+### 2. Umsetzung
+- `reviewDecision.ts`: neuer DOM-freier `reviewOutcome(verdict)` → `{statusKey, tone, usable}`. `up` = pos/usable (grundsätzlicher Weg in quellengebundene Nutzung, **wenn Status/Trust tragen**); `warn`/`down` = warn/crit, usable=false (Review-/Feedback-Arbeit). **Behauptet keine automatische/vollständige Validierung.**
+- Validation-Success-Card: ehrliche **Status-Zeile** (`reviewOutcome(...).statusKey`) zwischen Titel und CTAs. Bestehende CTAs (KO ansehen; „Wissen nutzen" nur bei `up` via `askQuestionHref`) unverändert.
+- i18n DE/EN: `val.outcome.up/warn/down`.
+
+### 3. Geänderte Dateien
+- `apps/web/src/lib/reviewDecision.ts` (reviewOutcome ergänzt; reviewNextSteps unverändert).
+- `apps/web/src/pages/Validation.tsx` (Status-Zeile + Import).
+- `apps/web/src/i18n.ts` (`val.outcome.*` DE+EN).
+- `tests/validation/review-decision.test.ts` (4 neue Tests: tone/usable; statusKeys; up-Ehrlichkeit „keine automatische/vollständige Validierung"; warn/down = Review-Arbeit DE/EN).
+
+### 4. Tests/Gates
+`npm run check` grün — **131 Dateien / 752 Tests** (+4). `apps/web tsc --noEmit` grün. Biome/depcruise grün.
+
+### 5. Restlücken/Nicht-Ziele
+- KO-Detail bewusst unverändert (bereits ehrliche Nutzbarkeits-Anzeige). Keine neue Route/Search/RAG; keine Reasoner-/Backend-Änderung; keine Mutationsänderung; kein neues Statusmodell.
+- `up` führt in **bestehende** Use-Flows (KO ansehen/Ask via askQuestionHref) — Ask zeigt selbst echten Status/Lücke (kein Fake-Flow). `warn`/`down` bleiben sichtbar Review-/Feedback-Arbeit. Normale Review-Mutationen + Pflicht-Feedback unverändert.
+
+### 6. Commit-/Push-Hinweis (nur Hinweis — Claude führt NICHT aus)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/reviewDecision.ts apps/web/src/pages/Validation.tsx apps/web/src/i18n.ts tests/validation/review-decision.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(validation): honest post-review outcome (usable vs still-review) without fake validation (SCRUM-292)"
+git push
+```
+Keine Jira-Änderungen durch Claude. Codex prüft Diff, führt Gates, korrigiert minimal, committet, pusht, wartet CI ab, schließt Jira.
