@@ -5682,3 +5682,44 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-190 — Datenschutz- & DSGVO-Anforderungen festhalten — Anforderungsprüfung
+**Datum:** 2026-06-27 · **Rolle:** Claude prüft/dokumentiert (Codex steuert, Pedi entscheidet Richtung). Docs-only; **keine** Rechtsberatung/AVV/DSFA-Freigabe; **keine** Massen-Folge-Tickets; kein Produktcode.
+
+### 1. Vorab-Befund
+- **Bestehendes `gdpr-compliance-runbook.md` ist stark:** Rollen/Verantwortung, VVT-Check (mit Datenkategorien), DSFA-Schwellwert, Betroffenenrechte (Auskunft/Löschung, append-only Audit), techn. Schutznachweise, AUP, Quartals-Review, offene Betreiberpflichten.
+- **Code-Datenfakten:** ModelRuns speichern **nie** Prompt/Antwort (nur Metadaten; „NIE Prompt-/Antwortinhalt"). **Ask** persistiert die Frage **nicht** als Prompt — **aber** unbeantwortete Fragen werden als **`Gap` mit `question`-Freitext** gespeichert (`createGap`→`gaps.insert`). Anhänge = Original-Bytes (Art. 9 möglich). Audit append-only, personenbezogen.
+- **Lücke:** konsolidierte **Datenklassifikation über alle Flächen** + **lokal-vs-Cloud** (inkl. neuer Readiness-Docs) + **explizites Prompt-/Log-/ModelRun-/Gap-Aufbewahrungskonzept** fehlte als fokussierte Anforderungs-Doku. → Doku-Gap.
+
+### 2. Erfüllte Anforderungen (bereits im Runbook)
+Verantwortlichkeiten/DSB, VVT, DSFA-Entscheidungshilfe, AVV-Hinweis, Betroffenenrechte, AUP-Datenminimierung, Review-Kadenz — vorhanden.
+
+### 3. Minimaler Fix
+**Neu:** `docs/compliance/data-protection-requirements.md` (ergänzend, **nicht** dupliziert) — Datenklassifikation je Fläche (KO/Anhang/Quelle/Audit/**ModelRun=keine Inhalte**/**Gap=Frage-Freitext**/Konto/Server-Logs), **lokal-vs-Cloud** (Default/Anthropic/lokale Runtime/Cloud-GPU/RAG/Fine-Tuning als DSFA-Trigger), **Aufbewahrung** (Prompts=nicht gespeichert; ModelRun-Metadaten Betreiberfrist z. B. 90 T; Gap-Frage; Audit unveränderlich+Abwägung), **AVV-/DSFA-Checkpunkte**, **Verantwortlichkeiten**, kritische offene Punkte, Done-Kriterien. **Kein Produktcode.**
+
+### 4. Kritische Punkte
+Retention-Fristen (ModelRun/Server-Logs) offen; Audit-Löschungs-Abwägung organisatorisch zu dokumentieren; Self-Service Auskunft/Löschung nur manuell (NFR-PRV-04); Gap-Frage kann PII enthalten; AVV/DSFA vor Modell-/Cloud-/RAG-/Fine-Tuning-Aktivierung.
+
+### 5. Geänderte Dateien
+NEU `docs/compliance/data-protection-requirements.md`; `docs/qm/claude-after-report.md`. Kein Produktcode/FE.
+
+### 6. Tests/Gates
+`npm run check` grün — 128 Dateien / 700 Tests. Kein FE berührt → `apps/web tsc --noEmit` nicht erforderlich.
+
+### 7. Restlücken / Nicht-Ziele
+Keine Rechtsbewertung/AVV/DSFA-Durchführung/Retention-Freigabe (Betreiber/DSB); keine Self-Service-DSGVO-Features; keine Folge-Ticketflut.
+
+### 8. Empfehlung: **PARTIAL** (nicht Done)
+**Begründung (Ehrlichkeit):** Anforderungen sind nun **konsolidiert dokumentiert** (Klassifikation inkl. ehrlicher Befunde, lokal-vs-Cloud, Aufbewahrung, AVV/DSFA, Verantwortlichkeiten) — aber **rechtliche Bewertung, AVV-/DSFA-Durchführung und konkrete Fristen** sind Betreiber-/DSB-Aufgaben und liegen **nicht** vor (nicht erfunden). Dokumentationsseitig erfüllt, freigabeseitig offen → **Partial**.
+
+### 9. Commit-/Push-Hinweis (nur Doku)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add docs/compliance/data-protection-requirements.md docs/qm/claude-after-report.md
+git commit -m "docs(compliance): consolidated data-protection requirements (classification, local-vs-cloud, retention) (SCRUM-190)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
