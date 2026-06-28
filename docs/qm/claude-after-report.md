@@ -5007,3 +5007,52 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-207 — Anbindung an interne Tools & Workflows (Bestandsprüfung + Runbook + ehrliche Evidence)
+**Datum:** 2026-06-27 · **Rolle:** Claude prüft/dokumentiert (Codex steuert, Pedi entscheidet Richtung). Docs-only + sandbox-sichere Evidence; kein Produktcode; keine produktive Integration erzeugt/vorgetäuscht.
+
+### 1. Vorab-Befund
+- **Integrationsfläche = interne REST-API** (`/api/*`, ~60 Routen, Fastify, auth-geschützt). Relevant: Auth/Session (`/api/auth/login`→Bearer, `/me`, OIDC), **Export** (`/api/library/export` JSON/MD/MediaWiki/HTML), **Import** (`/api/library/import` + `/import/candidates`), **Ask** (`/api/ask`, `/ask/helpful`), **External Search** (`/api/external/search`), Objekte/Anhänge, Status (`/health`, `/api/reasoner/status`, `/api/ai-status`, `/api/model-runs`, `/api/management/snapshot`, `/api/analytics`).
+- **Keine** Outbound-Integration im Code (kein Webhook/n8n/Slack/Teams/Jira/Confluence). Einziger externer Client = Anthropic-Modell (`x-api-key`) = LLM-Provider, **keine** Tool-Integration.
+- **Kein** Service-/Maschinen-Token, **kein** API-Key-Mechanismus, **kein** Rate-Limit/Quota, **keine** OpenAI-kompatible API. Integrationen nutzen heute ein **Benutzer-Session-Bearer-Token**.
+- **Kein** `docs/operations/integration-workflows.md` → Doku-Gap.
+
+### 2. Was ist bereits erfüllt
+- **Auth-geschützte, integrationsfähige REST-API** mit Export/Import/Ask/Status — real und nutzbar (siehe Evidence).
+- RBAC pro Endpunkt (SCRUM-212); datenschutzkonformes Logging (kein Prompt-Content, SCRUM-208).
+- OIDC/SSO vorhanden (föderierte Anmeldung).
+- Es fehlte die **konsolidierte Integrationsdoku** + die ehrliche Readiness-Bewertung — ergänzt.
+
+### 3. Minimaler Fix / Evidence
+**Neu:** `docs/operations/integration-workflows.md` — Runbook mit: vorhandene Integrationsflächen (Tabelle), Auth-/RBAC-Grenzen (Session-Bearer, keine Service-Token/Rate-Limits), geeignete vs. ungeeignete Use-Cases, **curl-Beispielflows** (Login→Export→Import→Ask→Status), Import/Export-Workflow, Ask-/Knowledge-OS-Workflow, Datenschutz-/Logging-Grenzen, **Anforderungen für erste echte Integration** (Service-Konto, Token/Rate-Limit-Entscheidung, Zielsystem), offene Produktentscheidungen, und die ehrliche Begründung, warum **keine** produktive Integration behauptet wird.
+
+**Sandbox-Evidence (lokal, In-Memory + Seed):** anonym `/api/kos` → **401**; `GET /library/export` → **5 KOs**; `POST /ask` (Ventil X) → **answered=true, gesichert, quellengebunden**; `/api/reasoner/status` → deterministic; `GET /external/search?q=Ventil` → **400** (kein Netz in Sandbox; Endpunkt vorhanden). → Interne API-Integrationsfläche **funktioniert**; produktive externe Integration **nicht belegt (existiert nicht)**.
+
+**Kein Produktcode** — kein echter Integrations-Bug gefunden (External-Search-400 = Sandbox-Netzlimit, kein Defekt).
+
+### 4. Geänderte Dateien
+NEU `docs/operations/integration-workflows.md`; `docs/qm/claude-after-report.md` (dieser Eintrag). Kein Produktcode, kein FE.
+
+### 5. Tests/Gates
+`npm run check` grün — 128 Dateien / 700 Tests. Kein FE berührt → `apps/web tsc --noEmit` nicht erforderlich. Zusätzlich: realer API-Smoke (Auth/Export/Ask/Status) erfolgreich.
+
+### 6. Restlücken / Nicht-Ziele
+- **Keine produktive externe Integration** (n8n/Slack/Jira/Webhook) — existiert nicht.
+- **Service-Token/API-Key + Rate-Limit/Quota** nicht vorhanden → Produktentscheidung vor automatisierter/öffentlicher Nutzung.
+- **External-Search** in Prod gegen konfigurierten Provider zu verifizieren (Sandbox ohne Netz).
+- Kein SDK/RAG/Vector/OpenAI-API, keine Drittanbindung implementiert, keine Tickets.
+
+### 7. Empfehlung: **PARTIAL / Blocked-on-product-decision** (nicht Done)
+**Begründung (Ehrlichkeits-Leitplanke):** Die **Integrationsfläche (interne REST-API) ist real, auth-geschützt und lokal verifiziert** (Export/Import/Ask/Status), und die Doku ist konsolidiert. ABER das zentrale Akzeptanzkriterium — **mindestens eine produktive Integration mit einem externen Tool** — ist **nicht erfüllt** (keine vorhanden; in der Sandbox auch nicht herstellbar). **Empfehlung:** SCRUM-207 als **Partial/Blocked-on-product-decision** führen: Readiness/Doku abschließbar, voll „Done" erst nach Produkt-/Ops-Entscheidung (welche Integration, Service-Konto/Token, Zielsystem) + einer real laufenden Erst-Integration.
+
+### 8. Commit-/Push-Hinweis (nur Doku)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add docs/operations/integration-workflows.md docs/qm/claude-after-report.md
+git commit -m "docs(ops): integration & workflows readiness runbook + honest status (SCRUM-207)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
