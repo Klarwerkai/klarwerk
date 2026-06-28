@@ -4337,3 +4337,30 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-272 — Ask: Query-Parameter als Startfrage unterstützen
+**Datum:** 2026-06-27 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung).
+
+**Vorab-Befund (read-only):** `Ask.tsx` initialisierte `q` mit `useState("")` und nutzte KEIN `useSearchParams`; ein Deep-Link mit vorbefüllter Frage war nicht möglich. Beispielchips (SCRUM-265/266) setzen `q` über `setQ`. `captureFromGap.ts` (SCRUM-263) etabliert die Query-Konvention (`?gap=…` → `readGapContext`/`captureGapHref`, getrimmt, null bei leer). Kein P0/P1.
+
+**Umsetzung (minimal, DOM-frei):** Neuer reiner Helfer `apps/web/src/lib/askQuestion.ts` analog zu `captureFromGap.ts`: `askQuestionHref(question)` baut `/fragen?q=<encoded>`, `readAskQuestion(params)` liest die Frage zurück (getrimmt, null bei leer/fehlend). In `Ask.tsx` wird `q` via `useSearchParams` lazy aus `?q=` initialisiert (`useState(() => readAskQuestion(params) ?? "")`); ohne/leerem Parameter startet `q` wie bisher leer. KEIN Auto-Submit — der Nutzer klickt weiterhin selbst „Fragen". Beispielchips, Antwort-/Gap-/Helpful-/Capture-CTA-Pfade unverändert. Kein Backend, keine Suche, kein Reasoner/RAG/Vector. Kein i18n nötig (die vorbefüllte Frage ist selbsterklärend).
+
+**Geänderte Dateien:** NEU `apps/web/src/lib/askQuestion.ts`, NEU `tests/ask/ask-question.test.ts` (4 Tests); geändert `apps/web/src/pages/Ask.tsx` (`useSearchParams` + lazy q-Init), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — 127 Dateien / 690 Tests (+1 Datei, +4 Tests). `apps/web` `tsc --noEmit` grün. Biome + dependency-cruiser sauber. Der neue Test sichert: Link mit URL-encodierter Frage, Round-Trip read/build, Trimmen, leerer/fehlender Parameter → null (kein Effekt).
+
+**Restlücken/Nicht-Ziele:** kein Backend, keine automatische Frage-Ausführung, keine neue Retrieval-/RAG-/Vector-Architektur, keine neue Suche, keine Stufe-2-Arbeit, keine Ticketserie. Der Helper ist bereitgestellt; bestehende CTAs (Library/KO-Detail/Hilfe) können künftig `askQuestionHref` nutzen, ohne dass dieses Ticket sie ändert. `q` wird nur beim ersten Render aus der URL übernommen (lazy init); spätere Eingaben/Chips überschreiben frei.
+
+**Commit-/Push-Hinweis:**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/askQuestion.ts tests/ask/ask-question.test.ts apps/web/src/pages/Ask.tsx docs/qm/claude-after-report.md
+git commit -m "feat(ask): support query parameter as starting question (SCRUM-272)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

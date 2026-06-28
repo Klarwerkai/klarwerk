@@ -2,13 +2,14 @@ import { useMutation } from "@tanstack/react-query";
 import { ArrowRight, ThumbsUp } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
 import { useKos, useReasonerStatus } from "../api/hooks";
 import type { AnswerResult } from "../api/types";
 import { ConfidenceBar } from "../components/trust";
 import { Button, Card, PageHeader, SectionLabel } from "../components/ui";
 import { ASK_EXAMPLES, type AskExpectationTone, askExpectation } from "../lib/askExamples";
+import { readAskQuestion } from "../lib/askQuestion";
 import { selectAnswer } from "../lib/askResponse";
 import { answerStatus, sourceRefs } from "../lib/askView";
 import { captureGapHref } from "../lib/captureFromGap";
@@ -40,7 +41,9 @@ const EXPECT_TONE: Record<AskExpectationTone, string> = {
 
 export function Ask(): JSX.Element {
   const { t, i18n } = useTranslation();
-  const [q, setQ] = useState("");
+  // SCRUM-272: optionale Startfrage aus der URL (/fragen?q=…) — nur vorbefüllen, kein Auto-Ask.
+  const [params] = useSearchParams();
+  const [q, setQ] = useState(() => readAskQuestion(params) ?? "");
   const [result, setResult] = useState<AnswerResult | null>(null);
   // SCRUM-264: zuletzt gestellte Frage festhalten → bei Lücke als Capture-Kontext übergeben.
   const [asked, setAsked] = useState("");
