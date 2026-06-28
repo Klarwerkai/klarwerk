@@ -5435,3 +5435,42 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-197 — Cloud-Provider & GPU-Instanz auswählen — Decision-Readiness
+**Datum:** 2026-06-27 · **Rolle:** Claude prüft/dokumentiert (Codex steuert, Pedi entscheidet Richtung). Docs-only; **keine** Konten/GPU-Buchung/Provisionierung/Modell-Downloads; **keine** verbindlichen Live-Preise; kein Produktcode.
+
+### 1. Vorab-Befund
+- **Keine verbindliche GPU-/Provider-Wahl** vorhanden; alle GPU-Erwähnungen = „nicht provisioniert/Nicht-Ziel/Frage für später".
+- **Downstream nicht-getroffener Entscheidungen:** Inferenz-Server Partial/Blocked, Fine-Tuning „jetzt nicht", RAG „jetzt nicht" → heute **keine** GPU-Last (Anthropic-API oder deterministischer Fallback).
+- **DSGVO:** EU/DE-Region nötig; Stack bereits Hetzner DE + Cloudflare; AVV/DSFA bei KI-Anbieter aktualisieren.
+- Keine `gpu-provider-decision.md` → Doku-Gap.
+
+### 2. Entscheidung / Shortlist
+Decision-Readiness dokumentieren, **Partial** empfehlen. **Shortlist:** (1) **Hetzner DE** (bester DSGVO-/Ops-Fit, Same-Vendor) wenn passende GPU verfügbar; (2) **RunPod/Lambda** (EU-Region/AVV geprüft) für günstigen PoC; (3) **EU-Hyperscaler** (AWS/GCP/Azure Frankfurt) bei Skalierungsbedarf; (4) **lokaler Apple-Silicon-Mac nur Dev/PoC**. **Instanzklasse:** **L4/A10 (~24 GB)** genügt für kleines–mittleres Modell; A100/H100 vorerst Overkill. **Beschaffung:** On-Demand-PoC mit Idle-Abschaltung; reserviert erst bei 24/7-Last; Spot nur Batch/Eval.
+
+### 3. Minimaler Fix
+**Neu:** `docs/operations/gpu-provider-decision.md` — Einordnung/Abhängigkeit, Anforderungen (EU/DSGVO/VRAM/Ops/Kosten/Datenfluss/Rollback), **Vergleichsmatrix** Provider, Instanzklassen, On-Demand/Reserviert/Spot, **Shortlist + PoC-erster-Schritt**, offene Budget-/DSGVO-/Ops-Entscheidungen, **Done-Kriterien**, Nicht-Ziele, Empfehlung. Preise **qualitativ/nicht verbindlich**. **Kein Produktcode** (kein Doku-/Konfig-Bug aufgefallen).
+
+### 4. Geänderte Dateien
+NEU `docs/operations/gpu-provider-decision.md`; `docs/qm/claude-after-report.md`. Kein Produktcode/FE.
+
+### 5. Tests/Gates
+`npm run check` grün — 128 Dateien / 700 Tests. Kein FE berührt → `apps/web tsc --noEmit` nicht erforderlich.
+
+### 6. Restlücken / Nicht-Ziele
+Keine verbindliche Provider-/Region-/Instanzwahl, kein Budget, kein bestätigter Inferenz-Bedarf, keine Konten/GPU/Infra/Modell. Verbindliche Auswahl = Pedi-/Budget-/DSGVO-Entscheidung (Kriterien §8 der Doku).
+
+### 7. Empfehlung: **PARTIAL** (nicht Done)
+**Begründung (Ehrlichkeit):** Anforderungen + qualitative Shortlist + Instanzklassen + Beschaffungsmodell sind dokumentiert — aber **keine** verbindliche Provider-/Region-/Instanzwahl, **kein** Budget, **kein** bestätigter Bedarf; eine GPU-Buchung wäre verfrüht (Inferenz-/Fine-Tuning-/RAG-Entscheidungen alle „nicht jetzt"). „Ausgewählt" ist **nicht** erfüllt → **Partial**; verbindliche Wahl ist Pedi-/Budget-/DSGVO-Entscheidung.
+
+### 8. Commit-/Push-Hinweis (nur Doku)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add docs/operations/gpu-provider-decision.md docs/qm/claude-after-report.md
+git commit -m "docs(ops): cloud/GPU provider decision-readiness (shortlist, no binding choice) (SCRUM-197)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
