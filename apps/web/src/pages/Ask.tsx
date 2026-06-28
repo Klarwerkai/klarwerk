@@ -15,6 +15,7 @@ import { answerReviewGuard, answerStatus, sourceRefs } from "../lib/askView";
 import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
 import { type EvidenceTone, knowledgeClassMeta } from "../lib/knowledgeClass";
+import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { type ReasonerBadgeTone, reasonerBadge } from "../lib/reasonerBadge";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 
@@ -39,6 +40,13 @@ const EXPECT_TONE: Record<AskExpectationTone, string> = {
   gap: "bg-trust-warn-bg text-trust-warn-text",
 };
 
+// SCRUM-289: Ask-Führung — quellengebunden antworten, offene Quellen prüfen lassen.
+const GUIDE_TONE: Record<KnowledgeGuidanceTone, string> = {
+  pos: "bg-trust-pos-bg text-trust-pos-text",
+  warn: "bg-trust-warn-bg text-trust-warn-text",
+  neutral: "bg-page text-muted",
+};
+
 export function Ask(): JSX.Element {
   const { t, i18n } = useTranslation();
   // SCRUM-272: optionale Startfrage aus der URL (/fragen?q=…) — nur vorbefüllen, kein Auto-Ask.
@@ -47,6 +55,7 @@ export function Ask(): JSX.Element {
   const [result, setResult] = useState<AnswerResult | null>(null);
   // SCRUM-264: zuletzt gestellte Frage festhalten → bei Lücke als Capture-Kontext übergeben.
   const [asked, setAsked] = useState("");
+  const guide = knowledgeGuidance("ask");
 
   // SCRUM-233: ehrlicher Reasoner-Modus aus vorhandenem read-only Status (kein Backend-Umbau).
   const reasonerStatus = useReasonerStatus();
@@ -82,6 +91,30 @@ export function Ask(): JSX.Element {
           {t(badge.labelKey)}
         </span>
       </div>
+
+      {/* SCRUM-289: vor dem Fragen erklären, warum Klarwerk kein generischer Chat ist. */}
+      <Card className="mb-4 border-dashed">
+        <h2 className="text-[14px] font-semibold text-ink">{t(guide.titleKey)}</h2>
+        <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{t(guide.bodyKey)}</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {guide.items.map((item) => (
+            <Link
+              key={item.id}
+              to={item.to}
+              className="inline-flex items-start gap-2 rounded-btn border border-hairline bg-surface px-2.5 py-2 hover:border-ink/30"
+            >
+              <span
+                className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${GUIDE_TONE[item.tone]}`}
+              >
+                {t(item.labelKey)}
+              </span>
+              <span className="max-w-[18rem] text-[12px] leading-relaxed text-muted">
+                {t(item.bodyKey)}
+              </span>
+            </Link>
+          ))}
+        </div>
+      </Card>
 
       <form
         className="flex gap-2"

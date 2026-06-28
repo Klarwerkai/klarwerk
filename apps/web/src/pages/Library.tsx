@@ -16,6 +16,7 @@ import {
 } from "../components/trust";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
 import { deriveStatus } from "../lib/displayStatus";
+import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { koAuthorParts } from "../lib/koAuthor";
 import { windowList } from "../lib/libraryDisplay";
 import { EXPORT_FORMATS, type ExportFormat, exportFilename, exportUrl } from "../lib/libraryExport";
@@ -43,6 +44,13 @@ const MATURITY_TONE: Record<MaturityTone, string> = {
   neutral: "bg-page text-muted",
 };
 
+// SCRUM-289: kompakte Reife-Erklärung (nutzbar vs. in Prüfung/zu prüfen).
+const GUIDE_TONE: Record<KnowledgeGuidanceTone, string> = {
+  pos: "bg-trust-pos-bg text-trust-pos-text",
+  warn: "bg-trust-warn-bg text-trust-warn-text",
+  neutral: "bg-page text-muted",
+};
+
 export function Library(): JSX.Element {
   const { t } = useTranslation();
   // Startfilter aus der URL (?q=…), gesetzt von der globalen Topbar-Suche.
@@ -51,6 +59,7 @@ export function Library(): JSX.Element {
   const [exportFormat, setExportFormat] = useState<ExportFormat>("json");
   // SCRUM-267: einfacher Reife-Filter (Alle/Nutzbar/In Prüfung/Zu prüfen) auf der gerankten Liste.
   const [maturity, setMaturity] = useState<MaturityFilter>("all");
+  const guide = knowledgeGuidance("library");
 
   // Optionen (Domäne/Tags) aus dem ungefilterten Bestand, damit sie stabil bleiben.
   const all = useKos();
@@ -173,6 +182,31 @@ export function Library(): JSX.Element {
           ))}
         </select>
       </div>
+      {/* SCRUM-289: Reife-Plaketten/Filter kurz erklären — kein neues Statusmodell. */}
+      <Card className="mb-4 border-dashed">
+        <div className="mb-2">
+          <h2 className="text-[14px] font-semibold text-ink">{t(guide.titleKey)}</h2>
+          <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{t(guide.bodyKey)}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {guide.items.map((item) => (
+            <Link
+              key={item.id}
+              to={item.to}
+              className="inline-flex items-start gap-2 rounded-btn border border-hairline bg-surface px-2.5 py-2 hover:border-ink/30"
+            >
+              <span
+                className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${GUIDE_TONE[item.tone]}`}
+              >
+                {t(item.labelKey)}
+              </span>
+              <span className="max-w-[18rem] text-[12px] leading-relaxed text-muted">
+                {t(item.bodyKey)}
+              </span>
+            </Link>
+          ))}
+        </div>
+      </Card>
 
       <QueryState
         query={query}

@@ -6159,3 +6159,56 @@ Demo-/Pilot-Führung: Start/Library/Ask können einen kurzen „gesichert vs. zu
 
 ### 9. Stop-Status
 **Slice implementiert, Gates grün.** Codex übernimmt Commit, Push, GitHub-CI, Jira-Kommentar und Status.
+
+---
+
+## SCRUM-289 — Demo-/Pilot-Führung: Gesichert vs. zu prüfen in Start, Library und Ask erklären
+**Datum:** 2026-06-28 · **Rolle:** Codex setzt den Team-1-Workflow-Slice um. **FE-Produkt-Slice** (DOM-freier Helper + Start/Library/Ask + Texte + Tests); kein RAG; keine neue Suche; kein neues Statusmodell; keine Backend- oder Architekturänderung.
+
+### 1. Ziel des Workflow-Slice
+Pilot- und Demo-Nutzer sollen sofort verstehen: Klarwerk ist kein Chatbot. Wissen wird erfasst, geprüft, genutzt und gepflegt. Validiertes/gesichertes Wissen ist nutzbar; offenes oder in Prüfung befindliches Wissen gehört in den Review-/Validierungsfluss.
+
+### 2. Vorab-Befund
+- Start zeigt den Knowledge-OS-Kreis, erklärt aber den Unterschied „gesichert/nutzbar" vs. „offen/zu prüfen" noch nicht explizit.
+- Library hat Reife-Plaketten und den Reife-Filter („Nutzbar / In Prüfung / Zu prüfen"), aber keine kurze Interpretation direkt am Filter.
+- Ask ist quellengebunden und markiert ungeprüfte/offene Quellen, erklärt aber vor dem Fragen noch nicht kompakt, warum das kein generischer Chat ist.
+- Vorhandene Flows/Routen reichen aus: `/bibliothek`, `/validierung`, `/fragen`. Kein neues Statusmodell nötig.
+
+### 3. Umsetzung
+Neuer DOM-freier Helper `knowledgeGuidance(surface)` mit surface-spezifischer Führung:
+- **Start:** gesichert, zu prüfen, quellengebunden nutzen.
+- **Library:** Reife/Nutzbarkeit erklären — gesichertes Wissen vs. Review-Arbeit.
+- **Ask:** Quellenbindung + Review-Hinweis vor dem Fragen.
+
+Die UI rendert diese Guidance als kompakte Cards/Chips mit Links ausschließlich in vorhandene Produktflüsse. Keine Mutation, kein Backend, keine neue Suchlogik.
+
+### 4. Geänderte Dateien
+- `apps/web/src/lib/knowledgeGuidance.ts` — gemeinsamer DOM-freier Guidance-Helper.
+- `tests/app/knowledge-guidance.test.ts` — 5 Tests für Surface-Zuschnitt, erlaubte Routen und Tönungen.
+- `apps/web/src/pages/Start.tsx` — Pilot-Führung unter dem Knowledge-OS-Kreis.
+- `apps/web/src/pages/Library.tsx` — Reife-Erklärung bei Filter/Plaketten.
+- `apps/web/src/pages/Ask.tsx` — Quellenbindungs-/Review-Hinweis vor dem Fragen.
+- `apps/web/src/i18n.ts` — DE/EN-Texte `kg.*`.
+- `docs/qm/claude-after-report.md` — dieser append-only Bericht.
+
+### 5. Was verbessert wurde
+- Der Knowledge-OS-Gedanke wird an drei Pilot-relevanten Stellen sichtbar: Start erklärt das Prinzip, Library erklärt Reife, Ask erklärt Quellenbindung.
+- Validiertes Wissen bleibt direkt nutzbar; offene/in Prüfung befindliche Inhalte bleiben Review-Arbeit.
+- Hinweise verlinken nur echte vorhandene Flows, keine Fake-Funktion.
+- Ask wirkt stärker wie Knowledge OS statt Chatbot: Antwort nur aus Knowledge Objects; ohne Grundlage entsteht eine Lücke.
+
+### 6. Tests/Gates
+- `npm run check` grün — **130 Dateien / 736 Tests** (+1 Datei, +5 Tests).
+- `apps/web tsc --noEmit` grün.
+- Biome + dependency-cruiser grün.
+- Hinweis: Biome musste die vier FE-Dateien mechanisch formatieren/importsortieren; danach waren alle Gates grün.
+
+### 7. Offene Risiken
+- Die Guidance ist bewusst kompakt. Für eine Investor-Demo kann später zusätzlich ein geführter Demo-Skript-/Tour-Hinweis sinnvoll sein.
+- Library verlinkt Review-Arbeit weiterhin auf das vorhandene Validierungsboard, nicht auf eine einzelne gefilterte Karte.
+
+### 8. Empfehlung nächster sinnvoller Slice
+Demo-/Pilot-Storyline verdichten: Start → Ask-Beispiel → Library/KO-Detail → Validation in einem kurzen, sichtbaren „Demo-Pfad"-Hinweis oder einer Help-/Start-Verlinkung bündeln (ohne neue Engine, ohne RAG, ohne Architekturänderung).
+
+### 9. Stop-Status
+**Slice implementiert, Gates grün.** Codex übernimmt Commit, Push, GitHub-CI, Jira-Kommentar und Status.

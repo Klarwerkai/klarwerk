@@ -129,6 +129,24 @@ const de = {
   "cycle.use.desc": "Quellengebunden in Antworten und Output verwenden.",
   "cycle.maintain.label": "Aktuell halten",
   "cycle.maintain.desc": "Bei Änderungen revalidieren — Wissen bleibt gültig.",
+  "kg.start.title": "So liest du Klarwerk",
+  "kg.start.body":
+    "Klarwerk trennt konsequent nutzbares Wissen von Review-Arbeit: Erst prüfen, dann verwenden.",
+  "kg.library.title": "Reife der Treffer",
+  "kg.library.body":
+    "Die Reife-Plakette zeigt, ob ein Treffer direkt nutzbar ist oder in die Prüfung gehört.",
+  "kg.ask.title": "Antworten sind quellengebunden",
+  "kg.ask.body":
+    "Ask nutzt den Wissensbestand; offene oder ungeprüfte Quellen werden markiert und zur Validierung geführt.",
+  "kg.secured.label": "Gesichert",
+  "kg.secured.body":
+    "Validiertes Wissen ist nutzbar und bleibt über Quellen, Trust und Version nachvollziehbar.",
+  "kg.review.label": "Zu prüfen",
+  "kg.review.body":
+    "Offenes oder in Prüfung befindliches Wissen gehört in die Validierung, nicht in die Nutzung.",
+  "kg.sourceBound.label": "Quellengebunden",
+  "kg.sourceBound.body":
+    "Antworten entstehen aus Knowledge Objects — ohne Grundlage wird eine Lücke angelegt.",
   "missions.title": "Nächste Schritte",
   "missions.subtitle":
     "Für deine Rolle empfohlene nächste Schritte — direkt in echte Abläufe, keine Demo.",
@@ -1254,6 +1272,22 @@ const en: typeof de = {
   "cycle.use.desc": "Use it source-bound in answers and output.",
   "cycle.maintain.label": "Maintain",
   "cycle.maintain.desc": "Re-validate on change — knowledge stays valid.",
+  "kg.start.title": "How to read Klarwerk",
+  "kg.start.body":
+    "Klarwerk keeps usable knowledge separate from review work: review first, use afterwards.",
+  "kg.library.title": "Result maturity",
+  "kg.library.body":
+    "The maturity badge shows whether a result is ready to use or belongs in review.",
+  "kg.ask.title": "Answers are source-bound",
+  "kg.ask.body":
+    "Ask uses the knowledge base; open or unverified sources are marked and routed to validation.",
+  "kg.secured.label": "Verified",
+  "kg.secured.body":
+    "Validated knowledge is usable and remains traceable through sources, trust and version.",
+  "kg.review.label": "To review",
+  "kg.review.body": "Open or in-review knowledge belongs in validation, not direct use.",
+  "kg.sourceBound.label": "Source-bound",
+  "kg.sourceBound.body": "Answers come from knowledge objects — without a basis, a gap is created.",
   "missions.title": "Next steps",
   "missions.subtitle":
     "Next steps recommended for your role — straight into real flows, not a demo.",

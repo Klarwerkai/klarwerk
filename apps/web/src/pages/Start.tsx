@@ -15,6 +15,7 @@ import { useRole } from "../app/RoleContext";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { Card, PageHeader } from "../components/ui";
 import { KNOWLEDGE_CYCLE } from "../lib/knowledgeCycle";
+import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { missionsForRole } from "../lib/missions";
 import { stufe2FeatureLabelKeys, stufe2HintKind } from "../lib/stufe2Hint";
 import {
@@ -30,6 +31,13 @@ const WORK_TONE: Record<WorkSeverity, string> = {
   critical: "bg-trust-crit-fill",
   today: "bg-trust-warn-fill",
   later: "bg-muted-2",
+};
+
+// SCRUM-289: Führungston für gesichert/zu prüfen/quellengebunden nutzen.
+const GUIDE_TONE: Record<KnowledgeGuidanceTone, string> = {
+  pos: "bg-trust-pos-bg text-trust-pos-text",
+  warn: "bg-trust-warn-bg text-trust-warn-text",
+  neutral: "bg-page text-muted",
 };
 
 const CTA: Record<string, { to: string; key: string }> = {
@@ -81,6 +89,7 @@ export function Start(): JSX.Element {
   );
   // SCRUM-271: bester nächster Einstieg aus der vorhandenen Übersicht (null bei Leerzustand).
   const focus = primaryWorkItem(overview);
+  const guide = knowledgeGuidance("start");
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -125,6 +134,29 @@ export function Start(): JSX.Element {
           ))}
         </div>
       </div>
+      {/* SCRUM-289: Pilot-Führung — gesichertes Wissen vs. Review-Arbeit vs. Ask erklären. */}
+      <Card className="mb-5">
+        <div className="mb-3">
+          <h2 className="text-[15px] font-semibold text-ink">{t(guide.titleKey)}</h2>
+          <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{t(guide.bodyKey)}</p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {guide.items.map((item) => (
+            <Link
+              key={item.id}
+              to={item.to}
+              className="rounded-card border border-hairline bg-surface p-3 transition hover:border-ink/30"
+            >
+              <span
+                className={`rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${GUIDE_TONE[item.tone]}`}
+              >
+                {t(item.labelKey)}
+              </span>
+              <p className="mt-2 text-[12.5px] leading-relaxed text-muted">{t(item.bodyKey)}</p>
+            </Link>
+          ))}
+        </div>
+      </Card>
       {missions.length > 0 ? (
         <div className="mb-5">
           <h2 className="text-[15px] font-semibold text-ink">{t("missions.title")}</h2>
