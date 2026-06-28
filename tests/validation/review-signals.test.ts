@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { KnowledgeObject } from "../../apps/web/src/api/types";
 import {
   reviewSignals,
+  reviewWorkView,
   sortByReviewPriority,
   trustBand,
 } from "../../apps/web/src/lib/reviewSignals";
@@ -77,5 +78,44 @@ describe("SCRUM-249: reviewSignals", () => {
     expect(sortByReviewPriority(items).map((k) => k.id)).toEqual(
       sortByReviewPriority(items).map((k) => k.id),
     );
+  });
+});
+
+// SCRUM-287: Capture→MyTasks→Validation konsistent führen — offene/frisch erfasste KOs
+// erscheinen als konkrete Review-Arbeit, ohne neues Statusmodell oder Fake-Task.
+describe("SCRUM-287: reviewWorkView", () => {
+  it("offen + trust 0 → neu erfasst / noch keine Bewertung", () => {
+    expect(reviewWorkView(ko({ status: "offen", trust: 0, assignments: [] }))).toMatchObject({
+      state: "new",
+      labelKey: "val.reviewState.new",
+      hintKey: "val.reviewHint.new",
+      tone: "warn",
+    });
+  });
+
+  it("Zuweisung wird vor trust ausgewiesen", () => {
+    expect(
+      reviewWorkView(ko({ status: "offen", trust: 0, assignments: ["controller"] })),
+    ).toMatchObject({
+      state: "assigned",
+      labelKey: "val.reviewState.assigned",
+      tone: "warn",
+    });
+  });
+
+  it("offen + trust > 0 → Bewertung begonnen", () => {
+    expect(reviewWorkView(ko({ status: "offen", trust: 50, assignments: [] }))).toMatchObject({
+      state: "inReview",
+      labelKey: "val.reviewState.inReview",
+      tone: "neutral",
+    });
+  });
+
+  it("validiert bleibt als validiert erkennbar", () => {
+    expect(reviewWorkView(ko({ status: "validiert", trust: 100 }))).toMatchObject({
+      state: "validated",
+      labelKey: "val.reviewState.validated",
+      tone: "pos",
+    });
   });
 });

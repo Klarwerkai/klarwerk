@@ -7,6 +7,8 @@ import type { DisplayStatus } from "../components/trust/types";
 import { deriveStatus } from "./displayStatus";
 
 export type TrustBand = "low" | "mid" | "high";
+export type ReviewWorkState = "new" | "assigned" | "inReview" | "validated";
+export type ReviewWorkTone = "warn" | "neutral" | "pos";
 
 // Vertrauensband (nur Anzeige-/Tönungslogik; identische Schwellen, kein erfundener Score).
 export function trustBand(trust: number): TrustBand {
@@ -29,6 +31,13 @@ export interface ReviewSignals {
   authorTransferred: boolean; // Autor ≠ Originalautor → extra Prüfblick
 }
 
+export interface ReviewWorkView {
+  state: ReviewWorkState;
+  labelKey: string;
+  hintKey: string;
+  tone: ReviewWorkTone;
+}
+
 export function reviewSignals(ko: KnowledgeObject): ReviewSignals {
   return {
     status: deriveStatus(ko),
@@ -38,6 +47,42 @@ export function reviewSignals(ko: KnowledgeObject): ReviewSignals {
     needed: ko.neededValidations,
     assigned: (ko.assignments?.length ?? 0) > 0,
     authorTransferred: ko.author !== ko.originalAuthor,
+  };
+}
+
+// SCRUM-287: Arbeitszustand fürs Review aus vorhandenen KO-Feldern ableiten. Kein neues
+// Statusmodell, keine Task-Engine: frisch erfasste KOs starten offen mit trust=0 → „neu/offen,
+// noch keine Bewertung"; zugewiesene oder bereits teilbewertete KOs werden ehrlich unterschieden.
+export function reviewWorkView(ko: KnowledgeObject): ReviewWorkView {
+  if (ko.status === "validiert") {
+    return {
+      state: "validated",
+      labelKey: "val.reviewState.validated",
+      hintKey: "val.reviewHint.validated",
+      tone: "pos",
+    };
+  }
+  if ((ko.assignments?.length ?? 0) > 0) {
+    return {
+      state: "assigned",
+      labelKey: "val.reviewState.assigned",
+      hintKey: "val.reviewHint.assigned",
+      tone: "warn",
+    };
+  }
+  if ((ko.trust ?? 0) <= 0) {
+    return {
+      state: "new",
+      labelKey: "val.reviewState.new",
+      hintKey: "val.reviewHint.new",
+      tone: "warn",
+    };
+  }
+  return {
+    state: "inReview",
+    labelKey: "val.reviewState.inReview",
+    hintKey: "val.reviewHint.inReview",
+    tone: "neutral",
   };
 }
 

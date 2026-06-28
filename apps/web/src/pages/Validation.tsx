@@ -17,7 +17,13 @@ import {
   type ReviewVerdict,
   reviewNextSteps,
 } from "../lib/reviewDecision";
-import { type TrustBand, reviewSignals, sortByReviewPriority } from "../lib/reviewSignals";
+import {
+  type ReviewWorkTone,
+  type TrustBand,
+  reviewSignals,
+  reviewWorkView,
+  sortByReviewPriority,
+} from "../lib/reviewSignals";
 import {
   type FeedbackVerdict,
   buildValidationFeedback,
@@ -43,6 +49,13 @@ const DECISION_TONE: Record<ReviewTone, string> = {
   pos: "bg-trust-pos-bg text-trust-pos-text",
   warn: "bg-trust-warn-bg text-trust-warn-text",
   crit: "bg-trust-crit-bg text-trust-crit-text",
+};
+
+// SCRUM-287: Review-Arbeitszustand konsistent zu MyTasks (neu/offen, zugewiesen, in Prüfung).
+const REVIEW_WORK_TONE: Record<ReviewWorkTone, string> = {
+  warn: "bg-trust-warn-bg text-trust-warn-text",
+  neutral: "bg-page text-muted",
+  pos: "bg-trust-pos-bg text-trust-pos-text",
 };
 
 export function Validation(): JSX.Element {
@@ -220,6 +233,7 @@ export function Validation(): JSX.Element {
               <div className="space-y-3">
                 {visible.map((k) => {
                   const sig = reviewSignals(k);
+                  const reviewWork = reviewWorkView(k);
                   return (
                     <div key={k.id} className="space-y-2">
                       <Card className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -259,6 +273,11 @@ export function Validation(): JSX.Element {
                                 {t("val.assigned")}
                               </span>
                             ) : null}
+                            <span
+                              className={`rounded-pill px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase ${REVIEW_WORK_TONE[reviewWork.tone]}`}
+                            >
+                              {t(reviewWork.labelKey)}
+                            </span>
                           </div>
                           <div className="mt-1">
                             <KoAuthorLine {...koAuthorParts(k, nameOf)} />
@@ -269,6 +288,7 @@ export function Validation(): JSX.Element {
                               {t("val.decisionLabel")}{" "}
                             </span>
                             {t(`val.decision.${sig.trustBand}`)}
+                            <span className="ml-1">{t(reviewWork.hintKey)}</span>
                           </p>
                         </div>
                         <div className="flex shrink-0 flex-col items-stretch gap-1.5 sm:items-end">

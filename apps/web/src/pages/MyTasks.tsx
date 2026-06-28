@@ -15,6 +15,7 @@ import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { KoAuthorLine } from "../components/trust";
 import { Card, PageHeader } from "../components/ui";
 import { type KoAuthorParts, koAuthorParts } from "../lib/koAuthor";
+import { type ReviewWorkTone, type ReviewWorkView, reviewWorkView } from "../lib/reviewSignals";
 import { type TaskTone, taskAction } from "../lib/taskAction";
 import {
   TASK_FILTERS,
@@ -32,6 +33,13 @@ const ACTION_TONE: Record<TaskTone, string> = {
   neutral: "text-muted",
 };
 
+// SCRUM-287: Tönung des Review-Arbeitszustands (neu/offen, zugewiesen, in Prüfung).
+const REVIEW_WORK_TONE: Record<ReviewWorkTone, string> = {
+  warn: "bg-trust-warn-bg text-trust-warn-text",
+  neutral: "bg-page text-muted",
+  pos: "bg-trust-pos-bg text-trust-pos-text",
+};
+
 interface Task {
   id: string;
   label: string;
@@ -41,6 +49,8 @@ interface Task {
   severity: WorkSeverity;
   // FR-LIF-04: Autor sichtbar, wo ein KO hinter der Aufgabe steht.
   author?: KoAuthorParts;
+  // SCRUM-287: Review-Zustand nur bei Validierungsaufgaben (DOM-frei aus KO-Feldern).
+  review?: ReviewWorkView;
 }
 
 // Aufgabe mit aus dem typeKey abgeleiteter Severity bauen (eine Quelle der Wahrheit).
@@ -92,6 +102,7 @@ export function MyTasks(): JSX.Element {
         typeKey: "task.validation",
         to: `/wissen/${k.id}`,
         author: koAuthorParts(k, nameOf),
+        review: reviewWorkView(k),
       }),
     ),
     ...(lifecycle.data ?? []).map((id) =>
@@ -182,6 +193,13 @@ export function MyTasks(): JSX.Element {
                               {it.label}
                             </span>
                             {it.author ? <KoAuthorLine {...it.author} /> : null}
+                            {it.review ? (
+                              <span
+                                className={`mt-1 inline-flex rounded-pill px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase ${REVIEW_WORK_TONE[it.review.tone]}`}
+                              >
+                                {t(it.review.labelKey)}
+                              </span>
+                            ) : null}
                           </span>
                           <span
                             className={`inline-flex shrink-0 items-center gap-1 text-[12px] font-semibold ${ACTION_TONE[action.tone]}`}

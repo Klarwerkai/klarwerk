@@ -5861,8 +5861,6 @@ git push
 ### 9. Stop-Status
 **Slice abgeschlossen, Gates grün, gestoppt.** Keine Jira-Änderungen durch Claude. Codex übernimmt Commit, Push, Jira-Kommentar und Status.
 
----
-
 ## SCRUM-283 — Ask/Risk/Capture: gespeicherte Wissenslücken datensparsam & verständlich führen
 **Datum:** 2026-06-28 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung). **FE-Produkt-Slice** (Anzeigetext + DOM-freier Helper + Test); kein Backend/Persistenz; kein RAG/Suche; keine PII-Erkennung; keine DSGVO-Self-Service-Funktion.
 
@@ -6054,3 +6052,56 @@ git push
 
 ### 9. Stop-Status
 **Slice abgeschlossen, Gates grün, gestoppt.** Keine Jira-Änderungen durch Claude. Codex übernimmt Commit, Push, Jira-Kommentar und Status.
+
+---
+
+## SCRUM-287 — Capture→MyTasks→Validation: neu erfasste offene KOs als Review-Arbeit sichtbar machen
+**Datum:** 2026-06-28 · **Rolle:** Codex setzt den Team-1-Workflow-Slice um. **FE-Produkt-Slice** (DOM-freier Helper + MyTasks/Validation + Texte + Tests); kein neues Statusmodell; keine neue Task-Engine; keine automatische Validierung; kein Backend; kein RAG/Suche.
+
+### 1. Ziel des Workflow-Slice
+Den Anschluss an SCRUM-286 schließen: Nach Capture ist klar „gespeichert, aber offen/nicht validiert". Dieses offene KO soll in **MyTasks** und **Validation** als konkrete Review-Arbeit sichtbar werden — mit derselben ehrlichen Sprache: neu/offen, noch keine Bewertung, jetzt fachlich prüfen.
+
+### 2. Vorab-Befund / Root Cause
+- **MyTasks** zeigte Validierungsaufgaben mit Typ, Titel, Autorzeile und Aktion „Wissen bewerten", aber ohne Review-Zustand.
+- **Validation** zeigte Trust/Status/Version/Needed und Entscheidungshinweis, aber kein explizites „neu erfasst/offen/noch keine Bewertung"-Signal.
+- Es gibt kein separates „frisch"-Feld. Sichere Ableitung aus vorhandenen Feldern: `status === "offen"` + `trust <= 0` + keine Zuweisung ⇒ „neu erfasst / offen / noch keine Bewertung". Zuweisung und bereits begonnene Bewertung werden getrennt ausgewiesen.
+- Datumsheuristik wurde bewusst vermieden (keine „innerhalb X Tage"-Fiktion).
+
+### 3. Geänderte Dateien
+- `apps/web/src/lib/reviewSignals.ts` — neuer DOM-freier `reviewWorkView(ko)` mit Zuständen `new|assigned|inReview|validated`, Label-/Hint-Keys und Tone.
+- `apps/web/src/pages/MyTasks.tsx` — Validierungsaufgaben zeigen zusätzlich einen kleinen Review-Zustandschip (z. B. „Neu erfasst · offen").
+- `apps/web/src/pages/Validation.tsx` — Karten zeigen denselben Review-Zustandschip und ergänzen den Entscheidungshinweis um den passenden Review-Hinweis.
+- `apps/web/src/i18n.ts` — `val.reviewState.*` und `val.reviewHint.*` in DE/EN.
+- `tests/validation/review-signals.test.ts` — 4 neue DOM-freie Tests für `reviewWorkView`.
+
+### 4. Was verbessert wurde
+- Capture → MyTasks → Validation spricht nun konsistent: frisch erfasste KOs sind gespeichert, aber offen und **noch nicht bewertet**.
+- MyTasks macht Validierungsarbeit handlungsnäher, ohne neue Aufgaben zu erzeugen.
+- Validation zeigt direkt, ob ein KO neu/offen, zugewiesen, bereits in Prüfung oder validiert ist.
+- Keine automatische Mutation, keine Fake-Aufgabe, kein neues Statusmodell; ausschließlich vorhandene KO-Felder (`status`, `trust`, `assignments`) werden genutzt.
+
+### 5. Tests/Gates
+- `npm run check` grün — **129 Dateien / 725 Tests** (+4).
+- `apps/web tsc --noEmit` grün.
+- Biome + dependency-cruiser grün.
+- Hinweis: Ein erster Vitest-Lauf in der Sandbox traf EPERM beim temporären Vite/Vitest-Config-File; der identische Gate-Lauf außerhalb der Sandbox war grün.
+
+### 6. Commit-/Push-Hinweis
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/reviewSignals.ts apps/web/src/pages/MyTasks.tsx apps/web/src/pages/Validation.tsx apps/web/src/i18n.ts tests/validation/review-signals.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(review): show newly captured open KOs as review work (SCRUM-287)"
+git push
+```
+
+### 7. Offene Risiken
+- `trust <= 0` steht für „noch keine Bewertung" — entspricht dem aktuellen Modell für frisch erfasste offene KOs. Falls später initiale Trust-Werte anders gesetzt werden, muss die Ableitung angepasst werden.
+- Alt-KOs mit `trust=0` werden ebenfalls als „neu/offen" angezeigt. Das ist fachlich nicht falsch (noch keine Bewertung), aber nicht zwingend kalendarisch „neu"; daher bewusst Label „Neu erfasst · offen" statt eines Datumsversprechens.
+
+### 8. Empfehlung nächster sinnvoller Slice
+Ask/Library/KO-Detail Konsistenz: Wenn ein Nutzer ein noch offenes KO fragt/nutzt, die Anzeige der Knowledge-Class/Quellen/Trust noch stärker gegen „gesichert"-Missverständnisse absichern (ohne neue Suche/RAG).
+
+### 9. Stop-Status
+**Slice implementiert, Gates grün.** Codex übernimmt Commit, Push, GitHub-CI, Jira-Kommentar und Status.
