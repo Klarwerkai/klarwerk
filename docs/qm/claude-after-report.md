@@ -5395,3 +5395,43 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-198 — Server bereitstellen & absichern — Hardening-Readiness
+**Datum:** 2026-06-27 · **Rolle:** Claude prüft/dokumentiert (Codex steuert, Pedi entscheidet Richtung). Docs-only; **keine** Server-/SSH-/Firewall-/fail2ban-/Docker-/CUDA-/Cloud-Änderung; kein Produktcode.
+
+### 1. Vorab-Befund
+- **Deploy real beschrieben:** Hetzner + Coolify + Postgres + Cloudflare (TLS/Let's Encrypt) (`deploy-hetzner.md`). `docker-compose.prod.yml`: App+Postgres, `restart: unless-stopped`, **DB-Healthcheck** (`pg_isready`) + `depends_on healthy`, `COOKIE_SECURE=true`, **DB-Port nicht veröffentlicht**; App `3000:3000` (Proxy-gefrontet).
+- **App-seitig real abgesichert:** helmet **HSTS+CSP**, **HTTPS-Kanonik-Redirect**, `X-Robots-Tag: noindex` (`server.ts`); Auth/RBAC (401/403); Prelaunch **Traefik-Basic-Auth** + robots/noindex (`pre-launch-protection.md`); Secrets via Coolify-Env (`secrets-management.md`).
+- **Fehlt/nicht verifiziert:** konsolidiertes **OS-Hardening-Runbook** (SSH-Key-only, Root-Deaktivierung, UFW/Firewall, fail2ban, unattended-upgrades, Docker-/Port-Härtung) und **live-verifizierte** Evidenz (kein Remote-Zugriff). Port-Binding-Hinweis: `3000:3000` bindet auf alle Interfaces — hinter Proxy besser `127.0.0.1`.
+- **GPU/CUDA:** für App-Server (Node+Postgres) **irrelevant**; nur für späteren Inferenz-Server (`inference-server-readiness.md`).
+- Keine `server-hardening-readiness.md` → Doku-Gap.
+
+### 2. Entscheidung
+App-/Deploy-Absicherung real; OS-Härtung weder konsolidiert noch live verifiziert. Doku-Gap mit Hardening-Readiness-Runbook schließen; **Partial** empfehlen (Honesty-Leitplanke: keine „abgesichert"-Behauptung ohne Live-Verifikation).
+
+### 3. Minimaler Fix
+**Neu:** `docs/operations/server-hardening-readiness.md` — heutiger Deploy-Stand, app-seitige Maßnahmen, **OS-Hardening-Checkliste** (SSH/Root/Firewall/fail2ban/Updates/Docker/TLS), **Port-/Firewall-Soll-Modell**, Backup/Monitoring/Secrets-Bezug, **GPU/CUDA als Nicht-Ziel für App-Server**, **Verifikationsplan** (für Done), Nicht-Ziele, Empfehlung. **Kein Produktcode** (Port-Binding-Hinweis bewusst nicht gefixt).
+
+### 4. Geänderte Dateien
+NEU `docs/operations/server-hardening-readiness.md`; `docs/qm/claude-after-report.md`. Kein Produktcode/FE.
+
+### 5. Tests/Gates
+`npm run check` grün — 128 Dateien / 700 Tests. Kein FE berührt → `apps/web tsc --noEmit` nicht erforderlich. Kein Remote-Server-Zugriff (per Vorgabe).
+
+### 6. Restlücken / Nicht-Ziele
+OS-Härtung (SSH/Root/Firewall/fail2ban/Updates/Docker) nicht durchgeführt/verifiziert; keine Server-/Cloud-/GPU-Änderung. Verifikation = Betreiber-/Ops-Aufgabe (Plan §7 der Doku).
+
+### 7. Empfehlung: **PARTIAL** (nicht Done)
+**Begründung (Ehrlichkeit):** App-/Deploy-seitige Absicherung (helmet/HSTS/CSP, HTTPS-Kanonik, noindex, COOKIE_SECURE, Auth/RBAC, Prelaunch-Gate) ist **real**, und der Deploy-Pfad (Hetzner/Coolify/Cloudflare-TLS + Snapshots) ist dokumentiert. Aber die **Server-/OS-Härtung** ist **nicht live verifiziert** (kein Remote-Zugriff, in diesem Item ausgeschlossen). „Server bereitgestellt **& abgesichert**" ist daher nicht vollständig erfüllt → **Partial**; offene Schritte = Betreiber-/Ops mit Verifikationsplan.
+
+### 8. Commit-/Push-Hinweis (nur Doku)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add docs/operations/server-hardening-readiness.md docs/qm/claude-after-report.md
+git commit -m "docs(ops): server hardening readiness (app-side real, OS hardening operator-verified pending) (SCRUM-198)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
