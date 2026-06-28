@@ -21,6 +21,7 @@ import {
   type WorkSeverity,
   buildWorkOverview,
   learningOpenSteps,
+  primaryWorkItem,
   workSignalsFrom,
 } from "../lib/workCenter";
 
@@ -78,6 +79,8 @@ export function Start(): JSX.Element {
       learningOpenSteps: learningOpenSteps(learningPath.data, learningProgress.data),
     }),
   );
+  // SCRUM-271: bester nächster Einstieg aus der vorhandenen Übersicht (null bei Leerzustand).
+  const focus = primaryWorkItem(overview);
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -162,6 +165,27 @@ export function Start(): JSX.Element {
               {t("start.allTasks")}
             </Link>
           </div>
+          {/* SCRUM-271: bester nächster Einstieg hervorgehoben (kein Auto-Handeln, nur Führung). */}
+          {focus ? (
+            <Link
+              to={focus.to}
+              className="mb-3 flex items-center gap-3 rounded-card bg-page p-3 hover:opacity-90"
+            >
+              <span className={`h-2 w-2 shrink-0 rounded-full ${WORK_TONE[focus.severity]}`} />
+              <span className="min-w-0 flex-1">
+                <span className="block font-mono text-[10px] uppercase tracking-wider text-muted-2">
+                  {t("start.focusLabel")}
+                </span>
+                <span className="block truncate text-[13.5px] font-semibold text-ink">
+                  {t(`work.${focus.key}`)}
+                </span>
+              </span>
+              <span className="shrink-0 font-mono text-[13px] font-semibold text-ink">
+                {focus.count}
+              </span>
+              <ArrowRight size={15} className="shrink-0 text-muted-2" />
+            </Link>
+          ) : null}
           <div className="divide-y divide-hairline">
             {overview.length === 0 ? (
               <div className="py-4">

@@ -4310,3 +4310,30 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-271 — Start: besten nächsten Einstieg aus Arbeitsübersicht hervorheben
+**Datum:** 2026-06-27 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung).
+
+**Vorab-Befund (read-only):** `workCenter.ts#buildWorkOverview` liefert die Arbeitssignale bereits in fester Priorität (`WORK_OVERVIEW`-Reihenfolge: conflicts/criticalGaps = critical, revalidation/validation = today, learning = later), gefiltert auf count>0. `Start.tsx` rendert daraus eine Liste (Severity-Punkt, `work.<key>`-Titel, Count, Link) und einen Leerzustand (`start.todoEmpty` + EmptyStateCtas) bei `overview.length === 0`. Es fehlte eine hervorgehobene Führung „fang hier an". Kein P0/P1.
+
+**Umsetzung (minimal, DOM-frei):** Helper `workCenter.ts#primaryWorkItem(items) → WorkOverviewItem | null`: deterministisch nach Severity (critical<today<later) **stabil** sortiert → innerhalb derselben Dringlichkeit bleibt die bestehende Reihenfolge; `null` bei leerer Übersicht (Leerzustand bleibt). Keine neue Datenquelle, keine Task-Engine. In `Start.tsx` wird `focus = primaryWorkItem(overview)` berechnet und — nur wenn vorhanden — innerhalb der Arbeitsübersicht-Card oberhalb der Liste eine kompakte Fokus-Card gerendert: Label „Bester nächster Einstieg" / „Start here", Titel aus `work.<key>`, Count, Severity-Punkt und Link auf das vorhandene `it.to`. Bei leerer Übersicht (`focus === null`) erscheint keine Fokus-Card; der bestehende Leerzustand bleibt unverändert. Kein Auto-Handeln, kein Backend.
+
+**Geänderte Dateien:** `apps/web/src/lib/workCenter.ts` (Helper + Severity-Rang), `tests/app/work-center.test.ts` (+4 Tests), `apps/web/src/pages/Start.tsx` (Fokus-Card), `apps/web/src/i18n.ts` (`start.focusLabel` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — 126 Dateien / 686 Tests (+4 Tests). `apps/web` `tsc --noEmit` grün. Biome + dependency-cruiser sauber. Die neuen Tests sichern: leere Übersicht → null, critical vor today vor later, innerhalb derselben Severity stabile Reihenfolge (erstes Item gewinnt), und das vorhandene Item-Ziel (`to`) wird genutzt.
+
+**Restlücken/Nicht-Ziele:** keine neue Task-Engine, keine neuen Datenquellen, kein Backend, keine Stufe-2-Arbeit, kein Redesign, keine Ticketserie. Es wird genau EIN Einstieg hervorgehoben (deterministisch aus der bestehenden Priorität); die volle Liste und „Alle Aufgaben" bleiben erhalten. Die Auswahl nutzt ausschließlich die vorhandene `buildWorkOverview`-Reihenfolge/Severity.
+
+**Commit-/Push-Hinweis:**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/workCenter.ts tests/app/work-center.test.ts apps/web/src/pages/Start.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(start): highlight the best next entry from the work overview (SCRUM-271)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

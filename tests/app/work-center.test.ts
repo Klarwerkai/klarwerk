@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { Conflict, Gap, KnowledgeObject } from "../../apps/web/src/api/types";
 import {
+  type WorkOverviewItem,
   buildWorkOverview,
   groupTasks,
   learningOpenSteps,
+  primaryWorkItem,
   severityForType,
   workSignalsFrom,
 } from "../../apps/web/src/lib/workCenter";
@@ -118,5 +120,40 @@ describe("SCRUM-247: workCenter — MyTasks-Gruppierung", () => {
   it("leere Eingabe → drei leere Gruppen (ehrlicher Leerzustand)", () => {
     const g = groupTasks<{ id: string; severity: "critical" | "today" | "later" }>([]);
     expect(g).toEqual({ critical: [], today: [], later: [] });
+  });
+});
+
+describe("SCRUM-271: primaryWorkItem", () => {
+  const item = (key: string, severity: WorkOverviewItem["severity"]): WorkOverviewItem => ({
+    key,
+    to: `/${key}`,
+    severity,
+    count: 1,
+  });
+
+  it("leere Übersicht → null (Leerzustand bleibt)", () => {
+    expect(primaryWorkItem([])).toBeNull();
+  });
+
+  it("wählt kritisch vor heute vor später", () => {
+    const picked = primaryWorkItem([
+      item("validation", "today"),
+      item("learning", "later"),
+      item("conflicts", "critical"),
+    ]);
+    expect(picked?.key).toBe("conflicts");
+  });
+
+  it("innerhalb derselben Dringlichkeit bleibt die bestehende Reihenfolge (stabil)", () => {
+    const picked = primaryWorkItem([
+      item("criticalGaps", "critical"),
+      item("conflicts", "critical"),
+    ]);
+    expect(picked?.key).toBe("criticalGaps");
+  });
+
+  it("nutzt das vorhandene Ziel des Items", () => {
+    const picked = primaryWorkItem([item("revalidation", "today")]);
+    expect(picked?.to).toBe("/revalidation");
   });
 });

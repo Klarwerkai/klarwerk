@@ -53,6 +53,20 @@ export function buildWorkOverview(signals: WorkSignals): WorkOverviewItem[] {
   })).filter((i) => i.count > 0);
 }
 
+// SCRUM-271: bester nächster Einstieg aus der vorhandenen Arbeitsübersicht — KEINE neue Engine,
+// keine neue Datenquelle. Deterministisch: kritisch vor heute vor später, innerhalb derselben
+// Dringlichkeit bleibt die bestehende Reihenfolge (stabile Sortierung). Null, wenn keine Signale.
+const SEVERITY_RANK: Record<WorkSeverity, number> = { critical: 0, today: 1, later: 2 };
+
+export function primaryWorkItem(items: readonly WorkOverviewItem[]): WorkOverviewItem | null {
+  if (items.length === 0) {
+    return null;
+  }
+  return (
+    [...items].sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity])[0] ?? null
+  );
+}
+
 // Signale aus den vorhandenen Rohdaten ableiten (echte Service-Reads, kein Backend-Umbau).
 export function workSignalsFrom(input: {
   board: readonly KnowledgeObject[];
