@@ -5474,3 +5474,41 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-196 — Lokale Chat-Oberfläche bereitstellen (Open WebUI) — Readiness
+**Datum:** 2026-06-27 · **Rolle:** Claude prüft/dokumentiert (Codex steuert, Pedi entscheidet Richtung). Docs-only; **keine** WebUI-/Docker-/Ollama-/Modell-Installation; kein Produktcode.
+
+### 1. Vorab-Befund
+- **Keine lokale Chat-Oberfläche** (Open WebUI o. Ä.) und **keine lokale Modellruntime** (kein Ollama/llama.cpp) in Code/Docker/Env; Suche `open-webui|webui|11434|OPENAI_BASE_URL|ollama|llama.cpp` ohne Implementierung (nur Dossier bestätigt Abwesenheit). Reasoner = Anthropic-API oder deterministischer Fallback.
+- **Klarwerk-Ask real & reichhaltig:** `POST /api/ask` → AnswerResult mit `knowledgeClass`/`gesichert`, `sources`, `trust` (ConfidenceBar), Reasoner-Status-Badge, Beispiele, Helpful, **Gap→Capture**; RBAC-geschützt. Quellengebunden, **kein** generischer Chat.
+- Keine `local-chat-ui-readiness.md` → Doku-Gap.
+
+### 2. Entscheidung
+Keine lokale Chat-UI/Runtime vorhanden; Klarwerk hat bereits eine überlegene wissensgebundene Ask-UI. Doku-Gap mit Readiness-Notiz schließen (inkl. Abgrenzung), **Partial** empfehlen.
+
+### 3. Minimaler Fix
+**Neu:** `docs/operations/local-chat-ui-readiness.md` — heutiger Zustand, **Unterschied Klarwerk-Ask vs. Open WebUI** (Tabelle: Quellenbindung/Validierung/Trust/ehrliche Lücke/Audit), Nutzen einer lokalen WebUI (Dev/PoC), **PoC-Schritte** (Runtime→WebUI→Auth→Datenfluss→Abgrenzung), Auth/Privacy/Datenfluss, **Done-Kriterien**, Nicht-Ziele, Empfehlung. **Kein Produktcode** (kein Doku-/Konfig-Bug aufgefallen).
+
+### 4. Geänderte Dateien
+NEU `docs/operations/local-chat-ui-readiness.md`; `docs/qm/claude-after-report.md`. Kein Produktcode/FE.
+
+### 5. Tests/Gates
+`npm run check` grün — 128 Dateien / 700 Tests. Kein FE berührt → `apps/web tsc --noEmit` nicht erforderlich.
+
+### 6. Restlücken / Nicht-Ziele
+Keine Open WebUI/Ollama/Modell installiert/verbunden; keine lokale Modellruntime; keine Nutzer/Logins in fremden Systemen. PoC erst nach lokaler Runtime (`inference-server-readiness.md`), als Dev-Werkzeug — nicht als End-User-Zugang zum Werkswissen.
+
+### 7. Empfehlung: **PARTIAL** (nicht Done)
+**Begründung (Ehrlichkeit):** Es existiert **keine** lokale Chat-Oberfläche und **keine** lokale Modellruntime → Kriterium **nicht** erfüllt. Klarwerk hat bereits eine produktive, **wissensgebundene** Ask-UI (Quellen/Trust/Validierung/ehrliche Lücke), die einem generischen Chat überlegen ist. Open WebUI bleibt ein **Dev-/PoC-Werkzeug** (erst nach lokaler Runtime sinnvoll), **kein** Ersatz für Ask/Knowledge OS → **Partial**.
+
+### 8. Commit-/Push-Hinweis (nur Doku)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add docs/operations/local-chat-ui-readiness.md docs/qm/claude-after-report.md
+git commit -m "docs(ops): local chat UI (Open WebUI) readiness (none today; Ask already source-bound) (SCRUM-196)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
