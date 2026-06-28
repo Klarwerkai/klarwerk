@@ -6326,3 +6326,42 @@ git commit -m "feat(validation): honest post-review outcome (usable vs still-rev
 git push
 ```
 Keine Jira-Änderungen durch Claude. Codex prüft Diff, führt Gates, korrigiert minimal, committet, pusht, wartet CI ab, schließt Jira.
+
+---
+
+## SCRUM-293 — Use-Flow konsistent: Nutzbarkeit/Trust/Quellen über KO-Detail/Library/Ask angleichen
+**Datum:** 2026-06-28 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung). **FE-Produkt-Slice** (DOM-freier Helper + 2 Produktstellen + i18n + Tests); keine Backend-/Reasoner-Änderung; kein neues Statusmodell; keine automatische/Fake-Validierung; kein Git/Jira durch Claude.
+
+### 1. Vorab-Befund
+- `koOverview` (KO-Detail) und `libraryMaturity` (Library) nutzen **denselben** `KoUsability`-Typ (ready/in-review/needs-work), aber **divergente Labels**: ready = „Produktionsnah nutzbar" (KO-Detail) vs „Nutzbar" (Library); needs-work = „Noch in Arbeit" vs „Zu prüfen" → echte Begriffs-Inkonsistenz.
+- Ask nutzt für die **Antwort** „Gesichert/Noch ungeprüft" + reviewGuard (SCRUM-250) — bereits ehrlich & konsistent mit „gesichert"; bewusst **nicht** verändert (kein Text-Aufblähen).
+
+### 2. Umsetzung
+- **Neuer geteilter, DOM-freier Helper** `useReadiness(usability)` → `{labelKey, hintKey, tone}` als **eine Quelle der Wahrheit** für die Use-Readiness-Sprache.
+- **KO-Detail**: Plaketten-Label + neue ehrliche **Hint-Zeile** aus `useReadiness`.
+- **Library**: `libraryMaturity`-META (Plakette **und** Reife-Filter-Chips) zieht Label/Tone aus `useReadiness` → identische Begriffe wie KO-Detail.
+- i18n DE/EN `use.ready/review/open.label` + `.hint` (ehrlich: „nutzbar" nur WEIL validiert; „in Prüfung" = noch nicht als gesichert nutzen; „zu prüfen" = erst bewerten lassen).
+
+### 3. Geänderte Dateien
+- NEU `apps/web/src/lib/useReadiness.ts`.
+- `apps/web/src/lib/libraryMaturity.ts` (META → useReadiness; Plakette+Filter konsistent).
+- `apps/web/src/pages/KnowledgeDetail.tsx` (Label via useReadiness + Hint-Zeile + Import).
+- `apps/web/src/i18n.ts` (`use.*` DE+EN).
+- NEU `tests/ko/use-readiness.test.ts` (kanonische Map; **Cross-Surface-Konsistenz** libraryMaturity==useReadiness; i18n DE/EN; Ehrlichkeit). `tests/library/library-maturity.test.ts` (Label-Erwartungen auf `use.*` angepasst).
+
+### 4. Tests/Gates
+`npm run check` grün — **132 Dateien / 756 Tests** (+4 netto). `apps/web tsc --noEmit` grün. Biome/depcruise grün.
+
+### 5. Restlücken/Nicht-Ziele
+- KO-Detail und Library nutzen jetzt **identische Begriffe** (Nutzbar/In Prüfung/Zu prüfen) für denselben Zustand; Trust/Status/Version/Quellen werden weiterhin aus den vorhandenen, nicht-widersprüchlichen Feldern gezeigt.
+- **Ask unverändert** (bereits ehrlich „gesichert/ungeprüft" + reviewGuard) — bewusst nicht aufgebläht. Alte `ko.use.*`/`lib.maturity.usable/review/open`-Keys bleiben unbenutzt im i18n (harmlos; können später entfernt werden).
+- Keine neue Suche/RAG/Reasoner-/Backend-Änderung; keine automatische Validierung; offene/ungeprüfte Inhalte bleiben „Zu prüfen" (nie nutzbar); validiertes Wissen führt unverändert in bestehende Use-Flows (Ask via askQuestionHref / KO-Detail / Library).
+
+### 6. Commit-/Push-Hinweis (nur Hinweis — Claude führt NICHT aus)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/useReadiness.ts apps/web/src/lib/libraryMaturity.ts apps/web/src/pages/KnowledgeDetail.tsx apps/web/src/i18n.ts tests/ko/use-readiness.test.ts tests/library/library-maturity.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(use-flow): shared, honest use-readiness vocabulary across KO detail & library (SCRUM-293)"
+git push
+```
+Keine Jira-Änderungen durch Claude. Codex prüft Diff/Gates, korrigiert minimal, committet, pusht, wartet CI ab, schließt Jira.

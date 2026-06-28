@@ -5,6 +5,7 @@
 import type { KnowledgeObject } from "../api/types";
 import { askQuestionHref } from "./askQuestion";
 import { type KoUsability, koOverview } from "./koOverview";
+import { useReadiness } from "./useReadiness";
 
 export type MaturityTone = "pos" | "warn" | "neutral";
 
@@ -20,12 +21,19 @@ export interface LibraryUseCta {
   kind: "ask" | "review";
 }
 
-// Usability → Klartext-Label + Tönung. „ready" (validiert) = nutzbar; „in-review" (in Prüfung /
-// Revalidierung) = in Prüfung; „needs-work" (offen) = zu prüfen.
+// SCRUM-293: Label + Tönung kommen aus der GETEILTEN Use-Readiness-Sprache (useReadiness), damit
+// Bibliothek und KO-Detail für denselben Zustand identische Begriffe zeigen („Nutzbar"/„In Prüfung"/
+// „Zu prüfen"). „all" behält seinen eigenen Filter-Key (maturityFilterLabelKey).
 const META: Record<KoUsability, { labelKey: string; tone: MaturityTone }> = {
-  ready: { labelKey: "lib.maturity.usable", tone: "pos" },
-  "in-review": { labelKey: "lib.maturity.review", tone: "warn" },
-  "needs-work": { labelKey: "lib.maturity.open", tone: "neutral" },
+  ready: { labelKey: useReadiness("ready").labelKey, tone: useReadiness("ready").tone },
+  "in-review": {
+    labelKey: useReadiness("in-review").labelKey,
+    tone: useReadiness("in-review").tone,
+  },
+  "needs-work": {
+    labelKey: useReadiness("needs-work").labelKey,
+    tone: useReadiness("needs-work").tone,
+  },
 };
 
 export function libraryMaturity(ko: KnowledgeObject): LibraryMaturity {

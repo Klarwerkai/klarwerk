@@ -64,6 +64,7 @@ import {
   formatSourceComment,
   isSourceContributionValid,
 } from "../lib/sourceContribution";
+import { useReadiness } from "../lib/useReadiness";
 import { isReturnedForRework } from "../lib/validationStatus";
 
 interface EditState {
@@ -376,7 +377,7 @@ export function KnowledgeDetail(): JSX.Element {
                   <span
                     className={`rounded-pill px-2.5 py-0.5 font-mono text-[11px] font-semibold uppercase ${USABILITY_TONE[ov.usability]}`}
                   >
-                    {t(`ko.use.${ov.usability}`)}
+                    {t(useReadiness(ov.usability).labelKey)}
                   </span>
                   <StatusPill status={ov.status} />
                   <span className="font-mono text-[12px] text-muted">
@@ -388,6 +389,10 @@ export function KnowledgeDetail(): JSX.Element {
                     {t("ko.ovAttachments", { n: ov.attachmentCount })}
                   </span>
                 </div>
+                {/* SCRUM-293: konsistenter, ehrlicher Readiness-Hinweis (gleiche Sprache wie Library). */}
+                <p className="mt-1.5 text-[12px] leading-relaxed text-muted">
+                  {t(useReadiness(ov.usability).hintKey)}
+                </p>
                 {/* SCRUM-259: nächste Handlung als ehrliche CTA auf vorhandene Routen/Bereiche. */}
                 <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
                   <p className="text-[12.5px] text-muted">

@@ -36,25 +36,26 @@ function ko(overrides: Partial<KnowledgeObject>): KnowledgeObject {
 
 // SCRUM-262: Reife/Nutzbarkeit je Treffer ehrlich aus dem KO ableiten.
 describe("SCRUM-262: libraryMaturity", () => {
+  // SCRUM-293: Labels kommen jetzt aus der geteilten Use-Readiness-Sprache (use.*), identisch zu KO-Detail.
   it("validiertes KO → nutzbar (pos)", () => {
     const m = libraryMaturity(ko({ status: "validiert", trust: 100 }));
     expect(m.usability).toBe("ready");
-    expect(m.labelKey).toBe("lib.maturity.usable");
+    expect(m.labelKey).toBe("use.ready.label");
     expect(m.tone).toBe("pos");
   });
 
   it("zugewiesenes offenes KO → in Prüfung (warn)", () => {
     const m = libraryMaturity(ko({ status: "offen", assignments: ["u-2"] }));
     expect(m.usability).toBe("in-review");
-    expect(m.labelKey).toBe("lib.maturity.review");
+    expect(m.labelKey).toBe("use.review.label");
     expect(m.tone).toBe("warn");
   });
 
   it("offenes KO → zu prüfen (neutral) und NIE nutzbar", () => {
     const m = libraryMaturity(ko({ status: "offen", assignments: [] }));
     expect(m.usability).toBe("needs-work");
-    expect(m.labelKey).toBe("lib.maturity.open");
-    expect(m.labelKey).not.toBe("lib.maturity.usable");
+    expect(m.labelKey).toBe("use.open.label");
+    expect(m.labelKey).not.toBe("use.ready.label");
   });
 });
 
@@ -95,11 +96,11 @@ describe("SCRUM-267: filterByMaturity / countByMaturity", () => {
     });
   });
 
-  it("maturityFilterLabelKey: all eigener Key, sonst Plaketten-Label", () => {
+  it("maturityFilterLabelKey: all eigener Key, sonst geteiltes Use-Readiness-Label", () => {
     expect(maturityFilterLabelKey("all")).toBe("lib.maturity.all");
-    expect(maturityFilterLabelKey("ready")).toBe("lib.maturity.usable");
-    expect(maturityFilterLabelKey("in-review")).toBe("lib.maturity.review");
-    expect(maturityFilterLabelKey("needs-work")).toBe("lib.maturity.open");
+    expect(maturityFilterLabelKey("ready")).toBe("use.ready.label");
+    expect(maturityFilterLabelKey("in-review")).toBe("use.review.label");
+    expect(maturityFilterLabelKey("needs-work")).toBe("use.open.label");
   });
 });
 

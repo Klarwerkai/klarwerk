@@ -412,6 +412,14 @@ const de = {
   "ko.use.ready": "Produktionsnah nutzbar",
   "ko.use.in-review": "In Prüfung",
   "ko.use.needs-work": "Noch in Arbeit",
+  // SCRUM-293: GETEILTE Use-Readiness-Sprache (KO-Detail + Library identisch) — ehrlich, ohne
+  // Fake-Freigabe: „nutzbar" nur, WEIL validiert (Status/Trust tragen).
+  "use.ready.label": "Nutzbar",
+  "use.ready.hint": "Validiert — quellengebunden nutzbar (Status/Trust tragen).",
+  "use.review.label": "In Prüfung",
+  "use.review.hint": "Bewertung läuft — noch nicht als gesichert nutzen.",
+  "use.open.label": "Zu prüfen",
+  "use.open.hint": "Offen/ungeprüft — erst prüfen/bewerten lassen.",
   "ko.ovTrust": "Trust",
   "ko.ovSources": "{{n}} Quellen",
   "ko.ovAttachments": "{{n}} Anhänge",
@@ -1584,6 +1592,14 @@ const en: typeof de = {
   "ko.use.ready": "Ready to use",
   "ko.use.in-review": "In review",
   "ko.use.needs-work": "Still in progress",
+  // SCRUM-293: SHARED use-readiness wording (KO detail + Library identical) — honest, no fake
+  // approval: "usable" only because validated (status/trust support it).
+  "use.ready.label": "Usable",
+  "use.ready.hint": "Validated — usable source-bound (status/trust support it).",
+  "use.review.label": "In review",
+  "use.review.hint": "Review in progress — don't use as secured yet.",
+  "use.open.label": "To review",
+  "use.open.hint": "Open/unverified — get it reviewed first.",
   "ko.ovTrust": "Trust",
   "ko.ovSources": "{{n}} sources",
   "ko.ovAttachments": "{{n}} attachments",
