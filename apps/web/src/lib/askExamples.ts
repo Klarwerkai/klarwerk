@@ -19,3 +19,22 @@ export const ASK_EXAMPLES: readonly AskExample[] = [
   // Bewusst offen (Linie L4 / Dosierwert / Schichtwechsel) → ehrliche Wissenslücke → Capture.
   { id: "dosing", questionKey: "ask.example.dosing", kind: "gap" },
 ];
+
+// SCRUM-266: DOM-freier View-Mapper — knappe Ergebnis-Erwartung je Beispiel-Art. Macht die zwei
+// ehrlichen Ausgänge sichtbar (quellengebundene Antwort vs. Wissenslücke) und liefert eine dezente
+// Tönung. Reine Ableitung aus `kind` — keine Frage-Ausführung, kein Backend.
+export type AskExpectationTone = "answer" | "gap";
+
+export interface AskExpectation {
+  labelKey: string; // i18n-Key für die kurze Erwartung
+  tone: AskExpectationTone;
+}
+
+const EXPECTATION: Record<AskExampleKind, AskExpectation> = {
+  answerable: { labelKey: "ask.expect.answer", tone: "answer" },
+  gap: { labelKey: "ask.expect.gap", tone: "gap" },
+};
+
+export function askExpectation(kind: AskExampleKind): AskExpectation {
+  return EXPECTATION[kind];
+}

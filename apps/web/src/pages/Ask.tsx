@@ -8,7 +8,7 @@ import { useKos, useReasonerStatus } from "../api/hooks";
 import type { AnswerResult } from "../api/types";
 import { ConfidenceBar } from "../components/trust";
 import { Button, Card, PageHeader, SectionLabel } from "../components/ui";
-import { ASK_EXAMPLES } from "../lib/askExamples";
+import { ASK_EXAMPLES, type AskExpectationTone, askExpectation } from "../lib/askExamples";
 import { selectAnswer } from "../lib/askResponse";
 import { answerStatus, sourceRefs } from "../lib/askView";
 import { captureGapHref } from "../lib/captureFromGap";
@@ -30,6 +30,12 @@ const REASONER_TONE: Record<ReasonerBadgeTone, string> = {
   pos: "bg-trust-pos-bg text-trust-pos-text",
   warn: "bg-trust-warn-bg text-trust-warn-text",
   neutral: "bg-page text-muted",
+};
+
+// SCRUM-266: Tönung der Ergebnis-Erwartung je Beispiel (quellengebundene Antwort vs. Wissenslücke).
+const EXPECT_TONE: Record<AskExpectationTone, string> = {
+  answer: "bg-trust-pos-bg text-trust-pos-text",
+  gap: "bg-trust-warn-bg text-trust-warn-text",
 };
 
 export function Ask(): JSX.Element {
@@ -97,16 +103,25 @@ export function Ask(): JSX.Element {
         <span className="font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
           {t("ask.examplesLabel")}
         </span>
-        {ASK_EXAMPLES.map((ex) => (
-          <button
-            key={ex.id}
-            type="button"
-            onClick={() => setQ(t(ex.questionKey))}
-            className="rounded-pill border border-hairline px-2.5 py-1 text-[12px] text-muted hover:border-ink/30 hover:text-text"
-          >
-            {t(ex.questionKey)}
-          </button>
-        ))}
+        {ASK_EXAMPLES.map((ex) => {
+          // SCRUM-266: knappe Ergebnis-Erwartung je Beispiel (dezent getönt); Klick unverändert.
+          const expect = askExpectation(ex.kind);
+          return (
+            <button
+              key={ex.id}
+              type="button"
+              onClick={() => setQ(t(ex.questionKey))}
+              className="inline-flex items-center gap-1.5 rounded-pill border border-hairline px-2.5 py-1 text-[12px] text-muted hover:border-ink/30 hover:text-text"
+            >
+              <span>{t(ex.questionKey)}</span>
+              <span
+                className={`rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${EXPECT_TONE[expect.tone]}`}
+              >
+                {t(expect.labelKey)}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {result ? (

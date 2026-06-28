@@ -4175,3 +4175,30 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-266 — Ask: Beispiel-Fragen mit Ergebnis-Erwartung kennzeichnen
+**Datum:** 2026-06-27 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung).
+
+**Vorab-Befund (read-only):** Aus SCRUM-265 liefert `askExamples.ts` `ASK_EXAMPLES` mit `kind` („answerable"/„gap"); `Ask.tsx` rendert sie als klickbare Chips (Klick setzt nur `q`, kein Auto-Ask). Bisher zeigte der Chip nur die Frage — keine Ergebnis-Erwartung. Kein P0/P1.
+
+**Umsetzung (minimal, DOM-frei):** Helper `askExamples.ts` um einen reinen View-Mapper `askExpectation(kind) → { labelKey, tone }` erweitert: `answerable` → „findet validiertes Wissen" (tone „answer"), `gap` → „zeigt Wissenslücke" (tone „gap"). In `Ask.tsx` zeigt jeder Chip jetzt zusätzlich ein dezent getöntes Erwartungs-Badge (answer = pos-Tönung, gap = warn-Tönung) neben der Frage — answerable und gap sind damit visuell und semantisch unterscheidbar. Klickverhalten exakt gleich: der Button setzt weiterhin nur das Eingabefeld (`setQ(t(questionKey))`), keine Anfrage. Antwort-/Gap-/Capture-/Helpful-Pfade unverändert. Kein Backend, kein Reasoner-/RAG-/Vector-Umbau, keine neuen Beispiele.
+
+**Geänderte Dateien:** `apps/web/src/lib/askExamples.ts` (Mapper + Typen), `tests/ask/ask-examples.test.ts` (+3 Tests), `apps/web/src/pages/Ask.tsx` (Badge + EXPECT_TONE), `apps/web/src/i18n.ts` (`ask.expect.*` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — 126 Dateien / 669 Tests (+3 Tests). `apps/web` `tsc --noEmit` grün. Biome + dependency-cruiser sauber. Die neuen Tests sichern: answerable → Antwort-Erwartung, gap → Lücken-Erwartung, beide unterscheidbar (Tönung + Label), jedes Beispiel hat eine auflösbare `ask.expect.`-Erwartung.
+
+**Restlücken/Nicht-Ziele:** kein Backend, keine automatische Frage-Ausführung, keine RAG-/Vector-/Reasoner-Architektur, kein Redesign, keine Stufe-2-Arbeit, keine Ticketserie. Die Erwartung ist ehrliche Orientierung (was das Beispiel demonstriert), keine Garantie über das konkrete Reasoner-Ergebnis; sie bleibt konsistent mit dem deutschsprachigen Demo-Bestand (EN-Hinweis aus SCRUM-265 bleibt gültig).
+
+**Commit-/Push-Hinweis:**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/askExamples.ts tests/ask/ask-examples.test.ts apps/web/src/pages/Ask.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(ask): label example questions with result expectation (SCRUM-266)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.

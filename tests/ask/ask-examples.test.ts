@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ASK_EXAMPLES } from "../../apps/web/src/lib/askExamples";
+import { ASK_EXAMPLES, askExpectation } from "../../apps/web/src/lib/askExamples";
 
 // SCRUM-265: produktnahe Beispiel-Fragen als Startimpuls (kein Auto-Ask, nur Vorlage).
 describe("SCRUM-265: askExamples", () => {
@@ -22,5 +22,26 @@ describe("SCRUM-265: askExamples", () => {
     const dosing = ASK_EXAMPLES.find((e) => e.id === "dosing");
     expect(dosing).toBeDefined();
     expect(dosing?.kind).toBe("gap");
+  });
+});
+
+// SCRUM-266: je Beispiel-Art eine knappe, unterscheidbare Ergebnis-Erwartung.
+describe("SCRUM-266: askExpectation", () => {
+  it("answerable → Antwort-Erwartung, gap → Lücken-Erwartung", () => {
+    expect(askExpectation("answerable")).toEqual({ labelKey: "ask.expect.answer", tone: "answer" });
+    expect(askExpectation("gap")).toEqual({ labelKey: "ask.expect.gap", tone: "gap" });
+  });
+
+  it("answerable und gap sind unterscheidbar (Tönung und Label)", () => {
+    const a = askExpectation("answerable");
+    const g = askExpectation("gap");
+    expect(a.tone).not.toBe(g.tone);
+    expect(a.labelKey).not.toBe(g.labelKey);
+  });
+
+  it("jedes Beispiel hat eine auflösbare Erwartung", () => {
+    for (const e of ASK_EXAMPLES) {
+      expect(askExpectation(e.kind).labelKey.startsWith("ask.expect.")).toBe(true);
+    }
   });
 });
