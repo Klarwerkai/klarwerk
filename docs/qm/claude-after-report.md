@@ -4812,3 +4812,52 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-213 — Secrets-Management einrichten (Betreiber-Runbook, docs-only)
+**Datum:** 2026-06-27 · **Rolle:** Claude dokumentiert (Codex steuert, Pedi entscheidet Richtung). Docs-only; keine echten Secrets; kein externer Secret-Store installiert.
+
+### 1. Vorab-Befund
+- **`.env.example` vorhanden** und gut strukturiert (Header „NIEMALS .env committen") mit dem vollständigen Secret-/Konfig-Inventar: `DATABASE_URL`, `ANTHROPIC_API_KEY` (+`REASONER_MODEL`), `SMTP_USER/PASS` (+Host/Port/From), `OIDC_CLIENT_SECRET` (+öffentliche OIDC-IDs), `EXTERNAL_SEARCH*`, Server-Config. Optional-Design: fehlende Schlüssel → sicherer Fallback (deterministischer Reasoner / kein Versand / SSO ehrlich deaktiviert).
+- **`.gitignore`** schließt `.env` und `.env.local` aus.
+- **Server-Env-Nutzung** (`services/*`): `DATABASE_URL`, `ANTHROPIC_API_KEY`, `OIDC_*`, `SMTP_*`, `APP_BASE_URL`, `CANONICAL_HOST`, `COOKIE_SECURE`, `PORT`, `SEED_ALLOW_PROD`.
+- **Client (`apps/web/src`)**: nur Build-Flags `import.meta.env.DEV/PROD` — **keine** `VITE_*`-Secrets, keine API-Keys (G-7 erfüllt).
+- **Session-Tokens**: opake Zufallswerte (`randomBytes(32)`, serverseitig gespeichert) → **kein** symmetrisches Signaturgeheimnis; OIDC-Verifikation via **JWKS** (öffentliche Schlüssel).
+- **Hardcoded-Secret-Scan** (ohne node_modules/tests/docs): **keine** echten Secrets gefunden (nur i18n-Label `"password"`). 
+- Einziger Default-Credential-Hinweis: Pre-Launch-Gate-Passwort steht im **Ops-Doc** `pre-launch-protection.md` (bcrypt-Hash für Traefik + Klartext-Hinweis) — temporäres Vorab-Gate, **kein Code-Secret**; vom Betreiber zu ändern.
+- **Kein** `docs/operations/secrets-management.md` vorhanden → Doku-Gap.
+
+### 2. Was ist bereits erfüllt
+- Secrets sind aus Code/Repo **ausgeschlossen** (kein hardcoded Secret, `.env`/`.env.local` gitignored, nur Platzhalter in `.env.example`).
+- Runtime-Secrets werden **serverseitig via Env** erwartet; sichere Fallbacks ohne Werte.
+- **Client-Bundle frei von Secrets** (G-7) — belegt.
+- Hosting-/TLS-/Vorab-Schutz dokumentiert (`deploy-hetzner.md`, `pre-launch-protection.md`).
+- Es fehlte nur das **konsolidierte Secrets-Runbook** (Inventar/Stores/Rotation/Least-Privilege/Scanning) — ergänzt.
+
+### 3. Minimaler Fix
+**Neu:** `docs/operations/secrets-management.md` — Betreiber-Runbook mit: **Secret-Inventar** (Tabelle inkl. „kein App-Signing-Secret nötig" + Trennung Secret vs. Nicht-Secret-Config); **erlaubte/verbotene Speicherorte**; **Store pro Umgebung** (Dev `.env.local`, Prod Coolify-Secrets, optional externer Store als Empfehlung — nicht installiert); **lokale Entwicklung**; **Produktion/Hosting**; **Rotation + Notfallrotation** (inkl. Session-Invalidierung + Audit-Prüfung); **Least Privilege**; **Client-Bundle-Regel (G-7)**; **Secret Scanning/Review** (gitleaks-Empfehlung + Quartals-Review-Verweis); **offene Betreiberpflichten**. Referenziert Audit append-only/Analytics-Audit, RBAC/Auth, `gdpr-compliance-runbook.md` und `deploy-hetzner.md`.
+
+**Kein Produktcode geändert** — es wurde kein echter Security-Bug gefunden (Inventar sauber, keine Client-/Repo-Secrets).
+
+### 4. Geänderte Dateien
+NEU `docs/operations/secrets-management.md`; `docs/qm/claude-after-report.md` (dieser Eintrag). Kein Produktcode, kein FE.
+
+### 5. Tests/Gates
+`npm run check` grün — 128 Dateien / 700 Tests. Kein FE berührt → `apps/web tsc --noEmit` nicht erforderlich.
+
+### 6. Restlücken / Nicht-Ziele
+- **Externer Secret-Store** (Vault/Doppler/Cloud SM) als Empfehlung dokumentiert, **nicht installiert** (Sandbox-/Scope-Grenze).
+- **Secret-Scanning in CI** (gitleaks/trufflehog) = Ops-Aufgabe, nicht eingerichtet.
+- **Default-Credentials** (Pre-Launch-Gate, Demo-Seed-Admin) müssen vom Betreiber vor Produktion geändert werden — im Runbook benannt.
+- Keine echten Secrets erzeugt; keine Architektur-/Persistenzarbeit; keine Tickets.
+
+### 7. Commit-/Push-Hinweis (nur Doku)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add docs/operations/secrets-management.md docs/qm/claude-after-report.md
+git commit -m "docs(ops): secrets-management runbook (SCRUM-213)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
