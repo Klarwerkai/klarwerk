@@ -14,6 +14,7 @@ import { useSession } from "../app/AuthContext";
 import { useRole } from "../app/RoleContext";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { Card, PageHeader } from "../components/ui";
+import { KNOWLEDGE_CYCLE } from "../lib/knowledgeCycle";
 import { missionsForRole } from "../lib/missions";
 import { stufe2FeatureLabelKeys, stufe2HintKind } from "../lib/stufe2Hint";
 import {
@@ -93,6 +94,34 @@ export function Start(): JSX.Element {
           </Link>
         }
       />
+      {/* SCRUM-261: Knowledge-OS-Kreis als vorhandene Arbeitsführung (kein Chatbot). */}
+      <div className="mb-5">
+        <h2 className="text-[15px] font-semibold text-ink">{t("cycle.title")}</h2>
+        <p className="mb-3 mt-0.5 text-[12.5px] text-muted">{t("cycle.subtitle")}</p>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {KNOWLEDGE_CYCLE.map((step, i) => (
+            <Link
+              key={step.id}
+              to={step.to}
+              className="group rounded-card border border-hairline bg-surface p-4 transition hover:border-ink/30"
+            >
+              <div className="flex items-center gap-2">
+                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-ink font-mono text-[11px] font-semibold text-white">
+                  {i + 1}
+                </span>
+                <span className="text-[14px] font-semibold text-ink">{t(step.labelKey)}</span>
+                {i < KNOWLEDGE_CYCLE.length - 1 ? (
+                  <ArrowRight
+                    size={15}
+                    className="ml-auto text-muted-2 transition group-hover:translate-x-0.5 group-hover:text-ink"
+                  />
+                ) : null}
+              </div>
+              <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">{t(step.descKey)}</p>
+            </Link>
+          ))}
+        </div>
+      </div>
       {missions.length > 0 ? (
         <div className="mb-5">
           <h2 className="text-[15px] font-semibold text-ink">{t("missions.title")}</h2>

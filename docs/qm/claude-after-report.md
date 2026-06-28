@@ -4040,3 +4040,30 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-261 — Start: Knowledge-OS-Kreis als klare Arbeitsführung sichtbar machen
+**Datum:** 2026-06-27 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung).
+
+**Vorab-Befund (read-only):** `Start.tsx` zeigt bereits rollenbewusste Missionen (`missions.ts`), eine datengetriebene Arbeitsübersicht (`workCenter.ts#buildWorkOverview`/`workSignalsFrom`), KPIs und den ehrlichen Stufe-2-Hinweis (`stufe2Hint.ts`). `ArrowRight` und `Link` sind importiert; vorhandene Routen u. a. `/erfassen`, `/validierung`, `/fragen`, `/bibliothek`, `/lebenszyklus`. Lücke: keine kompakte, sofort verständliche Darstellung des Knowledge-OS-Kreises (Capture → Validate → Use → Maintain), die zeigt, dass Klarwerk kein Chatbot ist. Kein P0/P1.
+
+**Umsetzung (minimal, DOM-frei):** Neuer reiner Helfer `apps/web/src/lib/knowledgeCycle.ts` (`KNOWLEDGE_CYCLE`: vier Schritte `capture/validate/use/maintain` mit labelKey/descKey und NUR vorhandenen Routen `/erfassen`, `/validierung`, `/fragen`, `/lebenszyklus`). In `Start.tsx` direkt unter dem PageHeader eine kompakte Flow-Section: Titel + Untertitel („Kein Chatbot: Wissen wird erfasst, validiert, genutzt und aktuell gehalten.") und vier nummerierte Schritt-Karten (1→4 mit Pfeil), jede ein `<Link>` auf die bestehende Route. Missionen, Arbeitsübersicht, KPIs und Stufe-2-Hinweis unverändert. Keine neue Navigation, keine neuen Datenquellen, keine Mutation, kein Backend.
+
+**Geänderte Dateien:** NEU `apps/web/src/lib/knowledgeCycle.ts`, NEU `tests/app/knowledge-cycle.test.ts` (3 Tests); geändert `apps/web/src/pages/Start.tsx` (Flow-Section), `apps/web/src/i18n.ts` (`cycle.*` DE/EN), `docs/qm/claude-after-report.md`.
+
+**Tests/Gates:** `npm run check` grün — 123 Dateien / 656 Tests (+1 Datei, +3 Tests). `apps/web` `tsc --noEmit` grün. Biome + dependency-cruiser sauber. Der neue Test sichert: genau vier Schritte in Reihenfolge capture→validate→use→maintain, Ziele exakt die vorhandenen Routen, nicht-leere Label-/Beschreibungs-Keys.
+
+**Restlücken/Nicht-Ziele:** keine neuen Datenquellen, keine neue Engine, keine neue Navigation, keine Backend-Änderung, keine Stufe-2-Arbeit, keine Metamorphose-/Architektur-Dokumente, kein RAG/Vector/Reasoner-Umbau, keine Ticketserie, keine Fake-Funktionen/Mutationen. „Use" zeigt auf `/fragen` (aktiver, quellengebundener Nutzungsfluss); `/bibliothek` bliebe als Alternative möglich. Die Section ist reine Arbeitsführung über bestehende Routen.
+
+**Commit-/Push-Hinweis:**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+npm run check
+(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)
+git add apps/web/src/lib/knowledgeCycle.ts tests/app/knowledge-cycle.test.ts apps/web/src/pages/Start.tsx apps/web/src/i18n.ts docs/qm/claude-after-report.md
+git commit -m "feat(start): show knowledge-OS cycle as clear work guidance (SCRUM-261)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
