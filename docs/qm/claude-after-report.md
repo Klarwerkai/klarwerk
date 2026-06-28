@@ -5354,3 +5354,44 @@ git push
 ```
 
 No Jira changes by Claude. No tickets closed. No new tickets.
+
+---
+
+## SCRUM-199 — Inferenz-Server aufsetzen (vLLM / TGI) — Readiness-/Entscheidung
+**Datum:** 2026-06-27 · **Rolle:** Claude prüft/dokumentiert (Codex steuert, Pedi entscheidet Richtung). Docs-only; **kein** Container/GPU/Modell/OpenAI-API/Infra-Änderung; kein Produktcode.
+
+### 1. Vorab-Befund
+- **Provider real:** **Anthropic** (`anthropicClient`, `${baseUrl}/v1/messages`, `x-api-key`; aktiv nur mit `ANTHROPIC_API_KEY`, `REASONER_MODEL` Default `claude-sonnet-4-6`) **+ deterministischer Fallback** (`DeterministicProvider`, kein Modell/Netz). Auto-Fallback bei Modellfehler (`service.ts`).
+- **Kein OpenAI-kompatibler Endpoint:** `baseUrl` existiert, ist aber (a) **Anthropic-Protokoll** und (b) **NICHT env-verdrahtet** (`createModelClientFromEnv` übergibt nur apiKey+model; Default hartkodiert) → ohne Codeänderung nicht auf self-hosted umlenkbar.
+- **Kein vLLM/TGI/Ollama/llama.cpp** in Code/Docker/Env; `.env.example` nur ANTHROPIC_API_KEY+REASONER_MODEL; compose nur App+Postgres(+n8n Dev). Doku-Treffer (Dossier) **bestätigen Abwesenheit**.
+- **Signale real:** `/api/reasoner/status`, `/api/ai-status`, `/api/model-runs` (provider/demo/fallback/status + Latenz). **Kein** Rate-Limit/Quota, **keine** Token-/Kostenerfassung für Inferenz.
+- Keine `inference-server-readiness.md` → Doku-Gap.
+- **Lokaler In-Memory-Smoke (real, kein Modellcall/Netz):** status=`{active:false,provider:"deterministic",mode:"deterministic"}`; ai-status identisch; `POST /api/ask`→200 (deterministisch); model-runs `provider=deterministic, demo=true, fallback=false`.
+
+### 2. Entscheidung
+Swap-fähige Architektur + Fallback + Signale real, aber **kein** Inferenz-Server läuft/vorbereitet. Doku-Gap mit Readiness-/Entscheidungsnotiz schließen; **Partial** empfehlen (Honesty-Leitplanke).
+
+### 3. Minimaler Fix
+**Neu:** `docs/operations/inference-server-readiness.md` — Provider-Architektur, deterministischer Fallback, externer Anthropic-Provider, **fehlender vLLM/TGI/Ollama/OpenAI-Server** (+ `baseUrl`-nicht-env-verdrahtet als ehrlicher Enabler-Hinweis), Health/ModelRun-Signale (+Smoke), Anforderungen für später (GPU/Container/Modell/Adapter/Auth/TLS/Rate-Limit/Monitoring/Kosten/DSGVO/Rollback), Auswahl vLLM-vs-TGI-vs-Ollama, Nicht-Ziele, Empfehlung. **Kein Produktcode** (auch der `baseUrl`-Enabler bewusst nicht gefixt).
+
+### 4. Geänderte Dateien
+NEU `docs/operations/inference-server-readiness.md`; `docs/qm/claude-after-report.md`. Kein Produktcode/FE.
+
+### 5. Tests/Gates
+`npm run check` grün — 128 Dateien / 700 Tests. Kein FE berührt → `apps/web tsc --noEmit` nicht erforderlich. Zusätzlich lokaler In-Memory-HTTP-Smoke (status/ai-status/ask/model-runs), Server danach gestoppt.
+
+### 6. Restlücken / Nicht-Ziele
+Kein Inferenz-Server/GPU/Modell/Container; kein OpenAI-Client; `baseUrl`/`REASONER_PROVIDER` nicht env-konfigurierbar; kein Rate-Limit/Cost-Control für Inferenz. Spätere Einrichtung = Produkt-/Ops-Entscheidung in dokumentierter Reihenfolge.
+
+### 7. Empfehlung: **PARTIAL / Blocked-on-product-/ops-decision** (nicht Done)
+**Begründung (Ehrlichkeit):** Anbieteragnostische Architektur (`ReasonerProvider`/`ModelClient`) + Anthropic-Adapter + deterministischer Fallback + Signale sind real — aber es **läuft kein** Inferenz-Server und **keiner ist vorbereitet** (kein vLLM/TGI/Ollama, kein OpenAI-Client, baseUrl nicht env-verdrahtet). Das Kriterium „aufgesetzt" ist **nicht** erfüllt → **Partial**; Einrichtung als spätere Produkt-/Ops-Entscheidung.
+
+### 8. Commit-/Push-Hinweis (nur Doku)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add docs/operations/inference-server-readiness.md docs/qm/claude-after-report.md
+git commit -m "docs(ops): inference-server readiness (Anthropic+deterministic today, no vLLM/TGI/Ollama) (SCRUM-199)"
+git push
+```
+
+No Jira changes by Claude. No tickets closed. No new tickets.
