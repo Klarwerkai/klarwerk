@@ -7250,3 +7250,37 @@ git commit -m "feat(editor): compact orientation card at detailed-content field 
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-318 — Beta KO Detail Lesemodus für ausführlichen Inhalt schärfen v0
+**Datum:** 2026-06-29 · **Rolle:** Claude (Umsetzung) · **Status:** umgesetzt, Gates grün
+
+**Vorab-Befund.** `git status -sb` sauber (nur untracked Infra-Doc). KO-Detail Lesemodus (`apps/web/src/pages/KnowledgeDetail.tsx`) rendert unter `SectionLabel ko.statement` bei vorhandenem `ko.bodyHtml` ein `<SanitizedHtml className="prose-kw …">`, sonst Fallback auf `ko.statement`. `.prose-kw` (inkl. SCRUM-314 `.panel-*`) existiert in `index.css`. Lücke: `bodyHtml` wirkt wie nackter HTML-Block ohne Knowledge-Seiten-Rahmung/Orientierung.
+
+**Umsetzung (v0).**
+1. **DOM-freier Helfer** `apps/web/src/lib/bodyReadMode.ts` (NEU): reine String-/Regex-Erkennung (keine DOM-Abhängigkeit, keine Parsing-Engine, nichts wird ausgewertet/gerendert). `hasBody` (via `isEmptyHtml` → leeres/`<p></p>` zählt nicht), `hasBodyBlocks` (Regex `\bpanel(?:-(?:info|note|warning|success))?\b` auf den statischen Block-Klassen), `bodyReadMode(bodyHtml)` → `{hasBody, hasBlocks}`. i18n-Key-Konstanten `BODY_READ_TITLE/NOTE/BLOCKS_KEY`.
+2. **KO-Detail Read-Card**: nur bei vorhandenem `ko.bodyHtml` umschließt jetzt eine leichte Card (`rounded-card border bg-surface`) das `SanitizedHtml`. Kopf: Titel „Ausführlicher Inhalt aus dem Knowledge-Editor" + optionaler Chip „strukturierter Inhalt" (wenn `hasBlocks`). Fuß: kurzer ehrlicher Hinweis, dass Blöcke/KI redaktionelle Struktur sind und Status/Trust/Quellen maßgeblich bleiben. Statement-Fallback unverändert.
+3. **i18n** `ko.body.readTitle/readNote/readBlocksChip` DE+EN.
+4. **Tests** `tests/app/body-read-mode.test.ts` (NEU, DOM-frei): leeres/whitespace-Body = kein Body; panel/panel-info/-note/-warning/-success-Erkennung; kein Fehlalarm bei „Panel" als Fließtext; `bodyReadMode`-Kombination; stabile i18n-Keys DE+EN; Ehrlichkeit (Status/Quellen im Hinweis).
+
+**Bewusst nicht umgesetzte Gaps (später).** Keine Auswertung/Zählung einzelner Blocktypen (nur „enthält Blöcke ja/nein"). Kein Inhaltsverzeichnis/Anker aus H2/H3. Keine Lesezeit/Wortzahl. Keine Sanitizer-/HTML-Änderung, kein neuer Editor, keine Parsing-Engine über die einfachen Marker hinaus.
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/bodyReadMode.ts` (NEU)
+- `apps/web/src/pages/KnowledgeDetail.tsx` (Read-Card um SanitizedHtml + Import)
+- `apps/web/src/i18n.ts` (`ko.body.*` DE+EN)
+- `tests/app/body-read-mode.test.ts` (NEU)
+
+**Tests/Gates.** `npm run check` grün — **142 Dateien / 849 Tests**. Gezielt: `npx vitest run tests/app/body-read-mode.test.ts` → 5/5 grün. `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün. SanitizedHtml/Sanitizer/`.prose-kw` unverändert → Body-Blöcke bleiben sichtbar; Statement-Fallback unverändert; Status/Trust/Quellen weder ersetzt noch beschönigt.
+
+**Nicht-Ziele eingehalten.** Kein neuer Editor, keine neue Toolbar-Logik, keine Body-Parsing-Engine über einfache Marker hinaus, kein RAG/neue Suche/Local-LLM, keine Auto-Validierung, kein Auto-Speichern, keine Backend-/Datenmodelländerung, keine Team-2/3/4-Dateien, keine Migration/Deployment. Nur in `/Users/peterkohnert/Documents/dev_Klarwerk`; untracked Infra-Doc unberührt.
+
+**Commit-/Push-Hinweis (nur Hinweis — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/bodyReadMode.ts apps/web/src/pages/KnowledgeDetail.tsx apps/web/src/i18n.ts tests/app/body-read-mode.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(ko-detail): sharpen read-mode for detailed content with editor-content framing (SCRUM-318)"
+git push
+```
+Kein Git/Push/Jira durch Claude.

@@ -41,6 +41,12 @@ import {
   TextInput,
 } from "../components/ui";
 import { applyBodyAssist, applyBodyAssistBlock, bodyTextForAssist } from "../lib/bodyAiAssist";
+import {
+  BODY_READ_BLOCKS_KEY,
+  BODY_READ_NOTE_KEY,
+  BODY_READ_TITLE_KEY,
+  bodyReadMode,
+} from "../lib/bodyReadMode";
 import { isDemoKnowledge } from "../lib/demoKnowledge";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 import { deriveStatus } from "../lib/displayStatus";
@@ -591,10 +597,26 @@ export function KnowledgeDetail(): JSX.Element {
                           <SectionLabel>{t("ko.statement")}</SectionLabel>
                           {ko.bodyHtml ? (
                             // KW-STR / FR-STR-05: sanitisierter WYSIWYG-Body; Fallback auf statement.
-                            <SanitizedHtml
-                              html={ko.bodyHtml}
-                              className="prose-kw text-[14.5px] leading-relaxed text-text"
-                            />
+                            // SCRUM-318: lesbare Knowledge-Seiten-Rahmung mit kurzer Orientierung.
+                            <div className="rounded-card border border-hairline bg-surface p-3">
+                              <div className="mb-2 flex flex-wrap items-center gap-1.5 border-b border-hairline pb-2">
+                                <span className="text-[11.5px] font-semibold text-ink">
+                                  {t(BODY_READ_TITLE_KEY)}
+                                </span>
+                                {bodyReadMode(ko.bodyHtml).hasBlocks ? (
+                                  <span className="rounded-pill bg-page px-2 py-0.5 text-[10.5px] font-semibold text-muted">
+                                    {t(BODY_READ_BLOCKS_KEY)}
+                                  </span>
+                                ) : null}
+                              </div>
+                              <SanitizedHtml
+                                html={ko.bodyHtml}
+                                className="prose-kw text-[14.5px] leading-relaxed text-text"
+                              />
+                              <p className="mt-2 border-t border-hairline pt-2 text-[11px] leading-relaxed text-muted">
+                                {t(BODY_READ_NOTE_KEY)}
+                              </p>
+                            </div>
                           ) : (
                             <p className="text-[14.5px] leading-relaxed text-text">
                               {ko.statement}

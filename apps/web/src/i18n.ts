@@ -498,6 +498,10 @@ const de = {
   "ko.cta.validate": "Zur Validierung",
   "ko.title": "Detail",
   "ko.statement": "Aussage",
+  "ko.body.readTitle": "Ausführlicher Inhalt aus dem Knowledge-Editor",
+  "ko.body.readNote":
+    "Blöcke und KI-Vorschläge sind redaktionelle Struktur. Maßgeblich bleiben Status, Vertrauen und Quellen dieses Wissensobjekts.",
+  "ko.body.readBlocksChip": "strukturierter Inhalt",
   "ko.conditions": "Bedingungen",
   "ko.measures": "Maßnahme",
   "ko.validate": "Validieren",
@@ -1787,6 +1791,10 @@ const en: typeof de = {
   "ko.cta.validate": "Go to validation",
   "ko.title": "Detail",
   "ko.statement": "Statement",
+  "ko.body.readTitle": "Detailed content from the knowledge editor",
+  "ko.body.readNote":
+    "Blocks and AI suggestions are editorial structure. The status, trust and sources of this knowledge object remain authoritative.",
+  "ko.body.readBlocksChip": "structured content",
   "ko.conditions": "Conditions",
   "ko.measures": "Measure",
   "ko.validate": "Validate",
