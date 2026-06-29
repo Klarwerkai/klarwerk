@@ -33,6 +33,7 @@ import { captureNextSteps, captureSavedStatus } from "../lib/captureSuccess";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 import { draftTitle } from "../lib/draftForm";
 import { EDITOR_BLOCKS } from "../lib/editorBlocks";
+import { editorImagesFromLocalImages } from "../lib/editorImages";
 import {
   fileToThumbDataUrl,
   isImage,
@@ -876,13 +877,18 @@ export function Capture(): JSX.Element {
                     onApply={(next) => setDraft((d) => (d ? { ...d, statement: next } : d))}
                   />
                 </Field>
-                {/* KW-STR / FR-STR-02: optionaler WYSIWYG-Body (Bilder erst im KO-Detail platzierbar) */}
+                {/* KW-STR / FR-STR-02: optionaler WYSIWYG-Body. SCRUM-321: lokale Bild-Anhänge
+                    können vor dem Speichern als sichere data:image-Vorschau eingefügt werden. */}
                 <Field label={t("capture.fBody")}>
                   {/* SCRUM-317: kompakte Orientierung am Body-Feld (Struktur/Handlung/Blöcke/KI). */}
                   <EditorGuidance />
                   {/* SCRUM-319: bewusst wählbare Body-Strukturvorlagen (leer = setzen, sonst anhängen). */}
                   <BodyTemplateChooser bodyHtml={bodyHtml} onApply={setBodyHtml} />
-                  <RichTextEditor value={bodyHtml} onChange={setBodyHtml} />
+                  <RichTextEditor
+                    value={bodyHtml}
+                    onChange={setBodyHtml}
+                    images={editorImagesFromLocalImages(images)}
+                  />
                   {/* SCRUM-315: KI-Nachbearbeitung des ausführlichen Inhalts — Textbasis aus dem Body,
                       Vorschau + bewusste Übernahme (Ersetzen/Anhängen) als sicheres Body-HTML. */}
                   <AiAssistBox

@@ -7102,6 +7102,43 @@ Codex übernimmt Commit, Push, GitHub-CI-Prüfung und Jira-Abschluss.
 
 ---
 
+## SCRUM-321 — Beta Editor Bild-Anhänge im Capture nutzbar machen v0
+**Datum:** 2026-06-29 · **Rolle:** Codex (Umsetzung/Prüfung) · **Status:** umgesetzt, Gates grün
+
+**Vorab-Befund.** Der `RichTextEditor` hatte bereits einen Bild-Button und KO-Detail übergab Object-Store-Bildanhänge (`objectId`) an `images`. Capture hatte lokale Bildanhänge (`LocalImage` mit `dataUrl`/`original`) und lud sie beim Speichern in den Object-Store, übergab sie aber nicht an den Body-Editor. Dadurch war die Legacy-nahe Funktion „Bild aus Anhang in den Inhalt einfügen" ausgerechnet beim Erfassen noch nicht nutzbar.
+
+**Umsetzung (v0).**
+1. **Editor-Bildquellen erweitert**: `RichTextEditor.EditorImage` unterstützt jetzt `objectId` (KO-Detail, unverändert) oder `src` (Capture-lokale sichere Data-URL). `addImage()` wählt sicher zwischen `insertImageHtml()` und neuem `insertImageSrcHtml()`.
+2. **RichText-Helfer** `insertImageSrcHtml(src, alt)` in `richText.ts`: baut sicheres `<img>`-Markup für bereits erlaubte Bildquellen; Sanitizer bleibt autoritativ und erlaubt weiterhin nur Object-Store-Raw oder sichere Raster-`data:image`-URLs (kein SVG).
+3. **DOM-freier Capture-Mapping-Helfer** `apps/web/src/lib/editorImages.ts` (NEU): `editorImagesFromLocalImages()` bietet nur echte Bild-MIMEs mit sicheren Raster-Data-URLs an; Dokumente/SVG/unsichere Daten werden nicht als Inline-Bild angeboten.
+4. **Capture-Integration**: `RichTextEditor` im Capture-Body bekommt `images={editorImagesFromLocalImages(images)}`. Der vorhandene Bild-Button zeigt damit lokale Bildanhänge vor dem Speichern an; Datei-Anhänge bleiben normale Anhänge/Evidence.
+5. **Tests** `tests/app/editor-images.test.ts` (NEU) + `tests/structure/rich-text.test.ts` erweitert.
+
+**Bewusst nicht umgesetzte Gaps (später).** Kein neuer Upload-/Object-Store-Flow, kein Inline-Datei-Embed, kein Datei-Viewer, kein Drag&Drop-Umbau, keine Body-HTML-Nachmigration auf Object-Store-URLs. v0 nutzt bewusst die bereits erlaubten sicheren Raster-Data-URLs im Capture-Editor; KO-Detail bleibt Object-Store-basiert.
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/editorImages.ts` (NEU)
+- `apps/web/src/components/RichTextEditor.tsx` (Object-Store- oder lokale Bildquelle)
+- `apps/web/src/lib/richText.ts` (`insertImageSrcHtml`)
+- `apps/web/src/pages/Capture.tsx` (lokale Bildanhänge an Editor übergeben)
+- `tests/app/editor-images.test.ts` (NEU)
+- `tests/structure/rich-text.test.ts` (Bildquellen-Test)
+
+**Tests/Gates.** Gezielte Tests: `npx vitest run tests/app/editor-images.test.ts tests/structure/rich-text.test.ts tests/capture/attachment-preview.test.ts` → 13/13 grün. `npm run check` grün — **145 Dateien / 861 Tests**. `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün.
+
+**Nicht-Ziele eingehalten.** Keine Upload-/Backend-/Datenmodelländerung, kein neuer Datei-Viewer, kein Inline-Datei-Embed, kein Drag&Drop-Umbau, kein RAG/neue Suche/Local-LLM, keine Auto-Validierung, kein Auto-Speichern, keine Team-2/3/4-Dateien, keine Migration/Deployment. Nur in `/Users/peterkohnert/Documents/dev_Klarwerk`; untracked Infra-Doc unberührt.
+
+**Commit-/Push-Hinweis.**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/editorImages.ts apps/web/src/components/RichTextEditor.tsx apps/web/src/lib/richText.ts apps/web/src/pages/Capture.tsx tests/app/editor-images.test.ts tests/structure/rich-text.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(editor): offer local Capture image attachments in RichTextEditor (SCRUM-321)"
+git push
+```
+Codex übernimmt Commit, Push, GitHub-CI-Prüfung und Jira-Abschluss.
+
+---
+
 ## SCRUM-320 — Beta Editor Übernahme-Sicherheit v0
 **Datum:** 2026-06-29 · **Rolle:** Codex (Umsetzung/Prüfung) · **Status:** umgesetzt, Gates grün
 

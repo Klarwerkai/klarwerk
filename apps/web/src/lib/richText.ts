@@ -202,6 +202,11 @@ export function isEmptyHtml(html: string | null | undefined): boolean {
 
 // Bild aus dem Object-Store als <img>-Markup (für insert-at-cursor im Editor).
 export function insertImageHtml(objectId: string, alt: string): string {
+  return insertImageSrcHtml(`/api/objects/${objectId}/raw`, alt);
+}
+
+export function insertImageSrcHtml(src: string, alt: string): string {
+  const safeSrc = src.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
   const safeAlt = alt.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
-  return `<img src="/api/objects/${objectId}/raw" alt="${safeAlt}">`;
+  return `<img src="${safeSrc}" alt="${safeAlt}">`;
 }

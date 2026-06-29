@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   htmlToPlainText,
   insertImageHtml,
+  insertImageSrcHtml,
   isEmptyHtml,
   sanitizeHtml,
 } from "../../apps/web/src/lib/richText";
@@ -57,5 +58,11 @@ describe("KW-STR FE: Editor-Helfer", () => {
     expect(insertImageHtml("abc-1", 'A"B')).toBe(
       '<img src="/api/objects/abc-1/raw" alt="A&quot;B">',
     );
+  });
+
+  it("insertImageSrcHtml baut img-Markup für sichere lokale Raster-Data-URLs", () => {
+    const html = insertImageSrcHtml("data:image/png;base64,AAAA", 'A"B');
+    expect(html).toBe('<img src="data:image/png;base64,AAAA" alt="A&quot;B">');
+    expect(sanitizeHtml(html)).toContain("data:image/png;base64,AAAA");
   });
 });

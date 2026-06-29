@@ -19,11 +19,12 @@ import {
   editorBlockHtml,
   editorBlockLabelKey,
 } from "../lib/editorBlocks";
-import { insertImageHtml, sanitizeHtml } from "../lib/richText";
+import { insertImageHtml, insertImageSrcHtml, sanitizeHtml } from "../lib/richText";
 import { SanitizedHtml } from "./SanitizedHtml";
 
 export interface EditorImage {
-  objectId: string;
+  objectId?: string;
+  src?: string;
   name: string;
 }
 
@@ -70,7 +71,14 @@ export function RichTextEditor({
   const addBlock = (block: EditorBlock): void => exec("insertHTML", editorBlockHtml(block));
   const addImage = (img: EditorImage): void => {
     setShowImages(false);
-    exec("insertHTML", insertImageHtml(img.objectId, img.name));
+    const html = img.objectId
+      ? insertImageHtml(img.objectId, img.name)
+      : img.src
+        ? insertImageSrcHtml(img.src, img.name)
+        : "";
+    if (html) {
+      exec("insertHTML", html);
+    }
   };
 
   const btn =
