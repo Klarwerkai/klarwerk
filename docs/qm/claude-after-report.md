@@ -7025,3 +7025,40 @@ git commit -m "feat(validation): client-side origin filter + capture review step
 git push
 ```
 Kein Git/Push/Jira durch Claude. Codex prüft Diff/Gates, korrigiert minimal falls nötig, committet, pusht, wartet GitHub CI ab und schließt Jira. Untracked `docs/KLARWERK_Infrastruktur_Domain_Server_Aufteilung_v2.md` bleibt unangetastet.
+
+---
+
+## SCRUM-312 — Beta AI-assisted Knowledge Editing / Nachbearbeitung v0
+**Datum:** 2026-06-29 · **Rolle:** Claude (Umsetzung) · **Status:** umgesetzt, Gates grün
+
+**Vorab-Befund.** Capture (`apps/web/src/pages/Capture.tsx`) hatte KI-Hilfe nur als kleine, **still mutierende** Links: `assistRaw` → `setRaw(r.text)`, `assistStatement` → `setDraft(statement)`; `structure` erzeugt den Draft. `reasoner.assist(text, locale)` nahm **keine** Instruktion; der deterministische Provider (`assistText`) glättet generisch, der Modell-Provider nutzt `assistSystem`. `RichTextEditor` kann bereits H2/H3, Bold/Italic, Listen, Link, Panel, Bild, Vorschau. — **Legacy-Pfad geprüft (read-only):** `/Users/peterkohnert/Documents/Klarwerk/app/src/components/WikiEditor.jsx`, `AiAssist.jsx`, `CaseEditor.jsx`, `pages/Knowledge.jsx`, `store/KnowledgeContext.jsx` lokal verfügbar; nur Funktionsmuster geprüft, nichts blind kopiert.
+
+**Wichtigste alte Funktionen (Legacy, lt. Ticket):** geführte Aktionen (Klarer/Strukturieren/Erweitern/Rechtschreibung), freies KI-Anweisungsfeld + Fragen/Ausführen, Vorschau + Übernehmen/Einfügen/Verwerfen. **Aktuelle Gaps (vorher):** keine sichtbare KI-Box, keine geführten Aktionen, keine freie Anweisung, keine Vorschau (stille Direkt-Mutation), Reasoner-Entwurf schlecht nachbearbeitbar.
+
+**Umsetzter Umfang (v0).**
+1. **Sichtbare KI-Nachbearbeitungsbox** (`AiAssistBox` in Capture.tsx) im Freitext/Diktat-Bereich **und** am Reasoner-Draft-Statement: eigener Bereich mit Titel + ehrlichem Hinweis („KI macht einen Vorschlag — du übernimmst bewusst; keine Auto-Speicherung/Validierung; keine erfundenen Fakten").
+2. **Geführte KI-Aktionen** (DOM-freier Helper `apps/web/src/lib/captureAiAssist.ts`): Klarer/Strukturieren/Erweitern/Rechtschreibung + freies Anweisungsfeld + „Ausführen". Nutzt den vorhandenen `reasoner.assist`-Endpunkt, erweitert um eine **optionale `instruction`** (kleinster sauberer Weg, Variante b): `endpoints.assist` → `/api/reasoner` → `reasoner.assistText(text, locale, instruction)` → Provider-Interface. Modell-Provider hängt die Anweisung als Leitplanke an `assistSystem` (Schutz „keine Inhalte/Fakten erfinden" bleibt); deterministischer Fallback ignoriert sie bewusst (generische Glättung). Keine neue Provider-Architektur.
+3. **Ergebnis-Vorschau + bewusste Übernahme:** KI-Ergebnis schreibt **nicht** mehr still in raw/draft.statement, sondern erscheint als Vorschau mit **Ersetzen / Anhängen / Verwerfen** (`applyAssist`). Save-/Submit-/Draft-Logik unverändert.
+
+**Bewusst nicht umgesetzte Gaps (später).**
+- RichTextEditor Panel-Differenzierung (Info/Hinweis/Warnung/Erfolg) — größer als risikoarm, daher v0 ausgelassen (Editor unverändert funktionsfähig).
+- „In ausführlichen Inhalt einfügen" (bodyHtml) aus der KI-Box — bewusst später (Plaintext→HTML-Übernahme braucht eigene, risikoarme Lösung).
+- Echte aktionsspezifische Differenzierung im **deterministischen** Modus — nicht möglich ohne Modell; im Modellmodus aktiv. Ehrlich dokumentiert.
+
+**Geänderte Dateien.**
+- FE: `apps/web/src/lib/captureAiAssist.ts` (NEU), `apps/web/src/pages/Capture.tsx` (AiAssistBox + Vorschau, stille Mutationen entfernt), `apps/web/src/api/endpoints.ts` (assist optional instruction), `apps/web/src/i18n.ts` (`capture.ai.*` DE/EN).
+- Backend (alle Team-1): `services/app/src/routes/reasoner-routes.ts` (Body `instruction?`), `services/reasoner/src/service.ts`, `services/reasoner/src/provider.ts` (Interface), `services/reasoner/src/provider-model.ts` (assistGuidance).
+- Tests: `tests/capture/capture-ai-assist.test.ts` (NEU), `services/reasoner/src/service.test.ts` (instruction-Durchreichung).
+
+**Tests/Gates.** `npm run check` grün — **138 Dateien / 821 Tests**. `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün. Gezielt: `service.test` + `capture-ai-assist` + `ask-routes` grün.
+
+**Restlücken/Nicht-Ziele.** Kein RAG, keine neue Suche, keine Local-LLM-Abhängigkeit, keine Architekturänderung, keine neue Provider-Architektur; kein Auto-Submit/keine Auto-Validierung; keine Team-2/3/4-Dateien. Nur in `/Users/peterkohnert/Documents/dev_Klarwerk` gearbeitet. Untracked `docs/KLARWERK_Infrastruktur_Domain_Server_Aufteilung_v2.md` unberührt.
+
+**Commit-/Push-Hinweis (nur Hinweis — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/captureAiAssist.ts apps/web/src/pages/Capture.tsx apps/web/src/api/endpoints.ts apps/web/src/i18n.ts services/app/src/routes/reasoner-routes.ts services/reasoner/src/service.ts services/reasoner/src/provider.ts services/reasoner/src/provider-model.ts tests/capture/capture-ai-assist.test.ts services/reasoner/src/service.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(capture): beta AI post-editing — guided actions + free instruction + preview/apply; optional assist instruction (SCRUM-312)"
+git push
+```
+Kein Git/Push/Jira durch Claude.

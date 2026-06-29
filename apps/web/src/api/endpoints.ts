@@ -134,8 +134,15 @@ export const endpoints = {
         text,
         ...(locale ? { locale } : {}),
       }),
-    assist: (text: string, locale?: "de" | "en") =>
-      api.post<AssistResult>("/reasoner", { task: "assist", text, ...(locale ? { locale } : {}) }),
+    // SCRUM-312: optionale Bearbeitungs-Anweisung (klarer/strukturieren/erweitern/rechtschreibung
+    // oder frei) — der deterministische Fallback ignoriert sie, das Modell berücksichtigt sie.
+    assist: (text: string, locale?: "de" | "en", instruction?: string) =>
+      api.post<AssistResult>("/reasoner", {
+        task: "assist",
+        text,
+        ...(locale ? { locale } : {}),
+        ...(instruction?.trim() ? { instruction: instruction.trim() } : {}),
+      }),
     // SCRUM-132: reasoner-getriebenes Interview, stateless.
     interview: (answers: string[], locale?: "de" | "en") =>
       api.post<InterviewResult>("/reasoner", {

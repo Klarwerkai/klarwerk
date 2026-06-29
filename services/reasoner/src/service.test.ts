@@ -7,6 +7,7 @@ import type {
   AssistResult,
   InterviewResult,
   KnowledgeRef,
+  ReasonerLocale,
   StructureResult,
 } from "./types";
 
@@ -173,6 +174,61 @@ describe("Reasoner", () => {
     expect(reasoner.status()).toEqual({ active: true, provider: "fake-model", mode: "model" });
     // FR-RSN-02: Fachlogik unverändert, Verhalten kommt vom getauschten Provider.
     expect((await reasoner.answer("egal", KOS)).answer).toBe("Modell-Antwort");
+  });
+
+  it("SCRUM-312: reicht die optionale assist-Instruction an den (Modell-)Provider durch", async () => {
+    let seen: string | undefined = "UNSET";
+    const recordingModel: ReasonerProvider = {
+      name: "recording-model",
+      isAvailable: () => true,
+      structure: async (): Promise<StructureResult> => ({
+        title: "",
+        statement: "",
+        conditions: [],
+        measures: [],
+        tags: [],
+        confidence: 0,
+        demo: false,
+      }),
+      answer: async (): Promise<AnswerResult> => ({
+        answered: false,
+        answer: "",
+        knowledgeClass: "unbekannt",
+        trust: 0,
+        sources: [],
+        steps: [],
+        demo: false,
+      }),
+      assistText: async (
+        _text: string,
+        _locale?: ReasonerLocale,
+        instruction?: string,
+      ): Promise<AssistResult> => {
+        seen = instruction;
+        return { text: "ok", demo: false };
+      },
+      interview: async (): Promise<InterviewResult> => ({
+        question: null,
+        done: true,
+        draft: {
+          title: "",
+          statement: "",
+          conditions: [],
+          measures: [],
+          tags: [],
+          confidence: 0,
+          demo: false,
+        },
+        demo: false,
+      }),
+      select: () => [],
+    };
+    const reasoner = new Reasoner(recordingModel);
+    await reasoner.assistText("text", "de", "Formuliere klarer");
+    expect(seen).toBe("Formuliere klarer");
+    // Ohne Instruction wird auch keine durchgereicht (undefined).
+    await reasoner.assistText("text", "de");
+    expect(seen).toBeUndefined();
   });
 
   it("FR-RSN-04: fällt auf deterministisch zurück, wenn das Modell offline ist", async () => {

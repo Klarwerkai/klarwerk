@@ -25,6 +25,8 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         text?: string;
         answers?: string[];
         locale?: "de" | "en";
+        // SCRUM-312: optionale Bearbeitungs-Anweisung für 'assist' (klarer/strukturieren/… oder frei).
+        instruction?: string;
       };
     }>("/api/reasoner", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
@@ -43,8 +45,10 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         return;
       }
       if (task === "assist") {
-        // FR-RSN-03: Text präzisieren/glätten.
-        reply.code(200).send(await reasoner.assistText(text ?? "", locale));
+        // FR-RSN-03 / SCRUM-312: Text präzisieren/glätten, optional mit Bearbeitungs-Anweisung.
+        reply
+          .code(200)
+          .send(await reasoner.assistText(text ?? "", locale, request.body.instruction));
         return;
       }
       if (task === "interview") {

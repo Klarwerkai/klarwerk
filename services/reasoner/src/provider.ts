@@ -21,7 +21,10 @@ export interface ReasonerProvider {
     locale?: ReasonerLocale,
   ): Promise<AnswerResult>;
   // FR-RSN-03: Text sprachlich präzisieren (ohne Inhalt zu erfinden).
-  assistText(text: string, locale?: ReasonerLocale): Promise<AssistResult>;
+  // SCRUM-312: optionale, frei-/aktionsbasierte Anweisung (z. B. „klarer", „strukturieren").
+  // Der deterministische Fallback ignoriert sie bewusst (generische Glättung); nur das Modell
+  // berücksichtigt sie — und niemals durch Erfinden von Inhalten/Fakten.
+  assistText(text: string, locale?: ReasonerLocale, instruction?: string): Promise<AssistResult>;
   // SCRUM-132: nächste Interview-Frage + aus den Antworten verdichteter Entwurf.
   interview(answers: readonly string[], locale?: ReasonerLocale): Promise<InterviewResult>;
   // select ist reines Ranking (synchron, kein Netzaufruf).

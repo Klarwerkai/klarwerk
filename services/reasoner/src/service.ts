@@ -154,12 +154,16 @@ export class Reasoner {
   }
 
   // FR-RSN-03: Text präzisieren; Modellfehler → deterministischer Fallback.
-  async assistText(text: string, locale: ReasonerLocale = "de"): Promise<AssistResult> {
+  async assistText(
+    text: string,
+    locale: ReasonerLocale = "de",
+    instruction?: string,
+  ): Promise<AssistResult> {
     return this.runTask(
       "assist",
       locale,
-      () => this.primary.assistText(text, locale),
-      () => this.fallback.assistText(text, locale),
+      () => this.primary.assistText(text, locale, instruction),
+      () => this.fallback.assistText(text, locale, instruction),
     );
   }
 

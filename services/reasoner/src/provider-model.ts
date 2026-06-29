@@ -43,6 +43,14 @@ function assistSystem(locale: ReasonerLocale): string {
     : "Du präzisierst und glättest industrielles Erfahrungswissen sprachlich. Verändere oder erfinde KEINE Inhalte, Zahlen oder Fakten. Gib AUSSCHLIESSLICH den überarbeiteten Text zurück, ohne Vorbemerkung oder Anführungszeichen.";
 }
 
+// SCRUM-312: leitet die optionale Nutzer-/Aktionsanweisung an das Modell weiter — als
+// Stil-/Form-Wunsch, NICHT als Erlaubnis, Inhalte zu erfinden.
+function assistGuidance(locale: ReasonerLocale, instruction: string): string {
+  return locale === "en"
+    ? `Apply this editing instruction to the wording only (no new facts): ${instruction}`
+    : `Wende diese Bearbeitungs-Anweisung nur auf die Formulierung an (keine neuen Fakten): ${instruction}`;
+}
+
 function interviewSystem(locale: ReasonerLocale): string {
   return locale === "en"
     ? "You run a short editorial interview to capture industrial experiential knowledge. Ask exactly ONE next, concrete question that builds on the previous answers. Do NOT invent any technical content or facts. Return ONLY the question."
@@ -120,9 +128,19 @@ export class ModelProvider implements ReasonerProvider {
     };
   }
 
-  async assistText(text: string, locale: ReasonerLocale = "de"): Promise<AssistResult> {
+  async assistText(
+    text: string,
+    locale: ReasonerLocale = "de",
+    instruction?: string,
+  ): Promise<AssistResult> {
     const client = this.requireClient();
-    const improved = (await client.complete(assistSystem(locale), text)).trim();
+    // SCRUM-312: optionale Anweisung als zusätzliche Leitplanke an das System-Prompt hängen —
+    // der „keine Inhalte/Fakten erfinden"-Schutz aus assistSystem bleibt vollständig erhalten.
+    const guidance = instruction?.trim();
+    const system = guidance
+      ? `${assistSystem(locale)}\n${assistGuidance(locale, guidance)}`
+      : assistSystem(locale);
+    const improved = (await client.complete(system, text)).trim();
     return { text: improved || text.trim(), demo: false };
   }
 

@@ -22,6 +22,13 @@ import { RichTextEditor } from "../components/RichTextEditor";
 import { ListEditor, TagEditor } from "../components/editors";
 import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
 import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
+import {
+  ASSIST_ACTIONS,
+  type AssistApplyMode,
+  applyAssist,
+  assistActionInstructionKey,
+  assistActionLabelKey,
+} from "../lib/captureAiAssist";
 import { CAPTURE_EXAMPLE } from "../lib/captureExample";
 import { gapContextDraft, readGapContext } from "../lib/captureFromGap";
 import { captureReadiness } from "../lib/captureReadiness";
@@ -46,6 +53,111 @@ import { hasSpeechRecognition } from "../lib/speechSupport";
 
 const MODES = ["freitext", "formular", "diktat", "interview"] as const;
 type Mode = (typeof MODES)[number];
+
+// SCRUM-312: sichtbare KI-Nachbearbeitungsbox — geführte Aktionen + freie Anweisung + Vorschau mit
+// bewusster Übernahme (Ersetzen/Anhängen/Verwerfen). Schreibt NICHT still in den Text; `runAssist`
+// nutzt den vorhandenen reasoner.assist-Endpunkt (optionale instruction). Kein Auto-Submit.
+function AiAssistBox({
+  text,
+  runAssist,
+  onApply,
+}: {
+  text: string;
+  runAssist: (text: string, instruction?: string) => Promise<string>;
+  onApply: (next: string) => void;
+}): JSX.Element {
+  const { t } = useTranslation();
+  const [free, setFree] = useState("");
+  const [pending, setPending] = useState(false);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [boxErr, setBoxErr] = useState<string | null>(null);
+  const disabled = pending || text.trim().length === 0;
+
+  const run = async (instruction?: string): Promise<void> => {
+    setPending(true);
+    setBoxErr(null);
+    try {
+      setPreview(await runAssist(text, instruction));
+    } catch (e) {
+      setBoxErr(e instanceof ApiError ? e.message : t("state.error"));
+    } finally {
+      setPending(false);
+    }
+  };
+  const apply = (mode: AssistApplyMode): void => {
+    if (preview === null) {
+      return;
+    }
+    onApply(applyAssist(mode, text, preview));
+    setPreview(null);
+  };
+
+  return (
+    <div className="mt-2 rounded-card border border-hairline bg-page p-3">
+      <div className="flex items-center gap-1.5">
+        <Sparkles size={13} className="text-ai" />
+        <span className="text-[12.5px] font-semibold text-ink">{t("capture.ai.title")}</span>
+      </div>
+      <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted">{t("capture.ai.hint")}</p>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {ASSIST_ACTIONS.map((a) => (
+          <button
+            key={a}
+            type="button"
+            disabled={disabled}
+            onClick={() => void run(t(assistActionInstructionKey(a)))}
+            className="rounded-pill border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:border-ink/30 hover:text-text disabled:opacity-50"
+          >
+            {t(assistActionLabelKey(a))}
+          </button>
+        ))}
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <input
+          value={free}
+          onChange={(e) => setFree(e.target.value)}
+          placeholder={t("capture.ai.freePlaceholder")}
+          aria-label={t("capture.ai.freeLabel")}
+          className="h-9 min-w-[12rem] flex-1 rounded-input border border-hairline bg-surface px-3 text-[13px] outline-none focus:border-ink/30"
+        />
+        <Button
+          variant="ghost"
+          disabled={disabled || free.trim().length === 0}
+          onClick={() => void run(free.trim())}
+        >
+          <Sparkles size={14} />
+          {t("capture.ai.run")}
+        </Button>
+      </div>
+      {boxErr ? <p className="mt-2 text-[12px] text-trust-crit-text">{boxErr}</p> : null}
+      {preview !== null ? (
+        <div className="mt-2 rounded-btn border border-ai/30 bg-surface p-2.5">
+          <div className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+            {t("capture.ai.previewTitle")}
+          </div>
+          <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-text">
+            {preview}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button variant="primary" onClick={() => apply("replace")}>
+              {t("capture.ai.replace")}
+            </Button>
+            <Button variant="ghost" onClick={() => apply("append")}>
+              {t("capture.ai.append")}
+            </Button>
+            <button
+              type="button"
+              onClick={() => setPreview(null)}
+              className="text-[12px] font-semibold text-muted hover:text-text"
+            >
+              {t("capture.ai.discard")}
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 const EMPTY_DRAFT: StructureResult = {
   title: "",
@@ -179,23 +291,10 @@ export function Capture(): JSX.Element {
     onError: fail,
   });
 
-  const assistRaw = useMutation({
-    mutationFn: () => endpoints.reasoner.assist(raw, locale),
-    onSuccess: (r) => {
-      setRaw(r.text);
-      setErr(null);
-    },
-    onError: fail,
-  });
-
-  const assistStatement = useMutation({
-    mutationFn: () => endpoints.reasoner.assist(draft?.statement ?? "", locale),
-    onSuccess: (r) => {
-      setDraft((d) => (d ? { ...d, statement: r.text } : d));
-      setErr(null);
-    },
-    onError: fail,
-  });
+  // SCRUM-312: KI-Nachbearbeitung über die sichtbare AiAssistBox (Vorschau + bewusste Übernahme);
+  // die frühere stille Direkt-Mutation (setRaw/setDraft) wurde durch den Vorschau-Flow ersetzt.
+  const runAssist = (input: string, instruction?: string): Promise<string> =>
+    endpoints.reasoner.assist(input, locale, instruction).then((r) => r.text);
 
   const parsedValidations = (): number | undefined => {
     const n = Number.parseInt(neededValidations, 10);
@@ -474,7 +573,7 @@ export function Capture(): JSX.Element {
     setNotice(t(CAPTURE_EXAMPLE.noticeKey));
   };
 
-  const busy = structure.isPending || assistRaw.isPending || saveDraft.isPending;
+  const busy = structure.isPending || saveDraft.isPending;
 
   // SCRUM-248: ehrlicher Speicher-Check — was landet im KO, was fehlt noch? (nur echte Felder)
   const readiness = draft
@@ -625,17 +724,8 @@ export function Capture(): JSX.Element {
           {/* Modus-spezifische Eingabe */}
           {mode === "freitext" || mode === "diktat" ? (
             <div>
-              <div className="mb-1.5 flex items-center justify-between">
+              <div className="mb-1.5">
                 <SectionLabel>{t("capture.raw")}</SectionLabel>
-                <button
-                  type="button"
-                  disabled={assistRaw.isPending || raw.trim().length === 0}
-                  onClick={() => assistRaw.mutate()}
-                  className="inline-flex items-center gap-1 text-[12px] font-semibold text-ai hover:opacity-80 disabled:opacity-50"
-                >
-                  <Sparkles size={13} />
-                  {t("capture.assist")}
-                </button>
               </div>
               {mode === "diktat" ? (
                 speechSupported ? (
@@ -660,6 +750,8 @@ export function Capture(): JSX.Element {
                 placeholder={t("capture.rawPlaceholder")}
                 className={textareaCls}
               />
+              {/* SCRUM-312: sichtbare KI-Nachbearbeitung mit Vorschau + bewusster Übernahme. */}
+              <AiAssistBox text={raw} runAssist={runAssist} onApply={setRaw} />
               <Button
                 variant="primary"
                 className="mt-3"
@@ -884,15 +976,12 @@ export function Capture(): JSX.Element {
                     rows={3}
                     className={textareaCls}
                   />
-                  <button
-                    type="button"
-                    disabled={assistStatement.isPending || draft.statement.trim().length === 0}
-                    onClick={() => assistStatement.mutate()}
-                    className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-semibold text-ai hover:opacity-80 disabled:opacity-50"
-                  >
-                    <Sparkles size={13} />
-                    {t("capture.assist")}
-                  </button>
+                  {/* SCRUM-312: KI-Nachbearbeitung des Reasoner-Entwurfs (Vorschau + bewusste Übernahme). */}
+                  <AiAssistBox
+                    text={draft.statement}
+                    runAssist={runAssist}
+                    onApply={(next) => setDraft((d) => (d ? { ...d, statement: next } : d))}
+                  />
                 </Field>
                 {/* KW-STR / FR-STR-02: optionaler WYSIWYG-Body (Bilder erst im KO-Detail platzierbar) */}
                 <Field label={t("capture.fBody")}>
