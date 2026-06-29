@@ -7137,3 +7137,41 @@ git commit -m "feat(editor): beta body block types info/note/warning/success; sa
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-315 — Beta Editor Body AI Assist v0
+**Datum:** 2026-06-29 · **Rolle:** Claude (Umsetzung) · **Status:** umgesetzt, Gates grün
+
+**Vorab-Befund.** `git status -sb` sauber (nur untracked Infra-Doc). Nach SCRUM-312/313 gibt es KI-Hilfe für Freitext/Statement (`AiAssistBox` + DOM-freie `captureAiAssist`-Helfer), nach SCRUM-314 vier Body-Blocktypen. Der ausführliche Inhalt (`bodyHtml` via `RichTextEditor`) hatte **keine** KI-Hilfe. Vorhanden: `reasoner.assist(text, locale, instruction?)`; FE/Server-Sanitizer `sanitizeHtml` mit SCRUM-314-Allowlist; `htmlToPlainText`/`isEmptyHtml` in `richText.ts`. Capture: `bodyHtml`/`setBodyHtml`. KO-Detail: `edit.bodyHtml`. `AiAssistBox` war auf Plaintext-`applyAssist` festverdrahtet → für Body generalisierungsbedürftig.
+
+**Umgesetzter Umfang (v0).**
+1. **DOM-freier Body-Helfer** `apps/web/src/lib/bodyAiAssist.ts` (NEU): `bodyTextForAssist(bodyHtml)` (Text aus Body via `htmlToPlainText`, leer→""); `suggestionToBodyHtml(text)` (Plaintext→Absätze/`<br>`, eigenes Text-Escaping, leer→""); `applyBodyAssist(mode, currentHtml, suggestionText)` (replace/append). Sicherheit: KI-Text wird escaped und erzeugt nur statische `<p>/<br>`-Tags; bestehender Body gilt als bereits sanitisiert und wird NICHT erneut escaped (sanitizeHtml ist bei Entities nicht idempotent → Doppel-Maskierung vermieden). Leerer Vorschlag = No-Op (Body bleibt erhalten).
+2. **Generische `AiAssistBox`** (`apps/web/src/components/AiAssistBox.tsx`): optionale Props `applyFn` (Default = bestehendes Plaintext-`applyAssist`) und `hintKey` (Default = `capture.ai.hint`). Signatur `(mode, original, suggestion)` unverändert → SCRUM-312/313-Aufrufer bleiben 1:1 intakt.
+3. **Capture Body-KI** (`apps/web/src/pages/Capture.tsx`): `AiAssistBox` unter dem Body-`RichTextEditor`, `text={bodyTextForAssist(bodyHtml)}`, `applyFn` = `applyBodyAssist(mode, bodyHtml, …)`, `onApply={setBodyHtml}`, `hintKey="capture.ai.bodyHint"`.
+4. **KO-Detail Body-KI** (`apps/web/src/pages/KnowledgeDetail.tsx`): analoge Box unter dem Body-`RichTextEditor` im Edit-Modus, Textbasis `edit.bodyHtml`, Übernahme → `setEdit({...edit, bodyHtml})`. Statement-KI (SCRUM-313) und `ko.editNote` unverändert.
+5. **i18n** `capture.ai.bodyHint` DE+EN (ehrlich: Vorschlag, keine Auto-Speicherung/Validierung, Inhalte/Quellen selbst prüfen).
+6. **Tests** `tests/app/body-ai-assist.test.ts` (NEU, DOM-frei): Textableitung, Absatz-/`<br>`-Umwandlung, Leerbehandlung, Sicherheit (Plaintext-HTML wie `<script>`/`<img onerror>` wird escaped und nicht aktiv), replace/append, No-Op bei leerem Vorschlag, kein Doppel-Escaping beim Anhängen.
+
+**Bewusst nicht umgesetzte Legacy-Gaps (später).** Kein KI-Insert direkt an Cursorposition/Block (nur replace/append des Gesamt-Body). Keine block-typ-bewusste KI (Info/Hinweis/…). Kein Diff-/Merge-View. Kein WikiEditor-/CaseEditor-Nachbau, keine neue Editor-Library, keine Datei-/Bild-Inline-Neuerfindung. Markup im Body (Bilder/Blöcke) geht bei `replace` verloren — bewusst, da KI Plaintext liefert; `append` erhält den Bestand.
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/bodyAiAssist.ts` (NEU)
+- `apps/web/src/components/AiAssistBox.tsx` (optionale `applyFn`/`hintKey`, Defaults erhalten)
+- `apps/web/src/pages/Capture.tsx` (Body-KI-Box + Import)
+- `apps/web/src/pages/KnowledgeDetail.tsx` (Body-KI-Box + Import)
+- `apps/web/src/i18n.ts` (`capture.ai.bodyHint` DE+EN)
+- `tests/app/body-ai-assist.test.ts` (NEU)
+
+**Tests/Gates.** `npm run check` grün — **140 Dateien / 834 Tests**. Gezielt: `npx vitest run tests/app/body-ai-assist.test.ts tests/structure/rich-text.test.ts tests/capture/capture-ai-assist.test.ts` → 19/19 grün. `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün. SCRUM-312/313-Statement/Freitext-KI intakt (Default-`applyFn`); SCRUM-314-Blocktypen unberührt (Sanitizer unverändert).
+
+**Nicht-Ziele eingehalten.** Kein RAG, keine neue Suche, keine Local-LLM-Abhängigkeit, kein WYSIWYG-Neubau, keine neue Editor-Library, keine blinde Legacy-Kopie, keine Datei-/Bild-Inline-Neuerfindung, keine Auto-Validierung, kein Auto-Speichern, keine Team-2/3/4-Dateien, keine Migration/Datenmodell, kein Deployment. Backend/Reasoner/Sanitizer unverändert. Nur in `/Users/peterkohnert/Documents/dev_Klarwerk` gearbeitet; untracked Infra-Doc unberührt.
+
+**Commit-/Push-Hinweis (nur Hinweis — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/bodyAiAssist.ts apps/web/src/components/AiAssistBox.tsx apps/web/src/pages/Capture.tsx apps/web/src/pages/KnowledgeDetail.tsx apps/web/src/i18n.ts tests/app/body-ai-assist.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(editor): beta body AI assist — derive/sanitize/apply body suggestions in Capture + KO-Detail (SCRUM-315)"
+git push
+```
+Kein Git/Push/Jira durch Claude.

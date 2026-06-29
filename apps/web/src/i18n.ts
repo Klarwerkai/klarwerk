@@ -277,6 +277,8 @@ const de = {
   "capture.ai.title": "KI-Nachbearbeitung (Beta)",
   "capture.ai.hint":
     "Die KI macht einen Vorschlag — du prüfst ihn und übernimmst bewusst. Keine automatische Speicherung, keine Validierung; Inhalte/Fakten werden nicht erfunden.",
+  "capture.ai.bodyHint":
+    "KI-Hilfe für den ausführlichen Inhalt: Vorschlag prüfen und bewusst übernehmen (Ersetzen/Anhängen). Keine automatische Speicherung, keine Validierung; Inhalte und Quellen bitte selbst prüfen.",
   "capture.ai.action.clarify": "Klarer",
   "capture.ai.action.structure": "Strukturieren",
   "capture.ai.action.expand": "Erweitern",
@@ -1554,6 +1556,8 @@ const en: typeof de = {
   "capture.ai.title": "AI post-editing (beta)",
   "capture.ai.hint":
     "The AI makes a suggestion — you review it and apply it deliberately. No automatic saving, no validation; no content/facts are invented.",
+  "capture.ai.bodyHint":
+    "AI help for the detailed content: review the suggestion and apply it deliberately (replace/append). No automatic saving, no validation; please check content and sources yourself.",
   "capture.ai.action.clarify": "Clearer",
   "capture.ai.action.structure": "Structure",
   "capture.ai.action.expand": "Expand",

@@ -39,6 +39,7 @@ import {
   SectionLabel,
   TextInput,
 } from "../components/ui";
+import { applyBodyAssist, bodyTextForAssist } from "../lib/bodyAiAssist";
 import { isDemoKnowledge } from "../lib/demoKnowledge";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 import { deriveStatus } from "../lib/displayStatus";
@@ -502,6 +503,18 @@ export function KnowledgeDetail(): JSX.Element {
                           images={(ko.attachments ?? [])
                             .filter((a) => a.objectId && a.mime.startsWith("image/"))
                             .map((a) => ({ objectId: a.objectId as string, name: a.name }))}
+                        />
+                        {/* SCRUM-315: KI-Nachbearbeitung des ausführlichen Inhalts im Edit-Modus —
+                            Textbasis aus edit.bodyHtml, Übernahme als sicheres Body-HTML. ko.editNote
+                            und die Statement-KI bleiben unverändert; keine Auto-Validierung. */}
+                        <AiAssistBox
+                          text={bodyTextForAssist(edit.bodyHtml)}
+                          runAssist={runAssist}
+                          applyFn={(mode, _original, suggestion) =>
+                            applyBodyAssist(mode, edit.bodyHtml, suggestion)
+                          }
+                          onApply={(bodyHtml) => setEdit({ ...edit, bodyHtml })}
+                          hintKey="capture.ai.bodyHint"
                         />
                       </Field>
                       <ListEditor

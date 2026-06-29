@@ -20,10 +20,18 @@ export function AiAssistBox({
   text,
   runAssist,
   onApply,
+  applyFn = applyAssist,
+  hintKey = "capture.ai.hint",
 }: {
   text: string;
   runAssist: (text: string, instruction?: string) => Promise<string>;
   onApply: (next: string) => void;
+  // SCRUM-315: optionale Übernahme-Logik. Default = Plaintext (Statement/Freitext, SCRUM-312/313).
+  // Body-Nutzung übergibt eine HTML-sichere Variante (applyBodyAssist). Signatur bleibt gleich
+  // (mode, original, suggestion) → keine Bruchstelle für die bestehenden Aufrufer.
+  applyFn?: (mode: AssistApplyMode, original: string, suggestion: string) => string;
+  // Optionaler kontextspezifischer Hinweistext (i18n-Key). Default = generischer capture.ai.hint.
+  hintKey?: string;
 }): JSX.Element {
   const { t } = useTranslation();
   const [free, setFree] = useState("");
@@ -47,7 +55,7 @@ export function AiAssistBox({
     if (preview === null) {
       return;
     }
-    onApply(applyAssist(mode, text, preview));
+    onApply(applyFn(mode, text, preview));
     setPreview(null);
   };
 
@@ -57,7 +65,7 @@ export function AiAssistBox({
         <Sparkles size={13} className="text-ai" />
         <span className="text-[12.5px] font-semibold text-ink">{t("capture.ai.title")}</span>
       </div>
-      <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted">{t("capture.ai.hint")}</p>
+      <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted">{t(hintKey)}</p>
       <div className="mt-2 flex flex-wrap gap-1.5">
         {ASSIST_ACTIONS.map((a) => (
           <button

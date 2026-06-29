@@ -23,6 +23,7 @@ import { RichTextEditor } from "../components/RichTextEditor";
 import { ListEditor, TagEditor } from "../components/editors";
 import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
 import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
+import { applyBodyAssist, bodyTextForAssist } from "../lib/bodyAiAssist";
 import { CAPTURE_EXAMPLE } from "../lib/captureExample";
 import { gapContextDraft, readGapContext } from "../lib/captureFromGap";
 import { captureReadiness } from "../lib/captureReadiness";
@@ -875,6 +876,17 @@ export function Capture(): JSX.Element {
                 {/* KW-STR / FR-STR-02: optionaler WYSIWYG-Body (Bilder erst im KO-Detail platzierbar) */}
                 <Field label={t("capture.fBody")}>
                   <RichTextEditor value={bodyHtml} onChange={setBodyHtml} />
+                  {/* SCRUM-315: KI-Nachbearbeitung des ausführlichen Inhalts — Textbasis aus dem Body,
+                      Vorschau + bewusste Übernahme (Ersetzen/Anhängen) als sicheres Body-HTML. */}
+                  <AiAssistBox
+                    text={bodyTextForAssist(bodyHtml)}
+                    runAssist={runAssist}
+                    applyFn={(mode, _original, suggestion) =>
+                      applyBodyAssist(mode, bodyHtml, suggestion)
+                    }
+                    onApply={setBodyHtml}
+                    hintKey="capture.ai.bodyHint"
+                  />
                 </Field>
                 <ListEditor
                   label={t("capture.fConditions")}
