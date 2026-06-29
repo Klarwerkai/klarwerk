@@ -77,7 +77,7 @@ import {
 import { diffForVersion } from "../lib/koVersionDiff";
 import { koVersionRows } from "../lib/koVersionSnapshots";
 import { toReasonerLocale } from "../lib/reasonerLocale";
-import { isReviewReworkContext } from "../lib/reviewReworkContext";
+import { isReviewReworkContext, reworkValidationHref } from "../lib/reviewReworkContext";
 import {
   type SourceContributionInput,
   formatSourceComment,
@@ -132,6 +132,7 @@ export function KnowledgeDetail(): JSX.Element {
       .then((r) => r.text);
   // SCRUM-294: Demo-Kontext der Zielseite (über Library erreicht) — nur Anzeige/Link-Kontext.
   const [params] = useSearchParams();
+  const reviewReworkContext = isReviewReworkContext(params);
   const { role } = useRole();
   const query = useKo(id);
   const evidence = useKoEvidence(id);
@@ -145,6 +146,10 @@ export function KnowledgeDetail(): JSX.Element {
   const nameOf = (uid: string): string => dir.data?.find((d) => d.id === uid)?.name || uid;
   const qc = useQueryClient();
   const [edit, setEdit] = useState<EditState | null>(null);
+  // SCRUM-331: nach einer Revision aus dem Nacharbeitskontext (?rework=review) den Rückweg ins
+  // Validation Board (Fokus „überarbeitet") anbieten. Nur Anzeige; keine Auto-Validierung/-Rückgabe.
+  const [reworkSavedFor, setReworkSavedFor] = useState<string | null>(null);
+  const reworkSaved = reviewReworkContext && reworkSavedFor === id;
   const [conflict, setConflict] = useState<ConflictForm | null>(null);
   const [commentText, setCommentText] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -372,6 +377,10 @@ export function KnowledgeDetail(): JSX.Element {
       invalidate();
       setEdit(null);
       setErr(null);
+      // SCRUM-331: Revision aus dem Nacharbeitskontext → Rückweg zur Validierung der Revision anbieten.
+      if (reviewReworkContext) {
+        setReworkSavedFor(id);
+      }
     },
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
   });
@@ -465,9 +474,36 @@ export function KnowledgeDetail(): JSX.Element {
                       {t("ko.returnedBanner")}
                     </div>
                   ) : null}
+                  {/* SCRUM-331: nach einer Revision aus dem Nacharbeitskontext → Rückweg zur Validierung
+                      der überarbeiteten KOs. Ehrlich: neue Version + erneute Review, keine Auto-Freigabe. */}
+                  {reworkSaved ? (
+                    <div className="mb-3 rounded-card border border-trust-pos-fill/40 bg-trust-pos-bg p-3">
+                      <div className="text-[12.5px] font-semibold text-trust-pos-text">
+                        {t("ko.rework.savedTitle")}
+                      </div>
+                      <p className="mt-0.5 text-[11.5px] leading-relaxed text-trust-pos-text/90">
+                        {t("ko.rework.savedHint")}
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <Link
+                          to={reworkValidationHref()}
+                          className="inline-flex items-center gap-1 rounded-btn bg-ink px-3 py-1.5 text-[12px] font-semibold text-white hover:opacity-90"
+                        >
+                          {t("ko.rework.toValidation")} <span aria-hidden="true">→</span>
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => setReworkSavedFor(null)}
+                          className="text-[11.5px] font-semibold text-muted hover:text-text"
+                        >
+                          {t("val.feedback.cancel")}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                   {/* SCRUM-330: Review-Nacharbeitskontext (?rework=review) — nur Anzeige; Bearbeiten erzeugt
                       neue Version/Review, keine automatische Freigabe/Rückgabe. */}
-                  {isReviewReworkContext(params) ? (
+                  {reviewReworkContext && !reworkSaved ? (
                     <div className="mb-3 rounded-card border border-trust-warn-fill/30 bg-trust-warn-bg p-3">
                       <div className="text-[12.5px] font-semibold text-trust-warn-text">
                         {t("ko.rework.title")}

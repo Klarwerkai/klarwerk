@@ -7732,3 +7732,39 @@ git commit -m "feat(ko-detail): review rework context banner via ?rework=review 
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-331 — Beta Review-Nacharbeit: nach Revision zurück in den Validation-Fokus führen v0
+**Datum:** 2026-06-29 · **Rolle:** Claude (Umsetzung) · **Status:** umgesetzt, Gates grün
+
+**Vorab-Befund.** `git status -sb` sauber (nur untracked Infra-Doc). KO-Detail Save-Mutation (`action:"revise"` + tags + ggf. category) hat `onSuccess: invalidate; setEdit(null); setErr(null)` — kein Success-State; danach Read-Mode. SCRUM-330 zeigt bei `?rework=review` einen Nacharbeitsbanner (Bearbeiten/Revision + zurück). `reviewReworkContext.ts` (REWORK_PARAM/reworkHref/isReviewReworkContext). `validationReviewContext.ts` liefert `REVIEW_FOCUS_PARAM = "review"` + `review=revision`; `validationBoardFocus.ts` die Query-Konvention (SCRUM-328). KO-Detail nutzt `useSearchParams` (`params`).
+
+**Umsetzung (v0).**
+1. **DOM-freier Helfer** `reviewReworkContext.reworkValidationHref()` (NEU) → `/validierung?review=revision` (nutzt `REVIEW_FOCUS_PARAM` aus validationReviewContext). Bewusst KEIN `origin=…`: Demo/Eigenes hängt am KO, nicht an der Nacharbeit — ein fixes origin könnte ein Demo-KO fälschlich ausblenden.
+2. **KO-Detail Revision-Success-Card**: neuer State `reworkSaved`; in der Save-`onSuccess` wird er gesetzt, wenn `isReviewReworkContext(params)`. Nach erfolgreichem Revise (aus dem Rework-Kontext) erscheint eine positive Card „Revision gespeichert" + ehrlicher Hinweis (neue Version, erneute Review, keine Auto-Freigabe/-Rückgabe) + CTA „Zur Validierung der Revision" (`reworkValidationHref()`) + Schließen. Der SCRUM-330-Nacharbeitsbanner wird auf `isReviewReworkContext(params) && !reworkSaved` gegated, damit nach dem Speichern die Success-Card führt.
+3. **Copy/i18n** `ko.rework.savedTitle/savedHint/toValidation` DE+EN (ehrlich). Bestehende `ko.editNote` + SCRUM-330-Banner unverändert.
+4. **Tests** `tests/ko/review-rework-context.test.ts` erweitert: `reworkValidationHref` → `/validierung?review=revision` ohne origin; Erfolg-i18n (savedTitle/savedHint/toValidation) DE+EN; Ehrlichkeit (keine automatische Freigabe) im savedHint. Bestehende SCRUM-330-Tests unverändert grün.
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/reviewReworkContext.ts` (reworkValidationHref + REVIEW_FOCUS_PARAM-Import)
+- `apps/web/src/pages/KnowledgeDetail.tsx` (reworkSaved-State, Save-onSuccess, Revision-Success-Card, Banner-Gate, Import)
+- `apps/web/src/i18n.ts` (`ko.rework.saved*` + `toValidation` DE+EN)
+- `tests/ko/review-rework-context.test.ts` (erweitert)
+
+**Tests/Gates.** `npm run check` grün — **152 Dateien / 924 Tests**. Gezielt: `npx vitest run tests/ko/review-rework-context.test.ts` → 8/8 grün. `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün (kein Import-Zyklus: reviewReworkContext → validationReviewContext, einseitig). Normale Edit-/Revise-Flows ohne `?rework=review` unverändert (reworkSaved bleibt false → keine Card).
+
+**Bewusst nicht umgesetzte Gaps (später).** Kein automatisches Entfernen des `?rework=review` aus der URL nach Save (Card steuert die Folge; Banner ist gegated). Kein `origin`-Parameter im Rückweg (bewusst, s. o.). Kein Toast zusätzlich zur Card. Kein Übertragen des Review-Kommentars. Kein Diff/Merge-Viewer.
+
+**Rest-Risiken.** `reworkSaved` ist client-seitiger Anzeige-State; bei Reload geht er verloren — dann greift wieder der SCRUM-330-Banner (rework=review noch in URL), was konsistent bleibt (Nutzer kann erneut bearbeiten oder zur Validierung). Die Validierungs-Fokusansicht zeigt nur KOs mit `version > 1` als „überarbeitet" (geteilte Logik mit SCRUM-326/327) — die soeben gespeicherte Revision erscheint dort, sobald der Board-Datenstand sie mit erhöhter Version liefert.
+
+**Nicht-Ziele eingehalten.** Kein Backend, keine Datenmodelländerung, keine Auto-Validierung/-Freigabe/-Rückgabe, kein Review-Kommentar im Query, kein Review-Diff/Merge-Viewer, kein RAG/neue Suche/Local-LLM, keine Team-2/3/4-Dateien, kein Refactoring ohne Produktnutzen, kein Git/Push/Jira. Nur in `/Users/peterkohnert/Documents/dev_Klarwerk`; untracked Infra-Doc unberührt.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/reviewReworkContext.ts apps/web/src/pages/KnowledgeDetail.tsx apps/web/src/i18n.ts tests/ko/review-rework-context.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(ko-detail): after rework revision, guide back to validation revision focus (SCRUM-331)"
+git push
+```
+Kein Git/Push/Jira durch Claude.

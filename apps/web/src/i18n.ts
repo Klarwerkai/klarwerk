@@ -552,6 +552,10 @@ const de = {
     "Aus einer Review-Entscheidung (Rückfrage/Ablehnung) angestoßen. Bearbeiten erzeugt eine neue Version und startet die Prüfung neu — keine automatische Freigabe, keine automatische Rückgabe.",
   "ko.rework.edit": "Bearbeiten / Revision",
   "ko.rework.back": "Zurück zur Validierung",
+  "ko.rework.savedTitle": "Revision gespeichert",
+  "ko.rework.savedHint":
+    "Eine neue Version ist entstanden und geht erneut in die Prüfung — keine automatische Freigabe, keine automatische Rückgabe.",
+  "ko.rework.toValidation": "Zur Validierung der Revision",
   "ko.saveEdit": "Speichern",
   "ko.cancelEdit": "Abbrechen",
   "ko.editNote":
@@ -1913,6 +1917,10 @@ const en: typeof de = {
     "Triggered by a review decision (query/reject). Editing creates a new version and restarts review — no automatic approval, no automatic return.",
   "ko.rework.edit": "Edit / revise",
   "ko.rework.back": "Back to validation",
+  "ko.rework.savedTitle": "Revision saved",
+  "ko.rework.savedHint":
+    "A new version was created and goes back into review — no automatic approval, no automatic return.",
+  "ko.rework.toValidation": "To the revision in validation",
   "ko.saveEdit": "Save",
   "ko.cancelEdit": "Cancel",
   "ko.editNote":

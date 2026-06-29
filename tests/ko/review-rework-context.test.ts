@@ -5,6 +5,7 @@ import {
   REWORK_REVIEW_VALUE,
   isReviewReworkContext,
   reworkHref,
+  reworkValidationHref,
 } from "../../apps/web/src/lib/reviewReworkContext";
 
 // SCRUM-330: DOM-freier Review-Nacharbeitskontext (Link + Query-Erkennung fürs KO-Detail).
@@ -39,5 +40,26 @@ describe("SCRUM-330: reviewReworkContext", () => {
     const hint = String(i18n.getResource("de", "translation", "ko.rework.hint") ?? "");
     expect(hint).toMatch(/keine automatische Freigabe/i);
     expect(hint).toMatch(/keine automatische Rückgabe/i);
+  });
+
+  // SCRUM-331: Rückweg nach Revision → Validation Board mit Fokus „überarbeitet" (review=revision).
+  it("reworkValidationHref zeigt auf /validierung?review=revision (Fokus-Konvention)", () => {
+    expect(reworkValidationHref()).toBe("/validierung?review=revision");
+    // bewusst KEIN origin-Parameter (Herkunft hängt am KO, nicht an der Nacharbeit).
+    expect(reworkValidationHref()).not.toContain("origin=");
+  });
+
+  it("Revisions-Erfolg-i18n (savedTitle/savedHint/toValidation) DE+EN vorhanden", () => {
+    const keys = ["ko.rework.savedTitle", "ko.rework.savedHint", "ko.rework.toValidation"];
+    for (const key of keys) {
+      for (const lng of ["de", "en"]) {
+        expect(String(i18n.getResource(lng, "translation", key) ?? "").length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("ehrlich: savedHint verspricht keine automatische Freigabe (DE)", () => {
+    const hint = String(i18n.getResource("de", "translation", "ko.rework.savedHint") ?? "");
+    expect(hint).toMatch(/keine automatische Freigabe/i);
   });
 });
