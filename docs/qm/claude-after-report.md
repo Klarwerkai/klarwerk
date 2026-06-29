@@ -7065,6 +7065,43 @@ Kein Git/Push/Jira durch Claude.
 
 ---
 
+## SCRUM-319 — Beta Editor Body-Strukturvorlagen v0
+**Datum:** 2026-06-29 · **Rolle:** Codex (Umsetzung/Prüfung) · **Status:** umgesetzt, Gates grün
+
+**Vorab-Befund.** `git status -sb` zeigte eine saubere Basis bis auf das bekannte untracked Infra-Doc. Nach SCRUM-314/315/316/317 existieren Body-Blöcke, Body-KI und Orientierung am ausführlichen Inhalt, aber Beta-Nutzer starten im `bodyHtml`-Feld weiterhin mit leerem Editor. `RichTextEditor` ist value-getrieben (`bodyHtml`/`setBodyHtml` in Capture, `edit.bodyHtml`/`setEdit` in KO-Detail), Sanitizer/Block-Allowlist sind vorhanden. Lücke: kein schneller, risikoarmer Startpunkt für typische Knowledge-Editor-Strukturen.
+
+**Umsetzung (v0).**
+1. **DOM-freier Helfer** `apps/web/src/lib/bodyTemplates.ts` (NEU): drei stabile Vorlagen `procedure`, `troubleshooting`, `safety`; i18n-Key-Schema `editor.template.<id>.*`; DE/EN-HTML mit H2/H3, Listen und vorhandenen statischen Panel-Klassen; `bodyTemplateHtml()` normalisiert + sanitisiert; `applyBodyTemplate()` ersetzt bei leerem Body und hängt bei vorhandenem Body an.
+2. **UI-Komponente** `apps/web/src/components/BodyTemplateChooser.tsx` (NEU): kompakte Karte „Strukturvorlage starten" mit drei expliziten Buttons; keine Auto-Befüllung, kein Speichern, keine Validierung.
+3. **Einbindung** in `Capture.tsx` und `KnowledgeDetail.tsx` direkt am Body-Feld nach `EditorGuidance` und vor dem `RichTextEditor`; bestehende Body-KI/Block-Funktionen bleiben unverändert.
+4. **i18n** `editor.template.*` DE+EN (Titel, Hinweis, Label/Beschreibung je Vorlage).
+5. **Tests** `tests/app/body-templates.test.ts` (NEU, DOM-frei): stabile IDs/Reihenfolge + i18n-Keys, Locale-Normalisierung, sichere HTML-Ausgabe/erlaubte Klassen, EN-Vorlage, Replace-vs-Append-Verhalten.
+
+**Bewusst nicht umgesetzte Gaps (später).** Kein Cursor-/Inline-Insert, kein Template-Editor, keine Persistenz eigener Vorlagen, keine blockweise Formularlogik, kein automatisches Ausfüllen aus KI/Reasoner, keine Änderung am RichTextEditor/Sanitizer über die vorhandene Nutzung hinaus.
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/bodyTemplates.ts` (NEU)
+- `apps/web/src/components/BodyTemplateChooser.tsx` (NEU)
+- `apps/web/src/pages/Capture.tsx` (Template-Chooser am Body-Feld)
+- `apps/web/src/pages/KnowledgeDetail.tsx` (Template-Chooser am Body-Feld im Edit-Modus)
+- `apps/web/src/i18n.ts` (`editor.template.*` DE+EN)
+- `tests/app/body-templates.test.ts` (NEU)
+
+**Tests/Gates.** Gezielte Tests: `npx vitest run tests/app/body-templates.test.ts tests/app/editor-guidance.test.ts tests/app/editor-blocks.test.ts tests/structure/rich-text.test.ts` → 21/21 grün. `npm run check` grün — **143 Dateien / 854 Tests**. `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün. SCRUM-314/315/316/317-Flows bleiben intakt.
+
+**Nicht-Ziele eingehalten.** Kein neuer Editor, keine neue Toolbar-Logik, kein RAG/neue Suche/Local-LLM, keine Auto-Validierung, kein Auto-Speichern, keine Backend-/Datenmodelländerung, keine Team-2/3/4-Dateien, keine Migration/Deployment. Nur in `/Users/peterkohnert/Documents/dev_Klarwerk`; untracked Infra-Doc unberührt.
+
+**Commit-/Push-Hinweis.**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/bodyTemplates.ts apps/web/src/components/BodyTemplateChooser.tsx apps/web/src/pages/Capture.tsx apps/web/src/pages/KnowledgeDetail.tsx apps/web/src/i18n.ts tests/app/body-templates.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(editor): add body structure templates in Capture and KO detail (SCRUM-319)"
+git push
+```
+Codex übernimmt Commit, Push, GitHub-CI-Prüfung und Jira-Abschluss.
+
+---
+
 ## SCRUM-313 — Beta AI-assisted KO Detail Revision / Nachbearbeitung v0
 **Datum:** 2026-06-29 · **Rolle:** Claude (Umsetzung) · **Status:** umgesetzt, Gates grün
 

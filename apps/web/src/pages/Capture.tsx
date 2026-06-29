@@ -17,6 +17,7 @@ import type {
 import { useSession } from "../app/AuthContext";
 import { useToast } from "../app/ToastContext";
 import { AiAssistBox } from "../components/AiAssistBox";
+import { BodyTemplateChooser } from "../components/BodyTemplateChooser";
 import { DemoBanner } from "../components/DemoBanner";
 import { EditorGuidance } from "../components/EditorGuidance";
 import { HelpTip } from "../components/HelpTip";
@@ -879,6 +880,8 @@ export function Capture(): JSX.Element {
                 <Field label={t("capture.fBody")}>
                   {/* SCRUM-317: kompakte Orientierung am Body-Feld (Struktur/Handlung/Blöcke/KI). */}
                   <EditorGuidance />
+                  {/* SCRUM-319: bewusst wählbare Body-Strukturvorlagen (leer = setzen, sonst anhängen). */}
+                  <BodyTemplateChooser bodyHtml={bodyHtml} onApply={setBodyHtml} />
                   <RichTextEditor value={bodyHtml} onChange={setBodyHtml} />
                   {/* SCRUM-315: KI-Nachbearbeitung des ausführlichen Inhalts — Textbasis aus dem Body,
                       Vorschau + bewusste Übernahme (Ersetzen/Anhängen) als sicheres Body-HTML. */}

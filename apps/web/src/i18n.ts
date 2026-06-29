@@ -357,6 +357,16 @@ const de = {
   "editor.guidance.blocks": "Blöcke: Wichtiges als Info/Hinweis/Warnung/Erfolg markieren.",
   "editor.guidance.ai":
     "KI-Hilfe: liefert Vorschläge — du prüfst und übernimmst bewusst, keine Auto-Validierung.",
+  "editor.template.title": "Strukturvorlage starten",
+  "editor.template.hint":
+    "Fügt eine sichere Grundstruktur ein; bei bestehendem Inhalt wird angehängt.",
+  "editor.template.procedure.label": "Vorgehen",
+  "editor.template.procedure.description": "Bedingungen und Schritte für wiederholbare Arbeit.",
+  "editor.template.troubleshooting.label": "Störung",
+  "editor.template.troubleshooting.description":
+    "Symptom, Ursache und Maßnahme strukturiert erfassen.",
+  "editor.template.safety.label": "Sicherheit",
+  "editor.template.safety.description": "Warnung, sichere Prüfung und gewünschter Zustand.",
   "editor.block.info": "Info",
   "editor.block.note": "Hinweis",
   "editor.block.warning": "Warnung",
@@ -1650,6 +1660,15 @@ const en: typeof de = {
   "editor.guidance.blocks": "Blocks: mark key points as info/note/warning/success.",
   "editor.guidance.ai":
     "AI help: provides suggestions — you review and apply deliberately, no auto-validation.",
+  "editor.template.title": "Start from a structure template",
+  "editor.template.hint": "Inserts a safe base structure; appends it when content already exists.",
+  "editor.template.procedure.label": "Procedure",
+  "editor.template.procedure.description": "Conditions and steps for repeatable work.",
+  "editor.template.troubleshooting.label": "Issue",
+  "editor.template.troubleshooting.description":
+    "Capture symptom, cause and action in a structure.",
+  "editor.template.safety.label": "Safety",
+  "editor.template.safety.description": "Warning, safe check and desired state.",
   "editor.block.info": "Info",
   "editor.block.note": "Note",
   "editor.block.warning": "Warning",
