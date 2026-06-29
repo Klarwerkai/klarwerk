@@ -7882,3 +7882,41 @@ git commit -m "test(validation): runtime-near E2E smoke for review rework flow (
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-335 — Beta Capture-Editor bis Validation E2E prüfen und echte Reibung beheben v0
+**Datum:** 2026-06-29 · **Rolle:** Claude (Verifikation) · **Status:** geprüft, Flow kohärent, keine Reibung — E2E-Smoke als Regressionssicherung ergänzt, Gates grün
+
+**Vorab-Befund.** Der Beta-Kernflow Capture/Editor → offenes KO → Validation war über viele Einzeltests, aber nicht runtime-nah zusammenhängend abgesichert. Backend-Mechanik bestätigt: `POST /api/kos` ruft `KnowledgeObjectService.create`, das `bodyHtml` per `cleanBody → sanitizeHtml` (services/structure) reinigt und das KO mit `status:"offen"`, `trust:0`, `version:1` anlegt; Sanitizer-Allowlist (SCRUM-314) = `panel/callout/panel-info/panel-note/panel-warning/panel-success`. Validation Board = `GET /api/validation/board` (validation.board). FE-Helfer: `hasBodyBlocks`/`bodyReadMode`/`editorContentQuality` werten sanitisiertes HTML DOM-frei aus; `koOverview` leitet Nutzbarkeit aus dem abgeleiteten Status ab (offen → `needs-work`), `useReadiness` ist kanonisch („ready" nur bei validiert). `git status -sb` sauber (nur untracked Infra-Doc). Vorab per Sanitizer-Probe das exakte Reinigungsergebnis verifiziert.
+
+**Smoke-Evidence (runtime-nah, ECHTE HTTP-Routen + Server-Sanitizer + FE-Helfer).** Neuer Test `tests/structure/capture-to-validation-e2e.test.ts`:
+1. Admin registriert/eingeloggt; `POST /api/kos` mit ausführlichem Body: `<h2>` + `<div class="panel panel-info" onclick=… style=…>` + `<div class="evil panel panel-warning">` + `<ul><li>…` + `<script>` + externes `<img src="https://evil/…">`.
+2. Antwort: `status:"offen"`, `trust:0`, `version:1` — nicht automatisch validiert.
+3. **Sanitizer konsistent:** `bodyHtml` enthält `class="panel panel-info"` und `class="panel panel-warning"`; entfernt sind `evil` (fremde Klasse), `onclick`, `style=`, `<script`, `https://evil` (externes Bild).
+4. FE-Anzeige: `hasBodyBlocks` true; `bodyReadMode` = `{hasBody:true, hasBlocks:true}`; `editorContentQuality` → `isEmpty:false, hasBlocks:true, hasHeadings:true, hasLists:true`.
+5. Ehrliche Nutzbarkeit: `koOverview.usability === "needs-work"`, `status !== "validiert"`, `trust 0`; `useReadiness(...).usability !== "ready"`; `validationReviewContext.kind === "new"`.
+6. KO erscheint im `GET /api/validation/board` mit `status:"offen"` (Review-Arbeit sichtbar).
+7. Erste `up`-Bewertung bei `needed=2` → KO bleibt `offen`, weiterhin nicht „ready" (keine Fake-Freigabe).
+
+**Umsetzung.** Keine Produktcode-Änderung nötig — der Capture-to-Validation-Flow ist kohärent: Sanitizer hält erlaubte Blöcke und strippt Unerlaubtes, Status/Trust/Nutzbarkeit sind nicht irreführend, das offene KO ist im Board sichtbar (Scope-Punkt 5: ehrlich dokumentiert, keine erzwungene Änderung). Einziger Zuwachs: der E2E-Smoke als dauerhafte Regressionssicherung.
+
+**Geänderte Dateien.**
+- `tests/structure/capture-to-validation-e2e.test.ts` (NEU, E2E-Smoke HTTP + Sanitizer + FE-Helfer)
+
+**Tests/Gates.** Gezielt `npx vitest run tests/structure/capture-to-validation-e2e.test.ts` → 1/1 grün (214 ms). `npm run check` grün — **155 Dateien / 936 Tests**. Architektur-Gate (`depcruise … services`) unberührt; der Test liegt unter `tests/`. Keine FE-Datei geändert → FE-tsc unberührt.
+
+**Bewusst nicht umgesetzte Gaps.** Kein Browser-/Playwright-Render-E2E (DOM-frei über Helfer + HTTP geprüft); kein echter Attachment-Upload-Pfad im Smoke (Body-Block-/Sanitizer-Fokus); kein Mehrfach-Reviewer-/Vollvalidierungs-Durchlauf (eine `up`-Stimme genügt, um „keine Fake-Freigabe" zu zeigen); keine neue Architektur/Editor.
+
+**Rest-Risiken.** Der Smoke koppelt die FE-Block-Erkennung an die exakte Server-Sanitizer-Allowlist (`panel*`); ändert sich eine Seite, schlägt er fehl (gewollt — er sichert genau diese Konsistenz). Test importiert `services/app` + `apps/web` gemeinsam, nur in `tests/` zulässig (außerhalb der `services`-Modulgrenzen-Regel), bewusst dort verortet.
+
+**Nicht-Ziele eingehalten.** Kein neuer Editor, kein neuer Upload-/Attachment-Backendflow, kein Browser-E2E, keine neue Architektur, kein RAG/neue Suche, keine Team-2/3/4-Dateien, kein Deployment, keine produktiven Daten, kein Git/Push/Jira. Nur in `/Users/peterkohnert/Documents/dev_Klarwerk`; untracked Infra-Doc unberührt.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add tests/structure/capture-to-validation-e2e.test.ts docs/qm/claude-after-report.md
+git commit -m "test(structure): runtime-near E2E smoke for capture editor to validation flow (SCRUM-335)"
+git push
+```
+Kein Git/Push/Jira durch Claude.
