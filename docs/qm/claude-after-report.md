@@ -6665,3 +6665,43 @@ git commit -m "feat(start): visible pilot proof line (find -> usability -> verif
 git push
 ```
 Kein Git/Push/Jira durch Claude. Codex prüft Diff/Gates, korrigiert minimal falls nötig, committet, pusht, wartet GitHub CI ab und schließt Jira.
+
+---
+
+## SCRUM-302 — Pilot-Finalcheck: Stage-1-Pfad browsernah prüfen und letzte echte Reibung bündeln
+**Datum:** 2026-06-29 · **Rolle:** Claude (Finalcheck) · **Ergebnis:** keine Codeänderung nötig (kein Fix erzwungen)
+
+**1. Vorab-Befund (runtime-/API-nah, frisch geseedet)**
+In-Memory-App gebaut (`buildApp(buildServices())`), Admin registriert, Demo via `POST /api/admin/demo-seed` geseedet (5 KOs, 2 validiert, 1 Lücke, 1 Konflikt, 1 fällige Revalidierung) und der Stage-1-Pfad API-nah durchgespielt:
+- **Start → Demo-/Proof-Linie:** Demo-Pilotpfad (3 Schritte) + Beweiskette „Wissen finden → Nutzbarkeit erkennen → Quelle/Trust/Version prüfen" sind vorhanden und greifen auf reale Routen (SCRUM-290/301).
+- **Ask (demo-sichere Frage „Wann muss Ventil X bei Überdruck geschlossen werden?")** → `POST /api/ask`: `answered=true`, `knowledgeClass=gesichert`, `trust=100`, genau **1 Quelle** (das validierte Ventil-X-KO), kein Gap. Quellengebunden, kein Chatbot-Verhalten, keine erfundene Antwort.
+- **Ask-Quelle → KO-Detail:** Quelle löst auf ein KO `status=validiert, trust=100, v1, sources=1, attachments=1` → `koOverview.usability=ready` → `useReadiness`-Label „Nutzbar". Antwort-Status (gesichert) ↔ Quelle ↔ Status ↔ Trust ↔ Nutzbarkeit **widerspruchsfrei**. Quell-Link trägt im Demo-Kontext `?demo=stage1` über `demoHref` weiter (SCRUM-294/300), Readiness-Chip je Quelle (SCRUM-300).
+- **Library:** 5 Treffer; validierte KOs `trust=100` → „Nutzbar"; offene KOs `trust=0/50` → „Zu prüfen". Wichtig und ehrlich: das offene KO mit `trust=50` erscheint **nicht** als „nutzbar"/„validiert" — Reife folgt dem Status, nicht allein dem Trust (keine falsche Nutzbarkeits-Suggestion). Jede Zeile: Reife + StatusPill + Trust-Bar + Weg ins Detail.
+- **KO-Detail:** Overview belegt Nutzbarkeit + Status + Trust + Version + Quellen/Anhänge + nächste Handlung aus `koOverview` (SCRUM-251/293).
+- **Validation-Board:** 3 offene KOs → echte Review-Arbeit (keine Fake-Freigabe).
+
+**2. Umsetzung**
+**Keine Codeänderung.** Der Pfad ist nach den Slices SCRUM-296…301 bereits konsistent und ehrlich; es wurde keine echte Produktreibung gefunden, die einen sichtbaren Fix rechtfertigt. Es wurde bewusst kein Fix erzwungen (Nicht-Ziel „kein Refactoring/Feature ohne direkten Produktnutzen"). Der temporäre Walkthrough wurde nur lokal zur Prüfung genutzt und wieder entfernt (nicht eingecheckt).
+
+**Trennung des Befunds:**
+- *Bereits gut:* Ask quellengebunden (gesichert/trust100/1 Quelle); Konsistenz Trust/Status/Nutzbarkeit/Quellen über `koOverview`/`useReadiness`; Library-Reife folgt Status (offen≠nutzbar trotz trust50); KO-Detail-Proof vollständig; `?demo=stage1` über `withDemo`/`demoHref` weitergetragen; normale Nutzung ohne Demo-Kontext unverändert.
+- *Echte Reibung:* keine gefunden.
+- *Nicht-Ziel:* keine neue Suche/RAG/Retrieval, keine Reasoner-/Backend-Änderung, keine neue Datenquelle/Fake-Quellen, keine Auto-Validierung, keine neue Task-/Workflow-Engine, keine UI-Neugestaltung.
+
+**3. Geänderte Dateien**
+Keine (nur dieser After-Report-Eintrag). Untracked `docs/KLARWERK_Infrastruktur_Domain_Server_Aufteilung_v2.md` bewusst unberührt.
+
+**4. Tests/Gates**
+`npm run check` grün — **133 Dateien / 782 Tests** (unverändert zu SCRUM-301). Keine FE-Quelländerung → kein erneuter FE-tsc-Lauf nötig (zuletzt SCRUM-301 grün). Runtime-Walkthrough manuell grün (Seed + Ask + KO + Library + Board konsistent).
+
+**5. Restlücken/Nicht-Ziele**
+Stage-1-Pilotpfad ist runtime-nah verifiziert und intern konsistent. Offene größere Themen bleiben außerhalb von Stage-1/diesem Ticket (z. B. echte lokale LLM-Runtime/RAG/Vector — siehe frühere Readiness-Dokumente, durchgängig ehrlich als Partial/Blocked markiert). Kein neues Statusmodell, keine Ticketserie, keine Jira-Strukturänderung, keine Team-2/3-Arbeit.
+
+**6. Commit-/Push-Hinweis (nur Hinweis — nicht ausgeführt)**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add docs/qm/claude-after-report.md
+git commit -m "docs(qm): SCRUM-302 pilot final check — Stage-1 verified runtime-near, no code change needed"
+git push
+```
+Kein Git/Push/Jira durch Claude. Codex prüft Diff/Gates, korrigiert minimal falls nötig, committet, pusht, wartet GitHub CI ab und schließt Jira. Untracked `docs/KLARWERK_Infrastruktur_Domain_Server_Aufteilung_v2.md` bleibt unangetastet.
