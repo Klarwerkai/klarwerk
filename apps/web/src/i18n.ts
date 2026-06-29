@@ -696,6 +696,11 @@ const de = {
   "lib.match.type": "Wissensart",
   "lib.match.text": "Text",
   "lib.maturity.all": "Alle",
+  // SCRUM-309: Herkunftsfilter (ergänzend zu Reife/Suche; Herkunft, keine Qualitätsaussage).
+  "lib.originLabel": "Herkunft",
+  "lib.demoFilter.all": "Alle Herkünfte",
+  "lib.demoFilter.demo": "Demo-Beispiele",
+  "lib.demoFilter.nonDemo": "Eigenes Wissen",
   "lib.maturity.usable": "Nutzbar",
   "lib.maturity.review": "In Prüfung",
   "lib.maturity.open": "Zu prüfen",
@@ -1938,6 +1943,11 @@ const en: typeof de = {
   "lib.match.type": "Knowledge type",
   "lib.match.text": "Text",
   "lib.maturity.all": "All",
+  // SCRUM-309: origin filter (complements maturity/search; provenance, not a quality claim).
+  "lib.originLabel": "Origin",
+  "lib.demoFilter.all": "All origins",
+  "lib.demoFilter.demo": "Example data",
+  "lib.demoFilter.nonDemo": "Own knowledge",
   "lib.maturity.usable": "Usable",
   "lib.maturity.review": "In review",
   "lib.maturity.open": "To review",

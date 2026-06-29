@@ -16,7 +16,14 @@ import {
   StatusPill,
 } from "../components/trust";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
-import { isDemoKnowledge } from "../lib/demoKnowledge";
+import {
+  DEMO_KNOWLEDGE_FILTERS,
+  type DemoKnowledgeFilter,
+  countByDemoKnowledge,
+  demoKnowledgeFilterLabelKey,
+  filterByDemoKnowledge,
+  isDemoKnowledge,
+} from "../lib/demoKnowledge";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 import { deriveStatus } from "../lib/displayStatus";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
@@ -62,6 +69,8 @@ export function Library(): JSX.Element {
   const [exportFormat, setExportFormat] = useState<ExportFormat>("json");
   // SCRUM-267: einfacher Reife-Filter (Alle/Nutzbar/In Prüfung/Zu prüfen) auf der gerankten Liste.
   const [maturity, setMaturity] = useState<MaturityFilter>("all");
+  // SCRUM-309: Herkunftsfilter (Demo/Eigenes) — ergänzend zu Reife/Suche, nicht als Ersatz.
+  const [demoFilter, setDemoFilter] = useState<DemoKnowledgeFilter>("all");
   const guide = knowledgeGuidance("library");
 
   // Optionen (Domäne/Tags) aus dem ungefilterten Bestand, damit sie stabil bleiben.
@@ -221,13 +230,38 @@ export function Library(): JSX.Element {
         {(items) => {
           // SCRUM-245: client-seitig nach nachvollziehbarer Relevanz re-ranken (verwirft nichts).
           const ranked = searchLibrary(items, trimmedQ);
-          // SCRUM-267: Reife-Zähler über die gerankte Liste; dann nach Reife filtern …
-          const maturityCounts = countByMaturity(ranked);
-          const filtered = filterByMaturity(ranked, maturity);
+          // SCRUM-309: Herkunfts-Zähler über die volle gerankte Liste; dann ergänzend nach Herkunft
+          // (Demo/Eigenes) filtern — VOR der Reife, damit beide Filter sauber komponieren.
+          const demoCounts = countByDemoKnowledge(ranked);
+          const byDemo = filterByDemoKnowledge(ranked, demoFilter);
+          // SCRUM-267: Reife-Zähler über die (nach Herkunft gefilterte) Liste; dann nach Reife filtern …
+          const maturityCounts = countByMaturity(byDemo);
+          const filtered = filterByMaturity(byDemo, maturity);
           // SCRUM-158: … erst danach fenstern + zählen (Count-Linie passt zur sichtbaren Menge).
           const win = windowList(filtered);
           return (
             <>
+              {/* SCRUM-309: Herkunftsfilter (Demo/Eigenes) — ergänzend, nutzt dieselbe Erkennung wie
+                  das Demo-Badge; ersetzt NICHT Status/Trust/Nutzbarkeit/Reife/Suche. */}
+              <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                <span className="mr-0.5 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                  {t("lib.originLabel")}:
+                </span>
+                {DEMO_KNOWLEDGE_FILTERS.map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setDemoFilter(f)}
+                    className={`rounded-pill border px-2.5 py-1 font-mono text-[11px] font-semibold ${
+                      demoFilter === f
+                        ? "border-ink bg-ink text-white"
+                        : "border-hairline text-muted hover:text-text"
+                    }`}
+                  >
+                    {t(demoKnowledgeFilterLabelKey(f))} · {demoCounts[f]}
+                  </button>
+                ))}
+              </div>
               {/* SCRUM-267: Reife-Filter — dieselbe Logik wie die Plakette (libraryMaturity). */}
               <div className="mb-2 flex flex-wrap gap-1.5">
                 {MATURITY_FILTERS.map((m) => (

@@ -3,8 +3,13 @@ import type { KnowledgeObject } from "../../apps/web/src/api/types";
 import i18n from "../../apps/web/src/i18n";
 import { sourceRefs } from "../../apps/web/src/lib/askView";
 import {
+  DEMO_KNOWLEDGE_FILTERS,
   DEMO_TAG,
+  type DemoKnowledgeFilter,
+  countByDemoKnowledge,
   demoKnowledgeBadge,
+  demoKnowledgeFilterLabelKey,
+  filterByDemoKnowledge,
   isDemoKnowledge,
 } from "../../apps/web/src/lib/demoKnowledge";
 
@@ -68,5 +73,52 @@ describe("SCRUM-308: demoKnowledge", () => {
     expect(String(i18n.getResource("en", "translation", "demo.badge.hint"))).toMatch(
       /does not replace/i,
     );
+  });
+});
+
+// SCRUM-309: client-seitiger Herkunftsfilter für die Library — ergänzend, nutzt dieselbe Erkennung
+// (isDemoKnowledge/DEMO_TAG), keine zweite Logik. all/demo/non-demo + ehrliche Counts + Labels.
+describe("SCRUM-309: demoKnowledge filter", () => {
+  const item = (demo: boolean): { ko: Pick<KnowledgeObject, "tags"> } => ({
+    ko: { tags: demo ? ["wartung", DEMO_TAG] : ["wartung"] },
+  });
+  const items = [item(true), item(false), item(true)];
+
+  it("kennt genau drei Herkunftsfilter", () => {
+    expect(DEMO_KNOWLEDGE_FILTERS).toEqual<DemoKnowledgeFilter[]>(["all", "demo", "non-demo"]);
+  });
+
+  it("'all' gibt die Liste unverändert zurück (keine stille Ausblendung)", () => {
+    const out = filterByDemoKnowledge(items, "all");
+    expect(out).toHaveLength(3);
+    expect(out).toEqual(items);
+    expect(out).not.toBe(items); // neue Liste, Eingabe unverändert
+  });
+
+  it("'demo' enthält nur Demo-KOs, 'non-demo' nur Wissen ohne Demo-Tag", () => {
+    expect(filterByDemoKnowledge(items, "demo").every((it) => isDemoKnowledge(it.ko))).toBe(true);
+    expect(filterByDemoKnowledge(items, "demo")).toHaveLength(2);
+    expect(filterByDemoKnowledge(items, "non-demo").every((it) => !isDemoKnowledge(it.ko))).toBe(
+      true,
+    );
+    expect(filterByDemoKnowledge(items, "non-demo")).toHaveLength(1);
+  });
+
+  it("countByDemoKnowledge: ehrliche Zähler, demo + non-demo = all", () => {
+    const c = countByDemoKnowledge(items);
+    expect(c).toEqual({ all: 3, demo: 2, "non-demo": 1 });
+    expect(c.demo + c["non-demo"]).toBe(c.all);
+  });
+
+  it("Label-Keys je Filter sind korrekt und DE/EN auflösbar", () => {
+    expect(demoKnowledgeFilterLabelKey("all")).toBe("lib.demoFilter.all");
+    expect(demoKnowledgeFilterLabelKey("demo")).toBe("lib.demoFilter.demo");
+    expect(demoKnowledgeFilterLabelKey("non-demo")).toBe("lib.demoFilter.nonDemo");
+    const keys = ["lib.originLabel", ...DEMO_KNOWLEDGE_FILTERS.map(demoKnowledgeFilterLabelKey)];
+    for (const key of keys) {
+      for (const lng of ["de", "en"]) {
+        expect(String(i18n.getResource(lng, "translation", key) ?? "").length).toBeGreaterThan(0);
+      }
+    }
   });
 });

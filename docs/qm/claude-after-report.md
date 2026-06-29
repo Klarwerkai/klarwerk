@@ -6914,3 +6914,39 @@ git commit -m "feat(demo): mark demo/seed knowledge as example data via tag; dem
 git push
 ```
 Kein Git/Push/Jira durch Claude. Codex prüft Diff/Gates, korrigiert minimal falls nötig, committet, pusht, wartet GitHub CI ab und schließt Jira. Untracked `docs/KLARWERK_Infrastruktur_Domain_Server_Aufteilung_v2.md` bleibt unangetastet.
+
+---
+
+## SCRUM-309 — Demo-Beispielwissen in der Library gezielt finden und von eigenem Wissen trennen
+**Datum:** 2026-06-29 · **Rolle:** Claude (Umsetzung) · **Status:** umgesetzt, Gates grün
+
+**1. Vorab-Befund**
+SCRUM-308 markiert Demo-/Seed-Wissen über `isDemoKnowledge`/`DEMO_TAG` (`pilot-demo`). Die Library-Filterkette ist: `ranked = searchLibrary(items, q)` → `maturityCounts = countByMaturity(ranked)` → `filtered = filterByMaturity(ranked, maturity)` → `win = windowList(filtered)`. Es gab **keinen Herkunftsfilter**, um Demo-Beispiele gezielt zu finden bzw. von eigenem Wissen zu trennen. Einhakpunkt: ergänzend **vor** dem Reife-Filter, damit beide Filter sauber komponieren; Counts ehrlich.
+
+**2. Umsetzung**
+Kleiner, client-seitiger Slice (keine Suche/Backend/Schemaänderung):
+- **DOM-freie Helfer (`demoKnowledge.ts`):** `DemoKnowledgeFilter = "all"|"demo"|"non-demo"`, `DEMO_KNOWLEDGE_FILTERS`, `filterByDemoKnowledge(items, filter)`, `countByDemoKnowledge(items)`, `demoKnowledgeFilterLabelKey(filter)`. Alle nutzen **dieselbe** Erkennung `isDemoKnowledge` (keine zweite Logik).
+- **Library-Pipeline:** `ranked` → `demoCounts = countByDemoKnowledge(ranked)` (Zähler über die volle Liste) → `byDemo = filterByDemoKnowledge(ranked, demoFilter)` → `maturityCounts = countByMaturity(byDemo)` → `filterByMaturity(byDemo, maturity)` → `windowList`. So sind beide Filter ergänzend: Herkunft ist der breitere Schnitt, Reife verfeinert darin; die Reife-Counts spiegeln die nach Herkunft gefilterte Menge (ehrlich zur sichtbaren Liste). Diese Reihenfolge entspricht exakt dem im Ticket vorgeschlagenen Ablauf.
+- **UI:** zweite Chip-Reihe „Herkunft: Alle Herkünfte / Demo-Beispiele / Eigenes Wissen" mit ehrlichen Zählern, über der bestehenden Reife-Chip-Reihe. Label als Herkunft (keine Qualitätsaussage). Demo-Badges aus SCRUM-308 bleiben sichtbar.
+- **i18n:** `lib.originLabel`, `lib.demoFilter.all/demo/nonDemo` DE/EN.
+
+**3. Geänderte Dateien**
+- `apps/web/src/lib/demoKnowledge.ts` (Filter-/Count-/Label-Helfer)
+- `apps/web/src/pages/Library.tsx` (demoFilter-State + Pipeline + Herkunfts-Chips)
+- `apps/web/src/i18n.ts` (`lib.originLabel` + `lib.demoFilter.*` DE/EN)
+- `tests/app/demo-knowledge.test.ts` (+5 Tests: all unverändert/neue Liste, demo nur Demo, non-demo nur ohne Tag, Counts demo+non-demo=all, Label-Keys + DE/EN)
+
+**4. Tests/Gates**
+`npm run check` grün — **137 Dateien / 805 Tests** (+5). `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün.
+
+**5. Restlücken/Nicht-Ziele**
+Die Library kann sichtbare Treffer client-seitig nach Herkunft filtern (alle / Demo-Beispiele / eigenes Wissen). Produktiv erfasste KOs ohne Demo-Tag erscheinen im „Eigenes Wissen"-Filter. Der Herkunftsfilter ist **ergänzend** und ersetzt nicht Status/Trust/Nutzbarkeit/Reife-Filter/Suche; er nutzt dieselbe Erkennung wie das Demo-Badge. Kein neues Datenmodell, keine Migration/Schemaänderung, keine Server-/Backend-Filterung, keine Mandanten-Trennung, keine Lösch-/Reset-Funktion, kein Tracking/Analytics, keine neue Suche/RAG, keine Architekturänderung, keine Team-2/3-Arbeit, kein Deployment. Help/Admin bewusst nicht angefasst (kein Hinweis nötig).
+
+**6. Commit-/Push-Hinweis (nur Hinweis — nicht ausgeführt)**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/demoKnowledge.ts apps/web/src/pages/Library.tsx apps/web/src/i18n.ts tests/app/demo-knowledge.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(library): client-side origin filter (demo / own knowledge) reusing isDemoKnowledge (SCRUM-309)"
+git push
+```
+Kein Git/Push/Jira durch Claude. Codex prüft Diff/Gates, korrigiert minimal falls nötig, committet, pusht, wartet GitHub CI ab und schließt Jira. Untracked `docs/KLARWERK_Infrastruktur_Domain_Server_Aufteilung_v2.md` bleibt unangetastet.
