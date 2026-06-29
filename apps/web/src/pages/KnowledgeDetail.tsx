@@ -18,6 +18,7 @@ import {
 import type { ConflictType, ExternalResult, KnowledgeObject, KnowledgeType } from "../api/types";
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
+import { AiAssistBox } from "../components/AiAssistBox";
 import { DemoBanner } from "../components/DemoBanner";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { SanitizedHtml } from "../components/SanitizedHtml";
@@ -62,6 +63,7 @@ import {
 } from "../lib/koSource";
 import { diffForVersion } from "../lib/koVersionDiff";
 import { koVersionRows } from "../lib/koVersionSnapshots";
+import { toReasonerLocale } from "../lib/reasonerLocale";
 import {
   type SourceContributionInput,
   formatSourceComment,
@@ -106,8 +108,14 @@ const USABILITY_TONE: Record<KoUsability, string> = {
 };
 
 export function KnowledgeDetail(): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { id = "" } = useParams();
+  // SCRUM-313: KI-Nachbearbeitung der Aussage im Edit-Modus (Vorschau + bewusste Übernahme, kein
+  // Auto-Submit). Nutzt den vorhandenen reasoner.assist-Endpunkt mit optionaler Instruktion.
+  const runAssist = (input: string, instruction?: string): Promise<string> =>
+    endpoints.reasoner
+      .assist(input, toReasonerLocale(i18n.language), instruction)
+      .then((r) => r.text);
   // SCRUM-294: Demo-Kontext der Zielseite (über Library erreicht) — nur Anzeige/Link-Kontext.
   const [params] = useSearchParams();
   const { role } = useRole();
@@ -476,6 +484,14 @@ export function KnowledgeDetail(): JSX.Element {
                           onChange={(e) => setEdit({ ...edit, statement: e.target.value })}
                           rows={3}
                           className={textareaCls}
+                        />
+                        {/* SCRUM-313: KI-Nachbearbeitung der Aussage — Vorschau + bewusste Übernahme.
+                            KI hilft nur beim Formulieren; nach dem Speichern startet die Prüfung neu
+                            (ko.editNote), keine Auto-Validierung. */}
+                        <AiAssistBox
+                          text={edit.statement}
+                          runAssist={runAssist}
+                          onApply={(next) => setEdit({ ...edit, statement: next })}
                         />
                       </Field>
                       {/* KW-STR / FR-STR-02/03/05: WYSIWYG-Body verlustfrei, Bildpalette aus Anhängen */}

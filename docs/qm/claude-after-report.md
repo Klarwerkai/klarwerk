@@ -7062,3 +7062,39 @@ git commit -m "feat(capture): beta AI post-editing — guided actions + free ins
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-313 — Beta AI-assisted KO Detail Revision / Nachbearbeitung v0
+**Datum:** 2026-06-29 · **Rolle:** Claude (Umsetzung) · **Status:** umgesetzt, Gates grün
+
+**Vorab-Befund.** KO-Detail-Edit (`apps/web/src/pages/KnowledgeDetail.tsx`) hat `edit.statement` (textarea), `edit.bodyHtml` (RichTextEditor), conditions/measures (ListEditor), Save-Mutation mit `action:"revise"`, und `ko.editNote` weist bereits auf neue Version / Review-Neustart hin. KI-Hilfe war hier **nicht** vorhanden. SCRUM-312 lieferte bereits den DOM-freien Helfer `lib/captureAiAssist.ts` (ASSIST_ACTIONS, applyAssist, Label/Instruction-Keys), `endpoints.reasoner.assist(text, locale, instruction?)` und i18n `capture.ai.*`. Die KI-Box lag als **lokale** `AiAssistBox` in `Capture.tsx` (self-contained Props: text/runAssist/onApply) → sauber extrahierbar.
+
+**Umgesetzter Umfang (v0).**
+1. **Wiederverwendbare Komponente:** `AiAssistBox` aus Capture.tsx in `apps/web/src/components/AiAssistBox.tsx` extrahiert (1:1, weiterhin auf den DOM-freien `captureAiAssist`-Helfern). Capture.tsx nutzt jetzt dieselbe Komponente — SCRUM-312-Verhalten unverändert.
+2. **KO-Detail-Edit KI-Box** unter der Statement-Textarea: Aktionen Klarer/Strukturieren/Erweitern/Rechtschreibung + freies Anweisungsfeld + Ausführen; **Vorschau** mit Ersetzen/Anhängen/Verwerfen. `runAssist` ruft `reasoner.assist(input, locale, instruction)`; Ergebnis wird **nicht** still in `edit.statement` geschrieben, sondern bewusst übernommen (`onApply → setEdit(statement)`).
+3. **Revision-Ehrlichkeit:** Box-Hinweis (`capture.ai.hint`: „Vorschlag, keine Auto-Speicherung/Validierung, keine erfundenen Fakten") + Inline-Kommentar; `ko.editNote` (neue Version / Review-Neustart) bleibt unverändert sichtbar. Keine Auto-Validierung/Fake-Freigabe.
+
+**Bewusst nicht umgesetzte Gaps (später).**
+- **Body/ausführlicher Inhalt (bodyHtml):** KI-Vorschlag (Plaintext) ins HTML-Body anhängen — bewusst NICHT umgesetzt, da Plaintext→HTML-Übernahme (Escaping/Absatzstruktur) eine eigene risikoarme Lösung braucht; RichTextEditor nicht umgebaut.
+- RichTextEditor Panel-Differenzierung (aus SCRUM-312) bleibt weiterhin offen.
+- Kein WikiEditor-/CaseEditor-Nachbau, keine Datei-/Bild-Inline-Neuerfindung.
+
+**Geänderte Dateien.**
+- `apps/web/src/components/AiAssistBox.tsx` (NEU, extrahiert)
+- `apps/web/src/pages/Capture.tsx` (lokale Box entfernt, importiert Komponente)
+- `apps/web/src/pages/KnowledgeDetail.tsx` (runAssist + AiAssistBox unter Statement; `i18n`/`toReasonerLocale`)
+- Kein neuer i18n-Key nötig (Wiederverwendung `capture.ai.*`). Helfer/Backend/Reasoner **unverändert** (SCRUM-312 lieferte `instruction` bereits).
+
+**Tests/Gates.** `npm run check` grün — **138 Dateien / 821 Tests** (unverändert; Extraktion + Verdrahtung über tsc/Biome/depcruise abgesichert, bestehender `tests/capture/capture-ai-assist.test.ts` deckt die DOM-freie Logik weiter ab). `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün. SCRUM-312-Capture-KI bleibt intakt (nutzt jetzt dieselbe Komponente).
+
+**Nicht-Ziele eingehalten.** Kein RAG, keine neue Suche, keine Local-LLM-Abhängigkeit, keine neue Provider-/Backend-/Reasoner-Änderung, kein WikiEditor-/CaseEditor-Nachbau, keine Datei-/Bild-Inline-Neuerfindung, keine Auto-Validierung, keine Team-2/3/4-Dateien. Nur in `/Users/peterkohnert/Documents/dev_Klarwerk` gearbeitet; untracked `docs/KLARWERK_Infrastruktur_Domain_Server_Aufteilung_v2.md` unberührt.
+
+**Commit-/Push-Hinweis (nur Hinweis — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/components/AiAssistBox.tsx apps/web/src/pages/Capture.tsx apps/web/src/pages/KnowledgeDetail.tsx docs/qm/claude-after-report.md
+git commit -m "feat(ko-detail): reuse AiAssistBox for statement revision; extract from Capture (SCRUM-313)"
+git push
+```
+Kein Git/Push/Jira durch Claude.
