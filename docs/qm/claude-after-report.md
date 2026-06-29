@@ -6526,3 +6526,37 @@ git commit -m "feat(start/tasks): show Knowledge-OS phase (capture/validate/main
 git push
 ```
 Keine Jira-Änderungen durch Claude. Codex prüft Diff/Gates, korrigiert minimal, committet, pusht, wartet GitHub CI ab, schließt Jira.
+
+---
+
+## SCRUM-298 — Gap/Risk → Capture → Validation: Wissenslücken als Arbeitsfluss klar führen
+**Datum:** 2026-06-29 · **Rolle:** Claude (Umsetzung) · **Status:** umgesetzt, Gates grün
+
+**1. Vorab-Befund**
+Risk-Gap-Zeilen zeigen Priorität, `gapNextStep` (priorisieren/zuweisen/erfassen) und die Capture-CTA (`captureGapHref` → `/erfassen?gap=`). Der Capture-aus-Gap-Banner (`capture.gapContextTitle/Body` + `gapPrivacyNotice`, SCRUM-270/283) markiert die Gap-Frage ehrlich als offene Frage ohne Wissen; die Capture-Success-Card führt mit primärem Schritt „Zur Prüfung geben" nach `/validierung` (SCRUM-286). **Lücke:** Die Knowledge-OS-**Phase** (SCRUM-297: `task.gap→capture`) war auf den Risk-Gap-Zeilen nicht sichtbar — Gaps lasen sich wie eine lose Liste, nicht als „Erfassen"-Arbeit im Kreis.
+
+**2. Umsetzung**
+Kleiner Workflow-Slice, der den Gap→Capture→Validation-Fluss als Knowledge-OS-Arbeit sichtbar macht, ohne Logik-/Backend-Änderung:
+- Neuer DOM-freier Helper `gapPhase(gap)` in `apps/web/src/lib/gapPriority.ts`: offene Lücke → `capture` (Erfassen), geschlossene → `maintain`. Konsistent mit `knowledgeOsPhase("task.gap")` (Start/MyTasks) — eine Kreis-Sprache an allen Stellen.
+- `Risk.tsx`: je offene Gap-Zeile ein Phase-Chip „Phase: Erfassen" neben dem bestehenden nächsten Schritt (gleiche Optik wie MyTasks/Start). i18n **wiederverwendet** (`task.phaseLabel` + `cycle.capture.label`) — keine neuen Keys nötig.
+- Capture-Banner + Success unverändert: bereits ehrlich (Gap = Startkontext, kein Wissen → Review/Validation). Keine Auto-Schließung, keine KO-Erzeugung außerhalb des bestehenden Capture-Flows.
+
+**3. Geänderte Dateien**
+- `apps/web/src/lib/gapPriority.ts` (neuer `gapPhase`-Helper)
+- `apps/web/src/pages/Risk.tsx` (Phase-Chip je offene Gap-Zeile + Imports)
+- `tests/ask/gap-priority.test.ts` (+3 Tests: offen→capture, geschlossen→maintain, Konsistenz mit knowledgeOsPhase)
+
+**4. Tests/Gates**
+`npm run check` grün — **132 Dateien / 773 Tests** (+3). `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün.
+
+**5. Restlücken/Nicht-Ziele**
+Offene Gaps führen unverändert über `captureGapHref` in den bestehenden Capture-Flow; neu lesbar als „Erfassen"-Phase. Capture aus Gap markiert weiterhin klar: Gap-Frage = Startkontext, kein fertiges Wissen; neues KO bleibt offen → Validation/Review. Keine automatische Lücken-Schließung, keine KO-Erzeugung über bestehendes Capture hinaus, keine neue Task-Engine/Suche/RAG, keine Backend-/Reasoner-/Statusmodell-Änderung, keine Fake-Erledigung. Validation nicht angefasst (Übergang war bereits sichtbar).
+
+**6. Commit-/Push-Hinweis (nur Hinweis — nicht ausgeführt)**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/gapPriority.ts apps/web/src/pages/Risk.tsx tests/ask/gap-priority.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(risk): show Knowledge-OS phase (Erfassen) on open gaps; gapPhase helper (SCRUM-298)"
+git push
+```
+Kein Git/Push/Jira durch Claude. Codex prüft Diff/Gates, korrigiert minimal falls nötig, committet, pusht, wartet GitHub CI ab und schließt Jira.

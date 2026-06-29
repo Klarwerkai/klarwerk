@@ -11,11 +11,13 @@ import {
   GAP_PRIORITIES,
   type PriorityTone,
   gapNextStep,
+  gapPhase,
   priorityTone,
   sortGapsByPriority,
 } from "../lib/gapPriority";
 import { type RiskLevel, domainRisk } from "../lib/knowledgeHealth";
 import { buildRiskCockpit } from "../lib/riskCockpit";
+import { phaseLabelKey } from "../lib/taskAction";
 
 const RISK_TONE: Record<RiskLevel, string> = {
   kritisch: "bg-trust-crit-bg text-trust-crit-text",
@@ -208,11 +210,17 @@ export function Risk(): JSX.Element {
                       <div className="truncate text-[13.5px] text-text">{g.question}</div>
                       {/* SCRUM-253: ehrliche nächste Handlung je offener Lücke (priorisieren/zuweisen/erfassen). */}
                       {g.status === "offen" ? (
-                        <div className="mt-0.5 text-[11px] text-muted">
-                          <span className="font-mono uppercase tracking-wider text-muted-2">
-                            {t("risk.gapNextLabel")}:
-                          </span>{" "}
-                          {t(`risk.gapNext.${gapNextStep(g)}`)}
+                        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted">
+                          {/* SCRUM-298: Knowledge-OS-Phase — offene Lücke ist „Erfassen"-Arbeit (gleiche Kreis-Sprache wie Start/MyTasks). */}
+                          <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-muted-2">
+                            {t("task.phaseLabel")} {t(phaseLabelKey(gapPhase(g)))}
+                          </span>
+                          <span>
+                            <span className="font-mono uppercase tracking-wider text-muted-2">
+                              {t("risk.gapNextLabel")}:
+                            </span>{" "}
+                            {t(`risk.gapNext.${gapNextStep(g)}`)}
+                          </span>
                         </div>
                       ) : null}
                     </div>

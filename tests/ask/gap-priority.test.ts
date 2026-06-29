@@ -3,10 +3,12 @@ import type { Gap } from "../../apps/web/src/api/types";
 import {
   GAP_PRIORITIES,
   gapNextStep,
+  gapPhase,
   priorityRank,
   priorityTone,
   sortGapsByPriority,
 } from "../../apps/web/src/lib/gapPriority";
+import { knowledgeOsPhase } from "../../apps/web/src/lib/taskAction";
 
 const gap = (p: Partial<Gap> & { id: string }): Gap => ({
   question: p.id,
@@ -62,5 +64,23 @@ describe("SCRUM-253: gapNextStep", () => {
     expect(gapNextStep(gap({ id: "a", assignee: null, priority: "hoch" }))).toBe("assign");
     expect(gapNextStep(gap({ id: "b", assignee: null, priority: "mittel" }))).toBe("prioritize");
     expect(gapNextStep(gap({ id: "c", assignee: null, priority: "niedrig" }))).toBe("prioritize");
+  });
+});
+
+// SCRUM-298: eine offene Wissenslücke ist „Erfassen"-Arbeit im Knowledge-OS-Kreis (Lücke → erfassen →
+// Review → später quellengebunden nutzen). Gleiche Kreis-Sprache wie Start/MyTasks.
+describe("SCRUM-298: gapPhase", () => {
+  it("offene Lücke → Phase 'capture' (Erfassen)", () => {
+    expect(gapPhase(gap({ id: "a", status: "offen" }))).toBe("capture");
+    expect(gapPhase(gap({ id: "b", status: "offen", assignee: "u1" }))).toBe("capture");
+  });
+
+  it("geschlossene Lücke → Phase 'maintain' (erledigt, aktuell halten)", () => {
+    expect(gapPhase(gap({ id: "a", status: "geschlossen" }))).toBe("maintain");
+  });
+
+  it("Konsistenz: offene Lücke hat dieselbe Phase wie die MyTasks-/Start-Lückenarbeit", () => {
+    expect(gapPhase(gap({ id: "a", status: "offen" }))).toBe(knowledgeOsPhase("task.gap"));
+    expect(gapPhase(gap({ id: "b", status: "offen" }))).toBe(knowledgeOsPhase("criticalGaps"));
   });
 });

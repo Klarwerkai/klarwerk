@@ -1,5 +1,6 @@
 // Reine, DOM-freie Helfer für Gap-Priorität (SCRUM-115 / FE-RISK-02).
 import type { Gap, GapPriority } from "../api/types";
+import type { KnowledgeOsPhase } from "./taskAction";
 
 export const GAP_PRIORITIES: readonly GapPriority[] = ["hoch", "mittel", "niedrig"];
 
@@ -50,4 +51,12 @@ export function gapNextStep(gap: Pick<Gap, "status" | "priority" | "assignee">):
     return "capture";
   }
   return gap.priority === "hoch" ? "assign" : "prioritize";
+}
+
+// SCRUM-298: eine offene Wissenslücke ist „Erfassen"-Arbeit im Knowledge-OS-Kreis — Ziel ist, die
+// Erfahrung zu erfassen (Capture), die dann in Review/Validation geht und erst danach quellengebunden
+// nutzbar wird. Geschlossene Lücke = erledigt → „Aktuell halten". Konsistent mit
+// knowledgeOsPhase("task.gap") (Start/MyTasks). KEINE Auto-Schließung, KEINE automatische KO-Erzeugung.
+export function gapPhase(gap: Pick<Gap, "status">): KnowledgeOsPhase {
+  return gap.status === "geschlossen" ? "maintain" : "capture";
 }
