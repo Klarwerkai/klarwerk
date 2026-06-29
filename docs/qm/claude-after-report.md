@@ -6705,3 +6705,34 @@ git commit -m "docs(qm): SCRUM-302 pilot final check — Stage-1 verified runtim
 git push
 ```
 Kein Git/Push/Jira durch Claude. Codex prüft Diff/Gates, korrigiert minimal falls nötig, committet, pusht, wartet GitHub CI ab und schließt Jira. Untracked `docs/KLARWERK_Infrastruktur_Domain_Server_Aufteilung_v2.md` bleibt unangetastet.
+
+---
+
+## SCRUM-303 — Pilot-Readiness: Team-1 Knowledge-OS Status und Go/No-Go dokumentieren
+**Datum:** 2026-06-29 · **Rolle:** Claude (Doku) · **Status:** umgesetzt, Gates grün
+
+**1. Vorab-Befund**
+After-Report SCRUM-296…302 und vorhandene Doku gesichtet: Slices SCRUM-296 (Capture→Validation→Use), 297 (Knowledge-OS-Phase auf Start/MyTasks), 298 (Gap→Capture-Phase), 299 (Lifecycle/Maintain-Phase), 300 (Ask-Quellen-Nutzbarkeit + demoHref), 301 (Proof-Linie auf Start). Zuletzt belegte Gates: `npm run check` grün — 133 Dateien / 782 Tests (SCRUM-301/302). SCRUM-302 Runtime-Befund: Ask Ventil X → gesichert/trust100/1 Quelle, KO validiert/trust100/v1/1 Quelle+1 Anhang → ready; Library validierte trust100 (Nutzbar), offene trust0/50 (Zu prüfen); Board 3 offen; keine Widersprüche. Vorhandene Quellen: `docs/demo/stage-1-demo-path.md` (Seed/Rollen/Reasoner-Modus/Demo-Sprache), `docs/operations/evaluation-quality-assurance.md` (gated Eval 9 Dateien/68 Tests, deterministisch vs. Modellmodus), `docs/operations/monitoring-logging.md`. `docs/demo/stage-1-pilot-readiness.md` existierte noch nicht.
+
+**2. Umsetzung**
+Genau ein kompaktes Readiness-Dokument neu erstellt: `docs/demo/stage-1-pilot-readiness.md` mit den geforderten Abschnitten — (1) Kurzfazit/Go-No-Go: **GO mit P2-Hinweisen**, managementtauglich; (2) belegte Kernflows (Start/Demo, Capture→Validation, Ask→Quellen→KO-Detail, Library/Nutzbarkeit, Gap/Risk→Capture, Lifecycle/Revalidation); (3) Evidence (lokale Gates 133/782, GitHub CI grün laut Codex/Pedi zu `9bb18f3`, SCRUM-302-Runtime-Befund, gated Eval 9/68, Seed-Mindestsignale); (4) Was bereit ist; (5) P2/Pilot-Hinweise; (6) Nicht Stage-1 (kein RAG, keine neue Suche, keine lokale LLM-Runtime, keine automatische Validierung, keine Fake-Quellen, keine Backend-/Reasoner-Architekturänderung); (7) Demo-Voraussetzungen (frischer Seed, Rollen, Demo-Sprache DE, deterministischer Fallback vs. Modellmodus); (8) Empfehlung nächster Schritt nach dem Pilot. Nur belegte Aussagen, Testzahlen ausschließlich aus dem After-Report übernommen.
+
+**3. Geänderte Dateien**
+- `docs/demo/stage-1-pilot-readiness.md` (NEU)
+- `docs/qm/claude-after-report.md` (dieser Eintrag)
+Kein Produktcode, keine FE-Datei berührt. Untracked `docs/KLARWERK_Infrastruktur_Domain_Server_Aufteilung_v2.md` unberührt.
+
+**4. Tests/Gates**
+`npm run check` grün — **133 Dateien / 782 Tests** (unverändert). FE-tsc nicht nötig (keine FE-Datei berührt).
+
+**5. Restlücken/Nicht-Ziele**
+Reines Statusdokument, keine fachliche Arbeit, keine UI-Politur, keine Architekturentscheidung, keine Jira-Strukturänderung, keine Team-2/3-Arbeit. P2/Ops-Themen (automatisiertes Modellmodus-Eval, produktives Monitoring, lokale Runtime/RAG/Vector) bleiben außerhalb Stage-1 und sind im Dokument ehrlich als nicht-Stage-1 markiert.
+
+**6. Commit-/Push-Hinweis (nur Hinweis — nicht ausgeführt)**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add docs/demo/stage-1-pilot-readiness.md docs/qm/claude-after-report.md
+git commit -m "docs(demo): Stage-1 pilot readiness & Go/No-Go status for Team-1 Knowledge-OS (SCRUM-303)"
+git push
+```
+Kein Git/Push/Jira durch Claude. Codex prüft Diff/Gates, korrigiert minimal falls nötig, committet, pusht, wartet GitHub CI ab und schließt Jira. Untracked `docs/KLARWERK_Infrastruktur_Domain_Server_Aufteilung_v2.md` bleibt unangetastet.
