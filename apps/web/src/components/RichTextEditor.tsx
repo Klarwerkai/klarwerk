@@ -13,6 +13,12 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import {
+  EDITOR_BLOCKS,
+  type EditorBlock,
+  editorBlockHtml,
+  editorBlockLabelKey,
+} from "../lib/editorBlocks";
 import { insertImageHtml, sanitizeHtml } from "../lib/richText";
 import { SanitizedHtml } from "./SanitizedHtml";
 
@@ -60,7 +66,8 @@ export function RichTextEditor({
       exec("createLink", url);
     }
   };
-  const addPanel = (): void => exec("insertHTML", '<div class="panel"><p>…</p></div>');
+  // SCRUM-314: vier sichtbare Blocktypen statt eines generischen Panels (sichere, statische Klassen).
+  const addBlock = (block: EditorBlock): void => exec("insertHTML", editorBlockHtml(block));
   const addImage = (img: EditorImage): void => {
     setShowImages(false);
     exec("insertHTML", insertImageHtml(img.objectId, img.name));
@@ -118,9 +125,19 @@ export function RichTextEditor({
         <button type="button" title={t("editor.link")} className={btn} onClick={addLink}>
           <LinkIcon size={15} />
         </button>
-        <button type="button" title={t("editor.panel")} className={btn} onClick={addPanel}>
-          <SquareStack size={15} />
-        </button>
+        {/* SCRUM-314: Blocktypen Info/Hinweis/Warnung/Erfolg — kleine Text-Buttons (eindeutig). */}
+        {EDITOR_BLOCKS.map((block) => (
+          <button
+            key={block}
+            type="button"
+            title={t(editorBlockLabelKey(block))}
+            className="inline-flex h-8 items-center gap-1 rounded-btn px-2 text-[11px] font-semibold text-muted hover:bg-hairline-soft hover:text-text"
+            onClick={() => addBlock(block)}
+          >
+            <SquareStack size={13} />
+            {t(editorBlockLabelKey(block))}
+          </button>
+        ))}
         <div className="relative">
           <button
             type="button"

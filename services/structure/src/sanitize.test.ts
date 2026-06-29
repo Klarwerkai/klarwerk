@@ -57,6 +57,17 @@ describe("KW-STR / NFR-SEC-04: sanitizeHtml", () => {
     expect(sanitizeHtml('<div class="evil">P</div>')).toBe("<div>P</div>");
   });
 
+  it("SCRUM-314: erlaubt sichere Block-Varianten, verwirft fremde Klassen + on*/style", () => {
+    for (const v of ["info", "note", "warning", "success"]) {
+      const html = `<div class="panel panel-${v}">P</div>`;
+      expect(sanitizeHtml(html)).toBe(html);
+    }
+    // panel bleibt, fremde Variante + Handler + style raus.
+    expect(sanitizeHtml('<div class="panel panel-evil" onclick="x" style="y">P</div>')).toBe(
+      '<div class="panel">P</div>',
+    );
+  });
+
   it("ist idempotent", () => {
     const dirty = '<p onclick="x">a<script>b</script></p><img src="https://evil/x">';
     const once = sanitizeHtml(dirty);

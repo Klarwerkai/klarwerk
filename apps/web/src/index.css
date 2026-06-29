@@ -50,3 +50,16 @@
 .prose-kw .panel {
   @apply my-2 rounded-card border border-hairline bg-page p-3;
 }
+/* SCRUM-314: vier sichtbare Blocktypen — dezenter Links-Akzent + leichte Tönung (Trust/AI/Warn/Erfolg). */
+.prose-kw .panel-info {
+  @apply border-l-4 border-l-trust-info-text bg-trust-info-bg;
+}
+.prose-kw .panel-note {
+  @apply border-l-4 border-l-ai bg-ai-surface-2;
+}
+.prose-kw .panel-warning {
+  @apply border-l-4 border-l-trust-warn-fill bg-trust-warn-bg;
+}
+.prose-kw .panel-success {
+  @apply border-l-4 border-l-trust-pos-fill bg-trust-pos-bg;
+}

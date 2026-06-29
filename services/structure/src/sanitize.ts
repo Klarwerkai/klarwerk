@@ -48,9 +48,19 @@ function isSafeImgSrc(value: string): boolean {
   );
 }
 
-// div nur als Panel/Callout-Container.
+// SCRUM-314: div nur als Panel/Callout-Container + vier sichere Blocktyp-Varianten. Fremde Klassen,
+// style und on*-Handler werden weiterhin entfernt; Reihenfolge der erlaubten Klassen bleibt stabil.
+const ALLOWED_DIV_CLASSES = new Set([
+  "panel",
+  "callout",
+  "panel-info",
+  "panel-note",
+  "panel-warning",
+  "panel-success",
+]);
+
 function sanitizeDivClass(value: string): string | null {
-  const classes = value.split(/\s+/).filter((c) => c === "panel" || c === "callout");
+  const classes = value.split(/\s+/).filter((c) => ALLOWED_DIV_CLASSES.has(c));
   return classes.length > 0 ? classes.join(" ") : null;
 }
 

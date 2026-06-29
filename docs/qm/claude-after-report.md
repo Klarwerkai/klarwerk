@@ -7098,3 +7098,42 @@ git commit -m "feat(ko-detail): reuse AiAssistBox for statement revision; extrac
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-314 — Beta Editor Body Blocks v0
+**Datum:** 2026-06-29 · **Rolle:** Claude (Umsetzung) · **Status:** umgesetzt, Gates grün
+
+**Vorab-Befund.** Der `RichTextEditor` (`apps/web/src/components/RichTextEditor.tsx`) bot H2/H3, Bold/Italic, Listen, Link, **ein** generisches Panel (`addPanel()` → `<div class="panel"><p>…</p></div>`), Bild aus Anhang und Vorschau. Beide Sanitizer (FE `apps/web/src/lib/richText.ts`, Server `services/structure/src/sanitize.ts`) erlaubten in `sanitizeDivClass` exakt `panel`/`callout` (identische Logik: split → filter → join, Reihenfolge bleibt erhalten). CSS `.prose-kw .panel` in `apps/web/src/index.css` vorhanden. i18n `editor.panel`/`editor.image` DE+EN vorhanden. Capture und KO-Detail nutzen denselben RichTextEditor für „Ausführlicher Inhalt".
+
+**Umgesetzter Umfang (v0).**
+1. **DOM-freie Blocktyp-Modellierung** `apps/web/src/lib/editorBlocks.ts` (NEU): `EditorBlock = info|note|warning|success`, `EDITOR_BLOCKS` (stabile Reihenfolge), `editorBlockLabelKey` → `editor.block.<typ>`, `editorBlockClass` → `panel panel-<typ>` (sichere, statische Klassen), `editorBlockHtml` → `<div class="panel panel-<typ>"><p>…</p></div>`.
+2. **Toolbar:** der eine generische Panel-Button ersetzt durch vier kleine Text-Buttons Info/Hinweis/Warnung/Erfolg (SquareStack-Icon + Label), Insert über bestehenden `exec("insertHTML", editorBlockHtml(block))`. Kein UI-Umbau, kein Drag&Drop/Bild-Neuerfindung.
+3. **Sanitizer FE + Server:** beide `sanitizeDivClass` auf eine `ALLOWED_DIV_CLASSES`-Allowlist umgestellt: `panel`, `callout` (Bestandsschutz), `panel-info`, `panel-note`, `panel-warning`, `panel-success`. Fremde Klassen, `style` und `on*`-Handler werden weiterhin entfernt; Reihenfolge/Normalisierung stabil; bestehende `panel`-Inhalte funktionieren weiter.
+4. **Styling/Preview:** `apps/web/src/index.css` um `.prose-kw .panel-info/-note/-warning/-success` ergänzt (dezenter Links-Akzent + leichte Tönung über vorhandene Tokens Trust-Info/AI/Trust-Warn/Trust-Pos). Wirkt in Editor-Vorschau **und** KO-Detail-Anzeige (beide `.prose-kw`).
+5. **i18n:** `editor.block.info/note/warning/success` in DE+EN ergänzt.
+6. **Tests:** `tests/app/editor-blocks.test.ts` (NEU, DOM-frei: Reihenfolge, Label-Keys DE+EN-Parität, sichere Klassen, sanitizer-konformes Insert-HTML); `tests/structure/rich-text.test.ts` + `services/structure/src/sanitize.test.ts` je um Block-Klassen-Allowlist + Verwurf fremder Klassen/`style`/`on*` erweitert.
+
+**Bewusst nicht umgesetzte Gaps (später).** Kein KI-Body-Insert in diesem Slice. Keine weiteren Blocktypen/Verschachtelung. Kein Block-Editing/Umwandeln bestehender Blöcke (nur Einfügen). Kein WYSIWYG-Neubau.
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/editorBlocks.ts` (NEU)
+- `apps/web/src/components/RichTextEditor.tsx` (vier Block-Buttons statt Panel-Button + Import)
+- `apps/web/src/lib/richText.ts` (sanitizeDivClass Allowlist)
+- `services/structure/src/sanitize.ts` (sanitizeDivClass Allowlist)
+- `apps/web/src/index.css` (vier `.panel-*`-Regeln)
+- `apps/web/src/i18n.ts` (`editor.block.*` DE+EN)
+- `tests/app/editor-blocks.test.ts` (NEU), `tests/structure/rich-text.test.ts`, `services/structure/src/sanitize.test.ts`
+
+**Tests/Gates.** `npm run check` grün — **139 Dateien / 827 Tests**. Gezielt: `npx vitest run tests/structure/rich-text.test.ts services/structure/src/sanitize.test.ts tests/app/editor-blocks.test.ts` → 23/23 grün. `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün. SCRUM-312/313-AiAssistBox-Flows unberührt (RichTextEditor-Änderung betrifft nur die Body-Toolbar).
+
+**Nicht-Ziele eingehalten.** Kein RAG, keine neue Suche, keine Local-LLM-Abhängigkeit, kein WYSIWYG-Neubau, keine blinde Legacy-Kopie, keine neue Editor-Library, keine Backend-Architekturänderung außer Sanitizer-Allowlist, keine Auto-Validierung, keine Team-2/3/4-Dateien. Nur in `/Users/peterkohnert/Documents/dev_Klarwerk` gearbeitet; untracked `docs/KLARWERK_Infrastruktur_Domain_Server_Aufteilung_v2.md` unberührt.
+
+**Commit-/Push-Hinweis (nur Hinweis — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/editorBlocks.ts apps/web/src/components/RichTextEditor.tsx apps/web/src/lib/richText.ts services/structure/src/sanitize.ts apps/web/src/index.css apps/web/src/i18n.ts tests/app/editor-blocks.test.ts tests/structure/rich-text.test.ts services/structure/src/sanitize.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(editor): beta body block types info/note/warning/success; sanitizer allowlist + styling (SCRUM-314)"
+git push
+```
+Kein Git/Push/Jira durch Claude.

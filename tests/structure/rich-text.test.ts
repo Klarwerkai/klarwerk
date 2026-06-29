@@ -26,6 +26,19 @@ describe("KW-STR FE: sanitizeHtml (Defense-in-Depth, gleiche Allowlist)", () => 
     expect(once).toBe("<p>a<strong>b</strong></p>");
     expect(sanitizeHtml(once)).toBe(once);
   });
+
+  it("SCRUM-314: erlaubt Block-Klassen panel-info/note/warning/success, verwirft fremde + on*/style", () => {
+    for (const v of ["info", "note", "warning", "success"]) {
+      const html = `<div class="panel panel-${v}"><p>x</p></div>`;
+      expect(sanitizeHtml(html)).toBe(html);
+    }
+    // panel bleibt erhalten, fremde Klasse + Handler + style raus.
+    expect(sanitizeHtml('<div class="panel panel-evil" onclick="x" style="y"><p>a</p></div>')).toBe(
+      '<div class="panel"><p>a</p></div>',
+    );
+    // reine Fremdklasse → kein class-Attribut.
+    expect(sanitizeHtml('<div class="evil"><p>a</p></div>')).toBe("<div><p>a</p></div>");
+  });
 });
 
 describe("KW-STR FE: Editor-Helfer", () => {
