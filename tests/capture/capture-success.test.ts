@@ -9,7 +9,7 @@ describe("SCRUM-276: captureNextSteps", () => {
     expect(steps.map((s) => s.to)).toEqual([
       "/wissen/ko-42",
       "/bibliothek?origin=non-demo",
-      "/validierung",
+      "/validierung?origin=non-demo",
     ]);
   });
 
@@ -48,10 +48,14 @@ describe("SCRUM-276: captureNextSteps", () => {
 describe("SCRUM-286: Capture→Validation-Führung", () => {
   it("betont die Validierung als primäre nächste Handlung (nur dieser Schritt)", () => {
     const steps = captureNextSteps("ko-7");
-    const validate = steps.find((s) => s.to === "/validierung");
+    // SCRUM-311: Review-Step zeigt vorgefiltert auf eigenes/nicht-Demo-Wissen, bleibt aber primär.
+    const validate = steps.find((s) => s.to.startsWith("/validierung"));
     const viewKo = steps.find((s) => s.to.startsWith("/wissen/"));
+    expect(validate?.to).toBe("/validierung?origin=non-demo");
     expect(validate?.primary).toBe(true);
     expect(viewKo?.primary).toBeFalsy();
+    // nur der Validierungs-Schritt ist primär.
+    expect(steps.filter((s) => s.primary)).toHaveLength(1);
   });
 
   it("liefert Status-Schlüssel für offen / noch nicht validiert", () => {

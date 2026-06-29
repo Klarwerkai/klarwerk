@@ -9,7 +9,7 @@
 // keine Engine, keine automatische Validierung/Nutzung — nur klare Orientierung im Kreis
 // Capture → Validate → Use.
 
-import { libraryOriginHref } from "./demoKnowledge";
+import { libraryOriginHref, validationOriginHref } from "./demoKnowledge";
 
 export interface CaptureNextStep {
   labelKey: string;
@@ -25,7 +25,9 @@ export function captureNextSteps(koId: string): CaptureNextStep[] {
     // keine Autor-/User-Zuordnung. Nicht betont (Review bleibt primär).
     { labelKey: "capture.savedViewLibrary", to: libraryOriginHref("non-demo") },
     // SCRUM-286: Validierung/Prüfung ist die betonte nächste Handlung.
-    { labelKey: "capture.savedValidate", to: "/validierung", primary: true },
+    // SCRUM-311: direkt ins Board, vorgefiltert auf eigenes/nicht-Demo-Wissen — keine Vermischung
+    // mit Demo-Beispielen. Bleibt die primäre Handlung; Filter ist nur Ansicht, keine Auto-Validierung.
+    { labelKey: "capture.savedValidate", to: validationOriginHref("non-demo"), primary: true },
   ];
 }
 

@@ -11,6 +11,13 @@ import { DemoBanner } from "../components/DemoBanner";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { ConfidenceBar, KnowledgeTypeTag, KoAuthorLine, StatusPill } from "../components/trust";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
+import {
+  DEMO_KNOWLEDGE_FILTERS,
+  type DemoKnowledgeFilter,
+  demoKnowledgeFilterLabelKey,
+  matchesDemoKnowledgeFilter,
+  readDemoKnowledgeFilter,
+} from "../lib/demoKnowledge";
 import { isDemoContext } from "../lib/demoPilotPath";
 import { koAuthorParts } from "../lib/koAuthor";
 import {
@@ -97,6 +104,11 @@ export function Validation(): JSX.Element {
   // FR-LIF-04: Autor je KO-Karte (Namen via Directory, Fallback ID).
   const nameOf = (uid: string): string => users.data?.find((d) => d.id === uid)?.name || uid;
   const [filter, setFilter] = useState(EMPTY_VALIDATION_FILTER);
+  // SCRUM-311: Herkunftsfilter (Demo/Eigenes) — ergänzend zur Review-Auswahl; lazy aus ?origin=…
+  // (z. B. Capture-Success → eigenes Wissen), fehlend/ungültig → „all". Nur Ansicht, kein Review-Status.
+  const [demoFilter, setDemoFilter] = useState<DemoKnowledgeFilter>(() =>
+    readDemoKnowledgeFilter(params),
+  );
   // Offenes Feedback-Formular (FE-VAL-06): pro KO + gewählter Verdict.
   const [feedback, setFeedback] = useState<{ id: string; verdict: FeedbackVerdict } | null>(null);
   const [feedbackText, setFeedbackText] = useState("");
@@ -216,11 +228,43 @@ export function Validation(): JSX.Element {
           const types = typeOptions(items);
           // SCRUM-249: handlungsnah priorisieren (Autor-Transfer/niedriger Trust zuerst) — Filter
           // bleiben unverändert, es wird nichts verworfen, nur die Reihenfolge geschärft.
+          const boardFiltered = items.filter((k) =>
+            matchesValidationFilter(k, filter, user?.id ?? null),
+          );
+          // SCRUM-311: Herkunfts-Zähler über die (review-)gefilterte Menge; dann ergänzend nach
+          // Herkunft filtern. Nur Ansicht — Status/Trust/Review-Entscheidung unberührt.
+          const demoCounts: Record<DemoKnowledgeFilter, number> = {
+            all: boardFiltered.length,
+            demo: boardFiltered.filter((k) => matchesDemoKnowledgeFilter(k, "demo")).length,
+            "non-demo": boardFiltered.filter((k) => matchesDemoKnowledgeFilter(k, "non-demo"))
+              .length,
+          };
           const visible = sortByReviewPriority(
-            items.filter((k) => matchesValidationFilter(k, filter, user?.id ?? null)),
+            boardFiltered.filter((k) => matchesDemoKnowledgeFilter(k, demoFilter)),
           );
           return (
             <>
+              {/* SCRUM-311: Herkunftsfilter (Demo/Eigenes) — nur Ansicht/Auffinden, KEIN Review-Status;
+                  Labels konsistent mit der Library. Ersetzt nicht Status/Trust/Review-Entscheidung. */}
+              <div className="mb-3 flex flex-wrap items-center gap-1.5">
+                <span className="mr-0.5 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                  {t("lib.originLabel")}:
+                </span>
+                {DEMO_KNOWLEDGE_FILTERS.map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setDemoFilter(f)}
+                    className={`rounded-pill border px-2.5 py-1 font-mono text-[11px] font-semibold ${
+                      demoFilter === f
+                        ? "border-ink bg-ink text-white"
+                        : "border-hairline text-muted hover:text-text"
+                    }`}
+                  >
+                    {t(demoKnowledgeFilterLabelKey(f))} · {demoCounts[f]}
+                  </button>
+                ))}
+              </div>
               <div className="mb-4 flex flex-wrap items-center gap-2">
                 <input
                   value={filter.search}

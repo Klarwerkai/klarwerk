@@ -36,6 +36,15 @@ export type DemoKnowledgeFilter = "all" | "demo" | "non-demo";
 
 export const DEMO_KNOWLEDGE_FILTERS: readonly DemoKnowledgeFilter[] = ["all", "demo", "non-demo"];
 
+// SCRUM-311: EINE geteilte Prädikatslogik für den Herkunftsfilter — von Library (`{ko}`-Treffer)
+// UND Validation-Board (rohe KOs) genutzt, damit es keine zweite Logik gibt. „all" trifft immer.
+export function matchesDemoKnowledgeFilter(
+  ko: Pick<KnowledgeObject, "tags">,
+  filter: DemoKnowledgeFilter,
+): boolean {
+  return filter === "all" ? true : isDemoKnowledge(ko) === (filter === "demo");
+}
+
 // Filtert eine Trefferliste (alles mit `.ko`) nach Herkunft. „all" lässt unverändert (keine stille
 // Ausblendung); „demo" nur Demo-/Seed-Wissen; „non-demo" nur produktiv/eigenes Wissen (ohne Demo-Tag).
 export function filterByDemoKnowledge<T extends { ko: Pick<KnowledgeObject, "tags"> }>(
@@ -45,8 +54,7 @@ export function filterByDemoKnowledge<T extends { ko: Pick<KnowledgeObject, "tag
   if (filter === "all") {
     return [...items];
   }
-  const wantDemo = filter === "demo";
-  return items.filter((item) => isDemoKnowledge(item.ko) === wantDemo);
+  return items.filter((item) => matchesDemoKnowledgeFilter(item.ko, filter));
 }
 
 // Ehrliche Zähler je Herkunft (für die Chips). „all" = Gesamtzahl; demo + non-demo = all.
@@ -89,7 +97,19 @@ export function readDemoKnowledgeFilter(params: URLSearchParams): DemoKnowledgeF
     : "all";
 }
 
-// Deep-Link in die Library mit vorgewähltem Herkunftsfilter. „all" → ohne Query (normale Ansicht).
+// Deep-Link auf eine vorhandene Route mit vorgewähltem Herkunftsfilter. „all" → ohne Query
+// (normale Ansicht). Reine Link-Konstruktion (kein Backend, keine Server-Filterung).
+function originHref(route: string, filter: DemoKnowledgeFilter): string {
+  return filter === "all" ? route : `${route}?${DEMO_FILTER_PARAM}=${filter}`;
+}
+
+// Deep-Link in die Library mit vorgewähltem Herkunftsfilter (SCRUM-310).
 export function libraryOriginHref(filter: DemoKnowledgeFilter): string {
-  return filter === "all" ? "/bibliothek" : `/bibliothek?${DEMO_FILTER_PARAM}=${filter}`;
+  return originHref("/bibliothek", filter);
+}
+
+// SCRUM-311: Deep-Link ins Validation-Board mit vorgewähltem Herkunftsfilter — z. B. nach Capture
+// direkt zur Prüfung des eigenen/nicht-Demo-Wissens. Nur Anzeige-/Link-Kontext.
+export function validationOriginHref(filter: DemoKnowledgeFilter): string {
+  return originHref("/validierung", filter);
 }

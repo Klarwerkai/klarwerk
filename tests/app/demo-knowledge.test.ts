@@ -12,7 +12,9 @@ import {
   filterByDemoKnowledge,
   isDemoKnowledge,
   libraryOriginHref,
+  matchesDemoKnowledgeFilter,
   readDemoKnowledgeFilter,
+  validationOriginHref,
 } from "../../apps/web/src/lib/demoKnowledge";
 
 const ko = (tags: string[]): Pick<KnowledgeObject, "tags"> => ({ tags });
@@ -150,11 +152,44 @@ describe("SCRUM-310: library origin query", () => {
     expect(libraryOriginHref("demo")).toBe("/bibliothek?origin=demo");
   });
 
-  it("Round-Trip: libraryOriginHref → readDemoKnowledgeFilter ergibt denselben Filter", () => {
-    for (const f of DEMO_KNOWLEDGE_FILTERS) {
-      const href = libraryOriginHref(f);
-      const qs = href.includes("?") ? href.slice(href.indexOf("?") + 1) : "";
-      expect(readDemoKnowledgeFilter(params(qs))).toBe(f);
+  // SCRUM-311: Deep-Link ins Validation-Board mit Herkunftsfilter (z. B. nach Capture).
+  it("validationOriginHref: 'all' ohne Query, sonst Deep-Link mit origin=…", () => {
+    expect(validationOriginHref("all")).toBe("/validierung");
+    expect(validationOriginHref("non-demo")).toBe("/validierung?origin=non-demo");
+    expect(validationOriginHref("demo")).toBe("/validierung?origin=demo");
+  });
+
+  it("Round-Trip: *OriginHref → readDemoKnowledgeFilter ergibt denselben Filter", () => {
+    for (const make of [libraryOriginHref, validationOriginHref]) {
+      for (const f of DEMO_KNOWLEDGE_FILTERS) {
+        const href = make(f);
+        const qs = href.includes("?") ? href.slice(href.indexOf("?") + 1) : "";
+        expect(readDemoKnowledgeFilter(params(qs))).toBe(f);
+      }
     }
+  });
+});
+
+// SCRUM-311: geteiltes Prädikat — Library (`{ko}`) und Validation-Board (rohe KOs) nutzen dieselbe
+// Logik; keine zweite Implementierung.
+describe("SCRUM-311: matchesDemoKnowledgeFilter (geteiltes Prädikat)", () => {
+  const demo = ko(["wartung", DEMO_TAG]);
+  const own = ko(["wartung"]);
+
+  it("'all' trifft immer", () => {
+    expect(matchesDemoKnowledgeFilter(demo, "all")).toBe(true);
+    expect(matchesDemoKnowledgeFilter(own, "all")).toBe(true);
+  });
+
+  it("'demo' nur Demo-Wissen, 'non-demo' nur Wissen ohne Demo-Tag", () => {
+    expect(matchesDemoKnowledgeFilter(demo, "demo")).toBe(true);
+    expect(matchesDemoKnowledgeFilter(own, "demo")).toBe(false);
+    expect(matchesDemoKnowledgeFilter(own, "non-demo")).toBe(true);
+    expect(matchesDemoKnowledgeFilter(demo, "non-demo")).toBe(false);
+  });
+
+  it("konsistent mit isDemoKnowledge (eine Quelle der Wahrheit)", () => {
+    expect(matchesDemoKnowledgeFilter(demo, "demo")).toBe(isDemoKnowledge(demo));
+    expect(matchesDemoKnowledgeFilter(own, "non-demo")).toBe(!isDemoKnowledge(own));
   });
 });

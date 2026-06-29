@@ -6988,3 +6988,40 @@ git commit -m "feat(capture/library): find own/non-demo knowledge after capture 
 git push
 ```
 Kein Git/Push/Jira durch Claude. Codex prüft Diff/Gates, korrigiert minimal falls nötig, committet, pusht, wartet GitHub CI ab und schließt Jira. Untracked `docs/KLARWERK_Infrastruktur_Domain_Server_Aufteilung_v2.md` bleibt unangetastet.
+
+---
+
+## SCRUM-311 — Nach Capture eigenes Wissen im Validation-Board finden und prüfen
+**Datum:** 2026-06-29 · **Rolle:** Claude (Umsetzung) · **Status:** umgesetzt, Gates grün
+
+**1. Vorab-Befund**
+`captureNextSteps` (nach SCRUM-310): KO-Detail, Library `non-demo` (nicht-primär), Validierung `/validierung` (`primary`). `Validation.tsx` liest bereits `useSearchParams` (`params`), rendert das Board aus `useValidationBoard` (volle KOs **mit** `tags`) und filtert an EINER Stelle: `sortByReviewPriority(items.filter(matchesValidationFilter(...)))`. `isDemoKnowledge` ist direkt auf den Board-KOs nutzbar; `filterByDemoKnowledge` erwartet jedoch `{ko}`-Form. Es fehlte ein Herkunftsfilter im Board und das Lesen von `?origin=`.
+
+**2. Umsetzung**
+Kleiner Slice, **eine** geteilte Logik (kein Backend/keine Server-Filterung):
+- **`demoKnowledge.ts`:** neues geteiltes Prädikat `matchesDemoKnowledgeFilter(ko, filter)` — von Library (`filterByDemoKnowledge` nutzt es jetzt) UND Validation-Board (rohe KOs) verwendet, keine zweite Logik. Privater `originHref(route, filter)`; `libraryOriginHref` darauf umgestellt; neu `validationOriginHref(filter)` (`all` → `/validierung`, sonst `/validierung?origin=<filter>`).
+- **`Validation.tsx`:** `demoFilter` lazy aus `?origin=…` (`readDemoKnowledgeFilter`, fehlend/ungültig → `all`); Herkunfts-Zähler über die review-gefilterte Menge; `visible = boardFiltered.filter(matchesDemoKnowledgeFilter(k, demoFilter))`; Chip-Reihe „Herkunft: Alle Herkünfte / Demo-Beispiele / Eigenes Wissen" (Labels konsistent mit Library, `lib.originLabel`/`lib.demoFilter.*` wiederverwendet). Nur Ansicht — Review-Entscheidungen, Feedbackpflicht und Success-Card unverändert.
+- **`captureSuccess.ts`:** primärer Review-Step zeigt jetzt auf `validationOriginHref("non-demo")` = `/validierung?origin=non-demo` (direkt ins vorgefilterte Board, keine Vermischung mit Demo). Bleibt `primary`; Library-Link (SCRUM-310) bleibt nicht-primäres Auffinden.
+
+**3. Geänderte Dateien**
+- `apps/web/src/lib/demoKnowledge.ts` (`matchesDemoKnowledgeFilter`, `originHref`, `validationOriginHref`, `filterByDemoKnowledge` nutzt Prädikat)
+- `apps/web/src/lib/captureSuccess.ts` (Review-Step → `validationOriginHref("non-demo")`)
+- `apps/web/src/pages/Validation.tsx` (demoFilter aus Query + Chips + Counts via Prädikat)
+- `tests/capture/capture-success.test.ts` (Review-Href + „nur ein primärer Schritt")
+- `tests/app/demo-knowledge.test.ts` (+3: `validationOriginHref`, Round-Trip beider Hrefs, `matchesDemoKnowledgeFilter`-Konsistenz)
+Keine neuen i18n-Keys (Labels aus Library wiederverwendet).
+
+**4. Tests/Gates**
+`npm run check` grün — **137 Dateien / 815 Tests** (+4). `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün.
+
+**5. Restlücken/Nicht-Ziele**
+Validation-Board filtert sichtbare Review-KOs client-seitig nach Herkunft (alle/Demo/eigenes); initialisiert aus `?origin=non-demo` (ungültig/fehlend → `all`); Chips überschreiben weiter. Capture-Success führt den **primären** Review-Step vorgefiltert auf eigenes/nicht-Demo. Herkunftsfilter nutzt dieselbe Erkennung wie Demo-Badge/Library (`isDemoKnowledge`/`matchesDemoKnowledgeFilter`). Der Filter ist nur Ansicht — ersetzt **nicht** Status, Trust, Review-Entscheidung oder Validierung; „eigenes Wissen" = technisch ohne Demo-Tag, **keine** User-/Author-Zuordnung. Kein Backend/Server-Filterung/neue Suche/Datenmodell/Migration/Auto-Validierung/Mandanten-Trennung/Tracking/RAG/Architekturänderung/Team-2-3/Deployment.
+
+**6. Commit-/Push-Hinweis (nur Hinweis — nicht ausgeführt)**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/demoKnowledge.ts apps/web/src/lib/captureSuccess.ts apps/web/src/pages/Validation.tsx tests/capture/capture-success.test.ts tests/app/demo-knowledge.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(validation): client-side origin filter + capture review step to own/non-demo board (SCRUM-311)"
+git push
+```
+Kein Git/Push/Jira durch Claude. Codex prüft Diff/Gates, korrigiert minimal falls nötig, committet, pusht, wartet GitHub CI ab und schließt Jira. Untracked `docs/KLARWERK_Infrastruktur_Domain_Server_Aufteilung_v2.md` bleibt unangetastet.
