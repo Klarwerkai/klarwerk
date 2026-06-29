@@ -900,6 +900,20 @@ const de = {
     "Kurze Einstiegshilfe zu den wichtigsten Klarwerk-Abläufen. Suche nach Stichwort oder springe direkt in den passenden Bereich.",
   "help.noResults": "Keine Hilfe zu diesem Stichwort gefunden.",
   "help.openRoute": "Bereich öffnen",
+  // SCRUM-305: kompakte Pilot-Checkliste für den ersten echten Nutzerlauf (Stage-1, ehrlich).
+  "pilot.title": "Pilot-Checkliste: erster Nutzerlauf",
+  "pilot.subtitle":
+    "Worauf im ersten echten Lauf achten — Stage-1, ehrlich. Jeder Punkt führt in den passenden Bereich.",
+  "pilot.check.capture":
+    "Erfassen speichert offen: frisch erfasstes Wissen ist noch nicht validiert.",
+  "pilot.check.validation":
+    "Validierung ist Review/Entscheidung: Peers bewerten, bis es gesichert ist — keine automatische Freigabe.",
+  "pilot.check.use":
+    "Fragen/Bibliothek nutzen Wissen quellen- und statusbewusst: eine Antwort ist nur so belastbar wie ihre Quelle.",
+  "pilot.check.gap":
+    "Keine Grundlage? Die Lücke wird ehrlich benannt und führt in die Erfassung — kein erfundenes Wissen.",
+  "pilot.check.maintain":
+    "Revalidierung ist „Aktuell halten“: fällige Objekte erneut prüfen, keine automatische Dauergültigkeit.",
   "help.firststart.title": "Erststart & Demodaten",
   "help.firststart.body":
     "Frische Instanzen sind zunächst leer. Als Admin kannst du unter Admin 'Demodaten laden', um Beispiel-Wissen, Validierung, Lücken und Konflikte sichtbar zu machen — ideal für Review und Einarbeitung.",
@@ -2098,6 +2112,19 @@ const en: typeof de = {
     "A short starter guide to the most important Klarwerk flows. Search by keyword or jump straight into the relevant area.",
   "help.noResults": "No help found for this keyword.",
   "help.openRoute": "Open area",
+  // SCRUM-305: compact pilot checklist for the first real user run (Stage-1, honest).
+  "pilot.title": "Pilot checklist: first user run",
+  "pilot.subtitle":
+    "What to watch in the first real run — Stage-1, honest. Each point opens the matching area.",
+  "pilot.check.capture": "Capture saves open: freshly captured knowledge is not yet validated.",
+  "pilot.check.validation":
+    "Validation is review/decision: peers rate until it is secured — no automatic approval.",
+  "pilot.check.use":
+    "Ask/Library use knowledge source- and status-aware: an answer is only as reliable as its source.",
+  "pilot.check.gap":
+    "No basis? The gap is named honestly and leads into capture — no invented knowledge.",
+  "pilot.check.maintain":
+    "Revalidation is “keep current”: re-check due objects, no automatic permanent validity.",
   "help.firststart.title": "First run & demo data",
   "help.firststart.body":
     "Fresh instances start empty. As admin you can use 'Load demo data' under Admin to make example knowledge, validation, gaps and conflicts visible — ideal for review and onboarding.",

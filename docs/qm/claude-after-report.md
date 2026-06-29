@@ -6772,3 +6772,38 @@ git commit -m "docs(qm): SCRUM-304 pilot data run Capture->Validation->Use verif
 git push
 ```
 Kein Git/Push/Jira durch Claude. Codex prüft Diff/Gates, committet, pusht, wartet GitHub CI ab und schließt Jira. Untracked `docs/KLARWERK_Infrastruktur_Domain_Server_Aufteilung_v2.md` bleibt unangetastet.
+
+---
+
+## SCRUM-305 — Pilot-Feedback: In-App-Checkliste für ersten Nutzerlauf sichtbar machen
+**Datum:** 2026-06-29 · **Rolle:** Claude (Umsetzung) · **Status:** umgesetzt, Gates grün
+
+**1. Vorab-Befund**
+`helpTopics.ts` hat eine saubere DOM-freie Topic-Struktur (HELP_TOPICS + `filterHelpTopics`), `Help.tsx` rendert sie als durchsuchbares Kapitel-Grid; Routen-Links nur intern. Eine **kompakte Pilot-Checkliste für den ersten Nutzerlauf existiert in-app nicht** — die Stage-1-Ehrlichkeit (frisch erfasst = offen, Review nötig, Use quellen-/statusbewusst, Gap bleibt Gap, Revalidation = Maintain) steht bisher nur in `docs/demo/stage-1-pilot-readiness.md`/`stage-1-demo-path.md`. Start trägt bereits Demo-Pfad + Proof-Linie; weitere Hinweise dort wären „Demo-Politur" (Nicht-Ziel). **Am wenigsten störend: Help** — ein fixer Orientierungspunkt, der die normale Hilfe-Suche nicht verändert.
+
+**2. Umsetzung**
+Kleiner Produkt-Slice, kein Backend/Tracking/keine neue Route:
+- Neuer DOM-freier Helper `apps/web/src/lib/pilotChecklist.ts`: `PILOT_CHECKLIST`/`pilotChecklist()` als EINE Quelle der Wahrheit mit 5 ehrlichen Stage-1-Prüfpunkten in fester Reihenfolge (Capture → Validation → Use → Gap → Maintain), jeweils mit i18n-Key und Verweis auf eine **vorhandene** App-Route (`/erfassen`, `/validierung`, `/fragen`, `/risiko`, `/lebenszyklus`).
+- `apps/web/src/pages/Help.tsx`: kompakte, nicht durchsuchbare Pilot-Checklisten-Karte oberhalb des Suchfelds (fixer Orientierungspunkt; stört die Hilfe-Suche nicht, keine neue Pflichtstrecke). Jede Zeile: Nummer + ehrlicher Prüfpunkt + Link „Bereich öffnen" (vorhandener Key `help.openRoute`).
+- `apps/web/src/i18n.ts`: `pilot.title`, `pilot.subtitle`, `pilot.check.capture/validation/use/gap/maintain` DE + EN (Parität). Texte ohne Stage-2-Versprechen, ausdrücklich: „speichert offen", „keine automatische Freigabe/Dauergültigkeit", „kein erfundenes Wissen".
+
+**3. Geänderte Dateien**
+- `apps/web/src/lib/pilotChecklist.ts` (NEU, DOM-freie Checklisten-Daten)
+- `apps/web/src/pages/Help.tsx` (Pilot-Checklisten-Karte + Import)
+- `apps/web/src/i18n.ts` (`pilot.*` DE/EN)
+- `tests/app/pilot-checklist.test.ts` (NEU: Reihenfolge/ids/n, Routen ⊆ vorhandene Help-Routen, DE/EN-Präsenz, Stage-1-Ehrlichkeits-Assertions)
+
+**4. Tests/Gates**
+`npm run check` grün — **134 Dateien / 786 Tests** (+4). `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün.
+
+**5. Restlücken/Nicht-Ziele**
+Pilotführer/Nutzer sehen jetzt kompakt im Hilfe-Center, was im ersten echten Lauf zu prüfen ist — ehrlich, Stage-1-nah, mit Direktlinks. Start unberührt (keine zusätzliche Demo-Politur). Keine neue Feedback-DB, keine Backend-API, keine Analytics-/Tracking-Architektur, keine neue Route/Task-Engine, kein RAG/keine neue Suche, keine Architekturänderung, keine Stage-2-Versprechen, keine Team-2/3-Arbeit. Doku (`stage-1-pilot-readiness.md`) blieb unverändert (kein Verweis nötig, da die Checkliste jetzt in-app steht). Normale Nutzung unverändert (Karte ist nur ein zusätzlicher, nicht durchsuchbarer Orientierungsblock).
+
+**6. Commit-/Push-Hinweis (nur Hinweis — nicht ausgeführt)**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/pilotChecklist.ts apps/web/src/pages/Help.tsx apps/web/src/i18n.ts tests/app/pilot-checklist.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(help): in-app Stage-1 pilot checklist for first user run; pilotChecklist helper (SCRUM-305)"
+git push
+```
+Kein Git/Push/Jira durch Claude. Codex prüft Diff/Gates, korrigiert minimal falls nötig, committet, pusht, wartet GitHub CI ab und schließt Jira. Untracked `docs/KLARWERK_Infrastruktur_Domain_Server_Aufteilung_v2.md` bleibt unangetastet.
