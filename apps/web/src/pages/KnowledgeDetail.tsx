@@ -24,6 +24,7 @@ import { DemoBanner } from "../components/DemoBanner";
 import { EditorAttachmentContext } from "../components/EditorAttachmentContext";
 import { EditorContentQuality } from "../components/EditorContentQuality";
 import { EditorGuidance } from "../components/EditorGuidance";
+import { KoRevisionSummary } from "../components/KoRevisionSummary";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { SanitizedHtml } from "../components/SanitizedHtml";
 import { ListEditor, TagEditor } from "../components/editors";
@@ -581,6 +582,8 @@ export function KnowledgeDetail(): JSX.Element {
                           />
                         </Field>
                       </div>
+                      {/* SCRUM-325: kompakter Änderungsüberblick vor dem Revidieren (kein Blocking). */}
+                      <KoRevisionSummary original={ko} edit={edit} />
                       <p className="text-[12px] text-muted">{t("ko.editNote")}</p>
                       {err ? (
                         <div className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">

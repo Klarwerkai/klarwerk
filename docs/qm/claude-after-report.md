@@ -7508,3 +7508,41 @@ git commit -m "feat(editor): compact content-quality structure check at body fie
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-325 — Beta KO-Revision Änderungsüberblick v0
+**Datum:** 2026-06-29 · **Rolle:** Claude (Umsetzung) · **Status:** umgesetzt, Gates grün
+
+**Vorab-Befund / Gap-Liste.** `git status -sb` sauber (nur untracked Infra-Doc). KO-Detail Edit-State (`EditState`) = `title/statement/bodyHtml/type/category/conditions[]/measures[]/tags[]` (aus `ko` initialisiert in `startEdit`). Save-Mutation nutzt `action:"revise"` (Titel/Statement/Body/Typ/Listen/Tags) + separat `action:"category"`; `ko.editNote` weist auf Versions-/Review-Folge hin. Vorhandene Editor-Karten: `EditorGuidance`/`EditorAttachmentContext`/`EditorContentQuality`/`BodyTemplateChooser`/`AiAssistBox`. **Beta-Erwartung:** Nachbearbeitung kontrolliert, Nutzer weiß was beim Revidieren passiert. **Neue App:** Editor stark, `ko.editNote` da, aber kein konkreter Änderungsüberblick. **Beta-Lücke:** vor Save nicht sichtbar, welche Bereiche geändert wurden. **Übernommen:** kompakte Änderungsübersicht. **Später:** Text-Diff, Merge-Viewer, Review-Diff. **Nicht übernommen:** Auto-Validierung, fachliche Wahrheitsbewertung, Blocking.
+
+**Umsetzung (v0).**
+1. **DOM-freier Helfer** `apps/web/src/lib/koRevisionSummary.ts` (NEU): `koRevisionSummary(original, edit)` → `{ hasChanges, changedCount, titleChanged, statementChanged, bodyChanged, conditionsChanged, measuresChanged, tagsChanged, categoryChanged, typeChanged, items[] }`. Vergleichsregeln dokumentiert: Texte (title/statement/category/type) getrimmt; `bodyHtml` getrimmt (kein HTML-Diff); `conditions`/`measures` **geordnet** (Schritt-/Reihenfolge-relevant, nach trim + Drop leerer Einträge — Umsortierung = Änderung); `tags` als **Menge** (sortiert, Reihenfolge irrelevant). `items` = geänderte Felder in fester Reihenfolge mit `labelKey = ko.revision.field.<id>`. Robust gegen null/undefined; keine fachliche Bewertung, kein Backend, kein Text-Diff.
+2. **Kompakte Komponente** `apps/web/src/components/KoRevisionSummary.tsx` (NEU): Karte im Edit-Modus — bei Änderungen Chips der geänderten Bereiche, sonst neutraler Hinweis „Noch keine Änderungen erkannt"; immer ehrlicher Revisions-Hinweis (neue Version + Review, keine automatische Freigabe). Kein Blocking.
+3. **Einbindung** nur in `KnowledgeDetail.tsx`, im Edit-Modus direkt vor `ko.editNote`/den Save-Buttons (`original={ko}`, `edit={edit}`). `ko.editNote` und der `action:"revise"`-Flow bleiben unverändert.
+4. **i18n** `ko.revision.title/none/note` + `ko.revision.field.title/statement/body/conditions/measures/tags/category/type` DE+EN (ehrlich: „Review nötig / keine automatische Freigabe", kein „validiert/freigegeben").
+5. **Tests** `tests/ko/ko-revision-summary.test.ts` (NEU, DOM-frei): keine Änderung; Statement/Body/Conditions(+Umsortierung)/Measures/Tags(Menge, Reihenfolge egal)/Typ/Kategorie geändert; Whitespace-only zählt nicht; leere Array-Einträge ignoriert; `changedCount` + Item-IDs/Reihenfolge + labelKey-Schema stabil; robust null/undefined.
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/koRevisionSummary.ts` (NEU)
+- `apps/web/src/components/KoRevisionSummary.tsx` (NEU)
+- `apps/web/src/pages/KnowledgeDetail.tsx` (Karte im Edit-Modus + Import)
+- `apps/web/src/i18n.ts` (`ko.revision.*` DE+EN)
+- `tests/ko/ko-revision-summary.test.ts` (NEU)
+
+**Tests/Gates.** `npm run check` grün — **149 Dateien / 894 Tests**. Gezielt: `npx vitest run tests/ko/ko-revision-summary.test.ts` → 11/11 grün. `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün. `action:"revise"`-Vertrag + bestehende Editor-/KI-/Template-/Attachment-/Quality-Flows unverändert; Revidieren weiter möglich (kein Blocking).
+
+**Bewusst nicht umgesetzte Gaps (später).** Kein vollständiger Text-Diff, kein Merge-/Review-Diff-Viewer, keine Vorher/Nachher-Vorschau pro Feld. Keine Änderungs-Gewichtung/Größenanzeige. Keine fachliche Wahrheitsbewertung. Kein Blocking-Submit/Pflichtfeld.
+
+**Rest-Risiken.** `bodyChanged` per Trim-Vergleich → rein kosmetische Whitespace-Unterschiede im Inneren (z. B. doppelte Leerzeichen) zählen weiter als Änderung; bewusst konservativ (lieber „geändert" anzeigen als verschlucken). Conditions/Measures-Umsortierung gilt als Änderung (dokumentiert, fachlich gewollt da Schrittfolge). Category wird im Save separat (`action:"category"`) gespeichert — der Überblick zeigt sie dennoch korrekt als geändert.
+
+**Nicht-Ziele eingehalten.** Kein RAG/neue Suche/Local-LLM, keine Backend-/Datenmodelländerung, keine Änderung am `action:"revise"`-Vertrag, keine Auto-Validierung/Freigabe, kein Text-Diff/Merge-Viewer, kein Blocking-Submit/Pflichtfeld, keine blinde Legacy-Kopie, keine Team-2/3/4-Dateien, kein Git/Push/Jira. Nur in `/Users/peterkohnert/Documents/dev_Klarwerk`; untracked Infra-Doc unberührt.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/koRevisionSummary.ts apps/web/src/components/KoRevisionSummary.tsx apps/web/src/pages/KnowledgeDetail.tsx apps/web/src/i18n.ts tests/ko/ko-revision-summary.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(ko-detail): change overview before revise (field/structure diff signals) (SCRUM-325)"
+git push
+```
+Kein Git/Push/Jira durch Claude.
