@@ -48,6 +48,14 @@ import {
   tagOptions,
   typeOptions,
 } from "../lib/validationFilters";
+import {
+  REVIEW_FOCUS_FILTERS,
+  type ReviewFocusFilter,
+  countByReviewFocus,
+  matchesReviewFocus,
+  readReviewFocusFilter,
+  reviewFocusLabelKey,
+} from "../lib/validationReviewContext";
 
 // SCRUM-249: Trust-Band → Tönung der Trust-Plakette (kritisch/mittel/gut).
 const TRUST_TONE: Record<TrustBand, string> = {
@@ -109,6 +117,11 @@ export function Validation(): JSX.Element {
   // (z. B. Capture-Success → eigenes Wissen), fehlend/ungültig → „all". Nur Ansicht, kein Review-Status.
   const [demoFilter, setDemoFilter] = useState<DemoKnowledgeFilter>(() =>
     readDemoKnowledgeFilter(params),
+  );
+  // SCRUM-327: Review-Fokus (Alle/Neu/Überarbeitet) — lazy aus ?review=…, fehlend/ungültig → „all".
+  // Nur Ansicht; nutzt dieselbe neu-vs.-revision-Logik (Version > 1) wie SCRUM-326.
+  const [reviewFocus, setReviewFocus] = useState<ReviewFocusFilter>(() =>
+    readReviewFocusFilter(params),
   );
   // Offenes Feedback-Formular (FE-VAL-06): pro KO + gewählter Verdict.
   const [feedback, setFeedback] = useState<{ id: string; verdict: FeedbackVerdict } | null>(null);
@@ -240,8 +253,11 @@ export function Validation(): JSX.Element {
             "non-demo": boardFiltered.filter((k) => matchesDemoKnowledgeFilter(k, "non-demo"))
               .length,
           };
+          // SCRUM-327: Review-Fokus über die fachlich + herkunfts-gefilterte Menge zählen, dann anwenden.
+          const focusBase = boardFiltered.filter((k) => matchesDemoKnowledgeFilter(k, demoFilter));
+          const reviewFocusCounts = countByReviewFocus(focusBase);
           const visible = sortByReviewPriority(
-            boardFiltered.filter((k) => matchesDemoKnowledgeFilter(k, demoFilter)),
+            focusBase.filter((k) => matchesReviewFocus(k, reviewFocus)),
           );
           return (
             <>
@@ -263,6 +279,27 @@ export function Validation(): JSX.Element {
                     }`}
                   >
                     {t(demoKnowledgeFilterLabelKey(f))} · {demoCounts[f]}
+                  </button>
+                ))}
+              </div>
+              {/* SCRUM-327: Review-Fokus (Alle/Neu/Überarbeitet) — nur Ansicht; Counts über die fachlich
+                  + herkunfts-gefilterte Menge. Ersetzt keinen Filter, ändert keinen Review-Status. */}
+              <div className="mb-3 flex flex-wrap items-center gap-1.5">
+                <span className="mr-0.5 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                  {t("val.reviewFocus.label")}:
+                </span>
+                {REVIEW_FOCUS_FILTERS.map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setReviewFocus(f)}
+                    className={`rounded-pill border px-2.5 py-1 font-mono text-[11px] font-semibold ${
+                      reviewFocus === f
+                        ? "border-ink bg-ink text-white"
+                        : "border-hairline text-muted hover:text-text"
+                    }`}
+                  >
+                    {t(reviewFocusLabelKey(f))} · {reviewFocusCounts[f]}
                   </button>
                 ))}
               </div>

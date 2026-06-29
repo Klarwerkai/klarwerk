@@ -52,3 +52,44 @@ export function validationReviewContext(ko: ReviewContextInput | null | undefine
     tone: kind,
   };
 }
+
+// SCRUM-327: Review-Fokusfilter (nur Ansicht) — gezielt Alle/Neu/Überarbeitet abarbeiten. Nutzt
+// dieselbe neu-vs.-revision-Logik wie validationReviewContext (Version > 1). DOM-frei, kein Backend,
+// keine fachliche Bewertung; ergänzt die bestehenden fachlichen + Herkunfts-Filter, ersetzt sie nicht.
+export type ReviewFocusFilter = "all" | "new" | "revision";
+
+export const REVIEW_FOCUS_FILTERS: readonly ReviewFocusFilter[] = ["all", "new", "revision"];
+
+// Query-Param für den Review-Fokus (lazy init, fehlend/ungültig → "all").
+export const REVIEW_FOCUS_PARAM = "review";
+
+export function reviewFocusLabelKey(filter: ReviewFocusFilter): string {
+  return `val.reviewFocus.${filter}`;
+}
+
+export function matchesReviewFocus(
+  ko: ReviewContextInput | null | undefined,
+  filter: ReviewFocusFilter,
+): boolean {
+  if (filter === "all") {
+    return true;
+  }
+  return validationReviewContext(ko).kind === filter;
+}
+
+export function countByReviewFocus(
+  kos: readonly (ReviewContextInput | null | undefined)[],
+): Record<ReviewFocusFilter, number> {
+  const counts: Record<ReviewFocusFilter, number> = { all: kos.length, new: 0, revision: 0 };
+  for (const ko of kos) {
+    counts[validationReviewContext(ko).kind] += 1;
+  }
+  return counts;
+}
+
+export function readReviewFocusFilter(params: URLSearchParams): ReviewFocusFilter {
+  const value = params.get(REVIEW_FOCUS_PARAM);
+  return REVIEW_FOCUS_FILTERS.includes(value as ReviewFocusFilter)
+    ? (value as ReviewFocusFilter)
+    : "all";
+}

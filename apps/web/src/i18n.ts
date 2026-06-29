@@ -701,6 +701,10 @@ const de = {
   "val.reviewContext.hint.new": "Erstbewertung: Quelle, Aussage und Struktur prüfen.",
   "val.reviewContext.hint.revision":
     "Änderung prüfen: Version und Inhalt erneut bewerten — keine automatische Freigabe.",
+  "val.reviewFocus.label": "Review-Fokus",
+  "val.reviewFocus.all": "Alle",
+  "val.reviewFocus.new": "Neu",
+  "val.reviewFocus.revision": "Überarbeitet",
   "val.decision.low": "wenig abgesichert — sorgfältig prüfen, Quellen/Belege anschauen.",
   "val.decision.mid": "teilweise abgesichert — Aussage und Quellen gegenprüfen.",
   "val.decision.high": "gut abgesichert — kurze Gegenprüfung genügt meist.",
@@ -2047,6 +2051,10 @@ const en: typeof de = {
   "val.reviewContext.hint.new": "First review: check source, statement and structure.",
   "val.reviewContext.hint.revision":
     "Review the change: re-assess version and content — no automatic approval.",
+  "val.reviewFocus.label": "Review focus",
+  "val.reviewFocus.all": "All",
+  "val.reviewFocus.new": "New",
+  "val.reviewFocus.revision": "Revised",
   "val.decision.low": "weakly backed — review carefully, check sources/evidence.",
   "val.decision.mid": "partly backed — cross-check the statement and sources.",
   "val.decision.high": "well backed — a brief cross-check usually suffices.",

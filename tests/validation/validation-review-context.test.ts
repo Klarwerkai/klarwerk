@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
 import {
+  REVIEW_FOCUS_FILTERS,
   type ReviewContextKind,
+  type ReviewFocusFilter,
+  countByReviewFocus,
+  matchesReviewFocus,
+  readReviewFocusFilter,
+  reviewFocusLabelKey,
   validationReviewContext,
 } from "../../apps/web/src/lib/validationReviewContext";
 
@@ -72,5 +78,60 @@ describe("SCRUM-326: validationReviewContext", () => {
       i18n.getResource("de", "translation", "val.reviewContext.hint.revision") ?? "",
     );
     expect(hint).toMatch(/keine automatische Freigabe/i);
+  });
+});
+
+// SCRUM-327: Review-Fokusfilter (Alle/Neu/Überarbeitet) über dieselbe neu-vs.-revision-Logik.
+describe("SCRUM-327: ReviewFocusFilter", () => {
+  it("FILTERS in fester Reihenfolge", () => {
+    expect(REVIEW_FOCUS_FILTERS).toEqual<ReviewFocusFilter[]>(["all", "new", "revision"]);
+  });
+
+  it("matchesReviewFocus: all matcht alles", () => {
+    expect(matchesReviewFocus({ version: 1 }, "all")).toBe(true);
+    expect(matchesReviewFocus({ version: 5 }, "all")).toBe(true);
+    expect(matchesReviewFocus(null, "all")).toBe(true);
+  });
+
+  it("matchesReviewFocus: new matcht Version 1 + defensive Defaults", () => {
+    expect(matchesReviewFocus({ version: 1 }, "new")).toBe(true);
+    expect(matchesReviewFocus({ version: 0 }, "new")).toBe(true);
+    expect(matchesReviewFocus({ version: Number.NaN }, "new")).toBe(true);
+    expect(matchesReviewFocus(null, "new")).toBe(true);
+    expect(matchesReviewFocus({ version: 2 }, "new")).toBe(false);
+  });
+
+  it("matchesReviewFocus: revision matcht Version > 1", () => {
+    expect(matchesReviewFocus({ version: 2 }, "revision")).toBe(true);
+    expect(matchesReviewFocus({ version: 9 }, "revision")).toBe(true);
+    expect(matchesReviewFocus({ version: 1 }, "revision")).toBe(false);
+  });
+
+  it("countByReviewFocus über gemischte Liste", () => {
+    const kos = [{ version: 1 }, { version: 2 }, { version: 3 }, { version: 1 }, { version: 0 }];
+    expect(countByReviewFocus(kos)).toEqual({ all: 5, new: 3, revision: 2 });
+  });
+
+  it("readReviewFocusFilter: gültig durchgereicht, sonst all", () => {
+    expect(readReviewFocusFilter(new URLSearchParams("review=new"))).toBe("new");
+    expect(readReviewFocusFilter(new URLSearchParams("review=revision"))).toBe("revision");
+    expect(readReviewFocusFilter(new URLSearchParams("review=all"))).toBe("all");
+    expect(readReviewFocusFilter(new URLSearchParams("review=quatsch"))).toBe("all");
+    expect(readReviewFocusFilter(new URLSearchParams(""))).toBe("all");
+  });
+
+  it("Label-Keys stabil und DE+EN vorhanden", () => {
+    const keys = [
+      "val.reviewFocus.label",
+      ...REVIEW_FOCUS_FILTERS.map((f) => reviewFocusLabelKey(f)),
+    ];
+    for (const f of REVIEW_FOCUS_FILTERS) {
+      expect(reviewFocusLabelKey(f)).toBe(`val.reviewFocus.${f}`);
+    }
+    for (const key of keys) {
+      for (const lng of ["de", "en"]) {
+        expect(String(i18n.getResource(lng, "translation", key) ?? "").length).toBeGreaterThan(0);
+      }
+    }
   });
 });

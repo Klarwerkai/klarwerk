@@ -7584,3 +7584,40 @@ git commit -m "feat(validation): review context (new vs revised) on board cards 
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-327 — Beta Validation Review-Fokusfilter neu vs. revidiert v0
+**Datum:** 2026-06-29 · **Rolle:** Claude (Umsetzung) · **Status:** umgesetzt, Gates grün
+
+**Vorab-Befund / Gap-Liste.** `git status -sb` sauber (nur untracked Infra-Doc). `validationReviewContext(ko)` (SCRUM-326) klassifiziert `new`/`revision` über `version > 1`. Board-Pipeline: `boardFiltered = items.filter(matchesValidationFilter)` → `demoCounts` darüber → `visible = sortByReviewPriority(boardFiltered.filter(matchesDemoKnowledgeFilter(demoFilter)))`. Herkunftsfilter lazy aus `?origin=` (`readDemoKnowledgeFilter`). **Beta-Erwartung:** Revisor kann gezielt neue/revidierte KOs abarbeiten. **Stand:** Kontext neu/revidiert sichtbar (326). **Lücke:** kein Fokusfilter nach neu/revidiert. **Übernommen:** Filter-Chip-Reihe mit Counts. **Später:** Sortierung, gespeicherte Ansichten, Review-Diff. **Nicht übernommen:** Backend-Filter, Diff-Viewer, Auto-Validierung, Blocking.
+
+**Umsetzung (v0).**
+1. **Helfer ergänzt** in `apps/web/src/lib/validationReviewContext.ts`: `ReviewFocusFilter = "all"|"new"|"revision"`, `REVIEW_FOCUS_FILTERS`, `REVIEW_FOCUS_PARAM = "review"`, `reviewFocusLabelKey`, `matchesReviewFocus(ko, filter)` (nutzt `validationReviewContext(...).kind`, also dieselbe `version > 1`-Logik), `countByReviewFocus(kos)` → `{all, new, revision}`, `readReviewFocusFilter(params)` (fehlend/ungültig → `all`). DOM-frei, robust gegen seltsame Versionen, kein Backend.
+2. **Board-UI** `apps/web/src/pages/Validation.tsx`: kompakte Chip-Reihe „Review-Fokus" (Alle/Neu/Überarbeitet) mit Counts, unter der Herkunfts-Chip-Reihe. Pipeline: `focusBase = boardFiltered.filter(matchesDemoKnowledgeFilter(demoFilter))` → `reviewFocusCounts = countByReviewFocus(focusBase)` → `visible = sortByReviewPriority(focusBase.filter(matchesReviewFocus(reviewFocus)))`. Counts also exakt über die fachlich + herkunfts-gefilterte Menge, bevor der Review-Fokus greift. Bestehende fachliche + Demo-Filter, Sortierung und Review-/Rate-Buttons unverändert.
+3. **Query-Param** `?review=all|new|revision`: lazy init via `readReviewFocusFilter(params)` analog zum bestehenden `demoFilter`/`?origin=`-Muster (nur Init, kein `setSearchParams` — konsistent risikoarm, keine URL-Mutation eingeführt).
+4. **i18n** `val.reviewFocus.label/all/new/revision` DE+EN (kurze Labels; keine „freigegeben/validiert"-Begriffe).
+5. **Tests** (`tests/validation/validation-review-context.test.ts` erweitert, DOM-frei): FILTERS-Reihenfolge; `all` matcht alles; `new` matcht v1 + defensive Defaults (0/NaN/null); `revision` matcht v>1; `countByReviewFocus` gemischt (`{all:5,new:3,revision:2}`); `readReviewFocusFilter` gültig/ungültig/leer→all; Label-Keys stabil + DE/EN vorhanden.
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/validationReviewContext.ts` (ReviewFocusFilter-API ergänzt)
+- `apps/web/src/pages/Validation.tsx` (Chip-Reihe + Pipeline + State/Import)
+- `apps/web/src/i18n.ts` (`val.reviewFocus.*` DE+EN)
+- `tests/validation/validation-review-context.test.ts` (SCRUM-327-Block ergänzt)
+
+**Tests/Gates.** `npm run check` grün — **150 Dateien / 909 Tests**. Gezielt: `npx vitest run tests/validation/validation-review-context.test.ts` → 15/15 grün. `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün. Validation-/Rate-/Filter-Flows + Herkunfts-/fachliche Filter unverändert.
+
+**Bewusst nicht umgesetzte Gaps (später).** Keine Sortierung nach neu/revidiert, keine gespeicherten Ansichten, kein Review-Diff. Kein Schreiben des `?review=`-Params in die URL beim Klick (nur Lese-Init, wie beim Herkunftsfilter). Keine Kombination als Mehrfachauswahl (genau ein Fokus).
+
+**Rest-Risiken.** Fokus basiert allein auf `version > 1` (geteilte Logik mit SCRUM-326) — bei abweichender Backend-Versionszählung könnte die Zuordnung abweichen; defensiv stets „new" als sichere Default-Lesart. Counts hängen an der vorgelagerten Filterkette: ändert sich ein fachlicher/Herkunfts-Filter, ändern sich die Fokus-Counts entsprechend (gewollt, nachvollziehbar).
+
+**Nicht-Ziele eingehalten.** Kein RAG/neue Suche/Local-LLM, keine Backend-/Datenmodelländerung, keine Änderung am Validation-/Rate-/Review-Vertrag, keine Auto-Validierung/Freigabe, kein Vorher/Nachher-Diff, kein Merge-/Review-Diff-Viewer, kein Blocking/Pflichtfeld, keine blinde Legacy-Kopie, keine Team-2/3/4-Dateien, kein Git/Push/Jira. Nur in `/Users/peterkohnert/Documents/dev_Klarwerk`; untracked Infra-Doc unberührt.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/validationReviewContext.ts apps/web/src/pages/Validation.tsx apps/web/src/i18n.ts tests/validation/validation-review-context.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(validation): review focus filter (all/new/revised) with counts on board (SCRUM-327)"
+git push
+```
+Kein Git/Push/Jira durch Claude.
