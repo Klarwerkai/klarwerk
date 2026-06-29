@@ -6950,3 +6950,41 @@ git commit -m "feat(library): client-side origin filter (demo / own knowledge) r
 git push
 ```
 Kein Git/Push/Jira durch Claude. Codex prüft Diff/Gates, korrigiert minimal falls nötig, committet, pusht, wartet GitHub CI ab und schließt Jira. Untracked `docs/KLARWERK_Infrastruktur_Domain_Server_Aufteilung_v2.md` bleibt unangetastet.
+
+---
+
+## SCRUM-310 — Nach Capture eigenes Wissen in Library finden und zur Validierung führen
+**Datum:** 2026-06-29 · **Rolle:** Claude (Umsetzung) · **Status:** umgesetzt, Gates grün
+
+**1. Vorab-Befund**
+`captureNextSteps(koId)` lieferte zwei Schritte: KO ansehen (`/wissen/:id`) und Validierung (`/validierung`, `primary`). Die Capture-Success-Card rendert sie generisch (`demoHref(s.to, params)`, `s.primary`-Styling). Der Herkunftsfilter aus SCRUM-309 (`DemoKnowledgeFilter` + `isDemoKnowledge`) ist client-seitig; Library hält `params` (`useSearchParams`) und `demoFilter`-State. Es gab **keinen** Weg, frisch erfasstes eigenes Wissen direkt gefiltert in der Library wiederzufinden, und Library las den Herkunftsfilter **nicht** aus der URL. Query-Muster wie `askQuestion.ts` (`readAskQuestion`) als Vorlage vorhanden.
+
+**2. Umsetzung**
+Kleiner, client-seitiger Slice (kein Backend/keine Server-Filterung/keine Schemaänderung):
+- **Query-Helfer (`demoKnowledge.ts`):** `DEMO_FILTER_PARAM = "origin"`, `readDemoKnowledgeFilter(params)` (fehlend/ungültig → `all`, nur gültige `DemoKnowledgeFilter`-Werte), `libraryOriginHref(filter)` (`all` → `/bibliothek`, sonst `/bibliothek?origin=<filter>`). Nutzt denselben `DemoKnowledgeFilter` wie der Chip-Filter — keine zweite Logik.
+- **Library:** initialisiert `demoFilter` **lazy** aus dem Query-Param (`useState(() => readDemoKnowledgeFilter(params))`). Ohne Query bleibt es `all`; die Chips überschreiben den State weiter frei. Keine serverseitige Filterung.
+- **Capture-Success (`captureSuccess.ts`):** dritter, **nicht-primärer** Next Step „In der Bibliothek ansehen (eigenes Wissen)" → `libraryOriginHref("non-demo")` (`/bibliothek?origin=non-demo`). Bestehende Schritte KO-Detail und Validierung bleiben; **Validierung bleibt `primary`** (betont, als letzter Schritt). Der Library-Link ist Auffinden/Übersicht, **keine** Validierung, **keine** Autor-/User-Zuordnung.
+- **i18n:** `capture.savedViewLibrary` DE/EN. Copy ehrlich: „eigenes Wissen" = technisch ohne Demo-Tag, keine User-Zuordnung; kein Demo-Wissen wird als eigenes umgedeutet.
+
+**3. Geänderte Dateien**
+- `apps/web/src/lib/demoKnowledge.ts` (`DEMO_FILTER_PARAM`, `readDemoKnowledgeFilter`, `libraryOriginHref`)
+- `apps/web/src/lib/captureSuccess.ts` (Library-Next-Step)
+- `apps/web/src/pages/Library.tsx` (lazy demoFilter-Init aus Query)
+- `apps/web/src/i18n.ts` (`capture.savedViewLibrary` DE/EN)
+- `tests/capture/capture-success.test.ts` (+3: Reihenfolge inkl. Library, nicht-primärer Library-Schritt, Label DE/EN)
+- `tests/app/demo-knowledge.test.ts` (+4: read missing/invalid→all, valid→Filter, href-Aufbau, Round-Trip)
+
+**4. Tests/Gates**
+`npm run check` grün — **137 Dateien / 811 Tests** (+6). `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün.
+
+**5. Restlücken/Nicht-Ziele**
+Library initialisiert den Herkunftsfilter aus `?origin=…` (mind. `non-demo`); ungültig/fehlend → neutral `all`. Capture-Success bietet einen ehrlichen Library-Einstieg (eigenes/nicht-Demo); KO-Detail + Validierung bleiben, Review bleibt betont primär. Der Origin-Filter nutzt weiterhin `isDemoKnowledge`/`DemoKnowledgeFilter` (keine zweite Logik). Kein Backend, keine Server-Filterung, keine neue Suche, kein neues Datenmodell/Migration/Schemaänderung, keine automatische Validierung, **keine** User-/Author-„mein Wissen"-Zuordnung (rein „ohne Demo-Tag"), keine Mandanten-Trennung, kein Tracking/RAG, keine Architekturänderung, keine Team-2/3-Arbeit, kein Deployment.
+
+**6. Commit-/Push-Hinweis (nur Hinweis — nicht ausgeführt)**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/demoKnowledge.ts apps/web/src/lib/captureSuccess.ts apps/web/src/pages/Library.tsx apps/web/src/i18n.ts tests/capture/capture-success.test.ts tests/app/demo-knowledge.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(capture/library): find own/non-demo knowledge after capture via ?origin= deep link (SCRUM-310)"
+git push
+```
+Kein Git/Push/Jira durch Claude. Codex prüft Diff/Gates, korrigiert minimal falls nötig, committet, pusht, wartet GitHub CI ab und schließt Jira. Untracked `docs/KLARWERK_Infrastruktur_Domain_Server_Aufteilung_v2.md` bleibt unangetastet.

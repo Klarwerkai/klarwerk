@@ -23,6 +23,7 @@ import {
   demoKnowledgeFilterLabelKey,
   filterByDemoKnowledge,
   isDemoKnowledge,
+  readDemoKnowledgeFilter,
 } from "../lib/demoKnowledge";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 import { deriveStatus } from "../lib/displayStatus";
@@ -70,7 +71,11 @@ export function Library(): JSX.Element {
   // SCRUM-267: einfacher Reife-Filter (Alle/Nutzbar/In Prüfung/Zu prüfen) auf der gerankten Liste.
   const [maturity, setMaturity] = useState<MaturityFilter>("all");
   // SCRUM-309: Herkunftsfilter (Demo/Eigenes) — ergänzend zu Reife/Suche, nicht als Ersatz.
-  const [demoFilter, setDemoFilter] = useState<DemoKnowledgeFilter>("all");
+  // SCRUM-310: lazy aus dem Query-Param (?origin=…) vorbelegen — z. B. Capture-Success → eigenes
+  // Wissen; fehlend/ungültig → „all". Die Chips überschreiben den State weiterhin frei.
+  const [demoFilter, setDemoFilter] = useState<DemoKnowledgeFilter>(() =>
+    readDemoKnowledgeFilter(params),
+  );
   const guide = knowledgeGuidance("library");
 
   // Optionen (Domäne/Tags) aus dem ungefilterten Bestand, damit sie stabil bleiben.

@@ -75,3 +75,21 @@ export function demoKnowledgeFilterLabelKey(filter: DemoKnowledgeFilter): string
       return "lib.demoFilter.all";
   }
 }
+
+// SCRUM-310: Query-Parameter-Konvention für den Herkunftsfilter, damit ehrliche Deep-Links in die
+// Library möglich sind (z. B. Capture-Success → „eigenes/nicht-Demo-Wissen ansehen"). Nur Anzeige-/
+// Link-Kontext, KEINE serverseitige Filterung, keine neue Suche. Werte = bestehende DemoKnowledgeFilter.
+export const DEMO_FILTER_PARAM = "origin";
+
+// Liest den Herkunftsfilter aus den Query-Parametern. Fehlend/ungültig → „all" (neutral, kein Effekt).
+export function readDemoKnowledgeFilter(params: URLSearchParams): DemoKnowledgeFilter {
+  const value = params.get(DEMO_FILTER_PARAM) ?? "";
+  return (DEMO_KNOWLEDGE_FILTERS as readonly string[]).includes(value)
+    ? (value as DemoKnowledgeFilter)
+    : "all";
+}
+
+// Deep-Link in die Library mit vorgewähltem Herkunftsfilter. „all" → ohne Query (normale Ansicht).
+export function libraryOriginHref(filter: DemoKnowledgeFilter): string {
+  return filter === "all" ? "/bibliothek" : `/bibliothek?${DEMO_FILTER_PARAM}=${filter}`;
+}

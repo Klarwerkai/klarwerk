@@ -259,6 +259,9 @@ const de = {
   "capture.savedBody":
     "Gespeichert, aber noch nicht validiert. Erst nach ausreichender Bewertung wird es nutzbares Wissen — bitte zur Prüfung geben. Automatisch validiert wird nichts.",
   "capture.savedViewKo": "Objekt ansehen",
+  // SCRUM-310: in der Bibliothek wiederfinden — Herkunftsfilter „eigenes/nicht-Demo-Wissen"
+  // (technisch: ohne Demo-Tag; keine Autor-/User-Zuordnung). Auffinden, keine Validierung.
+  "capture.savedViewLibrary": "In der Bibliothek ansehen (eigenes Wissen)",
   "capture.savedValidate": "Zur Prüfung geben",
   "capture.savedAgain": "Weiteres erfassen",
   "capture.mode.freitext": "Freitext",
@@ -1509,6 +1512,9 @@ const en: typeof de = {
   "capture.savedBody":
     "Saved, but not yet validated. It becomes usable knowledge only after sufficient review — please send it for review. Nothing is validated automatically.",
   "capture.savedViewKo": "View object",
+  // SCRUM-310: find it in the library — origin filter "own/non-demo knowledge" (technically: without
+  // the demo tag; no author/user attribution). Finding/overview, not validation.
+  "capture.savedViewLibrary": "View in the library (own knowledge)",
   "capture.savedValidate": "Send for review",
   "capture.savedAgain": "Capture another",
   "capture.mode.freitext": "Free text",

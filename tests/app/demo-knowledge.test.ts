@@ -11,6 +11,8 @@ import {
   demoKnowledgeFilterLabelKey,
   filterByDemoKnowledge,
   isDemoKnowledge,
+  libraryOriginHref,
+  readDemoKnowledgeFilter,
 } from "../../apps/web/src/lib/demoKnowledge";
 
 const ko = (tags: string[]): Pick<KnowledgeObject, "tags"> => ({ tags });
@@ -119,6 +121,40 @@ describe("SCRUM-309: demoKnowledge filter", () => {
       for (const lng of ["de", "en"]) {
         expect(String(i18n.getResource(lng, "translation", key) ?? "").length).toBeGreaterThan(0);
       }
+    }
+  });
+});
+
+// SCRUM-310: ehrliche Deep-Links in die Library mit Herkunftsfilter (Query ?origin=…). Nur Anzeige-/
+// Link-Kontext, keine Server-Filterung. Fehlend/ungültig → „all".
+describe("SCRUM-310: library origin query", () => {
+  const params = (qs: string) => new URLSearchParams(qs);
+
+  it("readDemoKnowledgeFilter: fehlend oder ungültig → 'all' (neutral)", () => {
+    expect(readDemoKnowledgeFilter(params(""))).toBe("all");
+    expect(readDemoKnowledgeFilter(params("origin=quatsch"))).toBe("all");
+    expect(readDemoKnowledgeFilter(params("foo=bar"))).toBe("all");
+  });
+
+  it("readDemoKnowledgeFilter: gültiger Wert → entsprechender DemoKnowledgeFilter", () => {
+    expect(readDemoKnowledgeFilter(params("origin=non-demo"))).toBe<DemoKnowledgeFilter>(
+      "non-demo",
+    );
+    expect(readDemoKnowledgeFilter(params("origin=demo"))).toBe<DemoKnowledgeFilter>("demo");
+    expect(readDemoKnowledgeFilter(params("origin=all"))).toBe<DemoKnowledgeFilter>("all");
+  });
+
+  it("libraryOriginHref: 'all' ohne Query, sonst Deep-Link mit origin=…", () => {
+    expect(libraryOriginHref("all")).toBe("/bibliothek");
+    expect(libraryOriginHref("non-demo")).toBe("/bibliothek?origin=non-demo");
+    expect(libraryOriginHref("demo")).toBe("/bibliothek?origin=demo");
+  });
+
+  it("Round-Trip: libraryOriginHref → readDemoKnowledgeFilter ergibt denselben Filter", () => {
+    for (const f of DEMO_KNOWLEDGE_FILTERS) {
+      const href = libraryOriginHref(f);
+      const qs = href.includes("?") ? href.slice(href.indexOf("?") + 1) : "";
+      expect(readDemoKnowledgeFilter(params(qs))).toBe(f);
     }
   });
 });

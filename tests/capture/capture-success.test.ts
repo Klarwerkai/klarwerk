@@ -4,9 +4,22 @@ import { captureNextSteps, captureSavedStatus } from "../../apps/web/src/lib/cap
 
 // SCRUM-276: nach dem Einreichen den nächsten Schritt im Kernfluss sichtbar machen.
 describe("SCRUM-276: captureNextSteps", () => {
-  it("führt zum erstellten KO und zur Validierung", () => {
+  it("führt zum erstellten KO, in die Bibliothek (eigenes Wissen) und zur Validierung", () => {
     const steps = captureNextSteps("ko-42");
-    expect(steps.map((s) => s.to)).toEqual(["/wissen/ko-42", "/validierung"]);
+    expect(steps.map((s) => s.to)).toEqual([
+      "/wissen/ko-42",
+      "/bibliothek?origin=non-demo",
+      "/validierung",
+    ]);
+  });
+
+  // SCRUM-310: frisch erfasstes Wissen in der Bibliothek wiederfinden — gefiltert auf eigenes/
+  // nicht-Demo-Wissen; Auffinden/Übersicht, NICHT primär (Review bleibt die betonte Handlung).
+  it("bietet einen nicht-primären Bibliotheks-Schritt mit Herkunftsfilter eigenes Wissen", () => {
+    const lib = captureNextSteps("ko-9").find((s) => s.to.startsWith("/bibliothek"));
+    expect(lib?.to).toBe("/bibliothek?origin=non-demo");
+    expect(lib?.primary).toBeFalsy();
+    expect(lib?.labelKey).toBe("capture.savedViewLibrary");
   });
 
   it("jeder Schritt hat ein nicht-leeres Label und ein vorhandenes Ziel", () => {
@@ -19,6 +32,14 @@ describe("SCRUM-276: captureNextSteps", () => {
   it("bettet die KO-ID in den Detail-Link ein", () => {
     const [viewKo] = captureNextSteps("abc-123");
     expect(viewKo?.to).toBe("/wissen/abc-123");
+  });
+
+  it("Bibliotheks-Schritt-Label ist DE und EN vorhanden", () => {
+    for (const lng of ["de", "en"]) {
+      expect(
+        String(i18n.getResource(lng, "translation", "capture.savedViewLibrary") ?? "").length,
+      ).toBeGreaterThan(0);
+    }
   });
 });
 
