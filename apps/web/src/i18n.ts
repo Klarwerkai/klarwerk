@@ -559,6 +559,9 @@ const de = {
   "ko.rework.feedbackTitle": "Review-Feedback",
   "ko.rework.feedback.warn": "Rückfrage",
   "ko.rework.feedback.down": "Ablehnung",
+  "ko.rework.editTitle": "Nacharbeit: dieses Feedback abarbeiten",
+  "ko.rework.editHint":
+    "Arbeite das Feedback gezielt ein. Speichern erzeugt eine neue Version und startet die Prüfung neu — keine automatische Freigabe.",
   "ko.saveEdit": "Speichern",
   "ko.cancelEdit": "Abbrechen",
   "ko.editNote":
@@ -1927,6 +1930,9 @@ const en: typeof de = {
   "ko.rework.feedbackTitle": "Review feedback",
   "ko.rework.feedback.warn": "Query",
   "ko.rework.feedback.down": "Rejection",
+  "ko.rework.editTitle": "Rework: address this feedback",
+  "ko.rework.editHint":
+    "Work through the feedback. Saving creates a new version and restarts the review — no automatic approval.",
   "ko.saveEdit": "Save",
   "ko.cancelEdit": "Cancel",
   "ko.editNote":

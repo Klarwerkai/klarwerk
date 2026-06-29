@@ -87,4 +87,22 @@ describe("SCRUM-332: latestValidationFeedback", () => {
       }
     }
   });
+
+  // SCRUM-333: Rework-Edit-Hilfe (Feedback während der Revision als Arbeitshilfe).
+  it("Edit-Hilfe-i18n (editTitle/editHint) DE+EN vorhanden", () => {
+    for (const key of ["ko.rework.editTitle", "ko.rework.editHint"]) {
+      for (const lng of ["de", "en"]) {
+        expect(String(i18n.getResource(lng, "translation", key) ?? "").length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("ehrlich: editHint benennt neue Version + erneute Prüfung, keine automatische Freigabe (DE/EN)", () => {
+    const de = String(i18n.getResource("de", "translation", "ko.rework.editHint") ?? "");
+    expect(de).toMatch(/neue Version/i);
+    expect(de).toMatch(/keine automatische Freigabe/i);
+    const en = String(i18n.getResource("en", "translation", "ko.rework.editHint") ?? "");
+    expect(en).toMatch(/new version/i);
+    expect(en).toMatch(/no automatic approval/i);
+  });
 });

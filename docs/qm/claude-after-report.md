@@ -7805,3 +7805,41 @@ git commit -m "feat(ko-detail): show focused validation feedback in rework conte
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-333 — Beta Review-Nacharbeit: Feedback während der Revision als Arbeitshilfe anzeigen v0
+**Datum:** 2026-06-29 · **Rolle:** Claude (Umsetzung) · **Status:** umgesetzt, Gates grün
+
+**Vorab-Befund.** SCRUM-332 zeigt das fokussierte Validierungsfeedback nur im Read-Modus-Rework-Banner (`reviewReworkContext && !reworkSaved`). Im Edit-Modus rendert KO-Detail bereits `KoRevisionSummary` (SCRUM-325) + `ko.editNote`, aber das konkrete Feedback ist beim Bearbeiten/Speichern nicht mehr sichtbar. `latestValidationFeedback(ko.comments)` existiert in `validationFeedback.ts` und wurde wiederverwendet. `git status -sb` sauber (nur untracked Infra-Doc).
+
+**Umsetzung (v0).**
+1. Bestehende Erkennung `latestValidationFeedback` wiederverwendet (kein neuer Helper, kein Backend, kein Kommentarformat-Change).
+2. Im Edit-Modus, nur bei `reviewReworkContext` und vorhandenem Feedback, oben im Edit-Formular eine kompakte Rework-Edit-Hilfe: Titel `ko.rework.editTitle`, darin dieselbe Feedback-Card wie SCRUM-332 (Label „Review-Feedback" + Verdict-Chip Rückfrage/Ablehnung + reiner Text + optional Autor/Datum), darunter ehrlicher Hinweis `ko.rework.editHint`.
+3. Platzierung am Anfang des Edit-Blocks (vor Titel/Body/Save) — sichtbar während der ganzen Bearbeitung, ohne den Editor zu überfrachten; `KoRevisionSummary`/`ko.editNote` unten unverändert.
+4. Copy macht klar: Feedback abarbeiten · Speichern erzeugt neue Version · erneute Prüfung · keine automatische Freigabe.
+5. Kein Backend-/Kommentarformat-Change. Bestehender Banner/Success-Card-Flow (SCRUM-330/331/332) unverändert: Read-Banner gated auf `!edit`-Pfad/`!reworkSaved`, Edit-Hilfe nur im `edit`-Pfad.
+6. i18n `ko.rework.editTitle`/`editHint` DE+EN.
+7. Tests in `tests/ko/validation-feedback-read.test.ts` erweitert: editTitle/editHint DE+EN vorhanden; Ehrlichkeit (DE „neue Version" + „keine automatische Freigabe"; EN „new version" + „no automatic approval").
+
+**Geänderte Dateien.**
+- `apps/web/src/pages/KnowledgeDetail.tsx` (Rework-Edit-Hilfe im Edit-Block)
+- `apps/web/src/i18n.ts` (`ko.rework.editTitle`/`editHint` DE+EN)
+- `tests/ko/validation-feedback-read.test.ts` (erweitert)
+
+**Tests/Gates.** `npm run check` grün — **153 Dateien / 934 Tests**. Gezielt 10/10 grün. FE-tsc grün (EXIT=0). Biome/depcruise grün.
+
+**Bewusst nicht umgesetzte Gaps.** Kein Auto-Prefill in Felder; kein automatisches Abhaken des Feedbacks; kein Diff/Merge-Viewer; kein neues Review-Statusmodell; kein Editieren/Beantworten des Feedbacks in der Hilfe; keine eigene Komponente (kleine Inline-Render-Wiederholung des SCRUM-332-Musters bewusst akzeptiert, da Copy/Platzierung edit-spezifisch).
+
+**Rest-Risiken.** Erkennung hängt weiter am exakten Präfix (`<Präfix>: `) — Feedbacks ohne dieses Format erscheinen nicht in der Edit-Hilfe (kein Datenverlust, fallen in allgemeine Liste). Das Feedback-Render-Muster existiert nun an zwei Stellen (Read-Banner + Edit-Hilfe); bei künftigen Layout-Änderungen ggf. in eine kleine Komponente extrahieren.
+
+**Nicht-Ziele eingehalten.** Kein Backend-/Datenmodell-/Kommentarformat-Change, kein Auto-Prefill/-Abhaken, kein Diff/Merge-Viewer, kein neues Statusmodell, kein RAG/neue Suche/Local-LLM, keine Team-2/3/4-Dateien, kein Git/Push/Jira. Nur in `/Users/peterkohnert/Documents/dev_Klarwerk`; untracked Infra-Doc unberührt.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/pages/KnowledgeDetail.tsx apps/web/src/i18n.ts tests/ko/validation-feedback-read.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(ko-detail): keep review feedback visible as a working aid during rework revision (SCRUM-333)"
+git push
+```
+Kein Git/Push/Jira durch Claude.

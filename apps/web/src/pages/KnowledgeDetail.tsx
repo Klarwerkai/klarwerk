@@ -584,6 +584,48 @@ export function KnowledgeDetail(): JSX.Element {
 
                   {edit ? (
                     <div className="mt-4 space-y-3">
+                      {/* SCRUM-333: im Rework-Edit-Modus das konkrete Review-Feedback als Arbeitshilfe
+                          sichtbar halten (gleiche Erkennung wie SCRUM-332). Ehrlich: Speichern erzeugt
+                          neue Version + erneute Review, keine Auto-Freigabe. Kein Auto-Prefill/-Abhaken. */}
+                      {reviewReworkContext
+                        ? (() => {
+                            const fb = latestValidationFeedback(ko.comments);
+                            if (!fb) {
+                              return null;
+                            }
+                            return (
+                              <div className="rounded-card border border-trust-warn-fill/30 bg-trust-warn-bg p-3">
+                                <div className="text-[12.5px] font-semibold text-trust-warn-text">
+                                  {t("ko.rework.editTitle")}
+                                </div>
+                                <div className="mt-1.5 rounded-btn border border-trust-warn-fill/30 bg-surface p-2.5">
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                                      {t("ko.rework.feedbackTitle")}
+                                    </span>
+                                    <span className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 text-[9.5px] font-semibold uppercase text-trust-warn-text">
+                                      {t(`ko.rework.feedback.${fb.verdict}`)}
+                                    </span>
+                                  </div>
+                                  <p className="mt-1 whitespace-pre-wrap text-[12.5px] leading-relaxed text-text">
+                                    {fb.body}
+                                  </p>
+                                  {fb.author ? (
+                                    <p className="mt-1 text-[10.5px] text-muted-2">
+                                      {nameOf(fb.author)}
+                                      {fb.at
+                                        ? ` · ${new Date(fb.at).toLocaleDateString(i18n.language)}`
+                                        : ""}
+                                    </p>
+                                  ) : null}
+                                </div>
+                                <p className="mt-1.5 text-[11.5px] leading-relaxed text-trust-warn-text/90">
+                                  {t("ko.rework.editHint")}
+                                </p>
+                              </div>
+                            );
+                          })()
+                        : null}
                       <Field label={t("capture.fTitle")}>
                         <TextInput
                           value={edit.title}
