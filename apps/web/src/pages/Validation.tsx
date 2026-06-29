@@ -9,6 +9,7 @@ import type { Verdict } from "../api/types";
 import { useSession } from "../app/AuthContext";
 import { DemoBanner } from "../components/DemoBanner";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
+import { ValidationReviewContext } from "../components/ValidationReviewContext";
 import { ConfidenceBar, KnowledgeTypeTag, KoAuthorLine, StatusPill } from "../components/trust";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
 import {
@@ -366,6 +367,8 @@ export function Validation(): JSX.Element {
                               {t(reviewWork.labelKey)}
                             </span>
                           </div>
+                          {/* SCRUM-326: Review-Kontext — neu/offen vs. revidiert (Version>1) + Hinweis. */}
+                          <ValidationReviewContext ko={k} />
                           <div className="mt-1">
                             <KoAuthorLine {...koAuthorParts(k, nameOf)} />
                           </div>

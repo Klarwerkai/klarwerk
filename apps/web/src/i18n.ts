@@ -696,6 +696,11 @@ const de = {
   "val.transferred": "Autor übertragen",
   "val.assigned": "zugewiesen",
   "val.decisionLabel": "Entscheidung offen:",
+  "val.reviewContext.new": "Neu",
+  "val.reviewContext.revision": "Überarbeitet",
+  "val.reviewContext.hint.new": "Erstbewertung: Quelle, Aussage und Struktur prüfen.",
+  "val.reviewContext.hint.revision":
+    "Änderung prüfen: Version und Inhalt erneut bewerten — keine automatische Freigabe.",
   "val.decision.low": "wenig abgesichert — sorgfältig prüfen, Quellen/Belege anschauen.",
   "val.decision.mid": "teilweise abgesichert — Aussage und Quellen gegenprüfen.",
   "val.decision.high": "gut abgesichert — kurze Gegenprüfung genügt meist.",
@@ -2037,6 +2042,11 @@ const en: typeof de = {
   "val.transferred": "Author transferred",
   "val.assigned": "assigned",
   "val.decisionLabel": "Decision pending:",
+  "val.reviewContext.new": "New",
+  "val.reviewContext.revision": "Revised",
+  "val.reviewContext.hint.new": "First review: check source, statement and structure.",
+  "val.reviewContext.hint.revision":
+    "Review the change: re-assess version and content — no automatic approval.",
   "val.decision.low": "weakly backed — review carefully, check sources/evidence.",
   "val.decision.mid": "partly backed — cross-check the statement and sources.",
   "val.decision.high": "well backed — a brief cross-check usually suffices.",

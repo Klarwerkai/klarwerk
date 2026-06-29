@@ -7546,3 +7546,41 @@ git commit -m "feat(ko-detail): change overview before revise (field/structure d
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-326 — Beta Validation Review-Kontext für neue und revidierte KOs v0
+**Datum:** 2026-06-29 · **Rolle:** Claude (Umsetzung) · **Status:** umgesetzt, Gates grün
+
+**Vorab-Befund / Gap-Liste.** `git status -sb` sauber (nur untracked Infra-Doc). `KnowledgeObject` trägt `version: number`, `status: KoStatus`, `trust: number`. Validation Board (`Validation.tsx`) rendert je Review-KO via `reviewSignals(k)` Status/Trust/Version/Ziel + `reviewWorkView` Hinweis + `reviewDecision`-Buttons. **Beta-Erwartung:** Revisor erkennt im Board, ob KO neu oder überarbeitet. **Stand:** KO-Edit zeigt Änderungsüberblick (SCRUM-325); Board zeigt Review-Aufgaben, aber nicht explizit neu vs. revidiert. **Beta-Lücke:** Review-Kontext (neu/Revision) fehlt im Board. **Übernommen:** kompakte Review-Kontextzeile. **Später:** Vorher/Nachher-Diff, Merge-/Review-Diff-Viewer. **Nicht übernommen:** Auto-Validierung, Änderung am Review-Vertrag, Blocking.
+
+**Umsetzung (v0).**
+1. **DOM-freier Helfer** `apps/web/src/lib/validationReviewContext.ts` (NEU): `validationReviewContext(ko)` → `{ kind: "new"|"revision", version, status, trust, labelKey, hintKey, tone }`. `kind = revision`, wenn normalisierte Version > 1, sonst `new`. Version defensiv normalisiert (nur endliche Zahlen ≥ 1, sonst 1; Floor); `status` durchgereicht (`""`-Default), `trust` durchgereicht (ungültig→0). `labelKey/hintKey` = `val.reviewContext.<kind>` / `val.reviewContext.hint.<kind>`; `tone = kind`. Keine fachliche Bewertung, kein Backend, robust gegen null/undefined.
+2. **Komponente** `apps/web/src/components/ValidationReviewContext.tsx` (NEU): kompakte Zeile je Review-KO — Chip „Neu/Überarbeitet · v{N}" + kurzer Review-Hinweis (neu: Quelle/Aussage/Struktur prüfen; revidiert: Version/Inhalt erneut bewerten, keine automatische Freigabe). Trust/Status werden NICHT gedoppelt (Board zeigt sie bereits).
+3. **Einbindung** in `Validation.tsx`: `<ValidationReviewContext ko={k} />` direkt nach der bestehenden Signal-Zeile, vor der Author-Zeile. Review-/Rate-Buttons/-Mutationen unverändert.
+4. **i18n** `val.reviewContext.new/revision` + `val.reviewContext.hint.new/revision` DE+EN (ehrlich; „keine automatische Freigabe", keine Fake-Diff-Versprechen).
+5. **Tests** `tests/validation/validation-review-context.test.ts` (NEU, DOM-frei): v1→new; v2→revision; fehlend/0/negativ/NaN/Infinity→new(v1); 3.9→gefloored 3/revision; status/trust nur durchgereicht (ungültig→0/""); robust null/undefined; Label-/Hint-Keys DE+EN; Ehrlichkeit (keine automatische Freigabe).
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/validationReviewContext.ts` (NEU)
+- `apps/web/src/components/ValidationReviewContext.tsx` (NEU)
+- `apps/web/src/pages/Validation.tsx` (Kontextzeile im Board + Import)
+- `apps/web/src/i18n.ts` (`val.reviewContext.*` DE+EN)
+- `tests/validation/validation-review-context.test.ts` (NEU)
+
+**Tests/Gates.** `npm run check` grün — **150 Dateien / 902 Tests**. Gezielt: `npx vitest run tests/validation/validation-review-context.test.ts` → 8/8 grün. `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün. Validation-/Rate-/Review-Vertrag + bestehende reviewSignals/reviewDecision-Flows unverändert.
+
+**Bewusst nicht umgesetzte Gaps (später).** Kein KO-Detail-Review-Hinweis (Board allein sauber, nicht nötig). Kein Vorher/Nachher-Diff, kein Merge-/Review-Diff-Viewer, keine Liste der konkret geänderten Felder im Board (das zeigt der Edit-Modus über SCRUM-325). Keine Sortierung/Filterung neu vs. revidiert.
+
+**Rest-Risiken.** „Revision" basiert allein auf `version > 1` — falls das Backend Versionen anders zählt (z. B. Start bei 0 oder nicht-monoton), könnte die Einordnung abweichen; defensiv aber immer „new" als sichere Default-Lesart, nie „validiert/freigegeben". Der Hinweis ist rein orientierend und ändert keine Entscheidung.
+
+**Nicht-Ziele eingehalten.** Kein RAG/neue Suche/Local-LLM, keine Backend-/Datenmodelländerung, keine Änderung am Validation-/Rate-/Review-Vertrag, keine Auto-Validierung/Freigabe, kein Vorher/Nachher-Diff, kein Merge-/Review-Diff-Viewer, kein Blocking/Pflichtfeld, keine blinde Legacy-Kopie, keine Team-2/3/4-Dateien, kein Git/Push/Jira. Nur in `/Users/peterkohnert/Documents/dev_Klarwerk`; untracked Infra-Doc unberührt.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/validationReviewContext.ts apps/web/src/components/ValidationReviewContext.tsx apps/web/src/pages/Validation.tsx apps/web/src/i18n.ts tests/validation/validation-review-context.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(validation): review context (new vs revised) on board cards (SCRUM-326)"
+git push
+```
+Kein Git/Push/Jira durch Claude.
