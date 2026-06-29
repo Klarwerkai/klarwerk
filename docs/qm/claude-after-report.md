@@ -7213,3 +7213,40 @@ git commit -m "feat(editor): apply AI suggestion as body block (info/note/warnin
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-317 — Beta Editor Orientierung am ausführlichen Inhalt v0
+**Datum:** 2026-06-29 · **Rolle:** Claude (Umsetzung) · **Status:** umgesetzt, Gates grün
+
+**Vorab-Befund.** `git status -sb` sauber (nur untracked Infra-Doc). RichTextEditor (SCRUM-314) bietet H2/H3, Listen, Links, Bild/Datei und vier Blocktypen; Body-KI (SCRUM-315/316) liefert Ersetzen/Anhängen + Block-Übernahme. Lücke: keine kurze Orientierung direkt am Feld „Ausführlicher Inhalt" (`Field label={t("capture.fBody")}`) in Capture und KO-Detail Edit — Beta-Nutzer sehen Werkzeuge ohne Erklärung.
+
+**Umsetzung (v0).**
+1. **DOM-freier Helfer** `apps/web/src/lib/editorGuidance.ts` (NEU): `EditorGuidanceId = structure|action|blocks|ai`, `EDITOR_GUIDANCE` (stabile Reihenfolge/IDs, `labelKey` = `editor.guidance.<id>`), der Blöcke-Punkt trägt `blocks: EDITOR_BLOCKS` (Bezug auf die real existierenden Blocktypen aus SCRUM-314/316). `editorGuidance()` gibt die Liste zurück. Keine DOM-Abhängigkeit.
+2. **Kompakte Komponente** `apps/web/src/components/EditorGuidance.tsx` (NEU): kleine Hilfekarte (Titel + vier Zeilen) auf Basis des Helfers; verdrängt den Editor nicht.
+3. **Einbindung**: in `Capture.tsx` und `KnowledgeDetail.tsx` jeweils direkt am Body-Feld VOR dem `RichTextEditor` gerendert. Bestehende Body-KI/Block-Funktionen unverändert.
+4. **i18n** `editor.guidance.title/structure/action/blocks/ai` DE+EN (kurz, produktnah, ehrlich: Struktur = H2/H3+Absätze; Handlung = Listen/Links; Blöcke = Info/Hinweis/Warnung/Erfolg; KI = Vorschlag bewusst übernehmen, keine Auto-Validierung).
+5. **Tests** `tests/app/editor-guidance.test.ts` (NEU, DOM-frei): genau 4 Items + stabile IDs/Reihenfolge; Titel + alle Labels DE+EN nicht leer; labelKey-Schema `editor.guidance.<id>`; Blöcke-Punkt == `EDITOR_BLOCKS` (4); Ehrlichkeit im KI-Punkt (bewusst/keine Auto).
+
+**Bewusst nicht umgesetzte Gaps (später).** Keine interaktive Hervorhebung/Verknüpfung der Toolbar-Buttons (nur Textorientierung). Kein Onboarding-Overlay/Tour. Keine kontextsensitive Anzeige (immer dieselben vier Punkte). Kein neuer Editor, keine neue Toolbar-Logik.
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/editorGuidance.ts` (NEU)
+- `apps/web/src/components/EditorGuidance.tsx` (NEU)
+- `apps/web/src/pages/Capture.tsx` (Card am Body-Feld + Import)
+- `apps/web/src/pages/KnowledgeDetail.tsx` (Card am Body-Feld + Import)
+- `apps/web/src/i18n.ts` (`editor.guidance.*` DE+EN)
+- `tests/app/editor-guidance.test.ts` (NEU)
+
+**Tests/Gates.** `npm run check` grün — **141 Dateien / 844 Tests**. Gezielt: `npx vitest run tests/app/editor-guidance.test.ts tests/app/editor-blocks.test.ts` → 9/9 grün. `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün. Body-KI/Block-Flows (SCRUM-315/316) unberührt.
+
+**Nicht-Ziele eingehalten.** Kein neuer Editor, keine neue Toolbar-Logik, kein RAG/neue Suche/Local-LLM, kein Cursor-/Inline-Insert, keine Auto-Validierung, kein Auto-Speichern, keine Team-2/3/4-Dateien, keine Backend-Änderung, keine Migration/Datenmodell, kein Deployment. Nur in `/Users/peterkohnert/Documents/dev_Klarwerk`; untracked Infra-Doc unberührt.
+
+**Commit-/Push-Hinweis (nur Hinweis — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/editorGuidance.ts apps/web/src/components/EditorGuidance.tsx apps/web/src/pages/Capture.tsx apps/web/src/pages/KnowledgeDetail.tsx apps/web/src/i18n.ts tests/app/editor-guidance.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(editor): compact orientation card at detailed-content field in Capture + KO-Detail (SCRUM-317)"
+git push
+```
+Kein Git/Push/Jira durch Claude.

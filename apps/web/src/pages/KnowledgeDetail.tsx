@@ -20,6 +20,7 @@ import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
 import { AiAssistBox } from "../components/AiAssistBox";
 import { DemoBanner } from "../components/DemoBanner";
+import { EditorGuidance } from "../components/EditorGuidance";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { SanitizedHtml } from "../components/SanitizedHtml";
 import { ListEditor, TagEditor } from "../components/editors";
@@ -498,6 +499,8 @@ export function KnowledgeDetail(): JSX.Element {
                       </Field>
                       {/* KW-STR / FR-STR-02/03/05: WYSIWYG-Body verlustfrei, Bildpalette aus Anhängen */}
                       <Field label={t("capture.fBody")}>
+                        {/* SCRUM-317: kompakte Orientierung am Body-Feld (Struktur/Handlung/Blöcke/KI). */}
+                        <EditorGuidance />
                         <RichTextEditor
                           value={edit.bodyHtml}
                           onChange={(bodyHtml) => setEdit({ ...edit, bodyHtml })}

@@ -18,6 +18,7 @@ import { useSession } from "../app/AuthContext";
 import { useToast } from "../app/ToastContext";
 import { AiAssistBox } from "../components/AiAssistBox";
 import { DemoBanner } from "../components/DemoBanner";
+import { EditorGuidance } from "../components/EditorGuidance";
 import { HelpTip } from "../components/HelpTip";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { ListEditor, TagEditor } from "../components/editors";
@@ -876,6 +877,8 @@ export function Capture(): JSX.Element {
                 </Field>
                 {/* KW-STR / FR-STR-02: optionaler WYSIWYG-Body (Bilder erst im KO-Detail platzierbar) */}
                 <Field label={t("capture.fBody")}>
+                  {/* SCRUM-317: kompakte Orientierung am Body-Feld (Struktur/Handlung/Blöcke/KI). */}
+                  <EditorGuidance />
                   <RichTextEditor value={bodyHtml} onChange={setBodyHtml} />
                   {/* SCRUM-315: KI-Nachbearbeitung des ausführlichen Inhalts — Textbasis aus dem Body,
                       Vorschau + bewusste Übernahme (Ersetzen/Anhängen) als sicheres Body-HTML. */}
