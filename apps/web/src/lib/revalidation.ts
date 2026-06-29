@@ -2,6 +2,7 @@
 // Nur bereits validierte Objekte sinnvoll re-validierbar; kein neues Statusmodell.
 import type { KnowledgeObject, KoStatus } from "../api/types";
 import { askQuestionHref } from "./askQuestion";
+import type { KnowledgeOsPhase } from "./taskAction";
 
 export function canRevalidate(status: KoStatus): boolean {
   return status === "validiert";
@@ -80,4 +81,13 @@ export function revalidationNextSteps(done: {
     steps.push({ labelKey: "lcy.nextUse", to: askQuestionHref(done.title) });
   }
   return steps;
+}
+
+// SCRUM-299: eine fällige Revalidierung ist Knowledge-OS-Phase „Aktuell halten" (Maintain) — Gültigkeit
+// prüfen, ggf. Review, danach quellengebunden weiter nutzen. Gleiche Kreis-Sprache wie Start/MyTasks
+// (knowledgeOsPhase("task.revalidation") === "maintain"). Sonderfall: ist das KO noch nicht freigegeben
+// (nextStep "validate"), ist der ehrliche nächste Kreis-Schritt „Validieren" — keine Maintain-Suggestion
+// für noch nicht validiertes Wissen. KEINE automatische Revalidierung, kein neues Statusmodell.
+export function revalidationPhase(view: Pick<RevalidationView, "nextStep">): KnowledgeOsPhase {
+  return view.nextStep === "validate" ? "validate" : "maintain";
 }

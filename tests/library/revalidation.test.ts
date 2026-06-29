@@ -4,8 +4,10 @@ import {
   canRevalidate,
   revalidationCta,
   revalidationNextSteps,
+  revalidationPhase,
   revalidationView,
 } from "../../apps/web/src/lib/revalidation";
+import { knowledgeOsPhase } from "../../apps/web/src/lib/taskAction";
 
 // SCRUM-136: Re-Validierung aus der Bibliothek nur für validierte Objekte.
 describe("SCRUM-136: canRevalidate", () => {
@@ -100,5 +102,26 @@ describe("SCRUM-278: revalidationNextSteps", () => {
     expect(steps).toHaveLength(1);
     expect(steps[0]?.labelKey).toBe("lcy.nextViewKo");
     expect(steps[0]?.to).toBe("/wissen/ko-9");
+  });
+});
+
+// SCRUM-299: fällige Revalidierung als Knowledge-OS-Phase „Aktuell halten" (Maintain) sichtbar machen —
+// gleiche Kreis-Sprache wie Start/MyTasks. Noch nicht freigegebenes KO → ehrlich „Validieren".
+describe("SCRUM-299: revalidationPhase", () => {
+  it("re-zu-prüfendes (validiertes) KO → Phase 'maintain' (Aktuell halten)", () => {
+    expect(revalidationPhase({ nextStep: "review" })).toBe("maintain");
+  });
+
+  it("nicht auflösbares KO (openKo) → Phase 'maintain' (Maintain-Arbeit bleibt der Kontext)", () => {
+    expect(revalidationPhase({ nextStep: "openKo" })).toBe("maintain");
+  });
+
+  it("noch nicht freigegebenes KO (validate) → ehrlich Phase 'validate', keine Maintain-Suggestion", () => {
+    expect(revalidationPhase({ nextStep: "validate" })).toBe("validate");
+  });
+
+  it("Konsistenz: Maintain-Fall = dieselbe Phase wie die MyTasks-/Start-Revalidierungsarbeit", () => {
+    expect(revalidationPhase({ nextStep: "review" })).toBe(knowledgeOsPhase("task.revalidation"));
+    expect(revalidationPhase({ nextStep: "openKo" })).toBe(knowledgeOsPhase("revalidation"));
   });
 });

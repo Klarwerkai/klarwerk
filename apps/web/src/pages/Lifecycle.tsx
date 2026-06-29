@@ -9,7 +9,13 @@ import { useSession } from "../app/AuthContext";
 import { StatusPill } from "../components/trust";
 import { Button, Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import { completedCount, isStepDone, progressPercent } from "../lib/learningPath";
-import { revalidationCta, revalidationNextSteps, revalidationView } from "../lib/revalidation";
+import {
+  revalidationCta,
+  revalidationNextSteps,
+  revalidationPhase,
+  revalidationView,
+} from "../lib/revalidation";
+import { phaseLabelKey } from "../lib/taskAction";
 
 export function Lifecycle(): JSX.Element {
   const { t } = useTranslation();
@@ -139,6 +145,11 @@ export function Lifecycle(): JSX.Element {
                     <div className="min-w-0 flex-1">
                       <div className="mb-1 flex flex-wrap items-center gap-1.5">
                         <StatusPill status="revalidierung" />
+                        {/* SCRUM-299: Knowledge-OS-Phase — fällige Revalidierung ist „Aktuell halten"-Arbeit
+                            (gleiche Kreis-Sprache wie Start/MyTasks); noch nicht freigegebenes KO → „Validieren". */}
+                        <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-muted-2">
+                          {t("task.phaseLabel")} {t(phaseLabelKey(revalidationPhase(view)))}
+                        </span>
                         {view.asset ? (
                           <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-2">
                             {t("lcy.revalAsset")}: {view.asset}

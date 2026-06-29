@@ -6560,3 +6560,37 @@ git commit -m "feat(risk): show Knowledge-OS phase (Erfassen) on open gaps; gapP
 git push
 ```
 Kein Git/Push/Jira durch Claude. Codex prüft Diff/Gates, korrigiert minimal falls nötig, committet, pusht, wartet GitHub CI ab und schließt Jira.
+
+---
+
+## SCRUM-299 — Lifecycle/Revalidation → Validation/Use als Maintain-Arbeitsfluss klar führen
+**Datum:** 2026-06-29 · **Rolle:** Claude (Umsetzung) · **Status:** umgesetzt, Gates grün
+
+**1. Vorab-Befund**
+Die Pending-Revalidierungs-Card (`Lifecycle.tsx`) zeigt StatusPill „revalidierung", Anlagenbezug, KO-Titel-Link, den ehrlichen nächsten Schritt (`revalidationView.nextStep`: review/validate/openKo), Missing-Hinweis, CTA in den bestehenden Validierungsfluss (`revalidationCta` → `/validierung`, null bei nicht auflösbarem KO) und den „Noch gültig"-Confirm; nach Bestätigung führt die Success-Card über `revalidationNextSteps` zu `/wissen/:id` und optional `/fragen?q=<Titel>` (kein Auto-Submit). **Lücke:** Wie zuvor `gapPhase` auf Risk (SCRUM-298) fehlte die Knowledge-OS-**Phase „Aktuell halten"** (Maintain) auf der Revalidierungs-Card — fällige Revalidierungen lasen sich wie eine Sonderliste statt als Maintain-Arbeit im Kreis.
+
+**2. Umsetzung**
+Kleiner Workflow-Slice analog SCRUM-298, ohne Logik-/Backend-Änderung:
+- Neuer DOM-freier Helper `revalidationPhase(view)` in `apps/web/src/lib/revalidation.ts`: review/openKo → `maintain` (Aktuell halten), validate → `validate`. Damit wird ehrlich unterschieden: re-zu-prüfendes/validiertes Wissen ist Maintain-Arbeit; ein noch **nicht** freigegebenes KO ist ehrlich „Validieren" (keine Maintain-/Gültigkeits-Suggestion). Konsistent mit `knowledgeOsPhase("task.revalidation")` (Start/MyTasks).
+- `Lifecycle.tsx`: je fällige Revalidierung ein Phase-Chip „Phase: Aktuell halten" (bzw. „Validieren") neben der StatusPill — gleiche Optik/Kreis-Sprache wie Risk/MyTasks/Start. i18n **wiederverwendet** (`task.phaseLabel` + `cycle.maintain.label`/`cycle.validate.label`), keine neuen Keys.
+- Übergänge unverändert: CTA → `/validierung`, Success → KO-Detail/Ask. Keine automatische Revalidierung, keine Fake-Gültigkeit; nach „Noch gültig" wird weiterhin nur der nächste Schritt gezeigt, keine dauerhafte Auto-Gültigkeit suggeriert.
+
+**3. Geänderte Dateien**
+- `apps/web/src/lib/revalidation.ts` (neuer `revalidationPhase`-Helper)
+- `apps/web/src/pages/Lifecycle.tsx` (Phase-Chip je pending Revalidierung + Imports)
+- `tests/library/revalidation.test.ts` (+4 Tests: review/openKo→maintain, validate→validate, Konsistenz mit knowledgeOsPhase)
+
+**4. Tests/Gates**
+`npm run check` grün — **132 Dateien / 777 Tests** (+4). `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün.
+
+**5. Restlücken/Nicht-Ziele**
+Fällige Revalidierungen sind jetzt sichtbar „Aktuell halten"-Arbeit; der nächste Schritt führt unverändert über vorhandene Review-/Validation-/Detail-/Ask-Flows. Noch nicht freigegebenes KO wird ehrlich als „Validieren" geführt. Normale Nutzung unverändert (nur ein Phase-Chip). Keine automatische Revalidierung, keine Fake-Gültigkeit/-Freigabe, keine neue Lifecycle-/Workflow-/Task-Engine, kein neues Statusmodell, keine neue Suche/RAG, keine Backend-Architekturänderung. Start/MyTasks nicht angefasst (Maintain dort bereits korrekt über SCRUM-297).
+
+**6. Commit-/Push-Hinweis (nur Hinweis — nicht ausgeführt)**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/revalidation.ts apps/web/src/pages/Lifecycle.tsx tests/library/revalidation.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(lifecycle): show Knowledge-OS phase (Aktuell halten) on due revalidations; revalidationPhase helper (SCRUM-299)"
+git push
+```
+Kein Git/Push/Jira durch Claude. Codex prüft Diff/Gates, korrigiert minimal falls nötig, committet, pusht, wartet GitHub CI ab und schließt Jira.
