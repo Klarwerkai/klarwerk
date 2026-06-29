@@ -7659,3 +7659,38 @@ git commit -m "feat(validation): board focus URL sync, active-filter reset and h
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-329 — Beta Validation Entscheidung: Folgearbeit nach Review sichtbar machen v0
+**Datum:** 2026-06-29 · **Rolle:** Claude (Umsetzung) · **Status:** umgesetzt, Gates grün
+
+**Vorab-Befund.** `git status -sb` sauber (nur untracked Infra-Doc). `reviewDecision.ts` liefert `REVIEW_DECISIONS` (up/warn/down), `reviewOutcome(verdict)` (ehrliche Folge-Aussage `val.outcome.*` + tone + usable, SCRUM-292) und `reviewNextSteps(decision)` (bisher: immer „KO ansehen" `val.nextViewKo`; bei `up` zusätzlich „Wissen nutzen" `val.nextUse` via `askQuestionHref`). `Validation.tsx` rendert nach einer Entscheidung (`lastDecision`) eine getönte Outcome-Card mit `reviewOutcome.statusKey` + `reviewNextSteps(...)` als CTAs. Lücke: `warn`/`down` boten nur das generische „KO ansehen" — wirkten wie Sackgasse, ohne klare Folgearbeit.
+
+**Umsetzung (v0).**
+1. **`reviewNextSteps` verdict-bewusst** (`apps/web/src/lib/reviewDecision.ts`): `up` unverändert (KO ansehen + Wissen nutzen). `warn`/`down` liefern jetzt genau eine klare Nacharbeits-Folgehandlung „Im Objekt nacharbeiten" (`val.nextRework` → `/wissen/:id`, wo Kommentare/Revision liegen) statt des generischen „ansehen". Kein Use-Schritt für warn/down (bleiben Review-/Feedback-Arbeit); keine automatische Rückgabe/Schließung. `reviewOutcome` unverändert (ehrliche Statuszeile bleibt).
+2. **UI**: keine Strukturänderung nötig — die bestehende Outcome-Card mappt `reviewNextSteps` automatisch; warn/down zeigen damit die Nacharbeits-CTA, up den unveränderten ansehen+nutzen-Flow. Validation-/Rate-Mutationen unberührt.
+3. **i18n** `val.nextRework` DE („Im Objekt nacharbeiten") + EN („Rework in the object").
+4. **Tests** (`tests/validation/review-decision.test.ts` angepasst): warn/down → genau eine Folgehandlung mit `val.nextRework` → `/wissen/:id`; `val.nextRework` DE+EN vorhanden. Bestehende up-/Outcome-/Ehrlichkeits-Tests unverändert grün.
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/reviewDecision.ts` (reviewNextSteps verdict-bewusst)
+- `apps/web/src/i18n.ts` (`val.nextRework` DE+EN)
+- `tests/validation/review-decision.test.ts` (warn/down-Erwartung + i18n)
+
+**Tests/Gates.** `npm run check` grün — **151 Dateien / 916 Tests**. Gezielt: `npx vitest run tests/validation/review-decision.test.ts` → 10/10 grün. `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün. up-Flow (ansehen + nutzen) unverändert; Review-/Rate-API + Outcome-Texte unverändert.
+
+**Bewusst nicht umgesetzte Gaps (später).** Keine zweite warn/down-Aktion „zurück ins Board" (Success-Card sitzt bereits auf dem Board → Self-Link ohne Nutzen, bewusst weggelassen). Kein Capture-/Anstoß-Flow für Reviewer (Nacharbeit gehört zum KO, nicht zu einer Neuerfassung). Keine verdict-spezifische Tönung der CTA-Buttons (bleiben einheitlich), keine Status-/Statusmodelländerung.
+
+**Rest-Risiken.** „Im Objekt nacharbeiten" führt auf `/wissen/:id` — dieselbe Route wie „ansehen", aber mit klarer Nacharbeits-Framing-Copy; semantisch korrekt, da Edit/Revise + Kommentare dort liegen. Wer kein Edit-Recht hat (Viewer), sieht das KO weiterhin nur lesend — der CTA bleibt sinnvoll (Kontext/Feedback prüfen), erzwingt nichts.
+
+**Nicht-Ziele eingehalten.** Keine Änderung an Review-/Rate-API, keine automatische Rückgabe, kein neues Statusmodell, kein Backend, keine Datenmigration, kein Review-Diff/Merge-Viewer, kein Blocking, kein RAG/neue Suche/Local-LLM, keine Team-2/3/4-Dateien, kein Refactoring ohne Produktnutzen, kein Git/Push/Jira. Nur in `/Users/peterkohnert/Documents/dev_Klarwerk`; untracked Infra-Doc unberührt.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/reviewDecision.ts apps/web/src/i18n.ts tests/validation/review-decision.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(validation): post-review follow-up — verdict-aware next step (warn/down rework CTA) (SCRUM-329)"
+git push
+```
+Kein Git/Push/Jira durch Claude.

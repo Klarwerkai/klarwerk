@@ -43,12 +43,21 @@ describe("SCRUM-277: reviewNextSteps", () => {
     expect(steps[1]?.to).toContain(encodeURIComponent(decision.title));
   });
 
-  it("Rückfrage/Ablehnung (warn/down): nur KO ansehen, kein Use-Schritt", () => {
+  // SCRUM-329: Rückfrage/Ablehnung sind keine Sackgasse — eine klare Nacharbeits-Folgehandlung am KO,
+  // kein Use-Schritt (warn/down bleiben Review-Arbeit), keine automatische Rückgabe.
+  it("Rückfrage/Ablehnung (warn/down): genau eine Nacharbeits-Folgehandlung am KO", () => {
     for (const verdict of ["warn", "down"] as const) {
       const steps = reviewNextSteps({ ...decision, verdict });
       expect(steps).toHaveLength(1);
-      expect(steps[0]?.labelKey).toBe("val.nextViewKo");
+      expect(steps[0]?.labelKey).toBe("val.nextRework");
       expect(steps[0]?.to).toBe("/wissen/ko-7");
+    }
+  });
+
+  it("SCRUM-329: val.nextRework ist DE+EN vorhanden (Nacharbeit, keine Rückgabe-/Schließungs-Behauptung)", () => {
+    for (const lng of ["de", "en"]) {
+      const v = String(i18n.getResource(lng, "translation", "val.nextRework") ?? "");
+      expect(v.length).toBeGreaterThan(0);
     }
   });
 });

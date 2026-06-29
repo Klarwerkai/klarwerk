@@ -21,10 +21,13 @@ export const REVIEW_DECISIONS: readonly ReviewDecision[] = [
   { verdict: "down", labelKey: "val.actionReject", tone: "crit", requiresFeedback: true },
 ];
 
-// SCRUM-277: nach einer Bewertungsentscheidung den nächsten Schritt im Kernzyklus zeigen.
-// Immer: das betroffene KO ansehen (/wissen/:id). NUR bei Freigabe-Stimme (up) zusätzlich der
-// Use-Schritt „Wissen fragen/nutzen" (/fragen?q=<KO-Titel> via askQuestionHref) — kein Auto-Submit,
-// keine automatische Freigabe (Ask zeigt selbst den echten Status/Lücke). Reine, testbare Logik.
+// SCRUM-277/329: nach einer Bewertungsentscheidung je Verdict eine ehrliche Folgehandlung zeigen —
+// KEINE Sackgasse, OHNE Backend-/Statusänderung:
+//  - up:        KO ansehen (/wissen/:id) + Wissen nutzen (/fragen?q=<Titel> via askQuestionHref).
+//               Kein Auto-Submit, keine automatische Freigabe (Ask zeigt den echten Status/Lücke).
+//  - warn/down: Im KO nacharbeiten (/wissen/:id) — Rückfrage/Ablehnung bleiben Review-/Feedback-Arbeit
+//               (dort liegen Kommentare/Revision). Keine automatische Rückgabe/Schließung, kein
+//               Use-Schritt. Reine, testbare Logik.
 export interface ReviewNextStep {
   labelKey: string;
   to: string; // vorhandene Route
@@ -35,11 +38,13 @@ export function reviewNextSteps(decision: {
   title: string;
   verdict: ReviewVerdict;
 }): ReviewNextStep[] {
-  const steps: ReviewNextStep[] = [{ labelKey: "val.nextViewKo", to: `/wissen/${decision.id}` }];
   if (decision.verdict === "up") {
-    steps.push({ labelKey: "val.nextUse", to: askQuestionHref(decision.title) });
+    return [
+      { labelKey: "val.nextViewKo", to: `/wissen/${decision.id}` },
+      { labelKey: "val.nextUse", to: askQuestionHref(decision.title) },
+    ];
   }
-  return steps;
+  return [{ labelKey: "val.nextRework", to: `/wissen/${decision.id}` }];
 }
 
 // SCRUM-292: ehrliche „was passiert jetzt mit dem Wissen"-Aussage je Verdict — OHNE zu behaupten,
