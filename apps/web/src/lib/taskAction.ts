@@ -30,3 +30,34 @@ const FALLBACK: TaskActionView = { actionLabelKey: "task.action.open", tone: "ne
 export function taskAction(typeKey: string): TaskActionView {
   return TASK_ACTION[typeKey] ?? FALLBACK;
 }
+
+// SCRUM-297: Knowledge-OS-Phase je Arbeit, damit Start UND MyTasks dieselbe Kreis-Sprache zeigen
+// (Erfassen → Validieren → Nutzen → Aktuell halten). Reine Ableitung aus dem vorhandenen Schlüssel —
+// KEINE neue Task-Engine, keine neue Datenquelle, kein neues Statusmodell. Deckt sowohl die
+// MyTasks-`typeKey`s als auch die Start-Work-Overview-Keys ab → konsistente Begriffe an beiden Stellen.
+export type KnowledgeOsPhase = "capture" | "validate" | "use" | "maintain";
+
+const PHASE_BY_KEY: Record<string, KnowledgeOsPhase> = {
+  // MyTasks (typeKey): Nacharbeit/Lücke = Erfassen; Validierung/Konflikt = Validieren; Reval = Aktuell halten.
+  "task.returned": "capture",
+  "task.gap": "capture",
+  "task.validation": "validate",
+  "task.conflict": "validate",
+  "task.revalidation": "maintain",
+  // Start (Work-Overview-Key): gleiche Zuordnung über die vorhandenen Kategorien.
+  criticalGaps: "capture",
+  validation: "validate",
+  conflicts: "validate",
+  revalidation: "maintain",
+  learning: "maintain",
+};
+
+// Unbekannte Schlüssel → „validate" (Review) als sichere, ehrliche Default-Phase.
+export function knowledgeOsPhase(key: string): KnowledgeOsPhase {
+  return PHASE_BY_KEY[key] ?? "validate";
+}
+
+// Phase → vorhandenes Kreis-Label (cycle.*.label) — EINE Sprache für Start, MyTasks und den Kreis.
+export function phaseLabelKey(phase: KnowledgeOsPhase): string {
+  return `cycle.${phase}.label`;
+}

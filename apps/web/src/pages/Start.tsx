@@ -19,6 +19,7 @@ import { KNOWLEDGE_CYCLE } from "../lib/knowledgeCycle";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { missionsForRole } from "../lib/missions";
 import { stufe2FeatureLabelKeys, stufe2HintKind } from "../lib/stufe2Hint";
+import { knowledgeOsPhase, phaseLabelKey } from "../lib/taskAction";
 import {
   type WorkSeverity,
   buildWorkOverview,
@@ -245,6 +246,10 @@ export function Start(): JSX.Element {
                 </span>
                 <span className="block truncate text-[13.5px] font-semibold text-ink">
                   {t(`work.${focus.key}`)}
+                </span>
+                {/* SCRUM-297: Knowledge-OS-Phase der nächsten Arbeit (Erfassen/Validieren/Aktuell halten). */}
+                <span className="mt-0.5 block font-mono text-[10px] uppercase tracking-wider text-muted-2">
+                  {t("task.phaseLabel")} {t(phaseLabelKey(knowledgeOsPhase(focus.key)))}
                 </span>
               </span>
               <span className="shrink-0 font-mono text-[13px] font-semibold text-ink">

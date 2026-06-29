@@ -6489,3 +6489,40 @@ git commit -m "feat(demo): active Capture→Validation→Use flow in demo contex
 git push
 ```
 Keine Jira-Änderungen durch Claude. Codex prüft Diff/Gates, korrigiert minimal, committet, pusht, wartet GitHub CI ab, schließt Jira.
+
+---
+
+## SCRUM-297 — Start/MyTasks: nächste Review-/Use-Arbeit nach Capture schneller finden
+**Datum:** 2026-06-29 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung). **FE-Produkt-Slice** (DOM-freier Helper + 2 Produktstellen + i18n + Tests); keine neue Task-Engine/Datenquelle; kein neues Statusmodell; keine Backend-/Reasoner-/Suchänderung; keine automatische Validierung; kein Git/Jira durch Claude.
+
+### 1. Vorab-Befund
+- `taskAction(typeKey)` liefert Action+Tone, `workCenter` liefert Severity + Work-Overview-Items, aber **keine sichtbare Knowledge-OS-Phase** (Erfassen/Validieren/Nutzen/Aktuell halten) je Arbeit. MyTasks-Typen (`task.gap/returned/validation/conflict/revalidation`) und Start-Work-Keys (`conflicts/criticalGaps/revalidation/validation/learning`) sind zwei Vokabulare ohne gemeinsame Phasen-Sprache. Die Kreis-Labels `cycle.*.label` existieren bereits (wiederverwendbar).
+
+### 2. Umsetzung
+- `taskAction.ts`: neuer DOM-freier `knowledgeOsPhase(key)` → mappt **beide** Vokabulare (MyTasks-typeKeys **und** Start-Work-Keys) auf eine Knowledge-OS-Phase (capture/validate/maintain; „use" reserviert), plus `phaseLabelKey(phase)` → `cycle.<phase>.label` (eine Sprache für Start, MyTasks, Kreis). Offene Lücke/Nacharbeit → Erfassen; Validierung/Konflikt → Validieren; Revalidierung/Lernpfad → Aktuell halten.
+- **MyTasks.tsx**: je Task-Zeile ein **Phase-Chip** (`Phase: Erfassen/Validieren/Aktuell halten`) neben dem Typ-Badge → sofort erkennbar, in welche Kreis-Phase die Arbeit gehört.
+- **Start.tsx**: Fokus-Card (bester nächster Einstieg) zeigt zusätzlich die **Phase** der nächsten Arbeit — gleiche Sprache wie MyTasks.
+- i18n DE/EN: `task.phaseLabel` („Phase:"); die Phasenbezeichnungen kommen aus den vorhandenen `cycle.*.label` (keine doppelten Texte).
+
+### 3. Geänderte Dateien
+- `apps/web/src/lib/taskAction.ts` (knowledgeOsPhase + phaseLabelKey + KnowledgeOsPhase).
+- `apps/web/src/pages/MyTasks.tsx` (Phase-Chip + Import).
+- `apps/web/src/pages/Start.tsx` (Phase in Fokus-Card + Import).
+- `apps/web/src/i18n.ts` (`task.phaseLabel` DE+EN).
+- `tests/app/task-action.test.ts` (+5: typeKey-Phasen; Work-Key-Phasen; Cross-Konsistenz Task==Start; Fallback; i18n cycle.*.label + phaseLabel DE/EN).
+
+### 4. Tests/Gates
+`npm run check` grün — **132 Dateien / 770 Tests** (+5). `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün.
+
+### 5. Restlücken/Nicht-Ziele
+- Start/MyTasks zeigen jetzt klar die Knowledge-OS-Phase: **offene Review-Arbeit → Validieren** (Validierung/Konflikt), **Lücken → Erfassen** (führen über vorhandene Flows nach /risiko→Capture), **Aktuell halten** (Revalidierung/Lernpfad). Nutzbares Wissen führt unverändert über die bestehenden Use-Flows (kein Task-Typ — „Use" entsteht nach Validierung).
+- **Normale Nutzung unverändert**: nur ein zusätzlicher Phase-Chip; gleiche Routen/CTAs; keine neue Datenquelle/Task-Engine, kein neues Statusmodell, keine Fake-Erledigung. Validation/Library/Ask **nicht** angefasst (Links/CTAs waren korrekt). Phase nutzt die bestehende Kreis-Sprache (Konsistenz).
+
+### 6. Commit-/Push-Hinweis (nur Hinweis — Claude führt NICHT aus)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/taskAction.ts apps/web/src/pages/MyTasks.tsx apps/web/src/pages/Start.tsx apps/web/src/i18n.ts tests/app/task-action.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(start/tasks): show Knowledge-OS phase (capture/validate/maintain) on Start & MyTasks (SCRUM-297)"
+git push
+```
+Keine Jira-Änderungen durch Claude. Codex prüft Diff/Gates, korrigiert minimal, committet, pusht, wartet GitHub CI ab, schließt Jira.

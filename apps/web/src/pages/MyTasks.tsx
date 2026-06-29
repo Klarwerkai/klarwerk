@@ -16,7 +16,7 @@ import { KoAuthorLine } from "../components/trust";
 import { Card, PageHeader } from "../components/ui";
 import { type KoAuthorParts, koAuthorParts } from "../lib/koAuthor";
 import { type ReviewWorkTone, type ReviewWorkView, reviewWorkView } from "../lib/reviewSignals";
-import { type TaskTone, taskAction } from "../lib/taskAction";
+import { type TaskTone, knowledgeOsPhase, phaseLabelKey, taskAction } from "../lib/taskAction";
 import {
   TASK_FILTERS,
   type TaskFilterKey,
@@ -185,8 +185,15 @@ export function MyTasks(): JSX.Element {
                           to={it.to}
                           className="flex items-center gap-3 px-4 py-3 hover:bg-hairline-soft"
                         >
-                          <span className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-[10.5px] text-muted">
-                            {t(it.typeKey)}
+                          <span className="flex shrink-0 flex-col items-start gap-1">
+                            <span className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-[10.5px] text-muted">
+                              {t(it.typeKey)}
+                            </span>
+                            {/* SCRUM-297: Knowledge-OS-Phase (Erfassen/Validieren/Aktuell halten) — gleiche Kreis-Sprache wie Start. */}
+                            <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-muted-2">
+                              {t("task.phaseLabel")}{" "}
+                              {t(phaseLabelKey(knowledgeOsPhase(it.typeKey)))}
+                            </span>
                           </span>
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-[13.5px] text-text">

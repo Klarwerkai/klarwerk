@@ -235,6 +235,8 @@ const de = {
   "task.action.revalidation": "Gültigkeit prüfen",
   "task.action.gap": "Lücke priorisieren",
   "task.action.open": "Öffnen",
+  // SCRUM-297: Knowledge-OS-Phase je Arbeit (nutzt die Kreis-Labels cycle.*.label).
+  "task.phaseLabel": "Phase:",
   "capture.kicker": "Expert Studio · Erfassen",
   "capture.title": "Erfahrungswissen festhalten",
   "capture.gapContextTitle": "Aus offener Wissenslücke",
@@ -1428,6 +1430,8 @@ const en: typeof de = {
   "task.action.revalidation": "Check validity",
   "task.action.gap": "Prioritize gap",
   "task.action.open": "Open",
+  // SCRUM-297: Knowledge-OS phase per work item (reuses cycle.*.label).
+  "task.phaseLabel": "Phase:",
   "capture.kicker": "Expert studio · Capture",
   "capture.title": "Capture experience knowledge",
   "capture.gapContextTitle": "From an open knowledge gap",
