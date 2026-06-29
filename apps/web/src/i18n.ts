@@ -363,6 +363,16 @@ const de = {
   "editor.attach.imageHint": "über den Bild-Button in den ausführlichen Inhalt einfügbar.",
   "editor.attach.fileHint":
     "bleiben als Anhang/Evidence sichtbar und werden nicht inline eingebettet — bitte im Text referenzieren.",
+  "editor.quality.title": "Inhalts-Check",
+  "editor.quality.hint": "Prüft die Struktur, nicht die fachliche Richtigkeit. Keine Validierung.",
+  "editor.quality.empty": "Noch kein ausführlicher Inhalt erfasst.",
+  "editor.quality.thin": "Sehr kurzer Inhalt — bei Bedarf Kontext oder Schritte ergänzen.",
+  "editor.quality.headings": "Überschriften",
+  "editor.quality.lists": "Listen",
+  "editor.quality.blocks": "Blöcke",
+  "editor.quality.links": "Links",
+  "editor.quality.attachmentsUnreferenced":
+    "Anhänge vorhanden, aber im Text nicht erwähnt — ggf. darauf verweisen.",
   "editor.template.title": "Strukturvorlage starten",
   "editor.template.hint":
     "Fügt eine sichere Grundstruktur ein; bei bestehendem Inhalt wird angehängt.",
@@ -1684,6 +1694,16 @@ const en: typeof de = {
   "editor.attach.imageHint": "can be inserted into the detailed content via the image button.",
   "editor.attach.fileHint":
     "stay visible as attachments/evidence and are not embedded inline — please reference them in the text.",
+  "editor.quality.title": "Content check",
+  "editor.quality.hint": "Checks structure, not factual correctness. No validation.",
+  "editor.quality.empty": "No detailed content yet.",
+  "editor.quality.thin": "Very short content — add context or steps if needed.",
+  "editor.quality.headings": "Headings",
+  "editor.quality.lists": "Lists",
+  "editor.quality.blocks": "Blocks",
+  "editor.quality.links": "Links",
+  "editor.quality.attachmentsUnreferenced":
+    "Attachments present but not mentioned in the text — consider referencing them.",
   "editor.template.title": "Start from a structure template",
   "editor.template.hint": "Inserts a safe base structure; appends it when content already exists.",
   "editor.template.procedure.label": "Procedure",

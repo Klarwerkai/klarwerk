@@ -20,6 +20,7 @@ import { AiAssistBox } from "../components/AiAssistBox";
 import { BodyTemplateChooser } from "../components/BodyTemplateChooser";
 import { DemoBanner } from "../components/DemoBanner";
 import { EditorAttachmentContext } from "../components/EditorAttachmentContext";
+import { EditorContentQuality } from "../components/EditorContentQuality";
 import { EditorGuidance } from "../components/EditorGuidance";
 import { HelpTip } from "../components/HelpTip";
 import { RichTextEditor } from "../components/RichTextEditor";
@@ -885,6 +886,11 @@ export function Capture(): JSX.Element {
                   <EditorGuidance />
                   {/* SCRUM-323: Anhänge-Kontext — Bilder (einfügbar) vs. Dateien (Anhang/Evidence). */}
                   <EditorAttachmentContext
+                    attachments={[...images, ...docs.map(() => ({ mime: null }))]}
+                  />
+                  {/* SCRUM-324: kompakte Struktur-/Nachvollziehbarkeits-Signale (keine Validierung). */}
+                  <EditorContentQuality
+                    bodyHtml={bodyHtml}
                     attachments={[...images, ...docs.map(() => ({ mime: null }))]}
                   />
                   {/* SCRUM-319: bewusst wählbare Body-Strukturvorlagen (leer = setzen, sonst anhängen). */}
