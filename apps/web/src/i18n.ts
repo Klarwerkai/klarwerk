@@ -914,6 +914,13 @@ const de = {
     "Keine Grundlage? Die Lücke wird ehrlich benannt und führt in die Erfassung — kein erfundenes Wissen.",
   "pilot.check.maintain":
     "Revalidierung ist „Aktuell halten“: fällige Objekte erneut prüfen, keine automatische Dauergültigkeit.",
+  // SCRUM-306: Next-Steps nach dem Demodaten-/Pilot-Start (nur sichtbar, keine Auto-Weiterleitung).
+  "pilot.next.title": "Nächster Schritt",
+  "pilot.next.hint":
+    "Demodaten sind Beispiele, kein produktiver Beweis. Jetzt Stage-1 ansehen oder die Pilot-Checkliste öffnen.",
+  "pilot.next.start": "Stage-1 starten (Start öffnen)",
+  "pilot.next.checklist": "Pilot-Checkliste öffnen",
+  "pilot.next.ask": "Beispiel-Frage öffnen",
   "help.firststart.title": "Erststart & Demodaten",
   "help.firststart.body":
     "Frische Instanzen sind zunächst leer. Als Admin kannst du unter Admin 'Demodaten laden', um Beispiel-Wissen, Validierung, Lücken und Konflikte sichtbar zu machen — ideal für Review und Einarbeitung.",
@@ -2125,6 +2132,13 @@ const en: typeof de = {
     "No basis? The gap is named honestly and leads into capture — no invented knowledge.",
   "pilot.check.maintain":
     "Revalidation is “keep current”: re-check due objects, no automatic permanent validity.",
+  // SCRUM-306: next steps after loading demo data / starting the pilot (visible only, no auto-redirect).
+  "pilot.next.title": "Next step",
+  "pilot.next.hint":
+    "Demo data are examples, not production proof. Now view Stage-1 or open the pilot checklist.",
+  "pilot.next.start": "Start Stage-1 (open Start)",
+  "pilot.next.checklist": "Open pilot checklist",
+  "pilot.next.ask": "Open example question",
   "help.firststart.title": "First run & demo data",
   "help.firststart.body":
     "Fresh instances start empty. As admin you can use 'Load demo data' under Admin to make example knowledge, validation, gaps and conflicts visible — ideal for review and onboarding.",

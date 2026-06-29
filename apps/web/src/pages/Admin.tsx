@@ -1,7 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { KeyRound, Trash2, UserPlus } from "lucide-react";
+import { ArrowRight, KeyRound, Trash2, UserPlus } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useAudit, useUsers } from "../api/hooks";
@@ -17,6 +18,7 @@ import {
   TextInput,
 } from "../components/ui";
 import { isNewUserValid, isPasswordResetValid, isUserAuditAction } from "../lib/adminForms";
+import { PILOT_NEXT_STEPS } from "../lib/pilotNextSteps";
 
 const EMPTY_NEW_USER = { name: "", email: "", password: "", role: "experte" as Role };
 
@@ -114,6 +116,30 @@ export function Admin(): JSX.Element {
             {t("adm.seedButton")}
           </Button>
         </div>
+        {/* SCRUM-306: nach erfolgreichem Seed (nicht übersprungen) sichtbare Next-Steps in den Stage-1-
+            Lauf — keine automatische Weiterleitung, nur vorhandene Routen. Ohne Seed unverändert. */}
+        {demoSeed.isSuccess && !demoSeed.data?.skipped ? (
+          <div className="mt-1 rounded-card border border-hairline bg-page p-3">
+            <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+              {t("pilot.next.title")}
+            </div>
+            <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
+              {t("pilot.next.hint")}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {PILOT_NEXT_STEPS.map((step) => (
+                <Link
+                  key={step.id}
+                  to={step.to}
+                  className="inline-flex items-center gap-1 rounded-btn border border-hairline bg-surface px-2.5 py-1 text-[12px] font-semibold text-text hover:border-ink/30"
+                >
+                  {t(step.labelKey)}
+                  <ArrowRight size={13} />
+                </Link>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </Card>
 
       {/* SCRUM-147: Nutzer anlegen */}

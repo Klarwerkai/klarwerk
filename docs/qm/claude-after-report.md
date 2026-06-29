@@ -6807,3 +6807,38 @@ git commit -m "feat(help): in-app Stage-1 pilot checklist for first user run; pi
 git push
 ```
 Kein Git/Push/Jira durch Claude. Codex prüft Diff/Gates, korrigiert minimal falls nötig, committet, pusht, wartet GitHub CI ab und schließt Jira. Untracked `docs/KLARWERK_Infrastruktur_Domain_Server_Aufteilung_v2.md` bleibt unangetastet.
+
+---
+
+## SCRUM-306 — Pilot-Start: nach Demodaten direkt in den Stage-1-Lauf führen
+**Datum:** 2026-06-29 · **Rolle:** Claude (Umsetzung) · **Status:** umgesetzt, Gates grün
+
+**1. Vorab-Befund**
+`Admin.tsx` lädt Demodaten über `demoSeed`-Mutation (`POST /api/admin/demo-seed`); bei Erfolg nur ein **transienter Toast** (`adm.seedDone` mit kos/users bzw. `adm.seedSkipped`), danach bleibt der Operator im Admin-Kontext **ohne sichtbaren Next-Step**. Vorhandene Routen/Helfer nutzbar: Start `/start`, Hilfe `/hilfe` (SCRUM-305-Pilot-Checkliste sitzt dort oben), demo-sicherer Ask-Deep-Link bereits als `DEMO_PILOT_PATH[0].to` (`/fragen?q=…&demo=stage1`). **Echte Lücke:** kein In-Context-Übergang in den Stage-1-Lauf nach dem Seed.
+
+**2. Umsetzung**
+Kleiner Produkt-Slice, keine Auto-Navigation/keine neue Route/kein Backend:
+- Neuer DOM-freier Helper `apps/web/src/lib/pilotNextSteps.ts`: `PILOT_NEXT_STEPS`/`pilotNextSteps()` mit 3 Operator-Next-Steps auf **vorhandene** Routen — Start (`/start`), Pilot-Checkliste (`/hilfe`), demo-sichere Beispiel-Frage (`DEMO_PILOT_PATH[0].to`, kein Fake-Link, kein Auto-Submit).
+- `apps/web/src/pages/Admin.tsx`: in der Demodaten-Karte ein Next-Step-Block, der **nur nach erfolgreichem Seed und nicht bei „übersprungen"** erscheint (`demoSeed.isSuccess && !demoSeed.data?.skipped`) — Links, keine automatische Weiterleitung. Ohne Seed bzw. bei übersprungenem Seed bleibt Admin exakt unverändert.
+- `apps/web/src/i18n.ts`: `pilot.next.title/hint/start/checklist/ask` DE + EN. Der Hinweis bleibt ehrlich: „Demodaten sind Beispiele, kein produktiver Beweis."
+
+**3. Geänderte Dateien**
+- `apps/web/src/lib/pilotNextSteps.ts` (NEU, DOM-freie Next-Step-Daten)
+- `apps/web/src/pages/Admin.tsx` (Next-Step-Block nach Seed + Imports)
+- `apps/web/src/i18n.ts` (`pilot.next.*` DE/EN)
+- `tests/app/pilot-next-steps.test.ts` (NEU: Reihenfolge/ids, Routen = vorhandene/Deep-Link aus Demo-Pilotpfad, DE/EN-Präsenz, Ehrlichkeits-Assertion „Beispiele/examples")
+
+**4. Tests/Gates**
+`npm run check` grün — **135 Dateien / 790 Tests** (+4). `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün.
+
+**5. Restlücken/Nicht-Ziele**
+Nach dem Demodaten-Start sind die nächsten Handlungen sichtbar (Stage-1 öffnen, Pilot-Checkliste, Beispiel-Frage) — ehrlich (Demodaten = Beispiele), ohne Auto-Validierung und ohne Auto-Weiterleitung. Normale Admin-Nutzung unverändert (Block nur nach echtem Seed). Nur vorhandene Routen/Helper, keine Fake-Deep-Links. Keine neue Seed-Logik, keine Datenbank/Tracking-/Feedback-API, keine neue Task-Engine/Suche/RAG, keine Architekturänderung, keine Team-2/3-Arbeit, kein Deployment.
+
+**6. Commit-/Push-Hinweis (nur Hinweis — nicht ausgeführt)**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/pilotNextSteps.ts apps/web/src/pages/Admin.tsx apps/web/src/i18n.ts tests/app/pilot-next-steps.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(admin): show Stage-1 pilot next steps after demo seed; pilotNextSteps helper (SCRUM-306)"
+git push
+```
+Kein Git/Push/Jira durch Claude. Codex prüft Diff/Gates, korrigiert minimal falls nötig, committet, pusht, wartet GitHub CI ab und schließt Jira. Untracked `docs/KLARWERK_Infrastruktur_Domain_Server_Aufteilung_v2.md` bleibt unangetastet.
