@@ -7102,6 +7102,42 @@ Codex übernimmt Commit, Push, GitHub-CI-Prüfung und Jira-Abschluss.
 
 ---
 
+## SCRUM-320 — Beta Editor Übernahme-Sicherheit v0
+**Datum:** 2026-06-29 · **Rolle:** Codex (Umsetzung/Prüfung) · **Status:** umgesetzt, Gates grün
+
+**Vorab-Befund.** Nach SCRUM-312/313/315/316 zeigt `AiAssistBox` Vorschläge mit „Ersetzen" und „Anhängen"; das ist bewusst, aber bei vorhandenem Inhalt fehlte ein sichtbarer Warn-/Kontext-Hinweis, dass „Ersetzen" den aktuellen Inhalt überschreibt. Nach SCRUM-319 setzen Strukturvorlagen leeren Body und hängen bei bestehendem Body an; diese Regel war im Code korrekt, aber in der UI nur generisch beschrieben.
+
+**Umsetzung (v0).**
+1. **DOM-freier Helfer** `apps/web/src/lib/editorApplySafety.ts` (NEU): `hasEditableContent`, `shouldWarnBeforeReplace`, `templateApplyMode`, `templateApplyModeHintKey`. Keine DOM-/Editor-Abhängigkeit; nutzt nur `isEmptyHtml` für Body-Template-Setzen vs. Anhängen.
+2. **KI-Vorschau-Sicherheit** in `AiAssistBox`: Bei vorhandenem Quelltext erscheint in der Vorschau ein kleiner Warnhinweis: „Ersetzen überschreibt den aktuellen Inhalt; Anhängen lässt den Bestand stehen." Buttons/Übernahme-Logik unverändert.
+3. **Vorlagen-Kontext** in `BodyTemplateChooser`: zeigt dynamisch „Leerer Inhalt: Vorlage wird eingesetzt" oder „Bestehender Inhalt: Vorlage wird angehängt, nichts wird ersetzt." Die bestehende sichere Apply-Regel bleibt unverändert.
+4. **i18n** `editor.applySafety.replaceWarning` und `editor.template.mode.set/append` DE+EN.
+5. **Tests** `tests/app/editor-apply-safety.test.ts` (NEU, DOM-frei): Content-Erkennung, Replace-Warnung, Template-Modus set/append, stabile i18n-Keys.
+
+**Bewusst nicht umgesetzte Gaps (später).** Kein Diff/Merge-Editor, kein Undo-System, keine zusätzliche Bestätigungs-Modalität, kein Cursor-/Inline-Insert, keine neue Editor-Library. Die Änderung ist bewusst leichte Klarheitsschicht statt schwerer Workflow.
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/editorApplySafety.ts` (NEU)
+- `apps/web/src/components/AiAssistBox.tsx` (Replace-Warnhinweis in Vorschau)
+- `apps/web/src/components/BodyTemplateChooser.tsx` (Setzen/Anhängen-Hinweis)
+- `apps/web/src/i18n.ts` (`editor.applySafety.*`, `editor.template.mode.*` DE+EN)
+- `tests/app/editor-apply-safety.test.ts` (NEU)
+
+**Tests/Gates.** Gezielte Tests: `npx vitest run tests/app/editor-apply-safety.test.ts tests/app/body-templates.test.ts tests/app/body-ai-assist.test.ts` → 21/21 grün. `npm run check` grün — **144 Dateien / 858 Tests**. `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün.
+
+**Nicht-Ziele eingehalten.** Kein neuer Editor, keine neue Toolbar-Logik, kein RAG/neue Suche/Local-LLM, keine Auto-Validierung, kein Auto-Speichern, keine Backend-/Datenmodelländerung, keine Team-2/3/4-Dateien, keine Migration/Deployment. Nur in `/Users/peterkohnert/Documents/dev_Klarwerk`; untracked Infra-Doc unberührt.
+
+**Commit-/Push-Hinweis.**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/editorApplySafety.ts apps/web/src/components/AiAssistBox.tsx apps/web/src/components/BodyTemplateChooser.tsx apps/web/src/i18n.ts tests/app/editor-apply-safety.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(editor): clarify replace vs append safety in AI/template apply flows (SCRUM-320)"
+git push
+```
+Codex übernimmt Commit, Push, GitHub-CI-Prüfung und Jira-Abschluss.
+
+---
+
 ## SCRUM-313 — Beta AI-assisted KO Detail Revision / Nachbearbeitung v0
 **Datum:** 2026-06-29 · **Rolle:** Claude (Umsetzung) · **Status:** umgesetzt, Gates grün
 

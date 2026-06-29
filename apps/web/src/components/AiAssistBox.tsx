@@ -14,6 +14,7 @@ import {
   assistActionInstructionKey,
   assistActionLabelKey,
 } from "../lib/captureAiAssist";
+import { shouldWarnBeforeReplace } from "../lib/editorApplySafety";
 import { Button } from "./ui";
 
 export function AiAssistBox({
@@ -47,6 +48,7 @@ export function AiAssistBox({
   const [preview, setPreview] = useState<string | null>(null);
   const [boxErr, setBoxErr] = useState<string | null>(null);
   const disabled = pending || text.trim().length === 0;
+  const warnBeforeReplace = shouldWarnBeforeReplace(text);
 
   const run = async (instruction?: string): Promise<void> => {
     setPending(true);
@@ -120,6 +122,11 @@ export function AiAssistBox({
           <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-text">
             {preview}
           </p>
+          {warnBeforeReplace ? (
+            <p className="mt-2 rounded-btn border border-trust-warn/30 bg-trust-warn/10 px-2 py-1.5 text-[11.5px] leading-relaxed text-trust-warn-text">
+              {t("editor.applySafety.replaceWarning")}
+            </p>
+          ) : null}
           <div className="mt-2 flex flex-wrap gap-2">
             <Button variant="primary" onClick={() => apply("replace")}>
               {t("capture.ai.replace")}

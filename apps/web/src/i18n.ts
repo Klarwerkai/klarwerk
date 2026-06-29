@@ -367,6 +367,11 @@ const de = {
     "Symptom, Ursache und Maßnahme strukturiert erfassen.",
   "editor.template.safety.label": "Sicherheit",
   "editor.template.safety.description": "Warnung, sichere Prüfung und gewünschter Zustand.",
+  "editor.template.mode.set": "Leerer Inhalt: Die Vorlage wird eingesetzt.",
+  "editor.template.mode.append":
+    "Bestehender Inhalt: Die Vorlage wird angehängt, nichts wird ersetzt.",
+  "editor.applySafety.replaceWarning":
+    "Achtung: Ersetzen überschreibt den aktuellen Inhalt. Anhängen lässt den Bestand stehen.",
   "editor.block.info": "Info",
   "editor.block.note": "Hinweis",
   "editor.block.warning": "Warnung",
@@ -1669,6 +1674,11 @@ const en: typeof de = {
     "Capture symptom, cause and action in a structure.",
   "editor.template.safety.label": "Safety",
   "editor.template.safety.description": "Warning, safe check and desired state.",
+  "editor.template.mode.set": "Empty content: the template will be inserted.",
+  "editor.template.mode.append":
+    "Existing content: the template will be appended; nothing is replaced.",
+  "editor.applySafety.replaceWarning":
+    "Careful: Replace overwrites the current content. Append keeps what is already there.",
   "editor.block.info": "Info",
   "editor.block.note": "Note",
   "editor.block.warning": "Warning",

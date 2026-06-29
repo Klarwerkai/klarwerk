@@ -8,6 +8,7 @@ import {
   applyBodyTemplate,
   normalizeBodyTemplateLocale,
 } from "../lib/bodyTemplates";
+import { templateApplyMode, templateApplyModeHintKey } from "../lib/editorApplySafety";
 
 export function BodyTemplateChooser({
   bodyHtml,
@@ -18,6 +19,7 @@ export function BodyTemplateChooser({
 }): JSX.Element {
   const { i18n, t } = useTranslation();
   const locale = normalizeBodyTemplateLocale(i18n.language);
+  const mode = templateApplyMode(bodyHtml);
 
   return (
     <div className="mb-2 rounded-card border border-hairline bg-surface p-2.5">
@@ -26,6 +28,9 @@ export function BodyTemplateChooser({
         <span className="text-[11.5px] font-semibold text-ink">{t("editor.template.title")}</span>
       </div>
       <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted">{t("editor.template.hint")}</p>
+      <p className="mt-1 text-[11.5px] leading-relaxed text-muted-2">
+        {t(templateApplyModeHintKey(mode))}
+      </p>
       <div className="mt-2 flex flex-wrap gap-1.5">
         {BODY_TEMPLATES.map((template) => (
           <button
