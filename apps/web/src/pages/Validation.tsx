@@ -37,6 +37,12 @@ import {
   sortByReviewPriority,
 } from "../lib/reviewSignals";
 import {
+  applyBoardFocusParams,
+  boardEmptyKind,
+  boardFocusActive,
+  resetBoardFocusParams,
+} from "../lib/validationBoardFocus";
+import {
   type FeedbackVerdict,
   buildValidationFeedback,
   isFeedbackSubmittable,
@@ -105,7 +111,7 @@ const OUTCOME_TONE: Record<
 
 export function Validation(): JSX.Element {
   const { t } = useTranslation();
-  const [params] = useSearchParams();
+  const [params, setSearchParams] = useSearchParams();
   const query = useValidationBoard();
   const users = useDirectory();
   const { user } = useSession();
@@ -123,6 +129,12 @@ export function Validation(): JSX.Element {
   const [reviewFocus, setReviewFocus] = useState<ReviewFocusFilter>(() =>
     readReviewFocusFilter(params),
   );
+  // SCRUM-328: beide Fokusfilter auf Standard zurücksetzen (State + URL; übrige Query bleibt erhalten).
+  const resetBoardFocus = (): void => {
+    setDemoFilter("all");
+    setReviewFocus("all");
+    setSearchParams((prev) => resetBoardFocusParams(prev), { replace: true });
+  };
   // Offenes Feedback-Formular (FE-VAL-06): pro KO + gewählter Verdict.
   const [feedback, setFeedback] = useState<{ id: string; verdict: FeedbackVerdict } | null>(null);
   const [feedbackText, setFeedbackText] = useState("");
@@ -271,7 +283,14 @@ export function Validation(): JSX.Element {
                   <button
                     key={f}
                     type="button"
-                    onClick={() => setDemoFilter(f)}
+                    onClick={() => {
+                      setDemoFilter(f);
+                      // SCRUM-328: URL-Sync — Herkunft setzen, übrige Query (z. B. demo=stage1) erhalten.
+                      setSearchParams(
+                        (prev) => applyBoardFocusParams(prev, { origin: f, review: reviewFocus }),
+                        { replace: true },
+                      );
+                    }}
                     className={`rounded-pill border px-2.5 py-1 font-mono text-[11px] font-semibold ${
                       demoFilter === f
                         ? "border-ink bg-ink text-white"
@@ -292,7 +311,14 @@ export function Validation(): JSX.Element {
                   <button
                     key={f}
                     type="button"
-                    onClick={() => setReviewFocus(f)}
+                    onClick={() => {
+                      setReviewFocus(f);
+                      // SCRUM-328: URL-Sync — Review-Fokus setzen, übrige Query erhalten.
+                      setSearchParams(
+                        (prev) => applyBoardFocusParams(prev, { origin: demoFilter, review: f }),
+                        { replace: true },
+                      );
+                    }}
                     className={`rounded-pill border px-2.5 py-1 font-mono text-[11px] font-semibold ${
                       reviewFocus === f
                         ? "border-ink bg-ink text-white"
@@ -303,6 +329,31 @@ export function Validation(): JSX.Element {
                   </button>
                 ))}
               </div>
+              {/* SCRUM-328: aktive Fokusfilter sichtbar benennen + zurücksetzbar. */}
+              {boardFocusActive({ origin: demoFilter, review: reviewFocus }) ? (
+                <div className="mb-3 flex flex-wrap items-center gap-2 rounded-card border border-hairline bg-page px-3 py-2">
+                  <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                    {t("val.focusActive.label")}:
+                  </span>
+                  {demoFilter !== "all" ? (
+                    <span className="rounded-pill bg-surface px-2 py-0.5 text-[11px] font-semibold text-text">
+                      {t("lib.originLabel")}: {t(demoKnowledgeFilterLabelKey(demoFilter))}
+                    </span>
+                  ) : null}
+                  {reviewFocus !== "all" ? (
+                    <span className="rounded-pill bg-surface px-2 py-0.5 text-[11px] font-semibold text-text">
+                      {t("val.reviewFocus.label")}: {t(reviewFocusLabelKey(reviewFocus))}
+                    </span>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={resetBoardFocus}
+                    className="ml-auto text-[11.5px] font-semibold text-muted hover:text-text"
+                  >
+                    {t("val.focusReset")}
+                  </button>
+                </div>
+              ) : null}
               <div className="mb-4 flex flex-wrap items-center gap-2">
                 <input
                   value={filter.search}
@@ -356,6 +407,23 @@ export function Validation(): JSX.Element {
                 </label>
               </div>
               <div className="space-y-3">
+                {/* SCRUM-328: ehrlicher Filter-Empty-State — Daten vorhanden, aber Filter zu eng.
+                    QueryState behandelt den „gar keine Review-Arbeit"-Fall (items leer) separat. */}
+                {boardEmptyKind({ totalItems: items.length, visibleCount: visible.length }) ===
+                "filtered" ? (
+                  <Card className="text-center">
+                    <p className="text-[13px] text-muted">{t("val.focusEmpty.filtered")}</p>
+                    {boardFocusActive({ origin: demoFilter, review: reviewFocus }) ? (
+                      <Button variant="ghost" className="mt-2" onClick={resetBoardFocus}>
+                        {t("val.focusReset")}
+                      </Button>
+                    ) : (
+                      <p className="mt-1 text-[11.5px] text-muted-2">
+                        {t("val.focusEmpty.otherFilters")}
+                      </p>
+                    )}
+                  </Card>
+                ) : null}
                 {visible.map((k) => {
                   const sig = reviewSignals(k);
                   const reviewWork = reviewWorkView(k);

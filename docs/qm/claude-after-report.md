@@ -7621,3 +7621,41 @@ git commit -m "feat(validation): review focus filter (all/new/revised) with coun
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-328 — Beta Validation Board Fokusansichten: URL-Sync, Reset und Empty-State v0
+**Datum:** 2026-06-29 · **Rolle:** Claude (Umsetzung) · **Status:** umgesetzt, Gates grün
+
+**Vorab-Befund.** `git status -sb` sauber (nur untracked Infra-Doc). `Validation.tsx` las `params` nur (`const [params] = useSearchParams()`) — kein Setter, also keine URL-Mutation. `demoFilter`/`reviewFocus` lazy aus `?origin=`/`?review=` (SCRUM-311/327). Pipeline: `boardFiltered = items.filter(matchesValidationFilter)` → `focusBase = boardFiltered.filter(matchesDemoKnowledgeFilter(demoFilter))` → `reviewFocusCounts` → `visible = focusBase.filter(matchesReviewFocus(reviewFocus))`. `QueryState` zeigt `val.empty` nur bei komplett leerer Datenmenge; der per-Filter-Leerstand (`visible=0` bei vorhandenen Daten) war unbehandelt. `DEMO_FILTER_PARAM="origin"`, `REVIEW_FOCUS_PARAM="review"`.
+
+**Umsetzung (v0).**
+1. **DOM-freier Helfer** `apps/web/src/lib/validationBoardFocus.ts` (NEU): `boardFocusActive({origin, review})`; `applyBoardFocusParams(params, state)` (Standard „all" → Param entfernen, sonst setzen; übrige Query — z. B. `demo=stage1` — bleibt erhalten); `resetBoardFocusParams(params)`; `boardEmptyKind({totalItems, visibleCount})` → `"not-empty" | "none" | "filtered"`. Nutzt die Param-Konstanten aus demoKnowledge + validationReviewContext.
+2. **URL-Sync** in `Validation.tsx`: `const [params, setSearchParams] = useSearchParams()`. Klick auf Herkunfts-Chip bzw. Review-Fokus-Chip aktualisiert State UND URL via `setSearchParams((prev) => applyBoardFocusParams(prev, …), { replace: true })`. Deep-Link/Refresh bleibt über die bestehende Lazy-Init erhalten.
+3. **Aktive Filter / Reset**: wenn `boardFocusActive`, kompakte Zeile mit benannten aktiven Filtern (Herkunft/Review-Fokus) + Button „Filter zurücksetzen" → `resetBoardFocus()` setzt beide Fokusfilter auf „all" (State + URL).
+4. **Empty-State**: `boardEmptyKind` unterscheidet — `QueryState`/`val.empty` deckt „gar keine Review-Arbeit" (items leer) ab; im Listenbereich erscheint bei `filtered` (Daten vorhanden, aber `visible=0`) eine ehrliche Karte „Keine Treffer mit den aktuellen Filtern." mit Reset-Button (wenn Fokusfilter aktiv) bzw. Hinweis auf Suche/Typ/Kategorie/Tag (wenn nur fachliche Filter greifen). Keine Behauptung „erledigt".
+5. **i18n** `val.focusActive.label`, `val.focusReset`, `val.focusEmpty.filtered`, `val.focusEmpty.otherFilters` DE+EN.
+6. **Tests** `tests/validation/validation-board-focus.test.ts` (NEU, DOM-frei): `boardFocusActive`; `applyBoardFocusParams` setzt/entfernt + erhält Fremd-Params (`demo=stage1`); `resetBoardFocusParams`; `boardEmptyKind` (not-empty/none/filtered); i18n DE+EN.
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/validationBoardFocus.ts` (NEU)
+- `apps/web/src/pages/Validation.tsx` (setSearchParams, URL-Sync, Reset-Zeile, Empty-State, Imports)
+- `apps/web/src/i18n.ts` (`val.focusActive/focusReset/focusEmpty.*` DE+EN)
+- `tests/validation/validation-board-focus.test.ts` (NEU)
+
+**Tests/Gates.** `npm run check` grün — **151 Dateien / 915 Tests**. Gezielt: `npx vitest run tests/validation/validation-board-focus.test.ts` → 6/6 grün. `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün. SCRUM-326/327-Kontext/Counts + Review-/Rate-Aktionen unverändert; Counts weiter über die richtige Filterbasis.
+
+**Bewusst nicht umgesetzte Gaps (später).** Kein URL-Sync der fachlichen Filter (`search`/type/category/tag bleiben reiner State, wie zuvor — Scope ausdrücklich Fokusfilter). Keine gespeicherten Ansichten/Profile. Kein Sortier-State in der URL. Empty-State unterscheidet „filtered" nicht weiter nach „nur fachlich" vs. „nur Fokus" (Reset-Button erscheint kontextabhängig über `boardFocusActive`).
+
+**Rest-Risiken.** `replace: true` hält die History flach (kein Zurück-Stack pro Filterklick) — bewusst, um die Browser-History nicht mit Filterschritten zu fluten; Deep-Link/Teilen funktioniert weiterhin. Reset setzt nur die Fokusfilter zurück; aktive fachliche Filter (Suche etc.) bleiben — der Empty-State weist in dem Fall korrekt auf diese hin.
+
+**Nicht-Ziele eingehalten.** Kein Backend-Filter, keine Datenmodelländerung, keine gespeicherten Ansichten, kein Review-Diff/Merge-Viewer, keine Auto-Validierung/Freigabe, kein Blocking, kein RAG/neue Suche/Local-LLM, keine Team-2/3/4-Dateien, kein Refactoring ohne Produktnutzen, kein Git/Push/Jira. Nur in `/Users/peterkohnert/Documents/dev_Klarwerk`; untracked Infra-Doc unberührt.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/validationBoardFocus.ts apps/web/src/pages/Validation.tsx apps/web/src/i18n.ts tests/validation/validation-board-focus.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(validation): board focus URL sync, active-filter reset and honest empty-state (SCRUM-328)"
+git push
+```
+Kein Git/Push/Jira durch Claude.
