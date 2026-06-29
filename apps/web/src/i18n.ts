@@ -400,6 +400,8 @@ const de = {
   "ask.knowledgeClass.unbekannt": "Unbekannt",
   "ask.steps": "Argumentationsschritte",
   "ask.sources": "Quellen",
+  "ask.sourcesHint":
+    "Diese Antwort ist quellengebunden — sie ist nur so belastbar wie die genutzte Quelle (Status, Trust, Nutzbarkeit). Zum Wissensobjekt für Details.",
   "ask.helpful": "Hat geholfen",
   "ask.thanked": "Danke!",
   "ask.status.verified": "Gesichert",
@@ -1595,6 +1597,8 @@ const en: typeof de = {
   "ask.knowledgeClass.unbekannt": "Unknown",
   "ask.steps": "Reasoning steps",
   "ask.sources": "Sources",
+  "ask.sourcesHint":
+    "This answer is source-bound — it is only as reliable as the source it uses (status, trust, usability). Open the knowledge object for details.",
   "ask.helpful": "This helped",
   "ask.thanked": "Thanks!",
   "ask.status.verified": "Verified",

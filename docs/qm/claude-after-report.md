@@ -6594,3 +6594,39 @@ git commit -m "feat(lifecycle): show Knowledge-OS phase (Aktuell halten) on due 
 git push
 ```
 Kein Git/Push/Jira durch Claude. Codex prüft Diff/Gates, korrigiert minimal falls nötig, committet, pusht, wartet GitHub CI ab und schließt Jira.
+
+---
+
+## SCRUM-300 — Ask-Antwort → Quellen → KO-Detail als klarer Use-Fluss
+**Datum:** 2026-06-29 · **Rolle:** Claude (Umsetzung) · **Status:** umgesetzt, Gates grün
+
+**1. Vorab-Befund**
+Ask zeigt bei beantworteten Fragen schon: ehrlichen Antwort-Status (`answerStatus` aus knowledgeClass: gesichert/ungeprüft), Trust-Bar (`ConfidenceBar`), Evidenzklasse, Review-Leitplanke für ungeprüfte/offene Quellen (`answerReviewGuard` → `/validierung`) und die Quellen als Links zu `/wissen/:id` (`sourceRefs` löst KO-Titel auf). Der Gap-Pfad (keine Basis) ist ehrlich und führt nach Capture/Risiko. **Produktreibung:** (a) je Quelle fehlte der **Nutzbarkeits-Kontext** — die Quellen-Liste sagte nicht, ob das benutzte KO „Nutzbar/In Prüfung/Zu prüfen" ist, obwohl KO-Detail & Library dafür bereits eine kanonische Sprache haben (`useReadiness`); (b) die Quell-/Review-Links trugen den **Demo-Kontext** (`?demo=stage1`) nicht weiter, obwohl KO-Detail & Validation Demo-Surfaces sind (`demoHref`); (c) die Kernaussage „Antwort ist nur so belastbar wie ihre Quelle" war nicht explizit. Status/Trust waren konsistent, aber Nutzbarkeit fehlte ganz.
+
+**2. Umsetzung**
+Kleiner Use-Fluss-Slice, ohne neue Such-/Retrieval-/Reasoner-Logik:
+- `apps/web/src/lib/askView.ts`: `SourceRef` um `usability: KoUsability | null` erweitert; `sourceRefs` leitet die Nutzbarkeit je bekannter Quelle **kanonisch** über `koOverview(ko).usability` ab — exakt dieselbe Ableitung wie KO-Detail/Library, also kein Widerspruch und kein neues Statusmodell. Unbekannte Quelle → `null` (kein Fake-Zustand).
+- `apps/web/src/pages/Ask.tsx`: je Quelle ein Nutzbarkeits-Chip über `useReadiness(s.usability)` (gleiche Labels/Tönung wie KO-Detail/Library, Hint als `title`); Quell-Links und die Review-Guard-CTA über `demoHref(href, params)` (trägt `?demo=stage1` ehrlich weiter, no-op außerhalb Demo, kein Auto-Use); ein kurzer Quellen-Hinweis `ask.sourcesHint`, der die Quellenbindung explizit macht.
+- `apps/web/src/i18n.ts`: `ask.sourcesHint` DE + EN (Nutzbarkeits-Labels `use.*` wiederverwendet, keine neuen Readiness-Keys).
+- Gap-/unbeantwortet-Pfad unverändert (bleibt ehrlich, führt in Capture).
+
+**3. Geänderte Dateien**
+- `apps/web/src/lib/askView.ts` (SourceRef.usability + koOverview-Ableitung)
+- `apps/web/src/pages/Ask.tsx` (Quellen-Readiness-Chip, demoHref-Links, Quellen-Hinweis)
+- `apps/web/src/i18n.ts` (`ask.sourcesHint` DE/EN)
+- `tests/ask/ask-view.test.ts` (sourceRefs-Erwartungen um usability erweitert + Konsistenz mit koOverview + i18n-Präsenz)
+
+**4. Tests/Gates**
+`npm run check` grün — **132 Dateien / 779 Tests**. `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün.
+
+**5. Restlücken/Nicht-Ziele**
+Beantwortete Ask-Ergebnisse zeigen jetzt klar, welche Quelle/KO benutzt wurde und wie belastbar sie ist (Status/Trust + kanonische Nutzbarkeit), und führen über den Quell-Link nachvollziehbar ins KO-Detail bzw. (im Demo) mit Kontext weiter. Status/Trust/Nutzbarkeit stammen aus derselben Ableitung wie KO-Detail/Library → kein Widerspruch. Unbeantwortete Fragen/Gaps bleiben unverändert ehrlich und führen in Capture. Normale Nutzung unverändert, nur klarer geführt. Keine neue Suche/RAG/Retrieval, keine Reasoner-/Backend-Architekturänderung, keine neue Quellen-Engine, keine Fake-Quellen, keine automatische Validierung/Freigabe, keine neue Task-Engine, kein Refactoring ohne Produktnutzen.
+
+**6. Commit-/Push-Hinweis (nur Hinweis — nicht ausgeführt)**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/askView.ts apps/web/src/pages/Ask.tsx apps/web/src/i18n.ts tests/ask/ask-view.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(ask): source usability (useReadiness) + demo-aware KO links in answered results (SCRUM-300)"
+git push
+```
+Kein Git/Push/Jira durch Claude. Codex prüft Diff/Gates, korrigiert minimal falls nötig, committet, pusht, wartet GitHub CI ab und schließt Jira.

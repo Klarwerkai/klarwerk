@@ -14,12 +14,13 @@ import { isPrefilledAskQuestion, readAskQuestion } from "../lib/askQuestion";
 import { selectAnswer } from "../lib/askResponse";
 import { answerReviewGuard, answerStatus, sourceRefs } from "../lib/askView";
 import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
-import { isDemoContext } from "../lib/demoPilotPath";
+import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
 import { type EvidenceTone, knowledgeClassMeta } from "../lib/knowledgeClass";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { type ReasonerBadgeTone, reasonerBadge } from "../lib/reasonerBadge";
 import { toReasonerLocale } from "../lib/reasonerLocale";
+import { useReadiness } from "../lib/useReadiness";
 
 // Tone → Badge-Stil (Tailwind-Tokens), bewusst in der Komponente gehalten.
 const EVIDENCE_TONE: Record<EvidenceTone, string> = {
@@ -202,7 +203,7 @@ export function Ask(): JSX.Element {
                 <div className="font-semibold">{t(reviewGuard.labelKey)}</div>
                 <p className="mt-0.5">{t(reviewGuard.hintKey)}</p>
                 <Link
-                  to={reviewGuard.ctaTo}
+                  to={demoHref(reviewGuard.ctaTo, params)}
                   className="mt-2 inline-flex items-center gap-1 rounded-btn bg-surface px-2.5 py-1 text-[12px] font-semibold text-text hover:opacity-90"
                 >
                   {t(reviewGuard.ctaKey)}
@@ -233,17 +234,30 @@ export function Ask(): JSX.Element {
             {result.sources.length > 0 ? (
               <div className="mt-4">
                 <SectionLabel>{t("ask.sources")}</SectionLabel>
-                {/* SCRUM-250: Quellen handlungsnah — KO-Titel statt roher ID, Link zum Detail. */}
-                <ul className="mt-1.5 space-y-1">
+                {/* SCRUM-300: ehrliche Kernaussage — die Antwort ist quellengebunden und nur so
+                    belastbar wie die genutzte Quelle (Status/Trust/Nutzbarkeit). */}
+                <p className="mt-0.5 text-[12px] text-muted-2">{t("ask.sourcesHint")}</p>
+                {/* SCRUM-250: Quellen handlungsnah — KO-Titel statt roher ID, Link zum Detail.
+                    SCRUM-300: je Quelle die kanonische Nutzbarkeit (gleiche Sprache wie KO-Detail/
+                    Library) + Demo-Kontext am Link weitertragen (kein Auto-Use). */}
+                <ul className="mt-1.5 space-y-1.5">
                   {answerSources.map((s) => (
-                    <li key={s.id}>
+                    <li key={s.id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       <Link
-                        to={`/wissen/${s.id}`}
+                        to={demoHref(`/wissen/${s.id}`, params)}
                         className="inline-flex items-center gap-1.5 text-[13px] text-brand hover:underline"
                       >
                         <ArrowRight size={12} className="shrink-0 text-muted-2" />
                         <span className="text-text">{s.label}</span>
                       </Link>
+                      {s.usability ? (
+                        <span
+                          title={t(useReadiness(s.usability).hintKey)}
+                          className={`shrink-0 rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${EVIDENCE_TONE[useReadiness(s.usability).tone]}`}
+                        >
+                          {t(useReadiness(s.usability).labelKey)}
+                        </span>
+                      ) : null}
                     </li>
                   ))}
                 </ul>

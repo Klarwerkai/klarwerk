@@ -2,6 +2,7 @@
 // gesichert ist (aus der Knowledge-Class abgeleitet — KEINE neue Antwortlogik) und löst Quellen-IDs
 // in lesbare KO-Titel auf. Keine RAG/Vector-DB, keine neuen Backend-Felder. Reine Funktionen.
 import type { KnowledgeClass, KnowledgeObject } from "../api/types";
+import { type KoUsability, koOverview } from "./koOverview";
 
 export type AnswerStatusKey = "verified" | "unverified";
 
@@ -23,9 +24,15 @@ export interface SourceRef {
   label: string; // KO-Titel, sonst die ID als Fallback
   known: boolean; // true, wenn ein KO mit der ID im Bestand gefunden wurde
   validated: boolean | null; // true/false bei bekanntem KO, null bei unbekannter Quelle
+  // SCRUM-300: kanonische Use-Readiness des Quell-KO (identisch zu KO-Detail/Library über
+  // koOverview → useReadiness). Macht je Quelle sichtbar, wie belastbar sie ist
+  // (nutzbar/in Prüfung/zu prüfen). null bei unbekannter Quelle (kein Fake-Zustand).
+  usability: KoUsability | null;
 }
 
-// Quellen-IDs in handlungsnahe Referenzen (Titel + Link-ID) auflösen; Reihenfolge bleibt erhalten.
+// Quellen-IDs in handlungsnahe Referenzen (Titel + Link-ID + Nutzbarkeit) auflösen; Reihenfolge
+// bleibt erhalten. Die Nutzbarkeit wird AUSSCHLIESSLICH aus dem vorhandenen KO über koOverview
+// abgeleitet (kein neues Statusmodell, keine Mutation) → KO-Detail/Library/Ask sagen dasselbe.
 export function sourceRefs(
   sourceIds: readonly string[],
   kos: readonly KnowledgeObject[],
@@ -38,6 +45,7 @@ export function sourceRefs(
       label: ko?.title ?? id,
       known: ko !== undefined,
       validated: ko ? ko.status === "validiert" : null,
+      usability: ko ? koOverview(ko).usability : null,
     };
   });
 }
