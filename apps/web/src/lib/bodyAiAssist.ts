@@ -5,12 +5,28 @@
 // (sanitizeHtml ist bei Entities nicht idempotent → keine Doppel-Maskierung). Kein Auto-Speichern,
 // keine Validierung — der Mensch übernimmt den Vorschlag bewusst.
 
+import { type EditorBlock, editorBlockClass } from "./editorBlocks";
 import { htmlToPlainText, isEmptyHtml } from "./richText";
 
 export type BodyAssistMode = "replace" | "append";
 
 function escapeBodyText(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// Plaintext → escapte <p>-Absätze (Doppel-Umbruch = Absatz, einfacher Umbruch = <br>). Leer → "".
+// Gemeinsame Basis für freie Absätze (suggestionToBodyHtml) und Block-Inhalt (suggestionToBodyBlockHtml).
+function escapedParagraphs(text: string | null | undefined): string {
+  const normalized = (text ?? "").replace(/\r\n?/g, "\n").trim();
+  if (normalized.length === 0) {
+    return "";
+  }
+  return normalized
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0)
+    .map((p) => `<p>${p.split("\n").map(escapeBodyText).join("<br>")}</p>`)
+    .join("");
 }
 
 // KI-Quelltext aus dem Body ableiten (reiner Text; Bilder/Markup fallen weg — der Reasoner arbeitet
@@ -23,17 +39,22 @@ export function bodyTextForAssist(bodyHtml: string | null | undefined): string {
 // Umbruch = <br>. Der Text wird selbst escaped; die einzigen erzeugten Tags sind statische <p>/<br>.
 // Leer → "".
 export function suggestionToBodyHtml(text: string | null | undefined): string {
-  const normalized = (text ?? "").replace(/\r\n?/g, "\n").trim();
-  if (normalized.length === 0) {
+  return escapedParagraphs(text);
+}
+
+// SCRUM-316: Plaintext-Vorschlag → sicherer Body-BLOCK (Info/Hinweis/Warnung/Erfolg). Nutzt die
+// statische, sichere Klasse aus editorBlocks (`panel panel-<typ>`); der Text wird escaped, es entstehen
+// nur statische <div>/<p>/<br>-Tags — keine fremden Klassen, kein aktives HTML aus Modelltext.
+// Leerer Vorschlag → "".
+export function suggestionToBodyBlockHtml(
+  block: EditorBlock,
+  text: string | null | undefined,
+): string {
+  const inner = escapedParagraphs(text);
+  if (inner.length === 0) {
     return "";
   }
-  const paragraphs = normalized
-    .split(/\n{2,}/)
-    .map((p) => p.trim())
-    .filter((p) => p.length > 0)
-    .map((p) => `<p>${p.split("\n").map(escapeBodyText).join("<br>")}</p>`)
-    .join("");
-  return paragraphs;
+  return `<div class="${editorBlockClass(block)}">${inner}</div>`;
 }
 
 // Bewusste Übernahme: replace ersetzt den Body durch den Vorschlag, append hängt ihn an.
@@ -51,6 +72,21 @@ export function applyBodyAssist(
   }
   if (mode === "replace") {
     return next;
+  }
+  return isEmptyHtml(base) ? next : base + next;
+}
+
+// SCRUM-316: Vorschlag bewusst als Body-Block ANHÄNGEN (Info/Hinweis/Warnung/Erfolg). Bestehender
+// Body bleibt unverändert; nur der neue Block wird ergänzt. Leerer Vorschlag = No-Op.
+export function applyBodyAssistBlock(
+  currentHtml: string | null | undefined,
+  suggestionText: string | null | undefined,
+  block: EditorBlock,
+): string {
+  const base = currentHtml ?? "";
+  const next = suggestionToBodyBlockHtml(block, suggestionText);
+  if (next.length === 0) {
+    return base;
   }
   return isEmptyHtml(base) ? next : base + next;
 }

@@ -279,6 +279,10 @@ const de = {
     "Die KI macht einen Vorschlag — du prüfst ihn und übernimmst bewusst. Keine automatische Speicherung, keine Validierung; Inhalte/Fakten werden nicht erfunden.",
   "capture.ai.bodyHint":
     "KI-Hilfe für den ausführlichen Inhalt: Vorschlag prüfen und bewusst übernehmen (Ersetzen/Anhängen). Keine automatische Speicherung, keine Validierung; Inhalte und Quellen bitte selbst prüfen.",
+  "capture.ai.applyAs.info": "Als Info anhängen",
+  "capture.ai.applyAs.note": "Als Hinweis anhängen",
+  "capture.ai.applyAs.warning": "Als Warnung anhängen",
+  "capture.ai.applyAs.success": "Als Erfolg anhängen",
   "capture.ai.action.clarify": "Klarer",
   "capture.ai.action.structure": "Strukturieren",
   "capture.ai.action.expand": "Erweitern",
@@ -1558,6 +1562,10 @@ const en: typeof de = {
     "The AI makes a suggestion — you review it and apply it deliberately. No automatic saving, no validation; no content/facts are invented.",
   "capture.ai.bodyHint":
     "AI help for the detailed content: review the suggestion and apply it deliberately (replace/append). No automatic saving, no validation; please check content and sources yourself.",
+  "capture.ai.applyAs.info": "Append as info",
+  "capture.ai.applyAs.note": "Append as note",
+  "capture.ai.applyAs.warning": "Append as warning",
+  "capture.ai.applyAs.success": "Append as success",
   "capture.ai.action.clarify": "Clearer",
   "capture.ai.action.structure": "Structure",
   "capture.ai.action.expand": "Expand",

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   applyBodyAssist,
+  applyBodyAssistBlock,
   bodyTextForAssist,
+  suggestionToBodyBlockHtml,
   suggestionToBodyHtml,
 } from "../../apps/web/src/lib/bodyAiAssist";
 
@@ -58,5 +60,58 @@ describe("SCRUM-315: bodyAiAssist", () => {
   it("bestehender (bereits sanitisierter) Body wird beim Anhängen nicht doppelt escaped", () => {
     // Body mit Entity bleibt unverändert; nur der neue Vorschlag wird sanitisiert.
     expect(applyBodyAssist("append", "<p>a &amp; b</p>", "c")).toBe("<p>a &amp; b</p><p>c</p>");
+  });
+});
+
+// SCRUM-316: Vorschlag bewusst als Body-Block (Info/Hinweis/Warnung/Erfolg) anhängen.
+describe("SCRUM-316: bodyAiAssist Block-Übernahme", () => {
+  it("suggestionToBodyBlockHtml nutzt nur sichere statische Klassen + escapten Text", () => {
+    expect(suggestionToBodyBlockHtml("info", "Hinweistext")).toBe(
+      '<div class="panel panel-info"><p>Hinweistext</p></div>',
+    );
+    expect(suggestionToBodyBlockHtml("warning", "Zeile eins\nZeile zwei")).toBe(
+      '<div class="panel panel-warning"><p>Zeile eins<br>Zeile zwei</p></div>',
+    );
+    expect(suggestionToBodyBlockHtml("success", "Eins.\n\nZwei.")).toBe(
+      '<div class="panel panel-success"><p>Eins.</p><p>Zwei.</p></div>',
+    );
+  });
+
+  it("Block-Helfer escaped gefährlichen Plaintext (kein aktives HTML, keine fremden Klassen)", () => {
+    const out = suggestionToBodyBlockHtml("note", "<script>alert(1)</script>");
+    expect(out).toBe(
+      '<div class="panel panel-note"><p>&lt;script&gt;alert(1)&lt;/script&gt;</p></div>',
+    );
+    expect(out).not.toContain("<script");
+    // <img …> aus Modelltext darf kein aktives Tag werden (nur escapter Text).
+    expect(suggestionToBodyBlockHtml("note", "<img src=x onerror=alert(1)>")).toBe(
+      '<div class="panel panel-note"><p>&lt;img src=x onerror=alert(1)&gt;</p></div>',
+    );
+  });
+
+  it("leerer Vorschlag → '' (kein leerer Block)", () => {
+    expect(suggestionToBodyBlockHtml("info", "")).toBe("");
+    expect(suggestionToBodyBlockHtml("info", "   \n ")).toBe("");
+    expect(suggestionToBodyBlockHtml("info", null)).toBe("");
+  });
+
+  it("applyBodyAssistBlock hängt Block an; leerer Body → nur Block; leerer Vorschlag = No-Op", () => {
+    expect(applyBodyAssistBlock("<p>alt</p>", "Achtung.", "warning")).toBe(
+      '<p>alt</p><div class="panel panel-warning"><p>Achtung.</p></div>',
+    );
+    expect(applyBodyAssistBlock("", "Erster.", "info")).toBe(
+      '<div class="panel panel-info"><p>Erster.</p></div>',
+    );
+    expect(applyBodyAssistBlock("<p></p>", "Erster.", "info")).toBe(
+      '<div class="panel panel-info"><p>Erster.</p></div>',
+    );
+    expect(applyBodyAssistBlock("<p>alt</p>", "", "info")).toBe("<p>alt</p>");
+    expect(applyBodyAssistBlock("<p>alt</p>", "   ", "success")).toBe("<p>alt</p>");
+  });
+
+  it("bestehender Body wird beim Block-Anhängen nicht doppelt escaped", () => {
+    expect(applyBodyAssistBlock("<p>a &amp; b</p>", "c", "info")).toBe(
+      '<p>a &amp; b</p><div class="panel panel-info"><p>c</p></div>',
+    );
   });
 });

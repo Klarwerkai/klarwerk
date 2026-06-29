@@ -23,13 +23,14 @@ import { RichTextEditor } from "../components/RichTextEditor";
 import { ListEditor, TagEditor } from "../components/editors";
 import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
 import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
-import { applyBodyAssist, bodyTextForAssist } from "../lib/bodyAiAssist";
+import { applyBodyAssist, applyBodyAssistBlock, bodyTextForAssist } from "../lib/bodyAiAssist";
 import { CAPTURE_EXAMPLE } from "../lib/captureExample";
 import { gapContextDraft, readGapContext } from "../lib/captureFromGap";
 import { captureReadiness } from "../lib/captureReadiness";
 import { captureNextSteps, captureSavedStatus } from "../lib/captureSuccess";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 import { draftTitle } from "../lib/draftForm";
+import { EDITOR_BLOCKS } from "../lib/editorBlocks";
 import {
   fileToThumbDataUrl,
   isImage,
@@ -886,6 +887,11 @@ export function Capture(): JSX.Element {
                     }
                     onApply={setBodyHtml}
                     hintKey="capture.ai.bodyHint"
+                    extraApplyActions={EDITOR_BLOCKS.map((block) => ({
+                      labelKey: `capture.ai.applyAs.${block}`,
+                      apply: (_original, suggestion) =>
+                        applyBodyAssistBlock(bodyHtml, suggestion, block),
+                    }))}
                   />
                 </Field>
                 <ListEditor

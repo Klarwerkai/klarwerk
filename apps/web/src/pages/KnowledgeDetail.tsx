@@ -39,10 +39,11 @@ import {
   SectionLabel,
   TextInput,
 } from "../components/ui";
-import { applyBodyAssist, bodyTextForAssist } from "../lib/bodyAiAssist";
+import { applyBodyAssist, applyBodyAssistBlock, bodyTextForAssist } from "../lib/bodyAiAssist";
 import { isDemoKnowledge } from "../lib/demoKnowledge";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 import { deriveStatus } from "../lib/displayStatus";
+import { EDITOR_BLOCKS } from "../lib/editorBlocks";
 import { groupEvidenceByVersion } from "../lib/evidenceByVersion";
 import { analyzeEvidenceConsistency } from "../lib/evidenceConsistency";
 import { analyzeEvidenceFreshness } from "../lib/evidenceFreshness";
@@ -515,6 +516,11 @@ export function KnowledgeDetail(): JSX.Element {
                           }
                           onApply={(bodyHtml) => setEdit({ ...edit, bodyHtml })}
                           hintKey="capture.ai.bodyHint"
+                          extraApplyActions={EDITOR_BLOCKS.map((block) => ({
+                            labelKey: `capture.ai.applyAs.${block}`,
+                            apply: (_original, suggestion) =>
+                              applyBodyAssistBlock(edit.bodyHtml, suggestion, block),
+                          }))}
                         />
                       </Field>
                       <ListEditor

@@ -22,6 +22,7 @@ export function AiAssistBox({
   onApply,
   applyFn = applyAssist,
   hintKey = "capture.ai.hint",
+  extraApplyActions = [],
 }: {
   text: string;
   runAssist: (text: string, instruction?: string) => Promise<string>;
@@ -32,6 +33,13 @@ export function AiAssistBox({
   applyFn?: (mode: AssistApplyMode, original: string, suggestion: string) => string;
   // Optionaler kontextspezifischer Hinweistext (i18n-Key). Default = generischer capture.ai.hint.
   hintKey?: string;
+  // SCRUM-316: optionale ZUSÄTZLICHE Übernahme-Aktionen (z. B. „als Info-Block anhängen"). Nur in der
+  // Vorschau sichtbar; leer = keine extra Buttons → Statement/Freitext-Flows bleiben unverändert.
+  // `apply(original, suggestion)` liefert den neuen Gesamtwert für onApply.
+  extraApplyActions?: ReadonlyArray<{
+    labelKey: string;
+    apply: (original: string, suggestion: string) => string;
+  }>;
 }): JSX.Element {
   const { t } = useTranslation();
   const [free, setFree] = useState("");
@@ -56,6 +64,13 @@ export function AiAssistBox({
       return;
     }
     onApply(applyFn(mode, text, preview));
+    setPreview(null);
+  };
+  const applyExtra = (apply: (original: string, suggestion: string) => string): void => {
+    if (preview === null) {
+      return;
+    }
+    onApply(apply(text, preview));
     setPreview(null);
   };
 
@@ -120,6 +135,20 @@ export function AiAssistBox({
               {t("capture.ai.discard")}
             </button>
           </div>
+          {extraApplyActions.length > 0 ? (
+            <div className="mt-2 flex flex-wrap gap-1.5 border-t border-hairline pt-2">
+              {extraApplyActions.map((a) => (
+                <button
+                  key={a.labelKey}
+                  type="button"
+                  onClick={() => applyExtra(a.apply)}
+                  className="rounded-pill border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:border-ink/30 hover:text-text"
+                >
+                  {t(a.labelKey)}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

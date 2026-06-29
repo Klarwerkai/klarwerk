@@ -7175,3 +7175,41 @@ git commit -m "feat(editor): beta body AI assist — derive/sanitize/apply body 
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-316 — Beta Editor AI Vorschlag als Body-Block übernehmen v0
+**Datum:** 2026-06-29 · **Rolle:** Claude (Umsetzung) · **Status:** umgesetzt, Gates grün
+
+**Vorab-Befund.** `git status -sb` sauber (nur untracked Infra-Doc). SCRUM-314 liefert `EditorBlock`/`editorBlockClass`/`editorBlockHtml` + Sanitizer-Allowlist (`panel`, `callout`, `panel-info/-note/-warning/-success`). SCRUM-315 liefert `bodyAiAssist.ts` (`bodyTextForAssist`/`suggestionToBodyHtml`/`applyBodyAssist`, escapt Plaintext direkt — kein sanitizeHtml-Roundtrip) + `AiAssistBox` mit `applyFn`/`hintKey`; Body-KI in Capture + KO-Detail (nur replace/append als Absätze).
+
+**Umsetzung (v0).**
+1. **DOM-freie Block-Helfer** (`apps/web/src/lib/bodyAiAssist.ts`): gemeinsame private `escapedParagraphs(text)` (von `suggestionToBodyHtml` mitgenutzt → keine Duplikat-Logik); `suggestionToBodyBlockHtml(block, text)` → `<div class="${editorBlockClass(block)}"><p>…</p></div>` (sichere statische Klasse aus editorBlocks, escapter Text, nur `<div>/<p>/<br>`, leer→""); `applyBodyAssistBlock(currentHtml, suggestionText, block)` (immer ANHÄNGEN; leerer Vorschlag = No-Op; bestehender Body unverändert → kein Doppel-Escaping).
+2. **AiAssistBox** (`apps/web/src/components/AiAssistBox.tsx`): optionale Prop `extraApplyActions` (`{labelKey, apply(original, suggestion)}[]`), nur in der Vorschau gerendert (unter Ersetzen/Anhängen/Verwerfen, mit Trennlinie). Leeres Array (Default) → keine Buttons → Statement/Freitext-Flows unverändert. Klick = bewusste Übernahme über `onApply`.
+3. **Capture** (`apps/web/src/pages/Capture.tsx`): Body-Box bekommt vier `extraApplyActions` aus `EDITOR_BLOCKS` (`applyBodyAssistBlock(bodyHtml, suggestion, block)` → `setBodyHtml`).
+4. **KO-Detail** (`apps/web/src/pages/KnowledgeDetail.tsx`): identische vier Block-Aktionen im Edit-Modus (`edit.bodyHtml` → `setEdit`). `ko.editNote`, Statement-KI und Save-Flow unverändert.
+5. **i18n** `capture.ai.applyAs.info/note/warning/success` DE+EN (kurze Labels „Als … anhängen" / „Append as …").
+6. **Tests** `tests/app/body-ai-assist.test.ts` (erweitert, DOM-frei): Block-HTML mit sicherer statischer Klasse + escaptem Text + `<br>`/Absätzen; Escaping gefährlichen Plaintexts (script/`<img onerror>` → kein aktives Tag); Leer→""; `applyBodyAssistBlock` anhängen/leerer Body/No-Op; kein Doppel-Escaping.
+
+**Bewusst nicht umgesetzte Gaps (später).** Kein Cursor-/Inline-Insert (Block wird ans Body-Ende angehängt). Keine blocktyp-bewusste Modellgenerierung (Modell liefert Plaintext, Typ wählt der Mensch). Kein Diff/Merge-View. Kein „Block ersetzen"-Modus (nur Anhängen, wie im Ticket). Kein WikiEditor-/CaseEditor-Nachbau, keine neue Editor-Library.
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/bodyAiAssist.ts` (escapedParagraphs + suggestionToBodyBlockHtml + applyBodyAssistBlock)
+- `apps/web/src/components/AiAssistBox.tsx` (optionale extraApplyActions)
+- `apps/web/src/pages/Capture.tsx` (vier Block-Aktionen + EDITOR_BLOCKS-Import)
+- `apps/web/src/pages/KnowledgeDetail.tsx` (vier Block-Aktionen + EDITOR_BLOCKS-Import)
+- `apps/web/src/i18n.ts` (`capture.ai.applyAs.*` DE+EN)
+- `tests/app/body-ai-assist.test.ts` (Block-Übernahme-Tests)
+
+**Tests/Gates.** `npm run check` grün — **140 Dateien / 839 Tests**. Gezielt: `npx vitest run tests/app/body-ai-assist.test.ts tests/app/editor-blocks.test.ts tests/structure/rich-text.test.ts tests/capture/capture-ai-assist.test.ts` → 28/28 grün. `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün. SCRUM-312/313 (Statement/Freitext) und SCRUM-315 (replace/append) unverändert; SCRUM-314-Sanitizer-Allowlist deckt die Block-Klassen serverseitig ab.
+
+**Nicht-Ziele eingehalten.** Kein Cursor-/Inline-Insert, keine blocktyp-bewusste Modellgenerierung, kein Diff/Merge, kein WikiEditor-/CaseEditor-Nachbau, keine neue Editor-Library, kein RAG/neue Suche/Local-LLM, keine Auto-Validierung, kein Auto-Speichern, keine Team-2/3/4-Dateien, keine Migration/Datenmodell, kein Deployment. Sanitizer unverändert (Allowlist genügt). Nur in `/Users/peterkohnert/Documents/dev_Klarwerk`; untracked Infra-Doc unberührt.
+
+**Commit-/Push-Hinweis (nur Hinweis — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/bodyAiAssist.ts apps/web/src/components/AiAssistBox.tsx apps/web/src/pages/Capture.tsx apps/web/src/pages/KnowledgeDetail.tsx apps/web/src/i18n.ts tests/app/body-ai-assist.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(editor): apply AI suggestion as body block (info/note/warning/success) in Capture + KO-Detail (SCRUM-316)"
+git push
+```
+Kein Git/Push/Jira durch Claude.
