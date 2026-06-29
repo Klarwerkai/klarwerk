@@ -77,6 +77,7 @@ import {
 import { diffForVersion } from "../lib/koVersionDiff";
 import { koVersionRows } from "../lib/koVersionSnapshots";
 import { toReasonerLocale } from "../lib/reasonerLocale";
+import { isReviewReworkContext } from "../lib/reviewReworkContext";
 import {
   type SourceContributionInput,
   formatSourceComment,
@@ -462,6 +463,36 @@ export function KnowledgeDetail(): JSX.Element {
                   {isReturnedForRework(audit.data ?? [], ko.id) ? (
                     <div className="mb-3 rounded-card border border-trust-warn-fill/30 bg-trust-warn-bg p-3 text-[12.5px] text-trust-warn-text">
                       {t("ko.returnedBanner")}
+                    </div>
+                  ) : null}
+                  {/* SCRUM-330: Review-Nacharbeitskontext (?rework=review) — nur Anzeige; Bearbeiten erzeugt
+                      neue Version/Review, keine automatische Freigabe/Rückgabe. */}
+                  {isReviewReworkContext(params) ? (
+                    <div className="mb-3 rounded-card border border-trust-warn-fill/30 bg-trust-warn-bg p-3">
+                      <div className="text-[12.5px] font-semibold text-trust-warn-text">
+                        {t("ko.rework.title")}
+                      </div>
+                      <p className="mt-0.5 text-[11.5px] leading-relaxed text-trust-warn-text/90">
+                        {t("ko.rework.hint")}
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {canEdit && !edit ? (
+                          <button
+                            type="button"
+                            onClick={() => startEdit(ko)}
+                            className="inline-flex items-center gap-1 rounded-btn bg-ink px-3 py-1.5 text-[12px] font-semibold text-white hover:opacity-90"
+                          >
+                            <Pencil size={13} />
+                            {t("ko.rework.edit")}
+                          </button>
+                        ) : null}
+                        <Link
+                          to="/validierung"
+                          className="inline-flex items-center gap-1 rounded-btn border border-hairline bg-surface px-3 py-1.5 text-[12px] font-semibold text-muted hover:text-text"
+                        >
+                          {t("ko.rework.back")} <span aria-hidden="true">→</span>
+                        </Link>
+                      </div>
                     </div>
                   ) : null}
                   <div className="flex flex-wrap items-center gap-2">

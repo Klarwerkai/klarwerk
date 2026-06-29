@@ -35,22 +35,24 @@ describe("SCRUM-258: reviewDecision", () => {
 describe("SCRUM-277: reviewNextSteps", () => {
   const decision = { id: "ko-7", title: "Ventil X bei Überdruck manuell schließen." };
 
-  it("Freigabe (up): KO ansehen + Wissen nutzen (Ask mit KO-Titel)", () => {
+  it("Freigabe (up): KO ansehen + Wissen nutzen (Ask mit KO-Titel) — ohne Rework-Query", () => {
     const steps = reviewNextSteps({ ...decision, verdict: "up" });
     expect(steps.map((s) => s.labelKey)).toEqual(["val.nextViewKo", "val.nextUse"]);
     expect(steps[0]?.to).toBe("/wissen/ko-7");
+    expect(steps[0]?.to).not.toContain("rework=");
     expect(steps[1]?.to.startsWith("/fragen?q=")).toBe(true);
     expect(steps[1]?.to).toContain(encodeURIComponent(decision.title));
   });
 
   // SCRUM-329: Rückfrage/Ablehnung sind keine Sackgasse — eine klare Nacharbeits-Folgehandlung am KO,
   // kein Use-Schritt (warn/down bleiben Review-Arbeit), keine automatische Rückgabe.
-  it("Rückfrage/Ablehnung (warn/down): genau eine Nacharbeits-Folgehandlung am KO", () => {
+  // SCRUM-330: warn/down führen mit Nacharbeitskontext (?rework=review) ins KO-Detail.
+  it("Rückfrage/Ablehnung (warn/down): eine Nacharbeits-Folgehandlung am KO mit rework=review", () => {
     for (const verdict of ["warn", "down"] as const) {
       const steps = reviewNextSteps({ ...decision, verdict });
       expect(steps).toHaveLength(1);
       expect(steps[0]?.labelKey).toBe("val.nextRework");
-      expect(steps[0]?.to).toBe("/wissen/ko-7");
+      expect(steps[0]?.to).toBe("/wissen/ko-7?rework=review");
     }
   });
 

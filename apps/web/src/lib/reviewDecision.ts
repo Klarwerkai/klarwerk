@@ -3,6 +3,7 @@
 // zu ändern: die Verdicts bleiben "up"/"warn"/"down" und damit die vorhandenen Mutationen. Gelb/Rot
 // (warn/down) verlangen weiterhin Pflicht-Feedback (requiresFeedback).
 import { askQuestionHref } from "./askQuestion";
+import { reworkHref } from "./reviewReworkContext";
 import type { FeedbackVerdict } from "./validationFeedback";
 
 export type ReviewVerdict = "up" | FeedbackVerdict; // "up" | "warn" | "down"
@@ -44,7 +45,8 @@ export function reviewNextSteps(decision: {
       { labelKey: "val.nextUse", to: askQuestionHref(decision.title) },
     ];
   }
-  return [{ labelKey: "val.nextRework", to: `/wissen/${decision.id}` }];
+  // SCRUM-330: Nacharbeitskontext per Query (?rework=review) → KO-Detail zeigt den Nacharbeits-Hinweis.
+  return [{ labelKey: "val.nextRework", to: reworkHref(decision.id) }];
 }
 
 // SCRUM-292: ehrliche „was passiert jetzt mit dem Wissen"-Aussage je Verdict — OHNE zu behaupten,

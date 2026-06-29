@@ -7694,3 +7694,41 @@ git commit -m "feat(validation): post-review follow-up — verdict-aware next st
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-330 — Beta Review-Nacharbeit im KO-Detail sichtbar machen v0
+**Datum:** 2026-06-29 · **Rolle:** Claude (Umsetzung) · **Status:** umgesetzt, Gates grün
+
+**Vorab-Befund.** `git status -sb` sauber (nur untracked Infra-Doc). SCRUM-329: `reviewNextSteps` liefert für warn/down die CTA „Im Objekt nacharbeiten" (`val.nextRework` → `/wissen/:id`) — semantisch aber bisher nur die normale Leseansicht. KO-Detail (`KnowledgeDetail.tsx`) nutzt `useSearchParams` (`params`), hat `startEdit(ko)` (setzt Edit-State, risikoarm), `canEdit`, einen „Bearbeiten"-Button und einen bestehenden Rückgabe-Banner aus Audit (`isReturnedForRework`, SCRUM-124). Query-Param-Lesen ist etabliert (`demoHref`/`?origin=`).
+
+**Umsetzung (v0).**
+1. **DOM-freier Helfer** `apps/web/src/lib/reviewReworkContext.ts` (NEU): `REWORK_PARAM = "rework"`, `REWORK_REVIEW_VALUE = "review"`, `reworkHref(id)` → `/wissen/:id?rework=review`, `isReviewReworkContext(params)` (nur exaktes `rework=review`). Kein Backend, keine DOM-Abhängigkeit.
+2. **Nacharbeitslink mit Query** in `reviewDecision.ts`: warn/down nutzen jetzt `reworkHref(decision.id)` statt des nackten `/wissen/:id`. `up`-Next-Steps unverändert (ohne rework-Query).
+3. **KO-Detail Nacharbeitsbanner**: liest `isReviewReworkContext(params)`; nur bei `rework=review` erscheint ein kompakter Banner (Titel „Review-Nacharbeit" + ehrlicher Hinweis: aus Review-Entscheidung angestoßen, Bearbeiten erzeugt neue Version/Review, keine automatische Freigabe/Rückgabe) mit Handlungen „Bearbeiten / Revision" (ruft den vorhandenen `startEdit(ko)`, nur wenn `canEdit && !edit`) und „Zurück zur Validierung" (`/validierung`). Ohne Query bleibt die normale Ansicht unverändert.
+4. **i18n** `ko.rework.title/hint/edit/back` DE+EN (ehrlich: keine Auto-Freigabe/-Rückgabe).
+5. **Tests** `tests/ko/review-rework-context.test.ts` (NEU, DOM-frei: `reworkHref`, `isReviewReworkContext` exakt/neben anderen Params, Banner-i18n DE+EN, Ehrlichkeit) + `tests/validation/review-decision.test.ts` erweitert (up ohne `rework=`, warn/down → `/wissen/ko-7?rework=review`).
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/reviewReworkContext.ts` (NEU)
+- `apps/web/src/lib/reviewDecision.ts` (warn/down → reworkHref)
+- `apps/web/src/pages/KnowledgeDetail.tsx` (Nacharbeitsbanner + Import)
+- `apps/web/src/i18n.ts` (`ko.rework.*` DE+EN)
+- `tests/ko/review-rework-context.test.ts` (NEU), `tests/validation/review-decision.test.ts` (erweitert)
+
+**Tests/Gates.** `npm run check` grün — **152 Dateien / 921 Tests**. Gezielt: `npx vitest run tests/validation/review-decision.test.ts tests/ko/review-rework-context.test.ts` → 15/15 grün. `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün. up-Flow + Edit-/Revise-Flow + Audit-Rückgabe-Banner unverändert.
+
+**Bewusst nicht umgesetzte Gaps (später).** Kein automatisches Umschalten in den Edit-State beim Laden (bewusst per Button, da Auto-Edit über Query riskant/überraschend wäre). Kein Übertragen des konkreten Review-Kommentars in die Nacharbeit (nicht im Query verfügbar; Kommentare liegen am KO). Kein Diff/Merge-Viewer. „Zurück zur Validierung" ohne Übernahme bestehender Board-Filter-Query (einfacher Link, wie vom Ticket erlaubt).
+
+**Rest-Risiken.** Banner zeigt sich rein query-getrieben (`rework=review`) — ein manuell gesetzter Query zeigt ihn ebenfalls; harmlos, da reine Anzeige ohne Statuswirkung. Bei Viewer (`canEdit=false`) erscheint nur „Zurück zur Validierung" (kein Bearbeiten-Button) — korrekt, keine Sackgasse. Der bestehende Audit-Rückgabe-Banner (SCRUM-124) kann zusätzlich erscheinen; beide sind komplementär (Audit = belegte Rückgabe, rework = Navigationskontext).
+
+**Nicht-Ziele eingehalten.** Kein Backend, keine Datenmodelländerung, kein Speichern/Übertragen des Review-Kommentars, kein Review-Diff/Merge-Viewer, kein automatisches Editieren, keine automatische Rückgabe/Freigabe, kein RAG/neue Suche/Local-LLM, keine Team-2/3/4-Dateien, kein Refactoring ohne Produktnutzen, kein Git/Push/Jira. Nur in `/Users/peterkohnert/Documents/dev_Klarwerk`; untracked Infra-Doc unberührt.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/reviewReworkContext.ts apps/web/src/lib/reviewDecision.ts apps/web/src/pages/KnowledgeDetail.tsx apps/web/src/i18n.ts tests/ko/review-rework-context.test.ts tests/validation/review-decision.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(ko-detail): review rework context banner via ?rework=review from warn/down decisions (SCRUM-330)"
+git push
+```
+Kein Git/Push/Jira durch Claude.

@@ -547,6 +547,11 @@ const de = {
   "ko.conditional": "Bedingt",
   "ko.reject": "Ablehnen",
   "ko.edit": "Bearbeiten",
+  "ko.rework.title": "Review-Nacharbeit",
+  "ko.rework.hint":
+    "Aus einer Review-Entscheidung (Rückfrage/Ablehnung) angestoßen. Bearbeiten erzeugt eine neue Version und startet die Prüfung neu — keine automatische Freigabe, keine automatische Rückgabe.",
+  "ko.rework.edit": "Bearbeiten / Revision",
+  "ko.rework.back": "Zurück zur Validierung",
   "ko.saveEdit": "Speichern",
   "ko.cancelEdit": "Abbrechen",
   "ko.editNote":
@@ -1903,6 +1908,11 @@ const en: typeof de = {
   "ko.conditional": "Conditional",
   "ko.reject": "Reject",
   "ko.edit": "Edit",
+  "ko.rework.title": "Review rework",
+  "ko.rework.hint":
+    "Triggered by a review decision (query/reject). Editing creates a new version and restarts review — no automatic approval, no automatic return.",
+  "ko.rework.edit": "Edit / revise",
+  "ko.rework.back": "Back to validation",
   "ko.saveEdit": "Save",
   "ko.cancelEdit": "Cancel",
   "ko.editNote":
