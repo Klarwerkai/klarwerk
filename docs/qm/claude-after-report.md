@@ -6736,3 +6736,39 @@ git commit -m "docs(demo): Stage-1 pilot readiness & Go/No-Go status for Team-1 
 git push
 ```
 Kein Git/Push/Jira durch Claude. Codex prüft Diff/Gates, korrigiert minimal falls nötig, committet, pusht, wartet GitHub CI ab und schließt Jira. Untracked `docs/KLARWERK_Infrastruktur_Domain_Server_Aufteilung_v2.md` bleibt unangetastet.
+
+---
+
+## SCRUM-304 — Pilot-Datenlauf: reale Erfahrungsnotiz durch Capture → Validation → Use führen
+**Datum:** 2026-06-29 · **Rolle:** Claude (Pilot-Datenlauf) · **Ergebnis:** kein Fix nötig (Flow ehrlich & konsistent)
+
+**1. Vorab-Befund**
+API-Vertrag des Flows gesichtet (Route-Tests): Capture `POST /api/kos` → 201, KO `status=offen, trust=0`; Validierung über `PUT /api/kos/:id` mit `action:"assign"` bzw. `action:"rate" {verdict}`; Board `GET /api/validation/board`; Ask `POST /api/ask` → `{result, gap}`. FE-Helfer für Ehrlichkeit vorhanden: `captureSavedStatus` (offen-Badge), `koOverview`/`useReadiness` (Nutzbarkeit aus Status), `askView.answerStatus`/`answerReviewGuard`/`sourceRefs.usability` (ungeprüft → Review-Guard + „Zu prüfen").
+
+**2. Umsetzung — Pilot-Datenlauf (In-Memory, API-nah) — kein Fix nötig**
+Frisch geseedet (`POST /api/admin/demo-seed`), dann eine realistische industrielle Erfahrungsnotiz als Experte (Erik) erfasst: „Hydraulikpumpe HP-7 bei Kavitationsgeräusch sofort abstellen" mit Statement, 2 conditions, 3 measures, Kategorie „Anlage 3", neededValidations=2. Beobachtet:
+- **Capture:** `status=offen, trust=0, v1`; strukturierte Felder laufen verlustfrei durch (`conditions`/`measures`/`category` exakt zurückgelesen). ✓ frisch erfasst = offen/nicht validiert.
+- **Ask vor Validierung:** `answered=true`, aber `knowledgeClass=ungeprueft, trust=0`, Quelle = das offene KO. Im FE damit als **ungeprüft** (answerStatus warn) + **Review-Guard → /validierung** + Quellen-Chip „Zu prüfen" (needs-work) markiert — also **nicht** als gesichert/nutzbar. ✓ ehrlich.
+- **Validation:** das neue offene KO ist im Board auffindbar (Boardgröße 4). 1. grüne Bewertung → bleibt `offen, trust=50`; 2. grüne Bewertung (distinct User) → `validiert, trust=100`. ✓ keine Auto-/Fake-Freigabe.
+- **Ask nach Validierung:** `answered=true, knowledgeClass=gesichert, trust=100`, quellengebunden auf dasselbe KO. ✓ Use nur statusbewusst.
+- **Echter Gap:** unpassende Frage („Drehmomentwert Förderbandrolle FB-12") → `answered=false, knowledgeClass=unbekannt`, Lücke ehrlich erfasst. ✓ kein Erfinden.
+
+**Bewertung:** Der Flow ist mit realistischen Eingaben durchgängig ehrlich und widerspruchsfrei (offen↔ungeprüft↔„Zu prüfen", validiert↔gesichert↔trust100). Es wurde **keine echte Produktreibung** gefunden, die einen sichtbaren Fix rechtfertigt; entsprechend wurde kein Fix erzwungen (Nicht-Ziel: kein Mini-Polish, keine erzwungene Änderung). Die geprüften Eigenschaften sind bereits durch bestehende Route-Tests (`validation-routes`, `ask-routes`) und DOM-freie Helfer-Tests (`askView`, `captureSuccess`, `useReadiness`) abgesichert → keine neuen Tests nötig. Der temporäre Walkthrough wurde nur lokal genutzt und wieder entfernt (nicht eingecheckt).
+
+**3. Geänderte Dateien**
+Keine (nur dieser After-Report-Eintrag). Kein Produktcode, keine FE-Datei, keine Tests geändert. Untracked `docs/KLARWERK_Infrastruktur_Domain_Server_Aufteilung_v2.md` unberührt.
+
+**4. Tests/Gates**
+`npm run check` grün — **133 Dateien / 782 Tests** (unverändert). Keine FE-Quelländerung → FE-tsc nicht erforderlich. Zusätzlich: realer In-Memory-Pilot-Datenlauf (Capture→Ask→Validation→Ask→Gap) manuell durchgespielt, Server geschlossen.
+
+**5. Restlücken/Nicht-Ziele**
+Reiner Verifikationslauf — keine neue Architektur/Suche/RAG/Task-Engine, keine automatische Validierung, keine Fake-Quellen, keine Seed-Massenänderung, keine Team-2/3-Arbeit, kein Deployment. Hinweis (kein Bug): Ask kann ein noch offenes KO als Antwort liefern, kennzeichnet es aber ehrlich als „ungeprüft" mit Review-Pfad — bewusstes Stage-1-Verhalten (SCRUM-288/300), kein Widerspruch zu „offene Inhalte nie als gesichert/nutzbar".
+
+**6. Commit-/Push-Hinweis (nur Hinweis — nicht ausgeführt)**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add docs/qm/claude-after-report.md
+git commit -m "docs(qm): SCRUM-304 pilot data run Capture->Validation->Use verified honest, no code change"
+git push
+```
+Kein Git/Push/Jira durch Claude. Codex prüft Diff/Gates, committet, pusht, wartet GitHub CI ab und schließt Jira. Untracked `docs/KLARWERK_Infrastruktur_Domain_Server_Aufteilung_v2.md` bleibt unangetastet.
