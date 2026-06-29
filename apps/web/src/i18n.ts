@@ -144,6 +144,9 @@ const de = {
   "demo.banner.library.body":
     "Hier siehst du je Objekt Quelle, Trust, Status und Reife/Version. Bei offener/ungeprüfter Quelle geht es weiter zur Validierung.",
   "demo.banner.library.next": "Weiter: Validieren",
+  "demo.banner.detail.title": "Wissensobjekt: Status, Trust, Version, Quellen prüfen",
+  "demo.banner.detail.body":
+    "Hier siehst du, worauf Nutzbarkeit beruht: Status, Trust, Version und Belege. Wenn es nutzbar ist, unten „Wissen nutzen“ — die Frage bleibt quellengebunden, nichts wird automatisch gesichert.",
   "demo.banner.validation.title": "Schritt 3: Offenes Wissen bewerten",
   "demo.banner.validation.body":
     "Hier wird offenes/ungeprüftes Wissen bewertet. Ziel: aus Review-Arbeit gesichertes, nutzbares Wissen machen.",
@@ -1327,6 +1330,9 @@ const en: typeof de = {
   "demo.banner.library.body":
     "Here each object shows source, trust, status and maturity/version. If a source is open/unverified, continue to validation.",
   "demo.banner.library.next": "Next: validate",
+  "demo.banner.detail.title": "Knowledge object: check status, trust, version, sources",
+  "demo.banner.detail.body":
+    "Here you see what usability is based on: status, trust, version and evidence. If it is usable, use “Use knowledge” below — the question stays source-bound, nothing is secured automatically.",
   "demo.banner.validation.title": "Step 3: Rate open knowledge",
   "demo.banner.validation.body":
     "Here open/unverified knowledge is rated. Goal: turn review work into secured, usable knowledge.",

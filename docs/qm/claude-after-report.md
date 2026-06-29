@@ -6365,3 +6365,43 @@ git commit -m "feat(use-flow): shared, honest use-readiness vocabulary across KO
 git push
 ```
 Keine Jira-Änderungen durch Claude. Codex prüft Diff/Gates, korrigiert minimal, committet, pusht, wartet CI ab, schließt Jira.
+
+---
+
+## SCRUM-294 — Demo-/Pilotpfad: Library → KO-Detail → Ask als sichtbaren Use-Fluss führen
+**Datum:** 2026-06-29 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung). **FE-Produkt-Slice** (DOM-freier Helper + KO-Detail-Surface + Kontext-Propagierung + i18n + Tests); keine Backend-/Reasoner-/Suchänderung; kein neues Statusmodell; keine automatische/Fake-Validierung; kein Git/Jira durch Claude.
+
+### 1. Vorab-Befund
+- Demo-Pfad (SCRUM-290/291) deckte Start/Ask/Library/Validation ab; **KO-Detail fehlte** als Demo-Surface, und der Use-Fluss **Library → KO-Detail → Ask** trug den Demo-Kontext nicht weiter (KO-Links/Use-CTA ohne `?demo=stage1`; KO-Detail/Ask lasen ihn nicht für die dynamischen Links).
+- `withDemo` ist bereits robust (Hash/Dedupe); Library/Ask nutzen `useSearchParams`, KO-Detail nicht.
+
+### 2. Umsetzung
+- `demoPilotPath.ts`: **`detail`** als `DemoSurface` + KO-Detail-Banner (Status/Trust/Version/Quellen → unten quellengebunden fragen; kein statischer `next`-Link, da KO-ID dynamisch). Neuer DOM-freier Helper **`demoHref(href, params)`** = trägt `?demo=stage1` **nur** im Demo-Kontext weiter (sonst unverändert).
+- **Library**: KO-Titel-Link (`/wissen/:id`) und Use-CTA via `demoHref(…, params)` → Library → KO-Detail / Library → Ask behalten den Kontext.
+- **KO-Detail**: `useSearchParams`; im Demo-Kontext `DemoBanner surface="detail"`; Route-Use-CTA (`koCta` → Ask) via `demoHref` → KO-Detail → Ask quellengebunden mit Kontext.
+- **Ask**: unverändert — zeigt im Demo-Kontext bereits sein Banner (quellengebunden, „auf Trust/Quelle achten"); der Kontext kommt jetzt automatisch über KO-Detail an (kein neuer Ask-Text → kein Aufblähen).
+- i18n DE/EN: `demo.banner.detail.title/body` (ehrlich: quellengebunden, „nichts wird automatisch gesichert").
+
+### 3. Geänderte Dateien
+- `apps/web/src/lib/demoPilotPath.ts` (detail-Surface + demoHref).
+- `apps/web/src/pages/Library.tsx` (KO-Link + Use-CTA via demoHref).
+- `apps/web/src/pages/KnowledgeDetail.tsx` (useSearchParams + DemoBanner surface=detail + Route-CTA via demoHref).
+- `apps/web/src/i18n.ts` (`demo.banner.detail.*` DE+EN).
+- `tests/app/demo-pilot-path.test.ts` (+4: detail-Surface ohne next; demoHref Propagierung/Dedupe; i18n-Ehrlichkeit).
+
+### 4. Tests/Gates
+`npm run check` grün — **132 Dateien / 760 Tests** (Demo-Pfad-Suite 16). `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün.
+
+### 5. Restlücken/Nicht-Ziele
+- **Normale Nutzung ohne `?demo=stage1` unverändert**: `demoHref` lässt Links unangetastet, KO-Detail-Banner erscheint nicht.
+- Validiertes/nutzbares Wissen führt über bestehende Use-Flows (Library-Ask-CTA / KO-Detail-Use-CTA → Ask quellengebunden); offene/ungeprüfte Inhalte werden nicht als gesichert behauptet (useReadiness/Status/Trust unverändert sichtbar). KO-Detail hat keinen statischen Demo-„next"-Link (KO-ID dynamisch) — die vorhandene Use-CTA ist der nächste Schritt.
+- Keine neue Suche/RAG/Reasoner-/Backend-Änderung; keine automatische Validierung/Fake-Freigabe.
+
+### 6. Commit-/Push-Hinweis (nur Hinweis — Claude führt NICHT aus)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/demoPilotPath.ts apps/web/src/pages/Library.tsx apps/web/src/pages/KnowledgeDetail.tsx apps/web/src/i18n.ts tests/app/demo-pilot-path.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(demo): visible Library→KO-detail→Ask use-flow via demo context propagation (SCRUM-294)"
+git push
+```
+Keine Jira-Änderungen durch Claude. Codex prüft Diff/Gates, korrigiert minimal, committet, pusht, wartet GitHub CI ab, schließt Jira.

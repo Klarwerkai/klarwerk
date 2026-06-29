@@ -4,6 +4,7 @@ import {
   DEMO_PILOT_PATH,
   DEMO_VALUE,
   type DemoSurface,
+  demoHref,
   demoPilotPath,
   demoSurfaceBanner,
   isDemoContext,
@@ -112,5 +113,42 @@ describe("SCRUM-291: Demo-Kontext (withDemo/isDemoContext/demoSurfaceBanner)", (
         expect(text(lng, b.bodyKey).length).toBeGreaterThan(0);
       }
     }
+  });
+});
+
+// SCRUM-294: Use-Fluss Library → KO-Detail → Ask im Demo-Kontext sichtbar führen.
+describe("SCRUM-294: KO-Detail-Surface + demoHref-Propagierung", () => {
+  const text = (lng: string, key: string) =>
+    String(i18n.getResource(lng, "translation", key) ?? "").toLowerCase();
+
+  it("KO-Detail ist eine Demo-Surface mit eigenem Banner (kein statischer next-Link)", () => {
+    const detail = demoSurfaceBanner("detail");
+    expect(detail.surface).toBe("detail");
+    expect(detail.titleKey).toBe("demo.banner.detail.title");
+    expect(detail.bodyKey).toBe("demo.banner.detail.body");
+    expect(detail.next).toBeUndefined(); // KO-ID dynamisch → kein statischer Demo-Link
+  });
+
+  it("demoHref trägt den Demo-Kontext NUR im Demo-Kontext weiter (sonst unverändert)", () => {
+    const demo = new URLSearchParams("demo=stage1");
+    const normal = new URLSearchParams("");
+    // Library → KO-Detail
+    expect(demoHref("/wissen/ko-7", demo)).toBe("/wissen/ko-7?demo=stage1");
+    expect(demoHref("/wissen/ko-7", normal)).toBe("/wissen/ko-7");
+    // KO-Detail → Ask (bestehende Query bleibt erhalten)
+    expect(demoHref("/fragen?q=Ventil", demo)).toBe("/fragen?q=Ventil&demo=stage1");
+    expect(demoHref("/fragen?q=Ventil", normal)).toBe("/fragen?q=Ventil");
+  });
+
+  it("demoHref dedupliziert einen bereits vorhandenen Demo-Kontext (kein Doppel-Parameter)", () => {
+    const demo = new URLSearchParams("demo=stage1");
+    expect(demoHref("/bibliothek?demo=stage1", demo)).toBe("/bibliothek?demo=stage1");
+  });
+
+  it("i18n DE/EN für KO-Detail-Banner vorhanden und ehrlich (quellengebunden, kein Auto-Gesichert)", () => {
+    expect(text("de", "demo.banner.detail.title").length).toBeGreaterThan(0);
+    expect(text("de", "demo.banner.detail.body")).toContain("quellengebunden");
+    expect(text("de", "demo.banner.detail.body")).toContain("automatisch gesichert");
+    expect(text("en", "demo.banner.detail.body")).toContain("source-bound");
   });
 });

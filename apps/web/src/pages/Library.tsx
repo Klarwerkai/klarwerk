@@ -16,7 +16,7 @@ import {
   StatusPill,
 } from "../components/trust";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
-import { isDemoContext } from "../lib/demoPilotPath";
+import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 import { deriveStatus } from "../lib/displayStatus";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { koAuthorParts } from "../lib/koAuthor";
@@ -264,7 +264,7 @@ export function Library(): JSX.Element {
                         className="flex items-center gap-3 px-4 py-2.5 hover:bg-hairline-soft"
                       >
                         <Link
-                          to={`/wissen/${k.id}`}
+                          to={demoHref(`/wissen/${k.id}`, params)}
                           className="flex min-w-0 flex-1 items-center gap-3"
                         >
                           <span
@@ -303,9 +303,10 @@ export function Library(): JSX.Element {
                             <ConfidenceBar value={k.confidence} showLabel={false} />
                           </div>
                         </Link>
-                        {/* SCRUM-288: nur nutzbares/validiertes Wissen direkt in Ask; offene KOs → Review. */}
+                        {/* SCRUM-288: nur nutzbares/validiertes Wissen direkt in Ask; offene KOs → Review.
+                            SCRUM-294: im Demo-Kontext den Use-Fluss-Kontext weitertragen. */}
                         <Link
-                          to={useCta.href}
+                          to={demoHref(useCta.href, params)}
                           title={t(useCta.labelKey)}
                           className={`inline-flex shrink-0 items-center gap-1 rounded-btn border px-2.5 py-1 text-[12px] font-semibold hover:text-text ${
                             useCta.kind === "ask"

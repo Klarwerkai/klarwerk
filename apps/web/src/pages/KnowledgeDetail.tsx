@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Paperclip, Pencil, X } from "lucide-react";
 import { type ChangeEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { type KoAction, endpoints } from "../api/endpoints";
 import {
@@ -18,6 +18,7 @@ import {
 import type { ConflictType, ExternalResult, KnowledgeObject, KnowledgeType } from "../api/types";
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
+import { DemoBanner } from "../components/DemoBanner";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { SanitizedHtml } from "../components/SanitizedHtml";
 import { ListEditor, TagEditor } from "../components/editors";
@@ -37,6 +38,7 @@ import {
   SectionLabel,
   TextInput,
 } from "../components/ui";
+import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 import { deriveStatus } from "../lib/displayStatus";
 import { groupEvidenceByVersion } from "../lib/evidenceByVersion";
 import { analyzeEvidenceConsistency } from "../lib/evidenceConsistency";
@@ -105,6 +107,8 @@ const USABILITY_TONE: Record<KoUsability, string> = {
 export function KnowledgeDetail(): JSX.Element {
   const { t } = useTranslation();
   const { id = "" } = useParams();
+  // SCRUM-294: Demo-Kontext der Zielseite (über Library erreicht) — nur Anzeige/Link-Kontext.
+  const [params] = useSearchParams();
   const { role } = useRole();
   const query = useKo(id);
   const evidence = useKoEvidence(id);
@@ -366,6 +370,8 @@ export function KnowledgeDetail(): JSX.Element {
   return (
     <div className="mx-auto max-w-4xl">
       <PageHeader kicker={t("ko.kicker")} title={t("ko.title")} />
+      {/* SCRUM-294: Demo-/Pilotpfad auf der Zielseite wiedererkennbar (nur bei ?demo=stage1). */}
+      {isDemoContext(params) ? <DemoBanner surface="detail" /> : null}
       <QueryState query={query}>
         {(ko) => {
           // SCRUM-251: kompakte Handlungs-/Statusübersicht aus bereits geladenen Feldern.
@@ -407,7 +413,8 @@ export function KnowledgeDetail(): JSX.Element {
                         : "border border-hairline text-text hover:bg-hairline-soft"
                     }`;
                     return cta.kind === "route" ? (
-                      <Link to={cta.href} className={cls}>
+                      // SCRUM-294: im Demo-Kontext den Use-Fluss (→ Ask) quellengebunden weiterführen.
+                      <Link to={demoHref(cta.href, params)} className={cls}>
                         {t(cta.labelKey)} <span aria-hidden="true">→</span>
                       </Link>
                     ) : (
