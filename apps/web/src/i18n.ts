@@ -556,6 +556,9 @@ const de = {
   "ko.rework.savedHint":
     "Eine neue Version ist entstanden und geht erneut in die Prüfung — keine automatische Freigabe, keine automatische Rückgabe.",
   "ko.rework.toValidation": "Zur Validierung der Revision",
+  "ko.rework.feedbackTitle": "Review-Feedback",
+  "ko.rework.feedback.warn": "Rückfrage",
+  "ko.rework.feedback.down": "Ablehnung",
   "ko.saveEdit": "Speichern",
   "ko.cancelEdit": "Abbrechen",
   "ko.editNote":
@@ -1921,6 +1924,9 @@ const en: typeof de = {
   "ko.rework.savedHint":
     "A new version was created and goes back into review — no automatic approval, no automatic return.",
   "ko.rework.toValidation": "To the revision in validation",
+  "ko.rework.feedbackTitle": "Review feedback",
+  "ko.rework.feedback.warn": "Query",
+  "ko.rework.feedback.down": "Rejection",
   "ko.saveEdit": "Save",
   "ko.cancelEdit": "Cancel",
   "ko.editNote":

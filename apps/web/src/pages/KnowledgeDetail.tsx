@@ -84,6 +84,7 @@ import {
   isSourceContributionValid,
 } from "../lib/sourceContribution";
 import { useReadiness } from "../lib/useReadiness";
+import { latestValidationFeedback } from "../lib/validationFeedback";
 import { isReturnedForRework } from "../lib/validationStatus";
 
 interface EditState {
@@ -511,6 +512,37 @@ export function KnowledgeDetail(): JSX.Element {
                       <p className="mt-0.5 text-[11.5px] leading-relaxed text-trust-warn-text/90">
                         {t("ko.rework.hint")}
                       </p>
+                      {/* SCRUM-332: das konkrete jüngste Validierungsfeedback fokussiert zeigen (aus den
+                          KO-Kommentaren am stabilen Präfix erkannt); allgemeine Kommentarliste unberührt. */}
+                      {(() => {
+                        const fb = latestValidationFeedback(ko.comments);
+                        if (!fb) {
+                          return null;
+                        }
+                        return (
+                          <div className="mt-2 rounded-btn border border-trust-warn-fill/30 bg-surface p-2.5">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                                {t("ko.rework.feedbackTitle")}
+                              </span>
+                              <span className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 text-[9.5px] font-semibold uppercase text-trust-warn-text">
+                                {t(`ko.rework.feedback.${fb.verdict}`)}
+                              </span>
+                            </div>
+                            <p className="mt-1 whitespace-pre-wrap text-[12.5px] leading-relaxed text-text">
+                              {fb.body}
+                            </p>
+                            {fb.author ? (
+                              <p className="mt-1 text-[10.5px] text-muted-2">
+                                {nameOf(fb.author)}
+                                {fb.at
+                                  ? ` · ${new Date(fb.at).toLocaleDateString(i18n.language)}`
+                                  : ""}
+                              </p>
+                            ) : null}
+                          </div>
+                        );
+                      })()}
                       <div className="mt-2 flex flex-wrap gap-2">
                         {canEdit && !edit ? (
                           <button

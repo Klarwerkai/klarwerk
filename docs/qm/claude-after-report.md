@@ -7768,3 +7768,40 @@ git commit -m "feat(ko-detail): after rework revision, guide back to validation 
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-332 — Beta Review-Feedback im KO-Detail fokussiert sichtbar machen v0
+**Datum:** 2026-06-29 · **Rolle:** Claude (Umsetzung) · **Status:** umgesetzt, Gates grün
+
+**Vorab-Befund.** `git status -sb` sauber (nur untracked Infra-Doc). `validationFeedback.ts` schreibt Pflichtfeedback mit stabilem, sprachunabhängigem Präfix (`feedbackPrefix`: „Validierungsfeedback (Bedingt)" / „Validierungsfeedback (Ablehnung)") via `buildValidationFeedback(verdict, text)` → `"<Präfix>: <Text>"`. `KoComment` = `{id, author, text, at}`; `ko.comments?: KoComment[]`. KO-Detail hat allgemeine Kommentarliste unten, den SCRUM-330-Rework-Banner bei `?rework=review` (const `reviewReworkContext`) und die SCRUM-331-Revision-Success-Card (`reworkSaved`). Der Rework-Banner zeigte bisher nur den generischen Hinweis, nicht das konkrete Feedback.
+
+**Umsetzung (v0).**
+1. **DOM-freier Leser** in `apps/web/src/lib/validationFeedback.ts`: `parseValidationFeedback(text)` erkennt am `feedbackPrefix` (warn/down) und liefert `{verdict, body}` (Text ohne Präfix) bzw. null; `latestValidationFeedback(comments)` liefert das jüngste passende Feedback `{verdict, body, author, at}` (per ISO-`at`, bei Gleichstand/fehlendem `at` die spätere Array-Position). Robust gegen leere/fehlende/normale/unbekannte Kommentare; nutzt exakt das bestehende Präfix (kein neuer Kommentar-Typ, kein Backend).
+2. **Rework-Banner erweitert** (`KnowledgeDetail.tsx`): nur im Rework-Kontext (`reviewReworkContext && !reworkSaved`) erscheint — falls vorhanden — eine kompakte Feedback-Card direkt unter dem Hinweis: Label „Review-Feedback" + Verdict-Chip (Rückfrage/Ablehnung), der reine Feedback-Text, sowie Autor (via `nameOf`) + Datum (`toLocaleDateString`), beides nur wenn sicher vorhanden. Ohne erkennbares Feedback bleibt nur der bestehende generische Hinweis.
+3. **Allgemeine Kommentarliste** und **normale KO-Detail-Ansicht ohne `?rework=review`** unverändert.
+4. **i18n** `ko.rework.feedbackTitle` + `ko.rework.feedback.warn/down` DE+EN.
+5. **Tests** `tests/ko/validation-feedback-read.test.ts` (NEU, DOM-frei): `parseValidationFeedback` (warn/down erkannt, normale/unbekannte/leere/null → null); `latestValidationFeedback` (leer/normal → null; jüngstes per ISO-`at` inkl. Autor/Zeit; fehlendes `at` → spätere Array-Position; fehlender `text` robust); Banner-i18n DE+EN.
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/validationFeedback.ts` (parseValidationFeedback + latestValidationFeedback + Typen)
+- `apps/web/src/pages/KnowledgeDetail.tsx` (Feedback-Card im Rework-Banner + Import)
+- `apps/web/src/i18n.ts` (`ko.rework.feedback*` DE+EN)
+- `tests/ko/validation-feedback-read.test.ts` (NEU)
+
+**Tests/Gates.** `npm run check` grün — **153 Dateien / 932 Tests**. Gezielt: `npx vitest run tests/ko/validation-feedback-read.test.ts` → 8/8 grün. `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün. SCRUM-330/331-Banner/Card + Kommentarliste + normale Ansicht unverändert. Codex-Korrektur nach Prüfung: Die Fallback-Regel „fehlender Zeitstempel → spätere Array-Position" wurde auch für gemischte Zeitstempel explizit abgesichert.
+
+**Bewusst nicht umgesetzte Gaps (später).** Keine Liste mehrerer Feedbacks (nur das jüngste). Kein Editieren/Beantworten des Feedbacks im Banner. Kein Verlinken/Scrollen zur passenden Stelle in der allgemeinen Kommentarliste. Kein neuer Kommentar-Typ/Backend, keine Migration alter Kommentare.
+
+**Rest-Risiken.** Erkennung hängt am exakten Präfix (`<Präfix>: `) — vor SCRUM-332 geschriebene Feedbacks ohne dieses Format würden nicht erkannt (kein Risiko, nur keine Fokus-Anzeige; fallen weiter in die allgemeine Liste). `toLocaleDateString` rendert nur ein Datum (keine Uhrzeit) — bewusst kompakt; ungültiges `at` würde „Invalid Date" zeigen, ist aber durch die `fb.at`-Guard auf real gesetzte Werte beschränkt (seedete/echte Kommentare liefern ISO).
+
+**Nicht-Ziele eingehalten.** Kein neuer Kommentar-Typ, keine Backend-/Datenmodelländerung, keine Migration, kein Editieren/Beantworten im Banner, kein Diff/Merge-Viewer, keine Auto-Validierung/-Rückgabe/-Freigabe, kein RAG/neue Suche/Local-LLM, keine Team-2/3/4-Dateien, kein Git/Push/Jira. Nur in `/Users/peterkohnert/Documents/dev_Klarwerk`; untracked Infra-Doc unberührt.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/validationFeedback.ts apps/web/src/pages/KnowledgeDetail.tsx apps/web/src/i18n.ts tests/ko/validation-feedback-read.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(ko-detail): show focused validation feedback in rework context (SCRUM-332)"
+git push
+```
+Kein Git/Push/Jira durch Claude.
