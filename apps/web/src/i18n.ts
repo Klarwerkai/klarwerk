@@ -125,6 +125,11 @@ const de = {
   "demo.title": "Demo-/Pilotpfad in 3 Schritten",
   "demo.subtitle":
     "Ein kleiner realer Ablauf: quellengebunden fragen, Quelle/Trust/Status/Version ansehen, ungeprüftes Wissen zur Validierung geben.",
+  // SCRUM-301: sichtbare Pilot-Beweiskette (Start verspricht, Library/KO-Detail lösen ein).
+  "demo.proof.label": "Beweiskette",
+  "demo.proof.find": "Wissen finden",
+  "demo.proof.usability": "Nutzbarkeit erkennen",
+  "demo.proof.verify": "Quelle/Trust/Version prüfen",
   "demo.ask.label": "1 · Fragen",
   "demo.ask.desc":
     "Stell eine belegte Frage (Ventil X / Überdruck) — die Antwort kommt quellengebunden mit Trust und Status, nicht frei erfunden.",
@@ -1324,6 +1329,11 @@ const en: typeof de = {
   "demo.title": "Demo/pilot path in 3 steps",
   "demo.subtitle":
     "A small real walkthrough: ask source-bound, see source/trust/status/version, send unverified knowledge to validation.",
+  // SCRUM-301: visible pilot proof line (Start promises, Library/KO detail deliver).
+  "demo.proof.label": "Proof line",
+  "demo.proof.find": "Find knowledge",
+  "demo.proof.usability": "See usability",
+  "demo.proof.verify": "Check source/trust/version",
   "demo.ask.label": "1 · Ask",
   "demo.ask.desc":
     "Ask a backed question (valve X / overpressure) — the answer comes source-bound with trust and status, not made up.",

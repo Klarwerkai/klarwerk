@@ -6630,3 +6630,38 @@ git commit -m "feat(ask): source usability (useReadiness) + demo-aware KO links 
 git push
 ```
 Kein Git/Push/Jira durch Claude. Codex prüft Diff/Gates, korrigiert minimal falls nötig, committet, pusht, wartet GitHub CI ab und schließt Jira.
+
+---
+
+## SCRUM-301 — Pilot-Story Start → Library → KO-Detail als sichtbare Proof-Linie schärfen
+**Datum:** 2026-06-29 · **Rolle:** Claude (Umsetzung) · **Status:** umgesetzt, Gates grün
+
+**1. Vorab-Befund**
+Library-Treffer zeigt bereits vollständig: Reife/Nutzbarkeit (`libraryMaturity` → `useReadiness`-Label/Tönung), `StatusPill`, Typ, Titel, `ConfidenceBar` (Trust/Confidence) und den Weg ins KO-Detail (`demoHref('/wissen/:id')`) plus Use-CTA. KO-Detail-Overview zeigt vollständig: Nutzbarkeit (`useReadiness(koOverview(ko).usability)`), Status (`StatusPill`), Trust, Version (`v{ov.version}`), Quellen/Anhänge und die nächste Handlung — alles aus `koOverview` (kein neues Modell). Die Demo-Banner (`demoSurfaceBanner` library/detail) erklären die Beweisaussage, `?demo=stage1` wird über `withDemo`/`demoHref` ehrlich weitergetragen. **Eine echte Reibung:** Start beschreibt den Pfad Ask-zentriert (`demo.subtitle`), aber die konkrete Beweiskette „Wissen finden → Nutzbarkeit erkennen → Quelle/Trust/Version prüfen" — die Library (Schritt 2) und KO-Detail dann demonstrieren — wird auf Start nicht als sichtbare Linie benannt. Library/KO-Detail/useReadiness selbst sind bereits konsistent; kein Eingriff dort nötig.
+
+**2. Umsetzung**
+Minimaler Slice, der die Proof-Linie auf Start sichtbar macht und an die vorhandene Belegkette koppelt — keine neue Funktion/Architektur/Route:
+- Neuer DOM-freier Helper `apps/web/src/lib/proofChain.ts`: `PROOF_CHAIN`/`proofChain()` als EINE Quelle der Wahrheit mit drei Beats (`find` → `usability` → `verify`) und stabilen i18n-Keys. Nur Datenbeschreibung, keine Logik/Route/Engine.
+- `apps/web/src/pages/Start.tsx`: auf der vorhandenen Demo-/Pilotpfad-Karte eine kompakte Beweisketten-Zeile „Beweiskette: Wissen finden → Nutzbarkeit erkennen → Quelle/Trust/Version prüfen" unter dem Untertitel (keine Layout-Neugestaltung, gleiche Karte). Begriff „Nutzbarkeit" identisch zur `useReadiness`-Plakette, die der Betrachter dann in Library/KO-Detail sieht.
+- `apps/web/src/i18n.ts`: `demo.proof.label/find/usability/verify` DE + EN.
+
+**3. Geänderte Dateien**
+- `apps/web/src/lib/proofChain.ts` (NEU, DOM-freie Beweisketten-Daten)
+- `apps/web/src/pages/Start.tsx` (Beweisketten-Zeile auf der Demo-Karte + Import)
+- `apps/web/src/i18n.ts` (`demo.proof.*` DE/EN)
+- `tests/app/proof-chain.test.ts` (NEU: Reihenfolge/ids/Keys + DE/EN-Präsenz)
+
+**4. Tests/Gates**
+`npm run check` grün — **133 Dateien / 782 Tests** (+3). `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün.
+
+**5. Restlücken/Nicht-Ziele**
+Start/Library/KO-Detail erzählen jetzt denselben Pilot-Beweis: Start verspricht die Linie „finden → Nutzbarkeit erkennen → Quelle/Trust/Version prüfen", Library löst „finden + Nutzbarkeit + Status/Trust + Weg ins Detail" ein, KO-Detail belegt „Status/Trust/Version/Quellen". Begriffe konsistent mit `useReadiness`/Trust/Status/KO-Detail-Banner (kein Widerspruch). Normale Nutzung ohne Demo-Kontext unverändert (die Beweiszeile steht auf der vorhandenen Demo-Karte, keine neue Mechanik); Demo-Kontext weiterhin nur über `withDemo`/`demoHref`, kein Fake-Deep-Link. Keine neue Suche/RAG/Retrieval, keine Reasoner-/Backend-Änderung, keine neue Datenquelle/Fake-Quellen, keine automatische Validierung, keine neue Task-/Workflow-Engine, keine große UI-Neugestaltung, kein Refactoring ohne Produktnutzen. Untracked `docs/KLARWERK_Infrastruktur_Domain_Server_Aufteilung_v2.md` unberührt.
+
+**6. Commit-/Push-Hinweis (nur Hinweis — nicht ausgeführt)**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/proofChain.ts apps/web/src/pages/Start.tsx apps/web/src/i18n.ts tests/app/proof-chain.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(start): visible pilot proof line (find -> usability -> verify) on demo card; proofChain helper (SCRUM-301)"
+git push
+```
+Kein Git/Push/Jira durch Claude. Codex prüft Diff/Gates, korrigiert minimal falls nötig, committet, pusht, wartet GitHub CI ab und schließt Jira.

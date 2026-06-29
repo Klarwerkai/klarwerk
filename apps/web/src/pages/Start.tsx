@@ -18,6 +18,7 @@ import { DEMO_PILOT_PATH, captureDemoHref } from "../lib/demoPilotPath";
 import { KNOWLEDGE_CYCLE } from "../lib/knowledgeCycle";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { missionsForRole } from "../lib/missions";
+import { PROOF_CHAIN } from "../lib/proofChain";
 import { stufe2FeatureLabelKeys, stufe2HintKind } from "../lib/stufe2Hint";
 import { knowledgeOsPhase, phaseLabelKey } from "../lib/taskAction";
 import {
@@ -166,6 +167,21 @@ export function Start(): JSX.Element {
         <div className="mb-3">
           <h2 className="text-[15px] font-semibold text-ink">{t("demo.title")}</h2>
           <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{t("demo.subtitle")}</p>
+          {/* SCRUM-301: sichtbare Pilot-Beweiskette — Start verspricht „finden → Nutzbarkeit erkennen →
+              Quelle/Trust/Version prüfen"; Library/KO-Detail lösen sie mit denselben Begriffen ein. */}
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+              {t("demo.proof.label")}
+            </span>
+            {PROOF_CHAIN.map((beat) => (
+              <span key={beat.id} className="flex items-center gap-1.5">
+                {beat.n > 1 ? <span className="text-muted-2">→</span> : null}
+                <span className="rounded-pill bg-page px-2 py-0.5 text-[11px] font-medium text-text">
+                  {t(beat.labelKey)}
+                </span>
+              </span>
+            ))}
+          </div>
         </div>
         <ol className="grid gap-2 sm:grid-cols-3">
           {DEMO_PILOT_PATH.map((step) => (
