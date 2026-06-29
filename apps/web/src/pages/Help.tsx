@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { Card, PageHeader } from "../components/ui";
 import { HELP_TOPICS, type HelpSearchItem, filterHelpTopics } from "../lib/helpTopics";
 import { PILOT_CHECKLIST } from "../lib/pilotChecklist";
+import { PILOT_OBSERVATIONS } from "../lib/pilotObservationGuide";
 
 // SCRUM-219: produktnahe Hilfe mit clientseitiger Suche über Titel/Text/Tags. Links nur auf
 // echte App-Routen, ehrlicher Leerzustand. Kein Backend, keine KI-Suche, kein CMS.
@@ -50,6 +51,34 @@ export function Help(): JSX.Element {
             </li>
           ))}
         </ol>
+      </Card>
+      {/* SCRUM-307: beobachtete Pilot-Reibung in einen bestehenden Flow einordnen — kein Backend,
+          keine Speicherung; UX-Notiz bewusst ohne Produktlink. Nicht durchsuchbar, nicht überladen. */}
+      <Card className="mb-5 border-dashed">
+        <h2 className="text-[14px] font-semibold text-ink">{t("pilot.obs.title")}</h2>
+        <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{t("pilot.obs.subtitle")}</p>
+        <ul className="mt-3 space-y-2.5">
+          {PILOT_OBSERVATIONS.map((obs) => (
+            <li key={obs.id} className="flex flex-col gap-1 border-l-2 border-hairline pl-3">
+              <span className="text-[12.5px] leading-relaxed text-text">{t(obs.labelKey)}</span>
+              <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-muted">
+                <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                  {t("pilot.obs.mapLabel")}:
+                </span>
+                <span>{t(obs.mapKey)}</span>
+                {obs.to ? (
+                  <Link
+                    to={obs.to}
+                    className="inline-flex items-center gap-1 font-semibold text-ai hover:opacity-80"
+                  >
+                    {t("pilot.obs.openFlow")}
+                    <ArrowRight size={12} />
+                  </Link>
+                ) : null}
+              </span>
+            </li>
+          ))}
+        </ul>
       </Card>
       <input
         value={q}

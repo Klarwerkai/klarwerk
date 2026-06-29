@@ -921,6 +921,24 @@ const de = {
   "pilot.next.start": "Stage-1 starten (Start öffnen)",
   "pilot.next.checklist": "Pilot-Checkliste öffnen",
   "pilot.next.ask": "Beispiel-Frage öffnen",
+  // SCRUM-307: beobachtete Pilot-Reibungen in bestehende Knowledge-OS-Flows einordnen (kein Backend,
+  // keine Speicherung, keine Jira-/Task-Automatik). UX-Notiz bewusst ohne Produktlink.
+  "pilot.obs.title": "Pilot-Befund einordnen",
+  "pilot.obs.subtitle":
+    "Beobachtete Reibung schnell dem passenden bestehenden Klarwerk-Fluss zuordnen. Nichts wird gespeichert; reine UX-Notizen gehören außerhalb des Produkts.",
+  "pilot.obs.mapLabel": "Gehört in",
+  "pilot.obs.missing.label": "Wissen fehlt ganz (keine Grundlage zur Frage).",
+  "pilot.obs.missing.map": "Risiko/Lücke — priorisieren und erfassen.",
+  "pilot.obs.unverified.label": "Wissen ist unfertig oder noch nicht geprüft.",
+  "pilot.obs.unverified.map": "Validierung — bewerten, bis es gesichert ist.",
+  "pilot.obs.outdated.label": "Wissen wirkt veraltet oder nicht mehr gültig.",
+  "pilot.obs.outdated.map": "Lebenszyklus — Revalidierung, „Aktuell halten“.",
+  "pilot.obs.source.label": "Quelle, Trust oder Nutzbarkeit ist unklar.",
+  "pilot.obs.source.map": "Bibliothek/KO-Detail — Status, Trust, Version, Quelle prüfen.",
+  "pilot.obs.uxnote.label": "Reine UX-/Pilotnotiz (Bedienung, Wording, Ablauf).",
+  "pilot.obs.uxnote.map":
+    "Organisatorisch notieren — wird nicht im Produkt gespeichert, kein Workflow.",
+  "pilot.obs.openFlow": "Fluss öffnen",
   "help.firststart.title": "Erststart & Demodaten",
   "help.firststart.body":
     "Frische Instanzen sind zunächst leer. Als Admin kannst du unter Admin 'Demodaten laden', um Beispiel-Wissen, Validierung, Lücken und Konflikte sichtbar zu machen — ideal für Review und Einarbeitung.",
@@ -2139,6 +2157,23 @@ const en: typeof de = {
   "pilot.next.start": "Start Stage-1 (open Start)",
   "pilot.next.checklist": "Open pilot checklist",
   "pilot.next.ask": "Open example question",
+  // SCRUM-307: map observed pilot frictions to existing Knowledge-OS flows (no backend, no storage,
+  // no Jira/task automation). UX note deliberately has no product link.
+  "pilot.obs.title": "Map a pilot observation",
+  "pilot.obs.subtitle":
+    "Quickly map an observed friction to the matching existing Klarwerk flow. Nothing is stored; pure UX notes belong outside the product.",
+  "pilot.obs.mapLabel": "Belongs in",
+  "pilot.obs.missing.label": "Knowledge is missing entirely (no basis for the question).",
+  "pilot.obs.missing.map": "Risk/gap — prioritize and capture.",
+  "pilot.obs.unverified.label": "Knowledge is unfinished or not yet reviewed.",
+  "pilot.obs.unverified.map": "Validation — rate until it is secured.",
+  "pilot.obs.outdated.label": "Knowledge looks outdated or no longer valid.",
+  "pilot.obs.outdated.map": "Lifecycle — revalidation, “keep current”.",
+  "pilot.obs.source.label": "Source, trust or usability is unclear.",
+  "pilot.obs.source.map": "Library/KO detail — check status, trust, version, source.",
+  "pilot.obs.uxnote.label": "Pure UX/pilot note (usability, wording, flow).",
+  "pilot.obs.uxnote.map": "Note it organizationally — not stored in the product, no workflow.",
+  "pilot.obs.openFlow": "Open flow",
   "help.firststart.title": "First run & demo data",
   "help.firststart.body":
     "Fresh instances start empty. As admin you can use 'Load demo data' under Admin to make example knowledge, validation, gaps and conflicts visible — ideal for review and onboarding.",

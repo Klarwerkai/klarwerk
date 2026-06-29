@@ -6842,3 +6842,38 @@ git commit -m "feat(admin): show Stage-1 pilot next steps after demo seed; pilot
 git push
 ```
 Kein Git/Push/Jira durch Claude. Codex prüft Diff/Gates, korrigiert minimal falls nötig, committet, pusht, wartet GitHub CI ab und schließt Jira. Untracked `docs/KLARWERK_Infrastruktur_Domain_Server_Aufteilung_v2.md` bleibt unangetastet.
+
+---
+
+## SCRUM-307 — Pilot-Befunde: Reibungen in bestehende Knowledge-OS-Flows übersetzen
+**Datum:** 2026-06-29 · **Rolle:** Claude (Umsetzung) · **Status:** umgesetzt, Gates grün
+
+**1. Vorab-Befund**
+`pilotChecklist.ts` (SCRUM-305) liefert die ehrliche Stage-1-Checkliste, `Help.tsx` rendert sie als Karte oberhalb der Suche; `pilotNextSteps.ts` (SCRUM-306) führt nach dem Seed in den Lauf. **Es fehlte** eine sichtbare **Einordnung beobachteter Reibungen** in die bestehenden Flows — Pilotführer hatten kein „so etwas gesehen → gehört in diesen vorhandenen Klarwerk-Fluss". Vorhandene Routen für die Zuordnung sind da: `/risiko`, `/validierung`, `/lebenszyklus`, `/bibliothek` (alle in HELP_TOPICS). Lücke bestätigt; reine UX-Notizen dürfen ausdrücklich keinen Fake-Flow/keine Fake-Speicherung suggerieren.
+
+**2. Umsetzung**
+Kleiner Produkt-Slice, kein Backend/keine Speicherung/keine Automatik:
+- Neuer DOM-freier Helper `apps/web/src/lib/pilotObservationGuide.ts`: `PILOT_OBSERVATIONS`/`pilotObservationGuide()` mit 5 Kategorien — fehlendes Wissen → `/risiko`, unfertig/ungeprüft → `/validierung`, veraltet → `/lebenszyklus`, unklare Quelle/Trust/Nutzbarkeit → `/bibliothek` (Einstieg, **keine** Fake-KO-ID), reine UX-/Pilotnotiz → `to: null` (bewusst kein Produktlink). Verweist ausschließlich auf vorhandene Routen.
+- `apps/web/src/pages/Help.tsx`: kompakte „Pilot-Befund einordnen"-Karte direkt unter der Pilot-Checkliste (nicht durchsuchbar, nicht überladen). Jede Zeile: beobachtete Reibung + „Gehört in" + Flow-Link; die UX-Notiz zeigt bewusst **keinen** Link.
+- `apps/web/src/i18n.ts`: `pilot.obs.title/subtitle/mapLabel/openFlow` + je Kategorie `.label`/`.map` DE + EN. Untertitel + UX-Notiz machen ehrlich klar: „Nichts wird gespeichert" / „nicht im Produkt gespeichert, kein Workflow".
+
+**3. Geänderte Dateien**
+- `apps/web/src/lib/pilotObservationGuide.ts` (NEU, DOM-freie Befund→Flow-Zuordnung)
+- `apps/web/src/pages/Help.tsx` (Einordnungs-Karte + Import)
+- `apps/web/src/i18n.ts` (`pilot.obs.*` DE/EN)
+- `tests/app/pilot-observation-guide.test.ts` (NEU: Kategorien/Reihenfolge, korrekte Routen, /bibliothek statt Fake-KO-ID, UX-Notiz ohne Link + „nicht gespeichert"-Text, alle i18n-Keys DE/EN auflösbar)
+
+**4. Tests/Gates**
+`npm run check` grün — **136 Dateien / 795 Tests** (+5). `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün.
+
+**5. Restlücken/Nicht-Ziele**
+Pilot-Befunde werden jetzt sichtbar und verständlich auf die bestehenden Flows gemappt; alle Links führen auf vorhandene Routen; die reine UX-/Pilotnotiz hat bewusst keinen Link und keine (Fake-)Speicherung — es wird nicht behauptet, dass UX-Feedback im Produkt verarbeitet wird. Normale Help-Nutzung unverändert (zusätzliche, nicht durchsuchbare Karte). Kein Backend, keine Feedback-DB, kein Tracking/Analytics, keine Jira-/Task-Automatik, keine neue Task-Engine/Suche/RAG, keine Architekturänderung, keine Team-2/3-Arbeit, kein Deployment.
+
+**6. Commit-/Push-Hinweis (nur Hinweis — nicht ausgeführt)**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/pilotObservationGuide.ts apps/web/src/pages/Help.tsx apps/web/src/i18n.ts tests/app/pilot-observation-guide.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(help): map pilot observations to existing Knowledge-OS flows; pilotObservationGuide helper (SCRUM-307)"
+git push
+```
+Kein Git/Push/Jira durch Claude. Codex prüft Diff/Gates, korrigiert minimal falls nötig, committet, pusht, wartet GitHub CI ab und schließt Jira. Untracked `docs/KLARWERK_Infrastruktur_Domain_Server_Aufteilung_v2.md` bleibt unangetastet.
