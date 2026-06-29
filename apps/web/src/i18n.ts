@@ -367,6 +367,9 @@ const de = {
     "Antworten kommen ausschließlich aus validiertem Wissen — mit Quellen und Vertrauen. Gibt es keine Grundlage, wird die Lücke offen benannt.",
   "ask.placeholder": "z. B. Wann muss Ventil X bei Überdruck geschlossen werden?",
   "ask.submit": "Fragen",
+  // SCRUM-295: Hinweis bei vorbefüllter Startfrage (aus KO-Detail „Wissen nutzen") im Demo-Kontext.
+  "ask.demoPrefillHint":
+    "Startfrage aus dem Wissensobjekt übernommen — auf „Fragen“ klicken. Die Antwort bleibt quellengebunden; Status und Trust entscheiden, nichts wird automatisch gesichert.",
   "ask.examplesLabel": "Beispiele:",
   "ask.example.valve": "Was tun, wenn Ventil X bei Überdruck schließen muss?",
   "ask.example.filter": "Wie oft muss Filter F3 geprüft werden?",
@@ -1549,6 +1552,9 @@ const en: typeof de = {
   "ask.intro":
     "Answers come only from validated knowledge — with sources and trust. If there is no basis, the gap is named openly.",
   "ask.placeholder": "e.g. When must valve X be closed on overpressure?",
+  // SCRUM-295: hint for a prefilled start question (from KO detail “Use knowledge”) in demo context.
+  "ask.demoPrefillHint":
+    "Start question taken from the knowledge object — click “Ask”. The answer stays source-bound; status and trust decide, nothing is secured automatically.",
   "ask.examplesLabel": "Examples:",
   "ask.example.valve": "What to do when Ventil X must close on Überdruck (overpressure)?",
   "ask.example.filter": "How often must Filter F3 be checked?",

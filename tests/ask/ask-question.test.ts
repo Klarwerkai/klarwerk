@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { askQuestionHref, readAskQuestion } from "../../apps/web/src/lib/askQuestion";
+import i18n from "../../apps/web/src/i18n";
+import {
+  askQuestionHref,
+  isPrefilledAskQuestion,
+  readAskQuestion,
+} from "../../apps/web/src/lib/askQuestion";
 
 // SCRUM-272: Ask-Startfrage als Query-Parameter (/fragen?q=…) — nur vorbefüllen, kein Auto-Ask.
 describe("SCRUM-272: askQuestion", () => {
@@ -26,5 +31,28 @@ describe("SCRUM-272: askQuestion", () => {
     expect(readAskQuestion(new URLSearchParams(""))).toBeNull();
     expect(readAskQuestion(new URLSearchParams("q=%20%20"))).toBeNull();
     expect(readAskQuestion(new URLSearchParams("other=x"))).toBeNull();
+  });
+});
+
+// SCRUM-295: ehrlicher Hinweis bei vorbefüllter Startfrage (aus KO-Detail „Wissen nutzen").
+describe("SCRUM-295: isPrefilledAskQuestion + Demo-Prefill-Hinweis", () => {
+  it("erkennt eine vorbefüllte Startfrage (?q=…), sonst false", () => {
+    expect(isPrefilledAskQuestion(new URLSearchParams("q=Ventil"))).toBe(true);
+    expect(isPrefilledAskQuestion(new URLSearchParams("q=Ventil&demo=stage1"))).toBe(true);
+    expect(isPrefilledAskQuestion(new URLSearchParams("demo=stage1"))).toBe(false);
+    expect(isPrefilledAskQuestion(new URLSearchParams(""))).toBe(false);
+    expect(isPrefilledAskQuestion(new URLSearchParams("q=%20%20"))).toBe(false);
+  });
+
+  const text = (lng: string) =>
+    String(i18n.getResource(lng, "translation", "ask.demoPrefillHint") ?? "").toLowerCase();
+
+  it("Hinweis-i18n DE/EN ehrlich: Startpunkt, quellengebunden, nichts automatisch gesichert", () => {
+    expect(text("de")).toContain("startfrage");
+    expect(text("de")).toContain("quellengebunden");
+    expect(text("de")).toContain("automatisch gesichert");
+    expect(text("en")).toContain("start question");
+    expect(text("en")).toContain("source-bound");
+    expect(text("en")).toContain("secured automatically");
   });
 });

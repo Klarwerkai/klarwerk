@@ -10,7 +10,7 @@ import { DemoBanner } from "../components/DemoBanner";
 import { ConfidenceBar } from "../components/trust";
 import { Button, Card, PageHeader, SectionLabel } from "../components/ui";
 import { ASK_EXAMPLES, type AskExpectationTone, askExpectation } from "../lib/askExamples";
-import { readAskQuestion } from "../lib/askQuestion";
+import { isPrefilledAskQuestion, readAskQuestion } from "../lib/askQuestion";
 import { selectAnswer } from "../lib/askResponse";
 import { answerReviewGuard, answerStatus, sourceRefs } from "../lib/askView";
 import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
@@ -119,6 +119,15 @@ export function Ask(): JSX.Element {
           ))}
         </div>
       </Card>
+
+      {/* SCRUM-295: im Demo-/Use-Kontext mit vorbefüllter Startfrage (z. B. aus KO-Detail „Wissen
+          nutzen") ehrlich führen: Frage ist nur Startpunkt, kein Auto-Submit; Antwort bleibt
+          quellengebunden, Status/Trust entscheiden. Ohne Demo-Kontext unverändert. */}
+      {isDemoContext(params) && isPrefilledAskQuestion(params) && !result ? (
+        <p className="mb-2 rounded-btn bg-page px-2.5 py-2 text-[12px] text-muted-2">
+          {t("ask.demoPrefillHint")}
+        </p>
+      ) : null}
 
       <form
         className="flex gap-2"

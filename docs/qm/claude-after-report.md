@@ -6405,3 +6405,47 @@ git commit -m "feat(demo): visible Library→KO-detail→Ask use-flow via demo c
 git push
 ```
 Keine Jira-Änderungen durch Claude. Codex prüft Diff/Gates, korrigiert minimal, committet, pusht, wartet GitHub CI ab, schließt Jira.
+
+---
+
+## SCRUM-295 — Demo-/Pilotpfad live prüfen & sichtbare Reibungen im Stage-1-Flow glätten
+**Datum:** 2026-06-29 · **Rolle:** Claude prüft live + setzt minimal um (Codex steuert, Pedi entscheidet Richtung). **FE-Produkt-Slice** (DOM-freier Helper + gated Ask-Hinweis + i18n + Test); keine Backend-/Reasoner-/Suchänderung; kein neues Statusmodell; keine automatische/Fake-Validierung.
+
+### 1. Vorab-Befund
+- Demo-Pfad (SCRUM-290–294): Start-Karte (Ask/Library/Validation), DemoBanner-Surfaces ask/library/detail/validation, `withDemo`/`isDemoContext`/`demoHref`-Propagierung. Seed (`seed-demo.ts`): 5 KOs (Ventil validiert+1 Quelle; Filter validiert ohne Quelle; 3 offen), Validation-Board = `list({status:"offen"})`.
+
+### 2. Live-/Runtime-Review (In-Memory + Seed, real ausgeführt)
+- **reasoner-status:** `{active:false, provider:"deterministic"}`.
+- **Ask „Ventil X / Überdruck":** answered=true, **gesichert, trust=100, 1 Quelle** (validiertes KO). ✓
+- **/api/kos:** 5 KOs; Demo-Ziel Ventil = validiert, trust 100, v1, **1 Quelle** — Status/Trust/Version/Quellen konsistent. ✓
+- **/api/validation/board:** **3 offene Review-KOs** (Pumpe, Kaltstart×2) → „Validation = Review-Arbeit" ist real belegt. ✓ (erste Abfrage hatte falsche URL `/api/validation` → 0; korrekter Endpoint ist `/api/validation/board`.)
+- **Fluss kohärent:** Start→Ask→Library→KO-Detail→Ask→Validation; Demo-Kontext propagiert über `demoHref` (Library→KO-Detail→Ask); keine Fake-Validierung; offene KOs (z. B. Pumpe/Kaltstart-Review) erscheinen nicht als gesichert.
+- **Sichtbare Reibung (P2):** Kommt ein Pilot über die KO-Detail-„Wissen nutzen"-CTA mit **vorbefüllter** Startfrage nach Ask (`?q=…&demo=stage1`), gibt es **keinen** Hinweis, dass die Frage nur Startpunkt ist und „Fragen" zu klicken ist (kein Auto-Submit; Antwort bleibt quellengebunden). → einzige sinnvolle kleine Glättung.
+- Übrige Beobachtungen = **keine** Reibung: KO-Detail use-CTA bei offenem KO führt korrekt zur Validierung (nicht Ask); Library-Banner-„next"→Validierung ist Pfad-Schritt 3; Seed-„Filter ohne Quelle" ist nicht das Demo-Ziel.
+
+### 3. Umsetzung (minimal, 1 Reibung)
+- `askQuestion.ts`: DOM-freier `isPrefilledAskQuestion(params)` (true bei vorbefüllter `?q=…`).
+- `Ask.tsx`: **gated Hinweis** nur bei `isDemoContext(params) && isPrefilledAskQuestion(params) && !result` — „Startfrage übernommen, auf ‚Fragen' klicken; Antwort bleibt quellengebunden; Status/Trust entscheiden, nichts wird automatisch gesichert." Ohne Demo-Kontext **unverändert**.
+- i18n DE/EN `ask.demoPrefillHint`.
+
+### 4. Geänderte Dateien
+- `apps/web/src/lib/askQuestion.ts` (isPrefilledAskQuestion).
+- `apps/web/src/pages/Ask.tsx` (gated Hinweis + Import).
+- `apps/web/src/i18n.ts` (`ask.demoPrefillHint` DE+EN).
+- `tests/ask/ask-question.test.ts` (+2: Helper-Erkennung; i18n-Ehrlichkeit DE/EN).
+
+### 5. Tests/Gates
+`npm run check` grün — **132 Dateien / 762 Tests** (+2). `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün. Zusätzlich: realer In-Memory-Live-Run (Ask/KOs/Validation-Board), Server gestoppt.
+
+### 6. Restlücken/Nicht-Ziele
+- **Normale Nutzung ohne `?demo=stage1` unverändert** (Hinweis erscheint nicht; kein Auto-Submit). Trust/Status/Version/Quellen unverändert sichtbar & widerspruchsfrei; offene Inhalte nicht als gesichert behauptet.
+- Bewusst **nicht** geändert: Seed (Filter-KO ohne Quelle), Library-Banner-„next", KO-Detail-CTA-Logik — alle kohärent/ehrlich. Keine neue Suche/RAG/Reasoner-/Backend-Änderung, keine automatische Validierung.
+
+### 7. Commit-/Push-Hinweis (nur Hinweis — Claude führt NICHT aus)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/askQuestion.ts apps/web/src/pages/Ask.tsx apps/web/src/i18n.ts tests/ask/ask-question.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(ask): honest prefilled-question hint in demo/use context (source-bound, no auto-validate) (SCRUM-295)"
+git push
+```
+Keine Jira-Änderungen durch Claude. Codex prüft Diff/Gates, korrigiert minimal, committet, pusht, wartet GitHub CI ab, schließt Jira.

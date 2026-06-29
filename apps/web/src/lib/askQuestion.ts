@@ -14,3 +14,10 @@ export function readAskQuestion(params: URLSearchParams): string | null {
   const value = params.get(Q_PARAM)?.trim();
   return value && value.length > 0 ? value : null;
 }
+
+// SCRUM-295: true, wenn Ask mit einer vorbefüllten Startfrage (?q=…) erreicht wurde — z. B. über die
+// „Wissen nutzen"-CTA aus KO-Detail/Library. Reine, DOM-freie Logik (kein Auto-Submit) — nur, um im
+// Demo-/Use-Kontext einen ehrlichen Hinweis zu zeigen (Frage ist Startpunkt; Antwort bleibt quellengebunden).
+export function isPrefilledAskQuestion(params: URLSearchParams): boolean {
+  return readAskQuestion(params) !== null;
+}
