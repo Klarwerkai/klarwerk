@@ -38,6 +38,11 @@ describe("SCRUM-156: seedDemo", () => {
     expect(kos.some((k) => k.status === "offen")).toBe(true);
     expect(kos.some((k) => k.trust > 0 && k.trust < 100)).toBe(true); // Teil-Review (in Prüfung)
 
+    // SCRUM-308: alle geseedeten KOs tragen den Demo-Herkunfts-Tag (sichtbar als Beispielwissen
+    // markierbar); muss mit DEMO_TAG in apps/web/src/lib/demoKnowledge.ts übereinstimmen.
+    expect(kos.length).toBeGreaterThan(0);
+    expect(kos.every((k) => (k.tags ?? []).includes("pilot-demo"))).toBe(true);
+
     // SCRUM-244: mindestens ein KO trägt Quelle UND Anhang → beide Evidence-Arten sichtbar.
     const rich = kos.find((k) => (k.sources?.length ?? 0) > 0 && (k.attachments?.length ?? 0) > 0);
     expect(rich).toBeDefined();

@@ -6877,3 +6877,40 @@ git commit -m "feat(help): map pilot observations to existing Knowledge-OS flows
 git push
 ```
 Kein Git/Push/Jira durch Claude. Codex prüft Diff/Gates, korrigiert minimal falls nötig, committet, pusht, wartet GitHub CI ab und schließt Jira. Untracked `docs/KLARWERK_Infrastruktur_Domain_Server_Aufteilung_v2.md` bleibt unangetastet.
+
+---
+
+## SCRUM-308 — Demo-/Pilotdaten als Beispielwissen sichtbar kennzeichnen
+**Datum:** 2026-06-29 · **Rolle:** Claude (Umsetzung) · **Status:** umgesetzt, Gates grün
+
+**1. Vorab-Befund**
+Der Demo-Seed (`services/app/src/seed-demo.ts`) erzeugt 5 KOs jeweils über `ko.create({…, tags: [...] })`; `KnowledgeObject.tags: string[]` existiert bereits. Demo-KOs erscheinen sichtbar in Library (Trefferzeile), KO-Detail (Overview), Ask-Quellen. Es gab **keine** Kennzeichnung als Beispielwissen — Pilotnutzer könnten validiertes Demo-Wissen mit produktivem verwechseln. Kleinste, schemafreie Erkennung: ein eindeutiger Herkunfts-Tag im vorhandenen `tags`-Feld (keine Migration, kein neues Datenmodell). Produktiv erfasste KOs tragen diesen Tag nicht.
+
+**2. Umsetzung**
+- **Seed (Marker):** `seed-demo.ts` setzt `DEMO_TAG = "pilot-demo"` auf alle 5 Demo-KOs (`tags: [..., DEMO_TAG]`). Keine Schemaänderung, kein neues Feld.
+- **DOM-freier Helper:** `apps/web/src/lib/demoKnowledge.ts` — `DEMO_TAG`, `isDemoKnowledge(ko)` (= `tags` enthält `DEMO_TAG`), `demoKnowledgeBadge(ko)` → `{labelKey, hintKey, tone:"neutral"}` nur für Demo-KOs, sonst `null`. Bewusst neutrale Tönung: Herkunft, kein Qualitäts-/Status-/Trust-Signal.
+- **Badge sichtbar:** Library-Trefferzeile (neben Status/Reife), KO-Detail-Overview (in der Status-/Trust-Zeile) und Ask-Quellen. Für Ask wurde `askView.SourceRef` um `demo: boolean` erweitert (dieselbe Erkennung über `isDemoKnowledge`) — sauber und klein, ohne Umbau; Ask zeigt je Quelle einen neutralen „Demo-Beispiel"-Marker.
+- **i18n:** `demo.badge.label` („Demo-Beispiel"/„Example data") + `demo.badge.hint` DE/EN. Hint ist ehrlich: „Nur Herkunft — ersetzt nicht Status, Trust, Quelle oder Validierung. Validiert bleibt validiert, offen bleibt offen."
+
+**3. Geänderte Dateien**
+- `services/app/src/seed-demo.ts` (DEMO_TAG auf alle Seed-KOs)
+- `apps/web/src/lib/demoKnowledge.ts` (NEU, DOM-freier Helper)
+- `apps/web/src/lib/askView.ts` (`SourceRef.demo` + Ableitung)
+- `apps/web/src/pages/Library.tsx`, `KnowledgeDetail.tsx`, `Ask.tsx` (Demo-Badge/-Marker)
+- `apps/web/src/i18n.ts` (`demo.badge.*` DE/EN)
+- `tests/app/demo-knowledge.test.ts` (NEU), `tests/ask/ask-view.test.ts` (um `demo` erweitert), `services/app/src/seed.test.ts` (alle Seed-KOs tragen den Demo-Tag)
+
+**4. Tests/Gates**
+`npm run check` grün — **137 Dateien / 800 Tests** (+5). `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün. Abgesichert: Demo-KO wird erkannt, normales/leeres/undefined-tags-KO NICHT; Badge-/Label-/Hint-Keys korrekt; Cross-Surface-Konsistenz (Library/KO-Detail/Ask nutzen denselben Helper, `sourceRefs.demo` == `isDemoKnowledge`); Seed enthält die Demo-Markierung.
+
+**5. Restlücken/Nicht-Ziele**
+Demo-/Seed-Wissen ist jetzt in Library, KO-Detail und Ask-Quellen sichtbar und ehrlich als Beispielwissen markiert; das Badge ersetzt **nicht** Status/Trust/Quelle/Nutzbarkeit/Validierung (neutral, nur Herkunft). Produktiv neu erfasste KOs werden nie fälschlich als Demo markiert (Tag nur im Seed gesetzt). Kein neues Datenmodell, keine Migration, keine Mandanten-/Produktionsdaten-Trennung, keine Lösch-/Reset-Funktion, kein Backend-Tracking, keine neue Suche/RAG, keine Architekturänderung, keine Team-2/3-Arbeit, kein Deployment. Hinweis: Ein Nutzer könnte theoretisch `pilot-demo` manuell als Tag vergeben — bewusst akzeptierter Randfall (kein Schutzmechanismus gefordert); der Tag ist absichtlich unüblich gewählt.
+
+**6. Commit-/Push-Hinweis (nur Hinweis — nicht ausgeführt)**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add services/app/src/seed-demo.ts services/app/src/seed.test.ts apps/web/src/lib/demoKnowledge.ts apps/web/src/lib/askView.ts apps/web/src/pages/Library.tsx apps/web/src/pages/KnowledgeDetail.tsx apps/web/src/pages/Ask.tsx apps/web/src/i18n.ts tests/app/demo-knowledge.test.ts tests/ask/ask-view.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(demo): mark demo/seed knowledge as example data via tag; demoKnowledge helper + badges (SCRUM-308)"
+git push
+```
+Kein Git/Push/Jira durch Claude. Codex prüft Diff/Gates, korrigiert minimal falls nötig, committet, pusht, wartet GitHub CI ab und schließt Jira. Untracked `docs/KLARWERK_Infrastruktur_Domain_Server_Aufteilung_v2.md` bleibt unangetastet.

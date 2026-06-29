@@ -2,6 +2,7 @@
 // gesichert ist (aus der Knowledge-Class abgeleitet — KEINE neue Antwortlogik) und löst Quellen-IDs
 // in lesbare KO-Titel auf. Keine RAG/Vector-DB, keine neuen Backend-Felder. Reine Funktionen.
 import type { KnowledgeClass, KnowledgeObject } from "../api/types";
+import { isDemoKnowledge } from "./demoKnowledge";
 import { type KoUsability, koOverview } from "./koOverview";
 
 export type AnswerStatusKey = "verified" | "unverified";
@@ -28,6 +29,8 @@ export interface SourceRef {
   // koOverview → useReadiness). Macht je Quelle sichtbar, wie belastbar sie ist
   // (nutzbar/in Prüfung/zu prüfen). null bei unbekannter Quelle (kein Fake-Zustand).
   usability: KoUsability | null;
+  // SCRUM-308: Herkunft Demo-/Seed-Wissen (nur Kontext, kein Qualitätssignal). false bei unbekannter Quelle.
+  demo: boolean;
 }
 
 // Quellen-IDs in handlungsnahe Referenzen (Titel + Link-ID + Nutzbarkeit) auflösen; Reihenfolge
@@ -46,6 +49,7 @@ export function sourceRefs(
       known: ko !== undefined,
       validated: ko ? ko.status === "validiert" : null,
       usability: ko ? koOverview(ko).usability : null,
+      demo: ko ? isDemoKnowledge(ko) : false,
     };
   });
 }

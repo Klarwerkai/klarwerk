@@ -130,6 +130,10 @@ const de = {
   "demo.proof.find": "Wissen finden",
   "demo.proof.usability": "Nutzbarkeit erkennen",
   "demo.proof.verify": "Quelle/Trust/Version prüfen",
+  // SCRUM-308: Herkunfts-Kennzeichnung für Demo-/Seed-Wissen (nur Kontext, kein Qualitätssignal).
+  "demo.badge.label": "Demo-Beispiel",
+  "demo.badge.hint":
+    "Beispiel-/Pilotwissen aus dem Demo-Seed. Nur Herkunft — ersetzt nicht Status, Trust, Quelle oder Validierung. Validiert bleibt validiert, offen bleibt offen.",
   "demo.ask.label": "1 · Fragen",
   "demo.ask.desc":
     "Stell eine belegte Frage (Ventil X / Überdruck) — die Antwort kommt quellengebunden mit Trust und Status, nicht frei erfunden.",
@@ -1373,6 +1377,10 @@ const en: typeof de = {
   "demo.proof.find": "Find knowledge",
   "demo.proof.usability": "See usability",
   "demo.proof.verify": "Check source/trust/version",
+  // SCRUM-308: provenance marker for demo/seed knowledge (context only, not a quality signal).
+  "demo.badge.label": "Example data",
+  "demo.badge.hint":
+    "Example/pilot knowledge from the demo seed. Provenance only — does not replace status, trust, source or validation. Validated stays validated, open stays open.",
   "demo.ask.label": "1 · Ask",
   "demo.ask.desc":
     "Ask a backed question (valve X / overpressure) — the answer comes source-bound with trust and status, not made up.",

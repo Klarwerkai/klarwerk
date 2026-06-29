@@ -258,6 +258,15 @@ export function Ask(): JSX.Element {
                           {t(useReadiness(s.usability).labelKey)}
                         </span>
                       ) : null}
+                      {/* SCRUM-308: Herkunfts-Kennzeichnung Demo-/Seed-Wissen (neutral, kein Statussignal). */}
+                      {s.demo ? (
+                        <span
+                          title={t("demo.badge.hint")}
+                          className="shrink-0 rounded-pill bg-hairline-soft px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-muted-2"
+                        >
+                          {t("demo.badge.label")}
+                        </span>
+                      ) : null}
                     </li>
                   ))}
                 </ul>

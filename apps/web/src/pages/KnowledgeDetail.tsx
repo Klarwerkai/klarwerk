@@ -38,6 +38,7 @@ import {
   SectionLabel,
   TextInput,
 } from "../components/ui";
+import { isDemoKnowledge } from "../lib/demoKnowledge";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 import { deriveStatus } from "../lib/displayStatus";
 import { groupEvidenceByVersion } from "../lib/evidenceByVersion";
@@ -386,6 +387,15 @@ export function KnowledgeDetail(): JSX.Element {
                     {t(useReadiness(ov.usability).labelKey)}
                   </span>
                   <StatusPill status={ov.status} />
+                  {/* SCRUM-308: Herkunfts-Kennzeichnung Demo-/Seed-Wissen (neutral, kein Statussignal). */}
+                  {isDemoKnowledge(ko) ? (
+                    <span
+                      title={t("demo.badge.hint")}
+                      className="rounded-pill bg-hairline-soft px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2"
+                    >
+                      {t("demo.badge.label")}
+                    </span>
+                  ) : null}
                   <span className="font-mono text-[12px] text-muted">
                     {t("ko.ovTrust")} <span className="font-semibold text-ink">{ov.trust}</span>
                   </span>

@@ -27,15 +27,29 @@ describe("SCRUM-250: askView", () => {
       [ko("a", "Ventil X", "validiert"), ko("b", "Pumpe P2", "offen")],
     );
     expect(refs).toEqual([
-      { id: "b", label: "Pumpe P2", known: true, validated: false, usability: "needs-work" },
-      { id: "a", label: "Ventil X", known: true, validated: true, usability: "ready" },
+      {
+        id: "b",
+        label: "Pumpe P2",
+        known: true,
+        validated: false,
+        usability: "needs-work",
+        demo: false,
+      },
+      {
+        id: "a",
+        label: "Ventil X",
+        known: true,
+        validated: true,
+        usability: "ready",
+        demo: false,
+      },
     ]);
   });
 
   it("unbekannte ID → Fallback auf die ID, known=false (ehrlich, kein Fake-Titel)", () => {
     const refs = sourceRefs(["ghost"], [ko("a", "Ventil X", "validiert")]);
     expect(refs).toEqual([
-      { id: "ghost", label: "ghost", known: false, validated: null, usability: null },
+      { id: "ghost", label: "ghost", known: false, validated: null, usability: null, demo: false },
     ]);
   });
 
@@ -72,7 +86,7 @@ describe("SCRUM-250: askView", () => {
   it("answerReviewGuard: gesicherte Antworten brauchen keinen Review-Hinweis", () => {
     expect(
       answerReviewGuard("gesichert", [
-        { id: "a", label: "A", known: true, validated: true, usability: "ready" },
+        { id: "a", label: "A", known: true, validated: true, usability: "ready", demo: false },
       ]),
     ).toBeNull();
   });
@@ -80,7 +94,14 @@ describe("SCRUM-250: askView", () => {
   it("answerReviewGuard: ungeprüfte Antwort aus offener Quelle führt zur Validierung", () => {
     expect(
       answerReviewGuard("ungeprueft", [
-        { id: "a", label: "A", known: true, validated: false, usability: "needs-work" },
+        {
+          id: "a",
+          label: "A",
+          known: true,
+          validated: false,
+          usability: "needs-work",
+          demo: false,
+        },
       ]),
     ).toEqual({
       labelKey: "ask.reviewGuard.openLabel",
@@ -93,7 +114,14 @@ describe("SCRUM-250: askView", () => {
   it("answerReviewGuard: unbekannte ungeprüfte Quelle bleibt als ungeprüft markiert", () => {
     expect(
       answerReviewGuard("unbekannt", [
-        { id: "ghost", label: "ghost", known: false, validated: null, usability: null },
+        {
+          id: "ghost",
+          label: "ghost",
+          known: false,
+          validated: null,
+          usability: null,
+          demo: false,
+        },
       ]),
     ).toMatchObject({
       labelKey: "ask.reviewGuard.unverifiedLabel",

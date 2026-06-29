@@ -16,6 +16,7 @@ import {
   StatusPill,
 } from "../components/trust";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
+import { isDemoKnowledge } from "../lib/demoKnowledge";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 import { deriveStatus } from "../lib/displayStatus";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
@@ -273,6 +274,15 @@ export function Library(): JSX.Element {
                             {t(maturity.labelKey)}
                           </span>
                           <StatusPill status={deriveStatus(k)} />
+                          {/* SCRUM-308: Herkunfts-Kennzeichnung Demo-/Seed-Wissen (neutral, kein Statussignal). */}
+                          {isDemoKnowledge(k) ? (
+                            <span
+                              title={t("demo.badge.hint")}
+                              className="shrink-0 rounded-pill bg-hairline-soft px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted-2"
+                            >
+                              {t("demo.badge.label")}
+                            </span>
+                          ) : null}
                           <KnowledgeTypeTag type={k.type} />
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-[13.5px] text-text">

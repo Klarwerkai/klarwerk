@@ -123,6 +123,12 @@ async function buildDemoContent(
   const carlaId = actors.controllerId;
   const erikId = actors.expertId;
 
+  // SCRUM-308: eindeutiger Herkunfts-Tag für Demo-/Seed-Wissen (kein neues Datenmodell, keine
+  // Migration — nur ein zusätzlicher Tag im vorhandenen tags-Feld). Muss mit dem FE-Konstanten
+  // DEMO_TAG in apps/web/src/lib/demoKnowledge.ts übereinstimmen. Produktiv erfasste KOs tragen
+  // diesen Tag NICHT (er wird ausschließlich hier im Seed gesetzt).
+  const DEMO_TAG = "pilot-demo";
+
   // --- Wissensobjekte (verschiedene Kategorien, Arten, Trust, Tags) ---
   const koValid = await ko.create({
     title: "Ventil X bei Überdruck manuell schließen.",
@@ -131,7 +137,7 @@ async function buildDemoContent(
     type: "best_practice",
     category: "Anlage 1",
     author: erikId,
-    tags: ["ventil", "überdruck", "sicherheit"],
+    tags: ["ventil", "überdruck", "sicherheit", DEMO_TAG],
     conditions: ["Druck > 6 bar"],
     measures: ["Ventil X schließen"],
     confidence: 80,
@@ -144,7 +150,7 @@ async function buildDemoContent(
     type: "technik",
     category: "Anlage 2",
     author: erikId,
-    tags: ["pumpe", "wartung"],
+    tags: ["pumpe", "wartung", DEMO_TAG],
     confidence: 40,
     neededValidations: 2,
   });
@@ -154,7 +160,7 @@ async function buildDemoContent(
     type: "lernkurve",
     category: "Anlage 1",
     author: erikId,
-    tags: ["kaltstart", "vorwärmung"],
+    tags: ["kaltstart", "vorwärmung", DEMO_TAG],
     confidence: 55,
     neededValidations: 2,
   });
@@ -164,7 +170,7 @@ async function buildDemoContent(
     type: "negativwissen",
     category: "Anlage 1",
     author: adminId,
-    tags: ["kaltstart", "vorwärmung"],
+    tags: ["kaltstart", "vorwärmung", DEMO_TAG],
     confidence: 30,
     neededValidations: 2,
   });
@@ -174,7 +180,7 @@ async function buildDemoContent(
     type: "best_practice",
     category: "Anlage 3",
     author: erikId,
-    tags: ["filter", "wartung"],
+    tags: ["filter", "wartung", DEMO_TAG],
     confidence: 65,
     neededValidations: 2,
   });
