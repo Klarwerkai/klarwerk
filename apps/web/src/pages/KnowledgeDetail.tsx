@@ -21,6 +21,7 @@ import { useToast } from "../app/ToastContext";
 import { AiAssistBox } from "../components/AiAssistBox";
 import { BodyTemplateChooser } from "../components/BodyTemplateChooser";
 import { DemoBanner } from "../components/DemoBanner";
+import { EditorAttachmentContext } from "../components/EditorAttachmentContext";
 import { EditorGuidance } from "../components/EditorGuidance";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { SanitizedHtml } from "../components/SanitizedHtml";
@@ -508,6 +509,8 @@ export function KnowledgeDetail(): JSX.Element {
                       <Field label={t("capture.fBody")}>
                         {/* SCRUM-317: kompakte Orientierung am Body-Feld (Struktur/Handlung/Blöcke/KI). */}
                         <EditorGuidance />
+                        {/* SCRUM-323: Anhänge-Kontext — Bilder (einfügbar) vs. Dateien (Anhang/Evidence). */}
+                        <EditorAttachmentContext attachments={ko.attachments ?? []} />
                         {/* SCRUM-319: bewusst wählbare Body-Strukturvorlagen (leer = setzen, sonst anhängen). */}
                         <BodyTemplateChooser
                           bodyHtml={edit.bodyHtml}

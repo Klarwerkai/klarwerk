@@ -7430,3 +7430,42 @@ git commit -m "feat(ko-detail): sharpen read-mode for detailed content with edit
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-323 — Beta Editor Attachment-Kontext v0
+**Datum:** 2026-06-29 · **Rolle:** Claude (Umsetzung) · **Status:** umgesetzt, Gates grün
+
+**Vorab-Befund.** `pwd` = Repo-Root; `git status -sb` sauber (nur untracked Infra-Doc). Capture hält lokale Anhänge getrennt: `images: LocalImage[]` (id/name/mime/dataUrl/original) und `docs: {id,name}[]` (Nicht-Bild-Dateien, ohne mime); Bild-Einfügen via `editorImagesFromLocalImages(images)` (SCRUM-321) an `RichTextEditor images=…`. KO-Detail nutzt `ko.attachments` (objectId/mime/name), Bilder gefiltert über `mime.startsWith("image/")`. `editorImages.ts` wandelt nur sichere data:image-Raster in `EditorImageRef`. Bester risikoarmer Platz: kompakte Karte direkt am Body-Feld VOR dem `RichTextEditor` (analog `EditorGuidance` SCRUM-317), keine Upload-/Object-Store-Änderung.
+
+**Umsetzung (v0).**
+1. **DOM-freier Helfer** `apps/web/src/lib/editorAttachmentContext.ts` (NEU): `AttachmentLike { mime? }`, `isImageAttachment` (mime startet case-insensitiv mit `image/`), `attachmentContext(items)` → `{ imageCount, fileCount, total, hasAny }` (fehlende/leere/ungültige mime defensiv = Datei). i18n-Key-Konstanten `ATTACH_TITLE/IMAGES/FILES/IMAGE_HINT/FILE_HINT_KEY`.
+2. **Kompakte Komponente** `apps/web/src/components/EditorAttachmentContext.tsx` (NEU): Karte am Body-Feld mit Anzahl Bilder + Dateien und ehrlichen Hinweisen (Bilder per Bild-Button einfügbar; Dateien bleiben Anhang/Evidence, NICHT inline). Ohne Anhänge → `null` (keine leere Karte).
+3. **Einbindung**: `Capture.tsx` mit `attachments={[...images, ...docs.map(() => ({ mime: null }))]}` (docs = Nicht-Bild → Datei); `KnowledgeDetail.tsx` Edit-Modus mit `attachments={ko.attachments ?? []}`. Beide direkt am Body-Feld. Bild-Einfügefunktion (SCRUM-321) unverändert; keine Upload-/Backend-Änderung.
+4. **i18n** `editor.attach.title/images/files/imageHint/fileHint` DE+EN (knapp, beta-tauglich; keine Inline-Datei-Behauptung).
+5. **Tests** `tests/app/editor-attachment-context.test.ts` (NEU, DOM-frei): keine Anhänge → empty; nur Bilder; nur Dateien (keine Inline-Behauptung); gemischt; defensiv bei fehlender/leerer/ungültiger mime (case-insensitiv); stabile i18n-Keys DE+EN; Datei-Hinweis nennt „nicht inline".
+
+**Bewusst nicht umgesetzte Gaps (später).** Keine Liste/Namensanzeige einzelner Anhänge in der Karte (nur Counts). Kein Klick „dieses Bild einfügen" aus der Karte (Bild-Button im Editor bleibt der Weg). Kein Hinweis-/Lint, ob Dateien tatsächlich im Text referenziert sind. Kein Empty-State-Hinweis (Karte erscheint bewusst nur bei vorhandenen Anhängen).
+
+**Rest-Risiken.** Capture-`docs` tragen keinen mime → werden generell als Datei gezählt (korrekt, da Nicht-Bild-Uploads). Bilder, die als `docs` statt `images` landen würden, gibt es nicht (Capture trennt nach Bild/Datei beim Upload). KO-`attachments` ohne mime würden defensiv als Datei gezählt — bei seltenen Altdaten leicht ungenau, aber nie fälschlich „inline einfügbar".
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/editorAttachmentContext.ts` (NEU)
+- `apps/web/src/components/EditorAttachmentContext.tsx` (NEU)
+- `apps/web/src/pages/Capture.tsx` (Karte + Import)
+- `apps/web/src/pages/KnowledgeDetail.tsx` (Karte + Import)
+- `apps/web/src/i18n.ts` (`editor.attach.*` DE+EN)
+- `tests/app/editor-attachment-context.test.ts` (NEU)
+
+**Tests/Gates.** `npm run check` grün — **147 Dateien / 873 Tests**. Gezielt: `npx vitest run tests/app/editor-attachment-context.test.ts` → 7/7 grün. `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün (Interface auf `string | null | undefined` für `exactOptionalPropertyTypes`). Biome/depcruise grün. Bild-Einfügen/Upload/Object-Store unverändert.
+
+**Nicht-Ziele eingehalten.** Kein neuer Datei-Viewer, kein Inline-Datei-Embed, kein Drag&Drop-Umbau, kein neuer RichTextEditor, kein RAG/neue Suche/Local-LLM, keine Backend-/Datenmodelländerung, keine Auto-Validierung, kein Auto-Speichern, keine Team-2/3/4-Dateien, keine Migration/Deployment. Nur in `/Users/peterkohnert/Documents/dev_Klarwerk`; untracked Infra-Doc unberührt.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/editorAttachmentContext.ts apps/web/src/components/EditorAttachmentContext.tsx apps/web/src/pages/Capture.tsx apps/web/src/pages/KnowledgeDetail.tsx apps/web/src/i18n.ts tests/app/editor-attachment-context.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(editor): attachment context card at detailed-content field — images vs files (SCRUM-323)"
+git push
+```
+Kein Git/Push/Jira durch Claude.

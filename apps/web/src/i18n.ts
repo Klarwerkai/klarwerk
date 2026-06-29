@@ -357,6 +357,12 @@ const de = {
   "editor.guidance.blocks": "Blöcke: Wichtiges als Info/Hinweis/Warnung/Erfolg markieren.",
   "editor.guidance.ai":
     "KI-Hilfe: liefert Vorschläge — du prüfst und übernimmst bewusst, keine Auto-Validierung.",
+  "editor.attach.title": "Anhänge im Editor",
+  "editor.attach.images": "Bild(er)",
+  "editor.attach.files": "Datei(en)",
+  "editor.attach.imageHint": "über den Bild-Button in den ausführlichen Inhalt einfügbar.",
+  "editor.attach.fileHint":
+    "bleiben als Anhang/Evidence sichtbar und werden nicht inline eingebettet — bitte im Text referenzieren.",
   "editor.template.title": "Strukturvorlage starten",
   "editor.template.hint":
     "Fügt eine sichere Grundstruktur ein; bei bestehendem Inhalt wird angehängt.",
@@ -1672,6 +1678,12 @@ const en: typeof de = {
   "editor.guidance.blocks": "Blocks: mark key points as info/note/warning/success.",
   "editor.guidance.ai":
     "AI help: provides suggestions — you review and apply deliberately, no auto-validation.",
+  "editor.attach.title": "Attachments in the editor",
+  "editor.attach.images": "image(s)",
+  "editor.attach.files": "file(s)",
+  "editor.attach.imageHint": "can be inserted into the detailed content via the image button.",
+  "editor.attach.fileHint":
+    "stay visible as attachments/evidence and are not embedded inline — please reference them in the text.",
   "editor.template.title": "Start from a structure template",
   "editor.template.hint": "Inserts a safe base structure; appends it when content already exists.",
   "editor.template.procedure.label": "Procedure",
