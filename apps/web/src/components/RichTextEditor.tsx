@@ -19,8 +19,10 @@ import {
   editorBlockHtml,
   editorBlockLabelKey,
 } from "../lib/editorBlocks";
+import { editorLinkHtml } from "../lib/editorLinks";
 import { insertImageHtml, insertImageSrcHtml, sanitizeHtml } from "../lib/richText";
 import { SanitizedHtml } from "./SanitizedHtml";
+import { Button } from "./ui";
 
 export interface EditorImage {
   objectId?: string;
@@ -43,6 +45,10 @@ export function RichTextEditor({
   const ref = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   const [showImages, setShowImages] = useState(false);
+  const [showLink, setShowLink] = useState(false);
+  const [linkUrl, setLinkUrl] = useState("");
+  const [linkLabel, setLinkLabel] = useState("");
+  const [linkErr, setLinkErr] = useState<string | null>(null);
 
   // Editor-Inhalt nur setzen, wenn er abweicht und der Editor nicht fokussiert ist
   // (verhindert Cursor-Sprünge während des Tippens). Verlustfrei über Mode-Wechsel.
@@ -61,11 +67,26 @@ export function RichTextEditor({
     emit();
   };
 
-  const addLink = (): void => {
-    const url = window.prompt(t("editor.linkPrompt"));
-    if (url) {
-      exec("createLink", url);
+  const openLinkPanel = (): void => {
+    setShowImages(false);
+    setShowLink((s) => !s);
+    setLinkErr(null);
+    const selected = window.getSelection()?.toString().trim() ?? "";
+    if (selected && !linkLabel) {
+      setLinkLabel(selected);
     }
+  };
+  const addLink = (): void => {
+    const html = editorLinkHtml({ url: linkUrl, label: linkLabel });
+    if (!html) {
+      setLinkErr(t("editor.linkInvalid"));
+      return;
+    }
+    exec("insertHTML", html);
+    setShowLink(false);
+    setLinkUrl("");
+    setLinkLabel("");
+    setLinkErr(null);
   };
   // SCRUM-314: vier sichtbare Blocktypen statt eines generischen Panels (sichere, statische Klassen).
   const addBlock = (block: EditorBlock): void => exec("insertHTML", editorBlockHtml(block));
@@ -130,7 +151,7 @@ export function RichTextEditor({
         >
           <ListOrdered size={15} />
         </button>
-        <button type="button" title={t("editor.link")} className={btn} onClick={addLink}>
+        <button type="button" title={t("editor.link")} className={btn} onClick={openLinkPanel}>
           <LinkIcon size={15} />
         </button>
         {/* SCRUM-314: Blocktypen Info/Hinweis/Warnung/Erfolg — kleine Text-Buttons (eindeutig). */}
@@ -162,7 +183,7 @@ export function RichTextEditor({
               ) : (
                 images.map((img) => (
                   <button
-                    key={img.objectId}
+                    key={img.objectId ?? img.src ?? img.name}
                     type="button"
                     onClick={() => addImage(img)}
                     className="block w-full truncate rounded-btn px-2 py-1 text-left text-[12.5px] text-text hover:bg-hairline-soft"
@@ -185,6 +206,47 @@ export function RichTextEditor({
           </button>
         </div>
       </div>
+
+      {showLink ? (
+        <div className="border-b border-hairline bg-page p-2">
+          <div className="grid gap-2 md:grid-cols-[1fr_1fr_auto] md:items-end">
+            <label className="block text-[11.5px] font-semibold text-muted">
+              {t("editor.linkUrl")}
+              <input
+                value={linkUrl}
+                onChange={(e) => {
+                  setLinkUrl(e.target.value);
+                  setLinkErr(null);
+                }}
+                placeholder={t("editor.linkUrlPlaceholder")}
+                className="mt-1 h-8 w-full rounded-input border border-hairline bg-surface px-2 text-[13px] font-normal text-text outline-none focus:border-ink/30"
+              />
+            </label>
+            <label className="block text-[11.5px] font-semibold text-muted">
+              {t("editor.linkLabel")}
+              <input
+                value={linkLabel}
+                onChange={(e) => setLinkLabel(e.target.value)}
+                placeholder={t("editor.linkLabelPlaceholder")}
+                className="mt-1 h-8 w-full rounded-input border border-hairline bg-surface px-2 text-[13px] font-normal text-text outline-none focus:border-ink/30"
+              />
+            </label>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={addLink}>
+                {t("editor.linkInsert")}
+              </Button>
+              <button
+                type="button"
+                onClick={() => setShowLink(false)}
+                className="text-[12px] font-semibold text-muted hover:text-text"
+              >
+                {t("editor.linkCancel")}
+              </button>
+            </div>
+          </div>
+          {linkErr ? <p className="mt-1 text-[11.5px] text-trust-crit-text">{linkErr}</p> : null}
+        </div>
+      ) : null}
 
       {mode === "edit" ? (
         <div

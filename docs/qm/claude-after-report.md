@@ -7102,6 +7102,42 @@ Codex übernimmt Commit, Push, GitHub-CI-Prüfung und Jira-Abschluss.
 
 ---
 
+## SCRUM-322 — Beta Editor Link-Einfügen v0
+**Datum:** 2026-06-29 · **Rolle:** Codex (Umsetzung/Prüfung) · **Status:** umgesetzt, Gates grün
+
+**Vorab-Befund.** Der `RichTextEditor` hatte einen Link-Button, nutzte aber `window.prompt(t("editor.linkPrompt"))` + `document.execCommand("createLink", url)`. Das wirkt nicht beta-reif, verlangt meist markierten Text und gibt wenig Kontrolle über Linktext/Sicherheitsfeedback. Capture und KO-Detail teilen denselben Editor, also ist ein kleiner Editor-Slice ausreichend.
+
+**Umsetzung (v0).**
+1. **DOM-freier Helfer** `apps/web/src/lib/editorLinks.ts` (NEU): `normalizeEditorLinkUrl()` erlaubt `https`, `http`, `mailto`, interne Routen `/…` und Anker `#…`; Bare Domains werden zu `https://…`; unsichere Protokolle/Whitespace-URLs werden verworfen. `editorLinkHtml()` erzeugt escaped Link-HTML oder `null`.
+2. **RichTextEditor-Linkpanel**: Browser-Prompt ersetzt durch Inline-Panel mit URL + optionalem Linktext. Ohne Linktext wird die normalisierte URL als Text genutzt. Markierte Selection wird als Vorschlag für Linktext übernommen, wenn vorhanden.
+3. **Fehler-/Abbruchfluss**: ungültige URL zeigt inline `editor.linkInvalid`; Abbrechen schließt das Panel ohne Änderung.
+4. **Sanitizer bleibt maßgeblich**: eingefügtes HTML läuft weiter über `emit()`/`sanitizeHtml`; Links bekommen wie bisher in der Anzeige/Preview sichere Attribute.
+5. **i18n** `editor.linkUrl/linkUrlPlaceholder/linkLabel/linkLabelPlaceholder/linkInsert/linkCancel/linkInvalid` DE+EN.
+6. **Tests** `tests/app/editor-links.test.ts` (NEU, DOM-frei): Bare-Domain-Normalisierung, erlaubte URL-Arten, unsichere Protokolle, escaping + Sanitizer-Kompatibilität, i18n-Keys.
+
+**Bewusst nicht umgesetzte Gaps (später).** Kein vollständiger Link-Editor für bestehende Links, kein komplexer Selection-/Cursor-Komfort, kein Datei-Link-Embed, kein neuer Datei-Viewer. V0 ist bewusst „sicher einfügen", nicht „Links verwalten".
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/editorLinks.ts` (NEU)
+- `apps/web/src/components/RichTextEditor.tsx` (Inline-Linkpanel statt Browser-Prompt)
+- `apps/web/src/i18n.ts` (`editor.link*` DE+EN)
+- `tests/app/editor-links.test.ts` (NEU)
+
+**Tests/Gates.** Gezielte Tests: `npx vitest run tests/app/editor-links.test.ts tests/structure/rich-text.test.ts` → 13/13 grün. `npm run check` grün — **146 Dateien / 866 Tests**. `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün.
+
+**Nicht-Ziele eingehalten.** Keine neue Editor-Library, keine Backend-/Datenmodelländerung, kein Datei-Embed/Viewer, kein RAG/neue Suche/Local-LLM, keine Auto-Validierung, kein Auto-Speichern, keine Team-2/3/4-Dateien, keine Migration/Deployment. Nur in `/Users/peterkohnert/Documents/dev_Klarwerk`; untracked Infra-Doc unberührt.
+
+**Commit-/Push-Hinweis.**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/editorLinks.ts apps/web/src/components/RichTextEditor.tsx apps/web/src/i18n.ts tests/app/editor-links.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(editor): inline safe link insert panel in RichTextEditor (SCRUM-322)"
+git push
+```
+Codex übernimmt Commit, Push, GitHub-CI-Prüfung und Jira-Abschluss.
+
+---
+
 ## SCRUM-321 — Beta Editor Bild-Anhänge im Capture nutzbar machen v0
 **Datum:** 2026-06-29 · **Rolle:** Codex (Umsetzung/Prüfung) · **Status:** umgesetzt, Gates grün
 
