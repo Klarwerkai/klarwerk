@@ -7843,3 +7843,42 @@ git commit -m "feat(ko-detail): keep review feedback visible as a working aid du
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-334 — Beta Review-Nacharbeitsfluss E2E prüfen und echte Reibung beheben v0
+**Datum:** 2026-06-29 · **Rolle:** Claude (Verifikation) · **Status:** geprüft, Flow kohärent, keine Reibung — Smoke als Regressionstest ergänzt, Gates grün
+
+**Vorab-Befund.** SCRUM-330 (`?rework=review`), 331 (`reworkValidationHref` → `/validierung?review=revision`), 332 (`latestValidationFeedback` fokussiert im Banner) und 333 (Feedback als Edit-Arbeitshilfe) lagen jeweils lokal getestet vor, aber noch nicht als zusammenhängender runtime-naher Flow. Backend-Mechanik bestätigt: KO-Dispatcher `PUT /api/kos/:id` mit `action: "comment"` (jeder Nutzer, FR-KO-06), `"rate"` (ko.validate), `"revise"` (ko.create); `KnowledgeObjectService.revise` setzt `version+1`, `trust=0`, `status="offen"` (services/knowledge-object/src/service.ts) — eine Revision ist also automatisch wieder review-pflichtig. `git status -sb` sauber (nur untracked Infra-Doc).
+
+**Smoke-Evidence (runtime-nah, ECHTE HTTP-Routen + FE-Helfer).** Neuer Test `tests/validation/rework-flow-e2e.test.ts` fährt den vollen Flow über `buildApp(buildServices())` per `app.inject` und prüft den Übergang in die FE-Entscheidungs-/Anzeige-Helfer:
+1. Admin registriert, `demo-seed`, Carla (controller, ko.validate) eingeloggt.
+2. Reales offenes KO (needed=2) angelegt → `status: "offen"`, `trust: 0`.
+3. Carla entscheidet `down` **mit Pflichtfeedback wie im FE-Flow**: erst `action:"comment"` mit `buildValidationFeedback("down", …)`, dann `action:"rate" verdict:"down"` → beide 200.
+4. `GET /api/kos/:id`: Feedback-Kommentar real gespeichert (beginnt mit `"Validierungsfeedback (Ablehnung): "`); `down` hält das KO `offen` (keine Validierung).
+5. `reviewNextSteps({…, verdict:"down"})` → genau **ein** Schritt nach `reworkHref(id)` = `/wissen/:id?rework=review`; `isReviewReworkContext` erkennt den Kontext.
+6. `latestValidationFeedback(ko.comments)` erkennt das Feedback fokussiert: `verdict:"down"`, `body` == Originaltext (ohne Präfix).
+7. `action:"revise"` (statement ergänzt) → `version: 2`, `status: "offen"`, `trust: 0` (review-pflichtig).
+8. `validationReviewContext(revisedKo).kind === "revision"`; `reworkValidationHref()` == `/validierung?review=revision`; `readReviewFocusFilter` der Rückweg-URL == `"revision"`. Version-1-KO bleibt `"new"` (Fokus trennt neu vs. überarbeitet).
+
+**Umsetzung.** Keine Produktcode-Änderung nötig — der Flow ist kohärent, kein Fake, keine Auto-Freigabe (Scope-Punkt 5: Ergebnis ehrlich dokumentiert, keine erzwungene Änderung). Einziger Zuwachs: der E2E-Smoke als dauerhafte Regressionssicherung der Kette über vier Tickets.
+
+**Geänderte Dateien.**
+- `tests/validation/rework-flow-e2e.test.ts` (NEU, E2E-Smoke HTTP + FE-Helfer)
+
+**Tests/Gates.** Gezielt `npx vitest run tests/validation/rework-flow-e2e.test.ts` → 1/1 grün (227 ms). `npm run check` grün — **154 Dateien / 935 Tests**. Architektur-Gate (`depcruise --config … services`, wie `tools/check`) sauber; der neue Test liegt unter `tests/` und führt keine Modulgrenzen-Verletzung ein. Keine FE-Datei geändert → FE-tsc unberührt.
+
+**Bewusst nicht umgesetzte Gaps.** Kein vollständiger UI-Render-/Browser-E2E (DOM-frei über Helfer + HTTP geprüft); kein Notifications-/Assignment-Pfad im Smoke (nicht Teil des Nacharbeitsflusses); kein Mehrfach-Reviewer-Szenario (ein warn/down genügt für den Flow); keine neue Architektur/Status, kein Diff/Merge-Viewer.
+
+**Rest-Risiken.** Der Smoke koppelt FE-Feedback-Erkennung an das exakte Backend-Kommentarpräfix — ändert sich `feedbackPrefix`, schlägt der Test fehl (gewollt: er sichert genau diese Kopplung). Der Test importiert sowohl `services/app` (build-app) als auch `apps/web`-Helfer; das ist nur in `tests/` zulässig (außerhalb der `services`-Modulgrenzen-Regel) und bewusst dort verortet.
+
+**Nicht-Ziele eingehalten.** Keine neue Architektur, kein Backend-Datenmodellwechsel, kein neuer Review-Status, kein Diff/Merge-Viewer, keine Fake-Validierung/Auto-Freigabe, kein RAG/neue Suche/Local-LLM, keine Team-2/3/4-Dateien, kein Deployment, keine produktiven Daten, kein Git/Push/Jira. Nur in `/Users/peterkohnert/Documents/dev_Klarwerk`; untracked Infra-Doc unberührt.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add tests/validation/rework-flow-e2e.test.ts docs/qm/claude-after-report.md
+git commit -m "test(validation): runtime-near E2E smoke for review rework flow (SCRUM-334)"
+git push
+```
+Kein Git/Push/Jira durch Claude.
