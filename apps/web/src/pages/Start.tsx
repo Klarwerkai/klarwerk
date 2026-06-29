@@ -14,7 +14,7 @@ import { useSession } from "../app/AuthContext";
 import { useRole } from "../app/RoleContext";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { Card, PageHeader } from "../components/ui";
-import { DEMO_PILOT_PATH } from "../lib/demoPilotPath";
+import { DEMO_PILOT_PATH, captureDemoHref } from "../lib/demoPilotPath";
 import { KNOWLEDGE_CYCLE } from "../lib/knowledgeCycle";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { missionsForRole } from "../lib/missions";
@@ -184,6 +184,13 @@ export function Start(): JSX.Element {
             </li>
           ))}
         </ol>
+        {/* SCRUM-296: aktiver Erfassungsfluss als Einstieg — Capture → Validation → Use. */}
+        <Link
+          to={captureDemoHref()}
+          className="mt-3 inline-flex items-center gap-1 text-[12.5px] font-semibold text-brand hover:underline"
+        >
+          {t("demo.captureEntry")} <ArrowRight size={13} />
+        </Link>
       </Card>
       {missions.length > 0 ? (
         <div className="mb-5">

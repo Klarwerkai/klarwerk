@@ -134,6 +134,12 @@ const de = {
   "demo.validation.label": "3 · Validieren",
   "demo.validation.desc":
     "Offenes/ungeprüftes Wissen gehört in die Validierung — bewerten, bis es gesichert und nutzbar ist.",
+  // SCRUM-296: aktiver Erfassungsfluss im Demo-Kontext (Capture → Validation → Use).
+  "demo.captureEntry": "Aktiv ausprobieren: Erfassen → Prüfen → Nutzen",
+  "demo.banner.capture.title": "Erfahrungsnotiz erfassen",
+  "demo.banner.capture.body":
+    "Gespeichert wird ein OFFENES Wissensobjekt — noch nicht validiert. Nächster Schritt: zur Prüfung/Validierung. Erst nach ausreichender Bewertung ist es quellengebunden nutzbar; automatisch validiert wird nichts.",
+  "demo.banner.capture.next": "Weiter: Zur Prüfung",
   // SCRUM-291: wiedererkennbare Pfad-Hinweisboxen auf den Zielseiten (nur bei ?demo=stage1).
   "demo.banner.tag": "Demo-Pfad",
   "demo.banner.ask.title": "Schritt 1: Quellengebunden fragen",
@@ -1323,6 +1329,12 @@ const en: typeof de = {
   "demo.validation.label": "3 · Validate",
   "demo.validation.desc":
     "Open/unverified knowledge belongs in validation — rate it until it is secured and usable.",
+  // SCRUM-296: active capture flow in demo context (Capture → Validation → Use).
+  "demo.captureEntry": "Try it actively: Capture → Review → Use",
+  "demo.banner.capture.title": "Capture an experience note",
+  "demo.banner.capture.body":
+    "What gets saved is an OPEN knowledge object — not yet validated. Next step: send it for review/validation. Only after sufficient review is it usable source-bound; nothing is validated automatically.",
+  "demo.banner.capture.next": "Next: send for review",
   // SCRUM-291: recognisable path hint boxes on the target pages (only with ?demo=stage1).
   "demo.banner.tag": "Demo path",
   "demo.banner.ask.title": "Step 1: Ask source-bound",

@@ -41,6 +41,12 @@ export function demoHref(href: string, params: URLSearchParams): string {
   return isDemoContext(params) ? withDemo(href) : href;
 }
 
+// SCRUM-296: Einstieg in den aktiven Erfassungsfluss im Demo-Kontext (Capture → Validation → Use).
+// Vorhandene Route /erfassen mit weitergetragenem Demo-Kontext. Kein Auto-KO, keine Mutation.
+export function captureDemoHref(): string {
+  return withDemo("/erfassen");
+}
+
 export type DemoPilotStepId = "ask" | "library" | "validation";
 
 export interface DemoPilotStep {
@@ -87,7 +93,7 @@ export function demoPilotPath(): readonly DemoPilotStep[] {
 // SCRUM-294: KO-Detail ergänzt — es hat zwar keinen statischen Demo-Link (KO-ID ist dynamisch), aber
 // im Demo-Kontext (über Library erreicht) erklärt es Status/Trust/Version/Quellen und führt über die
 // vorhandene „Wissen nutzen"-CTA quellengebunden nach Ask (kein eigener `next`-Link nötig).
-export type DemoSurface = "ask" | "library" | "detail" | "validation";
+export type DemoSurface = "capture" | "ask" | "library" | "detail" | "validation";
 
 export interface DemoBannerNext {
   labelKey: string;
@@ -103,6 +109,15 @@ export interface DemoBanner {
 }
 
 const BANNERS: Record<DemoSurface, DemoBanner> = {
+  // SCRUM-296: aktiver Erfassungsfluss — gespeichert wird ein OFFENES KO (nicht validiert),
+  // nächster Schritt ist die Prüfung/Validierung; erst danach quellengebunden nutzbar.
+  capture: {
+    surface: "capture",
+    n: 0,
+    titleKey: "demo.banner.capture.title",
+    bodyKey: "demo.banner.capture.body",
+    next: { labelKey: "demo.banner.capture.next", to: withDemo("/validierung") },
+  },
   ask: {
     surface: "ask",
     n: 1,

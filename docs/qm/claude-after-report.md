@@ -6449,3 +6449,43 @@ git commit -m "feat(ask): honest prefilled-question hint in demo/use context (so
 git push
 ```
 Keine Jira-Änderungen durch Claude. Codex prüft Diff/Gates, korrigiert minimal, committet, pusht, wartet GitHub CI ab, schließt Jira.
+
+---
+
+## SCRUM-296 — Demo-/Pilotpfad: Capture → Validation → Use als vollständigen Wissensfluss führen
+**Datum:** 2026-06-29 · **Rolle:** Claude setzt um (Codex steuert, Pedi entscheidet Richtung). **FE-Produkt-Slice** (DOM-freier Helper + Capture-Surface + Demo-Kontext-Propagierung + Start-Einstieg + i18n + Tests); keine Backend-/Reasoner-/Suchänderung; kein neues Statusmodell; keine automatische/Fake-Validierung; kein Git/Jira durch Claude.
+
+### 1. Vorab-Befund
+- Capture-Success ist seit SCRUM-286 ehrlich (Badge „offen — noch nicht validiert", Body „erst nach Bewertung nutzbar — zur Prüfung geben", primärer „Zur Prüfung geben"-Schritt). **Aber:** die Success-Next-Step-Links trugen den Demo-Kontext **nicht** weiter, und **Capture war keine Demo-Surface** (kein Banner, kein Demo-Einstieg) → der aktive Erfassungsfluss fehlte im Demo-Pfad.
+- `demoHref`/`withDemo`/DemoBanner-Infrastruktur (SCRUM-291/294) vorhanden; Capture nutzt `useSearchParams` bereits (gapContext).
+
+### 2. Umsetzung
+- `demoPilotPath.ts`: **`capture`** als `DemoSurface` + Banner (gespeichert wird ein OFFENES KO → zur Prüfung → erst danach quellengebunden nutzbar; `next` → /validierung?demo=stage1). Neuer DOM-freier **`captureDemoHref()`** = `withDemo("/erfassen")` (Demo-Einstieg).
+- **Capture.tsx**: `DemoBanner surface="capture"` bei `isDemoContext`; Success-Next-Step-Links via `demoHref(s.to, params)` → Capture→Validation/KO-Detail behalten `?demo=stage1`.
+- **Start.tsx**: kleiner Einstiegslink in der Demo-Karte „Aktiv ausprobieren: Erfassen → Prüfen → Nutzen" → `captureDemoHref()`.
+- i18n DE/EN: `demo.banner.capture.title/body/next` + `demo.captureEntry`.
+- Capture-Success-Copy selbst (SCRUM-286) **unverändert** — bereits ehrlich (offen/nicht validiert, primär zur Prüfung).
+
+### 3. Geänderte Dateien
+- `apps/web/src/lib/demoPilotPath.ts` (capture-Surface + captureDemoHref).
+- `apps/web/src/pages/Capture.tsx` (DemoBanner + Success-Links demoHref + Imports).
+- `apps/web/src/pages/Start.tsx` (Capture-Einstiegslink).
+- `apps/web/src/i18n.ts` (`demo.banner.capture.*` + `demo.captureEntry` DE+EN).
+- `tests/app/demo-pilot-path.test.ts` (+3: capture-Surface/next; captureDemoHref; i18n-Ehrlichkeit DE/EN).
+
+### 4. Tests/Gates
+`npm run check` grün — **132 Dateien / 765 Tests** (Demo-Pfad-Suite 19). `(cd apps/web && node ../../node_modules/typescript/bin/tsc --noEmit)` grün. Biome/depcruise grün.
+
+### 5. Restlücken/Nicht-Ziele
+- **Demo-/Pilotnutzer können Capture → Validation → Use verstehen**: Start-Einstieg → Capture-Banner (OFFENES KO, nicht validiert) → Success führt mit Demo-Kontext zur Validierung → von dort (SCRUM-292) ehrliche Use-Folge.
+- **Normale Nutzung ohne `?demo=stage1` unverändert**: Capture-Banner erscheint nicht; `demoHref` lässt Success-Links unangetastet; Capture-Success-Copy gleich.
+- Frisch erfasstes KO bleibt offen/nicht validiert; keine automatische Validierung/Fake-Freigabe; Nutzung bleibt quellengebunden & status/trust-abhängig. Keine neue Suche/RAG/Reasoner-/Backend-Änderung.
+
+### 6. Commit-/Push-Hinweis (nur Hinweis — Claude führt NICHT aus)
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/demoPilotPath.ts apps/web/src/pages/Capture.tsx apps/web/src/pages/Start.tsx apps/web/src/i18n.ts tests/app/demo-pilot-path.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(demo): active Capture→Validation→Use flow in demo context (open KO, no fake validation) (SCRUM-296)"
+git push
+```
+Keine Jira-Änderungen durch Claude. Codex prüft Diff/Gates, korrigiert minimal, committet, pusht, wartet GitHub CI ab, schließt Jira.

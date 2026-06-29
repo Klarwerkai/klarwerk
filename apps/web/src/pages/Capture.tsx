@@ -16,6 +16,7 @@ import type {
 } from "../api/types";
 import { useSession } from "../app/AuthContext";
 import { useToast } from "../app/ToastContext";
+import { DemoBanner } from "../components/DemoBanner";
 import { HelpTip } from "../components/HelpTip";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { ListEditor, TagEditor } from "../components/editors";
@@ -25,6 +26,7 @@ import { CAPTURE_EXAMPLE } from "../lib/captureExample";
 import { gapContextDraft, readGapContext } from "../lib/captureFromGap";
 import { captureReadiness } from "../lib/captureReadiness";
 import { captureNextSteps, captureSavedStatus } from "../lib/captureSuccess";
+import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 import { draftTitle } from "../lib/draftForm";
 import {
   fileToThumbDataUrl,
@@ -489,6 +491,8 @@ export function Capture(): JSX.Element {
   return (
     <div className="mx-auto max-w-5xl">
       <PageHeader kicker={t("capture.kicker")} title={t("capture.title")} />
+      {/* SCRUM-296: Demo-/Pilotpfad auf der Erfassungsseite wiedererkennbar (nur bei ?demo=stage1). */}
+      {isDemoContext(params) ? <DemoBanner surface="capture" /> : null}
 
       {/* SCRUM-276: nach erfolgreichem Einreichen „gespeichert" + nächster Schritt (kein Auto-Redirect). */}
       {savedKoId ? (
@@ -507,7 +511,8 @@ export function Capture(): JSX.Element {
             {captureNextSteps(savedKoId).map((s) => (
               <Link
                 key={s.to}
-                to={s.to}
+                // SCRUM-296: im Demo-Kontext den Capture→Validation→Use-Fluss weitertragen.
+                to={demoHref(s.to, params)}
                 className={`inline-flex items-center gap-1 rounded-btn px-3 py-1.5 text-[12.5px] font-semibold hover:opacity-90 ${
                   s.primary ? "bg-ink text-white" : "border border-hairline bg-page text-text"
                 }`}

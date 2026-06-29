@@ -4,6 +4,7 @@ import {
   DEMO_PILOT_PATH,
   DEMO_VALUE,
   type DemoSurface,
+  captureDemoHref,
   demoHref,
   demoPilotPath,
   demoSurfaceBanner,
@@ -127,6 +128,27 @@ describe("SCRUM-294: KO-Detail-Surface + demoHref-Propagierung", () => {
     expect(detail.titleKey).toBe("demo.banner.detail.title");
     expect(detail.bodyKey).toBe("demo.banner.detail.body");
     expect(detail.next).toBeUndefined(); // KO-ID dynamisch → kein statischer Demo-Link
+  });
+
+  // SCRUM-296: aktiver Erfassungsfluss Capture → Validation → Use im Demo-Kontext.
+  it("Capture ist eine Demo-Surface; nächster Schritt führt zur Validierung (Review)", () => {
+    const cap = demoSurfaceBanner("capture");
+    expect(cap.surface).toBe("capture");
+    expect(cap.titleKey).toBe("demo.banner.capture.title");
+    expect(cap.next?.to).toBe("/validierung?demo=stage1");
+  });
+
+  it("captureDemoHref führt mit Demo-Kontext auf die vorhandene Erfassen-Route", () => {
+    expect(captureDemoHref()).toBe("/erfassen?demo=stage1");
+  });
+
+  it("Capture-Banner-i18n DE/EN ehrlich: OFFENES KO, zur Prüfung, nichts automatisch validiert", () => {
+    expect(text("de", "demo.banner.capture.body")).toContain("offenes");
+    expect(text("de", "demo.banner.capture.body")).toContain("prüfung");
+    expect(text("de", "demo.banner.capture.body")).toContain("automatisch validiert");
+    expect(text("de", "demo.captureEntry").length).toBeGreaterThan(0);
+    expect(text("en", "demo.banner.capture.body")).toContain("not yet validated");
+    expect(text("en", "demo.captureEntry").length).toBeGreaterThan(0);
   });
 
   it("demoHref trägt den Demo-Kontext NUR im Demo-Kontext weiter (sonst unverändert)", () => {
