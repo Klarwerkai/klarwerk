@@ -127,6 +127,8 @@ export function Capture(): JSX.Element {
   const [bodyHtml, setBodyHtml] = useState("");
   // SCRUM-337: großer Knowledge-Studio-Arbeitsraum (Overlay) auf demselben bodyHtml-State.
   const [studioOpen, setStudioOpen] = useState(false);
+  // SCRUM-339: kurzes, ehrliches Feedback nach Übernahme aus dem Studio (kein Auto-Save).
+  const [studioApplied, setStudioApplied] = useState(false);
 
   // Metadaten (vorab erfassbar, FR-CAP-08)
   const [type, setType] = useState<KnowledgeType>("best_practice");
@@ -889,7 +891,10 @@ export function Capture(): JSX.Element {
                       Inline-Feld bleibt darunter erhalten; das Studio arbeitet auf demselben bodyHtml. */}
                   <button
                     type="button"
-                    onClick={() => setStudioOpen(true)}
+                    onClick={() => {
+                      setStudioApplied(false);
+                      setStudioOpen(true);
+                    }}
                     className="mb-2 inline-flex items-center gap-1.5 rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
                   >
                     <Sparkles size={14} /> {t("studio.open")}
@@ -898,11 +903,20 @@ export function Capture(): JSX.Element {
                     open={studioOpen}
                     onClose={() => setStudioOpen(false)}
                     bodyHtml={bodyHtml}
-                    onApply={setBodyHtml}
+                    onApply={(next) => {
+                      setBodyHtml(next);
+                      setStudioApplied(true);
+                    }}
                     runAssist={runAssist}
                     images={editorImagesFromLocalImages(images)}
                     attachments={[...images, ...docs.map(() => ({ mime: null }))]}
                   />
+                  {/* SCRUM-339: ehrliches Feedback — übernommen in den Entwurf, kein Auto-Save. */}
+                  {studioApplied ? (
+                    <p className="mb-2 rounded-btn bg-trust-pos-bg px-2.5 py-1.5 text-[11.5px] text-trust-pos-text">
+                      {t("studio.applied")}
+                    </p>
+                  ) : null}
                   {/* SCRUM-317: kompakte Orientierung am Body-Feld (Struktur/Handlung/Blöcke/KI). */}
                   <EditorGuidance />
                   {/* SCRUM-323: Anhänge-Kontext — Bilder (einfügbar) vs. Dateien (Anhang/Evidence). */}

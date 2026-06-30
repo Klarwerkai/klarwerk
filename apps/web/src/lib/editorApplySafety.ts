@@ -20,3 +20,19 @@ export function templateApplyMode(bodyHtml: string): TemplateApplyMode {
 export function templateApplyModeHintKey(mode: TemplateApplyMode): string {
   return `editor.template.mode.${mode}`;
 }
+
+// SCRUM-339: DOM-freier Zustand für den Knowledge-Studio-Arbeitsraum. Vergleicht den Studio-Entwurf
+// mit dem bereits in den Seiten-State übernommenen Body. „dirty" = es gibt unübernommene Änderungen,
+// die beim Schließen/Verwerfen NICHT still verloren gehen dürfen. Reine Ableitung, kein Datenmodell,
+// kein Auto-Save — nur Anzeige-/Entscheidungslogik für Dirty-Badge + Discard-Schutz.
+export interface KnowledgeStudioState {
+  dirty: boolean;
+  statusKey: string; // i18n-Key für den sichtbaren Status
+  tone: "warn" | "neutral";
+}
+
+export function knowledgeStudioState(draft: string, applied: string): KnowledgeStudioState {
+  return draft !== applied
+    ? { dirty: true, statusKey: "studio.state.dirty", tone: "warn" }
+    : { dirty: false, statusKey: "studio.state.clean", tone: "neutral" };
+}

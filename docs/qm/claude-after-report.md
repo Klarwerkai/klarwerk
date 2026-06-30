@@ -8042,3 +8042,41 @@ git commit -m "feat(editor): Knowledge Input Studio — large AI-assisted editin
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-339 — Beta Knowledge Studio Safety & Apply Feedback v0
+**Datum:** 2026-06-29 · **Rolle:** Claude (Hauptumsetzer) · **Status:** umgesetzt, Gates grün
+
+**Vorab-Befund.** `git status -sb` sauber (nur untracked Infra-Doc — Codex hatte SCRUM-337 + Own-Knowledge bereits committet). `KnowledgeInputStudio.tsx` (SCRUM-337) arbeitet auf internem `draft`, schrieb aber Schließen/Verwerfen unmittelbar (still) und zeigte keinen Dirty-Status; nach Übernahme gab es kein Feedback auf der Seite. Bereits vorhanden: `editorApplySafety.ts` (SCRUM-320, `hasEditableContent`/`shouldWarnBeforeReplace`/`templateApplyMode`) + `tests/app/editor-apply-safety.test.ts` — der natürliche Ort für den neuen Studio-Zustandshelfer.
+
+**Umsetzung (FE-only, contained).**
+1. **DOM-freier Helfer** `knowledgeStudioState(draft, applied)` in `editorApplySafety.ts`: `dirty = draft !== applied` + `statusKey` (`studio.state.dirty`/`.clean`) + `tone` (warn/neutral).
+2. **Dirty-Status sichtbar** im Studio-Header als Badge („Nicht übernommen" warn / „Keine Studio-Änderungen" neutral).
+3. **Discard-Schutz:** Schließen/Verwerfen geht über `requestClose()` — bei `dirty` erscheint eine **Inline-Bestätigung** in der Fußzeile („Nicht übernommene Änderungen verwerfen?" + „Weiter bearbeiten"/„Verwerfen"), kein `confirm()`. Ohne Änderungen schließt es direkt. Apply bleibt bewusst (`onApply(draft)` → schließen). Beim Öffnen werden Draft + Confirm-State zurückgesetzt.
+4. **Apply-Feedback** in Capture und KO-Detail-Edit: `studioApplied`-State, im `onApply`-Wrapper gesetzt, beim Öffnen des Studios zurückgesetzt; rendert einen kurzen grünen Hinweis `studio.applied` („… in den Entwurf übernommen. Speichern/Revision erfolgt erst über den bestehenden Button — nichts wird automatisch gespeichert oder validiert."). Save/Submit/Revise unverändert.
+5. **i18n** `studio.state.*`, `studio.confirmDiscard.*`, `studio.applied` DE+EN (ehrlich: kein Auto-Save/Validate).
+6. **Tests** `tests/app/editor-apply-safety.test.ts` erweitert: `knowledgeStudioState` dirty/clean, Studio-Safety-i18n DE/EN, Ehrlichkeits-Check `studio.applied`.
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/editorApplySafety.ts` (knowledgeStudioState + Typ)
+- `apps/web/src/components/KnowledgeInputStudio.tsx` (Dirty-Badge + requestClose + Inline-Discard-Confirm)
+- `apps/web/src/pages/Capture.tsx` (studioApplied + Apply-Feedback-Banner)
+- `apps/web/src/pages/KnowledgeDetail.tsx` (studioApplied + Apply-Feedback-Banner)
+- `apps/web/src/i18n.ts` (`studio.state/confirmDiscard/applied` DE+EN)
+- `tests/app/editor-apply-safety.test.ts` (erweitert)
+
+**Tests/Gates.** `npm run check` grün — **155 Dateien / 948 Tests**. Gezielt `tests/app/editor-apply-safety.test.ts` → 8/8 grün. `(cd apps/web && tsc --noEmit)` grün (FE-EXIT=0). Biome/depcruise grün.
+
+**Bewusst nicht umgesetzt.** Kein `beforeunload`/Routenwechsel-Schutz (nur Studio-eigener Schließen/Verwerfen-Pfad); kein Auto-Dismiss/Timer für das Apply-Feedback (verschwindet beim nächsten Studio-Öffnen); keine Persistenz/Autosave; kein Backend; kein neues Datenmodell.
+
+**Rest-Risiken.** Das Apply-Feedback bleibt sichtbar, bis der Studio erneut geöffnet wird — bewusst, da es den letzten Studio-Apply widerspiegelt (kein Live-Diff zum aktuellen Body). Der Dirty-Vergleich ist String-genau (`draft !== bodyHtml`); reine Whitespace-/Reihenfolgeunterschiede im sanitisierten HTML würden als „dirty" gelten — akzeptabel, da konservativ (schützt eher zu viel als zu wenig).
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/editorApplySafety.ts apps/web/src/components/KnowledgeInputStudio.tsx apps/web/src/pages/Capture.tsx apps/web/src/pages/KnowledgeDetail.tsx apps/web/src/i18n.ts tests/app/editor-apply-safety.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(editor): studio dirty-state, discard guard and apply feedback (SCRUM-339)"
+git push
+```
+Kein Git/Push/Jira durch Claude.

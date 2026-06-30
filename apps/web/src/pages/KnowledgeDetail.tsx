@@ -154,6 +154,8 @@ export function KnowledgeDetail(): JSX.Element {
   const [edit, setEdit] = useState<EditState | null>(null);
   // SCRUM-337: großer Knowledge-Studio-Arbeitsraum (Overlay) für den ausführlichen Inhalt im Edit.
   const [studioOpen, setStudioOpen] = useState(false);
+  // SCRUM-339: kurzes, ehrliches Feedback nach Übernahme aus dem Studio (kein Auto-Save).
+  const [studioApplied, setStudioApplied] = useState(false);
   // SCRUM-331: nach einer Revision aus dem Nacharbeitskontext (?rework=review) den Rückweg ins
   // Validation Board (Fokus „überarbeitet") anbieten. Nur Anzeige; keine Auto-Validierung/-Rückgabe.
   const [reworkSavedFor, setReworkSavedFor] = useState<string | null>(null);
@@ -682,7 +684,10 @@ export function KnowledgeDetail(): JSX.Element {
                             Inline-Feld bleibt erhalten; das Studio arbeitet auf demselben edit.bodyHtml. */}
                         <button
                           type="button"
-                          onClick={() => setStudioOpen(true)}
+                          onClick={() => {
+                            setStudioApplied(false);
+                            setStudioOpen(true);
+                          }}
                           className="mb-2 inline-flex items-center gap-1.5 rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
                         >
                           <Sparkles size={14} /> {t("studio.open")}
@@ -691,13 +696,22 @@ export function KnowledgeDetail(): JSX.Element {
                           open={studioOpen}
                           onClose={() => setStudioOpen(false)}
                           bodyHtml={edit.bodyHtml}
-                          onApply={(bodyHtml) => setEdit({ ...edit, bodyHtml })}
+                          onApply={(bodyHtml) => {
+                            setEdit({ ...edit, bodyHtml });
+                            setStudioApplied(true);
+                          }}
                           runAssist={runAssist}
                           images={(ko.attachments ?? [])
                             .filter((a) => a.objectId && a.mime.startsWith("image/"))
                             .map((a) => ({ objectId: a.objectId as string, name: a.name }))}
                           attachments={ko.attachments ?? []}
                         />
+                        {/* SCRUM-339: ehrliches Feedback — übernommen in den Entwurf, kein Auto-Save. */}
+                        {studioApplied ? (
+                          <p className="mb-2 rounded-btn bg-trust-pos-bg px-2.5 py-1.5 text-[11.5px] text-trust-pos-text">
+                            {t("studio.applied")}
+                          </p>
+                        ) : null}
                         {/* SCRUM-317: kompakte Orientierung am Body-Feld (Struktur/Handlung/Blöcke/KI). */}
                         <EditorGuidance />
                         {/* SCRUM-323: Anhänge-Kontext — Bilder (einfügbar) vs. Dateien (Anhang/Evidence). */}
