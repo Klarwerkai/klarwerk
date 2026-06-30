@@ -63,3 +63,13 @@
 .prose-kw .panel-success {
   @apply border-l-4 border-l-trust-pos-fill bg-trust-pos-bg;
 }
+/* SCRUM-355: sichere Body-Datei-Referenz (Link auf Object-Store-Raw-Pfad) als ruhige Anhang-Zeile. */
+.prose-kw .attachment {
+  @apply my-2 inline-flex items-center gap-1.5 rounded-card border border-hairline bg-page px-2.5 py-1.5;
+}
+.prose-kw .attachment::before {
+  content: "📎";
+}
+.prose-kw .attachment a {
+  @apply font-semibold no-underline;
+}

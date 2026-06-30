@@ -46,6 +46,7 @@ import {
   TextInput,
 } from "../components/ui";
 import { applyBodyAssist, applyBodyAssistBlock, bodyTextForAssist } from "../lib/bodyAiAssist";
+import { editorFilesFromAttachments } from "../lib/bodyFileLink";
 import {
   BODY_READ_BLOCKS_KEY,
   BODY_READ_NOTE_KEY,
@@ -705,6 +706,7 @@ export function KnowledgeDetail(): JSX.Element {
                           images={(ko.attachments ?? [])
                             .filter((a) => a.objectId && a.mime.startsWith("image/"))
                             .map((a) => ({ objectId: a.objectId as string, name: a.name }))}
+                          files={editorFilesFromAttachments(ko.attachments ?? [])}
                           attachments={ko.attachments ?? []}
                         />
                         {/* SCRUM-339: ehrliches Feedback — übernommen in den Entwurf, kein Auto-Save. */}
@@ -733,6 +735,7 @@ export function KnowledgeDetail(): JSX.Element {
                           images={(ko.attachments ?? [])
                             .filter((a) => a.objectId && a.mime.startsWith("image/"))
                             .map((a) => ({ objectId: a.objectId as string, name: a.name }))}
+                          files={editorFilesFromAttachments(ko.attachments ?? [])}
                         />
                         {/* SCRUM-315: KI-Nachbearbeitung des ausführlichen Inhalts im Edit-Modus —
                             Textbasis aus edit.bodyHtml, Übernahme als sicheres Body-HTML. ko.editNote

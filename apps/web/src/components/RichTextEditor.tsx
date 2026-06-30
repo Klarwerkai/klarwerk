@@ -8,11 +8,13 @@ import {
   Link as LinkIcon,
   List,
   ListOrdered,
+  Paperclip,
   Pencil,
   SquareStack,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { type EditorFile, fileLinkHtml } from "../lib/bodyFileLink";
 import {
   EDITOR_BLOCKS,
   type EditorBlock,
@@ -36,15 +38,19 @@ export function RichTextEditor({
   value,
   onChange,
   images = [],
+  files = [],
 }: {
   value: string;
   onChange: (html: string) => void;
   images?: EditorImage[];
+  // SCRUM-355: im Body verlinkbare Nicht-Bild-Dateien (mit Object-Store-objectId).
+  files?: EditorFile[];
 }): JSX.Element {
   const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   const [showImages, setShowImages] = useState(false);
+  const [showFiles, setShowFiles] = useState(false);
   const [showLink, setShowLink] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const [linkLabel, setLinkLabel] = useState("");
@@ -97,6 +103,14 @@ export function RichTextEditor({
       : img.src
         ? insertImageSrcHtml(img.src, img.name)
         : "";
+    if (html) {
+      exec("insertHTML", html);
+    }
+  };
+  // SCRUM-355: Nicht-Bild-Datei als sicheren Body-Link (Object-Store-Raw-Pfad) einfügen.
+  const addFile = (file: EditorFile): void => {
+    setShowFiles(false);
+    const html = fileLinkHtml({ objectId: file.objectId, name: file.name });
     if (html) {
       exec("insertHTML", html);
     }
@@ -189,6 +203,36 @@ export function RichTextEditor({
                     className="block w-full truncate rounded-btn px-2 py-1 text-left text-[12.5px] text-text hover:bg-hairline-soft"
                   >
                     {img.name}
+                  </button>
+                ))
+              )}
+            </div>
+          ) : null}
+        </div>
+        {/* SCRUM-355: Nicht-Bild-Datei als sichere Body-Referenz (Object-Store) einfügen. */}
+        <div className="relative">
+          <button
+            type="button"
+            title={t("editor.file")}
+            className={btn}
+            onClick={() => setShowFiles((s) => !s)}
+          >
+            <Paperclip size={15} />
+          </button>
+          {showFiles ? (
+            <div className="absolute z-10 mt-1 w-60 rounded-card border border-hairline bg-surface p-1.5 shadow">
+              <p className="px-2 pb-1 pt-0.5 text-[11px] text-muted-2">{t("editor.insertFile")}</p>
+              {files.length === 0 ? (
+                <p className="px-2 py-1 text-[12px] text-muted">{t("editor.noFiles")}</p>
+              ) : (
+                files.map((file) => (
+                  <button
+                    key={file.objectId}
+                    type="button"
+                    onClick={() => addFile(file)}
+                    className="block w-full truncate rounded-btn px-2 py-1 text-left text-[12.5px] text-text hover:bg-hairline-soft"
+                  >
+                    {file.name}
                   </button>
                 ))
               )}

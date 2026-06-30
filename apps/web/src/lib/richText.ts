@@ -50,6 +50,8 @@ const ALLOWED_DIV_CLASSES = new Set([
   "panel-note",
   "panel-warning",
   "panel-success",
+  // SCRUM-355: schmale Erweiterung für sichere Body-Datei-Referenzen (Link auf Object-Store-Raw-Pfad).
+  "attachment",
 ]);
 
 function sanitizeDivClass(value: string): string | null {

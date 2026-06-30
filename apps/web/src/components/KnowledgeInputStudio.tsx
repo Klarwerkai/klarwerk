@@ -12,6 +12,7 @@ import {
   bodyAssistStructuredActions,
   bodyTextForAssist,
 } from "../lib/bodyAiAssist";
+import type { EditorFile } from "../lib/bodyFileLink";
 import { BODY_READ_BLOCKS_KEY, BODY_READ_TITLE_KEY } from "../lib/bodyReadMode";
 import { knowledgeStudioState } from "../lib/editorApplySafety";
 import type { AttachmentLike } from "../lib/editorAttachmentContext";
@@ -42,6 +43,7 @@ export function KnowledgeInputStudio({
   onApply,
   runAssist,
   images = [],
+  files = [],
   attachments = [],
 }: {
   open: boolean;
@@ -51,6 +53,8 @@ export function KnowledgeInputStudio({
   onApply: (next: string) => void;
   runAssist: (text: string, instruction?: string) => Promise<string>;
   images?: EditorImage[];
+  // SCRUM-355: im Body verlinkbare Nicht-Bild-Dateien (mit Object-Store-objectId).
+  files?: EditorFile[];
   attachments?: readonly AttachmentLike[];
 }): JSX.Element | null {
   const { t } = useTranslation();
@@ -199,7 +203,7 @@ export function KnowledgeInputStudio({
             {view === "edit" ? <KnowledgeStudioTips /> : null}
             {view === "edit" ? (
               <div className="min-h-[55vh] rounded-card border border-hairline bg-surface p-2 sm:p-3">
-                <RichTextEditor value={draft} onChange={setDraft} images={images} />
+                <RichTextEditor value={draft} onChange={setDraft} images={images} files={files} />
               </div>
             ) : (
               // SCRUM-346: sichere Live-Vorschau — spiegelt die KO-Detail-Read-Mode-Darstellung

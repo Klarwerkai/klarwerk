@@ -505,6 +505,10 @@ const de = {
   "editor.block.success": "Erfolg",
   "editor.image": "Bild aus Anhang",
   "editor.noImages": "Keine Bild-Anhänge vorhanden.",
+  "editor.file": "Datei verlinken",
+  "editor.insertFile": "Datei-Anhang als Link einfügen",
+  "editor.noFiles":
+    "Keine verlinkbaren Datei-Anhänge — erst gespeicherte Anhänge (mit Objekt-Referenz) sind verlinkbar.",
   "editor.preview": "Vorschau",
   "editor.edit": "Bearbeiten",
   "editor.linkPrompt": "Link-URL eingeben:",
@@ -1990,6 +1994,10 @@ const en: typeof de = {
   "editor.block.success": "Success",
   "editor.image": "Image from attachment",
   "editor.noImages": "No image attachments yet.",
+  "editor.file": "Link a file",
+  "editor.insertFile": "Insert file attachment as a link",
+  "editor.noFiles":
+    "No linkable file attachments — only saved attachments (with an object reference) can be linked.",
   "editor.preview": "Preview",
   "editor.edit": "Edit",
   "editor.linkPrompt": "Enter link URL:",

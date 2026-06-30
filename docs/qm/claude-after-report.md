@@ -8717,3 +8717,50 @@ git commit -m "fix(capture): submit continued drafts via promote route — KO of
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-355 — Beta Body File Attachments via Object Store v0 (FR-STR-02 / G-P1-1)
+
+**Datum:** 2026-06-30 · **Rolle:** Hauptumsetzer (Claude) · **Repo:** `/Users/peterkohnert/Documents/dev_Klarwerk` (nur Team-1)
+
+**Auftrag.** Nicht-Bild-Dateien sollen als SICHERE, sichtbare Body-Referenz im RichText/Knowledge-Studio-Body einfügbar sein — kein Legacy-Data-URL, keine breite Sanitizer-Allowlist, Nutzung der vorhandenen Object-Store-/Attachment-/Evidence-Architektur, Link nur auf internen `/api/objects/:id/raw`. Status/Trust/Validierung bleiben unverändert (Datei-Referenz = Evidence/Anhang, KEIN Validierungssignal). Bild-Einfügen darf nicht regredieren.
+
+**Umsetzung.**
+1. **Neuer DOM-freier Helfer** `apps/web/src/lib/bodyFileLink.ts`: `objectRawHref(objectId)` → `/api/objects/:id/raw` oder `null` bei ungültiger ID (`/^[\w-]+$/`, kein Pfad-/Scheme-Trick); `fileLinkHtml({objectId,name})` → `<div class="attachment"><a href=raw title=name>name</a></div>` mit escaptem Namen, leer ohne gültige objectId (kein Fake-Link); `applyBodyFileLink` set/append nicht-destruktiv; `editorFilesFromAttachments` filtert auf NICHT-Bild MIT gültiger objectId.
+2. **Schmale Sanitizer-Erweiterung** (FE `apps/web/src/lib/richText.ts` + Server `services/structure/src/sanitize.ts`): genau eine Klasse `attachment` zur `ALLOWED_DIV_CLASSES`-Allowlist. Anker erhalten weiterhin automatisch `rel="noopener noreferrer nofollow" target="_blank"`; `javascript:`/Data-/Fremdschemata und fremde Klassen werden weiter entfernt.
+3. **RichTextEditor** `apps/web/src/components/RichTextEditor.tsx`: neue `files`-Prop + Paperclip-Toolbar-Dropdown (`addFile` → `exec("insertHTML", fileLinkHtml(...))`), ehrlicher Leerzustand `editor.noFiles`. Bild-Einfügen unverändert.
+4. **Verdrahtung:** `KnowledgeInputStudio` reicht `files` durch; `KnowledgeDetail` liefert `files={editorFilesFromAttachments(ko.attachments ?? [])}` an Studio + Editor; Capture nutzt den leeren Default (Session-Dateien ohne objectId → ehrlich kein Link).
+5. **CSS** `apps/web/src/index.css`: ruhige `.prose-kw .attachment`-Zeile mit 📎.
+6. **i18n** `editor.file`/`editor.insertFile`/`editor.noFiles` DE+EN.
+
+**Tests.** `tests/app/body-file-link.test.ts` (NEU, 8 Tests): `objectRawHref` valid/invalid; `fileLinkHtml` Escaping/leer; `applyBodyFileLink` set/append/No-Op; `editorFilesFromAttachments`-Filter; FE/Server-Sanitizer-Parität (attachment-Link überlebt, `javascript:`/Fremdklasse entwertet); KO-Detail-kompatibler Flow (Attachments → Link → Server-Sanitizer, kein Data-URL) + Capture-Session ohne objectId = ehrlich keine Links.
+
+**Bewusst nicht umgesetzte Gaps.** Capture-Session-Dateien sind erst nach Upload (objectId) body-verlinkbar (P2, kein Datenverlust). Drag&Drop/Paste (G-P2-1) bleibt offen. Keine Schemaänderung, kein neuer Endpunkt — vorhandene Object-Store-/Attachment-/Evidence-Architektur genügt.
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/bodyFileLink.ts` (NEU)
+- `apps/web/src/lib/richText.ts` (Allowlist `attachment`)
+- `services/structure/src/sanitize.ts` (Allowlist `attachment`)
+- `apps/web/src/components/RichTextEditor.tsx` (files-Prop + Paperclip-Dropdown + addFile)
+- `apps/web/src/components/KnowledgeInputStudio.tsx` (files-Passthrough)
+- `apps/web/src/pages/KnowledgeDetail.tsx` (files=editorFilesFromAttachments)
+- `apps/web/src/index.css` (.attachment)
+- `apps/web/src/i18n.ts` (editor.file/insertFile/noFiles DE+EN)
+- `tests/app/body-file-link.test.ts` (NEU)
+- `docs/TEAM6_UPDATE.md` (Pflicht-Nebenänderung, SCRUM-355-Eintrag)
+
+**Gates.** `npm run check` grün — **168 Dateien / 1015 Tests**. Gezielt `body-file-link.test.ts` → 8/8 grün. `(cd apps/web && tsc --noEmit)` strict grün (FE-EXIT=0). Biome/depcruise grün (Import-Organize automatisch korrigiert).
+
+**TEAM6_UPDATE.md updated: yes** · **Team6 review needed: yes** · **Reason: Team6 P1 Gap FR-STR-02 / G-P1-1** · **Affected requirements: FR-STR-02, KG-UX-012** · **Affected gaps: G-P1-1 (G-P2-1 weiterhin offen)**
+
+**Rest-Risiken.** Ohne DOM-Render-Harness sind Editor-/Studio-Verdrahtung per FE-tsc + Helfer-/Sanitizer-Parität belegt, nicht per gerendertem Klick. Server bleibt autoritative Sanitizing-Instanz; FE-Allowlist ist Defense-in-Depth.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/bodyFileLink.ts apps/web/src/lib/richText.ts services/structure/src/sanitize.ts apps/web/src/components/RichTextEditor.tsx apps/web/src/components/KnowledgeInputStudio.tsx apps/web/src/pages/KnowledgeDetail.tsx apps/web/src/index.css apps/web/src/i18n.ts tests/app/body-file-link.test.ts docs/TEAM6_UPDATE.md docs/qm/claude-after-report.md
+git commit -m "feat(editor): safe body file links via object store raw path (SCRUM-355, FR-STR-02/G-P1-1)"
+git push
+```
+Kein Git/Push/Jira durch Claude.
