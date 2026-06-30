@@ -12,9 +12,16 @@ import {
   bodyAssistStructuredActions,
   bodyTextForAssist,
 } from "../lib/bodyAiAssist";
+import { BODY_READ_BLOCKS_KEY, BODY_READ_TITLE_KEY } from "../lib/bodyReadMode";
 import { knowledgeStudioState } from "../lib/editorApplySafety";
 import type { AttachmentLike } from "../lib/editorAttachmentContext";
 import { knowledgeStudioSectionLabelKey } from "../lib/knowledgeStudioLayout";
+import {
+  STUDIO_EDITOR_VIEWS,
+  type StudioEditorView,
+  studioEditorViewLabelKey,
+  studioPreviewState,
+} from "../lib/knowledgeStudioPreview";
 import { AiAssistBox } from "./AiAssistBox";
 import { BodyTemplateChooser } from "./BodyTemplateChooser";
 import { EditorAttachmentContext } from "./EditorAttachmentContext";
@@ -23,6 +30,7 @@ import { EditorGuidance } from "./EditorGuidance";
 import { KnowledgeStudioTips } from "./KnowledgeStudioTips";
 import type { EditorImage } from "./RichTextEditor";
 import { RichTextEditor } from "./RichTextEditor";
+import { SanitizedHtml } from "./SanitizedHtml";
 import { Button } from "./ui";
 
 export function KnowledgeInputStudio({
@@ -49,12 +57,15 @@ export function KnowledgeInputStudio({
   const [draft, setDraft] = useState(bodyHtml);
   // SCRUM-339: Inline-Bestätigung, bevor unübernommene Änderungen verworfen werden (kein confirm()).
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  // SCRUM-346: Umschalter Bearbeiten ↔ Vorschau/Review der zentralen Editor-Spalte (lokaler Anzeige-State).
+  const [view, setView] = useState<StudioEditorView>("edit");
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: bewusst nur beim Öffnen synchronisieren.
   useEffect(() => {
     if (open) {
       setDraft(bodyHtml);
       setConfirmDiscard(false);
+      setView("edit");
     }
   }, [open]);
 
@@ -123,14 +134,69 @@ export function KnowledgeInputStudio({
 
           {/* Zentrale Editorfläche — sichtbar der Hauptarbeitsbereich (mehr vertikale Fläche). */}
           <section className="min-w-0 space-y-2">
-            <p className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
-              {t(knowledgeStudioSectionLabelKey("editor"))}
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+                {t(knowledgeStudioSectionLabelKey("editor"))}
+              </p>
+              {/* SCRUM-346: klare Trennung Bearbeiten ↔ Vorschau/Review (kein Layout-Umbau). */}
+              <div className="inline-flex rounded-btn border border-hairline bg-page p-0.5">
+                {STUDIO_EDITOR_VIEWS.map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    aria-pressed={view === v}
+                    onClick={() => setView(v)}
+                    className={`rounded-[6px] px-2.5 py-1 text-[11.5px] font-semibold ${
+                      view === v ? "bg-surface text-text shadow-sm" : "text-muted hover:text-text"
+                    }`}
+                  >
+                    {t(studioEditorViewLabelKey(v))}
+                  </button>
+                ))}
+              </div>
+            </div>
             {/* SCRUM-345: kurze Bedien-/Formatierungs-Hilfe direkt über der Editorfläche. */}
             <KnowledgeStudioTips />
-            <div className="min-h-[55vh] rounded-card border border-hairline bg-surface p-2 sm:p-3">
-              <RichTextEditor value={draft} onChange={setDraft} images={images} />
-            </div>
+            {view === "edit" ? (
+              <div className="min-h-[55vh] rounded-card border border-hairline bg-surface p-2 sm:p-3">
+                <RichTextEditor value={draft} onChange={setDraft} images={images} />
+              </div>
+            ) : (
+              // SCRUM-346: sichere Live-Vorschau — spiegelt die KO-Detail-Read-Mode-Darstellung
+              // (SanitizedHtml + .prose-kw + Blöcke-Chip). Ehrlich: Entwurf, kein validiertes Wissen.
+              <div className="min-h-[55vh] rounded-card border border-hairline bg-surface p-3">
+                {(() => {
+                  const previewState = studioPreviewState(draft);
+                  return (
+                    <>
+                      <div className="mb-2 flex flex-wrap items-center gap-1.5 border-b border-hairline pb-2">
+                        <span className="text-[11.5px] font-semibold text-ink">
+                          {t(BODY_READ_TITLE_KEY)}
+                        </span>
+                        {previewState.hasBlocks ? (
+                          <span className="rounded-pill bg-page px-2 py-0.5 text-[10.5px] font-semibold text-muted">
+                            {t(BODY_READ_BLOCKS_KEY)}
+                          </span>
+                        ) : null}
+                      </div>
+                      {previewState.emptyHintKey ? (
+                        <p className="py-6 text-center text-[12.5px] text-muted">
+                          {t(previewState.emptyHintKey)}
+                        </p>
+                      ) : (
+                        <SanitizedHtml
+                          html={draft}
+                          className="prose-kw text-[14.5px] leading-relaxed text-text"
+                        />
+                      )}
+                      <p className="mt-2 border-t border-hairline pt-2 text-[11px] leading-relaxed text-muted">
+                        {t("studio.preview.note")}
+                      </p>
+                    </>
+                  );
+                })()}
+              </div>
+            )}
           </section>
 
           {/* KI-Hilfe direkt sichtbar: Aktionen (Klarer/Strukturieren/Erweitern/Rechtschreibung) +

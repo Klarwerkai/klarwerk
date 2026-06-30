@@ -8318,3 +8318,47 @@ git commit -m "feat(editor): knowledge studio keyboard & formatting guidance car
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-346 — Beta Knowledge Studio Live Preview & Apply Review v0
+**Datum:** 2026-06-30 · **Rolle:** Claude (Hauptumsetzer) · **Status:** umgesetzt, Gates grün
+
+**Vorab-Befund.** `git status -sb` sauber (nur untracked Infra-Doc; SCRUM-337–345 committet). KnowledgeInputStudio = 3-Spalten-Arbeitsraum (Kontext · Editor · KI) mit Dirty-State, Discard-Guard, KnowledgeStudioTips, Save Confidence. KO-Detail rendert den Body im Read-Mode über `SanitizedHtml` (`className="prose-kw …"`) + Titel/Blöcke-Chip aus `bodyReadMode` (`BODY_READ_TITLE_KEY`/`BODY_READ_BLOCKS_KEY`/`BODY_READ_NOTE_KEY`). `SanitizedHtml` ist der einzige `dangerouslySetInnerHTML`-Ort (allowlist-sanitisiert FE+Server). Es fehlte eine Live-Vorschau im Studio selbst.
+
+**Legacy-Pfad geprüft.** `Klarwerk/app/src/{WikiEditor,AiAssist,CaseEditor}.jsx` + `TeacherStudio.jsx` verfügbar (read-only); `Klarwerk/demo/src/...` nicht geprüft/nicht nötig. Nur gelesen, nichts kopiert.
+
+**Gap-Liste (alt → neu → beta-Lücke → Entscheidung).**
+- Live-Vorschau des bearbeiteten Bodys: Legacy-WikiEditor hatte teils eine Edit/Preview-Umschaltung → im Studio gab es nur den RichTextEditor (RichTextEditor hat zwar einen internen Preview-Toggle, aber keine KO-Detail-getreue Read-Mode-Vorschau) → Beta-Nutzer sahen vor dem Übernehmen nicht, wie der strukturierte Body später aussieht → **jetzt umgesetzt** (eigene, KO-Detail-getreue Vorschau über `SanitizedHtml`+`prose-kw`).
+- Ehrliche Einordnung „Vorschau ≠ validiertes Wissen": Legacy mischte Vorschau/Freigabe teils → **jetzt umgesetzt** als klarer Hinweis (Entwurf, kein validiertes Wissen).
+- Cursor-genauer Insert / Diff-Merge / WYSIWYG-Live-Side-by-Side: Legacy teils vorhanden → **nicht übernehmen** (Nicht-Ziele, Risiko/Aufwand zu hoch für Beta-Slice).
+
+**Umgesetzter Umfang.**
+1. **DOM-freier Helfer** `knowledgeStudioPreview.ts`: `StudioEditorView = "edit" | "preview"` + `STUDIO_EDITOR_VIEWS` + `studioEditorViewLabelKey` (Schema `studio.view.<view>`); `studioPreviewState(draft)` leitet über den bestehenden `bodyReadMode` `{ hasBody, hasBlocks, emptyHintKey }` ab (leerer Body → `studio.preview.empty`, sonst null).
+2. **Studio Edit/Vorschau-Umschalter**: segmentierter Toggle im Kopf der zentralen Editor-Spalte (kein Layout-Umbau, 3-Spalten bleibt). „Bearbeiten" zeigt den RichTextEditor wie bisher; „Vorschau" rendert eine sichere Karte, die die KO-Detail-Read-Mode-Darstellung spiegelt (`SanitizedHtml` + `prose-kw` + Blöcke-Chip via `BODY_READ_TITLE_KEY`/`BODY_READ_BLOCKS_KEY`), bei leerem Body den ehrlichen Leer-Hinweis.
+3. **Apply-Review-Hinweis**: `studio.preview.note` — Vorschau = Entwurf, kein validiertes Wissen; Übernehmen schreibt nur in den lokalen Entwurf; Speichern/Einreichen/Revidieren danach über die bestehenden Buttons.
+4. **i18n** `studio.view.edit/preview`, `studio.preview.empty/note` DE+EN.
+5. **Test** `tests/app/knowledge-studio-preview.test.ts` (Views/Reihenfolge, labelKey-Schema, Preview-State leer/Text/Block, i18n-Präsenz DE+EN, Ehrlichkeits-Check).
+
+Beide Einstiegspunkte (Capture-Studio und KO-Detail-Studio) profitieren ohne getrennte Implementierung, da die Vorschau Teil der gemeinsamen KnowledgeInputStudio-Komponente ist. Header/Footer/Dirty-State/Discard-Guard/KI/Templates/Apply unverändert.
+
+**Bewusst nicht umgesetzte Gaps.** Kein neues Editor-Framework; kein Cursor-Insert; kein Diff/Merge; kein Side-by-Side-Live-Split; kein Backend/Reasoner-Change; kein Auto-Save/-Validate; keine Fake-Freigabe; keine Demo-Hacks; `SanitizedHtml` nur genutzt, nicht neu erfunden.
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/knowledgeStudioPreview.ts` (NEU)
+- `apps/web/src/components/KnowledgeInputStudio.tsx` (Edit/Vorschau-Umschalter + sichere Vorschau-Karte + State/Reset + Imports)
+- `apps/web/src/i18n.ts` (`studio.view.*` + `studio.preview.*` DE+EN)
+- `tests/app/knowledge-studio-preview.test.ts` (NEU)
+
+**Tests/Gates.** `npm run check` grün — **159 Dateien / 981 Tests**. Gezielt `knowledge-studio-preview.test.ts` → 6/6 grün. `(cd apps/web && tsc --noEmit)` grün (FE-EXIT=0). Biome/depcruise grün.
+
+**Rest-Risiken.** Vorschau nutzt denselben sanitisierten Renderpfad wie KO-Detail (`SanitizedHtml`) — keine neue XSS-Fläche. View-State ist rein lokal/Anzeige, wird beim Öffnen auf „edit" zurückgesetzt; Dirty-/Apply-Logik arbeitet unverändert auf `draft`. Toggle steht in „edit" beim Öffnen — der Nutzer wechselt bewusst in die Vorschau (kein Auto-Switch). Reine FE-Änderung.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/knowledgeStudioPreview.ts apps/web/src/components/KnowledgeInputStudio.tsx apps/web/src/i18n.ts tests/app/knowledge-studio-preview.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(editor): knowledge studio live preview & apply review (SCRUM-346)"
+git push
+```
+Kein Git/Push/Jira durch Claude.

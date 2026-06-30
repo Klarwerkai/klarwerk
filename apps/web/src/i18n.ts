@@ -305,6 +305,11 @@ const de = {
   "studio.tips.blocks.label": "Templates & Blöcke gezielt",
   "studio.tips.blocks.hint":
     "Vorlagen geben eine Struktur vor; Info-/Hinweis-/Warnung-/Erfolg-Blöcke heben Wichtiges hervor.",
+  "studio.view.edit": "Bearbeiten",
+  "studio.view.preview": "Vorschau",
+  "studio.preview.empty": "Noch kein Inhalt — im Editor schreiben, dann hier die Vorschau prüfen.",
+  "studio.preview.note":
+    "Vorschau zeigt den aktuellen Entwurf, kein validiertes Wissen. Übernehmen schreibt nur in den lokalen Entwurf; Speichern/Einreichen/Revidieren folgt danach über die bestehenden Buttons.",
   "capture.savedViewKo": "Objekt ansehen",
   // SCRUM-310: in der Bibliothek wiederfinden — Herkunftsfilter „eigenes/nicht-Demo-Wissen"
   // (technisch: ohne Demo-Tag; keine Autor-/User-Zuordnung). Auffinden, keine Validierung.
@@ -1733,6 +1738,11 @@ const en: typeof de = {
   "studio.tips.blocks.label": "Templates & blocks on purpose",
   "studio.tips.blocks.hint":
     "Templates give a structure; info/note/warning/success blocks highlight what matters.",
+  "studio.view.edit": "Edit",
+  "studio.view.preview": "Preview",
+  "studio.preview.empty": "No content yet — write in the editor, then check the preview here.",
+  "studio.preview.note":
+    "The preview shows the current draft, not validated knowledge. “Apply” only writes to the local draft; saving/submitting/revising then happens via the existing buttons.",
   "capture.savedViewKo": "View object",
   // SCRUM-310: find it in the library — origin filter "own/non-demo knowledge" (technically: without
   // the demo tag; no author/user attribution). Finding/overview, not validation.
