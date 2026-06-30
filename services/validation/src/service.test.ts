@@ -27,6 +27,38 @@ describe("computeOutcome", () => {
     expect(outcome.status).toBe("offen");
     expect(outcome.trust).toBeLessThan(100);
   });
+
+  it("SCRUM-359/PI-K2: validiert deckelt Trust bei 99 — nie 100 (keine 100-%-Wahrheit)", () => {
+    const outcome = computeOutcome(["up"], 1);
+    expect(outcome.status).toBe("validiert");
+    expect(outcome.trust).toBe(99);
+  });
+
+  it("SCRUM-359: warn (Amber) senkt den Trust und wirkt nicht wie ein volles OK", () => {
+    const allUp = computeOutcome(["up", "up"], 2);
+    const withWarn = computeOutcome(["up", "up", "warn"], 2);
+    // Beide sind validiert (genug grüne, keine rote) …
+    expect(allUp.status).toBe("validiert");
+    expect(withWarn.status).toBe("validiert");
+    // … aber Amber zieht den Trust messbar nach unten („validiert mit Vorbehalt").
+    expect(withWarn.warn).toBe(1);
+    expect(withWarn.trust).toBeLessThan(allUp.trust);
+  });
+
+  it("SCRUM-359: down hält den Status offen und begrenzt den Trust stark", () => {
+    const down = computeOutcome(["down"], 1);
+    expect(down.status).toBe("offen");
+    expect(down.trust).toBe(0);
+    // Eine rote Bewertung kippt auch eine sonst grüne Mehrheit nicht in „validiert".
+    const mixed = computeOutcome(["up", "up", "down"], 2);
+    expect(mixed.status).toBe("offen");
+    expect(mixed.down).toBe(1);
+  });
+
+  it("SCRUM-359: Trust bleibt im Band 0..99 geklemmt (untere und obere Grenze)", () => {
+    expect(computeOutcome(["down", "down"], 1).trust).toBe(0); // nie negativ
+    expect(computeOutcome(["up", "up", "up"], 1).trust).toBe(99); // nie über 99
+  });
 });
 
 describe("ValidationService", () => {
@@ -49,7 +81,7 @@ describe("ValidationService", () => {
     expect(outcome.status).toBe("validiert");
     const stored = await koService.get(ko.id);
     expect(stored?.status).toBe("validiert");
-    expect(stored?.trust).toBe(100);
+    expect(stored?.trust).toBe(99); // SCRUM-359: Trust-Deckel 99 (PI-K2)
   });
 
   it("FR-VAL-03: validierte KOs erscheinen nicht mehr im Board", async () => {

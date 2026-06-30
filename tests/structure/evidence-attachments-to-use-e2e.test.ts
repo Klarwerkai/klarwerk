@@ -168,7 +168,7 @@ describe("SCRUM-350: Evidence & Attachments → Review → Use E2E (HTTP + Objec
     });
     const validated = (await getKo(app, admin, id)).json() as KnowledgeObject;
     expect(validated.status).toBe("validiert");
-    expect(validated.trust).toBe(100);
+    expect(validated.trust).toBe(99); // SCRUM-359: Trust-Deckel 99 (PI-K2)
     expect(validated.attachments).toHaveLength(2); // Anhänge über Validierung erhalten
     const ovAfter = koOverview(validated);
     expect(ovAfter.usability).toBe("ready");

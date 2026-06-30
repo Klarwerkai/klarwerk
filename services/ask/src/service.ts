@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
 import type { KoService } from "../../knowledge-object";
 import type { AnswerResult, KnowledgeRef, Reasoner, ReasonerLocale } from "../../reasoner";
+import { TRUST_MAX } from "../../validation";
 import { normalizeGapQuestion } from "./gap-text";
 import type { GapRepo } from "./repo";
 import { AskError, type Gap, type GapPriority, isGapPriority } from "./types";
@@ -77,7 +78,9 @@ export class AskService {
     if (!ko) {
       throw new AskError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
     }
-    const trust = Math.min(100, ko.trust + HELPFUL_TRUST_STEP);
+    // SCRUM-359/PI-K2: Trust-Deckel zentral (TRUST_MAX=99) — auch der „Hat geholfen"-Bump
+    // darf nie auf 100 („100 % wahr") springen.
+    const trust = Math.min(TRUST_MAX, ko.trust + HELPFUL_TRUST_STEP);
     await this.koService.setValidationState(koId, { trust, status: ko.status });
     await this.audit?.record({ actor, action: "answer.helpful", target: koId });
   }

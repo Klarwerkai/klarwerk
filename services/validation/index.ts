@@ -1,7 +1,7 @@
 // Öffentliche API des Moduls validation.
 export { ValidationService } from "./src/service";
 export type { ValidationServiceDeps, BoardFilter, AssignmentSummary } from "./src/service";
-export { computeOutcome } from "./src/trust";
+export { computeOutcome, TRUST_WEIGHTS, TRUST_MAX } from "./src/trust";
 export type { ValidationOutcome } from "./src/trust";
 export {
   InMemoryRatingRepo,

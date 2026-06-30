@@ -8900,3 +8900,55 @@ git commit -m "feat(trust): server-side truth-conflict review impact on KO statu
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-359 — Beta Trust Formula Spec Alignment v1
+
+**Datum:** 2026-06-30 · **Rolle:** Hauptumsetzer (Claude) · **Repo:** `/Users/peterkohnert/Documents/dev_Klarwerk` (nur Team-1)
+
+**Kurzfazit.** Die Trust-Formel ist jetzt zentral, nachvollziehbar und getestet. `computeOutcome` gewichtet Peer-Bewertungen explizit (up +1, warn −0.5, down −1), normiert auf die geforderten Validierungen und klemmt auf 0..99. Amber (warn) senkt den Trust sichtbar und wirkt nicht mehr wie eine Vollfreigabe; eine rote Bewertung hält den Status offen und begrenzt den Trust stark. Trust deckelt bewusst bei 99 (TRUST_MAX) — nichts gilt je als „100 % wahr" (PI-K2); der „Hat geholfen"-Bump in Ask respektiert denselben Deckel. KO-Detail erklärt Trust ruhig per progressive disclosure (Review-/Evidenzsignal, keine Wahrheitsgarantie). SCRUM-358-Truth-Penalty bleibt unverändert.
+
+**SCRUM-Ticket.** SCRUM-359 — Beta Trust Formula Spec Alignment v1. **Claude beteiligt: ja.**
+
+**Vorab-Befund.** `computeOutcome` (validation/trust.ts) war provisorisch: `(up-down)/needed*100` — `warn` wirkte GAR NICHT auf den Trust (Amber = stilles Voll-OK, der Kern-Gap) und es gab keinen 0..99-Deckel (PI-K2). `TRUST_MAX` existierte nicht. Validierung weiterhin `up >= needed && down === 0` (FR-VAL-02). Zweiter Trust-mutierender Pfad: `AskService.markHelpful` (FR-ASK-04, +2) mit `Math.min(100, …)` — konnte den Deckel umgehen. SCRUM-358-Truth-Penalty (`markTruthConflictReview`, −12) läuft separat über den Dispatcher und ist NICHT von `computeOutcome` abhängig. FE-Helfer `koOverview`/`useReadiness`/`libraryMaturity`/`reviewSignals.trustBand` lesen Status/Trust ab; eine zentrale Trust-Transparenz fehlte.
+
+**Team6-Bezug.** AG-05 (Trust-Formel zentral & nachvollziehbar), EK-22, PI-K2, Top Requirement #7, FR-VAL-01/02.
+
+**Umgesetzter Umfang.**
+1. **Zentrale Trust-Formel** (`services/validation/src/trust.ts`): `computeOutcome(verdicts, needed)` mit `TRUST_WEIGHTS = {up:1, warn:-0.5, down:-1}`, Normierung `weighted/max(needed,1)*100`, geklemmt auf `0..TRUST_MAX`. Neue Exporte `TRUST_WEIGHTS`, `TRUST_MAX = 99` (auch über `services/validation/index.ts`). Status-Regel unverändert (FR-VAL-02) — Amber blockiert nicht, senkt aber den Trust → „validiert mit Vorbehalt".
+2. **Deckel-Konsistenz im zweiten Pfad** (`services/ask/src/service.ts`): `markHelpful` nutzt `Math.min(TRUST_MAX, …)` statt `100` — der Helpful-Bump kann den 99-Deckel nicht mehr überschreiten. Import über die öffentliche Modul-API (`../../validation`); dependency-cruiser grün, kein Zyklus.
+3. **Trust-Transparenz FE** (`apps/web/src/lib/trustExplainer.ts`, DOM-frei): leitet aus Trust-Band + Use-Nutzbarkeit ehrliche i18n-Keys ab (Meta = PI-K2-Botschaft, Band-Erklärung high/mid/low, Review-Hinweis nur wenn nicht ready). KO-Detail rendert das als kompaktes `<details>` (progressive disclosure, keine neue Seite). i18n `trust.explain.*` DE+EN.
+
+**Bewusst nicht umgesetzt.** Keine neue Trust-Engine, keine Migration, kein Auto-Truth, keine Statusmodell-Änderung, kein RAG/Local-LLM/Team-2-Dep, kein Deployment/Server/DNS, keine Fake-Validierung. Die vollständig spec-konforme §3-Formel (abgestufte, mehrstufige Konflikt-/Quellen-Gewichte je Art) bleibt bewusst Folge-Slice (AG-05-TRUST-FORMULA-REST, P2). Geliefert ist die zentrale, beta-plausible Teilableitung. SCRUM-358-Truth-Penalty (−12) bewusst unangetastet.
+
+**Beta-Wirkung.** Warn/Down/Amber wirken beta-plausibel und nicht wie eine Vollfreigabe; Trust ist zentral, nachvollziehbar, getestet und nie als Wahrheitsversprechen dargestellt (PI-K2). Server und FE (koOverview/useReadiness/libraryMaturity/trustExplainer) sind konsistent.
+
+**Geänderte Dateien.**
+- `services/validation/src/trust.ts` (zentrale Formel + TRUST_WEIGHTS/TRUST_MAX)
+- `services/validation/index.ts` (Re-Export TRUST_WEIGHTS/TRUST_MAX)
+- `services/ask/src/service.ts` (Helpful-Bump-Deckel via TRUST_MAX)
+- `apps/web/src/lib/trustExplainer.ts` (NEU, DOM-freier Helfer)
+- `apps/web/src/pages/KnowledgeDetail.tsx` (progressive-disclosure-Block)
+- `apps/web/src/i18n.ts` (trust.explain.* DE+EN)
+- `services/validation/src/service.test.ts` (computeOutcome-Fälle SCRUM-359 + Trust 99)
+- `tests/app/trust-explainer.test.ts` (NEU)
+- `tests/validation/trust-formula-consistency-e2e.test.ts` (NEU, HTTP-E2E Server↔FE)
+- Trust-100→99-Assertion-Updates: `services/app/src/validation-routes.test.ts`, `tests/validation/conflict-trust-integrity-e2e.test.ts`, `tests/validation/conflict-server-trust-impact-e2e.test.ts`, `tests/validation/rework-revalidation-use-e2e.test.ts`, `tests/structure/evidence-attachments-to-use-e2e.test.ts`, `tests/structure/fresh-capture-to-use-e2e.test.ts`
+- `services/app/src/management-routes.test.ts` (avgTrust 67→66, da validierte KOs nun 99)
+- `docs/TEAM6_UPDATE.md` (Pflicht-Nebenänderung, SCRUM-359-Eintrag)
+
+**Tests/Gates.** `computeOutcome`: Deckel 99 (validiert nie 100), warn senkt Trust messbar (validiert mit Vorbehalt), down→offen + Trust 0, Klemmung 0..99. `trustExplainer`: Band→Erklärung/Ton, Review-Hinweis nur wenn nicht ready, i18n DE/EN. HTTP-E2E `trust-formula-consistency`: up→99/ready, warn→validiert aber Trust gedrückt + Band/Explainer vorbehaltlich, down→offen/0 + überall Nacharbeit. `npm run check` grün — **174 Dateien / 1051 Tests**; Build/Biome/dependency-cruiser grün (kein neuer Modulgrenz-Verstoß durch ask→validation). `(cd apps/web && tsc --noEmit)` strict grün.
+
+**TEAM6_UPDATE.md updated: yes** · **Team6 review needed: yes** · **Reason: Team6 P1 Gap AG-05 / EK-22 / Top Requirement #7** · **Affected requirements: AG-05, EK-22, PI-K2, FR-VAL-01, FR-VAL-02, Top Requirement #7** · **Affected gaps: AG-05-TRUST-FORMULA (geschlossen: zentrale Formel + Deckel + Transparenz); AG-05-TRUST-FORMULA-REST (mehrstufige Vollformel) als P2-Folge-Gap offen**
+
+**Rest-Risiken.** Die abgestufte, vollständig spec-konforme §3-Formel (Konflikt-/Quellen-Gewichte je Art, mehrstufig) ist noch nicht umgesetzt (AG-05-TRUST-FORMULA-REST). Der Trust-Deckel ändert validierte Werte von 100→99; alle abhängigen Tests/Aggregate wurden angepasst (u. a. Management-avgTrust 67→66) — sollte ein Team-fremder Konsument einen harten Wert 100 erwarten, ist das zu prüfen (im Team-1-Repo nicht der Fall). Postgres-Pfad nutzt dieselbe `computeOutcome`/`setValidationState`-Logik, ist aber nur im In-Memory-/HTTP-Test belegt (kein Testcontainers-Lauf in dieser Umgebung).
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add services/validation/src/trust.ts services/validation/index.ts services/ask/src/service.ts apps/web/src/lib/trustExplainer.ts apps/web/src/pages/KnowledgeDetail.tsx apps/web/src/i18n.ts services/validation/src/service.test.ts tests/app/trust-explainer.test.ts tests/validation/trust-formula-consistency-e2e.test.ts services/app/src/validation-routes.test.ts services/app/src/management-routes.test.ts tests/validation/conflict-trust-integrity-e2e.test.ts tests/validation/conflict-server-trust-impact-e2e.test.ts tests/validation/rework-revalidation-use-e2e.test.ts tests/structure/evidence-attachments-to-use-e2e.test.ts tests/structure/fresh-capture-to-use-e2e.test.ts docs/TEAM6_UPDATE.md docs/qm/claude-after-report.md
+git commit -m "feat(trust): central, capped trust formula (warn/down weights, max 99) + trust transparency (SCRUM-359, AG-05/EK-22/PI-K2/#7)"
+git push
+```
+Kein Git/Push/Jira durch Claude.

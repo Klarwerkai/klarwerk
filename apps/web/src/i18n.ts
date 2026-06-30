@@ -640,6 +640,17 @@ const de = {
   "ko.ovTrust": "Trust",
   "ko.ovSources": "{{n}} Quellen",
   "ko.ovAttachments": "{{n}} Anhänge",
+  "trust.explain.title": "Was bedeutet Trust?",
+  "trust.explain.meta":
+    "Trust ist ein Review-/Evidenzsignal aus Peer-Bewertungen (0–99) — kein Versprechen, dass die Aussage wahr ist.",
+  "trust.explain.band.high":
+    "Hoher Trust: mehrfach positiv geprüft. Trotzdem mit eigenem Urteil nutzen.",
+  "trust.explain.band.mid":
+    "Mittlerer Trust: erst teils geprüft oder mit Vorbehalten (Gelb). Vor kritischer Nutzung gegenprüfen.",
+  "trust.explain.band.low":
+    "Niedriger Trust: kaum geprüft oder rote Bewertung/Konflikt. Erst prüfen oder nacharbeiten.",
+  "trust.explain.review":
+    "Gelb, Rot oder ein offener Konflikt heißt: prüfen oder nacharbeiten, bevor du dich darauf verlässt.",
   "ko.nextLabel": "Nächste Handlung:",
   "ko.next.use": "validiertes Wissen — kann in Antworten/Output verwendet werden.",
   "ko.next.review": "Validierung läuft — offene Bewertung abschließen.",
@@ -2137,6 +2148,17 @@ const en: typeof de = {
   "ko.ovTrust": "Trust",
   "ko.ovSources": "{{n}} sources",
   "ko.ovAttachments": "{{n}} attachments",
+  "trust.explain.title": "What does Trust mean?",
+  "trust.explain.meta":
+    "Trust is a review/evidence signal from peer ratings (0–99) — not a promise that the statement is true.",
+  "trust.explain.band.high":
+    "High trust: positively reviewed several times. Still apply your own judgement.",
+  "trust.explain.band.mid":
+    "Medium trust: only partly reviewed or with caveats (amber). Double-check before critical use.",
+  "trust.explain.band.low":
+    "Low trust: barely reviewed or has a red rating/conflict. Review or rework it first.",
+  "trust.explain.review":
+    "Amber, red or an open conflict means: review or rework before relying on it.",
   "ko.nextLabel": "Next action:",
   "ko.next.use": "validated knowledge — can be used in answers/output.",
   "ko.next.review": "validation in progress — finish the open rating.",

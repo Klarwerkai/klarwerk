@@ -90,7 +90,7 @@ describe("SCRUM-357: Conflict → Trust/Usability/Review-Integrität (HTTP + FE-
     });
     const validatedA = await getKo(app, admin, koA.id);
     expect(validatedA.status).toBe("validiert");
-    expect(validatedA.trust).toBe(100);
+    expect(validatedA.trust).toBe(99); // SCRUM-359: Trust-Deckel 99 (PI-K2)
     // Rohzustand wäre „ready" — ohne Konflikt.
     expect(koOverview(validatedA).usability).toBe("ready");
     expect(conflictImpact(koA.id, []).limited).toBe(false);

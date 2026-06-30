@@ -83,7 +83,7 @@ describe("SCRUM-358: Conflict → serverseitige Trust-/Status-Wirkung (HTTP)", (
     await rateUp(app, admin, koA.id);
     const validatedA = await getKo(app, admin, koA.id);
     expect(validatedA.status).toBe("validiert");
-    expect(validatedA.trust).toBe(100);
+    expect(validatedA.trust).toBe(99); // SCRUM-359: Trust deckelt bei 99 (PI-K2, nie „100 % wahr")
 
     // 2) Truth-Konflikt zwischen A und B über den echten KO-Dispatcher.
     const created = await app.inject({
@@ -107,7 +107,7 @@ describe("SCRUM-358: Conflict → serverseitige Trust-/Status-Wirkung (HTTP)", (
     //    Trust konservativ gesenkt (kleine Strafe, KEIN Reset auf 0 → keine Aussage „falsch").
     const reviewedA = await getKo(app, admin, koA.id);
     expect(reviewedA.status).toBe("offen");
-    expect(reviewedA.trust).toBe(100 - TRUTH_CONFLICT_TRUST_PENALTY);
+    expect(reviewedA.trust).toBe(99 - TRUTH_CONFLICT_TRUST_PENALTY);
     expect(reviewedA.trust).toBeGreaterThan(0); // nicht zerstört, nur eingeschränkt
 
     // 4) Board zeigt das zurückgeholte KO wieder als Review-Arbeit (board = status offen).
@@ -156,7 +156,7 @@ describe("SCRUM-358: Conflict → serverseitige Trust-/Status-Wirkung (HTTP)", (
     await rateUp(app, admin, koA.id);
     const revalidatedA = await getKo(app, admin, koA.id);
     expect(revalidatedA.status).toBe("validiert");
-    expect(revalidatedA.trust).toBe(100);
+    expect(revalidatedA.trust).toBe(99);
   });
 
   it("Nicht-Wahrheitskonflikt lässt den Server-Status eines validierten KO unverändert (nur FE-Hinweis)", async () => {
@@ -184,6 +184,6 @@ describe("SCRUM-358: Conflict → serverseitige Trust-/Status-Wirkung (HTTP)", (
     // aus SCRUM-357 markiert es weiterhin als konfliktbegrenzt.
     const stillValidated = await getKo(app, admin, koA.id);
     expect(stillValidated.status).toBe("validiert");
-    expect(stillValidated.trust).toBe(100);
+    expect(stillValidated.trust).toBe(99);
   });
 });

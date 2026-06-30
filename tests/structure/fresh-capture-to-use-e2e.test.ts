@@ -135,7 +135,7 @@ describe("SCRUM-348: Fresh Capture → Studio → Review → Use E2E (HTTP + San
       await app.inject({ method: "GET", url: `/api/kos/${koId}`, headers: admin })
     ).json() as KnowledgeObject;
     expect(validated.status).toBe("validiert");
-    expect(validated.trust).toBe(100);
+    expect(validated.trust).toBe(99); // SCRUM-359: Trust-Deckel 99 (PI-K2)
     // KO-Detail-Sicht: jetzt nutzbar (ready), konsistent über koOverview → useReadiness.
     const after = koOverview(validated);
     expect(after.usability).toBe("ready");

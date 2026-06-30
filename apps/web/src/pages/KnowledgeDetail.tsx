@@ -91,6 +91,7 @@ import {
   formatSourceComment,
   isSourceContributionValid,
 } from "../lib/sourceContribution";
+import { trustExplainer } from "../lib/trustExplainer";
 import { useReadiness } from "../lib/useReadiness";
 import { latestValidationFeedback } from "../lib/validationFeedback";
 import { isReturnedForRework } from "../lib/validationStatus";
@@ -467,6 +468,25 @@ export function KnowledgeDetail(): JSX.Element {
                 <p className="mt-1.5 text-[12px] leading-relaxed text-muted">
                   {t(useReadiness(usability).hintKey)}
                 </p>
+                {/* SCRUM-359 / AG-05 / PI-K2: ruhige Trust-Transparenz (progressive disclosure).
+                    Erklärt, dass Trust ein Review-/Evidenzsignal ist — keine Wahrheitsgarantie. */}
+                {(() => {
+                  const ex = trustExplainer({ trustBand: ov.trustBand, usability });
+                  return (
+                    <details className="mt-1.5 text-[12px] text-muted">
+                      <summary className="cursor-pointer select-none font-medium text-muted-2 hover:text-text">
+                        {t(ex.titleKey)}
+                      </summary>
+                      <p className="mt-1 leading-relaxed">{t(ex.metaKey)}</p>
+                      <p className="mt-1 leading-relaxed">{t(ex.bandKey)}</p>
+                      {ex.reviewHintKey ? (
+                        <p className="mt-1 leading-relaxed text-trust-warn-text">
+                          {t(ex.reviewHintKey)}
+                        </p>
+                      ) : null}
+                    </details>
+                  );
+                })()}
                 {/* SCRUM-357 / AG-14 / VC-P1-1: ehrlicher Konflikt-Banner — offener (Truth-)Konflikt
                     schränkt Nutzbarkeit/Trust ein, ohne das KO als falsch zu behaupten. */}
                 {notice ? (

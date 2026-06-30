@@ -6,16 +6,16 @@
 - Scope: Knowledge Input, Capture, AI-assisted Editing, Validation, KO Detail, Library, Ask, Capture → Review → Use, App-Auth/Security, Trust/Conflict-Integrity
 - Repo: `/Users/peterkohnert/Documents/dev_Klarwerk`
 - Jira Project: SCRUM
-- Last updated: 2026-06-30 20:20 CEST
-- Current status: SCRUM-358 umgesetzt durch Claude, Codex-Prüfung/Commit/Push/CI/Jira ausstehend
-- Active ticket: SCRUM-358 — Beta Trust Formula & Server-Side Conflict Impact v0
-- Last completed ticket: SCRUM-357 — Beta Trust & Conflict Integrity v0
-- Last commit: `24717150f98d60aeb1cc5d0bca9129b119847442`
-- GitHub/CI status: SCRUM-357 CI grün; SCRUM-358 noch nicht gepusht
-- Beta impact: Konfliktwirkung jetzt auch SERVERSEITIG: ein offener Wahrheitskonflikt gegen ein validiertes KO holt es serverseitig zurück in Review (Status validiert→offen, Trust konservativ gesenkt — kein Reset, keine Fake-Wahrheit). Serverdaten widersprechen der FE-Ehrlichkeit aus SCRUM-357 nicht mehr; gelöste Konflikte blockieren nicht dauerhaft (KO bleibt review-pflichtig, normal erneut validierbar).
+- Last updated: 2026-06-30 20:45 CEST
+- Current status: SCRUM-359 umgesetzt durch Claude, Codex-Prüfung/Commit/Push/CI/Jira ausstehend
+- Active ticket: SCRUM-359 — Beta Trust Formula Spec Alignment v1
+- Last completed ticket: SCRUM-358 — Beta Trust Formula & Server-Side Conflict Impact v0
+- Last commit: `a59fd65e24536619ac0ab82685b41ebb0cbf4d14`
+- GitHub/CI status: SCRUM-358 CI grün; SCRUM-359 noch nicht gepusht
+- Beta impact: Trust-Formel ist jetzt zentral, nachvollziehbar und getestet (`computeOutcome` in `services/validation/src/trust.ts`): up +1, warn −0.5, down −1, normiert auf `needed`, geklemmt auf 0..99. Amber (warn) senkt den Trust sichtbar und wirkt nicht mehr wie eine Vollfreigabe; eine rote Bewertung hält den Status offen und begrenzt den Trust stark. Trust deckelt bewusst bei 99 (TRUST_MAX) — nichts gilt je als „100 % wahr" (PI-K2); auch der „Hat geholfen"-Bump (Ask) respektiert den Deckel. KO-Detail erklärt Trust ruhig per progressive disclosure (Review-/Evidenzsignal, keine Wahrheitsgarantie). SCRUM-358-Truth-Penalty bleibt unverändert.
 - Team6 review needed: yes
-- Reason: Team6 P1 Gap AG-05 / AG-14-SERVER-TRUST / VC-P1-1 / FR-VAL-01
-- Next planned slice: nach Pedi-Signal; Empfehlung voraussichtlich vollständige spec-konforme Trust-Formel (Anhang §3, EK-22) als Fortsetzung, G-P2-1 (Drag&Drop/Paste) oder weiterer Team6-Gap
+- Reason: Team6 P1 Gap AG-05 / EK-22 / Top Requirement #7
+- Next planned slice: nach Pedi-Signal; verbleibend ist die abgestufte, vollständig spec-konforme §3-Formel (mehrstufige Konflikt-/Quellen-Gewichte, AG-05-TRUST-FORMULA-REST), G-P2-1 (Drag&Drop/Paste) oder weiterer Team6-Gap
 
 ## Current Risks / Gaps
 
@@ -31,7 +31,8 @@
 | AG-07 | Kein unabhängiger Security-Review/Pen-Test. | P1 | Security gesamt | NFR-SEC-04 AK | Bei Pedi/Team 5 (EK-17), nicht Team-1-Scope |
 | AG-14 / VC-P1-1 | Konflikte wirkten nicht auf KO-Trust/-Status; Truth-Konflikt holte validiertes KO nicht in Prüfung zurück. | P1 | Conflicts / KO / Validation / Ask / Library | FR-VAL-01, Anhang §3, Top Requirement #16 | FE-Ehrlichkeit (SCRUM-357) + serverseitige Wirkung (SCRUM-358) abgeschlossen; Codex-Abschluss ausstehend |
 | AG-14-SERVER-TRUST | Truth-Konflikt holt validiertes KO serverseitig nicht in Review zurück; Trust unverändert. | P1 | Validation / KO / Trust | Anhang §3, AG-05/EK-22, Top Requirement #16 | Mit SCRUM-358 adressiert: validiert→offen + konservative Trust-Strafe (markTruthConflictReview); Codex-Abschluss ausstehend |
-| AG-05-TRUST-FORMULA | Vollständige spec-konforme Trust-Formel (Anhang §3: warn/down-Gewichte, abgestufte Konflikt-Impacts je Art) bleibt provisorisch. | P1 | Validation / Trust-Formel | Anhang §3, EK-22 | Bewusst zurückgestellt: SCRUM-358 liefert den Truth-Konflikt-Impact; vollständige Formel als Folge-Slice |
+| AG-05-TRUST-FORMULA | Trust-Formel (warn/down-Gewichte, Deckel) war provisorisch: `warn` wirkte gar nicht auf den Trust (Amber = stilles Voll-OK); kein 0..99-Deckel (PI-K2). | P1 | Validation / Trust-Formel | Anhang §3, EK-22, Top Requirement #7 | Mit SCRUM-359 adressiert: zentrale `computeOutcome` mit warn −0.5 / down −1 / Deckel 99 + Trust-Transparenz; Codex-Abschluss ausstehend |
+| AG-05-TRUST-FORMULA-REST | Vollständig spec-konforme §3-Formel (abgestufte Konflikt-/Quellen-Gewichte je Art, mehrstufig) bleibt offen. | P2 | Validation / Trust-Formel | Anhang §3, EK-22 | Bewusst zurückgestellt: SCRUM-359 liefert die zentrale, beta-plausible Teilableitung; die mehrstufige Vollformel als Folge-Slice |
 
 ## Current Requirement Touchpoints
 
@@ -55,11 +56,25 @@
 | Top Requirement #16 — Konflikt-Trust-/Status-Kopplung | Team6 `TEAM6_CURRENT_TOP_REQUIREMENTS.md` | addressed (FE + Server) in SCRUM-357/358 | FE-Ehrlichkeit (357) + serverseitige Wirkung (358: validiert→offen + Trust-Strafe). |
 | AG-14-SERVER-TRUST — serverseitige Trust-/Status-Kopplung | Team6 `VALIDATION_CONFLICTS_E2E_REVIEW_V0.md` | addressed in SCRUM-358 | Truth-Konflikt holt validiertes KO serverseitig in Review (`KoService.markTruthConflictReview`); Trust −12 (Anhang §3-nah), kein Reset. |
 | AG-05 — Trust-Formel provisorisch | Team6 `TEAM6_ACTIVE_GAPS_AND_RECOMMENDATIONS.md` | partially addressed in SCRUM-358 | Truth-Konflikt-Trust-Impact geliefert + getestet; vollständige spec-konforme Formel (warn/down-Gewichte, abgestufte Konflikt-Impacts) bleibt Folge-Slice (EK-22). |
-| Top Requirement #7 — Trust-Formel/Vertrauensmodell | Team6 `TEAM6_CURRENT_TOP_REQUIREMENTS.md` | partially addressed in SCRUM-358 | Erster spec-naher Trust-Impact (Konflikt) serverseitig wirksam; Restformel als Folge-Gap dokumentiert. |
+| Top Requirement #7 — Trust-Formel/Vertrauensmodell | Team6 `TEAM6_CURRENT_TOP_REQUIREMENTS.md` | addressed in SCRUM-359 | Zentrale, nachvollziehbare `computeOutcome` (up +1 / warn −0.5 / down −1, Deckel 99); Amber ≠ Vollfreigabe, Trust nie „100 % wahr" (PI-K2). Mehrstufige Vollformel (AG-05-TRUST-FORMULA-REST) als Folge-Slice. |
+| AG-05 / EK-22 — Trust-Formel zentral & nachvollziehbar | Team6 `TEAM6_ACTIVE_GAPS_AND_RECOMMENDATIONS.md` | addressed in SCRUM-359 | `services/validation/src/trust.ts` ist die EINE Quelle der Trust-/Status-Ableitung; warn senkt Trust messbar, down hält offen, Deckel 99 (auch Ask-Helpful-Bump). FE-Helfer (koOverview/useReadiness/libraryMaturity/trustExplainer) spiegeln konsistent. |
+| PI-K2 — Trust ist keine Wahrheitsgarantie | Team6 `TEAM6_CURRENT_TOP_REQUIREMENTS.md` | addressed in SCRUM-359 | Trust deckelt bei 99 (TRUST_MAX), nie 100; KO-Detail erklärt per progressive disclosure „Review-/Evidenzsignal, kein Wahrheitsversprechen" (`trustExplainer` + i18n `trust.explain.*`). |
 
 ## Delta Log
 
-### 2026-06-30 20:20 — SCRUM-358 — pending commit
+### 2026-06-30 20:45 — SCRUM-359 — pending commit
+
+- Changed areas: zentrale Trust-Formel `services/validation/src/trust.ts` (`computeOutcome` + neue Exporte `TRUST_WEIGHTS`, `TRUST_MAX`), `services/validation/index.ts` (Re-Export), `services/ask/src/service.ts` (Helpful-Bump-Deckel via `TRUST_MAX`), neuer FE-Helfer `apps/web/src/lib/trustExplainer.ts` + KO-Detail progressive disclosure + i18n `trust.explain.*`, Tests + Test-Assertion-Updates (Trust-Deckel 99), Team6 handoff. SCRUM-358-Truth-Penalty UNVERÄNDERT.
+- What changed: `computeOutcome(verdicts, needed)` ist die EINE nachvollziehbare Trust-/Status-Ableitung. Gewichte je Peer-Bewertung: up +1, warn −0.5 (Amber = „mit Vorbehalt", KEIN volles OK), down −1 (rote Bewertung senkt stark + hält Status offen). Normierung `weighted/max(needed,1)*100`, geklemmt auf `0..TRUST_MAX (=99)`. Status `validiert` weiterhin nur bei `up >= needed && down === 0` (FR-VAL-02) — Amber blockiert die Freigabe nicht, senkt aber den Trust → „validiert mit Vorbehalt" statt stiller Vollfreigabe. Vorher wirkte `warn` GAR NICHT auf den Trust (Amber = stilles Voll-OK) — das war der Kern-Gap. Trust-Deckel 99 (`TRUST_MAX`) setzt PI-K2 um: nichts gilt je als „100 % wahr"; der „Hat geholfen"-Bump in Ask respektiert denselben Deckel (vorher `Math.min(100, …)`). KO-Detail erklärt Trust ruhig per `<details>` (Review-/Evidenzsignal, keine Wahrheitsgarantie; Band-Erklärung; Review-Hinweis nur wenn nicht ready).
+- Beta impact: AG-05 / EK-22 / Top Requirement #7 / PI-K2 — Warn/Down/Amber wirken beta-plausibel und nicht wie eine Vollfreigabe; Trust ist zentral, nachvollziehbar, getestet und nie als Wahrheitsversprechen dargestellt.
+- Designentscheidung (begründet): KEINE neue Trust-Engine, KEINE Migration, KEIN Auto-Truth, KEINE Statusmodell-Änderung. Pragmatische, ehrlich dokumentierte Teilableitung von Technischem Anhang §3 (lineare Gewichte + Deckel); die mehrstufige, abgestufte Vollformel (Konflikt-/Quellen-Gewichte je Art) bleibt bewusst Folge-Slice (AG-05-TRUST-FORMULA-REST). Der Trust-Deckel ist EINE Konstante (`TRUST_MAX`), über die öffentliche Modul-API auch im Ask-Modul wiederverwendet (kein Magic-Number-Duplikat; dependency-cruiser grün, kein Zyklus).
+- Konsistenz Server↔FE: die FE-Helfer `koOverview`/`useReadiness`/`libraryMaturity`/`trustExplainer` spiegeln die Formel-Wirkung konsistent (validiert→ready, Amber→Band nicht „high"/Ton warn, down→nicht ready + Review-Hinweis). SCRUM-357/358-Konfliktwirkung bleibt unangetastet.
+- New / touched requirements: AG-05, EK-22, PI-K2, FR-VAL-01, FR-VAL-02, Top Requirement #7. SCRUM-358-Truth-Konflikt-Penalty (AG-14-SERVER-TRUST) bleibt konsistent.
+- Tests: `services/validation/src/service.test.ts` (computeOutcome: Deckel 99, warn senkt Trust, down→offen/0, Klemmung 0..99) + `tests/app/trust-explainer.test.ts` (Band→Erklärung/Ton, Review-Hinweis nur wenn nicht ready, i18n DE/EN) + `tests/validation/trust-formula-consistency-e2e.test.ts` (HTTP-E2E: up→99/ready, warn→validiert aber Trust gedrückt + Band/Explainer vorbehaltlich, down→offen/0 + überall Nacharbeit). Test-Assertion-Updates Trust 100→99 (validation-routes, conflict-trust-integrity, conflict-server-trust-impact, rework-revalidation-use, evidence-attachments-to-use, fresh-capture-to-use, service.test) und Management-Snapshot avgTrust 67→66. `npm run check` grün (174 Dateien / 1051 Tests), Build/Biome/dependency-cruiser grün, FE-tsc strict grün.
+- Team6 review needed: yes
+- Reason: Team6 P1 Gap AG-05 / EK-22 / Top Requirement #7
+
+### 2026-06-30 20:20 — SCRUM-358 — a59fd65
 
 - Changed areas: `KoService.markTruthConflictReview` (neu) + Trust-Penalty-Konstante (knowledge-object), Dispatcher-Hook (ko-routes conflict-case), Tests; SCRUM-357-E2E an neue Serverwirkung angepasst. KEINE FE-Source-Änderung.
 - What changed: Neue KO-Service-Methode `markTruthConflictReview(id, actor)` — ein offener WAHRHEITSKONFLIKT gegen ein VALIDIERTES KO setzt Status validiert→offen und senkt Trust um `TRUTH_CONFLICT_TRUST_PENALTY` (=12, Anhang-§3-nah), mit Audit `ko.conflict-review`. Idempotent/No-op für offene/fehlende KOs (robust bei Konflikten gegen nicht existierende/offene Bezugs-KOs). Der KO-Dispatcher ruft die Methode im `conflict`-Case für beide referenzierten KOs auf, wenn `type === "truth"`. `resolve` bleibt bewusst ohne Auto-Erholung: das KO bleibt review-pflichtig und wird über die normale Bewertung erneut validiert.

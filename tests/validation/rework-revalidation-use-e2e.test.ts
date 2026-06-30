@@ -174,7 +174,7 @@ describe("SCRUM-349: Review → Rework → Revalidation → Use E2E (HTTP + Sani
     });
     const revalidated = (await getKo(app, admin, id)).json() as KnowledgeObject;
     expect(revalidated.status).toBe("validiert");
-    expect(revalidated.trust).toBe(100);
+    expect(revalidated.trust).toBe(99); // SCRUM-359: Trust-Deckel 99 (PI-K2)
     expect(revalidated.version).toBe(2); // die Revision selbst ist jetzt gesichert
     expect(koOverview(revalidated).usability).toBe("ready");
     expect(useReadiness(koOverview(revalidated).usability).usability).toBe("ready");

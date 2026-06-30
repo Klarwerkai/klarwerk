@@ -112,7 +112,7 @@ describe("SCRUM-237: Validierungs-Workflow (HTTP end-to-end)", () => {
     expect(r2.statusCode).toBe(200);
     const validated = (await getKo(app, admin.headers, id)).json();
     expect(validated.status).toBe("validiert");
-    expect(validated.trust).toBe(100);
+    expect(validated.trust).toBe(99); // SCRUM-359: Trust-Deckel 99 (PI-K2)
 
     // 5) FR-VAL-05: Carlas offene Zuweisung ist durch ihre Bewertung erledigt.
     const overview2 = await app.inject({

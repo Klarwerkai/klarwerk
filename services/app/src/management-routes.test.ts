@@ -102,11 +102,11 @@ describe("SCRUM-240: Management-Snapshot (HTTP end-to-end)", () => {
     expect(snap.overview.totalKos).toBe(3);
     expect(snap.overview.validated).toBe(2);
     expect(snap.overview.open).toBe(1);
-    // avgTrust = round((100+100+0)/3) = 67 (validierte KOs bei needed=1 → trust 100).
-    expect(snap.overview.avgTrust).toBe(67);
+    // avgTrust = round((99+99+0)/3) = 66 (validierte KOs bei needed=1 → trust 99, Deckel SCRUM-359/PI-K2).
+    expect(snap.overview.avgTrust).toBe(66);
 
     // valuationFacts = reine Fakten (kein €-Wert; der entsteht erst im FE).
-    expect(snap.valuationFacts).toMatchObject({ validatedKos: 2, totalKos: 3, avgTrust: 67 });
+    expect(snap.valuationFacts).toMatchObject({ validatedKos: 2, totalKos: 3, avgTrust: 66 });
 
     // statement.assets = validierte Objekte (Aktiva-Basis), net ist abgeleiteter Index 0–100.
     expect(snap.statement.assets).toBe(2);
