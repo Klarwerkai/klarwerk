@@ -8400,3 +8400,45 @@ git commit -m "test(editor): knowledge studio flow smoke + hide formatting tips 
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-348 — Beta Fresh Capture → Studio → Review → Use Hardening v0
+**Datum:** 2026-06-30 · **Rolle:** Claude (Hauptumsetzer) · **Status:** umgesetzt (Regression abgesichert, keine echte Reibung), Gates grün
+
+**Vorab-Befund.** `git status -sb` sauber (nur untracked Infra-Doc; SCRUM-337–347 committet). Bestehend: `tests/structure/capture-to-validation-e2e.test.ts` deckt Capture→offenes KO→Board (eine Up-Stimme reicht bei needed=2 nicht); `ask-routes.test.ts` deckt validiertes KO→gesicherte Antwort und unbeantwortbar→Gap. Der durchgehende Pfad „Fresh Capture (Studio-Body) → offen → Validierung → validiert → Use VOR vs. NACH Validierung" war noch NICHT als zusammenhängender Regressionstest gesichert. Reasoner-Mechanik geprüft: `ask` nutzt `koService.list()` (ALLE KOs), `keywordSelect` matcht per Token-Overlap, `knowledgeClass = best.status === "validiert" ? "gesichert" : "ungeprueft"` → ein offenes KO wird beantwortet, aber ehrlich als ungeprüft markiert. Validierung: needed=1 + ein Admin-Up → `validiert`/Trust 100.
+
+**Legacy-Pfad geprüft.** `Klarwerk/app/src/{WikiEditor,AiAssist,CaseEditor}.jsx` + `TeacherStudio.jsx` (read-only) gesichtet, nichts kopiert.
+
+**Runtime-/Flow-Evidence (neuer E2E, 2 Tests grün).**
+- Studio-Body über die ECHTEN Helfer gebaut: `applyBodyTemplate("","procedure","de")` → `applyBodyAssistSection(...)` (H3 + Absatz).
+- Fresh Capture via `POST /api/kos` → `offen`, Trust 0, Version 1.
+- Server-Sanitizer hält die Studio-Struktur: `<h2>`, `<h3>Sicherheitshinweis</h3>`, `class="panel panel-info"`; `editorContentQuality` = hasHeadings/hasLists/hasBlocks; `bodyReadMode` = {hasBody, hasBlocks}.
+- Capture-Success ehrlich: `captureSavedStatus`, `captureNextSteps(koId)` mit „KO ansehen" (`/wissen/:id`), primär „zur Validierung" (`/validierung…`), „eigenes Wissen" (`non-demo`).
+- Nutzbarkeit vor Review: `koOverview.usability = needs-work`, `useReadiness ≠ ready`, `validationReviewContext.kind = new`. KO erscheint im `GET /api/validation/board`.
+- **USE VOR Validierung:** `POST /api/ask` → `answered=true`, `sources=[koId]`, aber `knowledgeClass ≠ gesichert`; `answerStatus = unverified`; `sourceRefs.validated=false`, `usability ≠ ready` (ehrlich ungeprüft, nicht als gesichert dargestellt).
+- Validierung via `PUT /api/kos/:id {rate, up}` (needed=1) → `validiert`, Trust 100; `koOverview.usability = ready`.
+- **USE NACH Validierung:** `answered=true`, `knowledgeClass=gesichert`, `sources=[koId]` (quellengebunden auf genau dieses KO), `answerStatus=verified`, `gap=null`, `sourceRefs.validated=true`/`usability=ready`.
+- Quellenbindung (Anti-Chatbot): Frage ohne passendes Wissen → `answered=false`, `sources=[]`, ehrliche Lücke (`gap.status=offen`).
+
+**Gefundene Reibung / keine Reibung.** Keine echte P1/P2-Reibung gefunden. Der Beta-Pfad ist durchgängig konsistent und ehrlich: offenes Wissen bleibt offen/ungeprüft und ist beim Fragen klar als nicht-gesichert markiert; erst echte Validierung macht die Antwort gesichert und quellengebunden. Status/Trust/Nutzbarkeit sagen über alle Flächen (KO-Detail/Validation/Ask-Quellen) dasselbe (`koOverview` → `useReadiness`). Daher wie im Ticket vorgesehen: ehrlich berichtet + den Flow als dauerhafte Regression abgesichert.
+
+**Umgesetzter Umfang.** Neuer Runtime-/API-naher E2E `tests/structure/fresh-capture-to-use-e2e.test.ts` (2 Tests) über die echten HTTP-Routen + Server-Sanitizer + deterministischen Reasoner + echte Studio-/Anzeige-Helfer. Kein Produktcode geändert (keine Reibung zu beheben).
+
+**Bewusst nicht umgesetzte Gaps.** Keine Multi-Voter-Quorum-Variante (needed≥2 mit mehreren approvten Validatoren) — RBAC-Approval-Plumbing ist nicht Ziel dieses Slices; das Quorum-Verhalten ist bereits in `capture-to-validation-e2e` (eine Stimme reicht nicht) und `validation-routes.test` abgedeckt. Kein neues Testframework, kein Backend/Reasoner-Change, keine Demo-Politur.
+
+**Geänderte Dateien.**
+- `tests/structure/fresh-capture-to-use-e2e.test.ts` (NEU)
+
+**Tests/Gates.** `npm run check` grün — **161 Dateien / 985 Tests**. Gezielt `fresh-capture-to-use-e2e.test.ts` → 2/2 grün. `(cd apps/web && tsc --noEmit)` grün (FE-EXIT=0). Biome/depcruise grün.
+
+**Rest-Risiken.** Der E2E nutzt needed=1 für einen deterministischen Validierungsschritt; das Mehr-Stimmen-Quorum ist anderweitig abgedeckt. Der deterministische Reasoner ist Keyword-basiert — die Quellenbindung „genau dieses KO" gilt für den getesteten eindeutigen Token (Hydraulikzylinder/HZ7); bei mehreren ähnlichen KOs entscheidet das Token-Overlap-Ranking (bestehendes, getestetes Verhalten). Reiner Test-Zusatz, kein Produktverhalten geändert.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add tests/structure/fresh-capture-to-use-e2e.test.ts docs/qm/claude-after-report.md
+git commit -m "test(flow): fresh capture -> studio -> validation -> use e2e hardening (SCRUM-348)"
+git push
+```
+Kein Git/Push/Jira durch Claude.
