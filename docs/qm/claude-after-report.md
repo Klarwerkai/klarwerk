@@ -8278,3 +8278,43 @@ git commit -m "feat(editor): studio save confidence — clarify next real step b
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-345 — Beta Knowledge Studio Keyboard & Formatting Guidance v0
+**Datum:** 2026-06-30 · **Rolle:** Claude (Hauptumsetzer) · **Status:** umgesetzt, Gates grün
+
+**Vorab-Befund.** `git status -sb` sauber (nur untracked Infra-Doc; SCRUM-337–344 committet). KnowledgeInputStudio ist ein 3-Spalten-Arbeitsraum (Kontext · Editor · KI). RichTextEditor-Toolbar real: Bold/Italic, H2/H3 (formatBlock), UL/OL, Link, vier Block-Buttons (info/note/warning/success), Bild, Preview/Edit-Toggle — Bold/Italic laufen über `execCommand`, also auch via native ⌘B/⌘I in contentEditable. EditorGuidance erklärt Struktur/Aktion/Blöcke/KI grob; BodyTemplateChooser + AiAssistBox + Dirty-State + Save Confidence bestehen. Es fehlte eine editor-nahe Bedien-/Formatierungs-Hilfe direkt im Studio.
+
+**Legacy-Pfad geprüft.** `Klarwerk/app/src/{WikiEditor,AiAssist,CaseEditor}.jsx` + `TeacherStudio.jsx` verfügbar (read-only), nur gelesen, nicht kopiert — kein wiederverwendbares Shortcut-/Formatierungs-Hilfemuster vorhanden.
+
+**Aktuelle Gap.** Im großen Arbeitsraum mussten Nutzer Toolbar/Formatierung/Arbeitslogik selbst entdecken; die Bedienung wirkte noch nicht eindeutig wie ein professioneller Editor-Arbeitsraum.
+
+**Umgesetzter Umfang.**
+1. **DOM-freier Helfer** `knowledgeStudioTips.ts`: stabile Item-Liste `select → structure → ai → blocks` mit `labelKey/hintKey` (Schema `studio.tips.<id>.{label,hint}`) und optionalem reinen Anzeige-`shortcut` (nur beim Formatier-Tipp `⌘B · ⌘I` — KEIN echtes Shortcut-System, nur Hinweis auf native contentEditable-Tasten).
+2. **Komponente** `KnowledgeStudioTips.tsx`: kompakte Karte (Titel + 2-spaltiges Grid aus Label/Shortcut-Chip/Hint) — kein Onboarding-Overlay, keine State-Maschine.
+3. **Studio**: Karte direkt über der zentralen Editorfläche eingehängt (Editor-Spalte, zwischen Bereichslabel und RichTextEditor-Card). Header/Footer/Safety/Props unverändert.
+4. **i18n** `studio.tips.title` + `studio.tips.{select,structure,ai,blocks}.{label,hint}` DE+EN, ehrlich (KI-Tipp: „erst prüfen, dann bewusst übernehmen. Nichts wird automatisch gespeichert.").
+5. **Test** `tests/app/knowledge-studio-tips.test.ts`: Reihenfolge/IDs, Key-Schema, nur `select` trägt Shortcut, i18n-Präsenz DE+EN, Ehrlichkeits-Check.
+
+**Bewusst nicht umgesetzte Gaps.** Kein Backend; keine neue Editor-Library; kein echtes globales Keyboard-Shortcut-System (nur Anzeige-Hinweis); kein Cursor-genauer Insert; kein Drag&Drop; kein Diff/Merge; keine Toolbar-Neuerfindung; keine Auto-Speicherung/-Validierung. EditorGuidance bewusst unverändert gelassen (komplementär: Guidance = was die Werkzeuge bewirken, Tips = wie man im Studio arbeitet).
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/knowledgeStudioTips.ts` (NEU)
+- `apps/web/src/components/KnowledgeStudioTips.tsx` (NEU)
+- `apps/web/src/components/KnowledgeInputStudio.tsx` (Karte über Editor + Import)
+- `apps/web/src/i18n.ts` (`studio.tips.*` DE+EN)
+- `tests/app/knowledge-studio-tips.test.ts` (NEU)
+
+**Tests/Gates.** `npm run check` grün — **158 Dateien / 975 Tests**. Gezielt `knowledge-studio-tips.test.ts` → 5/5 grün. `(cd apps/web && tsc --noEmit)` grün (FE-EXIT=0). Biome/depcruise grün.
+
+**Rest-Risiken.** Reine FE-/Anzeige-/Text-Änderung — keine Editor-/Toolbar-/Datenmodell-Logik berührt. Der `⌘B·⌘I`-Hinweis ist nur Anzeige; die tatsächliche Tastenwirkung kommt aus dem nativen contentEditable-Verhalten des Browsers (von Bold/Italic-Buttons über `execCommand` ohnehin genutzt) — keine eigene Tastatur-Implementierung, kein Bruchrisiko. Karte nimmt vertikalen Platz über dem Editor; bewusst kompakt gehalten.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/knowledgeStudioTips.ts apps/web/src/components/KnowledgeStudioTips.tsx apps/web/src/components/KnowledgeInputStudio.tsx apps/web/src/i18n.ts tests/app/knowledge-studio-tips.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(editor): knowledge studio keyboard & formatting guidance card (SCRUM-345)"
+git push
+```
+Kein Git/Push/Jira durch Claude.

@@ -20,6 +20,7 @@ import { BodyTemplateChooser } from "./BodyTemplateChooser";
 import { EditorAttachmentContext } from "./EditorAttachmentContext";
 import { EditorContentQuality } from "./EditorContentQuality";
 import { EditorGuidance } from "./EditorGuidance";
+import { KnowledgeStudioTips } from "./KnowledgeStudioTips";
 import type { EditorImage } from "./RichTextEditor";
 import { RichTextEditor } from "./RichTextEditor";
 import { Button } from "./ui";
@@ -125,6 +126,8 @@ export function KnowledgeInputStudio({
             <p className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
               {t(knowledgeStudioSectionLabelKey("editor"))}
             </p>
+            {/* SCRUM-345: kurze Bedien-/Formatierungs-Hilfe direkt über der Editorfläche. */}
+            <KnowledgeStudioTips />
             <div className="min-h-[55vh] rounded-card border border-hairline bg-surface p-2 sm:p-3">
               <RichTextEditor value={draft} onChange={setDraft} images={images} />
             </div>

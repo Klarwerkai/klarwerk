@@ -292,6 +292,19 @@ const de = {
   "studio.section.context": "Struktur & Kontext",
   "studio.section.editor": "Inhalt bearbeiten",
   "studio.section.assist": "KI-Hilfe",
+  "studio.tips.title": "So arbeitest du im Studio",
+  "studio.tips.select.label": "Markieren → formatieren",
+  "studio.tips.select.hint":
+    "Text markieren, dann über die Toolbar fett/kursiv setzen — oder die gewohnten Tasten nutzen.",
+  "studio.tips.structure.label": "Struktur über H2/H3",
+  "studio.tips.structure.hint":
+    "Abschnitte mit Überschrift 2 und 3 gliedern, Schritte als Listen — das macht den Inhalt lesbar.",
+  "studio.tips.ai.label": "KI-Vorschlag prüfen",
+  "studio.tips.ai.hint":
+    "KI-Hilfe rechts erzeugt einen Vorschlag — erst prüfen, dann bewusst übernehmen. Nichts wird automatisch gespeichert.",
+  "studio.tips.blocks.label": "Templates & Blöcke gezielt",
+  "studio.tips.blocks.hint":
+    "Vorlagen geben eine Struktur vor; Info-/Hinweis-/Warnung-/Erfolg-Blöcke heben Wichtiges hervor.",
   "capture.savedViewKo": "Objekt ansehen",
   // SCRUM-310: in der Bibliothek wiederfinden — Herkunftsfilter „eigenes/nicht-Demo-Wissen"
   // (technisch: ohne Demo-Tag; keine Autor-/User-Zuordnung). Auffinden, keine Validierung.
@@ -1707,6 +1720,19 @@ const en: typeof de = {
   "studio.section.context": "Structure & context",
   "studio.section.editor": "Edit content",
   "studio.section.assist": "AI help",
+  "studio.tips.title": "How to work in the studio",
+  "studio.tips.select.label": "Select → format",
+  "studio.tips.select.hint":
+    "Select text, then set bold/italic via the toolbar — or use the usual keys.",
+  "studio.tips.structure.label": "Structure with H2/H3",
+  "studio.tips.structure.hint":
+    "Group sections with heading 2 and 3, steps as lists — that keeps the content readable.",
+  "studio.tips.ai.label": "Review the AI suggestion",
+  "studio.tips.ai.hint":
+    "AI help on the right produces a suggestion — review it, then apply it deliberately. Nothing is saved automatically.",
+  "studio.tips.blocks.label": "Templates & blocks on purpose",
+  "studio.tips.blocks.hint":
+    "Templates give a structure; info/note/warning/success blocks highlight what matters.",
   "capture.savedViewKo": "View object",
   // SCRUM-310: find it in the library — origin filter "own/non-demo knowledge" (technically: without
   // the demo tag; no author/user attribution). Finding/overview, not validation.
