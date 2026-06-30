@@ -14,6 +14,7 @@ import {
 } from "../lib/bodyAiAssist";
 import { knowledgeStudioState } from "../lib/editorApplySafety";
 import type { AttachmentLike } from "../lib/editorAttachmentContext";
+import { knowledgeStudioSectionLabelKey } from "../lib/knowledgeStudioLayout";
 import { AiAssistBox } from "./AiAssistBox";
 import { BodyTemplateChooser } from "./BodyTemplateChooser";
 import { EditorAttachmentContext } from "./EditorAttachmentContext";
@@ -103,27 +104,46 @@ export function KnowledgeInputStudio({
         </div>
       </div>
 
-      {/* Arbeitsfläche: scrollbar, großzügig — die gebündelten Editor-Bausteine. */}
-      <div className="mx-auto w-full max-w-4xl flex-1 overflow-y-auto px-4 py-4 sm:px-6">
-        <EditorGuidance />
-        <EditorAttachmentContext attachments={attachments} />
-        <EditorContentQuality bodyHtml={draft} attachments={attachments} />
-        <BodyTemplateChooser bodyHtml={draft} onApply={setDraft} />
-        <div className="mt-2">
-          <RichTextEditor value={draft} onChange={setDraft} images={images} />
-        </div>
-        {/* KI-Hilfe direkt im Arbeitsraum sichtbar: Aktionen (Klarer/Strukturieren/Erweitern/
-            Rechtschreibung) + freies Anweisungsfeld + Vorschau mit Ersetzen/Anhängen/Verwerfen,
-            zusätzlich Übernahme als Info/Hinweis/Warnung/Erfolg-Block. */}
-        <div className="mt-3">
-          <AiAssistBox
-            text={bodyTextForAssist(draft)}
-            runAssist={runAssist}
-            applyFn={(mode, _original, suggestion) => applyBodyAssist(mode, draft, suggestion)}
-            onApply={setDraft}
-            hintKey="capture.ai.bodyHint"
-            extraApplyActions={blockActions}
-          />
+      {/* SCRUM-341: Arbeitsraum-Layout — drei klar getrennte Bereiche statt einer linearen Liste.
+          Breit (lg): Kontext-Spalte · große Editorfläche · KI-Spalte. Schmal: sinnvoll gestapelt. */}
+      <div className="flex-1 overflow-y-auto px-3 py-4 sm:px-5">
+        <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-4 lg:grid-cols-[17rem_minmax(0,1fr)_19rem]">
+          {/* Kontext & Struktur: Orientierung, Anhänge, Inhaltsqualität, Strukturvorlagen. */}
+          <aside className="space-y-2">
+            <p className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+              {t(knowledgeStudioSectionLabelKey("context"))}
+            </p>
+            <EditorGuidance />
+            <EditorAttachmentContext attachments={attachments} />
+            <EditorContentQuality bodyHtml={draft} attachments={attachments} />
+            <BodyTemplateChooser bodyHtml={draft} onApply={setDraft} />
+          </aside>
+
+          {/* Zentrale Editorfläche — sichtbar der Hauptarbeitsbereich (mehr vertikale Fläche). */}
+          <section className="min-w-0 space-y-2">
+            <p className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+              {t(knowledgeStudioSectionLabelKey("editor"))}
+            </p>
+            <div className="min-h-[55vh] rounded-card border border-hairline bg-surface p-2 sm:p-3">
+              <RichTextEditor value={draft} onChange={setDraft} images={images} />
+            </div>
+          </section>
+
+          {/* KI-Hilfe direkt sichtbar: Aktionen (Klarer/Strukturieren/Erweitern/Rechtschreibung) +
+              freies Anweisungsfeld + Vorschau (Ersetzen/Anhängen/Verwerfen) + Block-Übernahme. */}
+          <aside className="space-y-2">
+            <p className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+              {t(knowledgeStudioSectionLabelKey("assist"))}
+            </p>
+            <AiAssistBox
+              text={bodyTextForAssist(draft)}
+              runAssist={runAssist}
+              applyFn={(mode, _original, suggestion) => applyBodyAssist(mode, draft, suggestion)}
+              onApply={setDraft}
+              hintKey="capture.ai.bodyHint"
+              extraApplyActions={blockActions}
+            />
+          </aside>
         </div>
       </div>
 

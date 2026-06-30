@@ -8116,3 +8116,44 @@ git commit -m "feat(capture): generate a structured article from the draft and o
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-341 — Beta Knowledge Studio Workspace Layout v0
+**Datum:** 2026-06-29 · **Rolle:** Claude (Hauptumsetzer) · **Status:** umgesetzt, Gates grün
+
+**Legacy-Pfad geprüft / nicht verfügbar.** Verfügbar (read-only): `Klarwerk/app/src/pages/TeacherStudio.jsx` (+ WikiEditor/AiAssist/CaseEditor, demo-Pendants). Nur analysiert, nicht kopiert. Wichtigste alte Funktionen: großer Arbeitsraum mit mehrspaltigem `grid-2`-Layout, eigener KI-/Assist-Spalte (`AiAssist`) und Strukturierung — der Editor war sichtbar der Hauptbereich, nicht eine Formularliste.
+
+**Vorab-Befund.** `git status -sb` sauber (nur untracked Infra-Doc; SCRUM-337/339/340 committet). Das KnowledgeInputStudio bündelte alle Bausteine, aber rein linear (Guidance → Anhänge → Qualität → Templates → Editor → KI) in einer schmalen `max-w-4xl`-Spalte — funktional, aber noch listenartig, kein klarer Arbeitsraum.
+
+**Umsetzter Umfang.**
+1. **DOM-freier Helfer** `apps/web/src/lib/knowledgeStudioLayout.ts`: drei stabile Bereiche `context/editor/assist` (`KNOWLEDGE_STUDIO_SECTIONS`, `knowledgeStudioSectionLabelKey`) als gemeinsame Quelle für Komponente + Tests.
+2. **Studio-Layout** (`KnowledgeInputStudio.tsx`): die Arbeitsfläche ist nun ein responsives 3-Spalten-Grid (`max-w-6xl`, `lg:grid-cols-[17rem_minmax(0,1fr)_19rem]`):
+   - **Links „Struktur & Kontext":** EditorGuidance, EditorAttachmentContext, EditorContentQuality, BodyTemplateChooser.
+   - **Mitte „Inhalt bearbeiten":** RichTextEditor in einer klaren Card mit mehr vertikaler Fläche (`min-h-[55vh]`) — sichtbar der Hauptarbeitsbereich.
+   - **Rechts „KI-Hilfe":** AiAssistBox direkt sichtbar.
+   Auf schmalen Viewports stapelt das Grid (`grid-cols-1`) sinnvoll. Jeder Bereich trägt ein kompaktes Bereichslabel (mono/uppercase, aus dem Helfer + i18n).
+3. **i18n** `studio.section.context/editor/assist` DE+EN.
+4. **Safety/Verhalten unverändert:** Header mit Dirty-Badge, Close/Cancel-Discard-Guard (SCRUM-339), Apply (bewusste Übernahme + Schließen), Capture-/KO-Detail-Apply-Feedback — alles intakt. Keine neue Editor-API, kein Cursor-Insert, keine neuen Blocktypen, keine Prop-Änderung (Capture/KO-Detail nutzen die Komponente unverändert).
+5. **Tests** `tests/app/knowledge-studio-layout.test.ts` (NEU, DOM-frei): drei Bereiche + Reihenfolge, stabile labelKeys, Bereichs-i18n DE+EN. Bestehende `editor-apply-safety`/`body-templates`/`editor-content-quality`-Tests bleiben grün.
+
+**Bewusst nicht umgesetzte Gaps.** Kein vollständiger Legacy-WikiEditor-Nachbau; kein Drag-and-drop-Layout; kein Split-Pane mit persistenter Größe; kein Cursor-Insert; keine neue Editor-Library; keine Backend-/Reasoner-Änderung; keine automatische Validierung. Die Spaltenbreiten sind feste Tailwind-Werte (kein Resizing).
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/knowledgeStudioLayout.ts` (NEU)
+- `apps/web/src/components/KnowledgeInputStudio.tsx` (3-Spalten-Workspace + Bereichslabels)
+- `apps/web/src/i18n.ts` (`studio.section.*` DE+EN)
+- `tests/app/knowledge-studio-layout.test.ts` (NEU)
+
+**Tests/Gates.** `npm run check` grün — **157 Dateien / 960 Tests**. Gezielt `knowledge-studio-layout` + `editor-apply-safety` + `body-templates` + `editor-content-quality` → 26/26 grün. `(cd apps/web && tsc --noEmit)` grün (FE-EXIT=0). Biome/depcruise grün.
+
+**Rest-Risiken.** Reine Layout-/Markup-Änderung — Editor-, Safety- und Apply-Logik unberührt; das responsive Verhalten ist nicht per Browser-Snapshot geprüft (projektüblich DOM-frei via Helfer/i18n abgesichert). Bei sehr schmalen Editorinhalten kann `min-h-[55vh]` viel Leerraum zeigen — bewusst, um die Editorfläche als Hauptbereich zu betonen.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/knowledgeStudioLayout.ts apps/web/src/components/KnowledgeInputStudio.tsx apps/web/src/i18n.ts tests/app/knowledge-studio-layout.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(editor): structure Knowledge Studio as workspace layout (SCRUM-341)"
+git push
+```
+Kein Git/Push/Jira durch Claude.
