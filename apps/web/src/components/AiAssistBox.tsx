@@ -143,17 +143,23 @@ export function AiAssistBox({
             </button>
           </div>
           {extraApplyActions.length > 0 ? (
-            <div className="mt-2 flex flex-wrap gap-1.5 border-t border-hairline pt-2">
-              {extraApplyActions.map((a) => (
-                <button
-                  key={a.labelKey}
-                  type="button"
-                  onClick={() => applyExtra(a.apply)}
-                  className="rounded-pill border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:border-ink/30 hover:text-text"
-                >
-                  {t(a.labelKey)}
-                </button>
-              ))}
+            <div className="mt-2 border-t border-hairline pt-2">
+              {/* SCRUM-343: strukturierte Übernahme-Modi klar gruppiert (als Abschnitt / als Block). */}
+              <div className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                {t("capture.ai.applyAsLabel")}
+              </div>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {extraApplyActions.map((a) => (
+                  <button
+                    key={a.labelKey}
+                    type="button"
+                    onClick={() => applyExtra(a.apply)}
+                    className="rounded-pill border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:border-ink/30 hover:text-text"
+                  >
+                    {t(a.labelKey)}
+                  </button>
+                ))}
+              </div>
             </div>
           ) : null}
         </div>

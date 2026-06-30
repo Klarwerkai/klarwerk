@@ -3,10 +3,13 @@ import i18n from "../../apps/web/src/i18n";
 import {
   applyBodyAssist,
   applyBodyAssistBlock,
+  applyBodyAssistSection,
   bodyAssistBlockActions,
+  bodyAssistStructuredActions,
   bodyTextForAssist,
   suggestionToBodyBlockHtml,
   suggestionToBodyHtml,
+  suggestionToBodySectionHtml,
 } from "../../apps/web/src/lib/bodyAiAssist";
 
 // SCRUM-315: DOM-freie Helfer für die KI-Nachbearbeitung des ausführlichen Inhalts (bodyHtml).
@@ -148,6 +151,56 @@ describe("SCRUM-337: bodyAssistBlockActions", () => {
       "studio.close",
     ];
     for (const key of keys) {
+      for (const lng of ["de", "en"]) {
+        expect(String(i18n.getResource(lng, "translation", key) ?? "").length).toBeGreaterThan(0);
+      }
+    }
+  });
+});
+
+// SCRUM-343: KI-Vorschlag als strukturierter Abschnitt (Überschrift + Absätze) + gebündelte Modi.
+describe("SCRUM-343: bodyAiAssist section mode", () => {
+  it("suggestionToBodySectionHtml: erste Zeile → H3, Rest → escapte Absätze", () => {
+    expect(suggestionToBodySectionHtml("Titel\nErster Absatz.\n\nZweiter Absatz.")).toBe(
+      "<h3>Titel</h3><p>Erster Absatz.</p><p>Zweiter Absatz.</p>",
+    );
+    // nur eine Zeile → reine Überschrift.
+    expect(suggestionToBodySectionHtml("Nur ein Titel")).toBe("<h3>Nur ein Titel</h3>");
+  });
+
+  it("suggestionToBodySectionHtml: escaped gefährliche Eingaben, leer → ''", () => {
+    expect(suggestionToBodySectionHtml("<script>x</script>\nb & c")).toBe(
+      "<h3>&lt;script&gt;x&lt;/script&gt;</h3><p>b &amp; c</p>",
+    );
+    expect(suggestionToBodySectionHtml("")).toBe("");
+    expect(suggestionToBodySectionHtml("   \n ")).toBe("");
+    expect(suggestionToBodySectionHtml(null)).toBe("");
+  });
+
+  it("applyBodyAssistSection: leerer Body setzt, vorhandener hängt an, leerer Vorschlag = No-Op", () => {
+    expect(applyBodyAssistSection("", "Titel\nText.")).toBe("<h3>Titel</h3><p>Text.</p>");
+    expect(applyBodyAssistSection("<p></p>", "Titel")).toBe("<h3>Titel</h3>");
+    expect(applyBodyAssistSection("<p>alt</p>", "Titel\nText.")).toBe(
+      "<p>alt</p><h3>Titel</h3><p>Text.</p>",
+    );
+    expect(applyBodyAssistSection("<p>alt</p>", "")).toBe("<p>alt</p>");
+  });
+
+  it("bodyAssistStructuredActions: Abschnitt zuerst, dann die vier Blöcke", () => {
+    const actions = bodyAssistStructuredActions("<p>x</p>");
+    expect(actions.map((a) => a.labelKey)).toEqual([
+      "capture.ai.applyAs.section",
+      "capture.ai.applyAs.info",
+      "capture.ai.applyAs.note",
+      "capture.ai.applyAs.warning",
+      "capture.ai.applyAs.success",
+    ]);
+    const section = actions[0];
+    expect(section?.apply("", "Titel\nText.")).toBe("<p>x</p><h3>Titel</h3><p>Text.</p>");
+  });
+
+  it("i18n (applyAsLabel + applyAs.section) DE+EN vorhanden", () => {
+    for (const key of ["capture.ai.applyAsLabel", "capture.ai.applyAs.section"]) {
       for (const lng of ["de", "en"]) {
         expect(String(i18n.getResource(lng, "translation", key) ?? "").length).toBeGreaterThan(0);
       }

@@ -91,6 +91,36 @@ export function applyBodyAssistBlock(
   return isEmptyHtml(base) ? next : base + next;
 }
 
+// SCRUM-343: Plaintext-Vorschlag → strukturierter ABSCHNITT: erste nicht-leere Zeile wird die
+// Überschrift (<h3>), der Rest sichere Absätze. Macht aus „freiem KI-Text" einen klar gegliederten
+// Editor-Abschnitt. Text wird escaped; erzeugt werden nur statische <h3>/<p>/<br>-Tags. Leer → "".
+export function suggestionToBodySectionHtml(text: string | null | undefined): string {
+  const normalized = (text ?? "").replace(/\r\n?/g, "\n").trim();
+  if (normalized.length === 0) {
+    return "";
+  }
+  const newline = normalized.indexOf("\n");
+  const heading = (newline === -1 ? normalized : normalized.slice(0, newline)).trim();
+  const rest = newline === -1 ? "" : normalized.slice(newline + 1).trim();
+  const headingHtml = heading.length > 0 ? `<h3>${escapeBodyText(heading)}</h3>` : "";
+  const out = headingHtml + escapedParagraphs(rest);
+  return out.length > 0 ? out : "";
+}
+
+// SCRUM-343: Vorschlag bewusst als strukturierten Abschnitt übernehmen. Bestehender Body bleibt
+// unverändert; nur der neue Abschnitt wird ergänzt (leerer Body → gesetzt). Leerer Vorschlag = No-Op.
+export function applyBodyAssistSection(
+  currentHtml: string | null | undefined,
+  suggestionText: string | null | undefined,
+): string {
+  const base = currentHtml ?? "";
+  const next = suggestionToBodySectionHtml(suggestionText);
+  if (next.length === 0) {
+    return base;
+  }
+  return isEmptyHtml(base) ? next : base + next;
+}
+
 // SCRUM-337: gebündelte AiAssistBox-„extraApplyActions" für die vier Body-Blocktypen (Info/Hinweis/
 // Warnung/Erfolg) — bisher in Capture UND KO-Detail dupliziert, jetzt eine geteilte, testbare Quelle
 // (auch vom Knowledge Input Studio genutzt). Reine Ableitung über die bestehenden Helfer; kein DOM.
@@ -105,4 +135,21 @@ export function bodyAssistBlockActions(currentHtml: string): BodyAssistBlockActi
     apply: (_original: string, suggestion: string) =>
       applyBodyAssistBlock(currentHtml, suggestion, block),
   }));
+}
+
+// SCRUM-343: „als Abschnitt"-Übernahme als eigene strukturierte Aktion (gleiche Form wie die
+// Block-Aktionen, damit die AiAssistBox sie unverändert rendern kann).
+export function bodyAssistSectionAction(currentHtml: string): BodyAssistBlockAction {
+  return {
+    labelKey: "capture.ai.applyAs.section",
+    apply: (_original: string, suggestion: string) =>
+      applyBodyAssistSection(currentHtml, suggestion),
+  };
+}
+
+// SCRUM-343: gebündelte strukturierte Übernahme-Modi für den Knowledge-Studio-Arbeitsraum:
+// zuerst „als Abschnitt" (Überschrift + Absätze), dann die vier Block-Typen. So fühlt sich die
+// KI-Übernahme editor-nah an (Struktur statt nur Ersetzen/Anhängen).
+export function bodyAssistStructuredActions(currentHtml: string): BodyAssistBlockAction[] {
+  return [bodyAssistSectionAction(currentHtml), ...bodyAssistBlockActions(currentHtml)];
 }

@@ -8193,3 +8193,48 @@ git commit -m "feat(editor): template preview and conscious apply in Knowledge S
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-343 — Beta Knowledge Studio AI Insert Modes v0
+**Datum:** 2026-06-29 · **Rolle:** Claude (Hauptumsetzer) · **Status:** umgesetzt, Gates grün
+
+**Vorab-Befund.** `git status -sb` sauber (nur untracked Infra-Doc; SCRUM-337–342 committet). Die AiAssistBox bot bisher Ersetzen/Anhängen (Plaintext) + via `extraApplyActions` die vier Body-Blöcke (Info/Hinweis/Warnung/Erfolg), im Studio über `bodyAssistBlockActions(draft)`. Die strukturierten Modi standen als flache Knopfreihe ohne Gruppen-Label; ein „als Abschnitt"-Modus (Überschrift + Absätze) fehlte. `bodyAiAssist.ts` hat bereits sichere Bausteine (`escapeBodyText`, `escapedParagraphs`, `editorBlockClass`).
+
+**Legacy-Pfad geprüft / nicht verfügbar.** Verfügbar (read-only): `Klarwerk/app/src/components/{WikiEditor,AiAssist,CaseEditor}.jsx`, `TeacherStudio.jsx`. Nur gelesen. Relevant: der Legacy-AiAssist fügte das KI-Ergebnis per `insertHTML` an der Cursorposition ein (Cursor-Insert) — bewusst NICHT übernommen (Nicht-Ziel); stattdessen modusbasierte, sichere Übernahme.
+
+**Aktuelle Gap.** Die KI-Übernahme fühlte sich noch nach „nur ersetzen/anhängen" an; es fehlte ein klar gegliederter, editor-naher Einfügemodus „als strukturierter Abschnitt".
+
+**Umsetzter Umfang.**
+1. **DOM-freie Helfer** in `apps/web/src/lib/bodyAiAssist.ts`:
+   - `suggestionToBodySectionHtml(text)` — erste nicht-leere Zeile → `<h3>`, Rest → sichere `<p>`-Absätze; Text wird escaped, nur statische `<h3>/<p>/<br>`; leer → `""`.
+   - `applyBodyAssistSection(currentHtml, suggestionText)` — nicht-destruktiv anhängen (leerer Body → setzen); leerer Vorschlag = No-Op; bestehender Body wird nicht erneut escaped.
+   - `bodyAssistSectionAction(currentHtml)` (gleiche Form wie Block-Aktionen) + `bodyAssistStructuredActions(currentHtml)` = `[Abschnitt, …vier Blöcke]`.
+2. **KnowledgeInputStudio** nutzt jetzt `bodyAssistStructuredActions(draft)` statt `bodyAssistBlockActions(draft)` → die KI-Vorschau zeigt im Studio: Ersetzen / Anhängen / Verwerfen + (gruppiert) als Abschnitt / als Info / Hinweis / Warnung / Erfolg.
+3. **AiAssistBox**: die `extraApplyActions`-Reihe bekommt eine kleine Gruppen-Überschrift „Als Struktur übernehmen" (`capture.ai.applyAsLabel`), damit die strukturierten Einfügemodi klar gruppiert und verständlicher sind. Vorschau, Ersetzen/Anhängen/Verwerfen, Dirty-/Discard-/Apply-Flows unverändert; Mensch entscheidet bewusst; keine Auto-Speicherung/-Validierung.
+4. **i18n** `capture.ai.applyAsLabel` + `capture.ai.applyAs.section` DE+EN.
+5. **Tests** `tests/app/body-ai-assist.test.ts` erweitert: Section-HTML (Heading+Absätze, Escaping gefährlicher Eingaben, leer→""), `applyBodyAssistSection` (set/append/No-Op), `bodyAssistStructuredActions` Reihenfolge + Apply, i18n DE+EN. Bestehende Block-/Replace-/Append-Tests bleiben grün.
+
+Capture/KO-Detail behalten ihren bestehenden Inline-Body-AI (4 Block-Buttons) unverändert — der neue Abschnitt-Modus ist im großen Studio integriert, wo der Ticket-Fokus liegt.
+
+**Bewusst nicht umgesetzte Gaps.** Kein Cursor-genauer Insert; kein Drag&Drop; kein Diff/Merge; kein Backend/Reasoner-Change; keine neue Editor-Library; keine Auto-Validierung/-Speicherung; Capture/KO-Detail-Inline-AI nicht umgestellt (Scope-Schonung).
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/bodyAiAssist.ts` (Section-Helfer + structured actions)
+- `apps/web/src/components/KnowledgeInputStudio.tsx` (structured actions)
+- `apps/web/src/components/AiAssistBox.tsx` (gruppierte Übernahme-Label-Zeile)
+- `apps/web/src/i18n.ts` (`capture.ai.applyAsLabel` + `applyAs.section` DE+EN)
+- `tests/app/body-ai-assist.test.ts` (erweitert)
+
+**Tests/Gates.** `npm run check` grün — **157 Dateien / 967 Tests**. Gezielt `tests/app/body-ai-assist.test.ts` → 20/20 grün. `(cd apps/web && tsc --noEmit)` grün (FE-EXIT=0). Biome/depcruise grün.
+
+**Rest-Risiken.** Der Abschnitt-Modus erzeugt nur statische, escapte Tags — kein User-HTML, keine neue XSS-Fläche; bestehender Body bleibt unverändert (nur Anhängen). Die Überschrift wird aus der ersten Zeile des KI-Plaintexts abgeleitet — bei sehr langer erster Zeile entsteht eine lange `<h3>` (akzeptabel; der Mensch prüft die Vorschau vor der Übernahme). Reine FE-/Helfer-Änderung; AiAssistBox-Mechanik (Vorschau/Discard) unberührt.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/bodyAiAssist.ts apps/web/src/components/KnowledgeInputStudio.tsx apps/web/src/components/AiAssistBox.tsx apps/web/src/i18n.ts tests/app/body-ai-assist.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(editor): AI insert modes — apply suggestion as a structured section in Knowledge Studio (SCRUM-343)"
+git push
+```
+Kein Git/Push/Jira durch Claude.

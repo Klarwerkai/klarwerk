@@ -9,7 +9,7 @@ import { useTranslation } from "react-i18next";
 import {
   type BodyAssistBlockAction,
   applyBodyAssist,
-  bodyAssistBlockActions,
+  bodyAssistStructuredActions,
   bodyTextForAssist,
 } from "../lib/bodyAiAssist";
 import { knowledgeStudioState } from "../lib/editorApplySafety";
@@ -61,7 +61,8 @@ export function KnowledgeInputStudio({
     return null;
   }
 
-  const blockActions: BodyAssistBlockAction[] = bodyAssistBlockActions(draft);
+  // SCRUM-343: strukturierte KI-Übernahme-Modi (als Abschnitt + Info/Hinweis/Warnung/Erfolg-Block).
+  const blockActions: BodyAssistBlockAction[] = bodyAssistStructuredActions(draft);
   // SCRUM-339: Dirty-Status — gibt es unübernommene Studio-Änderungen?
   const studioState = knowledgeStudioState(draft, bodyHtml);
   // Schließen/Verwerfen: bei unübernommenen Änderungen erst Inline-Bestätigung, sonst direkt schließen.
