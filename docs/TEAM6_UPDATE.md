@@ -6,16 +6,16 @@
 - Scope: Knowledge Input, Capture, AI-assisted Editing, Validation, KO Detail, Library, Ask, Capture → Review → Use, App-Auth/Security, Trust/Conflict-Integrity
 - Repo: `/Users/peterkohnert/Documents/dev_Klarwerk`
 - Jira Project: SCRUM
-- Last updated: 2026-06-30 21:55 CEST
-- Current status: SCRUM-362 umgesetzt durch Claude, Codex-Prüfung/Commit/Push/CI/Jira ausstehend
-- Active ticket: SCRUM-362 — Beta Retrieval DB Index & Query Evidence v0
-- Last completed ticket: SCRUM-361 — Beta Retrieval DB Prefilter & Index Readiness v0
+- Last updated: 2026-06-30 22:20 CEST
+- Current status: SCRUM-363 umgesetzt durch Claude, Codex-Prüfung/Commit/Push/CI/Jira ausstehend
+- Active ticket: SCRUM-363 — Beta Assignment Notification & Work Queue Feed v0
+- Last completed ticket: SCRUM-362 — Beta Retrieval DB Index & Query Evidence v0
 - Last commit: `b9ab7e638a2488c8798ea5b13e1211247963e447`
-- GitHub/CI status: SCRUM-361 CI grün; SCRUM-362 noch nicht gepusht
-- Beta impact: Der Ask-Prefilter (`PgKoRepo.findCandidates`) hat jetzt einen echten indexierbaren Pfad: `KO_SCHEMA` aktiviert `pg_trgm` und legt je Such-Ausdruck (title/statement/category/tags) einen GIN-Trigramm-Index an (`idx_kos_*_trgm` mit `gin_trgm_ops`) — damit ist das `ILIKE '%term%'` (auch mit führendem Wildcard) indexgestützt statt Seq-Scan. Query-Builder und Indexdefinition leiten beide aus EINER Konstante (`KO_CANDIDATE_SEARCH_EXPRESSIONS`) ab → Query-Shape und Index-Pfad sind garantiert deckungsgleich. Alle DDL-Statements sind idempotent (`IF NOT EXISTS`) und nicht destruktiv; `idx_kos_type`/`idx_kos_status` bleiben unverändert. `findCandidates` bleibt parametrisiert, gedeckelt (LIMIT) und status-/trust-sortiert (SCRUM-359/360/361 konsistent). Keine Embeddings, keine neue Suchmaschine, kein RAG, keine destruktive Migration.
+- GitHub/CI status: SCRUM-361 CI grün; SCRUM-362/363 noch nicht gepusht
+- Beta impact: Persönliche offene Review-Zuweisungen erscheinen jetzt als eigene Kategorie im bestehenden In-App-Feed (Topbar-Glocke). `/api/notifications` lädt zusätzlich die offenen Zuweisungen der ANGEMELDETEN Person (`ValidationService.openAssignmentsFor(user.id)`) — nur die eigenen, nie fremde, erledigte verschwinden. Der Feed kennzeichnet sie ruhig mit „Review für dich" und führt per Klick zur Validierung (`/validierung`). Konflikt-/Lücken-Benachrichtigungen bleiben unverändert. Kein neues Notification-Backend, kein Push/WebSocket/E-Mail, kein neues Rollen-/Assignee-System — reine Sicht auf vorhandene Assignments/KO-Daten.
 - Team6 review needed: yes
-- Reason: Team6 P1 Gap AG-03-DBINDEX / FR-ASK-02 / NFR-PERF-03
-- Next planned slice: nach Pedi-Signal; offen bleibt der echte 10k/100k-Lasttest (Team 5) + Verifikation, dass `pg_trgm` in der Zielumgebung verfügbar/erstellbar ist (Pedi/Ops); außerdem AG-05-TRUST-FORMULA-REST (mehrstufige §3-Formel), G-P2-1 (Drag&Drop/Paste) oder weiterer Team6-Gap
+- Reason: Team6 P1 Gap AG-15 / Assignment notification / Review queue visibility
+- Next planned slice: nach Pedi-Signal; offen u. a. AG-03-DBINDEX 10k/100k-Lasttest (Team 5), AG-05-TRUST-FORMULA-REST (mehrstufige §3-Formel), AG-06-RESET (Reset-Rate-Limit) oder weiterer Team6-Gap
 
 ## Current Risks / Gaps
 
@@ -36,6 +36,7 @@
 | AG-03 | Ask/Retrieval lädt alle KOs in-memory; nur Keyword; Antwortkontext unbegrenzt an Reasoner/Modell; 100k nicht belegt. | P1 | Ask / Reasoner / Retrieval | FR-ASK-02, NFR-PERF-03, A-P1-1 | Weiter adressiert: SCRUM-360 (Top-K an Reasoner) + SCRUM-361 (datenquellennahe `findCandidates`-Vorauswahl statt `list()`-Kernpfad, InMemory + Pg). Echter DB-Index + 100k-Lasttest bleibt offen (AG-03-DBINDEX); Codex-Abschluss ausstehend |
 | AG-03-DBINDEX | Kein echter DB-Index (FTS/trigram) auf den Suchfeldern; ILIKE-Prefilter skaliert nicht beliebig; 100k unbelegt. | P1 | Ask / Persistence / Scale | FR-ASK-02, NFR-PERF-03, EK-23 | Verengt durch SCRUM-361 (Prefilter) + SCRUM-362 (Index): `pg_trgm` + GIN-Trigramm-Indizes je Suchfeld (title/statement/category/tags) machen den ILIKE-Pfad indexgestützt; Query↔Index aus EINER Konstante. OFFEN: 10k/100k-Lasttest — Team 5; Verifikation `pg_trgm`-Verfügbarkeit in Zielumgebung — Pedi/Ops |
 | AG-P2-2 | Copy „ausschließlich validiert" ↔ Verhalten (antwortet aus ungeprüft, gekennzeichnet). | P2 | Ask / Copy | A-P2-1, EK-23 | Berührt: SCRUM-360 hält ungeprüfte Antworten ehrlich gekennzeichnet (answerStatus/knowledgeClass unverändert) und bevorzugt validierte Quellen; finale Copy-/„validiert-only"-Entscheidung bleibt Pedi/EK-23 |
+| AG-15 | Zuweisungen fehlten als eigene In-App-Benachrichtigung im Topbar-Feed (nur Konflikte/Lücken sichtbar). | P1 | Ask / Notifications / Review-Queue | VC-P1-2, FR-VAL-05/06, EK-26 | Mit SCRUM-363 adressiert: persönliche offene Review-Zuweisungen erscheinen als eigene Feed-Kategorie („Review für dich" → /validierung), pro Nutzer gefiltert; Codex-Abschluss ausstehend. „Board+E-Mail reichen?"-Beta-Akzeptanz bleibt Pedi/Team 5 (EK-26) |
 
 ## Current Requirement Touchpoints
 
@@ -68,8 +69,22 @@
 | AG-03 / FR-ASK-02 — datenquellennahe Kandidatenabfrage | Team6 `TEAM6_ACTIVE_GAPS_AND_RECOMMENDATIONS.md` | further addressed in SCRUM-361 | `KoRepo.findCandidates({terms,limit})` (InMemory + Pg) ersetzt `koService.list()` als Ask-Kernpfad; ODER-Treffer über title/statement/tags/category, gedeckelt + validiert-/Trust-Bias. Reasoner-Ranking (SCRUM-360) läuft auf der Vorauswahl. |
 | NFR-PERF-03 — Retrieval lädt nicht mehr den ganzen Pool | Team6 `TEAM6_CURRENT_TOP_REQUIREMENTS.md` | further addressed in SCRUM-361 | Ask lädt nicht mehr alle KOs (`list()`); Pg filtert datenquellennah (ILIKE/JSONB + LIMIT). Echter DB-Index (pg_trgm/GIN) + 10k/100k-Lasttest bleibt offen (AG-03-DBINDEX, Team 1/Team 5). |
 | AG-03-DBINDEX — indexierbarer Pg-Suchpfad | Team6 `TEAM6_ACTIVE_GAPS_AND_RECOMMENDATIONS.md` | addressed (Index-Readiness) in SCRUM-362 | `KO_SCHEMA`: `pg_trgm` + GIN-Trigramm-Indizes je Suchfeld (title/statement/category/tags); ILIKE-Prefilter ist damit indexgestützt. Query↔Index aus EINER Konstante. Nicht destruktiv, idempotent. OFFEN: 10k/100k-Lasttest (Team 5) + `pg_trgm`-Verfügbarkeit (Pedi/Ops). |
+| AG-15 — Assignment-In-App-Notification | Team6 `TEAM6_ACTIVE_GAPS_AND_RECOMMENDATIONS.md` | addressed in SCRUM-363 | Persönliche offene Review-Zuweisungen im bestehenden Feed (`buildNotifications` + `ValidationService.openAssignmentsFor`); pro Nutzer, keine fremde Ownership, erledigte raus. Topbar „Review für dich" → /validierung. |
+| FR-VAL-05/06 — Zuweisungen sichtbar/zählbar | Team6 `VALIDATION_CONFLICTS_E2E_REVIEW_V0.md` | further addressed in SCRUM-363 | Zuweisungen waren über Board/Übersicht/E-Mail sichtbar; jetzt zusätzlich als persönliche In-App-Benachrichtigung („was wartet auf mich?"). |
+| VC-P1-2 / EK-26 — Assignment-Feed vs. Beta-Akzeptanz | Team6 `TEAM6_ACTIVE_GAPS_AND_RECOMMENDATIONS.md` | addressed in SCRUM-363 | In-App-Feed-Variante geliefert (statt „Board+E-Mail reichen"); finale Beta-Akzeptanz/Reichweite bleibt Pedi/Team 5 (EK-26). |
 
 ## Delta Log
+
+### 2026-06-30 22:20 — SCRUM-363 — pending commit
+
+- Changed areas: `services/validation/src/service.ts` (+`openAssignmentsFor`/`AssignmentNotice`) + `services/validation/index.ts` (Export), `services/app/src/notification-feed.ts` (Kind „assignment" + `koId` + assignments), `services/app/src/routes/notifications-routes.ts` (validation-Dep + Per-Nutzer-Assignments), `services/app/src/build-app.ts` (Dep-Wiring), FE `apps/web/src/api/types.ts` (Kind+koId), `apps/web/src/lib/notificationTarget.ts` (assignment→/validierung), `apps/web/src/shell/Topbar.tsx` (Label/Dot), `apps/web/src/i18n.ts` (`topbar.notifAssignment` DE/EN), Tests.
+- What changed: AG-15 — persönliche offene Review-Zuweisungen erscheinen jetzt als eigene Kategorie im bestehenden In-App-Feed (Topbar-Glocke). `ValidationService.openAssignmentsFor(userId)` liefert die OFFENEN Zuweisungen GENAU dieser Person (KO-Titel + KO-Erstellzeit; fehlende KOs übersprungen) — reine Sicht auf vorhandene Assignment-/KO-Daten, kein neues Modell. Die Route `/api/notifications` lädt sie für `user.id` und reicht sie an `buildNotifications`, das sie als `kind:"assignment"` (mit `koId`, stabiler ID `assign-<koId>`) zeitlich mit Konflikten/Lücken mischt. FE: ruhiges Label „Review für dich" + eigener Punkt; Klick führt zur Validierung (`/validierung`). Konflikt-/Lücken-Benachrichtigungen unverändert.
+- Beta impact: AG-15 / FR-VAL-05/06 / VC-P1-2 — der Nutzer sieht ohne Suchen „Diese Review-Arbeit wartet auf mich" direkt in der Glocke. Klarer Beta-Work-Queue-Einstieg.
+- Designentscheidung (begründet): KEIN neues Notification-Backend, KEIN Push/WebSocket/E-Mail, KEIN neues Rollen-/Assignee-System. Der Feed bleibt eine aus vorhandenen Signalen aggregierte, nicht persistierte Sicht (Gelesen-Status weiterhin pro Sitzung über stabile IDs). Keine erfundene Ownership: die Route filtert serverseitig auf `user.id`; erledigte (done) Zuweisungen verschwinden automatisch.
+- New / touched requirements: AG-15, FR-VAL-05, FR-VAL-06, VC-P1-2, EK-26 (Beta-Akzeptanz/Reichweite bleibt Pedi/Team 5).
+- Tests: `services/validation/src/open-assignments.test.ts` (eigene/offene Zuweisungen mit Titel+Zeit; keine fremden; erledigte raus nach Bewertung; fehlende KOs übersprungen) + `services/app/src/notification-feed.test.ts` (Assignment-Kategorie mit koId, Zeit-Mischung, Rückwärtskompatibilität ohne assignments) + `tests/analytics/notification-target.test.ts` (assignment→/validierung) + `tests/app/notifications-assignment-e2e.test.ts` (HTTP: zugewiesene Person sieht ihre Zuweisung, andere/Admin nicht; Gap-Benachrichtigung bleibt erhalten). `npm run check` grün (178 Module / 181 Dateien / 1084 Tests), Build/Biome/dependency-cruiser grün, FE-tsc strict grün.
+- Team6 review needed: yes
+- Reason: Team6 P1 Gap AG-15 / Assignment notification / Review queue visibility
 
 ### 2026-06-30 21:55 — SCRUM-362 — pending commit
 

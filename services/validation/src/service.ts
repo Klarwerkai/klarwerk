@@ -12,6 +12,15 @@ export interface AssignmentSummary {
   done: number;
 }
 
+// SCRUM-363 / AG-15 / FR-VAL-05/06: eine offene, persönliche Review-Zuweisung als leichtgewichtiger
+// Hinweis (für den In-App-Feed). Enthält das Quell-KO (Titel + Erstellzeit als Sortier-/Anzeigezeit) —
+// kein neues Datenmodell, nur eine Sicht auf das vorhandene Assignment + KO.
+export interface AssignmentNotice {
+  koId: string;
+  title: string;
+  at: string;
+}
+
 export interface ValidationServiceDeps {
   koService: KoService;
   ratings: RatingRepo;
@@ -118,6 +127,22 @@ export class ValidationService {
       target: koId,
       payload: { userIds },
     });
+  }
+
+  // SCRUM-363 / AG-15 / FR-VAL-05/06: die OFFENEN Review-Zuweisungen GENAU dieser Person (keine fremde
+  // Ownership). Erledigte (done) Zuweisungen erscheinen nicht; Zuweisungen auf zwischenzeitlich
+  // gelöschte KOs werden übersprungen. Reine Sicht auf vorhandene Daten — kein neues Notification-Backend.
+  async openAssignmentsFor(userId: string): Promise<AssignmentNotice[]> {
+    const all = await this.assignments.all();
+    const mine = all.filter((a) => a.userId === userId && a.status === "open");
+    const notices: AssignmentNotice[] = [];
+    for (const a of mine) {
+      const ko = await this.koService.get(a.koId);
+      if (ko) {
+        notices.push({ koId: ko.id, title: ko.title, at: ko.createdAt });
+      }
+    }
+    return notices;
   }
 
   // FR-VAL-06: Übersicht offen/erledigt pro Person.

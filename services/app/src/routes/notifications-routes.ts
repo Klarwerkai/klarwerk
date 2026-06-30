@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { AskService } from "../../../ask";
 import type { ConflictService } from "../../../conflicts";
+import type { ValidationService } from "../../../validation";
 import type { Guards } from "../http";
 import { buildNotifications } from "../notification-feed";
 
@@ -9,6 +10,8 @@ import { buildNotifications } from "../notification-feed";
 export interface NotificationRoutesDeps {
   conflicts: ConflictService;
   ask: AskService;
+  // SCRUM-363 / AG-15: Quelle der persönlichen offenen Review-Zuweisungen.
+  validation: ValidationService;
 }
 
 export function notificationsRoutes(
@@ -21,11 +24,14 @@ export function notificationsRoutes(
       if (!user) {
         return;
       }
-      const [conflicts, gaps] = await Promise.all([
+      // SCRUM-363: Zuweisungen werden PRO NUTZER geladen (user.id) — der Feed zeigt nur die
+      // Review-Arbeit der angemeldeten Person, keine fremden Zuweisungen.
+      const [conflicts, gaps, assignments] = await Promise.all([
         deps.conflicts.unresolved(),
         deps.ask.listGaps(),
+        deps.validation.openAssignmentsFor(user.id),
       ]);
-      reply.code(200).send(buildNotifications({ conflicts, gaps }));
+      reply.code(200).send(buildNotifications({ conflicts, gaps, assignments }));
     });
   };
 }

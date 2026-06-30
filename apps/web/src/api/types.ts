@@ -468,11 +468,13 @@ export interface DemoSeedResult {
   attachments: number;
 }
 
-export type NotificationKind = "conflict" | "gap";
+export type NotificationKind = "conflict" | "gap" | "assignment";
 
 export interface Notification {
   id: string;
   kind: NotificationKind;
   title: string;
   at: string;
+  // SCRUM-363: bei „assignment" das Quell-KO (sonst nicht gesetzt).
+  koId?: string;
 }

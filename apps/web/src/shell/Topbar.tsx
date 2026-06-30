@@ -100,7 +100,9 @@ function NotificationBell(): JSX.Element {
                           ? "bg-hairline"
                           : n.kind === "conflict"
                             ? "bg-trust-crit-fill"
-                            : "bg-trust-info-text"
+                            : n.kind === "assignment"
+                              ? "bg-ai"
+                              : "bg-trust-info-text"
                       }`}
                     />
                     <button
@@ -109,6 +111,12 @@ function NotificationBell(): JSX.Element {
                       className="min-w-0 flex-1 truncate text-left text-[13px] text-text hover:text-ai"
                       title={target ? t("topbar.notifOpen") : undefined}
                     >
+                      {/* SCRUM-363: ruhige „Dir ist Review-Arbeit zugewiesen"-Kennzeichnung. */}
+                      {n.kind === "assignment" ? (
+                        <span className="font-semibold text-ai">
+                          {t("topbar.notifAssignment")}:{" "}
+                        </span>
+                      ) : null}
                       {n.title}
                     </button>
                     {read ? null : (

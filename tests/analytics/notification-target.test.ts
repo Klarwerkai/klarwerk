@@ -10,6 +10,10 @@ describe("SCRUM-220: notificationTarget", () => {
     expect(notificationTarget({ kind: "gap" })).toBe("/risiko");
   });
 
+  it("SCRUM-363: Review-Zuweisung → /validierung (dort wartet die Review-Arbeit)", () => {
+    expect(notificationTarget({ kind: "assignment" })).toBe("/validierung");
+  });
+
   it("unbekanntes Kind → null (kein Fake-Ziel)", () => {
     expect(notificationTarget({ kind: "other" as never })).toBeNull();
   });

@@ -9091,3 +9091,57 @@ git commit -m "feat(ask): pg_trgm GIN indexes for findCandidates ILIKE prefilter
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-363 — Beta Assignment Notification & Work Queue Feed v0
+
+**Datum:** 2026-06-30 · **Rolle:** Hauptumsetzer (Claude) · **Repo:** `/Users/peterkohnert/Documents/dev_Klarwerk` (nur Team-1)
+
+**Kurzfazit.** Persönliche offene Review-Zuweisungen erscheinen jetzt als eigene Kategorie im bestehenden In-App-Feed (Topbar-Glocke). `/api/notifications` lädt zusätzlich die offenen Zuweisungen der ANGEMELDETEN Person (`ValidationService.openAssignmentsFor(user.id)`) — nur die eigenen, nie fremde, erledigte verschwinden automatisch. Der Feed kennzeichnet sie ruhig mit „Review für dich" und führt per Klick zur Validierung (`/validierung`). Konflikt-/Lücken-Benachrichtigungen bleiben unverändert. Kein neues Notification-Backend, kein Push/WebSocket/E-Mail, kein neues Rollen-/Assignee-System.
+
+**SCRUM-Ticket.** SCRUM-363 — Beta Assignment Notification & Work Queue Feed v0.
+
+**Vorab-Befund.** `git status -sb` sauber (untrackte v2-Infra-Datei unberührt). Der Feed (`buildNotifications` in `services/app/src/notification-feed.ts`) aggregierte bisher nur offene Konflikte (`con-…`) und offene Wissenslücken (`gap-…`); die Route `/api/notifications` zog nur `conflicts.unresolved()` + `ask.listGaps()` — keine Assignments. Validation/Assignments existieren im Produktkern: `AssignmentRepo.all()`, `Assignment = {koId,userId,status:"open"|"done"}` (ohne Zeitstempel/Titel), `ValidationService` hält koService+assignments. `KnowledgeObject` trägt `title` + `createdAt` → daraus lässt sich eine leichte Zuweisungs-Sicht ableiten, ohne Schema-/Migrationsänderung. FE: `notificationTarget(kind)` (kind-basiert), Topbar-Glocke rendert dot+title; FE-`Notification`/`NotificationKind` ohne assignment.
+
+**Team6-Bezug.** AG-15 (Zuweisungen fehlen als eigene In-App-Benachrichtigung im Topbar-Feed), VC-P1-2, FR-VAL-05, FR-VAL-06, EK-26 (Assignment-In-App-Notification vs. „Board+E-Mail reichen"-Beta-Akzeptanz).
+
+**Umgesetzter Umfang.**
+1. **`ValidationService.openAssignmentsFor(userId)`** (+`AssignmentNotice {koId,title,at}`, exportiert): liefert die offenen Zuweisungen GENAU dieser Person, angereichert mit KO-Titel + KO-`createdAt`; erledigte (done) und fremde fehlen; Zuweisungen auf nicht (mehr) vorhandene KOs werden übersprungen.
+2. **`buildNotifications`**: `NotificationKind` um `"assignment"` erweitert, `Notification.koId?` ergänzt; optionales `assignments`-Feld fließt als `kind:"assignment"` (stabile ID `assign-<koId>`) zeitlich gemischt in den Feed. Konflikt-/Gap-Logik unverändert; ohne `assignments`-Feld voll rückwärtskompatibel.
+3. **Route `/api/notifications`**: zusätzliche `validation`-Dependency; lädt `openAssignmentsFor(user.id)` pro Nutzer und reicht es an `buildNotifications`. `build-app.ts` injiziert `services.validation`.
+4. **Frontend**: `NotificationKind`/`Notification.koId` ergänzt; `notificationTarget` → assignment liefert `/validierung`; Topbar zeigt einen eigenen Punkt + ruhiges Label „Review für dich: <KO-Titel>"; i18n `topbar.notifAssignment` DE/EN.
+
+**Geänderte Dateien.**
+- `services/validation/src/service.ts` (openAssignmentsFor + AssignmentNotice)
+- `services/validation/index.ts` (Export AssignmentNotice)
+- `services/app/src/notification-feed.ts` (Kind „assignment" + koId + assignments)
+- `services/app/src/routes/notifications-routes.ts` (validation-Dep + Per-Nutzer-Assignments)
+- `services/app/src/build-app.ts` (Dep-Wiring)
+- `apps/web/src/api/types.ts` (NotificationKind + koId)
+- `apps/web/src/lib/notificationTarget.ts` (assignment → /validierung)
+- `apps/web/src/shell/Topbar.tsx` (Label + Punkt)
+- `apps/web/src/i18n.ts` (topbar.notifAssignment DE/EN)
+- `services/validation/src/open-assignments.test.ts` (NEU)
+- `services/app/src/notification-feed.test.ts` (erweitert)
+- `tests/analytics/notification-target.test.ts` (erweitert)
+- `tests/app/notifications-assignment-e2e.test.ts` (NEU, HTTP-E2E)
+- `docs/TEAM6_UPDATE.md` (Pflicht-Nebenänderung, SCRUM-363-Eintrag)
+
+**Tests/Gates.** `open-assignments`: eigene offene Zuweisungen mit Titel+Zeit, keine fremden, erledigte raus nach Bewertung, fehlende KOs übersprungen. `notification-feed`: Assignment-Kategorie mit koId + Zeit-Mischung, Rückwärtskompatibilität ohne assignments. `notification-target`: assignment → /validierung (Konflikt/Gap stabil). HTTP-E2E `/api/notifications`: die zugewiesene Person (Carla) sieht ihre Zuweisung; Erik/Admin nicht; Gap-Benachrichtigung bleibt erhalten. `npm run check` grün — **178 Module / 181 Dateien / 1084 Tests**; Build/Biome/dependency-cruiser grün. FE-Dateien geändert → `(cd apps/web && tsc --noEmit)` strict grün.
+
+**Beta-Wirkung.** Der Nutzer sieht ohne Suchen „Diese Review-Arbeit wartet auf mich" direkt in der Glocke und springt per Klick in die Validierung — klarer Beta-Work-Queue-Einstieg. Keine Fake-Ownership (serverseitig auf `user.id` gefiltert), keine technische Sprache (ruhige Copy „Review für dich").
+
+**Bewusst nicht umgesetzt / Restlücken.** Kein neues Notification-Backend, kein Push/WebSocket/E-Mail-Kanal, kein neues Rollen-/Assignee-System, keine große Architekturänderung. Der Feed bleibt eine aus vorhandenen Signalen aggregierte, NICHT persistierte Sicht; der Gelesen-Status ist weiterhin pro Sitzung (kein Server-Read-State). Der Zuweisungs-Zeitstempel ist die KO-Erstellzeit (Assignment selbst trägt keinen eigenen `createdAt` — bewusst keine Schema-/Migrationsänderung); eine echte „zugewiesen-am"-Zeit wäre ein optionaler Folge-Slice. Die finale Beta-Akzeptanz/Reichweite („In-App-Feed ausreichend, oder zusätzlich E-Mail/Push?") bleibt Pedi/Team 5 (EK-26). Pg-Pfad nutzt dieselbe Service-/Repo-Logik, ist aber nur im In-Memory-/HTTP-Test belegt (kein Testcontainers-Lauf in dieser Umgebung).
+
+**TEAM6_UPDATE.md updated: yes** · **Team6 review needed: yes** · **Reason: AG-15 / Assignment notification / Review queue visibility**
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add services/validation/src/service.ts services/validation/index.ts services/app/src/notification-feed.ts services/app/src/routes/notifications-routes.ts services/app/src/build-app.ts apps/web/src/api/types.ts apps/web/src/lib/notificationTarget.ts apps/web/src/shell/Topbar.tsx apps/web/src/i18n.ts services/validation/src/open-assignments.test.ts services/app/src/notification-feed.test.ts tests/analytics/notification-target.test.ts tests/app/notifications-assignment-e2e.test.ts docs/TEAM6_UPDATE.md docs/qm/claude-after-report.md
+git commit -m "feat(notifications): personal open review assignments in the in-app feed (SCRUM-363, AG-15/FR-VAL-05/06)"
+git push
+```
+
+**Stop-Hinweis:** Claude macht kein Git, kein Commit, kein Push, kein Jira. Übergabe an Codex/Pedi.

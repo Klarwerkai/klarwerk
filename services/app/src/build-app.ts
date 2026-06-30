@@ -290,7 +290,12 @@ export function buildApp(services: AppServices = buildServices()): FastifyInstan
   app.register(modelRunRoutes(services.modelRuns, guards));
   app.register(externalRoutes(services.externalSearch, guards));
   app.register(lifecycleRoutes(services.lifecycle, guards));
-  app.register(notificationsRoutes({ conflicts: services.conflicts, ask: services.ask }, guards));
+  app.register(
+    notificationsRoutes(
+      { conflicts: services.conflicts, ask: services.ask, validation: services.validation },
+      guards,
+    ),
+  );
   app.register(auditRoutes(services.audit, guards));
   app.register(reasonerRoutes(services, guards));
   app.register(objectRoutes(services.objects, guards));
