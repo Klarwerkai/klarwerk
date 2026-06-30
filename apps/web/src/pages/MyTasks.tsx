@@ -15,6 +15,7 @@ import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { KoAuthorLine } from "../components/trust";
 import { Card, PageHeader } from "../components/ui";
 import { type KoAuthorParts, koAuthorParts } from "../lib/koAuthor";
+import { reworkHref } from "../lib/reviewReworkContext";
 import { type ReviewWorkTone, type ReviewWorkView, reviewWorkView } from "../lib/reviewSignals";
 import { type TaskTone, knowledgeOsPhase, phaseLabelKey, taskAction } from "../lib/taskAction";
 import {
@@ -85,7 +86,9 @@ export function MyTasks(): JSX.Element {
             id: `rw-${r.koId}`,
             label: kosById.get(r.koId)?.title ?? r.koId,
             typeKey: "task.returned",
-            to: `/wissen/${r.koId}`,
+            // SCRUM-351: in den FOKUSSIERTEN Rework-Kontext führen (Feedback + geordnete Schritte),
+            // nicht auf die nackte KO-Detailseite — so wird Review → Rework → Validation ein Fluss.
+            to: reworkHref(r.koId),
             author: authorOf(r.koId),
           }),
         )

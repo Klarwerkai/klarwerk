@@ -8532,3 +8532,43 @@ git commit -m "test(flow): evidence & attachments -> review -> use e2e hardening
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-351 — Beta Personal Work Queue & Review Ownership v0
+**Datum:** 2026-06-30 · **Rolle:** Claude (Hauptumsetzer) · **Status:** umgesetzt (P2-Fix + Regression), Gates grün
+
+**Vorab-Befund.** `git status -sb` sauber (nur untracked Infra-Doc; SCRUM-337–350 committet). Die persönliche Arbeitsqueue ist bereits stark und ehrlich ausgebaut:
+- `workCenter` (Start): leitet die getrennte Arbeitsübersicht (Konflikte/kritische Lücken/Revalidierung/Validierung/Lernpfad) + `primaryWorkItem` ausschließlich aus echten Signalen ab; keine Fake-Aufgaben.
+- `MyTasks`: verdichtet echte Signale zu einer Aufgabenliste — `returnedToAuthor` (audit-basierte Nacharbeit, **author-scoped** via `user.id` → keine falsche Verantwortlichkeit), Konflikte, Validierungs-Board, Revalidierung, Gaps; gruppiert nach Severity (`groupTasks`).
+- `taskAction` (Typ→nächste Handlung+Tönung), `knowledgeOsPhase`/`phaseLabelKey` (eine Kreis-Sprache Erfassen→Validieren→Nutzen→Aktuell halten über Start UND MyTasks), `reviewWorkView` (Review-Zustand neu/zugewiesen/in Prüfung/validiert), `validationReviewContext` (neu vs. revision), `reviewReworkContext` (`reworkHref`/`reworkValidationHref`/`reworkNextSteps`).
+- Befund Begriffe/Verantwortlichkeit: konsistent und ehrlich; **kein Assignee-Modell wird vorgetäuscht** (Returned-Arbeit ist autorbezogen, Validierung ist offene Board-Arbeit).
+
+**Read-only-Befund (Fragen aus dem Ticket).**
+- Start/MyTasks zeigen offene Review-/Rework-/Revalidation-Arbeit korrekt als getrennte, priorisierte Quellen.
+- Validation zeigt Review-State/Fokus/neu-vs-revidiert (SCRUM-326/327/328).
+- KO-Detail führt im Rework-Kontext (`?rework=review`) fokussiertes Feedback + geordnete Schritte + Rückweg in die Validation (SCRUM-330/332/336).
+- **Gefundene P2-Reibung (genau eine, real):** Die persönliche „zurückgegeben/Nacharbeit"-Karte in MyTasks (`task.returned`) verlinkte auf `/wissen/:id` OHNE `?rework=review`. Der Autor landete dadurch auf der nackten KO-Detailseite — NICHT im fokussierten Rework-Kontext (der nur mit `?rework=review` Feedback-Card + nummerierte Schritte zeigt). Damit brach die Kette Review→Rework→Validation genau an der persönlichen Einstiegsstelle, an der sie am wichtigsten ist. Sonst keine Reibung.
+
+**Umgesetzter Umfang.**
+- **Minimal-Fix** in `apps/web/src/pages/MyTasks.tsx`: die Returned-Karte routet jetzt über den bestehenden Helfer `reworkHref(r.koId)` (= `/wissen/:id?rework=review`) statt auf den nackten Pfad — der Autor landet direkt im fokussierten Rework-Kontext. Keine neue Engine, kein neues Statusmodell, keine geänderte Datenquelle; nur das Ziel-Href der vorhandenen, author-scoped Karte.
+- **Dauerhafte Regression** `tests/app/personal-work-queue.test.ts`: sichert die Work-Queue-Semantik der Returned-Arbeit DOM-frei — `reworkHref` trägt den Fokus + `isReviewReworkContext` erkennt ihn (Round-Trip), nackter Pfad ist KEIN Rework-Kontext, `taskAction("task.returned")` = crit + `knowledgeOsPhase("task.returned")` = capture (eine Kreis-Sprache), i18n-Präsenz DE+EN.
+
+**Bewusst nicht umgesetzte Gaps.** Kein Assignee-/Rollen-/Notification-System (Returned-Arbeit bleibt autorbezogen, keine vorgetäuschte Zuständigkeit). Kein neues Workflow-/Task-Backend, keine neue Severity-/Phasen-Engine. Validierungs-/Revalidierungs-/Konflikt-/Gap-Karten unverändert (führen bereits korrekt an ihre echten Ziele). Kein DOM-Render-Harness eingeführt (nicht vorhanden) — der MyTasks-Wiring-Fix ist per Code-Review + FE-tsc belegt, die Semantik per Helfer-Regression.
+
+**Geänderte Dateien.**
+- `apps/web/src/pages/MyTasks.tsx` (Returned-Karte → `reworkHref` + Import)
+- `tests/app/personal-work-queue.test.ts` (NEU)
+
+**Tests/Gates.** `npm run check` grün — **164 Dateien / 991 Tests**. Gezielt `personal-work-queue.test.ts` → 4/4 grün. `(cd apps/web && tsc --noEmit)` grün (FE-EXIT=0). Biome/depcruise grün.
+
+**Rest-Risiken.** Reine FE-Routing-Änderung (ein Ziel-Href) — kein Datenmodell, keine Backend-/Statuslogik berührt. Der Rework-Kontext im KO-Detail ist bestehend und getestet (SCRUM-330/332/333/336); der Fix nutzt ihn nur konsequent. Ohne DOM-Render-Harness ist die konkrete Komponenten-Verdrahtung nicht durch einen gerenderten Klick-Test gedeckt, wohl aber durch FE-tsc + die Helfer-Regression.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/pages/MyTasks.tsx tests/app/personal-work-queue.test.ts docs/qm/claude-after-report.md
+git commit -m "fix(tasks): route returned-work card into focused rework context (SCRUM-351)"
+git push
+```
+Kein Git/Push/Jira durch Claude.
