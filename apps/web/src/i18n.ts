@@ -399,7 +399,10 @@ const de = {
     "Anhänge vorhanden, aber im Text nicht erwähnt — ggf. darauf verweisen.",
   "editor.template.title": "Strukturvorlage starten",
   "editor.template.hint":
-    "Fügt eine sichere Grundstruktur ein; bei bestehendem Inhalt wird angehängt.",
+    "Vorlage auswählen, Vorschau prüfen und bewusst übernehmen. Startstruktur/Vorschlag — bestehender Inhalt wird beim Anhängen nicht ersetzt; nichts wird automatisch gespeichert oder validiert.",
+  "editor.template.selected": "Ausgewählte Vorlage",
+  "editor.template.preview": "Vorschau",
+  "editor.template.apply": "Vorlage übernehmen",
   "editor.template.procedure.label": "Vorgehen",
   "editor.template.procedure.description": "Bedingungen und Schritte für wiederholbare Arbeit.",
   "editor.template.troubleshooting.label": "Störung",
@@ -1798,7 +1801,11 @@ const en: typeof de = {
   "editor.quality.attachmentsUnreferenced":
     "Attachments present but not mentioned in the text — consider referencing them.",
   "editor.template.title": "Start from a structure template",
-  "editor.template.hint": "Inserts a safe base structure; appends it when content already exists.",
+  "editor.template.hint":
+    "Select a template, review the preview and apply it consciously. Starting structure/suggestion — existing content is not replaced when appended; nothing is saved or validated automatically.",
+  "editor.template.selected": "Selected template",
+  "editor.template.preview": "Preview",
+  "editor.template.apply": "Apply template",
   "editor.template.procedure.label": "Procedure",
   "editor.template.procedure.description": "Conditions and steps for repeatable work.",
   "editor.template.troubleshooting.label": "Issue",

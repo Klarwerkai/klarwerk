@@ -8157,3 +8157,39 @@ git commit -m "feat(editor): structure Knowledge Studio as workspace layout (SCR
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-342 — Beta Knowledge Studio Template Preview & Apply v0
+**Datum:** 2026-06-29 · **Rolle:** Claude (Hauptumsetzer) · **Status:** umgesetzt, Gates grün
+
+**Legacy-Pfad geprüft / nicht verfügbar.** Verfügbar (read-only): `Klarwerk/app/src/components/WikiEditor.jsx` (+ AiAssist/CaseEditor/TeacherStudio, demo-Pendants). Nur analysiert, nicht kopiert. Wichtigste alte Funktionen: WikiEditor mit Sofort-Insert von Snippets/Panels (`insertHTML`/`insertPanel`) per Cursor — also eher Direkt-Einfügen als bewusste Vorschau-Auswahl.
+
+**Vorab-Befund.** `git status -sb` sauber (nur untracked Infra-Doc; SCRUM-337/339/340/341 committet). `BodyTemplateChooser` wendete die Vorlage bisher SOFORT beim Klick an (`onApply(applyBodyTemplate(...))`) — kleine Sofort-Buttons, kein Vorschau-/Auswahl-Arbeitsmodus. Vorhanden: `bodyTemplates.bodyTemplateHtml`/`applyBodyTemplate` (sanitisiert, Set/Append), `editorApplySafety.templateApplyMode`/`templateApplyModeHintKey`, `SanitizedHtml`-Komponente (einziger Ort mit dangerouslySetInnerHTML, allowlist-sanitisiert).
+
+**Umsetzter Umfang.**
+1. **BodyTemplateChooser → Preview-&-Apply** (`BodyTemplateChooser.tsx`): lokaler `selected`-State (Default = erste Vorlage „Vorgehen"). Klick auf eine Vorlage WÄHLT sie aus (aktiver Chip hervorgehoben, `aria-pressed`), wendet sie NICHT mehr sofort an. Darunter Beschreibung der ausgewählten Vorlage, eine **Vorschau** über `SanitizedHtml html={bodyTemplateHtml(selected, locale)}` (nur sichere Template-Konstanten, scrollbar/`max-h-56`, `.prose-kw`), der Set/Append-Hinweis (`templateApplyModeHintKey(templateApplyMode(bodyHtml))`) und ein eigener Button **„Vorlage übernehmen"** → `onApply(applyBodyTemplate(bodyHtml, selected, locale))`. Kein stilles Überschreiben (leer → setzen, sonst anhängen) — Verhalten unverändert.
+2. **i18n** `editor.template.selected`/`preview`/`apply` DE+EN; `editor.template.hint` ehrlicher geschärft (Auswahl→Vorschau→bewusst übernehmen; Startstruktur/Vorschlag; bei Append nicht ersetzt; nichts automatisch gespeichert/validiert).
+3. **Tests** `tests/app/body-templates.test.ts` erweitert: jede Vorlage liefert nicht-leere, sanitisierte Vorschau (DE+EN, kein on*-Handler/Skript); Preview-&-Apply-i18n DE+EN + Ehrlichkeit. Bestehende `bodyTemplateHtml`-Sanitize- und `applyBodyTemplate`-Set/Append-Tests bleiben grün.
+
+Das Studio (SCRUM-341) profitiert direkt, da der BodyTemplateChooser in der Kontext-Spalte eingebettet ist; Capture/KO-Detail nutzen die Komponente unverändert über `bodyHtml`/`onApply` (keine Prop-Änderung).
+
+**Bewusst nicht umgesetzte Gaps.** Kein Template-Editor, keine User-Templates, kein Persistieren der zuletzt gewählten Vorlage (Default beim Mount), kein Cursor-Insert, kein Drag&Drop, kein Legacy-Nachbau, keine Backend-/Reasoner-Änderung, keine automatische Validierung. Kein separater Helfer angelegt (die Logik `bodyTemplateHtml`/`applyBodyTemplate`/`templateApplyMode` ist bereits getestet; reine Auswahl-State-UI).
+
+**Geänderte Dateien.**
+- `apps/web/src/components/BodyTemplateChooser.tsx` (Preview-&-Apply-Fluss)
+- `apps/web/src/i18n.ts` (`editor.template.selected/preview/apply` DE+EN; `hint` geschärft)
+- `tests/app/body-templates.test.ts` (erweitert)
+
+**Tests/Gates.** `npm run check` grün — **157 Dateien / 962 Tests**. Gezielt `body-templates` + `editor-apply-safety` + `knowledge-studio-layout` → 18/18 grün. `(cd apps/web && tsc --noEmit)` grün (FE-EXIT=0). Biome/depcruise grün.
+
+**Rest-Risiken.** Die Vorschau rendert über `SanitizedHtml` (allowlist-sanitisiert) ausschließlich statische Template-Konstanten — kein User-HTML, keine neue dangerouslySetInnerHTML-Stelle. Reine UI-/State-Änderung; das Set/Append-Verhalten ist unverändert und durch bestehende Tests gedeckt. Der Default-Select setzt beim erneuten Mount auf die erste Vorlage zurück (bewusst, kein Persistieren).
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/components/BodyTemplateChooser.tsx apps/web/src/i18n.ts tests/app/body-templates.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(editor): template preview and conscious apply in Knowledge Studio (SCRUM-342)"
+git push
+```
+Kein Git/Push/Jira durch Claude.

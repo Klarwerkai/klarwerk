@@ -63,4 +63,37 @@ describe("SCRUM-319: bodyTemplates", () => {
     expect(appended.startsWith(existing)).toBe(true);
     expect(appended).toContain("<h2>Sicherheitsrelevantes Wissen</h2>");
   });
+
+  // SCRUM-342: jede Vorlage liefert eine nicht-leere, sanitisierte Vorschau (für die Preview-Anzeige).
+  it("jede Vorlage hat eine nicht-leere, sanitisierte Vorschau in DE und EN", () => {
+    for (const id of BODY_TEMPLATE_IDS) {
+      for (const locale of ["de", "en"] as const) {
+        const html = bodyTemplateHtml(id, locale);
+        expect(html.length).toBeGreaterThan(0);
+        expect(html).not.toMatch(/\son[a-z]+\s*=/i);
+        expect(html.toLowerCase()).not.toContain("<script");
+      }
+    }
+  });
+
+  // SCRUM-342: Preview-&-Apply-i18n (Auswahl/Vorschau/Übernehmen/Hinweis) DE+EN vorhanden + ehrlich.
+  it("Preview-&-Apply-i18n (selected/preview/apply/hint) DE+EN vorhanden", () => {
+    const keys = [
+      "editor.template.selected",
+      "editor.template.preview",
+      "editor.template.apply",
+      "editor.template.hint",
+    ];
+    for (const key of keys) {
+      for (const lng of ["de", "en"]) {
+        expect(String(i18n.getResource(lng, "translation", key) ?? "").length).toBeGreaterThan(0);
+      }
+    }
+    expect(String(i18n.getResource("de", "translation", "editor.template.hint") ?? "")).toMatch(
+      /nicht ersetzt|automatisch/i,
+    );
+    expect(String(i18n.getResource("en", "translation", "editor.template.hint") ?? "")).toMatch(
+      /not replaced|automatically/i,
+    );
+  });
 });
