@@ -31,10 +31,14 @@ function structureSystem(locale: ReasonerLocale): string {
     : `Du strukturierst industrielles Erfahrungswissen. Antworte AUSSCHLIESSLICH mit JSON: ${contract}. Erfinde nichts dazu.`;
 }
 
+// SCRUM-366 / AG-04 / FR-RSN-03: quellengebundene, anti-halluzinatorische Leitplanken für den
+// Modellmodus. Bleibt anbieteragnostisch (kein RAG, kein neues Framework) — schärft NUR den
+// System-Prompt: nur aus den nummerierten Quellen antworten, nichts erfinden/überdehnen, bei
+// unzureichender Basis ehrlich auf die fehlende Wissensbasis verweisen, keine Fake-Zitate.
 function answerSystem(locale: ReasonerLocale): string {
   return locale === "en"
-    ? "Answer ONLY based on the numbered sources. If the sources are not enough, say so honestly. Do not invent facts or numbers."
-    : "Beantworte die Frage NUR auf Basis der nummerierten Quellen. Reichen die Quellen nicht, sage das ehrlich. Erfinde keine Fakten und keine Zahlen.";
+    ? "Answer ONLY based on the numbered sources. Do not invent facts, numbers, causes or measures, and do not add general world knowledge. Do not overstate or stretch a source beyond what it actually says. If the sources are not enough, say honestly that the knowledge base does not cover this — do not guess. You may refer to the sources you used, but never fabricate quotes."
+    : "Beantworte die Frage NUR auf Basis der nummerierten Quellen. Erfinde keine Fakten, Zahlen, Ursachen oder Maßnahmen und ergänze kein allgemeines Weltwissen. Dehne keine Quelle über ihre tatsächliche Aussage hinaus. Reichen die Quellen nicht, sage ehrlich, dass die Wissensbasis das nicht abdeckt — rate nicht. Du darfst auf die genutzten Quellen verweisen, aber erfinde keine Zitate.";
 }
 
 function assistSystem(locale: ReasonerLocale): string {

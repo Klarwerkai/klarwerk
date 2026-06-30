@@ -9240,3 +9240,50 @@ git push
 ```
 
 **Stop-Hinweis:** Claude macht kein Git, kein Commit, kein Push, kein Jira. Übergabe an Codex/Pedi.
+
+---
+
+## SCRUM-366 — Beta Ask Answer Contract & Source-Grounded Use v0
+
+**Datum:** 2026-06-30 · **Claude beteiligt: ja** · **Rolle:** Hauptumsetzer · **Repo:** `/Users/peterkohnert/Documents/dev_Klarwerk` (nur Team-1)
+
+**Kurzfazit.** Ask wirkt jetzt klar als quellengebundener Knowledge-OS-Use-Flow statt als generischer Chatbot. Ein ruhiger „Antwortvertrag" rahmt jedes Ergebnis vor dem Lesen: gesichert (validiertes Wissen), ungeprüft (vorhanden, aber markiert — keine Chatbot-Vermutung) oder Wissenslücke (kein Fehler, sondern Lücke zum Schließen). Dazu eine ehrliche Quellenbilanz (validiert/offen/Konflikt) und die PI-K2-Notiz „Trust ist Belastbarkeit, kein Wahrheitsversprechen". Der Modellmodus-Prompt ist quellengebunden/anti-halluzinatorisch geschärft. Next-Steps führen passend (nutzen / zur Prüfung / Wissen erfassen). Keine neue Antwort-/Trust-/Statuslogik, kein RAG, kein Backend-Workflow-Umbau.
+
+**SCRUM-Ticket.** SCRUM-366 — Beta Ask Answer Contract & Source-Grounded Use v0.
+
+**Vorab-Befund.** `git status -sb` sauber (untrackte v2-Infra-Datei unberührt; SCRUM-362–365 von Codex committed). Vorhanden: `askView.ts` (answerStatus gesichert↔ungeprüft, sourceRefs + conflictAwareSourceRefs mit kanonischer Nutzbarkeit/Konfliktbegrenzung, answerReviewGuard), `knowledgeClass.ts`, `useReadiness.ts`/`koOverview.ts` (KoUsability), `Ask.tsx` (Status-Pills, Quellenliste, Konflikt-Hinweis, ReviewGuard, Gap-Karte, demoHref). Reasoner: `provider-model.ts` `answerSystem(locale)` kurz; `select`/`answer` nutzen `selectCandidates` (Top-K), FR-RSN-03 (ohne Quelle keine Modellanfrage). Lücke: kein zusammenfassender „Antwortvertrag" (Worauf basiert? gesichert/ungeprüft/Lücke + Belastbarkeit + nächster Schritt); Modell-Prompt nur minimal anti-halluzinatorisch und nicht testbelegt.
+
+**Team6-Bezug.** AG-04 (Anti-Halluzination Modellmodus), AG-P2-2 (validiert-only-Copy ↔ Verhalten), AG-P2-3/PI-K2 (Trust ≠ Wahrheit), AG-13 (Knowledge-OS-Rahmung), FR-ASK-02/FR-RSN-03, EK-23 (validiert-only-Entscheidung bleibt Pedi).
+
+**Umgesetzter Umfang.**
+1. **`askAnswerContract.ts`** (NEU, DOM-frei): `answerContract({answered, knowledgeClass, sourcesConflicted})` → verified | unverified | gap. Gesichert wird bei offenem Konflikt ehrlich auf „ungeprüft" herabgestuft (AG-14-konsistent). `answerSourceSummary(refs)` zählt total/known/unknown/validated/open/ready/conflictLimited. `ANSWER_CONTRACT_TRUST_NOTE_KEY` (PI-K2). Reine Ableitung aus vorhandenen Signalen.
+2. **Ask-UI** (`Ask.tsx`): ruhige Antwortvertrag-Karte VOR Antwort/Gap (Titel/Body „quellengebunden, kein generischer Chatbot" · Quellen-Chips validiert/offen/Konflikt · Trust-Notiz · sicherer nächster Schritt). Gap-Ergebnis bleibt zusätzlich als „Wissenslücke, kein Chatbot-Fehler" gerahmt. Bestehende ReviewGuard-/Quellen-/Konflikt-/Capture-/Risiko-Elemente + demoHref unverändert (keine Funktion entfernt).
+3. **Modellmodus-Härtung** (`provider-model.ts` `answerSystem`): nur aus nummerierten Quellen; keine Fakten/Zahlen/Ursachen/Maßnahmen/Weltwissen erfinden; nicht überdehnen; bei fehlender Basis ehrlich auf die Wissensbasis verweisen; keine Fake-Zitate. Kein neues Framework, kein RAG; deterministischer Fallback unverändert; Top-K/selectCandidates intakt.
+4. **i18n** DE/EN: `ask.contract.*` (label, verified/unverified/gap title+body+next, trustNote, Summen-Labels mit Pluralisierung).
+
+**Bewusst nicht umgesetzt.** Keine „validiert-only"-Verhaltensänderung (bleibt Pedi/EK-23). Kein neues Trust-/Statusmodell, kein Scoring, kein Backend-Workflow-Umbau. Kein RAG/Embedding/Vektor, keine Local-LLM-/Team-2-Abhängigkeit. Kein echtes Modell-Halluzinations-Eval-Set (Prompt-Härtung + Fake-Client-Test belegen die Leitplanken; ein scharfes Benchmark bleibt Pedi/Team 5). Kein Demo-Hack.
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/askAnswerContract.ts` (NEU)
+- `apps/web/src/pages/Ask.tsx` (Antwortvertrag-Karte + Quellenbilanz + Next-Step-Rahmung)
+- `apps/web/src/i18n.ts` (ask.contract.* DE/EN)
+- `services/reasoner/src/provider-model.ts` (answerSystem-Härtung)
+- `tests/ask/ask-answer-contract.test.ts` (NEU)
+- `services/reasoner/src/provider-model.test.ts` (erweitert)
+- `docs/TEAM6_UPDATE.md` (Pflicht-Nebenänderung)
+
+**Tests/Gates.** `ask-answer-contract`: Vertragsarten (verified/unverified/gap), Konflikt-Herabstufung, jede nicht-gesicherte Klasse → unverified, Quellenbilanz-Zählung, i18n + Ehrlichkeit DE/EN (kein generischer Chatbot / keine Chatbot-Vermutung / kein Fehler / kein Wahrheitsversprechen). `provider-model` erweitert: Anti-Halluzinations-Leitplanken im System-Prompt DE+EN (Ursachen/Maßnahmen, Weltwissen, nicht überdehnen, Wissensbasis-Hinweis, keine Fake-Zitate) + nur relevante Quellen im User-Prompt (selectCandidates lässt irrelevante KO weg). Bestehende `ask-view`/`ask service`/`ask-retrieval-topk-e2e` unverändert grün. `npm run check` grün — **184 Dateien / 1113 Tests**; Build/Biome/dependency-cruiser grün; FE-`tsc --noEmit` strict grün.
+
+**TEAM6_UPDATE.md updated: yes** · **Team6 review needed: yes** · **Reason: AG-04 / AG-P2-2 / AG-P2-3 / FR-ASK-02 / PI-K2**
+
+**Rest-Risiken.** (1) Die Anti-Halluzinations-Härtung ist prompt- und unit-test-belegt, aber NICHT durch ein echtes Modell-/Halluzinations-Eval gegen ein laufendes Modell (kein Modell-Client in dieser Umgebung) — scharfes Benchmark bleibt Pedi/Team 5 (AG-04-Rest). (2) „validiert-only" vs. „ungeprüft markiert" ist bewusst unverändert gelassen — finale Produktentscheidung Pedi/EK-23. (3) Der Antwortvertrag ist eine FE-Sicht; er ändert keine Backend-Antwortlogik (gewollt). (4) Pluralisierung der Summen-Labels nutzt i18next-Suffixe (`_one/_other`) — DE/EN abgedeckt, weitere Sprachen später.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/askAnswerContract.ts apps/web/src/pages/Ask.tsx apps/web/src/i18n.ts services/reasoner/src/provider-model.ts tests/ask/ask-answer-contract.test.ts services/reasoner/src/provider-model.test.ts docs/TEAM6_UPDATE.md docs/qm/claude-after-report.md
+git commit -m "feat(ask): answer contract + source-grounded use framing + model-mode prompt hardening (SCRUM-366, AG-04/AG-P2-2/AG-P2-3/FR-ASK-02/PI-K2)"
+git push
+```
+
+**Stop-Hinweis:** Claude macht kein Git add, kein Commit, kein Push, kein Jira. Übergabe an Codex/Pedi.

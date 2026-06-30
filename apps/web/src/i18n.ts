@@ -621,6 +621,29 @@ const de = {
   "ask.noBasisTitle": "Keine belastbare Grundlage.",
   "ask.noBasisBody":
     "Es gibt kein validiertes Wissen zu dieser Frage. Statt einer erfundenen Antwort wurde eine Wissenslücke angelegt.",
+  // SCRUM-366 / FR-ASK-02 / PI-K2: Antwortvertrag — quellengebunden, ehrlich, kein generischer Chatbot.
+  "ask.contract.label": "Antwortbasis",
+  "ask.contract.verified.title": "Quellengebundene Antwort",
+  "ask.contract.verified.body":
+    "Diese Antwort stützt sich auf validiertes Wissen aus deiner Wissensbasis — keine generische Chatbot-Antwort.",
+  "ask.contract.verified.next": "Nächster Schritt: Quelle ansehen oder das Wissen nutzen.",
+  "ask.contract.unverified.title": "Quellengebunden, aber noch ungeprüft",
+  "ask.contract.unverified.body":
+    "Die Antwort stützt sich auf vorhandenes, aber noch nicht gesichertes Wissen. Sie ist als ungeprüft gekennzeichnet, keine Chatbot-Vermutung.",
+  "ask.contract.unverified.next":
+    "Sicherer nächster Schritt: zur Prüfung geben bzw. in der Validierung prüfen lassen.",
+  "ask.contract.gap.title": "Wissenslücke, keine Chatbot-Antwort",
+  "ask.contract.gap.body":
+    "Es gibt noch keine belastbare Grundlage in der Wissensbasis. Das ist eine Lücke, die ihr schließen könnt — kein Fehler.",
+  "ask.contract.gap.next":
+    "Nächster Schritt: Wissen erfassen oder die Lücke im Risiko-Board priorisieren.",
+  "ask.contract.trustNote":
+    "Trust und Nutzbarkeit zeigen, wie belastbar eine Quelle ist — kein Wahrheitsversprechen.",
+  "ask.contract.sumTotal_one": "{{count}} Quelle",
+  "ask.contract.sumTotal_other": "{{count}} Quellen",
+  "ask.contract.sumValidated": "{{count}} validiert",
+  "ask.contract.sumOpen": "{{count}} offen/ungeprüft",
+  "ask.contract.sumConflict": "{{count}} mit Konflikt",
   // SCRUM-283: datensparsamer, ehrlicher Hinweis zur gespeicherten Wissenslücke (Ask + Risk).
   "gap.privacyNotice":
     "Die Frage wird als Wissenslücke gespeichert — keine Antwort und kein validiertes Wissen. Bitte keine sensiblen oder personenbezogenen Details erfassen; ergänze später geprüfte Erfahrung.",
@@ -2169,6 +2192,28 @@ const en: typeof de = {
   "ask.noBasisTitle": "No reliable basis.",
   "ask.noBasisBody":
     "There is no validated knowledge for this question. Instead of a made-up answer, a knowledge gap was created.",
+  // SCRUM-366 / FR-ASK-02 / PI-K2: answer contract — source-bound, honest, not a generic chatbot.
+  "ask.contract.label": "Answer basis",
+  "ask.contract.verified.title": "Source-bound answer",
+  "ask.contract.verified.body":
+    "This answer draws on validated knowledge from your knowledge base — not a generic chatbot answer.",
+  "ask.contract.verified.next": "Next step: open the source or use the knowledge.",
+  "ask.contract.unverified.title": "Source-bound, but not verified yet",
+  "ask.contract.unverified.body":
+    "The answer draws on existing but not-yet-verified knowledge. It is marked as unverified, not a chatbot guess.",
+  "ask.contract.unverified.next":
+    "Safe next step: send it for review or have it checked in validation.",
+  "ask.contract.gap.title": "Knowledge gap, not a chatbot answer",
+  "ask.contract.gap.body":
+    "There is no reliable basis in the knowledge base yet. That's a gap you can close — not an error.",
+  "ask.contract.gap.next": "Next step: capture knowledge or prioritise the gap in the risk board.",
+  "ask.contract.trustNote":
+    "Trust and usability show how reliable a source is — not a guarantee of truth.",
+  "ask.contract.sumTotal_one": "{{count}} source",
+  "ask.contract.sumTotal_other": "{{count}} sources",
+  "ask.contract.sumValidated": "{{count}} validated",
+  "ask.contract.sumOpen": "{{count}} open/unverified",
+  "ask.contract.sumConflict": "{{count}} with conflict",
   // SCRUM-283: data-minimising, honest notice about the stored knowledge gap (Ask + Risk).
   "gap.privacyNotice":
     "The question is stored as a knowledge gap — not an answer and not validated knowledge. Please avoid sensitive or personal details; add reviewed experience later.",

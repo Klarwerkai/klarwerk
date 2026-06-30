@@ -89,6 +89,52 @@ describe("ModelProvider locale-aware prompts", () => {
     expect(calls[0]?.user).toContain("Quellen:");
   });
 
+  // SCRUM-366 / AG-04: anti-halluzinatorische Quellen-Leitplanken im System-Prompt (DE + EN).
+  it("answer: System-Prompt trägt die Anti-Halluzinations-Leitplanken (DE)", async () => {
+    const { client, calls } = capturingClient();
+    await new ModelProvider(client).answer("Überdruck Ventil", KOS);
+    const system = calls[0]?.system ?? "";
+    // nichts erfinden (inkl. Ursachen/Maßnahmen), kein Weltwissen, nicht überdehnen, keine Fake-Zitate,
+    // bei unzureichender Basis ehrlich auf die fehlende Wissensbasis verweisen.
+    expect(system).toContain("Ursachen oder Maßnahmen");
+    expect(system).toContain("kein allgemeines Weltwissen");
+    expect(system).toContain("Dehne keine Quelle");
+    expect(system).toContain("Wissensbasis das nicht abdeckt");
+    expect(system).toContain("erfinde keine Zitate");
+  });
+
+  it("answer: System-Prompt trägt die Anti-Halluzinations-Leitplanken (EN)", async () => {
+    const { client, calls } = capturingClient();
+    await new ModelProvider(client).answer("Überdruck Ventil", KOS, "en");
+    const system = calls[0]?.system ?? "";
+    expect(system).toContain("causes or measures");
+    expect(system).toContain("general world knowledge");
+    expect(system).toContain("stretch a source");
+    expect(system).toContain("knowledge base does not cover this");
+    expect(system).toContain("never fabricate quotes");
+  });
+
+  // SCRUM-366: nur die begrenzten Quellen landen im User-Prompt (kein Fremdwissen durchgereicht);
+  // Top-K/selectCandidates-Verhalten bleibt intakt (irrelevante Quelle wird nicht eingebettet).
+  it("answer: User-Prompt enthält nur die ausgewählten, relevanten Quellen", async () => {
+    const { client, calls } = capturingClient();
+    const many: KnowledgeRef[] = [
+      ...KOS,
+      {
+        id: "ko2",
+        title: "Kantine Speiseplan",
+        statement: "Dienstags gibt es Suppe.",
+        status: "validiert",
+        trust: 80,
+      },
+    ];
+    await new ModelProvider(client).answer("Überdruck Ventil schließen", many);
+    const user = calls[0]?.user ?? "";
+    expect(user).toContain("Ventil");
+    // Die thematisch irrelevante Quelle wird durch selectCandidates nicht eingebettet.
+    expect(user).not.toContain("Speiseplan");
+  });
+
   it("interview: englischer System-Prompt + Labels bei locale 'en'", async () => {
     const { client, calls } = capturingClient();
     // Nur eine Antwort → noch nicht abgeschlossen → Modell wird zum Umformulieren befragt.
