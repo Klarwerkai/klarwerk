@@ -6,16 +6,16 @@
 - Scope: Knowledge Input, Capture, AI-assisted Editing, Validation, KO Detail, Library, Ask, Capture → Review → Use, App-Auth/Security, Trust/Conflict-Integrity
 - Repo: `/Users/peterkohnert/Documents/dev_Klarwerk`
 - Jira Project: SCRUM
-- Last updated: 2026-06-30 19:57 CEST
-- Current status: SCRUM-357 umgesetzt durch Claude, Codex-Prüfung/Commit/Push/CI/Jira ausstehend
-- Active ticket: SCRUM-357 — Beta Trust & Conflict Integrity v0
-- Last completed ticket: SCRUM-356 — Beta Auth Rate-Limit & Brute-Force Guard v0
-- Last commit: `27f59ee81899ad417fc36b7a208a5bef39b8fb14`
-- GitHub/CI status: SCRUM-356 CI grün; SCRUM-357 noch nicht gepusht
-- Beta impact: Ein offener (v. a. Truth-)Konflikt wirkt jetzt ehrlich auf KO-Trust-/Nutzbarkeits-/Review-Signale: validiertes Wissen mit offenem Konflikt erscheint in KO-Detail/Library/Ask nicht mehr als „uneingeschränkt nutzbar/gesichert" (ready → in Prüfung), ohne Fake-Wahrheit. Gelöste Konflikte blockieren nicht weiter.
+- Last updated: 2026-06-30 20:20 CEST
+- Current status: SCRUM-358 umgesetzt durch Claude, Codex-Prüfung/Commit/Push/CI/Jira ausstehend
+- Active ticket: SCRUM-358 — Beta Trust Formula & Server-Side Conflict Impact v0
+- Last completed ticket: SCRUM-357 — Beta Trust & Conflict Integrity v0
+- Last commit: `24717150f98d60aeb1cc5d0bca9129b119847442`
+- GitHub/CI status: SCRUM-357 CI grün; SCRUM-358 noch nicht gepusht
+- Beta impact: Konfliktwirkung jetzt auch SERVERSEITIG: ein offener Wahrheitskonflikt gegen ein validiertes KO holt es serverseitig zurück in Review (Status validiert→offen, Trust konservativ gesenkt — kein Reset, keine Fake-Wahrheit). Serverdaten widersprechen der FE-Ehrlichkeit aus SCRUM-357 nicht mehr; gelöste Konflikte blockieren nicht dauerhaft (KO bleibt review-pflichtig, normal erneut validierbar).
 - Team6 review needed: yes
-- Reason: Team6 P1 Gap AG-14 / VC-P1-1 / FR-VAL-01
-- Next planned slice: nach Pedi-Signal; Empfehlung voraussichtlich AG-05/EK-22 (Trust-Formel spec-konform) als Fortsetzung, G-P2-1 (Drag&Drop/Paste) oder weiterer Team6-Gap
+- Reason: Team6 P1 Gap AG-05 / AG-14-SERVER-TRUST / VC-P1-1 / FR-VAL-01
+- Next planned slice: nach Pedi-Signal; Empfehlung voraussichtlich vollständige spec-konforme Trust-Formel (Anhang §3, EK-22) als Fortsetzung, G-P2-1 (Drag&Drop/Paste) oder weiterer Team6-Gap
 
 ## Current Risks / Gaps
 
@@ -29,8 +29,9 @@
 | AG-06 | Kein App-Login-Rate-Limit/Brute-Force-Schutz. | P1 | Auth / Login | NFR-SEC-04, Top Requirement #4, Team-1-Lieferung | Mit SCRUM-356 abgeschlossen |
 | AG-06-RECOVERY | Forgot/Reset-Anforderung hat noch keinen eigenen Rate-Limit (Mail-Spam-Abuse). | P2 | Auth / Recovery | Folgeoptimierung; 204-immer-Semantik bewusst unangetastet | Bewusst zurückgestellt, nicht Teil von SCRUM-356 |
 | AG-07 | Kein unabhängiger Security-Review/Pen-Test. | P1 | Security gesamt | NFR-SEC-04 AK | Bei Pedi/Team 5 (EK-17), nicht Team-1-Scope |
-| AG-14 / VC-P1-1 | Konflikte wirkten nicht auf KO-Trust/-Status; Truth-Konflikt holte validiertes KO nicht in Prüfung zurück. | P1 | Conflicts / KO / Validation / Ask / Library | FR-VAL-01, Anhang §3, Top Requirement #16 | Mit SCRUM-357 als ehrliche „conflict-limited usability" adressiert (FE-seitig, keine Server-Mutation); Codex-Abschluss ausstehend |
-| AG-14-SERVER-TRUST | Spec-konforme serverseitige Trust-Impact-Formel (z. B. Truth −12) + automatische Status-Rückführung validiert→Prüfung noch offen. | P1 | Validation / Trust-Formel | Anhang §3, AG-05/EK-22 | Bewusst zurückgestellt (gemeinsam mit AG-05 Trust-Formel zu lösen); nicht Teil von SCRUM-357 |
+| AG-14 / VC-P1-1 | Konflikte wirkten nicht auf KO-Trust/-Status; Truth-Konflikt holte validiertes KO nicht in Prüfung zurück. | P1 | Conflicts / KO / Validation / Ask / Library | FR-VAL-01, Anhang §3, Top Requirement #16 | FE-Ehrlichkeit (SCRUM-357) + serverseitige Wirkung (SCRUM-358) abgeschlossen; Codex-Abschluss ausstehend |
+| AG-14-SERVER-TRUST | Truth-Konflikt holt validiertes KO serverseitig nicht in Review zurück; Trust unverändert. | P1 | Validation / KO / Trust | Anhang §3, AG-05/EK-22, Top Requirement #16 | Mit SCRUM-358 adressiert: validiert→offen + konservative Trust-Strafe (markTruthConflictReview); Codex-Abschluss ausstehend |
+| AG-05-TRUST-FORMULA | Vollständige spec-konforme Trust-Formel (Anhang §3: warn/down-Gewichte, abgestufte Konflikt-Impacts je Art) bleibt provisorisch. | P1 | Validation / Trust-Formel | Anhang §3, EK-22 | Bewusst zurückgestellt: SCRUM-358 liefert den Truth-Konflikt-Impact; vollständige Formel als Folge-Slice |
 
 ## Current Requirement Touchpoints
 
@@ -51,11 +52,26 @@
 | AG-14 / VC-P1-1 — Konflikt-Trust-/Status-Kopplung | Team6 `VALIDATION_CONFLICTS_E2E_REVIEW_V0.md` | addressed (FE-Ebene) in SCRUM-357 | Zentrale `conflictImpact`/`conflictLimitedUsability` begrenzt Nutzbarkeit für konfliktbetroffene KOs; KO-Detail/Library/Ask konsistent; keine Server-Mutation/Fake-Wahrheit. |
 | FR-VAL-01 — Peer-Bewertung → Status/Trust (Formel offen) | Team6 `VALIDATION_CONFLICTS_E2E_REVIEW_V0.md` | partially addressed in SCRUM-357 | Konfliktwirkung auf die EHRLICHE Anzeige geliefert; spec-konforme Trust-Formel (Anhang §3) bleibt offen (AG-05/EK-22). |
 | FR-CON-01..04 — Konfliktworkflow | Team6 `VALIDATION_CONFLICTS_E2E_REVIEW_V0.md` | reused (unverändert) | Bestehender Workflow (create/escalate/secondOpinion/resolve, unresolved) bleibt; Wirkung wird daraus abgeleitet. |
-| Top Requirement #16 — Konflikt-Trust-/Status-Kopplung | Team6 `TEAM6_CURRENT_TOP_REQUIREMENTS.md` | addressed (FE-Ebene) in SCRUM-357 | Konflikt → Nutzbarkeit/Trust-Ehrlichkeit sichtbar + getestet (Helper + Runtime-E2E). Serverseitige Trust-Formel als Folge-Slice. |
+| Top Requirement #16 — Konflikt-Trust-/Status-Kopplung | Team6 `TEAM6_CURRENT_TOP_REQUIREMENTS.md` | addressed (FE + Server) in SCRUM-357/358 | FE-Ehrlichkeit (357) + serverseitige Wirkung (358: validiert→offen + Trust-Strafe). |
+| AG-14-SERVER-TRUST — serverseitige Trust-/Status-Kopplung | Team6 `VALIDATION_CONFLICTS_E2E_REVIEW_V0.md` | addressed in SCRUM-358 | Truth-Konflikt holt validiertes KO serverseitig in Review (`KoService.markTruthConflictReview`); Trust −12 (Anhang §3-nah), kein Reset. |
+| AG-05 — Trust-Formel provisorisch | Team6 `TEAM6_ACTIVE_GAPS_AND_RECOMMENDATIONS.md` | partially addressed in SCRUM-358 | Truth-Konflikt-Trust-Impact geliefert + getestet; vollständige spec-konforme Formel (warn/down-Gewichte, abgestufte Konflikt-Impacts) bleibt Folge-Slice (EK-22). |
+| Top Requirement #7 — Trust-Formel/Vertrauensmodell | Team6 `TEAM6_CURRENT_TOP_REQUIREMENTS.md` | partially addressed in SCRUM-358 | Erster spec-naher Trust-Impact (Konflikt) serverseitig wirksam; Restformel als Folge-Gap dokumentiert. |
 
 ## Delta Log
 
-### 2026-06-30 19:55 — SCRUM-357 — pending commit
+### 2026-06-30 20:20 — SCRUM-358 — pending commit
+
+- Changed areas: `KoService.markTruthConflictReview` (neu) + Trust-Penalty-Konstante (knowledge-object), Dispatcher-Hook (ko-routes conflict-case), Tests; SCRUM-357-E2E an neue Serverwirkung angepasst. KEINE FE-Source-Änderung.
+- What changed: Neue KO-Service-Methode `markTruthConflictReview(id, actor)` — ein offener WAHRHEITSKONFLIKT gegen ein VALIDIERTES KO setzt Status validiert→offen und senkt Trust um `TRUTH_CONFLICT_TRUST_PENALTY` (=12, Anhang-§3-nah), mit Audit `ko.conflict-review`. Idempotent/No-op für offene/fehlende KOs (robust bei Konflikten gegen nicht existierende/offene Bezugs-KOs). Der KO-Dispatcher ruft die Methode im `conflict`-Case für beide referenzierten KOs auf, wenn `type === "truth"`. `resolve` bleibt bewusst ohne Auto-Erholung: das KO bleibt review-pflichtig und wird über die normale Bewertung erneut validiert.
+- Beta impact: AG-05 / AG-14-SERVER-TRUST / VC-P1-1 — Serverdaten widersprechen der FE-Ehrlichkeit (SCRUM-357) nicht mehr. Ein offener Truth-Konflikt lässt ein validiertes KO serverseitig nicht als voll vertrauenswürdig/status-ready stehen.
+- Designentscheidung (begründet): Integration im KO-Service + App-Dispatcher (risikoärmste Stelle: KO besitzt die Status-/Trust-Transition; Dispatcher orchestriert, KEIN neuer Cross-Modul-Dependency, KEINE Trust-Engine). Kein Reset auf 0 → keine maschinelle „falsch"-Aussage (keine Fake-Wahrheit). Kein Auto-Validate nach resolve → kein Fake-Validate, kein Dauer-Block.
+- „Trust-Formel / Amber / Down": `computeOutcome` (warn/down → Trust/Status) bleibt unverändert (provisorisch). Bewusst NICHT in diesem Slice angefasst — die vollständige spec-konforme Formel ist eng mit AG-05/EK-22 verbunden und bleibt Folge-Gap (AG-05-TRUST-FORMULA). Geliefert wird der konkret geforderte Truth-Konflikt-Impact.
+- New / touched requirements: AG-05 (teilweise), AG-14-SERVER-TRUST, VC-P1-1, FR-VAL-01, FR-CON-01..04 (Dispatcher-Hook), EK-22/EK-25, Top Requirements #7/#16.
+- Tests: `services/knowledge-object/src/service.test.ts` (markTruthConflictReview: validiert→offen+Strafe, No-op offen/fehlend, Floor bei 0) + `tests/validation/conflict-server-trust-impact-e2e.test.ts` (HTTP: validiert→Truth-Konflikt→offen+Trust gesenkt, Board listet, Ask konsistent, resolve→review-pflichtig→re-rate validiert; Nicht-Truth unverändert). `tests/validation/conflict-trust-integrity-e2e.test.ts` (SCRUM-357) an die neue Serverwirkung angepasst. `npm run check` grün (172 Dateien / 1040 Tests), FE-tsc strict grün.
+- Team6 review needed: yes
+- Reason: Team6 P1 Gap AG-05 / AG-14-SERVER-TRUST / VC-P1-1 / FR-VAL-01
+
+### 2026-06-30 19:55 — SCRUM-357 — 2471715
 
 - Changed areas: neuer DOM-freier Helfer `conflictImpact.ts`, `askView.ts` (konfliktbewusste Quellen), KO-Detail, Library, Ask, i18n, Tests, Team6 handoff. KEINE Backend-/Service-Änderung.
 - What changed: Zentrale Ableitung `conflictImpact(koId, conflicts)` (offen/eskaliert/zweitmeinung wirken, Truth am stärksten, gelöst wirkt nicht) + `conflictLimitedUsability(base, impact)` (ready → in-review) + `conflictNotice`/`effectiveUsability` + `conflictAwareSourceRefs` für Ask. KO-Detail zeigt Konflikt-Badge + Banner und nutzt die begrenzte Nutzbarkeit; Library begrenzt die Reife-Plakette + leitet konfliktbetroffene Treffer auf die Konfliktseite statt in Ask; Ask markiert konfliktbetroffene Quellen, zeigt einen Antwort-Hinweis und stuft die Quellen-Nutzbarkeit herunter.

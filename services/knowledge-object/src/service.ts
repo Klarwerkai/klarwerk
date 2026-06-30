@@ -16,6 +16,12 @@ import {
 
 const DEFAULT_NEEDED_VALIDATIONS = 3; // FR-CAP-08: 1–5, Standard 3.
 
+// SCRUM-358 / AG-05 / AG-14-SERVER-TRUST: konservative, nachvollziehbare Trust-Strafe, wenn ein offener
+// Wahrheitskonflikt ein validiertes KO zurück in Review holt. Bewusst KLEIN (kein Reset auf 0): ein
+// Konflikt macht ein KO nicht „falsch" — er macht es review-pflichtig. Wert orientiert am Technischen
+// Anhang §3 (Truth-Impact ~ −12). Eine vollständige spec-konforme Trust-Formel bleibt Folge-Gap (EK-22).
+export const TRUTH_CONFLICT_TRUST_PENALTY = 12;
+
 // SCRUM-169: defensives Limit für den read-only Evidence-Index (QM/Stufe 2).
 export const DEFAULT_EVIDENCE_LIMIT = 100;
 export const MAX_EVIDENCE_LIMIT = 500;
@@ -381,6 +387,35 @@ export class KoService {
     const ko = await this.require(id);
     const updated = { ...ko, tags };
     await this.repo.update(updated);
+    return updated;
+  }
+
+  // SCRUM-358 / AG-14-SERVER-TRUST / VC-P1-1 / FR-VAL-01: serverseitige Konfliktwirkung.
+  // Ein offener WAHRHEITSKONFLIKT gegen ein VALIDIERTES KO darf serverseitig nicht so tun, als sei das
+  // KO unverändert voll vertrauenswürdig: Status validiert → offen (review-pflichtig) und Trust
+  // konservativ gesenkt (kleine Strafe, KEIN Reset auf 0 → keine maschinelle Aussage „falsch").
+  // Nur validierte KOs sind betroffen; bei bereits offenem/fehlendem KO No-op (idempotent, ungefährlich
+  // bei Konflikten gegen nicht existierende/offene Bezugs-KOs). Konsistent mit der FE-Ableitung aus
+  // SCRUM-357 (ready → in Prüfung). Eine spätere Auto-Erholung bleibt bewusst aus: nach `resolve` bleibt
+  // das KO review-pflichtig und wird über die normale Bewertung erneut validiert (kein Fake-Validate).
+  async markTruthConflictReview(
+    id: string,
+    actor = "system",
+  ): Promise<KnowledgeObject | undefined> {
+    const ko = await this.repo.findById(id);
+    if (!ko || ko.status !== "validiert") {
+      return ko;
+    }
+    const previousTrust = ko.trust;
+    const trust = Math.max(0, ko.trust - TRUTH_CONFLICT_TRUST_PENALTY);
+    const updated: KnowledgeObject = { ...ko, status: "offen", trust };
+    await this.repo.update(updated);
+    await this.audit?.record({
+      actor,
+      action: "ko.conflict-review",
+      target: id,
+      payload: { previousStatus: "validiert", previousTrust, trust, reason: "truth-conflict" },
+    });
     return updated;
   }
 

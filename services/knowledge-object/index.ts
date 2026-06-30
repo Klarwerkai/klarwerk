@@ -4,6 +4,7 @@ export {
   normalizeEvidenceLimit,
   DEFAULT_EVIDENCE_LIMIT,
   MAX_EVIDENCE_LIMIT,
+  TRUTH_CONFLICT_TRUST_PENALTY,
 } from "./src/service";
 export type { KoServiceDeps, CreateKoInput, ReviseKoInput } from "./src/service";
 export {

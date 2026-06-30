@@ -8,6 +8,7 @@ import {
   DEFAULT_EVIDENCE_LIMIT,
   KoService,
   MAX_EVIDENCE_LIMIT,
+  TRUTH_CONFLICT_TRUST_PENALTY,
   normalizeEvidenceLimit,
 } from "./service";
 import type { EvidenceRecord } from "./types";
@@ -542,5 +543,38 @@ describe("SCRUM-169: Evidence-Index (recentEvidence)", () => {
   it("recentEvidence ohne Evidence-Repo → ehrlicher Leerzustand", async () => {
     const svc = new KoService({ repo: new InMemoryKoRepo() });
     await expect(svc.recentEvidence()).resolves.toEqual([]);
+  });
+});
+
+// SCRUM-358 / AG-14-SERVER-TRUST: serverseitige Wahrheitskonflikt-Wirkung auf KO-Status/Trust.
+describe("KoService.markTruthConflictReview", () => {
+  it("validiertes KO → Status offen + Trust konservativ gesenkt (kein Reset auf 0)", async () => {
+    const service = new KoService({ repo: new InMemoryKoRepo() });
+    const ko = await service.create(base());
+    await service.setValidationState(ko.id, { trust: 100, status: "validiert" });
+
+    const reviewed = await service.markTruthConflictReview(ko.id, "controller");
+    expect(reviewed?.status).toBe("offen");
+    expect(reviewed?.trust).toBe(100 - TRUTH_CONFLICT_TRUST_PENALTY);
+    expect(reviewed?.trust).toBeGreaterThan(0); // eingeschränkt, nicht „falsch"
+  });
+
+  it("offenes KO bleibt unverändert (No-op); Trust nie negativ", async () => {
+    const service = new KoService({ repo: new InMemoryKoRepo() });
+    const open = await service.create(base());
+    const sameOpen = await service.markTruthConflictReview(open.id);
+    expect(sameOpen?.status).toBe("offen");
+    expect(sameOpen?.trust).toBe(0);
+
+    // Validiertes KO mit sehr niedrigem Trust → Floor bei 0 (keine negative Strafe).
+    const low = await service.create(base({ title: "Low-Trust-KO" }));
+    await service.setValidationState(low.id, { trust: 5, status: "validiert" });
+    const reviewedLow = await service.markTruthConflictReview(low.id);
+    expect(reviewedLow?.trust).toBe(0);
+  });
+
+  it("unbekanntes KO → No-op (undefined), kein Fehler", async () => {
+    const service = new KoService({ repo: new InMemoryKoRepo() });
+    await expect(service.markTruthConflictReview("does-not-exist")).resolves.toBeUndefined();
   });
 });

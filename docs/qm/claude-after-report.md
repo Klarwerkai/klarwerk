@@ -8855,3 +8855,48 @@ git commit -m "feat(trust): conflict-limited usability across KO-Detail/Library/
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-358 — Beta Trust Formula & Server-Side Conflict Impact v0 (AG-05 / AG-14-SERVER-TRUST / VC-P1-1 / FR-VAL-01)
+
+**Datum:** 2026-06-30 · **Rolle:** Hauptumsetzer (Claude) · **Repo:** `/Users/peterkohnert/Documents/dev_Klarwerk` (nur Team-1)
+
+**Kurzfazit.** Die Konfliktwirkung ist jetzt auch SERVERSEITIG wirksam: ein offener Wahrheitskonflikt gegen ein validiertes KO holt es serverseitig zurück in Review (Status validiert→offen, Trust konservativ um 12 gesenkt — kein Reset, keine Fake-Wahrheit). Serverdaten widersprechen damit der FE-Ehrlichkeit aus SCRUM-357 nicht mehr. Gelöste Konflikte blockieren nicht dauerhaft: das KO bleibt review-pflichtig und wird über die normale Bewertung wieder validiert.
+
+**SCRUM-Ticket.** SCRUM-358 — Beta Trust Formula & Server-Side Conflict Impact v0. **Claude beteiligt: ja.**
+
+**Vorab-Befund.** `git status -sb` sauber (untrackte v2-Infra-Datei nicht angefasst). `computeOutcome` (validation/trust.ts) ist die provisorische Trust-Formel (`(up-down)/needed*100`, validiert wenn up≥needed && down===0). `setValidationState` (KoService) persistiert {trust,status}; KoStatus ist binär offen|validiert. ConflictService (create/escalate/secondOpinion/resolve) mutiert KO-Status/Trust bewusst NICHT; der Dispatcher (ko-routes) orchestriert ConflictService UND KoService. SCRUM-357 leitet FE-seitig `conflictLimitedUsability` (ready→in-review) ab, ohne Servermutation. **Risikoärmste Integrationsstelle:** der KO-Service (besitzt die Status-/Trust-Transition) plus ein dünner Hook im App-Dispatcher — keine neue Cross-Modul-Abhängigkeit (knowledge-object importiert KEINE validation), keine Trust-Engine.
+
+**Team6-Bezug.** AG-05 (Trust-Formel provisorisch), AG-14-SERVER-TRUST, VC-P1-1, FR-VAL-01, FR-CON-01..04, EK-22/EK-25, Top Requirements #7/#16.
+
+**Umgesetzter Umfang.**
+1. **`KoService.markTruthConflictReview(id, actor)`** (knowledge-object): validiertes KO → Status offen + Trust `max(0, trust - TRUTH_CONFLICT_TRUST_PENALTY)` (Penalty=12, Anhang-§3-nah), Audit `ko.conflict-review` (previousStatus/previousTrust/trust/reason). Idempotent/No-op für bereits offene oder fehlende KOs (robust bei Konflikten gegen nicht existierende/offene Bezugs-KOs). Exportierte Konstante `TRUTH_CONFLICT_TRUST_PENALTY`.
+2. **Dispatcher-Hook** (ko-routes `conflict`-Case): nach `conflicts.create(...)` wird bei `type === "truth"` für beide referenzierten KOs `markTruthConflictReview` aufgerufen. Antwort bleibt der erstellte Konflikt (201).
+3. **Resolve-Pfad:** bewusst KEINE Auto-Erholung — das KO bleibt review-pflichtig (offen) und wird über die normale Bewertung erneut validiert (kein Fake-Validate, kein Dauer-Block). Getestet.
+
+**Bewusst nicht umgesetzt.** Keine vollständige spec-konforme Trust-Formel (Anhang §3: warn/down-Gewichte, abgestufte Konflikt-Impacts je Art) — `computeOutcome` bleibt provisorisch; als Folge-Gap AG-05-TRUST-FORMULA dokumentiert. Keine neue Trust-Engine, keine automatische Konflikterkennung, keine maschinelle Wahrheitsentscheidung, kein Reset auf 0, kein RAG/Local-LLM, kein Deployment, keine Team-fremden Dateien.
+
+**Geänderte Dateien.**
+- `services/knowledge-object/src/service.ts` (markTruthConflictReview + TRUTH_CONFLICT_TRUST_PENALTY)
+- `services/knowledge-object/index.ts` (Export der Konstante)
+- `services/app/src/routes/ko-routes.ts` (Dispatcher-Hook conflict-case)
+- `services/knowledge-object/src/service.test.ts` (Unit-Tests markTruthConflictReview)
+- `tests/validation/conflict-server-trust-impact-e2e.test.ts` (NEU, HTTP-E2E)
+- `tests/validation/conflict-trust-integrity-e2e.test.ts` (SCRUM-357-E2E an neue Serverwirkung angepasst)
+- `docs/TEAM6_UPDATE.md` (Pflicht-Nebenänderung, SCRUM-358-Eintrag)
+
+**Tests/Gates.** KO-Service-Unit: validiert→offen + Trust −12, No-op für offen/fehlend, Trust-Floor bei 0. HTTP-E2E: validiertes KO → Truth-Konflikt → serverseitig offen + Trust gesenkt (>0), Validation-Board listet das KO, koOverview/effectiveUsability/Ask-Quellen konsistent (nicht „ready"), resolve → review-pflichtig (offen) → re-rate up → wieder validiert/Trust 100; Nicht-Truth-Konflikt lässt Server-Status unverändert. SCRUM-357-E2E aktualisiert. `npm run check` grün — **172 Dateien / 1040 Tests**. `(cd apps/web && tsc --noEmit)` strict grün. Biome/depcruise grün.
+
+**TEAM6_UPDATE.md updated: yes** · **Team6 review needed: yes** · **Reason: Team6 P1 Gap AG-05 / AG-14-SERVER-TRUST / VC-P1-1 / FR-VAL-01** · **Affected requirements: AG-05 (teilweise), AG-14-SERVER-TRUST, VC-P1-1, FR-VAL-01, FR-CON-01..04, EK-22/EK-25, Top Requirements #7/#16** · **Affected gaps: AG-14-SERVER-TRUST (geschlossen), AG-05 (teilweise); AG-05-TRUST-FORMULA als Folge-Gap offen**
+
+**Rest-Risiken.** Die vollständige Trust-Formel (warn/down-Gewichte, abgestufte Konflikt-Impacts je Art, mehrfach-Konflikt-Akkumulation) bleibt offen (AG-05/EK-22). Der Trust-Impact ist eine fixe Strafe (−12), keine je-Konfliktart abgestufte Formel. Ein KO mit MEHREREN offenen Truth-Konflikten wird beim ersten in Review geholt; weitere Konflikte senken den (bereits offenen) Status nicht erneut — die FE-Ehrlichkeit (357) markiert weiterhin alle. Postgres-Pfad nutzt dieselbe Service-Logik (über `setValidationState`/`repo.update`-Muster), ist aber nur im In-Memory-/HTTP-Test belegt (kein Testcontainers-Lauf in dieser Umgebung).
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add services/knowledge-object/src/service.ts services/knowledge-object/index.ts services/app/src/routes/ko-routes.ts services/knowledge-object/src/service.test.ts tests/validation/conflict-server-trust-impact-e2e.test.ts tests/validation/conflict-trust-integrity-e2e.test.ts docs/TEAM6_UPDATE.md docs/qm/claude-after-report.md
+git commit -m "feat(trust): server-side truth-conflict review impact on KO status/trust (SCRUM-358, AG-05/AG-14-SERVER-TRUST/VC-P1-1)"
+git push
+```
+Kein Git/Push/Jira durch Claude.

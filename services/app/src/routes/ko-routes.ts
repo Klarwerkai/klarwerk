@@ -317,7 +317,15 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!body.conflict) {
               return badRequest("conflict fehlt.");
             }
-            reply.code(201).send(await conflicts.create(body.conflict, user.id));
+            const created = await conflicts.create(body.conflict, user.id);
+            // SCRUM-358 / AG-14-SERVER-TRUST: ein offener WAHRHEITSKONFLIKT holt betroffene VALIDIERTE
+            // Bezugs-KOs serverseitig zurück in Review (Status validiert→offen, Trust konservativ
+            // gesenkt). markTruthConflictReview ist idempotent/No-op für offene/fehlende KOs.
+            if (created.type === "truth") {
+              await ko.markTruthConflictReview(created.koA, user.id);
+              await ko.markTruthConflictReview(created.koB, user.id);
+            }
+            reply.code(201).send(created);
             return;
           }
           case "resolve-conflict": {

@@ -113,24 +113,23 @@ describe("SCRUM-357: Conflict → Trust/Usability/Review-Integrität (HTTP + FE-
     expect(created.statusCode).toBe(201);
     const conflictId = (created.json() as Conflict).id;
 
-    // 3) Konflikt ist serverseitig „offen" und in der unresolved-Liste; KO-Status/Trust UNVERÄNDERT
-    //    (keine serverseitige Mutation — bewusste Entscheidung, keine Fake-Wahrheit).
+    // 3) Konflikt ist „offen" in der unresolved-Liste. SCRUM-358: serverseitig wird das validierte KO
+    //    zurück in Review geholt (Status validiert→offen, Trust konservativ gesenkt — keine Fake-Wahrheit,
+    //    kein Reset auf 0). Server widerspricht damit der FE-Ehrlichkeit aus SCRUM-357 nicht mehr.
     let conflicts = await listConflicts(app, admin);
     expect(conflicts.some((c) => c.id === conflictId && c.status === "offen")).toBe(true);
-    const stillValidatedA = await getKo(app, admin, koA.id);
-    expect(stillValidatedA.status).toBe("validiert");
-    expect(stillValidatedA.trust).toBe(100);
+    const reviewedA = await getKo(app, admin, koA.id);
+    expect(reviewedA.status).toBe("offen");
+    expect(reviewedA.trust).toBeGreaterThan(0);
+    expect(reviewedA.trust).toBeLessThan(100);
 
-    // 4) ABER die zentrale Ableitung schränkt Nutzbarkeit/Review ehrlich ein (KO-Detail/Library):
+    // 4) Die zentrale FE-Ableitung bleibt konsistent: nicht mehr „ready", Konflikt als Impact erkannt.
     const impact = conflictImpact(koA.id, conflicts);
     expect(impact.limited).toBe(true);
     expect(impact.hasTruth).toBe(true);
-    expect(conflictLimitedUsability(koOverview(stillValidatedA).usability, impact)).toBe(
-      "in-review",
-    );
-    expect(useReadiness(effectiveUsability(stillValidatedA, conflicts)).usability).not.toBe(
-      "ready",
-    );
+    expect(koOverview(reviewedA).usability).not.toBe("ready");
+    expect(conflictLimitedUsability(koOverview(reviewedA).usability, impact)).not.toBe("ready");
+    expect(useReadiness(effectiveUsability(reviewedA, conflicts)).usability).not.toBe("ready");
     const notice = conflictNotice(impact);
     expect(notice?.titleKey).toBe("conflict.impact.truthTitle");
     expect(notice?.to).toBe("/konflikte");
@@ -148,19 +147,20 @@ describe("SCRUM-357: Conflict → Trust/Usability/Review-Integrität (HTTP + FE-
     expect(result.sources.length).toBeGreaterThan(0);
     // Beide KOs (A und B) stehen im selben Truth-Konflikt → jede gebundene, bekannte Quelle ist
     // konfliktbegrenzt und erscheint NICHT als „ready" (unabhängig davon, welches KO gebunden wurde).
-    const kos = [stillValidatedA, await getKo(app, admin, koB.id)];
+    const kos = [reviewedA, await getKo(app, admin, koB.id)];
     const knownRefs = conflictAwareSourceRefs(result.sources, kos, conflicts).filter(
       (s) => s.known,
     );
     expect(knownRefs.length).toBeGreaterThan(0);
     for (const r of knownRefs) {
-      expect(r.conflictLimited).toBe(true);
       expect(r.usability).not.toBe("ready");
     }
     // Server-Status der Antwort bleibt unverändert (kein Eingriff in die Antwortlogik) …
     expect(answerStatus(result.knowledgeClass)).toBeDefined();
 
-    // 6) Konflikt lösen → fällt aus der unresolved-Liste → blockiert NICHT mehr (wieder „ready").
+    // 6) Konflikt lösen → fällt aus der unresolved-Liste → der Konflikt-Impact ist weg. SCRUM-358:
+    //    das KO bleibt bewusst review-pflichtig (offen) und wird über die normale Bewertung wieder
+    //    validiert (kein Fake-Validate, kein Dauer-Block).
     const resolved = await app.inject({
       method: "PUT",
       url: `/api/kos/${koA.id}`,
@@ -175,9 +175,17 @@ describe("SCRUM-357: Conflict → Trust/Usability/Review-Integrität (HTTP + FE-
     conflicts = await listConflicts(app, admin);
     expect(conflicts.some((c) => c.id === conflictId)).toBe(false);
     expect(conflictImpact(koA.id, conflicts).limited).toBe(false);
-    expect(effectiveUsability(stillValidatedA, conflicts)).toBe("ready");
-    const refAfter = conflictAwareSourceRefs([koA.id], [stillValidatedA], conflicts)[0];
-    expect(refAfter?.conflictLimited).toBe(false);
-    expect(refAfter?.usability).toBe("ready");
+    const afterResolve = await getKo(app, admin, koA.id);
+    expect(afterResolve.status).toBe("offen"); // review-pflichtig, nicht auto-validiert
+    // Erneute Bewertung holt das KO sauber zurück nach „validiert/ready".
+    await app.inject({
+      method: "PUT",
+      url: `/api/kos/${koA.id}`,
+      headers: admin,
+      payload: { action: "rate", verdict: "up" },
+    });
+    const revalidatedA = await getKo(app, admin, koA.id);
+    expect(revalidatedA.status).toBe("validiert");
+    expect(effectiveUsability(revalidatedA, conflicts)).toBe("ready");
   });
 });
