@@ -17,6 +17,7 @@ import {
   type DemoKnowledgeFilter,
   demoKnowledgeFilterLabelKey,
   matchesDemoKnowledgeFilter,
+  ownKnowledgeEmptyHint,
   readDemoKnowledgeFilter,
 } from "../lib/demoKnowledge";
 import { isDemoContext } from "../lib/demoPilotPath";
@@ -424,6 +425,29 @@ export function Validation(): JSX.Element {
                     )}
                   </Card>
                 ) : null}
+                {/* Beta Own-Knowledge Work Queue v0: bei aktiver „Eigenes Wissen"-Linse ohne eigene KOs
+                    den Weg ins Erfassen zeigen — eigenes Wissen erscheint hier nach dem Speichern. */}
+                {(() => {
+                  const ownEmpty = ownKnowledgeEmptyHint({
+                    filter: demoFilter,
+                    count: demoCounts["non-demo"],
+                  });
+                  if (!ownEmpty) {
+                    return null;
+                  }
+                  return (
+                    <Card>
+                      <p className="text-[13px] font-semibold text-text">{t(ownEmpty.titleKey)}</p>
+                      <p className="mt-0.5 text-[12px] text-muted">{t(ownEmpty.hintKey)}</p>
+                      <Link
+                        to={ownEmpty.to}
+                        className="mt-2 inline-flex items-center gap-1 rounded-btn bg-ink px-3 py-1.5 text-[12px] font-semibold text-white hover:opacity-90"
+                      >
+                        {t(ownEmpty.ctaKey)} <span aria-hidden="true">→</span>
+                      </Link>
+                    </Card>
+                  );
+                })()}
                 {visible.map((k) => {
                   const sig = reviewSignals(k);
                   const reviewWork = reviewWorkView(k);

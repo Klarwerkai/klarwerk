@@ -257,7 +257,11 @@ const de = {
   // SCRUM-286: ehrlich — gespeichert, aber noch offen/nicht validiert; erst nach Bewertung nutzbar.
   "capture.savedStatusBadge": "Status: offen — noch nicht validiert",
   "capture.savedBody":
-    "Gespeichert, aber noch nicht validiert. Erst nach ausreichender Bewertung wird es nutzbares Wissen — bitte zur Prüfung geben. Automatisch validiert wird nichts.",
+    "Gespeichert als dein eigenes Wissen (kein Demo-Beispiel), aber noch nicht validiert. Erst nach ausreichender Bewertung wird es nutzbares Wissen — bitte zur Prüfung geben. Automatisch validiert wird nichts.",
+  "own.empty.title": "Noch kein eigenes Wissen hier",
+  "own.empty.hint":
+    "Du filterst auf eigenes Wissen (keine Demo-Beispiele). Selbst erfasstes Wissen erscheint hier nach dem Speichern und wartet dann auf die Prüfung.",
+  "own.empty.cta": "Eigenes Wissen erfassen",
   "studio.open": "Im Knowledge Studio bearbeiten",
   "studio.title": "Knowledge Studio",
   "studio.subtitle":
@@ -1640,7 +1644,11 @@ const en: typeof de = {
   // SCRUM-286: honest — saved but still open/not validated; usable only after review.
   "capture.savedStatusBadge": "Status: open — not yet validated",
   "capture.savedBody":
-    "Saved, but not yet validated. It becomes usable knowledge only after sufficient review — please send it for review. Nothing is validated automatically.",
+    "Saved as your own knowledge (not a demo example), but not yet validated. It becomes usable knowledge only after sufficient review — please send it for review. Nothing is validated automatically.",
+  "own.empty.title": "No own knowledge here yet",
+  "own.empty.hint":
+    "You are filtering for your own knowledge (no demo examples). Knowledge you capture appears here after saving and then waits for review.",
+  "own.empty.cta": "Capture own knowledge",
   "studio.open": "Edit in the Knowledge Studio",
   "studio.title": "Knowledge Studio",
   "studio.subtitle":

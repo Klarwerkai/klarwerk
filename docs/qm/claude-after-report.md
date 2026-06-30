@@ -7961,6 +7961,47 @@ Kein Git/Push/Jira durch Claude.
 
 ---
 
+## SCRUM-338 — Beta Own-Knowledge Work Queue v0
+**Datum:** 2026-06-29 · **Rolle:** Claude (Hauptumsetzer) · **Status:** umgesetzt, Gates grün
+
+**Vorab-Befund.** `git status -sb` sauber (nur untracked Infra-Doc, unberührt). Read-only: `captureSuccess.captureNextSteps` führt bereits nach `/wissen/:id`, `libraryOriginHref("non-demo")` und `validationOriginHref("non-demo")` (Validierung primary); `captureSavedStatus` liefert „offen — noch nicht validiert". `demoKnowledge.ts` kapselt die Herkunftserkennung (DEMO_TAG `pilot-demo`) inkl. Filter/Counts/Labels/Deep-Links; `lib.demoFilter.nonDemo` = „Eigenes Wissen". Validation- und Library-Board nutzen die geteilten Herkunfts-Helfer. Echte Lücke: filtert ein Beta-Nutzer auf „Eigenes Wissen" (origin=non-demo) und es existiert (noch) keins, zeigt weder Library noch Validation eine Orientierung zurück ins Erfassen — die Liste ist stumm leer. Außerdem nannte die Capture-Success-Card das gespeicherte KO nicht ausdrücklich als „eigenes Wissen".
+
+**Umsetzung (v0, contained slice, 3 Stellen).**
+1. **DOM-freier Helfer** `ownKnowledgeEmptyHint({ filter, count })` in `apps/web/src/lib/demoKnowledge.ts` (+ `OWN_KNOWLEDGE_FILTER`, `OwnKnowledgeEmptyHint`): liefert NUR bei aktiver „non-demo"-Linse UND `count === 0` einen Hinweis (`own.empty.title/hint/cta`, Ziel `/erfassen`), sonst `null`. Keine Fake-Zahlen, keine Ownership-Behauptung, kein Backend.
+2. **Library** (`Library.tsx`): bei „Eigenes Wissen" ohne eigene Treffer (`demoCounts["non-demo"] === 0`) eine kompakte Hinweis-Card mit CTA „Eigenes Wissen erfassen" → `/erfassen`.
+3. **Validation Board** (`Validation.tsx`): analog im gefilterten Leerzustand, wenn die „non-demo"-Linse aktiv und 0 eigene KOs vorhanden sind.
+4. **Capture-Success** (i18n `capture.savedBody`): sprachlich geschärft — „Gespeichert als dein eigenes Wissen (kein Demo-Beispiel), aber noch nicht validiert …". Validierung bleibt primary (unverändert).
+5. **i18n** `own.empty.title/hint/cta` DE+EN; `capture.savedBody` DE+EN aktualisiert.
+6. **Test** `tests/app/demo-knowledge.test.ts` erweitert: Hinweis nur bei non-demo & count 0; `null` bei vorhandenem Eigenwissen / „all" / „demo"; `own.empty.*`-i18n DE+EN.
+
+Start/MyTasks bewusst nicht angefasst — die vorhandenen Work-Center-/Phasen-Helfer decken die Arbeitsorientierung dort bereits ehrlich ab; eine zusätzliche „eigenes Wissen"-Zahl ohne Author-Datenmodell wäre Fake-Ownership.
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/demoKnowledge.ts` (ownKnowledgeEmptyHint + Typen/Konstante)
+- `apps/web/src/pages/Library.tsx` (Eigenwissen-Leerzustand-Card + Import)
+- `apps/web/src/pages/Validation.tsx` (Eigenwissen-Leerzustand-Card + Import)
+- `apps/web/src/i18n.ts` (`own.empty.*` DE+EN; `capture.savedBody` DE+EN geschärft)
+- `tests/app/demo-knowledge.test.ts` (erweitert)
+
+**Tests/Gates.** `npm run check` grün — **155 Dateien / 941 Tests**. Gezielt `tests/app/demo-knowledge.test.ts` → 21/21 grün. `(cd apps/web && tsc --noEmit)` grün (FE-EXIT=0). Biome/depcruise grün.
+
+**Bewusst nicht umgesetzte Gaps.** Kein User-/Author-/Ownership-Datenmodell (keine echte „von mir erfasst"-Zuordnung — die „non-demo"-Linse ist Herkunft, nicht Urheberschaft). Keine Start/MyTasks-Eigenwissen-Zähler (würden Fake-Ownership behaupten). Kein Assignee-/Notification-System, kein Backend-/Serverfilter. KO-Detail (Priorität 4) nicht zusätzlich angefasst — useReadiness/koOverview kommunizieren „needs-work/offen" bereits ehrlich (siehe SCRUM-335-Smoke).
+
+**Rest-Risiken.** Der Eigenwissen-Leerzustand stützt sich auf die Herkunftserkennung über `DEMO_TAG`: produktiv erfasste KOs tragen den Tag nie, also ist „non-demo" = eigenes/produktives Wissen — korrekt, solange der Demo-Seed der einzige Tag-Setzer bleibt (unverändert). Die Hinweis-Card erscheint auch, wenn andere fachliche Filter die Liste leeren, aber die non-demo-Linse aktiv ist und 0 eigene KOs existieren — gewollt (der Weg ins Erfassen bleibt der richtige nächste Schritt).
+
+**Nicht-Ziele eingehalten.** Kein User-/Author-/Ownership-Datenmodell, kein Assignee-System, keine Notifications, kein Backend-Datenmodellwechsel, kein RAG/neue Suche/Local-LLM, keine Team-2/3/4/5-Dateien, kein Demo-Hack/Demo-only-Politur, kein Deployment, keine produktiven Daten. `pilot-demo`-Markierung + origin-Filter unverändert kompatibel. Untracked Infra-Doc unberührt.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/demoKnowledge.ts apps/web/src/pages/Library.tsx apps/web/src/pages/Validation.tsx apps/web/src/i18n.ts tests/app/demo-knowledge.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(own-knowledge): empty-state guidance back to capture + sharpen own-knowledge wording (Own-Knowledge Work Queue v0)"
+git push
+```
+Kein Git/Push/Jira durch Claude.
+
+---
+
 ## SCRUM-337 — Beta Knowledge Input Studio / Fullscreen AI Editing v0
 **Datum:** 2026-06-29 · **Rolle:** Claude (Hauptumsetzer) · **Status:** umgesetzt, Gates grün
 
@@ -7981,7 +8022,13 @@ Kein Git/Push/Jira durch Claude.
 
 **Bewusst nicht umgesetzte Gaps.** Kein vollständiger Legacy-Nachbau; kein eigener Datei-/Bild-Upload im Studio (Anhänge/Bilder werden über die bestehenden Capture/KO-Detail-Flows bereitgestellt und als Kontext/Palette gereicht — Dateien bleiben Anhänge/Evidence); kein Drag&Drop/Paste-Import im Overlay; kein Auto-Save/Auto-Validate; keine neue Editor-Library; kein Backend. Capture-Variante des Body-Felds nicht auf den geteilten Helfer umgestellt (Scope-Schonung; Verhalten identisch).
 
-**Geänderte Dateien.** `apps/web/src/components/KnowledgeInputStudio.tsx` (NEU); `apps/web/src/lib/bodyAiAssist.ts`; `apps/web/src/pages/Capture.tsx`; `apps/web/src/pages/KnowledgeDetail.tsx`; `apps/web/src/i18n.ts`; `tests/app/body-ai-assist.test.ts`.
+**Geänderte Dateien.**
+- `apps/web/src/components/KnowledgeInputStudio.tsx` (NEU)
+- `apps/web/src/lib/bodyAiAssist.ts` (bodyAssistBlockActions + Typ)
+- `apps/web/src/pages/Capture.tsx` (Studio-State + Einstiegsbutton + Mount)
+- `apps/web/src/pages/KnowledgeDetail.tsx` (Studio-State + Einstiegsbutton + Mount im Edit)
+- `apps/web/src/i18n.ts` (`studio.*` DE+EN)
+- `tests/app/body-ai-assist.test.ts` (erweitert)
 
 **Tests/Gates.** `npm run check` grün — **155 Dateien / 944 Tests**. Gezielt `tests/app/body-ai-assist.test.ts` → 15/15 grün. `(cd apps/web && tsc --noEmit)` grün (FE-EXIT=0). Biome/depcruise grün.
 

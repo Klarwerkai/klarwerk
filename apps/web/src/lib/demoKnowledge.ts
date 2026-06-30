@@ -113,3 +113,32 @@ export function libraryOriginHref(filter: DemoKnowledgeFilter): string {
 export function validationOriginHref(filter: DemoKnowledgeFilter): string {
   return originHref("/validierung", filter);
 }
+
+// Beta Own-Knowledge Work Queue v0: ehrlicher Leerzustand für die „Eigenes Wissen"-Linse. Wenn ein
+// Beta-Nutzer in Validation/Library bewusst auf eigenes/nicht-Demo-Wissen filtert, aber (noch) keins
+// vorhanden ist, soll der Weg zurück ins Erfassen sichtbar werden — statt einer stummen leeren Liste.
+// Reine, DOM-freie Entscheidung: NUR bei aktiver „non-demo"-Linse UND count 0. Keine Fake-Zahlen,
+// keine Ownership-Behauptung, kein Backend. Bei „all"/„demo" oder vorhandenen Treffern → null.
+export const OWN_KNOWLEDGE_FILTER: DemoKnowledgeFilter = "non-demo";
+
+export interface OwnKnowledgeEmptyHint {
+  titleKey: string;
+  hintKey: string;
+  ctaKey: string;
+  to: string; // vorhandene Erfassen-Route
+}
+
+export function ownKnowledgeEmptyHint(input: {
+  filter: DemoKnowledgeFilter;
+  count: number;
+}): OwnKnowledgeEmptyHint | null {
+  if (input.filter !== OWN_KNOWLEDGE_FILTER || input.count > 0) {
+    return null;
+  }
+  return {
+    titleKey: "own.empty.title",
+    hintKey: "own.empty.hint",
+    ctaKey: "own.empty.cta",
+    to: "/erfassen",
+  };
+}

@@ -23,6 +23,7 @@ import {
   demoKnowledgeFilterLabelKey,
   filterByDemoKnowledge,
   isDemoKnowledge,
+  ownKnowledgeEmptyHint,
   readDemoKnowledgeFilter,
 } from "../lib/demoKnowledge";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
@@ -284,6 +285,30 @@ export function Library(): JSX.Element {
                   </button>
                 ))}
               </div>
+              {/* Beta Own-Knowledge Work Queue v0: ehrlicher Leerzustand für die „Eigenes Wissen"-Linse
+                  — wenn auf eigenes/nicht-Demo-Wissen gefiltert wird, aber (noch) keins existiert, den
+                  Weg zurück ins Erfassen zeigen statt einer stummen leeren Liste. */}
+              {(() => {
+                const ownEmpty = ownKnowledgeEmptyHint({
+                  filter: demoFilter,
+                  count: demoCounts["non-demo"],
+                });
+                if (!ownEmpty) {
+                  return null;
+                }
+                return (
+                  <Card className="mb-2">
+                    <p className="text-[13px] font-semibold text-text">{t(ownEmpty.titleKey)}</p>
+                    <p className="mt-0.5 text-[12px] text-muted">{t(ownEmpty.hintKey)}</p>
+                    <Link
+                      to={ownEmpty.to}
+                      className="mt-2 inline-flex items-center gap-1 rounded-btn bg-ink px-3 py-1.5 text-[12px] font-semibold text-white hover:opacity-90"
+                    >
+                      {t(ownEmpty.ctaKey)} <span aria-hidden="true">→</span>
+                    </Link>
+                  </Card>
+                );
+              })()}
               <div className="mb-2 flex items-center justify-between gap-2 font-mono text-[11px] text-muted-2">
                 <span>{t("lib.resultCount", { n: win.total })}</span>
                 {win.limited ? (

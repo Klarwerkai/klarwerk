@@ -13,6 +13,7 @@ import {
   isDemoKnowledge,
   libraryOriginHref,
   matchesDemoKnowledgeFilter,
+  ownKnowledgeEmptyHint,
   readDemoKnowledgeFilter,
   validationOriginHref,
 } from "../../apps/web/src/lib/demoKnowledge";
@@ -191,5 +192,30 @@ describe("SCRUM-311: matchesDemoKnowledgeFilter (geteiltes Prädikat)", () => {
   it("konsistent mit isDemoKnowledge (eine Quelle der Wahrheit)", () => {
     expect(matchesDemoKnowledgeFilter(demo, "demo")).toBe(isDemoKnowledge(demo));
     expect(matchesDemoKnowledgeFilter(own, "non-demo")).toBe(!isDemoKnowledge(own));
+  });
+});
+
+// Beta Own-Knowledge Work Queue v0: ehrlicher Leerzustand für die „Eigenes Wissen"-Linse.
+describe("ownKnowledgeEmptyHint", () => {
+  it("zeigt den Erfassen-Hinweis NUR bei aktiver non-demo-Linse ohne eigene KOs", () => {
+    const hint = ownKnowledgeEmptyHint({ filter: "non-demo", count: 0 });
+    expect(hint).not.toBeNull();
+    expect(hint?.to).toBe("/erfassen");
+    expect(hint?.titleKey).toBe("own.empty.title");
+    expect(hint?.ctaKey).toBe("own.empty.cta");
+  });
+
+  it("null bei vorhandenem eigenem Wissen oder anderer Linse (keine Fake-Leere)", () => {
+    expect(ownKnowledgeEmptyHint({ filter: "non-demo", count: 3 })).toBeNull();
+    expect(ownKnowledgeEmptyHint({ filter: "all", count: 0 })).toBeNull();
+    expect(ownKnowledgeEmptyHint({ filter: "demo", count: 0 })).toBeNull();
+  });
+
+  it("own.empty.* i18n (title/hint/cta) DE+EN vorhanden", () => {
+    for (const key of ["own.empty.title", "own.empty.hint", "own.empty.cta"]) {
+      for (const lng of ["de", "en"]) {
+        expect(String(i18n.getResource(lng, "translation", key) ?? "").length).toBeGreaterThan(0);
+      }
+    }
   });
 });
