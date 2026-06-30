@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import type { Mailer } from "../../notifications";
 import { type OidcProvider, createPkcePair, randomToken } from "./oidc";
+import { LoginRateLimiter } from "./rate-limit";
 import type { AuthService } from "./service";
 import { AuthError, type AuthErrorCode, type PublicUser, type Role } from "./types";
 
@@ -80,8 +81,12 @@ export function authRoutes(
     mailer?: Mailer | undefined;
     resetBaseUrl?: string | undefined;
     oidc?: OidcProvider | undefined;
+    // SCRUM-356 / AG-06: injizierbarer Login-Brute-Force-Limiter (Default: kleiner In-Memory-Limiter).
+    loginRateLimiter?: LoginRateLimiter | undefined;
   } = {},
 ): FastifyPluginAsync {
+  // Pro App-Instanz ein eigener Limiter (Test-Isolation; In-Memory, dep-frei).
+  const loginLimiter = options.loginRateLimiter ?? new LoginRateLimiter();
   return async (app) => {
     const requireUser = async (
       request: FastifyRequest,
@@ -127,11 +132,31 @@ export function authRoutes(
     app.post<{ Body: { email: string; password: string } }>(
       "/api/auth/login",
       async (request, reply) => {
+        // SCRUM-356 / AG-06 / NFR-SEC-04: Brute-Force-Schutz. Schlüssel = IP + normalisierte E-Mail.
+        // Bewusst NUR um den Login herum, identisch für bekannte/unbekannte Konten (keine Enumeration).
+        const limiterKey = loginLimiter.keyFor(request.ip, request.body?.email);
+        const limit = loginLimiter.check(limiterKey);
+        if (limit.limited) {
+          // Generische Meldung — verrät weder Kontoexistenz noch interne Zählerstände.
+          reply.header("Retry-After", String(limit.retryAfterSeconds));
+          reply.code(429).send({
+            error: "RATE_LIMITED",
+            message: "Zu viele Anmeldeversuche. Bitte später erneut versuchen.",
+          });
+          return;
+        }
         try {
           const { token, user } = await service.login(request.body);
+          // Erfolg → Fehlversuchszähler für diesen Schlüssel zurücksetzen (risikoarm).
+          loginLimiter.reset(limiterKey);
           reply.header("set-cookie", sessionCookie(token));
           reply.code(200).send({ user, token });
         } catch (error) {
+          // Nur falsche Zugangsdaten zählen als Brute-Force-Versuch. NOT_APPROVED (= korrektes
+          // Passwort, Konto nicht freigegeben) und andere Fehler erhöhen den Zähler NICHT.
+          if (error instanceof AuthError && error.code === "INVALID_CREDENTIALS") {
+            loginLimiter.registerFailure(limiterKey);
+          }
           sendError(reply, error);
         }
       },

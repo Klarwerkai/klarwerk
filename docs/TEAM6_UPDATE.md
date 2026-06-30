@@ -3,19 +3,19 @@
 ## Current Snapshot
 
 - Team: Team 1 / KLARWERK Produktkern / Knowledge OS / app.klarwerk.ai
-- Scope: Knowledge Input, Capture, AI-assisted Editing, Validation, KO Detail, Library, Ask, Capture → Review → Use
+- Scope: Knowledge Input, Capture, AI-assisted Editing, Validation, KO Detail, Library, Ask, Capture → Review → Use, App-Auth/Security
 - Repo: `/Users/peterkohnert/Documents/dev_Klarwerk`
 - Jira Project: SCRUM
-- Last updated: 2026-06-30 18:32 CEST
-- Current status: SCRUM-355 umgesetzt durch Claude, Codex-Prüfung/Commit/Push/CI/Jira ausstehend
-- Active ticket: SCRUM-355 — Beta Body File Attachments via Object Store v0
-- Last completed ticket: SCRUM-354 — Beta Draft Promote & Knowledge Rescue Submission Integrity v0
-- Last commit: `57d1596d5d17919538b287cac34d62c119cc3a5e`
-- GitHub/CI status: SCRUM-354 CI grün; SCRUM-355 noch nicht gepusht
-- Beta impact: Nicht-Bild-Dateien lassen sich als sichtbarer, sicherer Link (interner Object-Store-Raw-Pfad) im ausführlichen Wissenstext referenzieren; kein Legacy-Data-URL, Sanitizer-Allowlist nur minimal erweitert.
+- Last updated: 2026-06-30 19:30 CEST
+- Current status: SCRUM-356 umgesetzt durch Claude, Codex-Prüfung/Commit/Push/CI/Jira ausstehend
+- Active ticket: SCRUM-356 — Beta Auth Rate-Limit & Brute-Force Guard v0
+- Last completed ticket: SCRUM-355 — Beta Body File Attachments via Object Store v0
+- Last commit: `d7d428c216785b64c4fb38187b8e18195a5f1c40`
+- GitHub/CI status: SCRUM-355 CI grün; SCRUM-356 noch nicht gepusht
+- Beta impact: Serverseitiger Login-Brute-Force-Schutz — wiederholte fehlgeschlagene Anmeldeversuche werden je IP + normalisierter Login-ID gedrosselt (429 + Retry-After); erfolgreiche Logins bleiben möglich, keine User-Enumeration.
 - Team6 review needed: yes
-- Reason: Team6 P1 Gap FR-STR-02 / G-P1-1
-- Next planned slice: nach Pedi-Signal; Empfehlung voraussichtlich G-P2-1 (Drag&Drop/Paste) oder weiterer Team6-Input-Gap
+- Reason: Team6 P1 Gap AG-06 / NFR-SEC-04
+- Next planned slice: nach Pedi-Signal; Empfehlung voraussichtlich G-P2-1 (Drag&Drop/Paste), Recovery/Reset-Limit oder weiterer Team6-Security-/Input-Gap
 
 ## Current Risks / Gaps
 
@@ -23,9 +23,12 @@
 |---|---|---|---|---|---|
 | G-P1-2 | Fortgesetzter Entwurf wurde bisher beim Einreichen nicht serverseitig aus dem Draft-Pool entfernt. | P1 | Capture / Drafts / Validation | FR-STR-06 MUSS, Legacy-Gap | Mit SCRUM-354 abgeschlossen |
 | FR-STR-06-ATOMIC | Update und Promote laufen in zwei Requests; Promote-Fehler lässt aktualisierten Draft im Pool. | P2 | Capture / Drafts | Folgeoptimierung, kein Datenverlust | Dokumentiert, nicht Teil von SCRUM-354 |
-| G-P1-1 | Datei-Anhänge im Body fehlen gegenüber Legacy. | P1 | Knowledge Studio / RichTextEditor | Legacy Knowledge Input Gap | Mit SCRUM-355 adressiert (sicherer Object-Store-Link); Codex-Abschluss ausstehend |
+| G-P1-1 | Datei-Anhänge im Body fehlen gegenüber Legacy. | P1 | Knowledge Studio / RichTextEditor | Legacy Knowledge Input Gap | Mit SCRUM-355 abgeschlossen |
 | FR-STR-02-SESSION | Capture-Session-Dateien haben noch keine objectId und sind daher nicht body-verlinkbar (ehrlich leerer Dropdown). | P2 | Capture / Object Store | Komfort-/Upload-Folgeoptimierung, kein Datenverlust | Dokumentiert, nicht Teil von SCRUM-355 |
-| G-P2-1 | Drag&Drop / Paste fehlen gegenüber Legacy. | P2 | RichTextEditor / Studio | Legacy Komfortparität | Offen, nicht Teil von SCRUM-355 |
+| G-P2-1 | Drag&Drop / Paste fehlen gegenüber Legacy. | P2 | RichTextEditor / Studio | Legacy Komfortparität | Offen, nicht Teil von SCRUM-355/356 |
+| AG-06 | Kein App-Login-Rate-Limit/Brute-Force-Schutz. | P1 | Auth / Login | NFR-SEC-04, Top Requirement #4, Team-1-Lieferung | Mit SCRUM-356 adressiert (429 + Retry-After); Codex-Abschluss ausstehend |
+| AG-06-RECOVERY | Forgot/Reset-Anforderung hat noch keinen eigenen Rate-Limit (Mail-Spam-Abuse). | P2 | Auth / Recovery | Folgeoptimierung; 204-immer-Semantik bewusst unangetastet | Bewusst zurückgestellt, nicht Teil von SCRUM-356 |
+| AG-07 | Kein unabhängiger Security-Review/Pen-Test. | P1 | Security gesamt | NFR-SEC-04 AK | Bei Pedi/Team 5 (EK-17), nicht Team-1-Scope |
 
 ## Current Requirement Touchpoints
 
@@ -40,10 +43,25 @@
 | FR-STR-02 — Datei im Body als sichere Referenz | Team6 `EDITOR_INPUT_GAP_REVIEW_V0.md` | addressed in SCRUM-355 | Nicht-Bild-Datei wird als `div.attachment > a(/api/objects/:id/raw)` eingefügt; kein Data-URL. |
 | G-P1-1 — Body-Datei-Anhänge gegenüber Legacy | Team6 `LEGACY_KNOWLEDGE_INPUT_GAP_REVIEW_V0.md` | addressed in SCRUM-355 | Paperclip-Toolbar verlinkt vorhandene KO-Attachments mit objectId; Status/Trust unverändert (Evidence ≠ Validierung). |
 | KG-UX-012 — Legacy als Referenz | Team6 `UX_KNOWLEDGE_INPUT_FEEDBACK_REVIEW_V0.md` | touched | Legacy-Verhalten „Datei im Text verlinken“ wird sicher (interner Raw-Pfad statt Data-URL) wiederhergestellt. |
+| AG-06 — App-Login-Rate-Limit/Brute-Force-Schutz | Team6 `TEAM6_ACTIVE_GAPS_AND_RECOMMENDATIONS.md` | addressed in SCRUM-356 | In-Memory-Limiter im Login (IP + normalisierte Login-ID); bei Überschreitung 429 + Retry-After; Erfolg setzt Zähler zurück. |
+| NFR-SEC-04 — Security / Missbrauchsschutz | Team6 `TEAM6_CURRENT_TOP_REQUIREMENTS.md` | partially addressed in SCRUM-356 | Login-Brute-Force-Drosselung geliefert + Test (Top Requirement #4). Pen-Test (AG-07) bleibt separat bei Pedi/Team 5. |
+| Top Requirement #4 — Rate-Limit (429) + Test | Team6 `TEAM6_CURRENT_TOP_REQUIREMENTS.md` | addressed in SCRUM-356 | Benötigte Evidenz (Rate-Limit-Test) liegt vor: `services/auth/src/rate-limit.test.ts`. |
 
 ## Delta Log
 
-### 2026-06-30 18:30 — SCRUM-355 — pending commit
+### 2026-06-30 18:48 — SCRUM-356 — pending commit
+
+- Changed areas: Auth-Login-Route, neuer In-Memory-Rate-Limiter, Auth-Modul-Export, Tests, Team6 handoff. KEINE Frontend-Änderung.
+- What changed: Neuer abhängigkeitsfreier `LoginRateLimiter` (`services/auth/src/rate-limit.ts`) mit fixem Zeitfenster je Schlüssel (IP + normalisierte Login-ID). `/api/auth/login` prüft vor dem Loginversuch den Limiter: bei Überschreitung `429` + `Retry-After`-Header und generische Meldung (`RATE_LIMITED`). Nur falsche Zugangsdaten (`INVALID_CREDENTIALS`) zählen als Fehlversuch; erfolgreicher Login setzt den Zähler zurück. Nach Fenster-/TTL-Ablauf wird der Schlüssel wieder frei. Limiter ist pro App-Instanz und über die Routen-Optionen injizierbar (Test-Isolation).
+- Beta impact: AG-06 / NFR-SEC-04 (Top Requirement #4) — serverseitiger Brute-Force-Schutz für die Beta. Kein Redis/DB, kein neues Framework, passend zum modularen Monolithen.
+- Security / Story relevance: Verhalten ist für bekannte UND unbekannte Login-IDs identisch (kein Enumeration-Signal). `NOT_APPROVED` (korrektes Passwort, Konto nicht freigegeben) erhöht den Zähler nicht. Bestehende Login-Fehlersemantik (401/403) bleibt unverändert.
+- Bewusst zurückgestellt: separater Rate-Limit für die Forgot/Reset-Anforderung (würde die bewusst gewählte „immer 204"-Semantik berühren und kann legitime Nutzer hinter NAT treffen) — als P2 dokumentiert.
+- New / touched requirements: AG-06, NFR-SEC-04, Top Requirement #4.
+- Tests: `services/auth/src/rate-limit.test.ts` (Limiter-Einheit + HTTP-Route: Erfolg möglich, 429+Retry-After, Reset bei Erfolg, Freigabe nach Fenster, keine Enumeration, NOT_APPROVED zählt nicht). `npm run check` grün (169 Dateien / 1024 Tests). Keine FE-Dateien betroffen.
+- Team6 review needed: yes
+- Reason: Team6 P1 Gap AG-06 / NFR-SEC-04
+
+### 2026-06-30 18:30 — SCRUM-355 — d7d428c
 
 - Changed areas: bodyFileLink-Helfer, Sanitizer (FE+Server) Allowlist, RichTextEditor (Paperclip-Toolbar), Knowledge Studio, KO-Detail, Capture, index.css, i18n, Tests, Team6 handoff.
 - What changed: Neuer DOM-freier Helfer `bodyFileLink.ts` (`objectRawHref`, `fileLinkHtml`, `applyBodyFileLink`, `editorFilesFromAttachments`) baut eine sichere Body-Datei-Referenz `div.attachment > a(href="/api/objects/:id/raw", title=name) > name` mit escaptem Namen. FE- und Server-Sanitizer-Allowlist um genau eine Klasse `attachment` erweitert; Anker erhalten weiterhin `rel="noopener noreferrer nofollow"`. RichTextEditor bekommt eine `files`-Prop und einen Paperclip-Dropdown (Bild-Einfügen unverändert). Studio reicht `files` durch; KO-Detail liefert `editorFilesFromAttachments(ko.attachments)`, Capture nutzt den leeren Default (Session-Dateien ohne objectId → ehrlich kein Link).

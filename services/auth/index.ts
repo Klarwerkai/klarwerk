@@ -2,6 +2,9 @@
 export { AuthService } from "./src/service";
 export type { AuthServiceDeps, RegisterInput, LoginInput } from "./src/service";
 export { authRoutes } from "./src/routes";
+// SCRUM-356 / AG-06 / NFR-SEC-04: Login-Brute-Force-/Rate-Limit-Schutz.
+export { LoginRateLimiter } from "./src/rate-limit";
+export type { LoginRateLimiterOptions, RateLimitDecision } from "./src/rate-limit";
 export {
   InMemoryUserRepo,
   InMemorySessionRepo,

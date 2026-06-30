@@ -8764,3 +8764,46 @@ git commit -m "feat(editor): safe body file links via object store raw path (SCR
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-356 — Beta Auth Rate-Limit & Brute-Force Guard v0 (AG-06 / NFR-SEC-04)
+
+**Datum:** 2026-06-30 · **Rolle:** Hauptumsetzer (Claude) · **Repo:** `/Users/peterkohnert/Documents/dev_Klarwerk` (nur Team-1)
+
+**Auftrag.** Team6 markiert AG-06 / NFR-SEC-04 (Top Requirement #4) als P1-beta-relevant: kein belegter App-Login-Rate-Limit-/Brute-Force-Schutz. Geliefert wird ein kleiner, klarer, serverseitiger Schutz gegen wiederholte fehlgeschlagene Auth-Versuche — In-Memory, ohne Redis/DB/Framework, ohne große Architekturänderung.
+
+**Vorab-Befund.** `git status -sb` sauber (nur die untrackte, NICHT angefasste `docs/KLARWERK_Infrastruktur_Domain_Server_Aufteilung_v2.md`). Auth liegt im Modul `services/auth/**`; `/api/auth/login` ruft `AuthService.login` und mappt `INVALID_CREDENTIALS`→401, `NOT_APPROVED`→403. Keine vorhandene Rate-Limit-/`request.ip`-Nutzung. Fastify 5.8.5 stellt `request.ip` bereit; `app.inject({ remoteAddress })` erlaubt IP-Simulation im Test. Kein bestehender Test macht ≥5 fehlgeschlagene HTTP-Logins mit gleicher IP+E-Mail (der eine Falsch-Passwort-Test ist service-, nicht HTTP-Ebene) → Default-Schwelle 5 ist regressionssicher. Team6-Kontext read-only bestätigt: AG-06 = „App-Rate-Limit (429+Retry-After) — Team 1", benötigte Evidenz = Rate-Limit-Test.
+
+**Umsetzung.**
+1. **Neuer Limiter** `services/auth/src/rate-limit.ts` — `LoginRateLimiter` (dep-frei, injizierbare Uhr). Fixes Zeitfenster je Schlüssel; `keyFor(ip, loginId)` = IP + getrimmte/kleingeschriebene Login-ID; `check` (liest ohne zu zählen), `registerFailure`, `reset`; Default 5 Versuche / 15 min; opportunistisches Pruning gegen unbegrenztes Wachstum.
+2. **Login-Route** `services/auth/src/routes.ts` — vor dem Loginversuch `check`: bei Sperre `429` + `Retry-After`-Header + generische Meldung `RATE_LIMITED` (keine Existenz-/Detailpreisgabe). Erfolg → `reset`. Nur `INVALID_CREDENTIALS` zählt als Fehlversuch (NOT_APPROVED = korrektes Passwort → kein Brute-Force-Signal, zählt nicht). Limiter pro App-Instanz, über Routen-Option `loginRateLimiter` injizierbar (Test-Isolation).
+3. **Export** `services/auth/index.ts` — `LoginRateLimiter` + Typen über die öffentliche Modul-API.
+
+**HTTP-Verhalten.** Sperre = `429` + `Retry-After` (ganze Sekunden, ≥1). Bestehende Fehlersemantik (401/403) bleibt bis zur Schwelle unverändert. Identisches Verhalten für bekannte/unbekannte Login-IDs → keine User-Enumeration.
+
+**Recovery/Reset-Anforderung (optional).** Bewusst zurückgestellt: `/api/auth/forgot` antwortet bewusst immer `204` (keine Existenzpreisgabe); ein eigener Limiter würde diese Semantik berühren und legitime Nutzer hinter NAT treffen. Als P2 dokumentiert (AG-06-RECOVERY).
+
+**Bewusst nicht umgesetzt.** Kein Redis/DB/externes Rate-Limit, kein Security-Framework, kein Rollen-/Permission-System, kein Deployment, keine FE-Änderung, keine Recovery-Drosselung (s. o.), keine Team-fremden Dateien.
+
+**Geänderte Dateien.**
+- `services/auth/src/rate-limit.ts` (NEU — Limiter)
+- `services/auth/src/routes.ts` (Login-Route: 429 + Retry-After, Reset/Failure-Verdrahtung)
+- `services/auth/index.ts` (Export `LoginRateLimiter` + Typen)
+- `services/auth/src/rate-limit.test.ts` (NEU — Tests)
+- `docs/TEAM6_UPDATE.md` (Pflicht-Nebenänderung, SCRUM-356-Eintrag)
+
+**Tests/Gates.** `services/auth/src/rate-limit.test.ts` (9 Tests): Limiter-Einheit (Key-Normalisierung, Sperre ab maxAttempts + positiver Retry-After, TTL-Freigabe) + HTTP-Route (Erfolg möglich; 3× falsch=401 dann 429+Retry-After; Erfolg setzt Zähler zurück; nach Fenster wieder möglich; bekannte vs. unbekannte E-Mail identische Statusfolge [401,401,401,429]; NOT_APPROVED zählt nicht → bleibt 403). `npm run check` grün — **169 Dateien / 1024 Tests**. Keine FE-Dateien betroffen → FE-tsc nicht erforderlich. Biome/depcruise grün.
+
+**TEAM6_UPDATE.md updated: yes** · **Team6 review needed: yes** · **Reason: Team6 P1 Gap AG-06 / NFR-SEC-04** · **Affected requirements: AG-06, NFR-SEC-04, Team6 Top Requirement #4** · **Affected gaps: AG-06 (AG-06-RECOVERY als P2 zurückgestellt)**
+
+**Rest-Risiken.** In-Memory-Limiter ist pro Prozess/Instanz — bei mehreren App-Repliken zählt jede Instanz separat (für Single-Instance-Beta ausreichend; verteilter Zähler wäre ein Folge-Ticket). Schlüssel nutzt `request.ip`; hinter einem Proxy ohne `trustProxy` ist das die Proxy-IP (Ops-Härtung/`trustProxy` separat). Forgot/Reset-Drosselung bewusst offen (P2).
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add services/auth/src/rate-limit.ts services/auth/src/rate-limit.test.ts services/auth/src/routes.ts services/auth/index.ts docs/TEAM6_UPDATE.md docs/qm/claude-after-report.md
+git commit -m "feat(auth): in-memory login rate-limit / brute-force guard (429 + Retry-After) (SCRUM-356, AG-06/NFR-SEC-04)"
+git push
+```
+Kein Git/Push/Jira durch Claude.
