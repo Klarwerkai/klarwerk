@@ -31,6 +31,13 @@ import {
   reviewOutcome,
 } from "../lib/reviewDecision";
 import {
+  DECISION_IMPACTS,
+  DECISION_TRUST_NOTE_KEY,
+  REVIEW_CHECK_ITEMS,
+  decisionImpact,
+  reviewGuidanceFocusKey,
+} from "../lib/reviewGuidance";
+import {
   type ReviewWorkTone,
   type TrustBand,
   reviewSignals,
@@ -66,6 +73,7 @@ import {
   matchesReviewFocus,
   readReviewFocusFilter,
   reviewFocusLabelKey,
+  validationReviewContext,
 } from "../lib/validationReviewContext";
 
 // SCRUM-249: Trust-Band → Tönung der Trust-Plakette (kritisch/mittel/gut).
@@ -80,6 +88,13 @@ const DECISION_TONE: Record<ReviewTone, string> = {
   pos: "bg-trust-pos-bg text-trust-pos-text",
   warn: "bg-trust-warn-bg text-trust-warn-text",
   crit: "bg-trust-crit-bg text-trust-crit-text",
+};
+
+// SCRUM-365: Textfarbe der Entscheidungswirkungen in der „Was prüfe ich?"-Führung (Grün/Gelb/Rot).
+const IMPACT_TEXT_TONE: Record<"pos" | "warn" | "crit", string> = {
+  pos: "text-trust-pos-text",
+  warn: "text-trust-warn-text",
+  crit: "text-trust-crit-text",
 };
 
 // SCRUM-287: Review-Arbeitszustand konsistent zu MyTasks (neu/offen, zugewiesen, in Prüfung).
@@ -509,6 +524,12 @@ export function Validation(): JSX.Element {
                 {visible.map((k) => {
                   const sig = reviewSignals(k);
                   const reviewWork = reviewWorkView(k);
+                  // SCRUM-365 / AG-12: kontextbezogener Prüf-Fokus aus vorhandenen Signalen
+                  // (revidiert → gezielt die Änderung; Autor übertragen → extra Blick).
+                  const guideFocusKey = reviewGuidanceFocusKey({
+                    kind: validationReviewContext(k).kind,
+                    authorTransferred: sig.authorTransferred,
+                  });
                   return (
                     <div key={k.id} className="space-y-2">
                       <Card className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -567,6 +588,56 @@ export function Validation(): JSX.Element {
                             {t(`val.decision.${sig.trustBand}`)}
                             <span className="ml-1">{t(reviewWork.hintKey)}</span>
                           </p>
+                          {/* SCRUM-365 / AG-12 / PI-K2: ruhige, einklappbare Review-Führung —
+                              „Was prüfe ich?" (Checkliste + Kontext-Fokus) + „Was bewirkt die
+                              Entscheidung?" + ehrliche Trust-/Quorum-Notiz. Progressive disclosure,
+                              damit das Board nicht zur Formularwand wird. */}
+                          <details className="mt-2">
+                            <summary className="cursor-pointer list-none text-[11.5px] font-semibold text-ai hover:opacity-80">
+                              {t("val.guide.title")}
+                            </summary>
+                            <div className="mt-2 space-y-2 rounded-card border border-hairline bg-page px-3 py-2.5">
+                              <ul className="space-y-1">
+                                {REVIEW_CHECK_ITEMS.map((item) => (
+                                  <li
+                                    key={item.id}
+                                    className="text-[11.5px] leading-relaxed text-muted"
+                                  >
+                                    <span className="font-semibold text-text">
+                                      {t(item.labelKey)}
+                                    </span>{" "}
+                                    {t(item.hintKey)}
+                                  </li>
+                                ))}
+                              </ul>
+                              {guideFocusKey ? (
+                                <p className="text-[11.5px] leading-relaxed text-trust-warn-text">
+                                  {t(guideFocusKey)}
+                                </p>
+                              ) : null}
+                              <div className="border-t border-hairline pt-2">
+                                <div className="mb-1 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                                  {t("val.guide.impactTitle")}
+                                </div>
+                                <ul className="space-y-1">
+                                  {DECISION_IMPACTS.map((d) => (
+                                    <li
+                                      key={d.verdict}
+                                      className="text-[11.5px] leading-relaxed text-muted"
+                                    >
+                                      <span className={`font-semibold ${IMPACT_TEXT_TONE[d.tone]}`}>
+                                        {t(d.titleKey)}:
+                                      </span>{" "}
+                                      {t(d.bodyKey)}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                              <p className="border-t border-hairline pt-2 text-[11px] leading-relaxed text-muted-2">
+                                {t(DECISION_TRUST_NOTE_KEY)}
+                              </p>
+                            </div>
+                          </details>
                         </div>
                         <div className="flex shrink-0 flex-col items-stretch gap-1.5 sm:items-end">
                           {/* SCRUM-258: Review-Entscheidung textlich geführt — gleiche Mutationen
@@ -579,7 +650,8 @@ export function Validation(): JSX.Element {
                                 <button
                                   key={d.verdict}
                                   type="button"
-                                  title={t(d.labelKey)}
+                                  // SCRUM-365: Hover/Touch zeigt direkt die ehrliche Wirkung der Entscheidung.
+                                  title={t(decisionImpact(d.verdict).bodyKey)}
                                   disabled={
                                     d.verdict === "up"
                                       ? rate.isPending || reviewWithFeedback.isPending
@@ -632,11 +704,15 @@ export function Validation(): JSX.Element {
                       </Card>
                       {feedback?.id === k.id ? (
                         <Card className="border-hairline/80">
-                          <div className="mb-2 text-[12.5px] font-semibold text-text">
+                          <div className="mb-1 text-[12.5px] font-semibold text-text">
                             {feedback.verdict === "warn"
                               ? t("val.feedback.condTitle")
                               : t("val.feedback.rejTitle")}
                           </div>
+                          {/* SCRUM-365 / AG-12: Feedback als Hilfe zur Nacharbeit rahmen, nicht technisch. */}
+                          <p className="mb-2 text-[11.5px] leading-relaxed text-muted">
+                            {t("val.feedback.helpHint")}
+                          </p>
                           <textarea
                             value={feedbackText}
                             onChange={(e) => setFeedbackText(e.target.value)}

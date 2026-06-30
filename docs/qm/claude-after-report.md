@@ -9196,3 +9196,47 @@ git push
 ```
 
 **Stop-Hinweis:** Claude macht kein Git, kein Commit, kein Push, kein Jira. Übergabe an Codex/Pedi.
+
+---
+
+## SCRUM-365 — Beta Validation Review Clarity & Decision Confidence v0
+
+**Datum:** 2026-06-30 · **Rolle:** Hauptumsetzer (Claude) · **Repo:** `/Users/peterkohnert/Documents/dev_Klarwerk` (nur Team-1)
+
+**Kurzfazit.** Der Review-Klick ist jetzt geführt statt formularartig (AG-12). Jede KO-Karte im Validation Board hat eine ruhige, einklappbare Führung „Was prüfe ich jetzt?" (Checkliste Aussage/Quelle&Belege/Kontext/Nachvollziehbarkeit + kontextbezogener Fokus bei revidierten/übertragenen KOs), erklärt VOR dem Klick „Was bewirkt Grün/Gelb/Rot?" und trägt eine ehrliche Trust-/Quorum-Notiz (PI-K2/AG-P2-3: Trust ist ein Signal, keine Wahrheit — erst das Quorum sichert). Gelb/Rot-Feedback ist als Hilfe zur Nacharbeit gerahmt, die Entscheidungs-Buttons zeigen ihre Wirkung per Hover. Keine neue Trust-Formel, keine Backend-Logikänderung, kein neues Review-/Status-/Rollenmodell — reine, DOM-freie Führung + Copy.
+
+**SCRUM-Ticket.** SCRUM-365 — Beta Validation Review Clarity & Decision Confidence v0.
+
+**Vorab-Befund.** `git status -sb` sauber (untrackte v2-Infra-Datei unberührt). Vorhanden: `reviewDecision.ts` (REVIEW_DECISIONS up/warn/down, `reviewOutcome` = ehrliche Folge NACH dem Klick, `reviewNextSteps`), `reviewSignals.ts` (Trust-Band, authorTransferred, reviewWorkView), `validationReviewContext.ts` (new/revision via Version>1), `trustExplainer.ts` (KO-Detail-Trust-Transparenz, PI-K2). Lücke: an der Entscheidung selbst fehlte (a) eine geführte „Was prüfe ich?"-Hilfe, (b) die Wirkung Grün/Gelb/Rot VOR dem Klick, (c) ein expliziter „Trust ≠ Wahrheit"-Hinweis (AG-P2-3). Team6: AG-12 (Review-UX zu technisch/formularartig — Team 1), AG-13 (Story nicht verankert), AG-P2-3 (Trust-Disclaimer fehlt — Team 1, PI-K2).
+
+**Team6-Bezug.** AG-12, AG-13 (berührt), AG-P2-3, AG-15 (Folge), FR-VAL-01/02/03/04/05/06, PI-K2, EK-20/EK-21/EK-26.
+
+**Umgesetzter Umfang.**
+1. **`reviewGuidance.ts`** (NEU, DOM-frei): `REVIEW_CHECK_ITEMS` (4 stabile Prüfpunkte, Label+Hint-Keys); `reviewGuidanceFocusKey({kind, authorTransferred})` (Fokus aus vorhandenen Signalen, revision>transfer>null); `decisionImpact(verdict)`/`DECISION_IMPACTS` (Wirkung vor dem Klick, Tönung pos/warn/crit, needsReason wie REVIEW_DECISIONS); `DECISION_TRUST_NOTE_KEY` (PI-K2/AG-P2-3).
+2. **Validation Board** (`Validation.tsx`): einklappbare `<details>`-Führung „Was prüfe ich jetzt?" pro Karte (Checkliste + Kontext-Fokus + „Was bewirkt die Entscheidung?" + Trust-/Quorum-Notiz); Entscheidungs-Buttons `title` = ehrliche Wirkung (`decisionImpact().bodyKey`); Feedback-Karte (Gelb/Rot) mit `val.feedback.helpHint` als Nacharbeits-Hilfe gerahmt.
+3. **i18n** DE/EN: `val.guide.title/statement/evidence/context/traceable(.hint)`, `val.guide.focus.revision/transfer`, `val.guide.trustNote`, `val.guide.impactTitle`, `val.impact.{up,warn,down}.{title,body}`, `val.feedback.helpHint`.
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/reviewGuidance.ts` (NEU)
+- `apps/web/src/pages/Validation.tsx` (Führungs-Disclosure + Impact-Title + Feedback-Hint)
+- `apps/web/src/i18n.ts` (val.guide.* / val.impact.* / val.feedback.helpHint DE/EN)
+- `tests/validation/review-guidance.test.ts` (NEU)
+- `docs/TEAM6_UPDATE.md` (Pflicht-Nebenänderung)
+
+**Tests/Gates.** `review-guidance`: Checklisten-Struktur+Reihenfolge, i18n DE/EN aller Keys, Fokus-Vorrang (revision>transfer>null), Trust-Notiz-Ehrlichkeit (enthält „keine Wahrheitsgarantie"/„not a guarantee of truth" + „quorum"), Decision-Impact-Tönung/needsReason, Ehrlichkeit (up: „nichts wird automatisch freigegeben"; warn/down: Begründung+Nacharbeit, „nichts automatisch geschlossen"), Feedback-Hint. Regression: `review-decision`/`review-signals`/`validation-review-context`/`trust-explainer` unverändert grün. `npm run check` grün — **183 Dateien / 1100 Tests**; Build/Biome/dependency-cruiser grün; FE-`tsc --noEmit` strict grün.
+
+**Beta-Wirkung.** Reviewer verstehen ohne technisches Vorwissen: was zu prüfen ist, was ihre Entscheidung bewirkt, und warum Trust keine Wahrheit/Auto-Freigabe ist. Progressive Disclosure hält das Board ruhig; Review fühlt sich nach verantwortlichem Sichern von Wissen an, nicht nach Formularbedienung.
+
+**Bewusst nicht umgesetzt / Restlücken.** Keine neue Trust-Formel, keine Backend-/Quorum-Logikänderung, kein neues Review-/Status-/Rollenmodell, kein RAG/LLM, kein Wizard-Umbau des Boards (die Capture-/Studio-Wizard-Seite ist über SCRUM-352/353 separat adressiert). Die vollständige Story-Verankerung in Onboarding/Empty-States (AG-13) bleibt offen (Team 1/Team 4, EK-21); das Usability-/Beta-Gate bleibt Team 5 (EK-20). Die Führung ist pro Karte gleich (kein personalisiertes Tutorial) — bewusst, um Konsistenz/Ruhe zu wahren.
+
+**TEAM6_UPDATE.md updated: yes** · **Team6 review needed: yes** · **Reason: AG-12/AG-13 review UX + Validation decision clarity / FR-VAL / PI-K2**
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/reviewGuidance.ts apps/web/src/pages/Validation.tsx apps/web/src/i18n.ts tests/validation/review-guidance.test.ts docs/TEAM6_UPDATE.md docs/qm/claude-after-report.md
+git commit -m "feat(validation): guided review clarity + decision confidence on the board (SCRUM-365, AG-12/AG-P2-3/PI-K2)"
+git push
+```
+
+**Stop-Hinweis:** Claude macht kein Git, kein Commit, kein Push, kein Jira. Übergabe an Codex/Pedi.

@@ -6,15 +6,15 @@
 - Scope: Knowledge Input, Capture, AI-assisted Editing, Validation, KO Detail, Library, Ask, Capture → Review → Use, App-Auth/Security, Trust/Conflict-Integrity
 - Repo: `/Users/peterkohnert/Documents/dev_Klarwerk`
 - Jira Project: SCRUM
-- Last updated: 2026-06-30 22:45 CEST
-- Current status: SCRUM-364 umgesetzt durch Claude, Codex-Prüfung/Commit/Push/CI/Jira ausstehend
-- Active ticket: SCRUM-364 — Beta Review Queue Execution & Assignment Completion v0
-- Last completed ticket: SCRUM-363 — Beta Assignment Notification & Work Queue Feed v0
+- Last updated: 2026-06-30 23:05 CEST
+- Current status: SCRUM-365 umgesetzt durch Claude, Codex-Prüfung/Commit/Push/CI/Jira ausstehend
+- Active ticket: SCRUM-365 — Beta Validation Review Clarity & Decision Confidence v0
+- Last completed ticket: SCRUM-364 — Beta Review Queue Execution & Assignment Completion v0
 - Last commit: `b9ab7e638a2488c8798ea5b13e1211247963e447`
-- GitHub/CI status: SCRUM-361 CI grün; SCRUM-362/363/364 noch nicht gepusht
-- Beta impact: Der persönliche Review-Work-Queue-Fluss ist jetzt durchgängig. Die Assignment-Benachrichtigung führt in die fokussierte „Mir zugewiesen"-Linse (`/validierung?mine=1`), das Board benennt sie verständlich („Dir zugewiesene Review-Arbeit") und zeigt einen ruhigen Empty-State, falls nichts für die Person offen ist; ein Klick führt zurück zur allgemeinen Liste. Schlüssel-Fix: `ValidationService.board()` reichert das KO-`assignments`-Feld jetzt aus den OFFENEN Zuweisungen an — erst dadurch arbeiten die (bisher mit Live-Daten leerlaufende) `mineOnly`-Linse und die Zugewiesen-Markierung mit echten Daten; nach der Bewertung wird die Zuweisung `done` und fällt aus Feed UND Linse. Ehrlich: erledigte Zuweisung ≠ automatisch validiert (Quorum bleibt maßgeblich). Kein neues Notification-Backend, kein Push/WebSocket/E-Mail, kein neues Rollen-/Assignee-Modell.
+- GitHub/CI status: SCRUM-361 CI grün; SCRUM-362/363/364/365 noch nicht gepusht
+- Beta impact: Der Review-Klick ist jetzt geführt statt formularartig (AG-12). Jede KO-Karte hat eine ruhige, einklappbare Führung „Was prüfe ich jetzt?" (Checkliste Aussage/Quelle&Belege/Kontext/Nachvollziehbarkeit + kontextbezogener Fokus bei revidierten/übertragenen KOs), erklärt VOR dem Klick „Was bewirkt Grün/Gelb/Rot?" und trägt eine ehrliche Trust-/Quorum-Notiz (PI-K2/AG-P2-3: Trust ist ein Signal, keine Wahrheit — erst das Quorum sichert). Gelb/Rot-Feedback ist als Hilfe zur Nacharbeit gerahmt. Entscheidungs-Buttons zeigen ihre Wirkung per Hover. Keine neue Trust-Formel, keine Backend-Logikänderung, keine neue Review-/Status-/Rollenmechanik — reine, DOM-freie Führung + Copy.
 - Team6 review needed: yes
-- Reason: AG-15 follow-up / Assignment execution flow / FR-VAL-05/06 / VC-P1-2
+- Reason: AG-12/AG-13 review UX + Validation decision clarity / FR-VAL / PI-K2
 - Next planned slice: nach Pedi-Signal; offen u. a. AG-03-DBINDEX 10k/100k-Lasttest (Team 5), AG-05-TRUST-FORMULA-REST (mehrstufige §3-Formel), AG-06-RESET (Reset-Rate-Limit) oder weiterer Team6-Gap
 
 ## Current Risks / Gaps
@@ -37,6 +37,9 @@
 | AG-03-DBINDEX | Kein echter DB-Index (FTS/trigram) auf den Suchfeldern; ILIKE-Prefilter skaliert nicht beliebig; 100k unbelegt. | P1 | Ask / Persistence / Scale | FR-ASK-02, NFR-PERF-03, EK-23 | Verengt durch SCRUM-361 (Prefilter) + SCRUM-362 (Index): `pg_trgm` + GIN-Trigramm-Indizes je Suchfeld (title/statement/category/tags) machen den ILIKE-Pfad indexgestützt; Query↔Index aus EINER Konstante. OFFEN: 10k/100k-Lasttest — Team 5; Verifikation `pg_trgm`-Verfügbarkeit in Zielumgebung — Pedi/Ops |
 | AG-P2-2 | Copy „ausschließlich validiert" ↔ Verhalten (antwortet aus ungeprüft, gekennzeichnet). | P2 | Ask / Copy | A-P2-1, EK-23 | Berührt: SCRUM-360 hält ungeprüfte Antworten ehrlich gekennzeichnet (answerStatus/knowledgeClass unverändert) und bevorzugt validierte Quellen; finale Copy-/„validiert-only"-Entscheidung bleibt Pedi/EK-23 |
 | AG-15 | Zuweisungen fehlten als eigene In-App-Benachrichtigung im Topbar-Feed (nur Konflikte/Lücken sichtbar). | P1 | Ask / Notifications / Review-Queue | VC-P1-2, FR-VAL-05/06, EK-26 | SCRUM-363: persönliche offene Review-Zuweisungen als eigene Feed-Kategorie. SCRUM-364: Fluss vervollständigt — Benachrichtigung → fokussierte „Mir zugewiesen"-Linse (`/validierung?mine=1`) → Bewertung → Zuweisung `done` → verschwindet aus Feed + Linse; Board reichert `assignments` aus offenen Zuweisungen an (Linse arbeitet jetzt mit Live-Daten). Codex-Abschluss ausstehend. „Board+E-Mail reichen?"-Beta-Akzeptanz bleibt Pedi/Team 5 (EK-26) |
+| AG-12 | Review-UX zu technisch/formularartig; Progressive Disclosure / Führung fehlt. | P1 | Validation / Review UX | KG-UX-001/002/003/010, EK-20, Team-1 | Mit SCRUM-365 für den Review-Klick adressiert: einklappbare Führung „Was prüfe ich?" (Checkliste + Kontext-Fokus), Entscheidungswirkung Grün/Gelb/Rot vor dem Klick, Feedback als Nacharbeits-Hilfe gerahmt. Capture/Studio-Wizard (SCRUM-352/353) separat. Usability-Gate bleibt Team 5 (EK-20). Codex-Abschluss ausstehend |
+| AG-P2-3 | Expliziter „Trust ≠ Wahrheit"-Disclaimer fehlte an der Entscheidung. | P2 | Validation / Trust / Copy | A-P2-2, PI-K2 | Mit SCRUM-365 an der Review-Karte ergänzt: ruhige Quorum-/Trust-Notiz („Trust ist ein Review-Signal, keine Wahrheitsgarantie; erst das Quorum sichert"). Ergänzt den KO-Detail-TrustExplainer (SCRUM-359) |
+| AG-13 | Story/Verantwortung nicht überall in der App verankert. | P1 | UX / Story | KG-UX-008/009, EK-21, Team 1/4 | Berührt: SCRUM-365 rahmt Review als verantwortliches Sichern von Wissen (geführte Prüfung, ehrliche Folgen). Story in Onboarding/Empty-States bleibt offen (Team 1/4, EK-21) |
 
 ## Current Requirement Touchpoints
 
@@ -74,6 +77,17 @@
 | VC-P1-2 / EK-26 — Assignment-Feed vs. Beta-Akzeptanz | Team6 `TEAM6_ACTIVE_GAPS_AND_RECOMMENDATIONS.md` | addressed in SCRUM-363 | In-App-Feed-Variante geliefert (statt „Board+E-Mail reichen"); finale Beta-Akzeptanz/Reichweite bleibt Pedi/Team 5 (EK-26). |
 
 ## Delta Log
+
+### 2026-06-30 23:05 — SCRUM-365 — pending commit
+
+- Changed areas: `apps/web/src/lib/reviewGuidance.ts` (NEU, DOM-frei), `apps/web/src/pages/Validation.tsx` (Führungs-Disclosure + Impact + Feedback-Hint), `apps/web/src/i18n.ts` (`val.guide.*` / `val.impact.*` / `val.feedback.helpHint` DE/EN), Tests.
+- What changed: AG-12 — der Review-Klick ist jetzt geführt statt formularartig. Neuer DOM-freier Helfer `reviewGuidance.ts`: (1) `REVIEW_CHECK_ITEMS` — vier stabile, nicht-technische Prüfpunkte (Aussage, Quelle & Belege, Kontext, Nachvollziehbarkeit); (2) `reviewGuidanceFocusKey({kind, authorTransferred})` — kontextbezogener Fokus aus VORHANDENEN Signalen (revidiert → gezielt die Änderung; Autor übertragen → extra Blick; Revision hat Vorrang); (3) `decisionImpact(verdict)` / `DECISION_IMPACTS` — die ehrliche Wirkung Grün/Gelb/Rot VOR dem Klick (ergänzt das bestehende `reviewOutcome` für nach dem Klick); (4) `DECISION_TRUST_NOTE_KEY` — PI-K2/AG-P2-3-Notiz „Trust ≠ Wahrheit, erst das Quorum sichert". Im Validation Board rendert das als ruhige, einklappbare `<details>`-Führung „Was prüfe ich jetzt?" pro KO-Karte (Checkliste + Kontext-Fokus + Entscheidungswirkungen + Trust-Notiz); die Entscheidungs-Buttons zeigen ihre Wirkung per `title` (Hover/Touch); das Pflicht-Feedback für Gelb/Rot ist mit `val.feedback.helpHint` als Hilfe zur Nacharbeit gerahmt.
+- Beta impact: AG-12 / AG-P2-3 / FR-VAL — Reviewer verstehen ohne technisches Vorwissen, was zu prüfen ist, was ihre Entscheidung bewirkt und warum Trust keine Wahrheit/Auto-Freigabe ist. Progressive Disclosure hält das Board ruhig.
+- Designentscheidung (begründet): KEINE neue Trust-Formel, KEINE Backend-Logikänderung, KEIN neues Review-/Status-/Rollenmodell, kein RAG/LLM. Reine, testbare FE-Führung + Copy; bestehende Verdict-/Mutations-/Outcome-Flows (`reviewDecision`/`reviewOutcome`/`reviewNextSteps`) unverändert. `<details>` ist native Progressive Disclosure (kein zusätzlicher State).
+- New / touched requirements: AG-12, AG-13 (berührt), AG-P2-3, AG-15 (Folge), FR-VAL-01/02/03/04/05/06, PI-K2, EK-20/EK-21/EK-26 (Beta-/Usability-/Story-Hoheit bleibt Pedi/Team 4/Team 5).
+- Tests: `tests/validation/review-guidance.test.ts` (NEU): Checklisten-Struktur/Reihenfolge + i18n DE/EN, Fokus-Vorrang (revision>transfer>null), Trust-Notiz-Ehrlichkeit (Trust ≠ Wahrheit, Quorum), Decision-Impact-Tönung/needsReason + Ehrlichkeit (keine Auto-Freigabe, Gelb/Rot = Begründung+Nacharbeit), Feedback-Hint. Bestehende `review-decision`/`review-signals`/`validation-review-context`/`trust-explainer`-Tests unverändert grün. `npm run check` grün (183 Dateien / 1100 Tests), Build/Biome/dependency-cruiser grün, FE-tsc strict grün.
+- Team6 review needed: yes
+- Reason: AG-12/AG-13 review UX + Validation decision clarity / FR-VAL / PI-K2
 
 ### 2026-06-30 22:45 — SCRUM-364 — pending commit
 

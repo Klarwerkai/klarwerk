@@ -836,6 +836,9 @@ const de = {
   "val.feedback.submit": "Absenden",
   "val.feedback.cancel": "Abbrechen",
   "val.feedback.error": "Konnte nicht gespeichert werden.",
+  // SCRUM-365 / AG-12: Feedback enttechnisieren — als Hilfe zur Nacharbeit rahmen.
+  "val.feedback.helpHint":
+    "Dein Feedback hilft dem Autor, die nächste Version gezielt nachzuarbeiten.",
   "val.empty": "Keine offenen Objekte.",
   "val.target": "Ziel: {{n}}× grün",
   "val.trust": "Trust",
@@ -881,6 +884,34 @@ const de = {
   "val.actionQuery": "Rückfrage",
   "val.actionReject": "Ablehnen",
   "val.feedbackRequiredHint": "* Rückfrage und Ablehnung brauchen eine Begründung.",
+  // SCRUM-365 / AG-12: ruhige Review-Führung „Was prüfe ich jetzt?" (progressive disclosure).
+  "val.guide.title": "Was prüfe ich jetzt?",
+  "val.guide.statement": "Aussage",
+  "val.guide.statement.hint": "Stimmt die Kernaussage fachlich?",
+  "val.guide.evidence": "Quelle & Belege",
+  "val.guide.evidence.hint": "Sind Quelle oder Belege vorhanden und tragfähig?",
+  "val.guide.context": "Kontext",
+  "val.guide.context.hint": "Ist klar, wann und wo das gilt?",
+  "val.guide.traceable": "Nachvollziehbarkeit",
+  "val.guide.traceable.hint": "Ist es verständlich und nachvollziehbar beschrieben?",
+  "val.guide.focus.revision":
+    "Überarbeitet — prüfe gezielt, was sich seit der letzten Version geändert hat.",
+  "val.guide.focus.transfer":
+    "Autor wurde übertragen — schau besonders genau auf Aussage und Belege.",
+  // SCRUM-365 / PI-K2 / AG-P2-3: Trust ist ein Signal, keine Wahrheit — erst das Quorum sichert.
+  "val.guide.trustNote":
+    "Trust ist ein Review-Signal, keine Wahrheitsgarantie. Erst genug Freigaben (Quorum) machen Wissen gesichert.",
+  // SCRUM-365: Entscheidungswirkung VOR dem Klick — ehrlich, keine Auto-Freigabe.
+  "val.guide.impactTitle": "Was bewirkt die Entscheidung?",
+  "val.impact.up.title": "Freigeben",
+  "val.impact.up.body":
+    "Zählt als eine Freigabe-Stimme. Wissen wird nur nutzbar, wenn Status, Quorum und Trust es tragen — nichts wird automatisch freigegeben.",
+  "val.impact.warn.title": "Rückfrage",
+  "val.impact.warn.body":
+    "Braucht eine kurze Begründung. Bleibt Review-Arbeit und hilft dem Autor, gezielt nachzuarbeiten.",
+  "val.impact.down.title": "Ablehnen",
+  "val.impact.down.body":
+    "Braucht eine kurze Begründung. Führt in die Nacharbeit — es wird nichts automatisch geschlossen.",
   "val.decisionSaved": "Bewertung erfasst.",
   // SCRUM-292: ehrliche Folge-Aussage je Verdict — keine automatische/Fake-Validierung.
   "val.outcome.up":
@@ -2352,6 +2383,8 @@ const en: typeof de = {
   "val.feedback.submit": "Submit",
   "val.feedback.cancel": "Cancel",
   "val.feedback.error": "Could not be saved.",
+  // SCRUM-365 / AG-12: frame feedback as help for the next revision, not a technical form.
+  "val.feedback.helpHint": "Your feedback helps the author revise the next version specifically.",
   "val.empty": "No open objects.",
   "val.target": "Target: {{n}}× green",
   "val.trust": "Trust",
@@ -2397,6 +2430,33 @@ const en: typeof de = {
   "val.actionQuery": "Query",
   "val.actionReject": "Reject",
   "val.feedbackRequiredHint": "* Query and rejection require a reason.",
+  // SCRUM-365 / AG-12: calm review guidance "What am I reviewing?" (progressive disclosure).
+  "val.guide.title": "What am I reviewing now?",
+  "val.guide.statement": "Statement",
+  "val.guide.statement.hint": "Is the core statement factually correct?",
+  "val.guide.evidence": "Source & evidence",
+  "val.guide.evidence.hint": "Are sources or evidence present and solid?",
+  "val.guide.context": "Context",
+  "val.guide.context.hint": "Is it clear when and where this applies?",
+  "val.guide.traceable": "Traceability",
+  "val.guide.traceable.hint": "Is it described clearly and traceably?",
+  "val.guide.focus.revision": "Revised — focus on what changed since the last version.",
+  "val.guide.focus.transfer":
+    "Authorship was transferred — look extra closely at the statement and evidence.",
+  // SCRUM-365 / PI-K2 / AG-P2-3: Trust is a signal, not truth — only the quorum makes it reliable.
+  "val.guide.trustNote":
+    "Trust is a review signal, not a guarantee of truth. Only enough approvals (quorum) make knowledge reliable.",
+  // SCRUM-365: decision impact BEFORE the click — honest, no automatic release.
+  "val.guide.impactTitle": "What does the decision do?",
+  "val.impact.up.title": "Approve",
+  "val.impact.up.body":
+    "Counts as one approval vote. Knowledge becomes usable only when status, quorum and trust support it — nothing is released automatically.",
+  "val.impact.warn.title": "Query",
+  "val.impact.warn.body":
+    "Needs a short reason. Stays review work and helps the author revise specifically.",
+  "val.impact.down.title": "Reject",
+  "val.impact.down.body":
+    "Needs a short reason. Leads to rework — nothing is closed automatically.",
   "val.decisionSaved": "Review recorded.",
   // SCRUM-292: honest follow-up per verdict — no automatic/fake validation.
   "val.outcome.up":
