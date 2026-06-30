@@ -247,6 +247,14 @@ function overlap(a: readonly string[], b: readonly string[]): number {
   return count;
 }
 
+// SCRUM-361 / AG-03: öffentliche, stabile Tokenisierung der Frage in Inhaltstoken (Stoppwörter und
+// Kurzwörter entfernt). Identisch zur internen Ranking-Tokenisierung → der Repo-Prefilter (Ask)
+// nutzt EXAKT dieselben Terme wie das Ranking (`selectCandidates`), bleibt also konsistent. Reine
+// Funktion ohne Seiteneffekt; kein Quelleninhalt wird verändert.
+export function queryTokens(text: string): string[] {
+  return tokenize(text);
+}
+
 // Semantische Vorauswahl über Keyword-Überschneidung — synchron, modellunabhängig.
 // Von beiden Providern genutzt, damit Antworten immer in echten KOs verankert bleiben.
 export function keywordSelect(

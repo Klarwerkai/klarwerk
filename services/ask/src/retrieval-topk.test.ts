@@ -79,10 +79,14 @@ describe("SCRUM-360: Ask Top-K Retrieval (Scale-Smoke)", () => {
     expect(result.sources).toEqual([target.id]);
     expect(gap).toBeNull();
 
-    // Begrenzung ist auditierbar: großer Pool, aber Kandidatenmenge ≤ topK.
+    // SCRUM-361: Begrenzung ist auditierbar. Der Prefilter (findCandidates) liefert nur die
+    // thematisch passenden KOs (kein All-Pool mehr): hier die HZ7-KOs, NICHT die ~220 Störer.
+    // Die finale Kandidatenmenge ist ≤ topK; Retrieval-Modus ist dokumentiert.
     const queries = await audit.list({ action: "ask.query" });
     const last = queries.at(-1);
-    expect((last?.payload.poolSize as number) ?? 0).toBeGreaterThan(200);
+    expect(last?.payload.retrievalMode).toBe("prefilter");
+    expect((last?.payload.prefilterCount as number) ?? 0).toBeGreaterThan(0);
+    expect((last?.payload.prefilterCount as number) ?? 999).toBeLessThan(50); // nur Treffer, nicht alle ~220
     expect((last?.payload.candidateCount as number) ?? 999).toBeLessThanOrEqual(DEFAULT_TOP_K);
     expect(last?.payload.topK).toBe(DEFAULT_TOP_K);
   });

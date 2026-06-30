@@ -7,6 +7,7 @@ import {
   type KnowledgeRef,
   type Reasoner,
   type ReasonerLocale,
+  queryTokens,
   selectCandidates,
 } from "../../reasoner";
 import { TRUST_MAX } from "../../validation";
@@ -15,6 +16,11 @@ import type { GapRepo } from "./repo";
 import { AskError, type Gap, type GapPriority, isGapPriority } from "./types";
 
 const HELPFUL_TRUST_STEP = 2;
+
+// SCRUM-361 / AG-03 / NFR-PERF-03: Obergrenze der datenquellennahen Kandidaten-Vorauswahl. Bewusst
+// deutlich größer als DEFAULT_TOP_K (8): das Repository liefert eine großzügige, vorgefilterte Menge,
+// die finale, präzise Status-/Trust-/Relevanz-Sortierung + Top-K macht der Reasoner (selectCandidates).
+const ASK_CANDIDATE_PREFILTER_LIMIT = 200;
 
 // SCRUM-115: Lücken ohne gespeicherte Priorität (Altdaten) erhalten beim Lesen
 // den sicheren Default "mittel" — keine stille undefined-Priorität nach außen.
@@ -56,31 +62,39 @@ export class AskService {
   // FR-ASK-01/02/03: begründete Antwort über den Reasoner; ehrliche Verweigerung → Wissenslücke.
   // FR-I18N-01: locale steuert die Antwortsprache des Reasoners (Quelleninhalt bleibt original).
   async ask(question: string, actor = "system", locale: ReasonerLocale = "de"): Promise<AskResult> {
-    const kos = await this.koService.list();
-    const refs: KnowledgeRef[] = kos.map((ko) => ({
+    // SCRUM-361 / AG-03 / FR-ASK-02 / NFR-PERF-03: Ask nutzt NICHT mehr `koService.list()` (Laden des
+    // gesamten Pools) als Kernpfad, sondern eine datenquellennahe, begrenzte Kandidaten-Vorauswahl
+    // (`findCandidates`). Die Frage wird in Inhaltstoken zerlegt (identisch zum Ranking); ohne
+    // Inhaltstoken (nur Stoppwörter) gibt es keine Kandidaten → ehrliche Wissenslücke. Das Repository
+    // (InMemory/Pg) filtert ODER-weise über Titel/Aussage/Tags/Kategorie, gedeckelt auf den Prefilter-
+    // Limit und mit validiert-/Trust-Bias, damit relevante validierte Treffer unter dem Limit bleiben.
+    const terms = queryTokens(question);
+    const prefiltered =
+      terms.length === 0
+        ? []
+        : await this.koService.findCandidates({ terms, limit: ASK_CANDIDATE_PREFILTER_LIMIT });
+    const refs: KnowledgeRef[] = prefiltered.map((ko) => ({
       id: ko.id,
       title: ko.title,
       statement: ko.statement,
       status: ko.status,
       trust: ko.trust,
     }));
-    // SCRUM-360 / AG-03 / FR-ASK-02 / NFR-PERF-03: Ask reicht NICHT mehr blind alle KOs an den
-    // Reasoner/das Modell durch. Stattdessen wird hier eine begrenzte, status-/trust-bewusste
-    // Top-K-Kandidatenmenge gebildet (Relevanz-Gate dominiert, validierte/ready bevorzugt, Trust
-    // hilft als Tiebreak). Der Reasoner rankt defensiv erneut (idempotent: Top-K von Top-K = Top-K).
-    // Hinweis (ehrlich): das Laden selbst (`koService.list()`) bleibt vorerst in-memory — der
-    // DB-seitige Prefilter/100k-Lasttest bleibt offen (Team 5 / Folge-Slice, siehe TEAM6_UPDATE).
+    // SCRUM-360: präzise, status-/trust-bewusste Top-K-Auswahl auf der vorgefilterten Menge (Relevanz-
+    // Gate dominiert, validierte/ready bevorzugt). Idempotent zur Vorauswahl: Top-K der vorgefilterten
+    // Menge = Top-K, da jeder relevante KO (Token-Überschneidung) bereits im Prefilter enthalten ist.
     const candidates = selectCandidates(question, refs, DEFAULT_TOP_K);
     const result = await this.reasoner.answer(question, candidates, locale);
-    // FR-ANA-02: Telemetrie für die Antwortquote ohne Lücke. SCRUM-360: Pool-/Kandidatengröße
-    // mitschreiben, damit die Begrenzung nachvollziehbar/auditierbar ist (kein Inhaltstext).
+    // FR-ANA-02 / SCRUM-361: Telemetrie nachvollziehbar + ehrlich — Prefilter-/Kandidatengröße,
+    // Top-K und der Retrieval-Modus (kein Inhaltstext, keine Frage im Audit).
     await this.audit?.record({
       actor,
       action: "ask.query",
       target: result.sources[0] ?? "-",
       payload: {
         answered: result.answered,
-        poolSize: refs.length,
+        retrievalMode: "prefilter",
+        prefilterCount: prefiltered.length,
         candidateCount: candidates.length,
         topK: DEFAULT_TOP_K,
       },

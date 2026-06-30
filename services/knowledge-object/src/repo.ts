@@ -13,12 +13,46 @@ export interface KoFilter {
   tag?: string;
 }
 
+// SCRUM-361 / AG-03 / FR-ASK-02 / NFR-PERF-03: datenquellennahe Kandidatenabfrage für Ask. Statt den
+// gesamten Pool (`list()`) in den Speicher zu laden, liefert das Repository eine VORGEFILTERTE,
+// auf `limit` begrenzte Kandidatenmenge: KOs, deren durchsuchbarer Text (Titel/Aussage/Tags/Kategorie)
+// mindestens einen der (bereits tokenisierten) Inhalts-Terme enthält. `terms` sind Inhaltstoken der
+// Frage (Stoppwörter entfernt) — die Auswahl bleibt damit konsistent zum Ranking aus SCRUM-360.
+// Die feine Relevanz-/Status-/Trust-Sortierung übernimmt weiterhin der Reasoner (`selectCandidates`);
+// dieser Prefilter ist bewusst grob (ODER-Treffer + Cap), bevorzugt aber bei Gleichstand validierte/
+// vertrauenswürdigere KOs, damit relevante validierte Treffer unter dem Limit erhalten bleiben.
+export interface KoCandidateQuery {
+  terms: readonly string[];
+  limit: number;
+}
+
 export interface KoRepo {
   insert(ko: KnowledgeObject): Promise<void>;
   findById(id: string): Promise<KnowledgeObject | undefined>;
   update(ko: KnowledgeObject): Promise<void>;
   delete(id: string): Promise<void>;
   list(filter: KoFilter): Promise<KnowledgeObject[]>;
+  // SCRUM-361: begrenzte, vorgefilterte Kandidatenmenge für Ask (kein All-Pool-Load mehr).
+  findCandidates(query: KoCandidateQuery): Promise<KnowledgeObject[]>;
+}
+
+// Durchsuchbarer Text eines KO für die grobe Kandidaten-Vorauswahl (kein Quelleninhalt wird verändert).
+export function koCandidateText(ko: KnowledgeObject): string {
+  return `${ko.title} ${ko.statement} ${ko.tags.join(" ")} ${ko.category}`.toLowerCase();
+}
+
+// Anzahl der (distinct) Inhalts-Terme, die als Teilstring im KO-Text vorkommen. Teilstring ist bewusst
+// breiter als die Token-Gleichheit des Reasoners → der Prefilter schließt nie einen KO aus, den
+// `selectCandidates` behalten würde (sichere Obermenge), gatet aber irrelevante KOs (Score 0) aus.
+export function koCandidateScore(ko: KnowledgeObject, terms: readonly string[]): number {
+  const text = koCandidateText(ko);
+  let score = 0;
+  for (const term of terms) {
+    if (term.length > 0 && text.includes(term)) {
+      score += 1;
+    }
+  }
+  return score;
 }
 
 function matches(ko: KnowledgeObject, filter: KoFilter): boolean {
@@ -61,6 +95,29 @@ export class InMemoryKoRepo implements KoRepo {
 
   list(filter: KoFilter): Promise<KnowledgeObject[]> {
     return Promise.resolve([...this.items.values()].filter((ko) => matches(ko, filter)));
+  }
+
+  // SCRUM-361: vorgefilterte, begrenzte Kandidatenmenge. ODER-Treffer über die Inhalts-Terme,
+  // sortiert nach (Term-Trefferzahl ↓, validiert zuerst, Trust ↓) und auf `limit` gedeckelt — so
+  // bleiben relevante validierte Treffer auch bei vielen Kandidaten unter dem Limit erhalten.
+  findCandidates(query: KoCandidateQuery): Promise<KnowledgeObject[]> {
+    const terms = query.terms.map((t) => t.trim().toLowerCase()).filter((t) => t.length > 0);
+    if (terms.length === 0) {
+      return Promise.resolve([]);
+    }
+    const limit = Math.max(0, Math.floor(query.limit));
+    const ranked = [...this.items.values()]
+      .map((ko) => ({ ko, score: koCandidateScore(ko, terms) }))
+      .filter((x) => x.score > 0)
+      .sort(
+        (a, b) =>
+          b.score - a.score ||
+          Number(b.ko.status === "validiert") - Number(a.ko.status === "validiert") ||
+          b.ko.trust - a.ko.trust,
+      )
+      .slice(0, limit)
+      .map((x) => x.ko);
+    return Promise.resolve(ranked);
   }
 }
 

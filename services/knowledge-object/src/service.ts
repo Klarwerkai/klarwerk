@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
 import { htmlToPlainText, sanitizeHtml } from "../../structure";
-import type { EvidenceRepo, KoFilter, KoRepo, KoVersionRepo } from "./repo";
+import type { EvidenceRepo, KoCandidateQuery, KoFilter, KoRepo, KoVersionRepo } from "./repo";
 import {
   type EvidenceRecord,
   KNOWLEDGE_TYPES,
@@ -308,6 +308,13 @@ export class KoService {
 
   list(filter: KoFilter = {}): Promise<KnowledgeObject[]> {
     return this.repo.list(filter);
+  }
+
+  // SCRUM-361 / AG-03: begrenzte, datenquellennahe Kandidatenabfrage für Ask (kein All-Pool-Load).
+  // Delegiert an das Repository (InMemory/Pg API-kompatibel); die Endsortierung/Top-K bleibt im Ask-/
+  // Reasoner-Pfad (selectCandidates).
+  findCandidates(query: KoCandidateQuery): Promise<KnowledgeObject[]> {
+    return this.repo.findCandidates(query);
   }
 
   // SCRUM-161: read-only Zugriff auf die in SCRUM-159 persistierten Voll-Snapshots.

@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import type { EvidenceRepo, KoFilter, KoRepo, KoVersionRepo } from "./repo";
+import type { EvidenceRepo, KoCandidateQuery, KoFilter, KoRepo, KoVersionRepo } from "./repo";
 import type { EvidenceRecord, KnowledgeObject, KoVersionSnapshot } from "./types";
 
 // Postgres-Adapter für knowledge-object. Vollobjekt als JSONB; Filterspalten indiziert.
@@ -101,6 +101,39 @@ export class PgKoRepo implements KoRepo {
     }
     const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
     const res = await this.pool.query<DataRow>(`SELECT data FROM kos${where}`, params);
+    return res.rows.map((row) => row.data);
+  }
+
+  // SCRUM-361 / AG-03 / FR-ASK-02 / NFR-PERF-03: datenquellennahe Kandidaten-Vorauswahl für Ask.
+  // Statt alle KOs zu laden, filtert die DB ODER-weise über die (bereits tokenisierten) Inhalts-Terme
+  // auf den vorhandenen Feldern (title/statement/category/tags) — vollständig PARAMETRISIERT (kein
+  // SQL-Injection-Risiko; die Terme sind reine Inhaltstoken ohne Wildcards). Reihenfolge: validierte
+  // KOs zuerst, dann höherer Trust → relevante validierte Treffer bleiben unter dem LIMIT erhalten.
+  // KEINE Volltext-Engine, KEINE Embeddings, KEINE Migration: nur ILIKE/JSONB auf vorhandenen Spalten.
+  // Die feine Relevanz-/Status-/Trust-Endsortierung übernimmt der Reasoner (`selectCandidates`).
+  async findCandidates(query: KoCandidateQuery): Promise<KnowledgeObject[]> {
+    const terms = query.terms.map((t) => t.trim().toLowerCase()).filter((t) => t.length > 0);
+    if (terms.length === 0) {
+      return [];
+    }
+    const limit = Math.max(0, Math.floor(query.limit));
+    const params: unknown[] = [];
+    const ors: string[] = [];
+    for (const term of terms) {
+      params.push(`%${term}%`);
+      const p = `$${params.length}`;
+      // ODER-Treffer: ein Term genügt; Teilstring-Match über Titel/Aussage/Kategorie/Tags(JSONB-Text).
+      ors.push(
+        `(data->>'title' ILIKE ${p} OR data->>'statement' ILIKE ${p} ` +
+          `OR data->>'category' ILIKE ${p} OR (data->'tags')::text ILIKE ${p})`,
+      );
+    }
+    params.push(limit);
+    const limitP = `$${params.length}`;
+    // ORDER BY: validierte zuerst, dann Trust absteigend (NULLS LAST schützt vor fehlendem Trust-
+    // Feld); harte Begrenzung über LIMIT. Alle Werte sind Parameter, kein eingebetteter Term.
+    const sql = `SELECT data FROM kos WHERE ${ors.join(" OR ")} ORDER BY (status='validiert') DESC, (data->>'trust')::int DESC NULLS LAST LIMIT ${limitP}`;
+    const res = await this.pool.query<DataRow>(sql, params);
     return res.rows.map((row) => row.data);
   }
 }

@@ -10,6 +10,8 @@ export {
   rankCandidates,
   statusTrustBoost,
   type RankedCandidate,
+  // SCRUM-361 / AG-03: Tokenisierung der Frage für den Repo-Prefilter (konsistent zum Ranking).
+  queryTokens,
 } from "./src/provider";
 export { ModelProvider, type ModelClient } from "./src/provider-model";
 export {

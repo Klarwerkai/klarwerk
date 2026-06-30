@@ -15,6 +15,9 @@ export {
   type KoRepo,
   type KoVersionRepo,
   type KoFilter,
+  type KoCandidateQuery,
+  koCandidateText,
+  koCandidateScore,
 } from "./src/repo";
 export {
   PgEvidenceRepo,

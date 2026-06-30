@@ -9001,3 +9001,52 @@ git commit -m "feat(ask): bounded, status/trust-aware top-k candidate selection 
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-361 — Beta Retrieval DB Prefilter & Index Readiness v0
+
+**Datum:** 2026-06-30 · **Rolle:** Hauptumsetzer (Claude) · **Repo:** `/Users/peterkohnert/Documents/dev_Klarwerk` (nur Team-1)
+
+**Kurzfazit.** Ask nutzt nicht mehr `koService.list()` (Laden des gesamten Pools) als Kernpfad, sondern eine datenquellennahe, begrenzte Kandidatenabfrage `KoRepo.findCandidates({terms, limit})` (InMemory + Pg API-kompatibel). Die Frage wird über die geteilte Reasoner-Tokenisierung (`queryTokens`) in Inhaltstoken zerlegt; das Repository filtert ODER-weise über Titel/Aussage/Tags/Kategorie, gedeckelt auf `ASK_CANDIDATE_PREFILTER_LIMIT=200`, mit validiert-/Trust-Bias. Das SCRUM-360-Ranking (`selectCandidates`, `DEFAULT_TOP_K`) läuft danach auf der Vorauswahl (idempotent). Kein RAG, keine Embeddings, keine Suchmaschine, keine DB-Migration.
+
+**SCRUM-Ticket.** SCRUM-361 — Beta Retrieval DB Prefilter & Index Readiness v0. **Claude beteiligt: ja.**
+
+**Vorab-Befund.** `git status -sb` sauber (untrackte v2-Infra-Datei unberührt). `AskService.ask` lud bisher ALLE KOs (`koService.list()`) und mappte sie auf KnowledgeRefs (SCRUM-360 begrenzte erst danach via selectCandidates). Die `kos`-Tabelle hat Spalten `id/type/status/category/data jsonb` (Indizes auf type/status); title/statement/tags/trust liegen im JSONB `data`. `KoRepo` (InMemory + Pg) hatte nur `list(filter)`. Geeigneter, risikoarmer Einhakpunkt: eine neue Repo-Methode `findCandidates` (ILIKE/JSONB ohne Migration) + Ask nutzt sie statt `list()`; die Tokenisierung muss exakt der des Rankings entsprechen → `queryTokens` aus dem Reasoner exportieren.
+
+**Team6-Bezug.** AG-03 (Retrieval all-in-memory/Keyword/100k unbelegt), FR-ASK-02 (relevante Wissensobjekte finden), NFR-PERF-03 (Skalierung), EK-23 (Ask-Semantik/Skalierung).
+
+**Umgesetzter Umfang.**
+1. **Repo-/Service-Schnittstelle** (`services/knowledge-object/src/repo.ts`): `KoCandidateQuery {terms, limit}` + `KoRepo.findCandidates(query)`; Helfer `koCandidateText`/`koCandidateScore`. InMemory-Impl: ODER-Treffer über Inhalts-Terme (Teilstring), gefiltert auf Score>0, sortiert nach (Score ↓, validiert zuerst, Trust ↓), `slice(limit)`. `KoService.findCandidates` delegiert; Exporte in `index.ts`.
+2. **Pg-naher Prefilter** (`services/knowledge-object/src/repo-pg.ts`): `PgKoRepo.findCandidates` baut parametrisierte ILIKE-ODER über `data->>'title'/'statement'/'category'` + `(data->'tags')::text`, `ORDER BY (status='validiert') DESC, (data->>'trust')::int DESC NULLS LAST`, `LIMIT`. Keine Volltext-Engine, keine Migration. Leere Terme → keine Abfrage.
+3. **Ask-Service umgestellt** (`services/ask/src/service.ts`): `ask()` zerlegt die Frage via `queryTokens`, ruft `koService.findCandidates({terms, limit: ASK_CANDIDATE_PREFILTER_LIMIT})` (statt `list()`), rankt mit `selectCandidates`/`DEFAULT_TOP_K` und ruft den Reasoner. Audit `ask.query` → `retrievalMode:"prefilter"`, `prefilterCount`, `candidateCount`, `topK`.
+4. **Reasoner** (`services/reasoner/src/provider.ts` + `index.ts`): `queryTokens(text)` (= interne Tokenisierung) exportiert, damit Prefilter und Ranking dieselben Terme nutzen.
+
+**Geänderte Dateien.**
+- `services/knowledge-object/src/repo.ts` (KoCandidateQuery + KoRepo.findCandidates + InMemory + Helfer)
+- `services/knowledge-object/src/repo-pg.ts` (PgKoRepo.findCandidates)
+- `services/knowledge-object/src/service.ts` (KoService.findCandidates)
+- `services/knowledge-object/index.ts` (Exporte KoCandidateQuery/koCandidateText/koCandidateScore)
+- `services/reasoner/src/provider.ts` + `services/reasoner/index.ts` (queryTokens)
+- `services/ask/src/service.ts` (Prefilter-Kernpfad + Audit)
+- `services/knowledge-object/src/repo-candidates.test.ts` (NEU, InMemory)
+- `services/knowledge-object/src/repo-pg-candidates.test.ts` (NEU, Pg-Query-Shape, Fake-Pool)
+- `services/ask/src/retrieval-topk.test.ts` (SCRUM-360-Scale-Smoke auf Prefilter-Audit angepasst)
+- `docs/TEAM6_UPDATE.md` (Pflicht-Nebenänderung, SCRUM-361-Eintrag)
+
+**Tests/Gates.** InMemory: ODER-Treffer/Störer raus, Limit, validiert-/Trust-Bias bleibt unter dem Limit, leere Terme/kein Treffer → [], Tags/Kategorie-Treffer. Pg-Query-Shape (Fake-Pool): parametrisierte ILIKE-ODER über title/statement/category/tags, `ORDER BY validiert/trust`, LIMIT, vollständige Parametrisierung (`["%ventil%","%überdruck%",50]`), leere Terme → keine DB-Abfrage. Ask-Scale-Smoke: Prefilter liefert nur Treffer (nicht ~220 Störer), Antwort quellengebunden auf das validierte Ziel-KO, ohne Treffer ehrliche Lücke; Audit `retrievalMode/prefilterCount/candidateCount/topK`. Bestehende SCRUM-360-Tests (candidate-ranking, ask-routes, HTTP-E2E) grün. `npm run check` grün — **177 Module / 179 Dateien / 1070 Tests**; Build/Biome/dependency-cruiser grün (keine neue Modulgrenzverletzung). Keine FE-Dateien geändert → FE-tsc nicht erforderlich.
+
+**Beta-Wirkung.** Der All-Pool-Load im Ask-Kernpfad ist abgelöst; bei wachsender Wissensbasis bekommt der Nutzer weiterhin schnelle, relevante, quellengebundene Antworten. Validiertes/vertrauenswürdigeres Wissen wird leicht bevorzugt, Relevanz bleibt maßgeblich, ungeprüftes Wissen bleibt ehrlich `ungeprueft`.
+
+**Bewusst nicht umgesetzt / Restlücken.** Kein RAG, keine Embeddings, keine neue Suchmaschine, keine DB-Migration, keine Validiert-only-Produktentscheidung (bleibt Pedi/EK-23). `list()` bleibt für andere Pfade (Library/Validation/Management/Seed) — nur der Ask-Kernpfad ist umgestellt. KEIN echter DB-Index (pg_trgm/GIN) auf den Suchfeldern → der ILIKE-Prefilter skaliert nicht beliebig; KEIN 100k-Lasttest. Beides bleibt **AG-03-DBINDEX (P1)**: DB-Index — Team 1, Lasttest 10k/100k — Team 5/Pedi. Der Pg-Pfad ist per Query-Shape-Unit (Fake-Pool) belegt, NICHT gegen echtes Postgres/Testcontainers in dieser Umgebung. Das Ranking bleibt Keyword-basiert (kein semantisches Embedding) — Synonyme ohne Token-Überschneidung erzeugen weiter eine ehrliche Lücke (bewusst).
+
+**TEAM6_UPDATE.md updated: yes** · **Team6 review needed: yes** · **Reason: Team6 P1 Gap AG-03 / FR-ASK-02 / NFR-PERF-03**
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add services/knowledge-object/src/repo.ts services/knowledge-object/src/repo-pg.ts services/knowledge-object/src/service.ts services/knowledge-object/index.ts services/reasoner/src/provider.ts services/reasoner/index.ts services/ask/src/service.ts services/knowledge-object/src/repo-candidates.test.ts services/knowledge-object/src/repo-pg-candidates.test.ts services/ask/src/retrieval-topk.test.ts docs/TEAM6_UPDATE.md docs/qm/claude-after-report.md
+git commit -m "feat(ask): repository-near candidate prefilter (findCandidates, InMemory+Pg) replaces list() core path (SCRUM-361, AG-03/FR-ASK-02/NFR-PERF-03)"
+git push
+```
+Kein Git/Push/Jira durch Claude.
