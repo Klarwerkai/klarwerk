@@ -8442,3 +8442,46 @@ git commit -m "test(flow): fresh capture -> studio -> validation -> use e2e hard
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-349 — Beta Review → Rework → Revalidation → Use Hardening v0
+**Datum:** 2026-06-30 · **Rolle:** Claude (Hauptumsetzer) · **Status:** umgesetzt (Regression abgesichert, keine echte Reibung), Gates grün
+
+**Vorab-Befund.** `git status -sb` sauber (nur untracked Infra-Doc; SCRUM-337–348 committet). Das bestehende `tests/validation/rework-flow-e2e.test.ts` (SCRUM-334) deckt warn/down + Feedback → `reworkHref` → `latestValidationFeedback` → revise (Version 2, offen, Trust 0) → `reworkValidationHref`/`review=revision` — endet aber beim Validation-Fokus „revision". Noch NICHT als zusammenhängende Regression gesichert: Studio-getriebener Revisions-Body, `studioSaveConfidence("revision")`, `reworkNextSteps()`-Reihenfolge, die **erneute Validierung** der Revision (→ validiert/Trust 100) und **Use/Ask** auf der revidierten Fassung. `revise` akzeptiert + sanitisiert `changes.bodyHtml` (`cleanBody → sanitizeHtml`), setzt Version+1, Trust 0, Status offen, behält Quellen.
+
+**Legacy-Pfad geprüft.** `Klarwerk/app/src/{WikiEditor,AiAssist,CaseEditor}.jsx` + `TeacherStudio.jsx` (read-only) gesichtet, nichts kopiert.
+
+**Runtime-/Flow-Evidence (neuer E2E, 1 Test grün).**
+- Offenes KO mit strukturiertem Studio-Body (`applyBodyTemplate("","procedure","de")`), eindeutiges Stichwort „SPX9".
+- Review „down" mit Pflichtfeedback (`buildValidationFeedback("down", …)` als Kommentar, dann `rate down`) → bleibt `offen`.
+- FE-Entscheidung: `reviewNextSteps(down)` → genau ein Schritt = `reworkHref(id)` = `/wissen/:id?rework=review`; `isReviewReworkContext` true.
+- Rework-Kontext: `latestValidationFeedback` erkennt verdict `down` + Body; `reworkNextSteps()` = `["feedback","revise","back"]`.
+- Studio-Revision: `applyBodyAssistSection(body, "Quelle\n…")` adressiert das Feedback (`<h3>Quelle</h3>`); `studioSaveConfidence("revision")` ehrlich (`studio.save.revision.title`, tone warn).
+- `revise` via `PUT /api/kos/:id {action:revise, changes:{statement,bodyHtml}}` → Version 2, `offen`, Trust 0; sanitisierter Body behält `<h3>Quelle</h3>` + `panel panel-info`, kein `<script`.
+- Validation-Fokus: `validationReviewContext(revidiert).kind = "revision"`; `reworkValidationHref()` = `/validierung?review=revision`; `readReviewFocusFilter` = `revision`; revidiertes KO im `GET /api/validation/board`.
+- **USE VOR Revalidierung:** `answered=true`, `sources` enthält id, aber `knowledgeClass ≠ gesichert`; `answerStatus = unverified`; `koOverview.usability ≠ ready`.
+- Erneute Validierung (`rate up`, needed=1) → `validiert`, Trust 100, Version 2; `koOverview.usability = ready` (konsistent über `useReadiness`).
+- **USE NACH Revalidierung:** `gesichert`, `sources = [id]` (quellengebunden auf genau diese Revision), `verified`, `gap=null`, `sourceRefs.validated=true`/`usability=ready`.
+
+**Gefundene Reibung / keine Reibung.** Keine echte P1/P2-Reibung gefunden. Der Review→Rework→Revalidation→Use-Pfad ist durchgängig konsistent und ehrlich: Feedback bleibt im Rework-Kontext sichtbar und führt über geordnete Schritte zur Nacharbeit; die gespeicherte Revision bleibt offen/ungeprüft (Trust 0, Version 2), Review-Fokus `revision` ist konsistent mit `version > 1`; erst die erneute Validierung macht die Revision gesichert/quellengebunden nutzbar. Wie im Ticket vorgesehen daher ehrlich berichtet + als dauerhafte Regression abgesichert.
+
+**Umgesetzter Umfang.** Neuer Runtime-/API-naher E2E `tests/validation/rework-revalidation-use-e2e.test.ts` (1 Test) über die echten HTTP-Routen + Server-Sanitizer + deterministischen Reasoner + echte Review-/Rework-/Studio-/Anzeige-Helfer. Kein Produktcode geändert (keine Reibung).
+
+**Bewusst nicht umgesetzte Gaps.** Kein getrennter Reviewer (Autor≠Reviewer) in diesem Test — bereits in `rework-flow-e2e` (Carla via demo-seed) abgedeckt; hier bewusst sauberer Bestand (admin-only) für deterministische Quellenbindung. Kein Multi-Voter-Quorum (anderweitig abgedeckt). Kein neues Testframework, kein Backend/Reasoner-Change, kein Rollen-/Notification-System, keine Demo-Politur.
+
+**Geänderte Dateien.**
+- `tests/validation/rework-revalidation-use-e2e.test.ts` (NEU)
+
+**Tests/Gates.** `npm run check` grün — **162 Dateien / 986 Tests**. Gezielt `rework-revalidation-use-e2e.test.ts` → 1/1 grün. `(cd apps/web && tsc --noEmit)` grün (FE-EXIT=0). Biome/depcruise grün.
+
+**Rest-Risiken.** E2E nutzt needed=1 für einen deterministischen (Re-)Validierungsschritt; das Mehr-Stimmen-Quorum ist anderweitig abgedeckt. Quellenbindung „genau diese Revision" gilt für den eindeutigen Token (SPX9); bei mehreren ähnlichen KOs entscheidet das bestehende Token-Overlap-Ranking. Reiner Test-Zusatz, kein Produktverhalten geändert.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add tests/validation/rework-revalidation-use-e2e.test.ts docs/qm/claude-after-report.md
+git commit -m "test(flow): review -> rework -> revalidation -> use e2e hardening (SCRUM-349)"
+git push
+```
+Kein Git/Push/Jira durch Claude.
