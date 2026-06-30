@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
-import { useKos, useReasonerStatus } from "../api/hooks";
+import { useConflicts, useKos, useReasonerStatus } from "../api/hooks";
 import type { AnswerResult } from "../api/types";
 import { DemoBanner } from "../components/DemoBanner";
 import { ConfidenceBar } from "../components/trust";
@@ -12,7 +12,7 @@ import { Button, Card, PageHeader, SectionLabel } from "../components/ui";
 import { ASK_EXAMPLES, type AskExpectationTone, askExpectation } from "../lib/askExamples";
 import { isPrefilledAskQuestion, readAskQuestion } from "../lib/askQuestion";
 import { selectAnswer } from "../lib/askResponse";
-import { answerReviewGuard, answerStatus, sourceRefs } from "../lib/askView";
+import { answerReviewGuard, answerStatus, conflictAwareSourceRefs } from "../lib/askView";
 import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
@@ -70,10 +70,17 @@ export function Ask(): JSX.Element {
 
   // SCRUM-250: KO-Bestand für lesbare Quellen-Titel (kein neuer Endpoint).
   const kos = useKos();
-  const answerSources = result?.answered ? sourceRefs(result.sources, kos.data ?? []) : [];
+  // SCRUM-357 / AG-14: konfliktbewusste Quellen — ein konfliktbetroffenes Quell-KO erscheint NICHT
+  // als uneingeschränkt nutzbar/gesichert (effektive, konfliktbegrenzte Nutzbarkeit + Konflikt-Chip).
+  const conflicts = useConflicts();
+  const answerSources = result?.answered
+    ? conflictAwareSourceRefs(result.sources, kos.data ?? [], conflicts.data ?? [])
+    : [];
   const reviewGuard = result?.answered
     ? answerReviewGuard(result.knowledgeClass, answerSources)
     : null;
+  // Mindestens eine Antwortquelle hat einen offenen Konflikt → ehrlicher Antwort-Hinweis.
+  const sourcesConflicted = answerSources.some((s) => s.conflictLimited);
 
   const ask = useMutation({
     mutationFn: () => endpoints.ask.ask(q, toReasonerLocale(i18n.language)),
@@ -231,6 +238,24 @@ export function Ask(): JSX.Element {
                 </ul>
               </div>
             ) : null}
+            {/* SCRUM-357 / AG-14 / VC-P1-1: mind. eine Antwortquelle hat einen offenen Konflikt →
+                ehrlicher Hinweis, dass die Antwort trotz Status nicht uneingeschränkt gesichert ist. */}
+            {sourcesConflicted ? (
+              <div className="mt-3 rounded-card border border-trust-warn-fill bg-trust-warn-bg px-3 py-2">
+                <p className="text-[12.5px] font-semibold text-trust-warn-text">
+                  {t("conflict.impact.title")}
+                </p>
+                <p className="mt-0.5 text-[12px] leading-relaxed text-trust-warn-text">
+                  {t("conflict.impact.hint")}
+                </p>
+                <Link
+                  to="/konflikte"
+                  className="mt-1 inline-flex items-center gap-1 text-[12px] font-semibold text-trust-warn-text underline"
+                >
+                  {t("conflict.impact.cta")}
+                </Link>
+              </div>
+            ) : null}
             {result.sources.length > 0 ? (
               <div className="mt-4">
                 <SectionLabel>{t("ask.sources")}</SectionLabel>
@@ -256,6 +281,15 @@ export function Ask(): JSX.Element {
                           className={`shrink-0 rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${EVIDENCE_TONE[useReadiness(s.usability).tone]}`}
                         >
                           {t(useReadiness(s.usability).labelKey)}
+                        </span>
+                      ) : null}
+                      {/* SCRUM-357 / AG-14: konfliktbetroffene Quelle ehrlich kennzeichnen. */}
+                      {s.conflictLimited ? (
+                        <span
+                          title={t("conflict.impact.hint")}
+                          className="shrink-0 rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-trust-warn-text"
+                        >
+                          {t("conflict.impact.badge")}
                         </span>
                       ) : null}
                       {/* SCRUM-308: Herkunfts-Kennzeichnung Demo-/Seed-Wissen (neutral, kein Statussignal). */}

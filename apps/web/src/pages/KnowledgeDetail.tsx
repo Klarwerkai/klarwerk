@@ -53,6 +53,7 @@ import {
   BODY_READ_TITLE_KEY,
   bodyReadMode,
 } from "../lib/bodyReadMode";
+import { conflictImpact, conflictLimitedUsability, conflictNotice } from "../lib/conflictImpact";
 import { isDemoKnowledge } from "../lib/demoKnowledge";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 import { deriveStatus } from "../lib/displayStatus";
@@ -420,15 +421,29 @@ export function KnowledgeDetail(): JSX.Element {
         {(ko) => {
           // SCRUM-251: kompakte Handlungs-/Statusübersicht aus bereits geladenen Feldern.
           const ov = koOverview(ko);
+          // SCRUM-357 / AG-14: Konflikt-Wirkung — ein offener (v. a. Truth-)Konflikt begrenzt die
+          // Nutzbarkeit ehrlich (ready → in-review). Gelöste Konflikte wirken nicht mehr.
+          const impact = conflictImpact(ko.id, conflicts.data ?? []);
+          const usability = conflictLimitedUsability(ov.usability, impact);
+          const notice = conflictNotice(impact);
           return (
             <>
               <Card className="mb-5">
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                   <span
-                    className={`rounded-pill px-2.5 py-0.5 font-mono text-[11px] font-semibold uppercase ${USABILITY_TONE[ov.usability]}`}
+                    className={`rounded-pill px-2.5 py-0.5 font-mono text-[11px] font-semibold uppercase ${USABILITY_TONE[usability]}`}
                   >
-                    {t(useReadiness(ov.usability).labelKey)}
+                    {t(useReadiness(usability).labelKey)}
                   </span>
+                  {/* SCRUM-357: sichtbares Konflikt-Signal direkt an der Nutzbarkeit. */}
+                  {notice ? (
+                    <span
+                      title={t(notice.hintKey)}
+                      className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text"
+                    >
+                      {t("conflict.impact.badge")}
+                    </span>
+                  ) : null}
                   <StatusPill status={ov.status} />
                   {/* SCRUM-308: Herkunfts-Kennzeichnung Demo-/Seed-Wissen (neutral, kein Statussignal). */}
                   {isDemoKnowledge(ko) ? (
@@ -450,8 +465,26 @@ export function KnowledgeDetail(): JSX.Element {
                 </div>
                 {/* SCRUM-293: konsistenter, ehrlicher Readiness-Hinweis (gleiche Sprache wie Library). */}
                 <p className="mt-1.5 text-[12px] leading-relaxed text-muted">
-                  {t(useReadiness(ov.usability).hintKey)}
+                  {t(useReadiness(usability).hintKey)}
                 </p>
+                {/* SCRUM-357 / AG-14 / VC-P1-1: ehrlicher Konflikt-Banner — offener (Truth-)Konflikt
+                    schränkt Nutzbarkeit/Trust ein, ohne das KO als falsch zu behaupten. */}
+                {notice ? (
+                  <div className="mt-2 rounded-card border border-trust-warn-fill bg-trust-warn-bg px-3 py-2">
+                    <p className="text-[12.5px] font-semibold text-trust-warn-text">
+                      {t(notice.titleKey)}
+                    </p>
+                    <p className="mt-0.5 text-[12px] leading-relaxed text-trust-warn-text">
+                      {t(notice.hintKey)}
+                    </p>
+                    <Link
+                      to={notice.to}
+                      className="mt-1 inline-flex items-center gap-1 text-[12px] font-semibold text-trust-warn-text underline"
+                    >
+                      {t("conflict.impact.cta")}
+                    </Link>
+                  </div>
+                ) : null}
                 {/* SCRUM-259: nächste Handlung als ehrliche CTA auf vorhandene Routen/Bereiche. */}
                 <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
                   <p className="text-[12.5px] text-muted">

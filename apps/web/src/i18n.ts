@@ -877,6 +877,14 @@ const de = {
   "con.intro":
     "Widersprüche werden gegenübergestellt und klassifiziert. Nur Wahrheitskonflikte lösen den menschlichen Eskalationspfad aus.",
   "con.empty": "Keine offenen Konflikte.",
+  "conflict.impact.title": "Offener Konflikt — Nutzbarkeit eingeschränkt",
+  "conflict.impact.hint":
+    "Zu diesem Wissen ist ein Konflikt offen. Es ist nicht automatisch falsch, sollte aber vor uneingeschränkter Nutzung geprüft werden.",
+  "conflict.impact.truthTitle": "Offener Wahrheitskonflikt — vor Nutzung prüfen",
+  "conflict.impact.truthHint":
+    "Zu diesem Wissen ist ein Wahrheitskonflikt offen. Bis zur Klärung gilt es als zu prüfen, nicht als uneingeschränkt gesichert.",
+  "conflict.impact.badge": "Konflikt offen",
+  "conflict.impact.cta": "Konflikt ansehen",
   "con.type.truth": "Wahrheit",
   "con.type.experience": "Erfahrung",
   "con.type.context": "Kontext",
@@ -2364,6 +2372,14 @@ const en: typeof de = {
   "con.intro":
     "Contradictions are compared and classified. Only truth conflicts trigger the human escalation path.",
   "con.empty": "No open conflicts.",
+  "conflict.impact.title": "Open conflict — usability limited",
+  "conflict.impact.hint":
+    "This knowledge has an open conflict. It is not automatically wrong, but should be reviewed before unrestricted use.",
+  "conflict.impact.truthTitle": "Open truth conflict — review before use",
+  "conflict.impact.truthHint":
+    "This knowledge has an open truth conflict. Until resolved it counts as to-review, not as unrestrictedly secured.",
+  "conflict.impact.badge": "Conflict open",
+  "conflict.impact.cta": "View conflict",
   "con.type.truth": "Truth",
   "con.type.experience": "Experience",
   "con.type.context": "Context",

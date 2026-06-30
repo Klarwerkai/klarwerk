@@ -1,7 +1,8 @@
 // SCRUM-250: DOM-freie Sicht-Ableitung für die Ask-Antwort. Macht ehrlich sichtbar, ob die Antwort
 // gesichert ist (aus der Knowledge-Class abgeleitet — KEINE neue Antwortlogik) und löst Quellen-IDs
 // in lesbare KO-Titel auf. Keine RAG/Vector-DB, keine neuen Backend-Felder. Reine Funktionen.
-import type { KnowledgeClass, KnowledgeObject } from "../api/types";
+import type { Conflict, KnowledgeClass, KnowledgeObject } from "../api/types";
+import { type ConflictImpact, conflictImpact, conflictLimitedUsability } from "./conflictImpact";
 import { isDemoKnowledge } from "./demoKnowledge";
 import { type KoUsability, koOverview } from "./koOverview";
 
@@ -50,6 +51,35 @@ export function sourceRefs(
       validated: ko ? ko.status === "validiert" : null,
       usability: ko ? koOverview(ko).usability : null,
       demo: ko ? isDemoKnowledge(ko) : false,
+    };
+  });
+}
+
+// SCRUM-357: konfliktbewusste Quellen-Sicht für Ask. Erweitert SourceRef um die Konflikt-Wirkung,
+// damit ein konfliktbetroffenes Quell-KO NICHT als uneingeschränkt nutzbar/gesichert erscheint.
+// `usability` wird hier auf die EFFEKTIVE (konfliktbegrenzte) Nutzbarkeit gesetzt — identisch zur
+// zentralen Ableitung in conflictImpact, die auch KO-Detail/Library nutzen.
+export interface ConflictAwareSourceRef extends SourceRef {
+  conflictLimited: boolean; // ungelöster Konflikt wirkt auf dieses Quell-KO
+  conflictTruth: boolean; // mind. ein Wahrheitskonflikt (stärkstes Signal)
+}
+
+export function conflictAwareSourceRefs(
+  sourceIds: readonly string[],
+  kos: readonly KnowledgeObject[],
+  conflicts: readonly Conflict[],
+): ConflictAwareSourceRef[] {
+  return sourceRefs(sourceIds, kos).map((ref) => {
+    const impact: ConflictImpact = ref.known
+      ? conflictImpact(ref.id, conflicts)
+      : { affected: false, unresolvedCount: 0, hasTruth: false, severity: "none", limited: false };
+    const usability =
+      ref.usability === null ? null : conflictLimitedUsability(ref.usability, impact);
+    return {
+      ...ref,
+      usability, // effektive, konfliktbegrenzte Nutzbarkeit (kein „ready" trotz offenem Konflikt)
+      conflictLimited: impact.limited,
+      conflictTruth: impact.hasTruth,
     };
   });
 }

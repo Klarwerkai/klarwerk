@@ -3,19 +3,19 @@
 ## Current Snapshot
 
 - Team: Team 1 / KLARWERK Produktkern / Knowledge OS / app.klarwerk.ai
-- Scope: Knowledge Input, Capture, AI-assisted Editing, Validation, KO Detail, Library, Ask, Capture → Review → Use, App-Auth/Security
+- Scope: Knowledge Input, Capture, AI-assisted Editing, Validation, KO Detail, Library, Ask, Capture → Review → Use, App-Auth/Security, Trust/Conflict-Integrity
 - Repo: `/Users/peterkohnert/Documents/dev_Klarwerk`
 - Jira Project: SCRUM
-- Last updated: 2026-06-30 19:30 CEST
-- Current status: SCRUM-356 umgesetzt durch Claude, Codex-Prüfung/Commit/Push/CI/Jira ausstehend
-- Active ticket: SCRUM-356 — Beta Auth Rate-Limit & Brute-Force Guard v0
-- Last completed ticket: SCRUM-355 — Beta Body File Attachments via Object Store v0
-- Last commit: `d7d428c216785b64c4fb38187b8e18195a5f1c40`
-- GitHub/CI status: SCRUM-355 CI grün; SCRUM-356 noch nicht gepusht
-- Beta impact: Serverseitiger Login-Brute-Force-Schutz — wiederholte fehlgeschlagene Anmeldeversuche werden je IP + normalisierter Login-ID gedrosselt (429 + Retry-After); erfolgreiche Logins bleiben möglich, keine User-Enumeration.
+- Last updated: 2026-06-30 19:57 CEST
+- Current status: SCRUM-357 umgesetzt durch Claude, Codex-Prüfung/Commit/Push/CI/Jira ausstehend
+- Active ticket: SCRUM-357 — Beta Trust & Conflict Integrity v0
+- Last completed ticket: SCRUM-356 — Beta Auth Rate-Limit & Brute-Force Guard v0
+- Last commit: `27f59ee81899ad417fc36b7a208a5bef39b8fb14`
+- GitHub/CI status: SCRUM-356 CI grün; SCRUM-357 noch nicht gepusht
+- Beta impact: Ein offener (v. a. Truth-)Konflikt wirkt jetzt ehrlich auf KO-Trust-/Nutzbarkeits-/Review-Signale: validiertes Wissen mit offenem Konflikt erscheint in KO-Detail/Library/Ask nicht mehr als „uneingeschränkt nutzbar/gesichert" (ready → in Prüfung), ohne Fake-Wahrheit. Gelöste Konflikte blockieren nicht weiter.
 - Team6 review needed: yes
-- Reason: Team6 P1 Gap AG-06 / NFR-SEC-04
-- Next planned slice: nach Pedi-Signal; Empfehlung voraussichtlich G-P2-1 (Drag&Drop/Paste), Recovery/Reset-Limit oder weiterer Team6-Security-/Input-Gap
+- Reason: Team6 P1 Gap AG-14 / VC-P1-1 / FR-VAL-01
+- Next planned slice: nach Pedi-Signal; Empfehlung voraussichtlich AG-05/EK-22 (Trust-Formel spec-konform) als Fortsetzung, G-P2-1 (Drag&Drop/Paste) oder weiterer Team6-Gap
 
 ## Current Risks / Gaps
 
@@ -26,9 +26,11 @@
 | G-P1-1 | Datei-Anhänge im Body fehlen gegenüber Legacy. | P1 | Knowledge Studio / RichTextEditor | Legacy Knowledge Input Gap | Mit SCRUM-355 abgeschlossen |
 | FR-STR-02-SESSION | Capture-Session-Dateien haben noch keine objectId und sind daher nicht body-verlinkbar (ehrlich leerer Dropdown). | P2 | Capture / Object Store | Komfort-/Upload-Folgeoptimierung, kein Datenverlust | Dokumentiert, nicht Teil von SCRUM-355 |
 | G-P2-1 | Drag&Drop / Paste fehlen gegenüber Legacy. | P2 | RichTextEditor / Studio | Legacy Komfortparität | Offen, nicht Teil von SCRUM-355/356 |
-| AG-06 | Kein App-Login-Rate-Limit/Brute-Force-Schutz. | P1 | Auth / Login | NFR-SEC-04, Top Requirement #4, Team-1-Lieferung | Mit SCRUM-356 adressiert (429 + Retry-After); Codex-Abschluss ausstehend |
+| AG-06 | Kein App-Login-Rate-Limit/Brute-Force-Schutz. | P1 | Auth / Login | NFR-SEC-04, Top Requirement #4, Team-1-Lieferung | Mit SCRUM-356 abgeschlossen |
 | AG-06-RECOVERY | Forgot/Reset-Anforderung hat noch keinen eigenen Rate-Limit (Mail-Spam-Abuse). | P2 | Auth / Recovery | Folgeoptimierung; 204-immer-Semantik bewusst unangetastet | Bewusst zurückgestellt, nicht Teil von SCRUM-356 |
 | AG-07 | Kein unabhängiger Security-Review/Pen-Test. | P1 | Security gesamt | NFR-SEC-04 AK | Bei Pedi/Team 5 (EK-17), nicht Team-1-Scope |
+| AG-14 / VC-P1-1 | Konflikte wirkten nicht auf KO-Trust/-Status; Truth-Konflikt holte validiertes KO nicht in Prüfung zurück. | P1 | Conflicts / KO / Validation / Ask / Library | FR-VAL-01, Anhang §3, Top Requirement #16 | Mit SCRUM-357 als ehrliche „conflict-limited usability" adressiert (FE-seitig, keine Server-Mutation); Codex-Abschluss ausstehend |
+| AG-14-SERVER-TRUST | Spec-konforme serverseitige Trust-Impact-Formel (z. B. Truth −12) + automatische Status-Rückführung validiert→Prüfung noch offen. | P1 | Validation / Trust-Formel | Anhang §3, AG-05/EK-22 | Bewusst zurückgestellt (gemeinsam mit AG-05 Trust-Formel zu lösen); nicht Teil von SCRUM-357 |
 
 ## Current Requirement Touchpoints
 
@@ -46,10 +48,26 @@
 | AG-06 — App-Login-Rate-Limit/Brute-Force-Schutz | Team6 `TEAM6_ACTIVE_GAPS_AND_RECOMMENDATIONS.md` | addressed in SCRUM-356 | In-Memory-Limiter im Login (IP + normalisierte Login-ID); bei Überschreitung 429 + Retry-After; Erfolg setzt Zähler zurück. |
 | NFR-SEC-04 — Security / Missbrauchsschutz | Team6 `TEAM6_CURRENT_TOP_REQUIREMENTS.md` | partially addressed in SCRUM-356 | Login-Brute-Force-Drosselung geliefert + Test (Top Requirement #4). Pen-Test (AG-07) bleibt separat bei Pedi/Team 5. |
 | Top Requirement #4 — Rate-Limit (429) + Test | Team6 `TEAM6_CURRENT_TOP_REQUIREMENTS.md` | addressed in SCRUM-356 | Benötigte Evidenz (Rate-Limit-Test) liegt vor: `services/auth/src/rate-limit.test.ts`. |
+| AG-14 / VC-P1-1 — Konflikt-Trust-/Status-Kopplung | Team6 `VALIDATION_CONFLICTS_E2E_REVIEW_V0.md` | addressed (FE-Ebene) in SCRUM-357 | Zentrale `conflictImpact`/`conflictLimitedUsability` begrenzt Nutzbarkeit für konfliktbetroffene KOs; KO-Detail/Library/Ask konsistent; keine Server-Mutation/Fake-Wahrheit. |
+| FR-VAL-01 — Peer-Bewertung → Status/Trust (Formel offen) | Team6 `VALIDATION_CONFLICTS_E2E_REVIEW_V0.md` | partially addressed in SCRUM-357 | Konfliktwirkung auf die EHRLICHE Anzeige geliefert; spec-konforme Trust-Formel (Anhang §3) bleibt offen (AG-05/EK-22). |
+| FR-CON-01..04 — Konfliktworkflow | Team6 `VALIDATION_CONFLICTS_E2E_REVIEW_V0.md` | reused (unverändert) | Bestehender Workflow (create/escalate/secondOpinion/resolve, unresolved) bleibt; Wirkung wird daraus abgeleitet. |
+| Top Requirement #16 — Konflikt-Trust-/Status-Kopplung | Team6 `TEAM6_CURRENT_TOP_REQUIREMENTS.md` | addressed (FE-Ebene) in SCRUM-357 | Konflikt → Nutzbarkeit/Trust-Ehrlichkeit sichtbar + getestet (Helper + Runtime-E2E). Serverseitige Trust-Formel als Folge-Slice. |
 
 ## Delta Log
 
-### 2026-06-30 18:48 — SCRUM-356 — pending commit
+### 2026-06-30 19:55 — SCRUM-357 — pending commit
+
+- Changed areas: neuer DOM-freier Helfer `conflictImpact.ts`, `askView.ts` (konfliktbewusste Quellen), KO-Detail, Library, Ask, i18n, Tests, Team6 handoff. KEINE Backend-/Service-Änderung.
+- What changed: Zentrale Ableitung `conflictImpact(koId, conflicts)` (offen/eskaliert/zweitmeinung wirken, Truth am stärksten, gelöst wirkt nicht) + `conflictLimitedUsability(base, impact)` (ready → in-review) + `conflictNotice`/`effectiveUsability` + `conflictAwareSourceRefs` für Ask. KO-Detail zeigt Konflikt-Badge + Banner und nutzt die begrenzte Nutzbarkeit; Library begrenzt die Reife-Plakette + leitet konfliktbetroffene Treffer auf die Konfliktseite statt in Ask; Ask markiert konfliktbetroffene Quellen, zeigt einen Antwort-Hinweis und stuft die Quellen-Nutzbarkeit herunter.
+- Beta impact: AG-14 / VC-P1-1 / Top Requirement #16 — validiertes Wissen mit offenem (Truth-)Konflikt erscheint nicht mehr als „uneingeschränkt nutzbar/gesichert". Knowledge-OS-Ehrlichkeit über KO-Detail/Library/Ask konsistent.
+- Designentscheidung (begründet): KEINE neue Trust-Formel-Architektur und KEINE serverseitige Status-Rückführung (validiert→offen). Das würde die Validierungs-/Trust-Logik (`computeOutcome`/`setValidationState`) und Modulgrenzen berühren (große Architekturänderung, im Ticket ausgeschlossen) und widerspräche der dokumentierten „keine maschinelle Wahrheitsfindung"-Entscheidung (`conflictView.resolutionEffect`). Stattdessen EINE zentrale, ehrliche „conflict-limited usability"-Ableitung — keine Fake-Wahrheit, kein Fake-Block. Server-Status/Trust/Antwortlogik unverändert.
+- „Keine Fake-Wahrheit": ein Konflikt macht ein KO nicht falsch; ein offener Konflikt heißt „Review nötig" → Nutzbarkeit ehrlich „in Prüfung". Gelöste Konflikte fallen aus der unresolved-Liste → blockieren nicht weiter (getestet).
+- New / touched requirements: AG-14, VC-P1-1, FR-VAL-01, FR-CON-01..04 (wiederverwendet), AG-05/EK-22 (zurückgestellt), Top Requirement #16.
+- Tests: `tests/app/conflict-impact.test.ts` (Helper + konfliktbewusste Quellen) + `tests/validation/conflict-trust-integrity-e2e.test.ts` (HTTP-E2E: validiertes KO → Truth-Konflikt → Nutzbarkeit/Review begrenzt, Server-Status/Trust unverändert, Ask-Quelle nicht ready; resolve → wieder nutzbar). `npm run check` grün (171 Dateien / 1035 Tests), FE-tsc strict grün.
+- Team6 review needed: yes
+- Reason: Team6 P1 Gap AG-14 / VC-P1-1 / FR-VAL-01
+
+### 2026-06-30 18:48 — SCRUM-356 — 27f59ee
 
 - Changed areas: Auth-Login-Route, neuer In-Memory-Rate-Limiter, Auth-Modul-Export, Tests, Team6 handoff. KEINE Frontend-Änderung.
 - What changed: Neuer abhängigkeitsfreier `LoginRateLimiter` (`services/auth/src/rate-limit.ts`) mit fixem Zeitfenster je Schlüssel (IP + normalisierte Login-ID). `/api/auth/login` prüft vor dem Loginversuch den Limiter: bei Überschreitung `429` + `Retry-After`-Header und generische Meldung (`RATE_LIMITED`). Nur falsche Zugangsdaten (`INVALID_CREDENTIALS`) zählen als Fehlversuch; erfolgreicher Login setzt den Zähler zurück. Nach Fenster-/TTL-Ablauf wird der Schlüssel wieder frei. Limiter ist pro App-Instanz und über die Routen-Optionen injizierbar (Test-Isolation).

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
-import { useDirectory, useKos, useLibrarySearch } from "../api/hooks";
+import { useConflicts, useDirectory, useKos, useLibrarySearch } from "../api/hooks";
 import { useToast } from "../app/ToastContext";
 import { DemoBanner } from "../components/DemoBanner";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
@@ -16,6 +16,7 @@ import {
   StatusPill,
 } from "../components/trust";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
+import { conflictImpact, conflictLimitedUsability } from "../lib/conflictImpact";
 import {
   DEMO_KNOWLEDGE_FILTERS,
   type DemoKnowledgeFilter,
@@ -45,6 +46,7 @@ import {
 import { EMPTY_LIBRARY_FILTER, buildLibraryQuery } from "../lib/libraryQuery";
 import { type MatchField, searchLibrary } from "../lib/librarySearch";
 import { canRevalidate } from "../lib/revalidation";
+import { useReadiness } from "../lib/useReadiness";
 import { categoryOptions, tagOptions } from "../lib/validationFilters";
 
 const KO_STATUSES = ["offen", "validiert"] as const;
@@ -86,6 +88,8 @@ export function Library(): JSX.Element {
   // FR-LIF-04: Autor in jeder KO-Zeile sichtbar (Namen via Directory, Fallback ID).
   const dir = useDirectory();
   const nameOf = (uid: string): string => dir.data?.find((d) => d.id === uid)?.name || uid;
+  // SCRUM-357 / AG-14: Konfliktliste für die ehrliche „conflict-limited"-Reife je Treffer.
+  const conflicts = useConflicts();
 
   // Ergebnisse über den Server-Search-/Filterpfad (Volltext + KoFilter).
   const query = useLibrarySearch(buildLibraryQuery(filter));
@@ -322,7 +326,20 @@ export function Library(): JSX.Element {
                   {win.visible.map(({ ko: k, matches }) => {
                     // SCRUM-262: ehrliche Reife/Nutzbarkeit je Treffer (DOM-freier Helper).
                     const maturity = libraryMaturity(k);
-                    const useCta = libraryUseCta(k);
+                    // SCRUM-357 / AG-14: ein offener Konflikt begrenzt die Reife ehrlich (ready → in
+                    // Prüfung). So wirkt ein validiertes KO mit offenem Truth-Konflikt NICHT „nutzbar".
+                    const impact = conflictImpact(k.id, conflicts.data ?? []);
+                    const effReadiness = useReadiness(
+                      conflictLimitedUsability(maturity.usability, impact),
+                    );
+                    // Konfliktbegrenztes KO führt nicht direkt in Ask, sondern zur Konfliktseite.
+                    const useCta = impact.limited
+                      ? {
+                          labelKey: "conflict.impact.cta",
+                          href: "/konflikte",
+                          kind: "review" as const,
+                        }
+                      : libraryUseCta(k);
                     return (
                       <div
                         key={k.id}
@@ -333,11 +350,20 @@ export function Library(): JSX.Element {
                           className="flex min-w-0 flex-1 items-center gap-3"
                         >
                           <span
-                            className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${MATURITY_TONE[maturity.tone]}`}
+                            className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${MATURITY_TONE[effReadiness.tone]}`}
                           >
-                            {t(maturity.labelKey)}
+                            {t(effReadiness.labelKey)}
                           </span>
                           <StatusPill status={deriveStatus(k)} />
+                          {/* SCRUM-357: sichtbares Konflikt-Signal direkt in der Trefferzeile. */}
+                          {impact.limited ? (
+                            <span
+                              title={t("conflict.impact.hint")}
+                              className="shrink-0 rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-trust-warn-text"
+                            >
+                              {t("conflict.impact.badge")}
+                            </span>
+                          ) : null}
                           {/* SCRUM-308: Herkunfts-Kennzeichnung Demo-/Seed-Wissen (neutral, kein Statussignal). */}
                           {isDemoKnowledge(k) ? (
                             <span

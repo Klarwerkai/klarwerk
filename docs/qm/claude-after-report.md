@@ -8807,3 +8807,51 @@ git commit -m "feat(auth): in-memory login rate-limit / brute-force guard (429 +
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-357 — Beta Trust & Conflict Integrity v0 (AG-14 / VC-P1-1 / FR-VAL-01)
+
+**Datum:** 2026-06-30 · **Rolle:** Hauptumsetzer (Claude) · **Repo:** `/Users/peterkohnert/Documents/dev_Klarwerk` (nur Team-1)
+
+**Auftrag.** Team6 markiert AG-14 / VC-P1-1 als P1-beta-relevant: Konflikte sind als Workflow vorhanden, wirken aber nicht auf KO-Trust/-Status. Ein validiertes KO mit offenem Truth-Konflikt darf nicht weiter als „voll vertrauenswürdig / uneingeschränkt nutzbar" erscheinen. Knowledge-OS-Ehrlichkeit stärken: Konflikt → Trust-/Nutzbarkeits-/Review-Signal sichtbar und konsistent. Kein Fake: Konflikt = nicht automatisch falsch.
+
+**Vorab-Befund.** `git status -sb` sauber (untrackte `docs/KLARWERK_Infrastruktur_…_v2.md` nicht angefasst). Konflikte referenzieren zwei KO-IDs (`koA`/`koB`), Typen truth/experience/context/temporal/role, Status offen/eskaliert/zweitmeinung/geloest; `conflicts.unresolved()` = alles außer geloest. `conflictView.resolutionEffect` dokumentiert bewusst: KEINE automatische KO-Status-/Trust-Mutation bei Auflösung (keine maschinelle Wahrheitsfindung). KO-Detail/Library/Ask leiten Nutzbarkeit zentral aus `koOverview(ko).usability` ab (Library via `libraryMaturity`, Ask via `sourceRefs`). FE hat `useConflicts()`-Hook; alle drei Seiten können die Konfliktliste laden. Team6-Doku (`VALIDATION_CONFLICTS_E2E_REVIEW_V0.md`) bestätigt VC-P1-1 als zentralen Beta-Risikopunkt, Trust-Formel (Anhang §3) gemeinsam mit AG-05/EK-22 zu lösen.
+
+**Designentscheidung (Option B, begründet).** Statt serverseitiger Status-Rückführung (validiert→offen) oder einer neuen Trust-Formel — beides würde die Validierungs-/Trust-Logik (`computeOutcome`/`setValidationState`) und Modulgrenzen berühren (große Architekturänderung, im Ticket ausgeschlossen) und der dokumentierten Anti-Fake-Wahrheits-Entscheidung widersprechen — wurde EINE zentrale, ehrliche „conflict-limited usability"-Ableitung eingeführt, die KO-Detail/Library/Ask konsistent nutzen. Server-Status/Trust/Antwortlogik bleiben unverändert.
+
+**Umgesetzter Umfang.**
+1. **Neuer DOM-freier Helfer** `apps/web/src/lib/conflictImpact.ts`: `conflictImpact(koId, conflicts)` (affected/unresolvedCount/hasTruth/severity/limited; offen+eskaliert+zweitmeinung wirken, geloest nicht, Truth am stärksten), `conflictLimitedUsability(base, impact)` (ready → in-review; sonst unverändert), `effectiveUsability(ko, conflicts)`, `conflictNotice(impact)` (Banner/Chip-Keys + Konfliktlink), `unresolvedConflictsForKo`.
+2. **Ask-Quellen** `askView.ts`: `conflictAwareSourceRefs(sourceIds, kos, conflicts)` (erweitert SourceRef um `conflictLimited`/`conflictTruth`, setzt die effektive, begrenzte Nutzbarkeit). `sourceRefs` unverändert (keine Test-Regression).
+3. **KO-Detail**: Konflikt-Badge an der Nutzbarkeit + ehrlicher Banner (Truth-Copy + Link `/konflikte`); Readiness-Pille/Hinweis nutzen die begrenzte Nutzbarkeit.
+4. **Library**: Reife-Plakette über die begrenzte Nutzbarkeit; konfliktbetroffener Treffer bekommt „Konflikt offen"-Chip und führt zur Konfliktseite statt direkt in Ask.
+5. **Ask**: konfliktbetroffene Quelle bekommt „Konflikt offen"-Chip + heruntergestufte Readiness; bei mind. einer konfliktbetroffenen Quelle ein Antwort-Hinweis mit Konfliktlink.
+6. **i18n** `conflict.impact.title/hint/truthTitle/truthHint/badge/cta` DE+EN.
+
+**Bewusst nicht umgesetzt.** Keine neue Trust-Formel-Architektur, keine serverseitige Status-Rückführung / Trust-Impact-Zahl (Anhang §3, AG-05/EK-22 — als P1-Folge-Slice dokumentiert), keine automatische Konflikterkennung, keine Workflow-Engine, kein Backend-/Service-Eingriff, keine Team-fremden Dateien, kein RAG/Local-LLM, kein Deployment.
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/conflictImpact.ts` (NEU)
+- `apps/web/src/lib/askView.ts` (conflictAwareSourceRefs)
+- `apps/web/src/pages/KnowledgeDetail.tsx` (Konflikt-Badge + Banner + begrenzte Nutzbarkeit)
+- `apps/web/src/pages/Library.tsx` (begrenzte Reife + Konflikt-Chip + CTA-Routing)
+- `apps/web/src/pages/Ask.tsx` (konfliktbewusste Quellen + Antwort-Hinweis)
+- `apps/web/src/i18n.ts` (conflict.impact.* DE+EN)
+- `tests/app/conflict-impact.test.ts` (NEU)
+- `tests/validation/conflict-trust-integrity-e2e.test.ts` (NEU)
+- `docs/TEAM6_UPDATE.md` (Pflicht-Nebenänderung, SCRUM-357-Eintrag)
+
+**Tests/Gates.** `conflict-impact.test.ts` (10 Tests): Impact-Ableitung (kein/offen/eskaliert/zweitmeinung/geloest, Truth vs. Nicht-Truth, koA/koB-Referenz), `conflictLimitedUsability`/`effectiveUsability` (ready→in-review, gelöst→wieder ready), `conflictNotice`, `conflictAwareSourceRefs` (downgrade + Markierung, unbekannte Quelle ohne Fake). `conflict-trust-integrity-e2e.test.ts` (HTTP-E2E): validiertes KO + offener Truth-Konflikt → Server-Status/Trust UNVERÄNDERT, aber Nutzbarkeit/Review begrenzt (in-review), Ask-Quelle nicht „ready" + konfliktmarkiert; `resolve-conflict` → fällt aus unresolved → wieder nutzbar (kein Dauer-Block). `npm run check` grün — **171 Dateien / 1035 Tests**. `(cd apps/web && tsc --noEmit)` strict grün. Biome/depcruise grün.
+
+**TEAM6_UPDATE.md updated: yes** · **Team6 review needed: yes** · **Reason: Team6 P1 Gap AG-14 / VC-P1-1 / FR-VAL-01** · **Affected requirements: AG-14, VC-P1-1, FR-VAL-01, FR-CON-01..04 (wiederverwendet), AG-05/EK-22 (zurückgestellt), Top Requirement #16** · **Affected gaps: AG-14, VC-P1-1 (FE-Ebene adressiert); AG-14-SERVER-TRUST als P1-Folge offen**
+
+**Rest-Risiken.** Die Konfliktwirkung ist FE-seitig (Anzeige/Nutzbarkeit), NICHT serverseitig im Trust-Wert/Status — die spec-konforme Trust-Impact-Formel (Anhang §3) und automatische Status-Rückführung bleiben ein Folge-Slice (AG-05/EK-22). Die Ask-Antwortlogik/`knowledgeClass` ist serverseitig unverändert; die Ehrlichkeit kommt aus dem zusätzlichen Konflikt-Hinweis + heruntergestufter Quellen-Nutzbarkeit, nicht aus einer geänderten Antwortklasse. Ohne DOM-Render-Harness sind die Seiten per FE-tsc + Helper-/HTTP-E2E belegt, nicht per gerendertem Klick.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/conflictImpact.ts apps/web/src/lib/askView.ts apps/web/src/pages/KnowledgeDetail.tsx apps/web/src/pages/Library.tsx apps/web/src/pages/Ask.tsx apps/web/src/i18n.ts tests/app/conflict-impact.test.ts tests/validation/conflict-trust-integrity-e2e.test.ts docs/TEAM6_UPDATE.md docs/qm/claude-after-report.md
+git commit -m "feat(trust): conflict-limited usability across KO-Detail/Library/Ask (SCRUM-357, AG-14/VC-P1-1/FR-VAL-01)"
+git push
+```
+Kein Git/Push/Jira durch Claude.
