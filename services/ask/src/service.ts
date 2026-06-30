@@ -1,7 +1,14 @@
 import { randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
 import type { KoService } from "../../knowledge-object";
-import type { AnswerResult, KnowledgeRef, Reasoner, ReasonerLocale } from "../../reasoner";
+import {
+  type AnswerResult,
+  DEFAULT_TOP_K,
+  type KnowledgeRef,
+  type Reasoner,
+  type ReasonerLocale,
+  selectCandidates,
+} from "../../reasoner";
 import { TRUST_MAX } from "../../validation";
 import { normalizeGapQuestion } from "./gap-text";
 import type { GapRepo } from "./repo";
@@ -57,13 +64,26 @@ export class AskService {
       status: ko.status,
       trust: ko.trust,
     }));
-    const result = await this.reasoner.answer(question, refs, locale);
-    // FR-ANA-02: Telemetrie für die Antwortquote ohne Lücke.
+    // SCRUM-360 / AG-03 / FR-ASK-02 / NFR-PERF-03: Ask reicht NICHT mehr blind alle KOs an den
+    // Reasoner/das Modell durch. Stattdessen wird hier eine begrenzte, status-/trust-bewusste
+    // Top-K-Kandidatenmenge gebildet (Relevanz-Gate dominiert, validierte/ready bevorzugt, Trust
+    // hilft als Tiebreak). Der Reasoner rankt defensiv erneut (idempotent: Top-K von Top-K = Top-K).
+    // Hinweis (ehrlich): das Laden selbst (`koService.list()`) bleibt vorerst in-memory — der
+    // DB-seitige Prefilter/100k-Lasttest bleibt offen (Team 5 / Folge-Slice, siehe TEAM6_UPDATE).
+    const candidates = selectCandidates(question, refs, DEFAULT_TOP_K);
+    const result = await this.reasoner.answer(question, candidates, locale);
+    // FR-ANA-02: Telemetrie für die Antwortquote ohne Lücke. SCRUM-360: Pool-/Kandidatengröße
+    // mitschreiben, damit die Begrenzung nachvollziehbar/auditierbar ist (kein Inhaltstext).
     await this.audit?.record({
       actor,
       action: "ask.query",
       target: result.sources[0] ?? "-",
-      payload: { answered: result.answered },
+      payload: {
+        answered: result.answered,
+        poolSize: refs.length,
+        candidateCount: candidates.length,
+        topK: DEFAULT_TOP_K,
+      },
     });
     if (!result.answered) {
       const gap = await this.createGap(question);

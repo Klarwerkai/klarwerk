@@ -1,7 +1,7 @@
 import {
   type ReasonerProvider,
   deterministicInterview,
-  keywordSelect,
+  selectCandidates,
   sourceLabel,
 } from "./provider";
 import type {
@@ -108,8 +108,10 @@ export class ModelProvider implements ReasonerProvider {
     return this.client !== undefined;
   }
 
+  // SCRUM-360: begrenzte, status-/trust-bewusste Kandidatenauswahl (siehe selectCandidates) — das
+  // Modell bekommt nur eine gedeckelte, relevant gerankte Quellenmenge statt aller KOs.
   select(question: string, candidates: readonly KnowledgeRef[]): KnowledgeRef[] {
-    return keywordSelect(question, candidates);
+    return selectCandidates(question, candidates);
   }
 
   async structure(rawText: string, locale: ReasonerLocale = "de"): Promise<StructureResult> {
@@ -171,7 +173,9 @@ export class ModelProvider implements ReasonerProvider {
     context: readonly KnowledgeRef[],
     locale: ReasonerLocale = "de",
   ): Promise<AnswerResult> {
-    const relevant = keywordSelect(question, context);
+    // SCRUM-360: begrenzte, status-/trust-bewusste Top-K-Auswahl → das Modell bekommt nur eine
+    // gedeckelte, relevant gerankte Quellenmenge (kein blindes Durchreichen aller KOs).
+    const relevant = selectCandidates(question, context);
     // FR-RSN-03: ohne belastbares Wissen keine Rateantwort — Modell wird gar nicht erst befragt.
     const best = relevant[0];
     if (!best) {

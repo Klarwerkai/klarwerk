@@ -261,6 +261,62 @@ export function keywordSelect(
     .map((x) => x.c);
 }
 
+// SCRUM-360 / AG-03 / FR-ASK-02 / NFR-PERF-03: begrenzte, status-/trust-bewusste Top-K-Kandidaten-
+// auswahl. Ziel ist sichtbarer Beta-Fortschritt OHNE RAG/Embeddings/Suchmaschine/DB-Umbau: Ask reicht
+// nicht mehr blind alle KOs an den Reasoner/das Modell durch, sondern eine klar begrenzte, nachvoll-
+// ziehbar gerankte Auswahl. Default-Obergrenze für die Kandidatenliste (pro Frage).
+export const DEFAULT_TOP_K = 8;
+
+// Status-/Trust-Bonus für das Ranking — STRIKT < 1, damit eine höhere Keyword-Überschneidung IMMER
+// gewinnt (irrelevante Störer können nie über relevantere KOs steigen). Innerhalb gleicher Relevanz
+// bevorzugt der Bonus validierte/„ready" Quellen und höheren Trust. Trust HILFT, ist aber keine
+// Wahrheit (PI-K2) → nur als feiner Tiebreaker, nicht als eigenständiges Relevanzsignal. Konflikt-
+// wirkung (SCRUM-357/358) fließt bereits über Status/Trust ein (ein Truth-Konflikt setzt ein KO
+// serverseitig auf „offen" + senkt den Trust), daher kein Widerspruch zu diesen Signalen.
+export function statusTrustBoost(ref: Pick<KnowledgeRef, "status" | "trust">): number {
+  const statusBonus = ref.status === "validiert" ? 0.5 : 0;
+  const trust = Math.max(0, Math.min(100, ref.trust));
+  const trustBonus = (trust / 100) * 0.4; // max 0.4 → Summe max 0.9 (< 1)
+  return statusBonus + trustBonus;
+}
+
+export interface RankedCandidate {
+  ref: KnowledgeRef;
+  keywordScore: number; // reine Relevanz (Keyword-Überschneidung) — der dominante Gate.
+  rankScore: number; // keywordScore + gedeckelter Status-/Trust-Bonus (< 1).
+}
+
+// Nachvollziehbares, DOM-freies Ranking: (1) Relevanz-Gate (Keyword-Überschneidung > 0), (2) stabile
+// Sortierung nach rankScore (Relevanz dominiert, Status/Trust als Tiebreak), (3) harte Begrenzung auf
+// topK Kandidaten. Bei Gleichstand bleibt die Eingabereihenfolge erhalten (stabil).
+export function rankCandidates(
+  question: string,
+  candidates: readonly KnowledgeRef[],
+  topK: number = DEFAULT_TOP_K,
+): RankedCandidate[] {
+  const words = tokenize(question);
+  const limit = Math.max(1, Math.floor(topK));
+  return candidates
+    .map((ref) => {
+      const keywordScore = overlap(words, tokenize(`${ref.title} ${ref.statement}`));
+      return { ref, keywordScore, rankScore: keywordScore + statusTrustBoost(ref) };
+    })
+    .filter((x) => x.keywordScore > 0)
+    .sort((a, b) => b.rankScore - a.rankScore)
+    .slice(0, limit);
+}
+
+// Begrenzte, status-/trust-bewusste Kandidatenliste (nur die Refs, in Rangfolge). Ersetzt das
+// frühere „alle Keyword-Treffer unbegrenzt" — Antworten bleiben quellengebunden, aber die an den
+// Reasoner/das Modell gereichte Menge ist gedeckelt und bevorzugt validierte/ready Quellen.
+export function selectCandidates(
+  question: string,
+  candidates: readonly KnowledgeRef[],
+  topK: number = DEFAULT_TOP_K,
+): KnowledgeRef[] {
+  return rankCandidates(question, candidates, topK).map((x) => x.ref);
+}
+
 // FR-RSN-04: deterministischer Fallback ohne Modell. Immer verfügbar, Ergebnisse
 // klar als Demo markiert; semantische Auswahl über Keyword-Überschneidung.
 export class DeterministicProvider implements ReasonerProvider {
@@ -303,8 +359,11 @@ export class DeterministicProvider implements ReasonerProvider {
     return deterministicInterview(answers, true, locale);
   }
 
+  // SCRUM-360: status-/trust-bewusste, auf topK begrenzte Kandidatenauswahl statt unbegrenztem
+  // reinem Keyword-Ranking. Relevanz bleibt dominanter Gate; validierte/ready Quellen werden bei
+  // gleicher Relevanz bevorzugt.
   select(question: string, candidates: readonly KnowledgeRef[]): KnowledgeRef[] {
-    return keywordSelect(question, candidates);
+    return selectCandidates(question, candidates);
   }
 
   async answer(

@@ -1,6 +1,16 @@
 // Öffentliche API des Moduls reasoner.
 export { Reasoner } from "./src/service";
-export { DeterministicProvider, keywordSelect, type ReasonerProvider } from "./src/provider";
+export {
+  DeterministicProvider,
+  keywordSelect,
+  type ReasonerProvider,
+  // SCRUM-360 / AG-03: begrenzte, status-/trust-bewusste Top-K-Kandidatenauswahl.
+  DEFAULT_TOP_K,
+  selectCandidates,
+  rankCandidates,
+  statusTrustBoost,
+  type RankedCandidate,
+} from "./src/provider";
 export { ModelProvider, type ModelClient } from "./src/provider-model";
 export {
   anthropicClient,

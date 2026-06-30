@@ -8952,3 +8952,52 @@ git commit -m "feat(trust): central, capped trust formula (warn/down weights, ma
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-360 — Beta Ask Retrieval & Status-Aware Top-K v0
+
+**Datum:** 2026-06-30 · **Rolle:** Hauptumsetzer (Claude) · **Repo:** `/Users/peterkohnert/Documents/dev_Klarwerk` (nur Team-1)
+
+**Kurzfazit.** Ask reicht nicht mehr blind alle KOs an den Reasoner/das Modell durch. Eine neue zentrale, DOM-freie, nachvollziehbare Top-K-Kandidatenauswahl (`selectCandidates`/`rankCandidates`, `DEFAULT_TOP_K=8`) begrenzt die Kandidatenmenge und rankt status-/trust-bewusst: Keyword-Relevanz bleibt der dominante Gate (irrelevante Störer steigen nie auf), ein gedeckelter Status-/Trust-Bonus (< 1) bevorzugt bei gleicher Relevanz validierte/„ready" Quellen und höheren Trust. Antworten bleiben quellengebunden; ungeprüftes Wissen bleibt nur ehrlich gekennzeichnet; ohne Treffer entsteht eine ehrliche Wissenslücke. Kein RAG, keine Embeddings, keine Suchmaschine, kein DB-Umbau.
+
+**SCRUM-Ticket.** SCRUM-360 — Beta Ask Retrieval & Status-Aware Top-K v0. **Claude beteiligt: ja.**
+
+**Vorab-Befund.** `git status -sb` sauber (untrackte v2-Infra-Datei nicht angefasst). `AskService.ask` lud ALLE KOs (`koService.list()`), mappte jedes auf `KnowledgeRef` und übergab die gesamte Menge an `reasoner.answer`. Der Reasoner-Pfad (`DeterministicProvider`/`ModelProvider`) wählte über `keywordSelect` (reines Keyword-Ranking, UNBEGRENZT, ohne Status/Trust) — `best = relevant[0]` bestimmt Antwort/knowledgeClass. Folge (AG-03): blindes Durchreichen, keine Obergrenze, kein status-/trust-bewusstes Ranking. `KnowledgeRef` trägt bereits `status` + `trust` → status-/trust-bewusstes Ranking ist OHNE Modulgrenzverletzung im Reasoner möglich (kein FE-/knowledge-object-Import).
+
+**Team6-Bezug.** AG-03 (Retrieval all-in-memory/Keyword/100k unbelegt), FR-ASK-02 (relevante Wissensobjekte finden), NFR-PERF-03 (Skalierung), EK-23 (Ask-Semantik/Skalierung), AG-P2-2 (ungeprüfte Antworten ehrlich gekennzeichnet).
+
+**Umgesetzter Umfang.**
+1. **Zentrale Top-K-Auswahl** (`services/reasoner/src/provider.ts`): `DEFAULT_TOP_K=8`, `statusTrustBoost(ref)` (validiert +0.5, Trust/100·0.4, Summe < 1), `rankCandidates(question, candidates, topK)` (Relevanz-Gate `keywordScore>0` → Sortierung nach `rankScore = keywordScore + statusTrustBoost` → `slice(0, topK)`), `selectCandidates(...)` (nur Refs). Strikt < 1 garantiert: höhere Keyword-Überschneidung gewinnt IMMER; Status/Trust ordnen nur GLEICH relevante Kandidaten.
+2. **Provider auf Top-K umgestellt:** `DeterministicProvider.select`/`answer` und `ModelProvider.select`/`answer` nutzen `selectCandidates`. Das Modell bekommt nur die gedeckelte, relevant gerankte Quellenmenge (kein unbegrenztes Grounding).
+3. **Ask-Boundary** (`services/ask/src/service.ts`): `ask` bildet `selectCandidates(question, refs, DEFAULT_TOP_K)` VOR `reasoner.answer` (idempotent zum erneuten Reasoner-Ranking) und schreibt `poolSize`/`candidateCount`/`topK` ins `ask.query`-Audit (nachvollziehbar/auditierbar, kein Inhaltstext).
+4. **Exporte** (`services/reasoner/index.ts`): `DEFAULT_TOP_K`, `selectCandidates`, `rankCandidates`, `statusTrustBoost`, `RankedCandidate`. `keywordSelect` bleibt rückwärtskompatibel erhalten.
+
+**Beta-Wirkung.** Ask nutzt eine klar begrenzte, nachvollziehbare Kandidatenauswahl statt blindem All-in-Memory-Durchreichen; Ranking bevorzugt validierte/ready Quellen, Störer steigen nicht auf; ungeprüftes Wissen bleibt nur ehrlich gekennzeichnet (answerStatus/knowledgeClass unverändert); Ask/KO-Detail/Library-Trust-Semantik bleibt konsistent.
+
+**Geänderte Dateien.**
+- `services/reasoner/src/provider.ts` (DEFAULT_TOP_K + statusTrustBoost + rankCandidates + selectCandidates; DeterministicProvider.select)
+- `services/reasoner/src/provider-model.ts` (select/answer → selectCandidates)
+- `services/reasoner/index.ts` (Exporte)
+- `services/ask/src/service.ts` (begrenzte Kandidatenmenge vor reasoner.answer + Audit-Payload)
+- `services/reasoner/src/candidate-ranking.test.ts` (NEU, Unit)
+- `services/ask/src/retrieval-topk.test.ts` (NEU, Scale-Smoke Service-Level)
+- `tests/ask/ask-retrieval-topk-e2e.test.ts` (NEU, HTTP-E2E)
+- `docs/TEAM6_UPDATE.md` (Pflicht-Nebenänderung, SCRUM-360-Eintrag)
+
+**Tests/Gates.** Reasoner-Unit: statusTrustBoost < 1, Relevanz-Gate, Relevanz dominiert (offenes KO mit mehr Überschneidung schlägt validiertes mit weniger), Status/Trust-Tiebreak bei gleicher Relevanz, topK-Bound (default + explizit), leer bleibt leer. Ask-Scale-Smoke (Service): ~220 KOs + Störer → Kandidatenmenge ≤ topK (auditierbar), Antwort quellengebunden auf das validierte Ziel-KO (kein Störer, nicht die offene Variante), ohne Treffer ehrliche Lücke. HTTP-E2E `/api/ask`: validiertes Ziel-KO trotz vieler Störer als Quelle; ohne Treffer Lücke. `npm run check` grün — **175 Module / 177 Dateien / 1063 Tests**; Build/Biome/dependency-cruiser grün (keine neue Modulgrenzverletzung). Keine FE-Dateien geändert → FE-tsc nicht erforderlich.
+
+**TEAM6_UPDATE.md updated: yes** · **Team6 review needed: yes** · **Reason: Team6 P1 Gap AG-03 / FR-ASK-02 / NFR-PERF-03** · **Affected requirements: AG-03 (teilweise), FR-ASK-02, NFR-PERF-03, EK-23, AG-P2-2 (berührt)** · **Affected gaps: AG-03 (teilweise geschlossen — Top-K/Status-Trust-Ranking); AG-03-DBINDEX (neu, offen: DB-Prefilter/Index + 100k-Lasttest)**
+
+**Bewusst nicht umgesetzt.** Kein RAG, keine Embeddings, keine neue Suchmaschine, keine DB-/Repo-Architekturänderung, kein DB-seitiger Prefilter/Index, kein 100k-Lasttest (Team 5), keine Fake-Validierung, kein Deployment/Server/DNS, keine Team-fremden Dateien, keine Team-2-/Local-LLM-Abhängigkeit. Keine UI-Politur erzwungen — die vorhandene Ask-UI (answerStatus/Quellen-Readiness/Konfliktbewusstheit) ist ausreichend; stattdessen Tests/Regression gestärkt.
+
+**Rest-Risiken.** Das Laden selbst (`koService.list()`) bleibt vorerst in-memory — der tiefere AG-03-Teil (DB-Ranking/Prefilter, Index, 100k-Beleg) ist NICHT umgesetzt und als AG-03-DBINDEX (P1, Team 1/Team 5) dokumentiert; dieser Slice begrenzt die an den Reasoner gereichte Kandidatenmenge, nicht die geladene Gesamtmenge. Das Ranking bleibt Keyword-basiert (kein semantisches Embedding) — Synonyme/Paraphrasen ohne Token-Überschneidung erzeugen weiter eine ehrliche Lücke (bewusst, Anti-Halluzination). `DEFAULT_TOP_K=8` ist ein pragmatischer Beta-Wert (kein Tuning gegen reale Korpora). Postgres-Pfad nutzt dieselbe Service-/Reasoner-Logik, ist aber nur im In-Memory-/HTTP-Test belegt (kein Testcontainers-Lauf in dieser Umgebung).
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add services/reasoner/src/provider.ts services/reasoner/src/provider-model.ts services/reasoner/index.ts services/ask/src/service.ts services/reasoner/src/candidate-ranking.test.ts services/ask/src/retrieval-topk.test.ts tests/ask/ask-retrieval-topk-e2e.test.ts docs/TEAM6_UPDATE.md docs/qm/claude-after-report.md
+git commit -m "feat(ask): bounded, status/trust-aware top-k candidate selection for retrieval (SCRUM-360, AG-03/FR-ASK-02/NFR-PERF-03)"
+git push
+```
+Kein Git/Push/Jira durch Claude.
