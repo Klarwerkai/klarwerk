@@ -63,6 +63,14 @@ describe("SCRUM-328: validationBoardFocus", () => {
       "val.focusReset",
       "val.focusEmpty.filtered",
       "val.focusEmpty.otherFilters",
+      // SCRUM-364: persönliche „Mir zugewiesen"-Linse + ehrlicher Empty-State.
+      "val.mineFocus.title",
+      "val.mineFocus.hint",
+      "val.mineFocus.count",
+      "val.mineFocus.reset",
+      "val.mineEmpty.title",
+      "val.mineEmpty.hint",
+      "val.mineEmpty.cta",
     ];
     for (const key of keys) {
       for (const lng of ["de", "en"]) {

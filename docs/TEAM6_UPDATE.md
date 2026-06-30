@@ -6,15 +6,15 @@
 - Scope: Knowledge Input, Capture, AI-assisted Editing, Validation, KO Detail, Library, Ask, Capture → Review → Use, App-Auth/Security, Trust/Conflict-Integrity
 - Repo: `/Users/peterkohnert/Documents/dev_Klarwerk`
 - Jira Project: SCRUM
-- Last updated: 2026-06-30 22:20 CEST
-- Current status: SCRUM-363 umgesetzt durch Claude, Codex-Prüfung/Commit/Push/CI/Jira ausstehend
-- Active ticket: SCRUM-363 — Beta Assignment Notification & Work Queue Feed v0
-- Last completed ticket: SCRUM-362 — Beta Retrieval DB Index & Query Evidence v0
+- Last updated: 2026-06-30 22:45 CEST
+- Current status: SCRUM-364 umgesetzt durch Claude, Codex-Prüfung/Commit/Push/CI/Jira ausstehend
+- Active ticket: SCRUM-364 — Beta Review Queue Execution & Assignment Completion v0
+- Last completed ticket: SCRUM-363 — Beta Assignment Notification & Work Queue Feed v0
 - Last commit: `b9ab7e638a2488c8798ea5b13e1211247963e447`
-- GitHub/CI status: SCRUM-361 CI grün; SCRUM-362/363 noch nicht gepusht
-- Beta impact: Persönliche offene Review-Zuweisungen erscheinen jetzt als eigene Kategorie im bestehenden In-App-Feed (Topbar-Glocke). `/api/notifications` lädt zusätzlich die offenen Zuweisungen der ANGEMELDETEN Person (`ValidationService.openAssignmentsFor(user.id)`) — nur die eigenen, nie fremde, erledigte verschwinden. Der Feed kennzeichnet sie ruhig mit „Review für dich" und führt per Klick zur Validierung (`/validierung`). Konflikt-/Lücken-Benachrichtigungen bleiben unverändert. Kein neues Notification-Backend, kein Push/WebSocket/E-Mail, kein neues Rollen-/Assignee-System — reine Sicht auf vorhandene Assignments/KO-Daten.
+- GitHub/CI status: SCRUM-361 CI grün; SCRUM-362/363/364 noch nicht gepusht
+- Beta impact: Der persönliche Review-Work-Queue-Fluss ist jetzt durchgängig. Die Assignment-Benachrichtigung führt in die fokussierte „Mir zugewiesen"-Linse (`/validierung?mine=1`), das Board benennt sie verständlich („Dir zugewiesene Review-Arbeit") und zeigt einen ruhigen Empty-State, falls nichts für die Person offen ist; ein Klick führt zurück zur allgemeinen Liste. Schlüssel-Fix: `ValidationService.board()` reichert das KO-`assignments`-Feld jetzt aus den OFFENEN Zuweisungen an — erst dadurch arbeiten die (bisher mit Live-Daten leerlaufende) `mineOnly`-Linse und die Zugewiesen-Markierung mit echten Daten; nach der Bewertung wird die Zuweisung `done` und fällt aus Feed UND Linse. Ehrlich: erledigte Zuweisung ≠ automatisch validiert (Quorum bleibt maßgeblich). Kein neues Notification-Backend, kein Push/WebSocket/E-Mail, kein neues Rollen-/Assignee-Modell.
 - Team6 review needed: yes
-- Reason: Team6 P1 Gap AG-15 / Assignment notification / Review queue visibility
+- Reason: AG-15 follow-up / Assignment execution flow / FR-VAL-05/06 / VC-P1-2
 - Next planned slice: nach Pedi-Signal; offen u. a. AG-03-DBINDEX 10k/100k-Lasttest (Team 5), AG-05-TRUST-FORMULA-REST (mehrstufige §3-Formel), AG-06-RESET (Reset-Rate-Limit) oder weiterer Team6-Gap
 
 ## Current Risks / Gaps
@@ -36,7 +36,7 @@
 | AG-03 | Ask/Retrieval lädt alle KOs in-memory; nur Keyword; Antwortkontext unbegrenzt an Reasoner/Modell; 100k nicht belegt. | P1 | Ask / Reasoner / Retrieval | FR-ASK-02, NFR-PERF-03, A-P1-1 | Weiter adressiert: SCRUM-360 (Top-K an Reasoner) + SCRUM-361 (datenquellennahe `findCandidates`-Vorauswahl statt `list()`-Kernpfad, InMemory + Pg). Echter DB-Index + 100k-Lasttest bleibt offen (AG-03-DBINDEX); Codex-Abschluss ausstehend |
 | AG-03-DBINDEX | Kein echter DB-Index (FTS/trigram) auf den Suchfeldern; ILIKE-Prefilter skaliert nicht beliebig; 100k unbelegt. | P1 | Ask / Persistence / Scale | FR-ASK-02, NFR-PERF-03, EK-23 | Verengt durch SCRUM-361 (Prefilter) + SCRUM-362 (Index): `pg_trgm` + GIN-Trigramm-Indizes je Suchfeld (title/statement/category/tags) machen den ILIKE-Pfad indexgestützt; Query↔Index aus EINER Konstante. OFFEN: 10k/100k-Lasttest — Team 5; Verifikation `pg_trgm`-Verfügbarkeit in Zielumgebung — Pedi/Ops |
 | AG-P2-2 | Copy „ausschließlich validiert" ↔ Verhalten (antwortet aus ungeprüft, gekennzeichnet). | P2 | Ask / Copy | A-P2-1, EK-23 | Berührt: SCRUM-360 hält ungeprüfte Antworten ehrlich gekennzeichnet (answerStatus/knowledgeClass unverändert) und bevorzugt validierte Quellen; finale Copy-/„validiert-only"-Entscheidung bleibt Pedi/EK-23 |
-| AG-15 | Zuweisungen fehlten als eigene In-App-Benachrichtigung im Topbar-Feed (nur Konflikte/Lücken sichtbar). | P1 | Ask / Notifications / Review-Queue | VC-P1-2, FR-VAL-05/06, EK-26 | Mit SCRUM-363 adressiert: persönliche offene Review-Zuweisungen erscheinen als eigene Feed-Kategorie („Review für dich" → /validierung), pro Nutzer gefiltert; Codex-Abschluss ausstehend. „Board+E-Mail reichen?"-Beta-Akzeptanz bleibt Pedi/Team 5 (EK-26) |
+| AG-15 | Zuweisungen fehlten als eigene In-App-Benachrichtigung im Topbar-Feed (nur Konflikte/Lücken sichtbar). | P1 | Ask / Notifications / Review-Queue | VC-P1-2, FR-VAL-05/06, EK-26 | SCRUM-363: persönliche offene Review-Zuweisungen als eigene Feed-Kategorie. SCRUM-364: Fluss vervollständigt — Benachrichtigung → fokussierte „Mir zugewiesen"-Linse (`/validierung?mine=1`) → Bewertung → Zuweisung `done` → verschwindet aus Feed + Linse; Board reichert `assignments` aus offenen Zuweisungen an (Linse arbeitet jetzt mit Live-Daten). Codex-Abschluss ausstehend. „Board+E-Mail reichen?"-Beta-Akzeptanz bleibt Pedi/Team 5 (EK-26) |
 
 ## Current Requirement Touchpoints
 
@@ -74,6 +74,17 @@
 | VC-P1-2 / EK-26 — Assignment-Feed vs. Beta-Akzeptanz | Team6 `TEAM6_ACTIVE_GAPS_AND_RECOMMENDATIONS.md` | addressed in SCRUM-363 | In-App-Feed-Variante geliefert (statt „Board+E-Mail reichen"); finale Beta-Akzeptanz/Reichweite bleibt Pedi/Team 5 (EK-26). |
 
 ## Delta Log
+
+### 2026-06-30 22:45 — SCRUM-364 — pending commit
+
+- Changed areas: `apps/web/src/lib/validationFilters.ts` (Query-/Linsen-Helfer + Empty-Hint), `apps/web/src/lib/notificationTarget.ts` (assignment → `/validierung?mine=1`), `apps/web/src/pages/Validation.tsx` (lazy `?mine=1`, URL-Sync, Fokus-Card, Empty-State), `apps/web/src/i18n.ts` (`val.mineFocus.*` / `val.mineEmpty.*` DE/EN), `services/validation/src/service.ts` (`board()` reichert `assignments` aus offenen Zuweisungen an), Tests.
+- What changed: AG-15-Folgeschritt — der persönliche Review-Work-Queue-Fluss ist durchgängig. (1) Neue DOM-freie Helfer `readMineOnlyFilter`/`applyMineOnlyParam`/`validationMineHref`/`mineQueueEmptyHint`; die Assignment-Benachrichtigung führt jetzt in `/validierung?mine=1` statt in die generische Liste. (2) Das Validation Board initialisiert die `mineOnly`-Linse lazy aus `?mine=1`, hält den Param URL-synchron (übrige Query origin/review/demo unberührt), zeigt eine verständliche Fokus-Card („Dir zugewiesene Review-Arbeit" + Zähler + Rückweg) und einen spezifischen, ruhigen Empty-State, wenn nichts für die Person offen ist. (3) Schlüssel-Fix im Backend: `ValidationService.board()` füllt das vorhandene KO-`assignments`-Feld aus den OFFENEN Zuweisungen (AssignmentRepo). Bisher war das Feld zur Laufzeit immer `[]`, sodass die `mineOnly`-Linse und die Zugewiesen-Markierung mit Live-Daten leerliefen — jetzt arbeiten sie real. Erledigte (done) Zuweisungen erscheinen nicht → ein KO fällt aus der persönlichen Linse, sobald die Person es bewertet hat.
+- Beta impact: AG-15 / FR-VAL-05/06 / VC-P1-2 — „Diese Review-Arbeit ist für mich. Ich kann sie jetzt abarbeiten. Danach ist sie aus meiner persönlichen Queue raus." Topbar-Glocke → fokussierte Linse → Entscheidung → Zuweisung erledigt → weg.
+- Designentscheidung (begründet): Kein neues Notification-Backend, kein Push/WebSocket/E-Mail, kein neues Rollen-/Assignee-Datenmodell, keine Read/Unread-Persistenz über die Sitzung hinaus. Die Board-Anreicherung ist eine reine Lese-Sicht auf vorhandene Assignment-/KO-Daten. Ehrlich: erledigte Zuweisung ≠ automatisch validiert — fehlt das Quorum, bleibt das KO „offen" (E2E belegt: nach einer grünen Stimme von zwei bleibt Status offen, Carlas Benachrichtigung ist trotzdem weg).
+- New / touched requirements: AG-15, FR-VAL-05, FR-VAL-06, VC-P1-2, EK-26 (Beta-Akzeptanz/Reichweite bleibt Pedi/Team 5).
+- Tests: `tests/validation/validation-filters.test.ts` (mine-Query-Helfer + Empty-Hint), `tests/analytics/notification-target.test.ts` (assignment → `/validierung?mine=1`), `tests/validation/validation-board-focus.test.ts` (i18n-Präsenz der neuen Keys), `tests/app/review-queue-execution-e2e.test.ts` (NEU, HTTP-E2E: Notification → Linse/Filter → Bewertung → Zuweisung done → Notification weg; KO bleibt offen; keine Fake-Ownership). `npm run check` grün (182 Dateien / 1090 Tests), Build/Biome/dependency-cruiser grün, FE-tsc strict grün.
+- Team6 review needed: yes
+- Reason: AG-15 follow-up / Assignment execution flow / FR-VAL-05/06 / VC-P1-2
 
 ### 2026-06-30 22:20 — SCRUM-363 — pending commit
 

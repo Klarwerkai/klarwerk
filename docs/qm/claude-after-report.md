@@ -9145,3 +9145,54 @@ git push
 ```
 
 **Stop-Hinweis:** Claude macht kein Git, kein Commit, kein Push, kein Jira. Übergabe an Codex/Pedi.
+
+---
+
+## SCRUM-364 — Beta Review Queue Execution & Assignment Completion v0
+
+**Datum:** 2026-06-30 · **Rolle:** Hauptumsetzer (Claude) · **Repo:** `/Users/peterkohnert/Documents/dev_Klarwerk` (nur Team-1)
+
+**Kurzfazit.** Der persönliche Review-Work-Queue-Fluss ist jetzt durchgängig: Die Assignment-Benachrichtigung (Topbar-Glocke) führt in die fokussierte „Mir zugewiesen"-Linse (`/validierung?mine=1`), das Board benennt die Linse verständlich („Dir zugewiesene Review-Arbeit") und zeigt einen ruhigen Empty-State, falls nichts für die Person offen ist; ein Klick führt zurück zur allgemeinen Liste. Nach der Bewertung wird die Zuweisung `done` und verschwindet aus Feed UND Linse. Schlüssel-Fix: `ValidationService.board()` füllt das KO-`assignments`-Feld aus den OFFENEN Zuweisungen — erst dadurch arbeitet die bislang mit Live-Daten leerlaufende `mineOnly`-Linse real. Ehrlich: erledigte Zuweisung ≠ automatisch validiert. Kein neues Backend, kein neues Rollen-/Assignee-Modell.
+
+**SCRUM-Ticket.** SCRUM-364 — Beta Review Queue Execution & Assignment Completion v0.
+
+**Vorab-Befund.** `git status -sb` sauber (untrackte v2-Infra-Datei unberührt). `ValidationFilterState.mineOnly` und `matchesValidationFilter` (`k.assignments.includes(userId)`) existierten bereits; `mineOnly` war aber nur eine lokale Checkbox ohne Deep-Link. `notificationTarget("assignment")` führte generisch nach `/validierung`. `ValidationService.rate()` setzt die offene Zuweisung des bewertenden Nutzers bereits auf `done`. **Kritischer Befund:** Das KO-Feld `assignments` wird bei `create` auf `[]` gesetzt und nirgends nachgeführt — `validation.assign` schreibt nur ins AssignmentRepo. Das Board (`koService.list`) lieferte daher KOs mit `assignments: []`, sodass die `mineOnly`-Linse und die Zugewiesen-Markierung mit Live-Daten leer liefen (funktionierten bisher nur in Unit-Tests mit handgebauten KOs). Ohne Anreicherung wäre die persönliche Linse im Betrieb immer leer gewesen.
+
+**Team6-Bezug.** AG-15 (Folgeschritt: Assignment-Execution-Flow), FR-VAL-05, FR-VAL-06, VC-P1-2, EK-26.
+
+**Umgesetzter Umfang.**
+1. **Query-/Link-Helfer** (`validationFilters.ts`, DOM-frei): `MINE_FILTER_PARAM="mine"`, `readMineOnlyFilter`, `applyMineOnlyParam` (setzt/entfernt `mine=1`, erhält übrige Query), `validationMineHref()` → `/validierung?mine=1`, `mineQueueEmptyHint({mineOnly,visibleCount})` (ehrlicher Empty-Hint nur bei aktiver Linse ohne Treffer).
+2. **`notificationTarget`**: assignment → `validationMineHref()` (`/validierung?mine=1`) statt generisch.
+3. **Validation Board** (`Validation.tsx`): `filter.mineOnly` lazy aus `?mine=1`; URL-Sync beim Umschalten (übrige Query unberührt); verständliche Fokus-Card „Dir zugewiesene Review-Arbeit" + Zähler + „Alle offenen anzeigen"; spezifischer, ruhiger Empty-State bei aktiver Linse ohne persönliche Arbeit (Vorrang vor dem generischen Filter-Empty).
+4. **Backend-Schlüssel-Fix** (`ValidationService.board()`): reichert das KO-`assignments`-Feld aus den OFFENEN Zuweisungen (AssignmentRepo) an — reine Lese-Sicht, kein neues Datenmodell. Erledigte Zuweisungen erscheinen nicht → KO fällt nach Bewertung aus der persönlichen Linse. Aktiviert zugleich die vorhandene `val.assigned`-Markierung mit echten Daten.
+5. **i18n** DE/EN: `val.mineFocus.title/hint/count/reset`, `val.mineEmpty.title/hint/cta`.
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/validationFilters.ts` (mine-Query-Helfer + Empty-Hint)
+- `apps/web/src/lib/notificationTarget.ts` (assignment → /validierung?mine=1)
+- `apps/web/src/pages/Validation.tsx` (lazy mineOnly + URL-Sync + Fokus-Card + Empty-State)
+- `apps/web/src/i18n.ts` (val.mineFocus.* / val.mineEmpty.* DE/EN)
+- `services/validation/src/service.ts` (`board()` Assignment-Anreicherung)
+- `tests/validation/validation-filters.test.ts` (erweitert)
+- `tests/analytics/notification-target.test.ts` (Ziel aktualisiert)
+- `tests/validation/validation-board-focus.test.ts` (i18n-Präsenz neuer Keys)
+- `tests/app/review-queue-execution-e2e.test.ts` (NEU, HTTP-E2E)
+- `docs/TEAM6_UPDATE.md` (Pflicht-Nebenänderung)
+
+**Tests/Gates.** Filter-Helfer: `?mine=1`-Lesen, Param-Setzen/Entfernen mit Query-Erhalt, `validationMineHref` Round-Trip, Empty-Hint nur bei aktiver Linse ohne Treffer. notification-target: assignment → `/validierung?mine=1`. board-focus: i18n DE+EN der neuen Keys. HTTP-E2E: zugewiesene Person erhält Benachrichtigung → Ziel `/validierung?mine=1` aktiviert Linse → Board trägt ihre Zuweisung, `matchesValidationFilter` true für sie / false für andere → sie bewertet (up) → Zuweisung done, Benachrichtigung weg → KO bleibt `offen` (Quorum 2 nicht erfüllt → erledigt ≠ validiert); fremde Zuweisung erscheint nicht als eigene Arbeit. Regression: bestehender Validierungs-Workflow-E2E (`validation-routes.test.ts`) unverändert grün. `npm run check` grün — **182 Dateien / 1090 Tests**; Build/Biome/dependency-cruiser grün; FE-`tsc --noEmit` strict grün.
+
+**Beta-Wirkung.** „Diese Review-Arbeit ist für mich. Ich kann sie jetzt abarbeiten. Danach ist sie aus meiner persönlichen Queue raus." Topbar-Glocke → fokussierte Linse → Entscheidung → Zuweisung erledigt → verschwindet. Ruhige Copy, keine technische Sprache, keine Fake-Ownership.
+
+**Bewusst nicht umgesetzt / Restlücken.** Kein neues Notification-Backend, kein Push/WebSocket/E-Mail, kein neues Rollen-/Assignee-Datenmodell, keine Read/Unread-Persistenz über die Sitzung hinaus. Die Board-Anreicherung passiert pro Board-Request in O(Assignments) über das InMemory/Pg-AssignmentRepo; bei sehr großen Beständen wäre ein gezielter Repo-Query (assignments by koIds / by user) der saubere Folgeschritt — für Beta-Größenordnung unkritisch. Pg-Pfad nutzt dieselbe Service-Logik, ist aber nur In-Memory/HTTP belegt (kein Testcontainers-Lauf in dieser Umgebung). Finale Beta-Akzeptanz/Reichweite (In-App-Linse ausreichend vs. zusätzlich E-Mail/Push) bleibt Pedi/Team 5 (EK-26).
+
+**TEAM6_UPDATE.md updated: yes** · **Team6 review needed: yes** · **Reason: AG-15 follow-up / Assignment execution flow / FR-VAL-05/06 / VC-P1-2**
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/validationFilters.ts apps/web/src/lib/notificationTarget.ts apps/web/src/pages/Validation.tsx apps/web/src/i18n.ts services/validation/src/service.ts tests/validation/validation-filters.test.ts tests/analytics/notification-target.test.ts tests/validation/validation-board-focus.test.ts tests/app/review-queue-execution-e2e.test.ts docs/TEAM6_UPDATE.md docs/qm/claude-after-report.md
+git commit -m "feat(validation): personal review queue execution + assignment completion flow (SCRUM-364, AG-15/FR-VAL-05/06)"
+git push
+```
+
+**Stop-Hinweis:** Claude macht kein Git, kein Commit, kein Push, kein Jira. Übergabe an Codex/Pedi.

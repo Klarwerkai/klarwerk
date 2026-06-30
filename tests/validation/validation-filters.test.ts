@@ -3,10 +3,14 @@ import type { KnowledgeObject } from "../../apps/web/src/api/types";
 import {
   EMPTY_VALIDATION_FILTER,
   type ValidationFilterState,
+  applyMineOnlyParam,
   categoryOptions,
   matchesValidationFilter,
+  mineQueueEmptyHint,
+  readMineOnlyFilter,
   tagOptions,
   typeOptions,
+  validationMineHref,
 } from "../../apps/web/src/lib/validationFilters";
 
 // Minimaler KO-Builder für die reine Filterlogik (nur relevante Felder gesetzt).
@@ -95,6 +99,43 @@ describe("FE-VAL-02: Validierungsfilter", () => {
     expect(matchesValidationFilter(other, f({ mineOnly: true }), "u1")).toBe(false);
     // Kein Nutzer geladen → bricht nicht, zeigt aber keine „mir“-Treffer.
     expect(matchesValidationFilter(mine, f({ mineOnly: true }), null)).toBe(false);
+  });
+
+  it("SCRUM-364: ?mine=1 aktiviert die persönliche Linse, sonst aus", () => {
+    expect(readMineOnlyFilter(new URLSearchParams("mine=1"))).toBe(true);
+    expect(readMineOnlyFilter(new URLSearchParams(""))).toBe(false);
+    expect(readMineOnlyFilter(new URLSearchParams("mine=0"))).toBe(false);
+    expect(readMineOnlyFilter(new URLSearchParams("mine=true"))).toBe(false);
+  });
+
+  it("SCRUM-364: applyMineOnlyParam setzt/entfernt mine und erhält übrige Query", () => {
+    const on = applyMineOnlyParam(new URLSearchParams("origin=non-demo&review=new"), true);
+    expect(on.get("mine")).toBe("1");
+    expect(on.get("origin")).toBe("non-demo");
+    expect(on.get("review")).toBe("new");
+
+    const off = applyMineOnlyParam(new URLSearchParams("mine=1&origin=demo"), false);
+    expect(off.has("mine")).toBe(false);
+    expect(off.get("origin")).toBe("demo");
+  });
+
+  it("SCRUM-364: validationMineHref ist der fokussierte Deep-Link", () => {
+    expect(validationMineHref()).toBe("/validierung?mine=1");
+    // Round-trip: der Link aktiviert die Linse wieder.
+    const url = new URL(`https://x.test${validationMineHref()}`);
+    expect(readMineOnlyFilter(url.searchParams)).toBe(true);
+  });
+
+  it("SCRUM-364: mineQueueEmptyHint nur bei aktiver Linse ohne Treffer", () => {
+    expect(mineQueueEmptyHint({ mineOnly: true, visibleCount: 0 })).toMatchObject({
+      titleKey: "val.mineEmpty.title",
+      hintKey: "val.mineEmpty.hint",
+      ctaKey: "val.mineEmpty.cta",
+    });
+    // Linse aktiv, aber es gibt persönliche Arbeit → kein Empty-Hint.
+    expect(mineQueueEmptyHint({ mineOnly: true, visibleCount: 2 })).toBeNull();
+    // Linse aus → nie (normaler Board-Empty-State greift).
+    expect(mineQueueEmptyHint({ mineOnly: false, visibleCount: 0 })).toBeNull();
   });
 
   it("leitet Optionen stabil sortiert und dedupliziert ab", () => {

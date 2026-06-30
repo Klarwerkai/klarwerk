@@ -108,8 +108,27 @@ export class ValidationService {
   }
 
   // FR-VAL-03/04: Board zeigt nur offene KOs, Filter kombinierbar.
-  board(filter: BoardFilter = {}): Promise<KnowledgeObject[]> {
-    return this.koService.list({ ...filter, status: "offen" });
+  // SCRUM-364 / AG-15 / FR-VAL-05/06: Die KO-`assignments` werden für das Board mit den OFFENEN
+  // Review-Zuweisungen angereichert (aus dem AssignmentRepo) — erst dadurch arbeiten die persönliche
+  // „Mir zugewiesen"-Linse und die Zugewiesen-Markierung mit echten Daten. Erledigte (done)
+  // Zuweisungen erscheinen NICHT → ein KO fällt aus der persönlichen Linse, sobald die Person es
+  // bewertet hat. Reine Lese-Anreicherung des vorhandenen Felds, kein neues Datenmodell, keine
+  // Persistenz. KOs ohne offene Zuweisung bleiben unverändert (assignments wie vom KO-Service geliefert).
+  async board(filter: BoardFilter = {}): Promise<KnowledgeObject[]> {
+    const kos = await this.koService.list({ ...filter, status: "offen" });
+    const all = await this.assignments.all();
+    const openByKo = new Map<string, string[]>();
+    for (const a of all) {
+      if (a.status === "open") {
+        const list = openByKo.get(a.koId) ?? [];
+        list.push(a.userId);
+        openByKo.set(a.koId, list);
+      }
+    }
+    return kos.map((ko) => {
+      const assigned = openByKo.get(ko.id);
+      return assigned ? { ...ko, assignments: assigned } : ko;
+    });
   }
 
   // FR-VAL-05: KO an ≥1 Person zuweisen.

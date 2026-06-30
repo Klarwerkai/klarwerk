@@ -50,8 +50,12 @@ import {
 } from "../lib/validationFeedback";
 import {
   EMPTY_VALIDATION_FILTER,
+  type ValidationFilterState,
+  applyMineOnlyParam,
   categoryOptions,
   matchesValidationFilter,
+  mineQueueEmptyHint,
+  readMineOnlyFilter,
   tagOptions,
   typeOptions,
 } from "../lib/validationFilters";
@@ -119,7 +123,17 @@ export function Validation(): JSX.Element {
   const qc = useQueryClient();
   // FR-LIF-04: Autor je KO-Karte (Namen via Directory, Fallback ID).
   const nameOf = (uid: string): string => users.data?.find((d) => d.id === uid)?.name || uid;
-  const [filter, setFilter] = useState(EMPTY_VALIDATION_FILTER);
+  // SCRUM-364 / AG-15 follow-up: „Mir zugewiesen"-Linse lazy aus ?mine=1 (Ziel der Assignment-
+  // Benachrichtigung) — die übrigen Filter starten leer. Aktiviert nur die vorhandene mineOnly-Filterung.
+  const [filter, setFilter] = useState<ValidationFilterState>(() => ({
+    ...EMPTY_VALIDATION_FILTER,
+    mineOnly: readMineOnlyFilter(params),
+  }));
+  // SCRUM-364: „Mir zugewiesen" umschalten + URL synchron halten (übrige Query bleibt erhalten).
+  const setMineOnly = (mineOnly: boolean): void => {
+    setFilter((f) => ({ ...f, mineOnly }));
+    setSearchParams((prev) => applyMineOnlyParam(prev, mineOnly), { replace: true });
+  };
   // SCRUM-311: Herkunftsfilter (Demo/Eigenes) — ergänzend zur Review-Auswahl; lazy aus ?origin=…
   // (z. B. Capture-Success → eigenes Wissen), fehlend/ungültig → „all". Nur Ansicht, kein Review-Status.
   const [demoFilter, setDemoFilter] = useState<DemoKnowledgeFilter>(() =>
@@ -272,8 +286,40 @@ export function Validation(): JSX.Element {
           const visible = sortByReviewPriority(
             focusBase.filter((k) => matchesReviewFocus(k, reviewFocus)),
           );
+          // SCRUM-364 / AG-15: ehrlicher Leerzustand der persönlichen Linse (nur wenn „Mir zugewiesen"
+          // aktiv ist und nichts für die Person offen ist) — hat Vorrang vor dem generischen Filter-Empty.
+          const mineEmpty = mineQueueEmptyHint({
+            mineOnly: filter.mineOnly,
+            visibleCount: visible.length,
+          });
           return (
             <>
+              {/* SCRUM-364 / AG-15 follow-up: aktive „Mir zugewiesen"-Linse verständlich benennen —
+                  „Das ist deine persönliche Review-Liste" + Zähler + Rückweg zur allgemeinen Liste. */}
+              {filter.mineOnly ? (
+                <Card className="mb-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-semibold text-ai">
+                        {t("val.mineFocus.title")}
+                      </div>
+                      <p className="mt-0.5 text-[12px] text-muted">{t("val.mineFocus.hint")}</p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[11px] font-semibold text-text">
+                        {t("val.mineFocus.count", { n: visible.length })}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setMineOnly(false)}
+                        className="text-[11.5px] font-semibold text-muted hover:text-text"
+                      >
+                        {t("val.mineFocus.reset")}
+                      </button>
+                    </div>
+                  </div>
+                </Card>
+              ) : null}
               {/* SCRUM-311: Herkunftsfilter (Demo/Eigenes) — nur Ansicht/Auffinden, KEIN Review-Status;
                   Labels konsistent mit der Library. Ersetzt nicht Status/Trust/Review-Entscheidung. */}
               <div className="mb-3 flex flex-wrap items-center gap-1.5">
@@ -402,16 +448,28 @@ export function Validation(): JSX.Element {
                   <input
                     type="checkbox"
                     checked={filter.mineOnly}
-                    onChange={(e) => setFilter((f) => ({ ...f, mineOnly: e.target.checked }))}
+                    onChange={(e) => setMineOnly(e.target.checked)}
                   />
                   {t("val.filterMine")}
                 </label>
               </div>
               <div className="space-y-3">
+                {/* SCRUM-364 / AG-15: spezifischer Leerzustand der persönlichen Linse — ruhig und
+                    motivierend, mit Rückweg zur allgemeinen Liste. Vorrang vor dem generischen Filter-Empty. */}
+                {mineEmpty ? (
+                  <Card className="text-center">
+                    <p className="text-[13px] font-semibold text-text">{t(mineEmpty.titleKey)}</p>
+                    <p className="mt-0.5 text-[12px] text-muted">{t(mineEmpty.hintKey)}</p>
+                    <Button variant="ghost" className="mt-2" onClick={() => setMineOnly(false)}>
+                      {t(mineEmpty.ctaKey)}
+                    </Button>
+                  </Card>
+                ) : null}
                 {/* SCRUM-328: ehrlicher Filter-Empty-State — Daten vorhanden, aber Filter zu eng.
                     QueryState behandelt den „gar keine Review-Arbeit"-Fall (items leer) separat. */}
-                {boardEmptyKind({ totalItems: items.length, visibleCount: visible.length }) ===
-                "filtered" ? (
+                {!mineEmpty &&
+                boardEmptyKind({ totalItems: items.length, visibleCount: visible.length }) ===
+                  "filtered" ? (
                   <Card className="text-center">
                     <p className="text-[13px] text-muted">{t("val.focusEmpty.filtered")}</p>
                     {boardFocusActive({ origin: demoFilter, review: reviewFocus }) ? (

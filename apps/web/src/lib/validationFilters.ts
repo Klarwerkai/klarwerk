@@ -67,3 +67,56 @@ export function tagOptions(items: KnowledgeObject[]): string[] {
 export function typeOptions(items: KnowledgeObject[]): string[] {
   return sortedUnique(items.map((k) => k.type));
 }
+
+// SCRUM-364 / AG-15 follow-up: deep-linkbare „Mir zugewiesen"-Linse. Die Assignment-Benachrichtigung
+// (Topbar-Glocke) führt jetzt direkt in die persönliche Review-Liste. Der Query-Param `mine=1` aktiviert
+// beim Laden die bereits vorhandene `mineOnly`-Filterung (matchesValidationFilter über
+// k.assignments.includes(userId)). Reine Anzeige-/Link-Konvention: kein Backend, kein neues Rollen-/
+// Assignee-Modell, keine Persistenz über die Sitzung hinaus.
+export const MINE_FILTER_PARAM = "mine";
+const MINE_FILTER_ON = "1";
+
+// Liest die persönliche Linse aus der Query. Nur `mine=1` aktiviert; fehlend/anders → aus (neutral).
+export function readMineOnlyFilter(params: URLSearchParams): boolean {
+  return params.get(MINE_FILTER_PARAM) === MINE_FILTER_ON;
+}
+
+// Merge der „Mir zugewiesen"-Linse in die bestehende Query: an → `mine=1`, aus → Parameter entfernen.
+// Alle übrigen Query-Parameter (origin/review/demo …) bleiben unangetastet (saubere URL).
+export function applyMineOnlyParam(params: URLSearchParams, mineOnly: boolean): URLSearchParams {
+  const next = new URLSearchParams(params);
+  if (mineOnly) {
+    next.set(MINE_FILTER_PARAM, MINE_FILTER_ON);
+  } else {
+    next.delete(MINE_FILTER_PARAM);
+  }
+  return next;
+}
+
+// Fokussierter Deep-Link in die persönliche Review-Liste — Ziel der Assignment-Benachrichtigung.
+export function validationMineHref(): string {
+  return `/validierung?${MINE_FILTER_PARAM}=${MINE_FILTER_ON}`;
+}
+
+// Ehrlicher Leerzustand der persönlichen Linse: NUR wenn „Mir zugewiesen" aktiv ist UND keine
+// persönliche Review-Arbeit (mehr) sichtbar ist — ruhige, motivierende Copy statt stummer Leere.
+// Kein Effekt bei inaktiver Linse oder vorhandenen Treffern (dann greift der normale Board-Empty-State).
+export interface MineQueueEmptyHint {
+  titleKey: string;
+  hintKey: string;
+  ctaKey: string;
+}
+
+export function mineQueueEmptyHint(args: {
+  mineOnly: boolean;
+  visibleCount: number;
+}): MineQueueEmptyHint | null {
+  if (!args.mineOnly || args.visibleCount > 0) {
+    return null;
+  }
+  return {
+    titleKey: "val.mineEmpty.title",
+    hintKey: "val.mineEmpty.hint",
+    ctaKey: "val.mineEmpty.cta",
+  };
+}
