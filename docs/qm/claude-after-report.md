@@ -8572,3 +8572,55 @@ git commit -m "fix(tasks): route returned-work card into focused rework context 
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-352 — Beta Knowledge Rescue Wizard + Input Studio v0
+**Datum:** 2026-06-30 · **Rolle:** Claude (Hauptumsetzer) · **Claude beteiligt: ja** · **Status:** umgesetzt, Gates grün
+
+**Legacy-Pfad geprüft / nicht verfügbar.** `Klarwerk/{app,demo}/src/...` (WikiEditor/AiAssist/CaseEditor/TeacherStudio) lokal NICHT vorhanden (Pfade existieren nicht). Wie im Ticket vorgesehen NICHT blockiert — der geführte Einstieg ist aus dem Pedi-Feedback abgeleitet.
+
+**Wichtigste alte Funktionen (aus Pedi-Beschreibung).** Großer Editor/großes Fenster, bessere Strukturierung, KI-Hilfe direkt im Editor, weniger Formulargefühl bei Eingabe + Nachbearbeitung.
+
+**Aktuelle Gaps (vor diesem Ticket).** Capture stieg technisch ein (Modus-Chips Freitext/Formular/Diktat/Interview, sofort Formularfelder); keine Story, keine Motivation/Wertbeitrag, kein geführter Einstieg. Der große Arbeitsraum (KnowledgeInputStudio, SCRUM-337–347) existiert bereits inkl. KI-Hilfe/Vorlagen/Vorschau, war aber als Einstieg nicht „erzählt".
+
+**Umgesetzter Umfang (geführter Rescue-Einstieg, progressive disclosure).**
+1. **DOM-freier Helfer** `apps/web/src/lib/knowledgeRescue.ts`: `KNOWLEDGE_RESCUE_STEPS` (geführter Ablauf erzählen → KI strukturiert → prüfen lassen, an die echte Knowledge-OS-Phase `capture/capture/validate` gebunden) + `knowledgeRescueImpact()` (leichtgewichtiger Wertbeitrag: rettet Erfahrung / verbessert Wissensbasis / erst nach Prüfung gesichert) + `rescueStepLabelKey`. Kein Score, keine Punkte, keine Rolle.
+2. **Komponente** `apps/web/src/components/KnowledgeRescueIntro.tsx`: ruhige, macOS-nahe Story-Karte (aufgeräumt, weiche Kanten, viel Luft) mit Kicker „Wissen retten", Headline „Sichere Erfahrungswissen, bevor es verloren geht", entlastendem Untertitel (kein Formularzwang), den 3 nummerierten Schritten und der Wertbeitrag-Zeile. **Progressive Disclosure**: standardmäßig offen, per „Weniger/Anleitung" einklappbar (aria-expanded).
+3. **Capture** rendert die Intro oben (nach PageHeader/DemoBanner) — die bestehenden Modi, Felder, der KI-Draft, der Studio-Button und die Success-Card bleiben unverändert darunter. **Keine Funktion entfernt.**
+4. **i18n** `capture.rescue.*` DE+EN (Story/Schritte/Impact/Toggles), ehrlich formuliert (Beitrag erst nach Prüfung gesichert).
+5. **Test** `tests/app/knowledge-rescue.test.ts` (Schritt-Reihenfolge/IDs, Phasenbindung, Key-Schema, Impact-Items leichtgewichtig ohne Score-Feld, i18n DE+EN, Ehrlichkeits-Check „erst nach Prüfung gesichert").
+
+**Wie die Feedbackpunkte abgedeckt wurden.**
+- „Wirkt sehr technisch / Formulargefühl" → ruhiger Story-Einstieg über den Modus-Chips; entlastende Copy „du musst kein Formular perfekt ausfüllen".
+- „Wizard/geführter Flow fehlt" → 3 klar nummerierte, geführte Schritte (erzählen → KI strukturiert → prüfen).
+- „Story Alt-Wissen sichern" → Kernbotschaft als Headline + Kicker + Impact „rettet Erfahrung, die sonst verloren ginge".
+- „Motivation/Wertbeitrag" → leichtgewichtige Impact-Chips (kein Gamification-Backend).
+- „KI-Hilfe sichtbar/verständlich" → Schritt 2 benennt KI-Strukturierung + verweist auf das Knowledge Studio (großer Arbeitsraum), der bereits KI-Hilfe/Vorlagen/Vorschau bündelt.
+- „macOS-UX: ruhig/hochwertig/aufgeräumt" → kalmer Karten-Stil, dezente Tönung, klare Typo-Hierarchie, einklappbar.
+- „Keine Funktionen verlieren / progressive disclosure" → rein additive Karte, alles Bestehende bleibt, Details einklappbar.
+
+**Bewusst nicht umgesetzte Punkte / offene UX-/Wizard-/Motivations-Gaps (später).**
+- Voller Multi-Step-Wizard (echte Schritt-für-Schritt-Navigation mit State) — bewusst NICHT; stattdessen ruhiger geführter Einstieg ohne neue State-Maschine (Beta-Risiko niedrig halten).
+- „Großer Editor/Fenster prominenter machen": das Knowledge Studio existiert bereits prominent (Overlay, 3-Spalten, KI/Vorlagen/Vorschau); eine noch stärkere Heraushebung (z. B. Studio als Default-Einstieg) ist separat zu bewerten — später.
+- Bild/Datei-Parität zur Alt-App, Live-Impact-Zahlen, Qualitätsindikator mit Score: bewusst später (kein Scoring-Backend in diesem Slice).
+- Motivation ist Text-/Anzeige-only (kein Feedback-/Belohnungssystem) — gewünschtes „Feedback auf Beitrag" wird über die bestehende Validierungs-/Review-Sichtbarkeit getragen, nicht über ein neues System.
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/knowledgeRescue.ts` (NEU)
+- `apps/web/src/components/KnowledgeRescueIntro.tsx` (NEU)
+- `apps/web/src/pages/Capture.tsx` (Intro eingebunden + Import)
+- `apps/web/src/i18n.ts` (`capture.rescue.*` DE+EN)
+- `tests/app/knowledge-rescue.test.ts` (NEU)
+
+**Gates.** `npm run check` grün — **165 Dateien / 997 Tests**. Gezielt `knowledge-rescue.test.ts` → 6/6 grün. `(cd apps/web && tsc --noEmit)` grün (FE-EXIT=0). Biome/depcruise grün. (Zwischenfix: ein gerades `"` in der DE-Subtitle hatte den String vorzeitig geschlossen → bereinigt.)
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/knowledgeRescue.ts apps/web/src/components/KnowledgeRescueIntro.tsx apps/web/src/pages/Capture.tsx apps/web/src/i18n.ts tests/app/knowledge-rescue.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(capture): knowledge rescue guided intro + value/motivation (SCRUM-352)"
+git push
+```
+**Team6 review needed: yes** — Reason: UX feedback / Knowledge Rescue Wizard / Input Studio changed.
+Kein Git/Push/Jira durch Claude.

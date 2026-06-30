@@ -24,6 +24,7 @@ import { EditorContentQuality } from "../components/EditorContentQuality";
 import { EditorGuidance } from "../components/EditorGuidance";
 import { HelpTip } from "../components/HelpTip";
 import { KnowledgeInputStudio } from "../components/KnowledgeInputStudio";
+import { KnowledgeRescueIntro } from "../components/KnowledgeRescueIntro";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { ListEditor, TagEditor } from "../components/editors";
 import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
@@ -495,6 +496,10 @@ export function Capture(): JSX.Element {
       <PageHeader kicker={t("capture.kicker")} title={t("capture.title")} />
       {/* SCRUM-296: Demo-/Pilotpfad auf der Erfassungsseite wiedererkennbar (nur bei ?demo=stage1). */}
       {isDemoContext(params) ? <DemoBanner surface="capture" /> : null}
+
+      {/* SCRUM-352: ruhiger, geführter Einstieg — Story „Erfahrungswissen sichern" + 3 Schritte +
+          leichter Wertbeitrag. Progressive Disclosure; entfernt keine Funktion (Modi/Editor folgen). */}
+      <KnowledgeRescueIntro />
 
       {/* SCRUM-276: nach erfolgreichem Einreichen „gespeichert" + nächster Schritt (kein Auto-Redirect). */}
       {savedKoId ? (

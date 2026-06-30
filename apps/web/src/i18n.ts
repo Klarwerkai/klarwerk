@@ -248,6 +248,25 @@ const de = {
   "task.phaseLabel": "Phase:",
   "capture.kicker": "Expert Studio · Erfassen",
   "capture.title": "Erfahrungswissen festhalten",
+  "capture.rescue.kicker": "Wissen retten",
+  "capture.rescue.title": "Sichere Erfahrungswissen, bevor es verloren geht.",
+  "capture.rescue.subtitle":
+    "Du musst kein Formular perfekt ausfüllen — erzähl einfach, was du weißt. Klarwerk und die KI helfen dir, es klar und nutzbar zu machen.",
+  "capture.rescue.step.tell.label": "1. Erzählen",
+  "capture.rescue.step.tell.hint":
+    "Schreib oder diktier in eigenen Worten, was du aus Erfahrung weißt — roh reicht.",
+  "capture.rescue.step.structure.label": "2. KI strukturiert",
+  "capture.rescue.step.structure.hint":
+    "Die KI macht daraus einen klaren Entwurf; im Knowledge Studio kannst du alles in Ruhe nachbearbeiten.",
+  "capture.rescue.step.validate.label": "3. Prüfen lassen",
+  "capture.rescue.step.validate.hint":
+    "Speichern reicht ein — danach prüfen Kolleg:innen das Wissen, bevor es gesichert genutzt wird.",
+  "capture.rescue.impactTitle": "Warum dein Beitrag zählt",
+  "capture.rescue.impact.secure": "Rettet Erfahrung, die sonst verloren ginge",
+  "capture.rescue.impact.improve": "Verbessert die gemeinsame Wissensbasis",
+  "capture.rescue.impact.honest": "Wird erst nach Prüfung als gesichert markiert",
+  "capture.rescue.showLess": "Weniger",
+  "capture.rescue.showMore": "Anleitung",
   "capture.gapContextTitle": "Aus offener Wissenslücke",
   "capture.gapContextBody":
     "Das ist eine offene Frage, noch kein Wissen — sie dient nur als Startkontext. Ergänze deine Erfahrung/Beobachtung; die KI strukturiert daraus einen Entwurf, du prüfst und reichst ein.",
@@ -1681,6 +1700,25 @@ const en: typeof de = {
   "task.phaseLabel": "Phase:",
   "capture.kicker": "Expert studio · Capture",
   "capture.title": "Capture experience knowledge",
+  "capture.rescue.kicker": "Rescue knowledge",
+  "capture.rescue.title": "Secure experience knowledge before it's lost.",
+  "capture.rescue.subtitle":
+    "You don't have to fill in a form perfectly — just tell us what you know. Klarwerk and the AI help you make it clear and usable.",
+  "capture.rescue.step.tell.label": "1. Tell it",
+  "capture.rescue.step.tell.hint":
+    "Write or dictate what you know from experience, in your own words — rough is fine.",
+  "capture.rescue.step.structure.label": "2. AI structures it",
+  "capture.rescue.step.structure.hint":
+    "The AI turns it into a clear draft; in the Knowledge Studio you can refine everything calmly.",
+  "capture.rescue.step.validate.label": "3. Get it reviewed",
+  "capture.rescue.step.validate.hint":
+    "Saving is enough — then colleagues review the knowledge before it's used as verified.",
+  "capture.rescue.impactTitle": "Why your contribution matters",
+  "capture.rescue.impact.secure": "Rescues experience that would otherwise be lost",
+  "capture.rescue.impact.improve": "Improves the shared knowledge base",
+  "capture.rescue.impact.honest": "Marked as verified only after review",
+  "capture.rescue.showLess": "Less",
+  "capture.rescue.showMore": "Guide",
   "capture.gapContextTitle": "From an open knowledge gap",
   "capture.gapContextBody":
     "This is an open question, not knowledge yet — it only serves as a starting context. Add your experience/observation; the AI structures it into a draft, you review and submit.",
