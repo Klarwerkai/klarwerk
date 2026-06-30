@@ -26,3 +26,24 @@ export function isReviewReworkContext(params: URLSearchParams): boolean {
 export function reworkValidationHref(): string {
   return `/validierung?${REVIEW_FOCUS_PARAM}=revision`;
 }
+
+// SCRUM-336: ehrliche „Was als Nächstes?"-Schrittfolge für den Rework-Kontext. Macht die Nacharbeit
+// als zusammenhängenden Ablauf sichtbar (Feedback abarbeiten → Revision speichern → zurück in den
+// Validation-Fokus), OHNE Fake-Verantwortlichkeit/Assignee-Modell. Reine, DOM-freie Konstante;
+// kein Backend, keine Mutation, keine automatische Freigabe.
+export type ReworkStepKey = "feedback" | "revise" | "back";
+
+export interface ReworkStep {
+  key: ReworkStepKey;
+  labelKey: string;
+}
+
+export const REWORK_STEPS: readonly ReworkStep[] = [
+  { key: "feedback", labelKey: "ko.rework.step.feedback" },
+  { key: "revise", labelKey: "ko.rework.step.revise" },
+  { key: "back", labelKey: "ko.rework.step.back" },
+];
+
+export function reworkNextSteps(): readonly ReworkStep[] {
+  return REWORK_STEPS;
+}

@@ -3,8 +3,10 @@ import i18n from "../../apps/web/src/i18n";
 import {
   REWORK_PARAM,
   REWORK_REVIEW_VALUE,
+  type ReworkStepKey,
   isReviewReworkContext,
   reworkHref,
+  reworkNextSteps,
   reworkValidationHref,
 } from "../../apps/web/src/lib/reviewReworkContext";
 
@@ -61,5 +63,33 @@ describe("SCRUM-330: reviewReworkContext", () => {
   it("ehrlich: savedHint verspricht keine automatische Freigabe (DE)", () => {
     const hint = String(i18n.getResource("de", "translation", "ko.rework.savedHint") ?? "");
     expect(hint).toMatch(/keine automatische Freigabe/i);
+  });
+
+  // SCRUM-336: ehrliche „Was als Nächstes?"-Schrittfolge im Rework-Kontext.
+  it("reworkNextSteps liefert die feste Reihenfolge feedback → revise → back", () => {
+    expect(reworkNextSteps().map((s) => s.key)).toEqual<ReworkStepKey[]>([
+      "feedback",
+      "revise",
+      "back",
+    ]);
+    expect(reworkNextSteps().map((s) => s.labelKey)).toEqual([
+      "ko.rework.step.feedback",
+      "ko.rework.step.revise",
+      "ko.rework.step.back",
+    ]);
+  });
+
+  it("Schritt-i18n (stepsTitle + step.*) DE+EN vorhanden", () => {
+    const keys = [
+      "ko.rework.stepsTitle",
+      "ko.rework.step.feedback",
+      "ko.rework.step.revise",
+      "ko.rework.step.back",
+    ];
+    for (const key of keys) {
+      for (const lng of ["de", "en"]) {
+        expect(String(i18n.getResource(lng, "translation", key) ?? "").length).toBeGreaterThan(0);
+      }
+    }
   });
 });

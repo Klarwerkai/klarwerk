@@ -562,6 +562,10 @@ const de = {
   "ko.rework.editTitle": "Nacharbeit: dieses Feedback abarbeiten",
   "ko.rework.editHint":
     "Arbeite das Feedback gezielt ein. Speichern erzeugt eine neue Version und startet die Prüfung neu — keine automatische Freigabe.",
+  "ko.rework.stepsTitle": "Nächste Arbeitsschritte",
+  "ko.rework.step.feedback": "Review-Feedback abarbeiten",
+  "ko.rework.step.revise": "Revision speichern (neue Version, erneute Prüfung)",
+  "ko.rework.step.back": "Zurück in den Validation-Fokus „überarbeitet“",
   "ko.saveEdit": "Speichern",
   "ko.cancelEdit": "Abbrechen",
   "ko.editNote":
@@ -1933,6 +1937,10 @@ const en: typeof de = {
   "ko.rework.editTitle": "Rework: address this feedback",
   "ko.rework.editHint":
     "Work through the feedback. Saving creates a new version and restarts the review — no automatic approval.",
+  "ko.rework.stepsTitle": "Next work steps",
+  "ko.rework.step.feedback": "Address the review feedback",
+  "ko.rework.step.revise": "Save the revision (new version, fresh review)",
+  "ko.rework.step.back": "Back to the “revised” validation focus",
   "ko.saveEdit": "Save",
   "ko.cancelEdit": "Cancel",
   "ko.editNote":

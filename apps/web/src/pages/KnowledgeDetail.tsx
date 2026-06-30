@@ -77,7 +77,11 @@ import {
 import { diffForVersion } from "../lib/koVersionDiff";
 import { koVersionRows } from "../lib/koVersionSnapshots";
 import { toReasonerLocale } from "../lib/reasonerLocale";
-import { isReviewReworkContext, reworkValidationHref } from "../lib/reviewReworkContext";
+import {
+  isReviewReworkContext,
+  reworkNextSteps,
+  reworkValidationHref,
+} from "../lib/reviewReworkContext";
 import {
   type SourceContributionInput,
   formatSourceComment,
@@ -543,6 +547,27 @@ export function KnowledgeDetail(): JSX.Element {
                           </div>
                         );
                       })()}
+                      {/* SCRUM-336: ehrliche „Was als Nächstes?"-Schrittfolge — macht die Nacharbeit als
+                          zusammenhängenden Ablauf sichtbar (Feedback → Revision → zurück in den Fokus).
+                          Kein Assignee-Modell, keine Auto-Freigabe; reine Orientierung. */}
+                      <div className="mt-2">
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-trust-warn-text/80">
+                          {t("ko.rework.stepsTitle")}
+                        </div>
+                        <ol className="mt-1 space-y-0.5">
+                          {reworkNextSteps().map((step, idx) => (
+                            <li
+                              key={step.key}
+                              className="flex items-start gap-1.5 text-[11.5px] leading-relaxed text-trust-warn-text/90"
+                            >
+                              <span className="font-mono text-[10px] font-semibold text-trust-warn-text/70">
+                                {idx + 1}.
+                              </span>
+                              <span>{t(step.labelKey)}</span>
+                            </li>
+                          ))}
+                        </ol>
+                      </div>
                       <div className="mt-2 flex flex-wrap gap-2">
                         {canEdit && !edit ? (
                           <button

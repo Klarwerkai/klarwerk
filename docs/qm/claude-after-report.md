@@ -7920,3 +7920,41 @@ git commit -m "test(structure): runtime-near E2E smoke for capture editor to val
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-336 — Beta Review Assignment & Work Ownership v0
+**Datum:** 2026-06-30 · **Rolle:** Claude (Hauptumsetzer) · **Status:** umgesetzt, Gates grün
+
+**Vorab-Befund.** `git status -sb` sauber (nur untracked Infra-Doc, unberührt). Read-only der genannten Helfer/Seiten: Work-Ownership-Signale bestehen für Validation Board UND MyTasks bereits über `reviewWorkView` (`apps/web/src/lib/reviewSignals.ts`, SCRUM-287): ehrliche Zustände `validated/assigned/new/inReview` mit `val.reviewState.*`/`val.reviewHint.*` + tone — kein Assignee-Datenmodell, keine Fake-Verantwortlichkeit. `validationReviewContext` (neu/revidiert) + Review-Fokusfilter + `reviewNextSteps` (verdict-bewusst → `reworkHref`) sind verdrahtet. `knowledgeOsPhase`/`phaseLabelKey` (taskAction.ts) liefern die Kreis-Sprache für Start/MyTasks. Echte verbleibende Lücke = Priorität 3: im `?rework=review`-Kontext fehlte die explizite, geordnete „Was als Nächstes?"-Schrittfolge — der Banner zeigte Hinweis + Feedback + Buttons, aber nicht den zusammenhängenden Ablauf Feedback → Revision → zurück in den Fokus.
+
+**Umsetzung (v0, contained slice, Priorität 3).**
+1. **DOM-freier Helfer** `reworkNextSteps()` in `apps/web/src/lib/reviewReworkContext.ts`: geordnete Schritte `feedback → revise → back` (`ReworkStep`/`ReworkStepKey`, `REWORK_STEPS`). Reine Konstante, kein Backend, keine Mutation, keine Auto-Freigabe; ehrliche Formulierung ohne Assignee.
+2. **KO-Detail Rework-Banner** (`KnowledgeDetail.tsx`): nur bei `reviewReworkContext && !reworkSaved` eine kompakte nummerierte Schrittliste (`stepsTitle` + 1./2./3.) zwischen Feedback-Card und Buttons. Macht die Nacharbeit als zusammenhängenden Arbeitsfluss sichtbar; bestehende SCRUM-330/331/332/333-Elemente unverändert.
+3. **i18n** `ko.rework.stepsTitle` + `ko.rework.step.feedback/revise/back` DE+EN. Schritt 2 nennt ehrlich „neue Version, erneute Prüfung"; Schritt 3 führt in den Validation-Fokus „überarbeitet".
+4. **Test** `tests/ko/review-rework-context.test.ts` erweitert: feste Reihenfolge `feedback/revise/back` + labelKeys + Schritt-i18n DE/EN.
+
+Work-Ownership für Start/MyTasks/Validation bleibt bewusst auf den bestehenden, ehrlichen `reviewWorkView`-Signalen (SCRUM-287) — kein neues Task-/Rollen-/Notification-System, keine Doppelung.
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/reviewReworkContext.ts` (reworkNextSteps + Typen)
+- `apps/web/src/pages/KnowledgeDetail.tsx` (nummerierte Schrittfolge im Rework-Banner + Import)
+- `apps/web/src/i18n.ts` (`ko.rework.stepsTitle` + `step.*` DE+EN)
+- `tests/ko/review-rework-context.test.ts` (erweitert)
+
+**Tests/Gates.** `npm run check` grün — **155 Dateien / 938 Tests**. Gezielt `tests/ko/review-rework-context.test.ts` → 10/10 grün. `(cd apps/web && tsc --noEmit)` grün (FE-EXIT=0). Biome/depcruise grün.
+
+**Bewusst nicht umgesetzte Gaps.** Kein Assignee-/Ownership-Datenmodell (ehrlich „Nächster Arbeitsschritt"/„Review-Arbeit"/„Nacharbeit" statt „zugewiesen an X"). Keine zusätzliche Start/MyTasks-Politur (Work-State dort schon über reviewWorkView). Kein neues Rollen-/Notification-System, kein Backend, kein Capture-Success-Wording-Eingriff (risikoarm, aber nicht nötig — Validierung bleibt primary).
+
+**Rest-Risiken.** Die Schrittfolge ist statisch (immer 3 Schritte im Rework-Kontext) — sie beschreibt den Ablauf, nicht den individuellen Fortschritt (kein Abhaken); bewusst, um keine Fake-Ownership/State zu behaupten. Konsistenz mit `reworkValidationHref` (Schritt 3 ↔ Rückweg-CTA) ist sprachlich, nicht erzwungen verlinkt.
+
+**Nicht-Ziele eingehalten.** Kein neues Rollen-/Notification-System, keine Architektur-/Backend-Datenmodelländerung, kein RAG/neue Suche/Local-LLM, keine Team-2/3/4/5-Dateien, kein Demo-Hack/Demo-only, kein Deployment, keine produktiven Daten, kein Git/Push/Jira. Untracked Infra-Doc unberührt.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/reviewReworkContext.ts apps/web/src/pages/KnowledgeDetail.tsx apps/web/src/i18n.ts tests/ko/review-rework-context.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(ko-detail): show ordered rework next-steps to clarify work ownership (SCRUM-336)"
+git push
+```
+Kein Git/Push/Jira durch Claude.
