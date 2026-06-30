@@ -8238,3 +8238,43 @@ git commit -m "feat(editor): AI insert modes — apply suggestion as a structure
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-344 — Beta Knowledge Studio Save Confidence v0
+**Datum:** 2026-06-29 · **Rolle:** Claude (Hauptumsetzer) · **Status:** umgesetzt, Gates grün
+
+**Vorab-Befund.** `git status -sb` sauber (nur untracked Infra-Doc; SCRUM-337–343 committet). Studio hat Dirty-State/Discard-Guard/Apply-Feedback (`studio.applied` nahe dem Body-Feld). Capture-Success macht nach dem Speichern bereits ehrlich klar „offen/nicht validiert". `editorApplySafety.ts` ist der etablierte Ort für DOM-freie Übernahme-/Safety-Helfer; `KoRevisionSummary` + `ko.editNote` bestehen im KO-Detail-Revise-Bereich. Es fehlte ein „Confidence/Next-Step"-Hinweis direkt AM Speichern-/Einreichen-/Revidieren-Button: dass Studio-Inhalt im Entwurf liegt, aber noch nicht gespeichert/validiert ist, und welcher echte nächste Schritt folgt.
+
+**Legacy-Pfad geprüft / nicht verfügbar.** `Klarwerk/app/src/{components/{WikiEditor,AiAssist,CaseEditor}.jsx,pages/TeacherStudio.jsx}` verfügbar (read-only), nur gelesen, nicht kopiert. Kein „Save-Confidence/Next-Step"-Muster im Legacy vorhanden (Legacy speicherte direkt im Editor) — bewusst keine Übernahme.
+
+**Aktuelle Gap.** Nach Studio-Apply wirkte der Save/Submit/Revise-Bereich wie eine Formular-Sackgasse: kein klarer Hinweis, dass der übernommene Inhalt noch gespeichert/revidiert und danach geprüft werden muss; Risiko, KI-/Studio-Inhalte als bereits gesichert/validiert misszuverstehen.
+
+**Umsetzter Umfang.**
+1. **DOM-freier Helfer** `studioSaveConfidence(context)` in `apps/web/src/lib/editorApplySafety.ts` (`StudioSaveContext = "capture" | "revision"`): liefert `titleKey/hintKey/nextStepKey/tone` je Kontext. Kein neues Statusmodell, kein Auto-Save.
+2. **Capture** (`Capture.tsx`): bei `studioApplied` direkt VOR dem Einreichen-Button eine kompakte Confidence-Card — „Studio-Inhalt im Entwurf — noch nicht gespeichert", Hinweis (nicht gespeichert/validiert) + nächster echter Schritt „speichern/einreichen → danach Review/Validierung; automatisch validiert wird nichts".
+3. **KO-Detail Edit** (`KnowledgeDetail.tsx`): bei `studioApplied` im Revise-Bereich NACH `KoRevisionSummary` + `ko.editNote` (ergänzt, nicht dupliziert) eine Confidence-Card — „Studio-Inhalt im Revisionsentwurf — noch nicht gespeichert"; nächster Schritt „Speichern erzeugt eine neue Version und startet die Prüfung neu — keine automatische Freigabe".
+4. **i18n** `studio.save.capture.{title,hint,next}` + `studio.save.revision.{title,hint,next}` DE+EN, ehrlich formuliert.
+5. **Tests** `tests/app/editor-apply-safety.test.ts` erweitert: `studioSaveConfidence` (Keys + Tönung je Kontext), i18n-Präsenz DE+EN, Ehrlichkeits-Checks (Capture: Review/Validierung, „automatisch validiert wird nichts"; Revision: „neue Version" + „keine automatische Freigabe"). Bestehende Dirty-/Template-/apply-safety-Tests bleiben grün.
+
+**Bewusst nicht umgesetzte Gaps.** Kein Backend; kein neues Rollen-/Notification-/Statusmodell; kein Auto-Save/Auto-Validate; KoRevisionSummary/ko.editNote unverändert (nur ergänzt); kein Blocking des Save-Buttons (nur Hinweis). Die Confidence erscheint nur nach einem Studio-Apply (`studioApplied`), nicht bei rein inline bearbeitetem Body — bewusst, der Hinweis bezieht sich auf die Studio-Übernahme.
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/editorApplySafety.ts` (studioSaveConfidence + Typen)
+- `apps/web/src/pages/Capture.tsx` (Confidence-Card vor Submit)
+- `apps/web/src/pages/KnowledgeDetail.tsx` (Confidence-Card im Revise-Bereich)
+- `apps/web/src/i18n.ts` (`studio.save.*` DE+EN)
+- `tests/app/editor-apply-safety.test.ts` (erweitert)
+
+**Tests/Gates.** `npm run check` grün — **157 Dateien / 970 Tests**. Gezielt `tests/app/editor-apply-safety.test.ts` → 11/11 grün. `(cd apps/web && tsc --noEmit)` grün (FE-EXIT=0). Biome/depcruise grün.
+
+**Rest-Risiken.** Reine FE-/Anzeige-/Text-Änderung — keine Save/Submit/Revise-Logik berührt. Die Confidence-Anzeige hängt am `studioApplied`-State (SCRUM-339); dieser wird beim erneuten Studio-Öffnen zurückgesetzt — der Hinweis spiegelt also „seit dem letzten Studio-Apply noch nicht gespeichert", nicht einen Live-Diff zum gespeicherten Stand (akzeptabel, konservativ ehrlich).
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/editorApplySafety.ts apps/web/src/pages/Capture.tsx apps/web/src/pages/KnowledgeDetail.tsx apps/web/src/i18n.ts tests/app/editor-apply-safety.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(editor): studio save confidence — clarify next real step before save/revise (SCRUM-344)"
+git push
+```
+Kein Git/Push/Jira durch Claude.

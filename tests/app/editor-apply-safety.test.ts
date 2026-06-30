@@ -4,6 +4,7 @@ import {
   hasEditableContent,
   knowledgeStudioState,
   shouldWarnBeforeReplace,
+  studioSaveConfidence,
   templateApplyMode,
   templateApplyModeHintKey,
 } from "../../apps/web/src/lib/editorApplySafety";
@@ -82,5 +83,61 @@ describe("SCRUM-339: knowledgeStudioState", () => {
     expect(String(i18n.getResource("en", "translation", "studio.applied") ?? "")).toMatch(
       /nothing is saved or validated automatically/i,
     );
+  });
+});
+
+// SCRUM-344: Save-Confidence-Hinweis nach Studio-Apply vor dem finalen Speichern/Revidieren.
+describe("SCRUM-344: studioSaveConfidence", () => {
+  it("liefert kontextbezogene title/hint/nextStep-Keys + Tönung", () => {
+    const cap = studioSaveConfidence("capture");
+    expect(cap).toMatchObject({
+      titleKey: "studio.save.capture.title",
+      hintKey: "studio.save.capture.hint",
+      nextStepKey: "studio.save.capture.next",
+      tone: "warn",
+    });
+    const rev = studioSaveConfidence("revision");
+    expect(rev).toMatchObject({
+      titleKey: "studio.save.revision.title",
+      hintKey: "studio.save.revision.hint",
+      nextStepKey: "studio.save.revision.next",
+      tone: "warn",
+    });
+  });
+
+  it("Save-Confidence-i18n (capture + revision: title/hint/next) DE+EN vorhanden", () => {
+    const keys = [
+      "studio.save.capture.title",
+      "studio.save.capture.hint",
+      "studio.save.capture.next",
+      "studio.save.revision.title",
+      "studio.save.revision.hint",
+      "studio.save.revision.next",
+    ];
+    for (const key of keys) {
+      for (const lng of ["de", "en"]) {
+        expect(String(i18n.getResource(lng, "translation", key) ?? "").length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("ehrlich: Copy behauptet kein Auto-Speichern/-Validieren bzw. keine Auto-Freigabe (DE/EN)", () => {
+    // Capture: nächster Schritt führt zu Review/Validierung, keine Auto-Validierung.
+    expect(String(i18n.getResource("de", "translation", "studio.save.capture.next") ?? "")).toMatch(
+      /automatisch validiert wird nichts|review|validierung/i,
+    );
+    expect(String(i18n.getResource("en", "translation", "studio.save.capture.next") ?? "")).toMatch(
+      /nothing is validated automatically/i,
+    );
+    // Revision: neue Version + erneute Prüfung, keine automatische Freigabe.
+    expect(
+      String(i18n.getResource("de", "translation", "studio.save.revision.next") ?? ""),
+    ).toMatch(/neue Version/i);
+    expect(
+      String(i18n.getResource("de", "translation", "studio.save.revision.next") ?? ""),
+    ).toMatch(/keine automatische Freigabe/i);
+    expect(
+      String(i18n.getResource("en", "translation", "studio.save.revision.next") ?? ""),
+    ).toMatch(/new version/i);
   });
 });

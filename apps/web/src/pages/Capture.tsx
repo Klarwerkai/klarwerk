@@ -36,6 +36,7 @@ import { captureReadiness } from "../lib/captureReadiness";
 import { captureNextSteps, captureSavedStatus } from "../lib/captureSuccess";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 import { draftTitle } from "../lib/draftForm";
+import { studioSaveConfidence } from "../lib/editorApplySafety";
 import { EDITOR_BLOCKS } from "../lib/editorBlocks";
 import { editorImagesFromLocalImages } from "../lib/editorImages";
 import {
@@ -1024,6 +1025,26 @@ export function Capture(): JSX.Element {
                     ) : null}
                   </div>
                 ) : null}
+                {/* SCRUM-344: Save-Confidence — nach Studio-Apply vor dem Einreichen ehrlich klarmachen,
+                    dass der Inhalt im Entwurf liegt, aber noch nicht gespeichert/validiert ist. */}
+                {studioApplied
+                  ? (() => {
+                      const conf = studioSaveConfidence("capture");
+                      return (
+                        <div className="mb-2 rounded-card border border-trust-warn-fill/30 bg-trust-warn-bg p-2.5">
+                          <p className="text-[12.5px] font-semibold text-trust-warn-text">
+                            {t(conf.titleKey)}
+                          </p>
+                          <p className="mt-0.5 text-[11.5px] leading-relaxed text-trust-warn-text/90">
+                            {t(conf.hintKey)}
+                          </p>
+                          <p className="mt-1 text-[11.5px] font-medium leading-relaxed text-trust-warn-text">
+                            {t(conf.nextStepKey)}
+                          </p>
+                        </div>
+                      );
+                    })()
+                  : null}
                 <Button
                   variant="primary"
                   className="w-full"

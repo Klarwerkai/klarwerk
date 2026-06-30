@@ -36,3 +36,25 @@ export function knowledgeStudioState(draft: string, applied: string): KnowledgeS
     ? { dirty: true, statusKey: "studio.state.dirty", tone: "warn" }
     : { dirty: false, statusKey: "studio.state.clean", tone: "neutral" };
 }
+
+// SCRUM-344: DOM-freier „Save-Confidence"-Hinweis nach einer Studio-Übernahme. Macht direkt am
+// Speichern-/Revidieren-Bereich ehrlich klar, dass der aus dem Studio übernommene Inhalt im Entwurf
+// liegt, aber NOCH NICHT gespeichert/validiert ist — und welcher echte nächste Schritt folgt.
+// Kein neues Statusmodell, kein Auto-Save, keine Auto-Validierung; nur Anzeige-/Textableitung.
+export type StudioSaveContext = "capture" | "revision";
+
+export interface StudioSaveConfidence {
+  titleKey: string;
+  hintKey: string;
+  nextStepKey: string;
+  tone: "warn";
+}
+
+export function studioSaveConfidence(context: StudioSaveContext): StudioSaveConfidence {
+  return {
+    titleKey: `studio.save.${context}.title`,
+    hintKey: `studio.save.${context}.hint`,
+    nextStepKey: `studio.save.${context}.next`,
+    tone: "warn",
+  };
+}

@@ -55,6 +55,7 @@ import {
 import { isDemoKnowledge } from "../lib/demoKnowledge";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 import { deriveStatus } from "../lib/displayStatus";
+import { studioSaveConfidence } from "../lib/editorApplySafety";
 import { EDITOR_BLOCKS } from "../lib/editorBlocks";
 import { groupEvidenceByVersion } from "../lib/evidenceByVersion";
 import { analyzeEvidenceConsistency } from "../lib/evidenceConsistency";
@@ -788,6 +789,26 @@ export function KnowledgeDetail(): JSX.Element {
                       {/* SCRUM-325: kompakter Änderungsüberblick vor dem Revidieren (kein Blocking). */}
                       <KoRevisionSummary original={ko} edit={edit} />
                       <p className="text-[12px] text-muted">{t("ko.editNote")}</p>
+                      {/* SCRUM-344: Save-Confidence — nach Studio-Apply ehrlich klarmachen, dass der Inhalt
+                          im Revisionsentwurf liegt; Speichern erzeugt neue Version + erneute Prüfung. */}
+                      {studioApplied
+                        ? (() => {
+                            const conf = studioSaveConfidence("revision");
+                            return (
+                              <div className="rounded-card border border-trust-warn-fill/30 bg-trust-warn-bg p-2.5">
+                                <p className="text-[12.5px] font-semibold text-trust-warn-text">
+                                  {t(conf.titleKey)}
+                                </p>
+                                <p className="mt-0.5 text-[11.5px] leading-relaxed text-trust-warn-text/90">
+                                  {t(conf.hintKey)}
+                                </p>
+                                <p className="mt-1 text-[11.5px] font-medium leading-relaxed text-trust-warn-text">
+                                  {t(conf.nextStepKey)}
+                                </p>
+                              </div>
+                            );
+                          })()
+                        : null}
                       {err ? (
                         <div className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
                           {err}

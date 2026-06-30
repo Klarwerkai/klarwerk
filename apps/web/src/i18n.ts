@@ -276,6 +276,16 @@ const de = {
   "studio.confirmDiscard.discard": "Verwerfen",
   "studio.applied":
     "Ausführlicher Inhalt aus dem Studio in den Entwurf übernommen. Speichern bzw. Revision erfolgt erst über den bestehenden Button — nichts wird automatisch gespeichert oder validiert.",
+  "studio.save.capture.title": "Studio-Inhalt im Entwurf — noch nicht gespeichert",
+  "studio.save.capture.hint":
+    "Der im Studio übernommene Inhalt liegt im Entwurf, ist aber noch nicht gespeichert oder validiert.",
+  "studio.save.capture.next":
+    "Nächster Schritt: speichern/einreichen — danach folgt die Prüfung (Review/Validierung). Automatisch validiert wird nichts.",
+  "studio.save.revision.title": "Studio-Inhalt im Revisionsentwurf — noch nicht gespeichert",
+  "studio.save.revision.hint":
+    "Der im Studio übernommene Inhalt liegt im Revisionsentwurf, ist aber noch nicht gespeichert.",
+  "studio.save.revision.next":
+    "Speichern erzeugt eine neue Version und startet die Prüfung neu — keine automatische Freigabe.",
   "studio.fromDraft.cta": "Entwurf als Artikel im Studio strukturieren",
   "studio.fromDraft.hint":
     "Erzeugt aus deinem Entwurf (Aussage, Bedingungen, Maßnahmen, Tags) einen strukturierten Artikel-Vorschlag — bitte prüfen und ergänzen. Vorhandener Inhalt wird angehängt, nicht überschrieben; nichts wird automatisch validiert.",
@@ -1681,6 +1691,16 @@ const en: typeof de = {
   "studio.confirmDiscard.discard": "Discard",
   "studio.applied":
     "Detailed content from the studio applied to the draft. Saving or revising still happens via the existing button — nothing is saved or validated automatically.",
+  "studio.save.capture.title": "Studio content in the draft — not saved yet",
+  "studio.save.capture.hint":
+    "The content applied from the studio is in the draft, but not saved or validated yet.",
+  "studio.save.capture.next":
+    "Next step: save/submit — then review/validation follows. Nothing is validated automatically.",
+  "studio.save.revision.title": "Studio content in the revision draft — not saved yet",
+  "studio.save.revision.hint":
+    "The content applied from the studio is in the revision draft, but not saved yet.",
+  "studio.save.revision.next":
+    "Saving creates a new version and restarts the review — no automatic approval.",
   "studio.fromDraft.cta": "Structure the draft as an article in the studio",
   "studio.fromDraft.hint":
     "Generates a structured article suggestion from your draft (statement, conditions, measures, tags) — please review and complete it. Existing content is appended, not overwritten; nothing is validated automatically.",
