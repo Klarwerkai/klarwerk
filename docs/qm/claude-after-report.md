@@ -9050,3 +9050,44 @@ git commit -m "feat(ask): repository-near candidate prefilter (findCandidates, I
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-362 — Beta Retrieval DB Index & Query Evidence v0
+
+**Datum:** 2026-06-30 · **Rolle:** Hauptumsetzer (Claude) · **Repo:** `/Users/peterkohnert/Documents/dev_Klarwerk` (nur Team-1)
+
+**Kurzfazit.** Der Ask-Prefilter (`PgKoRepo.findCandidates`) hat jetzt einen echten indexierbaren Pfad: `KO_SCHEMA` aktiviert `pg_trgm` und legt je Such-Ausdruck (title/statement/category/tags) einen GIN-Trigramm-Index an, sodass das `ILIKE '%term%'` indexgestützt statt per Seq-Scan läuft. Query-Builder und Indexdefinition leiten beide aus EINER Konstante ab → Query-Shape und Index-Pfad sind garantiert deckungsgleich. Alle DDL idempotent + nicht destruktiv; `idx_kos_type`/`idx_kos_status` unberührt. Kein RAG, keine Embeddings, keine Suchmaschine, keine destruktive Migration.
+
+**SCRUM-Ticket.** SCRUM-362 — Beta Retrieval DB Index & Query Evidence v0.
+
+**Vorab-Befund.** `git status -sb` sauber (untrackte v2-Infra-Datei unberührt). `KO_SCHEMA` hatte Tabelle `kos(id/type/status/category/data jsonb)` + btree `idx_kos_type`/`idx_kos_status`. `PgKoRepo.findCandidates` (SCRUM-361) filtert per `data->>'title'/'statement'/'category' ILIKE` + `(data->'tags')::text ILIKE`, ORDER BY validiert/trust, LIMIT — aber ohne Index für die ILIKE-Substring-Suche (Seq-Scan). Postgres-Standardlösung für indexgestütztes `ILIKE '%…%'`: `pg_trgm` + GIN-Trigramm-Indizes auf genau diese Ausdrücke. KO_SCHEMA wird in `services/app/src/db.ts#migrate` per `pool.query(ddl)` ausgeführt (Multi-Statement-String); kein Pg in dieser Umgebung → Fake-Pool-/Schema-String-Unit als Evidenz.
+
+**Team6-Bezug.** AG-03-DBINDEX (kein DB-Index, ILIKE skaliert nicht beliebig, 100k unbelegt), FR-ASK-02, NFR-PERF-03, EK-23.
+
+**Umgesetzter Umfang.**
+1. **Schema-/Index-Readiness** (`KO_SCHEMA`): `CREATE EXTENSION IF NOT EXISTS pg_trgm;` + vier `CREATE INDEX IF NOT EXISTS idx_kos_<feld>_trgm ON kos USING gin ((<expr>) gin_trgm_ops);` (title/statement/category/tags). Idempotent, nicht destruktiv; bestehende type/status-Indizes unverändert.
+2. **Query↔Index in Lockstep**: neue geteilte Konstante `KO_CANDIDATE_SEARCH_EXPRESSIONS` (aus `KO_CANDIDATE_SEARCH`); der `findCandidates`-Query-Builder baut die ODER-Klausel (`<expr> ILIKE $p`) aus derselben Liste, aus der die Index-DDL generiert wird → kein Drift zwischen Query und Index.
+3. **findCandidates gehärtet**: parametrisiert (Terme als `%term%`-Parameter), gedeckelt (LIMIT), status-/trust-sortiert — Verhalten unverändert, nur indexfreundlich + Drift-sicher.
+
+**Geänderte Dateien.**
+- `services/knowledge-object/src/repo-pg.ts` (KO_SCHEMA + pg_trgm/GIN-Indizes + KO_CANDIDATE_SEARCH(_EXPRESSIONS) + Query-Builder aus geteilter Konstante)
+- `services/knowledge-object/src/repo-pg-candidates.test.ts` (Schema-/Index-Readiness + Query↔Index-Deckung)
+- `docs/TEAM6_UPDATE.md` (Pflicht-Nebenänderung, SCRUM-362-Eintrag)
+
+**Tests/Gates.** Query-Shape (Fake-Pool, SCRUM-361, unverändert grün): parametrisierte ILIKE-ODER, ORDER BY validiert/trust, LIMIT, leere Terme → keine Abfrage. NEU: Query↔Index-Deckung (Query referenziert genau die indexierten Ausdrücke); Schema-Readiness (pg_trgm-Extension; je Such-Ausdruck `USING gin ((<expr>) gin_trgm_ops)`; vier benannte trgm-Indizes; idx_kos_type/status bleiben; keine DROP/ALTER/TRUNCATE/DELETE; ausschließlich idempotente CREATEs). InMemory-Vertrag + SCRUM-360/361-Tests grün. `npm run check` grün — **177 Module / 179 Dateien / 1075 Tests**; Build/Biome/dependency-cruiser grün. Keine FE-Dateien geändert → FE-tsc nicht erforderlich.
+
+**Beta-Wirkung.** Der ILIKE/JSONB-Prefilter aus SCRUM-361 hat jetzt einen echten, getesteten, indexgestützten DB-Pfad; bei wachsender Wissensbasis bleibt die Ask-Kandidatensuche schnell, relevant und quellengebunden. Validierte KOs leicht bevorzugt, Relevanz maßgeblich, ungeprüftes Wissen bleibt ehrlich `ungeprueft`.
+
+**Bewusst nicht umgesetzt / Restlücken.** Kein RAG/Embeddings/Vektorsuche/neue Suchmaschine, kein FTS/`tsvector` (bewusst: `pg_trgm` passt exakt zum Substring-ILIKE-Use-Case, ohne Schema-/Materialisierungs-Aufwand und ohne destruktive Migration; führende Wildcards werden unterstützt). KEIN echter 10k/100k-Lasttest (bleibt Team 5/Pedi). Die Index-Wirkung ist per Schema-/Query-Shape-Unit belegt, NICHT per EXPLAIN/ANALYZE gegen echtes Postgres (kein Postgres/Docker in dieser Umgebung). `CREATE EXTENSION pg_trgm` setzt voraus, dass die Extension in der Zielumgebung verfügbar/erstellbar ist (managed/Coolify-Postgres üblich, durch Ops/Pedi zu bestätigen); schlägt sie fehl, bricht die Schema-Migration — als Restrisiko dokumentiert. Keine „validiert-only"-Produktentscheidung.
+
+**TEAM6_UPDATE.md updated: yes** · **Team6 review needed: yes** · **Reason: Team6 P1 Gap AG-03-DBINDEX / FR-ASK-02 / NFR-PERF-03**
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add services/knowledge-object/src/repo-pg.ts services/knowledge-object/src/repo-pg-candidates.test.ts docs/TEAM6_UPDATE.md docs/qm/claude-after-report.md
+git commit -m "feat(ask): pg_trgm GIN indexes for findCandidates ILIKE prefilter + query/index lockstep (SCRUM-362, AG-03-DBINDEX/FR-ASK-02/NFR-PERF-03)"
+git push
+```
+Kein Git/Push/Jira durch Claude.

@@ -2,8 +2,34 @@ import type { Pool } from "pg";
 import type { EvidenceRepo, KoCandidateQuery, KoFilter, KoRepo, KoVersionRepo } from "./repo";
 import type { EvidenceRecord, KnowledgeObject, KoVersionSnapshot } from "./types";
 
+// SCRUM-362 / AG-03-DBINDEX: die Such-Ausdrücke des Ask-Prefilters (PgKoRepo.findCandidates) als EINE
+// Quelle der Wahrheit. Query-Builder UND Indexdefinition leiten beide hieraus ab → Query-Shape und
+// Index-Pfad bleiben garantiert deckungsgleich (kein Drift). Jeweils ein GIN-Trigramm-Index (pg_trgm)
+// macht das `ILIKE '%term%'` (auch mit führendem Wildcard) indexierbar.
+const KO_CANDIDATE_SEARCH: ReadonlyArray<{ index: string; expr: string }> = [
+  { index: "idx_kos_title_trgm", expr: "data->>'title'" },
+  { index: "idx_kos_statement_trgm", expr: "data->>'statement'" },
+  { index: "idx_kos_category_trgm", expr: "data->>'category'" },
+  { index: "idx_kos_tags_trgm", expr: "(data->'tags')::text" },
+];
+
+// Die reinen Such-Ausdrücke (für den Query-Builder + Tests, die Query↔Index-Deckung prüfen).
+export const KO_CANDIDATE_SEARCH_EXPRESSIONS: readonly string[] = KO_CANDIDATE_SEARCH.map(
+  (s) => s.expr,
+);
+
+// GIN-Trigramm-Index-DDL je Such-Ausdruck (idempotent, nicht destruktiv).
+const KO_CANDIDATE_SEARCH_INDEX_DDL = KO_CANDIDATE_SEARCH.map(
+  ({ index, expr }) =>
+    `CREATE INDEX IF NOT EXISTS ${index} ON kos USING gin ((${expr}) gin_trgm_ops);`,
+).join("\n");
+
 // Postgres-Adapter für knowledge-object. Vollobjekt als JSONB; Filterspalten indiziert.
+// SCRUM-362: pg_trgm + GIN-Trigramm-Indizes machen den Ask-Prefilter (ILIKE auf title/statement/
+// category/tags) indexierbar. Alle Statements sind idempotent (IF NOT EXISTS) und nicht destruktiv;
+// die bestehenden idx_kos_type/idx_kos_status bleiben unverändert.
 export const KO_SCHEMA = `
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE TABLE IF NOT EXISTS kos (
   id text PRIMARY KEY,
   type text NOT NULL,
@@ -13,6 +39,7 @@ CREATE TABLE IF NOT EXISTS kos (
 );
 CREATE INDEX IF NOT EXISTS idx_kos_type ON kos(type);
 CREATE INDEX IF NOT EXISTS idx_kos_status ON kos(status);
+${KO_CANDIDATE_SEARCH_INDEX_DDL}
 `;
 
 // SCRUM-159: unveränderliche KO-Version-Snapshots. PK (ko_id, version) + ON CONFLICT DO NOTHING
@@ -122,11 +149,13 @@ export class PgKoRepo implements KoRepo {
     for (const term of terms) {
       params.push(`%${term}%`);
       const p = `$${params.length}`;
-      // ODER-Treffer: ein Term genügt; Teilstring-Match über Titel/Aussage/Kategorie/Tags(JSONB-Text).
-      ors.push(
-        `(data->>'title' ILIKE ${p} OR data->>'statement' ILIKE ${p} ` +
-          `OR data->>'category' ILIKE ${p} OR (data->'tags')::text ILIKE ${p})`,
+      // SCRUM-362: ODER-Treffer über GENAU die Ausdrücke, für die GIN-Trigramm-Indizes existieren
+      // (KO_CANDIDATE_SEARCH_EXPRESSIONS) → jedes `<expr> ILIKE $p` ist über den passenden Index
+      // bedienbar. Ein Term genügt; Teilstring-Match über Titel/Aussage/Kategorie/Tags(JSONB-Text).
+      const clause = KO_CANDIDATE_SEARCH_EXPRESSIONS.map((expr) => `${expr} ILIKE ${p}`).join(
+        " OR ",
       );
+      ors.push(`(${clause})`);
     }
     params.push(limit);
     const limitP = `$${params.length}`;

@@ -1,6 +1,6 @@
 import type { Pool } from "pg";
 import { describe, expect, it } from "vitest";
-import { PgKoRepo } from "./repo-pg";
+import { KO_CANDIDATE_SEARCH_EXPRESSIONS, KO_SCHEMA, PgKoRepo } from "./repo-pg";
 import type { KnowledgeObject } from "./types";
 
 // SCRUM-361 / AG-03 / FR-ASK-02 / NFR-PERF-03: Query-Shape-Test des datenquellennahen Prefilters.
@@ -52,5 +52,54 @@ describe("SCRUM-361: PgKoRepo.findCandidates (Query-Shape, Fake-Pool)", () => {
     expect(await repo.findCandidates({ terms: [], limit: 10 })).toEqual([]);
     expect(await repo.findCandidates({ terms: ["", "  "], limit: 10 })).toEqual([]);
     expect(calls).toHaveLength(0);
+  });
+
+  it("SCRUM-362: die Query nutzt GENAU die indexierten Such-Ausdrücke (Query↔Index-Deckung)", async () => {
+    const { pool, calls } = fakePool([{ data: ko("a") }]);
+    const repo = new PgKoRepo(pool);
+    await repo.findCandidates({ terms: ["ventil"], limit: 10 });
+    const { sql } = calls[0] as { sql: string };
+    // Für jeden Such-Ausdruck (für den ein GIN-Trigramm-Index existiert) steht ein `<expr> ILIKE` im SQL.
+    for (const expr of KO_CANDIDATE_SEARCH_EXPRESSIONS) {
+      expect(sql).toContain(`${expr} ILIKE`);
+    }
+  });
+});
+
+describe("SCRUM-362: KO_SCHEMA Index-/Schema-Readiness (AG-03-DBINDEX)", () => {
+  it("aktiviert pg_trgm und legt je Such-Ausdruck einen GIN-Trigramm-Index an (idempotent)", () => {
+    expect(KO_SCHEMA).toContain("CREATE EXTENSION IF NOT EXISTS pg_trgm");
+    for (const expr of KO_CANDIDATE_SEARCH_EXPRESSIONS) {
+      // Index-Ausdruck deckt sich exakt mit dem Query-Ausdruck → der Planner kann den Index nutzen.
+      expect(KO_SCHEMA).toContain(`USING gin ((${expr}) gin_trgm_ops)`);
+    }
+    // Alle vier Suchfelder sind als eigener trgm-Index benannt.
+    for (const name of [
+      "idx_kos_title_trgm",
+      "idx_kos_statement_trgm",
+      "idx_kos_category_trgm",
+      "idx_kos_tags_trgm",
+    ]) {
+      expect(KO_SCHEMA).toContain(`CREATE INDEX IF NOT EXISTS ${name} `);
+    }
+  });
+
+  it("lässt die vorhandenen type/status-Indizes unangetastet", () => {
+    expect(KO_SCHEMA).toContain("CREATE INDEX IF NOT EXISTS idx_kos_type ON kos(type)");
+    expect(KO_SCHEMA).toContain("CREATE INDEX IF NOT EXISTS idx_kos_status ON kos(status)");
+  });
+
+  it("ist nicht destruktiv: keine DROP/ALTER/TRUNCATE/DELETE-Statements", () => {
+    expect(KO_SCHEMA).not.toMatch(/\bDROP\b/i);
+    expect(KO_SCHEMA).not.toMatch(/\bALTER\b/i);
+    expect(KO_SCHEMA).not.toMatch(/\bTRUNCATE\b/i);
+    expect(KO_SCHEMA).not.toMatch(/\bDELETE\b/i);
+  });
+
+  it("verwendet ausschließlich idempotente CREATE-Statements (IF NOT EXISTS)", () => {
+    const creates = KO_SCHEMA.match(/CREATE (TABLE|INDEX|EXTENSION)/gi) ?? [];
+    const idempotent = KO_SCHEMA.match(/CREATE (TABLE|INDEX|EXTENSION) IF NOT EXISTS/gi) ?? [];
+    expect(creates.length).toBeGreaterThan(0);
+    expect(idempotent.length).toBe(creates.length);
   });
 });
