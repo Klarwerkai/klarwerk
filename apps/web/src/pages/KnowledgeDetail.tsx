@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Paperclip, Pencil, X } from "lucide-react";
+import { Paperclip, Pencil, Sparkles, X } from "lucide-react";
 import { type ChangeEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useParams, useSearchParams } from "react-router-dom";
@@ -24,6 +24,7 @@ import { DemoBanner } from "../components/DemoBanner";
 import { EditorAttachmentContext } from "../components/EditorAttachmentContext";
 import { EditorContentQuality } from "../components/EditorContentQuality";
 import { EditorGuidance } from "../components/EditorGuidance";
+import { KnowledgeInputStudio } from "../components/KnowledgeInputStudio";
 import { KoRevisionSummary } from "../components/KoRevisionSummary";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { SanitizedHtml } from "../components/SanitizedHtml";
@@ -151,6 +152,8 @@ export function KnowledgeDetail(): JSX.Element {
   const nameOf = (uid: string): string => dir.data?.find((d) => d.id === uid)?.name || uid;
   const qc = useQueryClient();
   const [edit, setEdit] = useState<EditState | null>(null);
+  // SCRUM-337: großer Knowledge-Studio-Arbeitsraum (Overlay) für den ausführlichen Inhalt im Edit.
+  const [studioOpen, setStudioOpen] = useState(false);
   // SCRUM-331: nach einer Revision aus dem Nacharbeitskontext (?rework=review) den Rückweg ins
   // Validation Board (Fokus „überarbeitet") anbieten. Nur Anzeige; keine Auto-Validierung/-Rückgabe.
   const [reworkSavedFor, setReworkSavedFor] = useState<string | null>(null);
@@ -675,6 +678,26 @@ export function KnowledgeDetail(): JSX.Element {
                       </Field>
                       {/* KW-STR / FR-STR-02/03/05: WYSIWYG-Body verlustfrei, Bildpalette aus Anhängen */}
                       <Field label={t("capture.fBody")}>
+                        {/* SCRUM-337: primärer Einstieg in den großen Knowledge-Studio-Arbeitsraum. Das
+                            Inline-Feld bleibt erhalten; das Studio arbeitet auf demselben edit.bodyHtml. */}
+                        <button
+                          type="button"
+                          onClick={() => setStudioOpen(true)}
+                          className="mb-2 inline-flex items-center gap-1.5 rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
+                        >
+                          <Sparkles size={14} /> {t("studio.open")}
+                        </button>
+                        <KnowledgeInputStudio
+                          open={studioOpen}
+                          onClose={() => setStudioOpen(false)}
+                          bodyHtml={edit.bodyHtml}
+                          onApply={(bodyHtml) => setEdit({ ...edit, bodyHtml })}
+                          runAssist={runAssist}
+                          images={(ko.attachments ?? [])
+                            .filter((a) => a.objectId && a.mime.startsWith("image/"))
+                            .map((a) => ({ objectId: a.objectId as string, name: a.name }))}
+                          attachments={ko.attachments ?? []}
+                        />
                         {/* SCRUM-317: kompakte Orientierung am Body-Feld (Struktur/Handlung/Blöcke/KI). */}
                         <EditorGuidance />
                         {/* SCRUM-323: Anhänge-Kontext — Bilder (einfügbar) vs. Dateien (Anhang/Evidence). */}

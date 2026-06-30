@@ -5,7 +5,7 @@
 // (sanitizeHtml ist bei Entities nicht idempotent → keine Doppel-Maskierung). Kein Auto-Speichern,
 // keine Validierung — der Mensch übernimmt den Vorschlag bewusst.
 
-import { type EditorBlock, editorBlockClass } from "./editorBlocks";
+import { EDITOR_BLOCKS, type EditorBlock, editorBlockClass } from "./editorBlocks";
 import { htmlToPlainText, isEmptyHtml } from "./richText";
 
 export type BodyAssistMode = "replace" | "append";
@@ -89,4 +89,20 @@ export function applyBodyAssistBlock(
     return base;
   }
   return isEmptyHtml(base) ? next : base + next;
+}
+
+// SCRUM-337: gebündelte AiAssistBox-„extraApplyActions" für die vier Body-Blocktypen (Info/Hinweis/
+// Warnung/Erfolg) — bisher in Capture UND KO-Detail dupliziert, jetzt eine geteilte, testbare Quelle
+// (auch vom Knowledge Input Studio genutzt). Reine Ableitung über die bestehenden Helfer; kein DOM.
+export interface BodyAssistBlockAction {
+  labelKey: string;
+  apply: (original: string, suggestion: string) => string;
+}
+
+export function bodyAssistBlockActions(currentHtml: string): BodyAssistBlockAction[] {
+  return EDITOR_BLOCKS.map((block) => ({
+    labelKey: `capture.ai.applyAs.${block}`,
+    apply: (_original: string, suggestion: string) =>
+      applyBodyAssistBlock(currentHtml, suggestion, block),
+  }));
 }

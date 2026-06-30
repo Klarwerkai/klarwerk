@@ -7958,3 +7958,40 @@ git commit -m "feat(ko-detail): show ordered rework next-steps to clarify work o
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-337 — Beta Knowledge Input Studio / Fullscreen AI Editing v0
+**Datum:** 2026-06-29 · **Rolle:** Claude (Hauptumsetzer) · **Status:** umgesetzt, Gates grün
+
+**Vorab-Befund / Repo-Stand.** `git status -sb`: auf `main`, uncommitted Änderungen vorhanden (i18n.ts, demoKnowledge.ts, Library.tsx, Validation.tsx, tests/app/demo-knowledge.test.ts, docs/qm/claude-after-report.md — der noch nicht committete „Own-Knowledge Work Queue"-Slice) plus untracked Infra-Doc. KEIN Konflikt mit SCRUM-337 (andere Dateien); bestehende Änderungen respektiert, nichts überschrieben; Infra-Doc unberührt.
+
+**Legacy-Pfad geprüft / nicht verfügbar.** Verfügbar (read-only): `Klarwerk/app/src/components/WikiEditor.jsx`, `Klarwerk/demo/src/components/WikiEditor.jsx`, `Klarwerk/demo/src/components/AiAssist.jsx`, `Klarwerk/app/src/pages/TeacherStudio.jsx`. (CaseEditor.jsx an den genannten Pfaden nicht zwingend vorhanden — Studio-Logik steckt in WikiEditor/TeacherStudio.) Nur analysiert, NICHT kopiert.
+
+**Wichtigste alte Funktionen.** Großer WikiEditor-Arbeitsraum; Toolbar H2/H3/Absatz, Bold/Italic, Listen, Link, Bild, Datei; Blöcke Info/Hinweis/Warnung/Erfolg (`cf-info/note/warning/success`); KI-Schaltfläche direkt im Editor; KI-Aktionen Klarer/Strukturieren/Erweitern/Rechtschreibung; freies KI-Anweisungsfeld; Ergebnisvorschau + Übernehmen/Einfügen/Verwerfen; Bild/Datei-Import per Button/Drag&Drop/Paste (inline, 8 MB).
+
+**Aktuelle Gaps (vor diesem Slice).** Die neue App hatte alle Bausteine (RichTextEditor mit H2/H3, Bold/Italic, Listen, Link, Bild + 4 Block-Buttons; AiAssistBox mit Aktionen/Anweisung/Vorschau/Ersetzen-Anhängen + Block-Übernahme; EditorGuidance/AttachmentContext/ContentQuality/BodyTemplateChooser), aber verteilt und formularartig unter dem Body-Feld — kein großer „Studio"-Arbeitsraum, KI-Hilfe optisch nachrangig.
+
+**Umsetzter Umfang.**
+1. **Neue Komponente** `apps/web/src/components/KnowledgeInputStudio.tsx`: Fullscreen-Overlay (`fixed inset-0 z-50`), Kopf/Arbeitsfläche/Fuß. Arbeitet auf einem internen `draft` (beim Öffnen aus `bodyHtml` initialisiert) und schreibt NUR bei „In den Entwurf übernehmen" via `onApply` zurück. Bündelt auf großer Fläche: EditorGuidance, EditorAttachmentContext, EditorContentQuality, BodyTemplateChooser, großer RichTextEditor und die AiAssistBox (Klarer/Strukturieren/Erweitern/Rechtschreibung + freies Anweisungsfeld + Vorschau Ersetzen/Anhängen/Verwerfen + Übernahme als Info/Hinweis/Warnung/Erfolg-Block). Kein Auto-Save, keine Auto-Validierung, kein Backend, keine neue Editor-Library.
+2. **Geteilter Helfer** `bodyAssistBlockActions(bodyHtml)` in `bodyAiAssist.ts` (DOM-frei): die vier Block-Übernahme-Aktionen, vom Studio genutzt (Capture/KO-Detail behalten ihre bestehende, identische Inline-Variante).
+3. **Einstiegspunkte:** Capture (Button „Im Knowledge Studio bearbeiten" mit Sparkles oben am Body-Feld; Studio auf `bodyHtml`/`setBodyHtml`) und KO-Detail-Edit (gleicher Button im Body-Feld; Studio auf `edit.bodyHtml`). Inline-Feld bleibt darunter erhalten; bestehende Save/Submit/Revise-Flows unverändert.
+4. **i18n** `studio.open/title/subtitle/apply/cancel/close` DE+EN.
+5. **Tests** `tests/app/body-ai-assist.test.ts` erweitert: `bodyAssistBlockActions` (vier labelKeys + Append-Verhalten) + Studio-i18n DE/EN.
+
+**Bewusst nicht umgesetzte Gaps.** Kein vollständiger Legacy-Nachbau; kein eigener Datei-/Bild-Upload im Studio (Anhänge/Bilder werden über die bestehenden Capture/KO-Detail-Flows bereitgestellt und als Kontext/Palette gereicht — Dateien bleiben Anhänge/Evidence); kein Drag&Drop/Paste-Import im Overlay; kein Auto-Save/Auto-Validate; keine neue Editor-Library; kein Backend. Capture-Variante des Body-Felds nicht auf den geteilten Helfer umgestellt (Scope-Schonung; Verhalten identisch).
+
+**Geänderte Dateien.** `apps/web/src/components/KnowledgeInputStudio.tsx` (NEU); `apps/web/src/lib/bodyAiAssist.ts`; `apps/web/src/pages/Capture.tsx`; `apps/web/src/pages/KnowledgeDetail.tsx`; `apps/web/src/i18n.ts`; `tests/app/body-ai-assist.test.ts`.
+
+**Tests/Gates.** `npm run check` grün — **155 Dateien / 944 Tests**. Gezielt `tests/app/body-ai-assist.test.ts` → 15/15 grün. `(cd apps/web && tsc --noEmit)` grün (FE-EXIT=0). Biome/depcruise grün.
+
+**Rest-Risiken.** Das Studio teilt sich `bodyHtml` mit dem Inline-Feld: gleichzeitige Änderungen im Inline-Feld bei offenem Studio werden beim „Übernehmen" durch den Studio-Draft überschrieben (Draft beim Öffnen gesetzt) — bewusst, der Studio ist die fokussierte Arbeitsfläche. Reines Composition-Overlay ohne eigene Logik außer Draft/Confirm; der testbare Kern (Block-Aktionen) ist DOM-frei abgesichert, die reine UI-Komposition nicht per Browser-E2E (projektüblich nicht erzwungen).
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).** Hinweis: die unten gelisteten Dateien enthalten teils auch den noch nicht committeten „Own-Knowledge"-Slice (i18n.ts) — Codex trennt/committet nach Diff-Prüfung.
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/components/KnowledgeInputStudio.tsx apps/web/src/lib/bodyAiAssist.ts apps/web/src/pages/Capture.tsx apps/web/src/pages/KnowledgeDetail.tsx apps/web/src/i18n.ts tests/app/body-ai-assist.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(editor): Knowledge Input Studio — large AI-assisted editing overlay for Capture and KO detail (SCRUM-337)"
+git push
+```
+Kein Git/Push/Jira durch Claude.

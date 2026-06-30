@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
+import i18n from "../../apps/web/src/i18n";
 import {
   applyBodyAssist,
   applyBodyAssistBlock,
+  bodyAssistBlockActions,
   bodyTextForAssist,
   suggestionToBodyBlockHtml,
   suggestionToBodyHtml,
@@ -113,5 +115,42 @@ describe("SCRUM-316: bodyAiAssist Block-Übernahme", () => {
     expect(applyBodyAssistBlock("<p>a &amp; b</p>", "c", "info")).toBe(
       '<p>a &amp; b</p><div class="panel panel-info"><p>c</p></div>',
     );
+  });
+});
+
+// SCRUM-337: gebündelte Block-Übernahme-Aktionen (vom Knowledge Input Studio + Capture/KO-Detail genutzt).
+describe("SCRUM-337: bodyAssistBlockActions", () => {
+  it("liefert genau die vier Body-Blocktypen mit stabilen labelKeys", () => {
+    const actions = bodyAssistBlockActions("");
+    expect(actions.map((a) => a.labelKey)).toEqual([
+      "capture.ai.applyAs.info",
+      "capture.ai.applyAs.note",
+      "capture.ai.applyAs.warning",
+      "capture.ai.applyAs.success",
+    ]);
+  });
+
+  it("apply hängt den Vorschlag als sicheren Block an den aktuellen Body an", () => {
+    const actions = bodyAssistBlockActions("<p>vorhandener Text</p>");
+    const warn = actions.find((a) => a.labelKey === "capture.ai.applyAs.warning");
+    expect(warn?.apply("", "Achtung")).toBe(
+      '<p>vorhandener Text</p><div class="panel panel-warning"><p>Achtung</p></div>',
+    );
+  });
+
+  it("Studio-i18n (open/title/subtitle/apply/cancel/close) DE+EN vorhanden", () => {
+    const keys = [
+      "studio.open",
+      "studio.title",
+      "studio.subtitle",
+      "studio.apply",
+      "studio.cancel",
+      "studio.close",
+    ];
+    for (const key of keys) {
+      for (const lng of ["de", "en"]) {
+        expect(String(i18n.getResource(lng, "translation", key) ?? "").length).toBeGreaterThan(0);
+      }
+    }
   });
 });

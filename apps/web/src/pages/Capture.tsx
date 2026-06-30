@@ -23,6 +23,7 @@ import { EditorAttachmentContext } from "../components/EditorAttachmentContext";
 import { EditorContentQuality } from "../components/EditorContentQuality";
 import { EditorGuidance } from "../components/EditorGuidance";
 import { HelpTip } from "../components/HelpTip";
+import { KnowledgeInputStudio } from "../components/KnowledgeInputStudio";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { ListEditor, TagEditor } from "../components/editors";
 import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
@@ -124,6 +125,8 @@ export function Capture(): JSX.Element {
   const [draft, setDraft] = useState<StructureResult | null>(null);
   // KW-STR / SCRUM-45/46/48: WYSIWYG-Body (sanitisiertes HTML), separat vom Reasoner-Draft.
   const [bodyHtml, setBodyHtml] = useState("");
+  // SCRUM-337: großer Knowledge-Studio-Arbeitsraum (Overlay) auf demselben bodyHtml-State.
+  const [studioOpen, setStudioOpen] = useState(false);
 
   // Metadaten (vorab erfassbar, FR-CAP-08)
   const [type, setType] = useState<KnowledgeType>("best_practice");
@@ -882,6 +885,24 @@ export function Capture(): JSX.Element {
                 {/* KW-STR / FR-STR-02: optionaler WYSIWYG-Body. SCRUM-321: lokale Bild-Anhänge
                     können vor dem Speichern als sichere data:image-Vorschau eingefügt werden. */}
                 <Field label={t("capture.fBody")}>
+                  {/* SCRUM-337: primärer Einstieg in den großen Knowledge-Studio-Arbeitsraum. Das
+                      Inline-Feld bleibt darunter erhalten; das Studio arbeitet auf demselben bodyHtml. */}
+                  <button
+                    type="button"
+                    onClick={() => setStudioOpen(true)}
+                    className="mb-2 inline-flex items-center gap-1.5 rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
+                  >
+                    <Sparkles size={14} /> {t("studio.open")}
+                  </button>
+                  <KnowledgeInputStudio
+                    open={studioOpen}
+                    onClose={() => setStudioOpen(false)}
+                    bodyHtml={bodyHtml}
+                    onApply={setBodyHtml}
+                    runAssist={runAssist}
+                    images={editorImagesFromLocalImages(images)}
+                    attachments={[...images, ...docs.map(() => ({ mime: null }))]}
+                  />
                   {/* SCRUM-317: kompakte Orientierung am Body-Feld (Struktur/Handlung/Blöcke/KI). */}
                   <EditorGuidance />
                   {/* SCRUM-323: Anhänge-Kontext — Bilder (einfügbar) vs. Dateien (Anhang/Evidence). */}
