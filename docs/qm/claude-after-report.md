@@ -8485,3 +8485,50 @@ git commit -m "test(flow): review -> rework -> revalidation -> use e2e hardening
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-350 — Beta Evidence & Attachments → Review → Use Hardening v0
+**Datum:** 2026-06-30 · **Rolle:** Claude (Hauptumsetzer) · **Status:** umgesetzt (Regression abgesichert, keine echte Reibung), Gates grün
+
+**Vorab-Befund.** `git status -sb` sauber (nur untracked Infra-Doc; SCRUM-337–349 committet). Attachment-/Evidence-Mechanik vorhanden und einzeln getestet (`capture-attachment-routes.test.ts`, SCRUM-243): `POST /api/objects` (ObjectRef + `/raw`), `PUT /api/kos/:id {action:attach}` (mit `objectId` → Attachment-Evidence), `{action:add-source}` (externe Quelle, `peerValidated:false`, Source-Evidence), `GET /api/kos/:id/evidence`. FE-Helfer: `editorAttachmentContext.attachmentContext` trennt Bild (inline einfügbar) von Datei (bleibt Anhang/Evidence); `koOverview` leitet `usability` AUSSCHLIESSLICH aus dem Status ab (nicht aus Anhängen/Quellen) — `hasEvidence`/`attachmentCount`/`sourceCount` sind reine Zähler, `nextAction` unterscheidet bei needs-work nur addSource vs validate. Befund: Evidence bläht Nutzbarkeit/Trust NICHT auf (ehrlich). Was fehlte: ein zusammenhängender Regressionstest, der genau das über Capture→Evidence→Review→Use beweist (die bestehende Attachment-Suite verbindet Evidence NICHT mit Validierungs-/Use-Ehrlichkeit).
+
+**Read-only-Befund (Fragen aus dem Ticket).**
+- Anhänge fließen von Capture/KO über `attach` (objectId/dataUrl) in `ko.attachments` + Evidence-Records; Quellen über `add-source` in `ko.sources` + Source-Evidence.
+- Bilder/Dateien sind im KO-Detail sichtbar (Attachment-Liste, `openAttachment` via dataUrl/objectId; `EditorAttachmentContext`-Karte Bild vs. Datei).
+- Review/Validation sieht denselben KO-Zustand inkl. Counts/Evidence über `koOverview` (`ov.attachmentCount`/`ov.sourceCount`).
+- Ask/Use bleibt quellengebunden: `answerStatus`/`sourceRefs` aus `koOverview` → gesichert nur bei validiertem Quell-KO.
+- **Keine echte P1/P2-Reibung gefunden** — die Status/Trust/Nutzbarkeits-Aussage ist über alle Flächen konsistent und Evidence-unabhängig.
+
+**Runtime-/Flow-Evidence (neuer E2E, 1 Test grün).**
+- KO mit Studio-Body („Förderband FB12", needed=1) → offen.
+- Bild-Object (`image/png`) + Datei-Object (`application/pdf`) via `POST /api/objects`; beide via `attach` (objectId) referenziert; externe Quelle via `add-source`.
+- `GET …/evidence`: 2 `attachment`-Records + 1 `source`-Record; Attachment-Record verweist auf die Bild-`objectId`.
+- KO-Zustand: 2 Anhänge; externe Quelle `peerValidated=false`/`kind=external`.
+- **KERN:** `koOverview` zeigt `attachmentCount=2`, `sourceCount=1`, `hasEvidence=true` — aber `status=offen`, `trust=0`, `usability=needs-work` (Evidence ≠ Validierung); `useReadiness ≠ ready`.
+- `attachmentContext` → `imageCount=1`, `fileCount=1` (Bild vs. Datei korrekt getrennt).
+- **USE VOR Validierung:** trotz Evidence `answered=true`, aber `knowledgeClass ≠ gesichert` → `answerStatus=unverified`.
+- Echte Validierung (`rate up`, needed=1) → `validiert`/Trust 100; **Anhänge bleiben erhalten** (2); `koOverview.usability=ready`, `hasEvidence` weiterhin true.
+- **USE NACH Validierung:** `gesichert`, `sources=[id]` (quellengebunden), `verified`, `gap=null`, `sourceRefs.validated=true`/`usability=ready`.
+
+**Gefundene Reibung / keine Reibung.** Keine echte P1/P2-Reibung. Anhänge/Evidence werden glaubwürdig als Kontext/Beleg geführt (sichtbar in Counts, Attachment-Kontext-Karte, Evidence-Records), ersetzen aber an keiner Stelle Status/Trust/Validierung. Wie im Ticket vorgesehen daher ehrlich berichtet + als dauerhafte Regression abgesichert.
+
+**Umgesetzter Umfang.** Neuer Runtime-/API-naher E2E `tests/structure/evidence-attachments-to-use-e2e.test.ts` (1 Test) über die echten Object-Store-/Attachment-/Evidence-Routen + die echten Anzeige-Helfer. Kein Produktcode geändert (keine Reibung).
+
+**Bewusst nicht umgesetzte Gaps.** Kein neues Upload-/Object-Store-System; keine Inline-Datei-Vorschau über Bilder hinaus; kein Evidence-Scoring/Gewichtung (bewusst — Evidence soll Validierung NICHT ersetzen). Kein Multi-Voter-Quorum (anderweitig abgedeckt). Kein neues Testframework, kein Backend/Reasoner-Change, keine Demo-Politur.
+
+**Geänderte Dateien.**
+- `tests/structure/evidence-attachments-to-use-e2e.test.ts` (NEU)
+
+**Tests/Gates.** `npm run check` grün — **163 Dateien / 987 Tests**. Gezielt `evidence-attachments-to-use-e2e.test.ts` → 1/1 grün. `(cd apps/web && tsc --noEmit)` grün (FE-EXIT=0). Biome/depcruise grün.
+
+**Rest-Risiken.** E2E nutzt needed=1 für deterministische Validierung (Quorum anderweitig abgedeckt). Object-Store speichert Metadaten/Bytes ohne Format-Validierung (PDF-Datenblob nur als Beispiel-Metadatum) — das ist bestehendes Verhalten, nicht Teil dieses Slices. Quellenbindung „genau dieses KO" gilt für den eindeutigen Token (FB12). Reiner Test-Zusatz, kein Produktverhalten geändert.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add tests/structure/evidence-attachments-to-use-e2e.test.ts docs/qm/claude-after-report.md
+git commit -m "test(flow): evidence & attachments -> review -> use e2e hardening (SCRUM-350)"
+git push
+```
+Kein Git/Push/Jira durch Claude.
