@@ -8362,3 +8362,41 @@ git commit -m "feat(editor): knowledge studio live preview & apply review (SCRUM
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-347 — Beta Knowledge Studio Browser Smoke & Usability v0
+**Datum:** 2026-06-30 · **Rolle:** Claude (Hauptumsetzer) · **Status:** umgesetzt, Gates grün
+
+**Vorab-Befund.** `git status -sb` sauber (nur untracked Infra-Doc; SCRUM-337–346 committet). Wichtig: Es existiert KEIN Browser-/DOM-Test-Harness — `vitest.config.ts` nutzt das Node-Env (kein `environment: "jsdom"`), und es sind weder `@testing-library/*`, `jsdom`, `happy-dom` noch Playwright als Dependency vorhanden; kein bestehender Test rendert Komponenten. Das Ticket verbietet ausdrücklich, einen neuen E2E-/Browser-Harness einzuführen. Daher: Code-/DOM-naher Durchlauf der echten Studio-Verdrahtung (Read-Through der gerenderten Struktur) + DOM-freie Flow-Smoke-Regression über die real genutzte Helfer-Kette.
+
+**Legacy-Pfad geprüft.** `Klarwerk/app/src/{WikiEditor,AiAssist,CaseEditor}.jsx` + `TeacherStudio.jsx` (read-only) gesichtet, nichts kopiert; `demo/src/...` nicht nötig.
+
+**Smoke-Evidence Capture-Studio (Code-Durchlauf).** Capture rendert `<KnowledgeInputStudio open onApply=setBodyHtml … />`; Öffnen initialisiert `draft=bodyHtml`, `view="edit"`, `confirmDiscard=false` (useEffect on open). Kontext-Spalte: Guidance/Attachment/Quality/`BodyTemplateChooser(onApply=setDraft)`. Editor-Spalte: Edit/Vorschau-Toggle (aria-pressed), `KnowledgeStudioTips`, `RichTextEditor(value=draft,onChange=setDraft)`. KI-Spalte: `AiAssistBox(applyFn=applyBodyAssist, extraApplyActions=bodyAssistStructuredActions(draft))`. Footer: Dirty-Badge `knowledgeStudioState`, Discard-Guard (Inline-Confirm), `Apply→onApply(draft)+onClose`. Nach Apply zeigt Capture den `studioApplied`-Banner + Save-Confidence `capture` vor dem Einreichen. Flow „open→Vorlage→KI-Abschnitt→Vorschau→Apply→Save-Confidence" als Test reproduziert (grün).
+
+**Smoke-Evidence KO-Detail-Studio (Code-Durchlauf).** KO-Detail-Edit rendert dieselbe Komponente mit `bodyHtml=edit.bodyHtml`, `onApply` schreibt in den Edit-State + setzt `studioApplied`. Vorschau erkennt vorhandenen Body/Blöcke; nach Apply erscheint im Revise-Bereich die Save-Confidence `revision` (neue Version + erneute Prüfung). Flow „open(vorhandener Body)→Vorschau→KI-Ergänzung→Apply→Revise-Confidence" als Test reproduziert (grün).
+
+**Gefundene Reibung (P2, behoben).** Die Formatierungs-/Shortcut-Hilfe `KnowledgeStudioTips` („markieren → formatieren", „⌘B · ⌘I") wurde unbedingt über der zentralen Spalte gerendert — also AUCH in der „Vorschau", wo gar kein Editor sichtbar ist. Das ist in der Read-Only-Vorschau irreführend (Shortcuts ohne bedienbaren Editor). **Fix:** `KnowledgeStudioTips` nur noch im `view === "edit"`. Keine weitere echte Reibung gefunden — Toggle hat `aria-pressed`, alle Buttons haben Textlabels, Safety-Flows (Dirty/Discard/Apply-Feedback/Save-Confidence/Preview-Hinweis) korrekt verdrahtet.
+
+**Umgesetzter Umfang.**
+1. P2-Fix: `KnowledgeStudioTips` nur im Bearbeiten-View sichtbar (in der Vorschau ausgeblendet).
+2. Dauerhafte Regression `tests/app/knowledge-studio-flow.test.ts`: zwei Flow-Smokes (Capture-Einstieg leer→Vorlage→KI-Abschnitt→Vorschau-Zustand→Dirty→Apply→Save-Confidence=capture; KO-Detail-Einstieg vorhandener Body→Vorschau hasBody/hasBlocks→KI-Ergänzung nicht-destruktiv→Dirty→Apply→Save-Confidence=revision) über die echten Helfer `applyBodyTemplate`, `bodyAssistStructuredActions`/`applyBodyAssistSection`, `knowledgeStudioState`, `studioPreviewState`, `studioSaveConfidence`.
+
+**Bewusst nicht umgesetzte Gaps.** Kein neuer Browser-/jsdom-/Playwright-Harness (Nicht-Ziel; nicht vorhanden) — daher kein echtes Pixel-/Event-Rendering, sondern Flow-Smoke über die identische Helfer-Kette. Keine UI-Neuerfindung, kein Editor-Framework, kein Backend/Reasoner-Change, kein Auto-Save/-Validate.
+
+**Geänderte Dateien.**
+- `apps/web/src/components/KnowledgeInputStudio.tsx` (Tips nur im Edit-View)
+- `tests/app/knowledge-studio-flow.test.ts` (NEU)
+
+**Tests/Gates.** `npm run check` grün — **160 Dateien / 983 Tests**. Gezielt `knowledge-studio-flow.test.ts` → 2/2 grün. `(cd apps/web && tsc --noEmit)` grün (FE-EXIT=0). Biome/depcruise grün.
+
+**Rest-Risiken.** Der Smoke ist Flow-/Helfer-nah, nicht echtes DOM-Rendering — JSX-Verzweigungen (z. B. Tips-Sichtbarkeit pro View) sind durch Code-Review belegt, nicht durch einen gerenderten Assert (kein Harness verfügbar/erlaubt). Wenn Team 1 später einen DOM-Harness einführt, sollten diese Flows auf echte Render-Asserts gehoben werden. P2-Fix ist rein additiv (Bedingung), keine Logikänderung an Draft/Apply/Safety.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/components/KnowledgeInputStudio.tsx tests/app/knowledge-studio-flow.test.ts docs/qm/claude-after-report.md
+git commit -m "test(editor): knowledge studio flow smoke + hide formatting tips in preview (SCRUM-347)"
+git push
+```
+Kein Git/Push/Jira durch Claude.

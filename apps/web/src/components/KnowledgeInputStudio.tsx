@@ -155,8 +155,10 @@ export function KnowledgeInputStudio({
                 ))}
               </div>
             </div>
-            {/* SCRUM-345: kurze Bedien-/Formatierungs-Hilfe direkt über der Editorfläche. */}
-            <KnowledgeStudioTips />
+            {/* SCRUM-345: kurze Bedien-/Formatierungs-Hilfe direkt über der Editorfläche.
+                SCRUM-347: nur im Bearbeiten-View — in der Vorschau ist kein Editor sichtbar, dort
+                wären Formatier-/Shortcut-Hinweise irreführend. */}
+            {view === "edit" ? <KnowledgeStudioTips /> : null}
             {view === "edit" ? (
               <div className="min-h-[55vh] rounded-card border border-hairline bg-surface p-2 sm:p-3">
                 <RichTextEditor value={draft} onChange={setDraft} images={images} />
