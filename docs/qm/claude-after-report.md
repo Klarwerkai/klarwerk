@@ -8624,3 +8624,56 @@ git push
 ```
 **Team6 review needed: yes** — Reason: UX feedback / Knowledge Rescue Wizard / Input Studio changed.
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-353 — Beta Knowledge Studio Guided Workspace & Contribution Quality v0
+**Datum:** 2026-06-30 · **Rolle:** Claude (Hauptumsetzer) · **Status:** umgesetzt, Gates grün
+
+**Legacy-Pfad geprüft / nicht verfügbar.** `Klarwerk/{app,demo}/src/...` (WikiEditor/AiAssist/CaseEditor/TeacherStudio) lokal NICHT vorhanden — nicht blockiert, Anforderung aus dem Pedi-Feedback abgeleitet.
+
+**Wichtigste alte Funktionen (aus Pedi-Beschreibung).** Großer Editor/Arbeitsraum, bessere Strukturierung, KI-Hilfe direkt im Editor, weniger Formulargefühl.
+
+**Aktuelle Gaps (vor diesem Ticket).** Der große Knowledge Input Studio (SCRUM-337–347) bündelt bereits Editor, KI-Hilfe, Vorlagen, Vorschau, Qualität, Dirty-/Save-Confidence — aber: kein „geführter Faden" (was mache ich gerade / nächster guter Schritt), und kein sichtbarer Beitragswert (was ist schon gut / was fehlt / warum wertvoll). Der Arbeitsraum wirkte als Bauteil-Sammlung statt als geführter Knowledge-Arbeitsraum.
+
+**Umgesetzter Umfang (zusammenhängender Studio-Slice).**
+1. **DOM-freier Helfer** `apps/web/src/lib/knowledgeStudioGuide.ts`:
+   - `STUDIO_GUIDE_STEPS` (Strukturieren → KI prüfen → Vorschau → bewusst übernehmen) + `studioGuideStepLabelKey` — als ruhige Orientierung „nächster guter Schritt".
+   - `studioContribution(ContentQuality)` → Beitragswert/Qualität: `level` (empty/draft/solid) + `tone`, `strengths[]` (was ist schon gut) und `suggestions[]` (was würde ihn stärker machen) — abgeleitet AUSSCHLIESSLICH aus den vorhandenen Struktur-Signalen (`editorContentQuality`). KEIN Score, keine Punkte, keine KI, keine Validierung.
+2. **Komponente** `StudioContributionPanel.tsx`: ruhiger Beitragswert-Block (Niveau-Badge, „Schon gut"-Liste mit ✓, „Macht ihn stärker"-Hinweise mit +, Wertbeitrag-Note). Reine Anzeige.
+3. **Studio-Header Step-Rail**: ruhige, nummerierte Schrittfolge unter dem Header (Strukturieren → KI prüfen → Vorschau → Übernehmen → „danach speichern & prüfen lassen"); der aktive Schritt folgt dem Edit/Vorschau-View. Orientierung, kein State-Zwang.
+4. **Verdrahtung** in `KnowledgeInputStudio.tsx`: Contribution-Panel zuoberst in der Kontext-Spalte (Beitragswert/Qualität zuerst), Step-Rail im Header. **Keine bestehende Funktion entfernt** — Guidance/Attachment/Quality/Templates/Editor/Vorschau/KI/Dirty-/Save-Confidence bleiben unverändert; Progressive Disclosure durch Anordnung/ruhigen Stil.
+5. **i18n** `studio.guide.*` + `studio.contrib.*` DE+EN, ehrlich (Wertbeitrag erst nach Prüfung gesichert).
+6. **Test** `tests/app/knowledge-studio-guide.test.ts` (8 Tests): Schritt-Reihenfolge/IDs/Key-Schema, i18n-Präsenz; Contribution-Level empty/draft/solid + tone, Stärken/Hinweise aus Quality-Signalen, stabile Key-Schemata, Ehrlichkeits-Check.
+
+**Wie die Feedbackpunkte abgedeckt wurden.**
+- „Zu technisch / UX schwach" → ruhiger geführter Faden (Step-Rail) + Beitragswert statt nur Werkzeugkästen.
+- „Wizard/geführte Nutzung" → nummerierte Schrittfolge mit aktivem Schritt + „danach speichern/prüfen".
+- „Aufgabe / Beitragswert / nächster Schritt sichtbar" → Step-Rail (Aufgabe/nächster Schritt) + Contribution-Panel (Wert/Qualität).
+- „Mehr Motivation/Freude" → „Schon gut"-Stärken + „Dein Beitrag zählt"-Note (leichtgewichtig, kein Score-Backend).
+- „macOS-nah ruhig/aufgeräumt" → dezente Tönung, klare Hierarchie, viel Luft, keine laute UI.
+- „Vereinfachen ohne Funktionen zu verlieren / progressive disclosure" → rein additiv; KI/Templates/Vorschau/Quality bleiben, nur ruhiger gestaffelt.
+
+**Bewusst nicht umgesetzte Gaps.** Keine echte Wizard-State-Maschine (Step-für-Step-Navigation mit erzwungener Reihenfolge) — bewusst Orientierung statt Zwang. Kein Qualitäts-Score/Punkte/Gamification-Backend. Kein Cursor-Insert/Diff/neue Editor-Library. Bild/Datei-Parität zur Alt-App separat/später. EditorContentQuality-Karte bewusst belassen (komplementär, technischer; Contribution-Panel ist die ruhige Wert-Sicht darüber).
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/knowledgeStudioGuide.ts` (NEU)
+- `apps/web/src/components/StudioContributionPanel.tsx` (NEU)
+- `apps/web/src/components/KnowledgeInputStudio.tsx` (Header-Step-Rail + Contribution-Panel + Imports)
+- `apps/web/src/i18n.ts` (`studio.guide.*` + `studio.contrib.*` DE+EN)
+- `tests/app/knowledge-studio-guide.test.ts` (NEU)
+
+**Gates.** `npm run check` grün — **166 Dateien / 1005 Tests**. Gezielt `knowledge-studio-guide.test.ts` → 8/8 grün. `(cd apps/web && tsc --noEmit)` grün (FE-EXIT=0; Zwischenfix: fehlenden Komponenten-Import ergänzt). Biome/depcruise grün.
+
+**Rest-Risiken.** Reine FE-/Anzeige-Änderung; kein Datenmodell/Backend/Statuslogik berührt. Contribution-Level/Stärken sind heuristische Struktur-Signale (keine fachliche Wahrheit) — bewusst als „Hilfe", nicht als Bewertung formuliert; Status/Trust/Validierung bleiben maßgeblich. Ohne DOM-Render-Harness ist die Studio-Verdrahtung per FE-tsc + Helfer-Regression belegt, nicht per gerendertem Test. Capture- und KO-Detail-Einstiege unverändert kompatibel (Props/Flow gleich).
+
+**Team6 review needed: yes** — Reason: UX feedback / Knowledge Studio guided workspace changed.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/knowledgeStudioGuide.ts apps/web/src/components/StudioContributionPanel.tsx apps/web/src/components/KnowledgeInputStudio.tsx apps/web/src/i18n.ts tests/app/knowledge-studio-guide.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(editor): knowledge studio guided step-rail + contribution quality panel (SCRUM-353)"
+git push
+```
+Kein Git/Push/Jira durch Claude.

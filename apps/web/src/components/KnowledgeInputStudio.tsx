@@ -15,6 +15,7 @@ import {
 import { BODY_READ_BLOCKS_KEY, BODY_READ_TITLE_KEY } from "../lib/bodyReadMode";
 import { knowledgeStudioState } from "../lib/editorApplySafety";
 import type { AttachmentLike } from "../lib/editorAttachmentContext";
+import { STUDIO_GUIDE_STEPS, studioGuideActiveStep } from "../lib/knowledgeStudioGuide";
 import { knowledgeStudioSectionLabelKey } from "../lib/knowledgeStudioLayout";
 import {
   STUDIO_EDITOR_VIEWS,
@@ -31,6 +32,7 @@ import { KnowledgeStudioTips } from "./KnowledgeStudioTips";
 import type { EditorImage } from "./RichTextEditor";
 import { RichTextEditor } from "./RichTextEditor";
 import { SanitizedHtml } from "./SanitizedHtml";
+import { StudioContributionPanel } from "./StudioContributionPanel";
 import { Button } from "./ui";
 
 export function KnowledgeInputStudio({
@@ -117,6 +119,40 @@ export function KnowledgeInputStudio({
         </div>
       </div>
 
+      {/* SCRUM-353: ruhige, geführte Schrittfolge als Orientierung — was als Nächstes ein guter
+          Schritt ist (Strukturieren → KI prüfen → Vorschau → bewusst übernehmen), danach speichern/
+          validieren. Reine Anzeige, kein State-Zwang; in der Vorschau ist der Vorschau-Schritt aktiv. */}
+      <div className="border-b border-hairline bg-surface px-4 py-2 sm:px-6">
+        <ol className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-2 gap-y-1">
+          {STUDIO_GUIDE_STEPS.map((step, i) => {
+            const active = studioGuideActiveStep(view) === step.id;
+            return (
+              <li key={step.id} className="flex items-center gap-2">
+                {i > 0 ? (
+                  <span aria-hidden="true" className="text-muted-2">
+                    ·
+                  </span>
+                ) : null}
+                <span
+                  title={t(step.hintKey)}
+                  className={`rounded-pill px-2 py-0.5 text-[11px] font-semibold ${
+                    active ? "bg-ink text-white" : "text-muted"
+                  }`}
+                >
+                  {i + 1}. {t(step.labelKey)}
+                </span>
+              </li>
+            );
+          })}
+          <li className="flex items-center gap-2">
+            <span aria-hidden="true" className="text-muted-2">
+              →
+            </span>
+            <span className="text-[11px] text-muted-2">{t("studio.guide.thenSave")}</span>
+          </li>
+        </ol>
+      </div>
+
       {/* SCRUM-341: Arbeitsraum-Layout — drei klar getrennte Bereiche statt einer linearen Liste.
           Breit (lg): Kontext-Spalte · große Editorfläche · KI-Spalte. Schmal: sinnvoll gestapelt. */}
       <div className="flex-1 overflow-y-auto px-3 py-4 sm:px-5">
@@ -126,6 +162,8 @@ export function KnowledgeInputStudio({
             <p className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
               {t(knowledgeStudioSectionLabelKey("context"))}
             </p>
+            {/* SCRUM-353: Beitragswert/Qualität zuerst — was ist gut, was fehlt, warum wertvoll. */}
+            <StudioContributionPanel bodyHtml={draft} attachments={attachments} />
             <EditorGuidance />
             <EditorAttachmentContext attachments={attachments} />
             <EditorContentQuality bodyHtml={draft} attachments={attachments} />
