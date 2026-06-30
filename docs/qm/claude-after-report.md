@@ -8080,3 +8080,39 @@ git commit -m "feat(editor): studio dirty-state, discard guard and apply feedbac
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-340 — Beta Knowledge Studio Draft-to-Article v0
+**Datum:** 2026-06-29 · **Rolle:** Claude (Hauptumsetzer) · **Status:** umgesetzt, Gates grün
+
+**Legacy-Pfad geprüft / nicht verfügbar.** Verfügbar (read-only): `Klarwerk/app/src/components/{WikiEditor,AiAssist,CaseEditor}.jsx`, `Klarwerk/app/src/pages/TeacherStudio.jsx` + die Demo-Pendants. Nur analysiert, nicht kopiert. Wichtigste alte Funktionen: großer WikiEditor-Arbeitsraum, KI-Aktionen, Panels (Info/Hinweis/Warnung/Erfolg), CaseEditor/TeacherStudio als Editier-/Strukturierungsraum.
+
+**Vorab-Befund.** `git status -sb` sauber (nur untracked Infra-Doc; SCRUM-337/339 + Own-Knowledge committet). Nach dem Reasoner-/Structure-Draft blieb `bodyHtml` im Capture-Flow oft leer; Nutzer sahen weiter die Formularfelder (Titel/Aussage/Bedingungen/Maßnahmen) ohne strukturierten Artikel. Vorhandene Bausteine: `StructureResult` (title/statement/conditions/measures/tags/…), `bodyTemplates.ts` (Set/Append via `applyBodyTemplate`, statisches HTML durch `sanitizeHtml`), `editorBlocks.editorBlockClass`, `richText.sanitizeHtml/isEmptyHtml`. KnowledgeInputStudio + Safety (SCRUM-337/339) intakt.
+
+**Umsetzter Umfang.**
+1. **DOM-freier Helfer** `apps/web/src/lib/captureDraftArticle.ts`: `draftArticleHtml(input, locale)` erzeugt aus Statement/Bedingungen/Maßnahmen/Tags ein sicheres Body-HTML: `<h2>Kernaussage</h2>` + Info-Block (`editorBlockClass("info")`) für die Aussage, `<h3>` + `<ul>` für Bedingungen/Maßnahmen, `<h3>Kontext</h3>` + Tags. Leere Felder werden ausgelassen (leerer Entwurf → `""`). Lokalisierte Überschriften (de/en) wie bei bodyTemplates. Nutzereingaben werden NICHT roh übernommen: das komplette Fragment läuft EINMAL durch `sanitizeHtml` (entfernt Skripte/Eventhandler/externe Bilder, escapt Sonderzeichen — kein Doppel-Escaping). `applyDraftArticle(currentHtml, input, locale)` spiegelt das Set/Append-Verhalten von `applyBodyTemplate`: leer → setzen, sonst NICHT-destruktiv anhängen. Der Titel ist das separate KO-Feld und wird bewusst nicht in den Body dupliziert.
+2. **Capture-UI:** im `draft`-Block eine sichtbare primäre CTA „Entwurf als Artikel im Studio strukturieren" (Sparkles) + sekundär „Im Knowledge Studio bearbeiten". Klick erzeugt/ergänzt `bodyHtml` via `applyDraftArticle(prev, draft, …)` (nicht-destruktiv) und öffnet direkt den KnowledgeInputStudio; kurzer Hinweis „aus Draft erzeugt, bitte prüfen, nicht automatisch validiert". Bestehende Komponenten (Studio, BodyTemplateChooser, AiAssistBox, EditorContentQuality/AttachmentContext) + Save/Submit/Validation-Flow unverändert.
+3. **i18n** `studio.fromDraft.cta`/`hint` DE+EN (ehrlich: Vorschlag, anhängen statt überschreiben, nichts automatisch validiert).
+4. **Tests** `tests/app/capture-draft-article.test.ts` (NEU, DOM-frei): H2/H3/Listen aus statement/conditions/measures; englische Überschriften; leere Felder ausgelassen + leerer Entwurf → `""`; Tags als Kontext; Sanitisierung gefährlicher Eingaben (kein Skript/Eventhandler, einmaliges Escaping); `applyDraftArticle` set/append + nicht-destruktiv; `normalizeDraftArticleLocale`; CTA-i18n DE/EN + Ehrlichkeit.
+
+**Bewusst nicht umgesetzt.** Kein Cursor-Insert; kein vollständiger Legacy-WikiEditor-Nachbau; keine Bild-/Datei-Parität; keine neue KI-Architektur; keine automatische Validierung; kein Titel-Duplikat im Body; KO-Detail-Edit nicht um die Draft-Artikel-CTA erweitert (dort gibt es keinen frischen Reasoner-Draft — Fokus auf Capture).
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/captureDraftArticle.ts` (NEU)
+- `apps/web/src/pages/Capture.tsx` (CTA + Hinweis + Studio-Öffnung, nicht-destruktiv)
+- `apps/web/src/i18n.ts` (`studio.fromDraft.*` DE+EN)
+- `tests/app/capture-draft-article.test.ts` (NEU)
+
+**Tests/Gates.** `npm run check` grün — **156 Dateien / 957 Tests**. Gezielt `tests/app/capture-draft-article.test.ts` → 9/9 grün. `(cd apps/web && tsc --noEmit)` grün (FE-EXIT=0). Biome/depcruise grün.
+
+**Rest-Risiken.** `sanitizeHtml` ENTFERNT gefährliche Tags (Skript/externe Bilder) ganz statt sie als sichtbaren Text zu escapen — für einen Plaintext-Entwurf erwünscht, könnte aber selten beabsichtigte spitze Klammern aus dem Statement entfernen (akzeptabel, konservativ). Append-Modus kann bei wiederholtem Klick denselben Artikel mehrfach anhängen — bewusst nicht-destruktiv; der Dirty-/Safety-Flow (SCRUM-339) + Studio-Bearbeitung fangen das ab.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/captureDraftArticle.ts apps/web/src/pages/Capture.tsx apps/web/src/i18n.ts tests/app/capture-draft-article.test.ts docs/qm/claude-after-report.md
+git commit -m "feat(capture): generate a structured article from the draft and open it in the studio (SCRUM-340)"
+git push
+```
+Kein Git/Push/Jira durch Claude.

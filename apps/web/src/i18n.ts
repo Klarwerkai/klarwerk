@@ -276,6 +276,9 @@ const de = {
   "studio.confirmDiscard.discard": "Verwerfen",
   "studio.applied":
     "Ausführlicher Inhalt aus dem Studio in den Entwurf übernommen. Speichern bzw. Revision erfolgt erst über den bestehenden Button — nichts wird automatisch gespeichert oder validiert.",
+  "studio.fromDraft.cta": "Entwurf als Artikel im Studio strukturieren",
+  "studio.fromDraft.hint":
+    "Erzeugt aus deinem Entwurf (Aussage, Bedingungen, Maßnahmen, Tags) einen strukturierten Artikel-Vorschlag — bitte prüfen und ergänzen. Vorhandener Inhalt wird angehängt, nicht überschrieben; nichts wird automatisch validiert.",
   "capture.savedViewKo": "Objekt ansehen",
   // SCRUM-310: in der Bibliothek wiederfinden — Herkunftsfilter „eigenes/nicht-Demo-Wissen"
   // (technisch: ohne Demo-Tag; keine Autor-/User-Zuordnung). Auffinden, keine Validierung.
@@ -1670,6 +1673,9 @@ const en: typeof de = {
   "studio.confirmDiscard.discard": "Discard",
   "studio.applied":
     "Detailed content from the studio applied to the draft. Saving or revising still happens via the existing button — nothing is saved or validated automatically.",
+  "studio.fromDraft.cta": "Structure the draft as an article in the studio",
+  "studio.fromDraft.hint":
+    "Generates a structured article suggestion from your draft (statement, conditions, measures, tags) — please review and complete it. Existing content is appended, not overwritten; nothing is validated automatically.",
   "capture.savedViewKo": "View object",
   // SCRUM-310: find it in the library — origin filter "own/non-demo knowledge" (technically: without
   // the demo tag; no author/user attribution). Finding/overview, not validation.

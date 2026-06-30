@@ -29,6 +29,7 @@ import { ListEditor, TagEditor } from "../components/editors";
 import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
 import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
 import { applyBodyAssist, applyBodyAssistBlock, bodyTextForAssist } from "../lib/bodyAiAssist";
+import { applyDraftArticle, normalizeDraftArticleLocale } from "../lib/captureDraftArticle";
 import { CAPTURE_EXAMPLE } from "../lib/captureExample";
 import { gapContextDraft, readGapContext } from "../lib/captureFromGap";
 import { captureReadiness } from "../lib/captureReadiness";
@@ -887,18 +888,40 @@ export function Capture(): JSX.Element {
                 {/* KW-STR / FR-STR-02: optionaler WYSIWYG-Body. SCRUM-321: lokale Bild-Anhänge
                     können vor dem Speichern als sichere data:image-Vorschau eingefügt werden. */}
                 <Field label={t("capture.fBody")}>
-                  {/* SCRUM-337: primärer Einstieg in den großen Knowledge-Studio-Arbeitsraum. Das
-                      Inline-Feld bleibt darunter erhalten; das Studio arbeitet auf demselben bodyHtml. */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setStudioApplied(false);
-                      setStudioOpen(true);
-                    }}
-                    className="mb-2 inline-flex items-center gap-1.5 rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
-                  >
-                    <Sparkles size={14} /> {t("studio.open")}
-                  </button>
+                  {/* SCRUM-340: aus dem vorhandenen Reasoner-Entwurf einen strukturierten Body-Artikel
+                      erzeugen und direkt im Studio weiterbearbeiten. Vorschlag, kein validiertes Wissen;
+                      vorhandener Body wird nicht still überschrieben (leer = setzen, sonst anhängen). */}
+                  <div className="mb-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBodyHtml((prev) =>
+                          applyDraftArticle(
+                            prev,
+                            draft,
+                            normalizeDraftArticleLocale(i18n.language),
+                          ),
+                        );
+                        setStudioApplied(false);
+                        setStudioOpen(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
+                    >
+                      <Sparkles size={14} /> {t("studio.fromDraft.cta")}
+                    </button>
+                    {/* SCRUM-337: Studio auch ohne Artikel-Erzeugung öffnen (leerer/eigener Body). */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStudioApplied(false);
+                        setStudioOpen(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text"
+                    >
+                      {t("studio.open")}
+                    </button>
+                  </div>
+                  <p className="mb-2 text-[11px] text-muted-2">{t("studio.fromDraft.hint")}</p>
                   <KnowledgeInputStudio
                     open={studioOpen}
                     onClose={() => setStudioOpen(false)}
