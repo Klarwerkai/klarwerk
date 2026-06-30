@@ -11,6 +11,7 @@ import type {
   Draft,
   DraftPayload,
   InterviewResult,
+  KnowledgeObject,
   KnowledgeType,
   StructureResult,
 } from "../api/types";
@@ -148,6 +149,8 @@ export function Capture(): JSX.Element {
   const [notice, setNotice] = useState<string | null>(null);
   // SCRUM-276: nach erfolgreichem Einreichen die ID des gespeicherten KO (für die Success-Card).
   const [savedKoId, setSavedKoId] = useState<string | null>(null);
+  // SCRUM-354: ob das eingereichte KO aus einem fortgesetzten Entwurf promotet wurde (Success-Copy).
+  const [submittedFromDraft, setSubmittedFromDraft] = useState(false);
   // SCRUM-123: laufende Bild-OCR (für ehrlichen Status / Button-Sperre).
   const [ocrBusy, setOcrBusy] = useState<string | null>(null);
   // SCRUM-113 / FE-CAP-07: aktuell fortgesetzter Entwurf (null = neuer Entwurf).
@@ -211,18 +214,44 @@ export function Capture(): JSX.Element {
         throw new Error("no draft");
       }
       const n = parsedValidations();
-      const ko = await endpoints.ko.create({
-        title: draft.title,
-        statement: draft.statement,
-        conditions: draft.conditions.filter((x) => x.trim()),
-        measures: draft.measures.filter((x) => x.trim()),
-        tags: tags.filter((x) => x.trim()),
-        type,
-        category: category.trim() || "Allgemein",
-        asset: asset.trim() ? asset.trim() : null,
-        ...(bodyHtml.trim() ? { bodyHtml } : {}),
-        ...(n ? { neededValidations: n } : {}),
-      });
+      // SCRUM-354 / FR-STR-06 / G-P1-2: Ein FORTGESETZTER Entwurf (draftId vorhanden) wird sauber
+      // über die vorhandene Promote-Route abgeschlossen — NICHT nur lokal vergessen. Dazu zuerst den
+      // Entwurf mit den AKTUELLEN Capture-/Studio-Inhalten aktualisieren, dann promoten: das erzeugt
+      // ein KO (Status „offen") AUS dem gespeicherten Entwurf (Originalautor + bodyHtml bleiben erhalten,
+      // FR-CAP-07) und ENTFERNT den Entwurf serverseitig aus dem gemeinsamen Pool. Ein frischer Entwurf
+      // (ohne draftId) wird wie bisher direkt als KO angelegt (Autor = aktueller Nutzer).
+      let ko: KnowledgeObject;
+      if (draftId) {
+        const payload: DraftPayload = {
+          title: draft.title,
+          statement: draft.statement,
+          type,
+          category: category.trim() || "Allgemein",
+          tags: tags.filter((x) => x.trim()),
+          conditions: draft.conditions.filter((x) => x.trim()),
+          measures: draft.measures.filter((x) => x.trim()),
+          asset: asset.trim() ? asset.trim() : undefined,
+          ...(bodyHtml.trim() ? { bodyHtml } : {}),
+          ...(n ? { neededValidations: n } : {}),
+        };
+        await endpoints.drafts.update(draftId, payload);
+        ko = await endpoints.drafts.promote(draftId);
+        setSubmittedFromDraft(true);
+      } else {
+        ko = await endpoints.ko.create({
+          title: draft.title,
+          statement: draft.statement,
+          conditions: draft.conditions.filter((x) => x.trim()),
+          measures: draft.measures.filter((x) => x.trim()),
+          tags: tags.filter((x) => x.trim()),
+          type,
+          category: category.trim() || "Allgemein",
+          asset: asset.trim() ? asset.trim() : null,
+          ...(bodyHtml.trim() ? { bodyHtml } : {}),
+          ...(n ? { neededValidations: n } : {}),
+        });
+        setSubmittedFromDraft(false);
+      }
       // SCRUM-121: Original in den Object-Store; am KO nur Referenz + kleine Vorschau.
       for (const img of images) {
         const ref = await endpoints.objects.upload({
@@ -251,6 +280,8 @@ export function Capture(): JSX.Element {
       push("success", t("capture.savedTitle"));
       void qc.invalidateQueries({ queryKey: ["validation"] });
       void qc.invalidateQueries({ queryKey: ["kos"] });
+      // SCRUM-354: Der promotete Entwurf ist serverseitig entfernt — Entwurfsliste aktualisieren.
+      void qc.invalidateQueries({ queryKey: ["drafts"] });
       setDraft(null);
       setRaw("");
       setBodyHtml("");
@@ -514,6 +545,10 @@ export function Capture(): JSX.Element {
             </span>
           </div>
           <p className="mt-1 text-[12.5px] text-trust-pos-text/90">{t("capture.savedBody")}</p>
+          {/* SCRUM-354: ehrlich machen — fortgesetzter Entwurf wurde eingereicht und ist aus dem Pool. */}
+          {submittedFromDraft ? (
+            <p className="mt-1 text-[12px] text-trust-pos-text/80">{t("capture.savedFromDraft")}</p>
+          ) : null}
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {captureNextSteps(savedKoId).map((s) => (
               <Link
@@ -527,7 +562,13 @@ export function Capture(): JSX.Element {
                 {t(s.labelKey)} <span aria-hidden="true">→</span>
               </Link>
             ))}
-            <Button variant="ghost" onClick={() => setSavedKoId(null)}>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setSavedKoId(null);
+                setSubmittedFromDraft(false);
+              }}
+            >
               {t("capture.savedAgain")}
             </Button>
           </div>

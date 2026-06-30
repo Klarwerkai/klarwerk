@@ -8677,3 +8677,43 @@ git commit -m "feat(editor): knowledge studio guided step-rail + contribution qu
 git push
 ```
 Kein Git/Push/Jira durch Claude.
+
+---
+
+## SCRUM-354 — Beta Draft Promote & Knowledge Rescue Submission Integrity v0
+**Datum:** 2026-06-30 · **Rolle:** Claude (Hauptumsetzer) · **Status:** umgesetzt, Gates grün
+
+**Kurzfazit.** Team6-P1-Datenfluss-Gap behoben: fortgesetzte Capture-Entwürfe werden beim Einreichen jetzt über die vorhandene Promote-Route sauber abgeschlossen — KO `offen` entsteht, aktuelle Capture-/Studio-Inhalte sind enthalten, der Entwurf verlässt serverseitig den gemeinsamen Pool, Originalautor bleibt erhalten.
+
+**Legacy-/Team6-Befund genutzt.** Team6-Read-only-Befund (UX_KNOWLEDGE_INPUT_FEEDBACK_REVIEW_V0, LEGACY_KNOWLEDGE_INPUT_GAP_REVIEW_V0, EDITOR_INPUT_GAP_REVIEW_V0) + G-P1-2/FR-STR-06. Vorab im Repo bestätigt: `endpoints.drafts.promote` + Server-Route `POST /api/drafts/:id/promote` existieren; Promote baut das KO aus dem GESPEICHERTEN Entwurfs-Payload (über `capture.toKoInput` → `author = draft.originalAuthor`, `bodyHtml` übernommen), `ko.create` + `capture.deleteDraft`, antwortet 201. Capture-Submit nutzte bisher nur `ko.create` + lokal `setDraftId(null)` → Server-Entwurf konnte bestehen bleiben (G-P1-2).
+
+**Umgesetzter Umfang.**
+1. **Capture-Submit-Datenfluss** (`apps/web/src/pages/Capture.tsx`): bei vorhandenem `draftId` zuerst `endpoints.drafts.update(draftId, currentPayload)` (aktuelle Formular-/Studio-Inhalte inkl. `bodyHtml`), dann `endpoints.drafts.promote(draftId)` → KO `offen`, Entwurf serverseitig entfernt, Originalautor erhalten. Frischer Entwurf (ohne `draftId`) weiterhin `endpoints.ko.create` (Autor = aktueller Nutzer). Begründung der Wahl: Promote statt `ko.create+remove`, weil Promote den Originalautor-/Entwurfs-Kontext (FR-CAP-07) bewahrt; `ko.create` würde den Aktuell-Nutzer als Autor setzen und FR-CAP-07 verletzen.
+2. **Pool-Konsistenz**: Submit-`onSuccess` invalidiert zusätzlich die `drafts`-Query → fortgesetzte Entwurfsliste spiegelt die Entfernung.
+3. **Bilder**: der bestehende Bild-Attach-Loop läuft NACH dem Promote über `ko.id` → gilt für beide Pfade; Session-Bilder gehen nicht verloren.
+4. **Ehrliche Success-Copy**: neue Zeile `capture.savedFromDraft` (DE/EN) im Success-Block (nur bei promotetem Entwurf, `submittedFromDraft`-State; Reset bei „Weiteres erfassen"): „fortgesetzter Entwurf wurde als offenes Wissen eingereicht und aus deinen Entwürfen entfernt". Bestehender Status (offen/nicht validiert) + Review-Next-Step unverändert.
+5. **Regression** `tests/structure/draft-promote-submission-e2e.test.ts` (HTTP E2E): create → update → promote → KO `offen`/Trust 0/Version 1, aktuelle Änderungen (Titel/Statement/strukturierter Body `<h2>`) enthalten, `ko.author === originalAuthor`, Entwurf aus `GET /api/drafts` entfernt + `GET /api/drafts/:id` = 404, KO im Validation Board.
+6. **`docs/TEAM6_UPDATE.md`** angelegt (Pflicht-Nebenänderung) mit SCRUM-354-Eintrag (Team/Status/Beta impact/Review/Affected/Delta Log + Restlücke).
+
+**Bewusst nicht umgesetzte Gaps.** Keine serverseitige „update+promote"-Atomik in EINEM Request (zwei Requests; bei Promote-Fehler bleibt ein aktualisierter, nicht-promoteter Entwurf — kein Datenverlust, erneut einreichbar). Kein neues Draft-/Workflow-Backend (vorhandene Route genügt). Keine UX-Neuerfindung (passt zum Knowledge-Rescue-Flow). Bild/Promote-Sonderfälle über Session-Bilder hinaus nicht betrachtet.
+
+**Geänderte Dateien.**
+- `apps/web/src/pages/Capture.tsx` (Submit Promote-Pfad + drafts-Invalidate + Success-Zeile + State/Import)
+- `apps/web/src/i18n.ts` (`capture.savedFromDraft` DE+EN)
+- `tests/structure/draft-promote-submission-e2e.test.ts` (NEU)
+- `docs/TEAM6_UPDATE.md` (NEU, Pflicht-Nebenänderung)
+
+**Gates.** `npm run check` grün — **167 Dateien / 1007 Tests**. Gezielt `draft-promote-submission-e2e.test.ts` → 1/1 grün. `(cd apps/web && tsc --noEmit)` grün (FE-EXIT=0). Biome/depcruise grün.
+
+**TEAM6_UPDATE.md updated: yes** · **Team6 review needed: yes** · **Reason: Team6 P1 Gap FR-STR-06 / G-P1-2** · **Affected requirements: KG-UX-001, KG-UX-002, KG-UX-003, KG-UX-010, KG-UX-012, FR-STR-06** · **Affected gaps: G-P1-2**
+
+**Rest-Risiken.** Zwei-Request-Sequenz (update→promote) ist nicht atomar (s. o., kein Datenverlust). Ohne DOM-Render-Harness ist die FE-Submit-Verzweigung per FE-tsc + HTTP-E2E der Promote-Sequenz belegt, nicht per gerendertem Klick. `ko.create`-Pfad (frischer Entwurf) unverändert.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/pages/Capture.tsx apps/web/src/i18n.ts tests/structure/draft-promote-submission-e2e.test.ts docs/TEAM6_UPDATE.md docs/qm/claude-after-report.md
+git commit -m "fix(capture): submit continued drafts via promote route — KO offen + draft removed (SCRUM-354, FR-STR-06/G-P1-2)"
+git push
+```
+Kein Git/Push/Jira durch Claude.

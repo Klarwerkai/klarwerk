@@ -277,6 +277,8 @@ const de = {
   "capture.savedStatusBadge": "Status: offen — noch nicht validiert",
   "capture.savedBody":
     "Gespeichert als dein eigenes Wissen (kein Demo-Beispiel), aber noch nicht validiert. Erst nach ausreichender Bewertung wird es nutzbares Wissen — bitte zur Prüfung geben. Automatisch validiert wird nichts.",
+  "capture.savedFromDraft":
+    "Dein fortgesetzter Entwurf wurde als offenes Wissen eingereicht und aus deinen Entwürfen entfernt.",
   "own.empty.title": "Noch kein eigenes Wissen hier",
   "own.empty.hint":
     "Du filterst auf eigenes Wissen (keine Demo-Beispiele). Selbst erfasstes Wissen erscheint hier nach dem Speichern und wartet dann auf die Prüfung.",
@@ -1762,6 +1764,8 @@ const en: typeof de = {
   "capture.savedStatusBadge": "Status: open — not yet validated",
   "capture.savedBody":
     "Saved as your own knowledge (not a demo example), but not yet validated. It becomes usable knowledge only after sufficient review — please send it for review. Nothing is validated automatically.",
+  "capture.savedFromDraft":
+    "Your continued draft was submitted as open knowledge and removed from your drafts.",
   "own.empty.title": "No own knowledge here yet",
   "own.empty.hint":
     "You are filtering for your own knowledge (no demo examples). Knowledge you capture appears here after saving and then waits for review.",
