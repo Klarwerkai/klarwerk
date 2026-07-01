@@ -9622,3 +9622,44 @@ git push
 ```
 
 **Stop-Hinweis:** Claude macht kein Git add, kein Commit, kein Push, kein Jira. Übergabe an Codex/Pedi.
+
+---
+
+## SCRUM-374 — Beta Capture Attachment Reliability & Recovery v0
+
+**Datum:** 2026-07-01 · **Claude beteiligt: ja** · **Rolle:** Hauptumsetzer · **Repo:** `/Users/peterkohnert/Documents/dev_Klarwerk` (nur Team-1)
+
+**Kurzfazit.** Der Capture-Anhang-Pfad (Object-Upload + attach nach dem Speichern) ist robuster und ehrlicher. Ein fehlgeschlagener Upload/Attach kippt nicht mehr den ganzen Save: neuer DOM-freier `uploadAttachments` versucht jede Datei einzeln und liefert `{attached, failed}`. Capture trennt jetzt „KO gespeichert" von „Anhang-Status" — bei Teilfehlern zeigt die Success-Card einen ehrlichen Recovery-Block (welche Datei(en) fehlen + nächster Schritt), kein „alles erfolgreich"-Gefühl. Kein Fake-Attach ohne Upload; Evidence bleibt Beleg (≠ Validierung). Kein neues Backend, keine Transaktionsarchitektur, Sanitizer/bodyFileLink unverändert.
+
+**SCRUM-Ticket.** SCRUM-374 — Beta Capture Attachment Reliability & Recovery v0.
+
+**Vorab-Befund (Fehlerpfad-Mapping).** `git status -sb` sauber bis auf die bekannte untrackte v2-Infra-Datei (SCRUM-373 committed). Capture-Submit-Ist (nach SCRUM-373): KO create/promote → zwei ungeschützte Schleifen (`images` kind image, `docs` kind document): je `endpoints.objects.upload` dann `endpoints.ko.act({action:"attach"})`. Fehlerfälle: (1) Object-Upload wirft → Mutation rejected → `onError`/`setErr` → KO ist ABER schon (offen) erzeugt → Nutzer sieht nur Fehler, KO „verloren" aus Nutzersicht. (2) Attach wirft → dito. (3) Ein Bild ok, das nächste scheitert → der Rest wird nicht mehr versucht, ganze Mutation gilt als Fehler. (4) Zusätzlich: `savedFilesCount` = `images.length + docs.length` behauptete Erfolg für ALLE, auch bei (Teil-)Fehlern. → Kernproblem: Teilfehler = Totalfehler + falsches Erfolgssignal.
+
+**Umgesetzter Umfang.**
+- `captureAttachments.ts` (NEU, DOM-frei): `uploadAttachments(koId, items, api)` — pro Datei `upload`→`attach` in try/catch; kein Attach ohne Upload (kein Fake-objectId); Rückgabe `{attached, failed:[{name,reason:"upload"|"attach"}], hasFailures}`. `ATTACHMENT_RECOVERY_KEYS` (title/body/next). Injizierte API → testbar ohne Object-Store/Backend.
+- `Capture.tsx`: submit baut `attachmentItems` (Bilder+Docs) und ruft `uploadAttachments` mit den echten Endpunkten; mutation liefert `{ko, attached, failed}`; `onSuccess` setzt `savedFilesCount=attached` (nur echte Erfolge) + `failedAttachments`; Success-Card zeigt bei Teilfehlern einen ruhigen Warn-Block; Reset im „nochmal"-Button.
+- `i18n.ts`: `capture.attachFailedTitle/Body/Next` DE/EN (ehrlich: KO offen gespeichert, welche Dateien fehlen, nächster Schritt, Belege ersetzen die Validierung nicht).
+
+**Geänderte Dateien.** `apps/web/src/lib/captureAttachments.ts` (NEU), `apps/web/src/pages/Capture.tsx`, `apps/web/src/i18n.ts`, `tests/app/capture-attachments.test.ts` (NEU), `docs/TEAM6_UPDATE.md`, `docs/qm/claude-after-report.md`.
+
+**Tests/Gates.** `tests/app/capture-attachments.test.ts` (6, DOM-frei, Fake-API): alle-ok (attached=N, upload+attach je Datei); leer; Upload-Fehler → `failed(upload)` + KEIN Attach für die fehlgeschlagene Datei (kein Fake-objectId); Attach-Fehler → `failed(attach)`; Teilfehler → Promise **resolved** (kein throw); Recovery-Copy DE/EN + Ehrlichkeit. Geforderte Bestands-Tests unverändert grün: `session-file-object-linking-e2e`, `body-file-link`, `editor-media-guide`, `capture-attachment-routes`. `npm run check` grün — **194 Dateien / 1181 Tests**; Build (tsc)/Biome/dependency-cruiser grün; FE-tsc strict grün (`(cd apps/web && tsc --noEmit)` ohne Fehler).
+
+**Sicherheitscheck.** Keine Secrets/Tokens/Keys. Kein Attach ohne erfolgreichen Upload (keine erfundene objectId, kein Halb-Anhang). Datei-Body-Links entstehen weiterhin nur über `bodyFileLink` (interner `/api/objects/:id/raw`-Pfad) — keine `data:`-Links für Dateien, keine `javascript:`-/Fremdschema-/Fake-Links; Sanitizer (FE `richText.ts` + Server) UNVERÄNDERT. Keine echten Kundendaten (Fakes im Test). Keine Team-fremden Dateien; untrackte v2-Infra-Datei unberührt.
+
+**Beta-Wirkung.** Anhang-Teilfehler wirken nicht mehr wie ein Totalausfall. Der Nutzer versteht: (a) das Wissen ist offen gespeichert, (b) welche Dateien nicht angehängt wurden, (c) der sichere nächste Schritt (am KO erneut anhängen). Validierung/Trust bleiben maßgeblich; Evidence bleibt Beleg.
+
+**Bewusst nicht umgesetzte Gaps.** Kein automatisches Retry (die strukturierten Failure-Daten + der manuelle „am KO erneut anhängen"-Weg sind der risikoarme Beta-Schritt; Auto-Retry wäre größer/riskanter). Keine transaktionale Cross-Service-Architektur; die serverseitige Nicht-Atomarität (verwaistes Object bei Attach-Fehler) bleibt als FR-STR-02-SESSION-ATOMIC (P2, kein Datenverlust). Kein neues Upload-/Object-Store-Backend, kein Legacy-`data:`-URL-Dateilink, keine Auto-Validierung durch Evidence.
+
+**Rest-Risiken.** (1) Serverseitig kann bei einem Attach-Fehler ein verwaistes Object zurückbleiben (Aufräumen = P2, kein Datenverlust für das Wissen). (2) Der eigentliche Upload läuft im React-Client; die DOM-freie Ablauf-/Fehlerlogik ist über die injizierte API voll getestet, die Verdrahtung per tsc/Build abgesichert — ein echter Browser-Smoke (Netzabbruch mitten im Upload) bleibt Team 5 (EK-20). (3) Bei sehr vielen/großen Dateien bleibt der Upload sequenziell (bewusst, ehrliche Fehlerzuordnung) — Parallelisierung/Progress ist eine mögliche Folgeoptimierung. (4) `failedAttachments` ist Sitzungs-State; ein Reload nach Save verliert den Hinweis — der nächste Schritt (am KO anhängen) bleibt aber gültig und über die Success-Links erreichbar.
+
+**TEAM6_UPDATE.md updated: yes** · **Team6 review needed: yes** · **Reason: Capture attachment reliability / recovery changed (AG-02-SESSION / AG-12 / FR-STR-02).**
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/captureAttachments.ts apps/web/src/pages/Capture.tsx apps/web/src/i18n.ts tests/app/capture-attachments.test.ts docs/TEAM6_UPDATE.md docs/qm/claude-after-report.md
+git commit -m "feat(capture): resilient per-file attachment upload + honest partial-failure recovery (SCRUM-374, AG-02-SESSION/AG-12/FR-STR-02)"
+git push
+```
+
+**Stop-Hinweis:** Claude macht kein Git add, kein Commit, kein Push, kein Jira. Übergabe an Codex/Pedi.

@@ -32,6 +32,12 @@ import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
 import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
 import { GAP_RESCUE_STEPS, GAP_RESCUE_TEXT } from "../lib/askGapRescue";
 import { applyBodyAssist, applyBodyAssistBlock, bodyTextForAssist } from "../lib/bodyAiAssist";
+import {
+  ATTACHMENT_RECOVERY_KEYS,
+  type AttachmentFailure,
+  type AttachmentUploadItem,
+  uploadAttachments,
+} from "../lib/captureAttachments";
 import { applyDraftArticle, normalizeDraftArticleLocale } from "../lib/captureDraftArticle";
 import { CAPTURE_EXAMPLE } from "../lib/captureExample";
 import { CAPTURE_FLOW_STEPS, CAPTURE_FLOW_TEXT } from "../lib/captureFlowGuide";
@@ -161,6 +167,8 @@ export function Capture(): JSX.Element {
   // SCRUM-373: Anzahl der beim Speichern in den Object-Store gelegten Anhänge (Bilder + Dateien) — für den
   // ehrlichen Anschluss „jetzt als sichere Objekt-Referenz im KO-Editor verlinkbar".
   const [savedFilesCount, setSavedFilesCount] = useState(0);
+  // SCRUM-374: Anhänge, die trotz gespeichertem KO NICHT hochgeladen/angehängt werden konnten (Teilfehler).
+  const [failedAttachments, setFailedAttachments] = useState<AttachmentFailure[]>([]);
   // SCRUM-123: laufende Bild-OCR (für ehrlichen Status / Button-Sperre).
   const [ocrBusy, setOcrBusy] = useState<string | null>(null);
   // SCRUM-113 / FE-CAP-07: aktuell fortgesetzter Entwurf (null = neuer Entwurf).
@@ -262,52 +270,42 @@ export function Capture(): JSX.Element {
         });
         setSubmittedFromDraft(false);
       }
-      // SCRUM-121: Original in den Object-Store; am KO nur Referenz + kleine Vorschau.
-      for (const img of images) {
-        const ref = await endpoints.objects.upload({
+      // SCRUM-121/373/374: Originale in den Object-Store; am KO nur Referenz + kleine Vorschau.
+      //  - Bilder: kind "image" mit Thumbnail; Nicht-Bild-Session-Dateien: kind "document" (AG-02-SESSION,
+      //    danach body-verlinkbar via editorFilesFromAttachments/bodyFileLink).
+      //  - SCRUM-374: Der Upload/Attach jeder Datei läuft EINZELN (uploadAttachments) — ein Teilfehler kippt
+      //    NICHT den Gesamt-Save. Das KO ist bereits (offen) gespeichert; misslungene Anhänge werden ehrlich
+      //    gemeldet, statt den ganzen Save als Fehler erscheinen zu lassen. Kein Fake-Attach ohne Upload.
+      const attachmentItems: AttachmentUploadItem[] = [
+        ...images.map((img) => ({
           name: img.name,
           mime: img.mime,
           data: img.original,
-          kind: "image",
-        });
-        await endpoints.ko.act(ko.id, {
-          action: "attach",
-          attachment: {
-            name: img.name,
-            mime: img.mime,
-            objectId: ref.id,
-            thumbnail: img.dataUrl,
-            size: ref.size,
-          },
-        });
-      }
-      // SCRUM-373 / AG-02-SESSION / FR-STR-02: Nicht-Bild-Session-Dateien ebenfalls in den Object-Store
-      // legen und als Anhang referenzieren — damit sie NACH dem Speichern eine sichere Objekt-Referenz
-      // (objectId) besitzen und im KO-Editor/Studio als Body-Link nutzbar sind (`editorFilesFromAttachments`
-      // + `bodyFileLink`). Reine Wiederverwendung der vorhandenen Object-Store-/Attach-Endpunkte (KEIN neues
-      // Backend, KEIN Legacy-data:-URL im Body). Evidence bleibt Beleg — ersetzt NICHT Validierung/Trust.
-      for (const doc of docs) {
-        const ref = await endpoints.objects.upload({
+          kind: "image" as const,
+          thumbnail: img.dataUrl,
+        })),
+        ...docs.map((doc) => ({
           name: doc.name,
           mime: doc.mime,
           data: doc.data,
-          kind: "document",
-        });
-        await endpoints.ko.act(ko.id, {
-          action: "attach",
-          attachment: { name: doc.name, mime: doc.mime, objectId: ref.id, size: ref.size },
-        });
-      }
-      return ko;
+          kind: "document" as const,
+        })),
+      ];
+      const attachResult = await uploadAttachments(ko.id, attachmentItems, {
+        upload: (input) => endpoints.objects.upload(input),
+        attach: (koId, attachment) => endpoints.ko.act(koId, { action: "attach", attachment }),
+      });
+      return { ko, attached: attachResult.attached, failed: attachResult.failed };
     },
     // SCRUM-276: kein stilles Weiterleiten — „gespeichert" + nächster Schritt sichtbar machen.
     // Formular zurücksetzen (kein versehentlicher Doppel-Submit); Modus bleibt erhalten.
-    onSuccess: (ko) => {
+    onSuccess: ({ ko, attached, failed }) => {
       setSavedKoId(ko.id);
       // SCRUM-369: Rescue-Anschluss nur, wenn dieser Save aus einer Ask-Lücke gestartet wurde.
       setSavedFromGap(gapContext !== null);
-      // SCRUM-373: vor dem Zurücksetzen die Anzahl gespeicherter Anhänge merken (Objekt-Referenz-Anschluss).
-      setSavedFilesCount(images.length + docs.length);
+      // SCRUM-373/374: nur die WIRKLICH gesicherten Anhänge zählen; Teilfehler getrennt ehrlich melden.
+      setSavedFilesCount(attached);
+      setFailedAttachments(failed);
       push("success", t("capture.savedTitle"));
       void qc.invalidateQueries({ queryKey: ["validation"] });
       void qc.invalidateQueries({ queryKey: ["kos"] });
@@ -604,6 +602,24 @@ export function Capture(): JSX.Element {
               {t("capture.savedFilesNote", { count: savedFilesCount })}
             </p>
           ) : null}
+          {/* SCRUM-374 / AG-02-SESSION: ehrlicher Teilfehler-Hinweis — das KO ist gespeichert, aber
+              einzelne Anhänge nicht. Getrennt vom „gespeichert"-Erfolg, mit klarem nächstem Schritt.
+              Kein „alles erfolgreich"-Gefühl bei fehlenden Anhängen. Kein Fake-Link. */}
+          {failedAttachments.length > 0 ? (
+            <div className="mt-2 rounded-card border border-trust-warn-fill/40 bg-trust-warn-bg p-2.5">
+              <p className="text-[12.5px] font-semibold text-trust-warn-text">
+                {t(ATTACHMENT_RECOVERY_KEYS.title)}
+              </p>
+              <p className="mt-0.5 text-[11.5px] leading-relaxed text-trust-warn-text/90">
+                {t(ATTACHMENT_RECOVERY_KEYS.body, {
+                  names: failedAttachments.map((f) => f.name).join(", "),
+                })}
+              </p>
+              <p className="mt-1 text-[11.5px] font-medium leading-relaxed text-trust-warn-text">
+                {t(ATTACHMENT_RECOVERY_KEYS.next)}
+              </p>
+            </div>
+          ) : null}
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {captureNextSteps(savedKoId).map((s) => (
               <Link
@@ -624,6 +640,7 @@ export function Capture(): JSX.Element {
                 setSubmittedFromDraft(false);
                 setSavedFromGap(false);
                 setSavedFilesCount(0);
+                setFailedAttachments([]);
               }}
             >
               {t("capture.savedAgain")}

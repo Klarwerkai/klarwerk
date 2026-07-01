@@ -305,6 +305,13 @@ const de = {
   // SCRUM-373 / AG-02-SESSION: nach dem Speichern haben Bilder/Dateien eine sichere Objekt-Referenz.
   "capture.savedFilesNote":
     "{{count}} Anhang/Anhänge sind jetzt als sichere Objekt-Referenz gespeichert und im Editor des Wissensobjekts als Beleg verlinkbar. Belege sind Kontext — sie ersetzen die Validierung nicht.",
+  // SCRUM-374 / AG-02-SESSION: ehrlicher Recovery-Hinweis, wenn das KO gespeichert wurde, aber einzelne
+  // Anhänge NICHT hochgeladen/angehängt werden konnten (Teilfehler ≠ Totalfehler).
+  "capture.attachFailedTitle": "Nicht alle Anhänge konnten gesichert werden",
+  "capture.attachFailedBody":
+    "Dein Wissensobjekt ist offen gespeichert. Diese Datei(en) wurden NICHT angehängt: {{names}}. Das gespeicherte Wissen ist davon unberührt — Belege ersetzen die Validierung nicht.",
+  "capture.attachFailedNext":
+    "Nächster Schritt: Wissensobjekt öffnen und die Datei(en) dort erneut anhängen.",
   "own.empty.title": "Noch kein eigenes Wissen hier",
   "own.empty.hint":
     "Du filterst auf eigenes Wissen (keine Demo-Beispiele). Selbst erfasstes Wissen erscheint hier nach dem Speichern und wartet dann auf die Prüfung.",
@@ -1939,6 +1946,13 @@ const en: typeof de = {
   // SCRUM-373 / AG-02-SESSION: after saving, images/files have a safe object reference.
   "capture.savedFilesNote":
     "{{count}} attachment(s) are now stored as a safe object reference and can be linked as evidence in the knowledge object's editor. Evidence is context — it does not replace validation.",
+  // SCRUM-374 / AG-02-SESSION: honest recovery hint when the KO was saved but some attachments could not
+  // be uploaded/attached (partial failure ≠ total failure).
+  "capture.attachFailedTitle": "Not all attachments could be saved",
+  "capture.attachFailedBody":
+    "Your knowledge object is saved as open. These file(s) were NOT attached: {{names}}. The saved knowledge is unaffected — evidence does not replace validation.",
+  "capture.attachFailedNext":
+    "Next step: open the knowledge object and attach the file(s) again there.",
   "own.empty.title": "No own knowledge here yet",
   "own.empty.hint":
     "You are filtering for your own knowledge (no demo examples). Knowledge you capture appears here after saving and then waits for review.",
