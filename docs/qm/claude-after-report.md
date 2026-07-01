@@ -9520,3 +9520,56 @@ git push
 ```
 
 **Stop-Hinweis:** Claude macht kein Git add, kein Commit, kein Push, kein Jira. Übergabe an Codex/Pedi.
+
+---
+
+## SCRUM-372 — Beta Rich Editor Drag/Paste Comfort v0
+
+**Datum:** 2026-07-01 · **Claude beteiligt: ja** · **Rolle:** Hauptumsetzer · **Repo:** `/Users/peterkohnert/Documents/dev_Klarwerk` (nur Team-1)
+
+**Kurzfazit.** Der RichTextEditor (Capture/Studio/KO-Detail) unterstützt jetzt Drag&Drop UND Einfügen (Paste) für Bilder — über denselben sicheren Pfad wie der Bild-Button (verkleinertes JPEG-`data:image` → `insertImageSrcHtml` → Sanitizer). Neuer DOM-freier `editorDropPaste.ts` erlaubt NUR Rasterbilder (png/jpe?g/gif/webp); SVG und alle Nicht-Bilder werden bewusst nicht eingebettet. Nicht-Bild-Dateien werden NIE als Body-Link gefaked (kein Legacy-`data:`-URL) — der Editor zeigt einen ehrlichen Hinweis (Anhang/Evidence, sicherer Link erst mit Objekt-Referenz, Validierung entscheidet). Sanitizer/Toolbar/Palette unverändert.
+
+**SCRUM-Ticket.** SCRUM-372 — Beta Rich Editor Drag/Paste Comfort v0.
+
+**Legacy-Pfad geprüft / nicht verfügbar.** Verfügbar & read-only gesichtet: `Klarwerk/app/src/components/WikiEditor.jsx`, `AiAssist.jsx`, `CaseEditor.jsx`, `pages/TeacherStudio.jsx`.
+
+**Wichtigste alte Funktionen (Legacy WikiEditor.jsx).**
+- Bild/Datei-Import per **Button + Drag&Drop (`onDrop`) + Paste (`onPaste`, nur Bilder)**.
+- Bilder → verkleinertes `data:image` (`<img class="cf-img">`, max 1280 px).
+- Dateien → `<a class="cf-attach" href="data:…" download>` — **inline `data:`-URL** (8-MB-Limit).
+
+**Aktuelle Gaps (alte Funktion → neuer Stand → beta-relevante Lücke → Entscheidung).**
+| Alte Funktion | Neuer Stand (Klarwerk) | Beta-relevante Lücke | Entscheidung |
+|---|---|---|---|
+| Bild per Drag&Drop | Vor SCRUM-372: nur Bild-Button-Dropdown | Legacy-Komfort fehlte (AG-P2-1/FR-STR-03) | Jetzt umgesetzt: `onDrop` + Drag-Overlay, sicherer Bildpfad, Raster-only |
+| Bild per Paste (Strg/⌘+V) | Vor SCRUM-372: kein Paste | Legacy-Komfort fehlte | Jetzt umgesetzt: `onPaste` fängt Bild-Items; Text-Paste läuft normal (emit sanitisiert) |
+| Datei per Drag&Drop/Paste als `data:`-Downloadlink | Datei nur als Object-Store-Link (SCRUM-355); Session-Datei ohne objectId nicht verlinkbar | Datei-Drop nicht sicher body-verlinkbar (AG-02-SESSION) | Ehrlich behandelt: kein Fake-Link, transiente Notiz „bleibt Evidence, Link erst mit Objekt-Referenz". Datei-Drop→Object-Store-Upload bewusst zurückgestellt (Backend) |
+| Bild als großes Original-`data:image` | Verkleinertes JPEG (`fileToThumbDataUrl`, max 1024 px) | — | Übernommen (bounded, kein Riesen-Blob im KO-Body) |
+| SVG als „Bild" | — | XSS-Risiko | Nicht übernehmen: SVG gilt NICHT als einbettbar (Sicherheit) |
+
+**Umgesetzter Umfang.**
+- `editorDropPaste.ts` (NEU, DOM-frei): `isInsertableImageMime()` (Raster-only, SVG ausgeschlossen), `partitionDropMedia()` (Bilder vs. Evidence-Dateien + Flags), `EDITOR_DROP_KEYS`.
+- `RichTextEditor.tsx`: `onDrop`/`onDragOver`/`onDragLeave` + `onPaste` auf dem contentEditable; Bilder → `fileToThumbDataUrl` → `insertImageSrcHtml`; Nicht-Bilder → ehrliche, schließbare Notiz (kein Fake-Link); Drag-Overlay + ruhiger Dauerhinweis (Progressive Disclosure), nur im Bearbeiten-Modus.
+- `i18n.ts`: `editor.drop.hint/imageActive/fileNotice` DE/EN.
+
+**Bewusst nicht umgesetzte Gaps.** Datei-Drop→Object-Store-Upload (AG-02-SESSION; braucht Upload-Backend). Legacy-`data:`-URL-Datei-Link (Sicherheit — nicht reproduziert). Bild-Reordering/Feinplatzierung per Drag im Text. Kein Asset-Management, kein neues Editor-Framework, kein neues Upload-/Object-Store-Backend.
+
+**Geänderte Dateien.** `apps/web/src/lib/editorDropPaste.ts` (NEU), `apps/web/src/components/RichTextEditor.tsx`, `apps/web/src/i18n.ts`, `tests/app/editor-drop-paste.test.ts` (NEU), `docs/TEAM6_UPDATE.md`, `docs/qm/claude-after-report.md`.
+
+**Tests/Gates.** `tests/app/editor-drop-paste.test.ts` (8): Raster-only + SVG-Ausschluss + leere/null-mime; Partition (SVG → Evidence); generischer Feld-Passthrough (echtes File-Objekt); DE/EN-Präsenz `editor.drop.*`; Ehrlichkeit (Datei-Notiz: Evidence/kein Fake-Link/Validierung entscheidet). Bestands-Sanitizer-/Image-/File-Link-/Media-Tests unverändert grün (keine Sanitizer-Schwächung). `npm run check` grün — **192 Dateien / 1174 Tests**; Build (tsc)/Biome/dependency-cruiser grün; FE-tsc strict grün (`(cd apps/web && tsc --noEmit)` ohne Fehler).
+
+**Sicherheitscheck / keine Secrets.** Keine Secrets/Tokens/Keys. Bilder werden ausschließlich über den vorhandenen sicheren Pfad eingefügt (verkleinertes JPEG-`data:image` → `insertImageSrcHtml` → `sanitizeHtml`); der Sanitizer + seine Allowlist sind UNVERÄNDERT. SVG/andere „Bilder" werden nicht eingebettet (XSS-Schutz). Keine `data:`-Links für Dateien, keine `javascript:`-/Fremdschema-/Fake-Links. Kein Netzaufruf, keine echten Kundendaten, keine Team-fremden Dateien; untrackte v2-Infra-Datei unberührt.
+
+**TEAM6_UPDATE.md updated: yes** · **Team6 review needed: yes** · **Reason: Editor drag/paste/media handling changed** · **Affected requirements/gaps: AG-P2-1, AG-02-SESSION, AG-12, FR-STR-03, FR-STR-02, KG-UX-001/002/003/010.**
+
+**Rest-Risiken.** (1) Drop/Paste-DOM-Events sind nicht als echter Browser-E2E getestet (jsdom-frei); die DOM-freie Klassifikation/Entscheidung (Raster-only, SVG-Ausschluss, Evidence-Trennung) IST getestet, die Event-Verdrahtung ist per tsc/Build + Reasoning abgesichert — ein echter Browser-Smoke bleibt Team 5 (EK-20). (2) Datei-Drop bleibt bewusst ohne Upload (AG-02-SESSION) — ehrlich erklärt, nicht gelöst. (3) Eingefügte Bilder liegen als verkleinerte `data:image` im KO-Body (bounded, aber nicht Object-Store) — konsistent mit dem bestehenden Capture-Bildpfad; Object-Store-Upload beim Speichern bleibt der bestehende Attachment-Flow. (4) Sehr große Bildmengen per Drop könnten den Body vergrößern — durch Downscale begrenzt, aber kein hartes Limit (Folge-Optimierung möglich).
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/editorDropPaste.ts apps/web/src/components/RichTextEditor.tsx apps/web/src/i18n.ts tests/app/editor-drop-paste.test.ts docs/TEAM6_UPDATE.md docs/qm/claude-after-report.md
+git commit -m "feat(editor): safe image drag&drop + paste, honest file handling (SCRUM-372, AG-P2-1/FR-STR-03/AG-12)"
+git push
+```
+
+**Stop-Hinweis:** Claude macht kein Git add, kein Commit, kein Push, kein Jira. Übergabe an Codex/Pedi.

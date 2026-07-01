@@ -12,6 +12,7 @@ import {
   Pencil,
   SquareStack,
 } from "lucide-react";
+import type { ClipboardEvent, DragEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type EditorFile, fileLinkHtml } from "../lib/bodyFileLink";
@@ -21,7 +22,13 @@ import {
   editorBlockHtml,
   editorBlockLabelKey,
 } from "../lib/editorBlocks";
+import {
+  EDITOR_DROP_KEYS,
+  isInsertableImageMime,
+  partitionDropMedia,
+} from "../lib/editorDropPaste";
 import { editorLinkHtml } from "../lib/editorLinks";
+import { fileToThumbDataUrl } from "../lib/files";
 import { insertImageHtml, insertImageSrcHtml, sanitizeHtml } from "../lib/richText";
 import { SanitizedHtml } from "./SanitizedHtml";
 import { Button } from "./ui";
@@ -116,11 +123,78 @@ export function RichTextEditor({
     }
   };
 
+  // SCRUM-372 / AG-P2-1 / FR-STR-03: Drag&Drop + Einfügen (Paste). NUR Bilder werden inline eingebettet —
+  // über denselben sicheren Pfad wie der Bild-Button (verkleinertes JPEG-data:image → insertImageSrcHtml
+  // → Sanitizer). Nicht-Bild-Dateien werden NIE als Body-Link gefaked (kein Legacy-data:-URL); sie bleiben
+  // Anhang/Evidence, der Nutzer bekommt einen ehrlichen Hinweis. SVG/andere „Bilder" gelten NICHT als
+  // einbettbar (XSS-Schutz, deckt sich mit dem Sanitizer).
+  const [dragActive, setDragActive] = useState(false);
+  const [fileNotice, setFileNotice] = useState(false);
+
+  const insertImageFile = async (file: File): Promise<void> => {
+    try {
+      // Verkleinertes, sicheres JPEG-data:image (kein Original-Riesen-Blob im KO-Body).
+      const dataUrl = await fileToThumbDataUrl(file);
+      exec("insertHTML", insertImageSrcHtml(dataUrl, file.name));
+    } catch {
+      // Einzelnes Bild nicht lesbar → still überspringen (kein Abbruch der übrigen).
+    }
+  };
+
+  const handleMediaFiles = async (files: File[]): Promise<void> => {
+    if (files.length === 0) {
+      return;
+    }
+    // DOM-freie Entscheidung: welche Elemente sind sicher einbettbare Bilder, welche bleiben Evidence?
+    const part = partitionDropMedia(files.map((f) => ({ mime: f.type, file: f })));
+    for (const item of part.images) {
+      await insertImageFile(item.file);
+    }
+    // Nicht-Bild-Dateien: kein Fake-Link — ehrlicher Hinweis (Anhang/Evidence, Validierung entscheidet).
+    if (part.hasFiles) {
+      setFileNotice(true);
+    }
+  };
+
+  const onDrop = (e: DragEvent<HTMLDivElement>): void => {
+    const files = Array.from(e.dataTransfer?.files ?? []);
+    if (files.length === 0) {
+      return;
+    }
+    e.preventDefault();
+    setDragActive(false);
+    void handleMediaFiles(files);
+  };
+  const onDragOver = (e: DragEvent<HTMLDivElement>): void => {
+    if (Array.from(e.dataTransfer?.types ?? []).includes("Files")) {
+      e.preventDefault();
+      setDragActive(true);
+    }
+  };
+  const onDragLeave = (): void => setDragActive(false);
+
+  const onPaste = (e: ClipboardEvent<HTMLDivElement>): void => {
+    // Nur eingefügte BILD-Dateien abfangen; normalen Text-/HTML-Paste normal durchlassen (emit sanitisiert).
+    const fileItems = Array.from(e.clipboardData?.items ?? []).filter((it) => it.kind === "file");
+    const imageFiles = fileItems
+      .filter((it) => isInsertableImageMime(it.type))
+      .map((it) => it.getAsFile())
+      .filter((f): f is File => f !== null);
+    if (imageFiles.length === 0) {
+      if (fileItems.length > 0) {
+        setFileNotice(true);
+      }
+      return;
+    }
+    e.preventDefault();
+    void handleMediaFiles(imageFiles);
+  };
+
   const btn =
     "grid h-8 w-8 place-items-center rounded-btn text-muted hover:bg-hairline-soft hover:text-text";
 
   return (
-    <div className="rounded-input border border-hairline">
+    <div className="relative rounded-input border border-hairline">
       <div className="flex flex-wrap items-center gap-1 border-b border-hairline p-1.5">
         <button type="button" title={t("editor.bold")} className={btn} onClick={() => exec("bold")}>
           <Bold size={15} />
@@ -293,14 +367,26 @@ export function RichTextEditor({
       ) : null}
 
       {mode === "edit" ? (
-        <div
-          ref={ref}
-          contentEditable
-          suppressContentEditableWarning
-          onInput={emit}
-          onBlur={emit}
-          className="prose-kw min-h-[140px] p-3 text-[14px] leading-relaxed text-text outline-none"
-        />
+        <div className="relative">
+          <div
+            ref={ref}
+            contentEditable
+            suppressContentEditableWarning
+            onInput={emit}
+            onBlur={emit}
+            onDrop={onDrop}
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            onPaste={onPaste}
+            className="prose-kw min-h-[140px] p-3 text-[14px] leading-relaxed text-text outline-none"
+          />
+          {/* SCRUM-372: sichtbares Ziel beim Drüberziehen — nur Bilder werden eingebettet. */}
+          {dragActive ? (
+            <div className="pointer-events-none absolute inset-1 grid place-items-center rounded-input border-2 border-dashed border-ai/50 bg-ai/5 text-[12.5px] font-semibold text-ai">
+              {t(EDITOR_DROP_KEYS.imageActive)}
+            </div>
+          ) : null}
+        </div>
       ) : (
         // FR-STR-05: Vorschau aus demselben State (sanitisiert), kein Datenverlust.
         <SanitizedHtml
@@ -308,6 +394,29 @@ export function RichTextEditor({
           className="prose-kw min-h-[140px] p-3 text-[14px] leading-relaxed text-text"
         />
       )}
+
+      {/* SCRUM-372: ruhige Progressive-Disclosure-Führung — Bilder inline, Dateien bleiben Evidence.
+          Der ehrliche Datei-Hinweis erscheint erst, wenn wirklich Nicht-Bild-Dateien gedroppt/eingefügt
+          wurden (kein Fake-Link). Nur im Bearbeiten-Modus. */}
+      {mode === "edit" ? (
+        <div className="border-t border-hairline px-3 py-1.5">
+          <p className="text-[11px] leading-relaxed text-muted-2">{t(EDITOR_DROP_KEYS.hint)}</p>
+          {fileNotice ? (
+            <div className="mt-1 flex items-start justify-between gap-2 rounded-btn bg-trust-warn-bg px-2 py-1.5">
+              <p className="text-[11px] leading-relaxed text-trust-warn-text">
+                {t(EDITOR_DROP_KEYS.fileNotice)}
+              </p>
+              <button
+                type="button"
+                onClick={() => setFileNotice(false)}
+                className="shrink-0 text-[11px] font-semibold text-trust-warn-text/80 hover:text-trust-warn-text"
+              >
+                {t("editor.linkCancel")}
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

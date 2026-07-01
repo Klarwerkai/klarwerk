@@ -546,6 +546,12 @@ const de = {
   "editor.insertFile": "Datei-Anhang als Link einfügen",
   "editor.noFiles":
     "Noch keine verlinkbaren Dateien — hochgeladene Dateien werden erst nach dem Speichern verlinkbar (mit Objekt-Referenz). Bis dahin bleiben sie als Anhang/Evidence erhalten; kein Behelfs-Link.",
+  // SCRUM-372: ruhige Drag&Drop/Einfügen-Führung (nur Bilder inline; Dateien bleiben Evidence).
+  "editor.drop.hint":
+    "Bilder hierher ziehen oder einfügen (Strg/⌘+V). Dateien bleiben Beleg/Evidence.",
+  "editor.drop.imageActive": "Medien loslassen — Bilder werden eingefügt, Dateien bleiben Evidence",
+  "editor.drop.fileNotice":
+    "Nur Bilder werden inline eingefügt. Dateien bleiben Anhang/Evidence — ein sicherer Body-Link entsteht erst mit gespeicherter Objekt-Referenz (kein Fake-Link). Die Validierung entscheidet.",
   "editor.preview": "Vorschau",
   "editor.edit": "Bearbeiten",
   "editor.linkPrompt": "Link-URL eingeben:",
@@ -2169,6 +2175,11 @@ const en: typeof de = {
   "editor.insertFile": "Insert file attachment as a link",
   "editor.noFiles":
     "No linkable files yet — uploaded files become linkable only after saving (with an object reference). Until then they stay as attachments/evidence; no makeshift link.",
+  // SCRUM-372: calm drag&drop/paste guidance (only images inline; files stay evidence).
+  "editor.drop.hint": "Drag images here or paste them (Ctrl/⌘+V). Files stay as evidence.",
+  "editor.drop.imageActive": "Drop media — images are inserted, files stay as evidence",
+  "editor.drop.fileNotice":
+    "Only images are inserted inline. Files stay as attachments/evidence — a safe body link is only possible with a saved object reference (no fake link). The review decides.",
   "editor.preview": "Preview",
   "editor.edit": "Edit",
   "editor.linkPrompt": "Enter link URL:",
