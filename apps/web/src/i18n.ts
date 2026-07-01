@@ -412,6 +412,11 @@ const de = {
     "Erfahrung formlos festhalten — die KI strukturiert daraus einen Entwurf. Du prüfst und reichst ein.",
   "capture.structure": "Mit KI strukturieren",
   "capture.assist": "KI-Hilfe",
+  // SCRUM-375 / AG-12: erweiterte/technische Felder als Progressive Disclosure (optional, nichts entfernt).
+  "capture.advanced.title": "Erweiterte Details (optional)",
+  "capture.advanced.hint":
+    "Kategorie, Anlage, Prüf-Anzahl, Schlagwörter, Dokumente & Bilder — nichts davon ist Pflicht. Erzähl zuerst dein Wissen; die Details kannst du jederzeit aufklappen und ergänzen.",
+  "capture.advanced.filled": "{{count}} ausgefüllt",
   // SCRUM-312: KI-Nachbearbeitung (Beta) — Vorschlag, kein Auto-Submit; Mensch übernimmt bewusst.
   "capture.ai.title": "KI-Nachbearbeitung (Beta)",
   "capture.ai.hint":
@@ -2051,6 +2056,11 @@ const en: typeof de = {
     "Capture experience informally — the AI structures it into a draft. You review and submit.",
   "capture.structure": "Structure with AI",
   "capture.assist": "AI help",
+  // SCRUM-375 / AG-12: advanced/technical fields as progressive disclosure (optional, nothing removed).
+  "capture.advanced.title": "Advanced details (optional)",
+  "capture.advanced.hint":
+    "Category, asset, required reviews, tags, documents & images — none of these is required. Tell your knowledge first; you can expand and add the details anytime.",
+  "capture.advanced.filled": "{{count}} filled",
   // SCRUM-312: AI post-editing (beta) — a suggestion, no auto-submit; the human applies it deliberately.
   "capture.ai.title": "AI post-editing (beta)",
   "capture.ai.hint":

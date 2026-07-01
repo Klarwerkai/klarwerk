@@ -9663,3 +9663,50 @@ git push
 ```
 
 **Stop-Hinweis:** Claude macht kein Git add, kein Commit, kein Push, kein Jira. Übergabe an Codex/Pedi.
+
+---
+
+## SCRUM-375 — Beta Guided Capture Studio Default & Simplification v0
+
+**Datum:** 2026-07-01 · **Claude beteiligt: ja** · **Rolle:** Hauptumsetzer · **Repo:** `/Users/peterkohnert/Documents/dev_Klarwerk` (nur Team-1)
+
+**Kurzfazit.** Capture wirkt weniger wie ein technisches Formular. Die technischen/optionalen Felder (Kategorie, Anlage, Prüf-Anzahl, Schlagwörter, Dokumente, Bilder) sind jetzt Progressive Disclosure: hinter einer ruhigen, einklappbaren Sektion „Erweiterte Details (optional)" gebündelt, damit der geführte Weg „Wissen erzählen → im Studio strukturieren → prüfen" (SCRUM-370) den Ersteindruck prägt. Nichts entfernt: bei vorhandenem Inhalt (fortgesetzter Entwurf, geladenes Beispiel) klappt die Sektion automatisch auf, ein ehrliches „X ausgefüllt"-Badge zeigt den Füllstand, und der Copy sagt klar, dass nichts davon Pflicht ist. Kein Backend, keine Gamification, kein UI-Neubau, Sanitizer unverändert.
+
+**SCRUM-Ticket.** SCRUM-375 — Beta Guided Capture Studio Default & Simplification v0.
+
+**Legacy-Pfad geprüft.** Kein separater Legacy-Erfassungs-Screen mehr aktiv; die Vereinfachung baut auf dem bestehenden Capture-/Studio-Fluss (SCRUM-352/370) auf. `docs/KLARWERK_Infrastruktur_Domain_Server_Aufteilung_v2.md` unberührt.
+
+**Vorab-Befund (UX-Gap-Liste, read-only).** `git status -sb` sauber bis auf die bekannte untrackte v2-Infra-Datei + die SCRUM-374-Änderungen (Codex-Commit ausstehend). Capture-Ist: über der Moduswahl die geführte Flow-Leiste (SCRUM-370, Rohwissen → Studio [empfohlen] → prüfen); darunter Rohnotiz/Modi + Reasoner-Entwurf + Body/Studio. **UX-Lücke:** die technischen Felder (Metadaten-Grid Kategorie/Revalidierung/Anlage/Tags + Dokumente-Block + Bilder-Block) standen dauerhaft ausgeklappt zwischen Rohnotiz und Einreichen und ließen die Seite trotz Flow-Leiste formularartig wirken — die höchste noch offene AG-12-Stellschraube auf der Capture-Hauptseite. Gap-Liste: (G1) technische Felder dominant statt gestaffelt (AG-12/KG-UX-003/010); (G2) kein sichtbares „alles optional"-Signal an den Feldern; (G3) Risiko beim Einklappen: bereits ausgefüllte Felder dürfen nicht unbemerkt verschwinden.
+
+**Umgesetzter Umfang.**
+- `captureAdvancedFields.ts` (NEU, DOM-frei): `advancedFieldsSummary(state)` zählt ehrlich, wie viele der erweiterten Felder Inhalt tragen (Trim-/leere-Tags-/null-sicher) → `{filledCount, hasAny}`; `ADVANCED_FIELDS_KEYS` (title/hint/filled). Reine Datenlogik, kein DOM, kein Backend.
+- `Capture.tsx`: die drei Blöcke (Metadaten-Grid + Dokumente + Bilder) sind in eine einklappbare Sektion „Erweiterte Details (optional)" gebündelt (`showAdvanced`-Toggle mit `aria-expanded`, `ChevronDown`-Rotation). Standardmäßig zu, mit Hinweiszeile „nichts davon ist Pflicht … jederzeit ergänzen"; „X ausgefüllt"-Badge (G2/G3); Auto-Aufklappen in `loadDraft`/`loadExample` (G3); Einklappen im Submit-Reset. Kein Feld entfernt, keine Funktion geändert (OCR, Datei-Upload etc. unverändert erreichbar).
+- `i18n.ts`: `capture.advanced.title`(„Erweiterte Details (optional)"/„Advanced details (optional)"), `.hint`, `.filled`(„{{count}} ausgefüllt"/„{{count}} filled") DE/EN.
+
+**Geänderte Dateien.** `apps/web/src/lib/captureAdvancedFields.ts` (NEU), `apps/web/src/pages/Capture.tsx`, `apps/web/src/i18n.ts`, `tests/app/capture-advanced-fields.test.ts` (NEU), `docs/TEAM6_UPDATE.md`, `docs/qm/claude-after-report.md`.
+
+**Tests/Gates.** `tests/app/capture-advanced-fields.test.ts` (6, DOM-frei): leer→0/hasAny false; jedes Feld zählt genau einmal (category/asset/neededValidations/tags/documentCount/imageCount); alle→6/hasAny true; Whitespace/leere-Tags/null zählen nicht; Copy DE/EN vorhanden; Ehrlichkeit (Titel enthält „optional"; Hint DE „nichts davon ist Pflicht|jederzeit", EN „none of these is required|anytime"). `npm run check` grün — **195 Dateien / 1187 Tests**; Build (tsc)/Biome/dependency-cruiser grün; FE-tsc strict grün (`(cd apps/web && tsc --noEmit)` ohne Fehler).
+
+**Sicherheitscheck.** Keine Secrets/Tokens/Keys. Keine neuen Endpunkte, kein Backend, kein Object-Store, kein Sanitizer-Eingriff (FE `richText.ts` + Server unverändert). Keine `data:`/`javascript:`/Fremdschema-Links. Keine echten Kundendaten. Keine Team-fremden Dateien; untrackte v2-Infra-Datei unberührt.
+
+**Beta-Wirkung.** Der Ersteindruck von Capture ist die geführte Erzähl-→-Strukturier-→-Prüf-Story statt einer Formular-Wand; die technischen Felder sind einen Klick entfernt verfügbar und melden ehrlich ihren Füllstand, sodass bei geladenem Entwurf/Beispiel nichts unbemerkt versteckt wird.
+
+**Wie AG-12/AG-13/KG-UX adressiert.** AG-12: höchste offene Capture-Stellschraube geschlossen — technische Formularelemente per Progressive Disclosure gestaffelt statt dominant. AG-13: die „Erfahrungswissen sichern"-Story bleibt vorn (technische Felder treten zurück, geführter Weg dominiert). KG-UX-001 (nicht formularartig)/003 (Vereinfachung)/010 (Progressive Disclosure): direkt umgesetzt, ehrlich (alles optional, Auto-Aufklappen bei Inhalt, Füllstand sichtbar).
+
+**Bewusst nicht umgesetzte Gaps.** Kein Backend/Rollen/Punkte/Gamification/RAG/neue Suche/Local-LLM. Keine Funktion entfernt, kein UI-Neubau, kein neues Editor-Framework, kein Demo-Hack. Keine Persistenz des Auf-/Zu-Zustands über Reloads (bewusst: der Zustand leitet sich aus dem Füllstand ab). Kein automatisches Umsortieren/Verstecken einzelner Felder innerhalb der Sektion (die Sektion bleibt eine geschlossene Einheit — risikoärmer).
+
+**Rest-Risiken.** (1) Ein echter Browser-/Usability-Smoke (klappt die Sektion auf Mobile/Touch sauber, Fokusreihenfolge) bleibt Team 5 (EK-20); die DOM-freie Zähl-Logik ist getestet, die Verdrahtung per tsc/Build abgesichert. (2) Der „ausgefüllt"-Zähler folgt den sechs definierten Feldern; kommen künftig weitere erweiterte Felder hinzu, muss `advancedFieldsSummary` mitwachsen (zentral an einer Stelle). (3) Subjektiv „weniger technisch" bleibt eine Wahrnehmungsfrage — die endgültige Usability-/Story-Hoheit liegt bei Pedi/Team 4 (EK-20/EK-21).
+
+**TEAM6_UPDATE.md updated: yes** · **Team6 review needed: yes** · **Reason: Capture default flow / progressive disclosure of technical fields changed (AG-12 / AG-13 / KG-UX-001/003/010).**
+
+**Affected requirements/gaps.** AG-12, AG-13, KG-UX-001, KG-UX-003, KG-UX-010. STR/CAP-Pflichtenheft (alle Capture-Felder/Funktionen) unverändert erhalten.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/captureAdvancedFields.ts apps/web/src/pages/Capture.tsx apps/web/src/i18n.ts tests/app/capture-advanced-fields.test.ts docs/TEAM6_UPDATE.md docs/qm/claude-after-report.md
+git commit -m "feat(capture): progressive disclosure of advanced/technical fields to make capture less form-like (SCRUM-375, AG-12/AG-13/KG-UX)"
+git push
+```
+
+**Stop-Hinweis:** Claude macht kein Git add, kein Commit, kein Push, kein Jira. Übergabe an Codex/Pedi.

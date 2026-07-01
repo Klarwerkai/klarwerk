@@ -1,5 +1,15 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { FileText, Mic, Paperclip, RotateCcw, Save, Sparkles, Trash2, X } from "lucide-react";
+import {
+  ChevronDown,
+  FileText,
+  Mic,
+  Paperclip,
+  RotateCcw,
+  Save,
+  Sparkles,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
@@ -32,6 +42,7 @@ import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
 import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
 import { GAP_RESCUE_STEPS, GAP_RESCUE_TEXT } from "../lib/askGapRescue";
 import { applyBodyAssist, applyBodyAssistBlock, bodyTextForAssist } from "../lib/bodyAiAssist";
+import { ADVANCED_FIELDS_KEYS, advancedFieldsSummary } from "../lib/captureAdvancedFields";
 import {
   ATTACHMENT_RECOVERY_KEYS,
   type AttachmentFailure,
@@ -141,6 +152,9 @@ export function Capture(): JSX.Element {
   const [studioOpen, setStudioOpen] = useState(false);
   // SCRUM-339: kurzes, ehrliches Feedback nach Übernahme aus dem Studio (kein Auto-Save).
   const [studioApplied, setStudioApplied] = useState(false);
+  // SCRUM-375 / AG-12: erweiterte/technische Felder (Metadaten, Dokumente, Bilder) sind Progressive
+  // Disclosure — standardmäßig eingeklappt, damit „Wissen erzählen → im Studio strukturieren" führt.
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Metadaten (vorab erfassbar, FR-CAP-08)
   const [type, setType] = useState<KnowledgeType>("best_practice");
@@ -321,6 +335,8 @@ export function Capture(): JSX.Element {
       setAsset("");
       setNeededValidations("");
       setDraftId(null);
+      // SCRUM-375: nach dem Zurücksetzen sind die erweiterten Felder leer → wieder einklappen.
+      setShowAdvanced(false);
       setNotice(null);
     },
     onError: fail,
@@ -376,6 +392,8 @@ export function Capture(): JSX.Element {
     setAsset(d.payload.asset ?? "");
     setNeededValidations(d.payload.neededValidations ? String(d.payload.neededValidations) : "");
     setDraftId(d.id);
+    // SCRUM-375: geladener Entwurf bringt erweiterte Felder mit → aufklappen, nichts verstecken.
+    setShowAdvanced(true);
     setNotice(t("capture.editingDraft"));
   };
 
@@ -544,10 +562,22 @@ export function Capture(): JSX.Element {
     setCategory(CAPTURE_EXAMPLE.category);
     setAsset(CAPTURE_EXAMPLE.asset);
     setTags(CAPTURE_EXAMPLE.tags);
+    // SCRUM-375: das Beispiel füllt erweiterte Felder → aufklappen, damit der Nutzer sie sieht.
+    setShowAdvanced(true);
     setNotice(t(CAPTURE_EXAMPLE.noticeKey));
   };
 
   const busy = structure.isPending || saveDraft.isPending;
+
+  // SCRUM-375: wie viele erweiterte Felder schon Inhalt tragen — für das „X ausgefüllt"-Badge.
+  const advancedSummary = advancedFieldsSummary({
+    category,
+    asset,
+    neededValidations,
+    tags,
+    documentCount: docs.length,
+    imageCount: images.length,
+  });
 
   // SCRUM-248: ehrlicher Speicher-Check — was landet im KO, was fehlt noch? (nur echte Felder)
   const readiness = draft
@@ -889,132 +919,168 @@ export function Capture(): JSX.Element {
             )
           ) : null}
 
-          {/* Metadaten */}
-          <div className="grid grid-cols-2 gap-3 border-t border-hairline pt-4">
-            <Field
-              label={
-                <span className="inline-flex items-center gap-1">
-                  {t("capture.fCategory")}
-                  <HelpTip
-                    title={t("capture.help.category.title")}
-                    body={t("capture.help.category.body")}
-                  />
-                </span>
-              }
+          {/* SCRUM-375 / AG-12: erweiterte/technische Felder als Progressive Disclosure — standardmäßig
+              eingeklappt, damit „Wissen erzählen → im Studio strukturieren" führt. NICHTS entfernt; bei
+              vorhandenem Inhalt (Entwurf/Beispiel) automatisch aufgeklappt; Badge zeigt Ausgefülltes an. */}
+          <div className="border-t border-hairline pt-4">
+            <button
+              type="button"
+              aria-expanded={showAdvanced}
+              onClick={() => setShowAdvanced((s) => !s)}
+              className="flex w-full items-center justify-between gap-2 text-left"
             >
-              <TextInput value={category} onChange={(e) => setCategory(e.target.value)} />
-            </Field>
-            <Field
-              label={
-                <span className="inline-flex items-center gap-1">
-                  {t("capture.fRevalidation")}
-                  <HelpTip
-                    title={t("capture.help.validations.title")}
-                    body={t("capture.help.validations.body")}
-                  />
-                </span>
-              }
-            >
-              <TextInput
-                type="number"
-                min={1}
-                value={neededValidations}
-                onChange={(e) => setNeededValidations(e.target.value)}
+              <span className="flex flex-wrap items-center gap-1.5 text-[12.5px] font-semibold text-text">
+                {t(ADVANCED_FIELDS_KEYS.title)}
+                {advancedSummary.filledCount > 0 ? (
+                  <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted-2">
+                    {t(ADVANCED_FIELDS_KEYS.filled, { count: advancedSummary.filledCount })}
+                  </span>
+                ) : null}
+              </span>
+              <ChevronDown
+                size={16}
+                className={`shrink-0 text-muted-2 transition-transform ${showAdvanced ? "rotate-180" : ""}`}
               />
-            </Field>
-            <Field label={t("capture.fAsset")}>
-              <TextInput value={asset} onChange={(e) => setAsset(e.target.value)} />
-            </Field>
-            <div>
-              <TagEditor tags={tags} onChange={setTags} />
-            </div>
-          </div>
-
-          {/* Dokumente */}
-          <div className="rounded-card border border-dashed border-hairline p-3">
-            <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
-              <FileText size={13} />
-              {t("capture.documents")}
-            </div>
-            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
-              {t("capture.documentsUpload")}
-              <input
-                type="file"
-                multiple
-                accept=".txt,.md,.markdown,.csv,.log,.json,.docx,.pdf,application/pdf,image/*"
-                className="hidden"
-                onChange={(e) => void onDocs(e)}
-              />
-            </label>
-            <span className="ml-2 text-[11.5px] text-muted-2">{t("capture.documentsHint")}</span>
-            {docs.length > 0 ? (
-              <ul className="mt-2 space-y-1">
-                {docs.map((d) => (
-                  <li key={d.id} className="flex items-center gap-2 text-[12.5px] text-text">
-                    <FileText size={12} className="text-muted-2" />
-                    <span className="truncate">{d.name}</span>
-                    <button
-                      type="button"
-                      aria-label={t("capture.listRemove")}
-                      onClick={() => setDocs((arr) => arr.filter((x) => x.id !== d.id))}
-                      className="ml-auto text-muted-2 hover:text-text"
-                    >
-                      <X size={12} />
-                    </button>
-                  </li>
-                ))}
-              </ul>
+            </button>
+            {!showAdvanced ? (
+              <p className="mt-1 text-[11.5px] leading-relaxed text-muted-2">
+                {t(ADVANCED_FIELDS_KEYS.hint)}
+              </p>
             ) : null}
           </div>
 
-          {/* Bilder */}
-          <div className="rounded-card border border-dashed border-hairline p-3">
-            <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
-              <Paperclip size={13} />
-              {t("capture.images")}
-            </div>
-            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
-              {t("capture.imagesUpload")}
-              <input
-                type="file"
-                multiple
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => void onImages(e)}
-              />
-            </label>
-            <span className="ml-2 text-[11.5px] text-muted-2">{t("capture.imagesHint")}</span>
-            {images.length > 0 ? (
-              <div className="mt-2 grid grid-cols-4 gap-2">
-                {images.map((img) => (
-                  <div key={img.id} className="group relative">
-                    <img
-                      src={img.dataUrl}
-                      alt={img.name}
-                      className="h-16 w-full rounded-card border border-hairline object-cover"
-                    />
-                    <button
-                      type="button"
-                      aria-label={t("capture.listRemove")}
-                      onClick={() => setImages((arr) => arr.filter((x) => x.id !== img.id))}
-                      className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-ink/70 text-white opacity-0 group-hover:opacity-100"
-                    >
-                      <X size={12} />
-                    </button>
-                    {/* SCRUM-123: OCR nur auf Klick, mit sichtbarem Lade-/Fehlerstatus */}
-                    <button
-                      type="button"
-                      disabled={ocrBusy === img.id}
-                      onClick={() => void onOcr(img)}
-                      className="absolute inset-x-1 bottom-1 truncate rounded-btn bg-ink/70 px-1 py-0.5 text-center text-[9.5px] font-semibold text-white opacity-0 group-hover:opacity-100 disabled:opacity-100"
-                    >
-                      {ocrBusy === img.id ? t("capture.ocrRunningShort") : t("capture.ocr")}
-                    </button>
-                  </div>
-                ))}
+          {showAdvanced ? (
+            <>
+              {/* Metadaten */}
+              <div className="grid grid-cols-2 gap-3">
+                <Field
+                  label={
+                    <span className="inline-flex items-center gap-1">
+                      {t("capture.fCategory")}
+                      <HelpTip
+                        title={t("capture.help.category.title")}
+                        body={t("capture.help.category.body")}
+                      />
+                    </span>
+                  }
+                >
+                  <TextInput value={category} onChange={(e) => setCategory(e.target.value)} />
+                </Field>
+                <Field
+                  label={
+                    <span className="inline-flex items-center gap-1">
+                      {t("capture.fRevalidation")}
+                      <HelpTip
+                        title={t("capture.help.validations.title")}
+                        body={t("capture.help.validations.body")}
+                      />
+                    </span>
+                  }
+                >
+                  <TextInput
+                    type="number"
+                    min={1}
+                    value={neededValidations}
+                    onChange={(e) => setNeededValidations(e.target.value)}
+                  />
+                </Field>
+                <Field label={t("capture.fAsset")}>
+                  <TextInput value={asset} onChange={(e) => setAsset(e.target.value)} />
+                </Field>
+                <div>
+                  <TagEditor tags={tags} onChange={setTags} />
+                </div>
               </div>
-            ) : null}
-          </div>
+
+              {/* Dokumente */}
+              <div className="rounded-card border border-dashed border-hairline p-3">
+                <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+                  <FileText size={13} />
+                  {t("capture.documents")}
+                </div>
+                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
+                  {t("capture.documentsUpload")}
+                  <input
+                    type="file"
+                    multiple
+                    accept=".txt,.md,.markdown,.csv,.log,.json,.docx,.pdf,application/pdf,image/*"
+                    className="hidden"
+                    onChange={(e) => void onDocs(e)}
+                  />
+                </label>
+                <span className="ml-2 text-[11.5px] text-muted-2">
+                  {t("capture.documentsHint")}
+                </span>
+                {docs.length > 0 ? (
+                  <ul className="mt-2 space-y-1">
+                    {docs.map((d) => (
+                      <li key={d.id} className="flex items-center gap-2 text-[12.5px] text-text">
+                        <FileText size={12} className="text-muted-2" />
+                        <span className="truncate">{d.name}</span>
+                        <button
+                          type="button"
+                          aria-label={t("capture.listRemove")}
+                          onClick={() => setDocs((arr) => arr.filter((x) => x.id !== d.id))}
+                          className="ml-auto text-muted-2 hover:text-text"
+                        >
+                          <X size={12} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+
+              {/* Bilder */}
+              <div className="rounded-card border border-dashed border-hairline p-3">
+                <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+                  <Paperclip size={13} />
+                  {t("capture.images")}
+                </div>
+                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
+                  {t("capture.imagesUpload")}
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => void onImages(e)}
+                  />
+                </label>
+                <span className="ml-2 text-[11.5px] text-muted-2">{t("capture.imagesHint")}</span>
+                {images.length > 0 ? (
+                  <div className="mt-2 grid grid-cols-4 gap-2">
+                    {images.map((img) => (
+                      <div key={img.id} className="group relative">
+                        <img
+                          src={img.dataUrl}
+                          alt={img.name}
+                          className="h-16 w-full rounded-card border border-hairline object-cover"
+                        />
+                        <button
+                          type="button"
+                          aria-label={t("capture.listRemove")}
+                          onClick={() => setImages((arr) => arr.filter((x) => x.id !== img.id))}
+                          className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-ink/70 text-white opacity-0 group-hover:opacity-100"
+                        >
+                          <X size={12} />
+                        </button>
+                        {/* SCRUM-123: OCR nur auf Klick, mit sichtbarem Lade-/Fehlerstatus */}
+                        <button
+                          type="button"
+                          disabled={ocrBusy === img.id}
+                          onClick={() => void onOcr(img)}
+                          className="absolute inset-x-1 bottom-1 truncate rounded-btn bg-ink/70 px-1 py-0.5 text-center text-[9.5px] font-semibold text-white opacity-0 group-hover:opacity-100 disabled:opacity-100"
+                        >
+                          {ocrBusy === img.id ? t("capture.ocrRunningShort") : t("capture.ocr")}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </>
+          ) : null}
 
           {err ? (
             <div className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
