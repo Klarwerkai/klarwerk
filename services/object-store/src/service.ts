@@ -36,6 +36,9 @@ export function inferKind(mime: string): ObjectKind {
   if (mime.startsWith("image/")) {
     return "image";
   }
+  if (mime.startsWith("video/") || mime.startsWith("audio/")) {
+    return "video";
+  }
   if (mime === "application/pdf" || mime.startsWith("text/") || mime.includes("word")) {
     return "document";
   }

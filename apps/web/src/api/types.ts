@@ -60,12 +60,21 @@ export interface KoAttachment {
 }
 
 // SCRUM-121: Objekt-Referenz (nur Metadaten) aus dem Object-Store.
+// SCRUM-382: Ergebnis der Video-/Audio-Analyse (Transkript) — ehrlicher Engine-Status.
+export interface MediaAnalysis {
+  objectId: string;
+  transcript: string | null;
+  engineActive: boolean;
+  engine: string | null;
+  note: string;
+}
+
 export interface ObjectRef {
   id: string;
   name: string;
   mime: string;
   size: number;
-  kind: "image" | "document" | "binary";
+  kind: "image" | "document" | "video" | "binary";
   createdAt: string;
 }
 
@@ -468,7 +477,7 @@ export interface DemoSeedResult {
   attachments: number;
 }
 
-export type NotificationKind = "conflict" | "gap" | "assignment";
+export type NotificationKind = "conflict" | "gap" | "assignment" | "impact";
 
 export interface Notification {
   id: string;

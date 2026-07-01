@@ -50,6 +50,7 @@ import {
   PgLifecycleRepo,
 } from "../../lifecycle";
 import { ManagementService } from "../../management";
+import { MediaAnalysisService, createTranscriberFromEnv } from "../../media";
 import {
   InMemoryModelRunRepo,
   type ModelRunRepo,
@@ -83,6 +84,7 @@ import { koRoutes } from "./routes/ko-routes";
 import { libraryRoutes } from "./routes/library-routes";
 import { lifecycleRoutes } from "./routes/lifecycle-routes";
 import { managementRoutes } from "./routes/management-routes";
+import { mediaRoutes } from "./routes/media-routes";
 import { modelRunRoutes } from "./routes/model-runs-routes";
 import { notificationsRoutes } from "./routes/notifications-routes";
 import { objectRoutes } from "./routes/object-routes";
@@ -109,6 +111,7 @@ export interface AppServices {
   lifecycle: LifecycleService;
   i18n: I18nService;
   objects: ObjectStore;
+  media: MediaAnalysisService;
   // SCRUM-165: read-only Einsicht in das ModelRun-Protokoll.
   modelRuns: ModelRunService;
   mailer: Mailer;
@@ -196,6 +199,10 @@ function assembleServices(repos: AppRepos): AppServices {
     i18n: new I18nService(),
     // SCRUM-121: interner Objekt-/Attachment-Speicher (In-Memory; Pg/Disk = Folge-Ticket).
     objects: new ObjectStore({ repo: repos.objects }),
+    media: new MediaAnalysisService({
+      objects: new ObjectStore({ repo: repos.objects }),
+      transcriber: createTranscriberFromEnv(),
+    }),
     // SCRUM-165: read-only ModelRun-Sicht über dasselbe Protokoll-Repo wie der Reasoner.
     modelRuns: new ModelRunService({ repo: repos.modelRuns }),
     // FR-AUTH-08/FR-VAL-07: SMTP, wenn konfiguriert; sonst sammelnder Fallback ohne Versand.
@@ -292,13 +299,19 @@ export function buildApp(services: AppServices = buildServices()): FastifyInstan
   app.register(lifecycleRoutes(services.lifecycle, guards));
   app.register(
     notificationsRoutes(
-      { conflicts: services.conflicts, ask: services.ask, validation: services.validation },
+      {
+        conflicts: services.conflicts,
+        ask: services.ask,
+        validation: services.validation,
+        audit: services.audit,
+      },
       guards,
     ),
   );
   app.register(auditRoutes(services.audit, guards));
   app.register(reasonerRoutes(services, guards));
   app.register(objectRoutes(services.objects, guards));
+  app.register(mediaRoutes(services.media, guards));
   app.register(i18nRoutes(services.i18n));
   app.register(adminRoutes(services, guards)); // SCRUM-181: admin-only Demo-Seed
 

@@ -1,6 +1,7 @@
 // SCRUM-121: interner Objekt-/Attachment-Speicher. Hält Originale/Binärdaten getrennt
 // vom KO-Modell; das KO trägt nur eine ObjectRef + kleine Vorschau. KEIN S3/Cloud.
-export type ObjectKind = "image" | "document" | "binary";
+// SCRUM-382: "video" umfasst Video- UND Audio-Dateien (beide transkribierbar).
+export type ObjectKind = "image" | "document" | "video" | "binary";
 
 // Metadaten-Referenz (ohne Bytes) — genau das, was im KO/Draft gespeichert wird.
 export interface ObjectRef {

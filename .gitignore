@@ -8,3 +8,5 @@ docs/generated/coverage/
 
 # Vite/Vitest erzeugen beim Transpilieren der TS-Configs flüchtige Temp-Dateien.
 *.timestamp-*.mjs
+desktop-app/app.log
+vitest.config.ts.timestamp-*

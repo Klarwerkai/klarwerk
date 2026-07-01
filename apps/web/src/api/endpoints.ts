@@ -24,6 +24,7 @@ import type {
   KoVersionSnapshot,
   LearningPath,
   ManagementSnapshot,
+  MediaAnalysis,
   ModelRunRecord,
   Notification,
   ObjectContent,
@@ -168,6 +169,12 @@ export const endpoints = {
     upload: (input: { name: string; mime: string; data: string; kind?: ObjectRef["kind"] }) =>
       api.post<ObjectRef>("/objects", input),
     read: (id: string) => api.get<ObjectContent>(`/objects/${id}`),
+  },
+  // SCRUM-382: Video-/Audio-Analyse — Transkript serverseitig (Schlüssel bleibt im Backend).
+  media: {
+    status: () => api.get<{ active: boolean; engine: string | null }>("/media/status"),
+    analyze: (objectId: string, locale: "de" | "en") =>
+      api.post<MediaAnalysis>("/media/analyze", { objectId, locale }),
   },
   lifecycle: {
     pending: () => api.get<string[]>("/lifecycle/pending"),

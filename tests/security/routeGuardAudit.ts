@@ -245,6 +245,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/objects/:id": { protection: "ko.read" },
   "GET /api/objects/:id/raw": { protection: "ko.read" },
 
+  // --- media (media-routes.ts, SCRUM-382) ---
+  "GET /api/media/status": { protection: "auth" },
+  "POST /api/media/analyze": { protection: "ko.read" },
+
   // --- i18n (i18n-routes.ts) ---
   "GET /api/i18n/locales": {
     protection: "public",

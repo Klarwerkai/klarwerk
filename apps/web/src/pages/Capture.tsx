@@ -185,6 +185,8 @@ export function Capture(): JSX.Element {
   const [failedAttachments, setFailedAttachments] = useState<AttachmentFailure[]>([]);
   // SCRUM-123: laufende Bild-OCR (für ehrlichen Status / Button-Sperre).
   const [ocrBusy, setOcrBusy] = useState<string | null>(null);
+  // SCRUM-382: laufende Video-/Audio-Transkription (Objekt-ID der Session-Datei).
+  const [videoBusy, setVideoBusy] = useState<string | null>(null);
   // SCRUM-113 / FE-CAP-07: aktuell fortgesetzter Entwurf (null = neuer Entwurf).
   const [draftId, setDraftId] = useState<string | null>(null);
   const qc = useQueryClient();
@@ -494,6 +496,11 @@ export function Capture(): JSX.Element {
         } catch {
           setErr(t("capture.docParseError", { name: f.name }));
         }
+      } else if (f.type.startsWith("video/") || f.type.startsWith("audio/")) {
+        // SCRUM-382: Video/Audio als Session-Datei merken (Attach beim Speichern) —
+        // Transkription NUR auf Klick, wie bei der Bild-OCR (keine stille Aktion).
+        await pushDoc(f);
+        setNotice(t("capture.videoAdded", { name: f.name }));
       } else {
         setErr(t("capture.docUnsupported", { name: f.name }));
       }
@@ -520,6 +527,39 @@ export function Capture(): JSX.Element {
       if (isImage(f)) {
         await addImage(f);
       }
+    }
+  };
+
+  // SCRUM-382: Video-/Audio-Transkription, NUR auf Nutzeraktion. Der Server hält den
+  // Dienst-Schlüssel; ohne Dienst kommt ein ehrlicher Inaktiv-Hinweis (kein Fake-Text).
+  const onTranscribe = async (d: { id: string; name: string; mime: string; data: string }) => {
+    setErr(null);
+    setVideoBusy(d.id);
+    setNotice(t("capture.videoRunning", { name: d.name }));
+    try {
+      const ref = await endpoints.objects.upload({
+        name: d.name,
+        mime: d.mime,
+        data: d.data,
+        kind: "video",
+      });
+      const res = await endpoints.media.analyze(ref.id, locale);
+      if (res.engineActive && res.transcript && res.transcript.length > 0) {
+        setRaw((prev) =>
+          prev
+            ? `${prev}\n\n[Transkript: ${d.name}]\n${res.transcript}`
+            : `[Transkript: ${d.name}]\n${res.transcript}`,
+        );
+        setNotice(t("capture.videoDone", { name: d.name }));
+      } else {
+        setNotice(null);
+        setErr(res.note);
+      }
+    } catch (e) {
+      setNotice(null);
+      setErr(e instanceof ApiError ? e.message : t("state.error"));
+    } finally {
+      setVideoBusy(null);
     }
   };
 
@@ -1003,7 +1043,7 @@ export function Capture(): JSX.Element {
                   <input
                     type="file"
                     multiple
-                    accept=".txt,.md,.markdown,.csv,.log,.json,.docx,.pdf,application/pdf,image/*"
+                    accept=".txt,.md,.markdown,.csv,.log,.json,.docx,.pdf,application/pdf,image/*,video/*,audio/*"
                     className="hidden"
                     onChange={(e) => void onDocs(e)}
                   />
@@ -1017,6 +1057,18 @@ export function Capture(): JSX.Element {
                       <li key={d.id} className="flex items-center gap-2 text-[12.5px] text-text">
                         <FileText size={12} className="text-muted-2" />
                         <span className="truncate">{d.name}</span>
+                        {d.mime.startsWith("video/") || d.mime.startsWith("audio/") ? (
+                          <button
+                            type="button"
+                            disabled={videoBusy !== null}
+                            onClick={() => void onTranscribe(d)}
+                            className="rounded-btn border border-hairline px-1.5 py-0.5 text-[10.5px] font-semibold text-muted hover:text-text disabled:opacity-50"
+                          >
+                            {videoBusy === d.id
+                              ? t("capture.videoBusy")
+                              : t("capture.videoTranscribe")}
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           aria-label={t("capture.listRemove")}
