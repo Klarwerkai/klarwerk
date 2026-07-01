@@ -145,7 +145,10 @@ export function Capture(): JSX.Element {
 
   // Anhänge (FR-CAP-05/06)
   const [images, setImages] = useState<LocalImage[]>([]);
-  const [docs, setDocs] = useState<{ id: string; name: string }[]>([]);
+  // SCRUM-373 / AG-02-SESSION: Nicht-Bild-Session-Dateien behalten jetzt ihre Originalbytes (data), damit
+  // sie beim Speichern in den Object-Store gelegt und danach im KO-Editor als sichere Body-Referenz nutzbar
+  // sind. Der extrahierte Text geht weiterhin als Kontext in die Rohnotiz.
+  const [docs, setDocs] = useState<{ id: string; name: string; mime: string; data: string }[]>([]);
 
   const [err, setErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -155,6 +158,9 @@ export function Capture(): JSX.Element {
   const [submittedFromDraft, setSubmittedFromDraft] = useState(false);
   // SCRUM-369: ob dieser Save aus einem Ask-Lücken-Kontext (?gap=…) kam → ehrlicher Rescue-Anschluss.
   const [savedFromGap, setSavedFromGap] = useState(false);
+  // SCRUM-373: Anzahl der beim Speichern in den Object-Store gelegten Anhänge (Bilder + Dateien) — für den
+  // ehrlichen Anschluss „jetzt als sichere Objekt-Referenz im KO-Editor verlinkbar".
+  const [savedFilesCount, setSavedFilesCount] = useState(0);
   // SCRUM-123: laufende Bild-OCR (für ehrlichen Status / Button-Sperre).
   const [ocrBusy, setOcrBusy] = useState<string | null>(null);
   // SCRUM-113 / FE-CAP-07: aktuell fortgesetzter Entwurf (null = neuer Entwurf).
@@ -275,6 +281,23 @@ export function Capture(): JSX.Element {
           },
         });
       }
+      // SCRUM-373 / AG-02-SESSION / FR-STR-02: Nicht-Bild-Session-Dateien ebenfalls in den Object-Store
+      // legen und als Anhang referenzieren — damit sie NACH dem Speichern eine sichere Objekt-Referenz
+      // (objectId) besitzen und im KO-Editor/Studio als Body-Link nutzbar sind (`editorFilesFromAttachments`
+      // + `bodyFileLink`). Reine Wiederverwendung der vorhandenen Object-Store-/Attach-Endpunkte (KEIN neues
+      // Backend, KEIN Legacy-data:-URL im Body). Evidence bleibt Beleg — ersetzt NICHT Validierung/Trust.
+      for (const doc of docs) {
+        const ref = await endpoints.objects.upload({
+          name: doc.name,
+          mime: doc.mime,
+          data: doc.data,
+          kind: "document",
+        });
+        await endpoints.ko.act(ko.id, {
+          action: "attach",
+          attachment: { name: doc.name, mime: doc.mime, objectId: ref.id, size: ref.size },
+        });
+      }
       return ko;
     },
     // SCRUM-276: kein stilles Weiterleiten — „gespeichert" + nächster Schritt sichtbar machen.
@@ -283,6 +306,8 @@ export function Capture(): JSX.Element {
       setSavedKoId(ko.id);
       // SCRUM-369: Rescue-Anschluss nur, wenn dieser Save aus einer Ask-Lücke gestartet wurde.
       setSavedFromGap(gapContext !== null);
+      // SCRUM-373: vor dem Zurücksetzen die Anzahl gespeicherter Anhänge merken (Objekt-Referenz-Anschluss).
+      setSavedFilesCount(images.length + docs.length);
       push("success", t("capture.savedTitle"));
       void qc.invalidateQueries({ queryKey: ["validation"] });
       void qc.invalidateQueries({ queryKey: ["kos"] });
@@ -412,6 +437,16 @@ export function Capture(): JSX.Element {
     setListening(true);
   };
 
+  // SCRUM-373 / AG-02-SESSION: Session-Datei mit Originalbytes merken (für den Object-Store-Upload beim
+  // Speichern). Reine lokale Erfassung — noch KEINE objectId, daher noch NICHT body-verlinkbar (kein Fake-Link).
+  const pushDoc = async (f: File): Promise<void> => {
+    const data = await readFileAsDataUrl(f);
+    setDocs((d) => [
+      ...d,
+      { id: crypto.randomUUID(), name: f.name, mime: f.type || "application/octet-stream", data },
+    ]);
+  };
+
   const onDocs = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
     const files = Array.from(e.target.files ?? []);
     e.target.value = "";
@@ -422,7 +457,7 @@ export function Capture(): JSX.Element {
         try {
           const text = isWordDocument(f) ? await readDocxFile(f) : await readTextFile(f);
           setRaw((prev) => (prev ? `${prev}\n\n[${f.name}]\n${text}` : `[${f.name}]\n${text}`));
-          setDocs((d) => [...d, { id: crypto.randomUUID(), name: f.name }]);
+          await pushDoc(f);
           setNotice(t("capture.docAdded", { name: f.name }));
         } catch {
           setErr(t("capture.docParseError", { name: f.name }));
@@ -438,7 +473,7 @@ export function Capture(): JSX.Element {
             continue;
           }
           setRaw((prev) => (prev ? `${prev}\n\n[${f.name}]\n${text}` : `[${f.name}]\n${text}`));
-          setDocs((d) => [...d, { id: crypto.randomUUID(), name: f.name }]);
+          await pushDoc(f);
           setNotice(t("capture.docAdded", { name: f.name }));
         } catch {
           setErr(t("capture.docParseError", { name: f.name }));
@@ -562,6 +597,13 @@ export function Capture(): JSX.Element {
               {t(GAP_RESCUE_TEXT.savedNote)}
             </p>
           ) : null}
+          {/* SCRUM-373 / AG-02-SESSION: ehrlicher Anschluss — hochgeladene Bilder/Dateien haben jetzt eine
+              sichere Objekt-Referenz und sind im KO-Editor als Beleg verlinkbar (Evidence ≠ Validierung). */}
+          {savedFilesCount > 0 ? (
+            <p className="mt-1 text-[12px] text-trust-pos-text/80">
+              {t("capture.savedFilesNote", { count: savedFilesCount })}
+            </p>
+          ) : null}
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {captureNextSteps(savedKoId).map((s) => (
               <Link
@@ -581,6 +623,7 @@ export function Capture(): JSX.Element {
                 setSavedKoId(null);
                 setSubmittedFromDraft(false);
                 setSavedFromGap(false);
+                setSavedFilesCount(0);
               }}
             >
               {t("capture.savedAgain")}
@@ -1057,7 +1100,7 @@ export function Capture(): JSX.Element {
                     }}
                     runAssist={runAssist}
                     images={editorImagesFromLocalImages(images)}
-                    attachments={[...images, ...docs.map(() => ({ mime: null }))]}
+                    attachments={[...images, ...docs.map((d) => ({ mime: d.mime }))]}
                   />
                   {/* SCRUM-339: ehrliches Feedback — übernommen in den Entwurf, kein Auto-Save. */}
                   {studioApplied ? (
@@ -1069,12 +1112,12 @@ export function Capture(): JSX.Element {
                   <EditorGuidance />
                   {/* SCRUM-323: Anhänge-Kontext — Bilder (einfügbar) vs. Dateien (Anhang/Evidence). */}
                   <EditorAttachmentContext
-                    attachments={[...images, ...docs.map(() => ({ mime: null }))]}
+                    attachments={[...images, ...docs.map((d) => ({ mime: d.mime }))]}
                   />
                   {/* SCRUM-324: kompakte Struktur-/Nachvollziehbarkeits-Signale (keine Validierung). */}
                   <EditorContentQuality
                     bodyHtml={bodyHtml}
-                    attachments={[...images, ...docs.map(() => ({ mime: null }))]}
+                    attachments={[...images, ...docs.map((d) => ({ mime: d.mime }))]}
                   />
                   {/* SCRUM-319: bewusst wählbare Body-Strukturvorlagen (leer = setzen, sonst anhängen). */}
                   <BodyTemplateChooser bodyHtml={bodyHtml} onApply={setBodyHtml} />

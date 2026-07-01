@@ -9573,3 +9573,52 @@ git push
 ```
 
 **Stop-Hinweis:** Claude macht kein Git add, kein Commit, kein Push, kein Jira. Übergabe an Codex/Pedi.
+
+---
+
+## SCRUM-373 — Beta Capture Session File Object-Linking v0
+
+**Datum:** 2026-07-01 · **Claude beteiligt: ja** · **Rolle:** Hauptumsetzer · **Repo:** `/Users/peterkohnert/Documents/dev_Klarwerk` (nur Team-1)
+
+**Kurzfazit.** AG-02-SESSION ist geschlossen: Capture-Session-Dateien (Nicht-Bilder) bekommen beim Speichern jetzt eine sichere Objekt-Referenz und sind danach im KO-Editor als Body-Link nutzbar. Befund war: bisher lud Capture nur Bilder in den Object-Store; Nicht-Bild-Dokumente wurden nur text-extrahiert (Bytes verworfen) → nie objectId, nie verlinkbar. Fix (reine Wiederverwendung der vorhandenen `objects.upload`- + `attach`-Endpunkte, kein neues Backend, kein Legacy-`data:`-URL): Capture behält die Datei-Originalbytes und lädt Nicht-Bild-Session-Dateien beim Submit als `kind:"document"` hoch + referenziert sie als Anhang. Danach greift der bestehende Rückweg (`editorFilesFromAttachments` → Datei-Dropdown → sicherer `bodyFileLink`). Capture-Success erklärt den Anschluss ehrlich. Kein Fake-Link vor objectId; Sanitizer unverändert.
+
+**SCRUM-Ticket.** SCRUM-373 — Beta Capture Session File Object-Linking v0.
+
+**Legacy-Pfad geprüft / nicht verfügbar.** Verfügbar & read-only gesichtet: `Klarwerk/app/src/components/WikiEditor.jsx`, `pages/TeacherStudio.jsx` (Legacy speicherte Datei-Anhänge inline als `data:`-Download-URL — bewusst NICHT reproduziert).
+
+**Wichtigste alte Funktionen.** Legacy: Dateien als `<a href="data:…" download>` inline (unsicher, im HTML-Body). Klarwerk-Ist vor SCRUM-373: Bilder → Object-Store-Attachment (objectId) beim Submit; Nicht-Bild-Dokumente → nur Text in die Rohnotiz extrahiert, Datei selbst verworfen.
+
+**Aktuelle Gaps (alte Funktion → neuer Stand → beta-relevante Lücke → Entscheidung).**
+| Alte Funktion | Neuer Stand (Klarwerk) | Beta-relevante Lücke | Entscheidung |
+|---|---|---|---|
+| Datei inline als `data:`-Downloadlink | Datei nur als Object-Store-Link (SCRUM-355) | Nicht-Bild-Session-Dateien wurden gar nicht hochgeladen → nie objectId, nie verlinkbar (AG-02-SESSION) | Jetzt umgesetzt: Nicht-Bild-Session-Dateien werden beim Submit als `kind:"document"` in den Object-Store gelegt + attached → danach body-verlinkbar |
+| Bild → Object-Store-Attachment beim Submit | unverändert (kind image) | — | Beibehalten |
+| Nicht-Bild-Datei nur text-extrahiert | zusätzlich als Beleg gesichert (Object-Store) | Original-Beleg ging verloren | Jetzt umgesetzt: Text bleibt Kontext, Datei wird zusätzlich als Beleg gesichert |
+| — | Session-Datei ohne objectId | Fake-Link-Risiko | Nicht übernehmen: vor objectId weiterhin kein Body-Link (kein Fake-Link) |
+| Upload+Attach atomar | zwei Requests (wie beim Bild-Upload) | Verwaistes Object bei Attach-Fehler | Bewusst später (FR-STR-02-SESSION-ATOMIC, P2) |
+
+**Umgesetzter Umfang.**
+- `Capture.tsx`: `docs`-State behält Originalbytes (`readFileAsDataUrl`) + mime (`pushDoc`-Helper); Submit-Loop lädt Nicht-Bild-Docs als `kind:"document"` hoch + `attach` (objectId); Media-Guide-Attachments bekommen echten mime; Capture-Success zeigt `capture.savedFilesNote` (savedFilesCount).
+- `i18n.ts`: `capture.savedFilesNote` DE/EN (ehrlich: sichere Objekt-Referenz, verlinkbar, Evidence ≠ Validierung).
+
+**Bewusst nicht umgesetzte Gaps.** FR-STR-02-SESSION-ATOMIC (nicht-atomarer Upload+Attach — wie beim Bild-Upload, P2). Kein neues Upload-/Object-Store-Backend, kein Asset-Management, kein Legacy-`data:`-URL-Dateilink, kein neues Editor-Framework, keine Sanitizer-Änderung, keine automatische Validierung durch Evidence.
+
+**Geänderte Dateien.** `apps/web/src/pages/Capture.tsx`, `apps/web/src/i18n.ts`, `tests/structure/session-file-object-linking-e2e.test.ts` (NEU), `docs/TEAM6_UPDATE.md`, `docs/qm/claude-after-report.md`.
+
+**Tests/Gates.** `tests/structure/session-file-object-linking-e2e.test.ts` (1, HTTP-E2E + FE-Helfer): KO → POST /api/objects (document) → attach → GET ko → `editorFilesFromAttachments` findet die Datei → `fileLinkHtml` sicherer `/api/objects/:id/raw` (kein data:/js:); Bild-Anhang wird nicht verlinkt; Attachment ohne objectId → kein Fake-Link; `editorMediaGuide` gespeichert=verlinkbar vs. Session=Evidence; Evidence ≠ Validierung (usability≠ready). Bestands-`bodyFileLink`-/Sanitizer-/Media-/Evidence-Tests unverändert grün. `npm run check` grün — **193 Dateien / 1175 Tests**; Build (tsc)/Biome/dependency-cruiser grün; FE-tsc strict grün.
+
+**Sicherheitscheck / keine Secrets.** Keine Secrets/Tokens/Keys. Datei-Links entstehen ausschließlich über `bodyFileLink` (interner `/api/objects/:id/raw`-Pfad, objectId-Whitelist) — keine `data:`-Links für Dateien, keine `javascript:`-/Fremdschema-/Fake-Links; Sanitizer (FE `richText.ts` + Server) UNVERÄNDERT. Keine echten Kundendaten (synthetisches PDF im Test). Keine Team-fremden Dateien; untrackte v2-Infra-Datei unberührt.
+
+**TEAM6_UPDATE.md updated: yes** · **Team6 review needed: yes** · **Reason: Capture session file / evidence object-linking changed** · **Affected requirements/gaps: AG-02-SESSION, AG-12, FR-STR-02, KG-UX-001/002/003/010.**
+
+**Rest-Risiken.** (1) Upload+Attach sind nicht atomar (wie beim vorhandenen Bild-Upload) — bei Attach-Fehler bleibt ein verwaistes Object (FR-STR-02-SESSION-ATOMIC, P2). (2) Nicht-Bild-Dateien werden als Original-`data:`-URL zum Object-Store gesendet — größere Dateien erhöhen den Upload; kein hartes Größenlimit im Capture (Server-seitige Limits gelten). (3) Der eigentliche Capture-Submit-Upload läuft im React-Client und ist nicht als Browser-E2E getestet; die belegende E2E fährt die echten HTTP-Routen + FE-Helfer (dieselbe Object-Store-/Attach-/Link-Kette) — ein Browser-Smoke bleibt Team 5 (EK-20). (4) Evidence bleibt Beleg — die UI macht das klar; keine Auto-Validierung.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/pages/Capture.tsx apps/web/src/i18n.ts tests/structure/session-file-object-linking-e2e.test.ts docs/TEAM6_UPDATE.md docs/qm/claude-after-report.md
+git commit -m "feat(capture): upload non-image session files to object store → body-linkable, honest success note (SCRUM-373, AG-02-SESSION/FR-STR-02)"
+git push
+```
+
+**Stop-Hinweis:** Claude macht kein Git add, kein Commit, kein Push, kein Jira. Übergabe an Codex/Pedi.

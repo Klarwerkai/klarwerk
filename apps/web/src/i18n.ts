@@ -302,6 +302,9 @@ const de = {
     "Gespeichert als dein eigenes Wissen (kein Demo-Beispiel), aber noch nicht validiert. Erst nach ausreichender Bewertung wird es nutzbares Wissen — bitte zur Prüfung geben. Automatisch validiert wird nichts.",
   "capture.savedFromDraft":
     "Dein fortgesetzter Entwurf wurde als offenes Wissen eingereicht und aus deinen Entwürfen entfernt.",
+  // SCRUM-373 / AG-02-SESSION: nach dem Speichern haben Bilder/Dateien eine sichere Objekt-Referenz.
+  "capture.savedFilesNote":
+    "{{count}} Anhang/Anhänge sind jetzt als sichere Objekt-Referenz gespeichert und im Editor des Wissensobjekts als Beleg verlinkbar. Belege sind Kontext — sie ersetzen die Validierung nicht.",
   "own.empty.title": "Noch kein eigenes Wissen hier",
   "own.empty.hint":
     "Du filterst auf eigenes Wissen (keine Demo-Beispiele). Selbst erfasstes Wissen erscheint hier nach dem Speichern und wartet dann auf die Prüfung.",
@@ -1933,6 +1936,9 @@ const en: typeof de = {
     "Saved as your own knowledge (not a demo example), but not yet validated. It becomes usable knowledge only after sufficient review — please send it for review. Nothing is validated automatically.",
   "capture.savedFromDraft":
     "Your continued draft was submitted as open knowledge and removed from your drafts.",
+  // SCRUM-373 / AG-02-SESSION: after saving, images/files have a safe object reference.
+  "capture.savedFilesNote":
+    "{{count}} attachment(s) are now stored as a safe object reference and can be linked as evidence in the knowledge object's editor. Evidence is context — it does not replace validation.",
   "own.empty.title": "No own knowledge here yet",
   "own.empty.hint":
     "You are filtering for your own knowledge (no demo examples). Knowledge you capture appears here after saving and then waits for review.",
