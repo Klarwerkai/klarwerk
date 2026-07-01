@@ -6,16 +6,16 @@
 - Scope: Knowledge Input, Capture, AI-assisted Editing, Validation, KO Detail, Library, Ask, Capture → Review → Use, App-Auth/Security, Trust/Conflict-Integrity
 - Repo: `/Users/peterkohnert/Documents/dev_Klarwerk`
 - Jira Project: SCRUM
-- Last updated: 2026-07-01 12:50 CEST
-- Current status: SCRUM-378 (RC-Handoff-Dokument) umgesetzt durch Claude, Codex-Prüfung/Commit/Push/Jira ausstehend
-- Active ticket: SCRUM-378 — Beta RC Team-5 Handoff Pack v0 (Doku-Slice, kein Produktfeature)
-- Last completed ticket: SCRUM-377 — Beta App-wide Story & Empty-State Onboarding v0 (von Codex committed: `1e662e9`)
-- Last commit: `1e662e9` (SCRUM-377); SCRUM-376 `6fa98e7`
-- GitHub/CI status: letzter bekannter Team-1-RC-Kandidat `1e662e9` (SCRUM-377) CI grün laut Codex-Review; SCRUM-378 (nur Doku) nach Codex-Commit/Push/CI noch zu prüfen
-- Beta impact: Team-1-RC-Handoff an Team 5 vorbereitet. Neues Übergabedokument `docs/BETA_RC_TEAM5_HANDOFF_V0.md` (Status `technical_rc_candidate_only`) kondensiert den sauberen Produktstand am RC-Commit `1e662e9`, liefert Team 5 einen reproduzierbaren Smoke-/Readiness-Startpunkt (14 Smoke-Pfade als Checkliste), macht Datengrenze (nur Demo/synthetisch), bekannte Nicht-Ziele, P0/P1/P2-Gates (AG-03/04/07/08/09/12/13) und Stop-Lines sichtbar und stellt offene Fragen an Pedi/Team 5. KEIN neues Produktfeature, KEIN UI-Umbau, KEIN Produktcode geändert, KEIN Beta-Go/Deployment/Serverzugriff. Ehrlich: technischer RC-Kandidat, kein finaler Beta-Go, keine Kundenfreigabe.
+- Last updated: 2026-07-01 13:05 CEST
+- Current status: SCRUM-379 (RC-Support-Reaktionsspur, Dokument) umgesetzt durch Claude, Codex-Prüfung/Commit/Push/CI/Jira ausstehend
+- Active ticket: SCRUM-379 — Beta RC Smoke Fix Response Lane v0 (RC-Support-Slice, kein Produktfeature)
+- Last completed ticket: SCRUM-378 — Beta RC Team-5 Handoff Pack v0 (von Codex committed: `c0863c6`)
+- Last commit: `c0863c6` (SCRUM-378); technischer RC-Kandidat weiterhin `1e662e9` (SCRUM-377)
+- GitHub/CI status: letzter bekannter Team-1-RC-Kandidat `1e662e9` (SCRUM-377) CI grün laut Codex-Review; SCRUM-378 committed `c0863c6`; SCRUM-379 (nur Doku) nach Codex-Commit/Push/CI noch zu prüfen
+- Beta impact: Team 1 kann auf Team-5-Smoke-Funde strukturiert reagieren, ohne RC-Drift. Neues Dokument `docs/BETA_RC_SMOKE_FIX_RESPONSE_LANE_V0.md` (Status `rc_support_lane_only`) definiert die Reaktionsspur: Fund-Kategorien (P0/P1/P2/Observation/Out-of-Scope), P0/P1/P2-Reaktionsregeln, Sofort-Fix-vs-Defer-Entscheidung, Stop-Lines, erwartetes Team-5-Finding-Format, Mapping Finding→genau ein Team-1-Fix-Slice (Repro/Ursache/minimaler Fix/Regressionstest/Gates/CI), Ablauf nach Smoke-Fund und die Regel „keine RC-Änderung ohne Freigabe". KEIN Produktfeature, KEIN UI-Umbau, KEIN Produktcode geändert, KEIN Beta-Go/Deployment. Der RC-Kandidat `1e662e9` bleibt stabil.
 - Team6 review needed: yes
-- Reason: Team-1-RC, Smoke/Readiness, AG-03/04/07/08/09/12/13, Team5-Handoff
-- Next planned slice: wartet auf Pedi/Team5-Smoke-Ergebnis (Conditional Go/No-Go); danach offene P1/P2-Reste je nach Signal
+- Reason: RC-Support, Smoke-Fix-Lane, Team5-Findings, P0/P1/P2-Reaktionsregeln
+- Next planned slice: wartet auf Team-5-Smoke-Finding oder Pedi-Fix-Freigabe
 
 ## Current Risks / Gaps
 
@@ -87,6 +87,17 @@
 | VC-P1-2 / EK-26 — Assignment-Feed vs. Beta-Akzeptanz | Team6 `TEAM6_ACTIVE_GAPS_AND_RECOMMENDATIONS.md` | addressed in SCRUM-363 | In-App-Feed-Variante geliefert (statt „Board+E-Mail reichen"); finale Beta-Akzeptanz/Reichweite bleibt Pedi/Team 5 (EK-26). |
 
 ## Delta Log
+
+### 2026-07-01 13:05 — SCRUM-379 — pending Codex commit
+
+- Changed areas: `docs/BETA_RC_SMOKE_FIX_RESPONSE_LANE_V0.md` (NEU), `docs/TEAM6_UPDATE.md` (Snapshot + Delta Log). KEIN Produktcode, KEIN Test, KEINE i18n geändert.
+- What changed: SCRUM-379 — Team 1 bleibt im RC-Support-Modus und bereitet eine klare Reaktionsspur für Team-5-Smoke-Funde vor, ohne den RC-Kandidaten `1e662e9` jetzt fachlich zu verändern. Neues Dokument (`rc_support_lane_only`) mit: Titelblock/Zweck, RC-Kontext, Fund-Kategorien (P0/P1/P2/Observation/Out-of-Scope), P0/P1/P2-Reaktionsregeln, Sofort-Fix-vs-Defer-Entscheidungsregeln, Stop-Lines, erwartetem Team-5-Finding-Format (Vorlage), Mapping „echtes P0/P1-Finding → genau ein Team-1-Fix-Slice" (Repro/Ursache/minimaler Fix/Regressionstest/Gates/CI; P2 deferiert; Out-of-Scope zurück), Ablauf nach Smoke-Fund (Team 5 → Codex Scope → Pedi-Entscheidung → ein Fix-Ticket → Claude minimaler Fix → Codex Gates/Commit/Push/CI/Jira → Re-Smoke) und der Regel „keine RC-Änderung ohne Freigabe".
+- Beta impact: Team 1 kann Team-5-Funde geordnet klassifizieren und in kontrollierte, minimale Fix-Slices überführen; kein RC-Drift, kein Feature-Wildwuchs aus Smoke-Funden.
+- Designentscheidung (begründet): reiner Prozess-/Support-Doku-Slice, kein Produktfeature/UI/RAG. Kein Produktcode geändert (nicht nötig). Rollen sauber getrennt (Claude = Fix-Inhalt; Codex = Git/Commit/Push/CI/Jira; Pedi = Freigabe/Go). RC-Stabilität als Leitplanke; jede Abweichung ist eine Stop-Line.
+- New / touched requirements: kein FR/AG umgesetzt; referenziert nur den RC-Handoff (SCRUM-378) + die dort gelisteten Gates (AG-03/04/07/08/09/12/13) als Kontext.
+- Gates: `git status -sb` (nur erwartete Doku-Dateien + bekannte untracked Infra-Datei), `git diff --stat`, `npm run check` grün, FE-tsc grün. Sicherheitscheck: keine Secrets/Tokens/echten Daten/produktiven URLs in den geänderten Dateien.
+- Team6 review needed: yes
+- Reason: RC-Support, Smoke-Fix-Lane, Team5-Findings, P0/P1/P2-Reaktionsregeln
 
 ### 2026-07-01 12:50 — SCRUM-378 — pending Codex commit
 
