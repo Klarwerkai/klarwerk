@@ -9918,3 +9918,19 @@ git push
 **Git-Status:** klarwerk-public-website: main unverändert; untracked `website/` + `desktop-app/`. Kein Commit/Push durch Claude.
 **Jira-Kommentar-Vorschlag:** bereits als KWEB-104-Kommentar hinterlegt; Status In Review.
 **Nächster Schritt:** Pedi: Doppelklick „KLARWERK Website" → Review. Danach Freigabe oder Änderungswünsche. STOPP.
+
+---
+
+## After-Report — 2026-07-02 · Autonome Team-1-Session (SCRUM-380/381/382/383/385)
+
+**Datum:** 2026-07-02 (Nacht-Session mit Pedi-Vorab-Freigaben: main, Video echt+Fallback, Playwright devDep, Key laut Repo)
+**Ticket:** SCRUM-380 ✅Done · SCRUM-381 ✅Done · SCRUM-382 🔎In Review · SCRUM-383 🔎In Review · SCRUM-384 To Do (bewusst) · SCRUM-385 Teil A fertig/Teil B offen
+**Änderung:** (1) RC-Evidence-Doc mit Hashes (Gesamt d4f6196e…), Quellstand bit-identisch zu RC 1e662e9 belegt. (2) Playwright 1.61.1 devDep + smoke:browser:setup. (3) Neues Modul services/media: Video-/Audio-Transkription (Whisper-kompatibel, Schlüssel nur Server, injizierbarer fetch), Objektart video, /api/media/status+analyze, Capture-UI Transkribieren-auf-Klick, ehrlicher Inaktiv-Fallback. (4) Wirkungs-Rückmeldung an Originalautor im Feed (impact-Kategorie, kein Selbst-Applaus, Quelle Audit-Log, Sprung zum KO). (5) Desktop-App „KLARWERK App" (Keys→Schlüsselbund per Dialog beim nächsten Start: Anthropic Pflichtfrage/überspringbar, Whisper optional; baut FE, startet Monolith, öffnet Browser) auf Desktop. (6) Delta-/UX-Abgleichs-Doc (docs/qm/TEAM1_DELTA_UX_ABGLEICH_2026-07-02.md); Studio-Default bewusst als SCRUM-384 mit Bildschirm-Review geplant statt blind umgebaut.
+**Gebaut:** tsc BE+FE grün · Vite-Build grün.
+**Getestet:** Biome grün (543 Dateien) · depcruise grün (188 Module, 0 Violations) · Vitest **1212 Tests / 200 Dateien grün** (+17 neue) · Route-Guard-Matrix um media-Routen ergänzt.
+**Nicht ausführbare Checks + Grund:** test:integration (kein Docker in Sandbox) · realer Whisper-/Anthropic-Lauf (keine Keys hier — bewusst) · visuelle UI-Abnahme (kein Browser) · App-Doppelklick (nur Mac).
+**Offen:** Pedi: „KLARWERK App" doppelklicken (Erststart fragt Keys ab), SCRUM-382/383 fachlich abnehmen, „KLARWERK Sync" drücken (4 Commits ahead) · Team 5: KREL-34 Re-Smoke (entblockt, Kommentar dort) · SCRUM-384 (Studio-Default) + SCRUM-385 Teil B (ARGUS-Seed) als nächste Slices.
+**Risiko:** gering-mittel — main ist 2 Feature-Slices nach dem RC (mit Pedi-Freigabe); Re-Smoke-Bezugspunkt im KREL-34-Kommentar geklärt. Neue Flächen additiv, Fallbacks erhalten.
+**Git-Status:** main [ahead 4]: f386aa3 (380/381) · 4503f58 (383) · 0c64f1e (382/385A/Doku) · + dieser Report. Kein Push (Sync-App).
+**Jira-Kommentar-Vorschlag:** erledigt (Tickets tragen Umsetzungs-Details; KREL-34 informiert).
+**Nächster Schritt:** Pedi-Review nach Rückkehr. STOPP.
