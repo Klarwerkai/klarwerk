@@ -102,7 +102,9 @@ function NotificationBell(): JSX.Element {
                             ? "bg-trust-crit-fill"
                             : n.kind === "assignment"
                               ? "bg-ai"
-                              : "bg-trust-info-text"
+                              : n.kind === "impact"
+                                ? "bg-trust-pos-fill"
+                                : "bg-trust-info-text"
                       }`}
                     />
                     <button
@@ -115,6 +117,12 @@ function NotificationBell(): JSX.Element {
                       {n.kind === "assignment" ? (
                         <span className="font-semibold text-ai">
                           {t("topbar.notifAssignment")}:{" "}
+                        </span>
+                      ) : null}
+                      {/* PMO-FEA-0002: wertschätzende, unaufdringliche Wirkungs-Rückmeldung. */}
+                      {n.kind === "impact" ? (
+                        <span className="font-semibold text-trust-pos-text">
+                          {t("topbar.notifImpact")}:{" "}
                         </span>
                       ) : null}
                       {n.title}

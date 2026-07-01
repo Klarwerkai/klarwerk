@@ -6,7 +6,15 @@ import type { AssignmentNotice } from "../../validation";
 // nur E-Mail; die Glocke/Popover-Quelle wird hier aus vorhandenen Signalen mit
 // Zeitstempel aggregiert: offene Konflikte, offene Wissenslücken und — SCRUM-363 —
 // die persönlichen offenen Review-Zuweisungen der aktuellen Person.
-export type NotificationKind = "conflict" | "gap" | "assignment";
+export type NotificationKind = "conflict" | "gap" | "assignment" | "impact";
+
+// PMO-FEA-0002: Wirkungs-Rückmeldung an den Originalautor („Dein Wissen hat geholfen").
+// Quelle: Audit-Einträge answer.helpful — keine eigene Persistenz, keine Zähler/Scores.
+export interface ImpactNotice {
+  koId: string;
+  title: string;
+  at: string;
+}
 
 export interface Notification {
   id: string;
@@ -24,8 +32,18 @@ export function buildNotifications(input: {
   conflicts: Conflict[];
   gaps: Gap[];
   assignments?: AssignmentNotice[];
+  impacts?: ImpactNotice[];
 }): Notification[] {
   const items: Notification[] = [];
+  for (const im of input.impacts ?? []) {
+    items.push({
+      id: `impact-${im.koId}-${im.at}`,
+      kind: "impact",
+      title: im.title,
+      at: im.at,
+      koId: im.koId,
+    });
+  }
   for (const c of input.conflicts) {
     items.push({ id: `con-${c.id}`, kind: "conflict", title: c.description, at: c.createdAt });
   }

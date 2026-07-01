@@ -6,7 +6,11 @@ import { validationMineHref } from "./validationFilters";
 // Ziele; alles andere liefert null (dann kein Link, nur Anzeige/mark-read — kein Fake-Ziel).
 // SCRUM-364 / AG-15 follow-up: Review-Zuweisung → fokussierte „Mir zugewiesen"-Linse der Validierung
 // (`/validierung?mine=1`), nicht mehr nur die allgemeine Liste — direkt in die persönliche Review-Arbeit.
-export function notificationTarget(n: Pick<Notification, "kind">): string | null {
+export function notificationTarget(n: Pick<Notification, "kind" | "koId">): string | null {
+  // PMO-FEA-0002: Wirkungs-Rückmeldung führt direkt zum eigenen Wissensobjekt.
+  if (n.kind === "impact") {
+    return n.koId ? `/wissen/${n.koId}` : null;
+  }
   if (n.kind === "conflict") {
     return "/konflikte";
   }

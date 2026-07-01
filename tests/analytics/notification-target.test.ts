@@ -14,6 +14,11 @@ describe("SCRUM-220: notificationTarget", () => {
     expect(notificationTarget({ kind: "assignment" })).toBe("/validierung?mine=1");
   });
 
+  it("PMO-FEA-0002: Wirkungs-Rückmeldung führt zum eigenen Wissensobjekt", () => {
+    expect(notificationTarget({ kind: "impact", koId: "ko-7" })).toBe("/wissen/ko-7");
+    expect(notificationTarget({ kind: "impact" })).toBeNull();
+  });
+
   it("unbekanntes Kind → null (kein Fake-Ziel)", () => {
     expect(notificationTarget({ kind: "other" as never })).toBeNull();
   });

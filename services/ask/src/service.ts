@@ -116,7 +116,14 @@ export class AskService {
     // darf nie auf 100 („100 % wahr") springen.
     const trust = Math.min(TRUST_MAX, ko.trust + HELPFUL_TRUST_STEP);
     await this.koService.setValidationState(koId, { trust, status: ko.status });
-    await this.audit?.record({ actor, action: "answer.helpful", target: koId });
+    // PMO-FEA-0002: Payload trägt Autor+Titel, damit der Feed die Wirkungs-Rückmeldung
+    // an den Originalautor ohne weitere Lookups ableiten kann (ehrlich: nur echte Klicks).
+    await this.audit?.record({
+      actor,
+      action: "answer.helpful",
+      target: koId,
+      payload: { koTitle: ko.title, koAuthor: ko.author },
+    });
   }
 
   // FR-ASK-05: Wissenslücken verwalten.
