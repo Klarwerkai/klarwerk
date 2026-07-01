@@ -30,6 +30,7 @@ import { RichTextEditor } from "../components/RichTextEditor";
 import { ListEditor, TagEditor } from "../components/editors";
 import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
 import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
+import { GAP_RESCUE_STEPS, GAP_RESCUE_TEXT } from "../lib/askGapRescue";
 import { applyBodyAssist, applyBodyAssistBlock, bodyTextForAssist } from "../lib/bodyAiAssist";
 import { applyDraftArticle, normalizeDraftArticleLocale } from "../lib/captureDraftArticle";
 import { CAPTURE_EXAMPLE } from "../lib/captureExample";
@@ -151,6 +152,8 @@ export function Capture(): JSX.Element {
   const [savedKoId, setSavedKoId] = useState<string | null>(null);
   // SCRUM-354: ob das eingereichte KO aus einem fortgesetzten Entwurf promotet wurde (Success-Copy).
   const [submittedFromDraft, setSubmittedFromDraft] = useState(false);
+  // SCRUM-369: ob dieser Save aus einem Ask-Lücken-Kontext (?gap=…) kam → ehrlicher Rescue-Anschluss.
+  const [savedFromGap, setSavedFromGap] = useState(false);
   // SCRUM-123: laufende Bild-OCR (für ehrlichen Status / Button-Sperre).
   const [ocrBusy, setOcrBusy] = useState<string | null>(null);
   // SCRUM-113 / FE-CAP-07: aktuell fortgesetzter Entwurf (null = neuer Entwurf).
@@ -277,6 +280,8 @@ export function Capture(): JSX.Element {
     // Formular zurücksetzen (kein versehentlicher Doppel-Submit); Modus bleibt erhalten.
     onSuccess: (ko) => {
       setSavedKoId(ko.id);
+      // SCRUM-369: Rescue-Anschluss nur, wenn dieser Save aus einer Ask-Lücke gestartet wurde.
+      setSavedFromGap(gapContext !== null);
       push("success", t("capture.savedTitle"));
       void qc.invalidateQueries({ queryKey: ["validation"] });
       void qc.invalidateQueries({ queryKey: ["kos"] });
@@ -549,6 +554,13 @@ export function Capture(): JSX.Element {
           {submittedFromDraft ? (
             <p className="mt-1 text-[12px] text-trust-pos-text/80">{t("capture.savedFromDraft")}</p>
           ) : null}
+          {/* SCRUM-369: ehrlicher Rescue-Anschluss — nach Validierung beantwortet die Wissensbasis
+              die Frage künftig besser; die Lücke wird NICHT automatisch geschlossen. */}
+          {savedFromGap ? (
+            <p className="mt-1 text-[12px] text-trust-pos-text/80">
+              {t(GAP_RESCUE_TEXT.savedNote)}
+            </p>
+          ) : null}
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {captureNextSteps(savedKoId).map((s) => (
               <Link
@@ -567,6 +579,7 @@ export function Capture(): JSX.Element {
               onClick={() => {
                 setSavedKoId(null);
                 setSubmittedFromDraft(false);
+                setSavedFromGap(false);
               }}
             >
               {t("capture.savedAgain")}
@@ -587,6 +600,23 @@ export function Capture(): JSX.Element {
           <p className="mt-1.5 rounded-input bg-page px-2.5 py-1.5 text-[12.5px] text-text">
             „{gapContext}“
           </p>
+          {/* SCRUM-369 / AG-12/13: geführter Arbeitsauftrag — Frage → Erfahrung → KI strukturiert → Prüfung.
+              Progressive Disclosure, gleiche Schrittfolge wie in der Ask-Lücke (eine Quelle). */}
+          <div className="mt-2 border-t border-hairline pt-2">
+            <div className="mb-1 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+              {t("capture.gapStepsTitle")}
+            </div>
+            <ol className="space-y-1">
+              {GAP_RESCUE_STEPS.map((step, i) => (
+                <li key={step.id} className="text-[11.5px] leading-relaxed text-muted">
+                  <span className="font-semibold text-text">
+                    {i + 1}. {t(step.labelKey)}
+                  </span>{" "}
+                  {t(step.hintKey)}
+                </li>
+              ))}
+            </ol>
+          </div>
         </Card>
       ) : null}
 

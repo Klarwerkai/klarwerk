@@ -9374,3 +9374,49 @@ git push
 ```
 
 **Stop-Hinweis:** Claude macht kein Git add, kein Commit, kein Push, kein Jira. Übergabe an Codex/Pedi.
+
+---
+
+## SCRUM-369 — Beta Ask Gap-to-Rescue Flow & Guided Closure v0
+
+**Datum:** 2026-07-01 · **Claude beteiligt: ja** · **Rolle:** Hauptumsetzer · **Repo:** `/Users/peterkohnert/Documents/dev_Klarwerk` (nur Team-1)
+
+**Kurzfazit.** Der Ask-„keine Antwort gefunden"-Zustand fühlt sich nicht mehr wie ein toter Chatbot-Endpunkt an, sondern als geführter „Wissenslücke retten"-Einstieg. Eine EINE DOM-freie Quelle (`askGapRescue.ts`) beschreibt die Rescue-Story und eine feste, geführte Schrittfolge (Frage beantworten → eigene Erfahrung ergänzen → KI strukturieren lassen → prüfen lassen); sie rendert in der Ask-Gap-Karte UND im Capture-Gap-Kontext. Nach dem Speichern aus Gap-Kontext folgt ein ehrlicher Anschluss (keine automatische Lücken-Schließung, die Prüfung entscheidet). Kein neues Backend, keine Fake-Validierung.
+
+**SCRUM-Ticket.** SCRUM-369 — Beta Ask Gap-to-Rescue Flow & Guided Closure v0.
+
+**Vorab-Befund.** `git status -sb` sauber (untrackte v2-Infra-Datei unberührt; SCRUM-362–368 von Codex committed). Ask-Kette: `queryTokens` → `koService.findCandidates` (Prefilter 200) → `selectCandidates` (Top-K 8) → `reasoner.answer` → Gap bei `!answered`; Gap-Kontext wird über `?gap=` weitergereicht (`captureGapHref`/`readGapContext`/`normalizeGapContext`, MAX 200 in `captureFromGap.ts`). Vorhandener Rescue-Bestand: `knowledgeRescue.ts` (KNOWLEDGE_RESCUE_STEPS tell→structure→validate + Impact) + `KnowledgeRescueIntro.tsx` in Capture; `captureSuccess.ts` (captureNextSteps/captureSavedStatus). Lücke: der unbeantwortete Ask-Zustand rahmte die Situation nicht als Rescue-Chance; der Capture-Gap-Kontext zeigte die zitierte Frage, aber keine geführte Schrittfolge; nach dem Speichern aus Gap-Kontext fehlte der ehrliche Anschluss.
+
+**Team6-Bezug.** AG-12 (Review-/Input-UX zu technisch/formularartig; Wizard/Progressive Disclosure), AG-13 (Story „Alt-/Erfahrungswissen sichern" nicht überall verankert), AG-P2-4 (Beitrag/Impact-Motivation nicht prominent), KG-UX-001/002/003/008/009/010.
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/askGapRescue.ts` (NEU — DOM-frei: `GAP_RESCUE_STEPS` [answer→experience→structure→review], `gapRescueSteps()`, `gapRescueStepLabelKey()`, `GAP_RESCUE_TEXT` [storyTitle/impact/noInvent/cta/stepsTitle/savedNote])
+- `apps/web/src/pages/Ask.tsx` (Gap-Karte: Rescue-Block „Wissenslücke retten" + Beitragswert + „keine Antwort erfunden" + geführte Schrittfolge; Primär-CTA relabelt auf „Wissen erfassen & retten", Link unverändert)
+- `apps/web/src/pages/Capture.tsx` (Gap-Kontext-Karte: „Dein Arbeitsauftrag:" + dieselben Schritte; `savedFromGap`-State → ehrlicher `capture.gapSavedNote`-Anschluss in der Success-Card; Reset im „nochmal"-Button)
+- `apps/web/src/i18n.ts` (`ask.gap.rescueTitle`/`rescueImpact`/`noInvent`/`rescueCta`/`stepsTitle` + `ask.gap.step.{answer,experience,structure,review}.{label,hint}` + `capture.gapStepsTitle`/`capture.gapSavedNote`, DE+EN)
+- `tests/app/ask-gap-rescue.test.ts` (NEU — 7 Tests)
+- `docs/TEAM6_UPDATE.md` (Pflicht-Nebenänderung)
+
+**Beta-Wirkung.** Wer eine Frage stellt, die keine belegte Antwort hat, erlebt eine Chance statt einer Sackgasse: klar, dass nichts erfunden wurde (kein Chatbot-Raten), warum sein Beitrag zählt („für alle, die die Frage künftig stellen"), und mit welchen konkreten Schritten er helfen kann. Dieselbe Führung trägt sich in Capture weiter (Arbeitsauftrag statt Formular); der Speicher-Anschluss bleibt ehrlich: nach Validierung beantwortet die Basis die Frage künftig besser, die Lücke wird NICHT automatisch geschlossen.
+
+**Wie AG-12/AG-13/AG-P2-4 adressiert.** AG-12: geführte Schrittfolge + Progressive Disclosure am Ask-Gap und im Capture-Gap-Kontext statt technischem Formular. AG-13: „Alt-/Erfahrungswissen sichern"-Story am Ask-Gap („Wissenslücke retten") und im Capture-Kontext verankert (nicht nur in der Capture-Intro). AG-P2-4: Beitragswert/Impact prominent an der Stelle, wo die Lücke sichtbar wird — ehrlich (kein Score/Gamification, gesichert erst nach Prüfung).
+
+**Bewusst nicht umgesetzte Gaps.** KEIN neues Gap-/Task-/Workflow-Backend. KEINE automatische Lücken-Schließung (die Prüfung entscheidet). KEINE automatische KO-Erzeugung außerhalb des vorhandenen Capture-Save. Kein RAG/neue Suche/Team-2-Abhängigkeit. Keine Gamification/Punkte. Kein Demo-only-Polish. Breitere Impact-Sichtbarkeit (Analytics/Profil) und die Story in Onboarding/globalen Empty-States bleiben offen (Team 1/4, EK-21).
+
+**Tests/Gates.** `tests/app/ask-gap-rescue.test.ts` (7): Schritt-Reihenfolge/IDs (answer→experience→structure→review), label/hint-Schema `ask.gap.step.<id>.{label,hint}`, `GAP_RESCUE_TEXT`-Key-Mapping, DE/EN-Präsenz aller Story-/Schritt-/Kontext-Keys (inkl. `capture.gapStepsTitle`), Ehrlichkeit (keine erfundene Antwort; Speichern schließt Lücke NICHT automatisch — „nicht automatisch"/„die Prüfung entscheidet" DE, „not closed automatically"/„review decides" EN; KI ordnet nur/erfindet nichts). Biome `check --write` auf berührten Dateien. `npm run check` grün — **189 Dateien / 1151 Tests**; Build/Biome/dependency-cruiser grün. FE-tsc strict grün (FE berührt): `(cd apps/web && tsc --noEmit)` ohne Fehler.
+
+**Sicherheitscheck / keine Secrets.** Keine Secrets/Tokens/Keys. Keine echten Kundendaten (nur i18n-Copy + synthetische Schrittbeschreibung). Kein Netzaufruf, kein externes Modell, kein RAG/Embedding. Keine Team-fremden Dateien; untrackte v2-Infra-Datei unberührt.
+
+**TEAM6_UPDATE.md updated: yes** · **Team6 review needed: yes** · **Reason: UX/Wizard/Story/Ask→Capture Knowledge Rescue Flow changed (AG-12 / AG-13 / AG-P2-4)**
+
+**Rest-Risiken.** (1) Reine FE-/Copy-/Führungsänderung — der tatsächliche Fluss (Ask-Gap → Capture → Review) bleibt an den bestehenden `captureGapHref`/`?gap=`-Pfad gebunden; keine Verhaltens-/Datenänderung. (2) Die geführten Schritte sind Erklärung, kein erzwungener Wizard-Zwang — der Nutzer kann weiterhin frei erfassen; das ist bewusst (kein Funktionsverlust). (3) Usability-Wirkung („fühlt sich als Rescue an") ist ein Copy-/UX-Versprechen und bleibt durch Team 5 pilot-zu-validieren (EK-20).
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/askGapRescue.ts apps/web/src/pages/Ask.tsx apps/web/src/pages/Capture.tsx apps/web/src/i18n.ts tests/app/ask-gap-rescue.test.ts docs/TEAM6_UPDATE.md docs/qm/claude-after-report.md
+git commit -m "feat(ask): frame unanswered Ask as guided knowledge-rescue + capture gap work-order (SCRUM-369, AG-12/AG-13/AG-P2-4)"
+git push
+```
+
+**Stop-Hinweis:** Claude macht kein Git add, kein Commit, kein Push, kein Jira. Übergabe an Codex/Pedi.

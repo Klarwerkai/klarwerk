@@ -15,6 +15,7 @@ import {
   answerSourceSummary,
 } from "../lib/askAnswerContract";
 import { ASK_EXAMPLES, type AskExpectationTone, askExpectation } from "../lib/askExamples";
+import { GAP_RESCUE_STEPS, GAP_RESCUE_TEXT } from "../lib/askGapRescue";
 import { isPrefilledAskQuestion, readAskQuestion } from "../lib/askQuestion";
 import { selectAnswer } from "../lib/askResponse";
 import { answerReviewGuard, answerStatus, conflictAwareSourceRefs } from "../lib/askView";
@@ -391,8 +392,36 @@ export function Ask(): JSX.Element {
               </span>
               <p className="mt-2 text-[15px] font-semibold text-text">{t("ask.noBasisTitle")}</p>
               <p className="mt-1 text-sm text-muted">{t("ask.noBasisBody")}</p>
+              {/* SCRUM-369 / AG-12/13/P2-4: die Lücke als geführter „Wissenslücke retten"-Einstieg —
+                  Story + Beitragswert + ehrlich „keine Antwort erfunden" + geführte Schrittfolge. */}
+              <div className="mt-3 rounded-card border border-ai/30 bg-ai/5 px-3 py-2.5">
+                <div className="text-[13px] font-semibold text-ai">
+                  {t(GAP_RESCUE_TEXT.storyTitle)}
+                </div>
+                <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
+                  {t(GAP_RESCUE_TEXT.impact)}
+                </p>
+                <p className="mt-1 text-[11.5px] leading-relaxed text-muted-2">
+                  {t(GAP_RESCUE_TEXT.noInvent)}
+                </p>
+                <div className="mt-2 border-t border-hairline pt-2">
+                  <div className="mb-1 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                    {t(GAP_RESCUE_TEXT.stepsTitle)}
+                  </div>
+                  <ol className="space-y-1">
+                    {GAP_RESCUE_STEPS.map((step, i) => (
+                      <li key={step.id} className="text-[11.5px] leading-relaxed text-muted">
+                        <span className="font-semibold text-text">
+                          {i + 1}. {t(step.labelKey)}
+                        </span>{" "}
+                        {t(step.hintKey)}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              </div>
               {/* SCRUM-250: klarer nächster Schritt — die Lücke ist erfasst und im Risiko-Board handelbar. */}
-              <p className="mt-1 text-[13px] text-muted">{t("ask.gapNext")}</p>
+              <p className="mt-2 text-[13px] text-muted">{t("ask.gapNext")}</p>
               {/* SCRUM-283: ehrlich + datensparsam — Frage wird als Lücke gespeichert, keine Antwort,
                 keine sensiblen Details; geprüfte Erfahrung später ergänzen. */}
               <p className="mt-2 rounded-btn bg-page px-2.5 py-2 text-[12px] text-muted-2">
@@ -405,7 +434,7 @@ export function Ask(): JSX.Element {
                     to={captureGapHref(asked)}
                     className="inline-flex items-center gap-1.5 rounded-btn bg-ink px-3 py-1.5 text-[13px] font-semibold text-white hover:opacity-90"
                   >
-                    {t("ask.toCapture")}
+                    {t(GAP_RESCUE_TEXT.cta)}
                     <ArrowRight size={15} />
                   </Link>
                 ) : null}

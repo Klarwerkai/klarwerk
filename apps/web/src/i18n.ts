@@ -273,6 +273,11 @@ const de = {
     "Das ist eine offene Frage, noch kein Wissen — sie dient nur als Startkontext. Ergänze deine Erfahrung/Beobachtung; die KI strukturiert daraus einen Entwurf, du prüfst und reichst ein.",
   "capture.gapDraftQuestion": "Offene Frage",
   "capture.gapDraftExperience": "Eigene Erfahrung/Beobachtung ergänzen",
+  // SCRUM-369: geführte Schrittfolge im Gap-Kontext (Arbeitsauftrag: Frage → Erfahrung → KI → Prüfung).
+  "capture.gapStepsTitle": "Dein Arbeitsauftrag:",
+  // SCRUM-369: ehrlicher Anschluss nach dem Speichern aus einer Ask-Lücke — keine Auto-Schließung.
+  "capture.gapSavedNote":
+    "Nach der Validierung kann die Wissensbasis diese Frage künftig besser beantworten. Die Wissenslücke wird nicht automatisch geschlossen — die Prüfung entscheidet.",
   "capture.savedTitle": "Wissensobjekt gespeichert.",
   // SCRUM-286: ehrlich — gespeichert, aber noch offen/nicht validiert; erst nach Bewertung nutzbar.
   "capture.savedStatusBadge": "Status: offen — noch nicht validiert",
@@ -621,6 +626,22 @@ const de = {
   "ask.noBasisTitle": "Keine belastbare Grundlage.",
   "ask.noBasisBody":
     "Es gibt kein validiertes Wissen zu dieser Frage. Statt einer erfundenen Antwort wurde eine Wissenslücke angelegt.",
+  // SCRUM-369 / AG-12/13/P2-4: Ask-Lücke als geführter „Wissenslücke retten"-Einstieg (kein Chatbot-Ende).
+  "ask.gap.rescueTitle": "Wissenslücke retten",
+  "ask.gap.rescueImpact":
+    "Dieses Erfahrungswissen fehlt noch. Du kannst helfen, es zu sichern — für alle, die die Frage künftig stellen.",
+  "ask.gap.noInvent":
+    "Es wurde keine Antwort erfunden: Ohne belastbare Quelle bleibt die Frage ehrlich offen.",
+  "ask.gap.rescueCta": "Wissen erfassen & retten",
+  "ask.gap.stepsTitle": "So schließt du die Lücke:",
+  "ask.gap.step.answer.label": "Frage beantworten",
+  "ask.gap.step.answer.hint": "Formuliere, was du aus Erfahrung dazu weißt.",
+  "ask.gap.step.experience.label": "Eigene Erfahrung ergänzen",
+  "ask.gap.step.experience.hint": "Bedingungen, Maßnahmen, Kontext.",
+  "ask.gap.step.structure.label": "KI strukturieren lassen",
+  "ask.gap.step.structure.hint": "Die KI ordnet nur — sie erfindet nichts dazu.",
+  "ask.gap.step.review.label": "Prüfen lassen",
+  "ask.gap.step.review.hint": "Erst nach Validierung gilt es als gesichert.",
   // SCRUM-366 / FR-ASK-02 / PI-K2: Antwortvertrag — quellengebunden, ehrlich, kein generischer Chatbot.
   "ask.contract.label": "Antwortbasis",
   "ask.contract.verified.title": "Quellengebundene Antwort",
@@ -1846,6 +1867,11 @@ const en: typeof de = {
     "This is an open question, not knowledge yet — it only serves as a starting context. Add your experience/observation; the AI structures it into a draft, you review and submit.",
   "capture.gapDraftQuestion": "Open question",
   "capture.gapDraftExperience": "Add your own experience/observation",
+  // SCRUM-369: guided steps in the gap context (work order: question → experience → AI → review).
+  "capture.gapStepsTitle": "Your work order:",
+  // SCRUM-369: honest follow-up after saving from an Ask gap — no automatic closure.
+  "capture.gapSavedNote":
+    "After validation, the knowledge base can answer this question better in future. The knowledge gap is not closed automatically — the review decides.",
   "capture.savedTitle": "Knowledge object saved.",
   // SCRUM-286: honest — saved but still open/not validated; usable only after review.
   "capture.savedStatusBadge": "Status: open — not yet validated",
@@ -2192,6 +2218,22 @@ const en: typeof de = {
   "ask.noBasisTitle": "No reliable basis.",
   "ask.noBasisBody":
     "There is no validated knowledge for this question. Instead of a made-up answer, a knowledge gap was created.",
+  // SCRUM-369 / AG-12/13/P2-4: the Ask gap as a guided "rescue this knowledge gap" entry (not a chatbot end).
+  "ask.gap.rescueTitle": "Rescue this knowledge gap",
+  "ask.gap.rescueImpact":
+    "This experience knowledge is still missing. You can help secure it — for everyone who asks this later.",
+  "ask.gap.noInvent":
+    "No answer was made up: without a reliable source the question honestly stays open.",
+  "ask.gap.rescueCta": "Capture & rescue knowledge",
+  "ask.gap.stepsTitle": "How to close the gap:",
+  "ask.gap.step.answer.label": "Answer the question",
+  "ask.gap.step.answer.hint": "Put down what you know from experience.",
+  "ask.gap.step.experience.label": "Add your own experience",
+  "ask.gap.step.experience.hint": "Conditions, measures, context.",
+  "ask.gap.step.structure.label": "Let AI structure it",
+  "ask.gap.step.structure.hint": "The AI only organises it — it invents nothing.",
+  "ask.gap.step.review.label": "Get it reviewed",
+  "ask.gap.step.review.hint": "Only after validation it counts as secured.",
   // SCRUM-366 / FR-ASK-02 / PI-K2: answer contract — source-bound, honest, not a generic chatbot.
   "ask.contract.label": "Answer basis",
   "ask.contract.verified.title": "Source-bound answer",
