@@ -11,8 +11,8 @@
  *        PORT=3001 npm start
  *   2) Frontend starten (Dev-Server, Proxy /api → :3001):
  *        VITE_API_TARGET=http://localhost:3001 npm --prefix apps/web run dev
- *   3) Playwright + Chromium einmalig bereitstellen:
- *        npm i -D playwright && npx playwright install chromium
+ *   3) Chromium einmalig bereitstellen (Playwright ist seit SCRUM-381 devDependency):
+ *        npm ci && npm run smoke:browser:setup
  *   4) Smoke ausführen:
  *        npm run smoke:browser
  *
