@@ -9287,3 +9287,49 @@ git push
 ```
 
 **Stop-Hinweis:** Claude macht kein Git add, kein Commit, kein Push, kein Jira. Übergabe an Codex/Pedi.
+
+---
+
+## SCRUM-367 — Beta Security Route Guard & CSRF Strategy Hardening v0
+
+**Datum:** 2026-06-30 · **Claude beteiligt: ja** · **Rolle:** Hauptumsetzer · **Repo:** `/Users/peterkohnert/Documents/dev_Klarwerk` (nur Team-1)
+
+**Kurzfazit.** Die Team-1-Security-Restpunkte AG-10 (CSRF) und AG-11 (RBAC-Guard-Abdeckung) sind jetzt durch Code/Test/Doku belegt statt nur implizit behauptet, und der eng verwandte P2-Rest AG-06-RESET ist risikoarm geschlossen. (1) Eine explizite, testbare CSRF-/Cookie-Strategie (`services/app/src/csrf.ts`) dokumentiert die Ist-Schutzlage ehrlich inkl. Restrisiken — ohne Auth-/Middleware-Umbau und ohne falsches Sicherheitsversprechen. (2) Ein maschinenlesbarer Route-Guard-Audit (`tests/security/`) scannt alle 79 echten Routen und sichert als Regression, dass jede mutierende Route serverseitig geschützt ist. (3) forgot/reset sind gegen Mail-Spam/Token-Bruteforce rate-limitiert, mit unveränderter Semantik (forgot bleibt 204, keine Enumeration).
+
+**SCRUM-Ticket.** SCRUM-367 — Beta Security Route Guard & CSRF Strategy Hardening v0.
+
+**Vorab-Befund.** `git status -sb` sauber (untrackte v2-Infra-Datei unberührt; SCRUM-362–366 von Codex committed). Auth/Cookie: Session-Cookie `kw_session` (HttpOnly, Path=/, Max-Age, SameSite=Lax, optional Secure via COOKIE_SECURE) ODER Bearer-Token (`tokenFromRequest` in `http.ts`/`auth/routes.ts`). CSRF bislang nur implizit (SameSite+Bearer), kein expliziter Token, keine getestete Strategie. RBAC: `makeGuards` (requireUser/requirePermission), `auth/routes.ts` (requireAdmin), Rechtematrix `rbac/policy.ts` (ko.read/create/validate/assign, conflict.resolve, users.manage). Route-Schutz read-only über alle 17 App-Route-Dateien + Auth-Routen + inline Composition-Root-Routen geprüft: 79 Routen. Recovery: `LoginRateLimiter` (SCRUM-356) am Login; forgot (immer 204) + reset (Token) ohne eigenen Limiter (AG-06-RESET, P2).
+
+**Team6-Bezug.** AG-10 (CSRF implizit), AG-11 (RBAC-Guard-Vollabdeckung), AG-06-RESET (Recovery-Rate-Limit), NFR-SEC-04 (Missbrauchsschutz), FR-RBAC-04 (serverseitige Rechteprüfung). AG-07 (Pen-Test) bleibt Pedi/Team 5.
+
+**Umgesetzter Umfang.**
+1. **CSRF-/Cookie-Strategie** (`services/app/src/csrf.ts`, DOM-/serverfrei): `SESSION_COOKIE`, `UNSAFE_METHODS`/`isUnsafeMethod`, `COOKIE_STRATEGY` (dokumentierte Cookie-Flags), `requestAuthMode(headers)` → bearer/cookie/none, `csrfAssessment({method, authMode})` → stateChanging/cookieCsrfExposed/mitigation/residualRiskKey. Macht explizit: Bearer ist nicht cookie-CSRF-anfällig; Cookie+unsafe ist durch SameSite=Lax begrenzt; safe Methoden sind irrelevant; ohne Auth lehnt der Guard ab. Kein Verhalten geändert.
+2. **RBAC-Route-Guard-Audit** (`tests/security/routeGuardAudit.ts` + `route-guard-audit.test.ts`): dateibasierter Scanner (Routen-Registrierung → URL → Schutzart aus dem Handler-Block) + erwartete Matrix (79 Routen) + 8 Invarianten-Tests (keine unauditierte Route, keine veraltete Erwartung, kein Downgrade, mutierend⇒nicht-öffentlich außer Auth-Endpunkten, public⇒Begründung, gültige Permissions, action-dispatched nie öffentlich).
+3. **AG-06-RESET** (`services/auth/src/routes.ts`): injizierbarer `recoveryRateLimiter` (Default LoginRateLimiter, maxAttempts 10). forgot: IP-Schlüssel „forgot", jede Anforderung zählt, bei Limit 204 ohne Mailversand. reset: IP-Schlüssel „reset", check vor Token-Prüfung → 429+Retry-After bei Limit, nur fehlgeschlagene Einlösungen zählen, Erfolg setzt Zähler zurück.
+
+**echte Route-/Security-Lücken gefunden: nein.** Alle 79 Routen sind erwartungsgemäß geschützt; jede mutierende Route (POST/PUT/DELETE) verlangt Auth/Permission/Admin außer den bewussten Auth-Einstiegspunkten (register/login/logout/forgot/reset/oidc/setup). Öffentliche GETs sind nicht-sensibel (health, reasoner/ai-status = Verfügbarkeitsflag, i18n = UI-Strings, auth/status = Setup-Flag). Kein Fake-Fix erzwungen.
+
+**Bewusst nicht umgesetzt.** Kein expliziter Anti-CSRF-Token / Double-Submit (wäre ein Auth-Architektur-Eingriff; SameSite=Lax + Bearer + dokumentierter Guard ist die ehrliche Beta-Strategie). Keine Origin-/Sec-Fetch-Site-Erzwingung (Risiko, Reverse-Proxy-/Client-abhängig — bewusst nicht erzwungen). Kein neues Auth-System, kein OAuth/OIDC-Umbau, kein globaler Middleware-Umbau, kein Pen-Test (AG-07 → Team 5/Pedi).
+
+**Geänderte Dateien.**
+- `services/app/src/csrf.ts` (NEU) + `services/app/src/csrf.test.ts` (NEU)
+- `tests/security/routeGuardAudit.ts` (NEU) + `tests/security/route-guard-audit.test.ts` (NEU)
+- `services/auth/src/routes.ts` (forgot/reset Rate-Limit + injizierbarer Recovery-Limiter)
+- `services/auth/src/recovery-rate-limit.test.ts` (NEU)
+- `docs/TEAM6_UPDATE.md` (Pflicht-Nebenänderung)
+
+**Tests/Gates.** `csrf.test.ts` (Strategie/Modi/Assessment, Restrisiko-Schlüssel). `route-guard-audit.test.ts` (8 Invarianten über 79 Routen). `recovery-rate-limit.test.ts` (forgot bleibt 204 ohne Mail bei Limit; reset 429+Retry-After; getrennte Zähler). Bestands-Tests grün: `services/app/src/auth-recovery.test.ts`, `services/auth/src/rate-limit.test.ts`, `services/rbac/src/policy.test.ts`, alle Route-Tests. `npm run check` grün — **187 Dateien / 1131 Tests**; Build/Biome/dependency-cruiser grün. FE nicht betroffen (kein `apps/web`-Diff → FE-tsc nicht erforderlich).
+
+**TEAM6_UPDATE.md updated: yes** · **Team6 review needed: yes** · **Reason: AG-10 / AG-11 / NFR-SEC-04 / FR-RBAC-04**
+
+**Rest-Risiken.** (1) CSRF: kein expliziter Token — Restrisiko Legacy-Browser ohne SameSite-Unterstützung bleibt (ehrlich dokumentiert in `csrf.ts`/Tests). Eine Origin-/CSRF-Token-Härtung wäre ein bewusster Folge-Slice (Pedi-Entscheid). (2) Der Audit-Scanner ist heuristisch (Quelltext-Regex): er erkennt die Guard-Aufrufe pro Route-Block; eine Route, die ihren Guard außerhalb des erkannten Musters setzt, würde als „public" eingestuft und vom Mutations-Invariant gefangen — bei strukturellen Umbauten der Route-Dateien Scanner mitführen. (3) Recovery-Limiter ist In-Memory pro Instanz (wie der Login-Limiter) — bei horizontaler Skalierung gilt das Limit pro Knoten; ein geteilter Store wäre Ops-/Skalierungs-Thema (Team 5). (4) Pen-Test/unabhängiger Security-Review (AG-07) bleibt offen bei Pedi/Team 5.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add services/app/src/csrf.ts services/app/src/csrf.test.ts tests/security/routeGuardAudit.ts tests/security/route-guard-audit.test.ts services/auth/src/routes.ts services/auth/src/recovery-rate-limit.test.ts docs/TEAM6_UPDATE.md docs/qm/claude-after-report.md
+git commit -m "feat(security): explicit CSRF/cookie strategy + RBAC route-guard audit + recovery rate-limit (SCRUM-367, AG-10/AG-11/AG-06-RESET)"
+git push
+```
+
+**Stop-Hinweis:** Claude macht kein Git add, kein Commit, kein Push, kein Jira. Übergabe an Codex/Pedi.

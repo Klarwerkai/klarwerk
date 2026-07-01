@@ -83,10 +83,16 @@ export function authRoutes(
     oidc?: OidcProvider | undefined;
     // SCRUM-356 / AG-06: injizierbarer Login-Brute-Force-Limiter (Default: kleiner In-Memory-Limiter).
     loginRateLimiter?: LoginRateLimiter | undefined;
+    // SCRUM-367 / AG-06-RESET: injizierbarer Recovery-Limiter (forgot/reset). Default: eigener
+    // In-Memory-Limiter. Bewusst getrennt vom Login-Limiter (andere Zähler, kein gegenseitiges Sperren).
+    recoveryRateLimiter?: LoginRateLimiter | undefined;
   } = {},
 ): FastifyPluginAsync {
   // Pro App-Instanz ein eigener Limiter (Test-Isolation; In-Memory, dep-frei).
   const loginLimiter = options.loginRateLimiter ?? new LoginRateLimiter();
+  // SCRUM-367 / AG-06-RESET: Anti-Spam/Anti-Bruteforce für die Recovery-Pfade. Etwas großzügiger als
+  // Login (legitime Nutzer fordern selten mehrfach an), aber begrenzt gegen Mail-Spam + Token-Raten.
+  const recoveryLimiter = options.recoveryRateLimiter ?? new LoginRateLimiter({ maxAttempts: 10 });
   return async (app) => {
     const requireUser = async (
       request: FastifyRequest,
@@ -198,6 +204,16 @@ export function authRoutes(
 
     // FR-AUTH-08: Reset anfordern. Antwort immer 204 — die Existenz der E-Mail wird nicht verraten.
     app.post<{ Body: { email: string } }>("/api/auth/forgot", async (request, reply) => {
+      // SCRUM-367 / AG-06-RESET: Anti-Mail-Spam. Schlüssel = IP (NICHT die E-Mail → keine Enumeration,
+      // identisch für bekannt/unbekannt). Bei Überschreitung: trotzdem 204, aber KEINE Mail versenden —
+      // die 204-immer-Semantik bleibt unverändert (kein Leak von Kontoexistenz oder Limit-Zustand).
+      const recoveryKey = recoveryLimiter.keyFor(request.ip, "forgot");
+      const limited = recoveryLimiter.check(recoveryKey).limited;
+      recoveryLimiter.registerFailure(recoveryKey); // jede Anforderung zählt (Abuse-Vektor)
+      if (limited) {
+        reply.code(204).send();
+        return;
+      }
       const result = await service.requestPasswordReset(request.body.email);
       if (result && options.mailer) {
         const base = options.resetBaseUrl ?? "http://localhost:5173/reset";
@@ -221,10 +237,26 @@ export function authRoutes(
     app.post<{ Body: { token: string; newPassword: string } }>(
       "/api/auth/reset",
       async (request, reply) => {
+        // SCRUM-367 / AG-06-RESET: Token-Bruteforce drosseln. Schlüssel = IP (kein Token im Schlüssel →
+        // kein Leak, ob ein Token existiert). NUR fehlgeschlagene Einlösungen zählen (wie beim Login);
+        // ein legitimer Single-Reset wird nie blockiert. Bei Sperre: 429 + Retry-After, vor der
+        // Token-Prüfung (verrät nichts über Token-Existenz).
+        const resetKey = recoveryLimiter.keyFor(request.ip, "reset");
+        const resetLimit = recoveryLimiter.check(resetKey);
+        if (resetLimit.limited) {
+          reply.header("Retry-After", String(resetLimit.retryAfterSeconds));
+          reply.code(429).send({
+            error: "RATE_LIMITED",
+            message: "Zu viele Versuche. Bitte später erneut versuchen.",
+          });
+          return;
+        }
         try {
           await service.resetPasswordWithToken(request.body.token, request.body.newPassword);
+          recoveryLimiter.reset(resetKey); // Erfolg → Zähler löschen (risikoarm)
           reply.code(204).send();
         } catch (error) {
+          recoveryLimiter.registerFailure(resetKey); // ungültiges/abgelaufenes Token zählt als Versuch
           sendError(reply, error);
         }
       },

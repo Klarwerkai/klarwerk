@@ -6,15 +6,15 @@
 - Scope: Knowledge Input, Capture, AI-assisted Editing, Validation, KO Detail, Library, Ask, Capture → Review → Use, App-Auth/Security, Trust/Conflict-Integrity
 - Repo: `/Users/peterkohnert/Documents/dev_Klarwerk`
 - Jira Project: SCRUM
-- Last updated: 2026-06-30 23:30 CEST
-- Current status: SCRUM-366 umgesetzt durch Claude, Codex-Prüfung/Commit/Push/CI/Jira ausstehend
-- Active ticket: SCRUM-366 — Beta Ask Answer Contract & Source-Grounded Use v0
-- Last completed ticket: SCRUM-365 — Beta Validation Review Clarity & Decision Confidence v0 (von Codex committed; Arbeitsbaum sauber)
+- Last updated: 2026-06-30 23:55 CEST
+- Current status: SCRUM-367 umgesetzt durch Claude, Codex-Prüfung/Commit/Push/CI/Jira ausstehend
+- Active ticket: SCRUM-367 — Beta Security Route Guard & CSRF Strategy Hardening v0
+- Last completed ticket: SCRUM-366 — Beta Ask Answer Contract & Source-Grounded Use v0 (von Codex committed; Arbeitsbaum bis auf SCRUM-367 sauber)
 - Last commit: `b9ab7e638a2488c8798ea5b13e1211247963e447`
-- GitHub/CI status: SCRUM-361 CI grün; SCRUM-362–365 von Codex lokal committed (Arbeitsbaum vor SCRUM-366 sauber), Push/CI per Codex; SCRUM-366 noch nicht committed/gepusht
-- Beta impact: Ask wirkt jetzt klar als quellengebundener Knowledge-OS-Use-Flow statt als generischer Chatbot. Ein ruhiger „Antwortvertrag" rahmt jedes Ergebnis vor dem Lesen: gesichert (validiertes Wissen), ungeprüft (vorhanden, aber markiert — keine Chatbot-Vermutung) oder Wissenslücke (kein Fehler, sondern Lücke zum Schließen). Dazu eine ehrliche Quellenbilanz (validiert/offen/Konflikt) und die PI-K2-Notiz „Trust ist Belastbarkeit, kein Wahrheitsversprechen". Der Modellmodus-Prompt ist quellengebunden/anti-halluzinatorisch geschärft (nur aus nummerierten Quellen, keine Fakten/Zahlen/Ursachen/Maßnahmen/Weltwissen erfinden, nicht überdehnen, bei fehlender Basis ehrlich auf die Wissensbasis verweisen, keine Fake-Zitate). Next-Steps führen passend: gesichert → Quelle ansehen/nutzen, ungeprüft → zur Prüfung/Validierung, Lücke → erfassen/Risiko-Board. Keine neue Antwort-/Trust-/Statuslogik, kein RAG, kein Backend-Workflow-Umbau.
+- GitHub/CI status: SCRUM-361 CI grün; SCRUM-362–366 von Codex lokal committed (Push/CI per Codex); SCRUM-367 noch nicht committed/gepusht
+- Beta impact: Team-1-Security-Restpunkte AG-10/AG-11 sind jetzt durch Code/Test/Doku belegt statt nur implizit behauptet. (1) CSRF-/Cookie-Strategie explizit + testbar (`services/app/src/csrf.ts`): Bearer-Requests sind nicht cookie-CSRF-anfällig, Cookie-Sessions durch SameSite=Lax begrenzt, unsichere Methoden klar benannt, Restrisiken ehrlich als Schlüssel transportiert — KEIN Auth-/Middleware-Umbau, kein falsches Sicherheitsversprechen. (2) Maschinenlesbarer RBAC-Route-Guard-Audit (`tests/security/`): ein Scanner liest die ECHTEN Route-Dateien und prüft alle 79 Routen gegen die erwartete Schutzart — belegt, dass JEDE mutierende Route serverseitig geschützt ist (nur die bewussten Auth-Endpunkte sind öffentlich) und schlägt bei jeder neuen/heruntergestuften Route an. (3) AG-06-RESET geschlossen: forgot/reset rate-limitiert (forgot bleibt immer 204 ohne Mail bei Limit → keine Enumeration; reset 429 bei Token-Bruteforce), reuse des LoginRateLimiter, Semantik unverändert.
 - Team6 review needed: yes
-- Reason: AG-04 / AG-P2-2 / AG-P2-3 / FR-ASK-02 / PI-K2
+- Reason: AG-10 / AG-11 / NFR-SEC-04 / FR-RBAC-04
 - Next planned slice: nach Pedi-Signal; offen u. a. AG-03-DBINDEX 10k/100k-Lasttest (Team 5), AG-05-TRUST-FORMULA-REST (mehrstufige §3-Formel), AG-06-RESET (Reset-Rate-Limit) oder weiterer Team6-Gap
 
 ## Current Risks / Gaps
@@ -27,7 +27,9 @@
 | FR-STR-02-SESSION | Capture-Session-Dateien haben noch keine objectId und sind daher nicht body-verlinkbar (ehrlich leerer Dropdown). | P2 | Capture / Object Store | Komfort-/Upload-Folgeoptimierung, kein Datenverlust | Dokumentiert, nicht Teil von SCRUM-355 |
 | G-P2-1 | Drag&Drop / Paste fehlen gegenüber Legacy. | P2 | RichTextEditor / Studio | Legacy Komfortparität | Offen, nicht Teil von SCRUM-355/356 |
 | AG-06 | Kein App-Login-Rate-Limit/Brute-Force-Schutz. | P1 | Auth / Login | NFR-SEC-04, Top Requirement #4, Team-1-Lieferung | Mit SCRUM-356 abgeschlossen |
-| AG-06-RECOVERY | Forgot/Reset-Anforderung hat noch keinen eigenen Rate-Limit (Mail-Spam-Abuse). | P2 | Auth / Recovery | Folgeoptimierung; 204-immer-Semantik bewusst unangetastet | Bewusst zurückgestellt, nicht Teil von SCRUM-356 |
+| AG-06-RECOVERY / AG-06-RESET | Forgot/Reset-Anforderung hatte keinen eigenen Rate-Limit (Mail-Spam/Token-Bruteforce). | P2 | Auth / Recovery | NFR-SEC-04; 204-immer-Semantik | Mit SCRUM-367 geschlossen: forgot rate-limitiert (bleibt 204, keine Mail bei Limit → keine Enumeration), reset rate-limitiert (429 bei Token-Bruteforce). Reuse LoginRateLimiter, Semantik unverändert |
+| AG-10 | CSRF-Schutz nur implizit (SameSite/Bearer); kein expliziter Token / keine dokumentierte Strategie. | P1 | Auth / Cookies / CSRF | NFR-SEC-04 | Mit SCRUM-367 als Code-/Test-Evidence eingegrenzt: explizite `csrf.ts`-Strategie (Bearer = nicht cookie-CSRF-anfällig, Cookie = SameSite=Lax-begrenzt, unsichere Methoden benannt, Restrisiken ehrlich). KEIN expliziter Anti-CSRF-Token (bewusst, kein Auth-Umbau); Restrisiko Legacy-Browser ohne SameSite bleibt dokumentiert. Pen-Test (AG-07) separat |
+| AG-11 | RBAC-Guard-Vollabdeckung aller Routen nicht erschöpfend belegt. | P1 | RBAC / Routes | FR-RBAC-04, NFR-SEC-04 | Mit SCRUM-367 belegt: maschinenlesbarer Route-Guard-Audit (`tests/security/`) scannt alle 79 echten Routen und prüft Schutzart als Regression. Befund: jede mutierende Route ist serverseitig geschützt; nur bewusste Auth-Endpunkte + nicht-sensible Status/Health/i18n-GETs sind öffentlich. KEINE ungeschützte P1-Route gefunden |
 | AG-07 | Kein unabhängiger Security-Review/Pen-Test. | P1 | Security gesamt | NFR-SEC-04 AK | Bei Pedi/Team 5 (EK-17), nicht Team-1-Scope |
 | AG-14 / VC-P1-1 | Konflikte wirkten nicht auf KO-Trust/-Status; Truth-Konflikt holte validiertes KO nicht in Prüfung zurück. | P1 | Conflicts / KO / Validation / Ask / Library | FR-VAL-01, Anhang §3, Top Requirement #16 | FE-Ehrlichkeit (SCRUM-357) + serverseitige Wirkung (SCRUM-358) abgeschlossen |
 | AG-14-SERVER-TRUST | Truth-Konflikt holt validiertes KO serverseitig nicht in Review zurück; Trust unverändert. | P1 | Validation / KO / Trust | Anhang §3, AG-05/EK-22, Top Requirement #16 | Mit SCRUM-358 abgeschlossen: validiert→offen + konservative Trust-Strafe (markTruthConflictReview) |
@@ -78,6 +80,20 @@
 | VC-P1-2 / EK-26 — Assignment-Feed vs. Beta-Akzeptanz | Team6 `TEAM6_ACTIVE_GAPS_AND_RECOMMENDATIONS.md` | addressed in SCRUM-363 | In-App-Feed-Variante geliefert (statt „Board+E-Mail reichen"); finale Beta-Akzeptanz/Reichweite bleibt Pedi/Team 5 (EK-26). |
 
 ## Delta Log
+
+### 2026-06-30 23:55 — SCRUM-367 — pending commit
+
+- Changed areas: `services/app/src/csrf.ts` (NEU) + `services/app/src/csrf.test.ts` (NEU), `tests/security/routeGuardAudit.ts` (NEU) + `tests/security/route-guard-audit.test.ts` (NEU), `services/auth/src/routes.ts` (forgot/reset rate-limit) + `services/auth/src/recovery-rate-limit.test.ts` (NEU).
+- What changed: AG-10/AG-11/AG-06-RESET als Code-/Test-/Doku-Evidence, ohne Auth-/Architektur-Umbau.
+  (1) **CSRF-/Cookie-Strategie explizit** (`csrf.ts`): dokumentiert die Ist-Schutzlage testbar — `requestAuthMode` (bearer/cookie/none), `isUnsafeMethod`, `COOKIE_STRATEGY` (HttpOnly/Path=/ /SameSite=Lax/Secure-konfigurierbar) und `csrfAssessment(method, authMode)`: Bearer-Requests sind NICHT cookie-CSRF-anfällig (Token nicht ambient), Cookie-Sessions durch SameSite=Lax begrenzt, Restrisiken ehrlich als Schlüssel (`csrf.residual.*`). KEIN Verhalten geändert, kein erzwungener Token, kein falsches Sicherheitsversprechen.
+  (2) **RBAC-Route-Guard-Audit** (`tests/security/`): ein dateibasierter Scanner liest alle Route-Quelldateien (App-Module + Auth + Composition-Root) und leitet je Route die verdrahtete Schutzart ab (public/auth/admin/Permission/action-dispatched). Die erwartete Matrix (79 Routen) wird dagegen geprüft: keine unauditierte Route, kein stilles Downgrade, JEDE mutierende Route ist nicht-öffentlich außer den bewussten Auth-Endpunkten, jede public-Route trägt eine Begründung. Echte ungeschützte P1-Route gefunden: NEIN (alle Mutationen serverseitig geschützt; nur Login/Register/Logout/Forgot/Reset/SSO + nicht-sensible Status/Health/i18n-GETs sind öffentlich).
+  (3) **AG-06-RESET**: `/api/auth/forgot` + `/api/auth/reset` rate-limitiert über den vorhandenen `LoginRateLimiter` (injizierbar, getrennte IP-Schlüssel). forgot bleibt IMMER 204 — bei Limit ohne Mailversand (keine Enumeration); reset liefert bei Limit 429 + Retry-After, NUR fehlgeschlagene Einlösungen zählen (legitimer Single-Reset nie blockiert), kein Leak von Token-Existenz.
+- Beta impact: AG-10/AG-11 sind nicht mehr nur implizit behauptet, sondern als Regression im Repo belegt; AG-06-RESET geschlossen.
+- Designentscheidung (begründet): KEIN neues Auth-System, kein OAuth/OIDC-Umbau, kein globaler Security-Middleware-Umbau, kein Pen-Test (Team 5/Pedi). Reine Evidence + risikoarmer Recovery-Limiter; bestehende Login-/SSO-/Recovery-Semantik unverändert (alle Bestands-Auth-Tests grün).
+- New / touched requirements: AG-10, AG-11, AG-06-RESET, NFR-SEC-04, FR-RBAC-04.
+- Tests: `services/app/src/csrf.test.ts` (Strategie/Modi/Assessment), `tests/security/route-guard-audit.test.ts` (8 Invarianten über 79 Routen), `services/auth/src/recovery-rate-limit.test.ts` (forgot 204-ohne-Mail bei Limit, reset 429, getrennte Zähler). Bestands-Tests grün: `auth-recovery`, `rate-limit`, `policy`, alle Route-Tests. `npm run check` grün (187 Dateien / 1131 Tests), Build/Biome/dependency-cruiser grün. FE nicht betroffen.
+- Team6 review needed: yes
+- Reason: AG-10 / AG-11 / NFR-SEC-04 / FR-RBAC-04
 
 ### 2026-06-30 23:30 — SCRUM-366 — pending commit
 
