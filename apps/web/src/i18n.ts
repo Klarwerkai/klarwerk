@@ -268,6 +268,23 @@ const de = {
   "capture.rescue.impact.honest": "Wird erst nach Prüfung als gesichert markiert",
   "capture.rescue.showLess": "Weniger",
   "capture.rescue.showMore": "Anleitung",
+  // SCRUM-370: geführter Weg — Rohwissen → im Studio strukturieren (empfohlen) → prüfen & einreichen.
+  "capture.flow.railKicker": "So gehst du vor",
+  "capture.flow.step.raw.label": "Rohwissen erfassen",
+  "capture.flow.step.raw.hint": "Erzähl in eigenen Worten, was du weißt — Stichpunkte reichen.",
+  "capture.flow.step.studio.label": "Im Studio strukturieren",
+  "capture.flow.step.studio.hint":
+    "Der große Arbeitsraum mit KI-Hilfe macht daraus einen klaren Artikel — du übernimmst bewusst.",
+  "capture.flow.step.review.label": "Prüfen & einreichen",
+  "capture.flow.step.review.hint":
+    "Speichern und zur Prüfung geben — gesichert gilt es erst danach.",
+  "capture.flow.railKickerHint":
+    "Das Knowledge Studio ist der empfohlene Weg — nichts wird erzwungen.",
+  "capture.flow.studioRecommended": "Empfohlen",
+  "capture.flow.studioLead":
+    "Empfohlener nächster Schritt: im Knowledge Studio in Ruhe strukturieren. Das Formular bleibt dir erhalten.",
+  "capture.flow.submitValue":
+    "Dein Erfahrungswissen wird gesichert, bevor es verloren geht — erst nach der Prüfung gilt es als gesichert. Automatisch validiert wird nichts.",
   "capture.gapContextTitle": "Aus offener Wissenslücke",
   "capture.gapContextBody":
     "Das ist eine offene Frage, noch kein Wissen — sie dient nur als Startkontext. Ergänze deine Erfahrung/Beobachtung; die KI strukturiert daraus einen Entwurf, du prüfst und reichst ein.",
@@ -1862,6 +1879,23 @@ const en: typeof de = {
   "capture.rescue.impact.honest": "Marked as verified only after review",
   "capture.rescue.showLess": "Less",
   "capture.rescue.showMore": "Guide",
+  // SCRUM-370: guided path — raw knowledge → structure in the Studio (recommended) → review & submit.
+  "capture.flow.railKicker": "How to proceed",
+  "capture.flow.step.raw.label": "Capture raw knowledge",
+  "capture.flow.step.raw.hint": "Tell us what you know in your own words — bullet points are fine.",
+  "capture.flow.step.studio.label": "Structure in the Studio",
+  "capture.flow.step.studio.hint":
+    "The large workspace with AI help turns it into a clear article — you apply changes deliberately.",
+  "capture.flow.step.review.label": "Review & submit",
+  "capture.flow.step.review.hint":
+    "Save and send for review — it only counts as verified afterwards.",
+  "capture.flow.railKickerHint":
+    "The Knowledge Studio is the recommended path — nothing is forced.",
+  "capture.flow.studioRecommended": "Recommended",
+  "capture.flow.studioLead":
+    "Recommended next step: structure calmly in the Knowledge Studio. The form stays available to you.",
+  "capture.flow.submitValue":
+    "Your experience knowledge is secured before it's lost — it only counts as verified after review. Nothing is validated automatically.",
   "capture.gapContextTitle": "From an open knowledge gap",
   "capture.gapContextBody":
     "This is an open question, not knowledge yet — it only serves as a starting context. Add your experience/observation; the AI structures it into a draft, you review and submit.",

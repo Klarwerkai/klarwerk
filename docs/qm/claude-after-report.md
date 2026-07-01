@@ -9420,3 +9420,50 @@ git push
 ```
 
 **Stop-Hinweis:** Claude macht kein Git add, kein Commit, kein Push, kein Jira. Übergabe an Codex/Pedi.
+
+---
+
+## SCRUM-370 — Beta Capture Rescue Studio Default & Guided Input v0
+
+**Datum:** 2026-07-01 · **Claude beteiligt: ja** · **Rolle:** Hauptumsetzer · **Repo:** `/Users/peterkohnert/Documents/dev_Klarwerk` (nur Team-1)
+
+**Kurzfazit.** Capture wirkt weniger wie ein technisches Formular und führt das Knowledge Studio als naheliegenden Hauptweg. Eine EINE DOM-freie Quelle (`captureFlowGuide.ts`) beschreibt den geführten Weg (Rohwissen erfassen → im Studio strukturieren [empfohlen] → prüfen & einreichen) + Studio-Lead + Beitragswert am Submit. Drei ruhige UI-Stellen (nichts entfernt, progressive disclosure): Weg-Leiste über der Moduswahl, „Empfohlen"-Studio-Einstieg am Reasoner-Entwurf, Beitragswert-Zeile vor dem Einreichen. Ehrlich: gesichert erst nach Prüfung, nichts automatisch validiert, kein Zwang.
+
+**SCRUM-Ticket.** SCRUM-370 — Beta Capture Rescue Studio Default & Guided Input v0.
+
+**Vorab-Befund.** `pwd` = Repo-Root; `git status -sb` sauber bis auf die bekannte untrackte v2-Infra-Datei (SCRUM-369 von Codex committed). Team6-Docs (Handoff, Active-Gaps, Top-Requirements, Pflichtenheft-Baseline, Legacy-Input-Gap-Review) read-only gesichtet: AG-12 „REDUZIERT, P1 offen — Capture/Wizard/Studio-Default = Team 1"; AG-13 Story in App; AG-P2-4 Impact/Motivation. Capture-Ist: `KnowledgeRescueIntro` (Story-Karte oben, SCRUM-352), Moduswahl (freitext/formular/diktat/interview), Reasoner-Entwurf in der rechten Spalte — dort auch der einzige Studio-Einstieg (`studio.fromDraft.cta`/`studio.open`), der aber erst erscheint, wenn ein `draft` existiert. Reibung: der Studio-Einstieg ist bis zum Reasoner-Draft unsichtbar/zu spät; es fehlte eine kompakte „wie geht dieser Screen"-Wegführung mit dem Studio als empfohlenem Hauptweg; und am Submit fehlte ein motivierender-aber-ehrlicher Beitragswert. Vorhandene Bausteine (`KnowledgeInputStudio`, `KnowledgeStudioGuide`, `StudioContributionPanel`, `captureDraftArticle`, `editorApplySafety`, `captureSuccess`) blieben unverändert und wurden wiederverwendet.
+
+**Team6-Bezug.** AG-12 (technisch/formularartig → geführter Studio-Hauptweg), AG-13 (Story in der App verankert), AG-P2-4 (Beitrag/Impact sichtbar), KG-UX-001/002/003/008/009/010, STR/CAP-Pflichtenheft (WYSIWYG/KI-Hilfe/Vorschau bleiben erhalten).
+
+**Geänderte Dateien.**
+- `apps/web/src/lib/captureFlowGuide.ts` (NEU, DOM-frei: `CAPTURE_FLOW_STEPS` [raw→studio→review, studio=recommended], `captureFlowSteps()`, `captureFlowStepLabelKey()`, `recommendedFlowStep()`, `CAPTURE_FLOW_TEXT`)
+- `apps/web/src/pages/Capture.tsx` (Weg-Leiste über der Moduswahl; Studio-Lead + „Empfohlen"-Chip am primären Studio-Button; Beitragswert-Zeile vor Submit)
+- `apps/web/src/i18n.ts` (`capture.flow.*` DE+EN inkl. `railKickerHint`)
+- `tests/app/capture-flow-guide.test.ts` (NEU, 7 Tests)
+- `docs/TEAM6_UPDATE.md` (Pflicht-Nebenänderung)
+
+**Beta-Wirkung.** Der Screen sagt sofort, wie er funktioniert und dass das Studio der empfohlene, große Strukturier-Arbeitsraum ist — nicht ein versteckter Zusatz. Der Einstieg bleibt frei (Formular-Modi unverändert, kein Zwang). Die Einreich-Entscheidung ist motivierend UND ehrlich gerahmt (gesichert erst nach Prüfung).
+
+**Wie AG-12/AG-13/AG-P2-4 adressiert.** AG-12: kompakte geführte Weg-Leiste + „Empfohlen"-Studio-Hauptweg statt reinem Formular; Progressive Disclosure, nichts entfernt. AG-13: „Erfahrungswissen sichern"-Story auf der Capture-Hauptseite verankert (Weg-Leiste + Submit-Beitragswert), nicht nur in der Intro-Karte. AG-P2-4: leichter Beitragswert/Impact genau an der Einreich-Entscheidung — ohne Score/Gamification, ehrlich (erst nach Prüfung gesichert).
+
+**Bewusst nicht umgesetzte Gaps.** Kein Multi-Step-Wizard mit Backend-State; keine automatische Studio-Öffnung nach Reasoner-Draft (bewusst „empfohlen, kein Zwang" — Auto-Öffnen wäre aufdringlich/riskant); keine Auto-Speicherung/Auto-Validierung; kein Score-/Gamification-Backend; kein RAG/neue Suche/Team-2; kein Drag&Drop/Paste-Slice (bleibt P2/AG-P2-1); keine Funktion entfernt; keine Team-fremden Dateien. macOS-/Usability-Gesamtabnahme (AG-P2-5, EK-20) bleibt Team 5.
+
+**Tests/Gates.** `tests/app/capture-flow-guide.test.ts` (7): Schritt-Reihenfolge/IDs (raw→studio→review), genau EIN empfohlener Schritt = studio + `recommendedFlowStep()`, label/hint-Schema `capture.flow.step.<id>.{label,hint}`, `CAPTURE_FLOW_TEXT`-Mapping, DE/EN-Präsenz aller Weg-/Studio-/Beitrags-Keys inkl. `railKickerHint`, Ehrlichkeit (submitValue „erst nach der Prüfung"/„automatisch validiert wird nichts"; railKickerHint „nichts wird erzwungen"). Biome `check --write` auf berührten Dateien. `npm run check` grün — **190 Dateien / 1158 Tests**; Build (tsc)/Biome/dependency-cruiser grün. FE-tsc strict grün (FE berührt): `(cd apps/web && tsc --noEmit)` ohne Fehler.
+
+**Sicherheitscheck / keine Secrets.** Keine Secrets/Tokens/Keys. Keine echten Kundendaten (nur i18n-Copy + Schrittbeschreibung). Kein Netzaufruf, kein externes Modell, kein RAG/Embedding. Keine Team-fremden Dateien; untrackte v2-Infra-Datei unberührt.
+
+**TEAM6_UPDATE.md updated: yes** · **Team6 review needed: yes** · **Reason: Capture/Wizard/Studio Default UX changed (AG-12 / AG-13 / AG-P2-4)**
+
+**Affected requirements/gaps.** AG-12, AG-13, AG-P2-4, KG-UX-001/002/003/008/009/010.
+
+**Rest-Risiken.** (1) Reine FE-/Copy-/Führungsänderung — der tatsächliche Flow (Rohtext → Reasoner-Draft → Studio → Submit/Promote → Validation) bleibt unverändert; keine Verhaltens-/Datenänderung. (2) Die geführten Schritte sind Orientierung, kein erzwungener Wizard — der Nutzer kann weiterhin frei über die Modi erfassen (bewusst; kein Funktionsverlust). (3) „Fühlt sich weniger technisch an / Studio ist naheliegender" ist ein UX-Versprechen und bleibt durch Team 5 pilot-/usability-zu-validieren (EK-20, AG-P2-5).
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/captureFlowGuide.ts apps/web/src/pages/Capture.tsx apps/web/src/i18n.ts tests/app/capture-flow-guide.test.ts docs/TEAM6_UPDATE.md docs/qm/claude-after-report.md
+git commit -m "feat(capture): guided flow rail + recommended Knowledge Studio path + submit value (SCRUM-370, AG-12/AG-13/AG-P2-4)"
+git push
+```
+
+**Stop-Hinweis:** Claude macht kein Git add, kein Commit, kein Push, kein Jira. Übergabe an Codex/Pedi.

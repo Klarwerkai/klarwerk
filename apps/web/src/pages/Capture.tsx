@@ -34,6 +34,7 @@ import { GAP_RESCUE_STEPS, GAP_RESCUE_TEXT } from "../lib/askGapRescue";
 import { applyBodyAssist, applyBodyAssistBlock, bodyTextForAssist } from "../lib/bodyAiAssist";
 import { applyDraftArticle, normalizeDraftArticleLocale } from "../lib/captureDraftArticle";
 import { CAPTURE_EXAMPLE } from "../lib/captureExample";
+import { CAPTURE_FLOW_STEPS, CAPTURE_FLOW_TEXT } from "../lib/captureFlowGuide";
 import { gapContextDraft, readGapContext } from "../lib/captureFromGap";
 import { captureReadiness } from "../lib/captureReadiness";
 import { captureNextSteps, captureSavedStatus } from "../lib/captureSuccess";
@@ -658,6 +659,45 @@ export function Capture(): JSX.Element {
         </Card>
       ) : null}
 
+      {/* SCRUM-370 / AG-12/13: ruhige Weg-Leiste — Rohwissen → im Studio strukturieren (empfohlen) →
+          prüfen & einreichen. Positioniert das Knowledge Studio als naheliegenden Hauptweg, ohne die
+          Formular-Modi zu entfernen (progressive disclosure, kein Zwang). Eine Quelle: captureFlowGuide. */}
+      <div className="mb-4 rounded-card border border-hairline bg-surface px-4 py-3">
+        <p className="mb-2 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+          {t(CAPTURE_FLOW_TEXT.railKicker)}
+        </p>
+        <ol className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+          {CAPTURE_FLOW_STEPS.map((step, i) => (
+            <li key={step.id} className="flex flex-1 items-start gap-2">
+              <span
+                className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-semibold ${
+                  step.recommended ? "bg-ai text-white" : "bg-ink text-white"
+                }`}
+              >
+                {i + 1}
+              </span>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[12.5px] font-semibold text-text">{t(step.labelKey)}</span>
+                  {step.recommended ? (
+                    <span className="rounded-pill bg-ai/10 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-ai">
+                      {t(CAPTURE_FLOW_TEXT.studioRecommended)}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted">{t(step.hintKey)}</p>
+              </div>
+              {i < CAPTURE_FLOW_STEPS.length - 1 ? (
+                <span aria-hidden="true" className="hidden self-center text-muted-2 sm:inline">
+                  →
+                </span>
+              ) : null}
+            </li>
+          ))}
+        </ol>
+        <p className="mt-2 text-[11px] text-muted-2">{t(CAPTURE_FLOW_TEXT.railKickerHint)}</p>
+      </div>
+
       <div className="mb-4 flex flex-wrap gap-1.5">
         {MODES.map((m) => (
           <button
@@ -968,6 +1008,11 @@ export function Capture(): JSX.Element {
                   {/* SCRUM-340: aus dem vorhandenen Reasoner-Entwurf einen strukturierten Body-Artikel
                       erzeugen und direkt im Studio weiterbearbeiten. Vorschlag, kein validiertes Wissen;
                       vorhandener Body wird nicht still überschrieben (leer = setzen, sonst anhängen). */}
+                  {/* SCRUM-370 / AG-12: das Studio ist der empfohlene Strukturier-Hauptweg — ruhiger
+                      Lead-Hinweis + „Empfohlen"-Chip am primären Einstieg. Das Formular bleibt erhalten. */}
+                  <p className="mb-1.5 text-[11.5px] leading-relaxed text-muted">
+                    {t(CAPTURE_FLOW_TEXT.studioLead)}
+                  </p>
                   <div className="mb-2 flex flex-wrap gap-2">
                     <button
                       type="button"
@@ -985,6 +1030,9 @@ export function Capture(): JSX.Element {
                       className="inline-flex items-center gap-1.5 rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
                     >
                       <Sparkles size={14} /> {t("studio.fromDraft.cta")}
+                      <span className="rounded-pill bg-white/20 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase">
+                        {t(CAPTURE_FLOW_TEXT.studioRecommended)}
+                      </span>
                     </button>
                     {/* SCRUM-337: Studio auch ohne Artikel-Erzeugung öffnen (leerer/eigener Body). */}
                     <button
@@ -1121,6 +1169,11 @@ export function Capture(): JSX.Element {
                       );
                     })()
                   : null}
+                {/* SCRUM-370 / AG-P2-4: leichter Beitragswert direkt an der Einreich-Entscheidung —
+                    Motivation ohne Score/Gamification; ehrlich: gesichert erst nach der Prüfung. */}
+                <p className="text-[11.5px] leading-relaxed text-muted">
+                  {t(CAPTURE_FLOW_TEXT.submitValue)}
+                </p>
                 <Button
                   variant="primary"
                   className="w-full"
