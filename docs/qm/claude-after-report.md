@@ -9467,3 +9467,56 @@ git push
 ```
 
 **Stop-Hinweis:** Claude macht kein Git add, kein Commit, kein Push, kein Jira. Übergabe an Codex/Pedi.
+
+---
+
+## SCRUM-371 — Beta Capture Media & Evidence Comfort v0
+
+**Datum:** 2026-07-01 · **Claude beteiligt: ja** · **Rolle:** Hauptumsetzer · **Repo:** `/Users/peterkohnert/Documents/dev_Klarwerk` (nur Team-1)
+
+**Kurzfazit.** Der Umgang mit Bildern/Dateien/Evidence im Capture-/Studio-Editor ist ehrlicher, object-store-bewusst und besser geführt. Neuer DOM-freier `editorMediaGuide()` klassifiziert Anhänge in Bilder (inline einbettbar), verlinkbare Dateien (Object-Store-objectId) und Evidence-Dateien (noch nicht hochgeladene Session-Dateien — kein Fake-Link, nach dem Speichern verlinkbar). Die vorhandene Editor-Kontextkarte zeigt diese Aufteilung + die ehrliche Evidence-Story („Belege verbessern die Nachvollziehbarkeit, sind aber keine Freigabe — die Validierung entscheidet"). Der Image/File-Link-Sanitizer bleibt unverändert; kein Drag&Drop (bewusst später), kein neues Backend.
+
+**SCRUM-Ticket.** SCRUM-371 — Beta Capture Media & Evidence Comfort v0.
+
+**Legacy-Pfad geprüft / nicht verfügbar.** Verfügbar und read-only gesichtet: `Klarwerk/app/src/components/WikiEditor.jsx` (Editor + Bild/Datei-Import), `AiAssist.jsx`, `CaseEditor.jsx`, `pages/TeacherStudio.jsx`.
+
+**Wichtigste alte Funktionen (Legacy WikiEditor.jsx).**
+- Bild/Datei-Import per Button, **Drag & Drop** (`onDrop`) und **Paste** (`onPaste`, nur Bilder).
+- Bilder → `<img class="cf-img" src="data:…">` (verkleinert auf max. 1280px, JPEG/PNG).
+- Dateien → `<a class="cf-attach" href="data:…" download>` — **inline data:-URL** (Demo speicherte Anhänge inline), 8-MB-Limit.
+
+**Aktuelle Gaps (Legacy → neuer Stand → beta-relevante Lücke → Entscheidung).**
+| Alte Funktion | Neuer Stand (Klarwerk) | Beta-relevante Lücke | Entscheidung |
+|---|---|---|---|
+| Datei als `<a href="data:…">` inline | Datei nur als sicherer Object-Store-Link `/api/objects/:id/raw` (SCRUM-355); data:-URL für Dateien bewusst verboten | Keine — Legacy-data:-URL war ein Sicherheitsrisiko | Nicht übernehmen (Sicherheit) |
+| Session-Datei ohne objectId body-verlinkbar (Demo: inline) | Session-Datei NICHT body-verlinkbar (kein Fake-Link) — Dropdown zeigte nur „noFiles" | UX-unbequem: unklar, warum leer / was mit der Datei passiert (AG-02-SESSION) | Jetzt umgesetzt: `editorMediaGuide` klassifiziert als Evidence, Karte + `editor.noFiles` erklären ehrlich („bleibt Anhang/Evidence, nach dem Speichern verlinkbar, kein Behelfs-Link"). Backend-Fix (Session→objectId) bleibt später |
+| Media/Evidence-Rolle im Editor | Vorher: nur „Bilder vs. Dateien"-Zählung (SCRUM-323) | Rolle (illustrieren vs. belegen) + „Evidence ≠ Freigabe" nicht erklärt (AG-12/13/P2-4) | Jetzt umgesetzt: dreiteilige Media-/Evidence-Karte + ehrliche Evidence-Story |
+| Bild-Paste (Strg/⌘+V) | Kein Paste | Komfort (AG-P2-1/FR-STR-03) | Später (DOM-schwer, schwer DOM-frei testbar) |
+| Drag & Drop Bilder/Dateien | Kein Drag&Drop | Komfort/Legacy-Parität (AG-P2-1/FR-STR-03) | Später (eigener, sorgfältig getesteter Slice) |
+
+**Umgesetzter Umfang.**
+- `editorAttachmentContext.ts`: neuer DOM-freier `editorMediaGuide(items)` (inlineImages / linkableFiles / evidenceFiles + Flags) + `MEDIA_*`-i18n-Keys inkl. ehrlicher Evidence-Note. `AttachmentLike` um optionale `objectId` erweitert. Bestehende `attachmentContext()`/`isImageAttachment`/`ATTACH_*` unverändert.
+- `EditorAttachmentContext.tsx`: rendert die dreiteilige Media-/Evidence-Aufteilung (nur vorhandene Kategorien) + Evidence-Story-Note. Ein Kontext-Ort für Capture/Studio/KO-Detail (kein neuer, redundanter Card).
+- `i18n.ts`: `editor.media.*` DE/EN; `editor.noFiles` DE/EN ehrlicher (Session-Datei → nach Speichern verlinkbar, kein Behelfs-Link).
+
+**Bewusst nicht umgesetzte Gaps.** Drag&Drop/Paste (AG-P2-1/FR-STR-03) — DOM-schwer, schwer DOM-frei testbar, Risiko; separater Folge-Slice. Legacy-data:-URL-Datei-Einbettung — bewusst nicht reproduziert (Sicherheit). Backend-Object-Store-Linking der Session-Dateien (AG-02-SESSION-Kern) — kein neues Upload-Backend im Scope. Kein Asset-Management, kein Score/Gamification, kein neues Editor-Framework.
+
+**Geänderte Dateien.** `apps/web/src/lib/editorAttachmentContext.ts`, `apps/web/src/components/EditorAttachmentContext.tsx`, `apps/web/src/i18n.ts`, `tests/app/editor-media-guide.test.ts` (NEU), `docs/TEAM6_UPDATE.md`, `docs/qm/claude-after-report.md`.
+
+**Tests/Gates.** `tests/app/editor-media-guide.test.ts` (8): Klassifikation (Bild inline unabhängig von objectId; Nicht-Bild mit objectId → verlinkbar, ohne → Evidence; leere/whitespace/null objectId → Evidence; gemischt + Flags), DE/EN-Präsenz `MEDIA_*`, Ehrlichkeit (Evidence ≠ Freigabe/Validierung entscheidet; Session erst nach Speichern verlinkbar/kein Fake-Link). Bestands-`editor-attachment-context.test.ts` (7) unverändert grün → Sanitizer/Klassifikation nicht geschwächt. `npm run check` grün — **191 Dateien / 1166 Tests**; Build (tsc)/Biome/dependency-cruiser grün; FE-tsc strict grün (`(cd apps/web && tsc --noEmit)` ohne Fehler).
+
+**Sicherheitscheck / keine Secrets.** Keine Secrets/Tokens/Keys. Image/File-Link-Sanitizer (`richText.ts` FE + Server) UNVERÄNDERT — keine `data:`-Links für Dateien, keine `javascript:`-/Fremdschema-Links; `attachment`-Div-Klasse + Object-Store-Raw-Pfad-Allowlist unverändert. Keine echten Kundendaten. Kein Netzaufruf. Keine Team-fremden Dateien; untrackte v2-Infra-Datei unberührt.
+
+**TEAM6_UPDATE.md updated: yes** · **Team6 review needed: yes** · **Reason: Knowledge Input / Editor / Evidence UX changed** · **Affected requirements/gaps: AG-02-SESSION, AG-P2-1, AG-12, AG-13, AG-P2-4, FR-STR-02/03, KG-UX-001/002/003/007/008/009/010.**
+
+**Rest-Risiken.** (1) Reine FE-/Copy-/Klassifikations-Änderung — keine Backend-/Daten-/Sanitizer-Änderung; der reale Anhang-/Object-Store-Flow bleibt unverändert. (2) Session-Dateien werden weiterhin erst nach Upload (objectId) body-verlinkbar — die Karte erklärt das ehrlich, löst es aber nicht (Backend-Folge-Slice AG-02-SESSION). (3) Drag&Drop/Paste-Erwartung aus Legacy bleibt unerfüllt (dokumentiert, bewusst später). (4) „Fühlt sich komfortabler/weniger technisch an" ist ein UX-Versprechen, Usability-Abnahme bleibt Team 5 (EK-20).
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/editorAttachmentContext.ts apps/web/src/components/EditorAttachmentContext.tsx apps/web/src/i18n.ts tests/app/editor-media-guide.test.ts docs/TEAM6_UPDATE.md docs/qm/claude-after-report.md
+git commit -m "feat(editor): object-store-aware media/evidence guide + honest session-file copy (SCRUM-371, AG-02-SESSION/AG-12/AG-13/AG-P2-4)"
+git push
+```
+
+**Stop-Hinweis:** Claude macht kein Git add, kein Commit, kein Push, kein Jira. Übergabe an Codex/Pedi.

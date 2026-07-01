@@ -494,6 +494,20 @@ const de = {
   "editor.attach.imageHint": "über den Bild-Button in den ausführlichen Inhalt einfügbar.",
   "editor.attach.fileHint":
     "bleiben als Anhang/Evidence sichtbar und werden nicht inline eingebettet — bitte im Text referenzieren.",
+  // SCRUM-371: object-store-bewusste Media-/Evidence-Führung (Bilder inline · verlinkbare Dateien ·
+  // Session-Dateien als Evidence). Ehrlich: Evidence ist kein Ersatz für Validierung.
+  "editor.media.title": "Bilder, Dateien & Belege",
+  "editor.media.images": "Bild(er)",
+  "editor.media.imageHint":
+    "illustrieren dein Wissen — über den Bild-Button in den Inhalt einfügbar.",
+  "editor.media.linkable": "verlinkbare Datei(en)",
+  "editor.media.linkableHint":
+    "als Beleg/Kontext sicher im Text verlinkbar (interne Objekt-Referenz, kein Roh-Download-Trick).",
+  "editor.media.evidence": "Datei(en) als Anhang",
+  "editor.media.evidenceHint":
+    "bleiben Beleg/Evidence — nach dem Speichern im Text verlinkbar; bis dahin kein Behelfs-/Fake-Link.",
+  "editor.media.note":
+    "Belege verbessern die Nachvollziehbarkeit, sind aber keine Freigabe — die Validierung entscheidet.",
   "editor.quality.title": "Inhalts-Check",
   "editor.quality.hint": "Prüft die Struktur, nicht die fachliche Richtigkeit. Keine Validierung.",
   "editor.quality.empty": "Noch kein ausführlicher Inhalt erfasst.",
@@ -531,7 +545,7 @@ const de = {
   "editor.file": "Datei verlinken",
   "editor.insertFile": "Datei-Anhang als Link einfügen",
   "editor.noFiles":
-    "Keine verlinkbaren Datei-Anhänge — erst gespeicherte Anhänge (mit Objekt-Referenz) sind verlinkbar.",
+    "Noch keine verlinkbaren Dateien — hochgeladene Dateien werden erst nach dem Speichern verlinkbar (mit Objekt-Referenz). Bis dahin bleiben sie als Anhang/Evidence erhalten; kein Behelfs-Link.",
   "editor.preview": "Vorschau",
   "editor.edit": "Bearbeiten",
   "editor.linkPrompt": "Link-URL eingeben:",
@@ -2103,6 +2117,20 @@ const en: typeof de = {
   "editor.attach.imageHint": "can be inserted into the detailed content via the image button.",
   "editor.attach.fileHint":
     "stay visible as attachments/evidence and are not embedded inline — please reference them in the text.",
+  // SCRUM-371: object-store-aware media/evidence guidance (images inline · linkable files · session
+  // files as evidence). Honest: evidence never replaces validation.
+  "editor.media.title": "Images, files & evidence",
+  "editor.media.images": "image(s)",
+  "editor.media.imageHint":
+    "illustrate your knowledge — insert into the content via the image button.",
+  "editor.media.linkable": "linkable file(s)",
+  "editor.media.linkableHint":
+    "safe to link as evidence/context in the text (internal object reference, no raw-download trick).",
+  "editor.media.evidence": "file(s) as attachment",
+  "editor.media.evidenceHint":
+    "stay as evidence — linkable in the text after saving; until then no makeshift/fake link.",
+  "editor.media.note":
+    "Evidence improves traceability, but it is not approval — the review decides.",
   "editor.quality.title": "Content check",
   "editor.quality.hint": "Checks structure, not factual correctness. No validation.",
   "editor.quality.empty": "No detailed content yet.",
@@ -2140,7 +2168,7 @@ const en: typeof de = {
   "editor.file": "Link a file",
   "editor.insertFile": "Insert file attachment as a link",
   "editor.noFiles":
-    "No linkable file attachments — only saved attachments (with an object reference) can be linked.",
+    "No linkable files yet — uploaded files become linkable only after saving (with an object reference). Until then they stay as attachments/evidence; no makeshift link.",
   "editor.preview": "Preview",
   "editor.edit": "Edit",
   "editor.linkPrompt": "Enter link URL:",
