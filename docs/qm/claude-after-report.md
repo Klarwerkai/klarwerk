@@ -9823,3 +9823,98 @@ git push
 ```
 
 **Stop-Hinweis:** Claude macht kein Git add, kein Commit, kein Push, kein Jira. Übergabe an Codex/Pedi.
+
+---
+
+## After-Report — 2026-07-01 · Ist-Analyse dev_Klarwerk (Audit-Nachgang)
+
+**Datum:** 2026-07-01
+**Ticket:** kein Jira-Ticket (Pedi-Direktauftrag: Projektaudit sichten, Ist-Analyse Team 1)
+**Änderung:** Nur Analyse + Doku. Neu: `docs/qm/IST_ANALYSE_DEV_KLARWERK_2026-07-01.md`. Kein Produktcode geändert.
+**Gebaut:** In Sandbox-Kopie (Linux, Node 22): `tsc --noEmit` (Root inkl. apps/web) grün · `vite build` apps/web grün (~3 s) · Backend-Start `npm start` → `/health` 200, SPA `/` 200.
+**Getestet:** Biome grün (535 Dateien) · depcruise grün (181 Module, 0 Violations) · Vitest unit grün (197 Dateien / 1199 Tests).
+**Nicht ausführbare Checks + Grund:** `test:integration` (Testcontainers/Postgres) — kein Docker in der Sandbox; Playwright-Smoke — Playwright nicht installiert (bekannter KREL-33-P1); Referenzlauf auf dem Mac steht aus.
+**Offen:** RC-genaue Build-Evidence am RC-Commit `1e662e9` (dist lokal veraltet, Stand 27.06.) · Playwright-Entscheidung (devDep vs. Alternativ-Smoke) · Repo-Hygiene: ~90 `vitest.config.ts.timestamp-*.mjs` im Root.
+**Risiko:** gering — Analyse read-only; Sandbox-Ergebnisse sind Indiz, nicht RC-Evidence (andere Node-Version/OS als Mac).
+**Git-Status:** `main@35e11ec`, up to date mit github/main; untracked nur bekannte Infra-v2-Datei + neue Ist-Analyse + dieser Report. Kein add/commit/push durch Claude.
+**Jira-Kommentar-Vorschlag:** SCRUM (Team 1): „Ist-Analyse nach Audit 2026-07-01: alle tools/check-Gates grün (Sandbox-Verifikation). KREL-33-P1 bestätigt: dist veraltet ggü. RC 1e662e9, Build aber reproduzierbar (~3 s); Runtime-Startpfad verifiziert (/health 200). Vorschlag Rang-1-Slice: Runtime Start Path & Build Evidence v0."
+**Nächster Schritt:** Pedi-Entscheidung über vorgeschlagenen Rang-1-Slice (Evidence-Doc am RC-Commit) + Playwright-Frage. STOPP bis Freigabe.
+
+---
+
+## After-Report — 2026-07-01 · Jira-Bereinigung & Nachziehen der offenen Schritte
+
+**Datum:** 2026-07-01
+**Ticket:** Jira-Housekeeping (Pedi-Direktauftrag); neu angelegt: SCRUM-380, SCRUM-381, KREL-34
+**Änderung:** (1) 26 alte „Internes LLM"-Issues SCRUM-182–204, 207–209 mit Einordnungs-Kommentar (Scope Team 2/KLLM, pausiert per D-012) auf Done geschlossen. (2) Drei neue Tickets: SCRUM-380 Runtime Start Path & Build Evidence v0 · SCRUM-381 Playwright-Entscheidung/Browser-Smoke-Toolchain v0 · KREL-34 Runtime Smoke Re-Test v0. (3) Blocks-Links: SCRUM-380 und SCRUM-381 blockieren KREL-34. Keine Code-Änderung.
+**Gebaut:** n/a (nur Jira).
+**Getestet:** Statuswechsel per API bestätigt (alle 26 auf Done); neue Issues mit Keys/Links verifiziert.
+**Nicht ausführbare Checks + Grund:** n/a.
+**Offen:** KLLM-3/4/5/7/41/54 bewusst offen gelassen (Team 2 pausiert, gated). KWEB-103 ist Done, aber finale Pedi-Abnahme unklar. Umsetzung SCRUM-380/381 wartet auf Pedi-Startsignal.
+**Risiko:** gering — Schließung ist reversibel (Reopen möglich), Historie + Kommentare bleiben; Verlustrisiko nur, falls einzelne der 26 Issues doch Team-1-relevante Inhalte enthielten (Kommentar verweist auf KLLM-Neuanlage).
+**Git-Status:** unverändert (main@35e11ec); kein Commit/Push.
+**Jira-Kommentar-Vorschlag:** bereits als Kommentare in den betroffenen Issues hinterlegt.
+**Nächster Schritt:** Pedi-Freigabe für Umsetzung SCRUM-380 (Rang 1). STOPP bis Signal.
+
+---
+
+## After-Report — 2026-07-01 · Team 7: Control Center v1 + Desktop-Start-App
+
+**Datum:** 2026-07-01
+**Ticket:** kein Jira (Team 7 ist by design ohne Jira/GitHub; Pedi-Direktauftrag „Team-7-Arbeit verbessern, Punkt 1")
+**Änderung:** (1) `scripts/start-local-ai-server.mjs` → Control-Server: Admin-API `/api/admin/*` (Status, Daten-Refresh der 3 Pflege-Scripts, Einstellungen, API-Key via macOS-Schlüsselbund, Shutdown), bindet nur 127.0.0.1. (2) Neuer Tab „Steuerung" im Dashboard (index.html/app.js/styles.css) — Bedienung komplett ohne Terminal. (3) UI nach UI/UX-Brief: lokale IBM-Plex-Fonts (assets/fonts, OFL, aus Team-1-Repo kopiert), gruppierte Listen mit Sticky-Prioritätsköpfen (Master Scope/Scope Explorer/Team-6-Review), Tab-Icons, Fokus-Ring, Terminal-Hinweise in der UI ersetzt. (4) Desktop-App `desktop-app/KLARWERK PMO.app` + Kopie auf ~/Desktop: Doppelklick startet Server und öffnet Dashboard. (5) Doku: docs/TEAM7_CONTROL_CENTER_V0.md neu, README aktualisiert. Einstellungen neu in data/pmo-settings.json (keine Secrets).
+**Gebaut:** Server-Syntax + Start in Sandbox grün; index/styles/fonts liefern 200; app.js parsed.
+**Getestet:** /api/admin/status · settings · key (GET/POST→501 auf Linux erwartet) · refresh (alle 3 Scripts ok: 107 Items, Snapshot, 75 Review-Einträge) · shutdown. bash -n der App grün; +x gesetzt.
+**Nicht ausführbare Checks + Grund:** Schlüsselbund (macOS-only, Sandbox=Linux — Code-Pfad guarded, muss Pedi einmal real testen); Browser-Rendering/Optik (kein Browser in Sandbox); App-Doppelklick (nur auf Mac möglich).
+**Offen:** Pedi-Praxistest (App doppelklicken, Key setzen, Refresh, Optik-Review); ggf. Gatekeeper-Erstbestätigung (Rechtsklick→Öffnen); „Datenarchitektur"-Kritik von Pedi ist NICHT Teil dieses Slices (Punkt 2, wartet auf Auftrag).
+**Risiko:** gering-mittel — Regel-Update dokumentiert (Key nun Schlüsselbund statt nur Env-Var, Pedi-Freigabe); Intake-/Bestandslogik unverändert; Fallback-Pfade (file://, Server aus) erhalten.
+**Git-Status:** n/a (Team 7 ohne Git).
+**Jira-Kommentar-Vorschlag:** n/a.
+**Nächster Schritt:** Pedi testet praktisch; danach Punkt 2 (Datenarchitektur) als eigener Slice. STOPP bis Signal.
+
+---
+
+## After-Report — 2026-07-01 · ARGUS-Sichtung + Pedi/Schurzfeld-Input → Team-6-Vermittlung
+
+**Datum:** 2026-07-01
+**Ticket:** kein Jira (Moderator-Auftrag Pedi: ARGUS + Gedanken sichten, Erkenntnisse an Team 6 vermitteln)
+**Änderung:** (1) ARGUS-Ordner gesichtet (Konzept-Final-DE, Projekt-Handbuch, Demo-Brief, Roadmap-MVP, Beispiele) — Konzept-Universum + Legacy-Apps als Quelle der Produkt-Wahrheit erfasst. (2) Sechs neue Einträge über die Team-7-Intake-Pipeline in die PMO-Basis übernommen (mit Backup/Audit): PMO-FEA-0002 Wirkungs-Rückmeldung an Autor (P1) · PMO-FEA-0003 Live-Wall (P2) · PMO-FEA-0004 Wissens-Update-Snippet (P2) · PMO-REQ-0001 Adoption-Playbook „Drei Akte" (P1) · PMO-DEC-0001 EK-19-Richtung ohne Gamification (P1) · PMO-TODO-0001 Master-Scope-Delta-Prüfung gegen Konzept (P1). (3) Team-6-Review-Queue neu gebaut (81 Einträge, 6 neu) + Status-Snapshot. (4) Begleitdokument `klarwerk-knowledge-guru/docs/PEDI_INPUT_KONZEPTDELTA_ADOPTION_2026-07-01.md` (untracked, kein Commit). (5) Projekt-Memory aktualisiert.
+**Gebaut:** n/a (Doku + Datenpflege über bestehende Team-7-Scripts).
+**Getestet:** apply-intake-draft je Draft erfolgreich (IDs vergeben, Audit-Log); Review-Queue-Export enthält alle 6 (grep bestätigt); collect-status grün.
+**Nicht ausführbare Checks + Grund:** n/a.
+**Offen:** Team-6-Review der 6 Einträge (accept/merge/duplicate); formale Pedi-Bestätigung EK-19 (DECISIONS.md); Verortung Adoption-Playbook (T3 vs. T6).
+**Risiko:** gering — additive Dateien; knowledge-guru nur untracked Input-Doc, keine Repo-Inhalte geändert.
+**Git-Status:** knowledge-guru: main unverändert + neues untracked docs/PEDI_INPUT_… · dev_Klarwerk unverändert (main@35e11ec).
+**Jira-Kommentar-Vorschlag:** KGURU (bei nächstem Delta-Slice): „Pedi-Input 01.07. liegt vor: 6 Queue-Einträge (pedi-input-Tag) + docs/PEDI_INPUT_KONZEPTDELTA_ADOPTION_2026-07-01.md. Bitte Review + EK-19-Entscheidungsvorlage."
+**Nächster Schritt:** Pedi-Signal, ob Team 6 den Review-Slice starten soll. STOPP.
+
+---
+
+## After-Report — 2026-07-01 · Abrundungs-Paket (EU-Regulatorik + 6 Moderator-Punkte) → Team-6-Queue
+
+**Datum:** 2026-07-01
+**Ticket:** kein Jira (Pedi-Auftrag: Regulatorik-Matrix + Abrundungspunkte einbauen)
+**Änderung:** 7 weitere Einträge über Team-7-Intake in PMO-Basis (jetzt 120 Items): PMO-REQ-0002 EU-Regulatorik-Screening (AI Act/DSGVO/NIS2/CRA/Data Act/DGA/ePrivacy/DORA, P1) · PMO-REQ-0003 Beta-Erfolgskriterien/North-Star (P1) · PMO-REQ-0004 Einwilligungs-/Betriebsrats-Paket (P1) · PMO-RISK-0001 Notfall-Runbook Bus-Faktor Pedi (P1) · PMO-TODO-0002 Seed-Datensatz aus ARGUS-Beispielen (P2) · PMO-TODO-0003 Dogfooding Projektwissen (P2) · PMO-TODO-0004 Domain-Doku-Wahrheitskonflikt (P2). Review-Queue neu: 88 Einträge, 13 neu/geändert. Team-6-Begleitdokument um Nachtrag §6 ergänzt.
+**Gebaut:** n/a. **Getestet:** apply je Draft grün (2 Drafts wg. Anführungszeichen-JSON-Fehler korrigiert und nachgezogen); Export enthält 7× abrundung-Tag; Snapshot aktualisiert.
+**Nicht ausführbare Checks + Grund:** n/a.
+**Offen:** Team-6-Review-Slice über alle 13 neuen Einträge (wartet auf Pedi-Signal); externe Legal-Ressource für AI-Act/NIS2/CRA-Einordnung.
+**Risiko:** gering — additiv, mit Backup/Audit.
+**Git-Status:** unverändert; knowledge-guru-Input-Doc weiterhin untracked.
+**Jira-Kommentar-Vorschlag:** KGURU: „Pedi-Input komplett: 13 Queue-Einträge (pedi-input/abrundung) + PEDI_INPUT_KONZEPTDELTA_ADOPTION_2026-07-01.md §1–6. Bitte Review-Slice."
+**Nächster Schritt:** Pedi-Signal für Team-6-Review-Slice. STOPP.
+
+---
+
+## After-Report — 2026-07-01 · Team 4: Website-Relaunch (Astro) + 1-Klick-Deploy-App (KWEB-104)
+
+**Datum:** 2026-07-01
+**Ticket:** KWEB-104 (neu angelegt, jetzt In Review) — Nachfolger von KWEB-102/103 (nicht abgenommen)
+**Änderung:** (1) Neubau `website/` im Team-4-Repo: Astro 5 + Tailwind 4, 15 statische Seiten DE/EN (Start, Problem&Lösung, Funktionsweise mit KO-Explainer/Trust-Ampel/5 Wissensarten, Use Cases, FAQ-Accordion, Kontakt mit mailto-Fallback, Legal-Platzhalter, 404). Design-Tokens + Komponenten strikt nach PUBLIC_WEBSITE_UI_UX_BRIEF_V0; Message aus Konzept-Final-DE. IBM Plex lokal, keine CDNs, noindex, kein internes Scaffolding. (2) Desktop-App `desktop-app/KLARWERK Website.app` + Kopie auf ~/Desktop: Build → rsync per SSH-Key auf Hetzner-Preview → Server-Check (200/401=Basic-Auth ok) → SSH-Tunnel 8088 → Browser; alle Fehler als macOS-Dialoge, Log desktop-app/deploy.log. (3) website/README + .gitignore (node_modules/dist/.astro).
+**Gebaut:** Astro-Build grün in Sandbox: 15 Seiten, 569 ms, dist 416 KB.
+**Getestet:** noindex-Meta + robots-Disallow vorhanden; echte Umlaute; kein Gate-/Preview-/Stop-Line-Vokabular in dist; FAQ nur-eine-offen-Logik + Hamburger als kleines Inline-Script; bash -n der App grün; +x gesetzt.
+**Nicht ausführbare Checks + Grund:** rsync/SSH/Tunnel real (nur von Pedis Mac mit SSH-Key möglich — erster Doppelklick ist der Praxistest); visueller Browser-Review (kein Browser in Sandbox); Basic-Auth-Passwort bleibt Browser-seitig (nicht benötigt in Dateien).
+**Offen:** Pedi-Preview-Review; Rechtstexte + Formular-Aktivierung nach Legal (D-010); ggf. Feinschliff nach Review; Team-5-Preview-Smoke gegen neuen Stand.
+**Risiko:** gering-mittel — Alt-site/ unangetastet (Rollback = alte Dateien liegen noch auf dem Server bis zum ersten Deploy; danach ist Remote-Stand der neue — bewusst, --delete aktiv). Kein DNS/Livegang.
+**Git-Status:** klarwerk-public-website: main unverändert; untracked `website/` + `desktop-app/`. Kein Commit/Push durch Claude.
+**Jira-Kommentar-Vorschlag:** bereits als KWEB-104-Kommentar hinterlegt; Status In Review.
+**Nächster Schritt:** Pedi: Doppelklick „KLARWERK Website" → Review. Danach Freigabe oder Änderungswünsche. STOPP.
