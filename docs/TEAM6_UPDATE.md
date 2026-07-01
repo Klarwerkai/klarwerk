@@ -6,16 +6,16 @@
 - Scope: Knowledge Input, Capture, AI-assisted Editing, Validation, KO Detail, Library, Ask, Capture → Review → Use, App-Auth/Security, Trust/Conflict-Integrity
 - Repo: `/Users/peterkohnert/Documents/dev_Klarwerk`
 - Jira Project: SCRUM
-- Last updated: 2026-07-01 12:32 CEST
-- Current status: SCRUM-377 umgesetzt durch Claude, Codex-Prüfung/Commit/Push/CI/Jira ausstehend
-- Active ticket: SCRUM-377 — Beta App-wide Story & Empty-State Onboarding v0
-- Last completed ticket: SCRUM-376 — Beta Knowledge Studio First-Run Guidance & Inline Quality Coaching v0 (von Codex committed: `6fa98e7`)
-- Last commit: `6fa98e7` (SCRUM-376); SCRUM-375 `42c24b8`
-- GitHub/CI status: SCRUM-361 CI grün; SCRUM-362–376 von Codex lokal committed (Push/CI per Codex); SCRUM-377 noch nicht committed/gepusht
-- Beta impact: Leere/erste Zustände auf vier Kernflächen (Start, Meine Aufgaben, Bibliothek, Validierung) erzählen jetzt app-weit dieselbe ruhige Knowledge-Rescue-Story statt nur nackte CTA-Links zu zeigen. Der vorhandene `EmptyStateCtas` (rollen-/Stufe-2-gefiltert, echte Routen) wird um eine ruhige Story-Rahmung ergänzt: geteilter Titel „Klarwerk sichert Erfahrungswissen, bevor es verloren geht", ein Phase-Chip, der die Fläche in den Knowledge-OS-Kreis einordnet (Erfassen → Validieren → Nutzen → Aktuell halten; dieselbe `cycle.*`-Vokabel), ein flächenspezifischer, ehrlicher Lead („keine Sackgasse → nächster sinnvoller Schritt") und ein Dauerhinweis „nichts wird automatisch validiert — gesichert erst nach Prüfung". Neuer DOM-freier `knowledgeStory`-Helfer (start→capture, tasks/validation→validate, library→use). Kein Backend, kein Onboarding-Persistenzsystem, kein Score/Gamification, keine Auto-Validierung, keine Funktion entfernt, keine Website-/Public-Claims. Progressive Disclosure — kompakt, keine Textwand.
+- Last updated: 2026-07-01 12:50 CEST
+- Current status: SCRUM-378 (RC-Handoff-Dokument) umgesetzt durch Claude, Codex-Prüfung/Commit/Push/Jira ausstehend
+- Active ticket: SCRUM-378 — Beta RC Team-5 Handoff Pack v0 (Doku-Slice, kein Produktfeature)
+- Last completed ticket: SCRUM-377 — Beta App-wide Story & Empty-State Onboarding v0 (von Codex committed: `1e662e9`)
+- Last commit: `1e662e9` (SCRUM-377); SCRUM-376 `6fa98e7`
+- GitHub/CI status: letzter bekannter Team-1-RC-Kandidat `1e662e9` (SCRUM-377) CI grün laut Codex-Review; SCRUM-378 (nur Doku) nach Codex-Commit/Push/CI noch zu prüfen
+- Beta impact: Team-1-RC-Handoff an Team 5 vorbereitet. Neues Übergabedokument `docs/BETA_RC_TEAM5_HANDOFF_V0.md` (Status `technical_rc_candidate_only`) kondensiert den sauberen Produktstand am RC-Commit `1e662e9`, liefert Team 5 einen reproduzierbaren Smoke-/Readiness-Startpunkt (14 Smoke-Pfade als Checkliste), macht Datengrenze (nur Demo/synthetisch), bekannte Nicht-Ziele, P0/P1/P2-Gates (AG-03/04/07/08/09/12/13) und Stop-Lines sichtbar und stellt offene Fragen an Pedi/Team 5. KEIN neues Produktfeature, KEIN UI-Umbau, KEIN Produktcode geändert, KEIN Beta-Go/Deployment/Serverzugriff. Ehrlich: technischer RC-Kandidat, kein finaler Beta-Go, keine Kundenfreigabe.
 - Team6 review needed: yes
-- Reason: App-wide empty-state story/onboarding framing added on Start/MyTasks/Library/Validation (AG-12 / AG-13 / KG-UX-001/002/008/009)
-- Next planned slice: nach Pedi-Signal; offen u. a. FR-STR-02-SESSION-ATOMIC (Attach-Fehler nach Upload — Object bleibt verwaist, P2), AG-03-DBINDEX 10k/100k-Lasttest (Team 5) oder weiterer Team6-Gap
+- Reason: Team-1-RC, Smoke/Readiness, AG-03/04/07/08/09/12/13, Team5-Handoff
+- Next planned slice: wartet auf Pedi/Team5-Smoke-Ergebnis (Conditional Go/No-Go); danach offene P1/P2-Reste je nach Signal
 
 ## Current Risks / Gaps
 
@@ -87,6 +87,17 @@
 | VC-P1-2 / EK-26 — Assignment-Feed vs. Beta-Akzeptanz | Team6 `TEAM6_ACTIVE_GAPS_AND_RECOMMENDATIONS.md` | addressed in SCRUM-363 | In-App-Feed-Variante geliefert (statt „Board+E-Mail reichen"); finale Beta-Akzeptanz/Reichweite bleibt Pedi/Team 5 (EK-26). |
 
 ## Delta Log
+
+### 2026-07-01 12:50 — SCRUM-378 — pending Codex commit
+
+- Changed areas: `docs/BETA_RC_TEAM5_HANDOFF_V0.md` (NEU), `docs/TEAM6_UPDATE.md` (Snapshot + Delta Log). KEIN Produktcode, KEIN Test, KEINE i18n geändert.
+- What changed: SCRUM-378 — Team-1 bereitet den sauberen Produktstand am RC-Commit `1e662e9` (SCRUM-377) als **technischen RC-Kandidaten** für Team 5 auf. Neues Handoff-Dokument (`technical_rc_candidate_only`) mit: Titelblock/Zweck, RC-Kandidat (Branch/Commit/CI/lokale Gates, bekannte untracked Infra-Datei explizit ausgeklammert), kondensiertem Produktumfang (Capture/Studio/AI-Edit/Rescue-Story/Validation/Rework/KO-Detail/Library/Ask/Gap/Lifecycle/Evidence — ehrlich beta-nah, nicht final), 14 empfohlenen Smoke-Pfaden als Checkliste, Datenabgrenzung (nur Demo/synthetisch), Nicht-Zielen, P0/P1/P2-Gate-Tabelle (kein Team-1-P0; AG-03/04/07/08/09/12/13 + P2-Reste ehrlich getrennt), Stop-Lines, Übergabetabelle, offenen Fragen an Pedi/Team 5, Abschluss-Satz.
+- Beta impact: Team 5 hat einen klaren, reproduzierbaren Smoke-/Readiness-Startpunkt; bekannte Gates und Stop-Lines sind sichtbar; kein Beta-Go präjudiziert.
+- Designentscheidung (begründet): reiner Doku-Handoff, kein Produktfeature/UI-Umbau/RAG. Kein Produktcode geändert (nicht zwingend nötig). Ehrliche Trennung „verbessert" vs. „abgenommen"; keine Beta-Go-Behauptung; kein Deployment/Serverzugriff; nur Demo-/synthetische Datengrenze festgeschrieben. Stale SCRUM-377-„ausstehend"-Snapshot korrigiert (SCRUM-377 = `1e662e9`, von Codex committed).
+- New / touched requirements: AG-03, AG-04, AG-07, AG-08, AG-09, AG-12, AG-13 (nur als Readiness-Kontext referenziert; keine Umsetzung).
+- Gates: `git status -sb` (nur erwartete Doku-Dateien + bekannte untracked Infra-Datei), `git diff --stat`, `npm run check` grün, FE-tsc grün. Sicherheitscheck: keine Secrets/Tokens/echten Daten/produktiven URLs in den geänderten Dateien.
+- Team6 review needed: yes
+- Reason: Team-1-RC, Smoke/Readiness, AG-03/04/07/08/09/12/13, Team5-Handoff
 
 ### 2026-07-01 12:32 — SCRUM-377 — pending commit
 
