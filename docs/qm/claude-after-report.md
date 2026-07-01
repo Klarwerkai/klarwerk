@@ -9333,3 +9333,44 @@ git push
 ```
 
 **Stop-Hinweis:** Claude macht kein Git add, kein Commit, kein Push, kein Jira. Übergabe an Codex/Pedi.
+
+---
+
+## SCRUM-368 — Beta Reasoner Eval & Anti-Hallucination Evidence v0
+
+**Datum:** 2026-07-01 · **Claude beteiligt: ja** · **Rolle:** Hauptumsetzer · **Repo:** `/Users/peterkohnert/Documents/dev_Klarwerk` (nur Team-1)
+
+**Kurzfazit.** AG-04 ist nicht mehr nur per Prompt behauptet, sondern durch ein dauerhaftes, repo-lokales Reasoner-/Ask-Eval-Set als Regression abgesichert — ohne echtes Modell/API-Key, ohne RAG/Embeddings. Das Eval belegt quellengebundene Antworten, ehrliche Wissenslücken ohne Basis, dass halluzinierte Modellinhalte NICHT zu Quellen/Trust werden, und dass offen/ungeprüft/konfliktbegrenzt im Answer-Contract sichtbar nicht-gesichert bleibt. Kein Produktions-Code geändert (die SCRUM-366-Prompt-Härtung hält und ist jetzt eval-belegt).
+
+**SCRUM-Ticket.** SCRUM-368 — Beta Reasoner Eval & Anti-Hallucination Evidence v0.
+
+**Vorab-Befund.** `git status -sb` sauber (untrackte v2-Infra-Datei unberührt; SCRUM-362–367 von Codex committed). Reasoner: `provider.ts` (`tokenize`/Stoppwörter, `keywordSelect`, `rankCandidates`/`selectCandidates` mit Relevanz-Gate + gedeckeltem Status-/Trust-Bonus <1, DEFAULT_TOP_K=8, `DeterministicProvider.answer` zitiert nur `best`), `provider-model.ts` (`answerSystem` seit SCRUM-366 anti-halluzinatorisch geschärft; `ModelProvider.answer` → `selectCandidates` → Modell nur wenn Treffer, sources=relevante Refs, knowledgeClass/trust aus `best`). `ask/service.ts` (queryTokens → findCandidates-Prefilter (200) → selectCandidates (Top-K 8) → reasoner.answer → Gap bei !answered). Vorhandene Tests: `provider-model.test` (Leitplanken DE/EN, nur relevante Quellen im Prompt, FR-RSN-03), `candidate-ranking.test` (Relevanz-Gate/Dominanz/Top-K/leer), `retrieval-topk` + E2E (Scale-Smoke, Gap), `ask service.test`, FE `ask-answer-contract`/`ask-view`. Lücke: kein zusammenhängendes, benanntes Eval-Set, das die Szenarien (gesichert/ungeprüft/Lücke/konfliktbegrenzt/irrelevant) als Contract-Regression bündelt und die Anti-Halluzination auf Provider-Ebene (erfundene Inhalte ≠ Quellen) explizit macht.
+
+**Team6-Bezug.** AG-04 (Anti-Halluzination eval-/code-erzwungen), FR-RSN-03 (kein Raten/keine Fake-Quellen), FR-ASK-02 (relevante Quellen nutzen), EK-23 (validiert-only bleibt Pedi; ungeprüft sichtbar ungeprüft), NFR-PERF-03 (begrenzter Retrieval-Kontext, SCRUM-360/361/362 erhalten).
+
+**Geänderte Dateien.**
+- `tests/ask/reasoner-eval.ts` (NEU — Fixtures + Fake-ModelClient-Harness: `EVAL_KOS`, `MODEL_EVAL_SCENARIOS`, `capturingModel`, `hallucinatingModel`, `HALLUCINATION_MARKERS`)
+- `tests/ask/reasoner-eval.test.ts` (NEU — 13 Tests: Modell-Szenarien, Anti-Halluzination, Ask-Vollkette, Cross-Layer-Contract)
+- `docs/TEAM6_UPDATE.md` (Pflicht-Nebenänderung)
+
+**Beta-Wirkung.** Das Anti-Halluzinations-/Quellenbindungs-Versprechen ist jetzt eine Repo-Regression: Wer die Prompt-Leitplanken abschwächt, `selectCandidates` irrelevante Quellen durchlassen lässt, den Provider Modell-erfundene Quellen übernehmen lässt oder die Gap-/Contract-Ehrlichkeit bricht, lässt konkrete Tests scheitern. Pilotnutzer-relevant: „gesichert vs. ungeprüft vs. Lücke" ist an echten Signalen abgesichert, nicht an Prompt-Hoffnung.
+
+**Tests/Gates.** `tests/ask/reasoner-eval.test.ts`: (1) 3 Modell-Szenarien (gesichert/ungeprüft/Lücke) — answered/knowledgeClass, führende Quelle = relevantes KO, irrelevante KOs nicht in sources/Prompt, Gap ⇒ Client nicht aufgerufen. (2) Anti-Halluzination: „böswilliges" Modell erfindet Norm/Zahl/Zitat → sources=[echtes KO], jede step.sourceId ist ein echtes KO, knowledgeClass/trust aus Daten; FR-RSN-03 (kein Client-Aufruf ohne Basis); System-Prompt-Leitplanken DE/EN. (3) Ask-Vollkette (echte Services + deterministischer Reasoner): validiert→gesichert, offen→ungeprüft, keine Basis→Gap, kein Treffer→Gap. (4) Cross-Layer: offen→unverified/nicht-ready, validiert+Konflikt→„in-review"/Contract herabgestuft. `npm run check` grün — **188 Dateien / 1144 Tests**; Build/Biome/dependency-cruiser grün; Bestands-Ask-/Reasoner-Tests unverändert grün. FE-Quellcode nicht geändert → FE-tsc nicht erforderlich.
+
+**Sicherheitscheck / keine Secrets.** Keine API-Keys/Tokens/Secrets im Code — die Eval nutzt ausschließlich Fake-/deterministische Provider (`capturingModel`/`hallucinatingModel`/`DeterministicProvider`). Keine echten Kundendaten (synthetische Anlagen-KOs: Ventil/Filter/Kantine). Kein Netzaufruf, kein externes Modell, kein RAG/Embedding/Vektor, keine Local-LLM-/Team-2-Abhängigkeit.
+
+**TEAM6_UPDATE.md updated: yes** · **Team6 review needed: yes** · **Reason: AG-04 / FR-RSN-03 / FR-ASK-02 / EK-23**
+
+**Bewusst nicht umgesetzt.** Kein echtes externes Modell-/Halluzinations-Benchmark mit API-Key (bewusst; bleibt Pedi/Team 5). Kein Prompt-/Provider-„Fix" ohne Not (SCRUM-366-Härtung hält und ist jetzt eval-belegt — ein Backend-Eingriff wäre unnötiges Risiko). Kein RAG/Embeddings/Vektorsuche, keine neue Suchmaschine. Keine „validiert-only"-Produktentscheidung (EK-23 bleibt Pedi). Keine Team-fremden Dateien.
+
+**Rest-Risiken.** (1) Das Eval prüft den CODE-Contract (Provider bindet Quellen aus Daten, nicht aus Modelltext) und die Prompt-Leitplanken — es kann NICHT garantieren, dass ein echtes LLM den Prompt befolgt; die Freitext-Prosa des Modells bleibt Modell-Verantwortung. Ein Benchmark gegen ein laufendes Modell (AG-04-Rest) bleibt bei Pedi/Team 5. (2) Die Eval-KOs sind bewusst klein/synthetisch; sie decken die Kernszenarien, nicht die volle Domänenbreite ab — Erweiterung des Szenario-Sets ist ein einfacher Folge-Slice. (3) knowledgeClass wird weiterhin aus dem besten Treffer abgeleitet (SCRUM-360/366); bei gemischten Quellen sorgt der FE-Contract + per-Quelle-Nutzbarkeit für Ehrlichkeit (eval-belegt) — eine strengere Backend-Ableitung wäre ein bewusster, Pedi-abzustimmender Folge-Slice.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add tests/ask/reasoner-eval.ts tests/ask/reasoner-eval.test.ts docs/TEAM6_UPDATE.md docs/qm/claude-after-report.md
+git commit -m "test(reasoner): repo-local anti-hallucination eval-set + source-honesty regression (SCRUM-368, AG-04/FR-RSN-03/FR-ASK-02)"
+git push
+```
+
+**Stop-Hinweis:** Claude macht kein Git add, kein Commit, kein Push, kein Jira. Übergabe an Codex/Pedi.
