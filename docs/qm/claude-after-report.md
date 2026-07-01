@@ -9766,3 +9766,60 @@ git push
 ```
 
 **Stop-Hinweis:** Claude macht kein Git add, kein Commit, kein Push, kein Jira. Übergabe an Codex/Pedi.
+
+---
+
+## SCRUM-377 — Beta App-wide Story & Empty-State Onboarding v0
+
+**Datum:** 2026-07-01 · **Claude beteiligt: ja** · **Rolle:** Hauptumsetzer · **Repo:** `/Users/peterkohnert/Documents/dev_Klarwerk` (nur Team-1)
+
+**Kurzfazit.** Leere/erste Zustände auf vier Kernflächen (Start, Meine Aufgaben, Bibliothek, Validierung) erzählen jetzt app-weit dieselbe ruhige Knowledge-Rescue-Story statt nur nackte CTA-Links. Der vorhandene `EmptyStateCtas` (rollen-/Stufe-2-gefiltert, echte Routen) wird um eine ruhige Rahmung ergänzt: geteilter Titel „Klarwerk sichert Erfahrungswissen, bevor es verloren geht", ein Phase-Chip, der die Fläche in den Knowledge-OS-Kreis einordnet (Erfassen → Validieren → Nutzen → Aktuell halten), ein flächenspezifischer ehrlicher Lead (keine Sackgasse → nächster Schritt) und ein Dauerhinweis „nichts wird automatisch validiert — gesichert erst nach der Prüfung". Neuer DOM-freier `knowledgeStory`-Helfer. Kein Backend, kein Onboarding-Persistenzsystem, kein Score/Gamification, keine Auto-Validierung, keine Funktion entfernt, keine Website-Claims.
+
+**SCRUM-Ticket.** SCRUM-377 — Beta App-wide Story & Empty-State Onboarding v0.
+
+**Legacy-Pfad geprüft.** Legacy lokal vorhanden (`Klarwerk/demo/src/pages/TeacherStudio.jsx`, `Klarwerk/app/src/…`) — nur read-only; kein Nachbau. Die Story-/Kreis-Sprache leitet sich aus der vorhandenen Klarwerk-Kreisvokabel (`cycle.*`) und der Team6-/AG-Anforderung ab.
+
+**Wichtigste alte Erwartungen / Nutzerbedürfnisse.** Nutzer sollen (a) verstehen, wozu Klarwerk da ist (Erfahrungswissen sichern), (b) in leeren/ersten Zuständen den nächsten sinnvollen Schritt erkennen, (c) Capture→Review→Use als Kreis begreifen, (d) nicht getäuscht werden (Wissen erst nach Prüfung gesichert). Bestand: `EmptyStateCtas` (SCRUM-181) lieferte bereits rollengefilterte Next-Step-Links auf allen vier Flächen; Kreisvokabel `cycle.*` + `phaseLabelKey`/`knowledgeOsPhase` (SCRUM-367) vorhanden; Capture/Studio bereits geführt (SCRUM-352/369/370/375/376).
+
+**Aktuelle Gaps (Gap-Liste).**
+- alt/Bedürfnis: „Wozu bin ich hier / warum sollte ich etwas erfassen?" | neu: leere Zustände zeigten nur nackte CTA-Links ohne Story. | beta-relevant: ja (AG-13, KG-UX-008/009). | **jetzt umgesetzt** (geteilter Rescue-Titel + Ehrlichkeitshinweis).
+- alt/Bedürfnis: „Wo stehe ich im Knowledge-OS-Kreis?" | neu: Empty-States trugen keine Phasen-Einordnung. | beta-relevant: ja (AG-12/AG-13). | **jetzt umgesetzt** (Phase-Chip aus `cycle.*`, start→Erfassen, tasks/validierung→Validieren, library→Nutzen).
+- alt/Bedürfnis: „Leerer Zustand = Sackgasse?" | neu: nur Links, kein „keine Sackgasse → nächster Schritt". | beta-relevant: ja (KG-UX-001/002). | **jetzt umgesetzt** (flächenspezifische Leads, CTAs bleiben echte Routen).
+- alt/Bedürfnis: Ehrlichkeit „erst nach Prüfung gesichert". | neu: an Empty-States nicht sichtbar. | beta-relevant: ja. | **jetzt umgesetzt** (Dauerhinweis).
+- alt/Bedürfnis: globales Onboarding beim ersten App-Start (Nav/Tour). | beta-relevant: mittel. | **bewusst später** (kein Onboarding-Persistenzsystem in v0 — Nicht-Ziel).
+- alt/Bedürfnis: Story auch im Ask-Start/Empty. | beta-relevant: mittel. | **bewusst später** (Ask hat keinen `EmptyStateCtas`-Hook; separater, größerer Eingriff — hier nicht überladen).
+
+**Umgesetzter Umfang.**
+- `knowledgeStory.ts` (NEU, DOM-frei): `StorySurface` = start|tasks|library|validation; `KNOWLEDGE_STORY_SURFACES`; `knowledgeStory(surface)` → `{ titleKey, leadKey, phase, phaseLabelKey, honestKey }`. Phasen-Mapping start→capture, tasks/validation→validate, library→use; `phaseLabelKey` wiederverwendet (cycle.*). Geteilter Titel `story.rescue.title` + Ehrlichkeitshinweis `story.honest`, flächenspezifische Leads.
+- `EmptyStateCtas.tsx`: rendert oberhalb der vorhandenen, rollengefilterten CTA-Links eine ruhige Story-Zeile (Titel + Phase-Chip via wiederverwendetem `task.phaseLabel` + Lead) und darunter den Ehrlichkeitshinweis. Frühes `return null` bei fehlenden Aktionen bleibt.
+- `i18n.ts`: `story.rescue.title`, `story.honest`, `story.surface.{start,tasks,library,validation}.lead` DE + EN.
+
+**Beta-Wirkung.** Vier Kernflächen erzählen konsistent dieselbe Rescue-Story; leere Zustände wirken weniger technisch und führen zu echten nächsten Handlungen; Capture→Review→Use wird über die Phase-Chips als Kreis sichtbar; kein falsches Versprechen (Prüf-Vorbehalt sichtbar).
+
+**Wie AG-12 / AG-13 / KG-UX adressiert.** AG-12: Empty-States weniger technisch, mit ruhiger Führung statt nackter Links. AG-13: „Erfahrungswissen sichern"-Story app-weit in den Ersteindruck getragen, ehrlich. KG-UX-001 (nicht formularartig/technisch), KG-UX-002 (geführt, keine Sackgasse), KG-UX-008/009 (Story/Verantwortung/Beitrag sichtbar).
+
+**Bewusst nicht umgesetzte Gaps.** Kein globales Onboarding-System mit Persistenz, kein Gamification-/Punkte-System, kein Backend/RAG/neue Suche/Local-LLM, keine Team-2-Integration, keine Website-/Public-Claims, kein komplettes UI-Redesign, kein neues Task-/Notification-System, kein Demo-Hack, kein blinder Legacy-Nachbau. Ask-Start/Empty bewusst nicht in diesem Slice (kein EmptyStateCtas-Hook; separat).
+
+**Geänderte Dateien.** `apps/web/src/lib/knowledgeStory.ts` (NEU), `apps/web/src/components/EmptyStateCtas.tsx`, `apps/web/src/i18n.ts`, `tests/app/knowledge-story.test.ts` (NEU), `docs/TEAM6_UPDATE.md`, `docs/qm/claude-after-report.md`.
+
+**Gates.** `tests/app/knowledge-story.test.ts` (5, DOM-frei): Flächen→Kreis-Phase + `cycle.<phase>.label`; geteilter Titel/Ehrlichkeit + eindeutige Leads; genau vier Kernflächen; Copy DE/EN; Ehrlichkeit (Titel verloren/lost, Hinweis nach Prüfung/secured/automatisch). Bestand grün: `empty-state-actions` (5) unverändert. `npm run check` grün — **197 Dateien / 1199 Tests**; Build (tsc)/Biome/dependency-cruiser grün; FE-tsc strict grün.
+
+**Sicherheitscheck.** Keine Secrets/Tokens/Keys. Keine neuen Endpunkte, kein Backend, kein Sanitizer-Eingriff. CTAs bleiben rollen-/Stufe-2-gefilterte interne Routen (`emptyStateActions`/`canSee`) — keine Fremd-URLs, keine Fake-Workflows. Keine echten Kundendaten. Keine Team-fremden Dateien; untrackte v2-Infra-Datei unberührt; keine Website-/Public-Claims geändert.
+
+**TEAM6_UPDATE.md updated: yes** · **Team6 review needed: yes** · **Reason: App-wide empty-state story/onboarding framing added on Start/MyTasks/Library/Validation (AG-12 / AG-13 / KG-UX).**
+
+**Affected requirements.** AG-12, AG-13, KG-UX-001, KG-UX-002, KG-UX-008, KG-UX-009.
+
+**Affected gaps.** AG-12 (P1, Usability-Gate Team 5 offen), AG-13 (P1, globale Onboarding-Screens/Nav-Ersteinführung bleiben offen — Team 1/4, EK-21).
+
+**Rest-Risiken.** (1) Browser-/Mobile-Usability-Smoke der Story-Zeile bleibt Team 5 (EK-20); DOM-freie Ableitung getestet, Verdrahtung per tsc/Build abgesichert. (2) Die Story zeigt sich nur, wenn `EmptyStateCtas` ≥1 rollengefilterte Aktion hat (frühes null bleibt) — Rollen ganz ohne passende Nav sehen keine Story; bewusst, um den Null-Kontrakt nicht zu brechen. (3) Ask-Start/Empty und globales Erst-App-Onboarding bleiben offen (Folge-Slice). (4) „Weniger technisch/geführter" bleibt Wahrnehmung — finale Usability-/Story-Hoheit bei Pedi/Team 4/5.
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/knowledgeStory.ts apps/web/src/components/EmptyStateCtas.tsx apps/web/src/i18n.ts tests/app/knowledge-story.test.ts docs/TEAM6_UPDATE.md docs/qm/claude-after-report.md
+git commit -m "feat(ux): app-wide knowledge-rescue story + circle framing in empty states (SCRUM-377, AG-12/AG-13/KG-UX)"
+git push
+```
+
+**Stop-Hinweis:** Claude macht kein Git add, kein Commit, kein Push, kein Jira. Übergabe an Codex/Pedi.

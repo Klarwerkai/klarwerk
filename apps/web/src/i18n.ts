@@ -1299,6 +1299,17 @@ const de = {
   "empty.cta.library": "Zur Bibliothek",
   "empty.cta.validation": "Zur Validierung",
   "empty.cta.tasks": "Zu meinen Aufgaben",
+  "story.rescue.title": "Klarwerk sichert Erfahrungswissen, bevor es verloren geht.",
+  "story.honest":
+    "Nichts wird automatisch validiert — Wissen gilt erst nach der Prüfung im Team als gesichert.",
+  "story.surface.start.lead":
+    "Noch nichts offen — keine Sackgasse, sondern der Anfang. Starte den Kreis und erfasse Erfahrungswissen, das sonst mit der Zeit verschwindet.",
+  "story.surface.tasks.lead":
+    "Gerade nichts zu tun. Sobald Wissen geprüft oder nachgebessert werden muss, landet es hier — oder du erfasst selbst den nächsten Beitrag.",
+  "story.surface.library.lead":
+    "Noch kein Wissen zum Nachschlagen. Erfasse den ersten Beitrag — nach der Prüfung wird er hier quellengebunden nutzbar.",
+  "story.surface.validation.lead":
+    "Nichts zu prüfen. Erfasstes Wissen erscheint hier zur Team-Prüfung, bevor es als gesichert gilt und genutzt werden kann.",
   "adm.auditTitle": "Letzte Nutzer-/Auth-Aktivitäten (Audit)",
   "adm.auditEmpty": "Keine Nutzer-Audit-Einträge.",
   "prof.kicker": "Konto",
@@ -2946,6 +2957,17 @@ const en: typeof de = {
   "empty.cta.library": "Go to library",
   "empty.cta.validation": "Go to validation",
   "empty.cta.tasks": "Go to my tasks",
+  "story.rescue.title": "Klarwerk secures hands-on experience before it's lost.",
+  "story.honest":
+    "Nothing is validated automatically — knowledge only counts as secured after the team reviews it.",
+  "story.surface.start.lead":
+    "Nothing open yet — not a dead end, but the start. Kick off the cycle and capture experience knowledge that would otherwise fade over time.",
+  "story.surface.tasks.lead":
+    "Nothing to do right now. As soon as knowledge needs review or rework it shows up here — or capture the next contribution yourself.",
+  "story.surface.library.lead":
+    "No knowledge to look up yet. Capture the first contribution — after review it becomes usable here, source-bound.",
+  "story.surface.validation.lead":
+    "Nothing to review. Captured knowledge appears here for team review before it counts as secured and can be used.",
   "adm.auditTitle": "Recent user/auth activity (audit)",
   "adm.auditEmpty": "No user audit entries.",
   "prof.kicker": "Account",
