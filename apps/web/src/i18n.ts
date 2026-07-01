@@ -357,6 +357,18 @@ const de = {
   "studio.guide.apply.hint":
     "Bewusst in den Entwurf übernehmen — nichts wird automatisch gespeichert.",
   "studio.guide.thenSave": "danach speichern & prüfen lassen",
+  "studio.coach.story":
+    "Du rettest Erfahrungswissen. Die KI hilft beim Strukturieren — gesichert wird es erst durch die Prüfung deiner Kolleg:innen.",
+  "studio.coach.firstRun":
+    "Start hier: Erzähl dein Wissen in eigenen Worten. Struktur, KI-Hilfe und Vorschau kommen Schritt für Schritt.",
+  "studio.coach.nextPrefix": "Nächster Schritt",
+  "studio.coach.reason.start":
+    "Fang mit deiner Erfahrung an — schon ein roher Anfang ist wertvoll.",
+  "studio.coach.reason.improve":
+    "Lass die KI beim Gliedern und Schärfen helfen oder ergänze Überschriften und Schritte.",
+  "studio.coach.reason.preview": "Sieh dir in der Vorschau an, wie dein Beitrag später wirkt.",
+  "studio.coach.reason.apply":
+    "Sieht gut aus? Übernimm den Entwurf bewusst — gespeichert und geprüft wird danach.",
   "studio.contrib.title": "Dein Beitrag",
   "studio.contrib.level.empty.label": "Leer",
   "studio.contrib.level.empty.hint": "Fang an zu schreiben — schon ein roher Anfang ist wertvoll.",
@@ -2002,6 +2014,16 @@ const en: typeof de = {
   "studio.guide.apply.label": "Apply",
   "studio.guide.apply.hint": "Apply to the draft deliberately — nothing is saved automatically.",
   "studio.guide.thenSave": "then save & get it reviewed",
+  "studio.coach.story":
+    "You're rescuing hands-on experience. AI helps you structure it — it only becomes secured once colleagues review it.",
+  "studio.coach.firstRun":
+    "Start here: tell your knowledge in your own words. Structure, AI help and preview come step by step.",
+  "studio.coach.nextPrefix": "Next step",
+  "studio.coach.reason.start": "Begin with your experience — even a rough start is valuable.",
+  "studio.coach.reason.improve": "Let AI help organize and sharpen it, or add headings and steps.",
+  "studio.coach.reason.preview": "Check the preview to see how your contribution will look later.",
+  "studio.coach.reason.apply":
+    "Looks good? Apply the draft deliberately — saving and review come afterwards.",
   "studio.contrib.title": "Your contribution",
   "studio.contrib.level.empty.label": "Empty",
   "studio.contrib.level.empty.hint": "Start writing — even a rough beginning is valuable.",

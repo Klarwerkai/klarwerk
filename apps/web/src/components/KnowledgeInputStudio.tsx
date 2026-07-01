@@ -16,7 +16,9 @@ import type { EditorFile } from "../lib/bodyFileLink";
 import { BODY_READ_BLOCKS_KEY, BODY_READ_TITLE_KEY } from "../lib/bodyReadMode";
 import { knowledgeStudioState } from "../lib/editorApplySafety";
 import type { AttachmentLike } from "../lib/editorAttachmentContext";
-import { STUDIO_GUIDE_STEPS, studioGuideActiveStep } from "../lib/knowledgeStudioGuide";
+import { editorContentQuality } from "../lib/editorContentQuality";
+import { STUDIO_COACH_KEYS, studioNextStep } from "../lib/knowledgeStudioCoach";
+import { STUDIO_GUIDE_STEPS } from "../lib/knowledgeStudioGuide";
 import { knowledgeStudioSectionLabelKey } from "../lib/knowledgeStudioLayout";
 import {
   STUDIO_EDITOR_VIEWS,
@@ -83,6 +85,10 @@ export function KnowledgeInputStudio({
   const blockActions: BodyAssistBlockAction[] = bodyAssistStructuredActions(draft);
   // SCRUM-339: Dirty-Status — gibt es unübernommene Studio-Änderungen?
   const studioState = knowledgeStudioState(draft, bodyHtml);
+  // SCRUM-376: First-Run-/Coaching-Signal — welcher Schritt der bestehenden Schrittfolge ist JETZT
+  // der empfohlene nächste? Aus dem vorhandenen Inhaltszustand + der aktuellen Ansicht abgeleitet
+  // (kein Score, keine Validierung). Verbindet Rail, Beitragswert, Vorschau und Übernahme zu EINEM Flow.
+  const nextStep = studioNextStep(editorContentQuality({ bodyHtml: draft, attachments }), view);
   // Schließen/Verwerfen: bei unübernommenen Änderungen erst Inline-Bestätigung, sonst direkt schließen.
   const requestClose = (): void => {
     if (studioState.dirty) {
@@ -125,36 +131,56 @@ export function KnowledgeInputStudio({
 
       {/* SCRUM-353: ruhige, geführte Schrittfolge als Orientierung — was als Nächstes ein guter
           Schritt ist (Strukturieren → KI prüfen → Vorschau → bewusst übernehmen), danach speichern/
-          validieren. Reine Anzeige, kein State-Zwang; in der Vorschau ist der Vorschau-Schritt aktiv. */}
+          validieren. Reine Anzeige, kein State-Zwang.
+          SCRUM-376: der aktive Schritt ist jetzt content-/ansichtsbewusst (studioNextStep) statt nur
+          ansichtsbasiert — die Rail zeigt „wo stehe ich" und der Coach darunter „was jetzt". */}
       <div className="border-b border-hairline bg-surface px-4 py-2 sm:px-6">
-        <ol className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-2 gap-y-1">
-          {STUDIO_GUIDE_STEPS.map((step, i) => {
-            const active = studioGuideActiveStep(view) === step.id;
-            return (
-              <li key={step.id} className="flex items-center gap-2">
-                {i > 0 ? (
-                  <span aria-hidden="true" className="text-muted-2">
-                    ·
+        <div className="mx-auto max-w-6xl space-y-1.5">
+          <ol className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            {STUDIO_GUIDE_STEPS.map((step, i) => {
+              const active = nextStep.stepId === step.id;
+              return (
+                <li key={step.id} className="flex items-center gap-2">
+                  {i > 0 ? (
+                    <span aria-hidden="true" className="text-muted-2">
+                      ·
+                    </span>
+                  ) : null}
+                  <span
+                    title={t(step.hintKey)}
+                    className={`rounded-pill px-2 py-0.5 text-[11px] font-semibold ${
+                      active ? "bg-ink text-white" : "text-muted"
+                    }`}
+                  >
+                    {i + 1}. {t(step.labelKey)}
                   </span>
-                ) : null}
-                <span
-                  title={t(step.hintKey)}
-                  className={`rounded-pill px-2 py-0.5 text-[11px] font-semibold ${
-                    active ? "bg-ink text-white" : "text-muted"
-                  }`}
-                >
-                  {i + 1}. {t(step.labelKey)}
-                </span>
-              </li>
-            );
-          })}
-          <li className="flex items-center gap-2">
-            <span aria-hidden="true" className="text-muted-2">
-              →
-            </span>
-            <span className="text-[11px] text-muted-2">{t("studio.guide.thenSave")}</span>
-          </li>
-        </ol>
+                </li>
+              );
+            })}
+            <li className="flex items-center gap-2">
+              <span aria-hidden="true" className="text-muted-2">
+                →
+              </span>
+              <span className="text-[11px] text-muted-2">{t("studio.guide.thenSave")}</span>
+            </li>
+          </ol>
+          {/* SCRUM-376: ruhige First-Run-/Coach-Zeile — Story-Verankerung („Erfahrungswissen sichern,
+              Prüfung sichert") + der eine empfohlene nächste Schritt mit ehrlicher Begründung. Bei
+              leerem Entwurf ein sanfter „Start hier"-Einstieg statt technischer Werkzeugwand. */}
+          <p className="text-[11px] leading-relaxed text-muted-2">{t(STUDIO_COACH_KEYS.story)}</p>
+          <p className="text-[11.5px] leading-relaxed text-muted">
+            {nextStep.isFirstRun ? (
+              t(STUDIO_COACH_KEYS.firstRun)
+            ) : (
+              <>
+                <span className="font-semibold text-ink">
+                  {t(STUDIO_COACH_KEYS.nextPrefix)}: {t(nextStep.stepLabelKey)}
+                </span>{" "}
+                — {t(nextStep.reasonKey)}
+              </>
+            )}
+          </p>
+        </div>
       </div>
 
       {/* SCRUM-341: Arbeitsraum-Layout — drei klar getrennte Bereiche statt einer linearen Liste.

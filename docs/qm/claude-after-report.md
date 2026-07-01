@@ -9710,3 +9710,59 @@ git push
 ```
 
 **Stop-Hinweis:** Claude macht kein Git add, kein Commit, kein Push, kein Jira. Übergabe an Codex/Pedi.
+
+---
+
+## SCRUM-376 — Beta Knowledge Studio First-Run Guidance & Inline Quality Coaching v0
+
+**Datum:** 2026-07-01 · **Claude beteiligt: ja** · **Rolle:** Hauptumsetzer · **Repo:** `/Users/peterkohnert/Documents/dev_Klarwerk` (nur Team-1)
+
+**Kurzfazit.** Das Knowledge Studio führt jetzt sichtbar, statt nur eine Werkzeugsammlung zu sein. Die bestehende Schritt-Rail (Strukturieren → KI prüfen → Vorschau → Übernehmen) hebt content-/ansichtsbewusst den EINEN empfohlenen nächsten Schritt hervor (neuer DOM-freier `studioNextStep`), darunter eine ruhige Coach-/Story-Zeile: bei leerem Entwurf ein sanfter „Start hier"-Einstieg, sonst „Nächster Schritt: <Schritt> — <ehrliche Begründung>". Die Story „Du rettest Erfahrungswissen — die KI hilft strukturieren, die Prüfung macht es gesichert" ist dauerhaft ruhig verankert. Rail, Beitragswert, Vorschau und Übernahme wirken so als EIN Flow. Kein Score, keine Punkte/Gamification, keine Auto-Validierung, kein Backend, kein neues Editor-Framework; keine Funktion entfernt.
+
+**SCRUM-Ticket.** SCRUM-376 — Beta Knowledge Studio First-Run Guidance & Inline Quality Coaching v0.
+
+**Legacy-Pfad geprüft.** Legacy lokal verfügbar (`Klarwerk/demo/src/…`, `Klarwerk/app/src/…`: WikiEditor.jsx, AiAssist.jsx, TeacherStudio.jsx) — nur read-only referenziert. Kein blinder Nachbau; die Führung leitet sich aus der Team6-/AG-Anforderung + den bereits vorhandenen Klarwerk-Studio-Bausteinen ab. `docs/KLARWERK_Infrastruktur_Domain_Server_Aufteilung_v2.md` unberührt.
+
+**Wichtigste alte Funktionen / Erwartungen.** Legacy-Studio (TeacherStudio/WikiEditor/AiAssist) bot Editor + KI-Hilfe, aber ohne geführten „wo starte ich / was jetzt"-Faden. Klarwerk-Studio hatte bereits: geführte Rail (SCRUM-353), Beitragswert-Panel (SCRUM-353), Bedien-Tips (SCRUM-345), Edit/Vorschau-Umschalter (SCRUM-346), Dirty-/Apply-Sicherheit (SCRUM-339/344).
+
+**Aktuelle Gaps (Gap-Liste).**
+- alt/Erwartung: „Wo starte ich?" beim ersten Öffnen. | neu: Rail-Highlight war NUR ansichtsbasiert (`studioGuideActiveStep(view)`), leerer Entwurf zeigte „Strukturieren" ohne First-Run-Einstieg. | beta-relevant: ja (AG-12, KG-UX-002). | **jetzt umgesetzt.**
+- alt/Erwartung: „Was ist jetzt der nächste sinnvolle Schritt?" | neu: kein content-bewusstes „du bist hier → tu das". | beta-relevant: ja (AG-12). | **jetzt umgesetzt** (content-/ansichtsbewusster `studioNextStep` + Coach-Zeile).
+- alt/Erwartung: Beitragswert „was ist gut / was fehlt / warum wertvoll". | neu: bereits vorhanden (StudioContributionPanel, SCRUM-353). | beta-relevant: teilweise. | **wiederverwendet, nicht dupliziert** (Coach verweist implizit auf denselben Qualitätszustand).
+- alt/Erwartung: Story/Verantwortung im Studio. | neu: nur in Capture (SCRUM-352/370/375), nicht im Studio-Overlay selbst. | beta-relevant: ja (AG-13, KG-UX-008/009). | **jetzt umgesetzt** (ruhige Dauer-Story-Zeile).
+- alt/Erwartung: fachlicher Qualitäts-/Wahrheits-Score. | beta-relevant: nein. | **bewusst nicht übernommen** (kein Score, keine Gamification, keine Auto-Validierung).
+
+**Umgesetzter Umfang.**
+- `knowledgeStudioCoach.ts` (NEU, DOM-frei): `studioNextStep(quality, view)` → `{ stepId, stepLabelKey, reasonKey, isFirstRun }`. Ableitung nur aus VORHANDENEN Signalen (`editorContentQuality` + `StudioEditorView`): Vorschau → „apply"; leer → „structure" (First-Run); dünn/ohne Überschriften/ohne Liste → „assist"; sonst → „preview". `STUDIO_COACH_KEYS` (story/firstRun/nextPrefix). Wiederverwendet `StudioGuideStepId`/`studioGuideStepLabelKey`.
+- `KnowledgeInputStudio.tsx`: Rail-Highlight nutzt jetzt `studioNextStep(...).stepId` (content-/ansichtsbewusst) statt `studioGuideActiveStep(view)`; darunter eine ruhige First-Run-/Coach-/Story-Zeile. `editorContentQuality` einmal auf Basis des internen Studio-Entwurfs berechnet. Alle bestehenden Studio-Elemente unverändert.
+- `i18n.ts`: `studio.coach.story/firstRun/nextPrefix/reason.{start,improve,preview,apply}` DE + EN.
+
+**Beta-Wirkung.** Der Nutzer erkennt im Studio sofort den nächsten sinnvollen Schritt und die Verantwortung/Story dahinter; Erst-Kontakt bekommt einen ruhigen „Start hier"-Einstieg statt einer technischen Werkzeugwand. KI-Hilfe, Strukturierung, Vorschau und Übernahme wirken als zusammenhängender Flow. Beitragswert/Qualität bleiben leichtgewichtig und ehrlich (kein Score).
+
+**Wie AG-12 / AG-13 / KG-UX adressiert.** AG-12: Studio wirkt geführt statt lose Tool-Sammlung (content-bewusster nächster Schritt, First-Run-Einstieg). AG-13: „Erfahrungswissen sichern"-Story im Studio verankert, ehrlich ohne Auto-Freigabe. KG-UX-001/002 (nicht formularartig / geführter Flow), KG-UX-003/010 (Vereinfachung/Progressive Disclosure — Coach ist ruhig, nichts überladen), KG-UX-008/009 (Story/Verantwortung/Beitrag sichtbar).
+
+**Bewusst nicht umgesetzte Gaps.** Kein fachlicher Wahrheits-/Qualitäts-Score, keine Punkte/Gamification, keine Auto-Validierung. Kein Backend/RAG/neue Suche/Local-LLM, keine Team-2-Integration, kein neues Editor-Framework, kein UI-Neubau, kein blinder Legacy-Nachbau. Kein persistenter „Onboarding abgeschlossen"-Zustand (der First-Run leitet sich aus dem leeren Entwurf ab — bewusst zustandslos, kein neues Persistenzmodell).
+
+**Geänderte Dateien.** `apps/web/src/lib/knowledgeStudioCoach.ts` (NEU), `apps/web/src/components/KnowledgeInputStudio.tsx`, `apps/web/src/i18n.ts`, `tests/app/knowledge-studio-coach.test.ts` (NEU), `docs/TEAM6_UPDATE.md`, `docs/qm/claude-after-report.md`.
+
+**Gates.** `tests/app/knowledge-studio-coach.test.ts` (7, DOM-frei): leer+edit → First-Run „structure"/reason.start; dünn+edit → „assist"/reason.improve; solide+edit → „preview"; preview → „apply" (inhaltsunabhängig); empfohlener Schritt immer aus der bestehenden Schrittfolge; Coach-Copy DE/EN vollständig; Ehrlichkeit (Story nennt Prüfung/gesichert bzw. review/secured). Bestehende Studio-Tests unverändert grün: `knowledge-studio-guide`, `knowledge-studio-flow`, `knowledge-studio-preview`, `knowledge-studio-tips`, `editor-content-quality`, `editor-apply-safety`. `npm run check` grün — **196 Dateien / 1194 Tests**; Build (tsc)/Biome/dependency-cruiser grün; FE-tsc strict grün.
+
+**Sicherheitscheck.** Keine Secrets/Tokens/Keys. Keine neuen Endpunkte, kein Backend, kein Object-Store, kein Sanitizer-Eingriff (FE `richText.ts` + Server unverändert). Keine `data:`/`javascript:`/Fremdschema-Links. Keine echten Kundendaten. Keine Team-fremden Dateien; untrackte v2-Infra-Datei unberührt.
+
+**Rest-Risiken.** (1) Ein echter Browser-/Usability-Smoke (Rail-Highlight/Coach auf Mobile/Touch, Fokusreihenfolge) bleibt Team 5 (EK-20); die DOM-freie Ableitung ist getestet, die Verdrahtung per tsc/Build abgesichert. (2) `studioGuideActiveStep` (SCRUM-353) wird von der App nicht mehr für den Rail-Highlight genutzt, bleibt aber exportiert + getestet — ein bewusst schlankerer Alt-Helfer neben der reicheren `studioNextStep`-Ableitung. (3) Der First-Run leitet sich rein aus „Entwurf leer" ab; wird der Studio mit leerem Body für eine reine KI-Erstbefüllung geöffnet, zeigt er den „Start hier"-Einstieg — inhaltlich korrekt, aber nicht personalisiert. (4) Subjektiv „geführter" bleibt eine Wahrnehmungsfrage — finale Usability-/Story-Hoheit bei Pedi/Team 4/5 (EK-20/EK-21).
+
+**TEAM6_UPDATE.md updated: yes** · **Team6 review needed: yes** · **Reason: Knowledge Studio first-run guidance + content-aware next-step coaching + story framing changed (AG-12 / AG-13 / KG-UX).**
+
+**Affected requirements.** AG-12, AG-13, KG-UX-001, KG-UX-002, KG-UX-003, KG-UX-008, KG-UX-009, KG-UX-010. STR/CAP-Pflichtenheft (alle Studio-Werkzeuge) unverändert erhalten.
+
+**Affected gaps.** AG-12 (P1, weiter Team-5-Usability-Gate offen), AG-13 (P1, Onboarding/globale Empty-States bleiben offen).
+
+**Commit-/Push-Hinweis (nur Vorschlag — nicht ausgeführt).**
+```
+cd /Users/peterkohnert/Documents/dev_Klarwerk
+git add apps/web/src/lib/knowledgeStudioCoach.ts apps/web/src/components/KnowledgeInputStudio.tsx apps/web/src/i18n.ts tests/app/knowledge-studio-coach.test.ts docs/TEAM6_UPDATE.md docs/qm/claude-after-report.md
+git commit -m "feat(studio): first-run guidance + content-aware next-step coaching in Knowledge Studio (SCRUM-376, AG-12/AG-13/KG-UX)"
+git push
+```
+
+**Stop-Hinweis:** Claude macht kein Git add, kein Commit, kein Push, kein Jira. Übergabe an Codex/Pedi.
