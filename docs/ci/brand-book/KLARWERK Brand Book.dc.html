@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #d9dde1; }
+  body { font-family: 'IBM Plex Sans', system-ui, sans-serif; -webkit-font-smoothing: antialiased; color: #1b1e21; }
+  .mono { font-family: 'IBM Plex Mono', monospace; }
+  h1,h2,h3,h4 { margin: 0; text-wrap: pretty; }
+  p { margin: 0; }
+  .page { width: 1000px; margin: 26px auto; background: #fff; position: relative; overflow: hidden; box-shadow: 0 8px 30px rgba(16,24,32,.14); }
+  .pad { padding: 68px 72px; }
+  .ey { font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:2px; color:#9aa1a8; text-transform:uppercase; }
+  .rule { height:1px; background:#eceef0; border:0; }
+  .swatch { border-radius:12px; padding:16px; display:flex; flex-direction:column; justify-content:space-between; min-height:132px; }
+  .foot { position:absolute; left:72px; right:72px; bottom:30px; display:flex; justify-content:space-between; align-items:center; font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:.5px; color:#aab1b8; }
+  @media print {
+    html, body { background: #fff; }
+    .page { box-shadow: none; margin: 0; page-break-after: always; width: 100%; }
+  }
+</style>
+</helmet>
+<div style="padding:1px 0;">
+
+  <!-- ============ COVER ============ -->
+  <section class="page" style="background:#16222c;color:#fff;height:1414px;">
+    <div style="position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,.05) 1px, transparent 1px);background-size:30px 30px;"></div>
+    <div style="position:absolute;left:-160px;bottom:-160px;width:560px;height:560px;border-radius:50%;border:2px solid rgba(237,125,14,.25);"></div>
+    <div style="position:absolute;left:-40px;bottom:-40px;width:320px;height:320px;border-radius:50%;border:2px solid rgba(237,125,14,.4);"></div>
+    <div class="pad" style="position:relative;height:100%;display:flex;flex-direction:column;">
+      <div style="display:flex;align-items:center;gap:14px;">
+        <span style="width:46px;height:46px;border-radius:12px;background:#fff;display:flex;align-items:center;justify-content:center;"><svg width="28" height="28" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="#ED7D0E" stroke-width="3.4"></circle><circle cx="12" cy="12" r="3.1" fill="#ED7D0E"></circle></svg></span>
+        <span style="font-weight:700;font-size:22px;letter-spacing:2.5px;">KLARWERK</span>
+      </div>
+      <div style="margin-top:auto;">
+        <div class="mono" style="font-size:13px;letter-spacing:3px;color:#f0a25a;">CORPORATE IDENTITY · BRAND BOOK</div>
+        <h1 style="font-size:72px;font-weight:600;line-height:1.02;letter-spacing:-2px;margin-top:20px;">Ein Werk.<br>Eine Sprache.<br>Ein Auftritt.</h1>
+        <p style="font-size:18px;line-height:1.6;color:#aab8c1;margin-top:26px;max-width:560px;">Verbindliche Gestaltungsrichtlinien für Marke, Oberfläche, Bild und Bewegtbild. Damit KLARWERK überall als ein Produkt wirkt — vertrauenswürdig, industriell, klar.</p>
+      </div>
+      <div style="margin-top:56px;display:flex;justify-content:space-between;align-items:flex-end;">
+        <span class="mono" style="font-size:11px;letter-spacing:1px;color:#6b8190;">REASONING SYSTEM · KNOWLEDGE OS</span>
+        <span class="mono" style="font-size:11px;letter-spacing:1px;color:#6b8190;">V1.0 · JULI 2026</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 01 · MARKE ============ -->
+  <section class="page" style="min-height:1414px;">
+    <div class="pad">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;">
+        <div class="ey">01 · Die Marke</div>
+        <div class="mono" style="font-size:11px;color:#c2c8cd;">KLARWERK CI</div>
+      </div>
+      <h2 style="font-size:40px;font-weight:600;letter-spacing:-.8px;margin-top:16px;max-width:640px;line-height:1.12;">Vertrauen ist Evidenz — nie behauptet.</h2>
+      <p style="font-size:16.5px;line-height:1.7;color:#5b636b;margin-top:20px;max-width:660px;">KLARWERK macht industrielles Erfahrungswissen sichtbar, prüfbar und nutzbar. Die Marke tritt so auf, wie das Produkt arbeitet: nüchtern, belastbar, ohne Hype. Jede gestalterische Entscheidung dient der Glaubwürdigkeit.</p>
+
+      <hr class="rule" style="margin:40px 0;">
+
+      <div class="ey" style="margin-bottom:22px;">Markenwerte</div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:18px;">
+        <div style="border:1px solid #e4e7ea;border-radius:13px;padding:22px;">
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#ED7D0E;font-weight:600;">01</div>
+          <h3 style="font-size:19px;font-weight:600;margin-top:8px;">Belastbar</h3>
+          <p style="font-size:14px;line-height:1.6;color:#687078;margin-top:7px;">Aussagen tragen Herkunft, Kontext und Reifegrad. Wir zeigen, worauf Vertrauen beruht.</p>
+        </div>
+        <div style="border:1px solid #e4e7ea;border-radius:13px;padding:22px;">
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#ED7D0E;font-weight:600;">02</div>
+          <h3 style="font-size:19px;font-weight:600;margin-top:8px;">Industriell</h3>
+          <p style="font-size:14px;line-height:1.6;color:#687078;margin-top:7px;">Werkstatt-tauglich, robust, funktional. Kein Consumer-Glanz, keine Effekthascherei.</p>
+        </div>
+        <div style="border:1px solid #e4e7ea;border-radius:13px;padding:22px;">
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#ED7D0E;font-weight:600;">03</div>
+          <h3 style="font-size:19px;font-weight:600;margin-top:8px;">Klar</h3>
+          <p style="font-size:14px;line-height:1.6;color:#687078;margin-top:7px;">Hierarchie vor Dekoration. Ein Akzent, klare Typo, viel Ruhe. Der Name ist Programm.</p>
+        </div>
+        <div style="border:1px solid #e4e7ea;border-radius:13px;padding:22px;">
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#ED7D0E;font-weight:600;">04</div>
+          <h3 style="font-size:19px;font-weight:600;margin-top:8px;">Ehrlich</h3>
+          <p style="font-size:14px;line-height:1.6;color:#687078;margin-top:7px;">KI unterstützt, ist aber nie die Wahrheit. Wir benennen Lücken, statt sie zu kaschieren.</p>
+        </div>
+      </div>
+
+      <hr class="rule" style="margin:40px 0;">
+
+      <div class="ey" style="margin-bottom:14px;">Markenversprechen in einem Satz</div>
+      <div style="background:#f3f4f6;border-left:4px solid #ED7D0E;border-radius:0 12px 12px 0;padding:24px 26px;">
+        <p style="font-size:20px;line-height:1.5;font-weight:500;color:#16222c;">„KLARWERK sichert das Erfahrungswissen, das sonst mit den Menschen geht — als validierten, wiederverwendbaren Wissensbaustein."</p>
+      </div>
+    </div>
+    <div class="foot"><span>KLARWERK · CORPORATE IDENTITY</span><span>01 · MARKE</span></div>
+  </section>
+
+  <!-- ============ 02 · LOGO ============ -->
+  <section class="page" style="min-height:1414px;">
+    <div class="pad">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;">
+        <div class="ey">02 · Das Logo</div>
+        <div class="mono" style="font-size:11px;color:#c2c8cd;">KLARWERK CI</div>
+      </div>
+      <h2 style="font-size:40px;font-weight:600;letter-spacing:-.8px;margin-top:16px;">Zielscheibe &amp; Wortmarke</h2>
+      <p style="font-size:16px;line-height:1.7;color:#5b636b;margin-top:16px;max-width:640px;">Die Bildmarke ist eine Zielscheibe: konzentrischer Ring mit Punkt — für Fokus, Präzision und „ins Schwarze treffen". Sie steht auf einer hellen, abgerundeten Kachel. Die Wortmarke KLARWERK in Versalien, weit gesperrt.</p>
+
+      <!-- primary lockup -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:34px;">
+        <div style="border:1px solid #e4e7ea;border-radius:14px;padding:34px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;min-height:230px;">
+          <div style="display:flex;align-items:center;gap:16px;">
+            <span style="width:56px;height:56px;border-radius:15px;background:#fff;box-shadow:0 1px 4px rgba(16,24,32,.18);display:flex;align-items:center;justify-content:center;"><svg width="34" height="34" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="#ED7D0E" stroke-width="3.4"></circle><circle cx="12" cy="12" r="3.1" fill="#ED7D0E"></circle></svg></span>
+            <div style="display:flex;flex-direction:column;line-height:1;">
+              <span style="font-weight:700;font-size:24px;letter-spacing:2.5px;color:#16222c;">KLARWERK</span>
+              <span class="mono" style="font-size:10px;letter-spacing:2px;color:#aab0b7;margin-top:5px;">REASONING SYSTEM</span>
+            </div>
+          </div>
+          <span class="mono" style="font-size:10.5px;color:#9aa1a8;">PRIMÄR-LOCKUP (HORIZONTAL)</span>
+        </div>
+        <div style="border:1px solid #e4e7ea;border-radius:14px;padding:34px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;min-height:230px;">
+          <span style="width:70px;height:70px;border-radius:18px;background:#fff;box-shadow:0 1px 4px rgba(16,24,32,.18);display:flex;align-items:center;justify-content:center;"><svg width="42" height="42" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="#ED7D0E" stroke-width="3.4"></circle><circle cx="12" cy="12" r="3.1" fill="#ED7D0E"></circle></svg></span>
+          <span class="mono" style="font-size:10.5px;color:#9aa1a8;">BILDMARKE / APP-ICON</span>
+        </div>
+      </div>
+
+      <!-- clear space + construction -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px;">
+        <div style="border:1px solid #e4e7ea;border-radius:14px;padding:28px;">
+          <div class="ey" style="font-size:11px;margin-bottom:16px;">Schutzraum</div>
+          <div style="position:relative;background:#f7f8f9;border-radius:10px;padding:30px;display:flex;justify-content:center;">
+            <div style="position:relative;padding:22px;outline:1px dashed #cdd3d8;">
+              <span style="position:absolute;left:2px;top:2px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#c8861a;">↔ X</span>
+              <span style="width:44px;height:44px;border-radius:11px;background:#fff;box-shadow:0 1px 3px rgba(16,24,32,.16);display:flex;align-items:center;justify-content:center;"><svg width="27" height="27" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="#ED7D0E" stroke-width="3.4"></circle><circle cx="12" cy="12" r="3.1" fill="#ED7D0E"></circle></svg></span>
+            </div>
+          </div>
+          <p style="font-size:13px;line-height:1.6;color:#687078;margin-top:14px;">Mindestabstand = X, die halbe Höhe der Bildmarke, ringsum frei von Text und Grafik.</p>
+        </div>
+        <div style="border:1px solid #e4e7ea;border-radius:14px;padding:28px;">
+          <div class="ey" style="font-size:11px;margin-bottom:16px;">Mindestgrößen</div>
+          <div style="display:flex;align-items:flex-end;gap:24px;justify-content:center;padding:14px 0;">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:8px;"><svg width="42" height="42" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="#ED7D0E" stroke-width="3.4"></circle><circle cx="12" cy="12" r="3.1" fill="#ED7D0E"></circle></svg><span class="mono" style="font-size:10px;color:#9aa1a8;">Digital 24px</span></div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:8px;"><svg width="26" height="26" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="#ED7D0E" stroke-width="3.4"></circle><circle cx="12" cy="12" r="3.1" fill="#ED7D0E"></circle></svg><span class="mono" style="font-size:10px;color:#9aa1a8;">Print 8mm</span></div>
+          </div>
+          <p style="font-size:13px;line-height:1.6;color:#687078;margin-top:14px;">Unterhalb dieser Größen nur die Bildmarke ohne Untertitel verwenden.</p>
+        </div>
+      </div>
+
+      <hr class="rule" style="margin:36px 0;">
+
+      <!-- misuse -->
+      <div class="ey" style="margin-bottom:18px;">Nicht erlaubt</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;">
+        <div style="border:1px solid #f1d9d6;border-radius:12px;padding:18px;text-align:center;">
+          <div style="height:60px;display:flex;align-items:center;justify-content:center;"><svg width="34" height="34" viewBox="0 0 24 24" style="transform:rotate(18deg);"><circle cx="12" cy="12" r="9" fill="none" stroke="#ED7D0E" stroke-width="3.4"></circle><circle cx="12" cy="12" r="3.1" fill="#ED7D0E"></circle></svg></div>
+          <div style="font-size:12px;color:#9e352e;margin-top:10px;">✕ Drehen</div>
+        </div>
+        <div style="border:1px solid #f1d9d6;border-radius:12px;padding:18px;text-align:center;">
+          <div style="height:60px;display:flex;align-items:center;justify-content:center;"><svg width="52" height="30" viewBox="0 0 24 24" preserveAspectRatio="none"><circle cx="12" cy="12" r="9" fill="none" stroke="#ED7D0E" stroke-width="3.4"></circle><circle cx="12" cy="12" r="3.1" fill="#ED7D0E"></circle></svg></div>
+          <div style="font-size:12px;color:#9e352e;margin-top:10px;">✕ Verzerren</div>
+        </div>
+        <div style="border:1px solid #f1d9d6;border-radius:12px;padding:18px;text-align:center;">
+          <div style="height:60px;display:flex;align-items:center;justify-content:center;"><svg width="34" height="34" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="#2f8fe0" stroke-width="3.4"></circle><circle cx="12" cy="12" r="3.1" fill="#2f8fe0"></circle></svg></div>
+          <div style="font-size:12px;color:#9e352e;margin-top:10px;">✕ Farbe ändern</div>
+        </div>
+        <div style="border:1px solid #f1d9d6;border-radius:12px;padding:18px;text-align:center;">
+          <div style="height:60px;display:flex;align-items:center;justify-content:center;background:#c0473f;border-radius:8px;"><svg width="34" height="34" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="#ED7D0E" stroke-width="3.4"></circle><circle cx="12" cy="12" r="3.1" fill="#ED7D0E"></circle></svg></div>
+          <div style="font-size:12px;color:#9e352e;margin-top:10px;">✕ Unruhiger Grund</div>
+        </div>
+      </div>
+    </div>
+    <div class="foot"><span>KLARWERK · CORPORATE IDENTITY</span><span>02 · LOGO</span></div>
+  </section>
+
+  <!-- ============ 03 · FARBE ============ -->
+  <section class="page" style="min-height:1414px;">
+    <div class="pad">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;">
+        <div class="ey">03 · Farbe</div>
+        <div class="mono" style="font-size:11px;color:#c2c8cd;">KLARWERK CI</div>
+      </div>
+      <h2 style="font-size:40px;font-weight:600;letter-spacing:-.8px;margin-top:16px;">Ein Akzent. Viel Stahl. Klare Signale.</h2>
+      <p style="font-size:16px;line-height:1.7;color:#5b636b;margin-top:16px;max-width:640px;">Orange ist die einzige Markenfarbe und bleibt Aktionen und Highlights vorbehalten. Stahl-Dunkel trägt Text und Kontrastflächen. Ampelfarben und Violett sind rein semantisch — nie Dekoration.</p>
+
+      <!-- primary -->
+      <div class="ey" style="font-size:11px;margin:34px 0 14px;">Primärfarben</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+        <div class="swatch" style="background:#ED7D0E;color:#fff;min-height:150px;">
+          <span style="font-weight:600;font-size:17px;">Klarwerk-Orange</span>
+          <div class="mono" style="font-size:12px;line-height:1.7;">HEX #ED7D0E<br>RGB 237 · 125 · 14<br>CMYK 0 · 55 · 100 · 0 · PANTONE 152 C</div>
+        </div>
+        <div class="swatch" style="background:#16222c;color:#fff;min-height:150px;">
+          <span style="font-weight:600;font-size:17px;">Stahl-Dunkel</span>
+          <div class="mono" style="font-size:12px;line-height:1.7;">HEX #16222C<br>RGB 22 · 34 · 44<br>CMYK 80 · 60 · 47 · 65</div>
+        </div>
+      </div>
+
+      <!-- neutrals -->
+      <div class="ey" style="font-size:11px;margin:28px 0 14px;">Neutraltöne</div>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;">
+        <div class="swatch" style="background:#1b1e21;color:#fff;min-height:104px;"><span style="font-size:13px;font-weight:500;">Text</span><span class="mono" style="font-size:10.5px;">#1B1E21</span></div>
+        <div class="swatch" style="background:#687078;color:#fff;min-height:104px;"><span style="font-size:13px;font-weight:500;">Text 2</span><span class="mono" style="font-size:10.5px;">#687078</span></div>
+        <div class="swatch" style="background:#e4e7ea;color:#16222c;min-height:104px;"><span style="font-size:13px;font-weight:500;">Rahmen</span><span class="mono" style="font-size:10.5px;">#E4E7EA</span></div>
+        <div class="swatch" style="background:#f3f4f6;color:#16222c;min-height:104px;border:1px solid #e4e7ea;"><span style="font-size:13px;font-weight:500;">Fläche</span><span class="mono" style="font-size:10.5px;">#F3F4F6</span></div>
+        <div class="swatch" style="background:#ffffff;color:#16222c;min-height:104px;border:1px solid #e4e7ea;"><span style="font-size:13px;font-weight:500;">Weiß</span><span class="mono" style="font-size:10.5px;">#FFFFFF</span></div>
+      </div>
+
+      <!-- semantic -->
+      <div class="ey" style="font-size:11px;margin:28px 0 14px;">Semantische Farben — Reifegrad &amp; KI</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
+        <div class="swatch" style="background:#3aa06a;color:#fff;min-height:104px;"><span style="font-size:13px;font-weight:500;">Gesichert</span><span class="mono" style="font-size:10.5px;">#3AA06A</span></div>
+        <div class="swatch" style="background:#c8861a;color:#fff;min-height:104px;"><span style="font-size:13px;font-weight:500;">Belastbar</span><span class="mono" style="font-size:10.5px;">#C8861A</span></div>
+        <div class="swatch" style="background:#c0473f;color:#fff;min-height:104px;"><span style="font-size:13px;font-weight:500;">Konflikt</span><span class="mono" style="font-size:10.5px;">#C0473F</span></div>
+        <div class="swatch" style="background:#5b50c4;color:#fff;min-height:104px;"><span style="font-size:13px;font-weight:500;">KI / Reasoner</span><span class="mono" style="font-size:10.5px;">#5B50C4</span></div>
+      </div>
+
+      <hr class="rule" style="margin:34px 0;">
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+        <div>
+          <div class="ey" style="font-size:11px;margin-bottom:12px;">Farbverhältnis (Richtwert)</div>
+          <div style="display:flex;height:36px;border-radius:9px;overflow:hidden;">
+            <div style="width:62%;background:#ffffff;border:1px solid #e4e7ea;"></div>
+            <div style="width:24%;background:#16222c;"></div>
+            <div style="width:14%;background:#ED7D0E;"></div>
+          </div>
+          <div class="mono" style="font-size:11px;color:#8a929a;margin-top:10px;line-height:1.7;">~62% Weiß/Neutral · ~24% Stahl · ~14% Orange</div>
+        </div>
+        <div>
+          <div class="ey" style="font-size:11px;margin-bottom:12px;">Kontrast &amp; Barrierefreiheit</div>
+          <p style="font-size:13px;line-height:1.65;color:#687078;">Orange nur für große/fette Elemente oder auf Stahl. Für Fließtext auf Weiß Stahl-Dunkel verwenden. Zielwert WCAG AA.</p>
+        </div>
+      </div>
+    </div>
+    <div class="foot"><span>KLARWERK · CORPORATE IDENTITY</span><span>03 · FARBE</span></div>
+  </section>
+
+  <!-- ============ 04 · TYPOGRAFIE ============ -->
+  <section class="page" style="min-height:1414px;">
+    <div class="pad">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;">
+        <div class="ey">04 · Typografie</div>
+        <div class="mono" style="font-size:11px;color:#c2c8cd;">KLARWERK CI</div>
+      </div>
+      <h2 style="font-size:40px;font-weight:600;letter-spacing:-.8px;margin-top:16px;">IBM Plex — Sans &amp; Mono</h2>
+      <p style="font-size:16px;line-height:1.7;color:#5b636b;margin-top:16px;max-width:640px;">IBM Plex Sans trägt Überschriften und Text; IBM Plex Mono kennzeichnet Labels, Kennzahlen und technische Marker. Diese Paarung wirkt präzise, technisch und offen — passend zum industriellen Anspruch.</p>
+
+      <div style="border:1px solid #e4e7ea;border-radius:14px;padding:32px;margin-top:30px;">
+        <div class="mono" style="font-size:11px;color:#9aa1a8;">IBM PLEX SANS</div>
+        <div style="font-size:64px;font-weight:600;letter-spacing:-1.5px;line-height:1.05;margin-top:10px;">Klarheit schafft<br>Vertrauen.</div>
+        <div style="display:flex;gap:26px;margin-top:22px;flex-wrap:wrap;">
+          <span style="font-weight:400;font-size:22px;">Regular 400</span>
+          <span style="font-weight:500;font-size:22px;">Medium 500</span>
+          <span style="font-weight:600;font-size:22px;">SemiBold 600</span>
+          <span style="font-weight:700;font-size:22px;">Bold 700</span>
+        </div>
+      </div>
+
+      <div style="border:1px solid #e4e7ea;border-radius:14px;padding:32px;margin-top:18px;">
+        <div class="mono" style="font-size:11px;color:#9aa1a8;">IBM PLEX MONO</div>
+        <div class="mono" style="font-size:34px;font-weight:500;margin-top:12px;letter-spacing:.5px;">TRUST 88 / 100 · WO-1042</div>
+        <div class="mono" style="font-size:13px;color:#687078;margin-top:14px;">Labels · Eyebrows · Kennzahlen · IDs · Statusmarker</div>
+      </div>
+
+      <hr class="rule" style="margin:36px 0;">
+
+      <div class="ey" style="font-size:11px;margin-bottom:18px;">Typo-Skala (Digital)</div>
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <div style="display:flex;align-items:baseline;gap:22px;border-bottom:1px solid #f1f2f4;padding-bottom:12px;"><span class="mono" style="font-size:11px;color:#9aa1a8;width:120px;flex:0 0 120px;">H1 · 44–56 / 600</span><span style="font-size:40px;font-weight:600;letter-spacing:-.8px;">Überschrift</span></div>
+        <div style="display:flex;align-items:baseline;gap:22px;border-bottom:1px solid #f1f2f4;padding-bottom:12px;"><span class="mono" style="font-size:11px;color:#9aa1a8;width:120px;flex:0 0 120px;">H2 · 30–36 / 600</span><span style="font-size:28px;font-weight:600;">Abschnittstitel</span></div>
+        <div style="display:flex;align-items:baseline;gap:22px;border-bottom:1px solid #f1f2f4;padding-bottom:12px;"><span class="mono" style="font-size:11px;color:#9aa1a8;width:120px;flex:0 0 120px;">H3 · 20–22 / 600</span><span style="font-size:20px;font-weight:600;">Karten-Titel</span></div>
+        <div style="display:flex;align-items:baseline;gap:22px;border-bottom:1px solid #f1f2f4;padding-bottom:12px;"><span class="mono" style="font-size:11px;color:#9aa1a8;width:120px;flex:0 0 120px;">Body · 16–18 / 400</span><span style="font-size:17px;">Fließtext mit angenehmer Laufweite und 1,6–1,7 Zeilenhöhe.</span></div>
+        <div style="display:flex;align-items:baseline;gap:22px;"><span class="mono" style="font-size:11px;color:#9aa1a8;width:120px;flex:0 0 120px;">Label · 11–13 Mono</span><span class="mono" style="font-size:12px;letter-spacing:1px;color:#687078;">EYEBROW · META · KENNZAHL</span></div>
+      </div>
+    </div>
+    <div class="foot"><span>KLARWERK · CORPORATE IDENTITY</span><span>04 · TYPOGRAFIE</span></div>
+  </section>
+
+  <!-- ============ 05 · ICONS & UI ============ -->
+  <section class="page" style="min-height:1414px;">
+    <div class="pad">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;">
+        <div class="ey">05 · Icons &amp; UI-Bausteine</div>
+        <div class="mono" style="font-size:11px;color:#c2c8cd;">KLARWERK CI</div>
+      </div>
+      <h2 style="font-size:40px;font-weight:600;letter-spacing:-.8px;margin-top:16px;">Funktional, nicht dekorativ</h2>
+      <p style="font-size:16px;line-height:1.7;color:#5b636b;margin-top:16px;max-width:640px;">Line-Icons mit gleichmäßiger Strichstärke (~1,8), runde Enden, industrielles Motiv. Keine gefüllten Farbflächen, keine Emoji, keine leeren Platzhalterquadrate.</p>
+
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:14px;margin-top:30px;">
+        <div style="border:1px solid #e4e7ea;border-radius:12px;height:74px;display:flex;align-items:center;justify-content:center;color:#16222c;"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 0 1-4 0v-.1A1.6 1.6 0 0 0 7 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 2.6 14H2a2 2 0 0 1 0-4h.1A1.6 1.6 0 0 0 4 7.4l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 10 4.6V4a2 2 0 0 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 .9 2.4h.1a2 2 0 0 1 0 4h-.1z"/></svg></div>
+        <div style="border:1px solid #e4e7ea;border-radius:12px;height:74px;display:flex;align-items:center;justify-content:center;color:#16222c;"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+        <div style="border:1px solid #e4e7ea;border-radius:12px;height:74px;display:flex;align-items:center;justify-content:center;color:#16222c;"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></div>
+        <div style="border:1px solid #e4e7ea;border-radius:12px;height:74px;display:flex;align-items:center;justify-content:center;color:#16222c;"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></div>
+        <div style="border:1px solid #e4e7ea;border-radius:12px;height:74px;display:flex;align-items:center;justify-content:center;color:#16222c;"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l3-3 3 3 5-6"/></svg></div>
+        <div style="border:1px solid #e4e7ea;border-radius:12px;height:74px;display:flex;align-items:center;justify-content:center;color:#16222c;"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="7" r="2"/><circle cx="19" cy="9" r="2"/><circle cx="12" cy="19" r="2"/><path d="M6.7 8.3 11 17"/><path d="M17.5 10.5 13 17"/></svg></div>
+      </div>
+
+      <hr class="rule" style="margin:36px 0;">
+
+      <div class="ey" style="font-size:11px;margin-bottom:18px;">UI-Bausteine</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+        <div style="border:1px solid #e4e7ea;border-radius:14px;padding:24px;">
+          <div class="mono" style="font-size:10.5px;color:#9aa1a8;margin-bottom:14px;">BUTTONS</div>
+          <div style="display:flex;flex-direction:column;gap:11px;">
+            <button style="background:#ED7D0E;color:#fff;border:none;border-radius:10px;padding:12px 18px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;">Primär · Aktion</button>
+            <button style="background:#16222c;color:#fff;border:none;border-radius:10px;padding:12px 18px;font-family:inherit;font-size:14px;font-weight:500;cursor:pointer;">Sekundär · Stahl</button>
+            <button style="background:#fff;color:#16222c;border:1px solid #dce0e4;border-radius:10px;padding:12px 18px;font-family:inherit;font-size:14px;font-weight:500;cursor:pointer;">Tertiär · Outline</button>
+          </div>
+        </div>
+        <div style="border:1px solid #e4e7ea;border-radius:14px;padding:24px;">
+          <div class="mono" style="font-size:10.5px;color:#9aa1a8;margin-bottom:14px;">STATUS-PILLS &amp; TRUST</div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;">
+            <span class="mono" style="font-size:11px;padding:4px 10px;border-radius:6px;background:#e2f1e8;color:#256b46;">Validiert</span>
+            <span class="mono" style="font-size:11px;padding:4px 10px;border-radius:6px;background:#faf1db;color:#9a6a12;">In Prüfung</span>
+            <span class="mono" style="font-size:11px;padding:4px 10px;border-radius:6px;background:#f8e7e5;color:#9e352e;">Konflikt</span>
+            <span class="mono" style="font-size:11px;padding:4px 10px;border-radius:6px;background:#ecebfb;color:#5b50c4;">✦ Reasoner</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="flex:1;height:8px;border-radius:5px;background:#eef0f1;overflow:hidden;"><div style="width:88%;height:100%;background:#3aa06a;"></div></div>
+            <span class="mono" style="font-size:12px;font-weight:600;color:#3aa06a;">88</span>
+          </div>
+        </div>
+      </div>
+      <div style="border:1px solid #e4e7ea;border-radius:14px;padding:24px;margin-top:18px;display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;">
+        <span style="width:34px;height:34px;border-radius:9px;background:rgba(16,24,32,.05);display:flex;align-items:center;justify-content:center;color:#16222c;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v4H4z"/><path d="M4 12h10"/><path d="M4 17h7"/></svg></span>
+        <div><div style="font-size:14px;font-weight:600;">Card &amp; Zeile</div><div style="font-size:12.5px;color:#8a929a;">Radius 12–14px · Rahmen #E4E7EA · dezenter Schatten</div></div>
+        <span class="mono" style="font-size:11px;padding:4px 10px;border-radius:6px;background:#eef0f1;color:#5b636b;">MUSTER</span>
+      </div>
+    </div>
+    <div class="foot"><span>KLARWERK · CORPORATE IDENTITY</span><span>05 · ICONS &amp; UI</span></div>
+  </section>
+
+  <!-- ============ 06 · BILDWELT ============ -->
+  <section class="page" style="min-height:1414px;">
+    <div class="pad">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;">
+        <div class="ey">06 · Bildwelt &amp; Fotografie</div>
+        <div class="mono" style="font-size:11px;color:#c2c8cd;">KLARWERK CI</div>
+      </div>
+      <h2 style="font-size:40px;font-weight:600;letter-spacing:-.8px;margin-top:16px;">Echte Industrie. Echte Menschen.</h2>
+      <p style="font-size:16px;line-height:1.7;color:#5b636b;margin-top:16px;max-width:660px;">Bilder zeigen reale Fertigung, Werkstätten und Fachleute bei der Arbeit — dokumentarisch, nicht gestellt. Wo Produkt gezeigt wird, dominiert die klare UI. Keine generischen KI-Roboter, keine Stockfoto-Klischees, keine blauen „Tech-Glow"-Effekte.</p>
+
+      <!-- style tiles -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-top:30px;">
+        <div style="border-radius:13px;overflow:hidden;aspect-ratio:4/3;background:linear-gradient(135deg,#2a3a47,#16222c);position:relative;">
+          <div style="position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,.06) 1px,transparent 1px);background-size:16px 16px;"></div>
+          <div style="position:absolute;left:14px;bottom:12px;color:#e7eef3;font-size:13px;font-weight:500;">Werkstatt &amp; Anlage</div>
+          <div style="position:absolute;right:12px;top:12px;width:26px;height:26px;border-radius:50%;border:2px solid #ED7D0E;"></div>
+        </div>
+        <div style="border-radius:13px;overflow:hidden;aspect-ratio:4/3;background:linear-gradient(135deg,#3a4a3f,#22302a);position:relative;">
+          <div style="position:absolute;left:14px;bottom:12px;color:#e7eef3;font-size:13px;font-weight:500;">Fachkraft im Fokus</div>
+        </div>
+        <div style="border-radius:13px;overflow:hidden;aspect-ratio:4/3;background:linear-gradient(135deg,#4a3f2f,#2c2519);position:relative;">
+          <div style="position:absolute;left:14px;bottom:12px;color:#e7eef3;font-size:13px;font-weight:500;">Detail &amp; Material</div>
+          <div style="position:absolute;right:12px;bottom:12px;width:40px;height:6px;border-radius:3px;background:#ED7D0E;"></div>
+        </div>
+      </div>
+      <p class="mono" style="font-size:10.5px;color:#aab1b8;margin-top:12px;font-style:italic;">Platzhalter-Kacheln — echte Aufnahmen sind vom Kunden/Fotografie beizusteuern.</p>
+
+      <hr class="rule" style="margin:34px 0;">
+
+      <!-- do / dont -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+        <div style="border:1px solid #cfe6da;background:#f4faf6;border-radius:14px;padding:24px;">
+          <div style="display:flex;align-items:center;gap:9px;margin-bottom:14px;"><span style="color:#256b46;font-size:18px;">✓</span><span style="font-weight:600;font-size:16px;color:#1f4d36;">So ja</span></div>
+          <ul style="margin:0;padding-left:18px;font-size:14px;line-height:1.8;color:#3a4047;">
+            <li>Dokumentarischer, natürlicher Look</li>
+            <li>Echte Umgebungen, echtes Licht</li>
+            <li>Menschen bei konkreter Tätigkeit</li>
+            <li>Ruhige Farbwelt, Stahl + warmes Licht</li>
+            <li>Orange nur als kleiner Akzent (Detail, Grafik)</li>
+          </ul>
+        </div>
+        <div style="border:1px solid #f1d9d6;background:#fdf5f4;border-radius:14px;padding:24px;">
+          <div style="display:flex;align-items:center;gap:9px;margin-bottom:14px;"><span style="color:#9e352e;font-size:18px;">✕</span><span style="font-weight:600;font-size:16px;color:#7c2c26;">So nicht</span></div>
+          <ul style="margin:0;padding-left:18px;font-size:14px;line-height:1.8;color:#3a4047;">
+            <li>Generische KI-Roboter / Humanoide</li>
+            <li>Blaue „Tech-Glow"- und Neon-Effekte</li>
+            <li>Gestellte Stockfoto-Posen</li>
+            <li>Überladene Collagen, viele Farben</li>
+            <li>Verpixelte oder verzerrte Screenshots</li>
+          </ul>
+        </div>
+      </div>
+
+      <div style="border:1px solid #e4e7ea;border-radius:14px;padding:22px;margin-top:20px;display:grid;grid-template-columns:repeat(3,1fr);gap:18px;">
+        <div><div class="mono" style="font-size:10.5px;color:#9aa1a8;">BILDLOOK</div><div style="font-size:14px;font-weight:500;margin-top:5px;">Natürlicher Kontrast, leicht entsättigt, warme Lichter</div></div>
+        <div><div class="mono" style="font-size:10.5px;color:#9aa1a8;">FORMATE</div><div style="font-size:14px;font-weight:500;margin-top:5px;">16:9 &amp; 4:3 (Web), 1:1 &amp; 4:5 (Social)</div></div>
+        <div><div class="mono" style="font-size:10.5px;color:#9aa1a8;">RADIUS</div><div style="font-size:14px;font-weight:500;margin-top:5px;">12–16px auf Web, 0 bei Vollbild</div></div>
+      </div>
+    </div>
+    <div class="foot"><span>KLARWERK · CORPORATE IDENTITY</span><span>06 · BILDWELT</span></div>
+  </section>
+
+  <!-- ============ 07 · BEWEGTBILD / VIDEO ============ -->
+  <section class="page" style="min-height:1414px;">
+    <div class="pad">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;">
+        <div class="ey">07 · Bewegtbild &amp; Promo-Video</div>
+        <div class="mono" style="font-size:11px;color:#c2c8cd;">KLARWERK CI</div>
+      </div>
+      <h2 style="font-size:40px;font-weight:600;letter-spacing:-.8px;margin-top:16px;">Ruhig erzählt, klar geschnitten</h2>
+      <p style="font-size:16px;line-height:1.7;color:#5b636b;margin-top:16px;max-width:660px;">Videos folgen demselben Prinzip wie die Marke: Substanz vor Effekt. Klare Kapitel, ruhige Schnitte, Mono-Typo für Fakten, Orange als einziger Akzent. Kein Hype-Sounddesign, keine Dauer-Bewegung.</p>
+
+      <!-- storyboard -->
+      <div class="ey" style="font-size:11px;margin:30px 0 14px;">Empfohlener Aufbau (Promo ~60–90s)</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
+        <div style="border:1px solid #e4e7ea;border-radius:12px;overflow:hidden;">
+          <div style="aspect-ratio:16/9;background:#16222c;position:relative;display:flex;align-items:center;justify-content:center;"><svg width="30" height="30" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="#ED7D0E" stroke-width="3"></circle><circle cx="12" cy="12" r="3" fill="#ED7D0E"></circle></svg></div>
+          <div style="padding:11px 13px;"><div class="mono" style="font-size:10px;color:#ED7D0E;">00:00–00:06</div><div style="font-size:12.5px;font-weight:600;margin-top:3px;">Logo-Auftakt</div><div style="font-size:11.5px;color:#8a929a;margin-top:2px;">Zielscheibe „trifft", Stille</div></div>
+        </div>
+        <div style="border:1px solid #e4e7ea;border-radius:12px;overflow:hidden;">
+          <div style="aspect-ratio:16/9;background:linear-gradient(135deg,#2a3a47,#16222c);"></div>
+          <div style="padding:11px 13px;"><div class="mono" style="font-size:10px;color:#ED7D0E;">00:06–00:25</div><div style="font-size:12.5px;font-weight:600;margin-top:3px;">Problem</div><div style="font-size:11.5px;color:#8a929a;margin-top:2px;">Werkstatt, Wissen „geht"</div></div>
+        </div>
+        <div style="border:1px solid #e4e7ea;border-radius:12px;overflow:hidden;">
+          <div style="aspect-ratio:16/9;background:#f3f4f6;position:relative;display:flex;align-items:center;justify-content:center;"><div style="width:60%;height:60%;background:#fff;border:1px solid #e4e7ea;border-radius:8px;"></div></div>
+          <div style="padding:11px 13px;"><div class="mono" style="font-size:10px;color:#ED7D0E;">00:25–00:55</div><div style="font-size:12.5px;font-weight:600;margin-top:3px;">Lösung / Produkt</div><div style="font-size:11.5px;color:#8a929a;margin-top:2px;">UI-Screencast, Knowledge Object</div></div>
+        </div>
+        <div style="border:1px solid #e4e7ea;border-radius:12px;overflow:hidden;">
+          <div style="aspect-ratio:16/9;background:#ED7D0E;position:relative;display:flex;align-items:center;justify-content:center;"><span style="color:#fff;font-weight:600;font-size:13px;">Beta anfragen →</span></div>
+          <div style="padding:11px 13px;"><div class="mono" style="font-size:10px;color:#ED7D0E;">00:55–01:00</div><div style="font-size:12.5px;font-weight:600;margin-top:3px;">Call-to-Action</div><div style="font-size:11.5px;color:#8a929a;margin-top:2px;">Claim + Logo + CTA</div></div>
+        </div>
+      </div>
+
+      <hr class="rule" style="margin:32px 0;">
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+        <div style="border:1px solid #e4e7ea;border-radius:14px;padding:22px;">
+          <div class="mono" style="font-size:10.5px;color:#9aa1a8;margin-bottom:14px;">BILD &amp; SCHNITT</div>
+          <ul style="margin:0;padding-left:18px;font-size:13.5px;line-height:1.8;color:#3a4047;">
+            <li>Ruhige Kamerafahrten, wenig Schnitte</li>
+            <li>Screencasts in echter Auflösung, nicht verzerrt</li>
+            <li>Übergänge: harter Schnitt oder sanfte Blende</li>
+            <li>Kein Zoom-Bounce, kein „AI-Glitch"</li>
+          </ul>
+        </div>
+        <div style="border:1px solid #e4e7ea;border-radius:14px;padding:22px;">
+          <div class="mono" style="font-size:10.5px;color:#9aa1a8;margin-bottom:14px;">TYPO &amp; GRAFIK IM VIDEO</div>
+          <ul style="margin:0;padding-left:18px;font-size:13.5px;line-height:1.8;color:#3a4047;">
+            <li>IBM Plex durchgängig; Fakten in Mono</li>
+            <li>Untertitel Pflicht (DE/EN), unten, lesbar</li>
+            <li>Ein Akzent: Orange für Highlights/Linien</li>
+            <li>Sichere Ränder einhalten (Title-Safe)</li>
+          </ul>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-top:20px;">
+        <div style="border:1px solid #e4e7ea;border-radius:12px;padding:18px;"><div class="mono" style="font-size:10.5px;color:#9aa1a8;">TON</div><div style="font-size:13.5px;font-weight:500;margin-top:6px;line-height:1.5;">Reduziert, warm, kein Hype-Beat. Sprecher ruhig &amp; sachlich.</div></div>
+        <div style="border:1px solid #e4e7ea;border-radius:12px;padding:18px;"><div class="mono" style="font-size:10.5px;color:#9aa1a8;">FORMATE</div><div style="font-size:13.5px;font-weight:500;margin-top:6px;line-height:1.5;">16:9 (Web/YouTube), 9:16 &amp; 1:1 (Social), 4:5 (Feed)</div></div>
+        <div style="border:1px solid #e4e7ea;border-radius:12px;padding:18px;"><div class="mono" style="font-size:10.5px;color:#9aa1a8;">LOGO-EINSATZ</div><div style="font-size:13.5px;font-weight:500;margin-top:6px;line-height:1.5;">Dezent unten; End-Card mit Zielscheibe + Claim.</div></div>
+      </div>
+
+      <div style="background:#16222c;color:#fff;border-radius:14px;padding:22px 24px;margin-top:20px;display:flex;align-items:center;gap:18px;flex-wrap:wrap;">
+        <span style="color:#5b50c4;font-size:20px;">✦</span>
+        <div style="flex:1;min-width:260px;font-size:14px;line-height:1.6;color:#cdd6de;">Wird KI oder generierter Inhalt gezeigt, klar als solcher kennzeichnen (violett/„Reasoner-Entwurf"). Nie KI-Ausgabe als validierte Wahrheit inszenieren.</div>
+      </div>
+    </div>
+    <div class="foot"><span>KLARWERK · CORPORATE IDENTITY</span><span>07 · BEWEGTBILD</span></div>
+  </section>
+
+  <!-- ============ 08 · SPRACHE ============ -->
+  <section class="page" style="min-height:1414px;">
+    <div class="pad">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;">
+        <div class="ey">08 · Sprache &amp; Tonalität</div>
+        <div class="mono" style="font-size:11px;color:#c2c8cd;">KLARWERK CI</div>
+      </div>
+      <h2 style="font-size:40px;font-weight:600;letter-spacing:-.8px;margin-top:16px;">Nüchtern, kompetent, ohne Hype</h2>
+      <p style="font-size:16px;line-height:1.7;color:#5b636b;margin-top:16px;max-width:660px;">Wir sprechen wie Fachleute mit Fachleuten: klar, kurz, aktiv. Kein „revolutionäre KI"-Sprech, keine Superlative. Echte Umlaute, sauberes Deutsch, konsequentes Vertrauensvokabular.</p>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:30px;">
+        <div style="border:1px solid #cfe6da;background:#f4faf6;border-radius:14px;padding:24px;">
+          <div style="display:flex;align-items:center;gap:9px;margin-bottom:14px;"><span style="color:#256b46;font-size:18px;">✓</span><span style="font-weight:600;font-size:16px;color:#1f4d36;">So schreiben wir</span></div>
+          <div style="display:flex;flex-direction:column;gap:12px;">
+            <div style="font-size:14.5px;color:#23272b;">„Sichern Sie Erfahrungswissen, bevor es geht."</div>
+            <div style="font-size:14.5px;color:#23272b;">„Jede Aussage trägt Quelle, Kontext und Reifegrad."</div>
+            <div style="font-size:14.5px;color:#23272b;">„KI unterstützt — die Wahrheit bleibt validiertes Wissen."</div>
+          </div>
+        </div>
+        <div style="border:1px solid #f1d9d6;background:#fdf5f4;border-radius:14px;padding:24px;">
+          <div style="display:flex;align-items:center;gap:9px;margin-bottom:14px;"><span style="color:#9e352e;font-size:18px;">✕</span><span style="font-weight:600;font-size:16px;color:#7c2c26;">So nicht</span></div>
+          <div style="display:flex;flex-direction:column;gap:12px;">
+            <div style="font-size:14.5px;color:#23272b;text-decoration:line-through;text-decoration-color:#d8a6a1;">„Revolutionäre KI, die alles weiß!"</div>
+            <div style="font-size:14.5px;color:#23272b;text-decoration:line-through;text-decoration-color:#d8a6a1;">„Die smarteste Loesung fuer Ihr Werk"</div>
+            <div style="font-size:14.5px;color:#23272b;text-decoration:line-through;text-decoration-color:#d8a6a1;">„Unser Bot beantwortet jede Frage sofort."</div>
+          </div>
+        </div>
+      </div>
+
+      <hr class="rule" style="margin:36px 0;">
+
+      <div class="ey" style="font-size:11px;margin-bottom:16px;">Kernbegriffe (konsistent verwenden)</div>
+      <div style="display:flex;flex-wrap:wrap;gap:9px;">
+        <span class="mono" style="font-size:12.5px;padding:7px 13px;border-radius:8px;background:#f3f4f6;color:#16222c;">Knowledge Object</span>
+        <span class="mono" style="font-size:12.5px;padding:7px 13px;border-radius:8px;background:#f3f4f6;color:#16222c;">Reasoning System</span>
+        <span class="mono" style="font-size:12.5px;padding:7px 13px;border-radius:8px;background:#f3f4f6;color:#16222c;">Trust / Reifegrad</span>
+        <span class="mono" style="font-size:12.5px;padding:7px 13px;border-radius:8px;background:#f3f4f6;color:#16222c;">Validierung</span>
+        <span class="mono" style="font-size:12.5px;padding:7px 13px;border-radius:8px;background:#f3f4f6;color:#16222c;">Quelle &amp; Kontext</span>
+        <span class="mono" style="font-size:12.5px;padding:7px 13px;border-radius:8px;background:#f3f4f6;color:#16222c;">Erfahrungswissen</span>
+        <span class="mono" style="font-size:12.5px;padding:7px 13px;border-radius:8px;background:#f3f4f6;color:#16222c;">Evidenz</span>
+      </div>
+
+      <div style="background:#f3f4f6;border-left:4px solid #ED7D0E;border-radius:0 12px 12px 0;padding:24px 26px;margin-top:36px;">
+        <div class="ey" style="font-size:11px;margin-bottom:10px;">Leitsatz</div>
+        <p style="font-size:22px;line-height:1.45;font-weight:500;color:#16222c;">Vertrauen ist Evidenz — nie behauptet.</p>
+      </div>
+
+      <div style="margin-top:56px;display:flex;align-items:center;gap:12px;">
+        <span style="width:34px;height:34px;border-radius:9px;background:#fff;box-shadow:0 1px 3px rgba(16,24,32,.16);display:flex;align-items:center;justify-content:center;"><svg width="20" height="20" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="#ED7D0E" stroke-width="3.4"></circle><circle cx="12" cy="12" r="3.1" fill="#ED7D0E"></circle></svg></span>
+        <span style="font-weight:700;font-size:15px;letter-spacing:2px;color:#16222c;">KLARWERK</span>
+        <span class="mono" style="font-size:11px;color:#aab1b8;margin-left:auto;">CORPORATE IDENTITY · V1.0 · JULI 2026</span>
+      </div>
+    </div>
+    <div class="foot"><span>KLARWERK · CORPORATE IDENTITY</span><span>08 · SPRACHE</span></div>
+  </section>
+
+</div>
+</x-dc>
+</body>
+</html>
