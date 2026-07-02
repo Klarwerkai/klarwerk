@@ -81,6 +81,9 @@ Guru-Repo: untrackter Ordner website-uiux/ — committen oder klären.
 Boss-Session koordiniert, neue Chats führen aus (exakte Copy-Paste-Prompts, IMMER mit „Wenn
 fertig sofort lokal committen, dann STOPP — kein Push"). Pedi: keine Terminaleingaben; Keys nur
 Schlüsselbund; jede UI-Änderung bumpt APP_VERSION (Header-Chip + Start-Dialog = Beweis).
+**Pedi startet ALLE Apps über die Schreibtisch-Kopien (~/Desktop/KLARWERK *.app) — jede
+Starter-Änderung MUSS sofort in die jeweilige Schreibtisch-Kopie kopiert werden (Diff prüfen,
++x erhalten), sonst kommt sie bei Pedi nie an (Vorfall 02.07.: Key-Dialog blieb aus).**
 PMO-Intake = Pedis Ideen-Kanal; Boss-Session prüft pmo-items.json AUTOMATISCH bei jedem Schritt
 (Stand: 124 Einträge) und bestätigt Empfang. Gates: tools/check komplett + smoke:ui vor Lieferung;
 Bauen/Testen in /tmp-Kopie (FUSE langsam; /tmp kann RECYCELT werden — neu aufbauen). After-Report
