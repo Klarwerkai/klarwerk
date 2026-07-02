@@ -9944,3 +9944,16 @@ git push
 **Getestet:** FE-tsc grün · Biome grün · 388 Tests (app/analytics) grün · Astro-Build grün (Chip in dist verifiziert) · PMO-Server Syntaxcheck grün.
 **Git-Status:** dev_Klarwerk 87322ad [ahead 6] · public-website 1ee3246 [ahead 2] · PMO ohne Git. Push via „KLARWERK Sync".
 **Nächster Schritt:** Sichtbar nach nächstem Build/Deploy (KLARWERK App bzw. Website-App doppelklicken; PMO sofort nach Reload). STOPP.
+
+---
+
+## After-Report — 2026-07-02 · Team 7 PMO: Funktionsüberblick-Tab (PMO-FEA-0005)
+
+**Datum:** 2026-07-02 · **Ticket:** PMO-FEA-0005 (lokale Team-7-Wissensbasis, bewusst kein Jira/Git)
+**Änderung:** Neuer Tab „Funktionen“ im Team-7-PMO-Dashboard (index.html/app.js/styles.css) nach Arbeitsbrief docs/PMO-FEA-0005_FUNKTIONSUEBERBLICK_ARBEITSBRIEF.md, alle 7 Punkte: (1) Tab nach Steuerung-Muster (showView + body-Klasse show-funktionen, Version-Chip **v1.1.0 → v1.2.0**, Cache-Buster cc1→cc2). (2) Datenquelle ausschließlich data/pmo-items.json (Typen feature/requirement/ux, aktuell 93 Items; Archiv/Test ausgeblendet, keine Doppel-Pflege). (3) Kuratierte Bereichs-Gruppierung (FN_AREA_RULES in app.js): Erfassen/Studio · Validierung/Konflikte · Ask/Bibliothek · Import (Datei/Video) · Output · Motivation/Feed · Betrieb/Sicherheit · Website · Sonstiges. (4) Eine Zeile je Funktion mit Status-Pill (done→umgesetzt · in_progress/partially_done→in Arbeit · recognized/planned→offen · deferred/paused→zurückgestellt · blocked→blockiert), ID und Jira-Keys per Regex (SCRUM|KWEB|KREL|KBB|KGURU)-Nr aus evidence/description (93 Treffer auf Echtdaten). (5) Suchfeld (ms-search-Muster) + Status-Filterchips + Zählerkacheln (umgesetzt 19 / in Arbeit 33 / offen 29 / zurückgestellt 7 / blockiert 5). (6) Gruppen-Fortschrittsbalken je Bereich (Anteil umgesetzt, stabil auch bei aktivem Filter). (7) Sticky-Gruppenköpfe (bestehende ms-group-Klassen). Zeilen-Detail öffnet die bekannte Scope-Detail-Ansicht inkl. Update-Draft-Button; Steuerung→„Daten aktualisieren“ lädt den Tab mit.
+**Getestet:** node --check app.js grün · Server (scripts/start-local-ai-server.mjs) gestartet, index.html/app.js/styles.css/pmo-items.json per curl geprüft (Tab, v1.2.0, cc2 vorhanden; Daten 200) · Mapping-/Status-/Jira-Logik isoliert auf Echtdaten smoke-getestet (93 Items, plausible Verteilung).
+**Nicht ausführbare Checks + Grund:** visuelle Browser-Abnahme (kein Browser in Sandbox) — Pedi-Praxistest per „KLARWERK PMO“-Doppelklick, Browser-Reload genügt (kein Neubau nötig).
+**Status-Führung:** PMO-FEA-0005 via scripts/apply-item-update.mjs auf **done** gesetzt (Backup data/backups/pmo-items-20260702-071237.json, Audit-Log-Eintrag; Update-Draft data/intake-drafts/update-PMO-FEA-0005-done.json).
+**Risiko:** gering — rein additiver Tab, read-only auf pmo-items.json, keine Team-6-Dateien berührt, nur Team-7-Ordner beschrieben. Statusangaben sind Schätzungen (Disclaimer im Tab).
+**Git-Status:** PMO ohne Git (per Design). dev_Klarwerk nur dieser Report.
+**Nächster Schritt:** Pedi: „KLARWERK PMO“ doppelklicken → Tab „Funktionen“ prüfen (<10-s-Suchtest). STOPP.
