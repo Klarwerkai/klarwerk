@@ -9,6 +9,7 @@ import type { Verdict } from "../api/types";
 import { useSession } from "../app/AuthContext";
 import { DemoBanner } from "../components/DemoBanner";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
+import { HelpTip } from "../components/HelpTip";
 import { ValidationReviewContext } from "../components/ValidationReviewContext";
 import { ConfidenceBar, KnowledgeTypeTag, KoAuthorLine, StatusPill } from "../components/trust";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
@@ -534,17 +535,20 @@ export function Validation(): JSX.Element {
                     <div key={k.id} className="space-y-2">
                       <Card className="flex flex-col gap-3 sm:flex-row sm:items-center">
                         <div className="min-w-0 flex-1">
-                          <div className="mb-1 flex flex-wrap items-center gap-2">
+                          {/* SCRUM-396: Titel zuerst und deutlich — er ging zwischen Badges und
+                              Meta-Zeilen unter; klar als Link erkennbar (KO-Detail = Ort für
+                              Bearbeiten/Löschen). Badges rücken in eine ruhige Zeile darunter. */}
+                          <Link
+                            to={`/wissen/${k.id}`}
+                            className="block truncate text-[17px] font-semibold leading-snug text-text underline-offset-4 hover:text-ink hover:underline"
+                          >
+                            {k.title}
+                          </Link>
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
                             <KnowledgeTypeTag type={k.type} />
                             <StatusPill status={sig.status} />
                             <span className="font-mono text-[11px] text-muted-2">{k.category}</span>
                           </div>
-                          <Link
-                            to={`/wissen/${k.id}`}
-                            className="block truncate text-[14px] font-medium text-text hover:text-ink"
-                          >
-                            {k.title}
-                          </Link>
                           {/* SCRUM-249: Review-Signale kompakt — Trust, Version, Ziel, Provenance. */}
                           <div className="mt-1.5 flex flex-wrap items-center gap-2">
                             <ConfidenceBar value={k.confidence} showLabel={false} />
@@ -580,13 +584,20 @@ export function Validation(): JSX.Element {
                           <div className="mt-1">
                             <KoAuthorLine {...koAuthorParts(k, nameOf)} />
                           </div>
-                          {/* SCRUM-249: ehrlicher Entscheidungs-Hinweis (aus Trust-Band abgeleitet). */}
-                          <p className="mt-1 text-[11.5px] text-muted">
-                            <span className="font-semibold text-text">
-                              {t("val.decisionLabel")}{" "}
+                          {/* SCRUM-249: ehrlicher Entscheidungs-Hinweis (aus Trust-Band abgeleitet).
+                              SCRUM-396: auf EINE Zeile verdichtet — Volltext im ?-HelpTip, damit die
+                              Karte keine Textwand wird (nichts entfernt, nur Dichte). */}
+                          <p className="mt-1 flex min-w-0 items-center gap-1 text-[11.5px] text-muted">
+                            <span className="min-w-0 truncate">
+                              <span className="font-semibold text-text">
+                                {t("val.decisionLabel")}{" "}
+                              </span>
+                              {t(`val.decision.${sig.trustBand}`)}
                             </span>
-                            {t(`val.decision.${sig.trustBand}`)}
-                            <span className="ml-1">{t(reviewWork.hintKey)}</span>
+                            <HelpTip
+                              title={t("val.decisionLabel")}
+                              body={`${t(`val.decision.${sig.trustBand}`)} ${t(reviewWork.hintKey)}`}
+                            />
                           </p>
                           {/* SCRUM-365 / AG-12 / PI-K2: ruhige, einklappbare Review-Führung —
                               „Was prüfe ich?" (Checkliste + Kontext-Fokus) + „Was bewirkt die
@@ -638,6 +649,15 @@ export function Validation(): JSX.Element {
                               </p>
                             </div>
                           </details>
+                          {/* SCRUM-396: expliziter Weg ins KO-Detail — dort liegen Bearbeiten und
+                              „Wissensobjekt löschen" (Autor/Controller/Admin). Kein Direkt-Löschen
+                              auf dem Board: die bewusste Hürde (Inline-Bestätigung im Detail) bleibt. */}
+                          <Link
+                            to={`/wissen/${k.id}`}
+                            className="mt-2 inline-flex items-center gap-1 text-[11.5px] font-semibold text-ai hover:opacity-80"
+                          >
+                            {t("val.openDetails")} <span aria-hidden="true">→</span>
+                          </Link>
                         </div>
                         <div className="flex shrink-0 flex-col items-stretch gap-1.5 sm:items-end">
                           {/* SCRUM-258: Review-Entscheidung textlich geführt — gleiche Mutationen

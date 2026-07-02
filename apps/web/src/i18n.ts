@@ -1159,6 +1159,7 @@ const de = {
   "val.nextUse": "Wissen nutzen (fragen)",
   "val.nextRework": "Im Objekt nacharbeiten",
   "val.assign": "Zuweisen …",
+  "val.openDetails": "Details ansehen — bearbeiten & löschen im Objekt",
   "con.kicker": "Conflict Board",
   "con.title": "Konflikte klären — ohne Wissen zu verlieren",
   "con.intro":
@@ -2943,6 +2944,7 @@ const en: typeof de = {
   "val.nextUse": "Use knowledge (ask)",
   "val.nextRework": "Rework in the object",
   "val.assign": "Assign …",
+  "val.openDetails": "View details — edit & delete in the object",
   "con.kicker": "Conflict board",
   "con.title": "Resolve conflicts — without losing knowledge",
   "con.intro":

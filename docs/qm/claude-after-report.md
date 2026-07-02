@@ -10161,3 +10161,13 @@ git push
 **Git-Status:** main, dieser Commit lokal. Kein Push (Pedi: KLARWERK Sync).
 **Jira-Kommentar-Vorschlag:** Ticket-Beschreibung trägt die Details; kein separater Kommentar nötig.
 **Nächster Schritt:** Pedi-Review der Punkteliste (Screenshots) → Feinschliff in Folge-Session. STOPP.
+
+---
+
+## After-Report — 2026-07-02 · SCRUM-396: Validierungs-Board übersichtlicher + sichtbarer Detail-/Lösch-Weg
+
+**Datum:** 2026-07-02 (abends, Boss-Session direkt) · **Ticket:** SCRUM-396 · **Anlass:** Pedi-Screenshot: Karten-Überschrift geht unter; Lösch-Weg nicht auffindbar.
+**Änderung (apps/web/src/pages/Validation.tsx + i18n, v0.9.14-beta):** (1) Titel an erste Position, groß (17px/semibold) und klar als Link erkennbar (Hover-Unterstreichung) — er ist der Weg ins KO-Detail. (2) Badges (Wissensart/Status/Kategorie) in eine ruhige Zeile UNTER dem Titel. (3) „Entscheidung offen…"-Hinweis auf EINE Zeile verdichtet, Volltext im ?-HelpTip (nichts entfernt, nur Dichte). (4) Neuer expliziter Link je Karte: „Details ansehen — bearbeiten & löschen im Objekt" (DE/EN) → /wissen/:id; dort liegt die Lösch-Karte aus v0.9.12. BEWUSST kein Direkt-Löschen auf dem Board (Hürde mit Inline-Bestätigung bleibt im Detail). Aktionen/Zuweisen unverändert rechts.
+**Getestet (in Sandbox-Kopie):** Build (tsc) ✓ · Biome ✓ · dependency-cruiser ✓ · **1268 Tests / 207 Dateien ✓** · **UI-Smoke 4/4 ✓** (libXdamage-Stub wie SCRUM-381; auf macOS nicht nötig) · dist gebaut, Bundle-Checks (0.9.14-beta + neuer i18n-Text) ✓, eingespielt.
+**Risiko:** gering — reine FE-Anordnung, keine Funktions-/Routenänderung.
+**Git-Status:** dev_Klarwerk lokal committet (siehe git log), **kein Push**. **Nächster Schritt:** Pedi: App doppelklicken → „v0.9.14-beta" → /validierung prüfen (Titel prominent, „Details ansehen"-Link sichtbar).
