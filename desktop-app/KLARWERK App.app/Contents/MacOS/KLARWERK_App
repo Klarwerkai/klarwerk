@@ -18,6 +18,9 @@ SVC_TR="KLARWERK-App-Transkript"   # Whisper/OpenAI für Video-Analyse (optional
 ACC="team1"
 
 say()  { /usr/bin/osascript -e "display notification \"$1\" with title \"KLARWERK App\"" >/dev/null 2>&1; }
+# Erfolgs-Bestätigung als kleiner Dialog (schließt sich nach 4 s selbst) — macOS
+# unterdrückt Skript-Benachrichtigungen je nach Mitteilungs-Einstellung (Pedi 02.07.).
+confirm() { /usr/bin/osascript -e "display dialog \"$1\" with title \"KLARWERK App\" buttons {\"OK\"} default button 1 giving up after 4" >/dev/null 2>&1; }
 fail() {
   # Pedi-Vorschlag 02.07.: Dialog nennt die letzte Fehlerzeile aus dem Log (gekürzt, ohne Anführungszeichen).
   HINT="$(tail -n 15 "$LOG" 2>/dev/null | grep -E 'Error|error|fatal|fehlgeschlagen|failed|EADDRINUSE|ENOENT|Permission denied' | tail -1 | tr -d '"\\' | cut -c1-180)"
@@ -83,13 +86,13 @@ fi
 DIST_STAMP="$(/usr/bin/stat -f %m "$BUILD_REF" 2>/dev/null)"
 # Versions-Bestätigung (Pedi 02.07.): jede Start-Meldung nennt Version + Build-Zeit,
 # damit sofort erkennbar ist, WELCHER Stand läuft.
-VER="$(/usr/bin/sed -n 's/.*APP_VERSION = "\(.*\)".*/\1/p' "$REPO/apps/web/src/version.ts" 2>/dev/null)"
+VER="$(/usr/bin/grep APP_VERSION "$REPO/apps/web/src/version.ts" 2>/dev/null | /usr/bin/cut -d'"' -f2)"
 STAMP="$(/usr/bin/stat -f %Sm -t '%d.%m. %H:%M' "$BUILD_REF" 2>/dev/null)"
 
 if [ "$NEED_FRESH" = "0" ] && [ -n "$OLD_PORT" ] && [ "$DIST_STAMP" = "$OLD_STAMP" ] && \
    /usr/bin/curl -s --max-time 2 "http://127.0.0.1:$OLD_PORT/health" | /usr/bin/grep -q '"status":"ok"'; then
-  say "Läuft bereits: v$VER · Build $STAMP · Port $OLD_PORT"
   /usr/bin/open "http://localhost:$OLD_PORT"
+  confirm "Läuft bereits: Version $VER\nBuild $STAMP · Port $OLD_PORT"
   exit 0
 fi
 
@@ -157,9 +160,9 @@ for _ in $(seq 1 60); do
       ADMIN_PASS=""
     fi
     STAMP="$(/usr/bin/stat -f %Sm -t '%d.%m. %H:%M' "$BUILD_REF" 2>/dev/null)"
-    say "Gestartet: v$VER · Build $STAMP · Port $PORT"
     echo "Gestartet: v$VER / Build $STAMP / Port $PORT" >> "$LOG"
     /usr/bin/open "http://localhost:$PORT"
+    confirm "Gestartet: Version $VER\nBuild $STAMP · Port $PORT"
     exit 0
   fi
   sleep 0.5
