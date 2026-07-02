@@ -1,18 +1,5 @@
-import {
-  Bold,
-  Eye,
-  Heading2,
-  Heading3,
-  Image as ImageIcon,
-  Italic,
-  Link as LinkIcon,
-  List,
-  ListOrdered,
-  Paperclip,
-  Pencil,
-  SquareStack,
-} from "lucide-react";
-import type { ClipboardEvent, DragEvent } from "react";
+import { Eye, Image as ImageIcon, Link as LinkIcon, Paperclip, Pencil } from "lucide-react";
+import type { ClipboardEvent, DragEvent, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type EditorFile, fileLinkHtml } from "../lib/bodyFileLink";
@@ -39,23 +26,39 @@ export interface EditorImage {
   name: string;
 }
 
+// SCRUM-384 (Pedi-Sollbild ARGUS „Wissensseite bearbeiten"): farbige Callout-Knöpfe wie im
+// Alt-Editor — statische, sichere Klassen je Blocktyp (kein dynamischer Klassenbau).
+const BLOCK_BTN_CLASS: Record<EditorBlock, string> = {
+  info: "border-ai/40 text-ai",
+  note: "border-hairline text-text",
+  warning: "border-trust-warn-fill/50 text-trust-warn-text",
+  success: "border-trust-pos-fill/50 text-trust-pos-text",
+};
+
 // KW-STR / SCRUM-45/46/48: minimaler nativer WYSIWYG (contentEditable, keine Editor-Lib).
 // Speichert sanitisiertes HTML; Vorschau↔Bearbeiten ohne State-Verlust.
+// SCRUM-384: Toolbar folgt dem ARGUS-Muster (H2 H3 ¶ | B I | Listen/Link | Bild/Datei |
+// Callouts | ✨KI) — die KI-Palette (aiPanel) öffnet sich erst auf Klick des ✨KI-Knopfs.
 export function RichTextEditor({
   value,
   onChange,
   images = [],
   files = [],
+  aiPanel,
 }: {
   value: string;
   onChange: (html: string) => void;
   images?: EditorImage[];
   // SCRUM-355: im Body verlinkbare Nicht-Bild-Dateien (mit Object-Store-objectId).
   files?: EditorFile[];
+  // SCRUM-384: KI-Palette (z. B. AiAssistBox) — erscheint erst nach Klick auf ✨KI.
+  aiPanel?: ReactNode;
 }): JSX.Element {
   const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<"edit" | "preview">("edit");
+  // SCRUM-384: KI-Palette geschlossen bis zum bewussten Klick (ARGUS-Muster, keine Info-Wand).
+  const [showAi, setShowAi] = useState(false);
   const [showImages, setShowImages] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
   const [showLink, setShowLink] = useState(false);
@@ -190,79 +193,80 @@ export function RichTextEditor({
     void handleMediaFiles(imageFiles);
   };
 
-  const btn =
-    "grid h-8 w-8 place-items-center rounded-btn text-muted hover:bg-hairline-soft hover:text-text";
+  // SCRUM-384: ARGUS-Toolbar — kleine Text-Pills wie im Alt-Editor („Wissensseite bearbeiten").
+  const tb =
+    "inline-flex h-8 min-w-8 items-center justify-center gap-1 rounded-btn border border-hairline bg-surface px-2 text-[12px] font-semibold text-text hover:bg-hairline-soft";
+  const sep = <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-hairline" />;
 
   return (
-    <div className="relative rounded-input border border-hairline">
-      <div className="flex flex-wrap items-center gap-1 border-b border-hairline p-1.5">
-        <button type="button" title={t("editor.bold")} className={btn} onClick={() => exec("bold")}>
-          <Bold size={15} />
-        </button>
-        <button
-          type="button"
-          title={t("editor.italic")}
-          className={btn}
-          onClick={() => exec("italic")}
-        >
-          <Italic size={15} />
-        </button>
+    <div className="relative rounded-card border border-hairline bg-surface">
+      <div className="flex flex-wrap items-center gap-1 border-b border-hairline bg-page/60 p-1.5">
         <button
           type="button"
           title={t("editor.h2")}
-          className={btn}
+          className={tb}
           onClick={() => exec("formatBlock", "h2")}
         >
-          <Heading2 size={15} />
+          H2
         </button>
         <button
           type="button"
           title={t("editor.h3")}
-          className={btn}
+          className={tb}
           onClick={() => exec("formatBlock", "h3")}
         >
-          <Heading3 size={15} />
+          H3
         </button>
         <button
           type="button"
+          title={t("editor.para")}
+          className={tb}
+          onClick={() => exec("formatBlock", "p")}
+        >
+          ¶
+        </button>
+        {sep}
+        <button type="button" title={t("editor.bold")} className={tb} onClick={() => exec("bold")}>
+          <strong>B</strong>
+        </button>
+        <button
+          type="button"
+          title={t("editor.italic")}
+          className={tb}
+          onClick={() => exec("italic")}
+        >
+          <em>I</em>
+        </button>
+        {sep}
+        <button
+          type="button"
           title={t("editor.ul")}
-          className={btn}
+          className={tb}
           onClick={() => exec("insertUnorderedList")}
         >
-          <List size={15} />
+          •
         </button>
         <button
           type="button"
           title={t("editor.ol")}
-          className={btn}
+          className={tb}
           onClick={() => exec("insertOrderedList")}
         >
-          <ListOrdered size={15} />
+          1.
         </button>
-        <button type="button" title={t("editor.link")} className={btn} onClick={openLinkPanel}>
-          <LinkIcon size={15} />
+        <button type="button" title={t("editor.link")} className={tb} onClick={openLinkPanel}>
+          <LinkIcon size={14} />
         </button>
-        {/* SCRUM-314: Blocktypen Info/Hinweis/Warnung/Erfolg — kleine Text-Buttons (eindeutig). */}
-        {EDITOR_BLOCKS.map((block) => (
-          <button
-            key={block}
-            type="button"
-            title={t(editorBlockLabelKey(block))}
-            className="inline-flex h-8 items-center gap-1 rounded-btn px-2 text-[11px] font-semibold text-muted hover:bg-hairline-soft hover:text-text"
-            onClick={() => addBlock(block)}
-          >
-            <SquareStack size={13} />
-            {t(editorBlockLabelKey(block))}
-          </button>
-        ))}
+        {sep}
         <div className="relative">
           <button
             type="button"
             title={t("editor.image")}
-            className={btn}
+            className={tb}
             onClick={() => setShowImages((s) => !s)}
           >
-            <ImageIcon size={15} />
+            <ImageIcon size={14} />
+            {t("editor.imageLabel")}
           </button>
           {showImages ? (
             <div className="absolute z-10 mt-1 w-56 rounded-card border border-hairline bg-surface p-1.5 shadow">
@@ -288,10 +292,11 @@ export function RichTextEditor({
           <button
             type="button"
             title={t("editor.file")}
-            className={btn}
+            className={tb}
             onClick={() => setShowFiles((s) => !s)}
           >
-            <Paperclip size={15} />
+            <Paperclip size={14} />
+            {t("editor.fileLabel")}
           </button>
           {showFiles ? (
             <div className="absolute z-10 mt-1 w-60 rounded-card border border-hairline bg-surface p-1.5 shadow">
@@ -313,17 +318,55 @@ export function RichTextEditor({
             </div>
           ) : null}
         </div>
+        {sep}
+        {/* SCRUM-314/384: Callouts Info/Hinweis/Warnung/Erfolg — farbige Text-Pills (ARGUS). */}
+        {EDITOR_BLOCKS.map((block) => (
+          <button
+            key={block}
+            type="button"
+            title={t(editorBlockLabelKey(block))}
+            className={`inline-flex h-8 items-center rounded-btn border bg-surface px-2 text-[12px] font-semibold hover:bg-hairline-soft ${BLOCK_BTN_CLASS[block]}`}
+            onClick={() => addBlock(block)}
+          >
+            {t(editorBlockLabelKey(block))}
+          </button>
+        ))}
+        {/* SCRUM-384: ✨KI öffnet/schließt die KI-Palette — erst auf bewussten Klick (Pedi-Sollbild). */}
+        {aiPanel ? (
+          <>
+            {sep}
+            <button
+              type="button"
+              title={t("editor.aiToggle")}
+              aria-expanded={showAi}
+              className={`inline-flex h-8 items-center gap-1 rounded-btn border px-2.5 text-[12px] font-semibold ${
+                showAi
+                  ? "border-ai/50 bg-ai-surface-1 text-ai"
+                  : "border-hairline bg-surface text-text hover:bg-hairline-soft"
+              }`}
+              onClick={() => setShowAi((s) => !s)}
+            >
+              ✨ {t("editor.aiLabel")}
+            </button>
+          </>
+        ) : null}
         <div className="ml-auto">
           <button
             type="button"
             title={mode === "edit" ? t("editor.preview") : t("editor.edit")}
-            className={btn}
+            className={tb}
             onClick={() => setMode((m) => (m === "edit" ? "preview" : "edit"))}
           >
-            {mode === "edit" ? <Eye size={15} /> : <Pencil size={15} />}
+            {mode === "edit" ? <Eye size={14} /> : <Pencil size={14} />}
+            {mode === "edit" ? t("editor.preview") : t("editor.edit")}
           </button>
         </div>
       </div>
+
+      {/* SCRUM-384: KI-Palette direkt unter der Toolbar — nur wenn ✨KI aktiv ist. */}
+      {aiPanel && showAi ? (
+        <div className="border-b border-hairline bg-page/60 px-2 pb-2">{aiPanel}</div>
+      ) : null}
 
       {showLink ? (
         <div className="border-b border-hairline bg-page p-2">
@@ -378,7 +421,7 @@ export function RichTextEditor({
             onDragOver={onDragOver}
             onDragLeave={onDragLeave}
             onPaste={onPaste}
-            className="prose-kw min-h-[140px] p-3 text-[14px] leading-relaxed text-text outline-none"
+            className="prose-kw min-h-[260px] p-4 text-[14.5px] leading-relaxed text-text outline-none md:p-6"
           />
           {/* SCRUM-372: sichtbares Ziel beim Drüberziehen — nur Bilder werden eingebettet. */}
           {dragActive ? (
@@ -391,7 +434,7 @@ export function RichTextEditor({
         // FR-STR-05: Vorschau aus demselben State (sanitisiert), kein Datenverlust.
         <SanitizedHtml
           html={value}
-          className="prose-kw min-h-[140px] p-3 text-[14px] leading-relaxed text-text"
+          className="prose-kw min-h-[260px] p-4 text-[14.5px] leading-relaxed text-text md:p-6"
         />
       )}
 

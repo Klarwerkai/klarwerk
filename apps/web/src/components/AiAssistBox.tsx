@@ -24,6 +24,7 @@ export function AiAssistBox({
   applyFn = applyAssist,
   hintKey = "capture.ai.hint",
   extraApplyActions = [],
+  compact = false,
 }: {
   text: string;
   runAssist: (text: string, instruction?: string) => Promise<string>;
@@ -41,6 +42,9 @@ export function AiAssistBox({
     labelKey: string;
     apply: (original: string, suggestion: string) => string;
   }>;
+  // SCRUM-384: kompakte Palette (ohne Titel/Hinweis) — für die ✨KI-Toolbar im Editor,
+  // wo der Nutzer die Palette bereits bewusst geöffnet hat (ARGUS-Muster).
+  compact?: boolean;
 }): JSX.Element {
   const { t } = useTranslation();
   const [free, setFree] = useState("");
@@ -77,12 +81,16 @@ export function AiAssistBox({
   };
 
   return (
-    <div className="mt-2 rounded-card border border-hairline bg-page p-3">
-      <div className="flex items-center gap-1.5">
-        <Sparkles size={13} className="text-ai" />
-        <span className="text-[12.5px] font-semibold text-ink">{t("capture.ai.title")}</span>
-      </div>
-      <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted">{t(hintKey)}</p>
+    <div className={compact ? "mt-2" : "mt-2 rounded-card border border-hairline bg-page p-3"}>
+      {compact ? null : (
+        <>
+          <div className="flex items-center gap-1.5">
+            <Sparkles size={13} className="text-ai" />
+            <span className="text-[12.5px] font-semibold text-ink">{t("capture.ai.title")}</span>
+          </div>
+          <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted">{t(hintKey)}</p>
+        </>
+      )}
       <div className="mt-2 flex flex-wrap gap-1.5">
         {ASSIST_ACTIONS.map((a) => (
           <button

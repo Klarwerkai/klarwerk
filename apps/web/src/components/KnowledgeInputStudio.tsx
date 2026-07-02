@@ -186,7 +186,9 @@ export function KnowledgeInputStudio({
       {/* SCRUM-341: Arbeitsraum-Layout — drei klar getrennte Bereiche statt einer linearen Liste.
           Breit (lg): Kontext-Spalte · große Editorfläche · KI-Spalte. Schmal: sinnvoll gestapelt. */}
       <div className="flex-1 overflow-y-auto px-3 py-4 sm:px-5">
-        <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-4 lg:grid-cols-[17rem_minmax(0,1fr)_19rem]">
+        {/* SCRUM-384: KI-Spalte entfällt — die KI-Palette sitzt im Editor hinter dem ✨KI-Knopf
+            (ARGUS-Sollbild, Pedi 02.07.); dadurch mehr ruhige Fläche für das Dokument. */}
+        <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
           {/* Kontext & Struktur: Orientierung, Anhänge, Inhaltsqualität, Strukturvorlagen. */}
           <aside className="space-y-2">
             <p className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
@@ -229,7 +231,25 @@ export function KnowledgeInputStudio({
             {view === "edit" ? <KnowledgeStudioTips /> : null}
             {view === "edit" ? (
               <div className="min-h-[55vh] rounded-card border border-hairline bg-surface p-2 sm:p-3">
-                <RichTextEditor value={draft} onChange={setDraft} images={images} files={files} />
+                <RichTextEditor
+                  value={draft}
+                  onChange={setDraft}
+                  images={images}
+                  files={files}
+                  aiPanel={
+                    <AiAssistBox
+                      text={bodyTextForAssist(draft)}
+                      runAssist={runAssist}
+                      applyFn={(mode, _original, suggestion) =>
+                        applyBodyAssist(mode, draft, suggestion)
+                      }
+                      onApply={setDraft}
+                      hintKey="capture.ai.bodyHint"
+                      extraApplyActions={blockActions}
+                      compact
+                    />
+                  }
+                />
               </div>
             ) : (
               // SCRUM-346: sichere Live-Vorschau — spiegelt die KO-Detail-Read-Mode-Darstellung
@@ -268,22 +288,6 @@ export function KnowledgeInputStudio({
               </div>
             )}
           </section>
-
-          {/* KI-Hilfe direkt sichtbar: Aktionen (Klarer/Strukturieren/Erweitern/Rechtschreibung) +
-              freies Anweisungsfeld + Vorschau (Ersetzen/Anhängen/Verwerfen) + Block-Übernahme. */}
-          <aside className="space-y-2">
-            <p className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
-              {t(knowledgeStudioSectionLabelKey("assist"))}
-            </p>
-            <AiAssistBox
-              text={bodyTextForAssist(draft)}
-              runAssist={runAssist}
-              applyFn={(mode, _original, suggestion) => applyBodyAssist(mode, draft, suggestion)}
-              onApply={setDraft}
-              hintKey="capture.ai.bodyHint"
-              extraApplyActions={blockActions}
-            />
-          </aside>
         </div>
       </div>
 

@@ -1516,25 +1516,29 @@ export function Capture(): JSX.Element {
                     body={t("capture.flow.step.studio.hint")}
                   />
                 </div>
+                {/* SCRUM-384: die EINE KI-Palette dieses Schritts sitzt IM Editor und öffnet
+                    sich erst über den ✨KI-Knopf der Toolbar (ARGUS-Sollbild, Pedi 02.07.). */}
                 <RichTextEditor
                   value={bodyHtml}
                   onChange={setBodyHtml}
                   images={editorImagesFromLocalImages(images)}
-                />
-                {/* SCRUM-315: die EINE KI-Palette dieses Schritts — Vorschau + bewusste Übernahme. */}
-                <AiAssistBox
-                  text={bodyTextForAssist(bodyHtml)}
-                  runAssist={runAssist}
-                  applyFn={(mode, _original, suggestion) =>
-                    applyBodyAssist(mode, bodyHtml, suggestion)
+                  aiPanel={
+                    <AiAssistBox
+                      text={bodyTextForAssist(bodyHtml)}
+                      runAssist={runAssist}
+                      applyFn={(mode, _original, suggestion) =>
+                        applyBodyAssist(mode, bodyHtml, suggestion)
+                      }
+                      onApply={setBodyHtml}
+                      hintKey="capture.ai.bodyHint"
+                      extraApplyActions={EDITOR_BLOCKS.map((block) => ({
+                        labelKey: `capture.ai.applyAs.${block}`,
+                        apply: (_original, suggestion) =>
+                          applyBodyAssistBlock(bodyHtml, suggestion, block),
+                      }))}
+                      compact
+                    />
                   }
-                  onApply={setBodyHtml}
-                  hintKey="capture.ai.bodyHint"
-                  extraApplyActions={EDITOR_BLOCKS.map((block) => ({
-                    labelKey: `capture.ai.applyAs.${block}`,
-                    apply: (_original, suggestion) =>
-                      applyBodyAssistBlock(bodyHtml, suggestion, block),
-                  }))}
                 />
               </div>
 
