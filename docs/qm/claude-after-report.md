@@ -10099,3 +10099,13 @@ git push
 **Getestet:** Voller Lauf in der Sandbox **4/4 grün in 3,8 s** (Chromium arm64; fehlende libXdamage per Stub gelöst — auf macOS/CI nicht nötig). Zwei echte Selektor-Bugs beim Bau gefunden/behoben (Doppel-Treffer „Prüfen & einreichen", Ask-Input ohne type-Attribut) — der Smoke prüft also nachweislich echte UI.
 **Gates:** Build/Biome/depcruise/Vitest komplett grün (1235/205).
 **Git:** dev_Klarwerk 9cfa9af lokal — kein Push. **Nächster Schritt:** Audit-Punkt 2 (Anlagen-Kopplung im KO-Detail).
+
+---
+
+## After-Report — 2026-07-02 · SCRUM-388: Anlagen-Kopplung im KO-Detail (Audit-Punkt 2)
+
+**Datum:** 2026-07-02 · **Ticket:** SCRUM-388 (neu, In Review) · **Anlass:** Pedi „ja 2 bitte" (Audit B1).
+**Änderung (Commit a5b4122, v0.9.7-beta):** (1) LifecycleRepo um Rück-Richtung `couplingsForKo(koId)` erweitert (In-Memory-Iteration + Postgres SELECT auf lifecycle_couplings) — Kopplungen waren bisher nur je Anlage abfragbar, das KO-Detail brauchte sie je KO. (2) Service-Passthrough. (3) Neue Route `GET /api/lifecycle/couplings/:koId` (ko.read) + Pflicht-Eintrag Guard-Matrix. (4) FE: endpoints.lifecycle.couple/couplingsFor; KO-Detail-Karte „Anlagen-Kopplung" unter der Provenance: Chips der gekoppelten Anlagen, Eingabefeld (mit ko.asset vorbelegt) + „Mit Anlage koppeln", ?-HelpTip erklärt die Wirkung (Anlage geändert → gezielte Prüf-Markierung), Viewer nur lesend (Route verlangt ko.create fürs Koppeln). (5) i18n DE/EN (6 Schlüssel).
+**Getestet:** Neuer Service-Test (Rück-Richtung inkl. Fremd-KO leer) → **1236 Tests / 205 Dateien grün**; Build/Biome/depcruise grün; **UI-Smoke 4/4** (v0.9.7-Bundle); dist eingespielt (Bundle-Check v0.9.7).
+**Risiko:** gering — additive Route mit vorhandenem Guard-Muster; Pg-Adapter nutzt bestehende Tabelle (kein Migrationsbedarf). Bekannte Grenze: Kopplungen sind bewusst nur anleg-, nicht lösbar (Entkoppeln = Folge-Ticket, falls Pedi es braucht — ehrlicher Verlauf statt stillem Löschen).
+**Git:** dev_Klarwerk a5b4122 lokal — kein Push. **Nächster Schritt:** Pedi: App doppelklicken (v0.9.7-beta), KO öffnen → Karte „Anlagen-Kopplung" prüfen; dann Punkt 3 (Glocke) im neuen Chat starten (Prompt liegt vor, Version dort → 0.9.8-beta).
