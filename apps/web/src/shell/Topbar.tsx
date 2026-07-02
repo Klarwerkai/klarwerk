@@ -1,10 +1,10 @@
 import { Bell, HelpCircle, Search, Smartphone } from "lucide-react";
-import { APP_VERSION } from "../version";
 import { type FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useNotifications, useReasonerStatus } from "../api/hooks";
 import { notificationTarget } from "../lib/notificationTarget";
+import { APP_VERSION } from "../version";
 
 function LangPill(): JSX.Element {
   const { i18n } = useTranslation();

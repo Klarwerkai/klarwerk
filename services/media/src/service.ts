@@ -1,5 +1,5 @@
-import { decodeDataUrl, type ObjectStore } from "../../object-store";
-import { MediaAnalysisError, type MediaAnalysis, type Transcriber } from "./types";
+import { type ObjectStore, decodeDataUrl } from "../../object-store";
+import { type MediaAnalysis, MediaAnalysisError, type Transcriber } from "./types";
 
 export interface MediaAnalysisDeps {
   objects: ObjectStore;
