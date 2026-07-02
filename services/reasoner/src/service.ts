@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { ModelRunRepo, ModelRunStatus, ModelRunTask } from "../../model-runs";
 import { DeterministicProvider, type ReasonerProvider } from "./provider";
+
 import type {
   AnswerResult,
   AssistResult,
@@ -9,6 +10,8 @@ import type {
   ReasonerConfigStatus,
   ReasonerLocale,
   ReasonerStatus,
+  ReasonerTaskChoice,
+  ReasonerTaskConfig,
   StructureResult,
 } from "./types";
 
@@ -35,6 +38,45 @@ export class Reasoner {
     return this.primary.isAvailable() && this.primary !== this.fallback;
   }
 
+  // ---- KI-Verwaltung v1 (Teil-Slice, 02.07.2026): Zuordnung global + je Aufgabe ----
+  // Bewusst OHNE Persistenz (gilt bis Neustart): kein neuer Speicherpfad kurz vor dem
+  // Beta-RC; der Voll-Ausbau (PMO-Eintrag "KI-Management-Seite") bringt Repo+Persistenz.
+  private taskConfig: ReasonerTaskConfig = { global: "auto", perTask: {} };
+
+  getTaskConfig(): ReasonerTaskConfig {
+    return { global: this.taskConfig.global, perTask: { ...this.taskConfig.perTask } };
+  }
+
+  setTaskConfig(next: ReasonerTaskConfig): ReasonerTaskConfig {
+    const valid: ReasonerTaskChoice[] = ["auto", "model", "deterministic"];
+    const tasks = ["structure", "assist", "interview", "answer", "select"] as const;
+    if (!valid.includes(next.global)) {
+      throw new Error("Ungültige globale KI-Zuordnung.");
+    }
+    const perTask: ReasonerTaskConfig["perTask"] = {};
+    for (const task of tasks) {
+      const c = next.perTask?.[task];
+      if (c === undefined) continue;
+      if (!valid.includes(c)) {
+        throw new Error(`Ungültige KI-Zuordnung für Aufgabe '${task}'.`);
+      }
+      perTask[task] = c;
+    }
+    this.taskConfig = { global: next.global, perTask };
+    return this.getTaskConfig();
+  }
+
+  private choiceFor(task: ModelRunTask): ReasonerTaskChoice {
+    return this.taskConfig.perTask[task] ?? this.taskConfig.global;
+  }
+
+  // Effektiver Modus je Aufgabe — ehrlich: "model" nur, wenn gewollt UND verfügbar.
+  private effectiveFor(task: ModelRunTask): "model" | "deterministic" {
+    const choice = this.choiceFor(task);
+    if (choice === "deterministic") return "deterministic";
+    return this.usingPrimary() ? "model" : "deterministic";
+  }
+
   // SCRUM-164: führt eine Reasoner-Task aus (primary → bei Fehler deterministischer Fallback)
   // und protokolliert sie als ModelRunRecord (nur Metadaten, kein Prompt-/Antworttext).
   // Verhalten gegenüber den bisherigen Methoden ist unverändert (gleiche Ergebnisse/Fehler).
@@ -45,7 +87,8 @@ export class Reasoner {
     fallbackFn: () => Promise<T>,
   ): Promise<T> {
     const startedAt = new Date().toISOString();
-    const usePrimary = this.usingPrimary();
+    // KI-Verwaltung v1: bewusste Zuordnung je Aufgabe schlägt die Automatik.
+    const usePrimary = this.effectiveFor(task) === "model";
     let fallback = false;
     let result: T;
     try {
@@ -125,6 +168,14 @@ export class Reasoner {
       fallbackAvailable: true,
       supportsLocales: ["de", "en"],
       tasks: ["structure", "assist", "interview", "answer", "select"],
+      taskConfig: this.getTaskConfig(),
+      effective: Object.fromEntries(
+        (["structure", "assist", "interview", "answer", "select"] as const).map((task) => [
+          task,
+          this.effectiveFor(task),
+        ]),
+      ),
+      persisted: false,
     };
   }
 

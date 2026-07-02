@@ -22,6 +22,8 @@ export {
 export type {
   KnowledgeRef,
   KnowledgeClass,
+  ReasonerTaskChoice,
+  ReasonerTaskConfig,
   ReasonerLocale,
   AnswerResult,
   AnswerStep,

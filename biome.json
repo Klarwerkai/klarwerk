@@ -18,6 +18,8 @@
   "files": {
     "ignore": [
       "**/dist",
+      "**/test-results",
+      "**/playwright-report",
       "**/node_modules",
       "docs/generated",
       "UI:UX",

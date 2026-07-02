@@ -70,5 +70,30 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
       }
       reply.code(200).send(reasoner.configStatus());
     });
+
+    // KI-Verwaltung v1 (02.07.2026, Teil-Slice): Zuordnung global + je Aufgabe setzen.
+    // Nur Admin; keine Schlüssel — die leben weiter ausschließlich serverseitig.
+    app.put<{ Body: { global?: string; perTask?: Record<string, string> } }>(
+      "/api/reasoner/config",
+      async (request, reply) => {
+        const user = await guards.requirePermission("users.manage", request, reply);
+        if (!user) {
+          return;
+        }
+        try {
+          // Laufzeit-Validierung übernimmt setTaskConfig (wirft bei ungültigen Werten).
+          reasoner.setTaskConfig({
+            global: request.body.global ?? "auto",
+            perTask: request.body.perTask ?? {},
+          } as Parameters<typeof reasoner.setTaskConfig>[0]);
+          reply.code(200).send(reasoner.configStatus());
+        } catch (error) {
+          reply.code(400).send({
+            error: "BAD_REQUEST",
+            message: error instanceof Error ? error.message : "Ungültige KI-Zuordnung.",
+          });
+        }
+      },
+    );
   };
 }

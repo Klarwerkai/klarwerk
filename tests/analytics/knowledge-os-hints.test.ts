@@ -42,6 +42,15 @@ function reasoner(mode: ReasonerConfigStatus["mode"]): ReasonerConfigStatus {
     configured: mode === "model",
     mode,
     fallbackAvailable: true,
+    taskConfig: { global: "auto", perTask: {} },
+    effective: {
+      structure: "model",
+      assist: "model",
+      interview: "model",
+      answer: "model",
+      select: "model",
+    },
+    persisted: false,
     supportsLocales: ["de", "en"],
     tasks: ["structure", "assist", "interview", "answer", "select"],
   };

@@ -72,6 +72,17 @@ export interface ReasonerStatus {
 export type ReasonerConfigMode = "model" | "fallback" | "demo";
 export type ReasonerTask = "structure" | "assist" | "interview" | "answer" | "select";
 
+// KI-Verwaltung v1 (Pedi 02.07., Teil-Slice des PMO-Eintrags „KI-Management-Seite"):
+// je Aufgabe bewusst wählen — "auto" (Modell wenn verfügbar), "model" (Modell verlangen,
+// ehrlicher Fallback wenn nicht verfügbar) oder "deterministic" (bewusst ohne Modell).
+export type ReasonerTaskChoice = "auto" | "model" | "deterministic";
+export interface ReasonerTaskConfig {
+  global: ReasonerTaskChoice;
+  perTask: Partial<
+    Record<"structure" | "assist" | "interview" | "answer" | "select", ReasonerTaskChoice>
+  >;
+}
+
 export interface ReasonerConfigStatus {
   provider: string; // Label des aktiven Providers (kein Schlüssel)
   model?: string; // Modell-Label, falls ein echtes Modell konfiguriert ist
@@ -80,4 +91,9 @@ export interface ReasonerConfigStatus {
   fallbackAvailable: boolean; // deterministischer Fallback immer verfügbar (FR-RSN-04)
   supportsLocales: ReasonerLocale[];
   tasks: ReasonerTask[];
+  // KI-Verwaltung v1: gewünschte Zuordnung + was je Aufgabe EFFEKTIV läuft (ehrlich).
+  taskConfig: ReasonerTaskConfig;
+  effective: Record<string, "model" | "deterministic">;
+  // v1 bewusst ohne Persistenz (gilt bis Neustart) — UI zeigt das ehrlich an.
+  persisted: boolean;
 }

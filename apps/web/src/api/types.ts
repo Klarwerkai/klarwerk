@@ -450,6 +450,10 @@ export interface ReasonerConfigStatus {
   fallbackAvailable: boolean;
   supportsLocales: ("de" | "en")[];
   tasks: ReasonerTask[];
+  // KI-Verwaltung v1 (02.07.2026): Zuordnung + effektiver Modus je Aufgabe.
+  taskConfig: { global: string; perTask: Record<string, string> };
+  effective: Record<string, "model" | "deterministic">;
+  persisted: boolean;
 }
 
 export interface AssistResult {

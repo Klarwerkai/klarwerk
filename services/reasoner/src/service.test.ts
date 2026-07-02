@@ -506,6 +506,41 @@ describe("SCRUM-164: ModelRun-Protokoll", () => {
   });
 });
 
+describe("KI-Verwaltung v1: Task-Zuordnung (02.07.2026)", () => {
+  it("deterministic je Aufgabe erzwingt den Fallback trotz verfügbarem Modell", async () => {
+    const r = new Reasoner(okModel());
+    r.setTaskConfig({ global: "auto", perTask: { structure: "deterministic" } });
+    const cfg = r.configStatus();
+    expect(cfg.effective.structure).toBe("deterministic");
+    expect(cfg.effective.assist).toBe("model");
+    const draft = await r.structure("Ventil X schließt bei Überdruck nach 3 Sekunden.");
+    expect(draft.demo).toBe(true); // deterministischer Entwurf, ehrlich gekennzeichnet
+  });
+
+  it("global deterministic gilt für alle Aufgaben ohne Override", () => {
+    const r = new Reasoner(okModel());
+    r.setTaskConfig({ global: "deterministic", perTask: {} });
+    for (const v of Object.values(r.configStatus().effective)) {
+      expect(v).toBe("deterministic");
+    }
+  });
+
+  it("'model' verlangt ohne verfügbares Modell bleibt ehrlich deterministisch", () => {
+    const r = new Reasoner(); // kein Primary
+    r.setTaskConfig({ global: "model", perTask: {} });
+    expect(r.configStatus().effective.structure).toBe("deterministic");
+  });
+
+  it("weist ungültige Zuordnungen ab und behält den alten Stand", () => {
+    const r = new Reasoner();
+    expect(() => r.setTaskConfig({ global: "quantum" as never, perTask: {} })).toThrow();
+    expect(() =>
+      r.setTaskConfig({ global: "auto", perTask: { structure: "magie" as never } }),
+    ).toThrow();
+    expect(r.getTaskConfig()).toEqual({ global: "auto", perTask: {} });
+  });
+});
+
 describe("SCRUM-166: Reasoner configStatus", () => {
   it("ohne Modell → configured false, mode demo, Fallback verfügbar", () => {
     const cfg = new Reasoner().configStatus();

@@ -12,6 +12,15 @@ const configured: ReasonerConfigStatus = {
   configured: true,
   mode: "model",
   fallbackAvailable: true,
+  taskConfig: { global: "auto", perTask: {} },
+  effective: {
+    structure: "model",
+    assist: "model",
+    interview: "model",
+    answer: "model",
+    select: "model",
+  },
+  persisted: false,
   supportsLocales: ["de", "en"],
   tasks: ["structure", "assist", "interview", "answer", "select"],
 };
@@ -21,6 +30,15 @@ const demo: ReasonerConfigStatus = {
   configured: false,
   mode: "demo",
   fallbackAvailable: true,
+  taskConfig: { global: "auto", perTask: {} },
+  effective: {
+    structure: "model",
+    assist: "model",
+    interview: "model",
+    answer: "model",
+    select: "model",
+  },
+  persisted: false,
   supportsLocales: ["de", "en"],
   tasks: ["structure", "assist", "interview", "answer", "select"],
 };

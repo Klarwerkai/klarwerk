@@ -154,6 +154,9 @@ export const endpoints = {
     status: () => api.get<ReasonerStatus>("/reasoner/status"),
     // SCRUM-166: read-only Provider-/Model-Konfiguration (nur Metadaten).
     config: () => api.get<ReasonerConfigStatus>("/reasoner/config"),
+    // KI-Verwaltung v1: Zuordnung setzen (nur Admin; Antwort = frischer configStatus).
+    updateConfig: (cfg: { global: string; perTask: Record<string, string> }) =>
+      api.put<ReasonerConfigStatus>("/reasoner/config", cfg),
   },
   notifications: { list: () => api.get<Notification[]>("/notifications") },
   directory: { list: () => api.get<{ id: string; name: string }[]>("/directory") },

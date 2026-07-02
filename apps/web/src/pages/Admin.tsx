@@ -1,5 +1,5 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, KeyRound, Trash2, UserPlus } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowRight, KeyRound, Sparkles, Trash2, UserPlus } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
@@ -8,6 +8,7 @@ import { endpoints } from "../api/endpoints";
 import { useAudit, useUsers } from "../api/hooks";
 import { useToast } from "../app/ToastContext";
 import { ROLES, type Role } from "../app/navigation";
+import { HelpTip } from "../components/HelpTip";
 import {
   Button,
   Card,
@@ -102,6 +103,25 @@ export function Admin(): JSX.Element {
     onError: fail,
   });
 
+  // KI-Verwaltung v1 (Pedi 02.07., Teil-Slice des PMO-Eintrags): Zuordnung global + je
+  // Aufgabe. Keys bleiben serverseitig; v1 gilt bis zum Neustart (ehrlich angezeigt).
+  const AI_TASKS = ["structure", "assist", "interview", "answer", "select"] as const;
+  const aiConfig = useQuery({ queryKey: ["reasonerConfig"], queryFn: endpoints.reasoner.config });
+  const [aiGlobal, setAiGlobal] = useState<string | null>(null);
+  const [aiPerTask, setAiPerTask] = useState<Record<string, string> | null>(null);
+  const effGlobal = aiGlobal ?? aiConfig.data?.taskConfig.global ?? "auto";
+  const effPerTask = aiPerTask ?? aiConfig.data?.taskConfig.perTask ?? {};
+  const aiSave = useMutation({
+    mutationFn: () => endpoints.reasoner.updateConfig({ global: effGlobal, perTask: effPerTask }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["reasonerConfig"] });
+      setAiGlobal(null);
+      setAiPerTask(null);
+      push("success", t("adm.ai.saved"));
+    },
+    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
+  });
+
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <PageHeader kicker={t("adm.kicker")} title={t("nav.admin")} />
@@ -143,6 +163,92 @@ export function Admin(): JSX.Element {
       </Card>
 
       {/* SCRUM-147: Nutzer anlegen */}
+      {/* KI-Verwaltung v1 (Teil-Slice): Zuordnung sichtbar + änderbar; ehrlicher Status. */}
+      <Card className="space-y-3">
+        <div className="flex items-center gap-1.5">
+          <SectionLabel>{t("adm.ai.title")}</SectionLabel>
+          <HelpTip title={t("adm.ai.title")} body={t("adm.ai.help")} />
+        </div>
+        {aiConfig.data ? (
+          <>
+            <p className="text-[12.5px] text-muted">
+              {t("adm.ai.status", {
+                provider: aiConfig.data.provider,
+                mode: aiConfig.data.mode === "model" ? t("adm.ai.modeModel") : t("adm.ai.modeDemo"),
+              })}
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="block text-[11.5px] font-semibold text-muted">
+                {t("adm.ai.global")}
+                <select
+                  value={effGlobal}
+                  onChange={(e) => setAiGlobal(e.target.value)}
+                  className="mt-1 h-9 w-full rounded-input border border-hairline bg-surface px-2 text-[13px] font-normal text-text"
+                >
+                  <option value="auto">{t("adm.ai.choice.auto")}</option>
+                  <option value="model">{t("adm.ai.choice.model")}</option>
+                  <option value="deterministic">{t("adm.ai.choice.deterministic")}</option>
+                </select>
+              </label>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {AI_TASKS.map((task) => (
+                <label key={task} className="block text-[11.5px] font-semibold text-muted">
+                  <span className="inline-flex items-center gap-1.5">
+                    {t(`adm.ai.task.${task}`)}
+                    <span
+                      className={`rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${
+                        aiConfig.data?.effective[task] === "model"
+                          ? "bg-ai-surface-1 text-ai"
+                          : "bg-page text-muted-2"
+                      }`}
+                    >
+                      {aiConfig.data?.effective[task] === "model"
+                        ? t("adm.ai.effModel")
+                        : t("adm.ai.effDet")}
+                    </span>
+                  </span>
+                  <select
+                    value={effPerTask[task] ?? ""}
+                    onChange={(e) =>
+                      setAiPerTask({
+                        ...effPerTask,
+                        ...(e.target.value
+                          ? { [task]: e.target.value }
+                          : (() => {
+                              const cp = { ...effPerTask };
+                              delete cp[task];
+                              return cp;
+                            })()),
+                      })
+                    }
+                    className="mt-1 h-9 w-full rounded-input border border-hairline bg-surface px-2 text-[13px] font-normal text-text"
+                  >
+                    <option value="">{t("adm.ai.choice.inherit")}</option>
+                    <option value="auto">{t("adm.ai.choice.auto")}</option>
+                    <option value="model">{t("adm.ai.choice.model")}</option>
+                    <option value="deterministic">{t("adm.ai.choice.deterministic")}</option>
+                  </select>
+                </label>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="primary"
+                disabled={aiSave.isPending || (aiGlobal === null && aiPerTask === null)}
+                onClick={() => aiSave.mutate()}
+              >
+                <Sparkles size={14} />
+                {t("adm.ai.save")}
+              </Button>
+              <span className="text-[11px] text-muted-2">{t("adm.ai.persistNote")}</span>
+            </div>
+          </>
+        ) : (
+          <p className="text-[12.5px] text-muted-2">{t("state.loading")}</p>
+        )}
+      </Card>
+
       <Card className="space-y-3">
         <SectionLabel>{t("adm.createTitle")}</SectionLabel>
         <div className="grid gap-3 sm:grid-cols-2">
