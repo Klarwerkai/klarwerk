@@ -10088,3 +10088,14 @@ git push
 **Nachtrag Aufräum-Pass v0.9.5 (gleicher Tag, Pedi: „sieht noch etwas unordentlich aus"):** Start-Seite: die zwei Dauer-Erklärblöcke „So liest du Klarwerk" (SCRUM-289) + „Demo-/Pilotpfad" (SCRUM-290/301) stecken jetzt in EINER einklappbaren Orientierungs-Karte (neue DOM-freie lib startOrientation.ts + 3 Tests: Erstbesuch offen via localStorage-Marker, danach zu, defensiv bei blockiertem Storage). Erfassen Schritt 1: Autor/Wissensart-Zeile in „Erweiterte Details" verschoben — sichtbar ist nur noch Erzähl-Modus + Textfeld + „Mit KI strukturieren". Nichts entfernt, nur Dichte. Gates komplett grün (Build/Biome/depcruise/**1235 Tests/205 Dateien**), dist v0.9.5 eingespielt, Commit baf8380. Pedi-Test: App doppelklicken → „Gestartet: Version 0.9.5-beta".
 
 **Nachtrag Runde 5 (gleicher Tag, Pedi-Review v0.9.5):** „Entwurf verwerfen fehlt; beim Freitext fehlt Datei-Upload." Beides ergänzt (v0.9.6-beta, Commit siehe log): (1) Wissensseite-Footer: „Verwerfen" mit Inline-Bestätigung (kein confirm()) — verwirft nur den Entwurf/Body, der Erzähltext bleibt erhalten (ehrlicher Hinweis). (2) Erzähl-Schritt: „Dateien oder Bilder hinzufügen" direkt unterm Textfeld — nutzt den vorhandenen onDocs-Pfad (PDF/Word/Text → Inhalt fließt in den Freitext; Bilder/Video/Audio → Anhang; Zähler-Hinweis). Gates komplett grün (1235 Tests). dist eingespielt.
+
+---
+
+## After-Report — 2026-07-02 · SCRUM-381: Playwright-UI-Smoke (Audit-Punkt 1 von 4)
+
+**Datum:** 2026-07-02 · **Ticket:** SCRUM-381 (Done) · **Anlass:** Pedi: „wir arbeiten von 1 nach 4, starte mit 1" (Audit-Vorschlagsliste).
+**Entscheidung:** JA zu Playwright, bewusst minimal (Option A) — genau die Fehlerklasse abdecken, die 1235 Logik-Tests nicht sehen (weiße Seite, kaputtes Bundle, tote Kernflüsse, kaputtes Routing).
+**Änderung (Commit 9cfa9af):** `playwright.smoke.config.ts` (Chromium, In-Memory-Server auf Port 3123, deterministischer Reasoner — kein API-Key nötig) + `tests-smoke/ui-smoke.spec.ts` (4 Tests: Ersteinrichtung→Arbeitsbereich · Erzählen→Wissensseite→Einreichen · ehrliches Fragen (Antwort ODER „Wissenslücke retten") · 12 Kernrouten rendern). npm-Script `smoke:ui`; @playwright/test als devDependency; .gitignore um test-results/ ergänzt. Bewusst NICHT in tools/check (kein Browser-Zwang je Lauf); Erstlauf: `npx playwright install chromium`.
+**Getestet:** Voller Lauf in der Sandbox **4/4 grün in 3,8 s** (Chromium arm64; fehlende libXdamage per Stub gelöst — auf macOS/CI nicht nötig). Zwei echte Selektor-Bugs beim Bau gefunden/behoben (Doppel-Treffer „Prüfen & einreichen", Ask-Input ohne type-Attribut) — der Smoke prüft also nachweislich echte UI.
+**Gates:** Build/Biome/depcruise/Vitest komplett grün (1235/205).
+**Git:** dev_Klarwerk 9cfa9af lokal — kein Push. **Nächster Schritt:** Audit-Punkt 2 (Anlagen-Kopplung im KO-Detail).
