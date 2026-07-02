@@ -10,3 +10,4 @@ docs/generated/coverage/
 *.timestamp-*.mjs
 desktop-app/app.log
 vitest.config.ts.timestamp-*
+desktop-app/.run-state
