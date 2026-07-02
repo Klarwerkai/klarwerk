@@ -70,7 +70,8 @@ OLD_COMMIT=""; OLD_PORT=""; OLD_PID=""
 [ -f "$STATE" ] && read -r OLD_COMMIT OLD_PORT OLD_PID < "$STATE"
 
 # Fall 1: Server läuft UND ist auf aktuellem Stand -> nur Browser öffnen.
-if [ "$OLD_COMMIT" = "$CUR" ] && [ -n "$OLD_PORT" ] && \
+# "nogit" (Stand unlesbar, z. B. Git-Sperre einer laufenden Session) zählt NIE als aktuell.
+if [ "$CUR" != "nogit" ] && [ "$OLD_COMMIT" = "$CUR" ] && [ -n "$OLD_PORT" ] && \
    /usr/bin/curl -s --max-time 2 "http://127.0.0.1:$OLD_PORT/health" | /usr/bin/grep -q '"status":"ok"'; then
   /usr/bin/open "http://localhost:$OLD_PORT"
   exit 0
