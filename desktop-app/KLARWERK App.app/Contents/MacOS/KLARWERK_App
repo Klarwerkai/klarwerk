@@ -81,9 +81,14 @@ fi
 # Auch neu starten, wenn das Build-Ergebnis selbst getauscht wurde (z. B. fertiges dist
 # eingespielt): der laufende Server hält sonst eine veraltete Dateiliste -> weiße Seite.
 DIST_STAMP="$(/usr/bin/stat -f %m "$BUILD_REF" 2>/dev/null)"
+# Versions-Bestätigung (Pedi 02.07.): jede Start-Meldung nennt Version + Build-Zeit,
+# damit sofort erkennbar ist, WELCHER Stand läuft.
+VER="$(/usr/bin/sed -n 's/.*APP_VERSION = "\(.*\)".*/\1/p' "$REPO/apps/web/src/version.ts" 2>/dev/null)"
+STAMP="$(/usr/bin/stat -f %Sm -t '%d.%m. %H:%M' "$BUILD_REF" 2>/dev/null)"
 
 if [ "$NEED_FRESH" = "0" ] && [ -n "$OLD_PORT" ] && [ "$DIST_STAMP" = "$OLD_STAMP" ] && \
    /usr/bin/curl -s --max-time 2 "http://127.0.0.1:$OLD_PORT/health" | /usr/bin/grep -q '"status":"ok"'; then
+  say "Läuft bereits: v$VER · Build $STAMP · Port $OLD_PORT"
   /usr/bin/open "http://localhost:$OLD_PORT"
   exit 0
 fi
@@ -151,7 +156,9 @@ for _ in $(seq 1 60); do
       fi
       ADMIN_PASS=""
     fi
-    say "KLARWERK läuft — öffne Browser"
+    STAMP="$(/usr/bin/stat -f %Sm -t '%d.%m. %H:%M' "$BUILD_REF" 2>/dev/null)"
+    say "Gestartet: v$VER · Build $STAMP · Port $PORT"
+    echo "Gestartet: v$VER / Build $STAMP / Port $PORT" >> "$LOG"
     /usr/bin/open "http://localhost:$PORT"
     exit 0
   fi
