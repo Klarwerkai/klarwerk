@@ -10012,3 +10012,15 @@ git push
 **Risiko:** gering — Produktion unberührt (DATABASE_URL hat Vorrang; Flag setzt nur die Desktop-App). Bekannte Grenze: Journal wächst monoton (Kompaktierung = Folge-Ticket); Objekt-Uploads landen als Base64 im Journal (dev-akzeptabel).
 **Git-Status:** dev_Klarwerk lokal committet, **kein Push** (Vorgabe). STOPP.
 **Nächster Schritt:** Pedi: App doppelklicken → Admin anlegen → App beenden → erneut doppelklicken → Login ohne Ersteinrichtung. Bei Erfolg EK-Abnahme; Kompaktierungs-Ticket bei Bedarf.
+
+---
+
+## After-Report — 2026-07-02 · Weiße Seite behoben + Versions-Bestätigung in allen Desktop-Apps
+
+**Datum:** 2026-07-02 · **Anlass:** Pedi-Meldung „localhost:3010 komplett weiß" + Auftrag „Benachrichtigung mit Versionsnummer in alle Desktop-Apps".
+**Ursache (weiße Seite):** Nicht der Build — der **laufende Server** hielt nach dem Austausch von `apps/web/dist` die alte Asset-Liste und beantwortete das neue CSS/JS mit SPA-Fallback/503 (per Browser-Netzwerkmitschnitt belegt: CSS-Request → HTML-Inhalt). Der Starter erkannte nur Quelltext-Änderungen, nicht ein getauschtes Build-Ergebnis → kein Neustart.
+**Änderung:** (1) KLARWERK_App-Starter: `.run-state` erweitert um Build-Zeitstempel (`<port> <pid> <stamp>`); weicht der dist-Zeitstempel ab → Server-Neustart auch ohne Quelländerung (d4bd3d6). (2) Alle 5 Desktop-Apps (App/PMO/Website/Sync/Ops, Original + Schreibtisch-Kopie) melden Erfolg jetzt mit **Version + Zeit(+Port)**: „Gestartet: v… · Build … · Port …" bzw. „Läuft bereits: …"; Website nennt Deploy-Zeit, Sync stempelt den Ergebnis-Dialog. (3) `APP_VERSION` 0.9.0→**0.9.1-beta** — Header-Chip beweist den neuen Stand. (4) dist mit 0.9.1 gebaut und eingespielt (Bundle-Checks: Version + „Expertenmodus" enthalten).
+**Getestet:** bash -n auf allen 5 Startern grün; Vite-Build grün; `/api/auth/status` liefert JSON (Backend gesund, Admin-Autowiederherstellung aktiv).
+**Nicht ausführbar:** echter Doppelklick/Notification nur am Mac — Pedi verifiziert per Meldung „v0.9.1-beta".
+**Git-Status:** dev_Klarwerk 02b37b5 (+d4bd3d6), klarwerk-public-website 20d0244, klarwerk-business-backend b286657 — **kein Push**. PMO bewusst ohne Git.
+**Nächster Schritt:** Pedi: KLARWERK App doppelklicken → Benachrichtigung „Gestartet: v0.9.1-beta …" + Header-Chip v0.9.1-beta prüfen. STOPP.
