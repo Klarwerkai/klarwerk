@@ -442,7 +442,7 @@ export interface ReasonerStatus {
 
 // SCRUM-166: read-only Provider-/Model-Konfiguration (nur Metadaten, keine Secrets).
 export type ReasonerConfigMode = "model" | "fallback" | "demo";
-export type ReasonerTask = "structure" | "assist" | "interview" | "answer" | "select";
+export type ReasonerTask = "structure" | "assist" | "interview" | "answer" | "select" | "extract";
 
 export interface ReasonerConfigStatus {
   provider: string;
@@ -460,6 +460,20 @@ export interface ReasonerConfigStatus {
 
 export interface AssistResult {
   text: string;
+  demo: boolean;
+}
+
+// PMO-FEA-0006: Wissenspunkt aus einem Dokument — mit wörtlicher Belegstelle (G-2).
+export interface ExtractedPoint {
+  title: string;
+  summary: string;
+  sourceExcerpt: string;
+}
+
+// PMO-FEA-0006: Extraktions-Ergebnis. Ohne Modell: points leer + ehrliche note (keine Fake-Punkte).
+export interface ExtractResult {
+  points: ExtractedPoint[];
+  note: string | null;
   demo: boolean;
 }
 

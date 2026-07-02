@@ -165,6 +165,7 @@ describe("AskService", () => {
         },
         demo: false,
       }),
+      extract: async () => ({ points: [], note: null, demo: false }),
       select: () => [],
     };
     const ask = new AskService({

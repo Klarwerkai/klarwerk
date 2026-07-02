@@ -5,14 +5,15 @@
 // Die Erstnutzer-Führung wird pro Browser gemerkt — über ein schmales Storage-Interface statt
 // direktem localStorage-Zugriff, damit die Logik ohne DOM testbar bleibt.
 
-export const CAPTURE_MODES = ["freitext", "formular", "diktat", "interview"] as const;
+// PMO-FEA-0006: „datei" = Wissen aus Datei extrahieren (vierter Erzähl-Modus).
+export const CAPTURE_MODES = ["freitext", "formular", "diktat", "interview", "datei"] as const;
 export type CaptureMode = (typeof CAPTURE_MODES)[number];
 
 // Der Expertenpfad ist GENAU das klassische Formular; alles andere gehört zum Erzähl-Einstieg.
 export const EXPERT_MODE: CaptureMode = "formular";
 
 // Erzähl-Modi in fester Reihenfolge (Standardweg zuerst). Bewusst OHNE das Formular.
-export const NARRATE_MODES: readonly CaptureMode[] = ["freitext", "diktat", "interview"];
+export const NARRATE_MODES: readonly CaptureMode[] = ["freitext", "diktat", "interview", "datei"];
 
 export function isExpertMode(mode: CaptureMode): boolean {
   return mode === EXPERT_MODE;

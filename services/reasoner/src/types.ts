@@ -61,6 +61,22 @@ export interface InterviewResult {
   demo: boolean; // deterministischer Fallback klar markiert
 }
 
+// PMO-FEA-0006: ein aus einem Dokument extrahierter Wissenspunkt. sourceExcerpt ist die
+// wörtliche Belegstelle aus dem Dokument (G-2: nur was im Text steht, nichts erfinden).
+export interface ExtractedPoint {
+  title: string; // die Aussage in einem Satz
+  summary: string; // Kurzfassung des Wissenspunkts
+  sourceExcerpt: string; // wörtlicher Auszug aus dem Dokument als Beleg
+}
+
+// PMO-FEA-0006: Ergebnis der Wissens-Extraktion aus Dokumenttext. Ohne Modell gibt es
+// KEINE Fake-Punkte — points bleibt leer und note erklärt ehrlich warum (FR-RSN-04/G-2).
+export interface ExtractResult {
+  points: ExtractedPoint[];
+  note: string | null; // ehrliche Erklärung, wenn keine Punkte geliefert werden können
+  demo: boolean; // true = deterministischer Fallback (kein Modell)
+}
+
 export interface ReasonerStatus {
   active: boolean; // FR-RSN-05: spiegelt tatsächliche Modell-Verfügbarkeit.
   provider: string;
@@ -70,7 +86,7 @@ export interface ReasonerStatus {
 // SCRUM-166: read-only Provider-/Model-Konfigurationssicht. Nur technische Metadaten —
 // KEINE Secrets/API-Keys, keine Prompt-/Antwortinhalte. provider/model sind Anzeige-Labels.
 export type ReasonerConfigMode = "model" | "fallback" | "demo";
-export type ReasonerTask = "structure" | "assist" | "interview" | "answer" | "select";
+export type ReasonerTask = "structure" | "assist" | "interview" | "answer" | "select" | "extract";
 
 // KI-Verwaltung v1 (Pedi 02.07., Teil-Slice des PMO-Eintrags „KI-Management-Seite"):
 // je Aufgabe bewusst wählen — "auto" (Modell wenn verfügbar), "model" (Modell verlangen,
@@ -79,7 +95,10 @@ export type ReasonerTaskChoice = "auto" | "model" | "deterministic";
 export interface ReasonerTaskConfig {
   global: ReasonerTaskChoice;
   perTask: Partial<
-    Record<"structure" | "assist" | "interview" | "answer" | "select", ReasonerTaskChoice>
+    Record<
+      "structure" | "assist" | "interview" | "answer" | "select" | "extract",
+      ReasonerTaskChoice
+    >
   >;
 }
 

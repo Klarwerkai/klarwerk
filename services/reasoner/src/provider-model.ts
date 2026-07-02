@@ -7,6 +7,8 @@ import {
 import type {
   AnswerResult,
   AssistResult,
+  ExtractResult,
+  ExtractedPoint,
   InterviewResult,
   KnowledgeRef,
   ReasonerLocale,
@@ -55,6 +57,26 @@ function assistGuidance(locale: ReasonerLocale, instruction: string): string {
     : `Wende diese Bearbeitungs-Anweisung nur auf die Formulierung an (keine neuen Fakten): ${instruction}`;
 }
 
+// PMO-FEA-0006 / G-2: Wissens-Extraktion aus Dokumenttext — anti-halluzinatorischer
+// System-Prompt. Jeder Punkt MUSS mit einem wörtlichen Auszug belegt sein; die Auszüge
+// werden zusätzlich serverseitig gegen den Dokumenttext geprüft (parseExtractResponse).
+function extractSystem(locale: ReasonerLocale): string {
+  const contract =
+    '{"points": [{"title": string (die Aussage in einem Satz), "summary": string, ' +
+    '"sourceExcerpt": string (wörtliches Zitat aus dem Dokument)}]}';
+  return locale === "en"
+    ? `You identify distinct pieces of knowledge in a document (rules of experience, thresholds, procedures, causes, conditions). Respond ONLY with JSON: ${contract}. Every point MUST quote a verbatim excerpt from the document as sourceExcerpt (copy it exactly, do not paraphrase it). Extract ONLY what the document actually states — do not invent, infer beyond the text, or add world knowledge. If the document contains no usable knowledge, return {"points": []}.`
+    : `Du identifizierst einzelne Wissenspunkte in einem Dokument (Erfahrungsregeln, Grenzwerte, Vorgehensweisen, Ursachen, Bedingungen). Antworte AUSSCHLIESSLICH mit JSON: ${contract}. Jeder Punkt MUSS eine wörtliche Belegstelle aus dem Dokument als sourceExcerpt zitieren (exakt kopieren, nicht paraphrasieren). Extrahiere NUR, was im Dokument tatsächlich steht — erfinde nichts, schlussfolgere nicht über den Text hinaus, ergänze kein Weltwissen. Enthält das Dokument kein verwertbares Wissen, gib {"points": []} zurück.`;
+}
+
+// PMO-FEA-0006: optionaler Suchauftrag des Experten — schränkt ein, WONACH gesucht wird,
+// erlaubt aber NIE das Erfinden von Inhalten.
+function extractGuidance(locale: ReasonerLocale, query: string): string {
+  return locale === "en"
+    ? `The expert is looking specifically for: ${query}. Restrict the points to this focus — but still only what the document actually states.`
+    : `Der Experte sucht gezielt nach: ${query}. Beschränke die Punkte auf diesen Fokus — aber weiterhin nur, was im Dokument tatsächlich steht.`;
+}
+
 function interviewSystem(locale: ReasonerLocale): string {
   return locale === "en"
     ? "You run a short editorial interview to capture industrial experiential knowledge. Ask exactly ONE next, concrete question that builds on the previous answers. Do NOT invent any technical content or facts. Return ONLY the question."
@@ -83,6 +105,59 @@ function extractJson(raw: string): string {
   const start = raw.indexOf("{");
   const end = raw.lastIndexOf("}");
   return start >= 0 && end > start ? raw.slice(start, end + 1) : raw;
+}
+
+// ---- PMO-FEA-0006: Extract-Parsing (DOM-frei, deterministisch testbar) ----------------------
+
+// Obergrenzen: begrenzte Punkteliste (Review-bar in einer Sitzung) und gedeckelte Feldlängen.
+export const MAX_EXTRACT_POINTS = 20;
+export const MAX_EXCERPT_LENGTH = 400;
+// Dokumenttext-Deckel für den Modell-Aufruf — bewusst großzügig, aber endlich (Token-Schutz).
+export const MAX_EXTRACT_DOCUMENT_LENGTH = 60_000;
+
+// Whitespace-normalisierter, case-insensitiver Substring-Check: die Belegstelle muss wirklich
+// im Dokument stehen. Das ist der harte G-2-Gate gegen erfundene/paraphrasierte „Zitate".
+function normalizeForMatch(text: string): string {
+  return text.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+export function excerptFoundInDocument(excerpt: string, documentText: string): boolean {
+  const needle = normalizeForMatch(excerpt);
+  if (needle.length === 0) {
+    return false;
+  }
+  return normalizeForMatch(documentText).includes(needle);
+}
+
+// Modell-Antwort → geprüfte Punkteliste. Ehrlichkeit vor Vollständigkeit:
+//  - Punkte ohne Titel ODER ohne im Dokument auffindbare Belegstelle werden VERWORFEN.
+//  - Fehlende summary fällt auf den Titel zurück (keine Erfindung, nur Wiederholung).
+//  - Liste und Feldlängen sind gedeckelt (MAX_EXTRACT_POINTS / MAX_EXCERPT_LENGTH).
+// Wirft bei strukturell unbrauchbarer Antwort (kein JSON) — der Reasoner fällt dann auf den
+// deterministischen, ehrlichen Fallback zurück (runTask-Mechanik).
+export function parseExtractResponse(raw: string, documentText: string): ExtractedPoint[] {
+  const parsed = JSON.parse(extractJson(raw)) as Record<string, unknown>;
+  const list = Array.isArray(parsed.points) ? parsed.points : [];
+  const points: ExtractedPoint[] = [];
+  for (const entry of list) {
+    if (points.length >= MAX_EXTRACT_POINTS) {
+      break;
+    }
+    if (typeof entry !== "object" || entry === null) {
+      continue;
+    }
+    const rec = entry as Record<string, unknown>;
+    const title = String(rec.title ?? "").trim();
+    const summary = String(rec.summary ?? "").trim();
+    const sourceExcerpt = String(rec.sourceExcerpt ?? "")
+      .trim()
+      .slice(0, MAX_EXCERPT_LENGTH);
+    if (title.length === 0 || !excerptFoundInDocument(sourceExcerpt, documentText)) {
+      continue; // G-2: kein Punkt ohne echte Belegstelle im Dokument
+    }
+    points.push({ title, summary: summary || title, sourceExcerpt });
+  }
+  return points;
 }
 
 function asStringArray(value: unknown): string[] {
@@ -170,6 +245,44 @@ export class ModelProvider implements ReasonerProvider {
       )
     ).trim();
     return { ...base, question: phrased || base.question };
+  }
+
+  // PMO-FEA-0006: Wissens-Extraktion über das Modell. Die Antwort wird serverseitig gegen den
+  // Dokumenttext geprüft (parseExtractResponse) — Punkte ohne echte Belegstelle fliegen raus.
+  async extract(
+    documentText: string,
+    locale: ReasonerLocale = "de",
+    query?: string,
+  ): Promise<ExtractResult> {
+    const client = this.requireClient();
+    const doc = documentText.trim().slice(0, MAX_EXTRACT_DOCUMENT_LENGTH);
+    if (doc.length === 0) {
+      return {
+        points: [],
+        note:
+          locale === "en"
+            ? "The document contains no extractable text."
+            : "Das Dokument enthält keinen auswertbaren Text.",
+        demo: false,
+      };
+    }
+    const guidance = query?.trim();
+    const system = guidance
+      ? `${extractSystem(locale)}\n${extractGuidance(locale, guidance)}`
+      : extractSystem(locale);
+    const raw = await client.complete(system, doc);
+    const points = parseExtractResponse(raw, doc);
+    return {
+      points,
+      // Ehrlich: leere Liste bekommt eine Erklärung (kein stilles Nichts).
+      note:
+        points.length > 0
+          ? null
+          : locale === "en"
+            ? "No knowledge points with a verifiable source excerpt were found in this document."
+            : "In diesem Dokument wurden keine Wissenspunkte mit belegbarer Textstelle gefunden.",
+      demo: false,
+    };
   }
 
   async answer(

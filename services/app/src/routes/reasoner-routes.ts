@@ -21,12 +21,14 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
   return async (app) => {
     app.post<{
       Body: {
-        task: "structure" | "ask" | "assist" | "interview";
+        task: "structure" | "ask" | "assist" | "interview" | "extract";
         text?: string;
         answers?: string[];
         locale?: "de" | "en";
         // SCRUM-312: optionale Bearbeitungs-Anweisung für 'assist' (klarer/strukturieren/… oder frei).
         instruction?: string;
+        // PMO-FEA-0006: optionaler Suchauftrag des Experten für 'extract' (wonach suchen?).
+        query?: string;
       };
     }>("/api/reasoner", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
@@ -56,9 +58,15 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         reply.code(200).send(await reasoner.interview(request.body.answers ?? [], locale));
         return;
       }
+      if (task === "extract") {
+        // PMO-FEA-0006: Wissenspunkte aus Dokumenttext (optional mit Suchauftrag). Ohne
+        // Modell antwortet der Reasoner ehrlich mit leerer Liste + note (keine Fake-Punkte).
+        reply.code(200).send(await reasoner.extract(text ?? "", locale, request.body.query));
+        return;
+      }
       reply.code(400).send({
         error: "BAD_REQUEST",
-        message: "task muss 'structure', 'ask', 'assist' oder 'interview' sein.",
+        message: "task muss 'structure', 'ask', 'assist', 'interview' oder 'extract' sein.",
       });
     });
 

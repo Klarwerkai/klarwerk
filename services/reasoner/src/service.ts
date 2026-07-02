@@ -5,6 +5,7 @@ import { DeterministicProvider, type ReasonerProvider } from "./provider";
 import type {
   AnswerResult,
   AssistResult,
+  ExtractResult,
   InterviewResult,
   KnowledgeRef,
   ReasonerConfigStatus,
@@ -49,7 +50,7 @@ export class Reasoner {
 
   setTaskConfig(next: ReasonerTaskConfig): ReasonerTaskConfig {
     const valid: ReasonerTaskChoice[] = ["auto", "model", "deterministic"];
-    const tasks = ["structure", "assist", "interview", "answer", "select"] as const;
+    const tasks = ["structure", "assist", "interview", "answer", "select", "extract"] as const;
     if (!valid.includes(next.global)) {
       throw new Error("Ungültige globale KI-Zuordnung.");
     }
@@ -167,13 +168,12 @@ export class Reasoner {
       mode: configured ? "model" : "demo",
       fallbackAvailable: true,
       supportsLocales: ["de", "en"],
-      tasks: ["structure", "assist", "interview", "answer", "select"],
+      tasks: ["structure", "assist", "interview", "answer", "select", "extract"],
       taskConfig: this.getTaskConfig(),
       effective: Object.fromEntries(
-        (["structure", "assist", "interview", "answer", "select"] as const).map((task) => [
-          task,
-          this.effectiveFor(task),
-        ]),
+        (["structure", "assist", "interview", "answer", "select", "extract"] as const).map(
+          (task) => [task, this.effectiveFor(task)],
+        ),
       ),
       persisted: false,
     };
@@ -228,6 +228,21 @@ export class Reasoner {
       locale,
       () => this.primary.interview(answers, locale),
       () => this.fallback.interview(answers, locale),
+    );
+  }
+
+  // PMO-FEA-0006: Wissenspunkte aus Dokumenttext extrahieren (optional mit Suchauftrag).
+  // Ohne Modell/bei Modellfehler → ehrlicher Fallback (keine Punkte + note), G-2/FR-RSN-04.
+  async extract(
+    documentText: string,
+    locale: ReasonerLocale = "de",
+    query?: string,
+  ): Promise<ExtractResult> {
+    return this.runTask(
+      "extract",
+      locale,
+      () => this.primary.extract(documentText, locale, query),
+      () => this.fallback.extract(documentText, locale, query),
     );
   }
 

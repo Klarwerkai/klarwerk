@@ -61,6 +61,21 @@ import {
 } from "../lib/captureEntry";
 import { CAPTURE_EXAMPLE } from "../lib/captureExample";
 import { CAPTURE_FLOW_TEXT } from "../lib/captureFlowGuide";
+// PMO-FEA-0006: „Aus Datei" — Punkteliste + Entwurfs-Warteschlange (DOM-freie Logik).
+import {
+  CAPTURE_FILE_TEXT,
+  type FileDraftQueue,
+  type SelectableExtractPoint,
+  advanceFileQueue,
+  buildFileQueue,
+  currentQueuePoint,
+  draftFromPoint,
+  fileSourcePayload,
+  queueProgress,
+  selectablePoints,
+  selectedCount,
+  togglePoint,
+} from "../lib/captureFromFile";
 import { gapContextDraft, readGapContext } from "../lib/captureFromGap";
 import { captureReadiness } from "../lib/captureReadiness";
 import { captureNextSteps, captureSavedStatus } from "../lib/captureSuccess";
@@ -230,6 +245,17 @@ export function Capture(): JSX.Element {
   const [ivAnswer, setIvAnswer] = useState("");
   const [ivResult, setIvResult] = useState<InterviewResult | null>(null);
 
+  // PMO-FEA-0006: „Aus Datei" — Dokumenttext, optionaler Suchauftrag, KI-Punkteliste,
+  // sichtbare Entwurfs-Warteschlange. Nichts wird automatisch gespeichert.
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [fileText, setFileText] = useState("");
+  const [fileImageUrl, setFileImageUrl] = useState<string | null>(null); // OCR-Kandidat (nur auf Klick)
+  const [fileBusy, setFileBusy] = useState(false);
+  const [fileQuery, setFileQuery] = useState("");
+  const [filePoints, setFilePoints] = useState<SelectableExtractPoint[] | null>(null);
+  const [fileNote, setFileNote] = useState<string | null>(null);
+  const [fileQueue, setFileQueue] = useState<FileDraftQueue | null>(null);
+
   const fail = (e: unknown): void => setErr(e instanceof ApiError ? e.message : t("state.error"));
 
   // FR-I18N-01: Reasoner-Aufrufe folgen der aktuellen UI-Sprache (Quelleninhalt bleibt original).
@@ -276,6 +302,64 @@ export function Capture(): JSX.Element {
   // die frühere stille Direkt-Mutation (setRaw/setDraft) wurde durch den Vorschau-Flow ersetzt.
   const runAssist = (input: string, instruction?: string): Promise<string> =>
     endpoints.reasoner.assist(input, locale, instruction).then((r) => r.text);
+
+  // PMO-FEA-0006: Wissenssuche im Dokument — Ergebnis ist die Punkteliste ODER (ohne Modell)
+  // eine ehrliche note ohne Fake-Punkte. Die note kommt lokalisiert vom Server.
+  const extract = useMutation({
+    mutationFn: () => endpoints.reasoner.extract(fileText, locale, fileQuery),
+    onSuccess: (r) => {
+      setErr(null);
+      setNotice(null);
+      setFilePoints(selectablePoints(r.points));
+      setFileNote(r.note);
+    },
+    onError: fail,
+  });
+
+  // PMO-FEA-0006: einen Warteschlangen-Punkt als Wissensseiten-Entwurf in den Wizard laden.
+  // Bedingungen/Maßnahmen bleiben leer (stehen nicht belegt im Punkt — nichts erfinden, G-2).
+  const loadQueuePoint = (queue: FileDraftQueue): void => {
+    const point = currentQueuePoint(queue);
+    if (!point) {
+      return;
+    }
+    const d = draftFromPoint(point, false);
+    setDraft(d);
+    setBodyHtml(applyDraftArticle("", d, normalizeDraftArticleLocale(i18n.language)));
+    setStudioApplied(false);
+    setNotice(t(CAPTURE_FILE_TEXT.sourceNote, { name: queue.fileName }));
+    setWizStep("refine");
+  };
+
+  // PMO-FEA-0006: „Ausgewählte übernehmen" — sichtbare Warteschlange starten, ersten Punkt laden.
+  const applySelectedPoints = (): void => {
+    if (!filePoints || !fileName) {
+      return;
+    }
+    const queue = buildFileQueue(filePoints, fileName);
+    if (!queue) {
+      return;
+    }
+    setFileQueue(queue);
+    loadQueuePoint(queue);
+  };
+
+  // PMO-FEA-0006: Punkt bewusst überspringen (nichts wird gespeichert) → nächster Punkt.
+  const skipQueuePoint = (): void => {
+    if (!fileQueue) {
+      return;
+    }
+    const next = advanceFileQueue(fileQueue);
+    setFileQueue(next);
+    if (next) {
+      loadQueuePoint(next);
+    } else {
+      setDraft(null);
+      setBodyHtml("");
+      setWizStep("tell");
+      setNotice(t(CAPTURE_FILE_TEXT.queueDone, { name: fileQueue.fileName }));
+    }
+  };
 
   const parsedValidations = (): number | undefined => {
     const n = Number.parseInt(neededValidations, 10);
@@ -351,7 +435,22 @@ export function Capture(): JSX.Element {
         upload: (input) => endpoints.objects.upload(input),
         attach: (koId, attachment) => endpoints.ko.act(koId, { action: "attach", attachment }),
       });
-      return { ko, attached: attachResult.attached, failed: attachResult.failed };
+      // PMO-FEA-0006: stammt dieser Entwurf aus der Datei-Warteschlange, wird die Quelle
+      // (Dateiname + Belegstelle) am KO vermerkt. Ein Fehler hier kippt den Save NICHT —
+      // er wird ehrlich als Teilfehler gemeldet (gleiches Muster wie Anhänge, SCRUM-374).
+      const failed = [...attachResult.failed];
+      const queuePoint = currentQueuePoint(fileQueue);
+      if (fileQueue && queuePoint) {
+        try {
+          await endpoints.ko.act(ko.id, {
+            action: "add-source",
+            source: fileSourcePayload(fileQueue.fileName, queuePoint),
+          });
+        } catch {
+          failed.push({ name: fileQueue.fileName, reason: "attach" });
+        }
+      }
+      return { ko, attached: attachResult.attached, failed };
     },
     // SCRUM-276: kein stilles Weiterleiten — „gespeichert" + nächster Schritt sichtbar machen.
     // Formular zurücksetzen (kein versehentlicher Doppel-Submit); Modus bleibt erhalten.
@@ -384,6 +483,21 @@ export function Capture(): JSX.Element {
       setWizStep("tell");
       setShowCondMeasures(false);
       setShowHelpers(false);
+      // PMO-FEA-0006: läuft eine Datei-Warteschlange, direkt den nächsten Punkt zur Prüfung
+      // laden (Wizard bleibt im Fluss); nach dem letzten Punkt ehrlicher Abschluss-Hinweis.
+      if (fileQueue) {
+        const nextQueue = advanceFileQueue(fileQueue);
+        setFileQueue(nextQueue);
+        if (nextQueue) {
+          loadQueuePoint(nextQueue);
+        } else {
+          setNotice(t(CAPTURE_FILE_TEXT.queueDone, { name: fileQueue.fileName }));
+          setFilePoints(null);
+          setFileName(null);
+          setFileText("");
+          setFileQuery("");
+        }
+      }
     },
     onError: fail,
   });
@@ -548,6 +662,81 @@ export function Capture(): JSX.Element {
       } else {
         setErr(t("capture.docUnsupported", { name: f.name }));
       }
+    }
+  };
+
+  // PMO-FEA-0006: Dokument für die Wissens-Extraktion lesen — nutzt die VORHANDENEN
+  // Extraktoren (Text/Word/PDF; Bild als OCR-Kandidat, Erkennung NUR auf Klick wie SCRUM-123).
+  const onExtractFile = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) {
+      return;
+    }
+    setFilePoints(null);
+    setFileNote(null);
+    setFileQueue(null);
+    setFileImageUrl(null);
+    setFileText("");
+    setErr(null);
+    setFileName(f.name);
+    setFileBusy(true);
+    setNotice(t(CAPTURE_FILE_TEXT.extracting, { name: f.name }));
+    try {
+      if (isImage(f)) {
+        setFileImageUrl(await readFileAsDataUrl(f));
+        setNotice(null);
+        return;
+      }
+      let text = "";
+      if (isTextDocument(f) || isWordDocument(f)) {
+        text = isWordDocument(f) ? await readDocxFile(f) : await readTextFile(f);
+      } else if (isPdfDocument(f)) {
+        text = await readPdfFile(f);
+      } else {
+        setFileName(null);
+        setNotice(null);
+        setErr(t(CAPTURE_FILE_TEXT.unsupported, { name: f.name }));
+        return;
+      }
+      if (text.trim().length === 0) {
+        setNotice(null);
+        setErr(t(CAPTURE_FILE_TEXT.empty, { name: f.name }));
+        return;
+      }
+      setFileText(text);
+      setNotice(t(CAPTURE_FILE_TEXT.loaded, { name: f.name }));
+    } catch {
+      setFileName(null);
+      setNotice(null);
+      setErr(t(CAPTURE_FILE_TEXT.parseError, { name: f.name }));
+    } finally {
+      setFileBusy(false);
+    }
+  };
+
+  // PMO-FEA-0006: Bild-OCR für die Extraktion — NUR auf Klick, ehrlicher Status (SCRUM-123-Muster).
+  const onExtractOcr = async (): Promise<void> => {
+    if (!fileImageUrl || !fileName) {
+      return;
+    }
+    setErr(null);
+    setOcrBusy("extract-file");
+    setNotice(t("capture.ocrRunning", { name: fileName }));
+    try {
+      const res = await runImageOcr(fileImageUrl);
+      if (res.status === "success" && res.text.length > 0) {
+        setFileText(res.text);
+        setNotice(t(CAPTURE_FILE_TEXT.loaded, { name: fileName }));
+      } else if (res.status === "unavailable") {
+        setNotice(null);
+        setErr(t("capture.ocrUnavailable"));
+      } else {
+        setNotice(null);
+        setErr(t("capture.ocrEmpty", { name: fileName }));
+      }
+    } finally {
+      setOcrBusy(null);
     }
   };
 
@@ -1067,6 +1256,140 @@ export function Capture(): JSX.Element {
               )
             ) : null}
 
+            {/* PMO-FEA-0006: Erzähl-Modus „Aus Datei" — Dokument hochladen, optional sagen wonach
+                gesucht wird, KI-Punkteliste mit Belegstellen prüfen, Ausgewählte übernehmen.
+                EIN Fokus je Schritt: Upload → (Suchauftrag) → Punkteliste → Warteschlange. */}
+            {mode === "datei" ? (
+              <div className="space-y-3">
+                <p className="text-[12.5px] leading-relaxed text-muted">
+                  {t(CAPTURE_FILE_TEXT.hint)}
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
+                    <Paperclip size={14} />
+                    {fileName ? t(CAPTURE_FILE_TEXT.replace) : t(CAPTURE_FILE_TEXT.upload)}
+                    <input
+                      type="file"
+                      accept=".txt,.md,.markdown,.csv,.log,.json,.docx,.pdf,application/pdf,image/*"
+                      className="hidden"
+                      onChange={(e) => void onExtractFile(e)}
+                    />
+                  </label>
+                  {fileName ? (
+                    <span className="inline-flex items-center gap-1.5 text-[12.5px] text-text">
+                      <FileText size={13} className="text-muted-2" />
+                      {fileName}
+                    </span>
+                  ) : null}
+                </div>
+                {/* Bild als OCR-Kandidat: Texterkennung NUR auf Klick (SCRUM-123-Muster). */}
+                {fileImageUrl && !fileText ? (
+                  <Button
+                    variant="ghost"
+                    disabled={ocrBusy !== null}
+                    onClick={() => void onExtractOcr()}
+                  >
+                    {ocrBusy ? t(CAPTURE_FILE_TEXT.ocrBusy) : t(CAPTURE_FILE_TEXT.ocrCta)}
+                  </Button>
+                ) : null}
+                {fileText ? (
+                  <div>
+                    <span className="mb-1.5 flex items-center gap-1 text-[12.5px] font-semibold text-muted">
+                      {t(CAPTURE_FILE_TEXT.queryLabel)}
+                      <HelpTip
+                        title={t(CAPTURE_FILE_TEXT.queryHelpTitle)}
+                        body={t(CAPTURE_FILE_TEXT.queryHelpBody)}
+                      />
+                    </span>
+                    <TextInput
+                      value={fileQuery}
+                      onChange={(e) => setFileQuery(e.target.value)}
+                      placeholder={t(CAPTURE_FILE_TEXT.queryPlaceholder)}
+                    />
+                    <Button
+                      variant="primary"
+                      className="mt-3"
+                      disabled={extract.isPending || fileBusy}
+                      onClick={() => extract.mutate()}
+                    >
+                      <Sparkles size={15} />
+                      {extract.isPending
+                        ? t(CAPTURE_FILE_TEXT.searching)
+                        : t(CAPTURE_FILE_TEXT.searchCta)}
+                    </Button>
+                  </div>
+                ) : null}
+                {/* Ehrlicher Hinweis vom Server (z. B. „ohne Modell keine Extraktion") — KEINE Fake-Punkte. */}
+                {fileNote ? (
+                  <p className="rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
+                    {fileNote}
+                  </p>
+                ) : null}
+                {filePoints && filePoints.length > 0 ? (
+                  <div className="space-y-2 border-t border-hairline pt-3">
+                    <SectionLabel>{t(CAPTURE_FILE_TEXT.pointsTitle)}</SectionLabel>
+                    <p className="text-[11.5px] leading-relaxed text-muted-2">
+                      {t(CAPTURE_FILE_TEXT.pointsHint)}
+                    </p>
+                    <ul className="space-y-2">
+                      {filePoints.map((p) => (
+                        <li
+                          key={p.id}
+                          className={`rounded-card border p-3 ${
+                            p.selected
+                              ? "border-ink/25 bg-surface"
+                              : "border-hairline bg-page opacity-70"
+                          }`}
+                        >
+                          <label className="flex cursor-pointer items-start gap-2.5">
+                            <input
+                              type="checkbox"
+                              checked={p.selected}
+                              onChange={() =>
+                                setFilePoints((pts) => (pts ? togglePoint(pts, p.id) : pts))
+                              }
+                              className="mt-0.5 h-4 w-4 shrink-0 accent-ink"
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-[13.5px] font-semibold text-text">
+                                {p.title}
+                              </span>
+                              <span className="mt-0.5 block text-[12.5px] leading-relaxed text-muted">
+                                {p.summary}
+                              </span>
+                              <span className="mt-1.5 block rounded-input bg-page px-2.5 py-1.5 text-[11.5px] leading-relaxed text-muted-2">
+                                <span className="font-mono text-[9.5px] font-semibold uppercase tracking-wider">
+                                  {t(CAPTURE_FILE_TEXT.excerptLabel)}
+                                  {fileName ? ` · ${fileName}` : ""}
+                                </span>
+                                <span className="mt-0.5 block italic">„{p.sourceExcerpt}“</span>
+                              </span>
+                            </span>
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="flex flex-wrap items-center gap-2 border-t border-hairline pt-3">
+                      <span className="text-[11.5px] text-muted-2">
+                        {t(CAPTURE_FILE_TEXT.pointCount, {
+                          selected: selectedCount(filePoints),
+                          total: filePoints.length,
+                        })}
+                      </span>
+                      <Button
+                        variant="primary"
+                        className="ml-auto"
+                        disabled={selectedCount(filePoints) === 0}
+                        onClick={applySelectedPoints}
+                      >
+                        {t(CAPTURE_FILE_TEXT.applyCta)} ({selectedCount(filePoints)}) →
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
             {/* SCRUM-375 / AG-12: erweiterte/technische Felder als Progressive Disclosure — standardmäßig
               eingeklappt, damit „Wissen erzählen → im Studio strukturieren" führt. NICHTS entfernt; bei
               vorhandenem Inhalt (Entwurf/Beispiel) automatisch aufgeklappt; Badge zeigt Ausgefülltes an. */}
@@ -1545,6 +1868,27 @@ export function Capture(): JSX.Element {
              Pill statt violetter Vollfläche; Kernaussage/Aussage-Felder wandern in die
              Struktur-Aufklappung (Inhalt steht bereits im Dokument — keine Doppel-Anzeige). */
           <Card className="space-y-4">
+            {/* PMO-FEA-0006: sichtbare Warteschlange — Punkt X von Y aus der Datei; jeder Punkt
+                wird einzeln geprüft/eingereicht, Überspringen ist bewusst möglich. */}
+            {fileQueue ? (
+              <div className="flex flex-wrap items-center gap-2 rounded-card border border-dashed border-ai-dashed bg-ai-surface-2 px-3 py-2">
+                <span className="font-mono text-[10.5px] font-semibold uppercase tracking-wider text-ai">
+                  {t(CAPTURE_FILE_TEXT.queueBadge, {
+                    current: queueProgress(fileQueue).current,
+                    total: queueProgress(fileQueue).total,
+                    name: fileQueue.fileName,
+                  })}
+                </span>
+                <span className="text-[11.5px] text-muted">{t(CAPTURE_FILE_TEXT.queueHint)}</span>
+                <button
+                  type="button"
+                  onClick={skipQueuePoint}
+                  className="ml-auto rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
+                >
+                  {t(CAPTURE_FILE_TEXT.queueSkip)}
+                </button>
+              </div>
+            ) : null}
             <div className="flex flex-wrap items-center justify-between gap-2">
               <button
                 type="button"

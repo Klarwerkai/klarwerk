@@ -1,6 +1,7 @@
 import type {
   AnswerResult,
   AssistResult,
+  ExtractResult,
   InterviewResult,
   KnowledgeRef,
   ReasonerLocale,
@@ -27,8 +28,26 @@ export interface ReasonerProvider {
   assistText(text: string, locale?: ReasonerLocale, instruction?: string): Promise<AssistResult>;
   // SCRUM-132: nächste Interview-Frage + aus den Antworten verdichteter Entwurf.
   interview(answers: readonly string[], locale?: ReasonerLocale): Promise<InterviewResult>;
+  // PMO-FEA-0006: Wissenspunkte aus Dokumenttext extrahieren (optional mit Suchauftrag des
+  // Experten). G-2: NUR was im Text steht — der deterministische Fallback liefert ehrlich
+  // KEINE Punkte (keine Fake-Extraktion), nur eine erklärende note.
+  extract(documentText: string, locale?: ReasonerLocale, query?: string): Promise<ExtractResult>;
   // select ist reines Ranking (synchron, kein Netzaufruf).
   select(question: string, candidates: readonly KnowledgeRef[]): KnowledgeRef[];
+}
+
+// PMO-FEA-0006: ehrliche Fallback-Meldung — ohne Modell ist keine inhaltliche Wissens-
+// Extraktion möglich. Es werden bewusst KEINE deterministischen Pseudo-Punkte erzeugt
+// (jede Heuristik würde „gefundenes Wissen" vortäuschen — G-2/FR-RSN-04).
+export function honestExtractUnavailable(locale: ReasonerLocale = "de"): ExtractResult {
+  return {
+    points: [],
+    note:
+      locale === "en"
+        ? "Without an AI model, no knowledge extraction is possible. The document text was NOT analyzed — no fake points are shown. You can still copy relevant passages into the free-text mode yourself."
+        : "Ohne KI-Modell ist keine Wissens-Extraktion möglich. Der Dokumenttext wurde NICHT analysiert — es werden keine Schein-Punkte angezeigt. Du kannst relevante Stellen weiterhin selbst in den Freitext-Modus übernehmen.",
+    demo: true,
+  };
 }
 
 // SCRUM-132 / FR-I18N-01: feste Fragenfolge je Sprache (eine Frage pro Turn) — vom Modell
@@ -428,6 +447,11 @@ export class DeterministicProvider implements ReasonerProvider {
     locale: ReasonerLocale = "de",
   ): Promise<InterviewResult> {
     return deterministicInterview(answers, true, locale);
+  }
+
+  // PMO-FEA-0006: ohne Modell KEINE Extraktion — ehrliche Meldung statt Fake-Punkte (G-2).
+  async extract(_documentText: string, locale: ReasonerLocale = "de"): Promise<ExtractResult> {
+    return honestExtractUnavailable(locale);
   }
 
   // SCRUM-360: status-/trust-bewusste, auf topK begrenzte Kandidatenauswahl statt unbegrenztem

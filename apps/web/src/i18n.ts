@@ -335,6 +335,7 @@ const de = {
   "adm.ai.task.interview": "Geführtes Interview",
   "adm.ai.task.answer": "Fragen beantworten",
   "adm.ai.task.select": "Kandidaten-Auswahl",
+  "adm.ai.task.extract": "Wissen aus Datei",
   "adm.ai.effModel": "Modell",
   "adm.ai.effDet": "deterministisch",
   "adm.ai.save": "Zuordnung übernehmen",
@@ -490,6 +491,41 @@ const de = {
   "capture.mode.formular": "Formular",
   "capture.mode.diktat": "Diktat",
   "capture.mode.interview": "Geführtes Interview",
+  "capture.mode.datei": "Aus Datei",
+  // PMO-FEA-0006: Wissen aus Datei — Dokument hochladen, KI-Punkteliste mit Belegstellen,
+  // ausgewählte Punkte nacheinander im Wizard prüfen/einreichen. Nichts wird automatisch gespeichert.
+  "capture.file.hint":
+    "Lade ein Dokument hoch — die KI listet auf, welches Wissen darin steckt, jeweils mit wörtlicher Belegstelle. Du wählst aus, was übernommen wird; gespeichert wird nichts automatisch.",
+  "capture.file.upload": "Dokument auswählen",
+  "capture.file.replace": "Anderes Dokument wählen",
+  "capture.file.extracting": "Lese „{{name}}“ …",
+  "capture.file.loaded": "„{{name}}“ gelesen — bereit für die Wissenssuche.",
+  "capture.file.empty": "In „{{name}}“ wurde kein Text gefunden.",
+  "capture.file.parseError": "„{{name}}“ konnte nicht gelesen werden.",
+  "capture.file.unsupported":
+    "„{{name}}“ wird hier nicht unterstützt — bitte PDF, Word, Text oder ein Bild (mit Texterkennung).",
+  "capture.file.ocrCta": "Text im Bild erkennen (OCR)",
+  "capture.file.ocrBusy": "Texterkennung läuft …",
+  "capture.file.queryLabel": "Wonach soll die KI suchen? (optional)",
+  "capture.file.queryPlaceholder":
+    "z. B. „Grenzwerte und Prüfintervalle“ — leer lassen, um alles Wissen zu finden",
+  "capture.file.queryHelp.title": "Gezielt suchen",
+  "capture.file.queryHelp.body":
+    "Ohne Angabe listet die KI alle Wissenspunkte im Dokument auf. Mit Suchauftrag beschränkt sie sich auf deinen Fokus. Erfunden wird in beiden Fällen nichts — jeder Punkt trägt eine wörtliche Belegstelle aus dem Dokument.",
+  "capture.file.searchCta": "Nach Wissen suchen",
+  "capture.file.searching": "Die KI liest das Dokument …",
+  "capture.file.pointsTitle": "Gefundenes Wissen — wähle aus, was übernommen wird",
+  "capture.file.pointsHint":
+    "Jeder Punkt trägt seine Belegstelle aus dem Dokument. Wähle ab, was du nicht brauchst — übernommen wird erst auf Klick.",
+  "capture.file.excerptLabel": "Belegstelle",
+  "capture.file.pointCount": "{{selected}} von {{total}} Punkten ausgewählt",
+  "capture.file.applyCta": "Ausgewählte übernehmen",
+  "capture.file.queueBadge": "Punkt {{current}} von {{total}} aus „{{name}}“",
+  "capture.file.queueHint":
+    "Jeder Punkt wird einzeln als Wissensseite geprüft und eingereicht — nichts wird automatisch gespeichert.",
+  "capture.file.queueSkip": "Punkt überspringen",
+  "capture.file.queueDone": "Alle Punkte aus „{{name}}“ sind bearbeitet.",
+  "capture.file.sourceNote": "Die Quelle „{{name}}“ wird am Wissensobjekt vermerkt.",
   // SCRUM-384 / KG-UX-001/002/003/010: Erzähl-Einstieg als Standardweg, Formular als Expertenpfad.
   "capture.entry.narrateKicker": "Erzähl dein Wissen — die KI strukturiert, du prüfst",
   "capture.entry.expertToggle": "Expertenmodus: Formular direkt ausfüllen",
@@ -2096,6 +2132,7 @@ const en: typeof de = {
   "adm.ai.task.interview": "Guided interview",
   "adm.ai.task.answer": "Answering questions",
   "adm.ai.task.select": "Candidate selection",
+  "adm.ai.task.extract": "Knowledge from file",
   "adm.ai.effModel": "model",
   "adm.ai.effDet": "deterministic",
   "adm.ai.save": "Apply mapping",
@@ -2247,6 +2284,40 @@ const en: typeof de = {
   "capture.mode.formular": "Form",
   "capture.mode.diktat": "Dictation",
   "capture.mode.interview": "Guided interview",
+  "capture.mode.datei": "From file",
+  // PMO-FEA-0006: knowledge from file — upload, AI point list with source excerpts, review queue.
+  "capture.file.hint":
+    "Upload a document — the AI lists the knowledge it contains, each point with a verbatim source excerpt. You choose what to take over; nothing is saved automatically.",
+  "capture.file.upload": "Choose document",
+  "capture.file.replace": "Choose another document",
+  "capture.file.extracting": "Reading “{{name}}” …",
+  "capture.file.loaded": "“{{name}}” read — ready for the knowledge search.",
+  "capture.file.empty": "No text found in “{{name}}”.",
+  "capture.file.parseError": "“{{name}}” could not be read.",
+  "capture.file.unsupported":
+    "“{{name}}” is not supported here — please use PDF, Word, text, or an image (with OCR).",
+  "capture.file.ocrCta": "Recognize text in image (OCR)",
+  "capture.file.ocrBusy": "Text recognition running …",
+  "capture.file.queryLabel": "What should the AI look for? (optional)",
+  "capture.file.queryPlaceholder":
+    "e.g. “thresholds and inspection intervals” — leave empty to find all knowledge",
+  "capture.file.queryHelp.title": "Targeted search",
+  "capture.file.queryHelp.body":
+    "Without input, the AI lists all knowledge points in the document. With a search focus, it restricts itself to that focus. Nothing is invented either way — every point carries a verbatim excerpt from the document.",
+  "capture.file.searchCta": "Search for knowledge",
+  "capture.file.searching": "The AI is reading the document …",
+  "capture.file.pointsTitle": "Knowledge found — choose what to take over",
+  "capture.file.pointsHint":
+    "Every point carries its source excerpt from the document. Deselect what you don't need — nothing is taken over until you click.",
+  "capture.file.excerptLabel": "Source excerpt",
+  "capture.file.pointCount": "{{selected}} of {{total}} points selected",
+  "capture.file.applyCta": "Take over selected",
+  "capture.file.queueBadge": "Point {{current}} of {{total}} from “{{name}}”",
+  "capture.file.queueHint":
+    "Each point is reviewed and submitted individually as a knowledge page — nothing is saved automatically.",
+  "capture.file.queueSkip": "Skip point",
+  "capture.file.queueDone": "All points from “{{name}}” have been processed.",
+  "capture.file.sourceNote": "The source “{{name}}” will be recorded on the knowledge object.",
   // SCRUM-384 / KG-UX-001/002/003/010: narrate-first entry as default, form as expert path.
   "capture.entry.narrateKicker": "Tell your knowledge — the AI structures it, you review",
   "capture.entry.expertToggle": "Expert mode: fill the form directly",

@@ -126,7 +126,8 @@ export function Admin(): JSX.Element {
 
   // KI-Verwaltung v1 (Pedi 02.07., Teil-Slice des PMO-Eintrags): Zuordnung global + je
   // Aufgabe. Keys bleiben serverseitig; v1 gilt bis zum Neustart (ehrlich angezeigt).
-  const AI_TASKS = ["structure", "assist", "interview", "answer", "select"] as const;
+  // PMO-FEA-0006: 'extract' (Wissen aus Datei) als weiterer KI-Einsatz konfigurierbar.
+  const AI_TASKS = ["structure", "assist", "interview", "answer", "select", "extract"] as const;
   const aiConfig = useQuery({ queryKey: ["reasonerConfig"], queryFn: endpoints.reasoner.config });
   const [aiGlobal, setAiGlobal] = useState<string | null>(null);
   const [aiPerTask, setAiPerTask] = useState<Record<string, string> | null>(null);

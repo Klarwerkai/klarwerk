@@ -13,6 +13,7 @@ import type {
   DraftPayload,
   EvidenceRecord,
   ExternalResult,
+  ExtractResult,
   Gap,
   GapPriority,
   Graph,
@@ -150,6 +151,14 @@ export const endpoints = {
         task: "interview",
         answers,
         ...(locale ? { locale } : {}),
+      }),
+    // PMO-FEA-0006: Wissenspunkte aus Dokumenttext extrahieren (optional mit Suchauftrag).
+    extract: (text: string, locale?: "de" | "en", query?: string) =>
+      api.post<ExtractResult>("/reasoner", {
+        task: "extract",
+        text,
+        ...(locale ? { locale } : {}),
+        ...(query?.trim() ? { query: query.trim() } : {}),
       }),
     status: () => api.get<ReasonerStatus>("/reasoner/status"),
     // SCRUM-166: read-only Provider-/Model-Konfiguration (nur Metadaten).

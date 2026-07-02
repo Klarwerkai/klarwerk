@@ -168,6 +168,7 @@ describe("Reasoner", () => {
         },
         demo: false,
       }),
+      extract: async () => ({ points: [], note: null, demo: false }),
       select: () => [],
     };
     const reasoner = new Reasoner(fakeModel);
@@ -221,6 +222,7 @@ describe("Reasoner", () => {
         },
         demo: false,
       }),
+      extract: async () => ({ points: [], note: null, demo: false }),
       select: () => [],
     };
     const reasoner = new Reasoner(recordingModel);
@@ -245,6 +247,9 @@ describe("Reasoner", () => {
         throw new Error("sollte nicht aufgerufen werden");
       },
       interview: () => {
+        throw new Error("sollte nicht aufgerufen werden");
+      },
+      extract: () => {
         throw new Error("sollte nicht aufgerufen werden");
       },
       select: () => {
@@ -272,6 +277,7 @@ describe("Reasoner", () => {
       interview: async (): Promise<InterviewResult> => {
         throw new Error("Netzfehler");
       },
+      extract: async () => ({ points: [], note: null, demo: false }),
       select: () => [],
     };
     const reasoner = new Reasoner(flakyModel);
@@ -321,6 +327,7 @@ describe("Reasoner", () => {
         },
         demo: false,
       }),
+      extract: async () => ({ points: [], note: null, demo: false }),
       select: () => [],
     };
     const reasoner = new Reasoner(phrasingModel);
@@ -423,6 +430,7 @@ function okModel(): ReasonerProvider {
       },
       demo: false,
     }),
+    extract: async () => ({ points: [], note: null, demo: false }),
     select: () => [],
   };
 }
@@ -438,6 +446,7 @@ function throwingProvider(name: string): ReasonerProvider {
     answer: boom,
     assistText: boom,
     interview: boom,
+    extract: async () => ({ points: [], note: null, demo: false }),
     select: () => [],
   };
 }
