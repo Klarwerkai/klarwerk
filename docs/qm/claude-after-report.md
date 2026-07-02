@@ -10143,3 +10143,5 @@ git push
 **Gates:** Build/Biome/depcruise grün, **1241 Tests / 205 Dateien**, UI-Smoke 4/4, dist v0.9.11 eingespielt.
 **Hinweis:** Bestehende, VOR diesem Stand geseedete Demo-KOs tragen nur den Tag — der Purge erfasst sie trotzdem (Tag-Pfad). Jira weiterhin nicht erreichbar — Ticket zusammen mit T1–T3 nachziehen.
 **Nächster Schritt:** Pedi: App (v0.9.11) → Admin → „Demodaten entfernen" testen; Bibliothek zeigt DEMO-Badges wie gehabt.
+
+**Nachtrag v0.9.12 — KO löschen (Pedi):** DELETE /api/kos/:id war Controller/Admin-only UND hatte keinen UI-Knopf. Jetzt: Route erlaubt Autor ODER ko.validate-Rollen (Basis-Guard ko.read + Feinprüfung in der Route, Guard-Matrix angepasst, 404/403 ehrlich); KO-Detail zeigt Berechtigten die ruhige Karte „Wissensobjekt löschen" mit Inline-Bestätigung → zurück zur Bibliothek; Audit protokolliert ko.deleted. Gates grün (1241 + Smoke 4/4), dist v0.9.12. — ZUR DATEI-EXTRAKTION (PMO-FEA-0006): als voller Slice per Ausführungs-Prompt (KI listet enthaltenes Wissen als wählbare Punkte ODER Experte gibt Suchauftrag; je Punkt ein KO-Entwurf im Wizard).
