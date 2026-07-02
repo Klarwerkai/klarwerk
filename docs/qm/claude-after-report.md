@@ -10024,3 +10024,15 @@ git push
 **Nicht ausführbar:** echter Doppelklick/Notification nur am Mac — Pedi verifiziert per Meldung „v0.9.1-beta".
 **Git-Status:** dev_Klarwerk 02b37b5 (+d4bd3d6), klarwerk-public-website 20d0244, klarwerk-business-backend b286657 — **kein Push**. PMO bewusst ohne Git.
 **Nächster Schritt:** Pedi: KLARWERK App doppelklicken → Benachrichtigung „Gestartet: v0.9.1-beta …" + Header-Chip v0.9.1-beta prüfen. STOPP.
+
+---
+
+## After-Report — 2026-07-02 · SCRUM-384: Wizard-Umbau der Erfassung (Pedi-Review-Runde 2)
+
+**Datum:** 2026-07-02 · **Ticket:** SCRUM-384 · **Anlass:** Pedi-Screenshot-Review: „es sieht dennoch nicht so aus wie gewünscht — bitte an die UX-Vorgabe halten" (zwei Spalten parallel, KI-Nachbearbeitung doppelt, Panel-Stapel = Info-Wand).
+**Änderung:** (1) `lib/captureWizard.ts` (neu, DOM-frei): Wizard-Zustand tell→refine, refine nur mit Entwurf; Schritt-Leiste mappt auf bestehende capture.flow.step.*-Texte. (2) `Capture.tsx`: Wizard als Standardweg — Schritt 1 „Erzählen" (Modi + Erweitert, ohne KI-Box), „Mit KI strukturieren" zeigt Laufstatus, Erfolg erzeugt einmalig den Artikel-Body (nie still überschreiben) und wechselt zu Schritt 2 „Wissensseite": Dokument-Editor im Zentrum mit EINER KI-Palette (ARGUS-Muster), Titel+Aussage darüber, Bedingungen & Maßnahmen sowie Hilfen/Vorlagen/Anhänge-Kontext eingeklappt (Badge+?-HelpTip, nichts entfernt), Speicher-Check + „Einreichen" unten; nach Submit zurück zu Schritt 1. Expertenmodus behält bewusst die klassische Zwei-Spalten-Ansicht (kein Funktionsverlust). (3) i18n: 7 neue capture.wizard.*-Schlüssel DE+EN. (4) APP_VERSION → **0.9.2-beta**.
+**Getestet:** Neu `tests/capture/capture-wizard.test.ts` (4). Volle Kette in /tmp-Kopie grün: Build ✓ · Biome ✓ · dependency-cruiser ✓ · **1232 Tests / 204 Dateien ✓**. dist mit 0.9.2 gebaut, Bundle-Checks (Version + wizard-Schlüssel) ✓, eingespielt.
+**Nicht ausführbar:** Sichtabnahme (Done-Kriterium) = Pedi + Tester am Mac.
+**Risiko:** gering — reine FE-Umstellung; alle bisherigen Blöcke existieren weiter (Expertenmodus bzw. eingeklappt). Bekannte Grenze: Statement-KI-Box im Wizard bewusst entfallen (EINE Palette je Schritt); WikiEditor-Vollport (contentEditable-Dokument statt RichTextEditor-Feld) bleibt Folge-Slice, falls Pedi nach Sichtung mehr ARGUS-Nähe will.
+**Git-Status:** dev_Klarwerk cca40cc — **kein Push**. STOPP nach Auslieferung.
+**Nächster Schritt:** Pedi: KLARWERK App doppelklicken → Dialog „Gestartet: Version 0.9.2-beta …" → /erfassen ansehen (Schritt-Leiste 1·2·3, ein Fokus). Screenshot an Boss-Session für Abgleich.
