@@ -935,7 +935,15 @@ export function Capture(): JSX.Element {
 
       {/* SCRUM-384: Wizard — genau EIN Fokus je Schritt; Expertenmodus behält die
           klassische Zwei-Spalten-Ansicht (bewusst gewählter Pfad, nichts entfernt). */}
-      <div className={expertView ? "grid gap-5 lg:grid-cols-2" : "mx-auto max-w-3xl"}>
+      <div
+        className={
+          expertView
+            ? "grid gap-5 lg:grid-cols-2"
+            : wizStep === "refine"
+              ? "mx-auto max-w-4xl"
+              : "mx-auto max-w-3xl"
+        }
+      >
         {expertView || wizStep === "tell" ? (
           <Card className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
@@ -1471,16 +1479,24 @@ export function Capture(): JSX.Element {
             EINE KI-Palette (ARGUS-Muster „Wissensseite bearbeiten"); Struktur-Details und
             Hilfen eingeklappt hinter Badges/?-Hilfen (keine Info-Wand, nichts entfernt). */}
         {!expertView && wizStep === "refine" && draft ? (
-          <ReasonerDraft>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between gap-2">
-                <button
-                  type="button"
-                  onClick={() => setWizStep("tell")}
-                  className="inline-flex items-center gap-1 rounded-btn px-1.5 py-1 text-[12px] font-medium text-muted hover:text-text"
-                >
-                  ← {t(CAPTURE_WIZARD_TEXT.back)}
-                </button>
+          /* ARGUS-Sollbild „Wissensseite bearbeiten" (Pedi 02.07., Runde 4): ruhige weiße Karte,
+             großer Titel, Titel-Feld, Toolbar, Dokument. KI-Kennung (G-3) bleibt — als kompakte
+             Pill statt violetter Vollfläche; Kernaussage/Aussage-Felder wandern in die
+             Struktur-Aufklappung (Inhalt steht bereits im Dokument — keine Doppel-Anzeige). */
+          <Card className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => setWizStep("tell")}
+                className="inline-flex items-center gap-1 rounded-btn px-1 py-1 text-[12px] font-medium text-muted hover:text-text"
+              >
+                ← {t(CAPTURE_WIZARD_TEXT.back)}
+              </button>
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 rounded-pill border border-dashed border-ai-dashed bg-ai-surface-2 px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai">
+                  <span aria-hidden>✦</span>
+                  {t("reasoner.draftLabel")}
+                </span>
                 <button
                   type="button"
                   onClick={() => {
@@ -1492,30 +1508,28 @@ export function Capture(): JSX.Element {
                   {t("studio.open")}
                 </button>
               </div>
+            </div>
 
-              <Field label={t("capture.fTitle")}>
-                <TextInput
-                  value={draft.title}
-                  onChange={(e) => setDraft({ ...draft, title: e.target.value })}
-                />
-              </Field>
-              <Field label={t("capture.fStatement")}>
-                <textarea
-                  value={draft.statement}
-                  onChange={(e) => setDraft({ ...draft, statement: e.target.value })}
-                  rows={2}
-                  className={textareaCls}
-                />
-              </Field>
+            <h2 className="flex items-center gap-2 text-[19px] font-bold text-text">
+              <span aria-hidden className="text-ai">
+                ✦
+              </span>
+              {t(CAPTURE_WIZARD_TEXT.pageTitle)}
+            </h2>
 
+            <div>
+              <p className="mb-1.5 text-[12.5px] font-semibold text-muted">
+                {t(CAPTURE_WIZARD_TEXT.titleLabel)}
+              </p>
+              <input
+                value={draft.title}
+                onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                className="w-full rounded-card bg-page px-4 py-3 text-[15px] font-medium text-text outline-none ring-hairline focus:ring-1"
+              />
+            </div>
+
+            <div className="space-y-4">
               <div>
-                <div className="mb-1.5 flex items-center gap-1.5">
-                  <SectionLabel>{t(CAPTURE_WIZARD_TEXT.docLabel)}</SectionLabel>
-                  <HelpTip
-                    title={t("capture.flow.step.studio.label")}
-                    body={t("capture.flow.step.studio.hint")}
-                  />
-                </div>
                 {/* SCRUM-384: die EINE KI-Palette dieses Schritts sitzt IM Editor und öffnet
                     sich erst über den ✨KI-Knopf der Toolbar (ARGUS-Sollbild, Pedi 02.07.). */}
                 <RichTextEditor
@@ -1560,7 +1574,8 @@ export function Capture(): JSX.Element {
                 </p>
               ) : null}
 
-              {/* Bedingungen & Maßnahmen — eingeklappt, Badge zeigt die Anzahl (kein Datenverlust). */}
+              {/* Struktur-Daten (Kernaussage/Aussage/Bedingungen/Maßnahmen) — eingeklappt; der
+                  Inhalt steht sichtbar im Dokument, hier nur die strukturierte Bearbeitung. */}
               <div className="rounded-card border border-hairline">
                 <div className="flex items-center gap-1.5 px-3 py-2.5">
                   <button
@@ -1570,7 +1585,7 @@ export function Capture(): JSX.Element {
                     className="flex flex-1 items-center justify-between gap-2 text-left"
                   >
                     <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-text">
-                      {t(CAPTURE_WIZARD_TEXT.condMeasures)}
+                      {t(CAPTURE_WIZARD_TEXT.structData)}
                       <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9.5px] font-semibold text-muted-2">
                         {draft.conditions.length + draft.measures.length}
                       </span>
@@ -1581,12 +1596,20 @@ export function Capture(): JSX.Element {
                     />
                   </button>
                   <HelpTip
-                    title={t(CAPTURE_WIZARD_TEXT.condMeasures)}
+                    title={t(CAPTURE_WIZARD_TEXT.structData)}
                     body={t(CAPTURE_WIZARD_TEXT.condMeasuresHint)}
                   />
                 </div>
                 {showCondMeasures ? (
                   <div className="space-y-3 border-t border-hairline p-3">
+                    <Field label={t("capture.fStatement")}>
+                      <textarea
+                        value={draft.statement}
+                        onChange={(e) => setDraft({ ...draft, statement: e.target.value })}
+                        rows={2}
+                        className={textareaCls}
+                      />
+                    </Field>
                     <ListEditor
                       label={t("capture.fConditions")}
                       items={draft.conditions}
@@ -1638,8 +1661,9 @@ export function Capture(): JSX.Element {
                 ) : null}
               </div>
 
-              {/* SCRUM-248: ehrlicher Speicher-Check (kompakt, wie gehabt). */}
-              {readiness ? (
+              {/* SCRUM-248: ehrlicher Speicher-Check — nur sichtbar, wenn wirklich etwas fehlt
+                  (alles bereit ⇒ der Einreichen-Knopf ist aktiv; keine unnötige Info-Wand). */}
+              {readiness && !readiness.canSave ? (
                 <div className="rounded-card border border-hairline bg-page p-3">
                   <SectionLabel>{t("capture.readyTitle")}</SectionLabel>
                   <ul className="mt-1.5 space-y-1">
@@ -1708,7 +1732,7 @@ export function Capture(): JSX.Element {
                 </Button>
               </div>
             </div>
-          </ReasonerDraft>
+          </Card>
         ) : null}
       </div>
     </div>

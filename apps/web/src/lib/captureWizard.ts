@@ -47,4 +47,8 @@ export const CAPTURE_WIZARD_TEXT = {
   helpers: "capture.wizard.helpers",
   helpersHint: "capture.wizard.helpersHint",
   docLabel: "capture.wizard.docLabel",
+  // Runde 4 (ARGUS-Sollbild): Seitentitel, Titel-Feld-Label, Struktur-Aufklappung.
+  pageTitle: "capture.wizard.pageTitle",
+  titleLabel: "capture.wizard.titleLabel",
+  structData: "capture.wizard.structData",
 } as const;

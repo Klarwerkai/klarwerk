@@ -295,6 +295,9 @@ const de = {
   "capture.wizard.helpers": "Hilfen, Vorlagen & Anhänge-Kontext",
   "capture.wizard.helpersHint": "Optionale Unterstützung — nichts davon ist Pflicht.",
   "capture.wizard.docLabel": "Deine Wissensseite",
+  "capture.wizard.pageTitle": "Wissensseite bearbeiten",
+  "capture.wizard.titleLabel": "Titel",
+  "capture.wizard.structData": "Kernaussage, Bedingungen & Maßnahmen",
   "capture.gapContextTitle": "Aus offener Wissenslücke",
   "capture.gapContextBody":
     "Das ist eine offene Frage, noch kein Wissen — sie dient nur als Startkontext. Ergänze deine Erfahrung/Beobachtung; die KI strukturiert daraus einen Entwurf, du prüfst und reichst ein.",
@@ -1994,6 +1997,9 @@ const en: typeof de = {
   "capture.wizard.helpers": "Help, templates & attachment context",
   "capture.wizard.helpersHint": "Optional support — none of this is mandatory.",
   "capture.wizard.docLabel": "Your knowledge page",
+  "capture.wizard.pageTitle": "Edit knowledge page",
+  "capture.wizard.titleLabel": "Title",
+  "capture.wizard.structData": "Core statement, conditions & measures",
   "capture.gapContextTitle": "From an open knowledge gap",
   "capture.gapContextBody":
     "This is an open question, not knowledge yet — it only serves as a starting context. Add your experience/observation; the AI structures it into a draft, you review and submit.",
