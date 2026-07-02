@@ -11,14 +11,21 @@ if [ "$(/usr/bin/uname -m)" = "x86_64" ] && [ "$(/usr/sbin/sysctl -n hw.optional
 fi
 
 REPO="/Users/peterkohnert/Documents/dev_Klarwerk"
-PORT=3000
+PORT=3010  # 3000 gehört dem lokalen Gitea
 LOG="$REPO/desktop-app/app.log"
 SVC_AI="KLARWERK-App-Anthropic"    # Reasoner (Pflicht für echte KI, sonst deterministischer Modus)
 SVC_TR="KLARWERK-App-Transkript"   # Whisper/OpenAI für Video-Analyse (optional)
 ACC="team1"
 
 say()  { /usr/bin/osascript -e "display notification \"$1\" with title \"KLARWERK App\"" >/dev/null 2>&1; }
-fail() { /usr/bin/osascript -e "display dialog \"$1\" with title \"KLARWERK App\" buttons {\"OK\"} default button 1 with icon caution" >/dev/null 2>&1; exit 1; }
+fail() {
+  # Pedi-Vorschlag 02.07.: Dialog nennt die letzte Fehlerzeile aus dem Log (gekürzt, ohne Anführungszeichen).
+  HINT="$(tail -n 15 "$LOG" 2>/dev/null | grep -E 'Error|error|fatal|fehlgeschlagen|failed|EADDRINUSE|ENOENT|Permission denied' | tail -1 | tr -d '"\\' | cut -c1-180)"
+  MSG="$1"
+  [ -n "$HINT" ] && MSG="$MSG\n\nFehler: $HINT"
+  /usr/bin/osascript -e "display dialog \"$MSG\" with title \"KLARWERK App\" buttons {\"OK\"} default button 1 with icon caution" >/dev/null 2>&1
+  exit 1
+}
 
 keychain_get() { /usr/bin/security find-generic-password -s "$1" -a "$ACC" -w 2>/dev/null; }
 keychain_ask() { # $1=Service $2=Prompt $3=optional("optional" erlaubt Überspringen)
@@ -56,11 +63,19 @@ NODE_BIN="$(dirname "$NODE_PICK")"
 export PATH="$NODE_BIN:$PATH"
 echo "Node: $NODE_PICK ($("$NODE_PICK" -p process.arch) fuer $MACH)" >> "$LOG"
 
-# Läuft die App schon? Dann nur Browser öffnen.
-if /usr/bin/curl -s --max-time 2 "http://127.0.0.1:$PORT/health" | /usr/bin/grep -q '"status":"ok"'; then
-  /usr/bin/open "http://localhost:$PORT"
-  exit 0
-fi
+# Läuft KLARWERK schon (auf einem der Kandidaten-Ports)? Dann nur Browser öffnen.
+# Sonst: ersten wirklich freien Port wählen (EADDRINUSE-Schutz, z. B. Gitea auf 3000).
+CHOSEN=""
+for p in 3010 3020 3030 3040; do
+  if /usr/bin/curl -s --max-time 1 "http://127.0.0.1:$p/health" | /usr/bin/grep -q '"status":"ok"'; then
+    /usr/bin/open "http://localhost:$p"
+    exit 0
+  fi
+  if [ -z "$CHOSEN" ] && ! /usr/sbin/lsof -iTCP:$p -sTCP:LISTEN >/dev/null 2>&1; then CHOSEN="$p"; fi
+done
+[ -n "$CHOSEN" ] || fail "Kein freier Port gefunden (3010/3020/3030/3040 sind alle belegt)."
+PORT="$CHOSEN"
+echo "Port: $PORT" >> "$LOG"
 
 # Keys aus dem Schlüsselbund (Erststart: Dialoge). Anthropic = Reasoner, Whisper = Video (optional).
 AI_KEY="$(keychain_ask "$SVC_AI" "Anthropic-API-Key für den KLARWERK Reasoner (beginnt mit sk-ant-…).\nOhne Key läuft die App im deterministischen Modus — ehrlich gekennzeichnet." optional)"
