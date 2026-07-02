@@ -10109,3 +10109,14 @@ git push
 **Getestet:** Neuer Service-Test (Rück-Richtung inkl. Fremd-KO leer) → **1236 Tests / 205 Dateien grün**; Build/Biome/depcruise grün; **UI-Smoke 4/4** (v0.9.7-Bundle); dist eingespielt (Bundle-Check v0.9.7).
 **Risiko:** gering — additive Route mit vorhandenem Guard-Muster; Pg-Adapter nutzt bestehende Tabelle (kein Migrationsbedarf). Bekannte Grenze: Kopplungen sind bewusst nur anleg-, nicht lösbar (Entkoppeln = Folge-Ticket, falls Pedi es braucht — ehrlicher Verlauf statt stillem Löschen).
 **Git:** dev_Klarwerk a5b4122 lokal — kein Push. **Nächster Schritt:** Pedi: App doppelklicken (v0.9.7-beta), KO öffnen → Karte „Anlagen-Kopplung" prüfen; dann Punkt 3 (Glocke) im neuen Chat starten (Prompt liegt vor, Version dort → 0.9.8-beta).
+
+---
+
+## After-Report — 2026-07-02 · SCRUM-389: KI-Verwaltung v1 im Admin (Teil-Slice)
+
+**Datum:** 2026-07-02 · **Ticket:** SCRUM-389 (neu, In Review) · **Anlass:** Pedi bestätigt die „KI-Management-Seite"-Idee als PMO-Eintrag und will einen Teil sofort: „im App/Admin".
+**Schnitt (bewusst RC-schonend):** Jetzt = Zuordnungs-Matrix + ehrlicher Status. Später (Voll-Ausbau laut PMO-Eintrag) = Provider-Registry (öffentlich + lokal/Ollama), Key-Test, Persistenz, Übersetzung/Transkription als Einsätze.
+**Änderung (Commit 691ad4f, v0.9.8-beta):** (1) Reasoner: `ReasonerTaskConfig` (global + je Aufgabe: auto/model/deterministic), `set/getTaskConfig` mit Validierung, Dispatch in `runTask` respektiert die Wahl; `configStatus()` liefert Zuordnung + EFFEKTIVEN Modus je Aufgabe (ehrlich: „model verlangt, aber kein Key" bleibt sichtbar deterministic) + `persisted:false`. (2) Route `PUT /api/reasoner/config` (users.manage) + Guard-Matrix. (3) Admin-Karte „KI-Verwaltung": Status, Global-Select, 5 Einsatz-Overrides mit Effektiv-Badges, ?-HelpTip, Hinweis „gilt bis Neustart". Keine Key-Eingabe im Browser. (4) i18n DE/EN (20 Schlüssel). (5) biome ignoriert test-results/ (Playwright-Artefakt brach lint).
+**Getestet:** 4 neue Reasoner-Service-Tests (deterministic-Override erzwingt Fallback; global deterministic; model ohne Key ehrlich; Validierung weist Unsinn ab) → **1240 Tests / 205 Dateien grün**; Build/Biome/depcruise grün; **UI-Smoke 4/4**; dist v0.9.8 eingespielt. Zwei bestehende Test-Fixtures um die neuen Statusfelder ergänzt.
+**Risiko:** gering — Default „auto" = exakt bisheriges Verhalten; Route additiv; Konfig nicht persistent (bewusst, dokumentiert in UI + Ticket).
+**Git:** dev_Klarwerk 691ad4f lokal — kein Push. **Nächster Schritt:** Pedi: App doppelklicken (v0.9.8-beta) → Admin → Karte „KI-Verwaltung" testen (z. B. Strukturieren auf „Deterministisch" stellen und im Erfassen den Unterschied sehen). Danach zurück zum Beta-Pfad: Sync + Sichtabnahme → „RC einfrieren".
