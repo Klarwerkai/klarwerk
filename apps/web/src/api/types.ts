@@ -153,6 +153,8 @@ export interface KnowledgeObject {
   comments?: KoComment[];
   attachments?: KoAttachment[];
   sources?: KoSource[];
+  // Demodaten-Merker (Seed) — für DEMO-Badge und Komplett-Entfernung.
+  demoSeed?: boolean;
 }
 
 export type Verdict = "up" | "warn" | "down";

@@ -304,6 +304,12 @@ const de = {
   "capture.wizard.discard": "Verwerfen",
   "ko.couple.title": "Anlagen-Kopplung",
   "adm.ai.title": "KI-Verwaltung",
+  "adm.purgeButton": "Demodaten entfernen",
+  "adm.purgeQ":
+    "Wirklich ALLE Demodaten löschen (auch von Testern veränderte)? Eigenes Wissen bleibt unberührt.",
+  "adm.purgeKeep": "Abbrechen",
+  "adm.purgeYes": "Ja, endgültig entfernen",
+  "adm.purgeDone": "Demodaten entfernt: {{kos}} Wissensobjekte, {{conflicts}} Konflikte aufgelöst.",
   "adm.seedSkippedInline":
     "Nicht geladen: Diese Instanz enthält bereits Wissensobjekte. Demodaten füllen nur eine LEERE Instanz — dein echter Bestand wird nie überschrieben.",
   "capture.tellResetQ": "Text und Anhänge wirklich verwerfen?",
@@ -2053,6 +2059,13 @@ const en: typeof de = {
   "capture.wizard.discard": "Discard",
   "ko.couple.title": "Asset coupling",
   "adm.ai.title": "AI management",
+  "adm.purgeButton": "Remove demo data",
+  "adm.purgeQ":
+    "Really delete ALL demo data (including tester-modified)? Your own knowledge stays untouched.",
+  "adm.purgeKeep": "Cancel",
+  "adm.purgeYes": "Yes, remove permanently",
+  "adm.purgeDone":
+    "Demo data removed: {{kos}} knowledge objects, {{conflicts}} conflicts resolved.",
   "adm.seedSkippedInline":
     "Not loaded: this instance already contains knowledge objects. Demo data only fills an EMPTY instance — your real content is never overwritten.",
   "capture.tellResetQ": "Really discard text and attachments?",

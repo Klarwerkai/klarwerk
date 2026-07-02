@@ -26,6 +26,10 @@ export interface DemoSeedServices {
 }
 
 // 1×1 transparentes PNG als kleiner, technisch sauberer Demo-Anhang (kein großer Blob).
+// Demo-Herkunfts-Tag — MUSS mit apps/web/src/lib/demoKnowledge.ts übereinstimmen.
+// Modulweit, damit Seed UND Purge dieselbe Quelle nutzen.
+export const DEMO_TAG = "pilot-demo";
+
 const TINY_PNG =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 
@@ -127,10 +131,11 @@ async function buildDemoContent(
   // Migration — nur ein zusätzlicher Tag im vorhandenen tags-Feld). Muss mit dem FE-Konstanten
   // DEMO_TAG in apps/web/src/lib/demoKnowledge.ts übereinstimmen. Produktiv erfasste KOs tragen
   // diesen Tag NICHT (er wird ausschließlich hier im Seed gesetzt).
-  const DEMO_TAG = "pilot-demo";
+  // (DEMO_TAG jetzt modulweit — siehe oben; hier bewusst keine zweite Definition.)
 
   // --- Wissensobjekte (verschiedene Kategorien, Arten, Trust, Tags) ---
   const koValid = await ko.create({
+    demoSeed: true,
     title: "Ventil X bei Überdruck manuell schließen.",
     statement:
       "Bei Überdruck über 6 bar Ventil X von Hand schließen, bis die Anlage entlastet ist.",
@@ -145,6 +150,7 @@ async function buildDemoContent(
     asset: "ANL-01",
   });
   const koOpen = await ko.create({
+    demoSeed: true,
     title: "Pumpe P2 alle 200 Betriebsstunden schmieren.",
     statement: "Pumpe P2 alle 200 h mit Fett Typ Z schmieren.",
     type: "technik",
@@ -155,6 +161,7 @@ async function buildDemoContent(
     neededValidations: 2,
   });
   const koWarm = await ko.create({
+    demoSeed: true,
     title: "Bei Kaltstart zuerst die Vorwärmung aktivieren.",
     statement: "Vor dem Kaltstart die Vorwärmung 10 min laufen lassen.",
     type: "lernkurve",
@@ -165,6 +172,7 @@ async function buildDemoContent(
     neededValidations: 2,
   });
   const koNoWarm = await ko.create({
+    demoSeed: true,
     title: "Vorwärmung bei Kaltstart ist nicht nötig.",
     statement: "Kaltstart ohne Vorwärmung ist möglich und spart Zeit.",
     type: "negativwissen",
@@ -175,6 +183,7 @@ async function buildDemoContent(
     neededValidations: 2,
   });
   const koFilter = await ko.create({
+    demoSeed: true,
     title: "Filter F3 monatlich auf Verschmutzung prüfen.",
     statement: "Filter F3 einmal pro Monat auf Verschmutzung prüfen und bei Bedarf tauschen.",
     type: "best_practice",
@@ -273,4 +282,38 @@ async function buildDemoContent(
     attachments: allKos.reduce((n, k) => n + (k.attachments?.length ?? 0), 0),
     sources: allKos.reduce((n, k) => n + (k.sources?.length ?? 0), 0),
   };
+}
+
+// ---- Demodaten komplett entfernen (Pedi 02.07.) -------------------------------------
+// Entfernt ALLE als demoSeed markierten Wissensobjekte (der Marker überlebt Bearbeitungen
+// und Versionen) samt zugehöriger Konflikte. Läuft über die echten Services → Audit bleibt
+// ehrlich. Demo-NUTZER bleiben bewusst bestehen (könnten inzwischen echte Beiträge haben);
+// Wissenslücken aus Demo-Fragen bleiben als ehrliche offene Fragen sichtbar.
+export interface PurgeResult {
+  kos: number;
+  conflicts: number;
+}
+
+export async function purgeDemoSeed(
+  services: Pick<DemoSeedServices, "ko" | "conflicts">,
+  actor: string,
+): Promise<PurgeResult> {
+  const { ko, conflicts } = services;
+  const demoKos = (await ko.list({})).filter(
+    (k) => k.demoSeed === true || (k.tags ?? []).includes(DEMO_TAG),
+  );
+  const demoIds = new Set(demoKos.map((k) => k.id));
+  let removedConflicts = 0;
+  for (const c of await conflicts.unresolved()) {
+    if (demoIds.has(c.koA) || demoIds.has(c.koB)) {
+      await conflicts
+        .resolve(c.id, actor, "Demodaten entfernt (beide Seiten verworfen)")
+        .catch(() => undefined);
+      removedConflicts += 1;
+    }
+  }
+  for (const k of demoKos) {
+    await ko.delete(k.id, actor);
+  }
+  return { kos: demoKos.length, conflicts: removedConflicts };
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildServices } from "./build-app";
 import { seedDemo } from "./seed";
+import { purgeDemoSeed } from "./seed-demo";
 
 describe("SCRUM-156: seedDemo", () => {
   it("erzeugt die zentralen Stage-1-Mindestsignale über echte Services", async () => {
@@ -49,6 +50,27 @@ describe("SCRUM-156: seedDemo", () => {
     const evidence = await services.ko.evidenceOf((rich as { id: string }).id);
     expect(evidence.some((e) => e.kind === "source")).toBe(true);
     expect(evidence.some((e) => e.kind === "attachment")).toBe(true);
+  });
+
+  it("Pedi 02.07.: purgeDemoSeed entfernt ALLE Demodaten — auch nach Tester-Bearbeitung", async () => {
+    const services = buildServices();
+    await seedDemo(services);
+    const before = await services.ko.list({});
+    const demoBefore = before.filter(
+      (k) => k.demoSeed === true || (k.tags ?? []).includes("pilot-demo"),
+    );
+    expect(demoBefore.length).toBeGreaterThan(0);
+    // Tester „verändert" ein Demo-KO und entfernt sogar den Demo-Tag → Feld-Merker bleibt.
+    const victim = demoBefore.find((k) => k.demoSeed === true);
+    expect(victim).toBeDefined();
+    if (victim) {
+      await services.ko.revise(victim.id, { title: "Vom Tester umbenannt" }, "tester");
+    }
+    const result = await purgeDemoSeed(services, "admin-test");
+    expect(result.kos).toBe(demoBefore.length);
+    const after = await services.ko.list({});
+    expect(after.filter((k) => k.demoSeed === true)).toHaveLength(0);
+    expect(after.filter((k) => (k.tags ?? []).includes("pilot-demo"))).toHaveLength(0);
   });
 
   it("ist idempotent: zweiter Lauf überspringt, keine Duplikate", async () => {

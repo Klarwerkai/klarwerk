@@ -263,4 +263,5 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
 
   // --- Admin (admin-routes.ts) ---
   "POST /api/admin/demo-seed": { protection: "users.manage" },
+  "DELETE /api/admin/demo-seed": { protection: "users.manage" },
 };

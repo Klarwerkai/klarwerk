@@ -11,8 +11,12 @@ import type { KnowledgeObject } from "../api/types";
 // Muss mit dem Literal in services/app/src/seed-demo.ts (DEMO_TAG) übereinstimmen.
 export const DEMO_TAG = "pilot-demo";
 
-export function isDemoKnowledge(ko: Pick<KnowledgeObject, "tags">): boolean {
-  return (ko.tags ?? []).includes(DEMO_TAG);
+// Pedi 02.07.: robuster Feld-Merker `demoSeed` zusätzlich zum Tag — der Tag könnte von
+// Testern wegeditiert werden, das Feld überlebt Bearbeitungen. Erkennung akzeptiert beides.
+export function isDemoKnowledge(
+  ko: Pick<KnowledgeObject, "tags"> & { demoSeed?: boolean },
+): boolean {
+  return ko.demoSeed === true || (ko.tags ?? []).includes(DEMO_TAG);
 }
 
 export interface DemoKnowledgeBadge {

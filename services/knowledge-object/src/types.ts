@@ -96,6 +96,9 @@ export interface KnowledgeObject {
   comments: KoComment[];
   attachments: KoAttachment[];
   sources: KoSource[];
+  // Demodaten-Merker (Pedi 02.07.): vom Seed gesetzt, überlebt Bearbeitungen/Versionen —
+  // damit Demo-Bestand sichtbar bleibt und komplett entfernt werden kann.
+  demoSeed?: boolean;
 }
 
 // SCRUM-159 (Knowledge-OS-Foundation): unveränderlicher Voll-Snapshot eines KO je Version.

@@ -237,6 +237,8 @@ export const endpoints = {
   // SCRUM-181: admin-only Demo-Seed für leere Instanzen (ehrliche seeded/skipped-Rückgabe).
   admin: {
     demoSeed: () => api.post<DemoSeedResult>("/admin/demo-seed", {}),
+    // Pedi 02.07.: Demodaten komplett entfernen (Merker überlebt Tester-Bearbeitungen).
+    demoPurge: () => api.del<{ kos: number; conflicts: number }>("/admin/demo-seed"),
   },
   users: {
     list: () => api.get<PublicUser[]>("/users"),

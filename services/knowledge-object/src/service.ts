@@ -58,6 +58,7 @@ export interface CreateKoInput {
   neededValidations?: number;
   asset?: string | null;
   bodyHtml?: string | null; // KW-STR: WYSIWYG-Body, serverseitig sanitisiert
+  demoSeed?: boolean; // Demodaten-Merker (nur der Seed setzt das; nie über die öffentliche Route)
 }
 
 export interface ReviseKoInput {
@@ -154,6 +155,7 @@ export class KoService {
       neededValidations: needed,
       assignments: [],
       asset: input.asset ?? null,
+      ...(input.demoSeed ? { demoSeed: true } : {}),
       createdAt: at,
       history: [{ version: 1, at, author: input.author, note: "erstellt" }],
       comments: [],

@@ -103,6 +103,27 @@ export function Admin(): JSX.Element {
     onError: fail,
   });
 
+  // Pedi 02.07.: Demodaten komplett entfernen (Merker überlebt Tester-Bearbeitungen).
+  const [confirmPurge, setConfirmPurge] = useState(false);
+  const demoPurge = useMutation({
+    mutationFn: () => endpoints.admin.demoPurge(),
+    onSuccess: (r) => {
+      for (const key of [
+        ["kos"],
+        ["validation"],
+        ["notifications"],
+        ["analytics"],
+        ["evidence"],
+        ["conflicts"],
+      ]) {
+        void qc.invalidateQueries({ queryKey: key });
+      }
+      setConfirmPurge(false);
+      push("success", t("adm.purgeDone", { kos: r.kos, conflicts: r.conflicts }));
+    },
+    onError: fail,
+  });
+
   // KI-Verwaltung v1 (Pedi 02.07., Teil-Slice des PMO-Eintrags): Zuordnung global + je
   // Aufgabe. Keys bleiben serverseitig; v1 gilt bis zum Neustart (ehrlich angezeigt).
   const AI_TASKS = ["structure", "assist", "interview", "answer", "select"] as const;
@@ -138,6 +159,37 @@ export function Admin(): JSX.Element {
             <UserPlus size={15} />
             {t("adm.seedButton")}
           </Button>
+          {confirmPurge ? (
+            <span className="ml-2 inline-flex items-center gap-2 rounded-card border border-trust-crit-fill/40 bg-trust-crit-bg px-2.5 py-1.5">
+              <span className="text-[12px] font-semibold text-trust-crit-text">
+                {t("adm.purgeQ")}
+              </span>
+              <button
+                type="button"
+                className="text-[12px] font-semibold text-muted hover:text-text"
+                onClick={() => setConfirmPurge(false)}
+              >
+                {t("adm.purgeKeep")}
+              </button>
+              <button
+                type="button"
+                disabled={demoPurge.isPending}
+                className="text-[12px] font-semibold text-trust-crit-text"
+                onClick={() => demoPurge.mutate()}
+              >
+                {t("adm.purgeYes")}
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmPurge(true)}
+              className="ml-2 rounded-btn px-3 py-2 text-[12.5px] font-semibold text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
+            >
+              <Trash2 size={14} className="mr-1 inline" />
+              {t("adm.purgeButton")}
+            </button>
+          )}
         </div>
         {/* SCRUM-306: nach erfolgreichem Seed (nicht übersprungen) sichtbare Next-Steps in den Stage-1-
             Lauf — keine automatische Weiterleitung, nur vorhandene Routen. Ohne Seed unverändert. */}
