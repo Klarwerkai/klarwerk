@@ -286,6 +286,15 @@ const de = {
     "Empfohlener nächster Schritt: im Knowledge Studio in Ruhe strukturieren. Das Formular bleibt dir erhalten.",
   "capture.flow.submitValue":
     "Dein Erfahrungswissen wird gesichert, bevor es verloren geht — erst nach der Prüfung gilt es als gesichert. Automatisch validiert wird nichts.",
+  // SCRUM-384 (Pedi-Review): Wizard — ein Fokus je Schritt statt zweispaltiger Info-Wand.
+  "capture.wizard.back": "Zurück zum Erzählen",
+  "capture.wizard.structuring": "Die KI strukturiert dein Wissen …",
+  "capture.wizard.condMeasures": "Bedingungen & Maßnahmen",
+  "capture.wizard.condMeasuresHint":
+    "Strukturiert abgeleitet aus deinem Wissen — wichtig für Prüfung und spätere Nutzung. Hier bei Bedarf anpassen.",
+  "capture.wizard.helpers": "Hilfen, Vorlagen & Anhänge-Kontext",
+  "capture.wizard.helpersHint": "Optionale Unterstützung — nichts davon ist Pflicht.",
+  "capture.wizard.docLabel": "Deine Wissensseite",
   "capture.gapContextTitle": "Aus offener Wissenslücke",
   "capture.gapContextBody":
     "Das ist eine offene Frage, noch kein Wissen — sie dient nur als Startkontext. Ergänze deine Erfahrung/Beobachtung; die KI strukturiert daraus einen Entwurf, du prüfst und reichst ein.",
@@ -1971,6 +1980,14 @@ const en: typeof de = {
     "Recommended next step: structure calmly in the Knowledge Studio. The form stays available to you.",
   "capture.flow.submitValue":
     "Your experience knowledge is secured before it's lost — it only counts as verified after review. Nothing is validated automatically.",
+  "capture.wizard.back": "Back to telling",
+  "capture.wizard.structuring": "The AI is structuring your knowledge …",
+  "capture.wizard.condMeasures": "Conditions & measures",
+  "capture.wizard.condMeasuresHint":
+    "Derived from your knowledge — important for review and later use. Adjust here if needed.",
+  "capture.wizard.helpers": "Help, templates & attachment context",
+  "capture.wizard.helpersHint": "Optional support — none of this is mandatory.",
+  "capture.wizard.docLabel": "Your knowledge page",
   "capture.gapContextTitle": "From an open knowledge gap",
   "capture.gapContextBody":
     "This is an open question, not knowledge yet — it only serves as a starting context. Add your experience/observation; the AI structures it into a draft, you review and submit.",

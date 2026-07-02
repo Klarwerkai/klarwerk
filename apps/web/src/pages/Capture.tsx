@@ -64,6 +64,12 @@ import { CAPTURE_FLOW_TEXT } from "../lib/captureFlowGuide";
 import { gapContextDraft, readGapContext } from "../lib/captureFromGap";
 import { captureReadiness } from "../lib/captureReadiness";
 import { captureNextSteps, captureSavedStatus } from "../lib/captureSuccess";
+import {
+  CAPTURE_WIZARD_TEXT,
+  type CaptureWizardStep,
+  resolveWizardStep,
+  wizardChips,
+} from "../lib/captureWizard";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 import { draftTitle } from "../lib/draftForm";
 import { studioSaveConfidence } from "../lib/editorApplySafety";
@@ -160,6 +166,11 @@ export function Capture(): JSX.Element {
       : "",
   );
   const [draft, setDraft] = useState<StructureResult | null>(null);
+  // SCRUM-384 (Pedi-Review): Wizard-Schritt — EIN Fokus je Schritt; Expertenmodus bleibt
+  // außerhalb des Wizards (klassische Zwei-Spalten-Ansicht, bewusst gewählt).
+  const [wizStepRaw, setWizStep] = useState<CaptureWizardStep>("tell");
+  const [showCondMeasures, setShowCondMeasures] = useState(false);
+  const [showHelpers, setShowHelpers] = useState(false);
   // KW-STR / SCRUM-45/46/48: WYSIWYG-Body (sanitisiertes HTML), separat vom Reasoner-Draft.
   const [bodyHtml, setBodyHtml] = useState("");
   // SCRUM-337: großer Knowledge-Studio-Arbeitsraum (Overlay) auf demselben bodyHtml-State.
@@ -228,6 +239,12 @@ export function Capture(): JSX.Element {
       setDraft(r);
       setTags((prev) => (prev.length > 0 ? prev : r.tags));
       setErr(null);
+      // SCRUM-384: direkt zur Wissensseite — Artikel-Vorschlag einmalig erzeugen
+      // (leerer Body ⇒ setzen; vorhandener Inhalt wird NIE still überschrieben).
+      setBodyHtml((prev) =>
+        prev.trim() ? prev : applyDraftArticle(prev, r, normalizeDraftArticleLocale(i18n.language)),
+      );
+      setWizStep("refine");
     },
     onError: fail,
   });
@@ -241,6 +258,13 @@ export function Capture(): JSX.Element {
       if (isInterviewDone(res)) {
         setDraft(res.draft);
         setTags((prev) => (prev.length > 0 ? prev : res.draft.tags));
+        // SCRUM-384: Interview fertig → gleiche Wissensseiten-Führung wie beim Freitext.
+        setBodyHtml((prev) =>
+          prev.trim()
+            ? prev
+            : applyDraftArticle(prev, res.draft, normalizeDraftArticleLocale(i18n.language)),
+        );
+        setWizStep("refine");
       }
     },
     onError: fail,
@@ -354,6 +378,10 @@ export function Capture(): JSX.Element {
       // SCRUM-375: nach dem Zurücksetzen sind die erweiterten Felder leer → wieder einklappen.
       setShowAdvanced(false);
       setNotice(null);
+      // SCRUM-384: nach dem Einreichen zurück zu Schritt 1 (gespeichert-Karte bleibt sichtbar).
+      setWizStep("tell");
+      setShowCondMeasures(false);
+      setShowHelpers(false);
     },
     onError: fail,
   });
@@ -645,6 +673,11 @@ export function Capture(): JSX.Element {
       })
     : null;
 
+  // SCRUM-384: abgeleiteter Wizard-Zustand (refine nur mit Entwurf) + sichtbare Schritt-Leiste.
+  const expertView = isExpertMode(mode);
+  const wizStep = resolveWizardStep(wizStepRaw, draft !== null);
+  const chips = wizardChips(wizStepRaw, draft !== null);
+
   return (
     <div className="mx-auto max-w-5xl">
       <PageHeader kicker={t("capture.kicker")} title={t("capture.title")} />
@@ -810,579 +843,869 @@ export function Capture(): JSX.Element {
       {/* SCRUM-384 / AG-12 / KG-UX-001/002/003/010: Erzähl-Einstieg als Standardweg — die Erzähl-Modi
           (Freitext · Diktat · Interview) führen in den Studio-Hauptweg; das klassische Formular bleibt
           als bewusst wählbarer Expertenpfad erhalten (progressive disclosure, NICHTS entfernt). */}
-      <div className="mb-4">
-        <p className="mb-1.5 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
-          {t(CAPTURE_ENTRY_TEXT.narrateKicker)}
-        </p>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {NARRATE_MODES.map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => switchMode(m)}
-              title={
-                m === "diktat" && !speechSupported ? t("capture.diktatUnsupported") : undefined
-              }
-              className={`rounded-btn px-3 py-1.5 text-[13px] font-semibold ${
-                mode === m
-                  ? "bg-ink text-white"
-                  : "border border-hairline text-muted hover:text-text"
-              }`}
-            >
-              {t(`capture.mode.${m}`)}
-              {m === "diktat" && !speechSupported ? (
-                <span className="ml-1 text-[11px] opacity-70">·{t("capture.diktatNa")}</span>
-              ) : null}
-            </button>
-          ))}
-          {/* Expertenpfad: ruhig rechts abgesetzt, bewusster Klick — kein gleichrangiger Modus. */}
-          {!isExpertMode(mode) ? (
-            <button
-              type="button"
-              onClick={() => switchMode(EXPERT_MODE)}
-              title={t(CAPTURE_ENTRY_TEXT.expertHint)}
-              className="ml-auto rounded-btn px-2.5 py-1.5 text-[12px] font-medium text-muted-2 underline-offset-2 hover:text-text hover:underline"
-            >
-              {t(CAPTURE_ENTRY_TEXT.expertToggle)}
-            </button>
-          ) : null}
-        </div>
-        {/* Im Expertenmodus: ehrliche Einordnung + sichtbarer Rückweg auf den geführten Standardweg. */}
-        {isExpertMode(mode) ? (
-          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-card border border-hairline bg-surface px-3 py-2">
-            <span className="text-[12px] text-muted">{t(CAPTURE_ENTRY_TEXT.expertActive)}</span>
-            <button
-              type="button"
-              onClick={() => switchMode("freitext")}
-              className="rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
-            >
-              {t(CAPTURE_ENTRY_TEXT.backToGuided)}
-            </button>
-          </div>
-        ) : null}
-      </div>
-
-      <div className="grid gap-5 lg:grid-cols-2">
-        <Card className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <Field label={t("capture.author")}>
-              <div className="flex h-10 items-center rounded-input border border-hairline bg-page px-3 text-sm text-muted">
-                {authorName}
-              </div>
-            </Field>
-            <Field label={t("capture.fType")}>
-              <select
-                value={type}
-                onChange={(e) => setType(e.target.value as KnowledgeType)}
-                className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
-              >
-                {KNOWLEDGE_TYPES.map((k) => (
-                  <option key={k} value={k}>
-                    {t(`ktype.${k}`)}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
-
-          {/* Modus-spezifische Eingabe */}
-          {mode === "freitext" || mode === "diktat" ? (
-            <div>
-              <div className="mb-1.5">
-                <SectionLabel>{t("capture.raw")}</SectionLabel>
-              </div>
-              {mode === "diktat" ? (
-                speechSupported ? (
-                  <Button
-                    variant={listening ? "primary" : "ghost"}
-                    className="mb-2"
-                    onClick={toggleDictation}
-                  >
-                    <Mic size={15} />
-                    {listening ? t("capture.diktatStop") : t("capture.diktatStart")}
-                  </Button>
-                ) : (
-                  <p className="mb-2 rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
-                    {t("capture.diktatUnsupported")}
-                  </p>
-                )
-              ) : null}
-              <textarea
-                value={raw}
-                onChange={(e) => setRaw(e.target.value)}
-                rows={7}
-                placeholder={t("capture.rawPlaceholder")}
-                className={textareaCls}
-              />
-              {/* SCRUM-312: sichtbare KI-Nachbearbeitung mit Vorschau + bewusster Übernahme. */}
-              <AiAssistBox text={raw} runAssist={runAssist} onApply={setRaw} />
-              <Button
-                variant="primary"
-                className="mt-3"
-                disabled={raw.trim().length === 0 || structure.isPending}
-                onClick={() => structure.mutate()}
-              >
-                <Sparkles size={15} />
-                {t("capture.structure")}
-              </Button>
-            </div>
-          ) : null}
-
-          {mode === "formular" ? (
-            <p className="rounded-card border border-dashed border-hairline p-3 text-[13px] text-muted">
-              {t("capture.formularHint")}
-            </p>
-          ) : null}
-
-          {mode === "interview" ? (
-            ivResult && isInterviewDone(ivResult) ? (
-              <p className="rounded-card border border-dashed border-hairline p-3 text-[13px] text-trust-pos-text">
-                {t("capture.ivDone")}
-              </p>
-            ) : (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-[11px] uppercase tracking-wider text-muted-2">
-                    {t("capture.ivTurn", { n: ivAnswers.length + 1 })}
-                  </span>
-                  {ivResult ? (
-                    <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai">
-                      {t(interviewSourceKey(ivResult))}
-                    </span>
-                  ) : null}
-                </div>
-                <p className="text-[14px] font-medium text-text">
-                  {interview.isPending
-                    ? t("capture.ivThinking")
-                    : (ivResult?.question ?? t("capture.ivThinking"))}
-                </p>
-                <textarea
-                  value={ivAnswer}
-                  onChange={(e) => setIvAnswer(e.target.value)}
-                  rows={2}
-                  placeholder={t("capture.ivAnswerHint")}
-                  className={textareaCls}
-                />
-                <Button
-                  variant="primary"
-                  disabled={interview.isPending || ivAnswer.trim().length === 0 || !ivResult}
-                  onClick={ivSend}
-                >
-                  {t("capture.ivSend")}
-                </Button>
-              </div>
-            )
-          ) : null}
-
-          {/* SCRUM-375 / AG-12: erweiterte/technische Felder als Progressive Disclosure — standardmäßig
-              eingeklappt, damit „Wissen erzählen → im Studio strukturieren" führt. NICHTS entfernt; bei
-              vorhandenem Inhalt (Entwurf/Beispiel) automatisch aufgeklappt; Badge zeigt Ausgefülltes an. */}
-          <div className="border-t border-hairline pt-4">
-            <button
-              type="button"
-              aria-expanded={showAdvanced}
-              onClick={() => setShowAdvanced((s) => !s)}
-              className="flex w-full items-center justify-between gap-2 text-left"
-            >
-              <span className="flex flex-wrap items-center gap-1.5 text-[12.5px] font-semibold text-text">
-                {t(ADVANCED_FIELDS_KEYS.title)}
-                {advancedSummary.filledCount > 0 ? (
-                  <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted-2">
-                    {t(ADVANCED_FIELDS_KEYS.filled, { count: advancedSummary.filledCount })}
+      {/* SCRUM-384: sichtbare Schritt-Leiste des Wizards (Erzählen → Wissensseite → Einreichen);
+          fertige Schritte sind anklickbar — vor und zurück ohne Datenverlust. */}
+      {!expertView ? (
+        <div className="mb-3 flex flex-wrap items-center gap-1.5">
+          {chips.map((c, i) => {
+            const clickable =
+              (c.id === "raw" && wizStep !== "tell") ||
+              (c.id === "studio" && draft !== null && wizStep !== "refine");
+            return (
+              <span key={c.id} className="inline-flex items-center gap-1.5">
+                {i > 0 ? (
+                  <span aria-hidden="true" className="text-[11px] text-muted-2">
+                    →
                   </span>
                 ) : null}
+                <button
+                  type="button"
+                  disabled={!clickable}
+                  onClick={() => setWizStep(c.id === "studio" ? "refine" : "tell")}
+                  className={`rounded-pill px-2.5 py-1 text-[11.5px] font-semibold ${
+                    c.state === "active"
+                      ? "bg-ink text-white"
+                      : c.state === "done"
+                        ? "border border-hairline text-text"
+                        : "border border-hairline text-muted-2"
+                  } ${clickable ? "hover:text-text" : ""}`}
+                >
+                  {i + 1} · {t(c.labelKey)}
+                </button>
               </span>
-              <ChevronDown
-                size={16}
-                className={`shrink-0 text-muted-2 transition-transform ${showAdvanced ? "rotate-180" : ""}`}
-              />
-            </button>
-            {!showAdvanced ? (
-              <p className="mt-1 text-[11.5px] leading-relaxed text-muted-2">
-                {t(ADVANCED_FIELDS_KEYS.hint)}
-              </p>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {/* Erzähl-Einstieg nur im Schritt „Erzählen" (bzw. immer im Expertenmodus). */}
+      {expertView || wizStep === "tell" ? (
+        <div className="mb-4">
+          <p className="mb-1.5 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+            {t(CAPTURE_ENTRY_TEXT.narrateKicker)}
+          </p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {NARRATE_MODES.map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => switchMode(m)}
+                title={
+                  m === "diktat" && !speechSupported ? t("capture.diktatUnsupported") : undefined
+                }
+                className={`rounded-btn px-3 py-1.5 text-[13px] font-semibold ${
+                  mode === m
+                    ? "bg-ink text-white"
+                    : "border border-hairline text-muted hover:text-text"
+                }`}
+              >
+                {t(`capture.mode.${m}`)}
+                {m === "diktat" && !speechSupported ? (
+                  <span className="ml-1 text-[11px] opacity-70">·{t("capture.diktatNa")}</span>
+                ) : null}
+              </button>
+            ))}
+            {/* Expertenpfad: ruhig rechts abgesetzt, bewusster Klick — kein gleichrangiger Modus. */}
+            {!isExpertMode(mode) ? (
+              <button
+                type="button"
+                onClick={() => switchMode(EXPERT_MODE)}
+                title={t(CAPTURE_ENTRY_TEXT.expertHint)}
+                className="ml-auto rounded-btn px-2.5 py-1.5 text-[12px] font-medium text-muted-2 underline-offset-2 hover:text-text hover:underline"
+              >
+                {t(CAPTURE_ENTRY_TEXT.expertToggle)}
+              </button>
             ) : null}
           </div>
+          {/* Im Expertenmodus: ehrliche Einordnung + sichtbarer Rückweg auf den geführten Standardweg. */}
+          {isExpertMode(mode) ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2 rounded-card border border-hairline bg-surface px-3 py-2">
+              <span className="text-[12px] text-muted">{t(CAPTURE_ENTRY_TEXT.expertActive)}</span>
+              <button
+                type="button"
+                onClick={() => switchMode("freitext")}
+                className="rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
+              >
+                {t(CAPTURE_ENTRY_TEXT.backToGuided)}
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
-          {showAdvanced ? (
-            <>
-              {/* Metadaten */}
-              <div className="grid grid-cols-2 gap-3">
-                <Field
-                  label={
-                    <span className="inline-flex items-center gap-1">
-                      {t("capture.fCategory")}
-                      <HelpTip
-                        title={t("capture.help.category.title")}
-                        body={t("capture.help.category.body")}
-                      />
-                    </span>
-                  }
-                >
-                  <TextInput value={category} onChange={(e) => setCategory(e.target.value)} />
-                </Field>
-                <Field
-                  label={
-                    <span className="inline-flex items-center gap-1">
-                      {t("capture.fRevalidation")}
-                      <HelpTip
-                        title={t("capture.help.validations.title")}
-                        body={t("capture.help.validations.body")}
-                      />
-                    </span>
-                  }
-                >
-                  <TextInput
-                    type="number"
-                    min={1}
-                    value={neededValidations}
-                    onChange={(e) => setNeededValidations(e.target.value)}
-                  />
-                </Field>
-                <Field label={t("capture.fAsset")}>
-                  <TextInput value={asset} onChange={(e) => setAsset(e.target.value)} />
-                </Field>
-                <div>
-                  <TagEditor tags={tags} onChange={setTags} />
+      {/* SCRUM-384: Wizard — genau EIN Fokus je Schritt; Expertenmodus behält die
+          klassische Zwei-Spalten-Ansicht (bewusst gewählter Pfad, nichts entfernt). */}
+      <div className={expertView ? "grid gap-5 lg:grid-cols-2" : "mx-auto max-w-3xl"}>
+        {expertView || wizStep === "tell" ? (
+          <Card className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <Field label={t("capture.author")}>
+                <div className="flex h-10 items-center rounded-input border border-hairline bg-page px-3 text-sm text-muted">
+                  {authorName}
                 </div>
-              </div>
+              </Field>
+              <Field label={t("capture.fType")}>
+                <select
+                  value={type}
+                  onChange={(e) => setType(e.target.value as KnowledgeType)}
+                  className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
+                >
+                  {KNOWLEDGE_TYPES.map((k) => (
+                    <option key={k} value={k}>
+                      {t(`ktype.${k}`)}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
 
-              {/* Dokumente */}
-              <div className="rounded-card border border-dashed border-hairline p-3">
-                <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
-                  <FileText size={13} />
-                  {t("capture.documents")}
+            {/* Modus-spezifische Eingabe */}
+            {mode === "freitext" || mode === "diktat" ? (
+              <div>
+                <div className="mb-1.5">
+                  <SectionLabel>{t("capture.raw")}</SectionLabel>
                 </div>
-                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
-                  {t("capture.documentsUpload")}
-                  <input
-                    type="file"
-                    multiple
-                    accept=".txt,.md,.markdown,.csv,.log,.json,.docx,.pdf,application/pdf,image/*,video/*,audio/*"
-                    className="hidden"
-                    onChange={(e) => void onDocs(e)}
-                  />
-                </label>
-                <span className="ml-2 text-[11.5px] text-muted-2">
-                  {t("capture.documentsHint")}
-                </span>
-                {docs.length > 0 ? (
-                  <ul className="mt-2 space-y-1">
-                    {docs.map((d) => (
-                      <li key={d.id} className="flex items-center gap-2 text-[12.5px] text-text">
-                        <FileText size={12} className="text-muted-2" />
-                        <span className="truncate">{d.name}</span>
-                        {d.mime.startsWith("video/") || d.mime.startsWith("audio/") ? (
-                          <button
-                            type="button"
-                            disabled={videoBusy !== null}
-                            onClick={() => void onTranscribe(d)}
-                            className="rounded-btn border border-hairline px-1.5 py-0.5 text-[10.5px] font-semibold text-muted hover:text-text disabled:opacity-50"
-                          >
-                            {videoBusy === d.id
-                              ? t("capture.videoBusy")
-                              : t("capture.videoTranscribe")}
-                          </button>
-                        ) : null}
-                        <button
-                          type="button"
-                          aria-label={t("capture.listRemove")}
-                          onClick={() => setDocs((arr) => arr.filter((x) => x.id !== d.id))}
-                          className="ml-auto text-muted-2 hover:text-text"
-                        >
-                          <X size={12} />
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+                {mode === "diktat" ? (
+                  speechSupported ? (
+                    <Button
+                      variant={listening ? "primary" : "ghost"}
+                      className="mb-2"
+                      onClick={toggleDictation}
+                    >
+                      <Mic size={15} />
+                      {listening ? t("capture.diktatStop") : t("capture.diktatStart")}
+                    </Button>
+                  ) : (
+                    <p className="mb-2 rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
+                      {t("capture.diktatUnsupported")}
+                    </p>
+                  )
                 ) : null}
+                <textarea
+                  value={raw}
+                  onChange={(e) => setRaw(e.target.value)}
+                  rows={7}
+                  placeholder={t("capture.rawPlaceholder")}
+                  className={textareaCls}
+                />
+                {/* SCRUM-312: sichtbare KI-Nachbearbeitung mit Vorschau + bewusster Übernahme.
+                  SCRUM-384: im Wizard erst auf der Wissensseite (EINE KI-Palette je Schritt);
+                  im Expertenmodus wie gehabt direkt am Rohtext. */}
+                {expertView ? (
+                  <AiAssistBox text={raw} runAssist={runAssist} onApply={setRaw} />
+                ) : null}
+                <Button
+                  variant="primary"
+                  className="mt-3"
+                  disabled={raw.trim().length === 0 || structure.isPending}
+                  onClick={() => structure.mutate()}
+                >
+                  <Sparkles size={15} />
+                  {structure.isPending
+                    ? t(CAPTURE_WIZARD_TEXT.structuring)
+                    : t("capture.structure")}
+                </Button>
               </div>
+            ) : null}
 
-              {/* Bilder */}
-              <div className="rounded-card border border-dashed border-hairline p-3">
-                <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
-                  <Paperclip size={13} />
-                  {t("capture.images")}
-                </div>
-                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
-                  {t("capture.imagesUpload")}
-                  <input
-                    type="file"
-                    multiple
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => void onImages(e)}
-                  />
-                </label>
-                <span className="ml-2 text-[11.5px] text-muted-2">{t("capture.imagesHint")}</span>
-                {images.length > 0 ? (
-                  <div className="mt-2 grid grid-cols-4 gap-2">
-                    {images.map((img) => (
-                      <div key={img.id} className="group relative">
-                        <img
-                          src={img.dataUrl}
-                          alt={img.name}
-                          className="h-16 w-full rounded-card border border-hairline object-cover"
-                        />
-                        <button
-                          type="button"
-                          aria-label={t("capture.listRemove")}
-                          onClick={() => setImages((arr) => arr.filter((x) => x.id !== img.id))}
-                          className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-ink/70 text-white opacity-0 group-hover:opacity-100"
-                        >
-                          <X size={12} />
-                        </button>
-                        {/* SCRUM-123: OCR nur auf Klick, mit sichtbarem Lade-/Fehlerstatus */}
-                        <button
-                          type="button"
-                          disabled={ocrBusy === img.id}
-                          onClick={() => void onOcr(img)}
-                          className="absolute inset-x-1 bottom-1 truncate rounded-btn bg-ink/70 px-1 py-0.5 text-center text-[9.5px] font-semibold text-white opacity-0 group-hover:opacity-100 disabled:opacity-100"
-                        >
-                          {ocrBusy === img.id ? t("capture.ocrRunningShort") : t("capture.ocr")}
-                        </button>
-                      </div>
-                    ))}
+            {mode === "formular" ? (
+              <p className="rounded-card border border-dashed border-hairline p-3 text-[13px] text-muted">
+                {t("capture.formularHint")}
+              </p>
+            ) : null}
+
+            {mode === "interview" ? (
+              ivResult && isInterviewDone(ivResult) ? (
+                <p className="rounded-card border border-dashed border-hairline p-3 text-[13px] text-trust-pos-text">
+                  {t("capture.ivDone")}
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[11px] uppercase tracking-wider text-muted-2">
+                      {t("capture.ivTurn", { n: ivAnswers.length + 1 })}
+                    </span>
+                    {ivResult ? (
+                      <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai">
+                        {t(interviewSourceKey(ivResult))}
+                      </span>
+                    ) : null}
                   </div>
-                ) : null}
-              </div>
-            </>
-          ) : null}
-
-          {err ? (
-            <div className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
-              {err}
-            </div>
-          ) : null}
-          {notice ? (
-            <div className="rounded-btn bg-trust-pos-bg px-3 py-2 text-[12.5px] text-trust-pos-text">
-              {notice}
-            </div>
-          ) : null}
-
-          <div className="flex flex-wrap gap-2 border-t border-hairline pt-4">
-            <Button variant="ghost" disabled={busy} onClick={() => saveDraft.mutate()}>
-              <Save size={15} />
-              {t("capture.saveDraft")}
-            </Button>
-            <Button variant="ghost" onClick={loadExample}>
-              {t("capture.loadExample")}
-            </Button>
-          </div>
-        </Card>
-
-        <div>
-          {draft ? (
-            <ReasonerDraft>
-              <div className="space-y-3">
-                <Field label={t("capture.fTitle")}>
-                  <TextInput
-                    value={draft.title}
-                    onChange={(e) => setDraft({ ...draft, title: e.target.value })}
-                  />
-                </Field>
-                <Field label={t("capture.fStatement")}>
+                  <p className="text-[14px] font-medium text-text">
+                    {interview.isPending
+                      ? t("capture.ivThinking")
+                      : (ivResult?.question ?? t("capture.ivThinking"))}
+                  </p>
                   <textarea
-                    value={draft.statement}
-                    onChange={(e) => setDraft({ ...draft, statement: e.target.value })}
-                    rows={3}
+                    value={ivAnswer}
+                    onChange={(e) => setIvAnswer(e.target.value)}
+                    rows={2}
+                    placeholder={t("capture.ivAnswerHint")}
                     className={textareaCls}
                   />
-                  {/* SCRUM-312: KI-Nachbearbeitung des Reasoner-Entwurfs (Vorschau + bewusste Übernahme). */}
-                  <AiAssistBox
-                    text={draft.statement}
-                    runAssist={runAssist}
-                    onApply={(next) => setDraft((d) => (d ? { ...d, statement: next } : d))}
-                  />
-                </Field>
-                {/* KW-STR / FR-STR-02: optionaler WYSIWYG-Body. SCRUM-321: lokale Bild-Anhänge
-                    können vor dem Speichern als sichere data:image-Vorschau eingefügt werden. */}
-                <Field label={t("capture.fBody")}>
-                  {/* SCRUM-340: aus dem vorhandenen Reasoner-Entwurf einen strukturierten Body-Artikel
-                      erzeugen und direkt im Studio weiterbearbeiten. Vorschlag, kein validiertes Wissen;
-                      vorhandener Body wird nicht still überschrieben (leer = setzen, sonst anhängen). */}
-                  {/* SCRUM-370 / AG-12: das Studio ist der empfohlene Strukturier-Hauptweg — ruhiger
-                      Lead-Hinweis + „Empfohlen"-Chip am primären Einstieg. Das Formular bleibt erhalten. */}
-                  <p className="mb-1.5 text-[11.5px] leading-relaxed text-muted">
-                    {t(CAPTURE_FLOW_TEXT.studioLead)}
-                  </p>
-                  <div className="mb-2 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setBodyHtml((prev) =>
-                          applyDraftArticle(
-                            prev,
-                            draft,
-                            normalizeDraftArticleLocale(i18n.language),
-                          ),
-                        );
-                        setStudioApplied(false);
-                        setStudioOpen(true);
-                      }}
-                      className="inline-flex items-center gap-1.5 rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
-                    >
-                      <Sparkles size={14} /> {t("studio.fromDraft.cta")}
-                      <span className="rounded-pill bg-white/20 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase">
-                        {t(CAPTURE_FLOW_TEXT.studioRecommended)}
-                      </span>
-                    </button>
-                    {/* SCRUM-337: Studio auch ohne Artikel-Erzeugung öffnen (leerer/eigener Body). */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setStudioApplied(false);
-                        setStudioOpen(true);
-                      }}
-                      className="inline-flex items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text"
-                    >
-                      {t("studio.open")}
-                    </button>
-                  </div>
-                  <p className="mb-2 text-[11px] text-muted-2">{t("studio.fromDraft.hint")}</p>
-                  <KnowledgeInputStudio
-                    open={studioOpen}
-                    onClose={() => setStudioOpen(false)}
-                    bodyHtml={bodyHtml}
-                    onApply={(next) => {
-                      setBodyHtml(next);
-                      setStudioApplied(true);
-                    }}
-                    runAssist={runAssist}
-                    images={editorImagesFromLocalImages(images)}
-                    attachments={[...images, ...docs.map((d) => ({ mime: d.mime }))]}
-                  />
-                  {/* SCRUM-339: ehrliches Feedback — übernommen in den Entwurf, kein Auto-Save. */}
-                  {studioApplied ? (
-                    <p className="mb-2 rounded-btn bg-trust-pos-bg px-2.5 py-1.5 text-[11.5px] text-trust-pos-text">
-                      {t("studio.applied")}
-                    </p>
+                  <Button
+                    variant="primary"
+                    disabled={interview.isPending || ivAnswer.trim().length === 0 || !ivResult}
+                    onClick={ivSend}
+                  >
+                    {t("capture.ivSend")}
+                  </Button>
+                </div>
+              )
+            ) : null}
+
+            {/* SCRUM-375 / AG-12: erweiterte/technische Felder als Progressive Disclosure — standardmäßig
+              eingeklappt, damit „Wissen erzählen → im Studio strukturieren" führt. NICHTS entfernt; bei
+              vorhandenem Inhalt (Entwurf/Beispiel) automatisch aufgeklappt; Badge zeigt Ausgefülltes an. */}
+            <div className="border-t border-hairline pt-4">
+              <button
+                type="button"
+                aria-expanded={showAdvanced}
+                onClick={() => setShowAdvanced((s) => !s)}
+                className="flex w-full items-center justify-between gap-2 text-left"
+              >
+                <span className="flex flex-wrap items-center gap-1.5 text-[12.5px] font-semibold text-text">
+                  {t(ADVANCED_FIELDS_KEYS.title)}
+                  {advancedSummary.filledCount > 0 ? (
+                    <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted-2">
+                      {t(ADVANCED_FIELDS_KEYS.filled, { count: advancedSummary.filledCount })}
+                    </span>
                   ) : null}
-                  {/* SCRUM-317: kompakte Orientierung am Body-Feld (Struktur/Handlung/Blöcke/KI). */}
-                  <EditorGuidance />
-                  {/* SCRUM-323: Anhänge-Kontext — Bilder (einfügbar) vs. Dateien (Anhang/Evidence). */}
-                  <EditorAttachmentContext
-                    attachments={[...images, ...docs.map((d) => ({ mime: d.mime }))]}
-                  />
-                  {/* SCRUM-324: kompakte Struktur-/Nachvollziehbarkeits-Signale (keine Validierung). */}
-                  <EditorContentQuality
-                    bodyHtml={bodyHtml}
-                    attachments={[...images, ...docs.map((d) => ({ mime: d.mime }))]}
-                  />
-                  {/* SCRUM-319: bewusst wählbare Body-Strukturvorlagen (leer = setzen, sonst anhängen). */}
-                  <BodyTemplateChooser bodyHtml={bodyHtml} onApply={setBodyHtml} />
-                  <RichTextEditor
-                    value={bodyHtml}
-                    onChange={setBodyHtml}
-                    images={editorImagesFromLocalImages(images)}
-                  />
-                  {/* SCRUM-315: KI-Nachbearbeitung des ausführlichen Inhalts — Textbasis aus dem Body,
-                      Vorschau + bewusste Übernahme (Ersetzen/Anhängen) als sicheres Body-HTML. */}
-                  <AiAssistBox
-                    text={bodyTextForAssist(bodyHtml)}
-                    runAssist={runAssist}
-                    applyFn={(mode, _original, suggestion) =>
-                      applyBodyAssist(mode, bodyHtml, suggestion)
+                </span>
+                <ChevronDown
+                  size={16}
+                  className={`shrink-0 text-muted-2 transition-transform ${showAdvanced ? "rotate-180" : ""}`}
+                />
+              </button>
+              {!showAdvanced ? (
+                <p className="mt-1 text-[11.5px] leading-relaxed text-muted-2">
+                  {t(ADVANCED_FIELDS_KEYS.hint)}
+                </p>
+              ) : null}
+            </div>
+
+            {showAdvanced ? (
+              <>
+                {/* Metadaten */}
+                <div className="grid grid-cols-2 gap-3">
+                  <Field
+                    label={
+                      <span className="inline-flex items-center gap-1">
+                        {t("capture.fCategory")}
+                        <HelpTip
+                          title={t("capture.help.category.title")}
+                          body={t("capture.help.category.body")}
+                        />
+                      </span>
                     }
-                    onApply={setBodyHtml}
-                    hintKey="capture.ai.bodyHint"
-                    extraApplyActions={EDITOR_BLOCKS.map((block) => ({
-                      labelKey: `capture.ai.applyAs.${block}`,
-                      apply: (_original, suggestion) =>
-                        applyBodyAssistBlock(bodyHtml, suggestion, block),
-                    }))}
-                  />
-                </Field>
-                <ListEditor
-                  label={t("capture.fConditions")}
-                  items={draft.conditions}
-                  onChange={(conditions) => setDraft({ ...draft, conditions })}
-                />
-                <ListEditor
-                  label={t("capture.fMeasures")}
-                  items={draft.measures}
-                  onChange={(measures) => setDraft({ ...draft, measures })}
-                />
-                {/* SCRUM-248: Speicher-Check — Pflicht-/Kernfelder + mitgenommene Anhänge ehrlich sichtbar. */}
-                {readiness ? (
-                  <div className="rounded-card border border-hairline bg-page p-3">
-                    <SectionLabel>{t("capture.readyTitle")}</SectionLabel>
-                    <ul className="mt-1.5 space-y-1">
-                      {readiness.checks.map((c) => (
-                        <li key={c.key} className="flex items-center gap-2 text-[12.5px]">
-                          <span
-                            className={`grid h-4 w-4 shrink-0 place-items-center rounded-full text-[10px] font-bold ${
-                              c.ok
-                                ? "bg-trust-pos-bg text-trust-pos-text"
-                                : c.required
-                                  ? "bg-trust-warn-bg text-trust-warn-text"
-                                  : "bg-hairline-soft text-muted-2"
-                            }`}
+                  >
+                    <TextInput value={category} onChange={(e) => setCategory(e.target.value)} />
+                  </Field>
+                  <Field
+                    label={
+                      <span className="inline-flex items-center gap-1">
+                        {t("capture.fRevalidation")}
+                        <HelpTip
+                          title={t("capture.help.validations.title")}
+                          body={t("capture.help.validations.body")}
+                        />
+                      </span>
+                    }
+                  >
+                    <TextInput
+                      type="number"
+                      min={1}
+                      value={neededValidations}
+                      onChange={(e) => setNeededValidations(e.target.value)}
+                    />
+                  </Field>
+                  <Field label={t("capture.fAsset")}>
+                    <TextInput value={asset} onChange={(e) => setAsset(e.target.value)} />
+                  </Field>
+                  <div>
+                    <TagEditor tags={tags} onChange={setTags} />
+                  </div>
+                </div>
+
+                {/* Dokumente */}
+                <div className="rounded-card border border-dashed border-hairline p-3">
+                  <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+                    <FileText size={13} />
+                    {t("capture.documents")}
+                  </div>
+                  <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
+                    {t("capture.documentsUpload")}
+                    <input
+                      type="file"
+                      multiple
+                      accept=".txt,.md,.markdown,.csv,.log,.json,.docx,.pdf,application/pdf,image/*,video/*,audio/*"
+                      className="hidden"
+                      onChange={(e) => void onDocs(e)}
+                    />
+                  </label>
+                  <span className="ml-2 text-[11.5px] text-muted-2">
+                    {t("capture.documentsHint")}
+                  </span>
+                  {docs.length > 0 ? (
+                    <ul className="mt-2 space-y-1">
+                      {docs.map((d) => (
+                        <li key={d.id} className="flex items-center gap-2 text-[12.5px] text-text">
+                          <FileText size={12} className="text-muted-2" />
+                          <span className="truncate">{d.name}</span>
+                          {d.mime.startsWith("video/") || d.mime.startsWith("audio/") ? (
+                            <button
+                              type="button"
+                              disabled={videoBusy !== null}
+                              onClick={() => void onTranscribe(d)}
+                              className="rounded-btn border border-hairline px-1.5 py-0.5 text-[10.5px] font-semibold text-muted hover:text-text disabled:opacity-50"
+                            >
+                              {videoBusy === d.id
+                                ? t("capture.videoBusy")
+                                : t("capture.videoTranscribe")}
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            aria-label={t("capture.listRemove")}
+                            onClick={() => setDocs((arr) => arr.filter((x) => x.id !== d.id))}
+                            className="ml-auto text-muted-2 hover:text-text"
                           >
-                            {c.ok ? "✓" : c.required ? "!" : "–"}
-                          </span>
-                          <span className="flex-1 text-text">
-                            {t(`capture.ready.${c.key}`)}
-                            {c.key === "attachments" ? ` (${images.length})` : ""}
-                          </span>
-                          <span className="font-mono text-[10.5px] uppercase text-muted-2">
-                            {c.ok
-                              ? t("capture.readyDone")
-                              : c.required
-                                ? t("capture.readyMissing")
-                                : t("capture.readyOptional")}
-                          </span>
+                            <X size={12} />
+                          </button>
                         </li>
                       ))}
                     </ul>
-                    {!readiness.canSave ? (
-                      <p className="mt-2 text-[11.5px] text-trust-warn-text">
-                        {t("capture.readyHint")}
+                  ) : null}
+                </div>
+
+                {/* Bilder */}
+                <div className="rounded-card border border-dashed border-hairline p-3">
+                  <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+                    <Paperclip size={13} />
+                    {t("capture.images")}
+                  </div>
+                  <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
+                    {t("capture.imagesUpload")}
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => void onImages(e)}
+                    />
+                  </label>
+                  <span className="ml-2 text-[11.5px] text-muted-2">{t("capture.imagesHint")}</span>
+                  {images.length > 0 ? (
+                    <div className="mt-2 grid grid-cols-4 gap-2">
+                      {images.map((img) => (
+                        <div key={img.id} className="group relative">
+                          <img
+                            src={img.dataUrl}
+                            alt={img.name}
+                            className="h-16 w-full rounded-card border border-hairline object-cover"
+                          />
+                          <button
+                            type="button"
+                            aria-label={t("capture.listRemove")}
+                            onClick={() => setImages((arr) => arr.filter((x) => x.id !== img.id))}
+                            className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-ink/70 text-white opacity-0 group-hover:opacity-100"
+                          >
+                            <X size={12} />
+                          </button>
+                          {/* SCRUM-123: OCR nur auf Klick, mit sichtbarem Lade-/Fehlerstatus */}
+                          <button
+                            type="button"
+                            disabled={ocrBusy === img.id}
+                            onClick={() => void onOcr(img)}
+                            className="absolute inset-x-1 bottom-1 truncate rounded-btn bg-ink/70 px-1 py-0.5 text-center text-[9.5px] font-semibold text-white opacity-0 group-hover:opacity-100 disabled:opacity-100"
+                          >
+                            {ocrBusy === img.id ? t("capture.ocrRunningShort") : t("capture.ocr")}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              </>
+            ) : null}
+
+            {err ? (
+              <div className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
+                {err}
+              </div>
+            ) : null}
+            {notice ? (
+              <div className="rounded-btn bg-trust-pos-bg px-3 py-2 text-[12.5px] text-trust-pos-text">
+                {notice}
+              </div>
+            ) : null}
+
+            <div className="flex flex-wrap gap-2 border-t border-hairline pt-4">
+              <Button variant="ghost" disabled={busy} onClick={() => saveDraft.mutate()}>
+                <Save size={15} />
+                {t("capture.saveDraft")}
+              </Button>
+              <Button variant="ghost" onClick={loadExample}>
+                {t("capture.loadExample")}
+              </Button>
+            </div>
+          </Card>
+        ) : null}
+
+        {expertView ? (
+          <div>
+            {draft ? (
+              <ReasonerDraft>
+                <div className="space-y-3">
+                  <Field label={t("capture.fTitle")}>
+                    <TextInput
+                      value={draft.title}
+                      onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                    />
+                  </Field>
+                  <Field label={t("capture.fStatement")}>
+                    <textarea
+                      value={draft.statement}
+                      onChange={(e) => setDraft({ ...draft, statement: e.target.value })}
+                      rows={3}
+                      className={textareaCls}
+                    />
+                    {/* SCRUM-312: KI-Nachbearbeitung des Reasoner-Entwurfs (Vorschau + bewusste Übernahme). */}
+                    <AiAssistBox
+                      text={draft.statement}
+                      runAssist={runAssist}
+                      onApply={(next) => setDraft((d) => (d ? { ...d, statement: next } : d))}
+                    />
+                  </Field>
+                  {/* KW-STR / FR-STR-02: optionaler WYSIWYG-Body. SCRUM-321: lokale Bild-Anhänge
+                    können vor dem Speichern als sichere data:image-Vorschau eingefügt werden. */}
+                  <Field label={t("capture.fBody")}>
+                    {/* SCRUM-340: aus dem vorhandenen Reasoner-Entwurf einen strukturierten Body-Artikel
+                      erzeugen und direkt im Studio weiterbearbeiten. Vorschlag, kein validiertes Wissen;
+                      vorhandener Body wird nicht still überschrieben (leer = setzen, sonst anhängen). */}
+                    {/* SCRUM-370 / AG-12: das Studio ist der empfohlene Strukturier-Hauptweg — ruhiger
+                      Lead-Hinweis + „Empfohlen"-Chip am primären Einstieg. Das Formular bleibt erhalten. */}
+                    <p className="mb-1.5 text-[11.5px] leading-relaxed text-muted">
+                      {t(CAPTURE_FLOW_TEXT.studioLead)}
+                    </p>
+                    <div className="mb-2 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBodyHtml((prev) =>
+                            applyDraftArticle(
+                              prev,
+                              draft,
+                              normalizeDraftArticleLocale(i18n.language),
+                            ),
+                          );
+                          setStudioApplied(false);
+                          setStudioOpen(true);
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
+                      >
+                        <Sparkles size={14} /> {t("studio.fromDraft.cta")}
+                        <span className="rounded-pill bg-white/20 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase">
+                          {t(CAPTURE_FLOW_TEXT.studioRecommended)}
+                        </span>
+                      </button>
+                      {/* SCRUM-337: Studio auch ohne Artikel-Erzeugung öffnen (leerer/eigener Body). */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStudioApplied(false);
+                          setStudioOpen(true);
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text"
+                      >
+                        {t("studio.open")}
+                      </button>
+                    </div>
+                    <p className="mb-2 text-[11px] text-muted-2">{t("studio.fromDraft.hint")}</p>
+                    <KnowledgeInputStudio
+                      open={studioOpen}
+                      onClose={() => setStudioOpen(false)}
+                      bodyHtml={bodyHtml}
+                      onApply={(next) => {
+                        setBodyHtml(next);
+                        setStudioApplied(true);
+                      }}
+                      runAssist={runAssist}
+                      images={editorImagesFromLocalImages(images)}
+                      attachments={[...images, ...docs.map((d) => ({ mime: d.mime }))]}
+                    />
+                    {/* SCRUM-339: ehrliches Feedback — übernommen in den Entwurf, kein Auto-Save. */}
+                    {studioApplied ? (
+                      <p className="mb-2 rounded-btn bg-trust-pos-bg px-2.5 py-1.5 text-[11.5px] text-trust-pos-text">
+                        {t("studio.applied")}
                       </p>
                     ) : null}
+                    {/* SCRUM-317: kompakte Orientierung am Body-Feld (Struktur/Handlung/Blöcke/KI). */}
+                    <EditorGuidance />
+                    {/* SCRUM-323: Anhänge-Kontext — Bilder (einfügbar) vs. Dateien (Anhang/Evidence). */}
+                    <EditorAttachmentContext
+                      attachments={[...images, ...docs.map((d) => ({ mime: d.mime }))]}
+                    />
+                    {/* SCRUM-324: kompakte Struktur-/Nachvollziehbarkeits-Signale (keine Validierung). */}
+                    <EditorContentQuality
+                      bodyHtml={bodyHtml}
+                      attachments={[...images, ...docs.map((d) => ({ mime: d.mime }))]}
+                    />
+                    {/* SCRUM-319: bewusst wählbare Body-Strukturvorlagen (leer = setzen, sonst anhängen). */}
+                    <BodyTemplateChooser bodyHtml={bodyHtml} onApply={setBodyHtml} />
+                    <RichTextEditor
+                      value={bodyHtml}
+                      onChange={setBodyHtml}
+                      images={editorImagesFromLocalImages(images)}
+                    />
+                    {/* SCRUM-315: KI-Nachbearbeitung des ausführlichen Inhalts — Textbasis aus dem Body,
+                      Vorschau + bewusste Übernahme (Ersetzen/Anhängen) als sicheres Body-HTML. */}
+                    <AiAssistBox
+                      text={bodyTextForAssist(bodyHtml)}
+                      runAssist={runAssist}
+                      applyFn={(mode, _original, suggestion) =>
+                        applyBodyAssist(mode, bodyHtml, suggestion)
+                      }
+                      onApply={setBodyHtml}
+                      hintKey="capture.ai.bodyHint"
+                      extraApplyActions={EDITOR_BLOCKS.map((block) => ({
+                        labelKey: `capture.ai.applyAs.${block}`,
+                        apply: (_original, suggestion) =>
+                          applyBodyAssistBlock(bodyHtml, suggestion, block),
+                      }))}
+                    />
+                  </Field>
+                  <ListEditor
+                    label={t("capture.fConditions")}
+                    items={draft.conditions}
+                    onChange={(conditions) => setDraft({ ...draft, conditions })}
+                  />
+                  <ListEditor
+                    label={t("capture.fMeasures")}
+                    items={draft.measures}
+                    onChange={(measures) => setDraft({ ...draft, measures })}
+                  />
+                  {/* SCRUM-248: Speicher-Check — Pflicht-/Kernfelder + mitgenommene Anhänge ehrlich sichtbar. */}
+                  {readiness ? (
+                    <div className="rounded-card border border-hairline bg-page p-3">
+                      <SectionLabel>{t("capture.readyTitle")}</SectionLabel>
+                      <ul className="mt-1.5 space-y-1">
+                        {readiness.checks.map((c) => (
+                          <li key={c.key} className="flex items-center gap-2 text-[12.5px]">
+                            <span
+                              className={`grid h-4 w-4 shrink-0 place-items-center rounded-full text-[10px] font-bold ${
+                                c.ok
+                                  ? "bg-trust-pos-bg text-trust-pos-text"
+                                  : c.required
+                                    ? "bg-trust-warn-bg text-trust-warn-text"
+                                    : "bg-hairline-soft text-muted-2"
+                              }`}
+                            >
+                              {c.ok ? "✓" : c.required ? "!" : "–"}
+                            </span>
+                            <span className="flex-1 text-text">
+                              {t(`capture.ready.${c.key}`)}
+                              {c.key === "attachments" ? ` (${images.length})` : ""}
+                            </span>
+                            <span className="font-mono text-[10.5px] uppercase text-muted-2">
+                              {c.ok
+                                ? t("capture.readyDone")
+                                : c.required
+                                  ? t("capture.readyMissing")
+                                  : t("capture.readyOptional")}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                      {!readiness.canSave ? (
+                        <p className="mt-2 text-[11.5px] text-trust-warn-text">
+                          {t("capture.readyHint")}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {/* SCRUM-344: Save-Confidence — nach Studio-Apply vor dem Einreichen ehrlich klarmachen,
+                    dass der Inhalt im Entwurf liegt, aber noch nicht gespeichert/validiert ist. */}
+                  {studioApplied
+                    ? (() => {
+                        const conf = studioSaveConfidence("capture");
+                        return (
+                          <div className="mb-2 rounded-card border border-trust-warn-fill/30 bg-trust-warn-bg p-2.5">
+                            <p className="text-[12.5px] font-semibold text-trust-warn-text">
+                              {t(conf.titleKey)}
+                            </p>
+                            <p className="mt-0.5 text-[11.5px] leading-relaxed text-trust-warn-text/90">
+                              {t(conf.hintKey)}
+                            </p>
+                            <p className="mt-1 text-[11.5px] font-medium leading-relaxed text-trust-warn-text">
+                              {t(conf.nextStepKey)}
+                            </p>
+                          </div>
+                        );
+                      })()
+                    : null}
+                  {/* SCRUM-370 / AG-P2-4: leichter Beitragswert direkt an der Einreich-Entscheidung —
+                    Motivation ohne Score/Gamification; ehrlich: gesichert erst nach der Prüfung. */}
+                  <p className="text-[11.5px] leading-relaxed text-muted">
+                    {t(CAPTURE_FLOW_TEXT.submitValue)}
+                  </p>
+                  <Button
+                    variant="primary"
+                    className="w-full"
+                    disabled={submit.isPending || !readiness?.canSave}
+                    onClick={() => submit.mutate()}
+                  >
+                    {t("capture.submit")}
+                  </Button>
+                </div>
+              </ReasonerDraft>
+            ) : (
+              <Card className="border-dashed text-center text-sm text-muted">
+                {t("capture.draftHint")}
+              </Card>
+            )}
+          </div>
+        ) : null}
+
+        {/* SCRUM-384: Schritt „Wissensseite prüfen & verfeinern" — Dokument im Zentrum,
+            EINE KI-Palette (ARGUS-Muster „Wissensseite bearbeiten"); Struktur-Details und
+            Hilfen eingeklappt hinter Badges/?-Hilfen (keine Info-Wand, nichts entfernt). */}
+        {!expertView && wizStep === "refine" && draft ? (
+          <ReasonerDraft>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => setWizStep("tell")}
+                  className="inline-flex items-center gap-1 rounded-btn px-1.5 py-1 text-[12px] font-medium text-muted hover:text-text"
+                >
+                  ← {t(CAPTURE_WIZARD_TEXT.back)}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStudioApplied(false);
+                    setStudioOpen(true);
+                  }}
+                  className="rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
+                >
+                  {t("studio.open")}
+                </button>
+              </div>
+
+              <Field label={t("capture.fTitle")}>
+                <TextInput
+                  value={draft.title}
+                  onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                />
+              </Field>
+              <Field label={t("capture.fStatement")}>
+                <textarea
+                  value={draft.statement}
+                  onChange={(e) => setDraft({ ...draft, statement: e.target.value })}
+                  rows={2}
+                  className={textareaCls}
+                />
+              </Field>
+
+              <div>
+                <div className="mb-1.5 flex items-center gap-1.5">
+                  <SectionLabel>{t(CAPTURE_WIZARD_TEXT.docLabel)}</SectionLabel>
+                  <HelpTip
+                    title={t("capture.flow.step.studio.label")}
+                    body={t("capture.flow.step.studio.hint")}
+                  />
+                </div>
+                <RichTextEditor
+                  value={bodyHtml}
+                  onChange={setBodyHtml}
+                  images={editorImagesFromLocalImages(images)}
+                />
+                {/* SCRUM-315: die EINE KI-Palette dieses Schritts — Vorschau + bewusste Übernahme. */}
+                <AiAssistBox
+                  text={bodyTextForAssist(bodyHtml)}
+                  runAssist={runAssist}
+                  applyFn={(mode, _original, suggestion) =>
+                    applyBodyAssist(mode, bodyHtml, suggestion)
+                  }
+                  onApply={setBodyHtml}
+                  hintKey="capture.ai.bodyHint"
+                  extraApplyActions={EDITOR_BLOCKS.map((block) => ({
+                    labelKey: `capture.ai.applyAs.${block}`,
+                    apply: (_original, suggestion) =>
+                      applyBodyAssistBlock(bodyHtml, suggestion, block),
+                  }))}
+                />
+              </div>
+
+              <KnowledgeInputStudio
+                open={studioOpen}
+                onClose={() => setStudioOpen(false)}
+                bodyHtml={bodyHtml}
+                onApply={(next) => {
+                  setBodyHtml(next);
+                  setStudioApplied(true);
+                }}
+                runAssist={runAssist}
+                images={editorImagesFromLocalImages(images)}
+                attachments={[...images, ...docs.map((d) => ({ mime: d.mime }))]}
+              />
+              {studioApplied ? (
+                <p className="rounded-btn bg-trust-pos-bg px-2.5 py-1.5 text-[11.5px] text-trust-pos-text">
+                  {t("studio.applied")}
+                </p>
+              ) : null}
+
+              {/* Bedingungen & Maßnahmen — eingeklappt, Badge zeigt die Anzahl (kein Datenverlust). */}
+              <div className="rounded-card border border-hairline">
+                <div className="flex items-center gap-1.5 px-3 py-2.5">
+                  <button
+                    type="button"
+                    aria-expanded={showCondMeasures}
+                    onClick={() => setShowCondMeasures((s) => !s)}
+                    className="flex flex-1 items-center justify-between gap-2 text-left"
+                  >
+                    <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-text">
+                      {t(CAPTURE_WIZARD_TEXT.condMeasures)}
+                      <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9.5px] font-semibold text-muted-2">
+                        {draft.conditions.length + draft.measures.length}
+                      </span>
+                    </span>
+                    <ChevronDown
+                      size={16}
+                      className={`shrink-0 text-muted-2 transition-transform ${showCondMeasures ? "rotate-180" : ""}`}
+                    />
+                  </button>
+                  <HelpTip
+                    title={t(CAPTURE_WIZARD_TEXT.condMeasures)}
+                    body={t(CAPTURE_WIZARD_TEXT.condMeasuresHint)}
+                  />
+                </div>
+                {showCondMeasures ? (
+                  <div className="space-y-3 border-t border-hairline p-3">
+                    <ListEditor
+                      label={t("capture.fConditions")}
+                      items={draft.conditions}
+                      onChange={(conditions) => setDraft({ ...draft, conditions })}
+                    />
+                    <ListEditor
+                      label={t("capture.fMeasures")}
+                      items={draft.measures}
+                      onChange={(measures) => setDraft({ ...draft, measures })}
+                    />
                   </div>
                 ) : null}
-                {/* SCRUM-344: Save-Confidence — nach Studio-Apply vor dem Einreichen ehrlich klarmachen,
-                    dass der Inhalt im Entwurf liegt, aber noch nicht gespeichert/validiert ist. */}
-                {studioApplied
-                  ? (() => {
-                      const conf = studioSaveConfidence("capture");
-                      return (
-                        <div className="mb-2 rounded-card border border-trust-warn-fill/30 bg-trust-warn-bg p-2.5">
-                          <p className="text-[12.5px] font-semibold text-trust-warn-text">
-                            {t(conf.titleKey)}
-                          </p>
-                          <p className="mt-0.5 text-[11.5px] leading-relaxed text-trust-warn-text/90">
-                            {t(conf.hintKey)}
-                          </p>
-                          <p className="mt-1 text-[11.5px] font-medium leading-relaxed text-trust-warn-text">
-                            {t(conf.nextStepKey)}
-                          </p>
-                        </div>
-                      );
-                    })()
-                  : null}
-                {/* SCRUM-370 / AG-P2-4: leichter Beitragswert direkt an der Einreich-Entscheidung —
-                    Motivation ohne Score/Gamification; ehrlich: gesichert erst nach der Prüfung. */}
-                <p className="text-[11.5px] leading-relaxed text-muted">
-                  {t(CAPTURE_FLOW_TEXT.submitValue)}
-                </p>
+              </div>
+
+              {/* Hilfen & Vorlagen — optional, eingeklappt (SCRUM-317/319/323/324 bleiben erhalten). */}
+              <div className="rounded-card border border-hairline">
+                <div className="flex items-center gap-1.5 px-3 py-2.5">
+                  <button
+                    type="button"
+                    aria-expanded={showHelpers}
+                    onClick={() => setShowHelpers((s) => !s)}
+                    className="flex flex-1 items-center justify-between gap-2 text-left"
+                  >
+                    <span className="text-[12.5px] font-semibold text-text">
+                      {t(CAPTURE_WIZARD_TEXT.helpers)}
+                    </span>
+                    <ChevronDown
+                      size={16}
+                      className={`shrink-0 text-muted-2 transition-transform ${showHelpers ? "rotate-180" : ""}`}
+                    />
+                  </button>
+                  <HelpTip
+                    title={t(CAPTURE_WIZARD_TEXT.helpers)}
+                    body={t(CAPTURE_WIZARD_TEXT.helpersHint)}
+                  />
+                </div>
+                {showHelpers ? (
+                  <div className="space-y-3 border-t border-hairline p-3">
+                    <BodyTemplateChooser bodyHtml={bodyHtml} onApply={setBodyHtml} />
+                    <EditorGuidance />
+                    <EditorAttachmentContext
+                      attachments={[...images, ...docs.map((d) => ({ mime: d.mime }))]}
+                    />
+                    <EditorContentQuality
+                      bodyHtml={bodyHtml}
+                      attachments={[...images, ...docs.map((d) => ({ mime: d.mime }))]}
+                    />
+                  </div>
+                ) : null}
+              </div>
+
+              {/* SCRUM-248: ehrlicher Speicher-Check (kompakt, wie gehabt). */}
+              {readiness ? (
+                <div className="rounded-card border border-hairline bg-page p-3">
+                  <SectionLabel>{t("capture.readyTitle")}</SectionLabel>
+                  <ul className="mt-1.5 space-y-1">
+                    {readiness.checks.map((c) => (
+                      <li key={c.key} className="flex items-center gap-2 text-[12.5px]">
+                        <span
+                          className={`grid h-4 w-4 shrink-0 place-items-center rounded-full text-[10px] font-bold ${
+                            c.ok
+                              ? "bg-trust-pos-bg text-trust-pos-text"
+                              : c.required
+                                ? "bg-trust-warn-bg text-trust-warn-text"
+                                : "bg-hairline-soft text-muted-2"
+                          }`}
+                        >
+                          {c.ok ? "✓" : c.required ? "!" : "–"}
+                        </span>
+                        <span className="flex-1 text-text">
+                          {t(`capture.ready.${c.key}`)}
+                          {c.key === "attachments" ? ` (${images.length})` : ""}
+                        </span>
+                        <span className="font-mono text-[10.5px] uppercase text-muted-2">
+                          {c.ok
+                            ? t("capture.readyDone")
+                            : c.required
+                              ? t("capture.readyMissing")
+                              : t("capture.readyOptional")}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  {!readiness.canSave ? (
+                    <p className="mt-2 text-[11.5px] text-trust-warn-text">
+                      {t("capture.readyHint")}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {err ? (
+                <div className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
+                  {err}
+                </div>
+              ) : null}
+              {notice ? (
+                <div className="rounded-btn bg-trust-pos-bg px-3 py-2 text-[12.5px] text-trust-pos-text">
+                  {notice}
+                </div>
+              ) : null}
+
+              {/* SCRUM-370 / AG-P2-4: Beitragswert an der Einreich-Entscheidung — ehrlich. */}
+              <p className="text-[11.5px] leading-relaxed text-muted">
+                {t(CAPTURE_FLOW_TEXT.submitValue)}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="ghost" disabled={busy} onClick={() => saveDraft.mutate()}>
+                  <Save size={15} />
+                  {t("capture.saveDraft")}
+                </Button>
                 <Button
                   variant="primary"
-                  className="w-full"
+                  className="flex-1"
                   disabled={submit.isPending || !readiness?.canSave}
                   onClick={() => submit.mutate()}
                 >
-                  {t("capture.submit")}
+                  {t("capture.submit")} →
                 </Button>
               </div>
-            </ReasonerDraft>
-          ) : (
-            <Card className="border-dashed text-center text-sm text-muted">
-              {t("capture.draftHint")}
-            </Card>
-          )}
-        </div>
+            </div>
+          </ReasonerDraft>
+        ) : null}
       </div>
     </div>
   );
