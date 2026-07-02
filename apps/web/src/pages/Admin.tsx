@@ -109,6 +109,9 @@ export function Admin(): JSX.Element {
   const aiConfig = useQuery({ queryKey: ["reasonerConfig"], queryFn: endpoints.reasoner.config });
   const [aiGlobal, setAiGlobal] = useState<string | null>(null);
   const [aiPerTask, setAiPerTask] = useState<Record<string, string> | null>(null);
+  // Pedi-Feedback 02.07. („etwas unübersichtlich"): Feinabstimmung je Einsatz eingeklappt —
+  // sichtbar bleibt nur die EINE Frage nach dem Standard. Offen nur, wenn Overrides existieren.
+  const [showAiDetail, setShowAiDetail] = useState(false);
   const effGlobal = aiGlobal ?? aiConfig.data?.taskConfig.global ?? "auto";
   const effPerTask = aiPerTask ?? aiConfig.data?.taskConfig.perTask ?? {};
   const aiSave = useMutation({
@@ -191,47 +194,65 @@ export function Admin(): JSX.Element {
                 </select>
               </label>
             </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {AI_TASKS.map((task) => (
-                <label key={task} className="block text-[11.5px] font-semibold text-muted">
-                  <span className="inline-flex items-center gap-1.5">
-                    {t(`adm.ai.task.${task}`)}
-                    <span
-                      className={`rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${
-                        aiConfig.data?.effective[task] === "model"
-                          ? "bg-ai-surface-1 text-ai"
-                          : "bg-page text-muted-2"
-                      }`}
-                    >
-                      {aiConfig.data?.effective[task] === "model"
-                        ? t("adm.ai.effModel")
-                        : t("adm.ai.effDet")}
-                    </span>
+            <button
+              type="button"
+              aria-expanded={showAiDetail || Object.keys(effPerTask).length > 0}
+              onClick={() => setShowAiDetail((s) => !s)}
+              className="flex w-full items-center justify-between gap-2 border-t border-hairline pt-2.5 text-left"
+            >
+              <span className="text-[12.5px] font-semibold text-text">
+                {t("adm.ai.detail")}
+                {Object.keys(effPerTask).length > 0 ? (
+                  <span className="ml-1.5 rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9.5px] font-semibold text-muted-2">
+                    {Object.keys(effPerTask).length}
                   </span>
-                  <select
-                    value={effPerTask[task] ?? ""}
-                    onChange={(e) =>
-                      setAiPerTask({
-                        ...effPerTask,
-                        ...(e.target.value
-                          ? { [task]: e.target.value }
-                          : (() => {
-                              const cp = { ...effPerTask };
-                              delete cp[task];
-                              return cp;
-                            })()),
-                      })
-                    }
-                    className="mt-1 h-9 w-full rounded-input border border-hairline bg-surface px-2 text-[13px] font-normal text-text"
-                  >
-                    <option value="">{t("adm.ai.choice.inherit")}</option>
-                    <option value="auto">{t("adm.ai.choice.auto")}</option>
-                    <option value="model">{t("adm.ai.choice.model")}</option>
-                    <option value="deterministic">{t("adm.ai.choice.deterministic")}</option>
-                  </select>
-                </label>
-              ))}
-            </div>
+                ) : null}
+              </span>
+              <span className="text-[11px] text-muted-2">{t("adm.ai.detailHint")}</span>
+            </button>
+            {showAiDetail || Object.keys(effPerTask).length > 0 ? (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {AI_TASKS.map((task) => (
+                  <label key={task} className="block text-[11.5px] font-semibold text-muted">
+                    <span className="inline-flex items-center gap-1.5">
+                      {t(`adm.ai.task.${task}`)}
+                      <span
+                        className={`rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${
+                          aiConfig.data?.effective[task] === "model"
+                            ? "bg-ai-surface-1 text-ai"
+                            : "bg-page text-muted-2"
+                        }`}
+                      >
+                        {aiConfig.data?.effective[task] === "model"
+                          ? t("adm.ai.effModel")
+                          : t("adm.ai.effDet")}
+                      </span>
+                    </span>
+                    <select
+                      value={effPerTask[task] ?? ""}
+                      onChange={(e) =>
+                        setAiPerTask({
+                          ...effPerTask,
+                          ...(e.target.value
+                            ? { [task]: e.target.value }
+                            : (() => {
+                                const cp = { ...effPerTask };
+                                delete cp[task];
+                                return cp;
+                              })()),
+                        })
+                      }
+                      className="mt-1 h-9 w-full rounded-input border border-hairline bg-surface px-2 text-[13px] font-normal text-text"
+                    >
+                      <option value="">{t("adm.ai.choice.inherit")}</option>
+                      <option value="auto">{t("adm.ai.choice.auto")}</option>
+                      <option value="model">{t("adm.ai.choice.model")}</option>
+                      <option value="deterministic">{t("adm.ai.choice.deterministic")}</option>
+                    </select>
+                  </label>
+                ))}
+              </div>
+            ) : null}
             <div className="flex flex-wrap items-center gap-2">
               <Button
                 variant="primary"

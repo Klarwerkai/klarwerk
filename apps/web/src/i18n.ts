@@ -322,6 +322,8 @@ const de = {
   "adm.ai.effModel": "Modell",
   "adm.ai.effDet": "deterministisch",
   "adm.ai.save": "Zuordnung übernehmen",
+  "adm.ai.detail": "Feinabstimmung je Einsatz",
+  "adm.ai.detailHint": "optional — Standard genügt meist",
   "adm.ai.saved": "KI-Zuordnung übernommen.",
   "adm.ai.persistNote":
     "Gilt bis zum nächsten Neustart der App — dauerhafte Speicherung und lokale Modelle kommen mit dem Voll-Ausbau (PMO-Eintrag).",
@@ -2064,6 +2066,8 @@ const en: typeof de = {
   "adm.ai.effModel": "model",
   "adm.ai.effDet": "deterministic",
   "adm.ai.save": "Apply mapping",
+  "adm.ai.detail": "Fine-tune per use",
+  "adm.ai.detailHint": "optional — the default is usually enough",
   "adm.ai.saved": "AI mapping applied.",
   "adm.ai.persistNote":
     "Applies until the next app restart — persistent storage and local models arrive with the full build-out (PMO entry).",
