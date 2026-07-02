@@ -1,4 +1,5 @@
 import { Bell, HelpCircle, Search, Smartphone } from "lucide-react";
+import { APP_VERSION } from "../version";
 import { type FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -225,6 +226,13 @@ export function Topbar(): JSX.Element {
         <LangPill />
         <NotificationBell />
         <ReasonerStatusPill />
+        {/* Beta-Phase: sichtbare Versionsnummer oben rechts (Pedi, 02.07.2026). */}
+        <span
+          className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-[10.5px] text-muted-2"
+          title="App-Version (Beta-Phase)"
+        >
+          v{APP_VERSION}
+        </span>
       </div>
     </header>
   );
