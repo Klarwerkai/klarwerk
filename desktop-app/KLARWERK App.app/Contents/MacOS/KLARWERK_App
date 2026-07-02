@@ -4,6 +4,12 @@
 # baut das Frontend falls nötig, startet den Monolithen (SPA + /api aus einem Prozess)
 # und öffnet den Browser. Kein Terminal. Keys landen NIE in Dateien oder Logs.
 
+# Rosetta-Falle: LaunchServices startet Script-Apps teils unter x86_64-Emulation,
+# obwohl der Mac Apple Silicon ist. Dann sofort nativ (arm64) neu starten.
+if [ "$(/usr/bin/uname -m)" = "x86_64" ] && [ "$(/usr/sbin/sysctl -n hw.optional.arm64 2>/dev/null)" = "1" ]; then
+  exec /usr/bin/arch -arm64 /bin/bash "$0" "$@"
+fi
+
 REPO="/Users/peterkohnert/Documents/dev_Klarwerk"
 PORT=3000
 LOG="$REPO/desktop-app/app.log"
