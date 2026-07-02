@@ -10228,3 +10228,13 @@ git push
 **Getestet:** Volle Kette: Build ✓ · Biome ✓ · depcruise ✓ · **1279 Tests / 210 Dateien ✓** · **UI-Smoke 4/4 ✓** · dist v0.9.19 gebaut+eingespielt.
 **Risiko:** gering — FE-only; Rechteprüfung serverseitig unverändert.
 **Git-Status:** dev_Klarwerk lokal committet, **kein Push**. **Nächster Schritt:** Pedi: App doppelklicken (v0.9.19) → Bibliothek → Papierkorb am Treffer → Inline-Bestätigung → weg.
+
+---
+
+## After-Report — 2026-07-02 · KLARWERK Sync ausgeführt (GitHub aktuell) + Sync-Werkzeug erneuert
+
+**Datum:** 2026-07-02 (spät) · **Anlass:** Pedi: „Jira und GitHub auf den neuesten Stand" + „Anzeige für Sync".
+**Ergebnis:** **KLARWERK Sync ist gelaufen — alle Repos gepusht:** dev_Klarwerk github✓(65) + origin✓(354) · website origin✓(9) · knowledge-guru origin✓(3) · business-backend origin✓(6) · release-ops/local-llm aktuell. Verifiziert: `main...github/main` ohne Abweichung (HEAD e2ff5e6). Jira: SCRUM-390–392, 396–401 In Review; 393–395 To Do; Kommentar SCRUM-389 nachgetragen.
+**Sync-Werkzeug erneuert (Ursache + Lösung):** Die Script-App wurde von macOS-TCC hartnäckig blockiert („Unable to read current working directory"), trotz Festplattenvollzugriff und frischer Bundle-Identität — mehrfach reproduziert. Lösung: **„KLARWERK Sync starten.command"** auf dem Schreibtisch — läuft sichtbar im Terminal (Live-Anzeige je Repo: pushe n Commits … ✓/FEHLER; ehrliche Zugriffs-Diagnose), Terminal besitzt den Ordnerzugriff. Die App **„KLARWERK Sync"** (Schreibtisch + tools-sync, identisch) bleibt für die gewohnte Bedienung erhalten und öffnet jetzt genau diese Terminal-Ausführung. Log unverändert tools-sync/sync.log.
+**Merker für alle Sessions:** Bei neuen Script-Apps mit Dokumente-Zugriff den TCC-Fall einplanen (Vorprüfung + ehrlicher Dialog wie hier); Pedi startet ausschließlich Schreibtisch-Kopien.
+**Offen bei Pedi:** Anthropic-Key erneuern (App-Start fragt jetzt selbst), Sichtabnahme v0.9.19 → „RC einfrieren", D-010-Mail, SR-1, EK-19.
