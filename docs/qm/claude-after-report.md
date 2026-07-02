@@ -10052,3 +10052,14 @@ git push
 **Nächster Schritt:** Pedi: KLARWERK PMO doppelklicken (erkennt neuen Stand, startet Server neu, Dialog „PMO v1.2.1") → Intake: Idee eingeben → „In die Einordnung übernehmen" sollte jetzt in EINEM Klick strukturieren (KI aktiv via Anthropic-Key).
 
 **Nachtrag PMO-Intake (gleicher Tag):** 401 behoben durch frischen Key (Pedi via Steuerung; PMO-Keychain-Eintrag hat jetzt Vorrang, „Key testen"-Knopf ergänzt). NEU: 1-Klick-Übernahme — POST /api/intake/apply sichert den Draft nach data/intake-drafts/ (Beleg bleibt), führt das geprüfte apply-intake-draft.mjs/apply-item-update.mjs aus (Backup+Audit+stabile ID) und erzeugt die Team-6-Review-Queue neu; Schritt 5 hat den Primärknopf „In den PMO-Bestand übernehmen (1 Klick)" (Terminal-Anleitung nur noch Fallback). PMO v1.2.2. Antwort auf Pedis Frage „wo landet der Beitrag": data/pmo-items.json (PMO-Quelle der Wahrheit) + Draft-Beleg + exports/team6-Queue.
+
+---
+
+## After-Report — 2026-07-02 · KBB-115: Ops-Cockpit v0.2.0 (Überblick + Server-Reife + Statusbericht)
+
+**Datum:** 2026-07-02 · **Ticket:** KBB-115 (neu, Done) · **Anlass:** Pedi: „bitte arbeite noch etwas am Ops-Cockpit". PMO-Auto-Check davor: 124 Einträge, nichts Neues.
+**Änderung (klarwerk-business-backend/cockpit, Commit 25dbe92):** (1) Neuer Standard-Tab **Überblick**: KPI-Zeile (Server-Reife x/3, Gates x/32, offene Vorgänge, Lebenszyklus-Zustand), editierbare Checkliste **„Weg zur Server-Reife"** (SR-1 Cockpit-Abnahme Pedi, SR-2 zweite Person, SR-3 D-010 — neue data/readiness.json, Haken nur durch Pedi), **D-010/D-011-Tracker** (offen/bei Kanzlei/entschieden + Notiz, verweist auf das fertige Kanzlei-Briefing), letzte Ereignisse (Lifecycle-Log + offene Incidents). (2) **POST /api/report**: erzeugt docs/OPS_STATUSBERICHT_<Datum>.md aus den Marker-Daten; Datenregel-Prüfung läuft vor dem Schreiben. (3) Desktop-Starter: Code-Stand-Erkennung (.run-state PID+Stamp; Alt-Server wird über PID, sonst Port+Kommando-Prüfung beendet). (4) Versionen v0.1.0→v0.2.0 (Chip+Server).
+**Getestet:** node --check (serve.mjs, app.js) grün; Live-Smoke im Sandbox: /api/status v0.2.0, /api/data/readiness, POST /api/report → Beispielbericht real erzeugt (im Commit); bash -n Starter grün; Desktop-Kopie aktualisiert.
+**Risiko:** gering — Datenregel unverändert erzwungen (422 bei Verstoß), nur lokale Marker-Daten; Team 3 bleibt auf STOPP (kein Pilotstart, kein Server-Deploy).
+**Git-Status:** klarwerk-business-backend 25dbe92 lokal — **kein Push** (KLARWERK Sync durch Pedi).
+**Nächster Schritt:** Pedi: „KLARWERK Ops" doppelklicken → Dialog „Ops-Cockpit v0.2.0" → Überblick prüfen; wenn gut: SR-1 abhaken = erstes Server-Reife-Kriterium erfüllt. STOPP.
