@@ -10122,3 +10122,13 @@ git push
 **Git:** dev_Klarwerk 691ad4f lokal — kein Push. **Nächster Schritt:** Pedi: App doppelklicken (v0.9.8-beta) → Admin → Karte „KI-Verwaltung" testen (z. B. Strukturieren auf „Deterministisch" stellen und im Erfassen den Unterschied sehen). Danach zurück zum Beta-Pfad: Sync + Sichtabnahme → „RC einfrieren".
 
 **Nachtrag SCRUM-389 (Runde 2):** Pedi „etwas unübersichtlich" → Feinabstimmung je Einsatz eingeklappt (Badge zeigt aktive Overrides, auto-offen wenn gesetzt); sichtbar nur Status + Standard-Wahl. v0.9.9-beta, Gates grün (1240), dist eingespielt, Commit f6613d1. Zieldesign Voll-Ausbau dokumentiert (KI-Regal + eine Standard-Frage + Preset „Empfohlene Zuordnung"). HINWEIS: Jira-Kommentar zu SCRUM-389 konnte wegen MCP-Timeout nicht abgesetzt werden — bei nächster Gelegenheit nachtragen.
+
+---
+
+## After-Report — 2026-07-02 · Pedi-Review-Batch v0.9.10 (Sofort-Fixes) + Triage der großen Punkte
+
+**Anlass:** Pedi-Notizzettel („ich schreibe einfach hin was mir auffällt").
+**Sofort behoben (Commit af25101, v0.9.10-beta, Gates grün 1240 + Smoke 4/4):** (1) Diktat: großer runder Aufnahme-Knopf mit Puls-Zustand + Klartext-Status; bei fehlender Browser-Unterstützung sichtbar erklärt statt fehlendem Knopf. (2) „Verwerfen" jetzt auch im Erzähl-Schritt (leert Text+Anhänge, Inline-Bestätigung) — zusammen mit Wissensseiten-Verwerfen (v0.9.6) damit durchgängig. (3) Demodaten: „übersprungen (Instanz nicht leer)" als dauerhafte Inline-Meldung statt flüchtigem Toast — der Knopf FUNKTIONIERTE, Schutzregel greift korrekt bei vorhandenen KOs.
+**Wichtige Diagnose:** Interview-Flachheit = ungültiger Anthropic-Key (wie PMO-401) → deterministische Generik-Fragen. Mit gültigem Key stellt das Modell aufbauende Fragen. Key einmal neu hinterlegen (App-Start-Dialog bzw. Schlüsselbund KLARWERK-App-Anthropic) ist Voraussetzung, BEVOR die Interview-Qualität beurteilt werden kann.
+**Triage der großen Punkte (Jira aktuell nicht erreichbar — Tickets nachziehen!):** (T1) „Verhörer-Interview": themengetriebenes Nachbohren (KI holt sich Kontext zum Thema, fragt gezielt nach Grenzwerten/Ausnahmen/Warum), schriftlich UND per Sprache; Prompt je KI-Funktion im Admin verwaltbar (KI-unterstützt editieren) — verbindet SCRUM-386 + KI-Verwaltung Voll-Ausbau. (T2) Admin-Untergliederung in Bereiche (Konten · KI · Daten) — nötig, Admin wächst. (T3) Prüfer-Zuweisung beim Einreichen + Standard-Prüferanzahl als Admin-Einstellung (neededValidations existiert je KO; Zuweisungs-UI beim Submit + Admin-Default fehlen).
+**Nächster Schritt:** Pedi: App doppelklicken (v0.9.10) → Diktat + Verwerfen prüfen; KEY neu eingeben; danach Interview erneut bewerten. Tickets T1–T3 lege ich an, sobald Jira wieder antwortet.
