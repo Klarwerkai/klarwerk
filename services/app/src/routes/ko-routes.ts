@@ -10,6 +10,7 @@ import {
   type ReviseKoInput,
 } from "../../../knowledge-object";
 import type { LifecycleService } from "../../../lifecycle";
+import { can } from "../../../rbac";
 import type { ValidationService, Verdict } from "../../../validation";
 import { type Guards, sendError } from "../http";
 import type { AssignmentNotifier } from "../notify";
@@ -135,10 +136,24 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       }
     });
 
-    // FR-RBAC-02: Löschen nur Controller/Admin (nur diese Rollen haben ko.validate).
+    // FR-RBAC-02 + Pedi 02.07.: Löschen dürfen Controller/Admin (ko.validate) ODER der
+    // AUTOR seines eigenen Wissensobjekts. Ehrlich: Löschung landet im Audit (ko.deleted).
     app.delete<{ Params: { id: string } }>("/api/kos/:id", async (request, reply) => {
-      const user = await guards.requirePermission("ko.validate", request, reply);
+      const user = await guards.requirePermission("ko.read", request, reply);
       if (!user) {
+        return;
+      }
+      const target = await ko.get(request.params.id);
+      if (!target) {
+        reply.code(404).send({ error: "NOT_FOUND", message: "Wissensobjekt nicht gefunden." });
+        return;
+      }
+      const mayDelete = can(user.role, "ko.validate") || target.author === user.id;
+      if (!mayDelete) {
+        reply.code(403).send({
+          error: "FORBIDDEN",
+          message: "Löschen dürfen nur Autor, Controller oder Admin.",
+        });
         return;
       }
       try {

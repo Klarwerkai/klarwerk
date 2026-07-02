@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link2, Paperclip, Pencil, Sparkles, X } from "lucide-react";
+import { Link2, Paperclip, Pencil, Sparkles, Trash2, X } from "lucide-react";
 import { type ChangeEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { type KoAction, endpoints } from "../api/endpoints";
 import {
@@ -16,6 +16,7 @@ import {
   useLifecyclePending,
 } from "../api/hooks";
 import type { ConflictType, ExternalResult, KnowledgeObject, KnowledgeType } from "../api/types";
+import { useSession } from "../app/AuthContext";
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
 import { AiAssistBox } from "../components/AiAssistBox";
@@ -178,6 +179,21 @@ export function KnowledgeDetail(): JSX.Element {
   const canReview = role === "controller" || role === "admin";
   // SCRUM-144: Autor-Übergabe nutzt users.manage-Pfad → nur Admin.
   const canTransfer = role === "admin";
+  // Pedi 02.07.: Löschen dürfen Autor ODER Controller/Admin — mit Inline-Bestätigung,
+  // danach zurück in die Bibliothek. Serverseitig gilt dieselbe Regel (Route prüft).
+  const { user } = useSession();
+  const navigate = useNavigate();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const removeKo = useMutation({
+    mutationFn: () => endpoints.ko.remove(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["kos"] });
+      void qc.invalidateQueries({ queryKey: ["validation"] });
+      push("success", t("ko.deleteDone"));
+      navigate("/bibliothek");
+    },
+    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
+  });
 
   const invalidate = (): void => {
     void qc.invalidateQueries({ queryKey: ["ko", id] });
@@ -1326,6 +1342,39 @@ export function KnowledgeDetail(): JSX.Element {
                       </div>
                     ) : null}
                   </Card>
+
+                  {/* Pedi 02.07.: Löschen (Autor oder Controller/Admin) — bewusst unauffällig,
+                      mit Inline-Bestätigung; Route erzwingt dieselbe Regel serverseitig. */}
+                  {(role === "admin" || role === "controller" || ko.author === user?.id) && (
+                    <Card>
+                      {confirmDelete ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="flex-1 text-[12.5px] font-semibold text-trust-crit-text">
+                            {t("ko.deleteQ")}
+                          </span>
+                          <Button variant="ghost" onClick={() => setConfirmDelete(false)}>
+                            {t("ko.deleteKeep")}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            disabled={removeKo.isPending}
+                            onClick={() => removeKo.mutate()}
+                          >
+                            {t("ko.deleteYes")}
+                          </Button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDelete(true)}
+                          className="inline-flex items-center gap-1.5 rounded-btn px-2 py-1 text-[12.5px] font-semibold text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
+                        >
+                          <Trash2 size={14} />
+                          {t("ko.deleteButton")}
+                        </button>
+                      )}
+                    </Card>
+                  )}
 
                   {/* Audit B1 (Pedi 02.07.): Anlagen-Kopplung — ruhige Karte, ?-Hilfe statt Textwand. */}
                   <Card>

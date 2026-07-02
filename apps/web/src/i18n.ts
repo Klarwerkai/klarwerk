@@ -303,6 +303,11 @@ const de = {
   "capture.wizard.structData": "Kernaussage, Bedingungen & Maßnahmen",
   "capture.wizard.discard": "Verwerfen",
   "ko.couple.title": "Anlagen-Kopplung",
+  "ko.deleteButton": "Wissensobjekt löschen",
+  "ko.deleteQ": "Endgültig löschen? Version- und Audit-Historie vermerken die Löschung ehrlich.",
+  "ko.deleteKeep": "Behalten",
+  "ko.deleteYes": "Ja, löschen",
+  "ko.deleteDone": "Wissensobjekt gelöscht.",
   "adm.ai.title": "KI-Verwaltung",
   "adm.purgeButton": "Demodaten entfernen",
   "adm.purgeQ":
@@ -2058,6 +2063,11 @@ const en: typeof de = {
   "capture.wizard.structData": "Core statement, conditions & measures",
   "capture.wizard.discard": "Discard",
   "ko.couple.title": "Asset coupling",
+  "ko.deleteButton": "Delete knowledge object",
+  "ko.deleteQ": "Delete permanently? The audit trail honestly records the deletion.",
+  "ko.deleteKeep": "Keep",
+  "ko.deleteYes": "Yes, delete",
+  "ko.deleteDone": "Knowledge object deleted.",
   "adm.ai.title": "AI management",
   "adm.purgeButton": "Remove demo data",
   "adm.purgeQ":

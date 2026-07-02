@@ -181,7 +181,7 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/kos/:id/evidence": { protection: "ko.read" },
   "GET /api/evidence": { protection: "ko.read" },
   "POST /api/kos": { protection: "ko.create" },
-  "DELETE /api/kos/:id": { protection: "ko.validate" },
+  "DELETE /api/kos/:id": { protection: "ko.read" }, // + Route prüft Autor-oder-Controller/Admin (Pedi 02.07.)
   "PUT /api/kos/:id": { protection: "action-dispatched" },
 
   // --- Validation (validation-routes.ts) ---
