@@ -167,7 +167,11 @@ export const endpoints = {
     updateConfig: (cfg: { global: string; perTask: Record<string, string> }) =>
       api.put<ReasonerConfigStatus>("/reasoner/config", cfg),
   },
-  notifications: { list: () => api.get<Notification[]>("/notifications") },
+  notifications: {
+    list: () => api.get<Notification[]>("/notifications"),
+    // Audit-P3 (SCRUM-397): bewusstes Als-gesehen-Markieren (idempotent, nur eigene Sicht).
+    markSeen: (ids: string[]) => api.post<{ unseenCount: number }>("/notifications/seen", { ids }),
+  },
   directory: { list: () => api.get<{ id: string; name: string }[]>("/directory") },
   analytics: {
     overview: () => api.get<Analytics>("/analytics"),

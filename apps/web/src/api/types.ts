@@ -506,4 +506,6 @@ export interface Notification {
   at: string;
   // SCRUM-363: bei „assignment" das Quell-KO (sonst nicht gesetzt).
   koId?: string;
+  // Audit-P3 (SCRUM-397): serverseitiger Gelesen-Status (pro Nutzer, überlebt Neustart).
+  seen?: boolean;
 }

@@ -10171,3 +10171,13 @@ git push
 **Getestet (in Sandbox-Kopie):** Build (tsc) ✓ · Biome ✓ · dependency-cruiser ✓ · **1268 Tests / 207 Dateien ✓** · **UI-Smoke 4/4 ✓** (libXdamage-Stub wie SCRUM-381; auf macOS nicht nötig) · dist gebaut, Bundle-Checks (0.9.14-beta + neuer i18n-Text) ✓, eingespielt.
 **Risiko:** gering — reine FE-Anordnung, keine Funktions-/Routenänderung.
 **Git-Status:** dev_Klarwerk lokal committet (siehe git log), **kein Push**. **Nächster Schritt:** Pedi: App doppelklicken → „v0.9.14-beta" → /validierung prüfen (Titel prominent, „Details ansehen"-Link sichtbar).
+
+---
+
+## After-Report — 2026-07-02 · SCRUM-397 / Audit-P3: Glocke mit Gelesen-Status
+
+**Datum:** 2026-07-02 (abends, Boss-Session direkt) · **Ticket:** SCRUM-397 · **Anlass:** Audit-Punkt 3 („Glocke aggregiert, kennt aber keinen Gelesen-Status").
+**Änderung (v0.9.15-beta):** (1) Neues Seen-Repo im **notifications-Modul** (Datenhoheit dort): `services/notifications/src/seen.ts` — Interface + In-Memory + Postgres (`notification_seen`, idempotentes ON CONFLICT), Schema in db.ts-Migration aufgenommen. (2) AppRepos/AppServices um `notificationSeen` erweitert; **Dev-Journal** (SCRUM-387) journaliert `markSeen` → Gelesen-Status überlebt den Desktop-Neustart. (3) Route **POST /api/notifications/seen** (auth; 400 bei leeren/kaputten ids; Antwort = ehrlicher `unseenCount`); GET /api/notifications liefert das Array wie bisher, je Item NEU `seen` (kompatibel, keine Shape-Änderung). Guard-Matrix-Eintrag ergänzt. (4) FE-Glocke: Server-Status ersetzt den reinen Sitzungs-Merker (SCRUM-220); Öffnen des Panels = bewusste Kenntnisnahme (markiert Sichtbares), Einzel-✓ und „alle gelesen" persistieren ebenfalls; lokale Sofort-Optik bleibt bis zum Refetch.
+**Getestet:** Neu `tests/app/notifications-seen.test.ts` (4: E2E seen-Zyklus + Nutzertrennung; Idempotenz + 400-Abweisung; 401 ohne Login; Repo-Unit). Route-Guard-Audit deckt die neue Route ab. Volle Kette: Build ✓ · Biome ✓ · depcruise ✓ (191 Module) · **1272 Tests / 208 Dateien ✓** · **UI-Smoke 4/4 ✓** · dist v0.9.15 gebaut+eingespielt (Bundle-Check ✓).
+**Risiko:** gering — additive Route, Feed-Shape unverändert; Pg-Tabelle nur via CREATE IF NOT EXISTS. Bekannte Grenze: gesehene IDs abgelöster Signale bleiben als Zeilen stehen (harmlos; Aufräumen = Folge-Ticket bei Bedarf).
+**Git-Status:** dev_Klarwerk lokal committet, **kein Push**. **Nächster Schritt:** Pedi: App (v0.9.15) → Glocke: Badge zeigt Ungelesene; Panel öffnen → Badge weg; App neu starten → bleibt weg.

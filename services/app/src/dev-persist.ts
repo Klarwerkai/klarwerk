@@ -49,6 +49,8 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   objects: ["insert"],
   candidates: ["insert", "update"],
   modelRuns: ["append"],
+  // Audit-P3 (SCRUM-397): Gelesen-Status überlebt den Neustart (Dev-Journal).
+  notificationSeen: ["markSeen"],
 } as const;
 
 // Journal defensiv laden: fehlende Datei → leer; eine korrupte (z. B. beim Crash halb

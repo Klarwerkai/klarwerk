@@ -1,7 +1,9 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { Bell, HelpCircle, Search, Smartphone } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
+import { endpoints } from "../api/endpoints";
 import { useNotifications, useReasonerStatus } from "../api/hooks";
 import { notificationTarget } from "../lib/notificationTarget";
 import { APP_VERSION } from "../version";
@@ -30,24 +32,50 @@ function LangPill(): JSX.Element {
 function NotificationBell(): JSX.Element {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  // SCRUM-220: client-seitiger Gelesen-Status. Benachrichtigungen sind abgeleitet (aus offenen
-  // Konflikten/Lücken) und haben keine Server-Persistenz — Gelesen-Markierung daher pro Sitzung,
-  // stabil über die festen IDs (con-…/gap-…). Wird das zugrunde liegende Signal gelöst/geschlossen,
-  // verschwindet die Benachrichtigung ohnehin.
+  // SCRUM-220 → Audit-P3 (SCRUM-397): Gelesen-Status jetzt serverseitig (POST
+  // /api/notifications/seen, pro Nutzer, überlebt Neustart). Der lokale Satz bleibt
+  // als sofortige UI-Rückmeldung, bis der nächste Fetch das seen-Feld liefert.
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const { data } = useNotifications();
   const items = data ?? [];
-  const unreadCount = items.filter((n) => !readIds.has(n.id)).length;
+  const isRead = (n: (typeof items)[number]): boolean => n.seen === true || readIds.has(n.id);
+  const unreadCount = items.filter((n) => !isRead(n)).length;
 
-  const markRead = (id: string): void => setReadIds((prev) => new Set(prev).add(id));
-  const markAll = (): void => setReadIds(new Set(items.map((n) => n.id)));
+  // Bewusstes Als-gesehen: erst der Server-Erfolg zählt; lokal nur als Sofort-Optik.
+  const persistSeen = (ids: string[]): void => {
+    if (ids.length === 0) {
+      return;
+    }
+    setReadIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        next.add(id);
+      }
+      return next;
+    });
+    void endpoints.notifications
+      .markSeen(ids)
+      .then(() => queryClient.invalidateQueries({ queryKey: ["notifications"] }));
+  };
+  const markRead = (id: string): void => persistSeen([id]);
+  const markAll = (): void => persistSeen(items.filter((n) => !isRead(n)).map((n) => n.id));
+  // Audit-P3: Öffnen des Panels ist die bewusste Kenntnisnahme — alles Sichtbare wird gesehen.
+  const toggleOpen = (): void => {
+    setOpen((v) => {
+      if (!v) {
+        persistSeen(items.filter((n) => !isRead(n)).map((n) => n.id));
+      }
+      return !v;
+    });
+  };
 
   return (
     <div className="relative">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggleOpen}
         className="relative grid h-9 w-9 place-items-center rounded-btn text-muted hover:bg-hairline-soft hover:text-text"
         aria-label={t("topbar.notifications")}
       >
@@ -79,7 +107,7 @@ function NotificationBell(): JSX.Element {
           ) : (
             <ul className="space-y-0.5">
               {items.slice(0, 8).map((n) => {
-                const read = readIds.has(n.id);
+                const read = isRead(n);
                 const target = notificationTarget(n);
                 const openTarget = (): void => {
                   markRead(n.id);

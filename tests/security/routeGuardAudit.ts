@@ -239,6 +239,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/model-runs": { protection: "ko.read" },
   "GET /api/external/search": { protection: "ko.read" },
   "GET /api/notifications": { protection: "auth" },
+  // Audit-P3 (SCRUM-397): eigenen Gelesen-Status markieren — jeder angemeldete Nutzer, nur eigene Sicht.
+  "POST /api/notifications/seen": { protection: "auth" },
   "GET /api/audit": { protection: "ko.validate" },
   "POST /api/reasoner": { protection: "ko.read" },
   "GET /api/reasoner/config": { protection: "ko.read" },

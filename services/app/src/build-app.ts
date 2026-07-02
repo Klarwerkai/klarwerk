@@ -57,7 +57,14 @@ import {
   ModelRunService,
   PgModelRunRepo,
 } from "../../model-runs";
-import { ConsoleMailer, type Mailer, createMailerFromEnv } from "../../notifications";
+import {
+  ConsoleMailer,
+  InMemoryNotificationSeenRepo,
+  type Mailer,
+  type NotificationSeenRepo,
+  PgNotificationSeenRepo,
+  createMailerFromEnv,
+} from "../../notifications";
 import { InMemoryObjectRepo, type ObjectRepo, ObjectStore, PgObjectRepo } from "../../object-store";
 import { OutputService } from "../../output";
 import { ModelProvider, Reasoner, createModelClientFromEnv } from "../../reasoner";
@@ -115,6 +122,8 @@ export interface AppServices {
   // SCRUM-165: read-only Einsicht in das ModelRun-Protokoll.
   modelRuns: ModelRunService;
   mailer: Mailer;
+  // Audit-P3 (SCRUM-397): Gelesen-Status der Glocke (öffentliche Modul-Schnittstelle).
+  notificationSeen: NotificationSeenRepo;
 }
 
 // Alle Repositories der App. Sie sind der einzige Unterschied zwischen In-Memory und
@@ -138,6 +147,8 @@ export interface AppRepos {
   objects: ObjectRepo;
   candidates: CandidateRepo;
   modelRuns: ModelRunRepo;
+  // Audit-P3 (SCRUM-397): pro Nutzer bewusst als gesehen markierte Benachrichtigungs-IDs.
+  notificationSeen: NotificationSeenRepo;
 }
 
 // Verdrahtet aus den Repos die vollständige Service-Landschaft. Ein gemeinsames
@@ -210,6 +221,8 @@ export function assembleServices(repos: AppRepos): AppServices {
     modelRuns: new ModelRunService({ repo: repos.modelRuns }),
     // FR-AUTH-08/FR-VAL-07: SMTP, wenn konfiguriert; sonst sammelnder Fallback ohne Versand.
     mailer: createMailerFromEnv() ?? new ConsoleMailer(),
+    // Audit-P3 (SCRUM-397): Gelesen-Status der Glocke — Repo direkt (schmale Modul-API).
+    notificationSeen: repos.notificationSeen,
   };
 }
 
@@ -233,6 +246,7 @@ export function inMemoryRepos(): AppRepos {
     objects: new InMemoryObjectRepo(),
     candidates: new InMemoryCandidateRepo(),
     modelRuns: new InMemoryModelRunRepo(),
+    notificationSeen: new InMemoryNotificationSeenRepo(),
   };
 }
 
@@ -263,6 +277,8 @@ export function buildPgServices(pool: Pool): AppServices {
     candidates: new PgCandidateRepo(pool),
     // SCRUM-164: ModelRun-Protokoll persistent (KI-Aufrufe nachvollziehbar).
     modelRuns: new PgModelRunRepo(pool),
+    // Audit-P3 (SCRUM-397): Gelesen-Status der Glocke persistent.
+    notificationSeen: new PgNotificationSeenRepo(pool),
   });
 }
 
@@ -313,6 +329,8 @@ export function buildApp(services: AppServices = buildServices()): FastifyInstan
         ask: services.ask,
         validation: services.validation,
         audit: services.audit,
+        // Audit-P3 (SCRUM-397): Gelesen-Status je Nutzer.
+        seen: services.notificationSeen,
       },
       guards,
     ),

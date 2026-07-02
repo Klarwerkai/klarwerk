@@ -8,6 +8,7 @@ import { KO_EVIDENCE_SCHEMA, KO_SCHEMA, KO_VERSIONS_SCHEMA } from "../../knowled
 import { IMPORT_CANDIDATES_SCHEMA } from "../../library-analytics";
 import { LIFECYCLE_SCHEMA } from "../../lifecycle";
 import { MODEL_RUNS_SCHEMA } from "../../model-runs";
+import { NOTIFICATION_SEEN_SCHEMA } from "../../notifications";
 import { OBJECTSTORE_SCHEMA } from "../../object-store";
 import { VALIDATION_SCHEMA } from "../../validation";
 
@@ -32,6 +33,7 @@ export async function migrate(pool: Pool): Promise<void> {
     OBJECTSTORE_SCHEMA,
     IMPORT_CANDIDATES_SCHEMA,
     MODEL_RUNS_SCHEMA,
+    NOTIFICATION_SEEN_SCHEMA,
   ];
   for (const ddl of schemas) {
     await pool.query(ddl);
