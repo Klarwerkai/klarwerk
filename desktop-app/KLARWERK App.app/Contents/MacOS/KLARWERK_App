@@ -66,10 +66,10 @@ echo "Node: $NODE_PICK ($("$NODE_PICK" -p process.arch) fuer $MACH)" >> "$LOG"
 # --- Selbst-Aktualisierung (dateibasiert, git-frei) ---------------------------------
 # Neustart NUR wenn sich wirklich Quellcode geändert hat — sonst läuft der Server weiter
 # (kein unnötiger Datenverlust bei In-Memory-Betrieb, bis SCRUM-387 Persistenz bringt).
-STATE="$REPO/desktop-app/.run-state"   # Inhalt: <port> <pid>
+STATE="$REPO/desktop-app/.run-state"   # Inhalt: <port> <pid> <build-zeitstempel>
 BUILD_REF="$REPO/apps/web/dist/index.html"
-OLD_PORT=""; OLD_PID=""
-[ -f "$STATE" ] && read -r OLD_PORT OLD_PID < "$STATE"
+OLD_PORT=""; OLD_PID=""; OLD_STAMP=""
+[ -f "$STATE" ] && read -r OLD_PORT OLD_PID OLD_STAMP < "$STATE"
 
 NEED_FRESH=0
 if [ ! -f "$BUILD_REF" ]; then
@@ -78,8 +78,11 @@ else
   CHANGED="$(/usr/bin/find "$REPO/apps/web/src" "$REPO/services" "$REPO/package.json" -type f -newer "$BUILD_REF" -print 2>/dev/null | head -1)"
   [ -n "$CHANGED" ] && NEED_FRESH=1 && echo "Geändert seit letztem Build: $CHANGED" >> "$LOG"
 fi
+# Auch neu starten, wenn das Build-Ergebnis selbst getauscht wurde (z. B. fertiges dist
+# eingespielt): der laufende Server hält sonst eine veraltete Dateiliste -> weiße Seite.
+DIST_STAMP="$(/usr/bin/stat -f %m "$BUILD_REF" 2>/dev/null)"
 
-if [ "$NEED_FRESH" = "0" ] && [ -n "$OLD_PORT" ] && \
+if [ "$NEED_FRESH" = "0" ] && [ -n "$OLD_PORT" ] && [ "$DIST_STAMP" = "$OLD_STAMP" ] && \
    /usr/bin/curl -s --max-time 2 "http://127.0.0.1:$OLD_PORT/health" | /usr/bin/grep -q '"status":"ok"'; then
   /usr/bin/open "http://localhost:$OLD_PORT"
   exit 0
@@ -128,7 +131,8 @@ SRV_PID=$!
 
 for _ in $(seq 1 60); do
   if /usr/bin/curl -s --max-time 1 "http://127.0.0.1:$PORT/health" | /usr/bin/grep -q '"status":"ok"'; then
-    printf '%s %s\n' "$PORT" "$SRV_PID" > "$STATE"
+    DIST_STAMP="$(/usr/bin/stat -f %m "$BUILD_REF" 2>/dev/null)"
+    printf '%s %s %s\n' "$PORT" "$SRV_PID" "$DIST_STAMP" > "$STATE"
     # Auto-Wiederherstellung des Admins (In-Memory-Übergang bis SCRUM-387):
     # Zugangsdaten einmalig erfragen -> Schlüsselbund; danach legt die App den Admin
     # nach jedem echten Neustart automatisch wieder an. Nie in Dateien/Logs.
