@@ -10278,3 +10278,13 @@ git push
 **Aufgenommen:** Brand Book (HTML + support.js + 4 Mockup-Seiten) identisch abgelegt in **dev_Klarwerk `docs/ci/brand-book/`** und **klarwerk-knowledge-guru `docs/ci/brand-book/`** (Guru-Commit e35a761, KGURU-34; Pool-Index um Rubrik „Marke & Corporate Identity" ergänzt). Dazu **`docs/ci/CI_KURZREFERENZ.md`** (beide Repos): agentenfreundlicher Extrakt — Leitsatz „Vertrauen ist Evidenz — nie behauptet", Farben (Orange #ED7D0E als EINZIGE Markenfarbe, Stahl #16222C, Semantik inkl. KI-Violett #5B50C4), IBM Plex Sans/Mono + Skala, UI-Tokens (Radius 12–14, Rahmen #E4E7EA), Bildwelt-Verbote (kein Tech-Glow/Roboter/Stock-Posen), Video-Regeln (Untertitel-Pflicht DE/EN, Zielscheiben-End-Card, KI-Kennzeichnung), Sprach-Kernbegriffe.
 **Ist-Abgleich:** Website-Tailwind `brand #ED7D0E` bereits CI-konform ✓ · **Veo-Video-Prompt (KWEB-106) nachgeführt** (Website-Commit: Akzent-Hex war #D66F0A → #ED7D0E, Stahl präzisiert, IBM-Plex-Anmutung, Untertitel-Pflicht, Zielscheiben-End-Card, Hinweis 60–90s-Vollvariante nach Kap. 07). Offen (Folge-Slice nach Freeze): Font-Abgleich der App vs. IBM Plex, Icon-Strichstärken.
 **Nächster Schritt:** Keiner für Pedi — CI ist verankert; künftige UI-/Website-/Video-Slices referenzieren die Kurzreferenz.
+
+---
+
+## After-Report — 2026-07-02 · SCRUM-394: Admin-Bereiche Konten · KI · Daten (v0.9.21-beta)
+
+**Datum:** 2026-07-02 (Nachtschicht, Boss-Session direkt; Pedi-Auswahl aus den offenen Tickets) · **Ticket:** SCRUM-394.
+**Änderung:** (1) Neue DOM-freie Lib `apps/web/src/lib/adminSections.ts` — drei Bereiche mit Zuordnung (Konten = Nutzer anlegen + Nutzerliste · KI = KI-Verwaltung inkl. Key-Test · Daten = Demodaten Seed/Purge + Audit-Log). (2) Admin.tsx: ruhiger Bereichs-Umschalter (Pill-Chips, Mono, aria-pressed) unter dem Seitenkopf; Karten NUR gruppiert, nichts entfernt; Default „Konten"; Wechsel rein clientseitig. (3) i18n DE/EN (3 Schlüssel). (4) biome.json: `docs/ci/brand-book` ignoriert (vendored/generierte CI-Dateien brachen Lint). (5) APP_VERSION → 0.9.21-beta.
+**Getestet:** Neu `tests/app/admin-sections.test.ts` (2: Bereichs-IDs eindeutig + Default gültig; DE/EN-Labels aufgelöst). Volle Kette: Build ✓ · Biome ✓ · depcruise ✓ · **1281 Tests / 211 Dateien ✓** · **UI-Smoke 4/4 ✓** · dist v0.9.21 eingespielt.
+**Risiko:** gering — reine FE-Gruppierung; alle Admin-Funktionen unverändert erreichbar.
+**Git:** dev_Klarwerk lokal committet, **kein Push**. **Nächster Schritt:** Pedi (morgen): App → Admin → Chips „Konten · KI · Daten" durchklicken; Teil der v0.9.21-Sichtabnahme vor „RC einfrieren".
