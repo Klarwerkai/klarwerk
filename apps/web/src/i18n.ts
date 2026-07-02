@@ -420,6 +420,14 @@ const de = {
   "capture.mode.formular": "Formular",
   "capture.mode.diktat": "Diktat",
   "capture.mode.interview": "Geführtes Interview",
+  // SCRUM-384 / KG-UX-001/002/003/010: Erzähl-Einstieg als Standardweg, Formular als Expertenpfad.
+  "capture.entry.narrateKicker": "Erzähl dein Wissen — die KI strukturiert, du prüfst",
+  "capture.entry.expertToggle": "Expertenmodus: Formular direkt ausfüllen",
+  "capture.entry.expertHint":
+    "Für Routinierte: alle Felder direkt ausfüllen — gleiche Felder, gleicher Prüfweg. Der geführte Erzähl-Einstieg bleibt jederzeit erreichbar.",
+  "capture.entry.expertActive":
+    "Expertenmodus: Du füllst das Formular direkt aus. Gespeichert und geprüft wird wie im geführten Weg — nichts wird automatisch validiert.",
+  "capture.entry.backToGuided": "Zurück zum geführten Weg",
   "capture.raw": "Erfahrungsnotiz",
   "capture.rawPlaceholder":
     "Erfahrung formlos festhalten — die KI strukturiert daraus einen Entwurf. Du prüfst und reichst ein.",
@@ -466,11 +474,13 @@ const de = {
   "capture.images": "Bilder (Anhang)",
   "capture.imagesUpload": "Bilder anhängen",
   "capture.imagesHint": "Auch aus der Mobile-App. Werden am Objekt angehängt.",
-  "capture.videoAdded": "{{name}} angehängt. Transkription auf Klick — nichts passiert automatisch.",
+  "capture.videoAdded":
+    "{{name}} angehängt. Transkription auf Klick — nichts passiert automatisch.",
   "capture.videoTranscribe": "Transkribieren",
   "capture.videoBusy": "läuft …",
   "capture.videoRunning": "Transkribiere {{name}} — kurze Clips gehen schnell.",
-  "capture.videoDone": "Transkript von {{name}} übernommen — bitte prüfen (Entwurf, keine Wahrheit).",
+  "capture.videoDone":
+    "Transkript von {{name}} übernommen — bitte prüfen (Entwurf, keine Wahrheit).",
   "capture.saveDraft": "Als Entwurf speichern",
   "capture.draftSaved": "Entwurf gespeichert.",
   "capture.draftUpdated": "Entwurf aktualisiert.",
@@ -2091,6 +2101,14 @@ const en: typeof de = {
   "capture.mode.formular": "Form",
   "capture.mode.diktat": "Dictation",
   "capture.mode.interview": "Guided interview",
+  // SCRUM-384 / KG-UX-001/002/003/010: narrate-first entry as default, form as expert path.
+  "capture.entry.narrateKicker": "Tell your knowledge — the AI structures it, you review",
+  "capture.entry.expertToggle": "Expert mode: fill the form directly",
+  "capture.entry.expertHint":
+    "For experienced users: fill in all fields directly — same fields, same review path. The guided narrate-first entry stays available at any time.",
+  "capture.entry.expertActive":
+    "Expert mode: you fill the form directly. Saving and review work exactly like the guided path — nothing is validated automatically.",
+  "capture.entry.backToGuided": "Back to the guided path",
   "capture.raw": "Experience note",
   "capture.rawPlaceholder":
     "Capture experience informally — the AI structures it into a draft. You review and submit.",
@@ -2137,7 +2155,8 @@ const en: typeof de = {
   "capture.images": "Images (attachment)",
   "capture.imagesUpload": "Attach images",
   "capture.imagesHint": "Also from the mobile app. Attached to the object.",
-  "capture.videoAdded": "{{name}} attached. Transcription on click — nothing happens automatically.",
+  "capture.videoAdded":
+    "{{name}} attached. Transcription on click — nothing happens automatically.",
   "capture.videoTranscribe": "Transcribe",
   "capture.videoBusy": "running …",
   "capture.videoRunning": "Transcribing {{name}} — short clips are fast.",

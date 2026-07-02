@@ -8,9 +8,13 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { KNOWLEDGE_RESCUE_IMPACT, KNOWLEDGE_RESCUE_STEPS } from "../lib/knowledgeRescue";
 
-export function KnowledgeRescueIntro(): JSX.Element {
+// SCRUM-384: `defaultOpen` steuert die Erstnutzer-Führung — beim Erstbesuch ausgeklappt, danach
+// eingeklappt starten; per Klick bleibt alles jederzeit wieder aufklappbar (nichts entfernt).
+export function KnowledgeRescueIntro({
+  defaultOpen = true,
+}: { defaultOpen?: boolean }): JSX.Element {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(defaultOpen);
 
   return (
     <div className="mb-4 overflow-hidden rounded-card border border-hairline bg-surface">

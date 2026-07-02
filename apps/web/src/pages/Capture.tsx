@@ -10,7 +10,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
@@ -50,6 +50,15 @@ import {
   uploadAttachments,
 } from "../lib/captureAttachments";
 import { applyDraftArticle, normalizeDraftArticleLocale } from "../lib/captureDraftArticle";
+import {
+  CAPTURE_ENTRY_TEXT,
+  type CaptureMode,
+  EXPERT_MODE,
+  NARRATE_MODES,
+  isCaptureFirstRun,
+  isExpertMode,
+  markCaptureIntroSeen,
+} from "../lib/captureEntry";
 import { CAPTURE_EXAMPLE } from "../lib/captureExample";
 import { CAPTURE_FLOW_STEPS, CAPTURE_FLOW_TEXT } from "../lib/captureFlowGuide";
 import { gapContextDraft, readGapContext } from "../lib/captureFromGap";
@@ -76,8 +85,7 @@ import { appendAnswer, interviewSourceKey, isInterviewDone } from "../lib/interv
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { hasSpeechRecognition } from "../lib/speechSupport";
 
-const MODES = ["freitext", "formular", "diktat", "interview"] as const;
-type Mode = (typeof MODES)[number];
+type Mode = CaptureMode;
 
 const EMPTY_DRAFT: StructureResult = {
   title: "",
@@ -136,6 +144,12 @@ export function Capture(): JSX.Element {
   const gapContext = readGapContext(params);
 
   const [mode, setMode] = useState<Mode>("freitext");
+  // SCRUM-384 / KG-UX-001/002: Erstnutzer-Führung pro Browser — beim Erstbesuch ist die geführte
+  // Einführung ausgeklappt, danach eingeklappt (jederzeit wieder aufklappbar; nichts entfernt).
+  const [firstRun] = useState(() => isCaptureFirstRun(window.localStorage));
+  useEffect(() => {
+    markCaptureIntroSeen(window.localStorage);
+  }, []);
   // SCRUM-270: Gap-Frage als OFFENE-Frage-Vorlage übernehmen (kein fertiges Wissen); ohne Gap leer.
   const [raw, setRaw] = useState(() =>
     gapContext
@@ -639,7 +653,8 @@ export function Capture(): JSX.Element {
 
       {/* SCRUM-352: ruhiger, geführter Einstieg — Story „Erfahrungswissen sichern" + 3 Schritte +
           leichter Wertbeitrag. Progressive Disclosure; entfernt keine Funktion (Modi/Editor folgen). */}
-      <KnowledgeRescueIntro />
+      {/* SCRUM-384: Erstnutzer-Führung — beim Erstbesuch ausgeklappt, danach ruhig eingeklappt. */}
+      <KnowledgeRescueIntro defaultOpen={firstRun} />
 
       {/* SCRUM-276: nach erfolgreichem Einreichen „gespeichert" + nächster Schritt (kein Auto-Redirect). */}
       {savedKoId ? (
@@ -828,23 +843,59 @@ export function Capture(): JSX.Element {
         <p className="mt-2 text-[11px] text-muted-2">{t(CAPTURE_FLOW_TEXT.railKickerHint)}</p>
       </div>
 
-      <div className="mb-4 flex flex-wrap gap-1.5">
-        {MODES.map((m) => (
-          <button
-            key={m}
-            type="button"
-            onClick={() => switchMode(m)}
-            title={m === "diktat" && !speechSupported ? t("capture.diktatUnsupported") : undefined}
-            className={`rounded-btn px-3 py-1.5 text-[13px] font-semibold ${
-              mode === m ? "bg-ink text-white" : "border border-hairline text-muted hover:text-text"
-            }`}
-          >
-            {t(`capture.mode.${m}`)}
-            {m === "diktat" && !speechSupported ? (
-              <span className="ml-1 text-[11px] opacity-70">·{t("capture.diktatNa")}</span>
-            ) : null}
-          </button>
-        ))}
+      {/* SCRUM-384 / AG-12 / KG-UX-001/002/003/010: Erzähl-Einstieg als Standardweg — die Erzähl-Modi
+          (Freitext · Diktat · Interview) führen in den Studio-Hauptweg; das klassische Formular bleibt
+          als bewusst wählbarer Expertenpfad erhalten (progressive disclosure, NICHTS entfernt). */}
+      <div className="mb-4">
+        <p className="mb-1.5 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+          {t(CAPTURE_ENTRY_TEXT.narrateKicker)}
+        </p>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {NARRATE_MODES.map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => switchMode(m)}
+              title={
+                m === "diktat" && !speechSupported ? t("capture.diktatUnsupported") : undefined
+              }
+              className={`rounded-btn px-3 py-1.5 text-[13px] font-semibold ${
+                mode === m
+                  ? "bg-ink text-white"
+                  : "border border-hairline text-muted hover:text-text"
+              }`}
+            >
+              {t(`capture.mode.${m}`)}
+              {m === "diktat" && !speechSupported ? (
+                <span className="ml-1 text-[11px] opacity-70">·{t("capture.diktatNa")}</span>
+              ) : null}
+            </button>
+          ))}
+          {/* Expertenpfad: ruhig rechts abgesetzt, bewusster Klick — kein gleichrangiger Modus. */}
+          {!isExpertMode(mode) ? (
+            <button
+              type="button"
+              onClick={() => switchMode(EXPERT_MODE)}
+              title={t(CAPTURE_ENTRY_TEXT.expertHint)}
+              className="ml-auto rounded-btn px-2.5 py-1.5 text-[12px] font-medium text-muted-2 underline-offset-2 hover:text-text hover:underline"
+            >
+              {t(CAPTURE_ENTRY_TEXT.expertToggle)}
+            </button>
+          ) : null}
+        </div>
+        {/* Im Expertenmodus: ehrliche Einordnung + sichtbarer Rückweg auf den geführten Standardweg. */}
+        {isExpertMode(mode) ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-card border border-hairline bg-surface px-3 py-2">
+            <span className="text-[12px] text-muted">{t(CAPTURE_ENTRY_TEXT.expertActive)}</span>
+            <button
+              type="button"
+              onClick={() => switchMode("freitext")}
+              className="rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
+            >
+              {t(CAPTURE_ENTRY_TEXT.backToGuided)}
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">
