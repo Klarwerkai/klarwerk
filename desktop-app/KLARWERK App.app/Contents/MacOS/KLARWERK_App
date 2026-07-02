@@ -33,15 +33,22 @@ keychain_ask() { # $1=Service $2=Prompt $3=optional("optional" erlaubt Überspri
 mkdir -p "$(dirname "$LOG")"
 echo "=== Start $(date '+%Y-%m-%d %H:%M:%S') ===" >> "$LOG"
 
-# Node finden
-NODE_BIN=""
-for c in /opt/homebrew/bin /usr/local/bin /usr/bin; do [ -x "$c/node" ] && NODE_BIN="$c" && break; done
-if [ -z "$NODE_BIN" ]; then
-  NVMN="$(ls -1d "$HOME"/.nvm/versions/node/*/bin 2>/dev/null | sort -V | tail -1)"
-  [ -n "$NVMN" ] && [ -x "$NVMN/node" ] && NODE_BIN="$NVMN"
-fi
-[ -n "$NODE_BIN" ] || fail "Node.js nicht gefunden (nodejs.org installieren)."
+# Node finden — ARCHITEKTUR-BEWUSST: auf Apple Silicon muss ein arm64-Node laufen,
+# sonst passen die nativen Pakete (esbuild etc.) im Projekt nicht (Rosetta-Falle).
+MACH="$(/usr/bin/uname -m)"; WANT="x64"; [ "$MACH" = "arm64" ] && WANT="arm64"
+CANDS=""
+for c in /opt/homebrew/bin/node /usr/local/bin/node /usr/bin/node; do [ -x "$c" ] && CANDS="$CANDS $c"; done
+NVMN="$(ls -1 "$HOME"/.nvm/versions/node/*/bin/node 2>/dev/null | sort -V | tail -1)"
+[ -n "$NVMN" ] && CANDS="$NVMN $CANDS"
+NODE_PICK=""
+for c in $CANDS; do
+  if [ "$("$c" -p process.arch 2>/dev/null)" = "$WANT" ]; then NODE_PICK="$c"; break; fi
+done
+[ -z "$NODE_PICK" ] && for c in $CANDS; do NODE_PICK="$c"; break; done
+[ -n "$NODE_PICK" ] || fail "Node.js nicht gefunden (nodejs.org installieren)."
+NODE_BIN="$(dirname "$NODE_PICK")"
 export PATH="$NODE_BIN:$PATH"
+echo "Node: $NODE_PICK ($("$NODE_PICK" -p process.arch) fuer $MACH)" >> "$LOG"
 
 # Läuft die App schon? Dann nur Browser öffnen.
 if /usr/bin/curl -s --max-time 2 "http://127.0.0.1:$PORT/health" | /usr/bin/grep -q '"status":"ok"'; then
