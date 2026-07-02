@@ -171,6 +171,7 @@ export function Capture(): JSX.Element {
   const [wizStepRaw, setWizStep] = useState<CaptureWizardStep>("tell");
   const [showCondMeasures, setShowCondMeasures] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [confirmTellReset, setConfirmTellReset] = useState(false);
   const [showHelpers, setShowHelpers] = useState(false);
   // KW-STR / SCRUM-45/46/48: WYSIWYG-Body (sanitisiertes HTML), separat vom Reasoner-Draft.
   const [bodyHtml, setBodyHtml] = useState("");
@@ -1278,6 +1279,44 @@ export function Capture(): JSX.Element {
               <Button variant="ghost" onClick={loadExample}>
                 {t("capture.loadExample")}
               </Button>
+              {/* Pedi 02.07.: Verwerfen auch im Erzähl-Schritt — leert Text + Anhänge. */}
+              {confirmTellReset ? (
+                <span className="inline-flex items-center gap-2 rounded-card border border-trust-warn-fill/40 bg-trust-warn-bg px-2.5 py-1.5">
+                  <span className="text-[12px] font-semibold text-trust-warn-text">
+                    {t("capture.tellResetQ")}
+                  </span>
+                  <button
+                    type="button"
+                    className="text-[12px] font-semibold text-muted hover:text-text"
+                    onClick={() => setConfirmTellReset(false)}
+                  >
+                    {t(CAPTURE_WIZARD_TEXT.discardKeep)}
+                  </button>
+                  <button
+                    type="button"
+                    className="text-[12px] font-semibold text-trust-crit-text"
+                    onClick={() => {
+                      setRaw("");
+                      setDocs([]);
+                      setImages([]);
+                      setNotice(null);
+                      setErr(null);
+                      setConfirmTellReset(false);
+                    }}
+                  >
+                    {t(CAPTURE_WIZARD_TEXT.discardYes)}
+                  </button>
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmTellReset(true)}
+                  disabled={!raw.trim() && images.length + docs.length === 0}
+                  className="rounded-btn px-3 py-2 text-[12.5px] font-semibold text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {t(CAPTURE_WIZARD_TEXT.discard)}
+                </button>
+              )}
             </div>
           </Card>
         ) : null}

@@ -304,6 +304,11 @@ const de = {
   "capture.wizard.discard": "Verwerfen",
   "ko.couple.title": "Anlagen-Kopplung",
   "adm.ai.title": "KI-Verwaltung",
+  "adm.seedSkippedInline":
+    "Nicht geladen: Diese Instanz enthält bereits Wissensobjekte. Demodaten füllen nur eine LEERE Instanz — dein echter Bestand wird nie überschrieben.",
+  "capture.tellResetQ": "Text und Anhänge wirklich verwerfen?",
+  "capture.diktatListening": "Aufnahme läuft — sprich einfach, der Text erscheint unten im Feld.",
+  "capture.diktatIdleHint": "Klick auf den Knopf und erzähl — kein Formular, keine Vorbereitung.",
   "adm.ai.help":
     "Bestimme global oder je Einsatz, welche KI arbeitet. „Auto“ nutzt das Modell, wenn ein Schlüssel hinterlegt ist; „Deterministisch“ arbeitet bewusst ohne Modell. Schlüssel bleiben ausschließlich auf dem Server — nie im Browser.",
   "adm.ai.status": "Aktiver Provider: {{provider}} · Modus: {{mode}}",
@@ -2048,6 +2053,11 @@ const en: typeof de = {
   "capture.wizard.discard": "Discard",
   "ko.couple.title": "Asset coupling",
   "adm.ai.title": "AI management",
+  "adm.seedSkippedInline":
+    "Not loaded: this instance already contains knowledge objects. Demo data only fills an EMPTY instance — your real content is never overwritten.",
+  "capture.tellResetQ": "Really discard text and attachments?",
+  "capture.diktatListening": "Recording — just speak; the text appears in the field below.",
+  "capture.diktatIdleHint": "Hit the button and start talking — no form, no preparation.",
   "adm.ai.help":
     "Choose globally or per use which AI does the work. “Auto” uses the model when a key is configured; “Deterministic” deliberately works without a model. Keys stay on the server only — never in the browser.",
   "adm.ai.status": "Active provider: {{provider}} · mode: {{mode}}",

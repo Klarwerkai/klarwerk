@@ -141,6 +141,11 @@ export function Admin(): JSX.Element {
         </div>
         {/* SCRUM-306: nach erfolgreichem Seed (nicht übersprungen) sichtbare Next-Steps in den Stage-1-
             Lauf — keine automatische Weiterleitung, nur vorhandene Routen. Ohne Seed unverändert. */}
+        {demoSeed.isSuccess && demoSeed.data?.skipped ? (
+          <p className="rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
+            {t("adm.seedSkippedInline")}
+          </p>
+        ) : null}
         {demoSeed.isSuccess && !demoSeed.data?.skipped ? (
           <div className="mt-1 rounded-card border border-hairline bg-page p-3">
             <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
