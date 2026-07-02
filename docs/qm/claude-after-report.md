@@ -10203,3 +10203,14 @@ git push
 **Nicht ausführbar:** echter Anthropic-Aufruf mit Pedis Key (Keychain nur am Mac) — genau dafür ist der Knopf da.
 **Risiko:** gering — additive Admin-Route; ein Test-Klick = ein Mini-Modellaufruf (Kosten vernachlässigbar).
 **Git-Status:** dev_Klarwerk lokal committet, **kein Push**. **Nächster Schritt:** Pedi: App neu starten (v0.9.17) → Admin → KI-Verwaltung → „Key testen": GRÜN = Key ok → Interview/Extraktion testen; ROT mit 401 = alten Schlüsselbund-Eintrag erneuern (siehe Meldung).
+
+---
+
+## After-Report — 2026-07-02 · SCRUM-400: Key-Selbstheilung im Starter + Bibliothek Titel-zuerst
+
+**Datum:** 2026-07-02 (abends, Boss-Session direkt) · **Anlass:** Pedis Key-Test zeigte ROT (401 real bestätigt — der Knopf funktioniert, der Schlüssel nicht) + „Bibliothek ist auch nicht besser".
+**Änderung (v0.9.18-beta):** (1) **Desktop-Starter prüft den Key jetzt selbst:** Nach dem Schlüsselbund-Laden ein Mini-curl gegen die Modell-API; bei 401/403 erscheint der Dialog „Key erneuern" (max. 2 Versuche), der neue Key ersetzt den alten im Schlüsselbund (add-generic-password -U) und wird erneut geprüft; Abbrechen = ehrlicher deterministischer Modus. Andere Codes (Netz weg, 529) blocken den Start nicht; ins Log kommt NUR der HTTP-Code, nie der Key. Damit entfällt der Weg über die Schlüsselbundverwaltung komplett. (2) **Bibliothek nach SCRUM-396-Muster:** Titel zuerst, 15px/semibold, Hover-Unterstreichung (group-hover); die komplette Badge-Kette (Reife/Status/Konflikt/DEMO/Wissensart) in eine ruhige Zeile UNTER dem Titel; Autor/Match-Gründe wie gehabt; Kategorie/Trust rechts unverändert; nichts entfernt.
+**Getestet:** bash -n Starter ✓ · Volle Kette: Build ✓ · Biome ✓ · depcruise ✓ · **1279 Tests / 210 Dateien ✓** · **UI-Smoke 4/4 ✓** · dist v0.9.18 gebaut+eingespielt.
+**Nicht ausführbar:** Der echte 401-Dialog-Zyklus braucht Pedis Mac + Keychain. WICHTIG: Wenn Pedi die App über eine SCHREIBTISCH-KOPIE startet, muss diese einmal aktualisiert werden (Repo-Original ist neu) — Desktop liegt außerhalb des Session-Zugriffs.
+**Risiko:** gering — Starter-Änderung additiv vor dem Serverstart; FE reine Anordnung.
+**Git-Status:** dev_Klarwerk lokal committet, **kein Push**. **Nächster Schritt:** Pedi: App doppelklicken → bei ungültigem Key kommt jetzt VON SELBST der Erneuern-Dialog → neuen sk-ant-Key eintragen → Dialog „v0.9.18-beta" → Admin „Key testen" muss GRÜN zeigen → Bibliothek ansehen.

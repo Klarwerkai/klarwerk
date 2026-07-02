@@ -343,40 +343,45 @@ export function Library(): JSX.Element {
                     return (
                       <div
                         key={k.id}
-                        className="flex items-center gap-3 px-4 py-2.5 hover:bg-hairline-soft"
+                        className="group flex items-center gap-3 px-4 py-2.5 hover:bg-hairline-soft"
                       >
                         <Link
                           to={demoHref(`/wissen/${k.id}`, params)}
                           className="flex min-w-0 flex-1 items-center gap-3"
                         >
-                          <span
-                            className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${MATURITY_TONE[effReadiness.tone]}`}
-                          >
-                            {t(effReadiness.labelKey)}
-                          </span>
-                          <StatusPill status={deriveStatus(k)} />
-                          {/* SCRUM-357: sichtbares Konflikt-Signal direkt in der Trefferzeile. */}
-                          {impact.limited ? (
-                            <span
-                              title={t("conflict.impact.hint")}
-                              className="shrink-0 rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-trust-warn-text"
-                            >
-                              {t("conflict.impact.badge")}
-                            </span>
-                          ) : null}
-                          {/* SCRUM-308: Herkunfts-Kennzeichnung Demo-/Seed-Wissen (neutral, kein Statussignal). */}
-                          {isDemoKnowledge(k) ? (
-                            <span
-                              title={t("demo.badge.hint")}
-                              className="shrink-0 rounded-pill bg-hairline-soft px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted-2"
-                            >
-                              {t("demo.badge.label")}
-                            </span>
-                          ) : null}
-                          <KnowledgeTypeTag type={k.type} />
+                          {/* SCRUM-396-Muster (Pedi 02.07.): Titel zuerst und deutlich — die
+                              Badge-Kette davor machte die Überschrift unauffindbar. Badges
+                              rücken in eine ruhige Zeile UNTER den Titel; nichts entfernt. */}
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[13.5px] text-text">
+                            <span className="block truncate text-[15px] font-semibold leading-snug text-text underline-offset-4 group-hover:underline">
                               {k.title}
+                            </span>
+                            <span className="mt-1 flex flex-wrap items-center gap-1.5">
+                              <span
+                                className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${MATURITY_TONE[effReadiness.tone]}`}
+                              >
+                                {t(effReadiness.labelKey)}
+                              </span>
+                              <StatusPill status={deriveStatus(k)} />
+                              {/* SCRUM-357: sichtbares Konflikt-Signal direkt in der Trefferzeile. */}
+                              {impact.limited ? (
+                                <span
+                                  title={t("conflict.impact.hint")}
+                                  className="shrink-0 rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-trust-warn-text"
+                                >
+                                  {t("conflict.impact.badge")}
+                                </span>
+                              ) : null}
+                              {/* SCRUM-308: Herkunfts-Kennzeichnung Demo-/Seed-Wissen (neutral). */}
+                              {isDemoKnowledge(k) ? (
+                                <span
+                                  title={t("demo.badge.hint")}
+                                  className="shrink-0 rounded-pill bg-hairline-soft px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted-2"
+                                >
+                                  {t("demo.badge.label")}
+                                </span>
+                              ) : null}
+                              <KnowledgeTypeTag type={k.type} />
                             </span>
                             <KoAuthorLine {...koAuthorParts(k, nameOf)} />
                             {/* SCRUM-245: kompakte, ehrliche Match-Gründe (nur bei aktiver Suche). */}
