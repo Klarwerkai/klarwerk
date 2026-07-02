@@ -8,7 +8,7 @@
 
 | Komponente | Version | Letzter Commit | Zustand |
 |---|---|---|---|
-| KLARWERK App (dev_Klarwerk) | **v0.9.16-beta** | 12b1cfd | Gates grün: 1275 Tests / 209 Dateien · UI-Smoke 4/4 · dist eingespielt |
+| KLARWERK App (dev_Klarwerk) | **v0.9.20-beta** | c6ed4b9 | Gates grün: 1279 Tests / 210 Dateien · UI-Smoke 4/4 · dist eingespielt |
 | Reporting-PMO (Team 7, ohne Git) | v1.3.0 | — | Item-Quoten hart, Auto-Refresh >6h, Frische-Ampel, 1-Klick-Intake, KI via Anthropic |
 | Ops-Cockpit (Team 3) | v0.2.0 | 25dbe92 | Überblick/Server-Reife SR-1..3, D-010/D-011-Tracker, Statusbericht |
 | Website (Team 4) | 1.0.0 | a909818 (+542c5a7 App-Fix) | Professionen-Sektion neu; Deploy durch Pedi ausstehend |
@@ -35,6 +35,17 @@ Website-Professionen (KWEB-105) · PMO-FEA-0007 (In-Place-Übersetzung) empfange
 Jira-Nachträge aus §5 erledigt: Kommentar SCRUM-389 + Tickets SCRUM-391…395 angelegt.
 PMO-Stand: **125** (neu: PMO-REQ-0005 „KI-Provider-Management", Empfang bestätigt; deckt sich mit
 SCRUM-393/KI-Voll-Ausbau). Audit-Punkte 1–4 damit KOMPLETT.
+
+**Nachtrag 2 (spätabends):** Weitere Slices direkt geliefert: SCRUM-399 Key-Test-Knopf (v0.9.17) ·
+SCRUM-400 Key-Selbstheilung im Starter + Bibliothek Titel-zuerst (v0.9.18) · SCRUM-401 Löschen in der
+Bibliothek (v0.9.19) · SCRUM-402 Demo-Beispiele für jede Organisation (v0.9.20). **KLARWERK Sync
+repariert** (macOS-TCC-Blocker → Terminal-Command; Regel: Schreibtisch-Kopien IMMER spiegeln) und
+**ausgeführt: GitHub+Gitea synchron.** Jira komplett nachgeführt (390–402 In Review/To Do korrekt).
+Team 6 KGURU-33+34 (Register 108, **CI/Brand Book V1.0 aufgenommen** — Kurzreferenz docs/ci/ in
+beiden Repos); PMO: FEA-0006 done, Fortschrittsanzeige auf KGURU-33-Stand (108 Items).
+Website: KWEB-105–108 (Professionen, Video-Slot, Positionierung „jede Organisation", rotierende
+KO-Beispiele) + Video-Produktionsstrecke KWEB-109–111 (3 Zielgruppen-Varianten; Screencast der
+echten Website + CI-Endcard liegen auf Pedis Schreibtisch). Deploy der Website durch Pedi AUSSTEHEND.
 
 ## 3. Beta-Fahrplan (vereinbart) — Stand der Schritte
 
