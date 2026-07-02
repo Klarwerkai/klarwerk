@@ -90,6 +90,7 @@ import { i18nRoutes } from "./routes/i18n-routes";
 import { koRoutes } from "./routes/ko-routes";
 import { libraryRoutes } from "./routes/library-routes";
 import { lifecycleRoutes } from "./routes/lifecycle-routes";
+import { livewallRoutes } from "./routes/livewall-routes";
 import { managementRoutes } from "./routes/management-routes";
 import { mediaRoutes } from "./routes/media-routes";
 import { modelRunRoutes } from "./routes/model-runs-routes";
@@ -335,6 +336,8 @@ export function buildApp(services: AppServices = buildServices()): FastifyInstan
       guards,
     ),
   );
+  // Audit-P4 (SCRUM-398): Live-Wall — read-only „frisch gesichert / hat heute geholfen".
+  app.register(livewallRoutes({ ko: services.ko, audit: services.audit }, guards));
   app.register(auditRoutes(services.audit, guards));
   app.register(reasonerRoutes(services, guards));
   app.register(objectRoutes(services.objects, guards));

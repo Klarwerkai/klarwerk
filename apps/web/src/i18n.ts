@@ -1160,6 +1160,14 @@ const de = {
   "val.nextRework": "Im Objekt nacharbeiten",
   "val.assign": "Zuweisen …",
   "val.openDetails": "Details ansehen — bearbeiten & löschen im Objekt",
+  "start.livewall.title": "Live-Wall",
+  "start.livewall.subtitle":
+    "Was gerade passiert: frisch gesichertes Wissen und Wissen, das geholfen hat.",
+  "start.livewall.saved": "Frisch gesichert",
+  "start.livewall.helped": "Hat geholfen",
+  "start.livewall.helpedToday": "heute geholfen: {{n}}",
+  "start.livewall.savedEmpty": "Noch nichts gesichert — der erste Beitrag erscheint hier.",
+  "start.livewall.helpedEmpty": "Noch keine „hat geholfen“-Rückmeldung.",
   "con.kicker": "Conflict Board",
   "con.title": "Konflikte klären — ohne Wissen zu verlieren",
   "con.intro":
@@ -2945,6 +2953,14 @@ const en: typeof de = {
   "val.nextRework": "Rework in the object",
   "val.assign": "Assign …",
   "val.openDetails": "View details — edit & delete in the object",
+  "start.livewall.title": "Live wall",
+  "start.livewall.subtitle":
+    "What is happening right now: freshly saved knowledge and knowledge that helped.",
+  "start.livewall.saved": "Freshly saved",
+  "start.livewall.helped": "Helped",
+  "start.livewall.helpedToday": "helped today: {{n}}",
+  "start.livewall.savedEmpty": "Nothing saved yet — the first contribution will appear here.",
+  "start.livewall.helpedEmpty": "No “helped” feedback yet.",
   "con.kicker": "Conflict board",
   "con.title": "Resolve conflicts — without losing knowledge",
   "con.intro":

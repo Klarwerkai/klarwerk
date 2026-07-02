@@ -10181,3 +10181,14 @@ git push
 **Getestet:** Neu `tests/app/notifications-seen.test.ts` (4: E2E seen-Zyklus + Nutzertrennung; Idempotenz + 400-Abweisung; 401 ohne Login; Repo-Unit). Route-Guard-Audit deckt die neue Route ab. Volle Kette: Build ✓ · Biome ✓ · depcruise ✓ (191 Module) · **1272 Tests / 208 Dateien ✓** · **UI-Smoke 4/4 ✓** · dist v0.9.15 gebaut+eingespielt (Bundle-Check ✓).
 **Risiko:** gering — additive Route, Feed-Shape unverändert; Pg-Tabelle nur via CREATE IF NOT EXISTS. Bekannte Grenze: gesehene IDs abgelöster Signale bleiben als Zeilen stehen (harmlos; Aufräumen = Folge-Ticket bei Bedarf).
 **Git-Status:** dev_Klarwerk lokal committet, **kein Push**. **Nächster Schritt:** Pedi: App (v0.9.15) → Glocke: Badge zeigt Ungelesene; Panel öffnen → Badge weg; App neu starten → bleibt weg.
+
+---
+
+## After-Report — 2026-07-02 · SCRUM-398 / Audit-P4: Live-Wall („frisch gesichert / hat heute geholfen")
+
+**Datum:** 2026-07-02 (abends, Boss-Session direkt) · **Ticket:** SCRUM-398 · **Anlass:** Audit-Punkt 4 (P2-Vorschlag 5, Pedi/Schurzfeld-Richtung).
+**Schnitt (RC-schonend):** Jetzt = ruhige **Start-Karte**. Beamer-/Vollbild-Ansicht = Folge-Slice, falls Pedi sie nach Sichtung will.
+**Änderung (v0.9.16-beta):** (1) `services/app/src/livewall.ts` (neu, DOM-frei): `buildLiveWall` aggregiert aus ECHTEN Daten — „frisch gesichert" = jüngste KOs (createdAt, Limit 6), „hat geholfen" = answer.helpful-Audit mit Titel-Payload (Einträge ohne Titel werden ehrlich verworfen, nichts erfunden), `helpedToday` zählt nur den Kalendertag; keine Scores/Ranglisten (EK-19-Richtung). (2) Route **GET /api/livewall** (ko.read, read-only) + Guard-Matrix. (3) Start-Seite: Karte „Live-Wall" unter der Orientierungs-Karte — zwei Spalten mit KO-Links, Status-Pill (offen/validiert), Zeitstempel, „heute geholfen: n"-Badge nur wenn >0; leere Zustände ehrlich benannt. (4) i18n DE/EN (7 Schlüssel).
+**Getestet:** Neu `tests/app/livewall.test.ts` (3: Sortierung/Limit; heute-Zählung + Payload-Ehrlichkeit; HTTP 401/200 mit echtem KO). Volle Kette: Build ✓ · Biome ✓ · depcruise ✓ (193 Module) · **1275 Tests / 209 Dateien ✓** · **UI-Smoke 4/4 ✓** · dist v0.9.16 gebaut+eingespielt (Bundle-Checks Version + „Frisch gesichert" ✓).
+**Risiko:** gering — additive Read-Route, Karte rein anzeigend; bei leerem Bestand erscheint die Karte mit ehrlichen Leer-Texten.
+**Git-Status:** dev_Klarwerk lokal committet, **kein Push**. **Nächster Schritt:** Pedi: App (v0.9.16) → Start: Live-Wall prüfen; im KO „hat geholfen" klicken (als anderer Nutzer) → Wall zeigt es. Danach Beta-Pfad: Key → Sync → Sichtabnahme → Freeze.

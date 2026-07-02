@@ -85,6 +85,9 @@ export const useDirectory = () =>
 export const useGraph = () => useQuery({ queryKey: ["graph"], queryFn: endpoints.library.graph });
 export const useNotifications = () =>
   useQuery({ queryKey: ["notifications"], queryFn: endpoints.notifications.list });
+// Audit-P4 (SCRUM-398): Live-Wall („frisch gesichert / hat heute geholfen").
+export const useLiveWall = () =>
+  useQuery({ queryKey: ["livewall"], queryFn: endpoints.livewall.get });
 export const useReasonerStatus = () =>
   useQuery({ queryKey: ["reasoner", "status"], queryFn: endpoints.reasoner.status });
 // SCRUM-166: read-only Reasoner-/Provider-Konfiguration.

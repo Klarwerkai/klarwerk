@@ -9,6 +9,7 @@ import {
   useLearningPath,
   useLearningProgress,
   useLifecyclePending,
+  useLiveWall,
   useValidationBoard,
 } from "../api/hooks";
 import { useSession } from "../app/AuthContext";
@@ -55,6 +56,96 @@ const CTA: Record<string, { to: string; key: string }> = {
   controller: { to: "/validierung", key: "start.ctaValidate" },
   admin: { to: "/validierung", key: "start.ctaValidate" },
 };
+
+// Audit-P4 (SCRUM-398): Live-Wall als ruhige Start-Karte — „frisch gesichert" und
+// „hat geholfen" aus echten Ereignissen (KO-Bestand + Wirkungs-Audit). Keine Scores,
+// keine Ranglisten; leere Zustände werden ehrlich benannt. Beamer-Ansicht = Folge-Slice.
+function LiveWallCard(): JSX.Element | null {
+  const { t, i18n } = useTranslation();
+  const { data } = useLiveWall();
+  if (!data) {
+    return null;
+  }
+  const fmt = (at: string): string =>
+    new Date(at).toLocaleString(i18n.language.startsWith("en") ? "en-GB" : "de-DE", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  return (
+    <Card className="mb-5">
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <div>
+          <h2 className="text-[15px] font-semibold text-ink">{t("start.livewall.title")}</h2>
+          <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
+            {t("start.livewall.subtitle")}
+          </p>
+        </div>
+        {data.helpedToday > 0 ? (
+          <span className="rounded-pill bg-trust-pos-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold text-trust-pos-text">
+            {t("start.livewall.helpedToday", { n: data.helpedToday })}
+          </span>
+        ) : null}
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <div className="mb-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-2">
+            {t("start.livewall.saved")}
+          </div>
+          {data.saved.length === 0 ? (
+            <p className="text-[12.5px] text-muted">{t("start.livewall.savedEmpty")}</p>
+          ) : (
+            <ul className="space-y-1">
+              {data.saved.map((s) => (
+                <li key={s.koId} className="flex items-baseline gap-2">
+                  <Link
+                    to={`/wissen/${s.koId}`}
+                    className="min-w-0 flex-1 truncate text-[13px] font-medium text-text hover:text-ink"
+                  >
+                    {s.title}
+                  </Link>
+                  <span
+                    className={`shrink-0 rounded-pill px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase ${
+                      s.status === "validiert"
+                        ? "bg-trust-pos-bg text-trust-pos-text"
+                        : "bg-page text-muted"
+                    }`}
+                  >
+                    {s.status}
+                  </span>
+                  <span className="shrink-0 font-mono text-[10.5px] text-muted-2">{fmt(s.at)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div>
+          <div className="mb-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-2">
+            {t("start.livewall.helped")}
+          </div>
+          {data.helped.length === 0 ? (
+            <p className="text-[12.5px] text-muted">{t("start.livewall.helpedEmpty")}</p>
+          ) : (
+            <ul className="space-y-1">
+              {data.helped.map((h) => (
+                <li key={`${h.koId}-${h.at}`} className="flex items-baseline gap-2">
+                  <Link
+                    to={`/wissen/${h.koId}`}
+                    className="min-w-0 flex-1 truncate text-[13px] font-medium text-text hover:text-ink"
+                  >
+                    {h.title}
+                  </Link>
+                  <span className="shrink-0 font-mono text-[10.5px] text-muted-2">{fmt(h.at)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
 
 function Kpi({ label, value }: { label: string; value: string | number }): JSX.Element {
   return (
@@ -260,6 +351,8 @@ export function Start(): JSX.Element {
           </div>
         ) : null}
       </Card>
+      {/* Audit-P4 (SCRUM-398): Live-Wall — was gerade passiert (frisch gesichert / hat geholfen). */}
+      <LiveWallCard />
       {missions.length > 0 ? (
         <div className="mb-5">
           <h2 className="text-[15px] font-semibold text-ink">{t("missions.title")}</h2>

@@ -24,6 +24,7 @@ import type {
   KnowledgeObject,
   KoVersionSnapshot,
   LearningPath,
+  LiveWall,
   ManagementSnapshot,
   MediaAnalysis,
   ModelRunRecord,
@@ -173,6 +174,8 @@ export const endpoints = {
     markSeen: (ids: string[]) => api.post<{ unseenCount: number }>("/notifications/seen", { ids }),
   },
   directory: { list: () => api.get<{ id: string; name: string }[]>("/directory") },
+  // Audit-P4 (SCRUM-398): Live-Wall (read-only Aggregation).
+  livewall: { get: () => api.get<LiveWall>("/livewall") },
   analytics: {
     overview: () => api.get<Analytics>("/analytics"),
     busfactor: () => api.get<BusFactorEntry[]>("/analytics/busfactor"),

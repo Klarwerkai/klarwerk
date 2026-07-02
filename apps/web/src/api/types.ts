@@ -497,6 +497,19 @@ export interface DemoSeedResult {
   attachments: number;
 }
 
+// Audit-P4 (SCRUM-398): Live-Wall — „frisch gesichert / hat heute geholfen" (read-only).
+export interface LiveWall {
+  saved: Array<{
+    koId: string;
+    title: string;
+    author: string;
+    at: string;
+    status: "offen" | "validiert";
+  }>;
+  helped: Array<{ koId: string; title: string; at: string }>;
+  helpedToday: number;
+}
+
 export type NotificationKind = "conflict" | "gap" | "assignment" | "impact";
 
 export interface Notification {
