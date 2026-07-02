@@ -9934,3 +9934,13 @@ git push
 **Git-Status:** main [ahead 4]: f386aa3 (380/381) · 4503f58 (383) · 0c64f1e (382/385A/Doku) · + dieser Report. Kein Push (Sync-App).
 **Jira-Kommentar-Vorschlag:** erledigt (Tickets tragen Umsetzungs-Details; KREL-34 informiert).
 **Nächster Schritt:** Pedi-Review nach Rückkehr. STOPP.
+
+---
+
+## After-Report — 2026-07-02 · Versionsnummern in allen Anwendungs-Headern (Beta-Phase)
+
+**Datum:** 2026-07-02 · **Ticket:** kein eigenes (Kleinauftrag Pedi; Website unter KWEB-104 mitgeführt)
+**Änderung:** Version oben rechts: Team-1-App **v0.9.0-beta** (neue Quelle apps/web/src/version.ts + Topbar-Chip) · Team-7-PMO **v1.1.0** (Header-Chip + SERVER_VERSION angeglichen) · Team-4-Website **v1.0.0** (Header-Chip, nur Preview-Phase). Nummern = Vorschlag (Beta-Semantik) — bei Bedarf zentral je Datei änderbar.
+**Getestet:** FE-tsc grün · Biome grün · 388 Tests (app/analytics) grün · Astro-Build grün (Chip in dist verifiziert) · PMO-Server Syntaxcheck grün.
+**Git-Status:** dev_Klarwerk 87322ad [ahead 6] · public-website 1ee3246 [ahead 2] · PMO ohne Git. Push via „KLARWERK Sync".
+**Nächster Schritt:** Sichtbar nach nächstem Build/Deploy (KLARWERK App bzw. Website-App doppelklicken; PMO sofort nach Reload). STOPP.
