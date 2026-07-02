@@ -10218,3 +10218,13 @@ git push
 **Nachtrag SCRUM-400 (gleicher Abend):** Ursache für „wieder nichts": Pedi startet über die SCHREIBTISCH-Kopien — die hatten den alten Starter ohne Key-Prüfung. Desktop-Kopie „KLARWERK App.app" jetzt aktualisiert (Diff identisch, +x erhalten); PMO/Ops/Website/Sync-Kopien geprüft: identisch mit ihren Repo-Originalen. NEUE DAUERREGEL im Boss-Session-Stand verankert: Jede Starter-Änderung wird SOFORT in die Schreibtisch-Kopie gespiegelt. Pedi-Test: Desktop „KLARWERK App" doppelklicken → Key-Erneuern-Dialog erscheint automatisch (der hinterlegte Key ist 401-ungültig) → neuen Key eintragen → „v0.9.18-beta" → Admin „Key testen" GRÜN.
 
 **Nachtrag 2 SCRUM-400 (gleicher Abend):** Pedi-Screenshot zeigte die WIRKLICHE Ursache: Dialog „Läuft bereits … Port 3010" — der laufende Server nahm die Abkürzung VOR der Key-Prüfung, und ein laufender Server behält den alten Key ohnehin im Speicher. Fix: Key-Laden + Gültigkeitsprüfung in den Starter VOR die „Läuft bereits"-Abkürzung verlegt; bei erneuertem Key (oder bewusstem Abbruch) wird die Abkürzung übersprungen und der Alt-Server beendet → Neustart mit frischer Umgebung („Key erneuert — Server wird neu gestartet …"). bash -n ✓; Schreibtisch-Kopie SOFORT gespiegelt (diff identisch, +x). Pedi-Test: Desktop-App doppelklicken → Key-Dialog MUSS jetzt kommen (Server läuft zwar, aber die Prüfung kommt davor) → neuen Key → Server startet neu → Admin „Key testen" GRÜN.
+
+---
+
+## After-Report — 2026-07-02 · SCRUM-401: Löschen direkt in der Bibliothek
+
+**Datum:** 2026-07-02 (abends, Boss-Session direkt) · **Anlass:** Pedi (mehrfach): „als Admin Beiträge löschen können" — Löschen existierte seit v0.9.12 nur im KO-Detail und war in der Bibliothek nicht auffindbar.
+**Änderung (v0.9.19-beta, nur FE — Backend-Regel von v0.9.12 gilt unverändert):** Bibliothek-Trefferzeile zeigt für Autor/Controller/Admin einen Papierkorb-Knopf; Klick → Inline-Bestätigung („Wirklich löschen? Behalten/Löschen", kein confirm()); Erfolg aktualisiert Liste/Validierung + Toast. Server erzwingt weiterhin dieselbe Regel (DELETE /api/kos/:id, 403 sonst); Audit protokolliert ko.deleted. Wiederverwendete i18n-Schlüssel (ko.delete*), keine neuen.
+**Getestet:** Volle Kette: Build ✓ · Biome ✓ · depcruise ✓ · **1279 Tests / 210 Dateien ✓** · **UI-Smoke 4/4 ✓** · dist v0.9.19 gebaut+eingespielt.
+**Risiko:** gering — FE-only; Rechteprüfung serverseitig unverändert.
+**Git-Status:** dev_Klarwerk lokal committet, **kein Push**. **Nächster Schritt:** Pedi: App doppelklicken (v0.9.19) → Bibliothek → Papierkorb am Treffer → Inline-Bestätigung → weg.

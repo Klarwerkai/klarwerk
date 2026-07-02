@@ -1,10 +1,13 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Download, RotateCw } from "lucide-react";
+import { Download, RotateCw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
+import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useConflicts, useDirectory, useKos, useLibrarySearch } from "../api/hooks";
+import { useSession } from "../app/AuthContext";
+import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
 import { DemoBanner } from "../components/DemoBanner";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
@@ -102,6 +105,23 @@ export function Library(): JSX.Element {
   const qc = useQueryClient();
   const { push } = useToast();
   // SCRUM-136: Re-Validierung über den vorhandenen KO-/Lifecycle-Pfad (revalidate).
+  // Pedi 02.07. (mehrfach gewünscht): Löschen DIREKT in der Bibliothek — für Autor oder
+  // Controller/Admin, mit Inline-Bestätigung (kein confirm()). Backend-Regel existiert
+  // seit v0.9.12 (DELETE /api/kos/:id prüft Autor-oder-ko.validate serverseitig).
+  const { role } = useRole();
+  const { user } = useSession();
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const removeKo = useMutation({
+    mutationFn: (id: string) => endpoints.ko.remove(id),
+    onSuccess: () => {
+      setConfirmDeleteId(null);
+      void qc.invalidateQueries({ queryKey: ["library"] });
+      void qc.invalidateQueries({ queryKey: ["kos"] });
+      void qc.invalidateQueries({ queryKey: ["validation"] });
+      push("success", t("ko.deleteDone"));
+    },
+    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
+  });
   const revalidate = useMutation({
     mutationFn: (id: string) => endpoints.ko.act(id, { action: "revalidate" }),
     onSuccess: () => {
@@ -432,6 +452,36 @@ export function Library(): JSX.Element {
                             <RotateCw size={13} />
                             {t("lib.revalidate")}
                           </button>
+                        ) : null}
+                        {/* Pedi 02.07.: Löschen direkt in der Zeile (Autor/Controller/Admin) —
+                            Inline-Bestätigung; Server erzwingt dieselbe Regel (403 sonst). */}
+                        {role === "admin" || role === "controller" || k.author === user?.id ? (
+                          confirmDeleteId === k.id ? (
+                            <span className="flex shrink-0 items-center gap-1.5">
+                              <span className="text-[12px] font-semibold text-trust-crit-text">
+                                {t("ko.deleteQ")}
+                              </span>
+                              <Button variant="ghost" onClick={() => setConfirmDeleteId(null)}>
+                                {t("ko.deleteKeep")}
+                              </Button>
+                              <Button
+                                variant="outline"
+                                disabled={removeKo.isPending}
+                                onClick={() => removeKo.mutate(k.id)}
+                              >
+                                {t("ko.deleteYes")}
+                              </Button>
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              title={t("ko.deleteButton")}
+                              onClick={() => setConfirmDeleteId(k.id)}
+                              className="inline-flex shrink-0 items-center rounded-btn border border-hairline px-2 py-1 text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )
                         ) : null}
                       </div>
                     );
