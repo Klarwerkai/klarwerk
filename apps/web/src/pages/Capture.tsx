@@ -60,7 +60,7 @@ import {
   markCaptureIntroSeen,
 } from "../lib/captureEntry";
 import { CAPTURE_EXAMPLE } from "../lib/captureExample";
-import { CAPTURE_FLOW_STEPS, CAPTURE_FLOW_TEXT } from "../lib/captureFlowGuide";
+import { CAPTURE_FLOW_TEXT } from "../lib/captureFlowGuide";
 import { gapContextDraft, readGapContext } from "../lib/captureFromGap";
 import { captureReadiness } from "../lib/captureReadiness";
 import { captureNextSteps, captureSavedStatus } from "../lib/captureSuccess";
@@ -804,44 +804,8 @@ export function Capture(): JSX.Element {
         </Card>
       ) : null}
 
-      {/* SCRUM-370 / AG-12/13: ruhige Weg-Leiste — Rohwissen → im Studio strukturieren (empfohlen) →
-          prüfen & einreichen. Positioniert das Knowledge Studio als naheliegenden Hauptweg, ohne die
-          Formular-Modi zu entfernen (progressive disclosure, kein Zwang). Eine Quelle: captureFlowGuide. */}
-      <div className="mb-4 rounded-card border border-hairline bg-surface px-4 py-3">
-        <p className="mb-2 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
-          {t(CAPTURE_FLOW_TEXT.railKicker)}
-        </p>
-        <ol className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
-          {CAPTURE_FLOW_STEPS.map((step, i) => (
-            <li key={step.id} className="flex flex-1 items-start gap-2">
-              <span
-                className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-semibold ${
-                  step.recommended ? "bg-ai text-white" : "bg-ink text-white"
-                }`}
-              >
-                {i + 1}
-              </span>
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[12.5px] font-semibold text-text">{t(step.labelKey)}</span>
-                  {step.recommended ? (
-                    <span className="rounded-pill bg-ai/10 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-ai">
-                      {t(CAPTURE_FLOW_TEXT.studioRecommended)}
-                    </span>
-                  ) : null}
-                </div>
-                <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted">{t(step.hintKey)}</p>
-              </div>
-              {i < CAPTURE_FLOW_STEPS.length - 1 ? (
-                <span aria-hidden="true" className="hidden self-center text-muted-2 sm:inline">
-                  →
-                </span>
-              ) : null}
-            </li>
-          ))}
-        </ol>
-        <p className="mt-2 text-[11px] text-muted-2">{t(CAPTURE_FLOW_TEXT.railKickerHint)}</p>
-      </div>
+      {/* SCRUM-384: Die frühere Weg-Leiste (SCRUM-370) entfiel — die „Wissen retten“-
+          Einführung oben erklärt denselben Dreischritt; Doppel-Blöcke erschlagen (Pedi-Review). */}
 
       {/* SCRUM-384 / AG-12 / KG-UX-001/002/003/010: Erzähl-Einstieg als Standardweg — die Erzähl-Modi
           (Freitext · Diktat · Interview) führen in den Studio-Hauptweg; das klassische Formular bleibt
