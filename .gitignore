@@ -11,3 +11,6 @@ docs/generated/coverage/
 desktop-app/app.log
 vitest.config.ts.timestamp-*
 desktop-app/.run-state
+
+# SCRUM-387: lokale Dev-Persistenz der Desktop-App (Journal mit Nutzer-/Session-Daten) — nie versionieren.
+.localdb/

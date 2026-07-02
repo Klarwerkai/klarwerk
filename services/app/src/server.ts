@@ -6,6 +6,7 @@ import fastifyStatic from "@fastify/static";
 import type { FastifyInstance } from "fastify";
 import { buildApp, buildPgServices, buildServices } from "./build-app";
 import { createPool, migrate } from "./db";
+import { buildDevPersistServices } from "./dev-persist";
 
 // Kanonische Domain (klarwerk.ai). app.<domain> wird dauerhaft hierher umgeleitet.
 const CANONICAL_HOST = process.env.CANONICAL_HOST ?? "klarwerk.ai";
@@ -83,14 +84,35 @@ async function configureWebDelivery(app: FastifyInstance): Promise<void> {
   });
 }
 
+// SCRUM-387: Dev-Persistenz-Journal der Desktop-App. Nur aktiv mit KLARWERK_DEV_PERSIST=1
+// und OHNE DATABASE_URL (Postgres hat immer Vorrang — Produktion bleibt unberührt).
+// Ablage: <repo>/.localdb/state.jsonl (gitignored), überschreibbar via KLARWERK_DEV_PERSIST_FILE.
+function devPersistFile(): string | undefined {
+  if (process.env.KLARWERK_DEV_PERSIST !== "1") {
+    return undefined;
+  }
+  const override = process.env.KLARWERK_DEV_PERSIST_FILE;
+  if (override) {
+    return override;
+  }
+  return join(dirname(fileURLToPath(import.meta.url)), "../../..", ".localdb/state.jsonl");
+}
+
 async function start(): Promise<void> {
   const databaseUrl = process.env.DATABASE_URL;
-  const services = databaseUrl ? await pgServices(databaseUrl) : buildServices();
+  const journal = devPersistFile();
+  const services = databaseUrl
+    ? await pgServices(databaseUrl)
+    : journal
+      ? await buildDevPersistServices(journal)
+      : buildServices();
   const app = buildApp(services);
   await configureWebDelivery(app);
   const port = Number(process.env.PORT ?? "3001");
   await app.listen({ port, host: "0.0.0.0" });
-  app.log.info(`KLARWERK läuft auf :${port}`);
+  // Ehrlicher Betriebsmodus im Log — hilft bei „warum sind meine Daten weg?"-Diagnosen.
+  const mode = databaseUrl ? "Postgres" : journal ? "Dev-Persistenz (Journal)" : "In-Memory";
+  app.log.info(`KLARWERK läuft auf :${port} — Datenhaltung: ${mode}`);
 }
 
 start().catch((error) => {

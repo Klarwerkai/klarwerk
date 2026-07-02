@@ -119,7 +119,9 @@ export interface AppServices {
 
 // Alle Repositories der App. Sie sind der einzige Unterschied zwischen In-Memory und
 // Postgres — die Service-Verdrahtung darüber ist identisch.
-interface AppRepos {
+// SCRUM-387: exportiert, damit die Dev-Persistenz (dev-persist.ts) dieselben Repos
+// über ihre öffentlichen Interfaces journalieren kann — kein Griff in Modul-Interna.
+export interface AppRepos {
   auditRepo: AuditRepo;
   koRepo: KoRepo;
   koVersions: KoVersionRepo;
@@ -140,7 +142,8 @@ interface AppRepos {
 
 // Verdrahtet aus den Repos die vollständige Service-Landschaft. Ein gemeinsames
 // Audit-Log und ein KO-Repository für alle Module, die auf denselben Bestand wirken.
-function assembleServices(repos: AppRepos): AppServices {
+// SCRUM-387: exportiert für die Dev-Persistenz (identische Verdrahtung über journalierte Repos).
+export function assembleServices(repos: AppRepos): AppServices {
   const audit = new AuditService({ repo: repos.auditRepo });
   const ko = new KoService({
     repo: repos.koRepo,
@@ -210,9 +213,10 @@ function assembleServices(repos: AppRepos): AppServices {
   };
 }
 
-// In-Memory-Komposition (Tests, Dev ohne Datenbank).
-export function buildServices(): AppServices {
-  return assembleServices({
+// In-Memory-Repos als benannter Satz — von buildServices (Tests/Dev) und der Dev-Persistenz
+// (SCRUM-387: Journal-Replay + Journalierung über dieselben Interfaces) gemeinsam genutzt.
+export function inMemoryRepos(): AppRepos {
+  return {
     auditRepo: new InMemoryAuditRepo(),
     koRepo: new InMemoryKoRepo(),
     koVersions: new InMemoryKoVersionRepo(),
@@ -229,7 +233,12 @@ export function buildServices(): AppServices {
     objects: new InMemoryObjectRepo(),
     candidates: new InMemoryCandidateRepo(),
     modelRuns: new InMemoryModelRunRepo(),
-  });
+  };
+}
+
+// In-Memory-Komposition (Tests, Dev ohne Datenbank).
+export function buildServices(): AppServices {
+  return assembleServices(inMemoryRepos());
 }
 
 // Postgres-Komposition: dieselbe App, alle Repos gegen eine echte Datenbank.
