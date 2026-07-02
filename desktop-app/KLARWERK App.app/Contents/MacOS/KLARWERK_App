@@ -63,32 +63,49 @@ NODE_BIN="$(dirname "$NODE_PICK")"
 export PATH="$NODE_BIN:$PATH"
 echo "Node: $NODE_PICK ($("$NODE_PICK" -p process.arch) fuer $MACH)" >> "$LOG"
 
-# Läuft KLARWERK schon (auf einem der Kandidaten-Ports)? Dann nur Browser öffnen.
-# Sonst: ersten wirklich freien Port wählen (EADDRINUSE-Schutz, z. B. Gitea auf 3000).
+# --- Selbst-Aktualisierung: neuer Commit => Alt-Server beenden, frisch bauen ---
+STATE="$REPO/desktop-app/.run-state"   # Inhalt: <commit> <port> <pid>
+CUR="$(cd "$REPO" && /usr/bin/git rev-parse HEAD 2>/dev/null || echo nogit)"
+OLD_COMMIT=""; OLD_PORT=""; OLD_PID=""
+[ -f "$STATE" ] && read -r OLD_COMMIT OLD_PORT OLD_PID < "$STATE"
+
+# Fall 1: Server läuft UND ist auf aktuellem Stand -> nur Browser öffnen.
+if [ "$OLD_COMMIT" = "$CUR" ] && [ -n "$OLD_PORT" ] && \
+   /usr/bin/curl -s --max-time 2 "http://127.0.0.1:$OLD_PORT/health" | /usr/bin/grep -q '"status":"ok"'; then
+  /usr/bin/open "http://localhost:$OLD_PORT"
+  exit 0
+fi
+
+# Fall 2: Alt-Server (unsere eigene PID) läuft mit altem Stand -> sauber beenden.
+if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+  say "Aktualisiere auf neuen Stand …"
+  kill "$OLD_PID" 2>/dev/null
+  for _ in 1 2 3 4 5 6; do kill -0 "$OLD_PID" 2>/dev/null || break; sleep 0.5; done
+  kill -9 "$OLD_PID" 2>/dev/null
+fi
+
+# Freien Port wählen (3000 gehört dem lokalen Gitea).
 CHOSEN=""
-for p in 3010 3020 3030 3040; do
-  if /usr/bin/curl -s --max-time 1 "http://127.0.0.1:$p/health" | /usr/bin/grep -q '"status":"ok"'; then
-    /usr/bin/open "http://localhost:$p"
-    exit 0
-  fi
-  if [ -z "$CHOSEN" ] && ! /usr/sbin/lsof -iTCP:$p -sTCP:LISTEN >/dev/null 2>&1; then CHOSEN="$p"; fi
+for pt in 3010 3020 3030 3040; do
+  if [ -z "$CHOSEN" ] && ! /usr/sbin/lsof -iTCP:$pt -sTCP:LISTEN >/dev/null 2>&1; then CHOSEN="$pt"; fi
 done
 [ -n "$CHOSEN" ] || fail "Kein freier Port gefunden (3010/3020/3030/3040 sind alle belegt)."
 PORT="$CHOSEN"
-echo "Port: $PORT" >> "$LOG"
+NEED_FRESH=0; [ "$OLD_COMMIT" != "$CUR" ] && NEED_FRESH=1
+echo "Commit: $CUR / Port: $PORT / frisch: $NEED_FRESH" >> "$LOG"
 
 # Keys aus dem Schlüsselbund (Erststart: Dialoge). Anthropic = Reasoner, Whisper = Video (optional).
 AI_KEY="$(keychain_ask "$SVC_AI" "Anthropic-API-Key für den KLARWERK Reasoner (beginnt mit sk-ant-…).\nOhne Key läuft die App im deterministischen Modus — ehrlich gekennzeichnet." optional)"
 TR_KEY="$(keychain_ask "$SVC_TR" "Optional: OpenAI-Key für die Video-/Audio-Transkription (Whisper).\nÜberspringen ist ok — die Video-Analyse zeigt dann einen ehrlichen Inaktiv-Hinweis." optional)"
 
 cd "$REPO" || fail "Kann nicht in den Projektordner wechseln."
-if [ ! -d node_modules ]; then
-  say "Erste Einrichtung: installiere Pakete …"
+if [ ! -d node_modules ] || [ "$NEED_FRESH" = "1" ]; then
+  say "Aktualisiere Pakete …"
   npm ci --no-audit --no-fund >> "$LOG" 2>&1 || fail "npm-Installation fehlgeschlagen (desktop-app/app.log)."
 fi
-if [ ! -f apps/web/dist/index.html ]; then
-  say "Baue Oberfläche …"
-  if [ ! -d apps/web/node_modules ]; then
+if [ ! -f apps/web/dist/index.html ] || [ "$NEED_FRESH" = "1" ]; then
+  say "Baue Oberfläche neu …"
+  if [ ! -d apps/web/node_modules ] || [ "$NEED_FRESH" = "1" ]; then
     npm --prefix apps/web ci --no-audit --no-fund >> "$LOG" 2>&1 || fail "Frontend-Installation fehlgeschlagen (desktop-app/app.log)."
   fi
   npm --prefix apps/web run build >> "$LOG" 2>&1 || fail "Frontend-Build fehlgeschlagen (desktop-app/app.log)."
@@ -98,10 +115,12 @@ say "Starte KLARWERK …"
 # Keys nur als Env dieses Prozesses; das Log erhält sie nicht (Server loggt keine Secrets).
 ANTHROPIC_API_KEY="$AI_KEY" MEDIA_TRANSCRIBE_API_KEY="$TR_KEY" PORT="$PORT" \
   /usr/bin/nohup npm start >> "$LOG" 2>&1 &
+SRV_PID=$!
 
-for _ in $(seq 1 40); do
+for _ in $(seq 1 60); do
   if /usr/bin/curl -s --max-time 1 "http://127.0.0.1:$PORT/health" | /usr/bin/grep -q '"status":"ok"'; then
-    say "KLARWERK läuft — öffne Browser"
+    printf '%s %s %s\n' "$CUR" "$PORT" "$SRV_PID" > "$STATE"
+    say "KLARWERK läuft (Stand $(echo "$CUR" | cut -c1-7)) — öffne Browser"
     /usr/bin/open "http://localhost:$PORT"
     exit 0
   fi
