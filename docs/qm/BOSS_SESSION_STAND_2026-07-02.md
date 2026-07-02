@@ -8,7 +8,7 @@
 
 | Komponente | Version | Letzter Commit | Zustand |
 |---|---|---|---|
-| KLARWERK App (dev_Klarwerk) | **v0.9.12-beta** | 729121d (+afc1d12 docs) | Gates grün: 1241 Tests / 205 Dateien · UI-Smoke 4/4 · dist eingespielt |
+| KLARWERK App (dev_Klarwerk) | **v0.9.16-beta** | 12b1cfd | Gates grün: 1275 Tests / 209 Dateien · UI-Smoke 4/4 · dist eingespielt |
 | Reporting-PMO (Team 7, ohne Git) | v1.3.0 | — | Item-Quoten hart, Auto-Refresh >6h, Frische-Ampel, 1-Klick-Intake, KI via Anthropic |
 | Ops-Cockpit (Team 3) | v0.2.0 | 25dbe92 | Überblick/Server-Reife SR-1..3, D-010/D-011-Tracker, Statusbericht |
 | Website (Team 4) | 1.0.0 | a909818 (+542c5a7 App-Fix) | Professionen-Sektion neu; Deploy durch Pedi ausstehend |
@@ -27,6 +27,14 @@ robuster demoSeed-Merker + Komplett-Purge im Admin · KO-Löschen für Autor/Con
 App-Funktions-Audit (docs/qm/APP_FUNKTIONS_AUDIT_2026-07-02.md) · PMO: Anthropic-Support,
 Key-Test-Knopf, 1-Klick-Übernahme in den Bestand, Fortschritt gehärtet · Ops-Cockpit v0.2.0 ·
 Website-Professionen (KWEB-105) · PMO-FEA-0007 (In-Place-Übersetzung) empfangen → Team-6-Queue.
+
+**Nachtrag (Boss-Session-Fortsetzung, 02.07. abends):** PMO-FEA-0006 kam als **SCRUM-390 / v0.9.13** an
+(anderer Chat). Danach direkt in dieser Session geliefert: **SCRUM-396** Validierungs-Board-Redesign
+(v0.9.14, c0876dc) · **SCRUM-397** Audit-P3 Glocke mit Gelesen-Status (v0.9.15, 65928b5) ·
+**SCRUM-398** Audit-P4 Live-Wall-Start-Karte (v0.9.16, 12b1cfd) — alle In Review (Sichtabnahme Pedi).
+Jira-Nachträge aus §5 erledigt: Kommentar SCRUM-389 + Tickets SCRUM-391…395 angelegt.
+PMO-Stand: **125** (neu: PMO-REQ-0005 „KI-Provider-Management", Empfang bestätigt; deckt sich mit
+SCRUM-393/KI-Voll-Ausbau). Audit-Punkte 1–4 damit KOMPLETT.
 
 ## 3. Beta-Fahrplan (vereinbart) — Stand der Schritte
 
