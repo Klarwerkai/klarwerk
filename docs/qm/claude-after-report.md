@@ -10288,3 +10288,12 @@ git push
 **Getestet:** Neu `tests/app/admin-sections.test.ts` (2: Bereichs-IDs eindeutig + Default gültig; DE/EN-Labels aufgelöst). Volle Kette: Build ✓ · Biome ✓ · depcruise ✓ · **1281 Tests / 211 Dateien ✓** · **UI-Smoke 4/4 ✓** · dist v0.9.21 eingespielt.
 **Risiko:** gering — reine FE-Gruppierung; alle Admin-Funktionen unverändert erreichbar.
 **Git:** dev_Klarwerk lokal committet, **kein Push**. **Nächster Schritt:** Pedi (morgen): App → Admin → Chips „Konten · KI · Daten" durchklicken; Teil der v0.9.21-Sichtabnahme vor „RC einfrieren".
+
+---
+
+## After-Report — 2026-07-02 · Team 2 neu ausgerichtet: Gesamtkonzept „Eigener LLM-Server" V1 + Karten
+
+**Datum:** 2026-07-02 (spät) · **Anlass:** Pedi: MacBook-LLM-Ergebnisse unbefriedigend, Konzept überdenken — Hetzner-Dedicated angedacht; danach gemeinsame Kosten-Recherche (Pedi-Fund: Live-Konfigurator 599 € Setup ≠ Pressemitteilung; Perplexity-Marktvergleich EU).
+**Ergebnis (klarwerk-local-llm, Commits 483f996→c5c2bb1→Gesamtkonzept):** `docs/KLLM_HETZNER_GPU_KONZEPT_V0.md` als **V1**: Ziel/ehrliches Nicht-Ziel (lokal ≠ Claude-Niveau; „lohnt nicht" ist gültiges Ergebnis), Architektur-Anschluss existiert (ModelClient + KI-Verwaltung, vLLM OpenAI-kompatibel — kein App-Umbau), **Phasen 0–4** mit Kosten und Abnahmekriterien, Rollen, harte Stop-Lines (LLM-API nie öffentlich; Preise nur vom Anbieter-Konfigurator), verifizierte Preistabelle. **Eval-Anbieter entschieden: Scaleway L40S-1-48G** (PAR-2, ohne Setup, ≈1,71 €/h, ≤50 €); Hetzner bleibt Dauerbetriebs-Kandidat.
+**Karten angelegt:** KLLM-55 (Konzept) · **KLLM-56** Phase 0 Prüfstand (0 €, ab sofort) · **KLLM-57** Phase 1 Scaleway-Eval (≤50 €, nach Freeze) · **KLLM-58** Phase 1b optional 70B/Genesis (~10 €) · **KLLM-59** Phase 2 Entscheidungs-Brief · **KLLM-60** Phase 3 Dauerbetrieb (nur nach Pedi-Go). D-012 unverändert: nicht beta-blockierend.
+**Nächster Schritt:** Nach RC-Freeze zuerst KLLM-56 (kostenlos, serverlos); Scaleway-Konto = Pedi, wenn Phase 1 ansteht.
