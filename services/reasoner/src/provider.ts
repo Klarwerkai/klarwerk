@@ -327,6 +327,63 @@ export function selectCandidates(
 
 // FR-RSN-04: deterministischer Fallback ohne Modell. Immer verfügbar, Ergebnisse
 // klar als Demo markiert; semantische Auswahl über Keyword-Überschneidung.
+// G-2: erkennt Eingaben ohne verwertbare Fachinformation (nur Zeichen/Zahlen, zu kurz,
+// kein beschreibender Text). Bewusst konservativ — im Zweifel wird normal strukturiert.
+export function isNonInformative(rawText: string): boolean {
+  const t = rawText.trim();
+  if (t.length === 0) {
+    return true;
+  }
+  const letters = (t.match(/[a-zA-ZäöüÄÖÜß]/g) ?? []).length;
+  if (letters < 4) {
+    return true; // nur Zahlen/Symbole oder Einzelbuchstaben ("123", "qwe?" -> qwe hat 3)
+  }
+  const words = t.split(/\s+/).filter((w) => (w.match(/[a-zA-ZäöüÄÖÜß]/g) ?? []).length >= 3);
+  return words.length < 2; // ein einzelnes Kürzel ohne Kontext ist keine Fachaussage
+}
+
+// Ehrlicher Entwurf im Stil der Alt-App: benennt das Problem, wann das gilt und was zu tun ist.
+export function honestNonInformativeDraft(
+  rawText: string,
+  locale: ReasonerLocale,
+): StructureResult {
+  const shown = rawText.trim().slice(0, 40) || "(leer)";
+  if (locale === "en") {
+    return {
+      title: "Insufficient expert input — no usable information",
+      statement: `The input '${shown}' contains no usable domain information. A structured knowledge derivation is not possible from this input.`,
+      conditions: [
+        "When the expert input consists only of non-informative characters or numbers",
+        "When no domain hint and no descriptive text are provided",
+      ],
+      measures: [
+        "Ask the expert to re-enter meaningful free text",
+        "Request a domain hint and context description",
+        "Do not save this input as a knowledge object",
+      ],
+      tags: [],
+      confidence: 0,
+      demo: true,
+    };
+  }
+  return {
+    title: "Unzureichende Expertenangabe – keine verwertbare Information",
+    statement: `Die Eingabe '${shown}' enthält keine verwertbaren Fachinformationen. Eine strukturierte Wissensableitung ist auf Basis dieser Eingabe nicht möglich.`,
+    conditions: [
+      "Wenn die Experteneingabe ausschließlich aus nicht-informativen Zeichen oder Zahlen besteht",
+      "Wenn kein Domänenhinweis und kein beschreibender Text vorhanden sind",
+    ],
+    measures: [
+      "Experten zur erneuten Eingabe mit aussagekräftigem Freitext auffordern",
+      "Domänenhinweis und Kontextbeschreibung anfordern",
+      "Eingabe nicht als Wissensobjekt speichern",
+    ],
+    tags: [],
+    confidence: 0,
+    demo: true,
+  };
+}
+
 export class DeterministicProvider implements ReasonerProvider {
   readonly name = "deterministic";
 
@@ -334,7 +391,13 @@ export class DeterministicProvider implements ReasonerProvider {
     return true;
   }
 
-  async structure(rawText: string): Promise<StructureResult> {
+  async structure(rawText: string, locale: ReasonerLocale = "de"): Promise<StructureResult> {
+    // G-2 (Verhalten der Alt-App, Pedi-Review 02.07.2026): Unbrauchbare Eingaben werden
+    // NICHT brav in Felder gekippt, sondern ehrlich als "keine verwertbare Information"
+    // strukturiert — mit Geltungsbedingungen und klarem Vorgehen statt Fake-Entwurf.
+    if (isNonInformative(rawText)) {
+      return honestNonInformativeDraft(rawText, locale);
+    }
     const firstSentence = rawText.split(/[.!?]/)[0]?.trim() ?? rawText.trim();
     return {
       title: firstSentence,
