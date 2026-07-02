@@ -194,6 +194,64 @@ async function buildDemoContent(
     neededValidations: 2,
   });
 
+  // Pedi 02.07. (Positionierung, wie KWEB-105/107): KLARWERK spricht JEDE Organisation an —
+  // die Beta-Beispiele zeigen das ab dem ersten Blick. Vier zusätzliche Demo-KOs aus
+  // Pflege, Kanzlei/Beratung, Verein/NGO und Versicherung (frei erfundenes Beispielwissen,
+  // gleiche Mechanik: Tag + demoSeed-Merker, echte Services, purge-bar).
+  // Wortwahl bewusst OHNE Überschneidung zur Demo-Wissenslücken-Frage („Schichtwechsel…",
+  // s. u.): sonst fände der deterministische Reasoner eine Pseudo-Antwort und die
+  // Demo-Lücke entstünde nicht mehr (Seed-Test fängt das ab).
+  const koPflege = await ko.create({
+    demoSeed: true,
+    title: "Sturzprotokoll noch am selben Tag anlegen.",
+    statement:
+      "Stürzt ein Bewohner, das Sturzprotokoll sofort anlegen und die Pflegedienstleitung informieren — Erinnerungen am Folgetag sind unzuverlässig.",
+    type: "best_practice",
+    category: "Pflege & Gesundheit",
+    author: erikId,
+    tags: ["pflege", "dokumentation", "übergabe", DEMO_TAG],
+    conditions: ["Sturzereignis eines Bewohners"],
+    measures: ["Protokoll sofort anlegen", "PDL informieren"],
+    confidence: 70,
+    neededValidations: 2,
+  });
+  const koKanzlei = await ko.create({
+    demoSeed: true,
+    title: "Fristsachen doppelt eintragen: Akte UND zentraler Kalender.",
+    statement:
+      "Jede Frist wird sowohl in der Akte als auch im zentralen Fristenkalender notiert; nur der Kalender löst die Vorfrist eine Woche vorher aus.",
+    type: "best_practice",
+    category: "Kanzlei & Beratung",
+    author: adminId,
+    tags: ["frist", "kanzlei", "organisation", DEMO_TAG],
+    confidence: 75,
+    neededValidations: 2,
+  });
+  await ko.create({
+    demoSeed: true,
+    title: "Vereinsfest: Schankgenehmigung sechs Wochen vorher beantragen.",
+    statement:
+      "Die Gemeinde braucht den Antrag auf Schankgenehmigung spätestens sechs Wochen vor dem Fest — später wird es eng, weil der Ordnungsamts-Ausschuss nur monatlich tagt.",
+    type: "lernkurve",
+    category: "Verein & Ehrenamt",
+    author: erikId,
+    tags: ["verein", "veranstaltung", "genehmigung", DEMO_TAG],
+    confidence: 50,
+    neededValidations: 2,
+  });
+  await ko.create({
+    demoSeed: true,
+    title: "Wasserschaden: Erstmeldung ohne Gutachten sofort anlegen.",
+    statement:
+      "Bei gemeldetem Wasserschaden die Schadenakte sofort mit der Erstmeldung eröffnen und nicht auf das Gutachten warten — die Regressfrist läuft ab Meldung, nicht ab Gutachten.",
+    type: "negativwissen",
+    category: "Versicherung",
+    author: adminId,
+    tags: ["schaden", "frist", "regress", DEMO_TAG],
+    confidence: 60,
+    neededValidations: 2,
+  });
+
   // --- Validierung: koValid bekommt 2 grüne Bewertungen → Status „validiert" (echte Logik) ---
   await validation.rate(koValid.id, carlaId, "up");
   await validation.rate(koValid.id, adminId, "up");
@@ -205,6 +263,13 @@ async function buildDemoContent(
   // SCRUM-244: Teil-Review für einen mittleren Trust-Zustand — koWarm erhält eine grüne Bewertung
   // (1/2 nötig) → Trust ~50, bleibt „offen" (sichtbar „in Prüfung", echte Trust-Varianz).
   await validation.rate(koWarm.id, adminId, "up");
+
+  // Pedi 02.07.: auch ein NICHT-industrielles Beispiel ist von Anfang an „validiert" —
+  // die Breite zeigt sich in jedem Status, nicht nur in der offenen Liste.
+  await validation.rate(koPflege.id, carlaId, "up");
+  await validation.rate(koPflege.id, adminId, "up");
+  // Kanzlei-Frist in Prüfung (1/2), Verein/Versicherung bleiben offen — ehrliche Varianz.
+  await validation.rate(koKanzlei.id, carlaId, "up");
 
   // --- Offene Validierungsaufgabe: koOpen Carla zuweisen (erscheint im Board/MyTasks) ---
   await validation.assign(koOpen.id, [carlaId], adminId);

@@ -13,6 +13,20 @@ describe("SCRUM-156: seedDemo", () => {
     expect(r.kos).toBeGreaterThanOrEqual(5);
     // SCRUM-244: mindestens ZWEI validierte, output-fähige KOs.
     expect(r.validated).toBeGreaterThanOrEqual(2);
+
+    // Pedi 02.07. (Positionierung): die Beta-Beispiele decken JEDE Organisationsform ab —
+    // nicht nur Industrie. Kategorien vorhanden + ein validiertes nicht-industrielles Beispiel.
+    const seededKos = await services.ko.list();
+    const cats = new Set(seededKos.map((k) => k.category));
+    for (const c of [
+      "Pflege & Gesundheit",
+      "Kanzlei & Beratung",
+      "Verein & Ehrenamt",
+      "Versicherung",
+    ]) {
+      expect(cats.has(c)).toBe(true);
+    }
+    expect(seededKos.find((k) => k.category === "Pflege & Gesundheit")?.status).toBe("validiert");
     expect(r.gaps).toBeGreaterThanOrEqual(1); // mindestens eine Wissenslücke
 
     // Stage-1 Produktnähe: die Wissenslücke ist eine industrielle Betriebsfrage,
