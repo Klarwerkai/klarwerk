@@ -51,4 +51,12 @@ export const CAPTURE_WIZARD_TEXT = {
   pageTitle: "capture.wizard.pageTitle",
   titleLabel: "capture.wizard.titleLabel",
   structData: "capture.wizard.structData",
+  // Runde 5 (Pedi): Verwerfen auf der Wissensseite + Upload direkt beim Erzählen.
+  discard: "capture.wizard.discard",
+  discardQ: "capture.wizard.discardQ",
+  discardKeep: "capture.wizard.discardKeep",
+  discardYes: "capture.wizard.discardYes",
+  discardDone: "capture.wizard.discardDone",
+  upload: "capture.wizard.upload",
+  uploadCount: "capture.wizard.uploadCount",
 } as const;

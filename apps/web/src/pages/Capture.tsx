@@ -170,6 +170,7 @@ export function Capture(): JSX.Element {
   // außerhalb des Wizards (klassische Zwei-Spalten-Ansicht, bewusst gewählt).
   const [wizStepRaw, setWizStep] = useState<CaptureWizardStep>("tell");
   const [showCondMeasures, setShowCondMeasures] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [showHelpers, setShowHelpers] = useState(false);
   // KW-STR / SCRUM-45/46/48: WYSIWYG-Body (sanitisiertes HTML), separat vom Reasoner-Draft.
   const [bodyHtml, setBodyHtml] = useState("");
@@ -979,6 +980,26 @@ export function Capture(): JSX.Element {
                   placeholder={t("capture.rawPlaceholder")}
                   className={textareaCls}
                 />
+                {/* Pedi 02.07. (Runde 5): Upload direkt beim Erzählen — Text aus Dokumenten (PDF/Word/
+                    Text) fließt sofort in den Freitext, Bilder/Videos werden Anhang (PMO-FEA-0006-Anschluss). */}
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
+                    <Paperclip size={14} />
+                    {t(CAPTURE_WIZARD_TEXT.upload)}
+                    <input
+                      type="file"
+                      multiple
+                      accept=".txt,.md,.markdown,.csv,.log,.json,.docx,.pdf,application/pdf,image/*,video/*,audio/*"
+                      className="hidden"
+                      onChange={(e) => void onDocs(e)}
+                    />
+                  </label>
+                  {images.length + docs.length > 0 ? (
+                    <span className="text-[11.5px] text-muted-2">
+                      {t(CAPTURE_WIZARD_TEXT.uploadCount, { count: images.length + docs.length })}
+                    </span>
+                  ) : null}
+                </div>
                 {/* SCRUM-312: sichtbare KI-Nachbearbeitung mit Vorschau + bewusster Übernahme.
                   SCRUM-384: im Wizard erst auf der Wissensseite (EINE KI-Palette je Schritt);
                   im Expertenmodus wie gehabt direkt am Rohtext. */}
@@ -1718,11 +1739,45 @@ export function Capture(): JSX.Element {
               <p className="text-[11.5px] leading-relaxed text-muted">
                 {t(CAPTURE_FLOW_TEXT.submitValue)}
               </p>
+              {/* Pedi 02.07. (Runde 5): Verwerfen wie im ARGUS-Original — mit Inline-Bestätigung
+                  (kein confirm()); der Erzähltext bleibt erhalten, nur der Entwurf geht. */}
+              {confirmDiscard ? (
+                <div className="flex flex-wrap items-center gap-2 rounded-card border border-trust-warn-fill/40 bg-trust-warn-bg p-2.5">
+                  <span className="flex-1 text-[12.5px] font-semibold text-trust-warn-text">
+                    {t(CAPTURE_WIZARD_TEXT.discardQ)}
+                  </span>
+                  <Button variant="ghost" onClick={() => setConfirmDiscard(false)}>
+                    {t(CAPTURE_WIZARD_TEXT.discardKeep)}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setDraft(null);
+                      setBodyHtml("");
+                      setStudioApplied(false);
+                      setConfirmDiscard(false);
+                      setShowCondMeasures(false);
+                      setShowHelpers(false);
+                      setWizStep("tell");
+                      setNotice(t(CAPTURE_WIZARD_TEXT.discardDone));
+                    }}
+                  >
+                    {t(CAPTURE_WIZARD_TEXT.discardYes)}
+                  </Button>
+                </div>
+              ) : null}
               <div className="flex flex-wrap gap-2">
                 <Button variant="ghost" disabled={busy} onClick={() => saveDraft.mutate()}>
                   <Save size={15} />
                   {t("capture.saveDraft")}
                 </Button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmDiscard(true)}
+                  className="rounded-btn px-3 py-2 text-[12.5px] font-semibold text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
+                >
+                  {t(CAPTURE_WIZARD_TEXT.discard)}
+                </button>
                 <Button
                   variant="primary"
                   className="flex-1"

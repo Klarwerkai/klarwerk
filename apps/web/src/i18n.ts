@@ -301,6 +301,14 @@ const de = {
     "Beim ersten Besuch offen — danach hier eingeklappt und jederzeit aufklappbar.",
   "capture.wizard.titleLabel": "Titel",
   "capture.wizard.structData": "Kernaussage, Bedingungen & Maßnahmen",
+  "capture.wizard.discard": "Verwerfen",
+  "capture.wizard.discardQ": "Entwurf wirklich verwerfen? Dein Erzähltext bleibt erhalten.",
+  "capture.wizard.discardKeep": "Behalten",
+  "capture.wizard.discardYes": "Ja, verwerfen",
+  "capture.wizard.discardDone": "Entwurf verworfen — dein Erzähltext ist noch da.",
+  "capture.wizard.upload": "Dateien oder Bilder hinzufügen",
+  "capture.wizard.uploadCount":
+    "{{count}} Anhang/Anhänge dabei — Text aus Dokumenten steht schon oben im Feld, Details unter „Erweiterte Details“.",
   "capture.gapContextTitle": "Aus offener Wissenslücke",
   "capture.gapContextBody":
     "Das ist eine offene Frage, noch kein Wissen — sie dient nur als Startkontext. Ergänze deine Erfahrung/Beobachtung; die KI strukturiert daraus einen Entwurf, du prüfst und reichst ein.",
@@ -2006,6 +2014,14 @@ const en: typeof de = {
     "Open on your first visit — collapsed here afterwards, expandable anytime.",
   "capture.wizard.titleLabel": "Title",
   "capture.wizard.structData": "Core statement, conditions & measures",
+  "capture.wizard.discard": "Discard",
+  "capture.wizard.discardQ": "Really discard this draft? Your narrated text is kept.",
+  "capture.wizard.discardKeep": "Keep",
+  "capture.wizard.discardYes": "Yes, discard",
+  "capture.wizard.discardDone": "Draft discarded — your narrated text is still there.",
+  "capture.wizard.upload": "Add files or images",
+  "capture.wizard.uploadCount":
+    "{{count}} attachment(s) added — text from documents is already in the field above; details under “Advanced details”.",
   "capture.gapContextTitle": "From an open knowledge gap",
   "capture.gapContextBody":
     "This is an open question, not knowledge yet — it only serves as a starting context. Add your experience/observation; the AI structures it into a draft, you review and submit.",
