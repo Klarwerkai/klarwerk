@@ -296,6 +296,9 @@ const de = {
   "capture.wizard.helpersHint": "Optionale Unterstützung — nichts davon ist Pflicht.",
   "capture.wizard.docLabel": "Deine Wissensseite",
   "capture.wizard.pageTitle": "Wissensseite bearbeiten",
+  "start.orientation.title": "Orientierung: So liest du Klarwerk & der Demo-Pfad",
+  "start.orientation.hint":
+    "Beim ersten Besuch offen — danach hier eingeklappt und jederzeit aufklappbar.",
   "capture.wizard.titleLabel": "Titel",
   "capture.wizard.structData": "Kernaussage, Bedingungen & Maßnahmen",
   "capture.gapContextTitle": "Aus offener Wissenslücke",
@@ -1998,6 +2001,9 @@ const en: typeof de = {
   "capture.wizard.helpersHint": "Optional support — none of this is mandatory.",
   "capture.wizard.docLabel": "Your knowledge page",
   "capture.wizard.pageTitle": "Edit knowledge page",
+  "start.orientation.title": "Orientation: how to read Klarwerk & the demo path",
+  "start.orientation.hint":
+    "Open on your first visit — collapsed here afterwards, expandable anytime.",
   "capture.wizard.titleLabel": "Title",
   "capture.wizard.structData": "Core statement, conditions & measures",
   "capture.gapContextTitle": "From an open knowledge gap",

@@ -946,26 +946,9 @@ export function Capture(): JSX.Element {
       >
         {expertView || wizStep === "tell" ? (
           <Card className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <Field label={t("capture.author")}>
-                <div className="flex h-10 items-center rounded-input border border-hairline bg-page px-3 text-sm text-muted">
-                  {authorName}
-                </div>
-              </Field>
-              <Field label={t("capture.fType")}>
-                <select
-                  value={type}
-                  onChange={(e) => setType(e.target.value as KnowledgeType)}
-                  className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
-                >
-                  {KNOWLEDGE_TYPES.map((k) => (
-                    <option key={k} value={k}>
-                      {t(`ktype.${k}`)}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </div>
+            {/* Aufräum-Pass 02.07. (Pedi): Autor/Wissensart aus dem Kopf in „Erweiterte Details" —
+                Schritt 1 ist nur noch Erzählen + ein Knopf. Autor ist ohnehin read-only, die
+                Wissensart bleibt in den Details jederzeit änderbar. */}
 
             {/* Modus-spezifische Eingabe */}
             {mode === "freitext" || mode === "diktat" ? (
@@ -1094,8 +1077,26 @@ export function Capture(): JSX.Element {
 
             {showAdvanced ? (
               <>
-                {/* Metadaten */}
+                {/* Metadaten (Autor/Wissensart hier seit Aufräum-Pass 02.07.) */}
                 <div className="grid grid-cols-2 gap-3">
+                  <Field label={t("capture.author")}>
+                    <div className="flex h-10 items-center rounded-input border border-hairline bg-page px-3 text-sm text-muted">
+                      {authorName}
+                    </div>
+                  </Field>
+                  <Field label={t("capture.fType")}>
+                    <select
+                      value={type}
+                      onChange={(e) => setType(e.target.value as KnowledgeType)}
+                      className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
+                    >
+                      {KNOWLEDGE_TYPES.map((k) => (
+                        <option key={k} value={k}>
+                          {t(`ktype.${k}`)}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
                   <Field
                     label={
                       <span className="inline-flex items-center gap-1">

@@ -1,4 +1,5 @@
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, ChevronDown } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import {
@@ -19,6 +20,11 @@ import { KNOWLEDGE_CYCLE } from "../lib/knowledgeCycle";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { missionsForRole } from "../lib/missions";
 import { PROOF_CHAIN } from "../lib/proofChain";
+import {
+  START_ORIENTATION_TEXT,
+  isStartOrientationFirstRun,
+  markStartOrientationSeen,
+} from "../lib/startOrientation";
 import { stufe2FeatureLabelKeys, stufe2HintKind } from "../lib/stufe2Hint";
 import { knowledgeOsPhase, phaseLabelKey } from "../lib/taskAction";
 import {
@@ -93,6 +99,13 @@ export function Start(): JSX.Element {
   // SCRUM-271: bester nächster Einstieg aus der vorhandenen Übersicht (null bei Leerzustand).
   const focus = primaryWorkItem(overview);
   const guide = knowledgeGuidance("start");
+  // Aufräum-Pass 02.07.: Erklär-Blöcke nur beim Erstbesuch offen — danach ruhige Startseite.
+  const [showOrientation, setShowOrientation] = useState(() =>
+    isStartOrientationFirstRun(window.localStorage),
+  );
+  useEffect(() => {
+    markStartOrientationSeen(window.localStorage);
+  }, []);
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -137,77 +150,115 @@ export function Start(): JSX.Element {
           ))}
         </div>
       </div>
-      {/* SCRUM-289: Pilot-Führung — gesichertes Wissen vs. Review-Arbeit vs. Ask erklären. */}
+      {/* Aufräum-Pass 02.07. (Pedi): „So liest du Klarwerk" (SCRUM-289) + Demo-/Pilotpfad
+          (SCRUM-290/301) gebündelt in EINER einklappbaren Orientierungs-Karte — Erstbesuch
+          offen, danach zu. Inhalte unverändert, nur Dichte reduziert. */}
       <Card className="mb-5">
-        <div className="mb-3">
-          <h2 className="text-[15px] font-semibold text-ink">{t(guide.titleKey)}</h2>
-          <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{t(guide.bodyKey)}</p>
-        </div>
-        <div className="grid gap-2 sm:grid-cols-3">
-          {guide.items.map((item) => (
-            <Link
-              key={item.id}
-              to={item.to}
-              className="rounded-card border border-hairline bg-surface p-3 transition hover:border-ink/30"
-            >
-              <span
-                className={`rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${GUIDE_TONE[item.tone]}`}
-              >
-                {t(item.labelKey)}
-              </span>
-              <p className="mt-2 text-[12.5px] leading-relaxed text-muted">{t(item.bodyKey)}</p>
-            </Link>
-          ))}
-        </div>
-      </Card>
-      {/* SCRUM-290: konkreter Stage-1 Demo-/Pilotpfad — Start → Ask → Library/KO-Detail → Validation,
+        <button
+          type="button"
+          aria-expanded={showOrientation}
+          onClick={() => setShowOrientation((s) => !s)}
+          className="flex w-full items-center justify-between gap-2 text-left"
+        >
+          <span>
+            <span className="text-[15px] font-semibold text-ink">
+              {t(START_ORIENTATION_TEXT.title)}
+            </span>
+            <span className="mt-0.5 block text-[12.5px] leading-relaxed text-muted">
+              {t(START_ORIENTATION_TEXT.hint)}
+            </span>
+          </span>
+          <ChevronDown
+            size={16}
+            className={`shrink-0 text-muted-2 transition-transform ${showOrientation ? "rotate-180" : ""}`}
+          />
+        </button>
+        {showOrientation ? (
+          <div className="mt-4 space-y-5">
+            {/* SCRUM-289: Pilot-Führung — gesichertes Wissen vs. Review-Arbeit vs. Ask erklären. */}
+            <div>
+              <div className="mb-3">
+                <h2 className="text-[15px] font-semibold text-ink">{t(guide.titleKey)}</h2>
+                <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
+                  {t(guide.bodyKey)}
+                </p>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {guide.items.map((item) => (
+                  <Link
+                    key={item.id}
+                    to={item.to}
+                    className="rounded-card border border-hairline bg-surface p-3 transition hover:border-ink/30"
+                  >
+                    <span
+                      className={`rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${GUIDE_TONE[item.tone]}`}
+                    >
+                      {t(item.labelKey)}
+                    </span>
+                    <p className="mt-2 text-[12.5px] leading-relaxed text-muted">
+                      {t(item.bodyKey)}
+                    </p>
+                  </Link>
+                ))}
+              </div>
+            </div>
+            {/* SCRUM-290: konkreter Stage-1 Demo-/Pilotpfad — Start → Ask → Library/KO-Detail → Validation,
           nur vorhandene Routen, demo-sichere Frage. Zeigt: quellengebunden fragen → Quelle/Trust/
           Status/Version sehen → ungeprüftes Wissen zur Validierung (kein Chatbot). */}
-      <Card className="mb-5 border-dashed">
-        <div className="mb-3">
-          <h2 className="text-[15px] font-semibold text-ink">{t("demo.title")}</h2>
-          <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{t("demo.subtitle")}</p>
-          {/* SCRUM-301: sichtbare Pilot-Beweiskette — Start verspricht „finden → Nutzbarkeit erkennen →
+            <div className="border-t border-hairline pt-4">
+              <div className="mb-3">
+                <h2 className="text-[15px] font-semibold text-ink">{t("demo.title")}</h2>
+                <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
+                  {t("demo.subtitle")}
+                </p>
+                {/* SCRUM-301: sichtbare Pilot-Beweiskette — Start verspricht „finden → Nutzbarkeit erkennen →
               Quelle/Trust/Version prüfen"; Library/KO-Detail lösen sie mit denselben Begriffen ein. */}
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
-              {t("demo.proof.label")}
-            </span>
-            {PROOF_CHAIN.map((beat) => (
-              <span key={beat.id} className="flex items-center gap-1.5">
-                {beat.n > 1 ? <span className="text-muted-2">→</span> : null}
-                <span className="rounded-pill bg-page px-2 py-0.5 text-[11px] font-medium text-text">
-                  {t(beat.labelKey)}
-                </span>
-              </span>
-            ))}
-          </div>
-        </div>
-        <ol className="grid gap-2 sm:grid-cols-3">
-          {DEMO_PILOT_PATH.map((step) => (
-            <li key={step.id}>
-              <Link
-                to={step.to}
-                className="group block h-full rounded-card border border-hairline bg-surface p-3 transition hover:border-ink/30"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-ink font-mono text-[10px] font-semibold text-white">
-                    {step.n}
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                    {t("demo.proof.label")}
                   </span>
-                  <span className="text-[13.5px] font-semibold text-ink">{t(step.labelKey)}</span>
+                  {PROOF_CHAIN.map((beat) => (
+                    <span key={beat.id} className="flex items-center gap-1.5">
+                      {beat.n > 1 ? <span className="text-muted-2">→</span> : null}
+                      <span className="rounded-pill bg-page px-2 py-0.5 text-[11px] font-medium text-text">
+                        {t(beat.labelKey)}
+                      </span>
+                    </span>
+                  ))}
                 </div>
-                <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">{t(step.descKey)}</p>
+              </div>
+              <ol className="grid gap-2 sm:grid-cols-3">
+                {DEMO_PILOT_PATH.map((step) => (
+                  <li key={step.id}>
+                    <Link
+                      to={step.to}
+                      className="group block h-full rounded-card border border-hairline bg-surface p-3 transition hover:border-ink/30"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-ink font-mono text-[10px] font-semibold text-white">
+                          {step.n}
+                        </span>
+                        <span className="text-[13.5px] font-semibold text-ink">
+                          {t(step.labelKey)}
+                        </span>
+                      </div>
+                      <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">
+                        {t(step.descKey)}
+                      </p>
+                    </Link>
+                  </li>
+                ))}
+              </ol>
+              {/* SCRUM-296: aktiver Erfassungsfluss als Einstieg — Capture → Validation → Use. */}
+              <Link
+                to={captureDemoHref()}
+                className="mt-3 inline-flex items-center gap-1 text-[12.5px] font-semibold text-brand hover:underline"
+              >
+                {t("demo.captureEntry")} <ArrowRight size={13} />
               </Link>
-            </li>
-          ))}
-        </ol>
-        {/* SCRUM-296: aktiver Erfassungsfluss als Einstieg — Capture → Validation → Use. */}
-        <Link
-          to={captureDemoHref()}
-          className="mt-3 inline-flex items-center gap-1 text-[12.5px] font-semibold text-brand hover:underline"
-        >
-          {t("demo.captureEntry")} <ArrowRight size={13} />
-        </Link>
+            </div>
+          </div>
+        ) : null}
       </Card>
       {missions.length > 0 ? (
         <div className="mb-5">
