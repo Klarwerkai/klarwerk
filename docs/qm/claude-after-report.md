@@ -10132,3 +10132,14 @@ git push
 **Wichtige Diagnose:** Interview-Flachheit = ungültiger Anthropic-Key (wie PMO-401) → deterministische Generik-Fragen. Mit gültigem Key stellt das Modell aufbauende Fragen. Key einmal neu hinterlegen (App-Start-Dialog bzw. Schlüsselbund KLARWERK-App-Anthropic) ist Voraussetzung, BEVOR die Interview-Qualität beurteilt werden kann.
 **Triage der großen Punkte (Jira aktuell nicht erreichbar — Tickets nachziehen!):** (T1) „Verhörer-Interview": themengetriebenes Nachbohren (KI holt sich Kontext zum Thema, fragt gezielt nach Grenzwerten/Ausnahmen/Warum), schriftlich UND per Sprache; Prompt je KI-Funktion im Admin verwaltbar (KI-unterstützt editieren) — verbindet SCRUM-386 + KI-Verwaltung Voll-Ausbau. (T2) Admin-Untergliederung in Bereiche (Konten · KI · Daten) — nötig, Admin wächst. (T3) Prüfer-Zuweisung beim Einreichen + Standard-Prüferanzahl als Admin-Einstellung (neededValidations existiert je KO; Zuweisungs-UI beim Submit + Admin-Default fehlen).
 **Nächster Schritt:** Pedi: App doppelklicken (v0.9.10) → Diktat + Verwerfen prüfen; KEY neu eingeben; danach Interview erneut bewerten. Tickets T1–T3 lege ich an, sobald Jira wieder antwortet.
+
+---
+
+## After-Report — 2026-07-02 · Demodaten vollständig entfernbar (v0.9.11-beta)
+
+**Anlass:** Pedi: „Demodaten müssen komplett löschbar sein, selbst wenn Tester sie verändert haben — Merker + Markierung in der Bibliothek + Entfernen im Admin."
+**Vorgefunden:** Markierung existierte bereits tag-basiert (SCRUM-308–311: DEMO-Badge, Herkunftsfilter, Deep-Links) — aber der Tag ist editierbar, und es gab KEINEN Lösch-Pfad.
+**Änderung (Commit 3906e74):** (1) Robuster Feld-Merker `demoSeed` am KnowledgeObject — vom Seed gesetzt, überlebt revise (Spread) und Tag-Entfernung; migrationfrei (kos.data ist JSON). Öffentliche Create-Route kann ihn NICHT setzen (nur Seed). (2) `purgeDemoSeed()`: entfernt alle KOs mit Feld ODER Tag über die echten Services (Audit ehrlich: ko.deleted je Objekt), löst abhängige Konflikte auf; Demo-NUTZER bleiben bewusst (könnten echte Beiträge haben), Lücken bleiben als ehrliche offene Fragen. (3) `DELETE /api/admin/demo-seed` (users.manage) + Guard-Matrix-Eintrag. (4) Admin-Karte: „Demodaten entfernen" mit Inline-Bestätigung + Zähler-Erfolgsmeldung. (5) FE-Erkennung (Badge/Filter Bibliothek+Validierung+Ask) akzeptiert Feld ODER Tag. (6) Neuer Test: Seed → Tester-Bearbeitung → Purge = 0 Demo-Reste.
+**Gates:** Build/Biome/depcruise grün, **1241 Tests / 205 Dateien**, UI-Smoke 4/4, dist v0.9.11 eingespielt.
+**Hinweis:** Bestehende, VOR diesem Stand geseedete Demo-KOs tragen nur den Tag — der Purge erfasst sie trotzdem (Tag-Pfad). Jira weiterhin nicht erreichbar — Ticket zusammen mit T1–T3 nachziehen.
+**Nächster Schritt:** Pedi: App (v0.9.11) → Admin → „Demodaten entfernen" testen; Bibliothek zeigt DEMO-Badges wie gehabt.
