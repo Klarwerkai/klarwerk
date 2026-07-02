@@ -17,6 +17,18 @@ export function lifecycleRoutes(lifecycle: LifecycleService, guards: Guards): Fa
       },
     );
 
+    // Audit B1 (Pedi 02.07.): gekoppelte Anlagen eines KOs lesen — fürs KO-Detail.
+    app.get<{ Params: { koId: string } }>(
+      "/api/lifecycle/couplings/:koId",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        reply.code(200).send(await lifecycle.couplingsForKo(request.params.koId));
+      },
+    );
+
     app.post<{ Body: { assetRef: string } }>(
       "/api/lifecycle/asset-changed",
       async (request, reply) => {

@@ -25,6 +25,11 @@ export class LifecycleService {
     await this.repo.addCoupling(assetRef, koId);
   }
 
+  // FR-LIF-01 / Audit B1: gekoppelte Anlagen eines KOs (fürs KO-Detail sichtbar machen).
+  couplingsForKo(koId: string): Promise<string[]> {
+    return this.repo.couplingsForKo(koId);
+  }
+
   // FR-LIF-01: Anlagenänderung markiert gekoppelte KOs „Stimmt das noch?".
   async assetChanged(assetRef: string): Promise<string[]> {
     const koIds = await this.repo.couplingsFor(assetRef);

@@ -42,6 +42,14 @@ export class PgLifecycleRepo implements LifecycleRepo {
     return res.rows.map((row) => row.ko_id);
   }
 
+  async couplingsForKo(koId: string): Promise<string[]> {
+    const res = await this.pool.query<{ asset_ref: string }>(
+      "SELECT asset_ref FROM lifecycle_couplings WHERE ko_id=$1",
+      [koId],
+    );
+    return res.rows.map((r) => r.asset_ref);
+  }
+
   async markPending(koId: string): Promise<void> {
     await this.pool.query(
       "INSERT INTO lifecycle_pending(ko_id) VALUES($1) ON CONFLICT DO NOTHING",

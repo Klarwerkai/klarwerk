@@ -224,6 +224,7 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/lifecycle/couple": { protection: "ko.create" },
   "POST /api/lifecycle/asset-changed": { protection: "ko.validate" },
   "GET /api/lifecycle/pending": { protection: "ko.read" },
+  "GET /api/lifecycle/couplings/:koId": { protection: "ko.read" },
   "POST /api/learning-paths": { protection: "ko.create" },
   "GET /api/learning-paths/:role": { protection: "ko.read" },
   "POST /api/learning-paths/:pathId/complete": { protection: "ko.read" },

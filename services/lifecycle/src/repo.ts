@@ -4,6 +4,8 @@ import type { LearningPath } from "./types";
 export interface LifecycleRepo {
   addCoupling(assetRef: string, koId: string): Promise<void>;
   couplingsFor(assetRef: string): Promise<string[]>;
+  // FR-LIF-01 / Audit B1 (02.07.2026): Rück-Richtung fürs KO-Detail — welche Anlagen sind gekoppelt?
+  couplingsForKo(koId: string): Promise<string[]>;
   markPending(koId: string): Promise<void>;
   clearPending(koId: string): Promise<void>;
   pending(): Promise<string[]>;
@@ -28,6 +30,16 @@ export class InMemoryLifecycleRepo implements LifecycleRepo {
 
   couplingsFor(assetRef: string): Promise<string[]> {
     return Promise.resolve([...(this.couplings.get(assetRef) ?? [])]);
+  }
+
+  couplingsForKo(koId: string): Promise<string[]> {
+    const assets: string[] = [];
+    for (const [assetRef, koIds] of this.couplings) {
+      if (koIds.has(koId)) {
+        assets.push(assetRef);
+      }
+    }
+    return Promise.resolve(assets);
   }
 
   markPending(koId: string): Promise<void> {

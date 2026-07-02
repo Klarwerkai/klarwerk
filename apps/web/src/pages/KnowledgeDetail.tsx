@@ -1,5 +1,5 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Paperclip, Pencil, Sparkles, X } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link2, Paperclip, Pencil, Sparkles, X } from "lucide-react";
 import { type ChangeEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useParams, useSearchParams } from "react-router-dom";
@@ -24,6 +24,7 @@ import { DemoBanner } from "../components/DemoBanner";
 import { EditorAttachmentContext } from "../components/EditorAttachmentContext";
 import { EditorContentQuality } from "../components/EditorContentQuality";
 import { EditorGuidance } from "../components/EditorGuidance";
+import { HelpTip } from "../components/HelpTip";
 import { KnowledgeInputStudio } from "../components/KnowledgeInputStudio";
 import { KoRevisionSummary } from "../components/KoRevisionSummary";
 import { RichTextEditor } from "../components/RichTextEditor";
@@ -246,6 +247,23 @@ export function KnowledgeDetail(): JSX.Element {
       invalidate();
       setNewAuthor("");
       push("success", t("ko.transferDone"));
+    },
+    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
+  });
+
+  // Audit B1 (Pedi 02.07.): Anlagen-Kopplung — gekoppelte Anlagen lesen + neue Kopplung setzen.
+  // Erst damit trifft „Anlage geändert" (Lebenszyklus) gezielt die richtigen Wissensobjekte.
+  const [coupleAsset, setCoupleAsset] = useState("");
+  const couplings = useQuery({
+    queryKey: ["couplings", id],
+    queryFn: () => endpoints.lifecycle.couplingsFor(id),
+  });
+  const couple = useMutation({
+    mutationFn: (assetRef: string) => endpoints.lifecycle.couple(assetRef, id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["couplings", id] });
+      setCoupleAsset("");
+      push("success", t("ko.couple.done"));
     },
     onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
   });
@@ -1305,6 +1323,49 @@ export function KnowledgeDetail(): JSX.Element {
                             {t("ko.transfer")}
                           </Button>
                         </div>
+                      </div>
+                    ) : null}
+                  </Card>
+
+                  {/* Audit B1 (Pedi 02.07.): Anlagen-Kopplung — ruhige Karte, ?-Hilfe statt Textwand. */}
+                  <Card>
+                    <div className="flex items-center gap-1.5">
+                      <SectionLabel>{t("ko.couple.title")}</SectionLabel>
+                      <HelpTip title={t("ko.couple.title")} body={t("ko.couple.help")} />
+                    </div>
+                    {couplings.data && couplings.data.length > 0 ? (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {couplings.data.map((a) => (
+                          <span
+                            key={a}
+                            className="inline-flex items-center gap-1 rounded-pill bg-page px-2.5 py-1 text-[12px] font-medium text-text"
+                          >
+                            <Link2 size={12} className="text-muted-2" />
+                            {a}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-1.5 text-[12px] text-muted-2">{t("ko.couple.empty")}</p>
+                    )}
+                    {role !== "viewer" ? (
+                      <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-hairline pt-2.5">
+                        <TextInput
+                          value={coupleAsset}
+                          onChange={(e) => setCoupleAsset(e.target.value)}
+                          placeholder={ko.asset ? ko.asset : t("ko.couple.placeholder")}
+                          className="h-9 min-w-[10rem] flex-1"
+                        />
+                        <Button
+                          variant="ghost"
+                          disabled={couple.isPending || !(coupleAsset.trim() || ko.asset?.trim())}
+                          onClick={() =>
+                            couple.mutate((coupleAsset.trim() || ko.asset || "").trim())
+                          }
+                        >
+                          <Link2 size={14} />
+                          {t("ko.couple.cta")}
+                        </Button>
                       </div>
                     ) : null}
                   </Card>

@@ -178,6 +178,10 @@ export const endpoints = {
   },
   lifecycle: {
     pending: () => api.get<string[]>("/lifecycle/pending"),
+    // Audit B1 (02.07.2026): Anlagen-Kopplung im KO-Detail — koppeln + gekoppelte Anlagen lesen.
+    couple: (assetRef: string, koId: string) =>
+      api.post<void>("/lifecycle/couple", { assetRef, koId }),
+    couplingsFor: (koId: string) => api.get<string[]>(`/lifecycle/couplings/${koId}`),
     // SCRUM-146: vorhandener Asset-Change-Pfad → markiert gekoppelte KOs als „prüfen".
     assetChanged: (assetRef: string) =>
       api.post<string[]>("/lifecycle/asset-changed", { assetRef }),

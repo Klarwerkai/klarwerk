@@ -34,6 +34,18 @@ describe("LifecycleService", () => {
     expect(await ctx.lifecycle.pendingRevalidation()).not.toContain(ctx.ko.id);
   });
 
+  it("Audit B1: couplingsForKo liefert die gekoppelten Anlagen eines KOs (Rück-Richtung)", async () => {
+    expect(await ctx.lifecycle.couplingsForKo(ctx.ko.id)).toEqual([]);
+    await ctx.lifecycle.couple("anlage-1", ctx.ko.id);
+    await ctx.lifecycle.couple("anlage-2", ctx.ko.id);
+    expect((await ctx.lifecycle.couplingsForKo(ctx.ko.id)).sort()).toEqual([
+      "anlage-1",
+      "anlage-2",
+    ]);
+    // Fremdes KO bleibt unberührt.
+    expect(await ctx.lifecycle.couplingsForKo("gibt-es-nicht")).toEqual([]);
+  });
+
   it("FR-LIF-02: Autor-Übergabe ändert Autor, Originalautor bleibt", async () => {
     const updated = await ctx.lifecycle.transferAuthor(ctx.ko.id, "bob");
     expect(updated.author).toBe("bob");
