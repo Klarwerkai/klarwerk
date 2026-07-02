@@ -10063,3 +10063,24 @@ git push
 **Risiko:** gering — Datenregel unverändert erzwungen (422 bei Verstoß), nur lokale Marker-Daten; Team 3 bleibt auf STOPP (kein Pilotstart, kein Server-Deploy).
 **Git-Status:** klarwerk-business-backend 25dbe92 lokal — **kein Push** (KLARWERK Sync durch Pedi).
 **Nächster Schritt:** Pedi: „KLARWERK Ops" doppelklicken → Dialog „Ops-Cockpit v0.2.0" → Überblick prüfen; wenn gut: SR-1 abhaken = erstes Server-Reife-Kriterium erfüllt. STOPP.
+
+## After-Report — 2026-07-02 · Team 6: Review-Nachtrag PMO-FEA-0007 + Statusnachführung (KGURU-32)
+
+**Datum:** 2026-07-02 (nachmittags) · **Ticket:** KGURU-32 ✅Done (angelegt, In Progress, Done mit Ergebnis-Kommentar)
+**Änderung:** Delta-Slice zum Vormittags-Review KGURU-31 (`dc23d12`). (1) **17. Pedi-Eintrag PMO-FEA-0007** „In-Place-Übersetzung von Beiträgen/Kommentaren/Bemerkungen (ohne Original-Überschreibung)" reviewt → **accept** als **T1-I18N-001 (team-1, P3, recognized)**; Einordnung: abgegrenzt vom geplanten UI-DE/EN-Umschalter (Konzept §13/FR-I18N = Oberflächensprache; FEA-0007 = Inhalts-Übersetzung on-demand, Original bleibt — konsistent mit „nie still überschreiben"); Backend intern = **T2-LLM-004-Pfad** (Team 2 pausiert, non-beta-blocking → P3 plausibel), extern (DeepL/Google) = Datenfluss-/DSGVO-Frage (Konzept §8, T6-KGURU-011, D-010-Strang); offen: Dienst, DSGVO-Freigabe, Zielsprache, UI-Konzept. (2) **Statusnachführung:** T1-UX-001 (PMO-UX-0001) in_progress mit SCRUM-384 **Runden 1–4** @`3855278`/`cca40cc`/`8fe447f`/`2e0d783` (v0.9.4-beta; **Sichtabnahme Pedi läuft**, danach EK-20); T7-PMO-008 (PMO-FEA-0005) done bestätigt (pmo-items.json `done` + Austrag aus Review-Queue; PMO bewusst ohne Git); T3-OPS-009 (PMO-REQ-0001) done unverändert @`01c5e29`. (3) Register: Review-Doc §2a Nachtrag (Bilanz 17 = **15 accept / 2 merge / 0 reject**), Master Scope MD+JSON **106→107**, D-046 Arbeitsnachweis, TEAM6_UPDATE, Pool-Index.
+**Getestet/Verifiziert:** Queue-Freshness: `exports/team6/team6-review-queue-latest.json` = `data/team6-review-queue.json` (generated_at 2026-07-02T10:00Z identisch; kein veralteter Export) — beide read-only · Beleg-Commits per git log read-only verifiziert (dev_Klarwerk cca40cc/8fe447f/2e0d783) · JSON-Konsistenz-Skript grün (107 eindeutige IDs, Summen, Pflichtfelder, Areas; MD-Tabelle 107 Zeilen deckungsgleich).
+**Nicht ausführbare Checks + Grund:** kein Laufzeit-Test SCRUM-384 (Team 6 read-only; Sichtabnahme = Pedi); T7-PMO-008 ohne Commit-Beleg (PMO per Design ohne Git).
+**Risiko:** gering — nur Team-6-Doku/Daten; Team-7-Ordner (exports + data) ausschließlich gelesen; keine neuen Registervarianten; keine Kundendaten/Secrets.
+**Git-Status:** klarwerk-knowledge-guru `b81d88b` [ahead 3: 2475d72 + dc23d12 + b81d88b], **kein Push** — „KLARWERK Sync" durch Pedi. dev_Klarwerk: nur dieser Report.
+**Nächster Schritt:** Pedi: **EK-19 ankreuzen** (`docs/EK19_ENTSCHEIDUNGSVORLAGE.md`, seit KGURU-31 offen), SCRUM-384-Sichtabnahme abschließen, danach „KLARWERK Sync". STOPP.
+
+---
+
+## After-Report — 2026-07-02 · KWEB-105: Use-Cases für alle Professionen
+
+**Datum:** 2026-07-02 · **Ticket:** KWEB-105 (neu, Done) · **Anlass:** Pedi: „Anwendungsbeispiele sind alle nur technisch — diese Software kann in allen Professionen eingesetzt werden."
+**Änderung (klarwerk-public-website, Commit a909818):** Neue Sektion „Alle Professionen" auf /use-cases (DE+EN): 8 Berufswelten-Karten (Handwerk · Pflege & Gesundheit · Kanzlei & Beratung · Küche & Gastgewerbe · Landwirtschaft · Bildung & Ausbildung · Verwaltung & Kommunen · Agenturen & Dienstleister) — je eine Mini-Geschichte im Vermächtnis-Framing („Der Altgeselle geht in Rente …") plus ein frei erfundenes Beispiel-Wissensobjekt als Zitat, damit man SIEHT, wie Alltagswissen aussieht. Kennzeichnung „Beispielwissen, frei erfunden". 5 neue Line-Icons im Design-Brief-Stil. Die 6 Industrie-Szenarien bleiben, jetzt gerahmt als „Sechs Situationen, ein Muster". SEO-Descriptions beider Sprachen erweitert.
+**Bewusst NICHT geändert:** Hero-Claim „Industrial Knowledge Continuity" — eine breitere Positionierung (Zielgruppen-Strategie) ist eine Pedi-Entscheidung, nicht Copy-Arbeit; ggf. als PMO-Eintrag/D-Entscheidung nachziehen.
+**Getestet:** Astro-Build in /tmp-Kopie grün (15 Seiten); neue Inhalte in dist/use-cases + dist/en/use-cases verifiziert.
+**Git-Status:** klarwerk-public-website a909818 lokal — kein Push. Deploy: Pedi per „KLARWERK Website"-App (inkl. neuer Rollup-Selbstheilung).
+**Nächster Schritt:** Pedi: Website-App doppelklicken → deployt & öffnet Vorschau → /use-cases ansehen. PMO-Auto-Check: 124 Einträge, nichts Neues.
