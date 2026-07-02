@@ -116,3 +116,12 @@ export interface ReasonerConfigStatus {
   // v1 bewusst ohne Persistenz (gilt bis Neustart) — UI zeigt das ehrlich an.
   persisted: boolean;
 }
+
+// Key-Test (Pedi 02.07.): Ergebnis eines echten Mini-Aufrufs — ehrlich, keine Vermutung.
+export interface ReasonerProbeResult {
+  ok: boolean;
+  provider: string; // Label (kein Schlüssel)
+  mode: "model" | "deterministic";
+  detail: string; // ehrliche Begründung (z. B. "Modell-API antwortete mit 401")
+  at: string; // Zeitstempel des Tests (ISO)
+}

@@ -10192,3 +10192,14 @@ git push
 **Getestet:** Neu `tests/app/livewall.test.ts` (3: Sortierung/Limit; heute-Zählung + Payload-Ehrlichkeit; HTTP 401/200 mit echtem KO). Volle Kette: Build ✓ · Biome ✓ · depcruise ✓ (193 Module) · **1275 Tests / 209 Dateien ✓** · **UI-Smoke 4/4 ✓** · dist v0.9.16 gebaut+eingespielt (Bundle-Checks Version + „Frisch gesichert" ✓).
 **Risiko:** gering — additive Read-Route, Karte rein anzeigend; bei leerem Bestand erscheint die Karte mit ehrlichen Leer-Texten.
 **Git-Status:** dev_Klarwerk lokal committet, **kein Push**. **Nächster Schritt:** Pedi: App (v0.9.16) → Start: Live-Wall prüfen; im KO „hat geholfen" klicken (als anderer Nutzer) → Wall zeigt es. Danach Beta-Pfad: Key → Sync → Sichtabnahme → Freeze.
+
+---
+
+## After-Report — 2026-07-02 · SCRUM-399: „Key testen" in der KI-Verwaltung
+
+**Datum:** 2026-07-02 (abends, Boss-Session direkt) · **Anlass:** Pedi-Screenshot KI-Verwaltung: „füge ein, welche KI und ob sie aktiv ist — kleiner Check-Knopf zum Testen." Kern: Die Anzeige „Modus: Modell" beweist nur, dass EIN Key hinterlegt ist — nicht, dass er gültig ist (401 fällt erst beim Echtaufruf auf).
+**Änderung (v0.9.17-beta):** (1) Reasoner: optionales `probe()` am Provider-Interface; ModelProvider.probe = kleinstmöglicher Echtaufruf; `Reasoner.probe()` liefert `ReasonerProbeResult` (ok/provider/mode/detail/at) — ehrlich: ohne Modell klarer deterministischer Befund, Fehler (z. B. „Modell-API antwortete mit 401") unverfälscht benannt, kein Fallback-Umweg. (2) Route **POST /api/reasoner/test** (users.manage) + Guard-Matrix; kein Secret in der Antwort. (3) Admin-Karte KI-Verwaltung: Knopf „Key testen" neben der Statuszeile, Ergebnis bleibt als grüne/rote Inline-Meldung stehen; Fehlertext nennt den Weg zur Behebung (Start-Dialog/Schlüsselbund „KLARWERK-App-Anthropic" + Neustart). (4) i18n DE/EN (4 Schlüssel).
+**Getestet:** Neu `tests/app/reasoner-probe.test.ts` (4: ok bei Antwort; ehrlicher 401-Grund; ohne Modell kein Fake-Erfolg; HTTP 401/200). Volle Kette: Build ✓ · Biome ✓ · depcruise ✓ · **1279 Tests / 210 Dateien ✓** · **UI-Smoke 4/4 ✓** · dist v0.9.17 gebaut+eingespielt (Bundle-Checks Version + „Key testen" ✓).
+**Nicht ausführbar:** echter Anthropic-Aufruf mit Pedis Key (Keychain nur am Mac) — genau dafür ist der Knopf da.
+**Risiko:** gering — additive Admin-Route; ein Test-Klick = ein Mini-Modellaufruf (Kosten vernachlässigbar).
+**Git-Status:** dev_Klarwerk lokal committet, **kein Push**. **Nächster Schritt:** Pedi: App neu starten (v0.9.17) → Admin → KI-Verwaltung → „Key testen": GRÜN = Key ok → Interview/Extraktion testen; ROT mit 401 = alten Schlüsselbund-Eintrag erneuern (siehe Meldung).

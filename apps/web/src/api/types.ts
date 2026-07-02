@@ -458,6 +458,15 @@ export interface ReasonerConfigStatus {
   persisted: boolean;
 }
 
+// Key-Test (Pedi 02.07.): Ergebnis des echten Mini-Modellaufrufs (ehrlich, kein Secret).
+export interface ReasonerProbeResult {
+  ok: boolean;
+  provider: string;
+  mode: "model" | "deterministic";
+  detail: string;
+  at: string;
+}
+
 export interface AssistResult {
   text: string;
   demo: boolean;

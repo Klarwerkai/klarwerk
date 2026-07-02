@@ -34,6 +34,9 @@ export interface ReasonerProvider {
   extract(documentText: string, locale?: ReasonerLocale, query?: string): Promise<ExtractResult>;
   // select ist reines Ranking (synchron, kein Netzaufruf).
   select(question: string, candidates: readonly KnowledgeRef[]): KnowledgeRef[];
+  // Key-Test (Pedi 02.07.): kleinstmöglicher Echtaufruf — beweist Schlüssel + Modellzugang.
+  // Optional: der deterministische Fallback hat bewusst keinen (nichts zu testen).
+  probe?(): Promise<string>;
 }
 
 // PMO-FEA-0006: ehrliche Fallback-Meldung — ohne Modell ist keine inhaltliche Wissens-

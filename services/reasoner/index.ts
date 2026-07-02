@@ -46,5 +46,6 @@ export type {
   ReasonerStatus,
   ReasonerConfigStatus,
   ReasonerConfigMode,
+  ReasonerProbeResult,
   ReasonerTask,
 } from "./src/types";

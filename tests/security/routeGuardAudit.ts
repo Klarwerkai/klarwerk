@@ -247,6 +247,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/reasoner": { protection: "ko.read" },
   "GET /api/reasoner/config": { protection: "ko.read" },
   "PUT /api/reasoner/config": { protection: "users.manage" },
+  // Key-Test (Pedi 02.07.): echter Mini-Modellaufruf — nur Admin, kein Secret in der Antwort.
+  "POST /api/reasoner/test": { protection: "users.manage" },
   "POST /api/objects": { protection: "ko.create" },
   "GET /api/objects/:id": { protection: "ko.read" },
   "GET /api/objects/:id/raw": { protection: "ko.read" },

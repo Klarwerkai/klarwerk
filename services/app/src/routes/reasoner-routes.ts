@@ -103,5 +103,16 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         }
       },
     );
+
+    // Key-Test (Pedi 02.07.): echter Mini-Aufruf gegen das konfigurierte Modell — beweist,
+    // ob der hinterlegte Schlüssel WIRKLICH funktioniert (401 wird ehrlich benannt).
+    // Nur Admin; der Schlüssel selbst verlässt den Server nie.
+    app.post("/api/reasoner/test", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      reply.code(200).send(await reasoner.probe());
+    });
   };
 }

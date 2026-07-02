@@ -146,6 +146,9 @@ export function Admin(): JSX.Element {
     },
     onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
   });
+  // Key-Test (Pedi 02.07.): echter Mini-Modellaufruf; Ergebnis bleibt sichtbar stehen
+  // (Inline statt flüchtigem Toast) — ehrlich inkl. Grund bei Fehlschlag (z. B. 401).
+  const aiTest = useMutation({ mutationFn: () => endpoints.reasoner.test() });
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -232,12 +235,43 @@ export function Admin(): JSX.Element {
         </div>
         {aiConfig.data ? (
           <>
-            <p className="text-[12.5px] text-muted">
-              {t("adm.ai.status", {
-                provider: aiConfig.data.provider,
-                mode: aiConfig.data.mode === "model" ? t("adm.ai.modeModel") : t("adm.ai.modeDemo"),
-              })}
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-[12.5px] text-muted">
+                {t("adm.ai.status", {
+                  provider: aiConfig.data.provider,
+                  mode:
+                    aiConfig.data.mode === "model" ? t("adm.ai.modeModel") : t("adm.ai.modeDemo"),
+                })}
+              </p>
+              {/* Key-Test (Pedi 02.07.): Anzeige ≠ Beweis — der Knopf macht den Echtaufruf. */}
+              <button
+                type="button"
+                disabled={aiTest.isPending}
+                onClick={() => aiTest.mutate()}
+                className="inline-flex h-7 items-center gap-1 rounded-btn border border-hairline bg-surface px-2.5 text-[11.5px] font-semibold text-text hover:border-ink/30 disabled:opacity-50"
+              >
+                <KeyRound size={12} />
+                {aiTest.isPending ? t("adm.ai.testRunning") : t("adm.ai.test")}
+              </button>
+            </div>
+            {aiTest.data ? (
+              <p
+                className={`rounded-btn px-2.5 py-1.5 text-[12px] ${
+                  aiTest.data.ok
+                    ? "bg-trust-pos-bg text-trust-pos-text"
+                    : "bg-trust-crit-bg text-trust-crit-text"
+                }`}
+              >
+                {aiTest.data.ok
+                  ? t("adm.ai.testOk", { provider: aiTest.data.provider })
+                  : t("adm.ai.testFail", { detail: aiTest.data.detail })}
+              </p>
+            ) : null}
+            {aiTest.isError ? (
+              <p className="rounded-btn bg-trust-crit-bg px-2.5 py-1.5 text-[12px] text-trust-crit-text">
+                {t("adm.ai.testFail", { detail: t("state.error") })}
+              </p>
+            ) : null}
             <div className="grid gap-2 sm:grid-cols-2">
               <label className="block text-[11.5px] font-semibold text-muted">
                 {t("adm.ai.global")}

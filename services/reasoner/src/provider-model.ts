@@ -187,6 +187,13 @@ export class ModelProvider implements ReasonerProvider {
     return this.client !== undefined;
   }
 
+  // Key-Test (Pedi 02.07.): kleinstmöglicher Echtaufruf. Beweist Schlüssel + Modellzugang;
+  // Fehler (z. B. 401 = Schlüssel ungültig) laufen unverändert nach oben — nichts wird geraten.
+  async probe(): Promise<string> {
+    const client = this.requireClient();
+    return client.complete("Antworte mit genau einem Wort: OK", "ping");
+  }
+
   // SCRUM-360: begrenzte, status-/trust-bewusste Kandidatenauswahl (siehe selectCandidates) — das
   // Modell bekommt nur eine gedeckelte, relevant gerankte Quellenmenge statt aller KOs.
   select(question: string, candidates: readonly KnowledgeRef[]): KnowledgeRef[] {

@@ -167,6 +167,8 @@ export const endpoints = {
     // KI-Verwaltung v1: Zuordnung setzen (nur Admin; Antwort = frischer configStatus).
     updateConfig: (cfg: { global: string; perTask: Record<string, string> }) =>
       api.put<ReasonerConfigStatus>("/reasoner/config", cfg),
+    // Key-Test (Pedi 02.07.): echter Mini-Modellaufruf (nur Admin, ehrliches Ergebnis).
+    test: () => api.post<ReasonerProbeResult>("/reasoner/test"),
   },
   notifications: {
     list: () => api.get<Notification[]>("/notifications"),

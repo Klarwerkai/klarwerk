@@ -10,6 +10,7 @@ import type {
   KnowledgeRef,
   ReasonerConfigStatus,
   ReasonerLocale,
+  ReasonerProbeResult,
   ReasonerStatus,
   ReasonerTaskChoice,
   ReasonerTaskConfig,
@@ -37,6 +38,40 @@ export class Reasoner {
 
   private usingPrimary(): boolean {
     return this.primary.isAvailable() && this.primary !== this.fallback;
+  }
+
+  // Key-Test (Pedi 02.07.): ehrlicher Echtaufruf statt Anzeige-Vermutung. Ohne Modell
+  // klarer Befund; Fehler werden benannt (z. B. 401 = Schlüssel ungültig), nie geraten.
+  // Kein Fallback-Umweg: der Test prüft GENAU den konfigurierten Modellzugang.
+  async probe(): Promise<ReasonerProbeResult> {
+    const at = new Date().toISOString();
+    if (!this.usingPrimary() || typeof this.primary.probe !== "function") {
+      return {
+        ok: false,
+        provider: this.fallback.name,
+        mode: "deterministic",
+        detail: "Kein Modell konfiguriert — es läuft der deterministische Ersatzmodus.",
+        at,
+      };
+    }
+    try {
+      await this.primary.probe();
+      return {
+        ok: true,
+        provider: this.primary.name,
+        mode: "model",
+        detail: "Modell hat geantwortet.",
+        at,
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        provider: this.primary.name,
+        mode: "model",
+        detail: error instanceof Error ? error.message : String(error),
+        at,
+      };
+    }
   }
 
   // ---- KI-Verwaltung v1 (Teil-Slice, 02.07.2026): Zuordnung global + je Aufgabe ----

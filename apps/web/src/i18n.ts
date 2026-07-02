@@ -325,6 +325,11 @@ const de = {
   "adm.ai.status": "Aktiver Provider: {{provider}} · Modus: {{mode}}",
   "adm.ai.modeModel": "Modell",
   "adm.ai.modeDemo": "Deterministisch",
+  "adm.ai.test": "Key testen",
+  "adm.ai.testRunning": "teste …",
+  "adm.ai.testOk": "Verbindung ok — {{provider}} hat geantwortet. Der Schlüssel funktioniert.",
+  "adm.ai.testFail":
+    "Test fehlgeschlagen: {{detail}} Tipp: Schlüssel im Start-Dialog bzw. Schlüsselbund (KLARWERK-App-Anthropic) erneuern, dann App neu starten.",
   "adm.ai.global": "Global (Standard für alle Einsätze)",
   "adm.ai.choice.inherit": "— wie global —",
   "adm.ai.choice.auto": "Auto (Modell wenn verfügbar)",
@@ -2131,6 +2136,11 @@ const en: typeof de = {
   "adm.ai.status": "Active provider: {{provider}} · mode: {{mode}}",
   "adm.ai.modeModel": "Model",
   "adm.ai.modeDemo": "Deterministic",
+  "adm.ai.test": "Test key",
+  "adm.ai.testRunning": "testing …",
+  "adm.ai.testOk": "Connection ok — {{provider}} responded. The key works.",
+  "adm.ai.testFail":
+    "Test failed: {{detail}} Tip: renew the key in the start dialog or keychain (KLARWERK-App-Anthropic), then restart the app.",
   "adm.ai.global": "Global (default for all uses)",
   "adm.ai.choice.inherit": "— same as global —",
   "adm.ai.choice.auto": "Auto (model when available)",
