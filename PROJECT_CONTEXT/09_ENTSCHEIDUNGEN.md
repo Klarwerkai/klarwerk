@@ -4,6 +4,7 @@
 
 | Datum | Entscheidung | Begründung / Beleg |
 |---|---|---|
+| 03.07.2026 (abends, Berater-Fragen) | **RC-Freeze JA** (nach SCRUM-443-Fix → 1.0.0-beta.1); Zielmarkt **„jede Organisation" verbindlich** (Specs nachziehen); Beta auf **eigenem Hetzner-Cloud-Server je Kunde** (Subdomain klarwerk.ai) → K3/H3/M8 vor Deploy Pflicht; Pilot erst nach Beta-Test (separater Server ohne unseren Zugang); LLM: vorerst Anthropic (Kosten), Eval-Sitzung 2 im Credit-Fenster; Investor-Zahlen nur als gekennzeichnete Projektionen; Ordner-Umzug nach `KLARWERK-Projekt/` genehmigt (nach VIP-Termin, kopieren→testen→löschen) | docs/qm/PEDI_ENTSCHEIDUNGEN_2026-07-03_UMSETZUNG.md |
 | 03.07.2026 | GPU-Deploy nur über die One-Click-App „KLARWERK LLM", nie manuell im Hub | App erkennt den Server per Namens-Discovery `klarwerk-llm-eval`; manueller 50-GB-Deploy kostete den Vormittag (Platte voll, vLLM-Schleife) |
 | 03.07.2026 | Pedi bedient nur .app-Doppelklicks; Cloud-Brücke setzt keine x-Bits → Starter-Übernahme nur durch Boss-Session | Vorfall: per Brücke befüllte App-Hülle war nicht startbar („can't be opened") |
 | 03.07.2026 | Zweiter Mitarbeiter kommt ins Projekt; `PROJECT_CONTEXT/` ist verbindlicher Onboarding-/Gedächtnisort | Konzentration + Zukunftssicherheit; „kein Wissensverlust mehr leistbar" |
