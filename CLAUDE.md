@@ -11,7 +11,7 @@
 Code ist ein **regenerierbares Ergebnis** aus Spec + Harness, nicht die primäre Wahrheit.
 
 **Onboarding & Projektgedächtnis:** Neue Mitarbeiter und neue Claude-Sessions starten mit
-`/PROJECT_CONTEXT` (Dateien 00–10 in Reihenfolge). Bei größeren Änderungen
+`/PROJECT_CONTEXT` (Dateien 00–11 in Reihenfolge). Bei größeren Änderungen
 `PROJECT_CONTEXT/04_AKTUELLER_STAND.md` fortschreiben — kein Wissensverlust.
 
 ## Rangordnung der Qualitätskontrolle (nicht verhandelbar)
