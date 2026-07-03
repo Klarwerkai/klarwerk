@@ -23,6 +23,7 @@
       "**/node_modules",
       "docs/generated",
       "docs/ci/brand-book",
+      "docs/team2-austausch",
       "UI:UX",
       "Blueprint",
       "**/*.tsbuildinfo",
