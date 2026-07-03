@@ -52,6 +52,18 @@ SSH-Tunnel `localhost:8123`; Aktionen Starten/Status/**Löschen** (wichtig: nach
 Kosten laufen je angefangene Stunde!). Token im Schlüsselbund `KLARWERK-UpCloud-API`/team2.
 Master: `Documents/Klarwerk/klarwerk-local-llm/scripts/`. Status: noch nie echt gelaufen (v0).
 
+### KLARWERK Paul Runner.app (+ „KLARWERK Paul Runner starten.command")
+**Pauls Hände auf dem Mac.** Hintergrund: Die Cloud-Umgebung darf keine npm-Pakete laden
+(Proxy-Policy verifiziert, alle Tarballs 403) → Gates laufen auf Pedis Mac. Die App führt die
+**Aufgaben-Datei** `dev_Klarwerk/docs/team2-austausch/paul-runner.sh` sichtbar im Terminal aus;
+Ausgabe landet zusätzlich als Log in der Brücke (`paul-runner.log`), damit Paul sie lesen kann.
+Rollen: Paul pflegt NUR `paul-runner.sh` über die Brücke (bash braucht kein x-Bit); die
+.command/App selbst sind ein dauerhafter, unveränderlicher Starter und werden NIE über die
+Brücke überschrieben (x-Bit-Dauerregel). Grenzen für die Aufgaben-Datei: nur Projekt-Kommandos
+im Repo (Gates, Builds, Skripte), keine Secrets, keine Käufe/Außenwirkung, LÖSCHEN-artige
+Aktionen nur nach ausdrücklichem Pedi-Go — Pedi sieht vor dem Klick in Jira, WAS die Datei tut
+(Paul kommentiert jede neue Version). Master der Hülle: tools-sync/.
+
 ### PMO-Dashboard (kein .app nötig)
 `Documents/KLARWERK_Reporting_PMO/index.html` doppelklicken → Fortschritt, Register, Prüfstand-Tab.
 

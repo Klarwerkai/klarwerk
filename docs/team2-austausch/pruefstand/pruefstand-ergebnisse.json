@@ -1,0 +1,417 @@
+{
+ "laeufe": [
+  {
+   "zeit": "2026-07-03T07:27:53.790Z",
+   "ziel": "anthropic",
+   "modell": "claude-sonnet-4-6",
+   "summe": 22,
+   "max": 24,
+   "oSekunden": 3.3,
+   "faelle": [
+    {
+     "id": "STR-1",
+     "task": "structure",
+     "titel": "Werkhalle: Überdruck-Erzählung strukturieren",
+     "punkte": 2,
+     "checksOk": "6/6",
+     "sekunden": 3.7,
+     "gruende": [],
+     "antwort": "```json\n{\n  \"titel\": \"Drucküberschreitung am Kessel über 6 bar\",\n  \"aussage\": \"Bei einem Kesseldruck über 6 bar muss Ventil X manuell geschlossen werden, da sonst die Dichtung reißt.\",\n  \"bedingungen\": [\n    \"Druck am Kessel überschreitet 6 bar\"\n  ],\n  \"massnahmen\": [\n    \"Zuerst Pumpe P2 herunterfahren, um Druckrückschlag zu verhindern\",\n    \"Danach Ventil X von Hand schließen\"\n  ]\n}\n```"
+    },
+    {
+     "id": "STR-2",
+     "task": "structure",
+     "titel": "Pflege: Sturz-Erzählung strukturieren",
+     "punkte": 2,
+     "checksOk": "5/5",
+     "sekunden": 3.4,
+     "gruende": [],
+     "antwort": "```json\n{\n  \"titel\": \"Sturzprotokoll und Information der Pflegedienstleitung\",\n  \"aussage\": \"Verzögerungen bei der Dokumentation führen zu Erinnerungslücken und Problemen bei MDK-Prüfungen\",\n  \"bedingungen\": [\n    \"Ein Bewohner ist gestürzt\"\n  ],\n  \"massnahmen\": [\n    \"Sturzprotokoll sofort anlegen\",\n    \"Protokollanlage noch am selben Tag sicherstellen\",\n    \"Pflegedienstleitung informieren\"\n  ]\n}\n```"
+    },
+    {
+     "id": "EXT-1",
+     "task": "extract",
+     "titel": "Dokument: Wissen mit Belegstelle extrahieren",
+     "punkte": 2,
+     "checksOk": "5/5",
+     "sekunden": 3.4,
+     "gruende": [],
+     "antwort": "```json\n{\n  \"punkte\": [\n    {\n      \"titel\": \"Prüfintervall Filterpatrone F3\",\n      \"belegstelle\": \"Die Filterpatrone F3 ist monatlich zu prüfen.\"\n    },\n    {\n      \"titel\": \"Tauschkriterium Filterpatrone F3\",\n      \"belegstelle\": \"Bei sichtbarer Verschmutzung ist sie zu tauschen.\"\n    },\n    {\n      \"titel\": \"Sicherheitsbedingung beim Tausch der Filterpatrone F3\",\n      \"belegstelle\": \"Der Tausch darf nur bei abgeschalteter Anlage erfolgen.\"\n    },\n    {\n      \"titel\": \"Lagerort Ersatzpatronen\",\n      \"belegstelle\": \"Ersatzpatronen lagern im Schrank B2.\"\n    }\n  ]\n}\n```"
+    },
+    {
+     "id": "EXT-2",
+     "task": "extract",
+     "titel": "Ehrlich-Fall: Dokument ohne verwertbares Wissen",
+     "punkte": 2,
+     "checksOk": "4/4",
+     "sekunden": 1.9,
+     "gruende": [],
+     "antwort": "{\"punkte\":[]}"
+    },
+    {
+     "id": "ANT-1",
+     "task": "answer",
+     "titel": "Frage mit vorhandenem Kontext beantworten",
+     "punkte": 1,
+     "checksOk": "3/4",
+     "sekunden": 3.2,
+     "gruende": [
+      "fehlt: \"Ventil X\""
+     ],
+     "antwort": "## Vorgehen bei Überdruck am Kessel\n\nGemäß **KO-1** gilt folgende Vorgehensweise:\n\n1. **Zuerst** Pumpe **P2 herunterfahren**\n2. **Danach** Ventil **X von Hand schließen**\n\n> ⚠️ Diese Maßnahmen sind durchzuführen, wenn der Druck **über 6 bar** steigt.\n\n**Quelle: KO-1**"
+    },
+    {
+     "id": "ANT-2",
+     "task": "answer",
+     "titel": "Ehrlich-Fall: Kontext enthält die Antwort nicht",
+     "punkte": 2,
+     "checksOk": "4/4",
+     "sekunden": 2.6,
+     "gruende": [],
+     "antwort": "Dazu liegt kein gesichertes Wissen vor.\n\nDie verfügbaren Wissensdokumente (**KO-1** und **KO-2**) enthalten keine Informationen zur Kalibrierung des Dosierers an Linie L4. Bitte wende dich an die zuständige Fachabteilung oder ziehe die entsprechende technische Dokumentation hinzu."
+    },
+    {
+     "id": "INT-1",
+     "task": "interview",
+     "titel": "Nachbohren beim Schweißnaht-Thema",
+     "punkte": 2,
+     "checksOk": "4/4",
+     "sekunden": 4,
+     "gruende": [],
+     "antwort": "**Nachfrage:**\n\nWarum genau unterbrochen – geht es dabei um Wärmeeinbringung, Eigenspannungen im Flansch, oder hat das einen anderen konstruktiven Grund?"
+    },
+    {
+     "id": "INT-2",
+     "task": "interview",
+     "titel": "Nachbohren beim Fristen-Thema (Kanzlei)",
+     "punkte": 2,
+     "checksOk": "3/3",
+     "sekunden": 2.2,
+     "gruende": [],
+     "antwort": "**Nachfrage:** Wer kontrolliert konkret, dass beide Einträge übereinstimmen – und in welchem Rhythmus passiert diese Überprüfung?"
+    },
+    {
+     "id": "ASS-1",
+     "task": "assist",
+     "titel": "Text klarer formulieren ohne Fakten zu ändern",
+     "punkte": 2,
+     "checksOk": "5/5",
+     "sekunden": 3.6,
+     "gruende": [],
+     "antwort": "Beim Filter ist Folgendes zu beachten: Er sollte monatlich auf Verschmutzung überprüft werden. Falls er verschmutzt ist, muss er ausgetauscht werden. Dabei ist unbedingt darauf zu achten, dass die Anlage während dieser Arbeiten ausgeschaltet ist, da andernfalls eine Gefährdung besteht."
+    },
+    {
+     "id": "ASS-2",
+     "task": "assist",
+     "titel": "Verein: Notiz glätten ohne Erfindungen",
+     "punkte": 1,
+     "checksOk": "2/3",
+     "sekunden": 2.9,
+     "gruende": [
+      "fehlt: \"sechs Wochen\""
+     ],
+     "antwort": "**Schankgenehmigung:** Der Antrag muss mindestens 6 Wochen vor der Veranstaltung bei der Gemeinde eingereicht werden, da der zuständige Ausschuss nur einmal im Monat tagt. Bei späterer Einreichung kann die Genehmigung nicht mehr rechtzeitig erteilt werden."
+    },
+    {
+     "id": "SEL-1",
+     "task": "select",
+     "titel": "Relevante Wissensobjekte zur Frage wählen",
+     "punkte": 2,
+     "checksOk": "2/2",
+     "sekunden": 6.6,
+     "gruende": [],
+     "antwort": "KO-A"
+    },
+    {
+     "id": "SEL-2",
+     "task": "select",
+     "titel": "Ehrlich-Fall: kein Kandidat passt",
+     "punkte": 2,
+     "checksOk": "3/3",
+     "sekunden": 1.6,
+     "gruende": [],
+     "antwort": "Keiner passt."
+    }
+   ]
+  },
+  {
+   "zeit": "2026-07-03T07:29:52.981Z",
+   "ziel": "http://localhost:8123/v1",
+   "modell": "Qwen/Qwen3-32B-AWQ",
+   "summe": 16,
+   "max": 24,
+   "oSekunden": 9.9,
+   "faelle": [
+    {
+     "id": "STR-1",
+     "task": "structure",
+     "titel": "Werkhalle: Überdruck-Erzählung strukturieren",
+     "punkte": 1,
+     "checksOk": "5/6",
+     "sekunden": 15.2,
+     "gruende": [
+      "kein gültiges JSON"
+     ],
+     "antwort": "<think>\nOkay, I need to parse the user's input and structure it into the required JSON format. Let me start by reading the user's message carefully.\n\nThe user is talking about a boiler (Kessel) where the pressure exceeds 6 bar. They mention that in such cases, valve X must be manually closed to prevent the seal from tearing. They've experienced this twice, in 2019 and last year. Also, it's important to shut down pump P2 first to avoid back pressure.\n\nFirst, I'll identify the main statement. The key point is that if the pressure goes over 6 bar, valve X must be closed manually. The reasons give"
+    },
+    {
+     "id": "STR-2",
+     "task": "structure",
+     "titel": "Pflege: Sturz-Erzählung strukturieren",
+     "punkte": 1,
+     "checksOk": "4/5",
+     "sekunden": 12.9,
+     "gruende": [
+      "kein gültiges JSON"
+     ],
+     "antwort": "<think>\nOkay, let me try to figure out how to structure this. The user provided a statement in German about handling a resident's fall. The main points are: when a resident falls, a protocol must be created the same day and the nursing management informed. The next day, people don't remember well, leading to issues during MDK inspections.\n\nFirst, I need to identify the \"titel\". It should be a concise summary. Maybe \"Sofortiges Protokollieren bei Stürzen\". That translates to \"Immediate Documentation in Case of Falls\". \n\nNext, the \"aussage\" is the main statement. The user says to create the prot"
+    },
+    {
+     "id": "EXT-1",
+     "task": "extract",
+     "titel": "Dokument: Wissen mit Belegstelle extrahieren",
+     "punkte": 1,
+     "checksOk": "4/5",
+     "sekunden": 11.5,
+     "gruende": [
+      "Belegstelle nicht wörtlich im Dokument (G-2!)"
+     ],
+     "antwort": "<think>\nOkay, I need to extract knowledge points from the given document. Let me read through it again.\n\nThe document says: \"Die Filterpatrone F3 ist monatlich zu prüfen. Bei sichtbarer Verschmutzung ist sie zu tauschen. Der Tausch darf nur bei abgeschalteter Anlage erfolgen. Ersatzpatronen lagern im Schrank B2.\"\n\nBreaking this down, the main points are:\n\n1. The filter cartridge F3 should be checked monthly.\n2. If visible contamination is present, it needs to be replaced.\n3. Replacement must only be done when the system is turned off.\n4. Spare cartridges are stored in cabinet B2.\n\nEach of thes"
+    },
+    {
+     "id": "EXT-2",
+     "task": "extract",
+     "titel": "Ehrlich-Fall: Dokument ohne verwertbares Wissen",
+     "punkte": 1,
+     "checksOk": "3/4",
+     "sekunden": 15.2,
+     "gruende": [
+      "hat nicht ehrlich 'nichts' geantwortet"
+     ],
+     "antwort": "<think>\nOkay, I need to extract knowledge points from the given document. The user wants a JSON response with \"punkte\" containing \"titel\" and \"belegstelle\" as the quoted text from the document. If there's no usable knowledge, return an empty array.\n\nLooking at the document: It's a meeting protocol. Let's see what details are there. The meeting started at 14 Uhr. Four people were present. Coffee and cookies were served. Next meeting in August. \n\nNow, are these considered \"Fachwissen\"? The user mentioned if the document has no \"verwertbares Fachwissen\", return empty. But what's considered Fachwi"
+    },
+    {
+     "id": "ANT-1",
+     "task": "answer",
+     "titel": "Frage mit vorhandenem Kontext beantworten",
+     "punkte": 2,
+     "checksOk": "4/4",
+     "sekunden": 6,
+     "gruende": [],
+     "antwort": "<think>\nOkay, the user is asking what to do in case of overpressure in the boiler. Let me check the provided secured knowledge. The relevant information is from KO-1: If the pressure exceeds 6 bar, close valve X manually and shut down pump P2 beforehand.\n\nSo the steps are first to shut down pump P2 and then close valve X. I need to make sure the answer follows the order mentioned. The user might be someone operating the boiler system and needs to respond quickly to prevent damage. They might not just want the steps but also the correct sequence. The answer should be concise, referencing the so"
+    },
+    {
+     "id": "ANT-2",
+     "task": "answer",
+     "titel": "Ehrlich-Fall: Kontext enthält die Antwort nicht",
+     "punkte": 2,
+     "checksOk": "4/4",
+     "sekunden": 5,
+     "gruende": [],
+     "antwort": "<think>\nOkay, let's see. The user is asking how to calibrate the doser at line L4. I need to check the provided secure knowledge to see if there's any relevant information.\n\nLooking at KO-1: \"Bei Druck über 6 bar Ventil X schließen.\" That translates to closing valve X if the pressure is over 6 bar. KO-2 says \"Filter F3 monatlich prüfen,\" which means checking filter F3 monthly. \n\nThe question is about calibrating the doser, but the available knowledge doesn't mention calibration procedures. KO-1 and KO-2 are about pressure management and filter checks. There's no information on how to actually "
+    },
+    {
+     "id": "INT-1",
+     "task": "interview",
+     "titel": "Nachbohren beim Schweißnaht-Thema",
+     "punkte": 2,
+     "checksOk": "4/4",
+     "sekunden": 8.6,
+     "gruende": [],
+     "antwort": "<think>\nOkay, I need to ask a follow-up question about welding a flange. The expert said to weld the seam intermittently, not continuously. Let me think about why that is the case. Maybe there's a reason related to thermal stress or distortion. Or perhaps it's about the type of load the flange will experience. If it's intermittent, does that affect the strength or the integrity under pressure? Also, are there specific standards or codes that dictate this? Maybe there's a maximum length for the intermittent welds or a minimum spacing between them. The user might be asking about the application "
+    },
+    {
+     "id": "INT-2",
+     "task": "interview",
+     "titel": "Nachbohren beim Fristen-Thema (Kanzlei)",
+     "punkte": 2,
+     "checksOk": "3/3",
+     "sekunden": 12.4,
+     "gruende": [],
+     "antwort": "<think>\nOkay, the user is talking about managing deadlines in a law firm. Their current process is entering each deadline twice: once in the file and once in a central calendar. I need to ask a specific follow-up question. Let me think about what's important here.\n\nFirst, why do they have this dual entry system? Maybe they want redundancy to prevent missing deadlines. But duplication can lead to errors if one entry is updated and the other isn't. That's a risk. So maybe asking about synchronization between the two systems would be good. How do they ensure both entries are updated when a deadli"
+    },
+    {
+     "id": "ASS-1",
+     "task": "assist",
+     "titel": "Text klarer formulieren ohne Fakten zu ändern",
+     "punkte": 2,
+     "checksOk": "5/5",
+     "sekunden": 9.2,
+     "gruende": [],
+     "antwort": "<think>\nOkay, let me start by understanding the user's request. They want the given German text to be rephrased clearly and professionally while keeping all the facts exactly the same. No additions or omissions.\n\nThe original text is a bit informal and has some grammatical errors. For example, \"man muss den halt gucken jeden Monat ob der dreckig is\" should be corrected to proper German. The key points are: checking the filter monthly, replacing it if it's dirty, and ensuring the device is off during replacement to avoid danger.\n\nI need to make sure the rephrased version is professional but sti"
+    },
+    {
+     "id": "ASS-2",
+     "task": "assist",
+     "titel": "Verein: Notiz glätten ohne Erfindungen",
+     "punkte": 1,
+     "checksOk": "2/3",
+     "sekunden": 10.4,
+     "gruende": [
+      "fehlt: \"sechs Wochen\""
+     ],
+     "antwort": "<think>\nOkay, let's see. The user wants me to rephrase the given text into a clear and professional German version. The original text is in all caps and exclamation points, which is probably not formal. I need to maintain all the facts exactly as they are, so I can't add or remove anything.\n\nFirst, the key points: \"schankgenehmigung\" (which is \"Schenkgenehmigung\" in proper German), 6 weeks in advance, apply to the municipality (\"gemeinde\"), otherwise the event can't happen, and the committee meets once a month (\"ausschuss tagt nur 1x im monat\").\n\nI should make sure the terms are correctly capi"
+    },
+    {
+     "id": "SEL-1",
+     "task": "select",
+     "titel": "Relevante Wissensobjekte zur Frage wählen",
+     "punkte": 1,
+     "checksOk": "1/2",
+     "sekunden": 7.1,
+     "gruende": [
+      "erfunden/falsch: \"KO-B\""
+     ],
+     "antwort": "<think>\nOkay, let's tackle this question. The user is asking, \"Wie oft muss der Filter geprüft werden?\" which translates to \"How often must the filter be checked?\" They provided three candidates: KO-A, KO-B, and KO-C.\n\nFirst, I need to determine which of these candidates are relevant. KO-A says \"Filter F3 monatlich prüfen.\" That means \"Filter F3 should be checked monthly.\" That directly answers the question about the frequency of checking the filter. So KO-A is definitely relevant.\n\nKO-B states \"Schankgenehmigung sechs Wochen vorher.\" This translates to \"Permission to serve six weeks in advanc"
+    },
+    {
+     "id": "SEL-2",
+     "task": "select",
+     "titel": "Ehrlich-Fall: kein Kandidat passt",
+     "punkte": 0,
+     "checksOk": "1/3",
+     "sekunden": 5.5,
+     "gruende": [
+      "erfunden/falsch: \"KO-A\"",
+      "erfunden/falsch: \"KO-B\""
+     ],
+     "antwort": "<think>\nOkay, let's see. The user is asking about the tire size needed for a forklift. The question is in German, so \"Reifengröße\" means tire size. The candidates given are KO-A and KO-B. \n\nLooking at KO-A: \"Filter F3 monatlich prüfen.\" That translates to \"Check filter F3 monthly.\" That's about maintenance of a filter, not related to tire size.\n\nKO-B: \"Schankgenehmigung sechs Wochen vorher.\" That means \"Licensing for serving six weeks in advance.\" This is about obtaining a permit for serving drinks, which is unrelated to forklift tires.\n\nSo neither of the candidates address the tire size for a"
+    }
+   ]
+  },
+  {
+   "zeit": "2026-07-03T07:36:35.517Z",
+   "ziel": "http://localhost:8123/v1",
+   "modell": "Qwen/Qwen3-32B-AWQ",
+   "summe": 22,
+   "max": 24,
+   "oSekunden": 1.7,
+   "faelle": [
+    {
+     "id": "STR-1",
+     "task": "structure",
+     "titel": "Werkhalle: Überdruck-Erzählung strukturieren",
+     "punkte": 2,
+     "checksOk": "6/6",
+     "sekunden": 4.3,
+     "gruende": [],
+     "antwort": "```json\n{\n  \"titel\": \"Kesseldruck über 6 bar: Handbetätigung des Ventils X\",\n  \"aussage\": \"Wenn der Druck am Kessel über 6 bar steigt, muss das Ventil X manuell geschlossen werden, um eine reißende Dichtung zu vermeiden.\",\n  \"bedingungen\": [\n    \"Druck am Kessel über 6 bar\",\n    \"Erlebt 2019 und im vergangenen Jahr\"\n  ],\n  \"massnahmen\": [\n    \"Ventil X manuell schließen\",\n    \"Pumpe P2 vorher runterfahren, um Rückstau zu vermeiden\"\n  ]\n}\n```"
+    },
+    {
+     "id": "STR-2",
+     "task": "structure",
+     "titel": "Pflege: Sturz-Erzählung strukturieren",
+     "punkte": 2,
+     "checksOk": "5/5",
+     "sekunden": 4.3,
+     "gruende": [],
+     "antwort": "```json\n{\n  \"titel\": \"Sofortiges Protokollieren bei Stürzen\",\n  \"aussage\": \"Wenn ein Bewohner stürzt, muss sofort ein Protokoll angelegt und die Pflegedienstleitung informiert werden.\",\n  \"bedingungen\": [\n    \"Ein Sturz eines Bewohners ist eingetreten\",\n    \"Die Ereignisse sind noch frisch im Gedächtnis\",\n    \"Es besteht die Gefahr von Erinnerungslücken am nächsten Tag\"\n  ],\n  \"massnahmen\": [\n    \"Protokoll noch am selben Tag anlegen\",\n    \"Pflegedienstleitung umgehend informieren\"\n  ]\n}\n```"
+    },
+    {
+     "id": "EXT-1",
+     "task": "extract",
+     "titel": "Dokument: Wissen mit Belegstelle extrahieren",
+     "punkte": 2,
+     "checksOk": "5/5",
+     "sekunden": 3.6,
+     "gruende": [],
+     "antwort": "{\"punkte\":[{\"titel\":\"Prüfung und Tausch der Filterpatrone F3\",\"belegstelle\":\"Die Filterpatrone F3 ist monatlich zu prüfen. Bei sichtbarer Verschmutzung ist sie zu tauschen.\"},{\"titel\":\"Sicherheit beim Tausch der Filterpatrone\",\"belegstelle\":\"Der Tausch darf nur bei abgeschalteter Anlage erfolgen.\"},{\"titel\":\"Lagerort der Ersatzpatronen\",\"belegstelle\":\"Ersatzpatronen lagern im Schrank B2.\"}]}"
+    },
+    {
+     "id": "EXT-2",
+     "task": "extract",
+     "titel": "Ehrlich-Fall: Dokument ohne verwertbares Wissen",
+     "punkte": 2,
+     "checksOk": "4/4",
+     "sekunden": 0.2,
+     "gruende": [],
+     "antwort": "{\"punkte\":[]}"
+    },
+    {
+     "id": "ANT-1",
+     "task": "answer",
+     "titel": "Frage mit vorhandenem Kontext beantworten",
+     "punkte": 2,
+     "checksOk": "4/4",
+     "sekunden": 1.4,
+     "gruende": [],
+     "antwort": "Bei Überdruck am Kessel (über 6 bar) ist Ventil X von Hand zu schließen, nachdem die Pumpe P2 heruntergefahren wurde. (Quelle: KO-1)"
+    },
+    {
+     "id": "ANT-2",
+     "task": "answer",
+     "titel": "Ehrlich-Fall: Kontext enthält die Antwort nicht",
+     "punkte": 2,
+     "checksOk": "4/4",
+     "sekunden": 0.5,
+     "gruende": [],
+     "antwort": "Dazu liegt kein gesichertes Wissen vor."
+    },
+    {
+     "id": "INT-1",
+     "task": "interview",
+     "titel": "Nachbohren beim Schweißnaht-Thema",
+     "punkte": 2,
+     "checksOk": "4/4",
+     "sekunden": 1.2,
+     "gruende": [],
+     "antwort": "Warum ist eine unterbrochene Schweißnaht am Flansch aus konstruktiver oder fügetechnischer Sicht günstiger als eine durchgehende?"
+    },
+    {
+     "id": "INT-2",
+     "task": "interview",
+     "titel": "Nachbohren beim Fristen-Thema (Kanzlei)",
+     "punkte": 1,
+     "checksOk": "2/3",
+     "sekunden": 1.4,
+     "gruende": [
+      "kein gezieltes Nachbohren erkennbar"
+     ],
+     "antwort": "Sehr gut, dass Sie Fristen redundant erfassen – warum halten Sie aber beides getrennt vor, und nicht etwa in einem zentralen System, das auch die Aktenablage abdeckt?"
+    },
+    {
+     "id": "ASS-1",
+     "task": "assist",
+     "titel": "Text klarer formulieren ohne Fakten zu ändern",
+     "punkte": 2,
+     "checksOk": "5/5",
+     "sekunden": 1.5,
+     "gruende": [],
+     "antwort": "Also mit dem Filter ist es so: Man muss jeden Monat prüfen, ob er schmutzig ist, und wenn ja, muss man ihn austauschen. Dabei muss die Anlage ausgeschaltet sein, sonst ist es gefährlich."
+    },
+    {
+     "id": "ASS-2",
+     "task": "assist",
+     "titel": "Verein: Notiz glätten ohne Erfindungen",
+     "punkte": 1,
+     "checksOk": "2/3",
+     "sekunden": 1.3,
+     "gruende": [
+      "fehlt: \"sechs Wochen\""
+     ],
+     "antwort": "Schankgenehmigung!!! 6 Wochen im Voraus bei der Gemeinde beantragen, sonst wird es nichts mit dem Fest, der Ausschuss tagt nur einmal im Monat."
+    },
+    {
+     "id": "SEL-1",
+     "task": "select",
+     "titel": "Relevante Wissensobjekte zur Frage wählen",
+     "punkte": 2,
+     "checksOk": "2/2",
+     "sekunden": 0.2,
+     "gruende": [],
+     "antwort": "KO-A"
+    },
+    {
+     "id": "SEL-2",
+     "task": "select",
+     "titel": "Ehrlich-Fall: kein Kandidat passt",
+     "punkte": 2,
+     "checksOk": "3/3",
+     "sekunden": 0.2,
+     "gruende": [],
+     "antwort": "keiner passt"
+    }
+   ]
+  }
+ ]
+}
