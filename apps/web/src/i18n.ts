@@ -332,6 +332,8 @@ const de = {
   "adm.ai.test": "Key testen",
   "adm.ai.testRunning": "teste …",
   "adm.ai.testOk": "Verbindung ok — {{provider}} hat geantwortet. Der Schlüssel funktioniert.",
+  "adm.ai.testLocal": "Lokalen LLM testen",
+  "adm.ai.testLocalOk": "Lokaler LLM hat geantwortet ({{provider}}).",
   "adm.ai.testFail":
     "Test fehlgeschlagen: {{detail}} Tipp: Schlüssel im Start-Dialog bzw. Schlüsselbund (KLARWERK-App-Anthropic) erneuern, dann App neu starten.",
   "adm.ai.global": "Global (Standard für alle Einsätze)",
@@ -378,6 +380,14 @@ const de = {
   "adm.val.label": "Standard-Prüferanzahl (1–5)",
   "adm.val.save": "Speichern",
   "adm.val.saved": "Standard-Prüferanzahl gespeichert.",
+  "adm.upload.title": "Upload-Grenzen",
+  "adm.upload.help":
+    "Legt fest, wie viele Anhänge ein Objekt haben darf und wie groß ein einzelner Anhang sein darf. Gilt für neue Anhänge; bestehende bleiben. Änderungen landen im Audit-Log.",
+  "adm.upload.hint": "Diese Grenzen werden beim Erfassen angezeigt und serverseitig durchgesetzt.",
+  "adm.upload.maxAttachments": "Anhänge je Objekt (max.)",
+  "adm.upload.maxMb": "Größe je Anhang (MB, max.)",
+  "adm.upload.save": "Speichern",
+  "adm.upload.saved": "Upload-Grenzen gespeichert.",
   "adm.ext.title": "Externe Wissensabfrage",
   "adm.ext.help":
     "Steuert, ob die App externe Quellen (Web) und die Public-KI zur Anreicherung nutzen darf. Vier Stufen von komplett gesperrt bis offen. Standard bewusst restriktiv. Änderungen landen im Audit-Log.",
@@ -691,6 +701,7 @@ const de = {
   "capture.author": "Autor",
   "capture.documents": "Dokumente (Kontext / Anhang)",
   "capture.documentsUpload": "Dateien hochladen",
+  "capture.uploadLimits": "Bis zu {{count}} Dateien, je max. {{mb}} MB.",
   "capture.documentsHint":
     "txt, md, csv, json, log, docx, pdf → Volltext · Bilder: optional per OCR",
   "capture.images": "Bilder (Anhang)",
@@ -2443,6 +2454,8 @@ const en: typeof de = {
   "adm.ai.test": "Test key",
   "adm.ai.testRunning": "testing …",
   "adm.ai.testOk": "Connection ok — {{provider}} responded. The key works.",
+  "adm.ai.testLocal": "Test local LLM",
+  "adm.ai.testLocalOk": "Local LLM responded ({{provider}}).",
   "adm.ai.testFail":
     "Test failed: {{detail}} Tip: renew the key in the start dialog or keychain (KLARWERK-App-Anthropic), then restart the app.",
   "adm.ai.global": "Global (default for all uses)",
@@ -2489,6 +2502,14 @@ const en: typeof de = {
   "adm.val.label": "Default reviewer count (1–5)",
   "adm.val.save": "Save",
   "adm.val.saved": "Default reviewer count saved.",
+  "adm.upload.title": "Upload limits",
+  "adm.upload.help":
+    "Sets how many attachments an object may have and how large a single attachment may be. Applies to new attachments; existing ones stay. Changes are recorded in the audit log.",
+  "adm.upload.hint": "These limits are shown during capture and enforced on the server.",
+  "adm.upload.maxAttachments": "Attachments per object (max.)",
+  "adm.upload.maxMb": "Size per attachment (MB, max.)",
+  "adm.upload.save": "Save",
+  "adm.upload.saved": "Upload limits saved.",
   "adm.ext.title": "External knowledge",
   "adm.ext.help":
     "Controls whether the app may use external sources (web) and the public AI for enrichment. Four stages from fully blocked to open. Deliberately restrictive by default. Changes are recorded in the audit log.",
@@ -2796,6 +2817,7 @@ const en: typeof de = {
   "capture.author": "Author",
   "capture.documents": "Documents (context / attachment)",
   "capture.documentsUpload": "Upload files",
+  "capture.uploadLimits": "Up to {{count}} files, each max. {{mb}} MB.",
   "capture.documentsHint": "txt, md, csv, json, log, docx, pdf → full text · images: optional OCR",
   "capture.images": "Images (attachment)",
   "capture.imagesUpload": "Attach images",

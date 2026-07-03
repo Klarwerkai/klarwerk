@@ -45,6 +45,7 @@ import type {
   Role,
   StructureResult,
   TrashedKo,
+  UploadLimits,
   ValidationSettings,
   Verdict,
 } from "./types";
@@ -194,6 +195,8 @@ export const endpoints = {
       api.put<ReasonerConfigStatus>("/reasoner/config", cfg),
     // Key-Test (Pedi 02.07.): echter Mini-Modellaufruf (nur Admin, ehrliches Ergebnis).
     test: () => api.post<ReasonerProbeResult>("/reasoner/test"),
+    // SCRUM-428: Key-Test für den eigenen lokalen LLM (echter Mini-Aufruf über den Tunnel).
+    testLocal: () => api.post<ReasonerProbeResult>("/reasoner/test-local"),
     // SCRUM-386: kundeneigene KI-Assist-Presets — lesen alle Rollen (Palette), pflegen nur Admin.
     assistPresets: () => api.get<AssistPreset[]>("/reasoner/assist-presets"),
     updateAssistPresets: (presets: { id?: string; name: string; instruction: string }[]) =>
@@ -278,6 +281,11 @@ export const endpoints = {
       api.get<EvidenceRecord[]>(`/evidence${qs({ limit: limit?.toString() })}`),
   },
   // SCRUM-118 / FR-EXT-02: externer Such-Proxy (optional; 501 wenn deaktiviert).
+  // SCRUM-421: einstellbare Upload-Grenzen (lesen: alle Leseberechtigten; setzen: Admin).
+  uploadLimits: {
+    get: () => api.get<UploadLimits>("/upload-limits"),
+    save: (limits: UploadLimits) => api.put<UploadLimits>("/upload-limits", limits),
+  },
   external: {
     search: (q: string) => api.get<ExternalResult[]>(`/external/search${qs({ q })}`),
     // SCRUM-414: Admin-Regler „externe Wissensabfrage" (lesen: alle; setzen: Admin).

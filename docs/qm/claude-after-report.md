@@ -10658,3 +10658,57 @@ Modell ehrlich leer (demo=true), leere query 400.
 
 > Betrieb: Für einen echten Modell-Beitrag muss ein Modell verbunden sein (Cloud/lokal) und
 > der Admin-Regler auf „offen" stehen; Backend nach Änderungen neu starten.
+
+## [Cloud-Worker] SCRUM-421 + 427 — Upload-Grenzen + Extraktion in Abschnitten (03.07.2026, v0.9.40-beta)
+
+Gebündelt, weil beide den Erfassen-/Extraktions-Bereich betreffen.
+
+### SCRUM-421 — Upload-Grenzen sichtbar + im Admin einstellbar
+Bisher fest im Code (max. 8 Anhänge, ~700 KB je Anhang). Jetzt persistierte Admin-Einstellung
+(Muster SCRUM-395): InMemory + Pg + Dev-Journal, mit sinnvollen Grenzen (Anzahl 1–30, Größe
+0,1–20 MB).
+- Admin → Daten → neue Karte „Upload-Grenzen" (Anzahl je Objekt + MB je Anhang). Audit-Eintrag
+  `upload.limits.set`.
+- Erfassen zeigt die geltenden Grenzen ehrlich an („Bis zu N Dateien, je max. X MB.").
+- Serverseitig erzwungen: die Anhang-Route liest die eingestellten Werte statt fester Konstanten.
+- Routen: GET /api/upload-limits (ko.read) · PUT (users.manage). Guard-Matrix ergänzt.
+
+### SCRUM-427 — lange Dokumente in Abschnitten extrahieren
+Der Gekürzt-Hinweis kam, weil alle Punkte in EINER Antwort angefordert wurden. Jetzt wird der
+Dokumenttext in Abschnitte (~8.000 Zeichen, an Absatz-/Satzgrenzen) geteilt und je Abschnitt
+extrahiert; die Ergebnisse werden dedupliziert (nach Titel) zusammengeführt, gedeckelt auf
+MAX_EXTRACT_POINTS. Jede Belegstelle wird gegen IHREN Abschnitt geprüft (G-2 bleibt).
+Dadurch reißt keine Antwort mehr am Token-Limit ab → bei normal langen Dokumenten entfällt der
+Hinweis. Semantik erhalten: gekürzte Abschnitts-Antworten werden weiter gerettet (SCRUM-418);
+liefert KEIN Abschnitt Punkte UND einer scheitert hart, wird ehrlich gemeldet (SCRUM-411).
+
+**Tests:** tests/app/upload-limits-e2e.test.ts (Normalisierung, Rechte, Enforcement der
+Anhang-Anzahl) und services/reasoner/src/extract-failure.test.ts (Abschnitts-Teilung lückenlos,
+Mehr-Abschnitt-Zusammenführung ohne Gekürzt-Hinweis, Dedupe über Abschnitte).
+
+**Version:** 0.9.39-beta → 0.9.40-beta. **Gates:** Paul-Runner v15 (Gesamtbestand).
+
+> Betrieb: beide Änderungen liegen im Backend — nach Sync einmal Backend neu starten.
+
+## [Cloud-Worker] SCRUM-428 — Key-Test für den lokalen LLM + Gate-Fix (03.07.2026, v0.9.41-beta)
+
+### Gate-Fix (SCRUM-421-Batch)
+Der v15-Lauf war rot: TS2322 in ko-routes.ts — ein benannter Typ (UploadLimits) ohne
+Index-Signatur ist nicht direkt als Audit-`payload` (Record<string, unknown>) zuweisbar.
+Behoben: Audit-Payload als Inline-Literal. (Merke: mein Cloud-Syntax-Sweep prüft nur
+Syntax, keine Cross-Modul-Typen — solche TS2xxx fängt erst der Mac-Gate.)
+
+### SCRUM-428 — lokalen LLM per Schlüssel-Test prüfen
+Der Key-Test prüfte bisher nur die Cloud. Neu: zweiter Knopf „Lokalen LLM testen" (Admin → KI)
+— echter Mini-Aufruf über den lokalen Provider (probe des secondary).
+- Reasoner `probeLocal()`: nicht verdrahtet → ehrlicher Befund; erreichbar → „hat geantwortet";
+  Tunnel/Server aus → der echte Fehler (nie geraten).
+- Route POST /api/reasoner/test-local (users.manage); Guard-Matrix ergänzt.
+- Admin-UI: zweiter Test-Knopf + ehrliche Ergebnis-Zeile.
+- Test: tests/app/local-probe-e2e.test.ts (ohne LLM ehrlich nicht verbunden; Experte 403).
+
+Damit wird „Verfügbare KIs" beim VIP von „bereit" auf ehrlich „geantwortet" — sobald der
+Tunnel steht und der lokale LLM läuft.
+
+**Version:** 0.9.40-beta → 0.9.41-beta (umfasst den 421/427-Batch + Gate-Fix + 428).
+**Gates:** Paul-Runner v16 (Gesamtbestand).

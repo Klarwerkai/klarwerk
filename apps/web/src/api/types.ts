@@ -173,6 +173,12 @@ export interface ValidationSettings {
   defaultNeededValidations: number;
 }
 
+// SCRUM-421: einstellbare Upload-Grenzen (Admin) — Anzahl + Größe je Anhang.
+export interface UploadLimits {
+  maxAttachments: number;
+  maxAttachmentBytes: number;
+}
+
 // SCRUM-422: Papierkorb-Zeile (Admin) — nur Metadaten.
 export interface TrashedKo {
   id: string;

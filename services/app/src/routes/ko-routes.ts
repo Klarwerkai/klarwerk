@@ -1,13 +1,15 @@
 import type { FastifyPluginAsync } from "fastify";
+import type { AuditService } from "../../../audit";
 import type { ConflictInput, ConflictService } from "../../../conflicts";
 import {
   type CreateKoInput,
+  DEFAULT_UPLOAD_LIMITS,
   type KnowledgeType,
   type KoService,
   type KoStatus,
-  MAX_ATTACHMENTS,
-  MAX_ATTACHMENT_BYTES,
   type ReviseKoInput,
+  type UploadLimitsRepo,
+  normalizeUploadLimits,
 } from "../../../knowledge-object";
 import type { LifecycleService } from "../../../lifecycle";
 import { can } from "../../../rbac";
@@ -24,6 +26,9 @@ export interface KoRoutesDeps {
   conflicts: ConflictService;
   lifecycle: LifecycleService;
   notifyAssignment?: AssignmentNotifier; // FR-VAL-07
+  // SCRUM-421: einstellbare Upload-Grenzen (persistiert) + Audit für Änderungen.
+  uploadLimits: UploadLimitsRepo;
+  audit?: AuditService;
 }
 
 interface KoQuery {
@@ -59,7 +64,7 @@ interface PutBody {
 }
 
 export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync {
-  const { ko, validation, conflicts, lifecycle, notifyAssignment } = deps;
+  const { ko, validation, conflicts, lifecycle, notifyAssignment, uploadLimits, audit } = deps;
 
   return async (app) => {
     app.get<{ Querystring: KoQuery }>("/api/kos", async (request, reply) => {
@@ -143,6 +148,48 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             await notifyAssignment?.(created.id, reviewers);
           }
           reply.code(201).send(created);
+        } catch (error) {
+          sendError(reply, error);
+        }
+      },
+    );
+
+    // SCRUM-421: Upload-Grenzen — lesen dürfen alle Leseberechtigten (Anzeige beim Erfassen),
+    // ändern nur die Nutzerverwaltung (Admin). Änderung landet im Audit-Log.
+    app.get("/api/upload-limits", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      try {
+        reply.code(200).send((await uploadLimits.get()) ?? DEFAULT_UPLOAD_LIMITS);
+      } catch (error) {
+        sendError(reply, error);
+      }
+    });
+
+    app.put<{ Body: { maxAttachments?: number; maxAttachmentBytes?: number } }>(
+      "/api/upload-limits",
+      async (request, reply) => {
+        const user = await guards.requirePermission("users.manage", request, reply);
+        if (!user) {
+          return;
+        }
+        try {
+          const limits = normalizeUploadLimits(request.body);
+          await uploadLimits.set(limits);
+          await audit?.record({
+            actor: user.id,
+            action: "upload.limits.set",
+            target: "settings",
+            // Inline-Literal (Record<string, unknown>) — ein benannter Typ ohne Index-Signatur
+            // ist nicht direkt zuweisbar (TS2322).
+            payload: {
+              maxAttachments: limits.maxAttachments,
+              maxAttachmentBytes: limits.maxAttachmentBytes,
+            },
+          });
+          reply.code(200).send(limits);
         } catch (error) {
           sendError(reply, error);
         }
@@ -279,13 +326,15 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               return badRequest("attachment {name, mime} fehlt.");
             }
             const current = await ko.get(id);
-            if ((current?.attachments?.length ?? 0) >= MAX_ATTACHMENTS) {
-              return badRequest(`Maximal ${MAX_ATTACHMENTS} Anhänge je Objekt.`);
+            // SCRUM-421: geltende Upload-Grenzen aus der Admin-Einstellung (sonst Werksvorgabe).
+            const limits = (await uploadLimits.get()) ?? DEFAULT_UPLOAD_LIMITS;
+            if ((current?.attachments?.length ?? 0) >= limits.maxAttachments) {
+              return badRequest(`Maximal ${limits.maxAttachments} Anhänge je Objekt.`);
             }
             if (att.objectId) {
               // SCRUM-121: Original liegt im Object-Store; am KO nur Referenz + kleine Vorschau.
-              if (att.thumbnail && att.thumbnail.length > MAX_ATTACHMENT_BYTES) {
-                return badRequest("Vorschau zu groß (Pilot-Limit überschritten).");
+              if (att.thumbnail && att.thumbnail.length > limits.maxAttachmentBytes) {
+                return badRequest("Vorschau zu groß (Upload-Grenze überschritten).");
               }
               reply.code(200).send(
                 await ko.addAttachment(id, user.id, {
@@ -305,8 +354,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!att.mime.startsWith("image/") || !att.dataUrl.startsWith("data:")) {
               return badRequest("Nur Bild-Daten-URLs erlaubt.");
             }
-            if (att.dataUrl.length > MAX_ATTACHMENT_BYTES) {
-              return badRequest("Anhang zu groß (Pilot-Limit überschritten).");
+            if (att.dataUrl.length > limits.maxAttachmentBytes) {
+              return badRequest("Anhang zu groß (Upload-Grenze überschritten).");
             }
             reply.code(200).send(
               await ko.addAttachment(id, user.id, {

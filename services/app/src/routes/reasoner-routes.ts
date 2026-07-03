@@ -181,5 +181,14 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
       }
       reply.code(200).send(await reasoner.probe());
     });
+
+    // SCRUM-428: Key-Test für den eigenen lokalen LLM (echter Mini-Aufruf über den Tunnel).
+    app.post("/api/reasoner/test-local", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      reply.code(200).send(await reasoner.probeLocal());
+    });
   };
 }

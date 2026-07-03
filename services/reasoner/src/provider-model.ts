@@ -200,6 +200,38 @@ export const EXTRACT_MAX_TOKENS = 16384;
 export const EXTRACT_PROMPT_MAX_POINTS = 12;
 // Dokumenttext-Deckel für den Modell-Aufruf — bewusst großzügig, aber endlich (Token-Schutz).
 export const MAX_EXTRACT_DOCUMENT_LENGTH = 60_000;
+// SCRUM-427: lange Dokumente in Abschnitten extrahieren. Jeder Abschnitt bleibt klein genug,
+// dass die Modell-Antwort nicht am Token-Limit abreißt → der Gekürzt-Hinweis entfällt bei
+// normal langen Dokumenten. Die Ergebnisse werden dedupliziert zusammengeführt (G-2 bleibt:
+// jede Belegstelle wird gegen IHREN Abschnitt geprüft).
+export const EXTRACT_CHUNK_LENGTH = 8000;
+
+// Teilt Dokumenttext in Abschnitte ~size, möglichst an Absatz-/Zeilen-/Satzgrenzen (damit
+// keine Belegstelle mitten im Wort zerschnitten wird). Kurze Dokumente bleiben EIN Abschnitt.
+export function chunkForExtract(doc: string, size = EXTRACT_CHUNK_LENGTH): string[] {
+  if (doc.length <= size) {
+    return [doc];
+  }
+  const chunks: string[] = [];
+  let i = 0;
+  while (i < doc.length) {
+    let end = Math.min(i + size, doc.length);
+    if (end < doc.length) {
+      const window = doc.slice(i, end);
+      const brk = Math.max(
+        window.lastIndexOf("\n\n"),
+        window.lastIndexOf("\n"),
+        window.lastIndexOf(". "),
+      );
+      if (brk > size * 0.5) {
+        end = i + brk + 1;
+      }
+    }
+    chunks.push(doc.slice(i, end));
+    i = end;
+  }
+  return chunks;
+}
 
 // Whitespace-normalisierter, case-insensitiver Substring-Check: die Belegstelle muss wirklich
 // im Dokument stehen. Das ist der harte G-2-Gate gegen erfundene/paraphrasierte „Zitate".
@@ -379,35 +411,64 @@ export class ModelProvider implements ReasonerProvider {
     const system = guidance
       ? `${extractSystem(locale)}\n${extractGuidance(locale, guidance)}`
       : extractSystem(locale);
-    // SCRUM-411/418: großes Antwort-Limit — bei 1024 (und selbst 4096) Token wurde das
-    // Punkte-JSON realer Dokumente abgeschnitten (Pedi-Tests 03.07., 42k-Zeichen-PDF).
-    const raw = await client.complete(system, doc, EXTRACT_MAX_TOKENS);
-    let points: ExtractedPoint[];
-    let truncated = false;
-    try {
-      points = parseExtractResponse(raw, doc);
-    } catch {
-      // SCRUM-418: erst vollständige Punkte aus der gekürzten Antwort retten;
-      // nur wenn NICHTS zu retten ist, ehrlich scheitern (SCRUM-411-Meldeweg).
-      points = salvageTruncatedExtract(raw, doc);
-      truncated = true;
-      if (points.length === 0) {
-        throw new Error(
-          locale === "en"
-            ? "model response was not valid JSON (possibly truncated)"
-            : "Modell-Antwort war kein gültiges JSON (möglicherweise abgeschnitten)",
-        );
+    // SCRUM-427: in Abschnitten extrahieren — jede Modell-Antwort bleibt klein genug, dass sie
+    // nicht am Token-Limit abreißt. Ergebnisse dedupliziert zusammenführen; jede Belegstelle
+    // wird gegen IHREN Abschnitt geprüft (G-2 bleibt). SCRUM-411/418-Semantik erhalten:
+    //  - vollständige Punkte aus gekürzten Abschnitts-Antworten werden gerettet (salvage);
+    //  - liefert KEIN Abschnitt verwertbare Punkte UND mind. einer scheitert hart → ehrlich
+    //    scheitern (Reasoner meldet den echten Grund, SCRUM-411).
+    const chunks = chunkForExtract(doc);
+    const points: ExtractedPoint[] = [];
+    const seen = new Set<string>();
+    let anyIncomplete = false;
+    let hardFailure = false;
+    for (const chunk of chunks) {
+      if (points.length >= MAX_EXTRACT_POINTS) {
+        break;
+      }
+      const raw = await client.complete(system, chunk, EXTRACT_MAX_TOKENS);
+      let chunkPoints: ExtractedPoint[];
+      try {
+        chunkPoints = parseExtractResponse(raw, chunk);
+      } catch {
+        chunkPoints = salvageTruncatedExtract(raw, chunk);
+        anyIncomplete = true;
+        if (chunkPoints.length === 0) {
+          hardFailure = true;
+          continue;
+        }
+      }
+      for (const p of chunkPoints) {
+        const key = p.title.trim().toLowerCase();
+        if (key.length === 0 || seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        points.push(p);
+        if (points.length >= MAX_EXTRACT_POINTS) {
+          break;
+        }
       }
     }
+    // Kein einziger verwertbarer Punkt UND mindestens ein Abschnitt scheiterte hart →
+    // ehrlich scheitern (SCRUM-411-Meldeweg über den Reasoner-Fallback).
+    if (points.length === 0 && hardFailure) {
+      throw new Error(
+        locale === "en"
+          ? "model response was not valid JSON (possibly truncated)"
+          : "Modell-Antwort war kein gültiges JSON (möglicherweise abgeschnitten)",
+      );
+    }
+    const incomplete = anyIncomplete || hardFailure;
     return {
       points,
-      // Ehrlich: gekürzte Antwort wird benannt; leere Liste bekommt eine Erklärung.
-      note: truncated
-        ? locale === "en"
-          ? "Note: the model response was cut off — this list may be incomplete. Every shown point still carries a verified source excerpt."
-          : "Hinweis: Die Modell-Antwort wurde gekürzt — diese Liste ist möglicherweise unvollständig. Jeder angezeigte Punkt trägt weiterhin eine geprüfte Belegstelle."
-        : points.length > 0
-          ? null
+      note:
+        points.length > 0
+          ? incomplete
+            ? locale === "en"
+              ? "Note: part of the document could not be fully processed — this list may be incomplete. Every shown point still carries a verified source excerpt."
+              : "Hinweis: Ein Teil des Dokuments konnte nicht vollständig verarbeitet werden — diese Liste ist möglicherweise unvollständig. Jeder angezeigte Punkt trägt weiterhin eine geprüfte Belegstelle."
+            : null
           : locale === "en"
             ? "No knowledge points with a verifiable source excerpt were found in this document."
             : "In diesem Dokument wurden keine Wissenspunkte mit belegbarer Textstelle gefunden.",

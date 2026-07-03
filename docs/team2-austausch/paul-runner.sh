@@ -1,14 +1,16 @@
 #!/bin/bash
 # KLARWERK Paul-Runner — Aufgabendatei des Cloud-Workers ([Paul]).
 #
-# AUFGABE v14 (03.07. abends): GATES FÜR SCRUM-426 (v0.9.39-beta) — prüft zugleich den
+# AUFGABE v17 (03.07. abends): GATES FÜR SCRUM-428 + Gate-Fix (v0.9.41-beta) — prüft zugleich den
 # gesamten Bestand (395/416/413/417-420/422/418-Härtung/424).
-#   SCRUM-426: Public-KI-Anreicherung im Erfassen/Studio — umschaltbar Modellwissen/Web-Suche,
-#              extern/ungeprüft, nur bewusst übernehmen. Freigegeben ab Regler-Stufe „offen"
-#              (SCRUM-414); Route /api/reasoner/enrich mit Doppel-Gate (ko.create + offen).
+#   Lint-Fix (v17): useTemplate in extract-failure.test.ts:156 — String-Konkatenation → Template-Literal
+#     (v16 war einzig daran rot; Build/Tests/smoke waren grün).
+#   Gate-Fix (v16): TS2322 in ko-routes (Audit-Payload als Inline-Literal) — v15 war daran rot.
+#   SCRUM-428: „Lokalen LLM testen" (Admin → KI) — echter Mini-Aufruf über den Tunnel.
+#   (enthält weiterhin den 421/427-Batch: Upload-Grenzen + Extraktion in Abschnitten.)
 # Ablauf:
 #   0: Format-Autofix (biome check --write).
-#   1: apps/web bauen (vite build → dist v0.9.39-beta).
+#   1: apps/web bauen (vite build → dist v0.9.41-beta).
 #   2: tools/check (Build · Lint · Architektur · Tests).
 #   3: npm run smoke:ui (4 Playwright-Kernflüsse).
 #   4: After-Report-Nachträge anhängen (je nur falls fehlend — Marker-Prüfung).
@@ -22,7 +24,7 @@ FEHL=0
 
 {
 echo "${FETT}KLARWERK Paul-Runner — $(date '+%d.%m.%Y %H:%M')${AUS}"
-echo "Aufgabe v14: Gates für SCRUM-426 (v0.9.39-beta) + Gesamtbestand — ca. 4–7 Minuten."
+echo "Aufgabe v17: Gates für SCRUM-428 + Gate-/Lint-Fix (v0.9.41-beta) + Gesamtbestand — ca. 4–7 Minuten."
 echo
 
 cd "$REPO" || { echo "${ROT}FEHLER: Repo nicht gefunden.${AUS}"; exit 1; }
@@ -34,7 +36,7 @@ echo
 
 echo "${FETT}— Schritt 1/4: apps/web bauen (vite build)${AUS}"
 if (cd apps/web && npx vite build); then
-  echo "${GRUEN}✓ Build/dist v0.9.39 erstellt${AUS}"
+  echo "${GRUEN}✓ Build/dist v0.9.41 erstellt${AUS}"
 else
   echo "${ROT}✗ vite build ROT${AUS}"; FEHL=1
 fi
@@ -71,14 +73,16 @@ anhaengen "SCRUM-424 — Zwei KI-Backends" "paul-nachtrag-424.md"
 anhaengen "SCRUM-425 — Validierung optisch an die Bibliothek angleichen" "paul-nachtrag-425.md"
 anhaengen "SCRUM-414 — Admin-Regler „externe Wissensabfrage" "paul-nachtrag-414.md"
 anhaengen "SCRUM-426 — Public-KI-Anreicherung" "paul-nachtrag-426.md"
+anhaengen "SCRUM-421 + 427 — Upload-Grenzen + Extraktion in Abschnitten" "paul-nachtrag-421-427.md"
+anhaengen "SCRUM-428 — Key-Test für den lokalen LLM" "paul-nachtrag-428.md"
 
 echo
 if [ "$FEHL" = "0" ]; then
-  echo "${GRUEN}${FETT}ALLE GATES GRÜN — Gesamtbestand lieferbar (v0.9.39-beta, inkl. 424 + 425 + 414 + 426).${AUS}"
-  echo "Sichtabnahme: Admin → KI → Externe Wissensabfrage auf 'Offen' stellen, dann Wissen erfassen:"
-  echo "Block 'Public-KI-Anreicherung' erscheint (Modellwissen/Web umschaltbar, extern/ungeprüft, Übernahme auf Klick)."
+  echo "${GRUEN}${FETT}ALLE GATES GRÜN — Gesamtbestand lieferbar (v0.9.41-beta, inkl. 421/427 + 428 + Gate-Fix).${AUS}"
+  echo "Sichtabnahme: Admin → KI → 'Lokalen LLM testen' (echter Mini-Aufruf; ohne Tunnel ehrlicher Fehler)."
+  echo "Und: Admin → Daten → Upload-Grenzen; langes PDF extrahieren → keine Kürzung."
   echo "Commit-Empfehlung (Boss-Session):"
-  echo "  [Cloud-Worker] SCRUM-426: Public-KI-Anreicherung (Modellwissen/Web, ab Stufe offen) (v0.9.39-beta)"
+  echo "  [Cloud-Worker] SCRUM-421/427/428: Upload-Grenzen + Extraktion in Abschnitten + lokaler Key-Test (v0.9.41-beta)"
   echo "KEIN Push — KLARWERK Sync macht Pedi."
 else
   echo "${ROT}${FETT}Mindestens ein Gate ROT — Paul analysiert docs/team2-austausch/paul-runner.log und liefert einen Fix.${AUS}"

@@ -149,7 +149,13 @@ export interface EvidenceRecord {
   createdAt: string;
 }
 
-export type KoErrorCode = "NOT_FOUND" | "INVALID_TYPE" | "INVALID_NEEDED" | "INVALID_SOURCE";
+export type KoErrorCode =
+  | "NOT_FOUND"
+  | "INVALID_TYPE"
+  | "INVALID_NEEDED"
+  | "INVALID_SOURCE"
+  // SCRUM-421: ungültige Upload-Grenzen (Admin-Einstellung).
+  | "INVALID_UPLOAD_LIMITS";
 
 export class KoError extends Error {
   readonly code: KoErrorCode;

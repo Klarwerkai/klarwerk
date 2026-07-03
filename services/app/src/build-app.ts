@@ -36,12 +36,15 @@ import {
   InMemoryEvidenceRepo,
   InMemoryKoRepo,
   InMemoryKoVersionRepo,
+  InMemoryUploadLimitsRepo,
   type KoRepo,
   KoService,
   type KoVersionRepo,
   PgEvidenceRepo,
   PgKoRepo,
   PgKoVersionRepo,
+  PgUploadLimitsRepo,
+  type UploadLimitsRepo,
 } from "../../knowledge-object";
 import {
   type CandidateRepo,
@@ -145,6 +148,8 @@ export interface AppServices {
   // SCRUM-414: Admin-Regler „externe Wissensabfrage" (persistiert) — direkt als schmale
   // Modul-Schnittstelle, wie notificationSeen.
   externalKnowledge: ExternalKnowledgePolicyRepo;
+  // SCRUM-421: einstellbare Upload-Grenzen (persistiert), direkt für die KO-Routen.
+  uploadLimits: UploadLimitsRepo;
 }
 
 // Alle Repositories der App. Sie sind der einzige Unterschied zwischen In-Memory und
@@ -176,6 +181,8 @@ export interface AppRepos {
   validationSettings: ValidationSettingsRepo;
   // SCRUM-414: Admin-Regler „externe Wissensabfrage" (4 Stufen, persistiert).
   externalKnowledge: ExternalKnowledgePolicyRepo;
+  // SCRUM-421: einstellbare Upload-Grenzen (persistiert).
+  uploadLimits: UploadLimitsRepo;
 }
 
 // Verdrahtet aus den Repos die vollständige Service-Landschaft. Ein gemeinsames
@@ -265,6 +272,8 @@ export function assembleServices(repos: AppRepos): AppServices {
     notificationSeen: repos.notificationSeen,
     // SCRUM-414: Regler-Repo direkt durchreichen (Routen nutzen es + Audit).
     externalKnowledge: repos.externalKnowledge,
+    // SCRUM-421: Upload-Grenzen-Repo direkt durchreichen (KO-Routen nutzen es + Audit).
+    uploadLimits: repos.uploadLimits,
   };
 }
 
@@ -292,6 +301,7 @@ export function inMemoryRepos(): AppRepos {
     assistPresets: new InMemoryAssistPresetRepo(),
     validationSettings: new InMemoryValidationSettingsRepo(),
     externalKnowledge: new InMemoryExternalKnowledgePolicyRepo(),
+    uploadLimits: new InMemoryUploadLimitsRepo(),
   };
 }
 
@@ -330,6 +340,8 @@ export function buildPgServices(pool: Pool): AppServices {
     validationSettings: new PgValidationSettingsRepo(pool),
     // SCRUM-414: externe-Wissensabfrage-Regler persistent.
     externalKnowledge: new PgExternalKnowledgePolicyRepo(pool),
+    // SCRUM-421: Upload-Grenzen persistent.
+    uploadLimits: new PgUploadLimitsRepo(pool),
   });
 }
 
@@ -361,6 +373,9 @@ export function buildApp(services: AppServices = buildServices()): FastifyInstan
         conflicts: services.conflicts,
         lifecycle: services.lifecycle,
         notifyAssignment,
+        // SCRUM-421: einstellbare Upload-Grenzen + Audit für Änderungen.
+        uploadLimits: services.uploadLimits,
+        audit: services.audit,
       },
       guards,
     ),

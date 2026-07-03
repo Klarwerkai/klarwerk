@@ -30,6 +30,17 @@ export {
   KO_VERSIONS_SCHEMA,
 } from "./src/repo-pg";
 export { KoError, KNOWLEDGE_TYPES, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS } from "./src/types";
+// SCRUM-421: einstellbare Upload-Grenzen (persistiert).
+export {
+  type UploadLimits,
+  type UploadLimitsRepo,
+  DEFAULT_UPLOAD_LIMITS,
+  UPLOAD_LIMITS_BOUNDS,
+  normalizeUploadLimits,
+  InMemoryUploadLimitsRepo,
+  PgUploadLimitsRepo,
+  UPLOAD_LIMITS_SCHEMA,
+} from "./src/upload-limits";
 export { displayStatus, type DisplayStatus } from "./src/display-status";
 export type {
   EvidenceKind,

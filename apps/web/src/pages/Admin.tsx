@@ -169,6 +169,8 @@ export function Admin(): JSX.Element {
   // Key-Test (Pedi 02.07.): echter Mini-Modellaufruf; Ergebnis bleibt sichtbar stehen
   // (Inline statt flüchtigem Toast) — ehrlich inkl. Grund bei Fehlschlag (z. B. 401).
   const aiTest = useMutation({ mutationFn: () => endpoints.reasoner.test() });
+  // SCRUM-428: separater Key-Test für den eigenen lokalen LLM.
+  const aiTestLocal = useMutation({ mutationFn: () => endpoints.reasoner.testLocal() });
   // SCRUM-386: kundeneigene KI-Assist-Funktionen (Presets) — lokal editieren, als Ganzes
   // speichern (Replace-Semantik der Route). Die Werks-Funktionen (klarer/strukturieren/…)
   // bleiben unangetastet im Code; hier entstehen NUR zusätzliche, instanz-eigene Funktionen.
@@ -241,6 +243,35 @@ export function Admin(): JSX.Element {
   const userName = (id: string): string => query.data?.find((u) => u.id === id)?.name ?? id;
   const daysLeft = (expiresAt: string): number =>
     Math.max(0, Math.ceil((Date.parse(expiresAt) - Date.now()) / 86_400_000));
+
+  // SCRUM-421: einstellbare Upload-Grenzen (Anzahl + Größe je Anhang, MB in der UI).
+  const uploadLimitsQ = useQuery({
+    queryKey: ["upload-limits"],
+    queryFn: endpoints.uploadLimits.get,
+  });
+  const [maxAttDraft, setMaxAttDraft] = useState<string | null>(null);
+  const [maxMbDraft, setMaxMbDraft] = useState<string | null>(null);
+  const saveUploadLimits = useMutation({
+    mutationFn: () =>
+      endpoints.uploadLimits.save({
+        maxAttachments: Number.parseInt(
+          maxAttDraft ?? String(uploadLimitsQ.data?.maxAttachments ?? 8),
+          10,
+        ),
+        maxAttachmentBytes: Math.round(
+          Number.parseFloat(
+            maxMbDraft ?? String((uploadLimitsQ.data?.maxAttachmentBytes ?? 700_000) / 1_000_000),
+          ) * 1_000_000,
+        ),
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["upload-limits"] });
+      setMaxAttDraft(null);
+      setMaxMbDraft(null);
+      push("success", t("adm.upload.saved"));
+    },
+    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
+  });
 
   // SCRUM-414: Regler „externe Wissensabfrage" (4 Stufen) — Draft-Muster wie die Presets.
   const extPolicy = useQuery({
@@ -392,6 +423,51 @@ export function Admin(): JSX.Element {
             </div>
           </Card>
 
+          {/* SCRUM-421: Upload-Grenzen sichtbar + einstellbar (Anzahl + Größe je Anhang). */}
+          <Card className="space-y-2">
+            <div className="flex items-center gap-1.5">
+              <SectionLabel>{t("adm.upload.title")}</SectionLabel>
+              <HelpTip title={t("adm.upload.title")} body={t("adm.upload.help")} />
+            </div>
+            <p className="text-[12.5px] text-muted">{t("adm.upload.hint")}</p>
+            <div className="flex flex-wrap items-end gap-2">
+              <Field label={t("adm.upload.maxAttachments")}>
+                <TextInput
+                  type="number"
+                  min={1}
+                  max={30}
+                  className="w-24"
+                  value={maxAttDraft ?? String(uploadLimitsQ.data?.maxAttachments ?? "")}
+                  onChange={(e) => setMaxAttDraft(e.target.value)}
+                  aria-label={t("adm.upload.maxAttachments")}
+                />
+              </Field>
+              <Field label={t("adm.upload.maxMb")}>
+                <TextInput
+                  type="number"
+                  min={0.1}
+                  step={0.1}
+                  className="w-24"
+                  value={
+                    maxMbDraft ??
+                    String((uploadLimitsQ.data?.maxAttachmentBytes ?? 700_000) / 1_000_000)
+                  }
+                  onChange={(e) => setMaxMbDraft(e.target.value)}
+                  aria-label={t("adm.upload.maxMb")}
+                />
+              </Field>
+              <Button
+                variant="primary"
+                disabled={
+                  saveUploadLimits.isPending || (maxAttDraft === null && maxMbDraft === null)
+                }
+                onClick={() => saveUploadLimits.mutate()}
+              >
+                {t("adm.upload.save")}
+              </Button>
+            </div>
+          </Card>
+
           {/* SCRUM-422: Papierkorb — 28 Tage wiederherstellbar, dann Auto-Endlöschung;
               Demo-Daten erscheinen hier nie. Endlöschung mit ruhiger Inline-Rückfrage (CI). */}
           <Card className="space-y-2">
@@ -498,6 +574,16 @@ export function Admin(): JSX.Element {
                     <KeyRound size={12} />
                     {aiTest.isPending ? t("adm.ai.testRunning") : t("adm.ai.test")}
                   </button>
+                  {/* SCRUM-428: zweiter Knopf — echter Mini-Aufruf beim eigenen lokalen LLM. */}
+                  <button
+                    type="button"
+                    disabled={aiTestLocal.isPending}
+                    onClick={() => aiTestLocal.mutate()}
+                    className="inline-flex h-7 items-center gap-1 rounded-btn border border-hairline bg-surface px-2.5 text-[11.5px] font-semibold text-text hover:border-ink/30 disabled:opacity-50"
+                  >
+                    <KeyRound size={12} />
+                    {aiTestLocal.isPending ? t("adm.ai.testRunning") : t("adm.ai.testLocal")}
+                  </button>
                 </div>
                 {aiTest.data ? (
                   <p
@@ -513,6 +599,25 @@ export function Admin(): JSX.Element {
                   </p>
                 ) : null}
                 {aiTest.isError ? (
+                  <p className="rounded-btn bg-trust-crit-bg px-2.5 py-1.5 text-[12px] text-trust-crit-text">
+                    {t("adm.ai.testFail", { detail: t("state.error") })}
+                  </p>
+                ) : null}
+                {/* SCRUM-428: Ergebnis des lokalen Key-Tests, gleiche ehrliche Darstellung. */}
+                {aiTestLocal.data ? (
+                  <p
+                    className={`rounded-btn px-2.5 py-1.5 text-[12px] ${
+                      aiTestLocal.data.ok
+                        ? "bg-trust-pos-bg text-trust-pos-text"
+                        : "bg-trust-crit-bg text-trust-crit-text"
+                    }`}
+                  >
+                    {aiTestLocal.data.ok
+                      ? t("adm.ai.testLocalOk", { provider: aiTestLocal.data.provider })
+                      : t("adm.ai.testFail", { detail: aiTestLocal.data.detail })}
+                  </p>
+                ) : null}
+                {aiTestLocal.isError ? (
                   <p className="rounded-btn bg-trust-crit-bg px-2.5 py-1.5 text-[12px] text-trust-crit-text">
                     {t("adm.ai.testFail", { detail: t("state.error") })}
                   </p>

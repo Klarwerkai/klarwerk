@@ -248,6 +248,12 @@ export function Capture(): JSX.Element {
     queryFn: endpoints.external.policy,
   });
   const extPolicyStage = extPolicy.data?.stage ?? "search_on_click";
+  // SCRUM-421: geltende Upload-Grenzen (Anzeige beim Erfassen); Fallback = Werksvorgabe.
+  const uploadLimitsQ = useQuery({
+    queryKey: ["upload-limits"],
+    queryFn: endpoints.uploadLimits.get,
+  });
+  const uploadLimitsData = uploadLimitsQ.data ?? { maxAttachments: 8, maxAttachmentBytes: 700_000 };
   const reviewerChoices = (directory.data ?? []).filter((p) => p.id !== user?.id);
   const toggleReviewer = (id: string): void => {
     setReviewerIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -1874,6 +1880,13 @@ export function Capture(): JSX.Element {
                   <span className="ml-2 text-[11.5px] text-muted-2">
                     {t("capture.documentsHint")}
                   </span>
+                  {/* SCRUM-421: geltende Upload-Grenzen ehrlich anzeigen (aus der Admin-Einstellung). */}
+                  <p className="mt-1 text-[11px] text-muted-2">
+                    {t("capture.uploadLimits", {
+                      count: uploadLimitsData.maxAttachments,
+                      mb: Math.round((uploadLimitsData.maxAttachmentBytes / 1_000_000) * 10) / 10,
+                    })}
+                  </p>
                   {docs.length > 0 ? (
                     <ul className="mt-2 space-y-1">
                       {docs.map((d) => (

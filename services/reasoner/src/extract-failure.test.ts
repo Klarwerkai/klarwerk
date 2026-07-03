@@ -4,6 +4,7 @@ import type { ModelClient } from "./provider-model";
 import {
   EXTRACT_MAX_TOKENS,
   ModelProvider,
+  chunkForExtract,
   excerptFoundInDocument,
   salvageTruncatedExtract,
 } from "./provider-model";
@@ -133,6 +134,60 @@ describe("SCRUM-411: Extract-Fehler ehrlich benennen + Antwort-Limit", () => {
     expect(
       excerptFoundInDocument("Turbine wöchentlich mit Spezialöl entlüften und prüfen", DOC),
     ).toBe(false);
+  });
+
+  // SCRUM-427 (Pedi 03.07.): lange Dokumente in Abschnitten extrahieren, damit der
+  // Gekürzt-Hinweis bei normal langen Dokumenten entfällt.
+  it("SCRUM-427: kurzer Text bleibt EIN Abschnitt; langer wird lückenlos geteilt (≤ Größe)", () => {
+    expect(chunkForExtract("kurzer Text", 100)).toEqual(["kurzer Text"]);
+    const long = `${"Satz. ".repeat(40)}\n\n${"Absatz zwei. ".repeat(40)}`;
+    const parts = chunkForExtract(long, 120);
+    expect(parts.length).toBeGreaterThan(1);
+    expect(parts.join("")).toBe(long); // lückenlos, nichts verloren
+    for (const p of parts) {
+      expect(p.length).toBeLessThanOrEqual(120);
+    }
+  });
+
+  it("SCRUM-427: langes Dokument wird abschnittsweise extrahiert und zusammengeführt (kein Gekürzt-Hinweis)", async () => {
+    const a = "ALPHA Ventil V1 bei Ueberdruck schliessen. ";
+    const b = "BETA Pumpe P2 alle 200 Betriebsstunden schmieren. ";
+    const filler = "Hinweis zur Wartung. ".repeat(500); // je ~10.500 Zeichen, keine Marker
+    const longDoc = `${a}${filler}\n\n${b}${filler}`;
+    const client: ModelClient = {
+      name: "fake:abschnitte",
+      complete: async (_system, user) => {
+        if (user.includes("ALPHA")) {
+          return '{"points": [{"title": "Ventil schließen", "summary": "s", "sourceExcerpt": "Ventil V1 bei Ueberdruck schliessen"}]}';
+        }
+        if (user.includes("BETA")) {
+          return '{"points": [{"title": "Pumpe schmieren", "summary": "s", "sourceExcerpt": "Pumpe P2 alle 200 Betriebsstunden schmieren"}]}';
+        }
+        return '{"points": []}';
+      },
+    };
+    const result = await new Reasoner(new ModelProvider(client)).extract(longDoc, "de");
+    expect(result.points.map((p) => p.title).sort()).toEqual([
+      "Pumpe schmieren",
+      "Ventil schließen",
+    ]);
+    expect(result.note).toBeNull(); // keine Kürzung → kein Hinweis
+    expect(result.demo).toBe(false);
+  });
+
+  it("SCRUM-427: doppelte Punkte über Abschnitte hinweg werden dedupliziert", async () => {
+    const filler = "Allgemeiner Hinweis. ".repeat(500);
+    const longDoc = `GLEICH Wert X einhalten. ${filler}\n\nGLEICH Wert X einhalten. ${filler}`;
+    const client: ModelClient = {
+      name: "fake:doppelt",
+      complete: async (_system, user) =>
+        user.includes("GLEICH")
+          ? '{"points": [{"title": "Wert X", "summary": "s", "sourceExcerpt": "Wert X einhalten"}]}'
+          : '{"points": []}',
+    };
+    const result = await new Reasoner(new ModelProvider(client)).extract(longDoc, "de");
+    expect(result.points).toHaveLength(1);
+    expect(result.points[0]?.title).toBe("Wert X");
   });
 
   it("extract ruft das Modell mit dem großen Antwort-Limit auf (EXTRACT_MAX_TOKENS)", async () => {

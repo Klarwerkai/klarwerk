@@ -183,6 +183,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/kos": { protection: "ko.create" },
   "DELETE /api/kos/:id": { protection: "ko.read" }, // + Route prüft Autor-oder-Controller/Admin (Pedi 02.07.)
   "PUT /api/kos/:id": { protection: "action-dispatched" },
+  // SCRUM-421: Upload-Grenzen — lesen alle Leseberechtigten (Anzeige), ändern nur Admin.
+  "GET /api/upload-limits": { protection: "ko.read" },
+  "PUT /api/upload-limits": { protection: "users.manage" },
   // SCRUM-422: Papierkorb — nur Admin (users.manage): Liste, Wiederherstellen, Endlöschung.
   "GET /api/kos/trash": { protection: "users.manage" },
   "POST /api/kos/:id/restore": { protection: "users.manage" },
@@ -258,6 +261,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/reasoner": { protection: "ko.read" },
   // SCRUM-426: Public-KI-Anreicherung — Schreibberechtigte; zusätzlich Stufen-Gate „offen".
   "POST /api/reasoner/enrich": { protection: "ko.create" },
+  // SCRUM-428: Key-Test für den lokalen LLM — nur Admin (echter Mini-Aufruf).
+  "POST /api/reasoner/test-local": { protection: "users.manage" },
   "GET /api/reasoner/config": { protection: "ko.read" },
   "PUT /api/reasoner/config": { protection: "users.manage" },
   // SCRUM-386: kundeneigene KI-Assist-Presets — lesen alle Rollen (Palette), pflegen nur Admin.

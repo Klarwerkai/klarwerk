@@ -5,7 +5,12 @@ import { AUTH_SCHEMA } from "../../auth";
 import { CAPTURE_SCHEMA } from "../../capture";
 import { CONFLICTS_SCHEMA } from "../../conflicts";
 import { EXTERNAL_KNOWLEDGE_SCHEMA } from "../../external-search";
-import { KO_EVIDENCE_SCHEMA, KO_SCHEMA, KO_VERSIONS_SCHEMA } from "../../knowledge-object";
+import {
+  KO_EVIDENCE_SCHEMA,
+  KO_SCHEMA,
+  KO_VERSIONS_SCHEMA,
+  UPLOAD_LIMITS_SCHEMA,
+} from "../../knowledge-object";
 import { IMPORT_CANDIDATES_SCHEMA } from "../../library-analytics";
 import { LIFECYCLE_SCHEMA } from "../../lifecycle";
 import { MODEL_RUNS_SCHEMA } from "../../model-runs";
@@ -42,6 +47,8 @@ export async function migrate(pool: Pool): Promise<void> {
     VALIDATION_SETTINGS_SCHEMA,
     // SCRUM-414: Regler „externe Wissensabfrage".
     EXTERNAL_KNOWLEDGE_SCHEMA,
+    // SCRUM-421: einstellbare Upload-Grenzen.
+    UPLOAD_LIMITS_SCHEMA,
   ];
   for (const ddl of schemas) {
     await pool.query(ddl);

@@ -145,6 +145,40 @@ export class Reasoner {
     }
   }
 
+  // SCRUM-428: Key-Test für den EIGENEN lokalen LLM (secondary) — echter Mini-Aufruf über den
+  // Tunnel/OpenAI-kompatiblen Endpoint. Ehrlich: nicht verdrahtet → klarer Befund; erreichbar
+  // → „geantwortet"; Tunnel/Server aus → der echte Fehler (nie geraten).
+  async probeLocal(): Promise<ReasonerProbeResult> {
+    const at = new Date().toISOString();
+    if (!this.usingSecondary() || typeof this.secondary.probe !== "function") {
+      return {
+        ok: false,
+        provider: this.secondary.name,
+        mode: "deterministic",
+        detail: "Kein lokaler LLM verdrahtet (KLARWERK_LOCAL_LLM_URL/_MODEL setzen).",
+        at,
+      };
+    }
+    try {
+      await this.secondary.probe();
+      return {
+        ok: true,
+        provider: this.secondary.name,
+        mode: "model",
+        detail: "Lokaler LLM hat geantwortet.",
+        at,
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        provider: this.secondary.name,
+        mode: "model",
+        detail: error instanceof Error ? error.message : String(error),
+        at,
+      };
+    }
+  }
+
   // ---- KI-Verwaltung v1 (Teil-Slice, 02.07.2026): Zuordnung global + je Aufgabe ----
   // Bewusst OHNE Persistenz (gilt bis Neustart): kein neuer Speicherpfad kurz vor dem
   // Beta-RC; der Voll-Ausbau (PMO-Eintrag "KI-Management-Seite") bringt Repo+Persistenz.
