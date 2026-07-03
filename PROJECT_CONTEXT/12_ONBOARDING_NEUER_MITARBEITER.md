@@ -3,6 +3,10 @@
 > Schritt-für-Schritt bis zur eigenständigen Mitarbeit. Kein Terminal-Wissen nötig —
 > alles Technische erledigt die eigene Claude-Session. Dauer realistisch: ~ halber Tag.
 > Rollen: **[P] = Pedi macht das · [M] = Mitarbeiter macht das · [C] = seine Claude-Session macht das.**
+>
+> **Variante Cloud-Session** (Mitarbeiter arbeitet als Claude-Cloud-Session statt am eigenen Mac):
+> Phasen 1–2 entfallen; es gelten die Cloud-Regeln aus `02_ARBEITSREGELN.md` (Kennung,
+> Commit-Weg über die Boss-Session, Datei-Brücke `docs/team2-austausch/`).
 
 ## Phase 0 — Zugänge (vorab, [P])
 

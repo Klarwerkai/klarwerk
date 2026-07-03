@@ -35,7 +35,8 @@ beschriebene Arbeitsweise. Bestätige kurz: Rolle, aktuelle Version, nächste of
 13. **12_ONBOARDING_NEUER_MITARBEITER.md** — das Schritt-für-Schritt-Skript bis zur
     vollwertigen, unabhängigen Mitarbeit (inkl. Einrichtungs-Prompt für die eigene Claude-Session).
 
-Danach als lebende Quellen: `docs/qm/BOSS_SESSION_STAND_2026-07-02.md` (Boss-Stand),
+Danach als lebende Quellen (bei Widerspruch gilt 04_AKTUELLER_STAND.md, der Boss-Stand wird
+nur an Meilensteinen fortgeschrieben): `docs/qm/BOSS_SESSION_STAND_2026-07-02.md` (Boss-Stand),
 `docs/qm/claude-after-report.md` (lückenlose After-Reports jeder erledigten Aufgabe),
 Jira-Projekt SCRUM (+ KWEB/KLLM/KGURU/KREL) und das PMO-Dashboard.
 

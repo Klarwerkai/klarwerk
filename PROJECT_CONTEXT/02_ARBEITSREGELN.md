@@ -55,3 +55,15 @@
 4. **Eine Boss-Session koordiniert** (vergibt/schneidet Tickets); die zweite Person arbeitet
    ticketbezogen. Wer Boss ist, steht in `04_AKTUELLER_STAND.md`.
 5. **Übergaben schriftlich:** alles Wichtige in After-Report/Jira — nie nur im Chat.
+
+### Cloud-Sessions (z. B. [Cloud-Worker], entschieden 03.07.)
+
+- Kennung **[Cloud-Worker]** an allen Jira-Kommentaren/Dateien; es arbeitet immer nur EINE
+  Session an der App (Ticket-Zuweisung = Sperre).
+- **Commit-Weg (a):** Cloud-Session schreibt gate-grüne Arbeit als Dateien nach `dev_Klarwerk`
+  zurück + Jira-Kommentar; die Boss-Session prüft und committet lokal mit Kennung; Push wie
+  immer nur über KLARWERK Sync. Kein GitHub-Zugang, keine Secrets in der Cloud.
+- Mac-gebundene Schritte (Schreibtisch-Spiegeln, +x, Schlüsselbund, localhost, Prüfstand-Läufe)
+  übernimmt die Boss-Session bzw. Pedi per Schreibtisch-App — die Cloud-Session plant, fixt,
+  diagnostiziert und wertet aus.
+- Datei-Brücke, solange nur `dev_Klarwerk` freigegeben ist: `docs/team2-austausch/` (s. LIESMICH dort).
