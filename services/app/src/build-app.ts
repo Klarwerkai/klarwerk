@@ -73,6 +73,7 @@ import {
   ModelProvider,
   PgAssistPresetRepo,
   Reasoner,
+  createLocalClientFromEnv,
   createModelClientFromEnv,
 } from "../../reasoner";
 import {
@@ -180,8 +181,12 @@ export function assembleServices(repos: AppRepos): AppServices {
     // Funktion (keine Modulgrenzen-Verletzung); null → Modul-Default 3.
     defaultNeededValidations: () => repos.validationSettings.getDefaultNeeded(),
   });
-  // FR-RSN-02/06: echtes Modell, wenn ANTHROPIC_API_KEY gesetzt ist; sonst deterministisch.
+  // FR-RSN-02/06: echtes Cloud-Modell, wenn ANTHROPIC_API_KEY gesetzt ist; sonst deterministisch.
   const modelClient = createModelClientFromEnv();
+  // SCRUM-424: eigener lokaler LLM (OpenAI-kompatibel), wenn KLARWERK_LOCAL_LLM_URL + _MODEL
+  // gesetzt sind. Beide Backends werden serverseitig beim Start verdrahtet — unabhängig vom
+  // Login. Die Werte kommen aus dem Launcher/Schlüsselbund, nie aus dem Code.
+  const localClient = createLocalClientFromEnv();
   // SCRUM-164: ModelRun-Protokoll mitgeben (No-op-fähig); API-Shape des Reasoners unverändert.
   const reasoner = new Reasoner(
     modelClient ? new ModelProvider(modelClient) : undefined,
@@ -189,6 +194,8 @@ export function assembleServices(repos: AppRepos): AppServices {
     repos.modelRuns,
     // SCRUM-386: Presets über das Repo — persistent in Pg bzw. im Dev-Journal der Desktop-App.
     repos.assistPresets,
+    // SCRUM-424: zweites Backend (lokaler LLM) als optionaler Provider.
+    localClient ? new ModelProvider(localClient) : undefined,
   );
 
   // Vorab erstellt, da das Management-Modul (SCRUM-120) deren Live-Daten aggregiert.

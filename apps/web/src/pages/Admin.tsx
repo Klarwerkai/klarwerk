@@ -501,7 +501,10 @@ export function Admin(): JSX.Element {
                       className="mt-1 h-9 w-full rounded-input border border-hairline bg-surface px-2 text-[13px] font-normal text-text"
                     >
                       <option value="auto">{t("adm.ai.choice.auto")}</option>
-                      <option value="model">{t("adm.ai.choice.model")}</option>
+                      <option value="cloud">{t("adm.ai.choice.cloud")}</option>
+                      {aiConfig.data?.localConfigured ? (
+                        <option value="local">{t("adm.ai.choice.local")}</option>
+                      ) : null}
                       <option value="deterministic">{t("adm.ai.choice.deterministic")}</option>
                     </select>
                   </label>
@@ -535,9 +538,10 @@ export function Admin(): JSX.Element {
                                 : "bg-page text-muted-2"
                             }`}
                           >
-                            {aiConfig.data?.effective[task] === "model"
-                              ? t("adm.ai.effModel")
-                              : t("adm.ai.effDet")}
+                            {/* SCRUM-424: ehrlich zeigen, WELCHE KI zuerst arbeitet. */}
+                            {t(
+                              `adm.ai.eff.${aiConfig.data?.effectiveProvider[task] ?? "deterministic"}`,
+                            )}
                           </span>
                         </span>
                         <select
@@ -558,7 +562,10 @@ export function Admin(): JSX.Element {
                         >
                           <option value="">{t("adm.ai.choice.inherit")}</option>
                           <option value="auto">{t("adm.ai.choice.auto")}</option>
-                          <option value="model">{t("adm.ai.choice.model")}</option>
+                          <option value="cloud">{t("adm.ai.choice.cloud")}</option>
+                          {aiConfig.data?.localConfigured ? (
+                            <option value="local">{t("adm.ai.choice.local")}</option>
+                          ) : null}
                           <option value="deterministic">{t("adm.ai.choice.deterministic")}</option>
                         </select>
                       </label>

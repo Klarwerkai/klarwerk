@@ -21,6 +21,14 @@ const configured: ReasonerConfigStatus = {
     select: "model",
   },
   persisted: false,
+  localConfigured: false,
+  effectiveProvider: {
+    structure: "cloud",
+    assist: "cloud",
+    interview: "cloud",
+    answer: "cloud",
+    select: "cloud",
+  },
   supportsLocales: ["de", "en"],
   tasks: ["structure", "assist", "interview", "answer", "select"],
 };
@@ -39,6 +47,14 @@ const demo: ReasonerConfigStatus = {
     select: "model",
   },
   persisted: false,
+  localConfigured: false,
+  effectiveProvider: {
+    structure: "cloud",
+    assist: "cloud",
+    interview: "cloud",
+    answer: "cloud",
+    select: "cloud",
+  },
   supportsLocales: ["de", "en"],
   tasks: ["structure", "assist", "interview", "answer", "select"],
 };

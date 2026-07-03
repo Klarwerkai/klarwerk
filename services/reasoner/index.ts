@@ -29,6 +29,10 @@ export {
   anthropicClient,
   createModelClientFromEnv,
   type HttpModelConfig,
+  // SCRUM-424: eigener lokaler LLM (OpenAI-kompatibel, z. B. vLLM/Qwen).
+  openAiCompatibleClient,
+  createLocalClientFromEnv,
+  type LocalHttpModelConfig,
 } from "./src/model-client";
 // SCRUM-386: kundeneigene KI-Assist-Presets (Admin verwaltet; Palette zeigt sie allen Rollen).
 export {

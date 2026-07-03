@@ -29,6 +29,9 @@ import type {
 // der Reasoner reicht ihn nie nach außen — Status/Ergebnisse enthalten keinen Schlüssel.
 export class Reasoner {
   private readonly primary: ReasonerProvider;
+  // SCRUM-424: der eigene lokale LLM als zweites echtes Backend (Cloud + lokal). Ohne
+  // Angabe = deterministischer Fallback (dann gibt es effektiv nur Cloud + Ersatzmodus).
+  private readonly secondary: ReasonerProvider;
   private readonly fallback: ReasonerProvider;
   // SCRUM-164: optionales ModelRun-Protokoll. Ohne Repo → No-op (rückwärtskompatibel).
   private readonly modelRuns: ModelRunRepo | undefined;
@@ -40,8 +43,12 @@ export class Reasoner {
     fallback: ReasonerProvider = new DeterministicProvider(),
     modelRuns?: ModelRunRepo,
     assistPresets?: AssistPresetRepo,
+    // SCRUM-424: optionaler zweiter Provider (eigener lokaler LLM). Als LETZTER Parameter,
+    // damit bestehende (positionale) Aufrufe unverändert bleiben.
+    secondary?: ReasonerProvider,
   ) {
     this.primary = primary ?? fallback;
+    this.secondary = secondary ?? fallback;
     this.fallback = fallback;
     this.modelRuns = modelRuns;
     this.presetRepo = assistPresets ?? new InMemoryAssistPresetRepo();
@@ -63,6 +70,44 @@ export class Reasoner {
 
   private usingPrimary(): boolean {
     return this.primary.isAvailable() && this.primary !== this.fallback;
+  }
+
+  // SCRUM-424: ist der eigene lokale LLM verdrahtet & verfügbar (kein Alias auf den Fallback)?
+  private usingSecondary(): boolean {
+    return this.secondary.isAvailable() && this.secondary !== this.fallback;
+  }
+
+  // SCRUM-424: geordnete Provider-Kette je Aufgabe aus der bewussten Zuordnung.
+  //  - "auto"                Cloud → lokal → deterministisch (verfügbare in dieser Reihenfolge)
+  //  - "cloud"/"model"       Cloud (dann deterministisch)
+  //  - "local"               lokaler LLM (dann deterministisch)
+  //  - "deterministic"       nur deterministisch
+  // Der deterministische Fallback ist IMMER das letzte Glied (FR-RSN-04, antwortet stets).
+  private providerChain(task: ModelRunTask): ReasonerProvider[] {
+    const choice = this.choiceFor(task);
+    const chain: ReasonerProvider[] = [];
+    if (choice !== "deterministic") {
+      if ((choice === "auto" || choice === "cloud" || choice === "model") && this.usingPrimary()) {
+        chain.push(this.primary);
+      }
+      if ((choice === "auto" || choice === "local") && this.usingSecondary()) {
+        chain.push(this.secondary);
+      }
+    }
+    chain.push(this.fallback);
+    return chain;
+  }
+
+  // Welche KI läuft je Aufgabe EFFEKTIV zuerst (für die ehrliche Anzeige).
+  private providerLabelFor(task: ModelRunTask): "cloud" | "local" | "deterministic" {
+    const first = this.providerChain(task)[0];
+    if (first === this.primary && this.usingPrimary()) {
+      return "cloud";
+    }
+    if (first === this.secondary && this.usingSecondary()) {
+      return "local";
+    }
+    return "deterministic";
   }
 
   // Key-Test (Pedi 02.07.): ehrlicher Echtaufruf statt Anzeige-Vermutung. Ohne Modell
@@ -109,7 +154,7 @@ export class Reasoner {
   }
 
   setTaskConfig(next: ReasonerTaskConfig): ReasonerTaskConfig {
-    const valid: ReasonerTaskChoice[] = ["auto", "model", "deterministic"];
+    const valid: ReasonerTaskChoice[] = ["auto", "model", "cloud", "local", "deterministic"];
     const tasks = ["structure", "assist", "interview", "answer", "select", "extract"] as const;
     if (!valid.includes(next.global)) {
       throw new Error("Ungültige globale KI-Zuordnung.");
@@ -131,55 +176,51 @@ export class Reasoner {
     return this.taskConfig.perTask[task] ?? this.taskConfig.global;
   }
 
-  // Effektiver Modus je Aufgabe — ehrlich: "model" nur, wenn gewollt UND verfügbar.
+  // Effektiver Modus je Aufgabe — ehrlich: "model" nur, wenn ein echtes Modell (Cloud ODER
+  // lokal) zuerst arbeitet. SCRUM-424: leitet sich aus der Provider-Kette ab.
   private effectiveFor(task: ModelRunTask): "model" | "deterministic" {
-    const choice = this.choiceFor(task);
-    if (choice === "deterministic") return "deterministic";
-    return this.usingPrimary() ? "model" : "deterministic";
+    return this.providerChain(task)[0] !== this.fallback ? "model" : "deterministic";
   }
 
-  // SCRUM-164: führt eine Reasoner-Task aus (primary → bei Fehler deterministischer Fallback)
-  // und protokolliert sie als ModelRunRecord (nur Metadaten, kein Prompt-/Antworttext).
-  // Verhalten gegenüber den bisherigen Methoden ist unverändert (gleiche Ergebnisse/Fehler).
+  // SCRUM-164/424: führt eine Reasoner-Task entlang der Provider-Kette aus (Cloud → lokal →
+  // deterministisch, je nach Zuordnung) und protokolliert sie als ModelRunRecord (nur
+  // Metadaten, kein Prompt-/Antworttext). Der erste Provider, der OHNE Fehler antwortet,
+  // gewinnt; jeder Fehler fällt still zum nächsten Glied. Das letzte Glied (deterministisch)
+  // antwortet immer, daher ist der Erfolg garantiert.
   private async runTask<T extends { demo: boolean }>(
     task: ModelRunTask,
     locale: ReasonerLocale,
-    primaryFn: () => Promise<T>,
-    fallbackFn: () => Promise<T>,
+    run: (provider: ReasonerProvider) => Promise<T>,
   ): Promise<T> {
     const startedAt = new Date().toISOString();
-    // KI-Verwaltung v1: bewusste Zuordnung je Aufgabe schlägt die Automatik.
-    const usePrimary = this.effectiveFor(task) === "model";
-    let fallback = false;
-    let result: T;
-    try {
-      if (usePrimary) {
-        try {
-          result = await primaryFn();
-        } catch {
-          fallback = true;
-          result = await fallbackFn();
-        }
-      } else {
-        result = await fallbackFn();
+    const chain = this.providerChain(task);
+    let lastError: unknown;
+    for (let i = 0; i < chain.length; i++) {
+      const provider = chain[i];
+      if (!provider) {
+        continue;
       }
-    } catch (err) {
-      await this.recordRun(task, locale, startedAt, "error", {
-        fallback,
-        demo: true,
-        provider: this.fallback.name,
-        error: err instanceof Error ? err.message : "unknown",
-      });
-      throw err;
+      try {
+        const result = await run(provider);
+        const fromModel = provider !== this.fallback;
+        await this.recordRun(task, locale, startedAt, "success", {
+          fallback: i > 0,
+          demo: result.demo,
+          provider: provider.name,
+          ...(fromModel ? { model: provider.name } : {}),
+        });
+        return result;
+      } catch (err) {
+        lastError = err;
+      }
     }
-    const fromPrimary = usePrimary && !fallback;
-    await this.recordRun(task, locale, startedAt, "success", {
-      fallback,
-      demo: result.demo,
-      provider: fromPrimary ? this.primary.name : this.fallback.name,
-      ...(fromPrimary ? { model: this.primary.name } : {}),
+    await this.recordRun(task, locale, startedAt, "error", {
+      fallback: chain.length > 1,
+      demo: true,
+      provider: this.fallback.name,
+      error: lastError instanceof Error ? lastError.message : "unknown",
     });
-    return result;
+    throw lastError ?? new Error("Kein Provider verfügbar.");
   }
 
   private async recordRun(
@@ -207,23 +248,40 @@ export class Reasoner {
     });
   }
 
-  // FR-RSN-05: server-echte Statusanzeige.
+  // SCRUM-424: ein echtes Modell ist verfügbar, wenn Cloud ODER lokal verdrahtet ist.
+  // Das aktive Anzeige-Modell bevorzugt die Cloud (Rückwärtskompatibilität), sonst lokal.
+  private usingAnyModel(): boolean {
+    return this.usingPrimary() || this.usingSecondary();
+  }
+
+  private activeModelProvider(): ReasonerProvider {
+    if (this.usingPrimary()) {
+      return this.primary;
+    }
+    if (this.usingSecondary()) {
+      return this.secondary;
+    }
+    return this.fallback;
+  }
+
+  // FR-RSN-05: server-echte Statusanzeige (aktiv, wenn IRGENDEIN Modell verfügbar ist).
   status(): ReasonerStatus {
-    const usingPrimary = this.usingPrimary();
+    const active = this.usingAnyModel();
     return {
-      active: usingPrimary,
-      provider: usingPrimary ? this.primary.name : this.fallback.name,
-      mode: usingPrimary ? "model" : "deterministic",
+      active,
+      provider: this.activeModelProvider().name,
+      mode: active ? "model" : "deterministic",
     };
   }
 
   // SCRUM-166: read-only Provider-/Model-Konfiguration. Nur Metadaten — keine Secrets,
   // keine Prompt-/Antwortinhalte. Ohne konfiguriertes Modell ehrlich Demo-Modus.
   configStatus(): ReasonerConfigStatus {
-    const configured = this.usingPrimary();
+    const configured = this.usingAnyModel();
+    const activeModel = this.activeModelProvider();
     return {
-      provider: configured ? this.primary.name : this.fallback.name,
-      ...(configured ? { model: this.primary.name } : {}),
+      provider: configured ? activeModel.name : this.fallback.name,
+      ...(configured ? { model: activeModel.name } : {}),
       configured,
       mode: configured ? "model" : "demo",
       fallbackAvailable: true,
@@ -235,6 +293,14 @@ export class Reasoner {
           (task) => [task, this.effectiveFor(task)],
         ),
       ),
+      // SCRUM-424: der eigene lokale LLM + welche KI je Aufgabe zuerst arbeitet.
+      localConfigured: this.usingSecondary(),
+      ...(this.usingSecondary() ? { localProvider: this.secondary.name } : {}),
+      effectiveProvider: Object.fromEntries(
+        (["structure", "assist", "interview", "answer", "select", "extract"] as const).map(
+          (task) => [task, this.providerLabelFor(task)],
+        ),
+      ),
       persisted: false,
     };
   }
@@ -242,12 +308,7 @@ export class Reasoner {
   // FR-RSN-04/FR-I18N-01: Modellfehler dürfen den Betrieb nicht stoppen → deterministischer
   // Fallback. locale wird an primary UND fallback identisch durchgereicht (Default "de").
   async structure(rawText: string, locale: ReasonerLocale = "de"): Promise<StructureResult> {
-    return this.runTask(
-      "structure",
-      locale,
-      () => this.primary.structure(rawText, locale),
-      () => this.fallback.structure(rawText, locale),
-    );
+    return this.runTask("structure", locale, (p) => p.structure(rawText, locale));
   }
 
   // SCRUM-167: Ask-/Antwortpfad ebenfalls über runTask protokolliert (nur Metadaten).
@@ -256,12 +317,7 @@ export class Reasoner {
     context: readonly KnowledgeRef[],
     locale: ReasonerLocale = "de",
   ): Promise<AnswerResult> {
-    return this.runTask(
-      "answer",
-      locale,
-      () => this.primary.answer(question, context, locale),
-      () => this.fallback.answer(question, context, locale),
-    );
+    return this.runTask("answer", locale, (p) => p.answer(question, context, locale));
   }
 
   // FR-RSN-03: Text präzisieren; Modellfehler → deterministischer Fallback.
@@ -270,12 +326,7 @@ export class Reasoner {
     locale: ReasonerLocale = "de",
     instruction?: string,
   ): Promise<AssistResult> {
-    return this.runTask(
-      "assist",
-      locale,
-      () => this.primary.assistText(text, locale, instruction),
-      () => this.fallback.assistText(text, locale, instruction),
-    );
+    return this.runTask("assist", locale, (p) => p.assistText(text, locale, instruction));
   }
 
   // SCRUM-132: reasoner-getriebenes Interview; Modellfehler → deterministischer Fallback.
@@ -283,12 +334,7 @@ export class Reasoner {
     answers: readonly string[],
     locale: ReasonerLocale = "de",
   ): Promise<InterviewResult> {
-    return this.runTask(
-      "interview",
-      locale,
-      () => this.primary.interview(answers, locale),
-      () => this.fallback.interview(answers, locale),
-    );
+    return this.runTask("interview", locale, (p) => p.interview(answers, locale));
   }
 
   // PMO-FEA-0006: Wissenspunkte aus Dokumenttext extrahieren (optional mit Suchauftrag).
@@ -301,26 +347,24 @@ export class Reasoner {
     // SCRUM-411 (Pedi-Test 03.07.): Scheitert der Modell-Aufruf, obwohl ein Modell gewollt
     // UND konfiguriert ist, bekommt der Nutzer den ECHTEN Grund — nicht die falsche
     // „kein KI-Modell"-Meldung des deterministischen Fallbacks. G-2 bleibt: keine Pseudo-Punkte.
+    // SCRUM-424: der letzte Modellfehler der Kette (Cloud und/oder lokal) wird gemerkt, damit
+    // der deterministische Abschluss den ECHTEN Grund melden kann statt „kein KI-Modell".
     let modelError: string | null = null;
     const wantedModel = this.effectiveFor("extract") === "model";
-    return this.runTask(
-      "extract",
-      locale,
-      async () => {
-        try {
-          return await this.primary.extract(documentText, locale, query);
-        } catch (error) {
-          modelError = error instanceof Error ? error.message : String(error);
-          throw error;
-        }
-      },
-      async () => {
+    return this.runTask("extract", locale, async (provider) => {
+      if (provider === this.fallback) {
         const honest = await this.fallback.extract(documentText, locale, query);
         return wantedModel && modelError !== null
           ? honestExtractModelFailed(modelError, locale)
           : honest;
-      },
-    );
+      }
+      try {
+        return await provider.extract(documentText, locale, query);
+      } catch (error) {
+        modelError = error instanceof Error ? error.message : String(error);
+        throw error;
+      }
+    });
   }
 
   // SCRUM-167: select bleibt synchron (reines Keyword-Ranking, kein Modell-/Netzaufruf).

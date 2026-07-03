@@ -88,10 +88,13 @@ export interface ReasonerStatus {
 export type ReasonerConfigMode = "model" | "fallback" | "demo";
 export type ReasonerTask = "structure" | "assist" | "interview" | "answer" | "select" | "extract";
 
-// KI-Verwaltung v1 (Pedi 02.07., Teil-Slice des PMO-Eintrags „KI-Management-Seite"):
-// je Aufgabe bewusst wählen — "auto" (Modell wenn verfügbar), "model" (Modell verlangen,
-// ehrlicher Fallback wenn nicht verfügbar) oder "deterministic" (bewusst ohne Modell).
-export type ReasonerTaskChoice = "auto" | "model" | "deterministic";
+// KI-Verwaltung (Pedi 02./03.07.): je Aufgabe bewusst wählen.
+//  - "auto"          Cloud → lokal → deterministisch (was verfügbar ist, in dieser Reihenfolge)
+//  - "cloud"         das Cloud-Modell verlangen (ehrlicher Fallback, wenn nicht verfügbar)
+//  - "local"         den EIGENEN lokalen LLM verlangen (SCRUM-424; ehrlicher Fallback)
+//  - "model"         Alias für "cloud" (Rückwärtskompatibilität)
+//  - "deterministic" bewusst ohne Modell
+export type ReasonerTaskChoice = "auto" | "model" | "cloud" | "local" | "deterministic";
 export interface ReasonerTaskConfig {
   global: ReasonerTaskChoice;
   perTask: Partial<
@@ -113,6 +116,11 @@ export interface ReasonerConfigStatus {
   // KI-Verwaltung v1: gewünschte Zuordnung + was je Aufgabe EFFEKTIV läuft (ehrlich).
   taskConfig: ReasonerTaskConfig;
   effective: Record<string, "model" | "deterministic">;
+  // SCRUM-424: der eigene lokale LLM (verdrahtet & auswählbar?) + sein Anzeige-Label.
+  localConfigured: boolean;
+  localProvider?: string;
+  // SCRUM-424: welche KI je Aufgabe EFFEKTIV zuerst arbeitet (cloud/lokal/deterministisch).
+  effectiveProvider: Record<string, "cloud" | "local" | "deterministic">;
   // v1 bewusst ohne Persistenz (gilt bis Neustart) — UI zeigt das ehrlich an.
   persisted: boolean;
 }

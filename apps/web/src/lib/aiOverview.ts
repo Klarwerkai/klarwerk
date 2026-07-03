@@ -19,6 +19,9 @@ export function aiAccessRows(cfg: {
   provider: string;
   model?: string;
   mode: "model" | "fallback" | "demo";
+  // SCRUM-424: eigener lokaler LLM — verdrahtet & auswählbar? + Anzeige-Label.
+  localConfigured?: boolean;
+  localProvider?: string;
 }): AiAccessRow[] {
   return [
     {
@@ -33,6 +36,13 @@ export function aiAccessRows(cfg: {
       state: cfg.mode === "model" ? "available" : "active",
       detail: null,
     },
-    { id: "local", state: "planned", detail: null },
+    {
+      // SCRUM-424: lokaler LLM „bereit" (verdrahtet & auswählbar), sonst „geplant" (KLLM-61).
+      // Ehrlich: „bereit" = verbunden/auswählbar, nicht „gerade aktiv" — die Tunnel-Erreichbarkeit
+      // bestätigt der Schlüssel-Test bzw. ein echter Aufruf.
+      id: "local",
+      state: cfg.localConfigured ? "available" : "planned",
+      detail: cfg.localConfigured ? (cfg.localProvider ?? null) : null,
+    },
   ];
 }

@@ -20,7 +20,21 @@ describe("SCRUM-413: Verfügbare-KIs-Übersicht", () => {
       detail: "anthropic:claude-sonnet-4-6",
     });
     expect(rows[1]?.state).toBe("available");
+    // Ohne verdrahteten lokalen LLM bleibt die Zeile ehrlich „geplant".
     expect(rows[2]?.state).toBe("planned");
+  });
+
+  // SCRUM-424: eigener lokaler LLM verdrahtet → „bereit" (verbunden & auswählbar) mit Label.
+  it("mit verdrahtetem lokalem LLM: Zeile bereit + Provider-Label", () => {
+    const rows = aiAccessRows({
+      configured: true,
+      provider: "anthropic:claude-sonnet-4-6",
+      model: "anthropic:claude-sonnet-4-6",
+      mode: "model",
+      localConfigured: true,
+      localProvider: "local:Qwen3-32B-AWQ",
+    });
+    expect(rows[2]).toEqual({ id: "local", state: "available", detail: "local:Qwen3-32B-AWQ" });
   });
 
   it("ohne Modell: Cloud ehrlich nicht-konfiguriert, Ersatzmodus aktiv", () => {
