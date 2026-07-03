@@ -23,7 +23,13 @@ import {
   InMemoryConflictRepo,
   PgConflictRepo,
 } from "../../conflicts";
-import { type ExternalSearchService, createExternalSearchFromEnv } from "../../external-search";
+import {
+  type ExternalKnowledgePolicyRepo,
+  type ExternalSearchService,
+  InMemoryExternalKnowledgePolicyRepo,
+  PgExternalKnowledgePolicyRepo,
+  createExternalSearchFromEnv,
+} from "../../external-search";
 import { I18nService } from "../../i18n";
 import {
   type EvidenceRepo,
@@ -136,6 +142,9 @@ export interface AppServices {
   mailer: Mailer;
   // Audit-P3 (SCRUM-397): Gelesen-Status der Glocke (öffentliche Modul-Schnittstelle).
   notificationSeen: NotificationSeenRepo;
+  // SCRUM-414: Admin-Regler „externe Wissensabfrage" (persistiert) — direkt als schmale
+  // Modul-Schnittstelle, wie notificationSeen.
+  externalKnowledge: ExternalKnowledgePolicyRepo;
 }
 
 // Alle Repositories der App. Sie sind der einzige Unterschied zwischen In-Memory und
@@ -165,6 +174,8 @@ export interface AppRepos {
   assistPresets: AssistPresetRepo;
   // SCRUM-395: Standard-Prüferanzahl (Admin-Einstellung, gilt für neue Einreichungen).
   validationSettings: ValidationSettingsRepo;
+  // SCRUM-414: Admin-Regler „externe Wissensabfrage" (4 Stufen, persistiert).
+  externalKnowledge: ExternalKnowledgePolicyRepo;
 }
 
 // Verdrahtet aus den Repos die vollständige Service-Landschaft. Ein gemeinsames
@@ -252,6 +263,8 @@ export function assembleServices(repos: AppRepos): AppServices {
     mailer: createMailerFromEnv() ?? new ConsoleMailer(),
     // Audit-P3 (SCRUM-397): Gelesen-Status der Glocke — Repo direkt (schmale Modul-API).
     notificationSeen: repos.notificationSeen,
+    // SCRUM-414: Regler-Repo direkt durchreichen (Routen nutzen es + Audit).
+    externalKnowledge: repos.externalKnowledge,
   };
 }
 
@@ -278,6 +291,7 @@ export function inMemoryRepos(): AppRepos {
     notificationSeen: new InMemoryNotificationSeenRepo(),
     assistPresets: new InMemoryAssistPresetRepo(),
     validationSettings: new InMemoryValidationSettingsRepo(),
+    externalKnowledge: new InMemoryExternalKnowledgePolicyRepo(),
   };
 }
 
@@ -314,6 +328,8 @@ export function buildPgServices(pool: Pool): AppServices {
     assistPresets: new PgAssistPresetRepo(pool),
     // SCRUM-395: Standard-Prüferanzahl persistent.
     validationSettings: new PgValidationSettingsRepo(pool),
+    // SCRUM-414: externe-Wissensabfrage-Regler persistent.
+    externalKnowledge: new PgExternalKnowledgePolicyRepo(pool),
   });
 }
 
@@ -357,7 +373,16 @@ export function buildApp(services: AppServices = buildServices()): FastifyInstan
   app.register(outputRoutes(services.output, guards));
   app.register(managementRoutes(services.management, guards));
   app.register(modelRunRoutes(services.modelRuns, guards));
-  app.register(externalRoutes(services.externalSearch, guards));
+  app.register(
+    externalRoutes(
+      {
+        search: services.externalSearch,
+        policy: services.externalKnowledge,
+        audit: services.audit,
+      },
+      guards,
+    ),
+  );
   app.register(lifecycleRoutes(services.lifecycle, guards));
   app.register(
     notificationsRoutes(

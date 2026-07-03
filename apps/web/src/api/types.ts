@@ -46,6 +46,9 @@ export interface ExternalResult {
   provider: string;
 }
 
+// SCRUM-414: Admin-Regler „externe Wissensabfrage" (4 Stufen).
+export type ExternalKnowledgeStage = "blocked" | "search_on_click" | "search_attach" | "open";
+
 // SCRUM-121: Anhang rückwärtskompatibel — Alt: dataUrl (Inline); Neu: objectId + thumbnail.
 export interface KoAttachment {
   id: string;

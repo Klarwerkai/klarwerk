@@ -4,6 +4,7 @@ import { AUDIT_SCHEMA } from "../../audit";
 import { AUTH_SCHEMA } from "../../auth";
 import { CAPTURE_SCHEMA } from "../../capture";
 import { CONFLICTS_SCHEMA } from "../../conflicts";
+import { EXTERNAL_KNOWLEDGE_SCHEMA } from "../../external-search";
 import { KO_EVIDENCE_SCHEMA, KO_SCHEMA, KO_VERSIONS_SCHEMA } from "../../knowledge-object";
 import { IMPORT_CANDIDATES_SCHEMA } from "../../library-analytics";
 import { LIFECYCLE_SCHEMA } from "../../lifecycle";
@@ -39,6 +40,8 @@ export async function migrate(pool: Pool): Promise<void> {
     ASSIST_PRESETS_SCHEMA,
     // SCRUM-395: Standard-Prüferanzahl (Validierungs-Einstellungen).
     VALIDATION_SETTINGS_SCHEMA,
+    // SCRUM-414: Regler „externe Wissensabfrage".
+    EXTERNAL_KNOWLEDGE_SCHEMA,
   ];
   for (const ddl of schemas) {
     await pool.query(ddl);

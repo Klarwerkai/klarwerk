@@ -13,6 +13,7 @@ import type {
   Draft,
   DraftPayload,
   EvidenceRecord,
+  ExternalKnowledgeStage,
   ExternalResult,
   ExtractResult,
   Gap,
@@ -274,6 +275,10 @@ export const endpoints = {
   // SCRUM-118 / FR-EXT-02: externer Such-Proxy (optional; 501 wenn deaktiviert).
   external: {
     search: (q: string) => api.get<ExternalResult[]>(`/external/search${qs({ q })}`),
+    // SCRUM-414: Admin-Regler „externe Wissensabfrage" (lesen: alle; setzen: Admin).
+    policy: () => api.get<{ stage: ExternalKnowledgeStage }>("/external/policy"),
+    savePolicy: (stage: ExternalKnowledgeStage) =>
+      api.put<{ stage: ExternalKnowledgeStage }>("/external/policy", { stage }),
   },
   // SCRUM-181: admin-only Demo-Seed für leere Instanzen (ehrliche seeded/skipped-Rückgabe).
   admin: {

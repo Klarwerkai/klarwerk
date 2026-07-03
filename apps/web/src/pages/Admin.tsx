@@ -6,6 +6,7 @@ import { Link } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useAudit, useUsers } from "../api/hooks";
+import type { ExternalKnowledgeStage } from "../api/types";
 import { useToast } from "../app/ToastContext";
 import { ROLES, type Role } from "../app/navigation";
 import { HelpTip } from "../components/HelpTip";
@@ -25,6 +26,14 @@ import { type AiAccessState, aiAccessRows } from "../lib/aiOverview";
 import { PILOT_NEXT_STEPS } from "../lib/pilotNextSteps";
 
 const EMPTY_NEW_USER = { name: "", email: "", password: "", role: "experte" as Role };
+
+// SCRUM-414: die vier Stufen des Reglers „externe Wissensabfrage" in Anzeige-Reihenfolge.
+const EXTERNAL_STAGES: readonly ExternalKnowledgeStage[] = [
+  "blocked",
+  "search_on_click",
+  "search_attach",
+  "open",
+];
 
 // SCRUM-413: Status-Töne der KI-Zugänge — Ampel nur als ECHTER Status (CI-konform).
 const ACCESS_STATE_TONE: Record<AiAccessState, string> = {
@@ -232,6 +241,22 @@ export function Admin(): JSX.Element {
   const userName = (id: string): string => query.data?.find((u) => u.id === id)?.name ?? id;
   const daysLeft = (expiresAt: string): number =>
     Math.max(0, Math.ceil((Date.parse(expiresAt) - Date.now()) / 86_400_000));
+
+  // SCRUM-414: Regler „externe Wissensabfrage" (4 Stufen) — Draft-Muster wie die Presets.
+  const extPolicy = useQuery({
+    queryKey: ["external", "policy"],
+    queryFn: endpoints.external.policy,
+  });
+  const [extPolicyDraft, setExtPolicyDraft] = useState<ExternalKnowledgeStage | null>(null);
+  const saveExtPolicy = useMutation({
+    mutationFn: () => endpoints.external.savePolicy(extPolicyDraft ?? "search_on_click"),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["external", "policy"] });
+      setExtPolicyDraft(null);
+      push("success", t("adm.ext.saved"));
+    },
+    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
+  });
 
   // SCRUM-394: aktiver Admin-Bereich (Konten · KI · Daten).
   const [section, setSection] = useState<AdminSectionId>(DEFAULT_ADMIN_SECTION);
@@ -698,6 +723,67 @@ export function Admin(): JSX.Element {
               <p className="text-[12.5px] text-muted-2">{t("state.loading")}</p>
             )}
             <p className="text-[11px] text-muted-2">{t("adm.ai.accessNote")}</p>
+          </Card>
+
+          {/* SCRUM-414 (Pedi 03.07.): Regler „externe Wissensabfrage" — 4 Stufen von komplett
+              blockiert bis offen. Standard restriktiv. Steuert die externe Quellensuche und ist
+              die Freigabe für die Public-KI-Anreicherung (SCRUM-426). */}
+          <Card className="space-y-3">
+            <div className="flex items-center gap-1.5">
+              <SectionLabel>{t("adm.ext.title")}</SectionLabel>
+              <HelpTip title={t("adm.ext.title")} body={t("adm.ext.help")} />
+            </div>
+            <p className="text-[12.5px] text-muted">{t("adm.ext.hint")}</p>
+            {extPolicy.data ? (
+              <div className="space-y-1.5">
+                {EXTERNAL_STAGES.map((stage) => {
+                  const active = (extPolicyDraft ?? extPolicy.data.stage) === stage;
+                  return (
+                    <button
+                      key={stage}
+                      type="button"
+                      onClick={() => setExtPolicyDraft(stage)}
+                      aria-pressed={active}
+                      className={`flex w-full items-start gap-2 rounded-card border px-3 py-2 text-left transition-colors ${
+                        active
+                          ? "border-ink bg-hairline-soft"
+                          : "border-hairline hover:border-ink/30"
+                      }`}
+                    >
+                      <span
+                        className={`mt-0.5 h-3.5 w-3.5 shrink-0 rounded-full border ${
+                          active ? "border-ink bg-ink" : "border-hairline"
+                        }`}
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-[13px] font-semibold text-text">
+                          {t(`adm.ext.stage.${stage}`)}
+                        </span>
+                        <span className="block text-[11.5px] text-muted">
+                          {t(`adm.ext.stageHint.${stage}`)}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <Button
+                    variant="primary"
+                    disabled={
+                      saveExtPolicy.isPending ||
+                      extPolicyDraft === null ||
+                      extPolicyDraft === extPolicy.data.stage
+                    }
+                    onClick={() => saveExtPolicy.mutate()}
+                  >
+                    {t("adm.ext.save")}
+                  </Button>
+                  <span className="text-[11px] text-muted-2">{t("adm.ext.note")}</span>
+                </div>
+              </div>
+            ) : (
+              <p className="text-[12.5px] text-muted-2">{t("state.loading")}</p>
+            )}
           </Card>
         </>
       ) : null}

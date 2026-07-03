@@ -195,6 +195,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Erfassen), ändern nur die Nutzerverwaltung.
   "GET /api/validation/settings": { protection: "ko.read" },
   "PUT /api/validation/settings": { protection: "users.manage" },
+  // SCRUM-414: Regler „externe Wissensabfrage" — lesen alle Leseberechtigten, setzen nur Admin.
+  "GET /api/external/policy": { protection: "ko.read" },
+  "PUT /api/external/policy": { protection: "users.manage" },
 
   // --- Conflicts (conflicts-routes.ts) ---
   "GET /api/conflicts": { protection: "ko.read" },

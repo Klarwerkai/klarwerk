@@ -1,13 +1,14 @@
 #!/bin/bash
 # KLARWERK Paul-Runner — Aufgabendatei des Cloud-Workers ([Paul]).
 #
-# AUFGABE v12 (03.07. abends): GATES FÜR SCRUM-425 (v0.9.37-beta) — prüft zugleich den
+# AUFGABE v13 (03.07. abends): GATES FÜR SCRUM-414 (v0.9.38-beta) — prüft zugleich den
 # gesamten Bestand (395/416/413/417-420/422/418-Härtung/424).
-#   SCRUM-425: Validierungs-Karten optisch an die Bibliothek angeglichen — Titel text-[15px],
-#              Titel-Hover nur Unterstreichung, Badge-Abstand gap-1.5. Prüf-Funktionen bleiben.
+#   SCRUM-414: Admin-Regler „externe Wissensabfrage" — 4 Stufen (blockiert · nur Suche
+#              auf Klick [Standard] · Suche+Anhängen · offen), persistiert, mit Server-Gate
+#              (blockiert → externe Suche 403). Admin → KI: neue Karte.
 # Ablauf:
 #   0: Format-Autofix (biome check --write).
-#   1: apps/web bauen (vite build → dist v0.9.37-beta).
+#   1: apps/web bauen (vite build → dist v0.9.38-beta).
 #   2: tools/check (Build · Lint · Architektur · Tests).
 #   3: npm run smoke:ui (4 Playwright-Kernflüsse).
 #   4: After-Report-Nachträge anhängen (je nur falls fehlend — Marker-Prüfung).
@@ -21,7 +22,7 @@ FEHL=0
 
 {
 echo "${FETT}KLARWERK Paul-Runner — $(date '+%d.%m.%Y %H:%M')${AUS}"
-echo "Aufgabe v12: Gates für SCRUM-425 (v0.9.37-beta) + Gesamtbestand — ca. 4–7 Minuten."
+echo "Aufgabe v13: Gates für SCRUM-414 (v0.9.38-beta) + Gesamtbestand — ca. 4–7 Minuten."
 echo
 
 cd "$REPO" || { echo "${ROT}FEHLER: Repo nicht gefunden.${AUS}"; exit 1; }
@@ -33,7 +34,7 @@ echo
 
 echo "${FETT}— Schritt 1/4: apps/web bauen (vite build)${AUS}"
 if (cd apps/web && npx vite build); then
-  echo "${GRUEN}✓ Build/dist v0.9.37 erstellt${AUS}"
+  echo "${GRUEN}✓ Build/dist v0.9.38 erstellt${AUS}"
 else
   echo "${ROT}✗ vite build ROT${AUS}"; FEHL=1
 fi
@@ -68,14 +69,15 @@ anhaengen "SCRUM-422 — Papierkorb für gelöschte Artikel" "paul-nachtrag-422.
 anhaengen "SCRUM-418 (Härtung 2) — Extraktion aus Datei robust" "paul-nachtrag-418b.md"
 anhaengen "SCRUM-424 — Zwei KI-Backends" "paul-nachtrag-424.md"
 anhaengen "SCRUM-425 — Validierung optisch an die Bibliothek angleichen" "paul-nachtrag-425.md"
+anhaengen "SCRUM-414 — Admin-Regler „externe Wissensabfrage" "paul-nachtrag-414.md"
 
 echo
 if [ "$FEHL" = "0" ]; then
-  echo "${GRUEN}${FETT}ALLE GATES GRÜN — Gesamtbestand lieferbar (v0.9.37-beta, inkl. 424 + 425).${AUS}"
-  echo "Sichtabnahme: Validierung öffnen — Karten-Titel/Abstände wirken jetzt wie in der Bibliothek;"
-  echo "Entscheiden/Aufklappen/Bearbeiten/Löschen unverändert."
+  echo "${GRUEN}${FETT}ALLE GATES GRÜN — Gesamtbestand lieferbar (v0.9.38-beta, inkl. 424 + 425 + 414).${AUS}"
+  echo "Sichtabnahme: Admin → KI → Karte 'Externe Wissensabfrage' — Stufe wählen (z. B. Blockiert),"
+  echo "dann Wissen erfassen: die externe Quellensuche ist ausgeblendet; bei Nicht-Blockiert sichtbar."
   echo "Commit-Empfehlung (Boss-Session):"
-  echo "  [Cloud-Worker] SCRUM-425: Validierung optisch an die Bibliothek angeglichen (v0.9.37-beta)"
+  echo "  [Cloud-Worker] SCRUM-414: Admin-Regler externe Wissensabfrage (4 Stufen, persistiert, Server-Gate) (v0.9.38-beta)"
   echo "KEIN Push — KLARWERK Sync macht Pedi."
 else
   echo "${ROT}${FETT}Mindestens ein Gate ROT — Paul analysiert docs/team2-austausch/paul-runner.log und liefert einen Fix.${AUS}"

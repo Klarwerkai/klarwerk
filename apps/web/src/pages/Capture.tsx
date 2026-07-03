@@ -240,6 +240,13 @@ export function Capture(): JSX.Element {
     queryFn: endpoints.validation.settings,
   });
   const defaultNeeded = valSettings.data?.defaultNeededValidations ?? 3;
+  // SCRUM-414: Admin-Regler „externe Wissensabfrage" — blendet die externe Quellensuche aus,
+  // wenn der Admin sie komplett blockiert hat (der Server sperrt zusätzlich).
+  const extPolicy = useQuery({
+    queryKey: ["external", "policy"],
+    queryFn: endpoints.external.policy,
+  });
+  const extPolicyStage = extPolicy.data?.stage ?? "search_on_click";
   const reviewerChoices = (directory.data ?? []).filter((p) => p.id !== user?.id);
   const toggleReviewer = (id: string): void => {
     setReviewerIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -2038,74 +2045,81 @@ export function Capture(): JSX.Element {
                         {t("ko.sourceAdd")}
                       </Button>
                     </div>
-                    {/* SCRUM-118 / FR-EXT-02: externe Quellensuche (Server-Proxy) — wie im Prüfbereich. */}
-                    <div className="mt-3 space-y-2 border-t border-hairline pt-3">
-                      <SectionLabel>{t("ext.title")}</SectionLabel>
-                      <p className="text-[11.5px] text-muted-2">{t("ext.hint")}</p>
-                      <form
-                        className="flex gap-2"
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          if (extQuery.trim()) {
-                            extSearch.mutate(extQuery.trim());
-                          }
-                        }}
-                      >
-                        <TextInput
-                          value={extQuery}
-                          onChange={(e) => setExtQuery(e.target.value)}
-                          placeholder={t("ext.placeholder")}
-                        />
-                        <Button
-                          type="submit"
-                          variant="ghost"
-                          disabled={extSearch.isPending || extQuery.trim().length === 0}
+                    {/* SCRUM-118 / FR-EXT-02: externe Quellensuche (Server-Proxy) — wie im Prüfbereich.
+                        SCRUM-414: nur sichtbar, wenn der Admin-Regler die externe Wissensabfrage
+                        nicht komplett blockiert (der Server setzt die Sperre zusätzlich durch). */}
+                    {extPolicyStage !== "blocked" ? (
+                      <div className="mt-3 space-y-2 border-t border-hairline pt-3">
+                        <SectionLabel>{t("ext.title")}</SectionLabel>
+                        <p className="text-[11.5px] text-muted-2">{t("ext.hint")}</p>
+                        <form
+                          className="flex gap-2"
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            if (extQuery.trim()) {
+                              extSearch.mutate(extQuery.trim());
+                            }
+                          }}
                         >
-                          {t("ext.search")}
-                        </Button>
-                      </form>
-                      {extResults.length > 0 ? (
-                        <ul className="space-y-1.5">
-                          {extResults.map((r) => (
-                            <li key={r.url} className="rounded-input border border-hairline p-2.5">
-                              <div className="flex items-start gap-2">
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex flex-wrap items-center gap-1.5">
-                                    <span className="text-[13px] font-medium text-text">
-                                      {r.title}
-                                    </span>
-                                    <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted">
-                                      {r.provider}
-                                    </span>
+                          <TextInput
+                            value={extQuery}
+                            onChange={(e) => setExtQuery(e.target.value)}
+                            placeholder={t("ext.placeholder")}
+                          />
+                          <Button
+                            type="submit"
+                            variant="ghost"
+                            disabled={extSearch.isPending || extQuery.trim().length === 0}
+                          >
+                            {t("ext.search")}
+                          </Button>
+                        </form>
+                        {extResults.length > 0 ? (
+                          <ul className="space-y-1.5">
+                            {extResults.map((r) => (
+                              <li
+                                key={r.url}
+                                className="rounded-input border border-hairline p-2.5"
+                              >
+                                <div className="flex items-start gap-2">
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      <span className="text-[13px] font-medium text-text">
+                                        {r.title}
+                                      </span>
+                                      <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted">
+                                        {r.provider}
+                                      </span>
+                                    </div>
+                                    {r.snippet ? (
+                                      <p className="mt-0.5 text-[11.5px] text-muted">{r.snippet}</p>
+                                    ) : null}
+                                    <a
+                                      href={r.url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="block truncate font-mono text-[10.5px] text-ai hover:underline"
+                                    >
+                                      {r.url}
+                                    </a>
                                   </div>
-                                  {r.snippet ? (
-                                    <p className="mt-0.5 text-[11.5px] text-muted">{r.snippet}</p>
-                                  ) : null}
-                                  <a
-                                    href={r.url}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="block truncate font-mono text-[10.5px] text-ai hover:underline"
+                                  <Button
+                                    variant="ghost"
+                                    onClick={() =>
+                                      setPendingSources((list) =>
+                                        addPendingSource(list, pendingFromResult(r)),
+                                      )
+                                    }
                                   >
-                                    {r.url}
-                                  </a>
+                                    {t("ext.attach")}
+                                  </Button>
                                 </div>
-                                <Button
-                                  variant="ghost"
-                                  onClick={() =>
-                                    setPendingSources((list) =>
-                                      addPendingSource(list, pendingFromResult(r)),
-                                    )
-                                  }
-                                >
-                                  {t("ext.attach")}
-                                </Button>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                    </div>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
               </>

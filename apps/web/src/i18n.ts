@@ -378,6 +378,23 @@ const de = {
   "adm.val.label": "Standard-Prüferanzahl (1–5)",
   "adm.val.save": "Speichern",
   "adm.val.saved": "Standard-Prüferanzahl gespeichert.",
+  "adm.ext.title": "Externe Wissensabfrage",
+  "adm.ext.help":
+    "Steuert, ob die App externe Quellen (Web) und die Public-KI zur Anreicherung nutzen darf. Vier Stufen von komplett gesperrt bis offen. Standard bewusst restriktiv. Änderungen landen im Audit-Log.",
+  "adm.ext.hint":
+    "Gilt für die externe Quellensuche beim Erfassen/Prüfen und die Public-KI-Anreicherung.",
+  "adm.ext.save": "Speichern",
+  "adm.ext.saved": "Regler für externe Wissensabfrage gespeichert.",
+  "adm.ext.note": "Wirkt sofort für alle; der Server setzt die Sperre zusätzlich durch.",
+  "adm.ext.stage.blocked": "Blockiert",
+  "adm.ext.stage.search_on_click": "Nur Suche auf Klick",
+  "adm.ext.stage.search_attach": "Suche + Anhängen",
+  "adm.ext.stage.open": "Offen",
+  "adm.ext.stageHint.blocked":
+    "Externe Wissensabfrage komplett gesperrt — nichts sichtbar oder aufrufbar.",
+  "adm.ext.stageHint.search_on_click": "Externe Suche nur auf ausdrücklichen Klick (Standard).",
+  "adm.ext.stageHint.search_attach": "Externe Suche und Ergebnisse als Quelle anhängen erlaubt.",
+  "adm.ext.stageHint.open": "Offen: Suche, Anhängen und Public-KI-Anreicherung erlaubt.",
   "adm.trash.title": "Papierkorb",
   "adm.trash.help":
     "Gelöschte Beiträge landen hier und bleiben 28 Tage wiederherstellbar. Danach werden sie automatisch endgültig gelöscht. Demo-Daten erscheinen hier nie — sie werden immer sofort endgültig gelöscht.",
@@ -2458,6 +2475,22 @@ const en: typeof de = {
   "adm.val.label": "Default reviewer count (1–5)",
   "adm.val.save": "Save",
   "adm.val.saved": "Default reviewer count saved.",
+  "adm.ext.title": "External knowledge",
+  "adm.ext.help":
+    "Controls whether the app may use external sources (web) and the public AI for enrichment. Four stages from fully blocked to open. Deliberately restrictive by default. Changes are recorded in the audit log.",
+  "adm.ext.hint":
+    "Applies to external source search during capture/review and to public-AI enrichment.",
+  "adm.ext.save": "Save",
+  "adm.ext.saved": "External knowledge setting saved.",
+  "adm.ext.note": "Takes effect immediately for everyone; the server also enforces the block.",
+  "adm.ext.stage.blocked": "Blocked",
+  "adm.ext.stage.search_on_click": "Search on click only",
+  "adm.ext.stage.search_attach": "Search + attach",
+  "adm.ext.stage.open": "Open",
+  "adm.ext.stageHint.blocked": "External knowledge fully blocked — nothing visible or callable.",
+  "adm.ext.stageHint.search_on_click": "External search only on explicit click (default).",
+  "adm.ext.stageHint.search_attach": "External search and attaching results as a source allowed.",
+  "adm.ext.stageHint.open": "Open: search, attach and public-AI enrichment allowed.",
   "adm.trash.title": "Recycle bin",
   "adm.trash.help":
     "Deleted entries land here and can be restored for 28 days. After that they are permanently deleted automatically. Demo data never appears here — it is always deleted permanently right away.",

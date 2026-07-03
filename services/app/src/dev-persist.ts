@@ -56,6 +56,8 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   assistPresets: ["replaceAll"],
   // SCRUM-395: Standard-Prüferanzahl überlebt den Neustart (letzter Set gewinnt).
   validationSettings: ["setDefaultNeeded"],
+  // SCRUM-414: Regler „externe Wissensabfrage" überlebt den Neustart (letzter Set gewinnt).
+  externalKnowledge: ["setStage"],
 } as const;
 
 // Journal defensiv laden: fehlende Datei → leer; eine korrupte (z. B. beim Crash halb
