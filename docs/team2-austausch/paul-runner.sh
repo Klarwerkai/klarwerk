@@ -1,19 +1,19 @@
 #!/bin/bash
 # KLARWERK Paul-Runner — Aufgabendatei des Cloud-Workers ([Paul]).
 #
-# AUFGABE v21 (03.07. abends): Frontend-Bündel SCRUM-437/440/441 (v0.9.45-beta) —
-# prüft zugleich den gesamten Bestand (395/414/416/413/417-428/433/434/429/432).
-#   SCRUM-441: Erststart-Karte zeigt „erledigt"-Häkchen aus echten Zählern (erfasst/geprüft/Verwaltung).
-#   SCRUM-437: neuer Admin-Bereich „Bereitschaft" — Ein-Blick-Status vor dem VIP-Test (KIs, validiertes
-#     Wissen, offene Prüfungen, Upload-Grenzen, externe Wissensabfrage-Stufe) mit ehrlicher Ampel.
-#   SCRUM-440: „Vertrauen & Sicherheit" + „Bereitschaft" druckbar (Druck-Knopf, isolierter Print).
-#   Reines Frontend (Browser-Reload genügt). Neue Tests: vip-readiness; admin-first-run erweitert;
-#     admin-sections-Test auf 5 Bereiche aktualisiert.
-#   Rest des VIP-Vorschlagspakets (436/438/439/442) folgt als Backend-/PMO-Bündel.
+# AUFGABE v22 (03.07. abends): SCRUM-443 RBAC-Härtung (v0.9.46-beta, BACKEND — Neustart nötig!) —
+# prüft zugleich den gesamten Bestand (395/414/416/413/417-428/433/434/429/432/437/440/441).
+#   SCRUM-443 (Berater-Audit, kritisch vor VIP): canChangeRole wurde NIRGENDS aufgerufen →
+#     changeRole setzte Rollen ungeprüft, kein Last-Admin-Schutz (Selbst-Aussperrung möglich!).
+#     Fix: (1) changeRole erzwingt FR-RBAC-03 serverseitig (rbac.canChangeRole in den AuthService
+#     injiziert); (2) letzter aktiver Admin kann nicht herabgestuft/gelöscht werden (ehrlicher 403);
+#     (3) Tests: Selbst-Degradierung/Löschen letzter Admin → 403, normale Rollenwechsel weiter möglich,
+#     Guard-Matrix (Experte 403). Unit (service.test) + verdrahtetes e2e (rbac-last-admin-e2e).
+#   ACHTUNG: Backend-Änderung — Browser-Reload genügt NICHT, voller Server-Neustart nötig.
 #   Schritt 5 (PMO-Automatik) läuft weiter.
 # Ablauf:
 #   0: Format-Autofix (biome check --write).
-#   1: apps/web bauen (vite build → dist v0.9.45-beta).
+#   1: apps/web bauen (vite build → dist v0.9.46-beta).
 #   2: tools/check (Build · Lint · Architektur · Tests).
 #   3: npm run smoke:ui (4 Playwright-Kernflüsse).
 #   4: After-Report-Nachträge anhängen (je nur falls fehlend — Marker-Prüfung).
@@ -28,7 +28,7 @@ FEHL=0
 
 {
 echo "${FETT}KLARWERK Paul-Runner — $(date '+%d.%m.%Y %H:%M')${AUS}"
-echo "Aufgabe v21: SCRUM-437/440/441 (Bereitschaft · Druck · Erststart-Häkchen, v0.9.45-beta) + Gesamtbestand — ca. 4–7 Minuten."
+echo "Aufgabe v22: SCRUM-443 RBAC-Härtung (Last-Admin-Schutz, v0.9.46-beta, BACKEND) + Gesamtbestand — ca. 4–7 Minuten."
 echo
 
 cd "$REPO" || { echo "${ROT}FEHLER: Repo nicht gefunden.${AUS}"; exit 1; }
@@ -40,7 +40,7 @@ echo
 
 echo "${FETT}— Schritt 1/4: apps/web bauen (vite build)${AUS}"
 if (cd apps/web && npx vite build); then
-  echo "${GRUEN}✓ Build/dist v0.9.45 erstellt${AUS}"
+  echo "${GRUEN}✓ Build/dist v0.9.46 erstellt${AUS}"
 else
   echo "${ROT}✗ vite build ROT${AUS}"; FEHL=1
 fi
@@ -83,6 +83,7 @@ anhaengen "SCRUM-433 — Auffindbarkeit (Erkenntnisse verbinden + Public-KI)" "p
 anhaengen "SCRUM-434 — Auffindbarkeit-Feinschliff + PMO-Automatik" "paul-nachtrag-434.md"
 anhaengen "SCRUM-429 + 432 — Onboarding-Politur + Vertrauen & Sicherheit" "paul-nachtrag-429-432.md"
 anhaengen "SCRUM-437/440/441 — VIP-Bereitschaft + Druck + Erststart-Häkchen" "paul-nachtrag-437-440-441.md"
+anhaengen "SCRUM-443 — RBAC-Härtung (canChangeRole + Last-Admin-Schutz)" "paul-nachtrag-443.md"
 
 echo
 echo "${FETT}— Schritt 5/5: PMO-Fortschritt aktualisieren (Weg b, nur bei grünen Gates)${AUS}"
@@ -114,12 +115,12 @@ fi
 echo
 
 if [ "$FEHL" = "0" ]; then
-  echo "${GRUEN}${FETT}ALLE GATES GRÜN — Gesamtbestand lieferbar (v0.9.45-beta, inkl. SCRUM-437/440/441).${AUS}"
-  echo "Sichtabnahme SCRUM-437: Admin → Bereich 'Bereitschaft' → Ein-Blick-Status mit Ampel."
-  echo "Sichtabnahme SCRUM-440: dort (und in 'Sicherheit') 'Drucken' → nur der Auszug druckt, Hülle bleibt weg."
-  echo "Sichtabnahme SCRUM-441: als frischer Admin auf Start — nach Erfassen/Prüfen bekommen die Schritte Häkchen."
+  echo "${GRUEN}${FETT}ALLE GATES GRÜN — Gesamtbestand lieferbar (v0.9.46-beta, inkl. SCRUM-443 RBAC-Härtung).${AUS}"
+  echo "ACHTUNG: Backend-Änderung — nach dem Sync einen VOLLEN Server-Neustart machen (Reload genügt NICHT)."
+  echo "Sichtabnahme SCRUM-443: als einziger Admin sich selbst auf 'viewer' setzen → wird mit ehrlichem 403 abgelehnt;"
+  echo "  einen zweiten Nutzer auf 'controller' setzen → geht weiter normal."
   echo "Commit-Empfehlung (Boss-Session):"
-  echo "  [Cloud-Worker] SCRUM-437/440/441: VIP-Bereitschaft + druckbarer Auszug + Erststart-Häkchen (v0.9.45-beta)"
+  echo "  [Cloud-Worker] SCRUM-443: RBAC-Härtung — canChangeRole durchsetzen + Last-Admin-Schutz (v0.9.46-beta)"
   echo "KEIN Push — KLARWERK Sync macht Pedi."
 else
   echo "${ROT}${FETT}Mindestens ein Gate ROT — Paul analysiert docs/team2-austausch/paul-runner.log und liefert einen Fix.${AUS}"

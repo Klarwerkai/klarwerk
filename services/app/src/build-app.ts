@@ -76,6 +76,8 @@ import {
 } from "../../notifications";
 import { InMemoryObjectRepo, type ObjectRepo, ObjectStore, PgObjectRepo } from "../../object-store";
 import { OutputService } from "../../output";
+// SCRUM-443: echte Rollenwechsel-Regel (FR-RBAC-03) in den AuthService injizieren.
+import { canChangeRole } from "../../rbac";
 import {
   type AssistPresetRepo,
   InMemoryAssistPresetRepo,
@@ -231,6 +233,8 @@ export function assembleServices(repos: AppRepos): AppServices {
       sessions: repos.sessions,
       resetTokens: repos.resetTokens,
       audit,
+      // SCRUM-443: FR-RBAC-03 serverseitig durchsetzen (kein Selbst-Entzug der Admin-Rolle).
+      canChangeRole,
     }),
     capture: new CaptureService({ repo: repos.drafts }),
     ask,

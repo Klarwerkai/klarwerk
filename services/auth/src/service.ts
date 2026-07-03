@@ -14,6 +14,20 @@ const MIN_PASSWORD_LENGTH = 8;
 const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000; // 14 Tage
 const RESET_TTL_MS = 60 * 60 * 1000; // FR-AUTH-08: Reset-Token 1 Stunde gültig
 
+// SCRUM-443 (Berater-Audit): serverseitige Rollenwechsel-Prüfung. Wird von build-app mit der
+// echten rbac.canChangeRole verdrahtet (FR-RBAC-03). auth importiert rbac NICHT direkt
+// (rbac hängt von auth ab → Zyklus); die Regel kommt als injizierte Funktion herein.
+export type RoleChangePolicy = (
+  actor: { id: string; role: Role },
+  targetUserId: string,
+  newRole: Role,
+) => boolean;
+
+// Fallback ohne Wiring (Unit-Tests): FR-RBAC-03 minimal — ein Admin kann sich die Admin-Rolle
+// nicht selbst entziehen. In Produktion injiziert build-app die vollständige rbac.canChangeRole.
+const defaultCanChangeRole: RoleChangePolicy = (actor, targetUserId, newRole) =>
+  !(actor.id === targetUserId && newRole !== "admin");
+
 export interface AuthServiceDeps {
   users: UserRepo;
   sessions: SessionRepo;
@@ -22,6 +36,8 @@ export interface AuthServiceDeps {
   now?: () => number;
   genId?: () => string;
   genToken?: () => string;
+  // SCRUM-443: injizierte Rollenwechsel-Regel (Default: nur Selbst-Entzug-Schutz).
+  canChangeRole?: RoleChangePolicy;
 }
 
 export interface RegisterInput {
@@ -48,6 +64,7 @@ export class AuthService {
   private readonly genId: () => string;
   private readonly genToken: () => string;
   private readonly resetTokens: PasswordResetRepo;
+  private readonly canChangeRolePolicy: RoleChangePolicy;
 
   constructor(deps: AuthServiceDeps) {
     this.users = deps.users;
@@ -57,6 +74,7 @@ export class AuthService {
     this.genId = deps.genId ?? (() => randomUUID());
     this.genToken = deps.genToken ?? (() => randomBytes(32).toString("hex"));
     this.resetTokens = deps.resetTokens ?? new InMemoryPasswordResetRepo();
+    this.canChangeRolePolicy = deps.canChangeRole ?? defaultCanChangeRole;
   }
 
   // FR-AUTH-01: Ist noch kein Konto vorhanden? Dann ist Ersteinrichtung nötig (Setup-Screen).
@@ -191,9 +209,25 @@ export class AuthService {
     return toPublic(user);
   }
 
-  // FR-RBAC-02: Rolle ändern.
+  // FR-RBAC-02 / FR-RBAC-03 + SCRUM-443: Rolle ändern — jetzt serverseitig geprüft.
   async changeRole(userId: string, role: Role, actorId: string): Promise<PublicUser> {
+    const actor = await this.requireUser(actorId);
+    // FR-RBAC-03: injizierte Regel durchsetzen (u. a. kein Selbst-Entzug der Admin-Rolle).
+    if (!this.canChangeRolePolicy({ id: actor.id, role: actor.role }, userId, role)) {
+      throw new AuthError(
+        "FORBIDDEN",
+        "Rollenänderung nicht erlaubt: Ein Admin kann sich die Admin-Rolle nicht selbst entziehen.",
+      );
+    }
     const user = await this.requireUser(userId);
+    // SCRUM-443 (Last-Admin-Schutz): der letzte aktive Admin darf nicht herabgestuft werden —
+    // sonst gäbe es niemanden mehr mit Verwaltungsrecht (System ausgesperrt).
+    if (user.role === "admin" && role !== "admin" && (await this.isLastApprovedAdmin(userId))) {
+      throw new AuthError(
+        "FORBIDDEN",
+        "Der letzte aktive Admin kann nicht herabgestuft werden — sonst wäre niemand mehr verwaltungsberechtigt.",
+      );
+    }
     user.role = role;
     await this.users.update(user);
     await this.record(actorId, "user.role-change", userId, { role });
@@ -265,12 +299,26 @@ export class AuthService {
     await this.record(user.id, "user.password-reset-email", user.id);
   }
 
-  // FR-RBAC-02: Admin löscht Nutzer; Sitzungen verfallen.
+  // FR-RBAC-02 + SCRUM-443: Admin löscht Nutzer; Sitzungen verfallen. Der letzte aktive Admin
+  // ist geschützt (kein Selbst-Aussperren des Systems).
   async deleteUser(userId: string, actorId: string): Promise<void> {
-    await this.requireUser(userId);
+    const user = await this.requireUser(userId);
+    if (user.role === "admin" && user.approved && (await this.isLastApprovedAdmin(userId))) {
+      throw new AuthError(
+        "FORBIDDEN",
+        "Der letzte aktive Admin kann nicht gelöscht werden — sonst wäre niemand mehr verwaltungsberechtigt.",
+      );
+    }
     await this.users.delete(userId);
     await this.sessions.deleteByUser(userId);
     await this.record(actorId, "user.delete", userId);
+  }
+
+  // SCRUM-443: Ist dieser Nutzer der letzte freigegebene Admin? (Grundlage des Last-Admin-Schutzes.)
+  private async isLastApprovedAdmin(userId: string): Promise<boolean> {
+    const users = await this.users.list();
+    const approvedAdmins = users.filter((u) => u.role === "admin" && u.approved);
+    return approvedAdmins.length <= 1 && approvedAdmins.some((u) => u.id === userId);
   }
 
   // FR-RBAC-02: Audit-Eintrag je Admin-Aktion (sofern Audit verdrahtet).

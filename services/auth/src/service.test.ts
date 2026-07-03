@@ -243,6 +243,55 @@ describe("FR-RBAC-02: Admin-Aktionen mit Audit", () => {
     expect(await audit.verify()).toBe(true);
   });
 
+  // SCRUM-443 (Berater-Audit): RBAC-Härtung — Selbst-Entzug + Last-Admin-Schutz.
+  it("SCRUM-443: der letzte aktive Admin kann sich nicht selbst herabstufen (FR-RBAC-03)", async () => {
+    const { service } = build();
+    const admin = await service.register({ name: "Admin", email: "a@x.de", password: "secret123" });
+    await expect(service.changeRole(admin.id, "viewer", admin.id)).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+    const list = await service.listUsers();
+    expect(list.find((u) => u.id === admin.id)?.role).toBe("admin");
+  });
+
+  it("SCRUM-443: der letzte aktive Admin kann nicht gelöscht werden", async () => {
+    const { service } = build();
+    const admin = await service.register({ name: "Admin", email: "a@x.de", password: "secret123" });
+    await expect(service.deleteUser(admin.id, admin.id)).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+  });
+
+  it("SCRUM-443: normale Rollenwechsel bleiben möglich", async () => {
+    const { service } = build();
+    const admin = await service.register({ name: "Admin", email: "a@x.de", password: "secret123" });
+    const bob = await service.register({ name: "Bob", email: "b@x.de", password: "secret123" });
+    await service.approveUser(bob.id, admin.id);
+    const updated = await service.changeRole(bob.id, "controller", admin.id);
+    expect(updated.role).toBe("controller");
+  });
+
+  it("SCRUM-443: mit zweitem Admin ist die Herabstufung eines (nicht letzten) Admins möglich", async () => {
+    const { service } = build();
+    const admin = await service.register({ name: "Admin", email: "a@x.de", password: "secret123" });
+    const two = await service.register({ name: "Zwei", email: "z@x.de", password: "secret123" });
+    await service.approveUser(two.id, admin.id);
+    await service.changeRole(two.id, "admin", admin.id); // jetzt zwei aktive Admins
+    const demoted = await service.changeRole(two.id, "controller", admin.id);
+    expect(demoted.role).toBe("controller");
+  });
+
+  it("SCRUM-443: Selbst-Entzug bleibt blockiert, auch wenn ein zweiter Admin existiert", async () => {
+    const { service } = build();
+    const admin = await service.register({ name: "Admin", email: "a@x.de", password: "secret123" });
+    const two = await service.register({ name: "Zwei", email: "z@x.de", password: "secret123" });
+    await service.approveUser(two.id, admin.id);
+    await service.changeRole(two.id, "admin", admin.id);
+    await expect(service.changeRole(admin.id, "viewer", admin.id)).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+  });
+
   it("FR-AUD-01: Login und Logout werden protokolliert", async () => {
     const users = new InMemoryUserRepo();
     const sessions = new InMemorySessionRepo();
