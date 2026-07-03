@@ -11,8 +11,8 @@ Selbst-Test-Rundgang für den Gast und ehrliche Antworten auf absehbare Nachfrag
 - [ ] **Stand einfrieren:** Paul-Runner laufen lassen — Schlusszeile muss ALLE GATES GRÜN
       zeigen. Danach Boss-Commit + KLARWERK Sync. Ab jetzt KEINE neuen Features mehr
       einspielen; nur noch dieser Stand wird gezeigt.
-- [ ] **Version prüfen:** oben rechts in der App (aktuell 0.9.47-beta). Wirkt professionell,
-      wenn du sie nennen kannst, ohne nachzusehen.
+- [ ] **Version prüfen:** oben rechts in der App (Freeze-Stand **1.0.0-beta.1**). Wirkt
+      professionell, wenn du sie nennen kannst, ohne nachzusehen.
 - [ ] **Frische Demodaten:** Admin → Daten → erst Demodaten entfernen, dann neu laden.
       Ergebnis: saubere, glaubwürdige Industrie-Beispiele (alle fünf Wissensarten belegt),
       keine Testreste, keine halbfertigen Entwürfe.
@@ -120,7 +120,7 @@ Gib ihm diese fünf Aufgaben — sie führen an den Stärken entlang:
 
 ---
 
-*Erstellt von Paul (Cloud-Worker), 03.07.2026 — Stand v0.9.47-beta (inkl. RBAC-Härtung,
+*Erstellt von Paul (Cloud-Worker), 03.07.2026 — Freeze-Stand **v1.0.0-beta.1** (inkl. RBAC-Härtung,
 Bereitschafts-/Sicherheits-Auszug, Evidenz-Kennzeichnung SCRUM-444). Vor dem Termin bitte
 einmal gegenlesen: Zahlen (Version, Testanzahl) und den Demodaten-Stand aktualisieren, falls
 bis dahin weitere Lieferungen kommen.*

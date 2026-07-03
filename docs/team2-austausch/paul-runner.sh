@@ -1,19 +1,17 @@
 #!/bin/bash
 # KLARWERK Paul-Runner — Aufgabendatei des Cloud-Workers ([Paul]).
 #
-# AUFGABE v23 (03.07. abends): SCRUM-444 Evidenz-Kennzeichnung (v0.9.47-beta, Frontend + Doku) —
-# prüft zugleich den gesamten Bestand (395/414/416/413/417-428/433/434/429/432/437/440/441/443).
-#   SCRUM-444 (Berater-Frage 7, vor VIP): unbelegte ARGUS-Zahlen (98,5 % Genauigkeit, 99,9 % Uptime,
-#     1.247 Konflikte/Monat) dürfen extern nie als Ist-Zahl auftreten. Audit-Ergebnis: diese harten
-#     Zahlen stehen NICHT im Repo (App zeigt nur Live-/Schätzwerte). Umgesetzt:
-#     (1) druckbarer Vertrauen-&-Sicherheit-Auszug bekommt eine Evidenz-Rahmung („gemessen, nicht
-#     behauptet; Zielwerte/Beispiele sind gekennzeichnet"); (2) VIP-Leitfaden: Warnung vor
-#     ARGUS-Zahlen + Versionsstände aktualisiert. Markenkern: Vertrauen ist Evidenz, nie behauptet.
-#   Reines Frontend + Doku (Browser-Reload genügt).
+# AUFGABE v24 (03.07. abends): FREEZE-Slice — Versionssprung auf 1.0.0-beta.1 —
+# prüft den GESAMTEN Freeze-Kandidaten (395/414/416/413/417-428/433/434/429/432/437/440/441/443/444).
+#   Freeze: APP_VERSION 0.9.47-beta → 1.0.0-beta.1 (der Stand für Generalprobe + VIP-Termin 05.07.).
+#     Keine neuen Features — nur der Versionsstempel + VIP-Leitfaden-Versionen angeglichen.
+#     Bei GRÜN: Boss committet und setzt den Git-Tag v1.0.0-beta.1. Ab dann nur noch Fixes.
+#   Reines Frontend + Doku (Browser-Reload genügt). ERINNERUNG: der SCRUM-443-Backend-Stand
+#     braucht beim Freeze-Sync einmalig noch einen vollen Server-Neustart.
 #   Schritt 5 (PMO-Automatik) läuft weiter.
 # Ablauf:
 #   0: Format-Autofix (biome check --write).
-#   1: apps/web bauen (vite build → dist v0.9.47-beta).
+#   1: apps/web bauen (vite build → dist 1.0.0-beta.1).
 #   2: tools/check (Build · Lint · Architektur · Tests).
 #   3: npm run smoke:ui (4 Playwright-Kernflüsse).
 #   4: After-Report-Nachträge anhängen (je nur falls fehlend — Marker-Prüfung).
@@ -28,7 +26,7 @@ FEHL=0
 
 {
 echo "${FETT}KLARWERK Paul-Runner — $(date '+%d.%m.%Y %H:%M')${AUS}"
-echo "Aufgabe v23: SCRUM-444 Evidenz-Kennzeichnung (v0.9.47-beta, Frontend + Doku) + Gesamtbestand — ca. 4–7 Minuten."
+echo "Aufgabe v24: FREEZE-Slice → 1.0.0-beta.1 (Freeze-Kandidat für Generalprobe + VIP) — ca. 4–7 Minuten."
 echo
 
 cd "$REPO" || { echo "${ROT}FEHLER: Repo nicht gefunden.${AUS}"; exit 1; }
@@ -40,7 +38,7 @@ echo
 
 echo "${FETT}— Schritt 1/4: apps/web bauen (vite build)${AUS}"
 if (cd apps/web && npx vite build); then
-  echo "${GRUEN}✓ Build/dist v0.9.47 erstellt${AUS}"
+  echo "${GRUEN}✓ Build/dist 1.0.0-beta.1 erstellt${AUS}"
 else
   echo "${ROT}✗ vite build ROT${AUS}"; FEHL=1
 fi
@@ -85,6 +83,7 @@ anhaengen "SCRUM-429 + 432 — Onboarding-Politur + Vertrauen & Sicherheit" "pau
 anhaengen "SCRUM-437/440/441 — VIP-Bereitschaft + Druck + Erststart-Häkchen" "paul-nachtrag-437-440-441.md"
 anhaengen "SCRUM-443 — RBAC-Härtung (canChangeRole + Last-Admin-Schutz)" "paul-nachtrag-443.md"
 anhaengen "SCRUM-444 — Evidenz-Kennzeichnung (ARGUS-Zahlen als Projektionen)" "paul-nachtrag-444.md"
+anhaengen "FREEZE v1.0.0-beta.1 — Versionssprung (Generalprobe + VIP-Termin)" "paul-nachtrag-freeze.md"
 
 echo
 echo "${FETT}— Schritt 5/5: PMO-Fortschritt aktualisieren (Weg b, nur bei grünen Gates)${AUS}"
@@ -116,13 +115,12 @@ fi
 echo
 
 if [ "$FEHL" = "0" ]; then
-  echo "${GRUEN}${FETT}ALLE GATES GRÜN — Freeze-Kandidat lieferbar (v0.9.47-beta, inkl. SCRUM-444 Evidenz-Kennzeichnung).${AUS}"
-  echo "Reines Frontend + Doku — nach dem Sync genügt Browser-Reload."
-  echo "Sichtabnahme SCRUM-444: Admin → Bereich 'Sicherheit' → unten die Evidenz-Zeile ('gemessen, nicht behauptet');"
-  echo "  auf 'Drucken' erscheint sie auf dem Blatt. VIP-Leitfaden: neue Warnung vor ARGUS-Zahlen + Version aktualisiert."
-  echo "Commit-Empfehlung (Boss-Session):"
-  echo "  [Cloud-Worker] SCRUM-444: Evidenz-Kennzeichnung — ARGUS-Zahlen als Projektionen/Beispiele (v0.9.47-beta)"
-  echo "KEIN Push — KLARWERK Sync macht Pedi."
+  echo "${GRUEN}${FETT}ALLE GATES GRÜN — FREEZE-KANDIDAT 1.0.0-beta.1 abgenommen.${AUS}"
+  echo "Version prüfen: Topbar oben rechts zeigt 1.0.0-beta.1."
+  echo "Commit + Tag (Boss-Session):"
+  echo "  [Cloud-Worker] FREEZE: Versionssprung auf 1.0.0-beta.1 (Stand für Generalprobe + VIP-Termin)"
+  echo "  git tag v1.0.0-beta.1   (nach dem Commit)"
+  echo "KEIN Push — KLARWERK Sync macht Pedi. ERINNERUNG: einmalig noch voller Server-Neustart (SCRUM-443-Backend)."
 else
   echo "${ROT}${FETT}Mindestens ein Gate ROT — Paul analysiert docs/team2-austausch/paul-runner.log und liefert einen Fix.${AUS}"
 fi
