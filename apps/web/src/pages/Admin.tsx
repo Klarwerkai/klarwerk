@@ -1179,6 +1179,13 @@ export function Admin(): JSX.Element {
               ))}
             </ul>
           </Card>
+
+          {/* SCRUM-444 (Pedi 03.07., Berater-Frage 7): Markenkern auf dem druckbaren Auszug —
+              „Vertrauen ist Evidenz, nie behauptet." Grenzt gemessene Live-Werte klar von
+              Zielwerten/Beispielrechnungen ab, damit nichts als bewiesen missverstanden wird. */}
+          <p className="rounded-card border border-hairline bg-page px-3 py-2 text-[11px] leading-relaxed text-muted-2">
+            {t("adm.sich.evidenceNote")}
+          </p>
         </div>
       ) : null}
 

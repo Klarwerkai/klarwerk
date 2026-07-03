@@ -411,6 +411,9 @@ const de = {
   "adm.sich.noCustomerData.t": "Keine Kundendaten in Tests",
   "adm.sich.noCustomerData.b":
     "Qualitätssicherung und Evaluierungen laufen ohne echte Kundendaten.",
+  // SCRUM-444: Evidenz-Rahmung auf dem druckbaren Auszug — Markenkern „Vertrauen ist Evidenz".
+  "adm.sich.evidenceNote":
+    "Alle Kennzahlen hier sind Live-Werte dieser Instanz — gemessen, nicht behauptet. Zielwerte oder Beispielrechnungen werden immer ausdrücklich als solche gekennzeichnet.",
   "adm.ai.test": "Key testen",
   "adm.ai.testRunning": "teste …",
   "adm.ai.testOk": "Verbindung ok — {{provider}} hat geantwortet. Der Schlüssel funktioniert.",
@@ -2623,6 +2626,9 @@ const en: typeof de = {
     "Four roles (viewer, expert, controller, admin). Every action checks the required permission server-side.",
   "adm.sich.noCustomerData.t": "No customer data in tests",
   "adm.sich.noCustomerData.b": "Quality assurance and evaluations run without real customer data.",
+  // SCRUM-444: evidence framing on the printable extract — brand core "trust is evidence".
+  "adm.sich.evidenceNote":
+    "All figures here are live values from this instance — measured, not claimed. Any target values or example calculations are always explicitly labeled as such.",
   "adm.ai.test": "Test key",
   "adm.ai.testRunning": "testing …",
   "adm.ai.testOk": "Connection ok — {{provider}} responded. The key works.",

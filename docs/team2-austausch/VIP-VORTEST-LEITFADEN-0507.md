@@ -11,7 +11,7 @@ Selbst-Test-Rundgang für den Gast und ehrliche Antworten auf absehbare Nachfrag
 - [ ] **Stand einfrieren:** Paul-Runner laufen lassen — Schlusszeile muss ALLE GATES GRÜN
       zeigen. Danach Boss-Commit + KLARWERK Sync. Ab jetzt KEINE neuen Features mehr
       einspielen; nur noch dieser Stand wird gezeigt.
-- [ ] **Version prüfen:** oben rechts in der App (aktuell 0.9.33-beta). Wirkt professionell,
+- [ ] **Version prüfen:** oben rechts in der App (aktuell 0.9.47-beta). Wirkt professionell,
       wenn du sie nennen kannst, ohne nachzusehen.
 - [ ] **Frische Demodaten:** Admin → Daten → erst Demodaten entfernen, dann neu laden.
       Ergebnis: saubere, glaubwürdige Industrie-Beispiele (alle fünf Wissensarten belegt),
@@ -77,6 +77,11 @@ Gib ihm diese fünf Aufgaben — sie führen an den Stärken entlang:
   Admin-Regler von komplett blockiert bis offen — Standard ist restriktiv."
 - **Neue Einstellungen live verstellen.** Admin-Bereich nur an den zwei vorbereiteten
   Stellen zeigen (Key-Test, Verfügbare KIs) — nicht durch alle Regler klicken.
+- **Harte Kennzahlen aus dem ARGUS-Material** (etwa „98,5 % Genauigkeit", „99,9 % Uptime",
+  „1.247 Konflikte/Monat"). Diese sind **nicht gemessen**. Wenn überhaupt, nenne sie nur
+  ausdrücklich als **Zielwert** oder **Beispielrechnung** — nie als belegte Ist-Zahl. Was die
+  App zeigt (Trust-Werte, Bus-Faktor, Kennzahlen im Bereich „Bereitschaft"/„Sicherheit"), sind
+  echte Live-Werte dieser Instanz. Markenkern: **Vertrauen ist Evidenz — nie behauptet.**
 
 ## 5. Absehbare Fragen — ehrliche, kurze Antworten
 
@@ -115,6 +120,7 @@ Gib ihm diese fünf Aufgaben — sie führen an den Stärken entlang:
 
 ---
 
-*Erstellt von Paul (Cloud-Worker), 03.07.2026 — Stand v0.9.34-beta (inkl. Papierkorb).
-Vor dem Termin bitte einmal gegenlesen: Zahlen (Version, Testanzahl) und den
-Demodaten-Stand aktualisieren, falls bis dahin weitere Lieferungen kommen.*
+*Erstellt von Paul (Cloud-Worker), 03.07.2026 — Stand v0.9.47-beta (inkl. RBAC-Härtung,
+Bereitschafts-/Sicherheits-Auszug, Evidenz-Kennzeichnung SCRUM-444). Vor dem Termin bitte
+einmal gegenlesen: Zahlen (Version, Testanzahl) und den Demodaten-Stand aktualisieren, falls
+bis dahin weitere Lieferungen kommen.*
