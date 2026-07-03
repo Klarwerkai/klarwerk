@@ -6,6 +6,7 @@
 // Backend, keine neue Editor-Library — reine Wiederverwendung bestehender Komponenten/Helfer.
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { ExternalKnowledgeStage } from "../api/types";
 import {
   type BodyAssistBlockAction,
   applyBodyAssist,
@@ -32,6 +33,7 @@ import { EditorAttachmentContext } from "./EditorAttachmentContext";
 import { EditorContentQuality } from "./EditorContentQuality";
 import { EditorGuidance } from "./EditorGuidance";
 import { KnowledgeStudioTips } from "./KnowledgeStudioTips";
+import { PublicAiEnrichPanel } from "./PublicAiEnrichPanel";
 import type { EditorImage } from "./RichTextEditor";
 import { RichTextEditor } from "./RichTextEditor";
 import { SanitizedHtml } from "./SanitizedHtml";
@@ -47,6 +49,8 @@ export function KnowledgeInputStudio({
   images = [],
   files = [],
   attachments = [],
+  externalStage = "search_on_click",
+  enrichLocale = "de",
 }: {
   open: boolean;
   onClose: () => void;
@@ -58,6 +62,9 @@ export function KnowledgeInputStudio({
   // SCRUM-355: im Body verlinkbare Nicht-Bild-Dateien (mit Object-Store-objectId).
   files?: EditorFile[];
   attachments?: readonly AttachmentLike[];
+  // SCRUM-426: Public-KI-Anreicherung auch im Studio (nur bei Admin-Freigabe „offen").
+  externalStage?: ExternalKnowledgeStage;
+  enrichLocale?: "de" | "en";
 }): JSX.Element | null {
   const { t } = useTranslation();
   // Interner Entwurf: beim Öffnen aus dem aktuellen Body initialisiert; Änderungen bleiben lokal,
@@ -200,6 +207,13 @@ export function KnowledgeInputStudio({
             <EditorAttachmentContext attachments={attachments} />
             <EditorContentQuality bodyHtml={draft} attachments={attachments} />
             <BodyTemplateChooser bodyHtml={draft} onApply={setDraft} />
+            {/* SCRUM-426: Public-KI-Anreicherung — hängt an den internen Studio-Entwurf an
+                (kein Auto-Save); nur bei Admin-Freigabe „offen", extern/ungeprüft. */}
+            <PublicAiEnrichPanel
+              stage={externalStage}
+              locale={enrichLocale}
+              onAppendHtml={(h) => setDraft((prev) => prev + h)}
+            />
           </aside>
 
           {/* Zentrale Editorfläche — sichtbar der Hauptarbeitsbereich (mehr vertikale Fläche). */}

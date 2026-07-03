@@ -42,6 +42,7 @@ import { EditorGuidance } from "../components/EditorGuidance";
 import { HelpTip } from "../components/HelpTip";
 import { KnowledgeInputStudio } from "../components/KnowledgeInputStudio";
 import { KnowledgeRescueIntro } from "../components/KnowledgeRescueIntro";
+import { PublicAiEnrichPanel } from "../components/PublicAiEnrichPanel";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { ListEditor, TagEditor } from "../components/editors";
 import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
@@ -2272,6 +2273,9 @@ export function Capture(): JSX.Element {
                       runAssist={runAssist}
                       images={editorImagesFromLocalImages(images)}
                       attachments={[...images, ...docs.map((d) => ({ mime: d.mime }))]}
+                      // SCRUM-426: Public-KI-Anreicherung auch im Studio (gleiche Freigabe/Regeln).
+                      externalStage={extPolicyStage}
+                      enrichLocale={locale}
                     />
                     {/* SCRUM-339: ehrliches Feedback — übernommen in den Entwurf, kein Auto-Save. */}
                     {studioApplied ? (
@@ -2296,6 +2300,13 @@ export function Capture(): JSX.Element {
                       value={bodyHtml}
                       onChange={setBodyHtml}
                       images={editorImagesFromLocalImages(images)}
+                    />
+                    {/* SCRUM-426: Public-KI-Anreicherung — nur bei Admin-Freigabe (Stufe „offen"),
+                        Ergebnisse extern/ungeprüft, nur bewusst in den Entwurf übernehmen. */}
+                    <PublicAiEnrichPanel
+                      stage={extPolicyStage}
+                      locale={locale}
+                      onAppendHtml={(h) => setBodyHtml((prev) => prev + h)}
                     />
                     {/* SCRUM-315: KI-Nachbearbeitung des ausführlichen Inhalts — Textbasis aus dem Body,
                       Vorschau + bewusste Übernahme (Ersetzen/Anhängen) als sicheres Body-HTML. */}

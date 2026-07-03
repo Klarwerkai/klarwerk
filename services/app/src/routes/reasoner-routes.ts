@@ -1,5 +1,10 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { AskService } from "../../../ask";
+import {
+  DEFAULT_EXTERNAL_KNOWLEDGE_STAGE,
+  type ExternalKnowledgePolicyRepo,
+  publicAiEnrichmentAllowed,
+} from "../../../external-search";
 import type { Reasoner, ReasonerLocale } from "../../../reasoner";
 import type { Guards } from "../http";
 
@@ -13,10 +18,12 @@ function normalizeLocale(value: unknown): ReasonerLocale {
 export interface ReasonerRoutesDeps {
   reasoner: Reasoner;
   ask: AskService;
+  // SCRUM-426: Freigabe-Gate der Public-KI-Anreicherung (Admin-Regler SCRUM-414).
+  externalKnowledge: ExternalKnowledgePolicyRepo;
 }
 
 export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): FastifyPluginAsync {
-  const { reasoner, ask } = deps;
+  const { reasoner, ask, externalKnowledge } = deps;
 
   return async (app) => {
     app.post<{
@@ -69,6 +76,36 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         message: "task muss 'structure', 'ask', 'assist', 'interview' oder 'extract' sein.",
       });
     });
+
+    // SCRUM-426: Public-KI-Anreicherung (Modellwissen) — bewusst NICHT quellengebunden.
+    // Zwei Gates: (1) Schreibberechtigung (ko.create); (2) der Admin-Regler „externe
+    // Wissensabfrage" muss auf „offen" stehen (publicAiEnrichmentAllowed) — sonst 403.
+    // Ergebnis ist extern/ungeprüft; die UI kennzeichnet das und übernimmt nur bewusst.
+    app.post<{ Body: { query?: string; locale?: "de" | "en" } }>(
+      "/api/reasoner/enrich",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.create", request, reply);
+        if (!user) {
+          return;
+        }
+        const stage = (await externalKnowledge.getStage()) ?? DEFAULT_EXTERNAL_KNOWLEDGE_STAGE;
+        if (!publicAiEnrichmentAllowed(stage)) {
+          reply.code(403).send({
+            error: "PUBLIC_AI_ENRICHMENT_BLOCKED",
+            message: "Die Public-KI-Anreicherung ist vom Administrator nicht freigegeben.",
+          });
+          return;
+        }
+        const query = (request.body?.query ?? "").trim();
+        if (query.length === 0) {
+          reply.code(400).send({ error: "BAD_REQUEST", message: "query fehlt." });
+          return;
+        }
+        reply
+          .code(200)
+          .send(await reasoner.enrichPublic(query, normalizeLocale(request.body.locale)));
+      },
+    );
 
     // SCRUM-166: read-only Provider-/Model-Konfiguration (nur Metadaten, keine Secrets).
     app.get("/api/reasoner/config", async (request, reply) => {

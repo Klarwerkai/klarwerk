@@ -59,6 +59,7 @@ export type {
   AssistResult,
   ExtractResult,
   ExtractedPoint,
+  EnrichResult,
   InterviewResult,
   ReasonerStatus,
   ReasonerConfigStatus,

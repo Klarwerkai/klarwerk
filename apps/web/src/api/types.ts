@@ -517,6 +517,13 @@ export interface ExtractResult {
   demo: boolean;
 }
 
+// SCRUM-426: Public-KI-Anreicherung (Modellwissen) — extern/ungeprüft; leer + demo=true ohne Modell.
+export interface EnrichResult {
+  text: string;
+  provider: string;
+  demo: boolean;
+}
+
 // SCRUM-132: reasoner-getriebenes Interview (stateless: Antworten rein, nächste Frage raus).
 export interface InterviewResult {
   question: string | null;

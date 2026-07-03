@@ -256,6 +256,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/livewall": { protection: "ko.read" },
   "GET /api/audit": { protection: "ko.validate" },
   "POST /api/reasoner": { protection: "ko.read" },
+  // SCRUM-426: Public-KI-Anreicherung — Schreibberechtigte; zusätzlich Stufen-Gate „offen".
+  "POST /api/reasoner/enrich": { protection: "ko.create" },
   "GET /api/reasoner/config": { protection: "ko.read" },
   "PUT /api/reasoner/config": { protection: "users.manage" },
   // SCRUM-386: kundeneigene KI-Assist-Presets — lesen alle Rollen (Palette), pflegen nur Admin.

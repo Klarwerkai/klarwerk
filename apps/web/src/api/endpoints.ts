@@ -12,6 +12,7 @@ import type {
   DemoSeedResult,
   Draft,
   DraftPayload,
+  EnrichResult,
   EvidenceRecord,
   ExternalKnowledgeStage,
   ExternalResult,
@@ -181,6 +182,10 @@ export const endpoints = {
         ...(locale ? { locale } : {}),
         ...(query?.trim() ? { query: query.trim() } : {}),
       }),
+    // SCRUM-426: Public-KI-Anreicherung (Modellwissen) — extern/ungeprüft; nur wenn der
+    // Admin-Regler (SCRUM-414) auf „offen" steht (Server prüft, sonst 403).
+    enrich: (query: string, locale?: "de" | "en") =>
+      api.post<EnrichResult>("/reasoner/enrich", { query, ...(locale ? { locale } : {}) }),
     status: () => api.get<ReasonerStatus>("/reasoner/status"),
     // SCRUM-166: read-only Provider-/Model-Konfiguration (nur Metadaten).
     config: () => api.get<ReasonerConfigStatus>("/reasoner/config"),

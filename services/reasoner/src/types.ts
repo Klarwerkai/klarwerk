@@ -71,6 +71,14 @@ export interface ExtractedPoint {
 
 // PMO-FEA-0006: Ergebnis der Wissens-Extraktion aus Dokumenttext. Ohne Modell gibt es
 // KEINE Fake-Punkte — points bleibt leer und note erklärt ehrlich warum (FR-RSN-04/G-2).
+// SCRUM-426: Public-KI-Anreicherung — bewusst NICHT quellengebundener Modell-Beitrag
+// (Weltwissen), klar als extern/ungeprüft zu behandeln. Ohne Modell: leer + demo=true.
+export interface EnrichResult {
+  text: string;
+  provider: string;
+  demo: boolean;
+}
+
 export interface ExtractResult {
   points: ExtractedPoint[];
   note: string | null; // ehrliche Erklärung, wenn keine Punkte geliefert werden können

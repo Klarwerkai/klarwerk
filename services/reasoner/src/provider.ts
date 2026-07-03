@@ -1,6 +1,7 @@
 import type {
   AnswerResult,
   AssistResult,
+  EnrichResult,
   ExtractResult,
   InterviewResult,
   KnowledgeRef,
@@ -34,6 +35,10 @@ export interface ReasonerProvider {
   extract(documentText: string, locale?: ReasonerLocale, query?: string): Promise<ExtractResult>;
   // select ist reines Ranking (synchron, kein Netzaufruf).
   select(question: string, candidates: readonly KnowledgeRef[]): KnowledgeRef[];
+  // SCRUM-426: Public-KI-Anreicherung — bewusst NICHT quellengebunden (Modell-Weltwissen).
+  // NUR das echte Modell implementiert das; der deterministische Fallback bewusst NICHT
+  // (er kann kein externes Wissen beisteuern). Ergebnis ist immer extern/ungeprüft.
+  enrichPublic?(query: string, locale?: ReasonerLocale): Promise<EnrichResult>;
   // Key-Test (Pedi 02.07.): kleinstmöglicher Echtaufruf — beweist Schlüssel + Modellzugang.
   // Optional: der deterministische Fallback hat bewusst keinen (nichts zu testen).
   probe?(): Promise<string>;

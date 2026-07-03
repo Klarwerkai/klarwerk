@@ -7,6 +7,7 @@ import {
 import type {
   AnswerResult,
   AssistResult,
+  EnrichResult,
   ExtractResult,
   ExtractedPoint,
   InterviewResult,
@@ -52,6 +53,17 @@ function assistSystem(locale: ReasonerLocale): string {
 
 // SCRUM-312: leitet die optionale Nutzer-/Aktionsanweisung an das Modell weiter — als
 // Stil-/Form-Wunsch, NICHT als Erlaubnis, Inhalte zu erfinden.
+// SCRUM-426: Public-KI-Anreicherung — bewusst NICHT quellengebunden. Das Modell darf hier
+// externes Weltwissen beisteuern (Abgrenzung zum quellengebundenen answer/assist). Leitplanken:
+// knapp, sachlich, ehrlich bei Unsicherheit, KEINE erfundenen konkreten Zahlen/Zitate. Das
+// Ergebnis wird in der UI IMMER als „extern · ungeprüft" gekennzeichnet und nie automatisch
+// validiert — die Verantwortung für die Übernahme bleibt beim Menschen.
+function enrichPublicSystem(locale: ReasonerLocale): string {
+  return locale === "en"
+    ? "You add helpful external background knowledge to an expert's draft. Be concise (3–6 sentences or short bullet points), factual and general. Do NOT invent specific numbers, thresholds, dates, names or quotes — if you are unsure, say so plainly. Make clear this is general external knowledge to be verified, not the company's own validated knowledge. Answer in English."
+    : "Du ergänzt den Entwurf eines Experten um hilfreiches externes Hintergrundwissen. Fasse dich kurz (3–6 Sätze oder knappe Stichpunkte), sachlich und allgemein. Erfinde KEINE konkreten Zahlen, Grenzwerte, Daten, Namen oder Zitate — bist du unsicher, sage es offen. Mache klar, dass dies allgemeines externes Wissen zum Prüfen ist, nicht das validierte Wissen des Unternehmens. Antworte auf Deutsch.";
+}
+
 function assistGuidance(locale: ReasonerLocale, instruction: string): string {
   return locale === "en"
     ? `Apply this editing instruction to the wording only (no new facts): ${instruction}`
@@ -446,6 +458,14 @@ export class ModelProvider implements ReasonerProvider {
       })),
       demo: false,
     };
+  }
+
+  // SCRUM-426: Public-KI-Anreicherung — externer Modell-Beitrag (Weltwissen), knapp gehalten.
+  // Immer extern/ungeprüft; die Übernahme entscheidet der Mensch. demo=false (echtes Modell).
+  async enrichPublic(query: string, locale: ReasonerLocale = "de"): Promise<EnrichResult> {
+    const client = this.requireClient();
+    const text = (await client.complete(enrichPublicSystem(locale), query, 1024)).trim();
+    return { text, provider: this.name, demo: false };
   }
 
   private requireClient(): ModelClient {

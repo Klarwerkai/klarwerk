@@ -12,6 +12,7 @@ import { DeterministicProvider, type ReasonerProvider, honestExtractModelFailed 
 import type {
   AnswerResult,
   AssistResult,
+  EnrichResult,
   ExtractResult,
   InterviewResult,
   KnowledgeRef,
@@ -365,6 +366,30 @@ export class Reasoner {
         throw error;
       }
     });
+  }
+
+  // SCRUM-426: Public-KI-Anreicherung — externer Modell-Beitrag (Weltwissen). Nur echte
+  // Modelle (Cloud → lokal) können das; ohne Modell ehrlich leer (demo=true, kein Erfinden).
+  // Das Ergebnis ist IMMER extern/ungeprüft; die Freigabe (Stufe „offen") prüft die Route.
+  async enrichPublic(query: string, locale: ReasonerLocale = "de"): Promise<EnrichResult> {
+    for (const provider of [this.primary, this.secondary]) {
+      if (provider === this.fallback || !provider.isAvailable() || !provider.enrichPublic) {
+        continue;
+      }
+      try {
+        const result = await provider.enrichPublic(query, locale);
+        if (result.text.trim().length > 0) {
+          return result;
+        }
+      } catch {
+        // nächstes Modell versuchen
+      }
+    }
+    return {
+      text: "",
+      provider: this.fallback.name,
+      demo: true,
+    };
   }
 
   // SCRUM-167: select bleibt synchron (reines Keyword-Ranking, kein Modell-/Netzaufruf).
