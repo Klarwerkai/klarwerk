@@ -305,9 +305,10 @@ export function Mobile(): JSX.Element {
                       <span className="min-w-0 flex-1 truncate text-[13px] text-text">
                         {draftTitle(d, t("capture.draftFallbackTitle"))}
                       </span>
+                      {/* SCRUM-412 (CI): Hinweis in Textfarbe — Rot nur am destruktiven Knopf. */}
                       {isPending(confirm, d.id) ? (
                         <>
-                          <span className="text-[11px] text-trust-crit-text">
+                          <span className="text-[11px] text-text">
                             {t("mob.discardConfirmHint")}
                           </span>
                           <button

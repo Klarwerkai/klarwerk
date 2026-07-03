@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronDown,
   FileText,
+  Globe,
   Mic,
   Paperclip,
   RotateCcw,
@@ -21,6 +22,7 @@ import { useDrafts } from "../api/hooks";
 import type {
   Draft,
   DraftPayload,
+  ExternalResult,
   InterviewResult,
   KnowledgeObject,
   KnowledgeType,
@@ -29,6 +31,8 @@ import type {
 import { useSession } from "../app/AuthContext";
 import { useToast } from "../app/ToastContext";
 import { AiAssistBox } from "../components/AiAssistBox";
+// SCRUM-405: „Aus Dokument ergänzen" — extract-Punkte anhängen (nichts ersetzen).
+import { BodyExtractPanel } from "../components/BodyExtractPanel";
 import { BodyTemplateChooser } from "../components/BodyTemplateChooser";
 import { DemoBanner } from "../components/DemoBanner";
 import { EditorAttachmentContext } from "../components/EditorAttachmentContext";
@@ -43,6 +47,11 @@ import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
 import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
 import { GAP_RESCUE_STEPS, GAP_RESCUE_TEXT } from "../lib/askGapRescue";
 import { applyBodyAssist, applyBodyAssistBlock, bodyTextForAssist } from "../lib/bodyAiAssist";
+import {
+  appendExtractSections,
+  extractSectionsHtml,
+  normalizeExtractLocale,
+} from "../lib/bodyExtract";
 import { ADVANCED_FIELDS_KEYS, advancedFieldsSummary } from "../lib/captureAdvancedFields";
 import {
   ATTACHMENT_RECOVERY_KEYS,
@@ -78,7 +87,19 @@ import {
   togglePoint,
 } from "../lib/captureFromFile";
 import { gapContextDraft, readGapContext } from "../lib/captureFromGap";
+// SCRUM-407: zentrale ?-Hilfen-Karte des Erfassen-Wegs (chelp.*) — Gegenstück zu lib/reviewHelp.
+import { type CaptureHelpId, captureHelp } from "../lib/captureHelp";
 import { captureReadiness } from "../lib/captureReadiness";
+// SCRUM-408: externe Quellen schon beim Erfassen — Warteliste + add-source beim Einreichen.
+import {
+  type PendingSource,
+  addPendingSource,
+  attachPendingSources,
+  canAttachCaptureSources,
+  pendingFromForm,
+  pendingFromResult,
+  removePendingSource,
+} from "../lib/captureSources";
 import { captureNextSteps, captureSavedStatus } from "../lib/captureSuccess";
 import {
   CAPTURE_WIZARD_TEXT,
@@ -91,6 +112,8 @@ import { draftTitle } from "../lib/draftForm";
 import { studioSaveConfidence } from "../lib/editorApplySafety";
 import { EDITOR_BLOCKS } from "../lib/editorBlocks";
 import { editorImagesFromLocalImages } from "../lib/editorImages";
+// SCRUM-409 (PMO-FEA-0008-Delta): Mehrpunkt-Entwürfe + Zusammenführen im „Aus Datei"-Weg.
+import { createPointDrafts, mergedDraftFromPoints } from "../lib/fileMultiPoint";
 import {
   fileToThumbDataUrl,
   isImage,
@@ -104,6 +127,7 @@ import {
   runImageOcr,
 } from "../lib/files";
 import { appendAnswer, interviewSourceKey, isInterviewDone } from "../lib/interviewFlow";
+import { EMPTY_SOURCE_FORM, type SourceFormInput, isSourceFormValid } from "../lib/koSource";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { hasSpeechRecognition } from "../lib/speechSupport";
 
@@ -213,6 +237,13 @@ export function Capture(): JSX.Element {
   // sind. Der extrahierte Text geht weiterhin als Kontext in die Rohnotiz.
   const [docs, setDocs] = useState<{ id: string; name: string; mime: string; data: string }[]>([]);
 
+  // SCRUM-408: Quellen-Warteliste beim Erfassen (angehängt wird erst beim Einreichen) +
+  // dasselbe Formular/Such-Muster wie im Prüfbereich (SCRUM-118/129, eine Regel-Quelle).
+  const [pendingSources, setPendingSources] = useState<PendingSource[]>([]);
+  const [sourceForm, setSourceForm] = useState<SourceFormInput>({ ...EMPTY_SOURCE_FORM });
+  const [extQuery, setExtQuery] = useState("");
+  const [extResults, setExtResults] = useState<ExternalResult[]>([]);
+
   const [err, setErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   // SCRUM-276: nach erfolgreichem Einreichen die ID des gespeicherten KO (für die Success-Card).
@@ -312,6 +343,16 @@ export function Capture(): JSX.Element {
 
   // PMO-FEA-0006: Wissenssuche im Dokument — Ergebnis ist die Punkteliste ODER (ohne Modell)
   // eine ehrliche note ohne Fake-Punkte. Die note kommt lokalisiert vom Server.
+  // SCRUM-408: externe Quellensuche über den vorhandenen Server-Proxy (SCRUM-118 / FR-EXT-02).
+  const extSearch = useMutation({
+    mutationFn: (q: string) => endpoints.external.search(q),
+    onSuccess: (r) => {
+      setExtResults(r);
+      setErr(null);
+    },
+    onError: fail,
+  });
+
   const extract = useMutation({
     mutationFn: () => endpoints.reasoner.extract(fileText, locale, fileQuery),
     onSuccess: (r) => {
@@ -349,6 +390,79 @@ export function Capture(): JSX.Element {
     }
     setFileQueue(queue);
     loadQueuePoint(queue);
+  };
+
+  // SCRUM-409: mehrere bestätigte Punkte als SEPARATE Entwürfe in den bestehenden Pool
+  // (FE-CAP-07) — je Entwurf mit sichtbarem Quellenvermerk im Body. Teilfehler werden
+  // ehrlich gemeldet; bereits angelegte Entwürfe bleiben in der „Fortsetzen"-Liste sichtbar.
+  const filePointDrafts = useMutation({
+    mutationFn: (input: {
+      points: { title: string; summary: string; sourceExcerpt: string }[];
+      fileName: string;
+    }) =>
+      createPointDrafts(input.points, input.fileName, normalizeExtractLocale(i18n.language), (p) =>
+        endpoints.drafts.create(p),
+      ),
+    onSuccess: (result, input) => {
+      void qc.invalidateQueries({ queryKey: ["drafts"] });
+      if (result.failed.length > 0) {
+        setErr(t(CAPTURE_FILE_TEXT.draftsPartial, { failed: result.failed.join(", ") }));
+      } else {
+        setErr(null);
+      }
+      if (result.created > 0) {
+        setNotice(
+          t(CAPTURE_FILE_TEXT.draftsSaved, { count: result.created, name: input.fileName }),
+        );
+        push(
+          "success",
+          t(CAPTURE_FILE_TEXT.draftsSaved, { count: result.created, name: input.fileName }),
+        );
+        setFilePoints(null);
+        setFileName(null);
+        setFileText("");
+        setFileQuery("");
+      }
+    },
+    onError: fail,
+  });
+
+  const saveSelectedAsDrafts = (): void => {
+    if (!filePoints || !fileName) {
+      return;
+    }
+    const chosen = filePoints
+      .filter((p) => p.selected)
+      .map(({ title, summary, sourceExcerpt }) => ({ title, summary, sourceExcerpt }));
+    if (chosen.length < 2) {
+      return;
+    }
+    filePointDrafts.mutate({ points: chosen, fileName });
+  };
+
+  // SCRUM-409: mehrere bestätigte Punkte VOR der Übernahme zu EINEM Eintrag zusammenführen —
+  // der Body trägt ALLE Belegstellen als Abschnitte; die Quelle je Punkt geht in die
+  // SCRUM-408-Warteliste (add-source beim Einreichen). Kein Auto-Save.
+  const mergeSelectedPoints = (): void => {
+    if (!filePoints || !fileName) {
+      return;
+    }
+    const chosen = filePoints
+      .filter((p) => p.selected)
+      .map(({ title, summary, sourceExcerpt }) => ({ title, summary, sourceExcerpt }));
+    const merged = mergedDraftFromPoints(chosen, false);
+    if (!merged) {
+      return;
+    }
+    setDraft(merged);
+    setBodyHtml(extractSectionsHtml(chosen, fileName, normalizeExtractLocale(i18n.language)));
+    setPendingSources((list) =>
+      chosen.reduce((acc, p) => addPendingSource(acc, fileSourcePayload(fileName, p)), list),
+    );
+    setStudioApplied(false);
+    setFileQueue(null);
+    setNotice(t(CAPTURE_FILE_TEXT.mergedNote, { count: chosen.length, name: fileName }));
+    setWizStep("refine");
   };
 
   // PMO-FEA-0006: Punkt bewusst überspringen (nichts wird gespeichert) → nächster Punkt.
@@ -457,6 +571,15 @@ export function Capture(): JSX.Element {
           failed.push({ name: fileQueue.fileName, reason: "attach" });
         }
       }
+      // SCRUM-408: beim Erfassen gesammelte externe Quellen ans gespeicherte KO hängen —
+      // gleiche add-source-Route wie im Prüfbereich (Stufe 2, nie peer-validiert). Ein
+      // Teilfehler kippt den Save nicht; er wird ehrlich gemeldet (SCRUM-374-Muster).
+      const sourceResult = await attachPendingSources(ko.id, pendingSources, (koId, source) =>
+        endpoints.ko.act(koId, { action: "add-source", source }),
+      );
+      for (const name of sourceResult.failed) {
+        failed.push({ name, reason: "attach" });
+      }
       return { ko, attached: attachResult.attached, failed };
     },
     // SCRUM-276: kein stilles Weiterleiten — „gespeichert" + nächster Schritt sichtbar machen.
@@ -483,6 +606,11 @@ export function Capture(): JSX.Element {
       setAsset("");
       setNeededValidations("");
       setDraftId(null);
+      // SCRUM-408: Quellen-Warteliste ist mit dem Einreichen ans KO gewandert → leeren.
+      setPendingSources([]);
+      setSourceForm({ ...EMPTY_SOURCE_FORM });
+      setExtQuery("");
+      setExtResults([]);
       // SCRUM-375: nach dem Zurücksetzen sind die erweiterten Felder leer → wieder einklappen.
       setShowAdvanced(false);
       setNotice(null);
@@ -783,7 +911,9 @@ export function Capture(): JSX.Element {
         return;
       }
       setFileText(text);
-      setNotice(t(CAPTURE_FILE_TEXT.loaded, { name: f.name }));
+      // SCRUM-409: ehrliche Import-Quittung — Dateiname + Umfang (Zeichen; Seiten gibt der
+      // Text-Extraktor nicht her, also wird auch keine Seitenzahl behauptet).
+      setNotice(t(CAPTURE_FILE_TEXT.loadedStats, { name: f.name, chars: text.length }));
     } catch {
       setFileName(null);
       setNotice(null);
@@ -805,7 +935,7 @@ export function Capture(): JSX.Element {
       const res = await runImageOcr(fileImageUrl);
       if (res.status === "success" && res.text.length > 0) {
         setFileText(res.text);
-        setNotice(t(CAPTURE_FILE_TEXT.loaded, { name: fileName }));
+        setNotice(t(CAPTURE_FILE_TEXT.loadedStats, { name: fileName, chars: res.text.length }));
       } else if (res.status === "unavailable") {
         setNotice(null);
         setErr(t("capture.ocrUnavailable"));
@@ -920,6 +1050,16 @@ export function Capture(): JSX.Element {
 
   const busy = structure.isPending || saveDraft.isPending;
 
+  // SCRUM-407 (Pedi 03.07.): durchgängige, ausführliche ?-Hilfen im Erfassen-Weg — Themen und
+  // i18n-Schlüssel kommen aus der zentralen Karte lib/captureHelp (gleiches Muster wie SCRUM-406).
+  const chelp = (id: CaptureHelpId): { title: string; body: string } => {
+    const topic = captureHelp(id);
+    return { title: t(topic.titleKey), body: t(topic.bodyKey) };
+  };
+
+  // SCRUM-408: gleiche Guard-Logik wie im Prüfbereich (viewer darf keine Quellen anhängen).
+  const canSources = canAttachCaptureSources(user?.role);
+
   // SCRUM-375: wie viele erweiterte Felder schon Inhalt tragen — für das „X ausgefüllt"-Badge.
   const advancedSummary = advancedFieldsSummary({
     category,
@@ -962,8 +1102,9 @@ export function Capture(): JSX.Element {
       {savedKoId ? (
         <Card className="mb-4 border-trust-pos-fill/40 bg-trust-pos-bg">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="text-[13px] font-semibold text-trust-pos-text">
+            <div className="flex items-center gap-1 text-[13px] font-semibold text-trust-pos-text">
               {t("capture.savedTitle")}
+              <HelpTip {...chelp("savedNext")} />
             </div>
             {/* SCRUM-286: ehrlicher Status — gespeichert, aber noch offen/nicht validiert. */}
             <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
@@ -1144,15 +1285,17 @@ export function Capture(): JSX.Element {
               </span>
             );
           })}
+          <HelpTip {...chelp("wizardSteps")} />
         </div>
       ) : null}
 
       {/* Erzähl-Einstieg nur im Schritt „Erzählen" (bzw. immer im Expertenmodus). */}
       {expertView || wizStep === "tell" ? (
         <div className="mb-4">
-          <p className="mb-1.5 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+          <div className="mb-1.5 flex items-center gap-1 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
             {t(CAPTURE_ENTRY_TEXT.narrateKicker)}
-          </p>
+            <HelpTip {...chelp("modes")} />
+          </div>
           <div className="flex flex-wrap items-center gap-1.5">
             {NARRATE_MODES.map((m) => (
               <button
@@ -1176,14 +1319,17 @@ export function Capture(): JSX.Element {
             ))}
             {/* Expertenpfad: ruhig rechts abgesetzt, bewusster Klick — kein gleichrangiger Modus. */}
             {!isExpertMode(mode) ? (
-              <button
-                type="button"
-                onClick={() => switchMode(EXPERT_MODE)}
-                title={t(CAPTURE_ENTRY_TEXT.expertHint)}
-                className="ml-auto rounded-btn px-2.5 py-1.5 text-[12px] font-medium text-muted-2 underline-offset-2 hover:text-text hover:underline"
-              >
-                {t(CAPTURE_ENTRY_TEXT.expertToggle)}
-              </button>
+              <span className="ml-auto inline-flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => switchMode(EXPERT_MODE)}
+                  title={t(CAPTURE_ENTRY_TEXT.expertHint)}
+                  className="rounded-btn px-2.5 py-1.5 text-[12px] font-medium text-muted-2 underline-offset-2 hover:text-text hover:underline"
+                >
+                  {t(CAPTURE_ENTRY_TEXT.expertToggle)}
+                </button>
+                <HelpTip {...chelp("expertPath")} />
+              </span>
             ) : null}
           </div>
           {/* Im Expertenmodus: ehrliche Einordnung + sichtbarer Rückweg auf den geführten Standardweg. */}
@@ -1222,19 +1368,19 @@ export function Capture(): JSX.Element {
             {/* Modus-spezifische Eingabe */}
             {mode === "freitext" || mode === "diktat" ? (
               <div>
-                <div className="mb-1.5">
+                <div className="mb-1.5 flex items-center gap-1">
                   <SectionLabel>{t("capture.raw")}</SectionLabel>
+                  <HelpTip {...chelp("tellRaw")} />
                 </div>
                 {mode === "diktat" ? (
                   speechSupported ? (
-                    <Button
-                      variant={listening ? "primary" : "ghost"}
-                      className="mb-2"
-                      onClick={toggleDictation}
-                    >
-                      <Mic size={15} />
-                      {listening ? t("capture.diktatStop") : t("capture.diktatStart")}
-                    </Button>
+                    <div className="mb-2 flex items-center gap-1">
+                      <Button variant={listening ? "primary" : "ghost"} onClick={toggleDictation}>
+                        <Mic size={15} />
+                        {listening ? t("capture.diktatStop") : t("capture.diktatStart")}
+                      </Button>
+                      <HelpTip {...chelp("dictate")} />
+                    </div>
                   ) : (
                     <p className="mb-2 rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
                       {t("capture.diktatUnsupported")}
@@ -1262,6 +1408,7 @@ export function Capture(): JSX.Element {
                       onChange={(e) => void onDocs(e)}
                     />
                   </label>
+                  <HelpTip {...chelp("tellUpload")} />
                   {images.length + docs.length > 0 ? (
                     <span className="text-[11.5px] text-muted-2">
                       {t(CAPTURE_WIZARD_TEXT.uploadCount, { count: images.length + docs.length })}
@@ -1274,24 +1421,27 @@ export function Capture(): JSX.Element {
                 {expertView ? (
                   <AiAssistBox text={raw} runAssist={runAssist} onApply={setRaw} />
                 ) : null}
-                <Button
-                  variant="primary"
-                  className="mt-3"
-                  disabled={raw.trim().length === 0 || structure.isPending}
-                  onClick={() => structure.mutate()}
-                >
-                  <Sparkles size={15} />
-                  {structure.isPending
-                    ? t(CAPTURE_WIZARD_TEXT.structuring)
-                    : t("capture.structure")}
-                </Button>
+                <div className="mt-3 flex items-center gap-1">
+                  <Button
+                    variant="primary"
+                    disabled={raw.trim().length === 0 || structure.isPending}
+                    onClick={() => structure.mutate()}
+                  >
+                    <Sparkles size={15} />
+                    {structure.isPending
+                      ? t(CAPTURE_WIZARD_TEXT.structuring)
+                      : t("capture.structure")}
+                  </Button>
+                  <HelpTip {...chelp("structureNow")} />
+                </div>
               </div>
             ) : null}
 
             {mode === "formular" ? (
-              <p className="rounded-card border border-dashed border-hairline p-3 text-[13px] text-muted">
-                {t("capture.formularHint")}
-              </p>
+              <div className="flex items-start gap-1.5 rounded-card border border-dashed border-hairline p-3 text-[13px] text-muted">
+                <span className="flex-1">{t("capture.formularHint")}</span>
+                <HelpTip {...chelp("expertForm")} />
+              </div>
             ) : null}
 
             {mode === "interview" ? (
@@ -1305,6 +1455,7 @@ export function Capture(): JSX.Element {
                     <span className="font-mono text-[11px] uppercase tracking-wider text-muted-2">
                       {t("capture.ivTurn", { n: ivAnswers.length + 1 })}
                     </span>
+                    <HelpTip {...chelp("interview")} />
                     {ivResult ? (
                       <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai">
                         {t(interviewSourceKey(ivResult))}
@@ -1367,9 +1518,10 @@ export function Capture(): JSX.Element {
                 EIN Fokus je Schritt: Upload → (Suchauftrag) → Punkteliste → Warteschlange. */}
             {mode === "datei" ? (
               <div className="space-y-3">
-                <p className="text-[12.5px] leading-relaxed text-muted">
-                  {t(CAPTURE_FILE_TEXT.hint)}
-                </p>
+                <div className="flex items-start gap-1.5 text-[12.5px] leading-relaxed text-muted">
+                  <span className="flex-1">{t(CAPTURE_FILE_TEXT.hint)}</span>
+                  <HelpTip {...chelp("filePoints")} />
+                </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
                     <Paperclip size={14} />
@@ -1482,6 +1634,22 @@ export function Capture(): JSX.Element {
                           total: filePoints.length,
                         })}
                       </span>
+                      {/* SCRUM-409: ab 2 bestätigten Punkten zusätzlich Mehrpunkt-Entwürfe und
+                          Zusammenführen — die Einzel-Warteschlange (unten) bleibt erhalten. */}
+                      {selectedCount(filePoints) >= 2 ? (
+                        <>
+                          <Button
+                            variant="ghost"
+                            disabled={filePointDrafts.isPending}
+                            onClick={saveSelectedAsDrafts}
+                          >
+                            {t(CAPTURE_FILE_TEXT.saveDraftsCta)} ({selectedCount(filePoints)})
+                          </Button>
+                          <Button variant="ghost" onClick={mergeSelectedPoints}>
+                            {t(CAPTURE_FILE_TEXT.mergeCta)}
+                          </Button>
+                        </>
+                      ) : null}
                       <Button
                         variant="primary"
                         className="ml-auto"
@@ -1500,25 +1668,28 @@ export function Capture(): JSX.Element {
               eingeklappt, damit „Wissen erzählen → im Studio strukturieren" führt. NICHTS entfernt; bei
               vorhandenem Inhalt (Entwurf/Beispiel) automatisch aufgeklappt; Badge zeigt Ausgefülltes an. */}
             <div className="border-t border-hairline pt-4">
-              <button
-                type="button"
-                aria-expanded={showAdvanced}
-                onClick={() => setShowAdvanced((s) => !s)}
-                className="flex w-full items-center justify-between gap-2 text-left"
-              >
-                <span className="flex flex-wrap items-center gap-1.5 text-[12.5px] font-semibold text-text">
-                  {t(ADVANCED_FIELDS_KEYS.title)}
-                  {advancedSummary.filledCount > 0 ? (
-                    <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted-2">
-                      {t(ADVANCED_FIELDS_KEYS.filled, { count: advancedSummary.filledCount })}
-                    </span>
-                  ) : null}
-                </span>
-                <ChevronDown
-                  size={16}
-                  className={`shrink-0 text-muted-2 transition-transform ${showAdvanced ? "rotate-180" : ""}`}
-                />
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  aria-expanded={showAdvanced}
+                  onClick={() => setShowAdvanced((s) => !s)}
+                  className="flex flex-1 items-center justify-between gap-2 text-left"
+                >
+                  <span className="flex flex-wrap items-center gap-1.5 text-[12.5px] font-semibold text-text">
+                    {t(ADVANCED_FIELDS_KEYS.title)}
+                    {advancedSummary.filledCount > 0 ? (
+                      <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted-2">
+                        {t(ADVANCED_FIELDS_KEYS.filled, { count: advancedSummary.filledCount })}
+                      </span>
+                    ) : null}
+                  </span>
+                  <ChevronDown
+                    size={16}
+                    className={`shrink-0 text-muted-2 transition-transform ${showAdvanced ? "rotate-180" : ""}`}
+                  />
+                </button>
+                <HelpTip {...chelp("advancedDetails")} />
+              </div>
               {!showAdvanced ? (
                 <p className="mt-1 text-[11.5px] leading-relaxed text-muted-2">
                   {t(ADVANCED_FIELDS_KEYS.hint)}
@@ -1535,7 +1706,14 @@ export function Capture(): JSX.Element {
                       {authorName}
                     </div>
                   </Field>
-                  <Field label={t("capture.fType")}>
+                  <Field
+                    label={
+                      <span className="inline-flex items-center gap-1">
+                        {t("capture.fType")}
+                        <HelpTip {...chelp("knowledgeType")} />
+                      </span>
+                    }
+                  >
                     <select
                       value={type}
                       onChange={(e) => setType(e.target.value as KnowledgeType)}
@@ -1579,11 +1757,21 @@ export function Capture(): JSX.Element {
                       onChange={(e) => setNeededValidations(e.target.value)}
                     />
                   </Field>
-                  <Field label={t("capture.fAsset")}>
+                  <Field
+                    label={
+                      <span className="inline-flex items-center gap-1">
+                        {t("capture.fAsset")}
+                        <HelpTip {...chelp("assetField")} />
+                      </span>
+                    }
+                  >
                     <TextInput value={asset} onChange={(e) => setAsset(e.target.value)} />
                   </Field>
                   <div>
                     <TagEditor tags={tags} onChange={setTags} />
+                    <div className="mt-1">
+                      <HelpTip {...chelp("tagsField")} />
+                    </div>
                   </div>
                 </div>
 
@@ -1592,6 +1780,7 @@ export function Capture(): JSX.Element {
                   <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
                     <FileText size={13} />
                     {t("capture.documents")}
+                    <HelpTip {...chelp("docsImages")} />
                   </div>
                   <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
                     {t("capture.documentsUpload")}
@@ -1643,6 +1832,7 @@ export function Capture(): JSX.Element {
                   <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
                     <Paperclip size={13} />
                     {t("capture.images")}
+                    <HelpTip {...chelp("docsImages")} />
                   </div>
                   <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
                     {t("capture.imagesUpload")}
@@ -1686,6 +1876,167 @@ export function Capture(): JSX.Element {
                     </div>
                   ) : null}
                 </div>
+
+                {/* SCRUM-408: Externe Quellen schon beim Erfassen — dasselbe Panel-Muster wie im
+                    Prüfbereich (SCRUM-118/129): Formular (Bezeichnung/URL/Auszug) + Server-Proxy-
+                    Suche. Beim Erfassen existiert das KO noch nicht → sichtbare Warteliste;
+                    angehängt wird beim Einreichen. Stufe 2, nie peer-validiert, nichts automatisch. */}
+                {canSources ? (
+                  <div className="rounded-card border border-dashed border-hairline p-3">
+                    <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+                      <Globe size={13} />
+                      {t("capture.sourcesTitle")}
+                      <HelpTip {...chelp("sourcesPanel")} />
+                    </div>
+                    <p className="mb-2 text-[11.5px] leading-relaxed text-muted-2">
+                      {t("capture.sourcesHint")}
+                    </p>
+                    {pendingSources.length > 0 ? (
+                      <ul className="mb-2 space-y-1.5">
+                        {pendingSources.map((s, i) => (
+                          <li
+                            key={`${s.label}-${s.url ?? i}`}
+                            className="rounded-input bg-page p-2.5"
+                          >
+                            <div className="flex items-start gap-2">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className="text-[13px] font-medium text-text">
+                                    {s.label}
+                                  </span>
+                                  <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
+                                    {t("ko.sourceUnvalidated")}
+                                  </span>
+                                  {s.provider ? (
+                                    <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted">
+                                      {s.provider}
+                                    </span>
+                                  ) : null}
+                                </div>
+                                {s.url ? (
+                                  <span className="block truncate font-mono text-[11px] text-ai">
+                                    {s.url}
+                                  </span>
+                                ) : null}
+                                {s.excerpt ? (
+                                  <p className="mt-1 text-[12px] text-muted">{s.excerpt}</p>
+                                ) : null}
+                              </div>
+                              <button
+                                type="button"
+                                title={t("ko.sourceRemove")}
+                                onClick={() =>
+                                  setPendingSources((list) => removePendingSource(list, i))
+                                }
+                                className="grid h-7 w-7 shrink-0 place-items-center rounded-btn text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    <div className="space-y-2">
+                      <TextInput
+                        value={sourceForm.label}
+                        onChange={(e) => setSourceForm((s) => ({ ...s, label: e.target.value }))}
+                        placeholder={t("ko.sourceLabel")}
+                      />
+                      <TextInput
+                        value={sourceForm.url}
+                        onChange={(e) => setSourceForm((s) => ({ ...s, url: e.target.value }))}
+                        placeholder={t("ko.sourceUrl")}
+                      />
+                      <TextInput
+                        value={sourceForm.excerpt}
+                        onChange={(e) => setSourceForm((s) => ({ ...s, excerpt: e.target.value }))}
+                        placeholder={t("ko.sourceExcerpt")}
+                      />
+                      <p className="text-[11.5px] text-muted-2">{t("ko.sourcesHint")}</p>
+                      <Button
+                        variant="ghost"
+                        disabled={!isSourceFormValid(sourceForm)}
+                        onClick={() => {
+                          setPendingSources((list) =>
+                            addPendingSource(list, pendingFromForm(sourceForm)),
+                          );
+                          setSourceForm({ ...EMPTY_SOURCE_FORM });
+                        }}
+                      >
+                        {t("ko.sourceAdd")}
+                      </Button>
+                    </div>
+                    {/* SCRUM-118 / FR-EXT-02: externe Quellensuche (Server-Proxy) — wie im Prüfbereich. */}
+                    <div className="mt-3 space-y-2 border-t border-hairline pt-3">
+                      <SectionLabel>{t("ext.title")}</SectionLabel>
+                      <p className="text-[11.5px] text-muted-2">{t("ext.hint")}</p>
+                      <form
+                        className="flex gap-2"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          if (extQuery.trim()) {
+                            extSearch.mutate(extQuery.trim());
+                          }
+                        }}
+                      >
+                        <TextInput
+                          value={extQuery}
+                          onChange={(e) => setExtQuery(e.target.value)}
+                          placeholder={t("ext.placeholder")}
+                        />
+                        <Button
+                          type="submit"
+                          variant="ghost"
+                          disabled={extSearch.isPending || extQuery.trim().length === 0}
+                        >
+                          {t("ext.search")}
+                        </Button>
+                      </form>
+                      {extResults.length > 0 ? (
+                        <ul className="space-y-1.5">
+                          {extResults.map((r) => (
+                            <li key={r.url} className="rounded-input border border-hairline p-2.5">
+                              <div className="flex items-start gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    <span className="text-[13px] font-medium text-text">
+                                      {r.title}
+                                    </span>
+                                    <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted">
+                                      {r.provider}
+                                    </span>
+                                  </div>
+                                  {r.snippet ? (
+                                    <p className="mt-0.5 text-[11.5px] text-muted">{r.snippet}</p>
+                                  ) : null}
+                                  <a
+                                    href={r.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="block truncate font-mono text-[10.5px] text-ai hover:underline"
+                                  >
+                                    {r.url}
+                                  </a>
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  onClick={() =>
+                                    setPendingSources((list) =>
+                                      addPendingSource(list, pendingFromResult(r)),
+                                    )
+                                  }
+                                >
+                                  {t("ext.attach")}
+                                </Button>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
               </>
             ) : null}
 
@@ -1700,18 +2051,22 @@ export function Capture(): JSX.Element {
               </div>
             ) : null}
 
-            <div className="flex flex-wrap gap-2 border-t border-hairline pt-4">
+            <div className="flex flex-wrap items-center gap-2 border-t border-hairline pt-4">
               <Button variant="ghost" disabled={busy} onClick={() => saveDraft.mutate()}>
                 <Save size={15} />
                 {t("capture.saveDraft")}
               </Button>
+              <HelpTip {...chelp("saveDraftHelp")} />
               <Button variant="ghost" onClick={loadExample}>
                 {t("capture.loadExample")}
               </Button>
+              <HelpTip {...chelp("loadExample")} />
               {/* Pedi 02.07.: Verwerfen auch im Erzähl-Schritt — leert Text + Anhänge. */}
+              {/* SCRUM-412 (CI): Bestätigung = neutrale Fläche; Ampel-Farben bleiben Reife/Status
+                  vorbehalten — Rot nur am destruktiven Aktions-Element selbst. */}
               {confirmTellReset ? (
-                <span className="inline-flex items-center gap-2 rounded-card border border-trust-warn-fill/40 bg-trust-warn-bg px-2.5 py-1.5">
-                  <span className="text-[12px] font-semibold text-trust-warn-text">
+                <span className="inline-flex items-center gap-2 rounded-card border border-hairline bg-page px-2.5 py-1.5">
+                  <span className="text-[12px] font-semibold text-text">
                     {t("capture.tellResetQ")}
                   </span>
                   <button
@@ -1746,6 +2101,7 @@ export function Capture(): JSX.Element {
                   {t(CAPTURE_WIZARD_TEXT.discard)}
                 </button>
               )}
+              <HelpTip {...chelp("discardHelp")} />
             </div>
           </Card>
         ) : null}
@@ -1886,7 +2242,10 @@ export function Capture(): JSX.Element {
                   {/* SCRUM-248: Speicher-Check — Pflicht-/Kernfelder + mitgenommene Anhänge ehrlich sichtbar. */}
                   {readiness ? (
                     <div className="rounded-card border border-hairline bg-page p-3">
-                      <SectionLabel>{t("capture.readyTitle")}</SectionLabel>
+                      <div className="flex items-center gap-1">
+                        <SectionLabel>{t("capture.readyTitle")}</SectionLabel>
+                        <HelpTip {...chelp("readiness")} />
+                      </div>
                       <ul className="mt-1.5 space-y-1">
                         {readiness.checks.map((c) => (
                           <li key={c.key} className="flex items-center gap-2 text-[12.5px]">
@@ -1947,14 +2306,17 @@ export function Capture(): JSX.Element {
                   <p className="text-[11.5px] leading-relaxed text-muted">
                     {t(CAPTURE_FLOW_TEXT.submitValue)}
                   </p>
-                  <Button
-                    variant="primary"
-                    className="w-full"
-                    disabled={submit.isPending || !readiness?.canSave}
-                    onClick={() => submit.mutate()}
-                  >
-                    {t("capture.submit")}
-                  </Button>
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      variant="primary"
+                      className="flex-1"
+                      disabled={submit.isPending || !readiness?.canSave}
+                      onClick={() => submit.mutate()}
+                    >
+                      {t("capture.submit")}
+                    </Button>
+                    <HelpTip {...chelp("submitReview")} />
+                  </div>
                 </div>
               </ReasonerDraft>
             ) : (
@@ -2029,9 +2391,10 @@ export function Capture(): JSX.Element {
             </h2>
 
             <div>
-              <p className="mb-1.5 text-[12.5px] font-semibold text-muted">
+              <div className="mb-1.5 flex items-center gap-1 text-[12.5px] font-semibold text-muted">
                 {t(CAPTURE_WIZARD_TEXT.titleLabel)}
-              </p>
+                <HelpTip {...chelp("captureTitle")} />
+              </div>
               <input
                 value={draft.title}
                 onChange={(e) => setDraft({ ...draft, title: e.target.value })}
@@ -2084,6 +2447,20 @@ export function Capture(): JSX.Element {
                   {t("studio.applied")}
                 </p>
               ) : null}
+
+              {/* SCRUM-405: Fakten aus weiteren Dokumenten per KI ergänzen — ausgewählte Punkte
+                  (G-2: nur mit Belegstelle) werden ANGEHÄNGT, nichts ersetzt; die Quelle je Punkt
+                  wandert in die Quellen-Warteliste (SCRUM-408) und beim Einreichen ans KO. */}
+              <BodyExtractPanel
+                onAppend={(pts, name) => {
+                  setBodyHtml((prev) =>
+                    appendExtractSections(prev, pts, name, normalizeExtractLocale(i18n.language)),
+                  );
+                  setPendingSources((list) =>
+                    pts.reduce((acc, p) => addPendingSource(acc, fileSourcePayload(name, p)), list),
+                  );
+                }}
+              />
 
               {/* Struktur-Daten (Kernaussage/Aussage/Bedingungen/Maßnahmen) — eingeklappt; der
                   Inhalt steht sichtbar im Dokument, hier nur die strukturierte Bearbeitung. */}
@@ -2176,7 +2553,10 @@ export function Capture(): JSX.Element {
                   (alles bereit ⇒ der Einreichen-Knopf ist aktiv; keine unnötige Info-Wand). */}
               {readiness && !readiness.canSave ? (
                 <div className="rounded-card border border-hairline bg-page p-3">
-                  <SectionLabel>{t("capture.readyTitle")}</SectionLabel>
+                  <div className="flex items-center gap-1">
+                    <SectionLabel>{t("capture.readyTitle")}</SectionLabel>
+                    <HelpTip {...chelp("readiness")} />
+                  </div>
                   <ul className="mt-1.5 space-y-1">
                     {readiness.checks.map((c) => (
                       <li key={c.key} className="flex items-center gap-2 text-[12.5px]">
@@ -2230,9 +2610,10 @@ export function Capture(): JSX.Element {
               </p>
               {/* Pedi 02.07. (Runde 5): Verwerfen wie im ARGUS-Original — mit Inline-Bestätigung
                   (kein confirm()); der Erzähltext bleibt erhalten, nur der Entwurf geht. */}
+              {/* SCRUM-412 (CI): neutrale Bestätigungs-Fläche statt Warn-Einfärbung. */}
               {confirmDiscard ? (
-                <div className="flex flex-wrap items-center gap-2 rounded-card border border-trust-warn-fill/40 bg-trust-warn-bg p-2.5">
-                  <span className="flex-1 text-[12.5px] font-semibold text-trust-warn-text">
+                <div className="flex flex-wrap items-center gap-2 rounded-card border border-hairline bg-page p-2.5">
+                  <span className="flex-1 text-[12.5px] font-semibold text-text">
                     {t(CAPTURE_WIZARD_TEXT.discardQ)}
                   </span>
                   <Button variant="ghost" onClick={() => setConfirmDiscard(false)}>
@@ -2255,11 +2636,12 @@ export function Capture(): JSX.Element {
                   </Button>
                 </div>
               ) : null}
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button variant="ghost" disabled={busy} onClick={() => saveDraft.mutate()}>
                   <Save size={15} />
                   {t("capture.saveDraft")}
                 </Button>
+                <HelpTip {...chelp("saveDraftHelp")} />
                 <button
                   type="button"
                   onClick={() => setConfirmDiscard(true)}
@@ -2267,6 +2649,7 @@ export function Capture(): JSX.Element {
                 >
                   {t(CAPTURE_WIZARD_TEXT.discard)}
                 </button>
+                <HelpTip {...chelp("discardHelp")} />
                 <Button
                   variant="primary"
                   className="flex-1"
@@ -2275,6 +2658,7 @@ export function Capture(): JSX.Element {
                 >
                   {t("capture.submit")} →
                 </Button>
+                <HelpTip {...chelp("submitReview")} />
               </div>
             </div>
           </Card>

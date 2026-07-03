@@ -472,6 +472,15 @@ export interface AssistResult {
   demo: boolean;
 }
 
+// SCRUM-386: kundeneigene KI-Assist-Funktion (Preset) — Name in der Palette, Anweisung
+// an den vorhandenen assist-Task. Vom Admin gepflegt; die Anweisung ist am ?-HelpTip
+// transparent sichtbar (G-3: keine versteckten Prompts).
+export interface AssistPreset {
+  id: string;
+  name: string;
+  instruction: string;
+}
+
 // PMO-FEA-0006: Wissenspunkt aus einem Dokument — mit wörtlicher Belegstelle (G-2).
 export interface ExtractedPoint {
   title: string;

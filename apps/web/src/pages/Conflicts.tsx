@@ -6,8 +6,10 @@ import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useConflicts, useKos } from "../api/hooks";
 import type { ConflictStatus, KnowledgeObject } from "../api/types";
+import { HelpTip } from "../components/HelpTip";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
 import { conflictKoPair, conflictNextStep, resolutionEffect } from "../lib/conflictView";
+import { type ReviewHelpId, reviewHelp } from "../lib/reviewHelp";
 
 const PATH: ConflictStatus[] = ["eskaliert", "zweitmeinung", "geloest"];
 
@@ -89,6 +91,11 @@ function KoPanel({
 
 export function Conflicts(): JSX.Element {
   const { t } = useTranslation();
+  // SCRUM-406: einheitlicher ?-HelpTip aus der zentralen Hilfe-Karte des Prüfbereichs.
+  const vhelp = (helpId: ReviewHelpId): JSX.Element => {
+    const topic = reviewHelp(helpId);
+    return <HelpTip title={t(topic.titleKey)} body={t(topic.bodyKey)} />;
+  };
   const query = useConflicts();
   const kos = useKos();
   const qc = useQueryClient();
@@ -210,31 +217,43 @@ export function Conflicts(): JSX.Element {
                     </p>
                     <div className="flex flex-wrap gap-2">
                       {c.type === "truth" && c.status === "offen" ? (
-                        <Button disabled={escalate.isPending} onClick={() => escalate.mutate(c.id)}>
-                          {t("con.escalate")}
-                        </Button>
+                        <span className="inline-flex items-center gap-0.5">
+                          <Button
+                            disabled={escalate.isPending}
+                            onClick={() => escalate.mutate(c.id)}
+                          >
+                            {t("con.escalate")}
+                          </Button>
+                          {vhelp("conflictEscalate")}
+                        </span>
                       ) : null}
                       {c.status !== "zweitmeinung" ? (
+                        <span className="inline-flex items-center gap-0.5">
+                          <Button
+                            onClick={() => {
+                              setErr(null);
+                              setOpinion("");
+                              setOpinionId(opinionId === c.id ? null : c.id);
+                            }}
+                          >
+                            {t("con.secondOpinionAdd")}
+                          </Button>
+                          {vhelp("conflictSecondOpinion")}
+                        </span>
+                      ) : null}
+                      <span className="inline-flex items-center gap-0.5">
                         <Button
+                          variant="primary"
                           onClick={() => {
                             setErr(null);
-                            setOpinion("");
-                            setOpinionId(opinionId === c.id ? null : c.id);
+                            setDecision("");
+                            setResolvingId(resolvingId === c.id ? null : c.id);
                           }}
                         >
-                          {t("con.secondOpinionAdd")}
+                          {t("con.resolve")}
                         </Button>
-                      ) : null}
-                      <Button
-                        variant="primary"
-                        onClick={() => {
-                          setErr(null);
-                          setDecision("");
-                          setResolvingId(resolvingId === c.id ? null : c.id);
-                        }}
-                      >
-                        {t("con.resolve")}
-                      </Button>
+                        {vhelp("conflictResolve")}
+                      </span>
                     </div>
                   </div>
                 ) : c.decision ? (

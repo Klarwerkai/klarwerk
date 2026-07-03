@@ -27,6 +27,22 @@ describe("SCRUM-156: seedDemo", () => {
       expect(cats.has(c)).toBe(true);
     }
     expect(seededKos.find((k) => k.category === "Pflege & Gesundheit")?.status).toBe("validiert");
+
+    // SCRUM-385 Teil B (PMO-TODO-0002): kuratierte Breite — JEDE der fünf Wissensarten mit
+    // mindestens drei Beispielen, inkl. Schweißnaht-Lernkurve (die Demo-Lücke bleibt dabei
+    // eine Lücke — Wortwahl ohne Inhaltstoken der Demo-Frage, s. seed-demo.ts).
+    for (const type of [
+      "bauchgefuehl",
+      "best_practice",
+      "lernkurve",
+      "technik",
+      "negativwissen",
+    ] as const) {
+      expect(seededKos.filter((k) => k.type === type).length, type).toBeGreaterThanOrEqual(3);
+    }
+    expect(
+      seededKos.some((k) => k.type === "lernkurve" && /schweiß/i.test(`${k.title} ${k.statement}`)),
+    ).toBe(true);
     expect(r.gaps).toBeGreaterThanOrEqual(1); // mindestens eine Wissenslücke
 
     // Stage-1 Produktnähe: die Wissenslücke ist eine industrielle Betriebsfrage,

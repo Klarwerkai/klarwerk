@@ -20,6 +20,8 @@ import { useSession } from "../app/AuthContext";
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
 import { AiAssistBox } from "../components/AiAssistBox";
+// SCRUM-405: „Aus Dokument ergänzen" — extract-Punkte an den Artikel anhängen (nichts ersetzen).
+import { BodyExtractPanel } from "../components/BodyExtractPanel";
 import { BodyTemplateChooser } from "../components/BodyTemplateChooser";
 import { DemoBanner } from "../components/DemoBanner";
 import { EditorAttachmentContext } from "../components/EditorAttachmentContext";
@@ -48,6 +50,7 @@ import {
   TextInput,
 } from "../components/ui";
 import { applyBodyAssist, applyBodyAssistBlock, bodyTextForAssist } from "../lib/bodyAiAssist";
+import { appendExtractSections, normalizeExtractLocale } from "../lib/bodyExtract";
 import { editorFilesFromAttachments } from "../lib/bodyFileLink";
 import {
   BODY_READ_BLOCKS_KEY,
@@ -55,6 +58,7 @@ import {
   BODY_READ_TITLE_KEY,
   bodyReadMode,
 } from "../lib/bodyReadMode";
+import { fileSourcePayload } from "../lib/captureFromFile";
 import { conflictImpact, conflictLimitedUsability, conflictNotice } from "../lib/conflictImpact";
 import { isDemoKnowledge } from "../lib/demoKnowledge";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
@@ -83,6 +87,7 @@ import {
 import { diffForVersion } from "../lib/koVersionDiff";
 import { koVersionRows } from "../lib/koVersionSnapshots";
 import { toReasonerLocale } from "../lib/reasonerLocale";
+import { type ReviewHelpId, reviewHelp } from "../lib/reviewHelp";
 import {
   isReviewReworkContext,
   reworkNextSteps,
@@ -95,6 +100,11 @@ import {
 } from "../lib/sourceContribution";
 import { trustExplainer } from "../lib/trustExplainer";
 import { useReadiness } from "../lib/useReadiness";
+import {
+  type FeedbackVerdict,
+  buildValidationFeedback,
+  isFeedbackSubmittable,
+} from "../lib/validationFeedback";
 import { latestValidationFeedback } from "../lib/validationFeedback";
 import { isReturnedForRework } from "../lib/validationStatus";
 
@@ -208,6 +218,33 @@ export function KnowledgeDetail(): JSX.Element {
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
   });
 
+  // SCRUM-406 (B1-Angleich, Pedi 03.07.): Rückfrage/Ablehnen verlangen im KO-Detail dasselbe
+  // Pflicht-Feedback wie auf dem Validierungs-Board — gleicher Kommentar-Pfad (FE-VAL-06),
+  // gleiche Mutationen (comment + rate). Freigeben (up) bleibt der direkte Weg.
+  const [detailFeedback, setDetailFeedback] = useState<FeedbackVerdict | null>(null);
+  const [detailFeedbackText, setDetailFeedbackText] = useState("");
+  const detailReview = useMutation({
+    mutationFn: async ({ verdict, text }: { verdict: FeedbackVerdict; text: string }) => {
+      await endpoints.ko.act(id, {
+        action: "comment",
+        text: buildValidationFeedback(verdict, text),
+      });
+      await endpoints.ko.act(id, { action: "rate", verdict });
+    },
+    onSuccess: () => {
+      invalidate();
+      setDetailFeedback(null);
+      setDetailFeedbackText("");
+    },
+    onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
+  });
+
+  // SCRUM-406: einheitlicher ?-HelpTip aus der zentralen Hilfe-Karte des Prüfbereichs.
+  const vhelp = (helpId: ReviewHelpId): JSX.Element => {
+    const topic = reviewHelp(helpId);
+    return <HelpTip title={t(topic.titleKey)} body={t(topic.bodyKey)} />;
+  };
+
   // FE-LCY-03 / SCRUM-111: „Hat geholfen" nutzt den bestehenden Ask-Helpful-Pfad (Trust +2, Audit).
   const helpful = useMutation({
     mutationFn: () => endpoints.ask.helpful(id),
@@ -233,6 +270,15 @@ export function KnowledgeDetail(): JSX.Element {
   });
   const removeSource = useMutation({
     mutationFn: (sourceId: string) => endpoints.ko.act(id, { action: "remove-source", sourceId }),
+    onSuccess: invalidate,
+    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
+  });
+
+  // SCRUM-405: Quelle je übernommenem Extraktions-Punkt am KO vermerken — dieselbe
+  // add-source-Route wie oben (Stufe 2, nie peer-validiert); Label = Dateiname, Auszug = Beleg.
+  const extractSourceAdd = useMutation({
+    mutationFn: (source: { label: string; excerpt: string }) =>
+      endpoints.ko.act(id, { action: "add-source", source }),
     onSuccess: invalidate,
     onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
   });
@@ -841,6 +887,29 @@ export function KnowledgeDetail(): JSX.Element {
                               applyBodyAssistBlock(edit.bodyHtml, suggestion, block),
                           }))}
                         />
+                        {/* SCRUM-405: Fakten aus weiteren Dokumenten per KI ergänzen — ausgewählte
+                            Punkte (G-2: nur mit Belegstelle) werden ANGEHÄNGT, nichts ersetzt;
+                            die Quelle je Punkt wird sofort am KO vermerkt (add-source, Stufe 2). */}
+                        <BodyExtractPanel
+                          onAppend={(pts, name) => {
+                            setEdit((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    bodyHtml: appendExtractSections(
+                                      prev.bodyHtml,
+                                      pts,
+                                      name,
+                                      normalizeExtractLocale(i18n.language),
+                                    ),
+                                  }
+                                : prev,
+                            );
+                            for (const p of pts) {
+                              extractSourceAdd.mutate(fileSourcePayload(name, p));
+                            }
+                          }}
+                        />
                       </Field>
                       <ListEditor
                         label={t("capture.fConditions")}
@@ -992,50 +1061,127 @@ export function KnowledgeDetail(): JSX.Element {
                       <div className="mt-5 flex flex-wrap gap-2 border-t border-hairline pt-4">
                         {role === "controller" || role === "admin" ? (
                           <>
-                            <Button
-                              variant="primary"
-                              disabled={act.isPending}
-                              onClick={() => act.mutate({ action: "rate", verdict: "up" })}
-                            >
-                              {t("ko.validate")}
-                            </Button>
-                            <Button
-                              disabled={act.isPending}
-                              onClick={() => act.mutate({ action: "rate", verdict: "warn" })}
-                            >
-                              {t("ko.conditional")}
-                            </Button>
-                            <Button
-                              disabled={act.isPending}
-                              onClick={() => act.mutate({ action: "rate", verdict: "down" })}
-                            >
-                              {t("ko.reject")}
-                            </Button>
+                            <span className="inline-flex items-center gap-0.5">
+                              <Button
+                                variant="primary"
+                                disabled={act.isPending || detailReview.isPending}
+                                onClick={() => act.mutate({ action: "rate", verdict: "up" })}
+                              >
+                                {t("ko.validate")}
+                              </Button>
+                              {vhelp("approve")}
+                            </span>
+                            <span className="inline-flex items-center gap-0.5">
+                              <Button
+                                disabled={act.isPending || detailReview.isPending}
+                                onClick={() => {
+                                  setErr(null);
+                                  setDetailFeedbackText("");
+                                  setDetailFeedback(detailFeedback === "warn" ? null : "warn");
+                                }}
+                              >
+                                {t("ko.conditional")}
+                                <sup className="-mr-0.5">*</sup>
+                              </Button>
+                              {vhelp("query")}
+                            </span>
+                            <span className="inline-flex items-center gap-0.5">
+                              <Button
+                                disabled={act.isPending || detailReview.isPending}
+                                onClick={() => {
+                                  setErr(null);
+                                  setDetailFeedbackText("");
+                                  setDetailFeedback(detailFeedback === "down" ? null : "down");
+                                }}
+                              >
+                                {t("ko.reject")}
+                                <sup className="-mr-0.5">*</sup>
+                              </Button>
+                              {vhelp("reject")}
+                            </span>
                           </>
                         ) : null}
-                        <Button
-                          disabled={act.isPending}
-                          onClick={() => act.mutate({ action: "revalidate" })}
-                        >
-                          {t("ko.stillValid")}
-                        </Button>
-                        {canReview ? (
+                        <span className="inline-flex items-center gap-0.5">
                           <Button
-                            variant="ghost"
-                            onClick={() =>
-                              setConflict(
-                                conflict ? null : { koB: "", type: "truth", description: "" },
-                              )
-                            }
+                            disabled={act.isPending}
+                            onClick={() => act.mutate({ action: "revalidate" })}
                           >
-                            {t("ko.reportConflict")}
+                            {t("ko.stillValid")}
                           </Button>
+                          {vhelp("stillValid")}
+                        </span>
+                        {canReview ? (
+                          <span className="inline-flex items-center gap-0.5">
+                            <Button
+                              variant="ghost"
+                              onClick={() =>
+                                setConflict(
+                                  conflict ? null : { koB: "", type: "truth", description: "" },
+                                )
+                              }
+                            >
+                              {t("ko.reportConflict")}
+                            </Button>
+                            {vhelp("reportConflict")}
+                          </span>
                         ) : null}
                       </div>
 
+                      {/* SCRUM-406 (B1-Angleich): Pflicht-Feedback im Detail — gleiches Muster
+                          und gleiche Texte wie auf dem Board (val.feedback.*). */}
+                      {detailFeedback ? (
+                        <div className="mt-4 space-y-2 rounded-card border border-hairline bg-page p-4">
+                          <div className="flex items-center gap-1.5 text-[12.5px] font-semibold text-text">
+                            {detailFeedback === "warn"
+                              ? t("val.feedback.condTitle")
+                              : t("val.feedback.rejTitle")}
+                            {vhelp("feedbackForm")}
+                          </div>
+                          <p className="text-[11.5px] leading-relaxed text-muted">
+                            {t("val.feedback.helpHint")}
+                          </p>
+                          <textarea
+                            value={detailFeedbackText}
+                            onChange={(e) => setDetailFeedbackText(e.target.value)}
+                            placeholder={t("val.feedback.placeholder")}
+                            rows={3}
+                            className={textareaCls}
+                          />
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              disabled={detailReview.isPending}
+                              onClick={() => {
+                                setDetailFeedback(null);
+                                setDetailFeedbackText("");
+                              }}
+                            >
+                              {t("val.feedback.cancel")}
+                            </Button>
+                            <Button
+                              variant="primary"
+                              disabled={
+                                detailReview.isPending || !isFeedbackSubmittable(detailFeedbackText)
+                              }
+                              onClick={() =>
+                                detailReview.mutate({
+                                  verdict: detailFeedback,
+                                  text: detailFeedbackText,
+                                })
+                              }
+                            >
+                              {t("val.feedback.submit")}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : null}
+
                       {conflict ? (
                         <div className="mt-4 space-y-3 rounded-card border border-trust-crit-fill/30 bg-trust-crit-bg/40 p-4">
-                          <SectionLabel>{t("ko.conflictTitle")}</SectionLabel>
+                          <div className="flex items-center gap-1.5">
+                            <SectionLabel>{t("ko.conflictTitle")}</SectionLabel>
+                            {vhelp("conflictForm")}
+                          </div>
                           <Field label={t("ko.conflictTarget")}>
                             <select
                               value={conflict.koB}
@@ -1099,7 +1245,10 @@ export function KnowledgeDetail(): JSX.Element {
                 <div className="space-y-5">
                   {/* FE-LCY-03 / SCRUM-111: Bewährungssignal „Hat geholfen" */}
                   <Card className="space-y-2">
-                    <SectionLabel>{t("ko.helpfulTitle")}</SectionLabel>
+                    <div className="flex items-center gap-1.5">
+                      <SectionLabel>{t("ko.helpfulTitle")}</SectionLabel>
+                      {vhelp("helpful")}
+                    </div>
                     <p className="text-[12.5px] text-muted">{t("ko.helpfulHint")}</p>
                     <Button
                       variant="primary"
@@ -1120,7 +1269,10 @@ export function KnowledgeDetail(): JSX.Element {
                   {/* SCRUM-129 / FE-KO-01+07: echte externe Quellen (nie peer-validiert) */}
                   {/* SCRUM-259: Anker-Ziel für die „Quelle ergänzen"-CTA (lokale Orientierung). */}
                   <Card id="ko-sources" className="scroll-mt-20 space-y-3">
-                    <SectionLabel>{t("ko.sourcesTitle")}</SectionLabel>
+                    <div className="flex items-center gap-1.5">
+                      <SectionLabel>{t("ko.sourcesTitle")}</SectionLabel>
+                      {vhelp("sourcesLevel2")}
+                    </div>
                     {(ko.sources ?? []).length === 0 ? (
                       <p className="text-[13px] text-muted">{t("ko.sourcesEmpty")}</p>
                     ) : (
@@ -1191,21 +1343,30 @@ export function KnowledgeDetail(): JSX.Element {
                           }
                           placeholder={t("ko.sourceExcerpt")}
                         />
-                        <p className="text-[11.5px] text-muted-2">{t("ko.sourcesHint")}</p>
-                        <Button
-                          variant="primary"
-                          disabled={addSource.isPending || !isSourceFormValid(sourceForm)}
-                          onClick={() => addSource.mutate()}
-                        >
-                          {t("ko.sourceAdd")}
-                        </Button>
+                        <div className="flex items-center gap-1 text-[11.5px] text-muted-2">
+                          <span>{t("ko.sourcesHint")}</span>
+                          {vhelp("sourceFields")}
+                        </div>
+                        <span className="inline-flex items-center gap-0.5">
+                          <Button
+                            variant="primary"
+                            disabled={addSource.isPending || !isSourceFormValid(sourceForm)}
+                            onClick={() => addSource.mutate()}
+                          >
+                            {t("ko.sourceAdd")}
+                          </Button>
+                          {vhelp("sourceAdd")}
+                        </span>
                       </div>
                     ) : null}
 
                     {/* SCRUM-118 / FR-EXT-02: externe Quellensuche (Server-Proxy) */}
                     {canEdit ? (
                       <div className="space-y-2 border-t border-hairline pt-3">
-                        <SectionLabel>{t("ext.title")}</SectionLabel>
+                        <div className="flex items-center gap-1.5">
+                          <SectionLabel>{t("ext.title")}</SectionLabel>
+                          {vhelp("sourceSearch")}
+                        </div>
                         <p className="text-[11.5px] text-muted-2">{t("ext.hint")}</p>
                         <form
                           className="flex gap-2"
@@ -1276,7 +1437,10 @@ export function KnowledgeDetail(): JSX.Element {
 
                   {/* SCRUM-131 / FE-KO-06: Quelle/Beitrag melden (Review-Kommentar) */}
                   <Card className="space-y-2">
-                    <SectionLabel>{t("ko.sourceTitle")}</SectionLabel>
+                    <div className="flex items-center gap-1.5">
+                      <SectionLabel>{t("ko.sourceTitle")}</SectionLabel>
+                      {vhelp("contribution")}
+                    </div>
                     <textarea
                       value={source.contribution}
                       onChange={(e) => setSource((s) => ({ ...s, contribution: e.target.value }))}
@@ -1309,8 +1473,11 @@ export function KnowledgeDetail(): JSX.Element {
                     />
                     {canTransfer ? (
                       <div className="mt-3 border-t border-hairline pt-3">
-                        <div className="mb-1.5 font-mono text-micro uppercase tracking-wider text-muted-2">
-                          {t("ko.transferTitle")}
+                        <div className="mb-1.5 flex items-center gap-1.5">
+                          <span className="font-mono text-micro uppercase tracking-wider text-muted-2">
+                            {t("ko.transferTitle")}
+                          </span>
+                          {vhelp("transfer")}
                         </div>
                         <div className="mb-2 text-[12px] text-muted">
                           {t("ko.transferOriginal")}: {nameOf(ko.originalAuthor)}
@@ -1347,9 +1514,10 @@ export function KnowledgeDetail(): JSX.Element {
                       mit Inline-Bestätigung; Route erzwingt dieselbe Regel serverseitig. */}
                   {(role === "admin" || role === "controller" || ko.author === user?.id) && (
                     <Card>
+                      {/* SCRUM-412 (CI): Frage in Textfarbe — Rot nur am destruktiven Element. */}
                       {confirmDelete ? (
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="flex-1 text-[12.5px] font-semibold text-trust-crit-text">
+                          <span className="flex-1 text-[12.5px] font-semibold text-text">
                             {t("ko.deleteQ")}
                           </span>
                           <Button variant="ghost" onClick={() => setConfirmDelete(false)}>
@@ -1364,14 +1532,17 @@ export function KnowledgeDetail(): JSX.Element {
                           </Button>
                         </div>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => setConfirmDelete(true)}
-                          className="inline-flex items-center gap-1.5 rounded-btn px-2 py-1 text-[12.5px] font-semibold text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
-                        >
-                          <Trash2 size={14} />
-                          {t("ko.deleteButton")}
-                        </button>
+                        <span className="inline-flex items-center gap-0.5">
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDelete(true)}
+                            className="inline-flex items-center gap-1.5 rounded-btn px-2 py-1 text-[12.5px] font-semibold text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
+                          >
+                            <Trash2 size={14} />
+                            {t("ko.deleteButton")}
+                          </button>
+                          {vhelp("deleteKo")}
+                        </span>
                       )}
                     </Card>
                   )}
@@ -1424,7 +1595,10 @@ export function KnowledgeDetail(): JSX.Element {
                     const v = validityProtectionView(ko, pending.data ?? [], conflicts.data ?? []);
                     return (
                       <Card className="space-y-2">
-                        <SectionLabel>{t("ext.validity.title")}</SectionLabel>
+                        <div className="flex items-center gap-1.5">
+                          <SectionLabel>{t("ext.validity.title")}</SectionLabel>
+                          {vhelp("validity")}
+                        </div>
                         <dl className="space-y-1.5 text-[12.5px]">
                           <div className="flex items-center justify-between gap-2">
                             <dt className="text-muted">{t("ext.validity.freshness")}</dt>

@@ -10,6 +10,8 @@ import { LIFECYCLE_SCHEMA } from "../../lifecycle";
 import { MODEL_RUNS_SCHEMA } from "../../model-runs";
 import { NOTIFICATION_SEEN_SCHEMA } from "../../notifications";
 import { OBJECTSTORE_SCHEMA } from "../../object-store";
+// SCRUM-386: kundeneigene KI-Assist-Presets (eigene Tabelle, Datenhoheit beim reasoner-Modul).
+import { ASSIST_PRESETS_SCHEMA } from "../../reasoner";
 import { VALIDATION_SCHEMA } from "../../validation";
 
 // Querschnitt-Infrastruktur: ein Pool, geteilt von allen Modul-Adaptern.
@@ -34,6 +36,7 @@ export async function migrate(pool: Pool): Promise<void> {
     IMPORT_CANDIDATES_SCHEMA,
     MODEL_RUNS_SCHEMA,
     NOTIFICATION_SEEN_SCHEMA,
+    ASSIST_PRESETS_SCHEMA,
   ];
   for (const ddl of schemas) {
     await pool.query(ddl);

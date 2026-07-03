@@ -104,6 +104,36 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
       },
     );
 
+    // SCRUM-386: kundeneigene KI-Assist-Funktionen (Presets). Lesen darf jede angemeldete
+    // Rolle (die Palette im Editor zeigt sie an); verwalten nur der Admin. Leitplanken:
+    // Presets sind benannte instructions für den VORHANDENEN assist-Task — keine neue
+    // Modellfläche, keine Secrets; Vorschau + bewusste Übernahme (G-3) bleiben unverändert.
+    app.get("/api/reasoner/assist-presets", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      reply.code(200).send(await reasoner.getAssistPresets());
+    });
+
+    app.put<{ Body: { presets?: { id?: string; name?: string; instruction?: string }[] } }>(
+      "/api/reasoner/assist-presets",
+      async (request, reply) => {
+        const user = await guards.requirePermission("users.manage", request, reply);
+        if (!user) {
+          return;
+        }
+        try {
+          reply.code(200).send(await reasoner.setAssistPresets(request.body?.presets ?? []));
+        } catch (error) {
+          reply.code(400).send({
+            error: "BAD_REQUEST",
+            message: error instanceof Error ? error.message : "Ungültige KI-Funktionen.",
+          });
+        }
+      },
+    );
+
     // Key-Test (Pedi 02.07.): echter Mini-Aufruf gegen das konfigurierte Modell — beweist,
     // ob der hinterlegte Schlüssel WIRKLICH funktioniert (401 wird ehrlich benannt).
     // Nur Admin; der Schlüssel selbst verlässt den Server nie.

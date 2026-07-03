@@ -53,6 +53,23 @@ export function honestExtractUnavailable(locale: ReasonerLocale = "de"): Extract
   };
 }
 
+// SCRUM-411 (Pedi-Test 03.07.): Modell KONFIGURIERT, aber der Aufruf ist gescheitert — das
+// ist ein ANDERER Fall als „kein Modell" und wird ehrlich benannt (kein falscher „kein
+// KI-Modell"-Befund bei grünem Schlüssel). Weiterhin bewusst KEINE Pseudo-Punkte (G-2).
+export function honestExtractModelFailed(
+  detail: string,
+  locale: ReasonerLocale = "de",
+): ExtractResult {
+  return {
+    points: [],
+    note:
+      locale === "en"
+        ? `The AI model is configured, but the extraction call failed (${detail}). The document text was NOT analyzed — no fake points are shown. Try again; if the error persists, run the key test in the admin area.`
+        : `Das KI-Modell ist konfiguriert, aber der Extraktions-Aufruf ist fehlgeschlagen (${detail}). Der Dokumenttext wurde NICHT analysiert — es werden keine Schein-Punkte angezeigt. Versuch es erneut; bleibt der Fehler, hilft der Schlüssel-Test im Admin-Bereich.`,
+    demo: true,
+  };
+}
+
 // SCRUM-132 / FR-I18N-01: feste Fragenfolge je Sprache (eine Frage pro Turn) — vom Modell
 // nur umformulierbar, nie inhaltlich erfunden. Index = Anzahl bisher gegebener Antworten.
 export const INTERVIEW_QUESTIONS: Record<ReasonerLocale, readonly string[]> = {

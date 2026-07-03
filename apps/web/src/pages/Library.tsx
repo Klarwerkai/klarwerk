@@ -457,8 +457,9 @@ export function Library(): JSX.Element {
                             Inline-Bestätigung; Server erzwingt dieselbe Regel (403 sonst). */}
                         {role === "admin" || role === "controller" || k.author === user?.id ? (
                           confirmDeleteId === k.id ? (
+                            // SCRUM-412 (CI): Frage in Textfarbe — Rot nur am destruktiven Element.
                             <span className="flex shrink-0 items-center gap-1.5">
-                              <span className="text-[12px] font-semibold text-trust-crit-text">
+                              <span className="text-[12px] font-semibold text-text">
                                 {t("ko.deleteQ")}
                               </span>
                               <Button variant="ghost" onClick={() => setConfirmDeleteId(null)}>

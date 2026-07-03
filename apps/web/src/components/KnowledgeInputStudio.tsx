@@ -295,8 +295,9 @@ export function KnowledgeInputStudio({
           SCRUM-339: unübernommene Änderungen werden nicht still verworfen — erst Inline-Bestätigung. */}
       <div className="border-t border-hairline bg-surface px-4 py-3 sm:px-6">
         {confirmDiscard ? (
+          // SCRUM-412 (CI): Frage in Textfarbe — Ampel-Farben bleiben Reife/Status vorbehalten.
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-            <span className="text-[12.5px] font-semibold text-trust-warn-text sm:mr-auto">
+            <span className="text-[12.5px] font-semibold text-text sm:mr-auto">
               {t("studio.confirmDiscard.q")}
             </span>
             <Button variant="ghost" onClick={() => setConfirmDiscard(false)}>

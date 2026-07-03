@@ -352,6 +352,21 @@ const de = {
   "adm.ai.saved": "KI-Zuordnung übernommen.",
   "adm.ai.persistNote":
     "Gilt bis zum nächsten Neustart der App — dauerhafte Speicherung und lokale Modelle kommen mit dem Voll-Ausbau (PMO-Eintrag).",
+  // SCRUM-386: kundeneigene KI-Assist-Funktionen (Presets) — Admin pflegt, Palette zeigt allen.
+  "adm.presets.title": "Eigene KI-Funktionen",
+  "adm.presets.help":
+    "Die KI-Palette im Editor bietet Werks-Funktionen (Klarer, Strukturieren, Erweitern, Rechtschreibung, Formatieren). Hier legst du ZUSÄTZLICHE, eigene Funktionen für deine Organisation an — ein Name für den Knopf und die Anweisung, die die KI bekommt (z. B. „Fasse für die Schichtübergabe in 5 Stichpunkten zusammen“). Die Anweisung ist in der Palette am ?-Zeichen offen sichtbar; wie immer gilt: Die KI macht nur einen Vorschlag zur Vorschau, übernommen wird bewusst per Klick. Werks-Funktionen lassen sich nicht löschen.",
+  "adm.presets.hint":
+    "Zusätzliche Funktionen für die KI-Palette im Editor — je ein Knopf-Name und eine Anweisung an die KI. Sichtbar für alle Rollen; höchstens 12.",
+  "adm.presets.empty": "Noch keine eigenen Funktionen — die Werks-Palette gilt unverändert.",
+  "adm.presets.name": "Name des Knopfs (z. B. Schichtübergabe)",
+  "adm.presets.instruction": "Anweisung an die KI (z. B. Fasse in 5 Stichpunkten zusammen …)",
+  "adm.presets.add": "Funktion hinzufügen",
+  "adm.presets.save": "Funktionen speichern",
+  "adm.presets.saved": "Eigene KI-Funktionen gespeichert.",
+  "adm.presets.remove": "Funktion entfernen",
+  "adm.presets.note":
+    "Wird auf dem Server gespeichert und überlebt den Neustart; Schlüssel und Modelle bleiben davon unberührt.",
   "ko.couple.help":
     "Koppelst du dieses Wissen an eine Anlage, wird es bei „Anlage geändert“ (Lebenszyklus) automatisch zur Prüfung markiert — Wissen bleibt aktuell.",
   "ko.couple.empty": "Noch mit keiner Anlage gekoppelt.",
@@ -534,6 +549,17 @@ const de = {
   "capture.file.queueSkip": "Punkt überspringen",
   "capture.file.queueDone": "Alle Punkte aus „{{name}}“ sind bearbeitet.",
   "capture.file.sourceNote": "Die Quelle „{{name}}“ wird am Wissensobjekt vermerkt.",
+  // SCRUM-409 (PMO-FEA-0008-Delta): Import-Quittung, Mehrpunkt-Entwürfe, Zusammenführen.
+  "capture.file.loadedStats":
+    "„{{name}}“ eingelesen ({{chars}} Zeichen). Sag optional, wonach gesucht werden soll, und starte die Wissenssuche.",
+  "capture.file.saveDraftsCta": "Als Entwürfe speichern",
+  "capture.file.draftsSaved":
+    "{{count}} Entwürfe aus „{{name}}“ gespeichert — je mit Quellenvermerk. Du findest sie oben unter „Entwürfe fortsetzen“.",
+  "capture.file.draftsPartial":
+    "Nicht alle Punkte konnten als Entwurf gespeichert werden: {{failed}}. Bereits angelegte Entwürfe bleiben erhalten.",
+  "capture.file.mergeCta": "Zu einem Eintrag zusammenführen",
+  "capture.file.mergedNote":
+    "{{count}} Punkte aus „{{name}}“ zu einem Eintrag zusammengeführt — alle Belegstellen stehen im Dokument, die Quellen werden beim Einreichen vermerkt.",
   // SCRUM-384 / KG-UX-001/002/003/010: Erzähl-Einstieg als Standardweg, Formular als Expertenpfad.
   "capture.entry.narrateKicker": "Erzähl dein Wissen — die KI strukturiert, du prüfst",
   "capture.entry.expertToggle": "Expertenmodus: Formular direkt ausfüllen",
@@ -582,6 +608,9 @@ const de = {
   "capture.ai.help.spelling": "Korrigiert nur Rechtschreibung und Grammatik, sonst nichts.",
   "capture.ai.help.format":
     "Baut nur die Optik um (Überschriften, Absätze, Listen) — der Inhalt bleibt wörtlich erhalten.",
+  // SCRUM-386: ?-Hilfe für kundeneigene Funktionen — die Anweisung ist offen sichtbar (G-3).
+  "capture.ai.customHelp":
+    "Eigene KI-Funktion deiner Organisation (vom Admin angelegt). Anweisung an die KI: „{{instruction}}“. Wie bei allen KI-Aktionen entsteht nur ein Vorschlag zur Vorschau — übernommen wird ausschließlich, was du bewusst per Klick übernimmst.",
   "capture.ai.freeLabel": "Eigene KI-Anweisung",
   "capture.ai.freePlaceholder": "z. B. „kürzer und sachlicher formulieren“",
   "capture.ai.run": "Ausführen",
@@ -1843,6 +1872,166 @@ const de = {
   "graph.legendConflict": "Konflikt",
   "graph.clickHint": "Knoten anklicken, um das Wissensobjekt zu öffnen",
   "graph.openNode": "Wissensobjekt öffnen: {{title}}",
+
+  // SCRUM-406: ausführliche ?-Hilfen im Prüfbereich (Schema: Was? · Wann? · Was passiert danach?).
+  "vhelp.originFilter.title": "Herkunft filtern",
+  "vhelp.originFilter.body":
+    "Blendet die Liste nach Herkunft ein: Demo-Beispiele oder eigenes Wissen deiner Organisation. Das ist nur eine Ansicht zum Auffinden — es ändert keinen Prüfstatus und verwirft nichts. Die Zahl hinter jedem Filter zeigt, wie viele Einträge er enthält.",
+  "vhelp.reviewFocus.title": "Review-Fokus",
+  "vhelp.reviewFocus.body":
+    "Unterscheidet neue Einreichungen von überarbeiteten (Version größer 1). Überarbeitete Objekte lohnen einen gezielten Blick auf die Änderung — was war die Rückfrage, was wurde angepasst? Auch das ist nur eine Ansicht: Es ändert keinen Status und ersetzt keine Entscheidung.",
+  "vhelp.filters.title": "Suchen & filtern",
+  "vhelp.filters.body":
+    "Grenzt die Prüfliste nach Volltext, Wissensart, Kategorie oder Schlagwort ein. Nutze das, wenn die Liste lang ist und du gezielt dein Fachgebiet prüfen willst. Es geht nichts verloren: Filter ändern nur, was du gerade siehst — alle Objekte bleiben in der Prüfung.",
+  "vhelp.mineOnly.title": "Nur mir zugewiesene",
+  "vhelp.mineOnly.body":
+    "Zeigt deine persönliche Review-Liste: Objekte, die dir jemand bewusst zugewiesen hat. Nutze sie, um zuerst die Arbeit zu erledigen, auf die Kollegen warten. Die Zuweisung ist eine Bitte, keine Pflichtprüfung — entschieden wird erst, wenn du selbst bewertest.",
+  "vhelp.signals.title": "Review-Signale lesen",
+  "vhelp.signals.body":
+    "Die Zeile zeigt, wie belastbar das Objekt JETZT ist: Vertrauensbalken und Trust-Wert (aus Prüfstimmen und Bewährung), Version, „Ziel n“ (so viele Freigaben braucht es bis VALIDIERT), dazu Marker wie ÜBERTRAGEN (Autor gewechselt — extra Blick) oder ZUGEWIESEN. Nichts davon ist eine Bewertung durch dich — es ist die ehrliche Ausgangslage für deine Entscheidung.",
+  "vhelp.approve.title": "Freigeben",
+  "vhelp.approve.body":
+    "Du bestätigst nach eigener Prüfung: Diese Aussage ist fachlich richtig und so anwendbar. Nutze das erst, wenn du Kernaussage, Bedingungen und Maßnahmen wirklich beurteilt hast — deine Freigabe zählt als eine von mehreren nötigen Prüfstimmen. Danach steigt das Vertrauen des Objekts; VALIDIERT wird es erst, wenn genug Prüfer freigegeben haben. Nichts wird automatisch veröffentlicht oder verändert — deine Stimme wird gezählt, mehr nicht.",
+  "vhelp.query.title": "Rückfrage stellen",
+  "vhelp.query.body":
+    "Du hältst das Wissen für brauchbar, aber etwas ist unklar, unvollständig oder nur unter Bedingungen richtig. Ein kurzer Kommentar ist Pflicht — er ist deine Hilfe an den Autor: Was genau fehlt, was soll er nachtragen? Danach bleibt das Objekt in Prüfung und der Autor sieht deine Rückfrage als Kommentar am Wissensobjekt. Es wird nichts abgelehnt, nichts freigegeben und nichts automatisch geändert — die Überarbeitung macht der Autor bewusst selbst.",
+  "vhelp.reject.title": "Ablehnen",
+  "vhelp.reject.body":
+    "Du hältst die Aussage für falsch, veraltet oder riskant. Auch hier ist die Begründung Pflicht — ohne sie kann der Autor nichts lernen und nichts korrigieren. Danach fließt deine Ablehnung in den Prüfstand des Objekts ein; es wird dadurch NICHT gelöscht und NICHT gesperrt, sondern bleibt sichtbar in Prüfung, bis Autor oder Controller reagieren. Wenn zwei gesicherte Aussagen einander widersprechen, ist „Konflikt melden“ der bessere Weg als eine Ablehnung.",
+  "vhelp.feedbackForm.title": "Begründung (Pflicht)",
+  "vhelp.feedbackForm.body":
+    "Rückfrage und Ablehnung brauchen immer eine Begründung — sie wird als Kommentar am Wissensobjekt gespeichert, sichtbar für Autor und Prüfer. Schreib konkret, was fehlt oder falsch ist und was der Autor nachtragen soll. Erst mit Text lässt sich absenden; Abbrechen verwirft nur deine Eingabe, keine Bewertung.",
+  "vhelp.assign.title": "Prüfer zuweisen",
+  "vhelp.assign.body":
+    "Du bittest eine bestimmte Kollegin oder einen Kollegen um die Prüfung dieses Objekts. Die Person sieht es danach in ihrer persönlichen Review-Liste („Mir zugewiesen“) und bekommt eine Benachrichtigung über die Glocke. Die Zuweisung ist eine Einladung, keine Bewertung: Sie ändert weder Status noch Vertrauen, und geprüft wird erst, wenn die Person selbst entscheidet.",
+  "vhelp.stillValid.title": "Noch gültig",
+  "vhelp.stillValid.body":
+    "Du bestätigst, dass dieses bereits geprüfte Wissen aus deiner Sicht weiterhin stimmt — ein Frische-Signal, kein neues Prüfverfahren. Nutze es, wenn du das Wissen gerade angewendet oder bewusst gegengelesen hast. Danach wird die Bestätigung mit Datum vermerkt und das Objekt gilt als kürzlich bestätigt. Es ersetzt keine Peer-Prüfung und hebt keine Rückfragen oder Konflikte auf.",
+  "vhelp.reportConflict.title": "Konflikt melden",
+  "vhelp.reportConflict.body":
+    "Du zeigst an, dass dieses Wissen einem ANDEREN Wissensobjekt widerspricht — etwa zwei unterschiedliche Grenzwerte für denselben Fall. Danach erscheint der Fall auf der Konflikte-Seite und wird dort bewusst aufgelöst (Zweitmeinung, Eskalation, dokumentierte Entscheidung). Beide Objekte bleiben unverändert bestehen — es wird nichts automatisch korrigiert, überschrieben oder gelöscht.",
+  "vhelp.conflictForm.title": "Konflikt beschreiben",
+  "vhelp.conflictForm.body":
+    "Drei Angaben machen die Meldung auflösbar: das GEGEN-Objekt (womit widerspricht sich dieses Wissen?), die KONFLIKTART (z. B. Widerspruch in der Sache oder in der Zuständigkeit) und eine kurze BESCHREIBUNG des Widerspruchs mit deinem Kontext. Nach dem Absenden entsteht ein offener Konfliktfall — beide Objekte bleiben nutzbar markiert, bis der Konflikt bewusst aufgelöst ist.",
+  "vhelp.sourcesLevel2.title": "Externe Quellen (Stufe 2)",
+  "vhelp.sourcesLevel2.body":
+    "Hier hängen externe Belege am Wissensobjekt: Normen, Handbücher, Artikel, interne Dokumente. Das Badge „Stufe 2“ bedeutet ehrlich: Diese Quelle wurde NICHT von Kollegen peer-geprüft — sie stützt das Wissen, ersetzt aber keine einzige Prüfstimme. Antworten der Fragen-Seite bauen auf validiertem Wissen auf, nicht auf Stufe-2-Quellen allein. Das X entfernt nur die Verknüpfung — Wissen, Status und Vertrauen bleiben unverändert.",
+  "vhelp.sourceFields.title": "Quelle beschreiben",
+  "vhelp.sourceFields.body":
+    "Drei Angaben machen eine Quelle brauchbar: Die BEZEICHNUNG sagt, was es ist („DIN EN 1090, Abschnitt 7“), die URL führt hin (leer lassen bei Papier- oder internen Quellen), der AUSZUG zitiert die eine entscheidende Stelle wörtlich — so muss niemand das ganze Dokument lesen, um die Aussage zu prüfen. Je konkreter der Auszug, desto mehr hilft die Quelle den Prüfern.",
+  "vhelp.sourceAdd.title": "Quelle hinzufügen",
+  "vhelp.sourceAdd.body":
+    "Hängt die beschriebene Quelle als Stufe-2-Beleg an dieses Wissensobjekt. Sie bleibt über Versionen hinweg erhalten und ist für alle sichtbar. Es passiert nichts weiter automatisch: Der Inhalt der Quelle wird nicht ins Wissen übernommen, nicht geprüft und nicht bewertet — sie steht als Beleg daneben.",
+  "vhelp.sourceSearch.title": "Quellen suchen",
+  "vhelp.sourceSearch.body":
+    "Sucht nach externen Belegen zu diesem Thema. Die Suche läuft über den KLARWERK-Server — deine Anfrage geht nicht direkt von deinem Browser an externe Dienste. Die Treffer sind unverbindliche Vorschläge: Nichts davon wird automatisch angehängt. Prüfe Titel und Ausschnitt, öffne im Zweifel den Link — und erst „Anhängen“ übernimmt einen Treffer bewusst als Stufe-2-Quelle.",
+  "vhelp.contribution.title": "Beitrag oder Fundstelle melden",
+  "vhelp.contribution.body":
+    "Du kennst eine Ergänzung, Korrektur oder Fundstelle, willst aber nicht selbst am Objekt arbeiten? Beschreibe sie hier — dein Hinweis wird als Kommentar am Wissensobjekt gespeichert, sichtbar für Autor und Prüfer. Anders als „Quelle hinzufügen“ entsteht dabei KEIN Quellen-Eintrag; es ist eine Nachricht an die Menschen, kein Beleg am Objekt.",
+  "vhelp.helpful.title": "Hat geholfen",
+  "vhelp.helpful.body":
+    "Ein Bewährungssignal aus der Praxis: Du hast dieses Wissen angewendet, und es hat funktioniert. Das stärkt das Vertrauen des Objekts ein Stück und wird im Verlauf vermerkt. Es ist KEINE Prüfstimme — Validierung entsteht weiterhin nur durch bewusste Prüfentscheidungen von Kollegen.",
+  "vhelp.validity.title": "Gültigkeit & Schutz",
+  "vhelp.validity.body":
+    "Diese Werte werden ehrlich aus dem aktuellen Zustand ABGELEITET, nicht gespeichert: Frische (wann zuletzt bestätigt oder geändert), Output-Eignung (dürfte dieses Wissen in erzeugte Dokumente?) und eine Empfehlung, was als Nächstes sinnvoll ist. Ändern kannst du sie nur indirekt — durch Prüfen, Bestätigen oder Überarbeiten des Wissens selbst.",
+  "vhelp.transfer.title": "Autor übertragen",
+  "vhelp.transfer.body":
+    "Übergibt die Verantwortung für dieses Wissen an eine andere Person — etwa wenn jemand das Unternehmen verlässt oder die Zuständigkeit wechselt. Der ursprüngliche Autor bleibt dauerhaft sichtbar (Herkunft geht nie verloren). Übertragene Objekte bekommen im Review einen Extra-Blick, weil das Wissen nun jemand verantwortet, der es nicht selbst erfasst hat.",
+  "vhelp.deleteKo.title": "Wissensobjekt löschen",
+  "vhelp.deleteKo.body":
+    "Entfernt dieses Wissensobjekt endgültig — erlaubt nur für den Autor selbst sowie Controller und Admin; der Server erzwingt dieselbe Regel. Vor dem Löschen fragt die Inline-Bestätigung bewusst nach. Die Löschung wird im Audit protokolliert. Wenn das Wissen nur veraltet ist, ist Überarbeiten oder ein Konflikt der ehrlichere Weg als Löschen.",
+  "vhelp.conflictEscalate.title": "Eskalieren",
+  "vhelp.conflictEscalate.body":
+    "Hebt einen offenen Sach-Konflikt eine Stufe höher, wenn die Beteiligten ihn nicht selbst klären können — dann entscheidet die fachlich zuständige Instanz. Nutze das, wenn zwei validierte Aussagen einander hart widersprechen und keine Seite nachgeben kann. Der Konflikt bleibt offen und sichtbar, bis eine dokumentierte Entscheidung fällt.",
+  "vhelp.conflictSecondOpinion.title": "Zweitmeinung einholen",
+  "vhelp.conflictSecondOpinion.body":
+    "Bittet eine weitere fachkundige Person um ihre Einschätzung zum Konflikt und hält sie schriftlich fest. Eine gute Zweitmeinung nennt Fakten und Quellen, nicht nur ein Bauchgefühl. Sie entscheidet den Konflikt nicht automatisch — sie ist Material für die spätere Auflösung.",
+  "vhelp.conflictResolve.title": "Konflikt auflösen",
+  "vhelp.conflictResolve.body":
+    "Hält die Entscheidung fest, wie mit dem Widerspruch umzugehen ist — welche Aussage gilt, unter welchen Bedingungen, und warum. Die Auflösung DOKUMENTIERT nur: Sie ändert keines der beteiligten Wissensobjekte automatisch. Wenn ein Objekt danach überarbeitet oder neu bestätigt werden sollte, zeigt die App eine Revalidierungs-Empfehlung — auch das bleibt eine bewusste menschliche Handlung.",
+
+  // SCRUM-407: ausführliche ?-Hilfen im Erfassen-Weg (Schema: Was? · Wann? · Was passiert danach?).
+  "chelp.modes.title": "Die vier Erzähl-Wege",
+  "chelp.modes.body":
+    "Vier Wege führen zum selben Ziel: FREITEXT (einfach drauflos schreiben), DIKTAT (sprechen statt tippen), INTERVIEW (die KI stellt dir gezielte Fragen) und AUS DATEI (Wissenspunkte aus einem Dokument ziehen). Wähle, was sich für dich natürlich anfühlt — alle Wege münden in denselben Entwurf auf der Wissensseite, und beim Wechseln geht nichts verloren.",
+  "chelp.expertPath.title": "Formular direkt (Expertenpfad)",
+  "chelp.expertPath.body":
+    "Das klassische Formular mit allen Feldern auf einen Blick — für alle, die genau wissen, was sie eintragen wollen. Es ist derselbe Datenstand wie der geführte Weg, kein Extra-Feature und keine Abkürzung an der Prüfung vorbei. Der Rückweg auf den geführten Weg ist jederzeit einen Klick entfernt.",
+  "chelp.wizardSteps.title": "Die drei Schritte",
+  "chelp.wizardSteps.body":
+    "Erfassen läuft in drei Schritten: ERZÄHLEN (Rohwissen loswerden), WISSENSSEITE (prüfen und verfeinern, mit KI-Hilfe), EINREICHEN (in die Peer-Prüfung geben). Fertige Schritte kannst du anklicken und zurückgehen — dabei geht nichts verloren. Erst „Prüfen & einreichen“ macht aus deinem Entwurf ein Wissensobjekt für die Kollegen.",
+  "chelp.loadExample.title": "Beispiel laden",
+  "chelp.loadExample.body":
+    "Füllt die Felder mit einem Demo-Beispiel, damit du den kompletten Weg gefahrlos ausprobieren kannst. Achtung: Es überschreibt deine aktuellen Eingaben — nutze es auf leerer Seite. Eingereicht wird auch ein Beispiel erst, wenn du es bewusst einreichst.",
+  "chelp.tellRaw.title": "Einfach erzählen",
+  "chelp.tellRaw.body":
+    "Schreib dein Wissen so auf, wie du es einem neuen Kollegen erzählen würdest — unsortiert ist völlig in Ordnung. Struktur (Titel, Kernaussage, Bedingungen, Maßnahmen) macht im nächsten Schritt die KI als VORSCHLAG, den du prüfst und änderst. Nichts wird automatisch gespeichert oder eingereicht.",
+  "chelp.dictate.title": "Diktieren",
+  "chelp.dictate.body":
+    "Sprechen statt tippen: Dein Browser wandelt Sprache lokal in Text um, der hier ins Feld fließt. Starte und stoppe bewusst; danach kannst du den Text ganz normal korrigieren. Wenn dein Browser keine Spracherkennung kann, sagt dir die App das ehrlich, statt still zu scheitern.",
+  "chelp.tellUpload.title": "Datei anhängen beim Erzählen",
+  "chelp.tellUpload.body":
+    "Lädst du hier Dokumente hoch (PDF, Word, Text), fließt ihr Text direkt in dein Erzählfeld; Bilder und Videos werden Anhänge des späteren Wissensobjekts. Bei Bildern startet Texterkennung (OCR) nur auf deinen Klick. Es wird nichts hochgeladen, das du nicht siehst — alles bleibt Teil deines Entwurfs.",
+  "chelp.structureNow.title": "Struktur vorschlagen",
+  "chelp.structureNow.body":
+    "Die KI liest deinen Rohtext und schlägt Titel, Kernaussage, Bedingungen und Maßnahmen vor — als ENTWURF auf der Wissensseite, violett gekennzeichnet. Sie erfindet nichts dazu; ohne KI-Schlüssel arbeitet ein ehrlicher, regelbasierter Ersatz und sagt das klar. Du prüfst, änderst und entscheidest — automatisch gespeichert wird nie.",
+  "chelp.interview.title": "Das Wissens-Interview",
+  "chelp.interview.body":
+    "Die KI stellt dir eine Frage nach der anderen und bohrt gezielt nach — nach Grenzwerten, Ausnahmen, Gründen. Antworte in deinen Worten (tippen oder diktieren); die Frage kannst du dir vorlesen lassen. Erst wenn du das Interview abschließt, wird aus allen Antworten ein Entwurf für die Wissensseite gebaut — nichts davon ist vorher gespeichert.",
+  "chelp.filePoints.title": "Wissen aus Datei",
+  "chelp.filePoints.body":
+    "Du lädst ein Dokument hoch, die KI extrahiert daraus einzelne Wissenspunkte — jeder MIT wörtlicher Belegstelle aus dem Dokument (erfundene Punkte sind damit ausgeschlossen; findet sie nichts Belastbares, sagt sie das ehrlich). Du wählst per Häkchen aus, was übernommen wird: Nur ausgewählte Punkte werden Entwürfe. Alternativ kannst du einen Suchauftrag an einen Experten formulieren.",
+  "chelp.captureTitle.title": "Der Titel",
+  "chelp.captureTitle.body":
+    "Der Titel ist das Erste, was Kollegen in Bibliothek und Antworten sehen — er entscheidet, ob dein Wissen gefunden wird. Gut: konkret und handlungsnah („Schweißnaht bei Aluminium unter 5 mm prüfen“). Du kannst ihn jederzeit ändern, auch der KI-Vorschlag ist nur ein Startpunkt.",
+  "chelp.saveDraftHelp.title": "Entwurf speichern",
+  "chelp.saveDraftHelp.body":
+    "Sichert deinen Zwischenstand lokal in deinem Browser — du kannst jederzeit weitermachen, auch nach einem Neustart. Ein Entwurf ist NICHT eingereicht: Niemand sieht ihn, er taucht in keiner Prüfung und keiner Antwort auf. Oben auf der Seite findest du gespeicherte Entwürfe zum Fortsetzen.",
+  "chelp.discardHelp.title": "Verwerfen",
+  "chelp.discardHelp.body":
+    "Verwirft den aktuellen Entwurf endgültig — Text, Struktur und Anhänge dieser Erfassung. Es betrifft NUR deinen Entwurf: Bereits eingereichte oder gespeicherte Wissensobjekte bleiben unberührt. Vorher fragt die App bewusst nach; wer nur einen Schritt zurück will, nutzt die Schritt-Leiste statt Verwerfen.",
+  "chelp.submitReview.title": "Prüfen & einreichen",
+  "chelp.submitReview.body":
+    "Macht aus deinem Entwurf ein Wissensobjekt und gibt es in die Peer-Prüfung: Kollegen prüfen, stellen Rückfragen oder geben frei. Ab jetzt ist es für andere sichtbar — aber ehrlich als „in Prüfung“ markiert, NICHT als gesichert. Validiert wird es erst durch genug Freigaben; für Antworten zählt es erst danach.",
+  "chelp.readiness.title": "Speicher-Check",
+  "chelp.readiness.body":
+    "Zeigt ehrlich, was zum Einreichen noch fehlt: Pflichtfelder (ohne sie bleibt der Knopf aus) und Optionales, das dein Wissen stärkt (z. B. Kategorie oder Anhänge). Grün heißt bereit — nicht perfekt: Verbessern kannst du auch nach dem Einreichen noch, dann als neue Version.",
+  "chelp.savedNext.title": "Gespeichert — was jetzt?",
+  "chelp.savedNext.body":
+    "Dein Wissen ist als Objekt angelegt und wartet auf die Peer-Prüfung — es ist SICHTBAR, aber ehrlich als offen markiert, nicht als gesichert. Du musst nichts weiter tun: Prüfer finden es auf dem Validierungs-Board. Willst du es ansehen oder ergänzen, führt der Link direkt hin.",
+  "chelp.advancedDetails.title": "Erweiterte Details",
+  "chelp.advancedDetails.body":
+    "Alles hier ist OPTIONAL — dein Wissen wird auch ohne eingereicht. Es lohnt sich trotzdem: Kategorie und Schlagwörter machen es auffindbar, die Anlage koppelt es an Maschinen/Objekte, die Prüf-Anzahl steuert das Validierungs-Quorum, Dokumente und Bilder liefern Beweismaterial. Das Badge zeigt, wie viel schon ausgefüllt ist.",
+  "chelp.knowledgeType.title": "Wissensart",
+  "chelp.knowledgeType.body":
+    "Ordnet dein Wissen ein: Erfahrungswissen, Prozesswissen, Faktenwissen — und besonders wertvoll: NEGATIVWISSEN („das haben wir probiert, es funktioniert NICHT, weil …“). Die Wissensart hilft Prüfern und Suchenden, dein Wissen richtig einzuordnen; sie ändert nichts am Prüfweg.",
+  "chelp.assetField.title": "Anlage / Objekt",
+  "chelp.assetField.body":
+    "Koppelt dein Wissen an eine konkrete Anlage, Maschine oder ein Objekt („Presse 3“, „Mandant XY“). Ändert sich später etwas an dieser Anlage, findet der Lebenszyklus genau die gekoppelten Wissensobjekte zur Überprüfung. Freitext genügt — Hauptsache, Kollegen erkennen die Anlage wieder.",
+  "chelp.tagsField.title": "Schlagwörter",
+  "chelp.tagsField.body":
+    "Kurze Stichworte, über die dein Wissen in Suche und Filtern auftaucht („aluminium“, „frist“, „hygiene“). Nutze Begriffe, nach denen Kollegen wirklich suchen würden, und bleib konsistent mit vorhandenen Schlagwörtern. Sie sind jederzeit änderbar und beeinflussen die Prüfung nicht.",
+  "chelp.docsImages.title": "Dokumente & Bilder",
+  "chelp.docsImages.body":
+    "Hängt Beweismaterial an dein Wissen: Fotos vom Ergebnis, das Prüfprotokoll, die Arbeitsanweisung. Anhänge wandern beim Einreichen mit ans Wissensobjekt und sind dort für Prüfer sichtbar. Ihr Inhalt wird nicht automatisch zu Wissen — was in den Text soll, entscheidest du.",
+  "chelp.expertForm.title": "Das Experten-Formular",
+  "chelp.expertForm.body":
+    "Hier trägst du alle Felder direkt ein: Titel, Wissensart, Inhalt, Kernaussage, Bedingungen (wann gilt es?) und Maßnahmen (was ist zu tun?). Es gelten dieselben Regeln wie im geführten Weg — gleicher Speicher-Check, gleiche Prüfung. Die KI hilft auf Wunsch am Text, entscheidet aber nichts.",
+  "chelp.sourcesPanel.title": "Externe Quellen (Stufe 2)",
+  "chelp.sourcesPanel.body":
+    "Hängt externe Belege an dein Wissen — Norm, Handbuch, Herstellerseite. Von Hand (Bezeichnung, Link, Auszug) oder über die Quellen-Suche, genau wie im Prüfbereich. Beim Erfassen sammelst du sie in einer sichtbaren Warteliste; angehängt werden sie erst beim Einreichen, zusammen mit deinem Wissensobjekt. Wichtig: Externe Quellen sind Stufe 2 — sie gelten nie als peer-validiert und ersetzen keine Prüfung durch Kollegen. Nichts wird automatisch übernommen.",
+  "capture.sourcesTitle": "Externe Quellen",
+  "capture.sourcesHint":
+    "Quellen landen zuerst in dieser Warteliste. Beim Einreichen werden sie ans gespeicherte Wissensobjekt gehängt — als Stufe 2, nie peer-validiert.",
+  "xtr.title": "Aus Dokument ergänzen",
+  "xtr.hint":
+    "Lade ein weiteres Dokument hoch — die KI liest es und schlägt Wissenspunkte MIT Belegstelle vor. Nur was du ankreuzt, wird als Abschnitt ans Ende deines Artikels angefügt; nichts wird ersetzt.",
+  "xtr.applyCta": "Ausgewählte anfügen",
+  "xtr.appended":
+    "{{count}} Punkt(e) aus „{{name}}“ angefügt — bestehender Inhalt blieb unverändert. Die Quelle wurde je Punkt vermerkt.",
+  "xtr.help.title": "Aus Dokument ergänzen",
+  "xtr.help.body":
+    "Die KI liest ein von dir hochgeladenes Dokument und schlägt Wissenspunkte vor — jeder Punkt trägt seine Belegstelle aus dem Dokument (ohne Beleg keine Übernahme). Du wählst per Häkchen aus; Ausgewähltes wird als Abschnitt an deinen Artikel ANGEHÄNGT, nichts wird ersetzt oder überschrieben. Die Herkunft (Dateiname + Belegstelle) wird als Stufe-2-Quelle am Wissensobjekt vermerkt — sie gilt nicht als peer-validiert und ersetzt keine Prüfung.",
 };
 
 const en: typeof de = {
@@ -2193,6 +2382,21 @@ const en: typeof de = {
   "adm.ai.saved": "AI mapping applied.",
   "adm.ai.persistNote":
     "Applies until the next app restart — persistent storage and local models arrive with the full build-out (PMO entry).",
+  // SCRUM-386: customer-defined AI assist functions (presets) — admin manages, palette shows all.
+  "adm.presets.title": "Custom AI functions",
+  "adm.presets.help":
+    "The AI palette in the editor offers factory functions (Clearer, Structure, Expand, Spelling, Format). Here you add EXTRA functions for your organisation — a button name and the instruction the AI receives (e.g. “Summarise for shift handover in 5 bullet points”). The instruction is openly visible in the palette via the ? mark; as always: the AI only makes a suggestion for preview, adoption is a deliberate click. Factory functions cannot be deleted.",
+  "adm.presets.hint":
+    "Additional functions for the AI palette in the editor — one button name and one AI instruction each. Visible to all roles; at most 12.",
+  "adm.presets.empty": "No custom functions yet — the factory palette applies unchanged.",
+  "adm.presets.name": "Button name (e.g. Shift handover)",
+  "adm.presets.instruction": "Instruction for the AI (e.g. Summarise in 5 bullet points …)",
+  "adm.presets.add": "Add function",
+  "adm.presets.save": "Save functions",
+  "adm.presets.saved": "Custom AI functions saved.",
+  "adm.presets.remove": "Remove function",
+  "adm.presets.note":
+    "Stored on the server and survives restarts; keys and models are not affected.",
   "ko.couple.help":
     "Couple this knowledge to an asset and “asset changed” (lifecycle) will automatically flag it for review — knowledge stays current.",
   "ko.couple.empty": "Not coupled to any asset yet.",
@@ -2370,6 +2574,17 @@ const en: typeof de = {
   "capture.file.queueSkip": "Skip point",
   "capture.file.queueDone": "All points from “{{name}}” have been processed.",
   "capture.file.sourceNote": "The source “{{name}}” will be recorded on the knowledge object.",
+  // SCRUM-409 (PMO-FEA-0008 delta): import receipt, multi-point drafts, merge.
+  "capture.file.loadedStats":
+    "“{{name}}” imported ({{chars}} characters). Optionally say what to look for, then start the knowledge search.",
+  "capture.file.saveDraftsCta": "Save as drafts",
+  "capture.file.draftsSaved":
+    "{{count}} drafts saved from “{{name}}” — each with its source note. You can find them above under “Resume drafts”.",
+  "capture.file.draftsPartial":
+    "Not all points could be saved as drafts: {{failed}}. Drafts already created are kept.",
+  "capture.file.mergeCta": "Merge into one entry",
+  "capture.file.mergedNote":
+    "{{count}} points from “{{name}}” merged into one entry — all excerpts are in the document; the sources will be recorded on submit.",
   // SCRUM-384 / KG-UX-001/002/003/010: narrate-first entry as default, form as expert path.
   "capture.entry.narrateKicker": "Tell your knowledge — the AI structures it, you review",
   "capture.entry.expertToggle": "Expert mode: fill the form directly",
@@ -2419,6 +2634,9 @@ const en: typeof de = {
   "capture.ai.help.spelling": "Corrects spelling and grammar only, nothing else.",
   "capture.ai.help.format":
     "Only reworks the layout (headings, paragraphs, lists) — the content stays verbatim.",
+  // SCRUM-386: ?-help for custom functions — the instruction is openly visible (G-3).
+  "capture.ai.customHelp":
+    "Custom AI function of your organisation (created by the admin). Instruction for the AI: „{{instruction}}“. As with all AI actions, only a suggestion for preview is produced — nothing is adopted unless you deliberately click to adopt it.",
   "capture.ai.freeLabel": "Your own AI instruction",
   "capture.ai.freePlaceholder": "e.g. “phrase it shorter and more factual”",
   "capture.ai.run": "Run",
@@ -3661,6 +3879,166 @@ const en: typeof de = {
   "graph.legendConflict": "conflict",
   "graph.clickHint": "Click a node to open the knowledge object",
   "graph.openNode": "Open knowledge object: {{title}}",
+
+  // SCRUM-406: detailed ?-help in the review area (pattern: What? · When? · What happens next?).
+  "vhelp.originFilter.title": "Filter by origin",
+  "vhelp.originFilter.body":
+    "Narrows the list by origin: demo examples or your organisation's own knowledge. This is a view only — it changes no review status and discards nothing. The number next to each filter shows how many entries it contains.",
+  "vhelp.reviewFocus.title": "Review focus",
+  "vhelp.reviewFocus.body":
+    "Separates new submissions from reworked ones (version greater than 1). Reworked objects deserve a targeted look at the change — what was queried, what was adjusted? This too is a view only: it changes no status and replaces no decision.",
+  "vhelp.filters.title": "Search & filter",
+  "vhelp.filters.body":
+    "Narrows the review list by full text, knowledge type, category or tag. Use it when the list is long and you want to review your own field first. Nothing is lost: filters only change what you currently see — every object stays in review.",
+  "vhelp.mineOnly.title": "Assigned to me",
+  "vhelp.mineOnly.body":
+    "Shows your personal review list: objects someone deliberately assigned to you. Use it to clear the work colleagues are waiting for first. An assignment is a request, not a verdict — nothing is decided until you rate the object yourself.",
+  "vhelp.signals.title": "Reading the review signals",
+  "vhelp.signals.body":
+    "This row shows how reliable the object is RIGHT NOW: the trust bar and trust value (from review votes and proven use), the version, „target n“ (that many approvals are needed until VALIDATED), plus markers such as TRANSFERRED (author changed — take an extra look) or ASSIGNED. None of this is your rating — it is the honest starting point for your decision.",
+  "vhelp.approve.title": "Approve",
+  "vhelp.approve.body":
+    "You confirm after your own review: this statement is factually correct and applicable as written. Use it only once you have genuinely judged the statement, conditions and measures — your approval counts as one of several required review votes. Afterwards the object's trust rises; it only becomes VALIDATED once enough reviewers have approved. Nothing is published or changed automatically — your vote is counted, nothing more.",
+  "vhelp.query.title": "Raise a query",
+  "vhelp.query.body":
+    "You consider the knowledge usable, but something is unclear, incomplete or only true under conditions. A short comment is mandatory — it is your help to the author: what exactly is missing, what should they add? Afterwards the object stays in review and the author sees your query as a comment on the knowledge object. Nothing is rejected, approved or changed automatically — the rework is done deliberately by the author.",
+  "vhelp.reject.title": "Reject",
+  "vhelp.reject.body":
+    "You consider the statement wrong, outdated or risky. Here too the reason is mandatory — without it the author can learn and correct nothing. Your rejection then flows into the object's review record; it is NOT deleted and NOT locked, but remains visibly in review until the author or a controller reacts. If two validated statements contradict each other, „report conflict“ is the better path than a rejection.",
+  "vhelp.feedbackForm.title": "Reason (mandatory)",
+  "vhelp.feedbackForm.body":
+    "Queries and rejections always need a reason — it is stored as a comment on the knowledge object, visible to author and reviewers. Be concrete about what is missing or wrong and what the author should add. Submitting requires text; cancelling only discards your input, never a rating.",
+  "vhelp.assign.title": "Assign a reviewer",
+  "vhelp.assign.body":
+    "You ask a specific colleague to review this object. They will see it in their personal review list („assigned to me“) and receive a notification via the bell. The assignment is an invitation, not a rating: it changes neither status nor trust, and nothing is reviewed until that person decides themselves.",
+  "vhelp.stillValid.title": "Still valid",
+  "vhelp.stillValid.body":
+    "You confirm that this already reviewed knowledge still holds from your point of view — a freshness signal, not a new review procedure. Use it when you have just applied the knowledge or deliberately re-read it. The confirmation is recorded with a date and the object counts as recently confirmed. It replaces no peer review and lifts no queries or conflicts.",
+  "vhelp.reportConflict.title": "Report a conflict",
+  "vhelp.reportConflict.body":
+    "You flag that this knowledge contradicts ANOTHER knowledge object — say, two different limit values for the same case. The case then appears on the conflicts page and is resolved deliberately there (second opinion, escalation, documented decision). Both objects remain unchanged — nothing is corrected, overwritten or deleted automatically.",
+  "vhelp.conflictForm.title": "Describe the conflict",
+  "vhelp.conflictForm.body":
+    "Three details make the report resolvable: the COUNTERPART object (what does this knowledge contradict?), the CONFLICT TYPE (e.g. contradiction in substance or in responsibility) and a short DESCRIPTION of the contradiction with your context. After submitting, an open conflict case exists — both objects stay marked as usable until the conflict is deliberately resolved.",
+  "vhelp.sourcesLevel2.title": "External sources (level 2)",
+  "vhelp.sourcesLevel2.body":
+    "External evidence attached to the knowledge object: standards, manuals, articles, internal documents. The „level 2“ badge is honest: this source was NOT peer-reviewed by colleagues — it supports the knowledge but replaces not a single review vote. Answers on the Ask page build on validated knowledge, never on level-2 sources alone. The X only removes the link — knowledge, status and trust remain unchanged.",
+  "vhelp.sourceFields.title": "Describe the source",
+  "vhelp.sourceFields.body":
+    "Three details make a source useful: the LABEL says what it is („DIN EN 1090, section 7“), the URL leads to it (leave empty for paper or internal sources), the EXCERPT quotes the one decisive passage verbatim — so nobody has to read the whole document to check the statement. The more concrete the excerpt, the more the source helps reviewers.",
+  "vhelp.sourceAdd.title": "Add source",
+  "vhelp.sourceAdd.body":
+    "Attaches the described source to this knowledge object as level-2 evidence. It persists across versions and is visible to everyone. Nothing else happens automatically: the source's content is not merged into the knowledge, not reviewed and not rated — it stands next to it as evidence.",
+  "vhelp.sourceSearch.title": "Search sources",
+  "vhelp.sourceSearch.body":
+    "Searches for external evidence on this topic. The search runs through the KLARWERK server — your query does not go from your browser to external services directly. Results are non-binding suggestions: nothing is attached automatically. Check title and snippet, open the link if in doubt — only „attach“ deliberately adopts a result as a level-2 source.",
+  "vhelp.contribution.title": "Report a contribution or reference",
+  "vhelp.contribution.body":
+    "You know an addition, correction or reference but do not want to work on the object yourself? Describe it here — your note is stored as a comment on the knowledge object, visible to author and reviewers. Unlike „add source“, NO source entry is created; it is a message to people, not evidence on the object.",
+  "vhelp.helpful.title": "It helped",
+  "vhelp.helpful.body":
+    "A proven-in-practice signal: you applied this knowledge and it worked. It strengthens the object's trust a little and is recorded in the history. It is NOT a review vote — validation still only comes from deliberate review decisions by colleagues.",
+  "vhelp.validity.title": "Validity & protection",
+  "vhelp.validity.body":
+    "These values are honestly DERIVED from the current state, not stored: freshness (when last confirmed or changed), output eligibility (may this knowledge go into generated documents?) and a recommendation for the next sensible step. You can only change them indirectly — by reviewing, confirming or reworking the knowledge itself.",
+  "vhelp.transfer.title": "Transfer author",
+  "vhelp.transfer.body":
+    "Hands responsibility for this knowledge to another person — for instance when someone leaves the company or responsibility changes. The original author remains permanently visible (provenance is never lost). Transferred objects get an extra look in review, because the knowledge is now owned by someone who did not capture it.",
+  "vhelp.deleteKo.title": "Delete knowledge object",
+  "vhelp.deleteKo.body":
+    "Removes this knowledge object permanently — allowed only for the author, controllers and admins; the server enforces the same rule. The inline confirmation deliberately asks before deleting, and the deletion is recorded in the audit log. If the knowledge is merely outdated, reworking it or reporting a conflict is the more honest path than deletion.",
+  "vhelp.conflictEscalate.title": "Escalate",
+  "vhelp.conflictEscalate.body":
+    "Raises an open factual conflict one level when the people involved cannot settle it themselves — the responsible authority then decides. Use it when two validated statements contradict each other hard and neither side can yield. The conflict stays open and visible until a documented decision is made.",
+  "vhelp.conflictSecondOpinion.title": "Get a second opinion",
+  "vhelp.conflictSecondOpinion.body":
+    "Asks another knowledgeable person for their assessment of the conflict and records it in writing. A good second opinion names facts and sources, not just gut feeling. It does not decide the conflict automatically — it is material for the later resolution.",
+  "vhelp.conflictResolve.title": "Resolve conflict",
+  "vhelp.conflictResolve.body":
+    "Records the decision on how to handle the contradiction — which statement applies, under which conditions, and why. The resolution only DOCUMENTS: it changes none of the involved knowledge objects automatically. If an object should be reworked or reconfirmed afterwards, the app shows a revalidation recommendation — that too remains a deliberate human action.",
+
+  // SCRUM-407: detailed ?-help along the capture flow (pattern: What? · When? · What happens next?).
+  "chelp.modes.title": "The four ways to tell",
+  "chelp.modes.body":
+    "Four paths lead to the same goal: FREE TEXT (just start writing), DICTATION (speak instead of typing), INTERVIEW (the AI asks you targeted questions) and FROM FILE (pull knowledge points out of a document). Pick whatever feels natural — all paths end in the same draft on the knowledge page, and nothing is lost when you switch.",
+  "chelp.expertPath.title": "Direct form (expert path)",
+  "chelp.expertPath.body":
+    "The classic form with every field at once — for those who know exactly what to enter. It is the same data as the guided path, no extra feature and no shortcut past review. The way back to the guided path is always one click away.",
+  "chelp.wizardSteps.title": "The three steps",
+  "chelp.wizardSteps.body":
+    "Capturing runs in three steps: TELL (get the raw knowledge out), KNOWLEDGE PAGE (check and refine, with AI help), SUBMIT (hand it to peer review). Completed steps are clickable — going back loses nothing. Only „review & submit“ turns your draft into a knowledge object for your colleagues.",
+  "chelp.loadExample.title": "Load example",
+  "chelp.loadExample.body":
+    "Fills the fields with a demo example so you can try the whole path safely. Careful: it overwrites your current input — use it on an empty page. Even an example is only submitted once you submit it deliberately.",
+  "chelp.tellRaw.title": "Just tell it",
+  "chelp.tellRaw.body":
+    "Write your knowledge down the way you would tell a new colleague — unsorted is perfectly fine. Structure (title, core statement, conditions, measures) is PROPOSED by the AI in the next step, for you to check and change. Nothing is saved or submitted automatically.",
+  "chelp.dictate.title": "Dictate",
+  "chelp.dictate.body":
+    "Speak instead of typing: your browser converts speech to text locally and it flows into this field. Start and stop deliberately; afterwards you can edit the text as usual. If your browser cannot do speech recognition, the app says so honestly instead of failing silently.",
+  "chelp.tellUpload.title": "Attach a file while telling",
+  "chelp.tellUpload.body":
+    "Upload documents here (PDF, Word, text) and their text flows straight into your telling field; images and videos become attachments of the later knowledge object. For images, text recognition (OCR) only runs on your click. Nothing is uploaded that you do not see — everything stays part of your draft.",
+  "chelp.structureNow.title": "Propose structure",
+  "chelp.structureNow.body":
+    "The AI reads your raw text and proposes title, core statement, conditions and measures — as a DRAFT on the knowledge page, marked in violet. It invents nothing; without an AI key an honest, rule-based fallback works and says so clearly. You check, change and decide — nothing is ever saved automatically.",
+  "chelp.interview.title": "The knowledge interview",
+  "chelp.interview.body":
+    "The AI asks you one question at a time and digs deeper on purpose — for limit values, exceptions, reasons. Answer in your own words (type or dictate); you can have the question read aloud. Only when you finish the interview is a draft built from all your answers — none of it is stored before that.",
+  "chelp.filePoints.title": "Knowledge from a file",
+  "chelp.filePoints.body":
+    "You upload a document and the AI extracts individual knowledge points — each WITH a verbatim quote from the document (which rules out invented points; if it finds nothing solid, it says so honestly). You tick what gets adopted: only selected points become drafts. Alternatively you can phrase a search assignment for an expert.",
+  "chelp.captureTitle.title": "The title",
+  "chelp.captureTitle.body":
+    "The title is the first thing colleagues see in the library and in answers — it decides whether your knowledge is found. Good: concrete and actionable („checking weld seams on aluminium under 5 mm“). You can change it anytime; the AI suggestion is only a starting point.",
+  "chelp.saveDraftHelp.title": "Save draft",
+  "chelp.saveDraftHelp.body":
+    "Saves your interim state locally in your browser — continue anytime, even after a restart. A draft is NOT submitted: nobody sees it, it appears in no review and no answer. You will find saved drafts at the top of this page to resume.",
+  "chelp.discardHelp.title": "Discard",
+  "chelp.discardHelp.body":
+    "Discards the current draft for good — text, structure and attachments of this capture. It affects ONLY your draft: already submitted or saved knowledge objects stay untouched. The app deliberately asks first; if you only want one step back, use the step bar instead of discarding.",
+  "chelp.submitReview.title": "Review & submit",
+  "chelp.submitReview.body":
+    "Turns your draft into a knowledge object and hands it to peer review: colleagues check it, raise queries or approve. From now on it is visible to others — but honestly marked as „in review“, NOT as validated. It only becomes validated through enough approvals; answers count on it only after that.",
+  "chelp.readiness.title": "Readiness check",
+  "chelp.readiness.body":
+    "Shows honestly what is still missing before submitting: mandatory fields (without them the button stays off) and optional ones that strengthen your knowledge (category or attachments, say). Green means ready — not perfect: you can still improve after submitting, then as a new version.",
+  "chelp.savedNext.title": "Saved — what now?",
+  "chelp.savedNext.body":
+    "Your knowledge now exists as an object and awaits peer review — it is VISIBLE, but honestly marked as open, not as validated. Nothing more to do: reviewers will find it on the validation board. If you want to view or extend it, the link takes you straight there.",
+  "chelp.advancedDetails.title": "Advanced details",
+  "chelp.advancedDetails.body":
+    "Everything here is OPTIONAL — your knowledge gets submitted without it too. It is still worth it: category and tags make it findable, the asset couples it to machines/objects, the reviewer count steers the validation quorum, documents and images provide evidence. The badge shows how much is already filled in.",
+  "chelp.knowledgeType.title": "Knowledge type",
+  "chelp.knowledgeType.body":
+    "Classifies your knowledge: experience, process, factual — and especially valuable: NEGATIVE knowledge („we tried this, it does NOT work, because …“). The type helps reviewers and searchers put your knowledge in context; it changes nothing about the review path.",
+  "chelp.assetField.title": "Asset / object",
+  "chelp.assetField.body":
+    "Couples your knowledge to a concrete asset, machine or object („press 3“, „client XY“). If that asset changes later, the lifecycle finds exactly the coupled knowledge objects for re-checking. Free text is fine — as long as colleagues recognise the asset.",
+  "chelp.tagsField.title": "Tags",
+  "chelp.tagsField.body":
+    "Short keywords through which your knowledge appears in search and filters („aluminium“, „deadline“, „hygiene“). Use terms colleagues would actually search for, and stay consistent with existing tags. They can be changed anytime and do not influence the review.",
+  "chelp.docsImages.title": "Documents & images",
+  "chelp.docsImages.body":
+    "Attaches evidence to your knowledge: photos of the result, the inspection log, the work instruction. Attachments travel with the knowledge object on submit and are visible to reviewers there. Their content does not become knowledge automatically — you decide what goes into the text.",
+  "chelp.expertForm.title": "The expert form",
+  "chelp.expertForm.body":
+    "Enter all fields directly here: title, knowledge type, content, core statement, conditions (when does it apply?) and measures (what is to be done?). The same rules apply as on the guided path — same readiness check, same review. The AI helps with the text on request but decides nothing.",
+  "chelp.sourcesPanel.title": "External sources (level 2)",
+  "chelp.sourcesPanel.body":
+    "Attaches external references to your knowledge — a standard, a manual, a manufacturer page. By hand (label, link, excerpt) or via the source search, exactly like in the review area. While capturing, they collect in a visible waiting list; they are attached only on submit, together with your knowledge object. Important: external sources are level 2 — they never count as peer-validated and do not replace review by colleagues. Nothing is adopted automatically.",
+  "capture.sourcesTitle": "External sources",
+  "capture.sourcesHint":
+    "Sources first land in this waiting list. On submit they are attached to the saved knowledge object — as level 2, never peer-validated.",
+  "xtr.title": "Add from document",
+  "xtr.hint":
+    "Upload another document — the AI reads it and suggests knowledge points WITH their supporting excerpt. Only what you tick is appended as a section at the end of your article; nothing is replaced.",
+  "xtr.applyCta": "Append selected",
+  "xtr.appended":
+    "{{count}} point(s) from „{{name}}“ appended — existing content was left unchanged. The source was noted per point.",
+  "xtr.help.title": "Add from document",
+  "xtr.help.body":
+    "The AI reads a document you upload and suggests knowledge points — each point carries its supporting excerpt from the document (no excerpt, no adoption). You choose via checkboxes; the selection is APPENDED to your article as sections, nothing is replaced or overwritten. The origin (file name + excerpt) is noted on the knowledge object as a level-2 source — it does not count as peer-validated and does not replace review.",
 };
 
 void i18n.use(initReactI18next).init({

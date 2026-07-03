@@ -252,6 +252,99 @@ async function buildDemoContent(
     neededValidations: 2,
   });
 
+  // SCRUM-385 Teil B (PMO-TODO-0002, Pedi): kuratierte Breite — JEDE der fünf Wissensarten
+  // mit mindestens DREI Beispielen, inkl. Schweißnaht-Lernkurve und Negativwissen. Frei
+  // erfundenes Beispielwissen, gleiche Mechanik (Tag + demoSeed-Merker, echte Services,
+  // purge-bar). Wortwahl weiterhin OHNE Inhaltstoken der Demo-Wissenslücken-Frage
+  // (schwankt/Dosierwert/Linie/jedem/Schichtwechsel) — sonst fände der deterministische
+  // Reasoner eine Pseudo-Antwort und die Demo-Lücke entstünde nicht mehr (Seed-Test prüft).
+  await ko.create({
+    demoSeed: true,
+    title: "Schweißnaht Baugruppe 7: Werkstück vorwärmen senkt Nacharbeit.",
+    statement:
+      "Seit die Werkstücke vor dem Schweißen auf 80 °C vorgewärmt werden, geht die Nacharbeitsquote der Naht deutlich zurück — über drei Monate dokumentierte Lernkurve der Spätschicht.",
+    type: "lernkurve",
+    category: "Anlage 2",
+    author: erikId,
+    tags: ["schweißen", "nacharbeit", "qualität", DEMO_TAG],
+    conditions: ["Werkstück kälter als 80 °C"],
+    measures: ["Vorwärmen auf 80 °C", "Temperatur dokumentieren"],
+    confidence: 55,
+    neededValidations: 2,
+  });
+  await ko.create({
+    demoSeed: true,
+    title: "Presse 3: dumpfes Brummen im Hauptlager ernst nehmen.",
+    statement:
+      "Beginnt das Hauptlager der Presse dumpf zu brummen, fällt es erfahrungsgemäß binnen weniger Tage aus — Gefühl erfahrener Instandhalter, noch ohne Messreihe.",
+    type: "bauchgefuehl",
+    category: "Anlage 2",
+    author: erikId,
+    tags: ["lager", "instandhaltung", DEMO_TAG],
+    confidence: 25,
+    neededValidations: 2,
+  });
+  await ko.create({
+    demoSeed: true,
+    title: "Auffällig unruhige Nacht kündigt oft einen Infekt an.",
+    statement:
+      "Wird ein sonst ruhiger Bewohner nachts auffällig unruhig, folgt erfahrungsgemäß binnen 48 Stunden ein Infekt — Erfahrungsgefühl der Nachtwachen, ärztlich nicht bestätigt.",
+    type: "bauchgefuehl",
+    category: "Pflege & Gesundheit",
+    author: erikId,
+    tags: ["pflege", "beobachtung", DEMO_TAG],
+    confidence: 20,
+    neededValidations: 2,
+  });
+  await ko.create({
+    demoSeed: true,
+    title: "Zu schnelle Zustimmung der Gegenseite: Nachforderungen einplanen.",
+    statement:
+      "Nimmt die Gegenseite ein Vergleichsangebot ungewöhnlich schnell an, folgen erfahrungsgemäß Nachforderungen — Bauchgefühl aus vielen Verfahren, keine belastbare Statistik.",
+    type: "bauchgefuehl",
+    category: "Kanzlei & Beratung",
+    author: adminId,
+    tags: ["verhandlung", "kanzlei", DEMO_TAG],
+    confidence: 20,
+    neededValidations: 2,
+  });
+  await ko.create({
+    demoSeed: true,
+    title: "Drehmomentschlüssel der Montage halbjährlich kalibrieren.",
+    statement:
+      "Alle Drehmomentschlüssel der Montage werden halbjährlich kalibriert; das Prüfprotokoll hängt am Gerät und wird bei der Ausgabe kontrolliert.",
+    type: "technik",
+    category: "Anlage 3",
+    author: erikId,
+    tags: ["kalibrierung", "montage", DEMO_TAG],
+    confidence: 60,
+    neededValidations: 2,
+  });
+  await ko.create({
+    demoSeed: true,
+    title: "Notstromaggregat monatlich 30 Minuten unter Last testen.",
+    statement:
+      "Das Notstromaggregat läuft einmal im Monat 30 Minuten unter Last; erst der Lasttest zeigt schwache Batterien und verharzte Regler.",
+    type: "technik",
+    category: "Anlage 1",
+    author: adminId,
+    tags: ["notstrom", "prüfung", DEMO_TAG],
+    confidence: 50,
+    neededValidations: 2,
+  });
+  await ko.create({
+    demoSeed: true,
+    title: "Schaltschränke nicht mit Druckluft ausblasen.",
+    statement:
+      "Druckluft drückt Staub tiefer in Kontakte und Lüfter der Schaltschränke — führte zweimal zu Ausfällen. Nur absaugen, nie ausblasen.",
+    type: "negativwissen",
+    category: "Anlage 3",
+    author: erikId,
+    tags: ["schaltschrank", "reinigung", DEMO_TAG],
+    confidence: 45,
+    neededValidations: 2,
+  });
+
   // --- Validierung: koValid bekommt 2 grüne Bewertungen → Status „validiert" (echte Logik) ---
   await validation.rate(koValid.id, carlaId, "up");
   await validation.rate(koValid.id, adminId, "up");

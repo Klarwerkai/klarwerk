@@ -30,6 +30,19 @@ export {
   createModelClientFromEnv,
   type HttpModelConfig,
 } from "./src/model-client";
+// SCRUM-386: kundeneigene KI-Assist-Presets (Admin verwaltet; Palette zeigt sie allen Rollen).
+export {
+  ASSIST_PRESETS_SCHEMA,
+  ASSIST_PRESET_INSTRUCTION_MAX,
+  ASSIST_PRESET_NAME_MAX,
+  type AssistPreset,
+  type AssistPresetInput,
+  type AssistPresetRepo,
+  InMemoryAssistPresetRepo,
+  MAX_ASSIST_PRESETS,
+  normalizeAssistPresets,
+  PgAssistPresetRepo,
+} from "./src/presets";
 export type {
   KnowledgeRef,
   KnowledgeClass,

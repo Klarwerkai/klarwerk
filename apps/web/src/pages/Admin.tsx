@@ -150,6 +150,33 @@ export function Admin(): JSX.Element {
   // Key-Test (Pedi 02.07.): echter Mini-Modellaufruf; Ergebnis bleibt sichtbar stehen
   // (Inline statt flüchtigem Toast) — ehrlich inkl. Grund bei Fehlschlag (z. B. 401).
   const aiTest = useMutation({ mutationFn: () => endpoints.reasoner.test() });
+  // SCRUM-386: kundeneigene KI-Assist-Funktionen (Presets) — lokal editieren, als Ganzes
+  // speichern (Replace-Semantik der Route). Die Werks-Funktionen (klarer/strukturieren/…)
+  // bleiben unangetastet im Code; hier entstehen NUR zusätzliche, instanz-eigene Funktionen.
+  const presetsQuery = useQuery({
+    queryKey: ["reasoner", "assistPresets"],
+    queryFn: endpoints.reasoner.assistPresets,
+  });
+  const [presetDraft, setPresetDraft] = useState<
+    { id?: string; name: string; instruction: string }[] | null
+  >(null);
+  const effPresets = presetDraft ?? presetsQuery.data ?? [];
+  const presetsSave = useMutation({
+    mutationFn: () =>
+      endpoints.reasoner.updateAssistPresets(
+        effPresets.map((p) => ({
+          ...(p.id ? { id: p.id } : {}),
+          name: p.name,
+          instruction: p.instruction,
+        })),
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["reasoner", "assistPresets"] });
+      setPresetDraft(null);
+      push("success", t("adm.presets.saved"));
+    },
+    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
+  });
   // SCRUM-394: aktiver Admin-Bereich (Konten · KI · Daten).
   const [section, setSection] = useState<AdminSectionId>(DEFAULT_ADMIN_SECTION);
 
@@ -190,11 +217,10 @@ export function Admin(): JSX.Element {
                 <UserPlus size={15} />
                 {t("adm.seedButton")}
               </Button>
+              {/* SCRUM-412 (CI): Bestätigung = neutrale Fläche; Rot nur am destruktiven Knopf. */}
               {confirmPurge ? (
-                <span className="ml-2 inline-flex items-center gap-2 rounded-card border border-trust-crit-fill/40 bg-trust-crit-bg px-2.5 py-1.5">
-                  <span className="text-[12px] font-semibold text-trust-crit-text">
-                    {t("adm.purgeQ")}
-                  </span>
+                <span className="ml-2 inline-flex items-center gap-2 rounded-card border border-hairline bg-page px-2.5 py-1.5">
+                  <span className="text-[12px] font-semibold text-text">{t("adm.purgeQ")}</span>
                   <button
                     type="button"
                     className="text-[12px] font-semibold text-muted hover:text-text"
@@ -392,6 +418,83 @@ export function Admin(): JSX.Element {
             ) : (
               <p className="text-[12.5px] text-muted-2">{t("state.loading")}</p>
             )}
+          </Card>
+
+          {/* SCRUM-386: kundeneigene KI-Funktionen (Presets) für die Editor-Palette.
+              Leitplanken: benannte Anweisungen für den vorhandenen assist-Task; die Anweisung
+              ist in der Palette am ?-HelpTip offen sichtbar; Vorschau + bewusste Übernahme
+              bleiben (G-3). Werks-Funktionen sind nicht löschbar. */}
+          <Card className="space-y-3">
+            <div className="flex items-center gap-1.5">
+              <SectionLabel>{t("adm.presets.title")}</SectionLabel>
+              <HelpTip title={t("adm.presets.title")} body={t("adm.presets.help")} />
+            </div>
+            <p className="text-[12.5px] text-muted">{t("adm.presets.hint")}</p>
+            {effPresets.length === 0 ? (
+              <p className="text-[12.5px] text-muted-2">{t("adm.presets.empty")}</p>
+            ) : (
+              <ul className="space-y-2">
+                {effPresets.map((p, i) => (
+                  <li
+                    key={p.id ?? `neu-${i}`}
+                    className="rounded-card border border-hairline p-2.5"
+                  >
+                    <div className="grid gap-2 sm:grid-cols-[1fr_2fr_auto]">
+                      <TextInput
+                        value={p.name}
+                        onChange={(e) =>
+                          setPresetDraft(
+                            effPresets.map((x, xi) =>
+                              xi === i ? { ...x, name: e.target.value } : x,
+                            ),
+                          )
+                        }
+                        placeholder={t("adm.presets.name")}
+                        aria-label={t("adm.presets.name")}
+                      />
+                      <TextInput
+                        value={p.instruction}
+                        onChange={(e) =>
+                          setPresetDraft(
+                            effPresets.map((x, xi) =>
+                              xi === i ? { ...x, instruction: e.target.value } : x,
+                            ),
+                          )
+                        }
+                        placeholder={t("adm.presets.instruction")}
+                        aria-label={t("adm.presets.instruction")}
+                      />
+                      <button
+                        type="button"
+                        title={t("adm.presets.remove")}
+                        onClick={() => setPresetDraft(effPresets.filter((_, xi) => xi !== i))}
+                        className="grid h-9 w-9 place-items-center justify-self-end rounded-btn text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="ghost"
+                disabled={effPresets.length >= 12}
+                onClick={() => setPresetDraft([...effPresets, { name: "", instruction: "" }])}
+              >
+                {t("adm.presets.add")}
+              </Button>
+              <Button
+                variant="primary"
+                disabled={presetsSave.isPending || presetDraft === null}
+                onClick={() => presetsSave.mutate()}
+              >
+                <Sparkles size={14} />
+                {t("adm.presets.save")}
+              </Button>
+              <span className="text-[11px] text-muted-2">{t("adm.presets.note")}</span>
+            </div>
           </Card>
         </>
       ) : null}

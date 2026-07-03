@@ -3,6 +3,7 @@ import type {
   Analytics,
   AskResponse,
   AssignmentSummary,
+  AssistPreset,
   AssistResult,
   AuditEntry,
   BusFactorEntry,
@@ -36,6 +37,7 @@ import type {
   OutputSource,
   PublicUser,
   ReasonerConfigStatus,
+  ReasonerProbeResult,
   ReasonerStatus,
   ReviewAction,
   Role,
@@ -169,6 +171,10 @@ export const endpoints = {
       api.put<ReasonerConfigStatus>("/reasoner/config", cfg),
     // Key-Test (Pedi 02.07.): echter Mini-Modellaufruf (nur Admin, ehrliches Ergebnis).
     test: () => api.post<ReasonerProbeResult>("/reasoner/test"),
+    // SCRUM-386: kundeneigene KI-Assist-Presets — lesen alle Rollen (Palette), pflegen nur Admin.
+    assistPresets: () => api.get<AssistPreset[]>("/reasoner/assist-presets"),
+    updateAssistPresets: (presets: { id?: string; name: string; instruction: string }[]) =>
+      api.put<AssistPreset[]>("/reasoner/assist-presets", { presets }),
   },
   notifications: {
     list: () => api.get<Notification[]>("/notifications"),

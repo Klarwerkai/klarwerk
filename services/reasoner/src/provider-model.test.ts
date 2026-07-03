@@ -140,7 +140,8 @@ describe("ModelProvider locale-aware prompts", () => {
     // Nur eine Antwort → noch nicht abgeschlossen → Modell wird zum Umformulieren befragt.
     const res = await new ModelProvider(client).interview(["Core message"], "en");
     expect(res.demo).toBe(false);
-    expect(calls[0]?.system).toContain("Ask exactly ONE next");
+    // SCRUM-410: Prompt-Wortlaut überarbeitet (Sprach-Leitplanken) — Kernzusage bleibt: EINE Frage.
+    expect(calls[0]?.system).toContain("exactly ONE natural next question");
     expect(calls[0]?.user).toContain("Previous answers:");
     expect(calls[0]?.user).toContain("Guiding question:");
   });

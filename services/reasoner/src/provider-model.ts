@@ -19,7 +19,8 @@ import type {
 // FR-RSN-02/06: anbieteragnostisch; der Schlüssel lebt nur im Client (serverseitig).
 export interface ModelClient {
   readonly name: string;
-  complete(system: string, user: string): Promise<string>;
+  // SCRUM-411: optionales Antwort-Limit je Aufruf (Default beim Client: 1024).
+  complete(system: string, user: string, maxTokens?: number): Promise<string>;
 }
 
 // FR-I18N-01: Systemprompts sprachbewusst. JSON-Contract der structure-Aufgabe bleibt
@@ -77,10 +78,14 @@ function extractGuidance(locale: ReasonerLocale, query: string): string {
     : `Der Experte sucht gezielt nach: ${query}. Beschränke die Punkte auf diesen Fokus — aber weiterhin nur, was im Dokument tatsächlich steht.`;
 }
 
+// SCRUM-410 (Pedi-Test 03.07.: „Die Sprache ist furchtbar"): Stil-Leitplanken nach den
+// CI-Sprachregeln (Brand Book: nüchtern, kompetent, aktiv, ohne Hype) — natürliche Du-Anrede,
+// kurz, konkret am Erzählten, kein Übersetzungsdeutsch, keine Floskeln. Antwortsprache
+// STRIKT = UI-Sprache. Inhaltlich unverändert streng: nichts erfinden, nur EINE Frage.
 function interviewSystem(locale: ReasonerLocale): string {
   return locale === "en"
-    ? "You run a short editorial interview to capture industrial experiential knowledge. Ask exactly ONE next, concrete question that builds on the previous answers. Do NOT invent any technical content or facts. Return ONLY the question."
-    : "Du führst ein kurzes Redakteur-Interview, um industrielles Erfahrungswissen zu erfassen. Formuliere genau EINE nächste, konkrete Frage, die auf den bisherigen Antworten aufbaut. Erfinde KEINE fachlichen Inhalte oder Fakten. Gib AUSSCHLIESSLICH die Frage zurück.";
+    ? "You are an experienced colleague conducting a short interview to capture experiential knowledge. Rephrase the guiding question into exactly ONE natural next question. Rules: plain, natural English; at most 20 words; pick up concrete terms from the previous answers instead of asking generically; aim at what makes knowledge experiential (thresholds, exceptions, why, how-do-you-notice-it). No filler phrases, no politeness formulas, no quotation marks, no numbering, no leading label. Do NOT invent any technical content or facts. Answer in English only. Return ONLY the question."
+    : "Du bist ein erfahrener Kollege und führst ein kurzes Interview, um Erfahrungswissen zu sichern. Formuliere aus der Leitfrage genau EINE natürliche nächste Frage. Regeln: klares, natürliches Deutsch in Du-Anrede; höchstens 20 Wörter; greife konkrete Begriffe aus den bisherigen Antworten auf, statt generisch zu fragen; ziele auf das, was Erfahrungswissen ausmacht (Grenzwerte, Ausnahmen, Warum, Woran-erkennst-du-es). Keine Floskeln oder Höflichkeitsformeln, keine Anführungszeichen, keine Nummerierung, kein vorangestelltes Label. Erfinde KEINE fachlichen Inhalte oder Fakten. Antworte ausschließlich auf Deutsch. Gib AUSSCHLIESSLICH die Frage zurück.";
 }
 
 // Sprachbewusste User-Prompt-Labels (kein Quelleninhalt wird übersetzt).
@@ -112,6 +117,10 @@ function extractJson(raw: string): string {
 // Obergrenzen: begrenzte Punkteliste (Review-bar in einer Sitzung) und gedeckelte Feldlängen.
 export const MAX_EXTRACT_POINTS = 20;
 export const MAX_EXCERPT_LENGTH = 400;
+// SCRUM-411: Antwort-Limit für extract — 20 Punkte × (Titel + Kurzfassung + Belegstelle bis
+// 400 Zeichen) passen NICHT in die 1024 Standard-Token; abgeschnittenes JSON war die Ursache
+// des Pedi-Befunds „kein KI-Modell trotz grünem Key-Test" (03.07.).
+export const EXTRACT_MAX_TOKENS = 4096;
 // Dokumenttext-Deckel für den Modell-Aufruf — bewusst großzügig, aber endlich (Token-Schutz).
 export const MAX_EXTRACT_DOCUMENT_LENGTH = 60_000;
 
@@ -277,8 +286,20 @@ export class ModelProvider implements ReasonerProvider {
     const system = guidance
       ? `${extractSystem(locale)}\n${extractGuidance(locale, guidance)}`
       : extractSystem(locale);
-    const raw = await client.complete(system, doc);
-    const points = parseExtractResponse(raw, doc);
+    // SCRUM-411: großes Antwort-Limit — bei 1024 Token wurde das Punkte-JSON realer
+    // Dokumente abgeschnitten (JSON-Parse-Fehler → stiller Fallback, Pedi-Test 03.07.).
+    const raw = await client.complete(system, doc, EXTRACT_MAX_TOKENS);
+    let points: ExtractedPoint[];
+    try {
+      points = parseExtractResponse(raw, doc);
+    } catch {
+      // Klarer Grund statt kryptischem JSON-Fehler — landet über SCRUM-411 in der note.
+      throw new Error(
+        locale === "en"
+          ? "model response was not valid JSON (possibly truncated)"
+          : "Modell-Antwort war kein gültiges JSON (möglicherweise abgeschnitten)",
+      );
+    }
     return {
       points,
       // Ehrlich: leere Liste bekommt eine Erklärung (kein stilles Nichts).

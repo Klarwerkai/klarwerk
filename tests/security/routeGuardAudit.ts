@@ -247,6 +247,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/reasoner": { protection: "ko.read" },
   "GET /api/reasoner/config": { protection: "ko.read" },
   "PUT /api/reasoner/config": { protection: "users.manage" },
+  // SCRUM-386: kundeneigene KI-Assist-Presets — lesen alle Rollen (Palette), pflegen nur Admin.
+  "GET /api/reasoner/assist-presets": { protection: "ko.read" },
+  "PUT /api/reasoner/assist-presets": { protection: "users.manage" },
   // Key-Test (Pedi 02.07.): echter Mini-Modellaufruf — nur Admin, kein Secret in der Antwort.
   "POST /api/reasoner/test": { protection: "users.manage" },
   "POST /api/objects": { protection: "ko.create" },

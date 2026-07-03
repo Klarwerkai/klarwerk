@@ -67,7 +67,14 @@ import {
 } from "../../notifications";
 import { InMemoryObjectRepo, type ObjectRepo, ObjectStore, PgObjectRepo } from "../../object-store";
 import { OutputService } from "../../output";
-import { ModelProvider, Reasoner, createModelClientFromEnv } from "../../reasoner";
+import {
+  type AssistPresetRepo,
+  InMemoryAssistPresetRepo,
+  ModelProvider,
+  PgAssistPresetRepo,
+  Reasoner,
+  createModelClientFromEnv,
+} from "../../reasoner";
 import {
   type AssignmentRepo,
   InMemoryAssignmentRepo,
@@ -150,6 +157,8 @@ export interface AppRepos {
   modelRuns: ModelRunRepo;
   // Audit-P3 (SCRUM-397): pro Nutzer bewusst als gesehen markierte Benachrichtigungs-IDs.
   notificationSeen: NotificationSeenRepo;
+  // SCRUM-386: kundeneigene KI-Assist-Presets (Admin pflegt; Palette zeigt sie allen Rollen).
+  assistPresets: AssistPresetRepo;
 }
 
 // Verdrahtet aus den Repos die vollständige Service-Landschaft. Ein gemeinsames
@@ -170,6 +179,8 @@ export function assembleServices(repos: AppRepos): AppServices {
     modelClient ? new ModelProvider(modelClient) : undefined,
     undefined,
     repos.modelRuns,
+    // SCRUM-386: Presets über das Repo — persistent in Pg bzw. im Dev-Journal der Desktop-App.
+    repos.assistPresets,
   );
 
   // Vorab erstellt, da das Management-Modul (SCRUM-120) deren Live-Daten aggregiert.
@@ -248,6 +259,7 @@ export function inMemoryRepos(): AppRepos {
     candidates: new InMemoryCandidateRepo(),
     modelRuns: new InMemoryModelRunRepo(),
     notificationSeen: new InMemoryNotificationSeenRepo(),
+    assistPresets: new InMemoryAssistPresetRepo(),
   };
 }
 
@@ -280,6 +292,8 @@ export function buildPgServices(pool: Pool): AppServices {
     modelRuns: new PgModelRunRepo(pool),
     // Audit-P3 (SCRUM-397): Gelesen-Status der Glocke persistent.
     notificationSeen: new PgNotificationSeenRepo(pool),
+    // SCRUM-386: kundeneigene KI-Assist-Presets persistent.
+    assistPresets: new PgAssistPresetRepo(pool),
   });
 }
 

@@ -7,6 +7,8 @@ import { Sparkles } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
+// SCRUM-386: kundeneigene KI-Funktionen (Admin-Presets) zusätzlich zur Werks-Palette.
+import { useAssistPresets } from "../api/hooks";
 import {
   ASSIST_ACTIONS,
   type AssistApplyMode,
@@ -49,6 +51,10 @@ export function AiAssistBox({
   compact?: boolean;
 }): JSX.Element {
   const { t } = useTranslation();
+  // SCRUM-386: eigene KI-Funktionen der Instanz — nach den Werks-Aktionen, gleicher Fluss
+  // (Vorschau + bewusste Übernahme). Das ?-HelpTip zeigt die hinterlegte Anweisung offen an.
+  const presets = useAssistPresets();
+  const customPresets = presets.data ?? [];
   const [free, setFree] = useState("");
   const [pending, setPending] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
@@ -106,6 +112,23 @@ export function AiAssistBox({
               {t(assistActionLabelKey(a))}
             </button>
             <HelpTip title={t(assistActionLabelKey(a))} body={t(assistActionHelpKey(a))} />
+          </span>
+        ))}
+        {/* SCRUM-386: Admin-Presets — optisch als „eigene" Funktionen markiert (gestrichelt). */}
+        {customPresets.map((p) => (
+          <span key={p.id} className="inline-flex items-center gap-0.5">
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => void run(p.instruction)}
+              className="rounded-pill border border-dashed border-ai-dashed px-2.5 py-1 text-[12px] font-semibold text-muted hover:border-ink/30 hover:text-text disabled:opacity-50"
+            >
+              {p.name}
+            </button>
+            <HelpTip
+              title={p.name}
+              body={t("capture.ai.customHelp", { instruction: p.instruction })}
+            />
           </span>
         ))}
       </div>

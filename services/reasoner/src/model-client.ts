@@ -15,7 +15,9 @@ export function anthropicClient(config: HttpModelConfig): ModelClient {
   const baseUrl = config.baseUrl ?? "https://api.anthropic.com";
   return {
     name: `anthropic:${config.model}`,
-    async complete(system: string, user: string): Promise<string> {
+    // SCRUM-411: maxTokens pro Aufruf — kurze Tasks bleiben bei 1024; extract braucht mehr
+    // (JSON mit bis zu 20 Punkten inkl. wörtlicher Belegstellen wurde bei 1024 abgeschnitten).
+    async complete(system: string, user: string, maxTokens = 1024): Promise<string> {
       const res = await fetchFn(`${baseUrl}/v1/messages`, {
         method: "POST",
         headers: {
@@ -25,7 +27,7 @@ export function anthropicClient(config: HttpModelConfig): ModelClient {
         },
         body: JSON.stringify({
           model: config.model,
-          max_tokens: 1024,
+          max_tokens: maxTokens,
           system,
           messages: [{ role: "user", content: user }],
         }),

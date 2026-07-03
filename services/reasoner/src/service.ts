@@ -1,6 +1,13 @@
 import { randomUUID } from "node:crypto";
 import type { ModelRunRepo, ModelRunStatus, ModelRunTask } from "../../model-runs";
-import { DeterministicProvider, type ReasonerProvider } from "./provider";
+import {
+  type AssistPreset,
+  type AssistPresetInput,
+  type AssistPresetRepo,
+  InMemoryAssistPresetRepo,
+  normalizeAssistPresets,
+} from "./presets";
+import { DeterministicProvider, type ReasonerProvider, honestExtractModelFailed } from "./provider";
 
 import type {
   AnswerResult,
@@ -25,15 +32,33 @@ export class Reasoner {
   private readonly fallback: ReasonerProvider;
   // SCRUM-164: optionales ModelRun-Protokoll. Ohne Repo → No-op (rückwärtskompatibel).
   private readonly modelRuns: ModelRunRepo | undefined;
+  // SCRUM-386: kundeneigene Assist-Presets — echtes Repo (Pg/Dev-Journal); ohne Repo In-Memory.
+  private readonly presetRepo: AssistPresetRepo;
 
   constructor(
     primary?: ReasonerProvider,
     fallback: ReasonerProvider = new DeterministicProvider(),
     modelRuns?: ModelRunRepo,
+    assistPresets?: AssistPresetRepo,
   ) {
     this.primary = primary ?? fallback;
     this.fallback = fallback;
     this.modelRuns = modelRuns;
+    this.presetRepo = assistPresets ?? new InMemoryAssistPresetRepo();
+  }
+
+  // ---- SCRUM-386: kundeneigene KI-Assist-Funktionen (Presets) ----
+  // Lesen darf jede Rolle (die Palette zeigt sie an); Schreiben guarded die Route (Admin).
+  // Replace-Semantik: die Admin-UI pflegt die komplette Liste; ids bleiben stabil, neue
+  // Einträge bekommen hier ihre UUID (das Repo erhält fertige ids — Journal-Replay exakt).
+  async getAssistPresets(): Promise<AssistPreset[]> {
+    return this.presetRepo.list();
+  }
+
+  async setAssistPresets(input: readonly AssistPresetInput[]): Promise<AssistPreset[]> {
+    const next = normalizeAssistPresets(input, () => randomUUID());
+    await this.presetRepo.replaceAll(next);
+    return this.presetRepo.list();
   }
 
   private usingPrimary(): boolean {
@@ -273,11 +298,28 @@ export class Reasoner {
     locale: ReasonerLocale = "de",
     query?: string,
   ): Promise<ExtractResult> {
+    // SCRUM-411 (Pedi-Test 03.07.): Scheitert der Modell-Aufruf, obwohl ein Modell gewollt
+    // UND konfiguriert ist, bekommt der Nutzer den ECHTEN Grund — nicht die falsche
+    // „kein KI-Modell"-Meldung des deterministischen Fallbacks. G-2 bleibt: keine Pseudo-Punkte.
+    let modelError: string | null = null;
+    const wantedModel = this.effectiveFor("extract") === "model";
     return this.runTask(
       "extract",
       locale,
-      () => this.primary.extract(documentText, locale, query),
-      () => this.fallback.extract(documentText, locale, query),
+      async () => {
+        try {
+          return await this.primary.extract(documentText, locale, query);
+        } catch (error) {
+          modelError = error instanceof Error ? error.message : String(error);
+          throw error;
+        }
+      },
+      async () => {
+        const honest = await this.fallback.extract(documentText, locale, query);
+        return wantedModel && modelError !== null
+          ? honestExtractModelFailed(modelError, locale)
+          : honest;
+      },
     );
   }
 

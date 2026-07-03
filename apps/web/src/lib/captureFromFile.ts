@@ -126,4 +126,11 @@ export const CAPTURE_FILE_TEXT = {
   queueSkip: "capture.file.queueSkip",
   queueDone: "capture.file.queueDone",
   sourceNote: "capture.file.sourceNote",
+  // SCRUM-409 (PMO-FEA-0008-Delta): Import-Quittung + Mehrpunkt-Entwürfe + Zusammenführen.
+  loadedStats: "capture.file.loadedStats",
+  saveDraftsCta: "capture.file.saveDraftsCta",
+  draftsSaved: "capture.file.draftsSaved",
+  draftsPartial: "capture.file.draftsPartial",
+  mergeCta: "capture.file.mergeCta",
+  mergedNote: "capture.file.mergedNote",
 } as const;

@@ -38,6 +38,7 @@ import {
   decisionImpact,
   reviewGuidanceFocusKey,
 } from "../lib/reviewGuidance";
+import { type ReviewHelpId, reviewHelp } from "../lib/reviewHelp";
 import {
   type ReviewWorkTone,
   type TrustBand,
@@ -89,6 +90,13 @@ const DECISION_TONE: Record<ReviewTone, string> = {
   pos: "bg-trust-pos-bg text-trust-pos-text",
   warn: "bg-trust-warn-bg text-trust-warn-text",
   crit: "bg-trust-crit-bg text-trust-crit-text",
+};
+
+// SCRUM-406: je Entscheidung der passende ?-Hilfe-Baustein aus der zentralen Hilfe-Karte.
+const DECISION_HELP: Record<ReviewVerdict, ReviewHelpId> = {
+  up: "approve",
+  warn: "query",
+  down: "reject",
 };
 
 // SCRUM-365: Textfarbe der Entscheidungswirkungen in der „Was prüfe ich?"-Führung (Grün/Gelb/Rot).
@@ -177,6 +185,11 @@ export function Validation(): JSX.Element {
   } | null>(null);
   const selectCls =
     "h-10 rounded-input border border-hairline bg-surface px-2 text-sm text-text outline-none focus:border-ink/30";
+  // SCRUM-406: einheitlicher ?-HelpTip aus der zentralen Hilfe-Karte des Prüfbereichs.
+  const vhelp = (helpId: ReviewHelpId): JSX.Element => {
+    const topic = reviewHelp(helpId);
+    return <HelpTip title={t(topic.titleKey)} body={t(topic.bodyKey)} />;
+  };
 
   const invalidate = (): void => void qc.invalidateQueries({ queryKey: ["validation"] });
 
@@ -342,6 +355,7 @@ export function Validation(): JSX.Element {
                 <span className="mr-0.5 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
                   {t("lib.originLabel")}:
                 </span>
+                {vhelp("originFilter")}
                 {DEMO_KNOWLEDGE_FILTERS.map((f) => (
                   <button
                     key={f}
@@ -370,6 +384,7 @@ export function Validation(): JSX.Element {
                 <span className="mr-0.5 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
                   {t("val.reviewFocus.label")}:
                 </span>
+                {vhelp("reviewFocus")}
                 {REVIEW_FOCUS_FILTERS.map((f) => (
                   <button
                     key={f}
@@ -467,7 +482,9 @@ export function Validation(): JSX.Element {
                     onChange={(e) => setMineOnly(e.target.checked)}
                   />
                   {t("val.filterMine")}
+                  {vhelp("mineOnly")}
                 </label>
+                {vhelp("filters")}
               </div>
               <div className="space-y-3">
                 {/* SCRUM-364 / AG-15: spezifischer Leerzustand der persönlichen Linse — ruhig und
@@ -578,6 +595,7 @@ export function Validation(): JSX.Element {
                             >
                               {t(reviewWork.labelKey)}
                             </span>
+                            {vhelp("signals")}
                           </div>
                           {/* SCRUM-326: Review-Kontext — neu/offen vs. revidiert (Version>1) + Hinweis. */}
                           <ValidationReviewContext ko={k} />
@@ -667,35 +685,37 @@ export function Validation(): JSX.Element {
                               const active =
                                 feedback?.id === k.id && feedback.verdict === d.verdict;
                               return (
-                                <button
-                                  key={d.verdict}
-                                  type="button"
-                                  // SCRUM-365: Hover/Touch zeigt direkt die ehrliche Wirkung der Entscheidung.
-                                  title={t(decisionImpact(d.verdict).bodyKey)}
-                                  disabled={
-                                    d.verdict === "up"
-                                      ? rate.isPending || reviewWithFeedback.isPending
-                                      : reviewWithFeedback.isPending
-                                  }
-                                  onClick={() =>
-                                    d.verdict === "up"
-                                      ? rate.mutate({ id: k.id, title: k.title, verdict: "up" })
-                                      : openFeedback(k.id, d.verdict)
-                                  }
-                                  className={`flex h-9 items-center gap-1.5 rounded-btn px-2.5 text-[12.5px] font-semibold hover:opacity-80 disabled:opacity-50 ${DECISION_TONE[d.tone]} ${
-                                    active ? "ring-2 ring-current" : ""
-                                  }`}
-                                >
-                                  {d.verdict === "up" ? (
-                                    <Check size={15} />
-                                  ) : d.verdict === "warn" ? (
-                                    <Minus size={15} />
-                                  ) : (
-                                    <X size={15} />
-                                  )}
-                                  <span>{t(d.labelKey)}</span>
-                                  {d.requiresFeedback ? <sup className="-mr-0.5">*</sup> : null}
-                                </button>
+                                <span key={d.verdict} className="inline-flex items-center gap-0.5">
+                                  <button
+                                    type="button"
+                                    // SCRUM-365: Hover/Touch zeigt direkt die ehrliche Wirkung der Entscheidung.
+                                    title={t(decisionImpact(d.verdict).bodyKey)}
+                                    disabled={
+                                      d.verdict === "up"
+                                        ? rate.isPending || reviewWithFeedback.isPending
+                                        : reviewWithFeedback.isPending
+                                    }
+                                    onClick={() =>
+                                      d.verdict === "up"
+                                        ? rate.mutate({ id: k.id, title: k.title, verdict: "up" })
+                                        : openFeedback(k.id, d.verdict)
+                                    }
+                                    className={`flex h-9 items-center gap-1.5 rounded-btn px-2.5 text-[12.5px] font-semibold hover:opacity-80 disabled:opacity-50 ${DECISION_TONE[d.tone]} ${
+                                      active ? "ring-2 ring-current" : ""
+                                    }`}
+                                  >
+                                    {d.verdict === "up" ? (
+                                      <Check size={15} />
+                                    ) : d.verdict === "warn" ? (
+                                      <Minus size={15} />
+                                    ) : (
+                                      <X size={15} />
+                                    )}
+                                    <span>{t(d.labelKey)}</span>
+                                    {d.requiresFeedback ? <sup className="-mr-0.5">*</sup> : null}
+                                  </button>
+                                  {vhelp(DECISION_HELP[d.verdict])}
+                                </span>
                               );
                             })}
                           </div>
@@ -703,31 +723,35 @@ export function Validation(): JSX.Element {
                           <p className="text-[10.5px] text-muted-2 sm:text-right">
                             {t("val.feedbackRequiredHint")}
                           </p>
-                          <select
-                            value=""
-                            disabled={assign.isPending}
-                            onChange={(e) => {
-                              if (e.target.value) {
-                                assign.mutate({ id: k.id, userId: e.target.value });
-                              }
-                            }}
-                            className="h-8 w-40 rounded-input border border-hairline bg-surface px-2 text-[12px] text-muted"
-                          >
-                            <option value="">{t("val.assign")}</option>
-                            {(users.data ?? []).map((u) => (
-                              <option key={u.id} value={u.id}>
-                                {u.name || u.id}
-                              </option>
-                            ))}
-                          </select>
+                          <div className="flex items-center gap-1">
+                            <select
+                              value=""
+                              disabled={assign.isPending}
+                              onChange={(e) => {
+                                if (e.target.value) {
+                                  assign.mutate({ id: k.id, userId: e.target.value });
+                                }
+                              }}
+                              className="h-8 w-40 rounded-input border border-hairline bg-surface px-2 text-[12px] text-muted"
+                            >
+                              <option value="">{t("val.assign")}</option>
+                              {(users.data ?? []).map((u) => (
+                                <option key={u.id} value={u.id}>
+                                  {u.name || u.id}
+                                </option>
+                              ))}
+                            </select>
+                            {vhelp("assign")}
+                          </div>
                         </div>
                       </Card>
                       {feedback?.id === k.id ? (
                         <Card className="border-hairline/80">
-                          <div className="mb-1 text-[12.5px] font-semibold text-text">
+                          <div className="mb-1 flex items-center gap-1.5 text-[12.5px] font-semibold text-text">
                             {feedback.verdict === "warn"
                               ? t("val.feedback.condTitle")
                               : t("val.feedback.rejTitle")}
+                            {vhelp("feedbackForm")}
                           </div>
                           {/* SCRUM-365 / AG-12: Feedback als Hilfe zur Nacharbeit rahmen, nicht technisch. */}
                           <p className="mb-2 text-[11.5px] leading-relaxed text-muted">

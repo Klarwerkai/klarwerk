@@ -93,3 +93,6 @@ export const useReasonerStatus = () =>
 // SCRUM-166: read-only Reasoner-/Provider-Konfiguration.
 export const useReasonerConfig = () =>
   useQuery({ queryKey: ["reasoner", "config"], queryFn: endpoints.reasoner.config });
+// SCRUM-386: kundeneigene KI-Assist-Presets für die Palette (lesen: alle Rollen).
+export const useAssistPresets = () =>
+  useQuery({ queryKey: ["reasoner", "assistPresets"], queryFn: endpoints.reasoner.assistPresets });

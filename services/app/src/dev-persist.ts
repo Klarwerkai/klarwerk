@@ -51,6 +51,9 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   modelRuns: ["append"],
   // Audit-P3 (SCRUM-397): Gelesen-Status überlebt den Neustart (Dev-Journal).
   notificationSeen: ["markSeen"],
+  // SCRUM-386: kundeneigene KI-Assist-Presets überleben den Neustart (Replace-Semantik,
+  // args tragen die komplette Liste inkl. fertiger ids → Replay exakt).
+  assistPresets: ["replaceAll"],
 } as const;
 
 // Journal defensiv laden: fehlende Datei → leer; eine korrupte (z. B. beim Crash halb
