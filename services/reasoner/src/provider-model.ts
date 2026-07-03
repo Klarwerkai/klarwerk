@@ -108,10 +108,52 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
   },
 };
 
+// SCRUM-418 (Pedi 03.07., Extract scheiterte weiter trotz grünem Key-Test): robuste
+// JSON-Objekt-Extraktion. Findet das ERSTE ausgewogene {…}-Objekt ab der ersten „{",
+// string-/escape-bewusst. Damit stören umschließende Prosa, Code-Fences (```json) oder ein
+// „}" im Begleittext NICHT mehr — die naive „erstes { bis letztes }"-Variante zerbrach genau
+// daran (Modell schrieb einen Satz vor/nach der JSON). Ist das Objekt am Token-Limit
+// abgeschnitten (nie ausgewogen), kommt der Rest ab „{" zurück — die Rettung greift dann.
 function extractJson(raw: string): string {
-  const start = raw.indexOf("{");
-  const end = raw.lastIndexOf("}");
-  return start >= 0 && end > start ? raw.slice(start, end + 1) : raw;
+  // Anker: das Objekt, das den points-Contract trägt — die „{" unmittelbar VOR dem ersten
+  // „"points"". So wird geschwätzige Prosa mit eigenen geschweiften Klammern (z. B. „nutze
+  // {dies}") übersprungen; bei abgeschnittener Antwort liefert der Scan den Rest ab dieser
+  // „{" (die Rettung greift). Ohne „"points"" fällt es auf die erste „{" zurück.
+  const pointsIdx = raw.indexOf('"points"');
+  const start = pointsIdx >= 0 ? raw.lastIndexOf("{", pointsIdx) : raw.indexOf("{");
+  if (start < 0) {
+    return raw;
+  }
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < raw.length; i++) {
+    const ch = raw.charAt(i);
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escaped = inString; // Escapes zählen nur innerhalb von Strings
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) {
+      continue;
+    }
+    if (ch === "{") {
+      depth += 1;
+    } else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return raw.slice(start, i + 1);
+      }
+    }
+  }
+  return raw.slice(start); // abgeschnitten → Rest für die Rettung (salvage)
 }
 
 // SCRUM-418: Rettung gekürzter Antworten — vollständige Punkt-Objekte aus einem am
@@ -137,11 +179,11 @@ export function salvageTruncatedExtract(raw: string, documentText: string): Extr
 // Obergrenzen: begrenzte Punkteliste (Review-bar in einer Sitzung) und gedeckelte Feldlängen.
 export const MAX_EXTRACT_POINTS = 20;
 export const MAX_EXCERPT_LENGTH = 400;
-// SCRUM-411/418: Antwort-Limit für extract — abgeschnittenes JSON war die Ursache des
+// SCRUM-411/418: Antwort-Limit für extract — abgeschnittenes JSON war eine Ursache des
 // Pedi-Befunds „kein KI-Modell trotz grünem Key-Test" (03.07.). 4096 reichte bei einem
-// 42.000-Zeichen-PDF immer noch nicht → 8192, PLUS Ausgabe-Begrenzung im Prompt (unten)
-// PLUS Rettung vollständiger Punkte aus trotzdem gekürzten Antworten (salvage).
-export const EXTRACT_MAX_TOKENS = 8192;
+// 42.000-Zeichen-PDF nicht → jetzt 16384, PLUS Ausgabe-Begrenzung im Prompt (≤12 Punkte),
+// robuste JSON-Extraktion (Prosa/Fences ignorieren) PLUS Rettung gekürzter Antworten.
+export const EXTRACT_MAX_TOKENS = 16384;
 // SCRUM-418: Ausgabe ehrlich begrenzen — weniger, dafür vollständige Punkte.
 export const EXTRACT_PROMPT_MAX_POINTS = 12;
 // Dokumenttext-Deckel für den Modell-Aufruf — bewusst großzügig, aber endlich (Token-Schutz).
@@ -153,12 +195,28 @@ function normalizeForMatch(text: string): string {
   return text.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
+// SCRUM-418: nur Buchstaben/Ziffern, kleingeschrieben. Fällt Silbentrennung (Dosier-\npumpe),
+// Zeilenumbrüche, Bindestriche und Sonderzeichen aus der PDF-Extraktion weg — genau die
+// Artefakte, an denen echte Zitate sonst am G-2-Gate scheiterten.
+function alnumOnly(text: string): string {
+  return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
 export function excerptFoundInDocument(excerpt: string, documentText: string): boolean {
   const needle = normalizeForMatch(excerpt);
   if (needle.length === 0) {
     return false;
   }
-  return normalizeForMatch(documentText).includes(needle);
+  if (normalizeForMatch(documentText).includes(needle)) {
+    return true;
+  }
+  // Toleranter Rückfall gegen PDF-Artefakte (Silbentrennung/Umbrüche/Sonderzeichen).
+  // Mindestlänge 12, damit der lockerere Vergleich keine Zufallstreffer erzeugt.
+  const alnumNeedle = alnumOnly(excerpt);
+  if (alnumNeedle.length < 12) {
+    return false;
+  }
+  return alnumOnly(documentText).includes(alnumNeedle);
 }
 
 // Modell-Antwort → geprüfte Punkteliste. Ehrlichkeit vor Vollständigkeit:

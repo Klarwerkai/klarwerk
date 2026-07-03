@@ -1,17 +1,19 @@
 #!/bin/bash
 # KLARWERK Paul-Runner — Aufgabendatei des Cloud-Workers ([Paul]).
 #
-# AUFGABE v9 (03.07. abends): GATES FÜR SCRUM-422 (v0.9.34-beta) — prüft zugleich den
-# gesamten Bestand (a11y-Fix, 416/413, 417–420, 395 inkl. Entwurf-Bugfix).
-#   SCRUM-422: Papierkorb — Löschen verschiebt Artikel in den Papierkorb (Admin → Daten:
-#              Liste, Wiederherstellen, sofortige Endlöschung); automatische Endlöschung
-#              nach 28 Tagen (lazy, ohne Cron); Demo-Daten IMMER sofort endgültig.
+# AUFGABE v10 (03.07. abends): GATES FÜR SCRUM-418-Härtung 2 (v0.9.35-beta) — prüft zugleich
+# den gesamten Bestand (a11y-Fix, 416/413, 417–420, 395 inkl. Entwurf-Bugfix, 422 Papierkorb).
+#   SCRUM-418 (Härtung 2): Extraktion aus Datei robust — string-/escape-bewusster JSON-Scanner
+#              (Prosa/Code-Fences/geschweifte Klammern im Text stören nicht mehr, Anker
+#              "points"); toleranter Belegstellen-Vergleich gegen PDF-Silbentrennung/Umbrüche;
+#              Antwort-Limit 16384. WICHTIG: Backend-Server danach NEU STARTEN (der Runner
+#              baut nur das Web-Frontend).
 # Ablauf:
 #   0: Format-Autofix (biome check --write).
-#   1: apps/web bauen (vite build → dist v0.9.34-beta).
-#   2: tools/check (Build · Lint · Architektur · Tests — inkl. trash-e2e + reviewer-defaults-e2e).
+#   1: apps/web bauen (vite build → dist v0.9.35-beta).
+#   2: tools/check (Build · Lint · Architektur · Tests — inkl. extract-failure + trash-e2e).
 #   3: npm run smoke:ui (4 Playwright-Kernflüsse).
-#   4: After-Report-Nachtrag anhängen (nur falls fehlend — Marker-Prüfung).
+#   4: After-Report-Nachträge anhängen (nur falls fehlend — Marker-Prüfung, je Nachtrag).
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 REPO="$HOME/Documents/dev_Klarwerk"
@@ -22,7 +24,7 @@ FEHL=0
 
 {
 echo "${FETT}KLARWERK Paul-Runner — $(date '+%d.%m.%Y %H:%M')${AUS}"
-echo "Aufgabe v9: Gates für SCRUM-422 (v0.9.34-beta) + Gesamtbestand — ca. 4–7 Minuten."
+echo "Aufgabe v10: Gates für SCRUM-418-Härtung (v0.9.35-beta) + Gesamtbestand — ca. 4–7 Minuten."
 echo
 
 cd "$REPO" || { echo "${ROT}FEHLER: Repo nicht gefunden.${AUS}"; exit 1; }
@@ -34,7 +36,7 @@ echo
 
 echo "${FETT}— Schritt 1/4: apps/web bauen (vite build)${AUS}"
 if (cd apps/web && npx vite build); then
-  echo "${GRUEN}✓ Build/dist v0.9.34 erstellt${AUS}"
+  echo "${GRUEN}✓ Build/dist v0.9.35 erstellt${AUS}"
 else
   echo "${ROT}✗ vite build ROT${AUS}"; FEHL=1
 fi
@@ -56,26 +58,30 @@ else
 fi
 echo
 
-echo "${FETT}— Schritt 4/4: After-Report-Nachtrag (nur falls fehlend)${AUS}"
+echo "${FETT}— Schritt 4/4: After-Report-Nachträge (je nur falls fehlend)${AUS}"
 AR="$REPO/docs/qm/claude-after-report.md"
-if ! grep -q "SCRUM-422 — Papierkorb für gelöschte Artikel" "$AR" 2>/dev/null; then
-  echo >> "$AR"
-  cat "$BRIDGE/paul-nachtrag-422.md" >> "$AR" && echo "${GRUEN}✓ Nachtrag 422 angehängt${AUS}"
-else
-  echo "ℹ️ Nachtrag schon vorhanden — übersprungen."
-fi
+anhaengen() { # $1 = Marker, $2 = Nachtrag-Datei
+  if ! grep -q "$1" "$AR" 2>/dev/null; then
+    echo >> "$AR"; cat "$BRIDGE/$2" >> "$AR" && echo "${GRUEN}✓ $2 angehängt${AUS}"
+  else
+    echo "ℹ️ $2 schon vorhanden — übersprungen."
+  fi
+}
+anhaengen "SCRUM-422 — Papierkorb für gelöschte Artikel" "paul-nachtrag-422.md"
+anhaengen "SCRUM-418 (Härtung 2) — Extraktion aus Datei robust" "paul-nachtrag-418b.md"
 
 echo
 if [ "$FEHL" = "0" ]; then
-  echo "${GRUEN}${FETT}ALLE GATES GRÜN — Gesamtbestand lieferbar (v0.9.34-beta, inkl. 416/413 + 417-420 + 395 + 422).${AUS}"
-  echo "Sichtabnahme (4 Minuten):"
-  echo "  1. Einen eigenen (Nicht-Demo-)Beitrag löschen → Admin → Daten → Papierkorb: Eintrag da,"
-  echo "     Wiederherstellen → Beitrag ist zurück (Version/Historie unverändert)."
-  echo "  2. Nochmal löschen → im Papierkorb 'Endgültig löschen' (Rückfrage) → Eintrag weg."
-  echo "  3. Wissen erfassen → Erweiterte Details: Block 'Prüfer vorschlagen' + Standard-Platzhalter."
-  echo "  4. Admin → Daten → Prüfungen: Standard-Prüferanzahl setzen wirkt als Platzhalter im Erfassen."
+  echo "${GRUEN}${FETT}ALLE GATES GRÜN — Gesamtbestand lieferbar (v0.9.35-beta, inkl. 416/413 + 417-420 + 395 + 422 + 418-Härtung).${AUS}"
+  echo "WICHTIG vor der Datei-Extraktion: den KLARWERK-Backend-Server NEU STARTEN"
+  echo "(der Runner baut nur das Web-Frontend; der Reasoner-Fix wirkt erst nach Server-Neustart)."
+  echo "Sichtabnahme (5 Minuten):"
+  echo "  1. Server neu starten → Wissen erfassen → Aus Datei → PDF → 'Nach Wissen suchen':"
+  echo "     Punkte kommen (ggf. mit ehrlichem Gekürzt-Hinweis), KEIN JSON-Fehler mehr."
+  echo "  2. Beitrag löschen → Admin → Daten → Papierkorb: wiederherstellen / endgültig löschen."
+  echo "  3. Wissen erfassen → Erweiterte Details: 'Prüfer vorschlagen' + Standard-Platzhalter."
   echo "Commit-Empfehlung (Boss-Session):"
-  echo "  [Cloud-Worker] SCRUM-395/422: Prüfer-Vorschlag + Standard-Prüferanzahl · Papierkorb (v0.9.34-beta)"
+  echo "  [Cloud-Worker] SCRUM-418-Härtung/422/395: Extraktion robust · Papierkorb · Prüfer-Vorschlag (v0.9.35-beta)"
   echo "KEIN Push — KLARWERK Sync macht Pedi."
 else
   echo "${ROT}${FETT}Mindestens ein Gate ROT — Paul analysiert docs/team2-austausch/paul-runner.log und liefert einen Fix.${AUS}"

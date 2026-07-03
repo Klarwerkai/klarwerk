@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { anthropicClient } from "./model-client";
 import type { ModelClient } from "./provider-model";
-import { EXTRACT_MAX_TOKENS, ModelProvider, salvageTruncatedExtract } from "./provider-model";
+import {
+  EXTRACT_MAX_TOKENS,
+  ModelProvider,
+  excerptFoundInDocument,
+  salvageTruncatedExtract,
+} from "./provider-model";
 import { Reasoner } from "./service";
 
 // SCRUM-411 (Pedi-Test 03.07.): Extract meldete „kein KI-Modell" trotz grünem Key-Test.
@@ -89,6 +94,45 @@ describe("SCRUM-411: Extract-Fehler ehrlich benennen + Antwort-Limit", () => {
     expect(saved.map((p) => p.title)).toEqual(["Echter Punkt"]);
     // Ohne einen einzigen vollständigen Punkt gibt es nichts zu retten → leere Liste.
     expect(salvageTruncatedExtract('{"points": [{"title": "abgeschn', DOC)).toEqual([]);
+  });
+
+  // SCRUM-418 (Pedi 03.07., Extract scheiterte weiter): das Modell bettet die JSON gern in
+  // Prosa/Code-Fences ein. Die robuste Extraktion muss das erste ausgewogene {…} finden —
+  // die alte „erstes { bis letztes }"-Logik zerbrach an einem „}" im Begleitsatz.
+  it("SCRUM-418: JSON in Prosa/Code-Fences mit geschweiften Klammern im Fließtext wird sauber geparst", async () => {
+    const wrapped: ModelClient = {
+      name: "fake:geschwaetzig",
+      complete: async () =>
+        "Gerne! Hier die Punkte (nutze {diese} sinnvoll):\n```json\n" +
+        '{"points": [{"title": "Schmierintervall", "summary": "Alle 200 h.", "sourceExcerpt": "alle 200 Betriebsstunden"}]}\n' +
+        "```\nHoffe, das hilft! {Ende}",
+    };
+    const result = await new Reasoner(new ModelProvider(wrapped)).extract(DOC, "de");
+    expect(result.points.map((p) => p.title)).toEqual(["Schmierintervall"]);
+    expect(result.note).toBeNull();
+  });
+
+  // SCRUM-418: PDF-Text bringt Silbentrennung/Zeilenumbrüche mit. Ein echtes Zitat, das im
+  // Dokument über einen Trennstrich+Umbruch läuft, muss die Belegstelle trotzdem finden.
+  it("SCRUM-418: Belegstelle wird trotz Silbentrennung/Umbruch im Dokument erkannt", async () => {
+    const pdfDoc = "Protokoll: Die Dosier-\npumpe P2 ist alle 200 Betriebs-\nstunden zu schmieren.";
+    const client: ModelClient = {
+      name: "fake:sauber",
+      complete: async () =>
+        '{"points": [{"title": "Schmierintervall", "summary": "Alle 200 h.", "sourceExcerpt": "Dosierpumpe P2 ist alle 200 Betriebsstunden"}]}',
+    };
+    const result = await new Reasoner(new ModelProvider(client)).extract(pdfDoc, "de");
+    expect(result.points).toHaveLength(1);
+    expect(result.note).toBeNull();
+  });
+
+  it("SCRUM-418: der tolerante Belegstellen-Rückfall erzeugt keine Zufallstreffer (Mindestlänge)", () => {
+    // Kurzer, nicht enthaltener Schnipsel darf NICHT über den alnum-Rückfall matchen.
+    expect(excerptFoundInDocument("XY 7!", DOC)).toBe(false);
+    // Frei erfundene, lange Belegstelle bleibt abgewiesen.
+    expect(
+      excerptFoundInDocument("Turbine wöchentlich mit Spezialöl entlüften und prüfen", DOC),
+    ).toBe(false);
   });
 
   it("extract ruft das Modell mit dem großen Antwort-Limit auf (EXTRACT_MAX_TOKENS)", async () => {
