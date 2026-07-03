@@ -9,8 +9,15 @@ import {
 } from "../../apps/web/src/lib/bodyTemplates";
 
 describe("SCRUM-319: bodyTemplates", () => {
-  it("liefert drei stabile Templates mit i18n-Keys", () => {
-    expect(BODY_TEMPLATE_IDS).toEqual(["procedure", "troubleshooting", "safety"]);
+  it("liefert sechs stabile Templates mit i18n-Keys (SCRUM-404: + Checkliste/Übergabe/Entscheidung)", () => {
+    expect(BODY_TEMPLATE_IDS).toEqual([
+      "procedure",
+      "troubleshooting",
+      "safety",
+      "checklist",
+      "handover",
+      "decision",
+    ]);
     expect(BODY_TEMPLATES.map((t) => t.id)).toEqual(BODY_TEMPLATE_IDS);
 
     for (const template of BODY_TEMPLATES) {
@@ -78,10 +85,14 @@ describe("SCRUM-319: bodyTemplates", () => {
 
   // SCRUM-342: Preview-&-Apply-i18n (Auswahl/Vorschau/Übernehmen/Hinweis) DE+EN vorhanden + ehrlich.
   it("Preview-&-Apply-i18n (selected/preview/apply/hint) DE+EN vorhanden", () => {
+    // SCRUM-404: der Übernehmen-Knopf sagt konkret, was passiert (einsetzen vs. unten anfügen)
+    // und hat eine ?-Hilfe (applyHelp).
     const keys = [
       "editor.template.selected",
       "editor.template.preview",
-      "editor.template.apply",
+      "editor.template.applySet",
+      "editor.template.applyAppend",
+      "editor.template.applyHelp",
       "editor.template.hint",
     ];
     for (const key of keys) {

@@ -4,7 +4,8 @@
 // Architektur, kein RAG, keine Suche — die Aktionen nutzen den vorhandenen reasoner.assist-Endpunkt
 // (optionale instruction). Ehrlich: die KI macht einen VORSCHLAG; der Mensch übernimmt bewusst.
 
-export type AssistAction = "clarify" | "structure" | "expand" | "spelling";
+// SCRUM-404 (Pedi 03.07.): + „Formatieren" — nur Gliederung/Absatzbau, Inhalt unverändert.
+export type AssistAction = "clarify" | "structure" | "expand" | "spelling" | "format";
 
 // Reihenfolge = Anzeigereihenfolge der Buttons.
 export const ASSIST_ACTIONS: readonly AssistAction[] = [
@@ -12,6 +13,7 @@ export const ASSIST_ACTIONS: readonly AssistAction[] = [
   "structure",
   "expand",
   "spelling",
+  "format",
 ];
 
 // Sichtbares Button-Label je Aktion (i18n-Key).
@@ -23,6 +25,12 @@ export function assistActionLabelKey(action: AssistAction): string {
 // übergeben. Im deterministischen Fallback ohne Wirkung (generische Glättung), im Modellmodus aktiv.
 export function assistActionInstructionKey(action: AssistAction): string {
   return `capture.ai.instr.${action}`;
+}
+
+// SCRUM-404: Ein-Satz-Erklärung je Aktion (i18n-Key) — für das ?-HelpTip am Button,
+// damit klar ist, was die jeweilige KI-Aktion tut, BEVOR man sie auslöst.
+export function assistActionHelpKey(action: AssistAction): string {
+  return `capture.ai.help.${action}`;
 }
 
 export type AssistApplyMode = "replace" | "append";

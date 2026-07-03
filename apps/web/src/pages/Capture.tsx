@@ -8,6 +8,7 @@ import {
   Save,
   Sparkles,
   Trash2,
+  Volume2,
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -239,6 +240,12 @@ export function Capture(): JSX.Element {
   const recRef = useRef<SpeechRec | null>(null);
   // SCRUM-236: ehrliche, DOM-freie Feature-Detection statt inline-window-Zugriff.
   const speechSupported = hasSpeechRecognition(window);
+  // SCRUM-403: Diktat auch für die Interview-Antwort (eigener Rekorder, gleiches Muster).
+  const [ivListening, setIvListening] = useState(false);
+  const ivRecRef = useRef<SpeechRec | null>(null);
+  // SCRUM-403: Interview-Frage vorlesen (SpeechSynthesis) — nur auf Klick, kein Auto-Play.
+  const [ivReading, setIvReading] = useState(false);
+  const ttsSupported = typeof window !== "undefined" && "speechSynthesis" in window;
 
   // SCRUM-132: reasoner-getriebenes Interview (stateless; Antworten → nächste Frage).
   const [ivAnswers, setIvAnswers] = useState<string[]>([]);
@@ -586,14 +593,11 @@ export function Capture(): JSX.Element {
     }
   };
 
-  const toggleDictation = (): void => {
-    if (listening) {
-      recRef.current?.stop();
-      return;
-    }
+  // SCRUM-403: gemeinsame Rekorder-Fabrik für beide Diktat-Ziele (Freitext + Interview-Antwort).
+  const makeRec = (append: (text: string) => void, onDone: () => void): SpeechRec | null => {
     const Ctor = speechCtor();
     if (!Ctor) {
-      return;
+      return null;
     }
     const rec = new Ctor();
     rec.lang = "de-DE";
@@ -604,14 +608,88 @@ export function Capture(): JSX.Element {
       for (let i = e.resultIndex; i < e.results.length; i++) {
         text += e.results[i][0].transcript;
       }
-      setRaw((prev) => (prev ? `${prev} ${text}` : text));
+      append(text);
     };
-    rec.onend = () => setListening(false);
-    rec.onerror = () => setListening(false);
+    rec.onend = onDone;
+    rec.onerror = onDone;
+    return rec;
+  };
+
+  const toggleDictation = (): void => {
+    if (listening) {
+      recRef.current?.stop();
+      return;
+    }
+    const rec = makeRec(
+      (text) => setRaw((prev) => (prev ? `${prev} ${text}` : text)),
+      () => setListening(false),
+    );
+    if (!rec) {
+      return;
+    }
     recRef.current = rec;
     rec.start();
     setListening(true);
   };
+
+  // SCRUM-403: Diktat für die Interview-Antwort — hängt Erkanntes an die laufende Antwort an.
+  const toggleIvDictation = (): void => {
+    if (ivListening) {
+      ivRecRef.current?.stop();
+      return;
+    }
+    const rec = makeRec(
+      (text) => setIvAnswer((prev) => (prev ? `${prev} ${text}` : text)),
+      () => setIvListening(false),
+    );
+    if (!rec) {
+      return;
+    }
+    ivRecRef.current = rec;
+    rec.start();
+    setIvListening(true);
+  };
+
+  // SCRUM-403: aktuelle Interview-Frage vorlesen; erneuter Klick stoppt. Ehrlich: Knopf
+  // erscheint nur, wenn der Browser SpeechSynthesis kann. Kein Auto-Play.
+  const toggleReadQuestion = (): void => {
+    if (!ttsSupported) {
+      return;
+    }
+    if (ivReading) {
+      window.speechSynthesis.cancel();
+      setIvReading(false);
+      return;
+    }
+    const text = ivResult?.question;
+    if (!text) {
+      return;
+    }
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = i18n.language.startsWith("en") ? "en-US" : "de-DE";
+    u.onend = () => setIvReading(false);
+    u.onerror = () => setIvReading(false);
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(u);
+    setIvReading(true);
+  };
+
+  // SCRUM-403: Vorlesen sauber beenden, wenn die Frage wechselt oder die Seite verlassen wird.
+  useEffect(() => {
+    return () => {
+      if (ttsSupported) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, [ttsSupported]);
+  // Bei jeder neuen Frage wird ein laufendes Vorlesen gestoppt (kein Weiterlesen alter Fragen).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: ivResult ist bewusst der Auslöser.
+  useEffect(() => {
+    if (ttsSupported) {
+      window.speechSynthesis.cancel();
+    }
+    setIvReading(false);
+  }, [ivResult, ttsSupported]);
 
   // SCRUM-373 / AG-02-SESSION: Session-Datei mit Originalbytes merken (für den Object-Store-Upload beim
   // Speichern). Reine lokale Erfassung — noch KEINE objectId, daher noch NICHT body-verlinkbar (kein Fake-Link).
@@ -1233,11 +1311,25 @@ export function Capture(): JSX.Element {
                       </span>
                     ) : null}
                   </div>
-                  <p className="text-[14px] font-medium text-text">
-                    {interview.isPending
-                      ? t("capture.ivThinking")
-                      : (ivResult?.question ?? t("capture.ivThinking"))}
-                  </p>
+                  {/* SCRUM-403 (Pedi 03.07.): Frage vorlesen + Antwort diktieren — Sprache in
+                      beide Richtungen; Knöpfe nur, wenn der Browser es ehrlich kann. */}
+                  <div className="flex items-start gap-2">
+                    <p className="flex-1 text-[14px] font-medium text-text">
+                      {interview.isPending
+                        ? t("capture.ivThinking")
+                        : (ivResult?.question ?? t("capture.ivThinking"))}
+                    </p>
+                    {ttsSupported && ivResult && !interview.isPending ? (
+                      <Button
+                        variant={ivReading ? "primary" : "ghost"}
+                        onClick={toggleReadQuestion}
+                        title={ivReading ? t("capture.ivReadStop") : t("capture.ivReadAloud")}
+                      >
+                        <Volume2 size={15} />
+                        {ivReading ? t("capture.ivReadStop") : t("capture.ivReadAloud")}
+                      </Button>
+                    ) : null}
+                  </div>
                   <textarea
                     value={ivAnswer}
                     onChange={(e) => setIvAnswer(e.target.value)}
@@ -1245,13 +1337,27 @@ export function Capture(): JSX.Element {
                     placeholder={t("capture.ivAnswerHint")}
                     className={textareaCls}
                   />
-                  <Button
-                    variant="primary"
-                    disabled={interview.isPending || ivAnswer.trim().length === 0 || !ivResult}
-                    onClick={ivSend}
-                  >
-                    {t("capture.ivSend")}
-                  </Button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="primary"
+                      disabled={interview.isPending || ivAnswer.trim().length === 0 || !ivResult}
+                      onClick={ivSend}
+                    >
+                      {t("capture.ivSend")}
+                    </Button>
+                    {speechSupported ? (
+                      <Button
+                        variant={ivListening ? "primary" : "ghost"}
+                        onClick={toggleIvDictation}
+                        disabled={interview.isPending || !ivResult}
+                      >
+                        <Mic size={15} />
+                        {ivListening ? t("capture.diktatStop") : t("capture.diktatStart")}
+                      </Button>
+                    ) : (
+                      <span className="text-[12px] text-muted-2">{t("capture.ivDictNa")}</span>
+                    )}
+                  </div>
                 </div>
               )
             ) : null}

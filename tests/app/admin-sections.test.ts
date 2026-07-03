@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
+import i18n from "../../apps/web/src/i18n";
 import {
   ADMIN_SECTIONS,
   DEFAULT_ADMIN_SECTION,
   isAdminSectionId,
 } from "../../apps/web/src/lib/adminSections";
-import i18n from "../../apps/web/src/i18n";
 
 // SCRUM-394 (Pedi): Admin in drei Bereiche — Zuordnung testbar, Labels in beiden Sprachen.
 describe("SCRUM-394: Admin-Bereiche", () => {

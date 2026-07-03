@@ -568,11 +568,20 @@ const de = {
   "capture.ai.action.structure": "Strukturieren",
   "capture.ai.action.expand": "Erweitern",
   "capture.ai.action.spelling": "Rechtschreibung",
+  "capture.ai.action.format": "Formatieren",
   "capture.ai.instr.clarify": "Formuliere klarer und präziser, ohne den Sinn zu verändern.",
   "capture.ai.instr.structure": "Strukturiere den Text in klare, knappe Sätze bzw. Stichpunkte.",
   "capture.ai.instr.expand":
     "Formuliere etwas ausführlicher und vollständiger — ohne neue Fakten zu erfinden.",
   "capture.ai.instr.spelling": "Korrigiere nur Rechtschreibung und Grammatik.",
+  "capture.ai.instr.format":
+    "Formatiere den Text übersichtlich mit Überschriften, Absätzen und Listen. Inhalt und Wortlaut unverändert lassen, nichts hinzufügen oder weglassen.",
+  "capture.ai.help.clarify": "Formuliert verständlicher und präziser — der Sinn bleibt gleich.",
+  "capture.ai.help.structure": "Ordnet den Text in knappe Sätze bzw. Stichpunkte.",
+  "capture.ai.help.expand": "Formuliert ausführlicher — erfindet dabei keine neuen Fakten.",
+  "capture.ai.help.spelling": "Korrigiert nur Rechtschreibung und Grammatik, sonst nichts.",
+  "capture.ai.help.format":
+    "Baut nur die Optik um (Überschriften, Absätze, Listen) — der Inhalt bleibt wörtlich erhalten.",
   "capture.ai.freeLabel": "Eigene KI-Anweisung",
   "capture.ai.freePlaceholder": "z. B. „kürzer und sachlicher formulieren“",
   "capture.ai.run": "Ausführen",
@@ -680,7 +689,6 @@ const de = {
     "Vorlage auswählen, Vorschau prüfen und bewusst übernehmen. Startstruktur/Vorschlag — bestehender Inhalt wird beim Anhängen nicht ersetzt; nichts wird automatisch gespeichert oder validiert.",
   "editor.template.selected": "Ausgewählte Vorlage",
   "editor.template.preview": "Vorschau",
-  "editor.template.apply": "Vorlage übernehmen",
   "editor.template.procedure.label": "Vorgehen",
   "editor.template.procedure.description": "Bedingungen und Schritte für wiederholbare Arbeit.",
   "editor.template.troubleshooting.label": "Störung",
@@ -688,6 +696,19 @@ const de = {
     "Symptom, Ursache und Maßnahme strukturiert erfassen.",
   "editor.template.safety.label": "Sicherheit",
   "editor.template.safety.description": "Warnung, sichere Prüfung und gewünschter Zustand.",
+  "editor.template.checklist.label": "Checkliste",
+  "editor.template.checklist.description":
+    "Abhakbare Prüfpunkte plus „was tun, wenn nicht erfüllt“.",
+  "editor.template.handover.label": "Übergabe/Schulung",
+  "editor.template.handover.description":
+    "Das Wichtigste für die nächste Person: Kernpunkte, typische Fehler, Ansprechpartner.",
+  "editor.template.decision.label": "Entscheidungshilfe",
+  "editor.template.decision.description":
+    "Wenn-dann-Regeln für eine wiederkehrende Entscheidung, inkl. Eskalationsgrenze.",
+  "editor.template.applySet": "Vorlage einsetzen",
+  "editor.template.applyAppend": "Vorlage unten anfügen",
+  "editor.template.applyHelp":
+    "Fügt die gezeigte Startstruktur in die Wissensseite ein: Ist die Seite leer, wird sie eingesetzt; steht schon etwas drin, wird sie UNTEN angehängt — nichts wird ersetzt oder gespeichert. Die Platzhalter („… ergänzen“) ersetzt du danach durch dein Wissen.",
   "editor.template.mode.set": "Leerer Inhalt: Die Vorlage wird eingesetzt.",
   "editor.template.mode.append":
     "Bestehender Inhalt: Die Vorlage wird angehängt, nichts wird ersetzt.",
@@ -717,6 +738,9 @@ const de = {
     "Nur Bilder werden inline eingefügt. Dateien bleiben Anhang/Evidence — ein sicherer Body-Link entsteht erst mit gespeicherter Objekt-Referenz (kein Fake-Link). Die Validierung entscheidet.",
   "editor.preview": "Vorschau",
   "editor.edit": "Bearbeiten",
+  "editor.previewBadge": "Vorschau — so sehen Leser die Seite",
+  "editor.previewEmpty":
+    "Noch kein Inhalt — wechsle zu „Bearbeiten“ und schreibe den ersten Abschnitt.",
   "editor.linkPrompt": "Link-URL eingeben:",
   "editor.linkUrl": "URL",
   "editor.linkUrlPlaceholder": "https://… oder interne Route",
@@ -764,6 +788,9 @@ const de = {
   "capture.ivThinking": "Die KI formuliert die nächste Frage …",
   "capture.ivAnswerHint": "Deine Antwort …",
   "capture.ivSend": "Antwort senden",
+  "capture.ivReadAloud": "Vorlesen",
+  "capture.ivReadStop": "Stopp",
+  "capture.ivDictNa": "Diktat ist in diesem Browser nicht verfügbar — bitte tippen.",
   "capture.ivModel": "Reasoner-Modell",
   "capture.ivFallback": "Deterministischer Fallback",
   "capture.ivQ.title": "Worum geht es? Formuliere eine kurze Kernaussage.",
@@ -2377,12 +2404,21 @@ const en: typeof de = {
   "capture.ai.action.structure": "Structure",
   "capture.ai.action.expand": "Expand",
   "capture.ai.action.spelling": "Spelling",
+  "capture.ai.action.format": "Format",
   "capture.ai.instr.clarify": "Rephrase more clearly and precisely without changing the meaning.",
   "capture.ai.instr.structure":
     "Structure the text into clear, concise sentences or bullet points.",
   "capture.ai.instr.expand":
     "Phrase a bit more fully and completely — without inventing new facts.",
   "capture.ai.instr.spelling": "Correct spelling and grammar only.",
+  "capture.ai.instr.format":
+    "Format the text cleanly with headings, paragraphs and lists. Keep content and wording unchanged; add or remove nothing.",
+  "capture.ai.help.clarify": "Rephrases more clearly and precisely — the meaning stays the same.",
+  "capture.ai.help.structure": "Arranges the text into concise sentences or bullet points.",
+  "capture.ai.help.expand": "Phrases more fully — without inventing new facts.",
+  "capture.ai.help.spelling": "Corrects spelling and grammar only, nothing else.",
+  "capture.ai.help.format":
+    "Only reworks the layout (headings, paragraphs, lists) — the content stays verbatim.",
   "capture.ai.freeLabel": "Your own AI instruction",
   "capture.ai.freePlaceholder": "e.g. “phrase it shorter and more factual”",
   "capture.ai.run": "Run",
@@ -2488,7 +2524,6 @@ const en: typeof de = {
     "Select a template, review the preview and apply it consciously. Starting structure/suggestion — existing content is not replaced when appended; nothing is saved or validated automatically.",
   "editor.template.selected": "Selected template",
   "editor.template.preview": "Preview",
-  "editor.template.apply": "Apply template",
   "editor.template.procedure.label": "Procedure",
   "editor.template.procedure.description": "Conditions and steps for repeatable work.",
   "editor.template.troubleshooting.label": "Issue",
@@ -2496,6 +2531,18 @@ const en: typeof de = {
     "Capture symptom, cause and action in a structure.",
   "editor.template.safety.label": "Safety",
   "editor.template.safety.description": "Warning, safe check and desired state.",
+  "editor.template.checklist.label": "Checklist",
+  "editor.template.checklist.description": "Checkable items plus “what to do if not met”.",
+  "editor.template.handover.label": "Handover/training",
+  "editor.template.handover.description":
+    "The essentials for the next person: key points, typical mistakes, contacts.",
+  "editor.template.decision.label": "Decision aid",
+  "editor.template.decision.description":
+    "If-then rules for a recurring decision, incl. escalation limit.",
+  "editor.template.applySet": "Insert template",
+  "editor.template.applyAppend": "Append template below",
+  "editor.template.applyHelp":
+    "Inserts the shown starting structure into the knowledge page: if the page is empty it is inserted; if there is content already, it is appended BELOW — nothing is replaced or saved. Replace the placeholders (“add …”) with your knowledge afterwards.",
   "editor.template.mode.set": "Empty content: the template will be inserted.",
   "editor.template.mode.append":
     "Existing content: the template will be appended; nothing is replaced.",
@@ -2523,6 +2570,8 @@ const en: typeof de = {
     "Only images are inserted inline. Files stay as attachments/evidence — a safe body link is only possible with a saved object reference (no fake link). The review decides.",
   "editor.preview": "Preview",
   "editor.edit": "Edit",
+  "editor.previewBadge": "Preview — how readers see the page",
+  "editor.previewEmpty": "No content yet — switch to “Edit” and write the first section.",
   "editor.linkPrompt": "Enter link URL:",
   "editor.linkUrl": "URL",
   "editor.linkUrlPlaceholder": "https://… or internal route",
@@ -2570,6 +2619,9 @@ const en: typeof de = {
   "capture.ivThinking": "The AI is forming the next question …",
   "capture.ivAnswerHint": "Your answer …",
   "capture.ivSend": "Send answer",
+  "capture.ivReadAloud": "Read aloud",
+  "capture.ivReadStop": "Stop",
+  "capture.ivDictNa": "Dictation is not available in this browser — please type.",
   "capture.ivModel": "Reasoner model",
   "capture.ivFallback": "Deterministic fallback",
   "capture.ivQ.title": "What is it about? Write a short core statement.",

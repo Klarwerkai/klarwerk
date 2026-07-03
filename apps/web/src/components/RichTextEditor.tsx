@@ -3,6 +3,7 @@ import type { ClipboardEvent, DragEvent, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type EditorFile, fileLinkHtml } from "../lib/bodyFileLink";
+import { bodyReadMode } from "../lib/bodyReadMode";
 import {
   EDITOR_BLOCKS,
   type EditorBlock,
@@ -201,155 +202,173 @@ export function RichTextEditor({
   return (
     <div className="relative rounded-card border border-hairline bg-surface">
       <div className="flex flex-wrap items-center gap-1 border-b border-hairline bg-page/60 p-1.5">
-        <button
-          type="button"
-          title={t("editor.h2")}
-          className={tb}
-          onClick={() => exec("formatBlock", "h2")}
-        >
-          H2
-        </button>
-        <button
-          type="button"
-          title={t("editor.h3")}
-          className={tb}
-          onClick={() => exec("formatBlock", "h3")}
-        >
-          H3
-        </button>
-        <button
-          type="button"
-          title={t("editor.para")}
-          className={tb}
-          onClick={() => exec("formatBlock", "p")}
-        >
-          ¶
-        </button>
-        {sep}
-        <button type="button" title={t("editor.bold")} className={tb} onClick={() => exec("bold")}>
-          <strong>B</strong>
-        </button>
-        <button
-          type="button"
-          title={t("editor.italic")}
-          className={tb}
-          onClick={() => exec("italic")}
-        >
-          <em>I</em>
-        </button>
-        {sep}
-        <button
-          type="button"
-          title={t("editor.ul")}
-          className={tb}
-          onClick={() => exec("insertUnorderedList")}
-        >
-          •
-        </button>
-        <button
-          type="button"
-          title={t("editor.ol")}
-          className={tb}
-          onClick={() => exec("insertOrderedList")}
-        >
-          1.
-        </button>
-        <button type="button" title={t("editor.link")} className={tb} onClick={openLinkPanel}>
-          <LinkIcon size={14} />
-        </button>
-        {sep}
-        <div className="relative">
-          <button
-            type="button"
-            title={t("editor.image")}
-            className={tb}
-            onClick={() => setShowImages((s) => !s)}
-          >
-            <ImageIcon size={14} />
-            {t("editor.imageLabel")}
-          </button>
-          {showImages ? (
-            <div className="absolute z-10 mt-1 w-56 rounded-card border border-hairline bg-surface p-1.5 shadow">
-              {images.length === 0 ? (
-                <p className="px-2 py-1 text-[12px] text-muted">{t("editor.noImages")}</p>
-              ) : (
-                images.map((img) => (
-                  <button
-                    key={img.objectId ?? img.src ?? img.name}
-                    type="button"
-                    onClick={() => addImage(img)}
-                    className="block w-full truncate rounded-btn px-2 py-1 text-left text-[12.5px] text-text hover:bg-hairline-soft"
-                  >
-                    {img.name}
-                  </button>
-                ))
-              )}
-            </div>
-          ) : null}
-        </div>
-        {/* SCRUM-355: Nicht-Bild-Datei als sichere Body-Referenz (Object-Store) einfügen. */}
-        <div className="relative">
-          <button
-            type="button"
-            title={t("editor.file")}
-            className={tb}
-            onClick={() => setShowFiles((s) => !s)}
-          >
-            <Paperclip size={14} />
-            {t("editor.fileLabel")}
-          </button>
-          {showFiles ? (
-            <div className="absolute z-10 mt-1 w-60 rounded-card border border-hairline bg-surface p-1.5 shadow">
-              <p className="px-2 pb-1 pt-0.5 text-[11px] text-muted-2">{t("editor.insertFile")}</p>
-              {files.length === 0 ? (
-                <p className="px-2 py-1 text-[12px] text-muted">{t("editor.noFiles")}</p>
-              ) : (
-                files.map((file) => (
-                  <button
-                    key={file.objectId}
-                    type="button"
-                    onClick={() => addFile(file)}
-                    className="block w-full truncate rounded-btn px-2 py-1 text-left text-[12.5px] text-text hover:bg-hairline-soft"
-                  >
-                    {file.name}
-                  </button>
-                ))
-              )}
-            </div>
-          ) : null}
-        </div>
-        {sep}
-        {/* SCRUM-314/384: Callouts Info/Hinweis/Warnung/Erfolg — farbige Text-Pills (ARGUS). */}
-        {EDITOR_BLOCKS.map((block) => (
-          <button
-            key={block}
-            type="button"
-            title={t(editorBlockLabelKey(block))}
-            className={`inline-flex h-8 items-center rounded-btn border bg-surface px-2 text-[12px] font-semibold hover:bg-hairline-soft ${BLOCK_BTN_CLASS[block]}`}
-            onClick={() => addBlock(block)}
-          >
-            {t(editorBlockLabelKey(block))}
-          </button>
-        ))}
-        {/* SCRUM-384: ✨KI öffnet/schließt die KI-Palette — erst auf bewussten Klick (Pedi-Sollbild). */}
-        {aiPanel ? (
+        {/* SCRUM-404 (Pedi 03.07.): In der Vorschau sind Formatier-Knöpfe wirkungslos — sie
+            verschwinden dort und ein deutliches Vorschau-Signal macht den Moduswechsel sichtbar
+            (vorher sah Vorschau ≈ Bearbeiten aus → „der Knopf tut nichts"). */}
+        {mode === "edit" ? (
           <>
+            <button
+              type="button"
+              title={t("editor.h2")}
+              className={tb}
+              onClick={() => exec("formatBlock", "h2")}
+            >
+              H2
+            </button>
+            <button
+              type="button"
+              title={t("editor.h3")}
+              className={tb}
+              onClick={() => exec("formatBlock", "h3")}
+            >
+              H3
+            </button>
+            <button
+              type="button"
+              title={t("editor.para")}
+              className={tb}
+              onClick={() => exec("formatBlock", "p")}
+            >
+              ¶
+            </button>
             {sep}
             <button
               type="button"
-              title={t("editor.aiToggle")}
-              aria-expanded={showAi}
-              className={`inline-flex h-8 items-center gap-1 rounded-btn border px-2.5 text-[12px] font-semibold ${
-                showAi
-                  ? "border-ai/50 bg-ai-surface-1 text-ai"
-                  : "border-hairline bg-surface text-text hover:bg-hairline-soft"
-              }`}
-              onClick={() => setShowAi((s) => !s)}
+              title={t("editor.bold")}
+              className={tb}
+              onClick={() => exec("bold")}
             >
-              ✨ {t("editor.aiLabel")}
+              <strong>B</strong>
             </button>
+            <button
+              type="button"
+              title={t("editor.italic")}
+              className={tb}
+              onClick={() => exec("italic")}
+            >
+              <em>I</em>
+            </button>
+            {sep}
+            <button
+              type="button"
+              title={t("editor.ul")}
+              className={tb}
+              onClick={() => exec("insertUnorderedList")}
+            >
+              •
+            </button>
+            <button
+              type="button"
+              title={t("editor.ol")}
+              className={tb}
+              onClick={() => exec("insertOrderedList")}
+            >
+              1.
+            </button>
+            <button type="button" title={t("editor.link")} className={tb} onClick={openLinkPanel}>
+              <LinkIcon size={14} />
+            </button>
+            {sep}
+            <div className="relative">
+              <button
+                type="button"
+                title={t("editor.image")}
+                className={tb}
+                onClick={() => setShowImages((s) => !s)}
+              >
+                <ImageIcon size={14} />
+                {t("editor.imageLabel")}
+              </button>
+              {showImages ? (
+                <div className="absolute z-10 mt-1 w-56 rounded-card border border-hairline bg-surface p-1.5 shadow">
+                  {images.length === 0 ? (
+                    <p className="px-2 py-1 text-[12px] text-muted">{t("editor.noImages")}</p>
+                  ) : (
+                    images.map((img) => (
+                      <button
+                        key={img.objectId ?? img.src ?? img.name}
+                        type="button"
+                        onClick={() => addImage(img)}
+                        className="block w-full truncate rounded-btn px-2 py-1 text-left text-[12.5px] text-text hover:bg-hairline-soft"
+                      >
+                        {img.name}
+                      </button>
+                    ))
+                  )}
+                </div>
+              ) : null}
+            </div>
+            {/* SCRUM-355: Nicht-Bild-Datei als sichere Body-Referenz (Object-Store) einfügen. */}
+            <div className="relative">
+              <button
+                type="button"
+                title={t("editor.file")}
+                className={tb}
+                onClick={() => setShowFiles((s) => !s)}
+              >
+                <Paperclip size={14} />
+                {t("editor.fileLabel")}
+              </button>
+              {showFiles ? (
+                <div className="absolute z-10 mt-1 w-60 rounded-card border border-hairline bg-surface p-1.5 shadow">
+                  <p className="px-2 pb-1 pt-0.5 text-[11px] text-muted-2">
+                    {t("editor.insertFile")}
+                  </p>
+                  {files.length === 0 ? (
+                    <p className="px-2 py-1 text-[12px] text-muted">{t("editor.noFiles")}</p>
+                  ) : (
+                    files.map((file) => (
+                      <button
+                        key={file.objectId}
+                        type="button"
+                        onClick={() => addFile(file)}
+                        className="block w-full truncate rounded-btn px-2 py-1 text-left text-[12.5px] text-text hover:bg-hairline-soft"
+                      >
+                        {file.name}
+                      </button>
+                    ))
+                  )}
+                </div>
+              ) : null}
+            </div>
+            {sep}
+            {/* SCRUM-314/384: Callouts Info/Hinweis/Warnung/Erfolg — farbige Text-Pills (ARGUS). */}
+            {EDITOR_BLOCKS.map((block) => (
+              <button
+                key={block}
+                type="button"
+                title={t(editorBlockLabelKey(block))}
+                className={`inline-flex h-8 items-center rounded-btn border bg-surface px-2 text-[12px] font-semibold hover:bg-hairline-soft ${BLOCK_BTN_CLASS[block]}`}
+                onClick={() => addBlock(block)}
+              >
+                {t(editorBlockLabelKey(block))}
+              </button>
+            ))}
+            {/* SCRUM-384: ✨KI öffnet/schließt die KI-Palette — erst auf bewussten Klick (Pedi-Sollbild). */}
+            {aiPanel ? (
+              <>
+                {sep}
+                <button
+                  type="button"
+                  title={t("editor.aiToggle")}
+                  aria-expanded={showAi}
+                  className={`inline-flex h-8 items-center gap-1 rounded-btn border px-2.5 text-[12px] font-semibold ${
+                    showAi
+                      ? "border-ai/50 bg-ai-surface-1 text-ai"
+                      : "border-hairline bg-surface text-text hover:bg-hairline-soft"
+                  }`}
+                  onClick={() => setShowAi((s) => !s)}
+                >
+                  ✨ {t("editor.aiLabel")}
+                </button>
+              </>
+            ) : null}
           </>
-        ) : null}
+        ) : (
+          <span className="rounded-pill border border-ai/30 bg-ai-surface-1 px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wider text-ai">
+            {t("editor.previewBadge")}
+          </span>
+        )}
         <div className="ml-auto">
           <button
             type="button"
@@ -430,12 +449,17 @@ export function RichTextEditor({
             </div>
           ) : null}
         </div>
-      ) : (
-        // FR-STR-05: Vorschau aus demselben State (sanitisiert), kein Datenverlust.
+      ) : // FR-STR-05: Vorschau aus demselben State (sanitisiert), kein Datenverlust.
+      // SCRUM-404: leerer Inhalt → ehrlicher Hinweis statt stiller weißer Fläche.
+      bodyReadMode(value).hasBody ? (
         <SanitizedHtml
           html={value}
           className="prose-kw min-h-[260px] p-4 text-[14.5px] leading-relaxed text-text md:p-6"
         />
+      ) : (
+        <p className="grid min-h-[260px] place-items-center p-4 text-[12.5px] text-muted md:p-6">
+          {t("editor.previewEmpty")}
+        </p>
       )}
 
       {/* SCRUM-372: ruhige Progressive-Disclosure-Führung — Bilder inline, Dateien bleiben Evidence.

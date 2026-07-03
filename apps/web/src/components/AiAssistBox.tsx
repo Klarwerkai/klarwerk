@@ -11,10 +11,12 @@ import {
   ASSIST_ACTIONS,
   type AssistApplyMode,
   applyAssist,
+  assistActionHelpKey,
   assistActionInstructionKey,
   assistActionLabelKey,
 } from "../lib/captureAiAssist";
 import { shouldWarnBeforeReplace } from "../lib/editorApplySafety";
+import { HelpTip } from "./HelpTip";
 import { Button } from "./ui";
 
 export function AiAssistBox({
@@ -91,17 +93,20 @@ export function AiAssistBox({
           <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted">{t(hintKey)}</p>
         </>
       )}
-      <div className="mt-2 flex flex-wrap gap-1.5">
+      {/* SCRUM-404 (Pedi 03.07.): ?-Hilfe an jeder Aktion — ein Satz, was sie tut. */}
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
         {ASSIST_ACTIONS.map((a) => (
-          <button
-            key={a}
-            type="button"
-            disabled={disabled}
-            onClick={() => void run(t(assistActionInstructionKey(a)))}
-            className="rounded-pill border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:border-ink/30 hover:text-text disabled:opacity-50"
-          >
-            {t(assistActionLabelKey(a))}
-          </button>
+          <span key={a} className="inline-flex items-center gap-0.5">
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => void run(t(assistActionInstructionKey(a)))}
+              className="rounded-pill border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:border-ink/30 hover:text-text disabled:opacity-50"
+            >
+              {t(assistActionLabelKey(a))}
+            </button>
+            <HelpTip title={t(assistActionLabelKey(a))} body={t(assistActionHelpKey(a))} />
+          </span>
         ))}
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-2">

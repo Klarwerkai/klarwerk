@@ -15,6 +15,7 @@ import {
   normalizeBodyTemplateLocale,
 } from "../lib/bodyTemplates";
 import { templateApplyMode, templateApplyModeHintKey } from "../lib/editorApplySafety";
+import { HelpTip } from "./HelpTip";
 import { SanitizedHtml } from "./SanitizedHtml";
 import { Button } from "./ui";
 
@@ -40,23 +41,26 @@ export function BodyTemplateChooser({
       </div>
       <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted">{t("editor.template.hint")}</p>
 
-      {/* Auswahl: Klick wählt eine Vorlage aus (wendet sie NICHT sofort an). */}
-      <div className="mt-2 flex flex-wrap gap-1.5">
+      {/* Auswahl: Klick wählt eine Vorlage aus (wendet sie NICHT sofort an).
+          SCRUM-404 (Pedi 03.07.): ?-Hilfe an jeder Vorlage — ein Satz, was sie enthält. */}
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
         {BODY_TEMPLATES.map((template) => (
-          <button
-            key={template.id}
-            type="button"
-            title={t(template.descriptionKey)}
-            onClick={() => setSelected(template.id)}
-            aria-pressed={selected === template.id}
-            className={`rounded-pill border px-2.5 py-1 text-[12px] font-semibold ${
-              selected === template.id
-                ? "border-ink bg-ink text-white"
-                : "border-hairline bg-page text-muted hover:border-ink/30 hover:text-text"
-            }`}
-          >
-            {t(template.labelKey)}
-          </button>
+          <span key={template.id} className="inline-flex items-center gap-0.5">
+            <button
+              type="button"
+              title={t(template.descriptionKey)}
+              onClick={() => setSelected(template.id)}
+              aria-pressed={selected === template.id}
+              className={`rounded-pill border px-2.5 py-1 text-[12px] font-semibold ${
+                selected === template.id
+                  ? "border-ink bg-ink text-white"
+                  : "border-hairline bg-page text-muted hover:border-ink/30 hover:text-text"
+              }`}
+            >
+              {t(template.labelKey)}
+            </button>
+            <HelpTip title={t(template.labelKey)} body={t(template.descriptionKey)} />
+          </span>
         ))}
       </div>
 
@@ -78,17 +82,27 @@ export function BodyTemplateChooser({
             />
           </div>
 
-          {/* Set/Append-Hinweis + bewusste Übernahme. */}
+          {/* Set/Append-Hinweis + bewusste Übernahme.
+              SCRUM-404 (Pedi 03.07.): Knopf sagt jetzt konkret, WAS passiert (einsetzen vs. unten
+              anfügen), plus ?-Hilfe mit der vollständigen Erklärung. */}
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <span className="text-[11.5px] leading-relaxed text-muted-2 sm:mr-auto">
               {t(templateApplyModeHintKey(mode))}
             </span>
-            <Button
-              variant="primary"
-              onClick={() => onApply(applyBodyTemplate(bodyHtml, selectedTemplate.id, locale))}
-            >
-              {t("editor.template.apply")}
-            </Button>
+            <span className="inline-flex items-center gap-1">
+              <Button
+                variant="primary"
+                onClick={() => onApply(applyBodyTemplate(bodyHtml, selectedTemplate.id, locale))}
+              >
+                {mode === "set" ? t("editor.template.applySet") : t("editor.template.applyAppend")}
+              </Button>
+              <HelpTip
+                title={
+                  mode === "set" ? t("editor.template.applySet") : t("editor.template.applyAppend")
+                }
+                body={t("editor.template.applyHelp")}
+              />
+            </span>
           </div>
         </>
       ) : null}
