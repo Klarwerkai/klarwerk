@@ -9,7 +9,7 @@
 Kopiere das in eine neue Konversation (Ordner `dev_Klarwerk`, `Documents`, `Desktop` freigeben):
 
 ```
-Lies den Ordner dev_Klarwerk/PROJECT_CONTEXT vollständig (Dateien 00–11 in Reihenfolge),
+Lies den Ordner dev_Klarwerk/PROJECT_CONTEXT vollständig (Dateien 00–12 in Reihenfolge),
 danach dev_Klarwerk/docs/qm/BOSS_SESSION_STAND_2026-07-02.md. Übernimm die dort
 beschriebene Arbeitsweise. Bestätige kurz: Rolle, aktuelle Version, nächste offene Schritte.
 ```
@@ -32,6 +32,8 @@ beschriebene Arbeitsweise. Bestätige kurz: Rolle, aktuelle Version, nächste of
 11. **10_GLOSSAR_UND_KONTEN.md** — Projektsprache, Konten-Übersicht (ohne Secrets), Sicherungs-Hinweis.
 12. **11_CI_DESIGN.md** — Corporate Identity (Farben, Schrift, Logo, Bild/Video, Sprache) —
     Pflicht vor JEDEM sichtbaren Artefakt.
+13. **12_ONBOARDING_NEUER_MITARBEITER.md** — das Schritt-für-Schritt-Skript bis zur
+    vollwertigen, unabhängigen Mitarbeit (inkl. Einrichtungs-Prompt für die eigene Claude-Session).
 
 Danach als lebende Quellen: `docs/qm/BOSS_SESSION_STAND_2026-07-02.md` (Boss-Stand),
 `docs/qm/claude-after-report.md` (lückenlose After-Reports jeder erledigten Aufgabe),
