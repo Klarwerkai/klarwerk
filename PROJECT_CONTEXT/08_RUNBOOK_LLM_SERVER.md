@@ -12,6 +12,11 @@
   Über Nacht laufen lassen ist verboten.
 - Nur **1× L40S** (mehr GPUs würden laut UpCloud-Support die Gratis-Credits entfernen; H100 meist „at capacity").
 - LLM-API nie öffentlich — die App bindet sie nur an 127.0.0.1 und nutzt einen SSH-Tunnel.
+- **Server NUR über die App „KLARWERK LLM" erstellen — NIE über das Hub-Deploy-Formular.**
+  Die App erkennt ihren Server am Namen `klarwerk-llm-eval`; ein manuell erstellter Server
+  (Default-Name, abweichender Storage) wird nicht erkannt → Gefahr eines zweiten Servers
+  bzw. GPU-Limit-Fehler. Falls doch manuell erstellt (Vorfall 03.07.): im Hub auf exakt
+  `klarwerk-llm-eval` umbenennen, Storage-Größe prüfen (Soll: 200 GB), dann erst „Starten".
 
 ## Einmalige Vorbereitung (Pedi, ~5 Minuten)
 

@@ -67,3 +67,6 @@
   übernimmt die Boss-Session bzw. Pedi per Schreibtisch-App — die Cloud-Session plant, fixt,
   diagnostiziert und wertet aus.
 - Datei-Brücke, solange nur `dev_Klarwerk` freigegeben ist: `docs/team2-austausch/` (s. LIESMICH dort).
+- **Die Brücke kann keine Ausführungsrechte setzen** → Cloud-Sessions überschreiben NIE direkt
+  Starter/App-Binaries; immer `.NEU` + Jira-Kommentar, Übernahme/+x/Spiegel/App-Hülle macht die
+  Boss-Session. Pedi bedient ausschließlich .app-Doppelklicks (Details: 06_SCHREIBTISCH_APPS.md).

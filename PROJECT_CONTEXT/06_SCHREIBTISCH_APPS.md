@@ -21,6 +21,16 @@ macOS blockiert Script-Apps oft beim Documents-Zugriff (TCC). Bewährtes Muster:
 4. Schlüssel/Tokens NIE in der Datei — immer macOS-Schlüsselbund (`security find-generic-password`);
    fehlt der Eintrag, fragt die App den Nutzer einmalig per Dialog.
 5. Ehrliche Ausgaben: ✓/FEHLER je Schritt, Log-Datei, kein stilles Scheitern.
+6. **DAUERREGEL (Pedi, 03.07.): Pedi bedient AUSSCHLIESSLICH .app-Doppelklicks** — nackte
+   .command-Dateien sind für ihn tabu. JEDE neue oder geänderte Terminal-Routine bekommt
+   SOFORT und unaufgefordert die passende App-Hülle auf dem Schreibtisch (eigene
+   CFBundleIdentifier, +x auf das MacOS-Binary, Spiegel-Diff gegen den Master).
+7. **Grenze der Cloud-Datei-Brücke (gelernt 03.07.):** Die Brücke (`docs/team2-austausch/`)
+   kann KEINE Ausführungsrechte setzen — Cloud-Sessions ([Paul]) dürfen daher NIE direkt
+   funktionierende Starter/App-Binaries überschreiben. Ablauf immer: Paul legt `.NEU` in die
+   Brücke + Jira-Kommentar → die Boss-Session übernimmt in den Master, setzt +x, spiegelt auf
+   den Schreibtisch und baut/aktualisiert die App-Hülle. (Vorfall: App-Hülle ohne x-Bit und mit
+   falschem Binary-Namen → „can't be opened".)
 
 ## Die Apps im Einzelnen
 

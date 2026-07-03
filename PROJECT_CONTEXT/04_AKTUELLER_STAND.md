@@ -41,6 +41,8 @@
 - Jira-Nummern KWEB-107/108 sind inhaltlich vertauscht (in Tickets dokumentiert; Commits maßgeblich).
 - Biome-Suppression muss als EINE Zeile direkt über der Anweisung stehen.
 - Deutsche Anführungszeichen in TS-Strings: „…“ verwenden, nie gerades " im String.
+- GPU-Server nie über das UpCloud-Hub-Formular anlegen — nur per „KLARWERK LLM"-App
+  (Namens-Erkennung `klarwerk-llm-eval`; Vorfall 03.07.: manueller Deploy mit 50 GB/Default-Name).
 
 ## Nachtrag 03.07. (vormittags)
 

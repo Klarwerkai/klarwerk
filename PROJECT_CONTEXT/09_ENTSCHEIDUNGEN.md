@@ -4,6 +4,8 @@
 
 | Datum | Entscheidung | Begründung / Beleg |
 |---|---|---|
+| 03.07.2026 | GPU-Deploy nur über die One-Click-App „KLARWERK LLM", nie manuell im Hub | App erkennt den Server per Namens-Discovery `klarwerk-llm-eval`; manueller 50-GB-Deploy kostete den Vormittag (Platte voll, vLLM-Schleife) |
+| 03.07.2026 | Pedi bedient nur .app-Doppelklicks; Cloud-Brücke setzt keine x-Bits → Starter-Übernahme nur durch Boss-Session | Vorfall: per Brücke befüllte App-Hülle war nicht startbar („can't be opened") |
 | 03.07.2026 | Zweiter Mitarbeiter kommt ins Projekt; `PROJECT_CONTEXT/` ist verbindlicher Onboarding-/Gedächtnisort | Konzentration + Zukunftssicherheit; „kein Wissensverlust mehr leistbar" |
 | 03.07.2026 | Hilfe-Offensive: ausführliche ?-Hilfen überall (Prüfbereich, Erfassen) | Pedi verliert sich selbst in der Dichte → SCRUM-406/407; Quellen-Panel auch beim Erfassen (SCRUM-408) |
 | 02.07.2026 (nachts) | Eval auf **1× UpCloud L40S** statt H100; nur 1 GPU | H100 1×/2×/4× „at capacity"; >1 GPU würde Gratis-Credits entfernen (Support schriftlich) |
