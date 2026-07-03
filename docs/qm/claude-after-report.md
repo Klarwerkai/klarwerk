@@ -10309,3 +10309,13 @@ git push
 **4. KLLM-61 angelegt:** App-Anbindung morgen früh (openAiCompatibleClient im Reasoner, KLARWERK_LOCAL_LLM_URL im Starter, Auswahl über KI-Verwaltung, v0.9.22-Slice).
 **Ehrliche Grenzen:** Ein-Klick-App und Prüfstand-Runner sind ungetestet gegen die echten APIs (Sandbox ohne UpCloud-/Anthropic-Zugang) — Erstlauf morgen gemeinsam; Kosten laufen ab Server-Erstellung bis „Löschen".
 **Nächster Schritt 03.07. früh:** ① Sync + Website-Deploy ② App-Key + Sichtabnahme v0.9.21 → „RC einfrieren" ③ „KLARWERK LLM" doppelklicken (UpCloud-API-Token wird abgefragt: Control Panel → Account → API tokens) ④ Referenzlauf `pruefstand-run.mjs anthropic` ⑤ KLLM-61-Slice → App spricht eigenes LLM.
+
+## After-Report · 03.07.2026 (nachts) · SCRUM-403/404 — Interview-Sprache + Editor-Feinschliff (v0.9.22-beta)
+
+**Auslöser:** Pedi-Testrunde 03.07. nachts (7 Punkte mit Screenshots).
+**Triage:** Punkt 1 („Aus Datei" ohne KI) ist voraussichtlich KEIN Bug — Interview lief nachweislich mit REASONER-MODELL; wahrscheinlich steht der Einsatz „Wissen aus Datei" in der KI-Verwaltung auf Deterministisch (Prüfauftrag an Pedi). Punkt 4 (Fakten aus Dokumenten im Studio ergänzen) = Feature → SCRUM-405 (nach RC-Freeze).
+**Umgesetzt (b543574):**
+- SCRUM-403: Interview-Antwort diktieren (Mic, bestehendes Muster) + Frage vorlesen (SpeechSynthesis, 🔊, nur auf Klick, Stopp bei Fragenwechsel); ehrlich ausgeblendet/Hinweis ohne Browser-Support.
+- SCRUM-404: (a) KI-Preset „Formatieren" (Inhalt wörtlich, nur Gliederung) + ?-HelpTip an ALLEN Presets; (b) Befund Vorschau-Knopf: schaltete korrekt um, war aber unsichtbar (WYSIWYG-Editor ≈ Vorschau, Werkzeugleiste blieb stehen) → in der Vorschau verschwinden die Formatier-Knöpfe, ein Vorschau-Badge erscheint, leerer Inhalt bekommt ehrlichen Hinweis; (c) 3 neue Strukturvorlagen: Checkliste, Übergabe/Schulung, Entscheidungshilfe — alle 6 mit ?-Hilfe; (d) „Vorlage übernehmen" → kontextabhängig „Vorlage einsetzen"/„Vorlage unten anfügen" + ?-Hilfe.
+**Beweis:** Playwright-Repro des Vorschau-Verhaltens (Screenshot) VOR dem Fix; Gates: tsc/Biome/depcruise grün · 1284 Tests/212 Dateien · smoke:ui 4/4 · dist v0.9.22 eingespielt. Kein Push (KLARWERK Sync durch Pedi).
+**Offen:** Pedi prüft KI-Verwaltung (extract auf Auto?) und nimmt v0.9.22 ab; SCRUM-405 nach Freeze.
