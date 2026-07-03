@@ -1,17 +1,18 @@
 #!/bin/bash
 # KLARWERK Paul-Runner — Aufgabendatei des Cloud-Workers ([Paul]).
 #
-# AUFGABE v19 (03.07. abends): SCRUM-434 Auffindbarkeit-Feinschliff + PMO-Automatik (v0.9.43-beta) —
-# prüft zugleich den gesamten Bestand (395/414/416/413/417-428/433).
-#   SCRUM-434 (Pedi 03.07., VIP, „ich stimme allen zu"): reines Frontend (Browser-Reload genügt):
-#     1) Nach „Verbinden" öffnet sich direkt das Studio (durchgehender Fluss, kein Zwischenstopp).
-#     2) Ein-Klick-Sprung „Zu den Admin-Einstellungen" im gesperrten Public-KI-Hinweis.
-#     3) Public-KI-Anreicherung jetzt auch im Verfeinern-Studio verdrahtet (war still gesperrt).
-#   NEU Schritt 5: PMO-Fortschritt aktualisieren (Weg b) — Drafts aus pmo-drafts/ auf dem Mac anwenden.
-#   (Basis v18: SCRUM-433 Auffindbarkeit, bereits committet.)
+# AUFGABE v20 (03.07. abends): SCRUM-429 Onboarding + SCRUM-432 Trust & Security (v0.9.44-beta) —
+# prüft zugleich den gesamten Bestand (395/414/416/413/417-428/433/434).
+#   SCRUM-429 (VIP-Bündel): ruhige Erststart-Führung für den neuen Admin auf der Startseite —
+#     nur beim ersten Besuch, ausblendbar; bestätigt ehrlich „beide KIs verbunden" + 3 erste Schritte.
+#   SCRUM-432 (VIP-Investor): neuer Admin-Bereich „Sicherheit" — manipulationssicheres Prüfprotokoll
+#     (append-only, hash-verkettet) + Datenschutz-/Sicherheits-Auszug (7 echte Systemeigenschaften).
+#   Reines Frontend (Browser-Reload genügt). Neue Tests: admin-first-run, security-statements;
+#     admin-sections-Test auf 4 Bereiche aktualisiert.
+#   Schritt 5 (PMO-Automatik) läuft weiter.
 # Ablauf:
 #   0: Format-Autofix (biome check --write).
-#   1: apps/web bauen (vite build → dist v0.9.43-beta).
+#   1: apps/web bauen (vite build → dist v0.9.44-beta).
 #   2: tools/check (Build · Lint · Architektur · Tests).
 #   3: npm run smoke:ui (4 Playwright-Kernflüsse).
 #   4: After-Report-Nachträge anhängen (je nur falls fehlend — Marker-Prüfung).
@@ -26,7 +27,7 @@ FEHL=0
 
 {
 echo "${FETT}KLARWERK Paul-Runner — $(date '+%d.%m.%Y %H:%M')${AUS}"
-echo "Aufgabe v19: SCRUM-434 Feinschliff + PMO-Automatik (v0.9.43-beta) + Gesamtbestand — ca. 4–7 Minuten."
+echo "Aufgabe v20: SCRUM-429 Onboarding + SCRUM-432 Trust & Security (v0.9.44-beta) + Gesamtbestand — ca. 4–7 Minuten."
 echo
 
 cd "$REPO" || { echo "${ROT}FEHLER: Repo nicht gefunden.${AUS}"; exit 1; }
@@ -38,7 +39,7 @@ echo
 
 echo "${FETT}— Schritt 1/4: apps/web bauen (vite build)${AUS}"
 if (cd apps/web && npx vite build); then
-  echo "${GRUEN}✓ Build/dist v0.9.43 erstellt${AUS}"
+  echo "${GRUEN}✓ Build/dist v0.9.44 erstellt${AUS}"
 else
   echo "${ROT}✗ vite build ROT${AUS}"; FEHL=1
 fi
@@ -79,6 +80,7 @@ anhaengen "SCRUM-421 + 427 — Upload-Grenzen + Extraktion in Abschnitten" "paul
 anhaengen "SCRUM-428 — Key-Test für den lokalen LLM" "paul-nachtrag-428.md"
 anhaengen "SCRUM-433 — Auffindbarkeit (Erkenntnisse verbinden + Public-KI)" "paul-nachtrag-433.md"
 anhaengen "SCRUM-434 — Auffindbarkeit-Feinschliff + PMO-Automatik" "paul-nachtrag-434.md"
+anhaengen "SCRUM-429 + 432 — Onboarding-Politur + Vertrauen & Sicherheit" "paul-nachtrag-429-432.md"
 
 echo
 echo "${FETT}— Schritt 5/5: PMO-Fortschritt aktualisieren (Weg b, nur bei grünen Gates)${AUS}"
@@ -110,12 +112,12 @@ fi
 echo
 
 if [ "$FEHL" = "0" ]; then
-  echo "${GRUEN}${FETT}ALLE GATES GRÜN — Gesamtbestand lieferbar (v0.9.43-beta, inkl. SCRUM-434 + PMO-Automatik).${AUS}"
-  echo "Sichtabnahme SCRUM-434: Erzählen → 'Aus Datei' → 2 Punkte anhaken → 'Verbinden' →"
-  echo "  das Studio öffnet sich direkt mit dem zusammengeführten Artikel."
-  echo "Und: im gesperrten Public-KI-Hinweis führt 'Zu den Admin-Einstellungen' mit einem Klick zum Regler."
+  echo "${GRUEN}${FETT}ALLE GATES GRÜN — Gesamtbestand lieferbar (v0.9.44-beta, inkl. SCRUM-429 + 432).${AUS}"
+  echo "Sichtabnahme SCRUM-429: als frischer Admin auf Start → ruhige Erststart-Karte (KI-Status + 3 Schritte),"
+  echo "  'Ausblenden' → verschwindet dauerhaft."
+  echo "Sichtabnahme SCRUM-432: Admin → Bereich 'Sicherheit' → Prüfprotokoll (Kette) + Datenschutz-Auszug."
   echo "Commit-Empfehlung (Boss-Session):"
-  echo "  [Cloud-Worker] SCRUM-434: Auffindbarkeit-Feinschliff (Verbinden→Studio, Admin-Sprung) + PMO-Automatik (v0.9.43-beta)"
+  echo "  [Cloud-Worker] SCRUM-429/432: Onboarding-Politur + Vertrauen & Sicherheit (v0.9.44-beta)"
   echo "KEIN Push — KLARWERK Sync macht Pedi."
 else
   echo "${ROT}${FETT}Mindestens ein Gate ROT — Paul analysiert docs/team2-austausch/paul-runner.log und liefert einen Fix.${AUS}"

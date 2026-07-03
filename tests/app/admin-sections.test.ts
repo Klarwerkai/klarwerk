@@ -8,10 +8,11 @@ import {
 
 // SCRUM-394 (Pedi): Admin in drei Bereiche — Zuordnung testbar, Labels in beiden Sprachen.
 describe("SCRUM-394: Admin-Bereiche", () => {
-  it("hat genau drei eindeutige Bereiche mit gültigem Default", () => {
+  it("hat genau vier eindeutige Bereiche mit gültigem Default", () => {
     const ids = ADMIN_SECTIONS.map((s) => s.id);
-    expect(ids).toEqual(["konten", "ki", "daten"]);
-    expect(new Set(ids).size).toBe(3);
+    // SCRUM-432: vierter Bereich „Sicherheit" (Vertrauen & Sicherheit für Investoren).
+    expect(ids).toEqual(["konten", "ki", "daten", "sicherheit"]);
+    expect(new Set(ids).size).toBe(4);
     expect(isAdminSectionId(DEFAULT_ADMIN_SECTION)).toBe(true);
     expect(isAdminSectionId("unsinn")).toBe(false);
   });

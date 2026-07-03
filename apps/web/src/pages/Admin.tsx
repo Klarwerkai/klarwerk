@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, KeyRound, Sparkles, Trash2, UserPlus } from "lucide-react";
+import { ArrowRight, KeyRound, ShieldCheck, Sparkles, Trash2, UserPlus } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
@@ -24,6 +24,7 @@ import { ADMIN_SECTIONS, type AdminSectionId, DEFAULT_ADMIN_SECTION } from "../l
 // SCRUM-413: „Verfügbare KIs" — DOM-freie Zeilen aus dem echten configStatus.
 import { type AiAccessState, aiAccessRows } from "../lib/aiOverview";
 import { PILOT_NEXT_STEPS } from "../lib/pilotNextSteps";
+import { SECURITY_POINTS } from "../lib/securityStatements";
 
 const EMPTY_NEW_USER = { name: "", email: "", password: "", role: "experte" as Role };
 
@@ -1068,6 +1069,82 @@ export function Admin(): JSX.Element {
             }}
           </QueryState>
         </Card>
+      ) : null}
+
+      {/* SCRUM-432 (Pedi 03.07., VIP-Investor): Vertrauen & Sicherheit — manipulationssicheres
+          Prüfprotokoll + Datenschutz-/Sicherheits-Nachweis. Ein Auszug, den man einem Investor
+          ruhig zeigt: nur echte Systemeigenschaften, keine Versprechen. */}
+      {section === "sicherheit" ? (
+        <>
+          <Card className="p-0">
+            <div className="px-4 pt-4">
+              <div className="flex items-center gap-1.5">
+                <SectionLabel>{t("adm.sich.auditTitle")}</SectionLabel>
+                <HelpTip title={t("adm.sich.auditTitle")} body={t("adm.sich.auditHelp")} />
+              </div>
+              <p className="mt-1 text-[12px] leading-relaxed text-muted">
+                {t("adm.sich.auditIntro")}
+              </p>
+            </div>
+            <QueryState query={audit} emptyText={t("adm.auditEmpty")}>
+              {(entries) => {
+                const recent = entries.slice(-12).reverse();
+                return (
+                  <>
+                    <div className="px-4 pb-2 pt-3">
+                      <span className="rounded-pill bg-trust-pos-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-pos-text">
+                        {t("adm.sich.auditCount", { count: entries.length })}
+                      </span>
+                    </div>
+                    {recent.length === 0 ? (
+                      <p className="px-4 py-3 text-[13px] text-muted">{t("adm.auditEmpty")}</p>
+                    ) : (
+                      <div className="divide-y divide-hairline">
+                        {recent.map((e) => (
+                          <div
+                            key={e.seq}
+                            className="flex items-center gap-3 px-4 py-2 text-[12.5px]"
+                          >
+                            <span className="font-mono text-[11px] text-muted-2">
+                              {new Date(e.at).toLocaleString()}
+                            </span>
+                            <span className="font-semibold text-text">{e.action}</span>
+                            <span className="truncate text-[11.5px] text-muted">{e.target}</span>
+                            <span className="ml-auto truncate font-mono text-[11px] text-muted-2">
+                              {e.actor}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                );
+              }}
+            </QueryState>
+          </Card>
+
+          <Card className="p-4">
+            <div className="flex items-center gap-1.5">
+              <SectionLabel>{t("adm.sich.dataTitle")}</SectionLabel>
+              <HelpTip title={t("adm.sich.dataTitle")} body={t("adm.sich.dataHelp")} />
+            </div>
+            <ul className="mt-3 space-y-2.5">
+              {SECURITY_POINTS.map((p) => (
+                <li key={p.id} className="flex items-start gap-2.5">
+                  <ShieldCheck size={15} className="mt-0.5 shrink-0 text-trust-pos-text" />
+                  <span className="min-w-0">
+                    <span className="block text-[13px] font-semibold text-text">
+                      {t(p.titleKey)}
+                    </span>
+                    <span className="mt-0.5 block text-[12px] leading-relaxed text-muted">
+                      {t(p.bodyKey)}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </>
       ) : null}
     </div>
   );

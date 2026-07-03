@@ -14,6 +14,7 @@ import {
 } from "../api/hooks";
 import { useSession } from "../app/AuthContext";
 import { useRole } from "../app/RoleContext";
+import { AdminFirstRunCard } from "../components/AdminFirstRunCard";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { Card, PageHeader } from "../components/ui";
 import { DEMO_PILOT_PATH, captureDemoHref } from "../lib/demoPilotPath";
@@ -213,6 +214,8 @@ export function Start(): JSX.Element {
           </Link>
         }
       />
+      {/* SCRUM-429: ruhige Erststart-Führung nur für den neuen Admin (erster Besuch, ausblendbar). */}
+      {role === "admin" ? <AdminFirstRunCard /> : null}
       {/* SCRUM-261: Knowledge-OS-Kreis als vorhandene Arbeitsführung (kein Chatbot). */}
       <div className="mb-5">
         <h2 className="text-[15px] font-semibold text-ink">{t("cycle.title")}</h2>

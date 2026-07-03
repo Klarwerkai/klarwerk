@@ -8,6 +8,8 @@ export const ADMIN_SECTIONS = [
   { id: "ki", labelKey: "adm.sec.ki" },
   // Daten: Demodaten (Seed/Purge), Audit-Log
   { id: "daten", labelKey: "adm.sec.daten" },
+  // SCRUM-432: Sicherheit — Vertrauen & Sicherheit (Prüfprotokoll + Datenschutz-Nachweis, Investoren)
+  { id: "sicherheit", labelKey: "adm.sec.sicherheit" },
 ] as const;
 
 export type AdminSectionId = (typeof ADMIN_SECTIONS)[number]["id"];

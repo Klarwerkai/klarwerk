@@ -329,6 +329,63 @@ const de = {
   "adm.sec.konten": "Konten",
   "adm.sec.ki": "KI",
   "adm.sec.daten": "Daten",
+  "adm.sec.sicherheit": "Sicherheit",
+  // SCRUM-429 (Pedi 03.07., VIP): Erststart-Führung für den neuen Admin.
+  "adm.firstrun.kicker": "Erststart",
+  "adm.firstrun.title": "Willkommen — dein Arbeitsbereich ist startklar.",
+  "adm.firstrun.lead":
+    "Als erstes Konto bist du Admin. Alles Nötige ist vorbereitet — hier sind drei ruhige erste Schritte. Diese Karte erscheint nur beim ersten Besuch.",
+  "adm.firstrun.dismiss": "Ausblenden",
+  "adm.firstrun.done": "Verstanden — ausblenden",
+  "adm.firstrun.note":
+    "Kein Zwang, keine Reihenfolge: Du kannst jederzeit frei loslegen. Ausgeblendet bleibt sie ausgeblendet.",
+  "adm.firstrun.ki.loading": "KI-Status wird geprüft …",
+  "adm.firstrun.ki.both": "Beide KIs verbunden: Cloud-KI und dein eigener lokaler LLM.",
+  "adm.firstrun.ki.cloudOnly":
+    "Cloud-KI verbunden. Der eigene lokale LLM ist noch nicht angebunden (Admin → KI).",
+  "adm.firstrun.ki.localOnly":
+    "Lokaler LLM verbunden. Die Cloud-KI ist noch nicht konfiguriert (Admin → KI).",
+  "adm.firstrun.ki.none":
+    "Noch keine KI verbunden — der deterministische Ersatzmodus arbeitet weiter (Admin → KI).",
+  "adm.firstrun.step.capture.t": "Wissen erfassen",
+  "adm.firstrun.step.capture.b":
+    "Erzähl es der KI oder lade ein Dokument — sie strukturiert, du prüfst.",
+  "adm.firstrun.step.validate.t": "Wissen prüfen",
+  "adm.firstrun.step.validate.b":
+    "Im Prüfbereich wird Erfahrungswissen freigegeben — erst dann ist es „nutzbar“.",
+  "adm.firstrun.step.admin.t": "Verwaltung öffnen",
+  "adm.firstrun.step.admin.b": "Konten, KI-Anbindung, Daten und Sicherheit an einem Ort.",
+  // SCRUM-432 (Pedi 03.07., VIP-Investor): Vertrauen & Sicherheit.
+  "adm.sich.auditTitle": "Prüfprotokoll — manipulationssicher",
+  "adm.sich.auditHelp":
+    "Jede sicherheitsrelevante Aktion wird nur angefügt und über eine Hash-Kette verkettet. Nachträglich lässt sich kein Eintrag ändern oder löschen, ohne dass die Kette bricht — das macht das Protokoll überprüfbar (tamper-evident).",
+  "adm.sich.auditIntro":
+    "Append-only, hash-verkettet: eine überprüfbare Spur aller sicherheitsrelevanten Aktionen. Nichts wird rückwirkend verändert.",
+  "adm.sich.auditCount": "{{count}} Einträge in der Kette",
+  "adm.sich.dataTitle": "Datenschutz & Sicherheit",
+  "adm.sich.dataHelp":
+    "Ein ehrlicher Auszug der Systemeigenschaften — keine Versprechen, sondern wie KLARWERK gebaut ist.",
+  "adm.sich.keys.t": "Schlüssel bleiben im Schlüsselbund",
+  "adm.sich.keys.b":
+    "API-Schlüssel liegen ausschließlich serverseitig bzw. im macOS-Schlüsselbund — nie im Browser, nie im Code oder Repository.",
+  "adm.sich.localAi.t": "Eigene & lokale KI möglich",
+  "adm.sich.localAi.b":
+    "Neben der Cloud-KI lässt sich ein eigener lokaler LLM anbinden. Die lokale KI ist nur über einen privaten Tunnel erreichbar, nie öffentlich.",
+  "adm.sich.external.t": "Externe Wissensabfrage standardmäßig eingeschränkt",
+  "adm.sich.external.b":
+    "Public-KI und Web-Suche sind admin-gesteuert und standardmäßig nicht offen. Nichts verlässt unkontrolliert das System.",
+  "adm.sich.audit.t": "Manipulationssicheres Protokoll",
+  "adm.sich.audit.b":
+    "Alle sicherheitsrelevanten Aktionen werden append-only und hash-verkettet festgehalten — überprüfbar und fälschungssicher.",
+  "adm.sich.trash.t": "Löschen mit Papierkorb",
+  "adm.sich.trash.b":
+    "Gelöschtes geht zuerst in den Papierkorb (wiederherstellbar); die endgültige Löschung erfolgt erst nach vier Wochen. Kein stiller Datenverlust.",
+  "adm.sich.roles.t": "Rollen & minimale Rechte",
+  "adm.sich.roles.b":
+    "Vier Rollen (Betrachter, Experte, Controller, Admin). Jede Aktion prüft serverseitig das nötige Recht.",
+  "adm.sich.noCustomerData.t": "Keine Kundendaten in Tests",
+  "adm.sich.noCustomerData.b":
+    "Qualitätssicherung und Evaluierungen laufen ohne echte Kundendaten.",
   "adm.ai.test": "Key testen",
   "adm.ai.testRunning": "teste …",
   "adm.ai.testOk": "Verbindung ok — {{provider}} hat geantwortet. Der Schlüssel funktioniert.",
@@ -2460,6 +2517,61 @@ const en: typeof de = {
   "adm.sec.konten": "Accounts",
   "adm.sec.ki": "AI",
   "adm.sec.daten": "Data",
+  "adm.sec.sicherheit": "Security",
+  // SCRUM-429 (Pedi 03.07., VIP): first-run guidance for the new admin.
+  "adm.firstrun.kicker": "First run",
+  "adm.firstrun.title": "Welcome — your workspace is ready to go.",
+  "adm.firstrun.lead":
+    "As the first account you are admin. Everything needed is prepared — here are three calm first steps. This card only appears on your first visit.",
+  "adm.firstrun.dismiss": "Hide",
+  "adm.firstrun.done": "Got it — hide",
+  "adm.firstrun.note":
+    "No pressure, no fixed order: you can start freely anytime. Once hidden, it stays hidden.",
+  "adm.firstrun.ki.loading": "Checking AI status …",
+  "adm.firstrun.ki.both": "Both AIs connected: cloud AI and your own local LLM.",
+  "adm.firstrun.ki.cloudOnly":
+    "Cloud AI connected. Your own local LLM is not wired up yet (Admin → AI).",
+  "adm.firstrun.ki.localOnly":
+    "Local LLM connected. The cloud AI is not configured yet (Admin → AI).",
+  "adm.firstrun.ki.none":
+    "No AI connected yet — the deterministic fallback keeps working (Admin → AI).",
+  "adm.firstrun.step.capture.t": "Capture knowledge",
+  "adm.firstrun.step.capture.b": "Tell the AI or upload a document — it structures, you review.",
+  "adm.firstrun.step.validate.t": "Review knowledge",
+  "adm.firstrun.step.validate.b":
+    "Experience knowledge is released in review — only then is it “usable”.",
+  "adm.firstrun.step.admin.t": "Open administration",
+  "adm.firstrun.step.admin.b": "Accounts, AI connection, data and security in one place.",
+  // SCRUM-432 (Pedi 03.07., VIP investor): Trust & Security.
+  "adm.sich.auditTitle": "Audit trail — tamper-evident",
+  "adm.sich.auditHelp":
+    "Every security-relevant action is only appended and chained via a hash chain. No entry can be changed or deleted afterwards without breaking the chain — which makes the trail verifiable (tamper-evident).",
+  "adm.sich.auditIntro":
+    "Append-only, hash-chained: a verifiable trail of all security-relevant actions. Nothing is changed retroactively.",
+  "adm.sich.auditCount": "{{count}} entries in the chain",
+  "adm.sich.dataTitle": "Data protection & security",
+  "adm.sich.dataHelp":
+    "An honest extract of the system's properties — not promises, but how KLARWERK is built.",
+  "adm.sich.keys.t": "Keys stay in the keychain",
+  "adm.sich.keys.b":
+    "API keys live exclusively server-side or in the macOS keychain — never in the browser, never in code or the repository.",
+  "adm.sich.localAi.t": "Own & local AI possible",
+  "adm.sich.localAi.b":
+    "Besides the cloud AI you can wire up your own local LLM. The local AI is reachable only via a private tunnel, never public.",
+  "adm.sich.external.t": "External knowledge lookup restricted by default",
+  "adm.sich.external.b":
+    "Public AI and web search are admin-controlled and not open by default. Nothing leaves the system uncontrolled.",
+  "adm.sich.audit.t": "Tamper-evident log",
+  "adm.sich.audit.b":
+    "All security-relevant actions are recorded append-only and hash-chained — verifiable and forgery-proof.",
+  "adm.sich.trash.t": "Deletion with trash",
+  "adm.sich.trash.b":
+    "Deleted items go to the trash first (recoverable); final deletion happens only after four weeks. No silent data loss.",
+  "adm.sich.roles.t": "Roles & least privilege",
+  "adm.sich.roles.b":
+    "Four roles (viewer, expert, controller, admin). Every action checks the required permission server-side.",
+  "adm.sich.noCustomerData.t": "No customer data in tests",
+  "adm.sich.noCustomerData.b": "Quality assurance and evaluations run without real customer data.",
   "adm.ai.test": "Test key",
   "adm.ai.testRunning": "testing …",
   "adm.ai.testOk": "Connection ok — {{provider}} responded. The key works.",
