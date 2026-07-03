@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { anthropicClient } from "./model-client";
 import type { ModelClient } from "./provider-model";
-import { EXTRACT_MAX_TOKENS, ModelProvider } from "./provider-model";
+import { EXTRACT_MAX_TOKENS, ModelProvider, salvageTruncatedExtract } from "./provider-model";
 import { Reasoner } from "./service";
 
 // SCRUM-411 (Pedi-Test 03.07.): Extract meldete „kein KI-Modell" trotz grünem Key-Test.
@@ -55,6 +55,40 @@ describe("SCRUM-411: Extract-Fehler ehrlich benennen + Antwort-Limit", () => {
     expect(result.points).toEqual([]);
     expect(result.note).toContain("kein gültiges JSON");
     expect(result.note).toContain("abgeschnitten");
+  });
+
+  // SCRUM-418 (Pedi 03.07., 42k-Zeichen-PDF): Selbst 4096 Token reichten nicht — jetzt werden
+  // vollständige, belegte Punkte aus einer trotzdem gekürzten Antwort GERETTET statt alles
+  // zu verwerfen, und der Hinweis benennt die mögliche Unvollständigkeit ehrlich.
+  it("SCRUM-418: vollständige Punkte einer gekürzten Antwort werden gerettet, Hinweis nennt Unvollständigkeit", async () => {
+    const truncated: ModelClient = {
+      name: "fake:mittendrin-abgerissen",
+      complete: async () =>
+        '{"points": [' +
+        '{"title": "Schmierintervall der Dosierpumpe", "summary": "Alle 200 Betriebsstunden schmieren.", "sourceExcerpt": "alle 200 Betriebsstunden"}, ' +
+        '{"title": "Vorgeschriebenes Fett", "summary": "Fett Typ Z verwenden.", "sourceExcerpt": "mit Fett Typ Z schmieren"}, ' +
+        '{"title": "Dritter Punkt bricht mitten im Feld a',
+    };
+    const reasoner = new Reasoner(new ModelProvider(truncated));
+    const result = await reasoner.extract(DOC, "de");
+    expect(result.points.map((p) => p.title)).toEqual([
+      "Schmierintervall der Dosierpumpe",
+      "Vorgeschriebenes Fett",
+    ]);
+    expect(result.note).toContain("unvollständig");
+    expect(result.demo).toBe(false);
+  });
+
+  it("SCRUM-418: Rettung bleibt hinter dem G-2-Gate — Punkte ohne echte Belegstelle fliegen auch beim Retten raus", () => {
+    const raw =
+      '{"points": [' +
+      '{"title": "Erfundener Punkt", "summary": "Steht nicht im Dokument.", "sourceExcerpt": "Turbine wöchentlich entlüften"}, ' +
+      '{"title": "Echter Punkt", "summary": "Belegt.", "sourceExcerpt": "Dosierpumpe P2"}, ' +
+      '{"title": "abgerissen';
+    const saved = salvageTruncatedExtract(raw, DOC);
+    expect(saved.map((p) => p.title)).toEqual(["Echter Punkt"]);
+    // Ohne einen einzigen vollständigen Punkt gibt es nichts zu retten → leere Liste.
+    expect(salvageTruncatedExtract('{"points": [{"title": "abgeschn', DOC)).toEqual([]);
   });
 
   it("extract ruft das Modell mit dem großen Antwort-Limit auf (EXTRACT_MAX_TOKENS)", async () => {

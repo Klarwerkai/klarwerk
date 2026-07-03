@@ -363,7 +363,8 @@ export function Library(): JSX.Element {
                     return (
                       <div
                         key={k.id}
-                        className="group flex items-center gap-3 px-4 py-2.5 hover:bg-hairline-soft"
+                        // SCRUM-419: umbruchfähig — die Lösch-Bestätigung bekommt ihre eigene Zeile.
+                        className="group flex flex-wrap items-center gap-3 px-4 py-2.5 hover:bg-hairline-soft"
                       >
                         <Link
                           to={demoHref(`/wissen/${k.id}`, params)}
@@ -457,8 +458,9 @@ export function Library(): JSX.Element {
                             Inline-Bestätigung; Server erzwingt dieselbe Regel (403 sonst). */}
                         {role === "admin" || role === "controller" || k.author === user?.id ? (
                           confirmDeleteId === k.id ? (
-                            // SCRUM-412 (CI): Frage in Textfarbe — Rot nur am destruktiven Element.
-                            <span className="flex shrink-0 items-center gap-1.5">
+                            // SCRUM-412/419 (CI + Layout): Bestätigung auf EIGENER voller Zeile,
+                            // rechtsbündig — quetscht sich nicht mehr neben Pills und Knöpfe.
+                            <span className="flex w-full basis-full flex-wrap items-center justify-end gap-1.5 border-t border-hairline pt-2">
                               <span className="text-[12px] font-semibold text-text">
                                 {t("ko.deleteQ")}
                               </span>

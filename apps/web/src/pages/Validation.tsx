@@ -1,12 +1,16 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Minus, X } from "lucide-react";
+import { Check, Minus, Pencil, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useDirectory, useValidationBoard } from "../api/hooks";
 import type { Verdict } from "../api/types";
 import { useSession } from "../app/AuthContext";
+// SCRUM-417: Bearbeiten/Löschen vom Board — gleiche Rollenregel wie Bibliothek/KO-Detail.
+import { useRole } from "../app/RoleContext";
+import { useToast } from "../app/ToastContext";
 import { DemoBanner } from "../components/DemoBanner";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
@@ -52,6 +56,8 @@ import {
   boardFocusActive,
   resetBoardFocusParams,
 } from "../lib/validationBoardFocus";
+// SCRUM-416: Flächen-Klick öffnet die Karte — Bedienelemente bleiben davon unberührt.
+import { cardClickOpens } from "../lib/validationCard";
 import {
   type FeedbackVerdict,
   buildValidationFeedback,
@@ -145,6 +151,23 @@ export function Validation(): JSX.Element {
   const users = useDirectory();
   const { user } = useSession();
   const qc = useQueryClient();
+  // SCRUM-416: Flächen-Klick der Board-Karte führt ins KO-Detail (Tastatur-Weg bleibt der Titel-Link).
+  const navigate = useNavigate();
+  // SCRUM-417: Bearbeiten/Löschen direkt vom Board (Autor/Controller/Admin) — der Server
+  // erzwingt dieselbe Regel (403 sonst); Löschen nur mit Inline-Bestätigung.
+  const { role } = useRole();
+  const { push } = useToast();
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const removeKo = useMutation({
+    mutationFn: (id: string) => endpoints.ko.remove(id),
+    onSuccess: () => {
+      setConfirmDeleteId(null);
+      void qc.invalidateQueries({ queryKey: ["validation"] });
+      void qc.invalidateQueries({ queryKey: ["kos"] });
+      push("success", t("ko.deleteDone"));
+    },
+    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
+  });
   // FR-LIF-04: Autor je KO-Karte (Namen via Directory, Fallback ID).
   const nameOf = (uid: string): string => users.data?.find((d) => d.id === uid)?.name || uid;
   // SCRUM-364 / AG-15 follow-up: „Mir zugewiesen"-Linse lazy aus ?mine=1 (Ziel der Assignment-
@@ -550,7 +573,16 @@ export function Validation(): JSX.Element {
                   });
                   return (
                     <div key={k.id} className="space-y-2">
-                      <Card className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                      {/* SCRUM-416: ganze Karte klickbar (freie Fläche → KO-Detail, sichtbarer
+                          Hover); Entscheidungs-Knöpfe/Aufklapper/Links bleiben sauber getrennt. */}
+                      <Card
+                        onClick={(e) => {
+                          if (cardClickOpens(e.target as Element)) {
+                            navigate(`/wissen/${k.id}`);
+                          }
+                        }}
+                        className="flex cursor-pointer flex-col gap-3 transition-colors hover:border-ink/30 sm:flex-row sm:items-center"
+                      >
                         <div className="min-w-0 flex-1">
                           {/* SCRUM-396: Titel zuerst und deutlich — er ging zwischen Badges und
                               Meta-Zeilen unter; klar als Link erkennbar (KO-Detail = Ort für
@@ -564,107 +596,120 @@ export function Validation(): JSX.Element {
                           <div className="mt-1 flex flex-wrap items-center gap-2">
                             <KnowledgeTypeTag type={k.type} />
                             <StatusPill status={sig.status} />
-                            <span className="font-mono text-[11px] text-muted-2">{k.category}</span>
-                          </div>
-                          {/* SCRUM-249: Review-Signale kompakt — Trust, Version, Ziel, Provenance. */}
-                          <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                            <ConfidenceBar value={k.confidence} showLabel={false} />
+                            {/* SCRUM-416: Trust bleibt sichtbar (entscheidungsrelevant) — rückt zu den Badges. */}
                             <span
                               className={`rounded-pill px-1.5 py-0.5 font-mono text-[10px] font-semibold ${TRUST_TONE[sig.trustBand]}`}
                             >
                               {t("val.trust")} {sig.trust}
                             </span>
-                            <span className="font-mono text-[10px] text-muted-2">
-                              v{sig.version}
-                            </span>
-                            <span className="font-mono text-[11px] text-muted-2">
-                              {t("val.target", { n: sig.needed })}
-                            </span>
-                            {sig.authorTransferred ? (
-                              <span className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-trust-warn-text">
-                                {t("val.transferred")}
-                              </span>
-                            ) : null}
-                            {sig.assigned ? (
-                              <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted">
-                                {t("val.assigned")}
-                              </span>
-                            ) : null}
-                            <span
-                              className={`rounded-pill px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase ${REVIEW_WORK_TONE[reviewWork.tone]}`}
-                            >
-                              {t(reviewWork.labelKey)}
-                            </span>
-                            {vhelp("signals")}
+                            <span className="font-mono text-[11px] text-muted-2">{k.category}</span>
                           </div>
-                          {/* SCRUM-326: Review-Kontext — neu/offen vs. revidiert (Version>1) + Hinweis. */}
-                          <ValidationReviewContext ko={k} />
-                          <div className="mt-1">
-                            <KoAuthorLine {...koAuthorParts(k, nameOf)} />
-                          </div>
-                          {/* SCRUM-249: ehrlicher Entscheidungs-Hinweis (aus Trust-Band abgeleitet).
+                          {/* SCRUM-416 (Pedi 03.07.): Karten-Dichte — Signale, Kontext, Autor,
+                              Entscheidungs-Hinweis und Prüf-Führung wandern hinter EINE ruhige
+                              Aufklappung. Nichts entfernt, nur verlagert; alles Weitere im KO-Detail. */}
+                          <details className="mt-2">
+                            <summary className="cursor-pointer list-none text-[11.5px] font-semibold text-muted hover:text-text">
+                              {t("val.more")}
+                            </summary>
+                            <div className="mt-2 space-y-2">
+                              {/* SCRUM-249: Review-Signale kompakt — Trust, Version, Ziel, Provenance. */}
+                              <div className="flex flex-wrap items-center gap-2">
+                                <ConfidenceBar value={k.confidence} showLabel={false} />
+                                <span className="font-mono text-[10px] text-muted-2">
+                                  v{sig.version}
+                                </span>
+                                <span className="font-mono text-[11px] text-muted-2">
+                                  {t("val.target", { n: sig.needed })}
+                                </span>
+                                {sig.authorTransferred ? (
+                                  <span className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-trust-warn-text">
+                                    {t("val.transferred")}
+                                  </span>
+                                ) : null}
+                                {sig.assigned ? (
+                                  <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted">
+                                    {t("val.assigned")}
+                                  </span>
+                                ) : null}
+                                <span
+                                  className={`rounded-pill px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase ${REVIEW_WORK_TONE[reviewWork.tone]}`}
+                                >
+                                  {t(reviewWork.labelKey)}
+                                </span>
+                                {vhelp("signals")}
+                              </div>
+                              {/* SCRUM-326: Review-Kontext — neu/offen vs. revidiert (Version>1) + Hinweis. */}
+                              <ValidationReviewContext ko={k} />
+                              <div className="mt-1">
+                                <KoAuthorLine {...koAuthorParts(k, nameOf)} />
+                              </div>
+                              {/* SCRUM-249: ehrlicher Entscheidungs-Hinweis (aus Trust-Band abgeleitet).
                               SCRUM-396: auf EINE Zeile verdichtet — Volltext im ?-HelpTip, damit die
                               Karte keine Textwand wird (nichts entfernt, nur Dichte). */}
-                          <p className="mt-1 flex min-w-0 items-center gap-1 text-[11.5px] text-muted">
-                            <span className="min-w-0 truncate">
-                              <span className="font-semibold text-text">
-                                {t("val.decisionLabel")}{" "}
-                              </span>
-                              {t(`val.decision.${sig.trustBand}`)}
-                            </span>
-                            <HelpTip
-                              title={t("val.decisionLabel")}
-                              body={`${t(`val.decision.${sig.trustBand}`)} ${t(reviewWork.hintKey)}`}
-                            />
-                          </p>
-                          {/* SCRUM-365 / AG-12 / PI-K2: ruhige, einklappbare Review-Führung —
+                              <p className="mt-1 flex min-w-0 items-center gap-1 text-[11.5px] text-muted">
+                                <span className="min-w-0 truncate">
+                                  <span className="font-semibold text-text">
+                                    {t("val.decisionLabel")}{" "}
+                                  </span>
+                                  {t(`val.decision.${sig.trustBand}`)}
+                                </span>
+                                <HelpTip
+                                  title={t("val.decisionLabel")}
+                                  body={`${t(`val.decision.${sig.trustBand}`)} ${t(reviewWork.hintKey)}`}
+                                />
+                              </p>
+                              {/* SCRUM-365 / AG-12 / PI-K2: ruhige, einklappbare Review-Führung —
                               „Was prüfe ich?" (Checkliste + Kontext-Fokus) + „Was bewirkt die
                               Entscheidung?" + ehrliche Trust-/Quorum-Notiz. Progressive disclosure,
                               damit das Board nicht zur Formularwand wird. */}
-                          <details className="mt-2">
-                            <summary className="cursor-pointer list-none text-[11.5px] font-semibold text-ai hover:opacity-80">
-                              {t("val.guide.title")}
-                            </summary>
-                            <div className="mt-2 space-y-2 rounded-card border border-hairline bg-page px-3 py-2.5">
-                              <ul className="space-y-1">
-                                {REVIEW_CHECK_ITEMS.map((item) => (
-                                  <li
-                                    key={item.id}
-                                    className="text-[11.5px] leading-relaxed text-muted"
-                                  >
-                                    <span className="font-semibold text-text">
-                                      {t(item.labelKey)}
-                                    </span>{" "}
-                                    {t(item.hintKey)}
-                                  </li>
-                                ))}
-                              </ul>
-                              {guideFocusKey ? (
-                                <p className="text-[11.5px] leading-relaxed text-trust-warn-text">
-                                  {t(guideFocusKey)}
-                                </p>
-                              ) : null}
-                              <div className="border-t border-hairline pt-2">
-                                <div className="mb-1 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
-                                  {t("val.guide.impactTitle")}
+                              <details className="mt-2">
+                                <summary className="cursor-pointer list-none text-[11.5px] font-semibold text-ai hover:opacity-80">
+                                  {t("val.guide.title")}
+                                </summary>
+                                <div className="mt-2 space-y-2 rounded-card border border-hairline bg-page px-3 py-2.5">
+                                  <ul className="space-y-1">
+                                    {REVIEW_CHECK_ITEMS.map((item) => (
+                                      <li
+                                        key={item.id}
+                                        className="text-[11.5px] leading-relaxed text-muted"
+                                      >
+                                        <span className="font-semibold text-text">
+                                          {t(item.labelKey)}
+                                        </span>{" "}
+                                        {t(item.hintKey)}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                  {guideFocusKey ? (
+                                    <p className="text-[11.5px] leading-relaxed text-trust-warn-text">
+                                      {t(guideFocusKey)}
+                                    </p>
+                                  ) : null}
+                                  <div className="border-t border-hairline pt-2">
+                                    <div className="mb-1 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                                      {t("val.guide.impactTitle")}
+                                    </div>
+                                    <ul className="space-y-1">
+                                      {DECISION_IMPACTS.map((d) => (
+                                        <li
+                                          key={d.verdict}
+                                          className="text-[11.5px] leading-relaxed text-muted"
+                                        >
+                                          <span
+                                            className={`font-semibold ${IMPACT_TEXT_TONE[d.tone]}`}
+                                          >
+                                            {t(d.titleKey)}:
+                                          </span>{" "}
+                                          {t(d.bodyKey)}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                  <p className="border-t border-hairline pt-2 text-[11px] leading-relaxed text-muted-2">
+                                    {t(DECISION_TRUST_NOTE_KEY)}
+                                  </p>
                                 </div>
-                                <ul className="space-y-1">
-                                  {DECISION_IMPACTS.map((d) => (
-                                    <li
-                                      key={d.verdict}
-                                      className="text-[11.5px] leading-relaxed text-muted"
-                                    >
-                                      <span className={`font-semibold ${IMPACT_TEXT_TONE[d.tone]}`}>
-                                        {t(d.titleKey)}:
-                                      </span>{" "}
-                                      {t(d.bodyKey)}
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                              <p className="border-t border-hairline pt-2 text-[11px] leading-relaxed text-muted-2">
-                                {t(DECISION_TRUST_NOTE_KEY)}
-                              </p>
+                              </details>
                             </div>
                           </details>
                           {/* SCRUM-396: expliziter Weg ins KO-Detail — dort liegen Bearbeiten und
@@ -743,6 +788,45 @@ export function Validation(): JSX.Element {
                             </select>
                             {vhelp("assign")}
                           </div>
+                          {/* SCRUM-417: Bearbeiten/Löschen vom Board — optisch nachrangig unter
+                              den Entscheidungs-Knöpfen; Bestätigung auf eigener Zeile (SCRUM-419). */}
+                          {role === "admin" || role === "controller" || k.author === user?.id ? (
+                            confirmDeleteId === k.id ? (
+                              <div className="flex flex-wrap items-center justify-end gap-1.5 rounded-card border border-hairline bg-page px-2.5 py-1.5">
+                                <span className="text-[12px] font-semibold text-text">
+                                  {t("ko.deleteQ")}
+                                </span>
+                                <Button variant="ghost" onClick={() => setConfirmDeleteId(null)}>
+                                  {t("ko.deleteKeep")}
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  disabled={removeKo.isPending}
+                                  onClick={() => removeKo.mutate(k.id)}
+                                >
+                                  {t("ko.deleteYes")}
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2 sm:justify-end">
+                                <Link
+                                  to={`/wissen/${k.id}?edit=1`}
+                                  className="inline-flex items-center gap-1 rounded-btn px-2 py-1 text-[12px] font-semibold text-muted hover:text-text"
+                                >
+                                  <Pencil size={13} />
+                                  {t("val.editKo")}
+                                </Link>
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmDeleteId(k.id)}
+                                  className="inline-flex items-center gap-1 rounded-btn px-2 py-1 text-[12px] font-semibold text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
+                                >
+                                  <Trash2 size={13} />
+                                  {t("ko.deleteButton")}
+                                </button>
+                              </div>
+                            )
+                          ) : null}
                         </div>
                       </Card>
                       {feedback?.id === k.id ? (

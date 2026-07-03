@@ -39,8 +39,21 @@ export class LifecycleService {
     return koIds;
   }
 
-  pendingRevalidation(): Promise<string[]> {
-    return this.repo.pending();
+  // SCRUM-420 (Pedi 03.07.): Selbstheilung — Marker, deren KO nicht mehr existiert (z. B.
+  // nach Löschen/Demodaten-Purge), werden beim Lesen ehrlich ENTFERNT statt als Geister-
+  // Karten (nackte UUID, „nicht im Bestand") im Arbeitsbereich zu erscheinen. Wirkt für
+  // alle Leser derselben Quelle (Arbeitsbereich, Benachrichtigungen, Management-Kennzahlen).
+  async pendingRevalidation(): Promise<string[]> {
+    const pending = await this.repo.pending();
+    const alive: string[] = [];
+    for (const koId of pending) {
+      if (await this.koService.get(koId)) {
+        alive.push(koId);
+      } else {
+        await this.repo.clearPending(koId);
+      }
+    }
+    return alive;
   }
 
   // FR-LIF-01: Bestätigung erzeugt eine neue Version.

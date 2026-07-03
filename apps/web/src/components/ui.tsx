@@ -1,5 +1,11 @@
 import type { UseQueryResult } from "@tanstack/react-query";
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
+import type {
+  ButtonHTMLAttributes,
+  InputHTMLAttributes,
+  KeyboardEvent,
+  MouseEventHandler,
+  ReactNode,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 
@@ -33,14 +39,38 @@ export function Card({
   children,
   className,
   id,
+  onClick,
 }: {
   children: ReactNode;
   className?: string;
   // Optionaler Anker für Deep-Links/Sprungmarken (SCRUM-227). Rein additiv.
   id?: string;
+  // SCRUM-416: optionaler Flächen-Klick (Board-Karten öffnen das KO). Rein additiv;
+  // die Tastatur-Bedienung läuft weiterhin über die enthaltenen Links/Buttons.
+  onClick?: MouseEventHandler<HTMLDivElement>;
 }): JSX.Element {
+  // Lint a11y (useKeyWithClickEvents, Runner-Befund 03.07. 14:09): Klick-Karten bekommen
+  // ein echtes Tastatur-Pendant — fokussierbar (tabIndex) mit Button-Rolle, Enter/Leertaste
+  // lösen die Karten-Aktion aus. Nur auf der Karte SELBST: Tastendrücke in enthaltenen
+  // Bedienelementen bleiben unberührt (target === currentTarget-Prüfung). Karten ohne
+  // onClick bleiben exakt wie bisher (keine Rolle, kein Fokus).
+  const handleKeyDown = onClick
+    ? (event: KeyboardEvent<HTMLDivElement>) => {
+        if ((event.key === "Enter" || event.key === " ") && event.target === event.currentTarget) {
+          event.preventDefault(); // Leertaste soll die Seite nicht scrollen
+          onClick(event as unknown as Parameters<MouseEventHandler<HTMLDivElement>>[0]);
+        }
+      }
+    : undefined;
   return (
-    <div id={id} className={cx("rounded-card border border-hairline bg-surface p-5", className)}>
+    <div
+      id={id}
+      onClick={onClick}
+      onKeyDown={handleKeyDown}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      className={cx("rounded-card border border-hairline bg-surface p-5", className)}
+    >
       {children}
     </div>
   );

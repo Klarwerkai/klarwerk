@@ -46,6 +46,22 @@ describe("LifecycleService", () => {
     expect(await ctx.lifecycle.couplingsForKo("gibt-es-nicht")).toEqual([]);
   });
 
+  // SCRUM-420 (Pedi 03.07.): Geister-Karten im Validierungsboard — Re-Validierungs-Einträge
+  // gelöschter KOs zeigten nur eine UUID und führten ins Leere. pendingRevalidation heilt
+  // sich jetzt selbst: Einträge ohne lebendes KO werden entfernt statt angezeigt.
+  it("SCRUM-420: Re-Validierung gelöschter KOs verschwindet (Selbstheilung)", async () => {
+    const repo = new InMemoryLifecycleRepo();
+    const lifecycle = new LifecycleService({ koService: ctx.koService, repo });
+    await lifecycle.couple("anlage-9", ctx.ko.id);
+    await lifecycle.assetChanged("anlage-9");
+    expect(await lifecycle.pendingRevalidation()).toContain(ctx.ko.id);
+
+    await ctx.koService.delete(ctx.ko.id, "tester");
+    expect(await lifecycle.pendingRevalidation()).toEqual([]);
+    // Auch der Vormerk-Eintrag selbst ist aufgeräumt, nicht nur ausgeblendet.
+    expect(await repo.pending()).toEqual([]);
+  });
+
   it("FR-LIF-02: Autor-Übergabe ändert Autor, Originalautor bleibt", async () => {
     const updated = await ctx.lifecycle.transferAuthor(ctx.ko.id, "bob");
     expect(updated.author).toBe("bob");

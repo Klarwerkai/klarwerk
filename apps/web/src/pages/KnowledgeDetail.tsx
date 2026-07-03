@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link2, Paperclip, Pencil, Sparkles, Trash2, X } from "lucide-react";
-import { type ChangeEvent, useState } from "react";
+import { type ChangeEvent, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
@@ -492,6 +492,18 @@ export function KnowledgeDetail(): JSX.Element {
       tags: [...ko.tags],
     });
   };
+
+  // SCRUM-417: Deep-Link ?edit=1 (z. B. „Bearbeiten" vom Validierungs-Board) — öffnet den
+  // Bearbeiten-Modus direkt, sobald das KO geladen ist. Bewusst nur EINMAL (Ref-Guard):
+  // ein Abbrechen des Nutzers wird nicht wieder aufgerissen. Rechte-Guard bleibt canEdit.
+  const autoEditDone = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: startEdit ist stabil genug — Ref-Guard verhindert Mehrfachlauf.
+  useEffect(() => {
+    if (!autoEditDone.current && params.get("edit") === "1" && canEdit && query.data) {
+      autoEditDone.current = true;
+      startEdit(query.data);
+    }
+  }, [query.data, params, canEdit]);
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -1514,10 +1526,11 @@ export function KnowledgeDetail(): JSX.Element {
                       mit Inline-Bestätigung; Route erzwingt dieselbe Regel serverseitig. */}
                   {(role === "admin" || role === "controller" || ko.author === user?.id) && (
                     <Card>
-                      {/* SCRUM-412 (CI): Frage in Textfarbe — Rot nur am destruktiven Element. */}
+                      {/* SCRUM-412/419 (CI + Layout): Frage in Textfarbe, gestapelt auf schmalen
+                          Breiten — Text läuft nicht mehr in die Knöpfe. */}
                       {confirmDelete ? (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="flex-1 text-[12.5px] font-semibold text-text">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                          <span className="text-[12.5px] font-semibold leading-relaxed text-text sm:flex-1">
                             {t("ko.deleteQ")}
                           </span>
                           <Button variant="ghost" onClick={() => setConfirmDelete(false)}>

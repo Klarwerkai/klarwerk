@@ -65,9 +65,11 @@ function extractSystem(locale: ReasonerLocale): string {
   const contract =
     '{"points": [{"title": string (die Aussage in einem Satz), "summary": string, ' +
     '"sourceExcerpt": string (wörtliches Zitat aus dem Dokument)}]}';
+  // SCRUM-418: Ausgabe begrenzen (≤12 Punkte, Auszug ≤300 Zeichen) — vollständige, kurze
+  // Punkte statt einer langen Antwort, die am Token-Limit abreißt.
   return locale === "en"
-    ? `You identify distinct pieces of knowledge in a document (rules of experience, thresholds, procedures, causes, conditions). Respond ONLY with JSON: ${contract}. Every point MUST quote a verbatim excerpt from the document as sourceExcerpt (copy it exactly, do not paraphrase it). Extract ONLY what the document actually states — do not invent, infer beyond the text, or add world knowledge. If the document contains no usable knowledge, return {"points": []}.`
-    : `Du identifizierst einzelne Wissenspunkte in einem Dokument (Erfahrungsregeln, Grenzwerte, Vorgehensweisen, Ursachen, Bedingungen). Antworte AUSSCHLIESSLICH mit JSON: ${contract}. Jeder Punkt MUSS eine wörtliche Belegstelle aus dem Dokument als sourceExcerpt zitieren (exakt kopieren, nicht paraphrasieren). Extrahiere NUR, was im Dokument tatsächlich steht — erfinde nichts, schlussfolgere nicht über den Text hinaus, ergänze kein Weltwissen. Enthält das Dokument kein verwertbares Wissen, gib {"points": []} zurück.`;
+    ? `You identify distinct pieces of knowledge in a document (rules of experience, thresholds, procedures, causes, conditions). Respond ONLY with JSON: ${contract}. Return at most ${EXTRACT_PROMPT_MAX_POINTS} points — pick the most important ones. Keep each sourceExcerpt under 300 characters. Every point MUST quote a verbatim excerpt from the document as sourceExcerpt (copy it exactly, do not paraphrase it). Extract ONLY what the document actually states — do not invent, infer beyond the text, or add world knowledge. If the document contains no usable knowledge, return {"points": []}.`
+    : `Du identifizierst einzelne Wissenspunkte in einem Dokument (Erfahrungsregeln, Grenzwerte, Vorgehensweisen, Ursachen, Bedingungen). Antworte AUSSCHLIESSLICH mit JSON: ${contract}. Gib höchstens ${EXTRACT_PROMPT_MAX_POINTS} Punkte zurück — wähle die wichtigsten. Halte jede sourceExcerpt unter 300 Zeichen. Jeder Punkt MUSS eine wörtliche Belegstelle aus dem Dokument als sourceExcerpt zitieren (exakt kopieren, nicht paraphrasieren). Extrahiere NUR, was im Dokument tatsächlich steht — erfinde nichts, schlussfolgere nicht über den Text hinaus, ergänze kein Weltwissen. Enthält das Dokument kein verwertbares Wissen, gib {"points": []} zurück.`;
 }
 
 // PMO-FEA-0006: optionaler Suchauftrag des Experten — schränkt ein, WONACH gesucht wird,
@@ -112,15 +114,36 @@ function extractJson(raw: string): string {
   return start >= 0 && end > start ? raw.slice(start, end + 1) : raw;
 }
 
+// SCRUM-418: Rettung gekürzter Antworten — vollständige Punkt-Objekte aus einem am
+// Token-Limit abgerissenen JSON bergen (Klammer-Reparatur von hinten nach vorn). Jeder
+// geborgene Punkt läuft weiterhin durch parseExtractResponse und damit durchs
+// G-2-Belegstellen-Gate — gerettet wird nur, was vollständig UND belegt ist.
+export function salvageTruncatedExtract(raw: string, documentText: string): ExtractedPoint[] {
+  const json = extractJson(raw);
+  let cut = json.lastIndexOf("}");
+  while (cut > 0) {
+    const candidate = `${json.slice(0, cut + 1)}]}`;
+    try {
+      return parseExtractResponse(candidate, documentText);
+    } catch {
+      cut = json.lastIndexOf("}", cut - 1);
+    }
+  }
+  return [];
+}
+
 // ---- PMO-FEA-0006: Extract-Parsing (DOM-frei, deterministisch testbar) ----------------------
 
 // Obergrenzen: begrenzte Punkteliste (Review-bar in einer Sitzung) und gedeckelte Feldlängen.
 export const MAX_EXTRACT_POINTS = 20;
 export const MAX_EXCERPT_LENGTH = 400;
-// SCRUM-411: Antwort-Limit für extract — 20 Punkte × (Titel + Kurzfassung + Belegstelle bis
-// 400 Zeichen) passen NICHT in die 1024 Standard-Token; abgeschnittenes JSON war die Ursache
-// des Pedi-Befunds „kein KI-Modell trotz grünem Key-Test" (03.07.).
-export const EXTRACT_MAX_TOKENS = 4096;
+// SCRUM-411/418: Antwort-Limit für extract — abgeschnittenes JSON war die Ursache des
+// Pedi-Befunds „kein KI-Modell trotz grünem Key-Test" (03.07.). 4096 reichte bei einem
+// 42.000-Zeichen-PDF immer noch nicht → 8192, PLUS Ausgabe-Begrenzung im Prompt (unten)
+// PLUS Rettung vollständiger Punkte aus trotzdem gekürzten Antworten (salvage).
+export const EXTRACT_MAX_TOKENS = 8192;
+// SCRUM-418: Ausgabe ehrlich begrenzen — weniger, dafür vollständige Punkte.
+export const EXTRACT_PROMPT_MAX_POINTS = 12;
 // Dokumenttext-Deckel für den Modell-Aufruf — bewusst großzügig, aber endlich (Token-Schutz).
 export const MAX_EXTRACT_DOCUMENT_LENGTH = 60_000;
 
@@ -286,25 +309,34 @@ export class ModelProvider implements ReasonerProvider {
     const system = guidance
       ? `${extractSystem(locale)}\n${extractGuidance(locale, guidance)}`
       : extractSystem(locale);
-    // SCRUM-411: großes Antwort-Limit — bei 1024 Token wurde das Punkte-JSON realer
-    // Dokumente abgeschnitten (JSON-Parse-Fehler → stiller Fallback, Pedi-Test 03.07.).
+    // SCRUM-411/418: großes Antwort-Limit — bei 1024 (und selbst 4096) Token wurde das
+    // Punkte-JSON realer Dokumente abgeschnitten (Pedi-Tests 03.07., 42k-Zeichen-PDF).
     const raw = await client.complete(system, doc, EXTRACT_MAX_TOKENS);
     let points: ExtractedPoint[];
+    let truncated = false;
     try {
       points = parseExtractResponse(raw, doc);
     } catch {
-      // Klarer Grund statt kryptischem JSON-Fehler — landet über SCRUM-411 in der note.
-      throw new Error(
-        locale === "en"
-          ? "model response was not valid JSON (possibly truncated)"
-          : "Modell-Antwort war kein gültiges JSON (möglicherweise abgeschnitten)",
-      );
+      // SCRUM-418: erst vollständige Punkte aus der gekürzten Antwort retten;
+      // nur wenn NICHTS zu retten ist, ehrlich scheitern (SCRUM-411-Meldeweg).
+      points = salvageTruncatedExtract(raw, doc);
+      truncated = true;
+      if (points.length === 0) {
+        throw new Error(
+          locale === "en"
+            ? "model response was not valid JSON (possibly truncated)"
+            : "Modell-Antwort war kein gültiges JSON (möglicherweise abgeschnitten)",
+        );
+      }
     }
     return {
       points,
-      // Ehrlich: leere Liste bekommt eine Erklärung (kein stilles Nichts).
-      note:
-        points.length > 0
+      // Ehrlich: gekürzte Antwort wird benannt; leere Liste bekommt eine Erklärung.
+      note: truncated
+        ? locale === "en"
+          ? "Note: the model response was cut off — this list may be incomplete. Every shown point still carries a verified source excerpt."
+          : "Hinweis: Die Modell-Antwort wurde gekürzt — diese Liste ist möglicherweise unvollständig. Jeder angezeigte Punkt trägt weiterhin eine geprüfte Belegstelle."
+        : points.length > 0
           ? null
           : locale === "en"
             ? "No knowledge points with a verifiable source excerpt were found in this document."

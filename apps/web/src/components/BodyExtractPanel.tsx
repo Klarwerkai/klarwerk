@@ -5,7 +5,7 @@
 // ANHÄNGT (nichts ersetzen) und die Quelle je Punkt am KO vermerkt (add-source bzw.
 // SCRUM-408-Warteliste). Kein Auto-Speichern, keine stille Übernahme.
 import { useMutation } from "@tanstack/react-query";
-import { ChevronDown, FileText, Paperclip, Sparkles } from "lucide-react";
+import { ChevronDown, FileText, Loader2, Paperclip, Sparkles } from "lucide-react";
 import { useState } from "react";
 import type { ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
@@ -223,7 +223,12 @@ export function BodyExtractPanel({
                 disabled={extract.isPending || busy}
                 onClick={() => extract.mutate()}
               >
-                <Sparkles size={15} />
+                {/* SCRUM-418: sichtbare Arbeits-Animation, solange die KI liest. */}
+                {extract.isPending ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <Sparkles size={15} />
+                )}
                 {extract.isPending
                   ? t(CAPTURE_FILE_TEXT.searching)
                   : t(CAPTURE_FILE_TEXT.searchCta)}

@@ -20,9 +20,19 @@ import {
 } from "../components/ui";
 import { isNewUserValid, isPasswordResetValid, isUserAuditAction } from "../lib/adminForms";
 import { ADMIN_SECTIONS, type AdminSectionId, DEFAULT_ADMIN_SECTION } from "../lib/adminSections";
+// SCRUM-413: „Verfügbare KIs" — DOM-freie Zeilen aus dem echten configStatus.
+import { type AiAccessState, aiAccessRows } from "../lib/aiOverview";
 import { PILOT_NEXT_STEPS } from "../lib/pilotNextSteps";
 
 const EMPTY_NEW_USER = { name: "", email: "", password: "", role: "experte" as Role };
+
+// SCRUM-413: Status-Töne der KI-Zugänge — Ampel nur als ECHTER Status (CI-konform).
+const ACCESS_STATE_TONE: Record<AiAccessState, string> = {
+  active: "bg-trust-pos-bg text-trust-pos-text",
+  available: "bg-page text-muted",
+  missing: "bg-trust-warn-bg text-trust-warn-text",
+  planned: "bg-page text-muted-2",
+};
 
 export function Admin(): JSX.Element {
   const { t } = useTranslation();
@@ -495,6 +505,40 @@ export function Admin(): JSX.Element {
               </Button>
               <span className="text-[11px] text-muted-2">{t("adm.presets.note")}</span>
             </div>
+          </Card>
+
+          {/* SCRUM-413 (Pedi): alle verfügbaren KIs direkt sichtbar — ehrliche Übersicht aus
+              dem echten configStatus (nur Metadaten, keine Secrets); Status-Pill je Zugang. */}
+          <Card className="space-y-3">
+            <div className="flex items-center gap-1.5">
+              <SectionLabel>{t("adm.ai.accessTitle")}</SectionLabel>
+              <HelpTip title={t("adm.ai.accessTitle")} body={t("adm.ai.accessHelp")} />
+            </div>
+            {aiConfig.data ? (
+              <ul className="space-y-2">
+                {aiAccessRows(aiConfig.data).map((row) => (
+                  <li
+                    key={row.id}
+                    className="flex flex-wrap items-center gap-2 rounded-card border border-hairline p-2.5"
+                  >
+                    <span className="text-[13px] font-semibold text-text">
+                      {t(`adm.ai.access.${row.id}`)}
+                    </span>
+                    {row.detail ? (
+                      <span className="font-mono text-[11px] text-muted-2">{row.detail}</span>
+                    ) : null}
+                    <span
+                      className={`ml-auto rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${ACCESS_STATE_TONE[row.state]}`}
+                    >
+                      {t(`adm.ai.state.${row.state}`)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-[12.5px] text-muted-2">{t("state.loading")}</p>
+            )}
+            <p className="text-[11px] text-muted-2">{t("adm.ai.accessNote")}</p>
           </Card>
         </>
       ) : null}

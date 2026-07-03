@@ -3,6 +3,7 @@ import {
   ChevronDown,
   FileText,
   Globe,
+  Loader2,
   Mic,
   Paperclip,
   RotateCcw,
@@ -1570,7 +1571,12 @@ export function Capture(): JSX.Element {
                       disabled={extract.isPending || fileBusy}
                       onClick={() => extract.mutate()}
                     >
-                      <Sparkles size={15} />
+                      {/* SCRUM-418: sichtbare Arbeits-Animation, solange die KI liest. */}
+                      {extract.isPending ? (
+                        <Loader2 size={15} className="animate-spin" />
+                      ) : (
+                        <Sparkles size={15} />
+                      )}
                       {extract.isPending
                         ? t(CAPTURE_FILE_TEXT.searching)
                         : t(CAPTURE_FILE_TEXT.searchCta)}

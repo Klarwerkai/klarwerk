@@ -367,6 +367,19 @@ const de = {
   "adm.presets.remove": "Funktion entfernen",
   "adm.presets.note":
     "Wird auf dem Server gespeichert und überlebt den Neustart; Schlüssel und Modelle bleiben davon unberührt.",
+  // SCRUM-413: „Verfügbare KIs" — ehrliche Übersicht aller Zugänge (Metadaten, keine Secrets).
+  "adm.ai.accessTitle": "Verfügbare KIs",
+  "adm.ai.accessHelp":
+    "Zeigt alle KI-Zugänge dieser Instanz mit ehrlichem Status: das konfigurierte Cloud-Modell (Schlüssel nur serverseitig), den deterministischen Ersatzmodus, der ohne Modell einspringt, und den geplanten lokalen LLM-Server aus Team 2. Welcher Zugang je Einsatz wirklich wirkt, steht oben in der KI-Verwaltung (Spalte „wirkt“).",
+  "adm.ai.access.cloud": "Cloud-Modell",
+  "adm.ai.access.fallback": "Deterministischer Ersatzmodus",
+  "adm.ai.access.local": "Lokaler LLM-Server (Team 2)",
+  "adm.ai.accessNote":
+    "Der Anschluss des lokalen LLM-Servers an die App ist geplant (KLLM-61); bis dahin läuft er nur im Team-2-Prüfstand.",
+  "adm.ai.state.active": "Aktiv",
+  "adm.ai.state.available": "Bereit",
+  "adm.ai.state.missing": "Nicht konfiguriert",
+  "adm.ai.state.planned": "Geplant",
   "ko.couple.help":
     "Koppelst du dieses Wissen an eine Anlage, wird es bei „Anlage geändert“ (Lebenszyklus) automatisch zur Prüfung markiert — Wissen bleibt aktuell.",
   "ko.couple.empty": "Noch mit keiner Anlage gekoppelt.",
@@ -1142,6 +1155,10 @@ const de = {
   "val.empty": "Keine offenen Objekte.",
   "val.target": "Ziel: {{n}}× grün",
   "val.trust": "Trust",
+  // SCRUM-416: Karten-Dichte — eine ruhige Aufklappung für Signale/Kontext/Führung.
+  "val.more": "Signale & Kontext anzeigen",
+  // SCRUM-417: Bearbeiten direkt vom Board (führt in den Bearbeiten-Modus des KO-Details).
+  "val.editKo": "Bearbeiten",
   "val.transferred": "Autor übertragen",
   "val.assigned": "zugewiesen",
   "val.decisionLabel": "Entscheidung offen:",
@@ -2397,6 +2414,19 @@ const en: typeof de = {
   "adm.presets.remove": "Remove function",
   "adm.presets.note":
     "Stored on the server and survives restarts; keys and models are not affected.",
+  // SCRUM-413: "Available AIs" — honest overview of all accesses (metadata, no secrets).
+  "adm.ai.accessTitle": "Available AIs",
+  "adm.ai.accessHelp":
+    "Shows all AI accesses of this instance with their honest status: the configured cloud model (key stays server-side), the deterministic fallback that steps in without a model, and the planned local LLM server from team 2. Which access actually applies per task is shown above in the AI management section.",
+  "adm.ai.access.cloud": "Cloud model",
+  "adm.ai.access.fallback": "Deterministic fallback",
+  "adm.ai.access.local": "Local LLM server (team 2)",
+  "adm.ai.accessNote":
+    "Connecting the local LLM server to the app is planned (KLLM-61); until then it runs only on the team-2 test bench.",
+  "adm.ai.state.active": "Active",
+  "adm.ai.state.available": "Ready",
+  "adm.ai.state.missing": "Not configured",
+  "adm.ai.state.planned": "Planned",
   "ko.couple.help":
     "Couple this knowledge to an asset and “asset changed” (lifecycle) will automatically flag it for review — knowledge stays current.",
   "ko.couple.empty": "Not coupled to any asset yet.",
@@ -3159,6 +3189,10 @@ const en: typeof de = {
   "val.empty": "No open objects.",
   "val.target": "Target: {{n}}× green",
   "val.trust": "Trust",
+  // SCRUM-416: card density — one calm expander for signals/context/guidance.
+  "val.more": "Show signals & context",
+  // SCRUM-417: edit straight from the board (opens the KO detail in edit mode).
+  "val.editKo": "Edit",
   "val.transferred": "Author transferred",
   "val.assigned": "assigned",
   "val.decisionLabel": "Decision pending:",

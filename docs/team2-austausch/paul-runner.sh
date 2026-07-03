@@ -1,16 +1,20 @@
 #!/bin/bash
 # KLARWERK Paul-Runner — Aufgabendatei des Cloud-Workers ([Paul]).
 #
-# AUFGABE v5 (03.07., Pedi-Feedback-Runde): GATES FÜR SCRUM-411 + 410 + 412 (v0.9.30-beta).
-#   SCRUM-411: Extract-Bug — Antwort-Limit 4096 für extract + ehrliche Fehler-note
-#              (statt falscher „kein KI-Modell"-Meldung bei grünem Schlüssel).
-#   SCRUM-410: Interview-Prompt mit Sprach-Leitplanken (Du-Anrede, kurz, konkret, DE strikt).
-#   SCRUM-412: CI-Audit Bestätigungs-Dialoge — neutrale Flächen, Rot nur am destruktiven
-#              Element (Capture 2× · Admin-Purge · KO-Detail · Bibliothek · Mobile · Studio).
+# AUFGABE v7 (03.07. abends): GATES FÜR SCRUM-417/418/419/420 (v0.9.32-beta) —
+# Pedis zweite Feedback-Runde mit Screenshots:
+#   SCRUM-417: Validierungs-Board — Autor/Admin dürfen Artikel direkt bearbeiten (Stift →
+#              KO-Detail im Bearbeiten-Modus) und löschen (Papierkorb → ruhige Rückfrage).
+#   SCRUM-418: Extraktion — Arbeits-Animation (Spinner) während die KI sucht; Antwort-Limit
+#              8192 Token + Prompt-Begrenzung (≤12 Punkte, kurze Belegstellen) + Rettung
+#              vollständiger Punkte aus trotzdem gekürzten Antworten (ehrlicher Hinweis).
+#   SCRUM-419: Lösch-Rückfragen — Layout repariert (Bibliothek: eigene Zeile mit Trennlinie;
+#              KO-Detail: gestapelt statt gequetscht).
+#   SCRUM-420: Geister-Karten „Re-Validierung" gelöschter KOs verschwinden (Selbstheilung).
 # Ablauf:
 #   0: Format-Autofix (biome check --write).
-#   1: apps/web bauen (vite build → dist v0.9.30-beta).
-#   2: tools/check (Build · Lint · Architektur · Tests — inkl. neuem extract-failure.test).
+#   1: apps/web bauen (vite build → dist v0.9.32-beta).
+#   2: tools/check (Build · Lint · Architektur · Tests — inkl. neuer 418/420-Tests).
 #   3: npm run smoke:ui (4 Playwright-Kernflüsse).
 #   4: After-Report-Nachtrag anhängen (nur falls fehlend — Marker-Prüfung).
 
@@ -23,7 +27,7 @@ FEHL=0
 
 {
 echo "${FETT}KLARWERK Paul-Runner — $(date '+%d.%m.%Y %H:%M')${AUS}"
-echo "Aufgabe v5: Gates für SCRUM-411/410/412 (v0.9.30-beta) — ca. 4–7 Minuten."
+echo "Aufgabe v7: Gates für SCRUM-417/418/419/420 (v0.9.32-beta) — ca. 4–7 Minuten."
 echo
 
 cd "$REPO" || { echo "${ROT}FEHLER: Repo nicht gefunden.${AUS}"; exit 1; }
@@ -35,7 +39,7 @@ echo
 
 echo "${FETT}— Schritt 1/4: apps/web bauen (vite build)${AUS}"
 if (cd apps/web && npx vite build); then
-  echo "${GRUEN}✓ Build/dist v0.9.30 erstellt${AUS}"
+  echo "${GRUEN}✓ Build/dist v0.9.32 erstellt${AUS}"
 else
   echo "${ROT}✗ vite build ROT${AUS}"; FEHL=1
 fi
@@ -57,29 +61,26 @@ else
 fi
 echo
 
-echo "${FETT}— Schritt 4/4: After-Report-Nachträge (nur falls fehlend)${AUS}"
+echo "${FETT}— Schritt 4/4: After-Report-Nachtrag (nur falls fehlend)${AUS}"
 AR="$REPO/docs/qm/claude-after-report.md"
-if ! grep -q "Feedback-Runde 03.07. mittags" "$AR" 2>/dev/null; then
+if ! grep -q "SCRUM-417/418/419/420 — Feedback-Runde 2" "$AR" 2>/dev/null; then
   echo >> "$AR"
-  cat "$BRIDGE/paul-nachtrag-fixes-0307.md" >> "$AR" && echo "${GRUEN}✓ Nachtrag Feedback-Runde angehängt${AUS}"
+  cat "$BRIDGE/paul-nachtrag-417-420.md" >> "$AR" && echo "${GRUEN}✓ Nachtrag 417–420 angehängt${AUS}"
 else
-  echo "ℹ️ Nachtrag Feedback-Runde schon vorhanden — übersprungen."
-fi
-# QM-Ehrlichkeit: Korrektur zum Verifikations-Werkzeug (Lauf 1 war ROT, Ursache dokumentiert).
-if ! grep -q "Werkzeug-Korrektur 03.07." "$AR" 2>/dev/null; then
-  echo >> "$AR"
-  cat "$BRIDGE/paul-nachtrag-korrektur-0307.md" >> "$AR" && echo "${GRUEN}✓ Nachtrag Werkzeug-Korrektur angehängt${AUS}"
-else
-  echo "ℹ️ Nachtrag Werkzeug-Korrektur schon vorhanden — übersprungen."
+  echo "ℹ️ Nachtrag schon vorhanden — übersprungen."
 fi
 
 echo
 if [ "$FEHL" = "0" ]; then
-  echo "${GRUEN}${FETT}ALLE GATES GRÜN — SCRUM-411/410/412 sind lieferbar (v0.9.30-beta).${AUS}"
-  echo "WICHTIG für den Extract-Test: App neu starten (neues dist + Server-Code) und dann"
-  echo "im Erfassen-Weg ein Dokument hochladen — jetzt mit echtem Ergebnis oder ehrlichem Grund."
+  echo "${GRUEN}${FETT}ALLE GATES GRÜN — SCRUM-417/418/419/420 sind lieferbar (v0.9.32-beta).${AUS}"
+  echo "Sichtabnahme (3 Minuten):"
+  echo "  1. Validierung: auf einer Karte Stift/Papierkorb testen (als Admin oder Autor)."
+  echo "  2. Wissen erfassen → Aus Datei → PDF hochladen → 'Nach Wissen suchen': Spinner dreht,"
+  echo "     Ergebnis kommt (bei sehr langen PDFs ggf. mit ehrlichem Gekürzt-Hinweis)."
+  echo "  3. Bibliothek: Löschen drücken → Rückfrage sitzt sauber in eigener Zeile."
+  echo "  4. Validierung: keine UUID-Geisterkarten mehr unter Re-Validierung."
   echo "Commit-Empfehlung (Boss-Session):"
-  echo "  [Cloud-Worker] SCRUM-411/410/412: Extract-Fix (Token-Limit + ehrliche Fehler-note) · Interview-Sprache · CI-Bestätigungen (v0.9.30-beta)"
+  echo "  [Cloud-Worker] SCRUM-417/418/419/420: Board-Aktionen · Extraktion robust+Spinner · Lösch-Layouts · Geister-Karten (v0.9.32-beta)"
   echo "KEIN Push — KLARWERK Sync macht Pedi."
 else
   echo "${ROT}${FETT}Mindestens ein Gate ROT — Paul analysiert docs/team2-austausch/paul-runner.log und liefert einen Fix.${AUS}"
