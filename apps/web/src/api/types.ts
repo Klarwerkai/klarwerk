@@ -170,6 +170,16 @@ export interface ValidationSettings {
   defaultNeededValidations: number;
 }
 
+// SCRUM-422: Papierkorb-Zeile (Admin) — nur Metadaten.
+export interface TrashedKo {
+  id: string;
+  title: string;
+  category: string;
+  deletedAt: string;
+  deletedBy: string;
+  expiresAt: string;
+}
+
 export type ConflictType = "truth" | "experience" | "context" | "temporal" | "role";
 export type ConflictStatus = "offen" | "eskaliert" | "zweitmeinung" | "geloest";
 

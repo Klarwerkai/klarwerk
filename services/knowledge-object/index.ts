@@ -5,6 +5,8 @@ export {
   DEFAULT_EVIDENCE_LIMIT,
   MAX_EVIDENCE_LIMIT,
   TRUTH_CONFLICT_TRUST_PENALTY,
+  // SCRUM-422: Papierkorb-Aufbewahrungsfrist (Tage bis zur automatischen Endlöschung).
+  TRASH_RETENTION_DAYS,
 } from "./src/service";
 export type { KoServiceDeps, CreateKoInput, ReviseKoInput } from "./src/service";
 export {
@@ -42,4 +44,6 @@ export type {
   KoSourceKind,
   KoVersionSnapshot,
   KoErrorCode,
+  // SCRUM-422: Papierkorb-Zeile (Admin-Ansicht).
+  TrashedKo,
 } from "./src/types";

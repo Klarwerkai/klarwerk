@@ -183,6 +183,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/kos": { protection: "ko.create" },
   "DELETE /api/kos/:id": { protection: "ko.read" }, // + Route prüft Autor-oder-Controller/Admin (Pedi 02.07.)
   "PUT /api/kos/:id": { protection: "action-dispatched" },
+  // SCRUM-422: Papierkorb — nur Admin (users.manage): Liste, Wiederherstellen, Endlöschung.
+  "GET /api/kos/trash": { protection: "users.manage" },
+  "POST /api/kos/:id/restore": { protection: "users.manage" },
+  "DELETE /api/kos/trash/:id": { protection: "users.manage" },
 
   // --- Validation (validation-routes.ts) ---
   "GET /api/validation/board": { protection: "ko.read" },

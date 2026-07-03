@@ -12,9 +12,13 @@ import {
   KoError,
   type KoSource,
   type KoStatus,
+  type TrashedKo,
 } from "./types";
 
 const DEFAULT_NEEDED_VALIDATIONS = 3; // FR-CAP-08: 1–5, Standard 3.
+
+// SCRUM-422 (Pedi 03.07.): Aufbewahrungsfrist im Papierkorb — danach automatische Endlöschung.
+export const TRASH_RETENTION_DAYS = 28;
 
 // SCRUM-358 / AG-05 / AG-14-SERVER-TRUST: konservative, nachvollziehbare Trust-Strafe, wenn ein offener
 // Wahrheitskonflikt ein validiertes KO zurück in Review holt. Bewusst KLEIN (kein Reset auf 0): ein
@@ -315,19 +319,91 @@ export class KoService {
     return updated;
   }
 
-  get(id: string): Promise<KnowledgeObject | undefined> {
-    return this.repo.findById(id);
+  // SCRUM-422: getrashte KOs wirken überall gelöscht — get/list/findCandidates blenden sie aus.
+  async get(id: string): Promise<KnowledgeObject | undefined> {
+    const ko = await this.repo.findById(id);
+    return ko && !ko.deletedAt ? ko : undefined;
   }
 
-  list(filter: KoFilter = {}): Promise<KnowledgeObject[]> {
-    return this.repo.list(filter);
+  async list(filter: KoFilter = {}): Promise<KnowledgeObject[]> {
+    await this.sweepTrash();
+    return (await this.repo.list(filter)).filter((k) => !k.deletedAt);
   }
 
   // SCRUM-361 / AG-03: begrenzte, datenquellennahe Kandidatenabfrage für Ask (kein All-Pool-Load).
   // Delegiert an das Repository (InMemory/Pg API-kompatibel); die Endsortierung/Top-K bleibt im Ask-/
   // Reasoner-Pfad (selectCandidates).
-  findCandidates(query: KoCandidateQuery): Promise<KnowledgeObject[]> {
-    return this.repo.findCandidates(query);
+  async findCandidates(query: KoCandidateQuery): Promise<KnowledgeObject[]> {
+    return (await this.repo.findCandidates(query)).filter((k) => !k.deletedAt);
+  }
+
+  // ---- SCRUM-422: Papierkorb -----------------------------------------------------------
+
+  // Ablauf-Zeitpunkt der Endlöschung eines getrashten KO.
+  private trashExpiry(deletedAt: string): number {
+    return Date.parse(deletedAt) + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  }
+
+  // Automatische Endlöschung abgelaufener Papierkorb-Einträge — lazy beim Lesen
+  // (Selbstheilungs-Muster wie SCRUM-420, kein Cron). Höchstens einmal pro Stunde,
+  // damit list() nicht bei jedem Aufruf den Vollbestand scannt; force = Papierkorb-Ansicht.
+  private lastTrashSweep = 0;
+  private async sweepTrash(force = false): Promise<void> {
+    const nowMs = this.now();
+    if (!force && nowMs - this.lastTrashSweep < 60 * 60 * 1000) {
+      return;
+    }
+    this.lastTrashSweep = nowMs;
+    for (const ko of await this.repo.list({})) {
+      if (ko.deletedAt && this.trashExpiry(ko.deletedAt) <= nowMs) {
+        await this.repo.delete(ko.id);
+        await this.audit?.record({
+          actor: "system",
+          action: "ko.purged",
+          target: ko.id,
+          payload: { reason: "trash-expired", deletedAt: ko.deletedAt },
+        });
+      }
+    }
+  }
+
+  // Papierkorb-Ansicht (Admin): nur Metadaten, jüngste Löschung zuerst.
+  async trashed(): Promise<TrashedKo[]> {
+    await this.sweepTrash(true);
+    const all = await this.repo.list({});
+    return all
+      .filter((k): k is KnowledgeObject & { deletedAt: string } => Boolean(k.deletedAt))
+      .map((k) => ({
+        id: k.id,
+        title: k.title,
+        category: k.category,
+        deletedAt: k.deletedAt,
+        deletedBy: k.deletedBy ?? "system",
+        expiresAt: new Date(this.trashExpiry(k.deletedAt)).toISOString(),
+      }))
+      .sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
+  }
+
+  // Wiederherstellen aus dem Papierkorb — Historie/Versionen/Trust bleiben unangetastet.
+  async restore(id: string, actor = "system"): Promise<KnowledgeObject> {
+    const ko = await this.repo.findById(id);
+    if (!ko?.deletedAt) {
+      throw new KoError("NOT_FOUND", "Wissensobjekt nicht im Papierkorb.");
+    }
+    const { deletedAt: _at, deletedBy: _by, ...restored } = ko;
+    await this.repo.update(restored as KnowledgeObject);
+    await this.audit?.record({ actor, action: "ko.restored", target: id });
+    return restored as KnowledgeObject;
+  }
+
+  // Sofortige Endlöschung EINES Papierkorb-Eintrags (Admin-Entscheidung).
+  async purgeTrashed(id: string, actor = "system"): Promise<void> {
+    const ko = await this.repo.findById(id);
+    if (!ko?.deletedAt) {
+      throw new KoError("NOT_FOUND", "Wissensobjekt nicht im Papierkorb.");
+    }
+    await this.repo.delete(id);
+    await this.audit?.record({ actor, action: "ko.purged", target: id, payload: { manual: true } });
   }
 
   // SCRUM-161: read-only Zugriff auf die in SCRUM-159 persistierten Voll-Snapshots.
@@ -464,16 +540,31 @@ export class KoService {
     return updated;
   }
 
-  // FR-RBAC-02: KO löschen (nur Controller/Admin, serverseitig erzwungen) mit Audit-Eintrag.
-  async delete(id: string, actor = "system"): Promise<void> {
-    await this.require(id);
-    await this.repo.delete(id);
-    await this.audit?.record({ actor, action: "ko.deleted", target: id });
+  // FR-RBAC-02: KO löschen (nur Controller/Admin/Autor, serverseitig erzwungen) mit Audit.
+  // SCRUM-422: normales Löschen = Papierkorb (Soft-Delete, wiederherstellbar, Auto-Endlöschung
+  // nach TRASH_RETENTION_DAYS). HART gelöscht wird nur: Demo-Daten (immer) oder auf
+  // ausdrückliche Anweisung interner Aufrufer (opts.hard, z. B. Demodaten-Purge).
+  async delete(id: string, actor = "system", opts?: { hard?: boolean }): Promise<void> {
+    const ko = await this.require(id);
+    if (opts?.hard || ko.demoSeed) {
+      await this.repo.delete(id);
+      await this.audit?.record({
+        actor,
+        action: "ko.deleted",
+        target: id,
+        payload: { hard: true },
+      });
+      return;
+    }
+    const at = new Date(this.now()).toISOString();
+    await this.repo.update({ ...ko, deletedAt: at, deletedBy: actor });
+    await this.audit?.record({ actor, action: "ko.deleted", target: id, payload: { trash: true } });
   }
 
   private async require(id: string): Promise<KnowledgeObject> {
     const ko = await this.repo.findById(id);
-    if (!ko) {
+    // SCRUM-422: getrashte KOs sind für alle normalen Pfade nicht vorhanden.
+    if (!ko || ko.deletedAt) {
       throw new KoError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
     }
     return ko;

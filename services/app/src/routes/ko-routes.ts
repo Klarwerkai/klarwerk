@@ -149,8 +149,48 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       },
     );
 
+    // SCRUM-422: Papierkorb — nur Admin (users.manage). Liste ist rein metadatenbasiert;
+    // Wiederherstellen und sofortige Endlöschung sind bewusste Admin-Entscheidungen.
+    app.get("/api/kos/trash", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      try {
+        reply.code(200).send(await ko.trashed());
+      } catch (error) {
+        sendError(reply, error);
+      }
+    });
+
+    app.post<{ Params: { id: string } }>("/api/kos/:id/restore", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      try {
+        reply.code(200).send(await ko.restore(request.params.id, user.id));
+      } catch (error) {
+        sendError(reply, error);
+      }
+    });
+
+    app.delete<{ Params: { id: string } }>("/api/kos/trash/:id", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      try {
+        await ko.purgeTrashed(request.params.id, user.id);
+        reply.code(204).send();
+      } catch (error) {
+        sendError(reply, error);
+      }
+    });
+
     // FR-RBAC-02 + Pedi 02.07.: Löschen dürfen Controller/Admin (ko.validate) ODER der
     // AUTOR seines eigenen Wissensobjekts. Ehrlich: Löschung landet im Audit (ko.deleted).
+    // SCRUM-422: Löschen heißt jetzt Papierkorb (Demo-Daten weiterhin endgültig).
     app.delete<{ Params: { id: string } }>("/api/kos/:id", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
       if (!user) {

@@ -205,6 +205,34 @@ export function Admin(): JSX.Element {
     onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
   });
 
+  // SCRUM-422: Papierkorb — Liste + Wiederherstellen + bewusste Endlöschung (Inline-Rückfrage).
+  const trash = useQuery({ queryKey: ["kos", "trash"], queryFn: endpoints.ko.trash });
+  const [confirmTrashPurgeId, setConfirmTrashPurgeId] = useState<string | null>(null);
+  const invalidateTrash = () => {
+    void qc.invalidateQueries({ queryKey: ["kos"] });
+    void qc.invalidateQueries({ queryKey: ["validation"] });
+  };
+  const trashRestore = useMutation({
+    mutationFn: (id: string) => endpoints.ko.restore(id),
+    onSuccess: () => {
+      invalidateTrash();
+      push("success", t("adm.trash.restored"));
+    },
+    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
+  });
+  const trashPurge = useMutation({
+    mutationFn: (id: string) => endpoints.ko.purge(id),
+    onSuccess: () => {
+      setConfirmTrashPurgeId(null);
+      invalidateTrash();
+      push("success", t("adm.trash.purged"));
+    },
+    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
+  });
+  const userName = (id: string): string => query.data?.find((u) => u.id === id)?.name ?? id;
+  const daysLeft = (expiresAt: string): number =>
+    Math.max(0, Math.ceil((Date.parse(expiresAt) - Date.now()) / 86_400_000));
+
   // SCRUM-394: aktiver Admin-Bereich (Konten · KI · Daten).
   const [section, setSection] = useState<AdminSectionId>(DEFAULT_ADMIN_SECTION);
 
@@ -337,6 +365,80 @@ export function Admin(): JSX.Element {
                 {t("adm.val.save")}
               </Button>
             </div>
+          </Card>
+
+          {/* SCRUM-422: Papierkorb — 28 Tage wiederherstellbar, dann Auto-Endlöschung;
+              Demo-Daten erscheinen hier nie. Endlöschung mit ruhiger Inline-Rückfrage (CI). */}
+          <Card className="space-y-2">
+            <div className="flex items-center gap-1.5">
+              <SectionLabel>{t("adm.trash.title")}</SectionLabel>
+              <HelpTip title={t("adm.trash.title")} body={t("adm.trash.help")} />
+            </div>
+            <QueryState query={trash} />
+            {trash.data && trash.data.length === 0 ? (
+              <p className="text-[12.5px] text-muted-2">{t("adm.trash.empty")}</p>
+            ) : null}
+            {trash.data && trash.data.length > 0 ? (
+              <ul className="space-y-2">
+                {trash.data.map((entry) => (
+                  <li key={entry.id} className="rounded-card border border-hairline p-2.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[13px] font-semibold text-text">
+                          {entry.title}
+                        </div>
+                        <div className="text-[11.5px] text-muted-2">
+                          {t("adm.trash.deletedMeta", {
+                            name: userName(entry.deletedBy),
+                            date: new Date(entry.deletedAt).toLocaleDateString(),
+                          })}
+                          {" · "}
+                          {t("adm.trash.expires", { days: daysLeft(entry.expiresAt) })}
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        disabled={trashRestore.isPending}
+                        onClick={() => trashRestore.mutate(entry.id)}
+                      >
+                        {t("adm.trash.restore")}
+                      </Button>
+                      {confirmTrashPurgeId === entry.id ? (
+                        <span className="flex w-full basis-full flex-wrap items-center justify-end gap-2 border-t border-hairline pt-2">
+                          <span className="text-[12px] font-semibold text-text">
+                            {t("adm.trash.purgeQ")}
+                          </span>
+                          <button
+                            type="button"
+                            className="text-[12px] font-semibold text-muted hover:text-text"
+                            onClick={() => setConfirmTrashPurgeId(null)}
+                          >
+                            {t("adm.trash.keep")}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={trashPurge.isPending}
+                            className="text-[12px] font-semibold text-trust-crit-text"
+                            onClick={() => trashPurge.mutate(entry.id)}
+                          >
+                            {t("adm.trash.purge")}
+                          </button>
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmTrashPurgeId(entry.id)}
+                          className="rounded-btn px-2.5 py-1.5 text-[12px] font-semibold text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
+                        >
+                          <Trash2 size={13} className="mr-1 inline" />
+                          {t("adm.trash.purge")}
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </Card>
         </>
       ) : null}

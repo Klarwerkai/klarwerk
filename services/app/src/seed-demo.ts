@@ -471,7 +471,9 @@ export async function purgeDemoSeed(
     }
   }
   for (const k of demoKos) {
-    await ko.delete(k.id, actor);
+    // SCRUM-422: Demo-Daten IMMER endgültig löschen — nie in den Papierkorb
+    // (gilt auch für nur per Tag markierte Alt-Demo-KOs ohne demoSeed-Flag).
+    await ko.delete(k.id, actor, { hard: true });
   }
   return { kos: demoKos.length, conflicts: removedConflicts };
 }

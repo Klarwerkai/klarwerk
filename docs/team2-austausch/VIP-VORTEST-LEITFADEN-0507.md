@@ -95,6 +95,10 @@ Gib ihm diese fünf Aufgaben — sie führen an den Stärken entlang:
   Leistungs-Tracking; Einführung über Betriebsrat und Pilotteam."
 - **„Vertraulichkeit einzelner Inhalte?"** — „Kennzeichnung in Stufen (etwa Intern /
   Vertraulich / Streng vertraulich) ist spezifiziert und in der Umsetzung."
+- **„Was passiert mit gelöschten Inhalten?"** — „Gelöschte Beiträge wandern in einen
+  Papierkorb und sind dort vier Wochen vom Admin wiederherstellbar; danach werden sie
+  automatisch endgültig entfernt. Nur Demo-Daten werden immer sofort endgültig gelöscht.
+  Jede Löschung, Wiederherstellung und Endlöschung steht im Audit-Log."
 - **„Was kostet der Betrieb?"** — nur wenn du eine belastbare Zahl hast; sonst: „Hängt am
   Modellverbrauch; die Architektur ist bewusst schlank — ein Server, eine Datenbank."
 
@@ -111,6 +115,6 @@ Gib ihm diese fünf Aufgaben — sie führen an den Stärken entlang:
 
 ---
 
-*Erstellt von Paul (Cloud-Worker), 03.07.2026 — Stand v0.9.33-beta. Vor dem Termin bitte
-einmal gegenlesen: Zahlen (Version, Testanzahl) und den Demodaten-Stand aktualisieren,
-falls bis dahin weitere Lieferungen kommen.*
+*Erstellt von Paul (Cloud-Worker), 03.07.2026 — Stand v0.9.34-beta (inkl. Papierkorb).
+Vor dem Termin bitte einmal gegenlesen: Zahlen (Version, Testanzahl) und den
+Demodaten-Stand aktualisieren, falls bis dahin weitere Lieferungen kommen.*

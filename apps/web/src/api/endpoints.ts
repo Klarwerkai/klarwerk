@@ -42,6 +42,7 @@ import type {
   ReviewAction,
   Role,
   StructureResult,
+  TrashedKo,
   ValidationSettings,
   Verdict,
 } from "./types";
@@ -100,6 +101,10 @@ export const endpoints = {
       api.post<KnowledgeObject>("/kos", body),
     act: (id: string, body: KoAction) => api.put<KnowledgeObject>(`/kos/${id}`, body),
     remove: (id: string) => api.del<void>(`/kos/${id}`),
+    // SCRUM-422: Papierkorb (nur Admin): Liste, Wiederherstellen, sofortige Endlöschung.
+    trash: () => api.get<TrashedKo[]>("/kos/trash"),
+    restore: (id: string) => api.post<KnowledgeObject>(`/kos/${id}/restore`),
+    purge: (id: string) => api.del<void>(`/kos/trash/${id}`),
   },
   validation: {
     board: (f?: KoFilter) => api.get<KnowledgeObject[]>(`/validation/board${qs(f)}`),

@@ -99,6 +99,22 @@ export interface KnowledgeObject {
   // Demodaten-Merker (Pedi 02.07.): vom Seed gesetzt, überlebt Bearbeitungen/Versionen —
   // damit Demo-Bestand sichtbar bleibt und komplett entfernt werden kann.
   demoSeed?: boolean;
+  // SCRUM-422 (Papierkorb): gesetzt beim Soft-Delete. Getrashte KOs sind aus ALLEN
+  // Lese-/Mutations-Pfaden ausgeblendet (wirken gelöscht) und werden nach Ablauf der
+  // Frist automatisch endgültig entfernt. Demo-Daten landen NIE hier (immer hart).
+  deletedAt?: string;
+  deletedBy?: string;
+}
+
+// SCRUM-422: Papierkorb-Zeile für den Admin — nur Metadaten, keine Inhalte.
+export interface TrashedKo {
+  id: string;
+  title: string;
+  category: string;
+  deletedAt: string;
+  deletedBy: string;
+  // Wann die automatische Endlöschung greift (deletedAt + TRASH_RETENTION_DAYS).
+  expiresAt: string;
 }
 
 // SCRUM-159 (Knowledge-OS-Foundation): unveränderlicher Voll-Snapshot eines KO je Version.
