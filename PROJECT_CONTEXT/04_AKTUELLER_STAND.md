@@ -41,3 +41,14 @@
 - Jira-Nummern KWEB-107/108 sind inhaltlich vertauscht (in Tickets dokumentiert; Commits maßgeblich).
 - Biome-Suppression muss als EINE Zeile direkt über der Anweisung stehen.
 - Deutsche Anführungszeichen in TS-Strings: „…“ verwenden, nie gerades " im String.
+
+## Nachtrag 03.07. (vormittags)
+
+- Zweiter Mitarbeiter heißt **PAUL** ([Cloud-Worker]); Fragen beantwortet (docs/qm/ANTWORTEN_…),
+  Commit-Weg (a), Datei-Brücke `docs/team2-austausch/` aktiv. PAUL leitet KLLM-57.
+- **Budget-Regel (Pedi):** Wochenlimit der Boss-Session zu ~90 % verbraucht → Boss macht nur noch
+  ADMIN (Entscheidungen, Commits/Spiegel, Jira-Pflege, kurze Antworten); ALLE inhaltliche Arbeit
+  (Code, Analysen, Doku-Erstellung, Auswertungen) macht PAUL.
+- Neue Schreibtisch-App: **„KLARWERK Pruefstand starten.command"** (Master tools-sync/) —
+  Auswahl 1=Anthropic-Referenz, 2=lokaler Server, 3=beides; kopiert Ergebnisse automatisch in
+  die Brücke `docs/team2-austausch/pruefstand/` zur Auswertung durch PAUL.
