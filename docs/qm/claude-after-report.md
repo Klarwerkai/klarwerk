@@ -10319,3 +10319,12 @@ git push
 - SCRUM-404: (a) KI-Preset „Formatieren" (Inhalt wörtlich, nur Gliederung) + ?-HelpTip an ALLEN Presets; (b) Befund Vorschau-Knopf: schaltete korrekt um, war aber unsichtbar (WYSIWYG-Editor ≈ Vorschau, Werkzeugleiste blieb stehen) → in der Vorschau verschwinden die Formatier-Knöpfe, ein Vorschau-Badge erscheint, leerer Inhalt bekommt ehrlichen Hinweis; (c) 3 neue Strukturvorlagen: Checkliste, Übergabe/Schulung, Entscheidungshilfe — alle 6 mit ?-Hilfe; (d) „Vorlage übernehmen" → kontextabhängig „Vorlage einsetzen"/„Vorlage unten anfügen" + ?-Hilfe.
 **Beweis:** Playwright-Repro des Vorschau-Verhaltens (Screenshot) VOR dem Fix; Gates: tsc/Biome/depcruise grün · 1284 Tests/212 Dateien · smoke:ui 4/4 · dist v0.9.22 eingespielt. Kein Push (KLARWERK Sync durch Pedi).
 **Offen:** Pedi prüft KI-Verwaltung (extract auf Auto?) und nimmt v0.9.22 ab; SCRUM-405 nach Freeze.
+
+## After-Report · 03.07.2026 · PROJECT_CONTEXT-Ordner (Onboarding & Projektgedächtnis)
+
+**Auslöser:** Pedi holt einen zweiten Mitarbeiter (Claude-Mac-App) ins Projekt; „kein Wissensverlust mehr leistbar".
+**Ergebnis (Commits 050c9c4, 552e666, feb9a4d, 230ff7a):** `/PROJECT_CONTEXT` mit 12 Dateien (00–11):
+Start/Einstiegsprompt · Überblick · Arbeitsregeln (inkl. Mehrpersonen-Regeln) · Repo-Karte ·
+Aktueller Stand (lebend) · Team-2-LLM · Schreibtisch-Apps-Prinzip · Jira/GitHub-Einstiegsroute ·
+LLM-Server-Runbook · Entscheidungs-Log · Glossar/Konten/Sicherungs-Hinweis (PMO + SSH-Keys nicht in Git → Time Machine!) ·
+CI & Design. CLAUDE.md verweist auf 00–11. Keine Secrets im Ordner. Kein Push (Sync durch Pedi).
