@@ -364,6 +364,14 @@ const de = {
   "adm.presets.add": "Funktion hinzufügen",
   "adm.presets.save": "Funktionen speichern",
   "adm.presets.saved": "Eigene KI-Funktionen gespeichert.",
+  "adm.val.title": "Prüfungen",
+  "adm.val.help":
+    "Die Standard-Prüferanzahl gilt für neue Einreichungen ohne eigene Angabe. Erlaubt sind 1 bis 5. Bestehende Beiträge bleiben unverändert; Änderungen landen im Audit-Log.",
+  "adm.val.hint":
+    "So viele Prüf-Bestätigungen braucht ein neuer Beitrag standardmäßig, bis er als validiert gilt.",
+  "adm.val.label": "Standard-Prüferanzahl (1–5)",
+  "adm.val.save": "Speichern",
+  "adm.val.saved": "Standard-Prüferanzahl gespeichert.",
   "adm.presets.remove": "Funktion entfernen",
   "adm.presets.note":
     "Wird auf dem Server gespeichert und überlebt den Neustart; Schlüssel und Modelle bleiben davon unberührt.",
@@ -676,6 +684,13 @@ const de = {
   "capture.help.category.body":
     "Die Kategorie ist eine frei vergebbare fachliche Einordnung (z. B. „Instandhaltung“, „Qualität“, „Einkauf“). Tags sind freie Schlagworte zur Auffindbarkeit.",
   "capture.help.validations.title": "Nötige Validierungen",
+  "capture.reviewers.title": "Prüfer vorschlagen (optional)",
+  "capture.reviewers.helpTitle": "Prüfer vorschlagen",
+  "capture.reviewers.helpBody":
+    "Wähle Kolleginnen und Kollegen, die deinen Beitrag prüfen sollen. Sie bekommen die Prüfung als offene Zuweisung und eine Benachrichtigung. Ohne Auswahl bleibt der Beitrag offen für alle Prüfer.",
+  "capture.reviewers.none": "Noch keine weiteren Personen im Verzeichnis.",
+  "capture.reviewers.selected": "Ausgewählt: {{n}}",
+  "capture.reviewers.defaultPlaceholder": "Standard: {{n}}",
   "capture.help.validations.body":
     "Wie viele unabhängige Bestätigungen das Objekt braucht, bevor es als „validiert“ gilt (1–5, Standard 3). Mehr = höhere Hürde, belastbarer.",
   "capture.modeSoon": "Dieser Modus folgt.",
@@ -2411,6 +2426,14 @@ const en: typeof de = {
   "adm.presets.add": "Add function",
   "adm.presets.save": "Save functions",
   "adm.presets.saved": "Custom AI functions saved.",
+  "adm.val.title": "Reviews",
+  "adm.val.help":
+    "The default reviewer count applies to new submissions without an explicit value. The allowed range is 1 to 5. Existing entries stay unchanged; changes are recorded in the audit log.",
+  "adm.val.hint":
+    "This is how many review confirmations a new entry needs by default before it counts as validated.",
+  "adm.val.label": "Default reviewer count (1–5)",
+  "adm.val.save": "Save",
+  "adm.val.saved": "Default reviewer count saved.",
   "adm.presets.remove": "Remove function",
   "adm.presets.note":
     "Stored on the server and survives restarts; keys and models are not affected.",
@@ -2717,6 +2740,13 @@ const en: typeof de = {
   "capture.help.category.body":
     'The category is a free domain classification (e.g. "Maintenance", "Quality", "Procurement"). Tags are free keywords for findability.',
   "capture.help.validations.title": "Required validations",
+  "capture.reviewers.title": "Suggest reviewers (optional)",
+  "capture.reviewers.helpTitle": "Suggest reviewers",
+  "capture.reviewers.helpBody":
+    "Pick colleagues who should review this entry. They receive it as an open review assignment and get notified. Without a selection the entry stays open to all reviewers.",
+  "capture.reviewers.none": "No other people in the directory yet.",
+  "capture.reviewers.selected": "Selected: {{n}}",
+  "capture.reviewers.defaultPlaceholder": "Default: {{n}}",
   "capture.help.validations.body":
     'How many independent confirmations the object needs before it counts as "validated" (1–5, default 3). More = higher bar, more reliable.',
   "capture.modeSoon": "This mode is coming.",

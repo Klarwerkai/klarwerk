@@ -123,18 +123,31 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       }
     });
 
-    app.post<{ Body: Omit<CreateKoInput, "author"> }>("/api/kos", async (request, reply) => {
-      const user = await guards.requirePermission("ko.create", request, reply);
-      if (!user) {
-        return;
-      }
-      try {
-        // FR-CAP-07: Autor = angemeldeter Nutzer, serverseitig gesetzt (nicht aus dem Body).
-        reply.code(201).send(await ko.create({ ...request.body, author: user.id }));
-      } catch (error) {
-        sendError(reply, error);
-      }
-    });
+    app.post<{ Body: Omit<CreateKoInput, "author"> & { reviewerIds?: string[] } }>(
+      "/api/kos",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.create", request, reply);
+        if (!user) {
+          return;
+        }
+        try {
+          // FR-CAP-07: Autor = angemeldeter Nutzer, serverseitig gesetzt (nicht aus dem Body).
+          const { reviewerIds, ...input } = request.body;
+          const created = await ko.create({ ...input, author: user.id });
+          // SCRUM-395: Prüfer-Vorschlag beim Einreichen — der Autor darf für sein EIGENES,
+          // frisch eingereichtes KO Prüfer benennen (dedupliziert, ohne sich selbst).
+          // Läuft über validation.assign + Benachrichtigung (FR-VAL-07) wie die Board-Zuweisung.
+          const reviewers = [...new Set(reviewerIds ?? [])].filter((id) => id !== user.id);
+          if (reviewers.length > 0) {
+            await validation.assign(created.id, reviewers, user.id);
+            await notifyAssignment?.(created.id, reviewers);
+          }
+          reply.code(201).send(created);
+        } catch (error) {
+          sendError(reply, error);
+        }
+      },
+    );
 
     // FR-RBAC-02 + Pedi 02.07.: Löschen dürfen Controller/Admin (ko.validate) ODER der
     // AUTOR seines eigenen Wissensobjekts. Ehrlich: Löschung landet im Audit (ko.deleted).

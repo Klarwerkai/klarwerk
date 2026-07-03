@@ -1,6 +1,11 @@
 import type { AuditService } from "../../audit";
 import type { KnowledgeObject, KoFilter, KoService } from "../../knowledge-object";
 import type { AssignmentRepo, RatingRepo } from "./repo";
+import {
+  FALLBACK_NEEDED_VALIDATIONS,
+  type ValidationSettingsRepo,
+  normalizeDefaultNeeded,
+} from "./settings";
 import { type ValidationOutcome, computeOutcome } from "./trust";
 import { ValidationError, type Verdict } from "./types";
 
@@ -27,6 +32,9 @@ export interface ValidationServiceDeps {
   assignments: AssignmentRepo;
   audit?: AuditService;
   now?: () => number;
+  // SCRUM-395: persistierte Admin-Einstellung „Standard-Prüferanzahl" (optional —
+  // ohne Repo gilt der feste Fallback aus settings.ts).
+  settings?: ValidationSettingsRepo;
 }
 
 export class ValidationService {
@@ -35,6 +43,7 @@ export class ValidationService {
   private readonly assignments: AssignmentRepo;
   private readonly audit: AuditService | undefined;
   private readonly now: () => number;
+  private readonly settings: ValidationSettingsRepo | undefined;
 
   constructor(deps: ValidationServiceDeps) {
     this.koService = deps.koService;
@@ -42,6 +51,33 @@ export class ValidationService {
     this.assignments = deps.assignments;
     this.audit = deps.audit;
     this.now = deps.now ?? (() => Date.now());
+    this.settings = deps.settings;
+  }
+
+  // SCRUM-395: Standard-Prüferanzahl für neue Einreichungen — Admin-Wert, sonst Fallback 3.
+  async defaultNeededValidations(): Promise<number> {
+    const stored = await this.settings?.getDefaultNeeded();
+    return stored ?? FALLBACK_NEEDED_VALIDATIONS;
+  }
+
+  // SCRUM-395: Admin setzt den Standard (1–5, ganzzahlig). Landet im Audit — Einstellungen,
+  // die den Prüfprozess verändern, sind nachvollziehbar.
+  async setDefaultNeededValidations(value: unknown, actor: string): Promise<number> {
+    if (!this.settings) {
+      throw new ValidationError(
+        "INVALID_DEFAULT",
+        "Standard-Prüferanzahl wird in dieser Umgebung nicht persistiert.",
+      );
+    }
+    const normalized = normalizeDefaultNeeded(value);
+    await this.settings.setDefaultNeeded(normalized);
+    await this.audit?.record({
+      actor,
+      action: "validation.defaultNeeded.set",
+      target: "settings",
+      payload: { value: normalized },
+    });
+    return normalized;
   }
 
   // FR-VAL-01/02: Bewertung verbuchen, Trust/Status neu berechnen, am KO setzen.

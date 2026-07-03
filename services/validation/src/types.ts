@@ -14,7 +14,8 @@ export interface Assignment {
   status: "open" | "done";
 }
 
-export type ValidationErrorCode = "NOT_FOUND";
+// SCRUM-395: INVALID_DEFAULT = ungültige Standard-Prüferanzahl (Admin-Einstellung).
+export type ValidationErrorCode = "NOT_FOUND" | "INVALID_DEFAULT";
 
 export class ValidationError extends Error {
   readonly code: ValidationErrorCode;

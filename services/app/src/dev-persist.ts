@@ -54,6 +54,8 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   // SCRUM-386: kundeneigene KI-Assist-Presets überleben den Neustart (Replace-Semantik,
   // args tragen die komplette Liste inkl. fertiger ids → Replay exakt).
   assistPresets: ["replaceAll"],
+  // SCRUM-395: Standard-Prüferanzahl überlebt den Neustart (letzter Set gewinnt).
+  validationSettings: ["setDefaultNeeded"],
 } as const;
 
 // Journal defensiv laden: fehlende Datei → leer; eine korrupte (z. B. beim Crash halb

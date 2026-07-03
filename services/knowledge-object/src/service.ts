@@ -43,6 +43,10 @@ export interface KoServiceDeps {
   evidence?: EvidenceRepo;
   now?: () => number;
   genId?: () => string;
+  // SCRUM-395: optionaler Lieferant der Standard-Prüferanzahl (Admin-Einstellung im
+  // Validierungs-Modul). Als injizierte Funktion — KEIN Import über die Modulgrenze.
+  // null/undefined → fester Modul-Default (DEFAULT_NEEDED_VALIDATIONS).
+  defaultNeededValidations?: () => Promise<number | null | undefined>;
 }
 
 export interface CreateKoInput {
@@ -86,12 +90,14 @@ export class KoService {
   private readonly evidence: EvidenceRepo | undefined;
   private readonly now: () => number;
   private readonly genId: () => string;
+  private readonly defaultNeededValidations: (() => Promise<number | null | undefined>) | undefined;
 
   constructor(deps: KoServiceDeps) {
     this.repo = deps.repo;
     this.audit = deps.audit;
     this.versions = deps.versions;
     this.evidence = deps.evidence;
+    this.defaultNeededValidations = deps.defaultNeededValidations;
     this.now = deps.now ?? (() => Date.now());
     this.genId = deps.genId ?? (() => randomUUID());
   }
@@ -127,7 +133,12 @@ export class KoService {
     if (!KNOWLEDGE_TYPES.includes(input.type)) {
       throw new KoError("INVALID_TYPE", "Unbekannte Wissensart.");
     }
-    const needed = input.neededValidations ?? DEFAULT_NEEDED_VALIDATIONS;
+    // SCRUM-395: ohne explizite Angabe gilt die Admin-Einstellung (Standard-Prüferanzahl),
+    // ohne diese der feste Modul-Default. Explizite Angaben gewinnen immer.
+    const needed =
+      input.neededValidations ??
+      (await this.defaultNeededValidations?.()) ??
+      DEFAULT_NEEDED_VALIDATIONS;
     if (needed < 1 || needed > 5) {
       throw new KoError("INVALID_NEEDED", "Nötige Validierungen müssen zwischen 1 und 5 liegen.");
     }

@@ -42,6 +42,7 @@ import type {
   ReviewAction,
   Role,
   StructureResult,
+  ValidationSettings,
   Verdict,
 } from "./types";
 
@@ -94,13 +95,19 @@ export const endpoints = {
     get: (id: string) => api.get<KnowledgeObject>(`/kos/${id}`),
     versions: (id: string) => api.get<KoVersionSnapshot[]>(`/kos/${id}/versions`),
     evidence: (id: string) => api.get<EvidenceRecord[]>(`/kos/${id}/evidence`),
-    create: (body: DraftPayload) => api.post<KnowledgeObject>("/kos", body),
+    // SCRUM-395: optionaler Prüfer-Vorschlag direkt beim Einreichen (reviewerIds).
+    create: (body: DraftPayload & { reviewerIds?: string[] }) =>
+      api.post<KnowledgeObject>("/kos", body),
     act: (id: string, body: KoAction) => api.put<KnowledgeObject>(`/kos/${id}`, body),
     remove: (id: string) => api.del<void>(`/kos/${id}`),
   },
   validation: {
     board: (f?: KoFilter) => api.get<KnowledgeObject[]>(`/validation/board${qs(f)}`),
     overview: () => api.get<AssignmentSummary[]>("/validation/overview"),
+    // SCRUM-395: Standard-Prüferanzahl (lesen: alle Leseberechtigten; setzen: Admin).
+    settings: () => api.get<ValidationSettings>("/validation/settings"),
+    saveSettings: (defaultNeededValidations: number) =>
+      api.put<ValidationSettings>("/validation/settings", { defaultNeededValidations }),
   },
   conflicts: {
     list: () => api.get<Conflict[]>("/conflicts"),
@@ -120,11 +127,16 @@ export const endpoints = {
   drafts: {
     list: () => api.get<Draft[]>("/drafts"),
     get: (id: string) => api.get<Draft>(`/drafts/${id}`),
-    create: (payload: DraftPayload) => api.post<Draft>("/drafts", { payload }),
+    // SCRUM-395-Beifang (BUG): Body war fälschlich als { payload } verschachtelt — der Server
+    // erwartet die DraftPayload-Felder FLACH (wie update/promote). Folge: frisch gespeicherte
+    // Entwürfe verloren Titel & Inhalte bis zum ersten Update. Jetzt konsistent flach.
+    create: (payload: DraftPayload) => api.post<Draft>("/drafts", payload),
     // SCRUM-113 / FE-CAP-07: Entwurf fortsetzen (continueDraft, Originalautor bleibt).
     update: (id: string, payload: DraftPayload) => api.put<Draft>(`/drafts/${id}`, payload),
     remove: (id: string) => api.del<void>(`/drafts/${id}`),
-    promote: (id: string) => api.post<KnowledgeObject>(`/drafts/${id}/promote`),
+    // SCRUM-395: optionaler Prüfer-Vorschlag auch auf dem Entwurfs-Weg.
+    promote: (id: string, body?: { reviewerIds: string[] }) =>
+      api.post<KnowledgeObject>(`/drafts/${id}/promote`, body),
   },
   ask: {
     // FR-I18N-01: aktuelle UI-Sprache mitsenden (Default serverseitig "de").

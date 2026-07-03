@@ -187,6 +187,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // --- Validation (validation-routes.ts) ---
   "GET /api/validation/board": { protection: "ko.read" },
   "GET /api/validation/overview": { protection: "ko.read" },
+  // SCRUM-395: Standard-Prüferanzahl — lesen dürfen alle Leseberechtigten (Anzeige beim
+  // Erfassen), ändern nur die Nutzerverwaltung.
+  "GET /api/validation/settings": { protection: "ko.read" },
+  "PUT /api/validation/settings": { protection: "users.manage" },
 
   // --- Conflicts (conflicts-routes.ts) ---
   "GET /api/conflicts": { protection: "ko.read" },

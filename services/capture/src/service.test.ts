@@ -38,7 +38,24 @@ describe("CaptureService", () => {
     await service.continueDraft(draft.id, { tags: ["druck"] }, "bob");
     const koInput = await service.toKoInput(draft.id);
     expect(koInput.author).toBe("anna");
-    expect(koInput.neededValidations).toBe(3);
+    // SCRUM-395: KEIN hartes 3 mehr im Capture-Modul — ohne Angabe bleibt das Feld leer,
+    // knowledge-object löst den Default zentral auf (Admin-Standard, sonst Modul-Default).
+    expect(koInput.neededValidations).toBeUndefined();
+  });
+
+  it("SCRUM-395: eine im Entwurf gesetzte Prüferanzahl wandert unverändert in die KO-Eingabe", async () => {
+    const draft = await service.createDraft(
+      {
+        title: "Ventil schließen",
+        statement: "Bei Überdruck schließen.",
+        type: "best_practice",
+        category: "Anlage 1",
+        neededValidations: 4,
+      },
+      "anna",
+    );
+    const koInput = await service.toKoInput(draft.id);
+    expect(koInput.neededValidations).toBe(4);
   });
 
   it("FR-CAP-08: ungültige Validierungsanzahl wird abgewiesen", async () => {

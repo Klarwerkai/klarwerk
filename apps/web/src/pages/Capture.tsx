@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronDown,
   FileText,
@@ -19,7 +19,7 @@ import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import { useDrafts } from "../api/hooks";
+import { useDirectory, useDrafts } from "../api/hooks";
 import type {
   Draft,
   DraftPayload,
@@ -230,6 +230,20 @@ export function Capture(): JSX.Element {
   const [asset, setAsset] = useState("");
   const [neededValidations, setNeededValidations] = useState("");
   const [tags, setTags] = useState<string[]>([]);
+  // SCRUM-395: optionaler Prüfer-Vorschlag beim Einreichen (Server: assign + Benachrichtigung).
+  const [reviewerIds, setReviewerIds] = useState<string[]>([]);
+  const directory = useDirectory();
+  // SCRUM-395: Standard-Prüferanzahl (Admin-Einstellung) — nur Anzeige/Platzhalter;
+  // leer lassen heißt: der Standard gilt.
+  const valSettings = useQuery({
+    queryKey: ["validation", "settings"],
+    queryFn: endpoints.validation.settings,
+  });
+  const defaultNeeded = valSettings.data?.defaultNeededValidations ?? 3;
+  const reviewerChoices = (directory.data ?? []).filter((p) => p.id !== user?.id);
+  const toggleReviewer = (id: string): void => {
+    setReviewerIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
 
   // Anhänge (FR-CAP-05/06)
   const [images, setImages] = useState<LocalImage[]>([]);
@@ -515,7 +529,11 @@ export function Capture(): JSX.Element {
           ...(n ? { neededValidations: n } : {}),
         };
         await endpoints.drafts.update(draftId, payload);
-        ko = await endpoints.drafts.promote(draftId);
+        // SCRUM-395: gewählte Prüfer wandern mit dem Promote zum Server (assign + Meldung).
+        ko = await endpoints.drafts.promote(
+          draftId,
+          reviewerIds.length > 0 ? { reviewerIds } : undefined,
+        );
         setSubmittedFromDraft(true);
       } else {
         ko = await endpoints.ko.create({
@@ -529,6 +547,8 @@ export function Capture(): JSX.Element {
           asset: asset.trim() ? asset.trim() : null,
           ...(bodyHtml.trim() ? { bodyHtml } : {}),
           ...(n ? { neededValidations: n } : {}),
+          // SCRUM-395: Prüfer-Vorschlag beim direkten Einreichen.
+          ...(reviewerIds.length > 0 ? { reviewerIds } : {}),
         });
         setSubmittedFromDraft(false);
       }
@@ -606,6 +626,8 @@ export function Capture(): JSX.Element {
       setCategory("");
       setAsset("");
       setNeededValidations("");
+      // SCRUM-395: Prüfer-Auswahl gehört zum abgeschickten KO — für das nächste leeren.
+      setReviewerIds([]);
       setDraftId(null);
       // SCRUM-408: Quellen-Warteliste ist mit dem Einreichen ans KO gewandert → leeren.
       setPendingSources([]);
@@ -1759,8 +1781,11 @@ export function Capture(): JSX.Element {
                     <TextInput
                       type="number"
                       min={1}
+                      max={5}
                       value={neededValidations}
                       onChange={(e) => setNeededValidations(e.target.value)}
+                      // SCRUM-395: leer = Admin-Standard gilt; der Platzhalter zeigt ihn ehrlich an.
+                      placeholder={t("capture.reviewers.defaultPlaceholder", { n: defaultNeeded })}
                     />
                   </Field>
                   <Field
@@ -1779,6 +1804,46 @@ export function Capture(): JSX.Element {
                       <HelpTip {...chelp("tagsField")} />
                     </div>
                   </div>
+                </div>
+
+                {/* SCRUM-395: Prüfer direkt beim Einreichen vorschlagen (optional). */}
+                <div className="rounded-card border border-dashed border-hairline p-3">
+                  <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+                    {t("capture.reviewers.title")}
+                    <HelpTip
+                      title={t("capture.reviewers.helpTitle")}
+                      body={t("capture.reviewers.helpBody")}
+                    />
+                  </div>
+                  {reviewerChoices.length === 0 ? (
+                    <div className="text-[12px] text-muted-2">{t("capture.reviewers.none")}</div>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {reviewerChoices.map((p) => {
+                        const active = reviewerIds.includes(p.id);
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => toggleReviewer(p.id)}
+                            aria-pressed={active}
+                            className={
+                              active
+                                ? "rounded-btn border border-ink bg-ink px-2.5 py-1 text-[12px] font-semibold text-white"
+                                : "rounded-btn border border-hairline px-2.5 py-1 text-[12px] text-muted hover:text-text"
+                            }
+                          >
+                            {p.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {reviewerIds.length > 0 ? (
+                    <div className="mt-1.5 text-[11.5px] text-muted-2">
+                      {t("capture.reviewers.selected", { n: reviewerIds.length })}
+                    </div>
+                  ) : null}
                 </div>
 
                 {/* Dokumente */}

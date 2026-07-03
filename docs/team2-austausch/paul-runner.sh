@@ -1,20 +1,18 @@
 #!/bin/bash
 # KLARWERK Paul-Runner — Aufgabendatei des Cloud-Workers ([Paul]).
 #
-# AUFGABE v7 (03.07. abends): GATES FÜR SCRUM-417/418/419/420 (v0.9.32-beta) —
-# Pedis zweite Feedback-Runde mit Screenshots:
-#   SCRUM-417: Validierungs-Board — Autor/Admin dürfen Artikel direkt bearbeiten (Stift →
-#              KO-Detail im Bearbeiten-Modus) und löschen (Papierkorb → ruhige Rückfrage).
-#   SCRUM-418: Extraktion — Arbeits-Animation (Spinner) während die KI sucht; Antwort-Limit
-#              8192 Token + Prompt-Begrenzung (≤12 Punkte, kurze Belegstellen) + Rettung
-#              vollständiger Punkte aus trotzdem gekürzten Antworten (ehrlicher Hinweis).
-#   SCRUM-419: Lösch-Rückfragen — Layout repariert (Bibliothek: eigene Zeile mit Trennlinie;
-#              KO-Detail: gestapelt statt gequetscht).
-#   SCRUM-420: Geister-Karten „Re-Validierung" gelöschter KOs verschwinden (Selbstheilung).
+# AUFGABE v8 (03.07. abends): GATES FÜR SCRUM-395 (v0.9.33-beta) — prüft zugleich den
+# gesamten Bestand, also auch 416/413 + 417–420 + den a11y-Fix (ui.tsx) aus v7.
+#   SCRUM-395: Prüfer-Zuweisung beim Einreichen (optionaler Prüfer-Vorschlag in
+#              „Wissen erfassen", Server legt Zuweisungen an + benachrichtigt) und
+#              Standard-Prüferanzahl als Admin-Einstellung (persistiert, 1–5,
+#              Admin → Daten; gilt für neue Einreichungen ohne eigene Angabe).
+#   Beifang-BUG behoben: Entwurf-Speichern schickte den Inhalt verschachtelt —
+#              frisch gespeicherte Entwürfe verloren Titel/Inhalt bis zum ersten Update.
 # Ablauf:
 #   0: Format-Autofix (biome check --write).
-#   1: apps/web bauen (vite build → dist v0.9.32-beta).
-#   2: tools/check (Build · Lint · Architektur · Tests — inkl. neuer 418/420-Tests).
+#   1: apps/web bauen (vite build → dist v0.9.33-beta).
+#   2: tools/check (Build · Lint · Architektur · Tests — inkl. reviewer-defaults-e2e).
 #   3: npm run smoke:ui (4 Playwright-Kernflüsse).
 #   4: After-Report-Nachtrag anhängen (nur falls fehlend — Marker-Prüfung).
 
@@ -27,7 +25,7 @@ FEHL=0
 
 {
 echo "${FETT}KLARWERK Paul-Runner — $(date '+%d.%m.%Y %H:%M')${AUS}"
-echo "Aufgabe v7: Gates für SCRUM-417/418/419/420 (v0.9.32-beta) — ca. 4–7 Minuten."
+echo "Aufgabe v8: Gates für SCRUM-395 (v0.9.33-beta) + Gesamtbestand — ca. 4–7 Minuten."
 echo
 
 cd "$REPO" || { echo "${ROT}FEHLER: Repo nicht gefunden.${AUS}"; exit 1; }
@@ -39,7 +37,7 @@ echo
 
 echo "${FETT}— Schritt 1/4: apps/web bauen (vite build)${AUS}"
 if (cd apps/web && npx vite build); then
-  echo "${GRUEN}✓ Build/dist v0.9.32 erstellt${AUS}"
+  echo "${GRUEN}✓ Build/dist v0.9.33 erstellt${AUS}"
 else
   echo "${ROT}✗ vite build ROT${AUS}"; FEHL=1
 fi
@@ -63,24 +61,23 @@ echo
 
 echo "${FETT}— Schritt 4/4: After-Report-Nachtrag (nur falls fehlend)${AUS}"
 AR="$REPO/docs/qm/claude-after-report.md"
-if ! grep -q "SCRUM-417/418/419/420 — Feedback-Runde 2" "$AR" 2>/dev/null; then
+if ! grep -q "SCRUM-395 — Prüfer-Zuweisung + Standard-Prüferanzahl" "$AR" 2>/dev/null; then
   echo >> "$AR"
-  cat "$BRIDGE/paul-nachtrag-417-420.md" >> "$AR" && echo "${GRUEN}✓ Nachtrag 417–420 angehängt${AUS}"
+  cat "$BRIDGE/paul-nachtrag-395.md" >> "$AR" && echo "${GRUEN}✓ Nachtrag 395 angehängt${AUS}"
 else
   echo "ℹ️ Nachtrag schon vorhanden — übersprungen."
 fi
 
 echo
 if [ "$FEHL" = "0" ]; then
-  echo "${GRUEN}${FETT}ALLE GATES GRÜN — SCRUM-417/418/419/420 sind lieferbar (v0.9.32-beta).${AUS}"
+  echo "${GRUEN}${FETT}ALLE GATES GRÜN — Gesamtbestand lieferbar (v0.9.33-beta, inkl. 416/413 + 417-420 + 395).${AUS}"
   echo "Sichtabnahme (3 Minuten):"
-  echo "  1. Validierung: auf einer Karte Stift/Papierkorb testen (als Admin oder Autor)."
-  echo "  2. Wissen erfassen → Aus Datei → PDF hochladen → 'Nach Wissen suchen': Spinner dreht,"
-  echo "     Ergebnis kommt (bei sehr langen PDFs ggf. mit ehrlichem Gekürzt-Hinweis)."
-  echo "  3. Bibliothek: Löschen drücken → Rückfrage sitzt sauber in eigener Zeile."
-  echo "  4. Validierung: keine UUID-Geisterkarten mehr unter Re-Validierung."
+  echo "  1. Wissen erfassen → Erweiterte Details: neuer Block 'Prüfer vorschlagen' (Personen-Chips)."
+  echo "  2. Admin → Daten: neue Karte 'Prüfungen' — Standard-Prüferanzahl setzen (z. B. 2),"
+  echo "     dann in Wissen erfassen: das Feld 'Nötige Validierungen' zeigt 'Standard: 2'."
+  echo "  3. Als Experte einreichen mit gewählter Prüferin → sie bekommt eine Benachrichtigung (Glocke)."
   echo "Commit-Empfehlung (Boss-Session):"
-  echo "  [Cloud-Worker] SCRUM-417/418/419/420: Board-Aktionen · Extraktion robust+Spinner · Lösch-Layouts · Geister-Karten (v0.9.32-beta)"
+  echo "  [Cloud-Worker] SCRUM-395: Prüfer-Vorschlag beim Einreichen + Standard-Prüferanzahl (Admin) · Entwurf-Speichern-Bug (v0.9.33-beta)"
   echo "KEIN Push — KLARWERK Sync macht Pedi."
 else
   echo "${ROT}${FETT}Mindestens ein Gate ROT — Paul analysiert docs/team2-austausch/paul-runner.log und liefert einen Fix.${AUS}"

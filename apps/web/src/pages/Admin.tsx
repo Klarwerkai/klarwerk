@@ -187,6 +187,24 @@ export function Admin(): JSX.Element {
     },
     onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
   });
+  // SCRUM-395: Standard-Prüferanzahl (1–5) — Draft-Muster wie bei den Presets:
+  // null = keine ungespeicherte Änderung, Anzeige folgt dem Server-Wert.
+  const valSettings = useQuery({
+    queryKey: ["validation", "settings"],
+    queryFn: endpoints.validation.settings,
+  });
+  const [defaultNeededDraft, setDefaultNeededDraft] = useState<string | null>(null);
+  const saveDefaultNeeded = useMutation({
+    mutationFn: () =>
+      endpoints.validation.saveSettings(Number.parseInt(defaultNeededDraft ?? "", 10)),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["validation", "settings"] });
+      setDefaultNeededDraft(null);
+      push("success", t("adm.val.saved"));
+    },
+    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
+  });
+
   // SCRUM-394: aktiver Admin-Bereich (Konten · KI · Daten).
   const [section, setSection] = useState<AdminSectionId>(DEFAULT_ADMIN_SECTION);
 
@@ -287,6 +305,38 @@ export function Admin(): JSX.Element {
                 </div>
               </div>
             ) : null}
+          </Card>
+
+          {/* SCRUM-395: Standard-Prüferanzahl — gilt für neue Einreichungen ohne eigene
+              Angabe (1–5). Persistiert; Änderungen landen im Audit-Log. */}
+          <Card className="space-y-2">
+            <div className="flex items-center gap-1.5">
+              <SectionLabel>{t("adm.val.title")}</SectionLabel>
+              <HelpTip title={t("adm.val.title")} body={t("adm.val.help")} />
+            </div>
+            <p className="text-[12.5px] text-muted">{t("adm.val.hint")}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Field label={t("adm.val.label")}>
+                <TextInput
+                  type="number"
+                  min={1}
+                  max={5}
+                  className="w-24"
+                  value={
+                    defaultNeededDraft ?? String(valSettings.data?.defaultNeededValidations ?? "")
+                  }
+                  onChange={(e) => setDefaultNeededDraft(e.target.value)}
+                  aria-label={t("adm.val.label")}
+                />
+              </Field>
+              <Button
+                variant="primary"
+                disabled={saveDefaultNeeded.isPending || defaultNeededDraft === null}
+                onClick={() => saveDefaultNeeded.mutate()}
+              >
+                {t("adm.val.save")}
+              </Button>
+            </div>
           </Card>
         </>
       ) : null}

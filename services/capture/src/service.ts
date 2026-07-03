@@ -96,7 +96,9 @@ export class CaptureService {
       conditions: p.conditions ?? [],
       measures: p.measures ?? [],
       tags: p.tags ?? [],
-      neededValidations: p.neededValidations ?? 3,
+      // SCRUM-395: KEIN hartes 3 mehr — ohne Angabe entscheidet knowledge-object
+      // (Admin-Standard-Prüferanzahl, sonst Modul-Default). Explizite Werte bleiben.
+      ...(p.neededValidations !== undefined ? { neededValidations: p.neededValidations } : {}),
       asset: p.asset ?? null,
       bodyHtml: p.bodyHtml ?? null, // KW-STR: Body in den KO übernehmen (wird dort sanitisiert)
     };

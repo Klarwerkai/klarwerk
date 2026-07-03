@@ -165,6 +165,11 @@ export interface AssignmentSummary {
   done: number;
 }
 
+// SCRUM-395: Validierungs-Einstellungen (Standard-Prüferanzahl für neue Einreichungen).
+export interface ValidationSettings {
+  defaultNeededValidations: number;
+}
+
 export type ConflictType = "truth" | "experience" | "context" | "temporal" | "role";
 export type ConflictStatus = "offen" | "eskaliert" | "zweitmeinung" | "geloest";
 

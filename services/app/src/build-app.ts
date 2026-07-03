@@ -79,10 +79,13 @@ import {
   type AssignmentRepo,
   InMemoryAssignmentRepo,
   InMemoryRatingRepo,
+  InMemoryValidationSettingsRepo,
   PgAssignmentRepo,
   PgRatingRepo,
+  PgValidationSettingsRepo,
   type RatingRepo,
   ValidationService,
+  type ValidationSettingsRepo,
 } from "../../validation";
 import { makeGuards } from "./http";
 import { impactReport } from "./impact";
@@ -159,6 +162,8 @@ export interface AppRepos {
   notificationSeen: NotificationSeenRepo;
   // SCRUM-386: kundeneigene KI-Assist-Presets (Admin pflegt; Palette zeigt sie allen Rollen).
   assistPresets: AssistPresetRepo;
+  // SCRUM-395: Standard-Prüferanzahl (Admin-Einstellung, gilt für neue Einreichungen).
+  validationSettings: ValidationSettingsRepo;
 }
 
 // Verdrahtet aus den Repos die vollständige Service-Landschaft. Ein gemeinsames
@@ -171,6 +176,9 @@ export function assembleServices(repos: AppRepos): AppServices {
     audit,
     versions: repos.koVersions,
     evidence: repos.evidence,
+    // SCRUM-395: Standard-Prüferanzahl aus der Admin-Einstellung — als injizierte
+    // Funktion (keine Modulgrenzen-Verletzung); null → Modul-Default 3.
+    defaultNeededValidations: () => repos.validationSettings.getDefaultNeeded(),
   });
   // FR-RSN-02/06: echtes Modell, wenn ANTHROPIC_API_KEY gesetzt ist; sonst deterministisch.
   const modelClient = createModelClientFromEnv();
@@ -206,6 +214,8 @@ export function assembleServices(repos: AppRepos): AppServices {
       ratings: repos.ratings,
       assignments: repos.assignments,
       audit,
+      // SCRUM-395: persistierte Standard-Prüferanzahl (Admin pflegt sie über die Route).
+      settings: repos.validationSettings,
     }),
     conflicts,
     library,
@@ -260,6 +270,7 @@ export function inMemoryRepos(): AppRepos {
     modelRuns: new InMemoryModelRunRepo(),
     notificationSeen: new InMemoryNotificationSeenRepo(),
     assistPresets: new InMemoryAssistPresetRepo(),
+    validationSettings: new InMemoryValidationSettingsRepo(),
   };
 }
 
@@ -294,6 +305,8 @@ export function buildPgServices(pool: Pool): AppServices {
     notificationSeen: new PgNotificationSeenRepo(pool),
     // SCRUM-386: kundeneigene KI-Assist-Presets persistent.
     assistPresets: new PgAssistPresetRepo(pool),
+    // SCRUM-395: Standard-Prüferanzahl persistent.
+    validationSettings: new PgValidationSettingsRepo(pool),
   });
 }
 
@@ -315,6 +328,8 @@ export function buildApp(services: AppServices = buildServices()): FastifyInstan
       oidc: createOidcProviderFromEnv(),
     }),
   );
+  // FR-VAL-07: EIN Notifier für alle Zuweisungswege (Board-Zuweisung + Einreichen, SCRUM-395).
+  const notifyAssignment = makeAssignmentNotifier(services.auth, services.mailer);
   app.register(
     koRoutes(
       {
@@ -322,14 +337,14 @@ export function buildApp(services: AppServices = buildServices()): FastifyInstan
         validation: services.validation,
         conflicts: services.conflicts,
         lifecycle: services.lifecycle,
-        notifyAssignment: makeAssignmentNotifier(services.auth, services.mailer),
+        notifyAssignment,
       },
       guards,
     ),
   );
   app.register(validationRoutes(services.validation, guards));
   app.register(conflictRoutes(services.conflicts, guards));
-  app.register(captureRoutes(services, guards));
+  app.register(captureRoutes({ ...services, notifyAssignment }, guards));
   app.register(askRoutes(services.ask, guards));
   app.register(libraryRoutes(services.library, guards));
   app.register(outputRoutes(services.output, guards));
