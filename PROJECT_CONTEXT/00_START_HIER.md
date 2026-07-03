@@ -9,7 +9,7 @@
 Kopiere das in eine neue Konversation (Ordner `dev_Klarwerk`, `Documents`, `Desktop` freigeben):
 
 ```
-Lies den Ordner dev_Klarwerk/PROJECT_CONTEXT vollständig (Dateien 00–07 in Reihenfolge),
+Lies den Ordner dev_Klarwerk/PROJECT_CONTEXT vollständig (Dateien 00–10 in Reihenfolge),
 danach dev_Klarwerk/docs/qm/BOSS_SESSION_STAND_2026-07-02.md. Übernimm die dort
 beschriebene Arbeitsweise. Bestätige kurz: Rolle, aktuelle Version, nächste offene Schritte.
 ```
@@ -26,6 +26,10 @@ beschriebene Arbeitsweise. Bestätige kurz: Rolle, aktuelle Version, nächste of
    (Prinzip, technisches Muster, jede App erklärt) — Pflicht vor jeder Starter-Änderung.
 8. **07_JIRA_GITHUB_EINSTIEG.md** — was du dir in Jira und GitHub zuerst ansiehst (geführte
    1-Stunden-Route zum Projektverständnis).
+9. **08_RUNBOOK_LLM_SERVER.md** — Klick-für-Klick-Ablauf für den LLM-Eval-Server
+   (Kosten, Stop-Regeln, Erfolgskriterien, Fehlerweg).
+10. **09_ENTSCHEIDUNGEN.md** — das „Warum" aller Grundsatzentscheidungen (nichts erneut diskutieren).
+11. **10_GLOSSAR_UND_KONTEN.md** — Projektsprache, Konten-Übersicht (ohne Secrets), Sicherungs-Hinweis.
 
 Danach als lebende Quellen: `docs/qm/BOSS_SESSION_STAND_2026-07-02.md` (Boss-Stand),
 `docs/qm/claude-after-report.md` (lückenlose After-Reports jeder erledigten Aufgabe),
