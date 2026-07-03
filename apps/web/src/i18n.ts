@@ -423,6 +423,7 @@ const de = {
   // sagt, wo ein Admin sie freischaltet, statt einfach unsichtbar zu sein.
   "enrich.disabledHint":
     "Public-KI-Anreicherung ist verfügbar, sobald ein Admin die externe Wissensabfrage auf „Offen“ stellt (Admin → Externe Wissensabfrage).",
+  "enrich.openAdmin": "Zu den Admin-Einstellungen",
   "adm.trash.title": "Papierkorb",
   "adm.trash.help":
     "Gelöschte Beiträge landen hier und bleiben 28 Tage wiederherstellbar. Danach werden sie automatisch endgültig gelöscht. Demo-Daten erscheinen hier nie — sie werden immer sofort endgültig gelöscht.",
@@ -2550,6 +2551,7 @@ const en: typeof de = {
   // SCRUM-433 (Pedi 03.07., VIP): stay discoverable even when (still) disabled.
   "enrich.disabledHint":
     "Public AI enrichment becomes available once an admin sets external knowledge lookup to “Open” (Admin → External knowledge lookup).",
+  "enrich.openAdmin": "Go to admin settings",
   "adm.trash.title": "Recycle bin",
   "adm.trash.help":
     "Deleted entries land here and can be restored for 28 days. After that they are permanently deleted automatically. Demo data never appears here — it is always deleted permanently right away.",

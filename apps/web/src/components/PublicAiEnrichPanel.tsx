@@ -1,6 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import type { EnrichResult, ExternalKnowledgeStage, ExternalResult } from "../api/types";
@@ -75,6 +76,14 @@ export function PublicAiEnrichPanel({
         <p className="mt-1 text-[11.5px] leading-relaxed text-muted-2">
           {t("enrich.disabledHint")}
         </p>
+        {/* SCRUM-434 (Pedi 03.07., VIP): Ein-Klick-Sprung zum Regler — spart dem Admin das Suchen.
+            /admin ist geschützt; wer keine Rechte hat, landet ehrlich auf dem Start. */}
+        <Link
+          to="/admin"
+          className="mt-1.5 inline-block font-mono text-[10.5px] font-semibold uppercase tracking-wider text-ai hover:underline"
+        >
+          {t("enrich.openAdmin")} →
+        </Link>
       </div>
     );
   }

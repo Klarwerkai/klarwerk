@@ -492,6 +492,9 @@ export function Capture(): JSX.Element {
     setFileQueue(null);
     setNotice(t(CAPTURE_FILE_TEXT.mergedNote, { count: chosen.length, name: fileName }));
     setWizStep("refine");
+    // SCRUM-434 (Pedi 03.07., VIP): nach dem Verbinden direkt ins Studio — der zusammengeführte
+    // Artikel öffnet sich zum Strukturieren/Prüfen, ein durchgehender Fluss ohne Zwischenstopp.
+    setStudioOpen(true);
   };
 
   // PMO-FEA-0006: Punkt bewusst überspringen (nichts wird gespeichert) → nächster Punkt.
@@ -2564,6 +2567,10 @@ export function Capture(): JSX.Element {
                 runAssist={runAssist}
                 images={editorImagesFromLocalImages(images)}
                 attachments={[...images, ...docs.map((d) => ({ mime: d.mime }))]}
+                // SCRUM-434: Public-KI-Anreicherung auch im Verfeinern-Studio (gleiche Freigabe/Regeln)
+                // — vorher fehlte hier die Weitergabe, das Panel blieb still gesperrt.
+                externalStage={extPolicyStage}
+                enrichLocale={locale}
               />
               {studioApplied ? (
                 <p className="rounded-btn bg-trust-pos-bg px-2.5 py-1.5 text-[11.5px] text-trust-pos-text">

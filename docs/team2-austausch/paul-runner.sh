@@ -1,20 +1,21 @@
 #!/bin/bash
 # KLARWERK Paul-Runner — Aufgabendatei des Cloud-Workers ([Paul]).
 #
-# AUFGABE v18 (03.07. abends): SCRUM-433 — Auffindbarkeit (v0.9.42-beta) — prüft zugleich den
-# gesamten Bestand (395/414/416/413/417-428).
-#   SCRUM-433 (Pedi 03.07., VIP): zwei Auffindbarkeits-Fixes, reines Frontend (Browser-Reload genügt):
-#     a) Erkenntnisse aus einem Dokument VERBINDEN — die vorhandene Merge-Aktion ist jetzt immer
-#        sichtbar (auffindbar), mit erklärtem Drei-Wege-Hinweis; aktiv ab 2 Ausgewählten.
-#     b) Public-KI-Anreicherung — statt spurlos unsichtbar (wenn Regler nicht „offen") ein ruhiger
-#        Hinweis, wo ein Admin sie freischaltet (Admin → Externe Wissensabfrage → „Offen").
-#   (Basis v17: SCRUM-428 + 421/427-Batch + Gate-Fix, bereits committet.)
+# AUFGABE v19 (03.07. abends): SCRUM-434 Auffindbarkeit-Feinschliff + PMO-Automatik (v0.9.43-beta) —
+# prüft zugleich den gesamten Bestand (395/414/416/413/417-428/433).
+#   SCRUM-434 (Pedi 03.07., VIP, „ich stimme allen zu"): reines Frontend (Browser-Reload genügt):
+#     1) Nach „Verbinden" öffnet sich direkt das Studio (durchgehender Fluss, kein Zwischenstopp).
+#     2) Ein-Klick-Sprung „Zu den Admin-Einstellungen" im gesperrten Public-KI-Hinweis.
+#     3) Public-KI-Anreicherung jetzt auch im Verfeinern-Studio verdrahtet (war still gesperrt).
+#   NEU Schritt 5: PMO-Fortschritt aktualisieren (Weg b) — Drafts aus pmo-drafts/ auf dem Mac anwenden.
+#   (Basis v18: SCRUM-433 Auffindbarkeit, bereits committet.)
 # Ablauf:
 #   0: Format-Autofix (biome check --write).
-#   1: apps/web bauen (vite build → dist v0.9.42-beta).
+#   1: apps/web bauen (vite build → dist v0.9.43-beta).
 #   2: tools/check (Build · Lint · Architektur · Tests).
 #   3: npm run smoke:ui (4 Playwright-Kernflüsse).
 #   4: After-Report-Nachträge anhängen (je nur falls fehlend — Marker-Prüfung).
+#   5: PMO-Fortschritt aktualisieren (nur bei grünen Gates; PMO-Fehler macht den Lauf NICHT rot).
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 REPO="$HOME/Documents/dev_Klarwerk"
@@ -25,7 +26,7 @@ FEHL=0
 
 {
 echo "${FETT}KLARWERK Paul-Runner — $(date '+%d.%m.%Y %H:%M')${AUS}"
-echo "Aufgabe v18: Gates für SCRUM-433 (Auffindbarkeit, v0.9.42-beta) + Gesamtbestand — ca. 4–7 Minuten."
+echo "Aufgabe v19: SCRUM-434 Feinschliff + PMO-Automatik (v0.9.43-beta) + Gesamtbestand — ca. 4–7 Minuten."
 echo
 
 cd "$REPO" || { echo "${ROT}FEHLER: Repo nicht gefunden.${AUS}"; exit 1; }
@@ -37,7 +38,7 @@ echo
 
 echo "${FETT}— Schritt 1/4: apps/web bauen (vite build)${AUS}"
 if (cd apps/web && npx vite build); then
-  echo "${GRUEN}✓ Build/dist v0.9.42 erstellt${AUS}"
+  echo "${GRUEN}✓ Build/dist v0.9.43 erstellt${AUS}"
 else
   echo "${ROT}✗ vite build ROT${AUS}"; FEHL=1
 fi
@@ -77,16 +78,44 @@ anhaengen "SCRUM-426 — Public-KI-Anreicherung" "paul-nachtrag-426.md"
 anhaengen "SCRUM-421 + 427 — Upload-Grenzen + Extraktion in Abschnitten" "paul-nachtrag-421-427.md"
 anhaengen "SCRUM-428 — Key-Test für den lokalen LLM" "paul-nachtrag-428.md"
 anhaengen "SCRUM-433 — Auffindbarkeit (Erkenntnisse verbinden + Public-KI)" "paul-nachtrag-433.md"
+anhaengen "SCRUM-434 — Auffindbarkeit-Feinschliff + PMO-Automatik" "paul-nachtrag-434.md"
 
 echo
+echo "${FETT}— Schritt 5/5: PMO-Fortschritt aktualisieren (Weg b, nur bei grünen Gates)${AUS}"
+PMO="$HOME/Documents/KLARWERK_Reporting_PMO"
+DRAFTS="$BRIDGE/pmo-drafts"
+ANGEWENDET="$DRAFTS/angewendet"
+if [ "$FEHL" != "0" ]; then
+  echo "ℹ️ Gates nicht grün — PMO-Update übersprungen (Fortschritt nur bei grünem Bestand)."
+elif [ ! -d "$PMO" ] || [ ! -f "$PMO/scripts/apply-item-update.mjs" ]; then
+  echo "ℹ️ PMO-Ordner/Skript nicht gefunden ($PMO) — PMO-Update übersprungen (kein Fehler)."
+else
+  mkdir -p "$PMO/data/intake-drafts" "$ANGEWENDET"
+  PMO_ANZ=0
+  for draft in "$DRAFTS"/*.json; do
+    [ -e "$draft" ] || continue   # keine Drafts → Schleife nicht mit Literal laufen
+    name="$(basename "$draft")"
+    cp "$draft" "$PMO/data/intake-drafts/$name"
+    echo "→ wende an: $name"
+    if (cd "$PMO" && node scripts/apply-item-update.mjs "data/intake-drafts/$name"); then
+      mv "$draft" "$ANGEWENDET/$name" && echo "${GRUEN}✓ $name angewendet → nach pmo-drafts/angewendet/ verschoben${AUS}"
+      PMO_ANZ=$((PMO_ANZ+1))
+    else
+      # PMO-Fehler blockiert die Code-Lieferung NICHT — nur sichtbar protokollieren.
+      echo "${ROT}✗ $name nicht angewendet — Draft bleibt in pmo-drafts/ (Paul prüft).${AUS}"
+    fi
+  done
+  echo "${GRUEN}✓ PMO-Schritt fertig ($PMO_ANZ Draft(s) angewendet).${AUS}"
+fi
+echo
+
 if [ "$FEHL" = "0" ]; then
-  echo "${GRUEN}${FETT}ALLE GATES GRÜN — Gesamtbestand lieferbar (v0.9.42-beta, inkl. SCRUM-433 Auffindbarkeit).${AUS}"
-  echo "Sichtabnahme SCRUM-433: Erzählen → 'Aus Datei' → Dokument extrahieren → 2 Punkte anhaken →"
-  echo "  'Ausgewählte zu einem Eintrag verbinden' ist sichtbar und verbindet zu EINEM Artikel."
-  echo "Und: Admin → Externe Wissensabfrage → 'Offen'; dann zeigt Rohwissen/Studio die Public-KI-Anreicherung"
-  echo "  (vorher steht dort jetzt ein Hinweis, wo man sie freischaltet — statt gar nichts)."
+  echo "${GRUEN}${FETT}ALLE GATES GRÜN — Gesamtbestand lieferbar (v0.9.43-beta, inkl. SCRUM-434 + PMO-Automatik).${AUS}"
+  echo "Sichtabnahme SCRUM-434: Erzählen → 'Aus Datei' → 2 Punkte anhaken → 'Verbinden' →"
+  echo "  das Studio öffnet sich direkt mit dem zusammengeführten Artikel."
+  echo "Und: im gesperrten Public-KI-Hinweis führt 'Zu den Admin-Einstellungen' mit einem Klick zum Regler."
   echo "Commit-Empfehlung (Boss-Session):"
-  echo "  [Cloud-Worker] SCRUM-433: Auffindbarkeit — Erkenntnisse verbinden + Public-KI-Anreicherung (v0.9.42-beta)"
+  echo "  [Cloud-Worker] SCRUM-434: Auffindbarkeit-Feinschliff (Verbinden→Studio, Admin-Sprung) + PMO-Automatik (v0.9.43-beta)"
   echo "KEIN Push — KLARWERK Sync macht Pedi."
 else
   echo "${ROT}${FETT}Mindestens ein Gate ROT — Paul analysiert docs/team2-austausch/paul-runner.log und liefert einen Fix.${AUS}"

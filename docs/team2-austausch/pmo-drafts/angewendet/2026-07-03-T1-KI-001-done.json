@@ -1,0 +1,11 @@
+{
+  "mode": "update_existing",
+  "target_id": "T1-KI-001",
+  "reason": "Capture-UX-Tiefe geliefert: Wizard-/Studio-Default (SCRUM-375/384), Aus-Datei-Extraktion + Zusammenfuehren (SCRUM-405/409), Auffindbarkeit Erkenntnisse-verbinden + Public-KI + Verbinden->Studio (SCRUM-433/434). [Cloud-Worker]",
+  "fields_to_update": {
+    "status": "done",
+    "evidence": "SCRUM-375/384/405/409/433/434; Gates Paul-Runner v19 gruen (v0.9.43-beta)",
+    "missing": "-",
+    "next_step": "-"
+  }
+}
