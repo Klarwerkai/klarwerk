@@ -419,6 +419,10 @@ const de = {
   "enrich.noModel":
     "Kein KI-Modell verbunden — die Public-KI-Anreicherung braucht ein aktives Modell.",
   "enrich.empty": "Keine externen Treffer gefunden.",
+  // SCRUM-433 (Pedi 03.07., VIP): Anreicherung auch dann auffindbar, wenn (noch) gesperrt —
+  // sagt, wo ein Admin sie freischaltet, statt einfach unsichtbar zu sein.
+  "enrich.disabledHint":
+    "Public-KI-Anreicherung ist verfügbar, sobald ein Admin die externe Wissensabfrage auf „Offen“ stellt (Admin → Externe Wissensabfrage).",
   "adm.trash.title": "Papierkorb",
   "adm.trash.help":
     "Gelöschte Beiträge landen hier und bleiben 28 Tage wiederherstellbar. Danach werden sie automatisch endgültig gelöscht. Demo-Daten erscheinen hier nie — sie werden immer sofort endgültig gelöscht.",
@@ -637,9 +641,13 @@ const de = {
     "{{count}} Entwürfe aus „{{name}}“ gespeichert — je mit Quellenvermerk. Du findest sie oben unter „Entwürfe fortsetzen“.",
   "capture.file.draftsPartial":
     "Nicht alle Punkte konnten als Entwurf gespeichert werden: {{failed}}. Bereits angelegte Entwürfe bleiben erhalten.",
-  "capture.file.mergeCta": "Zu einem Eintrag zusammenführen",
+  "capture.file.mergeCta": "Ausgewählte zu einem Eintrag verbinden",
   "capture.file.mergedNote":
     "{{count}} Punkte aus „{{name}}“ zu einem Eintrag zusammengeführt — alle Belegstellen stehen im Dokument, die Quellen werden beim Einreichen vermerkt.",
+  // SCRUM-433 (Pedi 03.07., VIP): die drei Wege aus der Punkteliste jederzeit erklärt.
+  "capture.file.connectHint":
+    "Mehrere anhaken und „Verbinden“ fasst sie zu EINEM Eintrag zusammen · „Als Entwürfe speichern“ legt je Punkt einen eigenen an · „Übernehmen“ arbeitet sie einzeln ab.",
+  "capture.file.connectDisabledHint": "Mindestens 2 Erkenntnisse anhaken, um sie zu verbinden.",
   // SCRUM-384 / KG-UX-001/002/003/010: Erzähl-Einstieg als Standardweg, Formular als Expertenpfad.
   "capture.entry.narrateKicker": "Erzähl dein Wissen — die KI strukturiert, du prüfst",
   "capture.entry.expertToggle": "Expertenmodus: Formular direkt ausfüllen",
@@ -2539,6 +2547,9 @@ const en: typeof de = {
   "enrich.take": "Add to draft",
   "enrich.noModel": "No AI model connected — public AI enrichment needs an active model.",
   "enrich.empty": "No external results found.",
+  // SCRUM-433 (Pedi 03.07., VIP): stay discoverable even when (still) disabled.
+  "enrich.disabledHint":
+    "Public AI enrichment becomes available once an admin sets external knowledge lookup to “Open” (Admin → External knowledge lookup).",
   "adm.trash.title": "Recycle bin",
   "adm.trash.help":
     "Deleted entries land here and can be restored for 28 days. After that they are permanently deleted automatically. Demo data never appears here — it is always deleted permanently right away.",
@@ -2752,9 +2763,13 @@ const en: typeof de = {
     "{{count}} drafts saved from “{{name}}” — each with its source note. You can find them above under “Resume drafts”.",
   "capture.file.draftsPartial":
     "Not all points could be saved as drafts: {{failed}}. Drafts already created are kept.",
-  "capture.file.mergeCta": "Merge into one entry",
+  "capture.file.mergeCta": "Connect selected into one entry",
   "capture.file.mergedNote":
     "{{count}} points from “{{name}}” merged into one entry — all excerpts are in the document; the sources will be recorded on submit.",
+  // SCRUM-433 (Pedi 03.07., VIP): the three paths from the points list, always explained.
+  "capture.file.connectHint":
+    "Tick several and “Connect” combines them into ONE entry · “Save as drafts” creates one per point · “Take over” processes them one by one.",
+  "capture.file.connectDisabledHint": "Tick at least 2 findings to connect them.",
   // SCRUM-384 / KG-UX-001/002/003/010: narrate-first entry as default, form as expert path.
   "capture.entry.narrateKicker": "Tell your knowledge — the AI structures it, you review",
   "capture.entry.expertToggle": "Expert mode: fill the form directly",

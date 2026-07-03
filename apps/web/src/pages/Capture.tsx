@@ -1669,17 +1669,34 @@ export function Capture(): JSX.Element {
                         </li>
                       ))}
                     </ul>
-                    <div className="flex flex-wrap items-center gap-2 border-t border-hairline pt-3">
-                      <span className="text-[11.5px] text-muted-2">
-                        {t(CAPTURE_FILE_TEXT.pointCount, {
-                          selected: selectedCount(filePoints),
-                          total: filePoints.length,
-                        })}
-                      </span>
-                      {/* SCRUM-409: ab 2 bestätigten Punkten zusätzlich Mehrpunkt-Entwürfe und
-                          Zusammenführen — die Einzel-Warteschlange (unten) bleibt erhalten. */}
-                      {selectedCount(filePoints) >= 2 ? (
-                        <>
+                    <div className="space-y-2 border-t border-hairline pt-3">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="text-[11.5px] text-muted-2">
+                          {t(CAPTURE_FILE_TEXT.pointCount, {
+                            selected: selectedCount(filePoints),
+                            total: filePoints.length,
+                          })}
+                        </span>
+                        {/* SCRUM-433 (Pedi 03.07., VIP): die drei Wege sind jetzt immer sichtbar
+                            erklärt — mehrere Erkenntnisse aus dem Dokument zu EINEM Eintrag
+                            verbinden, einzeln als Entwürfe sichern oder direkt übernehmen. */}
+                        <span className="text-[11px] leading-relaxed text-muted-2">
+                          {t(CAPTURE_FILE_TEXT.connectHint)}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {/* SCRUM-433: „Verbinden" immer sichtbar (auffindbar), erst ab 2 Ausgewählten
+                            aktiv — der Kernwunsch: Erkenntnisse aus dem Dokument zusammenführen. */}
+                        <Button
+                          variant="outline"
+                          disabled={selectedCount(filePoints) < 2}
+                          title={t(CAPTURE_FILE_TEXT.connectDisabledHint)}
+                          onClick={mergeSelectedPoints}
+                        >
+                          {t(CAPTURE_FILE_TEXT.mergeCta)}
+                        </Button>
+                        {/* SCRUM-409: ab 2 Ausgewählten zusätzlich als getrennte Entwürfe sichern. */}
+                        {selectedCount(filePoints) >= 2 ? (
                           <Button
                             variant="ghost"
                             disabled={filePointDrafts.isPending}
@@ -1687,19 +1704,16 @@ export function Capture(): JSX.Element {
                           >
                             {t(CAPTURE_FILE_TEXT.saveDraftsCta)} ({selectedCount(filePoints)})
                           </Button>
-                          <Button variant="ghost" onClick={mergeSelectedPoints}>
-                            {t(CAPTURE_FILE_TEXT.mergeCta)}
-                          </Button>
-                        </>
-                      ) : null}
-                      <Button
-                        variant="primary"
-                        className="ml-auto"
-                        disabled={selectedCount(filePoints) === 0}
-                        onClick={applySelectedPoints}
-                      >
-                        {t(CAPTURE_FILE_TEXT.applyCta)} ({selectedCount(filePoints)}) →
-                      </Button>
+                        ) : null}
+                        <Button
+                          variant="primary"
+                          className="ml-auto"
+                          disabled={selectedCount(filePoints) === 0}
+                          onClick={applySelectedPoints}
+                        >
+                          {t(CAPTURE_FILE_TEXT.applyCta)} ({selectedCount(filePoints)}) →
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ) : null}

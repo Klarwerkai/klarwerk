@@ -1,16 +1,17 @@
 #!/bin/bash
 # KLARWERK Paul-Runner — Aufgabendatei des Cloud-Workers ([Paul]).
 #
-# AUFGABE v17 (03.07. abends): GATES FÜR SCRUM-428 + Gate-Fix (v0.9.41-beta) — prüft zugleich den
-# gesamten Bestand (395/416/413/417-420/422/418-Härtung/424).
-#   Lint-Fix (v17): useTemplate in extract-failure.test.ts:156 — String-Konkatenation → Template-Literal
-#     (v16 war einzig daran rot; Build/Tests/smoke waren grün).
-#   Gate-Fix (v16): TS2322 in ko-routes (Audit-Payload als Inline-Literal) — v15 war daran rot.
-#   SCRUM-428: „Lokalen LLM testen" (Admin → KI) — echter Mini-Aufruf über den Tunnel.
-#   (enthält weiterhin den 421/427-Batch: Upload-Grenzen + Extraktion in Abschnitten.)
+# AUFGABE v18 (03.07. abends): SCRUM-433 — Auffindbarkeit (v0.9.42-beta) — prüft zugleich den
+# gesamten Bestand (395/414/416/413/417-428).
+#   SCRUM-433 (Pedi 03.07., VIP): zwei Auffindbarkeits-Fixes, reines Frontend (Browser-Reload genügt):
+#     a) Erkenntnisse aus einem Dokument VERBINDEN — die vorhandene Merge-Aktion ist jetzt immer
+#        sichtbar (auffindbar), mit erklärtem Drei-Wege-Hinweis; aktiv ab 2 Ausgewählten.
+#     b) Public-KI-Anreicherung — statt spurlos unsichtbar (wenn Regler nicht „offen") ein ruhiger
+#        Hinweis, wo ein Admin sie freischaltet (Admin → Externe Wissensabfrage → „Offen").
+#   (Basis v17: SCRUM-428 + 421/427-Batch + Gate-Fix, bereits committet.)
 # Ablauf:
 #   0: Format-Autofix (biome check --write).
-#   1: apps/web bauen (vite build → dist v0.9.41-beta).
+#   1: apps/web bauen (vite build → dist v0.9.42-beta).
 #   2: tools/check (Build · Lint · Architektur · Tests).
 #   3: npm run smoke:ui (4 Playwright-Kernflüsse).
 #   4: After-Report-Nachträge anhängen (je nur falls fehlend — Marker-Prüfung).
@@ -24,7 +25,7 @@ FEHL=0
 
 {
 echo "${FETT}KLARWERK Paul-Runner — $(date '+%d.%m.%Y %H:%M')${AUS}"
-echo "Aufgabe v17: Gates für SCRUM-428 + Gate-/Lint-Fix (v0.9.41-beta) + Gesamtbestand — ca. 4–7 Minuten."
+echo "Aufgabe v18: Gates für SCRUM-433 (Auffindbarkeit, v0.9.42-beta) + Gesamtbestand — ca. 4–7 Minuten."
 echo
 
 cd "$REPO" || { echo "${ROT}FEHLER: Repo nicht gefunden.${AUS}"; exit 1; }
@@ -36,7 +37,7 @@ echo
 
 echo "${FETT}— Schritt 1/4: apps/web bauen (vite build)${AUS}"
 if (cd apps/web && npx vite build); then
-  echo "${GRUEN}✓ Build/dist v0.9.41 erstellt${AUS}"
+  echo "${GRUEN}✓ Build/dist v0.9.42 erstellt${AUS}"
 else
   echo "${ROT}✗ vite build ROT${AUS}"; FEHL=1
 fi
@@ -75,14 +76,17 @@ anhaengen "SCRUM-414 — Admin-Regler „externe Wissensabfrage" "paul-nachtrag-
 anhaengen "SCRUM-426 — Public-KI-Anreicherung" "paul-nachtrag-426.md"
 anhaengen "SCRUM-421 + 427 — Upload-Grenzen + Extraktion in Abschnitten" "paul-nachtrag-421-427.md"
 anhaengen "SCRUM-428 — Key-Test für den lokalen LLM" "paul-nachtrag-428.md"
+anhaengen "SCRUM-433 — Auffindbarkeit (Erkenntnisse verbinden + Public-KI)" "paul-nachtrag-433.md"
 
 echo
 if [ "$FEHL" = "0" ]; then
-  echo "${GRUEN}${FETT}ALLE GATES GRÜN — Gesamtbestand lieferbar (v0.9.41-beta, inkl. 421/427 + 428 + Gate-Fix).${AUS}"
-  echo "Sichtabnahme: Admin → KI → 'Lokalen LLM testen' (echter Mini-Aufruf; ohne Tunnel ehrlicher Fehler)."
-  echo "Und: Admin → Daten → Upload-Grenzen; langes PDF extrahieren → keine Kürzung."
+  echo "${GRUEN}${FETT}ALLE GATES GRÜN — Gesamtbestand lieferbar (v0.9.42-beta, inkl. SCRUM-433 Auffindbarkeit).${AUS}"
+  echo "Sichtabnahme SCRUM-433: Erzählen → 'Aus Datei' → Dokument extrahieren → 2 Punkte anhaken →"
+  echo "  'Ausgewählte zu einem Eintrag verbinden' ist sichtbar und verbindet zu EINEM Artikel."
+  echo "Und: Admin → Externe Wissensabfrage → 'Offen'; dann zeigt Rohwissen/Studio die Public-KI-Anreicherung"
+  echo "  (vorher steht dort jetzt ein Hinweis, wo man sie freischaltet — statt gar nichts)."
   echo "Commit-Empfehlung (Boss-Session):"
-  echo "  [Cloud-Worker] SCRUM-421/427/428: Upload-Grenzen + Extraktion in Abschnitten + lokaler Key-Test (v0.9.41-beta)"
+  echo "  [Cloud-Worker] SCRUM-433: Auffindbarkeit — Erkenntnisse verbinden + Public-KI-Anreicherung (v0.9.42-beta)"
   echo "KEIN Push — KLARWERK Sync macht Pedi."
 else
   echo "${ROT}${FETT}Mindestens ein Gate ROT — Paul analysiert docs/team2-austausch/paul-runner.log und liefert einen Fix.${AUS}"

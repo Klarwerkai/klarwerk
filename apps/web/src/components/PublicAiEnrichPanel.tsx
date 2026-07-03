@@ -61,10 +61,22 @@ export function PublicAiEnrichPanel({
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
   });
 
-  // Selbst-Gate NACH allen Hooks (Rules of Hooks): nur bei „offen" verfügbar; der Server
-  // (SCRUM-414-Gate) setzt es zusätzlich durch.
+  // Selbst-Gate NACH allen Hooks (Rules of Hooks): die volle Anreicherung nur bei „offen";
+  // der Server (SCRUM-414-Gate) setzt es zusätzlich durch.
+  // SCRUM-433 (Pedi 03.07., VIP): nicht mehr spurlos unsichtbar — ein ruhiger Hinweis macht
+  // die Funktion auffindbar und sagt, wo ein Admin sie freischaltet.
   if (stage !== "open") {
-    return null;
+    return (
+      <div className="mt-3 rounded-card border border-dashed border-ai/30 bg-ai-surface-1/25 p-2.5">
+        <div className="flex items-center gap-1.5">
+          <SectionLabel>{t("enrich.title")}</SectionLabel>
+          <HelpTip title={t("enrich.title")} body={t("enrich.help")} />
+        </div>
+        <p className="mt-1 text-[11.5px] leading-relaxed text-muted-2">
+          {t("enrich.disabledHint")}
+        </p>
+      </div>
+    );
   }
 
   const busy = runModel.isPending || runWeb.isPending;

@@ -133,4 +133,7 @@ export const CAPTURE_FILE_TEXT = {
   draftsPartial: "capture.file.draftsPartial",
   mergeCta: "capture.file.mergeCta",
   mergedNote: "capture.file.mergedNote",
+  // SCRUM-433 (Pedi 03.07., VIP): Erkenntnisse aus dem Dokument auffindbar verbinden.
+  connectHint: "capture.file.connectHint",
+  connectDisabledHint: "capture.file.connectDisabledHint",
 } as const;
