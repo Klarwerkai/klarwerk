@@ -10,6 +10,8 @@ export const ADMIN_SECTIONS = [
   { id: "daten", labelKey: "adm.sec.daten" },
   // SCRUM-432: Sicherheit — Vertrauen & Sicherheit (Prüfprotokoll + Datenschutz-Nachweis, Investoren)
   { id: "sicherheit", labelKey: "adm.sec.sicherheit" },
+  // SCRUM-437: Bereitschaft — Ein-Blick-Status vor dem VIP-Test (KIs, Wissen, Grenzen, Stufe)
+  { id: "bereitschaft", labelKey: "adm.sec.bereitschaft" },
 ] as const;
 
 export type AdminSectionId = (typeof ADMIN_SECTIONS)[number]["id"];

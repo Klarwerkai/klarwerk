@@ -3,6 +3,7 @@ import i18n from "../../apps/web/src/i18n";
 import {
   KI_STATE_KEY,
   type StorageLike,
+  firstRunStepDone,
   isAdminFirstRun,
   kiConnectionState,
   kiStateTone,
@@ -44,6 +45,16 @@ describe("SCRUM-429: Admin-Erststart", () => {
     expect(kiStateTone("none")).toBe("crit");
     expect(kiStateTone("cloudOnly")).toBe("warn");
     expect(kiStateTone("localOnly")).toBe("warn");
+  });
+
+  it("SCRUM-441: Häkchen aus echtem Fortschritt — erfasst/geprüft/Verwaltung", () => {
+    const none = { total: 0, validated: 0, kiBoth: false };
+    expect(firstRunStepDone("capture", none)).toBe(false);
+    expect(firstRunStepDone("validate", none)).toBe(false);
+    expect(firstRunStepDone("admin", none)).toBe(false);
+    expect(firstRunStepDone("capture", { total: 3, validated: 0, kiBoth: false })).toBe(true);
+    expect(firstRunStepDone("validate", { total: 3, validated: 1, kiBoth: false })).toBe(true);
+    expect(firstRunStepDone("admin", { total: 0, validated: 0, kiBoth: true })).toBe(true);
   });
 
   it("jeder KI-Zustand hat ein aufgelöstes DE- und EN-Label", async () => {

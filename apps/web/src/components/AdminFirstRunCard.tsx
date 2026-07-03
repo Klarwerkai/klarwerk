@@ -1,10 +1,13 @@
-import { ArrowRight, CheckSquare, Plus, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowRight, Check, CheckSquare, Plus, ShieldCheck, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
-import { useReasonerConfig } from "../api/hooks";
+import { useAnalytics, useReasonerConfig } from "../api/hooks";
 import {
+  type FirstRunProgress,
+  type FirstRunStepId,
   KI_STATE_KEY,
+  firstRunStepDone,
   isAdminFirstRun,
   kiConnectionState,
   kiStateTone,
@@ -23,30 +26,40 @@ const TONE_CLASS: Record<"ok" | "warn" | "crit", string> = {
   crit: "bg-trust-crit-bg text-trust-crit-text",
 };
 
-const STEPS = [
+const STEPS: {
+  id: FirstRunStepId;
+  to: string;
+  icon: typeof Plus;
+  titleKey: string;
+  bodyKey: string;
+}[] = [
   {
+    id: "capture",
     to: "/erfassen",
     icon: Plus,
     titleKey: "adm.firstrun.step.capture.t",
     bodyKey: "adm.firstrun.step.capture.b",
   },
   {
+    id: "validate",
     to: "/validierung",
     icon: CheckSquare,
     titleKey: "adm.firstrun.step.validate.t",
     bodyKey: "adm.firstrun.step.validate.b",
   },
   {
+    id: "admin",
     to: "/admin",
     icon: ShieldCheck,
     titleKey: "adm.firstrun.step.admin.t",
     bodyKey: "adm.firstrun.step.admin.b",
   },
-] as const;
+];
 
 export function AdminFirstRunCard(): JSX.Element | null {
   const { t } = useTranslation();
   const cfg = useReasonerConfig();
+  const analytics = useAnalytics();
   const [visible, setVisible] = useState(() => isAdminFirstRun(window.localStorage));
 
   if (!visible) {
@@ -57,6 +70,12 @@ export function AdminFirstRunCard(): JSX.Element | null {
     cfg.data?.configured ?? false,
     cfg.data?.localConfigured ?? false,
   );
+  // SCRUM-441: echter Fortschritt aus den vorhandenen Zählern — Häkchen statt Behauptung.
+  const progress: FirstRunProgress = {
+    total: analytics.data?.total ?? 0,
+    validated: analytics.data?.byStatus.validiert ?? 0,
+    kiBoth: kiState === "both",
+  };
   const dismiss = (): void => {
     markAdminFirstRunSeen(window.localStorage, new Date().toISOString());
     setVisible(false);
@@ -97,25 +116,39 @@ export function AdminFirstRunCard(): JSX.Element | null {
 
       {/* Drei geführte erste Schritte — echte Deep-Links, keine neuen Seiten. */}
       <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-        {STEPS.map((step) => (
-          <Link
-            key={step.to}
-            to={step.to}
-            className="group rounded-card border border-hairline bg-surface p-3 hover:border-ink/25"
-          >
-            <span className="flex items-center gap-1.5 text-[13px] font-semibold text-text">
-              <step.icon size={14} className="text-muted-2" />
-              {t(step.titleKey)}
-              <ArrowRight
-                size={13}
-                className="ml-auto text-muted-2 transition-transform group-hover:translate-x-0.5"
-              />
-            </span>
-            <span className="mt-1 block text-[11.5px] leading-relaxed text-muted">
-              {t(step.bodyKey)}
-            </span>
-          </Link>
-        ))}
+        {STEPS.map((step) => {
+          const done = firstRunStepDone(step.id, progress);
+          return (
+            <Link
+              key={step.to}
+              to={step.to}
+              className={`group rounded-card border p-3 hover:border-ink/25 ${
+                done ? "border-trust-pos-fill/40 bg-trust-pos-bg/40" : "border-hairline bg-surface"
+              }`}
+            >
+              <span className="flex items-center gap-1.5 text-[13px] font-semibold text-text">
+                {done ? (
+                  <Check size={14} className="text-trust-pos-text" />
+                ) : (
+                  <step.icon size={14} className="text-muted-2" />
+                )}
+                {t(step.titleKey)}
+                {done ? (
+                  <span className="rounded-pill bg-trust-pos-bg px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-trust-pos-text">
+                    {t("adm.firstrun.doneBadge")}
+                  </span>
+                ) : null}
+                <ArrowRight
+                  size={13}
+                  className="ml-auto text-muted-2 transition-transform group-hover:translate-x-0.5"
+                />
+              </span>
+              <span className="mt-1 block text-[11.5px] leading-relaxed text-muted">
+                {t(step.bodyKey)}
+              </span>
+            </Link>
+          );
+        })}
       </div>
 
       <p className="mt-3 text-[11px] leading-relaxed text-muted-2">{t("adm.firstrun.note")}</p>

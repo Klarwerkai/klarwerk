@@ -73,3 +73,26 @@
 .prose-kw .attachment a {
   @apply font-semibold no-underline;
 }
+
+/* SCRUM-440: druckbarer Auszug — nur der markierte Bereich (.print-area) wird gedruckt.
+   Bewusst hinter body.printing-extract geklammert (setzt der Druck-Knopf), damit normales
+   Strg+P auf allen anderen Seiten unverändert funktioniert. */
+@media print {
+  body.printing-extract * {
+    visibility: hidden;
+  }
+  body.printing-extract .print-area,
+  body.printing-extract .print-area * {
+    visibility: visible;
+  }
+  body.printing-extract .print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 0;
+  }
+  body.printing-extract .print-hide {
+    display: none !important;
+  }
+}

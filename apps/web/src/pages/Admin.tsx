@@ -1,11 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, KeyRound, ShieldCheck, Sparkles, Trash2, UserPlus } from "lucide-react";
+import {
+  ArrowRight,
+  KeyRound,
+  Printer,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+  UserPlus,
+} from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import { useAudit, useUsers } from "../api/hooks";
+import { useAnalytics, useAudit, useUsers, useValidationBoard } from "../api/hooks";
 import type { ExternalKnowledgeStage } from "../api/types";
 import { useToast } from "../app/ToastContext";
 import { ROLES, type Role } from "../app/navigation";
@@ -25,8 +33,27 @@ import { ADMIN_SECTIONS, type AdminSectionId, DEFAULT_ADMIN_SECTION } from "../l
 import { type AiAccessState, aiAccessRows } from "../lib/aiOverview";
 import { PILOT_NEXT_STEPS } from "../lib/pilotNextSteps";
 import { SECURITY_POINTS } from "../lib/securityStatements";
+import { type ReadinessTone, readinessRows } from "../lib/vipReadiness";
 
 const EMPTY_NEW_USER = { name: "", email: "", password: "", role: "experte" as Role };
+
+// SCRUM-437: Ampel-Klassen für die Bereitschafts-Zeilen (info = ruhige, wertungsfreie Zahl).
+const READY_TONE_CLASS: Record<ReadinessTone, string> = {
+  ok: "bg-trust-pos-bg text-trust-pos-text",
+  warn: "bg-trust-warn-bg text-trust-warn-text",
+  crit: "bg-trust-crit-bg text-trust-crit-text",
+  info: "bg-page text-muted",
+};
+
+// SCRUM-440: nur den markierten Auszug drucken — eine Body-Klasse isoliert den Druck (via CSS),
+// damit normales Strg+P auf anderen Seiten unberührt bleibt. Klasse nach dem Druck wieder entfernen.
+function printExtract(): void {
+  document.body.classList.add("printing-extract");
+  window.addEventListener("afterprint", () => document.body.classList.remove("printing-extract"), {
+    once: true,
+  });
+  window.print();
+}
 
 // SCRUM-414: die vier Stufen des Reglers „externe Wissensabfrage" in Anzeige-Reihenfolge.
 const EXTERNAL_STAGES: readonly ExternalKnowledgeStage[] = [
@@ -48,6 +75,9 @@ export function Admin(): JSX.Element {
   const { t } = useTranslation();
   const query = useUsers();
   const audit = useAudit();
+  // SCRUM-437: Live-Zahlen für die Bereitschafts-Checkliste (dedupt mit vorhandenen Queries).
+  const analytics = useAnalytics();
+  const board = useValidationBoard();
   const qc = useQueryClient();
   const { push } = useToast();
   const invalidate = () => void qc.invalidateQueries({ queryKey: ["users"] });
@@ -1075,7 +1105,12 @@ export function Admin(): JSX.Element {
           Prüfprotokoll + Datenschutz-/Sicherheits-Nachweis. Ein Auszug, den man einem Investor
           ruhig zeigt: nur echte Systemeigenschaften, keine Versprechen. */}
       {section === "sicherheit" ? (
-        <>
+        <div className="print-area space-y-6">
+          <div className="flex justify-end print-hide">
+            <Button variant="outline" onClick={printExtract}>
+              <Printer size={14} /> {t("adm.print")}
+            </Button>
+          </div>
           <Card className="p-0">
             <div className="px-4 pt-4">
               <div className="flex items-center gap-1.5">
@@ -1144,7 +1179,50 @@ export function Admin(): JSX.Element {
               ))}
             </ul>
           </Card>
-        </>
+        </div>
+      ) : null}
+
+      {/* SCRUM-437 (Pedi 03.07., VIP): Bereitschafts-Checkliste — Ein-Blick-Status vor dem Test,
+          je Zeile eine ehrliche Ampel aus echten Zahlen. Druckbar (SCRUM-440). */}
+      {section === "bereitschaft" ? (
+        <div className="print-area">
+          <Card className="p-4">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                <SectionLabel>{t("adm.ready.title")}</SectionLabel>
+                <HelpTip title={t("adm.ready.title")} body={t("adm.ready.help")} />
+              </div>
+              <Button variant="outline" className="print-hide" onClick={printExtract}>
+                <Printer size={14} /> {t("adm.print")}
+              </Button>
+            </div>
+            <p className="mt-1 text-[12px] leading-relaxed text-muted">{t("adm.ready.intro")}</p>
+            <ul className="mt-3 divide-y divide-hairline">
+              {readinessRows({
+                kiBoth:
+                  (aiConfig.data?.configured ?? false) && (aiConfig.data?.localConfigured ?? false),
+                kiAny:
+                  (aiConfig.data?.configured ?? false) || (aiConfig.data?.localConfigured ?? false),
+                validated: analytics.data?.byStatus.validiert ?? 0,
+                openReviews: board.data?.length ?? 0,
+                uploadLimits: uploadLimitsQ.data ?? null,
+                externalStage: extPolicy.data?.stage ?? null,
+              }).map((row) => (
+                <li key={row.id} className="flex items-center gap-3 py-2.5 text-[13px]">
+                  <span className="font-semibold text-text">{t(row.labelKey)}</span>
+                  <span
+                    className={`ml-auto rounded-pill px-2.5 py-0.5 text-[11.5px] font-semibold ${
+                      READY_TONE_CLASS[row.tone]
+                    }`}
+                  >
+                    {t(row.valueKey, row.params)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-3 text-[11px] leading-relaxed text-muted-2">{t("adm.ready.note")}</p>
+          </Card>
+        </div>
       ) : null}
     </div>
   );

@@ -55,3 +55,24 @@ export function kiStateTone(state: KiConnectionState): KiStateTone {
   }
   return "warn";
 }
+
+// SCRUM-441 (Pedi 03.07.): die Erststart-Schritte mit echtem Fortschritt füllen — „erledigt"-Häkchen
+// aus den vorhandenen Zählern, nie geraten. Erfasst = es gibt Wissen; geprüft = es ist validiert;
+// Verwaltung = beide KIs verbunden (Ersteinrichtung steht).
+export type FirstRunStepId = "capture" | "validate" | "admin";
+
+export interface FirstRunProgress {
+  total: number;
+  validated: number;
+  kiBoth: boolean;
+}
+
+export function firstRunStepDone(step: FirstRunStepId, p: FirstRunProgress): boolean {
+  if (step === "capture") {
+    return p.total > 0;
+  }
+  if (step === "validate") {
+    return p.validated > 0;
+  }
+  return p.kiBoth;
+}

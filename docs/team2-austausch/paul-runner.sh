@@ -1,18 +1,19 @@
 #!/bin/bash
 # KLARWERK Paul-Runner — Aufgabendatei des Cloud-Workers ([Paul]).
 #
-# AUFGABE v20 (03.07. abends): SCRUM-429 Onboarding + SCRUM-432 Trust & Security (v0.9.44-beta) —
-# prüft zugleich den gesamten Bestand (395/414/416/413/417-428/433/434).
-#   SCRUM-429 (VIP-Bündel): ruhige Erststart-Führung für den neuen Admin auf der Startseite —
-#     nur beim ersten Besuch, ausblendbar; bestätigt ehrlich „beide KIs verbunden" + 3 erste Schritte.
-#   SCRUM-432 (VIP-Investor): neuer Admin-Bereich „Sicherheit" — manipulationssicheres Prüfprotokoll
-#     (append-only, hash-verkettet) + Datenschutz-/Sicherheits-Auszug (7 echte Systemeigenschaften).
-#   Reines Frontend (Browser-Reload genügt). Neue Tests: admin-first-run, security-statements;
-#     admin-sections-Test auf 4 Bereiche aktualisiert.
+# AUFGABE v21 (03.07. abends): Frontend-Bündel SCRUM-437/440/441 (v0.9.45-beta) —
+# prüft zugleich den gesamten Bestand (395/414/416/413/417-428/433/434/429/432).
+#   SCRUM-441: Erststart-Karte zeigt „erledigt"-Häkchen aus echten Zählern (erfasst/geprüft/Verwaltung).
+#   SCRUM-437: neuer Admin-Bereich „Bereitschaft" — Ein-Blick-Status vor dem VIP-Test (KIs, validiertes
+#     Wissen, offene Prüfungen, Upload-Grenzen, externe Wissensabfrage-Stufe) mit ehrlicher Ampel.
+#   SCRUM-440: „Vertrauen & Sicherheit" + „Bereitschaft" druckbar (Druck-Knopf, isolierter Print).
+#   Reines Frontend (Browser-Reload genügt). Neue Tests: vip-readiness; admin-first-run erweitert;
+#     admin-sections-Test auf 5 Bereiche aktualisiert.
+#   Rest des VIP-Vorschlagspakets (436/438/439/442) folgt als Backend-/PMO-Bündel.
 #   Schritt 5 (PMO-Automatik) läuft weiter.
 # Ablauf:
 #   0: Format-Autofix (biome check --write).
-#   1: apps/web bauen (vite build → dist v0.9.44-beta).
+#   1: apps/web bauen (vite build → dist v0.9.45-beta).
 #   2: tools/check (Build · Lint · Architektur · Tests).
 #   3: npm run smoke:ui (4 Playwright-Kernflüsse).
 #   4: After-Report-Nachträge anhängen (je nur falls fehlend — Marker-Prüfung).
@@ -27,7 +28,7 @@ FEHL=0
 
 {
 echo "${FETT}KLARWERK Paul-Runner — $(date '+%d.%m.%Y %H:%M')${AUS}"
-echo "Aufgabe v20: SCRUM-429 Onboarding + SCRUM-432 Trust & Security (v0.9.44-beta) + Gesamtbestand — ca. 4–7 Minuten."
+echo "Aufgabe v21: SCRUM-437/440/441 (Bereitschaft · Druck · Erststart-Häkchen, v0.9.45-beta) + Gesamtbestand — ca. 4–7 Minuten."
 echo
 
 cd "$REPO" || { echo "${ROT}FEHLER: Repo nicht gefunden.${AUS}"; exit 1; }
@@ -39,7 +40,7 @@ echo
 
 echo "${FETT}— Schritt 1/4: apps/web bauen (vite build)${AUS}"
 if (cd apps/web && npx vite build); then
-  echo "${GRUEN}✓ Build/dist v0.9.44 erstellt${AUS}"
+  echo "${GRUEN}✓ Build/dist v0.9.45 erstellt${AUS}"
 else
   echo "${ROT}✗ vite build ROT${AUS}"; FEHL=1
 fi
@@ -81,6 +82,7 @@ anhaengen "SCRUM-428 — Key-Test für den lokalen LLM" "paul-nachtrag-428.md"
 anhaengen "SCRUM-433 — Auffindbarkeit (Erkenntnisse verbinden + Public-KI)" "paul-nachtrag-433.md"
 anhaengen "SCRUM-434 — Auffindbarkeit-Feinschliff + PMO-Automatik" "paul-nachtrag-434.md"
 anhaengen "SCRUM-429 + 432 — Onboarding-Politur + Vertrauen & Sicherheit" "paul-nachtrag-429-432.md"
+anhaengen "SCRUM-437/440/441 — VIP-Bereitschaft + Druck + Erststart-Häkchen" "paul-nachtrag-437-440-441.md"
 
 echo
 echo "${FETT}— Schritt 5/5: PMO-Fortschritt aktualisieren (Weg b, nur bei grünen Gates)${AUS}"
@@ -112,12 +114,12 @@ fi
 echo
 
 if [ "$FEHL" = "0" ]; then
-  echo "${GRUEN}${FETT}ALLE GATES GRÜN — Gesamtbestand lieferbar (v0.9.44-beta, inkl. SCRUM-429 + 432).${AUS}"
-  echo "Sichtabnahme SCRUM-429: als frischer Admin auf Start → ruhige Erststart-Karte (KI-Status + 3 Schritte),"
-  echo "  'Ausblenden' → verschwindet dauerhaft."
-  echo "Sichtabnahme SCRUM-432: Admin → Bereich 'Sicherheit' → Prüfprotokoll (Kette) + Datenschutz-Auszug."
+  echo "${GRUEN}${FETT}ALLE GATES GRÜN — Gesamtbestand lieferbar (v0.9.45-beta, inkl. SCRUM-437/440/441).${AUS}"
+  echo "Sichtabnahme SCRUM-437: Admin → Bereich 'Bereitschaft' → Ein-Blick-Status mit Ampel."
+  echo "Sichtabnahme SCRUM-440: dort (und in 'Sicherheit') 'Drucken' → nur der Auszug druckt, Hülle bleibt weg."
+  echo "Sichtabnahme SCRUM-441: als frischer Admin auf Start — nach Erfassen/Prüfen bekommen die Schritte Häkchen."
   echo "Commit-Empfehlung (Boss-Session):"
-  echo "  [Cloud-Worker] SCRUM-429/432: Onboarding-Politur + Vertrauen & Sicherheit (v0.9.44-beta)"
+  echo "  [Cloud-Worker] SCRUM-437/440/441: VIP-Bereitschaft + druckbarer Auszug + Erststart-Häkchen (v0.9.45-beta)"
   echo "KEIN Push — KLARWERK Sync macht Pedi."
 else
   echo "${ROT}${FETT}Mindestens ein Gate ROT — Paul analysiert docs/team2-austausch/paul-runner.log und liefert einen Fix.${AUS}"

@@ -330,6 +330,8 @@ const de = {
   "adm.sec.ki": "KI",
   "adm.sec.daten": "Daten",
   "adm.sec.sicherheit": "Sicherheit",
+  "adm.sec.bereitschaft": "Bereitschaft",
+  "adm.print": "Drucken",
   // SCRUM-429 (Pedi 03.07., VIP): Erststart-Führung für den neuen Admin.
   "adm.firstrun.kicker": "Erststart",
   "adm.firstrun.title": "Willkommen — dein Arbeitsbereich ist startklar.",
@@ -355,6 +357,29 @@ const de = {
     "Im Prüfbereich wird Erfahrungswissen freigegeben — erst dann ist es „nutzbar“.",
   "adm.firstrun.step.admin.t": "Verwaltung öffnen",
   "adm.firstrun.step.admin.b": "Konten, KI-Anbindung, Daten und Sicherheit an einem Ort.",
+  "adm.firstrun.doneBadge": "erledigt",
+  // SCRUM-437 (Pedi 03.07., VIP): Bereitschafts-Checkliste — Ein-Blick-Status vor dem Test.
+  "adm.ready.title": "VIP-Bereitschaft",
+  "adm.ready.help":
+    "Ein ehrlicher Ein-Blick-Status vor dem Test: was steht, was fehlt. Jede Zeile aus echten Zahlen, nichts geschönt.",
+  "adm.ready.intro": "Schneller Kontroll-Blick vor dem VIP-Test — grün heißt bereit, gelb prüfen.",
+  "adm.ready.note":
+    "„Offene Prüfungen“ und die externe Wissensabfrage-Stufe sind wertungsfreie Angaben — kein Mangel, nur Kontext.",
+  "adm.ready.ki": "Verbundene KIs",
+  "adm.ready.ki.both": "Beide verbunden",
+  "adm.ready.ki.partial": "Teilweise verbunden",
+  "adm.ready.ki.none": "Keine verbunden",
+  "adm.ready.validated": "Validiertes Wissen",
+  "adm.ready.openReviews": "Offene Prüfungen",
+  "adm.ready.count": "{{n}}",
+  "adm.ready.upload": "Upload-Grenzen",
+  "adm.ready.upload.val": "{{n}} Anhänge · {{kb}} KB",
+  "adm.ready.unknown": "unbekannt",
+  "adm.ready.external": "Externe Wissensabfrage",
+  "adm.ready.ext.blocked": "Blockiert",
+  "adm.ready.ext.searchOnClick": "Suche auf Klick",
+  "adm.ready.ext.searchAttach": "Suchen & anhängen",
+  "adm.ready.ext.open": "Offen",
   // SCRUM-432 (Pedi 03.07., VIP-Investor): Vertrauen & Sicherheit.
   "adm.sich.auditTitle": "Prüfprotokoll — manipulationssicher",
   "adm.sich.auditHelp":
@@ -2518,6 +2543,8 @@ const en: typeof de = {
   "adm.sec.ki": "AI",
   "adm.sec.daten": "Data",
   "adm.sec.sicherheit": "Security",
+  "adm.sec.bereitschaft": "Readiness",
+  "adm.print": "Print",
   // SCRUM-429 (Pedi 03.07., VIP): first-run guidance for the new admin.
   "adm.firstrun.kicker": "First run",
   "adm.firstrun.title": "Welcome — your workspace is ready to go.",
@@ -2542,6 +2569,30 @@ const en: typeof de = {
     "Experience knowledge is released in review — only then is it “usable”.",
   "adm.firstrun.step.admin.t": "Open administration",
   "adm.firstrun.step.admin.b": "Accounts, AI connection, data and security in one place.",
+  "adm.firstrun.doneBadge": "done",
+  // SCRUM-437 (Pedi 03.07., VIP): readiness checklist — one-glance status before the test.
+  "adm.ready.title": "VIP readiness",
+  "adm.ready.help":
+    "An honest one-glance status before the test: what's in place, what's missing. Every row from real numbers, nothing sugar-coated.",
+  "adm.ready.intro":
+    "Quick control glance before the VIP test — green means ready, amber means check.",
+  "adm.ready.note":
+    "“Open reviews” and the external knowledge stage are neutral facts — not a flaw, just context.",
+  "adm.ready.ki": "Connected AIs",
+  "adm.ready.ki.both": "Both connected",
+  "adm.ready.ki.partial": "Partially connected",
+  "adm.ready.ki.none": "None connected",
+  "adm.ready.validated": "Validated knowledge",
+  "adm.ready.openReviews": "Open reviews",
+  "adm.ready.count": "{{n}}",
+  "adm.ready.upload": "Upload limits",
+  "adm.ready.upload.val": "{{n}} attachments · {{kb}} KB",
+  "adm.ready.unknown": "unknown",
+  "adm.ready.external": "External knowledge lookup",
+  "adm.ready.ext.blocked": "Blocked",
+  "adm.ready.ext.searchOnClick": "Search on click",
+  "adm.ready.ext.searchAttach": "Search & attach",
+  "adm.ready.ext.open": "Open",
   // SCRUM-432 (Pedi 03.07., VIP investor): Trust & Security.
   "adm.sich.auditTitle": "Audit trail — tamper-evident",
   "adm.sich.auditHelp":
