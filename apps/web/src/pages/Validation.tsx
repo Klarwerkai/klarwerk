@@ -587,13 +587,16 @@ export function Validation(): JSX.Element {
                           {/* SCRUM-396: Titel zuerst und deutlich — er ging zwischen Badges und
                               Meta-Zeilen unter; klar als Link erkennbar (KO-Detail = Ort für
                               Bearbeiten/Löschen). Badges rücken in eine ruhige Zeile darunter. */}
+                          {/* SCRUM-425 (Pedi 03.07.): Titel-Typografie, -Hover und Pill-Abstand
+                              an die Bibliothek angeglichen (dort text-[15px], nur Unterstreichung
+                              beim Hover, gap-1.5) — eine ruhige, konsistente Board-/Listen-Optik. */}
                           <Link
                             to={`/wissen/${k.id}`}
-                            className="block truncate text-[17px] font-semibold leading-snug text-text underline-offset-4 hover:text-ink hover:underline"
+                            className="block truncate text-[15px] font-semibold leading-snug text-text underline-offset-4 hover:underline"
                           >
                             {k.title}
                           </Link>
-                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
                             <KnowledgeTypeTag type={k.type} />
                             <StatusPill status={sig.status} />
                             {/* SCRUM-416: Trust bleibt sichtbar (entscheidungsrelevant) — rückt zu den Badges. */}

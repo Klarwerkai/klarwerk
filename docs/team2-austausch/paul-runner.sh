@@ -1,18 +1,14 @@
 #!/bin/bash
 # KLARWERK Paul-Runner — Aufgabendatei des Cloud-Workers ([Paul]).
 #
-# AUFGABE v11 (03.07. abends): GATES FÜR SCRUM-424 (v0.9.36-beta) — prüft zugleich den
-# gesamten Bestand (416/413, 417–420, 395, 422, 418-Härtung).
-#   SCRUM-424: Zwei KI-Backends — Claude-Cloud UND eigener lokaler LLM (OpenAI-kompatibel,
-#              vLLM/Qwen). Standard „auto": Cloud → lokal → deterministisch. Admin → KI:
-#              je Aufgabe zwischen Cloud/Lokal/Deterministisch umschaltbar; „Verfügbare KIs"
-#              zeigt den lokalen LLM als „bereit", sobald er verdrahtet ist.
-#              Beide werden serverseitig aus Env/Schlüsselbund verbunden — vor der Erstanmeldung.
-#              Provisionierung: docs/team2-austausch/SCRUM-424-KI-PROVISIONIERUNG.md
+# AUFGABE v12 (03.07. abends): GATES FÜR SCRUM-425 (v0.9.37-beta) — prüft zugleich den
+# gesamten Bestand (395/416/413/417-420/422/418-Härtung/424).
+#   SCRUM-425: Validierungs-Karten optisch an die Bibliothek angeglichen — Titel text-[15px],
+#              Titel-Hover nur Unterstreichung, Badge-Abstand gap-1.5. Prüf-Funktionen bleiben.
 # Ablauf:
 #   0: Format-Autofix (biome check --write).
-#   1: apps/web bauen (vite build → dist v0.9.36-beta).
-#   2: tools/check (Build · Lint · Architektur · Tests — inkl. dual-provider + extract-failure).
+#   1: apps/web bauen (vite build → dist v0.9.37-beta).
+#   2: tools/check (Build · Lint · Architektur · Tests).
 #   3: npm run smoke:ui (4 Playwright-Kernflüsse).
 #   4: After-Report-Nachträge anhängen (je nur falls fehlend — Marker-Prüfung).
 
@@ -25,7 +21,7 @@ FEHL=0
 
 {
 echo "${FETT}KLARWERK Paul-Runner — $(date '+%d.%m.%Y %H:%M')${AUS}"
-echo "Aufgabe v11: Gates für SCRUM-424 (v0.9.36-beta) + Gesamtbestand — ca. 4–7 Minuten."
+echo "Aufgabe v12: Gates für SCRUM-425 (v0.9.37-beta) + Gesamtbestand — ca. 4–7 Minuten."
 echo
 
 cd "$REPO" || { echo "${ROT}FEHLER: Repo nicht gefunden.${AUS}"; exit 1; }
@@ -37,7 +33,7 @@ echo
 
 echo "${FETT}— Schritt 1/4: apps/web bauen (vite build)${AUS}"
 if (cd apps/web && npx vite build); then
-  echo "${GRUEN}✓ Build/dist v0.9.36 erstellt${AUS}"
+  echo "${GRUEN}✓ Build/dist v0.9.37 erstellt${AUS}"
 else
   echo "${ROT}✗ vite build ROT${AUS}"; FEHL=1
 fi
@@ -71,20 +67,15 @@ anhaengen() { # $1 = Marker, $2 = Nachtrag-Datei
 anhaengen "SCRUM-422 — Papierkorb für gelöschte Artikel" "paul-nachtrag-422.md"
 anhaengen "SCRUM-418 (Härtung 2) — Extraktion aus Datei robust" "paul-nachtrag-418b.md"
 anhaengen "SCRUM-424 — Zwei KI-Backends" "paul-nachtrag-424.md"
+anhaengen "SCRUM-425 — Validierung optisch an die Bibliothek angleichen" "paul-nachtrag-425.md"
 
 echo
 if [ "$FEHL" = "0" ]; then
-  echo "${GRUEN}${FETT}ALLE GATES GRÜN — Gesamtbestand lieferbar (v0.9.36-beta, inkl. 395/416/413/417-420/422/418-Härtung/424).${AUS}"
-  echo "WICHTIG: KLARWERK-Backend-Server NEU STARTEN — der Extraktions-Fix UND die zweite KI"
-  echo "wirken erst nach Server-Neustart (der Runner baut nur das Web-Frontend)."
-  echo "Für die zweite KI zuvor die Env-Variablen setzen: docs/team2-austausch/SCRUM-424-KI-PROVISIONIERUNG.md"
-  echo "Sichtabnahme (6 Minuten):"
-  echo "  1. Server neu starten → Admin → KI → 'Verfügbare KIs': Cloud aktiv, Lokaler LLM 'bereit'."
-  echo "  2. Admin → KI: global/je Aufgabe zwischen Cloud/Lokal/Deterministisch umschalten."
-  echo "  3. Wissen erfassen → Aus Datei → PDF: Extraktion läuft (kein JSON-Fehler mehr)."
-  echo "  4. Beitrag löschen → Admin → Daten → Papierkorb: wiederherstellen / endgültig löschen."
+  echo "${GRUEN}${FETT}ALLE GATES GRÜN — Gesamtbestand lieferbar (v0.9.37-beta, inkl. 424 + 425).${AUS}"
+  echo "Sichtabnahme: Validierung öffnen — Karten-Titel/Abstände wirken jetzt wie in der Bibliothek;"
+  echo "Entscheiden/Aufklappen/Bearbeiten/Löschen unverändert."
   echo "Commit-Empfehlung (Boss-Session):"
-  echo "  [Cloud-Worker] SCRUM-424: zweites KI-Backend (lokaler LLM) + Auto-Routing + Admin-Umschaltung (v0.9.36-beta)"
+  echo "  [Cloud-Worker] SCRUM-425: Validierung optisch an die Bibliothek angeglichen (v0.9.37-beta)"
   echo "KEIN Push — KLARWERK Sync macht Pedi."
 else
   echo "${ROT}${FETT}Mindestens ein Gate ROT — Paul analysiert docs/team2-austausch/paul-runner.log und liefert einen Fix.${AUS}"
