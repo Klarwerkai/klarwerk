@@ -205,6 +205,13 @@ export class ValidationService {
     const all = await this.assignments.all();
     const byUser = new Map<string, AssignmentSummary>();
     for (const a of all) {
+      // Bug (Pedi 04.07.): Zuweisungen auf zwischenzeitlich gelöschte KOs zählen nicht mehr —
+      // sonst bleiben nach dem Löschen/Demo-Purge „Geister-Aufgaben" in den Kennzahlen stehen
+      // (wie openAssignmentsFor, das gelöschte KOs bereits überspringt).
+      const ko = await this.koService.get(a.koId);
+      if (!ko) {
+        continue;
+      }
       const summary = byUser.get(a.userId) ?? { userId: a.userId, open: 0, done: 0 };
       if (a.status === "open") {
         summary.open += 1;

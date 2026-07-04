@@ -166,11 +166,15 @@ export function Admin(): JSX.Element {
         ["analytics"],
         ["evidence"],
         ["conflicts"],
+        // Bug (Pedi 04.07.): auch Wissenslücken/Aufgaben-Sichten auffrischen, sonst bleibt die
+        // gelöschte Demo-Lücke in Risiko & Lücken / Meine Aufgaben stehen, bis man neu lädt.
+        ["gaps"],
+        ["tasks"],
       ]) {
         void qc.invalidateQueries({ queryKey: key });
       }
       setConfirmPurge(false);
-      push("success", t("adm.purgeDone", { kos: r.kos, conflicts: r.conflicts }));
+      push("success", t("adm.purgeDone", { kos: r.kos, conflicts: r.conflicts, gaps: r.gaps }));
     },
     onError: fail,
   });

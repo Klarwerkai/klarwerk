@@ -28,6 +28,8 @@ const de = {
   "nav.help": "Hilfe",
   "nav.profile": "Profil",
   "role.viewAs": "Ansicht als Rolle",
+  "role.previewNote": "Vorschau als {{role}} — du bleibst Admin.",
+  "role.backToAdmin": "Zur Admin-Ansicht",
   "role.stage2": "Erweiterte Module · Stufe 2",
   "role.short.viewer": "Viewer",
   "role.short.experte": "Experte",
@@ -78,6 +80,18 @@ const de = {
   "uikit.sampleStatement": "Druckabfall an Presse P2 sitzt meist an Ventil V4, nicht an der Pumpe.",
   "state.loading": "Lädt …",
   "state.error": "Etwas ist schiefgelaufen.",
+  "modal.close": "Schließen",
+  "nav.guard.title": "Ungespeicherte Eingabe",
+  "nav.guard.body": "Du hast beim Erfassen noch nicht gespeicherten Inhalt. Was möchtest du tun?",
+  "nav.guard.stay": "Hier bleiben",
+  "nav.guard.discard": "Verwerfen und wechseln",
+  "nav.guard.save": "Entwurf speichern und wechseln",
+  // Bug (Pedi 04.07.): Fehlergrenze statt weißer Seite.
+  "error.title": "Diese Ansicht konnte nicht geladen werden.",
+  "error.body":
+    "Das ist ein Anzeige-Fehler, kein Datenverlust. Bitte lade die Seite neu. Tritt es erneut auf, hilft der Detailtext unten beim Melden.",
+  "error.reload": "Neu laden",
+  "error.detail": "Detail",
   "state.empty": "Nichts vorhanden.",
   "auth.tagline": "Erfahrungswissen, das im Unternehmen bleibt.",
   "auth.taglineSub": "Erfassen · Validieren · Klären · Beantworten · Pflegen.",
@@ -315,7 +329,8 @@ const de = {
     "Wirklich ALLE Demodaten löschen (auch von Testern veränderte)? Eigenes Wissen bleibt unberührt.",
   "adm.purgeKeep": "Abbrechen",
   "adm.purgeYes": "Ja, endgültig entfernen",
-  "adm.purgeDone": "Demodaten entfernt: {{kos}} Wissensobjekte, {{conflicts}} Konflikte aufgelöst.",
+  "adm.purgeDone":
+    "Demodaten entfernt: {{kos}} Wissensobjekte, {{conflicts}} Konflikte aufgelöst, {{gaps}} Wissenslücken.",
   "adm.seedSkippedInline":
     "Nicht geladen: Diese Instanz enthält bereits Wissensobjekte. Demodaten füllen nur eine LEERE Instanz — dein echter Bestand wird nie überschrieben.",
   "capture.tellResetQ": "Text und Anhänge wirklich verwerfen?",
@@ -547,7 +562,7 @@ const de = {
   "capture.wizard.discardKeep": "Behalten",
   "capture.wizard.discardYes": "Ja, verwerfen",
   "capture.wizard.discardDone": "Entwurf verworfen — dein Erzähltext ist noch da.",
-  "capture.wizard.upload": "Dateien oder Bilder hinzufügen",
+  "capture.wizard.upload": "Text aus Datei oder Bild einfügen",
   "capture.wizard.uploadCount":
     "{{count}} Anhang/Anhänge dabei — Text aus Dokumenten steht schon oben im Feld, Details unter „Erweiterte Details“.",
   "capture.gapContextTitle": "Aus offener Wissenslücke",
@@ -734,6 +749,16 @@ const de = {
   "capture.file.connectHint":
     "Mehrere anhaken und „Verbinden“ fasst sie zu EINEM Eintrag zusammen · „Als Entwürfe speichern“ legt je Punkt einen eigenen an · „Übernehmen“ arbeitet sie einzeln ab.",
   "capture.file.connectDisabledHint": "Mindestens 2 Erkenntnisse anhaken, um sie zu verbinden.",
+  "capture.file.selectAll": "Alle auswählen",
+  "capture.file.deselectAll": "Alle abwählen",
+  "capture.file.mergedInList":
+    "{{count}} Erkenntnisse zu einem Punkt verbunden — bleibt in der Liste.",
+  "capture.file.applyDisabledHint":
+    "Genau eine Erkenntnis anhaken — es wird immer nur eine weiterverarbeitet.",
+  "capture.file.purgeUnselectedQ":
+    "Sollen die {{count}} nicht ausgewählten Erkenntnisse gelöscht werden?",
+  "capture.file.purgeUnselectedYes": "Nicht ausgewählte löschen",
+  "capture.file.purgeUnselectedKeep": "Behalten",
   // SCRUM-384 / KG-UX-001/002/003/010: Erzähl-Einstieg als Standardweg, Formular als Expertenpfad.
   "capture.entry.narrateKicker": "Erzähl dein Wissen — die KI strukturiert, du prüfst",
   "capture.entry.expertToggle": "Expertenmodus: Formular direkt ausfüllen",
@@ -775,13 +800,13 @@ const de = {
     "Formuliere etwas ausführlicher und vollständiger — ohne neue Fakten zu erfinden.",
   "capture.ai.instr.spelling": "Korrigiere nur Rechtschreibung und Grammatik.",
   "capture.ai.instr.format":
-    "Formatiere den Text übersichtlich mit Überschriften, Absätzen und Listen. Inhalt und Wortlaut unverändert lassen, nichts hinzufügen oder weglassen.",
+    "Verbessere nur die Lesbarkeit durch saubere Absätze und Zeichensetzung. Verwende KEINE Markdown-Zeichen wie #, ## oder * — keine Überschriften-Zeichen. Inhalt und Wortlaut unverändert lassen, nichts hinzufügen oder weglassen.",
   "capture.ai.help.clarify": "Formuliert verständlicher und präziser — der Sinn bleibt gleich.",
   "capture.ai.help.structure": "Ordnet den Text in knappe Sätze bzw. Stichpunkte.",
   "capture.ai.help.expand": "Formuliert ausführlicher — erfindet dabei keine neuen Fakten.",
   "capture.ai.help.spelling": "Korrigiert nur Rechtschreibung und Grammatik, sonst nichts.",
   "capture.ai.help.format":
-    "Baut nur die Optik um (Überschriften, Absätze, Listen) — der Inhalt bleibt wörtlich erhalten.",
+    "Verbessert nur die Lesbarkeit (Absätze, Zeichensetzung) — ohne Markdown-Zeichen; der Inhalt bleibt wörtlich.",
   // SCRUM-386: ?-Hilfe für kundeneigene Funktionen — die Anweisung ist offen sichtbar (G-3).
   "capture.ai.customHelp":
     "Eigene KI-Funktion deiner Organisation (vom Admin angelegt). Anweisung an die KI: „{{instruction}}“. Wie bei allen KI-Aktionen entsteht nur ein Vorschlag zur Vorschau — übernommen wird ausschließlich, was du bewusst per Klick übernimmst.",
@@ -811,7 +836,13 @@ const de = {
   "capture.saveDraft": "Als Entwurf speichern",
   "capture.draftSaved": "Entwurf gespeichert.",
   "capture.draftUpdated": "Entwurf aktualisiert.",
-  "capture.draftDiscarded": "Entwurf verworfen.",
+  "capture.draftDiscarded": "Entwurf gelöscht.",
+  // Bugfix (Pedi 04.07.): Entwürfe werden derzeit endgültig gelöscht (kein Papierkorb) —
+  // deshalb ehrliche Nachfrage vor dem Löschen, keine „verschoben"-Behauptung.
+  "capture.discardDraftQ": "Entwurf endgültig löschen?",
+  "capture.discardDraftKeep": "Behalten",
+  "capture.discardDraftYes": "Löschen",
+  "capture.imageError": "„{{name}}“ konnte nicht als Bild gelesen werden.",
   "capture.draftFallbackTitle": "Entwurf",
   "capture.resumeTitle": "Entwürfe fortsetzen",
   "capture.resume": "Fortsetzen",
@@ -984,7 +1015,7 @@ const de = {
   "capture.listRemove": "Entfernen",
   "capture.tagPlaceholder": "Tag eingeben, Enter zum Übernehmen",
   "capture.formularHint":
-    "Fülle die Felder rechts direkt aus — Aussage, Bedingungen, Maßnahmen, Schlagwörter und Metadaten.",
+    "Kernaussage und Aussage genügen zum Start — die weiteren Angaben unten sind optional.",
   "capture.diktatStart": "Diktat starten",
   "capture.diktatStop": "Diktat stoppen",
   "capture.diktatUnsupported":
@@ -1198,6 +1229,11 @@ const de = {
   "ko.conflictType": "Konfliktart",
   "ko.conflictDesc": "Worin besteht der Widerspruch?",
   "ko.conflictSubmit": "Konflikt eröffnen",
+  "ko.conflictTargetSearch": "Wissensobjekt suchen …",
+  "ko.conflictTargetEmpty": "Keine Treffer",
+  "ko.conflictTargetChoose": "Auswählen",
+  "ko.conflictTargetShow": "Vorschau",
+  "ko.conflictTargetHide": "Vorschau schließen",
   "ko.provenance": "Herkunft",
   "ko.helpfulTitle": "Bewährung",
   "ko.helpfulHint": "Hat dir dieses Wissen in der Praxis geholfen?",
@@ -1451,7 +1487,9 @@ const de = {
   "con.measures": "Maßnahmen",
   "con.sources": "Quellen",
   "con.openKo": "Objekt öffnen",
-  "con.koMissing": "Objekt nicht gefunden ({{id}})",
+  "con.compareOpen": "Beide gegenüberstellen",
+  "con.compareTitle": "Gegenüberstellung",
+  "con.koMissing": "Beitrag wurde entfernt.",
   "con.resolveEffect":
     "Die Entscheidung wird dokumentiert und protokolliert. Trust/Status der Objekte werden NICHT automatisch geändert (kein stilles Überschreiben).",
   "con.resolveRevalidate": "Betroffene Objekte ggf. manuell re-validieren.",
@@ -2246,6 +2284,8 @@ const en: typeof de = {
   "nav.help": "Help",
   "nav.profile": "Profile",
   "role.viewAs": "View as role",
+  "role.previewNote": "Preview as {{role}} — you stay Admin.",
+  "role.backToAdmin": "Back to admin view",
   "role.stage2": "Advanced modules · Stage 2",
   "role.short.viewer": "Viewer",
   "role.short.experte": "Expert",
@@ -2296,6 +2336,18 @@ const en: typeof de = {
   "uikit.sampleStatement": "Pressure loss on press P2 usually sits at valve V4, not at the pump.",
   "state.loading": "Loading …",
   "state.error": "Something went wrong.",
+  "modal.close": "Close",
+  "nav.guard.title": "Unsaved entry",
+  "nav.guard.body": "You have unsaved content in the capture area. What would you like to do?",
+  "nav.guard.stay": "Stay here",
+  "nav.guard.discard": "Discard and leave",
+  "nav.guard.save": "Save draft and leave",
+  // Bug (Pedi 04.07.): error boundary instead of a blank page.
+  "error.title": "This view could not be loaded.",
+  "error.body":
+    "This is a display error, not data loss. Please reload the page. If it happens again, the detail below helps with reporting.",
+  "error.reload": "Reload",
+  "error.detail": "Detail",
   "state.empty": "Nothing here.",
   "auth.tagline": "Experience knowledge that stays in the company.",
   "auth.taglineSub": "Capture · Validate · Resolve · Answer · Maintain.",
@@ -2531,7 +2583,7 @@ const en: typeof de = {
   "adm.purgeKeep": "Cancel",
   "adm.purgeYes": "Yes, remove permanently",
   "adm.purgeDone":
-    "Demo data removed: {{kos}} knowledge objects, {{conflicts}} conflicts resolved.",
+    "Demo data removed: {{kos}} knowledge objects, {{conflicts}} conflicts resolved, {{gaps}} knowledge gaps.",
   "adm.seedSkippedInline":
     "Not loaded: this instance already contains knowledge objects. Demo data only fills an EMPTY instance — your real content is never overwritten.",
   "capture.tellResetQ": "Really discard text and attachments?",
@@ -2759,7 +2811,7 @@ const en: typeof de = {
   "capture.wizard.discardKeep": "Keep",
   "capture.wizard.discardYes": "Yes, discard",
   "capture.wizard.discardDone": "Draft discarded — your narrated text is still there.",
-  "capture.wizard.upload": "Add files or images",
+  "capture.wizard.upload": "Insert text from file or image",
   "capture.wizard.uploadCount":
     "{{count}} attachment(s) added — text from documents is already in the field above; details under “Advanced details”.",
   "capture.gapContextTitle": "From an open knowledge gap",
@@ -2941,6 +2993,13 @@ const en: typeof de = {
   "capture.file.connectHint":
     "Tick several and “Connect” combines them into ONE entry · “Save as drafts” creates one per point · “Take over” processes them one by one.",
   "capture.file.connectDisabledHint": "Tick at least 2 findings to connect them.",
+  "capture.file.selectAll": "Select all",
+  "capture.file.deselectAll": "Deselect all",
+  "capture.file.mergedInList": "Merged {{count}} findings into one point — it stays in the list.",
+  "capture.file.applyDisabledHint": "Tick exactly one finding — only one is processed at a time.",
+  "capture.file.purgeUnselectedQ": "Delete the {{count}} unselected findings?",
+  "capture.file.purgeUnselectedYes": "Delete unselected",
+  "capture.file.purgeUnselectedKeep": "Keep",
   // SCRUM-384 / KG-UX-001/002/003/010: narrate-first entry as default, form as expert path.
   "capture.entry.narrateKicker": "Tell your knowledge — the AI structures it, you review",
   "capture.entry.expertToggle": "Expert mode: fill the form directly",
@@ -2983,13 +3042,13 @@ const en: typeof de = {
     "Phrase a bit more fully and completely — without inventing new facts.",
   "capture.ai.instr.spelling": "Correct spelling and grammar only.",
   "capture.ai.instr.format":
-    "Format the text cleanly with headings, paragraphs and lists. Keep content and wording unchanged; add or remove nothing.",
+    "Only improve readability with clean paragraphs and punctuation. Do NOT use markdown characters like #, ## or * — no heading markers. Keep content and wording unchanged; add or remove nothing.",
   "capture.ai.help.clarify": "Rephrases more clearly and precisely — the meaning stays the same.",
   "capture.ai.help.structure": "Arranges the text into concise sentences or bullet points.",
   "capture.ai.help.expand": "Phrases more fully — without inventing new facts.",
   "capture.ai.help.spelling": "Corrects spelling and grammar only, nothing else.",
   "capture.ai.help.format":
-    "Only reworks the layout (headings, paragraphs, lists) — the content stays verbatim.",
+    "Only improves readability (paragraphs, punctuation) — without markdown characters; the content stays verbatim.",
   // SCRUM-386: ?-help for custom functions — the instruction is openly visible (G-3).
   "capture.ai.customHelp":
     "Custom AI function of your organisation (created by the admin). Instruction for the AI: „{{instruction}}“. As with all AI actions, only a suggestion for preview is produced — nothing is adopted unless you deliberately click to adopt it.",
@@ -3017,7 +3076,11 @@ const en: typeof de = {
   "capture.saveDraft": "Save as draft",
   "capture.draftSaved": "Draft saved.",
   "capture.draftUpdated": "Draft updated.",
-  "capture.draftDiscarded": "Draft discarded.",
+  "capture.draftDiscarded": "Draft deleted.",
+  "capture.discardDraftQ": "Delete draft permanently?",
+  "capture.discardDraftKeep": "Keep",
+  "capture.discardDraftYes": "Delete",
+  "capture.imageError": "“{{name}}” could not be read as an image.",
   "capture.draftFallbackTitle": "Draft",
   "capture.resumeTitle": "Resume drafts",
   "capture.resume": "Resume",
@@ -3186,7 +3249,7 @@ const en: typeof de = {
   "capture.listRemove": "Remove",
   "capture.tagPlaceholder": "Type a tag, press Enter",
   "capture.formularHint":
-    "Fill the fields on the right directly — statement, conditions, measures, tags and metadata.",
+    "Core statement and statement are enough to start — the further details below are optional.",
   "capture.diktatStart": "Start dictation",
   "capture.diktatStop": "Stop dictation",
   "capture.diktatUnsupported":
@@ -3399,6 +3462,11 @@ const en: typeof de = {
   "ko.conflictType": "Conflict type",
   "ko.conflictDesc": "What is the contradiction?",
   "ko.conflictSubmit": "Open conflict",
+  "ko.conflictTargetSearch": "Search knowledge object …",
+  "ko.conflictTargetEmpty": "No matches",
+  "ko.conflictTargetChoose": "Select",
+  "ko.conflictTargetShow": "Preview",
+  "ko.conflictTargetHide": "Hide preview",
   "ko.provenance": "Provenance",
   "ko.helpfulTitle": "Proven in practice",
   "ko.helpfulHint": "Did this knowledge help you in practice?",
@@ -3648,7 +3716,9 @@ const en: typeof de = {
   "con.measures": "Measures",
   "con.sources": "Sources",
   "con.openKo": "Open object",
-  "con.koMissing": "Object not found ({{id}})",
+  "con.compareOpen": "Compare both",
+  "con.compareTitle": "Side-by-side comparison",
+  "con.koMissing": "Contribution was removed.",
   "con.resolveEffect":
     "The decision is documented and logged. Object trust/status are NOT changed automatically (no silent overwrite).",
   "con.resolveRevalidate": "Re-validate affected objects manually if needed.",

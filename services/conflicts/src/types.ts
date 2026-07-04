@@ -3,6 +3,16 @@ export type ConflictType = "truth" | "experience" | "context" | "temporal" | "ro
 
 export type ConflictStatus = "offen" | "eskaliert" | "zweitmeinung" | "geloest";
 
+// Konzept 04.07. (Stufe 1): warum ein Konflikt endete. Additiv/optional — Alt-Daten haben das
+// Feld nicht (JSON-persistiert, keine DB-Migration). "participant_deleted" = ein Beteiligter
+// wurde gelöscht (systemische Beendigung, kein menschlicher Entscheider).
+export type ConflictResolutionReason =
+  | "decided"
+  | "dismissed"
+  | "participant_deleted"
+  | "edited_no_conflict"
+  | "withdrawn";
+
 export interface Conflict {
   id: string;
   koA: string;
@@ -13,6 +23,7 @@ export interface Conflict {
   secondOpinion: string | null;
   decidedBy: string | null;
   decision: string | null;
+  resolutionReason?: ConflictResolutionReason;
   createdAt: string;
 }
 

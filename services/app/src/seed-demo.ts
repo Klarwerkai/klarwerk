@@ -30,6 +30,12 @@ export interface DemoSeedServices {
 // Modulweit, damit Seed UND Purge dieselbe Quelle nutzen.
 export const DEMO_TAG = "pilot-demo";
 
+// Bug (Pedi 04.07.): Die vom Seed erzeugte Demo-Wissenslücke gehört zu den Beispielen und muss
+// beim Demo-Purge mitverschwinden. EINE Quelle für Seed UND Purge (Abgleich per Frage-Präfix,
+// robust gegen die Normalisierung der gespeicherten Gap-Frage).
+export const DEMO_GAP_QUESTION =
+  "Warum schwankt der Dosierwert an Linie L4 nach jedem Schichtwechsel?";
+
 const TINY_PNG =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 
@@ -371,10 +377,7 @@ async function buildDemoContent(
   // vorhandenen KOs (Ventil/Überdruck/Pumpe/Filter/Kaltstart/Vorwärmung samt deren Stoppwörtern
   // wie „die"/„dem"). Der deterministische Reasoner-Fallback findet daher keinen Treffer →
   // echte Wissenslücke statt Antwort; danach Priorität wie bisher auf „hoch". ---
-  const asked = await ask.ask(
-    "Warum schwankt der Dosierwert an Linie L4 nach jedem Schichtwechsel?",
-    adminId,
-  );
+  const asked = await ask.ask(DEMO_GAP_QUESTION, adminId);
   if (asked.gap) {
     await ask.setGapPriority(asked.gap.id, "hoch");
   }
@@ -445,18 +448,22 @@ async function buildDemoContent(
 // ---- Demodaten komplett entfernen (Pedi 02.07.) -------------------------------------
 // Entfernt ALLE als demoSeed markierten Wissensobjekte (der Marker überlebt Bearbeitungen
 // und Versionen) samt zugehöriger Konflikte. Läuft über die echten Services → Audit bleibt
-// ehrlich. Demo-NUTZER bleiben bewusst bestehen (könnten inzwischen echte Beiträge haben);
-// Wissenslücken aus Demo-Fragen bleiben als ehrliche offene Fragen sichtbar.
+// ehrlich. Demo-NUTZER bleiben bewusst bestehen (könnten inzwischen echte Beiträge haben).
+// Bug (Pedi 04.07.): Auch die vom Seed erzeugte Demo-Wissenslücke wird jetzt mitgelöscht —
+// sie gehörte zu den Beispielen und blieb sonst als „offene Lücke/Aufgabe" stehen.
+// Hinweis: „Fragen gesamt" in den Kennzahlen kommt aus dem UNVERÄNDERLICHEN Audit-Log
+// (jede Frage ist echte Historie) und lässt sich bewusst nicht „wegputzen".
 export interface PurgeResult {
   kos: number;
   conflicts: number;
+  gaps: number;
 }
 
 export async function purgeDemoSeed(
-  services: Pick<DemoSeedServices, "ko" | "conflicts">,
+  services: Pick<DemoSeedServices, "ko" | "conflicts" | "ask">,
   actor: string,
 ): Promise<PurgeResult> {
-  const { ko, conflicts } = services;
+  const { ko, conflicts, ask } = services;
   const demoKos = (await ko.list({})).filter(
     (k) => k.demoSeed === true || (k.tags ?? []).includes(DEMO_TAG),
   );
@@ -475,5 +482,15 @@ export async function purgeDemoSeed(
     // (gilt auch für nur per Tag markierte Alt-Demo-KOs ohne demoSeed-Flag).
     await ko.delete(k.id, actor, { hard: true });
   }
-  return { kos: demoKos.length, conflicts: removedConflicts };
+  // Bug (Pedi 04.07.): Demo-Wissenslücke(n) mitlöschen — Abgleich über den Frage-Präfix
+  // (robust gegen die Normalisierung der gespeicherten Gap-Frage).
+  const demoGapPrefix = DEMO_GAP_QUESTION.slice(0, 40);
+  let removedGaps = 0;
+  for (const g of await ask.listGaps()) {
+    if (g.question.startsWith(demoGapPrefix)) {
+      await ask.deleteGap(g.id, true).catch(() => undefined);
+      removedGaps += 1;
+    }
+  }
+  return { kos: demoKos.length, conflicts: removedConflicts, gaps: removedGaps };
 }

@@ -34,6 +34,46 @@ export function selectedCount(points: readonly SelectableExtractPoint[]): number
   return points.filter((p) => p.selected).length;
 }
 
+// Pedi 04.07.: Alle Punkte auf einen Auswahlzustand setzen (Alle auswählen / Alle abwählen).
+export function setAllSelected(
+  points: readonly SelectableExtractPoint[],
+  selected: boolean,
+): SelectableExtractPoint[] {
+  return points.map((p) => ({ ...p, selected }));
+}
+
+// Pedi 04.07.: Ausgewählte Punkte zu EINEM zusammenfassen — der verbundene Punkt erscheint an der
+// Stelle des ersten Ausgewählten WIEDER in der Liste (kein Sprung in den nächsten Schritt). Nicht
+// ausgewählte Punkte bleiben unverändert. Weniger als 2 ausgewählt ⇒ Liste unverändert.
+export function mergeSelectedIntoOne(
+  points: readonly SelectableExtractPoint[],
+): SelectableExtractPoint[] {
+  const chosen = points.filter((p) => p.selected);
+  if (chosen.length < 2) {
+    return [...points];
+  }
+  const merged: SelectableExtractPoint = {
+    id: `merged:${chosen.map((p) => p.id).join("+")}`,
+    title: chosen[0]?.title ?? "",
+    summary: chosen.map((p) => p.summary).join(" "),
+    sourceExcerpt: chosen.map((p) => p.sourceExcerpt).join("\n\n"),
+    selected: true,
+  };
+  const result: SelectableExtractPoint[] = [];
+  let inserted = false;
+  for (const p of points) {
+    if (p.selected) {
+      if (!inserted) {
+        result.push(merged);
+        inserted = true;
+      }
+    } else {
+      result.push(p);
+    }
+  }
+  return result;
+}
+
 // Aus einem Wissenspunkt wird EIN Wissensseiten-Entwurf im bekannten StructureResult-Format:
 // Titel = Aussage, Statement = Kurzfassung. Bedingungen/Maßnahmen bleiben leer — sie stehen
 // nicht belegt im Punkt, und wir erfinden nichts (G-2). Der Experte ergänzt im Wizard.
@@ -136,4 +176,12 @@ export const CAPTURE_FILE_TEXT = {
   // SCRUM-433 (Pedi 03.07., VIP): Erkenntnisse aus dem Dokument auffindbar verbinden.
   connectHint: "capture.file.connectHint",
   connectDisabledHint: "capture.file.connectDisabledHint",
+  // Pedi 04.07.: Alle wählen/abwählen · „Verbinden" bleibt in der Liste · Entwürfe-Löschen-Nachfrage.
+  selectAll: "capture.file.selectAll",
+  deselectAll: "capture.file.deselectAll",
+  mergedInList: "capture.file.mergedInList",
+  applyDisabledHint: "capture.file.applyDisabledHint",
+  purgeUnselectedQ: "capture.file.purgeUnselectedQ",
+  purgeUnselectedYes: "capture.file.purgeUnselectedYes",
+  purgeUnselectedKeep: "capture.file.purgeUnselectedKeep",
 } as const;

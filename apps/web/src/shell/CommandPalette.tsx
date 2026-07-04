@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
+import { useNavGuard } from "../app/NavGuardContext";
 import { useRole } from "../app/RoleContext";
 import { ALL_ITEMS, canSee } from "../app/navigation";
 import { ANALYTICS_AUDIT_PATH } from "../lib/analyticsSections";
@@ -10,6 +11,7 @@ import { ANALYTICS_AUDIT_PATH } from "../lib/analyticsSections";
 export function CommandPalette(): JSX.Element | null {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { guard } = useNavGuard();
   const { role, stufe2 } = useRole();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -69,7 +71,7 @@ export function CommandPalette(): JSX.Element | null {
 
   const go = (path: string): void => {
     setOpen(false);
-    navigate(path);
+    guard(() => navigate(path));
   };
 
   return (

@@ -23,6 +23,7 @@ import { AiAssistBox } from "../components/AiAssistBox";
 // SCRUM-405: „Aus Dokument ergänzen" — extract-Punkte an den Artikel anhängen (nichts ersetzen).
 import { BodyExtractPanel } from "../components/BodyExtractPanel";
 import { BodyTemplateChooser } from "../components/BodyTemplateChooser";
+import { ConflictTargetPicker } from "../components/ConflictTargetPicker";
 import { DemoBanner } from "../components/DemoBanner";
 import { EditorAttachmentContext } from "../components/EditorAttachmentContext";
 import { EditorContentQuality } from "../components/EditorContentQuality";
@@ -177,6 +178,11 @@ export function KnowledgeDetail(): JSX.Element {
   const [reworkSavedFor, setReworkSavedFor] = useState<string | null>(null);
   const reworkSaved = reviewReworkContext && reworkSavedFor === id;
   const [conflict, setConflict] = useState<ConflictForm | null>(null);
+  // Pedi 04.07.: Auswahl des Widerspruchs-Objekts als durchsuchbares Pop-up (statt Dropdown).
+  const [pickOpen, setPickOpen] = useState(false);
+  // Titel des aktuell gewählten Widerspruchs-Objekts (für die Anzeige auf dem Auswahl-Knopf).
+  const selectedConflictKoTitle =
+    (conflict?.koB && (koList.data ?? []).find((k) => k.id === conflict.koB)?.title) || "";
   const [commentText, setCommentText] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [newAuthor, setNewAuthor] = useState("");
@@ -1194,22 +1200,24 @@ export function KnowledgeDetail(): JSX.Element {
                             <SectionLabel>{t("ko.conflictTitle")}</SectionLabel>
                             {vhelp("conflictForm")}
                           </div>
-                          <Field label={t("ko.conflictTarget")}>
-                            <select
-                              value={conflict.koB}
-                              onChange={(e) => setConflict({ ...conflict, koB: e.target.value })}
-                              className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
+                          {/* Pedi 04.07.: Dropdown → durchsuchbares Pop-up (skaliert, mit Vorschau). */}
+                          <div className="block space-y-1.5">
+                            <span className="block text-[12.5px] font-medium text-muted">
+                              {t("ko.conflictTarget")}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setPickOpen(true)}
+                              className="flex h-10 w-full items-center justify-between gap-2 rounded-input border border-hairline bg-surface px-3 text-left text-sm hover:border-ink/30"
                             >
-                              <option value="">{t("ko.conflictTargetPlaceholder")}</option>
-                              {(koList.data ?? [])
-                                .filter((k) => k.id !== id)
-                                .map((k) => (
-                                  <option key={k.id} value={k.id}>
-                                    {k.title}
-                                  </option>
-                                ))}
-                            </select>
-                          </Field>
+                              <span className={conflict.koB ? "truncate text-text" : "text-muted"}>
+                                {selectedConflictKoTitle || t("ko.conflictTargetPlaceholder")}
+                              </span>
+                              <span className="shrink-0 font-mono text-[11px] text-muted-2">
+                                {t("ko.conflictTargetChoose")}
+                              </span>
+                            </button>
+                          </div>
                           <Field label={t("ko.conflictType")}>
                             <select
                               value={conflict.type}
@@ -1242,6 +1250,16 @@ export function KnowledgeDetail(): JSX.Element {
                           >
                             {t("ko.conflictSubmit")}
                           </Button>
+
+                          <ConflictTargetPicker
+                            open={pickOpen}
+                            onClose={() => setPickOpen(false)}
+                            candidates={(koList.data ?? []).filter((k) => k.id !== id)}
+                            onSelect={(koId) => {
+                              setConflict({ ...conflict, koB: koId });
+                              setPickOpen(false);
+                            }}
+                          />
                         </div>
                       ) : null}
 

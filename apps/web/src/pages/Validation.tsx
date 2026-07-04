@@ -795,8 +795,11 @@ export function Validation(): JSX.Element {
                               den Entscheidungs-Knöpfen; Bestätigung auf eigener Zeile (SCRUM-419). */}
                           {role === "admin" || role === "controller" || k.author === user?.id ? (
                             confirmDeleteId === k.id ? (
-                              <div className="flex flex-wrap items-center justify-end gap-1.5 rounded-card border border-hairline bg-page px-2.5 py-1.5">
-                                <span className="text-[12px] font-semibold text-text">
+                              // Bugfix (Pedi 04.07.): Breite begrenzt + umbruchfähig — der lange
+                              // Bestätigungstext sprengte sonst die shrink-0-Spalte und quetschte
+                              // den linken Karteninhalt auf null (Layout-Bruch).
+                              <div className="flex w-full max-w-[22rem] flex-wrap items-center justify-end gap-1.5 rounded-card border border-hairline bg-page px-2.5 py-1.5">
+                                <span className="min-w-0 flex-1 text-[12px] font-semibold text-text">
                                   {t("ko.deleteQ")}
                                 </span>
                                 <Button variant="ghost" onClick={() => setConfirmDeleteId(null)}>

@@ -28,6 +28,24 @@ describe("ConflictService", () => {
     expect(c.description).toBeTruthy();
   });
 
+  it("Konzept 04.07. (Stufe 1): gelöschtes KO beendet seine offenen Konflikte (kein Geist)", async () => {
+    const a = await service.create(input({ koA: "ko1", koB: "ko2" }));
+    const b = await service.create(input({ koA: "ko2", koB: "ko3" }));
+    const unrelated = await service.create(input({ koA: "ko4", koB: "ko5" }));
+
+    const closed = await service.onKoRemoved("ko2");
+    expect(closed).toBe(2);
+
+    const stillA = await service.get(a.id);
+    expect(stillA?.status).toBe("geloest");
+    expect(stillA?.resolutionReason).toBe("participant_deleted");
+    expect(stillA?.decidedBy).toBeNull();
+    expect((await service.get(b.id))?.status).toBe("geloest");
+
+    const open = await service.unresolved();
+    expect(open.map((c) => c.id)).toEqual([unrelated.id]);
+  });
+
   it("FR-CON-02: nur Wahrheitskonflikte eskalieren", async () => {
     const truth = await service.create(input({ type: "truth" }));
     const escalated = await service.escalate(truth.id);

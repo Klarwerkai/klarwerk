@@ -67,9 +67,47 @@ export class ConflictService {
   // FR-CON-03: Controller-Entscheidung schließt den Wahrheitskonflikt ab.
   async resolve(id: string, decidedBy: string, decision: string): Promise<Conflict> {
     const conflict = await this.requireOpen(id);
-    const saved = await this.save({ ...conflict, status: "geloest", decidedBy, decision });
+    const saved = await this.save({
+      ...conflict,
+      status: "geloest",
+      decidedBy,
+      decision,
+      resolutionReason: "decided",
+    });
     await this.audit?.record({ actor: decidedBy, action: "conflict.resolved", target: id });
     return saved;
+  }
+
+  // Konzept 04.07. (Stufe 1) — Geister-Bug: Wird ein beteiligtes Wissensobjekt gelöscht, darf sein
+  // Konflikt nicht als „Objekt nicht gefunden" offen hängen bleiben. Alle OFFENEN Konflikte, die
+  // dieses KO referenzieren, werden geordnet beendet (participant_deleted) und protokolliert —
+  // OHNE Status/Trust des verbleibenden KO automatisch zu ändern (kein stilles Überschreiben).
+  // Idempotent: bereits gelöste Konflikte bleiben unberührt. Gibt die Anzahl beendeter Konflikte.
+  async onKoRemoved(koId: string, actor = "system"): Promise<number> {
+    const affected = (await this.repo.all()).filter(
+      (c) => c.status !== "geloest" && (c.koA === koId || c.koB === koId),
+    );
+    for (const c of affected) {
+      await this.save({
+        ...c,
+        status: "geloest",
+        decidedBy: null,
+        resolutionReason: "participant_deleted",
+      });
+      await this.audit?.record({
+        actor,
+        action: "conflict.participant-removed",
+        target: c.id,
+        payload: { koId },
+      });
+      await this.audit?.record({
+        actor,
+        action: "conflict.auto-resolved",
+        target: c.id,
+        payload: { reason: "participant_deleted" },
+      });
+    }
+    return affected.length;
   }
 
   // FR-CON-04: alle ungelösten Konflikte (jeder Status außer gelöst).

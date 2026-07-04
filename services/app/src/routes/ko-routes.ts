@@ -229,6 +229,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       }
       try {
         await ko.purgeTrashed(request.params.id, user.id);
+        // Konzept 04.07. (Stufe 1): offene Konflikte dieses KO geordnet beenden (kein Geist).
+        await conflicts.onKoRemoved(request.params.id, user.id);
         reply.code(204).send();
       } catch (error) {
         sendError(reply, error);
@@ -258,6 +260,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       }
       try {
         await ko.delete(request.params.id, user.id);
+        // Konzept 04.07. (Stufe 1): offene Konflikte dieses KO geordnet beenden (kein Geist).
+        await conflicts.onKoRemoved(request.params.id, user.id);
         reply.code(204).send();
       } catch (error) {
         sendError(reply, error);

@@ -297,7 +297,7 @@ export const endpoints = {
   admin: {
     demoSeed: () => api.post<DemoSeedResult>("/admin/demo-seed", {}),
     // Pedi 02.07.: Demodaten komplett entfernen (Merker überlebt Tester-Bearbeitungen).
-    demoPurge: () => api.del<{ kos: number; conflicts: number }>("/admin/demo-seed"),
+    demoPurge: () => api.del<{ kos: number; conflicts: number; gaps: number }>("/admin/demo-seed"),
   },
   users: {
     list: () => api.get<PublicUser[]>("/users"),

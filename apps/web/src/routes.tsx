@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useRole } from "./app/RoleContext";
 import { ALL_ITEMS, type NavItem, canSee } from "./app/navigation";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Admin } from "./pages/Admin";
 import { Analytics } from "./pages/Analytics";
 import { Ask } from "./pages/Ask";
@@ -50,7 +51,11 @@ function Guarded({ item }: { item: NavItem }): JSX.Element {
     return <Navigate to="/start" replace />;
   }
   const Page = PAGES[item.id];
-  return Page ? <Page /> : <PlaceholderPage item={item} />;
+  // Bug (Pedi 04.07.): Fehler in EINER Seite dürfen nicht die ganze App weiß ausblenden.
+  // key={item.id} → die Fehlergrenze setzt sich beim Seitenwechsel zurück.
+  return (
+    <ErrorBoundary key={item.id}>{Page ? <Page /> : <PlaceholderPage item={item} />}</ErrorBoundary>
+  );
 }
 
 export function AppRoutes(): JSX.Element {

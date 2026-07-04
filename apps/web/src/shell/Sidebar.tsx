@@ -1,7 +1,8 @@
 import { LogOut } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import { useSession } from "../app/AuthContext";
+import { useNavGuard } from "../app/NavGuardContext";
 import { useRole } from "../app/RoleContext";
 import { FOOT_ITEMS, NAV_GROUPS, type NavItem, ROLES, type Role, canSee } from "../app/navigation";
 import { useNavBadges } from "../app/useNavBadges";
@@ -28,10 +29,20 @@ function Badge({
 
 function NavRow({ item, badge }: { item: NavItem; badge?: number }): JSX.Element {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const { guard } = useNavGuard();
   const Icon = item.icon;
   return (
     <NavLink
       to={item.path}
+      onClick={(e) => {
+        // Modifikator-Klicks (neuer Tab/Fenster) dem Browser überlassen.
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
+          return;
+        }
+        e.preventDefault();
+        guard(() => navigate(item.path));
+      }}
       className={({ isActive }) =>
         [
           "group flex items-center gap-2.5 rounded-nav px-2.5 py-2 text-sm font-medium transition-colors",
@@ -62,9 +73,10 @@ function NavRow({ item, badge }: { item: NavItem; badge?: number }): JSX.Element
 
 function RoleSwitcher(): JSX.Element | null {
   const { t } = useTranslation();
-  const { role, setRole, stufe2, setStufe2, isSessionRole } = useRole();
-  // Eingeloggt: keine Rollen-Vorschau-Umschaltung; die echte Session-Rolle gilt.
-  const showPreviewSwitch = !isSessionRole;
+  const { role, setRole, stufe2, setStufe2, canPreview, previewActive } = useRole();
+  // Bug (Pedi 04.07.): Ein Admin darf die ANSICHT als jede Rolle prüfen (Beta-Test); die echte
+  // Session bleibt Admin. Nicht-Admins sehen den Umschalter nicht (keine Rechte-Eskalation).
+  const showPreviewSwitch = canPreview;
   const showStufe2 = role === "admin";
   if (!showPreviewSwitch && !showStufe2) {
     return null;
@@ -76,6 +88,21 @@ function RoleSwitcher(): JSX.Element | null {
           <div className="px-1 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
             {t("role.viewAs")}
           </div>
+          {/* Sichtbarer Hinweis, dass die echte Rolle Admin bleibt — plus 1-Klick zurück. */}
+          {previewActive ? (
+            <div className="mt-1.5 flex items-center justify-between gap-2 rounded-btn bg-trust-warn-bg px-2 py-1.5">
+              <span className="text-[10.5px] leading-tight text-trust-warn-text">
+                {t("role.previewNote", { role: t(`role.short.${role}`) })}
+              </span>
+              <button
+                type="button"
+                onClick={() => setRole("admin")}
+                className="shrink-0 rounded-pill bg-surface px-2 py-0.5 text-[10px] font-semibold text-text hover:opacity-80"
+              >
+                {t("role.backToAdmin")}
+              </button>
+            </div>
+          ) : null}
           <div className="mt-2 grid grid-cols-4 gap-1">
             {ROLES.map((r: Role) => (
               <button

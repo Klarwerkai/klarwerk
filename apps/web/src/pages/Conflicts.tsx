@@ -7,6 +7,8 @@ import { endpoints } from "../api/endpoints";
 import { useConflicts, useKos } from "../api/hooks";
 import type { ConflictStatus, KnowledgeObject } from "../api/types";
 import { HelpTip } from "../components/HelpTip";
+import { KoView } from "../components/KoView";
+import { Modal } from "../components/Modal";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
 import { conflictKoPair, conflictNextStep, resolutionEffect } from "../lib/conflictView";
 import { type ReviewHelpId, reviewHelp } from "../lib/reviewHelp";
@@ -31,54 +33,7 @@ function KoPanel({
   }
   return (
     <div className="space-y-2 rounded-card bg-page p-3">
-      <Link
-        to={`/wissen/${ko.id}`}
-        className="block text-[13.5px] font-semibold text-text hover:text-ink"
-      >
-        {ko.title}
-      </Link>
-      <p className="text-[12.5px] text-muted">{ko.statement}</p>
-      {ko.conditions.length > 0 ? (
-        <div>
-          <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
-            {t("con.conditions")}
-          </div>
-          <ul className="list-disc pl-4 text-[12px] text-text">
-            {ko.conditions.map((c) => (
-              <li key={c}>{c}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-      {ko.measures.length > 0 ? (
-        <div>
-          <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
-            {t("con.measures")}
-          </div>
-          <ul className="list-disc pl-4 text-[12px] text-text">
-            {ko.measures.map((m) => (
-              <li key={m}>{m}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-      {(ko.sources ?? []).length > 0 ? (
-        <div>
-          <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
-            {t("con.sources")}
-          </div>
-          <ul className="space-y-1">
-            {(ko.sources ?? []).map((s) => (
-              <li key={s.id} className="flex flex-wrap items-center gap-1.5 text-[12px] text-text">
-                <span>{s.label}</span>
-                <span className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-trust-warn-text">
-                  {t("ko.sourceUnvalidated")}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+      <KoView ko={ko} />
       <Link
         to={`/wissen/${ko.id}`}
         className="inline-block text-[11.5px] font-semibold text-ai hover:underline"
@@ -104,6 +59,8 @@ export function Conflicts(): JSX.Element {
   const [opinionId, setOpinionId] = useState<string | null>(null);
   const [opinion, setOpinion] = useState("");
   const [err, setErr] = useState<string | null>(null);
+  // Pedi 04.07.: welcher Konflikt gerade in der Gegenüberstellung (Pop-up) offen ist.
+  const [compareId, setCompareId] = useState<string | null>(null);
 
   const invalidate = (): void => {
     void qc.invalidateQueries({ queryKey: ["conflicts"] });
@@ -172,6 +129,18 @@ export function Conflicts(): JSX.Element {
                       <KoPanel ko={pair.b} fallbackId={c.koB} />
                     </div>
                   );
+                })()}
+                {/* Pedi 04.07.: beide Objekte komplett nebeneinander im Pop-up öffnen — direkt
+                    vergleichen, ohne die Seite zu verlassen. Nur wenn beide Objekte vorhanden sind. */}
+                {(() => {
+                  const pair = conflictKoPair(c, kos.data ?? []);
+                  return pair.a && pair.b ? (
+                    <div className="mt-2">
+                      <Button variant="ghost" onClick={() => setCompareId(c.id)}>
+                        {t("con.compareOpen")}
+                      </Button>
+                    </div>
+                  ) : null;
                 })()}
 
                 {c.type === "truth" ? (
@@ -316,6 +285,42 @@ export function Conflicts(): JSX.Element {
                     </Button>
                   </div>
                 ) : null}
+
+                {(() => {
+                  const pair = conflictKoPair(c, kos.data ?? []);
+                  if (!pair.a || !pair.b) {
+                    return null;
+                  }
+                  return (
+                    <Modal
+                      open={compareId === c.id}
+                      onClose={() => setCompareId(null)}
+                      title={t("con.compareTitle")}
+                      wide
+                    >
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div className="rounded-card border border-hairline bg-page p-3">
+                          <KoView ko={pair.a} />
+                          <Link
+                            to={`/wissen/${pair.a.id}`}
+                            className="mt-2 inline-block text-[11.5px] font-semibold text-ai hover:underline"
+                          >
+                            {t("con.openKo")} →
+                          </Link>
+                        </div>
+                        <div className="rounded-card border border-hairline bg-page p-3">
+                          <KoView ko={pair.b} />
+                          <Link
+                            to={`/wissen/${pair.b.id}`}
+                            className="mt-2 inline-block text-[11.5px] font-semibold text-ai hover:underline"
+                          >
+                            {t("con.openKo")} →
+                          </Link>
+                        </div>
+                      </div>
+                    </Modal>
+                  );
+                })()}
               </Card>
             ))}
           </div>

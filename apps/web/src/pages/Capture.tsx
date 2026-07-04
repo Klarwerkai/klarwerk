@@ -30,6 +30,7 @@ import type {
   StructureResult,
 } from "../api/types";
 import { useSession } from "../app/AuthContext";
+import { useNavGuard } from "../app/NavGuardContext";
 import { useToast } from "../app/ToastContext";
 import { AiAssistBox } from "../components/AiAssistBox";
 // SCRUM-405: „Aus Dokument ergänzen" — extract-Punkte anhängen (nichts ersetzen).
@@ -49,11 +50,7 @@ import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
 import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
 import { GAP_RESCUE_STEPS, GAP_RESCUE_TEXT } from "../lib/askGapRescue";
 import { applyBodyAssist, applyBodyAssistBlock, bodyTextForAssist } from "../lib/bodyAiAssist";
-import {
-  appendExtractSections,
-  extractSectionsHtml,
-  normalizeExtractLocale,
-} from "../lib/bodyExtract";
+import { appendExtractSections, normalizeExtractLocale } from "../lib/bodyExtract";
 import { ADVANCED_FIELDS_KEYS, advancedFieldsSummary } from "../lib/captureAdvancedFields";
 import {
   ATTACHMENT_RECOVERY_KEYS,
@@ -83,9 +80,11 @@ import {
   currentQueuePoint,
   draftFromPoint,
   fileSourcePayload,
+  mergeSelectedIntoOne,
   queueProgress,
   selectablePoints,
   selectedCount,
+  setAllSelected,
   togglePoint,
 } from "../lib/captureFromFile";
 import { gapContextDraft, readGapContext } from "../lib/captureFromGap";
@@ -115,7 +114,7 @@ import { studioSaveConfidence } from "../lib/editorApplySafety";
 import { EDITOR_BLOCKS } from "../lib/editorBlocks";
 import { editorImagesFromLocalImages } from "../lib/editorImages";
 // SCRUM-409 (PMO-FEA-0008-Delta): Mehrpunkt-Entwürfe + Zusammenführen im „Aus Datei"-Weg.
-import { createPointDrafts, mergedDraftFromPoints } from "../lib/fileMultiPoint";
+import { createPointDrafts } from "../lib/fileMultiPoint";
 import {
   fileToThumbDataUrl,
   isImage,
@@ -292,6 +291,8 @@ export function Capture(): JSX.Element {
   const [videoBusy, setVideoBusy] = useState<string | null>(null);
   // SCRUM-113 / FE-CAP-07: aktuell fortgesetzter Entwurf (null = neuer Entwurf).
   const [draftId, setDraftId] = useState<string | null>(null);
+  // Bugfix (Pedi 04.07.): Inline-Bestätigung vor dem Löschen eines Entwurfs (null = keine offen).
+  const [confirmDiscardDraftId, setConfirmDiscardDraftId] = useState<string | null>(null);
   const qc = useQueryClient();
   const drafts = useDrafts();
 
@@ -320,6 +321,10 @@ export function Capture(): JSX.Element {
   const [fileBusy, setFileBusy] = useState(false);
   const [fileQuery, setFileQuery] = useState("");
   const [filePoints, setFilePoints] = useState<SelectableExtractPoint[] | null>(null);
+  // Pedi 04.07.: Beim „Entwürfe speichern" mit nicht ausgewählten Punkten fragen, ob diese gelöscht
+  // werden sollen; die Entscheidung reist über purgeUnselectedRef in den onSuccess der Mutation.
+  const [confirmSaveDrafts, setConfirmSaveDrafts] = useState(false);
+  const purgeUnselectedRef = useRef(false);
   const [fileNote, setFileNote] = useState<string | null>(null);
   const [fileQueue, setFileQueue] = useState<FileDraftQueue | null>(null);
 
@@ -447,16 +452,28 @@ export function Capture(): JSX.Element {
           "success",
           t(CAPTURE_FILE_TEXT.draftsSaved, { count: result.created, name: input.fileName }),
         );
-        setFilePoints(null);
-        setFileName(null);
-        setFileText("");
-        setFileQuery("");
+        // Pedi 04.07.: gespeicherte (ausgewählte) Punkte verlassen die Liste. Nicht ausgewählte
+        // bleiben — außer der Nutzer hat ihr Löschen bestätigt (purgeUnselectedRef).
+        const rest = purgeUnselectedRef.current
+          ? []
+          : (filePoints ?? []).filter((p) => !p.selected);
+        if (rest.length > 0) {
+          setFilePoints(rest);
+        } else {
+          setFilePoints(null);
+          setFileName(null);
+          setFileText("");
+          setFileQuery("");
+        }
       }
     },
     onError: fail,
   });
 
-  const saveSelectedAsDrafts = (): void => {
+  // Pedi 04.07.: eigentliches Speichern; purgeUnselected bestimmt, ob nicht ausgewählte Punkte
+  // nach dem Speichern gelöscht werden (siehe onSuccess der Mutation).
+  const doSaveDrafts = (purgeUnselected: boolean): void => {
+    setConfirmSaveDrafts(false);
     if (!filePoints || !fileName) {
       return;
     }
@@ -466,35 +483,38 @@ export function Capture(): JSX.Element {
     if (chosen.length < 2) {
       return;
     }
+    purgeUnselectedRef.current = purgeUnselected;
     filePointDrafts.mutate({ points: chosen, fileName });
+  };
+
+  // Gibt es nicht ausgewählte Punkte, erst fragen, ob sie gelöscht werden sollen; sonst direkt.
+  const requestSaveDrafts = (): void => {
+    if (!filePoints) {
+      return;
+    }
+    if (filePoints.length - selectedCount(filePoints) > 0) {
+      setConfirmSaveDrafts(true);
+    } else {
+      doSaveDrafts(false);
+    }
   };
 
   // SCRUM-409: mehrere bestätigte Punkte VOR der Übernahme zu EINEM Eintrag zusammenführen —
   // der Body trägt ALLE Belegstellen als Abschnitte; die Quelle je Punkt geht in die
   // SCRUM-408-Warteliste (add-source beim Einreichen). Kein Auto-Save.
+  // Pedi 04.07.: „Verbinden" fasst die ausgewählten Punkte zu EINEM zusammen und zeigt ihn WIEDER
+  // in der Liste — KEIN automatischer Sprung ins Studio, damit die anderen Funde nicht verloren
+  // gehen. Weiterverarbeitet wird danach bewusst mit „übernehmen" (genau ein Punkt).
   const mergeSelectedPoints = (): void => {
     if (!filePoints || !fileName) {
       return;
     }
-    const chosen = filePoints
-      .filter((p) => p.selected)
-      .map(({ title, summary, sourceExcerpt }) => ({ title, summary, sourceExcerpt }));
-    const merged = mergedDraftFromPoints(chosen, false);
-    if (!merged) {
+    const count = selectedCount(filePoints);
+    if (count < 2) {
       return;
     }
-    setDraft(merged);
-    setBodyHtml(extractSectionsHtml(chosen, fileName, normalizeExtractLocale(i18n.language)));
-    setPendingSources((list) =>
-      chosen.reduce((acc, p) => addPendingSource(acc, fileSourcePayload(fileName, p)), list),
-    );
-    setStudioApplied(false);
-    setFileQueue(null);
-    setNotice(t(CAPTURE_FILE_TEXT.mergedNote, { count: chosen.length, name: fileName }));
-    setWizStep("refine");
-    // SCRUM-434 (Pedi 03.07., VIP): nach dem Verbinden direkt ins Studio — der zusammengeführte
-    // Artikel öffnet sich zum Strukturieren/Prüfen, ein durchgehender Fluss ohne Zwischenstopp.
-    setStudioOpen(true);
+    setFilePoints((pts) => (pts ? mergeSelectedIntoOne(pts) : pts));
+    setNotice(t(CAPTURE_FILE_TEXT.mergedInList, { count, name: fileName }));
   };
 
   // PMO-FEA-0006: Punkt bewusst überspringen (nichts wird gespeichert) → nächster Punkt.
@@ -695,11 +715,26 @@ export function Capture(): JSX.Element {
       // SCRUM-113 / FE-CAP-07: fortgesetzten Entwurf aktualisieren, sonst neu anlegen.
       return draftId ? endpoints.drafts.update(draftId, payload) : endpoints.drafts.create(payload);
     },
-    onSuccess: (d) => {
-      setDraftId(d.id);
+    onSuccess: (_d) => {
       void qc.invalidateQueries({ queryKey: ["drafts"] });
       setErr(null);
       const msg = draftId ? t("capture.draftUpdated") : t("capture.draftSaved");
+      // Bugfix (Pedi 04.07.): nach dem Speichern ist die Eingabe leer/neu — der Entwurf liegt in
+      // „Entwürfe fortsetzen"; Weiterarbeiten läuft bewusst über „Fortsetzen".
+      setRaw("");
+      setDraft(null);
+      setBodyHtml("");
+      setTags([]);
+      setImages([]);
+      setDocs([]);
+      setCategory("");
+      setAsset("");
+      setNeededValidations("");
+      setReviewerIds([]);
+      setPendingSources([]);
+      setShowAdvanced(false);
+      setWizStep("tell");
+      setDraftId(null);
       setNotice(msg);
       push("success", msg);
     },
@@ -709,26 +744,43 @@ export function Capture(): JSX.Element {
     },
   });
 
-  // SCRUM-113 / FE-CAP-07: bestehenden Entwurf ins Formular laden (gemeinsamer Pool).
+  // SCRUM-113 / FE-CAP-07: bestehenden Entwurf laden (gemeinsamer Pool).
+  // Bugfix (Pedi 04.07.): ein Entwurf öffnet sich WIEDER DORT, wo er entstand — ein einfacher
+  // (nur Text) Entwurf im Erzähl-Feld (Freitext), ein strukturierter im Experten-Formular.
+  // Vorher landete jeder Entwurf im Formular (fremde Darstellung, verwirrend).
   const loadDraft = (d: Draft): void => {
     setErr(null);
-    setMode("formular");
-    setDraft({
-      ...EMPTY_DRAFT,
-      title: d.payload.title ?? "",
-      statement: d.payload.statement ?? "",
-      conditions: d.payload.conditions ?? [],
-      measures: d.payload.measures ?? [],
-    });
-    setBodyHtml(d.payload.bodyHtml ?? "");
-    setType(d.payload.type ?? "best_practice");
-    setCategory(d.payload.category ?? "");
-    setTags(d.payload.tags ?? []);
-    setAsset(d.payload.asset ?? "");
-    setNeededValidations(d.payload.neededValidations ? String(d.payload.neededValidations) : "");
+    const p = d.payload;
+    const isStructured =
+      Boolean(p.bodyHtml?.trim()) ||
+      (p.conditions?.some((x) => x.trim()) ?? false) ||
+      (p.measures?.some((x) => x.trim()) ?? false);
+    // gemeinsame Metadaten (erweiterte Felder)
+    setType(p.type ?? "best_practice");
+    setCategory(p.category ?? "");
+    setTags(p.tags ?? []);
+    setAsset(p.asset ?? "");
+    setNeededValidations(p.neededValidations ? String(p.neededValidations) : "");
+    setBodyHtml(p.bodyHtml ?? "");
     setDraftId(d.id);
     // SCRUM-375: geladener Entwurf bringt erweiterte Felder mit → aufklappen, nichts verstecken.
     setShowAdvanced(true);
+    if (isStructured) {
+      setMode("formular");
+      setDraft({
+        ...EMPTY_DRAFT,
+        title: p.title ?? "",
+        statement: p.statement ?? "",
+        conditions: p.conditions ?? [],
+        measures: p.measures ?? [],
+      });
+    } else {
+      // Einfacher Entwurf → zurück ins Erzähl-Feld, sofort editier- und speicherbar.
+      setMode("freitext");
+      setDraft(null);
+      setRaw(p.statement ?? p.title ?? "");
+      setWizStep("tell");
+    }
     setNotice(t("capture.editingDraft"));
   };
 
@@ -737,6 +789,7 @@ export function Capture(): JSX.Element {
     onSuccess: (_d, id) => {
       void qc.invalidateQueries({ queryKey: ["drafts"] });
       push("success", t("capture.draftDiscarded"));
+      setConfirmDiscardDraftId(null);
       if (draftId === id) {
         setDraftId(null);
       }
@@ -747,11 +800,27 @@ export function Capture(): JSX.Element {
   const switchMode = (m: Mode): void => {
     setErr(null);
     setNotice(null);
-    setMode(m);
-    if (m === "formular" && !draft) {
-      setDraft({ ...EMPTY_DRAFT });
-      setBodyHtml("");
+    // Bug (Pedi 04.07.): Inhalt beim Moduswechsel NICHT verlieren. Der Rohtext (Freitext/Diktat)
+    // und die Aussage des Experten-Formulars werden aneinander übergeben.
+    const carried = raw.trim();
+    if (m === "formular") {
+      // Freitext → Formular: Rohtext als „Aussage" ins Formular übernehmen (nur wenn dort leer).
+      setDraft((d) => {
+        const base = d ?? { ...EMPTY_DRAFT };
+        if (base.statement.trim()) {
+          return base;
+        }
+        return {
+          ...base,
+          statement: carried,
+          title: base.title || carried.split("\n")[0]?.slice(0, 80) || "",
+        };
+      });
+    } else if ((m === "freitext" || m === "diktat") && !carried && draft?.statement.trim()) {
+      // Formular → Erzählen: Aussage zurück in den Rohtext (nur wenn der Rohtext leer ist).
+      setRaw(draft.statement);
     }
+    setMode(m);
     if (m === "interview") {
       // SCRUM-132: Interview startet mit der ersten reasoner-getriebenen Frage.
       setIvAnswers([]);
@@ -760,6 +829,36 @@ export function Capture(): JSX.Element {
       interview.mutate([]);
     }
   };
+
+  // Bug (Pedi 04.07.): ungespeicherten Entwurf nicht still verlieren. Diese Wache greift beim
+  const { setGuard } = useNavGuard();
+  // Verlassen der Seite über den BROWSER (Zurück-Taste, Neuladen, Tab schließen) — dann fragt der
+  // Browser „Seite verlassen?".
+  const hasUnsavedEntry =
+    raw.trim().length > 0 || bodyHtml.trim().length > 0 || Boolean(draft?.statement.trim());
+  useEffect(() => {
+    if (!hasUnsavedEntry) {
+      return;
+    }
+    const onBeforeUnload = (e: BeforeUnloadEvent): void => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [hasUnsavedEntry]);
+
+  // Bug (Pedi 04.07.): In-App-Seitenwechsel (Menü, Command-Palette) fängt jetzt der Navigations-
+  // Wächter ab — Nachfrage „Bleiben · Verwerfen · Entwurf speichern", bevor Inhalt verloren geht.
+  useEffect(() => {
+    setGuard({
+      isDirty: () => hasUnsavedEntry,
+      save: async () => {
+        await saveDraft.mutateAsync();
+      },
+    });
+    return () => setGuard(null);
+  }, [hasUnsavedEntry, saveDraft, setGuard]);
 
   // SCRUM-403: gemeinsame Rekorder-Fabrik für beide Diktat-Ziele (Freitext + Interview-Antwort).
   const makeRec = (append: (text: string) => void, onDone: () => void): SpeechRec | null => {
@@ -991,13 +1090,22 @@ export function Capture(): JSX.Element {
   const addImage = async (f: File): Promise<void> => {
     try {
       // SCRUM-121: kleine Vorschau lokal + Original separat (geht beim Submit in den Object-Store).
-      const [dataUrl, original] = await Promise.all([fileToThumbDataUrl(f), readFileAsDataUrl(f)]);
+      // Bugfix (Pedi 04.07.): Das Thumbnail ist OPTIONAL. Schlägt die Vorschau-Erzeugung fehl
+      // (z. B. exotisches Bildformat / Canvas-Grenze), nutzen wir das Original als Vorschau —
+      // statt den ganzen Anhang mit „Es ist etwas schiefgegangen" abzubrechen.
+      const original = await readFileAsDataUrl(f);
+      let dataUrl = original;
+      try {
+        dataUrl = await fileToThumbDataUrl(f);
+      } catch {
+        // Vorschau optional — Original bleibt als Anzeige erhalten.
+      }
       setImages((im) => [
         ...im,
         { id: crypto.randomUUID(), name: f.name, mime: f.type || "image/jpeg", dataUrl, original },
       ]);
     } catch {
-      setErr(t("state.error"));
+      setErr(t("capture.imageError", { name: f.name }));
     }
   };
 
@@ -1264,23 +1372,43 @@ export function Capture(): JSX.Element {
                     </span>
                   ) : null}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => loadDraft(d)}
-                  className="inline-flex items-center gap-1 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
-                >
-                  <RotateCcw size={13} />
-                  {t("capture.resume")}
-                </button>
-                <button
-                  type="button"
-                  title={t("capture.discardDraft")}
-                  disabled={discardDraft.isPending}
-                  onClick={() => discardDraft.mutate(d.id)}
-                  className="grid h-7 w-7 place-items-center rounded-btn text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
-                >
-                  <Trash2 size={14} />
-                </button>
+                {/* Bugfix (Pedi 04.07.): Löschen erst nach Inline-Nachfrage — kein stiller Verlust. */}
+                {confirmDiscardDraftId === d.id ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="text-[11.5px] font-semibold text-text">
+                      {t("capture.discardDraftQ")}
+                    </span>
+                    <Button variant="ghost" onClick={() => setConfirmDiscardDraftId(null)}>
+                      {t("capture.discardDraftKeep")}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      disabled={discardDraft.isPending}
+                      onClick={() => discardDraft.mutate(d.id)}
+                    >
+                      {t("capture.discardDraftYes")}
+                    </Button>
+                  </span>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => loadDraft(d)}
+                      className="inline-flex items-center gap-1 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
+                    >
+                      <RotateCcw size={13} />
+                      {t("capture.resume")}
+                    </button>
+                    <button
+                      type="button"
+                      title={t("capture.discardDraft")}
+                      onClick={() => setConfirmDiscardDraftId(d.id)}
+                      className="grid h-7 w-7 place-items-center rounded-btn text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </>
+                )}
               </li>
             ))}
           </ul>
@@ -1357,14 +1485,16 @@ export function Capture(): JSX.Element {
                 ) : null}
               </button>
             ))}
-            {/* Expertenpfad: ruhig rechts abgesetzt, bewusster Klick — kein gleichrangiger Modus. */}
+            {/* Bug (Pedi 04.07.): Expertenmodus als klar sichtbarer Modus-Knopf in der Leiste
+                (vorher ein versteckter Unterstrich-Link rechts). Optisch abgesetzt (gestrichelt),
+                aber gleichrangig auffindbar. */}
             {!isExpertMode(mode) ? (
-              <span className="ml-auto inline-flex items-center gap-1">
+              <span className="inline-flex items-center gap-1">
                 <button
                   type="button"
                   onClick={() => switchMode(EXPERT_MODE)}
                   title={t(CAPTURE_ENTRY_TEXT.expertHint)}
-                  className="rounded-btn px-2.5 py-1.5 text-[12px] font-medium text-muted-2 underline-offset-2 hover:text-text hover:underline"
+                  className="rounded-btn border border-dashed border-hairline px-3 py-1.5 text-[13px] font-semibold text-muted hover:border-ink/30 hover:text-text"
                 >
                   {t(CAPTURE_ENTRY_TEXT.expertToggle)}
                 </button>
@@ -1388,12 +1518,14 @@ export function Capture(): JSX.Element {
         </div>
       ) : null}
 
-      {/* SCRUM-384: Wizard — genau EIN Fokus je Schritt; Expertenmodus behält die
-          klassische Zwei-Spalten-Ansicht (bewusst gewählter Pfad, nichts entfernt). */}
+      {/* SCRUM-384: Wizard — genau EIN Fokus je Schritt (nichts entfernt).
+          Pedi 04.07.: Expertenmodus war zweispaltig mit leerer linker Hälfte und ins rechte
+          Drittel gequetschtem Formular. Jetzt EINE zentrierte, volle Spalte — das Formular zuerst
+          (order-first), darunter die optionalen Details und die Aktionen. Ruhig und lesbar. */}
       <div
         className={
           expertView
-            ? "grid gap-5 lg:grid-cols-2"
+            ? "mx-auto flex max-w-3xl flex-col gap-5"
             : wizStep === "refine"
               ? "mx-auto max-w-4xl"
               : "mx-auto max-w-3xl"
@@ -1634,6 +1766,27 @@ export function Capture(): JSX.Element {
                     <p className="text-[11.5px] leading-relaxed text-muted-2">
                       {t(CAPTURE_FILE_TEXT.pointsHint)}
                     </p>
+                    {/* Pedi 04.07.: Alle auswählen / alle abwählen (wichtig bei vielen Funden). */}
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setFilePoints((pts) => (pts ? setAllSelected(pts, true) : pts))
+                        }
+                        className="text-[11.5px] font-semibold text-ai hover:underline"
+                      >
+                        {t(CAPTURE_FILE_TEXT.selectAll)}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setFilePoints((pts) => (pts ? setAllSelected(pts, false) : pts))
+                        }
+                        className="text-[11.5px] font-semibold text-muted hover:text-text"
+                      >
+                        {t(CAPTURE_FILE_TEXT.deselectAll)}
+                      </button>
+                    </div>
                     <ul className="space-y-2">
                       {filePoints.map((p) => (
                         <li
@@ -1698,25 +1851,52 @@ export function Capture(): JSX.Element {
                         >
                           {t(CAPTURE_FILE_TEXT.mergeCta)}
                         </Button>
-                        {/* SCRUM-409: ab 2 Ausgewählten zusätzlich als getrennte Entwürfe sichern. */}
+                        {/* SCRUM-409 / Pedi 04.07.: ab 2 Ausgewählten als getrennte Entwürfe sichern —
+                            mit Nachfrage, ob nicht ausgewählte Punkte gelöscht werden sollen. */}
                         {selectedCount(filePoints) >= 2 ? (
                           <Button
                             variant="ghost"
                             disabled={filePointDrafts.isPending}
-                            onClick={saveSelectedAsDrafts}
+                            onClick={requestSaveDrafts}
                           >
                             {t(CAPTURE_FILE_TEXT.saveDraftsCta)} ({selectedCount(filePoints)})
                           </Button>
                         ) : null}
+                        {/* Pedi 04.07.: „übernehmen" verarbeitet GENAU EINEN Punkt weiter — bei
+                            mehreren Ausgewählten blockiert (erst verbinden oder als Entwürfe sichern). */}
                         <Button
                           variant="primary"
                           className="ml-auto"
-                          disabled={selectedCount(filePoints) === 0}
+                          disabled={selectedCount(filePoints) !== 1}
+                          title={t(CAPTURE_FILE_TEXT.applyDisabledHint)}
                           onClick={applySelectedPoints}
                         >
                           {t(CAPTURE_FILE_TEXT.applyCta)} ({selectedCount(filePoints)}) →
                         </Button>
                       </div>
+                      {confirmSaveDrafts ? (
+                        <div className="flex flex-wrap items-center gap-2 rounded-card border border-hairline bg-page px-3 py-2">
+                          <span className="text-[12px] text-text">
+                            {t(CAPTURE_FILE_TEXT.purgeUnselectedQ, {
+                              count: filePoints.length - selectedCount(filePoints),
+                            })}
+                          </span>
+                          <button
+                            type="button"
+                            className="ml-auto text-[12px] font-semibold text-muted hover:text-text"
+                            onClick={() => doSaveDrafts(false)}
+                          >
+                            {t(CAPTURE_FILE_TEXT.purgeUnselectedKeep)}
+                          </button>
+                          <button
+                            type="button"
+                            className="text-[12px] font-semibold text-trust-crit-text"
+                            onClick={() => doSaveDrafts(true)}
+                          >
+                            {t(CAPTURE_FILE_TEXT.purgeUnselectedYes)}
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 ) : null}
@@ -2223,7 +2403,7 @@ export function Capture(): JSX.Element {
         ) : null}
 
         {expertView ? (
-          <div>
+          <div className="order-first">
             {draft ? (
               <ReasonerDraft>
                 <div className="space-y-3">
