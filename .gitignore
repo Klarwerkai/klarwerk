@@ -18,3 +18,4 @@ desktop-app/.run-state
 # Playwright-Smoke (SCRUM-381)
 test-results/
 playwright-report/
+.fuse_hidden*
