@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+// Klara v1 (Pedi 05.07.): kontextsensitive Hilfe — schwebender ?-Knopf, nie aufdringlich.
+import { KlaraAssistant } from "../components/KlaraAssistant";
 import { CommandPalette } from "./CommandPalette";
 import { Sidebar } from "./Sidebar";
 import { ToastViewport } from "./ToastViewport";
@@ -16,6 +18,7 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
       </div>
       <CommandPalette />
       <ToastViewport />
+      <KlaraAssistant />
     </div>
   );
 }

@@ -1,11 +1,15 @@
-node_modules
-dist
+# Nur was das Image wirklich braucht — alles andere bleibt draußen (kleiner, schneller, kein Leak).
 .git
-.github
-docs/generated
-**/*.test.ts
-**/*.integration.test.ts
-*.log
-.env
-.env.*
-!.env.example
+node_modules
+apps/web/node_modules
+apps/web/dist
+docs
+specs
+harness
+PROJECT_CONTEXT
+tests
+scripts
+playwright-report
+test-results
+*.md
+.env*

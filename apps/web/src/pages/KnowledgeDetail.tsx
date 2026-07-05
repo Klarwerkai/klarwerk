@@ -15,7 +15,13 @@ import {
   useKos,
   useLifecyclePending,
 } from "../api/hooks";
-import type { ConflictType, ExternalResult, KnowledgeObject, KnowledgeType } from "../api/types";
+import type {
+  Confidentiality,
+  ConflictType,
+  ExternalResult,
+  KnowledgeObject,
+  KnowledgeType,
+} from "../api/types";
 import { useSession } from "../app/AuthContext";
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
@@ -60,6 +66,11 @@ import {
   bodyReadMode,
 } from "../lib/bodyReadMode";
 import { fileSourcePayload } from "../lib/captureFromFile";
+import {
+  CONFIDENTIALITY_LEVELS,
+  confidentialityChip,
+  confidentialityOf,
+} from "../lib/confidentiality";
 import { conflictImpact, conflictLimitedUsability, conflictNotice } from "../lib/conflictImpact";
 import { isDemoKnowledge } from "../lib/demoKnowledge";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
@@ -123,6 +134,13 @@ interface EditState {
 
 const textareaCls =
   "w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none focus:border-ink/30";
+
+// SCRUM-415: Tönung des Vertraulichkeits-Chips je Stufe.
+const CONF_TONE: Record<"neutral" | "warn" | "crit", string> = {
+  neutral: "bg-page text-muted",
+  warn: "bg-trust-warn-bg text-trust-warn-text",
+  crit: "bg-trust-crit-bg text-trust-crit-text",
+};
 
 const CONFLICT_TYPES: readonly ConflictType[] = [
   "truth",
@@ -760,10 +778,46 @@ export function KnowledgeDetail(): JSX.Element {
                   <div className="flex flex-wrap items-center gap-2">
                     <StatusPill status={deriveStatus(ko)} />
                     <KnowledgeTypeTag type={ko.type} />
+                    {/* SCRUM-415: Vertraulichkeits-Chip (nur wenn vertraulich). Vertrauliche KOs
+                        gehen nie in externe Kontexte (Output/Export). */}
+                    {(() => {
+                      const c = confidentialityChip(ko.confidentiality);
+                      return c.showChip ? (
+                        <span
+                          className={`rounded-pill px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase ${CONF_TONE[c.tone]}`}
+                        >
+                          {t(c.labelKey)}
+                        </span>
+                      ) : null;
+                    })()}
                     <span className="font-mono text-[11px] text-muted-2">
                       v{ko.version}
                       {ko.asset ? ` · ${ko.asset}` : ""}
                     </span>
+                    {/* SCRUM-415: Vertraulichkeit ändern (Rechte wie Bearbeiten); Änderung landet im Audit. */}
+                    {canEdit ? (
+                      <label className="inline-flex items-center gap-1 text-[11px] text-muted-2">
+                        <span className="sr-only">{t("conf.field")}</span>
+                        <select
+                          value={confidentialityOf(ko.confidentiality)}
+                          disabled={act.isPending}
+                          onChange={(e) =>
+                            act.mutate({
+                              action: "confidentiality",
+                              level: e.target.value as Confidentiality,
+                            })
+                          }
+                          aria-label={t("conf.field")}
+                          className="rounded-input border border-hairline bg-surface px-1.5 py-0.5 text-[11px] text-muted"
+                        >
+                          {CONFIDENTIALITY_LEVELS.map((lvl) => (
+                            <option key={lvl} value={lvl}>
+                              {t(`conf.level.${lvl}`)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
                     {canEdit && !edit ? (
                       <button
                         type="button"

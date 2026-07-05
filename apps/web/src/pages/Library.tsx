@@ -71,8 +71,14 @@ const GUIDE_TONE: Record<KnowledgeGuidanceTone, string> = {
 export function Library(): JSX.Element {
   const { t } = useTranslation();
   // Startfilter aus der URL (?q=…), gesetzt von der globalen Topbar-Suche.
+  // Pedi 05.07.: zusätzlich ?category=… vorbelegen — Verweise aus Risiko & Lücken landen so
+  // direkt auf den Objekten der betroffenen Domäne.
   const [params] = useSearchParams();
-  const [filter, setFilter] = useState({ ...EMPTY_LIBRARY_FILTER, q: params.get("q") ?? "" });
+  const [filter, setFilter] = useState({
+    ...EMPTY_LIBRARY_FILTER,
+    q: params.get("q") ?? "",
+    category: params.get("category") ?? "",
+  });
   const [exportFormat, setExportFormat] = useState<ExportFormat>("json");
   // SCRUM-267: einfacher Reife-Filter (Alle/Nutzbar/In Prüfung/Zu prüfen) auf der gerankten Liste.
   const [maturity, setMaturity] = useState<MaturityFilter>("all");

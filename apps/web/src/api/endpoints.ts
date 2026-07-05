@@ -1,12 +1,14 @@
 import { api } from "./client";
 import type {
   Analytics,
+  AnswerResult,
   AskResponse,
   AssignmentSummary,
   AssistPreset,
   AssistResult,
   AuditEntry,
   BusFactorEntry,
+  Confidentiality,
   Conflict,
   ConflictType,
   DemoSeedResult,
@@ -87,6 +89,8 @@ export type KoAction =
   | { action: "detach"; attachmentId: string }
   | { action: "category"; category: string }
   | { action: "tags"; tags: string[] }
+  // SCRUM-415: Vertraulichkeitsstufe setzen/ändern (mit Audit).
+  | { action: "confidentiality"; level: Confidentiality }
   | {
       action: "conflict";
       conflict: { koA: string; koB: string; type: ConflictType; description: string };
@@ -174,6 +178,14 @@ export const endpoints = {
     ask: (question: string, locale?: "de" | "en") =>
       api.post<AskResponse>("/ask", { question, ...(locale ? { locale } : {}) }),
     helpful: (koId: string) => api.post<void>("/ask/helpful", { koId }),
+  },
+  // Klara Stufe 2: KI-Antwort NUR aus mitgesandten Hilfe-Schnipseln (ehrliche Luecke sonst).
+  help: {
+    explain: (body: {
+      question: string;
+      snippets: { id: string; title: string; body: string }[];
+      locale?: "de" | "en";
+    }) => api.post<AnswerResult>("/help/explain", body),
   },
   reasoner: {
     structure: (text: string, locale?: "de" | "en") =>

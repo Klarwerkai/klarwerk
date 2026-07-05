@@ -13,6 +13,7 @@ import {
   useValidationOverview,
 } from "../api/hooks";
 import type { AuditFilter } from "../api/types";
+import { HelpTip } from "../components/HelpTip";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import {
   auditActions,
@@ -25,6 +26,7 @@ import {
   workloadSummary,
 } from "../lib/analyticsMetrics";
 import { ANALYTICS_AUDIT_ANCHOR, hashToElementId } from "../lib/analyticsSections";
+import { executiveKpis } from "../lib/executiveKpis";
 import { type HealthBand, knowledgeHealth } from "../lib/knowledgeHealth";
 
 const BAND_TONE: Record<HealthBand, string> = {
@@ -38,6 +40,21 @@ function Kpi({ label, value }: { label: string; value: string | number }): JSX.E
     <div className="rounded-card bg-page p-4">
       <div className="font-mono text-micro uppercase tracking-wider text-muted-2">{label}</div>
       <div className="mt-1 text-2xl font-semibold text-ink">{value}</div>
+    </div>
+  );
+}
+
+// SCRUM-431: Executive-Kachel mit kurzer Erklärung darunter — jede Zahl ist selbsterklärend.
+function ExecKpi({
+  label,
+  value,
+  hint,
+}: { label: string; value: number; hint: string }): JSX.Element {
+  return (
+    <div className="rounded-card bg-page p-4">
+      <div className="font-mono text-micro uppercase tracking-wider text-muted-2">{label}</div>
+      <div className="mt-1 text-2xl font-semibold text-ink">{value}</div>
+      <div className="mt-0.5 text-[11px] leading-snug text-muted-2">{hint}</div>
     </div>
   );
 }
@@ -57,6 +74,13 @@ export function Analytics(): JSX.Element {
   // SCRUM-139: datenbasierte Trust-/Arbeitslast-Kennzahlen aus realem Bestand.
   const trust = averageTrust(kos.data ?? []);
   const work = workloadSummary(overview.data ?? []);
+
+  // SCRUM-431: Executive-Blick — die vier Kern-Kennzahlen aus echten Live-Daten (kein Fake).
+  const exec = executiveKpis({
+    kos: kos.data ?? [],
+    gaps: gaps.data ?? [],
+    busFactor: busFactor.data ?? [],
+  });
 
   // SCRUM-141: erklärbarer Knowledge-Health-Score aus echten Signalen.
   const health = knowledgeHealth({
@@ -90,9 +114,44 @@ export function Analytics(): JSX.Element {
     <div className="mx-auto max-w-4xl space-y-7">
       <PageHeader kicker={t("ana.kicker")} title={t("nav.analytics")} />
 
+      {/* SCRUM-431 (VIP/Investor): ruhiger Executive-Blick — vier Kern-Kennzahlen aus Live-Daten. */}
+      <div>
+        <div className="mb-2 flex items-center gap-1.5">
+          <SectionLabel>{t("ana.exec.title")}</SectionLabel>
+          <HelpTip title={t("ana.exec.title")} body={t("ana.help.exec")} />
+        </div>
+        <Card>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <ExecKpi
+              label={t("ana.exec.validated")}
+              value={exec.validated}
+              hint={t("ana.exec.validatedHint")}
+            />
+            <ExecKpi
+              label={t("ana.exec.openReviews")}
+              value={exec.openReviews}
+              hint={t("ana.exec.openReviewsHint")}
+            />
+            <ExecKpi
+              label={t("ana.exec.busFactor")}
+              value={exec.singleSourceCategories}
+              hint={t("ana.exec.busFactorHint")}
+            />
+            <ExecKpi
+              label={t("ana.exec.rescued")}
+              value={exec.rescuedGaps}
+              hint={t("ana.exec.rescuedHint")}
+            />
+          </div>
+        </Card>
+      </div>
+
       {/* SCRUM-141: Knowledge Health — datenbasiert & erklärbar */}
       <div>
-        <SectionLabel>{t("health.title")}</SectionLabel>
+        <div className="mb-2 flex items-center gap-1.5">
+          <SectionLabel>{t("health.title")}</SectionLabel>
+          <HelpTip title={t("health.title")} body={t("ana.help.health")} />
+        </div>
         <Card className="space-y-4">
           <div className="flex items-center gap-4">
             <div className="flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-card bg-page">
@@ -176,7 +235,10 @@ export function Analytics(): JSX.Element {
 
       {/* SCRUM-140: Wirkungs-/Impact-Metriken aus GET /api/analytics/impact */}
       <div>
-        <SectionLabel>{t("ana.impact")}</SectionLabel>
+        <div className="mb-2 flex items-center gap-1.5">
+          <SectionLabel>{t("ana.impact")}</SectionLabel>
+          <HelpTip title={t("ana.impact")} body={t("ana.help.impact")} />
+        </div>
         <QueryState query={impact}>
           {(im) => {
             const weeks = weeklyValidated(im.validatedByWeek);
@@ -217,7 +279,10 @@ export function Analytics(): JSX.Element {
       {/* SCRUM-143: Audit-Log mit Filtern (Actor/Action/Target) über echte Daten */}
       {/* SCRUM-229: stabiler Deep-Link-Anker für den Audit-Abschnitt. */}
       <div id={ANALYTICS_AUDIT_ANCHOR} className="scroll-mt-4">
-        <SectionLabel>{t("ana.audit")}</SectionLabel>
+        <div className="mb-2 flex items-center gap-1.5">
+          <SectionLabel>{t("ana.audit")}</SectionLabel>
+          <HelpTip title={t("ana.audit")} body={t("ana.help.audit")} />
+        </div>
         <div className="mb-3 flex flex-wrap gap-2">
           <select
             aria-label={t("ana.filterActor")}

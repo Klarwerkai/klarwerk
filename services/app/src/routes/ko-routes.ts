@@ -14,6 +14,7 @@ import {
   type KoStatus,
   type ReviseKoInput,
   type UploadLimitsRepo,
+  normalizeConfidentiality,
   normalizeUploadLimits,
 } from "../../../knowledge-object";
 import type { LifecycleService } from "../../../lifecycle";
@@ -75,6 +76,8 @@ interface PutBody {
   attachmentId?: string;
   source?: { label?: string; url?: string; excerpt?: string; provider?: string };
   sourceId?: string;
+  // SCRUM-415: Vertraulichkeitsstufe setzen/ändern.
+  level?: string;
 }
 
 export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync {
@@ -479,6 +482,17 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               return;
             }
             reply.code(200).send(await ko.updateTags(id, body.tags ?? []));
+            return;
+          }
+          // SCRUM-415: Vertraulichkeitsstufe setzen/ändern (Rechte wie Bearbeiten: ko.create).
+          case "confidentiality": {
+            const user = await guards.requirePermission("ko.create", request, reply);
+            if (!user) {
+              return;
+            }
+            reply
+              .code(200)
+              .send(await ko.setConfidentiality(id, normalizeConfidentiality(body.level), user.id));
             return;
           }
           case "conflict": {

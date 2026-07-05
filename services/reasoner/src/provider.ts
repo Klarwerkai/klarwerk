@@ -37,6 +37,15 @@ export interface ReasonerProvider {
   extract(documentText: string, locale?: ReasonerLocale, query?: string): Promise<ExtractResult>;
   // select ist reines Ranking (synchron, kein Netzaufruf).
   select(question: string, candidates: readonly KnowledgeRef[]): KnowledgeRef[];
+  // Klara Stufe 2 (Pedi 05.07.): Hilfe-Antwort GENERIEREN — Wissensdatenbank (Hilfe-Eintraege)
+  // plus eigene KI-Logik (folgern/kombinieren erlaubt). Das Frontend kennzeichnet das Ergebnis
+  // IMMER als KI-generiert und nicht vollständig geprüft. NUR das echte Modell implementiert
+  // das; der deterministische Fallback bleibt bei der strikten answer()-Zitierlogik.
+  helpAnswer?(
+    question: string,
+    context: readonly KnowledgeRef[],
+    locale?: ReasonerLocale,
+  ): Promise<AnswerResult>;
   // SCRUM-426: Public-KI-Anreicherung — bewusst NICHT quellengebunden (Modell-Weltwissen).
   // NUR das echte Modell implementiert das; der deterministische Fallback bewusst NICHT
   // (er kann kein externes Wissen beisteuern). Ergebnis ist immer extern/ungeprüft.

@@ -725,6 +725,9 @@ export function Admin(): JSX.Element {
               <SectionLabel>{t("adm.ai.title")}</SectionLabel>
               <HelpTip title={t("adm.ai.title")} body={t("adm.ai.help")} />
             </div>
+            {/* Pedi 05.07. (VIP): klar sichtbar, dass beide Wege wählbar sind — intern (eigener
+                On-Prem-LLM) oder extern (Cloud), global oder je Aufgabe. */}
+            <p className="text-[12.5px] text-muted">{t("adm.ai.internExtern")}</p>
             {aiConfig.data ? (
               <>
                 <div className="flex flex-wrap items-center gap-2">
@@ -805,9 +808,15 @@ export function Admin(): JSX.Element {
                     >
                       <option value="auto">{t("adm.ai.choice.auto")}</option>
                       <option value="cloud">{t("adm.ai.choice.cloud")}</option>
+                      {/* Pedi 05.07. (VIP): interne Option immer SICHTBAR — deaktiviert, solange kein
+                          eigener LLM verbunden ist, damit erkennbar bleibt, dass beides unterstützt wird. */}
                       {aiConfig.data?.localConfigured ? (
                         <option value="local">{t("adm.ai.choice.local")}</option>
-                      ) : null}
+                      ) : (
+                        <option value="local" disabled>
+                          {t("adm.ai.choice.localUnavailable")}
+                        </option>
+                      )}
                       <option value="deterministic">{t("adm.ai.choice.deterministic")}</option>
                     </select>
                   </label>
@@ -868,7 +877,11 @@ export function Admin(): JSX.Element {
                           <option value="cloud">{t("adm.ai.choice.cloud")}</option>
                           {aiConfig.data?.localConfigured ? (
                             <option value="local">{t("adm.ai.choice.local")}</option>
-                          ) : null}
+                          ) : (
+                            <option value="local" disabled>
+                              {t("adm.ai.choice.localUnavailable")}
+                            </option>
+                          )}
                           <option value="deterministic">{t("adm.ai.choice.deterministic")}</option>
                         </select>
                       </label>

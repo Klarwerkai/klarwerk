@@ -100,3 +100,16 @@
     display: none !important;
   }
 }
+
+/* Klara Zeige-Modus (Pedi 05.07.: jedes Element erklärbar, auch Buttons/Chips ohne Textmarkierung).
+   Aktiv: ?-Cursor überall + dezente KI-farbene Markierung des Elements unter dem Zeiger.
+   Die Klick-Aktion selbst wird im Zeige-Modus von Klara abgefangen (capture) — nichts wird ausgelöst. */
+body.klara-inspect,
+body.klara-inspect * {
+  cursor: help !important;
+}
+.klara-inspect-target {
+  outline: 2px solid #5b50c4;
+  outline-offset: 2px;
+  border-radius: 4px;
+}

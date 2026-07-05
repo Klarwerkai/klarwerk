@@ -42,6 +42,7 @@ describe("Pedi 04.07.: aiTaskInfo — welche KI je Aufgabe (Modus + Modellname)"
     expect(info.mode).toBe("cloud");
     expect(info.modeLabelKey).toBe(AI_TASK_INFO_TEXT.cloud);
     expect(info.modelName).toBe("anthropic:claude-sonnet-4-6");
+    expect(info.dsgvo).toBe("external");
   });
 
   it("Lokale Aufgabe zeigt Lokal-Modus + lokalen Modellnamen (nicht das Cloud-Modell)", () => {
@@ -49,6 +50,7 @@ describe("Pedi 04.07.: aiTaskInfo — welche KI je Aufgabe (Modus + Modellname)"
     expect(info.mode).toBe("local");
     expect(info.modeLabelKey).toBe(AI_TASK_INFO_TEXT.local);
     expect(info.modelName).toBe("ollama:qwen3-32b");
+    expect(info.dsgvo).toBe("inhouse");
   });
 
   it("Regelbasierte Aufgabe zeigt Regel-Modus OHNE Modellnamen (nichts erfinden)", () => {
@@ -56,18 +58,21 @@ describe("Pedi 04.07.: aiTaskInfo — welche KI je Aufgabe (Modus + Modellname)"
     expect(info.mode).toBe("rule");
     expect(info.modeLabelKey).toBe(AI_TASK_INFO_TEXT.rule);
     expect(info.modelName).toBeUndefined();
+    expect(info.dsgvo).toBe("inhouse");
   });
 
   it("Ohne geladene Konfiguration ehrlich unbekannt (kein Fake-Modell)", () => {
     const info = aiTaskInfo(undefined, "structure");
     expect(info.mode).toBe("unknown");
     expect(info.bodyKey).toBe(AI_TASK_INFO_TEXT.bodyUnknown);
+    expect(info.dsgvo).toBe("unknown");
   });
 
   it("Nicht zugeordnete Aufgabe ist unbekannt statt Fake-Modell", () => {
     const info = aiTaskInfo(config(), "gibtsnicht");
     expect(info.mode).toBe("unknown");
     expect(info.modelName).toBeUndefined();
+    expect(info.dsgvo).toBe("unknown");
   });
 
   it("Lokal ohne localProvider fällt ehrlich auf das konfigurierte Modell zurück", () => {

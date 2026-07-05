@@ -1,14 +1,16 @@
 import { useMutation } from "@tanstack/react-query";
-import { ArrowRight, ThumbsUp } from "lucide-react";
+import { ArrowRight, Copy, FileDown, Printer, ThumbsUp } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
 import { useConflicts, useKos, useReasonerStatus } from "../api/hooks";
 import type { AnswerResult } from "../api/types";
+import { useToast } from "../app/ToastContext";
 import { DemoBanner } from "../components/DemoBanner";
 import { ConfidenceBar } from "../components/trust";
 import { Button, Card, PageHeader, SectionLabel } from "../components/ui";
+import { answerExportFilename, buildAnswerMarkdown } from "../lib/answerExport";
 import {
   ANSWER_CONTRACT_TRUST_NOTE_KEY,
   answerContract,
@@ -104,6 +106,79 @@ export function Ask(): JSX.Element {
     onSuccess: (r) => setResult(selectAnswer(r)),
   });
   const helpful = useMutation({ mutationFn: (koId: string) => endpoints.ask.helpful(koId) });
+
+  // SCRUM-430 (VIP): beantwortete Frage inkl. Quellen exportieren/teilen. Quellen bleiben klar
+  // ausgewiesen (Status/Trust/Nutzbarkeit). Markdown wird erst beim Klick gebaut (frischer Zeitstempel).
+  const { push } = useToast();
+  const kosById = new Map((kos.data ?? []).map((k) => [k.id, k]));
+  const buildExport = (): { markdown: string; filename: string } | null => {
+    if (!result?.answered) {
+      return null;
+    }
+    const generatedAt = new Date().toISOString();
+    const sources = answerSources.map((s) => {
+      const ko = kosById.get(s.id);
+      return {
+        title: s.label,
+        ...(ko ? { statusLabel: t(`status.${ko.status}`), trust: ko.trust } : {}),
+        ...(s.usability ? { usabilityLabel: t(useReadiness(s.usability).labelKey) } : {}),
+      };
+    });
+    const markdown = buildAnswerMarkdown({
+      question: asked || q,
+      answer: result.answer ?? "",
+      statusLabel: t(`ask.status.${answerStatus(result.knowledgeClass).key}`),
+      evidenceLabel: t(knowledgeClassMeta(result.knowledgeClass).labelKey),
+      trust: result.trust,
+      steps: result.steps.map((s) => ({ description: s.description, snippet: s.snippet })),
+      sources,
+      generatedAt,
+      labels: {
+        answer: t("ask.export.answer"),
+        evidence: t("ask.evidence"),
+        trust: t("val.trust"),
+        steps: t("ask.steps"),
+        sources: t("ask.sources"),
+        footer: t("ask.export.footer"),
+      },
+    });
+    return { markdown, filename: answerExportFilename(generatedAt) };
+  };
+  const copyAnswer = (): void => {
+    const ex = buildExport();
+    if (!ex) {
+      return;
+    }
+    void navigator.clipboard?.writeText(ex.markdown).then(
+      () => push("success", t("ask.export.copied")),
+      () => push("error", t("state.error")),
+    );
+  };
+  const downloadAnswer = (): void => {
+    const ex = buildExport();
+    if (!ex) {
+      return;
+    }
+    const blob = new Blob([ex.markdown], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = ex.filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  // SCRUM-440-Muster: nur den markierten Auszug (.print-area) drucken; Klasse nach dem Druck entfernen.
+  const printAnswer = (): void => {
+    document.body.classList.add("printing-extract");
+    window.addEventListener(
+      "afterprint",
+      () => document.body.classList.remove("printing-extract"),
+      {
+        once: true,
+      },
+    );
+    window.print();
+  };
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -254,7 +329,7 @@ export function Ask(): JSX.Element {
             <p className="mt-2 text-[12px] font-medium text-text">{t(contract.nextStepKey)}</p>
           </Card>
           {result.answered ? (
-            <Card className="mt-3">
+            <Card className="print-area mt-3">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-1.5">
                   {/* SCRUM-250: ehrlicher Antwort-Status aus der Knowledge-Class (gesichert vs ungeprüft). */}
@@ -270,6 +345,22 @@ export function Ask(): JSX.Element {
                   </span>
                 </div>
                 <ConfidenceBar value={result.trust} />
+              </div>
+              {/* SCRUM-430 (VIP): Antwort inkl. Quellen exportieren/teilen — Kopieren, Markdown-Download,
+                  Druck/PDF. Beim Drucken über die Body-Klasse isoliert (nur diese Karte). */}
+              <div className="print-hide mb-3 flex flex-wrap items-center gap-1.5">
+                <Button variant="ghost" onClick={copyAnswer}>
+                  <Copy size={14} />
+                  {t("ask.export.copy")}
+                </Button>
+                <Button variant="ghost" onClick={downloadAnswer}>
+                  <FileDown size={14} />
+                  {t("ask.export.download")}
+                </Button>
+                <Button variant="ghost" onClick={printAnswer}>
+                  <Printer size={14} />
+                  {t("ask.export.print")}
+                </Button>
               </div>
               <p className="text-[15px] leading-relaxed text-text">{result.answer}</p>
               {reviewGuard ? (
@@ -386,7 +477,7 @@ export function Ask(): JSX.Element {
                 </div>
               ) : null}
               <Button
-                className="mt-4"
+                className="print-hide mt-4"
                 disabled={helpfulDisabled(
                   { pending: helpful.isPending, success: helpful.isSuccess },
                   result.sources.length === 0,

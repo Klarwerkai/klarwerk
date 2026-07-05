@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
 import { useBusFactor, useConflicts, useDirectory, useGaps, useKos } from "../api/hooks";
 import type { GapPriority } from "../api/types";
+import { HelpTip } from "../components/HelpTip";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
 import {
@@ -89,7 +90,10 @@ export function Risk(): JSX.Element {
 
       {/* SCRUM-230: kompakter Cockpit-Einstieg — aggregierte Kennzahlen aus vorhandenen Daten. */}
       <div>
-        <SectionLabel>{t("risk.summary")}</SectionLabel>
+        <div className="mb-2 flex items-center gap-1.5">
+          <SectionLabel>{t("risk.summary")}</SectionLabel>
+          <HelpTip title={t("risk.summary")} body={t("risk.help.summary")} />
+        </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
           {cockpitTiles.map((tile) => (
             <Card key={tile.key} className="p-3">
@@ -110,7 +114,10 @@ export function Risk(): JSX.Element {
 
       {/* SCRUM-133: Risiko-Cockpit nach Domäne/Kategorie */}
       <div>
-        <SectionLabel>{t("risk.cockpit")}</SectionLabel>
+        <div className="mb-2 flex items-center gap-1.5">
+          <SectionLabel>{t("risk.cockpit")}</SectionLabel>
+          <HelpTip title={t("risk.cockpit")} body={t("risk.help.cockpit")} />
+        </div>
         <QueryState query={kos} emptyText={t("risk.cockpitEmpty")}>
           {(items) => {
             const rows = domainRisk(items, bus.data ?? []);
@@ -123,40 +130,61 @@ export function Risk(): JSX.Element {
             }
             return (
               <div className="grid gap-2 sm:grid-cols-2">
-                {rows.map((r) => (
-                  <Card key={r.category} className="space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="min-w-0 truncate text-[13.5px] font-medium text-text">
-                        {r.category}
-                      </span>
-                      <span
-                        className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${RISK_TONE[r.level]}`}
-                      >
-                        {t(`risk.level.${r.level}`)}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11.5px] text-muted">
-                      <span>
-                        {t("risk.koCount")}: <span className="text-text">{r.koCount}</span>
-                      </span>
-                      <span>
-                        {t("risk.validated")}:{" "}
-                        <span className="text-text">{r.validatedRatio}%</span>
-                      </span>
-                      <span>
-                        {t("risk.openKo")}: <span className="text-text">{r.openCount}</span>
-                      </span>
-                      <span>
-                        {t("risk.experts")}: <span className="text-text">{r.authorCount}</span>
-                      </span>
-                    </div>
-                    {r.singleSource ? (
-                      <div className="text-[11px] font-semibold text-trust-crit-text">
-                        {t("risk.singleSource")}
+                {rows.map((r) => {
+                  // Pedi 05.07.: „wer trägt das Wissen" sichtbar machen — die Personen hinter dieser
+                  // Domäne (aus den echten KO-Autoren abgeleitet), damit ein Einzelquellen-Risiko konkret wird.
+                  const bearers = Array.from(
+                    new Set(items.filter((k) => k.category === r.category).map((k) => k.author)),
+                  ).map(nameOf);
+                  return (
+                    <Card key={r.category} className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="min-w-0 truncate text-[13.5px] font-medium text-text">
+                          {r.category}
+                        </span>
+                        <span
+                          className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${RISK_TONE[r.level]}`}
+                        >
+                          {t(`risk.level.${r.level}`)}
+                        </span>
                       </div>
-                    ) : null}
-                  </Card>
-                ))}
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11.5px] text-muted">
+                        <span>
+                          {t("risk.koCount")}: <span className="text-text">{r.koCount}</span>
+                        </span>
+                        <span>
+                          {t("risk.validated")}:{" "}
+                          <span className="text-text">{r.validatedRatio}%</span>
+                        </span>
+                        <span>
+                          {t("risk.openKo")}: <span className="text-text">{r.openCount}</span>
+                        </span>
+                        <span>
+                          {t("risk.experts")}: <span className="text-text">{r.authorCount}</span>
+                        </span>
+                      </div>
+                      {/* Pedi 05.07.: Einzelquellen-Risiko ausführlich erklären + WER es trägt. */}
+                      {r.singleSource ? (
+                        <div className="rounded-btn bg-trust-crit-bg px-2.5 py-2 text-[11.5px] text-trust-crit-text">
+                          <div className="font-semibold">{t("risk.singleSource")}</div>
+                          <p className="mt-0.5 leading-relaxed">{t("risk.singleSourceExplain")}</p>
+                          {bearers.length > 0 ? (
+                            <p className="mt-1 font-semibold">
+                              {t("risk.bearer", { names: bearers.join(", ") })}
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      {/* Verweis auf die konkreten Objekte dieser Domäne (das „was"). */}
+                      <Link
+                        to={`/bibliothek?category=${encodeURIComponent(r.category)}`}
+                        className="inline-flex items-center gap-1 text-[12px] font-semibold text-brand hover:underline"
+                      >
+                        {t("risk.viewObjects")} <span aria-hidden="true">→</span>
+                      </Link>
+                    </Card>
+                  );
+                })}
               </div>
             );
           }}
@@ -164,10 +192,24 @@ export function Risk(): JSX.Element {
       </div>
 
       <div>
-        <SectionLabel>{t("risk.busfactor")}</SectionLabel>
+        <div className="mb-2 flex items-center gap-1.5">
+          <SectionLabel>{t("risk.busfactor")}</SectionLabel>
+          <HelpTip title={t("risk.busfactor")} body={t("risk.help.busfactor")} />
+        </div>
         <QueryState query={bus} emptyText={t("risk.busEmpty")}>
           {(items) => (
             <Card className="space-y-2.5">
+              {/* Pedi 05.07.: Legende, damit die Balkenfarbe verständlich ist. */}
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-2">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="h-2 w-4 rounded-full" style={{ background: "#c0473f" }} />
+                  {t("risk.busLegendSingle")}
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="h-2 w-4 rounded-full" style={{ background: "#3aa06a" }} />
+                  {t("risk.busLegendOk")}
+                </span>
+              </div>
               {items.map((b) => (
                 <div key={b.category} className="flex items-center gap-3">
                   <span className="w-32 truncate text-[13px] text-text">{b.category}</span>
@@ -191,7 +233,10 @@ export function Risk(): JSX.Element {
       </div>
 
       <div>
-        <SectionLabel>{t("risk.gaps")}</SectionLabel>
+        <div className="mb-1 flex items-center gap-1.5">
+          <SectionLabel>{t("risk.gaps")}</SectionLabel>
+          <HelpTip title={t("risk.gaps")} body={t("risk.help.gaps")} />
+        </div>
         {/* SCRUM-283: ehrlich + datensparsam — gespeicherte Fragen sind offene Lücken (keine Antwort/
             kein validiertes Wissen); beim Erfassen keine sensiblen Details, geprüfte Erfahrung ergänzen. */}
         <p className="mb-2 text-[12px] text-muted-2">{t(gapPrivacyNoticeKey())}</p>

@@ -1,6 +1,6 @@
 // FR-EXT-03 / SCRUM-117: Output-Service. Stateless — keine Persistenz, keine KO-Mutation.
 // Quelle sind ausschließlich validierte KnowledgeObjects; nicht-validierte werden abgelehnt.
-import type { KnowledgeObject, KoService } from "../../knowledge-object";
+import { type KnowledgeObject, type KoService, isConfidential } from "../../knowledge-object";
 import { KIND_TITLE, renderBody, renderProvenance, toProvenance, toSource } from "./render";
 import {
   type GenerateOutputInput,
@@ -25,9 +25,11 @@ export class OutputService {
   }
 
   // Nur validierte KOs sind als Output-Quelle zulässig (Anti-Fake-Guard).
+  // SCRUM-415: vertrauliche KOs erscheinen NICHT als Output-Quelle — ein Output ist teilbar (externer
+  // Kontext), vertrauliche Objekte bleiben davon ausgeschlossen.
   async listEligible(): Promise<OutputSource[]> {
     const kos = await this.koService.list({ status: "validiert" });
-    return kos.map(toSource);
+    return kos.filter((ko) => !isConfidential(ko.confidentiality)).map(toSource);
   }
 
   async generate(input: GenerateOutputInput): Promise<OutputDocument> {
@@ -47,6 +49,13 @@ export class OutputService {
         throw new OutputError(
           "NOT_VALIDATED",
           `Nur validierte Objekte sind als Output-Quelle zulässig: ${id}.`,
+        );
+      }
+      // SCRUM-415: vertrauliche KOs dürfen nicht in einen (teilbaren) Output — externe Kontexte tabu.
+      if (isConfidential(ko.confidentiality)) {
+        throw new OutputError(
+          "CONFIDENTIAL",
+          `Vertrauliches Wissensobjekt darf nicht exportiert/geteilt werden: ${id}.`,
         );
       }
       selected.push(ko);

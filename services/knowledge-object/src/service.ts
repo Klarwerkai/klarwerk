@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
 import { htmlToPlainText, sanitizeHtml } from "../../structure";
+import { isConfidential, normalizeConfidentiality } from "./confidentiality";
 import type { EvidenceRepo, KoCandidateQuery, KoFilter, KoRepo, KoVersionRepo } from "./repo";
 import {
+  type Confidentiality,
   type EvidenceRecord,
   KNOWLEDGE_TYPES,
   type KnowledgeObject,
@@ -67,6 +69,8 @@ export interface CreateKoInput {
   asset?: string | null;
   bodyHtml?: string | null; // KW-STR: WYSIWYG-Body, serverseitig sanitisiert
   demoSeed?: boolean; // Demodaten-Merker (nur der Seed setzt das; nie über die öffentliche Route)
+  // SCRUM-415: optionale Vertraulichkeitsstufe ab Erfassen (Standard „intern").
+  confidentiality?: Confidentiality;
 }
 
 export interface ReviseKoInput {
@@ -170,6 +174,11 @@ export class KoService {
       neededValidations: needed,
       assignments: [],
       asset: input.asset ?? null,
+      // SCRUM-415: nur speichern, wenn tatsächlich vertraulich — „intern"/ungültig bleibt weg,
+      // Alt-Verhalten und bestehende Tests unberührt.
+      ...(isConfidential(normalizeConfidentiality(input.confidentiality))
+        ? { confidentiality: normalizeConfidentiality(input.confidentiality) }
+        : {}),
       ...(input.demoSeed ? { demoSeed: true } : {}),
       createdAt: at,
       history: [{ version: 1, at, author: input.author, note: "erstellt" }],
@@ -182,6 +191,26 @@ export class KoService {
     await this.snapshot(ko, input.author, "erstellt");
     await this.audit?.record({ actor: input.author, action: "ko.created", target: ko.id });
     return ko;
+  }
+
+  // SCRUM-415: Vertraulichkeitsstufe eines KO setzen/ändern. Jede Änderung landet im Audit
+  // (nachvollziehbar, wer wann welche Stufe gesetzt hat). Rechte prüft die Route (wie „category").
+  async setConfidentiality(
+    id: string,
+    level: Confidentiality,
+    actor: string,
+  ): Promise<KnowledgeObject> {
+    const ko = await this.require(id);
+    const next = normalizeConfidentiality(level);
+    const updated: KnowledgeObject = { ...ko, confidentiality: next };
+    await this.repo.update(updated);
+    await this.audit?.record({
+      actor,
+      action: "ko.confidentiality",
+      target: id,
+      payload: { level: next },
+    });
+    return updated;
   }
 
   // FR-KO-06: Kommentar am Objekt anfügen (Diskussion / Revisions-Schleife).

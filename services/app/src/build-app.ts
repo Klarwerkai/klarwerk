@@ -116,6 +116,7 @@ import { auditRoutes } from "./routes/audit-routes";
 import { captureRoutes } from "./routes/capture-routes";
 import { conflictRoutes } from "./routes/conflicts-routes";
 import { externalRoutes } from "./routes/external-routes";
+import { helpRoutes } from "./routes/help-routes";
 import { i18nRoutes } from "./routes/i18n-routes";
 import { koRoutes } from "./routes/ko-routes";
 import { libraryRoutes } from "./routes/library-routes";
@@ -469,6 +470,8 @@ export function buildApp(
   app.register(livewallRoutes({ ko: services.ko, audit: services.audit }, guards));
   app.register(auditRoutes(services.audit, guards));
   app.register(reasonerRoutes(services, guards));
+  // Klara Stufe 2 (Pedi 05.07.): KI-gestuetzte Hilfe-Antwort aus Hilfe-Schnipseln (help-routes).
+  app.register(helpRoutes({ reasoner: services.reasoner }, guards));
   app.register(objectRoutes(services.objects, guards));
   app.register(mediaRoutes(services.media, guards));
   app.register(i18nRoutes(services.i18n));

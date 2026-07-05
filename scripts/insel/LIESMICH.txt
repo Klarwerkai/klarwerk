@@ -1,0 +1,42 @@
+KLARWERK Insel — Aufbau-Werkzeug (KLLM-70)
+==========================================
+Zweck: Den kompletten Mac-Studio-Aufbau reproduzierbar und nachvollziehbar
+machen. Zwei Commands, ein Ziel — jeder Rechner mit einem Command aufbaubar.
+
+ENTHALTEN
+ - Insel-inventarisieren.command : erfasst den Ist-Zustand des Mac und legt
+   ihn versioniert im Repo ab (docs/operations/INSEL-AUFBAU.md +
+   docs/operations/insel-inventar/). OHNE Secrets — Schluessel bleiben im
+   Schluesselbund, hier stehen nur die Namen.
+ - Insel-aufbauen.command : liest dieses Inventar und stellt einen
+   vergleichbaren Rechner her. Idempotent (mehrfach ausfuehrbar). Erkennt
+   Air-Gap und markiert Netz-Schritte als USB-Aufgabe (KLLM-66).
+
+ERSTNUTZUNG (auf dem Mac Studio)
+ 1) Archiv entpacken.
+ 2) Terminal:
+      bash ~/Downloads/KLARWERK-Insel-Aufbau/Insel-inventarisieren.command
+    -> schreibt INSEL-AUFBAU.md ins Repo, fragt am Ende nach dem Commit.
+ 3) Ergebnis ansehen: docs/operations/INSEL-AUFBAU.md im Repo.
+
+NEUEN / ERSATZ-RECHNER AUFBAUEN
+ 1) Repo (mit insel-inventar/) auf den Zielrechner bringen (Git oder USB).
+ 2) Terminal:
+      bash ~/Downloads/KLARWERK-Insel-Aufbau/Insel-aufbauen.command
+ 3) Schluessel im Schluesselbund eintragen (per Insel-Schluessel-App).
+ 4) Kontrolle: Insel-inventarisieren.command erneut -> Diff pruefen.
+
+ANDERER REPO-PFAD?
+   export KLARWERK_REPO="/pfad/zum/klarwerk"   # vor dem Command setzen
+
+SICHERHEIT
+ - Keine Schluessel/Secrets in Manifest, Doku, Repo oder Chat.
+ - Das Inventar nennt Keychain-Eintraege nur beim Namen.
+ - Der Aufbau setzt NIE automatisch Schluessel — das macht der Mensch.
+
+PFLEGE
+ - Nach jeder Aenderung am Mac (Modell, Tool, MLX-Update) erneut
+   inventarisieren + committen. So bleibt INSEL-AUFBAU.md die Wahrheit,
+   und jede Aenderung ist als Git-Commit sichtbar.
+
+Quelle der Wahrheit: KLLM-70 (Bezug KLLM-62, KWN-5).

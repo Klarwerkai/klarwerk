@@ -11,6 +11,10 @@ export type KnowledgeType =
 
 export type KoStatus = "offen" | "validiert";
 
+// SCRUM-415: Vertraulichkeitsstufe je Wissensobjekt. „intern" = Standard (keine Einschränkung);
+// „vertraulich"/„streng_vertraulich" gehen nie in externe Kontexte (Output Factory/Export).
+export type Confidentiality = "intern" | "vertraulich" | "streng_vertraulich";
+
 export interface HistoryEntry {
   version: number;
   at: string;
@@ -150,6 +154,8 @@ export interface KnowledgeObject {
   author: string;
   neededValidations: number;
   assignments: string[];
+  // SCRUM-415: Vertraulichkeitsstufe (fehlt = „intern"). Vertrauliche KOs gehen nie in externe Kontexte.
+  confidentiality?: Confidentiality;
   // Pedi 05.07.: read-only Board-Anreicherung — Peer-Stimmen-Zähler (grün/gelb/rot) für „X von Y grün".
   reviewVotes?: { up: number; warn: number; down: number };
   asset: string | null;
@@ -315,6 +321,8 @@ export interface DraftPayload {
   neededValidations?: number;
   asset?: string | null;
   bodyHtml?: string | null; // KW-STR: WYSIWYG-Body
+  // SCRUM-415: Vertraulichkeitsstufe ab Erfassen (Standard „intern").
+  confidentiality?: Confidentiality;
 }
 
 export interface Draft {

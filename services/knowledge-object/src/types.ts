@@ -16,6 +16,11 @@ export const KNOWLEDGE_TYPES: readonly KnowledgeType[] = [
 
 export type KoStatus = "offen" | "validiert";
 
+// SCRUM-415: Vertraulichkeitsstufe je Wissensobjekt. „intern" = Öffentlich-intern (Standard, keine
+// Einschränkung); „vertraulich"/„streng_vertraulich" = vertraulich → gehen NIE in externe Kontexte
+// (Output Factory/Export). Fehlt das Feld (Alt-KOs), gilt „intern".
+export type Confidentiality = "intern" | "vertraulich" | "streng_vertraulich";
+
 export interface HistoryEntry {
   version: number;
   at: string;
@@ -90,6 +95,8 @@ export interface KnowledgeObject {
   author: string;
   neededValidations: number;
   assignments: string[];
+  // SCRUM-415: Vertraulichkeitsstufe (fehlt = „intern"). Vertrauliche KOs gehen nie in externe Kontexte.
+  confidentiality?: Confidentiality;
   // Pedi 05.07.: read-only Board-Anreicherung — Peer-Stimmen-Zähler (grün/gelb/rot) für die Anzeige
   // „X von Y grün" auf der Validierungsseite. Nur die Board-Sicht setzt es; sonst undefined.
   reviewVotes?: { up: number; warn: number; down: number };

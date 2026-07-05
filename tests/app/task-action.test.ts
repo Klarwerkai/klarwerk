@@ -13,22 +13,27 @@ describe("SCRUM-260: taskAction", () => {
     expect(taskAction("task.returned")).toEqual({
       actionLabelKey: "task.action.returned",
       tone: "crit",
+      explainKey: "task.explain.returned",
     });
     expect(taskAction("task.conflict")).toEqual({
       actionLabelKey: "task.action.conflict",
       tone: "crit",
+      explainKey: "task.explain.conflict",
     });
     expect(taskAction("task.validation")).toEqual({
       actionLabelKey: "task.action.validation",
       tone: "warn",
+      explainKey: "task.explain.validation",
     });
     expect(taskAction("task.revalidation")).toEqual({
       actionLabelKey: "task.action.revalidation",
       tone: "warn",
+      explainKey: "task.explain.revalidation",
     });
     expect(taskAction("task.gap")).toEqual({
       actionLabelKey: "task.action.gap",
       tone: "neutral",
+      explainKey: "task.explain.gap",
     });
   });
 
@@ -36,7 +41,28 @@ describe("SCRUM-260: taskAction", () => {
     expect(taskAction("task.unknown")).toEqual({
       actionLabelKey: "task.action.open",
       tone: "neutral",
+      explainKey: "task.explain.open",
     });
+  });
+
+  // Pedi 05.07.: die Klartext-Erklärung je Aufgabe muss in DE und EN vorhanden sein (nicht leer).
+  it("hat für jede Aufgabe eine aufgelöste Klartext-Erklärung (DE+EN)", () => {
+    for (const typeKey of [
+      "task.returned",
+      "task.conflict",
+      "task.validation",
+      "task.revalidation",
+      "task.gap",
+      "task.unknown",
+    ]) {
+      const { explainKey } = taskAction(typeKey);
+      for (const lng of ["de", "en"]) {
+        expect(
+          String(i18n.getResource(lng, "translation", explainKey) ?? "").length,
+          `${lng}:${explainKey}`,
+        ).toBeGreaterThan(20);
+      }
+    }
   });
 });
 

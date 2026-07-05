@@ -47,6 +47,26 @@ const de = {
   "topbar.notificationsPlaceholder": "Noch keine Benachrichtigungen. Echte Quelle folgt (#63).",
   "topbar.reasonerActive": "Reasoner aktiv",
   "topbar.reasonerOffline": "Reasoner offline",
+  // Pedi 05.07.: Header-Pille „In welcher KI bin ich?" + Herkunftsland + DSGVO-Bestätigung.
+  // DSGVO: ja gibt es NUR bei interner KI aus Europa — alles andere ehrlich „nein".
+  "topbar.kiExternal": "Externe KI",
+  "topbar.kiInternal": "Interne KI",
+  "topbar.kiMixed": "KI gemischt",
+  "topbar.kiDsgvoYes": "DSGVO: ja",
+  "topbar.kiDsgvoNo": "DSGVO: nein",
+  "topbar.kiExternalHint":
+    "Deine KI-Aufgaben laufen über ein Cloud-Modell außer Haus — DSGVO-Bestätigung daher: nein. Ein Ja gibt es nur für eine interne KI aus Europa. Details je Aufgabe: Verwaltung → KI.",
+  "topbar.kiInternalHint":
+    "Deine KI-Aufgaben laufen vollständig im Haus (lokales Modell oder regelbasiert). DSGVO: ja gibt es nur hier — und nur, wenn die KI aus Europa stammt. Herkunft derzeit aus der Anbieter-Kennung abgeleitet; künftig übermittelt sie die zentrale KI-Zugangs-Steuerung.",
+  "topbar.kiMixedHint":
+    "Gemischter Betrieb: einige Aufgaben laufen über die externe Cloud-KI, andere im Haus. Es zählt die strengste Stufe — DSGVO-Bestätigung: nein. Details je Aufgabe: Verwaltung → KI.",
+  // Herkunftsland der KI (Interim aus der Anbieter-Kennung; später aus der KI-Zugangs-Steuerung).
+  "country.us": "USA",
+  "country.de": "Deutschland",
+  "country.fr": "Frankreich",
+  "country.cn": "China",
+  "country.unknown": "Herkunft unbekannt",
+  "country.ownSystem": "eigenes System (EU)",
   "topbar.notificationsEmpty": "Keine Benachrichtigungen.",
   "topbar.notifMarkAll": "Alle gelesen",
   "topbar.notifMarkRead": "Als gelesen markieren",
@@ -92,6 +112,12 @@ const de = {
   "reasoner.taskInfo.bodyUnknown":
     "Die aktuelle KI-Zuordnung wird geladen. Details stehen in der KI-Verwaltung.",
   "reasoner.taskInfo.modelLabel": "Modell",
+  "reasoner.taskInfo.dsgvoInhouse": "DSGVO-konform",
+  "reasoner.taskInfo.dsgvoInhouseBody":
+    "Läuft im Haus (lokal bzw. regelbasiert) — die Daten bleiben hier und werden nicht an Dritte übermittelt.",
+  "reasoner.taskInfo.dsgvoExternal": "Externe Verarbeitung",
+  "reasoner.taskInfo.dsgvoExternalBody":
+    "Nutzt einen externen Cloud-Anbieter — die DSGVO-Konformität hängt vom Auftragsverarbeitungsvertrag (AVV) mit dem Anbieter ab.",
   "provenance.original": "ursprünglich",
   "uikit.sampleStatement": "Druckabfall an Presse P2 sitzt meist an Ventil V4, nicht an der Pumpe.",
   "state.loading": "Lädt …",
@@ -279,6 +305,18 @@ const de = {
   "task.action.revalidation": "Gültigkeit prüfen",
   "task.action.gap": "Lücke priorisieren",
   "task.action.open": "Öffnen",
+  // Pedi 05.07.: Klartext „was ist zu tun" je Aufgabe — ein Satz, direkt auf der Karte.
+  "task.explain.returned":
+    "Ein Prüfer hat dein Wissen zur Nacharbeit zurückgegeben. Öffne es, arbeite die Rückmeldung ein und reiche es erneut ein.",
+  "task.explain.conflict":
+    "Zwei Aussagen widersprechen sich. Öffne den Konflikt und entscheide, welche gilt (oder halte beide fest).",
+  "task.explain.validation":
+    "Prüfe dieses Wissen und gib eine Bewertung ab: Freigeben (grün), Rückfrage (gelb) oder Ablehnen (rot). Ab genug grünen Bewertungen gilt es als validiert.",
+  "task.explain.revalidation":
+    "Etwas hat sich geändert — bestätige, ob dieses Wissen noch gültig ist, oder gib es zur Überarbeitung.",
+  "task.explain.gap":
+    "Zu dieser Frage fehlt gesichertes Wissen. Priorisiere die Lücke oder erfasse selbst einen Beitrag dazu.",
+  "task.explain.open": "Öffne diese Aufgabe, um den nächsten Schritt zu sehen.",
   // SCRUM-297: Knowledge-OS-Phase je Arbeit (nutzt die Kreis-Labels cycle.*.label).
   "task.phaseLabel": "Phase:",
   "capture.kicker": "Expert Studio · Erfassen",
@@ -372,6 +410,8 @@ const de = {
   "capture.diktatIdleHint": "Klick auf den Knopf und erzähl — kein Formular, keine Vorbereitung.",
   "adm.ai.help":
     "Bestimme global oder je Einsatz, welche KI arbeitet. „Auto“ nutzt das Modell, wenn ein Schlüssel hinterlegt ist; „Deterministisch“ arbeitet bewusst ohne Modell. Schlüssel bleiben ausschließlich auf dem Server — nie im Browser.",
+  "adm.ai.internExtern":
+    "Du kannst intern (eigener On-Prem-LLM) oder extern (Cloud) arbeiten lassen — global als Standard oder fein je Aufgabe. Die interne Option erscheint, sobald ein eigener LLM erreichbar ist; beide lassen sich mit „Key testen“ / „Lokalen LLM testen“ live prüfen.",
   "adm.ai.status": "Aktiver Provider: {{provider}} · Modus: {{mode}}",
   "adm.ai.modeModel": "Modell",
   "adm.ai.modeDemo": "Deterministisch",
@@ -477,8 +517,9 @@ const de = {
   "adm.ai.choice.inherit": "— wie global —",
   "adm.ai.choice.auto": "Auto (Modell wenn verfügbar)",
   "adm.ai.choice.model": "Modell verlangen",
-  "adm.ai.choice.cloud": "Cloud (Claude)",
-  "adm.ai.choice.local": "Lokaler LLM",
+  "adm.ai.choice.cloud": "Extern · Cloud-LLM (Claude)",
+  "adm.ai.choice.local": "Intern · eigener LLM (On-Prem)",
+  "adm.ai.choice.localUnavailable": "Intern · eigener LLM (nicht verbunden)",
   "adm.ai.choice.deterministic": "Deterministisch (ohne Modell)",
   "adm.ai.task.structure": "Strukturieren",
   "adm.ai.task.assist": "Schreib-Palette (KI-Hilfe)",
@@ -488,8 +529,8 @@ const de = {
   "adm.ai.task.extract": "Wissen aus Datei",
   "adm.ai.effModel": "Modell",
   "adm.ai.effDet": "deterministisch",
-  "adm.ai.eff.cloud": "Cloud",
-  "adm.ai.eff.local": "lokal",
+  "adm.ai.eff.cloud": "extern",
+  "adm.ai.eff.local": "intern",
   "adm.ai.eff.deterministic": "deterministisch",
   "adm.ai.save": "Zuordnung übernehmen",
   "adm.ai.detail": "Feinabstimmung je Einsatz",
@@ -1058,6 +1099,12 @@ const de = {
   "capture.fMeasures": "Maßnahmen",
   "capture.fTags": "Schlagwörter",
   "capture.fAsset": "Anlage / Asset",
+  "conf.field": "Vertraulichkeit",
+  "conf.help":
+    "Wie vertraulich ist dieses Wissen? Öffentlich-intern ist der Standard (keine Einschränkung). Vertraulich und Streng vertraulich markieren sensibles Wissen: solche Objekte werden nie in externe Kontexte gegeben (Output Factory/Export). Die Stufe ist ab dem Erfassen setzbar und später jederzeit änderbar — jede Änderung wird im Audit-Log festgehalten. Hinweis: Diese Kennzeichnung schränkt (noch) nicht ein, WER das Objekt sieht.",
+  "conf.level.intern": "Öffentlich-intern",
+  "conf.level.vertraulich": "Vertraulich",
+  "conf.level.streng_vertraulich": "Streng vertraulich",
   "capture.fRevalidation": "Re-Validierung nach (Anzahl)",
   "capture.listAdd": "Eintrag hinzufügen",
   "capture.listRemove": "Entfernen",
@@ -1124,6 +1171,13 @@ const de = {
   "ask.knowledgeClass.unbekannt": "Unbekannt",
   "ask.steps": "Argumentationsschritte",
   "ask.sources": "Quellen",
+  "ask.export.copy": "Kopieren",
+  "ask.export.download": "Als Markdown",
+  "ask.export.print": "Drucken / PDF",
+  "ask.export.copied": "Antwort inkl. Quellen kopiert.",
+  "ask.export.answer": "Antwort",
+  "ask.export.footer":
+    "Quellengebundene Antwort aus KLARWERK · erstellt am {{date}}. Nur so belastbar wie die genutzten Quellen (Status/Trust). Kein Wahrheitsversprechen.",
   "ask.sourcesHint":
     "Diese Antwort ist quellengebunden — sie ist nur so belastbar wie die genutzte Quelle (Status, Trust, Nutzbarkeit). Zum Wissensobjekt für Details.",
   "ask.helpful": "Hat geholfen",
@@ -1408,8 +1462,10 @@ const de = {
   "val.empty": "Keine offenen Objekte.",
   "val.target": "Ziel: {{n}}× grün",
   "val.trust": "Trust",
-  "val.votes": "{{have}}/{{need}} grün",
-  "val.votesHint": "Erfasste grüne Bewertungen von {{need}} nötigen bis zur Validierung.",
+  "val.votes": "{{have}} von {{need}} grün",
+  "val.votesTitle": "Validierungs-Fortschritt",
+  "val.votesHint":
+    "So viele grüne (positive) Bewertungen sind erfasst — von {{need}} nötigen bis zur Validierung. Ab genug grünen und 0 roten gilt das Objekt als validiert; rote Bewertungen blockieren die Freigabe.",
   "val.votesBlocked": "{{count}}× rot",
   "val.markTrue": "Als wahr kennzeichnen",
   "val.markTrueConfirm": "Als wahr kennzeichnen und komplett validieren?",
@@ -1721,6 +1777,20 @@ const de = {
   "risk.validated": "validiert",
   "risk.openKo": "offen",
   "risk.singleSource": "Einzelquelle — Klumpenrisiko",
+  "risk.singleSourceExplain":
+    "Das gesamte Wissen dieser Domäne stammt von einer einzigen Person. Fällt sie aus (Krankheit, Kündigung, Ruhestand), ist das Wissen weg — das ist das größte Wissensrisiko. Gegenmaßnahme: weitere Personen einbinden, Wissen zweitprüfen (validieren) und Quellen ergänzen.",
+  "risk.bearer": "Getragen von: {{names}}",
+  "risk.viewObjects": "Objekte dieser Domäne ansehen",
+  "risk.busLegendSingle": "rot = Einzelquelle (Ausfallrisiko)",
+  "risk.busLegendOk": "grün = mehrere Quellen",
+  "risk.help.summary":
+    "Überblick in Zahlen: Offene Lücken (Fragen ohne gesichertes Wissen), Hohe Priorität (dringend), Unzugewiesen/Zugewiesen (ob jemand die Lücke bearbeitet), Offene Konflikte (widersprüchliche Aussagen) und Geschlossene Lücken (bereits beantwortet). Rote Zahlen zeigen Handlungsbedarf.",
+  "risk.help.cockpit":
+    "Risiko je Domäne (Kategorie): KRITISCH/MITTEL/GUT fasst zusammen, wie gut die Domäne abgesichert ist. Objekte = wie viel Wissen; validiert % = wie viel davon geprüft ist; offen = noch ungeprüft; Experten = wie viele Personen die Domäne tragen. Ein Experte + wenig validiert = hohes Risiko.",
+  "risk.help.busfactor":
+    "Wie stark hängt eine Domäne an einzelnen Personen? Ein roter Balken heißt: Das Wissen kommt nur aus EINER Quelle — fällt sie aus, ist es verloren. Grün = mehrere Quellen, also robuster. Der Balken zeigt zusätzlich die Wissensmenge der Domäne.",
+  "risk.help.gaps":
+    "Offene Wissenslücken sind gestellte Fragen, auf die es (noch) keine gesicherte Antwort gibt. Priorisiere sie, weise sie einer Person zu oder erfasse selbst geprüfte Erfahrung dazu. Aus datenschutzgründen keine sensiblen Details in die Frage schreiben.",
   "health.title": "Knowledge Health",
   "health.band.gut": "gut",
   "health.band.mittel": "mittel",
@@ -1783,6 +1853,23 @@ const de = {
   "lcy.stepComplete": "Als erledigt markieren",
   "lcy.stepDone": "Erledigt",
   "ana.kicker": "Analytics & Audit",
+  "ana.exec.title": "Executive-Blick",
+  "ana.exec.validated": "Validiertes Wissen",
+  "ana.exec.validatedHint": "geprüfte, gesicherte Objekte",
+  "ana.exec.openReviews": "Offene Prüfungen",
+  "ana.exec.openReviewsHint": "warten auf Validierung",
+  "ana.exec.busFactor": "Bus-Faktor-Risiko",
+  "ana.exec.busFactorHint": "Kategorien mit nur einer Quelle",
+  "ana.exec.rescued": "Gerettete Lücken",
+  "ana.exec.rescuedHint": "geschlossene Wissenslücken",
+  "ana.help.exec":
+    "Vier Kern-Kennzahlen aus Live-Daten: validiertes Wissen, offene Prüfungen, Bus-Faktor-Risiko und gerettete Lücken. Ein ruhiger Überblick für Entscheider — je höher der Validierungsgrad und je niedriger das Risiko, desto gesünder die Wissensbasis.",
+  "ana.help.health":
+    "Der Health-Score (0–100) fasst Validierungsgrad, Aktualität und Quellenbreite zusammen. Das Band (z. B. gut oder kritisch) zeigt den Zustand auf einen Blick; darunter sehen Sie, welche Faktoren den Wert heben oder senken.",
+  "ana.help.impact":
+    "Wirkung zeigt, was das System real leistet: validierte Objekte gesamt, gestellte Fragen, ohne Lücke beantwortete Fragen und die daraus errechnete Antwortquote. Der Wochenverlauf macht sichtbar, ob validiertes Wissen wächst.",
+  "ana.help.audit":
+    "Das Audit-Log protokolliert unveränderlich jede relevante Aktion — wer (Actor), was (Aktion) und woran (Ziel). Über die Filter grenzen Sie schnell auf eine Person, eine Aktionsart oder ein Objekt ein; nachträglich lässt sich nichts ändern.",
   "ana.total": "Gesamt",
   "ana.categories": "Kategorien",
   "ana.byType": "Verteilung nach Wissensart",
@@ -1861,6 +1948,168 @@ const de = {
     "Kurze Einstiegshilfe zu den wichtigsten Klarwerk-Abläufen. Suche nach Stichwort oder springe direkt in den passenden Bereich.",
   "help.noResults": "Keine Hilfe zu diesem Stichwort gefunden.",
   "help.openRoute": "Bereich öffnen",
+  // Klara v1 (Pedi 05.07.): kontextsensitive Hilfe — Panel-Texte + Seiten-Erklärungen.
+  "klara.title": "Klara",
+  "klara.subtitle": "Deine Hilfe in KLARWERK",
+  "klara.open": "Klara öffnen — Hilfe zu dieser Seite",
+  "klara.intro":
+    "Ich erkläre dir Seiten, Felder und Begriffe. Meine Antworten kommen aus der Hilfe-Bibliothek — was dort fehlt, erfinde ich nicht.",
+  "klara.pageLabel": "Du bist hier",
+  "klara.fieldLabel": "Aktives Element",
+  "klara.fieldHint":
+    "Tippe in ein Feld oder einen Bereich mit ?-Hilfe — dann erkläre ich ihn hier automatisch.",
+  "klara.aiSearch": "Mit KI-Unterstützung suchen",
+  "klara.aiBusy": "Die KI liest die passenden Hilfe-Einträge …",
+  "klara.aiAnswerTitle": "KI-Antwort aus der Hilfe",
+  "klara.aiDisclaimer": "KI-generiert — nicht zu 100 % geprüft",
+  "klara.aiGoto": "Zum Bereich: {{target}}",
+  "klara.aiSources": "Grundlage",
+  "klara.aiEmpty":
+    "Die KI hat in den passenden Hilfe-Einträgen keine sichere Antwort gefunden — eine ehrliche Hilfe-Lücke. Formuliere die Frage anders oder schau auf der Hilfeseite nach.",
+  "klara.speak": "Vorlesen",
+  "klara.speakStop": "Vorlesen stoppen",
+  "klara.inspect": "Element erklären",
+  "klara.inspectHint":
+    "Zeige-Modus aktiv: Klicke auf ein beliebiges Element (Knopf, Kennzahl, Überschrift) — die Aktion wird dabei NICHT ausgelöst. Esc beendet den Modus.",
+  "klara.inspectFor": "Erklärung zu: {{label}}",
+  "klara.selectionExplain": "Markierung erklären",
+  "klara.selectionEmpty":
+    "Markiere zuerst einen Begriff auf der Seite — dann suche ich die passende Erklärung.",
+  "klara.searchPlaceholder": "Hilfe durchsuchen … z. B. Validierung, Bus-Faktor, Entwurf",
+  "klara.resultsFor": "Treffer für: {{q}}",
+  "klara.noResults":
+    "Dazu habe ich noch keinen Eintrag — eine ehrliche Hilfe-Lücke. Die Bibliothek wächst gerade; auf der Hilfeseite findest du die geführten Einstiege.",
+  "klara.moreHelp": "Zur Hilfeseite",
+  "klara.page.start":
+    "Dein Überblick: was frisch gesichert wurde, was heute geholfen hat und was auf dich wartet. Von hier springst du direkt in jeden Bereich.",
+  "klara.page.tasks":
+    "Deine offenen Aufgaben: zugewiesene Prüfungen, Lücken und Fälligkeiten — mit direktem Absprung zur jeweiligen Arbeit.",
+  "klara.page.capture":
+    "Hier sicherst du Erfahrungswissen: erzählen, diktieren, im Interview oder aus einer Datei. Die KI strukturiert nur — du prüfst und reichst ein.",
+  "klara.page.ask":
+    "Stell eine Frage. Die Antwort kommt ausschließlich aus validiertem Wissen mit Quellen — gibt es keins, entsteht eine ehrliche Wissenslücke.",
+  "klara.page.library":
+    "Alle Wissensobjekte mit Status, Vertrauen und Filtern. Von hier geht es in jedes Detail.",
+  "klara.page.external":
+    "Externes Wissen (z. B. Web-Quellen) — immer Stufe 2: nie peer-validiert und klar getrennt vom geprüften Bestand.",
+  "klara.page.validation":
+    "Das Prüf-Board: Du bewertest eingereichtes Wissen. Erst mit genug grünen Freigaben (und ohne rote) gilt ein Objekt als validiert.",
+  "klara.page.conflicts":
+    "Widersprüche zwischen Wissensobjekten: sichten, zweite Meinung holen, auflösen — damit die Bibliothek eindeutig bleibt.",
+  "klara.page.duplicates":
+    "Mögliche Doppelungen: prüfen und zusammenführen, damit Wissen nicht zersplittert.",
+  "klara.page.risk":
+    "Wo ist Wissen dünn oder hängt an einer Person? Offene Lücken, Bus-Faktor und Domänen-Risiko — mit Links zu den betroffenen Objekten.",
+  "klara.page.lifecycle":
+    "Wissen altert: Hier siehst du fällige Re-Validierungen und Lernpfade, damit Geprüftes geprüft bleibt.",
+  "klara.page.analytics":
+    "Kennzahlen aus echten Daten plus das unveränderliche Audit-Log — wer hat was wann getan.",
+  "klara.page.admin":
+    "Konten, KI-Zuordnung, Daten und Sicherheit an einem Ort. Nur für Admins sichtbar.",
+  "klara.page.help":
+    "Geführte Einstiege, Themen und Suche. Ich bin der schnelle Weg — für die Tiefe lohnt sich diese Seite.",
+  "klara.page.profile": "Dein Konto: Name, Sprache, Abmelden.",
+  "klara.page.koDetail":
+    "Die Detailseite eines Wissensobjekts: Inhalt, Versionen, Quellen, Anhänge, Prüf-Historie und Aktionen je nach Rolle.",
+  // Sektions-Erklärungen (Berater-Lieferung 05.07.): je Überschrift EIN Erklärtext (shelp.*).
+  "shelp.adm.seedTitle":
+    "Hier lädst du fertige Beispieldaten, mit denen du KLARWERK gefahrlos ausprobieren kannst. Das geht nur, solange die Instanz noch leer ist — so mischen sich echte Daten und Beispiele nie. Alle Beispieldaten sind als solche markiert und lassen sich später mit einem Klick rückstandslos entfernen.",
+  "shelp.adm.createTitle":
+    "In diesem Abschnitt legst du ein neues Nutzerkonto an und gibst ihm eine Rolle. Betrachter lesen, Experten erfassen Wissen, Controller prüfen es, und Admins verwalten alles. Die Rolle bestimmt also, welche Knöpfe die Person später sieht. Jede Kontoänderung wird im Prüfprotokoll festgehalten.",
+  "shelp.adm.auditTitle":
+    "Dieses Protokoll zeigt die letzten Anmeldungen und Nutzeraktionen. Es ist unveränderlich, denn jede Zeile ist mit der vorherigen verkettet — nachträglich lässt sich nichts unbemerkt ändern oder löschen. Mit dem Prüfknopf kannst du die Kette jederzeit kontrollieren lassen, und das Ergebnis sagt dir ehrlich, ob alles unversehrt ist.",
+  "shelp.ana.byType":
+    "Die Balken zeigen, wie sich euer Wissen auf die fünf Wissensarten verteilt — vom Bauchgefühl über bewährte Vorgehensweisen bis zum Negativwissen, also dem Wissen darüber, was man nicht tun darf. Fehlt eine Art fast ganz, ist das ein Hinweis: Dort wird bisher wenig festgehalten. Nutze das Bild, um gezielt nachzufragen, nicht um Personen zu bewerten.",
+  "shelp.ana.weekly":
+    "Diese Übersicht zählt, wie viele Wissensobjekte in jeder Woche die Prüfung bestanden haben. Sie zeigt den Takt, in dem gesichertes Wissen entsteht — nicht, wie fleißig einzelne Personen waren. Wird die Kurve flach, bleiben meist Prüfungen liegen; ein Blick in den Prüfbereich zeigt dann, wo es hakt.",
+  "shelp.ask.steps":
+    "Hier siehst du Schritt für Schritt, wie die Antwort zustande kam: welche Frage verstanden wurde, welches gesicherte Wissen herangezogen wurde und wie daraus die Antwort entstand. So kannst du jede Aussage nachvollziehen, statt ihr blind zu vertrauen. Wenn dir ein Schritt seltsam vorkommt, öffne die genannte Quelle und prüfe selbst.",
+  "shelp.ask.sources":
+    "Jede Antwort in KLARWERK stützt sich ausschließlich auf geprüfte Wissensobjekte — und genau die stehen hier. Tippe eine Quelle an, um das vollständige Objekt mit Belegen und Prüfstand zu öffnen. Steht hier nichts, gibt es zu deiner Frage kein gesichertes Wissen, und KLARWERK sagt das ehrlich, statt etwas zu erfinden.",
+  "shelp.capture.resumeTitle":
+    "Hier liegen deine gespeicherten Entwürfe — alles, was du angefangen, aber noch nicht eingereicht hast. Nichts davon ist verloren, und nichts davon sehen die Prüfer, solange du es nicht einreichst. Tippe einen Entwurf an, um weiterzuarbeiten, oder verwirf ihn, wenn er sich erledigt hat.",
+  "shelp.ext.title":
+    "Hier kannst du gezielt nach externen Quellen suchen und sie an dein Wissen anhängen, zum Beispiel einen Fachartikel. Wichtig: Externe Quellen sind Zusatzmaterial der Stufe zwei — sie gelten als ungeprüft und ersetzen nie die Prüfung durch deine Kolleginnen und Kollegen. Ob diese Suche verfügbar ist, entscheidet die Verwaltung über eine eigene Freigabestufe.",
+  "shelp.extpage.resultsTitle":
+    "Diese Liste zeigt die Treffer der externen Suche. Alles hier stammt von außerhalb und ist ungeprüft — darum wird es deutlich als extern markiert und nie automatisch übernommen. Du entscheidest selbst, ob du einen Treffer als Quelle der Stufe zwei anhängst. Gesichertes Wissen entsteht daraus erst, wenn Menschen es prüfen.",
+  "shelp.ko.statement":
+    "Das ist der Kern des Wissensobjekts: eine einzelne, klare Aussage darüber, was gilt. Alles andere auf dieser Seite — Bedingungen, Maßnahmen, Belege — hängt an diesem Satz. Lies die Aussage zuerst und prüfe dann darunter, wann sie gilt und worauf sie sich stützt.",
+  "shelp.ko.conditions":
+    "Bedingungen sagen dir, wann die Aussage gilt — und damit auch, wann nicht. Ein Beispiel: Eine Regel für den Winterbetrieb hilft dir im Sommer nichts. Prüfe vor dem Anwenden immer, ob deine Situation zu den genannten Bedingungen passt.",
+  "shelp.ko.measures":
+    "Maßnahmen beschreiben, was konkret zu tun ist, wenn die Aussage zutrifft — Schritt für Schritt. Sie sind bewusst knapp gehalten, damit sie im Alltag anwendbar bleiben. Fehlt dir ein Schritt oder ist etwas unklar, hinterlasse einen Kommentar; so wird das Wissen mit der Zeit besser.",
+  "shelp.ko.provenance":
+    "Hier steht, woher dieses Wissen stammt: wer es erfasst hat, wann es entstanden ist und ob es einmal übertragen wurde. Herkunft ist in KLARWERK keine Nebensache — nachvollziehbare Herkunft ist ein Teil des Vertrauens. Bei Rückfragen weißt du hier, an wen du dich wenden kannst.",
+  "shelp.ko.lineageTitle":
+    "Dieser Abschnitt zeigt die Verwandtschaft dieses Wissens: woraus es hervorgegangen ist und mit welchen anderen Objekten es zusammenhängt. So erkennst du, ob es Teil eines größeren Themas ist. Nutze die Verknüpfungen, um dich weiterzuhangeln, statt isolierte Einzelstücke zu lesen.",
+  "shelp.ko.relatedTitle":
+    "Hier schlägt KLARWERK Wissensobjekte vor, die inhaltlich in der Nähe liegen — etwa eine ergänzende Regel oder eine Ausnahme zum selben Thema. Die Vorschläge sind Hinweise, keine Wertung. Öffne, was dich interessiert, und du siehst das Umfeld des Themas.",
+  "shelp.ko.history":
+    "Jede inhaltliche Änderung erzeugt eine neue Version, und hier siehst du den Verlauf: wer wann was geändert hat und mit welcher Notiz. Ältere Stände bleiben erhalten, nichts wird still überschrieben. So kannst du nachvollziehen, wie sich das Wissen entwickelt hat.",
+  "shelp.ko.evidenceTitle":
+    "Evidenz sind die Belege hinter der Aussage: angehängte Quellen, Dokumente und Nachweise, jeweils der Version zugeordnet, zu der sie gehören. Je besser die Beleglage, desto belastbarer das Wissen — Vertrauen entsteht in KLARWERK aus Nachweisen, nicht aus Behauptungen. Ein Objekt ohne Evidenz ist nicht automatisch falsch, verdient aber einen kritischeren Blick.",
+  "shelp.ko.snapshotsTitle":
+    "Ein Schnappschuss ist der vollständige, eingefrorene Stand einer früheren Version. Hier kannst du nachlesen, wie das Objekt zu einem bestimmten Zeitpunkt genau aussah. Die Schnappschüsse sind nur zum Lesen da — verändern kann sie niemand, und genau das macht sie als Nachweis wertvoll.",
+  "shelp.ko.comments":
+    "Hier tauschen sich Kolleginnen und Kollegen zu diesem Objekt aus: Rückfragen, Ergänzungen, Einwände. Ein Kommentar ändert das Wissen selbst nicht — er ist ein Gespräch am Rand, das oft zu einer besseren nächsten Version führt. Wenn du etwas weißt, das hier fehlt, schreib es dazu.",
+  "shelp.ko.attachments":
+    "Hier liegen Dokumente und Bilder, die zu diesem Wissen gehören — etwa ein Foto der Anlage oder eine Anleitung. Anhänge sind Anschauungsmaterial und Belege, keine geprüften Aussagen. Beim Hochladen gelten Größengrenzen, die eure Verwaltung festlegt.",
+  "shelp.lcy.assetTitle":
+    "Manches Wissen hängt an einer bestimmten Maschine oder Einrichtung. Wenn sich dort etwas ändert — ein Umbau, ein Austausch, eine neue Einstellung — kannst du das hier melden. Die betroffenen Wissensobjekte kommen dann zur erneuten Prüfung, damit niemand mit veraltetem Stand arbeitet.",
+  "shelp.lcy.pendingTitle":
+    "Wissen altert. In dieser Liste stehen Objekte, deren Prüfung eine Auffrischung braucht — zum Beispiel weil sie lange nicht angefasst wurden oder weil sich ihr Umfeld geändert hat. Erneut geprüftes Wissen bleibt vertrauenswürdig; liegen gebliebene Auffrischungen sind ein stilles Risiko.",
+  "shelp.lcy.pathTitle":
+    "Ein Lernpfad ist eine sinnvolle Lese-Reihenfolge durch das vorhandene Wissen, zugeschnitten auf eine Rolle. Neue Kolleginnen und Kollegen arbeiten ihn Schritt für Schritt durch und haken ab, was sie gelesen haben. So wird aus einzelnen Wissensobjekten ein geführter Einstieg.",
+  "shelp.out.kindTitle":
+    "Hier wählst du, welche Art von Dokument aus eurem gesicherten Wissen entstehen soll — zum Beispiel eine Arbeitsanweisung, eine Checkliste oder eine Schulungsunterlage. Der Typ bestimmt Aufbau und Tonfall des Ergebnisses. Erzeugt wird erst, wenn du es auslöst; von selbst passiert hier nichts.",
+  "shelp.out.sourcesTitle":
+    "Für ein Dokument kommen nur geprüfte Wissensobjekte infrage, und genau die wählst du hier aus. Was nicht validiert ist, steht bewusst nicht zur Auswahl — ein erzeugtes Dokument soll sich nur auf gesichertes Wissen stützen. Wähle die Objekte, die inhaltlich zusammengehören.",
+  "shelp.out.composeTitle":
+    "Hier bringst du die ausgewählten Wissensobjekte in die Reihenfolge, in der sie im Dokument erscheinen sollen. Die Reihenfolge trägt die Logik des Ergebnisses — vom Überblick ins Detail oder entlang eines Ablaufs. Verschiebe die Einträge, bis der rote Faden stimmt.",
+  "shelp.out.previewTitle":
+    "Die Vorschau zeigt das Dokument so, wie es aus deinen Bausteinen erzeugt würde, im Textformat Markdown. Prüfe hier in Ruhe, ob Inhalt und Reihenfolge passen, bevor du das Ergebnis herunterlädst oder kopierst. Einen Export als PDF gibt es derzeit nicht.",
+  "shelp.out.provenanceTitle":
+    "Zu jedem erzeugten Dokument gehört der Nachweis, aus welchen Wissensobjekten es gebaut wurde. Dieser Abschnitt hält die Herkunft fest, damit jede Aussage im Dokument auf ihre Quelle zurückführbar bleibt. Das ist derselbe Grundsatz wie überall in KLARWERK: Erst der Beleg macht eine Aussage belastbar.",
+  "shelp.imp.uploadTitle":
+    "Hier spielst du einen früher erstellten Export im JSON-Format wieder ein. Die Einträge werden nicht blind übernommen: Sie landen zunächst als Kandidaten zur Durchsicht, damit nichts ungeprüft in den Bestand rutscht. Prüfe die Kandidatenliste, bevor du etwas übernimmst — auch, um Doppelungen zu vermeiden.",
+  "shelp.ext.pipeline.title":
+    "Dieser Bereich zeigt, was beim Einlesen externer Inhalte passiert ist: was erkannt wurde, was auffällig war und was noch auf eine Entscheidung wartet. Die Pipeline übernimmt nichts von allein — sie bereitet vor, Menschen entscheiden. Arbeite die Befunde am besten von oben nach unten ab.",
+  "shelp.imp.queueTitle":
+    "In dieser Warteschlange stehen eingelesene Quellen, die noch ein menschliches Urteil brauchen: übernehmen, überarbeiten oder verwerfen. Nichts daraus wird ohne deine Entscheidung Teil des Wissensbestands. Hier trennt sich Rohmaterial von gesichertem Wissen.",
+  "shelp.mgmt.jumpTitle":
+    "Diese Leiste ist das Inhaltsverzeichnis der Management-Sicht. Ein Tipp auf einen Eintrag springt direkt zum jeweiligen Abschnitt weiter unten. Sie ändert nichts an den Daten — sie hilft nur beim schnellen Navigieren.",
+  "shelp.mgmt.overview":
+    "Dieser Überblick fasst den aktuellen Zustand eures Wissensbestands in wenigen Kennzahlen zusammen — etwa wie viel Wissen vorhanden, geprüft oder in Arbeit ist. Er ist eine Momentaufnahme zur Orientierung, kein Zeugnis. Für Einzelheiten öffnest du die Abschnitte darunter.",
+  "shelp.mgmt.capital":
+    "Dieser Wert verdichtet den Zustand eures Wissensbestands zu einer einzigen Zahl — er berücksichtigt zum Beispiel, wie viel Wissen geprüft und wie gut es belegt ist. Lies ihn als grobe Einordnung und beobachte vor allem seine Entwicklung über die Zeit. Eine einzelne Zahl ersetzt nie den Blick in die Details.",
+  "shelp.mgmt.valuation":
+    "Dieser Abschnitt macht den Wert eures Wissens greifbarer: eine Einordnung, welche Bestände besonders viel zu Sicherheit und Handlungsfähigkeit beitragen. Die Zahlen sind Orientierungswerte aus dem Bestand, keine geprüfte Bilanz. Nutze sie, um Prioritäten zu besprechen, nicht als Buchhaltung.",
+  "shelp.mgmt.statement":
+    "Das Knowledge Statement ist ein zusammenfassender Bericht über euren Wissensbestand, gedacht für Leitung und Gremien. Er beantwortet in Kurzform: Was haben wir, wie belastbar ist es, und wo sind Lücken. Der Bericht speist sich aus den echten Beständen — was er nicht belegen kann, behauptet er nicht.",
+  "shelp.mgmt.maturity":
+    "Die Reifereise ordnet ein, wie weit eure Organisation im Umgang mit Wissen ist — von den ersten gesicherten Einträgen bis zum eingespielten Kreislauf aus Erfassen, Prüfen und Pflegen. Sie zeigt die nächste sinnvolle Etappe, keine Note. Reife wächst mit der Nutzung, nicht auf Knopfdruck.",
+  "shelp.mgmt.house":
+    "Das Wissenshaus ist ein Bild eurer Themenlandschaft: Räume stehen für Wissensgebiete, und du siehst auf einen Blick, welche gut gefüllt und welche fast leer sind. Leere Räume sind keine Schande, sondern eine Einladung — dort lohnt sich das nächste Erfassen. Tippe einen Bereich an, um hineinzuschauen.",
+  "shelp.mgmt.recommendations":
+    "Hier schlägt KLARWERK nächste Schritte vor, die sich aus eurem Bestand ergeben — zum Beispiel liegen gebliebene Prüfungen oder ein Wissensgebiet, das nur aus einer Quelle gespeist wird. Es sind Vorschläge, keine Aufträge: Du entscheidest, was davon dran ist. Jeder Vorschlag führt dich direkt zur passenden Stelle.",
+  "shelp.mgmt.priorities":
+    "Diese Liste ordnet Wissensthemen danach, wie dringend sie Aufmerksamkeit brauchen — bewertet über neun Gesichtspunkte, etwa Risiko, Alter und die Abhängigkeit von einzelnen Wissensquellen. Oben steht, was zuerst dran sein sollte. Die Reihenfolge ist eine Empfehlung als Gesprächsgrundlage, keine automatische Entscheidung.",
+  "shelp.mgmt.pilot":
+    "Dieser Bericht bündelt, was in den ersten dreißig, sechzig und neunzig Tagen eines Pilotbetriebs geschehen ist und was als Nächstes ansteht. Er macht den Fortschritt für alle Beteiligten sichtbar — ehrlich, mit erreichten und offenen Punkten. Gedacht als gemeinsame Grundlage für das Gespräch mit der Leitung.",
+  "shelp.mrun.title":
+    "Diese Liste protokolliert die letzten Einsätze der KI: welche Aufgabe lief, welches Modell geantwortet hat, wie lange es gedauert hat und ob ein Ersatzweg nötig war. Inhalte deiner Texte stehen hier bewusst nicht — nur technische Eckdaten. So bleibt nachvollziehbar, was die KI wann getan hat.",
+  "shelp.rcfg.title":
+    "Hier siehst du, welche KI für welche Aufgabe eingestellt ist — die Cloud-KI, eure eigene lokale KI oder der regelbasierte Modus ganz ohne Modell. Die Zuordnung lässt sich je Aufgabe ändern, und die App zeigt ehrlich an, was gerade wirksam ist. KI-Schlüssel bleiben dabei immer auf dem Server; im Browser landet nie einer.",
+  "shelp.evx.title":
+    "Der Evidenz-Index ist die Qualitätssicht auf die Beleglage: Er zeigt, welche Wissensobjekte gut belegt sind und wo Nachweise fehlen. Damit findest du gezielt die Einträge, die vor dem nächsten Einsatz Belege brauchen. Gut belegtes Wissen ist das Rückgrat jeder verlässlichen Antwort.",
+  "shelp.prov.title":
+    "Dieser Index prüft die Herkunftsseite der Qualität: Ist bei jedem Wissensobjekt nachvollziehbar, woher es stammt und wie es entstanden ist? Auffälligkeiten stehen oben, damit du sie zuerst siehst. Lückenlose Herkunft ist die Grundlage dafür, dass man Wissen später noch einordnen kann.",
+  "shelp.readiness.title":
+    "Dieser Abschnitt schätzt ein, wie startklar euer Wissenssystem als Ganzes ist — von der Datenbasis über die Prüfprozesse bis zur KI-Anbindung. Die Ampeln zeigen, wo es noch hakt und was als Nächstes sinnvoll ist. Es ist eine Standortbestimmung, keine Abnahme.",
+  "shelp.kos.hintsTitle":
+    "Hier sammelt die Qualitätssicherung konkrete Hinweise aus dem Bestand: Dinge, die auffällig sind und einen Blick verdienen — etwa dünn belegte Objekte oder verwaiste Themen. Jeder Hinweis nennt den Fundort, damit du direkt hinspringen und die Ursache beheben kannst.",
+  "shelp.evFresh.title":
+    "Belege altern genauso wie Wissen. Diese Sicht zeigt, wie frisch die Nachweise hinter euren Wissensobjekten sind und wo alte Belege eine Auffrischung brauchen. So erkennst du Einträge, die formal belegt, aber inhaltlich womöglich überholt sind.",
   // SCRUM-305: kompakte Pilot-Checkliste für den ersten echten Nutzerlauf (Stage-1, ehrlich).
   "pilot.title": "Pilot-Checkliste: erster Nutzerlauf",
   "pilot.subtitle":
@@ -2423,6 +2672,26 @@ const en: typeof de = {
   "topbar.notificationsPlaceholder": "No notifications yet. Real source coming (#63).",
   "topbar.reasonerActive": "Reasoner active",
   "topbar.reasonerOffline": "Reasoner offline",
+  // Pedi 05.07.: header pill "Which AI am I in?" + country of origin + GDPR confirmation.
+  // GDPR: yes ONLY for an internal AI from Europe — everything else is honestly "no".
+  "topbar.kiExternal": "External AI",
+  "topbar.kiInternal": "Internal AI",
+  "topbar.kiMixed": "AI mixed",
+  "topbar.kiDsgvoYes": "GDPR: yes",
+  "topbar.kiDsgvoNo": "GDPR: no",
+  "topbar.kiExternalHint":
+    "Your AI tasks run on a cloud model outside the company — GDPR confirmation is therefore: no. A yes exists only for an internal AI from Europe. Per-task details: Admin → AI.",
+  "topbar.kiInternalHint":
+    "Your AI tasks run entirely in-house (local model or rule-based). GDPR: yes exists only here — and only if the AI originates from Europe. Origin currently derived from the provider identifier; in future the central AI access control will supply it.",
+  "topbar.kiMixedHint":
+    "Mixed operation: some tasks run on the external cloud AI, others in-house. The strictest level counts — GDPR confirmation: no. Per-task details: Admin → AI.",
+  // Country of origin of the AI (interim from the provider identifier; later from AI access control).
+  "country.us": "USA",
+  "country.de": "Germany",
+  "country.fr": "France",
+  "country.cn": "China",
+  "country.unknown": "origin unknown",
+  "country.ownSystem": "own system (EU)",
   "topbar.notificationsEmpty": "No notifications.",
   "topbar.notifMarkAll": "Mark all read",
   "topbar.notifMarkRead": "Mark as read",
@@ -2468,6 +2737,12 @@ const en: typeof de = {
   "reasoner.taskInfo.bodyUnknown":
     "The current AI assignment is loading. Details are in the AI administration.",
   "reasoner.taskInfo.modelLabel": "Model",
+  "reasoner.taskInfo.dsgvoInhouse": "GDPR-compliant",
+  "reasoner.taskInfo.dsgvoInhouseBody":
+    "Runs in-house (local or rule-based) — the data stays here and is not shared with third parties.",
+  "reasoner.taskInfo.dsgvoExternal": "External processing",
+  "reasoner.taskInfo.dsgvoExternalBody":
+    "Uses an external cloud provider — GDPR compliance depends on the data processing agreement (DPA) with the provider.",
   "provenance.original": "originally",
   "uikit.sampleStatement": "Pressure loss on press P2 usually sits at valve V4, not at the pump.",
   "state.loading": "Loading …",
@@ -2653,6 +2928,17 @@ const en: typeof de = {
   "task.action.revalidation": "Check validity",
   "task.action.gap": "Prioritize gap",
   "task.action.open": "Open",
+  "task.explain.returned":
+    "A reviewer sent your knowledge back for rework. Open it, address the feedback and resubmit it.",
+  "task.explain.conflict":
+    "Two statements contradict each other. Open the conflict and decide which one holds (or keep both on record).",
+  "task.explain.validation":
+    "Review this knowledge and cast a rating: approve (green), query (amber) or reject (red). Once enough green ratings are in, it counts as validated.",
+  "task.explain.revalidation":
+    "Something changed — confirm whether this knowledge is still valid, or send it back for revision.",
+  "task.explain.gap":
+    "This question lacks confirmed knowledge. Prioritize the gap or capture a contribution for it yourself.",
+  "task.explain.open": "Open this task to see the next step.",
   // SCRUM-297: Knowledge-OS phase per work item (reuses cycle.*.label).
   "task.phaseLabel": "Phase:",
   "capture.kicker": "Expert studio · Capture",
@@ -2745,6 +3031,8 @@ const en: typeof de = {
   "capture.diktatIdleHint": "Hit the button and start talking — no form, no preparation.",
   "adm.ai.help":
     "Choose globally or per use which AI does the work. “Auto” uses the model when a key is configured; “Deterministic” deliberately works without a model. Keys stay on the server only — never in the browser.",
+  "adm.ai.internExtern":
+    "You can run internal (your own on-prem LLM) or external (cloud) — globally as the default or fine-grained per task. The internal option appears as soon as an own LLM is reachable; test both live via “Test key” / “Test local LLM”.",
   "adm.ai.status": "Active provider: {{provider}} · mode: {{mode}}",
   "adm.ai.modeModel": "Model",
   "adm.ai.modeDemo": "Deterministic",
@@ -2849,8 +3137,9 @@ const en: typeof de = {
   "adm.ai.choice.inherit": "— same as global —",
   "adm.ai.choice.auto": "Auto (model when available)",
   "adm.ai.choice.model": "Require model",
-  "adm.ai.choice.cloud": "Cloud (Claude)",
-  "adm.ai.choice.local": "Local LLM",
+  "adm.ai.choice.cloud": "External · cloud LLM (Claude)",
+  "adm.ai.choice.local": "Internal · own LLM (on-prem)",
+  "adm.ai.choice.localUnavailable": "Internal · own LLM (not connected)",
   "adm.ai.choice.deterministic": "Deterministic (no model)",
   "adm.ai.task.structure": "Structuring",
   "adm.ai.task.assist": "Writing palette (AI help)",
@@ -2860,8 +3149,8 @@ const en: typeof de = {
   "adm.ai.task.extract": "Knowledge from file",
   "adm.ai.effModel": "model",
   "adm.ai.effDet": "deterministic",
-  "adm.ai.eff.cloud": "Cloud",
-  "adm.ai.eff.local": "local",
+  "adm.ai.eff.cloud": "external",
+  "adm.ai.eff.local": "internal",
   "adm.ai.eff.deterministic": "deterministic",
   "adm.ai.save": "Apply mapping",
   "adm.ai.detail": "Fine-tune per use",
@@ -3412,6 +3701,12 @@ const en: typeof de = {
   "capture.fMeasures": "Measures",
   "capture.fTags": "Tags",
   "capture.fAsset": "Asset / equipment",
+  "conf.field": "Confidentiality",
+  "conf.help":
+    "How confidential is this knowledge? “Public-internal” is the default (no restriction). “Confidential” and “Strictly confidential” mark sensitive knowledge: such objects are never sent into external contexts (output factory/export). The level can be set while capturing and changed anytime afterwards — every change is recorded in the audit log. Note: this label does not (yet) restrict WHO can see the object.",
+  "conf.level.intern": "Public-internal",
+  "conf.level.vertraulich": "Confidential",
+  "conf.level.streng_vertraulich": "Strictly confidential",
   "capture.fRevalidation": "Re-validate after (count)",
   "capture.listAdd": "Add item",
   "capture.listRemove": "Remove",
@@ -3479,6 +3774,13 @@ const en: typeof de = {
   "ask.knowledgeClass.unbekannt": "Unknown",
   "ask.steps": "Reasoning steps",
   "ask.sources": "Sources",
+  "ask.export.copy": "Copy",
+  "ask.export.download": "As Markdown",
+  "ask.export.print": "Print / PDF",
+  "ask.export.copied": "Answer incl. sources copied.",
+  "ask.export.answer": "Answer",
+  "ask.export.footer":
+    "Source-bound answer from KLARWERK · generated on {{date}}. Only as reliable as the sources used (status/trust). No promise of truth.",
   "ask.sourcesHint":
     "This answer is source-bound — it is only as reliable as the source it uses (status, trust, usability). Open the knowledge object for details.",
   "ask.helpful": "This helped",
@@ -3759,8 +4061,10 @@ const en: typeof de = {
   "val.empty": "No open objects.",
   "val.target": "Target: {{n}}× green",
   "val.trust": "Trust",
-  "val.votes": "{{have}}/{{need}} green",
-  "val.votesHint": "Recorded green ratings out of {{need}} needed to validate.",
+  "val.votes": "{{have}} of {{need}} green",
+  "val.votesTitle": "Validation progress",
+  "val.votesHint":
+    "This many green (positive) ratings are recorded — out of {{need}} needed to validate. With enough green and 0 red, the object counts as validated; red ratings block approval.",
   "val.votesBlocked": "{{count}}× red",
   "val.markTrue": "Mark as true",
   "val.markTrueConfirm": "Mark as true and fully validate?",
@@ -4070,6 +4374,20 @@ const en: typeof de = {
   "risk.validated": "validated",
   "risk.openKo": "open",
   "risk.singleSource": "Single source — concentration risk",
+  "risk.singleSourceExplain":
+    "All knowledge in this domain comes from a single person. If they leave (illness, resignation, retirement), the knowledge is gone — the biggest knowledge risk. Countermeasure: involve more people, have the knowledge second-checked (validated) and add sources.",
+  "risk.bearer": "Carried by: {{names}}",
+  "risk.viewObjects": "View this domain's objects",
+  "risk.busLegendSingle": "red = single source (failure risk)",
+  "risk.busLegendOk": "green = multiple sources",
+  "risk.help.summary":
+    "Overview in numbers: open gaps (questions without confirmed knowledge), high priority (urgent), unassigned/assigned (whether someone is working the gap), open conflicts (contradictory statements) and closed gaps (already answered). Red numbers indicate action is needed.",
+  "risk.help.cockpit":
+    "Risk per domain (category): CRITICAL/MEDIUM/STABLE sums up how well the domain is secured. Objects = how much knowledge; validated % = how much of it is checked; open = still unchecked; experts = how many people carry the domain. One expert + little validated = high risk.",
+  "risk.help.busfactor":
+    "How much does a domain depend on individuals? A red bar means: the knowledge comes from only ONE source — if it fails, it is lost. Green = multiple sources, so more robust. The bar also shows the domain's amount of knowledge.",
+  "risk.help.gaps":
+    "Open knowledge gaps are questions with no confirmed answer (yet). Prioritize them, assign them to someone, or capture reviewed experience yourself. For privacy, do not put sensitive details into the question.",
   "health.title": "Knowledge Health",
   "health.band.gut": "good",
   "health.band.mittel": "medium",
@@ -4131,6 +4449,23 @@ const en: typeof de = {
   "lcy.stepComplete": "Mark as done",
   "lcy.stepDone": "Done",
   "ana.kicker": "Analytics & audit",
+  "ana.exec.title": "Executive view",
+  "ana.exec.validated": "Validated knowledge",
+  "ana.exec.validatedHint": "reviewed, confirmed objects",
+  "ana.exec.openReviews": "Open reviews",
+  "ana.exec.openReviewsHint": "awaiting validation",
+  "ana.exec.busFactor": "Bus-factor risk",
+  "ana.exec.busFactorHint": "categories with a single source",
+  "ana.exec.rescued": "Rescued gaps",
+  "ana.exec.rescuedHint": "closed knowledge gaps",
+  "ana.help.exec":
+    "Four core metrics from live data: validated knowledge, open reviews, bus-factor risk and rescued gaps. A calm overview for decision-makers — the more that is validated and the lower the risk, the healthier the knowledge base.",
+  "ana.help.health":
+    "The health score (0–100) combines validation level, freshness and source breadth. The band (e.g. good or critical) shows the state at a glance; below it you see which factors raise or lower the value.",
+  "ana.help.impact":
+    "Impact shows what the system actually delivers: total validated objects, questions asked, questions answered without a gap, and the resulting answer rate. The weekly trend reveals whether validated knowledge is growing.",
+  "ana.help.audit":
+    "The audit log records every relevant action immutably — who (actor), what (action) and on what target. Use the filters to narrow down to a person, an action type or an object; nothing can be changed after the fact.",
   "ana.total": "Total",
   "ana.categories": "Categories",
   "ana.byType": "Distribution by knowledge type",
@@ -4209,6 +4544,167 @@ const en: typeof de = {
     "A short starter guide to the most important Klarwerk flows. Search by keyword or jump straight into the relevant area.",
   "help.noResults": "No help found for this keyword.",
   "help.openRoute": "Open area",
+  // Klara v1 (Pedi 05.07.): context-sensitive help — panel copy + page explanations.
+  "klara.title": "Klara",
+  "klara.subtitle": "Your help in KLARWERK",
+  "klara.open": "Open Klara — help for this page",
+  "klara.intro":
+    "I explain pages, fields and terms. My answers come from the help library — if something is missing there, I will not make it up.",
+  "klara.pageLabel": "You are here",
+  "klara.fieldLabel": "Active element",
+  "klara.fieldHint":
+    "Focus a field or an area with a ?-help — then I explain it here automatically.",
+  "klara.aiSearch": "Search with AI support",
+  "klara.aiBusy": "The AI is reading the matching help entries …",
+  "klara.aiAnswerTitle": "AI answer from the help",
+  "klara.aiDisclaimer": "AI-generated — not fully verified",
+  "klara.aiGoto": "Open area: {{target}}",
+  "klara.aiSources": "Based on",
+  "klara.aiEmpty":
+    "The AI found no reliable answer in the matching help entries — an honest help gap. Rephrase the question or check the help page.",
+  "klara.speak": "Read aloud",
+  "klara.speakStop": "Stop reading",
+  "klara.inspect": "Explain element",
+  "klara.inspectHint":
+    "Point mode active: click any element (button, metric, heading) — the action itself is NOT triggered. Esc exits the mode.",
+  "klara.inspectFor": "Explanation for: {{label}}",
+  "klara.selectionExplain": "Explain selection",
+  "klara.selectionEmpty":
+    "Select a term on the page first — then I will look up the matching explanation.",
+  "klara.searchPlaceholder": "Search help … e.g. validation, bus factor, draft",
+  "klara.resultsFor": "Results for: {{q}}",
+  "klara.noResults":
+    "I have no entry on this yet — an honest help gap. The library is growing; the help page has the guided introductions.",
+  "klara.moreHelp": "Open help page",
+  "klara.page.start":
+    "Your overview: what was freshly secured, what helped today and what is waiting for you. Jump into any area from here.",
+  "klara.page.tasks":
+    "Your open tasks: assigned reviews, gaps and due items — each with a direct jump to the work.",
+  "klara.page.capture":
+    "Here you secure experience knowledge: tell it, dictate it, in an interview or from a file. The AI only structures — you review and submit.",
+  "klara.page.ask":
+    "Ask a question. The answer comes exclusively from validated knowledge with sources — if there is none, an honest knowledge gap is created.",
+  "klara.page.library":
+    "All knowledge objects with status, trust and filters. Every detail is one click away.",
+  "klara.page.external":
+    "External knowledge (e.g. web sources) — always level 2: never peer-validated and clearly separated from the reviewed stock.",
+  "klara.page.validation":
+    "The review board: you rate submitted knowledge. Only with enough green approvals (and no red ones) does an object count as validated.",
+  "klara.page.conflicts":
+    "Contradictions between knowledge objects: inspect, get a second opinion, resolve — so the library stays unambiguous.",
+  "klara.page.duplicates": "Possible duplicates: review and merge so knowledge does not fragment.",
+  "klara.page.risk":
+    "Where is knowledge thin or carried by a single person? Open gaps, bus factor and domain risk — with links to the affected objects.",
+  "klara.page.lifecycle":
+    "Knowledge ages: here you see due re-validations and learning paths, so reviewed stays reviewed.",
+  "klara.page.analytics":
+    "Metrics from real data plus the immutable audit log — who did what and when.",
+  "klara.page.admin":
+    "Accounts, AI assignment, data and security in one place. Visible to admins only.",
+  "klara.page.help":
+    "Guided introductions, topics and search. I am the fast lane — this page is where the depth lives.",
+  "klara.page.profile": "Your account: name, language, sign out.",
+  "klara.page.koDetail":
+    "The detail page of a knowledge object: content, versions, sources, attachments, review history and role-based actions.",
+  // Section explanations (consultant delivery 05.07., interim EN — refined in delivery 3).
+  "shelp.adm.seedTitle":
+    "Here you load ready-made sample data to try KLARWERK safely. This only works while the instance is still empty — so real data and samples never mix. All sample data is marked as such and can later be removed completely with one click.",
+  "shelp.adm.createTitle":
+    "In this section you create a new user account and assign a role. Viewers read, experts capture knowledge, controllers review it, and admins manage everything. The role decides which buttons the person will see. Every account change is recorded in the audit log.",
+  "shelp.adm.auditTitle":
+    "This log shows recent sign-ins and user actions. It is immutable: every line is chained to the previous one — nothing can be changed or deleted unnoticed afterwards. With the verify button you can check the chain at any time, and the result honestly tells you whether everything is intact.",
+  "shelp.ana.byType":
+    "The bars show how your knowledge is spread across the five knowledge types — from gut feeling to proven practices to negative knowledge, meaning what must not be done. If one type is almost missing, that is a hint: little is being captured there so far. Use the picture to ask targeted questions, not to rate people.",
+  "shelp.ana.weekly":
+    "This overview counts how many knowledge objects passed review in each week. It shows the pace at which secured knowledge is created — not how hard individuals worked. If the curve flattens, reviews are usually piling up; a look at the review board shows where it sticks.",
+  "shelp.ask.steps":
+    "Here you see step by step how the answer came about: which question was understood, which secured knowledge was used, and how the answer was formed from it. So you can retrace every statement instead of trusting it blindly. If a step looks odd, open the named source and check yourself.",
+  "shelp.ask.sources":
+    "Every answer in KLARWERK relies exclusively on reviewed knowledge objects — and exactly those are listed here. Tap a source to open the full object with evidence and review status. If nothing is listed, there is no secured knowledge for your question, and KLARWERK says so honestly instead of inventing something.",
+  "shelp.capture.resumeTitle":
+    "Your saved drafts live here — everything you started but have not submitted yet. Nothing is lost, and reviewers see none of it until you submit. Tap a draft to continue, or discard it when it is no longer needed.",
+  "shelp.ext.title":
+    "Here you can search for external sources and attach them to your knowledge, for example a journal article. Important: external sources are level-two material — they count as unreviewed and never replace the review by your colleagues. Whether this search is available is decided by administration via its own release stage.",
+  "shelp.extpage.resultsTitle":
+    "This list shows the results of the external search. Everything here comes from outside and is unreviewed — that is why it is clearly marked as external and never taken over automatically. You decide whether to attach a result as a level-two source. Secured knowledge only emerges once people review it.",
+  "shelp.ko.statement":
+    "This is the core of the knowledge object: a single, clear statement about what holds. Everything else on this page — conditions, measures, evidence — hangs off this sentence. Read the statement first, then check below when it applies and what it rests on.",
+  "shelp.ko.conditions":
+    "Conditions tell you when the statement applies — and thus also when it does not. An example: a rule for winter operation is no help in summer. Before applying, always check whether your situation matches the stated conditions.",
+  "shelp.ko.measures":
+    "Measures describe what to do in practice when the statement applies — step by step. They are kept deliberately brief so they stay usable in daily work. If a step is missing or unclear, leave a comment; that is how the knowledge improves over time.",
+  "shelp.ko.provenance":
+    "Here you see where this knowledge comes from: who captured it, when it was created and whether it was ever transferred. Provenance is no side issue in KLARWERK — traceable origin is part of trust. If you have questions, this tells you whom to ask.",
+  "shelp.ko.lineageTitle":
+    "This section shows the kinship of this knowledge: what it emerged from and which other objects it is connected to. That way you can tell whether it is part of a larger topic. Use the links to move onward instead of reading isolated pieces.",
+  "shelp.ko.relatedTitle":
+    "Here KLARWERK suggests knowledge objects that are close in content — such as a complementary rule or an exception on the same topic. The suggestions are hints, not a rating. Open what interests you and you will see the topic's surroundings.",
+  "shelp.ko.history":
+    "Every content change creates a new version, and here you see the trail: who changed what, when, and with which note. Older states are kept; nothing is silently overwritten. That way you can retrace how the knowledge evolved.",
+  "shelp.ko.evidenceTitle":
+    "Evidence is the proof behind the statement: attached sources, documents and records, each assigned to the version they belong to. The better the evidence, the more reliable the knowledge — in KLARWERK trust comes from proof, not from claims. An object without evidence is not automatically wrong, but it deserves a more critical look.",
+  "shelp.ko.snapshotsTitle":
+    "A snapshot is the complete, frozen state of an earlier version. Here you can read exactly what the object looked like at a given moment. Snapshots are read-only — nobody can change them, and precisely that makes them valuable as proof.",
+  "shelp.ko.comments":
+    "Here colleagues discuss this object: questions, additions, objections. A comment does not change the knowledge itself — it is a conversation on the side that often leads to a better next version. If you know something that is missing here, write it down.",
+  "shelp.ko.attachments":
+    "Documents and images that belong to this knowledge live here — such as a photo of the machine or a manual. Attachments are illustration and evidence, not reviewed statements. Uploads are subject to size limits set by your administration.",
+  "shelp.lcy.assetTitle":
+    "Some knowledge is tied to a specific machine or facility. When something changes there — a rebuild, a replacement, a new setting — you can report it here. The affected knowledge objects are then sent back for review, so nobody works with an outdated state.",
+  "shelp.lcy.pendingTitle":
+    "Knowledge ages. This list holds objects whose review needs a refresh — for example because they have not been touched for a long time or because their surroundings changed. Re-reviewed knowledge stays trustworthy; refreshes left undone are a silent risk.",
+  "shelp.lcy.pathTitle":
+    "A learning path is a sensible reading order through the existing knowledge, tailored to a role. New colleagues work through it step by step and tick off what they have read. That turns individual knowledge objects into a guided introduction.",
+  "shelp.out.kindTitle":
+    "Here you choose which kind of document should be created from your secured knowledge — for example a work instruction, a checklist or a training document. The type determines the structure and tone of the result. Nothing is generated until you trigger it.",
+  "shelp.out.sourcesTitle":
+    "Only reviewed knowledge objects qualify for a document, and exactly those are what you select here. What is not validated is deliberately not offered — a generated document should rest on secured knowledge only. Pick the objects that belong together.",
+  "shelp.out.composeTitle":
+    "Here you arrange the selected knowledge objects in the order they should appear in the document. The order carries the logic of the result — from overview to detail or along a workflow. Move the entries until the thread is right.",
+  "shelp.out.previewTitle":
+    "The preview shows the document as it would be generated from your building blocks, in Markdown text format. Check calmly whether content and order fit before you download or copy the result. A PDF export does not exist at present.",
+  "shelp.out.provenanceTitle":
+    "Every generated document carries the record of which knowledge objects it was built from. This section keeps that origin, so every statement in the document stays traceable to its source. It is the same principle as everywhere in KLARWERK: only the proof makes a statement reliable.",
+  "shelp.imp.uploadTitle":
+    "Here you re-import an export created earlier in JSON format. Entries are not taken over blindly: they first land as candidates for inspection, so nothing slips into the stock unreviewed. Check the candidate list before accepting anything — also to avoid duplicates.",
+  "shelp.ext.pipeline.title":
+    "This area shows what happened while external content was read in: what was recognized, what stood out and what still awaits a decision. The pipeline takes over nothing on its own — it prepares, people decide. Best work through the findings from top to bottom.",
+  "shelp.imp.queueTitle":
+    "This queue holds imported sources that still need a human judgement: accept, rework or discard. Nothing from here becomes part of the knowledge stock without your decision. This is where raw material is separated from secured knowledge.",
+  "shelp.mgmt.jumpTitle":
+    "This bar is the table of contents of the management view. Tapping an entry jumps straight to the matching section below. It changes nothing in the data — it only helps you navigate quickly.",
+  "shelp.mgmt.overview":
+    "This overview condenses the current state of your knowledge stock into a few key figures — such as how much knowledge exists, is reviewed or in progress. It is a snapshot for orientation, not a report card. For details, open the sections below.",
+  "shelp.mgmt.capital":
+    "This value condenses the state of your knowledge stock into a single number — considering, for example, how much knowledge is reviewed and how well it is evidenced. Read it as a rough orientation and watch its development over time. A single number never replaces a look at the details.",
+  "shelp.mgmt.valuation":
+    "This section makes the value of your knowledge more tangible: an assessment of which holdings contribute most to safety and the ability to act. The numbers are orientation values from the stock, not an audited balance sheet. Use them to discuss priorities, not as bookkeeping.",
+  "shelp.mgmt.statement":
+    "The knowledge statement is a summarizing report on your knowledge stock, meant for leadership and boards. In short form it answers: what do we have, how reliable is it, and where are the gaps. The report draws on the real stock — what it cannot prove, it does not claim.",
+  "shelp.mgmt.maturity":
+    "The maturity journey assesses how far your organization has come in handling knowledge — from the first secured entries to a practiced cycle of capturing, reviewing and maintaining. It shows the next sensible stage, not a grade. Maturity grows with use, not at the push of a button.",
+  "shelp.mgmt.house":
+    "The knowledge house is a picture of your topic landscape: rooms stand for knowledge areas, and you see at a glance which are well filled and which are almost empty. Empty rooms are no disgrace but an invitation — that is where the next capture pays off. Tap an area to look inside.",
+  "shelp.mgmt.recommendations":
+    "Here KLARWERK suggests next steps that follow from your stock — for example reviews left undone or a knowledge area fed by only one source. They are suggestions, not orders: you decide what is due. Each suggestion takes you straight to the right place.",
+  "shelp.mgmt.priorities":
+    "This list ranks knowledge topics by how urgently they need attention — assessed over nine aspects such as risk, age and dependence on single knowledge sources. What should come first is at the top. The order is a recommendation as a basis for discussion, not an automatic decision.",
+  "shelp.mgmt.pilot":
+    "This report bundles what happened in the first thirty, sixty and ninety days of a pilot and what comes next. It makes progress visible for everyone involved — honestly, with achieved and open points. Meant as a shared basis for the conversation with leadership.",
+  "shelp.mrun.title":
+    "This list logs the AI's recent runs: which task ran, which model answered, how long it took and whether a fallback was needed. The content of your texts is deliberately not stored here — only technical facts. That keeps traceable what the AI did and when.",
+  "shelp.rcfg.title":
+    "Here you see which AI is configured for which task — the cloud AI, your own local AI or the rule-based mode without any model. The assignment can be changed per task, and the app honestly shows what is currently in effect. AI keys always stay on the server; none ever reaches the browser.",
+  "shelp.evx.title":
+    "The evidence index is the quality view of your proof situation: it shows which knowledge objects are well evidenced and where records are missing. It helps you find exactly the entries that need evidence before their next use. Well-evidenced knowledge is the backbone of every reliable answer.",
+  "shelp.prov.title":
+    "This index checks the provenance side of quality: is it traceable for every knowledge object where it came from and how it was created? Anomalies are listed first so you see them right away. Complete provenance is the basis for placing knowledge in context later.",
+  "shelp.readiness.title":
+    "This section assesses how ready your knowledge system is as a whole — from the data base through the review processes to the AI connection. The traffic lights show where things still stick and what makes sense next. It is a positioning, not an acceptance test.",
+  "shelp.kos.hintsTitle":
+    "Here quality assurance collects concrete hints from the stock: things that stand out and deserve a look — such as thinly evidenced objects or orphaned topics. Every hint names the location, so you can jump right in and fix the cause.",
+  "shelp.evFresh.title":
+    "Evidence ages just like knowledge. This view shows how fresh the records behind your knowledge objects are and where old evidence needs a refresh. That way you spot entries that are formally evidenced but possibly outdated in substance.",
   // SCRUM-305: compact pilot checklist for the first real user run (Stage-1, honest).
   "pilot.title": "Pilot checklist: first user run",
   "pilot.subtitle":

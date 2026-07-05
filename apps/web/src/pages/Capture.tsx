@@ -21,6 +21,7 @@ import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useDirectory, useDrafts } from "../api/hooks";
 import type {
+  Confidentiality,
   Draft,
   DraftPayload,
   ExternalResult,
@@ -112,6 +113,7 @@ import {
   resolveWizardStep,
   wizardChips,
 } from "../lib/captureWizard";
+import { CONFIDENTIALITY_LEVELS } from "../lib/confidentiality";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 import { draftTitle } from "../lib/draftForm";
 import { studioSaveConfidence } from "../lib/editorApplySafety";
@@ -232,6 +234,9 @@ export function Capture(): JSX.Element {
   const [type, setType] = useState<KnowledgeType>("best_practice");
   const [category, setCategory] = useState("");
   const [asset, setAsset] = useState("");
+  // SCRUM-415: Vertraulichkeitsstufe ab Erfassen (Standard „intern"). Vertrauliche KOs gehen nie in
+  // externe Kontexte (Output/Export).
+  const [confidentiality, setConfidentiality] = useState<Confidentiality>("intern");
   const [neededValidations, setNeededValidations] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   // SCRUM-395: optionaler Prüfer-Vorschlag beim Einreichen (Server: assign + Benachrichtigung).
@@ -604,6 +609,7 @@ export function Capture(): JSX.Element {
           asset: asset.trim() ? asset.trim() : undefined,
           ...(bodyHtml.trim() ? { bodyHtml } : {}),
           ...(n ? { neededValidations: n } : {}),
+          ...(confidentiality !== "intern" ? { confidentiality } : {}),
         };
         await endpoints.drafts.update(draftId, payload);
         // SCRUM-395: gewählte Prüfer wandern mit dem Promote zum Server (assign + Meldung).
@@ -624,6 +630,7 @@ export function Capture(): JSX.Element {
           asset: asset.trim() ? asset.trim() : null,
           ...(bodyHtml.trim() ? { bodyHtml } : {}),
           ...(n ? { neededValidations: n } : {}),
+          ...(confidentiality !== "intern" ? { confidentiality } : {}),
           // SCRUM-395: Prüfer-Vorschlag beim direkten Einreichen.
           ...(reviewerIds.length > 0 ? { reviewerIds } : {}),
         });
@@ -751,6 +758,7 @@ export function Capture(): JSX.Element {
         asset: asset.trim() ? asset.trim() : undefined,
         ...(bodyHtml.trim() ? { bodyHtml } : {}),
         ...(n ? { neededValidations: n } : {}),
+        ...(confidentiality !== "intern" ? { confidentiality } : {}),
       };
       // SCRUM-113 / FE-CAP-07: fortgesetzten Entwurf aktualisieren, sonst neu anlegen.
       return draftId ? endpoints.drafts.update(draftId, payload) : endpoints.drafts.create(payload);
@@ -770,6 +778,7 @@ export function Capture(): JSX.Element {
       setCategory("");
       setAsset("");
       setNeededValidations("");
+      setConfidentiality("intern");
       setReviewerIds([]);
       setPendingSources([]);
       setShowAdvanced(false);
@@ -802,6 +811,8 @@ export function Capture(): JSX.Element {
     setAsset(p.asset ?? "");
     setNeededValidations(p.neededValidations ? String(p.neededValidations) : "");
     setBodyHtml(p.bodyHtml ?? "");
+    // SCRUM-415: Vertraulichkeitsstufe aus dem Entwurf wiederherstellen.
+    setConfidentiality(p.confidentiality ?? "intern");
     setDraftId(d.id);
     // SCRUM-375: geladener Entwurf bringt erweiterte Felder mit → aufklappen, nichts verstecken.
     setShowAdvanced(true);
@@ -1592,7 +1603,10 @@ export function Capture(): JSX.Element {
       {/* Erzähl-Einstieg nur im Schritt „Erzählen" (bzw. immer im Expertenmodus). */}
       {expertView || wizStep === "tell" ? (
         <div className="mb-4">
-          <div className="mb-1.5 flex items-center gap-1 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+          <div
+            data-help="cap:modes"
+            className="mb-1.5 flex items-center gap-1 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2"
+          >
             {t(CAPTURE_ENTRY_TEXT.narrateKicker)}
             <HelpTip {...chelp("modes")} />
           </div>
@@ -1674,7 +1688,7 @@ export function Capture(): JSX.Element {
 
             {/* Modus-spezifische Eingabe */}
             {mode === "freitext" || mode === "diktat" ? (
-              <div>
+              <div data-help="cap:tellRaw">
                 <div className="mb-1.5 flex items-center gap-1">
                   <SectionLabel>{t("capture.raw")}</SectionLabel>
                   <HelpTip {...chelp("tellRaw")} />
@@ -1771,7 +1785,7 @@ export function Capture(): JSX.Element {
                   {t("capture.ivDone")}
                 </p>
               ) : (
-                <div className="space-y-3">
+                <div data-help="cap:interview" className="space-y-3">
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-[11px] uppercase tracking-wider text-muted-2">
                       {t("capture.ivTurn", { n: ivAnswers.length + 1 })}
@@ -2110,7 +2124,10 @@ export function Capture(): JSX.Element {
                   </Field>
                   <Field
                     label={
-                      <span className="inline-flex items-center gap-1">
+                      <span
+                        data-help="cap:knowledgeType"
+                        className="inline-flex items-center gap-1"
+                      >
                         {t("capture.fType")}
                         <HelpTip {...chelp("knowledgeType")} />
                       </span>
@@ -2172,7 +2189,30 @@ export function Capture(): JSX.Element {
                   >
                     <TextInput value={asset} onChange={(e) => setAsset(e.target.value)} />
                   </Field>
-                  <div>
+                  {/* SCRUM-415: Vertraulichkeitsstufe ab Erfassen (Standard „intern"). Vertrauliche
+                      KOs gehen nie in externe Kontexte (Output/Export). */}
+                  <Field
+                    label={
+                      <span className="inline-flex items-center gap-1">
+                        {t("conf.field")}
+                        <HelpTip title={t("conf.field")} body={t("conf.help")} />
+                      </span>
+                    }
+                  >
+                    <select
+                      value={confidentiality}
+                      onChange={(e) => setConfidentiality(e.target.value as Confidentiality)}
+                      aria-label={t("conf.field")}
+                      className="h-9 w-full rounded-input border border-hairline bg-surface px-2 text-[13px] text-text"
+                    >
+                      {CONFIDENTIALITY_LEVELS.map((lvl) => (
+                        <option key={lvl} value={lvl}>
+                          {t(`conf.level.${lvl}`)}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <div data-help="cap:tagsField">
                     <TagEditor tags={tags} onChange={setTags} />
                     <div className="mt-1">
                       <HelpTip {...chelp("tagsField")} />

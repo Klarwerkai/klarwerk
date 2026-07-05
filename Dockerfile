@@ -1,33 +1,33 @@
-# KLARWERK — Single-Origin: ein Container liefert SPA + API unter EINER Domain aus.
+# KLARWERK — Produktions-Image (Hetzner/Coolify, SCRUM: VIP-/Beta-Zugang extern).
+# EIN Container: Fastify liefert API + gebaute Oberfläche auf einem Port (Standard 3001).
+# Datenhaltung: Postgres über DATABASE_URL (Migration läuft beim Start; Werksreset ist im
+# Postgres-Betrieb bewusst nicht verfügbar). Ohne DATABASE_URL fiele der Container auf
+# In-Memory zurück — für den Server-Betrieb DATABASE_URL daher IMMER setzen.
+# Typ-/Lint-/Test-Gates laufen im Runner bzw. in CI — das Image baut nur (vite build direkt,
+# nicht "npm run build", damit der Image-Build nicht am tsc-Gate doppelt hängt).
 
-# Stage 1: Frontend (SPA) bauen.
-FROM node:22-alpine AS webbuild
-WORKDIR /web
-COPY apps/web/package.json apps/web/package-lock.json* ./
-RUN npm ci || npm install
-COPY apps/web/ ./
-RUN npm run build
+# ---- Stufe 1: Oberfläche bauen -------------------------------------------------------------
+FROM node:20-bookworm-slim AS webbuild
+WORKDIR /build
+COPY apps/web/package.json apps/web/package-lock.json apps/web/
+RUN cd apps/web && npm ci
+COPY apps/web apps/web
+RUN cd apps/web && npx vite build
 
-# Stage 2: Backend + Auslieferung der gebauten SPA.
-FROM node:22-alpine
-WORKDIR /app
-
-# Manifeste zuerst → besseres Layer-Caching.
-COPY package.json package-lock.json* ./
-# Nur Laufzeit-Abhängigkeiten (fastify, @fastify/static, @fastify/helmet, pg, jose, nodemailer, tsx).
-RUN npm ci --omit=dev || npm install --omit=dev
-
-COPY . .
-# Gebautes Frontend aus Stage 1 übernehmen (Single-Origin: Backend liefert die SPA aus).
-COPY --from=webbuild /web/dist ./apps/web/dist
-
+# ---- Stufe 2: Laufzeit ---------------------------------------------------------------------
+FROM node:20-bookworm-slim AS runtime
 ENV NODE_ENV=production
-ENV PORT=3000
-EXPOSE 3000
-
-# Healthcheck über /health (Coolify/Traefik nutzen das für Rollouts).
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD wget -qO- http://127.0.0.1:3000/health >/dev/null 2>&1 || exit 1
-
-# tsx führt den TypeScript-Einstieg direkt aus (kein separater Backend-Build nötig).
+ENV PORT=3001
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+# Server-Code + gebaute Oberfläche an exakt dem Pfad, den server.ts erwartet
+# (services/app/src → ../../../apps/web/dist).
+COPY services services
+COPY --from=webbuild /build/apps/web/dist apps/web/dist
+EXPOSE 3001
+USER node
+# Ehrlicher Selbsttest: /health muss {"status":"ok"} liefern, sonst gilt der Container als krank.
+HEALTHCHECK --interval=30s --timeout=4s --start-period=15s \
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3001)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 CMD ["npx", "tsx", "services/app/src/server.ts"]

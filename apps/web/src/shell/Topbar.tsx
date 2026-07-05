@@ -4,7 +4,8 @@ import { type FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
-import { useNotifications, useReasonerStatus } from "../api/hooks";
+import { useNotifications, useReasonerConfig, useReasonerStatus } from "../api/hooks";
+import { kiHeaderStatus } from "../lib/kiHeaderStatus";
 import { notificationTarget } from "../lib/notificationTarget";
 import { APP_VERSION } from "../version";
 
@@ -201,6 +202,36 @@ function ReasonerStatusPill(): JSX.Element {
   );
 }
 
+// Pedi 05.07.: „In welcher KI bin ich — und was ist der DSGVO-Status?" — ehrliche Header-Pille
+// mit Herkunftsland. DSGVO-Bestätigung IMMER „nein", außer interne KI aus Europa (dann grün).
+// Herkunft interimsweise aus der Anbieter-Kennung; später übermittelt sie Nerds zentrale
+// KI-Zugangs-Steuerung. Ohne geladene Konfiguration bewusst keine Anzeige (kein Fake-Status).
+function KiModePill(): JSX.Element | null {
+  const { t } = useTranslation();
+  const config = useReasonerConfig();
+  const status = kiHeaderStatus(config.data);
+  if (!status) {
+    return null;
+  }
+  const ok = status.dsgvoConfirm;
+  return (
+    <div
+      className={`flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-[11px] font-semibold ${
+        ok ? "bg-trust-pos-bg text-trust-pos-text" : "bg-trust-warn-bg text-trust-warn-text"
+      }`}
+      title={`${t(status.hintKey)}${status.detail ? ` — ${status.detail}` : ""}`}
+    >
+      <span
+        className={`h-1.5 w-1.5 rounded-full ${ok ? "bg-trust-pos-fill" : "bg-trust-warn-fill"}`}
+      />
+      {t(status.labelKey)}
+      <span className="font-normal opacity-80">
+        · {t(status.countryKey)} · {t(status.dsgvoKey)}
+      </span>
+    </div>
+  );
+}
+
 export function Topbar(): JSX.Element {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -261,6 +292,7 @@ export function Topbar(): JSX.Element {
         </button>
         <LangPill />
         <NotificationBell />
+        <KiModePill />
         <ReasonerStatusPill />
         {/* Beta-Phase: sichtbare Versionsnummer oben rechts (Pedi, 02.07.2026). */}
         <span

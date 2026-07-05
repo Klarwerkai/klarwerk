@@ -48,6 +48,14 @@ function answerSystem(locale: ReasonerLocale): string {
     : "Beantworte die Frage NUR auf Basis der nummerierten Quellen. Erfinde keine Fakten, Zahlen, Ursachen oder Maßnahmen und ergänze kein allgemeines Weltwissen. Dehne keine Quelle über ihre tatsächliche Aussage hinaus. Reichen die Quellen nicht, sage ehrlich, dass die Wissensbasis das nicht abdeckt — rate nicht. Du darfst auf die genutzten Quellen verweisen, aber erfinde keine Zitate.";
 }
 
+// Klara Stufe 2: generierende Hilfe-Antwort — Wissensdatenbank vorrangig, Folgern erlaubt,
+// aber nie Funktionen erfinden; erkennbare Luecken ehrlich benennen (Kennzeichnung macht das FE).
+function helpAnswerSystem(locale: ReasonerLocale): string {
+  return locale === "en"
+    ? "You are Klara, the help assistant of the KLARWERK application. Answer the user question about using and understanding the application. Rely primarily on the numbered help entries, which are your knowledge base; you may reason, combine and infer from them. If the knowledge base clearly does not cover the question, say honestly that you are not sure — never invent features the application does not have. Keep it short and plain, no bullet lists."
+    : "Du bist Klara, die Hilfe-Assistentin der Anwendung KLARWERK. Beantworte die Frage zur Bedienung und zu den Konzepten der Anwendung. Stütze dich vorrangig auf die nummerierten Hilfe-Einträge — deine Wissensdatenbank; du darfst daraus folgern und kombinieren. Deckt die Wissensdatenbank die Frage erkennbar nicht, sage ehrlich, dass du es nicht sicher weißt — erfinde niemals Funktionen, die es nicht gibt. Antworte kurz, in Du-Anrede, ohne Aufzählungslisten.";
+}
+
 function assistSystem(locale: ReasonerLocale): string {
   return locale === "en"
     ? "Improve wording without changing content. Do NOT alter or invent any content, numbers or facts. Return ONLY the revised text, without preamble or quotation marks."
@@ -484,6 +492,45 @@ export class ModelProvider implements ReasonerProvider {
       measures: asStringArray(parsed.measures),
       tags: asStringArray(parsed.tags),
       confidence: clamp01(Number(parsed.confidence ?? 0)),
+      demo: false,
+    };
+  }
+
+  // Klara Stufe 2: generierende Hilfe-Antwort. Die komplette (bereits gerankte) Wissensbasis
+  // geht nummeriert ins Modell; Folgern/Kombinieren ist ausdruecklich erlaubt (helpAnswerSystem).
+  // Ohne Wissensbasis keine Rateantwort — das Modell wird gar nicht erst befragt.
+  async helpAnswer(
+    question: string,
+    context: readonly KnowledgeRef[],
+    locale: ReasonerLocale = "de",
+  ): Promise<AnswerResult> {
+    if (context.length === 0) {
+      return {
+        answered: false,
+        answer: null,
+        knowledgeClass: "unbekannt",
+        trust: 0,
+        sources: [],
+        steps: [],
+        demo: false,
+      };
+    }
+    const client = this.requireClient();
+    const labels = LABELS[locale];
+    const grounding = context.map((r, i) => `[${i + 1}] ${r.title}: ${r.statement}`).join("\n");
+    const answerText = (
+      await client.complete(
+        helpAnswerSystem(locale),
+        `${labels.question}: ${question}\n\n${labels.sources}:\n${grounding}`,
+      )
+    ).trim();
+    return {
+      answered: answerText.length > 0,
+      answer: answerText.length > 0 ? answerText : null,
+      knowledgeClass: "ungeprueft",
+      trust: 0,
+      sources: context.map((r) => r.id),
+      steps: [],
       demo: false,
     };
   }

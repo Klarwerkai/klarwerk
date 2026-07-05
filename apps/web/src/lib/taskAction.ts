@@ -8,6 +8,9 @@ export type TaskTone = "crit" | "warn" | "neutral";
 export interface TaskActionView {
   actionLabelKey: string; // i18n-Key für die sichtbare nächste Handlung
   tone: TaskTone; // Tönung passend zur Dringlichkeit der Quelle
+  // Pedi 05.07.: kurze Klartext-Erklärung „was ist zu tun" je Aufgabe (die Karte war nicht
+  // selbsterklärend). Ein Satz, direkt auf der Karte sichtbar.
+  explainKey: string;
 }
 
 // Quelle (typeKey) → nächste Handlung. Bewusst an die bestehenden Ziel-Flows angelehnt:
@@ -17,15 +20,39 @@ export interface TaskActionView {
 //  - Revalidierung → Gültigkeit prüfen        (/lebenszyklus)
 //  - Wissenslücke  → Lücke priorisieren       (/risiko)
 const TASK_ACTION: Record<string, TaskActionView> = {
-  "task.returned": { actionLabelKey: "task.action.returned", tone: "crit" },
-  "task.conflict": { actionLabelKey: "task.action.conflict", tone: "crit" },
-  "task.validation": { actionLabelKey: "task.action.validation", tone: "warn" },
-  "task.revalidation": { actionLabelKey: "task.action.revalidation", tone: "warn" },
-  "task.gap": { actionLabelKey: "task.action.gap", tone: "neutral" },
+  "task.returned": {
+    actionLabelKey: "task.action.returned",
+    tone: "crit",
+    explainKey: "task.explain.returned",
+  },
+  "task.conflict": {
+    actionLabelKey: "task.action.conflict",
+    tone: "crit",
+    explainKey: "task.explain.conflict",
+  },
+  "task.validation": {
+    actionLabelKey: "task.action.validation",
+    tone: "warn",
+    explainKey: "task.explain.validation",
+  },
+  "task.revalidation": {
+    actionLabelKey: "task.action.revalidation",
+    tone: "warn",
+    explainKey: "task.explain.revalidation",
+  },
+  "task.gap": {
+    actionLabelKey: "task.action.gap",
+    tone: "neutral",
+    explainKey: "task.explain.gap",
+  },
 };
 
 // Defensiver Fallback für unbekannte Typen: neutral „öffnen" (keine stille Falschbehauptung).
-const FALLBACK: TaskActionView = { actionLabelKey: "task.action.open", tone: "neutral" };
+const FALLBACK: TaskActionView = {
+  actionLabelKey: "task.action.open",
+  tone: "neutral",
+  explainKey: "task.explain.open",
+};
 
 export function taskAction(typeKey: string): TaskActionView {
   return TASK_ACTION[typeKey] ?? FALLBACK;

@@ -202,6 +202,11 @@ export function MyTasks(): JSX.Element {
                             <span className="block truncate text-[13.5px] text-text">
                               {it.label}
                             </span>
+                            {/* Pedi 05.07.: Klartext „was ist zu tun" — die Karte war nicht
+                                selbsterklärend. Ein Satz, direkt unter dem Titel. */}
+                            <span className="mt-0.5 block text-[11.5px] leading-snug text-muted-2">
+                              {t(action.explainKey)}
+                            </span>
                             {it.author ? <KoAuthorLine {...it.author} /> : null}
                             {it.review ? (
                               <span

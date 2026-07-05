@@ -7,6 +7,11 @@ import type { ReasonerConfigStatus } from "../api/types";
 
 export type AiTaskMode = "cloud" | "local" | "rule" | "unknown";
 
+// Pedi 05.07.: Datenschutz-Einordnung je Aufgabe. Ehrlich: „inhouse" (lokal/regelbasiert → keine
+// Übermittlung an Dritte) darf grün als datenschutzkonform gezeigt werden; „external" (Cloud) ist
+// externe Verarbeitung (DSGVO hängt am Auftragsverarbeitungsvertrag); ohne Konfiguration keine Aussage.
+export type AiDsgvoStance = "inhouse" | "external" | "unknown";
+
 // Flache Copy-Schlüssel — EINE Quelle für Komponente + Test.
 export const AI_TASK_INFO_TEXT = {
   title: "reasoner.taskInfo.title",
@@ -19,12 +24,18 @@ export const AI_TASK_INFO_TEXT = {
   bodyRule: "reasoner.taskInfo.bodyRule",
   bodyUnknown: "reasoner.taskInfo.bodyUnknown",
   modelLabel: "reasoner.taskInfo.modelLabel",
+  dsgvoInhouse: "reasoner.taskInfo.dsgvoInhouse",
+  dsgvoInhouseBody: "reasoner.taskInfo.dsgvoInhouseBody",
+  dsgvoExternal: "reasoner.taskInfo.dsgvoExternal",
+  dsgvoExternalBody: "reasoner.taskInfo.dsgvoExternalBody",
 } as const;
 
 export interface AiTaskInfo {
   mode: AiTaskMode;
   modeLabelKey: string;
   bodyKey: string;
+  // Pedi 05.07.: Datenschutz-Einordnung — steuert den grün/amber-Hinweis in AiModelInfo.
+  dsgvo: AiDsgvoStance;
   // Nur gesetzt, wenn ein KI-Modell arbeitet (Cloud/Lokal) — bei Regelbasiert bewusst leer.
   modelName?: string;
 }
@@ -37,6 +48,7 @@ export function aiTaskInfo(config: ReasonerConfigStatus | undefined, task: strin
       mode: "unknown",
       modeLabelKey: AI_TASK_INFO_TEXT.unknown,
       bodyKey: AI_TASK_INFO_TEXT.bodyUnknown,
+      dsgvo: "unknown",
     };
   }
   const provider = config.effectiveProvider[task];
@@ -48,6 +60,7 @@ export function aiTaskInfo(config: ReasonerConfigStatus | undefined, task: strin
       mode: "local",
       modeLabelKey: AI_TASK_INFO_TEXT.local,
       bodyKey: AI_TASK_INFO_TEXT.bodyLocal,
+      dsgvo: "inhouse",
       ...(name ? { modelName: name } : {}),
     };
   }
@@ -56,6 +69,7 @@ export function aiTaskInfo(config: ReasonerConfigStatus | undefined, task: strin
       mode: "cloud",
       modeLabelKey: AI_TASK_INFO_TEXT.cloud,
       bodyKey: AI_TASK_INFO_TEXT.bodyCloud,
+      dsgvo: "external",
       ...(config.model ? { modelName: config.model } : {}),
     };
   }
@@ -64,11 +78,13 @@ export function aiTaskInfo(config: ReasonerConfigStatus | undefined, task: strin
       mode: "rule",
       modeLabelKey: AI_TASK_INFO_TEXT.rule,
       bodyKey: AI_TASK_INFO_TEXT.bodyRule,
+      dsgvo: "inhouse",
     };
   }
   return {
     mode: "unknown",
     modeLabelKey: AI_TASK_INFO_TEXT.unknown,
     bodyKey: AI_TASK_INFO_TEXT.bodyUnknown,
+    dsgvo: "unknown",
   };
 }

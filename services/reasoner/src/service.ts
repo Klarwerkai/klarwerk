@@ -404,6 +404,20 @@ export class Reasoner {
     });
   }
 
+  // Klara Stufe 2 (Pedi 05.07.): generierende Hilfe-Antwort aus der Hilfe-Wissensdatenbank.
+  // Laeuft ueber die answer-Task-Zuordnung (Admin steuert intern/extern/deterministisch mit).
+  // Kann der aktive Provider nicht generieren (deterministischer Fallback), greift ehrlich
+  // dessen strikte answer()-Zitierlogik — nie stilles Raten.
+  async helpAnswer(
+    question: string,
+    context: readonly KnowledgeRef[],
+    locale: ReasonerLocale = "de",
+  ): Promise<AnswerResult> {
+    return this.runTask("answer", locale, (p) =>
+      p.helpAnswer ? p.helpAnswer(question, context, locale) : p.answer(question, context, locale),
+    );
+  }
+
   // SCRUM-426: Public-KI-Anreicherung — externer Modell-Beitrag (Weltwissen). Nur echte
   // Modelle (Cloud → lokal) können das; ohne Modell ehrlich leer (demo=true, kein Erfinden).
   // Das Ergebnis ist IMMER extern/ungeprüft; die Freigabe (Stufe „offen") prüft die Route.

@@ -60,7 +60,13 @@ export interface GenerateOutputInput {
   audienceRole?: string | null;
 }
 
-export type OutputErrorCode = "NO_SOURCES" | "NOT_VALIDATED" | "UNKNOWN_KO" | "UNKNOWN_KIND";
+export type OutputErrorCode =
+  | "NO_SOURCES"
+  | "NOT_VALIDATED"
+  | "UNKNOWN_KO"
+  | "UNKNOWN_KIND"
+  // SCRUM-415: vertrauliche KOs dürfen nicht in einen (teilbaren) Output — externe Kontexte tabu.
+  | "CONFIDENTIAL";
 
 export class OutputError extends Error {
   readonly code: OutputErrorCode;

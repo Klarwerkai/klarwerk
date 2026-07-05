@@ -42,11 +42,18 @@ export {
   UPLOAD_LIMITS_SCHEMA,
 } from "./src/upload-limits";
 export { displayStatus, type DisplayStatus } from "./src/display-status";
+// SCRUM-415: Vertraulichkeitsstufen (Helfer + Konstante) — auch von anderen Modulen (Output) nutzbar.
+export {
+  CONFIDENTIALITY_LEVELS,
+  isConfidential,
+  normalizeConfidentiality,
+} from "./src/confidentiality";
 export type {
   EvidenceKind,
   EvidenceRecord,
   KnowledgeObject,
   KnowledgeType,
+  Confidentiality,
   KoStatus,
   HistoryEntry,
   KoComment,

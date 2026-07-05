@@ -270,6 +270,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/notifications/seen": { protection: "auth" },
   // Audit-P4 (SCRUM-398): Live-Wall — read-only Aggregation aus KO-Bestand + Wirkungs-Audit.
   "GET /api/livewall": { protection: "ko.read" },
+  // Klara Stufe 2: KI-gestuetzte Hilfe-Antwort — jeder angemeldete Leser (viewer inkl.).
+  "POST /api/help/explain": { protection: "ko.read" },
   "GET /api/audit": { protection: "ko.validate" },
   // SCRUM-439: aktive Integritätsprüfung der Audit-Kette — Governance-Einsicht wie /api/audit.
   "GET /api/audit/verify": { protection: "ko.validate" },

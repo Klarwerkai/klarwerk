@@ -389,7 +389,11 @@ export function Validation(): JSX.Element {
               ) : null}
               {/* SCRUM-311: Herkunftsfilter (Demo/Eigenes) — nur Ansicht/Auffinden, KEIN Review-Status;
                   Labels konsistent mit der Library. Ersetzt nicht Status/Trust/Review-Entscheidung. */}
-              <div className="mb-3 flex flex-wrap items-center gap-1.5">
+              {/* Klara v1: data-help-Anker — Fokus in diesem Bereich erklärt ihn im Klara-Panel. */}
+              <div
+                data-help="rev:originFilter"
+                className="mb-3 flex flex-wrap items-center gap-1.5"
+              >
                 <span className="mr-0.5 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
                   {t("lib.originLabel")}:
                 </span>
@@ -418,7 +422,7 @@ export function Validation(): JSX.Element {
               </div>
               {/* SCRUM-327: Review-Fokus (Alle/Neu/Überarbeitet) — nur Ansicht; Counts über die fachlich
                   + herkunfts-gefilterte Menge. Ersetzt keinen Filter, ändert keinen Review-Status. */}
-              <div className="mb-3 flex flex-wrap items-center gap-1.5">
+              <div data-help="rev:reviewFocus" className="mb-3 flex flex-wrap items-center gap-1.5">
                 <span className="mr-0.5 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
                   {t("val.reviewFocus.label")}:
                 </span>
@@ -470,7 +474,7 @@ export function Validation(): JSX.Element {
                   </button>
                 </div>
               ) : null}
-              <div className="mb-4 flex flex-wrap items-center gap-2">
+              <div data-help="rev:filters" className="mb-4 flex flex-wrap items-center gap-2">
                 <input
                   value={filter.search}
                   onChange={(e) => setFilter((f) => ({ ...f, search: e.target.value }))}
@@ -513,7 +517,10 @@ export function Validation(): JSX.Element {
                     </option>
                   ))}
                 </select>
-                <label className="flex h-10 items-center gap-1.5 rounded-input border border-hairline bg-surface px-3 text-sm text-muted">
+                <label
+                  data-help="rev:mineOnly"
+                  className="flex h-10 items-center gap-1.5 rounded-input border border-hairline bg-surface px-3 text-sm text-muted"
+                >
                   <input
                     type="checkbox"
                     checked={filter.mineOnly}
@@ -620,17 +627,23 @@ export function Validation(): JSX.Element {
                             >
                               {t("val.trust")} {sig.trust}
                             </span>
-                            {/* Pedi 05.07.: Validierungs-Fortschritt je Artikel — wie viele grüne
-                                Bewertungen erfasst sind und wie viele zum Abschluss nötig sind. */}
-                            <span
-                              title={t("val.votesHint", { need: sig.needed })}
-                              className={`rounded-pill px-1.5 py-0.5 font-mono text-[10px] font-semibold ${
-                                sig.greenVotes >= sig.needed
-                                  ? "bg-trust-pos-bg text-trust-pos-text"
-                                  : "bg-page text-muted"
-                              }`}
-                            >
-                              {t("val.votes", { have: sig.greenVotes, need: sig.needed })}
+                            {/* Pedi 05.07.: Validierungs-Fortschritt je Artikel — prägnant + ?-Hilfe:
+                                wie viele grüne Freigaben erfasst sind und wie viele noch fehlen. */}
+                            <span className="inline-flex items-center gap-1">
+                              <span
+                                title={t("val.votesHint", { need: sig.needed })}
+                                className={`rounded-pill px-1.5 py-0.5 font-mono text-[10px] font-semibold ${
+                                  sig.greenVotes >= sig.needed
+                                    ? "bg-trust-pos-bg text-trust-pos-text"
+                                    : "bg-trust-warn-bg text-trust-warn-text"
+                                }`}
+                              >
+                                {t("val.votes", { have: sig.greenVotes, need: sig.needed })}
+                              </span>
+                              <HelpTip
+                                title={t("val.votesTitle")}
+                                body={t("val.votesHint", { need: sig.needed })}
+                              />
                             </span>
                             {sig.redVotes > 0 ? (
                               <span className="rounded-pill bg-trust-crit-bg px-1.5 py-0.5 font-mono text-[10px] font-semibold text-trust-crit-text">

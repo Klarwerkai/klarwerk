@@ -45,6 +45,33 @@ export function AiModelInfo({ task }: { task: string }): JSX.Element {
               </div>
             ) : null}
             <p className="mt-1.5 text-[12px] leading-relaxed text-muted">{t(info.bodyKey)}</p>
+            {/* Pedi 05.07.: Datenschutz-Hinweis — grün, wenn die KI im Haus läuft (lokal/regelbasiert,
+                keine Übermittlung an Dritte); amber bei externer Cloud-Verarbeitung. Ohne Konfiguration
+                bewusst keine Aussage (kein Fake-Grün). */}
+            {info.dsgvo !== "unknown" ? (
+              <div className="mt-2">
+                <span
+                  className={`inline-flex items-center gap-1 rounded-pill px-1.5 py-0.5 font-mono text-[10px] font-semibold ${
+                    info.dsgvo === "inhouse"
+                      ? "bg-trust-pos-bg text-trust-pos-text"
+                      : "bg-trust-warn-bg text-trust-warn-text"
+                  }`}
+                >
+                  {t(
+                    info.dsgvo === "inhouse"
+                      ? AI_TASK_INFO_TEXT.dsgvoInhouse
+                      : AI_TASK_INFO_TEXT.dsgvoExternal,
+                  )}
+                </span>
+                <p className="mt-1 text-[11px] leading-relaxed text-muted-2">
+                  {t(
+                    info.dsgvo === "inhouse"
+                      ? AI_TASK_INFO_TEXT.dsgvoInhouseBody
+                      : AI_TASK_INFO_TEXT.dsgvoExternalBody,
+                  )}
+                </p>
+              </div>
+            ) : null}
           </div>
         </>
       ) : null}
