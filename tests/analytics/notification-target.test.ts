@@ -10,6 +10,10 @@ describe("SCRUM-220: notificationTarget", () => {
     expect(notificationTarget({ kind: "gap" })).toBe("/risiko");
   });
 
+  it("Pedi 04.07.: Duplikat-Fund führt aufs Duplikate-Board", () => {
+    expect(notificationTarget({ kind: "duplicate" })).toBe("/duplikate");
+  });
+
   it("SCRUM-364: Review-Zuweisung fuehrt in die fokussierte Mir-zugewiesen-Linse", () => {
     expect(notificationTarget({ kind: "assignment" })).toBe("/validierung?mine=1");
   });

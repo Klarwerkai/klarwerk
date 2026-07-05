@@ -17,6 +17,8 @@ export const REVIEW_HELP_IDS = [
   "reject",
   "feedbackForm",
   "assign",
+  // Pedi 05.07.: Admin-Override „als wahr kennzeichnen" (Board).
+  "markTrue",
   // KO-Detail: Entscheidung & Lebenszeichen
   "stillValid",
   "reportConflict",

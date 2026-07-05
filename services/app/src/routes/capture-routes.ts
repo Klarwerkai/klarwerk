@@ -1,7 +1,11 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { CaptureService, DraftPayload } from "../../../capture";
+import type { ConflictService, OverlapService, OverlapSettingsRepo } from "../../../conflicts";
 import type { KoService } from "../../../knowledge-object";
+import type { Reasoner } from "../../../reasoner";
 import type { ValidationService } from "../../../validation";
+import { detectConflictsForKo } from "../conflict-detection";
+import { detectDuplicatesForKo } from "../duplicate-detection";
 import { type Guards, sendError } from "../http";
 import type { AssignmentNotifier } from "../notify";
 
@@ -11,11 +15,27 @@ export interface CaptureRoutesDeps {
   ko: KoService;
   // SCRUM-395: Prüfer-Vorschlag beim Promote (Zuweisung + Benachrichtigung wie im Board).
   validation: ValidationService;
+  // Berater-Konzept 04.07. (Stufe 3): automatische Widerspruchs-Erkennung auch beim Promote (Entwurf → KO).
+  conflicts: ConflictService;
+  // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-Erkennung auch beim Promote.
+  overlaps: OverlapService;
+  // Pedi 04.07.: einstellbare Anzeige-Schwelle der Duplikat-Erkennung.
+  overlapSettings: OverlapSettingsRepo;
+  reasoner: Reasoner;
   notifyAssignment?: AssignmentNotifier;
 }
 
 export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyPluginAsync {
-  const { capture, ko, validation, notifyAssignment } = deps;
+  const {
+    capture,
+    ko,
+    validation,
+    conflicts,
+    overlaps,
+    overlapSettings,
+    reasoner,
+    notifyAssignment,
+  } = deps;
 
   return async (app) => {
     app.get("/api/drafts", async (request, reply) => {
@@ -102,6 +122,15 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             await validation.assign(created.id, reviewers, user.id);
             await notifyAssignment?.(created.id, reviewers);
           }
+          // Berater-Konzept 04.07. (Stufe 3): Widerspruchs-Erkennung auch für den promoteten Entwurf.
+          await detectConflictsForKo(created.id, { ko, conflicts, reasoner });
+          // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-Erkennung auch beim Promote.
+          await detectDuplicatesForKo(created.id, {
+            ko,
+            overlaps,
+            reasoner,
+            settings: overlapSettings,
+          });
           reply.code(201).send(created);
         } catch (error) {
           sendError(reply, error);

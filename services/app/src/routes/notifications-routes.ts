@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { AskService } from "../../../ask";
 import type { AuditService } from "../../../audit";
-import type { ConflictService } from "../../../conflicts";
+import type { ConflictService, OverlapService } from "../../../conflicts";
 import type { NotificationSeenRepo } from "../../../notifications";
 import type { ValidationService } from "../../../validation";
 import type { Guards } from "../http";
@@ -11,6 +11,8 @@ import { type ImpactNotice, type Notification, buildNotifications } from "../not
 // angemeldeten Nutzer lesbar; keine eigene Persistenz nötig.
 export interface NotificationRoutesDeps {
   conflicts: ConflictService;
+  // Pedi 04.07.: offene Überschneidungen (Duplikate) in der Glocke, analog zu Konflikten.
+  overlaps: OverlapService;
   ask: AskService;
   // SCRUM-363 / AG-15: Quelle der persönlichen offenen Review-Zuweisungen.
   validation: ValidationService;
@@ -46,8 +48,9 @@ async function loadFeed(
 ): Promise<Array<Notification & { seen: boolean }>> {
   // SCRUM-363: Zuweisungen werden PRO NUTZER geladen (user.id) — der Feed zeigt nur die
   // Review-Arbeit der angemeldeten Person, keine fremden Zuweisungen.
-  const [conflicts, gaps, assignments, helpful, seenIds] = await Promise.all([
+  const [conflicts, overlaps, gaps, assignments, helpful, seenIds] = await Promise.all([
     deps.conflicts.unresolved(),
+    deps.overlaps.unresolved(),
     deps.ask.listGaps(),
     deps.validation.openAssignmentsFor(userId),
     deps.audit.list({ action: "answer.helpful" }),
@@ -55,7 +58,7 @@ async function loadFeed(
   ]);
   const impacts = deriveImpacts(helpful, userId);
   const seen = new Set(seenIds);
-  return buildNotifications({ conflicts, gaps, assignments, impacts }).map((n) => ({
+  return buildNotifications({ conflicts, overlaps, gaps, assignments, impacts }).map((n) => ({
     ...n,
     seen: seen.has(n.id),
   }));

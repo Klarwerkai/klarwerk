@@ -129,11 +129,13 @@ function NotificationBell(): JSX.Element {
                           ? "bg-hairline"
                           : n.kind === "conflict"
                             ? "bg-trust-crit-fill"
-                            : n.kind === "assignment"
+                            : n.kind === "duplicate"
                               ? "bg-ai"
-                              : n.kind === "impact"
-                                ? "bg-trust-pos-fill"
-                                : "bg-trust-info-text"
+                              : n.kind === "assignment"
+                                ? "bg-ai"
+                                : n.kind === "impact"
+                                  ? "bg-trust-pos-fill"
+                                  : "bg-trust-info-text"
                       }`}
                     />
                     <button
@@ -152,6 +154,12 @@ function NotificationBell(): JSX.Element {
                       {n.kind === "impact" ? (
                         <span className="font-semibold text-trust-pos-text">
                           {t("topbar.notifImpact")}:{" "}
+                        </span>
+                      ) : null}
+                      {/* Pedi 04.07.: Duplikat-Fund klar als solcher gekennzeichnet. */}
+                      {n.kind === "duplicate" ? (
+                        <span className="font-semibold text-ai">
+                          {t("topbar.notifDuplicate")}:{" "}
                         </span>
                       ) : null}
                       {n.title}

@@ -1,6 +1,8 @@
 import type {
   AnswerResult,
   AssistResult,
+  ConflictJudgeResult,
+  DuplicateJudgeResult,
   EnrichResult,
   ExtractResult,
   InterviewResult,
@@ -39,6 +41,23 @@ export interface ReasonerProvider {
   // NUR das echte Modell implementiert das; der deterministische Fallback bewusst NICHT
   // (er kann kein externes Wissen beisteuern). Ergebnis ist immer extern/ungeprüft.
   enrichPublic?(query: string, locale?: ReasonerLocale): Promise<EnrichResult>;
+  // Berater-Konzept 04.07. (Stufe 2, kon-v1): „Konfliktprüfung" — urteilt rein inhaltlich, ob zwei
+  // Kerntexte einander widersprechen/doppeln/überholen. NUR das echte Modell kann das; der
+  // deterministische Fallback implementiert es bewusst NICHT (kein regelbasierter Pseudo-Detektor,
+  // Ehrlichkeit vor Optik). Ungültige/leere Antworten → null (kein Konflikt aus kaputten Antworten).
+  judgeConflict?(
+    coreA: string,
+    coreB: string,
+    locale?: ReasonerLocale,
+  ): Promise<ConflictJudgeResult | null>;
+  // Berater-Konzept Duplikate 04.07. (Stufe D2, dup-v1): „Duplikatprüfung" — beurteilt die
+  // Überschneidung zweier Kerntexte (Beziehung/Grad/gemeinsame Aussagen/Empfehlung). NUR das echte
+  // Modell; der deterministische Fallback bewusst NICHT. Ungültige Antworten → null.
+  judgeDuplicate?(
+    coreA: string,
+    coreB: string,
+    locale?: ReasonerLocale,
+  ): Promise<DuplicateJudgeResult | null>;
   // Key-Test (Pedi 02.07.): kleinstmöglicher Echtaufruf — beweist Schlüssel + Modellzugang.
   // Optional: der deterministische Fallback hat bewusst keinen (nichts zu testen).
   probe?(): Promise<string>;

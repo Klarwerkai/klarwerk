@@ -138,6 +138,33 @@ describe("SCRUM-237: Validierungs-Workflow (HTTP end-to-end)", () => {
     expect(ko.trust).toBe(0);
   });
 
+  it("Pedi 05.07.: Admin kennzeichnet als wahr → sofort validiert; Controller darf das nicht", async () => {
+    const { app, admin, carla } = await setup();
+    const id = await createKo(app, admin.headers);
+
+    // Controller (ko.validate, aber NICHT users.manage) darf den Admin-Override nicht auslösen.
+    const carlaTry = await app.inject({
+      method: "PUT",
+      url: `/api/kos/${id}`,
+      headers: carla.headers,
+      payload: { action: "admin-validate" },
+    });
+    expect(carlaTry.statusCode).toBeGreaterThanOrEqual(400);
+    expect((await getKo(app, admin.headers, id)).json().status).toBe("offen");
+
+    // Admin: „als wahr kennzeichnen" → sofort validiert, ganz ohne Peer-Bewertungen.
+    const res = await app.inject({
+      method: "PUT",
+      url: `/api/kos/${id}`,
+      headers: admin.headers,
+      payload: { action: "admin-validate" },
+    });
+    expect(res.statusCode).toBe(200);
+    const ko = (await getKo(app, admin.headers, id)).json();
+    expect(ko.status).toBe("validiert");
+    expect(ko.trust).toBe(99);
+  });
+
   it("Guards/Fehler: anonym abgewiesen, Bewertung auf unbekanntes KO scheitert", async () => {
     const { app, admin } = await setup();
     const id = await createKo(app, admin.headers);

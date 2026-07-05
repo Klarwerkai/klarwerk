@@ -143,6 +143,7 @@ export const CAPTURE_FILE_TEXT = {
   hint: "capture.file.hint",
   upload: "capture.file.upload",
   replace: "capture.file.replace",
+  remove: "capture.file.remove",
   extracting: "capture.file.extracting",
   loaded: "capture.file.loaded",
   empty: "capture.file.empty",

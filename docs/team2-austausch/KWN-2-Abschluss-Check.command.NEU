@@ -1,0 +1,110 @@
+#!/bin/bash
+# KLARWERK NERD — KWN-2 Abschluss-Check (Abnahmepunkte) · Quelle KLLM-62 · Board KWN
+#
+# Prüft die KWN-2-Abnahme im Benutzer „Klarwerk" auf dem Mac Studio und schreibt einen Report.
+# Reine LESE-Prüfung — ändert nichts, kauft nichts, keine Secrets. Ehrliche ✓ / ! / ✗-Ausgabe.
+# Punkte, die ein Skript nicht sicher belegen kann (Wi-Fi wirklich aus; keine Dateien im
+# fremden Account), werden ausdrücklich als MANUELL-zu-bestätigen markiert.
+
+set -u
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+
+PMO="$HOME/Documents/KLARWERK_Reporting_PMO"
+BRIDGE="$HOME/Documents/dev_Klarwerk/docs/team2-austausch"
+PRUEF_BRIDGE="$BRIDGE/pruefstand"
+OLLAMA_URL="http://localhost:11434"
+REPORT="$BRIDGE/KWN-2-ABSCHLUSS-CHECK-ERGEBNIS.md"
+
+GRUEN=$'\033[32m'; ROT=$'\033[31m'; GELB=$'\033[33m'; FETT=$'\033[1m'; AUS=$'\033[0m'
+ok(){ echo "${GRUEN}✓ $*${AUS}"; }
+warn(){ echo "${GELB}! $*${AUS}"; }
+bad(){ echo "${ROT}✗ $*${AUS}"; }
+
+mkdir -p "$BRIDGE" 2>/dev/null
+: > "$REPORT"
+schreib(){ echo "$1" >> "$REPORT"; }
+
+{
+echo "${FETT}KWN-2 Abschluss-Check · $(date '+%d.%m.%Y %H:%M')${AUS}"
+schreib "# KWN-2 — Abschluss-Check (Abnahme) · $(date '+%d.%m.%Y %H:%M')"
+schreib ""
+schreib "> Automatisch geprüft im Benutzer \`$(whoami)\` auf \`$(scutil --get ComputerName 2>/dev/null || hostname)\`. Quelle KLLM-62."
+schreib ""
+schreib "| Abnahmepunkt | Ergebnis |"
+schreib "|---|---|"
+echo
+
+# 1) Läuft alles im Benutzer „Klarwerk"?
+echo "${FETT}1) Benutzerkontext${AUS}"
+U="$(whoami)"
+if [ "$U" = "klarwerk" ]; then ok "Läuft als Benutzer 'klarwerk'."; schreib "| Läuft im Benutzer „Klarwerk\" | ✓ ($U) |"
+else warn "Läuft als '$U' — Abnahme verlangt Benutzer 'klarwerk'."; schreib "| Läuft im Benutzer „Klarwerk\" | ! als '$U' |"; fi
+echo
+
+# 2) Zielhardware
+echo "${FETT}2) Zielhardware${AUS}"
+ARCH="$(uname -m)"; MEM_GB=$(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) /1024/1024/1024 ))
+if [ "$ARCH" = "arm64" ]; then ok "Apple Silicon ($ARCH), ${MEM_GB} GB."; schreib "| Zielhardware Apple Silicon | ✓ ($ARCH, ${MEM_GB} GB) |"
+else bad "Keine Apple-Silicon-Hardware ($ARCH)."; schreib "| Zielhardware Apple Silicon | ✗ ($ARCH) |"; fi
+echo
+
+# 3) LLM-API nur lokal erreichbar?
+echo "${FETT}3) LLM-API nur localhost${AUS}"
+if curl -s "$OLLAMA_URL/api/version" >/dev/null 2>&1; then
+  BIND="$(lsof -nP -iTCP:11434 -sTCP:LISTEN 2>/dev/null | awk 'NR>1{print $9}' | tr '\n' ' ')"
+  if echo "$BIND" | grep -q '127.0.0.1\|\[::1\]'; then ok "Ollama lauscht lokal ($BIND)."; schreib "| LLM-API nur lokal | ✓ ($BIND) |"; fi
+  if echo "$BIND" | grep -q '0.0.0.0\|\*:11434'; then bad "Ollama lauscht auf ALLEN Interfaces ($BIND) — OLLAMA_HOST auf 127.0.0.1 setzen!"; schreib "| LLM-API nur lokal | ✗ öffentlich ($BIND) |"; fi
+  [ -z "$BIND" ] && { warn "Port 11434 aktiv, Bindung unklar — manuell prüfen."; schreib "| LLM-API nur lokal | ! Bindung unklar |"; }
+else
+  warn "Ollama antwortet gerade nicht auf 11434 (für die Prüfung starten)."; schreib "| LLM-API nur lokal | ! Dienst nicht aktiv |"
+fi
+echo
+
+# 4) Offline-Fähigkeit: Modell lokal vorhanden (kein Download nötig)?
+echo "${FETT}4) Offline-Fähigkeit (Modell lokal vorhanden)${AUS}"
+if command -v ollama >/dev/null 2>&1; then
+  MODELLE="$(ollama list 2>/dev/null | awk 'NR>1{print $1}' | tr '\n' ' ')"
+  if echo "$MODELLE" | grep -q 'qwen3'; then ok "Qwen3-Modell(e) lokal: $MODELLE"; schreib "| Modell lokal (offlinefähig) | ✓ ($MODELLE) |"
+  else warn "Kein qwen3-Modell lokal gefunden ($MODELLE)."; schreib "| Modell lokal (offlinefähig) | ! keins gefunden |"; fi
+else bad "Ollama nicht installiert."; schreib "| Modell lokal (offlinefähig) | ✗ kein Ollama |"; fi
+echo "   ${GELB}MANUELL:${AUS} Echten Offline-Test machen — Wi-Fi/Ethernet AUS, App/Prüfstand starten, muss laufen."
+schreib "| Echter Offline-Start (Netz AUS) | ⧗ MANUELL bestätigen |"
+echo
+
+# 5) enable_thinking=false + <think>-Filter (KLLM-61)
+echo "${FETT}5) KLLM-61 (Denkmodus aus + <think>-Filter)${AUS}"
+if grep -q "enable_thinking" "$PMO/scripts/pruefstand-run.mjs" 2>/dev/null && grep -q "ohneDenkblock\|<think>" "$PMO/scripts/pruefstand-run.mjs" 2>/dev/null; then
+  ok "Runner setzt enable_thinking=false UND strippt <think> (KLLM-61-konform)."
+  schreib "| KLLM-61 im Prüfstand-Weg | ✓ enable_thinking=false + <think>-Filter |"
+else warn "Konnte KLLM-61-Mechanik im Runner nicht bestätigen — pruefstand-run.mjs prüfen."; schreib "| KLLM-61 im Prüfstand-Weg | ! nicht bestätigt |"; fi
+echo "   ${GELB}Hinweis:${AUS} Im App-Client (KLLM-61) muss dasselbe aktiv sein — mit Paul/Boss gegenprüfen."
+echo
+
+# 6) Ergebnistabelle 32B vorhanden?
+echo "${FETT}6) Ergebnistabelle Qwen3-32B${AUS}"
+R32="$(ls -t "$PRUEF_BRIDGE"/pruefstand_*macstudio*qwen3_32b*.md 2>/dev/null | head -n1)"
+if [ -n "$R32" ]; then ok "32B-Report gefunden: ${R32#$HOME/}"; schreib "| Ergebnistabelle 32B (Mac Studio) | ✓ $(basename "$R32") |"
+  echo "   → $(grep -m1 'Punkte' "$R32" 2>/dev/null | sed 's/^> *//')"
+else warn "Kein 32B-Report (…macstudio…qwen3_32b….md) in der Brücke — Prüfstand für 32B noch fahren."; schreib "| Ergebnistabelle 32B (Mac Studio) | ! fehlt |"; fi
+echo
+
+# 7) Falls nötig: 14B-Rückfallmessung
+echo "${FETT}7) 14B-Rückfall (nur falls 32B nicht reicht)${AUS}"
+R14="$(ls -t "$PRUEF_BRIDGE"/pruefstand_*macstudio*qwen3_14b*.md 2>/dev/null | head -n1)"
+if [ -n "$R14" ]; then ok "14B-Report gefunden: ${R14#$HOME/}"; schreib "| 14B-Rückfallmessung | ✓ $(basename "$R14") |"
+else echo "   (kein 14B-Report — nur nötig, wenn 32B nicht reicht)"; schreib "| 14B-Rückfallmessung | – nur bei Bedarf |"; fi
+echo
+
+# 8) Keine KLARWERK-Dateien im persönlichen Account
+echo "${FETT}8) Account-Hygiene${AUS}"
+warn "MANUELL: Aus Pedis persönlichem Account prüfen, dass dort KEINE KLARWERK-App/Modelle/"
+echo "   Prüfstands-/VIP-Daten dauerhaft liegen (dieser Check läuft im Klarwerk-User und kann"
+echo "   fremde Home-Ordner nicht einsehen)."
+schreib "| Keine KLARWERK-Daten im Privat-Account | ⧗ MANUELL bestätigen |"
+echo
+
+echo "${FETT}Report geschrieben:${AUS} ${REPORT#$HOME/}"
+schreib ""
+schreib "Legende: ✓ erfüllt · ! offen/prüfen · ✗ nicht erfüllt · ⧗ manuell bestätigen · – nur bei Bedarf"
+echo "Dieses Fenster kannst du schließen (cmd+W)."
+} 2>&1 | tee "$BRIDGE/kwn2-abschluss-check.log"

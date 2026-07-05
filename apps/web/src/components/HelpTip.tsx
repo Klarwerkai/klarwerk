@@ -29,7 +29,10 @@ export function HelpTip({ title, body }: { title: string; body: string }): JSX.E
             onClick={() => setOpen(false)}
             className="fixed inset-0 z-30 cursor-default"
           />
-          <div className="absolute left-0 top-6 z-40 w-72 rounded-card border border-hairline bg-surface p-3.5 text-left shadow-popover">
+          {/* Bug (Pedi 05.07.): Ohne feste Schriftfamilie erbt das Popover den Font des umgebenden
+              Elements (z. B. font-mono neben Status-Pills/Labels) — dadurch wirkten die „?"-Hilfstexte
+              uneinheitlich. `font-sans` erzwingt überall denselben Font (IBM Plex Sans). */}
+          <div className="absolute left-0 top-6 z-40 w-72 rounded-card border border-hairline bg-surface p-3.5 text-left font-sans shadow-popover">
             <div className="text-[13px] font-semibold text-ink">{title}</div>
             <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">{body}</p>
             <Link

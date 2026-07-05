@@ -6,7 +6,7 @@ import {
   type ValidationSettingsRepo,
   normalizeDefaultNeeded,
 } from "./settings";
-import { type ValidationOutcome, computeOutcome } from "./trust";
+import { TRUST_MAX, type ValidationOutcome, computeOutcome } from "./trust";
 import { ValidationError, type Verdict } from "./types";
 
 export type BoardFilter = Omit<KoFilter, "status">;
@@ -120,6 +120,25 @@ export class ValidationService {
     return outcome;
   }
 
+  // Pedi 05.07.: Admin-Override „als wahr kennzeichnen" — der Admin schließt die Validierung eines
+  // Objekts komplett ab (Status „validiert", hoher Trust), unabhängig von der Peer-Stimmenlage.
+  // Bewusst nur Admin (Route-Guard users.manage); der Vorgang ist als eigene Aktion im Audit
+  // nachvollziehbar. Trust wird auf den Deckel (99) gesetzt — kein Wahrheitsversprechen (PI-K2),
+  // aber die höchste Evidenzstufe, die das System vergibt.
+  async adminValidate(koId: string, actorId: string): Promise<ValidationOutcome> {
+    const ko = await this.koService.get(koId);
+    if (!ko) {
+      throw new ValidationError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+    }
+    await this.koService.setValidationState(koId, { trust: TRUST_MAX, status: "validiert" });
+    await this.audit?.record({
+      actor: actorId,
+      action: "ko.admin-validated",
+      target: koId,
+    });
+    return { up: ko.neededValidations, warn: 0, down: 0, trust: TRUST_MAX, status: "validiert" };
+  }
+
   // SCRUM-124: dedupliziert eine offene Zuweisung an den Autor + Audit-Event.
   private async returnToAuthor(
     koId: string,
@@ -161,10 +180,19 @@ export class ValidationService {
         openByKo.set(a.koId, list);
       }
     }
-    return kos.map((ko) => {
-      const assigned = openByKo.get(ko.id);
-      return assigned ? { ...ko, assignments: assigned } : ko;
-    });
+    // Pedi 05.07.: Board zeigt „X von Y grün" — dafür je KO die Peer-Stimmen (grün/gelb/rot) als
+    // read-only Anreicherung mitgeben. Reine Lese-Sicht auf das Rating-Repo, kein neues Datenmodell.
+    return Promise.all(
+      kos.map(async (ko) => {
+        const votes: { up: number; warn: number; down: number } = { up: 0, warn: 0, down: 0 };
+        for (const r of await this.ratings.listByKo(ko.id)) {
+          votes[r.verdict] += 1;
+        }
+        const assigned = openByKo.get(ko.id);
+        const base = assigned ? { ...ko, assignments: assigned } : ko;
+        return { ...base, reviewVotes: votes };
+      }),
+    );
   }
 
   // FR-VAL-05: KO an ≥1 Person zuweisen.

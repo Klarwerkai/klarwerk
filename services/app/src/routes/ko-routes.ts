@@ -1,6 +1,11 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { AuditService } from "../../../audit";
-import type { ConflictInput, ConflictService } from "../../../conflicts";
+import type {
+  ConflictInput,
+  ConflictService,
+  OverlapService,
+  OverlapSettingsRepo,
+} from "../../../conflicts";
 import {
   type CreateKoInput,
   DEFAULT_UPLOAD_LIMITS,
@@ -13,7 +18,10 @@ import {
 } from "../../../knowledge-object";
 import type { LifecycleService } from "../../../lifecycle";
 import { can } from "../../../rbac";
+import type { Reasoner } from "../../../reasoner";
 import type { ValidationService, Verdict } from "../../../validation";
+import { detectConflictsForKo } from "../conflict-detection";
+import { detectDuplicatesForKo } from "../duplicate-detection";
 import { type Guards, sendError } from "../http";
 import type { AssignmentNotifier } from "../notify";
 
@@ -24,7 +32,13 @@ export interface KoRoutesDeps {
   ko: KoService;
   validation: ValidationService;
   conflicts: ConflictService;
+  // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-Erkennung beim Einreichen.
+  overlaps: OverlapService;
+  // Pedi 04.07.: einstellbare Anzeige-Schwelle der Duplikat-Erkennung.
+  overlapSettings: OverlapSettingsRepo;
   lifecycle: LifecycleService;
+  // Berater-Konzept 04.07. (Stufe 3): Reasoner für die automatische Widerspruchs-Erkennung beim Einreichen.
+  reasoner: Reasoner;
   notifyAssignment?: AssignmentNotifier; // FR-VAL-07
   // SCRUM-421: einstellbare Upload-Grenzen (persistiert) + Audit für Änderungen.
   uploadLimits: UploadLimitsRepo;
@@ -64,7 +78,18 @@ interface PutBody {
 }
 
 export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync {
-  const { ko, validation, conflicts, lifecycle, notifyAssignment, uploadLimits, audit } = deps;
+  const {
+    ko,
+    validation,
+    conflicts,
+    overlaps,
+    overlapSettings,
+    lifecycle,
+    reasoner,
+    notifyAssignment,
+    uploadLimits,
+    audit,
+  } = deps;
 
   return async (app) => {
     app.get<{ Querystring: KoQuery }>("/api/kos", async (request, reply) => {
@@ -147,6 +172,18 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             await validation.assign(created.id, reviewers, user.id);
             await notifyAssignment?.(created.id, reviewers);
           }
+          // Berater-Konzept 04.07. (Stufe 3): Widerspruchs-Erkennung beim Einreichen — best-effort,
+          // blockiert das Einreichen nie (ohne Modell stiller No-op). Läuft VOR der Antwort, damit
+          // erkannte Konflikte direkt sichtbar sind (v1 synchron; asynchrone Warteschlange folgt).
+          await detectConflictsForKo(created.id, { ko, conflicts, reasoner });
+          // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-Erkennung beim Einreichen —
+          // best-effort, blockiert nie (deterministisch auch ohne Modell, sonst Modell-Profil).
+          await detectDuplicatesForKo(created.id, {
+            ko,
+            overlaps,
+            reasoner,
+            settings: overlapSettings,
+          });
           reply.code(201).send(created);
         } catch (error) {
           sendError(reply, error);
@@ -231,6 +268,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         await ko.purgeTrashed(request.params.id, user.id);
         // Konzept 04.07. (Stufe 1): offene Konflikte dieses KO geordnet beenden (kein Geist).
         await conflicts.onKoRemoved(request.params.id, user.id);
+        // Pedi 04.07.: dasselbe für offene Überschneidungen (kein Duplikat-Geist nach Löschen).
+        await overlaps.onKoRemoved(request.params.id, user.id);
         reply.code(204).send();
       } catch (error) {
         sendError(reply, error);
@@ -262,6 +301,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         await ko.delete(request.params.id, user.id);
         // Konzept 04.07. (Stufe 1): offene Konflikte dieses KO geordnet beenden (kein Geist).
         await conflicts.onKoRemoved(request.params.id, user.id);
+        // Pedi 04.07.: dasselbe für offene Überschneidungen (kein Duplikat-Geist nach Löschen).
+        await overlaps.onKoRemoved(request.params.id, user.id);
         reply.code(204).send();
       } catch (error) {
         sendError(reply, error);
@@ -296,6 +337,16 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             await validation.assign(id, body.userIds ?? [], user.id);
             await notifyAssignment?.(id, body.userIds ?? []); // FR-VAL-07
             reply.code(204).send();
+            return;
+          }
+          // Pedi 05.07.: Admin-Override „als wahr kennzeichnen" — schließt die Validierung komplett
+          // ab. Bewusst nur Admin (users.manage), nicht schon ko.validate (Controller/Experte).
+          case "admin-validate": {
+            const user = await guards.requirePermission("users.manage", request, reply);
+            if (!user) {
+              return;
+            }
+            reply.code(200).send(await validation.adminValidate(id, user.id));
             return;
           }
           case "revise": {

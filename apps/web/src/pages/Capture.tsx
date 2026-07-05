@@ -24,6 +24,7 @@ import type {
   Draft,
   DraftPayload,
   ExternalResult,
+  ExtractedPoint,
   InterviewResult,
   KnowledgeObject,
   KnowledgeType,
@@ -33,6 +34,9 @@ import { useSession } from "../app/AuthContext";
 import { useNavGuard } from "../app/NavGuardContext";
 import { useToast } from "../app/ToastContext";
 import { AiAssistBox } from "../components/AiAssistBox";
+import { AiModelInfo } from "../components/AiModelInfo";
+// SCRUM-435: extrahierte Erkenntnis(se) an einen BESTEHENDEN Artikel anhängen (Artikel-Picker).
+import { AppendToArticleModal } from "../components/AppendToArticleModal";
 // SCRUM-405: „Aus Dokument ergänzen" — extract-Punkte anhängen (nichts ersetzen).
 import { BodyExtractPanel } from "../components/BodyExtractPanel";
 import { BodyTemplateChooser } from "../components/BodyTemplateChooser";
@@ -321,6 +325,10 @@ export function Capture(): JSX.Element {
   const [fileBusy, setFileBusy] = useState(false);
   const [fileQuery, setFileQuery] = useState("");
   const [filePoints, setFilePoints] = useState<SelectableExtractPoint[] | null>(null);
+  // SCRUM-435: ausgewählte Erkenntnis(se) für den „an bestehenden Artikel anhängen"-Picker.
+  const [appendPts, setAppendPts] = useState<{ points: ExtractedPoint[]; fileName: string } | null>(
+    null,
+  );
   // Pedi 04.07.: Beim „Entwürfe speichern" mit nicht ausgewählten Punkten fragen, ob diese gelöscht
   // werden sollen; die Entscheidung reist über purgeUnselectedRef in den onSuccess der Mutation.
   const [confirmSaveDrafts, setConfirmSaveDrafts] = useState(false);
@@ -515,6 +523,38 @@ export function Capture(): JSX.Element {
     }
     setFilePoints((pts) => (pts ? mergeSelectedIntoOne(pts) : pts));
     setNotice(t(CAPTURE_FILE_TEXT.mergedInList, { count, name: fileName }));
+  };
+
+  // SCRUM-435: ausgewählte Erkenntnis(se) an einen BESTEHENDEN Artikel anhängen (statt neuer Eintrag).
+  // Sammelt die Auswahl und öffnet den Artikel-Picker; die Übernahme läuft dort über revise + add-source.
+  const requestAppendToArticle = (): void => {
+    if (!filePoints || !fileName) {
+      return;
+    }
+    const chosen = filePoints
+      .filter((p) => p.selected)
+      .map(({ title, summary, sourceExcerpt }) => ({ title, summary, sourceExcerpt }));
+    if (chosen.length === 0) {
+      return;
+    }
+    setAppendPts({ points: chosen, fileName });
+  };
+
+  // Nach erfolgreichem Anhängen: Quittung, KO-Liste auffrischen, ausgewählte Punkte verlassen die Liste.
+  const onAppendedToArticle = (title: string): void => {
+    const count = appendPts?.points.length ?? 0;
+    push("success", t("xtr.append.done", { count, title }));
+    void qc.invalidateQueries({ queryKey: ["kos"] });
+    const rest = (filePoints ?? []).filter((p) => !p.selected);
+    if (rest.length > 0) {
+      setFilePoints(rest);
+    } else {
+      setFilePoints(null);
+      setFileName(null);
+      setFileText("");
+      setFileQuery("");
+    }
+    setAppendPts(null);
   };
 
   // PMO-FEA-0006: Punkt bewusst überspringen (nichts wird gespeichert) → nächster Punkt.
@@ -834,10 +874,38 @@ export function Capture(): JSX.Element {
   const { setGuard } = useNavGuard();
   // Verlassen der Seite über den BROWSER (Zurück-Taste, Neuladen, Tab schließen) — dann fragt der
   // Browser „Seite verlassen?".
+  // Bug (Pedi 05.07.): Der Wächter muss in JEDEM Erfassungsmodus greifen, sobald IRGENDEIN Feld
+  // befüllt ist — vorher nur Freitext/Body/Aussage. Jetzt zusätzlich: geführtes Interview
+  // (begonnene/laufende Antwort), „Aus Datei" (hochgeladene Datei bereits VOR der KI-Auswertung),
+  // Experten-Formular (Kernaussage/Titel/Bedingungen/Maßnahmen) sowie erweiterte Felder/Anhänge.
+  const draftHasContent =
+    !!draft &&
+    (draft.statement.trim().length > 0 ||
+      draft.title.trim().length > 0 ||
+      (draft.conditions?.some((c) => c.trim().length > 0) ?? false) ||
+      (draft.measures?.some((mm) => mm.trim().length > 0) ?? false));
   const hasUnsavedEntry =
-    raw.trim().length > 0 || bodyHtml.trim().length > 0 || Boolean(draft?.statement.trim());
+    raw.trim().length > 0 ||
+    bodyHtml.trim().length > 0 ||
+    draftHasContent ||
+    // Geführtes Interview: begonnene Antworten oder gerade getippte Antwort.
+    ivAnswer.trim().length > 0 ||
+    ivAnswers.some((a) => a.trim().length > 0) ||
+    // Aus Datei: hochgeladene Datei / eingelesener Text (auch VOR der KI-Auswertung).
+    Boolean(fileName) ||
+    fileText.trim().length > 0 ||
+    // Erweiterte Felder, Metadaten und Anhänge zählen ebenfalls als „etwas eingetragen".
+    category.trim().length > 0 ||
+    asset.trim().length > 0 ||
+    tags.length > 0 ||
+    images.length > 0 ||
+    docs.length > 0 ||
+    pendingSources.length > 0;
+  // In „Aus Datei" ausgewertete Funde (filePoints) — die ganze Tabelle darf nicht still verloren gehen.
+  const hasUnsavedFilePoints = Boolean(filePoints && filePoints.length > 0);
+  const hasUnsaved = hasUnsavedEntry || hasUnsavedFilePoints;
   useEffect(() => {
-    if (!hasUnsavedEntry) {
+    if (!hasUnsaved) {
       return;
     }
     const onBeforeUnload = (e: BeforeUnloadEvent): void => {
@@ -846,19 +914,61 @@ export function Capture(): JSX.Element {
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [hasUnsavedEntry]);
+  }, [hasUnsaved]);
 
-  // Bug (Pedi 04.07.): In-App-Seitenwechsel (Menü, Command-Palette) fängt jetzt der Navigations-
+  // Bug (Pedi 04.07./05.07.): In-App-Seitenwechsel (Menü, Command-Palette) fängt jetzt der Navigations-
   // Wächter ab — Nachfrage „Bleiben · Verwerfen · Entwurf speichern", bevor Inhalt verloren geht.
+  // „Entwurf speichern" sichert die manuelle Eingabe UND — falls vorhanden — ALLE offenen Datei-Funde
+  // als separate Entwürfe (nichts geht verloren). Teilfehler halten den Dialog offen (kein Wechsel).
   useEffect(() => {
     setGuard({
-      isDirty: () => hasUnsavedEntry,
+      isDirty: () => hasUnsaved,
       save: async () => {
-        await saveDraft.mutateAsync();
+        if (hasUnsavedEntry) {
+          await saveDraft.mutateAsync();
+        }
+        if (filePoints && filePoints.length > 0 && fileName) {
+          const all = filePoints.map(({ title, summary, sourceExcerpt }) => ({
+            title,
+            summary,
+            sourceExcerpt,
+          }));
+          const result = await createPointDrafts(
+            all,
+            fileName,
+            normalizeExtractLocale(i18n.language),
+            (p) => endpoints.drafts.create(p),
+          );
+          void qc.invalidateQueries({ queryKey: ["drafts"] });
+          if (result.failed.length > 0) {
+            setErr(t(CAPTURE_FILE_TEXT.draftsPartial, { failed: result.failed.join(", ") }));
+            // Nicht wechseln: Dialog bleibt offen, die Seite zeigt die Fehlermeldung.
+            throw new Error("draftsPartial");
+          }
+          push(
+            "success",
+            t(CAPTURE_FILE_TEXT.draftsSaved, { count: result.created, name: fileName }),
+          );
+          setFilePoints(null);
+          setFileName(null);
+          setFileText("");
+          setFileQuery("");
+        }
       },
     });
     return () => setGuard(null);
-  }, [hasUnsavedEntry, saveDraft, setGuard]);
+  }, [
+    hasUnsaved,
+    hasUnsavedEntry,
+    filePoints,
+    fileName,
+    saveDraft,
+    setGuard,
+    qc,
+    i18n.language,
+    t,
+    push,
+  ]);
 
   // SCRUM-403: gemeinsame Rekorder-Fabrik für beide Diktat-Ziele (Freitext + Interview-Antwort).
   const makeRec = (append: (text: string) => void, onDone: () => void): SpeechRec | null => {
@@ -1008,6 +1118,28 @@ export function Capture(): JSX.Element {
         setErr(t("capture.docUnsupported", { name: f.name }));
       }
     }
+  };
+
+  // Pedi 04.07.: „Datei oder Bild beifügen" — Menschen sind es gewohnt, Dateien anzuhängen. Anders
+  // als „Text aus Datei … einfügen" (onDocs) wird hier KEIN Text ins Feld gelesen: die Datei wird NUR
+  // als Anhang mitgeführt (Bild → Bildanhang, alles andere → Dokumentanhang), sichtbar unter
+  // „Erweiterte Details". Späteres Anhängen als benannte Quelle bleibt der bewusste Schritt beim
+  // Einreichen (SCRUM-408) — hier wird nichts automatisch als Quelle gespeichert.
+  const onAttach = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (files.length === 0) {
+      return;
+    }
+    setErr(null);
+    for (const f of files) {
+      if (isImage(f)) {
+        await addImage(f);
+      } else {
+        await pushDoc(f);
+      }
+    }
+    setNotice(t(CAPTURE_WIZARD_TEXT.attached, { count: files.length }));
   };
 
   // PMO-FEA-0006: Dokument für die Wissens-Extraktion lesen — nutzt die VORHANDENEN
@@ -1485,22 +1617,25 @@ export function Capture(): JSX.Element {
                 ) : null}
               </button>
             ))}
-            {/* Bug (Pedi 04.07.): Expertenmodus als klar sichtbarer Modus-Knopf in der Leiste
-                (vorher ein versteckter Unterstrich-Link rechts). Optisch abgesetzt (gestrichelt),
-                aber gleichrangig auffindbar. */}
-            {!isExpertMode(mode) ? (
-              <span className="inline-flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => switchMode(EXPERT_MODE)}
-                  title={t(CAPTURE_ENTRY_TEXT.expertHint)}
-                  className="rounded-btn border border-dashed border-hairline px-3 py-1.5 text-[13px] font-semibold text-muted hover:border-ink/30 hover:text-text"
-                >
-                  {t(CAPTURE_ENTRY_TEXT.expertToggle)}
-                </button>
-                <HelpTip {...chelp("expertPath")} />
-              </span>
-            ) : null}
+            {/* Bug (Pedi 04.07./05.07.): Expertenmodus als DAUERHAFT sichtbarer Umschalter in der
+                Leiste (vorher verschwand der Knopf nach dem Aktivieren). Aktiv = hervorgehoben wie
+                die anderen Modus-Knöpfe; erneuter Klick führt zurück auf den geführten Weg. */}
+            <span className="inline-flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => switchMode(isExpertMode(mode) ? "freitext" : EXPERT_MODE)}
+                title={t(CAPTURE_ENTRY_TEXT.expertHint)}
+                aria-pressed={isExpertMode(mode)}
+                className={`rounded-btn border px-3 py-1.5 text-[13px] font-semibold ${
+                  isExpertMode(mode)
+                    ? "border-ink bg-ink text-white"
+                    : "border-dashed border-hairline text-muted hover:border-ink/30 hover:text-text"
+                }`}
+              >
+                {t(CAPTURE_ENTRY_TEXT.expertToggle)}
+              </button>
+              <HelpTip {...chelp("expertPath")} />
+            </span>
           </div>
           {/* Im Expertenmodus: ehrliche Einordnung + sichtbarer Rückweg auf den geführten Standardweg. */}
           {isExpertMode(mode) ? (
@@ -1570,7 +1705,7 @@ export function Capture(): JSX.Element {
                     Text) fließt sofort in den Freitext, Bilder/Videos werden Anhang (PMO-FEA-0006-Anschluss). */}
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
-                    <Paperclip size={14} />
+                    <FileText size={14} />
                     {t(CAPTURE_WIZARD_TEXT.upload)}
                     <input
                       type="file"
@@ -1578,6 +1713,18 @@ export function Capture(): JSX.Element {
                       accept=".txt,.md,.markdown,.csv,.log,.json,.docx,.pdf,application/pdf,image/*,video/*,audio/*"
                       className="hidden"
                       onChange={(e) => void onDocs(e)}
+                    />
+                  </label>
+                  {/* Pedi 04.07.: eigener „beifügen"-Knopf gleich daneben — Datei/Bild NUR anhängen. */}
+                  <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
+                    <Paperclip size={14} />
+                    {t(CAPTURE_WIZARD_TEXT.attach)}
+                    <input
+                      type="file"
+                      multiple
+                      accept=".txt,.md,.markdown,.csv,.log,.json,.docx,.pdf,application/pdf,image/*,video/*,audio/*"
+                      className="hidden"
+                      onChange={(e) => void onAttach(e)}
                     />
                   </label>
                   <HelpTip {...chelp("tellUpload")} />
@@ -1604,6 +1751,8 @@ export function Capture(): JSX.Element {
                       ? t(CAPTURE_WIZARD_TEXT.structuring)
                       : t("capture.structure")}
                   </Button>
+                  {/* Pedi 04.07.: (!)-Info — welche KI das Strukturieren ausführt. */}
+                  <AiModelInfo task="structure" />
                   <HelpTip {...chelp("structureNow")} />
                 </div>
               </div>
@@ -1668,6 +1817,8 @@ export function Capture(): JSX.Element {
                     >
                       {t("capture.ivSend")}
                     </Button>
+                    {/* Pedi 04.07.: (!)-Info — welche KI das geführte Interview steuert. */}
+                    <AiModelInfo task="interview" />
                     {speechSupported ? (
                       <Button
                         variant={ivListening ? "primary" : "ghost"}
@@ -1736,22 +1887,25 @@ export function Capture(): JSX.Element {
                       onChange={(e) => setFileQuery(e.target.value)}
                       placeholder={t(CAPTURE_FILE_TEXT.queryPlaceholder)}
                     />
-                    <Button
-                      variant="primary"
-                      className="mt-3"
-                      disabled={extract.isPending || fileBusy}
-                      onClick={() => extract.mutate()}
-                    >
-                      {/* SCRUM-418: sichtbare Arbeits-Animation, solange die KI liest. */}
-                      {extract.isPending ? (
-                        <Loader2 size={15} className="animate-spin" />
-                      ) : (
-                        <Sparkles size={15} />
-                      )}
-                      {extract.isPending
-                        ? t(CAPTURE_FILE_TEXT.searching)
-                        : t(CAPTURE_FILE_TEXT.searchCta)}
-                    </Button>
+                    <div className="mt-3 flex items-center gap-1.5">
+                      <Button
+                        variant="primary"
+                        disabled={extract.isPending || fileBusy}
+                        onClick={() => extract.mutate()}
+                      >
+                        {/* SCRUM-418: sichtbare Arbeits-Animation, solange die KI liest. */}
+                        {extract.isPending ? (
+                          <Loader2 size={15} className="animate-spin" />
+                        ) : (
+                          <Sparkles size={15} />
+                        )}
+                        {extract.isPending
+                          ? t(CAPTURE_FILE_TEXT.searching)
+                          : t(CAPTURE_FILE_TEXT.searchCta)}
+                      </Button>
+                      {/* Pedi 04.07.: (!)-Info — welche KI die Extraktion ausführt. */}
+                      <AiModelInfo task="extract" />
+                    </div>
                   </div>
                 ) : null}
                 {/* Ehrlicher Hinweis vom Server (z. B. „ohne Modell keine Extraktion") — KEINE Fake-Punkte. */}
@@ -1850,6 +2004,15 @@ export function Capture(): JSX.Element {
                           onClick={mergeSelectedPoints}
                         >
                           {t(CAPTURE_FILE_TEXT.mergeCta)}
+                        </Button>
+                        {/* SCRUM-435: ausgewählte Erkenntnis(se) an einen bestehenden Artikel
+                            anhängen (ab 1 Ausgewähltem) — Artikel-Picker, Übernahme via revise + add-source. */}
+                        <Button
+                          variant="outline"
+                          disabled={selectedCount(filePoints) < 1}
+                          onClick={requestAppendToArticle}
+                        >
+                          {t("xtr.append.button")}
                         </Button>
                         {/* SCRUM-409 / Pedi 04.07.: ab 2 Ausgewählten als getrennte Entwürfe sichern —
                             mit Nachfrage, ob nicht ausgewählte Punkte gelöscht werden sollen. */}
@@ -2974,6 +3137,14 @@ export function Capture(): JSX.Element {
           </Card>
         ) : null}
       </div>
+      {/* SCRUM-435: Artikel-Picker zum Anhängen der ausgewählten Erkenntnis(se) an einen Bestand. */}
+      <AppendToArticleModal
+        open={appendPts !== null}
+        points={appendPts?.points ?? []}
+        fileName={appendPts?.fileName ?? ""}
+        onClose={() => setAppendPts(null)}
+        onDone={onAppendedToArticle}
+      />
     </div>
   );
 }

@@ -1,0 +1,42 @@
+#!/bin/bash
+# KLARWERK Modell-Manager starten (On-Prem) · KWN / KLLM-62
+# Startet Ollama (falls nötig) + das lokale Web-UI und öffnet den Browser.
+# Nur localhost. Fenster schließen (cmd+W) = Server stoppen.
+
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$DIR" || exit 1
+PORT="${KWN_PORT:-11888}"
+
+GRUEN=$'\033[32m'; ROT=$'\033[31m'; FETT=$'\033[1m'; AUS=$'\033[0m'
+
+echo "${FETT}KLARWERK Modell-Manager${AUS}"
+echo
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "${ROT}Node.js fehlt — einmalig installieren: brew install node${AUS}"
+  echo "Fenster schließen (cmd+W)."; exit 1
+fi
+if ! command -v ollama >/dev/null 2>&1; then
+  echo "${ROT}Ollama fehlt — einmalig installieren: brew install ollama${AUS}"
+  echo "Fenster schließen (cmd+W)."; exit 1
+fi
+
+# Ollama-Dienst sicherstellen (nur localhost).
+if ! curl -s http://127.0.0.1:11434/api/version >/dev/null 2>&1; then
+  echo "Starte Ollama-Dienst …"
+  nohup ollama serve >"$DIR/ollama-serve.log" 2>&1 &
+  for i in $(seq 1 30); do sleep 1; curl -s http://127.0.0.1:11434/api/version >/dev/null 2>&1 && break; done
+fi
+if curl -s http://127.0.0.1:11434/api/version >/dev/null 2>&1; then
+  echo "${GRUEN}✓ Ollama läuft (localhost:11434)${AUS}"
+else
+  echo "${ROT}! Ollama antwortet nicht — das UI startet trotzdem, zeigt aber „nicht erreichbar".${AUS}"
+fi
+
+# Browser öffnen, sobald das UI steht.
+( for i in $(seq 1 20); do curl -s "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1 && { open "http://localhost:$PORT"; break; }; sleep 0.5; done ) &
+
+echo "UI: http://localhost:$PORT   (Fenster offen lassen; schließen = stoppen)"
+echo
+exec node "$DIR/klarwerk-modell-manager.mjs"

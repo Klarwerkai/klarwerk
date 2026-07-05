@@ -56,6 +56,9 @@ export const useValidationOverview = () =>
   useQuery({ queryKey: ["validation", "overview"], queryFn: endpoints.validation.overview });
 export const useConflicts = () =>
   useQuery({ queryKey: ["conflicts"], queryFn: endpoints.conflicts.list });
+// Berater-Konzept Duplikate 04.07. (Stufe D4): offene Überschneidungen fürs Duplikate-Board.
+export const useDuplicates = () =>
+  useQuery({ queryKey: ["duplicates"], queryFn: endpoints.duplicates.list });
 export const useGaps = () => useQuery({ queryKey: ["gaps"], queryFn: endpoints.gaps.list });
 export const useDrafts = () => useQuery({ queryKey: ["drafts"], queryFn: endpoints.drafts.list });
 export const useAnalytics = () =>

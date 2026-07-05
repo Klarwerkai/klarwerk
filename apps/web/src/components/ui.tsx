@@ -151,7 +151,11 @@ export function QueryState<T>({
   emptyText?: string;
   // SCRUM-181: optionaler Slot unter dem Leer-Text (z. B. „nächste Schritte"-CTAs).
   emptyExtra?: ReactNode;
-  children: (data: T) => ReactNode;
+  // Pedi 04.07. (Fix Admin/Daten „r is not a function"): der Daten-Slot ist OPTIONAL. Ohne children
+  // wirkt QueryState als reiner Lade-/Fehler-/Leer-Indikator (der Aufrufer zeichnet die Daten selbst,
+  // z. B. der Papierkorb). Vorher rief QueryState bei vorhandenen Daten `children(data)` auf — mit
+  // fehlendem children ein Absturz, sobald echte Daten (z. B. Einträge im Papierkorb) vorlagen.
+  children?: (data: T) => ReactNode;
 }): JSX.Element {
   const { t } = useTranslation();
   if (query.isLoading) {
@@ -172,7 +176,7 @@ export function QueryState<T>({
       </StateShell>
     );
   }
-  return <>{children(data as T)}</>;
+  return <>{children ? children(data as T) : null}</>;
 }
 
 export function Avatar({ initials }: { initials: string }): JSX.Element {

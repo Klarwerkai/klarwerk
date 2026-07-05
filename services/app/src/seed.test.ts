@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildServices } from "./build-app";
 import { seedDemo } from "./seed";
-import { purgeDemoSeed } from "./seed-demo";
+import { purgeDemoSeed, seedDemoForAdmin } from "./seed-demo";
 
 describe("SCRUM-156: seedDemo", () => {
   it("erzeugt die zentralen Stage-1-Mindestsignale über echte Services", async () => {
@@ -101,6 +101,76 @@ describe("SCRUM-156: seedDemo", () => {
     const after = await services.ko.list({});
     expect(after.filter((k) => k.demoSeed === true)).toHaveLength(0);
     expect(after.filter((k) => (k.tags ?? []).includes("pilot-demo"))).toHaveLength(0);
+  });
+
+  it("Pedi 05.07.: purgeDemoSeed entfernt auch die Demo-Anwender (Demo-Domain)", async () => {
+    const services = buildServices();
+    await seedDemo(services); // legt admin@/carla@/erik@demo.klarwerk an
+    // Realer Admin, damit der Demo-Admin nicht als letzter aktiver Admin geschützt bleibt.
+    const real = await services.auth.register({
+      name: "Echter Admin",
+      email: "real@firma.example",
+      password: "real-admin-pass-123",
+    });
+    const demoAdmin = (await services.auth.listUsers()).find(
+      (u) => u.email === "admin@demo.klarwerk",
+    );
+    expect(demoAdmin).toBeDefined();
+    if (demoAdmin) {
+      await services.auth.approveUser(real.id, demoAdmin.id);
+      await services.auth.changeRole(real.id, "admin", demoAdmin.id);
+    }
+
+    const result = await purgeDemoSeed(services, real.id);
+    // admin@ + carla@ + erik@demo.klarwerk
+    expect(result.users).toBeGreaterThanOrEqual(3);
+    const remaining = await services.auth.listUsers();
+    expect(remaining.some((u) => u.email.toLowerCase().endsWith("@demo.klarwerk"))).toBe(false);
+    // Der reale (ausführende) Admin bleibt bestehen.
+    expect(remaining.some((u) => u.id === real.id)).toBe(true);
+  });
+
+  it("Pedi 05.07. (Beta): force lädt Demo-Set trotz vorhandener Daten, ohne echte Daten zu verlieren", async () => {
+    const services = buildServices();
+    // Realer Admin richtet ein und erfasst ein EIGENES (echtes) Wissensobjekt.
+    const admin = await services.auth.register({
+      name: "Echter Admin",
+      email: "real@firma.example",
+      password: "real-admin-pass-123",
+    });
+    const realKo = await services.ko.create({
+      title: "Echtes Betriebswissen",
+      statement: "Von einem echten Anwender erfasst — darf nie durch Demo-Aktionen verschwinden.",
+      type: "technik",
+      category: "Eigene Erfassung",
+      author: admin.id,
+      confidence: 50,
+      neededValidations: 2,
+    });
+
+    // Ohne force: übersprungen, weil die Instanz nicht leer ist.
+    const skipped = await seedDemoForAdmin(services, admin.id);
+    expect(skipped.skipped).toBe(true);
+    expect((await services.ko.list()).some((k) => k.id === realKo.id)).toBe(true);
+
+    // Mit force: Demo-Set wird geladen; das echte KO bleibt erhalten.
+    const forced = await seedDemoForAdmin(services, admin.id, { force: true });
+    expect(forced.skipped).toBe(false);
+    const demoAfterFirst = (await services.ko.list()).filter((k) =>
+      (k.tags ?? []).includes("pilot-demo"),
+    ).length;
+    expect(demoAfterFirst).toBeGreaterThanOrEqual(5);
+    expect((await services.ko.list()).some((k) => k.id === realKo.id)).toBe(true);
+
+    // Zweiter force-Lauf verdoppelt das Demo-Set NICHT (erst aufräumen, dann frisch seeden).
+    const forced2 = await seedDemoForAdmin(services, admin.id, { force: true });
+    expect(forced2.skipped).toBe(false);
+    const demoAfterSecond = (await services.ko.list()).filter((k) =>
+      (k.tags ?? []).includes("pilot-demo"),
+    ).length;
+    expect(demoAfterSecond).toBe(demoAfterFirst);
+    // Und das echte KO ist weiterhin da.
+    expect((await services.ko.list()).some((k) => k.id === realKo.id)).toBe(true);
   });
 
   it("ist idempotent: zweiter Lauf überspringt, keine Duplikate", async () => {

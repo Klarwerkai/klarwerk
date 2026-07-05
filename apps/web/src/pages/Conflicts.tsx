@@ -5,11 +5,12 @@ import { Link } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useConflicts, useKos } from "../api/hooks";
-import type { ConflictStatus, KnowledgeObject } from "../api/types";
+import type { Conflict, ConflictStatus, KnowledgeObject } from "../api/types";
 import { HelpTip } from "../components/HelpTip";
 import { KoView } from "../components/KoView";
 import { Modal } from "../components/Modal";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
+import { CONFLICT_BOARD_TEXT, canDismiss, conflictOriginInfo } from "../lib/conflictBoard";
 import { conflictKoPair, conflictNextStep, resolutionEffect } from "../lib/conflictView";
 import { type ReviewHelpId, reviewHelp } from "../lib/reviewHelp";
 
@@ -40,6 +41,59 @@ function KoPanel({
       >
         {t("con.openKo")} →
       </Link>
+    </div>
+  );
+}
+
+// Berater-Konzept 04.07. (Stufe 4b): eine wörtliche Belegstelle (Zitat) im Board.
+function ConflictQuote({ labelKey, quote }: { labelKey: string; quote: string }): JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <p className="rounded-input bg-surface px-2 py-1.5 text-[11.5px] leading-relaxed text-muted">
+      <span className="font-mono text-[9px] font-semibold uppercase tracking-wider text-muted-2">
+        {t(labelKey)}
+      </span>
+      <span className="mt-0.5 block italic">„{quote}“</span>
+    </p>
+  );
+}
+
+// Herkunfts-Badge: „Automatisch erkannt · Sicherheit % · Begründung + zwei Zitate" bzw. „Manuell".
+function ConflictOriginBadge({ conflict }: { conflict: Conflict }): JSX.Element {
+  const { t } = useTranslation();
+  const origin = conflictOriginInfo(conflict);
+  if (!origin.isAuto) {
+    return (
+      <div className="mt-1.5">
+        <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted-2">
+          {t(origin.labelKey)}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="mt-2 rounded-card border border-ai/20 bg-ai/5 p-2.5">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="rounded-pill bg-ai/10 px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-ai">
+          {t(origin.labelKey)}
+        </span>
+        {origin.confidencePercent !== undefined ? (
+          <span className="font-mono text-[10.5px] text-muted">
+            {t(CONFLICT_BOARD_TEXT.confidence, { percent: origin.confidencePercent })}
+          </span>
+        ) : null}
+      </div>
+      {origin.rationale ? (
+        <p className="mt-1.5 text-[12.5px] leading-relaxed text-text">
+          <span className="font-semibold">{t(CONFLICT_BOARD_TEXT.why)}:</span> {origin.rationale}
+        </p>
+      ) : null}
+      {origin.quoteA && origin.quoteB ? (
+        <div className="mt-1.5 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+          <ConflictQuote labelKey={CONFLICT_BOARD_TEXT.quoteA} quote={origin.quoteA} />
+          <ConflictQuote labelKey={CONFLICT_BOARD_TEXT.quoteB} quote={origin.quoteB} />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -100,6 +154,16 @@ export function Conflicts(): JSX.Element {
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
   });
 
+  // Berater-Konzept 04.07. (Stufe 4b): „Fehlalarm" schließt einen automatisch erkannten Konflikt.
+  const dismiss = useMutation({
+    mutationFn: (id: string) => endpoints.conflicts.dismiss(id),
+    onSuccess: () => {
+      invalidate();
+      setErr(null);
+    },
+    onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
+  });
+
   return (
     <div className="mx-auto max-w-3xl">
       <PageHeader kicker={t("con.kicker")} title={t("con.title")} />
@@ -118,6 +182,8 @@ export function Conflicts(): JSX.Element {
                   </span>
                 </div>
                 <p className="text-[14px] font-medium text-text">{c.description}</p>
+                {/* Stufe 4b: Herkunft + Begründung + wörtliche Belege bei automatisch erkannten Konflikten. */}
+                <ConflictOriginBadge conflict={c} />
                 {(() => {
                   const pair = conflictKoPair(c, kos.data ?? []);
                   return (
@@ -223,6 +289,16 @@ export function Conflicts(): JSX.Element {
                         </Button>
                         {vhelp("conflictResolve")}
                       </span>
+                      {/* Stufe 4b: Ein-Klick-„Fehlalarm" nur bei automatisch erkannten Konflikten. */}
+                      {canDismiss(c) ? (
+                        <Button
+                          variant="ghost"
+                          disabled={dismiss.isPending}
+                          onClick={() => dismiss.mutate(c.id)}
+                        >
+                          {t(CONFLICT_BOARD_TEXT.dismiss)}
+                        </Button>
+                      ) : null}
                     </div>
                   </div>
                 ) : c.decision ? (

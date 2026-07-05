@@ -12,5 +12,15 @@ export function auditRoutes(audit: AuditService, guards: Guards): FastifyPluginA
       }
       reply.code(200).send(await audit.list(request.query));
     });
+
+    // SCRUM-439: aktive Integritätsprüfung der Audit-Kette (verify statt nur Aussage). Governance-
+    // Einsicht wie /api/audit (ko.validate). Antwort: { ok, count } — Grundlage des Admin-Knopfs.
+    app.get("/api/audit/verify", async (request, reply) => {
+      const user = await guards.requirePermission("ko.validate", request, reply);
+      if (!user) {
+        return;
+      }
+      reply.code(200).send(await audit.verifyReport());
+    });
   };
 }

@@ -133,6 +133,48 @@ export interface ReasonerConfigStatus {
   persisted: boolean;
 }
 
+// Berater-Konzept 04.07. (Stufe 2, kon-v1): striktes Modellurteil der Aufgabe „Konfliktprüfung".
+// Rein inhaltlich (keine Autoren/Trust): vergleicht zwei Kerntexte A/B. Die Belegzitate werden
+// nachgelagert wörtlich gegen die Texte geprüft (G-2), bevor daraus ein Konflikt entsteht.
+export interface ConflictJudgeResult {
+  relation: "widerspruch" | "doppelung" | "ueberholt" | "kein_konflikt" | "unsicher";
+  older: "a" | "b" | null;
+  confidence: number;
+  begruendung: string;
+  zitat_a: string;
+  zitat_b: string;
+}
+
+// Berater-Konzept Duplikate 04.07. (Stufe D2, dup-v1): Überschneidungs-Profil zweier Kerntexte A/B.
+// Struktur passt (namensgleich) zum OverlapVerdict der Duplikat-Kernlogik — der App-Root reicht das
+// Modellurteil direkt an die (modul-reine) Erkennung weiter, ohne Umbau. Zitate werden nachgelagert
+// wörtlich geprüft (G-2). „verschieden"/„unsicher" sind gültige Nicht-Treffer.
+export interface DuplicateAspect {
+  beschreibung: string;
+  zitatA: string;
+  zitatB: string;
+}
+export interface DuplicateJudgeResult {
+  beziehung:
+    | "identisch"
+    | "a_enthaelt_b"
+    | "b_enthaelt_a"
+    | "teilweise"
+    | "verwandt"
+    | "verschieden"
+    | "unsicher";
+  aspects: DuplicateAspect[];
+  nurInA: string;
+  nurInB: string;
+  empfehlung:
+    | "zusammenfuehren"
+    | "zusammenfuehren_pruefen"
+    | "getrennt_lassen"
+    | "verwandt_verlinken";
+  confidence: number;
+  begruendung: string;
+}
+
 // Key-Test (Pedi 02.07.): Ergebnis eines echten Mini-Aufrufs — ehrlich, keine Vermutung.
 export interface ReasonerProbeResult {
   ok: boolean;

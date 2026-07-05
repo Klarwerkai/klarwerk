@@ -8,6 +8,7 @@ import { Analytics } from "./pages/Analytics";
 import { Ask } from "./pages/Ask";
 import { Capture } from "./pages/Capture";
 import { Conflicts } from "./pages/Conflicts";
+import { Duplicates } from "./pages/Duplicates";
 import { ExternalKnowledge } from "./pages/ExternalKnowledge";
 import { Help } from "./pages/Help";
 import { KnowledgeDetail } from "./pages/KnowledgeDetail";
@@ -32,6 +33,7 @@ const PAGES: Record<string, ComponentType> = {
   extern: ExternalKnowledge,
   validierung: Validation,
   konflikte: Conflicts,
+  duplikate: Duplicates,
   risiko: Risk,
   lebenszyklus: Lifecycle,
   analytics: Analytics,

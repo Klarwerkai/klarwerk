@@ -124,6 +124,26 @@ describe("SCRUM-234: Konflikt-Workflow (HTTP end-to-end)", () => {
     expect(escContext.statusCode).toBeGreaterThanOrEqual(400);
   });
 
+  it("Fehlalarm (dismiss) schließt einen Konflikt und nimmt ihn aus der offenen Liste", async () => {
+    const { app, headers, koA, koB } = await adminApp();
+    // Berater-Konzept 04.07. (Stufe 4b): „Fehlalarm — kein Widerspruch" schließt einen (meist
+    // automatisch erkannten) Konflikt bewusst als falsch-positiv. Hier über einen manuell angelegten.
+    const created = (await createConflict(app, headers, koA, koB, "context")).json();
+    const id = created.id as string;
+
+    const dismissed = await app.inject({
+      method: "POST",
+      url: `/api/conflicts/${id}/dismiss`,
+      headers,
+      payload: { note: "Kein echter Widerspruch." },
+    });
+    expect(dismissed.statusCode).toBe(200);
+    expect(dismissed.json().status).toBe("geloest");
+
+    const list = await app.inject({ method: "GET", url: "/api/conflicts", headers });
+    expect(list.json().some((c: { id: string }) => c.id === id)).toBe(false);
+  });
+
   it("anonym → Konfliktliste ist geschützt (Guard greift)", async () => {
     const app = buildApp(buildServices());
     const res = await app.inject({ method: "GET", url: "/api/conflicts" });

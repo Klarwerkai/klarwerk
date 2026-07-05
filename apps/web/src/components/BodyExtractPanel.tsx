@@ -5,7 +5,7 @@
 // ANHÄNGT (nichts ersetzen) und die Quelle je Punkt am KO vermerkt (add-source bzw.
 // SCRUM-408-Warteliste). Kein Auto-Speichern, keine stille Übernahme.
 import { useMutation } from "@tanstack/react-query";
-import { ChevronDown, FileText, Loader2, Paperclip, Sparkles } from "lucide-react";
+import { ChevronDown, FileText, Loader2, Paperclip, Sparkles, X } from "lucide-react";
 import { useState } from "react";
 import type { ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
@@ -32,6 +32,7 @@ import {
   runImageOcr,
 } from "../lib/files";
 import { toReasonerLocale } from "../lib/reasonerLocale";
+import { AiModelInfo } from "./AiModelInfo";
 import { HelpTip } from "./HelpTip";
 import { Button, SectionLabel, TextInput } from "./ui";
 
@@ -144,6 +145,21 @@ export function BodyExtractPanel({
     }
   };
 
+  // Pedi 04.07.: Ein hochgeladenes Dokument muss wieder entfernbar sein (z. B. wenn es keinen
+  // nützlichen Inhalt hat), nicht nur ersetzbar. Setzt den Datei-Zustand vollständig zurück —
+  // nichts wurde gespeichert oder übernommen, also bleibt kein Rest.
+  const clearFile = (): void => {
+    setFileName(null);
+    setFileText("");
+    setImageUrl(null);
+    setPoints(null);
+    setNote(null);
+    setQuery("");
+    setStatus(null);
+    setErr(null);
+    setAppendedNote(null);
+  };
+
   // Übernahme: NUR die angekreuzten Punkte gehen an den Aufrufer; die Liste wird danach
   // geleert (sichtbare Quittung statt Doppel-Anfügen bei erneutem Klick).
   const apply = (): void => {
@@ -199,6 +215,15 @@ export function BodyExtractPanel({
               <span className="inline-flex items-center gap-1.5 text-[12.5px] text-text">
                 <FileText size={13} className="text-muted-2" />
                 {fileName}
+                <button
+                  type="button"
+                  aria-label={t(CAPTURE_FILE_TEXT.remove)}
+                  title={t(CAPTURE_FILE_TEXT.remove)}
+                  onClick={clearFile}
+                  className="ml-0.5 text-muted-2 hover:text-text"
+                >
+                  <X size={13} />
+                </button>
               </span>
             ) : null}
           </div>
@@ -217,22 +242,25 @@ export function BodyExtractPanel({
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={t(CAPTURE_FILE_TEXT.queryPlaceholder)}
               />
-              <Button
-                variant="primary"
-                className="mt-3"
-                disabled={extract.isPending || busy}
-                onClick={() => extract.mutate()}
-              >
-                {/* SCRUM-418: sichtbare Arbeits-Animation, solange die KI liest. */}
-                {extract.isPending ? (
-                  <Loader2 size={15} className="animate-spin" />
-                ) : (
-                  <Sparkles size={15} />
-                )}
-                {extract.isPending
-                  ? t(CAPTURE_FILE_TEXT.searching)
-                  : t(CAPTURE_FILE_TEXT.searchCta)}
-              </Button>
+              <div className="mt-3 flex items-center gap-1.5">
+                <Button
+                  variant="primary"
+                  disabled={extract.isPending || busy}
+                  onClick={() => extract.mutate()}
+                >
+                  {/* SCRUM-418: sichtbare Arbeits-Animation, solange die KI liest. */}
+                  {extract.isPending ? (
+                    <Loader2 size={15} className="animate-spin" />
+                  ) : (
+                    <Sparkles size={15} />
+                  )}
+                  {extract.isPending
+                    ? t(CAPTURE_FILE_TEXT.searching)
+                    : t(CAPTURE_FILE_TEXT.searchCta)}
+                </Button>
+                {/* Pedi 04.07.: (!)-Info — welche KI die Extraktion ausführt (Aufgabe „extract"). */}
+                <AiModelInfo task="extract" />
+              </div>
             </div>
           ) : null}
           {note ? (

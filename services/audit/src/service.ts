@@ -49,4 +49,11 @@ export class AuditService {
   async verify(): Promise<boolean> {
     return verifyChain(await this.repo.all());
   }
+
+  // SCRUM-439: aktive Integritätsprüfung mit Zähler — Grundlage des Admin-Knopfs „Integrität geprüft".
+  // Ehrliches Signal: ok = Kette lückenlos/unverändert; count = geprüfte Einträge (EIN Durchlauf).
+  async verifyReport(): Promise<{ ok: boolean; count: number }> {
+    const all = await this.repo.all();
+    return { ok: verifyChain(all), count: all.length };
+  }
 }

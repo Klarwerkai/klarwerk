@@ -1,7 +1,7 @@
 // SCRUM-249: DOM-freie Ableitung der Review-Signale fürs Validierungsboard. Macht pro KO kompakt
-// sichtbar, was für die Entscheidung zählt — AUSSCHLIESSLICH aus vorhandenen Feldern (Status,
-// Trust, Version, Autor/Originalautor, Zuweisung). KEIN neues Validierungsmodell, KEINE neue
-// Bewertungslogik, KEINE neuen Backend-Felder. Reine Funktionen → testbar ohne DOM.
+// sichtbar, was für die Entscheidung zählt — aus Status, Trust, Version, Autor/Originalautor,
+// Zuweisung und (Pedi 05.07.) den vom Board angereicherten Peer-Stimmen-Zählern (grün/rot). KEIN
+// neues Validierungsmodell, KEINE neue Bewertungslogik. Reine Funktionen → testbar ohne DOM.
 import type { KnowledgeObject } from "../api/types";
 import type { DisplayStatus } from "../components/trust/types";
 import { deriveStatus } from "./displayStatus";
@@ -27,6 +27,10 @@ export interface ReviewSignals {
   trustBand: TrustBand;
   version: number;
   needed: number; // nötige Validierungen (neededValidations)
+  // Pedi 05.07.: erfasste Peer-Stimmen aus der Board-Anreicherung — grün (zählt zum Ziel) und rot
+  // (blockiert die Freigabe). Für die Anzeige „X von Y grün". Ohne Anreicherung 0.
+  greenVotes: number;
+  redVotes: number;
   assigned: boolean; // bereits jemandem zur Prüfung zugewiesen
   authorTransferred: boolean; // Autor ≠ Originalautor → extra Prüfblick
 }
@@ -45,6 +49,8 @@ export function reviewSignals(ko: KnowledgeObject): ReviewSignals {
     trustBand: trustBand(ko.trust),
     version: ko.version,
     needed: ko.neededValidations,
+    greenVotes: ko.reviewVotes?.up ?? 0,
+    redVotes: ko.reviewVotes?.down ?? 0,
     assigned: (ko.assignments?.length ?? 0) > 0,
     authorTransferred: ko.author !== ko.originalAuthor,
   };

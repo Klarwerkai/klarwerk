@@ -1,0 +1,176 @@
+#!/bin/bash
+# KLARWERK NERD — KWN-2: Lokaler LLM (Insel) + Prüfstand-Abnahme AUF dem Mac Studio
+# Quelle der Wahrheit: KLLM-62 · Board: KWN · Ticket: KWN-2
+#
+# ZWECK
+#   Setzt auf dem ZIELGERÄT (Mac Studio, Apple Silicon, 64 GB) einen lokalen LLM per
+#   Ollama (Metal) auf und fährt den vorhandenen KLARWERK-Prüfstand dagegen — damit die
+#   Insellösung NUR mit auf der Zielhardware gemessenen Zahlen zugesagt wird
+#   (Lehre KLLM-3/4/5/7: erst auf der echten Hardware messen, dann zusagen).
+#
+#   Der Prüfstand-Runner (PMO: scripts/pruefstand-run.mjs) bleibt UNVERÄNDERT — er schaltet
+#   den Denkmodus ab (enable_thinking=false, mit Fallback) und strippt <think>-Blöcke vor
+#   der Bewertung (KLLM-61). Wir hängen den lokalen LLM nur über den vorhandenen
+#   OpenAI-kompatiblen Weg an localhost an (SCRUM-424) — nichts neu bauen, nur konfigurieren.
+#
+# EHRLICH / GRENZEN
+#   - Das MODELL-PULLEN braucht EINMALIG Internet (Aufbauphase, NICHT beim Air-Gap-VIP).
+#     Danach läuft der Prüfstand rein lokal (localhost).
+#   - Dieses Skript ist als .NEU in der Brücke abgelegt. Der Schreibtisch-Weg (App-Hülle,
+#     +x, Spiegel) macht die Boss-Session — Cloud-Sessions setzen keine Ausführungsrechte.
+#   - Käufe/Buchungen: keine. Es werden nur offene Modelle geladen. Keine Secrets im Skript.
+#
+# BEDIENUNG (Terminal):
+#   ./"KWN-2 Insel-Pruefstand.command"            # misst Qwen3-32B (Standard)
+#   MODELL=qwen3:14b ./"KWN-2 Insel-Pruefstand.command"   # Rückfall 14B
+#   Ein Modell pro Lauf (der Runner misst das erste angebotene Modell — s. Hinweis unten).
+
+set -u
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+
+# ---- Konfiguration -------------------------------------------------------------
+MODELL="${MODELL:-qwen3:32b}"          # Zielmodell (Standard 32B; Rückfall qwen3:14b)
+OLLAMA_HOST_URL="http://localhost:11434"
+ZIEL_URL="$OLLAMA_HOST_URL/v1"
+PMO="$HOME/Documents/KLARWERK_Reporting_PMO"
+BRIDGE="$HOME/Documents/dev_Klarwerk/docs/team2-austausch"
+PRUEF_BRIDGE="$BRIDGE/pruefstand"
+STEMPEL="$(date '+%Y-%m-%d_%H%M')"
+LOG="$BRIDGE/kwn2-insel-pruefstand.log"
+
+GRUEN=$'\033[32m'; ROT=$'\033[31m'; GELB=$'\033[33m'; FETT=$'\033[1m'; AUS=$'\033[0m'
+FEHL=0
+ok()   { echo "${GRUEN}✓ $*${AUS}"; }
+warn() { echo "${GELB}! $*${AUS}"; }
+bad()  { echo "${ROT}✗ $*${AUS}"; FEHL=1; }
+
+mkdir -p "$PRUEF_BRIDGE" 2>/dev/null
+
+{
+echo "${FETT}KLARWERK NERD · KWN-2 — Insel-Prüfstand auf dem Mac Studio · $(date '+%d.%m.%Y %H:%M')${AUS}"
+echo "Modell: $MODELL · Ziel: $ZIEL_URL · Quelle: KLLM-62"
+echo
+
+# ---- Schritt 1: Zielhardware prüfen (verbindlich) ------------------------------
+echo "${FETT}— Schritt 1/6: Zielhardware prüfen (Apple Silicon, ~64 GB)${AUS}"
+ARCH="$(uname -m)"
+MEM_BYTES="$(sysctl -n hw.memsize 2>/dev/null || echo 0)"
+MEM_GB=$(( MEM_BYTES / 1024 / 1024 / 1024 ))
+CHIP="$(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo '?')"
+echo "  Architektur: $ARCH · RAM: ${MEM_GB} GB · CPU: $CHIP"
+if [ "$ARCH" != "arm64" ]; then
+  bad "Kein Apple Silicon (arm64). Insel-Messung MUSS auf dem Mac Studio laufen — Abbruch."
+  echo "Dieses Fenster kannst du schließen (cmd+W)."; exit 1
+fi
+if [ "$MEM_GB" -lt 60 ]; then
+  warn "RAM < 60 GB gemessen — Qwen3-32B (~20 GB) kann eng werden. 14B als Rückfall vorgesehen."
+else
+  ok "Zielhardware plausibel (Apple Silicon, ${MEM_GB} GB)."
+fi
+echo
+
+# ---- Schritt 2: Ollama vorhanden? ---------------------------------------------
+echo "${FETT}— Schritt 2/6: Ollama (Metal) bereitstellen${AUS}"
+if ! command -v ollama >/dev/null 2>&1; then
+  bad "Ollama ist nicht installiert."
+  echo "  Einmalig (Aufbauphase, mit Internet) installieren, z. B.:"
+  echo "    brew install ollama        # oder: https://ollama.com/download (Apple Silicon)"
+  echo "  Danach dieses Skript erneut starten."
+  echo "Dieses Fenster kannst du schließen (cmd+W)."; exit 1
+fi
+ok "Ollama gefunden: $(ollama --version 2>/dev/null | head -n1)"
+echo
+
+# ---- Schritt 3: Ollama-Dienst starten (localhost) ------------------------------
+echo "${FETT}— Schritt 3/6: Ollama-Dienst starten (nur localhost)${AUS}"
+if curl -s "$OLLAMA_HOST_URL/api/version" >/dev/null 2>&1; then
+  ok "Dienst läuft bereits auf 11434."
+else
+  echo "  Starte 'ollama serve' im Hintergrund …"
+  nohup ollama serve >"$BRIDGE/kwn2-ollama-serve.log" 2>&1 &
+  for i in $(seq 1 30); do
+    sleep 1
+    curl -s "$OLLAMA_HOST_URL/api/version" >/dev/null 2>&1 && break
+  done
+  if curl -s "$OLLAMA_HOST_URL/api/version" >/dev/null 2>&1; then
+    ok "Dienst gestartet (localhost:11434)."
+  else
+    bad "Dienst nicht erreichbar — siehe kwn2-ollama-serve.log."
+    echo "Dieses Fenster kannst du schließen (cmd+W)."; exit 1
+  fi
+fi
+echo
+
+# ---- Schritt 4: Modell laden (einmalig Internet) -------------------------------
+echo "${FETT}— Schritt 4/6: Modell '$MODELL' bereitstellen${AUS}"
+if ollama list 2>/dev/null | awk '{print $1}' | grep -qx "$MODELL"; then
+  ok "Modell '$MODELL' ist bereits lokal vorhanden (kein Download nötig)."
+else
+  warn "Modell '$MODELL' fehlt lokal — Download läuft (einmalig, braucht Internet; ~10–20 GB)."
+  if ollama pull "$MODELL"; then
+    ok "Modell '$MODELL' geladen."
+  else
+    bad "Download von '$MODELL' fehlgeschlagen. Bei knappem RAM Rückfall: MODELL=qwen3:14b erneut starten."
+    echo "Dieses Fenster kannst du schließen (cmd+W)."; exit 1
+  fi
+fi
+# Kurzer Warmlauf, damit die Gewichte im Metal-Speicher liegen (fairere Zeitmessung).
+echo "  Warmlauf (Modell in den Speicher laden) …"
+curl -s "$ZIEL_URL/chat/completions" -H 'content-type: application/json' \
+  -d "{\"model\":\"$MODELL\",\"messages\":[{\"role\":\"user\",\"content\":\"ok\"}],\"max_tokens\":8}" >/dev/null 2>&1
+ok "Modell antwortet auf localhost."
+echo
+
+# ---- Schritt 5: Prüfstand fahren (unveränderter PMO-Runner) --------------------
+echo "${FETT}— Schritt 5/6: Prüfstand gegen den lokalen LLM${AUS}"
+if [ ! -f "$PMO/scripts/pruefstand-run.mjs" ]; then
+  bad "Prüfstand-Runner nicht gefunden ($PMO/scripts/pruefstand-run.mjs)."
+  echo "  PMO-Ordner (KLARWERK_Reporting_PMO) muss auf diesem Mac liegen."
+  echo "Dieses Fenster kannst du schließen (cmd+W)."; exit 1
+fi
+if ! command -v node >/dev/null 2>&1; then
+  bad "Node.js fehlt — der Runner braucht Node. Einmalig installieren (brew install node)."
+  echo "Dieses Fenster kannst du schließen (cmd+W)."; exit 1
+fi
+echo "  HINWEIS: Der Runner misst das ERSTE von /v1/models angebotene Modell und benennt es im"
+echo "  Report. Für eine eindeutige Zuordnung ein Modell pro Lauf messen (gemessenes Modell steht"
+echo "  im Report-Kopf). Optionale Modellwahl im Runner = Abstimmung mit Paul (Team-2-Artefakt)."
+echo
+if ( cd "$PMO" && node scripts/pruefstand-run.mjs "$ZIEL_URL" ); then
+  ok "Prüfstand gelaufen."
+else
+  bad "Prüfstand-Lauf mit Fehler beendet — Report/Log prüfen."
+fi
+echo
+
+# ---- Schritt 6: Ergebnisse in die Brücke kopieren ------------------------------
+echo "${FETT}— Schritt 6/6: Ergebnisse sichern (Brücke)${AUS}"
+SAFE_MODELL="$(echo "$MODELL" | tr -c 'A-Za-z0-9' '_')"
+ZIEL_MD="$PRUEF_BRIDGE/pruefstand_${STEMPEL}_macstudio_${SAFE_MODELL}.md"
+if [ -f "$PMO/reports/pruefstand-latest.md" ]; then
+  {
+    echo "> Insel-Lauf KWN-2 · Zielhardware: Mac Studio (Apple Silicon, ${MEM_GB} GB, $CHIP)"
+    echo "> Ollama/Metal · Modell-Tag: $MODELL · $(date '+%d.%m.%Y %H:%M') · Quelle KLLM-62"
+    echo
+    cat "$PMO/reports/pruefstand-latest.md"
+  } > "$ZIEL_MD"
+  ok "Report kopiert → ${ZIEL_MD#$HOME/}"
+else
+  bad "Kein pruefstand-latest.md gefunden — kein Report kopiert."
+fi
+[ -f "$PMO/data/pruefstand-ergebnisse.json" ] && cp "$PMO/data/pruefstand-ergebnisse.json" "$PRUEF_BRIDGE/pruefstand-ergebnisse.json" && ok "Historie (JSON) in die Brücke kopiert."
+echo
+
+# ---- Abschluss -----------------------------------------------------------------
+if [ "$FEHL" = "0" ]; then
+  echo "${GRUEN}${FETT}FERTIG — Insel-Prüfstand auf dem Mac Studio gemessen.${AUS}"
+  echo "Nächster Schritt: Ergebnistabelle in KWN-2 füllen (KLARWERK NERD) und mit Referenz (22/24)"
+  echo "sowie den L40S-Zahlen (andere Hardware) gegenüberstellen. Modellentscheidung 32B vs. 14B"
+  echo "fällt NACH dieser Messung auf dem Gerät."
+else
+  echo "${ROT}${FETT}Mit Fehlern beendet — Log lesen, ggf. Rückfall MODELL=qwen3:14b.${AUS}"
+fi
+echo "Vollständiges Log: ${LOG#$HOME/}"
+echo "Ergebnis-Reports: ${PRUEF_BRIDGE#$HOME/}/"
+echo "Dieses Fenster kannst du schließen (cmd+W)."
+} 2>&1 | tee "$LOG"

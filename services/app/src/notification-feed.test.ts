@@ -86,4 +86,65 @@ describe("buildNotifications", () => {
     const noAssign = buildNotifications({ conflicts: [], gaps: [] });
     expect(noAssign).toEqual([]);
   });
+
+  it("Pedi 04.07.: offene Überschneidungen erscheinen als Duplikat-Benachrichtigung (Modell-Begründung als Titel)", () => {
+    const items = buildNotifications({
+      conflicts: [],
+      gaps: [],
+      overlaps: [
+        {
+          id: "o1",
+          koA: "a",
+          koB: "b",
+          relation: "teilweise",
+          aspects: [],
+          eigenanteilA: "",
+          eigenanteilB: "",
+          recommendation: "zusammenfuehren_pruefen",
+          status: "offen",
+          pairKey: "dup|ko:a|ko:b",
+          origin: "auto",
+          detector: {
+            trigger: "validation",
+            method: "model",
+            lexicalScore: 0.5,
+            confidence: 0.88,
+            rationale: "Beide beschreiben dieselbe Wartung.",
+          },
+          createdAt: "2026-06-07T00:00:00Z",
+        },
+      ],
+    });
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      id: "dup-o1",
+      kind: "duplicate",
+      title: "Beide beschreiben dieselbe Wartung.",
+    });
+  });
+
+  it("deterministischer (textgleicher) Fund ohne Begründung → Fallback-Titel", () => {
+    const items = buildNotifications({
+      conflicts: [],
+      gaps: [],
+      overlaps: [
+        {
+          id: "o2",
+          koA: "a",
+          koB: "b",
+          relation: "identisch",
+          aspects: [],
+          eigenanteilA: "",
+          eigenanteilB: "",
+          recommendation: "zusammenfuehren",
+          status: "offen",
+          pairKey: "dup|ko:a|ko:b",
+          origin: "auto",
+          detector: { trigger: "validation", method: "deterministic", lexicalScore: 0.92 },
+          createdAt: "2026-06-07T00:00:00Z",
+        },
+      ],
+    });
+    expect(items[0]?.title).toBe("Zwei Beiträge überschneiden sich stark.");
+  });
 });

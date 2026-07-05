@@ -33,6 +33,18 @@ describe("AuditService", () => {
     expect(await service.verify()).toBe(true);
   });
 
+  it("SCRUM-439: verifyReport meldet ok + Anzahl der geprüften Einträge", async () => {
+    await service.record({ actor: "a", action: "act1", target: "t1" });
+    await service.record({ actor: "b", action: "act2", target: "t2" });
+    const report = await service.verifyReport();
+    expect(report.ok).toBe(true);
+    expect(report.count).toBe(2);
+  });
+
+  it("SCRUM-439: leere Kette gilt als intakt (count 0)", async () => {
+    expect(await service.verifyReport()).toEqual({ ok: true, count: 0 });
+  });
+
   it("filtert nach Aktion", async () => {
     await service.record({ actor: "a", action: "login", target: "a" });
     await service.record({ actor: "b", action: "logout", target: "b" });

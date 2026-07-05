@@ -37,6 +37,8 @@ import type {
   OutputDocument,
   OutputKind,
   OutputSource,
+  OverlapEntry,
+  OverlapSettings,
   PublicUser,
   ReasonerConfigStatus,
   ReasonerProbeResult,
@@ -66,6 +68,8 @@ export type KoFilter = { type?: string; status?: string; category?: string; tag?
 // PUT /api/kos/:id — ein Mutations-Endpunkt, per {action} verzweigt.
 export type KoAction =
   | { action: "rate"; verdict: Verdict }
+  // Pedi 05.07.: Admin-Override „als wahr kennzeichnen" — schließt die Validierung komplett ab.
+  | { action: "admin-validate" }
   | { action: "assign"; userIds: string[] }
   | { action: "revise"; changes: DraftPayload }
   | { action: "comment"; text: string }
@@ -123,6 +127,25 @@ export const endpoints = {
     escalate: (id: string) => api.post<Conflict>(`/conflicts/${id}/escalate`),
     secondOpinion: (id: string, opinion: string) =>
       api.post<Conflict>(`/conflicts/${id}/second-opinion`, { opinion }),
+    // Berater-Konzept 04.07. (Stufe 4): „Fehlalarm — kein Widerspruch" schließt den Konflikt.
+    dismiss: (id: string, note?: string) =>
+      api.post<Conflict>(`/conflicts/${id}/dismiss`, note ? { note } : {}),
+  },
+  // Berater-Konzept Duplikate 04.07. (Stufe D4): Überschneidungs-/Duplikat-Board. Liste + Detail
+  // lesen alle Leseberechtigten; die menschlichen Abschlüsse sind kuratorische Entscheidungen.
+  duplicates: {
+    list: () => api.get<OverlapEntry[]>("/duplicates"),
+    get: (id: string) => api.get<OverlapEntry>(`/duplicates/${id}`),
+    dismiss: (id: string, note?: string) =>
+      api.post<OverlapEntry>(`/duplicates/${id}/dismiss`, note ? { note } : {}),
+    keepSeparate: (id: string, note?: string) =>
+      api.post<OverlapEntry>(`/duplicates/${id}/keep-separate`, note ? { note } : {}),
+    linkRelated: (id: string, note?: string) =>
+      api.post<OverlapEntry>(`/duplicates/${id}/link-related`, note ? { note } : {}),
+    // Pedi 04.07.: Anzeige-Schwelle (lesen: alle Leseberechtigten; setzen: Admin).
+    settings: () => api.get<OverlapSettings>("/duplicates/settings"),
+    saveSettings: (minConfidence: number) =>
+      api.put<OverlapSettings>("/duplicates/settings", { minConfidence }),
   },
   gaps: {
     list: () => api.get<Gap[]>("/gaps"),
@@ -216,7 +239,11 @@ export const endpoints = {
     // SCRUM-140: vorhandene Wirkungs-API anbinden (FR-ANA-02).
     impact: () => api.get<ImpactReport>("/analytics/impact"),
   },
-  audit: { list: () => api.get<AuditEntry[]>("/audit") },
+  audit: {
+    list: () => api.get<AuditEntry[]>("/audit"),
+    // SCRUM-439: aktive Integritätsprüfung der Audit-Kette (Admin-Knopf „Integrität geprüft").
+    verify: () => api.get<{ ok: boolean; count: number }>("/audit/verify"),
+  },
   // SCRUM-121: Objekt-/Attachment-Speicher — Original via Referenz statt Inline im KO.
   objects: {
     upload: (input: { name: string; mime: string; data: string; kind?: ObjectRef["kind"] }) =>
@@ -295,9 +322,16 @@ export const endpoints = {
   },
   // SCRUM-181: admin-only Demo-Seed für leere Instanzen (ehrliche seeded/skipped-Rückgabe).
   admin: {
-    demoSeed: () => api.post<DemoSeedResult>("/admin/demo-seed", {}),
-    // Pedi 02.07.: Demodaten komplett entfernen (Merker überlebt Tester-Bearbeitungen).
-    demoPurge: () => api.del<{ kos: number; conflicts: number; gaps: number }>("/admin/demo-seed"),
+    // Pedi 05.07. (Beta): `force` lädt das Demo-Set auch bei bereits erfassten Daten.
+    demoSeed: (force = false) => api.post<DemoSeedResult>("/admin/demo-seed", { force }),
+    // Pedi 02.07./05.07.: Demodaten komplett entfernen (inkl. Demo-Anwender); Merker überlebt
+    // Tester-Bearbeitungen.
+    demoPurge: () =>
+      api.del<{ kos: number; conflicts: number; gaps: number; users: number }>("/admin/demo-seed"),
+    // Pedi 05.07. (Beta): Werksreset — Verfügbarkeit (nur Desktop/Dev) + Ausführen (löscht alles,
+    // beendet das Programm; nächster Start = Ersteinrichtung).
+    factoryResetStatus: () => api.get<{ available: boolean }>("/admin/factory-reset"),
+    factoryReset: () => api.post<{ ok: boolean }>("/admin/factory-reset", {}),
   },
   users: {
     list: () => api.get<PublicUser[]>("/users"),

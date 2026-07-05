@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>KLARWERK Modell-Manager</title>
+<style>
+  :root{
+    --steel:#16222C; --orange:#ED7D0E; --violet:#5B50C4;
+    --page:#f4f6f7; --card:#ffffff; --hair:#dce2e6; --muted:#5b6b74;
+    --pos:#1f9d55; --posbg:#e9f7ef; --warn:#b25a00; --warnbg:#fdf0e3; --errbg:#fdeaea; --err:#c0362c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--page);color:var(--steel);
+    font-family:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  code,.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;}
+  header{background:var(--steel);color:#fff;padding:14px 22px;border-bottom:3px solid var(--orange);
+    display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+  header h1{font-size:17px;margin:0;font-weight:600}
+  header .tag{font-size:11px;color:#9fb2bd;letter-spacing:.02em}
+  header .health{margin-left:auto;font-size:12px}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}
+  main{max-width:900px;margin:0 auto;padding:22px}
+  .card{background:var(--card);border:1px solid var(--hair);border-radius:12px;padding:18px 20px;margin-bottom:20px}
+  .card h2{font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 14px}
+  label{display:block;font-size:12px;color:var(--muted);margin:0 0 4px}
+  .row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
+  .f-name{flex:1 1 200px}
+  .f-src{flex:2 1 320px}
+  input[type=text]{width:100%;padding:10px 12px;border:1px solid var(--hair);border-radius:8px;font-size:14px;
+    color:var(--steel);background:#fff}
+  input[type=text]:focus{outline:none;border-color:var(--violet);box-shadow:0 0 0 3px rgba(91,80,196,.15)}
+  button{border:0;border-radius:8px;padding:11px 18px;font-size:14px;font-weight:600;cursor:pointer}
+  .btn-primary{background:var(--orange);color:#fff}
+  .btn-primary:disabled{background:#e6c39b;cursor:not-allowed}
+  .btn-ghost{background:transparent;color:var(--violet);padding:6px 10px;font-size:13px}
+  .btn-danger{background:transparent;color:var(--err);border:1px solid var(--hair);padding:6px 12px;font-size:13px;font-weight:500}
+  .hint{font-size:12px;color:var(--muted);margin-top:8px}
+  .hint code{background:#eef1f3;padding:1px 5px;border-radius:4px}
+  /* Fortschritt */
+  #progress{display:none;margin-top:16px;border:1px solid var(--hair);border-radius:8px;overflow:hidden}
+  #progress .head{display:flex;justify-content:space-between;padding:8px 12px;font-size:13px;background:#f7f9fa}
+  .bar{height:8px;background:#eef1f3}
+  .bar > span{display:block;height:100%;width:0;background:var(--violet);transition:width .2s}
+  #log{max-height:150px;overflow:auto;padding:8px 12px;font-size:12px;color:var(--muted);white-space:pre-wrap}
+  .note{padding:10px 12px;border-radius:8px;font-size:13px;margin-top:12px;display:none}
+  .note.ok{background:var(--posbg);color:var(--pos);display:block}
+  .note.err{background:var(--errbg);color:var(--err);display:block}
+  /* Tabelle */
+  table{width:100%;border-collapse:collapse}
+  th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--hair);font-size:14px}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600}
+  td.size{color:var(--muted);font-variant-numeric:tabular-nums}
+  .empty{color:var(--muted);font-size:13px;padding:10px 0}
+  footer{max-width:900px;margin:0 auto;padding:0 22px 30px;color:var(--muted);font-size:11px}
+</style>
+</head>
+<body>
+<header>
+  <h1>KLARWERK Modell-Manager</h1>
+  <span class="tag">On-Prem · lokaler LLM · KWN / KLLM-62</span>
+  <span class="health" id="health"><span class="dot" style="background:#9fb2bd"></span>Ollama: prüfe…</span>
+</header>
+
+<main>
+  <div class="card">
+    <h2>Modell hinzufügen</h2>
+    <div class="row">
+      <div class="f-name">
+        <label for="name">Name / Alias (optional)</label>
+        <input type="text" id="name" placeholder="z. B. klarwerk-32b" />
+      </div>
+      <div class="f-src">
+        <label for="src">Quelle: Ollama-Tag, hf.co-Code oder Link</label>
+        <input type="text" id="src" placeholder="z. B. qwen3:32b  ·  hf.co/user/repo:Q4_K_M" />
+      </div>
+      <button class="btn-primary" id="pull">Herunterladen</button>
+    </div>
+    <div class="hint">
+      Beispiele: <code>qwen3:32b</code> (Standard), <code>qwen3:14b</code> (Rückfall),
+      oder ein Hugging-Face-Code wie <code>hf.co/&lt;user&gt;/&lt;repo&gt;:Q4_K_M</code>.
+      Der Download läuft über Ollama und braucht einmalig Internet; danach ist das Modell lokal.
+    </div>
+
+    <div id="progress">
+      <div class="head"><span id="p-status">…</span><span id="p-pct">0&nbsp;%</span></div>
+      <div class="bar"><span id="p-bar"></span></div>
+      <div id="log"></div>
+    </div>
+    <div class="note" id="note"></div>
+  </div>
+
+  <div class="card">
+    <h2>Installierte Modelle <button class="btn-ghost" id="refresh" style="float:right">Aktualisieren</button></h2>
+    <table>
+      <thead><tr><th>Modell</th><th>Größe</th><th>Geändert</th><th></th></tr></thead>
+      <tbody id="models"><tr><td colspan="4" class="empty">lade…</td></tr></tbody>
+    </table>
+  </div>
+</main>
+
+<footer>
+  Nur lokal erreichbar (127.0.0.1) · keine Secrets · der lokale LLM wird nie öffentlich gebunden.
+  Der eigentliche Modell-Download läuft über Ollama. Quelle der Wahrheit: KLLM-62.
+</footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const fmtBytes = (n) => { if(!n && n!==0) return "—"; const u=["B","KB","MB","GB","TB"]; let i=0,x=n;
+  while(x>=1024 && i<u.length-1){x/=1024;i++;} return x.toFixed(x<10&&i>0?1:0)+" "+u[i]; };
+const fmtDate = (s) => { if(!s) return "—"; try{ return new Date(s).toLocaleDateString("de-DE"); }catch{ return "—"; } };
+
+async function health(){
+  try{
+    const r = await fetch("/api/health"); const j = await r.json();
+    if(j.ok){ $("health").innerHTML = '<span class="dot" style="background:var(--pos)"></span>Ollama bereit · v'+ (j.ollama||"?"); }
+    else { $("health").innerHTML = '<span class="dot" style="background:var(--err)"></span>Ollama nicht erreichbar'; }
+  }catch{ $("health").innerHTML = '<span class="dot" style="background:var(--err)"></span>Ollama nicht erreichbar'; }
+}
+
+async function loadModels(){
+  try{
+    const r = await fetch("/api/models"); const j = await r.json();
+    const list = (j && j.models) ? j.models : [];
+    const tb = $("models");
+    if(!list.length){ tb.innerHTML = '<tr><td colspan="4" class="empty">Noch keine Modelle installiert.</td></tr>'; return; }
+    tb.innerHTML = "";
+    for(const m of list){
+      const tr = document.createElement("tr");
+      const name = m.name || m.model || "?";
+      tr.innerHTML = '<td class="mono">'+name+'</td>'
+        + '<td class="size">'+fmtBytes(m.size)+'</td>'
+        + '<td class="size">'+fmtDate(m.modified_at)+'</td>'
+        + '<td style="text-align:right"></td>';
+      const btn = document.createElement("button");
+      btn.className="btn-danger"; btn.textContent="Löschen";
+      btn.onclick = () => del(name);
+      tr.lastChild.appendChild(btn);
+      tb.appendChild(tr);
+    }
+  }catch(e){ $("models").innerHTML = '<tr><td colspan="4" class="empty">Fehler beim Laden: '+e.message+'</td></tr>'; }
+}
+
+async function del(name){
+  if(!confirm("Modell \""+name+"\" wirklich löschen?")) return;
+  await fetch("/api/delete", {method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({name})});
+  loadModels();
+}
+
+function setNote(kind, msg){ const n=$("note"); n.className="note "+kind; n.textContent=msg; }
+
+async function pull(){
+  const source = $("src").value.trim();
+  const alias  = $("name").value.trim();
+  if(!source){ setNote("err","Bitte eine Quelle angeben (Tag, Link oder hf.co-Code)."); return; }
+  $("pull").disabled = true; setNote("","");
+  $("progress").style.display = "block"; $("log").textContent = "";
+  $("p-status").textContent = "starte…"; $("p-pct").textContent = "0 %"; $("p-bar").style.width = "0";
+
+  try{
+    const resp = await fetch("/api/pull", {method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({source})});
+    if(!resp.ok || !resp.body){ const t = await resp.text().catch(()=>""); throw new Error(t || ("HTTP "+resp.status)); }
+    const reader = resp.body.getReader(); const dec = new TextDecoder();
+    let buf = "", ok = false, lastErr = "";
+    for(;;){
+      const {done, value} = await reader.read(); if(done) break;
+      buf += dec.decode(value, {stream:true});
+      let nl; while((nl = buf.indexOf("\n")) >= 0){
+        const line = buf.slice(0, nl).trim(); buf = buf.slice(nl+1);
+        if(!line) continue;
+        let o; try{ o = JSON.parse(line); }catch{ continue; }
+        if(o.error){ lastErr = o.error; }
+        if(o.status){
+          $("p-status").textContent = o.status;
+          $("log").textContent = (o.status + "\n" + $("log").textContent).slice(0, 4000);
+          if(o.status === "success") ok = true;
+        }
+        if(o.total && o.completed != null){
+          const pct = Math.max(0, Math.min(100, Math.round(o.completed / o.total * 100)));
+          $("p-pct").textContent = pct + " %"; $("p-bar").style.width = pct + "%";
+        }
+      }
+    }
+    if(lastErr && !ok) throw new Error(lastErr);
+    // Alias anlegen, falls gewünscht und abweichend.
+    if(ok && alias && alias !== source){
+      await fetch("/api/copy", {method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({source, destination:alias})});
+    }
+    $("p-bar").style.width = "100%"; $("p-pct").textContent = "100 %"; $("p-status").textContent = "fertig";
+    setNote("ok", "Fertig: "+ (alias && alias!==source ? (source+"  →  "+alias) : source) +" ist lokal verfügbar.");
+    loadModels();
+  }catch(e){
+    setNote("err", "Fehlgeschlagen: "+ e.message);
+    $("p-status").textContent = "Fehler";
+  }finally{
+    $("pull").disabled = false;
+  }
+}
+
+$("pull").onclick = pull;
+$("refresh").onclick = loadModels;
+$("src").addEventListener("keydown", (e)=>{ if(e.key==="Enter") pull(); });
+health(); loadModels();
+setInterval(health, 15000);
+</script>
+</body>
+</html>

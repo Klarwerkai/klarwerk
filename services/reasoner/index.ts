@@ -18,6 +18,10 @@ export {
 export {
   ModelProvider,
   type ModelClient,
+  // Berater-Konzept 04.07. (Stufe 2, kon-v1): DOM-freies, testbares Parsen des Konflikturteils.
+  parseConflictResponse,
+  // Berater-Konzept Duplikate 04.07. (Stufe D2, dup-v1): testbares Parsen des Überschneidungs-Urteils.
+  parseDuplicateResponse,
   // PMO-FEA-0006: DOM-freies Extract-Parsing inkl. G-2-Belegstellen-Gate (testbar).
   parseExtractResponse,
   excerptFoundInDocument,
@@ -57,6 +61,9 @@ export type {
   AnswerStep,
   StructureResult,
   AssistResult,
+  ConflictJudgeResult,
+  DuplicateJudgeResult,
+  DuplicateAspect,
   ExtractResult,
   ExtractedPoint,
   EnrichResult,

@@ -59,6 +59,9 @@ const ALLOWED_DIV_CLASSES = new Set([
   "panel-success",
   // SCRUM-355: schmale Erweiterung für sichere Body-Datei-Referenzen (Link auf Object-Store-Raw-Pfad).
   "attachment",
+  // SCRUM-438: übernommener Public-KI-/Web-Block wird als „extern · ungeprüft" markiert (stabiles,
+  // sprachunabhängiges Herkunfts-Marker-Klassenzeichen; nur eine Klasse, kein Skript/Style).
+  "panel-external",
 ]);
 
 function sanitizeDivClass(value: string): string | null {

@@ -1,12 +1,12 @@
 import type { Gap } from "../../ask";
-import type { Conflict } from "../../conflicts";
+import type { Conflict, OverlapEntry } from "../../conflicts";
 import type { AssignmentNotice } from "../../validation";
 
 // In-App-Benachrichtigungen (Abstimmpunkt 2). Das notifications-Modul versendet
 // nur E-Mail; die Glocke/Popover-Quelle wird hier aus vorhandenen Signalen mit
 // Zeitstempel aggregiert: offene Konflikte, offene Wissenslücken und — SCRUM-363 —
 // die persönlichen offenen Review-Zuweisungen der aktuellen Person.
-export type NotificationKind = "conflict" | "gap" | "assignment" | "impact";
+export type NotificationKind = "conflict" | "duplicate" | "gap" | "assignment" | "impact";
 
 // PMO-FEA-0002: Wirkungs-Rückmeldung an den Originalautor („Dein Wissen hat geholfen").
 // Quelle: Audit-Einträge answer.helpful — keine eigene Persistenz, keine Zähler/Scores.
@@ -33,6 +33,9 @@ export function buildNotifications(input: {
   gaps: Gap[];
   assignments?: AssignmentNotice[];
   impacts?: ImpactNotice[];
+  // Pedi 04.07.: offene Überschneidungen (Duplikate) erscheinen wie Konflikte in der Glocke, damit
+  // ein neuer Fund auch ohne Besuch der Duplikate-Seite auffällt.
+  overlaps?: OverlapEntry[];
 }): Notification[] {
   const items: Notification[] = [];
   for (const im of input.impacts ?? []) {
@@ -46,6 +49,16 @@ export function buildNotifications(input: {
   }
   for (const c of input.conflicts) {
     items.push({ id: `con-${c.id}`, kind: "conflict", title: c.description, at: c.createdAt });
+  }
+  for (const o of input.overlaps ?? []) {
+    // Titel: die Modell-Begründung (selbsterklärend), sonst ein kurzer Fallback für den
+    // deterministischen (textgleichen) Fund. Die Glocke setzt „Mögliches Duplikat:" davor.
+    items.push({
+      id: `dup-${o.id}`,
+      kind: "duplicate",
+      title: o.detector?.rationale?.trim() || "Zwei Beiträge überschneiden sich stark.",
+      at: o.createdAt,
+    });
   }
   for (const g of input.gaps) {
     if (g.status === "offen") {

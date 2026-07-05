@@ -63,6 +63,10 @@
 .prose-kw .panel-success {
   @apply border-l-4 border-l-trust-pos-fill bg-trust-pos-bg;
 }
+/* SCRUM-438: übernommenes externes, ungeprüftes Wissen — dezenter KI-Akzent (wie „extern · ungeprüft"). */
+.prose-kw .panel-external {
+  @apply border-l-4 border-l-ai bg-ai-surface-1;
+}
 /* SCRUM-355: sichere Body-Datei-Referenz (Link auf Object-Store-Raw-Pfad) als ruhige Anhang-Zeile. */
 .prose-kw .attachment {
   @apply my-2 inline-flex items-center gap-1.5 rounded-card border border-hairline bg-page px-2.5 py-1.5;

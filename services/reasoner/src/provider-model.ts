@@ -7,6 +7,9 @@ import {
 import type {
   AnswerResult,
   AssistResult,
+  ConflictJudgeResult,
+  DuplicateAspect,
+  DuplicateJudgeResult,
   EnrichResult,
   ExtractResult,
   ExtractedPoint,
@@ -62,6 +65,141 @@ function enrichPublicSystem(locale: ReasonerLocale): string {
   return locale === "en"
     ? "You add helpful external background knowledge to an expert's draft. Be concise (3–6 sentences or short bullet points), factual and general. Do NOT invent specific numbers, thresholds, dates, names or quotes — if you are unsure, say so plainly. Make clear this is general external knowledge to be verified, not the company's own validated knowledge. Answer in English."
     : "Du ergänzt den Entwurf eines Experten um hilfreiches externes Hintergrundwissen. Fasse dich kurz (3–6 Sätze oder knappe Stichpunkte), sachlich und allgemein. Erfinde KEINE konkreten Zahlen, Grenzwerte, Daten, Namen oder Zitate — bist du unsicher, sage es offen. Mache klar, dass dies allgemeines externes Wissen zum Prüfen ist, nicht das validierte Wissen des Unternehmens. Antworte auf Deutsch.";
+}
+
+// Berater-Konzept 04.07. (Stufe 2, kon-v1): System-Prompt der „Konfliktprüfung". Rein inhaltlich
+// (A/B ohne Autoren/Trust), striktes JSON, nur was in den Texten steht, im Zweifel „unsicher",
+// wörtliche Belegzitate (nachgelagert hart geprüft, G-2). Temperatur 0 (deterministisches Urteil).
+function conflictSystem(locale: ReasonerLocale): string {
+  const contract =
+    '{"relation":"widerspruch|doppelung|ueberholt|kein_konflikt|unsicher","older":"a|b|null","confidence":0.0-1.0,"begruendung":"...","zitat_a":"...","zitat_b":"..."}';
+  return locale === "en"
+    ? `You compare two knowledge statements A and B and decide their relation. Respond ONLY with JSON: ${contract}. Judge ONLY what the texts state — add no world knowledge. A different scope stated in the text (other asset/condition) is NOT a contradiction → "kein_konflikt". When in doubt: "unsicher". "zitat_a"/"zitat_b" MUST be verbatim quotes copied from A resp. B. "older" only for "ueberholt", otherwise null.`
+    : `Du vergleichst zwei Wissens-Aussagen A und B und bestimmst ihre Beziehung. Antworte AUSSCHLIESSLICH mit JSON: ${contract}. Urteile NUR über das, was in den Texten steht — ergänze kein Weltwissen. Ein im Text genannter abweichender Geltungsbereich (andere Anlage/Bedingung) ist KEIN Widerspruch → "kein_konflikt". Im Zweifel: "unsicher". "zitat_a"/"zitat_b" MÜSSEN wörtliche Zitate aus A bzw. B sein (exakt kopieren). "older" nur bei "ueberholt", sonst null.`;
+}
+
+const CONFLICT_RELATIONS: readonly string[] = [
+  "widerspruch",
+  "doppelung",
+  "ueberholt",
+  "kein_konflikt",
+  "unsicher",
+];
+
+// kon-v1: striktes, defensives Parsen des Modellurteils. Ungültiges JSON, unbekannte Relation,
+// fehlende/nicht-numerische confidence oder Nicht-String-Zitate → null (kein Konflikt aus kaputten
+// Antworten). confidence wird auf 0..1 geklemmt; older nur "a"/"b", sonst null.
+export function parseConflictResponse(raw: string): ConflictJudgeResult | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(extractJson(raw));
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) {
+    return null;
+  }
+  const o = parsed as Record<string, unknown>;
+  const relation = o.relation;
+  if (typeof relation !== "string" || !CONFLICT_RELATIONS.includes(relation)) {
+    return null;
+  }
+  if (typeof o.confidence !== "number" || !Number.isFinite(o.confidence)) {
+    return null;
+  }
+  if (typeof o.zitat_a !== "string" || typeof o.zitat_b !== "string") {
+    return null;
+  }
+  const confidence = Math.min(1, Math.max(0, o.confidence));
+  const older = o.older === "a" || o.older === "b" ? o.older : null;
+  const begruendung = typeof o.begruendung === "string" ? o.begruendung : "";
+  return {
+    relation: relation as ConflictJudgeResult["relation"],
+    older,
+    confidence,
+    begruendung,
+    zitat_a: o.zitat_a,
+    zitat_b: o.zitat_b,
+  };
+}
+
+// Berater-Konzept Duplikate 04.07. (Stufe D2, dup-v1): System-Prompt der „Duplikatprüfung".
+// Beschreibt die Überschneidung als Profil (Beziehung/Grad/gemeinsame Aussagen/Empfehlung); nur was
+// im Text steht; abweichender Geltungsbereich → getrennt lassen; Sprachpaar → nicht zusammenführen.
+function duplicateSystem(locale: ReasonerLocale): string {
+  const contract =
+    '{"beziehung":"identisch|a_enthaelt_b|b_enthaelt_a|teilweise|verwandt|verschieden|unsicher","gemeinsame_aussagen":[{"beschreibung":"...","zitat_a":"...","zitat_b":"..."}],"nur_in_a":"...","nur_in_b":"...","empfehlung":"zusammenfuehren|zusammenfuehren_pruefen|getrennt_lassen|verwandt_verlinken","confidence":0.0-1.0,"begruendung":"..."}';
+  return locale === "en"
+    ? `You compare two knowledge statements A and B and describe their OVERLAP (relation + degree + shared statements). Respond ONLY with JSON: ${contract}. Judge ONLY what the texts state. Explicitly different scope in the text (other asset/condition) → recommend "getrennt_lassen" even at high textual overlap. Same content in two languages → "identisch" but recommend "getrennt_lassen"/"verwandt_verlinken" (never merge across languages). When in doubt: "unsicher". Every "zitat_a"/"zitat_b" MUST be a verbatim quote from A resp. B. At most 5 shared statements.`
+    : `Du vergleichst zwei Wissens-Aussagen A und B und beschreibst ihre ÜBERSCHNEIDUNG (Beziehung + Grad + gemeinsame Aussagen). Antworte AUSSCHLIESSLICH mit JSON: ${contract}. Urteile NUR über das, was in den Texten steht. Ein im Text ausdrücklich abweichender Geltungsbereich (andere Anlage/Bedingung) → Empfehlung "getrennt_lassen", auch bei hoher Textdeckung. Gleicher Inhalt in zwei Sprachen → "identisch", aber Empfehlung "getrennt_lassen"/"verwandt_verlinken" (nie über Sprachgrenzen zusammenführen). Im Zweifel: "unsicher". Jedes "zitat_a"/"zitat_b" MUSS ein wörtliches Zitat aus A bzw. B sein. Höchstens 5 gemeinsame Aussagen.`;
+}
+
+const DUP_RELATIONS: readonly string[] = [
+  "identisch",
+  "a_enthaelt_b",
+  "b_enthaelt_a",
+  "teilweise",
+  "verwandt",
+  "verschieden",
+  "unsicher",
+];
+const DUP_RECOMMENDATIONS: readonly string[] = [
+  "zusammenfuehren",
+  "zusammenfuehren_pruefen",
+  "getrennt_lassen",
+  "verwandt_verlinken",
+];
+
+// dup-v1: striktes, defensives Parsen. Ungültiges JSON, unbekannte Beziehung oder nicht-numerische
+// confidence → null. Aspekte ohne beide String-Zitate werden gestrichen (der G-2-Wächter prüft später
+// zusätzlich wörtlich). Unbekannte Empfehlung fällt sicher auf „zusammenfuehren_pruefen".
+export function parseDuplicateResponse(raw: string): DuplicateJudgeResult | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(extractJson(raw));
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) {
+    return null;
+  }
+  const o = parsed as Record<string, unknown>;
+  const beziehung = o.beziehung;
+  if (typeof beziehung !== "string" || !DUP_RELATIONS.includes(beziehung)) {
+    return null;
+  }
+  if (typeof o.confidence !== "number" || !Number.isFinite(o.confidence)) {
+    return null;
+  }
+  const empfehlung =
+    typeof o.empfehlung === "string" && DUP_RECOMMENDATIONS.includes(o.empfehlung)
+      ? o.empfehlung
+      : "zusammenfuehren_pruefen";
+  const rawAspects = Array.isArray(o.gemeinsame_aussagen) ? o.gemeinsame_aussagen : [];
+  const aspects: DuplicateAspect[] = [];
+  for (const item of rawAspects) {
+    if (typeof item !== "object" || item === null) {
+      continue;
+    }
+    const rec = item as Record<string, unknown>;
+    if (typeof rec.zitat_a !== "string" || typeof rec.zitat_b !== "string") {
+      continue;
+    }
+    aspects.push({
+      beschreibung: typeof rec.beschreibung === "string" ? rec.beschreibung : "",
+      zitatA: rec.zitat_a,
+      zitatB: rec.zitat_b,
+    });
+  }
+  return {
+    beziehung: beziehung as DuplicateJudgeResult["beziehung"],
+    aspects,
+    nurInA: typeof o.nur_in_a === "string" ? o.nur_in_a : "",
+    nurInB: typeof o.nur_in_b === "string" ? o.nur_in_b : "",
+    empfehlung: empfehlung as DuplicateJudgeResult["empfehlung"],
+    confidence: Math.min(1, Math.max(0, o.confidence)),
+    begruendung: typeof o.begruendung === "string" ? o.begruendung : "",
+  };
 }
 
 function assistGuidance(locale: ReasonerLocale, instruction: string): string {
@@ -527,6 +665,31 @@ export class ModelProvider implements ReasonerProvider {
     const client = this.requireClient();
     const text = (await client.complete(enrichPublicSystem(locale), query, 1024)).trim();
     return { text, provider: this.name, demo: false };
+  }
+
+  // Berater-Konzept 04.07. (Stufe 2, kon-v1): „Konfliktprüfung" über das echte Modell. Neutrale
+  // A/B-Labels (kein Autor/Trust), striktes JSON; kaputte/ungültige Antworten → null (kein Konflikt).
+  async judgeConflict(
+    coreA: string,
+    coreB: string,
+    locale: ReasonerLocale = "de",
+  ): Promise<ConflictJudgeResult | null> {
+    const client = this.requireClient();
+    const user = `A:\n${coreA}\n\nB:\n${coreB}`;
+    const raw = await client.complete(conflictSystem(locale), user, 512);
+    return parseConflictResponse(raw);
+  }
+
+  // Berater-Konzept Duplikate 04.07. (Stufe D2, dup-v1): „Duplikatprüfung" über das echte Modell.
+  async judgeDuplicate(
+    coreA: string,
+    coreB: string,
+    locale: ReasonerLocale = "de",
+  ): Promise<DuplicateJudgeResult | null> {
+    const client = this.requireClient();
+    const user = `A:\n${coreA}\n\nB:\n${coreB}`;
+    const raw = await client.complete(duplicateSystem(locale), user, 768);
+    return parseDuplicateResponse(raw);
   }
 
   private requireClient(): ModelClient {

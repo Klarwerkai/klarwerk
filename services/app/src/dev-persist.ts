@@ -45,6 +45,10 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   ratings: ["upsert"],
   assignments: ["create", "update"],
   conflictsRepo: ["insert", "update"],
+  // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-Einträge überleben den Neustart.
+  overlapRepo: ["insert", "update"],
+  // Pedi 04.07.: eingestellte Anzeige-Schwelle überlebt den Neustart (letzter Set gewinnt).
+  overlapSettings: ["set"],
   lifecycleRepo: ["addCoupling", "markPending", "clearPending", "savePath", "setProgress"],
   objects: ["insert"],
   candidates: ["insert", "update"],

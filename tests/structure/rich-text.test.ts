@@ -40,6 +40,11 @@ describe("KW-STR FE: sanitizeHtml (Defense-in-Depth, gleiche Allowlist)", () => 
     // reine Fremdklasse → kein class-Attribut.
     expect(sanitizeHtml('<div class="evil"><p>a</p></div>')).toBe("<div><p>a</p></div>");
   });
+
+  it("SCRUM-438: Herkunfts-Marker panel-external überlebt die Sanitisierung", () => {
+    const html = '<div class="panel panel-external"><p>x</p></div>';
+    expect(sanitizeHtml(html)).toBe(html);
+  });
 });
 
 describe("KW-STR FE: Editor-Helfer", () => {

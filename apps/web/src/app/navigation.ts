@@ -5,6 +5,7 @@ import {
   BookOpen,
   Building2,
   CheckSquare,
+  Copy,
   FileOutput,
   GitCompare,
   Globe,
@@ -147,6 +148,18 @@ export const NAV_GROUPS: NavGroup[] = [
         minRole: "controller",
         badgeKey: "conflicts",
         badgeTone: "crit",
+        section: "7.7",
+        shot: "11",
+      },
+      {
+        // Berater-Konzept Duplikate 04.07. (Stufe D4): Duplikate-Board (Redaktion, kein Wahrheits-
+        // konflikt) — neutraler Badge, bewusst weniger dringlich als Konflikte.
+        id: "duplikate",
+        path: "/duplikate",
+        labelKey: "nav.duplicates",
+        icon: Copy,
+        minRole: "controller",
+        badgeKey: "duplicates",
         section: "7.7",
         shot: "11",
       },

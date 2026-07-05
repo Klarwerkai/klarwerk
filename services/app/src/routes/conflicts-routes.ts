@@ -39,6 +39,25 @@ export function conflictRoutes(conflicts: ConflictService, guards: Guards): Fast
       }
     });
 
+    // Berater-Konzept 04.07. (Stufe 4): „Fehlalarm — kein Widerspruch" schließt einen (meist
+    // automatisch erkannten) Konflikt bewusst als falsch-positiv. Menschlicher Entscheider (⚑).
+    app.post<{ Params: { id: string }; Body: { note?: string } | null }>(
+      "/api/conflicts/:id/dismiss",
+      async (request, reply) => {
+        const user = await guards.requirePermission("conflict.resolve", request, reply);
+        if (!user) {
+          return;
+        }
+        try {
+          reply
+            .code(200)
+            .send(await conflicts.dismiss(request.params.id, user.id, request.body?.note));
+        } catch (error) {
+          sendError(reply, error);
+        }
+      },
+    );
+
     app.post<{ Params: { id: string }; Body: { opinion: string } }>(
       "/api/conflicts/:id/second-opinion",
       async (request, reply) => {

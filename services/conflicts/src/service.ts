@@ -1,7 +1,15 @@
 import { randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
+import {
+  type ConflictVerdict,
+  type DetectSubject,
+  autoDescription,
+  coreText,
+  decideFromVerdict,
+  selectCandidates,
+} from "./detect";
 import type { ConflictRepo } from "./repo";
-import { type Conflict, ConflictError, type ConflictInput } from "./types";
+import { type Conflict, type ConflictDetector, ConflictError, type ConflictInput } from "./types";
 
 export interface ConflictServiceDeps {
   repo: ConflictRepo;
@@ -24,6 +32,7 @@ export class ConflictService {
   }
 
   // FR-CON-01: Widerspruch erzeugt einen klassifizierten Konflikt, kein stilles Überschreiben.
+  // Berater-Konzept 04.07. (Stufe 4): manuell angelegte Konflikte tragen origin="manual".
   async create(input: ConflictInput, actor = "system"): Promise<Conflict> {
     const conflict: Conflict = {
       id: this.genId(),
@@ -35,11 +44,58 @@ export class ConflictService {
       secondOpinion: null,
       decidedBy: null,
       decision: null,
+      origin: "manual",
       createdAt: new Date(this.now()).toISOString(),
     };
     await this.repo.insert(conflict);
     await this.audit?.record({ actor, action: "conflict.created", target: conflict.id });
     return conflict;
+  }
+
+  // Berater-Konzept 04.07. (Stufe 4): automatisch erkannter Konflikt — origin="auto" + detector-
+  // Metadaten (Begründung, Zitate, Sicherheit). Eigenes Audit-Vokabular „conflict.auto-created".
+  async createAuto(
+    input: ConflictInput,
+    detector: ConflictDetector,
+    actor = "system",
+  ): Promise<Conflict> {
+    const conflict: Conflict = {
+      id: this.genId(),
+      koA: input.koA,
+      koB: input.koB,
+      type: input.type,
+      description: input.description,
+      status: "offen",
+      secondOpinion: null,
+      decidedBy: null,
+      decision: null,
+      origin: "auto",
+      detector,
+      createdAt: new Date(this.now()).toISOString(),
+    };
+    await this.repo.insert(conflict);
+    await this.audit?.record({
+      actor,
+      action: "conflict.auto-created",
+      target: conflict.id,
+      payload: { trigger: detector.trigger, method: detector.method },
+    });
+    return conflict;
+  }
+
+  // Berater-Konzept 04.07. (Stufe 4): „Fehlalarm — kein Widerspruch". Ein Mensch schließt den
+  // (meist automatisch erkannten) Konflikt bewusst als falsch-positiv. Kein Auto-Effekt an den KOs.
+  async dismiss(id: string, by: string, note?: string): Promise<Conflict> {
+    const conflict = await this.requireOpen(id);
+    const saved = await this.save({
+      ...conflict,
+      status: "geloest",
+      decidedBy: by,
+      decision: note ?? null,
+      resolutionReason: "dismissed",
+    });
+    await this.audit?.record({ actor: by, action: "conflict.dismissed", target: id });
+    return saved;
   }
 
   // FR-CON-02: nur Wahrheitskonflikte eskalieren an einen Menschen.
@@ -108,6 +164,76 @@ export class ConflictService {
       });
     }
     return affected.length;
+  }
+
+  // Berater-Konzept 04.07. (Stufe 2/3): automatische Erkennung für EINEN Beitrag gegen einen bereits
+  // geladenen Kandidaten-Pool. Modul-rein — KEIN knowledge-object-Import: der Aufrufer (App-Root)
+  // reicht Kerntext-Subjekte + einen judge-Callback (Reasoner „Konfliktprüfung"). Legt je erkanntem
+  // Widerspruch EINEN Konflikt an (origin: automatisch, ehrliche Beschreibung mit Begründung) und ist
+  // idempotent gegen bereits offene Konflikte desselben Paars — G-2-Zitatprüfung sitzt in
+  // decideFromVerdict (kein Konflikt aus Modell-Halluzination). Gibt die neu angelegten Konflikte.
+  async detectForSubject(
+    subject: DetectSubject,
+    pool: readonly DetectSubject[],
+    judge: (coreA: string, coreB: string) => Promise<ConflictVerdict | null>,
+    options: { cap?: number; minConfidence?: number; actor?: string; modelLabel?: string } = {},
+  ): Promise<Conflict[]> {
+    const candidates = selectCandidates(subject, pool, options.cap ?? 8);
+    if (candidates.length === 0) {
+      return [];
+    }
+    const open = (await this.repo.all()).filter((c) => c.status !== "geloest");
+    const hasOpenPair = (aId: string, bId: string): boolean =>
+      open.some((c) => (c.koA === aId && c.koB === bId) || (c.koA === bId && c.koB === aId));
+    const subjectCore = coreText(subject);
+    const created: Conflict[] = [];
+    for (const cand of candidates) {
+      if (hasOpenPair(subject.refId, cand.refId)) {
+        continue;
+      }
+      let verdict: ConflictVerdict | null;
+      try {
+        verdict = await judge(subjectCore, coreText(cand));
+      } catch {
+        continue; // ein Modellfehler darf die Erkennung (und das Einreichen) nie kippen
+      }
+      if (!verdict) {
+        continue;
+      }
+      const decision = decideFromVerdict(
+        verdict,
+        subjectCore,
+        coreText(cand),
+        options.minConfidence,
+      );
+      if (!decision.create || decision.type === null) {
+        continue;
+      }
+      // Stufe 4: Herkunfts-/Erkennungs-Metadaten mitschreiben (Board zeigt „Automatisch erkannt ·
+      // Sicherheit % · Begründung + Zitate"). modelLabel optional (vom Aufrufer, sonst weglassen).
+      const detector: ConflictDetector = {
+        trigger: "validation",
+        method: "model",
+        promptVersion: "kon-v1",
+        confidence: verdict.confidence,
+        rationale: verdict.begruendung,
+        quotes: { a: verdict.zitat_a, b: verdict.zitat_b },
+        ...(options.modelLabel ? { modelLabel: options.modelLabel } : {}),
+      };
+      const conflict = await this.createAuto(
+        {
+          koA: subject.refId,
+          koB: cand.refId,
+          type: decision.type,
+          description: autoDescription(verdict),
+        },
+        detector,
+        options.actor ?? "system",
+      );
+      created.push(conflict);
+      open.push(conflict); // im selben Lauf kein zweiter Konflikt für dasselbe Paar
+    }
+    return created;
   }
 
   // FR-CON-04: alle ungelösten Konflikte (jeder Status außer gelöst).

@@ -30,6 +30,15 @@ export interface DemoSeedServices {
 // Modulweit, damit Seed UND Purge dieselbe Quelle nutzen.
 export const DEMO_TAG = "pilot-demo";
 
+// Bug (Pedi 05.07.): Beim Demo-Purge sollen auch die Demo-ANWENDER verschwinden. Alle vom Seed
+// erzeugten Konten liegen unter dieser E-Mail-Domain — EINE Quelle für Seed (Anlegen) UND Purge
+// (Entfernen). Produktive Konten tragen diese Domain nicht.
+export const DEMO_EMAIL_DOMAIN = "demo.klarwerk";
+
+function isDemoEmail(email: string): boolean {
+  return email.toLowerCase().endsWith(`@${DEMO_EMAIL_DOMAIN}`);
+}
+
 // Bug (Pedi 04.07.): Die vom Seed erzeugte Demo-Wissenslücke gehört zu den Beispielen und muss
 // beim Demo-Purge mitverschwinden. EINE Quelle für Seed UND Purge (Abgleich per Frage-Präfix,
 // robust gegen die Normalisierung der gespeicherten Gap-Frage).
@@ -88,39 +97,77 @@ export async function seedDemo(services: DemoSeedServices): Promise<SeedResult> 
 }
 
 // SCRUM-181: Admin-getriebener Demo-Seed für eine BEREITS eingerichtete Instanz (Login existiert).
-// Idempotenz-Guard: nur seeden, wenn die Wissensbasis leer ist (keine stillen Duplikate). Die
-// Demo-Mitnutzer werden über den real angemeldeten Admin freigegeben — keine gefälschten Rechte.
+// Idempotenz-Guard: standardmäßig nur seeden, wenn die Wissensbasis leer ist (keine stillen
+// Duplikate). Die Demo-Mitnutzer werden über den real angemeldeten Admin freigegeben — keine
+// gefälschten Rechte.
+//
+// Pedi 05.07. (Beta): Mit `force` lässt sich das Demo-Set AUCH laden, wenn bereits (echte) Daten
+// erfasst sind. Damit dabei keine Demo-Dubletten entstehen, wird das vorhandene Demo-Set zuerst
+// entfernt (nur die als Demo markierten KOs/Konflikte/Lücken/Anwender) und dann frisch geseedet —
+// echte, selbst erfasste Daten bleiben unberührt.
 export async function seedDemoForAdmin(
   services: DemoSeedServices,
   adminId: string,
+  opts?: { force?: boolean },
 ): Promise<SeedResult> {
-  if ((await services.ko.list()).length > 0) {
+  const hasData = (await services.ko.list()).length > 0;
+  if (hasData && !opts?.force) {
     return EMPTY_RESULT;
+  }
+  if (opts?.force) {
+    // Nur das bestehende Demo-Set aufräumen (echte Daten bleiben), dann frisch seeden.
+    await purgeDemoSeed(services, adminId);
   }
   const actors = await seedDemoUsers(services, adminId);
   return buildDemoContent(services, { adminId, ...actors });
 }
 
-// Legt Controller/Experte an und gibt sie über den (realen) Admin frei.
+// Legt Controller/Experte an und gibt sie über den (realen) Admin frei. Idempotent: existiert ein
+// Demo-Konto bereits (force-Re-Seed nach unvollständigem Purge), wird es wiederverwendet statt an
+// der Dublette-Prüfung zu scheitern.
 async function seedDemoUsers(
   services: DemoSeedServices,
   adminId: string,
 ): Promise<{ controllerId: string; expertId: string }> {
+  const carlaId = await ensureDemoUser(
+    services,
+    { name: "Carla Controller", email: "carla@demo.klarwerk", password: "demo-pass-carla" },
+    adminId,
+    "controller",
+  );
+  const erikId = await ensureDemoUser(
+    services,
+    { name: "Erik Experte", email: "erik@demo.klarwerk", password: "demo-pass-erik" },
+    adminId,
+  );
+  return { controllerId: carlaId, expertId: erikId };
+}
+
+// Ein Demo-Konto sicherstellen: vorhandenes wiederverwenden (freigeben/Rolle angleichen) oder neu
+// anlegen und über den realen Admin freigeben. Keine gefälschten Rechte — nur echte Service-Aufrufe.
+async function ensureDemoUser(
+  services: DemoSeedServices,
+  input: { name: string; email: string; password: string },
+  adminId: string,
+  role?: "controller",
+): Promise<string> {
   const { auth } = services;
-  const carla = await auth.register({
-    name: "Carla Controller",
-    email: "carla@demo.klarwerk",
-    password: "demo-pass-carla",
-  });
-  await auth.approveUser(carla.id, adminId);
-  await auth.changeRole(carla.id, "controller", adminId);
-  const erik = await auth.register({
-    name: "Erik Experte",
-    email: "erik@demo.klarwerk",
-    password: "demo-pass-erik",
-  });
-  await auth.approveUser(erik.id, adminId);
-  return { controllerId: carla.id, expertId: erik.id };
+  const existing = (await auth.listUsers()).find((u) => u.email === input.email);
+  if (existing) {
+    if (!existing.approved) {
+      await auth.approveUser(existing.id, adminId).catch(() => undefined);
+    }
+    if (role && existing.role !== role) {
+      await auth.changeRole(existing.id, role, adminId).catch(() => undefined);
+    }
+    return existing.id;
+  }
+  const created = await auth.register(input);
+  await auth.approveUser(created.id, adminId);
+  if (role) {
+    await auth.changeRole(created.id, role, adminId);
+  }
+  return created.id;
 }
 
 // Baut den eigentlichen Demo-Bestand über die echten Services — identisch für CLI und Admin-UI.
@@ -448,22 +495,26 @@ async function buildDemoContent(
 // ---- Demodaten komplett entfernen (Pedi 02.07.) -------------------------------------
 // Entfernt ALLE als demoSeed markierten Wissensobjekte (der Marker überlebt Bearbeitungen
 // und Versionen) samt zugehöriger Konflikte. Läuft über die echten Services → Audit bleibt
-// ehrlich. Demo-NUTZER bleiben bewusst bestehen (könnten inzwischen echte Beiträge haben).
+// ehrlich.
 // Bug (Pedi 04.07.): Auch die vom Seed erzeugte Demo-Wissenslücke wird jetzt mitgelöscht —
 // sie gehörte zu den Beispielen und blieb sonst als „offene Lücke/Aufgabe" stehen.
+// Bug (Pedi 05.07.): Auch die Demo-ANWENDER werden jetzt mitentfernt (Konten unter der
+// Demo-Domain). Der ausführende Admin bleibt selbstverständlich bestehen; der Last-Admin-Schutz
+// im Auth-Service verhindert zusätzlich, dass der letzte aktive Admin verschwindet.
 // Hinweis: „Fragen gesamt" in den Kennzahlen kommt aus dem UNVERÄNDERLICHEN Audit-Log
 // (jede Frage ist echte Historie) und lässt sich bewusst nicht „wegputzen".
 export interface PurgeResult {
   kos: number;
   conflicts: number;
   gaps: number;
+  users: number;
 }
 
 export async function purgeDemoSeed(
-  services: Pick<DemoSeedServices, "ko" | "conflicts" | "ask">,
+  services: Pick<DemoSeedServices, "ko" | "conflicts" | "ask" | "auth">,
   actor: string,
 ): Promise<PurgeResult> {
-  const { ko, conflicts, ask } = services;
+  const { ko, conflicts, ask, auth } = services;
   const demoKos = (await ko.list({})).filter(
     (k) => k.demoSeed === true || (k.tags ?? []).includes(DEMO_TAG),
   );
@@ -492,5 +543,25 @@ export async function purgeDemoSeed(
       removedGaps += 1;
     }
   }
-  return { kos: demoKos.length, conflicts: removedConflicts, gaps: removedGaps };
+  // Bug (Pedi 05.07.): Demo-ANWENDER entfernen — alle Konten unter der Demo-Domain, außer dem
+  // aktuell ausführenden Admin. Fehlversuche (z. B. Last-Admin-Schutz) werden bewusst geschluckt,
+  // damit der Purge der übrigen Demo-Konten nicht abbricht.
+  let removedUsers = 0;
+  for (const u of await auth.listUsers()) {
+    if (u.id === actor || !isDemoEmail(u.email)) {
+      continue;
+    }
+    try {
+      await auth.deleteUser(u.id, actor);
+      removedUsers += 1;
+    } catch {
+      // z. B. letzter aktiver Admin — bleibt bestehen, kein Abbruch.
+    }
+  }
+  return {
+    kos: demoKos.length,
+    conflicts: removedConflicts,
+    gaps: removedGaps,
+    users: removedUsers,
+  };
 }

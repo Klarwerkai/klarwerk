@@ -13,6 +13,22 @@ export type ConflictResolutionReason =
   | "edited_no_conflict"
   | "withdrawn";
 
+// Berater-Konzept 04.07. (Stufe 4): Herkunft eines Konflikts. Additiv/optional — Alt-Daten ohne das
+// Feld gelten als „manuell" (Anzeige-Fallback). „auto" = von der Erkennung angelegt (mit detector).
+export type ConflictOrigin = "manual" | "auto";
+
+// Metadaten der automatischen Erkennung (nur bei origin="auto") — macht den Fund erklärbar und
+// reproduzierbar: Begründung + wörtliche Belegzitate + Sicherheit + promptVersion. Keine Secrets.
+export interface ConflictDetector {
+  trigger: "validation" | "ask" | "background";
+  method: "model" | "deterministic";
+  modelLabel?: string;
+  promptVersion?: string;
+  confidence?: number;
+  rationale?: string;
+  quotes?: { a: string; b: string };
+}
+
 export interface Conflict {
   id: string;
   koA: string;
@@ -24,6 +40,9 @@ export interface Conflict {
   decidedBy: string | null;
   decision: string | null;
   resolutionReason?: ConflictResolutionReason;
+  // Berater-Konzept 04.07. (Stufe 4): Herkunft + Erkennungs-Metadaten (additiv, JSON-persistiert).
+  origin?: ConflictOrigin;
+  detector?: ConflictDetector;
   createdAt: string;
 }
 

@@ -12,6 +12,8 @@ import { DeterministicProvider, type ReasonerProvider, honestExtractModelFailed 
 import type {
   AnswerResult,
   AssistResult,
+  ConflictJudgeResult,
+  DuplicateJudgeResult,
   EnrichResult,
   ExtractResult,
   InterviewResult,
@@ -424,6 +426,54 @@ export class Reasoner {
       provider: this.fallback.name,
       demo: true,
     };
+  }
+
+  // Berater-Konzept 04.07. (Stufe 2, kon-v1): „Konfliktprüfung" — urteilt inhaltlich, ob zwei
+  // Kerntexte einander widersprechen/doppeln/überholen (Cloud → lokal). Ohne echtes Modell ehrlich
+  // null (kein regelbasierter Pseudo-Detektor). Kaputte Antworten liefert schon der Provider als null.
+  async judgeConflict(
+    coreA: string,
+    coreB: string,
+    locale: ReasonerLocale = "de",
+  ): Promise<ConflictJudgeResult | null> {
+    for (const provider of [this.primary, this.secondary]) {
+      if (provider === this.fallback || !provider.isAvailable() || !provider.judgeConflict) {
+        continue;
+      }
+      try {
+        const result = await provider.judgeConflict(coreA, coreB, locale);
+        if (result) {
+          return result;
+        }
+      } catch {
+        // nächstes Modell versuchen
+      }
+    }
+    return null;
+  }
+
+  // Berater-Konzept Duplikate 04.07. (Stufe D2, dup-v1): „Duplikatprüfung" — Überschneidungs-Profil
+  // zweier Kerntexte (Cloud → lokal). Ohne echtes Modell ehrlich null. Kaputte Antworten liefert
+  // schon der Provider als null.
+  async judgeDuplicate(
+    coreA: string,
+    coreB: string,
+    locale: ReasonerLocale = "de",
+  ): Promise<DuplicateJudgeResult | null> {
+    for (const provider of [this.primary, this.secondary]) {
+      if (provider === this.fallback || !provider.isAvailable() || !provider.judgeDuplicate) {
+        continue;
+      }
+      try {
+        const result = await provider.judgeDuplicate(coreA, coreB, locale);
+        if (result) {
+          return result;
+        }
+      } catch {
+        // nächstes Modell versuchen
+      }
+    }
+    return null;
   }
 
   // SCRUM-167: select bleibt synchron (reines Keyword-Ranking, kein Modell-/Netzaufruf).

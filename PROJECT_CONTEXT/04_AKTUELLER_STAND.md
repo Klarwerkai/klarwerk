@@ -1,20 +1,42 @@
-# Aktueller Stand — 03.07.2026, früher Morgen
+# Aktueller Stand — 04.07.2026, Abend
 
 > Diese Datei bei jedem größeren Schritt fortschreiben (Version, Tickets, Plan).
 > Feinere Historie: `docs/qm/claude-after-report.md` + Git-Log + Jira.
 
 ## Rollen
 
-- Boss-Session: die laufende Claude-Konversation von Pedi (Koordination + Umsetzung).
-- Zweiter Mitarbeiter: wird gerade onboardet (dieser Ordner ist sein Einstieg).
+- Boss-Session: die laufende Claude-Konversation von Pedi (Koordination + Umsetzung). **Abwesend bis Di.**
+- Cloud-Worker („Paul"): Cloud-Claude-Session, liefert Dateien an Pedis Mac; kann keine Gates/Git
+  ausführen. Pedi fährt den „KLARWERK Paul Runner" (build+biome+dep-cruiser+vitest+smoke) und meldet grün/rot.
 
 ## App
 
-- **Version: v0.9.22-beta** (Commit `b543574`), Gates grün: 1284 Tests/212 Dateien, smoke:ui 4/4.
-- Beta-Ziel: **RC-Freeze → 1.0.0-beta.1** nach Pedis Sichtabnahme (Kommando „RC einfrieren" →
-  Version setzen + Tag + KREL-34).
-- Reasoner läuft über Anthropic; Pedi erneuert bei Bedarf den Key beim App-Start (Starter prüft selbst).
-  Offener Prüfpunkt: Einsatz „Wissen aus Datei" stand evtl. auf Deterministisch (Admin → KI → Effektiv-Badges).
+- **Version: 1.0.0-beta.1 — Freeze-Kandidat, alle Gates grün** (1468 Tests/243 Dateien, smoke:ui 4/4).
+  Stand vom 04.07. Abend. **Noch NICHT committet/gepusht** — der ganze 04.07.-Arbeitsvorrat liegt
+  uncommittet auf Pedis Mac und wartet auf die Boss-Session (Di.): Commit + Tag `v1.0.0-beta.1`, KEIN Push
+  (KLARWERK Sync macht Pedi). **Erinnerung: einmalig noch ein voller Server-Neustart (SCRUM-443-Backend).**
+- VIP-/Generalprobe-Stand. Reasoner über Anthropic; ohne verbundenes Modell greift bei Duplikaten nur
+  der deterministische Textabgleich, die inhaltliche KI-Prüfung braucht den Key (Admin → KI → Effektiv-Badges).
+
+## 04.07. — Konflikt- & Duplikaterkennung (Cloud-Worker, „Berater-Konzept 04.07.")
+
+- **Konflikterkennung**: automatische Widerspruchs-Erkennung beim Einreichen/Promote (Reasoner
+  „Konfliktprüfung", G-2-Zitatbeleg gegen Halluzination); Board zeigt Herkunft/Sicherheit/Zitate;
+  „Fehlalarm"-Abschluss; gelöschter Beitrag schließt seine offenen Konflikte (participant_deleted).
+- **Duplikaterkennung (komplett)**: eigenes `OverlapService` im conflicts-Modul (eigene Entität,
+  schlanker Lebenszyklus). **Inhaltlich „jeder gegen jeden"** (Pedi-Vorgabe): jeder neue Beitrag wird
+  gegen den GESAMTEN Bestand geprüft; Textabgleich ist nur die Abkürzung für den offensichtlichen
+  Fall (≥85 % → Auto-Eintrag ohne KI), alles andere entscheidet die inhaltliche KI-Wahrscheinlichkeit.
+  **Anzeige-Schwelle im Admin einstellbar** (Start 50 %, `/api/duplicates/settings`, persistiert).
+  Seite „Duplikate" (Sidebar/Qualität, Badge): führt mit „Vermutliches Duplikat · NN %", Titelkopfzeile
+  der beiden Beiträge, geteilte Zitate, Eigenanteile, Empfehlung; Abschlüsse Fehlalarm/getrennt-lassen/
+  verwandt-verlinken. In der **Benachrichtigungs-Glocke** wie Konflikte. Gelöschter Beitrag schließt
+  seine offenen Überschneidungen (participant_deleted).
+- **Bugfix Admin/Daten** („r is not a function"): `QueryState`-`children` ist jetzt optional — ohne
+  children reiner Lade-/Fehler-/Leer-Indikator; stürzte vorher ab, sobald der Papierkorb Einträge hatte.
+- **Offen/als Nächstes (mit Boss, nach VIP)**: D5 Zusammenführungs-Assistent (fasst KO-Datenmodell an:
+  Stilllegen/mergedInto, Migration), asynchroner Hintergrund-Scan statt synchron im Einreiche-Pfad,
+  Duplikat-Zahl im Management-/Kapital-Snapshot (verwoben ins Scoring — bewusst zurückgestellt).
 
 ## Offene Tickets (Kurzliste, Wahrheit = Jira)
 
@@ -41,16 +63,3 @@
 - Jira-Nummern KWEB-107/108 sind inhaltlich vertauscht (in Tickets dokumentiert; Commits maßgeblich).
 - Biome-Suppression muss als EINE Zeile direkt über der Anweisung stehen.
 - Deutsche Anführungszeichen in TS-Strings: „…“ verwenden, nie gerades " im String.
-- GPU-Server nie über das UpCloud-Hub-Formular anlegen — nur per „KLARWERK LLM"-App
-  (Namens-Erkennung `klarwerk-llm-eval`; Vorfall 03.07.: manueller Deploy mit 50 GB/Default-Name).
-
-## Nachtrag 03.07. (vormittags)
-
-- Zweiter Mitarbeiter heißt **PAUL** ([Cloud-Worker]); Fragen beantwortet (docs/qm/ANTWORTEN_…),
-  Commit-Weg (a), Datei-Brücke `docs/team2-austausch/` aktiv. PAUL leitet KLLM-57.
-- **Budget-Regel (Pedi):** Wochenlimit der Boss-Session zu ~90 % verbraucht → Boss macht nur noch
-  ADMIN (Entscheidungen, Commits/Spiegel, Jira-Pflege, kurze Antworten); ALLE inhaltliche Arbeit
-  (Code, Analysen, Doku-Erstellung, Auswertungen) macht PAUL.
-- Neue Schreibtisch-App: **„KLARWERK Pruefstand starten.command"** (Master tools-sync/) —
-  Auswahl 1=Anthropic-Referenz, 2=lokaler Server, 3=beides; kopiert Ergebnisse automatisch in
-  die Brücke `docs/team2-austausch/pruefstand/` zur Auswertung durch PAUL.

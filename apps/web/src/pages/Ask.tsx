@@ -294,7 +294,19 @@ export function Ask(): JSX.Element {
                         key={s.description}
                         className="rounded-btn bg-page p-2.5 text-[13px] text-text"
                       >
-                        {s.description}
+                        {/* Pedi 05.07.: Die Quellen-Headline verlinkt direkt auf das Wissensobjekt in
+                            der Bibliothek — so kommt man aus der Antwort schnell zum Artikel. */}
+                        {s.sourceId ? (
+                          <Link
+                            to={demoHref(`/wissen/${s.sourceId}`, params)}
+                            className="inline-flex items-center gap-1 font-medium text-brand hover:underline"
+                          >
+                            <span className="text-text">{s.description}</span>
+                            <ArrowRight size={12} className="shrink-0 text-muted-2" />
+                          </Link>
+                        ) : (
+                          s.description
+                        )}
                         {s.snippet ? (
                           <span className="mt-1 block font-mono text-[11px] text-muted-2">
                             “{s.snippet}”

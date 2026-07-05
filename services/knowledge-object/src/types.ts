@@ -90,6 +90,9 @@ export interface KnowledgeObject {
   author: string;
   neededValidations: number;
   assignments: string[];
+  // Pedi 05.07.: read-only Board-Anreicherung — Peer-Stimmen-Zähler (grün/gelb/rot) für die Anzeige
+  // „X von Y grün" auf der Validierungsseite. Nur die Board-Sicht setzt es; sonst undefined.
+  reviewVotes?: { up: number; warn: number; down: number };
   asset: string | null;
   createdAt: string;
   history: HistoryEntry[];

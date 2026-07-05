@@ -68,6 +68,11 @@ describe("KW-STR / NFR-SEC-04: sanitizeHtml", () => {
     );
   });
 
+  it("SCRUM-438: Herkunfts-Marker panel-external überlebt die Sanitisierung", () => {
+    const html = '<div class="panel panel-external"><p>x</p></div>';
+    expect(sanitizeHtml(html)).toBe(html);
+  });
+
   it("ist idempotent", () => {
     const dirty = '<p onclick="x">a<script>b</script></p><img src="https://evil/x">';
     const once = sanitizeHtml(dirty);

@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import fastifyHelmet from "@fastify/helmet";
@@ -7,6 +7,7 @@ import type { FastifyInstance } from "fastify";
 import { buildApp, buildPgServices, buildServices } from "./build-app";
 import { createPool, migrate } from "./db";
 import { buildDevPersistServices } from "./dev-persist";
+import { type FactoryReset, factoryResetUnavailable } from "./factory-reset";
 
 // Kanonische Domain (klarwerk.ai). app.<domain> wird dauerhaft hierher umgeleitet.
 const CANONICAL_HOST = process.env.CANONICAL_HOST ?? "klarwerk.ai";
@@ -98,6 +99,24 @@ function devPersistFile(): string | undefined {
   return join(dirname(fileURLToPath(import.meta.url)), "../../..", ".localdb/state.jsonl");
 }
 
+// Pedi 05.07. (Beta): Werksreset NUR im Desktop/Dev-Journal-Modus. Löscht das lokale Journal
+// (nächster Start = leere Instanz → Ersteinrichtung) und beendet danach den Prozess. In Produktion
+// (Postgres) oder reinem In-Memory-Betrieb bleibt der Reset bewusst unverfügbar.
+function makeFactoryReset(journal: string | undefined): FactoryReset {
+  if (!journal) {
+    return factoryResetUnavailable;
+  }
+  return {
+    available: true,
+    run: async () => {
+      // Journal leeren → beim Neustart greift needsSetup() (erster Anwender wird wieder Admin).
+      writeFileSync(journal, "", "utf8");
+      // Kurzer Aufschub, damit die HTTP-Antwort noch flusht, dann den Prozess beenden.
+      setTimeout(() => process.exit(0), 250);
+    },
+  };
+}
+
 async function start(): Promise<void> {
   const databaseUrl = process.env.DATABASE_URL;
   const journal = devPersistFile();
@@ -106,7 +125,9 @@ async function start(): Promise<void> {
     : journal
       ? await buildDevPersistServices(journal)
       : buildServices();
-  const app = buildApp(services);
+  // Werksreset nur im Desktop/Dev-Journal-Modus (nie mit DATABASE_URL).
+  const factoryReset = databaseUrl ? factoryResetUnavailable : makeFactoryReset(journal);
+  const app = buildApp(services, { factoryReset });
   await configureWebDelivery(app);
   const port = Number(process.env.PORT ?? "3001");
   await app.listen({ port, host: "0.0.0.0" });

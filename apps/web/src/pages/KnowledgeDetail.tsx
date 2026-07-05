@@ -71,6 +71,7 @@ import { analyzeEvidenceConsistency } from "../lib/evidenceConsistency";
 import { analyzeEvidenceFreshness } from "../lib/evidenceFreshness";
 import { evidenceFreshnessLabelKey, evidenceFreshnessTone } from "../lib/evidenceFreshnessView";
 import { validityProtectionView } from "../lib/extConcept";
+import { containsExternalUnchecked } from "../lib/externalProvenance";
 import { toSourcePayload as externalToSourcePayload } from "../lib/externalSearch";
 import { fileToThumbDataUrl, readFileAsDataUrl } from "../lib/files";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
@@ -551,6 +552,16 @@ export function KnowledgeDetail(): JSX.Element {
                       className="rounded-pill bg-hairline-soft px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2"
                     >
                       {t("demo.badge.label")}
+                    </span>
+                  ) : null}
+                  {/* SCRUM-438: sichtbarer Vertrauensnachweis — der Artikel enthält übernommenes
+                      externes, ungeprüftes Wissen (Public-KI/Web). Ehrliches Herkunfts-Chip. */}
+                  {containsExternalUnchecked(ko.bodyHtml) ? (
+                    <span
+                      title={t("ko.externalUnchecked.hint")}
+                      className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai"
+                    >
+                      {t("ko.externalUnchecked.label")}
                     </span>
                   ) : null}
                   <span className="font-mono text-[12px] text-muted">

@@ -21,7 +21,14 @@ import {
   type ConflictRepo,
   ConflictService,
   InMemoryConflictRepo,
+  InMemoryOverlapRepo,
+  InMemoryOverlapSettingsRepo,
+  type OverlapRepo,
+  OverlapService,
+  type OverlapSettingsRepo,
   PgConflictRepo,
+  PgOverlapRepo,
+  PgOverlapSettingsRepo,
 } from "../../conflicts";
 import {
   type ExternalKnowledgePolicyRepo,
@@ -99,6 +106,7 @@ import {
   ValidationService,
   type ValidationSettingsRepo,
 } from "../../validation";
+import type { FactoryReset } from "./factory-reset";
 import { makeGuards } from "./http";
 import { impactReport } from "./impact";
 import { makeAssignmentNotifier } from "./notify";
@@ -119,6 +127,7 @@ import { modelRunRoutes } from "./routes/model-runs-routes";
 import { notificationsRoutes } from "./routes/notifications-routes";
 import { objectRoutes } from "./routes/object-routes";
 import { outputRoutes } from "./routes/output-routes";
+import { overlapRoutes } from "./routes/overlap-routes";
 import { reasonerRoutes } from "./routes/reasoner-routes";
 import { validationRoutes } from "./routes/validation-routes";
 
@@ -133,6 +142,10 @@ export interface AppServices {
   ask: AskService;
   validation: ValidationService;
   conflicts: ConflictService;
+  // Berater-Konzept Duplikate 04.07. (Stufe D3): Überschneidungs-/Duplikat-Erkennung (eigene Entität).
+  overlaps: OverlapService;
+  // Pedi 04.07.: einstellbare Anzeige-Schwelle der Duplikat-Erkennung (Admin) — schmale Repo-Schnittstelle.
+  overlapSettings: OverlapSettingsRepo;
   library: LibraryService;
   output: OutputService;
   management: ManagementService;
@@ -171,6 +184,10 @@ export interface AppRepos {
   ratings: RatingRepo;
   assignments: AssignmentRepo;
   conflictsRepo: ConflictRepo;
+  // Berater-Konzept Duplikate 04.07. (Stufe D3b): Persistenz der Überschneidungs-Einträge.
+  overlapRepo: OverlapRepo;
+  // Pedi 04.07.: persistierte Anzeige-Schwelle der Duplikat-Erkennung (Admin-Einstellung).
+  overlapSettings: OverlapSettingsRepo;
   lifecycleRepo: LifecycleRepo;
   objects: ObjectRepo;
   candidates: CandidateRepo;
@@ -221,6 +238,8 @@ export function assembleServices(repos: AppRepos): AppServices {
   // Vorab erstellt, da das Management-Modul (SCRUM-120) deren Live-Daten aggregiert.
   const ask = new AskService({ reasoner, koService: ko, gaps: repos.gaps, audit });
   const conflicts = new ConflictService({ repo: repos.conflictsRepo, audit });
+  // Berater-Konzept Duplikate 04.07. (Stufe D3): eigener Dienst für Überschneidungen (teilt Audit).
+  const overlaps = new OverlapService({ repo: repos.overlapRepo, audit });
   const library = new LibraryService({ koService: ko, audit, candidates: repos.candidates });
   const lifecycle = new LifecycleService({ koService: ko, repo: repos.lifecycleRepo });
 
@@ -247,6 +266,9 @@ export function assembleServices(repos: AppRepos): AppServices {
       settings: repos.validationSettings,
     }),
     conflicts,
+    overlaps,
+    // Pedi 04.07.: Schwellen-Repo direkt durchreichen (Routen + Duplikat-Erkennung nutzen es).
+    overlapSettings: repos.overlapSettings,
     library,
     // SCRUM-117: Output Factory — stateless, nur validierte KOs als Quelle.
     output: new OutputService({ koService: ko }),
@@ -297,6 +319,8 @@ export function inMemoryRepos(): AppRepos {
     ratings: new InMemoryRatingRepo(),
     assignments: new InMemoryAssignmentRepo(),
     conflictsRepo: new InMemoryConflictRepo(),
+    overlapRepo: new InMemoryOverlapRepo(),
+    overlapSettings: new InMemoryOverlapSettingsRepo(),
     lifecycleRepo: new InMemoryLifecycleRepo(),
     objects: new InMemoryObjectRepo(),
     candidates: new InMemoryCandidateRepo(),
@@ -329,6 +353,10 @@ export function buildPgServices(pool: Pool): AppServices {
     ratings: new PgRatingRepo(pool),
     assignments: new PgAssignmentRepo(pool),
     conflictsRepo: new PgConflictRepo(pool),
+    // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-Einträge persistent.
+    overlapRepo: new PgOverlapRepo(pool),
+    // Pedi 04.07.: Anzeige-Schwelle persistent.
+    overlapSettings: new PgOverlapSettingsRepo(pool),
     lifecycleRepo: new PgLifecycleRepo(pool),
     // SCRUM-155: Object-Store jetzt persistent (Attachment-/Evidence-Originale überleben Neustart).
     objects: new PgObjectRepo(pool),
@@ -349,7 +377,12 @@ export function buildPgServices(pool: Pool): AppServices {
   });
 }
 
-export function buildApp(services: AppServices = buildServices()): FastifyInstance {
+export function buildApp(
+  services: AppServices = buildServices(),
+  // Pedi 05.07. (Beta): optionale Werksreset-Fähigkeit. Standard = nicht verfügbar (Tests/Produktion);
+  // nur der Desktop/Dev-Journal-Betrieb (server.ts) reicht eine echte Fähigkeit durch.
+  opts: { factoryReset?: FactoryReset } = {},
+): FastifyInstance {
   const app = Fastify();
   const guards = makeGuards(services.auth);
 
@@ -375,7 +408,13 @@ export function buildApp(services: AppServices = buildServices()): FastifyInstan
         ko: services.ko,
         validation: services.validation,
         conflicts: services.conflicts,
+        // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-Erkennung beim Einreichen.
+        overlaps: services.overlaps,
+        // Pedi 04.07.: einstellbare Anzeige-Schwelle für die Duplikat-Erkennung.
+        overlapSettings: services.overlapSettings,
         lifecycle: services.lifecycle,
+        // Berater-Konzept 04.07. (Stufe 3): Reasoner für die automatische Widerspruchs-Erkennung.
+        reasoner: services.reasoner,
         notifyAssignment,
         // SCRUM-421: einstellbare Upload-Grenzen + Audit für Änderungen.
         uploadLimits: services.uploadLimits,
@@ -386,6 +425,14 @@ export function buildApp(services: AppServices = buildServices()): FastifyInstan
   );
   app.register(validationRoutes(services.validation, guards));
   app.register(conflictRoutes(services.conflicts, guards));
+  // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-API (/api/duplicates) +
+  // (Pedi 04.07.) einstellbare Anzeige-Schwelle.
+  app.register(
+    overlapRoutes(
+      { overlaps: services.overlaps, settings: services.overlapSettings, audit: services.audit },
+      guards,
+    ),
+  );
   app.register(captureRoutes({ ...services, notifyAssignment }, guards));
   app.register(askRoutes(services.ask, guards));
   app.register(libraryRoutes(services.library, guards));
@@ -407,6 +454,8 @@ export function buildApp(services: AppServices = buildServices()): FastifyInstan
     notificationsRoutes(
       {
         conflicts: services.conflicts,
+        // Pedi 04.07.: offene Überschneidungen (Duplikate) in der Glocke.
+        overlaps: services.overlaps,
         ask: services.ask,
         validation: services.validation,
         audit: services.audit,
@@ -423,7 +472,7 @@ export function buildApp(services: AppServices = buildServices()): FastifyInstan
   app.register(objectRoutes(services.objects, guards));
   app.register(mediaRoutes(services.media, guards));
   app.register(i18nRoutes(services.i18n));
-  app.register(adminRoutes(services, guards)); // SCRUM-181: admin-only Demo-Seed
+  app.register(adminRoutes(services, guards, opts.factoryReset)); // SCRUM-181: Demo-Seed; Pedi 05.07.: Werksreset
 
   // FR-ANA-02: Wirkungs-Dashboard (orchestriert KO-Bestand + Ask-Telemetrie aus dem Audit).
   app.get("/api/analytics/impact", async (request, reply) => {

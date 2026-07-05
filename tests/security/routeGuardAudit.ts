@@ -206,7 +206,20 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/conflicts": { protection: "ko.read" },
   "GET /api/conflicts/:id": { protection: "ko.read" },
   "POST /api/conflicts/:id/escalate": { protection: "conflict.resolve" },
+  "POST /api/conflicts/:id/dismiss": { protection: "conflict.resolve" },
   "POST /api/conflicts/:id/second-opinion": { protection: "ko.validate" },
+
+  // --- Duplicates / Overlaps (overlap-routes.ts) ---
+  // Berater-Konzept Duplikate 04.07. (Stufe D3b): Liste/Detail lesen alle Leseberechtigten; die
+  // menschlichen Abschlüsse sind kuratorische (redaktionelle) Entscheidungen (ko.validate).
+  "GET /api/duplicates": { protection: "ko.read" },
+  // Pedi 04.07.: einstellbare Anzeige-Schwelle — lesen alle Leseberechtigten, setzen nur Admin.
+  "GET /api/duplicates/settings": { protection: "ko.read" },
+  "PUT /api/duplicates/settings": { protection: "users.manage" },
+  "GET /api/duplicates/:id": { protection: "ko.read" },
+  "POST /api/duplicates/:id/dismiss": { protection: "ko.validate" },
+  "POST /api/duplicates/:id/keep-separate": { protection: "ko.validate" },
+  "POST /api/duplicates/:id/link-related": { protection: "ko.validate" },
 
   // --- Capture/Drafts (capture-routes.ts) ---
   "GET /api/drafts": { protection: "ko.create" },
@@ -258,6 +271,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Audit-P4 (SCRUM-398): Live-Wall — read-only Aggregation aus KO-Bestand + Wirkungs-Audit.
   "GET /api/livewall": { protection: "ko.read" },
   "GET /api/audit": { protection: "ko.validate" },
+  // SCRUM-439: aktive Integritätsprüfung der Audit-Kette — Governance-Einsicht wie /api/audit.
+  "GET /api/audit/verify": { protection: "ko.validate" },
   "POST /api/reasoner": { protection: "ko.read" },
   // SCRUM-426: Public-KI-Anreicherung — Schreibberechtigte; zusätzlich Stufen-Gate „offen".
   "POST /api/reasoner/enrich": { protection: "ko.create" },
@@ -291,4 +306,7 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // --- Admin (admin-routes.ts) ---
   "POST /api/admin/demo-seed": { protection: "users.manage" },
   "DELETE /api/admin/demo-seed": { protection: "users.manage" },
+  // Pedi 05.07. (Beta): Werksreset — Verfügbarkeit lesen + ausführen, beides nur Nutzerverwaltung.
+  "GET /api/admin/factory-reset": { protection: "users.manage" },
+  "POST /api/admin/factory-reset": { protection: "users.manage" },
 };

@@ -55,6 +55,17 @@ describe("SCRUM-249: reviewSignals", () => {
     });
   });
 
+  it("Pedi 05.07.: liest die Peer-Stimmen-Zähler (grün/rot) aus der Board-Anreicherung", () => {
+    const s = reviewSignals(ko({ neededValidations: 3, reviewVotes: { up: 2, warn: 1, down: 0 } }));
+    expect(s.greenVotes).toBe(2);
+    expect(s.redVotes).toBe(0);
+    expect(s.needed).toBe(3);
+    // Ohne Anreicherung (kein reviewVotes) → 0 (nie undefined).
+    const none = reviewSignals(ko({}));
+    expect(none.greenVotes).toBe(0);
+    expect(none.redVotes).toBe(0);
+  });
+
   it("erkennt Zuweisung (→ pruefung) und Autor-Transfer", () => {
     const assigned = reviewSignals(ko({ assignments: ["u-2"] }));
     expect(assigned.assigned).toBe(true);

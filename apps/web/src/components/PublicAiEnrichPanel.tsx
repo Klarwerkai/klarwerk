@@ -100,13 +100,17 @@ export function PublicAiEnrichPanel({
     }
   };
 
+  // SCRUM-438: übernommener Block trägt die stabile Herkunfts-Marke `panel-external` (überlebt die
+  // Sanitisierung) — daraus leitet die Lese-Ansicht das Chip „Enthält externes, ungeprüftes Wissen" ab.
   const takeModel = (text: string): void => {
-    onAppendHtml(`<p><strong>[${externLabel}]</strong> ${escapeHtml(text)}</p>`);
+    onAppendHtml(
+      `<div class="panel panel-external"><p><strong>[${externLabel}]</strong> ${escapeHtml(text)}</p></div>`,
+    );
   };
   const takeWeb = (r: ExternalResult): void => {
     onAppendHtml(
-      `<p><strong>[${externLabel}]</strong> ${escapeHtml(r.title)} — ` +
-        `<a href="${escapeHtml(r.url)}">${escapeHtml(r.url)}</a></p>`,
+      `<div class="panel panel-external"><p><strong>[${externLabel}]</strong> ${escapeHtml(r.title)} — ` +
+        `<a href="${escapeHtml(r.url)}">${escapeHtml(r.url)}</a></p></div>`,
     );
   };
 

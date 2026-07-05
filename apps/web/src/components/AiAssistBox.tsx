@@ -18,6 +18,7 @@ import {
   assistActionLabelKey,
 } from "../lib/captureAiAssist";
 import { shouldWarnBeforeReplace } from "../lib/editorApplySafety";
+import { AiModelInfo } from "./AiModelInfo";
 import { HelpTip } from "./HelpTip";
 import { Button } from "./ui";
 
@@ -99,8 +100,10 @@ export function AiAssistBox({
           <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted">{t(hintKey)}</p>
         </>
       )}
-      {/* SCRUM-404 (Pedi 03.07.): ?-Hilfe an jeder Aktion — ein Satz, was sie tut. */}
+      {/* SCRUM-404 (Pedi 03.07.): ?-Hilfe an jeder Aktion — ein Satz, was sie tut.
+          Pedi 04.07.: (!)-Info voran — welche KI diese Palette ausführt (Aufgabe „assist"). */}
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <AiModelInfo task="assist" />
         {ASSIST_ACTIONS.map((a) => (
           <span key={a} className="inline-flex items-center gap-0.5">
             <button

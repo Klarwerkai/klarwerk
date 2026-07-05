@@ -92,6 +92,46 @@ describe("ValidationService", () => {
     expect(board.find((k) => k.id === ko.id)).toBeUndefined();
   });
 
+  it("Pedi 05.07.: Board liefert je KO die Peer-Stimmen-Zähler (X von Y grün)", async () => {
+    const ko = await koService.create(koInput({ neededValidations: 3 }));
+    await service.rate(ko.id, "u1", "up");
+    await service.rate(ko.id, "u2", "warn");
+    const board = await service.board();
+    const entry = board.find((k) => k.id === ko.id);
+    expect(entry?.reviewVotes).toEqual({ up: 1, warn: 1, down: 0 });
+    expect(entry?.neededValidations).toBe(3);
+  });
+
+  it("Pedi 05.07.: adminValidate schließt die Validierung in einem Schritt ab", async () => {
+    const ko = await koService.create(koInput({ neededValidations: 3 }));
+    const outcome = await service.adminValidate(ko.id, "admin-1");
+    expect(outcome.status).toBe("validiert");
+    expect(outcome.trust).toBe(99);
+    const stored = await koService.get(ko.id);
+    expect(stored?.status).toBe("validiert");
+    expect(stored?.trust).toBe(99);
+    // Danach nicht mehr im Board (nur offene KOs).
+    const board = await service.board();
+    expect(board.find((k) => k.id === ko.id)).toBeUndefined();
+  });
+
+  it("Pedi 05.07.: adminValidate schreibt einen eigenen Audit-Eintrag", async () => {
+    const auditRepo = new InMemoryAuditRepo();
+    const audit = new AuditService({ repo: auditRepo });
+    const svc = new ValidationService({
+      koService,
+      ratings: new InMemoryRatingRepo(),
+      assignments: new InMemoryAssignmentRepo(),
+      audit,
+    });
+    const ko = await koService.create(koInput());
+    await svc.adminValidate(ko.id, "admin-1");
+    const entries = await audit.list({ action: "ko.admin-validated" });
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.target).toBe(ko.id);
+    expect(entries[0]?.actor).toBe("admin-1");
+  });
+
   it("FR-VAL-04: Board filtert nach Kategorie (nur offene)", async () => {
     await koService.create(koInput({ category: "Anlage 1" }));
     await koService.create(koInput({ category: "Anlage 2" }));

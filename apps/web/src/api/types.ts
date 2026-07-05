@@ -150,6 +150,8 @@ export interface KnowledgeObject {
   author: string;
   neededValidations: number;
   assignments: string[];
+  // Pedi 05.07.: read-only Board-Anreicherung — Peer-Stimmen-Zähler (grün/gelb/rot) für „X von Y grün".
+  reviewVotes?: { up: number; warn: number; down: number };
   asset: string | null;
   createdAt: string;
   history: HistoryEntry[];
@@ -192,6 +194,19 @@ export interface TrashedKo {
 export type ConflictType = "truth" | "experience" | "context" | "temporal" | "role";
 export type ConflictStatus = "offen" | "eskaliert" | "zweitmeinung" | "geloest";
 
+// Berater-Konzept 04.07. (Stufe 4): Herkunft + Erkennungs-Metadaten eines automatisch erkannten
+// Konflikts — macht den Fund am Board erklärbar (Sicherheit, Begründung, wörtliche Zitate).
+export type ConflictOrigin = "manual" | "auto";
+export interface ConflictDetector {
+  trigger: "validation" | "ask" | "background";
+  method: "model" | "deterministic";
+  modelLabel?: string;
+  promptVersion?: string;
+  confidence?: number;
+  rationale?: string;
+  quotes?: { a: string; b: string };
+}
+
 export interface Conflict {
   id: string;
   koA: string;
@@ -202,7 +217,80 @@ export interface Conflict {
   secondOpinion: string | null;
   decidedBy: string | null;
   decision: string | null;
+  origin?: ConflictOrigin;
+  detector?: ConflictDetector;
   createdAt: string;
+}
+
+// Berater-Konzept Duplikate 04.07. (Stufe D4): Überschneidungs-/Duplikat-Eintrag fürs Board.
+// Spiegelt die öffentliche Form des conflicts-Moduls (OverlapEntry) — schlanker Lebenszyklus als
+// Konflikte: es geht um Redaktion (Zusammenführen), nicht um Wahrheit.
+export type OverlapRelation =
+  | "identisch"
+  | "a_enthaelt_b"
+  | "b_enthaelt_a"
+  | "teilweise"
+  | "verwandt";
+export type OverlapRecommendation =
+  | "zusammenfuehren"
+  | "zusammenfuehren_pruefen"
+  | "getrennt_lassen"
+  | "verwandt_verlinken";
+export type OverlapStatus = "offen" | "in_bearbeitung" | "geschlossen";
+export type OverlapOrigin = "auto" | "manual";
+export type OverlapResolutionReason =
+  | "merged"
+  | "kept_separate"
+  | "linked_related"
+  | "dismissed"
+  | "participant_deleted"
+  | "superseded";
+
+export interface OverlapAspect {
+  beschreibung: string;
+  zitatA: string;
+  zitatB: string;
+}
+
+export interface OverlapDetector {
+  trigger: "validation" | "background" | "capture_hint" | "manual";
+  method: "model" | "deterministic";
+  modelLabel?: string;
+  promptVersion?: string;
+  lexicalScore: number; // 0..1 deterministische Textdeckung (immer gesetzt)
+  confidence?: number; // Modell-Sicherheit (nur method="model")
+  rationale?: string;
+}
+
+export interface OverlapResolution {
+  reason: OverlapResolutionReason;
+  by: string | null;
+  note: string | null;
+  at: string;
+}
+
+export interface OverlapEntry {
+  id: string;
+  koA: string;
+  koB: string;
+  relation: OverlapRelation;
+  aspects: OverlapAspect[];
+  eigenanteilA: string;
+  eigenanteilB: string;
+  recommendation: OverlapRecommendation;
+  status: OverlapStatus;
+  pairKey: string;
+  origin: OverlapOrigin;
+  detector?: OverlapDetector;
+  resolution?: OverlapResolution;
+  createdAt: string;
+  closedAt?: string;
+}
+
+// Pedi 04.07.: einstellbare Anzeige-Schwelle der Duplikat-Erkennung (Admin). minConfidence 0..1 —
+// ab welcher KI-Wahrscheinlichkeit ein vermutliches Duplikat angezeigt wird.
+export interface OverlapSettings {
+  minConfidence: number;
 }
 
 export type GapPriority = "hoch" | "mittel" | "niedrig";
@@ -563,7 +651,7 @@ export interface LiveWall {
   helpedToday: number;
 }
 
-export type NotificationKind = "conflict" | "gap" | "assignment" | "impact";
+export type NotificationKind = "conflict" | "duplicate" | "gap" | "assignment" | "impact";
 
 export interface Notification {
   id: string;

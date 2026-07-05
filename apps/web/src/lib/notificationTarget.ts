@@ -14,6 +14,10 @@ export function notificationTarget(n: Pick<Notification, "kind" | "koId">): stri
   if (n.kind === "conflict") {
     return "/konflikte";
   }
+  // Pedi 04.07.: Duplikat-Benachrichtigung führt aufs Duplikate-Board.
+  if (n.kind === "duplicate") {
+    return "/duplikate";
+  }
   if (n.kind === "gap") {
     return "/risiko";
   }

@@ -259,6 +259,21 @@ export function Validation(): JSX.Element {
     onSuccess: invalidate,
   });
 
+  // Pedi 05.07.: Admin-Override „als wahr kennzeichnen" — schließt die Validierung komplett ab.
+  // Zwei-Klick-Bestätigung im UI; danach verlässt das Objekt das Board (Status validiert).
+  const [confirmTrueId, setConfirmTrueId] = useState<string | null>(null);
+  const adminValidate = useMutation({
+    mutationFn: (id: string) => endpoints.ko.act(id, { action: "admin-validate" }),
+    onSuccess: () => {
+      setConfirmTrueId(null);
+      for (const key of [["validation"], ["kos"], ["analytics"], ["notifications"]]) {
+        void qc.invalidateQueries({ queryKey: key });
+      }
+      push("success", t("val.markTrueDone"));
+    },
+    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
+  });
+
   return (
     <div className="mx-auto max-w-4xl">
       <PageHeader kicker={t("val.kicker")} title={t("nav.validation")} />
@@ -605,6 +620,23 @@ export function Validation(): JSX.Element {
                             >
                               {t("val.trust")} {sig.trust}
                             </span>
+                            {/* Pedi 05.07.: Validierungs-Fortschritt je Artikel — wie viele grüne
+                                Bewertungen erfasst sind und wie viele zum Abschluss nötig sind. */}
+                            <span
+                              title={t("val.votesHint", { need: sig.needed })}
+                              className={`rounded-pill px-1.5 py-0.5 font-mono text-[10px] font-semibold ${
+                                sig.greenVotes >= sig.needed
+                                  ? "bg-trust-pos-bg text-trust-pos-text"
+                                  : "bg-page text-muted"
+                              }`}
+                            >
+                              {t("val.votes", { have: sig.greenVotes, need: sig.needed })}
+                            </span>
+                            {sig.redVotes > 0 ? (
+                              <span className="rounded-pill bg-trust-crit-bg px-1.5 py-0.5 font-mono text-[10px] font-semibold text-trust-crit-text">
+                                {t("val.votesBlocked", { count: sig.redVotes })}
+                              </span>
+                            ) : null}
                             <span className="font-mono text-[11px] text-muted-2">{k.category}</span>
                           </div>
                           {/* SCRUM-416 (Pedi 03.07.): Karten-Dichte — Signale, Kontext, Autor,
@@ -771,6 +803,44 @@ export function Validation(): JSX.Element {
                           <p className="text-[10.5px] text-muted-2 sm:text-right">
                             {t("val.feedbackRequiredHint")}
                           </p>
+                          {/* Pedi 05.07.: Admin-Override „als wahr kennzeichnen" — schließt die
+                              Validierung in einem Schritt ab. Zwei-Klick-Bestätigung; nur Admin. */}
+                          {role === "admin" ? (
+                            confirmTrueId === k.id ? (
+                              <div className="flex flex-wrap items-center justify-end gap-1.5 rounded-btn border border-trust-pos-fill/40 bg-trust-pos-bg px-2.5 py-1.5">
+                                <span className="text-[11.5px] font-semibold text-trust-pos-text">
+                                  {t("val.markTrueConfirm")}
+                                </span>
+                                <button
+                                  type="button"
+                                  className="text-[11.5px] font-semibold text-muted hover:text-text"
+                                  onClick={() => setConfirmTrueId(null)}
+                                >
+                                  {t("val.markTrueCancel")}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={adminValidate.isPending}
+                                  className="text-[11.5px] font-semibold text-trust-pos-text disabled:opacity-50"
+                                  onClick={() => adminValidate.mutate(k.id)}
+                                >
+                                  {t("val.markTrueYes")}
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 sm:justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmTrueId(k.id)}
+                                  className="inline-flex items-center gap-1 rounded-btn px-2 py-1 text-[11.5px] font-semibold text-trust-pos-text hover:bg-trust-pos-bg"
+                                >
+                                  <Check size={13} />
+                                  {t("val.markTrue")}
+                                </button>
+                                {vhelp("markTrue")}
+                              </span>
+                            )
+                          ) : null}
                           <div className="flex items-center gap-1">
                             <select
                               value=""

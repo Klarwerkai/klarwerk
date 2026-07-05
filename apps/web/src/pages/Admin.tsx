@@ -2,7 +2,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
   KeyRound,
+  Power,
   Printer,
+  RotateCcw,
   ShieldCheck,
   Sparkles,
   Trash2,
@@ -131,7 +133,8 @@ export function Admin(): JSX.Element {
 
   // SCRUM-181: Demodaten in eine LEERE Instanz laden (admin-only). Ehrliche skipped/seeded-Meldung.
   const demoSeed = useMutation({
-    mutationFn: () => endpoints.admin.demoSeed(),
+    // Pedi 05.07. (Beta): force lädt das Demo-Set auch bei bereits erfassten Daten.
+    mutationFn: (force = false) => endpoints.admin.demoSeed(force),
     onSuccess: (r) => {
       for (const key of [
         ["users"],
@@ -174,7 +177,30 @@ export function Admin(): JSX.Element {
         void qc.invalidateQueries({ queryKey: key });
       }
       setConfirmPurge(false);
-      push("success", t("adm.purgeDone", { kos: r.kos, conflicts: r.conflicts, gaps: r.gaps }));
+      push(
+        "success",
+        t("adm.purgeDone", { kos: r.kos, conflicts: r.conflicts, gaps: r.gaps, users: r.users }),
+      );
+    },
+    onError: fail,
+  });
+
+  // Pedi 05.07. (Beta): Werksreset. Verfügbarkeit nur im Desktop/Dev-Modus (Server sagt es ehrlich).
+  // Doppelte Rückfrage im UI; die Ausführung löscht alles und beendet das Programm.
+  const factoryResetStatus = useQuery({
+    queryKey: ["factory-reset-status"],
+    queryFn: endpoints.admin.factoryResetStatus,
+  });
+  // Zwei-Stufen-Bestätigung: "" (aus) → "armed" (erste Rückfrage) → "confirm" (zweite Rückfrage).
+  const [factoryStep, setFactoryStep] = useState<"" | "armed" | "confirm">("");
+  const [factoryDone, setFactoryDone] = useState(false);
+  const factoryReset = useMutation({
+    mutationFn: () => endpoints.admin.factoryReset(),
+    onSuccess: () => {
+      // Der Server beendet sich unmittelbar danach — die Oberfläche zeigt einen Neustart-Hinweis.
+      setFactoryStep("");
+      setFactoryDone(true);
+      push("success", t("adm.factoryDone"));
     },
     onError: fail,
   });
@@ -324,6 +350,38 @@ export function Admin(): JSX.Element {
     onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
   });
 
+  // Pedi 04.07.: Anzeige-Schwelle der Duplikat-Erkennung. In der UI in Prozent (5–99), im Backend
+  // als Anteil 0..1. „Niedriger = mehr Treffer, aber mehr Fehlalarme zum Wegklicken."
+  const dupSettingsQ = useQuery({
+    queryKey: ["duplicates", "settings"],
+    queryFn: endpoints.duplicates.settings,
+  });
+  const [dupThresholdDraft, setDupThresholdDraft] = useState<string | null>(null);
+  const saveDupSettings = useMutation({
+    mutationFn: () =>
+      endpoints.duplicates.saveSettings(
+        Math.round(
+          Number.parseFloat(
+            dupThresholdDraft ??
+              String(Math.round((dupSettingsQ.data?.minConfidence ?? 0.5) * 100)),
+          ),
+        ) / 100,
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["duplicates", "settings"] });
+      setDupThresholdDraft(null);
+      push("success", t("adm.dup.saved"));
+    },
+    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
+  });
+
+  // SCRUM-439: aktive Integritätsprüfung der Audit-Kette (Admin-Sicherheitsbereich). Echte
+  // Verifikation statt bloßer Aussage — starkes Investoren-Signal.
+  const verifyAudit = useMutation({
+    mutationFn: () => endpoints.audit.verify(),
+    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
+  });
+
   // SCRUM-394: aktiver Admin-Bereich (Konten · KI · Daten).
   const [section, setSection] = useState<AdminSectionId>(DEFAULT_ADMIN_SECTION);
 
@@ -359,7 +417,7 @@ export function Admin(): JSX.Element {
               <Button
                 variant="ghost"
                 disabled={demoSeed.isPending}
-                onClick={() => demoSeed.mutate()}
+                onClick={() => demoSeed.mutate(false)}
               >
                 <UserPlus size={15} />
                 {t("adm.seedButton")}
@@ -398,9 +456,20 @@ export function Admin(): JSX.Element {
             {/* SCRUM-306: nach erfolgreichem Seed (nicht übersprungen) sichtbare Next-Steps in den Stage-1-
             Lauf — keine automatische Weiterleitung, nur vorhandene Routen. Ohne Seed unverändert. */}
             {demoSeed.isSuccess && demoSeed.data?.skipped ? (
-              <p className="rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
-                {t("adm.seedSkippedInline")}
-              </p>
+              <div className="rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
+                <p>{t("adm.seedSkippedInline")}</p>
+                {/* Pedi 05.07. (Beta): Demo-Set trotzdem laden — vorhandenes Demo-Set wird zuerst
+                    aufgeräumt, echte Daten bleiben unberührt. */}
+                <button
+                  type="button"
+                  disabled={demoSeed.isPending}
+                  onClick={() => demoSeed.mutate(true)}
+                  className="mt-1.5 inline-flex items-center gap-1 rounded-btn border border-trust-warn-text/30 px-2.5 py-1 font-semibold text-trust-warn-text hover:bg-trust-warn-text/10 disabled:opacity-50"
+                >
+                  <UserPlus size={13} />
+                  {t("adm.seedForce")}
+                </button>
+              </div>
             ) : null}
             {demoSeed.isSuccess && !demoSeed.data?.skipped ? (
               <div className="mt-1 rounded-card border border-hairline bg-page p-3">
@@ -425,6 +494,75 @@ export function Admin(): JSX.Element {
               </div>
             ) : null}
           </Card>
+
+          {/* Pedi 05.07. (Beta): Werksreset — nur im Desktop/Dev-Modus. Löscht ALLE Daten und
+              beendet das Programm; nächster Start = Ersteinrichtung (erster Anwender = Admin).
+              Doppelte Rückfrage, damit nichts versehentlich passiert. */}
+          {factoryResetStatus.data?.available ? (
+            <Card className="space-y-2 border-trust-crit-text/25">
+              <div className="flex items-center gap-1.5">
+                <SectionLabel>{t("adm.factory.title")}</SectionLabel>
+                <HelpTip title={t("adm.factory.title")} body={t("adm.factory.help")} />
+              </div>
+              <p className="text-[12.5px] text-muted">{t("adm.factory.hint")}</p>
+              {factoryDone ? (
+                <p className="rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
+                  {t("adm.factory.restartHint")}
+                </p>
+              ) : factoryStep === "" ? (
+                <button
+                  type="button"
+                  onClick={() => setFactoryStep("armed")}
+                  className="inline-flex items-center gap-1.5 rounded-btn px-3 py-2 text-[12.5px] font-semibold text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
+                >
+                  <RotateCcw size={14} />
+                  {t("adm.factory.button")}
+                </button>
+              ) : factoryStep === "armed" ? (
+                <div className="flex flex-wrap items-center gap-2 rounded-card border border-hairline bg-page px-3 py-2">
+                  <span className="text-[12.5px] font-semibold text-text">
+                    {t("adm.factory.confirm1")}
+                  </span>
+                  <button
+                    type="button"
+                    className="text-[12px] font-semibold text-muted hover:text-text"
+                    onClick={() => setFactoryStep("")}
+                  >
+                    {t("adm.factory.cancel")}
+                  </button>
+                  <button
+                    type="button"
+                    className="text-[12px] font-semibold text-trust-crit-text"
+                    onClick={() => setFactoryStep("confirm")}
+                  >
+                    {t("adm.factory.continue")}
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-2 rounded-card border border-trust-crit-text/30 bg-trust-crit-bg px-3 py-2">
+                  <span className="text-[12.5px] font-semibold text-trust-crit-text">
+                    {t("adm.factory.confirm2")}
+                  </span>
+                  <button
+                    type="button"
+                    className="text-[12px] font-semibold text-muted hover:text-text"
+                    onClick={() => setFactoryStep("")}
+                  >
+                    {t("adm.factory.cancel")}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={factoryReset.isPending}
+                    className="inline-flex items-center gap-1 text-[12px] font-semibold text-trust-crit-text disabled:opacity-50"
+                    onClick={() => factoryReset.mutate()}
+                  >
+                    <Power size={13} />
+                    {t("adm.factory.execute")}
+                  </button>
+                </div>
+              )}
+            </Card>
+          ) : null}
 
           {/* SCRUM-395: Standard-Prüferanzahl — gilt für neue Einreichungen ohne eigene
               Angabe (1–5). Persistiert; Änderungen landen im Audit-Log. */}
@@ -925,6 +1063,40 @@ export function Admin(): JSX.Element {
               <p className="text-[12.5px] text-muted-2">{t("state.loading")}</p>
             )}
           </Card>
+
+          {/* Pedi 04.07.: Anzeige-Schwelle der Duplikat-Erkennung — ab welcher KI-Wahrscheinlichkeit
+              ein vermutliches Duplikat gezeigt wird. Niedriger = mehr Treffer + mehr Fehlalarme. */}
+          <Card className="space-y-2">
+            <div className="flex items-center gap-1.5">
+              <SectionLabel>{t("adm.dup.title")}</SectionLabel>
+              <HelpTip title={t("adm.dup.title")} body={t("adm.dup.help")} />
+            </div>
+            <p className="text-[12.5px] text-muted">{t("adm.dup.hint")}</p>
+            <div className="flex flex-wrap items-end gap-2">
+              <Field label={t("adm.dup.threshold")}>
+                <TextInput
+                  type="number"
+                  min={5}
+                  max={99}
+                  step={1}
+                  className="w-24"
+                  value={
+                    dupThresholdDraft ??
+                    String(Math.round((dupSettingsQ.data?.minConfidence ?? 0.5) * 100))
+                  }
+                  onChange={(e) => setDupThresholdDraft(e.target.value)}
+                  aria-label={t("adm.dup.threshold")}
+                />
+              </Field>
+              <Button
+                variant="primary"
+                disabled={saveDupSettings.isPending || dupThresholdDraft === null}
+                onClick={() => saveDupSettings.mutate()}
+              >
+                {t("adm.dup.save")}
+              </Button>
+            </div>
+          </Card>
         </>
       ) : null}
 
@@ -1130,10 +1302,30 @@ export function Admin(): JSX.Element {
                 const recent = entries.slice(-12).reverse();
                 return (
                   <>
-                    <div className="px-4 pb-2 pt-3">
+                    <div className="flex flex-wrap items-center gap-2 px-4 pb-2 pt-3">
                       <span className="rounded-pill bg-trust-pos-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-pos-text">
                         {t("adm.sich.auditCount", { count: entries.length })}
                       </span>
+                      {/* SCRUM-439: aktive Integritätsprüfung — Knopf print-versteckt, Ergebnis bleibt sichtbar. */}
+                      <Button
+                        variant="outline"
+                        className="print-hide"
+                        disabled={verifyAudit.isPending}
+                        onClick={() => verifyAudit.mutate()}
+                      >
+                        <ShieldCheck size={14} /> {t("adm.sich.verify.button")}
+                      </Button>
+                      {verifyAudit.data ? (
+                        verifyAudit.data.ok ? (
+                          <span className="rounded-pill bg-trust-pos-bg px-2 py-0.5 text-[11px] font-semibold text-trust-pos-text">
+                            {t("adm.sich.verify.ok", { count: verifyAudit.data.count })}
+                          </span>
+                        ) : (
+                          <span className="rounded-pill bg-trust-crit-bg px-2 py-0.5 text-[11px] font-semibold text-trust-crit-text">
+                            {t("adm.sich.verify.fail")}
+                          </span>
+                        )
+                      ) : null}
                     </div>
                     {recent.length === 0 ? (
                       <p className="px-4 py-3 text-[13px] text-muted">{t("adm.auditEmpty")}</p>

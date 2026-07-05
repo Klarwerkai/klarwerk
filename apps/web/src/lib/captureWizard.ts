@@ -59,4 +59,7 @@ export const CAPTURE_WIZARD_TEXT = {
   discardDone: "capture.wizard.discardDone",
   upload: "capture.wizard.upload",
   uploadCount: "capture.wizard.uploadCount",
+  // Pedi 04.07.: eigener „beifügen"-Knopf — Datei/Bild NUR anhängen (kein Text ins Feld).
+  attach: "capture.wizard.attach",
+  attached: "capture.wizard.attached",
 } as const;
