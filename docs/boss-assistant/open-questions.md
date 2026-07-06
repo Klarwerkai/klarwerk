@@ -10,8 +10,8 @@ Punkte, die Agenten selbst als unsicher markiert haben oder die ich gegen Repo/J
 - [ ] Nicht nachgewiesen: 10k/100k-Scale (AG-03), Live-Modell-Benchmark (AG-04), Restore-Test (AG-09),
       Pen-Test (AG-07), DSAR.
 - [ ] `docs/TEAM6_UPDATE.md`: „pending"-Zeilen gegen `git log` gegenprüfen (bekannter Doku-Drift).
-- [ ] Rolle „Team 2" — laut Team 1 zuständig für RAG/Local-LLM. **Korrektur Boss: Team 2 ist AKTIV**, nicht raus.
-      Direkte Befragung nachholen; verifizieren gegen SCRUM-424, KLLM-62.
+- [x] Team 2 = Local LLM (KLLM). War aktiv bis ~05.07.; **Agent jetzt beendet/nicht erreichbar** (Pedi 06.07.) →
+      direkte Befragung entfällt. Fortführung über Paul/Nerd. Verifiziert gegen `klarwerk-local-llm` + KLLM-Tickets.
 
 ## Aus Boss (2026-07-06) — hohe Priorität
 - [ ] **Verifikationsregel:** ALLE Zahlen/Status gegen `data/pmo-items.json` (Team 7) + Git-Log + After-Report
@@ -24,9 +24,15 @@ Punkte, die Agenten selbst als unsicher markiert haben oder die ich gegen Repo/J
 - [ ] Ablage klären: Boss wünscht Erkenntnisse in `PROJECT_CONTEXT` statt Silo — mit Pedi abstimmen.
 - [ ] After-Report-Kette + PMO-Automatik (SCRUM-434, `apply-item-update.mjs`) als lebende Quelle einlesen.
 
+## Pedi-Antworten 06.07. (geklärt)
+- [x] **Datenverwaltung/Backup:** wird an einen **einzustellenden Systemadministrator** übergeben (Bus-Faktor/K1/K3
+      damit adressiert, sobald besetzt).
+- [x] **Keys:** sind sicher; **planmäßige Erneuerung während der Beta-Phase** (nicht dringlich, kein Leck).
+- [x] **C-13 Persistenz:** aus Code aufgelöst — Live=Postgres (Coolify/`DATABASE_URL`), Desktop=In-Memory+Journal.
+      Bestätigungsfrage an Paul/Nerd (Pedi-Wunsch) noch zu stellen.
+
 ## Aus Paul (2026-07-06)
-- [ ] 🔑 **SICHERHEIT:** SSH-Deploy-Key wurde früher im Chat sichtbar → **Rotation offen** (neuer Key in Coolify +
-      GitHub, alten entfernen). Zusammen mit OpenAI-Key (Team 7) → Key-Rotations-Sammelpunkt für Pedi.
+- [~] 🔑 **SICHERHEIT:** SSH-Deploy-Key + OpenAI-Key — Pedi: Keys sicher, Rotation planmäßig in der Beta-Phase.
 - [ ] SCRUM-464: „KLARWERK Sync" pusht nur Gitea, nicht GitHub — Dauer-Fix entscheiden (Sync erweitern vs. Ship
       pusht selbst). Blockierte zeitweise Ausliefern.
 - [ ] SCRUM-463: Admin-Maske „Nutzer anlegen" defekt (Regression, Bezug SCRUM-147) — Workaround Selbst-Registrieren.

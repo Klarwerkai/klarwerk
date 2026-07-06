@@ -46,6 +46,7 @@ export function RichTextEditor({
   images = [],
   files = [],
   aiPanel,
+  onAttachFiles,
 }: {
   value: string;
   onChange: (html: string) => void;
@@ -54,12 +55,18 @@ export function RichTextEditor({
   files?: EditorFile[];
   // SCRUM-384: KI-Palette (z. B. AiAssistBox) — erscheint erst nach Klick auf ✨KI.
   aiPanel?: ReactNode;
+  // Pedi 06.07.: neue Datei(en) vom Rechner als Anhang/Evidence hinzufügen (über das Eltern-Capture).
+  // Anders als „Bild" wird NICHT in den Body eingefügt. Fehlt der Callback, bleibt der Knopf aus.
+  // `| undefined` explizit: erlaubt das Durchreichen eines optionalen Callbacks (exactOptionalPropertyTypes).
+  onAttachFiles?: ((files: File[]) => void | Promise<void>) | undefined;
 }): JSX.Element {
   const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
   // SCRUM-456 (Pedi/VIP 06.07.): verstecktes Datei-Feld, damit der „Bild"-Knopf auch ein NEUES
   // Bild vom Rechner einfügen kann (nicht nur vorhandene Anhänge).
   const imgInputRef = useRef<HTMLInputElement>(null);
+  // Pedi 06.07.: verstecktes Feld für „Datei vom Rechner anhängen …" (Anhang/Evidence, kein Body-Einfügen).
+  const attachFileInputRef = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   // SCRUM-384: KI-Palette geschlossen bis zum bewussten Klick (ARGUS-Muster, keine Info-Wand).
   const [showAi, setShowAi] = useState(false);
@@ -213,6 +220,17 @@ export function RichTextEditor({
     await handleMediaFiles(files);
   };
 
+  // Pedi 06.07.: „Datei vom Rechner anhängen …" — neue Datei(en) als Anhang/Evidence an den Entwurf
+  // hängen (über den Eltern-Callback). KEIN Body-Einfügen, kein Behelfs-Link.
+  const onPickAttachFiles = (e: ChangeEvent<HTMLInputElement>): void => {
+    const picked = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    setShowFiles(false);
+    if (picked.length > 0) {
+      void onAttachFiles?.(picked);
+    }
+  };
+
   const onDrop = (e: DragEvent<HTMLDivElement>): void => {
     const files = Array.from(e.dataTransfer?.files ?? []);
     if (files.length === 0) {
@@ -263,6 +281,15 @@ export function RichTextEditor({
         multiple
         className="hidden"
         onChange={(e) => void onPickImages(e)}
+      />
+      {/* Pedi 06.07.: verstecktes Feld für „Datei vom Rechner anhängen …" — hängt neue Dateien als
+          Anhang/Evidence an (über den Eltern-Callback), fügt NICHT in den Body ein. */}
+      <input
+        ref={attachFileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={onPickAttachFiles}
       />
       <div className="flex flex-wrap items-center gap-1 border-b border-hairline bg-page/60 p-1.5">
         {/* SCRUM-404 (Pedi 03.07.): In der Vorschau sind Formatier-Knöpfe wirkungslos — sie
@@ -390,7 +417,18 @@ export function RichTextEditor({
               </button>
               {showFiles ? (
                 <div className="absolute z-10 mt-1 w-60 rounded-card border border-hairline bg-surface p-1.5 shadow">
-                  <p className="px-2 pb-1 pt-0.5 text-[11px] text-muted-2">
+                  {/* Pedi 06.07.: neue Datei vom Rechner anhängen — direkt hier, wo der Nutzer sucht. */}
+                  {onAttachFiles ? (
+                    <button
+                      type="button"
+                      onClick={() => attachFileInputRef.current?.click()}
+                      className="mb-1 flex w-full items-center gap-1.5 rounded-btn px-2 py-1 text-left text-[12.5px] font-semibold text-ai hover:bg-hairline-soft"
+                    >
+                      <Paperclip size={13} />
+                      {t("editor.fileFromDisk")}
+                    </button>
+                  ) : null}
+                  <p className="border-hairline px-2 pb-1 pt-0.5 text-[11px] text-muted-2">
                     {t("editor.insertFile")}
                   </p>
                   {files.length === 0 ? (

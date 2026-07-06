@@ -1075,6 +1075,7 @@ const de = {
   "editor.noImages": "Keine Bild-Anhänge vorhanden.",
   // SCRUM-456: Bild direkt vom Rechner einfügen + Überschrift für die vorhandenen Anhänge.
   "editor.imageFromDisk": "Bild vom Rechner …",
+  "editor.fileFromDisk": "Datei vom Rechner anhängen …",
   "editor.imageFromAttachment": "Aus Anhängen",
   "editor.file": "Datei verlinken",
   "editor.insertFile": "Datei-Anhang als Link einfügen",
@@ -3704,6 +3705,7 @@ const en: typeof de = {
   "editor.noImages": "No image attachments yet.",
   // SCRUM-456: insert an image straight from the computer + heading for existing attachments.
   "editor.imageFromDisk": "Image from computer …",
+  "editor.fileFromDisk": "Attach file from computer …",
   "editor.imageFromAttachment": "From attachments",
   "editor.file": "Link a file",
   "editor.insertFile": "Insert file attachment as a link",

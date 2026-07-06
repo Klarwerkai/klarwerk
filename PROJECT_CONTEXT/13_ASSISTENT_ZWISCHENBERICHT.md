@@ -55,13 +55,13 @@ Erfahrungswissen"; der Produktkern steht, aber der Weg zur echten Beta hängt an
    nächster Tag `v1.0.0-beta.2` am Di.).
 
 ## 4. Wichtigste offene Risiken (für Boss-Entscheidung)
-1. **Backup / Bus-Faktor (höchste Prio):** PMO-/Schlüsseldaten existieren nur lokal auf Pedis Mac; die Mac-Studio-Insel
-   ist ein einzelner Rechner **ohne etabliertes Backup und ohne verifizierten Wiederaufbau** (Berater-K1, PMO-RISK-0001,
-   Nerd-SPOF). Backup-Vorschlag A+B+C liegt vor (Commit 843b18f) — Umsetzung/Entscheidung offen.
-2. **Ungetesteter Produktionspfad:** Postgres-/`test:integration`-Pfad und RC-genaue Laufzeit-Smoke nicht real
-   nachgewiesen (Team 5 K3; Vite/Playwright-Blockade). Pen-Test (AG-07), Restore/DR (AG-09), Load/Scale (AG-03) offen.
-3. **Zwei offene Secret-Rotationen:** SSH-Deploy-Key (Coolify, im Chat sichtbar gewesen) + OpenAI-Key (PMO).
-   Rotationsliste existiert; Ausführung offen.
+1. **Backup / Bus-Faktor:** PMO-/Schlüsseldaten nur lokal auf Pedis Mac; Mac-Studio-Insel = SPOF ohne verifizierten
+   Wiederaufbau (Berater-K1, PMO-RISK-0001). **→ Pedi-Entscheidung 06.07.: ein Systemadministrator wird eingestellt,
+   der Datenverwaltung/Backup übernimmt.** Bis Besetzung bleibt das Restrisiko.
+2. **Ungetesteter Produktionspfad (K3):** Persistenz ist umgebungsabhängig — **Live = Postgres** (Coolify/`DATABASE_URL`),
+   Desktop-App = In-Memory+Journal (C-13 aufgelöst). Offen bleibt: Postgres-Pfad nicht über alle Module verifiziert;
+   RC-Laufzeit-Smoke, Pen-Test (AG-07), Restore/DR (AG-09), Load/Scale (AG-03) — Aufgaben des Systemadministrators.
+3. **Key-Rotationen:** Pedi 06.07.: **Keys sind sicher; planmäßige Erneuerung während der Beta-Phase** (kein Leck, nicht dringlich).
 4. **Auslieferungs-Kette (SCRUM-464, High):** „KLARWERK Sync" pusht nur Gitea, nicht GitHub → Coolify baute Altstände;
    06.07. per Ship-Skript umgangen, Dauer-Fix (Sync erweitern) noch zu entscheiden.
 5. **Admin-Regression (SCRUM-463):** „Nutzer anlegen" defekt (Workaround Selbst-Registrieren).
@@ -84,12 +84,40 @@ Erfahrungswissen"; der Produktkern steht, aber der Weg zur echten Beta hängt an
 - Positionierung „Industrie vs. jede Organisation" = per Pedi-Entscheidung **„jede Organisation"**; Specs nachziehen.
 - `d25e7df` = dokumentierter arbeitsteiliger Commit (Paul-Liefervorrat, Pedi committet), kein Fremdzugriff.
 
+## 6a. Tiefenprüfung (Nachtrag 06.07.)
+- **Maßgebliche Tiefenquelle:** `docs/qm/BERATER_AUDIT_2026-07-03.md` — vollständiger, belegter Projekt-Audit
+  (bestätigt alle Kernrisiken). Für Boss/Nachfolger die beste Einzeldatei nach diesem Bericht.
+- **Jira vollständig inventarisiert** (`docs/boss-assistant/jira-inventar.md`): 7 Projekte, ~676 Tickets; offener
+  Produkt-Backlog ~60 (SCRUM), Team 2 (KLLM) ~24 offen inkl. neuer strategischer Serie **„KLARWERK-Gehirn"**
+  (KLLM-63…69: modellunabhängige Wissens-/Gedächtnisschicht mit lokalem Embedding bge-m3 + Vektor-Store). KBB/KGURU
+  0 offen (ruhend).
+- **Code-Struktur kartiert** (`docs/boss-assistant/code-map.md`): 21 Service-Module, 20 Seiten, 158 lib-Helfer,
+  195 Tests; Modulgrenzen per dependency-cruiser erzwungen.
+- **Neue offene Frage (C-13):** Läuft die Live-Beta auf **In-Memory + Dev-Journal** (Berater 03.07.) oder **Postgres**
+  (Paul 06.07.)? Für Backup/DR hochrelevant — zu klären.
+- **Team-2-Eval präzisiert (C-14):** Qwen3-32B erreicht **22/24 = Claude-Niveau mit Denkmodus aus** (1,7 s vs. 3,3 s);
+  der dem VIP vorgelegte Vorsichtswert ist 16/24.
+
 ## 7. Verifikationsgrenzen (ehrlich)
 Über die Shell erreiche ich **nur `dev_Klarwerk`**. Schwester-Repos + `pmo-items.json` konnte ich nicht direkt
 prüfen — deren Innenstände beruhen auf Selbstauskunft + Jira, nicht auf Dateiprüfung. Jira wurde per Connector
 verifiziert (7 Projekte, Schlüssel-Tickets). Team-Aussagen sind, wo bestätigbar, konsistent.
 
 ## 8. Nächste Schritte des Assistenten
-- Direkte Team-2-Befragung nachholen; `pmo-items.json` + Schwester-Repos prüfen, sobald erreichbar.
-- Berater-Primärquellen (`docs/qm/BERATER_*`) und After-Report vertiefen.
+- **Team 2:** Agent beendet/nicht mehr erreichbar (Pedi 06.07.) — direkte Befragung entfällt; Wissen nur noch aus
+  `klarwerk-local-llm`-Repo + KLLM-Tickets. Track wird von Paul/Nerd fortgeführt.
+- Offene Klärung mit Boss: **C-13 (Beta-Persistenz In-Memory vs. Postgres)**, Backup-Status, Key-Rotationen.
 - Diese Datei bei größeren Änderungen fortschreiben; Detailtiefe bleibt in `docs/boss-assistant/`.
+
+## Team-Status (Agenten) — Stand 06.07.
+| Track | Agent erreichbar? | zuletzt aktiv |
+|---|---|---|
+| Team 1 Produkt | über Paul fortgeführt | laufend |
+| Team 2 Local LLM | **nein (beendet)** | ~05.07. |
+| Team 3 Business | nein (Urlaub) | 01.07. |
+| Team 4 Website | nein (Urlaub) | ~01.07. |
+| Team 5 Release-Ops | nein (Urlaub) | 01.07. |
+| Team 6 Gap-Kontrolle | nein (Urlaub) | 01.07. |
+| Team 7 PMO | via Automatik/Paul | laufend |
+| Boss | zurück ab Di. 07.07. | pausiert |
+| Paul · Berater · Nerd | ja | laufend |

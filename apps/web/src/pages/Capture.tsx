@@ -2759,6 +2759,7 @@ export function Capture(): JSX.Element {
                       value={bodyHtml}
                       onChange={setBodyHtml}
                       images={editorImagesFromLocalImages(images)}
+                      onAttachFiles={attachFiles}
                     />
                     {/* SCRUM-426: Public-KI-Anreicherung — nur bei Admin-Freigabe (Stufe „offen"),
                         Ergebnisse extern/ungeprüft, nur bewusst in den Entwurf übernehmen. */}
@@ -2965,6 +2966,7 @@ export function Capture(): JSX.Element {
                   value={bodyHtml}
                   onChange={setBodyHtml}
                   images={editorImagesFromLocalImages(images)}
+                  onAttachFiles={attachFiles}
                   aiPanel={
                     <AiAssistBox
                       text={bodyTextForAssist(bodyHtml)}

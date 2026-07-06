@@ -167,6 +167,43 @@ sichtbar halten") = bewusstes **Beta-Scope-Label** (D-012), NICHT „Team 2 inak
   (vermutlich OB1/„Open Brain"-Referenz des Beraters), `tools-sync/` (die `klarwerk-sync.command` aus SCRUM-464),
   `KLARWERK-QM-LOGBUCH.md`, `CURRENT_STATE.md` — bei Bedarf vertiefen.
 
+## Tiefenprüfung 06.07. — After-Report + Berater-Audit gelesen
+
+**Berater-Audit `docs/qm/BERATER_AUDIT_2026-07-03.md` = maßgebliche Tiefenprüfung** (voller Zugriff 03.07., jede
+Aussage mit Datei/Zeile/Ticket belegt). Bestätigt unabhängig: 3-Quellen-Drift (Jira/PMO/Doku), K1 Backup/Bus-Faktor,
+K2 Gate-Erosion (45 Versionen ohne Sichtabnahme, 1 Block ohne Gate-Lauf), K3 ungetesteter Postgres-Pfad.
+After-Report: 334 Einträge, lückenlose Versionsspur v0.9.21→0.9.47→Freeze v1.0.0-beta.1 (03.07.).
+
+### C-13 — Datenhaltung: In-Memory vs. Postgres — ✅ AUFGELÖST (aus Code, 06.07.)
+Kein Widerspruch — **umgebungsabhängig** (`build-app.ts`: `DATABASE_URL` gesetzt → `PgXxxRepo`, sonst `InMemory`):
+- **Live-Server (Coolify, `app.klarwerk.ai`): Postgres.** `docker-compose.prod.yml` setzt `DATABASE_URL`; Dockerfile:
+  „für Server-Betrieb IMMER `DATABASE_URL` setzen", Migration beim Start. = Pauls „Postgres, Daten sicher".
+- **Lokale Desktop-App: In-Memory + Journal** (`dev-persist.ts`, append-only JSONL in `.localdb/`, nur bei
+  `KLARWERK_DEV_PERSIST=1`). = Berater-Befund auf dem Mac.
+- **Echter Restpunkt bleibt K3:** der Postgres-Pfad ist laut Berater/Team 5 nicht durchgängig getestet (nicht alle
+  Module haben verifizierte Pg-Adapter). → geht an den künftigen **Systemadministrator** (Pedi-Entscheidung 06.07.).
+- Bestätigungsfrage an Paul/Nerd offen (Pedi-Wunsch): ist im Live-Coolify-Env `DATABASE_URL` gesetzt + Postgres-Pfad
+  über alle Kernmodule verifiziert?
+
+### C-14 — Qwen3-32B: 16/24 vs. 22/24 (Kontext, kein Widerspruch)
+- **Berater/KLLM-57:** 22/24 = Claude-Referenzniveau — **mit Denkmodus AUS**, Ø 1,7 s vs. 3,3 s.
+- **KLLM-62/Boss (05.07.):** „16/24 auf L40S" = konservativer, dem VIP vorgelegter Wert.
+- → Bester Wert 22/24 (thinking off), zitierter Vorsichtswert 16/24. Beim Bericht beide Kontexte nennen.
+
+### Jira-Zahlen: Berater-Tabelle (03.07.) vs. mein Inventar (06.07.)
+Berater zählte 03.07.: **676 Tickets, 595 done (88 %)** — SCRUM 438 (378 done, **50 In Review**, 10 To Do),
+KLLM 61, KWEB 111, KGURU 32, KREL 34. **KBB und KWN fehlen in der Berater-Tabelle** (existieren aber; KBB-111/KWN-2
+per Connector belegt) → vermutlich nach dem Audit angelegt/umbenannt oder vom Berater nicht mitgezählt. Mein
+06.07.-Inventar (`jira-inventar.md`): SCRUM ~60 offen (die 50 „In Review" sind Teil davon), KLLM ~24 offen
+(inkl. neuer „KLARWERK-Gehirn"-Serie KLLM-63…69), KWN 5, KWEB ~7, KREL 1, KBB/KGURU 0.
+
+### Strategische Neuentdeckung — „KLARWERK-Gehirn" (KLLM-63…69)
+Die Berater-Wissensschicht ist als eigene Ticketserie gestartet: modellunabhängige Wissens-/Gedächtnisschicht
+(PoC → lokale Embedding-Schicht bge-m3+Vektor-Store → signierter USB-Sync → Interaktionsgedächtnis → MCP-Zugriffsschicht
+→ KI-Arbeitsgruppe). Konzept: `docs/qm/BERATER_KONZEPT_WISSENSSCHICHT_KLARWERK-GEHIRN_2026-07-05.md`. Berater-Kernwarnung
+bleibt: **das Embedding-Modell (bge-m3) ist die einzige NICHT frei tauschbare Modellkomponente** — Zielkonflikt mit
+„modellunabhängig".
+
 ## Muster über Teams hinweg
 - **Snapshot-Drift** in `TEAM6_UPDATE.md`: sowohl Team 1 als auch Team 3 berichten, dass Snapshot-/Commit-Zeilen
   dem echten HEAD hinterherlaufen oder „pending" bleiben. → `TEAM6_UPDATE.md`-Angaben immer gegen `git log` prüfen.

@@ -334,6 +334,7 @@ export function KnowledgeInputStudio({
                   onChange={setDraft}
                   images={images}
                   files={files}
+                  onAttachFiles={onAttachFiles}
                   aiPanel={
                     <AiAssistBox
                       text={bodyTextForAssist(draft)}
