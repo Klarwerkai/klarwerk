@@ -8,6 +8,7 @@ import { buildApp, buildPgServices, buildServices } from "./build-app";
 import { createPool, migrate } from "./db";
 import { buildDevPersistServices } from "./dev-persist";
 import { type FactoryReset, factoryResetUnavailable } from "./factory-reset";
+import { assertPersistentStore } from "./storage-guard";
 
 // Kanonische Domain (klarwerk.ai). app.<domain> wird dauerhaft hierher umgeleitet.
 const CANONICAL_HOST = process.env.CANONICAL_HOST ?? "klarwerk.ai";
@@ -120,6 +121,9 @@ function makeFactoryReset(journal: string | undefined): FactoryReset {
 async function start(): Promise<void> {
   const databaseUrl = process.env.DATABASE_URL;
   const journal = devPersistFile();
+  // Betriebssicherheit: in Produktion NIE still In-Memory starten (sonst Datenverlust bei jedem
+  // Neustart). Fehlt eine dauerhafte Datenhaltung, bricht der Start laut mit klarer Begründung ab.
+  assertPersistentStore({ databaseUrl, journal, nodeEnv: process.env.NODE_ENV });
   const services = databaseUrl
     ? await pgServices(databaseUrl)
     : journal

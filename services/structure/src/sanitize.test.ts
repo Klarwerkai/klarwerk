@@ -92,6 +92,38 @@ describe("KW-STR / NFR-SEC-04: sanitizeHtml", () => {
   });
 });
 
+// SCRUM-458 (Formatierungs-Erhaltung): Beim Einfügen aus Word/Browser kommende semantische
+// Formatier-Tags werden auf das erlaubte Äquivalent abgebildet statt verworfen — Fett/Kursiv/
+// Überschriften bleiben erhalten. Sicherheit unangetastet: kein style, kein Skript, keine Tabellen.
+describe("SCRUM-458: sanitizeHtml erhält Formatierung durch Tag-Abbildung", () => {
+  it("bildet Fett/Kursiv auf strong/em ab (offen UND schließend)", () => {
+    expect(sanitizeHtml("<b>fett</b>")).toBe("<strong>fett</strong>");
+    expect(sanitizeHtml("<i>kursiv</i>")).toBe("<em>kursiv</em>");
+    expect(sanitizeHtml("<p>a <b>fett</b> und <i>kursiv</i></p>")).toBe(
+      "<p>a <strong>fett</strong> und <em>kursiv</em></p>",
+    );
+  });
+
+  it("normalisiert Überschriften h1/h4–h6 auf die erlaubten h2/h3", () => {
+    expect(sanitizeHtml("<h1>Titel</h1>")).toBe("<h2>Titel</h2>");
+    expect(sanitizeHtml("<h4>Unter</h4>")).toBe("<h3>Unter</h3>");
+    expect(sanitizeHtml("<h5>x</h5><h6>y</h6>")).toBe("<h3>x</h3><h3>y</h3>");
+  });
+
+  it("verschachtelte abgebildete Tags schließen korrekt (Stack bleibt konsistent)", () => {
+    expect(sanitizeHtml("<b>fett <i>beides</i></b>")).toBe("<strong>fett <em>beides</em></strong>");
+  });
+
+  it("Sicherheit unangetastet: style/Skript/Tabellen bleiben draußen", () => {
+    // style wird weiter entfernt (auch am abgebildeten Tag).
+    expect(sanitizeHtml('<b style="color:red" onclick="x()">t</b>')).toBe("<strong>t</strong>");
+    // Tabellen sind bewusst NICHT erlaubt (Design-Frage Stufe 2) — Inhalt bleibt als Text.
+    expect(sanitizeHtml("<table><tr><td>Zelle</td></tr></table>")).toBe("Zelle");
+    // script bleibt komplett verworfen.
+    expect(sanitizeHtml("<b>ok</b><script>alert(1)</script>")).toBe("<strong>ok</strong>");
+  });
+});
+
 describe("KW-STR: htmlToPlainText", () => {
   it("entfernt Tags + Entities, normalisiert Whitespace", () => {
     expect(htmlToPlainText("<h2>Titel</h2><p>Text&amp;mehr</p>")).toBe("Titel Text&mehr");

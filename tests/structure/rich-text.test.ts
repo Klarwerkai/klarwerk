@@ -71,3 +71,18 @@ describe("KW-STR FE: Editor-Helfer", () => {
     expect(sanitizeHtml(html)).toContain("data:image/png;base64,AAAA");
   });
 });
+
+// SCRUM-458 (Formatierungs-Erhaltung, Client-Spiegel des Server-Sanitizers): Fett/Kursiv/
+// Überschriften aus Word/Browser-Paste bleiben durch Tag-Abbildung erhalten (kein style/Tabellen).
+describe("SCRUM-458 FE: sanitizeHtml erhält Formatierung durch Tag-Abbildung", () => {
+  it("b→strong, i→em, h1/h4→h2/h3 (offen und schließend)", () => {
+    expect(sanitizeHtml("<b>fett</b> <i>kursiv</i>")).toBe("<strong>fett</strong> <em>kursiv</em>");
+    expect(sanitizeHtml("<h1>Titel</h1><h4>Unter</h4>")).toBe("<h2>Titel</h2><h3>Unter</h3>");
+    expect(sanitizeHtml("<b>a <i>b</i></b>")).toBe("<strong>a <em>b</em></strong>");
+  });
+
+  it("Sicherheit bleibt: style/Skript/Tabellen draußen (nur Text)", () => {
+    expect(sanitizeHtml('<b style="color:red">t</b>')).toBe("<strong>t</strong>");
+    expect(sanitizeHtml("<table><tr><td>Z</td></tr></table>")).toBe("Z");
+  });
+});

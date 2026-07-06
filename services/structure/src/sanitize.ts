@@ -22,6 +22,21 @@ const ALLOWED_TAGS = new Set([
 // Selbstschließende/leere Elemente ohne End-Tag.
 const VOID_TAGS = new Set(["br", "img"]);
 
+// SCRUM-458 (Formatierungs-Erhaltung, Pedi K.-o.-Kriterium): Beim Einfügen aus Word/Browser kommen
+// oft semantische Formatier-Tags, die nicht in unserer engen Allowlist stehen — sie werden auf das
+// erlaubte Äquivalent ABGEBILDET statt verworfen, damit Fett/Kursiv/Überschriften erhalten bleiben.
+// (Rein semantisch, kein style/kein Skript — die Sicherheits-Leitplanke bleibt unangetastet.)
+// Bewusst NICHT enthalten: Tabellen (offene Design-Frage) und style-basierte Formatierung
+// (z. B. <span style="font-weight:bold">) — das übernimmt der Paste-Normalisierer in Stufe 2.
+const TAG_MAP: Record<string, string> = {
+  b: "strong",
+  i: "em",
+  h1: "h2",
+  h4: "h3",
+  h5: "h3",
+  h6: "h3",
+};
+
 // Erlaubte Attribute je Tag (alles andere wird verworfen, inkl. on*-Handler/style).
 const ALLOWED_ATTRS: Record<string, Set<string>> = {
   a: new Set(["href", "title"]),
@@ -138,7 +153,10 @@ export function sanitizeHtml(html: string): string {
   // biome-ignore lint/suspicious/noAssignInExpressions: Standard-Regex-Iteration.
   while ((m = tagRe.exec(html)) !== null) {
     const full = m[0];
-    const tag = (m[1] ?? "").toLowerCase();
+    const rawTag = (m[1] ?? "").toLowerCase();
+    // SCRUM-458: bekannte Formatier-Tags auf das erlaubte Äquivalent abbilden (b→strong usw.);
+    // Open- und Close-Tag werden identisch abgebildet, damit der Schließ-Stack konsistent bleibt.
+    const tag = TAG_MAP[rawTag] ?? rawTag;
     const isClose = full.startsWith("</");
     const text = html.slice(last, m.index);
     last = tagRe.lastIndex;

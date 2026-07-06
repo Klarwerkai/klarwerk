@@ -19,6 +19,17 @@ const ALLOWED_TAGS = new Set([
   "div",
 ]);
 const VOID_TAGS = new Set(["br", "img"]);
+// SCRUM-458 (Formatierungs-Erhaltung): identische Tag-Abbildung wie der Server-Sanitizer —
+// semantische Formatier-Tags aus Word/Browser-Paste auf das erlaubte Äquivalent abbilden statt
+// verwerfen (Fett/Kursiv/Überschriften bleiben). Kein style, keine Tabellen (Stufe 2).
+const TAG_MAP: Record<string, string> = {
+  b: "strong",
+  i: "em",
+  h1: "h2",
+  h4: "h3",
+  h5: "h3",
+  h6: "h3",
+};
 const ALLOWED_ATTRS: Record<string, Set<string>> = {
   a: new Set(["href", "title"]),
   img: new Set(["src", "alt"]),
@@ -127,7 +138,9 @@ export function sanitizeHtml(html: string): string {
   let m: RegExpExecArray | null = tagRe.exec(html);
   while (m !== null) {
     const full = m[0];
-    const tag = (m[1] ?? "").toLowerCase();
+    const rawTag = (m[1] ?? "").toLowerCase();
+    // SCRUM-458: bekannte Formatier-Tags auf ihr erlaubtes Äquivalent abbilden (b→strong usw.).
+    const tag = TAG_MAP[rawTag] ?? rawTag;
     const isClose = full.startsWith("</");
     const text = html.slice(last, m.index);
     last = tagRe.lastIndex;
