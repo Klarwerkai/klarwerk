@@ -31,6 +31,11 @@ das Onboarding künftiger (Ersatz-)Agenten.
 | Nerd     | ⏳ offen       | — |
 
 ## Reihenfolge der Befragung (Timeline)
-Team 1 → (2 entfällt) → 3 → 4 → 5 → 6 → 7 → Boss → Paul → Berater → Nerd.
+Team 1 → (2 nur Sekundärquelle) → 3 → 4 → 5 → 6 → 7 → Boss → Paul → Berater → Nerd. **Alle erhalten.**
+
+## Verifikation (06.07.)
+Gegen `dev_Klarwerk`-Repo + Git-Log + Jira-Connector durchgeführt → Ergebnisse in `contradictions.md`
+(Abschnitt „VERIFIKATION 06.07."). Zwischenbericht: `PROJECT_CONTEXT/13_ASSISTENT_ZWISCHENBERICHT.md`.
+Grenze: nur `dev_Klarwerk` per Shell erreichbar; Schwester-Repos + `pmo-items.json` nicht direkt prüfbar.
 
 _Stand: 2026-07-06_

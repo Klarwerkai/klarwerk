@@ -98,6 +98,75 @@ Drei Aussagen zur Commit-/Push-Autorität:
 - Alt-Tests nutzten Trust=100; nachträglich TRUST_MAX **99** eingeführt (SCRUM-359, Team-1-Deckel). Alt-Tests/Doku
   können noch 100 annehmen. Bei Verifikation beachten.
 
+## ✅ VERIFIKATION 06.07.2026 (gegen dev_Klarwerk-Repo + Jira-Connector + Git-Log)
+
+**Repo/Jira-Struktur — bestätigt & korrigiert:** Jira hat **7 Projekte**, eines je Team + Nerd:
+SCRUM (klarwerk/Produkt), KBB (business-backend), KWEB (public-website), KREL (release-ops),
+KGURU (knowledge-guru), KLLM (Local LLM), **KWN (klarwerk-nerd)**. Team 7 (PMO) hat keins.
+→ KBB existiert doch (frühere Unsicherheit aufgelöst); Nerd hat eigenes Projekt KWN.
+PROJECT_CONTEXT `03_REPOS_UND_ORTE.md` bestätigt die Repo-Karte. **Wichtige Einordnung:** Entscheidung 02.07.
+„Alles direkt in der Boss-Session umsetzen … Teams bleiben als logische Tracks/Jira-Präfixe" — d.h. die „Teams"
+sind seit Phase 2 primär **Jira-Präfixe/Tracks**, nicht mehr getrennte lebende Agenten.
+
+**C-03/C-04 (Dashboard-Stale) — bestätigt:** KGURU-30 (Team 6, Stand 01.07.) trägt selbst den Satz „Team 2 pausiert".
+Das ist die Quelle des Irrtums. Team 2 real **aktiv** (KLLM-62 „To Do", Mac-Studio-Insel, Qwen3-32B 16/24 vs Claude 22/24).
+
+**C-05a (d25e7df) — weitgehend aufgelöst:** Alle 40 jüngsten Commits laufen unter `Peter Kohnert <peterkohnert@mac>`.
+`d25e7df` (04.07. 11:49, [Cloud-Worker]) ist ein von Pedi committeter Paul-Liefervorrat — genau der im Entscheidungs-Log
+04.07. dokumentierte arbeitsteilige Modus („Paul liefert, Pedi committet bei Runner-Grün"). Git-Autor ist NICHT der
+Differenzierer (alle = Pedis Mac). Restfrage bleibt: Session-Zuordnung ist nicht aus Git ableitbar → Prozessthema, kein Fehler.
+
+**C-05b (Freeze) — bestätigt & aktualisiert:** Git-Log: `421b86c` Freeze v1.0.0-beta.1 → `d661c4a` „Freeze aufgehoben,
+Paul eigenständig bis Di. 07.07., Pedi committet bei Runner-Grün; kein Push/Tag bis Di., dann v1.0.0-beta.2". Steht so
+im Entscheidungs-Log 09_ENTSCHEIDUNGEN.md. **Live aktuell `v1.0.0-beta.1.4`** (SCRUM-464, 06.07.).
+
+**C-06/C-07 (Governance/Commit-Autorität) — aufgelöst:** Modell dokumentiert: Cloud-Worker (Paul) liefert Dateien →
+Pedi fährt „KLARWERK Paul Runner" (Gates) → committet bei Grün → Push via Sync/Ship. „Boss committet" (Phase 2) und
+„Pedi committet" (Phase 3) sind zeitlich verschiedene Phasen, kein Widerspruch. Codex-Modell galt in den read-only-
+Team-Repos (3–6).
+
+**C-08 (Secrets) — bestätigt:** SCRUM-464 belegt GitHub-SSH ok (kein Key-Problem). Key-Rotationsliste existiert
+(Commit `843b18f`, 03.07., „Secrets-Rotationsliste, Backup-Vorschlag A+B+C"). SSH-Deploy-Key-Rotation + OpenAI-Key
+bleiben als offene To-dos. `.env` gitignored (nur `.env.example`), SSH-Keys in separatem `llm-eval-zugang/` (nie im Repo).
+
+**C-09 (Positionierung) — durch Pedi-Entscheidung aufgelöst:** Entscheidungs-Log 02.07.+03.07.: **„jede Organisation"
+verbindlich** (Website UND Demo; Specs nachziehen). Der Specs-Widerspruch ist also eine offene *Doku-Nachzieh-Aufgabe*,
+keine offene Richtungsfrage.
+
+**C-10 (Versions-Drift) — bestätigt & erklärt:** Version lebt in `apps/web/src/version.ts`; Schema
+`1.0.0-beta.<Freeze>.<Push-Zähler>`. Verlauf 0.9.46 → 0.9.47-beta → 1.0.0-beta.1 → …beta.1.4. Statische Doku (v0.9.22
+in Tagesplänen) läuft strukturell hinterher — bekannt, kein Datenfehler.
+
+**SCRUM-463 / SCRUM-464 — verifiziert** (beide To Do; 464 High, am 06.07. per Ship-Skript umgangen, Live aktuell).
+**SCRUM-460** Code geliefert (Commit `f4fcc98`), Ticket aber noch „To Do" (Status-Lag; VIP-Wunsch größer als Slice 1).
+**SCRUM-434** (PMO-Automatik) „In Review" — bestätigt Team-7-Automatik real.
+
+**Teams-Aktivität (Jira-Update-Daten):** KBB-111, KREL-33, KGURU-30 zuletzt **01.07.** bewegt → Teams 3/5/6 seither
+inaktiv. Aktiv bis 05.–06.07.: SCRUM (Paul), KLLM/KWN (Nerd/Insel). Deckt sich mit „Teams im Urlaub, Paul arbeitet weiter".
+
+**Verifikationsgrenze (Stand 06.07., aktualisiert):** Nach Freigabe von `~/Documents/Klarwerk` sind die fünf
+Schwester-Repos jetzt direkt prüfbar. Alle drei zusätzlichen Ordner sind inzwischen freigegeben (`Klarwerk/`, `KLARWERK_Reporting_PMO/`, `KLARWERK_AUDIT_EXPORTS/`).
+
+**Lebende PMO-Zahl — verifiziert 06.07. (`pmo-items.json`, Datei-Stand heute 04:39):** 144 Items — 28 done,
+34 partially_done, 53 recognized, 5 in_progress, 10 planned, 6 blocked, 5 paused, 2 deferred, 1 archiviert.
+P0=13, P1=76, P2=43, P3=12. Beta-relevant (high)=49, davon **19 done (≈39 %)**.
+**13 P0 fast alle Team 3 (Legal/Go-No-Go) + Team 5 (RC/Smoke); nur 1 P0 Produktkern** (Beta Core Flow, partially).
+→ Berater-These belegt: Beta hängt an Gates/Betrieb, nicht am Funktionskern.
+
+**„paused" präzisiert:** die 5 `paused`-Items sind ALLE Team 2 (u.a. „Non-beta-blocking-Status", „Pausierter Bereich
+sichtbar halten") = bewusstes **Beta-Scope-Label** (D-012), NICHT „Team 2 inaktiv". Real entwickelt Team 2 aktiv
+(`klarwerk-local-llm`-Commits). Die Dashboard-`app.js` verkürzte das fälschlich zu „Team 2 pausiert".
+
+### Direkt am Repo verifiziert (nach Klarwerk-Freigabe)
+- **Team 2 aktiv — bestätigt:** `klarwerk-local-llm/` ist voll bestückt (benchmarks, compose, dashboard, models,
+  scripts) mit laufenden „Cloud-Worker PAUL"-Commits (UpCloud-L40S/H100-Eval, vLLM+Qwen3-32B, KLLM-56..60).
+  „Pausiert" endgültig widerlegt.
+- **C-02 auf Dateiebene bestätigt:** `klarwerk-business-backend/docs/DECISIONS.md` enthält D-001/002/003/004/008/009/012;
+  **D-005/006/007/010/011 fehlen** — exakt wie Team 3 gemeldet. Nummerierungslücke real.
+- **Weitere Fundstücke im Sammelordner:** `app`+`demo`+`legacy-klarwerk` (Cloudflare-Vorgänger), `open-engine`
+  (vermutlich OB1/„Open Brain"-Referenz des Beraters), `tools-sync/` (die `klarwerk-sync.command` aus SCRUM-464),
+  `KLARWERK-QM-LOGBUCH.md`, `CURRENT_STATE.md` — bei Bedarf vertiefen.
+
 ## Muster über Teams hinweg
 - **Snapshot-Drift** in `TEAM6_UPDATE.md`: sowohl Team 1 als auch Team 3 berichten, dass Snapshot-/Commit-Zeilen
   dem echten HEAD hinterherlaufen oder „pending" bleiben. → `TEAM6_UPDATE.md`-Angaben immer gegen `git log` prüfen.

@@ -39,6 +39,23 @@ describe("KW-STR FE: sanitizeHtml (Defense-in-Depth, gleiche Allowlist)", () => 
     );
   });
 
+  // Formatierung Stufe 2 (Paste-Normalisierer): style-basiertes Fett/Kursiv/Unterstrichen aus Word/
+  // Browser wird auf semantische Tags abgebildet; reine Farb-Spans bleiben ohne Formatierung.
+  it("Paste-Normalisierer: font-weight/-style/-decoration → strong/em/u; sonst Span verworfen", () => {
+    expect(sanitizeHtml('<span style="font-weight:700">fett</span>')).toBe("<strong>fett</strong>");
+    expect(sanitizeHtml('<span style="font-weight: bold">fett</span>')).toBe(
+      "<strong>fett</strong>",
+    );
+    expect(sanitizeHtml('<span style="font-style: italic">kursiv</span>')).toBe("<em>kursiv</em>");
+    expect(sanitizeHtml('<span style="text-decoration: underline">u</span>')).toBe("<u>u</u>");
+    // reine Farbe = keine Formatierung → Span verworfen, Text bleibt.
+    expect(sanitizeHtml('<span style="color:red">rot</span>')).toBe("rot");
+    // Word-typisch: Fett-Span im Absatz.
+    expect(sanitizeHtml('<p><span style="font-weight:700">Titel</span></p>')).toBe(
+      "<p><strong>Titel</strong></p>",
+    );
+  });
+
   it("schließt offene Tags + ist idempotent", () => {
     const once = sanitizeHtml("<p>a<strong>b");
     expect(once).toBe("<p>a<strong>b</strong></p>");

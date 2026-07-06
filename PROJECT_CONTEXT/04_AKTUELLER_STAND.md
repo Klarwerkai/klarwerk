@@ -2,6 +2,10 @@
 
 > Diese Datei bei jedem größeren Schritt fortschreiben (Version, Tickets, Plan).
 > Feinere Historie: `docs/qm/claude-after-report.md` + Git-Log + Jira.
+>
+> **➤ Verifizierter Status-quo-Zwischenbericht des Assistenten (06.07.):**
+> `PROJECT_CONTEXT/13_ASSISTENT_ZWISCHENBERICHT.md` (Rohstand: `docs/boss-assistant/`).
+> Live-Version dort bestätigt: **v1.0.0-beta.1.4**.
 
 ## Rollen
 

@@ -145,6 +145,23 @@ describe("Formatierung Stufe 2: sanitizeHtml erhält Tabellen", () => {
   });
 });
 
+// Formatierung Stufe 2 (Paste-Normalisierer, autoritativ): style-basiertes Fett/Kursiv/Unterstrichen
+// aus Word/Browser wird auf semantische Tags abgebildet; reine Farb-Spans bleiben ohne Formatierung.
+describe("Formatierung Stufe 2: sanitizeHtml normalisiert style-basierte Formatierung", () => {
+  it("font-weight/-style/-decoration → strong/em/u; reine Farbe → Span verworfen", () => {
+    expect(sanitizeHtml('<span style="font-weight:700">fett</span>')).toBe("<strong>fett</strong>");
+    expect(sanitizeHtml('<span style="font-weight: bold">fett</span>')).toBe(
+      "<strong>fett</strong>",
+    );
+    expect(sanitizeHtml('<span style="font-style: italic">kursiv</span>')).toBe("<em>kursiv</em>");
+    expect(sanitizeHtml('<span style="text-decoration: underline">u</span>')).toBe("<u>u</u>");
+    expect(sanitizeHtml('<span style="color:red">rot</span>')).toBe("rot");
+    expect(sanitizeHtml('<p><span style="font-weight:700">Titel</span></p>')).toBe(
+      "<p><strong>Titel</strong></p>",
+    );
+  });
+});
+
 describe("KW-STR: htmlToPlainText", () => {
   it("entfernt Tags + Entities, normalisiert Whitespace", () => {
     expect(htmlToPlainText("<h2>Titel</h2><p>Text&amp;mehr</p>")).toBe("Titel Text&mehr");
