@@ -1,35 +1,38 @@
 #!/bin/bash
-# KLARWERK Ship — der ganze Weg nach Live, in der RICHTIGEN Reihenfolge:
-#   Runner-Gate  →  Versions-Zähler +1  →  Commit  →  KLARWERK Sync (Push)  →  Live-Update.
+# KLARWERK Ship — der ganze Weg nach Live in EINEM Befehl:
+#   Runner-Gate → Versions-Zähler +1 → Commit → Push GitHub (+ Gitea-Spiegel) → Live-Update.
 #
-# WICHTIG (Regel aus PROJECT_CONTEXT): Der EINZIGE Push-Weg ist "KLARWERK Sync" — sie spiegelt
-# GitHub UND Gitea und synct alle Repos. Dieses Skript pusht deshalb NICHT selbst, sondern
-# übergibt nach dem Commit an KLARWERK Sync und wartet, bis du bestätigst. Erst danach deployt es.
+# WICHTIG (Befund 06.07.2026): Coolify baut vom Remote `github`
+# (git@github.com:Klarwerkai/klarwerk.git). KLARWERK Sync pusht aber nur nach Gitea
+# (`origin`, localhost:3000), NICHT nach GitHub — deshalb blieb Live auf dem alten Stand.
+# Darum pusht DIESES Skript den Deploy-Stand direkt auf `github` (SSH-Auth ist eingerichtet)
+# und spiegelt zusätzlich nach `origin` (Gitea). Siehe Sync-Ticket (Dauer-Fix).
 #
-# Versions-Zähler (Pedi 06.07.2026): Die LETZTE Zahl in APP_VERSION (Format
-# 1.0.0-beta.<Freeze>.<Zähler>) ist ein interner, laufender Push-Zähler. Dieses Skript erhöht sie
-# bei jedem echten Ship um 1 — so sieht man an der Topbar (live UND lokal) sofort, ob beide gleich
-# sind. Erhöht wird ERST nach grünem Gate und NUR wenn du bestätigst.
+# Versions-Zähler: Die LETZTE Zahl in APP_VERSION (1.0.0-beta.<Freeze>.<Zähler>) ist ein interner,
+# laufender Push-Zähler. Erhöht wird ERST nach grünem Gate und NUR wenn du bestätigst.
 #
 # Aufruf (Terminal):   bash ~/Documents/dev_Klarwerk/scripts/deploy/klarwerk-ship.command "Commit-Text"
 set -euo pipefail
 
 REPO="$HOME/Documents/dev_Klarwerk"
 VERSION_FILE="apps/web/src/version.ts"
+DEPLOY_REMOTE="github"   # Coolify baut von hier
+MIRROR_REMOTE="origin"   # Gitea-Spiegel (best effort)
+BRANCH="main"
 cd "$REPO" || { echo "✗ Repo nicht gefunden: $REPO"; exit 1; }
 
 echo "KLARWERK Ship — $(date '+%d.%m.%Y %H:%M')"
-echo "Weg: Runner-Gate → Zähler +1 → Commit → KLARWERK Sync → Live-Update"
+echo "Weg: Runner-Gate → Zähler +1 → Commit → Push GitHub(+Gitea) → Live-Update"
 echo ""
 
 # 0) Stale Lock der Bridge entfernen (sonst hakt Git beim Committen).
 rm -f "$REPO/.git/index.lock"
 
-# 1) Runner-Gate — das harte Tor. Rot = sofort Stopp, kein Zähler/Commit/Sync/Deploy.
+# 1) Runner-Gate — das harte Tor. Rot = sofort Stopp, nichts wird geändert/gepusht/deployt.
 echo "▶ 1/5  Runner-Gate (paul-runner.sh) …"
 if ! bash "$REPO/docs/team2-austausch/paul-runner.sh"; then
   echo ""
-  echo "✗ Runner ROT — nichts wird hochgezählt, committet, gesynct oder deployt. Erst Fehler beheben."
+  echo "✗ Runner ROT — nichts wird hochgezählt, committet, gepusht oder deployt. Erst Fehler beheben."
   exit 1
 fi
 echo "✓ 1/5  Runner grün."
@@ -40,38 +43,51 @@ CUR="$(sed -n 's/.*APP_VERSION *= *"\([^"]*\)".*/\1/p' "$VERSION_FILE" | head -1
 if [ -z "${CUR}" ]; then
   echo "✗ APP_VERSION nicht gefunden in ${VERSION_FILE} — abgebrochen."; exit 1
 fi
-BASE="${CUR%.*}"     # alles vor der letzten Zahl, z. B. 1.0.0-beta.1
-LAST="${CUR##*.}"    # die letzte Zahl, z. B. 0
+BASE="${CUR%.*}"; LAST="${CUR##*.}"
 case "${LAST}" in
-  ''|*[!0-9]*) NEXT="${CUR}.1" ;;   # Fallback: keine Zahl am Ende → .1 anhängen
+  ''|*[!0-9]*) NEXT="${CUR}.1" ;;
   *)           NEXT="${BASE}.$((LAST + 1))" ;;
 esac
 echo "ℹ 2/5  Versions-Zähler: ${CUR} → ${NEXT}"
 echo ""
 
-# 3) Sicherheits-Nachfrage vor den festen Schritten (Commit + Sync/Push + Deploy).
-read -r -p "Jetzt v${NEXT} committen, per KLARWERK Sync pushen und live deployen? [j/N] " ANS
+# 3) EINE Sicherheits-Nachfrage vor den festen Schritten (Commit + Push + Deploy).
+read -r -p "Jetzt v${NEXT} committen, nach GitHub pushen und live deployen? [j/N] " ANS
 case "${ANS}" in
   j|J|ja|Ja|JA|y|Y) ;;
-  *) echo "Abgebrochen — nichts hochgezählt, committet, gesynct oder deployt."; exit 0 ;;
+  *) echo "Abgebrochen — nichts geändert, gepusht oder deployt."; exit 0 ;;
 esac
 
-# 3a) Neue Version schreiben (BSD-sed auf macOS: -i '' ) + committen.
+# 3a) Neue Version schreiben (BSD-sed: -i '') + committen.
 sed -i '' "s/\(APP_VERSION *= *\"\)[^\"]*\(\"\)/\1${NEXT}\2/" "$VERSION_FILE"
-echo "✓ APP_VERSION auf ${NEXT} gesetzt."
 MSG="${1:-KLARWERK Ship v${NEXT}}"
 git add -A
 git commit -m "${MSG}"
-echo "✓ 3/5  Commit: ${MSG}"
+echo "✓ 3/5  Commit ${NEXT}: ${MSG}"
 echo ""
 
-# 4) Push AUSSCHLIESSLICH über KLARWERK Sync (GitHub + Gitea, alle Repos) — Übergabe an dich.
-echo "▶ 4/5  KLARWERK Sync (Push nach GitHub + Gitea) …"
-echo "   Regel: Gepusht wird NUR über KLARWERK Sync — nicht per direktem git push."
-echo "   → Bitte JETZT die KLARWERK-Sync-App laufen lassen (wie gewohnt)."
-echo ""
-read -r -p "   Wenn der Sync DURCH ist (Commit ${NEXT} auf GitHub): hier Enter zum Live-Deploy … " _
-echo "✓ 4/5  Sync bestätigt."
+# 4a) Push nach GitHub (Deploy-Quelle) — mit Retry. Schlägt das fehl, NICHT deployen.
+echo "▶ 4/5  Push nach GitHub (${DEPLOY_REMOTE}/${BRANCH}) …"
+N=0
+until git push "${DEPLOY_REMOTE}" "${BRANCH}"; do
+  N=$((N + 1))
+  if [ "${N}" -ge 4 ]; then
+    echo "✗ GitHub-Push fehlgeschlagen — es wird NICHT deployt (Coolify baut sonst den alten Stand)."
+    echo "  Prüfen: ssh -T git@github.com  |  git -C \"$REPO\" push ${DEPLOY_REMOTE} ${BRANCH}"
+    exit 1
+  fi
+  echo "… Netzwerk/Push-Fehler, Versuch ${N} — warte $((2 ** N))s …"
+  sleep $((2 ** N))
+done
+echo "✓ GitHub aktuell (v${NEXT})."
+
+# 4b) Gitea-Spiegel (best effort) — Fehler hier blockieren den Deploy NICHT.
+if git push "${MIRROR_REMOTE}" "${BRANCH}"; then
+  echo "✓ Gitea-Spiegel aktualisiert."
+else
+  echo "⚠ Gitea-Spiegel-Push fehlgeschlagen (nur Mirror) — Deploy läuft trotzdem weiter."
+fi
+echo "✓ 4/5  Push erledigt."
 echo ""
 
 # 5) Live-Update: stößt den Coolify-Deploy an, wartet und prüft die Live-Seite.
@@ -81,7 +97,7 @@ bash "$REPO/scripts/deploy/klarwerk-live-update.command"
 echo ""
 echo "════════════════════════════════════════════════════════"
 echo "Fertig. Gegencheck: Topbar oben rechts zeigt v${NEXT}"
-echo "  – live:  https://app.klarwerk.ai"
+echo "  – live:  https://app.klarwerk.ai   (Coolify-Commit sollte der neue sein)"
 echo "  – lokal: nach 'klarwerk-lokal-starten.command' auf http://localhost:3001"
 echo "  Beide gleiche Nummer = alles up to date."
 echo "════════════════════════════════════════════════════════"

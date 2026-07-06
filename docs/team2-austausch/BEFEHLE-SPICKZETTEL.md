@@ -19,14 +19,16 @@ Danach im Browser mit **Cmd+Shift+R** neu laden.
 ---
 
 ## 2) Nach LIVE ausliefern (der Haupt-Befehl)  → https://app.klarwerk.ai
-Runner-Gate → Versionszähler +1 → Commit → **KLARWERK Sync** → Live-Update. Fragt **einmal** nach.
+**Alles in EINEM Befehl:** Runner-Gate → Versionszähler +1 → Commit → Push **GitHub** (+ Gitea-Spiegel)
+→ Live-Update. Fragt **einmal** nach, sonst automatisch.
 
 ```
 bash ~/Documents/dev_Klarwerk/scripts/deploy/klarwerk-ship.command "Kurzer Commit-Text"
 ```
-Der Commit-Text ist optional. **Wichtig:** Das Skript pusht NICHT selbst — nach dem Commit hält
-es an und du lässt **KLARWERK Sync** laufen (einziger Push-Weg, spiegelt GitHub + Gitea, alle
-Repos). Danach **Enter** drücken → es deployt. Fertig, wenn **„✓ LIVE-SEITE OK & AKTUALISIERT"** erscheint.
+Der Commit-Text ist optional. Das Skript pusht den Deploy-Stand direkt nach **GitHub** (das baut
+Coolify) und spiegelt nach **Gitea**, dann deployt es. Fertig, wenn **„✓ LIVE-SEITE OK & AKTUALISIERT"**
+erscheint. (Hintergrund: KLARWERK Sync pusht nur nach Gitea, nicht nach GitHub — deshalb macht das
+Ship-Skript den GitHub-Push selbst.)
 Die letzte Versionszahl (z. B. `1.0.0-beta.1.**1**`) zählt bei jedem Push automatisch hoch —
 so siehst du oben rechts in der App sofort, ob live und lokal gleich sind.
 
