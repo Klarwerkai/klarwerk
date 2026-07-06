@@ -87,6 +87,42 @@ export function RichTextEditor({
     emit();
   };
 
+  // SCRUM-456-Fix (VIP 06.07.): zuverlässiges Einfügen von HTML (Bild) — unabhängig von
+  // document.execCommand. Nach dem nativen Datei-Dialog („Bild vom Rechner …") hat der Editor
+  // keinen gültigen Cursor mehr; execCommand griff dann ins Leere → das Bild erschien nicht und
+  // landete auch nicht im Entwurf. Wir fügen daher direkt per Range ein: am Cursor, wenn er im
+  // Editor liegt, sonst am Ende des Inhalts. emit() sanitisiert wie gehabt beim Rausschreiben.
+  const insertHtmlReliable = (html: string): void => {
+    const el = ref.current;
+    if (!el || !html) {
+      return;
+    }
+    el.focus();
+    const sel = window.getSelection();
+    let range: Range;
+    if (sel && sel.rangeCount > 0 && el.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+      range = sel.getRangeAt(0);
+    } else {
+      range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+    }
+    range.deleteContents();
+    const tpl = document.createElement("template");
+    tpl.innerHTML = html;
+    const lastNode = tpl.content.lastChild;
+    range.insertNode(tpl.content);
+    // Cursor hinter das Eingefügte setzen, damit man direkt weiterschreiben kann.
+    if (lastNode && sel) {
+      const after = document.createRange();
+      after.setStartAfter(lastNode);
+      after.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(after);
+    }
+    emit();
+  };
+
   const openLinkPanel = (): void => {
     setShowImages(false);
     setShowLink((s) => !s);
@@ -142,7 +178,9 @@ export function RichTextEditor({
     try {
       // Verkleinertes, sicheres JPEG-data:image (kein Original-Riesen-Blob im KO-Body).
       const dataUrl = await fileToThumbDataUrl(file);
-      exec("insertHTML", insertImageSrcHtml(dataUrl, file.name));
+      // SCRUM-456-Fix: zuverlässig per Range einfügen (nicht execCommand) — funktioniert auch,
+      // wenn der Editor nach dem Datei-Dialog gerade keinen Cursor hat.
+      insertHtmlReliable(insertImageSrcHtml(dataUrl, file.name));
     } catch {
       // Einzelnes Bild nicht lesbar → still überspringen (kein Abbruch der übrigen).
     }
