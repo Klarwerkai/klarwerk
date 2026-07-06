@@ -691,6 +691,10 @@ const de = {
   "studio.apply": "In den Entwurf übernehmen",
   "studio.cancel": "Verwerfen",
   "studio.close": "Schließen",
+  // SCRUM-458 Stufe 1: „Einfach ↔ Strukturiert" als Ansicht-Schalter (Studio = Ansicht, kein zweiter Ort).
+  "studio.viewSimple": "Einfach",
+  "studio.viewStructured": "Strukturiert",
+  "studio.viewSwitch": "Ansicht: einfach oder strukturiert",
   "studio.state.dirty": "Nicht übernommen",
   "studio.state.clean": "Keine Studio-Änderungen",
   "studio.confirmDiscard.q": "Nicht übernommene Änderungen verwerfen?",
@@ -3320,6 +3324,10 @@ const en: typeof de = {
   "studio.apply": "Apply to the draft",
   "studio.cancel": "Discard",
   "studio.close": "Close",
+  // SCRUM-458 Stage 1: "Simple ↔ Structured" as a view switch (Studio = a view, not a second place).
+  "studio.viewSimple": "Simple",
+  "studio.viewStructured": "Structured",
+  "studio.viewSwitch": "View: simple or structured",
   "studio.state.dirty": "Not applied",
   "studio.state.clean": "No studio changes",
   "studio.confirmDiscard.q": "Discard changes that haven't been applied?",

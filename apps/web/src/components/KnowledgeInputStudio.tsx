@@ -84,6 +84,26 @@ export function KnowledgeInputStudio({
     }
   }, [open]);
 
+  // SCRUM-458 Stufe 1 (Sackgasse): Esc ist der universelle, erwartete Ausgang. Bei ungespeicherten
+  // Änderungen führt er zur Rückfrage (kein stiller Verlust), sonst schließt er direkt.
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== "Escape") {
+        return;
+      }
+      if (knowledgeStudioState(draft, bodyHtml).dirty) {
+        setConfirmDiscard(true);
+      } else {
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, draft, bodyHtml, onClose]);
+
   if (!open) {
     return null;
   }
@@ -118,21 +138,50 @@ export function KnowledgeInputStudio({
           <p className="truncate text-[11.5px] text-muted">{t("studio.subtitle")}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {/* SCRUM-339: sichtbarer Dirty-Status — unübernommene Änderungen klar markiert. */}
-          <span
-            className={`rounded-pill px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase ${
-              studioState.dirty ? "bg-trust-warn-bg text-trust-warn-text" : "bg-page text-muted-2"
-            }`}
-          >
-            {t(studioState.statusKey)}
-          </span>
-          <button
-            type="button"
-            onClick={requestClose}
-            className="rounded-btn border border-hairline px-3 py-1.5 text-[12px] font-semibold text-muted hover:text-text"
-          >
-            {t("studio.close")}
-          </button>
+          {confirmDiscard ? (
+            // SCRUM-458 Stufe 1: Rückfrage DIREKT oben, wo geklickt wurde — nicht nur unten
+            // im Vollbild (das war die Sackgasse: „Schließen" wirkte reaktionslos).
+            <>
+              <span className="text-[12px] font-semibold text-trust-warn-text">
+                {t("studio.confirmDiscard.q")}
+              </span>
+              <Button variant="ghost" onClick={() => setConfirmDiscard(false)}>
+                {t("studio.confirmDiscard.keep")}
+              </Button>
+              <Button variant="outline" onClick={onClose}>
+                {t("studio.confirmDiscard.discard")}
+              </Button>
+            </>
+          ) : (
+            <>
+              {/* SCRUM-339: sichtbarer Dirty-Status — unübernommene Änderungen klar markiert. */}
+              <span
+                className={`rounded-pill px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase ${
+                  studioState.dirty
+                    ? "bg-trust-warn-bg text-trust-warn-text"
+                    : "bg-page text-muted-2"
+                }`}
+              >
+                {t(studioState.statusKey)}
+              </span>
+              {/* SCRUM-458 Stufe 1: „Einfach ↔ Strukturiert" als Ansicht-Schalter. „Einfach" ist der
+                  immer sichtbare, verlässliche Ausgang zurück aufs Blatt — Studio ist kein zweiter
+                  Ort mehr, sondern eine Ansicht. (Esc schließt ebenfalls.) */}
+              <div className="flex overflow-hidden rounded-pill border border-hairline text-[11px] font-semibold">
+                <button
+                  type="button"
+                  onClick={requestClose}
+                  aria-label={t("studio.viewSwitch")}
+                  className="px-2.5 py-1 text-muted transition-colors hover:text-text"
+                >
+                  {t("studio.viewSimple")}
+                </button>
+                <button type="button" aria-current="true" className="bg-ink px-2.5 py-1 text-white">
+                  {t("studio.viewStructured")}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
 

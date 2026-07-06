@@ -10,7 +10,8 @@
 Ein wohlgesonnener VIP-Tester hat KLARWERK im Vorab-Test benutzt. Kernaussagen (Pedi, sinngemäß):
 
 - „Als Anwender ist mir die Wissenserfassung zu kompliziert mit all ihren Möglichkeiten. Ich verzettel mich."
-- „Ich komme aus dem Studio nicht mehr raus."
+- „Ich komme aus dem Studio nicht mehr raus." — **in seinem Fall ein echter Sackgassen-Effekt, kein bloßes Unklar-Sein.** Die verschachtelte Studio-in-Studio-Struktur muss im neuen Weg verschwinden.
+- „Ganz wichtig: Beim Übernehmen von Inhalten darf die **Formatierung nicht verloren gehen**." (Word/PowerPoint-Formatierung, Bilder an Ort und Stelle.)
 - „Bild einfügen ging nicht."
 - „Komplette Dokumente (z. B. ein Design Guide) sollten als verlässliche Aussagen importierbar sein — **inkl. der Grafiken**, die oft mehr sagen als viele Worte."
 - „Ich lade ein Dokument hoch und will Fragen darauf stellen, deren Antwort die Inhalte logisch verknüpft."
@@ -50,6 +51,8 @@ Das aktuelle Problem ist **Verpackung**, nicht Substanz: vier Erzähl-Modi + Exp
 
 ## Harte Leitplanken (nicht verhandelbar — bitte darin arbeiten)
 
+- **Formatierung bleibt erhalten:** Beim Einfügen/Importieren aus Word/PowerPoint (und beim Ganz-Dokument-Import) darf die Formatierung NICHT verloren gehen — Überschriften, Listen, Hervorhebungen, Tabellen, Bilder an ihrer Stelle. Das ist für Pedi ein K.-o.-Kriterium: Wer sein formatiertes Dokument reinwirft und rohen Text zurückbekommt, ist verloren. (Grenze: nur sichere, sanitisierte Formatierung — kein Fremd-Hotlinking, kein aktiver Inhalt.)
+- **Kein Sackgassen-Gefühl:** Aus jeder Eingabe-Ansicht muss ein offensichtlicher, verlässlicher Ausgang führen. Die heutige Studio-in-Studio-Verschachtelung (Tester kam nicht heraus) darf im neuen Weg nicht wiederkehren.
 - **Der Burggraben bleibt:** Validierung, Vertrauen, Herkunft (Provenienz) werden NICHT für Vertrautheit geopfert. Sie sollen sich nur mühelos anfühlen, nicht verschwinden.
 - **Ehrlichkeit:** Nichts wird still auto-validiert; KI-Generiertes wird als solches gekennzeichnet („KI-generiert, nicht 100 % geprüft"); Belegstellen statt Behauptungen; bei fehlender Grundlage ehrliche Wissenslücke statt Erfindung.
 - **Sicherheit:** Kein Einbetten unsicherer Inhalte (SVG bleibt Anhang, kein Fremd-Hotlinking); Upload-Grenzen gelten.

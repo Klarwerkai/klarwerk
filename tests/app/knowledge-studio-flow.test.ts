@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import i18n from "../../apps/web/src/i18n";
 import {
   applyBodyAssistSection,
   bodyAssistStructuredActions,
@@ -93,5 +94,35 @@ describe("SCRUM-347: Knowledge-Studio Flow-Smoke (KO-Detail-Einstieg)", () => {
       nextStepKey: "studio.save.revision.next",
       tone: "warn",
     });
+  });
+});
+
+// SCRUM-458 Stufe 1 (Berater-Konzept, Sackgasse schließen): Aus dem Studio führt immer ein
+// offensichtlicher, verlässlicher Ausgang. „Einfach ↔ Strukturiert"-Schalter + Esc; die
+// Verwerfen-Rückfrage erscheint direkt am Klick. Getestet: die Ausgangs-Entscheidung (dirty →
+// Rückfrage, sauber → direkt) und die neuen Anzeige-Texte (DE/EN).
+describe("SCRUM-458 Stufe 1: Studio-Ausgang ist nie eine Sackgasse", () => {
+  it("Esc/Einfach-Schalter: sauberer Stand schließt direkt, ungespeichert fragt erst (kein stiller Verlust)", () => {
+    expect(knowledgeStudioState("<p>x</p>", "<p>x</p>").dirty).toBe(false);
+    expect(knowledgeStudioState("<p>neu</p>", "<p>alt</p>").dirty).toBe(true);
+  });
+
+  it("Ansicht-Schalter + Verwerfen-Rückfrage lösen in DE und EN auf (keine rohen Keys im Header)", () => {
+    const keys = [
+      "studio.viewSimple",
+      "studio.viewStructured",
+      "studio.viewSwitch",
+      "studio.confirmDiscard.q",
+      "studio.confirmDiscard.keep",
+      "studio.confirmDiscard.discard",
+    ];
+    for (const lng of ["de", "en"]) {
+      for (const key of keys) {
+        expect(
+          String(i18n.getResource(lng, "translation", key) ?? "").length,
+          `${lng}:${key}`,
+        ).toBeGreaterThan(0);
+      }
+    }
   });
 });
