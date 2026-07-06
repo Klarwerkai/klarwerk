@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Download, RotateCw, Trash2 } from "lucide-react";
+import { Download, RotateCw, Sparkles, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
@@ -19,6 +19,7 @@ import {
   StatusPill,
 } from "../components/trust";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
+import { askAnswerHref } from "../lib/askQuestion";
 import { conflictImpact, conflictLimitedUsability } from "../lib/conflictImpact";
 import {
   DEMO_KNOWLEDGE_FILTERS,
@@ -232,6 +233,26 @@ export function Library(): JSX.Element {
           ))}
         </select>
       </div>
+      {/* SCRUM-460 (VIP): Suche liefert nicht nur „dumme" Treffer — bei aktiver Suche eine echte,
+          quellengebundene Antwort anbieten (nutzt die vorhandene ehrliche Ask/Reasoner-Logik). */}
+      {trimmedQ ? (
+        <Card className="mb-4 border-ink/20">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-[14rem] flex-1">
+              <h2 className="text-[14px] font-semibold text-ink">{t("lib.answerTitle")}</h2>
+              <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
+                {t("lib.answerHint", { q: trimmedQ })}
+              </p>
+            </div>
+            <Link to={askAnswerHref(trimmedQ)}>
+              <Button>
+                <Sparkles size={15} />
+                {t("lib.answerButton")}
+              </Button>
+            </Link>
+          </div>
+        </Card>
+      ) : null}
       {/* SCRUM-289: Reife-Plaketten/Filter kurz erklären — kein neues Statusmodell. */}
       <Card className="mb-4 border-dashed">
         <div className="mb-2">

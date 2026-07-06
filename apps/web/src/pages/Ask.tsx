@@ -1,6 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
 import { ArrowRight, Copy, FileDown, Printer, ThumbsUp } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
@@ -18,7 +18,11 @@ import {
 } from "../lib/askAnswerContract";
 import { ASK_EXAMPLES, type AskExpectationTone, askExpectation } from "../lib/askExamples";
 import { GAP_RESCUE_STEPS, GAP_RESCUE_TEXT } from "../lib/askGapRescue";
-import { isPrefilledAskQuestion, readAskQuestion } from "../lib/askQuestion";
+import {
+  isPrefilledAskQuestion,
+  readAskQuestion,
+  shouldAutoAskFromSearch,
+} from "../lib/askQuestion";
 import { selectAnswer } from "../lib/askResponse";
 import { answerReviewGuard, answerStatus, conflictAwareSourceRefs } from "../lib/askView";
 import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
@@ -106,6 +110,20 @@ export function Ask(): JSX.Element {
     onSuccess: (r) => setResult(selectAnswer(r)),
   });
   const helpful = useMutation({ mutationFn: (koId: string) => endpoints.ask.helpful(koId) });
+
+  // SCRUM-460: Kommt der Nutzer aus der Bibliothek-Suche mit ausdrücklichem Antwort-Wunsch
+  // (?ask=1), wird die vorbefüllte Frage EINMAL automatisch beantwortet — so liefert die Suche
+  // eine echte Antwort mit Quellen. Sonst (SCRUM-272) bleibt es beim reinen Vorbefüllen.
+  const autoAsked = useRef(false);
+  useEffect(() => {
+    if (autoAsked.current) {
+      return;
+    }
+    if (shouldAutoAskFromSearch(params) && q.trim().length > 0) {
+      autoAsked.current = true;
+      ask.mutate();
+    }
+  }, [params, q, ask]);
 
   // SCRUM-430 (VIP): beantwortete Frage inkl. Quellen exportieren/teilen. Quellen bleiben klar
   // ausgewiesen (Status/Trust/Nutzbarkeit). Markdown wird erst beim Klick gebaut (frischer Zeitstempel).

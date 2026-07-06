@@ -1702,6 +1702,10 @@ const de = {
   "lib.revalidateDone": "Re-Validierung gestartet.",
   "lib.reimport": "Re-Import (JSON)",
   "lib.empty": "Keine Treffer.",
+  "lib.answerTitle": "Antwort statt nur Treffer?",
+  "lib.answerHint":
+    "Lass dir „{{q}}“ quellengebunden beantworten — mit klaren Quell-Links, nicht nur Artikel.",
+  "lib.answerButton": "Frage beantworten lassen",
   "lib.emptyQuery":
     "Keine Treffer für „{{q}}“. Tipp: anders formulieren, Filter zurücksetzen oder ein einzelnes Stichwort suchen.",
   "lib.matchIn": "Treffer in",
@@ -4319,6 +4323,10 @@ const en: typeof de = {
   "lib.revalidateDone": "Re-validation started.",
   "lib.reimport": "Re-import (JSON)",
   "lib.empty": "No matches.",
+  "lib.answerTitle": "An answer instead of just hits?",
+  "lib.answerHint":
+    "Get '{{q}}' answered source-bound — with clear source links, not just articles.",
+  "lib.answerButton": "Get the question answered",
   "lib.emptyQuery":
     "No matches for '{{q}}'. Tip: rephrase, reset the filters, or search a single keyword.",
   "lib.matchIn": "Matched in",

@@ -21,3 +21,20 @@ export function readAskQuestion(params: URLSearchParams): string | null {
 export function isPrefilledAskQuestion(params: URLSearchParams): boolean {
   return readAskQuestion(params) !== null;
 }
+
+// SCRUM-460: Ausdrücklicher „aus der Suche antworten"-Marker. Die Bibliothek-Suche verlinkt hierher,
+// damit die Frage nicht nur vorbefüllt, sondern EINMAL automatisch beantwortet wird — so bietet die
+// Suche eine echte Antwort mit Quellen statt nur Artikel-Treffer. Für den normalen /fragen?q=…-Deep-Link
+// (SCRUM-272) bleibt es beim reinen Vorbefüllen.
+const ASK_PARAM = "ask";
+
+// Deep-Link zur Ask-Seite mit vorbefüllter Frage UND ausdrücklichem Auto-Antwort-Wunsch (aus der Suche).
+export function askAnswerHref(question: string): string {
+  return `${askQuestionHref(question)}&${ASK_PARAM}=1`;
+}
+
+// true, wenn Ask aus der Suche mit ausdrücklichem Antwort-Wunsch erreicht wurde (?ask=1 UND eine Frage
+// vorhanden). Nur dann wird EINMAL automatisch beantwortet. Reine, DOM-freie Logik.
+export function shouldAutoAskFromSearch(params: URLSearchParams): boolean {
+  return params.get(ASK_PARAM) === "1" && readAskQuestion(params) !== null;
+}

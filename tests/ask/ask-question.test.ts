@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
 import {
+  askAnswerHref,
   askQuestionHref,
   isPrefilledAskQuestion,
   readAskQuestion,
+  shouldAutoAskFromSearch,
 } from "../../apps/web/src/lib/askQuestion";
 
 // SCRUM-272: Ask-Startfrage als Query-Parameter (/fragen?q=…) — nur vorbefüllen, kein Auto-Ask.
@@ -54,5 +56,25 @@ describe("SCRUM-295: isPrefilledAskQuestion + Demo-Prefill-Hinweis", () => {
     expect(text("en")).toContain("start question");
     expect(text("en")).toContain("source-bound");
     expect(text("en")).toContain("secured automatically");
+  });
+});
+
+// SCRUM-460: Aus der Bibliothek-Suche mit Antwort-Wunsch (?ask=1) → EINMALIGE Auto-Antwort auf /fragen.
+describe("SCRUM-460: askAnswerHref + shouldAutoAskFromSearch", () => {
+  it("askAnswerHref baut /fragen?q=…&ask=1 (URL-encodiert, Frage lesbar)", () => {
+    const href = askAnswerHref("Wie oft Filter F3 prüfen?");
+    expect(href.startsWith("/fragen?q=")).toBe(true);
+    expect(href).toContain(encodeURIComponent("Wie oft Filter F3 prüfen?"));
+    expect(href).toContain("&ask=1");
+    const params = new URLSearchParams(href.split("?")[1]);
+    expect(readAskQuestion(params)).toBe("Wie oft Filter F3 prüfen?");
+  });
+
+  it("shouldAutoAskFromSearch nur bei ask=1 UND vorhandener Frage", () => {
+    expect(shouldAutoAskFromSearch(new URLSearchParams("q=Ventil&ask=1"))).toBe(true);
+    expect(shouldAutoAskFromSearch(new URLSearchParams("q=Ventil"))).toBe(false); // kein ask=1
+    expect(shouldAutoAskFromSearch(new URLSearchParams("ask=1"))).toBe(false); // keine Frage
+    expect(shouldAutoAskFromSearch(new URLSearchParams("q=%20%20&ask=1"))).toBe(false); // leere Frage
+    expect(shouldAutoAskFromSearch(new URLSearchParams("q=Ventil&ask=0"))).toBe(false);
   });
 });
