@@ -31,7 +31,12 @@ _Erhalten: 2026-07-06. Quelle: Selbstauskunft Team 7 (unverifiziert, wo markiert
   farblich/Token, noch nicht strukturell.
 - **Blockiert (extern):** KI-Livepfad hängt an gültigem OpenAI-Konto (zuletzt HTTP 429 = Guthaben/Rate-Limit);
   SQLite im Dateisystem nicht nutzbar (FUSE „disk I/O error") → JSON bleibt kanonisch.
-- **📊 Zahlenstand (Snapshot 2026-07-01): Beta-Readiness ~45 % (Schätzung), 13 offene P0, Trend verschlechtert ▼.**
+- **⚠️ VERALTET — nicht als Ist übernehmen:** die vom Team-7-Agenten genannten „~45 % / 13 P0 / Trend ▼"
+  (Snapshot 2026-07-01) sind **Alt-/Beispieldaten aus hartkodierter `app.js`-Konfig (~30.06.)**, laut Boss zweifach
+  geflaggt. **Lebende Ist-Zahl:** `data/pmo-items.json`, Stand **03.07.**: **144 Items, 29 done, 33 partially;
+  beta-relevant 20/49 done.**
+- **Korrektur (Boss):** Team 7 ist seit 03.07. **nicht mehr nur read-only** — PMO-Automatik wendet Paul-Drafts via
+  `apply-item-update.mjs` an (SCRUM-434).
 
 ## 4. Entscheidungen & Änderungen (inkl. Verworfenem)
 - **SQLite → JSON-Fallback:** SQLite scheiterte am Sandbox-Dateisystem → JSON (`pmo-items.json`) kanonisch, SQLite optional.

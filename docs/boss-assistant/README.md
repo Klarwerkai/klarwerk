@@ -15,7 +15,11 @@ das Onboarding künftiger (Ersatz-)Agenten.
 | Agent    | Status        | Datei |
 |----------|---------------|-------|
 | Team 1   | ✅ erhalten    | interviews/team-1.md |
-| Team 2   | ⛔ raus (kann nicht mehr antworten) | — |
+| Team 2   | 🟡 aktiv (Local LLM) — nur Sekundärquelle (Boss), direkt nachholen | interviews/team-2.md |
+| Boss     | ✅ erhalten    | interviews/boss.md |
+| Paul     | ✅ erhalten    | interviews/paul.md |
+| Berater  | ✅ erhalten    | interviews/berater.md |
+| Nerd     | ✅ erhalten    | interviews/nerd.md |
 | Team 3   | ✅ erhalten    | interviews/team-3.md |
 | Team 4   | ✅ erhalten    | interviews/team-4.md |
 | Team 5   | ✅ erhalten    | interviews/team-5.md |

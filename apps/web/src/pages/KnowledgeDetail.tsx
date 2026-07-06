@@ -661,8 +661,12 @@ export function KnowledgeDetail(): JSX.Element {
                   })()}
                 </div>
               </Card>
-              <div className="grid gap-5 lg:grid-cols-[1.7fr_1fr]">
-                <Card>
+              {/* Pedi/VIP 06.07.: robustes 2/3-zu-1/3-Layout. Vorher `1.7fr_1fr` (Arbitrary-Value mit
+                  Dezimalpunkt) + fehlendes min-w-0 → Grid-Blowout: die Quellen-/Bewährungsspalte drückte
+                  die Inhaltsspalte schmal. Jetzt grid-cols-3 + col-span-2 für den Inhalt und min-w-0
+                  gegen Blowout — der Inhalt bekommt zuverlässig 2/3 der Breite. */}
+              <div className="grid gap-5 lg:grid-cols-3">
+                <Card className="min-w-0 lg:col-span-2">
                   {/* SCRUM-124: sichtbarer Rückgabe-/Nacharbeit-Hinweis aus Validierungsfeedback */}
                   {isReturnedForRework(audit.data ?? [], ko.id) ? (
                     <div className="mb-3 rounded-card border border-trust-warn-fill/30 bg-trust-warn-bg p-3 text-[12.5px] text-trust-warn-text">
@@ -1340,7 +1344,7 @@ export function KnowledgeDetail(): JSX.Element {
                   )}
                 </Card>
 
-                <div className="space-y-5">
+                <div className="min-w-0 space-y-5">
                   {/* FE-LCY-03 / SCRUM-111: Bewährungssignal „Hat geholfen" */}
                   <Card className="space-y-2">
                     <div className="flex items-center gap-1.5">
