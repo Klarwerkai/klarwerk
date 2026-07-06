@@ -99,26 +99,28 @@ export function RichTextEditor({
     }
     el.focus();
     const sel = window.getSelection();
-    let range: Range;
-    if (sel && sel.rangeCount > 0 && el.contains(sel.getRangeAt(0).commonAncestorContainer)) {
-      range = sel.getRangeAt(0);
+    const caret =
+      sel && sel.rangeCount > 0 && el.contains(sel.getRangeAt(0).commonAncestorContainer)
+        ? sel.getRangeAt(0)
+        : null;
+    if (caret) {
+      // Cursor liegt im Editor → genau dort einfügen (Drop/Einfügen mit gültiger Auswahl).
+      caret.deleteContents();
+      const tpl = document.createElement("template");
+      tpl.innerHTML = html;
+      const lastNode = tpl.content.lastChild;
+      caret.insertNode(tpl.content);
+      if (lastNode && sel) {
+        const after = document.createRange();
+        after.setStartAfter(lastNode);
+        after.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(after);
+      }
     } else {
-      range = document.createRange();
-      range.selectNodeContents(el);
-      range.collapse(false);
-    }
-    range.deleteContents();
-    const tpl = document.createElement("template");
-    tpl.innerHTML = html;
-    const lastNode = tpl.content.lastChild;
-    range.insertNode(tpl.content);
-    // Cursor hinter das Eingefügte setzen, damit man direkt weiterschreiben kann.
-    if (lastNode && sel) {
-      const after = document.createRange();
-      after.setStartAfter(lastNode);
-      after.collapse(true);
-      sel.removeAllRanges();
-      sel.addRange(after);
+      // Kein Cursor im Editor (typisch NACH dem nativen Datei-Dialog „Bild vom Rechner"): bombensicher
+      // ans Ende anhängen — unabhängig von Fokus/Auswahl. Genau hier hakte es vorher.
+      el.insertAdjacentHTML("beforeend", html);
     }
     emit();
   };

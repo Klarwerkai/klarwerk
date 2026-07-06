@@ -96,8 +96,13 @@ bash "$REPO/scripts/deploy/klarwerk-live-update.command"
 
 echo ""
 echo "════════════════════════════════════════════════════════"
-echo "Fertig. Gegencheck: Topbar oben rechts zeigt v${NEXT}"
-echo "  – live:  https://app.klarwerk.ai   (Coolify-Commit sollte der neue sein)"
-echo "  – lokal: nach 'klarwerk-lokal-starten.command' auf http://localhost:3001"
-echo "  Beide gleiche Nummer = alles up to date."
+echo "✓ LIVE fertig: Topbar zeigt v${NEXT} auf https://app.klarwerk.ai"
 echo "════════════════════════════════════════════════════════"
+
+# 6) Lokale Instanz gleich mit-aktualisieren und starten, damit du nach dem Deploy NICHT mehr
+#    manuell neu starten musst (Pedi 06.07.). Dies ist der letzte Schritt und hält das Fenster
+#    offen (der lokale Server läuft im Vordergrund). Willst du NICHT lokal starten: hier Strg+C.
+echo ""
+echo "▶ Lokale Instanz aktualisieren & starten (localhost:3001) — Fenster bleibt offen; schließen = lokal stoppen."
+echo "  (Nur lokal starten willst du nicht? Dann jetzt Strg+C — live ist bereits aktualisiert.)"
+bash "$REPO/scripts/local/klarwerk-lokal-starten.command"
