@@ -31,9 +31,9 @@ import {
   TextInput,
 } from "../components/ui";
 import {
-  isNewUserValid,
   isPasswordResetValid,
   isUserAuditAction,
+  newUserIssues,
   passwordRepeatMismatch,
 } from "../lib/adminForms";
 import { ADMIN_SECTIONS, type AdminSectionId, DEFAULT_ADMIN_SECTION } from "../lib/adminSections";
@@ -1196,14 +1196,33 @@ export function Admin(): JSX.Element {
                 </select>
               </Field>
             </div>
-            <Button
-              variant="primary"
-              disabled={create.isPending || !isNewUserValid(newUser)}
-              onClick={() => create.mutate()}
-            >
-              <UserPlus size={15} />
-              {t("adm.create")}
-            </Button>
+            {/* SCRUM-463: Knopf nicht mehr stumm deaktivieren. Fehlt etwas, sagt ein Klick
+                ehrlich, was — sonst „passiert nichts" ohne jede Rückmeldung. */}
+            <div className="space-y-1.5">
+              <Button
+                variant="primary"
+                disabled={create.isPending}
+                onClick={() => {
+                  const issues = newUserIssues(newUser);
+                  if (issues.length > 0) {
+                    push(
+                      "error",
+                      `${t("adm.createInvalid")} ${issues
+                        .map((i) => t(`adm.field.${i}`))
+                        .join(", ")}`,
+                    );
+                    return;
+                  }
+                  create.mutate();
+                }}
+              >
+                <UserPlus size={15} />
+                {t("adm.create")}
+              </Button>
+              {newUserIssues(newUser).length > 0 ? (
+                <p className="text-[12px] text-muted-2">{t("adm.createHint")}</p>
+              ) : null}
+            </div>
           </Card>
 
           {/* Nutzerliste + Freigabe/Rolle/Reset/Löschen */}

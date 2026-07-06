@@ -58,8 +58,9 @@ Erfahrungswissen"; der Produktkern steht, aber der Weg zur echten Beta hängt an
 1. **Backup / Bus-Faktor:** PMO-/Schlüsseldaten nur lokal auf Pedis Mac; Mac-Studio-Insel = SPOF ohne verifizierten
    Wiederaufbau (Berater-K1, PMO-RISK-0001). **→ Pedi-Entscheidung 06.07.: ein Systemadministrator wird eingestellt,
    der Datenverwaltung/Backup übernimmt.** Bis Besetzung bleibt das Restrisiko.
-2. **Ungetesteter Produktionspfad (K3):** Persistenz ist umgebungsabhängig — **Live = Postgres** (Coolify/`DATABASE_URL`),
-   Desktop-App = In-Memory+Journal (C-13 aufgelöst). Offen bleibt: Postgres-Pfad nicht über alle Module verifiziert;
+2. **Persistenz (C-13 aufgelöst) + K3:** drei Umgebungen — **Live-Server = Postgres** (Coolify/`DATABASE_URL`),
+   **Desktop-App = Journal** (`.localdb`), **Mac-Studio-Insel = Journal OHNE Backup** (Nerd bestätigt: bei Plattendefekt
+   weg, SPOF KLLM-70). Offen: Postgres-Pfad nicht über alle Module verifiziert (K3); Insel-Backup + DB-Weg unentschieden;
    RC-Laufzeit-Smoke, Pen-Test (AG-07), Restore/DR (AG-09), Load/Scale (AG-03) — Aufgaben des Systemadministrators.
 3. **Key-Rotationen:** Pedi 06.07.: **Keys sind sicher; planmäßige Erneuerung während der Beta-Phase** (kein Leck, nicht dringlich).
 4. **Auslieferungs-Kette (SCRUM-464, High):** „KLARWERK Sync" pusht nur Gitea, nicht GitHub → Coolify baute Altstände;
@@ -106,7 +107,9 @@ verifiziert (7 Projekte, Schlüssel-Tickets). Team-Aussagen sind, wo bestätigba
 ## 8. Nächste Schritte des Assistenten
 - **Team 2:** Agent beendet/nicht mehr erreichbar (Pedi 06.07.) — direkte Befragung entfällt; Wissen nur noch aus
   `klarwerk-local-llm`-Repo + KLLM-Tickets. Track wird von Paul/Nerd fortgeführt.
-- Offene Klärung mit Boss: **C-13 (Beta-Persistenz In-Memory vs. Postgres)**, Backup-Status, Key-Rotationen.
+- **C-13 geschlossen** (Paul+Nerd+Code): Live=Postgres (fail-loud-Guard), Desktop/Insel=Journal; Insel ohne Backup;
+  K3 offen (nur 1 Real-PG-Integrationstest, viele Module nur laufzeit-erprobt) → Systemadministrator.
+- Für Boss zu entscheiden: Ticket „Backup + DB-Entscheidung Insel" (Nerd bietet Anlage an); Systemadministrator einstellen.
 - Diese Datei bei größeren Änderungen fortschreiben; Detailtiefe bleibt in `docs/boss-assistant/`.
 
 ## Team-Status (Agenten) — Stand 06.07.

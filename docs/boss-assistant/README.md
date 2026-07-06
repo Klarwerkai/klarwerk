@@ -6,10 +6,13 @@ das Onboarding künftiger (Ersatz-)Agenten.
 
 ## Aufbau
 - `interviews/` — Rohauskünfte der Agenten, je Agent eine Datei, strikt nach Schema.
+- `architektur-rollen-daten.md` — **Überblick Architektur, Rollen & Datenstruktur (Onboarding-Einseiter).**
+- `github-jira-architektur.md` — **GitHub-/Jira-Landkarte + Liefer-Kette (wer macht wo was).**
+- `code-map.md` — Code-Struktur dev_Klarwerk (Module, Seiten, Tests, Gates).
+- `jira-inventar.md` — alle 7 Jira-Projekte, offene Tickets.
 - `timeline.md` — Projekt-Timeline (Team 1–7 → Boss+Paul → +Berater/Nerd).
 - `open-questions.md` — offene Punkte, Unsicherheiten, noch zu verifizieren.
-- `contradictions.md` — widersprüchliche Aussagen zwischen Quellen/Agenten.
-- `glossary.md` — Begriffe, Modul-/Datenmodell, Konventionen.
+- `contradictions.md` — widersprüchliche Aussagen + Verifikationsstand (C-01…C-14).
 
 ## Befragungsstatus
 | Agent    | Status        | Datei |

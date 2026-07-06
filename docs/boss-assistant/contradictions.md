@@ -182,8 +182,38 @@ Kein Widerspruch — **umgebungsabhängig** (`build-app.ts`: `DATABASE_URL` gese
   `KLARWERK_DEV_PERSIST=1`). = Berater-Befund auf dem Mac.
 - **Echter Restpunkt bleibt K3:** der Postgres-Pfad ist laut Berater/Team 5 nicht durchgängig getestet (nicht alle
   Module haben verifizierte Pg-Adapter). → geht an den künftigen **Systemadministrator** (Pedi-Entscheidung 06.07.).
-- Bestätigungsfrage an Paul/Nerd offen (Pedi-Wunsch): ist im Live-Coolify-Env `DATABASE_URL` gesetzt + Postgres-Pfad
-  über alle Kernmodule verifiziert?
+
+**Drei Persistenz-Umgebungen (Nerd bestätigt 06.07.):**
+| Umgebung | Persistenz | Backup |
+|---|---|---|
+| Live-Server (Coolify, `app.klarwerk.ai`) | **Postgres** (`DATABASE_URL` gesetzt) | Coolify-Backup (früher erwähnt, DR-Drill offen) |
+| Desktop-App (Pedis Mac) | Journal `.localdb/state.jsonl` (`KLARWERK_DEV_PERSIST=1`) | — |
+| **Mac-Studio-Insel (VIP)** | **Journal, NICHT Postgres** (Launcher setzt DEV_PERSIST, kein DATABASE_URL) | **KEINS — bei Plattendefekt weg (SPOF, KLLM-70)** |
+
+- **Insel-Befund (Nerd):** Journal übersteht Neustarts, Werksreset möglich; Postgres im Code voll unterstützt, aber
+  auf der Insel bewusst nicht aktiviert (VIP-/Demo-Phase). **Backup-Regime + DB-Weg (Homebrew-PG/Container) offen**,
+  sinnvoll zusammen mit KLLM-70, wenn Systemadministrator den Dauerbetrieb übernimmt. Nerd bietet an, „Backup + DB-
+  Entscheidung Insel" als eigenes Ticket anzulegen → **Pedi-Entscheidung**.
+
+**✅ Paul bestätigt (06.07.) + im Code gegengeprüft — C-13 final geschlossen:**
+- **Live = Postgres, belegt.** `server.ts start()`: `DATABASE_URL` gesetzt → Postgres (`migrate()` + echte DB);
+  `assertPersistentStore()` (`storage-guard.ts`) **bricht in Produktion fail-loud ab**, wenn weder Postgres noch Journal
+  → ohne `DATABASE_URL` würde die Prod-Instanz gar nicht starten. Dass sie läuft + Pedi eingeloggt war = Postgres.
+  Vorbehalt: exakter Coolify-Env-Wert + laufende Version (beta.1.4) sind Laufzeit-Config, nicht aus dem Repo prüfbar
+  (Health-Endpoint/Coolify-Screen nötig).
+- **Prämissen-Korrektur zu Paul:** Compose-Dateien existieren doch (`docker-compose.prod.yml`+`docker-compose.yml`,
+  Jun 22/23). ABER Coolify deployt über das **Dockerfile** (present, Jul 5) und injiziert `DATABASE_URL` per
+  **Coolify-Laufzeit-Env** — die Compose-Datei ist NICHT die Deploy-Quelle. Pauls operative Aussage stimmt also,
+  nur „keine Compose-Datei" ist repo-faktisch falsch (evtl. abweichende Cloud-Arbeitskopie).
+- **K3 präzisiert (berechtigt):** `migrate()` legt Schemata ALLER Kernmodule an, `buildPgServices()` verdrahtet je einen
+  `Pg…Repo` — kein Adapter hängt in der Luft. ABER nur **ein** Real-Postgres-Integrationstest
+  (`services/app/src/build-app.integration.test.ts`, Testcontainers) deckt die Kette Register→Login→KO→Draft→Rating→
+  Lifecycle→Audit. **Nicht real gegen PG getestet:** Object-Store, Conflicts/Overlap, Model-Runs, Notifications,
+  Assist-Presets, External-Knowledge, Upload-Limits, Candidates, Validation-Settings. Zudem liegt der Test in der
+  ausgeschlossenen `test:integration`-Lane (braucht Docker) — der schnelle Runner-Gate fasst echtes Postgres NICHT an.
+  → K3 „der Richtung nach berechtigt": Adapter existieren + verdrahtet, ein Teil aber nur laufzeit-erprobt, nicht
+  automatisiert real-PG-getestet.
+- **Login-Vorfall = Live-Server** (Hetzner/Coolify, Postgres); Ursache **Rate-Limiter-Lockout, KEIN Datenverlust**.
 
 ### C-14 — Qwen3-32B: 16/24 vs. 22/24 (Kontext, kein Widerspruch)
 - **Berater/KLLM-57:** 22/24 = Claude-Referenzniveau — **mit Denkmodus AUS**, Ø 1,7 s vs. 3,3 s.

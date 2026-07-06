@@ -4,12 +4,29 @@
 // Mindestlänge für Passwörter (konsistent zur Registrierung, FR-AUTH-02).
 export const MIN_PASSWORD = 8;
 
+// SCRUM-463: welche Pflichtangaben fehlen noch? Gibt die konkreten Feld-Gründe zurück,
+// damit die Oberfläche ehrlich sagen kann, warum „Anlegen" (noch) nichts tut — statt den
+// Knopf stumm zu deaktivieren (gemeldetes Symptom: „nichts passiert").
+export function newUserIssues(form: {
+  name: string;
+  email: string;
+  password: string;
+}): Array<"name" | "email" | "password"> {
+  const issues: Array<"name" | "email" | "password"> = [];
+  if (form.name.trim().length === 0) {
+    issues.push("name");
+  }
+  if (!/.+@.+\..+/.test(form.email.trim())) {
+    issues.push("email");
+  }
+  if (form.password.length < MIN_PASSWORD) {
+    issues.push("password");
+  }
+  return issues;
+}
+
 export function isNewUserValid(form: { name: string; email: string; password: string }): boolean {
-  return (
-    form.name.trim().length > 0 &&
-    /.+@.+\..+/.test(form.email.trim()) &&
-    form.password.length >= MIN_PASSWORD
-  );
+  return newUserIssues(form).length === 0;
 }
 
 // SCRUM-455 (Pedi 06.07.): Passwort-Reset verlangt jetzt eine Wiederholung — beide müssen
