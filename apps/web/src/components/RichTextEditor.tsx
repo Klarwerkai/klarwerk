@@ -1,5 +1,5 @@
 import { Eye, Image as ImageIcon, Link as LinkIcon, Paperclip, Pencil } from "lucide-react";
-import type { ClipboardEvent, DragEvent, ReactNode } from "react";
+import type { ChangeEvent, ClipboardEvent, DragEvent, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type EditorFile, fileLinkHtml } from "../lib/bodyFileLink";
@@ -57,6 +57,9 @@ export function RichTextEditor({
 }): JSX.Element {
   const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
+  // SCRUM-456 (Pedi/VIP 06.07.): verstecktes Datei-Feld, damit der „Bild"-Knopf auch ein NEUES
+  // Bild vom Rechner einfügen kann (nicht nur vorhandene Anhänge).
+  const imgInputRef = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   // SCRUM-384: KI-Palette geschlossen bis zum bewussten Klick (ARGUS-Muster, keine Info-Wand).
   const [showAi, setShowAi] = useState(false);
@@ -160,6 +163,16 @@ export function RichTextEditor({
     }
   };
 
+  // SCRUM-456: „Bild vom Rechner …" — Auswahl aus dem Finder läuft über denselben sicheren Pfad
+  // wie Drop/Einfügen (partitionDropMedia → insertImageFile). SVG/Nicht-Raster bleiben Evidence.
+  const onPickImages = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const files = Array.from(e.target.files ?? []);
+    // Feld zurücksetzen, damit dasselbe Bild direkt erneut gewählt werden kann.
+    e.target.value = "";
+    setShowImages(false);
+    await handleMediaFiles(files);
+  };
+
   const onDrop = (e: DragEvent<HTMLDivElement>): void => {
     const files = Array.from(e.dataTransfer?.files ?? []);
     if (files.length === 0) {
@@ -201,6 +214,16 @@ export function RichTextEditor({
 
   return (
     <div className="relative rounded-card border border-hairline bg-surface">
+      {/* SCRUM-456: verstecktes Datei-Feld für „Bild vom Rechner …" (nur Rasterbilder werden
+          eingebettet; SVG/anderes bleibt Evidence — dieselbe Sicherheitslogik wie Drop/Einfügen). */}
+      <input
+        ref={imgInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/gif,image/webp"
+        multiple
+        className="hidden"
+        onChange={(e) => void onPickImages(e)}
+      />
       <div className="flex flex-wrap items-center gap-1 border-b border-hairline bg-page/60 p-1.5">
         {/* SCRUM-404 (Pedi 03.07.): In der Vorschau sind Formatier-Knöpfe wirkungslos — sie
             verschwinden dort und ein deutliches Vorschau-Signal macht den Moduswechsel sichtbar
@@ -281,19 +304,35 @@ export function RichTextEditor({
               </button>
               {showImages ? (
                 <div className="absolute z-10 mt-1 w-56 rounded-card border border-hairline bg-surface p-1.5 shadow">
+                  {/* SCRUM-456: immer verfügbar — neues Bild vom Rechner einfügen (Finder). */}
+                  <button
+                    type="button"
+                    onClick={() => imgInputRef.current?.click()}
+                    className="mb-1 flex w-full items-center gap-1.5 rounded-btn px-2 py-1 text-left text-[12.5px] font-semibold text-ai hover:bg-hairline-soft"
+                  >
+                    <ImageIcon size={13} />
+                    {t("editor.imageFromDisk")}
+                  </button>
                   {images.length === 0 ? (
-                    <p className="px-2 py-1 text-[12px] text-muted">{t("editor.noImages")}</p>
+                    <p className="border-hairline border-t px-2 pb-1 pt-1.5 text-[11.5px] text-muted-2">
+                      {t("editor.noImages")}
+                    </p>
                   ) : (
-                    images.map((img) => (
-                      <button
-                        key={img.objectId ?? img.src ?? img.name}
-                        type="button"
-                        onClick={() => addImage(img)}
-                        className="block w-full truncate rounded-btn px-2 py-1 text-left text-[12.5px] text-text hover:bg-hairline-soft"
-                      >
-                        {img.name}
-                      </button>
-                    ))
+                    <div className="border-hairline border-t pt-1">
+                      <p className="px-2 pb-0.5 text-[10.5px] text-muted-2">
+                        {t("editor.imageFromAttachment")}
+                      </p>
+                      {images.map((img) => (
+                        <button
+                          key={img.objectId ?? img.src ?? img.name}
+                          type="button"
+                          onClick={() => addImage(img)}
+                          className="block w-full truncate rounded-btn px-2 py-1 text-left text-[12.5px] text-text hover:bg-hairline-soft"
+                        >
+                          {img.name}
+                        </button>
+                      ))}
+                    </div>
                   )}
                 </div>
               ) : null}

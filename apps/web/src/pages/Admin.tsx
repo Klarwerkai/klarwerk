@@ -29,7 +29,12 @@ import {
   SectionLabel,
   TextInput,
 } from "../components/ui";
-import { isNewUserValid, isPasswordResetValid, isUserAuditAction } from "../lib/adminForms";
+import {
+  isNewUserValid,
+  isPasswordResetValid,
+  isUserAuditAction,
+  passwordRepeatMismatch,
+} from "../lib/adminForms";
 import { ADMIN_SECTIONS, type AdminSectionId, DEFAULT_ADMIN_SECTION } from "../lib/adminSections";
 // SCRUM-413: „Verfügbare KIs" — DOM-freie Zeilen aus dem echten configStatus.
 import { type AiAccessState, aiAccessRows } from "../lib/aiOverview";
@@ -88,6 +93,8 @@ export function Admin(): JSX.Element {
   const [newUser, setNewUser] = useState({ ...EMPTY_NEW_USER });
   const [resetId, setResetId] = useState<string | null>(null);
   const [resetPw, setResetPw] = useState("");
+  // SCRUM-455: Wiederholung des neuen Passworts (Vertipper-Schutz).
+  const [resetPw2, setResetPw2] = useState("");
 
   const create = useMutation({
     mutationFn: () =>
@@ -126,6 +133,7 @@ export function Admin(): JSX.Element {
     onSuccess: () => {
       setResetId(null);
       setResetPw("");
+      setResetPw2("");
       push("success", t("adm.resetDone"));
     },
     onError: fail,
@@ -1225,25 +1233,49 @@ export function Admin(): JSX.Element {
                       </div>
 
                       {resetId === u.id ? (
-                        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-input bg-page p-2">
-                          <TextInput
-                            type="password"
-                            minLength={8}
-                            placeholder={t("adm.newPassword")}
-                            value={resetPw}
-                            onChange={(e) => setResetPw(e.target.value)}
-                            className="h-9 flex-1"
-                          />
-                          <Button
-                            variant="primary"
-                            disabled={reset.isPending || !isPasswordResetValid(resetPw)}
-                            onClick={() => reset.mutate({ id: u.id, password: resetPw })}
-                          >
-                            {t("adm.resetConfirm")}
-                          </Button>
-                          <Button variant="ghost" onClick={() => setResetId(null)}>
-                            {t("adm.resetCancel")}
-                          </Button>
+                        <div className="mt-2 rounded-input bg-page p-2">
+                          {/* SCRUM-455: Passwort + Wiederholung — Vertipper würde sonst den Nutzer aussperren. */}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <TextInput
+                              type="password"
+                              minLength={8}
+                              placeholder={t("adm.newPassword")}
+                              value={resetPw}
+                              onChange={(e) => setResetPw(e.target.value)}
+                              className="h-9 flex-1"
+                            />
+                            <TextInput
+                              type="password"
+                              minLength={8}
+                              placeholder={t("adm.newPasswordRepeat")}
+                              value={resetPw2}
+                              onChange={(e) => setResetPw2(e.target.value)}
+                              className="h-9 flex-1"
+                            />
+                            <Button
+                              variant="primary"
+                              disabled={reset.isPending || !isPasswordResetValid(resetPw, resetPw2)}
+                              onClick={() => reset.mutate({ id: u.id, password: resetPw })}
+                            >
+                              {t("adm.resetConfirm")}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              onClick={() => {
+                                setResetId(null);
+                                setResetPw("");
+                                setResetPw2("");
+                              }}
+                            >
+                              {t("adm.resetCancel")}
+                            </Button>
+                          </div>
+                          {/* Ehrlicher Grund erst, wenn im Wiederholfeld etwas steht (kein Fehler beim Tippen). */}
+                          {passwordRepeatMismatch(resetPw, resetPw2) ? (
+                            <p className="mt-1.5 text-[12px] text-trust-crit-text">
+                              {t("adm.passwordMismatch")}
+                            </p>
+                          ) : null}
                         </div>
                       ) : null}
                     </div>

@@ -14,6 +14,7 @@ CLAUDE.md / AGENTS.md   Agent-Regelwerk (Quelle: /harness)
 /tests                  api · workflows · contracts
 /agents                 Lean-Agenten: Spec · Review-Panel · Doku/Logbuch
 /docs                   generierte + operative Doku
+/scripts/insel          On-Prem-Betrieb Mac Studio (App starten, Aufbau, Inventar)
 docker-compose.yml      Postgres + n8n
 .github/workflows       CI: nichts nach main ohne grünen check
 ```
@@ -22,5 +23,16 @@ docker-compose.yml      Postgres + n8n
 1. `npm install`
 2. `docker compose up -d`
 3. `./tools/check` (sobald erstes Modul existiert)
+
+## On-Prem-Betrieb (Mac Studio · Insel)
+Die App läuft auch **nativ und offline** auf dem Mac Studio, angebunden an einen lokalen
+LLM (Ollama/MLX) — kein Docker, kein Cloud-Schlüssel. Start:
+
+```bash
+bash scripts/insel/Insel-App-starten.command   # App auf http://127.0.0.1:3001
+```
+
+Werkzeuge, Einstellungen und Wiederaufbau: **`scripts/insel/README.md`**. Inventar/Aufbau
+des Rechners: **`docs/operations/INSEL-AUFBAU.md`** (KLLM-61 · KLLM-62 · KLLM-70).
 
 Aufbaustand & nächste Schritte: **`SETUP.md`**.

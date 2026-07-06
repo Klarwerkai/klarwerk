@@ -34,7 +34,14 @@ export interface ReasonerProvider {
   // PMO-FEA-0006: Wissenspunkte aus Dokumenttext extrahieren (optional mit Suchauftrag des
   // Experten). G-2: NUR was im Text steht — der deterministische Fallback liefert ehrlich
   // KEINE Punkte (keine Fake-Extraktion), nur eine erklärende note.
-  extract(documentText: string, locale?: ReasonerLocale, query?: string): Promise<ExtractResult>;
+  // SCRUM-451 (Pedi 05.07.): keepSourceLanguage = Ergebnis bleibt in der Sprache des Dokuments
+  // (nichts uebersetzen) statt in der UI-Sprache. Belegstellen sind ohnehin immer woertlich.
+  extract(
+    documentText: string,
+    locale?: ReasonerLocale,
+    query?: string,
+    keepSourceLanguage?: boolean,
+  ): Promise<ExtractResult>;
   // select ist reines Ranking (synchron, kein Netzaufruf).
   select(question: string, candidates: readonly KnowledgeRef[]): KnowledgeRef[];
   // Klara Stufe 2 (Pedi 05.07.): Hilfe-Antwort GENERIEREN — Wissensdatenbank (Hilfe-Eintraege)

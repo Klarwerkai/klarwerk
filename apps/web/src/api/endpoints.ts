@@ -211,12 +211,19 @@ export const endpoints = {
         ...(locale ? { locale } : {}),
       }),
     // PMO-FEA-0006: Wissenspunkte aus Dokumenttext extrahieren (optional mit Suchauftrag).
-    extract: (text: string, locale?: "de" | "en", query?: string) =>
+    // SCRUM-451: outputLanguage "source" = Ergebnis bleibt in der Sprache des Dokuments.
+    extract: (
+      text: string,
+      locale?: "de" | "en",
+      query?: string,
+      outputLanguage?: "system" | "source",
+    ) =>
       api.post<ExtractResult>("/reasoner", {
         task: "extract",
         text,
         ...(locale ? { locale } : {}),
         ...(query?.trim() ? { query: query.trim() } : {}),
+        ...(outputLanguage === "source" ? { outputLanguage } : {}),
       }),
     // SCRUM-426: Public-KI-Anreicherung (Modellwissen) — extern/ungeprüft; nur wenn der
     // Admin-Regler (SCRUM-414) auf „offen" steht (Server prüft, sonst 403).

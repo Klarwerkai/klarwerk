@@ -809,6 +809,13 @@ const de = {
   "capture.file.queryHelp.title": "Gezielt suchen",
   "capture.file.queryHelp.body":
     "Ohne Angabe listet die KI alle Wissenspunkte im Dokument auf. Mit Suchauftrag beschränkt sie sich auf deinen Fokus. Erfunden wird in beiden Fällen nichts — jeder Punkt trägt eine wörtliche Belegstelle aus dem Dokument.",
+  // SCRUM-451 (Pedi 05.07.): Ergebnis-Sprache — Systemsprache oder Original des Dokuments.
+  "capture.file.langLabel": "Ergebnis in",
+  "capture.file.langSystem": "Systemsprache",
+  "capture.file.langSource": "Originalsprache",
+  "capture.file.langHelp.title": "Ergebnis-Sprache",
+  "capture.file.langHelp.body":
+    "Systemsprache: Titel und Zusammenfassungen erscheinen in deiner Oberflächensprache (Deutsch/Englisch) — ein englisches Dokument wird dabei faktisch übersetzt. Originalsprache: Die KI übersetzt nichts, die Punkte bleiben in der Sprache des Dokuments. Wörtliche Belegstellen bleiben in beiden Fällen unverändert.",
   "capture.file.searchCta": "Nach Wissen suchen",
   "capture.file.searching": "Die KI liest das Dokument …",
   "capture.file.pointsTitle": "Gefundenes Wissen — wähle aus, was übernommen wird",
@@ -1057,6 +1064,9 @@ const de = {
   "editor.aiLabel": "KI",
   "editor.aiToggle": "KI-Hilfe beim Schreiben — öffnet die KI-Palette",
   "editor.noImages": "Keine Bild-Anhänge vorhanden.",
+  // SCRUM-456: Bild direkt vom Rechner einfügen + Überschrift für die vorhandenen Anhänge.
+  "editor.imageFromDisk": "Bild vom Rechner …",
+  "editor.imageFromAttachment": "Aus Anhängen",
   "editor.file": "Datei verlinken",
   "editor.insertFile": "Datei-Anhang als Link einfügen",
   "editor.noFiles":
@@ -1904,6 +1914,8 @@ const de = {
   "adm.created": "Nutzer angelegt.",
   "adm.reset": "Passwort zurücksetzen",
   "adm.newPassword": "Neues Passwort",
+  "adm.newPasswordRepeat": "Passwort wiederholen",
+  "adm.passwordMismatch": "Die Passwörter stimmen nicht überein.",
   "adm.resetConfirm": "Zurücksetzen",
   "adm.resetCancel": "Abbrechen",
   "adm.resetDone": "Passwort zurückgesetzt; alle Sitzungen beendet.",
@@ -3421,6 +3433,13 @@ const en: typeof de = {
   "capture.file.queryHelp.title": "Targeted search",
   "capture.file.queryHelp.body":
     "Without input, the AI lists all knowledge points in the document. With a search focus, it restricts itself to that focus. Nothing is invented either way — every point carries a verbatim excerpt from the document.",
+  // SCRUM-451: result language — system language or the document's original language.
+  "capture.file.langLabel": "Result in",
+  "capture.file.langSystem": "System language",
+  "capture.file.langSource": "Original language",
+  "capture.file.langHelp.title": "Result language",
+  "capture.file.langHelp.body":
+    "System language: titles and summaries appear in your interface language (German/English) — an English document is effectively translated. Original language: the AI translates nothing, the points stay in the document's language. Verbatim excerpts remain unchanged in both cases.",
   "capture.file.searchCta": "Search for knowledge",
   "capture.file.searching": "The AI is reading the document …",
   "capture.file.pointsTitle": "Knowledge found — choose what to take over",
@@ -3661,6 +3680,9 @@ const en: typeof de = {
   "editor.aiLabel": "AI",
   "editor.aiToggle": "AI writing help — opens the AI palette",
   "editor.noImages": "No image attachments yet.",
+  // SCRUM-456: insert an image straight from the computer + heading for existing attachments.
+  "editor.imageFromDisk": "Image from computer …",
+  "editor.imageFromAttachment": "From attachments",
   "editor.file": "Link a file",
   "editor.insertFile": "Insert file attachment as a link",
   "editor.noFiles":
@@ -4500,6 +4522,8 @@ const en: typeof de = {
   "adm.created": "User created.",
   "adm.reset": "Reset password",
   "adm.newPassword": "New password",
+  "adm.newPasswordRepeat": "Repeat password",
+  "adm.passwordMismatch": "The passwords do not match.",
   "adm.resetConfirm": "Reset",
   "adm.resetCancel": "Cancel",
   "adm.resetDone": "Password reset; all sessions ended.",

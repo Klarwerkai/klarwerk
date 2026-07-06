@@ -380,6 +380,8 @@ export class Reasoner {
     documentText: string,
     locale: ReasonerLocale = "de",
     query?: string,
+    // SCRUM-451: true = Ergebnis in der Sprache des Dokuments lassen (nichts übersetzen).
+    keepSourceLanguage = false,
   ): Promise<ExtractResult> {
     // SCRUM-411 (Pedi-Test 03.07.): Scheitert der Modell-Aufruf, obwohl ein Modell gewollt
     // UND konfiguriert ist, bekommt der Nutzer den ECHTEN Grund — nicht die falsche
@@ -390,13 +392,13 @@ export class Reasoner {
     const wantedModel = this.effectiveFor("extract") === "model";
     return this.runTask("extract", locale, async (provider) => {
       if (provider === this.fallback) {
-        const honest = await this.fallback.extract(documentText, locale, query);
+        const honest = await this.fallback.extract(documentText, locale, query, keepSourceLanguage);
         return wantedModel && modelError !== null
           ? honestExtractModelFailed(modelError, locale)
           : honest;
       }
       try {
-        return await provider.extract(documentText, locale, query);
+        return await provider.extract(documentText, locale, query, keepSourceLanguage);
       } catch (error) {
         modelError = error instanceof Error ? error.message : String(error);
         throw error;

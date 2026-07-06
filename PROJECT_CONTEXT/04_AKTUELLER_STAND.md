@@ -63,3 +63,19 @@
 - Jira-Nummern KWEB-107/108 sind inhaltlich vertauscht (in Tickets dokumentiert; Commits maßgeblich).
 - Biome-Suppression muss als EINE Zeile direkt über der Anweisung stehen.
 - Deutsche Anführungszeichen in TS-Strings: „…“ verwenden, nie gerades " im String.
+
+## Stand 05.07. abends — Go-Live app.klarwerk.ai (VIP)
+
+- Runner 18:21 ALLE GATES GRÜN → Commits eb29fc9 + c017a25 gepusht (GitHub+Gitea).
+- Neu im Produkt: Klara komplett; KI-Status-Pille in der Topbar (Externe/Interne KI + Herkunftsland;
+  DSGVO-Bestätigung IMMER „nein" außer interne KI aus Europa; Herkunft interim aus Anbieter-Kennung,
+  später aus Nerds KI-Zugangs-Steuerung). Vormerk-Tickets SCRUM-449 (Zugriffsrechte-Vergabe),
+  SCRUM-450 (Werksreset: Passwort + große Warnung).
+- Deploy-Paket im Repo: Dockerfile + .dockerignore + docs/operations/deploy-hetzner.md.
+  Kanonik-Falle: unter app.klarwerk.ai MUSS CANONICAL_HOST=app.klarwerk.ai gesetzt sein.
+- Coolify klarwerk-prod: bestehende App (Klarwerkai/klarwerk, main, Dockerfile) wiederverwendet,
+  Domains unverändert; NEUE Postgres 16; Envs DATABASE_URL(neu)/CANONICAL_HOST/ANTHROPIC_API_KEY.
+  DNS-Befund in SCRUM-447 kommentiert (beide Domains → klarwerk-prod; alte Version war öffentlich).
+- OFFEN: Abnahme (health/Version/Pille), SOFORT Ersteinrichtung durch Pedi (erster Nutzer = Admin!),
+  Testnutzer Experte, Basic-Auth-Tor (Dienstag, Erinnerung 09:00 gestellt), Env-Aufräumen,
+  SCRUM-447-Rest, Tag v1.0.0-beta.2 (Boss, Dienstag). Details: docs/qm/paul-nachtrag-vip-deploy-0507.md

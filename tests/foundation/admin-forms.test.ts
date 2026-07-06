@@ -4,6 +4,7 @@ import {
   isNewUserValid,
   isPasswordResetValid,
   isUserAuditAction,
+  passwordRepeatMismatch,
 } from "../../apps/web/src/lib/adminForms";
 
 describe("SCRUM-147: Nutzer-anlegen-Validierung", () => {
@@ -17,11 +18,24 @@ describe("SCRUM-147: Nutzer-anlegen-Validierung", () => {
   });
 });
 
-describe("SCRUM-148: Passwort-Reset-Validierung", () => {
-  it("verlangt mindestens MIN_PASSWORD Zeichen", () => {
+describe("SCRUM-148 / SCRUM-455: Passwort-Reset-Validierung mit Wiederholung", () => {
+  it("verlangt mindestens MIN_PASSWORD Zeichen UND identische Wiederholung", () => {
     expect(MIN_PASSWORD).toBe(8);
-    expect(isPasswordResetValid("neuespass1")).toBe(true);
-    expect(isPasswordResetValid("kurz")).toBe(false);
+    expect(isPasswordResetValid("neuespass1", "neuespass1")).toBe(true);
+    // zu kurz — auch wenn beide gleich sind
+    expect(isPasswordResetValid("kurz", "kurz")).toBe(false);
+    // lang genug, aber Wiederholung weicht ab (Vertipper)
+    expect(isPasswordResetValid("neuespass1", "neuespass2")).toBe(false);
+    expect(isPasswordResetValid("neuespass1", "")).toBe(false);
+  });
+
+  it("passwordRepeatMismatch meldet erst, wenn im Wiederholfeld etwas steht", () => {
+    // leeres Wiederholfeld → noch kein Fehler (Nutzer tippt gerade)
+    expect(passwordRepeatMismatch("neuespass1", "")).toBe(false);
+    // etwas getippt, weicht ab → ehrlicher Hinweis
+    expect(passwordRepeatMismatch("neuespass1", "neuespass2")).toBe(true);
+    // identisch → kein Hinweis
+    expect(passwordRepeatMismatch("neuespass1", "neuespass1")).toBe(false);
   });
 });
 

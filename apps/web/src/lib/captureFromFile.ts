@@ -155,6 +155,12 @@ export const CAPTURE_FILE_TEXT = {
   queryPlaceholder: "capture.file.queryPlaceholder",
   queryHelpTitle: "capture.file.queryHelp.title",
   queryHelpBody: "capture.file.queryHelp.body",
+  // SCRUM-451: Ergebnis-Sprache der Extraktion — Systemsprache oder Originalsprache.
+  langLabel: "capture.file.langLabel",
+  langSystem: "capture.file.langSystem",
+  langSource: "capture.file.langSource",
+  langHelpTitle: "capture.file.langHelp.title",
+  langHelpBody: "capture.file.langHelp.body",
   searchCta: "capture.file.searchCta",
   searching: "capture.file.searching",
   pointsTitle: "capture.file.pointsTitle",

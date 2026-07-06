@@ -36,6 +36,9 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         instruction?: string;
         // PMO-FEA-0006: optionaler Suchauftrag des Experten für 'extract' (wonach suchen?).
         query?: string;
+        // SCRUM-451: Ergebnis-Sprache für 'extract' — "system" (Default, UI-Sprache) oder
+        // "source" (Sprache des Dokuments, nichts übersetzen).
+        outputLanguage?: "system" | "source";
       };
     }>("/api/reasoner", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
@@ -66,9 +69,31 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         return;
       }
       if (task === "extract") {
+        // SCRUM-451: Ergebnis-Sprache validieren — nur die zwei bekannten Werte, sonst 400.
+        const outputLanguage = request.body.outputLanguage;
+        if (
+          outputLanguage !== undefined &&
+          outputLanguage !== "system" &&
+          outputLanguage !== "source"
+        ) {
+          reply.code(400).send({
+            error: "BAD_REQUEST",
+            message: "outputLanguage muss 'system' oder 'source' sein.",
+          });
+          return;
+        }
         // PMO-FEA-0006: Wissenspunkte aus Dokumenttext (optional mit Suchauftrag). Ohne
         // Modell antwortet der Reasoner ehrlich mit leerer Liste + note (keine Fake-Punkte).
-        reply.code(200).send(await reasoner.extract(text ?? "", locale, request.body.query));
+        reply
+          .code(200)
+          .send(
+            await reasoner.extract(
+              text ?? "",
+              locale,
+              request.body.query,
+              outputLanguage === "source",
+            ),
+          );
         return;
       }
       reply.code(400).send({

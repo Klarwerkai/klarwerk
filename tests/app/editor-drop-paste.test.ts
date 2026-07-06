@@ -77,3 +77,31 @@ describe("SCRUM-372: editorDropPaste", () => {
     ).toMatch(/evidence|no fake link|review decides/i);
   });
 });
+
+// SCRUM-456 (Pedi/VIP 06.07.): Der „Bild"-Knopf kann jetzt auch ein NEUES Bild vom Rechner
+// einfügen — über exakt dieselbe sichere Klassifikation wie Drop/Einfügen. Hier abgesichert:
+// die Auswahl akzeptiert Rasterbilder und weist SVG/Nicht-Bilder ab; die Menü-Texte lösen auf.
+describe("SCRUM-456: Bild vom Rechner (Finder) nutzt dieselbe sichere Klassifikation", () => {
+  it("aus dem Finder gewählte Rasterbilder sind einbettbar, SVG/Nicht-Bild bleiben Evidence", () => {
+    const picked = partitionDropMedia([
+      { mime: "image/png" },
+      { mime: "image/jpeg" },
+      { mime: "image/svg+xml" }, // Finder-Auswahl darf SVG NICHT einbetten (XSS-Schutz)
+      { mime: "application/pdf" },
+    ]);
+    expect(picked.imageCount).toBe(2);
+    expect(picked.fileCount).toBe(2);
+    expect(picked.hasFiles).toBe(true);
+  });
+
+  it("Menü-Texte für Finder + Anhänge lösen in DE und EN auf", () => {
+    for (const key of ["editor.imageFromDisk", "editor.imageFromAttachment"]) {
+      for (const lng of ["de", "en"]) {
+        expect(
+          String(i18n.getResource(lng, "translation", key) ?? "").length,
+          `${lng}:${key}`,
+        ).toBeGreaterThan(0);
+      }
+    }
+  });
+});

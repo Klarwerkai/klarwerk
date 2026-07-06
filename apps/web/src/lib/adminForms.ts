@@ -12,8 +12,16 @@ export function isNewUserValid(form: { name: string; email: string; password: st
   );
 }
 
-export function isPasswordResetValid(password: string): boolean {
-  return password.length >= MIN_PASSWORD;
+// SCRUM-455 (Pedi 06.07.): Passwort-Reset verlangt jetzt eine Wiederholung — beide müssen
+// die Mindestlänge erfüllen UND identisch sein (ein Vertipper würde sonst den Nutzer aussperren).
+export function isPasswordResetValid(password: string, repeat: string): boolean {
+  return password.length >= MIN_PASSWORD && password === repeat;
+}
+
+// SCRUM-455: getrennt geprüft, damit die UI einen ehrlichen Grund anzeigen kann — meldet die
+// Abweichung erst, wenn im Wiederholfeld überhaupt etwas steht (kein Fehler beim Tippen).
+export function passwordRepeatMismatch(password: string, repeat: string): boolean {
+  return repeat.length > 0 && password !== repeat;
 }
 
 // SCRUM-149: nur nutzer-/auth-relevante Audit-Aktionen in der Admin-Sicht zeigen.

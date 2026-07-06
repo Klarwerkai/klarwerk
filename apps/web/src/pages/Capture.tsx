@@ -329,6 +329,9 @@ export function Capture(): JSX.Element {
   const [fileImageUrl, setFileImageUrl] = useState<string | null>(null); // OCR-Kandidat (nur auf Klick)
   const [fileBusy, setFileBusy] = useState(false);
   const [fileQuery, setFileQuery] = useState("");
+  // SCRUM-451 (Pedi 05.07.): Ergebnis-Sprache der Extraktion — Systemsprache (Default) oder
+  // Originalsprache des Dokuments (nichts übersetzen; Belegstellen sind ohnehin wörtlich).
+  const [fileLang, setFileLang] = useState<"system" | "source">("system");
   const [filePoints, setFilePoints] = useState<SelectableExtractPoint[] | null>(null);
   // SCRUM-435: ausgewählte Erkenntnis(se) für den „an bestehenden Artikel anhängen"-Picker.
   const [appendPts, setAppendPts] = useState<{ points: ExtractedPoint[]; fileName: string } | null>(
@@ -401,7 +404,7 @@ export function Capture(): JSX.Element {
   });
 
   const extract = useMutation({
-    mutationFn: () => endpoints.reasoner.extract(fileText, locale, fileQuery),
+    mutationFn: () => endpoints.reasoner.extract(fileText, locale, fileQuery, fileLang),
     onSuccess: (r) => {
       setErr(null);
       setNotice(null);
@@ -1901,6 +1904,34 @@ export function Capture(): JSX.Element {
                       onChange={(e) => setFileQuery(e.target.value)}
                       placeholder={t(CAPTURE_FILE_TEXT.queryPlaceholder)}
                     />
+                    {/* SCRUM-451 (Pedi 05.07.): Ergebnis-Sprache — Systemsprache oder Original. */}
+                    <div className="mt-2.5 flex items-center gap-2">
+                      <span className="flex items-center gap-1 text-[12.5px] font-semibold text-muted">
+                        {t(CAPTURE_FILE_TEXT.langLabel)}
+                        <HelpTip
+                          title={t(CAPTURE_FILE_TEXT.langHelpTitle)}
+                          body={t(CAPTURE_FILE_TEXT.langHelpBody)}
+                        />
+                      </span>
+                      <div className="flex overflow-hidden rounded-pill border border-hairline text-[12px] font-semibold">
+                        {(["system", "source"] as const).map((mode) => (
+                          <button
+                            key={mode}
+                            type="button"
+                            onClick={() => setFileLang(mode)}
+                            className={`px-2.5 py-1 transition-colors ${
+                              fileLang === mode ? "bg-ink text-white" : "text-muted hover:text-text"
+                            }`}
+                          >
+                            {t(
+                              mode === "system"
+                                ? CAPTURE_FILE_TEXT.langSystem
+                                : CAPTURE_FILE_TEXT.langSource,
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                     <div className="mt-3 flex items-center gap-1.5">
                       <Button
                         variant="primary"

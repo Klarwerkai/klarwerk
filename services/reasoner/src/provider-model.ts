@@ -219,15 +219,24 @@ function assistGuidance(locale: ReasonerLocale, instruction: string): string {
 // PMO-FEA-0006 / G-2: Wissens-Extraktion aus Dokumenttext — anti-halluzinatorischer
 // System-Prompt. Jeder Punkt MUSS mit einem wörtlichen Auszug belegt sein; die Auszüge
 // werden zusätzlich serverseitig gegen den Dokumenttext geprüft (parseExtractResponse).
-function extractSystem(locale: ReasonerLocale): string {
+function extractSystem(locale: ReasonerLocale, keepSourceLanguage = false): string {
   const contract =
     '{"points": [{"title": string (die Aussage in einem Satz), "summary": string, ' +
     '"sourceExcerpt": string (wörtliches Zitat aus dem Dokument)}]}';
+  // SCRUM-451 (Pedi 05.07.): auf Wunsch bleibt das Ergebnis in der Sprache des Dokuments —
+  // ohne diesen Zusatz übersetzt das Modell Titel/Zusammenfassungen faktisch in die UI-Sprache.
+  const langRule = keepSourceLanguage
+    ? locale === "en"
+      ? " IMPORTANT: Write title and summary in the LANGUAGE OF THE DOCUMENT — do not translate anything."
+      : " WICHTIG: Schreibe title und summary in der SPRACHE DES DOKUMENTS — übersetze nichts."
+    : "";
   // SCRUM-418: Ausgabe begrenzen (≤12 Punkte, Auszug ≤300 Zeichen) — vollständige, kurze
   // Punkte statt einer langen Antwort, die am Token-Limit abreißt.
-  return locale === "en"
-    ? `You identify distinct pieces of knowledge in a document (rules of experience, thresholds, procedures, causes, conditions). Respond ONLY with JSON: ${contract}. Return at most ${EXTRACT_PROMPT_MAX_POINTS} points — pick the most important ones. Keep each sourceExcerpt under 300 characters. Every point MUST quote a verbatim excerpt from the document as sourceExcerpt (copy it exactly, do not paraphrase it). Extract ONLY what the document actually states — do not invent, infer beyond the text, or add world knowledge. If the document contains no usable knowledge, return {"points": []}.`
-    : `Du identifizierst einzelne Wissenspunkte in einem Dokument (Erfahrungsregeln, Grenzwerte, Vorgehensweisen, Ursachen, Bedingungen). Antworte AUSSCHLIESSLICH mit JSON: ${contract}. Gib höchstens ${EXTRACT_PROMPT_MAX_POINTS} Punkte zurück — wähle die wichtigsten. Halte jede sourceExcerpt unter 300 Zeichen. Jeder Punkt MUSS eine wörtliche Belegstelle aus dem Dokument als sourceExcerpt zitieren (exakt kopieren, nicht paraphrasieren). Extrahiere NUR, was im Dokument tatsächlich steht — erfinde nichts, schlussfolgere nicht über den Text hinaus, ergänze kein Weltwissen. Enthält das Dokument kein verwertbares Wissen, gib {"points": []} zurück.`;
+  const base =
+    locale === "en"
+      ? `You identify distinct pieces of knowledge in a document (rules of experience, thresholds, procedures, causes, conditions). Respond ONLY with JSON: ${contract}. Return at most ${EXTRACT_PROMPT_MAX_POINTS} points — pick the most important ones. Keep each sourceExcerpt under 300 characters. Every point MUST quote a verbatim excerpt from the document as sourceExcerpt (copy it exactly, do not paraphrase it). Extract ONLY what the document actually states — do not invent, infer beyond the text, or add world knowledge. If the document contains no usable knowledge, return {"points": []}.`
+      : `Du identifizierst einzelne Wissenspunkte in einem Dokument (Erfahrungsregeln, Grenzwerte, Vorgehensweisen, Ursachen, Bedingungen). Antworte AUSSCHLIESSLICH mit JSON: ${contract}. Gib höchstens ${EXTRACT_PROMPT_MAX_POINTS} Punkte zurück — wähle die wichtigsten. Halte jede sourceExcerpt unter 300 Zeichen. Jeder Punkt MUSS eine wörtliche Belegstelle aus dem Dokument als sourceExcerpt zitieren (exakt kopieren, nicht paraphrasieren). Extrahiere NUR, was im Dokument tatsächlich steht — erfinde nichts, schlussfolgere nicht über den Text hinaus, ergänze kein Weltwissen. Enthält das Dokument kein verwertbares Wissen, gib {"points": []} zurück.`;
+  return base + langRule;
 }
 
 // PMO-FEA-0006: optionaler Suchauftrag des Experten — schränkt ein, WONACH gesucht wird,
@@ -579,6 +588,7 @@ export class ModelProvider implements ReasonerProvider {
     documentText: string,
     locale: ReasonerLocale = "de",
     query?: string,
+    keepSourceLanguage = false,
   ): Promise<ExtractResult> {
     const client = this.requireClient();
     const doc = documentText.trim().slice(0, MAX_EXTRACT_DOCUMENT_LENGTH);
@@ -594,8 +604,8 @@ export class ModelProvider implements ReasonerProvider {
     }
     const guidance = query?.trim();
     const system = guidance
-      ? `${extractSystem(locale)}\n${extractGuidance(locale, guidance)}`
-      : extractSystem(locale);
+      ? `${extractSystem(locale, keepSourceLanguage)}\n${extractGuidance(locale, guidance)}`
+      : extractSystem(locale, keepSourceLanguage);
     // SCRUM-427: in Abschnitten extrahieren — jede Modell-Antwort bleibt klein genug, dass sie
     // nicht am Token-Limit abreißt. Ergebnisse dedupliziert zusammenführen; jede Belegstelle
     // wird gegen IHREN Abschnitt geprüft (G-2 bleibt). SCRUM-411/418-Semantik erhalten:

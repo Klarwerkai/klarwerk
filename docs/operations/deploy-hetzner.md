@@ -69,7 +69,11 @@ Secrets). Paul liefert Repo-Bausteine (Dockerfile, dieses Runbook) und hilft bei
 
 ## 4. Betrieb (Kurzform)
 
-- **Update:** Pedi pusht → in Coolify „Redeploy" (oder Auto-Deploy per Webhook aktivieren).
+- **Update (Ein-Klick):** `scripts/deploy/klarwerk-live-update.command` — stößt den Coolify-Deploy
+  per API an (Token im Schlüsselbund `KLARWERK-LiveUpdate`; Einrichtung im Skript-Kopf).
+  Reihenfolge IMMER: Runner grün → Commit → Sync (Push) → Live-Update.
+- **Update (manuell):** Pedi pusht → in Coolify „Redeploy" (oder Auto-Deploy per Webhook aktivieren —
+  bewusst NICHT eingeschaltet, damit Pedi entscheidet, wann Externe einen neuen Stand sehen).
 - **Rollback:** Coolify → vorheriges Deployment redeployen.
 - **Backup:** Hetzner-Snapshots + regelmäßiger `pg_dump` der Coolify-Postgres-Ressource —
   ein vollständiger Dump enthält Wissensobjekte, Anhänge UND Audit-Log gemeinsam.
