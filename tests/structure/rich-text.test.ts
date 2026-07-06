@@ -22,6 +22,23 @@ describe("KW-STR FE: sanitizeHtml (Defense-in-Depth, gleiche Allowlist)", () => 
     expect(sanitizeHtml('<img src="https://evil/x">')).toBe("");
   });
 
+  // Formatierung Stufe 2: Tabellen aus Import/Paste bleiben erhalten (Struktur), colspan/rowspan
+  // nur numerisch; kein style/Handler/Script überlebt in Zellen.
+  it("Tabellen: table/tr/th/td bleiben; colspan nur numerisch; script in Zelle raus", () => {
+    const table =
+      '<table><thead><tr><th colspan="2">Kopf</th></tr></thead><tbody><tr><td>A</td><td>B</td></tr></tbody></table>';
+    const clean = sanitizeHtml(table);
+    expect(clean).toContain("<table>");
+    expect(clean).toContain('<th colspan="2">Kopf</th>');
+    expect(clean).toContain("<td>A</td>");
+    expect(sanitizeHtml('<table><tr><td colspan="x">Z</td></tr></table>')).toBe(
+      "<table><tr><td>Z</td></tr></table>",
+    );
+    expect(sanitizeHtml("<table><tr><td>ok<script>evil()</script></td></tr></table>")).toBe(
+      "<table><tr><td>ok</td></tr></table>",
+    );
+  });
+
   it("schließt offene Tags + ist idempotent", () => {
     const once = sanitizeHtml("<p>a<strong>b");
     expect(once).toBe("<p>a<strong>b</strong></p>");
@@ -81,8 +98,11 @@ describe("SCRUM-458 FE: sanitizeHtml erhält Formatierung durch Tag-Abbildung", 
     expect(sanitizeHtml("<b>a <i>b</i></b>")).toBe("<strong>a <em>b</em></strong>");
   });
 
-  it("Sicherheit bleibt: style/Skript/Tabellen draußen (nur Text)", () => {
+  it("Sicherheit bleibt: style/Skript raus; Tabellen als Struktur erhalten (Stufe 2)", () => {
     expect(sanitizeHtml('<b style="color:red">t</b>')).toBe("<strong>t</strong>");
-    expect(sanitizeHtml("<table><tr><td>Z</td></tr></table>")).toBe("Z");
+    // Formatierung Stufe 2: Tabellen bleiben jetzt als Struktur ERHALTEN (Details im Tabellen-Test oben).
+    expect(sanitizeHtml("<table><tr><td>Z</td></tr></table>")).toBe(
+      "<table><tr><td>Z</td></tr></table>",
+    );
   });
 });

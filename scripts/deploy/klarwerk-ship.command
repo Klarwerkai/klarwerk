@@ -28,14 +28,20 @@ echo ""
 # 0) Stale Lock der Bridge entfernen (sonst hakt Git beim Committen).
 rm -f "$REPO/.git/index.lock"
 
-# 1) Runner-Gate — das harte Tor. Rot = sofort Stopp, nichts wird geändert/gepusht/deployt.
+# 1) Runner-Gate — das harte Tor. WICHTIG: paul-runner.sh beendet sich mit Exit 0, AUCH wenn Gates
+# ROT sind (er druckt nur „Mindestens ein Gate ROT"). Deshalb NICHT am Exit-Code prüfen, sondern am
+# eindeutigen Erfolgs-Marker „ALLE GATES GRÜN" in der Runner-Ausgabe. (Fix 06.07.: vorher lief das
+# Skript bei rotem Runner fälschlich weiter bis zur Push-Abfrage.)
 echo "▶ 1/5  Runner-Gate (paul-runner.sh) …"
-if ! bash "$REPO/docs/team2-austausch/paul-runner.sh"; then
+RUNNER_LOG="/tmp/klarwerk-ship-runner.log"
+bash "$REPO/docs/team2-austausch/paul-runner.sh" 2>&1 | tee "$RUNNER_LOG" || true
+if ! grep -q "ALLE GATES GR" "$RUNNER_LOG"; then
   echo ""
-  echo "✗ Runner ROT — nichts wird hochgezählt, committet, gepusht oder deployt. Erst Fehler beheben."
+  echo "✗ Runner NICHT grün (Erfolgs-Marker ALLE GATES GRÜN fehlt) — nichts wird hochgezählt, committet, gepusht oder deployt."
+  echo "  Details: docs/team2-austausch/paul-runner.log"
   exit 1
 fi
-echo "✓ 1/5  Runner grün."
+echo "✓ 1/5  Runner grün (Erfolgs-Marker bestätigt)."
 echo ""
 
 # 2) Nächste Versionsnummer BERECHNEN (noch nicht schreiben) — letzte Zahl +1.

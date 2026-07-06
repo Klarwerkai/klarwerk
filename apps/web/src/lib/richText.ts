@@ -17,11 +17,22 @@ const ALLOWED_TAGS = new Set([
   "img",
   "blockquote",
   "div",
+  // Formatierung Stufe 2: Tabellen aus Import/Paste ERHALTEN (nicht editieren). Reine Struktur-Tags
+  // ohne style/Handler; an Zellen nur colspan/rowspan (numerisch). Sicher — kein XSS-Vektor.
+  "table",
+  "thead",
+  "tbody",
+  "tfoot",
+  "tr",
+  "th",
+  "td",
+  "caption",
 ]);
 const VOID_TAGS = new Set(["br", "img"]);
 // SCRUM-458 (Formatierungs-Erhaltung): identische Tag-Abbildung wie der Server-Sanitizer —
 // semantische Formatier-Tags aus Word/Browser-Paste auf das erlaubte Äquivalent abbilden statt
-// verwerfen (Fett/Kursiv/Überschriften bleiben). Kein style, keine Tabellen (Stufe 2).
+// verwerfen (Fett/Kursiv/Überschriften bleiben). Kein style; Tabellen werden als Struktur ERHALTEN
+// (Stufe 2, siehe ALLOWED_TAGS) — sie werden durchgelassen, nicht abgebildet.
 const TAG_MAP: Record<string, string> = {
   b: "strong",
   i: "em",
@@ -34,6 +45,9 @@ const ALLOWED_ATTRS: Record<string, Set<string>> = {
   a: new Set(["href", "title"]),
   img: new Set(["src", "alt"]),
   div: new Set(["class"]),
+  // Formatierung Stufe 2 (Tabellen): nur numerische Zell-Spannen erhalten (Merges aus Word/HTML).
+  th: new Set(["colspan", "rowspan"]),
+  td: new Set(["colspan", "rowspan"]),
 };
 
 function isSafeHref(value: string): boolean {
@@ -113,6 +127,13 @@ function renderAttrs(tag: string, raw: string): string {
         continue;
       }
       out.push(`class="${escapeText(cls)}"`);
+      continue;
+    }
+    // Formatierung Stufe 2 (Tabellen): Zell-Spannen nur als positive Ganzzahl (1–999) übernehmen.
+    if ((tag === "td" || tag === "th") && (name === "colspan" || name === "rowspan")) {
+      if (/^[1-9]\d{0,2}$/.test(value)) {
+        out.push(`${name}="${value}"`);
+      }
       continue;
     }
     out.push(`${name}="${escapeText(value)}"`);
@@ -196,7 +217,7 @@ export function sanitizeHtml(html: string): string {
 
 export function htmlToPlainText(html: string): string {
   return html
-    .replace(/<\/(p|h2|h3|li|blockquote|div)>/gi, " ")
+    .replace(/<\/(p|h2|h3|li|blockquote|div|caption|th|td|tr)>/gi, " ")
     .replace(/<br\s*\/?>/gi, " ")
     .replace(/<[^>]*>/g, "")
     .replace(/&amp;/g, "&")

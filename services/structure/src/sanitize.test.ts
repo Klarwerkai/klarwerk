@@ -114,13 +114,34 @@ describe("SCRUM-458: sanitizeHtml erhält Formatierung durch Tag-Abbildung", () 
     expect(sanitizeHtml("<b>fett <i>beides</i></b>")).toBe("<strong>fett <em>beides</em></strong>");
   });
 
-  it("Sicherheit unangetastet: style/Skript/Tabellen bleiben draußen", () => {
+  it("Sicherheit unangetastet: style/Skript raus; Tabellen als Struktur erhalten (Stufe 2)", () => {
     // style wird weiter entfernt (auch am abgebildeten Tag).
     expect(sanitizeHtml('<b style="color:red" onclick="x()">t</b>')).toBe("<strong>t</strong>");
-    // Tabellen sind bewusst NICHT erlaubt (Design-Frage Stufe 2) — Inhalt bleibt als Text.
-    expect(sanitizeHtml("<table><tr><td>Zelle</td></tr></table>")).toBe("Zelle");
+    // Formatierung Stufe 2: Tabellen bleiben jetzt als Struktur ERHALTEN (eigener Tabellen-Test oben).
+    expect(sanitizeHtml("<table><tr><td>Zelle</td></tr></table>")).toBe(
+      "<table><tr><td>Zelle</td></tr></table>",
+    );
     // script bleibt komplett verworfen.
     expect(sanitizeHtml("<b>ok</b><script>alert(1)</script>")).toBe("<strong>ok</strong>");
+  });
+});
+
+// Formatierung Stufe 2 (autoritativ am Server): Tabellen aus Import/Paste bleiben als Struktur
+// erhalten; colspan/rowspan nur numerisch; kein style/Handler/Script überlebt.
+describe("Formatierung Stufe 2: sanitizeHtml erhält Tabellen", () => {
+  it("erhält table/thead/tbody/tr/th/td + numerisches colspan; verwirft nicht-numerisches; script raus", () => {
+    const table =
+      '<table><thead><tr><th colspan="2">Kopf</th></tr></thead><tbody><tr><td>A</td><td>B</td></tr></tbody></table>';
+    const clean = sanitizeHtml(table);
+    expect(clean).toContain("<table>");
+    expect(clean).toContain('<th colspan="2">Kopf</th>');
+    expect(clean).toContain("<td>A</td>");
+    expect(sanitizeHtml('<table><tr><td colspan="x">Z</td></tr></table>')).toBe(
+      "<table><tr><td>Z</td></tr></table>",
+    );
+    expect(sanitizeHtml("<table><tr><td>ok<script>evil()</script></td></tr></table>")).toBe(
+      "<table><tr><td>ok</td></tr></table>",
+    );
   });
 });
 

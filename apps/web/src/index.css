@@ -47,6 +47,20 @@
 .prose-kw blockquote {
   @apply my-2 border-l-2 border-hairline pl-3 text-muted;
 }
+/* Formatierung Stufe 2: erhaltene Tabellen aus Import/Paste sauber darstellen (Ränder, Padding). */
+.prose-kw table {
+  @apply my-2 w-full border-collapse text-[13.5px];
+}
+.prose-kw th,
+.prose-kw td {
+  @apply border border-hairline px-2 py-1 text-left align-top;
+}
+.prose-kw th {
+  @apply bg-page font-semibold;
+}
+.prose-kw caption {
+  @apply mb-1 text-left text-[12px] text-muted;
+}
 .prose-kw .panel {
   @apply my-2 rounded-card border border-hairline bg-page p-3;
 }

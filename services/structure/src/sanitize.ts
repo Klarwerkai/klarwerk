@@ -17,6 +17,16 @@ const ALLOWED_TAGS = new Set([
   "img",
   "blockquote",
   "div",
+  // Formatierung Stufe 2: Tabellen aus Import/Paste ERHALTEN (nicht editieren). Reine Struktur-Tags
+  // ohne style/Handler; an Zellen nur colspan/rowspan (numerisch). Sicher — kein XSS-Vektor.
+  "table",
+  "thead",
+  "tbody",
+  "tfoot",
+  "tr",
+  "th",
+  "td",
+  "caption",
 ]);
 
 // Selbstschließende/leere Elemente ohne End-Tag.
@@ -26,7 +36,8 @@ const VOID_TAGS = new Set(["br", "img"]);
 // oft semantische Formatier-Tags, die nicht in unserer engen Allowlist stehen — sie werden auf das
 // erlaubte Äquivalent ABGEBILDET statt verworfen, damit Fett/Kursiv/Überschriften erhalten bleiben.
 // (Rein semantisch, kein style/kein Skript — die Sicherheits-Leitplanke bleibt unangetastet.)
-// Bewusst NICHT enthalten: Tabellen (offene Design-Frage) und style-basierte Formatierung
+// Tabellen werden inzwischen als Struktur ERHALTEN (Stufe 2, siehe ALLOWED_TAGS) — durchgelassen,
+// nicht abgebildet. Weiterhin NICHT enthalten: style-basierte Formatierung
 // (z. B. <span style="font-weight:bold">) — das übernimmt der Paste-Normalisierer in Stufe 2.
 const TAG_MAP: Record<string, string> = {
   b: "strong",
@@ -42,6 +53,9 @@ const ALLOWED_ATTRS: Record<string, Set<string>> = {
   a: new Set(["href", "title"]),
   img: new Set(["src", "alt"]),
   div: new Set(["class"]),
+  // Formatierung Stufe 2 (Tabellen): nur numerische Zell-Spannen erhalten (Merges aus Word/HTML).
+  th: new Set(["colspan", "rowspan"]),
+  td: new Set(["colspan", "rowspan"]),
 };
 
 // href: nur sichere Schemes; KEIN javascript:/data: etc.
@@ -125,6 +139,13 @@ function renderAttrs(tag: string, raw: string): string {
         continue;
       }
       out.push(`class="${escapeText(cls)}"`);
+      continue;
+    }
+    // Formatierung Stufe 2 (Tabellen): Zell-Spannen nur als positive Ganzzahl (1–999) übernehmen.
+    if ((tag === "td" || tag === "th") && (name === "colspan" || name === "rowspan")) {
+      if (/^[1-9]\d{0,2}$/.test(value)) {
+        out.push(`${name}="${value}"`);
+      }
       continue;
     }
     out.push(`${name}="${escapeText(value)}"`);
