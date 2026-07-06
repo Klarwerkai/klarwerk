@@ -4,7 +4,7 @@
 // deutlich mehr Arbeitsfläche. Arbeitet auf einem internen Entwurf des vorhandenen `bodyHtml`-State
 // und schreibt NUR bei bewusster Übernahme zurück. KEIN Auto-Save, KEINE Auto-Validierung, kein
 // Backend, keine neue Editor-Library — reine Wiederverwendung bestehender Komponenten/Helfer.
-import { useEffect, useState } from "react";
+import { type ChangeEvent, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ExternalKnowledgeStage } from "../api/types";
 import {
@@ -51,6 +51,7 @@ export function KnowledgeInputStudio({
   attachments = [],
   externalStage = "search_on_click",
   enrichLocale = "de",
+  onAttachFiles,
 }: {
   open: boolean;
   onClose: () => void;
@@ -65,6 +66,9 @@ export function KnowledgeInputStudio({
   // SCRUM-426: Public-KI-Anreicherung auch im Studio (nur bei Admin-Freigabe „offen").
   externalStage?: ExternalKnowledgeStage;
   enrichLocale?: "de" | "en";
+  // Pedi 06.07.: Datei/Bild vom Rechner direkt im Studio als Anhang hinzufügen (Bild → Bildanhang,
+  // sonst Dokumentanhang). Wird vom Eltern-Capture bereitgestellt; fehlt der Callback, bleibt der Knopf aus.
+  onAttachFiles?: (files: File[]) => void | Promise<void>;
 }): JSX.Element | null {
   const { t } = useTranslation();
   // Interner Entwurf: beim Öffnen aus dem aktuellen Body initialisiert; Änderungen bleiben lokal,
@@ -74,6 +78,16 @@ export function KnowledgeInputStudio({
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   // SCRUM-346: Umschalter Bearbeiten ↔ Vorschau/Review der zentralen Editor-Spalte (lokaler Anzeige-State).
   const [view, setView] = useState<StudioEditorView>("edit");
+  // Pedi 06.07.: Datei/Bild vom Rechner im Studio anhängen — der eigentliche Upload/Attach passiert
+  // im Eltern-Capture (onAttachFiles). Neue Anhänge erscheinen sofort im Anhang-Kontext und im Bild-Menü.
+  const attachInputRef = useRef<HTMLInputElement>(null);
+  const onPickAttach = (e: ChangeEvent<HTMLInputElement>): void => {
+    const picked = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (picked.length > 0) {
+      void onAttachFiles?.(picked);
+    }
+  };
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: bewusst nur beim Öffnen synchronisieren.
   useEffect(() => {
@@ -254,6 +268,27 @@ export function KnowledgeInputStudio({
             <StudioContributionPanel bodyHtml={draft} attachments={attachments} />
             <EditorGuidance />
             <EditorAttachmentContext attachments={attachments} />
+            {/* Pedi 06.07.: Datei/Bild vom Rechner direkt im Studio anhängen (nicht nur vorhandene
+                verlinken). Neue Anhänge erscheinen sofort oben im Anhang-Kontext und im Bild-Menü. */}
+            {onAttachFiles ? (
+              <div>
+                <input
+                  ref={attachInputRef}
+                  type="file"
+                  multiple
+                  accept=".txt,.md,.markdown,.csv,.log,.json,.docx,.pdf,application/pdf,image/*,video/*,audio/*"
+                  className="hidden"
+                  onChange={onPickAttach}
+                />
+                <button
+                  type="button"
+                  onClick={() => attachInputRef.current?.click()}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-btn border border-hairline bg-surface px-2 py-1.5 text-[12px] font-semibold text-text hover:bg-hairline-soft"
+                >
+                  {t("studio.attachFromDisk")}
+                </button>
+              </div>
+            ) : null}
             <EditorContentQuality bodyHtml={draft} attachments={attachments} />
             <BodyTemplateChooser bodyHtml={draft} onApply={setDraft} />
             {/* SCRUM-426: Public-KI-Anreicherung — hängt an den internen Studio-Entwurf an

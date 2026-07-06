@@ -531,7 +531,10 @@ export function KnowledgeDetail(): JSX.Element {
   }, [query.data, params, canEdit]);
 
   return (
-    <div className="mx-auto max-w-4xl">
+    // Pedi/VIP 06.07.: mehr Breite für die Detailseite — lange Wissenseinträge quetschten sich vorher
+    // in eine schmale Spalte (endloses dünnes Band), während rechts Platz leer blieb. max-w-6xl gibt
+    // dem Inhalt (breite 1.7fr-Spalte) spürbar mehr Lesebreite; die Quellen-/Bewährungsspalte bleibt daneben.
+    <div className="mx-auto max-w-6xl">
       <PageHeader kicker={t("ko.kicker")} title={t("ko.title")} />
       {/* SCRUM-294: Demo-/Pilotpfad auf der Zielseite wiedererkennbar (nur bei ?demo=stage1). */}
       {isDemoContext(params) ? <DemoBanner surface="detail" /> : null}

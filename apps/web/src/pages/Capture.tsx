@@ -1149,9 +1149,8 @@ export function Capture(): JSX.Element {
   // als Anhang mitgeführt (Bild → Bildanhang, alles andere → Dokumentanhang), sichtbar unter
   // „Erweiterte Details". Späteres Anhängen als benannte Quelle bleibt der bewusste Schritt beim
   // Einreichen (SCRUM-408) — hier wird nichts automatisch als Quelle gespeichert.
-  const onAttach = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
-    const files = Array.from(e.target.files ?? []);
-    e.target.value = "";
+  // Kern des Anhängens (auch vom Studio genutzt): Bild → Bildanhang, sonst → Dokumentanhang.
+  const attachFiles = async (files: File[]): Promise<void> => {
     if (files.length === 0) {
       return;
     }
@@ -1164,6 +1163,11 @@ export function Capture(): JSX.Element {
       }
     }
     setNotice(t(CAPTURE_WIZARD_TEXT.attached, { count: files.length }));
+  };
+  const onAttach = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    await attachFiles(files);
   };
 
   // PMO-FEA-0006: Dokument für die Wissens-Extraktion lesen — nutzt die VORHANDENEN
@@ -2730,6 +2734,7 @@ export function Capture(): JSX.Element {
                       // SCRUM-426: Public-KI-Anreicherung auch im Studio (gleiche Freigabe/Regeln).
                       externalStage={extPolicyStage}
                       enrichLocale={locale}
+                      onAttachFiles={attachFiles}
                     />
                     {/* SCRUM-339: ehrliches Feedback — übernommen in den Entwurf, kein Auto-Save. */}
                     {studioApplied ? (
@@ -2995,6 +3000,7 @@ export function Capture(): JSX.Element {
                 // — vorher fehlte hier die Weitergabe, das Panel blieb still gesperrt.
                 externalStage={extPolicyStage}
                 enrichLocale={locale}
+                onAttachFiles={attachFiles}
               />
               {studioApplied ? (
                 <p className="rounded-btn bg-trust-pos-bg px-2.5 py-1.5 text-[11.5px] text-trust-pos-text">

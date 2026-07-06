@@ -7,31 +7,36 @@ import { type OcrResult, recognizeImage } from "./ocr";
 import { type PdfEngine, extractPdfText } from "./pdf";
 
 // FR-CAP-05: Bild auf ein kleines Thumbnail (JPEG) verkleinern → Daten-URL.
+// WICHTIG (Pedi/VIP 06.07.): NICHT über eine blob:-URL laden. Die Server-CSP erlaubt bei img-src nur
+// 'self' und data: — eine blob:-URL (URL.createObjectURL) wird beim Bild-Laden vom Browser blockiert,
+// das Bild lädt nie, die Promise wirft und der Aufrufer verschluckt es still → „Bild vom Rechner"
+// erschien nie. Deshalb via FileReader als data:-URL laden (CSP-konform), dann verkleinern.
 export function fileToThumbDataUrl(file: File, maxPx = 1024, quality = 0.7): Promise<string> {
   return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
-      const w = Math.max(1, Math.round(img.width * scale));
-      const h = Math.max(1, Math.round(img.height * scale));
-      const canvas = document.createElement("canvas");
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext("2d");
-      URL.revokeObjectURL(url);
-      if (!ctx) {
-        reject(new Error("no-canvas"));
-        return;
-      }
-      ctx.drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL("image/jpeg", quality));
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("read-error"));
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("no-canvas"));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.onerror = () => reject(new Error("img-error"));
+      // data:-URL (kein blob:) → von der CSP erlaubt.
+      img.src = String(reader.result ?? "");
     };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error("img-error"));
-    };
-    img.src = url;
+    reader.readAsDataURL(file);
   });
 }
 
