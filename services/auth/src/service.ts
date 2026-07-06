@@ -200,6 +200,17 @@ export class AuthService {
     return user ? toPublic(user) : undefined;
   }
 
+  // SCRUM-450: reine Passwort-Prüfung eines Nutzers (Re-Authentifizierung vor kritischen,
+  // unwiderruflichen Aktionen wie dem Werksreset). Keine Sitzung, keine Nebenwirkung.
+  // Unbekannter Nutzer oder Konto ohne Passwort (z. B. SSO) → false.
+  async verifyUserPassword(userId: string, password: string): Promise<boolean> {
+    const user = await this.users.findById(userId);
+    if (!user || !user.passwordHash) {
+      return false;
+    }
+    return verifyPassword(password, user.passwordSalt, user.passwordHash);
+  }
+
   // FR-AUTH-02 / FR-RBAC-02: Admin gibt Konto frei.
   async approveUser(userId: string, actorId: string): Promise<PublicUser> {
     const user = await this.requireUser(userId);

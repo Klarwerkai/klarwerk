@@ -140,7 +140,7 @@ describe("Pedi 05.07.: /api/admin/factory-reset", () => {
     expect(post.statusCode).toBe(403);
   });
 
-  it("mit Fähigkeit (Desktop/Dev) → verfügbar, POST löst den Reset aus", async () => {
+  it("mit Fähigkeit + korrektem Passwort → verfügbar, POST löst den Reset aus", async () => {
     let ran = false;
     const { app, headers } = await adminApp({
       available: true,
@@ -155,10 +155,53 @@ describe("Pedi 05.07.: /api/admin/factory-reset", () => {
     });
     expect(status.json().available).toBe(true);
 
-    const post = await app.inject({ method: "POST", url: "/api/admin/factory-reset", headers });
+    const post = await app.inject({
+      method: "POST",
+      url: "/api/admin/factory-reset",
+      headers,
+      payload: { password: "secret123" },
+    });
     expect(post.statusCode).toBe(200);
     expect(post.json().ok).toBe(true);
     // Die Fähigkeit wurde angestoßen (der echte Prozess-Abbruch ist bewusst nicht Teil des Tests).
     expect(ran).toBe(true);
+  });
+
+  // SCRUM-450: Re-Authentifizierung. Falsches Passwort darf den unwiderruflichen Reset NIE auslösen.
+  it("mit Fähigkeit, aber falschem Passwort → 401 und Reset NICHT ausgelöst", async () => {
+    let ran = false;
+    const { app, headers } = await adminApp({
+      available: true,
+      run: async () => {
+        ran = true;
+      },
+    });
+    const post = await app.inject({
+      method: "POST",
+      url: "/api/admin/factory-reset",
+      headers,
+      payload: { password: "voellig-falsch" },
+    });
+    expect(post.statusCode).toBe(401);
+    expect(ran).toBe(false);
+  });
+
+  // SCRUM-450: fehlendes Passwort wird ebenso abgelehnt (kein „nur angemeldet reicht").
+  it("mit Fähigkeit, aber ohne Passwort → 401 und Reset NICHT ausgelöst", async () => {
+    let ran = false;
+    const { app, headers } = await adminApp({
+      available: true,
+      run: async () => {
+        ran = true;
+      },
+    });
+    const post = await app.inject({
+      method: "POST",
+      url: "/api/admin/factory-reset",
+      headers,
+      payload: {},
+    });
+    expect(post.statusCode).toBe(401);
+    expect(ran).toBe(false);
   });
 });

@@ -62,6 +62,18 @@ export function adminRoutes(
         });
         return;
       }
+      // SCRUM-450: Re-Authentifizierung. Der Werksreset löscht ALLE Daten unwiderruflich —
+      // „angemeldet als Admin" allein reicht nicht, der Admin muss sein Passwort bestätigen.
+      // So kann ein offener/übernommener Admin-Tab den Reset nicht ohne Passwort auslösen.
+      const body = (request.body ?? {}) as { password?: unknown };
+      const password = typeof body.password === "string" ? body.password : "";
+      if (!password || !(await services.auth.verifyUserPassword(user.id, password))) {
+        reply.code(401).send({
+          error: "INVALID_PASSWORD",
+          message: "Falsches Passwort. Der Werksreset wurde nicht ausgeführt.",
+        });
+        return;
+      }
       // Erst antworten (damit die Oberfläche die Bestätigung erhält), dann Bestand löschen und
       // den Prozess beenden. Der Reset läuft bewusst NACH dem Flush der Antwort.
       reply.code(200).send({ ok: true });

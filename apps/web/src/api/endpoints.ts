@@ -350,7 +350,9 @@ export const endpoints = {
     // Pedi 05.07. (Beta): Werksreset — Verfügbarkeit (nur Desktop/Dev) + Ausführen (löscht alles,
     // beendet das Programm; nächster Start = Ersteinrichtung).
     factoryResetStatus: () => api.get<{ available: boolean }>("/admin/factory-reset"),
-    factoryReset: () => api.post<{ ok: boolean }>("/admin/factory-reset", {}),
+    // SCRUM-450: Werksreset erst nach Passwort-Bestätigung des Admins (Re-Authentifizierung).
+    factoryReset: (password: string) =>
+      api.post<{ ok: boolean }>("/admin/factory-reset", { password }),
   },
   users: {
     list: () => api.get<PublicUser[]>("/users"),

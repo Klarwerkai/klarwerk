@@ -55,6 +55,18 @@ describe("AuthService", () => {
     });
   });
 
+  // SCRUM-450: reine Passwort-Prüfung (Re-Auth vor Werksreset) — korrekt true, sonst false.
+  it("SCRUM-450: verifyUserPassword prüft das Passwort ohne Nebenwirkung", async () => {
+    const admin = await service.register({
+      name: "Admin",
+      email: "admin@x.de",
+      password: "secret123",
+    });
+    expect(await service.verifyUserPassword(admin.id, "secret123")).toBe(true);
+    expect(await service.verifyUserPassword(admin.id, "falsch")).toBe(false);
+    expect(await service.verifyUserPassword("gibt-es-nicht", "secret123")).toBe(false);
+  });
+
   it("FR-AUTH-04: Logout beendet die Sitzung serverseitig", async () => {
     await service.register({ name: "Admin", email: "admin@x.de", password: "secret123" });
     const { token } = await service.login({ email: "admin@x.de", password: "secret123" });

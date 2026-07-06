@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   ArrowRight,
   KeyRound,
   Power,
@@ -199,18 +200,30 @@ export function Admin(): JSX.Element {
     queryKey: ["factory-reset-status"],
     queryFn: endpoints.admin.factoryResetStatus,
   });
-  // Zwei-Stufen-Bestätigung: "" (aus) → "armed" (erste Rückfrage) → "confirm" (zweite Rückfrage).
+  // Zwei-Stufen-Bestätigung: "" (aus) → "armed" (Passwort + erste Rückfrage) → "confirm" (große Warnung).
   const [factoryStep, setFactoryStep] = useState<"" | "armed" | "confirm">("");
+  // SCRUM-450: Re-Authentifizierung — der Admin muss vor dem unwiderruflichen Reset sein Passwort bestätigen.
+  const [factoryPw, setFactoryPw] = useState("");
   const [factoryDone, setFactoryDone] = useState(false);
+  const cancelFactory = () => {
+    setFactoryStep("");
+    setFactoryPw("");
+  };
   const factoryReset = useMutation({
-    mutationFn: () => endpoints.admin.factoryReset(),
+    mutationFn: (password: string) => endpoints.admin.factoryReset(password),
     onSuccess: () => {
       // Der Server beendet sich unmittelbar danach — die Oberfläche zeigt einen Neustart-Hinweis.
       setFactoryStep("");
+      setFactoryPw("");
       setFactoryDone(true);
       push("success", t("adm.factoryDone"));
     },
-    onError: fail,
+    // SCRUM-450: Falsches Passwort → zurück zur Eingabe (Passwort leeren) mit klarer Meldung.
+    onError: () => {
+      setFactoryStep("armed");
+      setFactoryPw("");
+      push("error", t("adm.factory.wrongPassword"));
+    },
   });
 
   // KI-Verwaltung v1 (Pedi 02.07., Teil-Slice des PMO-Eintrags): Zuordnung global + je
@@ -527,46 +540,67 @@ export function Admin(): JSX.Element {
                   {t("adm.factory.button")}
                 </button>
               ) : factoryStep === "armed" ? (
-                <div className="flex flex-wrap items-center gap-2 rounded-card border border-hairline bg-page px-3 py-2">
-                  <span className="text-[12.5px] font-semibold text-text">
+                // SCRUM-450: Stufe 1 — Passwort-Bestätigung (Re-Authentifizierung).
+                <div className="space-y-2 rounded-card border border-hairline bg-page px-3 py-2.5">
+                  <span className="block text-[12.5px] font-semibold text-text">
                     {t("adm.factory.confirm1")}
                   </span>
-                  <button
-                    type="button"
-                    className="text-[12px] font-semibold text-muted hover:text-text"
-                    onClick={() => setFactoryStep("")}
-                  >
-                    {t("adm.factory.cancel")}
-                  </button>
-                  <button
-                    type="button"
-                    className="text-[12px] font-semibold text-trust-crit-text"
-                    onClick={() => setFactoryStep("confirm")}
-                  >
-                    {t("adm.factory.continue")}
-                  </button>
+                  <Field label={t("adm.factory.passwordLabel")}>
+                    <TextInput
+                      type="password"
+                      value={factoryPw}
+                      autoComplete="current-password"
+                      onChange={(e) => setFactoryPw(e.target.value)}
+                    />
+                  </Field>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      className="text-[12px] font-semibold text-muted hover:text-text"
+                      onClick={cancelFactory}
+                    >
+                      {t("adm.factory.cancel")}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={factoryPw.trim().length === 0}
+                      className="text-[12px] font-semibold text-trust-crit-text disabled:opacity-40"
+                      onClick={() => setFactoryStep("confirm")}
+                    >
+                      {t("adm.factory.continue")}
+                    </button>
+                  </div>
                 </div>
               ) : (
-                <div className="flex flex-wrap items-center gap-2 rounded-card border border-trust-crit-text/30 bg-trust-crit-bg px-3 py-2">
-                  <span className="text-[12.5px] font-semibold text-trust-crit-text">
-                    {t("adm.factory.confirm2")}
-                  </span>
-                  <button
-                    type="button"
-                    className="text-[12px] font-semibold text-muted hover:text-text"
-                    onClick={() => setFactoryStep("")}
-                  >
-                    {t("adm.factory.cancel")}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={factoryReset.isPending}
-                    className="inline-flex items-center gap-1 text-[12px] font-semibold text-trust-crit-text disabled:opacity-50"
-                    onClick={() => factoryReset.mutate()}
-                  >
-                    <Power size={13} />
-                    {t("adm.factory.execute")}
-                  </button>
+                // SCRUM-450: Stufe 2 — große, unübersehbare Warnung vor dem unwiderruflichen Schritt.
+                <div className="space-y-2.5 rounded-card border border-trust-crit-text/40 bg-trust-crit-bg px-4 py-3.5">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle size={18} className="shrink-0 text-trust-crit-text" />
+                    <span className="text-[14px] font-bold text-trust-crit-text">
+                      {t("adm.factory.confirm2")}
+                    </span>
+                  </div>
+                  <p className="text-[12.5px] leading-snug text-trust-crit-text/90">
+                    {t("adm.factory.warnBody")}
+                  </p>
+                  <div className="flex items-center gap-3 pt-0.5">
+                    <button
+                      type="button"
+                      className="text-[12px] font-semibold text-muted hover:text-text"
+                      onClick={cancelFactory}
+                    >
+                      {t("adm.factory.cancel")}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={factoryReset.isPending}
+                      className="inline-flex items-center gap-1 rounded-btn bg-trust-crit-text px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-50"
+                      onClick={() => factoryReset.mutate(factoryPw)}
+                    >
+                      <Power size={13} />
+                      {t("adm.factory.execute")}
+                    </button>
+                  </div>
                 </div>
               )}
             </Card>

@@ -398,7 +398,11 @@ const de = {
     "Für wiederholte Tests: alles löschen und das Programm beenden. Nach dem Neustart ist wieder alles wie bei der ersten Einrichtung.",
   "adm.factory.button": "Auf Werkseinstellungen zurücksetzen",
   "adm.factory.confirm1": "Wirklich ALLE Daten löschen und das Programm beenden?",
+  "adm.factory.passwordLabel": "Zur Bestätigung dein Admin-Passwort",
   "adm.factory.confirm2": "Letzte Warnung: Dieser Schritt ist unwiderruflich.",
+  "adm.factory.warnBody":
+    "ALLE Wissensobjekte, Konten und Einstellungen werden gelöscht und das Programm beendet. Das lässt sich nicht rückgängig machen.",
+  "adm.factory.wrongPassword": "Falsches Passwort — der Werksreset wurde nicht ausgeführt.",
   "adm.factory.cancel": "Abbrechen",
   "adm.factory.continue": "Weiter",
   "adm.factory.execute": "Zurücksetzen & beenden",
@@ -3035,7 +3039,11 @@ const en: typeof de = {
     "For repeated testing: wipe everything and quit the program. After a restart it's all fresh, just like first setup.",
   "adm.factory.button": "Reset to factory settings",
   "adm.factory.confirm1": "Really delete ALL data and quit the program?",
+  "adm.factory.passwordLabel": "Confirm with your admin password",
   "adm.factory.confirm2": "Final warning: this step cannot be undone.",
+  "adm.factory.warnBody":
+    "ALL knowledge objects, accounts and settings will be deleted and the program will quit. This cannot be undone.",
+  "adm.factory.wrongPassword": "Wrong password — the factory reset was not performed.",
   "adm.factory.cancel": "Cancel",
   "adm.factory.continue": "Continue",
   "adm.factory.execute": "Reset & quit",
