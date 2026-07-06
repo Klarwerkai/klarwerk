@@ -323,6 +323,9 @@ export interface DraftPayload {
   bodyHtml?: string | null; // KW-STR: WYSIWYG-Body
   // SCRUM-415: Vertraulichkeitsstufe ab Erfassen (Standard „intern").
   confidentiality?: Confidentiality;
+  // SCRUM-457 (Pedi 06.07.): wo der Entwurf gespeichert wurde, damit „Fortsetzen" GENAU dort
+  // wieder öffnet — statt den Ort aus dem Inhalt zu raten. Alt-Entwürfe ohne Marker: Heuristik.
+  origin?: "tell" | "studio" | "expert";
 }
 
 export interface Draft {

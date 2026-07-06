@@ -96,6 +96,7 @@ import { gapContextDraft, readGapContext } from "../lib/captureFromGap";
 // SCRUM-407: zentrale ?-Hilfen-Karte des Erfassen-Wegs (chelp.*) — Gegenstück zu lib/reviewHelp.
 import { type CaptureHelpId, captureHelp } from "../lib/captureHelp";
 import { captureReadiness } from "../lib/captureReadiness";
+import { originForSave, resumeTargetForDraft } from "../lib/captureResume";
 // SCRUM-408: externe Quellen schon beim Erfassen — Warteliste + add-source beim Einreichen.
 import {
   type PendingSource,
@@ -762,6 +763,8 @@ export function Capture(): JSX.Element {
         ...(bodyHtml.trim() ? { bodyHtml } : {}),
         ...(n ? { neededValidations: n } : {}),
         ...(confidentiality !== "intern" ? { confidentiality } : {}),
+        // SCRUM-457: Herkunft mitspeichern → „Fortsetzen" öffnet genau hier wieder.
+        origin: originForSave({ expert: isExpertMode(mode), wizStep: wizStepRaw }),
       };
       // SCRUM-113 / FE-CAP-07: fortgesetzten Entwurf aktualisieren, sonst neu anlegen.
       return draftId ? endpoints.drafts.update(draftId, payload) : endpoints.drafts.create(payload);
@@ -803,10 +806,9 @@ export function Capture(): JSX.Element {
   const loadDraft = (d: Draft): void => {
     setErr(null);
     const p = d.payload;
-    const isStructured =
-      Boolean(p.bodyHtml?.trim()) ||
-      (p.conditions?.some((x) => x.trim()) ?? false) ||
-      (p.measures?.some((x) => x.trim()) ?? false);
+    // SCRUM-457: nicht mehr aus dem Inhalt raten — der gespeicherte Herkunfts-Marker entscheidet
+    // (Alt-Entwürfe ohne Marker: Rückfall-Heuristik in resumeTargetForDraft).
+    const target = resumeTargetForDraft(p);
     // gemeinsame Metadaten (erweiterte Felder)
     setType(p.type ?? "best_practice");
     setCategory(p.category ?? "");
@@ -819,21 +821,29 @@ export function Capture(): JSX.Element {
     setDraftId(d.id);
     // SCRUM-375: geladener Entwurf bringt erweiterte Felder mit → aufklappen, nichts verstecken.
     setShowAdvanced(true);
-    if (isStructured) {
-      setMode("formular");
-      setDraft({
-        ...EMPTY_DRAFT,
-        title: p.title ?? "",
-        statement: p.statement ?? "",
-        conditions: p.conditions ?? [],
-        measures: p.measures ?? [],
-      });
-    } else {
-      // Einfacher Entwurf → zurück ins Erzähl-Feld, sofort editier- und speicherbar.
+    const structuredDraft = {
+      ...EMPTY_DRAFT,
+      title: p.title ?? "",
+      statement: p.statement ?? "",
+      conditions: p.conditions ?? [],
+      measures: p.measures ?? [],
+    };
+    if (target === "tell") {
+      // Erzähl-Einstieg → Rohtext-Feld, sofort editier- und speicherbar.
       setMode("freitext");
       setDraft(null);
       setRaw(p.statement ?? p.title ?? "");
       setWizStep("tell");
+    } else if (target === "expert") {
+      // Experten-Formular (mode formular ⇒ expertView).
+      setMode("formular");
+      setDraft(structuredDraft);
+      setWizStep("tell");
+    } else {
+      // Geführtes Studio: kein Experten-Modus (expertView false) + refine-Schritt + Entwurf.
+      setMode("freitext");
+      setDraft(structuredDraft);
+      setWizStep("refine");
     }
     setNotice(t("capture.editingDraft"));
   };
