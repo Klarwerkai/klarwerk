@@ -17,6 +17,9 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
+  // Sicherheit: Passwort-Bestätigung bei Account-Erstellung (register/setup) — ein Vertipper
+  // im einzigen Passwortfeld würde sonst still ein falsches Passwort setzen (Aussperrung).
+  const [pw2, setPw2] = useState("");
   const [err, setErr] = useState<string | null>(null);
 
   const onError = (e: unknown): void =>
@@ -46,6 +49,7 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
   const busy = login.isPending || register.isPending || setup.isPending || forgot.isPending;
   const go = (m: Mode): void => {
     setErr(null);
+    setPw2("");
     setMode(m);
   };
 
@@ -93,6 +97,11 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
               onSubmit={(e) => {
                 e.preventDefault();
                 setErr(null);
+                // Passwort-Bestätigung erzwingen, bevor ein Konto angelegt wird.
+                if ((mode === "register" || mode === "setup") && pw !== pw2) {
+                  setErr(t("auth.passwordMismatch"));
+                  return;
+                }
                 if (mode === "login") {
                   login.mutate();
                 } else if (mode === "register") {
@@ -127,6 +136,22 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
                     required
                   />
                 </Field>
+              ) : null}
+              {mode === "register" || mode === "setup" ? (
+                <div className="space-y-1.5">
+                  <Field label={t("auth.passwordRepeat")}>
+                    <TextInput
+                      type="password"
+                      value={pw2}
+                      onChange={(e) => setPw2(e.target.value)}
+                      minLength={8}
+                      required
+                    />
+                  </Field>
+                  {pw2.length > 0 && pw !== pw2 ? (
+                    <p className="text-[12px] text-trust-crit-text">{t("auth.passwordMismatch")}</p>
+                  ) : null}
+                </div>
               ) : null}
 
               {err ? (

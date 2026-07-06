@@ -151,6 +151,8 @@ const de = {
   "auth.name": "Name",
   "auth.email": "E-Mail",
   "auth.password": "Passwort",
+  "auth.passwordRepeat": "Passwort wiederholen",
+  "auth.passwordMismatch": "Die Passwörter stimmen nicht überein.",
   "auth.submit.login": "Anmelden",
   "auth.submit.register": "Registrieren",
   "auth.submit.setup": "Admin anlegen & starten",
@@ -1309,6 +1311,8 @@ const de = {
   "ko.conditional": "Bedingt",
   "ko.reject": "Ablehnen",
   "ko.edit": "Bearbeiten",
+  "ko.returnedBanner":
+    "Dieses Wissensobjekt wurde aus der Prüfung zur Nacharbeit zurückgegeben. Bitte das Review-Feedback abarbeiten und eine Revision speichern.",
   "ko.rework.title": "Review-Nacharbeit",
   "ko.rework.hint":
     "Aus einer Review-Entscheidung (Rückfrage/Ablehnung) angestoßen. Bearbeiten erzeugt eine neue Version und startet die Prüfung neu — keine automatische Freigabe, keine automatische Rückgabe.",
@@ -2807,6 +2811,8 @@ const en: typeof de = {
   "auth.name": "Name",
   "auth.email": "Email",
   "auth.password": "Password",
+  "auth.passwordRepeat": "Repeat password",
+  "auth.passwordMismatch": "The passwords do not match.",
   "auth.submit.login": "Sign in",
   "auth.submit.register": "Register",
   "auth.submit.setup": "Create admin & start",
@@ -3941,6 +3947,8 @@ const en: typeof de = {
   "ko.conditional": "Conditional",
   "ko.reject": "Reject",
   "ko.edit": "Edit",
+  "ko.returnedBanner":
+    "This knowledge object was returned from review for rework. Please address the review feedback and save a revision.",
   "ko.rework.title": "Review rework",
   "ko.rework.hint":
     "Triggered by a review decision (query/reject). Editing creates a new version and restarts review — no automatic approval, no automatic return.",

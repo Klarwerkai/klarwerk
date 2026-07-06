@@ -92,6 +92,8 @@ export function Admin(): JSX.Element {
   const fail = (e: unknown) => push("error", e instanceof ApiError ? e.message : t("state.error"));
 
   const [newUser, setNewUser] = useState({ ...EMPTY_NEW_USER });
+  // Sicherheit: Passwort-Bestätigung bei der Nutzeranlage (Vertipper-Schutz, analog Reset).
+  const [newUserPw2, setNewUserPw2] = useState("");
   const [resetId, setResetId] = useState<string | null>(null);
   const [resetPw, setResetPw] = useState("");
   // SCRUM-455: Wiederholung des neuen Passworts (Vertipper-Schutz).
@@ -108,6 +110,7 @@ export function Admin(): JSX.Element {
     onSuccess: () => {
       invalidate();
       setNewUser({ ...EMPTY_NEW_USER });
+      setNewUserPw2("");
       push("success", t("adm.created"));
     },
     onError: fail,
@@ -1182,6 +1185,20 @@ export function Admin(): JSX.Element {
                   onChange={(e) => setNewUser((u) => ({ ...u, password: e.target.value }))}
                 />
               </Field>
+              {/* SCRUM: Passwort-Bestätigung — ein Vertipper würde den neuen Nutzer sonst aussperren. */}
+              <Field label={t("adm.newPasswordRepeat")}>
+                <TextInput
+                  type="password"
+                  minLength={8}
+                  value={newUserPw2}
+                  onChange={(e) => setNewUserPw2(e.target.value)}
+                />
+                {passwordRepeatMismatch(newUser.password, newUserPw2) ? (
+                  <p className="mt-1.5 text-[12px] text-trust-crit-text">
+                    {t("adm.passwordMismatch")}
+                  </p>
+                ) : null}
+              </Field>
               <Field label={t("adm.role")}>
                 <select
                   value={newUser.role}
@@ -1211,6 +1228,10 @@ export function Admin(): JSX.Element {
                         .map((i) => t(`adm.field.${i}`))
                         .join(", ")}`,
                     );
+                    return;
+                  }
+                  if (newUser.password !== newUserPw2) {
+                    push("error", t("adm.passwordMismatch"));
                     return;
                   }
                   create.mutate();

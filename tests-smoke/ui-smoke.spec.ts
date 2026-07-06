@@ -19,7 +19,11 @@ async function ensureLoggedIn(page: import("@playwright/test").Page): Promise<vo
       await nameField.first().fill("Smoke Tester");
     }
     await page.locator('input[type="email"]').fill(MAIL);
-    await pw.first().fill(PASS);
+    // Ersteinrichtung/Registrierung hat jetzt ein Passwort-Bestätigungsfeld — alle füllen.
+    const pwCount = await pw.count();
+    for (let i = 0; i < pwCount; i++) {
+      await pw.nth(i).fill(PASS);
+    }
     await page.locator('button[type="submit"]').click();
   }
   await expect(page.getByText("Wissen erfassen").first()).toBeVisible({ timeout: 15_000 });
@@ -34,7 +38,12 @@ test("Ersteinrichtung legt den Admin an und landet im Arbeitsbereich", async ({ 
     await textInputs.first().fill("Smoke Tester");
   }
   await page.locator('input[type="email"]').fill(MAIL);
-  await page.locator('input[type="password"]').first().fill(PASS);
+  // Passwort + Bestätigung (SCRUM: Vertipper-Schutz bei der Account-Erstellung).
+  const setupPw = page.locator('input[type="password"]');
+  const setupPwCount = await setupPw.count();
+  for (let i = 0; i < setupPwCount; i++) {
+    await setupPw.nth(i).fill(PASS);
+  }
   await page.locator('button[type="submit"]').click();
   await expect(page.getByText("Wissen erfassen").first()).toBeVisible({ timeout: 15_000 });
 });
