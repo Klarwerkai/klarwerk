@@ -17,6 +17,7 @@ import {
   deriveFrontDoorTitle,
   frontDoorBodyFromDraft,
   frontDoorStructuredBodyHtml,
+  submitFrontDoorDraft,
   withFrontDoorSaveTimeout,
 } from "../../apps/web/src/lib/captureFrontDoor";
 
@@ -107,6 +108,58 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(captured[0]?.statement).toBe("tesx fall");
     expect(String(captured[0]?.bodyHtml)).toContain("tesx fall");
     expect(captured[0]?.origin).toBe("frontdoor");
+  });
+
+  it("reicht neue Vordertuer-Inhalte ueber Draft-Create und Promote zur Pruefung ein", async () => {
+    const calls: string[] = [];
+    const payloads: DraftPayload[] = [];
+    const ko = await submitFrontDoorDraft(
+      { title: "wasser", bodyHtml: "<p>tesx fall</p>" },
+      {
+        createDraft: async (payload) => {
+          calls.push("create");
+          payloads.push(payload);
+          return { id: "draft-new" };
+        },
+        updateDraft: async () => {
+          throw new Error("unexpected update");
+        },
+        promoteDraft: async (id) => {
+          calls.push(`promote:${id}`);
+          return { id: "ko-1", title: "wasser" };
+        },
+      },
+      100,
+    );
+
+    expect(ko.id).toBe("ko-1");
+    expect(calls).toEqual(["create", "promote:draft-new"]);
+    expect(payloads[0]?.title).toBe("wasser");
+    expect(payloads[0]?.statement).toBe("tesx fall");
+    expect(payloads[0]?.origin).toBe("frontdoor");
+  });
+
+  it("aktualisiert fortgesetzte Vordertuer-Drafts vor dem Promote", async () => {
+    const calls: string[] = [];
+    await submitFrontDoorDraft(
+      { title: "aktualisiert", bodyHtml: "<p>inhalt</p>", activeDraftId: "draft-42" },
+      {
+        createDraft: async () => {
+          throw new Error("unexpected create");
+        },
+        updateDraft: async (id, payload) => {
+          calls.push(`update:${id}:${payload.title}`);
+          return { id };
+        },
+        promoteDraft: async (id) => {
+          calls.push(`promote:${id}`);
+          return { id: "ko-42", title: "aktualisiert" };
+        },
+      },
+      100,
+    );
+
+    expect(calls).toEqual(["update:draft-42:aktualisiert", "promote:draft-42"]);
   });
 
   it("beendet einen haengenden Save mit klarer Fehlermeldung", async () => {
@@ -212,6 +265,35 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(pageSource).not.toContain("endpoints.ko.create");
     expect(pageSource).not.toContain("endpoints.validation");
     expect(pageSource).not.toContain("KnowledgeInputStudio");
+  });
+
+  it("macht KI-Vorschlaege sichtbar und bietet Verwerfen ohne Textverlust an", () => {
+    const pageSource = readFileSync(
+      resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
+      "utf8",
+    );
+
+    expect(pageSource).toContain("proposalRef");
+    expect(pageSource).toContain("scrollIntoView");
+    expect(pageSource).toContain("discardStructureProposal");
+    expect(pageSource).toContain("discardAssistProposal");
+    expect(pageSource).toContain("Originaltext bleibt unveraendert");
+  });
+
+  it("bietet nach Draft-Save klare Folgeaktionen und einen echten Submit-Pfad", () => {
+    const pageSource = readFileSync(
+      resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
+      "utf8",
+    );
+
+    expect(pageSource).toContain("submitFrontDoorDraft");
+    expect(pageSource).toContain("endpoints.drafts.promote");
+    expect(pageSource).toContain("Pruefen / Einreichen");
+    expect(pageSource).toContain("Weiter bearbeiten");
+    expect(pageSource).toContain("Neuer Eintrag");
+    expect(pageSource).toContain("Zur Pruefung eingereicht");
+    expect(pageSource).toContain("Validierung oeffnen");
+    expect(pageSource).not.toContain('setBodyHtml("");\\n      setActiveDraftId(null)');
   });
 
   it("/erfassen stellt die Vordertuer als Default heraus und behaelt alte Wege", () => {

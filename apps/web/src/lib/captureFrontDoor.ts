@@ -160,3 +160,28 @@ export function createFrontDoorDraft<TDraft>(
 ): Promise<TDraft> {
   return withFrontDoorSaveTimeout(createDraft(buildFrontDoorPayload(input)), timeoutMs);
 }
+
+export interface FrontDoorDraftRef {
+  id: string;
+}
+
+export interface FrontDoorSubmitClient<TDraft extends FrontDoorDraftRef, TKo> {
+  createDraft: (payload: DraftPayload) => Promise<TDraft>;
+  updateDraft: (id: string, payload: DraftPayload) => Promise<TDraft>;
+  promoteDraft: (id: string) => Promise<TKo>;
+}
+
+export async function submitFrontDoorDraft<TDraft extends FrontDoorDraftRef, TKo>(
+  input: { title: string; bodyHtml: string; activeDraftId?: string | null },
+  client: FrontDoorSubmitClient<TDraft, TKo>,
+  timeoutMs = FRONT_DOOR_SAVE_TIMEOUT_MS,
+): Promise<TKo> {
+  const payload = buildFrontDoorPayload(input);
+  const draft = await withFrontDoorSaveTimeout(
+    input.activeDraftId
+      ? client.updateDraft(input.activeDraftId, payload)
+      : client.createDraft(payload),
+    timeoutMs,
+  );
+  return client.promoteDraft(draft.id);
+}
