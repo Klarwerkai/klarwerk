@@ -10,9 +10,8 @@ import { RichTextEditor } from "../components/RichTextEditor";
 import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
 import {
   CAPTURE_FRONT_DOOR_FALLBACK_TITLE,
-  buildFrontDoorPayload,
+  createFrontDoorDraft,
   deriveFrontDoorTitle,
-  withFrontDoorSaveTimeout,
 } from "../lib/captureFrontDoor";
 import { isEmptyHtml } from "../lib/richText";
 
@@ -29,7 +28,7 @@ export function CaptureFrontDoor(): JSX.Element {
   const qc = useQueryClient();
   const [title, setTitle] = useState("");
   const [bodyHtml, setBodyHtml] = useState("");
-  const [savedKoId, setSavedKoId] = useState<string | null>(null);
+  const [savedDraft, setSavedDraft] = useState<{ id: string; title: string } | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const authorName = user?.name ?? user?.email ?? "-";
@@ -38,17 +37,21 @@ export function CaptureFrontDoor(): JSX.Element {
 
   const save = useMutation({
     mutationFn: () =>
-      withFrontDoorSaveTimeout(endpoints.ko.create(buildFrontDoorPayload({ title, bodyHtml }))),
+      createFrontDoorDraft({ title, bodyHtml }, (payload) => endpoints.drafts.create(payload)),
     onMutate: () => {
       setErr(null);
-      setSavedKoId(null);
+      setSavedDraft(null);
     },
-    onSuccess: (ko) => {
-      setSavedKoId(ko.id);
+    onSuccess: (draft) => {
+      setSavedDraft({
+        id: draft.id,
+        title: draft.payload.title ?? derivedTitle,
+      });
+      setTitle("");
+      setBodyHtml("");
       setErr(null);
-      push("success", "Wissensobjekt gespeichert.");
-      void qc.invalidateQueries({ queryKey: ["kos"] });
-      void qc.invalidateQueries({ queryKey: ["validation"] });
+      push("success", "Entwurf gespeichert.");
+      void qc.invalidateQueries({ queryKey: ["drafts"] });
     },
     onError: (e) => setErr(errorMessage(e)),
   });
@@ -97,11 +100,12 @@ export function CaptureFrontDoor(): JSX.Element {
               </div>
             ) : null}
 
-            {savedKoId ? (
+            {savedDraft ? (
               <div className="rounded-card border border-trust-pos-fill/40 bg-trust-pos-bg p-3 text-sm text-trust-pos-text">
-                Gespeichert. Das Wissensobjekt ist angelegt und noch nicht validiert.{" "}
-                <Link className="font-semibold underline" to={`/wissen/${savedKoId}`}>
-                  Wissensobjekt oeffnen
+                Entwurf gespeichert: <strong>{savedDraft.title}</strong>. Du findest ihn im
+                bisherigen Erfassen-Weg unter Entwuerfe fortsetzen.{" "}
+                <Link className="font-semibold underline" to="/erfassen">
+                  Entwurf oeffnen
                 </Link>
               </div>
             ) : null}
@@ -137,7 +141,7 @@ export function CaptureFrontDoor(): JSX.Element {
             </div>
             <div>
               <div className="text-[12px] text-muted">Status nach dem Speichern</div>
-              <div className="mt-1 text-sm text-text">offen / nicht validiert</div>
+              <div className="mt-1 text-sm text-text">Entwurf / fortsetzen</div>
             </div>
           </Card>
           <Card className="space-y-2">

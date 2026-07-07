@@ -3,7 +3,7 @@ import { htmlToPlainText, normalizePastedHtml } from "./richText";
 
 export const CAPTURE_FRONT_DOOR_ROUTE = "/capture/frontdoor";
 export const CAPTURE_FRONT_DOOR_FALLBACK_TITLE = "Unbenanntes Wissensobjekt";
-export const FRONT_DOOR_SAVE_TIMEOUT_MS = 15000;
+export const FRONT_DOOR_SAVE_TIMEOUT_MS = 30000;
 export const FRONT_DOOR_SAVE_TIMEOUT_MESSAGE =
   "Speichern dauert zu lange. Bitte pruefe Bibliothek oder Entwuerfe, bevor du erneut speicherst.";
 
@@ -83,4 +83,12 @@ export function withFrontDoorSaveTimeout<T>(
       }
     });
   });
+}
+
+export function createFrontDoorDraft<TDraft>(
+  input: { title: string; bodyHtml: string },
+  createDraft: (payload: DraftPayload) => Promise<TDraft>,
+  timeoutMs = FRONT_DOOR_SAVE_TIMEOUT_MS,
+): Promise<TDraft> {
+  return withFrontDoorSaveTimeout(createDraft(buildFrontDoorPayload(input)), timeoutMs);
 }

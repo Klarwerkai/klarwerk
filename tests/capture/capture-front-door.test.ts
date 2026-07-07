@@ -1,10 +1,12 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import type { Draft, DraftPayload } from "../../apps/web/src/api/types";
 import {
   CAPTURE_FRONT_DOOR_ROUTE,
   FRONT_DOOR_SAVE_TIMEOUT_MESSAGE,
   buildFrontDoorPayload,
+  createFrontDoorDraft,
   deriveFrontDoorTitle,
   withFrontDoorSaveTimeout,
 } from "../../apps/web/src/lib/captureFrontDoor";
@@ -35,7 +37,7 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(String(payload.bodyHtml)).toContain("<strong>fett</strong>");
   });
 
-  it("uebernimmt Pedi-Titel und Pedi-Inhalt in den KO-Create-Payload", () => {
+  it("uebernimmt Pedi-Titel und Pedi-Inhalt in den Speicher-Payload", () => {
     const payload = buildFrontDoorPayload({
       title: "wasser",
       bodyHtml: "<p>tesx fall</p>",
@@ -45,6 +47,31 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(payload.statement).toBe("tesx fall");
     expect(String(payload.bodyHtml)).toContain("tesx fall");
     expect(payload.origin).toBe("tell");
+  });
+
+  it("nutzt den bestehenden Draft-Create-Pfad fuer die Vordertuer-Persistenz", async () => {
+    const captured: DraftPayload[] = [];
+    const draft = await createFrontDoorDraft(
+      { title: "wasser", bodyHtml: "<p>tesx fall</p>" },
+      async (payload) => {
+        captured.push(payload);
+        return {
+          id: "draft-frontdoor",
+          payload,
+          originalAuthor: "pedi",
+          lastEditor: "pedi",
+          createdAt: "2026-07-07T00:00:00.000Z",
+          updatedAt: "2026-07-07T00:00:00.000Z",
+        } satisfies Draft;
+      },
+      100,
+    );
+
+    expect(draft.id).toBe("draft-frontdoor");
+    expect(captured[0]?.title).toBe("wasser");
+    expect(captured[0]?.statement).toBe("tesx fall");
+    expect(String(captured[0]?.bodyHtml)).toContain("tesx fall");
+    expect(captured[0]?.origin).toBe("tell");
   });
 
   it("beendet einen haengenden Save mit klarer Fehlermeldung", async () => {
@@ -60,8 +87,8 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     );
     expect(pageSource).toContain("RichTextEditor");
     expect(pageSource).toContain("Als Wissensobjekt sichern");
-    expect(pageSource).toContain("endpoints.ko.create");
-    expect(pageSource).toContain("withFrontDoorSaveTimeout");
+    expect(pageSource).toContain("endpoints.drafts.create");
+    expect(pageSource).toContain("createFrontDoorDraft");
     expect(pageSource).toContain("onMutate");
     expect(pageSource).toContain('to="/erfassen"');
     expect(pageSource).not.toContain("KnowledgeInputStudio");
