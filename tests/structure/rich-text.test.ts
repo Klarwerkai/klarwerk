@@ -4,6 +4,7 @@ import {
   insertImageHtml,
   insertImageSrcHtml,
   isEmptyHtml,
+  normalizePastedHtml,
   sanitizeHtml,
 } from "../../apps/web/src/lib/richText";
 
@@ -121,5 +122,49 @@ describe("SCRUM-458 FE: sanitizeHtml erhält Formatierung durch Tag-Abbildung", 
     expect(sanitizeHtml("<table><tr><td>Z</td></tr></table>")).toBe(
       "<table><tr><td>Z</td></tr></table>",
     );
+  });
+});
+
+describe("FMT-1 FE: Paste-Event-Normalisierung fuer Office-/Richtext-HTML", () => {
+  it("normalisiert Word-/Office-HTML vor DOM-Insertion, erhaelt einfache Tabellen + numerische Spans", () => {
+    const office = `
+      <!--[if gte mso 9]><xml><w:WordDocument>noise</w:WordDocument></xml><![endif]-->
+      <html xmlns:o="urn:schemas-microsoft-com:office:office"><body>
+        <h1 class="MsoTitle" style="mso-margin-top-alt:auto">Titel<o:p>&nbsp;</o:p></h1>
+        <p class="MsoNormal" style="mso-style-name:Standard">
+          <b>fett</b>
+          <i>kursiv</i>
+          <span style="font-weight:700; mso-bidi-font-weight:normal">Span fett</span>
+          <span style="font-style: italic">Span kursiv</span>
+          <span style="text-decoration-line: underline">Span u</span>
+        </p>
+        <h4>Unter</h4>
+        <table class="MsoTableGrid" style="border-collapse:collapse">
+          <tr onclick="evil()"><td colspan="2" rowspan="3" style="width:10px">A</td><td colspan="x">B</td></tr>
+        </table>
+      </body></html>`;
+
+    const clean = normalizePastedHtml(office);
+    expect(clean).toContain("<h2>Titel</h2>");
+    expect(clean).toContain("<strong>fett</strong>");
+    expect(clean).toContain("<em>kursiv</em>");
+    expect(clean).toContain("<strong>Span fett</strong>");
+    expect(clean).toContain("<em>Span kursiv</em>");
+    expect(clean).toContain("<u>Span u</u>");
+    expect(clean).toContain("<h3>Unter</h3>");
+    expect(clean).toContain('<td colspan="2" rowspan="3">A</td>');
+    expect(clean).toContain("<td>B</td>");
+    expect(clean).not.toMatch(/mso-|style=|class=|<o:p|onclick/);
+  });
+
+  it("entfernt XSS und laesst externe Bild-Hotlinks nicht durch", () => {
+    const clean = normalizePastedHtml(
+      '<p onclick="x()">ok</p><script>alert(1)</script><a href="javascript:alert(1)">x</a><img src="https://evil/x.png" alt="x">',
+    );
+    expect(clean).toBe('<p>ok</p><a rel="noopener noreferrer nofollow" target="_blank">x</a>');
+  });
+
+  it("laesst Plaintext als Text erhalten, wenn der Helper ohne HTML-Markup genutzt wird", () => {
+    expect(normalizePastedHtml("Nur Text < & >")).toBe("Nur Text &lt; &amp; &gt;");
   });
 });

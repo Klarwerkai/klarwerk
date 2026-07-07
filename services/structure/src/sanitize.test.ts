@@ -162,6 +162,46 @@ describe("Formatierung Stufe 2: sanitizeHtml normalisiert style-basierte Formati
   });
 });
 
+describe("FMT-1: sanitizeHtml normalisiert Office-/Richtext-Paste autoritativ", () => {
+  it("entfernt Office-Muell und erhaelt Formatierung + einfache Tabellen sicher", () => {
+    const office = `
+      <!--[if gte mso 9]><xml><w:WordDocument>noise</w:WordDocument></xml><![endif]-->
+      <html xmlns:o="urn:schemas-microsoft-com:office:office"><body>
+        <h1 class="MsoTitle" style="mso-margin-top-alt:auto">Titel<o:p>&nbsp;</o:p></h1>
+        <p class="MsoNormal" style="mso-style-name:Standard">
+          <b>fett</b>
+          <i>kursiv</i>
+          <span style="font-weight:700; mso-bidi-font-weight:normal">Span fett</span>
+          <span style="font-style: italic">Span kursiv</span>
+          <span style="text-decoration-line: underline">Span u</span>
+        </p>
+        <h4>Unter</h4>
+        <table class="MsoTableGrid" style="border-collapse:collapse">
+          <tr onclick="evil()"><td colspan="2" rowspan="3" style="width:10px">A</td><td colspan="x">B</td></tr>
+        </table>
+      </body></html>`;
+
+    const clean = sanitizeHtml(office);
+    expect(clean).toContain("<h2>Titel</h2>");
+    expect(clean).toContain("<strong>fett</strong>");
+    expect(clean).toContain("<em>kursiv</em>");
+    expect(clean).toContain("<strong>Span fett</strong>");
+    expect(clean).toContain("<em>Span kursiv</em>");
+    expect(clean).toContain("<u>Span u</u>");
+    expect(clean).toContain("<h3>Unter</h3>");
+    expect(clean).toContain('<td colspan="2" rowspan="3">A</td>');
+    expect(clean).toContain("<td>B</td>");
+    expect(clean).not.toMatch(/mso-|style=|class=|<o:p|onclick/);
+  });
+
+  it("entfernt XSS und erlaubt keine neuen externen Bild-Hotlinks", () => {
+    const clean = sanitizeHtml(
+      '<p onclick="x()">ok</p><script>alert(1)</script><a href="javascript:alert(1)">x</a><img src="https://evil/x.png" alt="x">',
+    );
+    expect(clean).toBe('<p>ok</p><a rel="noopener noreferrer nofollow" target="_blank">x</a>');
+  });
+});
+
 describe("KW-STR: htmlToPlainText", () => {
   it("entfernt Tags + Entities, normalisiert Whitespace", () => {
     expect(htmlToPlainText("<h2>Titel</h2><p>Text&amp;mehr</p>")).toBe("Titel Text&mehr");

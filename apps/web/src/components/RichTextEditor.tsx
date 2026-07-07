@@ -17,7 +17,12 @@ import {
 } from "../lib/editorDropPaste";
 import { editorLinkHtml } from "../lib/editorLinks";
 import { fileToThumbDataUrl } from "../lib/files";
-import { insertImageHtml, insertImageSrcHtml, sanitizeHtml } from "../lib/richText";
+import {
+  insertImageHtml,
+  insertImageSrcHtml,
+  normalizePastedHtml,
+  sanitizeHtml,
+} from "../lib/richText";
 import { SanitizedHtml } from "./SanitizedHtml";
 import { Button } from "./ui";
 
@@ -249,20 +254,27 @@ export function RichTextEditor({
   const onDragLeave = (): void => setDragActive(false);
 
   const onPaste = (e: ClipboardEvent<HTMLDivElement>): void => {
-    // Nur eingefügte BILD-Dateien abfangen; normalen Text-/HTML-Paste normal durchlassen (emit sanitisiert).
+    // Bild-Paste bleibt vorrangig auf dem bestehenden sicheren Pfad.
     const fileItems = Array.from(e.clipboardData?.items ?? []).filter((it) => it.kind === "file");
     const imageFiles = fileItems
       .filter((it) => isInsertableImageMime(it.type))
       .map((it) => it.getAsFile())
       .filter((f): f is File => f !== null);
-    if (imageFiles.length === 0) {
-      if (fileItems.length > 0) {
-        setFileNotice(true);
-      }
+    if (imageFiles.length > 0) {
+      e.preventDefault();
+      void handleMediaFiles(imageFiles);
+      return;
+    }
+    if (fileItems.length > 0) {
+      setFileNotice(true);
+    }
+
+    const html = e.clipboardData?.getData("text/html")?.trim() ?? "";
+    if (!html) {
       return;
     }
     e.preventDefault();
-    void handleMediaFiles(imageFiles);
+    insertHtmlReliable(normalizePastedHtml(html));
   };
 
   // SCRUM-384: ARGUS-Toolbar — kleine Text-Pills wie im Alt-Editor („Wissensseite bearbeiten").

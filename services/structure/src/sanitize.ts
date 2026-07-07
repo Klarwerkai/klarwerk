@@ -160,6 +160,25 @@ function renderAttrs(tag: string, raw: string): string {
 // Tags, deren INHALT komplett verworfen wird (nicht als Text behalten) — XSS/Style-Leaks.
 const DROP_CONTENT_TAGS = new Set(["script", "style", "iframe"]);
 
+function attrValue(raw: string, name: string): string | null {
+  const re = new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'>]+))`, "i");
+  const match = re.exec(raw);
+  return match ? (match[1] ?? match[2] ?? match[3] ?? "") : null;
+}
+
+function stripOfficeMarkup(html: string): string {
+  return html
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<\?xml[\s\S]*?\?>/gi, "")
+    .replace(/<xml\b[\s\S]*?<\/xml>/gi, "")
+    .replace(/<o:p\b[^>]*>[\s\S]*?<\/o:p>/gi, "")
+    .replace(/<\/?o:p\b[^>]*>/gi, "")
+    .replace(/<meta\b[^>]*>/gi, "")
+    .replace(/<link\b[^>]*>/gi, "")
+    .replace(/<\/?(?:html|head|body|font)\b[^>]*>/gi, "")
+    .replace(/\s(?:xmlns(?::\w+)?|lang)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "");
+}
+
 // Formatierung Stufe 2 (Paste-Normalisierer, autoritativ am Server): Word/Browser liefern Fett/Kursiv/
 // Unterstrichen oft als style-basierte <span> (z. B. style="font-weight:700") statt als <b>/<i>/<u>.
 // Der Sanitizer verwirft <span> + style → Formatierung ginge verloren. Wir bilden die häufigen,
@@ -169,19 +188,30 @@ function normalizeInlineFormatting(html: string): string {
   if (html.indexOf("<span") === -1) {
     return html;
   }
-  return html
-    .replace(
-      /<span\b[^>]*\bstyle="[^"]*font-weight:\s*(?:bold|[6-9]00)[^"]*"[^>]*>([\s\S]*?)<\/span>/gi,
-      "<strong>$1</strong>",
-    )
-    .replace(
-      /<span\b[^>]*\bstyle="[^"]*font-style:\s*italic[^"]*"[^>]*>([\s\S]*?)<\/span>/gi,
-      "<em>$1</em>",
-    )
-    .replace(
-      /<span\b[^>]*\bstyle="[^"]*text-decoration:[^"]*underline[^"]*"[^>]*>([\s\S]*?)<\/span>/gi,
-      "<u>$1</u>",
-    );
+  return html.replace(/<span\b([^>]*)>([\s\S]*?)<\/span>/gi, (_full, rawAttrs, body) => {
+    const style = attrValue(String(rawAttrs), "style");
+    let out = String(body);
+    if (!style) {
+      return out;
+    }
+    if (/text-decoration(?:-line)?\s*:[^;]*underline/i.test(style)) {
+      out = `<u>${out}</u>`;
+    }
+    if (/font-style\s*:\s*italic/i.test(style)) {
+      out = `<em>${out}</em>`;
+    }
+    if (/font-weight\s*:\s*(?:bold|[6-9]00)\b/i.test(style)) {
+      out = `<strong>${out}</strong>`;
+    }
+    return out;
+  });
+}
+
+function normalizeRichTextInput(input: string): string {
+  if (!input) {
+    return "";
+  }
+  return normalizeInlineFormatting(stripOfficeMarkup(input));
 }
 
 // Allowlist-Tokenizer: läuft das HTML einmal durch, gibt nur erlaubte Tags + Text aus.
@@ -190,7 +220,7 @@ export function sanitizeHtml(input: string): string {
     return "";
   }
   // Formatierung Stufe 2: style-basierte Formatierung vor dem Sanitizing auf semantische Tags abbilden.
-  const html = normalizeInlineFormatting(input);
+  const html = normalizeRichTextInput(input);
   const out: string[] = [];
   const openStack: string[] = [];
   const tagRe = /<\/?([a-zA-Z][a-zA-Z0-9]*)((?:[^<>"']|"[^"]*"|'[^']*')*)>/g;
@@ -270,7 +300,7 @@ export function sanitizeHtml(input: string): string {
 // Reine Plaintext-Ableitung aus HTML (für die statement-Kurzfassung).
 export function htmlToPlainText(html: string): string {
   return html
-    .replace(/<\/(p|h2|h3|li|blockquote|div)>/gi, " ")
+    .replace(/<\/(p|h2|h3|li|blockquote|div|caption|th|td|tr)>/gi, " ")
     .replace(/<br\s*\/?>/gi, " ")
     .replace(/<[^>]*>/g, "")
     .replace(/&amp;/g, "&")
