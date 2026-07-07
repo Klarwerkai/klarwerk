@@ -10,6 +10,18 @@ describe("SCRUM-432: Vertrauen & Sicherheit", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
+  it("deckt die erwarteten Sicherheits-Themen im Admin-Auszug ab", () => {
+    expect(SECURITY_POINTS.map((p) => p.id)).toEqual([
+      "keys",
+      "localAi",
+      "external",
+      "audit",
+      "trash",
+      "roles",
+      "noCustomerData",
+    ]);
+  });
+
   it("jede Aussage hat aufgelösten Titel + Text in DE und EN", async () => {
     for (const lng of ["de", "en"] as const) {
       await i18n.changeLanguage(lng);
