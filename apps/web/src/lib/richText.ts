@@ -43,12 +43,24 @@ const TAG_MAP: Record<string, string> = {
 };
 const ALLOWED_ATTRS: Record<string, Set<string>> = {
   a: new Set(["href", "title"]),
-  img: new Set(["src", "alt"]),
+  img: new Set(["src", "alt", "data-kw-scale"]),
   div: new Set(["class"]),
   // Formatierung Stufe 2 (Tabellen): nur numerische Zell-Spannen erhalten (Merges aus Word/HTML).
   th: new Set(["colspan", "rowspan"]),
   td: new Set(["colspan", "rowspan"]),
 };
+
+export const IMAGE_SCALE_VALUES = ["25", "50", "75", "100"] as const;
+export type ImageScaleValue = (typeof IMAGE_SCALE_VALUES)[number];
+export const DEFAULT_IMAGE_SCALE: ImageScaleValue = "100";
+
+export function normalizeImageScale(value: string | null | undefined): ImageScaleValue | null {
+  if (!value) {
+    return null;
+  }
+  const scale = value.trim();
+  return IMAGE_SCALE_VALUES.includes(scale as ImageScaleValue) ? (scale as ImageScaleValue) : null;
+}
 
 function isSafeHref(value: string): boolean {
   const v = value.trim();
@@ -120,6 +132,13 @@ function renderAttrs(tag: string, raw: string): string {
     }
     if (tag === "img" && name === "src" && !isSafeImgSrc(value)) {
       return "__INVALID_IMG__";
+    }
+    if (tag === "img" && name === "data-kw-scale") {
+      const scale = normalizeImageScale(value);
+      if (scale) {
+        out.push(`${name}="${scale}"`);
+      }
+      continue;
     }
     if (tag === "div" && name === "class") {
       const cls = sanitizeDivClass(value);
@@ -306,5 +325,5 @@ export function insertImageHtml(objectId: string, alt: string): string {
 export function insertImageSrcHtml(src: string, alt: string): string {
   const safeSrc = src.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
   const safeAlt = alt.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
-  return `<img src="${safeSrc}" alt="${safeAlt}">`;
+  return `<img src="${safeSrc}" alt="${safeAlt}" data-kw-scale="${DEFAULT_IMAGE_SCALE}">`;
 }

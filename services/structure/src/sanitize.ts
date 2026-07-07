@@ -51,12 +51,19 @@ const TAG_MAP: Record<string, string> = {
 // Erlaubte Attribute je Tag (alles andere wird verworfen, inkl. on*-Handler/style).
 const ALLOWED_ATTRS: Record<string, Set<string>> = {
   a: new Set(["href", "title"]),
-  img: new Set(["src", "alt"]),
+  img: new Set(["src", "alt", "data-kw-scale"]),
   div: new Set(["class"]),
   // Formatierung Stufe 2 (Tabellen): nur numerische Zell-Spannen erhalten (Merges aus Word/HTML).
   th: new Set(["colspan", "rowspan"]),
   td: new Set(["colspan", "rowspan"]),
 };
+
+const IMAGE_SCALE_VALUES = new Set(["25", "50", "75", "100"]);
+
+function sanitizeImageScale(value: string): string | null {
+  const scale = value.trim();
+  return IMAGE_SCALE_VALUES.has(scale) ? scale : null;
+}
 
 // href: nur sichere Schemes; KEIN javascript:/data: etc.
 function isSafeHref(value: string): boolean {
@@ -132,6 +139,13 @@ function renderAttrs(tag: string, raw: string): string {
     }
     if (tag === "img" && name === "src" && !isSafeImgSrc(value)) {
       return "__INVALID_IMG__"; // Bild ohne sichere src komplett verwerfen
+    }
+    if (tag === "img" && name === "data-kw-scale") {
+      const scale = sanitizeImageScale(value);
+      if (scale) {
+        out.push(`${name}="${scale}"`);
+      }
+      continue;
     }
     if (tag === "div" && name === "class") {
       const cls = sanitizeDivClass(value);

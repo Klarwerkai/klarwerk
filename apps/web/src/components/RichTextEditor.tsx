@@ -1,5 +1,5 @@
 import { Eye, Image as ImageIcon, Link as LinkIcon, Paperclip, Pencil } from "lucide-react";
-import type { ChangeEvent, ClipboardEvent, DragEvent, ReactNode } from "react";
+import type { ChangeEvent, ClipboardEvent, DragEvent, MouseEvent, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type EditorFile, fileLinkHtml } from "../lib/bodyFileLink";
@@ -18,8 +18,10 @@ import {
 import { editorLinkHtml } from "../lib/editorLinks";
 import { fileToThumbDataUrl } from "../lib/files";
 import {
+  type ImageScaleValue,
   insertImageHtml,
   insertImageSrcHtml,
+  normalizeImageScale,
   normalizePastedHtml,
   sanitizeHtml,
 } from "../lib/richText";
@@ -40,6 +42,13 @@ const BLOCK_BTN_CLASS: Record<EditorBlock, string> = {
   warning: "border-trust-warn-fill/50 text-trust-warn-text",
   success: "border-trust-pos-fill/50 text-trust-pos-text",
 };
+
+const IMAGE_SCALE_OPTIONS: Array<{ value: ImageScaleValue; label: string }> = [
+  { value: "25", label: "Klein" },
+  { value: "50", label: "Mittel" },
+  { value: "75", label: "Gross" },
+  { value: "100", label: "Volle Breite" },
+];
 
 // KW-STR / SCRUM-45/46/48: minimaler nativer WYSIWYG (contentEditable, keine Editor-Lib).
 // Speichert sanitisiertes HTML; Vorschau↔Bearbeiten ohne State-Verlust.
@@ -81,6 +90,8 @@ export function RichTextEditor({
   const [linkUrl, setLinkUrl] = useState("");
   const [linkLabel, setLinkLabel] = useState("");
   const [linkErr, setLinkErr] = useState<string | null>(null);
+  const [selectedImage, setSelectedImage] = useState<HTMLImageElement | null>(null);
+  const [selectedImageScale, setSelectedImageScale] = useState<ImageScaleValue>("100");
 
   // Editor-Inhalt nur setzen, wenn er abweicht und der Editor nicht fokussiert ist
   // (verhindert Cursor-Sprünge während des Tippens). Verlustfrei über Mode-Wechsel.
@@ -92,6 +103,44 @@ export function RichTextEditor({
   }, [value, mode]);
 
   const emit = (): void => onChange(sanitizeHtml(ref.current?.innerHTML ?? ""));
+
+  const selectImage = (img: HTMLImageElement | null): void => {
+    if (!img || !ref.current?.contains(img)) {
+      setSelectedImage(null);
+      setSelectedImageScale("100");
+      return;
+    }
+    setSelectedImage(img);
+    setSelectedImageScale(normalizeImageScale(img.getAttribute("data-kw-scale")) ?? "100");
+  };
+
+  const updateImageSelectionFromNode = (node: Node | null): void => {
+    if (!node || !ref.current?.contains(node)) {
+      selectImage(null);
+      return;
+    }
+    const element = node instanceof Element ? node : node.parentElement;
+    const img = element?.closest("img");
+    selectImage(img instanceof HTMLImageElement ? img : null);
+  };
+
+  const updateImageSelectionFromCursor = (): void => {
+    updateImageSelectionFromNode(window.getSelection()?.anchorNode ?? null);
+  };
+
+  const onEditorClick = (e: MouseEvent<HTMLDivElement>): void => {
+    updateImageSelectionFromNode(e.target instanceof Node ? e.target : null);
+  };
+
+  const applyImageScale = (scale: ImageScaleValue): void => {
+    if (!selectedImage || !ref.current?.contains(selectedImage)) {
+      selectImage(null);
+      return;
+    }
+    selectedImage.setAttribute("data-kw-scale", scale);
+    setSelectedImageScale(scale);
+    emit();
+  };
 
   const exec = (command: string, arg?: string): void => {
     ref.current?.focus();
@@ -557,6 +606,27 @@ export function RichTextEditor({
         </div>
       ) : null}
 
+      {mode === "edit" && selectedImage ? (
+        <div className="flex flex-wrap items-center gap-1 border-b border-hairline bg-ai-surface-1 px-2 py-1.5">
+          <span className="mr-1 text-[11.5px] font-semibold text-muted">Bildgroesse</span>
+          {IMAGE_SCALE_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              aria-pressed={selectedImageScale === opt.value}
+              onClick={() => applyImageScale(opt.value)}
+              className={`inline-flex h-7 items-center rounded-btn border px-2 text-[11.5px] font-semibold ${
+                selectedImageScale === opt.value
+                  ? "border-ai/50 bg-ai text-white"
+                  : "border-hairline bg-surface text-text hover:bg-hairline-soft"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       {mode === "edit" ? (
         <div className="relative">
           <div
@@ -565,6 +635,9 @@ export function RichTextEditor({
             suppressContentEditableWarning
             onInput={emit}
             onBlur={emit}
+            onClick={onEditorClick}
+            onKeyUp={updateImageSelectionFromCursor}
+            onMouseUp={updateImageSelectionFromCursor}
             onDrop={onDrop}
             onDragOver={onDragOver}
             onDragLeave={onDragLeave}

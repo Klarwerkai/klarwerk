@@ -23,6 +23,17 @@ describe("KW-STR FE: sanitizeHtml (Defense-in-Depth, gleiche Allowlist)", () => 
     expect(sanitizeHtml('<img src="https://evil/x">')).toBe("");
   });
 
+  it("img: erlaubt nur sichere data-kw-scale-Werte und verwirft style/Handler", () => {
+    expect(
+      sanitizeHtml(
+        '<img src="/api/objects/x-1/raw" alt="a" data-kw-scale="50" style="width:1px" onclick="x">',
+      ),
+    ).toBe('<img src="/api/objects/x-1/raw" alt="a" data-kw-scale="50">');
+    expect(sanitizeHtml('<img src="/api/objects/x-1/raw" data-kw-scale="42">')).toBe(
+      '<img src="/api/objects/x-1/raw">',
+    );
+  });
+
   // Formatierung Stufe 2: Tabellen aus Import/Paste bleiben erhalten (Struktur), colspan/rowspan
   // nur numerisch; kein style/Handler/Script überlebt in Zellen.
   it("Tabellen: table/tr/th/td bleiben; colspan nur numerisch; script in Zelle raus", () => {
@@ -96,13 +107,13 @@ describe("KW-STR FE: Editor-Helfer", () => {
 
   it("insertImageHtml baut sicheres img-Markup auf den Object-Store", () => {
     expect(insertImageHtml("abc-1", 'A"B')).toBe(
-      '<img src="/api/objects/abc-1/raw" alt="A&quot;B">',
+      '<img src="/api/objects/abc-1/raw" alt="A&quot;B" data-kw-scale="100">',
     );
   });
 
   it("insertImageSrcHtml baut img-Markup für sichere lokale Raster-Data-URLs", () => {
     const html = insertImageSrcHtml("data:image/png;base64,AAAA", 'A"B');
-    expect(html).toBe('<img src="data:image/png;base64,AAAA" alt="A&quot;B">');
+    expect(html).toBe('<img src="data:image/png;base64,AAAA" alt="A&quot;B" data-kw-scale="100">');
     expect(sanitizeHtml(html)).toContain("data:image/png;base64,AAAA");
   });
 });

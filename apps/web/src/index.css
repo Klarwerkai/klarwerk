@@ -43,6 +43,19 @@
 }
 .prose-kw img {
   @apply my-2 max-w-full rounded-card;
+  height: auto;
+}
+.prose-kw img[data-kw-scale="25"] {
+  width: 25%;
+}
+.prose-kw img[data-kw-scale="50"] {
+  width: 50%;
+}
+.prose-kw img[data-kw-scale="75"] {
+  width: 75%;
+}
+.prose-kw img[data-kw-scale="100"] {
+  width: 100%;
 }
 .prose-kw blockquote {
   @apply my-2 border-l-2 border-hairline pl-3 text-muted;

@@ -45,6 +45,17 @@ describe("KW-STR / NFR-SEC-04: sanitizeHtml", () => {
     expect(sanitizeHtml('<img src="javascript:alert(1)">')).toBe("");
   });
 
+  it("img data-kw-scale: nur feste Groessenwerte bleiben; style/Handler bleiben gesperrt", () => {
+    expect(
+      sanitizeHtml(
+        '<img src="/api/objects/abc-1/raw" alt="x" data-kw-scale="75" style="width:1px" onload="x">',
+      ),
+    ).toBe('<img src="/api/objects/abc-1/raw" alt="x" data-kw-scale="75">');
+    expect(sanitizeHtml('<img src="/api/objects/abc-1/raw" data-kw-scale="101">')).toBe(
+      '<img src="/api/objects/abc-1/raw">',
+    );
+  });
+
   it("NFR-SEC-04: data:image/svg+xml wird abgelehnt (SVG kann Skripte tragen)", () => {
     expect(sanitizeHtml('<img src="data:image/svg+xml;base64,PHN2Zz4=" alt="z">')).toBe("");
     expect(sanitizeHtml('<img src="data:image/svg+xml;utf8,<svg onload=alert(1)>" alt="z">')).toBe(

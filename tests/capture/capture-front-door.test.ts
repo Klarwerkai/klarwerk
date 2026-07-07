@@ -62,10 +62,26 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(frontDoorBodyFromDraft({ bodyHtml: "<p><strong>fett</strong></p>" })).toBe(
       "<p><strong>fett</strong></p>",
     );
+    expect(
+      frontDoorBodyFromDraft({
+        bodyHtml: '<p><img src="/api/objects/img-1/raw" data-kw-scale="50"></p>',
+      }),
+    ).toBe('<p><img src="/api/objects/img-1/raw" data-kw-scale="50"></p>');
     expect(frontDoorBodyFromDraft({ statement: "nur text" })).toBe("<p>nur text</p>");
     expect(frontDoorBodyFromDraft({ statement: "<script>alert(1)</script>" })).toBe(
       "<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>",
     );
+  });
+
+  it("speichert Vordertuer-Bilder mit sicherer Skalierung im Draft-Payload", () => {
+    const payload = buildFrontDoorPayload({
+      title: "Bildgroesse",
+      bodyHtml:
+        '<p><img src="/api/objects/img-1/raw" data-kw-scale="75" style="width:1px" onload="x"></p>',
+    });
+
+    expect(String(payload.bodyHtml)).toContain('data-kw-scale="75"');
+    expect(String(payload.bodyHtml)).not.toMatch(/style=|onload/);
   });
 
   it("nutzt den bestehenden Draft-Create-Pfad fuer die Vordertuer-Persistenz", async () => {
@@ -218,8 +234,15 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
       resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
       "utf8",
     );
+    const editorSource = readFileSync(
+      resolve(process.cwd(), "apps/web/src/components/RichTextEditor.tsx"),
+      "utf8",
+    );
 
     expect(pageSource.match(/<RichTextEditor/g) ?? []).toHaveLength(1);
     expect(pageSource).not.toContain("KnowledgeInputStudio");
+    expect(editorSource).toContain("IMAGE_SCALE_OPTIONS");
+    expect(editorSource).toContain("applyImageScale");
+    expect(editorSource).toContain("data-kw-scale");
   });
 });

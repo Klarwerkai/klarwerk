@@ -66,4 +66,14 @@ describe("SCRUM-457: resumeTargetForDraft — gespeicherter Marker gilt exakt", 
     expect(captureSource).toContain("CAPTURE_FRONT_DOOR_ROUTE");
     expect(captureSource).toContain("navigate(");
   });
+
+  it("Vordertuer-Resume bleibt auf bodyHtml und kann Bild-Skalierung erhalten", () => {
+    const payload = {
+      bodyHtml: '<p><img src="/api/objects/img-1/raw" data-kw-scale="25"></p>',
+      origin: "frontdoor",
+    } satisfies DraftPayload;
+
+    expect(resumeTargetForDraft(payload)).toBe("frontdoor");
+    expect(payload.bodyHtml).toContain('data-kw-scale="25"');
+  });
 });
