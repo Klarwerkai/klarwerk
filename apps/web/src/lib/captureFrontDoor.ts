@@ -3,6 +3,16 @@ import { htmlToPlainText, normalizePastedHtml } from "./richText";
 
 export const CAPTURE_FRONT_DOOR_ROUTE = "/capture/frontdoor";
 export const CAPTURE_FRONT_DOOR_FALLBACK_TITLE = "Unbenanntes Wissensobjekt";
+export const FRONT_DOOR_SAVE_TIMEOUT_MS = 15000;
+export const FRONT_DOOR_SAVE_TIMEOUT_MESSAGE =
+  "Speichern dauert zu lange. Bitte pruefe Bibliothek oder Entwuerfe, bevor du erneut speicherst.";
+
+export class FrontDoorSaveTimeoutError extends Error {
+  constructor() {
+    super(FRONT_DOOR_SAVE_TIMEOUT_MESSAGE);
+    this.name = "FrontDoorSaveTimeoutError";
+  }
+}
 
 const MAX_TITLE_LENGTH = 90;
 const MAX_STATEMENT_LENGTH = 500;
@@ -54,4 +64,23 @@ export function buildFrontDoorPayload(input: {
     ...(bodyHtml.trim() ? { bodyHtml } : {}),
     origin: "tell",
   };
+}
+
+export function withFrontDoorSaveTimeout<T>(
+  save: Promise<T>,
+  timeoutMs = FRONT_DOOR_SAVE_TIMEOUT_MS,
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  return new Promise<T>((resolve, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new FrontDoorSaveTimeoutError());
+    }, timeoutMs);
+
+    save.then(resolve, reject).finally(() => {
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
+    });
+  });
 }

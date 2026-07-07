@@ -12,6 +12,7 @@ import {
   CAPTURE_FRONT_DOOR_FALLBACK_TITLE,
   buildFrontDoorPayload,
   deriveFrontDoorTitle,
+  withFrontDoorSaveTimeout,
 } from "../lib/captureFrontDoor";
 import { isEmptyHtml } from "../lib/richText";
 
@@ -36,7 +37,12 @@ export function CaptureFrontDoor(): JSX.Element {
   const hasBody = !isEmptyHtml(bodyHtml);
 
   const save = useMutation({
-    mutationFn: () => endpoints.ko.create(buildFrontDoorPayload({ title, bodyHtml })),
+    mutationFn: () =>
+      withFrontDoorSaveTimeout(endpoints.ko.create(buildFrontDoorPayload({ title, bodyHtml }))),
+    onMutate: () => {
+      setErr(null);
+      setSavedKoId(null);
+    },
     onSuccess: (ko) => {
       setSavedKoId(ko.id);
       setErr(null);

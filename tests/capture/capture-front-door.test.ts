@@ -3,8 +3,10 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   CAPTURE_FRONT_DOOR_ROUTE,
+  FRONT_DOOR_SAVE_TIMEOUT_MESSAGE,
   buildFrontDoorPayload,
   deriveFrontDoorTitle,
+  withFrontDoorSaveTimeout,
 } from "../../apps/web/src/lib/captureFrontDoor";
 
 describe("KW-PROD-02: CaptureFrontDoor", () => {
@@ -33,6 +35,24 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(String(payload.bodyHtml)).toContain("<strong>fett</strong>");
   });
 
+  it("uebernimmt Pedi-Titel und Pedi-Inhalt in den KO-Create-Payload", () => {
+    const payload = buildFrontDoorPayload({
+      title: "wasser",
+      bodyHtml: "<p>tesx fall</p>",
+    });
+
+    expect(payload.title).toBe("wasser");
+    expect(payload.statement).toBe("tesx fall");
+    expect(String(payload.bodyHtml)).toContain("tesx fall");
+    expect(payload.origin).toBe("tell");
+  });
+
+  it("beendet einen haengenden Save mit klarer Fehlermeldung", async () => {
+    await expect(withFrontDoorSaveTimeout(new Promise(() => undefined), 1)).rejects.toThrow(
+      FRONT_DOOR_SAVE_TIMEOUT_MESSAGE,
+    );
+  });
+
   it("verwendet den bestehenden KO-Create-Pfad ohne KnowledgeInputStudio-Overlay", () => {
     const pageSource = readFileSync(
       resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
@@ -41,6 +61,8 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(pageSource).toContain("RichTextEditor");
     expect(pageSource).toContain("Als Wissensobjekt sichern");
     expect(pageSource).toContain("endpoints.ko.create");
+    expect(pageSource).toContain("withFrontDoorSaveTimeout");
+    expect(pageSource).toContain("onMutate");
     expect(pageSource).toContain('to="/erfassen"');
     expect(pageSource).not.toContain("KnowledgeInputStudio");
   });
