@@ -4,7 +4,12 @@ import { describe, expect, it } from "vitest";
 import { ApiError } from "../../apps/web/src/api/client";
 import i18n from "../../apps/web/src/i18n";
 import { CARD_INTERACTIVE_SELECTOR, cardClickOpens } from "../../apps/web/src/lib/validationCard";
-import { isStaleKoDeleteError, withoutKoById } from "../../apps/web/src/lib/validationDelete";
+import {
+  isStaleKoDeleteError,
+  withDeletedKoId,
+  withoutKoById,
+  withoutKoIds,
+} from "../../apps/web/src/lib/validationDelete";
 
 // SCRUM-416 (Pedi 03.07.): Board-Karte intuitiv öffnen — Klick auf freie Fläche navigiert,
 // Klicks auf Bedienelemente (Entscheiden/Aufklappen/Links/Hilfen) navigieren NICHT mit.
@@ -56,10 +61,26 @@ describe("SCRUM-416: Flächen-Klick der Board-Karte", () => {
     expect(withoutKoById(undefined, "ko-wasser-2")).toBeUndefined();
   });
 
+  it("haelt stale geloeschte KOs lokal aus dem Board, auch bei spaetem Refetch", () => {
+    const items = [
+      { id: "ko-a", title: "wasser" },
+      { id: "ko-b", title: "wasser" },
+      { id: "ko-c", title: "druck" },
+    ];
+    const deleted = withDeletedKoId(new Set<string>(), "ko-b");
+
+    expect(withoutKoIds(items, deleted)).toEqual([
+      { id: "ko-a", title: "wasser" },
+      { id: "ko-c", title: "druck" },
+    ]);
+    expect(withoutKoIds(items, new Set())).toBe(items);
+  });
+
   it("behandelt nur KO-Delete-404 als stale und erhaelt andere Fehler als hart", () => {
     expect(
       isStaleKoDeleteError(new ApiError(404, "NOT_FOUND", "Wissensobjekt nicht gefunden.")),
     ).toBe(true);
+    expect(isStaleKoDeleteError(new ApiError(404, "ERROR", "Not Found"))).toBe(true);
     expect(isStaleKoDeleteError(new ApiError(403, "FORBIDDEN", "Nicht erlaubt."))).toBe(false);
     expect(isStaleKoDeleteError(new SyntaxError("kaputtes JSON"))).toBe(false);
   });
@@ -76,9 +97,13 @@ describe("SCRUM-416: Flächen-Klick der Board-Karte", () => {
 
     expect(validationSource).toContain("confirmDeleteId === k.id");
     expect(validationSource).toContain("removeKo.mutate(k.id)");
+    expect(validationSource).toContain("locallyDeletedKoIds");
+    expect(validationSource).toContain("markDeletedKo(id)");
+    expect(validationSource).toContain("withoutKoIds(");
     expect(validationSource).toContain("isStaleKoDeleteError");
     expect(validationSource).toContain("removeDeletedKoFromCaches(id)");
-    expect(validationSource).toContain('queryKey: ["validation"]');
+    expect(validationSource).toContain('queryKey: ["validation", "board"]');
+    expect(validationSource).toContain('"validation", "overview"');
     expect(validationSource).toContain('queryKey: ["kos"]');
     expect(validationSource).not.toContain("removeKo.mutate(k.title)");
     expect(endpointsSource).toContain("remove: (id: string) => api.del<void>(`/kos/${id}`)");

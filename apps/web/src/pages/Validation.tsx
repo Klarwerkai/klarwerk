@@ -58,7 +58,12 @@ import {
 } from "../lib/validationBoardFocus";
 // SCRUM-416: Flächen-Klick öffnet die Karte — Bedienelemente bleiben davon unberührt.
 import { cardClickOpens } from "../lib/validationCard";
-import { isStaleKoDeleteError, withoutKoById } from "../lib/validationDelete";
+import {
+  isStaleKoDeleteError,
+  withDeletedKoId,
+  withoutKoById,
+  withoutKoIds,
+} from "../lib/validationDelete";
 import {
   type FeedbackVerdict,
   buildValidationFeedback,
@@ -159,29 +164,46 @@ export function Validation(): JSX.Element {
   const { role } = useRole();
   const { push } = useToast();
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [locallyDeletedKoIds, setLocallyDeletedKoIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const markDeletedKo = (id: string): void => {
+    setLocallyDeletedKoIds((ids) => withDeletedKoId(ids, id));
+  };
   const removeDeletedKoFromCaches = (id: string): void => {
-    qc.setQueriesData<KnowledgeObject[]>({ queryKey: ["validation"] }, (items) =>
+    qc.setQueriesData<KnowledgeObject[]>({ queryKey: ["validation", "board"] }, (items) =>
       withoutKoById(items, id),
     );
     qc.setQueriesData<KnowledgeObject[]>({ queryKey: ["kos"] }, (items) =>
       withoutKoById(items, id),
     );
   };
+  const refreshAfterDelete = (): void => {
+    for (const key of [
+      ["validation", "board"],
+      ["validation", "overview"],
+      ["kos"],
+      ["analytics"],
+      ["notifications"],
+    ]) {
+      void qc.invalidateQueries({ queryKey: key });
+    }
+  };
   const removeKo = useMutation({
     mutationFn: (id: string) => endpoints.ko.remove(id),
     onSuccess: (_data, id) => {
       setConfirmDeleteId(null);
+      markDeletedKo(id);
       removeDeletedKoFromCaches(id);
-      void qc.invalidateQueries({ queryKey: ["validation"] });
-      void qc.invalidateQueries({ queryKey: ["kos"] });
+      refreshAfterDelete();
       push("success", t("ko.deleteDone"));
     },
     onError: (e, id) => {
       if (isStaleKoDeleteError(e)) {
         setConfirmDeleteId(null);
+        markDeletedKo(id);
         removeDeletedKoFromCaches(id);
-        void qc.invalidateQueries({ queryKey: ["validation"] });
-        void qc.invalidateQueries({ queryKey: ["kos"] });
+        refreshAfterDelete();
         push("success", t("ko.deleteAlreadyGone"));
         return;
       }
@@ -356,8 +378,9 @@ export function Validation(): JSX.Element {
           const types = typeOptions(items);
           // SCRUM-249: handlungsnah priorisieren (Autor-Transfer/niedriger Trust zuerst) — Filter
           // bleiben unverändert, es wird nichts verworfen, nur die Reihenfolge geschärft.
-          const boardFiltered = items.filter((k) =>
-            matchesValidationFilter(k, filter, user?.id ?? null),
+          const boardFiltered = withoutKoIds(
+            items.filter((k) => matchesValidationFilter(k, filter, user?.id ?? null)),
+            locallyDeletedKoIds,
           );
           // SCRUM-311: Herkunfts-Zähler über die (review-)gefilterte Menge; dann ergänzend nach
           // Herkunft filtern. Nur Ansicht — Status/Trust/Review-Entscheidung unberührt.
