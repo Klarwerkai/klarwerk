@@ -11,6 +11,7 @@ import { Ask } from "./pages/Ask";
 import { Capture } from "./pages/Capture";
 import { CaptureFrontDoor } from "./pages/CaptureFrontDoor";
 import { Conflicts } from "./pages/Conflicts";
+import { DuplicateCompare } from "./pages/DuplicateCompare";
 import { Duplicates } from "./pages/Duplicates";
 import { ExternalKnowledge } from "./pages/ExternalKnowledge";
 import { Help } from "./pages/Help";
@@ -27,6 +28,14 @@ import { Capital, GraphView, ImportReview, Output } from "./pages/Stufe2";
 import { UiKit } from "./pages/UiKit";
 import { Validation } from "./pages/Validation";
 
+function DuplicateComparePage(): JSX.Element {
+  return <DuplicateCompare kind="duplicate" />;
+}
+
+function ConflictComparePage(): JSX.Element {
+  return <DuplicateCompare kind="conflict" />;
+}
+
 const PAGES: Record<string, ComponentType> = {
   start: Start,
   aufgaben: MyTasks,
@@ -38,6 +47,8 @@ const PAGES: Record<string, ComponentType> = {
   validierung: Validation,
   konflikte: Conflicts,
   duplikate: Duplicates,
+  duplicateCompare: DuplicateComparePage,
+  conflictCompare: ConflictComparePage,
   risiko: Risk,
   lebenszyklus: Lifecycle,
   analytics: Analytics,
@@ -58,6 +69,26 @@ const CAPTURE_FRONT_DOOR_ITEM: NavItem = {
   minRole: "experte",
   section: "7.3",
   shot: "03",
+};
+
+const DUPLICATE_COMPARE_ITEM: NavItem = {
+  id: "duplicateCompare",
+  path: "/duplikate/:id/vergleich",
+  labelKey: "nav.duplicates",
+  icon: Plus,
+  minRole: "controller",
+  section: "7.7",
+  shot: "11",
+};
+
+const CONFLICT_COMPARE_ITEM: NavItem = {
+  id: "conflictCompare",
+  path: "/konflikte/:id/vergleich",
+  labelKey: "nav.conflicts",
+  icon: Plus,
+  minRole: "controller",
+  section: "7.7",
+  shot: "11",
 };
 
 // Rollen-Gate (RB-2): Deep-Link auf Unerlaubtes → zurück auf Start.
@@ -85,6 +116,11 @@ export function AppRoutes(): JSX.Element {
         path={CAPTURE_FRONT_DOOR_ITEM.path}
         element={<Guarded item={CAPTURE_FRONT_DOOR_ITEM} />}
       />
+      <Route
+        path={DUPLICATE_COMPARE_ITEM.path}
+        element={<Guarded item={DUPLICATE_COMPARE_ITEM} />}
+      />
+      <Route path={CONFLICT_COMPARE_ITEM.path} element={<Guarded item={CONFLICT_COMPARE_ITEM} />} />
       <Route path="/wissen/:id" element={<KnowledgeDetail />} />
       <Route path="/mobile" element={<Mobile />} />
       <Route path="/ui-kit" element={<UiKit />} />

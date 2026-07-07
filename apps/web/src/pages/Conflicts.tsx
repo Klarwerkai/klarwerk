@@ -201,10 +201,16 @@ export function Conflicts(): JSX.Element {
                 {(() => {
                   const pair = conflictKoPair(c, kos.data ?? []);
                   return pair.a && pair.b ? (
-                    <div className="mt-2">
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
                       <Button variant="ghost" onClick={() => setCompareId(c.id)}>
                         {t("con.compareOpen")}
                       </Button>
+                      <Link
+                        to={`/konflikte/${c.id}/vergleich`}
+                        className="inline-flex items-center justify-center rounded-btn border border-hairline px-3.5 py-2 text-[13px] font-semibold text-text hover:bg-hairline-soft"
+                      >
+                        Read-only Vergleich →
+                      </Link>
                     </div>
                   ) : null;
                 })()}

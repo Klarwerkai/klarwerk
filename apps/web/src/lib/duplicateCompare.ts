@@ -1,0 +1,266 @@
+import type { Conflict, KnowledgeObject, OverlapEntry } from "../api/types";
+
+export type CompareTone = "green" | "yellow" | "red";
+export type CompareScoreSource = "detector" | "heuristic" | "mixed";
+
+export interface CompareMetrics {
+  match: number;
+  conflict: number;
+  uncertainty: number;
+  source: CompareScoreSource;
+  note: string;
+}
+
+export interface CompareSection {
+  key: string;
+  label: string;
+  leftValue: string;
+  rightValue: string;
+  metrics: CompareMetrics;
+  tone: CompareTone;
+  reason: string;
+}
+
+export const DUPLICATE_COMPARE_SAFETY = {
+  mergeEnabled: false,
+  deleteEnabled: false,
+  autoValidateEnabled: false,
+  persistDecisions: false,
+  aiActionEnabled: false,
+} as const;
+
+function clampPercent(value: number): number {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function compact(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function stripHtml(value: string | null | undefined): string {
+  return compact((value ?? "").replace(/<[^>]*>/g, " "));
+}
+
+function tokens(value: string): Set<string> {
+  const parts = compact(value.toLowerCase())
+    .split(/[^a-z0-9]+/i)
+    .filter((part) => part.length > 1);
+  return new Set(parts);
+}
+
+function tokenSimilarity(left: string, right: string): number {
+  const a = tokens(left);
+  const b = tokens(right);
+  if (a.size === 0 && b.size === 0) {
+    return 1;
+  }
+  if (a.size === 0 || b.size === 0) {
+    return 0;
+  }
+  let intersection = 0;
+  for (const token of a) {
+    if (b.has(token)) {
+      intersection += 1;
+    }
+  }
+  const union = new Set([...a, ...b]).size;
+  return union === 0 ? 0 : intersection / union;
+}
+
+function compareText(leftValue: string, rightValue: string, label: string): CompareSection {
+  const left = compact(leftValue);
+  const right = compact(rightValue);
+  if (!left && !right) {
+    return {
+      key: label,
+      label,
+      leftValue: "Kein Wert vorhanden",
+      rightValue: "Kein Wert vorhanden",
+      metrics: {
+        match: 0,
+        conflict: 0,
+        uncertainty: 100,
+        source: "heuristic",
+        note: "Vorlaeufige Feldheuristik; keine echten Detector-Scores fuer diesen Abschnitt.",
+      },
+      tone: "yellow",
+      reason: "Beide Seiten haben keinen verwertbaren Wert.",
+    };
+  }
+  if (left === right) {
+    return {
+      key: label,
+      label,
+      leftValue: left || "Kein Wert vorhanden",
+      rightValue: right || "Kein Wert vorhanden",
+      metrics: {
+        match: 100,
+        conflict: 0,
+        uncertainty: 0,
+        source: "heuristic",
+        note: "Vorlaeufige Feldheuristik; exakte Feldgleichheit.",
+      },
+      tone: "green",
+      reason: "Die Werte sind identisch.",
+    };
+  }
+  if (!left || !right) {
+    return {
+      key: label,
+      label,
+      leftValue: left || "Kein Wert vorhanden",
+      rightValue: right || "Kein Wert vorhanden",
+      metrics: {
+        match: 0,
+        conflict: 0,
+        uncertainty: 100,
+        source: "heuristic",
+        note: "Vorlaeufige Feldheuristik; ein Wert fehlt.",
+      },
+      tone: "yellow",
+      reason: "Ein Wert fehlt, daher ist kein echter Konflikt ableitbar.",
+    };
+  }
+  const match = clampPercent(tokenSimilarity(left, right) * 100);
+  const conflict = match < 35 ? 60 : match < 65 ? 30 : 5;
+  const uncertainty = clampPercent(100 - match - conflict);
+  return {
+    key: label,
+    label,
+    leftValue: left,
+    rightValue: right,
+    metrics: {
+      match,
+      conflict,
+      uncertainty,
+      source: "heuristic",
+      note: "Vorlaeufige Feldheuristik; keine fachliche Wahrheit.",
+    },
+    tone: conflict >= 50 ? "red" : match >= 85 ? "green" : "yellow",
+    reason:
+      conflict >= 50
+        ? "Die Feldwerte unterscheiden sich stark und muessen fachlich geprueft werden."
+        : "Die Feldwerte unterscheiden sich teilweise und muessen geprueft werden.",
+  };
+}
+
+function joinList(values: readonly string[] | undefined): string {
+  return (values ?? []).filter((value) => value.trim().length > 0).join("; ");
+}
+
+function sourceText(ko: KnowledgeObject): string {
+  return (ko.sources ?? [])
+    .map((source) =>
+      [source.label, source.excerpt ?? "", source.url ?? ""].filter(Boolean).join(" | "),
+    )
+    .join("; ");
+}
+
+function hintsText(ko: KnowledgeObject): string {
+  return (ko.comments ?? []).map((comment) => comment.text).join("; ");
+}
+
+function trustStatusText(ko: KnowledgeObject): string {
+  return `Trust ${ko.trust}; Status ${ko.status}; benoetigte Validierungen ${ko.neededValidations}`;
+}
+
+function tagsCategoryText(ko: KnowledgeObject): string {
+  return [
+    `Kategorie ${ko.category || "keine"}`,
+    `Wissensart ${ko.type}`,
+    `Tags ${(ko.tags ?? []).join(", ") || "keine"}`,
+  ].join("; ");
+}
+
+export function buildDuplicateCompareSections(
+  left: KnowledgeObject,
+  right: KnowledgeObject,
+): CompareSection[] {
+  return [
+    compareText(left.title, right.title, "Titel"),
+    compareText(
+      [left.statement, stripHtml(left.bodyHtml)].filter(Boolean).join(" "),
+      [right.statement, stripHtml(right.bodyHtml)].filter(Boolean).join(" "),
+      "Kernaussage / Inhalt",
+    ),
+    compareText(joinList(left.conditions), joinList(right.conditions), "Bedingungen"),
+    compareText(joinList(left.measures), joinList(right.measures), "Massnahmen"),
+    compareText(hintsText(left), hintsText(right), "Hinweise"),
+    compareText(sourceText(left), sourceText(right), "Quellen / Evidence"),
+    compareText(tagsCategoryText(left), tagsCategoryText(right), "Tags / Kategorie"),
+    compareText(trustStatusText(left), trustStatusText(right), "Trust / Validierungsstatus"),
+  ];
+}
+
+function average(values: number[]): number {
+  if (values.length === 0) {
+    return 0;
+  }
+  return clampPercent(values.reduce((sum, value) => sum + value, 0) / values.length);
+}
+
+export function overallFromOverlap(
+  entry: OverlapEntry,
+  sections: readonly CompareSection[],
+): CompareMetrics {
+  const sectionMatch = average(sections.map((section) => section.metrics.match));
+  const sectionConflict = average(sections.map((section) => section.metrics.conflict));
+  const sectionUncertainty = average(sections.map((section) => section.metrics.uncertainty));
+  if (!entry.detector) {
+    return {
+      match: sectionMatch,
+      conflict: sectionConflict,
+      uncertainty: sectionUncertainty,
+      source: "heuristic",
+      note: "Score nicht vorhanden: Gesamtwerte sind vorlaeufige Feldheuristik ohne Detector-Prozent.",
+    };
+  }
+  const detectorMatch = clampPercent(entry.detector.lexicalScore * 100);
+  const detectorUncertainty =
+    entry.detector.method === "model" && typeof entry.detector.confidence === "number"
+      ? clampPercent((1 - entry.detector.confidence) * 100)
+      : sectionUncertainty;
+  return {
+    match: detectorMatch,
+    conflict: sectionConflict,
+    uncertainty: detectorUncertainty,
+    source: "mixed",
+    note: "Uebereinstimmung aus bestehendem Detector; Konflikt/Unsicherheit bleiben vorlaeufige Anzeigehilfe.",
+  };
+}
+
+export function overallFromConflict(
+  conflict: Conflict,
+  sections: readonly CompareSection[],
+): CompareMetrics {
+  const sectionMatch = average(sections.map((section) => section.metrics.match));
+  const sectionConflict = average(sections.map((section) => section.metrics.conflict));
+  const sectionUncertainty = average(sections.map((section) => section.metrics.uncertainty));
+  if (conflict.origin === "auto" && typeof conflict.detector?.confidence === "number") {
+    const detectorConflict = clampPercent(conflict.detector.confidence * 100);
+    return {
+      match: sectionMatch,
+      conflict: detectorConflict,
+      uncertainty: clampPercent((1 - conflict.detector.confidence) * 100),
+      source: "mixed",
+      note: "Konfliktwert aus bestehendem Detector; Uebereinstimmung bleibt vorlaeufige Feldheuristik.",
+    };
+  }
+  return {
+    match: sectionMatch,
+    conflict: sectionConflict,
+    uncertainty: sectionUncertainty,
+    source: "heuristic",
+    note: "Score nicht vorhanden: Gesamtwerte sind vorlaeufige Feldheuristik ohne Detector-Prozent.",
+  };
+}
+
+export function compareToneLabel(tone: CompareTone): string {
+  if (tone === "green") {
+    return "gruen";
+  }
+  if (tone === "red") {
+    return "rot";
+  }
+  return "gelb";
+}
