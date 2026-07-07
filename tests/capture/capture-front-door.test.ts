@@ -3,6 +3,11 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Draft, DraftPayload } from "../../apps/web/src/api/types";
 import {
+  ASSIST_ACTIONS,
+  assistActionInstructionKey,
+  assistActionLabelKey,
+} from "../../apps/web/src/lib/captureAiAssist";
+import {
   CAPTURE_FRONT_DOOR_ROUTE,
   FRONT_DOOR_SAVE_TIMEOUT_MESSAGE,
   FRONT_DOOR_STRUCTURING_UNAVAILABLE_MESSAGE,
@@ -94,13 +99,13 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     );
   });
 
-  it("verwendet den bestehenden KO-Create-Pfad ohne KnowledgeInputStudio-Overlay", () => {
+  it("verwendet den bestehenden Draft-Create-Pfad ohne KnowledgeInputStudio-Overlay", () => {
     const pageSource = readFileSync(
       resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
       "utf8",
     );
     expect(pageSource).toContain("RichTextEditor");
-    expect(pageSource).toContain("Als Wissensobjekt sichern");
+    expect(pageSource).toContain("Als Entwurf speichern");
     expect(pageSource).toContain("endpoints.drafts.create");
     expect(pageSource).toContain("endpoints.drafts.update");
     expect(pageSource).toContain("get(resumeDraftId)");
@@ -109,6 +114,33 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(pageSource).toContain("createFrontDoorDraft");
     expect(pageSource).toContain("onMutate");
     expect(pageSource).not.toContain("KnowledgeInputStudio");
+  });
+
+  it("bietet die kompakte KI-Hilfsauswahl mit den fuenf Standardaktionen an", () => {
+    const pageSource = readFileSync(
+      resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
+      "utf8",
+    );
+    const i18nSource = readFileSync(resolve(process.cwd(), "apps/web/src/i18n.ts"), "utf8");
+
+    expect(ASSIST_ACTIONS).toEqual(["clarify", "structure", "expand", "spelling", "format"]);
+    expect(assistActionLabelKey("clarify")).toBe("capture.ai.action.clarify");
+    expect(assistActionInstructionKey("format")).toBe("capture.ai.instr.format");
+    expect(pageSource).toContain("ASSIST_ACTIONS.map");
+    expect(pageSource).toContain("assistActionInstructionKey");
+    expect(pageSource).toContain("assistActionLabelKey");
+    expect(pageSource).toContain("bodyTextForAssist");
+    expect(pageSource).toContain("applyBodyAssist");
+    expect(pageSource).toContain("endpoints.reasoner.assist");
+    expect(pageSource).toContain("KI-Hilfe anwenden");
+    expect(pageSource).toContain("KI-Hilfe-Vorschlag");
+    expect(pageSource).toContain("Als Entwurf speichern");
+    expect(pageSource).not.toContain("Als Wissensobjekt sichern");
+    expect(i18nSource).toContain('"capture.ai.action.clarify": "Klarer"');
+    expect(i18nSource).toContain('"capture.ai.action.structure": "Strukturieren"');
+    expect(i18nSource).toContain('"capture.ai.action.expand": "Erweitern"');
+    expect(i18nSource).toContain('"capture.ai.action.spelling": "Rechtschreibung"');
+    expect(i18nSource).toContain('"capture.ai.action.format": "Formatieren"');
   });
 
   it("bereitet den Frontdoor-Inhalt fuer den bestehenden Reasoner-Structure-Pfad vor", () => {

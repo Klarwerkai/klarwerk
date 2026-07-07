@@ -5,11 +5,18 @@ import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import type { StructureResult } from "../api/types";
+import type { AssistResult, StructureResult } from "../api/types";
 import { useSession } from "../app/AuthContext";
 import { useToast } from "../app/ToastContext";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
+import { applyBodyAssist, bodyTextForAssist } from "../lib/bodyAiAssist";
+import {
+  ASSIST_ACTIONS,
+  type AssistAction,
+  assistActionInstructionKey,
+  assistActionLabelKey,
+} from "../lib/captureAiAssist";
 import {
   CAPTURE_FRONT_DOOR_FALLBACK_TITLE,
   CAPTURE_FRONT_DOOR_ROUTE,
@@ -33,7 +40,7 @@ function errorMessage(err: unknown): string {
 }
 
 export function CaptureFrontDoor(): JSX.Element {
-  const { i18n } = useTranslation();
+  const { i18n, t } = useTranslation();
   const { user } = useSession();
   const { push } = useToast();
   const qc = useQueryClient();
@@ -48,6 +55,12 @@ export function CaptureFrontDoor(): JSX.Element {
   const [structureProposal, setStructureProposal] = useState<StructureResult | null>(null);
   const [structureErr, setStructureErr] = useState<string | null>(null);
   const [structureAccepted, setStructureAccepted] = useState(false);
+  const [assistAction, setAssistAction] = useState<AssistAction>("clarify");
+  const [assistProposal, setAssistProposal] = useState<
+    (AssistResult & { action: AssistAction }) | null
+  >(null);
+  const [assistErr, setAssistErr] = useState<string | null>(null);
+  const [assistAccepted, setAssistAccepted] = useState(false);
 
   const authorName = user?.name ?? user?.email ?? "-";
   const derivedTitle = deriveFrontDoorTitle(title, bodyHtml);
@@ -55,6 +68,8 @@ export function CaptureFrontDoor(): JSX.Element {
   const locale = toReasonerLocale(i18n.language);
   const structureInput = buildFrontDoorStructureInput({ title, bodyHtml });
   const hasStructureInput = structureInput.length > 0;
+  const assistInput = bodyTextForAssist(bodyHtml);
+  const hasAssistInput = assistInput.trim().length > 0;
 
   const clearStructureState = useCallback((): void => {
     setStructureProposal(null);
@@ -62,14 +77,22 @@ export function CaptureFrontDoor(): JSX.Element {
     setStructureAccepted(false);
   }, []);
 
+  const clearAssistState = useCallback((): void => {
+    setAssistProposal(null);
+    setAssistErr(null);
+    setAssistAccepted(false);
+  }, []);
+
   const changeTitle = (next: string): void => {
     setTitle(next);
     clearStructureState();
+    clearAssistState();
   };
 
   const changeBodyHtml = (next: string): void => {
     setBodyHtml(next);
     clearStructureState();
+    clearAssistState();
   };
 
   useEffect(() => {
@@ -119,6 +142,9 @@ export function CaptureFrontDoor(): JSX.Element {
       setStructureErr(null);
       setStructureProposal(null);
       setStructureAccepted(false);
+      setAssistProposal(null);
+      setAssistErr(null);
+      setAssistAccepted(false);
     },
     onSuccess: (proposal) => {
       setStructureProposal(proposal);
@@ -126,6 +152,27 @@ export function CaptureFrontDoor(): JSX.Element {
     },
     onError: () => {
       setStructureErr(FRONT_DOOR_STRUCTURING_UNAVAILABLE_MESSAGE);
+    },
+  });
+
+  const assist = useMutation({
+    mutationFn: (action: AssistAction) =>
+      endpoints.reasoner.assist(assistInput, locale, t(assistActionInstructionKey(action))),
+    onMutate: () => {
+      setErr(null);
+      setAssistErr(null);
+      setAssistProposal(null);
+      setAssistAccepted(false);
+      setStructureProposal(null);
+      setStructureErr(null);
+      setStructureAccepted(false);
+    },
+    onSuccess: (proposal, action) => {
+      setAssistProposal({ ...proposal, action });
+      setAssistErr(null);
+    },
+    onError: () => {
+      setAssistErr("Ich kann diese KI-Hilfe gerade nicht verlaesslich ausfuehren.");
     },
   });
 
@@ -163,6 +210,7 @@ export function CaptureFrontDoor(): JSX.Element {
   const canSave = hasBody && !save.isPending && !loadingDraft;
   const canStructure =
     hasStructureInput && !structure.isPending && !loadingDraft && !save.isPending;
+  const canAssist = hasAssistInput && !assist.isPending && !loadingDraft && !save.isPending;
 
   const acceptStructureProposal = (): void => {
     if (!structureProposal) {
@@ -179,6 +227,23 @@ export function CaptureFrontDoor(): JSX.Element {
     setStructureProposal(null);
     setStructureErr(null);
     setStructureAccepted(false);
+  };
+
+  const acceptAssistProposal = (): void => {
+    if (!assistProposal) {
+      return;
+    }
+    setBodyHtml(applyBodyAssist("replace", bodyHtml, assistProposal.text));
+    setAssistProposal(null);
+    setAssistErr(null);
+    setAssistAccepted(true);
+    clearStructureState();
+  };
+
+  const discardAssistProposal = (): void => {
+    setAssistProposal(null);
+    setAssistErr(null);
+    setAssistAccepted(false);
   };
 
   return (
@@ -252,18 +317,71 @@ export function CaptureFrontDoor(): JSX.Element {
                   </span>
                 )}
               </div>
+              <div className="mt-3 border-t border-ai/10 pt-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <label
+                    className="text-[12px] font-semibold uppercase text-muted-2"
+                    htmlFor="frontdoor-ai-assist"
+                  >
+                    KI-Hilfe
+                  </label>
+                  <select
+                    id="frontdoor-ai-assist"
+                    value={assistAction}
+                    onChange={(event) => setAssistAction(event.target.value as AssistAction)}
+                    className="h-9 rounded-card border border-hairline bg-surface px-2 text-sm text-ink shadow-sm focus:border-ai focus:outline-none focus:ring-2 focus:ring-ai/20"
+                    disabled={assist.isPending || loadingDraft || save.isPending}
+                  >
+                    {ASSIST_ACTIONS.map((action) => (
+                      <option key={action} value={action}>
+                        {t(assistActionLabelKey(action))}
+                      </option>
+                    ))}
+                  </select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!canAssist}
+                    onClick={() => assist.mutate(assistAction)}
+                  >
+                    {assist.isPending ? (
+                      <Loader2 size={15} className="animate-spin" />
+                    ) : (
+                      <Sparkles size={15} />
+                    )}
+                    KI-Hilfe anwenden
+                  </Button>
+                  <span className="text-[12.5px] text-muted">
+                    Klarer, strukturieren, erweitern, Rechtschreibung oder formatieren.
+                  </span>
+                </div>
+              </div>
               {structure.isPending ? (
                 <p className="mt-2 text-[12.5px] text-muted">KI-Vorschlag wird erzeugt ...</p>
+              ) : null}
+              {assist.isPending ? (
+                <p className="mt-2 text-[12.5px] text-muted">KI-Hilfe-Vorschlag wird erzeugt ...</p>
               ) : null}
               {structureErr ? (
                 <div className="mt-3 rounded-card border border-trust-warn-fill/40 bg-trust-warn-bg p-3 text-sm text-trust-warn-text">
                   {structureErr} Originaltext bleibt unveraendert.
                 </div>
               ) : null}
+              {assistErr ? (
+                <div className="mt-3 rounded-card border border-trust-warn-fill/40 bg-trust-warn-bg p-3 text-sm text-trust-warn-text">
+                  {assistErr} Originaltext bleibt unveraendert.
+                </div>
+              ) : null}
               {structureAccepted ? (
                 <div className="mt-3 rounded-card border border-trust-pos-fill/40 bg-trust-pos-bg p-3 text-sm text-trust-pos-text">
                   KI-Vorschlag uebernommen. Bitte pruefen; gespeichert wird erst mit deiner
                   naechsten Aktion.
+                </div>
+              ) : null}
+              {assistAccepted ? (
+                <div className="mt-3 rounded-card border border-trust-pos-fill/40 bg-trust-pos-bg p-3 text-sm text-trust-pos-text">
+                  KI-Hilfe uebernommen. Bitte pruefen; gespeichert wird erst mit deiner naechsten
+                  Aktion.
                 </div>
               ) : null}
             </div>
@@ -351,6 +469,36 @@ export function CaptureFrontDoor(): JSX.Element {
               </div>
             ) : null}
 
+            {assistProposal ? (
+              <div className="rounded-card border border-ai/30 bg-surface p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <SectionLabel>KI-Hilfe-Vorschlag</SectionLabel>
+                    <p className="text-sm font-semibold text-ink">
+                      {t(assistActionLabelKey(assistProposal.action))}: KI-generiert. Bitte pruefen,
+                      bevor du etwas uebernimmst.
+                    </p>
+                  </div>
+                  {assistProposal.demo ? (
+                    <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
+                      Fallback
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-3 max-h-52 overflow-auto whitespace-pre-wrap rounded-card border border-hairline bg-page p-3 text-sm leading-relaxed text-text">
+                  {assistProposal.text}
+                </p>
+                <div className="mt-4 flex flex-wrap gap-2 border-t border-hairline pt-3">
+                  <Button type="button" variant="primary" onClick={acceptAssistProposal}>
+                    Uebernehmen
+                  </Button>
+                  <Button type="button" variant="ghost" onClick={discardAssistProposal}>
+                    Verwerfen
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
             {err ? (
               <div className="rounded-card border border-trust-neg-fill/40 bg-trust-neg-bg p-3 text-sm text-trust-neg-text">
                 {err}
@@ -376,7 +524,7 @@ export function CaptureFrontDoor(): JSX.Element {
                 ) : (
                   <Save size={15} />
                 )}
-                Als Wissensobjekt sichern
+                Als Entwurf speichern
               </Button>
               {!hasBody ? (
                 <span className="text-[12.5px] text-muted">
