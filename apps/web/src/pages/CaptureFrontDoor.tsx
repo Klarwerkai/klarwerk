@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Loader2, Save, Send, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import type { AssistResult, KnowledgeObject, StructureResult } from "../api/types";
@@ -45,11 +45,11 @@ export function CaptureFrontDoor(): JSX.Element {
   const { user } = useSession();
   const { push } = useToast();
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const resumeDraftId = searchParams.get("draft");
   const [title, setTitle] = useState("");
   const [bodyHtml, setBodyHtml] = useState("");
-  const [savedDraft, setSavedDraft] = useState<{ id: string; title: string } | null>(null);
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
   const [loadingDraft, setLoadingDraft] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -66,6 +66,8 @@ export function CaptureFrontDoor(): JSX.Element {
     null,
   );
   const proposalRef = useRef<HTMLDivElement | null>(null);
+  const saveRequestedRef = useRef(false);
+  const submitRequestedRef = useRef(false);
 
   const authorName = user?.name ?? user?.email ?? "-";
   const derivedTitle = deriveFrontDoorTitle(title, bodyHtml);
@@ -90,16 +92,18 @@ export function CaptureFrontDoor(): JSX.Element {
 
   const changeTitle = (next: string): void => {
     setTitle(next);
-    setSavedDraft(null);
     setSubmittedKo(null);
+    saveRequestedRef.current = false;
+    submitRequestedRef.current = false;
     clearStructureState();
     clearAssistState();
   };
 
   const changeBodyHtml = (next: string): void => {
     setBodyHtml(next);
-    setSavedDraft(null);
     setSubmittedKo(null);
+    saveRequestedRef.current = false;
+    submitRequestedRef.current = false;
     clearStructureState();
     clearAssistState();
   };
@@ -107,9 +111,10 @@ export function CaptureFrontDoor(): JSX.Element {
   const resetForNewEntry = (): void => {
     setTitle("");
     setBodyHtml("");
-    setSavedDraft(null);
     setSubmittedKo(null);
     setActiveDraftId(null);
+    saveRequestedRef.current = false;
+    submitRequestedRef.current = false;
     setSearchParams({}, { replace: true });
     clearStructureState();
     clearAssistState();
@@ -125,7 +130,6 @@ export function CaptureFrontDoor(): JSX.Element {
     let cancelled = false;
     setLoadingDraft(true);
     setErr(null);
-    setSavedDraft(null);
 
     endpoints.drafts
       .get(resumeDraftId)
@@ -137,6 +141,8 @@ export function CaptureFrontDoor(): JSX.Element {
         setTitle(draft.payload.title ?? "");
         setBodyHtml(frontDoorBodyFromDraft(draft.payload));
         setSubmittedKo(null);
+        saveRequestedRef.current = false;
+        submitRequestedRef.current = false;
         clearStructureState();
         clearAssistState();
       })
@@ -222,20 +228,28 @@ export function CaptureFrontDoor(): JSX.Element {
     },
     onMutate: () => {
       setErr(null);
-      setSavedDraft(null);
       setSubmittedKo(null);
     },
     onSuccess: (draft) => {
-      setSavedDraft({
-        id: draft.id,
-        title: draft.payload.title ?? derivedTitle,
-      });
+      const savedTitle = draft.payload.title ?? derivedTitle;
       setActiveDraftId(draft.id);
       setErr(null);
       push("success", "Entwurf gespeichert.");
       void qc.invalidateQueries({ queryKey: ["drafts"] });
+      navigate("/erfassen", {
+        replace: true,
+        state: {
+          frontDoorDraftSaved: {
+            id: draft.id,
+            title: savedTitle,
+          },
+        },
+      });
     },
-    onError: (e) => setErr(errorMessage(e)),
+    onError: (e) => {
+      saveRequestedRef.current = false;
+      setErr(errorMessage(e));
+    },
   });
 
   const submit = useMutation({
@@ -250,7 +264,6 @@ export function CaptureFrontDoor(): JSX.Element {
       ),
     onMutate: () => {
       setErr(null);
-      setSavedDraft(null);
       setSubmittedKo(null);
     },
     onSuccess: (ko) => {
@@ -263,11 +276,15 @@ export function CaptureFrontDoor(): JSX.Element {
       void qc.invalidateQueries({ queryKey: ["kos"] });
       void qc.invalidateQueries({ queryKey: ["drafts"] });
     },
-    onError: (e) => setErr(errorMessage(e)),
+    onError: (e) => {
+      submitRequestedRef.current = false;
+      setErr(errorMessage(e));
+    },
   });
 
-  const canSave = hasBody && !save.isPending && !submit.isPending && !loadingDraft;
-  const canSubmit = hasBody && !save.isPending && !submit.isPending && !loadingDraft;
+  const canSave = hasBody && !save.isPending && !submit.isPending && !loadingDraft && !submittedKo;
+  const canSubmit =
+    hasBody && !save.isPending && !submit.isPending && !loadingDraft && !submittedKo;
   const canStructure =
     hasStructureInput &&
     !structure.isPending &&
@@ -311,6 +328,22 @@ export function CaptureFrontDoor(): JSX.Element {
     setAssistAccepted(false);
   };
 
+  const requestSave = (): void => {
+    if (!canSave || saveRequestedRef.current) {
+      return;
+    }
+    saveRequestedRef.current = true;
+    save.mutate();
+  };
+
+  const requestSubmit = (): void => {
+    if (!canSubmit || submitRequestedRef.current) {
+      return;
+    }
+    submitRequestedRef.current = true;
+    submit.mutate();
+  };
+
   return (
     <div className="mx-auto max-w-5xl">
       <PageHeader
@@ -330,7 +363,7 @@ export function CaptureFrontDoor(): JSX.Element {
             onSubmit={(event) => {
               event.preventDefault();
               if (canSave) {
-                save.mutate();
+                requestSave();
               }
             }}
           >
@@ -570,39 +603,6 @@ export function CaptureFrontDoor(): JSX.Element {
               </div>
             ) : null}
 
-            {savedDraft ? (
-              <div className="rounded-card border border-trust-pos-fill/40 bg-trust-pos-bg p-3 text-sm text-trust-pos-text">
-                <div className="flex items-center gap-1.5 font-semibold">
-                  <CheckCircle2 size={15} />
-                  Entwurf gespeichert: <strong>{savedDraft.title}</strong>
-                </div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <Link
-                    className="inline-flex items-center justify-center rounded-btn border border-trust-pos-fill/50 px-3 py-1.5 text-[12.5px] font-semibold hover:bg-trust-pos-fill/10"
-                    to={`${CAPTURE_FRONT_DOOR_ROUTE}?draft=${savedDraft.id}`}
-                  >
-                    Weiter bearbeiten
-                  </Link>
-                  <Button
-                    type="button"
-                    variant="primary"
-                    disabled={!canSubmit}
-                    onClick={() => submit.mutate()}
-                  >
-                    {submit.isPending ? (
-                      <Loader2 size={15} className="animate-spin" />
-                    ) : (
-                      <Send size={15} />
-                    )}
-                    Pruefen / Einreichen
-                  </Button>
-                  <Button type="button" variant="ghost" onClick={resetForNewEntry}>
-                    Neuer Eintrag
-                  </Button>
-                </div>
-              </div>
-            ) : null}
-
             {submittedKo ? (
               <div className="rounded-card border border-trust-pos-fill/40 bg-trust-pos-bg p-3 text-sm text-trust-pos-text">
                 <div className="flex items-center gap-1.5 font-semibold">
@@ -638,12 +638,7 @@ export function CaptureFrontDoor(): JSX.Element {
                 )}
                 Als Entwurf speichern
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={!canSubmit}
-                onClick={() => submit.mutate()}
-              >
+              <Button type="button" variant="outline" disabled={!canSubmit} onClick={requestSubmit}>
                 {submit.isPending ? (
                   <Loader2 size={15} className="animate-spin" />
                 ) : (

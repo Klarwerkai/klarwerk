@@ -280,7 +280,29 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(pageSource).toContain("Originaltext bleibt unveraendert");
   });
 
-  it("bietet nach Draft-Save klare Folgeaktionen und einen echten Submit-Pfad", () => {
+  it("kehrt nach Draft-Save nach /erfassen zurueck und verhindert Wiederhol-Save", () => {
+    const pageSource = readFileSync(
+      resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
+      "utf8",
+    );
+    const captureSource = readFileSync(
+      resolve(process.cwd(), "apps/web/src/pages/Capture.tsx"),
+      "utf8",
+    );
+
+    expect(pageSource).toContain('navigate("/erfassen"');
+    expect(pageSource).toContain("frontDoorDraftSaved");
+    expect(pageSource).toContain("saveRequestedRef");
+    expect(pageSource).toContain("requestSave");
+    expect(pageSource).not.toContain("Entwurf gespeichert: <strong>{savedDraft.title}</strong>");
+    expect(captureSource).toContain("frontDoorDraftSavedFromState");
+    expect(captureSource).toContain("Entwurf gespeichert");
+    expect(captureSource).toContain("Entwurf fortsetzen");
+    expect(captureSource).toContain("Neuer leerer Eintrag");
+    expect(captureSource).toContain("useLocation");
+  });
+
+  it("bietet einen duplikatsicheren Submit-Pfad ohne Auto-Save oder Auto-Validate", () => {
     const pageSource = readFileSync(
       resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
       "utf8",
@@ -288,8 +310,10 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
 
     expect(pageSource).toContain("submitFrontDoorDraft");
     expect(pageSource).toContain("endpoints.drafts.promote");
+    expect(pageSource).toContain("submitRequestedRef");
+    expect(pageSource).toContain("requestSubmit");
+    expect(pageSource).toContain("!submittedKo");
     expect(pageSource).toContain("Pruefen / Einreichen");
-    expect(pageSource).toContain("Weiter bearbeiten");
     expect(pageSource).toContain("Neuer Eintrag");
     expect(pageSource).toContain("Zur Pruefung eingereicht");
     expect(pageSource).toContain("Validierung oeffnen");

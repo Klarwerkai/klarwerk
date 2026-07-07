@@ -16,7 +16,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useDirectory, useDrafts } from "../api/hooks";
@@ -187,12 +187,30 @@ function speechCtor(): SpeechCtor | undefined {
 const textareaCls =
   "w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none placeholder:text-muted-2 focus:border-ink/30";
 
+interface FrontDoorDraftSavedState {
+  id: string;
+  title: string;
+}
+
+function frontDoorDraftSavedFromState(state: unknown): FrontDoorDraftSavedState | null {
+  const value = state as { frontDoorDraftSaved?: { id?: unknown; title?: unknown } } | null;
+  const draft = value?.frontDoorDraftSaved;
+  if (typeof draft?.id !== "string") {
+    return null;
+  }
+  return {
+    id: draft.id,
+    title: typeof draft.title === "string" && draft.title.trim() ? draft.title : "Entwurf",
+  };
+}
+
 export function Capture(): JSX.Element {
   const { t, i18n } = useTranslation();
   const { user } = useSession();
   const { push } = useToast();
   const authorName = user?.name ?? user?.email ?? "—";
   const navigate = useNavigate();
+  const location = useLocation();
 
   // SCRUM-263: optionaler Startkontext aus einer offenen Wissenslücke (?gap=…) — nur Anstoß für
   // die Rohnotiz, kein automatisches KO. Der Mensch ergänzt die Erfahrung, die KI strukturiert nur.
@@ -286,6 +304,9 @@ export function Capture(): JSX.Element {
 
   const [err, setErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [frontDoorDraftSaved, setFrontDoorDraftSaved] = useState<FrontDoorDraftSavedState | null>(
+    () => frontDoorDraftSavedFromState(location.state),
+  );
   // SCRUM-276: nach erfolgreichem Einreichen die ID des gespeicherten KO (für die Success-Card).
   const [savedKoId, setSavedKoId] = useState<string | null>(null);
   // SCRUM-354: ob das eingereichte KO aus einem fortgesetzten Entwurf promotet wurde (Success-Copy).
@@ -308,6 +329,17 @@ export function Capture(): JSX.Element {
   const qc = useQueryClient();
   const drafts = useDrafts();
   const workAreaRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const saved = frontDoorDraftSavedFromState(location.state);
+    if (!saved) {
+      return;
+    }
+    setFrontDoorDraftSaved(saved);
+    setNotice(`Entwurf gespeichert: ${saved.title}`);
+    void qc.invalidateQueries({ queryKey: ["drafts"] });
+    navigate("/erfassen", { replace: true, state: null });
+  }, [location.state, navigate, qc]);
 
   // Diktat
   const [listening, setListening] = useState(false);
@@ -1449,6 +1481,38 @@ export function Capture(): JSX.Element {
           leichter Wertbeitrag. Progressive Disclosure; entfernt keine Funktion (Modi/Editor folgen). */}
       {/* SCRUM-384: Erstnutzer-Führung — beim Erstbesuch ausgeklappt, danach ruhig eingeklappt. */}
       <KnowledgeRescueIntro defaultOpen={firstRun} />
+
+      {frontDoorDraftSaved ? (
+        <Card className="mb-4 border-trust-pos-fill/40 bg-trust-pos-bg">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="text-[13px] font-semibold text-trust-pos-text">Entwurf gespeichert</div>
+            <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-pos-text">
+              fortsetzen bereit
+            </span>
+          </div>
+          <p className="mt-1 text-[12.5px] leading-relaxed text-trust-pos-text/90">
+            <strong>{frontDoorDraftSaved.title}</strong> ist unter Entwuerfe fortsetzen sichtbar.
+            Der Dokument-Canvas startet beim naechsten Oeffnen wieder leer.
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Link
+              to={`${CAPTURE_FRONT_DOOR_ROUTE}?draft=${encodeURIComponent(frontDoorDraftSaved.id)}`}
+              className="inline-flex items-center gap-1 rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
+            >
+              Entwurf fortsetzen <span aria-hidden="true">→</span>
+            </Link>
+            <Link
+              to={CAPTURE_FRONT_DOOR_ROUTE}
+              className="inline-flex items-center gap-1 rounded-btn border border-hairline bg-page px-3 py-1.5 text-[12.5px] font-semibold text-text hover:bg-hairline-soft"
+            >
+              Neuer leerer Eintrag <span aria-hidden="true">→</span>
+            </Link>
+            <Button variant="ghost" onClick={() => setFrontDoorDraftSaved(null)}>
+              Hinweis ausblenden
+            </Button>
+          </div>
+        </Card>
+      ) : null}
 
       {/* SCRUM-276: nach erfolgreichem Einreichen „gespeichert" + nächster Schritt (kein Auto-Redirect). */}
       {savedKoId ? (

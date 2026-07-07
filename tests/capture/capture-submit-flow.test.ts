@@ -30,3 +30,32 @@ describe("KW-PROD-27: Capture Submit Flow", () => {
     expect(successSource).toContain("`/wissen/${koId}`");
   });
 });
+
+describe("KW-PROD-29: Frontdoor Save/Submit State", () => {
+  it("zeigt den aus der Vordertuer gespeicherten Draft auf /erfassen als klare Statuskarte", () => {
+    const source = readFileSync(resolve(process.cwd(), "apps/web/src/pages/Capture.tsx"), "utf8");
+
+    expect(source).toContain("frontDoorDraftSavedFromState");
+    expect(source).toContain("frontDoorDraftSaved");
+    expect(source).toContain("Entwurf gespeichert");
+    expect(source).toContain("Entwurf fortsetzen");
+    expect(source).toContain("Neuer leerer Eintrag");
+    expect(source).toContain("useLocation");
+    expect(source).toContain('navigate("/erfassen", { replace: true, state: null })');
+  });
+
+  it("sperrt wiederholte Frontdoor-Save- und Submit-Ausloesungen lokal", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain("saveRequestedRef");
+    expect(source).toContain("submitRequestedRef");
+    expect(source).toContain("if (!canSave || saveRequestedRef.current)");
+    expect(source).toContain("if (!canSubmit || submitRequestedRef.current)");
+    expect(source).toContain("saveRequestedRef.current = true");
+    expect(source).toContain("submitRequestedRef.current = true");
+    expect(source).toContain("!submittedKo");
+  });
+});
