@@ -1,0 +1,233 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+RUN_DIR="$ROOT/.local/run"
+LOG_DIR="$ROOT/.local/logs"
+BACKEND_PID="$RUN_DIR/backend.pid"
+FRONTEND_PID="$RUN_DIR/frontend.pid"
+BACKEND_PORT="${KLARWERK_LOCAL_BACKEND_PORT:-3001}"
+FRONTEND_PORT="${KLARWERK_LOCAL_FRONTEND_PORT:-5173}"
+BACKEND_URL="http://127.0.0.1:${BACKEND_PORT}"
+FRONTEND_URL="http://127.0.0.1:${FRONTEND_PORT}"
+
+usage() {
+  cat <<'USAGE'
+Usage: ./tools/localhost <status|up|restart|stop|check|url|open|logs>
+
+Local-only dev loop. No push, no deploy, no sync, no .env loading.
+USAGE
+}
+
+die() {
+  echo "ERROR: $*" >&2
+  exit 1
+}
+
+ensure_repo() {
+  [ -d "$ROOT/.git" ] || die "Repo nicht gefunden: $ROOT"
+  [ -f "$ROOT/package.json" ] || die "package.json fehlt: $ROOT"
+}
+
+ensure_dirs() {
+  mkdir -p "$RUN_DIR" "$LOG_DIR"
+}
+
+pid_alive() {
+  local file="$1"
+  [ -f "$file" ] || return 1
+  local pid
+  pid="$(cat "$file" 2>/dev/null || true)"
+  [ -n "$pid" ] || return 1
+  kill -0 "$pid" >/dev/null 2>&1
+}
+
+pid_value() {
+  cat "$1" 2>/dev/null || true
+}
+
+port_pids() {
+  local port="$1"
+  lsof -ti "tcp:${port}" 2>/dev/null || true
+}
+
+http_ok() {
+  local url="$1"
+  curl -fsS -m 2 "$url" >/dev/null 2>&1
+}
+
+wait_for_http() {
+  local name="$1"
+  local url="$2"
+  local tries="${3:-40}"
+  for _ in $(seq 1 "$tries"); do
+    if http_ok "$url"; then
+      echo "${name}: erreichbar (${url})"
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+guard_port_free_or_ours() {
+  local name="$1"
+  local port="$2"
+  local pidfile="$3"
+  local ours=""
+  if pid_alive "$pidfile"; then
+    ours="$(pid_value "$pidfile")"
+  fi
+  local pids
+  pids="$(port_pids "$port")"
+  [ -z "$pids" ] && return 0
+  if [ -n "$ours" ] && echo "$pids" | grep -qx "$ours"; then
+    return 0
+  fi
+  die "${name}-Port ${port} ist durch einen fremden Prozess belegt. Stoppe ihn bewusst oder waehle einen anderen Port."
+}
+
+start_backend() {
+  if pid_alive "$BACKEND_PID"; then
+    echo "Backend laeuft bereits (PID $(pid_value "$BACKEND_PID"))."
+    return 0
+  fi
+  guard_port_free_or_ours "Backend" "$BACKEND_PORT" "$BACKEND_PID"
+  echo "Starte Backend auf ${BACKEND_URL} ..."
+  (
+    cd "$ROOT"
+    nohup env -i \
+      HOME="$HOME" \
+      PATH="$PATH" \
+      TMPDIR="${TMPDIR:-/tmp}" \
+      NODE_ENV=development \
+      PORT="$BACKEND_PORT" \
+      KLARWERK_DEV_PERSIST=1 \
+      npm start >"$LOG_DIR/backend.log" 2>&1 &
+    echo "$!" >"$BACKEND_PID"
+  )
+  wait_for_http "Backend" "${BACKEND_URL}/health" 45 || {
+    echo "Backend-Log: ${LOG_DIR}/backend.log" >&2
+    return 1
+  }
+}
+
+start_frontend() {
+  if pid_alive "$FRONTEND_PID"; then
+    echo "Frontend laeuft bereits (PID $(pid_value "$FRONTEND_PID"))."
+    return 0
+  fi
+  guard_port_free_or_ours "Frontend" "$FRONTEND_PORT" "$FRONTEND_PID"
+  echo "Starte Frontend auf ${FRONTEND_URL} ..."
+  (
+    cd "$ROOT"
+    nohup env -i \
+      HOME="$HOME" \
+      PATH="$PATH" \
+      TMPDIR="${TMPDIR:-/tmp}" \
+      NODE_ENV=development \
+      VITE_API_TARGET="$BACKEND_URL" \
+      npm --prefix apps/web run dev -- --host 127.0.0.1 --port "$FRONTEND_PORT" --strictPort >"$LOG_DIR/frontend.log" 2>&1 &
+    echo "$!" >"$FRONTEND_PID"
+  )
+  wait_for_http "Frontend" "$FRONTEND_URL" 45 || {
+    echo "Frontend-Log: ${LOG_DIR}/frontend.log" >&2
+    return 1
+  }
+}
+
+stop_one() {
+  local name="$1"
+  local pidfile="$2"
+  if ! pid_alive "$pidfile"; then
+    rm -f "$pidfile"
+    echo "${name}: nicht durch tools/localhost gestartet."
+    return 0
+  fi
+  local pid
+  pid="$(pid_value "$pidfile")"
+  echo "Stoppe ${name} (PID ${pid}) ..."
+  kill "$pid" >/dev/null 2>&1 || true
+  for _ in $(seq 1 20); do
+    if ! kill -0 "$pid" >/dev/null 2>&1; then
+      rm -f "$pidfile"
+      echo "${name}: gestoppt."
+      return 0
+    fi
+    sleep 0.2
+  done
+  echo "${name}: laeuft noch; bitte Prozess ${pid} manuell pruefen." >&2
+  return 1
+}
+
+cmd_status() {
+  ensure_dirs
+  echo "Repo: $ROOT"
+  echo "Backend URL:  $BACKEND_URL"
+  echo "Frontend URL: $FRONTEND_URL"
+  if pid_alive "$BACKEND_PID"; then
+    echo "Backend PID:  $(pid_value "$BACKEND_PID")"
+  else
+    echo "Backend PID:  -"
+  fi
+  if pid_alive "$FRONTEND_PID"; then
+    echo "Frontend PID: $(pid_value "$FRONTEND_PID")"
+  else
+    echo "Frontend PID: -"
+  fi
+  if http_ok "${BACKEND_URL}/health"; then
+    echo "Backend HTTP: ok"
+  else
+    echo "Backend HTTP: nicht erreichbar"
+  fi
+  if http_ok "$FRONTEND_URL"; then
+    echo "Frontend HTTP: ok"
+  else
+    echo "Frontend HTTP: nicht erreichbar"
+  fi
+  echo "Logs: $LOG_DIR"
+}
+
+cmd_up() {
+  ensure_dirs
+  start_backend
+  start_frontend
+  echo "Localhost bereit: $FRONTEND_URL"
+}
+
+cmd_stop() {
+  ensure_dirs
+  stop_one "Frontend" "$FRONTEND_PID" || true
+  stop_one "Backend" "$BACKEND_PID" || true
+}
+
+cmd_check() {
+  cd "$ROOT"
+  ./tools/check "$@"
+}
+
+cmd_logs() {
+  ensure_dirs
+  echo "Backend:  $LOG_DIR/backend.log"
+  echo "Frontend: $LOG_DIR/frontend.log"
+}
+
+main() {
+  ensure_repo
+  local cmd="${1:-status}"
+  shift || true
+  case "$cmd" in
+    status) cmd_status ;;
+    up) cmd_up ;;
+    restart) cmd_stop; cmd_up ;;
+    stop) cmd_stop ;;
+    check) cmd_check "$@" ;;
+    url) echo "$FRONTEND_URL" ;;
+    open) command -v open >/dev/null 2>&1 && open "$FRONTEND_URL" || echo "$FRONTEND_URL" ;;
+    logs) cmd_logs ;;
+    -h|--help|help) usage ;;
+    *) usage; exit 2 ;;
+  esac
+}
+
+main "$@"

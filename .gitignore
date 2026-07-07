@@ -14,6 +14,8 @@ desktop-app/.run-state
 
 # SCRUM-387: lokale Dev-Persistenz der Desktop-App (Journal mit Nutzer-/Session-Daten) — nie versionieren.
 .localdb/
+.local/run/
+.local/logs/
 
 # Playwright-Smoke (SCRUM-381)
 test-results/
