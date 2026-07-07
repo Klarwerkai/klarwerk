@@ -6,7 +6,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useDirectory, useValidationBoard } from "../api/hooks";
-import type { Verdict } from "../api/types";
+import type { KnowledgeObject, Verdict } from "../api/types";
 import { useSession } from "../app/AuthContext";
 // SCRUM-417: Bearbeiten/Löschen vom Board — gleiche Rollenregel wie Bibliothek/KO-Detail.
 import { useRole } from "../app/RoleContext";
@@ -58,6 +58,7 @@ import {
 } from "../lib/validationBoardFocus";
 // SCRUM-416: Flächen-Klick öffnet die Karte — Bedienelemente bleiben davon unberührt.
 import { cardClickOpens } from "../lib/validationCard";
+import { isStaleKoDeleteError, withoutKoById } from "../lib/validationDelete";
 import {
   type FeedbackVerdict,
   buildValidationFeedback,
@@ -158,15 +159,34 @@ export function Validation(): JSX.Element {
   const { role } = useRole();
   const { push } = useToast();
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const removeDeletedKoFromCaches = (id: string): void => {
+    qc.setQueriesData<KnowledgeObject[]>({ queryKey: ["validation"] }, (items) =>
+      withoutKoById(items, id),
+    );
+    qc.setQueriesData<KnowledgeObject[]>({ queryKey: ["kos"] }, (items) =>
+      withoutKoById(items, id),
+    );
+  };
   const removeKo = useMutation({
     mutationFn: (id: string) => endpoints.ko.remove(id),
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       setConfirmDeleteId(null);
+      removeDeletedKoFromCaches(id);
       void qc.invalidateQueries({ queryKey: ["validation"] });
       void qc.invalidateQueries({ queryKey: ["kos"] });
       push("success", t("ko.deleteDone"));
     },
-    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
+    onError: (e, id) => {
+      if (isStaleKoDeleteError(e)) {
+        setConfirmDeleteId(null);
+        removeDeletedKoFromCaches(id);
+        void qc.invalidateQueries({ queryKey: ["validation"] });
+        void qc.invalidateQueries({ queryKey: ["kos"] });
+        push("success", t("ko.deleteAlreadyGone"));
+        return;
+      }
+      push("error", e instanceof ApiError ? e.message : t("state.error"));
+    },
   });
   // FR-LIF-04: Autor je KO-Karte (Namen via Directory, Fallback ID).
   const nameOf = (uid: string): string => users.data?.find((d) => d.id === uid)?.name || uid;

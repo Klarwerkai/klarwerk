@@ -382,6 +382,7 @@ const de = {
   "ko.deleteKeep": "Behalten",
   "ko.deleteYes": "Ja, löschen",
   "ko.deleteDone": "Wissensobjekt gelöscht.",
+  "ko.deleteAlreadyGone": "Wissensobjekt war bereits nicht mehr vorhanden. Liste aktualisiert.",
   "adm.ai.title": "KI-Verwaltung",
   "adm.purgeButton": "Demodaten entfernen",
   "adm.purgeQ":
@@ -3038,6 +3039,7 @@ const en: typeof de = {
   "ko.deleteKeep": "Keep",
   "ko.deleteYes": "Yes, delete",
   "ko.deleteDone": "Knowledge object deleted.",
+  "ko.deleteAlreadyGone": "Knowledge object was already gone. List refreshed.",
   "adm.ai.title": "AI management",
   "adm.purgeButton": "Remove demo data",
   "adm.purgeQ":
