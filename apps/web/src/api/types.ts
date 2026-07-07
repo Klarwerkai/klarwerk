@@ -325,7 +325,7 @@ export interface DraftPayload {
   confidentiality?: Confidentiality;
   // SCRUM-457 (Pedi 06.07.): wo der Entwurf gespeichert wurde, damit „Fortsetzen" GENAU dort
   // wieder öffnet — statt den Ort aus dem Inhalt zu raten. Alt-Entwürfe ohne Marker: Heuristik.
-  origin?: "tell" | "studio" | "expert";
+  origin?: "tell" | "studio" | "expert" | "frontdoor";
 }
 
 export interface Draft {

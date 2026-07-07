@@ -8,6 +8,7 @@ import {
   buildFrontDoorPayload,
   createFrontDoorDraft,
   deriveFrontDoorTitle,
+  frontDoorBodyFromDraft,
   withFrontDoorSaveTimeout,
 } from "../../apps/web/src/lib/captureFrontDoor";
 
@@ -46,7 +47,17 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(payload.title).toBe("wasser");
     expect(payload.statement).toBe("tesx fall");
     expect(String(payload.bodyHtml)).toContain("tesx fall");
-    expect(payload.origin).toBe("tell");
+    expect(payload.origin).toBe("frontdoor");
+  });
+
+  it("setzt Vordertuer-Drafts mit Formatierung wieder als Body ein", () => {
+    expect(frontDoorBodyFromDraft({ bodyHtml: "<p><strong>fett</strong></p>" })).toBe(
+      "<p><strong>fett</strong></p>",
+    );
+    expect(frontDoorBodyFromDraft({ statement: "nur text" })).toBe("<p>nur text</p>");
+    expect(frontDoorBodyFromDraft({ statement: "<script>alert(1)</script>" })).toBe(
+      "<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>",
+    );
   });
 
   it("nutzt den bestehenden Draft-Create-Pfad fuer die Vordertuer-Persistenz", async () => {
@@ -71,7 +82,7 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(captured[0]?.title).toBe("wasser");
     expect(captured[0]?.statement).toBe("tesx fall");
     expect(String(captured[0]?.bodyHtml)).toContain("tesx fall");
-    expect(captured[0]?.origin).toBe("tell");
+    expect(captured[0]?.origin).toBe("frontdoor");
   });
 
   it("beendet einen haengenden Save mit klarer Fehlermeldung", async () => {
@@ -88,9 +99,12 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(pageSource).toContain("RichTextEditor");
     expect(pageSource).toContain("Als Wissensobjekt sichern");
     expect(pageSource).toContain("endpoints.drafts.create");
+    expect(pageSource).toContain("endpoints.drafts.update");
+    expect(pageSource).toContain("get(resumeDraftId)");
+    expect(pageSource).toContain("frontDoorBodyFromDraft");
+    expect(pageSource).toContain("CAPTURE_FRONT_DOOR_ROUTE");
     expect(pageSource).toContain("createFrontDoorDraft");
     expect(pageSource).toContain("onMutate");
-    expect(pageSource).toContain('to="/erfassen"');
     expect(pageSource).not.toContain("KnowledgeInputStudio");
   });
 });

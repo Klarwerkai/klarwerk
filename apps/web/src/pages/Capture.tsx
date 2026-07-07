@@ -16,7 +16,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useDirectory, useDrafts } from "../api/hooks";
@@ -192,6 +192,7 @@ export function Capture(): JSX.Element {
   const { user } = useSession();
   const { push } = useToast();
   const authorName = user?.name ?? user?.email ?? "—";
+  const navigate = useNavigate();
 
   // SCRUM-263: optionaler Startkontext aus einer offenen Wissenslücke (?gap=…) — nur Anstoß für
   // die Rohnotiz, kein automatisches KO. Der Mensch ergänzt die Erfahrung, die KI strukturiert nur.
@@ -811,6 +812,10 @@ export function Capture(): JSX.Element {
     // SCRUM-457: nicht mehr aus dem Inhalt raten — der gespeicherte Herkunfts-Marker entscheidet
     // (Alt-Entwürfe ohne Marker: Rückfall-Heuristik in resumeTargetForDraft).
     const target = resumeTargetForDraft(p);
+    if (target === "frontdoor") {
+      navigate(`${CAPTURE_FRONT_DOOR_ROUTE}?draft=${encodeURIComponent(d.id)}`);
+      return;
+    }
     // gemeinsame Metadaten (erweiterte Felder)
     setType(p.type ?? "best_practice");
     setCategory(p.category ?? "");

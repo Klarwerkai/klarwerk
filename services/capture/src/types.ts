@@ -12,6 +12,8 @@ export interface DraftPayload {
   neededValidations?: number;
   asset?: string | null;
   bodyHtml?: string | null; // KW-STR: WYSIWYG-Body übersteht Entwurf/Resume/Promote
+  // UI-Herkunft fuer Resume-Routing; keine Persistenzlogik, nur Payload-Metadatum.
+  origin?: "tell" | "studio" | "expert" | "frontdoor";
 }
 
 export interface Draft {

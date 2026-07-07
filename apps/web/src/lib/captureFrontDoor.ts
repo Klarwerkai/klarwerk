@@ -16,6 +16,13 @@ export class FrontDoorSaveTimeoutError extends Error {
 
 const MAX_TITLE_LENGTH = 90;
 const MAX_STATEMENT_LENGTH = 500;
+const HTML_ESCAPE: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+};
 
 function firstBlockHtml(html: string): string {
   const heading = /<h[23]\b[^>]*>([\s\S]*?)<\/h[23]>/i.exec(html);
@@ -29,6 +36,10 @@ function firstBlockHtml(html: string): string {
 
 function compactTitle(text: string): string {
   return text.replace(/\s+/g, " ").trim().slice(0, MAX_TITLE_LENGTH).trim();
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/[&<>"']/g, (char) => HTML_ESCAPE[char] ?? char);
 }
 
 export function deriveFrontDoorTitle(manualTitle: string, bodyHtml: string): string {
@@ -47,6 +58,15 @@ export function frontDoorStatement(bodyHtml: string, title: string): string {
   return text || title;
 }
 
+export function frontDoorBodyFromDraft(payload: DraftPayload): string {
+  const bodyHtml = payload.bodyHtml?.trim();
+  if (bodyHtml) {
+    return bodyHtml;
+  }
+  const statement = payload.statement?.trim();
+  return statement ? `<p>${escapeHtml(statement)}</p>` : "";
+}
+
 export function buildFrontDoorPayload(input: {
   title: string;
   bodyHtml: string;
@@ -62,7 +82,7 @@ export function buildFrontDoorPayload(input: {
     conditions: [],
     measures: [],
     ...(bodyHtml.trim() ? { bodyHtml } : {}),
-    origin: "tell",
+    origin: "frontdoor",
   };
 }
 

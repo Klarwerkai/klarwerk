@@ -27,6 +27,9 @@ describe("SCRUM-457: resumeTargetForDraft — gespeicherter Marker gilt exakt", 
     // strukturierter Entwurf, aber als Erzähl-Einstieg gespeichert → bleibt „tell".
     expect(resumeTargetForDraft({ bodyHtml: "<p>viel Inhalt</p>", origin: "tell" })).toBe("tell");
     expect(resumeTargetForDraft({ statement: "x", origin: "expert" })).toBe("expert");
+    expect(resumeTargetForDraft({ bodyHtml: "<p>Frontdoor</p>", origin: "frontdoor" })).toBe(
+      "frontdoor",
+    );
   });
 
   it("Alt-Entwürfe ohne Marker: Rückfall-Heuristik (strukturiert → studio, sonst tell)", () => {
@@ -51,5 +54,16 @@ describe("SCRUM-457: resumeTargetForDraft — gespeicherter Marker gilt exakt", 
     expect(captureSource).toContain("workAreaRef");
     expect(captureSource).toContain("scrollIntoView");
     expect(captureSource).toContain("ref={workAreaRef}");
+  });
+
+  it("Vordertuer-Entwuerfe werden aus der alten Liste zur Vordertuer geroutet", () => {
+    const captureSource = readFileSync(
+      resolve(process.cwd(), "apps/web/src/pages/Capture.tsx"),
+      "utf8",
+    );
+
+    expect(captureSource).toContain('target === "frontdoor"');
+    expect(captureSource).toContain("CAPTURE_FRONT_DOOR_ROUTE");
+    expect(captureSource).toContain("navigate(");
   });
 });
