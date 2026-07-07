@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { DraftPayload } from "../../apps/web/src/api/types";
 import { originForSave, resumeTargetForDraft } from "../../apps/web/src/lib/captureResume";
@@ -38,5 +40,16 @@ describe("SCRUM-457: resumeTargetForDraft — gespeicherter Marker gilt exakt", 
   it("ignoriert einen ungültigen Marker und fällt auf die Heuristik zurück", () => {
     const bad = { statement: "x", origin: "quatsch" } as unknown as DraftPayload;
     expect(resumeTargetForDraft(bad)).toBe("tell");
+  });
+
+  it("Fortsetzen scrollt nach dem Laden sichtbar in den Arbeitsbereich", () => {
+    const captureSource = readFileSync(
+      resolve(process.cwd(), "apps/web/src/pages/Capture.tsx"),
+      "utf8",
+    );
+
+    expect(captureSource).toContain("workAreaRef");
+    expect(captureSource).toContain("scrollIntoView");
+    expect(captureSource).toContain("ref={workAreaRef}");
   });
 });

@@ -306,6 +306,7 @@ export function Capture(): JSX.Element {
   const [confirmDiscardDraftId, setConfirmDiscardDraftId] = useState<string | null>(null);
   const qc = useQueryClient();
   const drafts = useDrafts();
+  const workAreaRef = useRef<HTMLDivElement | null>(null);
 
   // Diktat
   const [listening, setListening] = useState(false);
@@ -847,6 +848,9 @@ export function Capture(): JSX.Element {
       setWizStep("refine");
     }
     setNotice(t("capture.editingDraft"));
+    window.setTimeout(() => {
+      workAreaRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
   };
 
   const discardDraft = useMutation({
@@ -1589,6 +1593,7 @@ export function Capture(): JSX.Element {
 
       {/* SCRUM-384: Die frühere Weg-Leiste (SCRUM-370) entfiel — die „Wissen retten“-
           Einführung oben erklärt denselben Dreischritt; Doppel-Blöcke erschlagen (Pedi-Review). */}
+      <div ref={workAreaRef} className="scroll-mt-4" />
 
       {/* SCRUM-384 / AG-12 / KG-UX-001/002/003/010: Erzähl-Einstieg als Standardweg — die Erzähl-Modi
           (Freitext · Diktat · Interview) führen in den Studio-Hauptweg; das klassische Formular bleibt
