@@ -93,6 +93,7 @@ import {
   togglePoint,
 } from "../lib/captureFromFile";
 import { gapContextDraft, readGapContext } from "../lib/captureFromGap";
+import { CAPTURE_FRONT_DOOR_ROUTE } from "../lib/captureFrontDoor";
 // SCRUM-407: zentrale ?-Hilfen-Karte des Erfassen-Wegs (chelp.*) — Gegenstück zu lib/reviewHelp.
 import { type CaptureHelpId, captureHelp } from "../lib/captureHelp";
 import { captureReadiness } from "../lib/captureReadiness";
@@ -1397,7 +1398,18 @@ export function Capture(): JSX.Element {
 
   return (
     <div className="mx-auto max-w-5xl">
-      <PageHeader kicker={t("capture.kicker")} title={t("capture.title")} />
+      <PageHeader
+        kicker={t("capture.kicker")}
+        title={t("capture.title")}
+        actions={
+          <Link
+            className="text-sm font-semibold text-muted hover:text-ink"
+            to={CAPTURE_FRONT_DOOR_ROUTE}
+          >
+            Dokument-Canvas
+          </Link>
+        }
+      />
       {/* SCRUM-296: Demo-/Pilotpfad auf der Erfassungsseite wiedererkennbar (nur bei ?demo=stage1). */}
       {isDemoContext(params) ? <DemoBanner surface="capture" /> : null}
 

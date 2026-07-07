@@ -1,12 +1,15 @@
+import { Plus } from "lucide-react";
 import type { ComponentType } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useRole } from "./app/RoleContext";
 import { ALL_ITEMS, type NavItem, canSee } from "./app/navigation";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { CAPTURE_FRONT_DOOR_ROUTE } from "./lib/captureFrontDoor";
 import { Admin } from "./pages/Admin";
 import { Analytics } from "./pages/Analytics";
 import { Ask } from "./pages/Ask";
 import { Capture } from "./pages/Capture";
+import { CaptureFrontDoor } from "./pages/CaptureFrontDoor";
 import { Conflicts } from "./pages/Conflicts";
 import { Duplicates } from "./pages/Duplicates";
 import { ExternalKnowledge } from "./pages/ExternalKnowledge";
@@ -28,6 +31,7 @@ const PAGES: Record<string, ComponentType> = {
   start: Start,
   aufgaben: MyTasks,
   erfassen: Capture,
+  captureFrontDoor: CaptureFrontDoor,
   fragen: Ask,
   bibliothek: Library,
   extern: ExternalKnowledge,
@@ -44,6 +48,16 @@ const PAGES: Record<string, ComponentType> = {
   kapital: Capital,
   hilfe: Help,
   profil: Profile,
+};
+
+const CAPTURE_FRONT_DOOR_ITEM: NavItem = {
+  id: "captureFrontDoor",
+  path: CAPTURE_FRONT_DOOR_ROUTE,
+  labelKey: "nav.capture",
+  icon: Plus,
+  minRole: "experte",
+  section: "7.3",
+  shot: "03",
 };
 
 // Rollen-Gate (RB-2): Deep-Link auf Unerlaubtes → zurück auf Start.
@@ -67,6 +81,10 @@ export function AppRoutes(): JSX.Element {
       {ALL_ITEMS.map((item) => (
         <Route key={item.id} path={item.path} element={<Guarded item={item} />} />
       ))}
+      <Route
+        path={CAPTURE_FRONT_DOOR_ITEM.path}
+        element={<Guarded item={CAPTURE_FRONT_DOOR_ITEM} />}
+      />
       <Route path="/wissen/:id" element={<KnowledgeDetail />} />
       <Route path="/mobile" element={<Mobile />} />
       <Route path="/ui-kit" element={<UiKit />} />
