@@ -107,4 +107,29 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(pageSource).toContain("onMutate");
     expect(pageSource).not.toContain("KnowledgeInputStudio");
   });
+
+  it("/erfassen stellt die Vordertuer als Default heraus und behaelt alte Wege", () => {
+    const captureSource = readFileSync(
+      resolve(process.cwd(), "apps/web/src/pages/Capture.tsx"),
+      "utf8",
+    );
+
+    expect(captureSource).toContain("KW-PROD-15");
+    expect(captureSource).toContain("Neues Wissensobjekt erfassen");
+    expect(captureSource).toContain("Dokument-Canvas oeffnen");
+    expect(captureSource).toContain("Weitere Wege");
+    expect(captureSource).toContain("NARRATE_MODES.map");
+    expect(captureSource).toContain("EXPERT_MODE");
+    expect(captureSource).toContain("CAPTURE_FRONT_DOOR_ROUTE");
+  });
+
+  it("Default-Vordertuer nutzt genau einen RichTextEditor und kein Studio-Overlay", () => {
+    const pageSource = readFileSync(
+      resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
+      "utf8",
+    );
+
+    expect(pageSource.match(/<RichTextEditor/g) ?? []).toHaveLength(1);
+    expect(pageSource).not.toContain("KnowledgeInputStudio");
+  });
 });

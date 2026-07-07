@@ -1422,6 +1422,29 @@ export function Capture(): JSX.Element {
       {/* SCRUM-296: Demo-/Pilotpfad auf der Erfassungsseite wiedererkennbar (nur bei ?demo=stage1). */}
       {isDemoContext(params) ? <DemoBanner surface="capture" /> : null}
 
+      {/* KW-PROD-15: Vordertuer als klarer Default; die bisherigen Wege bleiben darunter erhalten. */}
+      <Card className="mb-4 border-ai/30 bg-ai/5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="text-[12px] font-semibold uppercase text-ai">Standardweg</div>
+            <h2 className="mt-1 text-lg font-semibold text-ink">Neues Wissensobjekt erfassen</h2>
+            <p className="mt-1 text-sm leading-relaxed text-muted">
+              Dokument-Canvas fuer Titel, Inhalt, Formatierung, Bilder und Entwurf-Fortsetzen.
+            </p>
+          </div>
+          <Link
+            to={CAPTURE_FRONT_DOOR_ROUTE}
+            className="inline-flex items-center justify-center rounded-btn bg-ink px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+          >
+            Dokument-Canvas oeffnen <span aria-hidden="true">→</span>
+          </Link>
+        </div>
+        <div className="mt-3 border-t border-hairline pt-3 text-[12.5px] text-muted">
+          Weitere Wege: Expertenformular, Diktat, Interview und Datei importieren bleiben
+          erreichbar.
+        </div>
+      </Card>
+
       {/* SCRUM-352: ruhiger, geführter Einstieg — Story „Erfahrungswissen sichern" + 3 Schritte +
           leichter Wertbeitrag. Progressive Disclosure; entfernt keine Funktion (Modi/Editor folgen). */}
       {/* SCRUM-384: Erstnutzer-Führung — beim Erstbesuch ausgeklappt, danach ruhig eingeklappt. */}
