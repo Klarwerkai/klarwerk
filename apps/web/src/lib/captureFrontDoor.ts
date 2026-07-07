@@ -1,4 +1,4 @@
-import type { DraftPayload } from "../api/types";
+import type { DraftPayload, StructureResult } from "../api/types";
 import { htmlToPlainText, normalizePastedHtml } from "./richText";
 
 export const CAPTURE_FRONT_DOOR_ROUTE = "/capture/frontdoor";
@@ -6,6 +6,8 @@ export const CAPTURE_FRONT_DOOR_FALLBACK_TITLE = "Unbenanntes Wissensobjekt";
 export const FRONT_DOOR_SAVE_TIMEOUT_MS = 30000;
 export const FRONT_DOOR_SAVE_TIMEOUT_MESSAGE =
   "Speichern dauert zu lange. Bitte pruefe Bibliothek oder Entwuerfe, bevor du erneut speicherst.";
+export const FRONT_DOOR_STRUCTURING_UNAVAILABLE_MESSAGE =
+  "Ich kann das gerade nicht verlaesslich ordnen.";
 
 export class FrontDoorSaveTimeoutError extends Error {
   constructor() {
@@ -84,6 +86,52 @@ export function buildFrontDoorPayload(input: {
     ...(bodyHtml.trim() ? { bodyHtml } : {}),
     origin: "frontdoor",
   };
+}
+
+export function buildFrontDoorStructureInput(input: {
+  title: string;
+  bodyHtml: string;
+}): string {
+  const title = compactTitle(input.title);
+  const body = htmlToPlainText(normalizePastedHtml(input.bodyHtml));
+  return [title, body]
+    .filter((part) => part.length > 0)
+    .join("\n\n")
+    .trim();
+}
+
+function renderList(items: string[]): string {
+  const clean = items.map((item) => item.trim()).filter((item) => item.length > 0);
+  if (clean.length === 0) {
+    return "";
+  }
+  return `<ul>${clean.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+}
+
+export function frontDoorStructuredBodyHtml(result: StructureResult): string {
+  const sections: string[] = [];
+  const title = compactTitle(result.title);
+  const statement = result.statement.trim();
+
+  if (title) {
+    sections.push(`<h2>${escapeHtml(title)}</h2>`);
+  }
+  if (statement) {
+    sections.push(`<p><strong>Kernaussage:</strong> ${escapeHtml(statement)}</p>`);
+  }
+  const conditions = renderList(result.conditions);
+  if (conditions) {
+    sections.push(`<h3>Bedingungen</h3>${conditions}`);
+  }
+  const measures = renderList(result.measures);
+  if (measures) {
+    sections.push(`<h3>Massnahmen</h3>${measures}`);
+  }
+  if (result.tags.length > 0) {
+    sections.push(`<p><strong>Hinweise:</strong> ${escapeHtml(result.tags.join(", "))}</p>`);
+  }
+
+  return sections.join("");
 }
 
 export function withFrontDoorSaveTimeout<T>(

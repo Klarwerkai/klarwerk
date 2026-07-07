@@ -5,10 +5,13 @@ import type { Draft, DraftPayload } from "../../apps/web/src/api/types";
 import {
   CAPTURE_FRONT_DOOR_ROUTE,
   FRONT_DOOR_SAVE_TIMEOUT_MESSAGE,
+  FRONT_DOOR_STRUCTURING_UNAVAILABLE_MESSAGE,
   buildFrontDoorPayload,
+  buildFrontDoorStructureInput,
   createFrontDoorDraft,
   deriveFrontDoorTitle,
   frontDoorBodyFromDraft,
+  frontDoorStructuredBodyHtml,
   withFrontDoorSaveTimeout,
 } from "../../apps/web/src/lib/captureFrontDoor";
 
@@ -105,6 +108,61 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(pageSource).toContain("CAPTURE_FRONT_DOOR_ROUTE");
     expect(pageSource).toContain("createFrontDoorDraft");
     expect(pageSource).toContain("onMutate");
+    expect(pageSource).not.toContain("KnowledgeInputStudio");
+  });
+
+  it("bereitet den Frontdoor-Inhalt fuer den bestehenden Reasoner-Structure-Pfad vor", () => {
+    expect(
+      buildFrontDoorStructureInput({
+        title: "Wasser",
+        bodyHtml: "<h2>Pruefung</h2><p><strong>Ventil</strong> kontrollieren.</p>",
+      }),
+    ).toBe("Wasser\n\nPruefung Ventil kontrollieren.");
+    expect(buildFrontDoorStructureInput({ title: "", bodyHtml: "<p> </p>" })).toBe("");
+  });
+
+  it("rendert den KI-Vorschlag als sichere strukturierte HTML-Uebernahme", () => {
+    const html = frontDoorStructuredBodyHtml({
+      title: "Wasser <script>",
+      statement: "Pumpe pruefen & freigeben",
+      conditions: ["Druck > 4 bar"],
+      measures: ["Ventil schliessen"],
+      tags: ["wasser", "betrieb"],
+      confidence: 0.7,
+      demo: false,
+    });
+
+    expect(html).toContain("<h2>Wasser &lt;script&gt;</h2>");
+    expect(html).toContain("<strong>Kernaussage:</strong>");
+    expect(html).toContain("<h3>Bedingungen</h3>");
+    expect(html).toContain("<li>Druck &gt; 4 bar</li>");
+    expect(html).toContain("<h3>Massnahmen</h3>");
+    expect(html).toContain("wasser, betrieb");
+    expect(html).not.toContain("<script>");
+  });
+
+  it("bietet optionale KI-Strukturierung ohne Auto-Save oder Auto-Validate an", () => {
+    const pageSource = readFileSync(
+      resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
+      "utf8",
+    );
+
+    expect(pageSource).toContain("Soll ich das ordnen?");
+    expect(pageSource).toContain("endpoints.reasoner.structure");
+    expect(pageSource).toContain("buildFrontDoorStructureInput");
+    expect(pageSource).toContain("KI-Vorschlag");
+    expect(pageSource).toContain("KI-generiert. Bitte pruefen");
+    expect(pageSource).toContain("Uebernehmen");
+    expect(pageSource).toContain("Verwerfen");
+    expect(pageSource).toContain("FRONT_DOOR_STRUCTURING_UNAVAILABLE_MESSAGE");
+    expect(FRONT_DOOR_STRUCTURING_UNAVAILABLE_MESSAGE).toBe(
+      "Ich kann das gerade nicht verlaesslich ordnen.",
+    );
+    expect(pageSource).toContain("Originaltext bleibt unveraendert");
+    expect(pageSource).toContain("Nichts wird automatisch gespeichert");
+    expect(pageSource).toContain("frontDoorStructuredBodyHtml");
+    expect(pageSource).not.toContain("endpoints.ko.create");
+    expect(pageSource).not.toContain("endpoints.validation");
     expect(pageSource).not.toContain("KnowledgeInputStudio");
   });
 
