@@ -204,11 +204,28 @@ function frontDoorDraftSavedFromState(state: unknown): FrontDoorDraftSavedState 
   };
 }
 
+function formatDraftTimestamp(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value || "unbekannt";
+  }
+  return new Intl.DateTimeFormat("de-DE", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function draftAuthorName(draft: Draft, directory: readonly { id: string; name: string }[]): string {
+  return directory.find((entry) => entry.id === draft.originalAuthor)?.name ?? draft.originalAuthor;
+}
+
 export function Capture(): JSX.Element {
   const { t, i18n } = useTranslation();
   const { user } = useSession();
   const { push } = useToast();
   const authorName = user?.name ?? user?.email ?? "—";
+  const draftScopeLabel =
+    user?.role === "admin" ? "Admin-Ansicht: alle Entwuerfe" : "Meine Entwuerfe";
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -1492,7 +1509,8 @@ export function Capture(): JSX.Element {
           </div>
           <p className="mt-1 text-[12.5px] leading-relaxed text-trust-pos-text/90">
             <strong>{frontDoorDraftSaved.title}</strong> ist unter Entwuerfe fortsetzen sichtbar.
-            Der Dokument-Canvas startet beim naechsten Oeffnen wieder leer.
+            Der gespeicherte Entwurf ist in der Liste hervorgehoben; der Dokument-Canvas startet
+            beim naechsten Oeffnen wieder leer.
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <Link
@@ -1628,18 +1646,42 @@ export function Capture(): JSX.Element {
       {/* SCRUM-113 / FE-CAP-07: Entwürfe fortsetzen (gemeinsamer Pool mit Mobile) */}
       {(drafts.data ?? []).length > 0 ? (
         <Card className="mb-4 space-y-2">
-          <SectionLabel>{t("capture.resumeTitle")}</SectionLabel>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <SectionLabel>{t("capture.resumeTitle")}</SectionLabel>
+            <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2">
+              {draftScopeLabel}
+            </span>
+          </div>
           <ul className="divide-y divide-hairline">
             {(drafts.data ?? []).map((d) => (
-              <li key={d.id} className="flex items-center gap-2 py-1.5">
-                <span className="min-w-0 flex-1 truncate text-[13px] text-text">
-                  {draftTitle(d, t("capture.draftFallbackTitle"))}
-                  {draftId === d.id ? (
-                    <span className="ml-2 font-mono text-[10px] uppercase text-ai">
-                      {t("capture.editingBadge")}
-                    </span>
-                  ) : null}
-                </span>
+              <li
+                key={d.id}
+                className={`flex flex-col gap-2 py-2 sm:flex-row sm:items-center ${
+                  frontDoorDraftSaved?.id === d.id
+                    ? "rounded-card border border-trust-pos-fill/40 bg-trust-pos-bg px-2"
+                    : ""
+                }`}
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[13px] font-semibold text-text">
+                    {draftTitle(d, t("capture.draftFallbackTitle"))}
+                    {draftId === d.id ? (
+                      <span className="ml-2 font-mono text-[10px] uppercase text-ai">
+                        {t("capture.editingBadge")}
+                      </span>
+                    ) : null}
+                    {frontDoorDraftSaved?.id === d.id ? (
+                      <span className="ml-2 font-mono text-[10px] uppercase text-trust-pos-text">
+                        gerade gespeichert
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11.5px] text-muted">
+                    <span>Ersteller: {draftAuthorName(d, directory.data ?? [])}</span>
+                    <span>Gespeichert: {formatDraftTimestamp(d.updatedAt || d.createdAt)}</span>
+                    <span>Status: Entwurf</span>
+                  </div>
+                </div>
                 {/* Bugfix (Pedi 04.07.): Löschen erst nach Inline-Nachfrage — kein stiller Verlust. */}
                 {confirmDiscardDraftId === d.id ? (
                   <span className="inline-flex items-center gap-1.5">

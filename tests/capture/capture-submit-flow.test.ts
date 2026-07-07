@@ -42,6 +42,8 @@ describe("KW-PROD-29: Frontdoor Save/Submit State", () => {
     expect(source).toContain("Neuer leerer Eintrag");
     expect(source).toContain("useLocation");
     expect(source).toContain('navigate("/erfassen", { replace: true, state: null })');
+    expect(source).toContain("Der gespeicherte Entwurf ist in der Liste hervorgehoben");
+    expect(source).toContain("frontDoorDraftSaved?.id === d.id");
   });
 
   it("sperrt wiederholte Frontdoor-Save- und Submit-Ausloesungen lokal", () => {
@@ -57,5 +59,18 @@ describe("KW-PROD-29: Frontdoor Save/Submit State", () => {
     expect(source).toContain("saveRequestedRef.current = true");
     expect(source).toContain("submitRequestedRef.current = true");
     expect(source).toContain("!submittedKo");
+  });
+
+  it("zeigt Entwurfsmetadaten und macht die Draft-Sichtbarkeit explizit", () => {
+    const source = readFileSync(resolve(process.cwd(), "apps/web/src/pages/Capture.tsx"), "utf8");
+
+    expect(source).toContain("formatDraftTimestamp");
+    expect(source).toContain("draftAuthorName");
+    expect(source).toContain("draftScopeLabel");
+    expect(source).toContain("Admin-Ansicht: alle Entwuerfe");
+    expect(source).toContain("Meine Entwuerfe");
+    expect(source).toContain("Ersteller:");
+    expect(source).toContain("Gespeichert:");
+    expect(source).toContain("Status: Entwurf");
   });
 });

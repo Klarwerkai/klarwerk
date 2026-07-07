@@ -222,6 +222,75 @@ describe("Restliche API end-to-end (§2.4/§2.5)", () => {
     await app.close();
   });
 
+  it("Draft-Liste zeigt Admin alle Entwuerfe und normalen Nutzern nur eigene", async () => {
+    const { app, headers: adminHeaders } = await adminApp();
+
+    const adminDraft = await app.inject({
+      method: "POST",
+      url: "/api/drafts",
+      headers: adminHeaders,
+      payload: {
+        title: "Admin Entwurf",
+        statement: "Nur Admin.",
+        type: "best_practice",
+        category: "A",
+      },
+    });
+    expect(adminDraft.statusCode).toBe(201);
+
+    const createUser = await app.inject({
+      method: "POST",
+      url: "/api/users",
+      headers: adminHeaders,
+      payload: { name: "Erik", email: "erik@x.de", password: "secret123", role: "experte" },
+    });
+    expect(createUser.statusCode).toBe(201);
+
+    const erikLogin = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "erik@x.de", password: "secret123" },
+    });
+    const erikHeaders = { authorization: `Bearer ${erikLogin.json().token}` };
+
+    const erikDraft = await app.inject({
+      method: "POST",
+      url: "/api/drafts",
+      headers: erikHeaders,
+      payload: {
+        title: "Erik Entwurf",
+        statement: "Nur Erik.",
+        type: "best_practice",
+        category: "B",
+      },
+    });
+    expect(erikDraft.statusCode).toBe(201);
+
+    const adminList = await app.inject({
+      method: "GET",
+      url: "/api/drafts",
+      headers: adminHeaders,
+    });
+    expect(adminList.statusCode).toBe(200);
+    expect(adminList.json().map((draft: { id: string }) => draft.id)).toEqual([
+      adminDraft.json().id,
+      erikDraft.json().id,
+    ]);
+
+    const erikList = await app.inject({ method: "GET", url: "/api/drafts", headers: erikHeaders });
+    expect(erikList.statusCode).toBe(200);
+    expect(erikList.json().map((draft: { id: string }) => draft.id)).toEqual([erikDraft.json().id]);
+
+    const erikReadsAdmin = await app.inject({
+      method: "GET",
+      url: `/api/drafts/${adminDraft.json().id}`,
+      headers: erikHeaders,
+    });
+    expect(erikReadsAdmin.statusCode).toBe(403);
+
+    await app.close();
+  });
+
   it("FR-ANA-02: Wirkungs-Dashboard zählt Antwortquote ohne Lücke", async () => {
     const { app, headers } = await adminApp();
     await app.inject({

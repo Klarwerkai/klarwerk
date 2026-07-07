@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Loader2, Save, Send, Sparkles } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Loader2, Save, Send, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -77,6 +77,15 @@ export function CaptureFrontDoor(): JSX.Element {
   const hasStructureInput = structureInput.length > 0;
   const assistInput = bodyTextForAssist(bodyHtml);
   const hasAssistInput = assistInput.trim().length > 0;
+  const submitComplete = submittedKo !== null;
+  const hasPendingProposal = structureProposal !== null || assistProposal !== null;
+  const hasDiscardRisk =
+    title.trim().length > 0 ||
+    hasBody ||
+    hasPendingProposal ||
+    structureAccepted ||
+    assistAccepted ||
+    activeDraftId !== null;
 
   const clearStructureState = useCallback((): void => {
     setStructureProposal(null);
@@ -91,6 +100,9 @@ export function CaptureFrontDoor(): JSX.Element {
   }, []);
 
   const changeTitle = (next: string): void => {
+    if (submitComplete) {
+      return;
+    }
     setTitle(next);
     setSubmittedKo(null);
     saveRequestedRef.current = false;
@@ -100,6 +112,9 @@ export function CaptureFrontDoor(): JSX.Element {
   };
 
   const changeBodyHtml = (next: string): void => {
+    if (submitComplete) {
+      return;
+    }
     setBodyHtml(next);
     setSubmittedKo(null);
     saveRequestedRef.current = false;
@@ -119,6 +134,18 @@ export function CaptureFrontDoor(): JSX.Element {
     clearStructureState();
     clearAssistState();
     setErr(null);
+  };
+
+  const discardInputAndReturn = (): void => {
+    if (!hasDiscardRisk) {
+      navigate("/erfassen");
+      return;
+    }
+    if (!window.confirm("Eingabe verwerfen? Nicht gespeicherte Inhalte gehen verloren.")) {
+      return;
+    }
+    resetForNewEntry();
+    navigate("/erfassen");
   };
 
   useEffect(() => {
@@ -268,8 +295,12 @@ export function CaptureFrontDoor(): JSX.Element {
     },
     onSuccess: (ko) => {
       setSubmittedKo({ id: ko.id, title: ko.title });
+      setTitle("");
+      setBodyHtml("");
       setActiveDraftId(null);
       setSearchParams({}, { replace: true });
+      clearStructureState();
+      clearAssistState();
       setErr(null);
       push("success", "Zur Pruefung eingereicht.");
       void qc.invalidateQueries({ queryKey: ["validation"] });
@@ -290,9 +321,15 @@ export function CaptureFrontDoor(): JSX.Element {
     !structure.isPending &&
     !loadingDraft &&
     !save.isPending &&
-    !submit.isPending;
+    !submit.isPending &&
+    !submittedKo;
   const canAssist =
-    hasAssistInput && !assist.isPending && !loadingDraft && !save.isPending && !submit.isPending;
+    hasAssistInput &&
+    !assist.isPending &&
+    !loadingDraft &&
+    !save.isPending &&
+    !submit.isPending &&
+    !submittedKo;
 
   const acceptStructureProposal = (): void => {
     if (!structureProposal) {
@@ -343,6 +380,49 @@ export function CaptureFrontDoor(): JSX.Element {
     submitRequestedRef.current = true;
     submit.mutate();
   };
+
+  if (submittedKo) {
+    return (
+      <div className="mx-auto max-w-5xl">
+        <PageHeader
+          kicker="Erfassen"
+          title="Dokument-Canvas"
+          actions={
+            <Link className="text-sm font-semibold text-muted hover:text-ink" to="/erfassen">
+              Zurueck zu Wissen erfassen
+            </Link>
+          }
+        />
+        <Card className="space-y-4 border-trust-pos-fill/40 bg-trust-pos-bg">
+          <div className="flex items-center gap-1.5 font-semibold text-trust-pos-text">
+            <CheckCircle2 size={16} />
+            Zur Pruefung eingereicht: <strong>{submittedKo.title}</strong>
+          </div>
+          <p className="text-sm leading-relaxed text-trust-pos-text/90">
+            Der Editor ist abgeschlossen und geleert. Speichern oder erneutes Einreichen desselben
+            Inhalts ist gesperrt; ein neuer Eintrag startet nur bewusst ueber den Button.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              className="inline-flex items-center justify-center rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
+              to="/validierung"
+            >
+              Validierung oeffnen
+            </Link>
+            <Link
+              className="inline-flex items-center justify-center rounded-btn border border-hairline bg-page px-3 py-1.5 text-[12.5px] font-semibold text-text hover:bg-hairline-soft"
+              to={`/wissen/${submittedKo.id}`}
+            >
+              Objekt ansehen
+            </Link>
+            <Button type="button" variant="ghost" onClick={resetForNewEntry}>
+              Neuer Eintrag
+            </Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -561,7 +641,7 @@ export function CaptureFrontDoor(): JSX.Element {
                     Uebernehmen
                   </Button>
                   <Button type="button" variant="ghost" onClick={discardStructureProposal}>
-                    Verwerfen
+                    Vorschlag verwerfen
                   </Button>
                 </div>
               </div>
@@ -591,7 +671,7 @@ export function CaptureFrontDoor(): JSX.Element {
                     Uebernehmen
                   </Button>
                   <Button type="button" variant="ghost" onClick={discardAssistProposal}>
-                    Verwerfen
+                    Vorschlag verwerfen
                   </Button>
                 </div>
               </div>
@@ -603,33 +683,11 @@ export function CaptureFrontDoor(): JSX.Element {
               </div>
             ) : null}
 
-            {submittedKo ? (
-              <div className="rounded-card border border-trust-pos-fill/40 bg-trust-pos-bg p-3 text-sm text-trust-pos-text">
-                <div className="flex items-center gap-1.5 font-semibold">
-                  <CheckCircle2 size={15} />
-                  Zur Pruefung eingereicht: <strong>{submittedKo.title}</strong>
-                </div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <Link
-                    className="inline-flex items-center justify-center rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
-                    to="/validierung"
-                  >
-                    Validierung oeffnen
-                  </Link>
-                  <Link
-                    className="inline-flex items-center justify-center rounded-btn border border-hairline bg-page px-3 py-1.5 text-[12.5px] font-semibold text-text hover:bg-hairline-soft"
-                    to={`/wissen/${submittedKo.id}`}
-                  >
-                    Objekt ansehen
-                  </Link>
-                  <Button type="button" variant="ghost" onClick={resetForNewEntry}>
-                    Neuer Eintrag
-                  </Button>
-                </div>
-              </div>
-            ) : null}
-
             <div className="flex flex-wrap items-center gap-3">
+              <Button type="button" variant="ghost" onClick={discardInputAndReturn}>
+                <ArrowLeft size={15} />
+                {hasDiscardRisk ? "Eingabe verwerfen" : "Zurueck"}
+              </Button>
               <Button type="submit" variant="primary" disabled={!canSave}>
                 {save.isPending ? (
                   <Loader2 size={15} className="animate-spin" />

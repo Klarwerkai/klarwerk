@@ -254,7 +254,7 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(pageSource).toContain("KI-Vorschlag");
     expect(pageSource).toContain("KI-generiert. Bitte pruefen");
     expect(pageSource).toContain("Uebernehmen");
-    expect(pageSource).toContain("Verwerfen");
+    expect(pageSource).toContain("Vorschlag verwerfen");
     expect(pageSource).toContain("FRONT_DOOR_STRUCTURING_UNAVAILABLE_MESSAGE");
     expect(FRONT_DOOR_STRUCTURING_UNAVAILABLE_MESSAGE).toBe(
       "Ich kann das gerade nicht verlaesslich ordnen.",
@@ -317,7 +317,28 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(pageSource).toContain("Neuer Eintrag");
     expect(pageSource).toContain("Zur Pruefung eingereicht");
     expect(pageSource).toContain("Validierung oeffnen");
-    expect(pageSource).not.toContain('setBodyHtml("");\\n      setActiveDraftId(null)');
+    expect(pageSource).toContain('setTitle("");');
+    expect(pageSource).toContain('setBodyHtml("");');
+    expect(pageSource).toContain("Der Editor ist abgeschlossen und geleert");
+    expect(pageSource).toContain("Speichern oder erneutes Einreichen desselben");
+    expect(pageSource).not.toContain("Auto-Validate");
+  });
+
+  it("trennt Eingabe-Verwerfen von KI-Vorschlag-Verwerfen", () => {
+    const pageSource = readFileSync(
+      resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
+      "utf8",
+    );
+
+    expect(pageSource).toContain("discardInputAndReturn");
+    expect(pageSource).toContain("hasDiscardRisk");
+    expect(pageSource).toContain("window.confirm");
+    expect(pageSource).toContain("Eingabe verwerfen? Nicht gespeicherte Inhalte gehen verloren.");
+    expect(pageSource).toContain("Eingabe verwerfen");
+    expect(pageSource).toContain("Zurueck");
+    expect(pageSource.match(/Vorschlag verwerfen/g) ?? []).toHaveLength(2);
+    expect(pageSource).toContain("discardStructureProposal");
+    expect(pageSource).toContain("discardAssistProposal");
   });
 
   it("/erfassen stellt die Vordertuer als Default heraus und behaelt alte Wege", () => {

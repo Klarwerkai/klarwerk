@@ -1,15 +1,44 @@
-import type { FastifyPluginAsync } from "fastify";
-import type { CaptureService, DraftPayload } from "../../../capture";
+import type { FastifyPluginAsync, FastifyReply } from "fastify";
+import type { CaptureService, Draft, DraftPayload } from "../../../capture";
 import type { ConflictService, OverlapService, OverlapSettingsRepo } from "../../../conflicts";
 import type { KoService } from "../../../knowledge-object";
 import type { Reasoner } from "../../../reasoner";
 import type { ValidationService } from "../../../validation";
 import { detectConflictsForKo } from "../conflict-detection";
 import { detectDuplicatesForKo } from "../duplicate-detection";
-import { type Guards, sendError } from "../http";
+import { type Guards, type SessionUser, sendError } from "../http";
 import type { AssignmentNotifier } from "../notify";
 
-// Entwürfe (§2.4 / FR-CAP). Gemeinsamer Pool, Autor bleibt erhalten; Promote → KO.
+function canSeeDraft(user: SessionUser, draft: Draft): boolean {
+  return user.role === "admin" || draft.originalAuthor === user.id;
+}
+
+function visibleDraftsFor(user: SessionUser, drafts: Draft[]): Draft[] {
+  return user.role === "admin"
+    ? drafts
+    : drafts.filter((draft) => draft.originalAuthor === user.id);
+}
+
+async function requireVisibleDraft(
+  capture: CaptureService,
+  id: string,
+  user: SessionUser,
+  reply: FastifyReply,
+): Promise<Draft | undefined> {
+  const draft = await capture.getDraft(id);
+  if (!draft) {
+    reply.code(404).send({ error: "NOT_FOUND", message: "Entwurf nicht gefunden." });
+    return undefined;
+  }
+  if (!canSeeDraft(user, draft)) {
+    reply.code(403).send({ error: "FORBIDDEN", message: "Entwurf nicht verfuegbar." });
+    return undefined;
+  }
+  return draft;
+}
+
+// Entwürfe (§2.4 / FR-CAP). Admin sieht den gemeinsamen Pool; normale Nutzer nur eigene Entwürfe.
+// Autor bleibt erhalten; Promote → KO.
 export interface CaptureRoutesDeps {
   capture: CaptureService;
   ko: KoService;
@@ -43,7 +72,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
       if (!user) {
         return;
       }
-      reply.code(200).send(await capture.listDrafts());
+      reply.code(200).send(visibleDraftsFor(user, await capture.listDrafts()));
     });
 
     app.post<{ Body: DraftPayload }>("/api/drafts", async (request, reply) => {
@@ -63,9 +92,8 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
       if (!user) {
         return;
       }
-      const draft = await capture.getDraft(request.params.id);
+      const draft = await requireVisibleDraft(capture, request.params.id, user, reply);
       if (!draft) {
-        reply.code(404).send({ error: "NOT_FOUND", message: "Entwurf nicht gefunden." });
         return;
       }
       reply.code(200).send(draft);
@@ -79,6 +107,9 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           return;
         }
         try {
+          if (!(await requireVisibleDraft(capture, request.params.id, user, reply))) {
+            return;
+          }
           reply
             .code(200)
             .send(await capture.continueDraft(request.params.id, request.body, user.id));
@@ -94,6 +125,9 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         return;
       }
       try {
+        if (!(await requireVisibleDraft(capture, request.params.id, user, reply))) {
+          return;
+        }
         await capture.deleteDraft(request.params.id);
         reply.code(204).send();
       } catch (error) {
@@ -112,6 +146,9 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           return;
         }
         try {
+          if (!(await requireVisibleDraft(capture, request.params.id, user, reply))) {
+            return;
+          }
           const input = await capture.toKoInput(request.params.id);
           const created = await ko.create(input);
           await capture.deleteDraft(request.params.id);
