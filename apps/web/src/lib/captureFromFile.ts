@@ -238,7 +238,7 @@ export function wholeDocumentDraftPayload(input: {
     conditions: [],
     measures: [],
     bodyHtml,
-    origin: "studio",
+    origin: "frontdoor",
   };
 }
 
@@ -286,6 +286,7 @@ export const CAPTURE_FILE_TEXT = {
   wholeSavedTitle: "capture.file.wholeSavedTitle",
   wholeSavedSource: "capture.file.wholeSavedSource",
   wholeOpenDraft: "capture.file.wholeOpenDraft",
+  wholeOpenMissing: "capture.file.wholeOpenMissing",
   wholeImportAnother: "capture.file.wholeImportAnother",
   formatTitle: "capture.file.formatTitle",
   formatHint: "capture.file.formatHint",

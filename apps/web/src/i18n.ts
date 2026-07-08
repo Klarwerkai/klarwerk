@@ -846,6 +846,8 @@ const de = {
   "capture.file.wholeSavedTitle": "Dokument als Entwurf gespeichert",
   "capture.file.wholeSavedSource": "Quelle: {{name}}, gesamtes Dokument.",
   "capture.file.wholeOpenDraft": "Entwurf öffnen",
+  "capture.file.wholeOpenMissing":
+    "Entwurf wurde gespeichert, konnte aber nicht direkt geöffnet werden.",
   "capture.file.wholeImportAnother": "Weiteres Dokument importieren",
   "capture.file.formatTitle": "Dateiformate & Formatierung",
   "capture.file.formatHint":
@@ -3524,6 +3526,7 @@ const en: typeof de = {
   "capture.file.wholeSavedTitle": "Document saved as draft",
   "capture.file.wholeSavedSource": "Source: {{name}}, whole document.",
   "capture.file.wholeOpenDraft": "Open draft",
+  "capture.file.wholeOpenMissing": "Draft was saved, but could not be opened directly.",
   "capture.file.wholeImportAnother": "Import another document",
   "capture.file.formatTitle": "File formats & formatting",
   "capture.file.formatHint":

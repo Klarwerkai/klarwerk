@@ -147,7 +147,7 @@ describe("KW-W2-01: Ganzdokument-Import als bewusster Entwurf", () => {
     expect(payload.bodyHtml).toContain("Quelle: wartung-l4.md, gesamtes Dokument");
     expect(payload.bodyHtml).toContain("<h2>Wartung L4</h2>");
     expect(payload.bodyHtml).toContain("<li>Punkt eins</li>");
-    expect(payload.origin).toBe("studio");
+    expect(payload.origin).toBe("frontdoor");
     expect(payload.type).toBe("best_practice");
     expect(payload.conditions).toEqual([]);
     expect(payload.measures).toEqual([]);
@@ -200,11 +200,14 @@ describe("KW-W2-01: Ganzdokument-Import als bewusster Entwurf", () => {
     );
 
     expect(captureSource).toContain("fileWholeDraftSaved");
-    expect(captureSource).toContain("id: draft.id");
+    expect(captureSource).toContain("id: savedDraftId");
+    expect(captureSource).toContain('typeof draft.id === "string"');
     expect(captureSource).toContain("CAPTURE_FILE_TEXT.wholeOpenDraft");
     expect(captureSource).toContain(
       "CAPTURE_FRONT_DOOR_ROUTE}?draft=${encodeURIComponent(fileWholeDraftSaved.id)}",
     );
+    expect(captureSource).toContain("CAPTURE_FILE_TEXT.wholeOpenMissing");
+    expect(captureSource).toContain("fileWholeDraftSaved.id ?");
     expect(captureSource).toContain("CAPTURE_FILE_TEXT.wholeSavedSource");
   });
 

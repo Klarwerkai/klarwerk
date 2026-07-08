@@ -197,7 +197,7 @@ interface FrontDoorDraftSavedState {
 }
 
 interface FileWholeDraftSavedState {
-  id: string;
+  id: string | null;
   title: string;
   fileName: string;
 }
@@ -564,11 +564,13 @@ export function Capture(): JSX.Element {
     onSuccess: (draft: Draft, input) => {
       void qc.invalidateQueries({ queryKey: ["drafts"] });
       setErr(null);
+      const savedDraftId =
+        typeof draft.id === "string" && draft.id.trim().length > 0 ? draft.id : null;
       setFilePoints(null);
       setFileNote(null);
       setFileQueue(null);
       setFileWholeDraftSaved({
-        id: draft.id,
+        id: savedDraftId,
         title: draftTitle(draft, input.fileName),
         fileName: input.fileName,
       });
@@ -577,6 +579,10 @@ export function Capture(): JSX.Element {
       setFileQuery("");
       setNotice(t(CAPTURE_FILE_TEXT.wholeSaved, { name: input.fileName }));
       push("success", t(CAPTURE_FILE_TEXT.wholeSaved, { name: input.fileName }));
+      if (!savedDraftId) {
+        setErr(t(CAPTURE_FILE_TEXT.wholeOpenMissing));
+        push("error", t(CAPTURE_FILE_TEXT.wholeOpenMissing));
+      }
     },
     onError: fail,
   });
@@ -2231,12 +2237,18 @@ export function Capture(): JSX.Element {
                       })}
                     </p>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <Link
-                        to={`${CAPTURE_FRONT_DOOR_ROUTE}?draft=${encodeURIComponent(fileWholeDraftSaved.id)}`}
-                        className="inline-flex items-center gap-1 rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
-                      >
-                        {t(CAPTURE_FILE_TEXT.wholeOpenDraft)} <span aria-hidden="true">→</span>
-                      </Link>
+                      {fileWholeDraftSaved.id ? (
+                        <Link
+                          to={`${CAPTURE_FRONT_DOOR_ROUTE}?draft=${encodeURIComponent(fileWholeDraftSaved.id)}`}
+                          className="inline-flex items-center gap-1 rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
+                        >
+                          {t(CAPTURE_FILE_TEXT.wholeOpenDraft)} <span aria-hidden="true">→</span>
+                        </Link>
+                      ) : (
+                        <p className="rounded-btn bg-trust-warn-bg px-3 py-1.5 text-[12.5px] font-semibold text-trust-warn-text">
+                          {t(CAPTURE_FILE_TEXT.wholeOpenMissing)}
+                        </p>
+                      )}
                       <Button variant="ghost" onClick={() => setFileWholeDraftSaved(null)}>
                         {t(CAPTURE_FILE_TEXT.wholeImportAnother)}
                       </Button>
