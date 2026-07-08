@@ -194,6 +194,12 @@ interface FrontDoorDraftSavedState {
   title: string;
 }
 
+interface FileWholeDraftSavedState {
+  id: string;
+  title: string;
+  fileName: string;
+}
+
 function frontDoorDraftSavedFromState(state: unknown): FrontDoorDraftSavedState | null {
   const value = state as { frontDoorDraftSaved?: { id?: unknown; title?: unknown } } | null;
   const draft = value?.frontDoorDraftSaved;
@@ -386,6 +392,9 @@ export function Capture(): JSX.Element {
   const [fileBusy, setFileBusy] = useState(false);
   const [fileQuery, setFileQuery] = useState("");
   const [fileImportMode, setFileImportMode] = useState<FileImportMode>("points");
+  const [fileWholeDraftSaved, setFileWholeDraftSaved] = useState<FileWholeDraftSavedState | null>(
+    null,
+  );
   // SCRUM-451 (Pedi 05.07.): Ergebnis-Sprache der Extraktion — Systemsprache (Default) oder
   // Originalsprache des Dokuments (nichts übersetzen; Belegstellen sind ohnehin wörtlich).
   const [fileLang, setFileLang] = useState<"system" | "source">("system");
@@ -550,12 +559,17 @@ export function Capture(): JSX.Element {
       createWholeDocumentDraft({ ...input, locale: i18n.language }, (payload) =>
         endpoints.drafts.create(payload),
       ),
-    onSuccess: (_draft, input) => {
+    onSuccess: (draft: Draft, input) => {
       void qc.invalidateQueries({ queryKey: ["drafts"] });
       setErr(null);
       setFilePoints(null);
       setFileNote(null);
       setFileQueue(null);
+      setFileWholeDraftSaved({
+        id: draft.id,
+        title: draftTitle(draft, input.fileName),
+        fileName: input.fileName,
+      });
       setFileName(null);
       setFileText("");
       setFileQuery("");
@@ -1274,6 +1288,7 @@ export function Capture(): JSX.Element {
     setFilePoints(null);
     setFileNote(null);
     setFileQueue(null);
+    setFileWholeDraftSaved(null);
     setFileImageUrl(null);
     setFileText("");
     setErr(null);
@@ -2128,6 +2143,14 @@ export function Capture(): JSX.Element {
                     ))}
                   </div>
                 </div>
+                <div className="rounded-card border border-hairline bg-page px-3 py-2">
+                  <div className="text-[12.5px] font-semibold text-text">
+                    {t(CAPTURE_FILE_TEXT.formatTitle)}
+                  </div>
+                  <p className="mt-1 text-[11.5px] leading-relaxed text-muted">
+                    {t(CAPTURE_FILE_TEXT.formatHint)}
+                  </p>
+                </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
                     <Paperclip size={14} />
@@ -2155,6 +2178,35 @@ export function Capture(): JSX.Element {
                   >
                     {ocrBusy ? t(CAPTURE_FILE_TEXT.ocrBusy) : t(CAPTURE_FILE_TEXT.ocrCta)}
                   </Button>
+                ) : null}
+                {fileWholeDraftSaved ? (
+                  <div className="rounded-card border border-trust-pos-fill/40 bg-trust-pos-bg px-3 py-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="text-[12.5px] font-semibold text-trust-pos-text">
+                        {t(CAPTURE_FILE_TEXT.wholeSavedTitle)}
+                      </div>
+                      <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-pos-text">
+                        Frontdoor bereit
+                      </span>
+                    </div>
+                    <p className="mt-1 text-[12px] leading-relaxed text-trust-pos-text/90">
+                      <strong>{fileWholeDraftSaved.title}</strong> ·{" "}
+                      {t(CAPTURE_FILE_TEXT.wholeSavedSource, {
+                        name: fileWholeDraftSaved.fileName,
+                      })}
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <Link
+                        to={`${CAPTURE_FRONT_DOOR_ROUTE}?draft=${encodeURIComponent(fileWholeDraftSaved.id)}`}
+                        className="inline-flex items-center gap-1 rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
+                      >
+                        {t(CAPTURE_FILE_TEXT.wholeOpenDraft)} <span aria-hidden="true">→</span>
+                      </Link>
+                      <Button variant="ghost" onClick={() => setFileWholeDraftSaved(null)}>
+                        {t(CAPTURE_FILE_TEXT.wholeImportAnother)}
+                      </Button>
+                    </div>
+                  </div>
                 ) : null}
                 {fileText ? (
                   <div className="space-y-3">

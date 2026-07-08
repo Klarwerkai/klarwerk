@@ -192,6 +192,42 @@ describe("KW-W2-01: Ganzdokument-Import als bewusster Entwurf", () => {
       "fileWholeDraft = useMutation({\n    mutationFn: () => endpoints.ko.create",
     );
   });
+
+  it("Ganzdokument-Save bietet den erzeugten Draft direkt in der Vordertuer an", () => {
+    const captureSource = readFileSync(
+      resolve(process.cwd(), "apps/web/src/pages/Capture.tsx"),
+      "utf8",
+    );
+
+    expect(captureSource).toContain("fileWholeDraftSaved");
+    expect(captureSource).toContain("id: draft.id");
+    expect(captureSource).toContain("CAPTURE_FILE_TEXT.wholeOpenDraft");
+    expect(captureSource).toContain(
+      "CAPTURE_FRONT_DOOR_ROUTE}?draft=${encodeURIComponent(fileWholeDraftSaved.id)}",
+    );
+    expect(captureSource).toContain("CAPTURE_FILE_TEXT.wholeSavedSource");
+  });
+
+  it("Dateiimport zeigt ehrliche Formatgrenzen ohne Format-Treue-Versprechen", () => {
+    const captureSource = readFileSync(
+      resolve(process.cwd(), "apps/web/src/pages/Capture.tsx"),
+      "utf8",
+    );
+    const deHint = String(i18n.getResource("de", "translation", CAPTURE_FILE_TEXT.formatHint));
+    const enHint = String(i18n.getResource("en", "translation", CAPTURE_FILE_TEXT.formatHint));
+
+    expect(captureSource).toContain("CAPTURE_FILE_TEXT.formatTitle");
+    expect(captureSource).toContain("CAPTURE_FILE_TEXT.formatHint");
+    expect(captureSource).toContain(
+      'accept=".txt,.md,.markdown,.csv,.log,.json,.docx,.pdf,application/pdf,image/*"',
+    );
+    expect(captureSource).not.toContain(".pptx");
+    expect(deHint).toMatch(/TXT\/MD/);
+    expect(deHint).toMatch(/DOCX\/PDF/);
+    expect(deHint).toMatch(/PPTX ist .*nicht aktiv importierbar/i);
+    expect(enHint).toMatch(/PPTX is not actively importable/i);
+    expect(`${deHint} ${enHint}`).not.toMatch(/formatgetreu|guaranteed|preserved/i);
+  });
 });
 
 describe("PMO-FEA-0006: Modus-Verdrahtung + Copy", () => {

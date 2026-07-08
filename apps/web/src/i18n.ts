@@ -843,6 +843,13 @@ const de = {
     "„{{name}}“ als ein Entwurf gespeichert — Quelle: Dateiname, gesamtes Dokument.",
   "capture.file.wholeSourceNote":
     "Quelle wird im Entwurf sichtbar vermerkt: {{name}}, gesamtes Dokument. Der Entwurf bleibt offen und ungeprüft.",
+  "capture.file.wholeSavedTitle": "Dokument als Entwurf gespeichert",
+  "capture.file.wholeSavedSource": "Quelle: {{name}}, gesamtes Dokument.",
+  "capture.file.wholeOpenDraft": "Entwurf öffnen",
+  "capture.file.wholeImportAnother": "Weiteres Dokument importieren",
+  "capture.file.formatTitle": "Dateiformate & Formatierung",
+  "capture.file.formatHint":
+    "TXT/MD und weitere Textdateien werden als Text übernommen. DOCX/PDF sind eingeschränkt importierbar; Layout kann verloren gehen. Bilddateien brauchen OCR auf Klick. PPTX ist im MVP noch nicht aktiv importierbar. W2-2 klärt Formatintegrität.",
   "capture.file.pointsTitle": "Gefundenes Wissen — wähle aus, was übernommen wird",
   "capture.file.pointsHint":
     "Jeder Punkt trägt seine Belegstelle aus dem Dokument. Wähle ab, was du nicht brauchst — übernommen wird erst auf Klick.",
@@ -3508,6 +3515,13 @@ const en: typeof de = {
   "capture.file.wholeSaved": "“{{name}}” saved as one draft — source: file name, whole document.",
   "capture.file.wholeSourceNote":
     "The draft visibly records the source: {{name}}, whole document. The draft stays open and unreviewed.",
+  "capture.file.wholeSavedTitle": "Document saved as draft",
+  "capture.file.wholeSavedSource": "Source: {{name}}, whole document.",
+  "capture.file.wholeOpenDraft": "Open draft",
+  "capture.file.wholeImportAnother": "Import another document",
+  "capture.file.formatTitle": "File formats & formatting",
+  "capture.file.formatHint":
+    "TXT/MD and other text files are taken over as text. DOCX/PDF are limited imports; layout may be lost. Images need OCR on click. PPTX is not actively importable in this MVP. W2-2 covers format integrity.",
   "capture.file.pointsTitle": "Knowledge found — choose what to take over",
   "capture.file.pointsHint":
     "Every point carries its source excerpt from the document. Deselect what you don't need — nothing is taken over until you click.",
