@@ -200,6 +200,7 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(pageSource).toContain("assistActionLabelKey");
     expect(pageSource).toContain("bodyTextForAssist");
     expect(pageSource).toContain("applyBodyAssist");
+    expect(pageSource).toContain("applySpellingAssistPreservingHtml");
     expect(pageSource).toContain("endpoints.reasoner.assist");
     expect(pageSource).toContain("KI-Hilfe anwenden");
     expect(pageSource).toContain("KI-Hilfe-Vorschlag");
@@ -210,6 +211,29 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(i18nSource).toContain('"capture.ai.action.expand": "Erweitern"');
     expect(i18nSource).toContain('"capture.ai.action.spelling": "Rechtschreibung"');
     expect(i18nSource).toContain('"capture.ai.action.format": "Formatieren"');
+  });
+
+  it("wendet Rechtschreibung nicht ueber den destruktiven Plaintext-Replace-Pfad an", () => {
+    const pageSource = readFileSync(
+      resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
+      "utf8",
+    );
+
+    expect(pageSource).toContain('assistProposal.action === "spelling"');
+    expect(pageSource).toContain(
+      "applySpellingAssistPreservingHtml(bodyHtml, assistProposal.text)",
+    );
+    expect(pageSource).toContain(
+      "Rechtschreibprüfung kann Formatierung aktuell nicht sicher erhalten.",
+    );
+    expect(pageSource).toContain('applyBodyAssist("replace", bodyHtml, assistProposal.text)');
+    expect(pageSource).toContain("KI-Hilfe");
+    expect(pageSource).toContain("Rechtschreibung");
+    expect(pageSource).toContain("Uebernehmen");
+    expect(pageSource).toContain("Vorschlag verwerfen");
+    expect(pageSource).toContain("KI-generiert. Bitte pruefen");
+    expect(pageSource).toContain("gespeichert wird erst mit deiner naechsten");
+    expect(pageSource).not.toContain("endpoints.validation");
   });
 
   it("bereitet den Frontdoor-Inhalt fuer den bestehenden Reasoner-Structure-Pfad vor", () => {

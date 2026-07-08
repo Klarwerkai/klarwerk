@@ -10,7 +10,11 @@ import { useSession } from "../app/AuthContext";
 import { useToast } from "../app/ToastContext";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
-import { applyBodyAssist, bodyTextForAssist } from "../lib/bodyAiAssist";
+import {
+  applyBodyAssist,
+  applySpellingAssistPreservingHtml,
+  bodyTextForAssist,
+} from "../lib/bodyAiAssist";
 import {
   ASSIST_ACTIONS,
   type AssistAction,
@@ -352,7 +356,17 @@ export function CaptureFrontDoor(): JSX.Element {
     if (!assistProposal) {
       return;
     }
-    setBodyHtml(applyBodyAssist("replace", bodyHtml, assistProposal.text));
+    if (assistProposal.action === "spelling") {
+      const result = applySpellingAssistPreservingHtml(bodyHtml, assistProposal.text);
+      if (!result.applied) {
+        setAssistErr("Rechtschreibprüfung kann Formatierung aktuell nicht sicher erhalten.");
+        setAssistAccepted(false);
+        return;
+      }
+      setBodyHtml(result.html);
+    } else {
+      setBodyHtml(applyBodyAssist("replace", bodyHtml, assistProposal.text));
+    }
     setAssistProposal(null);
     setAssistErr(null);
     setAssistAccepted(true);

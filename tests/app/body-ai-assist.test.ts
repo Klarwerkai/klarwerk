@@ -4,6 +4,7 @@ import {
   applyBodyAssist,
   applyBodyAssistBlock,
   applyBodyAssistSection,
+  applySpellingAssistPreservingHtml,
   bodyAssistBlockActions,
   bodyAssistStructuredActions,
   bodyTextForAssist,
@@ -65,6 +66,44 @@ describe("SCRUM-315: bodyAiAssist", () => {
   it("bestehender (bereits sanitisierter) Body wird beim Anhängen nicht doppelt escaped", () => {
     // Body mit Entity bleibt unverändert; nur der neue Vorschlag wird sanitisiert.
     expect(applyBodyAssist("append", "<p>a &amp; b</p>", "c")).toBe("<p>a &amp; b</p><p>c</p>");
+  });
+});
+
+describe("KW-PROD-37: Rechtschreibung erhaelt RichText-Struktur", () => {
+  it("mappt Rechtschreib-Korrekturen auf Textknoten und erhaelt Tags, Tabelle, Bild und Scale", () => {
+    const original =
+      "<h2>Ueberscrift</h2><p><strong>Feler</strong> <em>wort</em> <u>untser</u></p>" +
+      "<table><tbody><tr><td>Tbelle</td><td>Zele</td></tr></tbody></table>" +
+      '<p><img src="/api/objects/img-1/raw" alt="Bild" data-kw-scale="75"></p>';
+    const result = applySpellingAssistPreservingHtml(
+      original,
+      "Ueberschrift Fehler Wort unter Tabelle Zelle",
+    );
+
+    expect(result.applied).toBe(true);
+    expect(result.html).toContain("<h2>Ueberschrift</h2>");
+    expect(result.html).toContain("<strong>Fehler</strong>");
+    expect(result.html).toContain("<em>Wort</em>");
+    expect(result.html).toContain("<u>unter</u>");
+    expect(result.html).toContain(
+      "<table><tbody><tr><td>Tabelle</td><td>Zelle</td></tr></tbody></table>",
+    );
+    expect(result.html).toContain(
+      '<img src="/api/objects/img-1/raw" alt="Bild" data-kw-scale="75">',
+    );
+  });
+
+  it("sanitizt den vorhandenen Body weiter und blockiert unsicheres Mapping", () => {
+    const original =
+      '<p onclick="x"><strong>Feler</strong></p>' +
+      '<p><img src="/api/objects/img-1/raw" data-kw-scale="50" style="width:1px" onload="x"></p>';
+    const result = applySpellingAssistPreservingHtml(original, "Fehler Zusatz");
+
+    expect(result.applied).toBe(false);
+    expect(result.reason).toBe("word_count_mismatch");
+    expect(result.html).toContain("<strong>Feler</strong>");
+    expect(result.html).toContain('<img src="/api/objects/img-1/raw" data-kw-scale="50">');
+    expect(result.html).not.toMatch(/style=|onload|onclick/);
   });
 });
 

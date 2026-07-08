@@ -6,7 +6,7 @@
 // keine Validierung — der Mensch übernimmt den Vorschlag bewusst.
 
 import { EDITOR_BLOCKS, type EditorBlock, editorBlockClass } from "./editorBlocks";
-import { htmlToPlainText, isEmptyHtml } from "./richText";
+import { htmlToPlainText, isEmptyHtml, sanitizeHtml } from "./richText";
 
 export type BodyAssistMode = "replace" | "append";
 
@@ -74,6 +74,100 @@ export function applyBodyAssist(
     return next;
   }
   return isEmptyHtml(base) ? next : base + next;
+}
+
+interface HtmlToken {
+  kind: "tag" | "text";
+  value: string;
+}
+
+export interface SpellingAssistApplyResult {
+  html: string;
+  applied: boolean;
+  reason?: "empty_suggestion" | "word_count_mismatch";
+}
+
+function decodeBodyText(text: string): string {
+  return text
+    .replace(/&nbsp;/g, " ")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
+function tokenizeHtml(html: string): HtmlToken[] {
+  const tokens: HtmlToken[] = [];
+  const tagRe = /<[^>]+>/g;
+  let last = 0;
+  let match: RegExpExecArray | null = tagRe.exec(html);
+  while (match !== null) {
+    if (match.index > last) {
+      tokens.push({ kind: "text", value: html.slice(last, match.index) });
+    }
+    tokens.push({ kind: "tag", value: match[0] });
+    last = tagRe.lastIndex;
+    match = tagRe.exec(html);
+  }
+  if (last < html.length) {
+    tokens.push({ kind: "text", value: html.slice(last) });
+  }
+  return tokens;
+}
+
+function textWords(text: string): string[] {
+  return text.trim().length > 0 ? text.trim().split(/\s+/) : [];
+}
+
+function renderMappedText(originalText: string, replacementWords: string[]): string {
+  const decoded = decodeBodyText(originalText);
+  const leading = decoded.match(/^\s*/)?.[0] ?? "";
+  const trailing = decoded.match(/\s*$/)?.[0] ?? "";
+  return escapeBodyText(`${leading}${replacementWords.join(" ")}${trailing}`);
+}
+
+// Rechtschreibung ist der einzige KI-Hilfe-Modus, der vorhandene RichText-Struktur erhalten muss:
+// Der Reasoner liefert weiterhin Plaintext, deshalb wird der Vorschlag konservativ Wort-fuer-Wort
+// auf die vorhandenen Textknoten verteilt. Tags/Attribute kommen ausschliesslich aus dem bestehenden
+// sanitisierten Body; das Ergebnis laeuft erneut durch sanitizeHtml. Wenn die Wortanzahl nicht passt,
+// wird die destruktive Uebernahme blockiert.
+export function applySpellingAssistPreservingHtml(
+  currentHtml: string | null | undefined,
+  suggestionText: string | null | undefined,
+): SpellingAssistApplyResult {
+  const base = sanitizeHtml(currentHtml ?? "");
+  const suggestionWords = textWords(suggestionText ?? "");
+  if (suggestionWords.length === 0) {
+    return { html: base, applied: false, reason: "empty_suggestion" };
+  }
+
+  const tokens = tokenizeHtml(base);
+  const textTokenWordCounts = tokens.map((token) =>
+    token.kind === "text" ? textWords(decodeBodyText(token.value)).length : 0,
+  );
+  const originalWordCount = textTokenWordCounts.reduce((sum, count) => sum + count, 0);
+  if (originalWordCount !== suggestionWords.length) {
+    return { html: base, applied: false, reason: "word_count_mismatch" };
+  }
+
+  let offset = 0;
+  const mapped = tokens
+    .map((token, index) => {
+      if (token.kind === "tag") {
+        return token.value;
+      }
+      const count = textTokenWordCounts[index] ?? 0;
+      if (count === 0) {
+        return token.value;
+      }
+      const nextWords = suggestionWords.slice(offset, offset + count);
+      offset += count;
+      return renderMappedText(token.value, nextWords);
+    })
+    .join("");
+
+  return { html: sanitizeHtml(mapped), applied: true };
 }
 
 // SCRUM-316: Vorschlag bewusst als Body-Block ANHÄNGEN (Info/Hinweis/Warnung/Erfolg). Bestehender
