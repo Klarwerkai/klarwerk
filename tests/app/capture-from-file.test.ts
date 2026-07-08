@@ -259,6 +259,7 @@ describe("KW-W2-01: Ganzdokument-Import als bewusster Entwurf", () => {
     expect(captureSource).toContain("const cancelFileImport = (): void =>");
     expect(captureSource).toContain("setFileName(null)");
     expect(captureSource).toContain('setFileImportMode("points")');
+    expect(captureSource).toContain("setCaptureWorkspaceOpen(false)");
     expect(captureSource).toContain('navigate("/erfassen", { replace: true, state: null })');
     expect(captureSource).toContain('window.scrollTo({ top: 0, behavior: "smooth" })');
     expect(captureSource).toContain("CAPTURE_FILE_TEXT.cancel");
@@ -278,12 +279,30 @@ describe("KW-W2-01: Ganzdokument-Import als bewusster Entwurf", () => {
     expect(cancelSource).toContain("setFilePoints(null)");
     expect(cancelSource).toContain("setFileWholeDraftSaved(null)");
     expect(cancelSource).toContain('setFileImportMode("points")');
+    expect(cancelSource).toContain("setCaptureWorkspaceOpen(false)");
     expect(cancelSource).toContain('navigate("/erfassen", { replace: true, state: null })');
     expect(cancelSource).toContain('window.scrollTo({ top: 0, behavior: "smooth" })');
     expect(cancelSource).not.toContain("fileWholeDraft.mutate");
     expect(cancelSource).not.toContain("extract.mutate");
     expect(cancelSource).not.toContain("endpoints.drafts.create");
     expect(cancelSource).not.toContain("endpoints.ko.create");
+  });
+
+  it("Dateiimport-Abbrechen blendet den Freitext-/Frontdoor-Workspace aus statt ihn zu oeffnen", () => {
+    const captureSource = readFileSync(
+      resolve(process.cwd(), "apps/web/src/pages/Capture.tsx"),
+      "utf8",
+    );
+
+    expect(captureSource).toContain(
+      "const [captureWorkspaceOpen, setCaptureWorkspaceOpen] = useState(true)",
+    );
+    expect(captureSource).toContain("const openCaptureWorkspace = (): void =>");
+    expect(captureSource).toContain("Weitere Wege anzeigen");
+    expect(captureSource).toContain("captureWorkspaceOpen && !expertView");
+    expect(captureSource).toContain('captureWorkspaceOpen && (expertView || wizStep === "tell")');
+    expect(captureSource).toContain("aria-hidden={!captureWorkspaceOpen}");
+    expect(captureSource).toContain(': "hidden"');
   });
 });
 

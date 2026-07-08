@@ -356,6 +356,7 @@ export function Capture(): JSX.Element {
   const qc = useQueryClient();
   const drafts = useDrafts();
   const [draftsOpen, setDraftsOpen] = useState(false);
+  const [captureWorkspaceOpen, setCaptureWorkspaceOpen] = useState(true);
   const workAreaRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -905,6 +906,7 @@ export function Capture(): JSX.Element {
   // Vorher landete jeder Entwurf im Formular (fremde Darstellung, verwirrend).
   const loadDraft = (d: Draft): void => {
     setErr(null);
+    setCaptureWorkspaceOpen(true);
     const p = d.payload;
     // SCRUM-457: nicht mehr aus dem Inhalt raten — der gespeicherte Herkunfts-Marker entscheidet
     // (Alt-Entwürfe ohne Marker: Rückfall-Heuristik in resumeTargetForDraft).
@@ -971,6 +973,7 @@ export function Capture(): JSX.Element {
   const switchMode = (m: Mode): void => {
     setErr(null);
     setNotice(null);
+    setCaptureWorkspaceOpen(true);
     // Bug (Pedi 04.07.): Inhalt beim Moduswechsel NICHT verlieren. Der Rohtext (Freitext/Diktat)
     // und die Aussage des Experten-Formulars werden aneinander übergeben.
     const carried = raw.trim();
@@ -1002,8 +1005,17 @@ export function Capture(): JSX.Element {
   };
 
   const openFileImport = (): void => {
+    setCaptureWorkspaceOpen(true);
     setWizStep("tell");
     switchMode("datei");
+    window.setTimeout(() => {
+      workAreaRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  };
+
+  const openCaptureWorkspace = (): void => {
+    setCaptureWorkspaceOpen(true);
+    setWizStep("tell");
     window.setTimeout(() => {
       workAreaRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 0);
@@ -1022,6 +1034,7 @@ export function Capture(): JSX.Element {
     setFileImportMode("points");
     setErr(null);
     setNotice(null);
+    setCaptureWorkspaceOpen(false);
     setMode("freitext");
     setWizStep("tell");
     navigate("/erfassen", { replace: true, state: null });
@@ -1576,6 +1589,11 @@ export function Capture(): JSX.Element {
             <FileText size={15} />
             {t("capture.fileImportJump")}
           </Button>
+          {!captureWorkspaceOpen ? (
+            <Button variant="ghost" onClick={openCaptureWorkspace}>
+              Weitere Wege anzeigen
+            </Button>
+          ) : null}
         </div>
       </Card>
 
@@ -1844,7 +1862,7 @@ export function Capture(): JSX.Element {
           als bewusst wählbarer Expertenpfad erhalten (progressive disclosure, NICHTS entfernt). */}
       {/* SCRUM-384: sichtbare Schritt-Leiste des Wizards (Erzählen → Wissensseite → Einreichen);
           fertige Schritte sind anklickbar — vor und zurück ohne Datenverlust. */}
-      {!expertView ? (
+      {captureWorkspaceOpen && !expertView ? (
         <div className="mb-3 flex flex-wrap items-center gap-1.5">
           {chips.map((c, i) => {
             const clickable =
@@ -1879,7 +1897,7 @@ export function Capture(): JSX.Element {
       ) : null}
 
       {/* Erzähl-Einstieg nur im Schritt „Erzählen" (bzw. immer im Expertenmodus). */}
-      {expertView || wizStep === "tell" ? (
+      {captureWorkspaceOpen && (expertView || wizStep === "tell") ? (
         <div className="mb-4">
           <div
             data-help="cap:modes"
@@ -1950,12 +1968,15 @@ export function Capture(): JSX.Element {
           Drittel gequetschtem Formular. Jetzt EINE zentrierte, volle Spalte — das Formular zuerst
           (order-first), darunter die optionalen Details und die Aktionen. Ruhig und lesbar. */}
       <div
+        aria-hidden={!captureWorkspaceOpen}
         className={
-          expertView
-            ? "mx-auto flex max-w-3xl flex-col gap-5"
-            : wizStep === "refine"
-              ? "mx-auto max-w-4xl"
-              : "mx-auto max-w-3xl"
+          captureWorkspaceOpen
+            ? expertView
+              ? "mx-auto flex max-w-3xl flex-col gap-5"
+              : wizStep === "refine"
+                ? "mx-auto max-w-4xl"
+                : "mx-auto max-w-3xl"
+            : "hidden"
         }
       >
         {expertView || wizStep === "tell" ? (
