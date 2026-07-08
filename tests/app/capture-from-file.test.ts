@@ -185,6 +185,9 @@ describe("KW-W2-01: Ganzdokument-Import als bewusster Entwurf", () => {
     expect(captureSource).toContain('fileImportMode === "points" && filePoints');
     expect(captureSource).toContain("endpoints.reasoner.extract(fileText");
     expect(captureSource).toContain("createWholeDocumentDraft(");
+    expect(captureSource.indexOf("CAPTURE_FILE_TEXT.importModeLabel")).toBeLessThan(
+      captureSource.indexOf("onChange={(e) => void onExtractFile(e)}"),
+    );
     expect(captureSource).not.toContain(
       "fileWholeDraft = useMutation({\n    mutationFn: () => endpoints.ko.create",
     );

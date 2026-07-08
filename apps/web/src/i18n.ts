@@ -966,10 +966,15 @@ const de = {
   "capture.imageError": "„{{name}}“ konnte nicht als Bild gelesen werden.",
   "capture.draftFallbackTitle": "Entwurf",
   "capture.resumeTitle": "Entwürfe fortsetzen",
+  "capture.resumeExpand": "Entwürfe anzeigen ({{count}})",
+  "capture.resumeCollapse": "Entwürfe einklappen",
+  "capture.resumeCollapsedHint":
+    "{{count}} Entwürfe sind eingeklappt, damit die Erfassungswege darunter erreichbar bleiben.",
   "capture.resume": "Fortsetzen",
   "capture.discardDraft": "Verwerfen",
   "capture.editingDraft": "Entwurf geladen — Änderungen werden im selben Entwurf gespeichert.",
   "capture.editingBadge": "in Bearbeitung",
+  "capture.fileImportJump": "Datei importieren",
   "capture.loadExample": "Beispiel laden",
   "capture.exampleLoaded":
     "Erfahrungsnotiz geladen — jetzt mit KI strukturieren und den Entwurf prüfen.",
@@ -3620,10 +3625,15 @@ const en: typeof de = {
   "capture.imageError": "“{{name}}” could not be read as an image.",
   "capture.draftFallbackTitle": "Draft",
   "capture.resumeTitle": "Resume drafts",
+  "capture.resumeExpand": "Show drafts ({{count}})",
+  "capture.resumeCollapse": "Collapse drafts",
+  "capture.resumeCollapsedHint":
+    "{{count}} drafts are collapsed so the capture paths below stay reachable.",
   "capture.resume": "Resume",
   "capture.discardDraft": "Discard",
   "capture.editingDraft": "Draft loaded — changes are saved to the same draft.",
   "capture.editingBadge": "editing",
+  "capture.fileImportJump": "Import file",
   "capture.loadExample": "Load example",
   "capture.exampleLoaded":
     "Experience note loaded — now structure it with AI and review the draft.",

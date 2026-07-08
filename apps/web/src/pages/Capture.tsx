@@ -347,6 +347,7 @@ export function Capture(): JSX.Element {
   const [confirmDiscardDraftId, setConfirmDiscardDraftId] = useState<string | null>(null);
   const qc = useQueryClient();
   const drafts = useDrafts();
+  const [draftsOpen, setDraftsOpen] = useState(false);
   const workAreaRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -978,6 +979,14 @@ export function Capture(): JSX.Element {
     }
   };
 
+  const openFileImport = (): void => {
+    setWizStep("tell");
+    switchMode("datei");
+    window.setTimeout(() => {
+      workAreaRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  };
+
   // Bug (Pedi 04.07.): ungespeicherten Entwurf nicht still verlieren. Diese Wache greift beim
   const { setGuard } = useNavGuard();
   // Verlassen der Seite über den BROWSER (Zurück-Taste, Neuladen, Tab schließen) — dann fragt der
@@ -1478,6 +1487,7 @@ export function Capture(): JSX.Element {
   const expertView = isExpertMode(mode);
   const wizStep = resolveWizardStep(wizStepRaw, draft !== null);
   const chips = wizardChips(wizStepRaw, draft !== null);
+  const draftCount = drafts.data?.length ?? 0;
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -1513,9 +1523,15 @@ export function Capture(): JSX.Element {
             Dokument-Canvas oeffnen <span aria-hidden="true">→</span>
           </Link>
         </div>
-        <div className="mt-3 border-t border-hairline pt-3 text-[12.5px] text-muted">
-          Weitere Wege: Expertenformular, Diktat, Interview und Datei importieren bleiben
-          erreichbar.
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-hairline pt-3 text-[12.5px] text-muted">
+          <span className="flex-1">
+            Weitere Wege: Expertenformular, Diktat, Interview und Datei importieren bleiben
+            erreichbar.
+          </span>
+          <Button variant="outline" onClick={openFileImport}>
+            <FileText size={15} />
+            {t("capture.fileImportJump")}
+          </Button>
         </div>
       </Card>
 
@@ -1669,84 +1685,109 @@ export function Capture(): JSX.Element {
       ) : null}
 
       {/* SCRUM-113 / FE-CAP-07: Entwürfe fortsetzen (gemeinsamer Pool mit Mobile) */}
-      {(drafts.data ?? []).length > 0 ? (
+      {draftCount > 0 ? (
         <Card className="mb-4 space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <SectionLabel>{t("capture.resumeTitle")}</SectionLabel>
-            <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2">
-              {draftScopeLabel}
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <SectionLabel>{t("capture.resumeTitle")}</SectionLabel>
+              <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2">
+                {draftScopeLabel}
+              </span>
+              <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2">
+                {draftCount}
+              </span>
+            </div>
+            <button
+              type="button"
+              aria-expanded={draftsOpen}
+              onClick={() => setDraftsOpen((open) => !open)}
+              className="inline-flex items-center gap-1 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
+            >
+              {draftsOpen
+                ? t("capture.resumeCollapse")
+                : t("capture.resumeExpand", { count: draftCount })}
+              <ChevronDown
+                size={14}
+                className={`transition-transform ${draftsOpen ? "rotate-180" : ""}`}
+              />
+            </button>
           </div>
-          <ul className="divide-y divide-hairline">
-            {(drafts.data ?? []).map((d) => (
-              <li
-                key={d.id}
-                className={`flex flex-col gap-2 py-2 sm:flex-row sm:items-center ${
-                  frontDoorDraftSaved?.id === d.id
-                    ? "rounded-card border border-trust-pos-fill/40 bg-trust-pos-bg px-2"
-                    : ""
-                }`}
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[13px] font-semibold text-text">
-                    {draftTitle(d, t("capture.draftFallbackTitle"))}
-                    {draftId === d.id ? (
-                      <span className="ml-2 font-mono text-[10px] uppercase text-ai">
-                        {t("capture.editingBadge")}
-                      </span>
-                    ) : null}
-                    {frontDoorDraftSaved?.id === d.id ? (
-                      <span className="ml-2 font-mono text-[10px] uppercase text-trust-pos-text">
-                        gerade gespeichert
-                      </span>
-                    ) : null}
+          {draftsOpen ? (
+            <ul className="divide-y divide-hairline">
+              {(drafts.data ?? []).map((d) => (
+                <li
+                  key={d.id}
+                  className={`flex flex-col gap-2 py-2 sm:flex-row sm:items-center ${
+                    frontDoorDraftSaved?.id === d.id
+                      ? "rounded-card border border-trust-pos-fill/40 bg-trust-pos-bg px-2"
+                      : ""
+                  }`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[13px] font-semibold text-text">
+                      {draftTitle(d, t("capture.draftFallbackTitle"))}
+                      {draftId === d.id ? (
+                        <span className="ml-2 font-mono text-[10px] uppercase text-ai">
+                          {t("capture.editingBadge")}
+                        </span>
+                      ) : null}
+                      {frontDoorDraftSaved?.id === d.id ? (
+                        <span className="ml-2 font-mono text-[10px] uppercase text-trust-pos-text">
+                          gerade gespeichert
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11.5px] text-muted">
+                      <span>Ersteller: {draftAuthorName(d, directory.data ?? [])}</span>
+                      <span>Gespeichert: {formatDraftTimestamp(d.updatedAt || d.createdAt)}</span>
+                      <span>Status: Entwurf</span>
+                    </div>
                   </div>
-                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11.5px] text-muted">
-                    <span>Ersteller: {draftAuthorName(d, directory.data ?? [])}</span>
-                    <span>Gespeichert: {formatDraftTimestamp(d.updatedAt || d.createdAt)}</span>
-                    <span>Status: Entwurf</span>
-                  </div>
-                </div>
-                {/* Bugfix (Pedi 04.07.): Löschen erst nach Inline-Nachfrage — kein stiller Verlust. */}
-                {confirmDiscardDraftId === d.id ? (
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="text-[11.5px] font-semibold text-text">
-                      {t("capture.discardDraftQ")}
+                  {/* Bugfix (Pedi 04.07.): Löschen erst nach Inline-Nachfrage — kein stiller Verlust. */}
+                  {confirmDiscardDraftId === d.id ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="text-[11.5px] font-semibold text-text">
+                        {t("capture.discardDraftQ")}
+                      </span>
+                      <Button variant="ghost" onClick={() => setConfirmDiscardDraftId(null)}>
+                        {t("capture.discardDraftKeep")}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        disabled={discardDraft.isPending}
+                        onClick={() => discardDraft.mutate(d.id)}
+                      >
+                        {t("capture.discardDraftYes")}
+                      </Button>
                     </span>
-                    <Button variant="ghost" onClick={() => setConfirmDiscardDraftId(null)}>
-                      {t("capture.discardDraftKeep")}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      disabled={discardDraft.isPending}
-                      onClick={() => discardDraft.mutate(d.id)}
-                    >
-                      {t("capture.discardDraftYes")}
-                    </Button>
-                  </span>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => loadDraft(d)}
-                      className="inline-flex items-center gap-1 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
-                    >
-                      <RotateCcw size={13} />
-                      {t("capture.resume")}
-                    </button>
-                    <button
-                      type="button"
-                      title={t("capture.discardDraft")}
-                      onClick={() => setConfirmDiscardDraftId(d.id)}
-                      className="grid h-7 w-7 place-items-center rounded-btn text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </>
-                )}
-              </li>
-            ))}
-          </ul>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => loadDraft(d)}
+                        className="inline-flex items-center gap-1 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
+                      >
+                        <RotateCcw size={13} />
+                        {t("capture.resume")}
+                      </button>
+                      <button
+                        type="button"
+                        title={t("capture.discardDraft")}
+                        onClick={() => setConfirmDiscardDraftId(d.id)}
+                        className="grid h-7 w-7 place-items-center rounded-btn text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="rounded-btn bg-page px-3 py-2 text-[12px] leading-relaxed text-muted">
+              {t("capture.resumeCollapsedHint", { count: draftCount })}
+            </p>
+          )}
         </Card>
       ) : null}
 
@@ -2052,6 +2093,41 @@ export function Capture(): JSX.Element {
                   <span className="flex-1">{t(CAPTURE_FILE_TEXT.hint)}</span>
                   <HelpTip {...chelp("filePoints")} />
                 </div>
+                <div>
+                  <span className="mb-1.5 block text-[12.5px] font-semibold text-muted">
+                    {t(CAPTURE_FILE_TEXT.importModeLabel)}
+                  </span>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {(["points", "whole"] as const).map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        aria-pressed={fileImportMode === option}
+                        onClick={() => setFileImportMode(option)}
+                        className={`rounded-card border px-3 py-2 text-left transition-colors ${
+                          fileImportMode === option
+                            ? "border-ink/30 bg-surface text-text"
+                            : "border-hairline bg-page text-muted hover:text-text"
+                        }`}
+                      >
+                        <span className="block text-[12.5px] font-semibold">
+                          {t(
+                            option === "points"
+                              ? CAPTURE_FILE_TEXT.importModePoints
+                              : CAPTURE_FILE_TEXT.importModeWhole,
+                          )}
+                        </span>
+                        <span className="mt-0.5 block text-[11.5px] leading-relaxed text-muted-2">
+                          {t(
+                            option === "points"
+                              ? CAPTURE_FILE_TEXT.importModePointsDesc
+                              : CAPTURE_FILE_TEXT.importModeWholeDesc,
+                          )}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
                     <Paperclip size={14} />
@@ -2082,41 +2158,6 @@ export function Capture(): JSX.Element {
                 ) : null}
                 {fileText ? (
                   <div className="space-y-3">
-                    <div>
-                      <span className="mb-1.5 block text-[12.5px] font-semibold text-muted">
-                        {t(CAPTURE_FILE_TEXT.importModeLabel)}
-                      </span>
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        {(["points", "whole"] as const).map((option) => (
-                          <button
-                            key={option}
-                            type="button"
-                            aria-pressed={fileImportMode === option}
-                            onClick={() => setFileImportMode(option)}
-                            className={`rounded-card border px-3 py-2 text-left transition-colors ${
-                              fileImportMode === option
-                                ? "border-ink/30 bg-surface text-text"
-                                : "border-hairline bg-page text-muted hover:text-text"
-                            }`}
-                          >
-                            <span className="block text-[12.5px] font-semibold">
-                              {t(
-                                option === "points"
-                                  ? CAPTURE_FILE_TEXT.importModePoints
-                                  : CAPTURE_FILE_TEXT.importModeWhole,
-                              )}
-                            </span>
-                            <span className="mt-0.5 block text-[11.5px] leading-relaxed text-muted-2">
-                              {t(
-                                option === "points"
-                                  ? CAPTURE_FILE_TEXT.importModePointsDesc
-                                  : CAPTURE_FILE_TEXT.importModeWholeDesc,
-                              )}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
                     {fileImportMode === "points" ? (
                       <div>
                         <span className="mb-1.5 flex items-center gap-1 text-[12.5px] font-semibold text-muted">

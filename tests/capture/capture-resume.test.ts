@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { DraftPayload } from "../../apps/web/src/api/types";
+import i18n from "../../apps/web/src/i18n";
 import { originForSave, resumeTargetForDraft } from "../../apps/web/src/lib/captureResume";
 
 // SCRUM-457 (Pedi/VIP 06.07.): „Fortsetzen" öffnet den Entwurf dort, wo er gespeichert wurde —
@@ -54,6 +55,34 @@ describe("SCRUM-457: resumeTargetForDraft — gespeicherter Marker gilt exakt", 
     expect(captureSource).toContain("workAreaRef");
     expect(captureSource).toContain("scrollIntoView");
     expect(captureSource).toContain("ref={workAreaRef}");
+  });
+
+  it("Entwurfsliste bleibt einklappbar und der Dateiimport ist direkt erreichbar", () => {
+    const captureSource = readFileSync(
+      resolve(process.cwd(), "apps/web/src/pages/Capture.tsx"),
+      "utf8",
+    );
+
+    expect(captureSource).toContain("draftsOpen");
+    expect(captureSource).toContain("setDraftsOpen");
+    expect(captureSource).toContain("capture.resumeExpand");
+    expect(captureSource).toContain("capture.resumeCollapsedHint");
+    expect(captureSource).toContain("openFileImport");
+    expect(captureSource).toContain('switchMode("datei")');
+    expect(captureSource).toContain("capture.fileImportJump");
+  });
+
+  it("Copy fuer Entwurf-Einklappen und Dateiimport-Sprung ist DE und EN vorhanden", () => {
+    for (const key of [
+      "capture.resumeExpand",
+      "capture.resumeCollapse",
+      "capture.resumeCollapsedHint",
+      "capture.fileImportJump",
+    ]) {
+      for (const lng of ["de", "en"]) {
+        expect(String(i18n.getResource(lng, "translation", key) ?? "").length).toBeGreaterThan(0);
+      }
+    }
   });
 
   it("Vordertuer-Entwuerfe werden aus der alten Liste zur Vordertuer geroutet", () => {
