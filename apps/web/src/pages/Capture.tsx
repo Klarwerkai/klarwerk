@@ -1023,6 +1023,11 @@ export function Capture(): JSX.Element {
     setErr(null);
     setNotice(null);
     setMode("freitext");
+    setWizStep("tell");
+    navigate("/erfassen", { replace: true, state: null });
+    window.setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }, 0);
   };
 
   // Bug (Pedi 04.07.): ungespeicherten Entwurf nicht still verlieren. Diese Wache greift beim

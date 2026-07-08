@@ -259,8 +259,31 @@ describe("KW-W2-01: Ganzdokument-Import als bewusster Entwurf", () => {
     expect(captureSource).toContain("const cancelFileImport = (): void =>");
     expect(captureSource).toContain("setFileName(null)");
     expect(captureSource).toContain('setFileImportMode("points")');
-    expect(captureSource).toContain('setMode("freitext")');
+    expect(captureSource).toContain('navigate("/erfassen", { replace: true, state: null })');
+    expect(captureSource).toContain('window.scrollTo({ top: 0, behavior: "smooth" })');
     expect(captureSource).toContain("CAPTURE_FILE_TEXT.cancel");
+  });
+
+  it("Dateiimport-Abbrechen kehrt zur Erfassungsuebersicht zurueck ohne Speichern oder Validieren", () => {
+    const captureSource = readFileSync(
+      resolve(process.cwd(), "apps/web/src/pages/Capture.tsx"),
+      "utf8",
+    );
+    const cancelStart = captureSource.indexOf("const cancelFileImport = (): void =>");
+    const cancelEnd = captureSource.indexOf("// Bug (Pedi 04.07.", cancelStart);
+    const cancelSource = captureSource.slice(cancelStart, cancelEnd);
+
+    expect(cancelSource).toContain("setFileName(null)");
+    expect(cancelSource).toContain('setFileText("")');
+    expect(cancelSource).toContain("setFilePoints(null)");
+    expect(cancelSource).toContain("setFileWholeDraftSaved(null)");
+    expect(cancelSource).toContain('setFileImportMode("points")');
+    expect(cancelSource).toContain('navigate("/erfassen", { replace: true, state: null })');
+    expect(cancelSource).toContain('window.scrollTo({ top: 0, behavior: "smooth" })');
+    expect(cancelSource).not.toContain("fileWholeDraft.mutate");
+    expect(cancelSource).not.toContain("extract.mutate");
+    expect(cancelSource).not.toContain("endpoints.drafts.create");
+    expect(cancelSource).not.toContain("endpoints.ko.create");
   });
 });
 
