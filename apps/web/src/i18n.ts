@@ -812,7 +812,7 @@ const de = {
   "capture.file.empty": "In „{{name}}“ wurde kein Text gefunden.",
   "capture.file.parseError": "„{{name}}“ konnte nicht gelesen werden.",
   "capture.file.unsupported":
-    "„{{name}}“ wird hier nicht unterstützt — bitte PDF, Word, Text oder ein Bild (mit Texterkennung).",
+    "„{{name}}“ wird hier nicht unterstützt — bitte als TXT/MD, DOCX oder PDF bereitstellen. Bilder gehen nur über OCR.",
   "capture.file.ocrCta": "Text im Bild erkennen (OCR)",
   "capture.file.ocrBusy": "Texterkennung läuft …",
   "capture.file.queryLabel": "Wonach soll die KI suchen? (optional)",
@@ -835,7 +835,7 @@ const de = {
   "capture.file.importMode.whole": "Ganzes Dokument übernehmen",
   "capture.file.importMode.wholeDesc":
     "Klarwerk legt genau einen Entwurf mit dem gesamten Dokument an. Keine automatische Validierung.",
-  "capture.file.searchCta": "Nach Wissen suchen",
+  "capture.file.searchCta": "Datei analysieren",
   "capture.file.searching": "Die KI liest das Dokument …",
   "capture.file.wholeCta": "Ganzes Dokument als Entwurf speichern",
   "capture.file.wholeSaving": "Entwurf wird gespeichert …",
@@ -849,7 +849,13 @@ const de = {
   "capture.file.wholeImportAnother": "Weiteres Dokument importieren",
   "capture.file.formatTitle": "Dateiformate & Formatierung",
   "capture.file.formatHint":
-    "TXT/MD und weitere Textdateien werden als Text übernommen. DOCX/PDF sind eingeschränkt importierbar; Layout kann verloren gehen. Bilddateien brauchen OCR auf Klick. PPTX ist im MVP noch nicht aktiv importierbar. W2-2 klärt Formatintegrität.",
+    "TXT/MD und weitere Textdateien werden als Text übernommen. DOCX/PDF laufen im MVP als Best-Effort-Textimport; Layout, Bilder und exakte Formatierung können verloren gehen. W2-2 klärt Formatintegrität.",
+  "capture.file.supportedTitle": "Aktiv auswählbar:",
+  "capture.file.supportedFormats":
+    "TXT, MD/Markdown, CSV, LOG, JSON, DOCX, PDF und Bilder für OCR.",
+  "capture.file.unsupportedFormats":
+    "RTF und PPTX werden aktuell nicht unterstützt. Bitte als TXT/MD, DOCX oder PDF bereitstellen, sofern verfügbar.",
+  "capture.file.cancel": "Abbrechen",
   "capture.file.pointsTitle": "Gefundenes Wissen — wähle aus, was übernommen wird",
   "capture.file.pointsHint":
     "Jeder Punkt trägt seine Belegstelle aus dem Dokument. Wähle ab, was du nicht brauchst — übernommen wird erst auf Klick.",
@@ -3485,7 +3491,7 @@ const en: typeof de = {
   "capture.file.empty": "No text found in “{{name}}”.",
   "capture.file.parseError": "“{{name}}” could not be read.",
   "capture.file.unsupported":
-    "“{{name}}” is not supported here — please use PDF, Word, text, or an image (with OCR).",
+    "“{{name}}” is not supported here — please provide TXT/MD, DOCX, or PDF. Images only work via OCR.",
   "capture.file.ocrCta": "Recognize text in image (OCR)",
   "capture.file.ocrBusy": "Text recognition running …",
   "capture.file.queryLabel": "What should the AI look for? (optional)",
@@ -3508,7 +3514,7 @@ const en: typeof de = {
   "capture.file.importMode.whole": "Take over whole document",
   "capture.file.importMode.wholeDesc":
     "Klarwerk creates exactly one draft with the whole document. No automatic validation.",
-  "capture.file.searchCta": "Search for knowledge",
+  "capture.file.searchCta": "Analyze file",
   "capture.file.searching": "The AI is reading the document …",
   "capture.file.wholeCta": "Save whole document as draft",
   "capture.file.wholeSaving": "Saving draft …",
@@ -3521,7 +3527,13 @@ const en: typeof de = {
   "capture.file.wholeImportAnother": "Import another document",
   "capture.file.formatTitle": "File formats & formatting",
   "capture.file.formatHint":
-    "TXT/MD and other text files are taken over as text. DOCX/PDF are limited imports; layout may be lost. Images need OCR on click. PPTX is not actively importable in this MVP. W2-2 covers format integrity.",
+    "TXT/MD and other text files are taken over as text. DOCX/PDF run as best-effort text imports in this MVP; layout, images, and exact formatting may be lost. W2-2 covers format integrity.",
+  "capture.file.supportedTitle": "Actively selectable:",
+  "capture.file.supportedFormats":
+    "TXT, MD/Markdown, CSV, LOG, JSON, DOCX, PDF, and images for OCR.",
+  "capture.file.unsupportedFormats":
+    "RTF and PPTX are not supported yet. Please provide TXT/MD, DOCX, or PDF where available.",
+  "capture.file.cancel": "Cancel",
   "capture.file.pointsTitle": "Knowledge found — choose what to take over",
   "capture.file.pointsHint":
     "Every point carries its source excerpt from the document. Deselect what you don't need — nothing is taken over until you click.",

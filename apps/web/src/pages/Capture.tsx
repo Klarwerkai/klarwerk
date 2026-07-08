@@ -189,6 +189,8 @@ function speechCtor(): SpeechCtor | undefined {
 const textareaCls =
   "w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none placeholder:text-muted-2 focus:border-ink/30";
 
+const FILE_IMPORT_ACCEPT = ".txt,.md,.markdown,.csv,.log,.json,.docx,.pdf,application/pdf,image/*";
+
 interface FrontDoorDraftSavedState {
   id: string;
   title: string;
@@ -999,6 +1001,22 @@ export function Capture(): JSX.Element {
     window.setTimeout(() => {
       workAreaRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 0);
+  };
+
+  const cancelFileImport = (): void => {
+    setFileName(null);
+    setFileText("");
+    setFileImageUrl(null);
+    setFileBusy(false);
+    setFileQuery("");
+    setFilePoints(null);
+    setFileNote(null);
+    setFileQueue(null);
+    setFileWholeDraftSaved(null);
+    setFileImportMode("points");
+    setErr(null);
+    setNotice(null);
+    setMode("freitext");
   };
 
   // Bug (Pedi 04.07.): ungespeicherten Entwurf nicht still verlieren. Diese Wache greift beim
@@ -2150,6 +2168,13 @@ export function Capture(): JSX.Element {
                   <p className="mt-1 text-[11.5px] leading-relaxed text-muted">
                     {t(CAPTURE_FILE_TEXT.formatHint)}
                   </p>
+                  <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted">
+                    <strong>{t(CAPTURE_FILE_TEXT.supportedTitle)}</strong>{" "}
+                    {t(CAPTURE_FILE_TEXT.supportedFormats)}
+                  </p>
+                  <p className="mt-1 text-[11.5px] leading-relaxed text-muted-2">
+                    {t(CAPTURE_FILE_TEXT.unsupportedFormats)}
+                  </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
@@ -2157,11 +2182,21 @@ export function Capture(): JSX.Element {
                     {fileName ? t(CAPTURE_FILE_TEXT.replace) : t(CAPTURE_FILE_TEXT.upload)}
                     <input
                       type="file"
-                      accept=".txt,.md,.markdown,.csv,.log,.json,.docx,.pdf,application/pdf,image/*"
+                      accept={FILE_IMPORT_ACCEPT}
                       className="hidden"
                       onChange={(e) => void onExtractFile(e)}
                     />
                   </label>
+                  <Button
+                    variant="ghost"
+                    disabled={
+                      fileBusy || extract.isPending || fileWholeDraft.isPending || ocrBusy !== null
+                    }
+                    onClick={cancelFileImport}
+                  >
+                    <X size={14} />
+                    {t(CAPTURE_FILE_TEXT.cancel)}
+                  </Button>
                   {fileName ? (
                     <span className="inline-flex items-center gap-1.5 text-[12.5px] text-text">
                       <FileText size={13} className="text-muted-2" />

@@ -218,15 +218,46 @@ describe("KW-W2-01: Ganzdokument-Import als bewusster Entwurf", () => {
 
     expect(captureSource).toContain("CAPTURE_FILE_TEXT.formatTitle");
     expect(captureSource).toContain("CAPTURE_FILE_TEXT.formatHint");
-    expect(captureSource).toContain(
-      'accept=".txt,.md,.markdown,.csv,.log,.json,.docx,.pdf,application/pdf,image/*"',
-    );
+    expect(captureSource).toContain("const FILE_IMPORT_ACCEPT");
+    expect(captureSource).toContain("accept={FILE_IMPORT_ACCEPT}");
+    expect(captureSource).toContain("CAPTURE_FILE_TEXT.supportedFormats");
+    expect(captureSource).toContain("CAPTURE_FILE_TEXT.unsupportedFormats");
     expect(captureSource).not.toContain(".pptx");
+    expect(captureSource).not.toContain(".rtf");
     expect(deHint).toMatch(/TXT\/MD/);
     expect(deHint).toMatch(/DOCX\/PDF/);
-    expect(deHint).toMatch(/PPTX ist .*nicht aktiv importierbar/i);
-    expect(enHint).toMatch(/PPTX is not actively importable/i);
+    expect(
+      String(i18n.getResource("de", "translation", CAPTURE_FILE_TEXT.supportedFormats)),
+    ).toMatch(/TXT.*DOCX.*PDF.*Bilder/i);
+    expect(
+      String(i18n.getResource("de", "translation", CAPTURE_FILE_TEXT.unsupportedFormats)),
+    ).toMatch(/RTF.*PPTX.*nicht unterstützt/i);
+    expect(
+      String(i18n.getResource("en", "translation", CAPTURE_FILE_TEXT.unsupportedFormats)),
+    ).toMatch(/RTF.*PPTX.*not supported/i);
     expect(`${deHint} ${enHint}`).not.toMatch(/formatgetreu|guaranteed|preserved/i);
+  });
+
+  it("Dateiimport nutzt passende Aktionsnamen und bietet Abbrechen ohne Speichern", () => {
+    const captureSource = readFileSync(
+      resolve(process.cwd(), "apps/web/src/pages/Capture.tsx"),
+      "utf8",
+    );
+
+    expect(String(i18n.getResource("de", "translation", CAPTURE_FILE_TEXT.searchCta))).toBe(
+      "Datei analysieren",
+    );
+    expect(String(i18n.getResource("de", "translation", CAPTURE_FILE_TEXT.wholeCta))).toBe(
+      "Ganzes Dokument als Entwurf speichern",
+    );
+    expect(String(i18n.getResource("de", "translation", CAPTURE_FILE_TEXT.cancel))).toBe(
+      "Abbrechen",
+    );
+    expect(captureSource).toContain("const cancelFileImport = (): void =>");
+    expect(captureSource).toContain("setFileName(null)");
+    expect(captureSource).toContain('setFileImportMode("points")');
+    expect(captureSource).toContain('setMode("freitext")');
+    expect(captureSource).toContain("CAPTURE_FILE_TEXT.cancel");
   });
 });
 
