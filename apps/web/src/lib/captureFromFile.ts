@@ -2,7 +2,7 @@
 // KI-Punkteliste mit Belegstellen, ausgewählte Punkte als Entwurfs-Warteschlange nacheinander
 // im bestehenden Wizard prüfen/einreichen. NICHTS wird automatisch gespeichert; die Quelle
 // (Dateiname) wird beim Einreichen als Source am Wissensobjekt vermerkt.
-import type { ExtractedPoint, StructureResult } from "../api/types";
+import type { DraftPayload, ExtractedPoint, StructureResult } from "../api/types";
 
 // Auswählbarer Punkt in der Liste (Checkbox-Zustand; Default: ausgewählt).
 export interface SelectableExtractPoint extends ExtractedPoint {
@@ -16,6 +16,8 @@ export interface FileDraftQueue {
   points: ExtractedPoint[];
   index: number; // 0-basiert; zeigt auf den AKTUELL bearbeiteten Punkt
 }
+
+export type FileImportMode = "points" | "whole";
 
 // Punkte aus der Extraktion in auswählbare Listeneinträge heben (alle vorausgewählt —
 // der Experte wählt AB, was nicht gebraucht wird; übernommen wird erst auf Klick).
@@ -138,6 +140,115 @@ export function fileSourcePayload(
   };
 }
 
+const MAX_WHOLE_DOCUMENT_STATEMENT = 500;
+const SOURCE_LABELS: Record<"de" | "en", { source: string; whole: string; fallback: string }> = {
+  de: { source: "Quelle", whole: "gesamtes Dokument", fallback: "Unbenanntes Dokument" },
+  en: { source: "Source", whole: "whole document", fallback: "Untitled document" },
+};
+
+function localeKey(locale: string | null | undefined): "de" | "en" {
+  return locale?.toLowerCase().startsWith("en") ? "en" : "de";
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function compactText(text: string, max = 90): string {
+  return text.replace(/\s+/g, " ").trim().slice(0, max).trim();
+}
+
+function titleFromFileName(fileName: string): string {
+  return fileName
+    .replace(/\.[^.\\/]+$/, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function wholeDocumentTitle(input: {
+  fileName: string;
+  text: string;
+  locale?: string | null;
+}): string {
+  const heading = /^\s{0,3}#{1,3}\s+(.+)$/m.exec(input.text);
+  const labels = SOURCE_LABELS[localeKey(input.locale)];
+  return (
+    compactText(heading?.[1] ?? "") ||
+    compactText(titleFromFileName(input.fileName)) ||
+    compactText(input.text) ||
+    labels.fallback
+  );
+}
+
+function renderTextBlock(block: string): string {
+  const trimmed = block.trim();
+  const heading = /^\s{0,3}#{1,3}\s+(.+)$/m.exec(trimmed);
+  if (heading?.[1] && trimmed.split(/\n/).length === 1) {
+    return `<h2>${escapeHtml(heading[1].trim())}</h2>`;
+  }
+
+  const lines = trimmed.split(/\n/).map((line) => line.trim());
+  const listItems = lines
+    .map((line) => /^[-*]\s+(.+)$/.exec(line)?.[1]?.trim() ?? null)
+    .filter((line): line is string => Boolean(line));
+  if (listItems.length > 0 && listItems.length === lines.length) {
+    return `<ul>${listItems.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>`;
+  }
+
+  return `<p>${lines.map(escapeHtml).join("<br>")}</p>`;
+}
+
+export function wholeDocumentBodyHtml(input: {
+  fileName: string;
+  text: string;
+  locale?: string | null;
+}): string {
+  const labels = SOURCE_LABELS[localeKey(input.locale)];
+  const source = `<blockquote><p>${labels.source}: ${escapeHtml(input.fileName)}, ${labels.whole}</p></blockquote>`;
+  const body = input.text
+    .replace(/\r\n?/g, "\n")
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter((block) => block.length > 0)
+    .map(renderTextBlock)
+    .join("");
+  return `${source}${body}`;
+}
+
+export function wholeDocumentDraftPayload(input: {
+  fileName: string;
+  text: string;
+  locale?: string | null;
+}): DraftPayload {
+  const title = wholeDocumentTitle(input);
+  const bodyHtml = wholeDocumentBodyHtml(input);
+  const statement = compactText(input.text, MAX_WHOLE_DOCUMENT_STATEMENT) || title;
+  return {
+    title,
+    statement,
+    type: "best_practice",
+    category: "Allgemein",
+    tags: [],
+    conditions: [],
+    measures: [],
+    bodyHtml,
+    origin: "studio",
+  };
+}
+
+export async function createWholeDocumentDraft<TDraft>(
+  input: { fileName: string; text: string; locale?: string | null },
+  create: (payload: DraftPayload) => Promise<TDraft>,
+): Promise<TDraft> {
+  return create(wholeDocumentDraftPayload(input));
+}
+
 // Flache Copy-Schlüssel — EINE Quelle für Komponente + Test (Muster CAPTURE_WIZARD_TEXT).
 export const CAPTURE_FILE_TEXT = {
   hint: "capture.file.hint",
@@ -161,8 +272,17 @@ export const CAPTURE_FILE_TEXT = {
   langSource: "capture.file.langSource",
   langHelpTitle: "capture.file.langHelp.title",
   langHelpBody: "capture.file.langHelp.body",
+  importModeLabel: "capture.file.importMode.label",
+  importModePoints: "capture.file.importMode.points",
+  importModePointsDesc: "capture.file.importMode.pointsDesc",
+  importModeWhole: "capture.file.importMode.whole",
+  importModeWholeDesc: "capture.file.importMode.wholeDesc",
   searchCta: "capture.file.searchCta",
   searching: "capture.file.searching",
+  wholeCta: "capture.file.wholeCta",
+  wholeSaving: "capture.file.wholeSaving",
+  wholeSaved: "capture.file.wholeSaved",
+  wholeSourceNote: "capture.file.wholeSourceNote",
   pointsTitle: "capture.file.pointsTitle",
   pointsHint: "capture.file.pointsHint",
   excerptLabel: "capture.file.excerptLabel",

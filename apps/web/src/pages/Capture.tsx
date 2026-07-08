@@ -79,9 +79,11 @@ import { CAPTURE_FLOW_TEXT } from "../lib/captureFlowGuide";
 import {
   CAPTURE_FILE_TEXT,
   type FileDraftQueue,
+  type FileImportMode,
   type SelectableExtractPoint,
   advanceFileQueue,
   buildFileQueue,
+  createWholeDocumentDraft,
   currentQueuePoint,
   draftFromPoint,
   fileSourcePayload,
@@ -382,6 +384,7 @@ export function Capture(): JSX.Element {
   const [fileImageUrl, setFileImageUrl] = useState<string | null>(null); // OCR-Kandidat (nur auf Klick)
   const [fileBusy, setFileBusy] = useState(false);
   const [fileQuery, setFileQuery] = useState("");
+  const [fileImportMode, setFileImportMode] = useState<FileImportMode>("points");
   // SCRUM-451 (Pedi 05.07.): Ergebnis-Sprache der Extraktion — Systemsprache (Default) oder
   // Originalsprache des Dokuments (nichts übersetzen; Belegstellen sind ohnehin wörtlich).
   const [fileLang, setFileLang] = useState<"system" | "source">("system");
@@ -535,6 +538,28 @@ export function Capture(): JSX.Element {
           setFileQuery("");
         }
       }
+    },
+    onError: fail,
+  });
+
+  // KW-W2-01: bewusstes Ganzdokument-MVP. Dieser Weg erzeugt genau EINEN Entwurf über die
+  // bestehende Draft-Route; kein KO, keine Validierung, keine KI-Strukturierung.
+  const fileWholeDraft = useMutation({
+    mutationFn: (input: { fileName: string; text: string }) =>
+      createWholeDocumentDraft({ ...input, locale: i18n.language }, (payload) =>
+        endpoints.drafts.create(payload),
+      ),
+    onSuccess: (_draft, input) => {
+      void qc.invalidateQueries({ queryKey: ["drafts"] });
+      setErr(null);
+      setFilePoints(null);
+      setFileNote(null);
+      setFileQueue(null);
+      setFileName(null);
+      setFileText("");
+      setFileQuery("");
+      setNotice(t(CAPTURE_FILE_TEXT.wholeSaved, { name: input.fileName }));
+      push("success", t(CAPTURE_FILE_TEXT.wholeSaved, { name: input.fileName }));
     },
     onError: fail,
   });
@@ -2056,66 +2081,142 @@ export function Capture(): JSX.Element {
                   </Button>
                 ) : null}
                 {fileText ? (
-                  <div>
-                    <span className="mb-1.5 flex items-center gap-1 text-[12.5px] font-semibold text-muted">
-                      {t(CAPTURE_FILE_TEXT.queryLabel)}
-                      <HelpTip
-                        title={t(CAPTURE_FILE_TEXT.queryHelpTitle)}
-                        body={t(CAPTURE_FILE_TEXT.queryHelpBody)}
-                      />
-                    </span>
-                    <TextInput
-                      value={fileQuery}
-                      onChange={(e) => setFileQuery(e.target.value)}
-                      placeholder={t(CAPTURE_FILE_TEXT.queryPlaceholder)}
-                    />
-                    {/* SCRUM-451 (Pedi 05.07.): Ergebnis-Sprache — Systemsprache oder Original. */}
-                    <div className="mt-2.5 flex items-center gap-2">
-                      <span className="flex items-center gap-1 text-[12.5px] font-semibold text-muted">
-                        {t(CAPTURE_FILE_TEXT.langLabel)}
-                        <HelpTip
-                          title={t(CAPTURE_FILE_TEXT.langHelpTitle)}
-                          body={t(CAPTURE_FILE_TEXT.langHelpBody)}
-                        />
+                  <div className="space-y-3">
+                    <div>
+                      <span className="mb-1.5 block text-[12.5px] font-semibold text-muted">
+                        {t(CAPTURE_FILE_TEXT.importModeLabel)}
                       </span>
-                      <div className="flex overflow-hidden rounded-pill border border-hairline text-[12px] font-semibold">
-                        {(["system", "source"] as const).map((mode) => (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {(["points", "whole"] as const).map((option) => (
                           <button
-                            key={mode}
+                            key={option}
                             type="button"
-                            onClick={() => setFileLang(mode)}
-                            className={`px-2.5 py-1 transition-colors ${
-                              fileLang === mode ? "bg-ink text-white" : "text-muted hover:text-text"
+                            aria-pressed={fileImportMode === option}
+                            onClick={() => setFileImportMode(option)}
+                            className={`rounded-card border px-3 py-2 text-left transition-colors ${
+                              fileImportMode === option
+                                ? "border-ink/30 bg-surface text-text"
+                                : "border-hairline bg-page text-muted hover:text-text"
                             }`}
                           >
-                            {t(
-                              mode === "system"
-                                ? CAPTURE_FILE_TEXT.langSystem
-                                : CAPTURE_FILE_TEXT.langSource,
-                            )}
+                            <span className="block text-[12.5px] font-semibold">
+                              {t(
+                                option === "points"
+                                  ? CAPTURE_FILE_TEXT.importModePoints
+                                  : CAPTURE_FILE_TEXT.importModeWhole,
+                              )}
+                            </span>
+                            <span className="mt-0.5 block text-[11.5px] leading-relaxed text-muted-2">
+                              {t(
+                                option === "points"
+                                  ? CAPTURE_FILE_TEXT.importModePointsDesc
+                                  : CAPTURE_FILE_TEXT.importModeWholeDesc,
+                              )}
+                            </span>
                           </button>
                         ))}
                       </div>
                     </div>
-                    <div className="mt-3 flex items-center gap-1.5">
-                      <Button
-                        variant="primary"
-                        disabled={extract.isPending || fileBusy}
-                        onClick={() => extract.mutate()}
-                      >
-                        {/* SCRUM-418: sichtbare Arbeits-Animation, solange die KI liest. */}
-                        {extract.isPending ? (
-                          <Loader2 size={15} className="animate-spin" />
-                        ) : (
-                          <Sparkles size={15} />
-                        )}
-                        {extract.isPending
-                          ? t(CAPTURE_FILE_TEXT.searching)
-                          : t(CAPTURE_FILE_TEXT.searchCta)}
-                      </Button>
-                      {/* Pedi 04.07.: (!)-Info — welche KI die Extraktion ausführt. */}
-                      <AiModelInfo task="extract" />
-                    </div>
+                    {fileImportMode === "points" ? (
+                      <div>
+                        <span className="mb-1.5 flex items-center gap-1 text-[12.5px] font-semibold text-muted">
+                          {t(CAPTURE_FILE_TEXT.queryLabel)}
+                          <HelpTip
+                            title={t(CAPTURE_FILE_TEXT.queryHelpTitle)}
+                            body={t(CAPTURE_FILE_TEXT.queryHelpBody)}
+                          />
+                        </span>
+                        <TextInput
+                          value={fileQuery}
+                          onChange={(e) => setFileQuery(e.target.value)}
+                          placeholder={t(CAPTURE_FILE_TEXT.queryPlaceholder)}
+                        />
+                        {/* SCRUM-451 (Pedi 05.07.): Ergebnis-Sprache — Systemsprache oder Original. */}
+                        <div className="mt-2.5 flex items-center gap-2">
+                          <span className="flex items-center gap-1 text-[12.5px] font-semibold text-muted">
+                            {t(CAPTURE_FILE_TEXT.langLabel)}
+                            <HelpTip
+                              title={t(CAPTURE_FILE_TEXT.langHelpTitle)}
+                              body={t(CAPTURE_FILE_TEXT.langHelpBody)}
+                            />
+                          </span>
+                          <div className="flex overflow-hidden rounded-pill border border-hairline text-[12px] font-semibold">
+                            {(["system", "source"] as const).map((mode) => (
+                              <button
+                                key={mode}
+                                type="button"
+                                onClick={() => setFileLang(mode)}
+                                className={`px-2.5 py-1 transition-colors ${
+                                  fileLang === mode
+                                    ? "bg-ink text-white"
+                                    : "text-muted hover:text-text"
+                                }`}
+                              >
+                                {t(
+                                  mode === "system"
+                                    ? CAPTURE_FILE_TEXT.langSystem
+                                    : CAPTURE_FILE_TEXT.langSource,
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="mt-3 flex items-center gap-1.5">
+                          <Button
+                            variant="primary"
+                            disabled={extract.isPending || fileBusy}
+                            onClick={() => extract.mutate()}
+                          >
+                            {/* SCRUM-418: sichtbare Arbeits-Animation, solange die KI liest. */}
+                            {extract.isPending ? (
+                              <Loader2 size={15} className="animate-spin" />
+                            ) : (
+                              <Sparkles size={15} />
+                            )}
+                            {extract.isPending
+                              ? t(CAPTURE_FILE_TEXT.searching)
+                              : t(CAPTURE_FILE_TEXT.searchCta)}
+                          </Button>
+                          {/* Pedi 04.07.: (!)-Info — welche KI die Extraktion ausführt. */}
+                          <AiModelInfo task="extract" />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-card border border-hairline bg-page px-3 py-2">
+                        <p className="text-[12px] leading-relaxed text-muted">
+                          {t(CAPTURE_FILE_TEXT.wholeSourceNote, { name: fileName })}
+                        </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <Button
+                            variant="primary"
+                            disabled={
+                              fileWholeDraft.isPending ||
+                              fileBusy ||
+                              !fileName ||
+                              fileText.trim().length === 0
+                            }
+                            onClick={() => {
+                              if (!fileName) {
+                                return;
+                              }
+                              fileWholeDraft.mutate({ fileName, text: fileText });
+                            }}
+                          >
+                            {fileWholeDraft.isPending ? (
+                              <Loader2 size={15} className="animate-spin" />
+                            ) : (
+                              <Save size={15} />
+                            )}
+                            {fileWholeDraft.isPending
+                              ? t(CAPTURE_FILE_TEXT.wholeSaving)
+                              : t(CAPTURE_FILE_TEXT.wholeCta)}
+                          </Button>
+                          <span className="text-[11.5px] leading-relaxed text-muted-2">
+                            {t(CAPTURE_FILE_TEXT.importModeWholeDesc)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : null}
                 {/* Ehrlicher Hinweis vom Server (z. B. „ohne Modell keine Extraktion") — KEINE Fake-Punkte. */}
@@ -2124,7 +2225,7 @@ export function Capture(): JSX.Element {
                     {fileNote}
                   </p>
                 ) : null}
-                {filePoints && filePoints.length > 0 ? (
+                {fileImportMode === "points" && filePoints && filePoints.length > 0 ? (
                   <div className="space-y-2 border-t border-hairline pt-3">
                     <SectionLabel>{t(CAPTURE_FILE_TEXT.pointsTitle)}</SectionLabel>
                     <p className="text-[11.5px] leading-relaxed text-muted-2">

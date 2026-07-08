@@ -828,8 +828,21 @@ const de = {
   "capture.file.langHelp.title": "Ergebnis-Sprache",
   "capture.file.langHelp.body":
     "Systemsprache: Titel und Zusammenfassungen erscheinen in deiner Oberflächensprache (Deutsch/Englisch) — ein englisches Dokument wird dabei faktisch übersetzt. Originalsprache: Die KI übersetzt nichts, die Punkte bleiben in der Sprache des Dokuments. Wörtliche Belegstellen bleiben in beiden Fällen unverändert.",
+  "capture.file.importMode.label": "Importart",
+  "capture.file.importMode.points": "In Punkte analysieren",
+  "capture.file.importMode.pointsDesc":
+    "Klarwerk extrahiert einzelne Aussagen aus der Datei. Bestehender Weg, nichts wird automatisch gespeichert.",
+  "capture.file.importMode.whole": "Ganzes Dokument übernehmen",
+  "capture.file.importMode.wholeDesc":
+    "Klarwerk legt genau einen Entwurf mit dem gesamten Dokument an. Keine automatische Validierung.",
   "capture.file.searchCta": "Nach Wissen suchen",
   "capture.file.searching": "Die KI liest das Dokument …",
+  "capture.file.wholeCta": "Ganzes Dokument als Entwurf speichern",
+  "capture.file.wholeSaving": "Entwurf wird gespeichert …",
+  "capture.file.wholeSaved":
+    "„{{name}}“ als ein Entwurf gespeichert — Quelle: Dateiname, gesamtes Dokument.",
+  "capture.file.wholeSourceNote":
+    "Quelle wird im Entwurf sichtbar vermerkt: {{name}}, gesamtes Dokument. Der Entwurf bleibt offen und ungeprüft.",
   "capture.file.pointsTitle": "Gefundenes Wissen — wähle aus, was übernommen wird",
   "capture.file.pointsHint":
     "Jeder Punkt trägt seine Belegstelle aus dem Dokument. Wähle ab, was du nicht brauchst — übernommen wird erst auf Klick.",
@@ -3476,8 +3489,20 @@ const en: typeof de = {
   "capture.file.langHelp.title": "Result language",
   "capture.file.langHelp.body":
     "System language: titles and summaries appear in your interface language (German/English) — an English document is effectively translated. Original language: the AI translates nothing, the points stay in the document's language. Verbatim excerpts remain unchanged in both cases.",
+  "capture.file.importMode.label": "Import type",
+  "capture.file.importMode.points": "Analyze into points",
+  "capture.file.importMode.pointsDesc":
+    "Klarwerk extracts individual statements from the file. Existing path; nothing is saved automatically.",
+  "capture.file.importMode.whole": "Take over whole document",
+  "capture.file.importMode.wholeDesc":
+    "Klarwerk creates exactly one draft with the whole document. No automatic validation.",
   "capture.file.searchCta": "Search for knowledge",
   "capture.file.searching": "The AI is reading the document …",
+  "capture.file.wholeCta": "Save whole document as draft",
+  "capture.file.wholeSaving": "Saving draft …",
+  "capture.file.wholeSaved": "“{{name}}” saved as one draft — source: file name, whole document.",
+  "capture.file.wholeSourceNote":
+    "The draft visibly records the source: {{name}}, whole document. The draft stays open and unreviewed.",
   "capture.file.pointsTitle": "Knowledge found — choose what to take over",
   "capture.file.pointsHint":
     "Every point carries its source excerpt from the document. Deselect what you don't need — nothing is taken over until you click.",

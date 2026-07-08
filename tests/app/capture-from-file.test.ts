@@ -1,6 +1,8 @@
 // PMO-FEA-0006: DOM-freie Tests für „Wissen aus Datei" — Punkteliste → Entwurfs-Warteschlange.
 // Schwerpunkte: Auswahl-Logik, Punkt→Wissensseiten-Entwurf (nichts erfinden), sichtbare Queue
 // (nacheinander prüfen/einreichen, nichts automatisch), Quelle (Dateiname) am KO, Copy DE/EN.
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { ExtractedPoint } from "../../apps/web/src/api/types";
 import i18n from "../../apps/web/src/i18n";
@@ -10,6 +12,7 @@ import {
   MAX_SOURCE_EXCERPT,
   advanceFileQueue,
   buildFileQueue,
+  createWholeDocumentDraft,
   currentQueuePoint,
   draftFromPoint,
   fileSourcePayload,
@@ -17,6 +20,7 @@ import {
   selectablePoints,
   selectedCount,
   togglePoint,
+  wholeDocumentDraftPayload,
 } from "../../apps/web/src/lib/captureFromFile";
 
 const POINTS: ExtractedPoint[] = [
@@ -126,6 +130,63 @@ describe("PMO-FEA-0006: Quelle (Dateiname) am KO", () => {
     const long = { ...POINTS[0], sourceExcerpt: "x".repeat(MAX_SOURCE_EXCERPT + 500) };
     expect(fileSourcePayload("a.txt", long as ExtractedPoint).excerpt).toHaveLength(
       MAX_SOURCE_EXCERPT,
+    );
+  });
+});
+
+describe("KW-W2-01: Ganzdokument-Import als bewusster Entwurf", () => {
+  it("baut genau einen Draft-Payload mit Titel, Body und sichtbarer Provenienz", () => {
+    const payload = wholeDocumentDraftPayload({
+      fileName: "wartung-l4.md",
+      text: "# Wartung L4\n\nFetter Text bleibt als sicherer Text erhalten.\n\n- Punkt eins\n- Punkt zwei",
+      locale: "de",
+    });
+
+    expect(payload.title).toBe("Wartung L4");
+    expect(payload.statement).toContain("Wartung L4");
+    expect(payload.bodyHtml).toContain("Quelle: wartung-l4.md, gesamtes Dokument");
+    expect(payload.bodyHtml).toContain("<h2>Wartung L4</h2>");
+    expect(payload.bodyHtml).toContain("<li>Punkt eins</li>");
+    expect(payload.origin).toBe("studio");
+    expect(payload.type).toBe("best_practice");
+    expect(payload.conditions).toEqual([]);
+    expect(payload.measures).toEqual([]);
+  });
+
+  it("ruft den Draft-Client genau einmal auf und keinen KO-/Validate-Pfad", async () => {
+    const created: unknown[] = [];
+    const result = await createWholeDocumentDraft(
+      {
+        fileName: "gesamt.pdf",
+        text: "Ein ganzer Dokumenttext.",
+        locale: "de",
+      },
+      async (payload) => {
+        created.push(payload);
+        return { id: "draft-1" };
+      },
+    );
+
+    expect(result).toEqual({ id: "draft-1" });
+    expect(created).toHaveLength(1);
+    expect(String((created[0] as { bodyHtml?: string }).bodyHtml)).toContain(
+      "Quelle: gesamt.pdf, gesamtes Dokument",
+    );
+  });
+
+  it("Capture rendert den Importart-Toggle und trennt Draft-Create vom Extract-Pfad", () => {
+    const captureSource = readFileSync(
+      resolve(process.cwd(), "apps/web/src/pages/Capture.tsx"),
+      "utf8",
+    );
+
+    expect(captureSource).toContain("CAPTURE_FILE_TEXT.importModeLabel");
+    expect(captureSource).toContain('fileImportMode === "points"');
+    expect(captureSource).toContain('fileImportMode === "points" && filePoints');
+    expect(captureSource).toContain("endpoints.reasoner.extract(fileText");
+    expect(captureSource).toContain("createWholeDocumentDraft(");
+    expect(captureSource).not.toContain(
+      "fileWholeDraft = useMutation({\n    mutationFn: () => endpoints.ko.create",
     );
   });
 });
