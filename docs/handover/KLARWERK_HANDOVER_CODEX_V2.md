@@ -35,7 +35,8 @@ keine Zwischenstopps — außer bei der Stop-Liste.
 - Shared-Struktur: /Users/Shared/Klarwerk_Insel/{releases/, current, data/state.jsonl, backups/, archive/, logs/, updates/}
 - Läuft dort: Baseline-Release 2026-07-09-vip-usb-01 (aus der ALTEN App!) auf
   Port 3002, Start via /Applications/Klarwerk.app
-- Alte Insel existiert noch: /Applications/KLARWERK-App (Port 3001)
+- Alte Insel-Restordner: /Applications/KLARWERK-App-MacStudio (nur node_modules,
+  keine .localdb/state.jsonl; Port 3001 inaktiv; Loeschfreigabe separat).
 - Daten-Invariante: data/state.jsonl nie löschen/überschreiben; Updates
   schreiben nie in data/
 - LLM-Demo-Env (Server ruft LLM serverseitig):
