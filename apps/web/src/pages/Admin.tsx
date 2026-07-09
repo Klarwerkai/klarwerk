@@ -17,7 +17,7 @@ import { Link } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useAnalytics, useAudit, useUsers, useValidationBoard } from "../api/hooks";
-import type { ExternalKnowledgeStage } from "../api/types";
+import type { DemoSeedResult, ExternalKnowledgeStage } from "../api/types";
 import { useToast } from "../app/ToastContext";
 import { ROLES, type Role } from "../app/navigation";
 import { HelpTip } from "../components/HelpTip";
@@ -144,9 +144,9 @@ export function Admin(): JSX.Element {
   });
 
   // SCRUM-181: Demodaten in eine LEERE Instanz laden (admin-only). Ehrliche skipped/seeded-Meldung.
-  const demoSeed = useMutation({
+  const demoSeed = useMutation<DemoSeedResult, unknown, boolean | undefined>({
     // Pedi 05.07. (Beta): force lädt das Demo-Set auch bei bereits erfassten Daten.
-    mutationFn: (force = false) => endpoints.admin.demoSeed(force),
+    mutationFn: (force) => endpoints.admin.demoSeed(force ?? false),
     onSuccess: (r) => {
       for (const key of [
         ["users"],

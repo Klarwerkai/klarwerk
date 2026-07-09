@@ -381,7 +381,7 @@ export function Validation(): JSX.Element {
           const boardFiltered = withoutKoIds(
             items.filter((k) => matchesValidationFilter(k, filter, user?.id ?? null)),
             locallyDeletedKoIds,
-          );
+          ) ?? [];
           // SCRUM-311: Herkunfts-Zähler über die (review-)gefilterte Menge; dann ergänzend nach
           // Herkunft filtern. Nur Ansicht — Status/Trust/Review-Entscheidung unberührt.
           const demoCounts: Record<DemoKnowledgeFilter, number> = {

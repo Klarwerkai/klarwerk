@@ -23,7 +23,6 @@ import {
 } from "../lib/captureAiAssist";
 import {
   CAPTURE_FRONT_DOOR_FALLBACK_TITLE,
-  CAPTURE_FRONT_DOOR_ROUTE,
   FRONT_DOOR_STRUCTURING_UNAVAILABLE_MESSAGE,
   buildFrontDoorPayload,
   buildFrontDoorStructureInput,
