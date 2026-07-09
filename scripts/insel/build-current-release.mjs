@@ -121,6 +121,7 @@ fi
 
 export PORT
 export NODE_ENV=production
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 unset DATABASE_URL
 export KLARWERK_DEV_PERSIST=1
 export KLARWERK_DEV_PERSIST_FILE="$STATE_FILE"
@@ -129,7 +130,12 @@ export KLARWERK_LOCAL_LLM_MODEL="\${KLARWERK_LOCAL_LLM_MODEL:-mistral:latest}"
 export KLARWERK_LOCAL_LLM_KEY="\${KLARWERK_LOCAL_LLM_KEY:-}"
 
 cd "$ROOT"
-exec node "$ROOT/node_modules/tsx/dist/cli.mjs" "$ROOT/services/app/src/server.ts"
+NODE_BIN="\${NODE_BIN:-$(command -v node || true)}"
+if [ -z "$NODE_BIN" ]; then
+  echo "node not found; expected Homebrew Node under /opt/homebrew/bin/node" >&2
+  exit 1
+fi
+exec "$NODE_BIN" "$ROOT/node_modules/tsx/dist/cli.mjs" "$ROOT/services/app/src/server.ts"
 `,
 );
 
