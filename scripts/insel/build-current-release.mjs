@@ -155,6 +155,8 @@ SOURCE="$(cd "$(dirname "$0")" && pwd)"
 PID_FILE="$SHARED_ROOT/logs/server-3002.pid"
 LOG_FILE="$SHARED_ROOT/logs/server-3002.log"
 STATE_FILE="$SHARED_ROOT/data/state.jsonl"
+LAUNCHD_LABEL="de.klarwerk.insel"
+LAUNCHD_SERVICE="gui/$(id -u)/$LAUNCHD_LABEL"
 
 echo "AUF MAC STUDIO: install $VERSION"
 mkdir -p "$RELEASES" "$SHARED_ROOT/backups" "$SHARED_ROOT/logs"
@@ -178,25 +180,30 @@ fi
 ln -sfn "$TARGET" "$CURRENT"
 echo "AUF MAC STUDIO: current -> $(readlink "$CURRENT")"
 
-if [ -f "$PID_FILE" ]; then
-  OLD_PID="$(cat "$PID_FILE" 2>/dev/null || true)"
-  if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" >/dev/null 2>&1; then
-    kill "$OLD_PID" || true
-    for _ in $(seq 1 20); do
-      kill -0 "$OLD_PID" >/dev/null 2>&1 || break
-      sleep 0.5
-    done
+if launchctl print "$LAUNCHD_SERVICE" >/dev/null 2>&1; then
+  echo "AUF MAC STUDIO: launchd agent geladen - restart via kickstart $LAUNCHD_SERVICE"
+  launchctl kickstart -k "$LAUNCHD_SERVICE"
+else
+  echo "AUF MAC STUDIO: launchd agent nicht geladen - direkter Fallback-Start"
+  if [ -f "$PID_FILE" ]; then
+    OLD_PID="$(cat "$PID_FILE" 2>/dev/null || true)"
+    if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" >/dev/null 2>&1; then
+      kill "$OLD_PID" || true
+      for _ in $(seq 1 20); do
+        kill -0 "$OLD_PID" >/dev/null 2>&1 || break
+        sleep 0.5
+      done
+    fi
   fi
+  if lsof -ti tcp:3002 >/dev/null 2>&1; then
+    lsof -ti tcp:3002 | xargs kill || true
+    sleep 1
+  fi
+  nohup "$CURRENT/start.command" >"$LOG_FILE" 2>&1 &
+  NEW_PID="$!"
+  echo "$NEW_PID" > "$PID_FILE"
+  echo "AUF MAC STUDIO: server pid $NEW_PID log $LOG_FILE"
 fi
-if lsof -ti tcp:3002 >/dev/null 2>&1; then
-  lsof -ti tcp:3002 | xargs kill || true
-  sleep 1
-fi
-
-nohup "$CURRENT/start.command" >"$LOG_FILE" 2>&1 &
-NEW_PID="$!"
-echo "$NEW_PID" > "$PID_FILE"
-echo "AUF MAC STUDIO: server pid $NEW_PID log $LOG_FILE"
 
 for _ in $(seq 1 60); do
   if curl -fsS -m 2 "http://127.0.0.1:3002/health" >/dev/null 2>&1; then
