@@ -1,4 +1,9 @@
+import { execFileSync } from "node:child_process";
 import type { ModelClient } from "./provider-model";
+
+export const CLOUD_API_KEY_ENV = "ANTHROPIC_API_KEY";
+export const CLOUD_API_KEYCHAIN_SERVICE = "Klarwerk";
+export const CLOUD_API_KEYCHAIN_ACCOUNT = CLOUD_API_KEY_ENV;
 
 // Anbieterspezifischer HTTP-Client (Anthropic Messages API). Der Schlüssel bleibt
 // ausschließlich hier (serverseitig) und verlässt den Prozess nie (FR-RSN-06).
@@ -41,11 +46,41 @@ export function anthropicClient(config: HttpModelConfig): ModelClient {
   };
 }
 
-// Baut den Client aus der Umgebung. Ohne Schlüssel → undefined → deterministischer Betrieb.
+type CloudKeyLookup = (service: string, account: string) => string | undefined;
+
+function findCloudKeyInKeychain(service: string, account: string): string | undefined {
+  try {
+    const value = execFileSync(
+      "security",
+      ["find-generic-password", "-s", service, "-a", account, "-w"],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+    ).trim();
+    return value.length > 0 ? value : undefined;
+  } catch {
+    process.stderr.write(
+      `[KLARWERK] Cloud-KI-Key nicht im macOS-Keychain gefunden oder nicht lesbar (service=${service}, account=${account}).\n`,
+    );
+    return undefined;
+  }
+}
+
+export function resolveCloudApiKey(
+  env: Record<string, string | undefined> = process.env,
+  keychainLookup: CloudKeyLookup = findCloudKeyInKeychain,
+): string | undefined {
+  const envKey = env[CLOUD_API_KEY_ENV]?.trim();
+  if (envKey) {
+    return envKey;
+  }
+  return keychainLookup(CLOUD_API_KEYCHAIN_SERVICE, CLOUD_API_KEYCHAIN_ACCOUNT);
+}
+
+// Baut den Cloud-Client aus Env oder macOS-Keychain. Ohne Schlüssel → deterministischer Betrieb.
 export function createModelClientFromEnv(
   env: Record<string, string | undefined> = process.env,
+  keychainLookup: CloudKeyLookup = findCloudKeyInKeychain,
 ): ModelClient | undefined {
-  const apiKey = env.ANTHROPIC_API_KEY;
+  const apiKey = resolveCloudApiKey(env, keychainLookup);
   if (!apiKey) {
     return undefined;
   }

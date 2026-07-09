@@ -219,7 +219,7 @@ export function assembleServices(repos: AppRepos): AppServices {
     // Funktion (keine Modulgrenzen-Verletzung); null → Modul-Default 3.
     defaultNeededValidations: () => repos.validationSettings.getDefaultNeeded(),
   });
-  // FR-RSN-02/06: echtes Cloud-Modell, wenn ANTHROPIC_API_KEY gesetzt ist; sonst deterministisch.
+  // FR-RSN-02/06: echtes Cloud-Modell, wenn der Cloud-Key per Env/Keychain verfügbar ist.
   const modelClient = createModelClientFromEnv();
   // SCRUM-424: eigener lokaler LLM (OpenAI-kompatibel), wenn KLARWERK_LOCAL_LLM_URL + _MODEL
   // gesetzt sind. Beide Backends werden serverseitig beim Start verdrahtet — unabhängig vom

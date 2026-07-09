@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { anthropicClient, createModelClientFromEnv } from "./model-client";
+import {
+  CLOUD_API_KEYCHAIN_ACCOUNT,
+  CLOUD_API_KEYCHAIN_SERVICE,
+  anthropicClient,
+  createModelClientFromEnv,
+  resolveCloudApiKey,
+} from "./model-client";
 import { type ModelClient, ModelProvider } from "./provider-model";
 import type { KnowledgeRef } from "./types";
 
@@ -159,8 +165,21 @@ describe("ModelProvider locale-aware prompts", () => {
 
 describe("model-client", () => {
   it("createModelClientFromEnv: ohne Schlüssel undefined, mit Schlüssel definiert", () => {
-    expect(createModelClientFromEnv({})).toBeUndefined();
-    expect(createModelClientFromEnv({ ANTHROPIC_API_KEY: "k" })).toBeDefined();
+    expect(createModelClientFromEnv({}, () => undefined)).toBeUndefined();
+    expect(createModelClientFromEnv({ ANTHROPIC_API_KEY: "k" }, () => undefined)).toBeDefined();
+  });
+
+  it("resolveCloudApiKey: bevorzugt Env vor macOS-Keychain", () => {
+    const lookup = vi.fn(() => "keychain-key");
+    expect(resolveCloudApiKey({ ANTHROPIC_API_KEY: " env-key " }, lookup)).toBe("env-key");
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
+  it("resolveCloudApiKey: nutzt Keychain-Fallback mit Insel-Namen", () => {
+    const lookup = vi.fn(() => "keychain-key");
+    expect(resolveCloudApiKey({}, lookup)).toBe("keychain-key");
+    expect(lookup).toHaveBeenCalledWith(CLOUD_API_KEYCHAIN_SERVICE, CLOUD_API_KEYCHAIN_ACCOUNT);
+    expect(createModelClientFromEnv({}, lookup)).toBeDefined();
   });
 
   it("anthropicClient ruft die API über injizierten fetch und liest den Text", async () => {

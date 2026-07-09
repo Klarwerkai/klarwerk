@@ -24,6 +24,16 @@ Lokaler LLM (neu, SCRUM-424):
 Fehlt URL oder Modell, läuft alles wie bisher (nur Cloud + Ersatzmodus) — nichts bricht.
 
 ## Schlüssel aus dem macOS-Schlüsselbund holen (Beispielmuster)
+Mac-Studio-Insel (launchd): Der Server liest zuerst `ANTHROPIC_API_KEY` aus der Prozess-Env.
+Fehlt diese Variable, nutzt er direkt den macOS-Schlüsselbund des Studio-Benutzers:
+```
+security find-generic-password -s "Klarwerk" -a "ANTHROPIC_API_KEY" -w
+```
+Eintragen dafür:
+```
+security add-generic-password -U -s "Klarwerk" -a "ANTHROPIC_API_KEY" -w '<claude-key>'
+```
+
 Einmalig ablegen (macht Pedi, nicht im Repo):
 ```
 security add-generic-password -a "$USER" -s KLARWERK_ANTHROPIC_KEY -w '<claude-key>'
