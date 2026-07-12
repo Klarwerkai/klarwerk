@@ -13,7 +13,10 @@ fi
 REPO="/Users/peterkohnert/Documents/dev_Klarwerk"
 PORT=3010  # 3000 gehört dem lokalen Gitea
 LOG="$REPO/desktop-app/app.log"
-SVC_AI="KLARWERK-App-Anthropic"    # Reasoner (Pflicht für echte KI, sonst deterministischer Modus)
+SVC_AI="Klarwerk"                  # Kanonischer Reasoner-Keychain-Service
+ACC_AI="ANTHROPIC_API_KEY"
+SVC_AI_LEGACY="KLARWERK-App-Anthropic"
+ACC_AI_LEGACY="team1"
 SVC_TR="KLARWERK-App-Transkript"   # Whisper/OpenAI für Video-Analyse (optional)
 ACC="team1"
 
@@ -30,16 +33,17 @@ fail() {
   exit 1
 }
 
-keychain_get() { /usr/bin/security find-generic-password -s "$1" -a "$ACC" -w 2>/dev/null; }
-keychain_ask() { # $1=Service $2=Prompt $3=optional("optional" erlaubt Überspringen)
+keychain_get() { /usr/bin/security find-generic-password -s "$1" -a "${2:-$ACC}" -w 2>/dev/null; }
+keychain_ask() { # $1=Service $2=Prompt $3=optional $4=Account (Default: team1)
   local val
-  val="$(keychain_get "$1")"
+  local account="${4:-$ACC}"
+  val="$(keychain_get "$1" "$account")"
   if [ -n "$val" ]; then printf '%s' "$val"; return 0; fi
   local buttons='{"Abbrechen","Speichern"}'
   [ "$3" = "optional" ] && buttons='{"Überspringen","Speichern"}'
   val="$(/usr/bin/osascript -e "text returned of (display dialog \"$2\n\nWird sicher im macOS-Schlüsselbund gespeichert — nie in Dateien oder Logs.\" with title \"KLARWERK App\" default answer \"\" with hidden answer buttons $buttons default button 2)" 2>/dev/null)"
   if [ -n "$val" ]; then
-    /usr/bin/security add-generic-password -U -s "$1" -a "$ACC" -w "$val" >/dev/null 2>&1
+    /usr/bin/security add-generic-password -U -s "$1" -a "$account" -w "$val" >/dev/null 2>&1
     printf '%s' "$val"
   fi
   return 0
@@ -92,7 +96,16 @@ STAMP="$(/usr/bin/stat -f %Sm -t '%d.%m. %H:%M' "$BUILD_REF" 2>/dev/null)"
 # Keys aus dem Schlüsselbund (Erststart: Dialoge) — BEWUSST VOR der „Läuft bereits"-Abkürzung
 # (Pedi 02.07.: Key-Dialog kam nie, weil der laufende Server die Prüfung übersprang; außerdem
 # behält ein laufender Server den ALTEN Key im Speicher — nach Erneuerung ist ein Neustart Pflicht).
-AI_KEY="$(keychain_ask "$SVC_AI" "Anthropic-API-Key für den KLARWERK Reasoner (beginnt mit sk-ant-…).\nOhne Key läuft die App im deterministischen Modus — ehrlich gekennzeichnet." optional)"
+AI_KEY="$(keychain_get "$SVC_AI" "$ACC_AI")"
+if [ -z "$AI_KEY" ]; then
+  AI_KEY="$(keychain_get "$SVC_AI_LEGACY" "$ACC_AI_LEGACY")"
+  if [ -n "$AI_KEY" ]; then
+    /usr/bin/security add-generic-password -U -s "$SVC_AI" -a "$ACC_AI" -w "$AI_KEY" >/dev/null 2>&1 || true
+  fi
+fi
+if [ -z "$AI_KEY" ]; then
+  AI_KEY="$(keychain_ask "$SVC_AI" "Anthropic-API-Key für den KLARWERK Reasoner (beginnt mit sk-ant-…).\nOhne Key läuft die App im deterministischen Modus — ehrlich gekennzeichnet." optional "$ACC_AI")"
+fi
 TR_KEY="$(keychain_ask "$SVC_TR" "Optional: OpenAI-Key für die Video-/Audio-Transkription (Whisper).\nÜberspringen ist ok — die Video-Analyse zeigt dann einen ehrlichen Inaktiv-Hinweis." optional)"
 
 # Key-Gültigkeitsprüfung (Pedi 02.07.): hinterlegter, aber UNGÜLTIGER Key (401) blieb stumm.
@@ -112,7 +125,7 @@ if [ -n "$AI_KEY" ]; then
     if [ "$CODE" = "401" ] || [ "$CODE" = "403" ]; then
       NEW_KEY="$(/usr/bin/osascript -e "text returned of (display dialog \"Der hinterlegte Anthropic-Key ist UNGÜLTIG (HTTP $CODE).\n\nBitte neuen Key eintragen (beginnt mit sk-ant-…) — er ersetzt den alten im Schlüsselbund.\nAbbrechen = App läuft im deterministischen Modus.\" with title \"KLARWERK App — Key erneuern\" default answer \"\" with hidden answer buttons {\"Abbrechen\",\"Speichern\"} default button 2)" 2>/dev/null)"
       if [ -n "$NEW_KEY" ]; then
-        /usr/bin/security add-generic-password -U -s "$SVC_AI" -a "$ACC" -w "$NEW_KEY" >/dev/null 2>&1
+        /usr/bin/security add-generic-password -U -s "$SVC_AI" -a "$ACC_AI" -w "$NEW_KEY" >/dev/null 2>&1
         AI_KEY="$NEW_KEY"
         KEY_RENEWED=1
       else

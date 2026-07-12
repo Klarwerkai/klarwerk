@@ -554,6 +554,8 @@ describe("SCRUM-166: Reasoner configStatus", () => {
   it("ohne Modell → configured false, mode demo, Fallback verfügbar", () => {
     const cfg = new Reasoner().configStatus();
     expect(cfg.configured).toBe(false);
+    expect(cfg.cloudConfigured).toBe(false);
+    expect(cfg.localConfigured).toBe(false);
     expect(cfg.mode).toBe("demo");
     expect(cfg.fallbackAvailable).toBe(true);
     expect(cfg.provider).toBe("deterministic");
@@ -566,6 +568,8 @@ describe("SCRUM-166: Reasoner configStatus", () => {
   it("mit Modell → configured true, mode model, provider/model gesetzt", () => {
     const cfg = new Reasoner(okModel()).configStatus();
     expect(cfg.configured).toBe(true);
+    expect(cfg.cloudConfigured).toBe(true);
+    expect(cfg.localConfigured).toBe(false);
     expect(cfg.mode).toBe("model");
     expect(cfg.provider).toBe("anthropic:test-model");
     expect(cfg.model).toBe("anthropic:test-model");

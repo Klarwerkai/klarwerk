@@ -67,7 +67,7 @@ export function AdminFirstRunCard(): JSX.Element | null {
   }
 
   const kiState = kiConnectionState(
-    cfg.data?.configured ?? false,
+    cfg.data?.cloudConfigured ?? false,
     cfg.data?.localConfigured ?? false,
   );
   // SCRUM-441: echter Fortschritt aus den vorhandenen Zählern — Häkchen statt Behauptung.

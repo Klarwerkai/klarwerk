@@ -1522,9 +1522,11 @@ export function Admin(): JSX.Element {
             <ul className="mt-3 divide-y divide-hairline">
               {readinessRows({
                 kiBoth:
-                  (aiConfig.data?.configured ?? false) && (aiConfig.data?.localConfigured ?? false),
+                  (aiConfig.data?.cloudConfigured ?? false) &&
+                  (aiConfig.data?.localConfigured ?? false),
                 kiAny:
-                  (aiConfig.data?.configured ?? false) || (aiConfig.data?.localConfigured ?? false),
+                  (aiConfig.data?.cloudConfigured ?? false) ||
+                  (aiConfig.data?.localConfigured ?? false),
                 validated: analytics.data?.byStatus.validiert ?? 0,
                 openReviews: board.data?.length ?? 0,
                 uploadLimits: uploadLimitsQ.data ?? null,

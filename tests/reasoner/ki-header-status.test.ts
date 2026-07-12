@@ -24,6 +24,7 @@ function config(overrides: Partial<ReasonerConfigStatus> = {}): ReasonerConfigSt
       extract: "model",
     },
     persisted: false,
+    cloudConfigured: true,
     localConfigured: false,
     effectiveProvider: {
       structure: "cloud",
@@ -83,6 +84,7 @@ describe("Pedi 05.07.: kiHeaderStatus — DSGVO immer „nein“, außer interne
   it("alles Cloud (Anthropic) → Externe KI, Herkunft USA, DSGVO: nein", () => {
     const s = kiHeaderStatus(config());
     expect(s?.mode).toBe("external");
+    expect(s?.labelKey).toBe(KI_HEADER_TEXT.external);
     expect(s?.dsgvoConfirm).toBe(false);
     expect(s?.dsgvoKey).toBe(KI_HEADER_TEXT.dsgvoNo);
     expect(s?.countryKey).toBe(KI_ORIGIN_TEXT.us);
@@ -98,6 +100,7 @@ describe("Pedi 05.07.: kiHeaderStatus — DSGVO immer „nein“, außer interne
       }),
     );
     expect(s?.mode).toBe("internal");
+    expect(s?.labelKey).toBe(KI_HEADER_TEXT.internal);
     expect(s?.dsgvoConfirm).toBe(false);
     expect(s?.countryKey).toBe(KI_ORIGIN_TEXT.cn);
   });
@@ -128,15 +131,18 @@ describe("Pedi 05.07.: kiHeaderStatus — DSGVO immer „nein“, außer interne
     expect(s?.countryKey).toBe(KI_ORIGIN_TEXT.unknown);
   });
 
-  it("rein regelbasiert → eigenes System (EU), DSGVO: ja, OHNE Modellnamen (nichts erfinden)", () => {
+  it("rein deterministisch → Z4 Keine KI mit sichtbarem Ersatzmodus", () => {
     const s = kiHeaderStatus(config({ effectiveProvider: { ...ALL_RULE } }));
-    expect(s?.mode).toBe("internal");
-    expect(s?.dsgvoConfirm).toBe(true);
-    expect(s?.countryKey).toBe(KI_ORIGIN_TEXT.ownSystem);
-    expect(s?.detail).toBeNull();
+    expect(s.mode).toBe("none");
+    expect(s.dsgvoConfirm).toBe(false);
+    expect(s.countryKey).toBeNull();
+    expect(s.dsgvoKey).toBeNull();
+    expect(s.labelKey).toBe(KI_HEADER_TEXT.none);
+    expect(s.subtitleKey).toBe(KI_HEADER_TEXT.noneSubtitle);
+    expect(s.detail).toBeNull();
   });
 
-  it("Mischbetrieb (auch mit EU-Cloud-Anteil) → „gemischt“, DSGVO: nein (strengste Stufe)", () => {
+  it("Cloud und lokales Modell → Z3 Beide, DSGVO: nein (strengste Stufe)", () => {
     const s = kiHeaderStatus(
       config({ effectiveProvider: { ...ALL_RULE, answer: "cloud", assist: "local" } }),
     );
@@ -146,9 +152,15 @@ describe("Pedi 05.07.: kiHeaderStatus — DSGVO immer „nein“, außer interne
     expect(s?.hintKey).toBe(KI_HEADER_TEXT.hintMixed);
   });
 
-  it("ohne Konfiguration oder ohne Aufgaben ehrlich null (kein Fake-Status im Header)", () => {
-    expect(kiHeaderStatus(undefined)).toBeNull();
-    expect(kiHeaderStatus(config({ tasks: [], effectiveProvider: {} }))).toBeNull();
+  it("Cloud plus deterministic bleibt Z1 Externe KI und wird nicht zu Beide", () => {
+    const s = kiHeaderStatus(config({ effectiveProvider: { ...ALL_RULE, answer: "cloud" } }));
+    expect(s.mode).toBe("external");
+    expect(s.labelKey).toBe(KI_HEADER_TEXT.external);
+  });
+
+  it("ohne Konfiguration oder Aufgaben ehrlich Z4 statt Fake-KI", () => {
+    expect(kiHeaderStatus(undefined).mode).toBe("none");
+    expect(kiHeaderStatus(config({ tasks: [], effectiveProvider: {} })).mode).toBe("none");
   });
 
   it("alle Anzeige-Keys lösen in DE und EN auf (keine rohen Keys im Header)", async () => {
@@ -160,5 +172,13 @@ describe("Pedi 05.07.: kiHeaderStatus — DSGVO immer „nein“, außer interne
         expect(i18n.t(key).length, `${lng}:${key}`).toBeGreaterThan(1);
       }
     }
+  });
+
+  it("Pedi-Copy: Externe KI, Beide und sichtbarer deterministischer Ersatzmodus", async () => {
+    await i18n.changeLanguage("de");
+    expect(i18n.t(KI_HEADER_TEXT.external)).toBe("Externe KI");
+    expect(i18n.t(KI_HEADER_TEXT.mixed)).toBe("Beide");
+    expect(i18n.t(KI_HEADER_TEXT.none)).toBe("Keine KI");
+    expect(i18n.t(KI_HEADER_TEXT.noneSubtitle)).toBe("deterministischer Ersatzmodus");
   });
 });

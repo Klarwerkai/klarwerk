@@ -51,15 +51,19 @@ const de = {
   // DSGVO: ja gibt es NUR bei interner KI aus Europa — alles andere ehrlich „nein".
   "topbar.kiExternal": "Externe KI",
   "topbar.kiInternal": "Interne KI",
-  "topbar.kiMixed": "KI gemischt",
+  "topbar.kiMixed": "Beide",
+  "topbar.kiNone": "Keine KI",
+  "topbar.kiNoneSubtitle": "deterministischer Ersatzmodus",
   "topbar.kiDsgvoYes": "DSGVO: ja",
   "topbar.kiDsgvoNo": "DSGVO: nein",
   "topbar.kiExternalHint":
     "Deine KI-Aufgaben laufen über ein Cloud-Modell außer Haus — DSGVO-Bestätigung daher: nein. Ein Ja gibt es nur für eine interne KI aus Europa. Details je Aufgabe: Verwaltung → KI.",
   "topbar.kiInternalHint":
-    "Deine KI-Aufgaben laufen vollständig im Haus (lokales Modell oder regelbasiert). DSGVO: ja gibt es nur hier — und nur, wenn die KI aus Europa stammt. Herkunft derzeit aus der Anbieter-Kennung abgeleitet; künftig übermittelt sie die zentrale KI-Zugangs-Steuerung.",
+    "Deine KI-Aufgaben laufen vollständig über ein lokales Modell im Haus. DSGVO: ja gibt es nur hier — und nur, wenn die KI aus Europa stammt. Herkunft derzeit aus der Anbieter-Kennung abgeleitet; künftig übermittelt sie die zentrale KI-Zugangs-Steuerung.",
   "topbar.kiMixedHint":
     "Gemischter Betrieb: einige Aufgaben laufen über die externe Cloud-KI, andere im Haus. Es zählt die strengste Stufe — DSGVO-Bestätigung: nein. Details je Aufgabe: Verwaltung → KI.",
+  "topbar.kiNoneHint":
+    "Kein KI-Modell ist für eine Aufgabe aktiv. Klarwerk arbeitet im deterministischen Ersatzmodus.",
   // Herkunftsland der KI (Interim aus der Anbieter-Kennung; später aus der KI-Zugangs-Steuerung).
   "country.us": "USA",
   "country.de": "Deutschland",
@@ -519,7 +523,7 @@ const de = {
   "adm.ai.testLocal": "Lokalen LLM testen",
   "adm.ai.testLocalOk": "Lokaler LLM hat geantwortet ({{provider}}).",
   "adm.ai.testFail":
-    "Test fehlgeschlagen: {{detail}} Tipp: Schlüssel im Start-Dialog bzw. Schlüsselbund (KLARWERK-App-Anthropic) erneuern, dann App neu starten.",
+    "Test fehlgeschlagen: {{detail}} Tipp: Schlüssel im Start-Dialog bzw. Schlüsselbund (Service Klarwerk, Account ANTHROPIC_API_KEY) erneuern, dann App neu starten.",
   "adm.ai.global": "Global (Standard für alle Einsätze)",
   "adm.ai.choice.inherit": "— wie global —",
   "adm.ai.choice.auto": "Auto (Modell wenn verfügbar)",
@@ -2745,15 +2749,19 @@ const en: typeof de = {
   // GDPR: yes ONLY for an internal AI from Europe — everything else is honestly "no".
   "topbar.kiExternal": "External AI",
   "topbar.kiInternal": "Internal AI",
-  "topbar.kiMixed": "AI mixed",
+  "topbar.kiMixed": "Both",
+  "topbar.kiNone": "No AI",
+  "topbar.kiNoneSubtitle": "deterministic fallback mode",
   "topbar.kiDsgvoYes": "GDPR: yes",
   "topbar.kiDsgvoNo": "GDPR: no",
   "topbar.kiExternalHint":
     "Your AI tasks run on a cloud model outside the company — GDPR confirmation is therefore: no. A yes exists only for an internal AI from Europe. Per-task details: Admin → AI.",
   "topbar.kiInternalHint":
-    "Your AI tasks run entirely in-house (local model or rule-based). GDPR: yes exists only here — and only if the AI originates from Europe. Origin currently derived from the provider identifier; in future the central AI access control will supply it.",
+    "Your AI tasks run entirely on a local in-house model. GDPR: yes exists only here — and only if the AI originates from Europe. Origin currently derived from the provider identifier; in future the central AI access control will supply it.",
   "topbar.kiMixedHint":
     "Mixed operation: some tasks run on the external cloud AI, others in-house. The strictest level counts — GDPR confirmation: no. Per-task details: Admin → AI.",
+  "topbar.kiNoneHint":
+    "No AI model is active for any task. Klarwerk is using deterministic fallback mode.",
   // Country of origin of the AI (interim from the provider identifier; later from AI access control).
   "country.us": "USA",
   "country.de": "Germany",
@@ -3208,7 +3216,7 @@ const en: typeof de = {
   "adm.ai.testLocal": "Test local LLM",
   "adm.ai.testLocalOk": "Local LLM responded ({{provider}}).",
   "adm.ai.testFail":
-    "Test failed: {{detail}} Tip: renew the key in the start dialog or keychain (KLARWERK-App-Anthropic), then restart the app.",
+    "Test failed: {{detail}} Tip: renew the key in the start dialog or keychain (service Klarwerk, account ANTHROPIC_API_KEY), then restart the app.",
   "adm.ai.global": "Global (default for all uses)",
   "adm.ai.choice.inherit": "— same as global —",
   "adm.ai.choice.auto": "Auto (model when available)",

@@ -4,6 +4,8 @@ import type { ModelClient } from "./provider-model";
 export const CLOUD_API_KEY_ENV = "ANTHROPIC_API_KEY";
 export const CLOUD_API_KEYCHAIN_SERVICE = "Klarwerk";
 export const CLOUD_API_KEYCHAIN_ACCOUNT = CLOUD_API_KEY_ENV;
+export const LEGACY_CLOUD_API_KEYCHAIN_SERVICE = "KLARWERK-App-Anthropic";
+export const LEGACY_CLOUD_API_KEYCHAIN_ACCOUNT = "team1";
 
 // Anbieterspezifischer HTTP-Client (Anthropic Messages API). Der Schlüssel bleibt
 // ausschließlich hier (serverseitig) und verlässt den Prozess nie (FR-RSN-06).
@@ -47,6 +49,7 @@ export function anthropicClient(config: HttpModelConfig): ModelClient {
 }
 
 type CloudKeyLookup = (service: string, account: string) => string | undefined;
+type CloudKeyStore = (service: string, account: string, value: string) => boolean;
 
 function findCloudKeyInKeychain(service: string, account: string): string | undefined {
   try {
@@ -57,31 +60,63 @@ function findCloudKeyInKeychain(service: string, account: string): string | unde
     ).trim();
     return value.length > 0 ? value : undefined;
   } catch {
-    process.stderr.write(
-      `[KLARWERK] Cloud-KI-Key nicht im macOS-Keychain gefunden oder nicht lesbar (service=${service}, account=${account}).\n`,
-    );
     return undefined;
+  }
+}
+
+function storeCloudKeyInKeychain(service: string, account: string, value: string): boolean {
+  try {
+    execFileSync(
+      "security",
+      ["add-generic-password", "-U", "-s", service, "-a", account, "-w", value],
+      { stdio: ["ignore", "ignore", "ignore"] },
+    );
+    return true;
+  } catch {
+    process.stderr.write(
+      `[KLARWERK] Legacy-Cloud-KI-Key konnte nicht in den kanonischen Keychain-Eintrag migriert werden (service=${service}, account=${account}).\n`,
+    );
+    return false;
   }
 }
 
 export function resolveCloudApiKey(
   env: Record<string, string | undefined> = process.env,
   keychainLookup: CloudKeyLookup = findCloudKeyInKeychain,
+  keychainStore: CloudKeyStore = storeCloudKeyInKeychain,
 ): string | undefined {
   const envKey = env[CLOUD_API_KEY_ENV]?.trim();
   if (envKey) {
     return envKey;
   }
-  return keychainLookup(CLOUD_API_KEYCHAIN_SERVICE, CLOUD_API_KEYCHAIN_ACCOUNT);
+  const canonicalKey = keychainLookup(CLOUD_API_KEYCHAIN_SERVICE, CLOUD_API_KEYCHAIN_ACCOUNT);
+  if (canonicalKey) {
+    return canonicalKey;
+  }
+  const legacyKey = keychainLookup(
+    LEGACY_CLOUD_API_KEYCHAIN_SERVICE,
+    LEGACY_CLOUD_API_KEYCHAIN_ACCOUNT,
+  );
+  if (!legacyKey) {
+    return undefined;
+  }
+  keychainStore(CLOUD_API_KEYCHAIN_SERVICE, CLOUD_API_KEYCHAIN_ACCOUNT, legacyKey);
+  return legacyKey;
 }
 
 // Baut den Cloud-Client aus Env oder macOS-Keychain. Ohne Schlüssel → deterministischer Betrieb.
 export function createModelClientFromEnv(
   env: Record<string, string | undefined> = process.env,
   keychainLookup: CloudKeyLookup = findCloudKeyInKeychain,
+  keychainStore: CloudKeyStore = storeCloudKeyInKeychain,
 ): ModelClient | undefined {
-  const apiKey = resolveCloudApiKey(env, keychainLookup);
+  const apiKey = resolveCloudApiKey(env, keychainLookup, keychainStore);
   if (!apiKey) {
+    if (keychainLookup === findCloudKeyInKeychain) {
+      process.stderr.write(
+        `[KLARWERK] Cloud-KI-Key weder per ENV noch im macOS-Keychain gefunden oder lesbar (canonical=${CLOUD_API_KEYCHAIN_SERVICE}/${CLOUD_API_KEYCHAIN_ACCOUNT}, legacy=${LEGACY_CLOUD_API_KEYCHAIN_SERVICE}/${LEGACY_CLOUD_API_KEYCHAIN_ACCOUNT}).\n`,
+      );
+    }
     return undefined;
   }
   return anthropicClient({ apiKey, model: env.REASONER_MODEL ?? "claude-sonnet-4-6" });

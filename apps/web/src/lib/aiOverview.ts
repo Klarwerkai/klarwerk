@@ -16,6 +16,7 @@ export interface AiAccessRow {
 
 export function aiAccessRows(cfg: {
   configured: boolean;
+  cloudConfigured: boolean;
   provider: string;
   model?: string;
   mode: "model" | "fallback" | "demo";
@@ -26,8 +27,8 @@ export function aiAccessRows(cfg: {
   return [
     {
       id: "cloud",
-      state: cfg.configured ? "active" : "missing",
-      detail: cfg.configured ? (cfg.model ?? cfg.provider) : null,
+      state: cfg.cloudConfigured ? "active" : "missing",
+      detail: cfg.cloudConfigured ? (cfg.model ?? cfg.provider) : null,
     },
     {
       // Der Ersatzmodus ist immer da: „aktiv", wenn er gerade antwortet (kein Modell),

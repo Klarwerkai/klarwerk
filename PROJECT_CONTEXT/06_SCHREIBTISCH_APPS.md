@@ -36,7 +36,8 @@ macOS blockiert Script-Apps oft beim Documents-Zugriff (TCC). Bewährtes Muster:
 
 ### KLARWERK App.app
 Startet die KLARWERK-App lokal und öffnet sie im Browser. Prüft beim Start den Anthropic-Key
-im Schlüsselbund (`KLARWERK-App-Anthropic`/team1) gegen die API; ungültig/fehlend → Dialog zum
+im Schlüsselbund (`Klarwerk`/`ANTHROPIC_API_KEY`) gegen die API; ein vorhandener Legacy-Eintrag
+`KLARWERK-App-Anthropic`/team1 wird einmalig sicher migriert. Ungültig/fehlend → Dialog zum
 Eintragen; erneuerter Key erzwingt Server-Neustart. Master: Repo `dev_Klarwerk/desktop-app/`.
 **Check nach jedem Update:** Versionsnummer oben rechts in der App muss der erwarteten entsprechen.
 

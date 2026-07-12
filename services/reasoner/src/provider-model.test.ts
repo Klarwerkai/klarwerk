@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   CLOUD_API_KEYCHAIN_ACCOUNT,
   CLOUD_API_KEYCHAIN_SERVICE,
+  LEGACY_CLOUD_API_KEYCHAIN_ACCOUNT,
+  LEGACY_CLOUD_API_KEYCHAIN_SERVICE,
   anthropicClient,
   createModelClientFromEnv,
   resolveCloudApiKey,
@@ -175,11 +177,66 @@ describe("model-client", () => {
     expect(lookup).not.toHaveBeenCalled();
   });
 
-  it("resolveCloudApiKey: nutzt Keychain-Fallback mit Insel-Namen", () => {
+  it("resolveCloudApiKey: nutzt den kanonischen Keychain-Eintrag", () => {
     const lookup = vi.fn(() => "keychain-key");
     expect(resolveCloudApiKey({}, lookup)).toBe("keychain-key");
     expect(lookup).toHaveBeenCalledWith(CLOUD_API_KEYCHAIN_SERVICE, CLOUD_API_KEYCHAIN_ACCOUNT);
     expect(createModelClientFromEnv({}, lookup)).toBeDefined();
+  });
+
+  it("resolveCloudApiKey: ohne ENV, kanonischen oder Legacy-Eintrag bleibt Cloud aus", () => {
+    const lookup = vi.fn(() => undefined);
+    const store = vi.fn(() => true);
+
+    expect(resolveCloudApiKey({}, lookup, store)).toBeUndefined();
+    expect(createModelClientFromEnv({}, lookup, store)).toBeUndefined();
+    expect(store).not.toHaveBeenCalled();
+  });
+
+  it("resolveCloudApiKey: migriert einen Legacy-Treffer einmalig in den kanonischen Eintrag", () => {
+    const lookup = vi.fn((service: string, account: string) =>
+      service === LEGACY_CLOUD_API_KEYCHAIN_SERVICE && account === LEGACY_CLOUD_API_KEYCHAIN_ACCOUNT
+        ? "legacy-key"
+        : undefined,
+    );
+    const store = vi.fn(() => true);
+
+    expect(resolveCloudApiKey({}, lookup, store)).toBe("legacy-key");
+    expect(lookup).toHaveBeenNthCalledWith(
+      1,
+      CLOUD_API_KEYCHAIN_SERVICE,
+      CLOUD_API_KEYCHAIN_ACCOUNT,
+    );
+    expect(lookup).toHaveBeenNthCalledWith(
+      2,
+      LEGACY_CLOUD_API_KEYCHAIN_SERVICE,
+      LEGACY_CLOUD_API_KEYCHAIN_ACCOUNT,
+    );
+    expect(store).toHaveBeenCalledWith(
+      CLOUD_API_KEYCHAIN_SERVICE,
+      CLOUD_API_KEYCHAIN_ACCOUNT,
+      "legacy-key",
+    );
+  });
+
+  it("resolveCloudApiKey: kanonischer Treffer ueberspringt Legacy und Migration", () => {
+    const lookup = vi.fn(() => "canonical-key");
+    const store = vi.fn(() => true);
+
+    expect(resolveCloudApiKey({}, lookup, store)).toBe("canonical-key");
+    expect(lookup).toHaveBeenCalledTimes(1);
+    expect(store).not.toHaveBeenCalled();
+  });
+
+  it("resolveCloudApiKey: Legacy bleibt nutzbar, wenn die Migration fehlschlaegt", () => {
+    const lookup = vi
+      .fn<(service: string, account: string) => string | undefined>()
+      .mockReturnValueOnce(undefined)
+      .mockReturnValueOnce("legacy-key");
+    const store = vi.fn(() => false);
+
+    expect(resolveCloudApiKey({}, lookup, store)).toBe("legacy-key");
+    expect(store).toHaveBeenCalledOnce();
   });
 
   it("anthropicClient ruft die API über injizierten fetch und liest den Text", async () => {

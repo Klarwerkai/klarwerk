@@ -1,26 +1,29 @@
 // Pedi 05.07.: Header-Anzeige „In welcher KI bin ich — und was ist der DSGVO-Status?"
 // Aggregiert die vorhandene read-only Konfiguration (/reasoner/config, nur Metadaten, keine
 // Secrets) über ALLE Aufgaben zu einer ehrlichen Gesamt-Aussage: extern (Cloud außer Haus),
-// intern (lokal/regelbasiert im Haus) oder gemischt.
+// intern (lokales Modell), beide oder keine KI (deterministischer Ersatzmodus).
 // DSGVO-Bestätigung (Pedi 05.07., zweite Runde): IMMER „nein" — außer es ist eine interne KI
-// aus Europa (regelbasiert = eigenes System = Europa). Dazu das Herkunftsland der KI; das
+// aus Europa. Dazu das Herkunftsland der KI; das
 // liefert interimsweise kiOrigin() aus der Anbieter-Kennung, später zentral Nerds
 // KI-Zugangs-Steuerung. DOM-frei und testbar — die Topbar rendert nur das Ergebnis.
 import type { ReasonerConfigStatus } from "../api/types";
-import { KI_ORIGIN_TEXT, kiOrigin } from "./kiOrigin";
+import { kiOrigin } from "./kiOrigin";
 
-export type KiHeaderMode = "external" | "internal" | "mixed";
+export type KiHeaderMode = "external" | "internal" | "mixed" | "none";
 
 // Flache Copy-Schlüssel — EINE Quelle für Komponente + Test.
 export const KI_HEADER_TEXT = {
   external: "topbar.kiExternal",
   internal: "topbar.kiInternal",
   mixed: "topbar.kiMixed",
+  none: "topbar.kiNone",
+  noneSubtitle: "topbar.kiNoneSubtitle",
   dsgvoYes: "topbar.kiDsgvoYes",
   dsgvoNo: "topbar.kiDsgvoNo",
   hintExternal: "topbar.kiExternalHint",
   hintInternal: "topbar.kiInternalHint",
   hintMixed: "topbar.kiMixedHint",
+  hintNone: "topbar.kiNoneHint",
 } as const;
 
 export interface KiHeaderStatus {
@@ -29,10 +32,11 @@ export interface KiHeaderStatus {
   // unbekannte Herkunft) ist ehrlich „nein". Kein Fake-Ja.
   dsgvoConfirm: boolean;
   labelKey: string;
-  dsgvoKey: string;
-  countryKey: string;
+  dsgvoKey: string | null;
+  countryKey: string | null;
+  subtitleKey: string | null;
   hintKey: string;
-  // Modell-/Anbietername, wenn ein echtes Modell arbeitet — bei rein Regelbasiert bewusst null.
+  // Modell-/Anbietername, wenn ein echtes Modell arbeitet.
   detail: string | null;
 }
 
@@ -40,40 +44,54 @@ function verdict(
   mode: KiHeaderMode,
   labelKey: string,
   hintKey: string,
-  countryKey: string,
+  countryKey: string | null,
   confirm: boolean,
   detail: string | null,
+  subtitleKey: string | null = null,
 ): KiHeaderStatus {
   return {
     mode,
     dsgvoConfirm: confirm,
     labelKey,
-    dsgvoKey: confirm ? KI_HEADER_TEXT.dsgvoYes : KI_HEADER_TEXT.dsgvoNo,
+    dsgvoKey: countryKey ? (confirm ? KI_HEADER_TEXT.dsgvoYes : KI_HEADER_TEXT.dsgvoNo) : null,
     countryKey,
+    subtitleKey,
     hintKey,
     detail,
   };
 }
 
-// Ableitung des Header-Zustands. Ehrlich: ohne geladene Konfiguration oder ohne zugeordnete
-// Aufgaben null — die Topbar zeigt dann NICHTS statt eines Fake-Status.
-export function kiHeaderStatus(config: ReasonerConfigStatus | undefined): KiHeaderStatus | null {
+function noneStatus(): KiHeaderStatus {
+  return verdict(
+    "none",
+    KI_HEADER_TEXT.none,
+    KI_HEADER_TEXT.hintNone,
+    null,
+    false,
+    null,
+    KI_HEADER_TEXT.noneSubtitle,
+  );
+}
+
+// Der deterministische Modus ist ein Ersatzpfad, keine interne KI. Ohne geladene Konfiguration
+// oder ohne zugeordnete Aufgaben zeigt die Topbar deshalb den neutralen Z4 statt eines Fake-Modells.
+export function kiHeaderStatus(config: ReasonerConfigStatus | undefined): KiHeaderStatus {
   if (!config) {
-    return null;
+    return noneStatus();
   }
   const providers = config.tasks
     .map((task) => config.effectiveProvider[task])
     .filter((p): p is "cloud" | "local" | "deterministic" => p !== undefined);
   if (providers.length === 0) {
-    return null;
+    return noneStatus();
   }
   const hasCloud = providers.includes("cloud");
-  const hasInhouse = providers.some((p) => p === "local" || p === "deterministic");
+  const hasLocal = providers.includes("local");
   if (hasCloud) {
     // Extern oder gemischt: DSGVO-Bestätigung immer „nein" (externe Verarbeitung ist im Spiel).
     const detail = config.model ?? config.provider;
     const origin = kiOrigin(detail);
-    return hasInhouse
+    return hasLocal
       ? verdict(
           "mixed",
           KI_HEADER_TEXT.mixed,
@@ -104,13 +122,5 @@ export function kiHeaderStatus(config: ReasonerConfigStatus | undefined): KiHead
       detail,
     );
   }
-  // Rein regelbasiert: eigenes System, läuft im Haus in Europa — kein Modellname (nichts erfinden).
-  return verdict(
-    "internal",
-    KI_HEADER_TEXT.internal,
-    KI_HEADER_TEXT.hintInternal,
-    KI_ORIGIN_TEXT.ownSystem,
-    true,
-    null,
-  );
+  return noneStatus();
 }

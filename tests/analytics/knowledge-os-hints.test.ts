@@ -51,6 +51,7 @@ function reasoner(mode: ReasonerConfigStatus["mode"]): ReasonerConfigStatus {
       select: "model",
     },
     persisted: false,
+    cloudConfigured: mode === "model",
     localConfigured: false,
     effectiveProvider: {
       structure: "cloud",

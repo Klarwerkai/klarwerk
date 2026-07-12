@@ -81,11 +81,14 @@ describe("SCRUM-424: zwei KI-Backends (Cloud + lokaler LLM)", () => {
       new ModelProvider(local("LOCAL")),
     );
     const cfg = r.configStatus();
+    expect(cfg.cloudConfigured).toBe(true);
     expect(cfg.localConfigured).toBe(true);
     expect(cfg.localProvider).toBe("local:Qwen3-32B-AWQ");
     expect(cfg.effectiveProvider.structure).toBe("cloud"); // auto → Cloud zuerst
     // Ohne verdrahteten lokalen LLM bleibt localConfigured false.
-    expect(new Reasoner(new ModelProvider(cloud("C"))).configStatus().localConfigured).toBe(false);
+    const cloudOnly = new Reasoner(new ModelProvider(cloud("C"))).configStatus();
+    expect(cloudOnly.cloudConfigured).toBe(true);
+    expect(cloudOnly.localConfigured).toBe(false);
   });
 
   it("ungültige Zuordnung 'local' bei Bedarf bleibt gültig; Unsinn wird weiterhin abgewiesen", () => {

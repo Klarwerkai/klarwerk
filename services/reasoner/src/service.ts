@@ -331,6 +331,7 @@ export class Reasoner {
         ),
       ),
       // SCRUM-424: der eigene lokale LLM + welche KI je Aufgabe zuerst arbeitet.
+      cloudConfigured: this.usingPrimary(),
       localConfigured: this.usingSecondary(),
       ...(this.usingSecondary() ? { localProvider: this.secondary.name } : {}),
       effectiveProvider: Object.fromEntries(

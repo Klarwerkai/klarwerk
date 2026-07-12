@@ -19,6 +19,7 @@ function config(overrides: Partial<ReasonerConfigStatus> = {}): ReasonerConfigSt
       extract: "model",
     },
     persisted: false,
+    cloudConfigured: true,
     localConfigured: false,
     effectiveProvider: {
       structure: "cloud",

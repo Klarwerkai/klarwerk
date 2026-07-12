@@ -21,6 +21,7 @@ const configured: ReasonerConfigStatus = {
     select: "model",
   },
   persisted: false,
+  cloudConfigured: true,
   localConfigured: false,
   effectiveProvider: {
     structure: "cloud",
@@ -47,6 +48,7 @@ const demo: ReasonerConfigStatus = {
     select: "model",
   },
   persisted: false,
+  cloudConfigured: false,
   localConfigured: false,
   effectiveProvider: {
     structure: "cloud",

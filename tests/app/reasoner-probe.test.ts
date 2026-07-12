@@ -62,4 +62,31 @@ describe("Reasoner-Key-Test (probe)", () => {
     expect(body.ok).toBe(false);
     expect(body.mode).toBe("deterministic");
   });
+
+  it("HTTP config trennt aktive Provider von Cloud-/Local-Verfügbarkeit", async () => {
+    const app = buildApp(buildServices());
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { name: "Admin", email: "config@x.de", password: "secret123" },
+    });
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "config@x.de", password: "secret123" },
+    });
+    const headers = { authorization: `Bearer ${login.json().token}` };
+    const res = await app.inject({ method: "GET", url: "/api/reasoner/config", headers });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      cloudConfigured: boolean;
+      localConfigured: boolean;
+      effectiveProvider: Record<string, string>;
+    };
+    expect(body.cloudConfigured).toBe(false);
+    expect(body.localConfigured).toBe(false);
+    expect(new Set(Object.values(body.effectiveProvider))).toEqual(new Set(["deterministic"]));
+    expect(JSON.stringify(body).toLowerCase()).not.toMatch(/apikey|secret|token|password/);
+  });
 });

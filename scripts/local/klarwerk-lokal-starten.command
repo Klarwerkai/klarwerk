@@ -5,7 +5,7 @@
 # Was es tut:
 #   1. Beendet eine evtl. laufende lokale Instanz (Port 3001) — sauberer Neustart.
 #   2. Baut die Oberfläche frisch (apps/web/dist) → du siehst deinen aktuellen Stand.
-#   3. Holt den Anthropic-Schlüssel aus dem Schlüsselbund (KLARWERK-App-Anthropic).
+#   3. Holt den Anthropic-Schlüssel aus dem kanonischen Schlüsselbund-Eintrag.
 #      Fehlt er, läuft die App regelbasiert (KI-Funktionen aus) — fürs UI-Testen reicht das.
 #   4. Startet den Server mit lokaler Persistenz (Daten überleben Neustarts) und öffnet den Browser.
 #
@@ -35,13 +35,20 @@ echo "Baue Oberfläche … (ein paar Sekunden)"
 }
 echo "✓ Oberfläche gebaut"
 
-# 3) Anthropic-Schlüssel aus dem Schlüsselbund (optional).
-KEY="$(security find-generic-password -s KLARWERK-App-Anthropic -w 2>/dev/null || true)"
+# 3) Anthropic-Schlüssel aus dem Schlüsselbund (optional). Alt-Eintraege werden einmalig
+# in den kanonischen Vertrag migriert; der Wert wird nie ausgegeben oder geloggt.
+KEY="$(security find-generic-password -s Klarwerk -a ANTHROPIC_API_KEY -w 2>/dev/null || true)"
+if [ -z "${KEY}" ]; then
+  KEY="$(security find-generic-password -s KLARWERK-App-Anthropic -a team1 -w 2>/dev/null || true)"
+  if [ -n "${KEY}" ]; then
+    security add-generic-password -U -s Klarwerk -a ANTHROPIC_API_KEY -w "${KEY}" >/dev/null 2>&1 || true
+  fi
+fi
 if [ -n "${KEY}" ]; then
   export ANTHROPIC_API_KEY="${KEY}"
   echo "✓ KI: Anthropic (Schlüssel gefunden)"
 else
-  echo "ℹ KI: regelbasiert (kein Schlüssel im Schlüsselbund KLARWERK-App-Anthropic) — fürs UI-Testen ok"
+  echo "ℹ KI: regelbasiert (kein Schlüssel im Schlüsselbund Klarwerk/ANTHROPIC_API_KEY) — fürs UI-Testen ok"
 fi
 unset KEY
 

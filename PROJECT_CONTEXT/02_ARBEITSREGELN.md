@@ -39,7 +39,8 @@
 
 ## Sicherheit (Stop-Lines, nicht verhandelbar)
 
-- Keys NUR im macOS-Schlüsselbund: `KLARWERK-App-Anthropic`/team1, `KLARWERK-PMO-Anthropic`/team1,
+- Keys NUR im macOS-Schlüsselbund: `Klarwerk`/`ANTHROPIC_API_KEY` (Legacy-Fallback
+  `KLARWERK-App-Anthropic`/team1), `KLARWERK-PMO-Anthropic`/team1,
   `KLARWERK-UpCloud-API`/team2. Keine Secrets in Code, Repos, Tickets, Chats.
 - LLM-API niemals öffentlich (nur SSH-Tunnel localhost); private SSH-Keys nie in Git
   (liegen unter `Documents/Klarwerk/llm-eval-zugang/`).

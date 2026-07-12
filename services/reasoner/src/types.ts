@@ -125,6 +125,7 @@ export interface ReasonerConfigStatus {
   taskConfig: ReasonerTaskConfig;
   effective: Record<string, "model" | "deterministic">;
   // SCRUM-424: der eigene lokale LLM (verdrahtet & auswählbar?) + sein Anzeige-Label.
+  cloudConfigured: boolean;
   localConfigured: boolean;
   localProvider?: string;
   // SCRUM-424: welche KI je Aufgabe EFFEKTIV zuerst arbeitet (cloud/lokal/deterministisch).

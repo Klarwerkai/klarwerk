@@ -9,6 +9,7 @@ describe("SCRUM-413: Verfügbare-KIs-Übersicht", () => {
   it("mit konfiguriertem Modell: Cloud aktiv (Modell-Label), Ersatzmodus bereit, lokal geplant", () => {
     const rows = aiAccessRows({
       configured: true,
+      cloudConfigured: true,
       provider: "anthropic:claude-sonnet-4-6",
       model: "anthropic:claude-sonnet-4-6",
       mode: "model",
@@ -28,6 +29,7 @@ describe("SCRUM-413: Verfügbare-KIs-Übersicht", () => {
   it("mit verdrahtetem lokalem LLM: Zeile bereit + Provider-Label", () => {
     const rows = aiAccessRows({
       configured: true,
+      cloudConfigured: true,
       provider: "anthropic:claude-sonnet-4-6",
       model: "anthropic:claude-sonnet-4-6",
       mode: "model",
@@ -38,10 +40,29 @@ describe("SCRUM-413: Verfügbare-KIs-Übersicht", () => {
   });
 
   it("ohne Modell: Cloud ehrlich nicht-konfiguriert, Ersatzmodus aktiv", () => {
-    const rows = aiAccessRows({ configured: false, provider: "deterministic", mode: "demo" });
+    const rows = aiAccessRows({
+      configured: false,
+      cloudConfigured: false,
+      provider: "deterministic",
+      mode: "demo",
+    });
     expect(rows[0]?.state).toBe("missing");
     expect(rows[0]?.detail).toBeNull();
     expect(rows[1]?.state).toBe("active");
+  });
+
+  it("lokales Modell allein macht die Cloud nicht konfiguriert", () => {
+    const rows = aiAccessRows({
+      configured: true,
+      cloudConfigured: false,
+      provider: "local:Qwen3-32B-AWQ",
+      model: "local:Qwen3-32B-AWQ",
+      mode: "model",
+      localConfigured: true,
+      localProvider: "local:Qwen3-32B-AWQ",
+    });
+    expect(rows[0]).toEqual({ id: "cloud", state: "missing", detail: null });
+    expect(rows[2]?.state).toBe("available");
   });
 
   it("alle Anzeige-Schlüssel lösen in DE und EN auf", async () => {
