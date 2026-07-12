@@ -50,6 +50,14 @@ function writeExecutable(path, body) {
   writeFileSync(path, body, { encoding: "utf8", mode: 0o755 });
 }
 
+function escapeHtmlAttribute(value) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 rmSync(stagingRoot, { recursive: true, force: true });
 rmSync(zipPath, { force: true });
 mkdirSync(releaseDir, { recursive: true });
@@ -79,11 +87,11 @@ const indexPath = join(releaseDir, "apps", "web", "dist", "index.html");
 if (!existsSync(indexPath)) {
   throw new Error("apps/web/dist/index.html fehlt nach dem Web-Build.");
 }
-const markerHtml = `<div id="klarwerk-island-marker" style="position:fixed;right:10px;bottom:10px;z-index:2147483647;padding:5px 8px;border:1px solid #9ca3af;border-radius:6px;background:#111827;color:#f9fafb;font:12px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;box-shadow:0 4px 14px rgba(0,0,0,.22)">${marker}</div>`;
+const markerMeta = `<meta name="klarwerk-island" content="${escapeHtmlAttribute(marker)}">`;
 let indexHtml = readFileSync(indexPath, "utf8");
-indexHtml = indexHtml.includes("</body>")
-  ? indexHtml.replace("</body>", `${markerHtml}\n</body>`)
-  : `${indexHtml}\n${markerHtml}\n`;
+indexHtml = indexHtml.includes("</head>")
+  ? indexHtml.replace("</head>", `  ${markerMeta}\n</head>`)
+  : `${markerMeta}\n${indexHtml}`;
 writeFileSync(indexPath, indexHtml);
 
 writeFileSync(

@@ -8,6 +8,7 @@ import { useNotifications, useReasonerConfig, useReasonerStatus } from "../api/h
 import { kiHeaderStatus } from "../lib/kiHeaderStatus";
 import { notificationTarget } from "../lib/notificationTarget";
 import { APP_VERSION } from "../version";
+import { readIslandMarker } from "./islandMarker";
 
 function LangPill(): JSX.Element {
   const { i18n } = useTranslation();
@@ -240,10 +241,23 @@ function KiModePill(): JSX.Element {
   );
 }
 
+function IslandMarkerPill({ marker }: { marker: string }): JSX.Element {
+  return (
+    <span
+      id="klarwerk-island-marker"
+      className="min-w-0 max-w-[18rem] truncate rounded-pill border border-hairline bg-page px-2 py-0.5 font-mono text-[10.5px] text-muted-2"
+      title={marker}
+    >
+      {marker}
+    </span>
+  );
+}
+
 export function Topbar(): JSX.Element {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [q, setQ] = useState("");
+  const [islandMarker] = useState(() => readIslandMarker());
 
   const submitSearch = (e: FormEvent): void => {
     e.preventDefault();
@@ -281,7 +295,7 @@ export function Topbar(): JSX.Element {
         </button>
       </form>
 
-      <div className="ml-auto flex items-center gap-2">
+      <div className="ml-auto flex min-w-0 items-center justify-end gap-2">
         <button
           type="button"
           onClick={() => navigate("/mobile")}
@@ -302,6 +316,7 @@ export function Topbar(): JSX.Element {
         <NotificationBell />
         <KiModePill />
         <ReasonerStatusPill />
+        {islandMarker ? <IslandMarkerPill marker={islandMarker} /> : null}
         {/* Beta-Phase: sichtbare Versionsnummer oben rechts (Pedi, 02.07.2026). */}
         <span
           className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-[10.5px] text-muted-2"
