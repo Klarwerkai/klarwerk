@@ -2,7 +2,7 @@ import { Plus } from "lucide-react";
 import type { ComponentType } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useRole } from "./app/RoleContext";
-import { ALL_ITEMS, type NavItem, canSee } from "./app/navigation";
+import { ALL_ITEMS, HOME_ROUTE, type NavItem, canSee } from "./app/navigation";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { CAPTURE_FRONT_DOOR_ROUTE } from "./lib/captureFrontDoor";
 import { Admin } from "./pages/Admin";
@@ -95,7 +95,7 @@ const CONFLICT_COMPARE_ITEM: NavItem = {
 function Guarded({ item }: { item: NavItem }): JSX.Element {
   const { role, stufe2 } = useRole();
   if (!canSee(item, role, stufe2)) {
-    return <Navigate to="/start" replace />;
+    return <Navigate to={HOME_ROUTE} replace />;
   }
   const Page = PAGES[item.id];
   // Bug (Pedi 04.07.): Fehler in EINER Seite dürfen nicht die ganze App weiß ausblenden.
@@ -108,7 +108,7 @@ function Guarded({ item }: { item: NavItem }): JSX.Element {
 export function AppRoutes(): JSX.Element {
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/start" replace />} />
+      <Route path="/" element={<Navigate to={HOME_ROUTE} replace />} />
       {ALL_ITEMS.map((item) => (
         <Route key={item.id} path={item.path} element={<Guarded item={item} />} />
       ))}
@@ -124,7 +124,7 @@ export function AppRoutes(): JSX.Element {
       <Route path="/wissen/:id" element={<KnowledgeDetail />} />
       <Route path="/mobile" element={<Mobile />} />
       <Route path="/ui-kit" element={<UiKit />} />
-      <Route path="*" element={<Navigate to="/start" replace />} />
+      <Route path="*" element={<Navigate to={HOME_ROUTE} replace />} />
     </Routes>
   );
 }

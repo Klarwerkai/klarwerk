@@ -60,6 +60,8 @@ export interface NavGroup {
   items: NavItem[];
 }
 
+export const HOME_ROUTE = "/start";
+
 // Zentrale Navigations-/Routen-Quelle (BRIEF §4). Sidebar UND Routing leiten
 // sich hieraus ab — eine einzige Wahrheit.
 export const NAV_GROUPS: NavGroup[] = [
@@ -70,7 +72,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         id: "start",
-        path: "/start",
+        path: HOME_ROUTE,
         labelKey: "nav.start",
         icon: Home,
         minRole: "viewer",
