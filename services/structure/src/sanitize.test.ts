@@ -90,6 +90,15 @@ describe("KW-STR / NFR-SEC-04: sanitizeHtml", () => {
     expect(sanitizeHtml(once)).toBe(once);
   });
 
+  it("SCRUM-467: escapt & nur einmal — kein &amp;amp; bei doppeltem Durchlauf (Tom & Jerry)", () => {
+    const once = sanitizeHtml("Tom & Jerry");
+    expect(once).toBe("Tom &amp; Jerry");
+    // Zweiter Durchlauf (Server- + Client-Pass) darf nicht erneut escapen.
+    const twice = sanitizeHtml(once);
+    expect(twice).toBe(once);
+    expect(twice).not.toContain("&amp;amp;");
+  });
+
   it("toleriert malformed HTML ohne zu crashen + schließt offene Tags", () => {
     expect(sanitizeHtml("<p>unbalanced <strong>bold")).toBe(
       "<p>unbalanced <strong>bold</strong></p>",
