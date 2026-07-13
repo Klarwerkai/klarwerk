@@ -378,10 +378,11 @@ export function Validation(): JSX.Element {
           const types = typeOptions(items);
           // SCRUM-249: handlungsnah priorisieren (Autor-Transfer/niedriger Trust zuerst) — Filter
           // bleiben unverändert, es wird nichts verworfen, nur die Reihenfolge geschärft.
-          const boardFiltered = withoutKoIds(
-            items.filter((k) => matchesValidationFilter(k, filter, user?.id ?? null)),
-            locallyDeletedKoIds,
-          ) ?? [];
+          const boardFiltered =
+            withoutKoIds(
+              items.filter((k) => matchesValidationFilter(k, filter, user?.id ?? null)),
+              locallyDeletedKoIds,
+            ) ?? [];
           // SCRUM-311: Herkunfts-Zähler über die (review-)gefilterte Menge; dann ergänzend nach
           // Herkunft filtern. Nur Ansicht — Status/Trust/Review-Entscheidung unberührt.
           const demoCounts: Record<DemoKnowledgeFilter, number> = {
