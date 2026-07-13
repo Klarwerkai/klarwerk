@@ -286,17 +286,26 @@ export function RichTextEditor({
   };
 
   const onDrop = (e: DragEvent<HTMLDivElement>): void => {
+    // SCRUM-466 Teil A: Browser-Default IMMER unterbinden, bevor irgendein
+    // Early-Return greift. Ein Bild aus einem anderen Tab kommt als URL
+    // (text/uri-list), nicht als File - ohne preventDefault navigiert der
+    // Browser weg und der getippte Text geht verloren (P0-Datenverlust).
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
     const files = Array.from(e.dataTransfer?.files ?? []);
     if (files.length === 0) {
       return;
     }
-    e.preventDefault();
-    setDragActive(false);
     void handleMediaFiles(files);
   };
   const onDragOver = (e: DragEvent<HTMLDivElement>): void => {
+    // SCRUM-466 Teil A: Default immer unterbinden, damit der Editor ein
+    // gueltiges Drop-Ziel bleibt - nicht nur bei "Files" (Tab-Bilder haben
+    // text/uri-list statt Files).
+    e.preventDefault();
+    e.stopPropagation();
     if (Array.from(e.dataTransfer?.types ?? []).includes("Files")) {
-      e.preventDefault();
       setDragActive(true);
     }
   };
