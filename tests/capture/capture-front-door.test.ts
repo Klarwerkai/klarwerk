@@ -179,7 +179,8 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(pageSource).toContain("endpoints.drafts.update");
     expect(pageSource).toContain("get(resumeDraftId)");
     expect(pageSource).toContain("frontDoorBodyFromDraft");
-    expect(pageSource).toContain("CAPTURE_FRONT_DOOR_ROUTE");
+    // SCRUM: CAPTURE_FRONT_DOOR_ROUTE-Selbstbezug bei Refactor entfernt (Route lebt in
+    // routes.tsx/Capture.tsx). Die Seite navigiert bewusst ueber "/erfassen". Assertion veraltet.
     expect(pageSource).toContain("createFrontDoorDraft");
     expect(pageSource).toContain("onMutate");
     expect(pageSource).not.toContain("KnowledgeInputStudio");

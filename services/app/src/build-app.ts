@@ -220,7 +220,10 @@ export function assembleServices(repos: AppRepos): AppServices {
     defaultNeededValidations: () => repos.validationSettings.getDefaultNeeded(),
   });
   // FR-RSN-02/06: echtes Cloud-Modell, wenn der Cloud-Key per Env/Keychain verfügbar ist.
-  const modelClient = createModelClientFromEnv();
+  const modelClient = createModelClientFromEnv(
+    process.env,
+    process.env.KLARWERK_SKIP_KEYCHAIN ? () => undefined : undefined,
+  );
   // SCRUM-424: eigener lokaler LLM (OpenAI-kompatibel), wenn KLARWERK_LOCAL_LLM_URL + _MODEL
   // gesetzt sind. Beide Backends werden serverseitig beim Start verdrahtet — unabhängig vom
   // Login. Die Werte kommen aus dem Launcher/Schlüsselbund, nie aus dem Code.
