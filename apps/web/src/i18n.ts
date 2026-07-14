@@ -1875,6 +1875,14 @@ const de = {
   "risk.busfactor": "Bus-Faktor (Einzelquellen-Risiko)",
   "risk.busEmpty": "Keine Risikodaten.",
   "risk.experts": "Experten",
+  // Consultant-System (Experten-Matching): entkitschter Ton, kein Hero-Wording, keine Zahlen/Rangfolge.
+  "expertise.title": "Wen einbeziehen",
+  "expertise.intro":
+    "Diese Personen haben schon zu einem Thema beigetragen. Du kannst sie um eine kurze Einordnung bitten — keine Rangfolge, nur wer helfen könnte.",
+  "expertise.help":
+    "Abgeleitet aus vorhandenen Wissensobjekten (wer zu einem Thema beigetragen hat). Reihenfolge alphabetisch, ohne Bewertung — als Hilfe, wen man ansprechen könnte.",
+  "expertise.invite": "Du hast Erfahrung mit {{topic}} — kannst du das kurz einordnen?",
+  "expertise.thanks": "Danke, das hilft dem Team.",
   "risk.gaps": "Offene Wissenslücken",
   "risk.gapsEmpty": "Keine offenen Lücken.",
   "risk.gapStatus.offen": "offen",
@@ -4542,6 +4550,14 @@ const en: typeof de = {
   "risk.busfactor": "Bus factor (single-source risk)",
   "risk.busEmpty": "No risk data.",
   "risk.experts": "experts",
+  // Consultant-System (expert matching): understated tone, no hero wording, no numbers/ranking.
+  "expertise.title": "Who to involve",
+  "expertise.intro":
+    "These people have already contributed to a topic. You can ask them for a quick take — no ranking, just who might help.",
+  "expertise.help":
+    "Derived from existing knowledge objects (who contributed to a topic). Alphabetical order, no scoring — a hint on who you could reach out to.",
+  "expertise.invite": "You have experience with {{topic}} — could you give a quick take?",
+  "expertise.thanks": "Thanks, that helps the team.",
   "risk.gaps": "Open knowledge gaps",
   "risk.gapsEmpty": "No open gaps.",
   "risk.gapStatus.offen": "open",

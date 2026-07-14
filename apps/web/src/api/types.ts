@@ -344,6 +344,18 @@ export interface BusFactorEntry {
   singleSource: boolean;
 }
 
+// Consultant-System (Experten-Matching): Thema → beitragende Personen. koCount ist reiner Kontext,
+// KEINE Sortier-/Ranggröße (anti-Gamification) — die Reihenfolge kommt alphabetisch vom Backend.
+export interface ExpertiseContributor {
+  authorId: string;
+  koCount: number;
+}
+
+export interface ExpertiseEntry {
+  category: string;
+  contributors: ExpertiseContributor[];
+}
+
 export interface GraphNode {
   id: string;
   title: string;

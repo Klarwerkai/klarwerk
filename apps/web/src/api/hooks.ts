@@ -67,6 +67,16 @@ export const useImpact = () =>
   useQuery({ queryKey: ["analytics", "impact"], queryFn: endpoints.analytics.impact });
 export const useBusFactor = () =>
   useQuery({ queryKey: ["busfactor"], queryFn: endpoints.analytics.busfactor });
+// Consultant-System (Experten-Matching): nur für berechtigte Rollen aktiv (ko.assign → controller/admin;
+// siehe canSeeExpertise). Kein Retry — bei ausgeschaltetem Flag antwortet der Server 404, das soll nicht
+// wiederholt werden. Ohne `enabled` bleibt es exakt beim heutigen Verhalten (kein Aufruf, keine Anzeige).
+export const useExpertise = (enabled: boolean) =>
+  useQuery({
+    queryKey: ["analytics", "expertise"],
+    queryFn: endpoints.analytics.expertise,
+    enabled,
+    retry: false,
+  });
 export const useAudit = () => useQuery({ queryKey: ["audit"], queryFn: endpoints.audit.list });
 export const useLifecyclePending = () =>
   useQuery({ queryKey: ["lifecycle", "pending"], queryFn: endpoints.lifecycle.pending });

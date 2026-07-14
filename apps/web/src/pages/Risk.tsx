@@ -3,11 +3,20 @@ import { Check, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
-import { useBusFactor, useConflicts, useDirectory, useGaps, useKos } from "../api/hooks";
+import {
+  useBusFactor,
+  useConflicts,
+  useDirectory,
+  useExpertise,
+  useGaps,
+  useKos,
+} from "../api/hooks";
 import type { GapPriority } from "../api/types";
+import { useRole } from "../app/RoleContext";
 import { HelpTip } from "../components/HelpTip";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
+import { canSeeExpertise, contributorNamesFor, expertiseVisible } from "../lib/expertiseView";
 import {
   GAP_PRIORITIES,
   type PriorityTone,
@@ -39,6 +48,10 @@ export function Risk(): JSX.Element {
   const conflicts = useConflicts();
   const kos = useKos();
   const users = useDirectory();
+  // Consultant-System (Experten-Matching): nur berechtigte Rollen fragen die Sicht überhaupt an; ist
+  // das Flag serverseitig AUS, kommt 404 → keine Daten → nichts gerendert (exakt heutiges Verhalten).
+  const { role } = useRole();
+  const expertise = useExpertise(canSeeExpertise(role));
   const qc = useQueryClient();
   const invalidate = () => void qc.invalidateQueries({ queryKey: ["gaps"] });
   const close = useMutation({
@@ -190,6 +203,41 @@ export function Risk(): JSX.Element {
           }}
         </QueryState>
       </div>
+
+      {/* Consultant-System (Experten-Matching): Thema → Personen, die schon dazu beigetragen haben —
+          als Hilfe „wen könnte man kurz um eine Einordnung bitten". Kein Ranking, keine Zahlen; die
+          Reihenfolge bleibt alphabetisch (Backend). Sichtbar nur mit ko.assign UND aktivem Flag. */}
+      {expertiseVisible(role, expertise.data) ? (
+        <div>
+          <div className="mb-2 flex items-center gap-1.5">
+            <SectionLabel>{t("expertise.title")}</SectionLabel>
+            <HelpTip title={t("expertise.title")} body={t("expertise.help")} />
+          </div>
+          <p className="mb-2 text-[12px] text-muted-2">{t("expertise.intro")}</p>
+          <Card className="space-y-3">
+            {(expertise.data ?? []).map((entry) => {
+              const names = contributorNamesFor(expertise.data, entry.category, nameOf);
+              if (names.length === 0) {
+                return null;
+              }
+              return (
+                <div key={entry.category} className="space-y-1">
+                  <div className="flex flex-wrap items-baseline gap-x-2">
+                    <span className="text-[13.5px] font-medium text-text">{entry.category}</span>
+                    <span className="text-[13px] text-muted">{names.join(", ")}</span>
+                  </div>
+                  <p className="text-[11.5px] italic text-muted-2">
+                    {t("expertise.invite", { topic: entry.category })}
+                  </p>
+                </div>
+              );
+            })}
+            <p className="border-t border-hairline pt-2 text-[11.5px] text-muted-2">
+              {t("expertise.thanks")}
+            </p>
+          </Card>
+        </div>
+      ) : null}
 
       <div>
         <div className="mb-2 flex items-center gap-1.5">

@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
@@ -15,5 +16,11 @@ export default defineConfig({
     proxy: {
       "/api": { target: apiTarget, changeOrigin: true },
     },
+  },
+  // Frontend-Tests (Consultant-System u. a.): reine, DOM-freie Anzeige-Logik → node-Umgebung
+  // (kein jsdom/RTL nötig). Läuft separat via `npm test` in apps/web, nicht im Root-Gate.
+  test: {
+    environment: "node",
+    include: ["src/**/*.test.{ts,tsx}"],
   },
 });

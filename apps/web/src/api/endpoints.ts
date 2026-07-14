@@ -16,6 +16,7 @@ import type {
   DraftPayload,
   EnrichResult,
   EvidenceRecord,
+  ExpertiseEntry,
   ExternalKnowledgeStage,
   ExternalResult,
   ExtractResult,
@@ -255,6 +256,9 @@ export const endpoints = {
   analytics: {
     overview: () => api.get<Analytics>("/analytics"),
     busfactor: () => api.get<BusFactorEntry[]>("/analytics/busfactor"),
+    // Consultant-System (Experten-Matching): Thema → Personen. Hinter Feature-Flag (Default AUS → 404)
+    // und ko.assign — der Aufruf erfolgt nur für berechtigte Rollen (siehe useExpertise/canSeeExpertise).
+    expertise: () => api.get<ExpertiseEntry[]>("/analytics/expertise"),
     // SCRUM-140: vorhandene Wirkungs-API anbinden (FR-ANA-02).
     impact: () => api.get<ImpactReport>("/analytics/impact"),
   },
