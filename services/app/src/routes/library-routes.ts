@@ -3,6 +3,14 @@ import type { KoFilter } from "../../../knowledge-object";
 import type { ImportItem, LibraryService, ReviewAction } from "../../../library-analytics";
 import { type Guards, sendError } from "../http";
 
+// Consultant-System (Experten-Matching): Feature-Flag, Default AUS. Vor der BR/DSB-Freigabe bleibt das
+// Thema→Personen-Matching unsichtbar (Route antwortet 404, als gäbe es sie nicht). Erst
+// KLARWERK_EXPERT_MATCHING=1|true schaltet sie frei.
+function expertMatchingEnabled(): boolean {
+  const flag = process.env.KLARWERK_EXPERT_MATCHING;
+  return flag === "1" || flag === "true";
+}
+
 // Bibliothek & Analytics (§2.3/§2.4 / FR-LIB, FR-ANA).
 export function libraryRoutes(library: LibraryService, guards: Guards): FastifyPluginAsync {
   return async (app) => {
@@ -124,6 +132,22 @@ export function libraryRoutes(library: LibraryService, guards: Guards): FastifyP
         return;
       }
       reply.code(200).send(await library.busFactor());
+    });
+
+    // Consultant-System (Experten-Matching): Thema → beitragende Personen. Hinter Feature-Flag
+    // (Default AUS → 404) und ENGER als die übrigen Analytics: nur ko.assign (controller/admin), die
+    // real entscheiden „wen einbeziehe ich". Personen-Matching ist datenschutzsensibel (BetrVG §87(1)6,
+    // DSGVO) — scharf erst nach BR/DSB-Freigabe.
+    app.get("/api/analytics/expertise", async (request, reply) => {
+      if (!expertMatchingEnabled()) {
+        reply.code(404).send({ error: "not_found" });
+        return;
+      }
+      const user = await guards.requirePermission("ko.assign", request, reply);
+      if (!user) {
+        return;
+      }
+      reply.code(200).send(await library.expertise());
     });
 
     app.get("/api/graph", async (request, reply) => {

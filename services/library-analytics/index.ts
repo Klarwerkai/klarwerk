@@ -10,6 +10,8 @@ export type {
   ReviewStatus,
   ReviewAction,
   BusFactorEntry,
+  ExpertiseEntry,
+  ExpertiseContributor,
   Graph,
   GraphNode,
   GraphEdge,

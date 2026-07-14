@@ -50,6 +50,19 @@ export interface BusFactorEntry {
   singleSource: boolean;
 }
 
+// Consultant-System (Experten-Matching): Thema → beitragende Personen — als Hilfe „wen könnte man zu
+// diesem Thema einbeziehen". BEWUSST nur Thema→Person (kein Personen-Profil), ohne Score/Trust/
+// Rangfolge/Zeitreihe (anti-Gamification). `koCount` ist reiner Kontext, KEINE Sortier-/Ranggröße.
+export interface ExpertiseContributor {
+  authorId: string;
+  koCount: number;
+}
+
+export interface ExpertiseEntry {
+  category: string;
+  contributors: ExpertiseContributor[];
+}
+
 // FR-LIB-04: Wissensgraph.
 export interface GraphNode {
   id: string;

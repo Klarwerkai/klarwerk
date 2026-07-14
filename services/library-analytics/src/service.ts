@@ -5,6 +5,7 @@ import { type CandidateRepo, InMemoryCandidateRepo } from "./repo";
 import {
   type Analytics,
   type BusFactorEntry,
+  type ExpertiseEntry,
   type Graph,
   type GraphEdge,
   type ImportCandidate,
@@ -245,6 +246,27 @@ export class LibraryService {
       authorCount: entry.authors.size,
       koCount: entry.count,
       singleSource: entry.authors.size <= 1,
+    }));
+  }
+
+  // Consultant-System (Experten-Matching): Thema (Kategorie) → beitragende Personen. Wissensträger =
+  // `originalAuthor` (wer das Wissen einbrachte; bewusste Produktentscheidung, konsistent mit busFactor).
+  // BEWUSST ohne Score/Trust/Zeitreihe und OHNE Sortierung nach Beitragsmenge — Reihenfolge ist rein
+  // alphabetisch (deterministisch), damit keine Rangliste entsteht. Reine Aggregation, kein DB-Umbau.
+  // Sichtbarkeit/Freigabe regelt die Route (Recht ko.assign + Feature-Flag, Default AUS).
+  async expertise(): Promise<ExpertiseEntry[]> {
+    const list = await this.koService.list();
+    const byCategory = new Map<string, Map<string, number>>();
+    for (const ko of list) {
+      const authors = byCategory.get(ko.category) ?? new Map<string, number>();
+      authors.set(ko.originalAuthor, (authors.get(ko.originalAuthor) ?? 0) + 1);
+      byCategory.set(ko.category, authors);
+    }
+    return [...byCategory.entries()].map(([category, authors]) => ({
+      category,
+      contributors: [...authors.entries()]
+        .map(([authorId, koCount]) => ({ authorId, koCount }))
+        .sort((a, b) => (a.authorId < b.authorId ? -1 : a.authorId > b.authorId ? 1 : 0)),
     }));
   }
 

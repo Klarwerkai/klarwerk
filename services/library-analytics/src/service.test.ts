@@ -143,6 +143,26 @@ describe("LibraryService", () => {
     expect(a1?.authorCount).toBe(1);
   });
 
+  it("Consultant Experten-Matching: Thema → Personen (originalAuthor), alphabetisch statt nach Menge", async () => {
+    const koService = new KoService({ repo: new InMemoryKoRepo() });
+    // Kategorie "Dach": zoe mit 2 Beiträgen, anna mit 1 — nach Menge käme zoe zuerst.
+    await koService.create({ title: "z1", statement: "s", type: "best_practice", category: "Dach", author: "zoe", tags: [] });
+    await koService.create({ title: "z2", statement: "s", type: "best_practice", category: "Dach", author: "zoe", tags: [] });
+    await koService.create({ title: "a1", statement: "s", type: "best_practice", category: "Dach", author: "anna", tags: [] });
+    await koService.create({ title: "c1", statement: "s", type: "best_practice", category: "Keller", author: "cora", tags: [] });
+    const library = new LibraryService({ koService });
+
+    const ex = await library.expertise();
+    const dach = ex.find((e) => e.category === "Dach");
+    // Alphabetisch (anna < zoe), NICHT nach koCount — sonst wäre zoe (2) vorn. Beweist: keine Rangliste.
+    expect(dach?.contributors).toEqual([
+      { authorId: "anna", koCount: 1 },
+      { authorId: "zoe", koCount: 2 },
+    ]);
+    const keller = ex.find((e) => e.category === "Keller");
+    expect(keller?.contributors).toEqual([{ authorId: "cora", koCount: 1 }]);
+  });
+
   it("FR-LIB-04: Graph verbindet KOs mit gemeinsamem Tag", async () => {
     const graph = await ctx.library.graph();
     expect(graph.nodes).toHaveLength(2);
