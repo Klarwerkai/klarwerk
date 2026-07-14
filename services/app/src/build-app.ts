@@ -30,6 +30,7 @@ import {
   PgOverlapRepo,
   PgOverlapSettingsRepo,
 } from "../../conflicts";
+import { InMemoryEmbeddingStore, createEmbeddingProviderFromEnv } from "../../embedding";
 import {
   type ExternalKnowledgePolicyRepo,
   type ExternalSearchService,
@@ -113,6 +114,7 @@ import { makeAssignmentNotifier } from "./notify";
 import { adminRoutes } from "./routes/admin-routes";
 import { askRoutes } from "./routes/ask-routes";
 import { auditRoutes } from "./routes/audit-routes";
+import type { SemanticPrefilter } from "./duplicate-detection";
 import { captureRoutes } from "./routes/capture-routes";
 import { conflictRoutes } from "./routes/conflicts-routes";
 import { externalRoutes } from "./routes/external-routes";
@@ -381,6 +383,26 @@ export function buildPgServices(pool: Pool): AppServices {
   });
 }
 
+// Weg 3: baut den semantischen Vorfilter NUR, wenn KLARWERK_DUP_PREFILTER=1|true gesetzt ist —
+// Standard AUS (heutiges „jeder gegen jeden" bleibt Default). Ohne einsatzbereiten Provider (z. B.
+// Modus cloud/local noch nicht verdrahtet) → ehrlich undefined statt Fake. topK aus
+// KLARWERK_DUP_PREFILTER_TOPK (Default 25). Der In-Memory-Store ist in dieser Ausbaustufe noch nicht
+// befüllt (Befüllung im Einreiche-Pfad ist ein separater Folgeschritt) → der Prefilter fällt bis dahin
+// über den leeren Store auf den Voll-Pool zurück.
+function createSemanticPrefilterFromEnv(): SemanticPrefilter | undefined {
+  const flag = process.env.KLARWERK_DUP_PREFILTER;
+  if (flag !== "1" && flag !== "true") {
+    return undefined;
+  }
+  const embedder = createEmbeddingProviderFromEnv(process.env);
+  if (!embedder) {
+    return undefined;
+  }
+  const rawTopK = Number(process.env.KLARWERK_DUP_PREFILTER_TOPK);
+  const topK = Number.isInteger(rawTopK) && rawTopK > 0 ? rawTopK : 25;
+  return { embedder, store: new InMemoryEmbeddingStore(), topK };
+}
+
 export function buildApp(
   services: AppServices = buildServices(),
   // Pedi 05.07. (Beta): optionale Werksreset-Fähigkeit. Standard = nicht verfügbar (Tests/Produktion);
@@ -406,6 +428,9 @@ export function buildApp(
   );
   // FR-VAL-07: EIN Notifier für alle Zuweisungswege (Board-Zuweisung + Einreichen, SCRUM-395).
   const notifyAssignment = makeAssignmentNotifier(services.auth, services.mailer);
+  // Weg 3: semantischer Vorfilter der Duplikat-Erkennung. Standard AUS → beide Routen bekommen
+  // undefined → heutiges „jeder gegen jeden". Erst KLARWERK_DUP_PREFILTER=1 schaltet ihn scharf.
+  const semanticPrefilter = createSemanticPrefilterFromEnv();
   app.register(
     koRoutes(
       {
@@ -423,6 +448,8 @@ export function buildApp(
         // SCRUM-421: einstellbare Upload-Grenzen + Audit für Änderungen.
         uploadLimits: services.uploadLimits,
         audit: services.audit,
+        // Weg 3 (Feature-Flag): semantischer Vorfilter (undefined = Default „jeder gegen jeden").
+        semanticPrefilter,
       },
       guards,
     ),
@@ -437,7 +464,7 @@ export function buildApp(
       guards,
     ),
   );
-  app.register(captureRoutes({ ...services, notifyAssignment }, guards));
+  app.register(captureRoutes({ ...services, notifyAssignment, semanticPrefilter }, guards));
   app.register(askRoutes(services.ask, guards));
   app.register(libraryRoutes(services.library, guards));
   app.register(outputRoutes(services.output, guards));

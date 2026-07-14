@@ -22,7 +22,11 @@ import { can } from "../../../rbac";
 import type { Reasoner } from "../../../reasoner";
 import type { ValidationService, Verdict } from "../../../validation";
 import { detectConflictsForKo } from "../conflict-detection";
-import { detectDuplicatesForKo } from "../duplicate-detection";
+import {
+  type SemanticPrefilter,
+  detectDuplicatesForKo,
+  indexKoForDuplicatePrefilter,
+} from "../duplicate-detection";
 import { type Guards, sendError } from "../http";
 import type { AssignmentNotifier } from "../notify";
 
@@ -44,6 +48,8 @@ export interface KoRoutesDeps {
   // SCRUM-421: einstellbare Upload-Grenzen (persistiert) + Audit für Änderungen.
   uploadLimits: UploadLimitsRepo;
   audit?: AuditService;
+  // Weg 3 (Feature-Flag): semantischer Vorfilter der Duplikat-Erkennung. Nur gesetzt, wenn aktiviert.
+  semanticPrefilter?: SemanticPrefilter | undefined;
 }
 
 interface KoQuery {
@@ -92,6 +98,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
     notifyAssignment,
     uploadLimits,
     audit,
+    semanticPrefilter,
   } = deps;
 
   return async (app) => {
@@ -186,8 +193,13 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             overlaps,
             reasoner,
             settings: overlapSettings,
+            semanticPrefilter,
           });
           reply.code(201).send(created);
+          // Weg 3 (B6): Einbettung + Ablage NACH der Antwort — der Nutzer wartet nie darauf. Flag aus
+          // = No-op; Fehler brechen den (bereits gesendeten) Submit nie. await nur zur deterministischen
+          // Fertigstellung der Ablage, nicht zur Client-Latenz (201 ist schon raus).
+          await indexKoForDuplicatePrefilter(created, semanticPrefilter);
         } catch (error) {
           sendError(reply, error);
         }

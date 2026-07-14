@@ -5,7 +5,11 @@ import type { KoService } from "../../../knowledge-object";
 import type { Reasoner } from "../../../reasoner";
 import type { ValidationService } from "../../../validation";
 import { detectConflictsForKo } from "../conflict-detection";
-import { detectDuplicatesForKo } from "../duplicate-detection";
+import {
+  type SemanticPrefilter,
+  detectDuplicatesForKo,
+  indexKoForDuplicatePrefilter,
+} from "../duplicate-detection";
 import { type Guards, type SessionUser, sendError } from "../http";
 import type { AssignmentNotifier } from "../notify";
 
@@ -52,6 +56,8 @@ export interface CaptureRoutesDeps {
   overlapSettings: OverlapSettingsRepo;
   reasoner: Reasoner;
   notifyAssignment?: AssignmentNotifier;
+  // Weg 3 (Feature-Flag): semantischer Vorfilter der Duplikat-Erkennung. Nur gesetzt, wenn aktiviert.
+  semanticPrefilter?: SemanticPrefilter | undefined;
 }
 
 export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyPluginAsync {
@@ -64,6 +70,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
     overlapSettings,
     reasoner,
     notifyAssignment,
+    semanticPrefilter,
   } = deps;
 
   return async (app) => {
@@ -167,8 +174,13 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             overlaps,
             reasoner,
             settings: overlapSettings,
+            semanticPrefilter,
           });
           reply.code(201).send(created);
+          // Weg 3 (B6): Einbettung + Ablage NACH der Antwort — der Nutzer wartet nie darauf. Flag aus
+          // = No-op; Fehler brechen den (bereits gesendeten) Submit nie. await nur zur deterministischen
+          // Fertigstellung der Ablage, nicht zur Client-Latenz (201 ist schon raus).
+          await indexKoForDuplicatePrefilter(created, semanticPrefilter);
         } catch (error) {
           sendError(reply, error);
         }
