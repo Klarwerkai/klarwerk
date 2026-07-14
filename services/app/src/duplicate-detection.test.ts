@@ -7,6 +7,7 @@ import {
   type SemanticPrefilter,
   detectDuplicatesForKo,
   indexKoForDuplicatePrefilter,
+  removeKoFromDuplicatePrefilter,
 } from "./duplicate-detection";
 
 // Minimaler KO nur mit den Feldern, die toDetectSubject/coreText lesen.
@@ -169,5 +170,57 @@ describe("indexKoForDuplicatePrefilter — Store-Befüllung (B6)", () => {
     ).resolves.toBeUndefined();
     expect(logs).toHaveLength(1);
     expect(await store.nearest([1], "boom@1", 5)).toEqual([]);
+  });
+});
+
+// GDPR Art. 17 (Kaskadenlöschung): removeKoFromDuplicatePrefilter am harten Delete-Pfad.
+describe("removeKoFromDuplicatePrefilter (GDPR-Kaskadenlöschung)", () => {
+  it("löscht den abgelegten Vektor aus dem Store", async () => {
+    const store = new InMemoryEmbeddingStore();
+    const embedder = stubEmbeddingProvider(256);
+    const prefilter: SemanticPrefilter = { embedder, store, topK: 5 };
+    await indexKoForDuplicatePrefilter(makeKo("k1", "Pumpe", "entlüften nach Anfahren"), prefilter);
+    const { vectors, embeddingVersion } = await embedder.embed(["irgendwas"]);
+    // Vor dem Löschen ist k1 auffindbar, danach nicht mehr.
+    expect((await store.nearest(vectors[0]!, embeddingVersion, 5)).some((h) => h.id === "k1")).toBe(
+      true,
+    );
+    await removeKoFromDuplicatePrefilter("k1", prefilter);
+    expect((await store.nearest(vectors[0]!, embeddingVersion, 5)).some((h) => h.id === "k1")).toBe(
+      false,
+    );
+  });
+
+  it("Flag aus (kein Prefilter) → No-op, kein Fehler", async () => {
+    await expect(removeKoFromDuplicatePrefilter("k1", undefined)).resolves.toBeUndefined();
+  });
+
+  it("unbekannte id (kein Eintrag) → No-op", async () => {
+    const prefilter: SemanticPrefilter = {
+      embedder: stubEmbeddingProvider(256),
+      store: new InMemoryEmbeddingStore(),
+      topK: 5,
+    };
+    await expect(removeKoFromDuplicatePrefilter("gibt-es-nicht", prefilter)).resolves.toBeUndefined();
+  });
+
+  it("Store-Fehler wird geloggt + geschluckt — die Löschung scheitert NIE daran", async () => {
+    const failingStore: SemanticPrefilter["store"] = {
+      upsert: async () => {},
+      nearest: async () => [],
+      delete: async () => {
+        throw new Error("store kaputt");
+      },
+    };
+    const prefilter: SemanticPrefilter = {
+      embedder: stubEmbeddingProvider(256),
+      store: failingStore,
+      topK: 5,
+    };
+    const logs: string[] = [];
+    await expect(
+      removeKoFromDuplicatePrefilter("k1", prefilter, (msg) => logs.push(msg)),
+    ).resolves.toBeUndefined();
+    expect(logs).toHaveLength(1);
   });
 });

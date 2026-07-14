@@ -23,6 +23,9 @@ export interface EmbeddingStore {
     topK: number,
     excludeId?: string,
   ): Promise<NearestHit[]>;
+  // GDPR Art. 17 (Kaskadenlöschung): entfernt den Vektor zu `id`. Fehlt der Eintrag, ist es ein
+  // No-op (idempotent). Ändert die aktive Version/Dimension nicht — Löschen macht keinen Re-Index.
+  delete(id: string): Promise<void>;
 }
 
 interface StoredVector {
@@ -102,5 +105,12 @@ export class InMemoryEmbeddingStore implements EmbeddingStore {
     // Deterministische Ordnung: Score absteigend, bei Gleichstand id aufsteigend (stabil, reproduzierbar).
     hits.sort((x, y) => (y.score !== x.score ? y.score - x.score : x.id < y.id ? -1 : 1));
     return hits.slice(0, topK);
+  }
+
+  // GDPR Art. 17: Vektor zu `id` entfernen. Map.delete ist idempotent (unbekannte id → No-op, kein
+  // Fehler). `active` bleibt bewusst unangetastet — ein leerer Store behält seine Versionszusage.
+  async delete(id: string): Promise<void> {
+    this.items.delete(id);
+    return Promise.resolve();
   }
 }

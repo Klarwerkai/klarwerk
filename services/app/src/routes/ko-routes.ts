@@ -26,6 +26,7 @@ import {
   type SemanticPrefilter,
   detectDuplicatesForKo,
   indexKoForDuplicatePrefilter,
+  removeKoFromDuplicatePrefilter,
 } from "../duplicate-detection";
 import { type Guards, sendError } from "../http";
 import type { AssignmentNotifier } from "../notify";
@@ -285,6 +286,9 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         await conflicts.onKoRemoved(request.params.id, user.id);
         // Pedi 04.07.: dasselbe für offene Überschneidungen (kein Duplikat-Geist nach Löschen).
         await overlaps.onKoRemoved(request.params.id, user.id);
+        // GDPR Art. 17 (Kaskadenlöschung): harter Delete → evtl. abgelegten Embedding-Vektor mitlöschen.
+        // Best-effort — ein Store-Fehler darf die (bereits erfolgte) Löschung nicht kippen.
+        await removeKoFromDuplicatePrefilter(request.params.id, semanticPrefilter);
         reply.code(204).send();
       } catch (error) {
         sendError(reply, error);

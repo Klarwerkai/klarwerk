@@ -78,4 +78,26 @@ describe("InMemoryEmbeddingStore (B3)", () => {
     const hits = await store.nearest([1, 0, 0, 0], V, 2);
     expect(hits.map((h) => h.id)).toEqual(["a", "b"]);
   });
+
+  // GDPR Art. 17: delete entfernt den Vektor endgültig aus dem Suchraum.
+  it("delete entfernt den Store-Eintrag (nearest liefert ihn nicht mehr)", async () => {
+    const store = new InMemoryEmbeddingStore();
+    await seed(store);
+    await store.delete("nah");
+    const hits = await store.nearest([1, 0, 0, 0], V, 4);
+    expect(hits.map((h) => h.id)).toEqual(["gleich", "fern", "gegen"]);
+    expect(hits.map((h) => h.id)).not.toContain("nah");
+  });
+
+  it("delete eines unbekannten Eintrags ist ein No-op (idempotent, kein Fehler)", async () => {
+    const store = new InMemoryEmbeddingStore();
+    await seed(store);
+    await expect(store.delete("gibt-es-nicht")).resolves.toBeUndefined();
+    // Bestehende Einträge unangetastet.
+    const hits = await store.nearest([1, 0, 0, 0], V, 4);
+    expect(hits.map((h) => h.id)).toEqual(["gleich", "nah", "fern", "gegen"]);
+    // Zweites Löschen desselben (jetzt entfernten) Eintrags bleibt No-op.
+    await store.delete("gleich");
+    await expect(store.delete("gleich")).resolves.toBeUndefined();
+  });
 });

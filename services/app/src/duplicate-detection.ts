@@ -154,3 +154,24 @@ export async function indexKoForDuplicatePrefilter(
     log(`Embedden/Ablegen für KO ${ko.id} fehlgeschlagen`, err);
   }
 }
+
+// GDPR Art. 17 (Kaskadenlöschung, gdpr-compliance-runbook.md §3): Wird ein KO HART gelöscht (endgültig
+// aus dem Bestand entfernt, nicht Papierkorb), muss ein evtl. abgelegter Embedding-Vektor mitgelöscht
+// werden — sonst bliebe ein personenbezogen ableitbares Artefakt zurück. Strikt best-effort: ohne
+// aktiven Prefilter (Flag aus) ein No-op; ein fehlender Eintrag ist ein No-op (idempotent); jeder
+// Fehler wird geloggt und geschluckt — die Löschung selbst darf NIE daran scheitern.
+export async function removeKoFromDuplicatePrefilter(
+  koId: string,
+  semanticPrefilter: SemanticPrefilter | undefined,
+  log: (msg: string, err: unknown) => void = defaultLog,
+): Promise<void> {
+  if (!semanticPrefilter) {
+    return; // Flag aus → nie etwas abgelegt, nichts zu löschen.
+  }
+  try {
+    await semanticPrefilter.store.delete(koId);
+  } catch (err) {
+    // Die (harte) Löschung ist bereits geschehen — ein Store-Fehler darf sie nicht nachträglich kippen.
+    log(`Embedding-Kaskadenlöschung für KO ${koId} fehlgeschlagen`, err);
+  }
+}
