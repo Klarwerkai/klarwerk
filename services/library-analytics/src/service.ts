@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
-import type { KnowledgeObject, KoFilter, KoService } from "../../knowledge-object";
+import type { KnowledgeObject, KoFilter, KoService, KoSource } from "../../knowledge-object";
 import { type CandidateRepo, InMemoryCandidateRepo } from "./repo";
 import {
   type Analytics,
@@ -52,15 +52,28 @@ export class LibraryService {
     const existing = await this.koService.list();
     const seen = new Set(existing.map((ko) => `${ko.title}|${ko.statement}`));
     const at = new Date(this.now()).toISOString();
-    const created = items.map<ImportCandidate>((item) => ({
-      id: this.genId(),
-      item,
-      status: "neu",
-      duplicate: seen.has(`${item.title}|${item.statement}`),
-      note: null,
-      koId: null,
-      createdAt: at,
-    }));
+    // SCRUM-470: Seiten mit pageId werden per pageId dedupliziert — aber NUR innerhalb dieses Imports
+    // (mehrfach dieselbe Seite in einer Scheibe). Eine Kollision mit dem BESTAND ist keine zu
+    // überspringende Dublette, sondern ein Re-Sync/Update (wird beim Annehmen als Upsert behandelt).
+    const batchPageIds = new Set<string>();
+    const created = items.map<ImportCandidate>((item) => {
+      let duplicate: boolean;
+      if (item.pageId) {
+        duplicate = batchPageIds.has(item.pageId);
+        batchPageIds.add(item.pageId);
+      } else {
+        duplicate = seen.has(`${item.title}|${item.statement}`);
+      }
+      return {
+        id: this.genId(),
+        item,
+        status: "neu",
+        duplicate,
+        note: null,
+        koId: null,
+        createdAt: at,
+      };
+    });
     for (const candidate of created) {
       await this.candidates.insert(candidate);
     }
@@ -100,15 +113,7 @@ export class LibraryService {
       // accept: nicht-Dublette → echtes KO im normalen Wissensobjekt-/Validierungsfluss.
       candidate.status = "angenommen";
       if (!candidate.duplicate) {
-        const ko = await this.koService.create({
-          title: candidate.item.title,
-          statement: candidate.item.statement,
-          type: candidate.item.type,
-          category: candidate.item.category,
-          author: candidate.item.author ?? actor,
-          tags: candidate.item.tags ?? [],
-        });
-        candidate.koId = ko.id;
+        candidate.koId = await this.acceptToKo(candidate.item, actor);
       }
     }
     // SCRUM-157: geänderten Status/koId/Note persistieren (kein stiller Verlust).
@@ -120,6 +125,73 @@ export class LibraryService {
       payload: { duplicate: candidate.duplicate, koId: candidate.koId },
     });
     return { ...candidate };
+  }
+
+  // SCRUM-470: Baut das KO aus einem angenommenen Import-Item — idempotent per pageId.
+  // Bekannte pageId (Anker im Bestand) → Re-Sync via revise() (nur bei höherer sourceVersion),
+  // sonst neues KO. Gibt die KO-Id zurück (für die nachgelagerte Erkennung im Route-Layer).
+  private async acceptToKo(item: ImportItem, actor: string): Promise<string> {
+    const pageId = item.pageId;
+    const existing = pageId
+      ? (await this.koService.list()).find((ko) =>
+          (ko.sources ?? []).some((s) => s.externalId === pageId),
+        )
+      : undefined;
+
+    if (existing && pageId) {
+      const current = existing.sources.find((s) => s.externalId === pageId)?.sourceVersion ?? 0;
+      const incoming = item.sourceVersion ?? current + 1;
+      // Monoton: nur eine höhere Version schreibt fort. Gleiche/niedrigere → No-op (idempotent).
+      if (incoming > current) {
+        const nextSources = [
+          ...existing.sources.filter((s) => s.externalId !== pageId),
+          this.buildSource(item, actor),
+        ];
+        await this.koService.revise(
+          existing.id,
+          {
+            title: item.title,
+            statement: item.statement,
+            type: item.type,
+            ...(item.bodyHtml ? { bodyHtml: item.bodyHtml } : {}),
+            sources: nextSources,
+          },
+          item.author ?? actor,
+        );
+      }
+      return existing.id;
+    }
+
+    const ko = await this.koService.create({
+      title: item.title,
+      statement: item.statement,
+      type: item.type,
+      category: item.category,
+      author: item.author ?? actor,
+      tags: item.tags ?? [],
+      ...(item.bodyHtml ? { bodyHtml: item.bodyHtml } : {}),
+      ...(pageId ? { sources: [this.buildSource(item, actor)] } : {}),
+    });
+    return ko.id;
+  }
+
+  // SCRUM-470: Herkunfts-Anker aus einem Import-Item. Generisch — provider kommt vom Item
+  // (die Confluence-Route setzt "Confluence"); externe Importquellen sind nie peer-validiert.
+  private buildSource(item: ImportItem, actor: string): KoSource {
+    return {
+      id: this.genId(),
+      label: item.title,
+      url: item.url ?? null,
+      excerpt: null,
+      kind: "external",
+      peerValidated: false,
+      provider: item.provider ?? null,
+      ...(item.pageId ? { externalId: item.pageId } : {}),
+      ...(item.spaceKey ? { spaceKey: item.spaceKey } : {}),
+      ...(item.sourceVersion !== undefined ? { sourceVersion: item.sourceVersion } : {}),
+      author: item.author ?? actor,
+      at: new Date(this.now()).toISOString(),
+    };
   }
 
   // FR-LIB-01: Suche + Filter.

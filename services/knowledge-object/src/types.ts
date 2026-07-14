@@ -70,6 +70,12 @@ export interface KoSource {
   // SCRUM-118: optionaler Anbieter externer Quellen (z. B. "Wikipedia"). Additiv,
   // JSON-persistiert → keine Migration; Altquellen ohne provider bleiben gültig.
   provider?: string | null;
+  // SCRUM-470 (Confluence-Import): strukturierte Herkunfts-Anker für Rückverfolgbarkeit UND
+  // idempotenten Re-Sync. externalId = Confluence pageId (Idempotenz-Schlüssel). Additiv,
+  // JSON-persistiert → keine Migration; Altquellen ohne diese Felder bleiben gültig.
+  externalId?: string;
+  spaceKey?: string;
+  sourceVersion?: number;
   author: string;
   at: string;
 }

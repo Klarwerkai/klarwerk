@@ -7,6 +7,14 @@ export interface ImportItem {
   category: string;
   author?: string;
   tags?: string[];
+  // SCRUM-470 (Confluence-Import): Herkunfts-Anker. pageId = Idempotenz-Schlüssel (Re-Sync per Seite).
+  // Generisch gehalten (library-analytics kennt Confluence nicht) — die Import-Route füllt sie.
+  pageId?: string;
+  spaceKey?: string;
+  sourceVersion?: number;
+  url?: string;
+  provider?: string;
+  bodyHtml?: string;
 }
 
 export interface ImportResult {

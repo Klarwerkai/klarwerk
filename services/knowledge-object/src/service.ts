@@ -71,6 +71,9 @@ export interface CreateKoInput {
   demoSeed?: boolean; // Demodaten-Merker (nur der Seed setzt das; nie über die öffentliche Route)
   // SCRUM-415: optionale Vertraulichkeitsstufe ab Erfassen (Standard „intern").
   confidentiality?: Confidentiality;
+  // SCRUM-470 (Confluence-Import): optionale Herkunftsquellen ab Erfassen (z. B. Confluence-Seite mit
+  // pageId/spaceKey/Version). Additiv — ohne Feld bleibt es wie bisher bei []. Nur der Import-Pfad setzt es.
+  sources?: KoSource[];
 }
 
 export interface ReviseKoInput {
@@ -80,6 +83,9 @@ export interface ReviseKoInput {
   conditions?: string[];
   measures?: string[];
   bodyHtml?: string | null; // KW-STR: WYSIWYG-Body, serverseitig sanitisiert
+  // SCRUM-470 (Confluence Re-Sync): Herkunfts-Anker fortschreiben (z. B. neue Confluence-Version).
+  // Ohne Feld bleiben die Quellen über die Revision erhalten (Alt-Verhalten).
+  sources?: KoSource[];
 }
 
 // KW-STR / NFR-SEC-04: bodyHtml IMMER serverseitig sanitisieren; statement aus dem
@@ -184,7 +190,8 @@ export class KoService {
       history: [{ version: 1, at, author: input.author, note: "erstellt" }],
       comments: [],
       attachments: [],
-      sources: [],
+      // SCRUM-470: Herkunftsquellen (Import) übernehmen; ohne Eingabe wie bisher leer.
+      sources: input.sources ?? [],
     };
     await this.repo.insert(ko);
     // SCRUM-159: Version-1-Snapshot persistieren (Foundation; aktuelles KO bleibt canonical).
@@ -480,7 +487,8 @@ export class KoService {
       trust: 0, // Bewertungen zurückgesetzt
       status: "offen", // muss neu validiert werden
       history: [...ko.history, { version, at, author, note: "überarbeitet" }],
-      sources: ko.sources ?? [], // SCRUM-129: Quellen über Revisionen erhalten
+      // SCRUM-129: Quellen über Revisionen erhalten; SCRUM-470: optional fortschreiben (Re-Sync-Anker).
+      sources: changes.sources ?? ko.sources ?? [],
     };
     await this.repo.update(revised);
     // SCRUM-159: neuen Versions-Snapshot persistieren; frühere Versionen bleiben unverändert.

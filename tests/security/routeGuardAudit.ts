@@ -245,6 +245,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "PUT /api/library/import/candidates/:id": { protection: "ko.validate" },
   "GET /api/analytics": { protection: "ko.read" },
   "GET /api/analytics/busfactor": { protection: "ko.read" },
+  // Consultant-System (Experten-Matching): ENGER als die übrigen Analytics — nur ko.assign
+  // (controller/admin), hinter Feature-Flag (Default AUS → 404). Datenschutzsensibel (BetrVG/DSGVO).
+  "GET /api/analytics/expertise": { protection: "ko.assign" },
   "GET /api/graph": { protection: "ko.read" },
 
   // --- Lifecycle / Learning paths (lifecycle-routes.ts) ---

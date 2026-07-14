@@ -466,7 +466,18 @@ export function buildApp(
   );
   app.register(captureRoutes({ ...services, notifyAssignment, semanticPrefilter }, guards));
   app.register(askRoutes(services.ask, guards));
-  app.register(libraryRoutes(services.library, guards));
+  // SCRUM-470 (S6): Erkennung nach Import-Accept — dasselbe Deps-Bündel wie der Promote-Pfad.
+  // Greift nur bei KLARWERK_CONFLUENCE_IMPORT=1 (Default AUS → heutiges Verhalten).
+  app.register(
+    libraryRoutes(services.library, guards, {
+      ko: services.ko,
+      conflicts: services.conflicts,
+      overlaps: services.overlaps,
+      overlapSettings: services.overlapSettings,
+      reasoner: services.reasoner,
+      semanticPrefilter,
+    }),
+  );
   app.register(outputRoutes(services.output, guards));
   app.register(managementRoutes(services.management, guards));
   app.register(modelRunRoutes(services.modelRuns, guards));

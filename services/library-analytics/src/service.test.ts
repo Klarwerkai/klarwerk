@@ -5,6 +5,22 @@ import { InMemoryKoRepo, KoService } from "../../knowledge-object";
 import { InMemoryCandidateRepo } from "./repo";
 import { PgCandidateRepo } from "./repo-pg";
 import { LibraryService } from "./service";
+import type { ImportItem } from "./types";
+
+function confItem(over: Partial<ImportItem> = {}): ImportItem {
+  return {
+    title: "Pumpe entlüften",
+    statement: "Pumpe alle 200h entlüften.",
+    type: "best_practice",
+    category: "Wartung",
+    author: "anna",
+    pageId: "P1",
+    spaceKey: "WART",
+    sourceVersion: 1,
+    provider: "Confluence",
+    ...over,
+  };
+}
 
 async function setup() {
   const koService = new KoService({ repo: new InMemoryKoRepo() });
@@ -134,6 +150,62 @@ describe("LibraryService", () => {
     const result = await ctx.library.importJson(items);
     expect(result).toEqual({ imported: 1, skipped: 1 });
     expect(await ctx.koService.list()).toHaveLength(3);
+  });
+
+  it("SCRUM-470: pageId-Dedup nur innerhalb des Imports (zwei gleiche pageId → eine Dublette)", async () => {
+    const cands = await ctx.library.createImportCandidates([
+      confItem({ pageId: "P1" }),
+      confItem({ pageId: "P1", title: "Pumpe (Kopie)" }),
+      confItem({ pageId: "P2", title: "Ventil" }),
+    ]);
+    expect(cands.map((c) => c.duplicate)).toEqual([false, true, false]);
+  });
+
+  it("SCRUM-470: Accept einer pageId legt KO mit Herkunfts-Anker an", async () => {
+    const [cand] = await ctx.library.createImportCandidates([confItem({ pageId: "P9", sourceVersion: 2 })]);
+    const res = await ctx.library.reviewImportCandidate(cand!.id, "accept");
+    const ko = (await ctx.koService.list()).find((k) => k.id === res.koId)!;
+    expect(ko.sources[0]?.externalId).toBe("P9");
+    expect(ko.sources[0]?.sourceVersion).toBe(2);
+    expect(ko.sources[0]?.provider).toBe("Confluence");
+    expect(ko.sources[0]?.peerValidated).toBe(false);
+  });
+
+  it("SCRUM-470: Re-Sync gleicher pageId mit höherer Version → Update (revise), keine Dublette", async () => {
+    const [c1] = await ctx.library.createImportCandidates([
+      confItem({ pageId: "P5", sourceVersion: 1, statement: "Alte Anleitung." }),
+    ]);
+    const r1 = await ctx.library.reviewImportCandidate(c1!.id, "accept");
+    const [c2] = await ctx.library.createImportCandidates([
+      confItem({ pageId: "P5", sourceVersion: 2, statement: "Neu entlüften." }),
+    ]);
+    const r2 = await ctx.library.reviewImportCandidate(c2!.id, "accept");
+
+    expect(r2.koId).toBe(r1.koId); // dasselbe KO
+    const withAnchor = (await ctx.koService.list()).filter((k) =>
+      k.sources.some((s) => s.externalId === "P5"),
+    );
+    expect(withAnchor).toHaveLength(1); // keine Dublette
+    const ko = withAnchor[0]!;
+    expect(ko.version).toBe(2); // revidiert
+    expect(ko.statement).toBe("Neu entlüften.");
+    expect(ko.sources.find((s) => s.externalId === "P5")?.sourceVersion).toBe(2);
+  });
+
+  it("SCRUM-470: Re-Sync mit gleicher/niedrigerer Version → No-op (idempotent)", async () => {
+    const [c1] = await ctx.library.createImportCandidates([
+      confItem({ pageId: "P7", sourceVersion: 3, statement: "Stand V3." }),
+    ]);
+    const r1 = await ctx.library.reviewImportCandidate(c1!.id, "accept");
+    const [c2] = await ctx.library.createImportCandidates([
+      confItem({ pageId: "P7", sourceVersion: 3, statement: "nochmal V3." }),
+    ]);
+    const r2 = await ctx.library.reviewImportCandidate(c2!.id, "accept");
+
+    expect(r2.koId).toBe(r1.koId);
+    const ko = (await ctx.koService.list()).find((k) => k.id === r1.koId)!;
+    expect(ko.version).toBe(1); // NICHT revidiert
+    expect(ko.statement).toBe("Stand V3."); // unverändert
   });
 
   it("FR-LIB-03: Bus-Faktor erkennt Einzelquellen", async () => {

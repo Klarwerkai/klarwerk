@@ -45,6 +45,39 @@ describe("KoService", () => {
     expect(ko.comments).toEqual([]);
   });
 
+  it("FR-KO-01: create ohne sources → sources bleibt leer (Alt-Verhalten)", async () => {
+    const ko = await service.create(base());
+    expect(ko.sources).toEqual([]);
+  });
+
+  it("SCRUM-470: create übernimmt Herkunfts-Anker (Confluence pageId/spaceKey/Version)", async () => {
+    const ko = await service.create(
+      base({
+        sources: [
+          {
+            id: "src-1",
+            label: "Confluence: Pumpe entlüften",
+            url: "https://wiki.example.com/pages/12345",
+            excerpt: null,
+            kind: "external",
+            peerValidated: false,
+            provider: "Confluence",
+            externalId: "12345",
+            spaceKey: "WART",
+            sourceVersion: 3,
+            author: "pedi",
+            at: new Date().toISOString(),
+          },
+        ],
+      }),
+    );
+    expect(ko.sources).toHaveLength(1);
+    expect(ko.sources[0]?.externalId).toBe("12345");
+    expect(ko.sources[0]?.spaceKey).toBe("WART");
+    expect(ko.sources[0]?.sourceVersion).toBe(3);
+    expect(ko.sources[0]?.peerValidated).toBe(false);
+  });
+
   it("KW-STR: create sanitisiert bodyHtml serverseitig", async () => {
     const ko = await service.create(
       base({ bodyHtml: '<p>ok</p><script>alert(1)</script><img src="https://evil/x">' }),

@@ -1,6 +1,10 @@
 import type { FastifyPluginAsync } from "fastify";
-import type { KoFilter } from "../../../knowledge-object";
+import type { ConflictService, OverlapService, OverlapSettingsRepo } from "../../../conflicts";
+import type { KoFilter, KoService } from "../../../knowledge-object";
 import type { ImportItem, LibraryService, ReviewAction } from "../../../library-analytics";
+import type { Reasoner } from "../../../reasoner";
+import { detectConflictsForKo } from "../conflict-detection";
+import { type SemanticPrefilter, detectDuplicatesForKo } from "../duplicate-detection";
 import { type Guards, sendError } from "../http";
 
 // Consultant-System (Experten-Matching): Feature-Flag, Default AUS. Vor der BR/DSB-Freigabe bleibt das
@@ -11,8 +15,31 @@ function expertMatchingEnabled(): boolean {
   return flag === "1" || flag === "true";
 }
 
+// SCRUM-470 (Confluence-Import): Feature-Flag, Default AUS. Nur wenn aktiv, läuft nach einem
+// akzeptierten Import-Kandidaten die Widerspruchs-/Duplikat-Erkennung (S6). Aus = heutiges Verhalten.
+function confluenceImportEnabled(): boolean {
+  const flag = process.env.KLARWERK_CONFLUENCE_IMPORT;
+  return flag === "1" || flag === "true";
+}
+
+// SCRUM-470 (S6): Deps für die Erkennung nach einem akzeptierten Import-Kandidaten. Dieselben Bausteine,
+// die auch der Promote-Pfad (capture-routes) nutzt — hier gebündelt, damit der Route-Layer sie an
+// detect*ForKo reichen kann. Optional: fehlt das Bündel, unterbleibt die Erkennung (wie bisher).
+export interface ImportDetectionDeps {
+  ko: KoService;
+  conflicts: ConflictService;
+  overlaps: OverlapService;
+  overlapSettings: OverlapSettingsRepo;
+  reasoner: Reasoner;
+  semanticPrefilter?: SemanticPrefilter | undefined;
+}
+
 // Bibliothek & Analytics (§2.3/§2.4 / FR-LIB, FR-ANA).
-export function libraryRoutes(library: LibraryService, guards: Guards): FastifyPluginAsync {
+export function libraryRoutes(
+  library: LibraryService,
+  guards: Guards,
+  detection?: ImportDetectionDeps,
+): FastifyPluginAsync {
   return async (app) => {
     app.get<{ Querystring: KoFilter & { q?: string } }>(
       "/api/library/search",
@@ -102,16 +129,31 @@ export function libraryRoutes(library: LibraryService, guards: Guards): FastifyP
           return;
         }
         try {
-          reply
-            .code(200)
-            .send(
-              await library.reviewImportCandidate(
-                request.params.id,
-                request.body.action,
-                user.id,
-                request.body.note,
-              ),
-            );
+          const result = await library.reviewImportCandidate(
+            request.params.id,
+            request.body.action,
+            user.id,
+            request.body.note,
+          );
+          // SCRUM-470 (S6): ein akzeptierter Import-Kandidat wird — wie ein promoteter Entwurf im
+          // Einreiche-Pfad — auf Widerspruch/Duplikat geprüft. Hinter dem Import-Flag (Default AUS).
+          // detect*ForKo sind selbst fehlertolerant (schlucken Fehler intern) → der Accept kann daran
+          // nie scheitern. VOR send(), damit das Ergebnis deterministisch sichtbar ist (analog Promote).
+          if (detection && confluenceImportEnabled() && result.koId) {
+            await detectConflictsForKo(result.koId, {
+              ko: detection.ko,
+              conflicts: detection.conflicts,
+              reasoner: detection.reasoner,
+            });
+            await detectDuplicatesForKo(result.koId, {
+              ko: detection.ko,
+              overlaps: detection.overlaps,
+              reasoner: detection.reasoner,
+              settings: detection.overlapSettings,
+              semanticPrefilter: detection.semanticPrefilter,
+            });
+          }
+          reply.code(200).send(result);
         } catch (error) {
           sendError(reply, error);
         }
