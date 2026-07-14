@@ -7,6 +7,18 @@ export const CLOUD_API_KEYCHAIN_ACCOUNT = CLOUD_API_KEY_ENV;
 export const LEGACY_CLOUD_API_KEYCHAIN_SERVICE = "KLARWERK-App-Anthropic";
 export const LEGACY_CLOUD_API_KEYCHAIN_ACCOUNT = "team1";
 
+// SCRUM-Timeout: Cloud- und lokaler Client brechen einen hängenden Request nach diesem
+// Limit ab (statt den Reasoner unbegrenzt blockieren zu lassen). Override per Env.
+export const DEFAULT_MODEL_TIMEOUT_MS = 30_000;
+
+// Parst eine Timeout-Env in ms; nur endliche, positive Zahlen zählen, sonst undefined
+// (→ Default greift). Schützt vor "0", "abc", negativen Werten.
+function parseTimeoutMs(raw: string | undefined): number | undefined {
+  if (raw === undefined) return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
 // Anbieterspezifischer HTTP-Client (Anthropic Messages API). Der Schlüssel bleibt
 // ausschließlich hier (serverseitig) und verlässt den Prozess nie (FR-RSN-06).
 // `fetchFn` ist injizierbar → in Tests ohne Netz prüfbar.
@@ -15,35 +27,53 @@ export interface HttpModelConfig {
   model: string;
   baseUrl?: string;
   fetchFn?: typeof fetch;
+  timeoutMs?: number;
 }
 
 export function anthropicClient(config: HttpModelConfig): ModelClient {
   const fetchFn = config.fetchFn ?? fetch;
   const baseUrl = config.baseUrl ?? "https://api.anthropic.com";
+  const timeoutMs = config.timeoutMs ?? DEFAULT_MODEL_TIMEOUT_MS;
   return {
     name: `anthropic:${config.model}`,
     // SCRUM-411: maxTokens pro Aufruf — kurze Tasks bleiben bei 1024; extract braucht mehr
     // (JSON mit bis zu 20 Punkten inkl. wörtlicher Belegstellen wurde bei 1024 abgeschnitten).
     async complete(system: string, user: string, maxTokens = 1024): Promise<string> {
-      const res = await fetchFn(`${baseUrl}/v1/messages`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": config.apiKey,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model: config.model,
-          max_tokens: maxTokens,
-          system,
-          messages: [{ role: "user", content: user }],
-        }),
-      });
-      if (!res.ok) {
-        throw new Error(`Modell-API antwortete mit ${res.status}`);
+      const controller = new AbortController();
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, timeoutMs);
+      try {
+        const res = await fetchFn(`${baseUrl}/v1/messages`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-api-key": config.apiKey,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: config.model,
+            max_tokens: maxTokens,
+            system,
+            messages: [{ role: "user", content: user }],
+          }),
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          throw new Error(`Modell-API antwortete mit ${res.status}`);
+        }
+        const data = (await res.json()) as { content?: { text?: string }[] };
+        return data.content?.[0]?.text ?? "";
+      } catch (err) {
+        if (timedOut) {
+          throw new Error(`Modell-API überschritt das Zeitlimit von ${timeoutMs} ms`);
+        }
+        throw err;
+      } finally {
+        clearTimeout(timer);
       }
-      const data = (await res.json()) as { content?: { text?: string }[] };
-      return data.content?.[0]?.text ?? "";
     },
   };
 }
@@ -119,7 +149,12 @@ export function createModelClientFromEnv(
     }
     return undefined;
   }
-  return anthropicClient({ apiKey, model: env.REASONER_MODEL ?? "claude-sonnet-4-6" });
+  const timeoutMs = parseTimeoutMs(env.REASONER_TIMEOUT_MS);
+  return anthropicClient({
+    apiKey,
+    model: env.REASONER_MODEL ?? "claude-sonnet-4-6",
+    ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+  });
 }
 
 // SCRUM-424 (Pedi 03.07.): generischer OpenAI-kompatibler Client für den EIGENEN lokalen
@@ -132,34 +167,52 @@ export interface LocalHttpModelConfig {
   model: string;
   apiKey?: string;
   fetchFn?: typeof fetch;
+  timeoutMs?: number;
 }
 
 export function openAiCompatibleClient(config: LocalHttpModelConfig): ModelClient {
   const fetchFn = config.fetchFn ?? fetch;
   const base = config.baseUrl.replace(/\/+$/, "");
+  const timeoutMs = config.timeoutMs ?? DEFAULT_MODEL_TIMEOUT_MS;
   return {
     name: `local:${config.model}`,
     async complete(system: string, user: string, maxTokens = 1024): Promise<string> {
-      const res = await fetchFn(`${base}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          ...(config.apiKey ? { authorization: `Bearer ${config.apiKey}` } : {}),
-        },
-        body: JSON.stringify({
-          model: config.model,
-          max_tokens: maxTokens,
-          messages: [
-            { role: "system", content: system },
-            { role: "user", content: user },
-          ],
-        }),
-      });
-      if (!res.ok) {
-        throw new Error(`Lokaler LLM antwortete mit ${res.status}`);
+      const controller = new AbortController();
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, timeoutMs);
+      try {
+        const res = await fetchFn(`${base}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            ...(config.apiKey ? { authorization: `Bearer ${config.apiKey}` } : {}),
+          },
+          body: JSON.stringify({
+            model: config.model,
+            max_tokens: maxTokens,
+            messages: [
+              { role: "system", content: system },
+              { role: "user", content: user },
+            ],
+          }),
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          throw new Error(`Lokaler LLM antwortete mit ${res.status}`);
+        }
+        const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+        return data.choices?.[0]?.message?.content ?? "";
+      } catch (err) {
+        if (timedOut) {
+          throw new Error(`Lokaler LLM überschritt das Zeitlimit von ${timeoutMs} ms`);
+        }
+        throw err;
+      } finally {
+        clearTimeout(timer);
       }
-      const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-      return data.choices?.[0]?.message?.content ?? "";
     },
   };
 }
@@ -174,9 +227,11 @@ export function createLocalClientFromEnv(
   if (!baseUrl || !model) {
     return undefined;
   }
+  const timeoutMs = parseTimeoutMs(env.KLARWERK_LOCAL_LLM_TIMEOUT_MS);
   return openAiCompatibleClient({
     baseUrl,
     model,
     ...(env.KLARWERK_LOCAL_LLM_KEY ? { apiKey: env.KLARWERK_LOCAL_LLM_KEY } : {}),
+    ...(timeoutMs !== undefined ? { timeoutMs } : {}),
   });
 }

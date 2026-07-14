@@ -6,6 +6,7 @@ import {
   LEGACY_CLOUD_API_KEYCHAIN_SERVICE,
   anthropicClient,
   createModelClientFromEnv,
+  openAiCompatibleClient,
   resolveCloudApiKey,
 } from "./model-client";
 import { type ModelClient, ModelProvider } from "./provider-model";
@@ -260,5 +261,40 @@ describe("model-client", () => {
       fetchFn: fetchFn as unknown as typeof fetch,
     });
     await expect(client.complete("s", "u")).rejects.toThrow();
+  });
+
+  // fetch hängt und lehnt erst ab, wenn der AbortController das Signal auslöst.
+  // runtime-robust: Error mit name="AbortError" statt DOMException (On-Prem-Node-Versionen).
+  function hangingFetch(): typeof fetch {
+    return vi.fn(
+      (_url: string, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            const err = new Error("Aborted");
+            err.name = "AbortError";
+            reject(err);
+          });
+        }),
+    ) as unknown as typeof fetch;
+  }
+
+  it("anthropicClient bricht bei Zeitüberschreitung mit eindeutiger Meldung ab", async () => {
+    const client = anthropicClient({
+      apiKey: "k",
+      model: "m",
+      timeoutMs: 10,
+      fetchFn: hangingFetch(),
+    });
+    await expect(client.complete("s", "u")).rejects.toThrow(/Zeitlimit/);
+  });
+
+  it("openAiCompatibleClient bricht bei Zeitüberschreitung mit eindeutiger Meldung ab", async () => {
+    const client = openAiCompatibleClient({
+      baseUrl: "http://127.0.0.1:8000/v1",
+      model: "m",
+      timeoutMs: 10,
+      fetchFn: hangingFetch(),
+    });
+    await expect(client.complete("s", "u")).rejects.toThrow(/Zeitlimit/);
   });
 });
