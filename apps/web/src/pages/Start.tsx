@@ -16,12 +16,14 @@ import { useSession } from "../app/AuthContext";
 import { useRole } from "../app/RoleContext";
 import { AdminFirstRunCard } from "../components/AdminFirstRunCard";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
+import { HelpTip } from "../components/HelpTip";
 import { Card, PageHeader } from "../components/ui";
 import { DEMO_PILOT_PATH, captureDemoHref } from "../lib/demoPilotPath";
 import { KNOWLEDGE_CYCLE } from "../lib/knowledgeCycle";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { missionsForRole } from "../lib/missions";
 import { PROOF_CHAIN } from "../lib/proofChain";
+import { type StartHelpId, startHelp } from "../lib/startHelp";
 import {
   START_ORIENTATION_TEXT,
   isStartOrientationFirstRun,
@@ -159,6 +161,11 @@ function Kpi({ label, value }: { label: string; value: string | number }): JSX.E
 
 export function Start(): JSX.Element {
   const { t } = useTranslation();
+  // SCRUM-488: ?-Hilfen auf dem Start-Screen (Nullschulung) — zentrale Karte, gleiches Muster wie chelp/vhelp.
+  const shelp = (id: StartHelpId): JSX.Element => {
+    const topic = startHelp(id);
+    return <HelpTip title={t(topic.titleKey)} body={t(topic.bodyKey)} />;
+  };
   const { role, stufe2 } = useRole();
   const { user } = useSession();
   const analytics = useAnalytics();
@@ -218,7 +225,10 @@ export function Start(): JSX.Element {
       {role === "admin" ? <AdminFirstRunCard /> : null}
       {/* SCRUM-261: Knowledge-OS-Kreis als vorhandene Arbeitsführung (kein Chatbot). */}
       <div className="mb-5">
-        <h2 className="text-[15px] font-semibold text-ink">{t("cycle.title")}</h2>
+        <div className="flex items-center gap-1.5">
+          <h2 className="text-[15px] font-semibold text-ink">{t("cycle.title")}</h2>
+          {shelp("cycle")}
+        </div>
         <p className="mb-3 mt-0.5 text-[12.5px] text-muted">{t("cycle.subtitle")}</p>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {KNOWLEDGE_CYCLE.map((step, i) => (
@@ -390,11 +400,24 @@ export function Start(): JSX.Element {
       ) : null}
       <div className="grid gap-5 lg:grid-cols-[1.6fr_1fr]">
         <Card>
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-[15px] font-semibold text-ink">{t("start.workTitle")}</h2>
+          <div className="mb-2 flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <h2 className="text-[15px] font-semibold text-ink">{t("start.workTitle")}</h2>
+              {shelp("work")}
+            </div>
             <Link to="/aufgaben" className="text-[12.5px] font-semibold text-brand">
               {t("start.allTasks")}
             </Link>
+          </div>
+          {/* SCRUM-488: Klartext-Legende für die Dringlichkeits-Punkte (rot=jetzt · gelb=heute · grau=später). */}
+          <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10.5px] text-muted-2">
+            {(["critical", "today", "later"] as const).map((sev) => (
+              <span key={sev} className="flex items-center gap-1">
+                <span className={`h-2 w-2 shrink-0 rounded-full ${WORK_TONE[sev]}`} />
+                {t(`start.severity.${sev}`)}
+              </span>
+            ))}
+            {shelp("severity")}
           </div>
           {/* SCRUM-271: bester nächster Einstieg hervorgehoben (kein Auto-Handeln, nur Führung). */}
           {focus ? (
@@ -447,11 +470,21 @@ export function Start(): JSX.Element {
             )}
           </div>
         </Card>
-        <div className="grid grid-cols-2 gap-3">
-          <Kpi label={t("start.kpiTotal")} value={analytics.data?.total ?? "—"} />
-          <Kpi label={t("start.kpiOpen")} value={analytics.data?.byStatus?.offen ?? "—"} />
-          <Kpi label={t("start.kpiValidated")} value={analytics.data?.byStatus?.validiert ?? "—"} />
-          <Kpi label={t("start.kpiGaps")} value={gaps.data?.length ?? "—"} />
+        <div>
+          {/* SCRUM-488: Klartext-Überschrift + Hilfe, damit die vier Zahlen ohne Vorwissen lesbar sind. */}
+          <div className="mb-2 flex items-center gap-1.5">
+            <h2 className="text-[13px] font-semibold text-ink">{t("start.kpiSectionTitle")}</h2>
+            {shelp("kpis")}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Kpi label={t("start.kpiTotal")} value={analytics.data?.total ?? "—"} />
+            <Kpi label={t("start.kpiOpen")} value={analytics.data?.byStatus?.offen ?? "—"} />
+            <Kpi
+              label={t("start.kpiValidated")}
+              value={analytics.data?.byStatus?.validiert ?? "—"}
+            />
+            <Kpi label={t("start.kpiGaps")} value={gaps.data?.length ?? "—"} />
+          </div>
         </div>
       </div>
     </div>

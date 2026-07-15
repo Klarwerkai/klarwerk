@@ -278,6 +278,22 @@ const de = {
   "start.ctaValidate": "Validierung öffnen",
   "start.todo": "Heute zu tun",
   "start.workTitle": "Nächste Handlungen",
+  "start.kpiSectionTitle": "Kennzahlen",
+  "start.severity.critical": "jetzt",
+  "start.severity.today": "heute",
+  "start.severity.later": "später",
+  "shelp.cycle.title": "Der Knowledge-OS-Kreis",
+  "shelp.cycle.body":
+    "Die vier Kacheln sind der Kreislauf deines Wissens: Erfassen → Validieren → Nutzen → Aktuell halten. Jede Kachel bringt dich direkt in den passenden Bereich. Du musst nicht alles auf einmal machen — fang bei dem an, was gerade ansteht. Es startet von selbst nichts.",
+  "shelp.work.title": "Deine Arbeitsübersicht",
+  "shelp.work.body":
+    "Hier steht, was gerade wirklich auf dich wartet — aus echten Daten (offene Prüfungen, Konflikte, Wissenslücken), keine erfundene To-do-Liste. Die Zahl rechts sagt, wie viele es sind. Klick eine Zeile, um direkt dort weiterzuarbeiten. Erledigst du nichts, passiert nichts automatisch.",
+  "shelp.severity.title": "Die farbigen Punkte",
+  "shelp.severity.body":
+    "Der Punkt links zeigt die Dringlichkeit: Rot = jetzt dran (blockiert oder kritisch), Gelb = heute sinnvoll, Grau = kann warten. Das ist nur eine Orientierung, kein Zwang — du entscheidest die Reihenfolge, und es wird nichts automatisch abgearbeitet.",
+  "shelp.kpis.title": "Die vier Kennzahlen",
+  "shelp.kpis.body":
+    "Vier Zahlen zum Gesamtbild: Gesamt = alle Wissensobjekte, Offen = noch nicht geprüft, Validiert = bestätigt und nutzbar, Lücken = gestellte Fragen ohne Antwort im Bestand. Sie zeigen den Stand des Wissens — sie lösen selbst nichts aus und sind kein Ranking.",
   "start.focusLabel": "Bester nächster Einstieg",
   "work.conflicts": "Konflikte lösen",
   "work.criticalGaps": "Kritische Wissenslücken",
@@ -3013,6 +3029,22 @@ const en: typeof de = {
   "start.ctaValidate": "Open validation",
   "start.todo": "To do today",
   "start.workTitle": "Next actions",
+  "start.kpiSectionTitle": "Key figures",
+  "start.severity.critical": "now",
+  "start.severity.today": "today",
+  "start.severity.later": "later",
+  "shelp.cycle.title": "The Knowledge-OS cycle",
+  "shelp.cycle.body":
+    "The four tiles are the life cycle of your knowledge: Capture → Validate → Use → Keep current. Each tile takes you straight to the matching area. You don't have to do everything at once — start with whatever is due now. Nothing kicks off on its own.",
+  "shelp.work.title": "Your work overview",
+  "shelp.work.body":
+    "This is what actually awaits you right now — from real data (open reviews, conflicts, knowledge gaps), not an invented to-do list. The number on the right tells you how many. Click a row to continue right there. If you do nothing, nothing happens automatically.",
+  "shelp.severity.title": "The coloured dots",
+  "shelp.severity.body":
+    "The dot on the left shows urgency: Red = do now (blocking or critical), Yellow = worth doing today, Grey = can wait. It is guidance only, not a rule — you decide the order, and nothing is processed automatically.",
+  "shelp.kpis.title": "The four key figures",
+  "shelp.kpis.body":
+    "Four numbers for the big picture: Total = all knowledge objects, Open = not yet reviewed, Validated = confirmed and usable, Gaps = questions asked with no answer in the base. They show the state of the knowledge — they trigger nothing themselves and are not a ranking.",
   "start.focusLabel": "Start here",
   "work.conflicts": "Resolve conflicts",
   "work.criticalGaps": "Critical knowledge gaps",
