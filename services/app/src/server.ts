@@ -2,13 +2,13 @@ import { existsSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import fastifyHelmet from "@fastify/helmet";
-import fastifyStatic from "@fastify/static";
 import type { FastifyInstance } from "fastify";
 import { buildApp, buildPgServices, buildServices } from "./build-app";
 import { createPool, migrate } from "./db";
 import { buildDevPersistServices } from "./dev-persist";
 import { type FactoryReset, factoryResetUnavailable } from "./factory-reset";
 import { assertPersistentStore } from "./storage-guard";
+import { registerWebStatic } from "./web-static";
 
 // Kanonische Domain (klarwerk.ai). app.<domain> wird dauerhaft hierher umgeleitet.
 const CANONICAL_HOST = process.env.CANONICAL_HOST ?? "klarwerk.ai";
@@ -61,29 +61,8 @@ async function configureWebDelivery(app: FastifyInstance): Promise<void> {
   if (!existsSync(dist)) {
     return;
   }
-  await app.register(fastifyStatic, {
-    root: dist,
-    wildcard: false,
-    setHeaders: (res, filePath) => {
-      // Gehashte Assets sind unveränderlich; index.html nie cachen.
-      if (filePath.includes("/assets/")) {
-        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-      } else {
-        res.setHeader("Cache-Control", "no-cache");
-      }
-    },
-  });
-
-  // SPA-Fallback: alles außer /api und /health auf index.html (Client-Routing).
-  app.setNotFoundHandler((request, reply) => {
-    if (request.url.startsWith("/api") || request.url === "/health") {
-      reply.code(404).send({ error: "NOT_FOUND", message: "Nicht gefunden." });
-      return;
-    }
-    reply.header("Cache-Control", "no-cache");
-    reply.type("text/html");
-    return reply.sendFile("index.html");
-  });
+  // Statische Auslieferung + SPA-Fallback (Stale-Static-Fix, siehe web-static.ts).
+  await registerWebStatic(app, dist);
 }
 
 // SCRUM-387: Dev-Persistenz-Journal der Desktop-App. Nur aktiv mit KLARWERK_DEV_PERSIST=1
