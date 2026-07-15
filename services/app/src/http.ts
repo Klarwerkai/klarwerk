@@ -51,9 +51,15 @@ const STATUS_BY_CODE: Record<string, number> = {
 export function sendError(reply: FastifyReply, error: unknown): void {
   if (error && typeof error === "object" && "code" in error) {
     const code = String((error as { code: unknown }).code);
-    const message = "message" in error ? String((error as { message: unknown }).message) : code;
-    reply.code(STATUS_BY_CODE[code] ?? 400).send({ error: code, message });
-    return;
+    // SCRUM-496: NUR Domänen-Fehlercodes (KoError/LibraryError/… — GROSSBUCHSTABEN_MIT_UNTERSTRICH,
+    // keine Ziffern) tragen ihre nutzerlesbare Meldung nach außen. Infrastruktur-Fehler — insbesondere
+    // Postgres-SQLSTATE (z. B. "42P01" relation-not-exists, "42601" syntax-error, enthalten Ziffern) —
+    // dürfen ihre ROHE Meldung NIE lecken. Sonst zeigte das Board eine nackte DB-Fehlermeldung.
+    if (/^[A-Z_]+$/.test(code)) {
+      const message = "message" in error ? String((error as { message: unknown }).message) : code;
+      reply.code(STATUS_BY_CODE[code] ?? 400).send({ error: code, message });
+      return;
+    }
   }
   reply.code(500).send({ error: "INTERNAL", message: "Unerwarteter Fehler." });
 }

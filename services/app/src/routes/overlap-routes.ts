@@ -27,7 +27,13 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
       if (!user) {
         return;
       }
-      reply.code(200).send(await overlaps.unresolved());
+      // SCRUM-496: DB-/Serverfehler NICHT roh durchreichen (das Board zeigte sonst die nackte
+      // Postgres-Meldung). sendError generalisiert Infrastruktur-Fehler zu einem sauberen 500.
+      try {
+        reply.code(200).send(await overlaps.unresolved());
+      } catch (error) {
+        sendError(reply, error);
+      }
     });
 
     // Pedi 04.07.: Anzeige-Schwelle der Duplikat-Erkennung. Lesen dürfen alle Leseberechtigten
@@ -37,7 +43,11 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
       if (!user) {
         return;
       }
-      reply.code(200).send((await settings.get()) ?? DEFAULT_OVERLAP_SETTINGS);
+      try {
+        reply.code(200).send((await settings.get()) ?? DEFAULT_OVERLAP_SETTINGS);
+      } catch (error) {
+        sendError(reply, error);
+      }
     });
 
     app.put<{ Body: { minConfidence?: number } }>(
@@ -68,12 +78,16 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
       if (!user) {
         return;
       }
-      const entry = await overlaps.get(request.params.id);
-      if (!entry) {
-        reply.code(404).send({ error: "NOT_FOUND", message: "Überschneidung nicht gefunden." });
-        return;
+      try {
+        const entry = await overlaps.get(request.params.id);
+        if (!entry) {
+          reply.code(404).send({ error: "NOT_FOUND", message: "Überschneidung nicht gefunden." });
+          return;
+        }
+        reply.code(200).send(entry);
+      } catch (error) {
+        sendError(reply, error);
       }
-      reply.code(200).send(entry);
     });
 
     // „Fehlalarm — kein Duplikat" schließt einen (meist automatisch erkannten) Eintrag bewusst als
