@@ -68,10 +68,11 @@ import {
   CAPTURE_ENTRY_TEXT,
   type CaptureMode,
   EXPERT_MODE,
-  NARRATE_MODES,
+  areModesExpanded,
   isCaptureFirstRun,
   isExpertMode,
   markCaptureIntroSeen,
+  visibleNarrateModes,
 } from "../lib/captureEntry";
 import { CAPTURE_EXAMPLE } from "../lib/captureExample";
 import { CAPTURE_FLOW_TEXT } from "../lib/captureFlowGuide";
@@ -245,6 +246,11 @@ export function Capture(): JSX.Element {
   const gapContext = readGapContext(params);
 
   const [mode, setMode] = useState<Mode>("freitext");
+  // SCRUM-458 (Nullschulung): Die vier Nicht-Standard-Modi (Diktat · Interview · Aus Datei ·
+  // Expertenformular) sind beim Betreten VERDECKT — nur Freitext (+ Erfahrungsnotiz) ist sichtbar.
+  // Erst ein Klick auf „weitere Optionen" klappt sie auf. Bewusst NICHT persistiert: bei jedem Betreten
+  // wieder eingeklappt ist für den Nullschulungs-Erstkontakt richtig (useState startet je Mount frisch).
+  const [showMoreModes, setShowMoreModes] = useState(false);
   // SCRUM-384 / KG-UX-001/002: Erstnutzer-Führung pro Browser — beim Erstbesuch ist die geführte
   // Einführung ausgeklappt, danach eingeklappt (jederzeit wieder aufklappbar; nichts entfernt).
   const [firstRun] = useState(() => isCaptureFirstRun(window.localStorage));
@@ -1542,6 +1548,11 @@ export function Capture(): JSX.Element {
 
   // SCRUM-384: abgeleiteter Wizard-Zustand (refine nur mit Entwurf) + sichtbare Schritt-Leiste.
   const expertView = isExpertMode(mode);
+  // SCRUM-458: Modus-Leiste ist aufgeklappt, sobald der Nutzer „weitere Optionen" geklickt hat ODER
+  // ein Nicht-Freitext-Modus aktiv ist (dann darf der aktive Modus nie verdeckt sein). Logik + welche
+  // Modi sichtbar sind kommen aus captureEntry (eine Quelle für Komponente + Test, SCRUM-458).
+  const modesExpanded = areModesExpanded(showMoreModes, mode);
+  const shownNarrateModes = visibleNarrateModes(showMoreModes, mode);
   const wizStep = resolveWizardStep(wizStepRaw, draft !== null);
   const chips = wizardChips(wizStepRaw, draft !== null);
   const draftCount = drafts.data?.length ?? 0;
@@ -1906,8 +1917,12 @@ export function Capture(): JSX.Element {
             {t(CAPTURE_ENTRY_TEXT.narrateKicker)}
             <HelpTip {...chelp("modes")} />
           </div>
+          {/* SCRUM-458 (Nullschulung): eingeklappt zeigt die Leiste nur Freitext + den dezenten
+              Aufklapper. Defensiv: ist ein Nicht-Freitext-Modus aktiv (z. B. per Deep-Link/Gap-Kontext),
+              wird automatisch aufgeklappt, damit der aktive Modus nie versteckt ist. Reine Sichtbarkeit —
+              switchMode/Funktionen sind unverändert. */}
           <div className="flex flex-wrap items-center gap-1.5">
-            {NARRATE_MODES.map((m) => (
+            {shownNarrateModes.map((m) => (
               <button
                 key={m}
                 type="button"
@@ -1927,25 +1942,48 @@ export function Capture(): JSX.Element {
                 ) : null}
               </button>
             ))}
-            {/* Bug (Pedi 04.07./05.07.): Expertenmodus als DAUERHAFT sichtbarer Umschalter in der
-                Leiste (vorher verschwand der Knopf nach dem Aktivieren). Aktiv = hervorgehoben wie
-                die anderen Modus-Knöpfe; erneuter Klick führt zurück auf den geführten Weg. */}
-            <span className="inline-flex items-center gap-1">
+            {modesExpanded ? (
+              /* Bug (Pedi 04.07./05.07.): Expertenmodus als DAUERHAFT sichtbarer Umschalter in der
+                 Leiste (vorher verschwand der Knopf nach dem Aktivieren). Aktiv = hervorgehoben wie
+                 die anderen Modus-Knöpfe; erneuter Klick führt zurück auf den geführten Weg. */
+              <span className="inline-flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => switchMode(isExpertMode(mode) ? "freitext" : EXPERT_MODE)}
+                  title={t(CAPTURE_ENTRY_TEXT.expertHint)}
+                  aria-pressed={isExpertMode(mode)}
+                  className={`rounded-btn border px-3 py-1.5 text-[13px] font-semibold ${
+                    isExpertMode(mode)
+                      ? "border-ink bg-ink text-white"
+                      : "border-dashed border-hairline text-muted hover:border-ink/30 hover:text-text"
+                  }`}
+                >
+                  {t(CAPTURE_ENTRY_TEXT.expertToggle)}
+                </button>
+                <HelpTip {...chelp("expertPath")} />
+              </span>
+            ) : (
               <button
                 type="button"
-                onClick={() => switchMode(isExpertMode(mode) ? "freitext" : EXPERT_MODE)}
-                title={t(CAPTURE_ENTRY_TEXT.expertHint)}
-                aria-pressed={isExpertMode(mode)}
-                className={`rounded-btn border px-3 py-1.5 text-[13px] font-semibold ${
-                  isExpertMode(mode)
-                    ? "border-ink bg-ink text-white"
-                    : "border-dashed border-hairline text-muted hover:border-ink/30 hover:text-text"
-                }`}
+                onClick={() => setShowMoreModes(true)}
+                aria-expanded={false}
+                className="rounded-btn border border-dashed border-hairline px-3 py-1.5 text-[13px] font-semibold text-muted-2 hover:border-ink/30 hover:text-text"
               >
-                {t(CAPTURE_ENTRY_TEXT.expertToggle)}
+                {t(CAPTURE_ENTRY_TEXT.moreOptions)} ▾
               </button>
-              <HelpTip {...chelp("expertPath")} />
-            </span>
+            )}
+            {/* Rückweg zum aufgeräumten Erstzustand — nur wenn per Klick aufgeklappt UND Freitext aktiv
+                (sonst würde ein aktiver Nicht-Freitext-Modus verschwinden). */}
+            {showMoreModes && mode === "freitext" ? (
+              <button
+                type="button"
+                onClick={() => setShowMoreModes(false)}
+                aria-expanded={true}
+                className="rounded-btn px-2.5 py-1.5 text-[12px] font-semibold text-muted-2 hover:text-text"
+              >
+                {t(CAPTURE_ENTRY_TEXT.fewerOptions)} ▴
+              </button>
+            ) : null}
           </div>
           {/* Im Expertenmodus: ehrliche Einordnung + sichtbarer Rückweg auf den geführten Standardweg. */}
           {isExpertMode(mode) ? (

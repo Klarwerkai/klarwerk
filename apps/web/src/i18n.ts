@@ -907,6 +907,8 @@ const de = {
   "capture.entry.expertActive":
     "Expertenmodus: Du füllst das Formular direkt aus. Gespeichert und geprüft wird wie im geführten Weg — nichts wird automatisch validiert.",
   "capture.entry.backToGuided": "Zurück zum geführten Weg",
+  "capture.entry.moreOptions": "weitere Optionen",
+  "capture.entry.fewerOptions": "weniger Optionen",
   "capture.raw": "Erfahrungsnotiz",
   "capture.rawPlaceholder":
     "Erfahrung formlos festhalten — die KI strukturiert daraus einen Entwurf. Du prüfst und reichst ein.",
@@ -3595,6 +3597,8 @@ const en: typeof de = {
   "capture.entry.expertActive":
     "Expert mode: you fill the form directly. Saving and review work exactly like the guided path — nothing is validated automatically.",
   "capture.entry.backToGuided": "Back to the guided path",
+  "capture.entry.moreOptions": "more options",
+  "capture.entry.fewerOptions": "fewer options",
   "capture.raw": "Experience note",
   "capture.rawPlaceholder":
     "Capture experience informally — the AI structures it into a draft. You review and submit.",
