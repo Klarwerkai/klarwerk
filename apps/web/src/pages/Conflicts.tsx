@@ -12,6 +12,13 @@ import { Modal } from "../components/Modal";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
 import { type Participant, conflictLead } from "../lib/boardCard";
 import { CONFLICT_BOARD_TEXT, canDismiss, conflictOriginInfo } from "../lib/conflictBoard";
+import {
+  CONFLICT_COLLISION_TEXT,
+  type CollisionSide,
+  type ResolvedCollision,
+  hasStreitpunkt,
+  resolveCollision,
+} from "../lib/conflictCollision";
 import { conflictKoPair, conflictNextStep, resolutionEffect } from "../lib/conflictView";
 import { type ReviewHelpId, reviewHelp } from "../lib/reviewHelp";
 
@@ -56,6 +63,68 @@ function ConflictQuote({ labelKey, quote }: { labelKey: string; quote: string })
       </span>
       <span className="mt-0.5 block italic">„{quote}“</span>
     </p>
+  );
+}
+
+// SCRUM-492: eine Kachel der Kollisions-Gegenüberstellung — Titel (aus KO), knappe Kernaussage,
+// hervorgehobener Streitwert. Ist der Streitwert wörtlich belegt, wird der Chip dezent als belegt
+// gekennzeichnet (Häkchen + title/aria) — der eigentliche Beweis bleibt das Zitat im <details>.
+function CollisionSideTile({ side }: { side: CollisionSide }): JSX.Element {
+  const { t } = useTranslation();
+  const title = side.title.removed ? t("board.koRemoved") : side.title.title;
+  const belegt = side.streitwertWoertlich;
+  return (
+    <div className="rounded-card border border-trust-crit-fill/30 bg-page p-3">
+      <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">{title}</div>
+      <p className="mt-1 text-[12.5px] leading-relaxed text-text">{side.kernaussage}</p>
+      <div className="mt-2">
+        <span
+          className="inline-flex items-center gap-1 rounded-pill bg-trust-crit-bg px-2.5 py-1 text-[13px] font-semibold text-trust-crit-text"
+          title={belegt ? t(CONFLICT_COLLISION_TEXT.verbatim) : undefined}
+          aria-label={
+            belegt ? `${side.streitwert} — ${t(CONFLICT_COLLISION_TEXT.verbatim)}` : side.streitwert
+          }
+        >
+          {side.streitwert}
+          {belegt ? (
+            <span aria-hidden="true" className="text-[10px] text-trust-pos-text">
+              ✓
+            </span>
+          ) : null}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// SCRUM-492: die zwei gegenübergestellten Kacheln + der sichtbare Kollisionspunkt (Marker) +
+// „Kollision bei: {streitpunkt}". Oberhalb des <details> als ruhiger Kern der Karte.
+function CollisionTiles({ collision }: { collision: ResolvedCollision }): JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <div className="mt-3">
+      <div className="grid grid-cols-1 items-stretch gap-2 sm:grid-cols-[1fr_auto_1fr]">
+        <CollisionSideTile side={collision.a} />
+        <div
+          className="flex items-center justify-center"
+          aria-label={t(CONFLICT_COLLISION_TEXT.point)}
+        >
+          <span
+            className="grid h-7 w-7 place-items-center rounded-full bg-trust-crit-fill/20 font-mono text-[14px] font-bold text-trust-crit-text"
+            aria-hidden="true"
+          >
+            ↯
+          </span>
+        </div>
+        <CollisionSideTile side={collision.b} />
+      </div>
+      {hasStreitpunkt(collision) ? (
+        <p className="mt-1.5 text-center text-[12px] text-muted">
+          {t(CONFLICT_COLLISION_TEXT.at)}:{" "}
+          <span className="font-semibold text-text">{collision.streitpunkt}</span>
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -210,6 +279,14 @@ export function Conflicts(): JSX.Element {
                   );
                 })()}
                 <p className="mt-1 text-[13px] leading-relaxed text-muted">{c.description}</p>
+
+                {/* SCRUM-492: strukturierte Kollisions-Gegenüberstellung — zwei Kacheln + sichtbarer
+                    Kollisionspunkt, wenn die Erkennung die Felder geliefert hat. Sonst greift die
+                    bestehende Zitat-/Text-Darstellung im <details> (Fallback-Kaskade). */}
+                {(() => {
+                  const collision = resolveCollision(c, kos.data ?? []);
+                  return collision ? <CollisionTiles collision={collision} /> : null;
+                })()}
 
                 {/* SCRUM-486: Herkunft/Belege, KO-Panels und Eskalationspfad hinter einer ruhigen
                     Aufklappung (Progressive Disclosure wie SCRUM-416). Nichts entfernt, nur verlagert. */}

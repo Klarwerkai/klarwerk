@@ -1665,6 +1665,9 @@ const de = {
   "con.autoConfidence": "Sicherheit {{percent}} %",
   // SCRUM-486 B: der KI-Prozent ist die Erkennungs-Sicherheit, kein Beweis des Widerspruchs.
   "con.autoConfidenceCaption": "KI-Sicherheit der Erkennung — kein bewiesener Widerspruch",
+  "con.collision.at": "Kollision bei",
+  "con.collision.verbatim": "wörtlich aus dem Beleg",
+  "con.collision.point": "Kollisionspunkt",
   "con.autoWhy": "Begründung",
   "con.autoQuoteA": "Beleg A",
   "con.autoQuoteB": "Beleg B",
@@ -4360,6 +4363,9 @@ const en: typeof de = {
   "con.autoConfidence": "Confidence {{percent}}%",
   // SCRUM-486 B: the AI percentage is detection confidence, not proof of the contradiction.
   "con.autoConfidenceCaption": "AI detection confidence — not a proven contradiction",
+  "con.collision.at": "Collision on",
+  "con.collision.verbatim": "verbatim from the source quote",
+  "con.collision.point": "collision point",
   "con.autoWhy": "Reason",
   "con.autoQuoteA": "Evidence A",
   "con.autoQuoteB": "Evidence B",
