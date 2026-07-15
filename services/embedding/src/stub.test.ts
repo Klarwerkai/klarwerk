@@ -86,7 +86,11 @@ describe("createEmbeddingProviderFromEnv (B2)", () => {
   });
 
   it("cloud/local noch nicht verdrahtet → ehrlich undefined (kein Fake)", () => {
-    expect(createEmbeddingProviderFromEnv({ KLARWERK_EMBEDDING_PROVIDER: "cloud" })).toBeUndefined();
-    expect(createEmbeddingProviderFromEnv({ KLARWERK_EMBEDDING_PROVIDER: "local" })).toBeUndefined();
+    expect(
+      createEmbeddingProviderFromEnv({ KLARWERK_EMBEDDING_PROVIDER: "cloud" }),
+    ).toBeUndefined();
+    expect(
+      createEmbeddingProviderFromEnv({ KLARWERK_EMBEDDING_PROVIDER: "local" }),
+    ).toBeUndefined();
   });
 });

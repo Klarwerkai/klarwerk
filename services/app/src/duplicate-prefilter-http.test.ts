@@ -62,7 +62,11 @@ async function createKo(
 describe("B6 HTTP: Store-Befüllung im Einreiche-Pfad (Flag AN)", () => {
   it("zwei ähnliche KOs nacheinander → beide 201 (Befüllung bricht den Submit nie)", async () => {
     const { app, headers } = await adminApp();
-    const s1 = await createKo(app, headers, "Nach dem Anfahren 10 Sekunden warten, dann Pumpe entlüften.");
+    const s1 = await createKo(
+      app,
+      headers,
+      "Nach dem Anfahren 10 Sekunden warten, dann Pumpe entlüften.",
+    );
     const s2 = await createKo(
       app,
       headers,

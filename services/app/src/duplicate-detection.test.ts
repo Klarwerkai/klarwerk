@@ -1,7 +1,7 @@
+import { describe, expect, it, vi } from "vitest";
 import { coreText } from "../../conflicts";
 import { InMemoryEmbeddingStore, stubEmbeddingProvider } from "../../embedding";
 import type { KnowledgeObject } from "../../knowledge-object";
-import { describe, expect, it, vi } from "vitest";
 import { detectConflictsForKo } from "./conflict-detection";
 import {
   type DuplicateDetectionDeps,
@@ -148,7 +148,11 @@ describe("indexKoForDuplicatePrefilter — Store-Befüllung (B6)", () => {
     const store = new InMemoryEmbeddingStore();
     const demo = { ...makeKo("demo", "titel", "text") } as unknown as KnowledgeObject;
     (demo as { demoSeed: boolean }).demoSeed = true;
-    await indexKoForDuplicatePrefilter(demo, { embedder: stubEmbeddingProvider(256), store, topK: 5 });
+    await indexKoForDuplicatePrefilter(demo, {
+      embedder: stubEmbeddingProvider(256),
+      store,
+      topK: 5,
+    });
     expect(await store.nearest([1, 0, 0, 0], "stub@256", 5)).toEqual([]);
   });
 
@@ -202,7 +206,9 @@ describe("removeKoFromDuplicatePrefilter (GDPR-Kaskadenlöschung)", () => {
       store: new InMemoryEmbeddingStore(),
       topK: 5,
     };
-    await expect(removeKoFromDuplicatePrefilter("gibt-es-nicht", prefilter)).resolves.toBeUndefined();
+    await expect(
+      removeKoFromDuplicatePrefilter("gibt-es-nicht", prefilter),
+    ).resolves.toBeUndefined();
   });
 
   it("Store-Fehler wird geloggt + geschluckt — die Löschung scheitert NIE daran", async () => {
@@ -241,9 +247,7 @@ describe("detect*ForKo — Fehler-Logging (ben #6)", () => {
       settings: { get: async () => null },
     } as unknown as DuplicateDetectionDeps;
     const logs: string[] = [];
-    await expect(
-      detectDuplicatesForKo("s", deps, (m) => logs.push(m)),
-    ).resolves.toBeUndefined();
+    await expect(detectDuplicatesForKo("s", deps, (m) => logs.push(m))).resolves.toBeUndefined();
     expect(logs).toHaveLength(1);
   });
 
@@ -272,9 +276,7 @@ describe("detect*ForKo — Fehler-Logging (ben #6)", () => {
       reasoner: { judgeConflict: async () => null },
     } as unknown as Parameters<typeof detectConflictsForKo>[1];
     const logs: string[] = [];
-    await expect(
-      detectConflictsForKo("s", deps, (m) => logs.push(m)),
-    ).resolves.toBeUndefined();
+    await expect(detectConflictsForKo("s", deps, (m) => logs.push(m))).resolves.toBeUndefined();
     expect(logs).toHaveLength(1);
   });
 });

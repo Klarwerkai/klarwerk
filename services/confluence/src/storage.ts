@@ -34,9 +34,10 @@ export function confluenceStorageToHtml(storage: string): string {
 
   // Link: Text aus link-body/plain-text-link-body, sonst der content-title.
   html = html.replace(/<ac:link\b[^>]*>([\s\S]*?)<\/ac:link>/g, (_m: string, inner: string) => {
-    const body = /<ac:(?:plain-text-link-body|link-body)>([\s\S]*?)<\/ac:(?:plain-text-link-body|link-body)>/.exec(
-      inner,
-    );
+    const body =
+      /<ac:(?:plain-text-link-body|link-body)>([\s\S]*?)<\/ac:(?:plain-text-link-body|link-body)>/.exec(
+        inner,
+      );
     const bodyText = body?.[1]?.trim();
     if (bodyText) {
       return bodyText;
@@ -46,12 +47,15 @@ export function confluenceStorageToHtml(storage: string): string {
   });
 
   // Aufgabenliste: <ac:task-list> → <ul>, jede <ac:task-body> → <li>.
-  html = html.replace(/<ac:task-list\b[^>]*>([\s\S]*?)<\/ac:task-list>/g, (_m: string, inner: string) => {
-    const items = [...inner.matchAll(/<ac:task-body>([\s\S]*?)<\/ac:task-body>/g)]
-      .map((mm) => `<li>${mm[1] ?? ""}</li>`)
-      .join("");
-    return `<ul>${items}</ul>`;
-  });
+  html = html.replace(
+    /<ac:task-list\b[^>]*>([\s\S]*?)<\/ac:task-list>/g,
+    (_m: string, inner: string) => {
+      const items = [...inner.matchAll(/<ac:task-body>([\s\S]*?)<\/ac:task-body>/g)]
+        .map((mm) => `<li>${mm[1] ?? ""}</li>`)
+        .join("");
+      return `<ul>${items}</ul>`;
+    },
+  );
 
   // Strukturierte Makros: Panel-Namen (info/note/warning/tip) → <blockquote>, sonst Inhalt entpacken.
   // <ac:parameter> ist Konfiguration, kein Inhalt → verwerfen.

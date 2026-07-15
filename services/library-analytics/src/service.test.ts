@@ -164,7 +164,9 @@ describe("LibraryService", () => {
   });
 
   it("SCRUM-470: Accept einer pageId legt KO mit Herkunfts-Anker an", async () => {
-    const [cand] = await ctx.library.createImportCandidates([confItem({ pageId: "P9", sourceVersion: 2 })]);
+    const [cand] = await ctx.library.createImportCandidates([
+      confItem({ pageId: "P9", sourceVersion: 2 }),
+    ]);
     const res = await ctx.library.reviewImportCandidate(cand!.id, "accept");
     const ko = (await ctx.koService.list()).find((k) => k.id === res.koId)!;
     expect(ko.sources[0]?.externalId).toBe("P9");
@@ -271,10 +273,38 @@ describe("LibraryService", () => {
   it("Consultant Experten-Matching: Thema → Personen (originalAuthor), alphabetisch statt nach Menge", async () => {
     const koService = new KoService({ repo: new InMemoryKoRepo() });
     // Kategorie "Dach": zoe mit 2 Beiträgen, anna mit 1 — nach Menge käme zoe zuerst.
-    await koService.create({ title: "z1", statement: "s", type: "best_practice", category: "Dach", author: "zoe", tags: [] });
-    await koService.create({ title: "z2", statement: "s", type: "best_practice", category: "Dach", author: "zoe", tags: [] });
-    await koService.create({ title: "a1", statement: "s", type: "best_practice", category: "Dach", author: "anna", tags: [] });
-    await koService.create({ title: "c1", statement: "s", type: "best_practice", category: "Keller", author: "cora", tags: [] });
+    await koService.create({
+      title: "z1",
+      statement: "s",
+      type: "best_practice",
+      category: "Dach",
+      author: "zoe",
+      tags: [],
+    });
+    await koService.create({
+      title: "z2",
+      statement: "s",
+      type: "best_practice",
+      category: "Dach",
+      author: "zoe",
+      tags: [],
+    });
+    await koService.create({
+      title: "a1",
+      statement: "s",
+      type: "best_practice",
+      category: "Dach",
+      author: "anna",
+      tags: [],
+    });
+    await koService.create({
+      title: "c1",
+      statement: "s",
+      type: "best_practice",
+      category: "Keller",
+      author: "cora",
+      tags: [],
+    });
     const library = new LibraryService({ koService });
 
     const ex = await library.expertise();

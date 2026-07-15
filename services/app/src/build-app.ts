@@ -107,6 +107,7 @@ import {
   ValidationService,
   type ValidationSettingsRepo,
 } from "../../validation";
+import type { SemanticPrefilter } from "./duplicate-detection";
 import type { FactoryReset } from "./factory-reset";
 import { makeGuards } from "./http";
 import { impactReport } from "./impact";
@@ -114,7 +115,6 @@ import { makeAssignmentNotifier } from "./notify";
 import { adminRoutes } from "./routes/admin-routes";
 import { askRoutes } from "./routes/ask-routes";
 import { auditRoutes } from "./routes/audit-routes";
-import type { SemanticPrefilter } from "./duplicate-detection";
 import { captureRoutes } from "./routes/capture-routes";
 import { conflictRoutes } from "./routes/conflicts-routes";
 import { externalRoutes } from "./routes/external-routes";

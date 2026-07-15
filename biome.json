@@ -9,6 +9,17 @@
       "complexity": { "noUselessTypeConstraint": "error" }
     }
   },
+  "overrides": [
+    {
+      "include": ["**/*.test.ts"],
+      "linter": {
+        "rules": {
+          "style": { "noNonNullAssertion": "off" },
+          "performance": { "noDelete": "off" }
+        }
+      }
+    }
+  ],
   "formatter": {
     "enabled": true,
     "indentStyle": "space",

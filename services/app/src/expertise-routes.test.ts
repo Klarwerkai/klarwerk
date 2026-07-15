@@ -62,11 +62,19 @@ describe("Experten-Matching Route (hinter Feature-Flag)", () => {
       method: "POST",
       url: "/api/kos",
       headers,
-      payload: { title: "Pumpe", statement: "Pumpe entlüften.", type: "best_practice", category: "Wartung" },
+      payload: {
+        title: "Pumpe",
+        statement: "Pumpe entlüften.",
+        type: "best_practice",
+        category: "Wartung",
+      },
     });
     const res = await app.inject({ method: "GET", url: "/api/analytics/expertise", headers });
     expect(res.statusCode).toBe(200);
-    const body = res.json() as { category: string; contributors: { authorId: string; koCount: number }[] }[];
+    const body = res.json() as {
+      category: string;
+      contributors: { authorId: string; koCount: number }[];
+    }[];
     expect(Array.isArray(body)).toBe(true);
     const wartung = body.find((e) => e.category === "Wartung");
     expect(wartung).toBeDefined();

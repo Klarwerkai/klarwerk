@@ -36,7 +36,9 @@ describe("confluenceStorageToHtml (S2)", () => {
   });
 
   it("Link ohne Body → content-title als Text", () => {
-    const out = confluenceStorageToHtml('<ac:link><ri:page ri:content-title="Wartungsplan"/></ac:link>');
+    const out = confluenceStorageToHtml(
+      '<ac:link><ri:page ri:content-title="Wartungsplan"/></ac:link>',
+    );
     expect(out).toContain("Wartungsplan");
     expect(noMacroTags(out)).toBe(true);
   });

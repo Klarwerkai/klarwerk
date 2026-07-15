@@ -67,7 +67,10 @@ describe("SCRUM-470 (#1): Client-sources werden auf öffentlichen Schreibpfaden 
       method: "PUT",
       url: `/api/kos/${id}`,
       headers,
-      payload: { action: "revise", changes: { statement: "Neuer Inhalt.", sources: forgedSources } },
+      payload: {
+        action: "revise",
+        changes: { statement: "Neuer Inhalt.", sources: forgedSources },
+      },
     });
     expect(revised.statusCode).toBe(200);
     expect(revised.json().statement).toBe("Neuer Inhalt."); // Revise selbst wirkt
@@ -109,7 +112,12 @@ describe("SCRUM-470 (#2): ungültige Review-Aktion → 400, kein KO-Write", () =
       headers,
       payload: {
         items: [
-          { title: "Kandidat A", statement: "Aussage A.", type: "best_practice", category: "Import" },
+          {
+            title: "Kandidat A",
+            statement: "Aussage A.",
+            type: "best_practice",
+            category: "Import",
+          },
         ],
       },
     });

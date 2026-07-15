@@ -68,8 +68,7 @@ export class InMemoryEmbeddingStore implements EmbeddingStore {
     } else {
       if (embeddingVersion !== this.active.embeddingVersion) {
         throw new Error(
-          `upsert: embeddingVersion ${embeddingVersion} ≠ aktive ${this.active.embeddingVersion} — ` +
-            "kein Mischen inkompatibler Vektoren (Versionswechsel = bewusster Re-Index).",
+          `upsert: embeddingVersion ${embeddingVersion} ≠ aktive ${this.active.embeddingVersion} — kein Mischen inkompatibler Vektoren (Versionswechsel = bewusster Re-Index).`,
         );
       }
       if (vector.length !== this.active.dim) {

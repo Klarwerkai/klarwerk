@@ -141,9 +141,10 @@ export function libraryRoutes(
         // behandelt alles außer "reject"/"info" als Accept — ein Tippfehler wie {action:"foo"} würde
         // sonst still ein KO anlegen/revidieren. Ungültige Aktion → 400, kein KO-Write.
         if (!REVIEW_ACTIONS.includes(request.body.action)) {
-          reply
-            .code(400)
-            .send({ error: "BAD_REQUEST", message: "Ungültige Review-Aktion (accept/reject/info)." });
+          reply.code(400).send({
+            error: "BAD_REQUEST",
+            message: "Ungültige Review-Aktion (accept/reject/info).",
+          });
           return;
         }
         try {
