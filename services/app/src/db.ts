@@ -3,7 +3,7 @@ import { ASK_SCHEMA } from "../../ask";
 import { AUDIT_SCHEMA } from "../../audit";
 import { AUTH_SCHEMA } from "../../auth";
 import { CAPTURE_SCHEMA } from "../../capture";
-import { CONFLICTS_SCHEMA } from "../../conflicts";
+import { CONFLICTS_SCHEMA, OVERLAP_SCHEMA, OVERLAP_SETTINGS_SCHEMA } from "../../conflicts";
 import { EXTERNAL_KNOWLEDGE_SCHEMA } from "../../external-search";
 import {
   KO_EVIDENCE_SCHEMA,
@@ -37,6 +37,11 @@ export async function migrate(pool: Pool): Promise<void> {
     ASK_SCHEMA,
     VALIDATION_SCHEMA,
     CONFLICTS_SCHEMA,
+    // SCRUM-496: Duplikat-Board (overlaps) + Anzeige-Schwelle (overlap_settings) — beide gehören zum
+    // conflicts-Modul, wurden aber nie migriert → auf Postgres fehlten die Tabellen, /duplikate brach
+    // ab (nur PG; In-Memory braucht kein Schema). CREATE TABLE IF NOT EXISTS → idempotent.
+    OVERLAP_SCHEMA,
+    OVERLAP_SETTINGS_SCHEMA,
     LIFECYCLE_SCHEMA,
     OBJECTSTORE_SCHEMA,
     IMPORT_CANDIDATES_SCHEMA,
