@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# Hermetisches Gate: Reasoner deterministisch (kein echter Keychain-/Modell-Call). Ohne das hängt der
+# Test-Schritt auf Maschinen MIT hinterlegtem Schlüssel (mode=model, echte Netz-Calls) — dann läuft der
+# volle tools/check nicht durch, partielle Gates werden gefahren und der Lint-Schritt (biome) rutscht
+# durch. Explizit gesetzter Wert gewinnt (z. B. Integrationslauf). Reproduzierbar auf Dev = CI = Ship.
+export KLARWERK_SKIP_KEYCHAIN="${KLARWERK_SKIP_KEYCHAIN:-1}"
 npx vitest run "$@"
