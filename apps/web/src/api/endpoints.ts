@@ -351,7 +351,9 @@ export const endpoints = {
   // SCRUM-181: admin-only Demo-Seed für leere Instanzen (ehrliche seeded/skipped-Rückgabe).
   admin: {
     // Pedi 05.07. (Beta): `force` lädt das Demo-Set auch bei bereits erfassten Daten.
-    demoSeed: (force = false) => api.post<DemoSeedResult>("/admin/demo-seed", { force }),
+    // SCRUM-487: `locale` (UI-Sprache) steuert die Sprache der Demo-Inhalte (Server-Default "de").
+    demoSeed: (force = false, locale?: string) =>
+      api.post<DemoSeedResult>("/admin/demo-seed", { force, ...(locale ? { locale } : {}) }),
     // Pedi 02.07./05.07.: Demodaten komplett entfernen (inkl. Demo-Anwender); Merker überlebt
     // Tester-Bearbeitungen.
     demoPurge: () =>

@@ -80,7 +80,7 @@ const ACCESS_STATE_TONE: Record<AiAccessState, string> = {
 };
 
 export function Admin(): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const query = useUsers();
   const audit = useAudit();
   // SCRUM-437: Live-Zahlen für die Bereitschafts-Checkliste (dedupt mit vorhandenen Queries).
@@ -146,7 +146,8 @@ export function Admin(): JSX.Element {
   // SCRUM-181: Demodaten in eine LEERE Instanz laden (admin-only). Ehrliche skipped/seeded-Meldung.
   const demoSeed = useMutation<DemoSeedResult, unknown, boolean | undefined>({
     // Pedi 05.07. (Beta): force lädt das Demo-Set auch bei bereits erfassten Daten.
-    mutationFn: (force) => endpoints.admin.demoSeed(force ?? false),
+    // SCRUM-487: Demo-Sprache = aktuelle UI-Sprache des ladenden Admins.
+    mutationFn: (force) => endpoints.admin.demoSeed(force ?? false, i18n.language),
     onSuccess: (r) => {
       for (const key of [
         ["users"],

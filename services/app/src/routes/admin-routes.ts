@@ -19,9 +19,12 @@ export function adminRoutes(
       }
       // Pedi 05.07. (Beta): `force` lädt das Demo-Set auch bei bereits erfassten Daten (erst wird
       // nur das vorhandene Demo-Set aufgeräumt, echte Daten bleiben). Ohne `force` unverändert.
-      const body = (request.body ?? {}) as { force?: unknown };
+      // SCRUM-487: `locale` (DE/EN/NL) steuert die Sprache der Demo-Inhalte — das Frontend sendet die
+      // aktuelle UI-Sprache des ladenden Admins; unbekannt/leer → Default "de".
+      const body = (request.body ?? {}) as { force?: unknown; locale?: unknown };
       const force = body.force === true;
-      const result = await seedDemoForAdmin(services, user.id, { force });
+      const locale = body.locale === "en" ? "en" : body.locale === "nl" ? "nl" : ("de" as const);
+      const result = await seedDemoForAdmin(services, user.id, { force, locale });
       // Ehrliche Rückgabe: seeded vs. skipped (Instanz nicht leer) inkl. Kennzahlen.
       reply.code(200).send(result);
     });

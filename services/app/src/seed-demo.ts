@@ -5,6 +5,7 @@ import type { KoService } from "../../knowledge-object";
 import type { LifecycleService } from "../../lifecycle";
 import type { ObjectStore } from "../../object-store";
 import type { ValidationService } from "../../validation";
+import { DEMO_GAP_QUESTIONS, type DemoLocale, demoTexts } from "./demo-content";
 
 // SCRUM-156/181: reproduzierbarer Demo-/Dev-Seed. Erzeugt einen kleinen, ehrlichen Bestand
 // AUSSCHLIESSLICH über die echten Services — Audit/Statuslogik/Side-Effects bleiben real,
@@ -40,10 +41,10 @@ function isDemoEmail(email: string): boolean {
 }
 
 // Bug (Pedi 04.07.): Die vom Seed erzeugte Demo-Wissenslücke gehört zu den Beispielen und muss
-// beim Demo-Purge mitverschwinden. EINE Quelle für Seed UND Purge (Abgleich per Frage-Präfix,
-// robust gegen die Normalisierung der gespeicherten Gap-Frage).
-export const DEMO_GAP_QUESTION =
-  "Warum schwankt der Dosierwert an Linie L4 nach jedem Schichtwechsel?";
+// beim Demo-Purge mitverschwinden. SCRUM-487: die Frage ist jetzt sprachabhängig (DE/EN/NL) — der
+// Purge gleicht deshalb gegen ALLE drei lokalisierten Fragen ab (Frage-Präfix, robust gegen die
+// Normalisierung der gespeicherten Gap-Frage). DEMO_GAP_QUESTION (DE) bleibt für Rückwärtskompat.
+export const DEMO_GAP_QUESTION = demoTexts("de").gapQuestion;
 
 const TINY_PNG =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
@@ -80,7 +81,10 @@ interface SeedActors {
 
 // Deterministischer Seed über die echten Services. Guard: nur eine frische, NOCH NICHT
 // eingerichtete Instanz (needsSetup) → CLI/Dev-Pfad. Idempotent (zweiter Lauf überspringt).
-export async function seedDemo(services: DemoSeedServices): Promise<SeedResult> {
+export async function seedDemo(
+  services: DemoSeedServices,
+  locale: DemoLocale = "de",
+): Promise<SeedResult> {
   if (!(await services.auth.needsSetup()) || (await services.ko.list()).length > 0) {
     return EMPTY_RESULT;
   }
@@ -93,7 +97,7 @@ export async function seedDemo(services: DemoSeedServices): Promise<SeedResult> 
     password: "demo-admin-pass",
   });
   const actors = await seedDemoUsers(services, admin.id);
-  return buildDemoContent(services, { adminId: admin.id, ...actors });
+  return buildDemoContent(services, { adminId: admin.id, ...actors }, locale);
 }
 
 // SCRUM-181: Admin-getriebener Demo-Seed für eine BEREITS eingerichtete Instanz (Login existiert).
@@ -108,7 +112,7 @@ export async function seedDemo(services: DemoSeedServices): Promise<SeedResult> 
 export async function seedDemoForAdmin(
   services: DemoSeedServices,
   adminId: string,
-  opts?: { force?: boolean },
+  opts?: { force?: boolean; locale?: DemoLocale },
 ): Promise<SeedResult> {
   const hasData = (await services.ko.list()).length > 0;
   if (hasData && !opts?.force) {
@@ -119,7 +123,8 @@ export async function seedDemoForAdmin(
     await purgeDemoSeed(services, adminId);
   }
   const actors = await seedDemoUsers(services, adminId);
-  return buildDemoContent(services, { adminId, ...actors });
+  // SCRUM-487: Demo-Sprache = UI-Sprache des ladenden Admins (Frontend sendet locale); Default "de".
+  return buildDemoContent(services, { adminId, ...actors }, opts?.locale ?? "de");
 }
 
 // Legt Controller/Experte an und gibt sie über den (realen) Admin frei. Idempotent: existiert ein
@@ -174,11 +179,14 @@ async function ensureDemoUser(
 async function buildDemoContent(
   services: DemoSeedServices,
   actors: SeedActors,
+  locale: DemoLocale = "de",
 ): Promise<SeedResult> {
   const { auth, ko, validation, ask, conflicts, lifecycle, objects } = services;
   const adminId = actors.adminId;
   const carlaId = actors.controllerId;
   const erikId = actors.expertId;
+  // SCRUM-487: lokalisierte Titel/Aussagen/Konflikt-Texte (Kategorien/Tags bleiben sprachneutral).
+  const t = demoTexts(locale);
 
   // SCRUM-308: eindeutiger Herkunfts-Tag für Demo-/Seed-Wissen (kein neues Datenmodell, keine
   // Migration — nur ein zusätzlicher Tag im vorhandenen tags-Feld). Muss mit dem FE-Konstanten
@@ -189,23 +197,22 @@ async function buildDemoContent(
   // --- Wissensobjekte (verschiedene Kategorien, Arten, Trust, Tags) ---
   const koValid = await ko.create({
     demoSeed: true,
-    title: "Ventil X bei Überdruck manuell schließen.",
-    statement:
-      "Bei Überdruck über 6 bar Ventil X von Hand schließen, bis die Anlage entlastet ist.",
+    title: t.koValid.title,
+    statement: t.koValid.statement,
     type: "best_practice",
     category: "Anlage 1",
     author: erikId,
     tags: ["ventil", "überdruck", "sicherheit", DEMO_TAG],
-    conditions: ["Druck > 6 bar"],
-    measures: ["Ventil X schließen"],
+    conditions: t.koValid.conditions ?? [],
+    measures: t.koValid.measures ?? [],
     confidence: 80,
     neededValidations: 2,
     asset: "ANL-01",
   });
   const koOpen = await ko.create({
     demoSeed: true,
-    title: "Pumpe P2 alle 200 Betriebsstunden schmieren.",
-    statement: "Pumpe P2 alle 200 h mit Fett Typ Z schmieren.",
+    title: t.koOpen.title,
+    statement: t.koOpen.statement,
     type: "technik",
     category: "Anlage 2",
     author: erikId,
@@ -215,8 +222,8 @@ async function buildDemoContent(
   });
   const koWarm = await ko.create({
     demoSeed: true,
-    title: "Bei Kaltstart zuerst die Vorwärmung aktivieren.",
-    statement: "Vor dem Kaltstart die Vorwärmung 10 min laufen lassen.",
+    title: t.koWarm.title,
+    statement: t.koWarm.statement,
     type: "lernkurve",
     category: "Anlage 1",
     author: erikId,
@@ -226,8 +233,8 @@ async function buildDemoContent(
   });
   const koNoWarm = await ko.create({
     demoSeed: true,
-    title: "Vorwärmung bei Kaltstart ist nicht nötig.",
-    statement: "Kaltstart ohne Vorwärmung ist möglich und spart Zeit.",
+    title: t.koNoWarm.title,
+    statement: t.koNoWarm.statement,
     type: "negativwissen",
     category: "Anlage 1",
     author: adminId,
@@ -239,8 +246,8 @@ async function buildDemoContent(
   // Demo-Bestand. Zwei echte, gegensätzliche Farb-Vorgaben — der klassische „direkt unvereinbar"-Fall.
   const koCarBlau = await ko.create({
     demoSeed: true,
-    title: "Firmenwagen: Pflichtfarbe Blau",
-    statement: "Alle Firmenwagen müssen blau sein.",
+    title: t.koCarBlau.title,
+    statement: t.koCarBlau.statement,
     type: "best_practice",
     category: "Fuhrpark",
     author: erikId,
@@ -250,8 +257,8 @@ async function buildDemoContent(
   });
   const koCarRot = await ko.create({
     demoSeed: true,
-    title: "Firmenwagen-Bestellrichtlinie: Farbe Rot",
-    statement: "Firmenwagen werden ausschließlich in der Farbe Rot bestellt.",
+    title: t.koCarRot.title,
+    statement: t.koCarRot.statement,
     type: "best_practice",
     category: "Fuhrpark",
     author: carlaId,
@@ -261,8 +268,8 @@ async function buildDemoContent(
   });
   const koFilter = await ko.create({
     demoSeed: true,
-    title: "Filter F3 monatlich auf Verschmutzung prüfen.",
-    statement: "Filter F3 einmal pro Monat auf Verschmutzung prüfen und bei Bedarf tauschen.",
+    title: t.koFilter.title,
+    statement: t.koFilter.statement,
     type: "best_practice",
     category: "Anlage 3",
     author: erikId,
@@ -280,23 +287,21 @@ async function buildDemoContent(
   // Demo-Lücke entstünde nicht mehr (Seed-Test fängt das ab).
   const koPflege = await ko.create({
     demoSeed: true,
-    title: "Sturzprotokoll noch am selben Tag anlegen.",
-    statement:
-      "Stürzt ein Bewohner, das Sturzprotokoll sofort anlegen und die Pflegedienstleitung informieren — Erinnerungen am Folgetag sind unzuverlässig.",
+    title: t.koPflege.title,
+    statement: t.koPflege.statement,
     type: "best_practice",
     category: "Pflege & Gesundheit",
     author: erikId,
     tags: ["pflege", "dokumentation", "übergabe", DEMO_TAG],
-    conditions: ["Sturzereignis eines Bewohners"],
-    measures: ["Protokoll sofort anlegen", "PDL informieren"],
+    conditions: t.koPflege.conditions ?? [],
+    measures: t.koPflege.measures ?? [],
     confidence: 70,
     neededValidations: 2,
   });
   const koKanzlei = await ko.create({
     demoSeed: true,
-    title: "Fristsachen doppelt eintragen: Akte UND zentraler Kalender.",
-    statement:
-      "Jede Frist wird sowohl in der Akte als auch im zentralen Fristenkalender notiert; nur der Kalender löst die Vorfrist eine Woche vorher aus.",
+    title: t.koKanzlei.title,
+    statement: t.koKanzlei.statement,
     type: "best_practice",
     category: "Kanzlei & Beratung",
     author: adminId,
@@ -306,9 +311,8 @@ async function buildDemoContent(
   });
   await ko.create({
     demoSeed: true,
-    title: "Vereinsfest: Schankgenehmigung sechs Wochen vorher beantragen.",
-    statement:
-      "Die Gemeinde braucht den Antrag auf Schankgenehmigung spätestens sechs Wochen vor dem Fest — später wird es eng, weil der Ordnungsamts-Ausschuss nur monatlich tagt.",
+    title: t.koVerein.title,
+    statement: t.koVerein.statement,
     type: "lernkurve",
     category: "Verein & Ehrenamt",
     author: erikId,
@@ -318,9 +322,8 @@ async function buildDemoContent(
   });
   await ko.create({
     demoSeed: true,
-    title: "Wasserschaden: Erstmeldung ohne Gutachten sofort anlegen.",
-    statement:
-      "Bei gemeldetem Wasserschaden die Schadenakte sofort mit der Erstmeldung eröffnen und nicht auf das Gutachten warten — die Regressfrist läuft ab Meldung, nicht ab Gutachten.",
+    title: t.koWasser.title,
+    statement: t.koWasser.statement,
     type: "negativwissen",
     category: "Versicherung",
     author: adminId,
@@ -337,23 +340,21 @@ async function buildDemoContent(
   // Reasoner eine Pseudo-Antwort und die Demo-Lücke entstünde nicht mehr (Seed-Test prüft).
   await ko.create({
     demoSeed: true,
-    title: "Schweißnaht Baugruppe 7: Werkstück vorwärmen senkt Nacharbeit.",
-    statement:
-      "Seit die Werkstücke vor dem Schweißen auf 80 °C vorgewärmt werden, geht die Nacharbeitsquote der Naht deutlich zurück — über drei Monate dokumentierte Lernkurve der Spätschicht.",
+    title: t.koSchweiss.title,
+    statement: t.koSchweiss.statement,
     type: "lernkurve",
     category: "Anlage 2",
     author: erikId,
     tags: ["schweißen", "nacharbeit", "qualität", DEMO_TAG],
-    conditions: ["Werkstück kälter als 80 °C"],
-    measures: ["Vorwärmen auf 80 °C", "Temperatur dokumentieren"],
+    conditions: t.koSchweiss.conditions ?? [],
+    measures: t.koSchweiss.measures ?? [],
     confidence: 55,
     neededValidations: 2,
   });
   await ko.create({
     demoSeed: true,
-    title: "Presse 3: dumpfes Brummen im Hauptlager ernst nehmen.",
-    statement:
-      "Beginnt das Hauptlager der Presse dumpf zu brummen, fällt es erfahrungsgemäß binnen weniger Tage aus — Gefühl erfahrener Instandhalter, noch ohne Messreihe.",
+    title: t.koPresse.title,
+    statement: t.koPresse.statement,
     type: "bauchgefuehl",
     category: "Anlage 2",
     author: erikId,
@@ -363,9 +364,8 @@ async function buildDemoContent(
   });
   await ko.create({
     demoSeed: true,
-    title: "Auffällig unruhige Nacht kündigt oft einen Infekt an.",
-    statement:
-      "Wird ein sonst ruhiger Bewohner nachts auffällig unruhig, folgt erfahrungsgemäß binnen 48 Stunden ein Infekt — Erfahrungsgefühl der Nachtwachen, ärztlich nicht bestätigt.",
+    title: t.koNacht.title,
+    statement: t.koNacht.statement,
     type: "bauchgefuehl",
     category: "Pflege & Gesundheit",
     author: erikId,
@@ -375,9 +375,8 @@ async function buildDemoContent(
   });
   await ko.create({
     demoSeed: true,
-    title: "Zu schnelle Zustimmung der Gegenseite: Nachforderungen einplanen.",
-    statement:
-      "Nimmt die Gegenseite ein Vergleichsangebot ungewöhnlich schnell an, folgen erfahrungsgemäß Nachforderungen — Bauchgefühl aus vielen Verfahren, keine belastbare Statistik.",
+    title: t.koVergleich.title,
+    statement: t.koVergleich.statement,
     type: "bauchgefuehl",
     category: "Kanzlei & Beratung",
     author: adminId,
@@ -387,9 +386,8 @@ async function buildDemoContent(
   });
   await ko.create({
     demoSeed: true,
-    title: "Drehmomentschlüssel der Montage halbjährlich kalibrieren.",
-    statement:
-      "Alle Drehmomentschlüssel der Montage werden halbjährlich kalibriert; das Prüfprotokoll hängt am Gerät und wird bei der Ausgabe kontrolliert.",
+    title: t.koDreh.title,
+    statement: t.koDreh.statement,
     type: "technik",
     category: "Anlage 3",
     author: erikId,
@@ -399,9 +397,8 @@ async function buildDemoContent(
   });
   await ko.create({
     demoSeed: true,
-    title: "Notstromaggregat monatlich 30 Minuten unter Last testen.",
-    statement:
-      "Das Notstromaggregat läuft einmal im Monat 30 Minuten unter Last; erst der Lasttest zeigt schwache Batterien und verharzte Regler.",
+    title: t.koNotstrom.title,
+    statement: t.koNotstrom.statement,
     type: "technik",
     category: "Anlage 1",
     author: adminId,
@@ -411,9 +408,8 @@ async function buildDemoContent(
   });
   await ko.create({
     demoSeed: true,
-    title: "Schaltschränke nicht mit Druckluft ausblasen.",
-    statement:
-      "Druckluft drückt Staub tiefer in Kontakte und Lüfter der Schaltschränke — führte zweimal zu Ausfällen. Nur absaugen, nie ausblasen.",
+    title: t.koSchalt.title,
+    statement: t.koSchalt.statement,
     type: "negativwissen",
     category: "Anlage 3",
     author: erikId,
@@ -448,7 +444,7 @@ async function buildDemoContent(
   // vorhandenen KOs (Ventil/Überdruck/Pumpe/Filter/Kaltstart/Vorwärmung samt deren Stoppwörtern
   // wie „die"/„dem"). Der deterministische Reasoner-Fallback findet daher keinen Treffer →
   // echte Wissenslücke statt Antwort; danach Priorität wie bisher auf „hoch". ---
-  const asked = await ask.ask(DEMO_GAP_QUESTION, adminId);
+  const asked = await ask.ask(t.gapQuestion, adminId);
   if (asked.gap) {
     await ask.setGapPriority(asked.gap.id, "hoch");
   }
@@ -463,8 +459,7 @@ async function buildDemoContent(
       koA: koWarm.id,
       koB: koNoWarm.id,
       type: "truth",
-      description:
-        "Automatisch erkannt: A verlangt Vorwärmung vor dem Kaltstart, B hält sie für unnötig.",
+      description: t.warmConflict.description,
     },
     {
       trigger: "validation",
@@ -472,21 +467,21 @@ async function buildDemoContent(
       promptVersion: "kon-v1",
       modelLabel: "demo:seed",
       confidence: 0.94,
-      rationale: "A verlangt Vorwärmung vor dem Kaltstart, B erklärt sie für unnötig.",
+      rationale: t.warmConflict.rationale,
       quotes: {
-        a: "Vor dem Kaltstart die Vorwärmung 10 min laufen lassen.",
-        b: "Kaltstart ohne Vorwärmung ist möglich und spart Zeit.",
+        a: t.warmConflict.quoteA,
+        b: t.warmConflict.quoteB,
       },
       kollision: {
-        streitpunkt: "Vorwärmung bei Kaltstart",
+        streitpunkt: t.warmConflict.streitpunkt,
         seiteA: {
-          kernaussage: "Vor dem Kaltstart erst 10 Minuten vorwärmen.",
-          streitwert: "Vorwärmung 10 min",
+          kernaussage: t.warmConflict.aKern,
+          streitwert: t.warmConflict.aWert,
           streitwertWoertlich: true,
         },
         seiteB: {
-          kernaussage: "Kaltstart ist ohne Vorwärmung möglich.",
-          streitwert: "ohne Vorwärmung",
+          kernaussage: t.warmConflict.bKern,
+          streitwert: t.warmConflict.bWert,
           streitwertWoertlich: true,
         },
       },
@@ -502,8 +497,7 @@ async function buildDemoContent(
       koA: koCarBlau.id,
       koB: koCarRot.id,
       type: "truth",
-      description:
-        "Automatisch erkannt: A schreibt Blau als Pflichtfarbe vor, B bestellt ausschließlich Rot.",
+      description: t.carConflict.description,
     },
     {
       trigger: "validation",
@@ -511,22 +505,21 @@ async function buildDemoContent(
       promptVersion: "kon-v1",
       modelLabel: "demo:seed",
       confidence: 0.9,
-      rationale:
-        "A schreibt Blau als Pflichtfarbe vor, während B Firmenwagen ausschließlich in Rot bestellt — direkt unvereinbar.",
+      rationale: t.carConflict.rationale,
       quotes: {
-        a: "Alle Firmenwagen müssen blau sein.",
-        b: "Firmenwagen werden ausschließlich in der Farbe Rot bestellt.",
+        a: t.carConflict.quoteA,
+        b: t.carConflict.quoteB,
       },
       kollision: {
-        streitpunkt: "Firmenwagenfarbe",
+        streitpunkt: t.carConflict.streitpunkt,
         seiteA: {
-          kernaussage: "Alle Firmenwagen müssen blau sein.",
-          streitwert: "blau",
+          kernaussage: t.carConflict.aKern,
+          streitwert: t.carConflict.aWert,
           streitwertWoertlich: true,
         },
         seiteB: {
-          kernaussage: "Firmenwagen ausschließlich in Rot bestellen.",
-          streitwert: "Rot",
+          kernaussage: t.carConflict.bKern,
+          streitwert: t.carConflict.bWert,
           streitwertWoertlich: true,
         },
       },
@@ -567,7 +560,7 @@ async function buildDemoContent(
   await ko.addSource(koValid.id, erikId, {
     label: "Anlagenhandbuch Abschnitt 4.2",
     url: "https://intern.klarwerk/handbuch#4-2",
-    excerpt: "Ventil X bei Überdruck manuell schließen.",
+    excerpt: t.koValid.title,
     provider: "Intern",
   });
 
@@ -628,11 +621,13 @@ export async function purgeDemoSeed(
     await ko.delete(k.id, actor, { hard: true });
   }
   // Bug (Pedi 04.07.): Demo-Wissenslücke(n) mitlöschen — Abgleich über den Frage-Präfix
-  // (robust gegen die Normalisierung der gespeicherten Gap-Frage).
-  const demoGapPrefix = DEMO_GAP_QUESTION.slice(0, 40);
+  // (robust gegen die Normalisierung der gespeicherten Gap-Frage). SCRUM-487: sprachabhängig →
+  // gegen ALLE drei lokalisierten Demo-Fragen prüfen (DE/EN/NL), damit auch ein NL/EN-Seed
+  // rückstandsfrei purge-bar bleibt.
+  const demoGapPrefixes = DEMO_GAP_QUESTIONS.map((q) => q.slice(0, 40));
   let removedGaps = 0;
   for (const g of await ask.listGaps()) {
-    if (g.question.startsWith(demoGapPrefix)) {
+    if (demoGapPrefixes.some((p) => g.question.startsWith(p))) {
       await ask.deleteGap(g.id, true).catch(() => undefined);
       removedGaps += 1;
     }
