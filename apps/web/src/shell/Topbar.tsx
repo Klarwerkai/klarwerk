@@ -12,10 +12,10 @@ import { readIslandMarker } from "./islandMarker";
 
 function LangPill(): JSX.Element {
   const { i18n } = useTranslation();
-  const lang = i18n.language.startsWith("en") ? "en" : "de";
+  const lang = i18n.language.startsWith("en") ? "en" : i18n.language.startsWith("nl") ? "nl" : "de";
   return (
     <div className="flex overflow-hidden rounded-pill border border-hairline text-[12px] font-semibold">
-      {(["de", "en"] as const).map((l) => (
+      {(["de", "en", "nl"] as const).map((l) => (
         <button
           key={l}
           type="button"
