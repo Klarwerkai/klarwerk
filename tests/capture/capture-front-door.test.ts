@@ -174,7 +174,7 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
       "utf8",
     );
     expect(pageSource).toContain("RichTextEditor");
-    expect(pageSource).toContain("Als Entwurf speichern");
+    expect(pageSource).toContain("fd.saveDraft");
     expect(pageSource).toContain("endpoints.drafts.create");
     expect(pageSource).toContain("endpoints.drafts.update");
     expect(pageSource).toContain("get(resumeDraftId)");
@@ -203,9 +203,9 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(pageSource).toContain("applyBodyAssist");
     expect(pageSource).toContain("applySpellingAssistPreservingHtml");
     expect(pageSource).toContain("endpoints.reasoner.assist");
-    expect(pageSource).toContain("KI-Hilfe anwenden");
-    expect(pageSource).toContain("KI-Hilfe-Vorschlag");
-    expect(pageSource).toContain("Als Entwurf speichern");
+    expect(pageSource).toContain("fd.aiHelpApply");
+    expect(pageSource).toContain("fd.aiHelpProposal");
+    expect(pageSource).toContain("fd.saveDraft");
     expect(pageSource).not.toContain("Als Wissensobjekt sichern");
     expect(i18nSource).toContain('"capture.ai.action.clarify": "Klarer"');
     expect(i18nSource).toContain('"capture.ai.action.structure": "Strukturieren"');
@@ -224,16 +224,14 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(pageSource).toContain(
       "applySpellingAssistPreservingHtml(bodyHtml, assistProposal.text)",
     );
-    expect(pageSource).toContain(
-      "Rechtschreibprüfung kann Formatierung aktuell nicht sicher erhalten.",
-    );
+    expect(pageSource).toContain("fd.errSpelling");
     expect(pageSource).toContain('applyBodyAssist("replace", bodyHtml, assistProposal.text)');
-    expect(pageSource).toContain("KI-Hilfe");
-    expect(pageSource).toContain("Rechtschreibung");
-    expect(pageSource).toContain("Uebernehmen");
-    expect(pageSource).toContain("Vorschlag verwerfen");
-    expect(pageSource).toContain("KI-generiert. Bitte pruefen");
-    expect(pageSource).toContain("gespeichert wird erst mit deiner naechsten");
+    expect(pageSource).toContain("fd.aiHelp");
+    expect(pageSource).toContain("fd.aiHelpModes");
+    expect(pageSource).toContain("fd.accept");
+    expect(pageSource).toContain("fd.discardProposal");
+    expect(pageSource).toContain("fd.aiProposalCheck");
+    expect(pageSource).toContain("fd.assistAccepted");
     expect(pageSource).not.toContain("endpoints.validation");
   });
 
@@ -273,19 +271,19 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
       "utf8",
     );
 
-    expect(pageSource).toContain("KI-Struktur vorschlagen");
+    expect(pageSource).toContain("fd.structureSuggest");
     expect(pageSource).toContain("endpoints.reasoner.structure");
     expect(pageSource).toContain("buildFrontDoorStructureInput");
-    expect(pageSource).toContain("KI-Vorschlag");
-    expect(pageSource).toContain("KI-generiert. Bitte pruefen");
-    expect(pageSource).toContain("Uebernehmen");
-    expect(pageSource).toContain("Vorschlag verwerfen");
+    expect(pageSource).toContain("fd.aiProposal");
+    expect(pageSource).toContain("fd.aiProposalCheck");
+    expect(pageSource).toContain("fd.accept");
+    expect(pageSource).toContain("fd.discardProposal");
     expect(pageSource).toContain("FRONT_DOOR_STRUCTURING_UNAVAILABLE_MESSAGE");
     expect(FRONT_DOOR_STRUCTURING_UNAVAILABLE_MESSAGE).toBe(
       "Ich kann das gerade nicht verlaesslich ordnen.",
     );
-    expect(pageSource).toContain("Originaltext bleibt unveraendert");
-    expect(pageSource).toContain("Nichts wird automatisch gespeichert");
+    expect(pageSource).toContain("fd.originalUnchanged");
+    expect(pageSource).toContain("fd.optionalAiHint");
     expect(pageSource).toContain("frontDoorStructuredBodyHtml");
     expect(pageSource).not.toContain("endpoints.ko.create");
     expect(pageSource).not.toContain("endpoints.validation");
@@ -302,7 +300,7 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(pageSource).toContain("scrollIntoView");
     expect(pageSource).toContain("discardStructureProposal");
     expect(pageSource).toContain("discardAssistProposal");
-    expect(pageSource).toContain("Originaltext bleibt unveraendert");
+    expect(pageSource).toContain("fd.originalUnchanged");
   });
 
   it("kehrt nach Draft-Save nach /erfassen zurueck und verhindert Wiederhol-Save", () => {
@@ -338,14 +336,14 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(pageSource).toContain("submitRequestedRef");
     expect(pageSource).toContain("requestSubmit");
     expect(pageSource).toContain("!submittedKo");
-    expect(pageSource).toContain("Pruefen / Einreichen");
-    expect(pageSource).toContain("Neuer Eintrag");
-    expect(pageSource).toContain("Zur Pruefung eingereicht");
-    expect(pageSource).toContain("Validierung oeffnen");
+    expect(pageSource).toContain("fd.submitReview");
+    expect(pageSource).toContain("fd.newEntry");
+    expect(pageSource).toContain("fd.submitted");
+    expect(pageSource).toContain("fd.openValidation");
     expect(pageSource).toContain('setTitle("");');
     expect(pageSource).toContain('setBodyHtml("");');
-    expect(pageSource).toContain("Der Editor ist abgeschlossen und geleert");
-    expect(pageSource).toContain("Speichern oder erneutes Einreichen desselben");
+    expect(pageSource).toContain("fd.submittedBody");
+    expect(pageSource).toContain("fd.submittedBody");
     expect(pageSource).not.toContain("Auto-Validate");
   });
 
@@ -358,10 +356,10 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(pageSource).toContain("discardInputAndReturn");
     expect(pageSource).toContain("hasDiscardRisk");
     expect(pageSource).toContain("window.confirm");
-    expect(pageSource).toContain("Eingabe verwerfen? Nicht gespeicherte Inhalte gehen verloren.");
-    expect(pageSource).toContain("Eingabe verwerfen");
-    expect(pageSource).toContain("Zurueck");
-    expect(pageSource.match(/Vorschlag verwerfen/g) ?? []).toHaveLength(2);
+    expect(pageSource).toContain("fd.confirmDiscard");
+    expect(pageSource).toContain("fd.discardInput");
+    expect(pageSource).toContain("fd.back");
+    expect(pageSource.match(/"fd\.discardProposal"/g) ?? []).toHaveLength(2);
     expect(pageSource).toContain("discardStructureProposal");
     expect(pageSource).toContain("discardAssistProposal");
   });
@@ -405,11 +403,11 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
       expect(page).toContain(`chelp("${id}")`);
     }
     // Klarerer Buttontext.
-    expect(page).toContain("KI-Struktur vorschlagen");
+    expect(page).toContain("fd.structureSuggest");
     expect(page).not.toContain("Soll ich das ordnen?");
     // Aktive Einladung im leeren Editor.
     expect(page).toContain("placeholder=");
-    expect(page).toContain("Beschreibe hier dein Wissen");
+    expect(page).toContain("fd.editorPlaceholder");
     // Der Editor unterstützt einen Placeholder, der nur bei leerem Inhalt erscheint.
     expect(editor).toContain("placeholder");
     expect(editor).toContain("!bodyReadMode(value).hasBody");

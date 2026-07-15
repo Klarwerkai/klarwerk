@@ -289,41 +289,23 @@ export function compareHeadline(metrics: CompareMetrics): CompareHeadline {
   };
 }
 
-// SCRUM-488 (Nullschulung): sprechende Bedeutung je Ampelfarbe statt des bloßen Farbnamens
-// („gruen"/„gelb"/„rot" erklärten nichts). Grün = deckt sich, Gelb = teils/unklar, Rot = weicht ab
-// (bewusst „Unterschied", KEIN bewiesener Widerspruch — konsistent zur SCRUM-486-Rahmung).
-export function compareToneLabel(tone: CompareTone): string {
-  if (tone === "green") {
-    return "Übereinstimmung";
-  }
-  if (tone === "red") {
-    return "Unterschied";
-  }
-  return "Unsicher";
+// SCRUM-488 (Nullschulung): sprechende Bedeutung je Ampelfarbe statt des bloßen Farbnamens.
+// SCRUM-487 (i18n): die Lib liefert nur noch stabile i18n-KEYS; die Ansicht macht t(...). Grün =
+// deckt sich, Gelb = teils/unklar, Rot = weicht ab (bewusst „Unterschied", KEIN bewiesener
+// Widerspruch — die Ehrlichkeits-Aussage lebt jetzt im i18n-Wert dcmp.tone.red.meaning).
+export function compareToneLabelKey(tone: CompareTone): string {
+  return `dcmp.tone.${tone}.label`;
 }
 
 export interface CompareToneLegendEntry {
   tone: CompareTone;
-  label: string;
-  meaning: string;
+  labelKey: string;
+  meaningKey: string;
 }
 
-// Legende der Abschnittsampeln — eine Quelle für die Anzeige UND den Test. Bewusst ehrlich: Rot ist
-// ein Text-/Feldunterschied, kein automatisch bewiesener Konflikt.
+// Legende der Abschnittsampeln — eine Quelle für die Anzeige UND den Test. Nur noch i18n-Keys.
 export const COMPARE_TONE_LEGEND: readonly CompareToneLegendEntry[] = [
-  {
-    tone: "green",
-    label: compareToneLabel("green"),
-    meaning: "Text und Felder decken sich weitgehend.",
-  },
-  {
-    tone: "yellow",
-    label: compareToneLabel("yellow"),
-    meaning: "Teilweise oder unklar — genauer ansehen.",
-  },
-  {
-    tone: "red",
-    label: compareToneLabel("red"),
-    meaning: "Text weicht ab — nur ein Unterschied, kein bewiesener Widerspruch.",
-  },
+  { tone: "green", labelKey: "dcmp.tone.green.label", meaningKey: "dcmp.tone.green.meaning" },
+  { tone: "yellow", labelKey: "dcmp.tone.yellow.label", meaningKey: "dcmp.tone.yellow.meaning" },
+  { tone: "red", labelKey: "dcmp.tone.red.label", meaningKey: "dcmp.tone.red.meaning" },
 ];

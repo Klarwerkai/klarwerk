@@ -121,9 +121,9 @@ describe("KW-DUP-02: read-only duplicate comparison", () => {
     expect(page).not.toContain("KW-DUP-02");
     expect(page).not.toContain("Read-only MVP");
     expect(page).not.toContain("Wissensobjekt nicht gefunden");
-    // Kind-abhaengiger Titel + neutraler „entfernt"-Hinweis statt UUID.
-    expect(page).toContain("Konflikt vergleichen");
-    expect(page).toContain("Objekt entfernt");
+    // SCRUM-487 (i18n): Kind-abhängiger Titel + neutraler „entfernt"-Hinweis jetzt über t()-Keys.
+    expect(page).toContain("dcmp.titleConflict");
+    expect(page).toContain("dcmp.objectRemoved");
   });
 
   // SCRUM-486 C: Status/Wissensart als Klartext-Label in den Vergleichsabschnitten, kein Roh-Enum.

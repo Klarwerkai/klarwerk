@@ -38,11 +38,11 @@ import { type CaptureHelpId, captureHelp } from "../lib/captureHelp";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { isEmptyHtml } from "../lib/richText";
 
-function errorMessage(err: unknown): string {
+function errorMessage(err: unknown, fallback: string): string {
   if (err instanceof ApiError) {
     return err.message;
   }
-  return err instanceof Error ? err.message : "Speichern fehlgeschlagen.";
+  return err instanceof Error ? err.message : fallback;
 }
 
 export function CaptureFrontDoor(): JSX.Element {
@@ -153,7 +153,7 @@ export function CaptureFrontDoor(): JSX.Element {
       navigate("/erfassen");
       return;
     }
-    if (!window.confirm("Eingabe verwerfen? Nicht gespeicherte Inhalte gehen verloren.")) {
+    if (!window.confirm(t("fd.confirmDiscard"))) {
       return;
     }
     resetForNewEntry();
@@ -190,7 +190,7 @@ export function CaptureFrontDoor(): JSX.Element {
           return;
         }
         setActiveDraftId(null);
-        setErr(errorMessage(e));
+        setErr(errorMessage(e, t("fd.errSaveFailed")));
       })
       .finally(() => {
         if (!cancelled) {
@@ -201,7 +201,7 @@ export function CaptureFrontDoor(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [resumeDraftId, clearStructureState, clearAssistState]);
+  }, [resumeDraftId, clearStructureState, clearAssistState, t]);
 
   useEffect(() => {
     if (!structureProposal && !assistProposal) {
@@ -250,7 +250,7 @@ export function CaptureFrontDoor(): JSX.Element {
       setAssistErr(null);
     },
     onError: () => {
-      setAssistErr("Ich kann diese KI-Hilfe gerade nicht verlaesslich ausfuehren.");
+      setAssistErr(t("fd.errAssist"));
     },
   });
 
@@ -273,7 +273,7 @@ export function CaptureFrontDoor(): JSX.Element {
       const savedTitle = draft.payload.title ?? derivedTitle;
       setActiveDraftId(draft.id);
       setErr(null);
-      push("success", "Entwurf gespeichert.");
+      push("success", t("fd.toastSaved"));
       void qc.invalidateQueries({ queryKey: ["drafts"] });
       navigate("/erfassen", {
         replace: true,
@@ -287,7 +287,7 @@ export function CaptureFrontDoor(): JSX.Element {
     },
     onError: (e) => {
       saveRequestedRef.current = false;
-      setErr(errorMessage(e));
+      setErr(errorMessage(e, t("fd.errSaveFailed")));
     },
   });
 
@@ -314,14 +314,14 @@ export function CaptureFrontDoor(): JSX.Element {
       clearStructureState();
       clearAssistState();
       setErr(null);
-      push("success", "Zur Pruefung eingereicht.");
+      push("success", t("fd.toastSubmitted"));
       void qc.invalidateQueries({ queryKey: ["validation"] });
       void qc.invalidateQueries({ queryKey: ["kos"] });
       void qc.invalidateQueries({ queryKey: ["drafts"] });
     },
     onError: (e) => {
       submitRequestedRef.current = false;
-      setErr(errorMessage(e));
+      setErr(errorMessage(e, t("fd.errSaveFailed")));
     },
   });
 
@@ -367,7 +367,7 @@ export function CaptureFrontDoor(): JSX.Element {
     if (assistProposal.action === "spelling") {
       const result = applySpellingAssistPreservingHtml(bodyHtml, assistProposal.text);
       if (!result.applied) {
-        setAssistErr("Rechtschreibprüfung kann Formatierung aktuell nicht sicher erhalten.");
+        setAssistErr(t("fd.errSpelling"));
         setAssistAccepted(false);
         return;
       }
@@ -407,40 +407,37 @@ export function CaptureFrontDoor(): JSX.Element {
     return (
       <div className="mx-auto max-w-5xl">
         <PageHeader
-          kicker="Erfassen"
-          title="Dokument-Canvas"
+          kicker={t("fd.kicker")}
+          title={t("fd.title")}
           actions={
             <Link className="text-sm font-semibold text-muted hover:text-ink" to="/erfassen">
-              Zurueck zu Wissen erfassen
+              {t("fd.backToCapture")}
             </Link>
           }
         />
         <Card className="space-y-4 border-trust-pos-fill/40 bg-trust-pos-bg">
           <div className="flex items-center gap-1.5 font-semibold text-trust-pos-text">
             <CheckCircle2 size={16} />
-            Zur Pruefung eingereicht: <strong>{submittedKo.title}</strong>
+            {t("fd.submitted")} <strong>{submittedKo.title}</strong>
             {/* SCRUM-474 P1: was „eingereicht/Validierung" heißt und was jetzt (nicht automatisch) passiert. */}
             <HelpTip {...chelp("savedNext")} />
           </div>
-          <p className="text-sm leading-relaxed text-trust-pos-text/90">
-            Der Editor ist abgeschlossen und geleert. Speichern oder erneutes Einreichen desselben
-            Inhalts ist gesperrt; ein neuer Eintrag startet nur bewusst ueber den Button.
-          </p>
+          <p className="text-sm leading-relaxed text-trust-pos-text/90">{t("fd.submittedBody")}</p>
           <div className="flex flex-wrap gap-2">
             <Link
               className="inline-flex items-center justify-center rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
               to="/validierung"
             >
-              Validierung oeffnen
+              {t("fd.openValidation")}
             </Link>
             <Link
               className="inline-flex items-center justify-center rounded-btn border border-hairline bg-page px-3 py-1.5 text-[12.5px] font-semibold text-text hover:bg-hairline-soft"
               to={`/wissen/${submittedKo.id}`}
             >
-              Objekt ansehen
+              {t("fd.viewObject")}
             </Link>
             <Button type="button" variant="ghost" onClick={resetForNewEntry}>
-              Neuer Eintrag
+              {t("fd.newEntry")}
             </Button>
           </div>
         </Card>
@@ -452,11 +449,11 @@ export function CaptureFrontDoor(): JSX.Element {
     <div className="mx-auto max-w-5xl">
       {/* SCRUM-488: Migrationssprache raus — der Link sagt, was ihn erwartet (nicht die interne Historie). */}
       <PageHeader
-        kicker="Erfassen"
-        title="Dokument-Canvas"
+        kicker={t("fd.kicker")}
+        title={t("fd.title")}
         actions={
           <Link className="text-sm font-semibold text-muted hover:text-ink" to="/erfassen">
-            Alle Erfassungs-Modi
+            {t("fd.allModes")}
           </Link>
         }
       />
@@ -468,8 +465,7 @@ export function CaptureFrontDoor(): JSX.Element {
             onSubmit={(event) => {
               event.preventDefault();
               // SCRUM-474 P0: Der Primär-Pfad (Enter/Form-Submit + prominenter Button) REICHT EIN
-              // (promote → KO), nicht nur Entwurf speichern. So landet ein frischer Nutzer, der den
-              // Hauptknopf klickt, tatsächlich auf der Erfolgskarte statt still nur zu speichern.
+              // (promote → KO), nicht nur Entwurf speichern.
               if (canSubmit) {
                 requestSubmit();
               }
@@ -477,7 +473,9 @@ export function CaptureFrontDoor(): JSX.Element {
           >
             <div>
               <div className="mb-1.5 flex items-center gap-1">
-                <span className="block text-[12.5px] font-medium text-muted">Titel optional</span>
+                <span className="block text-[12.5px] font-medium text-muted">
+                  {t("fd.titleOptional")}
+                </span>
                 <HelpTip {...chelp("captureTitle")} />
               </div>
               <TextInput
@@ -489,24 +487,24 @@ export function CaptureFrontDoor(): JSX.Element {
 
             <div className="space-y-2">
               <div className="flex items-center gap-1">
-                <SectionLabel>Inhalt</SectionLabel>
+                <SectionLabel>{t("fd.content")}</SectionLabel>
                 <HelpTip {...chelp("tellRaw")} />
               </div>
               {loadingDraft ? (
                 <div className="rounded-card border border-hairline bg-page p-3 text-sm text-muted">
-                  Entwurf wird geladen ...
+                  {t("fd.draftLoading")}
                 </div>
               ) : null}
               {activeDraftId ? (
                 <div className="rounded-card border border-ai/30 bg-ai/5 p-3 text-sm text-text">
-                  Vordertuer-Entwurf geoeffnet. Aenderungen bleiben in diesem Entwurf.
+                  {t("fd.draftOpen")}
                 </div>
               ) : null}
               {/* SCRUM-474 P1: aktive Einladung statt leerer weißer Fläche. */}
               <RichTextEditor
                 value={bodyHtml}
                 onChange={changeBodyHtml}
-                placeholder="Beschreibe hier dein Wissen, wie du es einem Kollegen erklären würdest — die KI strukturiert daraus einen Entwurf, den du prüfst und einreichst."
+                placeholder={t("fd.editorPlaceholder")}
               />
             </div>
 
@@ -523,17 +521,13 @@ export function CaptureFrontDoor(): JSX.Element {
                   ) : (
                     <Sparkles size={15} />
                   )}
-                  KI-Struktur vorschlagen
+                  {t("fd.structureSuggest")}
                 </Button>
                 <HelpTip {...chelp("structureNow")} />
                 {!hasStructureInput ? (
-                  <span className="text-[12.5px] text-muted">
-                    Schreibe zuerst Inhalt, dann kann ein Vorschlag erzeugt werden.
-                  </span>
+                  <span className="text-[12.5px] text-muted">{t("fd.needContentFirst")}</span>
                 ) : (
-                  <span className="text-[12.5px] text-muted">
-                    Optionaler KI-Vorschlag. Nichts wird automatisch gespeichert.
-                  </span>
+                  <span className="text-[12.5px] text-muted">{t("fd.optionalAiHint")}</span>
                 )}
               </div>
               <div className="mt-3 border-t border-ai/10 pt-3">
@@ -542,7 +536,7 @@ export function CaptureFrontDoor(): JSX.Element {
                     className="text-[12px] font-semibold uppercase text-muted-2"
                     htmlFor="frontdoor-ai-assist"
                   >
-                    KI-Hilfe
+                    {t("fd.aiHelp")}
                   </label>
                   <select
                     id="frontdoor-ai-assist"
@@ -568,39 +562,35 @@ export function CaptureFrontDoor(): JSX.Element {
                     ) : (
                       <Sparkles size={15} />
                     )}
-                    KI-Hilfe anwenden
+                    {t("fd.aiHelpApply")}
                   </Button>
-                  <span className="text-[12.5px] text-muted">
-                    Klarer, strukturieren, erweitern, Rechtschreibung oder formatieren.
-                  </span>
+                  <span className="text-[12.5px] text-muted">{t("fd.aiHelpModes")}</span>
                 </div>
               </div>
               {structure.isPending ? (
-                <p className="mt-2 text-[12.5px] text-muted">KI-Vorschlag wird erzeugt ...</p>
+                <p className="mt-2 text-[12.5px] text-muted">{t("fd.structureGenerating")}</p>
               ) : null}
               {assist.isPending ? (
-                <p className="mt-2 text-[12.5px] text-muted">KI-Hilfe-Vorschlag wird erzeugt ...</p>
+                <p className="mt-2 text-[12.5px] text-muted">{t("fd.assistGenerating")}</p>
               ) : null}
               {structureErr ? (
                 <div className="mt-3 rounded-card border border-trust-warn-fill/40 bg-trust-warn-bg p-3 text-sm text-trust-warn-text">
-                  {structureErr} Originaltext bleibt unveraendert.
+                  {structureErr} {t("fd.originalUnchanged")}
                 </div>
               ) : null}
               {assistErr ? (
                 <div className="mt-3 rounded-card border border-trust-warn-fill/40 bg-trust-warn-bg p-3 text-sm text-trust-warn-text">
-                  {assistErr} Originaltext bleibt unveraendert.
+                  {assistErr} {t("fd.originalUnchanged")}
                 </div>
               ) : null}
               {structureAccepted ? (
                 <div className="mt-3 rounded-card border border-trust-pos-fill/40 bg-trust-pos-bg p-3 text-sm text-trust-pos-text">
-                  KI-Vorschlag uebernommen. Bitte pruefen; gespeichert wird erst mit deiner
-                  naechsten Aktion.
+                  {t("fd.structureAccepted")}
                 </div>
               ) : null}
               {assistAccepted ? (
                 <div className="mt-3 rounded-card border border-trust-pos-fill/40 bg-trust-pos-bg p-3 text-sm text-trust-pos-text">
-                  KI-Hilfe uebernommen. Bitte pruefen; gespeichert wird erst mit deiner naechsten
-                  Aktion.
+                  {t("fd.assistAccepted")}
                 </div>
               ) : null}
             </div>
@@ -609,31 +599,31 @@ export function CaptureFrontDoor(): JSX.Element {
               <div ref={proposalRef} className="rounded-card border border-ai/30 bg-surface p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <SectionLabel>KI-Vorschlag</SectionLabel>
-                    <p className="text-sm font-semibold text-ink">
-                      KI-generiert. Bitte pruefen, bevor du etwas uebernimmst.
-                    </p>
+                    <SectionLabel>{t("fd.aiProposal")}</SectionLabel>
+                    <p className="text-sm font-semibold text-ink">{t("fd.aiProposalCheck")}</p>
                   </div>
                   {structureProposal.demo ? (
                     <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
-                      Fallback
+                      {t("fd.fallback")}
                     </span>
                   ) : null}
                 </div>
                 <div className="mt-3 space-y-3 text-sm">
                   <div>
-                    <div className="text-[12px] font-semibold uppercase text-muted-2">Titel</div>
+                    <div className="text-[12px] font-semibold uppercase text-muted-2">
+                      {t("fd.fieldTitle")}
+                    </div>
                     <p className="mt-0.5 text-text">{structureProposal.title}</p>
                   </div>
                   <div>
                     <div className="text-[12px] font-semibold uppercase text-muted-2">
-                      Aussage / Kernaussage
+                      {t("fd.fieldStatement")}
                     </div>
                     <p className="mt-0.5 text-text">{structureProposal.statement}</p>
                   </div>
                   <div>
                     <div className="text-[12px] font-semibold uppercase text-muted-2">
-                      Bedingungen
+                      {t("fd.fieldConditions")}
                     </div>
                     {structureProposal.conditions.length > 0 ? (
                       <ul className="mt-1 list-disc space-y-1 pl-5 text-muted">
@@ -642,12 +632,12 @@ export function CaptureFrontDoor(): JSX.Element {
                         ))}
                       </ul>
                     ) : (
-                      <p className="mt-0.5 text-muted">Keine Bedingungen vorgeschlagen.</p>
+                      <p className="mt-0.5 text-muted">{t("fd.noConditions")}</p>
                     )}
                   </div>
                   <div>
                     <div className="text-[12px] font-semibold uppercase text-muted-2">
-                      Massnahmen
+                      {t("fd.fieldMeasures")}
                     </div>
                     {structureProposal.measures.length > 0 ? (
                       <ul className="mt-1 list-disc space-y-1 pl-5 text-muted">
@@ -656,13 +646,13 @@ export function CaptureFrontDoor(): JSX.Element {
                         ))}
                       </ul>
                     ) : (
-                      <p className="mt-0.5 text-muted">Keine Massnahmen vorgeschlagen.</p>
+                      <p className="mt-0.5 text-muted">{t("fd.noMeasures")}</p>
                     )}
                   </div>
                   {structureProposal.tags.length > 0 ? (
                     <div>
                       <div className="text-[12px] font-semibold uppercase text-muted-2">
-                        Hinweise / Tags
+                        {t("fd.fieldTags")}
                       </div>
                       <div className="mt-1 flex flex-wrap gap-1.5">
                         {structureProposal.tags.map((tag) => (
@@ -679,10 +669,10 @@ export function CaptureFrontDoor(): JSX.Element {
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2 border-t border-hairline pt-3">
                   <Button type="button" variant="primary" onClick={acceptStructureProposal}>
-                    Uebernehmen
+                    {t("fd.accept")}
                   </Button>
                   <Button type="button" variant="ghost" onClick={discardStructureProposal}>
-                    Vorschlag verwerfen
+                    {t("fd.discardProposal")}
                   </Button>
                 </div>
               </div>
@@ -692,15 +682,16 @@ export function CaptureFrontDoor(): JSX.Element {
               <div ref={proposalRef} className="rounded-card border border-ai/30 bg-surface p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <SectionLabel>KI-Hilfe-Vorschlag</SectionLabel>
+                    <SectionLabel>{t("fd.aiHelpProposal")}</SectionLabel>
                     <p className="text-sm font-semibold text-ink">
-                      {t(assistActionLabelKey(assistProposal.action))}: KI-generiert. Bitte pruefen,
-                      bevor du etwas uebernimmst.
+                      {t("fd.assistProposalCheck", {
+                        action: t(assistActionLabelKey(assistProposal.action)),
+                      })}
                     </p>
                   </div>
                   {assistProposal.demo ? (
                     <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
-                      Fallback
+                      {t("fd.fallback")}
                     </span>
                   ) : null}
                 </div>
@@ -709,10 +700,10 @@ export function CaptureFrontDoor(): JSX.Element {
                 </p>
                 <div className="mt-4 flex flex-wrap gap-2 border-t border-hairline pt-3">
                   <Button type="button" variant="primary" onClick={acceptAssistProposal}>
-                    Uebernehmen
+                    {t("fd.accept")}
                   </Button>
                   <Button type="button" variant="ghost" onClick={discardAssistProposal}>
-                    Vorschlag verwerfen
+                    {t("fd.discardProposal")}
                   </Button>
                 </div>
               </div>
@@ -724,9 +715,7 @@ export function CaptureFrontDoor(): JSX.Element {
               </div>
             ) : null}
 
-            {/* SCRUM-474 P0: „Prüfen / Einreichen" ist der prominente Haupt-CTA (type=submit → Enter/Form
-                löst Einreichen aus). „Als Entwurf speichern" ist bewusst sekundär (type=button), damit
-                Enter nie versehentlich nur speichert. */}
+            {/* SCRUM-474 P0: „Prüfen / Einreichen" ist der prominente Haupt-CTA (type=submit). */}
             <div className="flex flex-wrap items-center gap-3">
               <span className="inline-flex items-center gap-1">
                 <Button type="submit" variant="primary" disabled={!canSubmit}>
@@ -735,7 +724,7 @@ export function CaptureFrontDoor(): JSX.Element {
                   ) : (
                     <Send size={15} />
                   )}
-                  Pruefen / Einreichen
+                  {t("fd.submitReview")}
                 </Button>
                 <HelpTip {...chelp("submitReview")} />
               </span>
@@ -746,18 +735,16 @@ export function CaptureFrontDoor(): JSX.Element {
                   ) : (
                     <Save size={15} />
                   )}
-                  Als Entwurf speichern
+                  {t("fd.saveDraft")}
                 </Button>
                 <HelpTip {...chelp("saveDraftHelp")} />
               </span>
               <Button type="button" variant="ghost" onClick={discardInputAndReturn}>
                 <ArrowLeft size={15} />
-                {hasDiscardRisk ? "Eingabe verwerfen" : "Zurueck"}
+                {hasDiscardRisk ? t("fd.discardInput") : t("fd.back")}
               </Button>
               {!hasBody ? (
-                <span className="text-[12.5px] text-muted">
-                  Schreibe oder fuege Inhalt ein, dann kannst du pruefen und einreichen.
-                </span>
+                <span className="text-[12.5px] text-muted">{t("fd.writeToSubmit")}</span>
               ) : null}
             </div>
           </form>
@@ -767,33 +754,27 @@ export function CaptureFrontDoor(): JSX.Element {
           <Card className="space-y-3">
             {/* SCRUM-488: Status-Karte mit ?-Hilfe — erklärt Entwurf vs. Einreichen (was passiert, was NICHT). */}
             <div className="flex items-center gap-1.5">
-              <SectionLabel>Status</SectionLabel>
+              <SectionLabel>{t("fd.statusLabel")}</SectionLabel>
               <HelpTip {...chelp("savedNext")} />
             </div>
             <div>
-              <div className="text-[12px] text-muted">Titel beim Speichern</div>
+              <div className="text-[12px] text-muted">{t("fd.titleOnSave")}</div>
               <div className="mt-1 text-sm font-semibold text-ink">{derivedTitle}</div>
             </div>
             <div>
-              <div className="text-[12px] text-muted">Autor</div>
+              <div className="text-[12px] text-muted">{t("fd.author")}</div>
               <div className="mt-1 text-sm text-text">{authorName}</div>
             </div>
             <div>
-              <div className="text-[12px] text-muted">Was beim Speichern passiert</div>
+              <div className="text-[12px] text-muted">{t("fd.whatOnSave")}</div>
               {/* SCRUM-488: Klartext statt kryptisch „Entwurf / fortsetzen". */}
-              <div className="mt-1 text-sm text-text">
-                Wird als Entwurf gesichert — jederzeit fortsetzbar. Zur Prüfung geht er erst, wenn
-                du „Prüfen / Einreichen" wählst; nichts wird automatisch validiert.
-              </div>
+              <div className="mt-1 text-sm text-text">{t("fd.whatOnSaveBody")}</div>
             </div>
           </Card>
           <Card className="space-y-2">
             {/* SCRUM-488: keine interne Migrationssprache — was der vollständige Bereich dem Nutzer bietet. */}
-            <SectionLabel>Mehr Erfassungswege</SectionLabel>
-            <p className="text-sm leading-relaxed text-muted">
-              Brauchst du das klassische Formular, Diktat oder das geführte Interview? Der
-              vollständige Erfassen-Bereich hat alle Wege — dieser Canvas ist der schnelle Einstieg.
-            </p>
+            <SectionLabel>{t("fd.moreWays")}</SectionLabel>
+            <p className="text-sm leading-relaxed text-muted">{t("fd.moreWaysBody")}</p>
           </Card>
         </aside>
       </div>
