@@ -366,6 +366,22 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(pageSource).toContain("discardAssistProposal");
   });
 
+  it("Primaer-Pfad (Form-Submit/Enter) reicht ein statt nur Entwurf zu speichern (SCRUM-474 P0)", () => {
+    const page = readFileSync(
+      resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
+      "utf8",
+    );
+    // Der Form-Submit (Enter + prominenter Button) geht auf den Einreichen-Pfad, nicht auf Draft-Save.
+    const onSubmitStart = page.indexOf("onSubmit=");
+    const onSubmitBlock = page.slice(onSubmitStart, onSubmitStart + 600);
+    expect(onSubmitBlock).toContain("requestSubmit()");
+    expect(onSubmitBlock).not.toContain("requestSave()");
+    // Der prominente Haupt-CTA ist der Einreichen-Button (type=submit, an canSubmit gebunden).
+    expect(page).toMatch(/type="submit"[\s\S]{0,80}disabled=\{!canSubmit\}/);
+    // „Als Entwurf speichern" ist jetzt ein sekundaerer, expliziter Button-Klick (nicht der Form-Submit).
+    expect(page).toContain("onClick={requestSave}");
+  });
+
   it("/erfassen stellt die Vordertuer als Default heraus und behaelt alte Wege", () => {
     const captureSource = readFileSync(
       resolve(process.cwd(), "apps/web/src/pages/Capture.tsx"),

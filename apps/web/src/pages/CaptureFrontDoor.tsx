@@ -455,8 +455,11 @@ export function CaptureFrontDoor(): JSX.Element {
             className="space-y-4"
             onSubmit={(event) => {
               event.preventDefault();
-              if (canSave) {
-                requestSave();
+              // SCRUM-474 P0: Der Primär-Pfad (Enter/Form-Submit + prominenter Button) REICHT EIN
+              // (promote → KO), nicht nur Entwurf speichern. So landet ein frischer Nutzer, der den
+              // Hauptknopf klickt, tatsächlich auf der Erfolgskarte statt still nur zu speichern.
+              if (canSubmit) {
+                requestSubmit();
               }
             }}
           >
@@ -696,20 +699,11 @@ export function CaptureFrontDoor(): JSX.Element {
               </div>
             ) : null}
 
+            {/* SCRUM-474 P0: „Prüfen / Einreichen" ist der prominente Haupt-CTA (type=submit → Enter/Form
+                löst Einreichen aus). „Als Entwurf speichern" ist bewusst sekundär (type=button), damit
+                Enter nie versehentlich nur speichert. */}
             <div className="flex flex-wrap items-center gap-3">
-              <Button type="button" variant="ghost" onClick={discardInputAndReturn}>
-                <ArrowLeft size={15} />
-                {hasDiscardRisk ? "Eingabe verwerfen" : "Zurueck"}
-              </Button>
-              <Button type="submit" variant="primary" disabled={!canSave}>
-                {save.isPending ? (
-                  <Loader2 size={15} className="animate-spin" />
-                ) : (
-                  <Save size={15} />
-                )}
-                Als Entwurf speichern
-              </Button>
-              <Button type="button" variant="outline" disabled={!canSubmit} onClick={requestSubmit}>
+              <Button type="submit" variant="primary" disabled={!canSubmit}>
                 {submit.isPending ? (
                   <Loader2 size={15} className="animate-spin" />
                 ) : (
@@ -717,9 +711,21 @@ export function CaptureFrontDoor(): JSX.Element {
                 )}
                 Pruefen / Einreichen
               </Button>
+              <Button type="button" variant="outline" disabled={!canSave} onClick={requestSave}>
+                {save.isPending ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <Save size={15} />
+                )}
+                Als Entwurf speichern
+              </Button>
+              <Button type="button" variant="ghost" onClick={discardInputAndReturn}>
+                <ArrowLeft size={15} />
+                {hasDiscardRisk ? "Eingabe verwerfen" : "Zurueck"}
+              </Button>
               {!hasBody ? (
                 <span className="text-[12.5px] text-muted">
-                  Schreibe oder fuege Inhalt ein, dann kann gespeichert werden.
+                  Schreibe oder fuege Inhalt ein, dann kannst du pruefen und einreichen.
                 </span>
               ) : null}
             </div>
