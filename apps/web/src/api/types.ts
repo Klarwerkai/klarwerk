@@ -264,7 +264,9 @@ export interface OverlapDetector {
   modelLabel?: string;
   promptVersion?: string;
   lexicalScore: number; // 0..1 deterministische Textdeckung (immer gesetzt)
-  confidence?: number; // Modell-Sicherheit (nur method="model")
+  // Modell-Sicherheit (nur method="model"). SCRUM-486 E: optional — fehlt sie, ist es KEIN „KI-Fund";
+  // die Anzeige führt dann konsistent über die Textdeckung (siehe overlapDetectorInfo.isModelFinding).
+  confidence?: number;
   rationale?: string;
 }
 

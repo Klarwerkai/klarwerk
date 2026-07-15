@@ -5,14 +5,17 @@ import { useSession } from "../app/AuthContext";
 import { useNavGuard } from "../app/NavGuardContext";
 import { useRole } from "../app/RoleContext";
 import { FOOT_ITEMS, NAV_GROUPS, type NavItem, ROLES, type Role, canSee } from "../app/navigation";
-import { useNavBadges } from "../app/useNavBadges";
+import { navBadgeLabelKey, useNavBadges } from "../app/useNavBadges";
 import { Logo } from "./Logo";
 
+// SCRUM-486 E: Badge trägt neben der Zahl ihre Bedeutung — `label` wird zu title + aria-label, damit
+// Maus-Hover und Screenreader sagen, WAS gezählt wird (Widersprüche/Dubletten/Aufgaben/Prüfung).
 function Badge({
   count,
   tone,
   active,
-}: { count: number; tone?: "neutral" | "crit"; active: boolean }): JSX.Element {
+  label,
+}: { count: number; tone?: "neutral" | "crit"; active: boolean; label?: string }): JSX.Element {
   const cls = active
     ? "bg-white/20 text-white"
     : tone === "crit"
@@ -21,6 +24,8 @@ function Badge({
   return (
     <span
       className={`ml-auto rounded-pill px-1.5 py-0.5 font-mono text-[10.5px] font-semibold ${cls}`}
+      title={label}
+      aria-label={label}
     >
       {count}
     </span>
@@ -29,6 +34,7 @@ function Badge({
 
 function NavRow({ item, badge }: { item: NavItem; badge?: number }): JSX.Element {
   const { t } = useTranslation();
+  const badgeLabelKey = item.badgeKey ? navBadgeLabelKey(item.badgeKey) : undefined;
   const navigate = useNavigate();
   const { guard } = useNavGuard();
   const Icon = item.icon;
@@ -63,7 +69,12 @@ function NavRow({ item, badge }: { item: NavItem; badge?: number }): JSX.Element
           </span>
           <span className="truncate">{t(item.labelKey)}</span>
           {item.badgeKey && badge ? (
-            <Badge count={badge} tone={item.badgeTone} active={isActive} />
+            <Badge
+              count={badge}
+              tone={item.badgeTone}
+              active={isActive}
+              label={badgeLabelKey ? t(badgeLabelKey, { count: badge }) : undefined}
+            />
           ) : null}
         </>
       )}

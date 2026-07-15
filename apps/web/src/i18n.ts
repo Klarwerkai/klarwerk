@@ -18,6 +18,11 @@ const de = {
   "nav.validation": "Validierung",
   "nav.conflicts": "Konflikte",
   "nav.duplicates": "Duplikate",
+  // SCRUM-486 E: Sidebar-Badges mit Bedeutung — Zahl + Art (Tooltip/aria-label).
+  "nav.badge.tasks": "{{count}} offene Aufgaben",
+  "nav.badge.validation": "{{count}} warten auf Prüfung",
+  "nav.badge.conflicts": "{{count}} offene Widersprüche",
+  "nav.badge.duplicates": "{{count}} mögliche Dubletten",
   "nav.risk": "Risiko & Lücken",
   "nav.lifecycle": "Lebenszyklus",
   "nav.analytics": "Analytics & Audit",
@@ -2738,6 +2743,11 @@ const en: typeof de = {
   "nav.validation": "Validation",
   "nav.conflicts": "Conflicts",
   "nav.duplicates": "Duplicates",
+  // SCRUM-486 E: sidebar badges with meaning — count + kind (tooltip/aria-label).
+  "nav.badge.tasks": "{{count}} open tasks",
+  "nav.badge.validation": "{{count}} awaiting review",
+  "nav.badge.conflicts": "{{count}} open contradictions",
+  "nav.badge.duplicates": "{{count}} possible duplicates",
   "nav.risk": "Risk & Gaps",
   "nav.lifecycle": "Lifecycle",
   "nav.analytics": "Analytics & Audit",

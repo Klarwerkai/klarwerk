@@ -1,5 +1,18 @@
 import { useConflicts, useDuplicates, useGaps, useValidationBoard } from "../api/hooks";
 
+// SCRUM-486 E: Jeder Sidebar-Badge trägt neben der Zahl seine ART (i18n-Schlüssel mit {{count}}), damit
+// Tooltip/aria-label sagen, WAS die Zahl bedeutet — Widersprüche vs. Dubletten vs. Aufgaben vs. Prüfung.
+export const NAV_BADGE_LABEL_KEY: Record<string, string> = {
+  tasks: "nav.badge.tasks",
+  validation: "nav.badge.validation",
+  conflicts: "nav.badge.conflicts",
+  duplicates: "nav.badge.duplicates",
+};
+
+export function navBadgeLabelKey(badgeKey: string): string | undefined {
+  return NAV_BADGE_LABEL_KEY[badgeKey];
+}
+
 // Echte Sidebar-Badge-Zähler aus den Lese-Hooks (cached). 0 = kein Badge.
 export function useNavBadges(): Record<string, number> {
   const board = useValidationBoard();

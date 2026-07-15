@@ -63,6 +63,36 @@ describe("Berater-Konzept Duplikate 04.07. (Stufe D4): overlapDetectorInfo", () 
     expect(overlapDetectorInfo(entry())).toBeNull();
   });
 
+  // SCRUM-486 E: „KI-Fund" NUR bei tatsächlich vorhandener Konfidenz — sonst konsistent Textabgleich.
+  it("Modell-Methode OHNE Konfidenz → kein KI-Fund: Textabgleich-Label, keine Sicherheit", () => {
+    const info = overlapDetectorInfo(
+      entry({
+        detector: { trigger: "validation", method: "model", lexicalScore: 0.8 },
+      }),
+    );
+    expect(info?.isModelFinding).toBe(false);
+    expect(info?.methodLabelKey).toBe(DUPLICATE_BOARD_TEXT.methodDeterministic);
+    expect(info?.confidencePercent).toBeUndefined();
+  });
+
+  it("Modell-Methode MIT Konfidenz → KI-Fund: Modell-Label + Sicherheit", () => {
+    const info = overlapDetectorInfo(
+      entry({
+        detector: { trigger: "validation", method: "model", lexicalScore: 0.6, confidence: 0.9 },
+      }),
+    );
+    expect(info?.isModelFinding).toBe(true);
+    expect(info?.methodLabelKey).toBe(DUPLICATE_BOARD_TEXT.methodModel);
+    expect(info?.confidencePercent).toBe(90);
+  });
+
+  it("deterministischer Fund ist nie ein KI-Fund", () => {
+    const info = overlapDetectorInfo(
+      entry({ detector: { trigger: "validation", method: "deterministic", lexicalScore: 0.5 } }),
+    );
+    expect(info?.isModelFinding).toBe(false);
+  });
+
   it("Beziehung und Empfehlung werden auf i18n-Schlüssel abgebildet", () => {
     expect(relationLabelKey("identisch")).toBe("dup.relation.identisch");
     expect(relationLabelKey("verwandt")).toBe("dup.relation.verwandt");

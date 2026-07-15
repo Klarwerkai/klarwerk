@@ -45,8 +45,11 @@ export interface OverlapDetectorInfo {
   methodLabelKey: string;
   // Deterministische Textdeckung in Prozent (0..100). Immer aus dem detector ableitbar.
   overlapPercent: number;
-  // Modell-Sicherheit in Prozent — nur bei method="model" mit gesetzter confidence.
+  // Modell-Sicherheit in Prozent — nur bei echtem Modell-Fund (method="model" MIT gesetzter confidence).
   confidencePercent?: number;
+  // SCRUM-486 E: „KI-Fund" NUR bei tatsächlich vorhandener Konfidenz. Ein Modell-Fund ohne confidence
+  // wird konsistent wie ein Textabgleich geführt (Label + Führung), nicht als „KI-Prüfung" etikettiert.
+  isModelFinding: boolean;
   rationale?: string;
   modelLabel?: string;
 }
@@ -58,15 +61,18 @@ export function overlapDetectorInfo(entry: OverlapEntry): OverlapDetectorInfo | 
     return null;
   }
   const clamped = Math.min(1, Math.max(0, d.lexicalScore));
+  const isModelFinding = d.method === "model" && typeof d.confidence === "number";
+  const confidencePercent = isModelFinding
+    ? Math.round(Math.min(1, Math.max(0, d.confidence as number)) * 100)
+    : undefined;
   return {
-    methodLabelKey:
-      d.method === "model"
-        ? DUPLICATE_BOARD_TEXT.methodModel
-        : DUPLICATE_BOARD_TEXT.methodDeterministic,
+    // KI-Label nur, wenn es wirklich ein KI-Fund MIT Sicherheitswert ist — sonst Textabgleich.
+    methodLabelKey: isModelFinding
+      ? DUPLICATE_BOARD_TEXT.methodModel
+      : DUPLICATE_BOARD_TEXT.methodDeterministic,
     overlapPercent: Math.round(clamped * 100),
-    ...(d.method === "model" && typeof d.confidence === "number"
-      ? { confidencePercent: Math.round(Math.min(1, Math.max(0, d.confidence)) * 100) }
-      : {}),
+    isModelFinding,
+    ...(confidencePercent !== undefined ? { confidencePercent } : {}),
     ...(d.rationale ? { rationale: d.rationale } : {}),
     ...(d.modelLabel ? { modelLabel: d.modelLabel } : {}),
   };

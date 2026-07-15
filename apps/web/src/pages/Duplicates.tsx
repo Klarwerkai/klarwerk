@@ -67,7 +67,8 @@ function OverlapDetectorBadge({ entry }: { entry: OverlapEntry }): JSX.Element |
   // Pedi 04.07.: der Inhalt entscheidet, nicht die Wortdeckung. Deshalb führt die KI-Wahrscheinlichkeit
   // („Vermutliches Duplikat · NN %"); die Textdeckung steht nur noch als Nebendetail darunter. Der
   // deterministische Fall (fast wortgleich, ohne KI) führt mit der Textdeckung selbst.
-  const isModel = info.confidencePercent !== undefined;
+  // SCRUM-486 E: „KI-Fund" nur bei echter Konfidenz — Lead, Methoden-Pill und Caption konsistent.
+  const isModel = info.isModelFinding;
   const leadPercent = isModel ? info.confidencePercent : info.overlapPercent;
   return (
     <div className="mt-2 rounded-card border border-ai/20 bg-ai/5 p-2.5">
