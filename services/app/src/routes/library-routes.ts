@@ -22,6 +22,15 @@ function confluenceImportEnabled(): boolean {
   return flag === "1" || flag === "true";
 }
 
+// SCRUM-470 (ben-Review #2): erlaubte Review-Aktionen — Single Source of Truth für die Route-Validierung.
+const REVIEW_ACTIONS: readonly ReviewAction[] = ["accept", "reject", "info"];
+
+// ben-Review #6: schmale, immer sichtbare Log-Linie für best-effort-Erkennung am Import-Accept-Pfad
+// (Fastify läuft ohne eigenen Logger) — analog defaultLog des dup-prefilters. Bewusst kein Werfen.
+function importDetectionLog(msg: string, err: unknown): void {
+  console.warn(`[import-accept-detection] ${msg}`, err);
+}
+
 // SCRUM-470 (S6): Deps für die Erkennung nach einem akzeptierten Import-Kandidaten. Dieselben Bausteine,
 // die auch der Promote-Pfad (capture-routes) nutzt — hier gebündelt, damit der Route-Layer sie an
 // detect*ForKo reichen kann. Optional: fehlt das Bündel, unterbleibt die Erkennung (wie bisher).
@@ -128,6 +137,15 @@ export function libraryRoutes(
         if (!user) {
           return;
         }
+        // SCRUM-470 (ben-Review #2): Review-Aktion an der Route auf die Whitelist prüfen. Der Service
+        // behandelt alles außer "reject"/"info" als Accept — ein Tippfehler wie {action:"foo"} würde
+        // sonst still ein KO anlegen/revidieren. Ungültige Aktion → 400, kein KO-Write.
+        if (!REVIEW_ACTIONS.includes(request.body.action)) {
+          reply
+            .code(400)
+            .send({ error: "BAD_REQUEST", message: "Ungültige Review-Aktion (accept/reject/info)." });
+          return;
+        }
         try {
           const result = await library.reviewImportCandidate(
             request.params.id,
@@ -140,18 +158,24 @@ export function libraryRoutes(
           // detect*ForKo sind selbst fehlertolerant (schlucken Fehler intern) → der Accept kann daran
           // nie scheitern. VOR send(), damit das Ergebnis deterministisch sichtbar ist (analog Promote).
           if (detection && confluenceImportEnabled() && result.koId) {
-            await detectConflictsForKo(result.koId, {
-              ko: detection.ko,
-              conflicts: detection.conflicts,
-              reasoner: detection.reasoner,
-            });
-            await detectDuplicatesForKo(result.koId, {
-              ko: detection.ko,
-              overlaps: detection.overlaps,
-              reasoner: detection.reasoner,
-              settings: detection.overlapSettings,
-              semanticPrefilter: detection.semanticPrefilter,
-            });
+            // ben-Review #6: Erkennungsfehler bleiben best-effort (kippen den Accept nie), werden aber
+            // sichtbar geloggt (statt still geschluckt) — dieselbe Log-Linie wie beim dup-prefilter.
+            await detectConflictsForKo(
+              result.koId,
+              { ko: detection.ko, conflicts: detection.conflicts, reasoner: detection.reasoner },
+              importDetectionLog,
+            );
+            await detectDuplicatesForKo(
+              result.koId,
+              {
+                ko: detection.ko,
+                overlaps: detection.overlaps,
+                reasoner: detection.reasoner,
+                settings: detection.overlapSettings,
+                semanticPrefilter: detection.semanticPrefilter,
+              },
+              importDetectionLog,
+            );
           }
           reply.code(200).send(result);
         } catch (error) {

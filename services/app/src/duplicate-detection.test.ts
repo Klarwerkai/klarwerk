@@ -2,6 +2,7 @@ import { coreText } from "../../conflicts";
 import { InMemoryEmbeddingStore, stubEmbeddingProvider } from "../../embedding";
 import type { KnowledgeObject } from "../../knowledge-object";
 import { describe, expect, it, vi } from "vitest";
+import { detectConflictsForKo } from "./conflict-detection";
 import {
   type DuplicateDetectionDeps,
   type SemanticPrefilter,
@@ -220,6 +221,59 @@ describe("removeKoFromDuplicatePrefilter (GDPR-Kaskadenlöschung)", () => {
     const logs: string[] = [];
     await expect(
       removeKoFromDuplicatePrefilter("k1", prefilter, (msg) => logs.push(msg)),
+    ).resolves.toBeUndefined();
+    expect(logs).toHaveLength(1);
+  });
+});
+
+// ben-Review #6: Erkennungsfehler bleiben best-effort (kein Throw), werden aber sichtbar, wenn ein
+// Log-Haken gereicht wird (z. B. am Import-Accept-Pfad). Ohne Haken = altes stilles Verhalten.
+describe("detect*ForKo — Fehler-Logging (ben #6)", () => {
+  it("detectDuplicatesForKo: Fehler in detectForSubject → Log gefeuert, kein Throw", async () => {
+    const deps = {
+      ko: { get: async () => subject, list: async () => [subject, near1] },
+      overlaps: {
+        detectForSubject: async () => {
+          throw new Error("boom");
+        },
+      },
+      reasoner: { judgeDuplicate: async () => null },
+      settings: { get: async () => null },
+    } as unknown as DuplicateDetectionDeps;
+    const logs: string[] = [];
+    await expect(
+      detectDuplicatesForKo("s", deps, (m) => logs.push(m)),
+    ).resolves.toBeUndefined();
+    expect(logs).toHaveLength(1);
+  });
+
+  it("detectDuplicatesForKo: OHNE Log-Haken bleibt der Fehler still (kein Throw)", async () => {
+    const deps = {
+      ko: { get: async () => subject, list: async () => [subject, near1] },
+      overlaps: {
+        detectForSubject: async () => {
+          throw new Error("boom");
+        },
+      },
+      reasoner: { judgeDuplicate: async () => null },
+      settings: { get: async () => null },
+    } as unknown as DuplicateDetectionDeps;
+    await expect(detectDuplicatesForKo("s", deps)).resolves.toBeUndefined();
+  });
+
+  it("detectConflictsForKo: Fehler in detectForSubject → Log gefeuert, kein Throw", async () => {
+    const deps = {
+      ko: { get: async () => subject, list: async () => [subject, near1] },
+      conflicts: {
+        detectForSubject: async () => {
+          throw new Error("boom");
+        },
+      },
+      reasoner: { judgeConflict: async () => null },
+    } as unknown as Parameters<typeof detectConflictsForKo>[1];
+    const logs: string[] = [];
+    await expect(
+      detectConflictsForKo("s", deps, (m) => logs.push(m)),
     ).resolves.toBeUndefined();
     expect(logs).toHaveLength(1);
   });

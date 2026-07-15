@@ -85,6 +85,8 @@ async function selectPool(
 export async function detectDuplicatesForKo(
   koId: string,
   deps: DuplicateDetectionDeps,
+  // ben-Review #6: optionaler Log-Haken (best-effort bleibt) — analog detectConflictsForKo.
+  log?: (msg: string, err: unknown) => void,
 ): Promise<void> {
   try {
     const subject = await deps.ko.get(koId);
@@ -113,8 +115,9 @@ export async function detectDuplicatesForKo(
       (a, b) => deps.reasoner.judgeDuplicate(a, b),
       { minConfidence },
     );
-  } catch {
+  } catch (err) {
     // Erkennung ist best-effort — Fehler werden bewusst geschluckt, das Einreichen bleibt erfolgreich.
+    log?.(`Duplikaterkennung für KO ${koId} fehlgeschlagen`, err);
   }
 }
 

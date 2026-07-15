@@ -173,7 +173,11 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         }
         try {
           // FR-CAP-07: Autor = angemeldeter Nutzer, serverseitig gesetzt (nicht aus dem Body).
-          const { reviewerIds, ...input } = request.body;
+          // SCRUM-470 (ben-Review #1): Herkunfts-/Vertrauensanker (`sources`: peerValidated, externalId/
+          // pageId, spaceKey, sourceVersion) dürfen NUR über den Import-Pfad gesetzt werden. Auf dem
+          // öffentlichen Schreibpfad Client-`sources` verwerfen — sonst könnte jeder mit ko.create
+          // gefälschte/peer-validierte Anker setzen und spätere pageId-Upserts kapern.
+          const { reviewerIds, sources: _ignoredSources, ...input } = request.body;
           const created = await ko.create({ ...input, author: user.id });
           // SCRUM-395: Prüfer-Vorschlag beim Einreichen — der Autor darf für sein EIGENES,
           // frisch eingereichtes KO Prüfer benennen (dedupliziert, ohne sich selbst).
@@ -373,7 +377,10 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!user) {
               return;
             }
-            reply.code(200).send(await ko.revise(id, body.changes ?? {}, user.id));
+            // SCRUM-470 (ben-Review #1): Client-`sources` auch beim Revise verwerfen — Anker bleiben
+            // dem Import-Pfad vorbehalten. Ohne `sources` in den Changes bleiben die bestehenden erhalten.
+            const { sources: _ignoredSources, ...changes } = body.changes ?? {};
+            reply.code(200).send(await ko.revise(id, changes, user.id));
             return;
           }
           case "comment": {

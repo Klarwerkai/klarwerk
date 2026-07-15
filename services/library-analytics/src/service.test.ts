@@ -208,6 +208,31 @@ describe("LibraryService", () => {
     expect(ko.statement).toBe("Stand V3."); // unverändert
   });
 
+  it("SCRUM-470 (ben #3): Re-Sync OHNE Version bleibt idempotent (kein Dublett, kein Endlos-Revise)", async () => {
+    // Item ohne sourceVersion (confItem setzt sonst 1) — der Kern des Befunds.
+    const { sourceVersion: _v1, ...noVer1 } = confItem({ pageId: "PNV", statement: "Erststand." });
+    const [c1] = await ctx.library.createImportCandidates([noVer1]);
+    const r1 = await ctx.library.reviewImportCandidate(c1!.id, "accept");
+    const ko1 = (await ctx.koService.list()).find((k) => k.id === r1.koId)!;
+    // Effektive Version wird IMMER gespeichert (nie ein versionsloser Anker im Bestand).
+    expect(ko1.sources.find((s) => s.externalId === "PNV")?.sourceVersion).toBe(1);
+    expect(ko1.version).toBe(1);
+
+    // Zweiter Accept derselben pageId, wieder OHNE Version → selbes KO, KEINE Revision (No-op).
+    const { sourceVersion: _v2, ...noVer2 } = confItem({ pageId: "PNV", statement: "nochmal." });
+    const [c2] = await ctx.library.createImportCandidates([noVer2]);
+    const r2 = await ctx.library.reviewImportCandidate(c2!.id, "accept");
+    expect(r2.koId).toBe(r1.koId);
+    const withAnchor = (await ctx.koService.list()).filter((k) =>
+      k.sources.some((s) => s.externalId === "PNV"),
+    );
+    expect(withAnchor).toHaveLength(1); // kein Dublett
+    const ko2 = withAnchor[0]!;
+    expect(ko2.version).toBe(1); // NICHT revidiert → idempotent
+    expect(ko2.statement).toBe("Erststand."); // kein Downgrade auf „nochmal."
+    expect(ko2.sources.find((s) => s.externalId === "PNV")?.sourceVersion).toBe(1); // kein Bump
+  });
+
   it("FR-LIB-03: Bus-Faktor erkennt Einzelquellen", async () => {
     const bf = await ctx.library.busFactor();
     const a1 = bf.find((e) => e.category === "Anlage 1");

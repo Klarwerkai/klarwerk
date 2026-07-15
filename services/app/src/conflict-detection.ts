@@ -34,6 +34,9 @@ export interface ConflictDetectionDeps {
 export async function detectConflictsForKo(
   koId: string,
   deps: ConflictDetectionDeps,
+  // ben-Review #6: optionaler Log-Haken. Der Fehler bleibt geschluckt (best-effort), wird aber sichtbar,
+  // wenn ein Aufrufer (z. B. der Import-Accept-Pfad) einen Logger reicht. Ohne → altes stilles Verhalten.
+  log?: (msg: string, err: unknown) => void,
 ): Promise<void> {
   try {
     const subject = await deps.ko.get(koId);
@@ -49,7 +52,8 @@ export async function detectConflictsForKo(
     await deps.conflicts.detectForSubject(toDetectSubject(subject), pool, (a, b) =>
       deps.reasoner.judgeConflict(a, b),
     );
-  } catch {
+  } catch (err) {
     // Erkennung ist best-effort — Fehler werden bewusst geschluckt, das Einreichen bleibt erfolgreich.
+    log?.(`Konflikterkennung für KO ${koId} fehlgeschlagen`, err);
   }
 }

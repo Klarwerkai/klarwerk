@@ -140,12 +140,14 @@ export class LibraryService {
 
     if (existing && pageId) {
       const current = existing.sources.find((s) => s.externalId === pageId)?.sourceVersion ?? 0;
-      const incoming = item.sourceVersion ?? current + 1;
-      // Monoton: nur eine höhere Version schreibt fort. Gleiche/niedrigere → No-op (idempotent).
+      // ben-Review #3: Ohne explizite Version NICHT hochzählen (früher `current + 1` → jeder versions-
+      // lose Re-Import revidierte endlos). `?? current` heißt: „gleiche Version wie zuletzt" → No-op.
+      // Nur eine tatsächlich höhere (explizite) Version schreibt monoton fort — kein Downgrade.
+      const incoming = item.sourceVersion ?? current;
       if (incoming > current) {
         const nextSources = [
           ...existing.sources.filter((s) => s.externalId !== pageId),
-          this.buildSource(item, actor),
+          this.buildSource(item, actor, incoming),
         ];
         await this.koService.revise(
           existing.id,
@@ -162,6 +164,9 @@ export class LibraryService {
       return existing.id;
     }
 
+    // Erstanlage: die effektive Version wird IMMER gespeichert (auch ohne Item-Version → 1), damit ein
+    // versionsloser Re-Import (current = 1, incoming = 1) sauber als No-op erkannt wird (Idempotenz).
+    const firstVersion = item.sourceVersion ?? 1;
     const ko = await this.koService.create({
       title: item.title,
       statement: item.statement,
@@ -170,14 +175,16 @@ export class LibraryService {
       author: item.author ?? actor,
       tags: item.tags ?? [],
       ...(item.bodyHtml ? { bodyHtml: item.bodyHtml } : {}),
-      ...(pageId ? { sources: [this.buildSource(item, actor)] } : {}),
+      ...(pageId ? { sources: [this.buildSource(item, actor, firstVersion)] } : {}),
     });
     return ko.id;
   }
 
   // SCRUM-470: Herkunfts-Anker aus einem Import-Item. Generisch — provider kommt vom Item
   // (die Confluence-Route setzt "Confluence"); externe Importquellen sind nie peer-validiert.
-  private buildSource(item: ImportItem, actor: string): KoSource {
+  // `effectiveVersion` (ben-Review #3): die tatsächlich geschriebene Version — IMMER gesetzt, damit der
+  // Monotonie-Vergleich beim Re-Sync verlässlich ist (nie ein „versionsloser" Anker im Bestand).
+  private buildSource(item: ImportItem, actor: string, effectiveVersion: number): KoSource {
     return {
       id: this.genId(),
       label: item.title,
@@ -188,7 +195,7 @@ export class LibraryService {
       provider: item.provider ?? null,
       ...(item.pageId ? { externalId: item.pageId } : {}),
       ...(item.spaceKey ? { spaceKey: item.spaceKey } : {}),
-      ...(item.sourceVersion !== undefined ? { sourceVersion: item.sourceVersion } : {}),
+      sourceVersion: effectiveVersion,
       author: item.author ?? actor,
       at: new Date(this.now()).toISOString(),
     };
