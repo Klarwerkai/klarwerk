@@ -4,10 +4,7 @@
     "statement": "Alle Warnschilder in Halle 7 müssen blau lackiert sein.",
     "type": "best_practice",
     "category": "Arbeitssicherheit",
-    "tags": [
-      "arbeitssicherheit",
-      "kennzeichnung"
-    ],
+    "tags": ["arbeitssicherheit", "kennzeichnung"],
     "pageId": "kwdemo-warnfarbe-blau",
     "spaceKey": "KWDEMO",
     "sourceVersion": 3,
@@ -20,10 +17,7 @@
     "statement": "Warnschilder in Halle 7 werden ausschließlich in Rot lackiert.",
     "type": "best_practice",
     "category": "Arbeitssicherheit",
-    "tags": [
-      "arbeitssicherheit",
-      "kennzeichnung"
-    ],
+    "tags": ["arbeitssicherheit", "kennzeichnung"],
     "pageId": "kwdemo-warnfarbe-rot",
     "spaceKey": "KWDEMO",
     "sourceVersion": 3,
@@ -36,10 +30,7 @@
     "statement": "Datenbackups werden täglich erstellt.",
     "type": "technik",
     "category": "IT-Betrieb",
-    "tags": [
-      "it-betrieb",
-      "backup"
-    ],
+    "tags": ["it-betrieb", "backup"],
     "pageId": "kwdemo-backup-taeglich",
     "spaceKey": "KWDEMO",
     "sourceVersion": 3,
@@ -52,10 +43,7 @@
     "statement": "Datenbackups erfolgen nur wöchentlich.",
     "type": "technik",
     "category": "IT-Betrieb",
-    "tags": [
-      "it-betrieb",
-      "backup"
-    ],
+    "tags": ["it-betrieb", "backup"],
     "pageId": "kwdemo-backup-woechentlich",
     "spaceKey": "KWDEMO",
     "sourceVersion": 3,
@@ -68,10 +56,7 @@
     "statement": "Der VPN-Zugang wird seit 2019 über den Client Cisco AnyConnect 3 hergestellt.",
     "type": "technik",
     "category": "IT-Betrieb",
-    "tags": [
-      "it-betrieb",
-      "vpn"
-    ],
+    "tags": ["it-betrieb", "vpn"],
     "pageId": "kwdemo-vpn-2019",
     "spaceKey": "KWDEMO",
     "sourceVersion": 1,
@@ -84,10 +69,7 @@
     "statement": "Reisekosten werden seit 2020 ausschließlich per Papierformular eingereicht.",
     "type": "technik",
     "category": "Verwaltung",
-    "tags": [
-      "verwaltung",
-      "reisekosten"
-    ],
+    "tags": ["verwaltung", "reisekosten"],
     "pageId": "kwdemo-reisekosten-2020",
     "spaceKey": "KWDEMO",
     "sourceVersion": 1,
@@ -100,10 +82,7 @@
     "statement": "Kundinnen und Kunden bevorzugen Rückrufe am Vormittag.",
     "type": "bauchgefuehl",
     "category": "Vertrieb",
-    "tags": [
-      "vertrieb",
-      "unbelegt"
-    ],
+    "tags": ["vertrieb", "unbelegt"],
     "pageId": "kwdemo-claim-rueckruf",
     "spaceKey": "KWDEMO",
     "sourceVersion": 3,
@@ -115,10 +94,7 @@
     "statement": "Das neue CRM verdoppelt die Bearbeitungsgeschwindigkeit im Vertrieb.",
     "type": "bauchgefuehl",
     "category": "Vertrieb",
-    "tags": [
-      "vertrieb",
-      "unbelegt"
-    ],
+    "tags": ["vertrieb", "unbelegt"],
     "pageId": "kwdemo-claim-crm",
     "spaceKey": "KWDEMO",
     "sourceVersion": 3,

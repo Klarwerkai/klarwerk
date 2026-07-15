@@ -4,48 +4,34 @@
     "statement": "All warning signs in hall 7 must be painted blue.",
     "type": "best_practice",
     "category": "Arbeitssicherheit",
-    "tags": [
-      "arbeitssicherheit",
-      "kennzeichnung"
-    ]
+    "tags": ["arbeitssicherheit", "kennzeichnung"]
   },
   {
     "title": "Signage hall 7 — execution",
     "statement": "Warning signs in hall 7 are painted exclusively in red.",
     "type": "best_practice",
     "category": "Arbeitssicherheit",
-    "tags": [
-      "arbeitssicherheit",
-      "kennzeichnung"
-    ]
+    "tags": ["arbeitssicherheit", "kennzeichnung"]
   },
   {
     "title": "Delivery: tyres (A)",
     "statement": "every car is delivered with 4 tyres",
     "type": "technik",
     "category": "Logistik",
-    "tags": [
-      "auslieferung",
-      "reifen"
-    ]
+    "tags": ["auslieferung", "reifen"]
   },
   {
     "title": "Delivery: tyres (B)",
     "statement": "All cars are delivered with four tyres",
     "type": "technik",
     "category": "Logistik",
-    "tags": [
-      "auslieferung",
-      "reifen"
-    ]
+    "tags": ["auslieferung", "reifen"]
   },
   {
     "title": "Kitchen: cleaning",
     "statement": "The office kitchen is cleaned every Friday.",
     "type": "best_practice",
     "category": "Verwaltung",
-    "tags": [
-      "hausordnung"
-    ]
+    "tags": ["hausordnung"]
   }
 ]

@@ -4,48 +4,34 @@
     "statement": "Alle Warnschilder in Halle 7 müssen blau lackiert sein.",
     "type": "best_practice",
     "category": "Arbeitssicherheit",
-    "tags": [
-      "arbeitssicherheit",
-      "kennzeichnung"
-    ]
+    "tags": ["arbeitssicherheit", "kennzeichnung"]
   },
   {
     "title": "Kennzeichnung Halle 7 — Ausführung",
     "statement": "Warnschilder in Halle 7 werden ausschließlich in Rot lackiert.",
     "type": "best_practice",
     "category": "Arbeitssicherheit",
-    "tags": [
-      "arbeitssicherheit",
-      "kennzeichnung"
-    ]
+    "tags": ["arbeitssicherheit", "kennzeichnung"]
   },
   {
     "title": "Auslieferung: Bereifung (A)",
     "statement": "jedes auto wird mit 4 reifen ausgeliefert",
     "type": "technik",
     "category": "Logistik",
-    "tags": [
-      "auslieferung",
-      "reifen"
-    ]
+    "tags": ["auslieferung", "reifen"]
   },
   {
     "title": "Auslieferung: Bereifung (B)",
     "statement": "Alle autos werden mit vier reifen ausgeliefert",
     "type": "technik",
     "category": "Logistik",
-    "tags": [
-      "auslieferung",
-      "reifen"
-    ]
+    "tags": ["auslieferung", "reifen"]
   },
   {
     "title": "Kaffeeküche: Reinigung",
     "statement": "Die Kaffeeküche wird jeden Freitag gereinigt.",
     "type": "best_practice",
     "category": "Verwaltung",
-    "tags": [
-      "hausordnung"
-    ]
+    "tags": ["hausordnung"]
   }
 ]
