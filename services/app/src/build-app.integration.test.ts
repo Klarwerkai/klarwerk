@@ -125,6 +125,24 @@ describe("Persistenz: App gegen echtes Postgres", () => {
     const audit = await app2.inject({ method: "GET", url: "/api/audit", headers: headers2 });
     expect(audit.statusCode).toBe(200);
     expect(audit.json().length).toBeGreaterThanOrEqual(1);
+
+    // SCRUM-496: Duplikat-Board gegen echtes Postgres. Vor dem Fix fehlten die Tabellen
+    // (overlaps / overlap_settings nie migriert) → beide Routen brachen mit einer rohen
+    // PG-Meldung ab. Jetzt: sauberer 200, das Board lädt (leere Liste, Default-Schwelle).
+    const duplicates = await app2.inject({
+      method: "GET",
+      url: "/api/duplicates",
+      headers: headers2,
+    });
+    expect(duplicates.statusCode).toBe(200);
+    expect(Array.isArray(duplicates.json())).toBe(true);
+    const dupSettings = await app2.inject({
+      method: "GET",
+      url: "/api/duplicates/settings",
+      headers: headers2,
+    });
+    expect(dupSettings.statusCode).toBe(200);
+    expect(typeof dupSettings.json().minConfidence).toBe("number");
     await app2.close();
   });
 });
