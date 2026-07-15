@@ -44,6 +44,25 @@ describe("SCRUM-487: dreisprachiger Demo-Content — Invarianten", () => {
     expect(DEMO_TEXTS.nl.koCarBlau.statement).not.toBe(DEMO_TEXTS.de.koCarBlau.statement);
     expect(DEMO_TEXTS.en.koCarBlau.statement).not.toBe(DEMO_TEXTS.nl.koCarBlau.statement);
   });
+
+  // SCRUM-487 Proben: Duplikatpaar (reifen), stale-date (Jahres-Token), unbelegter Claim je Sprache.
+  for (const locale of LOCALES) {
+    const t = DEMO_TEXTS[locale];
+
+    it(`[${locale}] reifen-Duplikatpaar: zwei verschiedene, aber verwandte Aussagen`, () => {
+      expect(t.koReifenA.statement).not.toBe(t.koReifenB.statement);
+      expect(t.koReifenA.statement.trim().length).toBeGreaterThan(0);
+      expect(t.koReifenB.statement.trim().length).toBeGreaterThan(0);
+    });
+
+    it(`[${locale}] stale-Seite trägt das Jahres-Token 2019 wörtlich`, () => {
+      expect(t.koStale.statement).toContain("2019");
+    });
+
+    it(`[${locale}] unbelegter Claim ist vorhanden (nicht leer)`, () => {
+      expect(t.koUnbacked.statement.trim().length).toBeGreaterThan(0);
+    });
+  }
 });
 
 // End-to-End: der echte Seed erzeugt je Sprache die Showcase-Kollisionen mit lokalisierten,

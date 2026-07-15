@@ -193,7 +193,13 @@ export function Admin(): JSX.Element {
       setConfirmPurge(false);
       push(
         "success",
-        t("adm.purgeDone", { kos: r.kos, conflicts: r.conflicts, gaps: r.gaps, users: r.users }),
+        t("adm.purgeDone", {
+          kos: r.kos,
+          conflicts: r.conflicts,
+          duplicates: r.duplicates,
+          gaps: r.gaps,
+          users: r.users,
+        }),
       );
     },
     onError: fail,

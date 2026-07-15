@@ -415,7 +415,7 @@ const de = {
   "adm.purgeKeep": "Abbrechen",
   "adm.purgeYes": "Ja, endgültig entfernen",
   "adm.purgeDone":
-    "Demodaten entfernt: {{kos}} Wissensobjekte, {{conflicts}} Konflikte aufgelöst, {{gaps}} Wissenslücken, {{users}} Demo-Anwender.",
+    "Demodaten entfernt: {{kos}} Wissensobjekte, {{conflicts}} Konflikte + {{duplicates}} Duplikate aufgelöst, {{gaps}} Wissenslücken, {{users}} Demo-Anwender.",
   "adm.seedSkippedInline":
     "Nicht geladen: Der Demo-Bestand ist bereits vorhanden (keine Dubletten). Über „Demodaten entfernen“ kannst du ihn gezielt entfernen und danach neu laden.",
   "adm.seedForce": "Demo-Bestand neu laden",
@@ -2046,7 +2046,7 @@ const de = {
   "adm.resetDone": "Passwort zurückgesetzt; alle Sitzungen beendet.",
   "adm.seedTitle": "Demodaten laden",
   "adm.seedHint":
-    "Lädt einen kleinen, echten Demo-Bestand (KOs, Validierung, Lücke, Konflikt, Anhang) — auch neben vorhandenen Daten. Dein echter Bestand bleibt unberührt und wird nie überschrieben. Über „Demodaten entfernen“ gezielt wieder entfernbar.",
+    "Lädt einen kleinen, echten Demo-Bestand (KOs, Validierung, Lücke, Konflikt, Duplikat, Anhang) — auch neben vorhandenen Daten. Dein echter Bestand bleibt unberührt und wird nie überschrieben. Über „Demodaten entfernen“ gezielt wieder entfernbar. (Konflikt-/Duplikat-Befund erscheint mit aktivem KI-Reasoner.)",
   "adm.seedButton": "Demodaten laden",
   "adm.seedDone": "Demodaten geladen: {{kos}} Wissensobjekte, {{users}} Nutzer.",
   "adm.seedSkipped": "Übersprungen: Instanz ist nicht leer (Bestand vorhanden).",
@@ -3313,7 +3313,7 @@ const en: typeof de = {
   "adm.purgeKeep": "Cancel",
   "adm.purgeYes": "Yes, remove permanently",
   "adm.purgeDone":
-    "Demo data removed: {{kos}} knowledge objects, {{conflicts}} conflicts resolved, {{gaps}} knowledge gaps, {{users}} demo users.",
+    "Demo data removed: {{kos}} knowledge objects, {{conflicts}} conflicts + {{duplicates}} duplicates resolved, {{gaps}} knowledge gaps, {{users}} demo users.",
   "adm.seedSkippedInline":
     "Not loaded: the demo set is already present (no duplicates). Use “Remove demo data” to remove it and then load it again.",
   "adm.seedForce": "Reload demo set",
@@ -4917,7 +4917,7 @@ const en: typeof de = {
   "adm.resetDone": "Password reset; all sessions ended.",
   "adm.seedTitle": "Load demo data",
   "adm.seedHint":
-    "Loads a small, real demo set (KOs, validation, gap, conflict, attachment) — also alongside existing data. Your real content stays untouched and is never overwritten. Removable on demand via “Remove demo data”.",
+    "Loads a small, real demo set (KOs, validation, gap, conflict, duplicate, attachment) — also alongside existing data. Your real content stays untouched and is never overwritten. Removable on demand via “Remove demo data”. (Conflict/duplicate findings appear with an active AI reasoner.)",
   "adm.seedButton": "Load demo data",
   "adm.seedDone": "Demo data loaded: {{kos}} knowledge objects, {{users}} users.",
   "adm.seedSkipped": "Skipped: instance is not empty (content present).",
@@ -6162,7 +6162,7 @@ const nl: typeof de = {
   "adm.purgeKeep": "Annuleren",
   "adm.purgeYes": "Ja, definitief verwijderen",
   "adm.purgeDone":
-    "Demogegevens verwijderd: {{kos}} kennisobjecten, {{conflicts}} conflicten opgelost, {{gaps}} kennishiaten, {{users}} demogebruikers.",
+    "Demogegevens verwijderd: {{kos}} kennisobjecten, {{conflicts}} conflicten + {{duplicates}} duplicaten opgelost, {{gaps}} kennishiaten, {{users}} demogebruikers.",
   "adm.seedSkippedInline":
     "Niet geladen: de demovoorraad is al aanwezig (geen duplicaten). Gebruik „Demogegevens verwijderen“ om deze te verwijderen en daarna opnieuw te laden.",
   "adm.seedForce": "Demovoorraad opnieuw laden",
@@ -7749,7 +7749,7 @@ const nl: typeof de = {
   "adm.resetDone": "Wachtwoord gereset; alle sessies beëindigd.",
   "adm.seedTitle": "Demogegevens laden",
   "adm.seedHint":
-    "Laadt een kleine, echte demovoorraad (KO's, validatie, hiaat, conflict, bijlage) — ook naast bestaande gegevens. Je echte bestand blijft onaangeroerd en wordt nooit overschreven. Gericht te verwijderen via „Demogegevens verwijderen“.",
+    "Laadt een kleine, echte demovoorraad (KO's, validatie, hiaat, conflict, duplicaat, bijlage) — ook naast bestaande gegevens. Je echte bestand blijft onaangeroerd en wordt nooit overschreven. Gericht te verwijderen via „Demogegevens verwijderen“. (Conflict-/duplicaatbevinding verschijnt met een actieve AI-reasoner.)",
   "adm.seedButton": "Demogegevens laden",
   "adm.seedDone": "Demogegevens geladen: {{kos}} kennisobjecten, {{users}} gebruikers.",
   "adm.seedSkipped": "Overgeslagen: instantie is niet leeg (voorraad aanwezig).",

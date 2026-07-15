@@ -700,6 +700,8 @@ export interface DemoSeedResult {
   validated: number;
   gaps: number;
   conflicts: number;
+  // SCRUM-487: erkannte Duplikate (reifen-Paar) — >0 nur mit online-Reasoner, offline ehrlich 0.
+  duplicates: number;
   pendingRevalidation: number;
   attachments: number;
 }

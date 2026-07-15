@@ -357,7 +357,9 @@ export const endpoints = {
     // Pedi 02.07./05.07.: Demodaten komplett entfernen (inkl. Demo-Anwender); Merker überlebt
     // Tester-Bearbeitungen.
     demoPurge: () =>
-      api.del<{ kos: number; conflicts: number; gaps: number; users: number }>("/admin/demo-seed"),
+      api.del<{ kos: number; conflicts: number; duplicates: number; gaps: number; users: number }>(
+        "/admin/demo-seed",
+      ),
     // Pedi 05.07. (Beta): Werksreset — Verfügbarkeit (nur Desktop/Dev) + Ausführen (löscht alles,
     // beendet das Programm; nächster Start = Ersteinrichtung).
     factoryResetStatus: () => api.get<{ available: boolean }>("/admin/factory-reset"),

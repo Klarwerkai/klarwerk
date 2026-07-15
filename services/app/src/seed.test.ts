@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildServices } from "./build-app";
+import { DEMO_TEXTS } from "./demo-content";
 import { seedDemo } from "./seed";
 import { purgeDemoSeed, seedDemoForAdmin } from "./seed-demo";
 
@@ -223,8 +224,18 @@ describe("SCRUM-156: seedDemo", () => {
       "Wie ist die exakte Drehmoment-Vorgabe für die Sonderschraube ZX-9 in unserer Halle?",
       admin.id,
     );
+    // Online-Reasoner mocken, damit das reifen-Duplikat als echter Befund entsteht (offline: keiner).
+    services.reasoner.judgeDuplicate = async () => ({
+      beziehung: "identisch",
+      aspects: [{ beschreibung: "gleiche Aussage", zitatA: "reifen", zitatB: "reifen" }],
+      nurInA: "",
+      nurInB: "",
+      empfehlung: "zusammenfuehren_pruefen",
+      confidence: 0.9,
+      begruendung: "Test: identische Aussage.",
+    });
 
-    // (b) Demodaten laden → beide koexistieren.
+    // (b) Demodaten laden → beide koexistieren; Konflikt (vorgeformt) + Duplikat (erkannt) sind da.
     const loaded = await seedDemoForAdmin(services, admin.id);
     expect(loaded.skipped).toBe(false);
     expect(
@@ -232,11 +243,17 @@ describe("SCRUM-156: seedDemo", () => {
     ).toBeGreaterThanOrEqual(5);
     expect((await services.ko.list()).some((k) => k.id === realKo.id)).toBe(true);
     expect((await services.ask.listGaps()).some((g) => g.demoSeed === true)).toBe(true);
+    expect((await services.conflicts.unresolved()).length).toBeGreaterThanOrEqual(1);
+    expect((await services.overlaps.unresolved()).length).toBeGreaterThanOrEqual(1);
 
-    // (c) Demodaten entfernen → NUR Demo-Daten weg.
-    await purgeDemoSeed(services, admin.id);
+    // (c) Demodaten entfernen → NUR Demo-Daten weg (KOs + Konflikte + Duplikate + Gaps + Anwender).
+    const purge = await purgeDemoSeed(services, admin.id);
+    expect(purge.duplicates).toBeGreaterThanOrEqual(1);
     const kosAfter = await services.ko.list();
     expect(kosAfter.filter((k) => k.demoSeed === true)).toHaveLength(0);
+    // Beide Befund-Arten wieder wie vorher: /konflikte + /duplikate leer.
+    expect(await services.conflicts.unresolved()).toHaveLength(0);
+    expect(await services.overlaps.unresolved()).toHaveLength(0);
 
     // (d) Das echte KO + alles daran Hängende bleibt vollständig erhalten.
     const survivor = kosAfter.find((k) => k.id === realKo.id);
@@ -252,6 +269,62 @@ describe("SCRUM-156: seedDemo", () => {
     expect((await services.auth.listUsers()).some((u) => u.email.endsWith("@demo.klarwerk"))).toBe(
       false,
     );
+  });
+
+  it("SCRUM-487: Probe-KOs (reifen-Duplikat, stale, unbelegt) je Sprache im geladenen Bestand", async () => {
+    for (const locale of ["de", "en", "nl"] as const) {
+      const services = buildServices();
+      await seedDemo(services, locale);
+      const kos = await services.ko.list();
+      const t = DEMO_TEXTS[locale];
+
+      // Duplikatpaar: beide reifen-KOs vorhanden (zwei eigenständige KOs).
+      const reifenA = kos.find((k) => k.statement === t.koReifenA.statement);
+      const reifenB = kos.find((k) => k.statement === t.koReifenB.statement);
+      expect(reifenA, `reifen-A (${locale}) fehlt`).toBeDefined();
+      expect(reifenB, `reifen-B (${locale}) fehlt`).toBeDefined();
+      expect(reifenA?.id).not.toBe(reifenB?.id);
+      // stale: Jahres-Token 2019 wörtlich in der Aussage.
+      const stale = kos.find((k) => k.title === t.koStale.title);
+      expect(stale?.statement.includes("2019")).toBe(true);
+      // unbelegt: bauchgefuehl OHNE Quelle.
+      const unbacked = kos.find((k) => k.title === t.koUnbacked.title);
+      expect(unbacked?.type).toBe("bauchgefuehl");
+      expect(unbacked?.sources?.length ?? 0).toBe(0);
+      // alle drei tragen den demoSeed-Merker (chirurgischer Purge).
+      for (const k of [reifenA, reifenB, stale, unbacked]) {
+        expect(k?.demoSeed).toBe(true);
+      }
+    }
+  });
+
+  it("SCRUM-487: gemockter Online-Reasoner → reifen-Duplikat wird als Befund erkannt", async () => {
+    const services = buildServices();
+    services.reasoner.judgeDuplicate = async (a, b) => {
+      // Nur das reifen-Paar als Duplikat werten (beide Kerntexte enthalten „reifen").
+      if (!/reifen/i.test(a) || !/reifen/i.test(b)) {
+        return null;
+      }
+      return {
+        beziehung: "identisch",
+        aspects: [{ beschreibung: "gleiche Aussage", zitatA: "reifen", zitatB: "reifen" }],
+        nurInA: "",
+        nurInB: "",
+        empfehlung: "zusammenfuehren_pruefen",
+        confidence: 0.9,
+        begruendung: "Test: identische Aussage.",
+      };
+    };
+    const r = await seedDemo(services);
+    // Konflikt (vorgeformt) UND Duplikat (erkannt) liegen als Befund vor.
+    expect(r.conflicts).toBeGreaterThanOrEqual(1);
+    expect(r.duplicates).toBeGreaterThanOrEqual(1);
+    const dup = (await services.overlaps.unresolved())[0];
+    const reifenIds = (await services.ko.list())
+      .filter((k) => /reifen/i.test(k.statement))
+      .map((k) => k.id);
+    expect(reifenIds).toContain(dup?.koA);
+    expect(reifenIds).toContain(dup?.koB);
   });
 
   it("ist idempotent: zweiter Lauf überspringt, keine Duplikate", async () => {

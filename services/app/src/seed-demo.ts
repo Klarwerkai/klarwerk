@@ -1,9 +1,16 @@
 import type { AskService } from "../../ask";
 import type { AuthService } from "../../auth";
-import type { ConflictService } from "../../conflicts";
-import type { KoService } from "../../knowledge-object";
+import {
+  type ConflictService,
+  DEFAULT_OVERLAP_SETTINGS,
+  type DetectSubject,
+  type OverlapService,
+  type OverlapSettingsRepo,
+} from "../../conflicts";
+import type { KnowledgeObject, KoService } from "../../knowledge-object";
 import type { LifecycleService } from "../../lifecycle";
 import type { ObjectStore } from "../../object-store";
+import type { Reasoner } from "../../reasoner";
 import type { ValidationService } from "../../validation";
 import { type DemoLocale, demoTexts } from "./demo-content";
 
@@ -24,6 +31,12 @@ export interface DemoSeedServices {
   conflicts: ConflictService;
   lifecycle: LifecycleService;
   objects: ObjectStore;
+  // SCRUM-487 (Proben): das reifen-Duplikat läuft durch die ECHTE Duplikaterkennung (online →
+  // Befund; offline → ehrlich keiner). Dafür braucht der Seed OverlapService + Reasoner + die
+  // Anzeige-Schwelle. (Der Konflikt bleibt bewusst vorgeformt — SCRUM-487-Streitwert-Showcase.)
+  overlaps: OverlapService;
+  overlapSettings: OverlapSettingsRepo;
+  reasoner: Reasoner;
 }
 
 // 1×1 transparentes PNG als kleiner, technisch sauberer Demo-Anhang (kein großer Blob).
@@ -47,6 +60,21 @@ export const DEMO_GAP_QUESTION = demoTexts("de").gapQuestion;
 const TINY_PNG =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 
+// K0-2: Erkennungs-Gegenstand ist der Kerntext (title+statement+conditions+measures) — identisch zum
+// App-Wrapper (conflict-/duplicate-detection.ts). Für den paar-genauen Demo-Duplikat-Durchlauf.
+function toDetectSubject(ko: KnowledgeObject): DetectSubject {
+  return {
+    refId: ko.id,
+    title: ko.title,
+    statement: ko.statement,
+    conditions: ko.conditions,
+    measures: ko.measures,
+    category: ko.category,
+    tags: ko.tags,
+    asset: ko.asset,
+  };
+}
+
 export interface SeedResult {
   skipped: boolean;
   users: number;
@@ -54,6 +82,8 @@ export interface SeedResult {
   validated: number;
   gaps: number;
   conflicts: number;
+  // SCRUM-487: erkannte Duplikate (reifen-Paar) — >0 nur mit online-Reasoner, offline ehrlich 0.
+  duplicates: number;
   pendingRevalidation: number;
   attachments: number;
   sources: number;
@@ -66,6 +96,7 @@ const EMPTY_RESULT: SeedResult = {
   validated: 0,
   gaps: 0,
   conflicts: 0,
+  duplicates: 0,
   pendingRevalidation: 0,
   attachments: 0,
   sources: 0,
@@ -184,7 +215,18 @@ async function buildDemoContent(
   actors: SeedActors,
   locale: DemoLocale = "de",
 ): Promise<SeedResult> {
-  const { auth, ko, validation, ask, conflicts, lifecycle, objects } = services;
+  const {
+    auth,
+    ko,
+    validation,
+    ask,
+    conflicts,
+    lifecycle,
+    objects,
+    overlaps,
+    overlapSettings,
+    reasoner,
+  } = services;
   const adminId = actors.adminId;
   const carlaId = actors.controllerId;
   const erikId = actors.expertId;
@@ -421,6 +463,65 @@ async function buildDemoContent(
     neededValidations: 2,
   });
 
+  // --- SCRUM-487 Proben: Duplikatpaar (reifen), stale-date-Seite, unbelegter Claim ---
+  // Alle demoSeed → der chirurgische Purge (KO.demoSeed) erfasst sie samt Folge-Einträgen.
+  // Duplikatpaar: zwei sehr ähnliche, eigenständige Aussagen → zwei echte KOs. Die eigentliche
+  // Duplikat-KENNZEICHNUNG entsteht unten über die echte Erkennung (nicht vorgeformt).
+  const koReifenA = await ko.create({
+    demoSeed: true,
+    title: t.koReifenA.title,
+    statement: t.koReifenA.statement,
+    type: "technik",
+    category: "Logistik",
+    author: erikId,
+    tags: ["auslieferung", "reifen", DEMO_TAG],
+    confidence: 45,
+    neededValidations: 2,
+  });
+  const koReifenB = await ko.create({
+    demoSeed: true,
+    title: t.koReifenB.title,
+    statement: t.koReifenB.statement,
+    type: "technik",
+    category: "Logistik",
+    author: carlaId,
+    tags: ["auslieferung", "reifen", DEMO_TAG],
+    confidence: 45,
+    neededValidations: 2,
+  });
+  // stale-date-Seite: Jahres-Token (2019) steht wörtlich in der Aussage → sichtbar veraltet.
+  const koStale = await ko.create({
+    demoSeed: true,
+    title: t.koStale.title,
+    statement: t.koStale.statement,
+    type: "technik",
+    category: "IT-Betrieb",
+    author: erikId,
+    tags: ["vpn", "veraltet", DEMO_TAG],
+    confidence: 40,
+    neededValidations: 2,
+  });
+  // Die Quelle verweist explizit auf den alten Stand (2019) — das Jahres-Token in der Aussage ist
+  // das sichtbare, testbare Veralterungs-Signal.
+  await ko.addSource(koStale.id, erikId, {
+    label: "IT-Runbook (Stand 2019)",
+    url: "https://intern.klarwerk/it/vpn-2019",
+    excerpt: t.koStale.statement,
+    provider: "Intern",
+  });
+  // Unbelegter Claim: bauchgefuehl, bewusst OHNE Quelle/Beleg (kein addSource).
+  await ko.create({
+    demoSeed: true,
+    title: t.koUnbacked.title,
+    statement: t.koUnbacked.statement,
+    type: "bauchgefuehl",
+    category: "Vertrieb",
+    author: adminId,
+    tags: ["vertrieb", "unbelegt", DEMO_TAG],
+    confidence: 20,
+    neededValidations: 2,
+  });
+
   // --- Validierung: koValid bekommt 2 grüne Bewertungen → Status „validiert" (echte Logik) ---
   await validation.rate(koValid.id, carlaId, "up");
   await validation.rate(koValid.id, adminId, "up");
@@ -532,6 +633,22 @@ async function buildDemoContent(
     adminId,
   );
 
+  // --- SCRUM-487: reifen-Duplikat durch die ECHTE Duplikaterkennung laufen lassen ------------------
+  // Anders als der Konflikt (bewusst vorgeformt) wird das Duplikat NICHT gesetzt, sondern über
+  // overlaps.detectForSubject(...) → reasoner.judgeDuplicate(...) erkannt. Mit online-Reasoner
+  // entsteht ein echter Duplikat-Befund auf /duplikate; ohne Modell liefert judgeDuplicate null
+  // (und die Textdeckung liegt unter der deterministischen Schwelle) → ehrlich kein Befund, kein Fake.
+  // Modul-rein: detectForSubject kennt kein demoSeed (der K0-3-Ausschluss lebt nur im Routen-Wrapper),
+  // hier ist es ein bewusster, paar-genauer Demo-Durchlauf — keine Vermischung mit echten Beiträgen.
+  const minConfidence =
+    (await overlapSettings.get())?.minConfidence ?? DEFAULT_OVERLAP_SETTINGS.minConfidence;
+  await overlaps.detectForSubject(
+    toDetectSubject(koReifenA),
+    [toDetectSubject(koReifenB)],
+    (a, b) => reasoner.judgeDuplicate(a, b),
+    { minConfidence, modelLabel: "demo:seed" },
+  );
+
   // --- Lebenszyklus: koValid an Asset koppeln + Asset-Änderung → Revalidierung fällig ---
   await lifecycle.couple("ANL-01", koValid.id);
   await lifecycle.assetChanged("ANL-01");
@@ -578,6 +695,7 @@ async function buildDemoContent(
     validated: allKos.filter((k) => k.status === "validiert").length,
     gaps: (await ask.listGaps()).length,
     conflicts: (await conflicts.unresolved()).length,
+    duplicates: (await overlaps.unresolved()).length,
     pendingRevalidation: (await lifecycle.pendingRevalidation()).length,
     attachments: allKos.reduce((n, k) => n + (k.attachments?.length ?? 0), 0),
     sources: allKos.reduce((n, k) => n + (k.sources?.length ?? 0), 0),
@@ -598,15 +716,17 @@ async function buildDemoContent(
 export interface PurgeResult {
   kos: number;
   conflicts: number;
+  // SCRUM-487: aus den demoSeed-KOs entstandene Duplikat-Einträge (analog Konflikte über KO-Zugehörigkeit).
+  duplicates: number;
   gaps: number;
   users: number;
 }
 
 export async function purgeDemoSeed(
-  services: Pick<DemoSeedServices, "ko" | "conflicts" | "ask" | "auth">,
+  services: Pick<DemoSeedServices, "ko" | "conflicts" | "overlaps" | "ask" | "auth">,
   actor: string,
 ): Promise<PurgeResult> {
-  const { ko, conflicts, ask, auth } = services;
+  const { ko, conflicts, overlaps, ask, auth } = services;
   const demoKos = (await ko.list({})).filter(
     (k) => k.demoSeed === true || (k.tags ?? []).includes(DEMO_TAG),
   );
@@ -618,6 +738,18 @@ export async function purgeDemoSeed(
         .resolve(c.id, actor, "Demodaten entfernt (beide Seiten verworfen)")
         .catch(() => undefined);
       removedConflicts += 1;
+    }
+  }
+  // SCRUM-487: aus den demoSeed-KOs entstandene DUPLIKAT-Einträge ebenso schließen (KO-Zugehörigkeit),
+  // damit /duplikate + Badges nach dem Entfernen wieder wie vorher sind. Echte Duplikate (ohne
+  // demoSeed-KO auf beiden Seiten) bleiben unangetastet.
+  let removedDuplicates = 0;
+  for (const d of await overlaps.unresolved()) {
+    if (demoIds.has(d.koA) || demoIds.has(d.koB)) {
+      await overlaps
+        .dismiss(d.id, actor, "Demodaten entfernt (Duplikat, beide Seiten verworfen)")
+        .catch(() => undefined);
+      removedDuplicates += 1;
     }
   }
   for (const k of demoKos) {
@@ -653,6 +785,7 @@ export async function purgeDemoSeed(
   return {
     kos: demoKos.length,
     conflicts: removedConflicts,
+    duplicates: removedDuplicates,
     gaps: removedGaps,
     users: removedUsers,
   };

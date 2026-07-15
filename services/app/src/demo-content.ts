@@ -45,6 +45,11 @@ export interface DemoTexts {
   koDreh: KoText;
   koNotstrom: KoText;
   koSchalt: KoText;
+  // SCRUM-487 (Proben): Duplikatpaar (reifen), stale-date-Seite, unbelegter Claim — als demoSeed-KOs.
+  koReifenA: KoText;
+  koReifenB: KoText;
+  koStale: KoText;
+  koUnbacked: KoText;
   gapQuestion: string;
   warmConflict: ConflictText;
   carConflict: ConflictText;
@@ -140,6 +145,22 @@ const de: DemoTexts = {
     title: "Schaltschränke nicht mit Druckluft ausblasen.",
     statement:
       "Druckluft drückt Staub tiefer in Kontakte und Lüfter der Schaltschränke — führte zweimal zu Ausfällen. Nur absaugen, nie ausblasen.",
+  },
+  koReifenA: {
+    title: "Auslieferung: Bereifung",
+    statement: "jedes auto wird mit 4 reifen ausgeliefert",
+  },
+  koReifenB: {
+    title: "Fahrzeugübergabe: Reifen",
+    statement: "Alle autos werden mit vier reifen ausgeliefert",
+  },
+  koStale: {
+    title: "VPN-Zugang (Stand 2019)",
+    statement: "Der VPN-Zugang wird seit 2019 über den Client Cisco AnyConnect 3 hergestellt.",
+  },
+  koUnbacked: {
+    title: "Rückruf-Zeitpunkt (Annahme)",
+    statement: "Kundinnen und Kunden bevorzugen Rückrufe am Vormittag.",
   },
   gapQuestion: "Warum schwankt der Dosierwert an Linie L4 nach jedem Schichtwechsel?",
   warmConflict: {
@@ -261,6 +282,22 @@ const en: DemoTexts = {
     statement:
       "Compressed air pushes dust deeper into the contacts and fans of the control cabinets — it caused failures twice. Only vacuum, never blow out.",
   },
+  koReifenA: {
+    title: "Delivery: tyres",
+    statement: "every car is delivered with 4 tyres",
+  },
+  koReifenB: {
+    title: "Vehicle handover: tyres",
+    statement: "All cars are delivered with four tyres",
+  },
+  koStale: {
+    title: "VPN access (as of 2019)",
+    statement: "VPN access has been provided via the Cisco AnyConnect 3 client since 2019.",
+  },
+  koUnbacked: {
+    title: "Callback timing (assumption)",
+    statement: "Customers prefer callbacks in the morning.",
+  },
   gapQuestion: "Why does the dosing value on line L4 fluctuate after every shift change?",
   warmConflict: {
     description:
@@ -377,6 +414,22 @@ const nl: DemoTexts = {
     title: "Blaas schakelkasten niet uit met perslucht.",
     statement:
       "Perslucht drukt stof dieper in de contacten en ventilatoren van de schakelkasten — dat leidde tweemaal tot uitval. Alleen afzuigen, nooit uitblazen.",
+  },
+  koReifenA: {
+    title: "Levering: banden",
+    statement: "elke auto wordt met 4 banden geleverd",
+  },
+  koReifenB: {
+    title: "Voertuigoverdracht: banden",
+    statement: "Alle auto's worden met vier banden geleverd",
+  },
+  koStale: {
+    title: "VPN-toegang (stand 2019)",
+    statement: "VPN-toegang loopt sinds 2019 via de client Cisco AnyConnect 3.",
+  },
+  koUnbacked: {
+    title: "Terugbeltijdstip (aanname)",
+    statement: "Klanten geven de voorkeur aan terugbelverzoeken in de ochtend.",
   },
   gapQuestion: "Waarom schommelt de doseerwaarde op lijn L4 na elke ploegwisseling?",
   warmConflict: {
