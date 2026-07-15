@@ -143,9 +143,10 @@ export function Admin(): JSX.Element {
     onError: fail,
   });
 
-  // SCRUM-181: Demodaten in eine LEERE Instanz laden (admin-only). Ehrliche skipped/seeded-Meldung.
+  // SCRUM-181 / Pedi 14.07.: Demodaten laden (admin-only) — auch neben vorhandenen Daten. Ehrliche
+  // skipped/seeded-Meldung; „skipped" heißt jetzt „Demo-Bestand schon vorhanden" (Herkunfts-Flag).
   const demoSeed = useMutation<DemoSeedResult, unknown, boolean | undefined>({
-    // Pedi 05.07. (Beta): force lädt das Demo-Set auch bei bereits erfassten Daten.
+    // Pedi 05.07./14.07.: force lädt den Demo-Bestand frisch (erst vorhandenen Demo-Satz entfernen).
     // SCRUM-487: Demo-Sprache = aktuelle UI-Sprache des ladenden Admins.
     mutationFn: (force) => endpoints.admin.demoSeed(force ?? false, i18n.language),
     onSuccess: (r) => {
@@ -446,7 +447,8 @@ export function Admin(): JSX.Element {
 
       {section === "daten" ? (
         <>
-          {/* SCRUM-181: Demodaten laden (nur leere Instanz; idempotent, ehrliche Rückmeldung). */}
+          {/* SCRUM-181 / Pedi 14.07.: Demodaten laden — auch neben vorhandenen Daten; idempotent
+              über die Herkunfts-Markierung (kein Dup), echte Daten unberührt. */}
           <Card className="space-y-2">
             <SectionLabel>{t("adm.seedTitle")}</SectionLabel>
             <p className="text-[12.5px] text-muted">{t("adm.seedHint")}</p>

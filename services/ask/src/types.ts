@@ -14,6 +14,9 @@ export interface Gap {
   assignee: string | null;
   priority: GapPriority;
   createdAt: string;
+  // Herkunfts-Markierung: vom Demo-Seed erzeugte Lücke (stabil, überlebt Bearbeitung/Persistenz).
+  // Der Demo-Purge entfernt gezielt genau diese — kein fragiler Titel-/Text-Abgleich mehr.
+  demoSeed?: boolean;
 }
 
 export type AskErrorCode = "NOT_FOUND" | "CONFIRM_REQUIRED" | "BAD_REQUEST";

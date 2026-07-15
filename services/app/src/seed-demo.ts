@@ -5,7 +5,7 @@ import type { KoService } from "../../knowledge-object";
 import type { LifecycleService } from "../../lifecycle";
 import type { ObjectStore } from "../../object-store";
 import type { ValidationService } from "../../validation";
-import { DEMO_GAP_QUESTIONS, type DemoLocale, demoTexts } from "./demo-content";
+import { type DemoLocale, demoTexts } from "./demo-content";
 
 // SCRUM-156/181: reproduzierbarer Demo-/Dev-Seed. Erzeugt einen kleinen, ehrlichen Bestand
 // AUSSCHLIESSLICH über die echten Services — Audit/Statuslogik/Side-Effects bleiben real,
@@ -40,10 +40,8 @@ function isDemoEmail(email: string): boolean {
   return email.toLowerCase().endsWith(`@${DEMO_EMAIL_DOMAIN}`);
 }
 
-// Bug (Pedi 04.07.): Die vom Seed erzeugte Demo-Wissenslücke gehört zu den Beispielen und muss
-// beim Demo-Purge mitverschwinden. SCRUM-487: die Frage ist jetzt sprachabhängig (DE/EN/NL) — der
-// Purge gleicht deshalb gegen ALLE drei lokalisierten Fragen ab (Frage-Präfix, robust gegen die
-// Normalisierung der gespeicherten Gap-Frage). DEMO_GAP_QUESTION (DE) bleibt für Rückwärtskompat.
+// Die vom Seed erzeugte Demo-Wissenslücke wird beim Purge über das stabile Herkunfts-Flag
+// (Gap.demoSeed) mitentfernt — siehe purgeDemoSeed. DEMO_GAP_QUESTION (DE) bleibt als Referenz.
 export const DEMO_GAP_QUESTION = demoTexts("de").gapQuestion;
 
 const TINY_PNG =
@@ -105,20 +103,25 @@ export async function seedDemo(
 // Duplikate). Die Demo-Mitnutzer werden über den real angemeldeten Admin freigegeben — keine
 // gefälschten Rechte.
 //
-// Pedi 05.07. (Beta): Mit `force` lässt sich das Demo-Set AUCH laden, wenn bereits (echte) Daten
-// erfasst sind. Damit dabei keine Demo-Dubletten entstehen, wird das vorhandene Demo-Set zuerst
-// entfernt (nur die als Demo markierten KOs/Konflikte/Lücken/Anwender) und dann frisch geseedet —
-// echte, selbst erfasste Daten bleiben unberührt.
+// Pedi 14.07.: „Demodaten laden" funktioniert jetzt AUCH neben (echten) Daten — der frühere
+// Leer-Guard („nur wirksam, wenn keine Wissensobjekte existieren") entfällt. Die Demo-Daten werden
+// ZUSÄTZLICH geladen; der vorhandene Bestand bleibt unberührt.
+//
+// Idempotenz strikt über die Herkunfts-Markierung (KO-Feld `demoSeed`), NICHT über „Instanz leer":
+// ist der Demo-Satz bereits da → nicht nochmal anlegen (keine Dubletten). Nach „Demodaten entfernen"
+// ist erneutes Laden wieder möglich. `force` lädt den Demo-Satz frisch (erst den vorhandenen Demo-
+// Satz gezielt entfernen, dann neu seeden) — echte, selbst erfasste Daten bleiben in beiden Fällen.
 export async function seedDemoForAdmin(
   services: DemoSeedServices,
   adminId: string,
   opts?: { force?: boolean; locale?: DemoLocale },
 ): Promise<SeedResult> {
-  const hasData = (await services.ko.list()).length > 0;
-  if (hasData && !opts?.force) {
+  const demoPresent = (await services.ko.list()).some((k) => k.demoSeed === true);
+  if (demoPresent && !opts?.force) {
+    // Demo-Satz schon vorhanden → nicht duplizieren (echte Daten sind hier irrelevant).
     return EMPTY_RESULT;
   }
-  if (opts?.force) {
+  if (demoPresent && opts?.force) {
     // Nur das bestehende Demo-Set aufräumen (echte Daten bleiben), dann frisch seeden.
     await purgeDemoSeed(services, adminId);
   }
@@ -444,7 +447,9 @@ async function buildDemoContent(
   // vorhandenen KOs (Ventil/Überdruck/Pumpe/Filter/Kaltstart/Vorwärmung samt deren Stoppwörtern
   // wie „die"/„dem"). Der deterministische Reasoner-Fallback findet daher keinen Treffer →
   // echte Wissenslücke statt Antwort; danach Priorität wie bisher auf „hoch". ---
-  const asked = await ask.ask(t.gapQuestion, adminId);
+  // demoSeed:true markiert die erzeugte Lücke mit stabiler Herkunft → der Purge entfernt sie gezielt
+  // über das Flag (kein fragiler Frage-Präfix-Abgleich mehr).
+  const asked = await ask.ask(t.gapQuestion, adminId, "de", { demoSeed: true });
   if (asked.gap) {
     await ask.setGapPriority(asked.gap.id, "hoch");
   }
@@ -620,14 +625,12 @@ export async function purgeDemoSeed(
     // (gilt auch für nur per Tag markierte Alt-Demo-KOs ohne demoSeed-Flag).
     await ko.delete(k.id, actor, { hard: true });
   }
-  // Bug (Pedi 04.07.): Demo-Wissenslücke(n) mitlöschen — Abgleich über den Frage-Präfix
-  // (robust gegen die Normalisierung der gespeicherten Gap-Frage). SCRUM-487: sprachabhängig →
-  // gegen ALLE drei lokalisierten Demo-Fragen prüfen (DE/EN/NL), damit auch ein NL/EN-Seed
-  // rückstandsfrei purge-bar bleibt.
-  const demoGapPrefixes = DEMO_GAP_QUESTIONS.map((q) => q.slice(0, 40));
+  // Pedi 14.07.: Demo-Wissenslücke(n) über die STABILE Herkunfts-Markierung (Gap-Feld `demoSeed`)
+  // entfernen — kein fragiler Frage-Präfix-/Titel-Abgleich mehr. So bleiben echte, vom Nutzer
+  // erzeugte Lücken garantiert unangetastet, unabhängig von Sprache oder Umformulierung.
   let removedGaps = 0;
   for (const g of await ask.listGaps()) {
-    if (demoGapPrefixes.some((p) => g.question.startsWith(p))) {
+    if (g.demoSeed === true) {
       await ask.deleteGap(g.id, true).catch(() => undefined);
       removedGaps += 1;
     }

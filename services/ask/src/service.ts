@@ -61,7 +61,12 @@ export class AskService {
 
   // FR-ASK-01/02/03: begründete Antwort über den Reasoner; ehrliche Verweigerung → Wissenslücke.
   // FR-I18N-01: locale steuert die Antwortsprache des Reasoners (Quelleninhalt bleibt original).
-  async ask(question: string, actor = "system", locale: ReasonerLocale = "de"): Promise<AskResult> {
+  async ask(
+    question: string,
+    actor = "system",
+    locale: ReasonerLocale = "de",
+    opts?: { demoSeed?: boolean },
+  ): Promise<AskResult> {
     // SCRUM-361 / AG-03 / FR-ASK-02 / NFR-PERF-03: Ask nutzt NICHT mehr `koService.list()` (Laden des
     // gesamten Pools) als Kernpfad, sondern eine datenquellennahe, begrenzte Kandidaten-Vorauswahl
     // (`findCandidates`). Die Frage wird in Inhaltstoken zerlegt (identisch zum Ranking); ohne
@@ -100,7 +105,7 @@ export class AskService {
       },
     });
     if (!result.answered) {
-      const gap = await this.createGap(question);
+      const gap = await this.createGap(question, opts?.demoSeed);
       return { result, gap };
     }
     return { result, gap: null };
@@ -161,7 +166,7 @@ export class AskService {
     return gaps.map(withPriority);
   }
 
-  private async createGap(question: string): Promise<Gap> {
+  private async createGap(question: string, demoSeed?: boolean): Promise<Gap> {
     const gap: Gap = {
       id: this.genId(),
       // SCRUM-284: datensparsam + lesbar — gespeicherte Gap-Frage normalisieren/begrenzen.
@@ -170,6 +175,7 @@ export class AskService {
       assignee: null,
       priority: "mittel",
       createdAt: new Date(this.now()).toISOString(),
+      ...(demoSeed ? { demoSeed: true } : {}),
     };
     await this.gaps.insert(gap);
     await this.audit?.record({ actor: "system", action: "gap.created", target: gap.id });

@@ -153,7 +153,7 @@ describe("SCRUM-156: seedDemo", () => {
     expect(remaining.some((u) => u.id === real.id)).toBe(true);
   });
 
-  it("Pedi 05.07. (Beta): force lädt Demo-Set trotz vorhandener Daten, ohne echte Daten zu verlieren", async () => {
+  it("Pedi 14.07.: Demodaten laden AUCH neben echten Daten; idempotent über Herkunfts-Flag", async () => {
     const services = buildServices();
     // Realer Admin richtet ein und erfasst ein EIGENES (echtes) Wissensobjekt.
     const admin = await services.auth.register({
@@ -171,29 +171,87 @@ describe("SCRUM-156: seedDemo", () => {
       neededValidations: 2,
     });
 
-    // Ohne force: übersprungen, weil die Instanz nicht leer ist.
-    const skipped = await seedDemoForAdmin(services, admin.id);
-    expect(skipped.skipped).toBe(true);
-    expect((await services.ko.list()).some((k) => k.id === realKo.id)).toBe(true);
-
-    // Mit force: Demo-Set wird geladen; das echte KO bleibt erhalten.
-    const forced = await seedDemoForAdmin(services, admin.id, { force: true });
-    expect(forced.skipped).toBe(false);
-    const demoAfterFirst = (await services.ko.list()).filter((k) =>
-      (k.tags ?? []).includes("pilot-demo"),
-    ).length;
+    // Neu: Der Leer-Guard entfällt — Demodaten laden NEBEN dem echten KO (nicht mehr übersprungen).
+    const loaded = await seedDemoForAdmin(services, admin.id);
+    expect(loaded.skipped).toBe(false);
+    const demoAfterFirst = (await services.ko.list()).filter((k) => k.demoSeed === true).length;
     expect(demoAfterFirst).toBeGreaterThanOrEqual(5);
     expect((await services.ko.list()).some((k) => k.id === realKo.id)).toBe(true);
 
-    // Zweiter force-Lauf verdoppelt das Demo-Set NICHT (erst aufräumen, dann frisch seeden).
-    const forced2 = await seedDemoForAdmin(services, admin.id, { force: true });
-    expect(forced2.skipped).toBe(false);
-    const demoAfterSecond = (await services.ko.list()).filter((k) =>
-      (k.tags ?? []).includes("pilot-demo"),
-    ).length;
-    expect(demoAfterSecond).toBe(demoAfterFirst);
-    // Und das echte KO ist weiterhin da.
+    // Idempotenz über das Herkunfts-Flag: erneutes Laden ohne force dupliziert NICHT (übersprungen).
+    const again = await seedDemoForAdmin(services, admin.id);
+    expect(again.skipped).toBe(true);
+    expect((await services.ko.list()).filter((k) => k.demoSeed === true).length).toBe(
+      demoAfterFirst,
+    );
+
+    // force lädt den Demo-Bestand frisch (erst aufräumen, dann seeden) — ohne Dublette, echtes KO bleibt.
+    const forced = await seedDemoForAdmin(services, admin.id, { force: true });
+    expect(forced.skipped).toBe(false);
+    expect((await services.ko.list()).filter((k) => k.demoSeed === true).length).toBe(
+      demoAfterFirst,
+    );
     expect((await services.ko.list()).some((k) => k.id === realKo.id)).toBe(true);
+  });
+
+  it("Pedi 14.07. (Kern): 'Demodaten entfernen' purged NUR Demo-Daten; echtes KO + Anhängsel bleiben", async () => {
+    const services = buildServices();
+    const admin = await services.auth.register({
+      name: "Echter Admin",
+      email: "real@firma.example",
+      password: "real-admin-pass-123",
+    });
+    // (a) NICHT-Demo-KO mit echtem Anhängsel: Validierung + externe Quelle.
+    const realKo = await services.ko.create({
+      title: "Echtes Betriebswissen",
+      statement: "Vom Anwender erfasst — bleibt nach dem Demo-Purge vollständig erhalten.",
+      type: "technik",
+      category: "Eigene Erfassung",
+      author: admin.id,
+      confidence: 50,
+      neededValidations: 1,
+    });
+    await services.validation.rate(realKo.id, admin.id, "up");
+    await services.ko.addSource(realKo.id, admin.id, {
+      label: "Eigenes Handbuch",
+      url: "https://intern.firma/handbuch",
+      excerpt: "Abschnitt 1",
+      provider: "Intern",
+    });
+    // Eine ECHTE Wissenslücke des Anwenders (ohne Demo-Flag) — muss den Purge überleben.
+    const realGap = await services.ask.ask(
+      "Wie ist die exakte Drehmoment-Vorgabe für die Sonderschraube ZX-9 in unserer Halle?",
+      admin.id,
+    );
+
+    // (b) Demodaten laden → beide koexistieren.
+    const loaded = await seedDemoForAdmin(services, admin.id);
+    expect(loaded.skipped).toBe(false);
+    expect(
+      (await services.ko.list()).filter((k) => k.demoSeed === true).length,
+    ).toBeGreaterThanOrEqual(5);
+    expect((await services.ko.list()).some((k) => k.id === realKo.id)).toBe(true);
+    expect((await services.ask.listGaps()).some((g) => g.demoSeed === true)).toBe(true);
+
+    // (c) Demodaten entfernen → NUR Demo-Daten weg.
+    await purgeDemoSeed(services, admin.id);
+    const kosAfter = await services.ko.list();
+    expect(kosAfter.filter((k) => k.demoSeed === true)).toHaveLength(0);
+
+    // (d) Das echte KO + alles daran Hängende bleibt vollständig erhalten.
+    const survivor = kosAfter.find((k) => k.id === realKo.id);
+    expect(survivor).toBeDefined();
+    expect(survivor?.status).toBe("validiert");
+    expect(survivor?.sources?.length ?? 0).toBeGreaterThanOrEqual(1);
+    // Demo-Gaps weg, die echte Anwender-Lücke bleibt.
+    const gapsAfter = await services.ask.listGaps();
+    expect(gapsAfter.some((g) => g.demoSeed === true)).toBe(false);
+    expect(realGap.gap && gapsAfter.some((g) => g.id === realGap.gap?.id)).toBe(true);
+    // Der ausführende (echte) Admin bleibt bestehen; Demo-Anwender sind weg.
+    expect((await services.auth.listUsers()).some((u) => u.id === admin.id)).toBe(true);
+    expect((await services.auth.listUsers()).some((u) => u.email.endsWith("@demo.klarwerk"))).toBe(
+      false,
+    );
   });
 
   it("ist idempotent: zweiter Lauf überspringt, keine Duplikate", async () => {

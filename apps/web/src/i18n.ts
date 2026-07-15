@@ -417,8 +417,8 @@ const de = {
   "adm.purgeDone":
     "Demodaten entfernt: {{kos}} Wissensobjekte, {{conflicts}} Konflikte aufgelöst, {{gaps}} Wissenslücken, {{users}} Demo-Anwender.",
   "adm.seedSkippedInline":
-    "Nicht geladen: Diese Instanz enthält bereits Wissensobjekte. Demodaten füllen nur eine LEERE Instanz — dein echter Bestand wird nie überschrieben.",
-  "adm.seedForce": "Für Beta-Test trotzdem laden",
+    "Nicht geladen: Der Demo-Bestand ist bereits vorhanden (keine Dubletten). Über „Demodaten entfernen“ kannst du ihn gezielt entfernen und danach neu laden.",
+  "adm.seedForce": "Demo-Bestand neu laden",
   "adm.factory.title": "Werkseinstellungen",
   "adm.factory.help":
     "Setzt die lokale Instanz vollständig zurück: alle Wissensobjekte, Anwender, Konflikte, Lücken und Einstellungen werden gelöscht. Danach beendet sich das Programm; beim nächsten Start beginnt die Ersteinrichtung und der erste Anwender wird wieder Admin. Nur in der lokalen Desktop-Version verfügbar.",
@@ -2046,7 +2046,7 @@ const de = {
   "adm.resetDone": "Passwort zurückgesetzt; alle Sitzungen beendet.",
   "adm.seedTitle": "Demodaten laden",
   "adm.seedHint":
-    "Befüllt eine LEERE Instanz mit einem kleinen, echten Demo-Bestand (KOs, Validierung, Lücke, Konflikt, Anhang). Nur wirksam, wenn noch keine Wissensobjekte existieren.",
+    "Lädt einen kleinen, echten Demo-Bestand (KOs, Validierung, Lücke, Konflikt, Anhang) — auch neben vorhandenen Daten. Dein echter Bestand bleibt unberührt und wird nie überschrieben. Über „Demodaten entfernen“ gezielt wieder entfernbar.",
   "adm.seedButton": "Demodaten laden",
   "adm.seedDone": "Demodaten geladen: {{kos}} Wissensobjekte, {{users}} Nutzer.",
   "adm.seedSkipped": "Übersprungen: Instanz ist nicht leer (Bestand vorhanden).",
@@ -3315,8 +3315,8 @@ const en: typeof de = {
   "adm.purgeDone":
     "Demo data removed: {{kos}} knowledge objects, {{conflicts}} conflicts resolved, {{gaps}} knowledge gaps, {{users}} demo users.",
   "adm.seedSkippedInline":
-    "Not loaded: this instance already contains knowledge objects. Demo data only fills an EMPTY instance — your real content is never overwritten.",
-  "adm.seedForce": "Load anyway for beta test",
+    "Not loaded: the demo set is already present (no duplicates). Use “Remove demo data” to remove it and then load it again.",
+  "adm.seedForce": "Reload demo set",
   "adm.factory.title": "Factory settings",
   "adm.factory.help":
     "Fully resets the local instance: all knowledge objects, users, conflicts, gaps and settings are deleted. The program then quits; on the next start the initial setup runs and the first user becomes admin again. Only available in the local desktop version.",
@@ -4917,7 +4917,7 @@ const en: typeof de = {
   "adm.resetDone": "Password reset; all sessions ended.",
   "adm.seedTitle": "Load demo data",
   "adm.seedHint":
-    "Populates an EMPTY instance with a small, real demo set (KOs, validation, gap, conflict, attachment). Only effective while no knowledge objects exist yet.",
+    "Loads a small, real demo set (KOs, validation, gap, conflict, attachment) — also alongside existing data. Your real content stays untouched and is never overwritten. Removable on demand via “Remove demo data”.",
   "adm.seedButton": "Load demo data",
   "adm.seedDone": "Demo data loaded: {{kos}} knowledge objects, {{users}} users.",
   "adm.seedSkipped": "Skipped: instance is not empty (content present).",
@@ -6164,8 +6164,8 @@ const nl: typeof de = {
   "adm.purgeDone":
     "Demogegevens verwijderd: {{kos}} kennisobjecten, {{conflicts}} conflicten opgelost, {{gaps}} kennishiaten, {{users}} demogebruikers.",
   "adm.seedSkippedInline":
-    "Niet geladen: deze instantie bevat al kennisobjecten. Demogegevens vullen alleen een LEGE instantie — je echte bestand wordt nooit overschreven.",
-  "adm.seedForce": "Toch laden voor bètatest",
+    "Niet geladen: de demovoorraad is al aanwezig (geen duplicaten). Gebruik „Demogegevens verwijderen“ om deze te verwijderen en daarna opnieuw te laden.",
+  "adm.seedForce": "Demovoorraad opnieuw laden",
   "adm.factory.title": "Fabrieksinstellingen",
   "adm.factory.help":
     "Zet de lokale instantie volledig terug: alle kennisobjecten, gebruikers, conflicten, hiaten en instellingen worden verwijderd. Daarna sluit het programma zich af; bij de volgende start begint de eerste installatie en wordt de eerste gebruiker weer admin. Alleen beschikbaar in de lokale desktopversie.",
@@ -7749,7 +7749,7 @@ const nl: typeof de = {
   "adm.resetDone": "Wachtwoord gereset; alle sessies beëindigd.",
   "adm.seedTitle": "Demogegevens laden",
   "adm.seedHint":
-    "Vult een LEGE instantie met een kleine, echte demovoorraad (KO's, validatie, hiaat, conflict, bijlage). Alleen werkzaam wanneer er nog geen kennisobjecten bestaan.",
+    "Laadt een kleine, echte demovoorraad (KO's, validatie, hiaat, conflict, bijlage) — ook naast bestaande gegevens. Je echte bestand blijft onaangeroerd en wordt nooit overschreven. Gericht te verwijderen via „Demogegevens verwijderen“.",
   "adm.seedButton": "Demogegevens laden",
   "adm.seedDone": "Demogegevens geladen: {{kos}} kennisobjecten, {{users}} gebruikers.",
   "adm.seedSkipped": "Overgeslagen: instantie is niet leeg (voorraad aanwezig).",
