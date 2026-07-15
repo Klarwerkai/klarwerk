@@ -1,3 +1,4 @@
+import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance } from "fastify";
 import type { Pool } from "pg";
 import { AskService, type GapRepo, InMemoryGapRepo, PgGapRepo } from "../../ask";
@@ -107,6 +108,7 @@ import {
   ValidationService,
   type ValidationSettingsRepo,
 } from "../../validation";
+import { ADDON_KEY_HEADER, addonApiEnabled, addonOrigin } from "./addon-api";
 import type { SemanticPrefilter } from "./duplicate-detection";
 import type { FactoryReset } from "./factory-reset";
 import { makeGuards } from "./http";
@@ -421,6 +423,19 @@ export function buildApp(
 ): FastifyInstance {
   const app = Fastify();
   const guards = makeGuards(services.auth);
+
+  // Add-on-API (Klara-Panel), hinter KLARWERK_ADDON_API: CORS NUR bei aktivem Flag und NUR für die eine
+  // konfigurierte Add-in-Origin (kein Wildcard). Flag AUS → gar nicht registriert → keine CORS-Header
+  // (exakt heutiges Verhalten). Kein credentials-Modus: der Add-in-Pfad nutzt einen Key-Header, keine
+  // Cookies — so werden Session-Cookies nie cross-origin exponiert.
+  if (addonApiEnabled()) {
+    app.register(cors, {
+      origin: addonOrigin(),
+      methods: ["POST", "OPTIONS"],
+      allowedHeaders: ["Content-Type", ADDON_KEY_HEADER],
+      credentials: false,
+    });
+  }
 
   app.get("/health", async () => ({ status: "ok" }));
   app.get("/api/reasoner/status", async () => services.reasoner.status()); // FR-RSN-05

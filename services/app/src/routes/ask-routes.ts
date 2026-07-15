@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { type AskService, isGapPriority } from "../../../ask";
+import { resolveAskUser } from "../addon-api";
 import { type Guards, sendError } from "../http";
 
 // Fragen & Wissenslücken (§2.4 / FR-ASK).
@@ -8,7 +9,9 @@ export function askRoutes(ask: AskService, guards: Guards): FastifyPluginAsync {
     app.post<{ Body: { question: string; locale?: "de" | "en" } }>(
       "/api/ask",
       async (request, reply) => {
-        const user = await guards.requirePermission("ko.read", request, reply);
+        // Add-on-API (hinter KLARWERK_ADDON_API): Flag AUS → identisch zum Session-Guard (ko.read).
+        // Flag AN + gültiger Add-in-Key → synthetischer viewer (nur ko.read), sonst 401. Nur hier.
+        const user = await resolveAskUser(request, reply, guards);
         if (!user) {
           return;
         }

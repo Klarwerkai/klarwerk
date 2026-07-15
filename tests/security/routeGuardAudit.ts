@@ -82,6 +82,11 @@ export function scanRouteFile(text: string, file: string): ScannedRoute[] {
       protection = "admin";
     } else if (/requireUser\(/.test(block)) {
       protection = "auth";
+    } else if (/resolveAskUser\(/.test(block)) {
+      // Add-on-API (KLARWERK_ADDON_API): resolveAskUser erzwingt in BEIDEN Zweigen ko.read — Flag AN +
+      // gültiger Add-in-Key liefert einen synthetischen viewer (RBAC viewer = EXAKT ko.read), sonst
+      // unverändert der Session-Guard requirePermission("ko.read"). Also niemals öffentlich.
+      protection = "ko.read";
     } else {
       protection = "public";
     }
