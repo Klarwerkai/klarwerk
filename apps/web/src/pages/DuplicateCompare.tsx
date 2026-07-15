@@ -1,9 +1,11 @@
 import { Link, useParams } from "react-router-dom";
 import { useConflicts, useDuplicates, useKos } from "../api/hooks";
 import type { Conflict, KnowledgeObject, OverlapEntry } from "../api/types";
+import { HelpTip } from "../components/HelpTip";
 import { KoView } from "../components/KoView";
 import { PageHeader, cx } from "../components/ui";
 import {
+  COMPARE_TONE_LEGEND,
   type CompareMetrics,
   type CompareSection,
   buildDuplicateCompareSections,
@@ -12,6 +14,13 @@ import {
   overallFromConflict,
   overallFromOverlap,
 } from "../lib/duplicateCompare";
+
+// SCRUM-488: Punktfarbe je Ampel für die Legende (gleiche Semantik wie die Score-Balken-Segmente).
+const TONE_DOT: Record<CompareSection["tone"], string> = {
+  green: "bg-trust-pos-text",
+  yellow: "bg-trust-warn-text",
+  red: "bg-trust-crit-text",
+};
 
 export type DuplicateCompareKind = "duplicate" | "conflict";
 
@@ -311,7 +320,25 @@ export function DuplicateCompare({ kind }: { kind: DuplicateCompareKind }): JSX.
           <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
             Abschnittsampeln
           </div>
-          <h2 className="mt-1 text-lg font-semibold text-ink">Vergleich nach Wissensbereichen</h2>
+          <div className="mt-1 flex items-center gap-1.5">
+            <h2 className="text-lg font-semibold text-ink">Vergleich nach Wissensbereichen</h2>
+            <HelpTip
+              title="Was bedeuten die Ampelfarben?"
+              body={
+                "Jeder Abschnitt bekommt eine Farbe aus dem Textabgleich: Grün = die Inhalte decken sich weitgehend, Gelb = teilweise oder unklar (genauer ansehen), Rot = die Texte weichen ab. Rot bedeutet nur Unterschied, kein bewiesener Widerspruch — die Farben sind eine Lesehilfe, kein Urteil, und es wird nichts automatisch zusammengeführt."
+              }
+            />
+          </div>
+          {/* SCRUM-488 (Nullschulung): Ampel-Legende — grün/gelb/rot ohne Erklärung war ein Blindspot. */}
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px] text-muted">
+            {COMPARE_TONE_LEGEND.map((entry) => (
+              <span key={entry.tone} className="flex items-center gap-1.5">
+                <span className={cx("h-2 w-2 shrink-0 rounded-full", TONE_DOT[entry.tone])} />
+                <span className="font-semibold text-text">{entry.label}</span>
+                <span className="text-muted-2">— {entry.meaning}</span>
+              </span>
+            ))}
+          </div>
         </div>
         {sections.length > 0 ? (
           sections.map((section) => <SectionRow key={section.key} section={section} />)

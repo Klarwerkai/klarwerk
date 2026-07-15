@@ -289,12 +289,41 @@ export function compareHeadline(metrics: CompareMetrics): CompareHeadline {
   };
 }
 
+// SCRUM-488 (Nullschulung): sprechende Bedeutung je Ampelfarbe statt des bloßen Farbnamens
+// („gruen"/„gelb"/„rot" erklärten nichts). Grün = deckt sich, Gelb = teils/unklar, Rot = weicht ab
+// (bewusst „Unterschied", KEIN bewiesener Widerspruch — konsistent zur SCRUM-486-Rahmung).
 export function compareToneLabel(tone: CompareTone): string {
   if (tone === "green") {
-    return "gruen";
+    return "Übereinstimmung";
   }
   if (tone === "red") {
-    return "rot";
+    return "Unterschied";
   }
-  return "gelb";
+  return "Unsicher";
 }
+
+export interface CompareToneLegendEntry {
+  tone: CompareTone;
+  label: string;
+  meaning: string;
+}
+
+// Legende der Abschnittsampeln — eine Quelle für die Anzeige UND den Test. Bewusst ehrlich: Rot ist
+// ein Text-/Feldunterschied, kein automatisch bewiesener Konflikt.
+export const COMPARE_TONE_LEGEND: readonly CompareToneLegendEntry[] = [
+  {
+    tone: "green",
+    label: compareToneLabel("green"),
+    meaning: "Text und Felder decken sich weitgehend.",
+  },
+  {
+    tone: "yellow",
+    label: compareToneLabel("yellow"),
+    meaning: "Teilweise oder unklar — genauer ansehen.",
+  },
+  {
+    tone: "red",
+    label: compareToneLabel("red"),
+    meaning: "Text weicht ab — nur ein Unterschied, kein bewiesener Widerspruch.",
+  },
+];
