@@ -15,6 +15,7 @@ import {
   isInsertableImageMime,
   partitionDropMedia,
 } from "../lib/editorDropPaste";
+import { editorFileButtonVisible } from "../lib/editorFiles";
 import { editorLinkHtml } from "../lib/editorLinks";
 import { fileToThumbDataUrl } from "../lib/files";
 import {
@@ -477,50 +478,54 @@ export function RichTextEditor({
                 </div>
               ) : null}
             </div>
-            {/* SCRUM-355: Nicht-Bild-Datei als sichere Body-Referenz (Object-Store) einfügen. */}
-            <div className="relative">
-              <button
-                type="button"
-                title={t("editor.file")}
-                className={tb}
-                onClick={() => setShowFiles((s) => !s)}
-              >
-                <Paperclip size={14} />
-                {t("editor.fileLabel")}
-              </button>
-              {showFiles ? (
-                <div className="absolute z-10 mt-1 w-60 rounded-card border border-hairline bg-surface p-1.5 shadow">
-                  {/* Pedi 06.07.: neue Datei vom Rechner anhängen — direkt hier, wo der Nutzer sucht. */}
-                  {onAttachFiles ? (
-                    <button
-                      type="button"
-                      onClick={() => attachFileInputRef.current?.click()}
-                      className="mb-1 flex w-full items-center gap-1.5 rounded-btn px-2 py-1 text-left text-[12.5px] font-semibold text-ai hover:bg-hairline-soft"
-                    >
-                      <Paperclip size={13} />
-                      {t("editor.fileFromDisk")}
-                    </button>
-                  ) : null}
-                  <p className="border-hairline px-2 pb-1 pt-0.5 text-[11px] text-muted-2">
-                    {t("editor.insertFile")}
-                  </p>
-                  {files.length === 0 ? (
-                    <p className="px-2 py-1 text-[12px] text-muted">{t("editor.noFiles")}</p>
-                  ) : (
-                    files.map((file) => (
+            {/* SCRUM-355 / SCRUM-488: „Datei"-Button nur zeigen, wenn er etwas kann — Datei-Upload
+                (onAttachFiles) ODER einfügbare Object-Store-Dateien. Ohne beides wäre es ein toter
+                Klick (Nullschulungs-Killer): kein Upload möglich, nichts zum Einfügen. */}
+            {editorFileButtonVisible(onAttachFiles !== undefined, files.length) ? (
+              <div className="relative">
+                <button
+                  type="button"
+                  title={t("editor.file")}
+                  className={tb}
+                  onClick={() => setShowFiles((s) => !s)}
+                >
+                  <Paperclip size={14} />
+                  {t("editor.fileLabel")}
+                </button>
+                {showFiles ? (
+                  <div className="absolute z-10 mt-1 w-60 rounded-card border border-hairline bg-surface p-1.5 shadow">
+                    {/* Pedi 06.07.: neue Datei vom Rechner anhängen — direkt hier, wo der Nutzer sucht. */}
+                    {onAttachFiles ? (
                       <button
-                        key={file.objectId}
                         type="button"
-                        onClick={() => addFile(file)}
-                        className="block w-full truncate rounded-btn px-2 py-1 text-left text-[12.5px] text-text hover:bg-hairline-soft"
+                        onClick={() => attachFileInputRef.current?.click()}
+                        className="mb-1 flex w-full items-center gap-1.5 rounded-btn px-2 py-1 text-left text-[12.5px] font-semibold text-ai hover:bg-hairline-soft"
                       >
-                        {file.name}
+                        <Paperclip size={13} />
+                        {t("editor.fileFromDisk")}
                       </button>
-                    ))
-                  )}
-                </div>
-              ) : null}
-            </div>
+                    ) : null}
+                    <p className="border-hairline px-2 pb-1 pt-0.5 text-[11px] text-muted-2">
+                      {t("editor.insertFile")}
+                    </p>
+                    {files.length === 0 ? (
+                      <p className="px-2 py-1 text-[12px] text-muted">{t("editor.noFiles")}</p>
+                    ) : (
+                      files.map((file) => (
+                        <button
+                          key={file.objectId}
+                          type="button"
+                          onClick={() => addFile(file)}
+                          className="block w-full truncate rounded-btn px-2 py-1 text-left text-[12.5px] text-text hover:bg-hairline-soft"
+                        >
+                          {file.name}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             {sep}
             {/* SCRUM-314/384: Callouts Info/Hinweis/Warnung/Erfolg — farbige Text-Pills (ARGUS). */}
             {EDITOR_BLOCKS.map((block) => (

@@ -450,12 +450,13 @@ export function CaptureFrontDoor(): JSX.Element {
 
   return (
     <div className="mx-auto max-w-5xl">
+      {/* SCRUM-488: Migrationssprache raus — der Link sagt, was ihn erwartet (nicht die interne Historie). */}
       <PageHeader
         kicker="Erfassen"
         title="Dokument-Canvas"
         actions={
           <Link className="text-sm font-semibold text-muted hover:text-ink" to="/erfassen">
-            Bisheriges Erfassen
+            Alle Erfassungs-Modi
           </Link>
         }
       />
@@ -764,7 +765,11 @@ export function CaptureFrontDoor(): JSX.Element {
 
         <aside className="space-y-4">
           <Card className="space-y-3">
-            <SectionLabel>Status</SectionLabel>
+            {/* SCRUM-488: Status-Karte mit ?-Hilfe — erklärt Entwurf vs. Einreichen (was passiert, was NICHT). */}
+            <div className="flex items-center gap-1.5">
+              <SectionLabel>Status</SectionLabel>
+              <HelpTip {...chelp("savedNext")} />
+            </div>
             <div>
               <div className="text-[12px] text-muted">Titel beim Speichern</div>
               <div className="mt-1 text-sm font-semibold text-ink">{derivedTitle}</div>
@@ -774,15 +779,20 @@ export function CaptureFrontDoor(): JSX.Element {
               <div className="mt-1 text-sm text-text">{authorName}</div>
             </div>
             <div>
-              <div className="text-[12px] text-muted">Status nach dem Speichern</div>
-              <div className="mt-1 text-sm text-text">Entwurf / fortsetzen</div>
+              <div className="text-[12px] text-muted">Was beim Speichern passiert</div>
+              {/* SCRUM-488: Klartext statt kryptisch „Entwurf / fortsetzen". */}
+              <div className="mt-1 text-sm text-text">
+                Wird als Entwurf gesichert — jederzeit fortsetzbar. Zur Prüfung geht er erst, wenn
+                du „Prüfen / Einreichen" wählst; nichts wird automatisch validiert.
+              </div>
             </div>
           </Card>
           <Card className="space-y-2">
-            <SectionLabel>Fallback</SectionLabel>
+            {/* SCRUM-488: keine interne Migrationssprache — was der vollständige Bereich dem Nutzer bietet. */}
+            <SectionLabel>Mehr Erfassungswege</SectionLabel>
             <p className="text-sm leading-relaxed text-muted">
-              Der bisherige Erfassen-Weg bleibt erreichbar und enthaelt weiterhin die erweiterten
-              Modi.
+              Brauchst du das klassische Formular, Diktat oder das geführte Interview? Der
+              vollständige Erfassen-Bereich hat alle Wege — dieser Canvas ist der schnelle Einstieg.
             </p>
           </Card>
         </aside>
