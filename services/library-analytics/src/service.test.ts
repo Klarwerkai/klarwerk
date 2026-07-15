@@ -40,7 +40,9 @@ async function setup() {
     author: "bob",
     tags: ["wartung", "ventil"],
   });
-  return { koService, library: new LibraryService({ koService }) };
+  // Der Confluence-Import-Strang (pageId-Dedup/-Upsert) wird für diese Suite aktiviert — sie testet
+  // genau dieses Verhalten. Der Flag-AUS-Fall (Bestandsverhalten) hat einen eigenen Test unten.
+  return { koService, library: new LibraryService({ koService, confluenceImport: true }) };
 }
 
 describe("LibraryService", () => {
@@ -231,6 +233,32 @@ describe("LibraryService", () => {
     expect(ko2.version).toBe(1); // NICHT revidiert → idempotent
     expect(ko2.statement).toBe("Erststand."); // kein Downgrade auf „nochmal."
     expect(ko2.sources.find((s) => s.externalId === "PNV")?.sourceVersion).toBe(1); // kein Bump
+  });
+
+  it("SCRUM-470 (ben #7): Flag AUS → kein pageId-Pfad (kein pageId-Dedup, kein Upsert, kein Anker)", async () => {
+    // Eigener Service mit AUSGESCHALTETEM Strang = heutiges Bestandsverhalten.
+    const koService = new KoService({ repo: new InMemoryKoRepo() });
+    const library = new LibraryService({ koService, confluenceImport: false });
+
+    // Zwei Items mit GLEICHER pageId, aber unterschiedlichem title|statement. Bei Flag AN wäre das
+    // zweite eine (intra-Batch) pageId-Dublette — bei Flag AUS greift NUR title|statement (→ keine Dublette).
+    const cands = await library.createImportCandidates([
+      confItem({ pageId: "PX", title: "A", statement: "Aussage A." }),
+      confItem({ pageId: "PX", title: "B", statement: "Aussage B." }),
+    ]);
+    expect(cands.map((c) => c.duplicate)).toEqual([false, false]); // pageId-Dedup greift NICHT
+
+    // Accept legt ein KO OHNE Herkunfts-Anker an (kein pageId-Upsert).
+    const r = await library.reviewImportCandidate(cands[0]!.id, "accept");
+    const ko = (await koService.list()).find((k) => k.id === r.koId)!;
+    expect(ko.sources).toEqual([]);
+
+    // Re-Accept desselben pageId-Items → NEUES KO (kein Upsert/Re-Sync), da pageId ignoriert wird.
+    const [again] = await library.createImportCandidates([
+      confItem({ pageId: "PX", title: "C", statement: "Aussage C." }),
+    ]);
+    const r2 = await library.reviewImportCandidate(again!.id, "accept");
+    expect(r2.koId).not.toBe(r.koId);
   });
 
   it("FR-LIB-03: Bus-Faktor erkennt Einzelquellen", async () => {

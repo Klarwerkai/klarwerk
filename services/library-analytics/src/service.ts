@@ -22,6 +22,10 @@ export interface LibraryServiceDeps {
   candidates?: CandidateRepo;
   genId?: () => string;
   now?: () => number;
+  // SCRUM-470 (ben-Review #7, Flag-Scope): schaltet den GESAMTEN Confluence-Import-Strang. Aus (Default)
+  // = exakt heutiges Bestandsverhalten (title|statement-Dedup, kein pageId-Pfad, kein Herkunfts-Anker).
+  // An = pageId-Dedup + pageId-Upsert. Der Wert kommt aus KLARWERK_CONFLUENCE_IMPORT (build-app liest ihn).
+  confluenceImport?: boolean;
 }
 
 function increment(map: Record<string, number>, key: string): void {
@@ -35,6 +39,8 @@ export class LibraryService {
   private readonly now: () => number;
   // SCRUM-116/157: Import-/Source-Review-Queue über ein Repo (persistent via Pg, sonst In-Memory).
   private readonly candidates: CandidateRepo;
+  // SCRUM-470 (ben-Review #7): Confluence-Import-Strang aktiv? Aus = heutiges Bestandsverhalten.
+  private readonly confluenceImport: boolean;
 
   constructor(deps: LibraryServiceDeps) {
     this.koService = deps.koService;
@@ -42,6 +48,7 @@ export class LibraryService {
     this.candidates = deps.candidates ?? new InMemoryCandidateRepo();
     this.genId = deps.genId ?? (() => randomUUID());
     this.now = deps.now ?? (() => Date.now());
+    this.confluenceImport = deps.confluenceImport ?? false;
   }
 
   // SCRUM-116: JSON-Re-Import erzeugt Review-Kandidaten (keine stille Bulk-Anlage).
@@ -58,7 +65,8 @@ export class LibraryService {
     const batchPageIds = new Set<string>();
     const created = items.map<ImportCandidate>((item) => {
       let duplicate: boolean;
-      if (item.pageId) {
+      // ben-Review #7: pageId-Dedup nur bei aktivem Strang. Aus → title|statement-Dedup für ALLE Items.
+      if (this.confluenceImport && item.pageId) {
         duplicate = batchPageIds.has(item.pageId);
         batchPageIds.add(item.pageId);
       } else {
@@ -131,7 +139,9 @@ export class LibraryService {
   // Bekannte pageId (Anker im Bestand) → Re-Sync via revise() (nur bei höherer sourceVersion),
   // sonst neues KO. Gibt die KO-Id zurück (für die nachgelagerte Erkennung im Route-Layer).
   private async acceptToKo(item: ImportItem, actor: string): Promise<string> {
-    const pageId = item.pageId;
+    // ben-Review #7: pageId-Upsert/Anker nur bei aktivem Strang. Aus → pageId ignorieren, immer neu
+    // anlegen ohne Herkunfts-Anker (exakt heutiges Bestandsverhalten).
+    const pageId = this.confluenceImport ? item.pageId : undefined;
     const existing = pageId
       ? (await this.koService.list()).find((ko) =>
           (ko.sources ?? []).some((s) => s.externalId === pageId),
