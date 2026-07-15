@@ -430,12 +430,42 @@ async function buildDemoContent(
   }
 
   // --- Konflikt: widersprüchliche Aussagen zur Vorwärmung gegenüberstellen ---
-  await conflicts.create(
+  // SCRUM-492: als automatisch-erkannter Konflikt MIT strukturierten Kollisionsfeldern seeden, damit
+  // die visuelle Gegenüberstellung (zwei Kacheln + Kollisionspunkt) im Demo GARANTIERT erscheint —
+  // die Erkennung läuft nie auf demoSeed-KOs, daher hier fest gesetzt. Die Streitwerte stehen wörtlich
+  // in den beiden Belegzitaten (streitwertWoertlich=true), passend zu den echten Demo-Aussagen.
+  await conflicts.createAuto(
     {
       koA: koWarm.id,
       koB: koNoWarm.id,
       type: "truth",
-      description: "Widerspruch: Vorwärmung bei Kaltstart nötig vs. nicht nötig.",
+      description:
+        "Automatisch erkannt: A verlangt Vorwärmung vor dem Kaltstart, B hält sie für unnötig.",
+    },
+    {
+      trigger: "validation",
+      method: "model",
+      promptVersion: "kon-v1",
+      modelLabel: "demo:seed",
+      confidence: 0.94,
+      rationale: "A verlangt Vorwärmung vor dem Kaltstart, B erklärt sie für unnötig.",
+      quotes: {
+        a: "Vor dem Kaltstart die Vorwärmung 10 min laufen lassen.",
+        b: "Kaltstart ohne Vorwärmung ist möglich und spart Zeit.",
+      },
+      kollision: {
+        streitpunkt: "Vorwärmung bei Kaltstart",
+        seiteA: {
+          kernaussage: "Vor dem Kaltstart erst 10 Minuten vorwärmen.",
+          streitwert: "Vorwärmung 10 min",
+          streitwertWoertlich: true,
+        },
+        seiteB: {
+          kernaussage: "Kaltstart ist ohne Vorwärmung möglich.",
+          streitwert: "ohne Vorwärmung",
+          streitwertWoertlich: true,
+        },
+      },
     },
     adminId,
   );
