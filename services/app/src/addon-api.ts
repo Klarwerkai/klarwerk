@@ -10,10 +10,33 @@ export function addonApiEnabled(): boolean {
   return flag === "1" || flag === "true";
 }
 
-// Erlaubte Add-in-Origin (genau eine, KEIN Wildcard). Aus der Env konfigurierbar; Default = lokaler
-// HTTPS-Dev-Server des Klara-Panels.
-export function addonOrigin(): string {
-  return process.env.KLARWERK_ADDON_ORIGIN?.trim() || "https://localhost:3000";
+// Der einzige Pfad, für den der Add-on-Pfad CORS öffnet — nichts sonst.
+export const ADDON_ASK_PATH = "/api/ask";
+
+// Validiert die konfigurierte Add-in-Origin als ECHTE URL-Origin (ben-Review SCRUM-490, P2). Fail-closed:
+// "*", leer, mit Pfad/Query/Fragment oder syntaktisch ungültig → null. null bedeutet: KEIN CORS registrieren,
+// nichts durchreichen. Nicht gesetzt (undefined) → konservativer, valider HTTPS-Dev-Default.
+export function resolveAddonOrigin(): string | null {
+  const raw = process.env.KLARWERK_ADDON_ORIGIN;
+  const value = raw === undefined ? "https://localhost:3000" : raw.trim();
+  // Explizit leer oder Wildcard (auch teil-Wildcard wie https://*.x) → fail-closed.
+  if (value === "" || value.includes("*")) {
+    return null;
+  }
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+  // Nur http/https, und der Wert MUSS exakt die Origin sein (kein Pfad, kein Trailing-Slash, keine Query).
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    return null;
+  }
+  if (url.origin !== value) {
+    return null;
+  }
+  return url.origin;
 }
 
 // Eigener Header — bewusst NICHT Authorization/Cookie, damit der Key nie als Session-Token (tokenFromRequest)

@@ -144,6 +144,101 @@ describe("KLARWERK_ADDON_API — Flag AN", () => {
     expect(allow).toBe(ORIGIN);
   });
 
+  it("CORS gilt NUR für /api/ask, nicht app-weit (ben-Review SCRUM-490 P2)", async () => {
+    const app = buildApp(buildServices());
+    // Preflight auf eine ANDERE Route → kein allow-origin-Header (Scope strikt auf /api/ask).
+    const other = await app.inject({
+      method: "OPTIONS",
+      url: "/api/reasoner/status",
+      headers: { origin: ORIGIN, "access-control-request-method": "GET" },
+    });
+    expect(other.headers["access-control-allow-origin"]).toBeUndefined();
+    // Echte GET-Anfrage auf eine andere Route mit Origin → ebenfalls kein CORS-Header.
+    const health = await app.inject({
+      method: "GET",
+      url: "/health",
+      headers: { origin: ORIGIN },
+    });
+    expect(health.headers["access-control-allow-origin"]).toBeUndefined();
+    // Gegenprobe: /api/ask bekommt ihn weiterhin.
+    const ask = await app.inject({
+      method: "OPTIONS",
+      url: "/api/ask",
+      headers: { origin: ORIGIN, "access-control-request-method": "POST" },
+    });
+    expect(ask.headers["access-control-allow-origin"]).toBe(ORIGIN);
+  });
+
+  it("Wildcard-Origin '*' → fail-closed, gar kein CORS-Header (ben-Review SCRUM-490 P2)", async () => {
+    process.env.KLARWERK_ADDON_ORIGIN = "*";
+    const app = buildApp(buildServices());
+    const res = await app.inject({
+      method: "OPTIONS",
+      url: "/api/ask",
+      headers: { origin: "*", "access-control-request-method": "POST" },
+    });
+    expect(res.headers["access-control-allow-origin"]).toBeUndefined();
+  });
+
+  it("Teil-Wildcard 'https://*.example.com' → fail-closed", async () => {
+    process.env.KLARWERK_ADDON_ORIGIN = "https://*.example.com";
+    const app = buildApp(buildServices());
+    const res = await app.inject({
+      method: "OPTIONS",
+      url: "/api/ask",
+      headers: { origin: "https://evil.example.com", "access-control-request-method": "POST" },
+    });
+    expect(res.headers["access-control-allow-origin"]).toBeUndefined();
+  });
+
+  it("malformed Origin (keine URL) → fail-closed", async () => {
+    process.env.KLARWERK_ADDON_ORIGIN = "not-a-real-origin";
+    const app = buildApp(buildServices());
+    const res = await app.inject({
+      method: "OPTIONS",
+      url: "/api/ask",
+      headers: { origin: "https://x", "access-control-request-method": "POST" },
+    });
+    expect(res.headers["access-control-allow-origin"]).toBeUndefined();
+  });
+
+  it("Origin mit Pfad/Trailing-Slash → fail-closed (nur echte Origin erlaubt)", async () => {
+    process.env.KLARWERK_ADDON_ORIGIN = "https://localhost:3000/panel";
+    const app = buildApp(buildServices());
+    const res = await app.inject({
+      method: "OPTIONS",
+      url: "/api/ask",
+      headers: { origin: "https://localhost:3000", "access-control-request-method": "POST" },
+    });
+    expect(res.headers["access-control-allow-origin"]).toBeUndefined();
+  });
+
+  it("leere Origin → fail-closed", async () => {
+    process.env.KLARWERK_ADDON_ORIGIN = "   ";
+    const app = buildApp(buildServices());
+    const res = await app.inject({
+      method: "OPTIONS",
+      url: "/api/ask",
+      headers: { origin: "https://localhost:3000", "access-control-request-method": "POST" },
+    });
+    expect(res.headers["access-control-allow-origin"]).toBeUndefined();
+  });
+
+  it("Fail-closed CORS lässt den Token-Pfad unberührt: gültiger Key → 200", async () => {
+    // Selbst wenn CORS wegen Wildcard-Origin fail-closed ist, bleibt der schmale ko.read-Key-Pfad nutzbar
+    // (CORS ist Browser-Schutz, keine Server-Auth). Beleg, dass die Härtung nur die CORS-Fläche betrifft.
+    process.env.KLARWERK_ADDON_ORIGIN = "*";
+    const { app, koId } = await appWithValidatedKo();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: { [ADDON_KEY_HEADER]: KEY },
+      payload: { question: "Wie wird die Zylinderkopfdichtung XQ42 gewechselt?" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().result.sources).toContain(koId);
+  });
+
   it("gültiger Key → ko.read-Antwort ohne Session", async () => {
     const { app, koId } = await appWithValidatedKo();
     const res = await app.inject({

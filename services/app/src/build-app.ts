@@ -1,5 +1,5 @@
-import cors from "@fastify/cors";
-import Fastify, { type FastifyInstance } from "fastify";
+import cors, { type FastifyCorsOptions } from "@fastify/cors";
+import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import type { Pool } from "pg";
 import { AskService, type GapRepo, InMemoryGapRepo, PgGapRepo } from "../../ask";
 import { type AuditRepo, AuditService, InMemoryAuditRepo, PgAuditRepo } from "../../audit";
@@ -108,7 +108,7 @@ import {
   ValidationService,
   type ValidationSettingsRepo,
 } from "../../validation";
-import { ADDON_KEY_HEADER, addonApiEnabled, addonOrigin } from "./addon-api";
+import { ADDON_ASK_PATH, ADDON_KEY_HEADER, addonApiEnabled, resolveAddonOrigin } from "./addon-api";
 import type { SemanticPrefilter } from "./duplicate-detection";
 import type { FactoryReset } from "./factory-reset";
 import { makeGuards } from "./http";
@@ -424,17 +424,34 @@ export function buildApp(
   const app = Fastify();
   const guards = makeGuards(services.auth);
 
-  // Add-on-API (Klara-Panel), hinter KLARWERK_ADDON_API: CORS NUR bei aktivem Flag und NUR für die eine
-  // konfigurierte Add-in-Origin (kein Wildcard). Flag AUS → gar nicht registriert → keine CORS-Header
+  // Add-on-API (Klara-Panel), hinter KLARWERK_ADDON_API: CORS NUR bei aktivem Flag, NUR für die eine
+  // validierte Add-in-Origin und NUR für POST /api/ask. Flag AUS → gar nicht registriert → keine CORS-Header
   // (exakt heutiges Verhalten). Kein credentials-Modus: der Add-in-Pfad nutzt einen Key-Header, keine
   // Cookies — so werden Session-Cookies nie cross-origin exponiert.
+  // ben-Review SCRUM-490 (P2): (1) Origin fail-closed validieren — "*"/leer/malformed → gar kein CORS
+  // (resolveAddonOrigin === null). (2) Scope über einen Delegator strikt auf /api/ask begrenzen; alle
+  // anderen Routen bekommen { origin: false } → keinerlei CORS-Header (nicht mehr app-weit).
   if (addonApiEnabled()) {
-    app.register(cors, {
-      origin: addonOrigin(),
-      methods: ["POST", "OPTIONS"],
-      allowedHeaders: ["Content-Type", ADDON_KEY_HEADER],
-      credentials: false,
-    });
+    const addonOrigin = resolveAddonOrigin();
+    if (addonOrigin !== null) {
+      app.register(
+        cors,
+        () =>
+          (req: FastifyRequest, cb: (err: Error | null, options: FastifyCorsOptions) => void) => {
+            const path = (req.url ?? "").split("?")[0];
+            if (path === ADDON_ASK_PATH) {
+              cb(null, {
+                origin: addonOrigin,
+                methods: ["POST", "OPTIONS"],
+                allowedHeaders: ["Content-Type", ADDON_KEY_HEADER],
+                credentials: false,
+              });
+            } else {
+              cb(null, { origin: false });
+            }
+          },
+      );
+    }
   }
 
   app.get("/health", async () => ({ status: "ok" }));
