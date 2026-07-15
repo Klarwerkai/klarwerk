@@ -295,6 +295,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "PUT /api/reasoner/assist-presets": { protection: "users.manage" },
   // Key-Test (Pedi 02.07.): echter Mini-Modellaufruf — nur Admin, kein Secret in der Antwort.
   "POST /api/reasoner/test": { protection: "users.manage" },
+  // SCRUM-493: End-to-End-Selbsttest der Konflikterkennung — nur Admin (echte Erkennungskette).
+  "POST /api/reasoner/conflict-self-test": { protection: "users.manage" },
   "POST /api/objects": { protection: "ko.create" },
   "GET /api/objects/:id": { protection: "ko.read" },
   "GET /api/objects/:id/raw": { protection: "ko.read" },

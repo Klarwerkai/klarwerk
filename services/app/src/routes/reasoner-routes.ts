@@ -6,6 +6,7 @@ import {
   publicAiEnrichmentAllowed,
 } from "../../../external-search";
 import type { Reasoner, ReasonerLocale } from "../../../reasoner";
+import { runConflictSelfTest } from "../conflict-self-test";
 import type { Guards } from "../http";
 
 // FR-I18N-01: nur DE/EN; alles andere/ungültige normalisiert sauber auf "de" (keine 400).
@@ -214,6 +215,17 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         return;
       }
       reply.code(200).send(await reasoner.probeLocal());
+    });
+
+    // SCRUM-493: End-to-End-Selbsttest der Konflikterkennung — beweist, dass judgeConflict im
+    // deployten Stand antwortet UND kollision liefert. Läuft die echte Erkennungskette gegen einen
+    // Wegwerf-Repo (kein Fußabdruck, idempotent). Nur Admin; der Schlüssel verlässt den Server nie.
+    app.post("/api/reasoner/conflict-self-test", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      reply.code(200).send(await runConflictSelfTest(reasoner));
     });
   };
 }

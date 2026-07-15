@@ -256,6 +256,9 @@ export function Admin(): JSX.Element {
   const aiTest = useMutation({ mutationFn: () => endpoints.reasoner.test() });
   // SCRUM-428: separater Key-Test für den eigenen lokalen LLM.
   const aiTestLocal = useMutation({ mutationFn: () => endpoints.reasoner.testLocal() });
+  // SCRUM-493: End-to-End-Selbsttest der Konflikterkennung — beweist judgeConflict + kollision im
+  // deployten Stand (der einzige verlässliche Check; die Sidebar „aktiv" prüft nur Key-Präsenz).
+  const conflictSelfTest = useMutation({ mutationFn: () => endpoints.reasoner.conflictSelfTest() });
   // SCRUM-386: kundeneigene KI-Assist-Funktionen (Presets) — lokal editieren, als Ganzes
   // speichern (Replace-Semantik der Route). Die Werks-Funktionen (klarer/strukturieren/…)
   // bleiben unangetastet im Code; hier entstehen NUR zusätzliche, instanz-eigene Funktionen.
@@ -805,6 +808,18 @@ export function Admin(): JSX.Element {
                     <KeyRound size={12} />
                     {aiTestLocal.isPending ? t("adm.ai.testRunning") : t("adm.ai.testLocal")}
                   </button>
+                  {/* SCRUM-493: End-to-End-Selbsttest der Konflikterkennung (judgeConflict + kollision). */}
+                  <button
+                    type="button"
+                    disabled={conflictSelfTest.isPending}
+                    onClick={() => conflictSelfTest.mutate()}
+                    className="inline-flex h-7 items-center gap-1 rounded-btn border border-hairline bg-surface px-2.5 text-[11.5px] font-semibold text-text hover:border-ink/30 disabled:opacity-50"
+                  >
+                    <KeyRound size={12} />
+                    {conflictSelfTest.isPending
+                      ? t("adm.conflictSelfTest.running")
+                      : t("adm.conflictSelfTest.button")}
+                  </button>
                 </div>
                 {aiTest.data ? (
                   <p
@@ -839,6 +854,36 @@ export function Admin(): JSX.Element {
                   </p>
                 ) : null}
                 {aiTestLocal.isError ? (
+                  <p className="rounded-btn bg-trust-crit-bg px-2.5 py-1.5 text-[12px] text-trust-crit-text">
+                    {t("adm.ai.testFail", { detail: t("state.error") })}
+                  </p>
+                ) : null}
+                {/* SCRUM-493: strukturiertes OK/FAIL des Konflikt-Selbsttests inkl. Provider + Streitpunkt. */}
+                {conflictSelfTest.data ? (
+                  <div
+                    className={`rounded-btn px-2.5 py-1.5 text-[12px] ${
+                      conflictSelfTest.data.ok
+                        ? "bg-trust-pos-bg text-trust-pos-text"
+                        : "bg-trust-crit-bg text-trust-crit-text"
+                    }`}
+                  >
+                    <p className="font-semibold">
+                      {conflictSelfTest.data.ok ? "OK" : "FAIL"}:{" "}
+                      {t(conflictSelfTest.data.messageKey)}
+                    </p>
+                    <p className="mt-0.5 text-[11px] opacity-90">
+                      {t("adm.conflictSelfTest.provider", {
+                        provider: conflictSelfTest.data.provider,
+                      })}
+                      {conflictSelfTest.data.hasKollision && conflictSelfTest.data.streitpunkt
+                        ? ` · ${t("adm.conflictSelfTest.streitpunkt", {
+                            streitpunkt: conflictSelfTest.data.streitpunkt,
+                          })}`
+                        : ""}
+                    </p>
+                  </div>
+                ) : null}
+                {conflictSelfTest.isError ? (
                   <p className="rounded-btn bg-trust-crit-bg px-2.5 py-1.5 text-[12px] text-trust-crit-text">
                     {t("adm.ai.testFail", { detail: t("state.error") })}
                   </p>

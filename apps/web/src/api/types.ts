@@ -624,6 +624,20 @@ export interface ReasonerProbeResult {
   at: string;
 }
 
+// SCRUM-493: End-to-End-Selbsttest der Konflikterkennung (Modell antwortet + liefert kollision).
+export interface ConflictSelfTestResult {
+  ok: boolean;
+  code: "ok" | "no_model" | "no_conflict" | "conflict_without_kollision";
+  provider: string;
+  mode: "model" | "deterministic";
+  conflictCreated: boolean;
+  hasKollision: boolean;
+  streitwertAWoertlich: boolean | null;
+  streitwertBWoertlich: boolean | null;
+  streitpunkt: string | null;
+  messageKey: string;
+}
+
 export interface AssistResult {
   text: string;
   demo: boolean;

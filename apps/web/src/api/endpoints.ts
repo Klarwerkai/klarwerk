@@ -10,6 +10,7 @@ import type {
   BusFactorEntry,
   Confidentiality,
   Conflict,
+  ConflictSelfTestResult,
   ConflictType,
   DemoSeedResult,
   Draft,
@@ -240,6 +241,8 @@ export const endpoints = {
     test: () => api.post<ReasonerProbeResult>("/reasoner/test"),
     // SCRUM-428: Key-Test für den eigenen lokalen LLM (echter Mini-Aufruf über den Tunnel).
     testLocal: () => api.post<ReasonerProbeResult>("/reasoner/test-local"),
+    // SCRUM-493: End-to-End-Selbsttest der Konflikterkennung (echter judgeConflict + kollision).
+    conflictSelfTest: () => api.post<ConflictSelfTestResult>("/reasoner/conflict-self-test"),
     // SCRUM-386: kundeneigene KI-Assist-Presets — lesen alle Rollen (Palette), pflegen nur Admin.
     assistPresets: () => api.get<AssistPreset[]>("/reasoner/assist-presets"),
     updateAssistPresets: (presets: { id?: string; name: string; instruction: string }[]) =>
