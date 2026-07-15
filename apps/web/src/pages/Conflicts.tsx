@@ -10,6 +10,7 @@ import { HelpTip } from "../components/HelpTip";
 import { KoView } from "../components/KoView";
 import { Modal } from "../components/Modal";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
+import { type Participant, conflictLead } from "../lib/boardCard";
 import { CONFLICT_BOARD_TEXT, canDismiss, conflictOriginInfo } from "../lib/conflictBoard";
 import { conflictKoPair, conflictNextStep, resolutionEffect } from "../lib/conflictView";
 import { type ReviewHelpId, reviewHelp } from "../lib/reviewHelp";
@@ -181,62 +182,97 @@ export function Conflicts(): JSX.Element {
                     {t(`con.status.${c.status}`)}
                   </span>
                 </div>
-                <p className="text-[14px] font-medium text-text">{c.description}</p>
-                {/* Stufe 4b: Herkunft + Begründung + wörtliche Belege bei automatisch erkannten Konflikten. */}
-                <ConflictOriginBadge conflict={c} />
+                {/* SCRUM-486 (Entdichtung): Führungszeile — welche zwei Beiträge, was Klarwerk als
+                    Widerspruch sieht, welche Handlung jetzt empfohlen ist. Details klappen darunter auf. */}
                 {(() => {
-                  const pair = conflictKoPair(c, kos.data ?? []);
+                  const lead = conflictLead(c, kos.data ?? []);
+                  const name = (p: Participant): string =>
+                    p.removed ? t("board.koRemoved") : p.title;
                   return (
-                    <div className="mt-3 grid grid-cols-1 items-start gap-3 sm:grid-cols-[1fr_auto_1fr]">
-                      <KoPanel ko={pair.a} fallbackId={c.koA} />
-                      <span className="self-center text-center font-mono text-[11px] text-muted-2">
+                    <p className="text-[14px] font-medium leading-snug text-text">
+                      <span className="font-mono text-[10.5px] uppercase tracking-wider text-trust-crit-text">
+                        {t("con.leadKicker")}:
+                      </span>{" "}
+                      {name(lead.a)}
+                      <span className="mx-1.5 font-mono text-[11px] uppercase text-muted-2">
                         {t("con.versus")}
                       </span>
-                      <KoPanel ko={pair.b} fallbackId={c.koB} />
-                    </div>
+                      {name(lead.b)}
+                      <span className="mx-1.5 text-muted-2" aria-hidden="true">
+                        →
+                      </span>
+                      <span className="text-text">{t(lead.recommendedStepKey)}</span>
+                    </p>
                   );
                 })()}
-                {/* Pedi 04.07.: beide Objekte komplett nebeneinander im Pop-up öffnen — direkt
-                    vergleichen, ohne die Seite zu verlassen. Nur wenn beide Objekte vorhanden sind. */}
-                {(() => {
-                  const pair = conflictKoPair(c, kos.data ?? []);
-                  return pair.a && pair.b ? (
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <Button variant="ghost" onClick={() => setCompareId(c.id)}>
-                        {t("con.compareOpen")}
-                      </Button>
-                      <Link
-                        to={`/konflikte/${c.id}/vergleich`}
-                        className="inline-flex items-center justify-center rounded-btn border border-hairline px-3.5 py-2 text-[13px] font-semibold text-text hover:bg-hairline-soft"
-                      >
-                        Read-only Vergleich →
-                      </Link>
-                    </div>
-                  ) : null;
-                })()}
+                <p className="mt-1 text-[13px] leading-relaxed text-muted">{c.description}</p>
 
-                {c.type === "truth" ? (
-                  <div className="mt-4">
-                    <div className="mb-2 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
-                      {t("con.escPath")}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {PATH.map((step, i) => {
-                        const reached = PATH.indexOf(c.status) >= i || c.status === "geloest";
-                        return (
-                          <span
-                            key={step}
-                            className={`rounded-pill px-2 py-1 font-mono text-[11px] ${
-                              reached ? "bg-ink text-white" : "border border-hairline text-muted-2"
-                            }`}
-                          >
-                            {i + 1} {t(`con.status.${step}`)}
+                {/* SCRUM-486: Herkunft/Belege, KO-Panels und Eskalationspfad hinter einer ruhigen
+                    Aufklappung (Progressive Disclosure wie SCRUM-416). Nichts entfernt, nur verlagert. */}
+                <details className="mt-3">
+                  <summary className="cursor-pointer list-none text-[12px] font-semibold text-ai hover:opacity-80">
+                    {t("board.detailsShow")}
+                  </summary>
+                  <div className="mt-2">
+                    {/* Stufe 4b: Herkunft + Begründung + wörtliche Belege bei automatisch erkannten Konflikten. */}
+                    <ConflictOriginBadge conflict={c} />
+                    {(() => {
+                      const pair = conflictKoPair(c, kos.data ?? []);
+                      return (
+                        <div className="mt-3 grid grid-cols-1 items-start gap-3 sm:grid-cols-[1fr_auto_1fr]">
+                          <KoPanel ko={pair.a} fallbackId={c.koA} />
+                          <span className="self-center text-center font-mono text-[11px] text-muted-2">
+                            {t("con.versus")}
                           </span>
-                        );
-                      })}
-                    </div>
+                          <KoPanel ko={pair.b} fallbackId={c.koB} />
+                        </div>
+                      );
+                    })()}
+                    {/* Pedi 04.07.: beide Objekte komplett nebeneinander im Pop-up öffnen — direkt
+                        vergleichen, ohne die Seite zu verlassen. Nur wenn beide Objekte vorhanden sind. */}
+                    {(() => {
+                      const pair = conflictKoPair(c, kos.data ?? []);
+                      return pair.a && pair.b ? (
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <Button variant="ghost" onClick={() => setCompareId(c.id)}>
+                            {t("con.compareOpen")}
+                          </Button>
+                          <Link
+                            to={`/konflikte/${c.id}/vergleich`}
+                            className="inline-flex items-center justify-center rounded-btn border border-hairline px-3.5 py-2 text-[13px] font-semibold text-text hover:bg-hairline-soft"
+                          >
+                            Read-only Vergleich →
+                          </Link>
+                        </div>
+                      ) : null;
+                    })()}
+
+                    {c.type === "truth" ? (
+                      <div className="mt-4">
+                        <div className="mb-2 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+                          {t("con.escPath")}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {PATH.map((step, i) => {
+                            const reached = PATH.indexOf(c.status) >= i || c.status === "geloest";
+                            return (
+                              <span
+                                key={step}
+                                className={`rounded-pill px-2 py-1 font-mono text-[11px] ${
+                                  reached
+                                    ? "bg-ink text-white"
+                                    : "border border-hairline text-muted-2"
+                                }`}
+                              >
+                                {i + 1} {t(`con.status.${step}`)}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
+                </details>
 
                 {c.secondOpinion ? (
                   <div className="mt-4 rounded-card bg-page p-3 text-[13px] text-text">

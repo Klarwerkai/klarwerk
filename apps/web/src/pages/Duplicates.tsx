@@ -9,12 +9,12 @@ import type { KnowledgeObject, OverlapEntry } from "../api/types";
 import { KoView } from "../components/KoView";
 import { Modal } from "../components/Modal";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
+import { type Participant, duplicateLead } from "../lib/boardCard";
 import { conflictKoPair } from "../lib/conflictView";
 import {
   DUPLICATE_BOARD_TEXT,
   canClose,
   overlapDetectorInfo,
-  recommendationLabelKey,
   relationLabelKey,
 } from "../lib/duplicateBoard";
 
@@ -159,101 +159,115 @@ export function Duplicates(): JSX.Element {
                     </span>
                   </div>
 
-                  {/* Pedi 04.07.: welche zwei Beiträge betroffen sind — sofort sichtbar, an derselben
-                      Stelle wie die Beschreibungszeile auf der Konflikte-Seite. */}
-                  <p className="text-[14px] font-medium leading-snug text-text">
-                    {pair.a?.title ?? e.koA}
-                    <span className="mx-1.5 font-mono text-[11px] uppercase text-muted-2">
-                      {t("dup.versus")}
-                    </span>
-                    {pair.b?.title ?? e.koB}
-                  </p>
+                  {/* SCRUM-486 (Entdichtung): Führungszeile — welche zwei Beiträge, dass es eine
+                      Überschneidung ist, welche Handlung empfohlen ist. Details klappen darunter auf. */}
+                  {(() => {
+                    const lead = duplicateLead(e, kos.data ?? []);
+                    const name = (p: Participant): string =>
+                      p.removed ? t("board.koRemoved") : p.title;
+                    return (
+                      <p className="text-[14px] font-medium leading-snug text-text">
+                        <span className="font-mono text-[10.5px] uppercase tracking-wider text-ai">
+                          {t("dup.leadKicker")}:
+                        </span>{" "}
+                        {name(lead.a)}
+                        <span className="mx-1.5 font-mono text-[11px] uppercase text-muted-2">
+                          {t("dup.versus")}
+                        </span>
+                        {name(lead.b)}
+                        <span className="mx-1.5 text-muted-2" aria-hidden="true">
+                          →
+                        </span>
+                        <span className="text-text">{t(lead.recommendationKey)}</span>
+                      </p>
+                    );
+                  })()}
 
+                  {/* Move B: die führende Zahl bleibt sichtbar (das „Warum"), aber ehrlich gerahmt. */}
                   <OverlapDetectorBadge entry={e} />
 
-                  <div className="mt-3 grid grid-cols-1 items-start gap-3 sm:grid-cols-[1fr_auto_1fr]">
-                    <KoPanel ko={pair.a} fallbackId={e.koA} />
-                    <span className="self-center text-center font-mono text-[11px] text-muted-2">
-                      {t("dup.versus")}
-                    </span>
-                    <KoPanel ko={pair.b} fallbackId={e.koB} />
-                  </div>
-
-                  {pair.a && pair.b ? (
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <Button variant="ghost" onClick={() => setCompareId(e.id)}>
-                        {t("dup.compareOpen")}
-                      </Button>
-                      <Link
-                        to={`/duplikate/${e.id}/vergleich`}
-                        className="inline-flex items-center justify-center rounded-btn border border-hairline px-3.5 py-2 text-[13px] font-semibold text-text hover:bg-hairline-soft"
-                      >
-                        Read-only Vergleich →
-                      </Link>
-                    </div>
-                  ) : null}
-
-                  {e.aspects.length > 0 ? (
-                    <div className="mt-4">
-                      <div className="mb-2 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
-                        {t("dup.shared")}
+                  {/* SCRUM-486: KO-Panels, Belege und Eigenanteile hinter einer ruhigen Aufklappung. */}
+                  <details className="mt-3">
+                    <summary className="cursor-pointer list-none text-[12px] font-semibold text-ai hover:opacity-80">
+                      {t("board.detailsShow")}
+                    </summary>
+                    <div className="mt-2">
+                      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-[1fr_auto_1fr]">
+                        <KoPanel ko={pair.a} fallbackId={e.koA} />
+                        <span className="self-center text-center font-mono text-[11px] text-muted-2">
+                          {t("dup.versus")}
+                        </span>
+                        <KoPanel ko={pair.b} fallbackId={e.koB} />
                       </div>
-                      <div className="space-y-2">
-                        {e.aspects.map((a, i) => (
-                          <div
-                            key={`${e.id}-aspect-${i}`}
-                            className="rounded-card border border-hairline bg-page p-2.5"
+
+                      {pair.a && pair.b ? (
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <Button variant="ghost" onClick={() => setCompareId(e.id)}>
+                            {t("dup.compareOpen")}
+                          </Button>
+                          <Link
+                            to={`/duplikate/${e.id}/vergleich`}
+                            className="inline-flex items-center justify-center rounded-btn border border-hairline px-3.5 py-2 text-[13px] font-semibold text-text hover:bg-hairline-soft"
                           >
-                            {a.beschreibung ? (
-                              <p className="mb-1.5 text-[12.5px] font-medium text-text">
-                                {a.beschreibung}
-                              </p>
-                            ) : null}
-                            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                              <OverlapQuote
-                                labelKey={DUPLICATE_BOARD_TEXT.quoteA}
-                                quote={a.zitatA}
-                              />
-                              <OverlapQuote
-                                labelKey={DUPLICATE_BOARD_TEXT.quoteB}
-                                quote={a.zitatB}
-                              />
-                            </div>
+                            Read-only Vergleich →
+                          </Link>
+                        </div>
+                      ) : null}
+
+                      {e.aspects.length > 0 ? (
+                        <div className="mt-4">
+                          <div className="mb-2 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+                            {t("dup.shared")}
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {e.eigenanteilA || e.eigenanteilB ? (
-                    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      {e.eigenanteilA ? (
-                        <div className="rounded-card bg-page p-2.5 text-[12.5px] text-text">
-                          <span className="font-mono text-[9px] font-semibold uppercase tracking-wider text-muted-2">
-                            {t("dup.onlyA")}
-                          </span>
-                          <span className="mt-0.5 block">{e.eigenanteilA}</span>
+                          <div className="space-y-2">
+                            {e.aspects.map((a, i) => (
+                              <div
+                                key={`${e.id}-aspect-${i}`}
+                                className="rounded-card border border-hairline bg-page p-2.5"
+                              >
+                                {a.beschreibung ? (
+                                  <p className="mb-1.5 text-[12.5px] font-medium text-text">
+                                    {a.beschreibung}
+                                  </p>
+                                ) : null}
+                                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                                  <OverlapQuote
+                                    labelKey={DUPLICATE_BOARD_TEXT.quoteA}
+                                    quote={a.zitatA}
+                                  />
+                                  <OverlapQuote
+                                    labelKey={DUPLICATE_BOARD_TEXT.quoteB}
+                                    quote={a.zitatB}
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       ) : null}
-                      {e.eigenanteilB ? (
-                        <div className="rounded-card bg-page p-2.5 text-[12.5px] text-text">
-                          <span className="font-mono text-[9px] font-semibold uppercase tracking-wider text-muted-2">
-                            {t("dup.onlyB")}
-                          </span>
-                          <span className="mt-0.5 block">{e.eigenanteilB}</span>
+
+                      {e.eigenanteilA || e.eigenanteilB ? (
+                        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          {e.eigenanteilA ? (
+                            <div className="rounded-card bg-page p-2.5 text-[12.5px] text-text">
+                              <span className="font-mono text-[9px] font-semibold uppercase tracking-wider text-muted-2">
+                                {t("dup.onlyA")}
+                              </span>
+                              <span className="mt-0.5 block">{e.eigenanteilA}</span>
+                            </div>
+                          ) : null}
+                          {e.eigenanteilB ? (
+                            <div className="rounded-card bg-page p-2.5 text-[12.5px] text-text">
+                              <span className="font-mono text-[9px] font-semibold uppercase tracking-wider text-muted-2">
+                                {t("dup.onlyB")}
+                              </span>
+                              <span className="mt-0.5 block">{e.eigenanteilB}</span>
+                            </div>
+                          ) : null}
                         </div>
                       ) : null}
                     </div>
-                  ) : null}
-
-                  <p className="mt-3 text-[12.5px] text-muted">
-                    <span className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
-                      {t("dup.recommendation")}:
-                    </span>{" "}
-                    <span className="font-medium text-text">
-                      {t(recommendationLabelKey(e.recommendation))}
-                    </span>
-                  </p>
+                  </details>
 
                   {canClose(e) ? (
                     <div className="mt-4 flex flex-wrap gap-2 border-t border-hairline pt-3">

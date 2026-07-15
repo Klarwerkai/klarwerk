@@ -1730,6 +1730,11 @@ const de = {
   "dup.action.dismiss": "Fehlalarm – kein Duplikat",
   "dup.action.keepSeparate": "Getrennt lassen",
   "dup.action.linkRelated": "Als verwandt verlinken",
+  // SCRUM-486 (Entdichtung): Führungszeile pro Karte + neutraler „entfernt"-Hinweis statt Roh-UUID.
+  "board.koRemoved": "Objekt entfernt",
+  "board.detailsShow": "Details ansehen",
+  "con.leadKicker": "Widerspruch",
+  "dup.leadKicker": "Überschneidung",
   "lib.kicker": "Bibliothek",
   "lib.export": "Export",
   "lib.exportFormat": "Exportformat",
@@ -4408,6 +4413,11 @@ const en: typeof de = {
   "dup.action.dismiss": "False alarm – not a duplicate",
   "dup.action.keepSeparate": "Keep separate",
   "dup.action.linkRelated": "Link as related",
+  // SCRUM-486 (de-densify): lead line per card + neutral "removed" hint instead of a raw UUID.
+  "board.koRemoved": "Item removed",
+  "board.detailsShow": "Show details",
+  "con.leadKicker": "Contradiction",
+  "dup.leadKicker": "Overlap",
   "lib.kicker": "Library",
   "lib.export": "Export",
   "lib.exportFormat": "Export format",
