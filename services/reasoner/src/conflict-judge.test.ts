@@ -50,6 +50,61 @@ describe("Berater-Konzept 04.07. (Stufe 2, kon-v1): parseConflictResponse", () =
   });
 });
 
+// SCRUM-492: optionaler kollision-Block. Additiv — fehlt/kaputt er, bleibt der Konflikt gültig.
+const kollisionJson = (kollision: string): string =>
+  `{"relation":"widerspruch","older":null,"confidence":0.9,"begruendung":"Andere Pflichtfarbe.","zitat_a":"Die Markierung muss blau sein.","zitat_b":"Die Markierung muss rot sein.","kollision":${kollision}}`;
+
+describe("SCRUM-492: parseConflictResponse — Kollisionsfelder", () => {
+  it("übernimmt gültige kollision und markiert wörtlich belegte Streitwerte", () => {
+    const res = parseConflictResponse(
+      kollisionJson(
+        '{"streitpunkt":"Pflichtfarbe","seite_a":{"kernaussage":"Markierung blau","streitwert":"blau"},"seite_b":{"kernaussage":"Markierung rot","streitwert":"rot"}}',
+      ),
+    );
+    expect(res?.kollision?.streitpunkt).toBe("Pflichtfarbe");
+    expect(res?.kollision?.seiteA.streitwert).toBe("blau");
+    // "blau"/"rot" stehen wörtlich in zitat_a/zitat_b → belegt.
+    expect(res?.kollision?.seiteA.streitwertWoertlich).toBe(true);
+    expect(res?.kollision?.seiteB.streitwertWoertlich).toBe(true);
+  });
+
+  it("streitwert NICHT im Zitat → gilt als Zusammenfassung (nicht verworfen, nur Flag false)", () => {
+    const res = parseConflictResponse(
+      kollisionJson(
+        '{"streitpunkt":"Pflichtfarbe","seite_a":{"kernaussage":"Kaltes Farbschema","streitwert":"kühl"},"seite_b":{"kernaussage":"Warmes Farbschema","streitwert":"warm"}}',
+      ),
+    );
+    expect(res?.kollision?.seiteA.streitwert).toBe("kühl");
+    expect(res?.kollision?.seiteA.streitwertWoertlich).toBe(false);
+    expect(res?.kollision?.seiteB.streitwertWoertlich).toBe(false);
+  });
+
+  it("fehlende kollision → Konflikt bleibt gültig, kollision undefined", () => {
+    const res = parseConflictResponse(conflictJson);
+    expect(res?.relation).toBe("widerspruch");
+    expect(res?.kollision).toBeUndefined();
+  });
+
+  it("kaputte kollision (Seite ohne streitwert) → kollision undefined, Konflikt bleibt gültig", () => {
+    const res = parseConflictResponse(
+      kollisionJson(
+        '{"streitpunkt":"Pflichtfarbe","seite_a":{"kernaussage":"Markierung blau"},"seite_b":{"kernaussage":"Markierung rot","streitwert":"rot"}}',
+      ),
+    );
+    expect(res?.relation).toBe("widerspruch");
+    expect(res?.kollision).toBeUndefined();
+  });
+
+  it("kollision ohne streitpunkt-String → undefined", () => {
+    const res = parseConflictResponse(
+      kollisionJson(
+        '{"seite_a":{"kernaussage":"a","streitwert":"blau"},"seite_b":{"kernaussage":"b","streitwert":"rot"}}',
+      ),
+    );
+    expect(res?.kollision).toBeUndefined();
+  });
+});
+
 describe("Berater-Konzept 04.07. (Stufe 2): judgeConflict über die Provider-Kette", () => {
   it("ModelProvider.judgeConflict liefert das geparste Urteil", async () => {
     const res = await new ModelProvider(fakeClient(conflictJson)).judgeConflict(

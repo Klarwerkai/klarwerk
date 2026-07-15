@@ -203,6 +203,19 @@ export type ConflictStatus = "offen" | "eskaliert" | "zweitmeinung" | "geloest";
 // Berater-Konzept 04.07. (Stufe 4): Herkunft + Erkennungs-Metadaten eines automatisch erkannten
 // Konflikts — macht den Fund am Board erklärbar (Sicherheit, Begründung, wörtliche Zitate).
 export type ConflictOrigin = "manual" | "auto";
+// SCRUM-492: strukturierte Kollisionsfelder (Board-Kacheln). streitwertWoertlich = der Streitwert
+// kommt wörtlich aus dem zugehörigen Belegzitat → die UI darf ihn als belegt kennzeichnen.
+export interface KollisionSeite {
+  kernaussage: string;
+  streitwert: string;
+  streitwertWoertlich: boolean;
+}
+export interface Kollision {
+  streitpunkt: string;
+  seiteA: KollisionSeite;
+  seiteB: KollisionSeite;
+}
+
 export interface ConflictDetector {
   trigger: "validation" | "ask" | "background";
   method: "model" | "deterministic";
@@ -211,6 +224,8 @@ export interface ConflictDetector {
   confidence?: number;
   rationale?: string;
   quotes?: { a: string; b: string };
+  // SCRUM-492: optionale strukturierte Gegenüberstellung für die Kollisions-Kacheln.
+  kollision?: Kollision;
 }
 
 export interface Conflict {

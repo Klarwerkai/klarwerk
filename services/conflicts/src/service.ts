@@ -219,6 +219,8 @@ export class ConflictService {
         rationale: verdict.begruendung,
         quotes: { a: verdict.zitat_a, b: verdict.zitat_b },
         ...(options.modelLabel ? { modelLabel: options.modelLabel } : {}),
+        // SCRUM-492: strukturierte Kollisionsfelder mitschreiben (Board-Kacheln), wenn vorhanden.
+        ...(verdict.kollision ? { kollision: verdict.kollision } : {}),
       };
       const conflict = await this.createAuto(
         {

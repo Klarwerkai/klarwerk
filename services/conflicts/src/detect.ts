@@ -3,7 +3,7 @@
 // Diese Datei entscheidet NUR aus Texten + einem bereits vorliegenden Modellurteil, ob und welcher
 // Konflikt entsteht. Der Modellaufruf (Reasoner „Konfliktprüfung") und die Verdrahtung an KO-
 // Ereignisse leben außerhalb (App-Composition-Root, injizierter judge-Callback).
-import type { ConflictType } from "./types";
+import type { ConflictType, Kollision } from "./types";
 
 // K0-2: Erkennungs-Gegenstand ist der Kerntext eines Beitrags (nicht das volle bodyHtml).
 export interface DetectSubject {
@@ -32,6 +32,7 @@ export interface ConflictVerdict {
   begruendung: string; // EIN Satz
   zitat_a: string; // wörtliches Zitat aus A
   zitat_b: string; // wörtliches Zitat aus B
+  kollision?: Kollision; // SCRUM-492: optionale strukturierte Gegenüberstellung (Board-Kacheln)
 }
 
 // K0-2: Kerntext aus title + statement + conditions + measures (trägt die prüfbare Aussage).

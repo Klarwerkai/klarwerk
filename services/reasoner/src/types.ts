@@ -134,6 +134,21 @@ export interface ReasonerConfigStatus {
   persisted: boolean;
 }
 
+// SCRUM-492: strukturierte Kollisionsfelder eines Widerspruchs — je Seite eine knappe Kernaussage
+// (1 Satz) + der konkret kollidierende „streitwert" (z. B. „blau" vs. „rot"). streitwertWoertlich
+// setzt der Parser: true, wenn der Streitwert wörtlich im zugehörigen Zitat vorkommt → belegter Fall,
+// den die UI stärker hervorheben darf. Rein additiv/optional; gatet die Konflikt-Anlage NICHT.
+export interface KollisionSeite {
+  kernaussage: string;
+  streitwert: string;
+  streitwertWoertlich: boolean;
+}
+export interface Kollision {
+  streitpunkt: string;
+  seiteA: KollisionSeite;
+  seiteB: KollisionSeite;
+}
+
 // Berater-Konzept 04.07. (Stufe 2, kon-v1): striktes Modellurteil der Aufgabe „Konfliktprüfung".
 // Rein inhaltlich (keine Autoren/Trust): vergleicht zwei Kerntexte A/B. Die Belegzitate werden
 // nachgelagert wörtlich gegen die Texte geprüft (G-2), bevor daraus ein Konflikt entsteht.
@@ -144,6 +159,8 @@ export interface ConflictJudgeResult {
   begruendung: string;
   zitat_a: string;
   zitat_b: string;
+  // SCRUM-492: optionale Kollisions-Anreicherung (Kacheln im Board). Fehlt sie, bleibt alles wie bisher.
+  kollision?: Kollision;
 }
 
 // Berater-Konzept Duplikate 04.07. (Stufe D2, dup-v1): Überschneidungs-Profil zweier Kerntexte A/B.

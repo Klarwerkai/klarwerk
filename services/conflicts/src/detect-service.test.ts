@@ -60,6 +60,26 @@ describe("Berater-Konzept 04.07. (Stufe 3): detectForSubject", () => {
     expect(conflict?.detector?.modelLabel).toBe("anthropic:test");
   });
 
+  it("SCRUM-492: kollision aus dem Urteil landet im detector (Board-Kacheln)", async () => {
+    const judgeMitKollision = async (a: string, b: string): Promise<ConflictVerdict | null> => ({
+      ...(await conflictJudge(a, b))!,
+      kollision: {
+        streitpunkt: "Pflichtfarbe",
+        seiteA: { kernaussage: "Dienstwagen blau", streitwert: "blau", streitwertWoertlich: true },
+        seiteB: { kernaussage: "Dienstwagen rot", streitwert: "rot", streitwertWoertlich: true },
+      },
+    });
+    const [conflict] = await service.detectForSubject(rot, [blau], judgeMitKollision);
+    expect(conflict?.detector?.kollision?.streitpunkt).toBe("Pflichtfarbe");
+    expect(conflict?.detector?.kollision?.seiteA.streitwert).toBe("blau");
+    expect(conflict?.detector?.kollision?.seiteB.streitwert).toBe("rot");
+  });
+
+  it("SCRUM-492: Urteil ohne kollision → detector.kollision bleibt undefined (kein Bruch)", async () => {
+    const [conflict] = await service.detectForSubject(rot, [blau], conflictJudge);
+    expect(conflict?.detector?.kollision).toBeUndefined();
+  });
+
   it("Stufe 4: Fehlalarm schließt den Konflikt als dismissed (kein Wiederauftauchen im Badge)", async () => {
     const [conflict] = await service.detectForSubject(rot, [blau], conflictJudge);
     const dismissed = await service.dismiss(

@@ -17,6 +17,20 @@ export type ConflictResolutionReason =
 // Feld gelten als „manuell" (Anzeige-Fallback). „auto" = von der Erkennung angelegt (mit detector).
 export type ConflictOrigin = "manual" | "auto";
 
+// SCRUM-492: strukturierte Kollisionsfelder eines Widerspruchs — je Seite knappe Kernaussage +
+// konkret kollidierender „streitwert" (z. B. „blau"/„rot"). streitwertWoertlich = der Streitwert
+// kommt wörtlich aus dem zugehörigen Belegzitat (Parser-geprüft). Additiv/optional, JSON-persistiert.
+export interface KollisionSeite {
+  kernaussage: string;
+  streitwert: string;
+  streitwertWoertlich: boolean;
+}
+export interface Kollision {
+  streitpunkt: string;
+  seiteA: KollisionSeite;
+  seiteB: KollisionSeite;
+}
+
 // Metadaten der automatischen Erkennung (nur bei origin="auto") — macht den Fund erklärbar und
 // reproduzierbar: Begründung + wörtliche Belegzitate + Sicherheit + promptVersion. Keine Secrets.
 export interface ConflictDetector {
@@ -27,6 +41,8 @@ export interface ConflictDetector {
   confidence?: number;
   rationale?: string;
   quotes?: { a: string; b: string };
+  // SCRUM-492: strukturierte Gegenüberstellung für die Board-Kacheln (optional, additiv).
+  kollision?: Kollision;
 }
 
 export interface Conflict {

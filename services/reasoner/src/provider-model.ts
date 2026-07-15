@@ -15,6 +15,8 @@ import type {
   ExtractedPoint,
   InterviewResult,
   KnowledgeRef,
+  Kollision,
+  KollisionSeite,
   ReasonerLocale,
   StructureResult,
 } from "./types";
@@ -79,11 +81,14 @@ function enrichPublicSystem(locale: ReasonerLocale): string {
 // (A/B ohne Autoren/Trust), striktes JSON, nur was in den Texten steht, im Zweifel „unsicher",
 // wörtliche Belegzitate (nachgelagert hart geprüft, G-2). Temperatur 0 (deterministisches Urteil).
 function conflictSystem(locale: ReasonerLocale): string {
+  // SCRUM-492: optionaler "kollision"-Block bei echten Widersprüchen (widerspruch/ueberholt) — je
+  // Seite eine knappe Kernaussage + der konkret kollidierende "streitwert". Der Streitwert SOLL
+  // wörtlich aus dem jeweiligen Zitat stammen, wo möglich (belegter Fall).
   const contract =
-    '{"relation":"widerspruch|doppelung|ueberholt|kein_konflikt|unsicher","older":"a|b|null","confidence":0.0-1.0,"begruendung":"...","zitat_a":"...","zitat_b":"..."}';
+    '{"relation":"widerspruch|doppelung|ueberholt|kein_konflikt|unsicher","older":"a|b|null","confidence":0.0-1.0,"begruendung":"...","zitat_a":"...","zitat_b":"...","kollision":{"streitpunkt":"...","seite_a":{"kernaussage":"...","streitwert":"..."},"seite_b":{"kernaussage":"...","streitwert":"..."}}}';
   return locale === "en"
-    ? `You compare two knowledge statements A and B and decide their relation. Respond ONLY with JSON: ${contract}. Judge ONLY what the texts state — add no world knowledge. A different scope stated in the text (other asset/condition) is NOT a contradiction → "kein_konflikt". When in doubt: "unsicher". "zitat_a"/"zitat_b" MUST be verbatim quotes copied from A resp. B. "older" only for "ueberholt", otherwise null.`
-    : `Du vergleichst zwei Wissens-Aussagen A und B und bestimmst ihre Beziehung. Antworte AUSSCHLIESSLICH mit JSON: ${contract}. Urteile NUR über das, was in den Texten steht — ergänze kein Weltwissen. Ein im Text genannter abweichender Geltungsbereich (andere Anlage/Bedingung) ist KEIN Widerspruch → "kein_konflikt". Im Zweifel: "unsicher". "zitat_a"/"zitat_b" MÜSSEN wörtliche Zitate aus A bzw. B sein (exakt kopieren). "older" nur bei "ueberholt", sonst null.`;
+    ? `You compare two knowledge statements A and B and decide their relation. Respond ONLY with JSON: ${contract}. Judge ONLY what the texts state — add no world knowledge. A different scope stated in the text (other asset/condition) is NOT a contradiction → "kein_konflikt". When in doubt: "unsicher". "zitat_a"/"zitat_b" MUST be verbatim quotes copied from A resp. B. "older" only for "ueberholt", otherwise null. Only for "widerspruch"/"ueberholt" add "kollision": "streitpunkt" = what the collision is about (e.g. "mandatory colour"); per side a short "kernaussage" (one sentence) and the "streitwert" = the concretely colliding element (e.g. "blue" vs "red"). Copy the "streitwert" VERBATIM from the respective quote (zitat_a resp. zitat_b) where possible; only summarise briefly if no single word fits. For "kein_konflikt"/"unsicher"/"doppelung" omit "kollision".`
+    : `Du vergleichst zwei Wissens-Aussagen A und B und bestimmst ihre Beziehung. Antworte AUSSCHLIESSLICH mit JSON: ${contract}. Urteile NUR über das, was in den Texten steht — ergänze kein Weltwissen. Ein im Text genannter abweichender Geltungsbereich (andere Anlage/Bedingung) ist KEIN Widerspruch → "kein_konflikt". Im Zweifel: "unsicher". "zitat_a"/"zitat_b" MÜSSEN wörtliche Zitate aus A bzw. B sein (exakt kopieren). "older" nur bei "ueberholt", sonst null. Nur bei "widerspruch"/"ueberholt" zusätzlich "kollision": "streitpunkt" = worum die Kollision geht (z. B. "Pflichtfarbe"); je Seite eine knappe "kernaussage" (ein Satz) und der "streitwert" = das konkret kollidierende Element (z. B. "blau" vs. "rot"). Den "streitwert" WÖRTLICH aus dem jeweiligen Zitat (zitat_a bzw. zitat_b) übernehmen, wo möglich; nur wenn kein einzelnes Wort passt, knapp zusammenfassen. Bei "kein_konflikt"/"unsicher"/"doppelung" "kollision" weglassen.`;
 }
 
 const CONFLICT_RELATIONS: readonly string[] = [
@@ -93,6 +98,52 @@ const CONFLICT_RELATIONS: readonly string[] = [
   "kein_konflikt",
   "unsicher",
 ];
+
+// SCRUM-492: der Streitwert gilt als „wörtlich belegt", wenn er (getrimmt, Kleinschreibung) als
+// Teilzeichenkette im zugehörigen Zitat vorkommt. Leerer Streitwert → nicht belegt.
+export function streitwertVerbatim(streitwert: string, zitat: string): boolean {
+  const needle = streitwert.trim().toLowerCase();
+  return needle.length > 0 && zitat.toLowerCase().includes(needle);
+}
+
+// SCRUM-492: eine Kollisions-Seite defensiv parsen — nur bei String kernaussage + String streitwert.
+// streitwertWoertlich wird gegen das jeweilige Zitat berechnet (nicht vom Modell übernommen).
+function parseKollisionSeite(raw: unknown, zitat: string): KollisionSeite | null {
+  if (typeof raw !== "object" || raw === null) {
+    return null;
+  }
+  const s = raw as Record<string, unknown>;
+  if (typeof s.kernaussage !== "string" || typeof s.streitwert !== "string") {
+    return null;
+  }
+  return {
+    kernaussage: s.kernaussage,
+    streitwert: s.streitwert,
+    streitwertWoertlich: streitwertVerbatim(s.streitwert, zitat),
+  };
+}
+
+// SCRUM-492: kollision NUR übernehmen, wenn Objekt + streitpunkt-String + beide Seiten vollständig
+// (String kernaussage/streitwert) vorliegen; sonst undefined (kein Bruch, Konflikt entsteht trotzdem).
+export function parseKollision(
+  raw: unknown,
+  zitatA: string,
+  zitatB: string,
+): Kollision | undefined {
+  if (typeof raw !== "object" || raw === null) {
+    return undefined;
+  }
+  const k = raw as Record<string, unknown>;
+  if (typeof k.streitpunkt !== "string") {
+    return undefined;
+  }
+  const seiteA = parseKollisionSeite(k.seite_a, zitatA);
+  const seiteB = parseKollisionSeite(k.seite_b, zitatB);
+  if (!seiteA || !seiteB) {
+    return undefined;
+  }
+  return { streitpunkt: k.streitpunkt, seiteA, seiteB };
+}
 
 // kon-v1: striktes, defensives Parsen des Modellurteils. Ungültiges JSON, unbekannte Relation,
 // fehlende/nicht-numerische confidence oder Nicht-String-Zitate → null (kein Konflikt aus kaputten
@@ -121,6 +172,7 @@ export function parseConflictResponse(raw: string): ConflictJudgeResult | null {
   const confidence = Math.min(1, Math.max(0, o.confidence));
   const older = o.older === "a" || o.older === "b" ? o.older : null;
   const begruendung = typeof o.begruendung === "string" ? o.begruendung : "";
+  const kollision = parseKollision(o.kollision, o.zitat_a, o.zitat_b);
   return {
     relation: relation as ConflictJudgeResult["relation"],
     older,
@@ -128,6 +180,7 @@ export function parseConflictResponse(raw: string): ConflictJudgeResult | null {
     begruendung,
     zitat_a: o.zitat_a,
     zitat_b: o.zitat_b,
+    ...(kollision ? { kollision } : {}),
   };
 }
 
@@ -733,7 +786,8 @@ export class ModelProvider implements ReasonerProvider {
   ): Promise<ConflictJudgeResult | null> {
     const client = this.requireClient();
     const user = `A:\n${coreA}\n\nB:\n${coreB}`;
-    const raw = await client.complete(conflictSystem(locale), user, 512);
+    // SCRUM-492: etwas mehr Spielraum für den optionalen kollision-Block (vorher 512).
+    const raw = await client.complete(conflictSystem(locale), user, 640);
     return parseConflictResponse(raw);
   }
 
