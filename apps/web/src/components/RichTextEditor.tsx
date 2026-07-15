@@ -61,6 +61,7 @@ export function RichTextEditor({
   files = [],
   aiPanel,
   onAttachFiles,
+  placeholder,
 }: {
   value: string;
   onChange: (html: string) => void;
@@ -69,6 +70,8 @@ export function RichTextEditor({
   files?: EditorFile[];
   // SCRUM-384: KI-Palette (z. B. AiAssistBox) — erscheint erst nach Klick auf ✨KI.
   aiPanel?: ReactNode;
+  // SCRUM-474 P1: aktive Einladung im LEEREN Editor (Overlay, verschwindet beim ersten Zeichen).
+  placeholder?: string;
   // Pedi 06.07.: neue Datei(en) vom Rechner als Anhang/Evidence hinzufügen (über das Eltern-Capture).
   // Anders als „Bild" wird NICHT in den Body eingefügt. Fehlt der Callback, bleibt der Knopf aus.
   // `| undefined` explizit: erlaubt das Durchreichen eines optionalen Callbacks (exactOptionalPropertyTypes).
@@ -653,6 +656,13 @@ export function RichTextEditor({
             onPaste={onPaste}
             className="prose-kw min-h-[260px] p-4 text-[14.5px] leading-relaxed text-text outline-none md:p-6"
           />
+          {/* SCRUM-474 P1: Placeholder als aktive Einladung im leeren Editor — pointer-events-none, damit
+              der Klick den Editor fokussiert; verschwindet, sobald Inhalt vorhanden ist. */}
+          {placeholder && !bodyReadMode(value).hasBody ? (
+            <div className="pointer-events-none absolute inset-0 p-4 text-[14.5px] leading-relaxed text-muted-2 md:p-6">
+              {placeholder}
+            </div>
+          ) : null}
           {/* SCRUM-372: sichtbares Ziel beim Drüberziehen — nur Bilder werden eingebettet. */}
           {dragActive ? (
             <div className="pointer-events-none absolute inset-1 grid place-items-center rounded-input border-2 border-dashed border-ai/50 bg-ai/5 text-[12.5px] font-semibold text-ai">

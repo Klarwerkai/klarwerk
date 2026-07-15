@@ -273,7 +273,7 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
       "utf8",
     );
 
-    expect(pageSource).toContain("Soll ich das ordnen?");
+    expect(pageSource).toContain("KI-Struktur vorschlagen");
     expect(pageSource).toContain("endpoints.reasoner.structure");
     expect(pageSource).toContain("buildFrontDoorStructureInput");
     expect(pageSource).toContain("KI-Vorschlag");
@@ -380,6 +380,39 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(page).toMatch(/type="submit"[\s\S]{0,80}disabled=\{!canSubmit\}/);
     // „Als Entwurf speichern" ist jetzt ein sekundaerer, expliziter Button-Klick (nicht der Form-Submit).
     expect(page).toContain("onClick={requestSave}");
+  });
+
+  it("bietet Placeholder + HelpTips + klarere Buttontexte auf der FrontDoor (SCRUM-474 P1)", () => {
+    const page = readFileSync(
+      resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
+      "utf8",
+    );
+    const editor = readFileSync(
+      resolve(process.cwd(), "apps/web/src/components/RichTextEditor.tsx"),
+      "utf8",
+    );
+    // HelpTips aus der zentralen Erfassen-Hilfekarte (chelp/captureHelp) an den Kern-Elementen.
+    expect(page).toContain("import { HelpTip }");
+    expect(page).toContain("captureHelp");
+    for (const id of [
+      "captureTitle",
+      "tellRaw",
+      "structureNow",
+      "submitReview",
+      "saveDraftHelp",
+      "savedNext",
+    ]) {
+      expect(page).toContain(`chelp("${id}")`);
+    }
+    // Klarerer Buttontext.
+    expect(page).toContain("KI-Struktur vorschlagen");
+    expect(page).not.toContain("Soll ich das ordnen?");
+    // Aktive Einladung im leeren Editor.
+    expect(page).toContain("placeholder=");
+    expect(page).toContain("Beschreibe hier dein Wissen");
+    // Der Editor unterstützt einen Placeholder, der nur bei leerem Inhalt erscheint.
+    expect(editor).toContain("placeholder");
+    expect(editor).toContain("!bodyReadMode(value).hasBody");
   });
 
   it("/erfassen stellt die Vordertuer als Default heraus und behaelt alte Wege", () => {

@@ -8,8 +8,9 @@ import { endpoints } from "../api/endpoints";
 import type { AssistResult, KnowledgeObject, StructureResult } from "../api/types";
 import { useSession } from "../app/AuthContext";
 import { useToast } from "../app/ToastContext";
+import { HelpTip } from "../components/HelpTip";
 import { RichTextEditor } from "../components/RichTextEditor";
-import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
+import { Button, Card, PageHeader, SectionLabel, TextInput } from "../components/ui";
 import {
   applyBodyAssist,
   applySpellingAssistPreservingHtml,
@@ -33,6 +34,7 @@ import {
   submitFrontDoorDraft,
   withFrontDoorSaveTimeout,
 } from "../lib/captureFrontDoor";
+import { type CaptureHelpId, captureHelp } from "../lib/captureHelp";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { isEmptyHtml } from "../lib/richText";
 
@@ -71,6 +73,13 @@ export function CaptureFrontDoor(): JSX.Element {
   const proposalRef = useRef<HTMLDivElement | null>(null);
   const saveRequestedRef = useRef(false);
   const submitRequestedRef = useRef(false);
+
+  // SCRUM-474 P1: ausführliche ?-Hilfen aus der zentralen Erfassen-Hilfekarte (lib/captureHelp),
+  // gleiches Muster wie im Prüfbereich (reviewHelp) und im geführten Erfassen (Capture.tsx).
+  const chelp = (id: CaptureHelpId): { title: string; body: string } => {
+    const topic = captureHelp(id);
+    return { title: t(topic.titleKey), body: t(topic.bodyKey) };
+  };
 
   const authorName = user?.name ?? user?.email ?? "-";
   const derivedTitle = deriveFrontDoorTitle(title, bodyHtml);
@@ -410,6 +419,8 @@ export function CaptureFrontDoor(): JSX.Element {
           <div className="flex items-center gap-1.5 font-semibold text-trust-pos-text">
             <CheckCircle2 size={16} />
             Zur Pruefung eingereicht: <strong>{submittedKo.title}</strong>
+            {/* SCRUM-474 P1: was „eingereicht/Validierung" heißt und was jetzt (nicht automatisch) passiert. */}
+            <HelpTip {...chelp("savedNext")} />
           </div>
           <p className="text-sm leading-relaxed text-trust-pos-text/90">
             Der Editor ist abgeschlossen und geleert. Speichern oder erneutes Einreichen desselben
@@ -463,16 +474,23 @@ export function CaptureFrontDoor(): JSX.Element {
               }
             }}
           >
-            <Field label="Titel optional">
+            <div>
+              <div className="mb-1.5 flex items-center gap-1">
+                <span className="block text-[12.5px] font-medium text-muted">Titel optional</span>
+                <HelpTip {...chelp("captureTitle")} />
+              </div>
               <TextInput
                 value={title}
                 onChange={(event) => changeTitle(event.target.value)}
                 placeholder={CAPTURE_FRONT_DOOR_FALLBACK_TITLE}
               />
-            </Field>
+            </div>
 
             <div className="space-y-2">
-              <SectionLabel>Inhalt</SectionLabel>
+              <div className="flex items-center gap-1">
+                <SectionLabel>Inhalt</SectionLabel>
+                <HelpTip {...chelp("tellRaw")} />
+              </div>
               {loadingDraft ? (
                 <div className="rounded-card border border-hairline bg-page p-3 text-sm text-muted">
                   Entwurf wird geladen ...
@@ -483,7 +501,12 @@ export function CaptureFrontDoor(): JSX.Element {
                   Vordertuer-Entwurf geoeffnet. Aenderungen bleiben in diesem Entwurf.
                 </div>
               ) : null}
-              <RichTextEditor value={bodyHtml} onChange={changeBodyHtml} />
+              {/* SCRUM-474 P1: aktive Einladung statt leerer weißer Fläche. */}
+              <RichTextEditor
+                value={bodyHtml}
+                onChange={changeBodyHtml}
+                placeholder="Beschreibe hier dein Wissen, wie du es einem Kollegen erklären würdest — die KI strukturiert daraus einen Entwurf, den du prüfst und einreichst."
+              />
             </div>
 
             <div className="rounded-card border border-dashed border-ai/30 bg-ai/5 p-3">
@@ -499,8 +522,9 @@ export function CaptureFrontDoor(): JSX.Element {
                   ) : (
                     <Sparkles size={15} />
                   )}
-                  Soll ich das ordnen?
+                  KI-Struktur vorschlagen
                 </Button>
+                <HelpTip {...chelp("structureNow")} />
                 {!hasStructureInput ? (
                   <span className="text-[12.5px] text-muted">
                     Schreibe zuerst Inhalt, dann kann ein Vorschlag erzeugt werden.
@@ -703,22 +727,28 @@ export function CaptureFrontDoor(): JSX.Element {
                 löst Einreichen aus). „Als Entwurf speichern" ist bewusst sekundär (type=button), damit
                 Enter nie versehentlich nur speichert. */}
             <div className="flex flex-wrap items-center gap-3">
-              <Button type="submit" variant="primary" disabled={!canSubmit}>
-                {submit.isPending ? (
-                  <Loader2 size={15} className="animate-spin" />
-                ) : (
-                  <Send size={15} />
-                )}
-                Pruefen / Einreichen
-              </Button>
-              <Button type="button" variant="outline" disabled={!canSave} onClick={requestSave}>
-                {save.isPending ? (
-                  <Loader2 size={15} className="animate-spin" />
-                ) : (
-                  <Save size={15} />
-                )}
-                Als Entwurf speichern
-              </Button>
+              <span className="inline-flex items-center gap-1">
+                <Button type="submit" variant="primary" disabled={!canSubmit}>
+                  {submit.isPending ? (
+                    <Loader2 size={15} className="animate-spin" />
+                  ) : (
+                    <Send size={15} />
+                  )}
+                  Pruefen / Einreichen
+                </Button>
+                <HelpTip {...chelp("submitReview")} />
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <Button type="button" variant="outline" disabled={!canSave} onClick={requestSave}>
+                  {save.isPending ? (
+                    <Loader2 size={15} className="animate-spin" />
+                  ) : (
+                    <Save size={15} />
+                  )}
+                  Als Entwurf speichern
+                </Button>
+                <HelpTip {...chelp("saveDraftHelp")} />
+              </span>
               <Button type="button" variant="ghost" onClick={discardInputAndReturn}>
                 <ArrowLeft size={15} />
                 {hasDiscardRisk ? "Eingabe verwerfen" : "Zurueck"}
