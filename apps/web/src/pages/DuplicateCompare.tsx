@@ -8,6 +8,7 @@ import {
   type CompareSection,
   DUPLICATE_COMPARE_SAFETY,
   buildDuplicateCompareSections,
+  compareHeadline,
   compareToneLabel,
   overallFromConflict,
   overallFromOverlap,
@@ -49,37 +50,48 @@ function ScoreBar({ metrics }: { metrics: CompareMetrics }): JSX.Element {
 }
 
 function ScoreSummary({ metrics }: { metrics: CompareMetrics }): JSX.Element {
+  // SCRUM-486 B: EINE führende Zahl, ehrlich beschriftet — die Feld-/Textheuristik ist kein Urteil.
+  // Unsicherheit und der frühere „Konflikt"-Wert (jetzt ehrlich „Textunterschied") wandern in die Details.
+  const head = compareHeadline(metrics);
   return (
     <div className="rounded-card border border-hairline bg-surface p-4">
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div>
-          <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
-            Uebereinstimmung
-          </div>
-          <div className="text-lg font-semibold text-trust-pos-text">{percent(metrics.match)}</div>
-        </div>
-        <div>
-          <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
-            Unsicherheit
-          </div>
-          <div className="text-lg font-semibold text-trust-warn-text">
-            {percent(metrics.uncertainty)}
-          </div>
-        </div>
-        <div>
-          <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
-            Konflikt
-          </div>
-          <div className="text-lg font-semibold text-trust-crit-text">
-            {percent(metrics.conflict)}
-          </div>
-        </div>
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className="text-2xl font-semibold text-trust-pos-text">
+          {percent(head.leadPercent)}
+        </span>
+        <span className="text-[13px] font-semibold text-text">Text-Ähnlichkeit</span>
       </div>
+      <p className="mt-0.5 text-[12px] text-muted-2">
+        kein bewiesener Widerspruch — nur Wort-/Feldähnlichkeit
+      </p>
       <div className="mt-3">
         <ScoreBar metrics={metrics} />
       </div>
-      <p className="mt-2 text-[12.5px] leading-relaxed text-muted">{metrics.note}</p>
-      <p className="mt-1 text-[12px] font-semibold text-muted">
+      <details className="mt-3">
+        <summary className="cursor-pointer list-none text-[12px] font-semibold text-ai hover:opacity-80">
+          Weitere Werte
+        </summary>
+        <div className="mt-2 grid gap-3 sm:grid-cols-2">
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+              Unsicherheit
+            </div>
+            <div className="text-lg font-semibold text-trust-warn-text">
+              {percent(head.uncertaintyPercent)}
+            </div>
+          </div>
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+              Textunterschied
+            </div>
+            <div className="text-lg font-semibold text-trust-crit-text">
+              {percent(head.differencePercent)}
+            </div>
+          </div>
+        </div>
+        <p className="mt-2 text-[12.5px] leading-relaxed text-muted">{metrics.note}</p>
+      </details>
+      <p className="mt-2 text-[12px] font-semibold text-muted">
         Scores sind Entscheidungshilfe, keine Wahrheit. Kein automatischer Merge.
       </p>
     </div>
@@ -148,10 +160,11 @@ function SectionRow({ section }: { section: CompareSection }): JSX.Element {
           <span className="text-[13px] font-semibold text-text">{section.label}</span>
           <TonePill tone={section.tone} />
         </div>
+        {/* SCRUM-486 B: „Ähnlichkeit"/„Textunterschied" statt „Match"/„Konflikt" — kein fachliches Urteil. */}
         <div className="mt-2 space-y-1 text-[11.5px] text-muted">
-          <div>Match: {percent(section.metrics.match)}</div>
+          <div>Ähnlichkeit: {percent(section.metrics.match)}</div>
           <div>Unsicherheit: {percent(section.metrics.uncertainty)}</div>
-          <div>Konflikt: {percent(section.metrics.conflict)}</div>
+          <div>Textunterschied: {percent(section.metrics.conflict)}</div>
         </div>
         <div className="mt-2">
           <ScoreBar metrics={section.metrics} />

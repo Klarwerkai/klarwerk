@@ -84,6 +84,10 @@ function ConflictOriginBadge({ conflict }: { conflict: Conflict }): JSX.Element 
           </span>
         ) : null}
       </div>
+      {/* SCRUM-486 B: der KI-Prozent ist Erkennungs-Sicherheit, kein Beweis des Widerspruchs. */}
+      {origin.confidencePercent !== undefined ? (
+        <div className="mt-1 text-[11px] text-muted-2">{t("con.autoConfidenceCaption")}</div>
+      ) : null}
       {origin.rationale ? (
         <p className="mt-1.5 text-[12.5px] leading-relaxed text-text">
           <span className="font-semibold">{t(CONFLICT_BOARD_TEXT.why)}:</span> {origin.rationale}

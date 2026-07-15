@@ -1658,6 +1658,8 @@ const de = {
   "con.origin.auto": "Automatisch erkannt",
   "con.origin.manual": "Manuell angelegt",
   "con.autoConfidence": "Sicherheit {{percent}} %",
+  // SCRUM-486 B: der KI-Prozent ist die Erkennungs-Sicherheit, kein Beweis des Widerspruchs.
+  "con.autoConfidenceCaption": "KI-Sicherheit der Erkennung — kein bewiesener Widerspruch",
   "con.autoWhy": "Begründung",
   "con.autoQuoteA": "Beleg A",
   "con.autoQuoteB": "Beleg B",
@@ -1704,6 +1706,9 @@ const de = {
   "dup.textIdentical": "Textgleiches Duplikat",
   "dup.overlap": "{{percent}} % Textdeckung",
   "dup.confidence": "Sicherheit {{percent}} %",
+  // SCRUM-486 B: ehrliche Rahmung der führenden Zahl — Ähnlichkeit ist kein Beweis.
+  "dup.leadCaptionModel": "KI-Wahrscheinlichkeit — kein bewiesenes Duplikat",
+  "dup.leadCaptionText": "Wort-/Text-Ähnlichkeit — kein bewiesenes Duplikat",
   "dup.why": "Begründung",
   "dup.shared": "Gemeinsame Aussagen",
   "dup.quoteA": "In A",
@@ -4341,6 +4346,8 @@ const en: typeof de = {
   "con.origin.auto": "Automatically detected",
   "con.origin.manual": "Manually created",
   "con.autoConfidence": "Confidence {{percent}}%",
+  // SCRUM-486 B: the AI percentage is detection confidence, not proof of the contradiction.
+  "con.autoConfidenceCaption": "AI detection confidence — not a proven contradiction",
   "con.autoWhy": "Reason",
   "con.autoQuoteA": "Evidence A",
   "con.autoQuoteB": "Evidence B",
@@ -4387,6 +4394,9 @@ const en: typeof de = {
   "dup.textIdentical": "Near-identical text",
   "dup.overlap": "{{percent}}% text overlap",
   "dup.confidence": "Confidence {{percent}}%",
+  // SCRUM-486 B: honest framing of the leading number — similarity is not proof.
+  "dup.leadCaptionModel": "AI likelihood — not a proven duplicate",
+  "dup.leadCaptionText": "Word/text similarity — not a proven duplicate",
   "dup.why": "Reason",
   "dup.shared": "Shared statements",
   "dup.quoteA": "In A",

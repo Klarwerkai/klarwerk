@@ -255,6 +255,24 @@ export function overallFromConflict(
   };
 }
 
+// SCRUM-486 B (ehrliche Rahmung): Die Feld-/Textheuristik ist KEIN fachliches Urteil. Deshalb führt
+// genau EINE Zahl — die Text-Ähnlichkeit (match) —; der frühere „Konflikt"-Wert wird ehrlich als
+// „Textunterschied" geführt und wandert samt Unsicherheit in die Details. Reine Zahlen (DOM-frei,
+// testbar); die Beschriftung liegt in der Ansicht.
+export interface CompareHeadline {
+  leadPercent: number; // führende Zahl: Text-Ähnlichkeit (match)
+  differencePercent: number; // vormals „Konflikt %" → ehrlich: Textunterschied, kein bewiesener Widerspruch
+  uncertaintyPercent: number;
+}
+
+export function compareHeadline(metrics: CompareMetrics): CompareHeadline {
+  return {
+    leadPercent: metrics.match,
+    differencePercent: metrics.conflict,
+    uncertaintyPercent: metrics.uncertainty,
+  };
+}
+
 export function compareToneLabel(tone: CompareTone): string {
   if (tone === "green") {
     return "gruen";

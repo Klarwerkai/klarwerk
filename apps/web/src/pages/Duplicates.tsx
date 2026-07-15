@@ -80,6 +80,10 @@ function OverlapDetectorBadge({ entry }: { entry: OverlapEntry }): JSX.Element |
           {t(info.methodLabelKey)}
         </span>
       </div>
+      {/* SCRUM-486 B: ehrliche Rahmung — die führende Zahl ist Ähnlichkeit/Wahrscheinlichkeit, kein Beweis. */}
+      <div className="mt-0.5 text-[11px] text-muted-2">
+        {t(isModel ? "dup.leadCaptionModel" : "dup.leadCaptionText")}
+      </div>
       {isModel ? (
         <div className="mt-1 font-mono text-[10.5px] text-muted-2">
           {t(DUPLICATE_BOARD_TEXT.overlap, { percent: info.overlapPercent })}

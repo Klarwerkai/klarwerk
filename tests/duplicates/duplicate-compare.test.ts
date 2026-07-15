@@ -4,6 +4,7 @@ import type { KnowledgeObject, OverlapEntry } from "../../apps/web/src/api/types
 import {
   DUPLICATE_COMPARE_SAFETY,
   buildDuplicateCompareSections,
+  compareHeadline,
   overallFromOverlap,
 } from "../../apps/web/src/lib/duplicateCompare";
 
@@ -111,5 +112,22 @@ describe("KW-DUP-02: read-only duplicate comparison", () => {
     expect(page).not.toContain("endpoints.duplicates.linkRelated");
     expect(page).not.toContain("endpoints.ko.act");
     expect(page).not.toContain("endpoints.ko.remove");
+  });
+});
+
+// SCRUM-486 B: ehrliche Rahmung der Prozentzahlen — EINE führende Zahl (Text-Ähnlichkeit = match);
+// der frühere „Konflikt"-Wert wird als „Textunterschied" geführt (kein bewiesener Widerspruch).
+describe("SCRUM-486 B: compareHeadline", () => {
+  it("führt mit der Text-Ähnlichkeit (match) und benennt Konflikt ehrlich als Textunterschied", () => {
+    const head = compareHeadline({
+      match: 72,
+      conflict: 18,
+      uncertainty: 10,
+      source: "heuristic",
+      note: "x",
+    });
+    expect(head.leadPercent).toBe(72);
+    expect(head.differencePercent).toBe(18);
+    expect(head.uncertaintyPercent).toBe(10);
   });
 });
