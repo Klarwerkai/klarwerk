@@ -160,14 +160,30 @@ function hintsText(ko: KnowledgeObject): string {
   return (ko.comments ?? []).map((comment) => comment.text).join("; ");
 }
 
+// SCRUM-486 C: keine Roh-Enums in der Nutzersicht — Status/Wissensart als Klartext-Label. Deutsche
+// Inline-Labels (DOM-frei, testbar), passend zur bereits deutschsprachigen Vergleichsseite.
+const STATUS_LABEL: Record<string, string> = {
+  offen: "Offen",
+  validiert: "Validiert",
+};
+const TYPE_LABEL: Record<string, string> = {
+  bauchgefuehl: "Intuition",
+  best_practice: "Best Practice",
+  lernkurve: "Lernkurve",
+  technik: "Technik",
+  negativwissen: "Negativwissen",
+};
+
 function trustStatusText(ko: KnowledgeObject): string {
-  return `Trust ${ko.trust}; Status ${ko.status}; benoetigte Validierungen ${ko.neededValidations}`;
+  const status = STATUS_LABEL[ko.status] ?? ko.status;
+  return `Trust ${ko.trust}; Status ${status}; benötigte Prüfungen ${ko.neededValidations}`;
 }
 
 function tagsCategoryText(ko: KnowledgeObject): string {
+  const type = TYPE_LABEL[ko.type] ?? ko.type;
   return [
     `Kategorie ${ko.category || "keine"}`,
-    `Wissensart ${ko.type}`,
+    `Wissensart ${type}`,
     `Tags ${(ko.tags ?? []).join(", ") || "keine"}`,
   ].join("; ");
 }

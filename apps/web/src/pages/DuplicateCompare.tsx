@@ -6,7 +6,6 @@ import { PageHeader, cx } from "../components/ui";
 import {
   type CompareMetrics,
   type CompareSection,
-  DUPLICATE_COMPARE_SAFETY,
   buildDuplicateCompareSections,
   compareHeadline,
   compareToneLabel,
@@ -98,15 +97,7 @@ function ScoreSummary({ metrics }: { metrics: CompareMetrics }): JSX.Element {
   );
 }
 
-function KoPanel({
-  label,
-  ko,
-  fallbackId,
-}: {
-  label: string;
-  ko: KnowledgeObject | null;
-  fallbackId: string;
-}): JSX.Element {
+function KoPanel({ label, ko }: { label: string; ko: KnowledgeObject | null }): JSX.Element {
   return (
     <div className="rounded-card border border-hairline bg-surface p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
@@ -123,8 +114,9 @@ function KoPanel({
       {ko ? (
         <KoView ko={ko} />
       ) : (
+        // SCRUM-486 C: kein Roh-UUID in der Nutzersicht — neutraler „entfernt"-Hinweis.
         <div className="rounded-card border border-dashed border-hairline bg-page p-3 text-[12.5px] text-muted">
-          Wissensobjekt nicht gefunden: {fallbackId}
+          Objekt entfernt
         </div>
       )}
     </div>
@@ -185,13 +177,34 @@ function findKo(kos: readonly KnowledgeObject[] | undefined, id: string): Knowle
   return kos?.find((ko) => ko.id === id) ?? null;
 }
 
+// SCRUM-486 C: keine Roh-Enums in Titeln — Beziehung/Konfliktart als Klartext (deutschsprachige Seite).
+const RELATION_LABEL: Record<string, string> = {
+  identisch: "identisch",
+  a_enthaelt_b: "A enthält B",
+  b_enthaelt_a: "B enthält A",
+  teilweise: "teilweise Überschneidung",
+  verwandt: "verwandt",
+};
+const CONFLICT_TYPE_LABEL: Record<string, string> = {
+  truth: "Wahrheitskonflikt",
+  experience: "Erfahrungskonflikt",
+  context: "Kontextkonflikt",
+  temporal: "zeitlicher Konflikt",
+  role: "Rollenkonflikt",
+};
+
+// Kind-abhängiger Seitentitel — kein pauschales „Duplikate vergleichen" über dem Konflikt-Deep-Link.
+function comparePageTitle(kind: DuplicateCompareKind): string {
+  return kind === "duplicate" ? "Duplikate vergleichen" : "Konflikt vergleichen";
+}
+
 function sourceTitle(kind: DuplicateCompareKind, entry: OverlapEntry | Conflict): string {
   if (kind === "duplicate") {
     const overlap = entry as OverlapEntry;
-    return `Duplikatvergleich: ${overlap.relation}`;
+    return `Duplikatvergleich: ${RELATION_LABEL[overlap.relation] ?? overlap.relation}`;
   }
   const conflict = entry as Conflict;
-  return `Konfliktvergleich: ${conflict.type}`;
+  return `Konfliktvergleich: ${CONFLICT_TYPE_LABEL[conflict.type] ?? conflict.type}`;
 }
 
 export function DuplicateCompare({ kind }: { kind: DuplicateCompareKind }): JSX.Element {
@@ -209,7 +222,7 @@ export function DuplicateCompare({ kind }: { kind: DuplicateCompareKind }): JSX.
   if (loading) {
     return (
       <div className="mx-auto max-w-6xl">
-        <PageHeader kicker="Read-only Vergleich" title="Duplikate vergleichen" />
+        <PageHeader kicker="Read-only Vergleich" title={comparePageTitle(kind)} />
         <div className="rounded-card border border-dashed border-hairline bg-surface p-10 text-center text-sm text-muted">
           Vergleich wird geladen.
         </div>
@@ -220,7 +233,7 @@ export function DuplicateCompare({ kind }: { kind: DuplicateCompareKind }): JSX.
   if (error) {
     return (
       <div className="mx-auto max-w-6xl">
-        <PageHeader kicker="Read-only Vergleich" title="Duplikate vergleichen" />
+        <PageHeader kicker="Read-only Vergleich" title={comparePageTitle(kind)} />
         <div className="rounded-card border border-dashed border-hairline bg-surface p-10 text-center text-sm text-muted">
           Vergleich konnte nicht geladen werden.
         </div>
@@ -233,7 +246,7 @@ export function DuplicateCompare({ kind }: { kind: DuplicateCompareKind }): JSX.
       <div className="mx-auto max-w-6xl">
         <PageHeader
           kicker="Read-only Vergleich"
-          title="Duplikate vergleichen"
+          title={comparePageTitle(kind)}
           actions={<Link to={isDuplicate ? "/duplikate" : "/konflikte"}>Zurueck</Link>}
         />
         <div className="rounded-card border border-dashed border-hairline bg-surface p-10 text-center text-sm text-muted">
@@ -263,7 +276,7 @@ export function DuplicateCompare({ kind }: { kind: DuplicateCompareKind }): JSX.
     <div className="mx-auto max-w-6xl">
       <PageHeader
         kicker="Read-only Vergleich"
-        title="Duplikate vergleichen"
+        title={comparePageTitle(kind)}
         actions={
           <Link
             to={isDuplicate ? "/duplikate" : "/konflikte"}
@@ -274,52 +287,23 @@ export function DuplicateCompare({ kind }: { kind: DuplicateCompareKind }): JSX.
         }
       />
 
+      {/* SCRUM-486 C: die internen MVP-/Safety-Rohtexte und der deaktivierte Merge-Platzhalter sind raus
+          aus der Nutzersicht — EIN ehrlicher Satz, was diese Ansicht tut (und was nicht). */}
       <div className="mb-4 rounded-card border border-ai/20 bg-ai/5 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
-              {sourceTitle(kind, entry)}
-            </div>
-            <p className="mt-1 text-[13px] text-text">
-              Read-only MVP: keine Zusammenfuehrung, keine Loeschung, keine Validierung, keine
-              gespeicherten Entscheidungen.
-            </p>
-          </div>
-          <button
-            type="button"
-            disabled
-            className="rounded-btn border border-hairline px-3.5 py-2 text-[13px] font-semibold text-muted opacity-60"
-          >
-            Merge spaeter
-          </button>
+        <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+          {sourceTitle(kind, entry)}
         </div>
+        <p className="mt-1 text-[13px] text-text">
+          Nur zum Vergleich: Es wird nichts zusammengeführt, gelöscht oder validiert, und keine
+          Entscheidung wird gespeichert.
+        </p>
       </div>
 
       <ScoreSummary metrics={overall} />
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_280px_1fr]">
-        <KoPanel label="Wissensobjekt A" ko={left} fallbackId={entry.koA} />
-        <div className="rounded-card border border-hairline bg-surface p-4">
-          <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
-            Sicherheitsstatus
-          </div>
-          <ul className="mt-3 space-y-2 text-[12.5px] text-text">
-            <li>Merge aktiv: {DUPLICATE_COMPARE_SAFETY.mergeEnabled ? "ja" : "nein"}</li>
-            <li>Delete aktiv: {DUPLICATE_COMPARE_SAFETY.deleteEnabled ? "ja" : "nein"}</li>
-            <li>
-              Auto-Validate aktiv: {DUPLICATE_COMPARE_SAFETY.autoValidateEnabled ? "ja" : "nein"}
-            </li>
-            <li>
-              Entscheidungen gespeichert:{" "}
-              {DUPLICATE_COMPARE_SAFETY.persistDecisions ? "ja" : "nein"}
-            </li>
-            <li>KI-Aktion aktiv: {DUPLICATE_COMPARE_SAFETY.aiActionEnabled ? "ja" : "nein"}</li>
-          </ul>
-          <div className="mt-4 rounded-card bg-page p-3 text-[12px] text-muted">
-            KI-Vorschlag spaeter. In KW-DUP-02 wird kein KI-Merge erzeugt.
-          </div>
-        </div>
-        <KoPanel label="Wissensobjekt B" ko={right} fallbackId={entry.koB} />
+      <div className="mt-5 grid gap-4 lg:grid-cols-2">
+        <KoPanel label="Wissensobjekt A" ko={left} />
+        <KoPanel label="Wissensobjekt B" ko={right} />
       </div>
 
       <div className="mt-6 space-y-3">

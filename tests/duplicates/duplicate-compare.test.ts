@@ -106,12 +106,37 @@ describe("KW-DUP-02: read-only duplicate comparison", () => {
     const page = readFileSync("apps/web/src/pages/DuplicateCompare.tsx", "utf8");
     expect(routes).toContain("/duplikate/:id/vergleich");
     expect(routes).toContain("/konflikte/:id/vergleich");
-    expect(page).toContain("Merge spaeter");
     expect(page).not.toContain("endpoints.duplicates.dismiss");
     expect(page).not.toContain("endpoints.duplicates.keepSeparate");
     expect(page).not.toContain("endpoints.duplicates.linkRelated");
     expect(page).not.toContain("endpoints.ko.act");
     expect(page).not.toContain("endpoints.ko.remove");
+  });
+
+  // SCRUM-486 C: keine internen MVP-/Safety-Rohtexte und kein Roh-UUID in der Nutzersicht.
+  it("zeigt keine internen MVP-/Safety-Rohtexte und einen kind-abhaengigen Titel", () => {
+    const page = readFileSync("apps/web/src/pages/DuplicateCompare.tsx", "utf8");
+    expect(page).not.toContain("Merge spaeter");
+    expect(page).not.toContain("Merge aktiv");
+    expect(page).not.toContain("KW-DUP-02");
+    expect(page).not.toContain("Read-only MVP");
+    expect(page).not.toContain("Wissensobjekt nicht gefunden");
+    // Kind-abhaengiger Titel + neutraler „entfernt"-Hinweis statt UUID.
+    expect(page).toContain("Konflikt vergleichen");
+    expect(page).toContain("Objekt entfernt");
+  });
+
+  // SCRUM-486 C: Status/Wissensart als Klartext-Label in den Vergleichsabschnitten, kein Roh-Enum.
+  it("nutzt Klartext-Label fuer Status und Wissensart (kein Roh-Enum)", () => {
+    const sections = buildDuplicateCompareSections(ko("a"), ko("b"));
+    const trustSection = sections.find((s) => s.label === "Trust / Validierungsstatus");
+    expect(trustSection?.leftValue).toContain("Status Offen");
+    expect(trustSection?.leftValue).toContain("benötigte Prüfungen");
+    expect(trustSection?.leftValue).not.toContain("Status offen");
+    expect(trustSection?.leftValue).not.toContain("benoetigte Validierungen");
+    const tagsSection = sections.find((s) => s.label === "Tags / Kategorie");
+    expect(tagsSection?.leftValue).toContain("Wissensart Technik");
+    expect(tagsSection?.leftValue).not.toContain("Wissensart technik");
   });
 });
 
