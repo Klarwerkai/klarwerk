@@ -22,4 +22,21 @@ jobs:
         run: npm run arch
       - name: test
         run: npm run test
+
+  # SCRUM-496: der schnelle Gate-Lauf oben prüft nur JS/Referenzen — ein SQL-Syntaxfehler im
+  # migrate()-DDL (z. B. reservierter Tabellenname) fiel dort NICHT auf und brach erst beim
+  # Prod-Boot ab. Dieser Job fährt die Integrationstests (migrate() + App gegen echtes Postgres
+  # via Testcontainers; Docker ist auf ubuntu-latest vorhanden) — so ein Fehler stoppt jetzt die
+  # Pipeline, nicht den Deploy.
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - name: integration (Postgres via Testcontainers)
+        run: npm run test:integration
 # Regel: Nichts kommt nach main, das diese Pipeline nicht grün durchläuft.
