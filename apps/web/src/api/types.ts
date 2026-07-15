@@ -638,6 +638,17 @@ export interface ConflictSelfTestResult {
   messageKey: string;
 }
 
+// SCRUM-494: Ergebnis des Duplikat-Selbsttests (analog Konflikt-Selbsttest).
+export interface DuplicateSelfTestResult {
+  ok: boolean;
+  code: "ok" | "no_model" | "no_duplicate";
+  provider: string;
+  mode: "model" | "deterministic";
+  duplicateCreated: boolean;
+  relation: string | null;
+  messageKey: string;
+}
+
 export interface AssistResult {
   text: string;
   demo: boolean;

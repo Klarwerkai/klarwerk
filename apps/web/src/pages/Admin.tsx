@@ -259,6 +259,15 @@ export function Admin(): JSX.Element {
   // SCRUM-493: End-to-End-Selbsttest der Konflikterkennung — beweist judgeConflict + kollision im
   // deployten Stand (der einzige verlässliche Check; die Sidebar „aktiv" prüft nur Key-Präsenz).
   const conflictSelfTest = useMutation({ mutationFn: () => endpoints.reasoner.conflictSelfTest() });
+  // SCRUM-494: End-to-End-Selbsttest der Duplikat-Erkennung — beweist judgeDuplicate am reifen-Fall
+  // (semantisch gleich, lexikalisch verschieden), den der deterministische Ersatzmodus nicht sieht.
+  const dupSelfTest = useMutation({ mutationFn: () => endpoints.reasoner.duplicateSelfTest() });
+  // SCRUM-494: EIN Klick prüft BEIDE Erkennungsarten (Konflikt + Duplikat); beide Ergebnisse darunter.
+  const runSelfTests = () => {
+    conflictSelfTest.mutate();
+    dupSelfTest.mutate();
+  };
+  const selfTestPending = conflictSelfTest.isPending || dupSelfTest.isPending;
   // SCRUM-386: kundeneigene KI-Assist-Funktionen (Presets) — lokal editieren, als Ganzes
   // speichern (Replace-Semantik der Route). Die Werks-Funktionen (klarer/strukturieren/…)
   // bleiben unangetastet im Code; hier entstehen NUR zusätzliche, instanz-eigene Funktionen.
@@ -808,17 +817,15 @@ export function Admin(): JSX.Element {
                     <KeyRound size={12} />
                     {aiTestLocal.isPending ? t("adm.ai.testRunning") : t("adm.ai.testLocal")}
                   </button>
-                  {/* SCRUM-493: End-to-End-Selbsttest der Konflikterkennung (judgeConflict + kollision). */}
+                  {/* SCRUM-493/494: EIN Klick prüft BEIDE Erkennungsarten (Konflikt + Duplikat). */}
                   <button
                     type="button"
-                    disabled={conflictSelfTest.isPending}
-                    onClick={() => conflictSelfTest.mutate()}
+                    disabled={selfTestPending}
+                    onClick={runSelfTests}
                     className="inline-flex h-7 items-center gap-1 rounded-btn border border-hairline bg-surface px-2.5 text-[11.5px] font-semibold text-text hover:border-ink/30 disabled:opacity-50"
                   >
                     <KeyRound size={12} />
-                    {conflictSelfTest.isPending
-                      ? t("adm.conflictSelfTest.running")
-                      : t("adm.conflictSelfTest.button")}
+                    {selfTestPending ? t("adm.selfTest.running") : t("adm.selfTest.button")}
                   </button>
                 </div>
                 {aiTest.data ? (
@@ -868,8 +875,8 @@ export function Admin(): JSX.Element {
                     }`}
                   >
                     <p className="font-semibold">
-                      {conflictSelfTest.data.ok ? "OK" : "FAIL"}:{" "}
-                      {t(conflictSelfTest.data.messageKey)}
+                      {conflictSelfTest.data.ok ? "OK" : "FAIL"} · {t("adm.conflictSelfTest.label")}
+                      : {t(conflictSelfTest.data.messageKey)}
                     </p>
                     <p className="mt-0.5 text-[11px] opacity-90">
                       {t("adm.conflictSelfTest.provider", {
@@ -884,6 +891,34 @@ export function Admin(): JSX.Element {
                   </div>
                 ) : null}
                 {conflictSelfTest.isError ? (
+                  <p className="rounded-btn bg-trust-crit-bg px-2.5 py-1.5 text-[12px] text-trust-crit-text">
+                    {t("adm.ai.testFail", { detail: t("state.error") })}
+                  </p>
+                ) : null}
+                {/* SCRUM-494: strukturiertes OK/FAIL des Duplikat-Selbsttests inkl. Provider + Beziehung. */}
+                {dupSelfTest.data ? (
+                  <div
+                    className={`rounded-btn px-2.5 py-1.5 text-[12px] ${
+                      dupSelfTest.data.ok
+                        ? "bg-trust-pos-bg text-trust-pos-text"
+                        : "bg-trust-crit-bg text-trust-crit-text"
+                    }`}
+                  >
+                    <p className="font-semibold">
+                      {dupSelfTest.data.ok ? "OK" : "FAIL"} · {t("adm.dupSelfTest.label")}:{" "}
+                      {t(dupSelfTest.data.messageKey)}
+                    </p>
+                    <p className="mt-0.5 text-[11px] opacity-90">
+                      {t("adm.conflictSelfTest.provider", { provider: dupSelfTest.data.provider })}
+                      {dupSelfTest.data.duplicateCreated && dupSelfTest.data.relation
+                        ? ` · ${t("adm.dupSelfTest.relation", {
+                            relation: dupSelfTest.data.relation,
+                          })}`
+                        : ""}
+                    </p>
+                  </div>
+                ) : null}
+                {dupSelfTest.isError ? (
                   <p className="rounded-btn bg-trust-crit-bg px-2.5 py-1.5 text-[12px] text-trust-crit-text">
                     {t("adm.ai.testFail", { detail: t("state.error") })}
                   </p>

@@ -297,6 +297,7 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/reasoner/test": { protection: "users.manage" },
   // SCRUM-493: End-to-End-Selbsttest der Konflikterkennung — nur Admin (echte Erkennungskette).
   "POST /api/reasoner/conflict-self-test": { protection: "users.manage" },
+  "POST /api/reasoner/duplicate-self-test": { protection: "users.manage" },
   "POST /api/objects": { protection: "ko.create" },
   "GET /api/objects/:id": { protection: "ko.read" },
   "GET /api/objects/:id/raw": { protection: "ko.read" },

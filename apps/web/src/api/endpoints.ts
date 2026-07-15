@@ -15,6 +15,7 @@ import type {
   DemoSeedResult,
   Draft,
   DraftPayload,
+  DuplicateSelfTestResult,
   EnrichResult,
   EvidenceRecord,
   ExpertiseEntry,
@@ -243,6 +244,7 @@ export const endpoints = {
     testLocal: () => api.post<ReasonerProbeResult>("/reasoner/test-local"),
     // SCRUM-493: End-to-End-Selbsttest der Konflikterkennung (echter judgeConflict + kollision).
     conflictSelfTest: () => api.post<ConflictSelfTestResult>("/reasoner/conflict-self-test"),
+    duplicateSelfTest: () => api.post<DuplicateSelfTestResult>("/reasoner/duplicate-self-test"),
     // SCRUM-386: kundeneigene KI-Assist-Presets — lesen alle Rollen (Palette), pflegen nur Admin.
     assistPresets: () => api.get<AssistPreset[]>("/reasoner/assist-presets"),
     updateAssistPresets: (presets: { id?: string; name: string; instruction: string }[]) =>

@@ -7,6 +7,7 @@ import {
 } from "../../../external-search";
 import type { Reasoner, ReasonerLocale } from "../../../reasoner";
 import { runConflictSelfTest } from "../conflict-self-test";
+import { runDuplicateSelfTest } from "../duplicate-self-test";
 import type { Guards } from "../http";
 
 // FR-I18N-01: nur DE/EN; alles andere/ungültige normalisiert sauber auf "de" (keine 400).
@@ -226,6 +227,18 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         return;
       }
       reply.code(200).send(await runConflictSelfTest(reasoner));
+    });
+
+    // SCRUM-494: End-to-End-Selbsttest der Duplikat-Erkennung — beweist, dass judgeDuplicate im
+    // deployten Stand ein semantisches Duplikat erkennt (der reifen-Fall, den der deterministische
+    // Ersatzmodus nicht sehen kann). Echte Kette gegen einen Wegwerf-Repo (kein Fußabdruck,
+    // idempotent). Nur Admin; der Schlüssel verlässt den Server nie.
+    app.post("/api/reasoner/duplicate-self-test", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      reply.code(200).send(await runDuplicateSelfTest(reasoner));
     });
   };
 }
