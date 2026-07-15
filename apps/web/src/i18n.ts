@@ -1688,9 +1688,9 @@ const de = {
   "con.next.resolve": "Entscheiden und die Auflösung dokumentieren.",
   "con.next.done": "Konflikt ist gelöst — keine offene Handlung.",
   "dup.kicker": "Duplikate-Board",
-  "dup.title": "Doppelungen zusammenführen — ein Thema, eine Quelle",
+  "dup.title": "Doppelungen klären — ein Thema, eine Quelle",
   "dup.intro":
-    "Automatisch erkannte Überschneidungen zwischen Beiträgen. Sehr hohe Textdeckung wird auch ohne KI gefunden; die feineren Fälle prüft das Modell. Du entscheidest: zusammenführen, getrennt lassen oder als verwandt verlinken.",
+    "Automatisch erkannte Überschneidungen zwischen Beiträgen. Sehr hohe Textdeckung wird auch ohne KI gefunden; die feineren Fälle prüft das Modell. Du entscheidest: als verwandt verlinken, getrennt lassen oder als Fehlalarm schließen. (Ein automatisches Zusammenführen gibt es bewusst nicht.)",
   "dup.empty": "Keine offenen Überschneidungen.",
   "dup.relation.identisch": "Identisch",
   "dup.relation.a_enthaelt_b": "A enthält B",
@@ -1716,8 +1716,10 @@ const de = {
   "dup.onlyA": "Nur in A",
   "dup.onlyB": "Nur in B",
   "dup.recommendation": "Empfehlung",
-  "dup.rec.zusammenfuehren": "Zusammenführen",
-  "dup.rec.zusammenfuehren_pruefen": "Zusammenführen prüfen",
+  // SCRUM-486 D: kein leeres „Zusammenführen"-Versprechen — Empfehlung zeigt auf die real vorhandenen
+  // Aktionen (verlinken / getrennt lassen / Fehlalarm). Ein automatischer Merge existiert nicht.
+  "dup.rec.zusammenfuehren": "Starke Überschneidung — verlinken oder eine Version pflegen",
+  "dup.rec.zusammenfuehren_pruefen": "Überschneidung prüfen — verlinken oder getrennt lassen",
   "dup.rec.getrennt_lassen": "Getrennt lassen",
   "dup.rec.verwandt_verlinken": "Als verwandt verlinken",
   "dup.versus": "vs",
@@ -4376,9 +4378,9 @@ const en: typeof de = {
   "con.next.resolve": "Decide and document the resolution.",
   "con.next.done": "Conflict is resolved — nothing pending.",
   "dup.kicker": "Duplicates board",
-  "dup.title": "Merge duplicates — one topic, one source",
+  "dup.title": "Resolve duplicates — one topic, one source",
   "dup.intro":
-    "Overlaps between contributions, detected automatically. Very high text overlap is found even without AI; the subtler cases are checked by the model. You decide: merge, keep separate, or link as related.",
+    "Overlaps between contributions, detected automatically. Very high text overlap is found even without AI; the subtler cases are checked by the model. You decide: link as related, keep separate, or close as a false alarm. (There is deliberately no automatic merge.)",
   "dup.empty": "No open overlaps.",
   "dup.relation.identisch": "Identical",
   "dup.relation.a_enthaelt_b": "A contains B",
@@ -4404,8 +4406,10 @@ const en: typeof de = {
   "dup.onlyA": "Only in A",
   "dup.onlyB": "Only in B",
   "dup.recommendation": "Recommendation",
-  "dup.rec.zusammenfuehren": "Merge",
-  "dup.rec.zusammenfuehren_pruefen": "Review for merge",
+  // SCRUM-486 D: no empty "merge" promise — the recommendation points at the real actions
+  // (link / keep separate / false alarm). There is no automatic merge.
+  "dup.rec.zusammenfuehren": "Strong overlap — link or keep one version",
+  "dup.rec.zusammenfuehren_pruefen": "Review overlap — link or keep separate",
   "dup.rec.getrennt_lassen": "Keep separate",
   "dup.rec.verwandt_verlinken": "Link as related",
   "dup.versus": "vs",
