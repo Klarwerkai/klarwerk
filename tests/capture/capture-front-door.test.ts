@@ -376,7 +376,11 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(captureSource).toContain("Neues Wissensobjekt erfassen");
     expect(captureSource).toContain("Dokument-Canvas oeffnen");
     expect(captureSource).toContain("Weitere Wege");
-    expect(captureSource).toContain("NARRATE_MODES.map");
+    // SCRUM-458 (Nullschulung): die Modi-Leiste rendert jetzt progressiv über visibleNarrateModes/
+    // shownNarrateModes (Freitext sofort, Rest hinter „weitere Optionen") statt NARRATE_MODES.map direkt.
+    // Die Erzähl-Modi bleiben vollständig erhalten — nur die Sichtbarkeit ist gestaffelt.
+    expect(captureSource).toContain("shownNarrateModes.map");
+    expect(captureSource).toContain("visibleNarrateModes");
     expect(captureSource).toContain("EXPERT_MODE");
     expect(captureSource).toContain("CAPTURE_FRONT_DOOR_ROUTE");
   });
