@@ -235,6 +235,30 @@ async function buildDemoContent(
     confidence: 30,
     neededValidations: 2,
   });
+  // SCRUM-492: zweiter Showcase-Konflikt (Firmenwagenfarbe blau ↔ rot) als reproduzierbarer
+  // Demo-Bestand. Zwei echte, gegensätzliche Farb-Vorgaben — der klassische „direkt unvereinbar"-Fall.
+  const koCarBlau = await ko.create({
+    demoSeed: true,
+    title: "Firmenwagen: Pflichtfarbe Blau",
+    statement: "Alle Firmenwagen müssen blau sein.",
+    type: "best_practice",
+    category: "Fuhrpark",
+    author: erikId,
+    tags: ["firmenwagen", "fahrzeugfarbe", "blau", DEMO_TAG],
+    confidence: 60,
+    neededValidations: 2,
+  });
+  const koCarRot = await ko.create({
+    demoSeed: true,
+    title: "Firmenwagen-Bestellrichtlinie: Farbe Rot",
+    statement: "Firmenwagen werden ausschließlich in der Farbe Rot bestellt.",
+    type: "best_practice",
+    category: "Fuhrpark",
+    author: carlaId,
+    tags: ["firmenwagen", "fahrzeugfarbe", "rot", "bestellrichtlinie", DEMO_TAG],
+    confidence: 60,
+    neededValidations: 2,
+  });
   const koFilter = await ko.create({
     demoSeed: true,
     title: "Filter F3 monatlich auf Verschmutzung prüfen.",
@@ -463,6 +487,46 @@ async function buildDemoContent(
         seiteB: {
           kernaussage: "Kaltstart ist ohne Vorwärmung möglich.",
           streitwert: "ohne Vorwärmung",
+          streitwertWoertlich: true,
+        },
+      },
+    },
+    adminId,
+  );
+
+  // --- SCRUM-492: Firmenwagenfarbe blau ↔ rot als zweiter, garantiert sichtbarer Kollisions-Showcase.
+  // createAuto mit festem kollision (kein Modell-Zufall); die Streitwerte „blau"/„Rot" stehen wörtlich
+  // in den beiden Belegzitaten (streitwertWoertlich=true) → belegt-Kennzeichnung in den Kacheln.
+  await conflicts.createAuto(
+    {
+      koA: koCarBlau.id,
+      koB: koCarRot.id,
+      type: "truth",
+      description:
+        "Automatisch erkannt: A schreibt Blau als Pflichtfarbe vor, B bestellt ausschließlich Rot.",
+    },
+    {
+      trigger: "validation",
+      method: "model",
+      promptVersion: "kon-v1",
+      modelLabel: "demo:seed",
+      confidence: 0.9,
+      rationale:
+        "A schreibt Blau als Pflichtfarbe vor, während B Firmenwagen ausschließlich in Rot bestellt — direkt unvereinbar.",
+      quotes: {
+        a: "Alle Firmenwagen müssen blau sein.",
+        b: "Firmenwagen werden ausschließlich in der Farbe Rot bestellt.",
+      },
+      kollision: {
+        streitpunkt: "Firmenwagenfarbe",
+        seiteA: {
+          kernaussage: "Alle Firmenwagen müssen blau sein.",
+          streitwert: "blau",
+          streitwertWoertlich: true,
+        },
+        seiteB: {
+          kernaussage: "Firmenwagen ausschließlich in Rot bestellen.",
+          streitwert: "Rot",
           streitwertWoertlich: true,
         },
       },

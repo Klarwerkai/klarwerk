@@ -82,6 +82,29 @@ describe("SCRUM-156: seedDemo", () => {
     expect(evidence.some((e) => e.kind === "attachment")).toBe(true);
   });
 
+  it("SCRUM-492: Showcase-Konflikte tragen kollision mit wörtlich belegten Streitwerten", async () => {
+    const services = buildServices();
+    await seedDemo(services);
+    const open = await services.conflicts.unresolved();
+
+    // Firmenwagenfarbe blau ↔ rot: die zentrale Gegenüberstellung fürs Board.
+    const car = open.find((c) => c.detector?.kollision?.streitpunkt === "Firmenwagenfarbe");
+    expect(car, "Firmenwagen-Kollision fehlt im Seed").toBeDefined();
+    const k = car?.detector?.kollision;
+    expect(k?.seiteA.streitwert).toBe("blau");
+    expect(k?.seiteB.streitwert).toBe("Rot");
+    // Ehrlichkeit: die Streitwerte stehen WÖRTLICH im jeweiligen Belegzitat (kein erfundener Wert).
+    expect(car?.detector?.quotes?.a.includes("blau")).toBe(true);
+    expect(car?.detector?.quotes?.b.includes("Rot")).toBe(true);
+    expect(k?.seiteA.streitwertWoertlich).toBe(true);
+    expect(k?.seiteB.streitwertWoertlich).toBe(true);
+
+    // Auch der Vorwärmung-Showcase bleibt strukturiert (Regressionsschutz beider Kacheln).
+    expect(
+      open.some((c) => c.detector?.kollision?.streitpunkt === "Vorwärmung bei Kaltstart"),
+    ).toBe(true);
+  });
+
   it("Pedi 02.07.: purgeDemoSeed entfernt ALLE Demodaten — auch nach Tester-Bearbeitung", async () => {
     const services = buildServices();
     await seedDemo(services);
