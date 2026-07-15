@@ -1,0 +1,51 @@
+[
+  {
+    "title": "Bewegwijzering hal 7 — kleurregel",
+    "statement": "Alle waarschuwingsborden in hal 7 moeten blauw gelakt zijn.",
+    "type": "best_practice",
+    "category": "Arbeitssicherheit",
+    "tags": [
+      "arbeitssicherheit",
+      "kennzeichnung"
+    ]
+  },
+  {
+    "title": "Bewegwijzering hal 7 — uitvoering",
+    "statement": "Waarschuwingsborden in hal 7 worden uitsluitend in het rood gelakt.",
+    "type": "best_practice",
+    "category": "Arbeitssicherheit",
+    "tags": [
+      "arbeitssicherheit",
+      "kennzeichnung"
+    ]
+  },
+  {
+    "title": "Levering: banden (A)",
+    "statement": "elke auto wordt met 4 banden geleverd",
+    "type": "technik",
+    "category": "Logistik",
+    "tags": [
+      "auslieferung",
+      "reifen"
+    ]
+  },
+  {
+    "title": "Levering: banden (B)",
+    "statement": "Alle auto's worden met vier banden geleverd",
+    "type": "technik",
+    "category": "Logistik",
+    "tags": [
+      "auslieferung",
+      "reifen"
+    ]
+  },
+  {
+    "title": "Keuken: schoonmaak",
+    "statement": "De koffiekeuken wordt elke vrijdag schoongemaakt.",
+    "type": "best_practice",
+    "category": "Verwaltung",
+    "tags": [
+      "hausordnung"
+    ]
+  }
+]

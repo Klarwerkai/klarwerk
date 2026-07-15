@@ -1,0 +1,128 @@
+[
+  {
+    "title": "Signage hall 7 — colour rule",
+    "statement": "All warning signs in hall 7 must be painted blue.",
+    "type": "best_practice",
+    "category": "Arbeitssicherheit",
+    "tags": [
+      "arbeitssicherheit",
+      "kennzeichnung"
+    ],
+    "pageId": "kwdemo-warnfarbe-blau",
+    "spaceKey": "KWDEMO",
+    "sourceVersion": 3,
+    "provider": "Confluence",
+    "bodyHtml": "<p>Per the safety guideline, every warning sign in hall 7 is to be painted blue.</p>",
+    "url": "https://confluence.demo.klarwerk/display/KWDEMO/kwdemo-warnfarbe-blau"
+  },
+  {
+    "title": "Signage hall 7 — execution",
+    "statement": "Warning signs in hall 7 are painted exclusively in red.",
+    "type": "best_practice",
+    "category": "Arbeitssicherheit",
+    "tags": [
+      "arbeitssicherheit",
+      "kennzeichnung"
+    ],
+    "pageId": "kwdemo-warnfarbe-rot",
+    "spaceKey": "KWDEMO",
+    "sourceVersion": 3,
+    "provider": "Confluence",
+    "bodyHtml": "<p>The workshop paints warning signs in hall 7 exclusively in red.</p>",
+    "url": "https://confluence.demo.klarwerk/display/KWDEMO/kwdemo-warnfarbe-rot"
+  },
+  {
+    "title": "Data backup — schedule (operations)",
+    "statement": "Data backups are created daily.",
+    "type": "technik",
+    "category": "IT-Betrieb",
+    "tags": [
+      "it-betrieb",
+      "backup"
+    ],
+    "pageId": "kwdemo-backup-taeglich",
+    "spaceKey": "KWDEMO",
+    "sourceVersion": 3,
+    "provider": "Confluence",
+    "bodyHtml": "<p>IT operations create data backups daily at 02:00.</p>",
+    "url": "https://confluence.demo.klarwerk/display/KWDEMO/kwdemo-backup-taeglich"
+  },
+  {
+    "title": "Data backup — schedule (manual)",
+    "statement": "Data backups are performed only weekly.",
+    "type": "technik",
+    "category": "IT-Betrieb",
+    "tags": [
+      "it-betrieb",
+      "backup"
+    ],
+    "pageId": "kwdemo-backup-woechentlich",
+    "spaceKey": "KWDEMO",
+    "sourceVersion": 3,
+    "provider": "Confluence",
+    "bodyHtml": "<p>According to the operations manual, data backups are performed only weekly on Sunday.</p>",
+    "url": "https://confluence.demo.klarwerk/display/KWDEMO/kwdemo-backup-woechentlich"
+  },
+  {
+    "title": "VPN access (as of 2019)",
+    "statement": "VPN access has been provided via the Cisco AnyConnect 3 client since 2019.",
+    "type": "technik",
+    "category": "IT-Betrieb",
+    "tags": [
+      "it-betrieb",
+      "vpn"
+    ],
+    "pageId": "kwdemo-vpn-2019",
+    "spaceKey": "KWDEMO",
+    "sourceVersion": 1,
+    "provider": "Confluence",
+    "bodyHtml": "<p>As of 2019: VPN access exclusively via Cisco AnyConnect 3.</p>",
+    "url": "https://confluence.demo.klarwerk/display/KWDEMO/kwdemo-vpn-2019"
+  },
+  {
+    "title": "Travel expense reporting (as of 2020)",
+    "statement": "Travel expenses have been submitted exclusively on paper forms since 2020.",
+    "type": "technik",
+    "category": "Verwaltung",
+    "tags": [
+      "verwaltung",
+      "reisekosten"
+    ],
+    "pageId": "kwdemo-reisekosten-2020",
+    "spaceKey": "KWDEMO",
+    "sourceVersion": 1,
+    "provider": "Confluence",
+    "bodyHtml": "<p>As of 2020: travel expense reports only on paper forms to accounting.</p>",
+    "url": "https://confluence.demo.klarwerk/display/KWDEMO/kwdemo-reisekosten-2020"
+  },
+  {
+    "title": "Callback timing (assumption)",
+    "statement": "Customers prefer callbacks in the morning.",
+    "type": "bauchgefuehl",
+    "category": "Vertrieb",
+    "tags": [
+      "vertrieb",
+      "unbelegt"
+    ],
+    "pageId": "kwdemo-claim-rueckruf",
+    "spaceKey": "KWDEMO",
+    "sourceVersion": 3,
+    "provider": "Confluence",
+    "bodyHtml": "<p>Gut feeling from sales, without evidence: morning callbacks land better.</p>"
+  },
+  {
+    "title": "CRM speed (assumption)",
+    "statement": "The new CRM doubles processing speed in sales.",
+    "type": "bauchgefuehl",
+    "category": "Vertrieb",
+    "tags": [
+      "vertrieb",
+      "unbelegt"
+    ],
+    "pageId": "kwdemo-claim-crm",
+    "spaceKey": "KWDEMO",
+    "sourceVersion": 3,
+    "provider": "Confluence",
+    "bodyHtml": "<p>Claim without measurement: the new CRM doubles processing speed.</p>"
+  }
+]

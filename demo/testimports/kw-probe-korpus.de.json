@@ -1,0 +1,128 @@
+[
+  {
+    "title": "Kennzeichnung Halle 7 — Farbvorgabe",
+    "statement": "Alle Warnschilder in Halle 7 müssen blau lackiert sein.",
+    "type": "best_practice",
+    "category": "Arbeitssicherheit",
+    "tags": [
+      "arbeitssicherheit",
+      "kennzeichnung"
+    ],
+    "pageId": "kwdemo-warnfarbe-blau",
+    "spaceKey": "KWDEMO",
+    "sourceVersion": 3,
+    "provider": "Confluence",
+    "bodyHtml": "<p>Nach der Sicherheitsrichtlinie sind alle Warnschilder in Halle 7 blau auszuführen.</p>",
+    "url": "https://confluence.demo.klarwerk/display/KWDEMO/kwdemo-warnfarbe-blau"
+  },
+  {
+    "title": "Kennzeichnung Halle 7 — Ausführung",
+    "statement": "Warnschilder in Halle 7 werden ausschließlich in Rot lackiert.",
+    "type": "best_practice",
+    "category": "Arbeitssicherheit",
+    "tags": [
+      "arbeitssicherheit",
+      "kennzeichnung"
+    ],
+    "pageId": "kwdemo-warnfarbe-rot",
+    "spaceKey": "KWDEMO",
+    "sourceVersion": 3,
+    "provider": "Confluence",
+    "bodyHtml": "<p>Die Werkstatt führt Warnschilder in Halle 7 ausschließlich in Rot aus.</p>",
+    "url": "https://confluence.demo.klarwerk/display/KWDEMO/kwdemo-warnfarbe-rot"
+  },
+  {
+    "title": "Datensicherung — Rhythmus (Betrieb)",
+    "statement": "Datenbackups werden täglich erstellt.",
+    "type": "technik",
+    "category": "IT-Betrieb",
+    "tags": [
+      "it-betrieb",
+      "backup"
+    ],
+    "pageId": "kwdemo-backup-taeglich",
+    "spaceKey": "KWDEMO",
+    "sourceVersion": 3,
+    "provider": "Confluence",
+    "bodyHtml": "<p>Der IT-Betrieb erstellt Datenbackups täglich um 02:00 Uhr.</p>",
+    "url": "https://confluence.demo.klarwerk/display/KWDEMO/kwdemo-backup-taeglich"
+  },
+  {
+    "title": "Datensicherung — Rhythmus (Handbuch)",
+    "statement": "Datenbackups erfolgen nur wöchentlich.",
+    "type": "technik",
+    "category": "IT-Betrieb",
+    "tags": [
+      "it-betrieb",
+      "backup"
+    ],
+    "pageId": "kwdemo-backup-woechentlich",
+    "spaceKey": "KWDEMO",
+    "sourceVersion": 3,
+    "provider": "Confluence",
+    "bodyHtml": "<p>Laut Betriebshandbuch erfolgen Datenbackups nur wöchentlich am Sonntag.</p>",
+    "url": "https://confluence.demo.klarwerk/display/KWDEMO/kwdemo-backup-woechentlich"
+  },
+  {
+    "title": "VPN-Zugang (Stand 2019)",
+    "statement": "Der VPN-Zugang wird seit 2019 über den Client Cisco AnyConnect 3 hergestellt.",
+    "type": "technik",
+    "category": "IT-Betrieb",
+    "tags": [
+      "it-betrieb",
+      "vpn"
+    ],
+    "pageId": "kwdemo-vpn-2019",
+    "spaceKey": "KWDEMO",
+    "sourceVersion": 1,
+    "provider": "Confluence",
+    "bodyHtml": "<p>Stand 2019: VPN-Zugang ausschließlich über Cisco AnyConnect 3.</p>",
+    "url": "https://confluence.demo.klarwerk/display/KWDEMO/kwdemo-vpn-2019"
+  },
+  {
+    "title": "Reisekostenabrechnung (Stand 2020)",
+    "statement": "Reisekosten werden seit 2020 ausschließlich per Papierformular eingereicht.",
+    "type": "technik",
+    "category": "Verwaltung",
+    "tags": [
+      "verwaltung",
+      "reisekosten"
+    ],
+    "pageId": "kwdemo-reisekosten-2020",
+    "spaceKey": "KWDEMO",
+    "sourceVersion": 1,
+    "provider": "Confluence",
+    "bodyHtml": "<p>Stand 2020: Reisekostenabrechnung nur per Papierformular an die Buchhaltung.</p>",
+    "url": "https://confluence.demo.klarwerk/display/KWDEMO/kwdemo-reisekosten-2020"
+  },
+  {
+    "title": "Rückruf-Zeitpunkt (Annahme)",
+    "statement": "Kundinnen und Kunden bevorzugen Rückrufe am Vormittag.",
+    "type": "bauchgefuehl",
+    "category": "Vertrieb",
+    "tags": [
+      "vertrieb",
+      "unbelegt"
+    ],
+    "pageId": "kwdemo-claim-rueckruf",
+    "spaceKey": "KWDEMO",
+    "sourceVersion": 3,
+    "provider": "Confluence",
+    "bodyHtml": "<p>Erfahrungswert aus dem Vertrieb, ohne Beleg: Rückrufe am Vormittag kommen besser an.</p>"
+  },
+  {
+    "title": "CRM-Tempo (Annahme)",
+    "statement": "Das neue CRM verdoppelt die Bearbeitungsgeschwindigkeit im Vertrieb.",
+    "type": "bauchgefuehl",
+    "category": "Vertrieb",
+    "tags": [
+      "vertrieb",
+      "unbelegt"
+    ],
+    "pageId": "kwdemo-claim-crm",
+    "spaceKey": "KWDEMO",
+    "sourceVersion": 3,
+    "provider": "Confluence",
+    "bodyHtml": "<p>Behauptung ohne Messung: das neue CRM verdoppelt die Bearbeitungsgeschwindigkeit.</p>"
+  }
+]

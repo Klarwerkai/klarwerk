@@ -1,0 +1,128 @@
+[
+  {
+    "title": "Bewegwijzering hal 7 — kleurregel",
+    "statement": "Alle waarschuwingsborden in hal 7 moeten blauw gelakt zijn.",
+    "type": "best_practice",
+    "category": "Arbeitssicherheit",
+    "tags": [
+      "arbeitssicherheit",
+      "kennzeichnung"
+    ],
+    "pageId": "kwdemo-warnfarbe-blau",
+    "spaceKey": "KWDEMO",
+    "sourceVersion": 3,
+    "provider": "Confluence",
+    "bodyHtml": "<p>Volgens de veiligheidsrichtlijn worden alle waarschuwingsborden in hal 7 blauw uitgevoerd.</p>",
+    "url": "https://confluence.demo.klarwerk/display/KWDEMO/kwdemo-warnfarbe-blau"
+  },
+  {
+    "title": "Bewegwijzering hal 7 — uitvoering",
+    "statement": "Waarschuwingsborden in hal 7 worden uitsluitend in het rood gelakt.",
+    "type": "best_practice",
+    "category": "Arbeitssicherheit",
+    "tags": [
+      "arbeitssicherheit",
+      "kennzeichnung"
+    ],
+    "pageId": "kwdemo-warnfarbe-rot",
+    "spaceKey": "KWDEMO",
+    "sourceVersion": 3,
+    "provider": "Confluence",
+    "bodyHtml": "<p>De werkplaats voert waarschuwingsborden in hal 7 uitsluitend in het rood uit.</p>",
+    "url": "https://confluence.demo.klarwerk/display/KWDEMO/kwdemo-warnfarbe-rot"
+  },
+  {
+    "title": "Databack-up — ritme (beheer)",
+    "statement": "Databackups worden dagelijks gemaakt.",
+    "type": "technik",
+    "category": "IT-Betrieb",
+    "tags": [
+      "it-betrieb",
+      "backup"
+    ],
+    "pageId": "kwdemo-backup-taeglich",
+    "spaceKey": "KWDEMO",
+    "sourceVersion": 3,
+    "provider": "Confluence",
+    "bodyHtml": "<p>IT-beheer maakt databackups dagelijks om 02:00 uur.</p>",
+    "url": "https://confluence.demo.klarwerk/display/KWDEMO/kwdemo-backup-taeglich"
+  },
+  {
+    "title": "Databack-up — ritme (handboek)",
+    "statement": "Databackups vinden alleen wekelijks plaats.",
+    "type": "technik",
+    "category": "IT-Betrieb",
+    "tags": [
+      "it-betrieb",
+      "backup"
+    ],
+    "pageId": "kwdemo-backup-woechentlich",
+    "spaceKey": "KWDEMO",
+    "sourceVersion": 3,
+    "provider": "Confluence",
+    "bodyHtml": "<p>Volgens het bedrijfshandboek vinden databackups alleen wekelijks op zondag plaats.</p>",
+    "url": "https://confluence.demo.klarwerk/display/KWDEMO/kwdemo-backup-woechentlich"
+  },
+  {
+    "title": "VPN-toegang (stand 2019)",
+    "statement": "VPN-toegang loopt sinds 2019 via de client Cisco AnyConnect 3.",
+    "type": "technik",
+    "category": "IT-Betrieb",
+    "tags": [
+      "it-betrieb",
+      "vpn"
+    ],
+    "pageId": "kwdemo-vpn-2019",
+    "spaceKey": "KWDEMO",
+    "sourceVersion": 1,
+    "provider": "Confluence",
+    "bodyHtml": "<p>Stand 2019: VPN-toegang uitsluitend via Cisco AnyConnect 3.</p>",
+    "url": "https://confluence.demo.klarwerk/display/KWDEMO/kwdemo-vpn-2019"
+  },
+  {
+    "title": "Reiskostendeclaratie (stand 2020)",
+    "statement": "Reiskosten worden sinds 2020 uitsluitend via een papieren formulier ingediend.",
+    "type": "technik",
+    "category": "Verwaltung",
+    "tags": [
+      "verwaltung",
+      "reisekosten"
+    ],
+    "pageId": "kwdemo-reisekosten-2020",
+    "spaceKey": "KWDEMO",
+    "sourceVersion": 1,
+    "provider": "Confluence",
+    "bodyHtml": "<p>Stand 2020: reiskostendeclaratie alleen via een papieren formulier naar de boekhouding.</p>",
+    "url": "https://confluence.demo.klarwerk/display/KWDEMO/kwdemo-reisekosten-2020"
+  },
+  {
+    "title": "Terugbeltijdstip (aanname)",
+    "statement": "Klanten geven de voorkeur aan terugbelverzoeken in de ochtend.",
+    "type": "bauchgefuehl",
+    "category": "Vertrieb",
+    "tags": [
+      "vertrieb",
+      "unbelegt"
+    ],
+    "pageId": "kwdemo-claim-rueckruf",
+    "spaceKey": "KWDEMO",
+    "sourceVersion": 3,
+    "provider": "Confluence",
+    "bodyHtml": "<p>Ervaringsgevoel uit de verkoop, zonder onderbouwing: terugbellen in de ochtend werkt beter.</p>"
+  },
+  {
+    "title": "CRM-snelheid (aanname)",
+    "statement": "Het nieuwe CRM verdubbelt de verwerkingssnelheid in de verkoop.",
+    "type": "bauchgefuehl",
+    "category": "Vertrieb",
+    "tags": [
+      "vertrieb",
+      "unbelegt"
+    ],
+    "pageId": "kwdemo-claim-crm",
+    "spaceKey": "KWDEMO",
+    "sourceVersion": 3,
+    "provider": "Confluence",
+    "bodyHtml": "<p>Bewering zonder meting: het nieuwe CRM verdubbelt de verwerkingssnelheid.</p>"
+  }
+]
