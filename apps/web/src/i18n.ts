@@ -2880,6 +2880,28 @@ const de = {
   "dcmp.section.sources": "Quellen / Evidence",
   "dcmp.section.tags": "Tags / Kategorie",
   "dcmp.section.trust": "Trust / Validierungsstatus",
+  // SCRUM-487 (i18n): reason/note-Heuristiktexte als Keys aus der Lib (duplicateCompare.ts).
+  "dcmp.note.bothEmpty":
+    "Vorläufige Feldheuristik; keine echten Detector-Scores für diesen Abschnitt.",
+  "dcmp.note.exactMatch": "Vorläufige Feldheuristik; exakte Feldgleichheit.",
+  "dcmp.note.oneMissing": "Vorläufige Feldheuristik; ein Wert fehlt.",
+  "dcmp.note.heuristic": "Vorläufige Feldheuristik; keine fachliche Wahrheit.",
+  "dcmp.note.noScore":
+    "Score nicht vorhanden: Gesamtwerte sind vorläufige Feldheuristik ohne Detector-Prozent.",
+  "dcmp.note.mixedOverlap":
+    "Übereinstimmung aus bestehendem Detector; Konflikt/Unsicherheit bleiben vorläufige Anzeigehilfe.",
+  "dcmp.note.mixedConflict":
+    "Konfliktwert aus bestehendem Detector; Übereinstimmung bleibt vorläufige Feldheuristik.",
+  "dcmp.reason.bothEmpty": "Beide Seiten haben keinen verwertbaren Wert.",
+  "dcmp.reason.identical": "Die Werte sind identisch.",
+  "dcmp.reason.oneMissing": "Ein Wert fehlt, daher ist kein echter Konflikt ableitbar.",
+  "dcmp.reason.strongDiff":
+    "Die Feldwerte unterscheiden sich stark und müssen fachlich geprüft werden.",
+  "dcmp.reason.partialDiff":
+    "Die Feldwerte unterscheiden sich teilweise und müssen geprüft werden.",
+  // SCRUM-487 (i18n): Front-Door-Lib-Konstanten (captureFrontDoor.ts).
+  "cfd.fallbackTitle": "Unbenanntes Wissensobjekt",
+  "cfd.structuringUnavailable": "Ich kann das gerade nicht verlässlich ordnen.",
 };
 
 const en: typeof de = {
@@ -5720,6 +5742,23 @@ const en: typeof de = {
   "dcmp.section.sources": "Sources / evidence",
   "dcmp.section.tags": "Tags / category",
   "dcmp.section.trust": "Trust / validation status",
+  "dcmp.note.bothEmpty": "Preliminary field heuristic; no real detector scores for this section.",
+  "dcmp.note.exactMatch": "Preliminary field heuristic; exact field match.",
+  "dcmp.note.oneMissing": "Preliminary field heuristic; one value is missing.",
+  "dcmp.note.heuristic": "Preliminary field heuristic; not a factual verdict.",
+  "dcmp.note.noScore":
+    "No score available: overall values are a preliminary field heuristic without detector percentages.",
+  "dcmp.note.mixedOverlap":
+    "Match from the existing detector; conflict/uncertainty remain a preliminary display aid.",
+  "dcmp.note.mixedConflict":
+    "Conflict value from the existing detector; match remains a preliminary field heuristic.",
+  "dcmp.reason.bothEmpty": "Neither side has a usable value.",
+  "dcmp.reason.identical": "The values are identical.",
+  "dcmp.reason.oneMissing": "One value is missing, so no real conflict can be inferred.",
+  "dcmp.reason.strongDiff": "The field values differ strongly and must be reviewed professionally.",
+  "dcmp.reason.partialDiff": "The field values differ partly and must be reviewed.",
+  "cfd.fallbackTitle": "Untitled knowledge object",
+  "cfd.structuringUnavailable": "I can't reliably organise this right now.",
 };
 
 const nl: typeof de = {
@@ -8536,6 +8575,26 @@ const nl: typeof de = {
   "dcmp.section.sources": "Bronnen / bewijs",
   "dcmp.section.tags": "Tags / categorie",
   "dcmp.section.trust": "Trust / validatiestatus",
+  "dcmp.note.bothEmpty":
+    "Voorlopige veldheuristiek; geen echte detector-scores voor dit onderdeel.",
+  "dcmp.note.exactMatch": "Voorlopige veldheuristiek; exacte veldovereenkomst.",
+  "dcmp.note.oneMissing": "Voorlopige veldheuristiek; één waarde ontbreekt.",
+  "dcmp.note.heuristic": "Voorlopige veldheuristiek; geen inhoudelijk oordeel.",
+  "dcmp.note.noScore":
+    "Geen score beschikbaar: totaalwaarden zijn een voorlopige veldheuristiek zonder detector-percentages.",
+  "dcmp.note.mixedOverlap":
+    "Overeenkomst uit de bestaande detector; conflict/onzekerheid blijven een voorlopige weergavehulp.",
+  "dcmp.note.mixedConflict":
+    "Conflictwaarde uit de bestaande detector; overeenkomst blijft een voorlopige veldheuristiek.",
+  "dcmp.reason.bothEmpty": "Beide kanten hebben geen bruikbare waarde.",
+  "dcmp.reason.identical": "De waarden zijn identiek.",
+  "dcmp.reason.oneMissing": "Eén waarde ontbreekt, daarom is er geen echt conflict af te leiden.",
+  "dcmp.reason.strongDiff":
+    "De veldwaarden verschillen sterk en moeten vakinhoudelijk worden gecontroleerd.",
+  "dcmp.reason.partialDiff":
+    "De veldwaarden verschillen gedeeltelijk en moeten worden gecontroleerd.",
+  "cfd.fallbackTitle": "Naamloos kennisobject",
+  "cfd.structuringUnavailable": "Ik kan dit op dit moment niet betrouwbaar ordenen.",
 };
 
 void i18n.use(initReactI18next).init({

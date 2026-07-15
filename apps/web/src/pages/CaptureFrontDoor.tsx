@@ -23,8 +23,7 @@ import {
   assistActionLabelKey,
 } from "../lib/captureAiAssist";
 import {
-  CAPTURE_FRONT_DOOR_FALLBACK_TITLE,
-  FRONT_DOOR_STRUCTURING_UNAVAILABLE_MESSAGE,
+  FRONT_DOOR_STRUCTURING_UNAVAILABLE_KEY,
   buildFrontDoorPayload,
   buildFrontDoorStructureInput,
   createFrontDoorDraft,
@@ -82,7 +81,10 @@ export function CaptureFrontDoor(): JSX.Element {
   };
 
   const authorName = user?.name ?? user?.email ?? "-";
-  const derivedTitle = deriveFrontDoorTitle(title, bodyHtml);
+  // SCRUM-487 (i18n): lokalisierter Fallback-Titel — folgt der UI-Sprache und wird als echter
+  // KO-Titel gespeichert (nicht nur Anzeige). Wird an alle Payload-Builder durchgereicht.
+  const fallbackTitle = t("cfd.fallbackTitle");
+  const derivedTitle = deriveFrontDoorTitle(title, bodyHtml, fallbackTitle);
   const hasBody = !isEmptyHtml(bodyHtml);
   const locale = toReasonerLocale(i18n.language);
   const structureInput = buildFrontDoorStructureInput({ title, bodyHtml });
@@ -229,7 +231,7 @@ export function CaptureFrontDoor(): JSX.Element {
       setStructureErr(null);
     },
     onError: () => {
-      setStructureErr(FRONT_DOOR_STRUCTURING_UNAVAILABLE_MESSAGE);
+      setStructureErr(t(FRONT_DOOR_STRUCTURING_UNAVAILABLE_KEY));
     },
   });
 
@@ -258,10 +260,13 @@ export function CaptureFrontDoor(): JSX.Element {
     mutationFn: () => {
       if (activeDraftId) {
         return withFrontDoorSaveTimeout(
-          endpoints.drafts.update(activeDraftId, buildFrontDoorPayload({ title, bodyHtml })),
+          endpoints.drafts.update(
+            activeDraftId,
+            buildFrontDoorPayload({ title, bodyHtml, fallbackTitle }),
+          ),
         );
       }
-      return createFrontDoorDraft({ title, bodyHtml }, (payload) =>
+      return createFrontDoorDraft({ title, bodyHtml, fallbackTitle }, (payload) =>
         endpoints.drafts.create(payload),
       );
     },
@@ -294,7 +299,7 @@ export function CaptureFrontDoor(): JSX.Element {
   const submit = useMutation({
     mutationFn: () =>
       submitFrontDoorDraft(
-        { title, bodyHtml, activeDraftId },
+        { title, bodyHtml, activeDraftId, fallbackTitle },
         {
           createDraft: (payload) => endpoints.drafts.create(payload),
           updateDraft: (id, payload) => endpoints.drafts.update(id, payload),
@@ -481,7 +486,7 @@ export function CaptureFrontDoor(): JSX.Element {
               <TextInput
                 value={title}
                 onChange={(event) => changeTitle(event.target.value)}
-                placeholder={CAPTURE_FRONT_DOOR_FALLBACK_TITLE}
+                placeholder={fallbackTitle}
               />
             </div>
 

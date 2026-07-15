@@ -2,12 +2,16 @@ import type { DraftPayload, StructureResult } from "../api/types";
 import { htmlToPlainText, normalizePastedHtml } from "./richText";
 
 export const CAPTURE_FRONT_DOOR_ROUTE = "/capture/frontdoor";
+// SCRUM-487 (i18n): der Fallback-Titel wird als echter KO-Titel gespeichert (Daten, nicht nur
+// Anzeige). Diese Konstante bleibt der deutsche DEFAULT; die Ansicht reicht den lokalisierten Wert
+// (t("cfd.fallbackTitle")) über die Parameter unten durch, damit der gespeicherte Titel der Sprache
+// folgt, ohne dass die Lib den i18n-Kontext braucht.
 export const CAPTURE_FRONT_DOOR_FALLBACK_TITLE = "Unbenanntes Wissensobjekt";
 export const FRONT_DOOR_SAVE_TIMEOUT_MS = 30000;
 export const FRONT_DOOR_SAVE_TIMEOUT_MESSAGE =
   "Speichern dauert zu lange. Bitte pruefe Bibliothek oder Entwuerfe, bevor du erneut speicherst.";
-export const FRONT_DOOR_STRUCTURING_UNAVAILABLE_MESSAGE =
-  "Ich kann das gerade nicht verlaesslich ordnen.";
+// SCRUM-487 (i18n): reine Anzeigemeldung → stabiler i18n-Key; die Ansicht macht t(...).
+export const FRONT_DOOR_STRUCTURING_UNAVAILABLE_KEY = "cfd.structuringUnavailable";
 
 export class FrontDoorSaveTimeoutError extends Error {
   constructor() {
@@ -44,7 +48,11 @@ function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, (char) => HTML_ESCAPE[char] ?? char);
 }
 
-export function deriveFrontDoorTitle(manualTitle: string, bodyHtml: string): string {
+export function deriveFrontDoorTitle(
+  manualTitle: string,
+  bodyHtml: string,
+  fallbackTitle: string = CAPTURE_FRONT_DOOR_FALLBACK_TITLE,
+): string {
   const explicitTitle = compactTitle(manualTitle);
   if (explicitTitle) {
     return explicitTitle;
@@ -52,7 +60,7 @@ export function deriveFrontDoorTitle(manualTitle: string, bodyHtml: string): str
 
   const normalizedBody = normalizePastedHtml(bodyHtml);
   const derived = compactTitle(htmlToPlainText(firstBlockHtml(normalizedBody)));
-  return derived || CAPTURE_FRONT_DOOR_FALLBACK_TITLE;
+  return derived || fallbackTitle;
 }
 
 export function frontDoorStatement(bodyHtml: string, title: string): string {
@@ -72,9 +80,10 @@ export function frontDoorBodyFromDraft(payload: DraftPayload): string {
 export function buildFrontDoorPayload(input: {
   title: string;
   bodyHtml: string;
+  fallbackTitle?: string;
 }): DraftPayload {
   const bodyHtml = normalizePastedHtml(input.bodyHtml);
-  const title = deriveFrontDoorTitle(input.title, bodyHtml);
+  const title = deriveFrontDoorTitle(input.title, bodyHtml, input.fallbackTitle);
   return {
     title,
     statement: frontDoorStatement(bodyHtml, title),
@@ -154,7 +163,7 @@ export function withFrontDoorSaveTimeout<T>(
 }
 
 export function createFrontDoorDraft<TDraft>(
-  input: { title: string; bodyHtml: string },
+  input: { title: string; bodyHtml: string; fallbackTitle?: string },
   createDraft: (payload: DraftPayload) => Promise<TDraft>,
   timeoutMs = FRONT_DOOR_SAVE_TIMEOUT_MS,
 ): Promise<TDraft> {
@@ -172,7 +181,7 @@ export interface FrontDoorSubmitClient<TDraft extends FrontDoorDraftRef, TKo> {
 }
 
 export async function submitFrontDoorDraft<TDraft extends FrontDoorDraftRef, TKo>(
-  input: { title: string; bodyHtml: string; activeDraftId?: string | null },
+  input: { title: string; bodyHtml: string; activeDraftId?: string | null; fallbackTitle?: string },
   client: FrontDoorSubmitClient<TDraft, TKo>,
   timeoutMs = FRONT_DOOR_SAVE_TIMEOUT_MS,
 ): Promise<TKo> {

@@ -81,14 +81,36 @@ describe("KW-DUP-02: read-only duplicate comparison", () => {
     );
     expect(overall.match).toBe(91);
     expect(overall.source).toBe("mixed");
-    expect(overall.note).toContain("vorlaeufige Anzeigehilfe");
+    // SCRUM-487 (i18n): note ist jetzt ein stabiler i18n-Key, die Ansicht macht t(...).
+    expect(overall.note).toBe("dcmp.note.mixedOverlap");
   });
 
   it("zeigt fehlende echte Scores ehrlich als vorlaeufige Feldheuristik", () => {
     const sections = buildDuplicateCompareSections(ko("a"), ko("b"));
     const overall = overallFromOverlap(overlap(), sections);
     expect(overall.source).toBe("heuristic");
-    expect(overall.note).toContain("Score nicht vorhanden");
+    expect(overall.note).toBe("dcmp.note.noScore");
+  });
+
+  // SCRUM-487 (i18n): reason/note sind stabile i18n-Keys (dcmp.reason.* / dcmp.note.*), keine Sätze.
+  it("liefert reason/note als i18n-Keys, nicht als fertige Sätze", () => {
+    const sections = buildDuplicateCompareSections(
+      ko("a"),
+      ko("b", {
+        conditions: ["Sicherheitspruefung fehlt"],
+        statement: "Ganz anderer Inhalt hier.",
+      }),
+    );
+    for (const section of sections) {
+      expect(section.reason).toMatch(/^dcmp\.reason\./);
+      expect(section.metrics.note).toMatch(/^dcmp\.note\./);
+    }
+    // Die DE-Werte der Keys stehen gepinnt in i18n.ts (ehrliche Rahmung „vorläufige Feldheuristik").
+    const i18nSource = readFileSync("apps/web/src/i18n.ts", "utf8");
+    expect(i18nSource).toContain('"dcmp.reason.identical": "Die Werte sind identisch."');
+    expect(i18nSource).toContain(
+      '"dcmp.note.heuristic": "Vorläufige Feldheuristik; keine fachliche Wahrheit."',
+    );
   });
 
   it("hat keine aktiven Merge-, Delete-, Auto-Validate-, Persistenz- oder KI-Aktionen", () => {

@@ -25,7 +25,8 @@ const TONE_DOT: Record<CompareSection["tone"], string> = {
 
 // SCRUM-487 (i18n): die Lib liefert die Abschnitts-Labels weiterhin deutsch (stabiler Test-Vertrag);
 // die Anzeige übersetzt sie über diese stabile Zuordnung. Unbekannte Labels fallen auf den Rohwert
-// zurück — die heuristischen reason/note-Sätze bleiben (bewusst) vorerst deutsch aus der Lib.
+// zurück. Die heuristischen reason/note-Texte kommen jetzt als i18n-Keys (dcmp.reason.* / dcmp.note.*)
+// aus der Lib und werden hier über t(...) übersetzt.
 const SECTION_LABEL_KEY: Record<string, string> = {
   Titel: "dcmp.section.title",
   "Kernaussage / Inhalt": "dcmp.section.statement",
@@ -110,7 +111,7 @@ function ScoreSummary({ metrics }: { metrics: CompareMetrics }): JSX.Element {
             </div>
           </div>
         </div>
-        <p className="mt-2 text-[12.5px] leading-relaxed text-muted">{metrics.note}</p>
+        <p className="mt-2 text-[12.5px] leading-relaxed text-muted">{t(metrics.note)}</p>
       </details>
       <p className="mt-2 text-[12px] font-semibold text-muted">{t("dcmp.scoresHint")}</p>
     </div>
@@ -194,7 +195,7 @@ function SectionRow({ section }: { section: CompareSection }): JSX.Element {
         <div className="mt-2">
           <ScoreBar metrics={section.metrics} />
         </div>
-        <p className="mt-2 text-[11.5px] leading-relaxed text-muted">{section.reason}</p>
+        <p className="mt-2 text-[11.5px] leading-relaxed text-muted">{t(section.reason)}</p>
       </div>
       <div>
         <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">

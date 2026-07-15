@@ -8,6 +8,7 @@ export interface CompareMetrics {
   conflict: number;
   uncertainty: number;
   source: CompareScoreSource;
+  // SCRUM-487 (i18n): stabiler i18n-Key (dcmp.note.*), KEIN fertiger Satz — die Ansicht macht t(...).
   note: string;
 }
 
@@ -18,6 +19,7 @@ export interface CompareSection {
   rightValue: string;
   metrics: CompareMetrics;
   tone: CompareTone;
+  // SCRUM-487 (i18n): stabiler i18n-Key (dcmp.reason.*), KEIN fertiger Satz — die Ansicht macht t(...).
   reason: string;
 }
 
@@ -81,10 +83,10 @@ function compareText(leftValue: string, rightValue: string, label: string): Comp
         conflict: 0,
         uncertainty: 100,
         source: "heuristic",
-        note: "Vorlaeufige Feldheuristik; keine echten Detector-Scores fuer diesen Abschnitt.",
+        note: "dcmp.note.bothEmpty",
       },
       tone: "yellow",
-      reason: "Beide Seiten haben keinen verwertbaren Wert.",
+      reason: "dcmp.reason.bothEmpty",
     };
   }
   if (left === right) {
@@ -98,10 +100,10 @@ function compareText(leftValue: string, rightValue: string, label: string): Comp
         conflict: 0,
         uncertainty: 0,
         source: "heuristic",
-        note: "Vorlaeufige Feldheuristik; exakte Feldgleichheit.",
+        note: "dcmp.note.exactMatch",
       },
       tone: "green",
-      reason: "Die Werte sind identisch.",
+      reason: "dcmp.reason.identical",
     };
   }
   if (!left || !right) {
@@ -115,10 +117,10 @@ function compareText(leftValue: string, rightValue: string, label: string): Comp
         conflict: 0,
         uncertainty: 100,
         source: "heuristic",
-        note: "Vorlaeufige Feldheuristik; ein Wert fehlt.",
+        note: "dcmp.note.oneMissing",
       },
       tone: "yellow",
-      reason: "Ein Wert fehlt, daher ist kein echter Konflikt ableitbar.",
+      reason: "dcmp.reason.oneMissing",
     };
   }
   const match = clampPercent(tokenSimilarity(left, right) * 100);
@@ -134,13 +136,10 @@ function compareText(leftValue: string, rightValue: string, label: string): Comp
       conflict,
       uncertainty,
       source: "heuristic",
-      note: "Vorlaeufige Feldheuristik; keine fachliche Wahrheit.",
+      note: "dcmp.note.heuristic",
     },
     tone: conflict >= 50 ? "red" : match >= 85 ? "green" : "yellow",
-    reason:
-      conflict >= 50
-        ? "Die Feldwerte unterscheiden sich stark und muessen fachlich geprueft werden."
-        : "Die Feldwerte unterscheiden sich teilweise und muessen geprueft werden.",
+    reason: conflict >= 50 ? "dcmp.reason.strongDiff" : "dcmp.reason.partialDiff",
   };
 }
 
@@ -228,7 +227,7 @@ export function overallFromOverlap(
       conflict: sectionConflict,
       uncertainty: sectionUncertainty,
       source: "heuristic",
-      note: "Score nicht vorhanden: Gesamtwerte sind vorlaeufige Feldheuristik ohne Detector-Prozent.",
+      note: "dcmp.note.noScore",
     };
   }
   const detectorMatch = clampPercent(entry.detector.lexicalScore * 100);
@@ -241,7 +240,7 @@ export function overallFromOverlap(
     conflict: sectionConflict,
     uncertainty: detectorUncertainty,
     source: "mixed",
-    note: "Uebereinstimmung aus bestehendem Detector; Konflikt/Unsicherheit bleiben vorlaeufige Anzeigehilfe.",
+    note: "dcmp.note.mixedOverlap",
   };
 }
 
@@ -259,7 +258,7 @@ export function overallFromConflict(
       conflict: detectorConflict,
       uncertainty: clampPercent((1 - conflict.detector.confidence) * 100),
       source: "mixed",
-      note: "Konfliktwert aus bestehendem Detector; Uebereinstimmung bleibt vorlaeufige Feldheuristik.",
+      note: "dcmp.note.mixedConflict",
     };
   }
   return {
@@ -267,7 +266,7 @@ export function overallFromConflict(
     conflict: sectionConflict,
     uncertainty: sectionUncertainty,
     source: "heuristic",
-    note: "Score nicht vorhanden: Gesamtwerte sind vorlaeufige Feldheuristik ohne Detector-Prozent.",
+    note: "dcmp.note.noScore",
   };
 }
 

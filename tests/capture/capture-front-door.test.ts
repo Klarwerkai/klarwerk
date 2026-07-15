@@ -10,7 +10,7 @@ import {
 import {
   CAPTURE_FRONT_DOOR_ROUTE,
   FRONT_DOOR_SAVE_TIMEOUT_MESSAGE,
-  FRONT_DOOR_STRUCTURING_UNAVAILABLE_MESSAGE,
+  FRONT_DOOR_STRUCTURING_UNAVAILABLE_KEY,
   buildFrontDoorPayload,
   buildFrontDoorStructureInput,
   createFrontDoorDraft,
@@ -34,6 +34,11 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(deriveFrontDoorTitle("", "<p>Erste Zeile</p><p>Zweite Zeile</p>")).toBe("Erste Zeile");
     expect(deriveFrontDoorTitle("Manuell", "<h2>Ignoriert</h2>")).toBe("Manuell");
     expect(deriveFrontDoorTitle("", "")).toBe("Unbenanntes Wissensobjekt");
+    // SCRUM-487 (i18n): der Fallback-Titel folgt der Sprache, wenn die Ansicht ihn durchreicht.
+    expect(deriveFrontDoorTitle("", "", "Naamloos kennisobject")).toBe("Naamloos kennisobject");
+    expect(
+      buildFrontDoorPayload({ title: "", bodyHtml: "", fallbackTitle: "Untitled" }).title,
+    ).toBe("Untitled");
   });
 
   it("nutzt die FMT-1-Normalisierung fuer den gespeicherten Body", () => {
@@ -278,9 +283,13 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(pageSource).toContain("fd.aiProposalCheck");
     expect(pageSource).toContain("fd.accept");
     expect(pageSource).toContain("fd.discardProposal");
-    expect(pageSource).toContain("FRONT_DOOR_STRUCTURING_UNAVAILABLE_MESSAGE");
-    expect(FRONT_DOOR_STRUCTURING_UNAVAILABLE_MESSAGE).toBe(
-      "Ich kann das gerade nicht verlaesslich ordnen.",
+    // SCRUM-487 (i18n): die Ansicht zeigt die Meldung über den stabilen i18n-Key (t(...));
+    // die ehrliche DE-Formulierung bleibt in i18n.ts gepinnt.
+    expect(pageSource).toContain("FRONT_DOOR_STRUCTURING_UNAVAILABLE_KEY");
+    expect(FRONT_DOOR_STRUCTURING_UNAVAILABLE_KEY).toBe("cfd.structuringUnavailable");
+    const i18nSource = readFileSync(resolve(process.cwd(), "apps/web/src/i18n.ts"), "utf8");
+    expect(i18nSource).toContain(
+      '"cfd.structuringUnavailable": "Ich kann das gerade nicht verlässlich ordnen."',
     );
     expect(pageSource).toContain("fd.originalUnchanged");
     expect(pageSource).toContain("fd.optionalAiHint");
