@@ -435,7 +435,8 @@ export function Capture(): JSX.Element {
 
   const structure = useMutation({
     // SCRUM-502 Schicht 2: die Draft-Vertraulichkeit mitsenden → vertrauliche Drafts nutzen nie die Cloud.
-    mutationFn: () => endpoints.reasoner.structure(raw, locale, { confidentiality }),
+    mutationFn: () =>
+      endpoints.reasoner.structure(raw, locale, { source: "draft", confidentiality }),
     onSuccess: (r) => {
       setDraft(r);
       setTags((prev) => (prev.length > 0 ? prev : r.tags));
@@ -453,7 +454,7 @@ export function Capture(): JSX.Element {
   // SCRUM-132: ein Interview-Turn — Antworten rein, nächste Frage + Draft raus.
   const interview = useMutation({
     mutationFn: (answers: string[]) =>
-      endpoints.reasoner.interview(answers, locale, { confidentiality }),
+      endpoints.reasoner.interview(answers, locale, { source: "draft", confidentiality }),
     onSuccess: (res) => {
       setIvResult(res);
       setErr(null);
@@ -475,7 +476,9 @@ export function Capture(): JSX.Element {
   // SCRUM-312: KI-Nachbearbeitung über die sichtbare AiAssistBox (Vorschau + bewusste Übernahme);
   // die frühere stille Direkt-Mutation (setRaw/setDraft) wurde durch den Vorschau-Flow ersetzt.
   const runAssist = (input: string, instruction?: string): Promise<string> =>
-    endpoints.reasoner.assist(input, locale, instruction, { confidentiality }).then((r) => r.text);
+    endpoints.reasoner
+      .assist(input, locale, instruction, { source: "draft", confidentiality })
+      .then((r) => r.text);
 
   // PMO-FEA-0006: Wissenssuche im Dokument — Ergebnis ist die Punkteliste ODER (ohne Modell)
   // eine ehrliche note ohne Fake-Punkte. Die note kommt lokalisiert vom Server.
@@ -491,7 +494,10 @@ export function Capture(): JSX.Element {
 
   const extract = useMutation({
     mutationFn: () =>
-      endpoints.reasoner.extract(fileText, locale, fileQuery, fileLang, { confidentiality }),
+      endpoints.reasoner.extract(fileText, locale, fileQuery, fileLang, {
+        source: "draft",
+        confidentiality,
+      }),
     onSuccess: (r) => {
       setErr(null);
       setNotice(null);
@@ -3495,7 +3501,7 @@ export function Capture(): JSX.Element {
                   (G-2: nur mit Belegstelle) werden ANGEHÄNGT, nichts ersetzt; die Quelle je Punkt
                   wandert in die Quellen-Warteliste (SCRUM-408) und beim Einreichen ans KO. */}
               <BodyExtractPanel
-                sensitivity={{ confidentiality }}
+                provenance={{ source: "draft", confidentiality }}
                 onAppend={(pts, name) => {
                   setBodyHtml((prev) =>
                     appendExtractSections(prev, pts, name, normalizeExtractLocale(i18n.language)),

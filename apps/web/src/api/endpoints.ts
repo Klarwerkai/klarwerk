@@ -70,22 +70,19 @@ function qs(params?: Record<string, string | undefined>): string {
 
 export type KoFilter = { type?: string; status?: string; category?: string; tag?: string };
 
-// SCRUM-502 Schicht 2: Vertraulichkeits-Signal an die Modell-Aktions-Endpunkte. `koId` = die Aktion
-// arbeitet an einem GESPEICHERTEN KO (Server lädt dessen Stufe autoritativ, kein Client-Downgrade);
-// `confidentiality` = die für einen noch nicht gespeicherten Draft deklarierte Stufe. Ist eines
-// vertraulich, hält der Server den Text von der Cloud fern (lokal/deterministisch).
-export type ReasonerSensitivity = { koId?: string; confidentiality?: Confidentiality };
+// SCRUM-502 Schicht 2 (Round 3): verbindlicher Herkunftsvertrag an die Modell-Aktions-Endpunkte.
+// Der Client MUSS die Herkunft deklarieren — ein diskriminierter Typ erzwingt das zur Compile-Zeit:
+//  - source "ko":    Aktion an einem GESPEICHERTEN KO → koId Pflicht (Server lädt Stufe autoritativ).
+//  - source "draft": noch nicht gespeicherter Draft → explizite confidentiality Pflicht (auch "intern").
+// Fehlt/ungültig serverseitig → fail-safe vertraulich (kein Cloud-Egress).
+export type ReasonerProvenance =
+  | { source: "ko"; koId: string }
+  | { source: "draft"; confidentiality: Confidentiality };
 
-function sensitivityFields(s?: ReasonerSensitivity): Record<string, string> {
-  if (!s) {
-    return {};
-  }
-  return {
-    ...(s.koId ? { koId: s.koId } : {}),
-    ...(s.confidentiality && s.confidentiality !== "intern"
-      ? { confidentiality: s.confidentiality }
-      : {}),
-  };
+function provenanceFields(p: ReasonerProvenance): Record<string, string> {
+  return p.source === "ko"
+    ? { source: "ko", koId: p.koId }
+    : { source: "draft", confidentiality: p.confidentiality };
 }
 
 // PUT /api/kos/:id — ein Mutations-Endpunkt, per {action} verzweigt.
@@ -209,44 +206,48 @@ export const endpoints = {
     }) => api.post<AnswerResult>("/help/explain", body),
   },
   reasoner: {
-    structure: (text: string, locale?: "de" | "en", sensitivity?: ReasonerSensitivity) =>
+    structure: (text: string, locale: "de" | "en" | undefined, provenance: ReasonerProvenance) =>
       api.post<StructureResult>("/reasoner", {
         task: "structure",
         text,
         ...(locale ? { locale } : {}),
-        ...sensitivityFields(sensitivity),
+        ...provenanceFields(provenance),
       }),
     // SCRUM-312: optionale Bearbeitungs-Anweisung (klarer/strukturieren/erweitern/rechtschreibung
     // oder frei) — der deterministische Fallback ignoriert sie, das Modell berücksichtigt sie.
     assist: (
       text: string,
-      locale?: "de" | "en",
-      instruction?: string,
-      sensitivity?: ReasonerSensitivity,
+      locale: "de" | "en" | undefined,
+      instruction: string | undefined,
+      provenance: ReasonerProvenance,
     ) =>
       api.post<AssistResult>("/reasoner", {
         task: "assist",
         text,
         ...(locale ? { locale } : {}),
         ...(instruction?.trim() ? { instruction: instruction.trim() } : {}),
-        ...sensitivityFields(sensitivity),
+        ...provenanceFields(provenance),
       }),
     // SCRUM-132: reasoner-getriebenes Interview, stateless.
-    interview: (answers: string[], locale?: "de" | "en", sensitivity?: ReasonerSensitivity) =>
+    interview: (
+      answers: string[],
+      locale: "de" | "en" | undefined,
+      provenance: ReasonerProvenance,
+    ) =>
       api.post<InterviewResult>("/reasoner", {
         task: "interview",
         answers,
         ...(locale ? { locale } : {}),
-        ...sensitivityFields(sensitivity),
+        ...provenanceFields(provenance),
       }),
     // PMO-FEA-0006: Wissenspunkte aus Dokumenttext extrahieren (optional mit Suchauftrag).
     // SCRUM-451: outputLanguage "source" = Ergebnis bleibt in der Sprache des Dokuments.
     extract: (
       text: string,
-      locale?: "de" | "en",
-      query?: string,
-      outputLanguage?: "system" | "source",
-      sensitivity?: ReasonerSensitivity,
+      locale: "de" | "en" | undefined,
+      query: string | undefined,
+      outputLanguage: "system" | "source" | undefined,
+      provenance: ReasonerProvenance,
     ) =>
       api.post<ExtractResult>("/reasoner", {
         task: "extract",
@@ -254,7 +255,7 @@ export const endpoints = {
         ...(locale ? { locale } : {}),
         ...(query?.trim() ? { query: query.trim() } : {}),
         ...(outputLanguage === "source" ? { outputLanguage } : {}),
-        ...sensitivityFields(sensitivity),
+        ...provenanceFields(provenance),
       }),
     // SCRUM-426: Public-KI-Anreicherung (Modellwissen) — extern/ungeprüft; nur wenn der
     // Admin-Regler (SCRUM-414) auf „offen" steht (Server prüft, sonst 403).

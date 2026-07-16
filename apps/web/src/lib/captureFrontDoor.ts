@@ -1,4 +1,4 @@
-import type { DraftPayload, StructureResult } from "../api/types";
+import type { Confidentiality, DraftPayload, StructureResult } from "../api/types";
 import { htmlToPlainText, normalizePastedHtml } from "./richText";
 
 export const CAPTURE_FRONT_DOOR_ROUTE = "/capture/frontdoor";
@@ -81,6 +81,9 @@ export function buildFrontDoorPayload(input: {
   title: string;
   bodyHtml: string;
   fallbackTitle?: string;
+  // SCRUM-502 Schicht 2 (Round 3): die im Front-Door gewählte Vertraulichkeit fließt in den Entwurf
+  // (und damit ins spätere KO), damit Anzeige/Egress konsistent zur Erfassung sind. Standard „intern".
+  confidentiality?: Confidentiality;
 }): DraftPayload {
   const bodyHtml = normalizePastedHtml(input.bodyHtml);
   const title = deriveFrontDoorTitle(input.title, bodyHtml, input.fallbackTitle);
@@ -93,6 +96,9 @@ export function buildFrontDoorPayload(input: {
     conditions: [],
     measures: [],
     ...(bodyHtml.trim() ? { bodyHtml } : {}),
+    ...(input.confidentiality && input.confidentiality !== "intern"
+      ? { confidentiality: input.confidentiality }
+      : {}),
     origin: "frontdoor",
   };
 }
@@ -163,7 +169,12 @@ export function withFrontDoorSaveTimeout<T>(
 }
 
 export function createFrontDoorDraft<TDraft>(
-  input: { title: string; bodyHtml: string; fallbackTitle?: string },
+  input: {
+    title: string;
+    bodyHtml: string;
+    fallbackTitle?: string;
+    confidentiality?: Confidentiality;
+  },
   createDraft: (payload: DraftPayload) => Promise<TDraft>,
   timeoutMs = FRONT_DOOR_SAVE_TIMEOUT_MS,
 ): Promise<TDraft> {
@@ -181,7 +192,13 @@ export interface FrontDoorSubmitClient<TDraft extends FrontDoorDraftRef, TKo> {
 }
 
 export async function submitFrontDoorDraft<TDraft extends FrontDoorDraftRef, TKo>(
-  input: { title: string; bodyHtml: string; activeDraftId?: string | null; fallbackTitle?: string },
+  input: {
+    title: string;
+    bodyHtml: string;
+    activeDraftId?: string | null;
+    fallbackTitle?: string;
+    confidentiality?: Confidentiality;
+  },
   client: FrontDoorSubmitClient<TDraft, TKo>,
   timeoutMs = FRONT_DOOR_SAVE_TIMEOUT_MS,
 ): Promise<TKo> {

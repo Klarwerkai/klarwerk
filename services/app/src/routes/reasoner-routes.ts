@@ -5,12 +5,7 @@ import {
   type ExternalKnowledgePolicyRepo,
   publicAiEnrichmentAllowed,
 } from "../../../external-search";
-import {
-  type Confidentiality,
-  type KoService,
-  isConfidential,
-  normalizeConfidentiality,
-} from "../../../knowledge-object";
+import { type Confidentiality, type KoService, isConfidential } from "../../../knowledge-object";
 import type { Reasoner, ReasonerLocale } from "../../../reasoner";
 import { runConflictSelfTest } from "../conflict-self-test";
 import { runDuplicateSelfTest } from "../duplicate-self-test";
@@ -21,16 +16,40 @@ function normalizeLocale(value: unknown): ReasonerLocale {
   return value === "en" ? "en" : "de";
 }
 
-// SCRUM-502 Schicht 2: reine, testbare Kern-Regel der Egress-Entscheidung. Ein Modell-Aktions-Text
-// gilt als vertraulich (→ nie an die Cloud), wenn die GESPEICHERTE Stufe eines KOs ODER die vom
-// Client für einen Draft DEKLARIERTE Stufe vertraulich ist. „Restriktivstes gewinnt": ein Client
-// kann ein gespeichertes vertrauliches KO nicht per Body auf „intern" herunterstufen, und ein als
-// vertraulich deklarierter Draft bleibt vertraulich, selbst wenn (noch) kein KO gespeichert ist.
-export function isEgressConfidential(
-  storedLevel: Confidentiality | undefined | null,
-  declaredLevel: unknown,
+// SCRUM-502 Schicht 2 (Round 3, ben-Review): verbindlicher Herkunftsvertrag, FAIL-SAFE. Die frühere
+// Regel war fail-OPEN — fehlte jedes Signal, ging der Text an die Cloud. Jetzt MUSS der Client die
+// Herkunft des Modell-Aktions-Textes über `source` deklarieren; im Zweifel gilt „vertraulich"
+// (kein Cloud-Egress). Reine, testbare Kern-Regel:
+//   source "ko"    → koId Pflicht + gültig; der Server lädt die GESPEICHERTE Stufe autoritativ.
+//                    Fehlende/UNBEKANNTE koId → vertraulich (NIE false — Downgrade unmöglich).
+//   source "draft" → explizite confidentiality-Stufe (inkl. "intern") Pflicht; fehlt/ungültig → vertraulich.
+//   alles andere (plain / fehlend / ungültig) für einen KO-/Draft-Task → vertraulich.
+// `stored` ist das Ergebnis des koId-Loads (found=false, wenn keine oder unbekannte koId).
+export type StoredLookup = { found: boolean; level?: Confidentiality | null };
+
+export function classifyProvenanceConfidential(
+  source: unknown,
+  koId: unknown,
+  declared: unknown,
+  stored: StoredLookup,
 ): boolean {
-  return isConfidential(storedLevel) || isConfidential(normalizeConfidentiality(declaredLevel));
+  if (source === "ko") {
+    if (typeof koId !== "string" || koId.length === 0) {
+      return true; // fail-safe: KO-Quelle ohne koId
+    }
+    if (!stored.found) {
+      return true; // fail-safe: unbekannte koId (nie stillschweigend false)
+    }
+    return isConfidential(stored.level ?? null);
+  }
+  if (source === "draft") {
+    // Explizite, gültige Stufe (auch "intern") ist Pflicht — fehlt/ungültig → fail-safe.
+    if (declared !== "intern" && declared !== "vertraulich" && declared !== "streng_vertraulich") {
+      return true;
+    }
+    return isConfidential(declared);
+  }
+  return true; // plain/fehlend/ungültig für einen KO-/Draft-Task → fail-safe vertraulich
 }
 
 // Reasoner (§2.5): ein einheitlicher, modellagnostischer Endpunkt. 'structure' formt Rohtext
@@ -47,18 +66,21 @@ export interface ReasonerRoutesDeps {
 export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): FastifyPluginAsync {
   const { reasoner, ask, externalKnowledge, ko } = deps;
 
-  // SCRUM-502 Schicht 2: effektive Vertraulichkeit einer Modell-Aktion = RESTRIKTIVSTES aus
-  //  (a) der serverseitig via koId geladenen GESPEICHERTEN Stufe (autoritativ — ein Client kann
-  //      ein gespeichertes vertrauliches KO nicht per Body herunterstufen) und
-  //  (b) der vom Client für einen (noch nicht gespeicherten) Draft deklarierten Stufe.
-  // Ist eines von beiden vertraulich → true → der Reasoner routet an der Cloud vorbei. Fehlt beides
-  // (reiner Freitext ohne Kontext), bleibt es „intern" (Cloud erlaubt) — bewusst, siehe Kartierung.
-  const resolveConfidential = async (koId: unknown, declared: unknown): Promise<boolean> => {
-    if (typeof koId !== "string" || koId.length === 0) {
-      return isEgressConfidential(undefined, declared);
+  // SCRUM-502 Schicht 2 (Round 3): fail-safe Herkunftsvertrag. Lädt die gespeicherte Stufe NUR für
+  // eine gültige source:"ko" + koId; alle anderen Fälle klassifiziert die reine Regel (fail-safe).
+  const resolveConfidential = async (
+    source: unknown,
+    koId: unknown,
+    declared: unknown,
+  ): Promise<boolean> => {
+    if (source === "ko" && typeof koId === "string" && koId.length > 0) {
+      const stored = await ko.get(koId);
+      return classifyProvenanceConfidential(source, koId, declared, {
+        found: stored !== undefined,
+        level: stored?.confidentiality ?? null,
+      });
     }
-    const stored = await ko.get(koId);
-    return isEgressConfidential(stored?.confidentiality, declared);
+    return classifyProvenanceConfidential(source, koId, declared, { found: false });
   };
 
   return async (app) => {
@@ -75,9 +97,11 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         // SCRUM-451: Ergebnis-Sprache für 'extract' — "system" (Default, UI-Sprache) oder
         // "source" (Sprache des Dokuments, nichts übersetzen).
         outputLanguage?: "system" | "source";
-        // SCRUM-502 Schicht 2: optionale Vertraulichkeits-Signale. `koId` = die Aktion arbeitet an
-        // einem GESPEICHERTEN KO (Server lädt dessen Stufe autoritativ); `confidentiality` = die vom
-        // Client deklarierte Stufe eines noch nicht gespeicherten Drafts. Vertraulich → nie Cloud.
+        // SCRUM-502 Schicht 2 (Round 3): verbindlicher Herkunfts-Discriminator. `source:"ko"` =
+        // Aktion an einem GESPEICHERTEN KO (koId Pflicht, Server lädt Stufe autoritativ);
+        // `source:"draft"` = noch nicht gespeicherter Draft (confidentiality Pflicht, inkl. "intern");
+        // fehlt/ungültig → fail-safe vertraulich (kein Cloud-Egress).
+        source?: "ko" | "draft" | "plain";
         koId?: string;
         confidentiality?: Confidentiality;
       };
@@ -92,6 +116,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
       if (task === "structure") {
         // SCRUM-502 Schicht 2: vertraulicher Draft/KO → Cloud aus der Kette (lokal/deterministisch).
         const confidential = await resolveConfidential(
+          request.body.source,
           request.body.koId,
           request.body.confidentiality,
         );
@@ -107,6 +132,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
       if (task === "assist") {
         // FR-RSN-03 / SCRUM-312: Text präzisieren/glätten, optional mit Bearbeitungs-Anweisung.
         const confidential = await resolveConfidential(
+          request.body.source,
           request.body.koId,
           request.body.confidentiality,
         );
@@ -120,6 +146,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
       if (task === "interview") {
         // SCRUM-132: reasoner-getriebenes Interview, stateless (Antworten rein).
         const confidential = await resolveConfidential(
+          request.body.source,
           request.body.koId,
           request.body.confidentiality,
         );
@@ -146,6 +173,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         // Modell antwortet der Reasoner ehrlich mit leerer Liste + note (keine Fake-Punkte).
         // SCRUM-502 Schicht 2: vertraulicher Dokumenttext/KO → Cloud aus der Kette.
         const confidential = await resolveConfidential(
+          request.body.source,
           request.body.koId,
           request.body.confidentiality,
         );

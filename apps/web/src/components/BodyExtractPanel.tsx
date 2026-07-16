@@ -11,7 +11,7 @@ import type { ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import type { ReasonerSensitivity } from "../api/endpoints";
+import type { ReasonerProvenance } from "../api/endpoints";
 import type { ExtractedPoint } from "../api/types";
 import { BODY_EXTRACT_TEXT } from "../lib/bodyExtract";
 import {
@@ -39,13 +39,14 @@ import { Button, SectionLabel, TextInput } from "./ui";
 
 export function BodyExtractPanel({
   onAppend,
-  sensitivity,
+  provenance,
 }: {
   // Ausgewählte Punkte + Dateiname — der Aufrufer hängt an und vermerkt die Quellen.
   onAppend: (points: ExtractedPoint[], fileName: string) => void;
-  // SCRUM-502 Schicht 2: Vertraulichkeits-Signal des Kontexts (Saved-KO → koId, Draft →
-  // confidentiality). Wird an den extract-Endpunkt gereicht → vertraulicher Dokumenttext nie Cloud.
-  sensitivity?: ReasonerSensitivity;
+  // SCRUM-502 Schicht 2 (Round 3): Herkunft des Kontexts (Saved-KO → source:"ko"+koId, Draft →
+  // source:"draft"+confidentiality). Wird an den extract-Endpunkt gereicht → vertraulicher
+  // Dokumenttext nie Cloud. Pflicht — der Aufrufer kennt die Herkunft immer.
+  provenance: ReasonerProvenance;
 }): JSX.Element {
   const { t, i18n } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -66,7 +67,7 @@ export function BodyExtractPanel({
   // Gleicher extract-Task wie der Erzähl-Modus „Aus Datei" (PMO-FEA-0006/SCRUM-390);
   // ohne Modell kommt eine ehrliche note vom Server — KEINE Fake-Punkte.
   const extract = useMutation({
-    mutationFn: () => endpoints.reasoner.extract(fileText, locale, query, undefined, sensitivity),
+    mutationFn: () => endpoints.reasoner.extract(fileText, locale, query, undefined, provenance),
     onSuccess: (r) => {
       setErr(null);
       setAppendedNote(null);

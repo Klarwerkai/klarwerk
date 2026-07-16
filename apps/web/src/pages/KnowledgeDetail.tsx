@@ -170,9 +170,9 @@ export function KnowledgeDetail(): JSX.Element {
   // Auto-Submit). Nutzt den vorhandenen reasoner.assist-Endpunkt mit optionaler Instruktion.
   const runAssist = (input: string, instruction?: string): Promise<string> =>
     endpoints.reasoner
-      // SCRUM-502 Schicht 2: koId mitsenden → der Server lädt die gespeicherte Stufe autoritativ;
-      // ein vertrauliches KO nutzt nie die Cloud, auch ohne dass der Client die Stufe deklariert.
-      .assist(input, toReasonerLocale(i18n.language), instruction, { koId: id })
+      // SCRUM-502 Schicht 2 (Round 3): Herkunft source:"ko" + koId → der Server lädt die gespeicherte
+      // Stufe autoritativ; ein vertrauliches KO nutzt nie die Cloud, ohne dass der Client sie deklariert.
+      .assist(input, toReasonerLocale(i18n.language), instruction, { source: "ko", koId: id })
       .then((r) => r.text);
   // SCRUM-294: Demo-Kontext der Zielseite (über Library erreicht) — nur Anzeige/Link-Kontext.
   const [params] = useSearchParams();
@@ -983,7 +983,7 @@ export function KnowledgeDetail(): JSX.Element {
                             Punkte (G-2: nur mit Belegstelle) werden ANGEHÄNGT, nichts ersetzt;
                             die Quelle je Punkt wird sofort am KO vermerkt (add-source, Stufe 2). */}
                         <BodyExtractPanel
-                          sensitivity={{ koId: id }}
+                          provenance={{ source: "ko", koId: id }}
                           onAppend={(pts, name) => {
                             setEdit((prev) =>
                               prev

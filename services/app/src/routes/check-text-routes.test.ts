@@ -217,7 +217,7 @@ describe("SCRUM-491 Slice 5: POST /api/check-text (Flag AN)", () => {
       method: "POST",
       url: "/api/check-text",
       headers,
-      payload: { text: CHECK_STMT, want: "deep" },
+      payload: { text: CHECK_STMT, want: "deep", source: "draft", confidentiality: "intern" },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().persisted).toBe(false);
@@ -370,7 +370,8 @@ describe("SCRUM-491 Slice 6: Stufe 2 (want:'deep') mit injiziertem Fake-Judge", 
     const res = await app.inject({
       method: "POST",
       url: "/api/check-text",
-      payload: { text: TEXT_IDENTISCH, want: "deep" },
+      // SCRUM-502 Schicht 2 (Round 3): der Modell-Pfad braucht jetzt eine nicht-vertrauliche Herkunft.
+      payload: { text: TEXT_IDENTISCH, want: "deep", source: "draft", confidentiality: "intern" },
     });
     expect(res.statusCode).toBe(200);
     expect(judgeDuplicate).toHaveBeenCalled();
@@ -402,9 +403,56 @@ describe("SCRUM-491 Slice 6: Stufe 2 (want:'deep') mit injiziertem Fake-Judge", 
     await app.inject({
       method: "POST",
       url: "/api/check-text",
-      payload: { text: TEXT_IDENTISCH, want: "deep" },
+      payload: { text: TEXT_IDENTISCH, want: "deep", source: "draft", confidentiality: "intern" },
     });
     expect(await repo.all()).toHaveLength(0);
+  });
+
+  // SCRUM-502 Schicht 2 (Round 3): vertraulicher geprüfter Text → deep sperrt Embedder UND Cloud-Judge.
+  it("want:'deep' + vertraulicher Draft → KEIN Judge, KEIN embed, ehrlicher Hinweis (deterministisch)", async () => {
+    const { app, embed, judgeDuplicate } = await stage2App();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/check-text",
+      payload: {
+        text: TEXT_IDENTISCH,
+        want: "deep",
+        source: "draft",
+        confidentiality: "vertraulich",
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(judgeDuplicate).not.toHaveBeenCalled(); // kein Cloud-Judge
+    expect(embed).not.toHaveBeenCalled(); // kein Embedder-Egress
+    expect(res.json().note).toBeTruthy(); // ehrlicher Hinweis auf den deterministischen Rückfall
+  });
+
+  // Fail-safe: fehlt die Herkunft ganz (z. B. Alt-Add-in), gilt der Text als vertraulich.
+  it("want:'deep' OHNE source → fail-safe: KEIN Judge, KEIN embed, Hinweis", async () => {
+    const { app, embed, judgeDuplicate } = await stage2App();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/check-text",
+      payload: { text: TEXT_IDENTISCH, want: "deep" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(judgeDuplicate).not.toHaveBeenCalled();
+    expect(embed).not.toHaveBeenCalled();
+    expect(res.json().note).toBeTruthy();
+  });
+
+  // source:"draft" mit expliziter Stufe "intern" → deep läuft normal (Judge + embed).
+  it("want:'deep' + source:draft intern → Judge + embed laufen (nicht vertraulich)", async () => {
+    const { app, embed, judgeDuplicate } = await stage2App();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/check-text",
+      payload: { text: TEXT_IDENTISCH, want: "deep", source: "draft", confidentiality: "intern" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(judgeDuplicate).toHaveBeenCalled();
+    expect(embed).toHaveBeenCalled();
+    expect(res.json().note).toBeNull();
   });
 });
 
@@ -500,7 +548,8 @@ describe("SCRUM-498 B2: Modell-Cap-Überlauf (deep) → kontrolliertes 503, kein
       method: "POST",
       url: "/api/check-text",
       headers,
-      payload: { text: TEXT_IDENTISCH, want: "deep" },
+      // SCRUM-502 Schicht 2 (Round 3): nicht-vertrauliche Herkunft, damit der deep-Judge wirklich läuft.
+      payload: { text: TEXT_IDENTISCH, want: "deep", source: "draft", confidentiality: "intern" },
     });
     expect(res.statusCode).toBe(503);
     expect(res.headers["retry-after"]).toBeDefined();
@@ -571,7 +620,7 @@ describe("SCRUM-498 B2 (Fix): Embed-Cap-Überlauf (deep) → 503 über den echte
     const res = await app.inject({
       method: "POST",
       url: "/api/check-text",
-      payload: { text: TEXT_IDENTISCH, want: "deep" },
+      payload: { text: TEXT_IDENTISCH, want: "deep", source: "draft", confidentiality: "intern" },
     });
     expect(res.statusCode).toBe(503);
     expect(res.headers["retry-after"]).toBeDefined();
@@ -584,7 +633,7 @@ describe("SCRUM-498 B2 (Fix): Embed-Cap-Überlauf (deep) → 503 über den echte
     const res = await app.inject({
       method: "POST",
       url: "/api/check-text",
-      payload: { text: TEXT_IDENTISCH, want: "deep" },
+      payload: { text: TEXT_IDENTISCH, want: "deep", source: "draft", confidentiality: "intern" },
     });
     expect(res.statusCode).toBe(200);
     expect(judgeDuplicate).toHaveBeenCalled(); // lexikalischer Pool → Judge lief

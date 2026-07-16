@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import type { AssistResult, KnowledgeObject, StructureResult } from "../api/types";
+import type { AssistResult, Confidentiality, KnowledgeObject, StructureResult } from "../api/types";
 import { useSession } from "../app/AuthContext";
 import { useToast } from "../app/ToastContext";
 import { HelpTip } from "../components/HelpTip";
@@ -34,6 +34,7 @@ import {
   withFrontDoorSaveTimeout,
 } from "../lib/captureFrontDoor";
 import { type CaptureHelpId, captureHelp } from "../lib/captureHelp";
+import { CONFIDENTIALITY_LEVELS } from "../lib/confidentiality";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { isEmptyHtml } from "../lib/richText";
 
@@ -55,6 +56,9 @@ export function CaptureFrontDoor(): JSX.Element {
   const [title, setTitle] = useState("");
   const [bodyHtml, setBodyHtml] = useState("");
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
+  // SCRUM-502 Schicht 2 (Round 3): Vertraulichkeit auch im Front-Door erfassen — steuert den
+  // Reasoner-Egress (source:"draft") UND fließt in den Entwurf/das spätere KO. Standard „intern".
+  const [confidentiality, setConfidentiality] = useState<Confidentiality>("intern");
   const [loadingDraft, setLoadingDraft] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [structureProposal, setStructureProposal] = useState<StructureResult | null>(null);
@@ -181,6 +185,7 @@ export function CaptureFrontDoor(): JSX.Element {
         setActiveDraftId(draft.id);
         setTitle(draft.payload.title ?? "");
         setBodyHtml(frontDoorBodyFromDraft(draft.payload));
+        setConfidentiality(draft.payload.confidentiality ?? "intern");
         setSubmittedKo(null);
         saveRequestedRef.current = false;
         submitRequestedRef.current = false;
@@ -216,7 +221,8 @@ export function CaptureFrontDoor(): JSX.Element {
   }, [structureProposal, assistProposal]);
 
   const structure = useMutation({
-    mutationFn: () => endpoints.reasoner.structure(structureInput, locale),
+    mutationFn: () =>
+      endpoints.reasoner.structure(structureInput, locale, { source: "draft", confidentiality }),
     onMutate: () => {
       setErr(null);
       setStructureErr(null);
@@ -237,7 +243,10 @@ export function CaptureFrontDoor(): JSX.Element {
 
   const assist = useMutation({
     mutationFn: (action: AssistAction) =>
-      endpoints.reasoner.assist(assistInput, locale, t(assistActionInstructionKey(action))),
+      endpoints.reasoner.assist(assistInput, locale, t(assistActionInstructionKey(action)), {
+        source: "draft",
+        confidentiality,
+      }),
     onMutate: () => {
       setErr(null);
       setAssistErr(null);
@@ -262,11 +271,11 @@ export function CaptureFrontDoor(): JSX.Element {
         return withFrontDoorSaveTimeout(
           endpoints.drafts.update(
             activeDraftId,
-            buildFrontDoorPayload({ title, bodyHtml, fallbackTitle }),
+            buildFrontDoorPayload({ title, bodyHtml, fallbackTitle, confidentiality }),
           ),
         );
       }
-      return createFrontDoorDraft({ title, bodyHtml, fallbackTitle }, (payload) =>
+      return createFrontDoorDraft({ title, bodyHtml, fallbackTitle, confidentiality }, (payload) =>
         endpoints.drafts.create(payload),
       );
     },
@@ -299,7 +308,7 @@ export function CaptureFrontDoor(): JSX.Element {
   const submit = useMutation({
     mutationFn: () =>
       submitFrontDoorDraft(
-        { title, bodyHtml, activeDraftId, fallbackTitle },
+        { title, bodyHtml, activeDraftId, fallbackTitle, confidentiality },
         {
           createDraft: (payload) => endpoints.drafts.create(payload),
           updateDraft: (id, payload) => endpoints.drafts.update(id, payload),
@@ -488,6 +497,29 @@ export function CaptureFrontDoor(): JSX.Element {
                 onChange={(event) => changeTitle(event.target.value)}
                 placeholder={fallbackTitle}
               />
+            </div>
+
+            {/* SCRUM-502 Schicht 2 (Round 3): Vertraulichkeit im Front-Door. Vertrauliche Inhalte
+                nutzen nie die Cloud-KI (nur lokal/deterministisch) und fließen in den Entwurf. */}
+            <div>
+              <div className="mb-1.5 flex items-center gap-1">
+                <span className="block text-[12.5px] font-medium text-muted">
+                  {t("conf.field")}
+                </span>
+                <HelpTip title={t("conf.field")} body={t("conf.help")} />
+              </div>
+              <select
+                value={confidentiality}
+                onChange={(event) => setConfidentiality(event.target.value as Confidentiality)}
+                aria-label={t("conf.field")}
+                className="h-9 w-full rounded-input border border-hairline bg-surface px-2 text-[13px] text-text"
+              >
+                {CONFIDENTIALITY_LEVELS.map((lvl) => (
+                  <option key={lvl} value={lvl}>
+                    {t(`conf.level.${lvl}`)}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="space-y-2">

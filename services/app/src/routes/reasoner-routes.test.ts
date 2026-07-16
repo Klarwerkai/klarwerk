@@ -1,36 +1,62 @@
 import { describe, expect, it } from "vitest";
-import { isEgressConfidential } from "./reasoner-routes";
+import { classifyProvenanceConfidential } from "./reasoner-routes";
 
-// SCRUM-502 Schicht 2: die effektive Egress-Entscheidung der Modell-Aktions-Endpunkte.
-// „Restriktivstes gewinnt": vertraulich ist, was serverseitig gespeichert ODER client-deklariert
-// vertraulich ist — ein Client kann ein gespeichertes vertrauliches KO nicht herunterstufen.
-describe("SCRUM-502 Schicht 2: isEgressConfidential (restriktivstes gewinnt)", () => {
-  it("weder gespeichert noch deklariert vertraulich → nicht vertraulich (Cloud erlaubt)", () => {
-    expect(isEgressConfidential(undefined, undefined)).toBe(false);
-    expect(isEgressConfidential("intern", "intern")).toBe(false);
-    expect(isEgressConfidential(null, "intern")).toBe(false);
+// SCRUM-502 Schicht 2 (Round 3): fail-safe Herkunftsvertrag. Der Client MUSS die Herkunft des
+// Modell-Aktions-Textes deklarieren; im Zweifel gilt „vertraulich" (kein Cloud-Egress). Kein
+// Client-Downgrade, keine stillschweigende false-Rückgabe bei fehlendem/unbekanntem Signal.
+describe("SCRUM-502 Schicht 2: classifyProvenanceConfidential (fail-safe)", () => {
+  const NOT_LOADED = { found: false } as const;
+
+  it("source:ko + gespeichert intern → nicht vertraulich (Cloud erlaubt)", () => {
+    expect(
+      classifyProvenanceConfidential("ko", "ko-1", undefined, { found: true, level: "intern" }),
+    ).toBe(false);
   });
 
-  it("Draft deklariert vertraulich (kein gespeichertes KO) → vertraulich", () => {
-    expect(isEgressConfidential(undefined, "vertraulich")).toBe(true);
-    expect(isEgressConfidential(undefined, "streng_vertraulich")).toBe(true);
+  it("source:ko + gespeichert vertraulich/streng → vertraulich (autoritativ)", () => {
+    expect(
+      classifyProvenanceConfidential("ko", "ko-1", "intern", { found: true, level: "vertraulich" }),
+    ).toBe(true); // Client sagt intern — die gespeicherte Stufe gewinnt
+    expect(
+      classifyProvenanceConfidential("ko", "ko-1", undefined, {
+        found: true,
+        level: "streng_vertraulich",
+      }),
+    ).toBe(true);
   });
 
-  it("gespeichertes KO vertraulich, Client sagt intern → vertraulich (kein Client-Downgrade)", () => {
-    expect(isEgressConfidential("vertraulich", "intern")).toBe(true);
-    expect(isEgressConfidential("streng_vertraulich", undefined)).toBe(true);
-    // Auch ein explizit gefälschtes „intern" vom Client ändert nichts an der gespeicherten Stufe.
-    expect(isEgressConfidential("vertraulich", "intern")).toBe(true);
+  it("source:ko ohne koId → fail-safe vertraulich (nie false)", () => {
+    expect(classifyProvenanceConfidential("ko", undefined, undefined, NOT_LOADED)).toBe(true);
+    expect(classifyProvenanceConfidential("ko", "", undefined, NOT_LOADED)).toBe(true);
   });
 
-  it("gespeichert intern, Draft-Deklaration vertraulich → vertraulich (Deklaration gewinnt)", () => {
-    expect(isEgressConfidential("intern", "vertraulich")).toBe(true);
+  it("source:ko mit UNBEKANNTER koId (nicht gefunden) → fail-safe vertraulich", () => {
+    // Der Resolver hat geladen, aber nichts gefunden → NIE stillschweigend Cloud.
+    expect(classifyProvenanceConfidential("ko", "ko-weg", undefined, { found: false })).toBe(true);
   });
 
-  it("ungültige/leere Client-Werte normalisieren defensiv auf intern (blockieren nicht fälschlich)", () => {
-    expect(isEgressConfidential(undefined, "quatsch")).toBe(false);
-    expect(isEgressConfidential(undefined, 42)).toBe(false);
-    // aber eine gespeicherte vertrauliche Stufe bleibt maßgeblich, egal was der Client sendet.
-    expect(isEgressConfidential("vertraulich", "quatsch")).toBe(true);
+  it("source:draft + explizit intern → nicht vertraulich", () => {
+    expect(classifyProvenanceConfidential("draft", undefined, "intern", NOT_LOADED)).toBe(false);
+  });
+
+  it("source:draft + vertraulich/streng → vertraulich", () => {
+    expect(classifyProvenanceConfidential("draft", undefined, "vertraulich", NOT_LOADED)).toBe(
+      true,
+    );
+    expect(
+      classifyProvenanceConfidential("draft", undefined, "streng_vertraulich", NOT_LOADED),
+    ).toBe(true);
+  });
+
+  it("source:draft ohne/ungültige Stufe → fail-safe vertraulich", () => {
+    expect(classifyProvenanceConfidential("draft", undefined, undefined, NOT_LOADED)).toBe(true);
+    expect(classifyProvenanceConfidential("draft", undefined, "quatsch", NOT_LOADED)).toBe(true);
+    expect(classifyProvenanceConfidential("draft", undefined, 42, NOT_LOADED)).toBe(true);
+  });
+
+  it("source plain/fehlend/ungültig für einen KO-/Draft-Task → fail-safe vertraulich", () => {
+    expect(classifyProvenanceConfidential("plain", undefined, undefined, NOT_LOADED)).toBe(true);
+    expect(classifyProvenanceConfidential(undefined, undefined, undefined, NOT_LOADED)).toBe(true);
+    expect(classifyProvenanceConfidential("bogus", "ko-1", "intern", NOT_LOADED)).toBe(true);
   });
 });
