@@ -87,11 +87,19 @@ export class Reasoner {
   //  - "local"               lokaler LLM (dann deterministisch)
   //  - "deterministic"       nur deterministisch
   // Der deterministische Fallback ist IMMER das letzte Glied (FR-RSN-04, antwortet stets).
-  private providerChain(task: ModelRunTask): ReasonerProvider[] {
+  // SCRUM-502 Schicht 2: `confidential` = der Eingabetext (KO/Draft) ist vertraulich → die Cloud
+  // (this.primary) wird aus der Kette GENOMMEN. Vertraulicher Text verlässt den Server nie extern;
+  // es bleibt der lokale LLM (falls verdrahtet) und/oder der deterministische Fallback. Die
+  // Durchsetzung liegt hier zentral am Routing, damit kein Aufrufer sie vergessen kann.
+  private providerChain(task: ModelRunTask, confidential = false): ReasonerProvider[] {
     const choice = this.choiceFor(task);
     const chain: ReasonerProvider[] = [];
     if (choice !== "deterministic") {
-      if ((choice === "auto" || choice === "cloud" || choice === "model") && this.usingPrimary()) {
+      if (
+        !confidential &&
+        (choice === "auto" || choice === "cloud" || choice === "model") &&
+        this.usingPrimary()
+      ) {
         chain.push(this.primary);
       }
       if ((choice === "auto" || choice === "local") && this.usingSecondary()) {
@@ -229,9 +237,11 @@ export class Reasoner {
     task: ModelRunTask,
     locale: ReasonerLocale,
     run: (provider: ReasonerProvider) => Promise<T>,
+    // SCRUM-502 Schicht 2: vertraulicher Eingabetext → Cloud aus der Kette (siehe providerChain).
+    confidential = false,
   ): Promise<T> {
     const startedAt = new Date().toISOString();
-    const chain = this.providerChain(task);
+    const chain = this.providerChain(task, confidential);
     let lastError: unknown;
     for (let i = 0; i < chain.length; i++) {
       const provider = chain[i];
@@ -351,8 +361,14 @@ export class Reasoner {
 
   // FR-RSN-04/FR-I18N-01: Modellfehler dürfen den Betrieb nicht stoppen → deterministischer
   // Fallback. locale wird an primary UND fallback identisch durchgereicht (Default "de").
-  async structure(rawText: string, locale: ReasonerLocale = "de"): Promise<StructureResult> {
-    return this.runTask("structure", locale, (p) => p.structure(rawText, locale));
+  // SCRUM-502 Schicht 2: `confidential` route vertrauliche Drafts/KOs an der Cloud vorbei
+  // (lokal/deterministisch). Default false = unverändertes Verhalten für nicht-vertraulichen Text.
+  async structure(
+    rawText: string,
+    locale: ReasonerLocale = "de",
+    confidential = false,
+  ): Promise<StructureResult> {
+    return this.runTask("structure", locale, (p) => p.structure(rawText, locale), confidential);
   }
 
   // SCRUM-167: Ask-/Antwortpfad ebenfalls über runTask protokolliert (nur Metadaten).
@@ -369,16 +385,25 @@ export class Reasoner {
     text: string,
     locale: ReasonerLocale = "de",
     instruction?: string,
+    // SCRUM-502 Schicht 2: vertraulicher Draft/KO → Cloud aus der Kette.
+    confidential = false,
   ): Promise<AssistResult> {
-    return this.runTask("assist", locale, (p) => p.assistText(text, locale, instruction));
+    return this.runTask(
+      "assist",
+      locale,
+      (p) => p.assistText(text, locale, instruction),
+      confidential,
+    );
   }
 
   // SCRUM-132: reasoner-getriebenes Interview; Modellfehler → deterministischer Fallback.
   async interview(
     answers: readonly string[],
     locale: ReasonerLocale = "de",
+    // SCRUM-502 Schicht 2: vertraulicher Draft → Cloud aus der Kette.
+    confidential = false,
   ): Promise<InterviewResult> {
-    return this.runTask("interview", locale, (p) => p.interview(answers, locale));
+    return this.runTask("interview", locale, (p) => p.interview(answers, locale), confidential);
   }
 
   // PMO-FEA-0006: Wissenspunkte aus Dokumenttext extrahieren (optional mit Suchauftrag).
@@ -389,6 +414,8 @@ export class Reasoner {
     query?: string,
     // SCRUM-451: true = Ergebnis in der Sprache des Dokuments lassen (nichts übersetzen).
     keepSourceLanguage = false,
+    // SCRUM-502 Schicht 2: vertraulicher Dokumenttext/KO → Cloud aus der Kette.
+    confidential = false,
   ): Promise<ExtractResult> {
     // SCRUM-411 (Pedi-Test 03.07.): Scheitert der Modell-Aufruf, obwohl ein Modell gewollt
     // UND konfiguriert ist, bekommt der Nutzer den ECHTEN Grund — nicht die falsche
@@ -397,20 +424,30 @@ export class Reasoner {
     // der deterministische Abschluss den ECHTEN Grund melden kann statt „kein KI-Modell".
     let modelError: string | null = null;
     const wantedModel = this.effectiveFor("extract") === "model";
-    return this.runTask("extract", locale, async (provider) => {
-      if (provider === this.fallback) {
-        const honest = await this.fallback.extract(documentText, locale, query, keepSourceLanguage);
-        return wantedModel && modelError !== null
-          ? honestExtractModelFailed(modelError, locale)
-          : honest;
-      }
-      try {
-        return await provider.extract(documentText, locale, query, keepSourceLanguage);
-      } catch (error) {
-        modelError = error instanceof Error ? error.message : String(error);
-        throw error;
-      }
-    });
+    return this.runTask(
+      "extract",
+      locale,
+      async (provider) => {
+        if (provider === this.fallback) {
+          const honest = await this.fallback.extract(
+            documentText,
+            locale,
+            query,
+            keepSourceLanguage,
+          );
+          return wantedModel && modelError !== null
+            ? honestExtractModelFailed(modelError, locale)
+            : honest;
+        }
+        try {
+          return await provider.extract(documentText, locale, query, keepSourceLanguage);
+        } catch (error) {
+          modelError = error instanceof Error ? error.message : String(error);
+          throw error;
+        }
+      },
+      confidential,
+    );
   }
 
   // Klara Stufe 2 (Pedi 05.07.): generierende Hilfe-Antwort aus der Hilfe-Wissensdatenbank.

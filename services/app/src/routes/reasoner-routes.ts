@@ -5,6 +5,12 @@ import {
   type ExternalKnowledgePolicyRepo,
   publicAiEnrichmentAllowed,
 } from "../../../external-search";
+import {
+  type Confidentiality,
+  type KoService,
+  isConfidential,
+  normalizeConfidentiality,
+} from "../../../knowledge-object";
 import type { Reasoner, ReasonerLocale } from "../../../reasoner";
 import { runConflictSelfTest } from "../conflict-self-test";
 import { runDuplicateSelfTest } from "../duplicate-self-test";
@@ -15,6 +21,18 @@ function normalizeLocale(value: unknown): ReasonerLocale {
   return value === "en" ? "en" : "de";
 }
 
+// SCRUM-502 Schicht 2: reine, testbare Kern-Regel der Egress-Entscheidung. Ein Modell-Aktions-Text
+// gilt als vertraulich (→ nie an die Cloud), wenn die GESPEICHERTE Stufe eines KOs ODER die vom
+// Client für einen Draft DEKLARIERTE Stufe vertraulich ist. „Restriktivstes gewinnt": ein Client
+// kann ein gespeichertes vertrauliches KO nicht per Body auf „intern" herunterstufen, und ein als
+// vertraulich deklarierter Draft bleibt vertraulich, selbst wenn (noch) kein KO gespeichert ist.
+export function isEgressConfidential(
+  storedLevel: Confidentiality | undefined | null,
+  declaredLevel: unknown,
+): boolean {
+  return isConfidential(storedLevel) || isConfidential(normalizeConfidentiality(declaredLevel));
+}
+
 // Reasoner (§2.5): ein einheitlicher, modellagnostischer Endpunkt. 'structure' formt Rohtext
 // zu einem KO-Vorschlag; 'ask' beantwortet über die Ask-Schicht (Kontext aus validierten KOs).
 export interface ReasonerRoutesDeps {
@@ -22,10 +40,26 @@ export interface ReasonerRoutesDeps {
   ask: AskService;
   // SCRUM-426: Freigabe-Gate der Public-KI-Anreicherung (Admin-Regler SCRUM-414).
   externalKnowledge: ExternalKnowledgePolicyRepo;
+  // SCRUM-502 Schicht 2: für den autoritativen koId-Load der gespeicherten Vertraulichkeitsstufe.
+  ko: KoService;
 }
 
 export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): FastifyPluginAsync {
-  const { reasoner, ask, externalKnowledge } = deps;
+  const { reasoner, ask, externalKnowledge, ko } = deps;
+
+  // SCRUM-502 Schicht 2: effektive Vertraulichkeit einer Modell-Aktion = RESTRIKTIVSTES aus
+  //  (a) der serverseitig via koId geladenen GESPEICHERTEN Stufe (autoritativ — ein Client kann
+  //      ein gespeichertes vertrauliches KO nicht per Body herunterstufen) und
+  //  (b) der vom Client für einen (noch nicht gespeicherten) Draft deklarierten Stufe.
+  // Ist eines von beiden vertraulich → true → der Reasoner routet an der Cloud vorbei. Fehlt beides
+  // (reiner Freitext ohne Kontext), bleibt es „intern" (Cloud erlaubt) — bewusst, siehe Kartierung.
+  const resolveConfidential = async (koId: unknown, declared: unknown): Promise<boolean> => {
+    if (typeof koId !== "string" || koId.length === 0) {
+      return isEgressConfidential(undefined, declared);
+    }
+    const stored = await ko.get(koId);
+    return isEgressConfidential(stored?.confidentiality, declared);
+  };
 
   return async (app) => {
     app.post<{
@@ -41,6 +75,11 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         // SCRUM-451: Ergebnis-Sprache für 'extract' — "system" (Default, UI-Sprache) oder
         // "source" (Sprache des Dokuments, nichts übersetzen).
         outputLanguage?: "system" | "source";
+        // SCRUM-502 Schicht 2: optionale Vertraulichkeits-Signale. `koId` = die Aktion arbeitet an
+        // einem GESPEICHERTEN KO (Server lädt dessen Stufe autoritativ); `confidentiality` = die vom
+        // Client deklarierte Stufe eines noch nicht gespeicherten Drafts. Vertraulich → nie Cloud.
+        koId?: string;
+        confidentiality?: Confidentiality;
       };
     }>("/api/reasoner", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
@@ -51,23 +90,42 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
       // FR-I18N-01: UI-Sprache steuert Prompt/Frage/Label (Quelleninhalt bleibt original).
       const locale = normalizeLocale(request.body.locale);
       if (task === "structure") {
-        reply.code(200).send(await reasoner.structure(text ?? "", locale));
+        // SCRUM-502 Schicht 2: vertraulicher Draft/KO → Cloud aus der Kette (lokal/deterministisch).
+        const confidential = await resolveConfidential(
+          request.body.koId,
+          request.body.confidentiality,
+        );
+        reply.code(200).send(await reasoner.structure(text ?? "", locale, confidential));
         return;
       }
       if (task === "ask") {
+        // Kartierung SCRUM-502 Schicht 2: 'ask' trägt eine reine Nutzerfrage (kein gespeicherter
+        // KO-Text); der Antwort-Kontext ist bereits Schicht-1-gefiltert. Keine Sensitivitäts-Route.
         reply.code(200).send(await ask.ask(text ?? "", user.id, locale));
         return;
       }
       if (task === "assist") {
         // FR-RSN-03 / SCRUM-312: Text präzisieren/glätten, optional mit Bearbeitungs-Anweisung.
+        const confidential = await resolveConfidential(
+          request.body.koId,
+          request.body.confidentiality,
+        );
         reply
           .code(200)
-          .send(await reasoner.assistText(text ?? "", locale, request.body.instruction));
+          .send(
+            await reasoner.assistText(text ?? "", locale, request.body.instruction, confidential),
+          );
         return;
       }
       if (task === "interview") {
         // SCRUM-132: reasoner-getriebenes Interview, stateless (Antworten rein).
-        reply.code(200).send(await reasoner.interview(request.body.answers ?? [], locale));
+        const confidential = await resolveConfidential(
+          request.body.koId,
+          request.body.confidentiality,
+        );
+        reply
+          .code(200)
+          .send(await reasoner.interview(request.body.answers ?? [], locale, confidential));
         return;
       }
       if (task === "extract") {
@@ -86,6 +144,11 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         }
         // PMO-FEA-0006: Wissenspunkte aus Dokumenttext (optional mit Suchauftrag). Ohne
         // Modell antwortet der Reasoner ehrlich mit leerer Liste + note (keine Fake-Punkte).
+        // SCRUM-502 Schicht 2: vertraulicher Dokumenttext/KO → Cloud aus der Kette.
+        const confidential = await resolveConfidential(
+          request.body.koId,
+          request.body.confidentiality,
+        );
         reply
           .code(200)
           .send(
@@ -94,6 +157,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
               locale,
               request.body.query,
               outputLanguage === "source",
+              confidential,
             ),
           );
         return;

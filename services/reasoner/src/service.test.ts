@@ -640,3 +640,128 @@ describe("SCRUM-167: ModelRun-Protokoll für answer/select", () => {
     expect(hits[0]?.id).toBe("ko1");
   });
 });
+
+// SCRUM-502 Schicht 2: vertraulicher Eingabetext verlässt den Server nie über die Cloud.
+// Der Reasoner routet vertrauliche Aufgaben an this.primary (Cloud) VORBEI — nur der lokale LLM
+// (falls verdrahtet) und/oder der deterministische Fallback dürfen ran. Getestet wird auf der
+// Routing-Ebene (welcher Provider wird tatsächlich aufgerufen), nicht am Prompt-Text.
+describe("SCRUM-502 Schicht 2: Vertraulichkeit routet an der Cloud vorbei", () => {
+  // Provider, der bei jedem Methodenaufruf seinen Namen protokolliert (echtes Modell → demo:false).
+  function recordingProvider(name: string, calls: string[]): ReasonerProvider {
+    return {
+      name,
+      isAvailable: () => true,
+      structure: async (): Promise<StructureResult> => {
+        calls.push(`${name}:structure`);
+        return {
+          title: "T",
+          statement: "S",
+          conditions: [],
+          measures: [],
+          tags: [],
+          confidence: 1,
+          demo: false,
+        };
+      },
+      answer: async (): Promise<AnswerResult> => {
+        calls.push(`${name}:answer`);
+        return {
+          answered: false,
+          answer: null,
+          knowledgeClass: "unbekannt",
+          trust: 0,
+          sources: [],
+          steps: [],
+          demo: false,
+        };
+      },
+      assistText: async (): Promise<AssistResult> => {
+        calls.push(`${name}:assist`);
+        return { text: "modelltext", demo: false };
+      },
+      interview: async (): Promise<InterviewResult> => {
+        calls.push(`${name}:interview`);
+        return {
+          question: "nächste Frage?",
+          done: false,
+          draft: {
+            title: "",
+            statement: "",
+            conditions: [],
+            measures: [],
+            tags: [],
+            confidence: 0,
+            demo: false,
+          },
+          demo: false,
+        };
+      },
+      extract: async () => {
+        calls.push(`${name}:extract`);
+        return { points: [], note: null, demo: false };
+      },
+      select: () => [],
+    };
+  }
+
+  it("vertraulich + Cloud+lokal: Cloud NICHT aufgerufen, lokaler LLM übernimmt (structure)", async () => {
+    const calls: string[] = [];
+    const cloud = recordingProvider("cloud", calls);
+    const local = recordingProvider("local", calls);
+    const reasoner = new Reasoner(cloud, new DeterministicProvider(), undefined, undefined, local);
+
+    const res = await reasoner.structure("Geheimer Rohtext.", "de", true);
+
+    expect(calls).toEqual(["local:structure"]); // Cloud übersprungen, lokal genutzt
+    expect(res.demo).toBe(false); // der lokale LLM hat geantwortet
+  });
+
+  it("vertraulich + nur Cloud (kein lokaler LLM): Cloud NICHT aufgerufen, deterministisch (structure)", async () => {
+    const calls: string[] = [];
+    const cloud = recordingProvider("cloud", calls);
+    const reasoner = new Reasoner(cloud, new DeterministicProvider());
+
+    const res = await reasoner.structure("Geheimer Rohtext.", "de", true);
+
+    expect(calls).toEqual([]); // Cloud NIE aufgerufen
+    expect(res.demo).toBe(true); // ehrlicher deterministischer Ersatzmodus
+  });
+
+  it("nicht vertraulich: Cloud wird wie bisher genutzt (structure)", async () => {
+    const calls: string[] = [];
+    const cloud = recordingProvider("cloud", calls);
+    const reasoner = new Reasoner(cloud, new DeterministicProvider());
+
+    const res = await reasoner.structure("Normaler Rohtext.", "de", false);
+
+    expect(calls).toEqual(["cloud:structure"]);
+    expect(res.demo).toBe(false);
+  });
+
+  it("vertraulich hält assist/interview/extract von der Cloud fern (nur Cloud verdrahtet)", async () => {
+    const calls: string[] = [];
+    const cloud = recordingProvider("cloud", calls);
+    const reasoner = new Reasoner(cloud, new DeterministicProvider());
+
+    const assist = await reasoner.assistText("Geheimer Text.", "de", undefined, true);
+    const interview = await reasoner.interview(["Geheime Antwort."], "de", true);
+    const extract = await reasoner.extract("Geheimes Dokument.", "de", undefined, false, true);
+
+    expect(calls).toEqual([]); // KEIN Cloud-Aufruf über alle drei Aktionen
+    expect(assist.demo).toBe(true);
+    expect(interview.demo).toBe(true);
+    expect(extract.demo).toBe(true);
+  });
+
+  it("nicht vertraulich: assist/interview/extract nutzen die Cloud (Positiv-Kontrolle)", async () => {
+    const calls: string[] = [];
+    const cloud = recordingProvider("cloud", calls);
+    const reasoner = new Reasoner(cloud, new DeterministicProvider());
+
+    await reasoner.assistText("Text.", "de", undefined, false);
+    await reasoner.interview(["Antwort."], "de", false);
+    await reasoner.extract("Dokument.", "de", undefined, false, false);
+
+    expect(calls).toEqual(["cloud:assist", "cloud:interview", "cloud:extract"]);
+  });
+});
