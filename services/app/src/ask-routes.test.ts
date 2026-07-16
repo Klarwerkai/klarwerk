@@ -138,3 +138,118 @@ describe("SCRUM-242: Ask-Workflow (HTTP end-to-end)", () => {
     ).toBeGreaterThanOrEqual(400);
   });
 });
+
+// SCRUM-498 B1: Härtung der bestehenden Route POST /api/ask — Body-Schema (question maxLength 8.000,
+// non-empty) + engeres bodyLimit (64 KiB). NO-OP für jeden heute-gültigen Request; nur Obergrenze +
+// kontrolliertes 400/413 statt 500/TypeError-Leak. Session-Guard läuft jetzt in preValidation (401 vor
+// der Schema-400), Add-on-Pfad unverändert (401/403 im onRequest-Hook).
+describe("SCRUM-498 B1: /api/ask Body-Schema + bodyLimit", () => {
+  async function adminApp() {
+    const app = buildApp(buildServices());
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { name: "Admin", email: "a@x.de", password: "secret123" },
+    });
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "a@x.de", password: "secret123" },
+    });
+    return { app, headers: { authorization: `Bearer ${login.json().token}` } };
+  }
+
+  it("gültige KURZE Frage → weiterhin 200 (keine 40er-Mindestlänge, NO-OP)", async () => {
+    const { app, headers } = await adminApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers,
+      payload: { question: "Was ist X?" },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("question fehlt / nicht-coercierbarer Typ → 400 (Schema)", async () => {
+    const { app, headers } = await adminApp();
+    // Fehlt ganz → 400.
+    expect(
+      (await app.inject({ method: "POST", url: "/api/ask", headers, payload: {} })).statusCode,
+    ).toBe(400);
+    // Objekt/Array sind nicht zu string coercierbar → 400. (Skalare wie 123 coerct Fastifys ajv
+    // per Default zu "123" — harmlos und kein heute-gültiger Request wird dadurch neu abgewiesen.)
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/api/ask",
+          headers,
+          payload: { question: { nested: "x" } },
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/api/ask",
+          headers,
+          payload: { question: [1, 2] },
+        })
+      ).statusCode,
+    ).toBe(400);
+  });
+
+  it("question > 8.000 Zeichen → 400", async () => {
+    const { app, headers } = await adminApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers,
+      payload: { question: "a".repeat(8_001) },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("Body über dem bodyLimit (64 KiB) → 413 (kontrolliert, kein 500)", async () => {
+    const { app, headers } = await adminApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers,
+      payload: { question: "a".repeat(100_000) },
+    });
+    expect(res.statusCode).toBe(413);
+  });
+
+  it("fehlender/malformer Body → kontrolliertes 400, kein TypeError-Leak", async () => {
+    const { app, headers } = await adminApp();
+    const noBody = await app.inject({ method: "POST", url: "/api/ask", headers });
+    expect(noBody.statusCode).toBe(400);
+    expect(noBody.payload).not.toContain("TypeError");
+    expect(noBody.payload).not.toContain("Cannot read");
+    const malformed = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: { ...headers, "content-type": "application/json" },
+      payload: "{ kaputt",
+    });
+    expect(malformed.statusCode).toBe(400);
+  });
+
+  it("Oracle: anonym → 401 VOR der Body-400 (auch bei leerem Body)", async () => {
+    const { app } = await adminApp();
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/api/ask",
+          payload: { question: "Was ist X?" },
+        })
+      ).statusCode,
+    ).toBe(401);
+    expect((await app.inject({ method: "POST", url: "/api/ask", payload: {} })).statusCode).toBe(
+      401,
+    );
+  });
+});
