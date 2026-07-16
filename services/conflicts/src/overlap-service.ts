@@ -234,7 +234,16 @@ export class OverlapService {
     let verdict: OverlapVerdict | null;
     try {
       verdict = await judge(coreA, coreB);
-    } catch {
+    } catch (err) {
+      // SCRUM-498 B2: Backpressure (Modell-Cap voll/Timeout) ist KEIN Judge-Fehler. Einen echten
+      // Modell-/Parsing-Fehler lassen wir weiterhin fallen (Kandidat auslassen, kein Crash) — aber
+      // Backpressure NICHT still schlucken, sonst verschwiegen wir unter Last ein echtes Duplikat
+      // (falsch-negativ in einem Sicherheits-Feature). Durchreichen → die HTTP-Schicht macht daraus
+      // 503 + Retry-After. Namensbasiert erkannt, um die Modul-Entkopplung conflicts↮reasoner zu
+      // wahren (kein Import des Fehlertyps aus dem Reasoner).
+      if (err instanceof Error && err.name === "ModelCapacityError") {
+        throw err;
+      }
       return null;
     }
     if (!verdict) {

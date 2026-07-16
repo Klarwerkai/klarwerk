@@ -38,6 +38,16 @@ export {
   createLocalClientFromEnv,
   type LocalHttpModelConfig,
 } from "./src/model-client";
+// SCRUM-498 B2: prozess-globaler In-Flight-Cap für Modellaufrufe.
+export {
+  ModelCapacityError,
+  ModelSemaphore,
+  type ModelCapConfig,
+  modelCapConfigFromEnv,
+  cappedModelClient,
+  withModelSlot,
+  resetModelSemaphoreForTests,
+} from "./src/model-concurrency";
 // SCRUM-386: kundeneigene KI-Assist-Presets (Admin verwaltet; Palette zeigt sie allen Rollen).
 export {
   ASSIST_PRESETS_SCHEMA,

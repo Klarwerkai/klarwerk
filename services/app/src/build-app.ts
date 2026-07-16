@@ -91,9 +91,11 @@ import { canChangeRole } from "../../rbac";
 import {
   type AssistPresetRepo,
   InMemoryAssistPresetRepo,
+  ModelCapacityError,
   ModelProvider,
   PgAssistPresetRepo,
   Reasoner,
+  cappedModelClient,
   createLocalClientFromEnv,
   createModelClientFromEnv,
 } from "../../reasoner";
@@ -241,15 +243,20 @@ export function assembleServices(repos: AppRepos): AppServices {
   // gesetzt sind. Beide Backends werden serverseitig beim Start verdrahtet — unabhängig vom
   // Login. Die Werte kommen aus dem Launcher/Schlüsselbund, nie aus dem Code.
   const localClient = createLocalClientFromEnv();
+  // SCRUM-498 B2: beide Modell-Clients durch den EINEN prozess-globalen In-Flight-Cap führen (Cloud UND
+  // lokal teilen denselben Semaphore). Jeder complete()-Aufruf acquired/released einzeln → die
+  // Gesamt-Gleichzeitigkeit ist über alle Requests hinweg begrenzt, ohne Bypass.
+  const cappedCloud = modelClient ? cappedModelClient(modelClient) : undefined;
+  const cappedLocal = localClient ? cappedModelClient(localClient) : undefined;
   // SCRUM-164: ModelRun-Protokoll mitgeben (No-op-fähig); API-Shape des Reasoners unverändert.
   const reasoner = new Reasoner(
-    modelClient ? new ModelProvider(modelClient) : undefined,
+    cappedCloud ? new ModelProvider(cappedCloud) : undefined,
     undefined,
     repos.modelRuns,
     // SCRUM-386: Presets über das Repo — persistent in Pg bzw. im Dev-Journal der Desktop-App.
     repos.assistPresets,
     // SCRUM-424: zweites Backend (lokaler LLM) als optionaler Provider.
-    localClient ? new ModelProvider(localClient) : undefined,
+    cappedLocal ? new ModelProvider(cappedLocal) : undefined,
   );
 
   // Vorab erstellt, da das Management-Modul (SCRUM-120) deren Live-Daten aggregiert.
@@ -431,6 +438,20 @@ export function buildApp(
   opts: { factoryReset?: FactoryReset } = {},
 ): FastifyInstance {
   const app = Fastify();
+  // SCRUM-498 B2: einheitliche Backpressure-Antwort. Ein Modell-Cap-Überlauf (ModelCapacityError) wird
+  // von der Reasoner-Kette bis hierher durchgereicht → 503 + Retry-After (kein 500/Crash). Jeder andere
+  // Fehler wird formtreu an Fastifys Standard-Fehlerbehandlung weitergereicht (Validierungs-400 etc.
+  // unverändert).
+  app.setErrorHandler((error, _request, reply) => {
+    if (error instanceof ModelCapacityError) {
+      reply.code(503).header("Retry-After", "1").send({
+        error: "MODEL_BUSY",
+        message: "KI-Modell derzeit ausgelastet. Bitte in Kürze erneut versuchen.",
+      });
+      return;
+    }
+    reply.send(error);
+  });
   const guards = makeGuards(services.auth);
 
   // Add-on-API (Klara-Panel), hinter KLARWERK_ADDON_API: CORS NUR bei aktivem Flag, NUR für die eine

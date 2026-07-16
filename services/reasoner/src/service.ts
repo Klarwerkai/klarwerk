@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { ModelRunRepo, ModelRunStatus, ModelRunTask } from "../../model-runs";
+import { ModelCapacityError } from "./model-concurrency";
 import {
   type AssistPreset,
   type AssistPresetInput,
@@ -248,6 +249,11 @@ export class Reasoner {
         });
         return result;
       } catch (err) {
+        // SCRUM-498 B2: Backpressure ist KEIN Provider-Fehler — nicht auf den deterministischen
+        // Fallback ausweichen, sondern durchreichen (die HTTP-Schicht macht daraus 503 + Retry-After).
+        if (err instanceof ModelCapacityError) {
+          throw err;
+        }
         lastError = err;
       }
     }
@@ -462,7 +468,10 @@ export class Reasoner {
         if (result) {
           return result;
         }
-      } catch {
+      } catch (err) {
+        if (err instanceof ModelCapacityError) {
+          throw err; // Backpressure durchreichen (→ 503), nicht als Modellfehler still schlucken.
+        }
         // nächstes Modell versuchen
       }
     }
@@ -486,7 +495,10 @@ export class Reasoner {
         if (result) {
           return result;
         }
-      } catch {
+      } catch (err) {
+        if (err instanceof ModelCapacityError) {
+          throw err; // Backpressure durchreichen (→ 503), nicht als Modellfehler still schlucken.
+        }
         // nächstes Modell versuchen
       }
     }

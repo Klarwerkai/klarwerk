@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryOverlapRepo, OverlapService, type OverlapVerdict } from "../../../conflicts";
 import type { EmbeddingProvider, EmbeddingStore } from "../../../embedding";
 import type { KnowledgeObject, KoService } from "../../../knowledge-object";
-import type { Reasoner } from "../../../reasoner";
+import { ModelCapacityError, ModelProvider, Reasoner } from "../../../reasoner";
 import { buildApp, buildServices } from "../build-app";
 import type { SemanticPrefilter } from "../duplicate-detection";
 import type { Guards } from "../http";
@@ -449,5 +449,76 @@ describe("SCRUM-491 Slice 5: Rate-Limit auf /api/check-text", () => {
       codes.push(res.statusCode);
     }
     expect(codes.every((c) => c !== 429)).toBe(true);
+  });
+});
+
+// SCRUM-498 B2: Der prozess-globale Modell-Cap wirft bei Überlauf ModelCapacityError; der Reasoner reicht
+// ihn durch (kein Fallback), der globale setErrorHandler mappt ihn auf 503 + Retry-After. Hier End-to-End
+// über den vollen buildApp-Pfad (inkl. Error-Handler), mit einem Reasoner, dessen Client den Backpressure-
+// Fehler wirft — stellvertretend für „Warteschlange voll / Acquire-Timeout".
+describe("SCRUM-498 B2: Modell-Cap-Überlauf (deep) → kontrolliertes 503, kein 500/Crash", () => {
+  beforeEach(() => {
+    process.env.KLARWERK_ADDON_API = "1";
+    process.env.KLARWERK_ADDON_API_KEY = KEY;
+  });
+
+  // Reasoner, dessen einziger Chokepoint (client.complete) den Backpressure-Fehler wirft.
+  function busyReasonerServices() {
+    const services = buildServices();
+    const throwingClient = {
+      name: "cap",
+      complete: async () => {
+        throw new ModelCapacityError("Modell ausgelastet.");
+      },
+    };
+    (services as unknown as { reasoner: Reasoner }).reasoner = new Reasoner(
+      new ModelProvider(throwingClient),
+    );
+    return services;
+  }
+
+  async function loginOn(app: ReturnType<typeof buildApp>) {
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { name: "Admin", email: "a@x.de", password: "secret123" },
+    });
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "a@x.de", password: "secret123" },
+    });
+    return { authorization: `Bearer ${login.json().token}` };
+  }
+
+  it("want:'deep' + Cap-Überlauf → 503 + Retry-After (MODEL_BUSY), nicht 500", async () => {
+    const app = buildApp(busyReasonerServices());
+    const headers = await loginOn(app);
+    // Mittlere Deckung (identisch vs. Kurzfassung) → der deep-Pfad ruft wirklich den (werfenden) Judge.
+    await seedValidated(app, headers, TEXT_MITTEL);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/check-text",
+      headers,
+      payload: { text: TEXT_IDENTISCH, want: "deep" },
+    });
+    expect(res.statusCode).toBe(503);
+    expect(res.headers["retry-after"]).toBeDefined();
+    expect(res.json().error).toBe("MODEL_BUSY");
+    expect(res.payload).not.toContain("ModelCapacityError"); // kein Stacktrace nach außen
+  });
+
+  it("Stufe 1 (kein Modell) bleibt 200 — der Cap berührt den deterministischen Pfad nicht", async () => {
+    const app = buildApp(busyReasonerServices());
+    const headers = await loginOn(app);
+    await seedValidated(app, headers, SEED_STMT);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/check-text",
+      headers,
+      payload: { text: CHECK_STMT }, // kein want:"deep" → kein Judge
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().persisted).toBe(false);
   });
 });

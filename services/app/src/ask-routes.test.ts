@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ModelCapacityError } from "../../reasoner";
 import { buildApp, buildServices } from "./build-app";
 
 // SCRUM-242: Ask-/Fragen-Workflow über die ECHTEN HTTP-Routen absichern (kein Service-Direktaufruf,
@@ -292,5 +293,44 @@ describe("SCRUM-498 B1: /api/ask Eingabe-Härtung (gültige Hülle)", () => {
     });
     expect(res.statusCode).toBe(400);
     expect(res.payload).not.toContain("TypeError");
+  });
+});
+
+// SCRUM-498 B2: Läuft der prozess-globale Modell-Cap über (Warteschlange voll / Acquire-Timeout), wirft
+// der Chokepoint einen ModelCapacityError. reasoner.answer reicht ihn durch (kein deterministischer
+// Fallback), der globale setErrorHandler mappt ihn auf 503 + Retry-After. Hier über die echte POST
+// /api/ask-Route, mit einem ask-Service, dessen ask() den Backpressure-Fehler stellvertretend wirft.
+describe("SCRUM-498 B2: /api/ask bei Modell-Cap-Überlauf → 503 + Retry-After (kein 500)", () => {
+  it("ask() wirft ModelCapacityError → globaler Handler mappt auf 503 + Retry-After (MODEL_BUSY)", async () => {
+    const services = buildServices();
+    // Nur ask.ask ist relevant (POST /api/ask ruft ausschließlich diese Methode); Backpressure wird
+    // stellvertretend geworfen. Property auf unknown gecastet, um die volle AskService-Form zu umgehen.
+    (services as unknown as { ask: unknown }).ask = {
+      ask: async () => {
+        throw new ModelCapacityError("Modell ausgelastet.");
+      },
+    };
+    const app = buildApp(services);
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { name: "Admin", email: "a@x.de", password: "secret123" },
+    });
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "a@x.de", password: "secret123" },
+    });
+    const headers = { authorization: `Bearer ${login.json().token}` };
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers,
+      payload: { question: "Wie entlüfte ich die Pumpe?" },
+    });
+    expect(res.statusCode).toBe(503);
+    expect(res.headers["retry-after"]).toBeDefined();
+    expect(res.json().error).toBe("MODEL_BUSY");
+    expect(res.payload).not.toContain("ModelCapacityError"); // kein Stacktrace nach außen
   });
 });
