@@ -40,6 +40,18 @@ interface BuiltOverlap {
   rationale?: string;
 }
 
+// SCRUM-491: Ergebnis-Form des side-effect-freien Dry-Runs (assessAgainstPool). Dieselbe Urteilslogik
+// wie detectForSubject, aber KEIN createAuto/Insert — nur die bewertete Kandidaten-Info zurück.
+export interface DryRunOverlap {
+  koId: string;
+  koTitle: string;
+  relation: OverlapRelation;
+  method: "model" | "deterministic";
+  confidence?: number;
+  rationale?: string;
+  snippet?: string; // Reserve (Slice 5/6): das Modul erzeugt heute keinen Beleg-Snippet.
+}
+
 export class OverlapService {
   private readonly repo: OverlapRepo;
   private readonly audit: AuditService | undefined;
@@ -154,6 +166,51 @@ export class OverlapService {
       open.push(entry);
     }
     return created;
+  }
+
+  // SCRUM-491: Side-effect-freier Dry-Run — dieselbe Urteilslogik wie detectForSubject (hohe lexikalische
+  // Deckung → deterministisch; sonst Modell via judge), aber OHNE jede Persistenz: kein repo.all(), kein
+  // createAuto/Insert, kein Board-Eintrag, kein Audit. Für transienten Freitext gegen einen bereits
+  // gebundenen (validierten, gedeckelten) Pool. judge ist OPTIONAL: ohne judge nur der deterministische
+  // Pfad (kein Modell); mit judge zusätzlich das Modell-Urteil. Gibt die bewerteten Kandidaten zurück.
+  async assessAgainstPool(
+    subject: DetectSubject,
+    pool: readonly DetectSubject[],
+    judge?: (coreA: string, coreB: string) => Promise<OverlapVerdict | null>,
+    options: { cap?: number; minConfidence?: number } = {},
+  ): Promise<DryRunOverlap[]> {
+    const subjectCore = coreText(subject);
+    const results: DryRunOverlap[] = [];
+    let compared = 0;
+    for (const cand of pool) {
+      if (cand.refId === subject.refId) {
+        continue;
+      }
+      if (options.cap !== undefined && compared >= options.cap) {
+        break;
+      }
+      compared += 1;
+      const lexicalScore = lexicalOverlapScore(subject, cand);
+      const candidacy = exhaustiveOverlapCandidacy(lexicalScore);
+      const built =
+        candidacy === "deterministic"
+          ? this.deterministicBuild()
+          : judge
+            ? await this.modelBuild(subjectCore, coreText(cand), judge, options.minConfidence)
+            : null;
+      if (!built) {
+        continue;
+      }
+      results.push({
+        koId: cand.refId,
+        koTitle: cand.title,
+        relation: built.relation,
+        method: built.method,
+        ...(built.confidence !== undefined ? { confidence: built.confidence } : {}),
+        ...(built.rationale ? { rationale: built.rationale } : {}),
+      });
+    }
+    return results;
   }
 
   private deterministicBuild(): BuiltOverlap {

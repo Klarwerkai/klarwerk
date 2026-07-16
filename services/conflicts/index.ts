@@ -1,6 +1,6 @@
 // Öffentliche API des Moduls conflicts.
 export { ConflictService } from "./src/service";
-export type { ConflictServiceDeps } from "./src/service";
+export type { ConflictServiceDeps, DryRunConflict } from "./src/service";
 export { InMemoryConflictRepo, type ConflictRepo } from "./src/repo";
 export { PgConflictRepo, CONFLICTS_SCHEMA } from "./src/repo-pg";
 export { ConflictError } from "./src/types";
@@ -25,7 +25,7 @@ export { coreText } from "./src/detect";
 // Berater-Konzept Duplikate 04.07. (Stufe D3): Überschneidungs-Erkennung (eigene Entität,
 // schlanker Lebenszyklus). Teilt Ledger/Muster mit Konflikten, produktseitig getrennt.
 export { OverlapService } from "./src/overlap-service";
-export type { OverlapServiceDeps } from "./src/overlap-service";
+export type { OverlapServiceDeps, DryRunOverlap } from "./src/overlap-service";
 export { InMemoryOverlapRepo, type OverlapRepo } from "./src/overlap-repo";
 export { PgOverlapRepo, OVERLAP_SCHEMA } from "./src/overlap-repo-pg";
 // Pedi 04.07.: einstellbare Anzeige-Schwelle der Duplikat-Erkennung (Admin-Einstellung, persistiert).
@@ -57,3 +57,6 @@ export type {
   OverlapRecommendation,
   OverlapAspect,
 } from "./src/duplicate-detect";
+// SCRUM-491: lexikalischer Deckungs-Score — für den gedeckelten lexikalischen Fallback der Pool-Auswahl
+// im App-Orchestrator (kein neues Gehirn: derselbe Score, den die Erkennung selbst nutzt).
+export { lexicalOverlapScore } from "./src/duplicate-detect";

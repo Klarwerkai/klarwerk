@@ -9,7 +9,25 @@ import {
   selectCandidates,
 } from "./detect";
 import type { ConflictRepo } from "./repo";
-import { type Conflict, type ConflictDetector, ConflictError, type ConflictInput } from "./types";
+import {
+  type Conflict,
+  type ConflictDetector,
+  ConflictError,
+  type ConflictInput,
+  type ConflictType,
+} from "./types";
+
+// SCRUM-491: Ergebnis-Form des side-effect-freien Dry-Runs (assessAgainstPool). Muster wie
+// DryRunOverlap; Konflikterkennung ist rein modellgetrieben (ohne judge keine Kandidaten).
+export interface DryRunConflict {
+  koId: string;
+  koTitle: string;
+  type: ConflictType;
+  method: "model";
+  confidence?: number;
+  rationale?: string;
+  snippet?: string; // Reserve (Slice 5/6), symmetrisch zu DryRunOverlap.
+}
 
 export interface ConflictServiceDeps {
   repo: ConflictRepo;
@@ -236,6 +254,53 @@ export class ConflictService {
       open.push(conflict); // im selben Lauf kein zweiter Konflikt für dasselbe Paar
     }
     return created;
+  }
+
+  // SCRUM-491: Side-effect-freier Dry-Run (symmetrisch zu OverlapService.assessAgainstPool). Konflikt-
+  // erkennung ist rein modellgetrieben — ohne judge gibt es keine Kandidaten (kein deterministischer
+  // Pfad). Dieselbe Urteilslogik (selectCandidates → judge → decideFromVerdict) wie detectForSubject,
+  // aber OHNE Persistenz: kein repo.all(), kein createAuto/Insert, kein Audit.
+  async assessAgainstPool(
+    subject: DetectSubject,
+    pool: readonly DetectSubject[],
+    judge?: (coreA: string, coreB: string) => Promise<ConflictVerdict | null>,
+    options: { cap?: number; minConfidence?: number } = {},
+  ): Promise<DryRunConflict[]> {
+    if (!judge) {
+      return [];
+    }
+    const candidates = selectCandidates(subject, pool, options.cap ?? 8);
+    const subjectCore = coreText(subject);
+    const results: DryRunConflict[] = [];
+    for (const cand of candidates) {
+      let verdict: ConflictVerdict | null;
+      try {
+        verdict = await judge(subjectCore, coreText(cand));
+      } catch {
+        continue;
+      }
+      if (!verdict) {
+        continue;
+      }
+      const decision = decideFromVerdict(
+        verdict,
+        subjectCore,
+        coreText(cand),
+        options.minConfidence,
+      );
+      if (!decision.create || decision.type === null) {
+        continue;
+      }
+      results.push({
+        koId: cand.refId,
+        koTitle: cand.title,
+        type: decision.type,
+        method: "model",
+        confidence: verdict.confidence,
+        rationale: verdict.begruendung,
+      });
+    }
+    return results;
   }
 
   // FR-CON-04: alle ungelösten Konflikte (jeder Status außer gelöst).

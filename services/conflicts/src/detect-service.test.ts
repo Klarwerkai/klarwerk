@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { AuditService } from "../../audit";
 import type { ConflictVerdict, DetectSubject } from "./detect";
 import { InMemoryConflictRepo } from "./repo";
 import { ConflictService } from "./service";
@@ -30,6 +31,37 @@ const conflictJudge = async (a: string, b: string): Promise<ConflictVerdict | nu
 });
 // Fake-„kein Modell": liefert kein Urteil (wie der deterministische Modus).
 const noModelJudge = async (): Promise<ConflictVerdict | null> => null;
+
+describe("SCRUM-491: assessAgainstPool (Konflikt) — Dry-Run ohne Persistenz", () => {
+  const record = vi.fn();
+  let repo: InMemoryConflictRepo;
+  let svc: ConflictService;
+  beforeEach(() => {
+    record.mockClear();
+    repo = new InMemoryConflictRepo();
+    svc = new ConflictService({ repo, audit: { record } as unknown as AuditService });
+  });
+
+  it("ohne judge → leer (Konflikt ist rein modellgetrieben), keine Persistenz", async () => {
+    const found = await svc.assessAgainstPool(rot, [blau]);
+    expect(found).toHaveLength(0);
+    expect(await repo.all()).toHaveLength(0);
+    expect(record).not.toHaveBeenCalled();
+  });
+
+  it("mit Fake-judge → Konflikt-Urteil im Ergebnis, keine Persistenz", async () => {
+    const judge = vi.fn(conflictJudge);
+    const found = await svc.assessAgainstPool(rot, [blau], judge);
+    expect(judge).toHaveBeenCalled();
+    expect(found).toHaveLength(1);
+    expect(found[0]?.koId).toBe("ko-blau");
+    expect(found[0]?.type).toBe("truth");
+    expect(found[0]?.method).toBe("model");
+    expect(found[0]?.confidence).toBe(0.95);
+    expect(await repo.all()).toHaveLength(0);
+    expect(record).not.toHaveBeenCalled();
+  });
+});
 
 describe("Berater-Konzept 04.07. (Stufe 3): detectForSubject", () => {
   let service: ConflictService;

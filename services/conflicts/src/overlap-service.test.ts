@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { AuditService } from "../../audit";
 import type { DetectSubject } from "./detect";
 import type { OverlapVerdict } from "./duplicate-detect";
 import { InMemoryOverlapRepo } from "./overlap-repo";
@@ -50,6 +51,48 @@ const teilweiseJudge = async (): Promise<OverlapVerdict | null> => teilweiseVerd
 const verwandtJudge = async (): Promise<OverlapVerdict | null> => ({
   ...teilweiseVerdict,
   beziehung: "verwandt",
+});
+
+describe("SCRUM-491: assessAgainstPool — side-effect-freier Dry-Run", () => {
+  const record = vi.fn();
+  let repo: InMemoryOverlapRepo;
+  let svc: OverlapService;
+  beforeEach(() => {
+    record.mockClear();
+    repo = new InMemoryOverlapRepo();
+    // Audit-Spy beweist: der Dry-Run protokolliert nichts.
+    svc = new OverlapService({ repo, audit: { record } as unknown as AuditService });
+  });
+
+  it("ohne judge → deterministische Kandidaten, KEINE Persistenz/kein Audit", async () => {
+    const found = await svc.assessAgainstPool(a, [bNearIdentical]);
+    expect(found).toHaveLength(1);
+    expect(found[0]?.koId).toBe("ko-b");
+    expect(found[0]?.koTitle).toBe("Pumpe entlüften");
+    expect(found[0]?.method).toBe("deterministic");
+    expect(found[0]?.relation).toBe("identisch");
+    // KEIN Insert, KEIN Board-Eintrag, KEIN Audit.
+    expect(await repo.all()).toHaveLength(0);
+    expect(record).not.toHaveBeenCalled();
+  });
+
+  it("ohne judge → mittlere Deckung liefert NICHTS (kein Modell)", async () => {
+    const found = await svc.assessAgainstPool(a, [m1]);
+    expect(found).toHaveLength(0);
+    expect(await repo.all()).toHaveLength(0);
+  });
+
+  it("mit Fake-judge → Modell-Urteil im Ergebnis, weiterhin KEINE Persistenz", async () => {
+    const judge = vi.fn(teilweiseJudge);
+    const found = await svc.assessAgainstPool(a, [m1], judge);
+    expect(judge).toHaveBeenCalled();
+    expect(found).toHaveLength(1);
+    expect(found[0]?.method).toBe("model");
+    expect(found[0]?.confidence).toBe(0.9);
+    expect(found[0]?.rationale).toBeDefined();
+    expect(await repo.all()).toHaveLength(0);
+    expect(record).not.toHaveBeenCalled();
+  });
 });
 
 describe("Berater-Konzept Duplikate 04.07. (Stufe D3): OverlapService", () => {
