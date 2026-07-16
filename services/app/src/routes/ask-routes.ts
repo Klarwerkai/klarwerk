@@ -4,23 +4,26 @@ import { authorizesAsk } from "../addon-principal";
 import { addonRateLimit } from "../addon-rate-limit";
 import { type Guards, type SessionUser, sendError } from "../http";
 
-// SCRUM-498 B1: Body-Schema + engeres bodyLimit für POST /api/ask. Reines Härten — NO-OP für jeden
-// heute-gültigen Request: question bleibt required string, kurze Fragen bleiben zulässig (minLength 1,
-// KEINE 40er-Mindestlänge wie check-text), Obergrenze konsistent mit check-text (8.000 Zeichen).
-// additionalProperties bleibt UNGESETZT (= true, wie das check-text-Schema) → nichts wird neu verboten,
-// was ein Client heute mitschickt. Fehlender/malformer/oversized Body → kontrolliertes 400 (kein 500).
+// SCRUM-498 B1 (ben-Review): BEWUSSTE MINIMALE Eingabe-Härtung von POST /api/ask — kein NO-OP für alle
+// Bodies. Rejectet NUR:
+//   - fehlenden Body (kein JSON) → 400 (Crash-Fix: der Handler las question/locale direkt → 500-Risiko),
+//   - Frage > 8.000 Zeichen → 400 (Kosten-/Missbrauchs-Cap),
+//   - Body > 128 KiB → 413 (milder Transport-Cap, runter von global 1 MiB).
+// Alles andere bleibt wie im Parent (e6abb25): question ist NICHT required und hat KEIN minLength →
+// leere/fehlende Frage liefert weiter 200; Zusatzfelder (additionalProperties: true) und
+// escaped-Unicode-Fragen ≤ 8.000 Codepoints bleiben zulässig. locale bleibt permissiv.
 const askBodySchema = {
   type: "object",
-  required: ["question"],
   properties: {
-    question: { type: "string", minLength: 1, maxLength: 8_000 },
+    question: { type: "string", maxLength: 8_000 },
     locale: { type: "string" },
   },
 } as const;
 
-// Engeres Route-bodyLimit (statt global 1 MiB): komfortabel über dem größten gültigen Body
-// (8.000 Zeichen UTF-8 worst case ~32 KiB + JSON-Envelope), aber weit darunter. Überschreitung → 413.
-const ASK_BODY_LIMIT = 64 * 1024; // 64 KiB
+// Route-bodyLimit (bewusster milder Cap, runter von global 1 MiB — KEIN NO-OP für > 128-KiB-Bodies):
+// deckt eine escaped 8.000-Codepoint-Frage (roh bis ~96 KiB) plus Envelope/locale/moderate Extras.
+// Nur pathologische Bodies > 128 KiB → kontrolliertes 413.
+const ASK_BODY_LIMIT = 128 * 1024; // 128 KiB
 
 // Request-lokal getragener Session-User (analog authContext): in preValidation aufgelöst, im Handler
 // nur gelesen — kein zweiter Guard-Aufruf.
@@ -34,7 +37,7 @@ declare module "fastify" {
 export function askRoutes(ask: AskService, guards: Guards): FastifyPluginAsync {
   return async (app) => {
     app.decorateRequest("askSessionUser", null);
-    app.post<{ Body: { question: string; locale?: string } }>(
+    app.post<{ Body: { question?: string; locale?: string } }>(
       "/api/ask",
       {
         // SCRUM-490 D3: Drossel NUR für den addon-Pfad. Bei Flag AUS ist das @fastify/rate-limit-Plugin
@@ -70,14 +73,16 @@ export function askRoutes(ask: AskService, guards: Guards): FastifyPluginAsync {
         },
       },
       async (request, reply) => {
-        // Body ist schema-validiert: question ist ein nicht-leerer String ≤ 8.000 Zeichen; Auth ist in
-        // preValidation erledigt. FR-I18N-01: UI-Sprache an den Reasoner; ungültig → "de".
+        // Der fehlende Body ist bereits durch das Schema (type:object) mit 400 abgefangen; ab hier ist
+        // request.body ein Objekt. question kann fehlen/leer sein → wie im Parent auf "" normalisieren
+        // (kein neuer 500). FR-I18N-01: UI-Sprache an den Reasoner; ungültig → "de".
+        const question = request.body.question ?? "";
         const locale: "de" | "en" = request.body.locale === "en" ? "en" : "de";
         const auth = request.authContext;
         if (auth?.authKind === "addon") {
           // SCRUM-490 D1/D2: validated-only + count_only für den Nur-Lese-Add-on-Key (unverändert).
           reply.code(200).send(
-            await ask.ask(request.body.question, auth.principal.id, locale, {
+            await ask.ask(question, auth.principal.id, locale, {
               validatedOnly: true,
               gapPolicy: "count_only",
             }),
@@ -91,7 +96,7 @@ export function askRoutes(ask: AskService, guards: Guards): FastifyPluginAsync {
           reply.code(401).send({ error: "UNAUTHENTICATED", message: "Session erforderlich." });
           return;
         }
-        reply.code(200).send(await ask.ask(request.body.question, user.id, locale));
+        reply.code(200).send(await ask.ask(question, user.id, locale));
       },
     );
 

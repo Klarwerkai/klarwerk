@@ -139,11 +139,12 @@ describe("SCRUM-242: Ask-Workflow (HTTP end-to-end)", () => {
   });
 });
 
-// SCRUM-498 B1: Härtung der bestehenden Route POST /api/ask — Body-Schema (question maxLength 8.000,
-// non-empty) + engeres bodyLimit (64 KiB). NO-OP für jeden heute-gültigen Request; nur Obergrenze +
-// kontrolliertes 400/413 statt 500/TypeError-Leak. Session-Guard läuft jetzt in preValidation (401 vor
-// der Schema-400), Add-on-Pfad unverändert (401/403 im onRequest-Hook).
-describe("SCRUM-498 B1: /api/ask Body-Schema + bodyLimit", () => {
+// SCRUM-498 B1 (ben-Review): BEWUSSTE MINIMALE Eingabe-Härtung von POST /api/ask. Rejectet NUR:
+// fehlenden Body (Crash-Fix → 400), Frage > 8.000 Zeichen (Kosten-Cap → 400), Body > 128 KiB (milder
+// Transport-Cap → 413). Leere/fehlende Frage, Zusatzfelder und escaped-Unicode-Fragen ≤ 8.000
+// Codepoints bleiben wie im Parent (200). Session-Guard in preValidation (401 vor Schema), Add-on-Pfad
+// unverändert (401/403 im onRequest-Hook).
+describe("SCRUM-498 B1: /api/ask minimale Eingabe-Härtung", () => {
   async function adminApp() {
     const app = buildApp(buildServices());
     await app.inject({
@@ -159,7 +160,29 @@ describe("SCRUM-498 B1: /api/ask Body-Schema + bodyLimit", () => {
     return { app, headers: { authorization: `Bearer ${login.json().token}` } };
   }
 
-  it("gültige KURZE Frage → weiterhin 200 (keine 40er-Mindestlänge, NO-OP)", async () => {
+  it("Parent-Verhalten: {} → 200 und {question:''} → 200 (leere/fehlende Frage bleibt zulässig)", async () => {
+    const { app, headers } = await adminApp();
+    expect(
+      (await app.inject({ method: "POST", url: "/api/ask", headers, payload: {} })).statusCode,
+    ).toBe(200);
+    expect(
+      (await app.inject({ method: "POST", url: "/api/ask", headers, payload: { question: "" } }))
+        .statusCode,
+    ).toBe(200);
+  });
+
+  it("Unterschied kein-Body (400, Crash-Fix) vs. {} (200)", async () => {
+    const { app, headers } = await adminApp();
+    const noBody = await app.inject({ method: "POST", url: "/api/ask", headers });
+    expect(noBody.statusCode).toBe(400);
+    expect(noBody.payload).not.toContain("TypeError");
+    expect(noBody.payload).not.toContain("Cannot read");
+    expect(
+      (await app.inject({ method: "POST", url: "/api/ask", headers, payload: {} })).statusCode,
+    ).toBe(200);
+  });
+
+  it("gültige kurze Frage → 200 (kein minLength)", async () => {
     const { app, headers } = await adminApp();
     const res = await app.inject({
       method: "POST",
@@ -170,37 +193,34 @@ describe("SCRUM-498 B1: /api/ask Body-Schema + bodyLimit", () => {
     expect(res.statusCode).toBe(200);
   });
 
-  it("question fehlt / nicht-coercierbarer Typ → 400 (Schema)", async () => {
+  it("escaped-Unicode-Frage ≤8.000 Codepoints, roh > 64 KiB → 200 (bens ROT-2, passt bei 128 KiB)", async () => {
     const { app, headers } = await adminApp();
-    // Fehlt ganz → 400.
-    expect(
-      (await app.inject({ method: "POST", url: "/api/ask", headers, payload: {} })).statusCode,
-    ).toBe(400);
-    // Objekt/Array sind nicht zu string coercierbar → 400. (Skalare wie 123 coerct Fastifys ajv
-    // per Default zu "123" — harmlos und kein heute-gültiger Request wird dadurch neu abgewiesen.)
-    expect(
-      (
-        await app.inject({
-          method: "POST",
-          url: "/api/ask",
-          headers,
-          payload: { question: { nested: "x" } },
-        })
-      ).statusCode,
-    ).toBe(400);
-    expect(
-      (
-        await app.inject({
-          method: "POST",
-          url: "/api/ask",
-          headers,
-          payload: { question: [1, 2] },
-        })
-      ).statusCode,
-    ).toBe(400);
+    // 6.000 😀-Codepoints als Surrogatpaar-Escapes → roh ~70 KiB, aber nur 6.000 Codepoints (≤ 8.000).
+    // Als ROHER JSON-String gesendet (JSON.stringify eines Objekts würde raw-UTF-8 ~23 KiB erzeugen).
+    const body = `{"question":"${"\\uD83D\\uDE00".repeat(6000)}"}`;
+    expect(Buffer.byteLength(body)).toBeGreaterThan(64 * 1024); // bei 64 KiB wäre das ein 413 gewesen
+    expect(Buffer.byteLength(body)).toBeLessThan(128 * 1024);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: { ...headers, "content-type": "application/json" },
+      payload: body,
+    });
+    expect(res.statusCode).toBe(200);
   });
 
-  it("question > 8.000 Zeichen → 400", async () => {
+  it("kurze Frage + großes Zusatzfeld knapp unter 128 KiB → 200 (additionalProperties bleibt)", async () => {
+    const { app, headers } = await adminApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers,
+      payload: { question: "Was ist X?", extra: "a".repeat(120 * 1024) }, // ~120 KiB < 128 KiB
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("Frage > 8.000 Zeichen → 400 (Kosten-Cap)", async () => {
     const { app, headers } = await adminApp();
     const res = await app.inject({
       method: "POST",
@@ -211,33 +231,18 @@ describe("SCRUM-498 B1: /api/ask Body-Schema + bodyLimit", () => {
     expect(res.statusCode).toBe(400);
   });
 
-  it("Body über dem bodyLimit (64 KiB) → 413 (kontrolliert, kein 500)", async () => {
+  it("Body > 128 KiB → 413 (milder Transport-Cap, kein 500)", async () => {
     const { app, headers } = await adminApp();
     const res = await app.inject({
       method: "POST",
       url: "/api/ask",
       headers,
-      payload: { question: "a".repeat(100_000) },
+      payload: { question: "a".repeat(200_000) },
     });
     expect(res.statusCode).toBe(413);
   });
 
-  it("fehlender/malformer Body → kontrolliertes 400, kein TypeError-Leak", async () => {
-    const { app, headers } = await adminApp();
-    const noBody = await app.inject({ method: "POST", url: "/api/ask", headers });
-    expect(noBody.statusCode).toBe(400);
-    expect(noBody.payload).not.toContain("TypeError");
-    expect(noBody.payload).not.toContain("Cannot read");
-    const malformed = await app.inject({
-      method: "POST",
-      url: "/api/ask",
-      headers: { ...headers, "content-type": "application/json" },
-      payload: "{ kaputt",
-    });
-    expect(malformed.statusCode).toBe(400);
-  });
-
-  it("Oracle: anonym → 401 VOR der Body-400 (auch bei leerem Body)", async () => {
+  it("Oracle: anonym → 401 vor der Schema-Validierung (auch bei Frage > 8.000)", async () => {
     const { app } = await adminApp();
     expect(
       (
@@ -248,8 +253,15 @@ describe("SCRUM-498 B1: /api/ask Body-Schema + bodyLimit", () => {
         })
       ).statusCode,
     ).toBe(401);
-    expect((await app.inject({ method: "POST", url: "/api/ask", payload: {} })).statusCode).toBe(
-      401,
-    );
+    // Schema-invalider Body wird für anon erst nach dem 401 relevant (Reorder greift).
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/api/ask",
+          payload: { question: "a".repeat(8_001) },
+        })
+      ).statusCode,
+    ).toBe(401);
   });
 });
