@@ -14,7 +14,7 @@ import {
   type OverlapVerdict,
   coreText,
 } from "../../conflicts";
-import type { KnowledgeObject, KoService } from "../../knowledge-object";
+import { type KnowledgeObject, type KoService, isConfidential } from "../../knowledge-object";
 import { queryTokens } from "../../reasoner";
 import type { SemanticPrefilter } from "./duplicate-detection";
 
@@ -105,8 +105,14 @@ async function selectValidatedPool(
   subject: DetectSubject,
   deps: CheckTextDeps,
 ): Promise<DetectSubject[]> {
+  // SCRUM-502: vertrauliche KOs sind KEINE Kandidaten — deckt BEIDE Stufen: Stufe 1 (lexikalischer Pool
+  // → kein Titel-/Existenz-Leak in der Antwort) und Stufe 2 (semantischer + lexikalischer Pool → kein
+  // coreText an Embedder/Judge; ein nearest-Treffer wird nach ko.get hier ebenfalls verworfen).
   const isValidatedCandidate = (k: KnowledgeObject): boolean =>
-    k.status === "validiert" && !k.demoSeed && k.id !== subject.refId;
+    k.status === "validiert" &&
+    !k.demoSeed &&
+    k.id !== subject.refId &&
+    !isConfidential(k.confidentiality);
 
   const hasJudge = deps.duplicateJudge !== undefined || deps.conflictJudge !== undefined;
   const prefilter = deps.semanticPrefilter;

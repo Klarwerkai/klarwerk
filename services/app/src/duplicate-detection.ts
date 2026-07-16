@@ -12,7 +12,12 @@ import {
   coreText,
 } from "../../conflicts";
 import type { EmbeddingProvider, EmbeddingStore } from "../../embedding";
-import type { KnowledgeObject, KoService } from "../../knowledge-object";
+import {
+  type KnowledgeObject,
+  type KoService,
+  dropConfidential,
+  isConfidential,
+} from "../../knowledge-object";
 import type { Reasoner } from "../../reasoner";
 
 // K0-2: Erkennungs-Gegenstand ist der Kerntext (title+statement+conditions+measures), nicht bodyHtml.
@@ -96,11 +101,15 @@ export async function detectDuplicatesForKo(
 ): Promise<void> {
   try {
     const subject = await deps.ko.get(koId);
-    if (!subject || subject.demoSeed) {
+    // SCRUM-502: ein vertrauliches Subjekt gibt seinen coreText nie an den Modell-Judge → Detection
+    // entfällt (wie bei Demo-Beiträgen). Der Subjekt-Text ist selbst ein externer Egress.
+    if (!subject || subject.demoSeed || isConfidential(subject.confidentiality)) {
       return;
     }
     const subjectSubject = toDetectSubject(subject);
-    const candidates = (await deps.ko.list())
+    // SCRUM-502: vertrauliche KOs raus aus dem Judge-Pool (toDetectSubject verwirft confidentiality →
+    // hier auf dem KnowledgeObject filtern, bevor die Kerntext-Subjekte entstehen).
+    const candidates = dropConfidential(await deps.ko.list())
       .filter((k) => k.id !== koId && !k.demoSeed)
       .map(toDetectSubject);
     if (candidates.length === 0) {
@@ -148,6 +157,11 @@ export async function indexKoForDuplicatePrefilter(
   }
   if (ko.demoSeed) {
     return; // Demo-Beiträge bleiben außen vor (K0-3), wie bei der Erkennung selbst.
+  }
+  // SCRUM-502: vertrauliche KOs werden NIE eingebettet — der Embedder ist ein externer Kontext (heute
+  // Stub, später echt). Kein Vektor, kein Egress. Bestehende Anzeige/Speicherung bleibt unberührt.
+  if (isConfidential(ko.confidentiality)) {
+    return;
   }
   try {
     const { vectors, embeddingVersion } = await semanticPrefilter.embedder.embed([

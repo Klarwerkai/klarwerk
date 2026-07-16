@@ -195,3 +195,36 @@ describe("AskService", () => {
     expect(assigned.priority).toBe("mittel");
   });
 });
+
+// SCRUM-502 (Sicherheit): vertrauliche KOs gehen NIE in einen externen Kontext. Für /api/ask heißt das:
+// nie ins Modell-Input, nie in die zitierten Quellen, nie in den Antworttext. Ein Upstream-Filter an der
+// Kandidatenauswahl deckt alle drei ab. Nicht-vertrauliche KOs bleiben unverändert nutzbar.
+describe("SCRUM-502: Ask schließt vertrauliche KOs aus", () => {
+  it("vertrauliches KO ist NIE zitierte Quelle / Schritt-Quelle", async () => {
+    const { ask, koService } = await setup();
+    const secret = await koService.create({
+      title: "Xylophon Notfall",
+      statement: "Xylophon-Anlage bei Störung sofort abschalten.",
+      type: "best_practice",
+      category: "Geheim",
+      author: "anna",
+      confidentiality: "vertraulich",
+    });
+    const { result } = await ask.ask("Was tun bei Störung der Xylophon-Anlage?");
+    expect(result.sources).not.toContain(secret.id);
+    expect(result.steps.every((s) => s.sourceId !== secret.id)).toBe(true);
+  });
+
+  it("Kontrast: dasselbe KO NICHT-vertraulich wird zitiert (der Filter ist die Ursache)", async () => {
+    const { ask, koService } = await setup();
+    const open = await koService.create({
+      title: "Xylophon Notfall",
+      statement: "Xylophon-Anlage bei Störung sofort abschalten.",
+      type: "best_practice",
+      category: "Betrieb",
+      author: "anna",
+    });
+    const { result } = await ask.ask("Was tun bei Störung der Xylophon-Anlage?");
+    expect(result.sources).toContain(open.id);
+  });
+});

@@ -274,3 +274,53 @@ describe("SCRUM-498 B2 (Fix): Embed-Backpressure via Prefilter", () => {
     expect(result.duplicates[0]?.method).toBe("model"); // Judge lief auf dem lexikalischen Pool
   });
 });
+
+// SCRUM-502 (Sicherheit): check-text darf vertrauliche KOs NIE offenlegen. isValidatedCandidate schließt
+// sie aus → Stufe 1 (deterministisch): kein Kandidat/Titel/Existenz in der Antwort; Stufe 2 (deep):
+// deren coreText erreicht den Modell-Judge nie (nicht im Pool). Nicht-vertrauliche laufen weiter.
+describe("SCRUM-502: check-text schließt vertrauliche KOs aus (beide Stufen)", () => {
+  function conf(id: string, statement: string): KnowledgeObject {
+    return {
+      ...mkKo(id, "validiert", statement),
+      confidentiality: "vertraulich",
+    } as KnowledgeObject;
+  }
+
+  it("Stufe 1: vertrauliches KO wird NIE als Duplikat/Titel offengelegt", async () => {
+    const { ko, findCandidates } = koService([conf("v1", TEXT_IDENTISCH)]);
+    const result = await checkText(
+      { text: TEXT_IDENTISCH, title: "Pumpe entlüften" },
+      { ko, overlaps: new OverlapService({ repo: new InMemoryOverlapRepo() }) },
+    );
+    expect(findCandidates).toHaveBeenCalled();
+    expect(result.duplicates).toHaveLength(0); // kein Existenz-/Titel-Leak
+  });
+
+  it("Stufe 2 (deep): coreText des vertraulichen KO geht NIE an den Judge", async () => {
+    const { prefilter } = spyPrefilter([{ id: "v2" }]); // Store meldet den vertraulichen Treffer …
+    const { ko } = koService([conf("v2", TEXT_MITTEL)]);
+    const judge = vi.fn(async (): Promise<OverlapVerdict | null> => teilweiseVerdict);
+    const result = await checkText(
+      { text: TEXT_IDENTISCH, title: "Pumpe entlüften" },
+      {
+        ko,
+        overlaps: new OverlapService({ repo: new InMemoryOverlapRepo() }),
+        duplicateJudge: judge,
+        semanticPrefilter: prefilter,
+      },
+    );
+    // … aber nach ko.get + isValidatedCandidate ist er raus → Judge nie mit seinem coreText aufgerufen.
+    expect(judge).not.toHaveBeenCalled();
+    expect(result.duplicates).toHaveLength(0);
+  });
+
+  it("nicht-vertrauliches KO bleibt unverändert Kandidat (kein Überfiltern)", async () => {
+    const { ko } = koService([mkKo("v3", "validiert", TEXT_IDENTISCH)]);
+    const result = await checkText(
+      { text: TEXT_IDENTISCH, title: "Pumpe entlüften" },
+      { ko, overlaps: new OverlapService({ repo: new InMemoryOverlapRepo() }) },
+    );
+    expect(result.duplicates).toHaveLength(1);
+    expect(result.duplicates[0]?.koId).toBe("v3");
+  });
+});

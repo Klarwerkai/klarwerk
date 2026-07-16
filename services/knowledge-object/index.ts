@@ -45,6 +45,8 @@ export { displayStatus, type DisplayStatus } from "./src/display-status";
 // SCRUM-415: Vertraulichkeitsstufen (Helfer + Konstante) — auch von anderen Modulen (Output) nutzbar.
 export {
   CONFIDENTIALITY_LEVELS,
+  // SCRUM-502: geteilter Egress-Filter für alle externen Kontexte (Modell/Embedder/Add-in).
+  dropConfidential,
   isConfidential,
   normalizeConfidentiality,
 } from "./src/confidentiality";

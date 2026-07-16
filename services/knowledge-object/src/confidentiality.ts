@@ -20,3 +20,14 @@ export function normalizeConfidentiality(value: unknown): Confidentiality {
 export function isConfidential(level: Confidentiality | undefined | null): boolean {
   return level === "vertraulich" || level === "streng_vertraulich";
 }
+
+// SCRUM-502: EIN geteilter Egress-Filter — entfernt vertrauliche KOs aus einer Auswahl, BEVOR sie in
+// einen externen Kontext gelangen (Modell/Embedder/Add-in/Export). Alle Egress-Stellen nutzen dasselbe
+// Prädikat isConfidential, damit die Semantik überall identisch zum Export-Filter (output-service) ist.
+// „intern"/fehlendes Feld bleibt drin — vertrauliche KOs bleiben intern voll nutzbar, verlieren aber
+// bewusst Modell-/Embedder-Features (korrekter Trade-off, kein Bug).
+export function dropConfidential<T extends { confidentiality?: Confidentiality | null }>(
+  items: readonly T[],
+): T[] {
+  return items.filter((item) => !isConfidential(item.confidentiality));
+}

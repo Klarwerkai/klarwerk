@@ -4,7 +4,12 @@
 // es bekommt modul-reine Kerntext-Subjekte + einen judge-Callback. Best-effort: ein Fehler in der
 // Erkennung darf das Einreichen NIE kippen — das KO ist zu diesem Zeitpunkt bereits gespeichert.
 import type { ConflictService, DetectSubject } from "../../conflicts";
-import type { KnowledgeObject, KoService } from "../../knowledge-object";
+import {
+  type KnowledgeObject,
+  type KoService,
+  dropConfidential,
+  isConfidential,
+} from "../../knowledge-object";
 import type { Reasoner } from "../../reasoner";
 
 // K0-2: Erkennungs-Gegenstand ist der Kerntext (title+statement+conditions+measures), nicht bodyHtml.
@@ -40,10 +45,14 @@ export async function detectConflictsForKo(
 ): Promise<void> {
   try {
     const subject = await deps.ko.get(koId);
-    if (!subject || subject.demoSeed) {
+    // SCRUM-502: ein vertrauliches Subjekt gibt seinen coreText nie an den Modell-Judge → Detection
+    // entfällt (wie bei Demo-Beiträgen). Gleicher Egress wie bei der Duplikaterkennung.
+    if (!subject || subject.demoSeed || isConfidential(subject.confidentiality)) {
       return;
     }
-    const pool = (await deps.ko.list())
+    // SCRUM-502: vertrauliche KOs raus aus dem Judge-Pool (toDetectSubject verwirft confidentiality →
+    // hier auf dem KnowledgeObject filtern).
+    const pool = dropConfidential(await deps.ko.list())
       .filter((k) => k.id !== koId && !k.demoSeed)
       .map(toDetectSubject);
     if (pool.length === 0) {

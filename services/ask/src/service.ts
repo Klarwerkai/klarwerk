@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
-import type { KoService } from "../../knowledge-object";
+import { type KoService, dropConfidential } from "../../knowledge-object";
 import {
   type AnswerResult,
   DEFAULT_TOP_K,
@@ -87,9 +87,14 @@ export class AskService {
         : await this.koService.findCandidates({ terms, limit: ASK_CANDIDATE_PREFILTER_LIMIT });
     // SCRUM-490 D2: Der Add-on-Principal (ask.validated) darf nie aus unvalidierten Inhalten antworten
     // — hier fallen alle nicht-„validiert"en Kandidaten weg, bevor der Reasoner sie sieht.
-    const prefiltered = opts?.validatedOnly
-      ? prefilteredRaw.filter((ko) => ko.status === "validiert")
-      : prefilteredRaw;
+    // SCRUM-502: vertrauliche KOs gehen NIE in einen externen Kontext — hier upstream entfernt, damit sie
+    // weder ins Modell-Input (reasoner.answer) noch in die zitierten Quellen (sources) noch in den
+    // Antworttext gelangen. Ein Filter deckt alle drei Egress-Wege (rollen-unabhängig, immer aktiv).
+    const prefiltered = dropConfidential(
+      opts?.validatedOnly
+        ? prefilteredRaw.filter((ko) => ko.status === "validiert")
+        : prefilteredRaw,
+    );
     const refs: KnowledgeRef[] = prefiltered.map((ko) => ({
       id: ko.id,
       title: ko.title,

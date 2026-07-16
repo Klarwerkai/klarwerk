@@ -280,3 +280,64 @@ describe("detect*ForKo — Fehler-Logging (ben #6)", () => {
     expect(logs).toHaveLength(1);
   });
 });
+
+// SCRUM-502 (Sicherheit): vertrauliche KOs gehen NIE in einen externen Kontext. Der Modell-Judge (Duplikat
+// + Konflikt) und der Embedder sind externe Kontexte → vertrauliche KOs raus aus dem Pool und aus der
+// Indizierung; ein vertrauliches SUBJEKT (dessen eigener coreText an den Judge ginge) überspringt die
+// Erkennung ganz. Nicht-vertrauliche KOs laufen unverändert weiter (kein Regress).
+describe("SCRUM-502: Vertraulichkeit — kein Egress an Modell-Judge/Embedder", () => {
+  const conf = (id: string, title: string, statement: string): KnowledgeObject =>
+    ({ ...makeKo(id, title, statement), confidentiality: "vertraulich" }) as KnowledgeObject;
+
+  it("Duplikat-Pool: vertraulicher Kandidat ist NIE im Judge-Pool; interne bleiben", async () => {
+    const secret = conf("c1", "dach reparatur", "ziegel dichtung undicht");
+    const { deps, poolIds, detect } = makeDeps(subject, [secret, near2, far1]);
+    await detectDuplicatesForKo("s", deps);
+    expect(detect).toHaveBeenCalledTimes(1);
+    expect(poolIds()).toEqual(["c2", "c3"]); // secret (c1) fehlt, Rest unverändert
+  });
+
+  it("Duplikat: vertrauliches SUBJEKT → Erkennung entfällt (Judge nie aufgerufen)", async () => {
+    const secretSubject = conf("s", "dach reparatur", "ziegel dichtung abdichtung wetter");
+    const { deps, detect } = makeDeps(secretSubject, [near1, near2]);
+    await detectDuplicatesForKo("s", deps);
+    expect(detect).not.toHaveBeenCalled();
+  });
+
+  it("Konflikt-Pool: vertraulicher Kandidat ist NIE im Judge-Pool; vertrauliches Subjekt entfällt", async () => {
+    const secret = conf("c1", "dach reparatur", "ziegel dichtung undicht");
+    let pool: string[] = [];
+    const detect = vi.fn(async (_s: unknown, p: ReadonlyArray<{ refId: string }>) => {
+      pool = p.map((x) => x.refId);
+    });
+    const deps = {
+      ko: { get: async () => subject, list: async () => [subject, secret, near2] },
+      conflicts: { detectForSubject: detect },
+      reasoner: { judgeConflict: async () => null },
+    } as unknown as Parameters<typeof detectConflictsForKo>[1];
+    await detectConflictsForKo("s", deps);
+    expect(detect).toHaveBeenCalledTimes(1);
+    expect([...pool].sort()).toEqual(["c2"]); // secret raus
+
+    // Vertrauliches Subjekt → Erkennung entfällt ganz.
+    const secretSubject = conf("s", "dach reparatur", "ziegel dichtung abdichtung wetter");
+    const detect2 = vi.fn(async () => undefined);
+    const deps2 = {
+      ko: { get: async () => secretSubject, list: async () => [secretSubject, near2] },
+      conflicts: { detectForSubject: detect2 },
+      reasoner: { judgeConflict: async () => null },
+    } as unknown as Parameters<typeof detectConflictsForKo>[1];
+    await detectConflictsForKo("s", deps2);
+    expect(detect2).not.toHaveBeenCalled();
+  });
+
+  it("Indizierung: vertrauliches KO wird NIE eingebettet (Store bleibt leer)", async () => {
+    const store = new InMemoryEmbeddingStore();
+    await indexKoForDuplicatePrefilter(conf("x", "titel", "geheimer text"), {
+      embedder: stubEmbeddingProvider(256),
+      store,
+      topK: 5,
+    });
+    expect(await store.nearest([1, 0, 0, 0], "stub@256", 5)).toEqual([]);
+  });
+});
