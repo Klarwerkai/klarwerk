@@ -7,11 +7,22 @@
 // In-Memory-Pfad bewusst (z. B. für einen künftigen, noch NICHT implementierten Insel-/sqlite-vec-Modus),
 // dann nur mit lauter Warnung. Rein und testbar — keine Prozess-/Env-Nebenwirkungen hier.
 
+// Eine Quelle der Wahrheit für Env-Strings am Bootstrap-Rand: trimmen; leerer/whitespace-only String →
+// undefined. So können Guard-Entscheidung und die tatsächliche Pg-/InMemory-Verzweigung in server.ts
+// NIE auseinanderlaufen (ben-Review ROT-1: "   " wäre roh truthy → pgServices, aber getrimmt leer).
+export function normalizeEnv(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 export interface StorageEnv {
   databaseUrl: string | undefined;
   nodeEnv: string | undefined;
   // KLARWERK_ALLOW_INMEMORY_PROD=1: bewusster Override, um in Produktion OHNE DATABASE_URL zu starten.
   allowInMemoryProd: string | undefined;
+  // NUR für die Formulierung der Override-Warnung (der Persistenz-ENTSCHEID bleibt journal-unabhängig —
+  // ein Journal rettet Produktion nie): ist der Dev-Persistenz-Journal-Pfad aktiv (KLARWERK_DEV_PERSIST)?
+  journalActive: boolean;
 }
 
 export class StoragePersistenceError extends Error {
@@ -42,13 +53,12 @@ export function assertPersistentStore(env: StorageEnv): StorageGuardDecision {
   }
   // Produktion OHNE DATABASE_URL: der Code fiele auf InMemory/Journal zurück.
   if (env.allowInMemoryProd?.trim() === "1") {
-    // Bewusster Override → Start erlaubt, aber laut warnen.
-    return {
-      warning:
-        "KLARWERK WARN: NODE_ENV=production OHNE DATABASE_URL — Start mit nicht-dauerhaftem " +
-        "In-Memory-Speicher, weil KLARWERK_ALLOW_INMEMORY_PROD=1 gesetzt ist. Daten gehen bei jedem " +
-        "Neustart/Deploy verloren und der KO-Bestand ist NICHT quell-gebunden (kein PgKoRepo).",
-    };
+    // Bewusster Override → Start erlaubt, aber laut warnen — nach dem PFAD, der real gewählt wird.
+    const prefix =
+      "KLARWERK WARN: NODE_ENV=production, KLARWERK_ALLOW_INMEMORY_PROD=1, kein DATABASE_URL → ";
+    const journalWarning = `${prefix}Journal-Speicher (KLARWERK_DEV_PERSIST): übersteht Prozess-Neustarts, ist aber NICHT prod-tauglich — nicht quell-gebunden, monoton wachsend, ohne Volume/Backup gefährdet. Für Produktion DATABASE_URL (PgKoRepo) setzen.`;
+    const inMemoryWarning = `${prefix}In-Memory-Speicher: Zustand geht bei Neustart/Deploy verloren. NICHT prod-tauglich. Für Produktion DATABASE_URL (PgKoRepo) setzen.`;
+    return { warning: env.journalActive ? journalWarning : inMemoryWarning };
   }
   // Default: fail-closed.
   throw new StoragePersistenceError(

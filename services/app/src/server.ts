@@ -7,7 +7,7 @@ import { buildApp, buildPgServices, buildServices } from "./build-app";
 import { createPool, migrate } from "./db";
 import { buildDevPersistServices } from "./dev-persist";
 import { type FactoryReset, factoryResetUnavailable } from "./factory-reset";
-import { assertPersistentStore } from "./storage-guard";
+import { assertPersistentStore, normalizeEnv } from "./storage-guard";
 import { registerWebStatic } from "./web-static";
 
 // Kanonische Domain (klarwerk.ai). app.<domain> wird dauerhaft hierher umgeleitet.
@@ -98,15 +98,20 @@ function makeFactoryReset(journal: string | undefined): FactoryReset {
 }
 
 async function start(): Promise<void> {
-  const databaseUrl = process.env.DATABASE_URL;
+  // EINE Quelle der Wahrheit (ben-Review ROT-1): DATABASE_URL genau hier am Rand normalisieren
+  // (trim; leer/whitespace → undefined). Derselbe Wert speist ALLE vier Verwendungen — Guard,
+  // Pg-vs-InMemory/Journal-Verzweigung, Factory-Reset-Erkennung und Modus-Log — sodass Guard-Entscheid
+  // und tatsächliche Verzweigung nie auseinanderlaufen. Kein zweites rohes process.env.DATABASE_URL.
+  const databaseUrl = normalizeEnv(process.env.DATABASE_URL);
   const journal = devPersistFile();
   // Betriebssicherheit (SCRUM-498 B3): in Produktion NIE still auf InMemory/Journal starten. Ohne
   // DATABASE_URL (→ PgKoRepo) bricht der Start FAIL-CLOSED ab — außer KLARWERK_ALLOW_INMEMORY_PROD=1
-  // ist bewusst gesetzt, dann nur eine laute Warnung.
+  // ist bewusst gesetzt, dann nur eine laute, pfad-genaue Warnung.
   const storageDecision = assertPersistentStore({
     databaseUrl,
     nodeEnv: process.env.NODE_ENV,
     allowInMemoryProd: process.env.KLARWERK_ALLOW_INMEMORY_PROD,
+    journalActive: journal !== undefined,
   });
   if (storageDecision.warning) {
     process.stderr.write(`${storageDecision.warning}\n`);
