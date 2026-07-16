@@ -13,7 +13,10 @@ import type { SemanticPrefilter } from "./duplicate-detection";
 
 // SCRUM-491 Slice 4 (+ ben-Review-Fix): side-effect-freier Dry-Run-Kern. Prüft transienten Freitext
 // gegen den VALIDIERTEN Bestand — ohne etwas anzulegen, ohne Text an einen Embedder abzugeben, sofern
-// kein judge gesetzt ist, und mit hartem Retrieval-Cap an der Datenquelle (kein Full-Scan).
+// kein judge gesetzt ist. Der Orchestrator lädt NIE den Gesamtbestand (kein ko.list()-all): semantisch
+// nur die topK-Treffer per ID, lexikalisch die gedeckelte Source-Query. Das quell-seitige Deckeln
+// selbst ist Sache des Repos (PgKoRepo: SQL LIMIT — repo-pg-candidates.test.ts; InMemory-Output-Limit —
+// repo-candidates.test.ts), nicht dieses Orchestrators.
 const TEXT_IDENTISCH = "Nach dem Anfahren 10 Sekunden warten, dann die Pumpe entlüften.";
 const TEXT_MITTEL = "Nach dem Anfahren zehn Sekunden warten.";
 
@@ -33,11 +36,15 @@ function mkKo(id: string, status: "validiert" | "offen", statement: string): Kno
 
 // Fake-KoService mit Spies: der Orchestrator darf list() (all-then-filter) NIE rufen, sondern die
 // gedeckelte Source-Query findCandidates({terms, limit}) bzw. get(id) für den bounded fetch.
+// WICHTIG (ben-Re-Review): findCandidates deckelt hier bewusst NICHT selbst (kein seed.slice(limit)).
+// Das quell-seitige Deckeln ist Sache des echten Repos (PgKoRepo: SQL LIMIT — geprüft in
+// repo-pg-candidates.test.ts; InMemory-Output-Limit — geprüft in repo-candidates.test.ts). Würde der
+// Fake sich selbst begrenzen, wäre jede „Bounding"-Assertion tautologisch. Stattdessen messen die
+// Tests, was der ORCHESTRATOR tatsächlich lädt/anfordert: kein list(), get() nur je topK-Treffer,
+// und findCandidates mit dem harten limit.
 function koService(seed: KnowledgeObject[]) {
   const list = vi.fn(async () => seed);
-  const findCandidates = vi.fn(async (q: { terms: readonly string[]; limit: number }) =>
-    seed.slice(0, q.limit),
-  );
+  const findCandidates = vi.fn(async (_q: { terms: readonly string[]; limit: number }) => seed);
   const get = vi.fn(async (id: string) => seed.find((k) => k.id === id));
   const ko = { list, findCandidates, get } as unknown as KoService;
   return { ko, list, findCandidates, get };
@@ -142,18 +149,31 @@ describe("SCRUM-491: checkText — Dry-Run (validated-only, keine Persistenz, so
     expect(result.duplicates[0]?.method).toBe("model");
   });
 
-  it("Bounding: großer Bestand → nur topK an der Quelle (findCandidates limit=20), kein ko.list()", async () => {
+  it("Bounding (semantischer Pfad): 50 im Store, aber der Orchestrator lädt NUR die topK Treffer per ko.get", async () => {
+    // Ehrliche Messung (ben-Re-Review): 50 validierte KOs im Store, der Prefilter liefert topK (=20)
+    // Nächste. Gemessen wird, was der ORCHESTRATOR tatsächlich lädt/bewertet — der Fake-get würde jede
+    // der 50 IDs bedienen, aber der Orchestrator fragt nur die 20 nearest-Treffer an. Ein reintroduzierter
+    // Full-Load (ko.list()-all oder get je Bestands-KO) würde diesen Test rot machen.
     const big = Array.from({ length: 50 }, (_, i) => mkKo(`v${i}`, "validiert", TEXT_IDENTISCH));
-    const { ko, list, findCandidates } = koService(big);
+    const nearestIds = big.slice(0, 20).map((k) => ({ id: k.id }));
+    const { prefilter, nearest } = spyPrefilter(nearestIds);
+    const judge = vi.fn(async (): Promise<OverlapVerdict | null> => teilweiseVerdict);
+    const { ko, list, get, findCandidates } = koService(big);
     await checkText(
       { text: TEXT_IDENTISCH, title: "Pumpe entlüften" },
-      { ko, overlaps: new OverlapService({ repo: new InMemoryOverlapRepo() }) },
+      {
+        ko,
+        overlaps: new OverlapService({ repo: new InMemoryOverlapRepo() }),
+        duplicateJudge: judge,
+        semanticPrefilter: prefilter,
+      },
     );
+    // store.nearest wird mit hartem topK angefragt; danach genau ein ko.get je Treffer — höchstens topK.
+    expect(nearest).toHaveBeenCalledWith(expect.anything(), "spy@3", 20, "transient");
+    expect(get).toHaveBeenCalledTimes(20);
+    // Kein Full-Load: weder ko.list()-all noch die lexikalische Fallback-Query (Semantic traf → kein Fallback).
     expect(list).not.toHaveBeenCalled();
-    expect(findCandidates).toHaveBeenCalledWith(expect.objectContaining({ limit: 20 }));
-    // Die Quelle lieferte höchstens topK Zeilen (findCandidates honoriert das Limit).
-    const returned = (await findCandidates.mock.results[0]?.value) as KnowledgeObject[];
-    expect(returned.length).toBeLessThanOrEqual(20);
+    expect(findCandidates).not.toHaveBeenCalled();
   });
 
   it("mit Fake-judge (ohne Prefilter) → Modell-Urteil via findCandidates, KEINE Persistenz", async () => {

@@ -100,6 +100,12 @@ export class InMemoryKoRepo implements KoRepo {
   // SCRUM-361: vorgefilterte, begrenzte Kandidatenmenge. ODER-Treffer über die Inhalts-Terme,
   // sortiert nach (Term-Trefferzahl ↓, validiert zuerst, Trust ↓) und auf `limit` gedeckelt — so
   // bleiben relevante validierte Treffer auch bei vielen Kandidaten unter dem Limit erhalten.
+  //
+  // SCRUM-491 (ben-Re-Review, Scope-Ehrlichkeit): Dies ist der TEST-/DEV-Adapter und ist NICHT
+  // quell-seitig gedeckelt — er scort den (kleinen) In-Memory-Bestand VOLLSTÄNDIG und schneidet erst
+  // danach auf `limit`. Der Live-/Prod-Bound liegt bei PgKoRepo (hartes SQL LIMIT, quell-seitig, s.
+  // repo-pg.ts) bzw. dem Insel-Adapter (sqlite-vec, Index-begrenzt). Nicht für einen echten
+  // Live-Bestand verwenden — bei großem Bestand würde hier der Full-Scan teuer.
   findCandidates(query: KoCandidateQuery): Promise<KnowledgeObject[]> {
     const terms = query.terms.map((t) => t.trim().toLowerCase()).filter((t) => t.length > 0);
     if (terms.length === 0) {
