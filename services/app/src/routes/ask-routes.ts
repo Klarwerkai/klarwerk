@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { type AskService, isGapPriority } from "../../../ask";
+import { authorizesAsk } from "../addon-principal";
 import { addonRateLimit } from "../addon-rate-limit";
 import { type Guards, sendError } from "../http";
 
@@ -22,6 +23,15 @@ export function askRoutes(ask: AskService, guards: Guards): FastifyPluginAsync {
         // im Hook mit 401/403 behandelt, ehe der Handler läuft.
         const auth = request.authContext;
         if (auth?.authKind === "addon") {
+          // Defense-in-Depth (ben-Review): nur ein Principal mit Capability ask.validated erreicht den
+          // Ask-Pfad; sonst fail-closed (403). Heute trägt jeder Add-on-Principal ask.validated — der
+          // Check hält den Pfad zu, falls je eine andere Capability eingeführt wird.
+          if (!authorizesAsk(auth.principal)) {
+            reply
+              .code(403)
+              .send({ error: "FORBIDDEN", message: "Add-in-Capability unzureichend." });
+            return;
+          }
           reply.code(200).send(
             await ask.ask(request.body.question ?? "", auth.principal.id, locale, {
               validatedOnly: true,

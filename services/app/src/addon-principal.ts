@@ -1,11 +1,17 @@
 import { timingSafeEqual } from "node:crypto";
 import type { FastifyRequest } from "fastify";
-import { ADDON_KEY_HEADER, addonApiEnabled } from "./addon-api";
+import { ADDON_ASK_PATH, ADDON_KEY_HEADER, addonApiEnabled } from "./addon-api";
 
 // SCRUM-490 D2: dedizierter Add-on-Principal. KEIN User, KEIN Viewer, KEIN generisches ko.read —
 // genau EINE Capability: ask.validated. Diese autorisiert AUSSCHLIESSLICH POST /api/ask, und dort
-// nur validated-only (keine unvalidierten Inhalte). Tenant-gebunden. Der Principal ersetzt den
-// synthetischen ko.read-Viewer aus 48f24e2 vollständig.
+// nur validated-only (keine unvalidierten Inhalte). Der Principal ersetzt den synthetischen
+// ko.read-Viewer aus 48f24e2 vollständig.
+//
+// Mandantenmodell (ben-Review): Klarwerk ist pro Kunde SINGLE-TENANT — ein Deployment = ein Mandant,
+// die Instanz-/Datengrenze IST die Mandantengrenze. Es gibt daher bewusst KEINE per-Request-
+// Tenant-Bindung und keine tenant-basierte Retrieval-Filterung. Multi-Tenant (mit erzwungener
+// Isolation) ist v2/SSO. Es bleibt bewusst kein tenant-Feld am Principal, das eine Grenze suggeriert,
+// die nicht erzwungen wird.
 
 // Stabile Bucket-/Audit-ID des Add-on-Pfads (bleibt die Rate-Limit-Bucket-ID). Reine Kennung, kein
 // realer Nutzer, keine PII.
@@ -17,8 +23,24 @@ export const ADDON_CAPABILITY = "ask.validated" as const;
 export interface AddonPrincipal {
   readonly kind: "addon";
   readonly id: string; // ADDON_ACTOR_ID — stabile Bucket-/Audit-ID
-  readonly tenant: string; // tenant-gebunden (Env KLARWERK_ADDON_TENANT, Default "default")
   readonly capability: typeof ADDON_CAPABILITY;
+}
+
+// Defense-in-Depth (ben-Review): der Handler autorisiert nur einen Principal mit GENAU dieser
+// Capability. Fail-closed gegen künftige Add-on-Capabilities — heute trägt jeder Principal
+// ask.validated, aber der Check verhindert, dass ein späterer Principal ungeprüft /api/ask erreicht.
+export function authorizesAsk(principal: AddonPrincipal): boolean {
+  return principal.capability === ADDON_CAPABILITY;
+}
+
+// Byte-genaue Roh-Pfad-Prüfung (ben-Review): der Teil vor "?" MUSS exakt "/api/ask" sein — kein
+// Prozent-Enkodieren (/api/%61sk), kein Dot-Segment (/%2e%2e/api/ask), kein Trailing-Slash, keine
+// Groß-/Kleinschreibungs-Variante. Ergänzt den kanonischen routeOptions.url-Check, den Fastify nach
+// Normalisierung matcht. Node liefert req.url (request.raw.url) un-normalisiert → dieser Check greift
+// in Produktion. (Hinweis: light-my-request/inject löst Dot-Segmente vorab auf, daher wird diese
+// Funktion byte-genau unit-getestet statt nur über inject.)
+export function isLiteralAskPath(rawUrl: string | undefined): boolean {
+  return (rawUrl ?? "").split("?")[0] === ADDON_ASK_PATH;
 }
 
 // Request-lokaler Auth-Kontext: EINMAL pro Request bestimmt (onRequest-Hook), danach von
@@ -39,12 +61,6 @@ declare module "fastify" {
   interface FastifyRequest {
     authContext?: AuthContext | null;
   }
-}
-
-function addonTenant(): string {
-  const raw = process.env.KLARWERK_ADDON_TENANT;
-  const value = raw?.trim();
-  return value && value.length > 0 ? value : "default";
 }
 
 // Konstantzeit-Vergleich gegen den konfigurierten Key. Ohne gesetzten Env-Key ist der Pfad ZU (false),
@@ -79,11 +95,6 @@ export function resolveAddonAuth(request: FastifyRequest): AddonAuthResolution {
   }
   return {
     kind: "valid",
-    principal: {
-      kind: "addon",
-      id: ADDON_ACTOR_ID,
-      tenant: addonTenant(),
-      capability: ADDON_CAPABILITY,
-    },
+    principal: { kind: "addon", id: ADDON_ACTOR_ID, capability: ADDON_CAPABILITY },
   };
 }

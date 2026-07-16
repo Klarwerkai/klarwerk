@@ -1,5 +1,12 @@
 import { readFileSync, readdirSync } from "node:fs";
+import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  type AddonPrincipal,
+  authorizesAsk,
+  isLiteralAskPath,
+  resolveAddonAuth,
+} from "./addon-principal";
 import { buildApp, buildServices } from "./build-app";
 
 // SCRUM-490 D2: dedizierter Add-on-Principal (ask.validated) ERSETZT den ko.read-Viewer aus 48f24e2.
@@ -10,12 +17,7 @@ const ADDON_KEY_HEADER = "x-klarwerk-addon-key";
 const KEY = "s3cr3t-addon-key";
 
 const SAVED: Record<string, string | undefined> = {};
-const KEYS = [
-  "KLARWERK_ADDON_API",
-  "KLARWERK_ADDON_API_KEY",
-  "KLARWERK_ADDON_ORIGIN",
-  "KLARWERK_ADDON_TENANT",
-];
+const KEYS = ["KLARWERK_ADDON_API", "KLARWERK_ADDON_API_KEY", "KLARWERK_ADDON_ORIGIN"];
 beforeEach(() => {
   for (const k of KEYS) {
     SAVED[k] = process.env[k];
@@ -172,6 +174,67 @@ describe("KLARWERK_ADDON_API — Add-on-Principal (Flag AN)", () => {
       payload: { question: "Hallo?" },
     });
     expect(res.statusCode).toBe(401);
+  });
+
+  it("Roh-Pfad-Exaktheit end-to-end (inject-treue Fälle): literal → 200, Variante → 403", async () => {
+    // Hinweis: light-my-request löst Dot-Segmente (/%2e%2e/…) vorab auf, daher ist dieser Fall im
+    // Unit-Test unten byte-genau abgedeckt; hier die Fälle, die inject den Rohpfad treu durchreicht.
+    const app = buildApp(buildServices());
+    const post = (url: string) =>
+      app.inject({
+        method: "POST",
+        url,
+        headers: { [ADDON_KEY_HEADER]: KEY },
+        payload: { question: "Hallo?" },
+      });
+    expect((await post("/api/ask")).statusCode).toBe(200);
+    expect((await post("/api/ask?x=1")).statusCode).toBe(200);
+    expect((await post("/api/%61sk")).statusCode).toBe(403); // %61 = 'a'
+    expect((await post("/api/ask/")).statusCode).toBe(403); // Trailing-Slash
+    expect((await post("/API/ASK")).statusCode).toBe(403); // Groß-/Kleinschreibung
+  });
+});
+
+// ben-Review-Nachbesserung: Defense-in-Depth-Capability-Check + expliziter Single-Tenant-Vertrag
+// (keine erzwungene Tenant-Grenze am Principal).
+describe("SCRUM-490 D2 (ben-Review): Capability-Check + Single-Tenant-Vertrag", () => {
+  it("isLiteralAskPath: nur der byte-genaue Pfad /api/ask ist literal (Roh-Pfad-Regel)", () => {
+    expect(isLiteralAskPath("/api/ask")).toBe(true);
+    expect(isLiteralAskPath("/api/ask?x=1")).toBe(true);
+    expect(isLiteralAskPath("/api/%61sk")).toBe(false); // %61 = 'a'
+    expect(isLiteralAskPath("/%2e%2e/api/ask")).toBe(false); // %2e%2e = '..'
+    expect(isLiteralAskPath("/api/ask/")).toBe(false); // Trailing-Slash
+    expect(isLiteralAskPath("/API/ASK")).toBe(false); // Groß-/Kleinschreibung
+    expect(isLiteralAskPath(undefined)).toBe(false);
+  });
+
+  it("authorizesAsk: nur Capability ask.validated autorisiert, sonst fail-closed", () => {
+    const real: AddonPrincipal = { kind: "addon", id: "addon:klara", capability: "ask.validated" };
+    expect(authorizesAsk(real)).toBe(true);
+    // Simulierte künftige Capability → fail-closed (403 im Handler).
+    const other = {
+      kind: "addon",
+      id: "addon:klara",
+      capability: "ask.everything",
+    } as unknown as AddonPrincipal;
+    expect(authorizesAsk(other)).toBe(false);
+  });
+
+  it("der aufgelöste Principal trägt KEIN tenant-Feld (Single-Tenant, keine erzwungene Grenze)", () => {
+    process.env.KLARWERK_ADDON_API = "1";
+    process.env.KLARWERK_ADDON_API_KEY = KEY;
+    const res = resolveAddonAuth({
+      headers: { [ADDON_KEY_HEADER]: KEY },
+    } as unknown as FastifyRequest);
+    expect(res.kind).toBe("valid");
+    if (res.kind === "valid") {
+      expect(res.principal).toEqual({
+        kind: "addon",
+        id: "addon:klara",
+        capability: "ask.validated",
+      });
+      expect(Object.keys(res.principal)).not.toContain("tenant");
+    }
   });
 });
 

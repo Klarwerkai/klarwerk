@@ -110,7 +110,7 @@ import {
   type ValidationSettingsRepo,
 } from "../../validation";
 import { ADDON_ASK_PATH, ADDON_KEY_HEADER, addonApiEnabled, resolveAddonOrigin } from "./addon-api";
-import { resolveAddonAuth } from "./addon-principal";
+import { isLiteralAskPath, resolveAddonAuth } from "./addon-principal";
 import type { SemanticPrefilter } from "./duplicate-detection";
 import type { FactoryReset } from "./factory-reset";
 import { makeGuards } from "./http";
@@ -452,8 +452,15 @@ export function buildApp(
       }
       if (auth.kind === "valid") {
         request.authContext = { authKind: "addon", principal: auth.principal };
+        // ben-Review: der kanonische routeOptions.url-Check allein reicht nicht — Fastify normalisiert
+        // Prozent-Enkodierung (z. B. /api/%61sk, /%2e%2e/api/ask) und würde solche Requests auf die
+        // /api/ask-Route matchen. Zusätzlich verlangen wir daher, dass der ROHE, un-normalisierte Pfad
+        // (request.raw.url) byte-genau "/api/ask" ist. Klara sendet ausschließlich den literalen Pfad →
+        // kein legitimer enkodierter Aufruf → risikolos. Beide Checks als Defense-in-Depth.
         const isAskRoute =
-          request.method === "POST" && request.routeOptions?.url === ADDON_ASK_PATH;
+          request.method === "POST" &&
+          request.routeOptions?.url === ADDON_ASK_PATH &&
+          isLiteralAskPath(request.raw.url);
         if (!isAskRoute) {
           reply
             .code(403)
