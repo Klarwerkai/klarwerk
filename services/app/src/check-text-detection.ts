@@ -25,10 +25,16 @@ const TRANSIENT_ID = "transient";
 // SCRUM-491 MVP (ben-Review + Re-Review): Retrieval-Deckel, den der Orchestrator an die Datenquelle
 // stellt. Der Orchestrator lädt NIE den Gesamtbestand (kein ko.list()-all): semantisch nur die
 // store.nearest-topK-Treffer per ID (bounded fetch), lexikalisch delegiert er an die gedeckelte
-// Source-Query ko.findCandidates({terms, limit: topK}). Ob die QUELLE selbst hart deckelt, liegt am
-// Repo: PgKoRepo (Prod) setzt ein hartes SQL LIMIT, der Insel-Adapter (sqlite-vec) begrenzt am Index.
-// Der In-Memory-Test/Dev-Adapter scort seinen (kleinen) Bestand voll und schneidet erst danach auf
-// limit — der echte quell-seitige Bound gilt also für die Prod-Repos, nicht für den Dev-Adapter.
+// Source-Query ko.findCandidates({terms, limit: topK}). Ob die QUELLE selbst hart deckelt, hängt am
+// verdrahteten Repo:
+//  - Instanzen mit DATABASE_URL nutzen PgKoRepo (hartes SQL LIMIT, s. repo-pg.ts), nie InMemory
+//    (buildPgServices; DATABASE_URL hat Vorrang, s. server.ts). Die Live-Instanz app.klarwerk.ai
+//    setzt DATABASE_URL.
+//  - Der KLARWERK_DEV_PERSIST-Journal-Pfad nutzt InMemoryKoRepo und ist Dev-only; dieser Adapter
+//    deckelt nur die Ausgabe, nicht den Scan (scort den kleinen Bestand voll). OHNE DATABASE_URL
+//    gilt der quell-seitige Bound also NICHT.
+//  - Geplante weitere Adapter (pgvector, sqlite-vec/Insel) sind NOCH NICHT implementiert und müssen
+//    den Top-K-Quell-Vertrag selbst erfüllen, wenn gebaut.
 const RETRIEVAL_TOP_K = 20;
 
 export interface CheckTextInput {
@@ -85,8 +91,9 @@ function transientSubject(input: CheckTextInput): DetectSubject {
 
 // Pool = NUR validierte KOs. Der Orchestrator lädt NIE den Gesamtbestand: kein ko.list()-all, sondern
 // entweder die semantischen topK-Treffer per ID oder die gedeckelte lexikalische Source-Query. Ob die
-// QUELLE selbst hart auf topK deckelt, ist Sache des Repos (PgKoRepo: SQL LIMIT; Insel: sqlite-vec) —
-// der In-Memory-Dev-Adapter scort seinen kleinen Bestand voll und schneidet erst danach (s. repo.ts).
+// QUELLE selbst hart auf topK deckelt, ist Sache des Repos: aktuell deckelt nur PgKoRepo quell-seitig
+// (SQL LIMIT); der In-Memory-Dev-Adapter scort seinen kleinen Bestand voll und schneidet erst danach
+// (s. repo.ts).
 //  - Fix 1 (kein Textabfluss ohne judge): Der Semantic-Prefilter (embed → nearest) läuft NUR im
 //    Modell-Modus (mind. ein judge gesetzt). Ohne judge verlässt KEIN Text den Prozess Richtung
 //    Embedder/Provider — der deterministische Modus nutzt ausschließlich die lexikalische Source-Query.
