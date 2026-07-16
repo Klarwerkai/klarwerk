@@ -69,6 +69,7 @@ import {
   type CaptureMode,
   EXPERT_MODE,
   areModesExpanded,
+  initialCaptureWorkspaceOpen,
   isCaptureFirstRun,
   isExpertMode,
   markCaptureIntroSeen,
@@ -362,7 +363,15 @@ export function Capture(): JSX.Element {
   const qc = useQueryClient();
   const drafts = useDrafts();
   const [draftsOpen, setDraftsOpen] = useState(false);
-  const [captureWorkspaceOpen, setCaptureWorkspaceOpen] = useState(true);
+  // SCRUM-458: Der Erfassungs-Arbeitsraum startet EINGEKLAPPT (ruhiger Aufklapp-Einstieg statt vollem
+  // Formular). Defensiv aufgeklappt, wenn schon ein aktiver Kontext vorliegt (Lücken-Kontext ?gap= oder
+  // vorbefüllter Rohtext aus Deep-Link/Entwurf), damit dieser nie verdeckt startet.
+  const [captureWorkspaceOpen, setCaptureWorkspaceOpen] = useState(() =>
+    initialCaptureWorkspaceOpen({
+      hasGapContext: gapContext !== null,
+      hasPrefilledRaw: raw.trim().length > 0,
+    }),
+  );
   const workAreaRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -1027,6 +1036,12 @@ export function Capture(): JSX.Element {
     }, 0);
   };
 
+  // SCRUM-458: der Aufklapp-Einstieg ist ein echter Toggle — erneuter Klick klappt den Arbeitsraum
+  // wieder ein (reine Sichtbarkeit; Inhalte/State bleiben erhalten).
+  const closeCaptureWorkspace = (): void => {
+    setCaptureWorkspaceOpen(false);
+  };
+
   const cancelFileImport = (): void => {
     setFileName(null);
     setFileText("");
@@ -1600,11 +1615,17 @@ export function Capture(): JSX.Element {
             <FileText size={15} />
             {t("capture.fileImportJump")}
           </Button>
-          {!captureWorkspaceOpen ? (
-            <Button variant="ghost" onClick={openCaptureWorkspace}>
-              Weitere Wege anzeigen
-            </Button>
-          ) : null}
+          {/* SCRUM-458 (Nullschulung): echter Disclosure-Einstieg für den Erfassungs-Arbeitsraum —
+              standardmäßig eingeklappt, Klick klappt Schritt-Leiste + Erzähl-Modi + Formular auf, erneuter
+              Klick wieder ein. aria-expanded/aria-controls für Tastatur/Screenreader. */}
+          <Button
+            variant="ghost"
+            onClick={captureWorkspaceOpen ? closeCaptureWorkspace : openCaptureWorkspace}
+            aria-expanded={captureWorkspaceOpen}
+            aria-controls="capture-workspace"
+          >
+            {captureWorkspaceOpen ? "Weitere Wege einklappen ▴" : "Weitere Wege anzeigen ▾"}
+          </Button>
         </div>
       </Card>
 
@@ -2006,6 +2027,7 @@ export function Capture(): JSX.Element {
           Drittel gequetschtem Formular. Jetzt EINE zentrierte, volle Spalte — das Formular zuerst
           (order-first), darunter die optionalen Details und die Aktionen. Ruhig und lesbar. */}
       <div
+        id="capture-workspace"
         aria-hidden={!captureWorkspaceOpen}
         className={
           captureWorkspaceOpen

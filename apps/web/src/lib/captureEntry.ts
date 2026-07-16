@@ -36,6 +36,19 @@ export function visibleNarrateModes(showMore: boolean, mode: CaptureMode): reado
     : NARRATE_MODES.filter((m) => m === "freitext");
 }
 
+// SCRUM-458 (Nullschulung): Der klassische Erfassungs-Arbeitsraum (Schritt-Leiste · Erzähl-Modi ·
+// Formular) startet EINGEKLAPPT — beim Betreten zeigt Schritt 1 nur einen ruhigen Aufklapp-Einstieg
+// statt eines vollen Formulars. Defensiv AUFGEKLAPPT, wenn schon ein aktiver Kontext vorliegt, der sonst
+// verdeckt wäre: ein Lücken-Kontext (?gap=) oder ein Deep-Link/fortgesetzter Entwurf mit vorbefülltem
+// Rohtext. Reine Sichtbarkeit — kein Funktionsverlust, alle Wege bleiben einen Klick entfernt (analog
+// areModesExpanded, das einen aktiven Nicht-Freitext-Modus nie verdeckt).
+export function initialCaptureWorkspaceOpen(context: {
+  hasGapContext: boolean;
+  hasPrefilledRaw: boolean;
+}): boolean {
+  return context.hasGapContext || context.hasPrefilledRaw;
+}
+
 // Flache Copy-Schlüssel — EINE Quelle für Komponente + Test (kein Doppel-Literal).
 // - narrateKicker: ruhige Überschrift über den Erzähl-Modi („Erzähl dein Wissen").
 // - expertToggle: bewusster Einstieg in den Expertenpfad (Formular direkt ausfüllen).

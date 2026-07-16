@@ -294,7 +294,12 @@ describe("KW-W2-01: Ganzdokument-Import als bewusster Entwurf", () => {
       "utf8",
     );
 
-    expect(captureSource).toContain(
+    // SCRUM-458: der Arbeitsraum startet jetzt EINGEKLAPPT (ruhiger Aufklapp-Einstieg statt vollem
+    // Formular). Der Default läuft über initialCaptureWorkspaceOpen (eingeklappt, außer aktiver Kontext;
+    // in captureEntry.modes.test.ts geprüft) — NICHT mehr useState(true). Der KW-W2-01-Kern bleibt:
+    // Dateiimport-Abbrechen blendet aus (cancelFileImport → setCaptureWorkspaceOpen(false), oben geprüft).
+    expect(captureSource).toContain("initialCaptureWorkspaceOpen({");
+    expect(captureSource).not.toContain(
       "const [captureWorkspaceOpen, setCaptureWorkspaceOpen] = useState(true)",
     );
     expect(captureSource).toContain("const openCaptureWorkspace = (): void =>");
