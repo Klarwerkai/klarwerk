@@ -4,52 +4,81 @@ import {
   assertPersistentStore,
 } from "../../services/app/src/storage-guard";
 
-// Betriebssicherheit (06.07.): In Produktion darf die App NIE still In-Memory starten — sonst
-// gehen bei jedem Neustart/Deploy alle Daten (inkl. Konten) verloren. Der Guard bricht dann laut ab.
-describe("assertPersistentStore — kein stiller In-Memory-Betrieb in Produktion", () => {
-  it("wirft in Produktion ohne DATABASE_URL und ohne Journal", () => {
-    expect(() =>
-      assertPersistentStore({ databaseUrl: undefined, journal: undefined, nodeEnv: "production" }),
-    ).toThrow(StoragePersistenceError);
-    // leere/whitespace-Werte zählen NICHT als gesetzt
-    expect(() =>
-      assertPersistentStore({ databaseUrl: "  ", journal: "", nodeEnv: "production" }),
-    ).toThrow(StoragePersistenceError);
-  });
-
-  it("die Fehlermeldung nennt den Grund und die Lösung (DATABASE_URL)", () => {
-    try {
-      assertPersistentStore({ databaseUrl: undefined, journal: undefined, nodeEnv: "production" });
-      throw new Error("hätte werfen müssen");
-    } catch (e) {
-      expect((e as Error).message).toContain("DATABASE_URL");
-      expect((e as Error).message).toMatch(/verlör|Datenverlust|verlöre|verlieren|Daten/);
-    }
-  });
-
-  it("erlaubt Produktion MIT Postgres (DATABASE_URL) oder MIT Dev-Journal", () => {
-    expect(() =>
-      assertPersistentStore({
-        databaseUrl: "postgres://u:p@h:5432/db",
-        journal: undefined,
-        nodeEnv: "production",
-      }),
-    ).not.toThrow();
+// SCRUM-498 B3: In Produktion darf die App NIE still auf InMemory/Journal starten — ohne DATABASE_URL
+// (→ PgKoRepo) fiele sie auf nicht-dauerhaften, nicht quell-gebundenen Speicher zurück. Der Guard bricht
+// dann fail-closed ab; ein expliziter Override (KLARWERK_ALLOW_INMEMORY_PROD=1) erlaubt es bewusst mit
+// lauter Warnung. Nicht-Produktion bleibt unverändert (In-Memory erlaubt).
+describe("SCRUM-498 B3: assertPersistentStore — fail-closed in Produktion ohne DATABASE_URL", () => {
+  it("Produktion ohne DATABASE_URL und ohne Override → fail-closed (auch das Journal rettet nicht)", () => {
+    // Ein gesetztes KLARWERK_DEV_PERSIST-Journal zählt bewusst NICHT als prod-tauglich → hier nur der
+    // Guard-relevante Zustand: kein DATABASE_URL, kein Override.
     expect(() =>
       assertPersistentStore({
         databaseUrl: undefined,
-        journal: "/repo/.localdb/state.jsonl",
         nodeEnv: "production",
+        allowInMemoryProd: undefined,
       }),
-    ).not.toThrow();
+    ).toThrow(StoragePersistenceError);
+    // Leere/whitespace-Werte zählen NICHT als gesetzt.
+    expect(() =>
+      assertPersistentStore({
+        databaseUrl: "  ",
+        nodeEnv: "production",
+        allowInMemoryProd: "  ",
+      }),
+    ).toThrow(StoragePersistenceError);
   });
 
-  it("erlaubt In-Memory außerhalb der Produktion (lokale Entwicklung/Tests)", () => {
-    expect(() =>
-      assertPersistentStore({ databaseUrl: undefined, journal: undefined, nodeEnv: "development" }),
-    ).not.toThrow();
-    expect(() =>
-      assertPersistentStore({ databaseUrl: undefined, journal: undefined, nodeEnv: undefined }),
-    ).not.toThrow();
+  it("die Fehlermeldung nennt Grund und Lösung (DATABASE_URL + Override)", () => {
+    try {
+      assertPersistentStore({
+        databaseUrl: undefined,
+        nodeEnv: "production",
+        allowInMemoryProd: undefined,
+      });
+      throw new Error("hätte werfen müssen");
+    } catch (e) {
+      const msg = (e as Error).message;
+      expect(msg).toContain("DATABASE_URL");
+      expect(msg).toContain("KLARWERK_ALLOW_INMEMORY_PROD");
+      expect(msg).toMatch(/Datenverlust|verlör|verlieren|Daten/);
+    }
+  });
+
+  it("Produktion ohne DATABASE_URL MIT Override → erlaubt, aber laute Warnung (kein Abbruch)", () => {
+    const decision = assertPersistentStore({
+      databaseUrl: undefined,
+      nodeEnv: "production",
+      allowInMemoryProd: "1",
+    });
+    expect(decision.warning).toBeDefined();
+    expect(decision.warning).toContain("KLARWERK_ALLOW_INMEMORY_PROD");
+    expect(decision.warning).toMatch(/In-Memory|nicht-dauerhaft/);
+  });
+
+  it("Produktion MIT DATABASE_URL → erlaubt, keine Warnung (Live-Pfad PgKoRepo, unverändert)", () => {
+    const decision = assertPersistentStore({
+      databaseUrl: "postgres://u:p@h:5432/db",
+      nodeEnv: "production",
+      allowInMemoryProd: undefined,
+    });
+    expect(decision.warning).toBeUndefined();
+  });
+
+  it("außerhalb der Produktion (development/undefined) → In-Memory erlaubt, keine Warnung", () => {
+    expect(
+      assertPersistentStore({
+        databaseUrl: undefined,
+        nodeEnv: "development",
+        allowInMemoryProd: undefined,
+      }).warning,
+    ).toBeUndefined();
+    expect(
+      assertPersistentStore({
+        databaseUrl: undefined,
+        nodeEnv: undefined,
+        allowInMemoryProd: undefined,
+      }).warning,
+    ).toBeUndefined();
   });
 });

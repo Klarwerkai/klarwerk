@@ -100,9 +100,17 @@ function makeFactoryReset(journal: string | undefined): FactoryReset {
 async function start(): Promise<void> {
   const databaseUrl = process.env.DATABASE_URL;
   const journal = devPersistFile();
-  // Betriebssicherheit: in Produktion NIE still In-Memory starten (sonst Datenverlust bei jedem
-  // Neustart). Fehlt eine dauerhafte Datenhaltung, bricht der Start laut mit klarer Begründung ab.
-  assertPersistentStore({ databaseUrl, journal, nodeEnv: process.env.NODE_ENV });
+  // Betriebssicherheit (SCRUM-498 B3): in Produktion NIE still auf InMemory/Journal starten. Ohne
+  // DATABASE_URL (→ PgKoRepo) bricht der Start FAIL-CLOSED ab — außer KLARWERK_ALLOW_INMEMORY_PROD=1
+  // ist bewusst gesetzt, dann nur eine laute Warnung.
+  const storageDecision = assertPersistentStore({
+    databaseUrl,
+    nodeEnv: process.env.NODE_ENV,
+    allowInMemoryProd: process.env.KLARWERK_ALLOW_INMEMORY_PROD,
+  });
+  if (storageDecision.warning) {
+    process.stderr.write(`${storageDecision.warning}\n`);
+  }
   const services = databaseUrl
     ? await pgServices(databaseUrl)
     : journal
