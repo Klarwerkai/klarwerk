@@ -368,7 +368,12 @@ export class Reasoner {
     locale: ReasonerLocale = "de",
     confidential = false,
   ): Promise<StructureResult> {
-    return this.runTask("structure", locale, (p) => p.structure(rawText, locale), confidential);
+    return this.runTask(
+      "structure",
+      locale,
+      (p) => p.structure(rawText, locale, confidential),
+      confidential,
+    );
   }
 
   // SCRUM-167: Ask-/Antwortpfad ebenfalls über runTask protokolliert (nur Metadaten).
@@ -391,7 +396,7 @@ export class Reasoner {
     return this.runTask(
       "assist",
       locale,
-      (p) => p.assistText(text, locale, instruction),
+      (p) => p.assistText(text, locale, instruction, confidential),
       confidential,
     );
   }
@@ -403,7 +408,12 @@ export class Reasoner {
     // SCRUM-502 Schicht 2: vertraulicher Draft → Cloud aus der Kette.
     confidential = false,
   ): Promise<InterviewResult> {
-    return this.runTask("interview", locale, (p) => p.interview(answers, locale), confidential);
+    return this.runTask(
+      "interview",
+      locale,
+      (p) => p.interview(answers, locale, confidential),
+      confidential,
+    );
   }
 
   // PMO-FEA-0006: Wissenspunkte aus Dokumenttext extrahieren (optional mit Suchauftrag).
@@ -440,7 +450,13 @@ export class Reasoner {
             : honest;
         }
         try {
-          return await provider.extract(documentText, locale, query, keepSourceLanguage);
+          return await provider.extract(
+            documentText,
+            locale,
+            query,
+            keepSourceLanguage,
+            confidential,
+          );
         } catch (error) {
           modelError = error instanceof Error ? error.message : String(error);
           throw error;

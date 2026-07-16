@@ -17,6 +17,19 @@ export class ModelCapacityError extends Error {
   }
 }
 
+// SCRUM-502 Schicht 2 (Sicherheitsnetz): der Cloud-Modell-Client verweigert vertrauliche Inhalte
+// per Konstruktion. Das eigentliche Egress-Routing liegt im Reasoner (vertraulich → Cloud aus der
+// Kette); dieser Wächter am Chokepoint stellt sicher, dass selbst ein künftiger, das Routing
+// umgehender Aufrufer vertraulichen Text NIE an die Cloud gibt — er wirft, BEVOR inner.complete
+// (der echte HTTP-Aufruf) läuft. Fällt in der Reasoner-Kette still auf den nächsten Provider
+// (lokal/deterministisch) zurück — kein Egress, aber die Anfrage bleibt bedient.
+export class ConfidentialEgressError extends Error {
+  constructor() {
+    super("Vertrauliche Inhalte dürfen die Cloud-KI nicht nutzen.");
+    this.name = "ConfidentialEgressError";
+  }
+}
+
 export interface ModelCapConfig {
   max: number; // max. gleichzeitige Modellaufrufe
   queueMax: number; // max. Wartende, bevor sofort abgelehnt wird
@@ -142,10 +155,21 @@ export async function withModelSlot<T>(fn: () => Promise<T>): Promise<T> {
 
 // Umschließt einen ModelClient, sodass JEDER complete()-Aufruf durch den globalen Semaphore geht.
 // Der einzige Ort, an dem der Cap greift — kein Bypass, weil alle Provider-Methoden hierüber laufen.
-export function cappedModelClient(inner: ModelClient): ModelClient {
+// SCRUM-502 Schicht 2: `rejectsConfidential` (nur für den CLOUD-Client gesetzt) lässt den Wrapper bei
+// vertraulichem Text (confidential=true) mit ConfidentialEgressError werfen, BEVOR der echte Aufruf
+// läuft — das Chokepoint-Sicherheitsnetz zum Reasoner-Routing. Der lokale Client wird NICHT so
+// umschlossen (on-prem, kein externer Egress) und bedient vertrauliche Inhalte weiter.
+export function cappedModelClient(
+  inner: ModelClient,
+  opts: { rejectsConfidential?: boolean } = {},
+): ModelClient {
   return {
     name: inner.name,
-    complete: (system: string, user: string, maxTokens?: number) =>
-      withModelSlot(() => inner.complete(system, user, maxTokens)),
+    complete: (system: string, user: string, confidential: boolean, maxTokens?: number) => {
+      if (opts.rejectsConfidential && confidential) {
+        return Promise.reject(new ConfidentialEgressError());
+      }
+      return withModelSlot(() => inner.complete(system, user, confidential, maxTokens));
+    },
   };
 }

@@ -18,7 +18,13 @@ export interface ReasonerProvider {
   readonly name: string;
   isAvailable(): boolean;
   // structure/answer sind async — ein echtes Modell ruft über das Netz.
-  structure(rawText: string, locale?: ReasonerLocale): Promise<StructureResult>;
+  // SCRUM-502 Schicht 2: optionales `confidential` — der ModelProvider reicht es an den
+  // Chokepoint (cappedModelClient.complete) durch; der deterministische Fallback ignoriert es.
+  structure(
+    rawText: string,
+    locale?: ReasonerLocale,
+    confidential?: boolean,
+  ): Promise<StructureResult>;
   answer(
     question: string,
     context: readonly KnowledgeRef[],
@@ -28,9 +34,18 @@ export interface ReasonerProvider {
   // SCRUM-312: optionale, frei-/aktionsbasierte Anweisung (z. B. „klarer", „strukturieren").
   // Der deterministische Fallback ignoriert sie bewusst (generische Glättung); nur das Modell
   // berücksichtigt sie — und niemals durch Erfinden von Inhalten/Fakten.
-  assistText(text: string, locale?: ReasonerLocale, instruction?: string): Promise<AssistResult>;
+  assistText(
+    text: string,
+    locale?: ReasonerLocale,
+    instruction?: string,
+    confidential?: boolean,
+  ): Promise<AssistResult>;
   // SCRUM-132: nächste Interview-Frage + aus den Antworten verdichteter Entwurf.
-  interview(answers: readonly string[], locale?: ReasonerLocale): Promise<InterviewResult>;
+  interview(
+    answers: readonly string[],
+    locale?: ReasonerLocale,
+    confidential?: boolean,
+  ): Promise<InterviewResult>;
   // PMO-FEA-0006: Wissenspunkte aus Dokumenttext extrahieren (optional mit Suchauftrag des
   // Experten). G-2: NUR was im Text steht — der deterministische Fallback liefert ehrlich
   // KEINE Punkte (keine Fake-Extraktion), nur eine erklärende note.
@@ -41,6 +56,7 @@ export interface ReasonerProvider {
     locale?: ReasonerLocale,
     query?: string,
     keepSourceLanguage?: boolean,
+    confidential?: boolean,
   ): Promise<ExtractResult>;
   // select ist reines Ranking (synchron, kein Netzaufruf).
   select(question: string, candidates: readonly KnowledgeRef[]): KnowledgeRef[];

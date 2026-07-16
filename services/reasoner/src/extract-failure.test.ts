@@ -194,7 +194,8 @@ describe("SCRUM-411: Extract-Fehler ehrlich benennen + Antwort-Limit", () => {
     let seenMaxTokens: number | undefined;
     const recording: ModelClient = {
       name: "fake:aufzeichnung",
-      complete: async (_system, _user, maxTokens) => {
+      // SCRUM-502 Schicht 2: neue Signatur (system, user, confidential, maxTokens?).
+      complete: async (_system, _user, _confidential, maxTokens) => {
         seenMaxTokens = maxTokens;
         return '{"points": []}';
       },
@@ -214,8 +215,8 @@ describe("SCRUM-411: Extract-Fehler ehrlich benennen + Antwort-Limit", () => {
       } as unknown as Response;
     }) as unknown as typeof fetch;
     const client = anthropicClient({ apiKey: "test-key", model: "test-model", fetchFn });
-    await client.complete("s", "u");
-    await client.complete("s", "u", EXTRACT_MAX_TOKENS);
+    await client.complete("s", "u", false);
+    await client.complete("s", "u", false, EXTRACT_MAX_TOKENS);
     expect(bodies[0]?.max_tokens).toBe(1024);
     expect(bodies[1]?.max_tokens).toBe(EXTRACT_MAX_TOKENS);
   });

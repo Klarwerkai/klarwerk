@@ -119,7 +119,7 @@ describe("SCRUM-424: OpenAI-kompatibler lokaler Client", () => {
       fetchFn,
     });
     expect(client.name).toBe("local:Qwen3-32B-AWQ");
-    const out = await client.complete("sys", "user", 4096);
+    const out = await client.complete("sys", "user", false, 4096);
     expect(out).toBe("OK-LOKAL");
     expect(calls[0]?.url).toBe("http://127.0.0.1:8000/v1/chat/completions");
     expect(calls[0]?.body.max_tokens).toBe(4096);
@@ -130,7 +130,7 @@ describe("SCRUM-424: OpenAI-kompatibler lokaler Client", () => {
     const fetchFn = (async () =>
       ({ ok: false, status: 502 }) as unknown as Response) as unknown as typeof fetch;
     const client = openAiCompatibleClient({ baseUrl: "http://x/v1", model: "m", fetchFn });
-    await expect(client.complete("s", "u")).rejects.toThrow("502");
+    await expect(client.complete("s", "u", false)).rejects.toThrow("502");
   });
 
   it("createLocalClientFromEnv: ohne URL/Modell → undefined; mit beiden → Client", () => {

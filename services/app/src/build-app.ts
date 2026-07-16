@@ -252,7 +252,12 @@ export function assembleServices(repos: AppRepos): AppServices {
   // SCRUM-498 B2: beide Modell-Clients durch den EINEN prozess-globalen In-Flight-Cap führen (Cloud UND
   // lokal teilen denselben Semaphore). Jeder complete()-Aufruf acquired/released einzeln → die
   // Gesamt-Gleichzeitigkeit ist über alle Requests hinweg begrenzt, ohne Bypass.
-  const cappedCloud = modelClient ? cappedModelClient(modelClient) : undefined;
+  // SCRUM-502 Schicht 2: NUR der Cloud-Client verweigert vertrauliche Inhalte am Chokepoint
+  // (Sicherheitsnetz zum Reasoner-Routing). Der lokale LLM (on-prem, kein externer Egress) wird
+  // ohne diesen Wächter umschlossen und bedient vertrauliche Inhalte weiter.
+  const cappedCloud = modelClient
+    ? cappedModelClient(modelClient, { rejectsConfidential: true })
+    : undefined;
   const cappedLocal = localClient ? cappedModelClient(localClient) : undefined;
   // SCRUM-164: ModelRun-Protokoll mitgeben (No-op-fähig); API-Shape des Reasoners unverändert.
   const reasoner = new Reasoner(

@@ -249,7 +249,7 @@ describe("model-client", () => {
       model: "m",
       fetchFn: fetchFn as unknown as typeof fetch,
     });
-    expect(await client.complete("sys", "user")).toBe("Hallo");
+    expect(await client.complete("sys", "user", false)).toBe("Hallo");
     expect(fetchFn).toHaveBeenCalledTimes(1);
   });
 
@@ -260,7 +260,7 @@ describe("model-client", () => {
       model: "m",
       fetchFn: fetchFn as unknown as typeof fetch,
     });
-    await expect(client.complete("s", "u")).rejects.toThrow();
+    await expect(client.complete("s", "u", false)).rejects.toThrow();
   });
 
   // fetch hängt und lehnt erst ab, wenn der AbortController das Signal auslöst.
@@ -285,7 +285,7 @@ describe("model-client", () => {
       timeoutMs: 10,
       fetchFn: hangingFetch(),
     });
-    await expect(client.complete("s", "u")).rejects.toThrow(/Zeitlimit/);
+    await expect(client.complete("s", "u", false)).rejects.toThrow(/Zeitlimit/);
   });
 
   it("openAiCompatibleClient bricht bei Zeitüberschreitung mit eindeutiger Meldung ab", async () => {
@@ -295,6 +295,6 @@ describe("model-client", () => {
       timeoutMs: 10,
       fetchFn: hangingFetch(),
     });
-    await expect(client.complete("s", "u")).rejects.toThrow(/Zeitlimit/);
+    await expect(client.complete("s", "u", false)).rejects.toThrow(/Zeitlimit/);
   });
 });

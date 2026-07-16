@@ -38,7 +38,14 @@ export function anthropicClient(config: HttpModelConfig): ModelClient {
     name: `anthropic:${config.model}`,
     // SCRUM-411: maxTokens pro Aufruf — kurze Tasks bleiben bei 1024; extract braucht mehr
     // (JSON mit bis zu 20 Punkten inkl. wörtlicher Belegstellen wurde bei 1024 abgeschnitten).
-    async complete(system: string, user: string, maxTokens = 1024): Promise<string> {
+    // SCRUM-502 Schicht 2: `confidential` ist Interface-Pflicht; der Egress-Wächter sitzt im
+    // Cloud-Wrapper (cappedModelClient), der rohe Client selbst reicht den Aufruf nur durch.
+    async complete(
+      system: string,
+      user: string,
+      _confidential: boolean,
+      maxTokens = 1024,
+    ): Promise<string> {
       const controller = new AbortController();
       let timedOut = false;
       const timer = setTimeout(() => {
@@ -176,7 +183,14 @@ export function openAiCompatibleClient(config: LocalHttpModelConfig): ModelClien
   const timeoutMs = config.timeoutMs ?? DEFAULT_MODEL_TIMEOUT_MS;
   return {
     name: `local:${config.model}`,
-    async complete(system: string, user: string, maxTokens = 1024): Promise<string> {
+    // SCRUM-502 Schicht 2: `confidential` ist Interface-Pflicht; der Egress-Wächter sitzt im
+    // Cloud-Wrapper (cappedModelClient), der rohe Client selbst reicht den Aufruf nur durch.
+    async complete(
+      system: string,
+      user: string,
+      _confidential: boolean,
+      maxTokens = 1024,
+    ): Promise<string> {
       const controller = new AbortController();
       let timedOut = false;
       const timer = setTimeout(() => {

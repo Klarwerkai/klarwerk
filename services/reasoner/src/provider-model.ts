@@ -26,7 +26,16 @@ import type {
 export interface ModelClient {
   readonly name: string;
   // SCRUM-411: optionales Antwort-Limit je Aufruf (Default beim Client: 1024).
-  complete(system: string, user: string, maxTokens?: number): Promise<string>;
+  // SCRUM-502 Schicht 2: `confidential` ist PFLICHT (kein Default) — jeder Aufrufer MUSS die
+  // Vertraulichkeit des Textes deklarieren. Der Cloud-Wrapper (cappedModelClient mit
+  // rejectsConfidential) wirft bei true; so kann kein Pfad vertraulichen Text unbemerkt an die
+  // Cloud geben. Interne, quell-reine Aufrufer (Judges/Probe) übergeben bewusst false.
+  complete(
+    system: string,
+    user: string,
+    confidential: boolean,
+    maxTokens?: number,
+  ): Promise<string>;
 }
 
 // FR-I18N-01: Systemprompts sprachbewusst. JSON-Contract der structure-Aufgabe bleibt
@@ -533,7 +542,8 @@ export class ModelProvider implements ReasonerProvider {
   // Fehler (z. B. 401 = Schlüssel ungültig) laufen unverändert nach oben — nichts wird geraten.
   async probe(): Promise<string> {
     const client = this.requireClient();
-    return client.complete("Antworte mit genau einem Wort: OK", "ping");
+    // Key-Test: interner Ping, kein Nutzer-/KO-Text → nicht vertraulich.
+    return client.complete("Antworte mit genau einem Wort: OK", "ping", false);
   }
 
   // SCRUM-360: begrenzte, status-/trust-bewusste Kandidatenauswahl (siehe selectCandidates) — das
@@ -542,9 +552,14 @@ export class ModelProvider implements ReasonerProvider {
     return selectCandidates(question, candidates);
   }
 
-  async structure(rawText: string, locale: ReasonerLocale = "de"): Promise<StructureResult> {
+  async structure(
+    rawText: string,
+    locale: ReasonerLocale = "de",
+    // SCRUM-502 Schicht 2: an den Chokepoint durchgereicht — der Cloud-Wrapper wirft bei true.
+    confidential = false,
+  ): Promise<StructureResult> {
     const client = this.requireClient();
-    const raw = await client.complete(structureSystem(locale), rawText);
+    const raw = await client.complete(structureSystem(locale), rawText, confidential);
     const parsed = JSON.parse(extractJson(raw)) as Record<string, unknown>;
     const firstSentence = rawText.split(/[.!?]/)[0]?.trim() ?? rawText.trim();
     return {
@@ -584,6 +599,8 @@ export class ModelProvider implements ReasonerProvider {
       await client.complete(
         helpAnswerSystem(locale),
         `${labels.question}: ${question}\n\n${labels.sources}:\n${grounding}`,
+        // Hilfe-Kontext ist kuratierte Produkt-Hilfe (keine KOs/Kundendaten) → nicht vertraulich.
+        false,
       )
     ).trim();
     return {
@@ -601,6 +618,8 @@ export class ModelProvider implements ReasonerProvider {
     text: string,
     locale: ReasonerLocale = "de",
     instruction?: string,
+    // SCRUM-502 Schicht 2: an den Chokepoint durchgereicht.
+    confidential = false,
   ): Promise<AssistResult> {
     const client = this.requireClient();
     // SCRUM-312: optionale Anweisung als zusätzliche Leitplanke an das System-Prompt hängen —
@@ -609,7 +628,7 @@ export class ModelProvider implements ReasonerProvider {
     const system = guidance
       ? `${assistSystem(locale)}\n${assistGuidance(locale, guidance)}`
       : assistSystem(locale);
-    const improved = (await client.complete(system, text)).trim();
+    const improved = (await client.complete(system, text, confidential)).trim();
     return { text: improved || text.trim(), demo: false };
   }
 
@@ -618,6 +637,8 @@ export class ModelProvider implements ReasonerProvider {
   async interview(
     answers: readonly string[],
     locale: ReasonerLocale = "de",
+    // SCRUM-502 Schicht 2: an den Chokepoint durchgereicht.
+    confidential = false,
   ): Promise<InterviewResult> {
     const base = deterministicInterview(answers, false, locale);
     if (base.done || base.question === null) {
@@ -630,6 +651,7 @@ export class ModelProvider implements ReasonerProvider {
       await client.complete(
         interviewSystem(locale),
         `${labels.priorAnswers}:\n${prior || labels.none}\n\n${labels.guiding}: ${base.question}`,
+        confidential,
       )
     ).trim();
     return { ...base, question: phrased || base.question };
@@ -642,6 +664,8 @@ export class ModelProvider implements ReasonerProvider {
     locale: ReasonerLocale = "de",
     query?: string,
     keepSourceLanguage = false,
+    // SCRUM-502 Schicht 2: an den Chokepoint durchgereicht.
+    confidential = false,
   ): Promise<ExtractResult> {
     const client = this.requireClient();
     const doc = documentText.trim().slice(0, MAX_EXTRACT_DOCUMENT_LENGTH);
@@ -674,7 +698,7 @@ export class ModelProvider implements ReasonerProvider {
       if (points.length >= MAX_EXTRACT_POINTS) {
         break;
       }
-      const raw = await client.complete(system, chunk, EXTRACT_MAX_TOKENS);
+      const raw = await client.complete(system, chunk, confidential, EXTRACT_MAX_TOKENS);
       let chunkPoints: ExtractedPoint[];
       try {
         chunkPoints = parseExtractResponse(raw, chunk);
@@ -752,6 +776,8 @@ export class ModelProvider implements ReasonerProvider {
       await client.complete(
         answerSystem(locale),
         `${labels.question}: ${question}\n\n${labels.sources}:\n${grounding}`,
+        // Ask-Antwortkontext ist bereits Schicht-1-gefiltert (keine vertraulichen KOs im Pool).
+        false,
       )
     ).trim();
     return {
@@ -773,7 +799,8 @@ export class ModelProvider implements ReasonerProvider {
   // Immer extern/ungeprüft; die Übernahme entscheidet der Mensch. demo=false (echtes Modell).
   async enrichPublic(query: string, locale: ReasonerLocale = "de"): Promise<EnrichResult> {
     const client = this.requireClient();
-    const text = (await client.complete(enrichPublicSystem(locale), query, 1024)).trim();
+    // enrichPublic ist per Design öffentliches Weltwissen (Admin-gated) — reine User-Query, nicht vertraulich.
+    const text = (await client.complete(enrichPublicSystem(locale), query, false, 1024)).trim();
     return { text, provider: this.name, demo: false };
   }
 
@@ -787,7 +814,8 @@ export class ModelProvider implements ReasonerProvider {
     const client = this.requireClient();
     const user = `A:\n${coreA}\n\nB:\n${coreB}`;
     // SCRUM-492: etwas mehr Spielraum für den optionalen kollision-Block (vorher 512).
-    const raw = await client.complete(conflictSystem(locale), user, 640);
+    // SCRUM-502 Schicht 2: der Judge-Pool ist bereits Schicht-1-gefiltert (keine vertraulichen KOs).
+    const raw = await client.complete(conflictSystem(locale), user, false, 640);
     return parseConflictResponse(raw);
   }
 
@@ -799,7 +827,8 @@ export class ModelProvider implements ReasonerProvider {
   ): Promise<DuplicateJudgeResult | null> {
     const client = this.requireClient();
     const user = `A:\n${coreA}\n\nB:\n${coreB}`;
-    const raw = await client.complete(duplicateSystem(locale), user, 768);
+    // SCRUM-502 Schicht 2: der Judge-Pool ist bereits Schicht-1-gefiltert (keine vertraulichen KOs).
+    const raw = await client.complete(duplicateSystem(locale), user, false, 768);
     return parseDuplicateResponse(raw);
   }
 

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  ConfidentialEgressError,
   ModelCapacityError,
   ModelSemaphore,
   cappedModelClient,
@@ -109,7 +110,7 @@ describe("SCRUM-498 B2: cappedModelClient (globaler Cap, env-tunable)", () => {
       },
     };
     const capped = cappedModelClient(inner);
-    const calls = Array.from({ length: 5 }, () => capped.complete("s", "u"));
+    const calls = Array.from({ length: 5 }, () => capped.complete("s", "u", false));
     await tick();
     expect(state.max).toBe(2); // nie mehr als N gleichzeitig im inneren Client
     gate.resolve();
@@ -124,7 +125,7 @@ describe("SCRUM-498 B2: cappedModelClient (globaler Cap, env-tunable)", () => {
         throw new Error("kaputt");
       },
     };
-    await expect(cappedModelClient(boom).complete("s", "u")).rejects.toThrow("kaputt");
+    await expect(cappedModelClient(boom).complete("s", "u", false)).rejects.toThrow("kaputt");
     // Beweis: beide Slots wieder frei → N=2 gleichzeitig möglich.
     const state = { now: 0, max: 0 };
     const gate = deferred<void>();
@@ -139,7 +140,7 @@ describe("SCRUM-498 B2: cappedModelClient (globaler Cap, env-tunable)", () => {
       },
     };
     const capped = cappedModelClient(inner);
-    const calls = [capped.complete("s", "u"), capped.complete("s", "u")];
+    const calls = [capped.complete("s", "u", false), capped.complete("s", "u", false)];
     await tick();
     expect(state.max).toBe(2);
     gate.resolve();
@@ -191,5 +192,48 @@ describe("SCRUM-498 B2: Reasoner reicht ModelCapacityError durch (kein Fallback/
     await reasoner.judgeDuplicate("a", "b").catch(() => undefined);
     await reasoner.answer("Wie entlüfte ich die Pumpe?", KNOWLEDGE).catch(() => undefined);
     expect(seen.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// SCRUM-502 Schicht 2: das Chokepoint-Sicherheitsnetz. Der CLOUD-Wrapper (rejectsConfidential)
+// verweigert vertraulichen Text per Konstruktion — der Aufruf erreicht den echten Client NIE.
+describe("SCRUM-502 Schicht 2: cappedModelClient-Egress-Wächter", () => {
+  it("Cloud-Wrapper (rejectsConfidential) wirft bei confidential=true, OHNE inner.complete zu rufen", async () => {
+    let innerCalled = false;
+    const inner: ModelClient = {
+      name: "cloud",
+      async complete() {
+        innerCalled = true;
+        return "darf nie laufen";
+      },
+    };
+    const cloud = cappedModelClient(inner, { rejectsConfidential: true });
+    await expect(cloud.complete("s", "u", true)).rejects.toBeInstanceOf(ConfidentialEgressError);
+    expect(innerCalled).toBe(false);
+  });
+
+  it("Cloud-Wrapper lässt nicht-vertrauliche Aufrufe normal durch", async () => {
+    const inner: ModelClient = {
+      name: "cloud",
+      async complete() {
+        return "ok";
+      },
+    };
+    const cloud = cappedModelClient(inner, { rejectsConfidential: true });
+    expect(await cloud.complete("s", "u", false)).toBe("ok");
+  });
+
+  it("lokaler Wrapper (ohne rejectsConfidential) bedient vertrauliche Inhalte weiter", async () => {
+    let seen: boolean | undefined;
+    const inner: ModelClient = {
+      name: "local",
+      async complete(_s, _u, confidential) {
+        seen = confidential;
+        return "lokal-ok";
+      },
+    };
+    const local = cappedModelClient(inner);
+    expect(await local.complete("s", "u", true)).toBe("lokal-ok");
+    expect(seen).toBe(true); // confidential wird durchgereicht, aber NICHT abgelehnt
   });
 });
