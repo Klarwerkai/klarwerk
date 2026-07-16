@@ -8,6 +8,7 @@ import { useConflicts, useKos, useReasonerStatus } from "../api/hooks";
 import type { AnswerResult } from "../api/types";
 import { useToast } from "../app/ToastContext";
 import { DemoBanner } from "../components/DemoBanner";
+import { HelpTip } from "../components/HelpTip";
 import { ConfidenceBar } from "../components/trust";
 import { Button, Card, PageHeader, SectionLabel } from "../components/ui";
 import { answerExportFilename, buildAnswerMarkdown } from "../lib/answerExport";
@@ -200,7 +201,11 @@ export function Ask(): JSX.Element {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHeader kicker={t("ask.kicker")} title={t("ask.title")} />
+      <PageHeader
+        kicker={t("ask.kicker")}
+        title={t("ask.title")}
+        actions={<HelpTip title={t("ask.help.sources.title")} body={t("ask.help.sources.body")} />}
+      />
       {/* SCRUM-291: Demo-/Pilotpfad auf der Zielseite wiedererkennbar (nur bei ?demo=stage1). */}
       {isDemoContext(params) ? <DemoBanner surface="ask" /> : null}
       <div className="-mt-3 mb-5 flex flex-wrap items-center gap-2">

@@ -6,6 +6,7 @@ import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useDuplicates, useKos } from "../api/hooks";
 import type { KnowledgeObject, OverlapEntry } from "../api/types";
+import { HelpTip } from "../components/HelpTip";
 import { KoView } from "../components/KoView";
 import { Modal } from "../components/Modal";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
@@ -141,7 +142,13 @@ export function Duplicates(): JSX.Element {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHeader kicker={t("dup.kicker")} title={t("dup.title")} />
+      <PageHeader
+        kicker={t("dup.kicker")}
+        title={t("dup.title")}
+        actions={
+          <HelpTip title={t("dup.help.detection.title")} body={t("dup.help.detection.body")} />
+        }
+      />
       <p className="-mt-3 mb-4 text-sm text-muted">{t("dup.intro")}</p>
       {err ? (
         <div className="mb-3 rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">

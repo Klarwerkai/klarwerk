@@ -3,6 +3,19 @@ import { initReactI18next } from "react-i18next";
 
 // Zweisprachigkeit DE/EN (G-8). Strings über Keys; Ressourcen wachsen je Screen.
 const de = {
+  // SCRUM-488: erste Tranche kontextueller Hilfetexte (Muster-Beweis, quer über die Bereiche).
+  "ask.help.sources.title": "Warum nur belegte Antworten?",
+  "ask.help.sources.body":
+    "Klarwerk antwortet ausschließlich aus euren freigegebenen Wissensobjekten — nie aus allgemeinem Modellwissen. Fehlt die Grundlage, sagt es das ehrlich, statt zu raten. Prüfe die genannten Quellen, bevor du dich darauf verlässt.",
+  "lib.help.filters.title": "Filter ändern nur die Sicht",
+  "lib.help.filters.body":
+    "Reifegrad, Status und Domäne blenden Objekte nur ein oder aus — am Wissen selbst ändern sie nichts. „Validiert“ ist von Kolleg:innen bestätigt, „offen“ noch in Prüfung.",
+  "dup.help.detection.title": "Wie Dubletten erkannt werden",
+  "dup.help.detection.body":
+    "„Textidentisch“ findet die Heuristik ohne KI; „wahrscheinlich“ beurteilt das Modell inhaltlich. Zusammenführen passiert nie automatisch — du entscheidest bewusst, was verschmolzen wird.",
+  "extpage.help.scope.title": "Was die externe Suche darf",
+  "extpage.help.scope.body":
+    "Externe Treffer sind Recherchehilfe, kein geprüftes Wissen: nichts wird automatisch importiert oder von Kolleg:innen validiert. Ist die externe Abfrage vom Admin gesperrt, bleibt der Bereich leer.",
   "app.name": "KLARWERK",
   "app.subtitle": "Reasoning System",
   "nav.group.workspace": "Arbeitsbereich",
@@ -2905,6 +2918,19 @@ const de = {
 };
 
 const en: typeof de = {
+  // SCRUM-488: first tranche of contextual help texts (mirror of the DE keys).
+  "ask.help.sources.title": "Why only sourced answers?",
+  "ask.help.sources.body":
+    "Klarwerk answers only from your released knowledge objects — never from general model knowledge. If the basis is missing, it says so honestly instead of guessing. Check the cited sources before relying on them.",
+  "lib.help.filters.title": "Filters only change the view",
+  "lib.help.filters.body":
+    "Maturity, status and domain merely show or hide objects — they change nothing about the knowledge itself. “Validated” is confirmed by colleagues, “open” is still under review.",
+  "dup.help.detection.title": "How duplicates are detected",
+  "dup.help.detection.body":
+    "“Text-identical” is found by the heuristic without AI; “likely” is judged by the model on content. Merging never happens automatically — you deliberately decide what gets merged.",
+  "extpage.help.scope.title": "What external search may do",
+  "extpage.help.scope.body":
+    "External hits are research support, not verified knowledge: nothing is imported automatically or validated by colleagues. If the admin has disabled external lookup, the area stays empty.",
   "app.name": "KLARWERK",
   "app.subtitle": "Reasoning System",
   "nav.group.workspace": "Workspace",
@@ -5762,6 +5788,19 @@ const en: typeof de = {
 };
 
 const nl: typeof de = {
+  // SCRUM-488: eerste tranche contextuele hulpteksten (spiegel van de DE-sleutels).
+  "ask.help.sources.title": "Waarom alleen onderbouwde antwoorden?",
+  "ask.help.sources.body":
+    "Klarwerk antwoordt uitsluitend uit jullie vrijgegeven kennisobjecten — nooit uit algemene modelkennis. Ontbreekt de basis, dan zegt het dat eerlijk in plaats van te gokken. Controleer de genoemde bronnen voordat je erop vertrouwt.",
+  "lib.help.filters.title": "Filters wijzigen alleen de weergave",
+  "lib.help.filters.body":
+    "Rijpheid, status en domein tonen of verbergen objecten alleen — aan de kennis zelf veranderen ze niets. „Gevalideerd“ is bevestigd door collega’s, „open“ nog in beoordeling.",
+  "dup.help.detection.title": "Hoe duplicaten worden herkend",
+  "dup.help.detection.body":
+    "„Tekstidentiek“ vindt de heuristiek zonder AI; „waarschijnlijk“ beoordeelt het model inhoudelijk. Samenvoegen gebeurt nooit automatisch — jij beslist bewust wat wordt samengevoegd.",
+  "extpage.help.scope.title": "Wat externe zoekopdracht mag",
+  "extpage.help.scope.body":
+    "Externe treffers zijn onderzoekshulp, geen geverifieerde kennis: niets wordt automatisch geïmporteerd of door collega’s gevalideerd. Heeft de beheerder externe opvraging uitgeschakeld, dan blijft het gebied leeg.",
   "app.name": "KLARWERK",
   "app.subtitle": "Reasoning System",
   "nav.group.workspace": "Werkruimte",

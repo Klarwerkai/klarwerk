@@ -4,6 +4,7 @@ import { type FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
+import { HelpTip } from "../components/HelpTip";
 import { Button, Card, PageHeader, SectionLabel, TextInput } from "../components/ui";
 import { buildExternalSearchView } from "../lib/externalKnowledge";
 
@@ -45,7 +46,13 @@ export function ExternalKnowledge(): JSX.Element {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHeader kicker={t("extpage.kicker")} title={t("extpage.title")} />
+      <PageHeader
+        kicker={t("extpage.kicker")}
+        title={t("extpage.title")}
+        actions={
+          <HelpTip title={t("extpage.help.scope.title")} body={t("extpage.help.scope.body")} />
+        }
+      />
       <p className="-mt-3 mb-4 text-sm text-muted">{t("extpage.intro")}</p>
 
       <Card className="space-y-2">

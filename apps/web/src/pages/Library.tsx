@@ -11,6 +11,7 @@ import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
 import { DemoBanner } from "../components/DemoBanner";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
+import { HelpTip } from "../components/HelpTip";
 import {
   ConfidenceBar,
   KNOWLEDGE_TYPES,
@@ -151,6 +152,7 @@ export function Library(): JSX.Element {
         title={t("nav.library")}
         actions={
           <div className="flex items-center gap-2">
+            <HelpTip title={t("lib.help.filters.title")} body={t("lib.help.filters.body")} />
             <Link to="/import">
               <Button variant="ghost">{t("lib.reimport")}</Button>
             </Link>
