@@ -442,7 +442,8 @@ export function buildApp(
   // anderen Routen bekommen { origin: false } → keinerlei CORS-Header (nicht mehr app-weit).
   if (addonApiEnabled()) {
     // SCRUM-490 D2: request-lokaler Auth-Kontext. Der Add-on-Key wird hier GENAU EINMAL pro Request
-    // validiert und der Principal (ask.validated) am Request getragen; Rate-Limiter, allowList und
+    // validiert und der Principal (Capabilities ask.validated + checktext.validated) am Request
+    // getragen; Rate-Limiter, allowList und
     // Handler LESEN ihn danach nur noch (keine erneute Key-Prüfung → die von ben gemeldete
     // Dreifach-Validierung entfällt). Der Hook ist vor rate-limit registriert, damit die Drossel den
     // fertigen Principal sieht.

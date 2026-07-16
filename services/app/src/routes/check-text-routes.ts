@@ -15,6 +15,22 @@ import type { Guards } from "../http";
 const MIN_TEXT = 40;
 const MAX_TEXT = 8_000;
 
+// ben-Review-Fix: Body-Schema als EINZIGE Quelle der Eingabe-Validierung. Fehlender/null/malformer
+// Body oder text außerhalb 40–8.000 → Fastify liefert einen kontrollierten 400 in der validation-Phase
+// (kein Handler-Zugriff auf undefined, KEINE interne TypeError/500 nach außen). want bleibt bewusst ein
+// freier String (kein enum), damit "deep" das Schema passiert und im Handler die klare „noch nicht"-
+// Meldung erzeugt; locale bleibt permissiv (Handler normalisiert auf de/en).
+const bodySchema = {
+  type: "object",
+  required: ["text"],
+  properties: {
+    text: { type: "string", minLength: MIN_TEXT, maxLength: MAX_TEXT },
+    title: { type: "string" },
+    locale: { type: "string" },
+    want: { type: "string" },
+  },
+} as const;
+
 export interface CheckTextRouteDeps {
   ko: KoService;
   overlaps: OverlapService;
@@ -43,23 +59,40 @@ function toResponse(result: CheckTextResult) {
 
 export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): FastifyPluginAsync {
   return async (app) => {
-    app.post<{
-      Body: { text?: string; title?: string; locale?: "de" | "en"; want?: string };
-    }>(
+    app.post<{ Body: { text: string; title?: string; locale?: string; want?: string } }>(
       "/api/check-text",
-      // Dieselbe Drossel-Config wie /api/ask (Slice 1): greift nur, wenn @fastify/rate-limit registriert
-      // ist (Flag AN), und dort nur auf Add-on-Principal-Requests — Session-Requests bleibt exempt.
-      { config: { rateLimit: addonRateLimit() } },
+      {
+        // Dieselbe Drossel-Config wie /api/ask (Slice 1): greift nur, wenn @fastify/rate-limit
+        // registriert ist (Flag AN), und dort nur auf Add-on-Principal-Requests — Session exempt.
+        config: { rateLimit: addonRateLimit() },
+        schema: { body: bodySchema },
+        // Fix 2 (ben-Review): Auth VOR der Body-Validierung. Fastify-Lifecycle:
+        // onRequest → preParsing → preValidation → validation → preHandler. Der Add-on-Pfad ist bereits
+        // im onRequest-Hook autorisiert (401/403 laufen VOR der validation-Phase); den Session-Pfad
+        // prüfen wir hier in preValidation, damit ein anonymer Request 401 bekommt, BEVOR die
+        // Schema-Validierung 400 liefert (Reihenfolge-Oracle entschärft).
+        preValidation: async (request, reply) => {
+          const auth = request.authContext;
+          if (auth?.authKind === "addon") {
+            // Defense-in-Depth: der onRequest-Hook hat checktext.validated bereits erzwungen.
+            if (!authorizesCheckText(auth.principal)) {
+              reply
+                .code(403)
+                .send({ error: "FORBIDDEN", message: "Add-in-Capability unzureichend." });
+              return reply;
+            }
+            return;
+          }
+          // Session-Pfad: ko.read wie die übrigen Lese-Routen — jetzt vor der Body-Validierung.
+          const user = await guards.requirePermission("ko.read", request, reply);
+          if (!user) {
+            return reply;
+          }
+        },
+      },
       async (request, reply) => {
-        const text = typeof request.body.text === "string" ? request.body.text : "";
-        if (text.length < MIN_TEXT || text.length > MAX_TEXT) {
-          reply.code(400).send({
-            error: "BAD_REQUEST",
-            message: `text muss ${MIN_TEXT}–${MAX_TEXT} Zeichen haben.`,
-          });
-          return;
-        }
-        // Stufe 2 (Modell) ist Slice 6. Bis dahin ehrlich „noch nicht" statt still Stufe 1 zu liefern.
+        // Body ist schema-validiert: text ist ein String mit 40–8.000 Zeichen; Auth ist in
+        // preValidation bereits erledigt. Stufe 2 (Modell) ist Slice 6 → want:"deep" ehrlich 400.
         if (request.body.want === "deep") {
           reply.code(400).send({
             error: "BAD_REQUEST",
@@ -68,30 +101,11 @@ export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): Fasti
           return;
         }
         const locale = request.body.locale === "en" ? "en" : "de";
-
-        // Auth: Add-on-Principal (checktext.validated) ODER Session (ko.read). Der ungültige/fremde-
-        // Route-/Capability-Fall ist bereits im onRequest-Hook mit 401/403 behandelt; hier zusätzlich
-        // Defense-in-Depth für den Add-on-Pfad.
-        const auth = request.authContext;
-        if (auth?.authKind === "addon") {
-          if (!authorizesCheckText(auth.principal)) {
-            reply
-              .code(403)
-              .send({ error: "FORBIDDEN", message: "Add-in-Capability unzureichend." });
-            return;
-          }
-        } else {
-          const user = await guards.requirePermission("ko.read", request, reply);
-          if (!user) {
-            return;
-          }
-        }
-
         // Dry-Run-Kern OHNE Judge/Prefilter → rein deterministisch (kein Modell, kein embed,
         // validated-only, topK gedeckelt). Kein Insert, keine Gap, kein Board, kein Inhalts-Audit.
         const result = await checkText(
           {
-            text,
+            text: request.body.text,
             locale,
             ...(request.body.title !== undefined ? { title: request.body.title } : {}),
           },

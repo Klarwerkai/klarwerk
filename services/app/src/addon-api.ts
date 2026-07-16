@@ -1,7 +1,8 @@
 // SCRUM-Klara (Add-on-API): EIN Flag schaltet den GESAMTEN Add-in-Pfad (CORS + Add-on-Principal für
 // /api/ask). Default AUS = exakt heutiges Verhalten (kein CORS-Header, kein Add-on-Pfad). Erst
 // KLARWERK_ADDON_API=1|true aktiviert ihn — bewusst konservativ, damit Bestand/12.08.-Pfad unberührt bleibt.
-// Der eigentliche Principal (ask.validated) + die EINE Key-Validierung leben in addon-principal.ts.
+// Der eigentliche Principal (Capabilities ask.validated + checktext.validated) + die EINE
+// Key-Validierung leben in addon-principal.ts.
 export function addonApiEnabled(): boolean {
   const flag = process.env.KLARWERK_ADDON_API;
   return flag === "1" || flag === "true";

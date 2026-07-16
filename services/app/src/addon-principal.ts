@@ -7,10 +7,11 @@ import {
   addonApiEnabled,
 } from "./addon-api";
 
-// SCRUM-490 D2: dedizierter Add-on-Principal. KEIN User, KEIN Viewer, KEIN generisches ko.read —
-// genau EINE Capability: ask.validated. Diese autorisiert AUSSCHLIESSLICH POST /api/ask, und dort
-// nur validated-only (keine unvalidierten Inhalte). Der Principal ersetzt den synthetischen
-// ko.read-Viewer aus 48f24e2 vollständig.
+// SCRUM-490 D2 / SCRUM-491 Slice 5: dedizierter Add-on-Principal. KEIN User, KEIN Viewer, KEIN
+// generisches ko.read — nur schmale, GETRENNTE Capabilities (ask.validated, checktext.validated).
+// Jede autorisiert GENAU ihren Endpunkt (POST /api/ask bzw. POST /api/check-text), und dort nur
+// validated-only (keine unvalidierten Inhalte). Der Principal ersetzt den synthetischen ko.read-Viewer
+// aus 48f24e2 vollständig.
 //
 // Mandantenmodell (ben-Review): Klarwerk ist pro Kunde SINGLE-TENANT — ein Deployment = ein Mandant,
 // die Instanz-/Datengrenze IST die Mandantengrenze. Es gibt daher bewusst KEINE per-Request-

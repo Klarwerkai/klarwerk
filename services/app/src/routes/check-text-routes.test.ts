@@ -211,6 +211,66 @@ describe("SCRUM-491 Slice 5: POST /api/check-text (Flag AN)", () => {
   });
 });
 
+describe("SCRUM-491 Slice 5 (ben-Review): kontrollierter 400 statt 500 bei fehlendem/malformem Body", () => {
+  beforeEach(() => {
+    process.env.KLARWERK_ADDON_API = "1";
+    process.env.KLARWERK_ADDON_API_KEY = KEY;
+  });
+
+  it("gültiger addon-Key, KEIN Body → 400 (nicht 500), keine interne Fehlermeldung/TypeError", async () => {
+    // bens exakte Repro: früher las der Handler request.body.text ohne Body → TypeError → 500.
+    const app = buildApp(buildServices());
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/check-text",
+      headers: { [ADDON_KEY_HEADER]: KEY },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.payload).not.toContain("TypeError");
+    expect(res.payload).not.toContain("Cannot read");
+  });
+
+  it("Body ohne text / nicht-String / zu kurz → 400 (Schema, EINE Quelle der Validierung)", async () => {
+    const app = buildApp(buildServices());
+    const post = (payload: unknown) =>
+      app.inject({
+        method: "POST",
+        url: "/api/check-text",
+        headers: { [ADDON_KEY_HEADER]: KEY },
+        payload: payload as object,
+      });
+    expect((await post({})).statusCode).toBe(400); // text fehlt
+    expect((await post({ text: 123 })).statusCode).toBe(400); // kein String
+    expect((await post({ text: "kurz" })).statusCode).toBe(400); // < 40 Zeichen
+    expect((await post({ text: "a".repeat(8_001) })).statusCode).toBe(400); // > 8.000
+  });
+
+  it("malformer JSON-Body → 400 (nicht 500)", async () => {
+    const app = buildApp(buildServices());
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/check-text",
+      headers: { [ADDON_KEY_HEADER]: KEY, "content-type": "application/json" },
+      payload: "{ das ist kein json",
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("Fix 2 (auth-vor-Validierung): anonymer Request → 401 VOR der Body-400", async () => {
+    const app = buildApp(buildServices());
+    // Valider Body, aber keine Auth → 401 (nicht 200).
+    const okBody = await app.inject({
+      method: "POST",
+      url: "/api/check-text",
+      payload: { text: CHECK_STMT },
+    });
+    expect(okBody.statusCode).toBe(401);
+    // Invalider Body ohne Auth → weiterhin 401 (Auth schlägt die Schema-400).
+    const badBody = await app.inject({ method: "POST", url: "/api/check-text", payload: {} });
+    expect(badBody.statusCode).toBe(401);
+  });
+});
+
 describe("SCRUM-491 Slice 5: Rate-Limit auf /api/check-text", () => {
   beforeEach(() => {
     process.env.KLARWERK_ADDON_API = "1";
