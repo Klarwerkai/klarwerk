@@ -7,8 +7,10 @@ export function addonApiEnabled(): boolean {
   return flag === "1" || flag === "true";
 }
 
-// Der einzige Pfad, für den der Add-on-Pfad CORS öffnet — nichts sonst.
+// Die Pfade, für die der Add-on-Pfad CORS öffnet — nichts sonst.
 export const ADDON_ASK_PATH = "/api/ask";
+// SCRUM-491 Slice 5: zweiter Add-on-Endpunkt (deterministische Dry-Run-Prüfung freien Textes).
+export const ADDON_CHECK_TEXT_PATH = "/api/check-text";
 
 // Validiert die konfigurierte Add-in-Origin als ECHTE URL-Origin (ben-Review SCRUM-490, P2). Fail-closed:
 // "*", leer, mit Pfad/Query/Fragment oder syntaktisch ungültig → null. null bedeutet: KEIN CORS registrieren,

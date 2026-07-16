@@ -4,7 +4,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   type AddonPrincipal,
   authorizesAsk,
+  authorizesCheckText,
   isLiteralAskPath,
+  matchAddonRoute,
+  principalHasCapability,
   resolveAddonAuth,
 } from "./addon-principal";
 import { buildApp, buildServices } from "./build-app";
@@ -208,16 +211,30 @@ describe("SCRUM-490 D2 (ben-Review): Capability-Check + Single-Tenant-Vertrag", 
     expect(isLiteralAskPath(undefined)).toBe(false);
   });
 
-  it("authorizesAsk: nur Capability ask.validated autorisiert, sonst fail-closed", () => {
-    const real: AddonPrincipal = { kind: "addon", id: "addon:klara", capability: "ask.validated" };
-    expect(authorizesAsk(real)).toBe(true);
-    // Simulierte künftige Capability → fail-closed (403 im Handler).
+  it("Capabilities sind getrennte Rechte (Least-Privilege): je Helfer nur das eigene Recht", () => {
+    // SCRUM-491 Slice 5: nur-ask-Principal erreicht /api/ask, NICHT /api/check-text (und umgekehrt).
+    const askOnly: AddonPrincipal = {
+      kind: "addon",
+      id: "addon:klara",
+      capabilities: ["ask.validated"],
+    };
+    expect(authorizesAsk(askOnly)).toBe(true);
+    expect(authorizesCheckText(askOnly)).toBe(false);
+    const checkOnly: AddonPrincipal = {
+      kind: "addon",
+      id: "addon:klara",
+      capabilities: ["checktext.validated"],
+    };
+    expect(authorizesCheckText(checkOnly)).toBe(true);
+    expect(authorizesAsk(checkOnly)).toBe(false);
+    // Simulierte künftige/fremde Capability → beide fail-closed (403 im Handler).
     const other = {
       kind: "addon",
       id: "addon:klara",
-      capability: "ask.everything",
+      capabilities: ["ask.everything"],
     } as unknown as AddonPrincipal;
     expect(authorizesAsk(other)).toBe(false);
+    expect(authorizesCheckText(other)).toBe(false);
   });
 
   it("der aufgelöste Principal trägt KEIN tenant-Feld (Single-Tenant, keine erzwungene Grenze)", () => {
@@ -228,13 +245,49 @@ describe("SCRUM-490 D2 (ben-Review): Capability-Check + Single-Tenant-Vertrag", 
     } as unknown as FastifyRequest);
     expect(res.kind).toBe("valid");
     if (res.kind === "valid") {
+      // EIN Key → beide schmalen Rechte (ein Tenant, zwei Endpunkte); die Enge liegt pro Route.
       expect(res.principal).toEqual({
         kind: "addon",
         id: "addon:klara",
-        capability: "ask.validated",
+        capabilities: ["ask.validated", "checktext.validated"],
       });
       expect(Object.keys(res.principal)).not.toContain("tenant");
     }
+  });
+});
+
+// SCRUM-491 Slice 5: Add-on-Route-Tabelle — Deny-by-default + Least-Privilege je Route. Diese Logik
+// (matchAddonRoute + principalHasCapability) IST der Root-Hook-Entscheid; hier byte-genau/kompositions-
+// getestet, weil der echte Key beide Rechte trägt (die „nur ask → 403 auf check-text"-Grenze ist real
+// nur über einen konstruierten Principal prüfbar — vgl. isLiteralAskPath-Präzedenz).
+describe("SCRUM-491 Slice 5: Add-on-Route-Tabelle (Deny-by-default, Least-Privilege)", () => {
+  it("matchAddonRoute: nur die exakten Paare matchen; Rohpfad byte-genau", () => {
+    expect(matchAddonRoute("POST", "/api/ask", "/api/ask")?.capability).toBe("ask.validated");
+    expect(matchAddonRoute("POST", "/api/check-text", "/api/check-text")?.capability).toBe(
+      "checktext.validated",
+    );
+    // Falsche Methode → kein Match.
+    expect(matchAddonRoute("GET", "/api/check-text", "/api/check-text")).toBeNull();
+    // Kanonisch check-text, aber roher Pfad enkodiert → kein Match (byte-genau).
+    expect(matchAddonRoute("POST", "/api/check-text", "/api/%63heck-text")).toBeNull();
+    expect(matchAddonRoute("POST", "/api/check-text", "/api/check-text/")).toBeNull();
+    // Dritte Route → kein Match (Deny-by-default).
+    expect(matchAddonRoute("GET", "/api/conflicts", "/api/conflicts")).toBeNull();
+    expect(matchAddonRoute("POST", "/api/kos", "/api/kos")).toBeNull();
+  });
+
+  it("Capability-Bindung: nur-ask-Principal wird auf /api/check-text abgewiesen (Hook-Entscheid)", () => {
+    const askOnly: AddonPrincipal = {
+      kind: "addon",
+      id: "addon:klara",
+      capabilities: ["ask.validated"],
+    };
+    const checkRoute = matchAddonRoute("POST", "/api/check-text", "/api/check-text");
+    expect(checkRoute).not.toBeNull();
+    // Route passt, aber das schmale Recht fehlt → der Hook würde 403 senden.
+    expect(checkRoute && principalHasCapability(askOnly, checkRoute.capability)).toBe(false);
+    const askRoute = matchAddonRoute("POST", "/api/ask", "/api/ask");
+    expect(askRoute && principalHasCapability(askOnly, askRoute.capability)).toBe(true);
   });
 });
 

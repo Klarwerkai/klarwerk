@@ -237,6 +237,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // --- Ask (ask-routes.ts) ---
   "POST /api/ask": { protection: "ko.read" },
   "POST /api/ask/helpful": { protection: "ko.read" },
+  // SCRUM-491 Slice 5 (check-text-routes.ts): Session-Zweig erzwingt ko.read; der Add-on-Zweig verlangt
+  // checktext.validated (Hook + Handler). Nur bei KLARWERK_ADDON_API registriert.
+  "POST /api/check-text": { protection: "ko.read" },
   "GET /api/gaps": { protection: "ko.read" },
   "PUT /api/gaps/:id": { protection: "ko.assign" },
   "DELETE /api/gaps/:id": { protection: "ko.validate" },

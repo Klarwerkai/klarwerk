@@ -109,8 +109,14 @@ import {
   ValidationService,
   type ValidationSettingsRepo,
 } from "../../validation";
-import { ADDON_ASK_PATH, ADDON_KEY_HEADER, addonApiEnabled, resolveAddonOrigin } from "./addon-api";
-import { isLiteralAskPath, resolveAddonAuth } from "./addon-principal";
+import {
+  ADDON_ASK_PATH,
+  ADDON_CHECK_TEXT_PATH,
+  ADDON_KEY_HEADER,
+  addonApiEnabled,
+  resolveAddonOrigin,
+} from "./addon-api";
+import { matchAddonRoute, principalHasCapability, resolveAddonAuth } from "./addon-principal";
 import type { SemanticPrefilter } from "./duplicate-detection";
 import type { FactoryReset } from "./factory-reset";
 import { makeGuards } from "./http";
@@ -120,6 +126,7 @@ import { adminRoutes } from "./routes/admin-routes";
 import { askRoutes } from "./routes/ask-routes";
 import { auditRoutes } from "./routes/audit-routes";
 import { captureRoutes } from "./routes/capture-routes";
+import { checkTextRoutes } from "./routes/check-text-routes";
 import { conflictRoutes } from "./routes/conflicts-routes";
 import { externalRoutes } from "./routes/external-routes";
 import { helpRoutes } from "./routes/help-routes";
@@ -439,8 +446,9 @@ export function buildApp(
     // Handler LESEN ihn danach nur noch (keine erneute Key-Prüfung → die von ben gemeldete
     // Dreifach-Validierung entfällt). Der Hook ist vor rate-limit registriert, damit die Drossel den
     // fertigen Principal sieht.
-    //  - Key vorhanden + gültig  → Principal; erlaubt AUSSCHLIESSLICH POST /api/ask, jede andere Route
-    //    → 403 (die Capability ask.validated autorisiert nur diesen einen Endpunkt; kein Teilzugriff).
+    //  - Key vorhanden + gültig  → Principal; erlaubt AUSSCHLIESSLICH die in ADDON_ROUTES gelisteten
+    //    Endpunkte (POST /api/ask mit ask.validated, POST /api/check-text mit checktext.validated),
+    //    jede andere Route/fehlende Capability → 403 (Deny-by-default, kein Teilzugriff).
     //  - Key vorhanden + ungültig → 401 (kein Fallback auf Session mit falschem Key).
     //  - kein Key                → Session-Kontext (Live-App unverändert).
     app.decorateRequest("authContext", null);
@@ -454,17 +462,16 @@ export function buildApp(
         request.authContext = { authKind: "addon", principal: auth.principal };
         // ben-Review: der kanonische routeOptions.url-Check allein reicht nicht — Fastify normalisiert
         // Prozent-Enkodierung (z. B. /api/%61sk, /%2e%2e/api/ask) und würde solche Requests auf die
-        // /api/ask-Route matchen. Zusätzlich verlangen wir daher, dass der ROHE, un-normalisierte Pfad
-        // (request.raw.url) byte-genau "/api/ask" ist. Klara sendet ausschließlich den literalen Pfad →
-        // kein legitimer enkodierter Aufruf → risikolos. Beide Checks als Defense-in-Depth.
-        const isAskRoute =
-          request.method === "POST" &&
-          request.routeOptions?.url === ADDON_ASK_PATH &&
-          isLiteralAskPath(request.raw.url);
-        if (!isAskRoute) {
-          reply
-            .code(403)
-            .send({ error: "FORBIDDEN", message: "Add-in-Zugang gilt nur für POST /api/ask." });
+        // Ziel-Route matchen. matchAddonRoute verlangt daher zusätzlich, dass der ROHE, un-normalisierte
+        // Pfad (request.raw.url) byte-genau dem erlaubten Pfad entspricht. Klara sendet ausschließlich
+        // die literalen Pfade → kein legitimer enkodierter Aufruf → risikolos. Und der Principal muss
+        // GENAU das schmale Recht der Route tragen (Least-Privilege). Beides Defense-in-Depth.
+        const route = matchAddonRoute(request.method, request.routeOptions?.url, request.raw.url);
+        if (!route || !principalHasCapability(auth.principal, route.capability)) {
+          reply.code(403).send({
+            error: "FORBIDDEN",
+            message: "Add-in-Zugang für diese Route/Capability nicht erlaubt.",
+          });
           return reply;
         }
         return;
@@ -483,7 +490,7 @@ export function buildApp(
         () =>
           (req: FastifyRequest, cb: (err: Error | null, options: FastifyCorsOptions) => void) => {
             const path = (req.url ?? "").split("?")[0];
-            if (path === ADDON_ASK_PATH) {
+            if (path === ADDON_ASK_PATH || path === ADDON_CHECK_TEXT_PATH) {
               cb(null, {
                 origin: addonOrigin,
                 methods: ["POST", "OPTIONS"],
@@ -552,6 +559,12 @@ export function buildApp(
   );
   app.register(captureRoutes({ ...services, notifyAssignment, semanticPrefilter }, guards));
   app.register(askRoutes(services.ask, guards));
+  // SCRUM-491 Slice 5: /api/check-text existiert NUR bei aktivem Add-on-Flag — sonst gar nicht
+  // registriert → Endpunkt existiert nicht → bit-identisch zum heutigen Verhalten. Deterministische
+  // Stufe-1-Dry-Run-Prüfung (validated-only, kein Modell, keine Persistenz).
+  if (addonApiEnabled()) {
+    app.register(checkTextRoutes({ ko: services.ko, overlaps: services.overlaps }, guards));
+  }
   // SCRUM-470 (S6): Erkennung nach Import-Accept — dasselbe Deps-Bündel wie der Promote-Pfad.
   // Greift nur bei KLARWERK_CONFLUENCE_IMPORT=1 (Default AUS → heutiges Verhalten).
   app.register(
