@@ -1,6 +1,11 @@
 import cors, { type FastifyCorsOptions } from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
-import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
+import Fastify, {
+  type FastifyError,
+  type FastifyInstance,
+  type FastifyReply,
+  type FastifyRequest,
+} from "fastify";
 import type { Pool } from "pg";
 import { AskService, type GapRepo, InMemoryGapRepo, PgGapRepo } from "../../ask";
 import { type AuditRepo, AuditService, InMemoryAuditRepo, PgAuditRepo } from "../../audit";
@@ -120,6 +125,7 @@ import {
 } from "./addon-api";
 import { matchAddonRoute, principalHasCapability, resolveAddonAuth } from "./addon-principal";
 import type { SemanticPrefilter } from "./duplicate-detection";
+import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
 import { makeGuards } from "./http";
 import { impactReport } from "./impact";
@@ -428,7 +434,29 @@ function createSemanticPrefilterFromEnv(): SemanticPrefilter | undefined {
   }
   const rawTopK = Number(process.env.KLARWERK_DUP_PREFILTER_TOPK);
   const topK = Number.isInteger(rawTopK) && rawTopK > 0 ? rawTopK : 25;
-  return { embedder, store: new InMemoryEmbeddingStore(), topK };
+  // SCRUM-498 B2 (Fix): embed() durch den prozess-globalen Embed-Cap führen, damit der Prefilter den
+  // Cap nicht umgeht. Bei Normallast (und mit dem Stub) ein No-Op → Prefilter-Verhalten bit-gleich.
+  return { embedder: cappedEmbeddingProvider(embedder), store: new InMemoryEmbeddingStore(), topK };
+}
+
+// SCRUM-498 B2: einheitliche Backpressure-Antwort. Ein Modell-/Embed-Cap-Überlauf (ModelCapacityError)
+// wird von der Reasoner-Kette bzw. dem Prefilter bis hierher durchgereicht → 503 + Retry-After (kein
+// 500/Crash). Jeder andere Fehler wird formtreu an Fastifys Standard-Fehlerbehandlung weitergereicht
+// (Validierungs-400 etc. unverändert). Als benannte Funktion exportiert, damit Tests denselben Handler
+// verdrahten wie die App (kein duplizierter Handler, keine Drift).
+export function modelBusyErrorHandler(
+  error: FastifyError,
+  _request: FastifyRequest,
+  reply: FastifyReply,
+): void {
+  if (error instanceof ModelCapacityError) {
+    reply.code(503).header("Retry-After", "1").send({
+      error: "MODEL_BUSY",
+      message: "KI-Modell derzeit ausgelastet. Bitte in Kürze erneut versuchen.",
+    });
+    return;
+  }
+  reply.send(error);
 }
 
 export function buildApp(
@@ -442,16 +470,7 @@ export function buildApp(
   // von der Reasoner-Kette bis hierher durchgereicht → 503 + Retry-After (kein 500/Crash). Jeder andere
   // Fehler wird formtreu an Fastifys Standard-Fehlerbehandlung weitergereicht (Validierungs-400 etc.
   // unverändert).
-  app.setErrorHandler((error, _request, reply) => {
-    if (error instanceof ModelCapacityError) {
-      reply.code(503).header("Retry-After", "1").send({
-        error: "MODEL_BUSY",
-        message: "KI-Modell derzeit ausgelastet. Bitte in Kürze erneut versuchen.",
-      });
-      return;
-    }
-    reply.send(error);
-  });
+  app.setErrorHandler(modelBusyErrorHandler);
   const guards = makeGuards(services.auth);
 
   // Add-on-API (Klara-Panel), hinter KLARWERK_ADDON_API: CORS NUR bei aktivem Flag, NUR für die eine

@@ -71,8 +71,14 @@ async function selectPool(
     const narrowed = candidates.filter((c) => ids.has(c.refId));
     // Leerer semantischer Pool (Store in dieser Ausbaustufe noch nicht befüllt) → Voll-Pool-Fallback.
     return narrowed.length > 0 ? narrowed : candidates;
-  } catch {
-    // Fehler im Embedding/Store → Voll-Pool-Fallback (Erkennung bleibt best-effort und vollständig).
+  } catch (err) {
+    // SCRUM-498 B2: Embed-Backpressure durchreichen (nicht als Voll-Pool-Fallback verschleiern). Der
+    // Aufrufer detectDuplicatesForKo ist best-effort und fängt ihn in seinem EIGENEN catch → kein 503
+    // dort, aber auch keine still degradierte Erkennung unter Last. Namensbasiert (gleiche Präzedenz).
+    if (err instanceof Error && err.name === "ModelCapacityError") {
+      throw err;
+    }
+    // Echte Embedding-/Store-Fehler → Voll-Pool-Fallback (Erkennung bleibt best-effort und vollständig).
     return candidates;
   }
 }

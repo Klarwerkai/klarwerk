@@ -130,8 +130,15 @@ async function selectValidatedPool(
           return narrowed;
         }
       }
-    } catch {
-      // Fehler im Embedding/Store → lexikalischer, source-gedeckelter Fallback (unten).
+    } catch (err) {
+      // SCRUM-498 B2: Embed-Backpressure (Cap voll/Timeout) NICHT still zu lexikalischem Fallback
+      // degradieren — sonst verschwiegen wir unter Last ein echtes Duplikat (falsch-negativ in einem
+      // Sicherheits-Feature). Durchreichen → die HTTP-Schicht macht daraus 503 + Retry-After.
+      // Namensbasiert erkannt, gleiche Präzedenz wie in overlap-service.modelBuild.
+      if (err instanceof Error && err.name === "ModelCapacityError") {
+        throw err;
+      }
+      // Echte Embedding-/Store-Fehler → lexikalischer, source-gedeckelter Fallback (unten).
     }
   }
 

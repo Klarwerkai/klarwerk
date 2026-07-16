@@ -4,7 +4,7 @@ import { InMemoryOverlapRepo, OverlapService, type OverlapVerdict } from "../../
 import type { EmbeddingProvider, EmbeddingStore } from "../../../embedding";
 import type { KnowledgeObject, KoService } from "../../../knowledge-object";
 import { ModelCapacityError, ModelProvider, Reasoner } from "../../../reasoner";
-import { buildApp, buildServices } from "../build-app";
+import { buildApp, buildServices, modelBusyErrorHandler } from "../build-app";
 import type { SemanticPrefilter } from "../duplicate-detection";
 import type { Guards } from "../http";
 import { checkTextRoutes } from "./check-text-routes";
@@ -520,5 +520,73 @@ describe("SCRUM-498 B2: Modell-Cap-Überlauf (deep) → kontrolliertes 503, kein
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().persisted).toBe(false);
+  });
+});
+
+// SCRUM-498 B2 (Fix): der Semantic-Prefilter ruft embed() direkt — ohne Cap ein Bypass. Läuft der
+// Embed-Cap über (ModelCapacityError), reicht der Prefilter den Fehler durch (statt still lexikalisch zu
+// degradieren) → derselbe globale Handler (modelBusyErrorHandler, verbatim aus buildApp) macht daraus
+// 503 + Retry-After. Echte Embed-Fehler degradieren weiter lexikalisch → 200.
+async function stage2AppEmbedThrows(embedErr: Error) {
+  const { ko } = fakeKo([mkKo("v2", TEXT_MITTEL)]);
+  const judgeDuplicate = vi.fn(async () => teilweiseVerdict);
+  const reasoner = {
+    judgeDuplicate,
+    judgeConflict: vi.fn(async () => null),
+  } as unknown as Reasoner;
+  const prefilter: SemanticPrefilter = {
+    embedder: {
+      name: "throwing",
+      embeddingVersion: "throw@3",
+      dim: 3,
+      isAvailable: () => true,
+      embed: async () => {
+        throw embedErr;
+      },
+    } as unknown as EmbeddingProvider,
+    store: { upsert: vi.fn(), nearest: vi.fn(), delete: vi.fn() } as unknown as EmbeddingStore,
+    topK: 20,
+  };
+  const app = Fastify();
+  app.setErrorHandler(modelBusyErrorHandler); // derselbe Handler wie in buildApp
+  await app.register(
+    checkTextRoutes(
+      {
+        ko,
+        overlaps: new OverlapService({ repo: new InMemoryOverlapRepo() }),
+        reasoner,
+        semanticPrefilter: prefilter,
+      },
+      fakeGuards,
+    ),
+  );
+  return { app, judgeDuplicate };
+}
+
+describe("SCRUM-498 B2 (Fix): Embed-Cap-Überlauf (deep) → 503 über den echten Handler", () => {
+  it("embed wirft ModelCapacityError → 503 + Retry-After (NICHT still lexikalisch + 200)", async () => {
+    const { app, judgeDuplicate } = await stage2AppEmbedThrows(
+      new ModelCapacityError("Embedder ausgelastet."),
+    );
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/check-text",
+      payload: { text: TEXT_IDENTISCH, want: "deep" },
+    });
+    expect(res.statusCode).toBe(503);
+    expect(res.headers["retry-after"]).toBeDefined();
+    expect(res.json().error).toBe("MODEL_BUSY");
+    expect(judgeDuplicate).not.toHaveBeenCalled(); // Backpressure surfaced vor dem Judge
+  });
+
+  it("echter Embed-Fehler (deep) → lexikalischer Fallback → 200 (kein 503), Judge läuft", async () => {
+    const { app, judgeDuplicate } = await stage2AppEmbedThrows(new Error("Netzfehler"));
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/check-text",
+      payload: { text: TEXT_IDENTISCH, want: "deep" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(judgeDuplicate).toHaveBeenCalled(); // lexikalischer Pool → Judge lief
   });
 });

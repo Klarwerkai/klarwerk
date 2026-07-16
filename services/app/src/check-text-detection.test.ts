@@ -8,6 +8,7 @@ import {
 } from "../../conflicts";
 import type { EmbeddingProvider, EmbeddingStore } from "../../embedding";
 import type { KnowledgeObject, KoService } from "../../knowledge-object";
+import { ModelCapacityError } from "../../reasoner";
 import { checkText } from "./check-text-detection";
 import type { SemanticPrefilter } from "./duplicate-detection";
 
@@ -213,5 +214,63 @@ describe("SCRUM-491: checkText — Dry-Run (validated-only, keine Persistenz, so
     );
     expect(result.conflicts).toHaveLength(0);
     expect(await conflictRepo.all()).toHaveLength(0);
+  });
+});
+
+// SCRUM-498 B2 (Fix): der Semantic-Prefilter ruft embed() direkt. Läuft der Embed-Cap über
+// (ModelCapacityError), darf checkText NICHT still auf den lexikalischen Fallback degradieren (das
+// verschwiege unter Last ein echtes Duplikat), sondern muss den Backpressure durchreichen → 503.
+// Echte Embed-Fehler (Netz/Store) degradieren weiterhin lexikalisch.
+function throwingEmbedPrefilter(err: Error): SemanticPrefilter {
+  return {
+    embedder: {
+      name: "throwing",
+      embeddingVersion: "throw@3",
+      dim: 3,
+      isAvailable: () => true,
+      embed: async () => {
+        throw err;
+      },
+    } as unknown as EmbeddingProvider,
+    store: { upsert: vi.fn(), nearest: vi.fn(), delete: vi.fn() } as unknown as EmbeddingStore,
+    topK: 20,
+  };
+}
+
+describe("SCRUM-498 B2 (Fix): Embed-Backpressure via Prefilter", () => {
+  it("Embed wirft ModelCapacityError → checkText WIRFT (kein stiller lexikalischer Fallback), Judge unberührt", async () => {
+    const { ko } = koService([mkKo("v2", "validiert", TEXT_MITTEL)]);
+    const judge = vi.fn(async (): Promise<OverlapVerdict | null> => teilweiseVerdict);
+    const prefilter = throwingEmbedPrefilter(new ModelCapacityError("Embedder ausgelastet."));
+    await expect(
+      checkText(
+        { text: TEXT_IDENTISCH, title: "Pumpe entlüften" },
+        {
+          ko,
+          overlaps: new OverlapService({ repo: new InMemoryOverlapRepo() }),
+          duplicateJudge: judge,
+          semanticPrefilter: prefilter,
+        },
+      ),
+    ).rejects.toBeInstanceOf(ModelCapacityError);
+    expect(judge).not.toHaveBeenCalled(); // Backpressure surfaced VOR dem Judge
+  });
+
+  it("echter Embed-Fehler → weiterhin lexikalischer Fallback (kein Wurf), Judge läuft auf dem Pool", async () => {
+    const { ko, findCandidates } = koService([mkKo("v2", "validiert", TEXT_MITTEL)]);
+    const judge = vi.fn(async (): Promise<OverlapVerdict | null> => teilweiseVerdict);
+    const prefilter = throwingEmbedPrefilter(new Error("Embedder-Netzfehler"));
+    const result = await checkText(
+      { text: TEXT_IDENTISCH, title: "Pumpe entlüften" },
+      {
+        ko,
+        overlaps: new OverlapService({ repo: new InMemoryOverlapRepo() }),
+        duplicateJudge: judge,
+        semanticPrefilter: prefilter,
+      },
+    );
+    expect(findCandidates).toHaveBeenCalledWith(expect.objectContaining({ limit: 20 }));
+    expect(result.duplicates).toHaveLength(1);
+    expect(result.duplicates[0]?.method).toBe("model"); // Judge lief auf dem lexikalischen Pool
   });
 });
