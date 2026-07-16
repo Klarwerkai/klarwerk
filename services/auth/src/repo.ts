@@ -10,6 +10,11 @@ export interface UserRepo {
   insert(user: User): Promise<void>;
   update(user: User): Promise<void>;
   delete(id: string): Promise<void>;
+  // SCRUM-504: atomarer Bootstrap-Claim. Fügt `user` als DEN Bootstrap-Admin ein und liefert true; ist
+  // der einzige Bootstrap-Slot schon belegt (partieller Unique-Index / paralleler Gewinner), wird NICHTS
+  // eingefügt und false geliefert (der Aufrufer legt dann ein normales Konto an). Schließt die
+  // COUNT+INSERT-Race: egal wie viele parallele Ersteinrichtungen laufen, genau einer bekommt true.
+  tryClaimBootstrapAdmin(user: User): Promise<boolean>;
 }
 
 export interface SessionRepo {
@@ -34,9 +39,25 @@ export interface PasswordResetRepo {
 
 export class InMemoryUserRepo implements UserRepo {
   private readonly users = new Map<string, User>();
+  // SCRUM-504: Spiegel des partiellen Unique-Index — die ids der aktuell als Bootstrap-Admin markierten
+  // Konten (höchstens eines). Als Set geführt, damit ein Löschen den Slot wieder freigibt (identisch zur
+  // DB, wo das Löschen der Zeile den Index-Eintrag entfernt → wieder leere-Tabelle-Semantik).
+  private readonly bootstrapAdminIds = new Set<string>();
 
   count(): Promise<number> {
     return Promise.resolve(this.users.size);
+  }
+
+  // Atomar im Single-Thread-Modell von JS: die Prüfung „Slot frei?" und das Setzen laufen ohne
+  // dazwischenliegendes await, daher kann kein zweiter paralleler register/OIDC-Aufruf denselben Slot
+  // beanspruchen. Freier Slot → einfügen + markieren + true; sonst nichts einfügen + false.
+  tryClaimBootstrapAdmin(user: User): Promise<boolean> {
+    if (this.bootstrapAdminIds.size > 0) {
+      return Promise.resolve(false);
+    }
+    this.users.set(user.id, user);
+    this.bootstrapAdminIds.add(user.id);
+    return Promise.resolve(true);
   }
 
   list(): Promise<User[]> {
@@ -69,6 +90,7 @@ export class InMemoryUserRepo implements UserRepo {
 
   delete(id: string): Promise<void> {
     this.users.delete(id);
+    this.bootstrapAdminIds.delete(id); // SCRUM-504: Löschen gibt den Bootstrap-Slot wieder frei.
     return Promise.resolve();
   }
 }

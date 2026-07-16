@@ -403,3 +403,97 @@ describe("authRoutes — Setup, Status & Users (§2.1/2.2)", () => {
     await app.close();
   });
 });
+
+// SCRUM-504 (P0): Admin-Bootstrap gegen parallele setup/register/OIDC atomar. Die Race entstand aus
+// getrenntem COUNT + INSERT (TOCTOU). Der partielle Unique-Index (PG) bzw. der Set-Spiegel (InMemory)
+// erzwingen „höchstens ein Bootstrap-Admin"; im Single-Thread-Modell von JS macht Promise.all die
+// Nebenläufigkeit sichtbar. Verlierer werden normale Nicht-Admins (kein Fehler).
+describe("SCRUM-504: Admin-Bootstrap ist atomar", () => {
+  function claims(i: number) {
+    return { sub: `s${i}`, email: `u${i}@x.de`, name: `U${i}`, roles: [] };
+  }
+
+  it("viele parallele register auf leerer Instanz → GENAU ein Admin, Rest Experte/gesperrt", async () => {
+    const { service } = build();
+    const results = await Promise.all(
+      Array.from({ length: 12 }, (_, i) =>
+        service.register({ name: `N${i}`, email: `u${i}@x.de`, password: "secret123" }),
+      ),
+    );
+    const admins = results.filter((u) => u.role === "admin");
+    expect(admins).toHaveLength(1);
+    expect(admins[0]?.approved).toBe(true);
+    for (const u of results.filter((u) => u.role !== "admin")) {
+      expect(u.role).toBe("experte");
+      expect(u.approved).toBe(false); // Verlierer = regulärer, gesperrter Nutzer
+    }
+  });
+
+  it("viele parallele OIDC-Provisionierungen auf leerer Instanz → GENAU ein Admin, Rest gemappte Rolle", async () => {
+    const { service } = build();
+    const results = await Promise.all(
+      Array.from({ length: 12 }, (_, i) => service.loginWithOidc(claims(i), true, "viewer")),
+    );
+    const admins = results.filter((r) => r.user.role === "admin");
+    expect(admins).toHaveLength(1);
+    for (const r of results.filter((r) => r.user.role !== "admin")) {
+      expect(r.user.role).toBe("viewer"); // gemappte Rolle für die Verlierer
+    }
+  });
+
+  it("gemischte parallele register + OIDC auf leerer Instanz → GENAU ein Admin insgesamt", async () => {
+    const { service } = build();
+    const [regs, oidcs] = await Promise.all([
+      Promise.all(
+        Array.from({ length: 6 }, (_, i) =>
+          service.register({ name: `R${i}`, email: `r${i}@x.de`, password: "secret123" }),
+        ),
+      ),
+      Promise.all(
+        Array.from({ length: 6 }, (_, i) =>
+          service.loginWithOidc(
+            { sub: `o${i}`, email: `o${i}@x.de`, name: `O${i}`, roles: [] },
+            true,
+          ),
+        ),
+      ),
+    ]);
+    const admins = [
+      ...regs.filter((u) => u.role === "admin"),
+      ...oidcs.filter((r) => r.user.role === "admin"),
+    ];
+    expect(admins).toHaveLength(1);
+  });
+
+  it("Einzelaufruf (normaler Erststart) → erster Nutzer wird Admin (unverändert)", async () => {
+    const { service } = build();
+    const first = await service.register({ name: "Pedi", email: "a@x.de", password: "secret123" });
+    expect(first.role).toBe("admin");
+    expect(first.approved).toBe(true);
+  });
+
+  it("zweiter Aufruf NACH bestehendem Admin → wird kein Admin (kein Bootstrap mehr)", async () => {
+    const { service } = build();
+    await service.register({ name: "Admin", email: "admin@x.de", password: "secret123" });
+    const second = await service.register({
+      name: "Bob",
+      email: "bob@x.de",
+      password: "secret123",
+    });
+    expect(second.role).toBe("experte");
+    expect(second.approved).toBe(false);
+  });
+
+  it("Löschen des Bootstrap-Admins gibt den Slot frei → nächster Erstnutzer wird wieder Admin", async () => {
+    const { users, service } = build();
+    const admin = await service.register({
+      name: "Admin",
+      email: "admin@x.de",
+      password: "secret123",
+    });
+    await users.delete(admin.id); // Instanz wieder leer
+    const next = await service.register({ name: "Neu", email: "neu@x.de", password: "secret123" });
+    expect(next.role).toBe("admin");
+    expect(next.approved).toBe(true);
+  });
+});

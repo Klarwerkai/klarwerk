@@ -37,7 +37,10 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   koRepo: ["insert", "update", "delete"],
   koVersions: ["append"],
   evidence: ["append"],
-  users: ["insert", "update", "delete"],
+  // SCRUM-504: der atomare Bootstrap-Claim ist eine Mutation (fügt den Admin ein) → muss journaliert
+  // werden, sonst überlebt der erste Admin den Dev-Neustart nicht. In Dev (sequenziell) genau einmal mit
+  // Erfolg gerufen; Replay auf die leere Instanz beansprucht den Slot identisch.
+  users: ["insert", "update", "delete", "tryClaimBootstrapAdmin"],
   sessions: ["create", "delete", "deleteByUser"],
   resetTokens: ["create", "delete"],
   drafts: ["insert", "update", "delete"],

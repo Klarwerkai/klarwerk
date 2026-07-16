@@ -12,8 +12,14 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash text NOT NULL,
   role text NOT NULL,
   approved boolean NOT NULL DEFAULT false,
-  created_at text NOT NULL
+  created_at text NOT NULL,
+  -- SCRUM-504: markiert das EINE Bootstrap-Admin-Konto (erstes Konto bei leerer Tabelle). Der partielle
+  -- Unique-Index unten erzwingt DB-nativ „höchstens ein Bootstrap-Admin" → zwei parallele Ersteinrichtungen
+  -- (setup/register/OIDC) können nicht beide Admin werden (TOCTOU geschlossen). ALTER für Bestands-DBs.
+  bootstrap_admin boolean NOT NULL DEFAULT false
 );
+ALTER TABLE users ADD COLUMN IF NOT EXISTS bootstrap_admin boolean NOT NULL DEFAULT false;
+CREATE UNIQUE INDEX IF NOT EXISTS ko_users_one_bootstrap ON users (bootstrap_admin) WHERE bootstrap_admin;
 CREATE TABLE IF NOT EXISTS sessions (
   token text PRIMARY KEY,
   user_id text NOT NULL,
@@ -92,6 +98,31 @@ export class PgUserRepo implements UserRepo {
         user.createdAt,
       ],
     );
+  }
+
+  // SCRUM-504: EIN INSERT, das den Claim UND die Admin-Zeile atomar zusammenfasst (kein Split-Brain).
+  // bootstrap_admin=true trifft den partiellen Unique-Index; läuft parallel ein zweiter Aufruf, verliert
+  // er per ON CONFLICT DO NOTHING und bekommt keine Zeile (rowCount 0) → der Service legt ein normales
+  // Konto an. Die Konflikt-Zielangabe nennt Spalte + Index-Prädikat, damit NUR der Bootstrap-Index
+  // (nicht etwa die E-Mail-Unique) den DO-NOTHING-Pfad auslöst.
+  async tryClaimBootstrapAdmin(user: User): Promise<boolean> {
+    const res = await this.pool.query(
+      `INSERT INTO users(id,name,email,password_salt,password_hash,role,approved,created_at,bootstrap_admin)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,true)
+       ON CONFLICT (bootstrap_admin) WHERE bootstrap_admin DO NOTHING
+       RETURNING id`,
+      [
+        user.id,
+        user.name,
+        user.email,
+        user.passwordSalt,
+        user.passwordHash,
+        user.role,
+        user.approved,
+        user.createdAt,
+      ],
+    );
+    return (res.rowCount ?? 0) > 0;
   }
 
   async update(user: User): Promise<void> {

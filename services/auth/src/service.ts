@@ -96,18 +96,26 @@ export class AuthService {
     if (await this.users.findByEmail(input.email)) {
       throw new AuthError("EMAIL_TAKEN", "E-Mail ist bereits vergeben.");
     }
-    const isFirstAccount = (await this.users.count()) === 0;
     const { salt, hash } = hashPassword(input.password);
-    const user: User = {
+    const base = {
       id: this.genId(),
       name: input.name,
       email: input.email,
       passwordSalt: salt,
       passwordHash: hash,
-      role: isFirstAccount ? "admin" : "experte",
-      approved: isFirstAccount,
       createdAt: new Date(this.now()).toISOString(),
     };
+    // SCRUM-504: Bootstrap NUR bei leerer Tabelle versuchen (bestehende Systeme legen nie einen zweiten
+    // Admin an). Die Atomarität liefert der DB-Index in tryClaimBootstrapAdmin: bei paralleler
+    // Ersteinrichtung gewinnt genau EIN Aufruf den Admin, alle anderen fallen auf ein normales Konto
+    // zurück (kein Fehler, wie ein regulärer Nicht-Erst-Register).
+    if ((await this.users.count()) === 0) {
+      const admin: User = { ...base, role: "admin", approved: true };
+      if (await this.users.tryClaimBootstrapAdmin(admin)) {
+        return toPublic(admin);
+      }
+    }
+    const user: User = { ...base, role: "experte", approved: false };
     await this.users.insert(user);
     return toPublic(user);
   }
@@ -149,20 +157,29 @@ export class AuthService {
           "Kein Konto für diese E-Mail. Bitte vom Admin anlegen lassen.",
         );
       }
-      const isFirstAccount = (await this.users.count()) === 0;
-      // Bootstrap: erstes Konto wird Admin. Sonst gilt die gemappte Rolle (Default viewer).
-      const role: Role = isFirstAccount ? "admin" : (mappedRole ?? "viewer");
-      account = {
+      const base = {
         id: this.genId(),
         name: claims.name,
         email: claims.email,
         passwordSalt: "", // SSO-Konto: kein Passwort-Login möglich.
         passwordHash: "",
-        role,
         approved: true,
         createdAt: new Date(this.now()).toISOString(),
       };
-      await this.users.insert(account);
+      // SCRUM-504: identisch abgesichert wie register — Bootstrap-Admin nur bei leerer Tabelle, atomar
+      // über den DB-Index. Verlierer eines parallelen Race bekommt die gemappte Rolle (Default viewer).
+      let provisioned: User | undefined;
+      if ((await this.users.count()) === 0) {
+        const admin: User = { ...base, role: "admin" };
+        if (await this.users.tryClaimBootstrapAdmin(admin)) {
+          provisioned = admin;
+        }
+      }
+      if (!provisioned) {
+        provisioned = { ...base, role: mappedRole ?? "viewer" };
+        await this.users.insert(provisioned);
+      }
+      account = provisioned;
       await this.record(account.id, "user.oidc-provisioned", account.id);
     }
     if (!account.approved) {
