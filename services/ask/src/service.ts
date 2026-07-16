@@ -65,7 +65,10 @@ export class AskService {
     question: string,
     actor = "system",
     locale: ReasonerLocale = "de",
-    opts?: { demoSeed?: boolean },
+    // SCRUM-490 D2: validatedOnly (Add-on-Principal ask.validated) → der Reasoner sieht AUSSCHLIESSLICH
+    // validierte KOs; unvalidierte („offen") Kandidaten werden vor der Auswahl verworfen. Für den
+    // Session-Pfad ungesetzt → unverändertes Verhalten.
+    opts?: { demoSeed?: boolean; validatedOnly?: boolean },
   ): Promise<AskResult> {
     // SCRUM-361 / AG-03 / FR-ASK-02 / NFR-PERF-03: Ask nutzt NICHT mehr `koService.list()` (Laden des
     // gesamten Pools) als Kernpfad, sondern eine datenquellennahe, begrenzte Kandidaten-Vorauswahl
@@ -74,10 +77,15 @@ export class AskService {
     // (InMemory/Pg) filtert ODER-weise über Titel/Aussage/Tags/Kategorie, gedeckelt auf den Prefilter-
     // Limit und mit validiert-/Trust-Bias, damit relevante validierte Treffer unter dem Limit bleiben.
     const terms = queryTokens(question);
-    const prefiltered =
+    const prefilteredRaw =
       terms.length === 0
         ? []
         : await this.koService.findCandidates({ terms, limit: ASK_CANDIDATE_PREFILTER_LIMIT });
+    // SCRUM-490 D2: Der Add-on-Principal (ask.validated) darf nie aus unvalidierten Inhalten antworten
+    // — hier fallen alle nicht-„validiert"en Kandidaten weg, bevor der Reasoner sie sieht.
+    const prefiltered = opts?.validatedOnly
+      ? prefilteredRaw.filter((ko) => ko.status === "validiert")
+      : prefilteredRaw;
     const refs: KnowledgeRef[] = prefiltered.map((ko) => ({
       id: ko.id,
       title: ko.title,

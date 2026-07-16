@@ -1,6 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
 import { type AskService, isGapPriority } from "../../../ask";
-import { resolveAskUser } from "../addon-api";
 import { addonRateLimit } from "../addon-rate-limit";
 import { type Guards, sendError } from "../http";
 
@@ -11,18 +10,30 @@ export function askRoutes(ask: AskService, guards: Guards): FastifyPluginAsync {
       "/api/ask",
       // SCRUM-490 D3: Drossel NUR für den addon-Pfad. Bei Flag AUS ist das @fastify/rate-limit-Plugin
       // nicht registriert → diese config.rateLimit ist inert (Fastify ignoriert unbekannte route-config)
-      // → /api/ask exakt wie heute. Bei Flag AN drosselt sie nur addon-authentifizierte Requests
-      // (allowList exempt-iert Session-Requests der Live-App), gekeyt auf den stabilen addon-Actor.
+      // → /api/ask exakt wie heute. Bei Flag AN drosselt sie nur den Add-on-Principal (allowList
+      // exempt-iert Session-Requests der Live-App), gekeyt auf den stabilen addon-Actor.
       { config: { rateLimit: addonRateLimit() } },
       async (request, reply) => {
-        // Add-on-API (hinter KLARWERK_ADDON_API): Flag AUS → identisch zum Session-Guard (ko.read).
-        // Flag AN + gültiger Add-in-Key → synthetischer viewer (nur ko.read), sonst 401. Nur hier.
-        const user = await resolveAskUser(request, reply, guards);
+        // FR-I18N-01: UI-Sprache an den Reasoner; ungültig → "de".
+        const locale = request.body.locale === "en" ? "en" : "de";
+        // SCRUM-490 D2: Add-on-Principal (ask.validated) — vom onRequest-Hook request-lokal getragen,
+        // hier nur GELESEN (kein Session-Guard, kein ko.read). Capability = validated-only: der
+        // Reasoner sieht ausschließlich validierte Inhalte. Der ungültige/fremde-Route-Fall ist bereits
+        // im Hook mit 401/403 behandelt, ehe der Handler läuft.
+        const auth = request.authContext;
+        if (auth?.authKind === "addon") {
+          reply.code(200).send(
+            await ask.ask(request.body.question ?? "", auth.principal.id, locale, {
+              validatedOnly: true,
+            }),
+          );
+          return;
+        }
+        // Live-App unverändert: Session-Guard mit ko.read.
+        const user = await guards.requirePermission("ko.read", request, reply);
         if (!user) {
           return;
         }
-        // FR-I18N-01: UI-Sprache an den Reasoner; ungültig → "de".
-        const locale = request.body.locale === "en" ? "en" : "de";
         reply.code(200).send(await ask.ask(request.body.question ?? "", user.id, locale));
       },
     );

@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "./build-app";
 
-// KLARWERK_ADDON_API (Klara-Add-on-Pfad): EIN Flag schaltet CORS + schmalen ko.read-Token-Zugang für
+// KLARWERK_ADDON_API (Klara-Add-on-Pfad): EIN Flag schaltet CORS + den Add-on-Principal-Zugang für
 // /api/ask. Diese Suite sichert beide Seiten des Flags über die ECHTEN HTTP-Routen ab:
 //   Flag AUS → keine CORS-Header, kein Token-Pfad, /api/ask exakt wie bisher (Session-Guard).
-//   Flag AN  → nur die konfigurierte Add-in-Origin, gültiger Key → ko.read-Antwort, ungültig/kein Key → 401,
+//   Flag AN  → nur die konfigurierte Add-in-Origin, gültiger Key → ask.validated-Antwort, ungültig/kein Key → 401,
 //              und der Key öffnet KEINE andere Route.
 const ADDON_KEY_HEADER = "x-klarwerk-addon-key";
 const KEY = "s3cr3t-addon-key";
@@ -225,7 +225,7 @@ describe("KLARWERK_ADDON_API — Flag AN", () => {
   });
 
   it("Fail-closed CORS lässt den Token-Pfad unberührt: gültiger Key → 200", async () => {
-    // Selbst wenn CORS wegen Wildcard-Origin fail-closed ist, bleibt der schmale ko.read-Key-Pfad nutzbar
+    // Selbst wenn CORS wegen Wildcard-Origin fail-closed ist, bleibt der Add-on-Principal-Key-Pfad nutzbar
     // (CORS ist Browser-Schutz, keine Server-Auth). Beleg, dass die Härtung nur die CORS-Fläche betrifft.
     process.env.KLARWERK_ADDON_ORIGIN = "*";
     const { app, koId } = await appWithValidatedKo();
@@ -239,7 +239,7 @@ describe("KLARWERK_ADDON_API — Flag AN", () => {
     expect(res.json().result.sources).toContain(koId);
   });
 
-  it("gültiger Key → ko.read-Antwort ohne Session", async () => {
+  it("gültiger Key → ask.validated-Antwort ohne Session", async () => {
     const { app, koId } = await appWithValidatedKo();
     const res = await app.inject({
       method: "POST",

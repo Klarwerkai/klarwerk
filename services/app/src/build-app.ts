@@ -110,6 +110,7 @@ import {
   type ValidationSettingsRepo,
 } from "../../validation";
 import { ADDON_ASK_PATH, ADDON_KEY_HEADER, addonApiEnabled, resolveAddonOrigin } from "./addon-api";
+import { resolveAddonAuth } from "./addon-principal";
 import type { SemanticPrefilter } from "./duplicate-detection";
 import type { FactoryReset } from "./factory-reset";
 import { makeGuards } from "./http";
@@ -433,10 +434,40 @@ export function buildApp(
   // (resolveAddonOrigin === null). (2) Scope über einen Delegator strikt auf /api/ask begrenzen; alle
   // anderen Routen bekommen { origin: false } → keinerlei CORS-Header (nicht mehr app-weit).
   if (addonApiEnabled()) {
+    // SCRUM-490 D2: request-lokaler Auth-Kontext. Der Add-on-Key wird hier GENAU EINMAL pro Request
+    // validiert und der Principal (ask.validated) am Request getragen; Rate-Limiter, allowList und
+    // Handler LESEN ihn danach nur noch (keine erneute Key-Prüfung → die von ben gemeldete
+    // Dreifach-Validierung entfällt). Der Hook ist vor rate-limit registriert, damit die Drossel den
+    // fertigen Principal sieht.
+    //  - Key vorhanden + gültig  → Principal; erlaubt AUSSCHLIESSLICH POST /api/ask, jede andere Route
+    //    → 403 (die Capability ask.validated autorisiert nur diesen einen Endpunkt; kein Teilzugriff).
+    //  - Key vorhanden + ungültig → 401 (kein Fallback auf Session mit falschem Key).
+    //  - kein Key                → Session-Kontext (Live-App unverändert).
+    app.decorateRequest("authContext", null);
+    app.addHook("onRequest", async (request, reply) => {
+      const auth = resolveAddonAuth(request);
+      if (auth.kind === "invalid") {
+        reply.code(401).send({ error: "UNAUTHENTICATED", message: "Ungültiger Add-in-Zugang." });
+        return reply;
+      }
+      if (auth.kind === "valid") {
+        request.authContext = { authKind: "addon", principal: auth.principal };
+        const isAskRoute =
+          request.method === "POST" && request.routeOptions?.url === ADDON_ASK_PATH;
+        if (!isAskRoute) {
+          reply
+            .code(403)
+            .send({ error: "FORBIDDEN", message: "Add-in-Zugang gilt nur für POST /api/ask." });
+          return reply;
+        }
+        return;
+      }
+      request.authContext = { authKind: "session", principal: null };
+    });
     // SCRUM-490 D3: Drossel für den Add-on-Pfad. global:false → greift NUR auf Routen mit
     // `config.rateLimit` (POST /api/ask; Slice 5: /api/check-text), nicht app-weit. Die eigentliche
-    // Enge (nur addon-authentifizierte Requests, gekeyt auf den Actor; Session-Requests exempt) steckt
-    // in addonRateLimit(). Flag AUS → hier gar nicht registriert → /api/ask exakt wie heute.
+    // Enge (nur addon-Principal, gekeyt auf den Actor; Session-Requests exempt) steckt in
+    // addonRateLimit(). Flag AUS → hier gar nicht registriert → /api/ask exakt wie heute.
     app.register(rateLimit, { global: false });
     const addonOrigin = resolveAddonOrigin();
     if (addonOrigin !== null) {

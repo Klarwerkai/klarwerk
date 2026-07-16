@@ -1,5 +1,4 @@
 import type { FastifyRequest } from "fastify";
-import { addonActorForRequest } from "./addon-api";
 
 // SCRUM-490 (D3): wiederverwendbare Drossel-Config für die addon-authentifizierten Endpunkte.
 // EINE Bremse, mehrfach genutzt: POST /api/ask (Slice 1) und später /api/check-text (Slice 5, der
@@ -26,16 +25,20 @@ function rateWindowMs(): number {
 
 // Route-Config für @fastify/rate-limit. Kernidee:
 //  - allowList exempt-iert JEDEN nicht-addon-Request (v. a. die Session-Requests der Live-App) → die
-//    bleiben ungedrosselt. Nur addon-authentifizierte Requests werden gezählt.
-//  - keyGenerator keyt auf den STABILEN synthetischen Add-on-Actor, nicht auf die IP (Proxy davor).
-//    (Der ip-Zweig ist nur ein defensiver Fallback; für allow-gelistete Requests wird er nie benutzt.)
+//    bleiben ungedrosselt. Nur Add-on-Principal-Requests werden gezählt.
+//  - keyGenerator keyt auf den STABILEN Add-on-Principal (ADDON_ACTOR_ID), nicht auf die IP (Proxy
+//    davor). (Der ip-Zweig ist nur ein defensiver Fallback; für allow-gelistete Requests nie benutzt.)
+//  - SCRUM-490 D2: beides liest den request-lokalen Principal (in build-app EINMAL per onRequest-Hook
+//    gesetzt) — KEINE erneute Key-Prüfung hier.
 //  - Überschreitung → 429 + Retry-After (Default-Verhalten des Plugins).
 export function addonRateLimit() {
   return {
     max: rateMax(),
     timeWindow: rateWindowMs(),
     keyGenerator: (request: FastifyRequest): string =>
-      addonActorForRequest(request) ?? `ip:${request.ip}`,
-    allowList: (request: FastifyRequest): boolean => addonActorForRequest(request) === null,
+      request.authContext?.authKind === "addon"
+        ? request.authContext.principal.id
+        : `ip:${request.ip}`,
+    allowList: (request: FastifyRequest): boolean => request.authContext?.authKind !== "addon",
   };
 }
