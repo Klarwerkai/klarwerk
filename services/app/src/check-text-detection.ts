@@ -13,18 +13,19 @@ import {
   type OverlapService,
   type OverlapVerdict,
   coreText,
-  lexicalOverlapScore,
 } from "../../conflicts";
 import type { KnowledgeObject, KoService } from "../../knowledge-object";
+import { queryTokens } from "../../reasoner";
 import type { SemanticPrefilter } from "./duplicate-detection";
 
 // Transienter Gegenstand: der eingegebene Text, ohne gespeichertes KO. refId ist ein fester Marker,
 // damit er sich nie mit einer echten KO-ID überschneidet.
 const TRANSIENT_ID = "transient";
 
-// Obergrenze des gedeckelten lexikalischen Fallbacks (wenn kein/leerer Vektor-Store) — NIE ein
-// „jeder gegen jeden"-Full-Scan. Der Prefilter (store.nearest topK) verengt sonst schon.
-const LEXICAL_FALLBACK_CAP = 8;
+// SCRUM-491 MVP (ben-Review): hartes Retrieval-Limit an der DATENQUELLE. Der Bestand wird NIE komplett
+// geladen/bewertet — weder semantisch (store.nearest topK → bounded fetch by ID) noch lexikalisch
+// (ko.findCandidates({terms, limit})). Beides deckelt VOR dem Scoring auf topK.
+const RETRIEVAL_TOP_K = 20;
 
 export interface CheckTextInput {
   text: string;
@@ -78,21 +79,24 @@ function transientSubject(input: CheckTextInput): DetectSubject {
   };
 }
 
-// Pool = NUR validierte KOs, gebunden über den Prefilter (nearest topK) ODER — wenn kein/leerer/
-// fehlerhafter Store — den gedeckelten lexikalischen Fallback (top-N nach lexikalischer Deckung).
-// NIE ein Full-Scan „jeder gegen jeden".
+// Pool = NUR validierte KOs, an der QUELLE auf topK gedeckelt — NIE ein Full-Scan, NIE ko.list()-all.
+//  - Fix 1 (kein Textabfluss ohne judge): Der Semantic-Prefilter (embed → nearest) läuft NUR im
+//    Modell-Modus (mind. ein judge gesetzt). Ohne judge verlässt KEIN Text den Prozess Richtung
+//    Embedder/Provider — der deterministische Modus nutzt ausschließlich die lexikalische Source-Query.
+//  - Fix 2 (Cap an der Quelle): Semantic-Pfad → store.nearest topK, dann NUR diese Treffer per ID
+//    laden (bounded fetch). Lexikalisch → ko.findCandidates({terms, limit: topK}) mit hartem Limit.
+// Der Validierungsfilter (status="validiert", keine Demo-Seeds, Subjekt ausgeschlossen) läuft auf der
+// bereits gedeckelten Menge.
 async function selectValidatedPool(
   subject: DetectSubject,
   deps: CheckTextDeps,
 ): Promise<DetectSubject[]> {
-  const validated = (await deps.ko.list())
-    .filter((k) => k.status === "validiert" && !k.demoSeed && k.id !== subject.refId)
-    .map(toDetectSubject);
-  if (validated.length === 0) {
-    return [];
-  }
+  const isValidatedCandidate = (k: KnowledgeObject): boolean =>
+    k.status === "validiert" && !k.demoSeed && k.id !== subject.refId;
+
+  const hasJudge = deps.duplicateJudge !== undefined || deps.conflictJudge !== undefined;
   const prefilter = deps.semanticPrefilter;
-  if (prefilter) {
+  if (hasJudge && prefilter) {
     try {
       const { vectors, embeddingVersion } = await prefilter.embedder.embed([coreText(subject)]);
       const query = vectors[0];
@@ -100,23 +104,31 @@ async function selectValidatedPool(
         const hits = await prefilter.store.nearest(
           query,
           embeddingVersion,
-          prefilter.topK,
+          RETRIEVAL_TOP_K,
           subject.refId,
         );
-        const ids = new Set(hits.map((h) => h.id));
-        const narrowed = validated.filter((c) => ids.has(c.refId));
+        // Fix 2: bounded fetch — nur die topK Treffer per ID laden, NIE der Gesamtbestand.
+        const fetched = await Promise.all(hits.map((h) => deps.ko.get(h.id)));
+        const narrowed = fetched
+          .filter((k): k is KnowledgeObject => k !== undefined && isValidatedCandidate(k))
+          .map(toDetectSubject);
         if (narrowed.length > 0) {
           return narrowed;
         }
       }
     } catch {
-      // Fehler im Embedding/Store → gedeckelter lexikalischer Fallback (nie Full-Scan).
+      // Fehler im Embedding/Store → lexikalischer, source-gedeckelter Fallback (unten).
     }
   }
-  // Gedeckelter lexikalischer Fallback: die lexikalisch nächsten Top-N validierten KOs.
-  return [...validated]
-    .sort((x, y) => lexicalOverlapScore(subject, y) - lexicalOverlapScore(subject, x))
-    .slice(0, LEXICAL_FALLBACK_CAP);
+
+  // Lexikalischer Pfad / Fallback: gedeckelte Candidate-Query an der Datenquelle (hartes topK VOR
+  // Scoring) — kein ko.list()-all-then-filter. Ohne Inhaltstoken (nur Stoppwörter) kein Kandidat.
+  const terms = queryTokens(coreText(subject));
+  if (terms.length === 0) {
+    return [];
+  }
+  const candidates = await deps.ko.findCandidates({ terms, limit: RETRIEVAL_TOP_K });
+  return candidates.filter(isValidatedCandidate).map(toDetectSubject);
 }
 
 // Der Dry-Run: transienter Text → validierter, gebundener Pool → assessAgainstPool (kein Insert, kein
