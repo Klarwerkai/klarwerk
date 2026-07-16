@@ -1,17 +1,21 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { OverlapService } from "../../../conflicts";
 import type { KoService } from "../../../knowledge-object";
+import type { Reasoner } from "../../../reasoner";
 import { authorizesCheckText } from "../addon-principal";
 import { addonRateLimit } from "../addon-rate-limit";
 import { type CheckTextResult, checkText } from "../check-text-detection";
+import type { SemanticPrefilter } from "../duplicate-detection";
 import type { Guards } from "../http";
 
-// SCRUM-491 Slice 5: POST /api/check-text v1 = Stufe 1 (deterministisch). Prüft freien Text im
-// Dry-Run gegen den VALIDIERTEN Bestand — KEIN Modell, KEIN embed, kein Textabfluss (Slice-4-Garantie
-// ohne Judge), KEINE Persistenz (kein KO/Gap/Board/Inhalts-Audit). Nur registriert bei Flag AN
-// (build-app.ts) → Flag AUS = Endpunkt existiert nicht = bit-identisch. want:"deep" (Stufe 2, Modell)
-// kommt in Slice 6; hier wird es explizit als „noch nicht" mit 400 abgelehnt, statt still Stufe 1 zu
-// liefern (kein Vortäuschen einer tieferen Prüfung).
+// SCRUM-491 Slice 5/6: POST /api/check-text gegen den VALIDIERTEN Bestand, KEINE Persistenz
+// (kein KO/Gap/Board/Inhalts-Audit — Dry-Run-Kern-Garantie). Nur registriert bei Flag AN (build-app.ts)
+// → Flag AUS = Endpunkt existiert nicht = bit-identisch.
+//   Stufe 1 (want fehlend / != "deep"): rein deterministisch — KEIN Modell, KEIN embed, kein
+//     Textabfluss (Slice-4-Garantie ohne Judge). Byte-identisch zu Slice 5.
+//   Stufe 2 (SCRUM-491 D4, want:"deep"): der 92%/26%-Moment auf Knopfdruck — DERSELBE checkText-Kern,
+//     aber MIT duplicateJudge (reasoner.judgeDuplicate) + Semantic-Prefilter. Das ist bewusster
+//     Textabfluss (Modell + Embedder) — die DSGVO-Grenze aus D4: NUR bei want:"deep", nie automatisch.
 const MIN_TEXT = 40;
 const MAX_TEXT = 8_000;
 
@@ -34,6 +38,11 @@ const bodySchema = {
 export interface CheckTextRouteDeps {
   ko: KoService;
   overlaps: OverlapService;
+  // Stufe 2 (want:"deep"): Modell-Urteil + semantischer Vorfilter. Der Prefilter ist env-gegated
+  // (KLARWERK_DUP_PREFILTER); fehlt er, fällt checkText auf die gedeckelte lexikalische Kandidatenwahl
+  // zurück — der Judge (Modell) läuft trotzdem. Für Stufe 1 werden beide bewusst NICHT übergeben.
+  reasoner: Reasoner;
+  semanticPrefilter?: SemanticPrefilter | undefined;
 }
 
 // Ergebnis-Form → Response-Vertrag. snippet OPTIONAL (der Kern erzeugt heute keinen Beleg-Snippet →
@@ -92,25 +101,29 @@ export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): Fasti
       },
       async (request, reply) => {
         // Body ist schema-validiert: text ist ein String mit 40–8.000 Zeichen; Auth ist in
-        // preValidation bereits erledigt. Stufe 2 (Modell) ist Slice 6 → want:"deep" ehrlich 400.
-        if (request.body.want === "deep") {
-          reply.code(400).send({
-            error: "BAD_REQUEST",
-            message: "want='deep' (Stufe 2) ist noch nicht verfügbar.",
-          });
-          return;
-        }
-        const locale = request.body.locale === "en" ? "en" : "de";
-        // Dry-Run-Kern OHNE Judge/Prefilter → rein deterministisch (kein Modell, kein embed,
-        // validated-only, topK gedeckelt). Kein Insert, keine Gap, kein Board, kein Inhalts-Audit.
-        const result = await checkText(
-          {
-            text: request.body.text,
-            locale,
-            ...(request.body.title !== undefined ? { title: request.body.title } : {}),
-          },
-          { ko: deps.ko, overlaps: deps.overlaps },
-        );
+        // preValidation bereits erledigt.
+        const locale: "de" | "en" = request.body.locale === "en" ? "en" : "de";
+        const input = {
+          text: request.body.text,
+          locale,
+          ...(request.body.title !== undefined ? { title: request.body.title } : {}),
+        };
+        // Stufe-1-Deps: OHNE Judge/Prefilter → rein deterministisch (kein Modell, kein embed). Für
+        // want fehlend / != "deep" bleibt das byte-identisch zu Slice 5.
+        const stage1Deps = { ko: deps.ko, overlaps: deps.overlaps };
+        // Stufe 2 (want:"deep"): derselbe Kern MIT Modell-Judge + Prefilter → findet umformulierte
+        // Duplikate, liefert Modell-confidence + wörtliche rationale. Bewusster Textabfluss (D4).
+        const checkDeps =
+          request.body.want === "deep"
+            ? {
+                ...stage1Deps,
+                duplicateJudge: (a: string, b: string) =>
+                  deps.reasoner.judgeDuplicate(a, b, locale),
+                semanticPrefilter: deps.semanticPrefilter,
+              }
+            : stage1Deps;
+        // Dry-Run in BEIDEN Stufen: kein Insert, keine Gap, kein Board, kein Inhalts-Audit.
+        const result = await checkText(input, checkDeps);
         reply.code(200).send(toResponse(result));
       },
     );

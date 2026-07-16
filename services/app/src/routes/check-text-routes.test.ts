@@ -1,10 +1,19 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import Fastify from "fastify";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { InMemoryOverlapRepo, OverlapService, type OverlapVerdict } from "../../../conflicts";
+import type { EmbeddingProvider, EmbeddingStore } from "../../../embedding";
+import type { KnowledgeObject, KoService } from "../../../knowledge-object";
+import type { Reasoner } from "../../../reasoner";
 import { buildApp, buildServices } from "../build-app";
+import type { SemanticPrefilter } from "../duplicate-detection";
+import type { Guards } from "../http";
+import { checkTextRoutes } from "./check-text-routes";
 
-// SCRUM-491 Slice 5: POST /api/check-text v1 = Stufe 1 (deterministisch), hinter KLARWERK_ADDON_API.
-// Sichert: Flag AUS = Endpunkt existiert nicht (404, bit-identisch); Flag AN = deterministische
-// Dry-Run-Prüfung ohne Persistenz/Modell; Auth Session ODER addon(checktext.validated); Roh-Pfad-
-// Exaktheit; Längen-Validierung; want:"deep" = 400; Rate-Limit auf dem Add-on-Pfad.
+// SCRUM-491 Slice 5/6: POST /api/check-text, hinter KLARWERK_ADDON_API. Sichert: Flag AUS = Endpunkt
+// existiert nicht (404, bit-identisch); Flag AN = Dry-Run ohne Persistenz; Auth Session ODER
+// addon(checktext.validated); Roh-Pfad-Exaktheit; Längen-Validierung; kontrollierter 400 statt 500;
+// Stufe 1 (deterministisch, kein Modell) vs Stufe 2 (want:"deep" → Modell-Judge, injiziert getestet);
+// Rate-Limit auf dem Add-on-Pfad.
 const ADDON_KEY_HEADER = "x-klarwerk-addon-key";
 const KEY = "s3cr3t-addon-key";
 
@@ -199,7 +208,10 @@ describe("SCRUM-491 Slice 5: POST /api/check-text (Flag AN)", () => {
     expect(tooLong.statusCode).toBe(400);
   });
 
-  it('want:"deep" (Stufe 2) → 400 (noch nicht verfügbar, kein stilles Stufe-1)', async () => {
+  it('want:"deep" (Stufe 2) → 200 (Modell-Pfad aktiv, kein 400 mehr)', async () => {
+    // Slice 6: want:"deep" schaltet Stufe 2. Mit dem realen (offline) Reasoner liefert judgeDuplicate
+    // null → deterministisch/leer, aber der Endpunkt antwortet 200 (kein „noch nicht" mehr). Der
+    // injizierte-Judge-Beweis, dass das Modell wirklich läuft, steht in der Stufe-2-Suite unten.
     const { app, headers } = await loggedInApp();
     const res = await app.inject({
       method: "POST",
@@ -207,7 +219,8 @@ describe("SCRUM-491 Slice 5: POST /api/check-text (Flag AN)", () => {
       headers,
       payload: { text: CHECK_STMT, want: "deep" },
     });
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().persisted).toBe(false);
   });
 });
 
@@ -268,6 +281,130 @@ describe("SCRUM-491 Slice 5 (ben-Review): kontrollierter 400 statt 500 bei fehle
     // Invalider Body ohne Auth → weiterhin 401 (Auth schlägt die Schema-400).
     const badBody = await app.inject({ method: "POST", url: "/api/check-text", payload: {} });
     expect(badBody.statusCode).toBe(401);
+  });
+});
+
+// --- Stufe-2-Harness (Slice 6): der Endpunkt mit INJIZIERTEN Fakes (Reasoner-Judge + Prefilter),
+// KEIN echter Modellaufruf. Direkt-Plugin ohne den addon-Hook → Auth über einen Fake-Session-Guard.
+const TEXT_IDENTISCH = "Nach dem Anfahren 10 Sekunden warten, dann die Pumpe entlüften und prüfen.";
+const TEXT_MITTEL = "Nach dem Anfahren zehn Sekunden warten.";
+
+function mkKo(id: string, statement: string): KnowledgeObject {
+  return {
+    id,
+    title: "Pumpe entlüften",
+    statement,
+    status: "validiert",
+    conditions: [],
+    measures: [],
+    tags: [],
+    category: "Wartung",
+    asset: null,
+  } as unknown as KnowledgeObject;
+}
+
+function fakeKo(seed: KnowledgeObject[]) {
+  const list = vi.fn(async () => seed);
+  const findCandidates = vi.fn(async () => seed);
+  const get = vi.fn(async (id: string) => seed.find((k) => k.id === id));
+  return { ko: { list, findCandidates, get } as unknown as KoService };
+}
+
+function spyPrefilter(hits: Array<{ id: string }>) {
+  const embed = vi.fn(async () => ({ vectors: [[1, 0, 0]], embeddingVersion: "spy@3", dim: 3 }));
+  const nearest = vi.fn(async () => hits);
+  const prefilter: SemanticPrefilter = {
+    embedder: {
+      name: "spy",
+      embeddingVersion: "spy@3",
+      dim: 3,
+      isAvailable: () => true,
+      embed,
+    } as unknown as EmbeddingProvider,
+    store: { upsert: vi.fn(), nearest, delete: vi.fn() } as unknown as EmbeddingStore,
+    topK: 20,
+  };
+  return { prefilter, embed };
+}
+
+const teilweiseVerdict: OverlapVerdict = {
+  beziehung: "teilweise",
+  aspects: [
+    { beschreibung: "Titel deckt sich", zitatA: "Pumpe entlüften", zitatB: "Pumpe entlüften" },
+  ],
+  nurInA: "nur A",
+  nurInB: "nur B",
+  empfehlung: "zusammenfuehren_pruefen",
+  confidence: 0.9,
+  begruendung: "Teilweiser gemeinsamer Kern.",
+};
+
+// Fake-Guard: autorisiert den Session-Pfad (preValidation) ohne echte Sessions.
+const fakeGuards = {
+  requireUser: async () => ({ id: "u1" }),
+  requirePermission: async () => ({ id: "u1" }),
+} as unknown as Guards;
+
+async function stage2App() {
+  const repo = new InMemoryOverlapRepo();
+  const { prefilter, embed } = spyPrefilter([{ id: "v2" }]);
+  const { ko } = fakeKo([mkKo("v2", TEXT_MITTEL), mkKo("noise", "völlig anderer inhalt hier")]);
+  const judgeDuplicate = vi.fn(async () => teilweiseVerdict);
+  const reasoner = {
+    judgeDuplicate,
+    judgeConflict: vi.fn(async () => null),
+  } as unknown as Reasoner;
+  const app = Fastify();
+  await app.register(
+    checkTextRoutes(
+      { ko, overlaps: new OverlapService({ repo }), reasoner, semanticPrefilter: prefilter },
+      fakeGuards,
+    ),
+  );
+  return { app, embed, judgeDuplicate, repo };
+}
+
+describe("SCRUM-491 Slice 6: Stufe 2 (want:'deep') mit injiziertem Fake-Judge", () => {
+  it("want:'deep' → Judge + embed laufen; Ergebnis trägt Modell-confidence + rationale", async () => {
+    const { app, embed, judgeDuplicate } = await stage2App();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/check-text",
+      payload: { text: TEXT_IDENTISCH, want: "deep" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(judgeDuplicate).toHaveBeenCalled();
+    expect(embed).toHaveBeenCalled(); // Prefilter/Textabfluss NUR bei deep
+    const body = res.json();
+    expect(body.duplicates[0].method).toBe("model");
+    expect(body.duplicates[0].confidence).toBe(0.9);
+    expect(body.duplicates[0].rationale).toBeTruthy();
+    expect(body.persisted).toBe(false);
+    expect(body.answer).toBeNull();
+  });
+
+  it("want fehlend / 'stage1' → KEIN Judge, KEIN embed (Stufe 1 byte-identisch)", async () => {
+    for (const want of [undefined, "stage1"] as const) {
+      const { app, embed, judgeDuplicate } = await stage2App();
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/check-text",
+        payload: { text: TEXT_IDENTISCH, ...(want ? { want } : {}) },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(judgeDuplicate, `want=${want}`).not.toHaveBeenCalled();
+      expect(embed, `want=${want}`).not.toHaveBeenCalled();
+    }
+  });
+
+  it("Stufe 2 → weiterhin NULL Persistenz (kein Insert in den OverlapRepo)", async () => {
+    const { app, repo } = await stage2App();
+    await app.inject({
+      method: "POST",
+      url: "/api/check-text",
+      payload: { text: TEXT_IDENTISCH, want: "deep" },
+    });
+    expect(await repo.all()).toHaveLength(0);
   });
 });
 

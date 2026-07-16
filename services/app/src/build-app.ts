@@ -434,12 +434,13 @@ export function buildApp(
   const guards = makeGuards(services.auth);
 
   // Add-on-API (Klara-Panel), hinter KLARWERK_ADDON_API: CORS NUR bei aktivem Flag, NUR für die eine
-  // validierte Add-in-Origin und NUR für POST /api/ask. Flag AUS → gar nicht registriert → keine CORS-Header
-  // (exakt heutiges Verhalten). Kein credentials-Modus: der Add-in-Pfad nutzt einen Key-Header, keine
-  // Cookies — so werden Session-Cookies nie cross-origin exponiert.
+  // validierte Add-in-Origin und NUR für POST /api/ask UND POST /api/check-text (SCRUM-491 Slice 5).
+  // Flag AUS → gar nicht registriert → keine CORS-Header (exakt heutiges Verhalten). Kein
+  // credentials-Modus: der Add-in-Pfad nutzt einen Key-Header, keine Cookies — so werden Session-Cookies
+  // nie cross-origin exponiert.
   // ben-Review SCRUM-490 (P2): (1) Origin fail-closed validieren — "*"/leer/malformed → gar kein CORS
-  // (resolveAddonOrigin === null). (2) Scope über einen Delegator strikt auf /api/ask begrenzen; alle
-  // anderen Routen bekommen { origin: false } → keinerlei CORS-Header (nicht mehr app-weit).
+  // (resolveAddonOrigin === null). (2) Scope über einen Delegator strikt auf die Add-on-Pfade begrenzen;
+  // alle anderen Routen bekommen { origin: false } → keinerlei CORS-Header (nicht mehr app-weit).
   if (addonApiEnabled()) {
     // SCRUM-490 D2: request-lokaler Auth-Kontext. Der Add-on-Key wird hier GENAU EINMAL pro Request
     // validiert und der Principal (Capabilities ask.validated + checktext.validated) am Request
@@ -564,7 +565,18 @@ export function buildApp(
   // registriert → Endpunkt existiert nicht → bit-identisch zum heutigen Verhalten. Deterministische
   // Stufe-1-Dry-Run-Prüfung (validated-only, kein Modell, keine Persistenz).
   if (addonApiEnabled()) {
-    app.register(checkTextRoutes({ ko: services.ko, overlaps: services.overlaps }, guards));
+    app.register(
+      checkTextRoutes(
+        {
+          ko: services.ko,
+          overlaps: services.overlaps,
+          // Stufe 2 (want:"deep"): Modell-Judge + (env-gegated) Semantic-Prefilter. Stufe 1 nutzt beide nicht.
+          reasoner: services.reasoner,
+          semanticPrefilter,
+        },
+        guards,
+      ),
+    );
   }
   // SCRUM-470 (S6): Erkennung nach Import-Accept — dasselbe Deps-Bündel wie der Promote-Pfad.
   // Greift nur bei KLARWERK_CONFLUENCE_IMPORT=1 (Default AUS → heutiges Verhalten).
