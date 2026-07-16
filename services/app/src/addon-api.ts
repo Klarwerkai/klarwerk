@@ -61,6 +61,21 @@ function validAddonKey(provided: string): boolean {
   return timingSafeEqual(a, b);
 }
 
+// SCRUM-490 (D3, Rate-Limit): stabile Keying-Kennung für die Drossel. Liefert für einen gültig
+// addon-authentifizierten Request den synthetischen Actor (ADDON_ACTOR_ID), sonst null. REIN lesend
+// — kein 401, keine Nebenwirkung (die eigentliche Auth macht weiter resolveAskUser). Flag AUS → immer
+// null (kein Add-on-Pfad). Der Key wird hier nur konstantzeit-verglichen, nie geloggt/zurückgegeben.
+export function addonActorForRequest(request: FastifyRequest): string | null {
+  if (!addonApiEnabled()) {
+    return null;
+  }
+  const provided = request.headers[ADDON_KEY_HEADER];
+  if (typeof provided === "string" && provided.length > 0 && validAddonKey(provided)) {
+    return ADDON_ACTOR_ID;
+  }
+  return null;
+}
+
 // Auth-Auflösung NUR für /api/ask:
 //  - Flag AUS  → unverändert der Session-Guard (Bestandsverhalten).
 //  - Flag AN + gültiger Add-in-Key → synthetischer „viewer" (RBAC viewer = EXAKT nur ko.read).

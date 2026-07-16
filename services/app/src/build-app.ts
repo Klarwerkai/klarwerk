@@ -1,4 +1,5 @@
 import cors, { type FastifyCorsOptions } from "@fastify/cors";
+import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import type { Pool } from "pg";
 import { AskService, type GapRepo, InMemoryGapRepo, PgGapRepo } from "../../ask";
@@ -432,6 +433,11 @@ export function buildApp(
   // (resolveAddonOrigin === null). (2) Scope über einen Delegator strikt auf /api/ask begrenzen; alle
   // anderen Routen bekommen { origin: false } → keinerlei CORS-Header (nicht mehr app-weit).
   if (addonApiEnabled()) {
+    // SCRUM-490 D3: Drossel für den Add-on-Pfad. global:false → greift NUR auf Routen mit
+    // `config.rateLimit` (POST /api/ask; Slice 5: /api/check-text), nicht app-weit. Die eigentliche
+    // Enge (nur addon-authentifizierte Requests, gekeyt auf den Actor; Session-Requests exempt) steckt
+    // in addonRateLimit(). Flag AUS → hier gar nicht registriert → /api/ask exakt wie heute.
+    app.register(rateLimit, { global: false });
     const addonOrigin = resolveAddonOrigin();
     if (addonOrigin !== null) {
       app.register(

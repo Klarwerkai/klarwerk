@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { type AskService, isGapPriority } from "../../../ask";
 import { resolveAskUser } from "../addon-api";
+import { addonRateLimit } from "../addon-rate-limit";
 import { type Guards, sendError } from "../http";
 
 // Fragen & Wissenslücken (§2.4 / FR-ASK).
@@ -8,6 +9,11 @@ export function askRoutes(ask: AskService, guards: Guards): FastifyPluginAsync {
   return async (app) => {
     app.post<{ Body: { question: string; locale?: "de" | "en" } }>(
       "/api/ask",
+      // SCRUM-490 D3: Drossel NUR für den addon-Pfad. Bei Flag AUS ist das @fastify/rate-limit-Plugin
+      // nicht registriert → diese config.rateLimit ist inert (Fastify ignoriert unbekannte route-config)
+      // → /api/ask exakt wie heute. Bei Flag AN drosselt sie nur addon-authentifizierte Requests
+      // (allowList exempt-iert Session-Requests der Live-App), gekeyt auf den stabilen addon-Actor.
+      { config: { rateLimit: addonRateLimit() } },
       async (request, reply) => {
         // Add-on-API (hinter KLARWERK_ADDON_API): Flag AUS → identisch zum Session-Guard (ko.read).
         // Flag AN + gültiger Add-in-Key → synthetischer viewer (nur ko.read), sonst 401. Nur hier.
