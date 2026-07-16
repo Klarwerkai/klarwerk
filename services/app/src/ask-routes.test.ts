@@ -139,12 +139,13 @@ describe("SCRUM-242: Ask-Workflow (HTTP end-to-end)", () => {
   });
 });
 
-// SCRUM-498 B1 (ben-Review): BEWUSSTE MINIMALE Eingabe-Härtung von POST /api/ask. Rejectet NUR:
-// fehlenden Body (Crash-Fix → 400), Frage > 8.000 Zeichen (Kosten-Cap → 400), Body > 128 KiB (milder
-// Transport-Cap → 413). Leere/fehlende Frage, Zusatzfelder und escaped-Unicode-Fragen ≤ 8.000
-// Codepoints bleiben wie im Parent (200). Session-Guard in preValidation (401 vor Schema), Add-on-Pfad
-// unverändert (401/403 im onRequest-Hook).
-describe("SCRUM-498 B1: /api/ask minimale Eingabe-Härtung", () => {
+// SCRUM-498 B1 (ben-Review): bewusste Eingabe-Härtung von POST /api/ask über die GÜLTIGE HÜLLE eines
+// Requests: Body MUSS ein JSON-Objekt sein; question optional (string ≤ 8.000 Codepoints, fehlt/leer/
+// null → Handler "" → 200 wie Parent); locale optional (string/skalar-coercierbar, Handler normalisiert
+// de/en); additionalProperties erlaubt; Gesamt-Body ≤ 128 KiB. Alles außerhalb → kontrolliertes 400
+// (413 bei Größe), nie 500. Session-Guard in preValidation (401 vor Schema), Add-on-Pfad unverändert
+// (401/403 im onRequest-Hook).
+describe("SCRUM-498 B1: /api/ask Eingabe-Härtung (gültige Hülle)", () => {
   async function adminApp() {
     const app = buildApp(buildServices());
     await app.inject({
@@ -263,5 +264,33 @@ describe("SCRUM-498 B1: /api/ask minimale Eingabe-Härtung", () => {
         })
       ).statusCode,
     ).toBe(401);
+  });
+
+  it("locale nicht-coercierbar (Objekt) → 400 (bewusste Härtung, Teil der gültigen Hülle)", async () => {
+    // locale ist string oder skalar-coercierbar; ein Objekt liegt außerhalb der gültigen Hülle → 400,
+    // kontrolliert (kein 500). Session gültig, damit der 400 aus der Schema-Validierung stammt.
+    const { app, headers } = await adminApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers,
+      payload: { question: "Was ist X?", locale: { x: 1 } },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.payload).not.toContain("TypeError");
+  });
+
+  it("nicht-objektförmiger Top-Level-Body (JSON-Array) → 400 (Teil der gültigen Hülle)", async () => {
+    // Der Body MUSS ein JSON-Objekt sein; ein Array/Skalar auf Top-Level liegt außerhalb → 400,
+    // kontrolliert (kein 500).
+    const { app, headers } = await adminApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers,
+      payload: [1, 2],
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.payload).not.toContain("TypeError");
   });
 });

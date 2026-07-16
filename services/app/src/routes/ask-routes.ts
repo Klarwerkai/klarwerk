@@ -4,14 +4,17 @@ import { authorizesAsk } from "../addon-principal";
 import { addonRateLimit } from "../addon-rate-limit";
 import { type Guards, type SessionUser, sendError } from "../http";
 
-// SCRUM-498 B1 (ben-Review): BEWUSSTE MINIMALE Eingabe-Härtung von POST /api/ask — kein NO-OP für alle
-// Bodies. Rejectet NUR:
-//   - fehlenden Body (kein JSON) → 400 (Crash-Fix: der Handler las question/locale direkt → 500-Risiko),
-//   - Frage > 8.000 Zeichen → 400 (Kosten-/Missbrauchs-Cap),
-//   - Body > 128 KiB → 413 (milder Transport-Cap, runter von global 1 MiB).
-// Alles andere bleibt wie im Parent (e6abb25): question ist NICHT required und hat KEIN minLength →
-// leere/fehlende Frage liefert weiter 200; Zusatzfelder (additionalProperties: true) und
-// escaped-Unicode-Fragen ≤ 8.000 Codepoints bleiben zulässig. locale bleibt permissiv.
+// SCRUM-498 B1 (ben-Review): bewusste Eingabe-Härtung von POST /api/ask, definiert über die GÜLTIGE
+// HÜLLE eines Requests:
+//   - Body MUSS ein JSON-Objekt sein.
+//   - question: optional; wenn vorhanden string, ≤ 8.000 Codepoints (ajv zählt Codepoints). Fehlt/leer/
+//     null → Handler normalisiert auf "" → 200 (wie Parent e6abb25).
+//   - locale: optional; string oder skalar-coercierbar; der Handler normalisiert auf de/en.
+//   - additionalProperties erlaubt.
+//   - Gesamt-Body ≤ 128 KiB (sonst 413).
+// Alles AUSSERHALB dieser Hülle → kontrolliertes 400 (413 bei Größe), nie 500. Gegenüber dem Parent
+// bewusst gehärtet: nicht-objektförmiger Body, question > 8.000, locale nicht-coercierbar, Body > 128 KiB,
+// fehlender Body (Crash-Fix). Kein legitimer Klara-Traffic ist davon betroffen.
 const askBodySchema = {
   type: "object",
   properties: {
@@ -20,9 +23,9 @@ const askBodySchema = {
   },
 } as const;
 
-// Route-bodyLimit (bewusster milder Cap, runter von global 1 MiB — KEIN NO-OP für > 128-KiB-Bodies):
-// deckt eine escaped 8.000-Codepoint-Frage (roh bis ~96 KiB) plus Envelope/locale/moderate Extras.
-// Nur pathologische Bodies > 128 KiB → kontrolliertes 413.
+// Route-bodyLimit (bewusster milder Cap, runter von global 1 MiB): deckt eine escaped 8.000-Codepoint-
+// Frage (roh bis ~96 KiB) plus Envelope/locale/moderate Extras. Bodies über 128 KiB liegen außerhalb der
+// gültigen Hülle → kontrolliertes 413.
 const ASK_BODY_LIMIT = 128 * 1024; // 128 KiB
 
 // Request-lokal getragener Session-User (analog authContext): in preValidation aufgelöst, im Handler
