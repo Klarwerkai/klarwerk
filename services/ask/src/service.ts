@@ -68,7 +68,11 @@ export class AskService {
     // SCRUM-490 D2: validatedOnly (Add-on-Principal ask.validated) → der Reasoner sieht AUSSCHLIESSLICH
     // validierte KOs; unvalidierte („offen") Kandidaten werden vor der Auswahl verworfen. Für den
     // Session-Pfad ungesetzt → unverändertes Verhalten.
-    opts?: { demoSeed?: boolean; validatedOnly?: boolean },
+    // SCRUM-490 D1: gapPolicy steuert die Wissenslücken-Nebenwirkung bei answered=false. Ohne die Option
+    // (Session-Pfad) unverändert: Gap anlegen (actor="system"). "count_only" (addon-Pfad) legt KEINE
+    // Wissenslücke an — die Zählung liefert stattdessen das metadata-only ask.query-Audit. Der Service
+    // bleibt generisch: er kennt keine addon-ID, nur die explizit übergebene Policy.
+    opts?: { demoSeed?: boolean; validatedOnly?: boolean; gapPolicy?: "create" | "count_only" },
   ): Promise<AskResult> {
     // SCRUM-361 / AG-03 / FR-ASK-02 / NFR-PERF-03: Ask nutzt NICHT mehr `koService.list()` (Laden des
     // gesamten Pools) als Kernpfad, sondern eine datenquellennahe, begrenzte Kandidaten-Vorauswahl
@@ -113,6 +117,13 @@ export class AskService {
       },
     });
     if (!result.answered) {
+      // SCRUM-490 D1: "count_only" (addon-Pfad) legt KEINE Wissenslücke an — kein Gap-Record, kein
+      // gespeicherter Fragetext, kein gap.created-Audit, kein gap im Response. Die aggregierte Zählung
+      // liefert das oben emittierte metadata-only ask.query-Audit (trägt Actor + answered=false, keinen
+      // Text). Ohne die Option bleibt der Pfad byte-identisch: Gap anlegen.
+      if (opts?.gapPolicy === "count_only") {
+        return { result, gap: null };
+      }
       const gap = await this.createGap(question, opts?.demoSeed);
       return { result, gap };
     }

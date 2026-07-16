@@ -267,3 +267,100 @@ describe("SCRUM-490 D2: Key-Validierung genau einmal", () => {
     }
   });
 });
+
+// SCRUM-490 D1: count_only-Gap-Policy — der Nur-Lese-Add-on-Key schreibt keine Wissenslücke (und keinen
+// Fragetext) mehr; die Zählung bleibt über das metadata-only ask.query-Audit. Session-Pfad byte-identisch.
+describe("SCRUM-490 D1: count_only-Gap-Policy (addon-Actor)", () => {
+  beforeEach(() => {
+    process.env.KLARWERK_ADDON_API = "1";
+    process.env.KLARWERK_ADDON_API_KEY = KEY;
+  });
+
+  // Session-Admin (erstes Konto: ko.read + ko.validate) für Einsicht in Gaps/Audit — der addon-Key darf das nicht.
+  async function adminHeaders(app: ReturnType<typeof buildApp>) {
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { name: "Admin", email: "a@x.de", password: "secret123" },
+    });
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "a@x.de", password: "secret123" },
+    });
+    return { authorization: `Bearer ${login.json().token}` };
+  }
+
+  it("addon-Actor, answered=false → keine Wissenslücke, kein gap im Response, kein gap.created", async () => {
+    const app = buildApp(buildServices());
+    const headers = await adminHeaders(app);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: { [ADDON_KEY_HEADER]: KEY },
+      payload: { question: "Was gilt beim Turboverdichter TVX99?" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().result.answered).toBe(false);
+    expect(res.json().gap).toBeNull();
+    // Keine Wissenslücke im Bestand.
+    const gaps = await app.inject({ method: "GET", url: "/api/gaps", headers });
+    expect(gaps.json()).toHaveLength(0);
+    // Kein gap.created-Audit.
+    const created = await app.inject({
+      method: "GET",
+      url: "/api/audit?action=gap.created",
+      headers,
+    });
+    expect(created.json()).toHaveLength(0);
+  });
+
+  it("addon-Actor: kein Fragetext in Audit/Persistenz; ask.query metadata-only + addon-Actor", async () => {
+    const app = buildApp(buildServices());
+    const headers = await adminHeaders(app);
+    const SECRET = "GEHEIMFRAGE-TVX99-XYZ";
+    await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: { [ADDON_KEY_HEADER]: KEY },
+      payload: { question: SECRET },
+    });
+    const audit = await app.inject({ method: "GET", url: "/api/audit", headers });
+    const entries = audit.json() as Array<{
+      actor: string;
+      action: string;
+      payload: Record<string, unknown>;
+    }>;
+    // Kein Audit-Eintrag enthält den Fragetext (weder als Feld noch irgendwo im JSON).
+    expect(JSON.stringify(entries)).not.toContain(SECRET);
+    // ask.query trägt den addon-Actor und ist metadata-only (keine question).
+    const askQuery = entries.find((e) => e.action === "ask.query" && e.actor === "addon:klara");
+    expect(askQuery).toBeDefined();
+    expect(askQuery?.payload).not.toHaveProperty("question");
+    // Keine Wissenslücke (die den Text speichern würde).
+    const gaps = await app.inject({ method: "GET", url: "/api/gaps", headers });
+    expect(gaps.json()).toHaveLength(0);
+  });
+
+  it("Session (nicht-addon), answered=false → Gap wie heute angelegt (actor=system, bit-identisch)", async () => {
+    const app = buildApp(buildServices());
+    const headers = await adminHeaders(app);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers, // Session, KEIN addon-Key
+      payload: { question: "Was gilt beim Turboverdichter TVX99?" },
+    });
+    expect(res.json().result.answered).toBe(false);
+    expect(res.json().gap).not.toBeNull(); // Gap zurückgegeben
+    const gaps = await app.inject({ method: "GET", url: "/api/gaps", headers });
+    expect(gaps.json()).toHaveLength(1); // Gap angelegt
+    const created = await app.inject({
+      method: "GET",
+      url: "/api/audit?action=gap.created",
+      headers,
+    });
+    expect(created.json()).toHaveLength(1);
+    expect(created.json()[0].actor).toBe("system"); // Attribution unverändert
+  });
+});

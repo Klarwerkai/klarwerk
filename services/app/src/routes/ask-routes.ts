@@ -32,9 +32,13 @@ export function askRoutes(ask: AskService, guards: Guards): FastifyPluginAsync {
               .send({ error: "FORBIDDEN", message: "Add-in-Capability unzureichend." });
             return;
           }
+          // SCRUM-490 D1: count_only — der Nur-Lese-Add-on-Key darf keine Wissenslücke schreiben. Bei
+          // answered=false entsteht kein Gap/kein Fragetext; die Zählung bleibt über das metadata-only
+          // ask.query-Audit (trägt den addon-Actor). validatedOnly (D2) bleibt bestehen.
           reply.code(200).send(
             await ask.ask(request.body.question ?? "", auth.principal.id, locale, {
               validatedOnly: true,
+              gapPolicy: "count_only",
             }),
           );
           return;
