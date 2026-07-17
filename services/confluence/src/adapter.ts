@@ -9,7 +9,6 @@
 import type { ImportItem, SourceAdapter } from "../../library-analytics";
 import { type ConfluenceMapOptions, mapConfluencePageToImportItem } from "./mapper";
 import {
-  type ConfluencePage,
   ConfluenceRestClient,
   type ConfluenceRestConfig,
   confluenceClientFromEnv,
@@ -21,6 +20,9 @@ import {
 export interface CollectResult {
   items: ImportItem[];
   failed: { ref: string; error: string }[];
+  // SCRUM-510 (WP3): true, wenn der Space-Read am Seiten-Cap abgeschnitten wurde (nicht vollständig). Der
+  // Import-Kern macht daraus einen ehrlichen „unvollständig"-Status — nie eine stille „fertig"-Meldung.
+  truncated: boolean;
 }
 
 export class ConfluenceSourceAdapter implements SourceAdapter {
@@ -39,7 +41,7 @@ export class ConfluenceSourceAdapter implements SourceAdapter {
   // SCRUM-510 WP2: liest den GESAMTEN Space (Cursor-Pagination) und mappt jede Seite EINZELN. Scheitert
   // das Mapping einer Seite, wird sie als `failed` verbucht und der Lauf läuft weiter (never block).
   async collectAll(): Promise<CollectResult> {
-    const pages: ConfluencePage[] = await this.client.listAllPages();
+    const { pages, truncated } = await this.client.listAllPages();
     const items: ImportItem[] = [];
     const failed: CollectResult["failed"] = [];
     for (const page of pages) {
@@ -52,7 +54,7 @@ export class ConfluenceSourceAdapter implements SourceAdapter {
         });
       }
     }
-    return { items, failed };
+    return { items, failed, truncated };
   }
 }
 

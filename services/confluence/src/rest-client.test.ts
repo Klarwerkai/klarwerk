@@ -216,8 +216,9 @@ describe("SCRUM-510 WP2: ConfluenceRestClient.listAllPages (Pagination)", () => 
       spaceKey: "K",
       fetchFn,
     });
-    const pages = await client.listAllPages();
+    const { pages, truncated } = await client.listAllPages();
     expect(pages.map((p) => p.id)).toEqual(["1", "2", "3"]); // beide Ergebnisseiten
+    expect(truncated).toBe(false); // sauber bis zum letzten Cursor gelesen
     expect(urls).toHaveLength(2);
     // Hop 2 = Origin + relativer next-Pfad; beide auf der gepinnten Origin.
     expect(urls[1]).toBe("https://acme.atlassian.net/wiki/rest/api/content?start=2");
@@ -246,7 +247,10 @@ describe("SCRUM-510 WP2: ConfluenceRestClient.listAllPages (Pagination)", () => 
       spaceKey: "K",
       fetchFn,
     });
-    const pages = await client.listAllPages(3); // Obergrenze 3
+    // SCRUM-510 (WP3): der Cap greift — UND meldet ehrlich truncated=true (der next-Cursor ist noch offen),
+    // damit der Aufrufer den Lauf nie als vollständig liest. Ohne den Fix (nacktes Array) fehlte das Signal.
+    const { pages, truncated } = await client.listAllPages(3); // Obergrenze 3
     expect(pages).toHaveLength(3); // genau 3 Hops, dann Stopp
+    expect(truncated).toBe(true);
   });
 });

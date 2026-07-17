@@ -21,12 +21,16 @@ function item(over: Partial<ImportItem> = {}): ImportItem {
   };
 }
 
-// Fake-Adapter: liefert ein vorgegebenes CollectResult (kein Netz).
-function fakeAdapter(result: CollectResult): ConfluenceSourceAdapter {
+// Fake-Adapter: liefert ein vorgegebenes CollectResult (kein Netz). `truncated` ist optional (Default
+// false) — die meisten Tests prüfen den vollständigen Lauf; der Cap-Test setzt es explizit.
+function fakeAdapter(
+  result: Omit<CollectResult, "truncated"> & { truncated?: boolean },
+): ConfluenceSourceAdapter {
+  const full: CollectResult = { truncated: false, ...result };
   return {
     source: "Confluence",
-    collect: async () => result.items,
-    collectAll: async () => result,
+    collect: async () => full.items,
+    collectAll: async () => full,
   } as unknown as ConfluenceSourceAdapter;
 }
 
@@ -157,5 +161,65 @@ describe("SCRUM-510 WP2: runConfluenceImport", () => {
     expect(s.failed).toBe(1);
     expect(s.perPage.find((p) => p.ref === "P2")?.status).toBe("failed");
     expect(await library.listImportCandidates()).toHaveLength(1); // die gute Seite wurde eingereiht
+  });
+
+  // SCRUM-510 (WP3): IN-RUN-Dedup. Liefert die Quelle dieselbe (pageId@version) DOPPELT in EINEM Lauf,
+  // wird sie nur EINMAL eingereiht — die zweite ist „Dublette im selben Lauf". Ohne den queuedKeys-Fix
+  // würden beide in toQueue landen (Doppel-Kandidat), imported=2 → dieser Test scheitert.
+  it("WP3: doppelte Seite im selben Lauf → nur einmal eingereiht (in-run dedup)", async () => {
+    const { koService, library } = setup();
+    const adapter = fakeAdapter({
+      items: [
+        item({ externalId: "P1", sourceVersion: 1 }),
+        item({ externalId: "P1", sourceVersion: 1, title: "P1 (Kopie)" }),
+        item({ externalId: "P2", sourceVersion: 1, title: "Zwei" }),
+      ],
+      failed: [],
+    });
+    const s = await runConfluenceImport({
+      adapter,
+      library,
+      koService,
+      dryRun: false,
+      actor: "admin",
+    });
+    expect(s.imported).toBe(2); // P1 einmal + P2
+    expect(s.skipped).toBe(1); // die P1-Dublette
+    expect(s.perPage.filter((p) => p.status === "imported")).toHaveLength(2);
+    expect(await library.listImportCandidates()).toHaveLength(2);
+  });
+
+  // SCRUM-510 (WP3): ehrlicher Cap. Wird der Space am Seiten-Limit abgeschnitten (truncated), meldet die
+  // Zusammenfassung das — der Lauf ist UNVOLLSTÄNDIG, nie still „fertig". Ohne die Weiterreichung des
+  // truncated-Flags stünde summary.truncated auf false → dieser Test scheitert.
+  it("WP3: abgeschnittener Space-Read → summary.truncated=true (kein stilles fertig)", async () => {
+    const { koService, library } = setup();
+    const adapter = fakeAdapter({
+      items: [item({ externalId: "P1" }), item({ externalId: "P2", title: "Zwei" })],
+      failed: [],
+      truncated: true,
+    });
+    const s = await runConfluenceImport({
+      adapter,
+      library,
+      koService,
+      dryRun: false,
+      actor: "admin",
+    });
+    expect(s.truncated).toBe(true);
+    expect(s.found).toBe(2); // NUR die gesehenen Seiten — nicht der ganze Space
+  });
+
+  // Gegenprobe: vollständiger Lauf → truncated=false.
+  it("WP3: vollständiger Space-Read → summary.truncated=false", async () => {
+    const { koService, library } = setup();
+    const s = await runConfluenceImport({
+      adapter: fakeAdapter({ items: [item({ externalId: "P1" })], failed: [] }),
+      library,
+      koService,
+      dryRun: true,
+      actor: "admin",
+    });
+    expect(s.truncated).toBe(false);
   });
 });

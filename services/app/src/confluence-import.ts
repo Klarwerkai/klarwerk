@@ -11,10 +11,14 @@ export type ImportPageStatus = "imported" | "skipped" | "failed";
 
 export interface ImportRunSummary {
   dryRun: boolean;
-  found: number; // Seiten im Space gefunden
+  found: number; // Seiten im Space GESEHEN (bei truncated: nur bis zum Cap, NICHT der ganze Space)
   imported: number; // NEUE Kandidaten (bei dryRun: würden eingereiht; sonst tatsächlich eingereiht)
-  skipped: number; // idempotent übersprungen (unveränderte Version bereits im Bestand/Queue)
+  skipped: number; // idempotent übersprungen (unveränderte Version bereits im Bestand/Queue/diesem Lauf)
   failed: number; // Seiten, deren Verarbeitung scheiterte
+  // SCRUM-510 (WP3): true, wenn der Space-Read am Seiten-Cap ABGESCHNITTEN wurde → der Lauf ist
+  // UNVOLLSTÄNDIG. `found` zählt dann nur die gesehenen Seiten; es gibt weitere, ungelesene Seiten.
+  // Ein Lauf mit truncated=true darf NIE als vollständiger Import gelesen werden.
+  truncated: boolean;
   perPage: { ref: string; status: ImportPageStatus; note?: string }[];
 }
 
@@ -53,23 +57,35 @@ async function pendingKeys(library: LibraryService): Promise<Set<string>> {
 }
 
 export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<ImportRunSummary> {
-  const { items, failed: collectFailed } = await deps.adapter.collectAll();
+  const { items, failed: collectFailed, truncated } = await deps.adapter.collectAll();
   const seen = await existingVersions(deps.koService);
   const pending = await pendingKeys(deps.library);
 
   const perPage: ImportRunSummary["perPage"] = [];
   const toQueue: ImportItem[] = [];
+  // SCRUM-510 (WP3): IN-RUN-Dedup. Dieselbe (externalId@version) darf innerhalb EINES Laufs nicht zweimal
+  // eingereiht werden (die Quelle kann dieselbe Seite doppelt liefern; seen/pending kennen die gerade erst
+  // in diesem Lauf eingereihten Items noch nicht). Der DB-UNIQUE-Index ist der atomare Backstop dahinter.
+  const queuedKeys = new Set<string>();
   for (const item of items) {
     const ref = item.externalId ?? item.title;
     const version = item.sourceVersion ?? 1;
+    const runKey = item.externalId ? `${item.externalId}@${version}` : null;
+    if (runKey && queuedKeys.has(runKey)) {
+      perPage.push({ ref, status: "skipped", note: "Dublette im selben Lauf (idempotent)" });
+      continue;
+    }
     const already = item.externalId ? seen.get(item.externalId) : undefined;
-    const isPending = item.externalId ? pending.has(`${item.externalId}@${version}`) : false;
+    const isPending = runKey ? pending.has(runKey) : false;
     // Idempotent überspringen, wenn diese-oder-neuere Version schon importiert wurde ODER bereits als
     // offener Kandidat für exakt diese Version eingereiht ist. Eine HÖHERE Version → erneut einreihen
     // (der acceptToKo-Upsert übernimmt beim Annehmen den Re-Sync, R4).
     if ((already !== undefined && already >= version) || isPending) {
       perPage.push({ ref, status: "skipped", note: "unverändert (idempotent)" });
       continue;
+    }
+    if (runKey) {
+      queuedKeys.add(runKey);
     }
     perPage.push({ ref, status: "imported" });
     toQueue.push(item);
@@ -79,6 +95,7 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
   }
 
   // dryRun: NICHTS schreiben (nur zählen/listen). Sonst: die neuen Items als Kandidaten einreihen.
+  // Der createImportCandidates-Insert ist zusätzlich atomar idempotent (ON CONFLICT) — doppelter Backstop.
   if (!deps.dryRun && toQueue.length > 0) {
     await deps.library.createImportCandidates(toQueue, deps.actor);
   }
@@ -89,6 +106,7 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
     imported: toQueue.length,
     skipped: items.length - toQueue.length,
     failed: collectFailed.length,
+    truncated,
     perPage,
   };
 }

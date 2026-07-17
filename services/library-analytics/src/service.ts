@@ -115,16 +115,28 @@ export class LibraryService {
         createdAt: at,
       };
     });
+    // SCRUM-510 (WP3): externalId-Kandidaten ATOMAR idempotent einreihen (partieller UNIQUE-Index / ON
+    // CONFLICT DO NOTHING) — ein bereits offener Kandidat derselben (externalId, sourceVersion) wird NICHT
+    // erneut angelegt, auch bei nebenläufigen Läufen/Retries. Nur der externalId-Upsert-Strang nutzt das;
+    // der JSON-Re-Import (externalUpsert aus) fügt unverändert per plain insert ein. `persisted` zählt/
+    // liefert NUR die tatsächlich eingereihten Kandidaten (ehrliche Zählung, keine Phantom-Kandidaten).
+    const persisted: ImportCandidate[] = [];
     for (const candidate of created) {
-      await this.candidates.insert(candidate);
+      const inserted =
+        this.externalUpsert && candidate.item.externalId
+          ? await this.candidates.insertIfAbsent(candidate)
+          : await this.candidates.insert(candidate).then(() => true);
+      if (inserted) {
+        persisted.push(candidate);
+      }
     }
     await this.audit?.record({
       actor,
       action: "import.candidates-created",
       target: "library",
-      payload: { count: created.length },
+      payload: { count: persisted.length },
     });
-    return created;
+    return persisted;
   }
 
   listImportCandidates(): Promise<ImportCandidate[]> {

@@ -225,13 +225,20 @@ describe("LibraryService", () => {
     expect(imported?.confidentiality).toBe("vertraulich");
   });
 
-  it("SCRUM-470: pageId-Dedup nur innerhalb des Imports (zwei gleiche pageId → eine Dublette)", async () => {
+  it("SCRUM-510 (WP3): gleiche (externalId, sourceVersion) im selben Import → nur EIN Kandidat persistiert", async () => {
+    // Zwei Items mit derselben pageId+Version dürfen NICHT beide in die Queue (früher: zweiter als
+    // duplicate=true, aber trotzdem persistiert → Doppel-Kandidat). Jetzt idempotent: der zweite wird gar
+    // nicht eingereiht; P2 (andere pageId) bleibt eigenständig. Ohne den insertIfAbsent-Fix scheitert das.
     const cands = await ctx.library.createImportCandidates([
       confItem({ externalId: "P1" }),
       confItem({ externalId: "P1", title: "Pumpe (Kopie)" }),
       confItem({ externalId: "P2", title: "Ventil" }),
     ]);
-    expect(cands.map((c) => c.duplicate)).toEqual([false, true, false]);
+    expect(cands).toHaveLength(2);
+    expect(cands.map((c) => c.item.externalId)).toEqual(["P1", "P2"]);
+    // Auch im Bestand der Queue liegen genau zwei — kein Doppel-Kandidat für P1@1.
+    const open = (await ctx.library.listImportCandidates()).filter((c) => c.status === "neu");
+    expect(open.filter((c) => c.item.externalId === "P1")).toHaveLength(1);
   });
 
   it("SCRUM-470: Accept einer pageId legt KO mit Herkunfts-Anker an", async () => {
@@ -742,5 +749,61 @@ describe("SCRUM-515: persistierte Alt-Kandidaten werden beim Accept erneut sanit
     // Der bereinigte Wert wurde PERSISTIERT (nicht nur transient verwendet).
     const persisted = await candidates.findById("cand-legacy");
     expect(persisted?.item.confidentiality).toBe("vertraulich");
+  });
+});
+
+// SCRUM-510 (WP3): der atomare Idempotenz-Vertrag der Queue (spiegelt den partiellen UNIQUE-Index von
+// Postgres). insertIfAbsent legt pro OFFENER (externalId, sourceVersion) höchstens EINEN Kandidaten an.
+describe("SCRUM-510 (WP3): InMemoryCandidateRepo.insertIfAbsent (Idempotenz-Vertrag)", () => {
+  function cand(id: string, over: Partial<ImportItem> = {}): ImportCandidate {
+    return {
+      id,
+      item: confItem(over),
+      status: "neu",
+      duplicate: false,
+      note: null,
+      koId: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+  }
+
+  it("zweiter offener Kandidat mit gleicher (externalId, version) → NICHT eingefügt (false)", async () => {
+    const repo = new InMemoryCandidateRepo();
+    expect(await repo.insertIfAbsent(cand("a", { externalId: "P1", sourceVersion: 1 }))).toBe(true);
+    expect(await repo.insertIfAbsent(cand("b", { externalId: "P1", sourceVersion: 1 }))).toBe(
+      false,
+    );
+    expect(await repo.all()).toHaveLength(1);
+  });
+
+  it("höhere Version derselben externalId → eingefügt (Re-Sync, kein Konflikt)", async () => {
+    const repo = new InMemoryCandidateRepo();
+    await repo.insertIfAbsent(cand("a", { externalId: "P1", sourceVersion: 1 }));
+    expect(await repo.insertIfAbsent(cand("b", { externalId: "P1", sourceVersion: 2 }))).toBe(true);
+    expect(await repo.all()).toHaveLength(2);
+  });
+
+  it("nach Review (status ≠ neu) ist dieselbe Version wieder einreihbar (Index nur für offene)", async () => {
+    const repo = new InMemoryCandidateRepo();
+    await repo.insertIfAbsent(cand("a", { externalId: "P1", sourceVersion: 1 }));
+    // Kandidat a wird angenommen → verlässt den offenen Index.
+    await repo.update({
+      ...cand("a", { externalId: "P1", sourceVersion: 1 }),
+      status: "angenommen",
+    });
+    expect(await repo.insertIfAbsent(cand("b", { externalId: "P1", sourceVersion: 1 }))).toBe(true);
+  });
+
+  it("ohne externalId → kein Schlüssel, immer eingefügt", async () => {
+    const repo = new InMemoryCandidateRepo();
+    const { externalId: _x1, ...noExt1 } = confItem();
+    const { externalId: _x2, ...noExt2 } = confItem();
+    expect(await repo.insertIfAbsent({ ...cand("a"), item: noExt1 as unknown as ImportItem })).toBe(
+      true,
+    );
+    expect(await repo.insertIfAbsent({ ...cand("b"), item: noExt2 as unknown as ImportItem })).toBe(
+      true,
+    );
+    expect(await repo.all()).toHaveLength(2);
   });
 });

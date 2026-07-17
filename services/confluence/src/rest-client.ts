@@ -138,11 +138,15 @@ export class ConfluenceRestClient {
   // Request geht ausschließlich an die gepinnte Origin (der relative next-Pfad wird mit der Origin
   // präfixiert und erneut assert-geprüft). Harte Iterations-Obergrenze als Sicherheitsnetz gegen
   // fehlerhafte next-Zyklen. redirect:error auf jedem Hop.
-  async listAllPages(maxPages = 500): Promise<ConfluencePage[]> {
+  // SCRUM-510 (WP3): der Cap ist ein Sicherheitsnetz — er darf aber nicht STILL enden. Bricht die Schleife
+  // ab, obwohl noch ein `next`-Cursor offen ist, wird `truncated: true` gemeldet (der Space wurde NICHT
+  // vollständig gelesen). Der Aufrufer macht daraus einen ehrlichen „unvollständig"-Status, nie ein „fertig".
+  async listAllPages(maxPages = 500): Promise<{ pages: ConfluencePage[]; truncated: boolean }> {
     const allowedOrigin = this.allowedOrigin();
     const out: ConfluencePage[] = [];
     let url: string | null = this.firstUrl();
-    for (let i = 0; url && i < maxPages; i++) {
+    let i = 0;
+    for (; url && i < maxPages; i++) {
       const { results, next }: { results: ConfluencePage[]; next: string | null } =
         await this.getContent(url, allowedOrigin);
       out.push(...results);
@@ -150,7 +154,8 @@ export class ConfluenceRestClient {
       // gepinnten Origin zusammensetzen; getContent assert-prüft die Origin erneut.
       url = next ? `${allowedOrigin}${next.startsWith("/") ? next : `/${next}`}` : null;
     }
-    return out;
+    // Cap erreicht UND es gäbe noch einen Folge-Cursor → abgeschnitten (unvollständig).
+    return { pages: out, truncated: i >= maxPages && url !== null };
   }
 }
 
