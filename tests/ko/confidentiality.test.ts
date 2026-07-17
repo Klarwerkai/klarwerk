@@ -73,11 +73,50 @@ describe("SCRUM-415: KoService", () => {
     const audit = new AuditService({ repo: auditRepo });
     const ko = new KoService({ repo: new InMemoryKoRepo(), audit });
     const created = await ko.create(koInput({ confidentiality: "vertraulich" }));
-    await ko.setConfidentiality(created.id, "intern", "chef");
+    // SCRUM-509 R3: Downgrade braucht explizit mayDowngrade (fehlend → blockiert, fail-safe).
+    await ko.setConfidentiality(created.id, "intern", "chef", { mayDowngrade: true });
     const entries = await audit.list({ action: "ko.confidentiality" });
     const last = entries.at(-1) as { payload?: { previous?: string; downgrade?: boolean } };
     expect(last.payload?.previous).toBe("vertraulich");
     expect(last.payload?.downgrade).toBe(true);
+  });
+
+  // SCRUM-509 R3: Downgrade OHNE mayDowngrade wird im SERVICE abgelehnt (fail-safe), nicht nur an der
+  // Route — ein programmatischer Aufrufer darf nicht aus einem fehlenden Recht herabstufen.
+  it("SCRUM-509 R3: Downgrade ohne mayDowngrade → abgelehnt (fail-safe im Service)", async () => {
+    const ko = new KoService({ repo: new InMemoryKoRepo() });
+    const created = await ko.create(koInput({ confidentiality: "vertraulich" }));
+    await expect(ko.setConfidentiality(created.id, "intern", "prog")).rejects.toThrow();
+    expect((await ko.get(created.id))?.confidentiality).toBe("vertraulich");
+    // Upgrade bleibt ohne Recht frei.
+    const created2 = await ko.create(koInput());
+    await ko.setConfidentiality(created2.id, "vertraulich", "prog");
+    expect((await ko.get(created2.id))?.confidentiality).toBe("vertraulich");
+  });
+
+  // SCRUM-509 R3: optimistische Concurrency — ein nebenläufiger Voll-Objekt-Write überschreibt ein
+  // Vertraulichkeits-Upgrade NICHT (per-KO serialisiert + rowVersion-CAS; beide Änderungen greifen).
+  it("SCRUM-509 R3: paralleler Vollobjekt-Write vs. Upgrade → kein Überschreiben", async () => {
+    const ko = new KoService({ repo: new InMemoryKoRepo() });
+    const created = await ko.create(koInput()); // intern
+    await Promise.all([
+      ko.updateCategory(created.id, "Anlage 9", "anna"),
+      ko.setConfidentiality(created.id, "vertraulich", "chef"), // Upgrade
+    ]);
+    const stored = await ko.get(created.id);
+    expect(stored?.confidentiality).toBe("vertraulich"); // Upgrade NICHT verloren
+    expect(stored?.category).toBe("Anlage 9"); // Kategorie ebenfalls (serialisiert)
+  });
+
+  // SCRUM-509 R3: repo.update ist Compare-and-Set auf rowVersion — ein veralteter Write scheitert.
+  it("SCRUM-509 R3: repo.update Compare-and-Set (veralteter Voll-Objekt-Write → STALE_WRITE)", async () => {
+    const repo = new InMemoryKoRepo();
+    const ko = new KoService({ repo });
+    const created = await ko.create(koInput());
+    const stale = (await ko.get(created.id))!; // rowVersion-Stand „gelesen"
+    await repo.update({ ...stale, category: "X" }); // greift → hebt rowVersion
+    // Zweiter Write mit dem ALTEN (veralteten) Stand → STALE_WRITE.
+    await expect(repo.update({ ...stale, category: "Y" })).rejects.toThrow();
   });
 
   // SCRUM-509 R2: create mit EXPLIZIT ungültiger Stufe → abgelehnt (kein stilles Intern).

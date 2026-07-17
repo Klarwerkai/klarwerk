@@ -190,6 +190,10 @@ export class LibraryService {
       category: item.category,
       author: item.author ?? actor,
       tags: item.tags ?? [],
+      // SCRUM-509 R3: Import ist ein Bulk-/Programmatik-Pfad → konservativ. Fehlt das Governance-Signal,
+      // gilt „vertraulich" (NICHT still intern) — importierter Fremdinhalt bleibt bis zur bewussten
+      // Freigabe aus Cloud/Export heraus.
+      confidentiality: item.confidentiality ?? "vertraulich",
       ...(item.bodyHtml ? { bodyHtml: item.bodyHtml } : {}),
       ...(pageId ? { sources: [this.buildSource(item, actor, firstVersion)] } : {}),
     });
@@ -331,6 +335,8 @@ export class LibraryService {
         category: item.category,
         author: item.author ?? defaultAuthor,
         tags: item.tags ?? [],
+        // SCRUM-509 R3: JSON-Import ist ein Bulk-Pfad → konservativ „vertraulich" bei fehlendem Signal.
+        confidentiality: item.confidentiality ?? "vertraulich",
       });
       seen.add(key);
       imported += 1;

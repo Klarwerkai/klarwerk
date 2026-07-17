@@ -141,6 +141,30 @@ export class KoService {
     }
   }
 
+  // SCRUM-509 R3: EIN Read-Modify-Write-Pfad für KO-Mutationen. Per-KO serialisiert (withKoLock →
+  // kein Interleave IM Prozess) UND optimistisch auf DB-Ebene (repo.update macht Compare-and-Set auf
+  // rowVersion → ein veralteter fremder Write kann nichts überschreiben, auch prozessübergreifend).
+  // `apply` bekommt das FRISCH gelesene KO und liefert das aktualisierte KO + Rückgabewert + optionalen
+  // Audit-Schritt. #4: der Audit läuft ZUERST — schlägt er fehl, unterbleibt der Write (nie „wirksam,
+  // aber unbelegt"); im Prozess ist der Write durch den Lock konfliktfrei, sodass kein verwaister Audit
+  // entsteht. Ein (seltener) prozessübergreifender STALE_WRITE wird ehrlich geworfen, nicht geraten.
+  private async mutateKo<T>(
+    id: string,
+    apply: (ko: KnowledgeObject) => {
+      updated: KnowledgeObject;
+      value: T;
+      audit?: () => Promise<void>;
+    },
+  ): Promise<T> {
+    return this.withKoLock(id, async () => {
+      const ko = await this.require(id);
+      const { updated, value, audit } = apply(ko);
+      await audit?.();
+      await this.repo.update(updated);
+      return value;
+    });
+  }
+
   // SCRUM-159: vollständigen, unveränderlichen Voll-Snapshot ablegen (JSON-Deep-Copy, damit
   // spätere Änderungen am Live-KO frühere Versionen nicht berühren). No-op ohne Versions-Repo.
   private async snapshot(ko: KnowledgeObject, author: string, note: string): Promise<void> {
@@ -244,42 +268,37 @@ export class KoService {
     actor: string,
     opts: { mayDowngrade?: boolean } = {},
   ): Promise<KnowledgeObject> {
-    return this.withKoLock(id, () => this.doSetConfidentiality(id, level, actor, opts));
-  }
-
-  private async doSetConfidentiality(
-    id: string,
-    level: unknown,
-    actor: string,
-    opts: { mayDowngrade?: boolean },
-  ): Promise<KnowledgeObject> {
     // SCRUM-509: ungültige/fehlende Stufe wird NICHT still auf „intern" normalisiert (fail-open) —
     // sie wird abgelehnt. Fail-safe an der Datenschicht (Belt zur Route).
     if (!isValidConfidentiality(level)) {
       throw new KoError("INVALID_CONFIDENTIALITY", "Ungültige Vertraulichkeitsstufe.");
     }
-    const ko = await this.require(id);
-    const previous = normalizeConfidentiality(ko.confidentiality);
-    const downgrade = isConfidentialityDowngrade(previous, level);
-    // SCRUM-509 R2: die Downgrade-Autorisierung wird gegen die GERADE gelesene Stufe geprüft (atomar,
-    // per-KO serialisiert) — ein nebenläufiges Upgrade kann die Prüfung nicht mehr unterlaufen.
-    if (downgrade && opts.mayDowngrade === false) {
-      throw new KoError(
-        "DOWNGRADE_FORBIDDEN",
-        "Das Herabstufen der Vertraulichkeit erfordert eine Prüfer-/Admin-Rolle.",
-      );
-    }
-    const updated: KnowledgeObject = { ...ko, confidentiality: level };
-    // SCRUM-509 R2: ZUERST auditieren, DANN schreiben — schlägt das Audit fehl, unterbleibt die
-    // Änderung (nie „wirksam, aber unbelegt"). Herabstufungen sind mit Vorher/Nachher + Flag belegt.
-    await this.audit?.record({
-      actor,
-      action: "ko.confidentiality",
-      target: id,
-      payload: { level, previous, downgrade },
+    return this.mutateKo(id, (ko) => {
+      const previous = normalizeConfidentiality(ko.confidentiality);
+      const downgrade = isConfidentialityDowngrade(previous, level);
+      // SCRUM-509 R2/R3: Downgrade-Autorisierung gegen die GERADE gelesene Stufe (atomar). R3 FAIL-SAFE:
+      // fehlt `mayDowngrade`, gilt es als NICHT erlaubt (`!opts...`) — ein Downgrade rutscht nie aus einem
+      // fehlenden Recht durch, auch bei programmatischen Aufrufern.
+      if (downgrade && !opts.mayDowngrade) {
+        throw new KoError(
+          "DOWNGRADE_FORBIDDEN",
+          "Das Herabstufen der Vertraulichkeit erfordert eine Prüfer-/Admin-Rolle.",
+        );
+      }
+      const updated: KnowledgeObject = { ...ko, confidentiality: level };
+      return {
+        updated,
+        value: updated,
+        audit: async () => {
+          await this.audit?.record({
+            actor,
+            action: "ko.confidentiality",
+            target: id,
+            payload: { level, previous, downgrade },
+          });
+        },
+      };
     });
-    await this.repo.update(updated);
-    return updated;
   }
 
   // FR-KO-06: Kommentar am Objekt anfügen (Diskussion / Revisions-Schleife).
@@ -572,24 +591,31 @@ export class KoService {
   }
 
   // FR-KO-03: Kategorie/Tags nachträglich änderbar (Metadaten, ohne Versions-Bump).
+  // SCRUM-509 R3: über den serialisierten mutateKo-Pfad (Lock + rowVersion-CAS) — ein nebenläufiges
+  // Vertraulichkeits-Upgrade kann nicht durch ein veraltetes Voll-Objekt überschrieben werden.
   async updateCategory(id: string, category: string, actor = "system"): Promise<KnowledgeObject> {
-    const ko = await this.require(id);
-    const updated = { ...ko, category };
-    await this.repo.update(updated);
-    await this.audit?.record({
-      actor,
-      action: "ko.category-changed",
-      target: id,
-      payload: { category },
+    return this.mutateKo(id, (ko) => {
+      const updated = { ...ko, category };
+      return {
+        updated,
+        value: updated,
+        audit: async () => {
+          await this.audit?.record({
+            actor,
+            action: "ko.category-changed",
+            target: id,
+            payload: { category },
+          });
+        },
+      };
     });
-    return updated;
   }
 
   async updateTags(id: string, tags: string[]): Promise<KnowledgeObject> {
-    const ko = await this.require(id);
-    const updated = { ...ko, tags };
-    await this.repo.update(updated);
-    return updated;
+    return this.mutateKo(id, (ko) => {
+      const updated = { ...ko, tags };
+      return { updated, value: updated };
+    });
   }
 
   // SCRUM-358 / AG-14-SERVER-TRUST / VC-P1-1 / FR-VAL-01: serverseitige Konfliktwirkung.
@@ -644,16 +670,21 @@ export class KoService {
 
   // FR-LIF-02: Autor-Übergabe — current author ändert sich, originalAuthor bleibt erhalten.
   async setAuthor(id: string, author: string, actor = "system"): Promise<KnowledgeObject> {
-    const ko = await this.require(id);
-    const updated = { ...ko, author };
-    await this.repo.update(updated);
-    await this.audit?.record({
-      actor,
-      action: "ko.author-transferred",
-      target: id,
-      payload: { author },
+    return this.mutateKo(id, (ko) => {
+      const updated = { ...ko, author };
+      return {
+        updated,
+        value: updated,
+        audit: async () => {
+          await this.audit?.record({
+            actor,
+            action: "ko.author-transferred",
+            target: id,
+            payload: { author },
+          });
+        },
+      };
     });
-    return updated;
   }
 
   // FR-RBAC-02: KO löschen (nur Controller/Admin/Autor, serverseitig erzwungen) mit Audit.

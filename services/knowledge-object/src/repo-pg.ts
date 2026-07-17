@@ -1,6 +1,11 @@
 import type { Pool } from "pg";
 import type { EvidenceRepo, KoCandidateQuery, KoFilter, KoRepo, KoVersionRepo } from "./repo";
-import type { EvidenceRecord, KnowledgeObject, KoVersionSnapshot } from "./types";
+import {
+  type EvidenceRecord,
+  type KnowledgeObject,
+  KoError,
+  type KoVersionSnapshot,
+} from "./types";
 
 // SCRUM-362 / AG-03-DBINDEX: die Such-Ausdrücke des Ask-Prefilters (PgKoRepo.findCandidates) als EINE
 // Quelle der Wahrheit. Query-Builder UND Indexdefinition leiten beide hieraus ab → Query-Shape und
@@ -92,14 +97,21 @@ export class PgKoRepo implements KoRepo {
     return res.rows[0]?.data;
   }
 
+  // SCRUM-509 R3: optimistische Concurrency auf DB-Ebene (Compare-and-Set auf der gespeicherten
+  // rowVersion in `data`). Der Write greift NUR, wenn die gespeicherte rowVersion der vom Aufrufer
+  // gelesenen entspricht; sonst rowCount 0 → STALE_WRITE (kein Überschreiben eines fremden Writes).
+  // Alt-Zeilen ohne Feld → COALESCE 0. Bei Erfolg wird rowVersion monoton erhöht. Kein Row-Lock nötig:
+  // der bedingte UPDATE ist selbst atomar.
   async update(ko: KnowledgeObject): Promise<void> {
-    await this.pool.query("UPDATE kos SET type=$2,status=$3,category=$4,data=$5 WHERE id=$1", [
-      ko.id,
-      ko.type,
-      ko.status,
-      ko.category,
-      JSON.stringify(ko),
-    ]);
+    const expected = ko.rowVersion ?? 0;
+    const next = JSON.stringify({ ...ko, rowVersion: expected + 1 });
+    const res = await this.pool.query(
+      "UPDATE kos SET type=$2,status=$3,category=$4,data=$5 WHERE id=$1 AND COALESCE((data->>'rowVersion')::int,0)=$6",
+      [ko.id, ko.type, ko.status, ko.category, next, expected],
+    );
+    if (res.rowCount === 0) {
+      throw new KoError("STALE_WRITE", "Nebenläufige Änderung — bitte erneut lesen und anwenden.");
+    }
   }
 
   async delete(id: string): Promise<void> {

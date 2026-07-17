@@ -206,6 +206,25 @@ describe("LibraryService", () => {
     expect(await ctx.koService.list()).toHaveLength(3);
   });
 
+  // SCRUM-509 R3: Import ist ein Bulk-Pfad → konservativ. Fehlt die Stufe, gilt „vertraulich"
+  // (NICHT still intern) — importierter Fremdinhalt bleibt aus Cloud/Export heraus, bis freigegeben.
+  it("SCRUM-509 R3: JSON-Import ohne Stufe → vertraulich (nicht intern)", async () => {
+    await ctx.library.importJson([
+      { title: "Fremd", statement: "Importiert.", type: "best_practice", category: "Anlage 9" },
+    ]);
+    const imported = (await ctx.koService.list()).find((k) => k.title === "Fremd");
+    expect(imported?.confidentiality).toBe("vertraulich");
+  });
+
+  it("SCRUM-509 R3: Confluence-Accept ohne Stufe → vertraulich", async () => {
+    const [cand] = await ctx.library.createImportCandidates([confItem({ pageId: "PX" })]);
+    await ctx.library.reviewImportCandidate(cand!.id, "accept", "controller");
+    const imported = (await ctx.koService.list()).find((k) =>
+      (k.sources ?? []).some((s) => s.externalId === "PX"),
+    );
+    expect(imported?.confidentiality).toBe("vertraulich");
+  });
+
   it("SCRUM-470: pageId-Dedup nur innerhalb des Imports (zwei gleiche pageId → eine Dublette)", async () => {
     const cands = await ctx.library.createImportCandidates([
       confItem({ pageId: "P1" }),

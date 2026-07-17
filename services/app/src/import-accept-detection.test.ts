@@ -45,6 +45,9 @@ const IMPORTED = {
   statement: "Der Urlaub betraegt 30 Tage pro Jahr.",
   type: "best_practice" as const,
   category: "Personal",
+  // SCRUM-509 R3: Import ist per Default „vertraulich" → vertrauliche KOs überspringen die (Cloud-)
+  // Konflikt-/Duplikat-Erkennung (Schicht 1, SCRUM-502). Für diesen Erkennungs-Test bewusst „intern".
+  confidentiality: "intern" as const,
 };
 
 async function setup() {
@@ -163,7 +166,8 @@ describe("SCRUM-470 (S6): Erkennung am Import-Accept-Pfad (HTTP end-to-end)", ()
       method: "POST",
       url: "/api/library/import/candidates",
       headers,
-      payload: { items: [{ ...base, title: "Entlueften der Pumpe" }] },
+      // SCRUM-509 R3: bewusst „intern", damit die Duplikat-Erkennung läuft (vertraulich → übersprungen).
+      payload: { items: [{ ...base, title: "Entlueften der Pumpe", confidentiality: "intern" }] },
     });
     expect(cand.statusCode).toBe(201);
     expect(cand.json()[0].duplicate).toBe(false);

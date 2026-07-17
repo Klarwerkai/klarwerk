@@ -1,4 +1,4 @@
-import type { KnowledgeType } from "../../knowledge-object";
+import type { Confidentiality, KnowledgeType } from "../../knowledge-object";
 
 export interface ImportItem {
   title: string;
@@ -7,6 +7,9 @@ export interface ImportItem {
   category: string;
   author?: string;
   tags?: string[];
+  // SCRUM-509 R3: optionale Vertraulichkeit aus einem Quell-Governance-Signal (SCRUM-511). FEHLT sie,
+  // stuft der Import-Pfad KONSERVATIV auf „vertraulich" ein (kein stiller intern-Default auf Bulk-Pfaden).
+  confidentiality?: Confidentiality;
   // SCRUM-470 (Confluence-Import): Herkunfts-Anker. pageId = Idempotenz-Schlüssel (Re-Sync per Seite).
   // Generisch gehalten (library-analytics kennt Confluence nicht) — die Import-Route füllt sie.
   pageId?: string;

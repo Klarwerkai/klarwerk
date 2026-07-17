@@ -97,6 +97,11 @@ export interface KnowledgeObject {
   trust: number;
   status: KoStatus;
   version: number;
+  // SCRUM-509 R3: monoton wachsender Nebenläufigkeits-Token für optimistische Concurrency auf DB-Ebene.
+  // Jeder Write vergleicht ihn (Compare-and-Set): ein veralteter Voll-Objekt-Write scheitert (StaleWrite)
+  // statt eine zwischenzeitliche Änderung (z. B. Vertraulichkeits-Upgrade) zu überschreiben. Fehlt das
+  // Feld (Alt-Daten), gilt 0.
+  rowVersion?: number;
   originalAuthor: string;
   author: string;
   neededValidations: number;
@@ -175,7 +180,9 @@ export type KoErrorCode =
   // SCRUM-509: ungültige Vertraulichkeitsstufe (kein stilles Normalisieren auf „intern").
   | "INVALID_CONFIDENTIALITY"
   // SCRUM-509 R2: Herabstufung ohne Prüfer-/Admin-Rolle (atomar an der Datenschicht geprüft).
-  | "DOWNGRADE_FORBIDDEN";
+  | "DOWNGRADE_FORBIDDEN"
+  // SCRUM-509 R3: optimistische Concurrency — der Voll-Objekt-Write war veraltet (rowVersion-Konflikt).
+  | "STALE_WRITE";
 
 export class KoError extends Error {
   readonly code: KoErrorCode;

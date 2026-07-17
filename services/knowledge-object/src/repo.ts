@@ -1,9 +1,10 @@
-import type {
-  EvidenceRecord,
-  KnowledgeObject,
-  KnowledgeType,
-  KoStatus,
-  KoVersionSnapshot,
+import {
+  type EvidenceRecord,
+  type KnowledgeObject,
+  type KnowledgeType,
+  KoError,
+  type KoStatus,
+  type KoVersionSnapshot,
 } from "./types";
 
 export interface KoFilter {
@@ -83,8 +84,19 @@ export class InMemoryKoRepo implements KoRepo {
     return Promise.resolve(this.items.get(id));
   }
 
+  // SCRUM-509 R3: optimistische Concurrency (Compare-and-Set auf rowVersion). Der Aufrufer übergibt das
+  // KO, das er GELESEN hat (rowVersion = gelesener Stand); hat ein anderer Write zwischenzeitlich
+  // geschrieben (gespeicherte rowVersion ≠ gelesene), scheitert der Write (STALE_WRITE) — kein
+  // Überschreiben. Bei Erfolg wird rowVersion monoton erhöht.
   update(ko: KnowledgeObject): Promise<void> {
-    this.items.set(ko.id, ko);
+    const cur = this.items.get(ko.id);
+    const expected = ko.rowVersion ?? 0;
+    if (cur && (cur.rowVersion ?? 0) !== expected) {
+      return Promise.reject(
+        new KoError("STALE_WRITE", "Nebenläufige Änderung — bitte erneut lesen und anwenden."),
+      );
+    }
+    this.items.set(ko.id, { ...ko, rowVersion: expected + 1 });
     return Promise.resolve();
   }
 
