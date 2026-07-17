@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { ModelProvider, Reasoner } from "../../services/reasoner";
+// SCRUM-502 R8: die rohen Clients sind bewusst NICHT mehr aus dem Paket-Index exportiert
+// (Encapsulation). White-box-Unit-Tests der Roh-Client-Internas greifen relativ auf das Modul zu —
+// wie die paketinternen Tests (provider-model.test.ts). Von „außen" bleibt nur der gecappte Weg.
 import {
-  ModelProvider,
-  Reasoner,
   createLocalClientFromEnv,
   openAiCompatibleClient,
-} from "../../services/reasoner";
+} from "../../services/reasoner/src/model-client";
 import type { ModelClient } from "../../services/reasoner/src/provider-model";
 
 // SCRUM-424 (Pedi 03.07., VIP-Vorbereitung): zwei KI-Backends parallel — Claude-Cloud UND

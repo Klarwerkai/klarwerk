@@ -74,7 +74,7 @@ import {
   PgLifecycleRepo,
 } from "../../lifecycle";
 import { ManagementService } from "../../management";
-import { MediaAnalysisService, cappedTranscriber, createTranscriberFromEnv } from "../../media";
+import { MediaAnalysisService, createCappedTranscriberFromEnv } from "../../media";
 import {
   InMemoryModelRunRepo,
   type ModelRunRepo,
@@ -100,9 +100,8 @@ import {
   ModelProvider,
   PgAssistPresetRepo,
   Reasoner,
-  cappedModelClient,
-  createLocalClientFromEnv,
-  createModelClientFromEnv,
+  createCappedCloudClientFromEnv,
+  createCappedLocalClientFromEnv,
 } from "../../reasoner";
 import {
   type AssignmentRepo,
@@ -240,25 +239,18 @@ export function assembleServices(repos: AppRepos): AppServices {
     // Funktion (keine Modulgrenzen-Verletzung); null → Modul-Default 3.
     defaultNeededValidations: () => repos.validationSettings.getDefaultNeeded(),
   });
-  // FR-RSN-02/06: echtes Cloud-Modell, wenn der Cloud-Key per Env/Keychain verfügbar ist.
-  const modelClient = createModelClientFromEnv(
+  // FR-RSN-02/06 + SCRUM-502 R8: echtes Cloud-Modell, wenn der Cloud-Key per Env/Keychain verfügbar ist
+  // — GECAPPT aus der Factory (Egress-Wächter rejectsConfidential=true + globaler In-Flight-Cap sind
+  // dort zwingend verdrahtet; der rohe Client + der Schlüssel bleiben modul-intern, hier nicht
+  // erreichbar). Ohne Schlüssel → undefined (deterministischer Betrieb).
+  const cappedCloud = createCappedCloudClientFromEnv(
     process.env,
     process.env.KLARWERK_SKIP_KEYCHAIN ? () => undefined : undefined,
   );
-  // SCRUM-424: eigener lokaler LLM (OpenAI-kompatibel), wenn KLARWERK_LOCAL_LLM_URL + _MODEL
-  // gesetzt sind. Beide Backends werden serverseitig beim Start verdrahtet — unabhängig vom
-  // Login. Die Werte kommen aus dem Launcher/Schlüsselbund, nie aus dem Code.
-  const localClient = createLocalClientFromEnv();
-  // SCRUM-498 B2: beide Modell-Clients durch den EINEN prozess-globalen In-Flight-Cap führen (Cloud UND
-  // lokal teilen denselben Semaphore). Jeder complete()-Aufruf acquired/released einzeln → die
-  // Gesamt-Gleichzeitigkeit ist über alle Requests hinweg begrenzt, ohne Bypass.
-  // SCRUM-502 Schicht 2: NUR der Cloud-Client verweigert vertrauliche Inhalte am Chokepoint
-  // (Sicherheitsnetz zum Reasoner-Routing). Der lokale LLM (on-prem, kein externer Egress) wird
-  // ohne diesen Wächter umschlossen und bedient vertrauliche Inhalte weiter.
-  const cappedCloud = modelClient
-    ? cappedModelClient(modelClient, { rejectsConfidential: true })
-    : undefined;
-  const cappedLocal = localClient ? cappedModelClient(localClient) : undefined;
+  // SCRUM-424 + R8: eigener lokaler LLM (OpenAI-kompatibel), wenn KLARWERK_LOCAL_LLM_URL + _MODEL
+  // gesetzt sind — ebenfalls gecappt (globaler Cap), aber ohne Egress-Wächter (on-prem, kein externer
+  // Egress → bedient vertrauliche Inhalte weiter). Werte aus Launcher/Schlüsselbund, nie aus dem Code.
+  const cappedLocal = createCappedLocalClientFromEnv();
   // SCRUM-164: ModelRun-Protokoll mitgeben (No-op-fähig); API-Shape des Reasoners unverändert.
   const reasoner = new Reasoner(
     cappedCloud ? new ModelProvider(cappedCloud) : undefined,
@@ -335,10 +327,9 @@ export function assembleServices(repos: AppRepos): AppServices {
       objects: new ObjectStore({ repo: repos.objects }),
       // SCRUM-502 R7: der (Cloud-)Whisper-Transkriber durch den Egress-Chokepoint — verweigert
       // vertrauliche Medien per Konstruktion (rejectsConfidential), analog cappedCloud beim Reasoner.
-      transcriber: (() => {
-        const t = createTranscriberFromEnv();
-        return t ? cappedTranscriber(t, { rejectsConfidential: true }) : undefined;
-      })(),
+      // SCRUM-502 R8: gecappter Cloud-Transkriber aus der Factory (Egress-Wächter zwingend; roher
+      // Client + Credential modul-intern, hier nicht erreichbar). Ohne Schlüssel → undefined (inaktiv).
+      transcriber: createCappedTranscriberFromEnv(),
     }),
     // SCRUM-165: read-only ModelRun-Sicht über dasselbe Protokoll-Repo wie der Reasoner.
     modelRuns: new ModelRunService({ repo: repos.modelRuns }),

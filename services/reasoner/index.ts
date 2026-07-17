@@ -29,14 +29,15 @@ export {
   MAX_EXCERPT_LENGTH,
   MAX_EXTRACT_DOCUMENT_LENGTH,
 } from "./src/provider-model";
+// SCRUM-502 R8 (Encapsulation + Credential-Gating): nach außen NUR die GECAPPTEN Client-Factories.
+// Die rohen Clients (anthropicClient/openAiCompatibleClient), ihre Config-Typen und die
+// Credential-Resolver (resolveCloudApiKey/Keychain) werden BEWUSST NICHT re-exportiert — ein externer
+// Aufrufer kann keinen ungecappten Client bauen und den Schlüssel nicht erreichen. Rohe Clients bleiben
+// modul-intern (Tests greifen white-box relativ auf ./src/model-client zu).
 export {
-  anthropicClient,
-  createModelClientFromEnv,
-  type HttpModelConfig,
-  // SCRUM-424: eigener lokaler LLM (OpenAI-kompatibel, z. B. vLLM/Qwen).
-  openAiCompatibleClient,
-  createLocalClientFromEnv,
-  type LocalHttpModelConfig,
+  createCappedCloudClientFromEnv,
+  // SCRUM-424: eigener lokaler LLM (OpenAI-kompatibel, z. B. vLLM/Qwen) — gecappt, on-prem.
+  createCappedLocalClientFromEnv,
 } from "./src/model-client";
 // SCRUM-498 B2: prozess-globaler In-Flight-Cap für Modellaufrufe.
 export {

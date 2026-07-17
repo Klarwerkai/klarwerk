@@ -109,7 +109,7 @@ describe("SCRUM-498 B2: cappedModelClient (globaler Cap, env-tunable)", () => {
         return "x";
       },
     };
-    const capped = cappedModelClient(inner);
+    const capped = cappedModelClient(inner, { rejectsConfidential: false });
     const calls = Array.from({ length: 5 }, () => capped.complete("s", "u", false));
     await tick();
     expect(state.max).toBe(2); // nie mehr als N gleichzeitig im inneren Client
@@ -125,7 +125,9 @@ describe("SCRUM-498 B2: cappedModelClient (globaler Cap, env-tunable)", () => {
         throw new Error("kaputt");
       },
     };
-    await expect(cappedModelClient(boom).complete("s", "u", false)).rejects.toThrow("kaputt");
+    await expect(
+      cappedModelClient(boom, { rejectsConfidential: false }).complete("s", "u", false),
+    ).rejects.toThrow("kaputt");
     // Beweis: beide Slots wieder frei → N=2 gleichzeitig möglich.
     const state = { now: 0, max: 0 };
     const gate = deferred<void>();
@@ -139,7 +141,7 @@ describe("SCRUM-498 B2: cappedModelClient (globaler Cap, env-tunable)", () => {
         return "x";
       },
     };
-    const capped = cappedModelClient(inner);
+    const capped = cappedModelClient(inner, { rejectsConfidential: false });
     const calls = [capped.complete("s", "u", false), capped.complete("s", "u", false)];
     await tick();
     expect(state.max).toBe(2);
@@ -232,7 +234,7 @@ describe("SCRUM-502 Schicht 2: cappedModelClient-Egress-Wächter", () => {
         return "lokal-ok";
       },
     };
-    const local = cappedModelClient(inner);
+    const local = cappedModelClient(inner, { rejectsConfidential: false });
     expect(await local.complete("s", "u", true)).toBe("lokal-ok");
     expect(seen).toBe(true); // confidential wird durchgereicht, aber NICHT abgelehnt
   });

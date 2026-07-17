@@ -1,12 +1,13 @@
 import { type Transcriber, TranscriberConfidentialError } from "./types";
 
-// SCRUM-502 R7: der Transkriptions-Chokepoint. NUR der Cloud-Transkriber (build-app) wird mit
-// rejectsConfidential umschlossen und wirft bei confidential=true, BEVOR die Rohbytes gesendet
-// werden — fail-safe by construction, analog cappedModelClient des Reasoners. Ein späterer lokaler
-// (on-prem) Transkriber würde OHNE diesen Wächter umschlossen und dürfte vertrauliche Medien.
+// SCRUM-502 R7/R8: der Transkriptions-Chokepoint. `rejectsConfidential` ist PFLICHT (kein Default) —
+// der Aufrufer MUSS die Egress-Politik explizit setzen und kann den Wächter nicht durch Weglassen
+// umgehen. `true` (Cloud, build-app): wirft bei confidential=true, BEVOR die Rohbytes gesendet werden —
+// fail-safe by construction, analog cappedModelClient des Reasoners. `false` (späterer on-prem
+// Transkriber): bedient vertrauliche Medien weiter.
 export function cappedTranscriber(
   inner: Transcriber,
-  opts: { rejectsConfidential?: boolean } = {},
+  opts: { rejectsConfidential: boolean },
 ): Transcriber {
   return {
     name: inner.name,
@@ -71,4 +72,16 @@ export function createTranscriberFromEnv(
     return undefined;
   }
   return whisperClient({ apiKey, model: env.MEDIA_TRANSCRIBE_MODEL });
+}
+
+// SCRUM-502 R8 (Encapsulation + Credential-Gating): der EINZIGE Weg, von außerhalb dieses Moduls an
+// einen Transkriber zu kommen. Der rohe whisperClient und der Credential-Zugriff (MEDIA_TRANSCRIBE_
+// API_KEY/OPENAI_API_KEY) bleiben modul-intern und werden NICHT re-exportiert; nach außen wird
+// ausschließlich der GECAPPTE Cloud-Transkriber gereicht — mit zwingendem Egress-Wächter
+// (rejectsConfidential=true). Ohne Schlüssel → undefined (ehrlicher Inaktiv-Zustand, kein Fake).
+export function createCappedTranscriberFromEnv(
+  env: Record<string, string | undefined> = process.env,
+): Transcriber | undefined {
+  const raw = createTranscriberFromEnv(env);
+  return raw ? cappedTranscriber(raw, { rejectsConfidential: true }) : undefined;
 }

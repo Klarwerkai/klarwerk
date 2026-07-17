@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { cappedModelClient } from "./model-concurrency";
 import type { ModelClient } from "./provider-model";
 
 export const CLOUD_API_KEY_ENV = "ANTHROPIC_API_KEY";
@@ -248,4 +249,30 @@ export function createLocalClientFromEnv(
     ...(env.KLARWERK_LOCAL_LLM_KEY ? { apiKey: env.KLARWERK_LOCAL_LLM_KEY } : {}),
     ...(timeoutMs !== undefined ? { timeoutMs } : {}),
   });
+}
+
+// SCRUM-502 R8 (Encapsulation + Credential-Gating): der EINZIGE Weg, von außerhalb dieses Moduls an
+// einen Cloud-Modell-Client zu kommen. Der ROHE Client (anthropicClient) und der Credential-Zugriff
+// (resolveCloudApiKey/Keychain) bleiben modul-intern und werden NICHT re-exportiert; nach außen wird
+// ausschließlich der GECAPPTE Cloud-Client gereicht — mit zwingendem Egress-Wächter
+// (rejectsConfidential=true) und dem globalen In-Flight-Cap. Ein Aufrufer kann so weder den Schlüssel
+// erlangen noch den Vertraulichkeits-Guard weglassen. Ohne Schlüssel → undefined (deterministischer
+// Betrieb). Die Keychain-Injektionen bleiben für den Desktop-/Skip-Keychain-Pfad durchreichbar.
+export function createCappedCloudClientFromEnv(
+  env: Record<string, string | undefined> = process.env,
+  keychainLookup: CloudKeyLookup = findCloudKeyInKeychain,
+  keychainStore: CloudKeyStore = storeCloudKeyInKeychain,
+): ModelClient | undefined {
+  const raw = createModelClientFromEnv(env, keychainLookup, keychainStore);
+  return raw ? cappedModelClient(raw, { rejectsConfidential: true }) : undefined;
+}
+
+// SCRUM-502 R8: analog für den eigenen lokalen LLM (on-prem, kein externer Egress). Gecappt (globaler
+// In-Flight-Cap), aber rejectsConfidential=false — vertrauliche Inhalte bleiben bedient. Der rohe
+// openAiCompatibleClient bleibt modul-intern.
+export function createCappedLocalClientFromEnv(
+  env: Record<string, string | undefined> = process.env,
+): ModelClient | undefined {
+  const raw = createLocalClientFromEnv(env);
+  return raw ? cappedModelClient(raw, { rejectsConfidential: false }) : undefined;
 }

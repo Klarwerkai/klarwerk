@@ -155,13 +155,14 @@ export async function withModelSlot<T>(fn: () => Promise<T>): Promise<T> {
 
 // Umschließt einen ModelClient, sodass JEDER complete()-Aufruf durch den globalen Semaphore geht.
 // Der einzige Ort, an dem der Cap greift — kein Bypass, weil alle Provider-Methoden hierüber laufen.
-// SCRUM-502 Schicht 2: `rejectsConfidential` (nur für den CLOUD-Client gesetzt) lässt den Wrapper bei
-// vertraulichem Text (confidential=true) mit ConfidentialEgressError werfen, BEVOR der echte Aufruf
-// läuft — das Chokepoint-Sicherheitsnetz zum Reasoner-Routing. Der lokale Client wird NICHT so
-// umschlossen (on-prem, kein externer Egress) und bedient vertrauliche Inhalte weiter.
+// SCRUM-502 Schicht 2/R8: `rejectsConfidential` ist PFLICHT (kein Default) — der Aufrufer MUSS die
+// Egress-Politik explizit setzen und kann den Wächter nicht durch Weglassen umgehen. `true` (Cloud):
+// vertraulicher Text (confidential=true) → ConfidentialEgressError, BEVOR der echte Aufruf läuft.
+// `false` (lokal/on-prem, kein externer Egress): bedient vertrauliche Inhalte weiter. Beide Wege gehen
+// weiter durch den globalen In-Flight-Cap.
 export function cappedModelClient(
   inner: ModelClient,
-  opts: { rejectsConfidential?: boolean } = {},
+  opts: { rejectsConfidential: boolean },
 ): ModelClient {
   return {
     name: inner.name,
