@@ -39,7 +39,8 @@
       "Blueprint",
       "**/*.tsbuildinfo",
       "**/*.timestamp-*.mjs",
-      "scripts"
+      "scripts",
+      "services/app/addin-static"
     ]
   }
 }

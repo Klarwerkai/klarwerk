@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Klarwerk Companion</title>
+    <!-- Office.js aus dem offiziellen CDN (HTTPS, CSP-konform). -->
+    <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+    <link rel="stylesheet" href="taskpane.css" />
+  </head>
+  <body>
+    <main class="pane">
+      <header class="head">
+        <div class="brand">Klarwerk <span class="brand-2">Companion</span></div>
+        <p class="purpose">Validiertes Firmenwissen, während du schreibst.</p>
+      </header>
+
+      <section class="config">
+        <label class="lbl" for="baseUrl">Klarwerk-Basis-URL (HTTPS)</label>
+        <input id="baseUrl" class="inp" type="text" value="https://app.klarwerk.ai" spellcheck="false" />
+        <div class="presets">
+          <button type="button" class="chip" data-url="https://app.klarwerk.ai">app.klarwerk.ai</button>
+          <button type="button" class="chip" data-url="https://localhost:3001">localhost:3001 (HTTPS)</button>
+        </div>
+        <label class="lbl" for="apiKey">Add-in-Schlüssel (optional)</label>
+        <input id="apiKey" class="inp" type="password" placeholder="x-klarwerk-addon-key" spellcheck="false" autocomplete="off" />
+        <p class="hint">Schlüssel für den schmalen ko.read-Zugang (nur wenn das Backend <code>KLARWERK_ADDON_API</code> aktiviert hat). Ohne gültigen Schlüssel bleibt der Live-Call zu; das Panel zeigt dann den klar gekennzeichneten Mock.</p>
+      </section>
+
+      <button id="checkBtn" class="primary" type="button">Aktuellen Text prüfen</button>
+
+      <p id="status" class="status" hidden></p>
+
+      <section id="results" class="results" hidden></section>
+
+      <footer class="foot">
+        <p>
+          Ergebnisse sind <strong>KI-gestützt</strong> und stammen aus validiertem Firmenwissen —
+          <strong>keine Erfindung</strong>. Jede Aussage nennt ihre Quelle; ohne Beleg gibt es keine Antwort.
+        </p>
+      </footer>
+    </main>
+
+    <script type="module" src="taskpane.js"></script>
+  </body>
+</html>

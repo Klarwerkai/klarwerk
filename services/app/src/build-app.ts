@@ -135,6 +135,7 @@ import type { FactoryReset } from "./factory-reset";
 import { makeGuards, tokenFromRequest } from "./http";
 import { impactReport } from "./impact";
 import { makeAssignmentNotifier } from "./notify";
+import { addinStaticRoutes } from "./routes/addin-static-routes";
 import { adminRoutes } from "./routes/admin-routes";
 import { askRoutes } from "./routes/ask-routes";
 import { auditRoutes } from "./routes/audit-routes";
@@ -602,6 +603,10 @@ export function buildApp(
           },
       );
     }
+    // SCRUM-490 H: das statische Klara-Add-in-Bundle unter /addin/* — NUR bei aktivem Flag. Traversal-
+    // sicher (explizite Datei-Map), kein Directory-Listing, öffentlich lesbar (kein Key), berührt den
+    // Add-on-Auth/Throttle-Pfad nicht und öffnet keinen neuen API-Weg. Flag AUS → nicht registriert → 404.
+    app.register(addinStaticRoutes());
   }
 
   app.get("/health", async () => ({ status: "ok" }));
