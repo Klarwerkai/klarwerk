@@ -1,7 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { MediaAnalysisError, type MediaAnalysisService } from "../../../media";
 import type { Guards } from "../http";
-import { classifyProvenanceConfidential } from "./reasoner-routes";
 
 // SCRUM-382: Video-/Audio-Analyse (Transkript) für die Erfassung. Der Schlüssel des
 // Transkriptions-Dienstes bleibt serverseitig; der Client erhält nur Ergebnis + ehrlichen Status.
@@ -24,15 +23,11 @@ export function mediaRoutes(media: MediaAnalysisService, guards: Guards): Fastif
       }
       const objectId = request.body?.objectId ?? "";
       const locale = request.body?.locale === "en" ? "en" : "de";
-      // SCRUM-502 R7: das hochgeladene Medium ist ein transient-document (Upload). Vertraulichkeit
-      // fail-safe klassifizieren — fehlt/ungültig → vertraulich → kein externer Transkriptions-Egress.
-      const confidential = classifyProvenanceConfidential(
-        "transient-document",
-        request.body?.confidentiality,
-        { found: false },
-      );
+      // SCRUM-521 (WP1): Die Vertraulichkeit wird NICHT mehr aus dem Request bestimmt. Der Service
+      // liest sie serverseitig aus dem gespeicherten Objekt; `request.body.confidentiality` wird nur
+      // als optionale HOCHSTUFUNG (restriktiver) durchgereicht — eine Herabstufung ist unmöglich.
       try {
-        reply.code(200).send(await media.analyze(objectId, locale, confidential));
+        reply.code(200).send(await media.analyze(objectId, locale, request.body?.confidentiality));
       } catch (err) {
         if (err instanceof MediaAnalysisError) {
           const status =

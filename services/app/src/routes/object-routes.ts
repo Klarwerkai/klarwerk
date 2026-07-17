@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
+import { isValidConfidentiality } from "../../../knowledge-object";
 import { type ObjectKind, type ObjectStore, decodeDataUrl } from "../../../object-store";
 import { type Guards, sendError } from "../http";
 
@@ -27,21 +28,42 @@ function safeAttachmentName(name: unknown): string {
 // das KO speichert die Referenz + kleine Vorschau statt des großen Originals.
 export function objectRoutes(store: ObjectStore, guards: Guards): FastifyPluginAsync {
   return async (app) => {
-    app.post<{ Body: { name: string; mime: string; data: string; kind?: ObjectKind } }>(
-      "/api/objects",
-      async (request, reply) => {
-        const user = await guards.requirePermission("ko.create", request, reply);
-        if (!user) {
-          return;
-        }
-        try {
-          const { name, mime, data, kind } = request.body;
-          reply.code(201).send(await store.put({ name, mime, data, ...(kind ? { kind } : {}) }));
-        } catch (error) {
-          sendError(reply, error);
-        }
-      },
-    );
+    app.post<{
+      Body: {
+        name: string;
+        mime: string;
+        data: string;
+        kind?: ObjectKind;
+        confidentiality?: string;
+      };
+    }>("/api/objects", async (request, reply) => {
+      const user = await guards.requirePermission("ko.create", request, reply);
+      if (!user) {
+        return;
+      }
+      try {
+        const { name, mime, data, kind, confidentiality } = request.body;
+        // SCRUM-521 (WP1): Vertraulichkeit beim Upload persistieren — nur wenn es ein bekannter Level
+        // ist. Ungültig/fehlend → nicht setzen; der Medien-Egress behandelt das Objekt dann fail-safe
+        // als vertraulich (kein externer Transkriptions-Egress). Der Client kann so nur beim Upload
+        // eine Einstufung setzen, nie nachträglich beim Analyse-Request herabstufen.
+        const confidentialityField =
+          typeof confidentiality === "string" && isValidConfidentiality(confidentiality)
+            ? { confidentiality }
+            : {};
+        reply.code(201).send(
+          await store.put({
+            name,
+            mime,
+            data,
+            ...(kind ? { kind } : {}),
+            ...confidentialityField,
+          }),
+        );
+      } catch (error) {
+        sendError(reply, error);
+      }
+    });
 
     app.get<{ Params: { id: string } }>("/api/objects/:id", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);

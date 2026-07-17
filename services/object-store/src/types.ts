@@ -11,6 +11,11 @@ export interface ObjectRef {
   size: number;
   kind: ObjectKind;
   createdAt: string;
+  // SCRUM-521 (WP1): serverseitig PERSISTIERTE Vertraulichkeit des Objekts (Level-String, z. B.
+  // "intern"/"vertraulich"/"streng_vertraulich"). Beim Upload gesetzt; die Egress-Entscheidung (Medien-
+  // Transkription) liest AUSSCHLIESSLICH diesen Wert — nie den Analyse-Request. Fehlt er, gilt fail-safe
+  // vertraulich (kein externer Egress). object-store bleibt von knowledge-object entkoppelt → plain string.
+  confidentiality?: string;
 }
 
 // Gespeichertes Objekt = Referenz + Inhalt (Daten-URL/Base64-String).

@@ -309,8 +309,16 @@ export const endpoints = {
   },
   // SCRUM-121: Objekt-/Attachment-Speicher — Original via Referenz statt Inline im KO.
   objects: {
-    upload: (input: { name: string; mime: string; data: string; kind?: ObjectRef["kind"] }) =>
-      api.post<ObjectRef>("/objects", input),
+    // SCRUM-521 (WP1): optionale Vertraulichkeit beim Upload PERSISTIEREN. Der Medien-Egress liest sie
+    // serverseitig aus dem gespeicherten Objekt; nur so kann ein als „intern" hochgeladenes Medium extern
+    // transkribiert werden. Ohne Wert bleibt das Objekt serverseitig fail-safe vertraulich.
+    upload: (input: {
+      name: string;
+      mime: string;
+      data: string;
+      kind?: ObjectRef["kind"];
+      confidentiality?: Confidentiality;
+    }) => api.post<ObjectRef>("/objects", input),
     read: (id: string) => api.get<ObjectContent>(`/objects/${id}`),
   },
   // SCRUM-382: Video-/Audio-Analyse — Transkript serverseitig (Schlüssel bleibt im Backend).

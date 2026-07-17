@@ -26,10 +26,14 @@ describe("SCRUM-382: /api/media/analyze (HTTP end-to-end)", () => {
       method: "POST",
       url: "/api/objects",
       headers,
+      // SCRUM-521 (WP1): die Vertraulichkeit wird BEIM UPLOAD persistiert (Quelle der Wahrheit).
+      // Bewusst intern → dieser Fall prüft den „kein Dienst konfiguriert"-Zustand (nicht den
+      // Vertraulichkeits-Block). Ohne gespeicherte Stufe wäre es fail-safe vertraulich (Test unten).
       payload: {
         name: "uebergabe.mp4",
         mime: "video/mp4",
         data: `data:video/mp4;base64,${Buffer.from("clip").toString("base64")}`,
+        confidentiality: "intern",
       },
     });
     expect(put.statusCode).toBe(201);
@@ -42,9 +46,7 @@ describe("SCRUM-382: /api/media/analyze (HTTP end-to-end)", () => {
       method: "POST",
       url: "/api/media/analyze",
       headers,
-      // SCRUM-502 R7: bewusst intern → dieser Fall prüft den „kein Dienst konfiguriert"-Zustand
-      // (nicht den Vertraulichkeits-Block). Ohne Stufe wäre es fail-safe vertraulich (eigener Test unten).
-      payload: { objectId: put.json().id, locale: "de", confidentiality: "intern" },
+      payload: { objectId: put.json().id, locale: "de" },
     });
     expect(analyzed.statusCode).toBe(200);
     expect(analyzed.json().engineActive).toBe(false);
@@ -70,6 +72,34 @@ describe("SCRUM-382: /api/media/analyze (HTTP end-to-end)", () => {
       url: "/api/media/analyze",
       headers,
       payload: { objectId: put.json().id, locale: "de" }, // KEINE Stufe → fail-safe vertraulich
+    });
+    expect(analyzed.statusCode).toBe(200);
+    expect(analyzed.json().engineActive).toBe(false);
+    expect(analyzed.json().transcript).toBeNull();
+    expect(analyzed.json().note).toContain("Vertrauliche");
+  });
+
+  // SCRUM-521 (WP1) KERN am HTTP-Rand: ein als vertraulich HOCHGELADENES Medium bleibt vertraulich,
+  // auch wenn der Analyse-Request "intern" behauptet. Der Client kann über den Request NICHT herabstufen.
+  // Ohne den Fix (Route vertraut der Request-Stufe) käme kein Vertraulichkeits-Block → Test schlägt fehl.
+  it("SCRUM-521: gespeichert vertraulich + Request 'intern' → keine Herabstufung, kein Egress", async () => {
+    const { app, headers } = await setup();
+    const put = await app.inject({
+      method: "POST",
+      url: "/api/objects",
+      headers,
+      payload: {
+        name: "vertraulich.mp4",
+        mime: "video/mp4",
+        data: `data:video/mp4;base64,${Buffer.from("secret").toString("base64")}`,
+        confidentiality: "vertraulich",
+      },
+    });
+    const analyzed = await app.inject({
+      method: "POST",
+      url: "/api/media/analyze",
+      headers,
+      payload: { objectId: put.json().id, locale: "de", confidentiality: "intern" }, // Herabstufungsversuch
     });
     expect(analyzed.statusCode).toBe(200);
     expect(analyzed.json().engineActive).toBe(false);

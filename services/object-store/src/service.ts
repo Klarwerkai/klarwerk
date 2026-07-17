@@ -29,6 +29,9 @@ export interface PutObjectInput {
   mime: string;
   data: string;
   kind?: ObjectKind;
+  // SCRUM-521 (WP1): beim Upload persistierte Vertraulichkeit (Level-String). Fehlt sie, bleibt sie
+  // undefined → der Medien-Egress behandelt das Objekt fail-safe als vertraulich.
+  confidentiality?: string;
 }
 
 // Leitet die Objektart aus dem MIME-Typ ab (überschreibbar via input.kind).
@@ -74,6 +77,8 @@ export class ObjectStore {
       size: input.data.length,
       kind: input.kind ?? inferKind(input.mime),
       createdAt: new Date(this.now()).toISOString(),
+      // SCRUM-521 (WP1): Vertraulichkeit nur persistieren, wenn ein bekannter Level angegeben ist.
+      ...(input.confidentiality ? { confidentiality: input.confidentiality } : {}),
     };
     await this.repo.insert({ ref, data: input.data });
     return ref;

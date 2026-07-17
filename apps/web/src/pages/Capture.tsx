@@ -1463,14 +1463,18 @@ export function Capture(): JSX.Element {
     setVideoBusy(d.id);
     setNotice(t("capture.videoRunning", { name: d.name }));
     try {
+      // SCRUM-521 (WP1): die Vertraulichkeit des Entwurfs BEIM UPLOAD persistieren — sie ist danach
+      // die serverseitige Quelle der Wahrheit für die Egress-Entscheidung. Nur ein als „intern"
+      // hochgeladenes Medium darf extern transkribiert werden; fehlt die Stufe, bleibt es serverseitig
+      // fail-safe vertraulich.
       const ref = await endpoints.objects.upload({
         name: d.name,
         mime: d.mime,
         data: d.data,
         kind: "video",
+        confidentiality,
       });
-      // SCRUM-502 R7: die Vertraulichkeit des Entwurfs mitführen → vertrauliches Medium wird nicht
-      // extern transkribiert (fail-safe serverseitig, falls die Stufe fehlt).
+      // Die Analyse reicht die Stufe nur noch als optionale HOCHSTUFUNG durch — herabstufen kann sie nicht.
       const res = await endpoints.media.analyze(ref.id, locale, confidentiality);
       if (res.engineActive && res.transcript && res.transcript.length > 0) {
         setRaw((prev) =>

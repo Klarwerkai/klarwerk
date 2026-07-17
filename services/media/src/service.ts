@@ -1,6 +1,31 @@
 import { type ObjectStore, decodeDataUrl } from "../../object-store";
 import { type MediaAnalysis, MediaAnalysisError, type Transcriber } from "./types";
 
+// SCRUM-521 (WP1): Vertraulichkeits-Rangordnung (self-contained; media bleibt von knowledge-object
+// entkoppelt). intern < vertraulich < streng_vertraulich.
+const CONFIDENTIALITY_RANK: Record<string, number> = {
+  intern: 0,
+  vertraulich: 1,
+  streng_vertraulich: 2,
+};
+const CONFIDENTIAL_FLOOR = 1; // = Rang von "vertraulich"; ab hier → kein externer Egress
+
+// Die EGRESS-Entscheidung für ein Medienobjekt. `stored` = die serverseitig PERSISTIERTE Vertraulichkeit
+// (Quelle der Wahrheit). `requested` = optionaler Wert aus dem Analyse-Request — darf NUR HOCHSTUFEN
+// (restriktiver), nie herabstufen. Fehlt/ungültig `stored` → fail-safe vertraulich (kein Egress); ein
+// ungültiger `requested` wird ignoriert (keine Hochstufung, aber auch keine Senkung).
+export function mediaIsConfidential(stored?: string, requested?: string): boolean {
+  const base =
+    stored !== undefined && stored in CONFIDENTIALITY_RANK
+      ? (CONFIDENTIALITY_RANK[stored] as number)
+      : CONFIDENTIAL_FLOOR; // fehlt/ungültig → fail-safe vertraulich
+  const up =
+    requested !== undefined && requested in CONFIDENTIALITY_RANK
+      ? (CONFIDENTIALITY_RANK[requested] as number)
+      : -1; // ungültig/fehlend → keine Hochstufung
+  return Math.max(base, up) >= CONFIDENTIAL_FLOOR;
+}
+
 export interface MediaAnalysisDeps {
   objects: ObjectStore;
   transcriber?: Transcriber | undefined;
@@ -22,13 +47,16 @@ export class MediaAnalysisService {
     return { active: Boolean(this.transcriber), engine: this.transcriber?.name ?? null };
   }
 
-  // SCRUM-502 R7: `confidential` PFLICHT (fail-safe von der Route: fehlend/ungültig → vertraulich).
-  // Vertrauliche Medien werden NICHT extern transkribiert — ehrlicher Hinweis statt Egress. Der
-  // cappedTranscriber ist zusätzlich der Chokepoint-Wächter (belt & suspenders).
+  // SCRUM-521 (WP1): Die Vertraulichkeit wird AUSSCHLIESSLICH serverseitig aus dem gespeicherten
+  // Objekt (`stored.ref.confidentiality`) bestimmt — der Client kann sie NICHT herabstufen. Der
+  // optionale `requestConfidentiality` aus dem Analyse-Request darf nur HOCHSTUFEN (restriktiver).
+  // Fehlt der persistierte Wert, gilt fail-safe vertraulich → kein externer Egress.
+  // SCRUM-502 R7: Vertrauliche Medien werden NICHT extern transkribiert — ehrlicher Hinweis statt
+  // Egress. Der cappedTranscriber bleibt zusätzlich der Chokepoint-Wächter (belt & suspenders).
   async analyze(
     objectId: string,
     locale: "de" | "en",
-    confidential: boolean,
+    requestConfidentiality?: string,
   ): Promise<MediaAnalysis> {
     const stored = await this.objects.read(objectId);
     if (!stored) {
@@ -40,6 +68,8 @@ export class MediaAnalysisService {
         "Nur Video-/Audio-Objekte können transkribiert werden.",
       );
     }
+    // Quelle der Wahrheit: der PERSISTIERTE Wert am Objekt. Request nur als Hochstufung.
+    const confidential = mediaIsConfidential(stored.ref.confidentiality, requestConfidentiality);
     if (confidential) {
       // Vertrauliches Medium → kein externer Egress. Ehrlich, wie der Inaktiv-Zustand.
       return {
