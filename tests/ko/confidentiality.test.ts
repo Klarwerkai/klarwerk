@@ -57,6 +57,28 @@ describe("SCRUM-415: KoService", () => {
     expect(entries[0]?.actor).toBe("chef");
     expect(entries[0]?.target).toBe(created.id);
   });
+
+  // SCRUM-509: ungültige Stufe wird NICHT still auf „intern" normalisiert, sondern abgelehnt (fail-safe).
+  it("lehnt eine ungültige Stufe ab (kein stilles Normalisieren auf intern)", async () => {
+    const ko = new KoService({ repo: new InMemoryKoRepo() });
+    const created = await ko.create(koInput({ confidentiality: "vertraulich" }));
+    await expect(ko.setConfidentiality(created.id, "quatsch" as never, "chef")).rejects.toThrow();
+    // Die gespeicherte Stufe bleibt unverändert vertraulich (kein fail-open Downgrade).
+    expect((await ko.get(created.id))?.confidentiality).toBe("vertraulich");
+  });
+
+  // SCRUM-509: eine Herabstufung wird im Audit als downgrade markiert (Vorher/Nachher nachvollziehbar).
+  it("markiert eine Herabstufung im Audit (previous + downgrade=true)", async () => {
+    const auditRepo = new InMemoryAuditRepo();
+    const audit = new AuditService({ repo: auditRepo });
+    const ko = new KoService({ repo: new InMemoryKoRepo(), audit });
+    const created = await ko.create(koInput({ confidentiality: "vertraulich" }));
+    await ko.setConfidentiality(created.id, "intern", "chef");
+    const entries = await audit.list({ action: "ko.confidentiality" });
+    const last = entries.at(-1) as { payload?: { previous?: string; downgrade?: boolean } };
+    expect(last.payload?.previous).toBe("vertraulich");
+    expect(last.payload?.downgrade).toBe(true);
+  });
 });
 
 describe("SCRUM-415: Output Factory schließt vertrauliche KOs aus (nie in externe Kontexte)", () => {

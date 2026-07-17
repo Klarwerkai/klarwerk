@@ -1,7 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
 import { htmlToPlainText, sanitizeHtml } from "../../structure";
-import { isConfidential, normalizeConfidentiality } from "./confidentiality";
+import {
+  isConfidential,
+  isConfidentialityDowngrade,
+  isValidConfidentiality,
+  normalizeConfidentiality,
+} from "./confidentiality";
 import type { EvidenceRepo, KoCandidateQuery, KoFilter, KoRepo, KoVersionRepo } from "./repo";
 import {
   type Confidentiality,
@@ -214,15 +219,22 @@ export class KoService {
     level: Confidentiality,
     actor: string,
   ): Promise<KnowledgeObject> {
+    // SCRUM-509: ungültige/fehlende Stufe wird NICHT still auf „intern" normalisiert (das wäre ein
+    // fail-open Downgrade) — sie wird abgelehnt. Fail-safe an der Datenschicht (Belt zur Route).
+    if (!isValidConfidentiality(level)) {
+      throw new KoError("INVALID_CONFIDENTIALITY", "Ungültige Vertraulichkeitsstufe.");
+    }
     const ko = await this.require(id);
-    const next = normalizeConfidentiality(level);
-    const updated: KnowledgeObject = { ...ko, confidentiality: next };
+    const previous = normalizeConfidentiality(ko.confidentiality);
+    const updated: KnowledgeObject = { ...ko, confidentiality: level };
     await this.repo.update(updated);
+    // Herabstufungen (weniger vertraulich) ändern die Sichtbarkeits-/Egress-Semantik → im Audit klar
+    // als downgrade markiert, mit Vorher/Nachher (nachvollziehbar, wer wann freigegeben hat).
     await this.audit?.record({
       actor,
       action: "ko.confidentiality",
       target: id,
-      payload: { level: next },
+      payload: { level, previous, downgrade: isConfidentialityDowngrade(previous, level) },
     });
     return updated;
   }

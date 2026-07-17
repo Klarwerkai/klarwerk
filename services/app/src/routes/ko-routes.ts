@@ -14,7 +14,8 @@ import {
   type KoStatus,
   type ReviseKoInput,
   type UploadLimitsRepo,
-  normalizeConfidentiality,
+  isConfidentialityDowngrade,
+  isValidConfidentiality,
   normalizeUploadLimits,
 } from "../../../knowledge-object";
 import type { LifecycleService } from "../../../lifecycle";
@@ -507,15 +508,36 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             reply.code(200).send(await ko.updateTags(id, body.tags ?? []));
             return;
           }
-          // SCRUM-415: Vertraulichkeitsstufe setzen/ändern (Rechte wie Bearbeiten: ko.create).
+          // SCRUM-415/509: Vertraulichkeitsstufe setzen/ändern. Basisrecht ko.create (wie Bearbeiten).
           case "confidentiality": {
             const user = await guards.requirePermission("ko.create", request, reply);
             if (!user) {
               return;
             }
-            reply
-              .code(200)
-              .send(await ko.setConfidentiality(id, normalizeConfidentiality(body.level), user.id));
+            // SCRUM-509: ungültige/fehlende Stufe → 400 (KEIN stilles Normalisieren auf „intern" —
+            // das wäre ein fail-open Downgrade eines vertraulichen KOs).
+            if (!isValidConfidentiality(body.level)) {
+              reply
+                .code(400)
+                .send({ error: "BAD_REQUEST", message: "Ungültige Vertraulichkeitsstufe." });
+              return;
+            }
+            // SCRUM-509: ein Downgrade (weniger vertraulich) ändert die Sichtbarkeits-/Egress-Semantik
+            // (validiertes vertrauliches KO → intern → über den Export/an die Cloud). Nur eine
+            // Prüfer-/Admin-Rolle (ko.validate) darf herabstufen; ein Upgrade bleibt für ko.create frei.
+            const target = await ko.get(id);
+            if (
+              target &&
+              isConfidentialityDowngrade(target.confidentiality, body.level) &&
+              !can(user.role, "ko.validate")
+            ) {
+              reply.code(403).send({
+                error: "FORBIDDEN",
+                message: "Das Herabstufen der Vertraulichkeit erfordert eine Prüfer-/Admin-Rolle.",
+              });
+              return;
+            }
+            reply.code(200).send(await ko.setConfidentiality(id, body.level, user.id));
             return;
           }
           case "conflict": {

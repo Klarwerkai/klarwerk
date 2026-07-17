@@ -49,6 +49,10 @@ export {
   dropConfidential,
   isConfidential,
   normalizeConfidentiality,
+  // SCRUM-509: strikte Validierung + Downgrade-Erkennung der Vertraulichkeitsstufe.
+  isValidConfidentiality,
+  confidentialityRank,
+  isConfidentialityDowngrade,
 } from "./src/confidentiality";
 export type {
   EvidenceKind,
