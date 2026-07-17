@@ -1,0 +1,161 @@
+import { describe, expect, it } from "vitest";
+import type { CollectResult, ConfluenceSourceAdapter } from "../../confluence";
+import { InMemoryKoRepo, KoService } from "../../knowledge-object";
+import { type ImportItem, LibraryService } from "../../library-analytics";
+import { runConfluenceImport } from "./confluence-import";
+
+// SCRUM-510 WP2: Orchestrierung — dry-run schreibt nichts, Idempotenz (pageId+version), per-Seite-Fehler
+// bricht den Lauf nicht ab, REVIEW-INVARIANTE (nur Kandidaten, keine Auto-KOs).
+
+function item(over: Partial<ImportItem> = {}): ImportItem {
+  return {
+    title: "Seite",
+    statement: "Inhalt.",
+    type: "best_practice",
+    category: "K",
+    externalId: "P1",
+    sourceScope: "K",
+    sourceVersion: 1,
+    provider: "Confluence",
+    ...over,
+  };
+}
+
+// Fake-Adapter: liefert ein vorgegebenes CollectResult (kein Netz).
+function fakeAdapter(result: CollectResult): ConfluenceSourceAdapter {
+  return {
+    source: "Confluence",
+    collect: async () => result.items,
+    collectAll: async () => result,
+  } as unknown as ConfluenceSourceAdapter;
+}
+
+function setup() {
+  const koService = new KoService({ repo: new InMemoryKoRepo() });
+  const library = new LibraryService({ koService, externalUpsert: true });
+  return { koService, library };
+}
+
+describe("SCRUM-510 WP2: runConfluenceImport", () => {
+  it("dry-run: zählt/listet, schreibt NICHTS in die Queue", async () => {
+    const { koService, library } = setup();
+    const adapter = fakeAdapter({
+      items: [item({ externalId: "P1" }), item({ externalId: "P2", title: "Zwei" })],
+      failed: [],
+    });
+    const s = await runConfluenceImport({
+      adapter,
+      library,
+      koService,
+      dryRun: true,
+      actor: "admin",
+    });
+    expect(s.dryRun).toBe(true);
+    expect(s.found).toBe(2);
+    expect(s.imported).toBe(2); // WÜRDE 2 einreihen …
+    expect(await library.listImportCandidates()).toHaveLength(0); // … hat aber nichts geschrieben
+  });
+
+  it("echt: reiht neue Seiten als Kandidaten ein (KEINE Auto-KOs)", async () => {
+    const { koService, library } = setup();
+    const adapter = fakeAdapter({
+      items: [item({ externalId: "P1" }), item({ externalId: "P2" })],
+      failed: [],
+    });
+    const s = await runConfluenceImport({
+      adapter,
+      library,
+      koService,
+      dryRun: false,
+      actor: "admin",
+    });
+    expect(s.imported).toBe(2);
+    const cands = await library.listImportCandidates();
+    expect(cands).toHaveLength(2);
+    expect(cands.every((c) => c.status === "neu")).toBe(true); // nur Kandidaten
+    expect(await koService.list()).toHaveLength(0); // keine stillen KOs
+  });
+
+  it("Idempotenz: Re-Run mit unveränderter Version → alles übersprungen, keine Duplikate", async () => {
+    const { koService, library } = setup();
+    const adapter = fakeAdapter({
+      items: [item({ externalId: "P1", sourceVersion: 3 })],
+      failed: [],
+    });
+    await runConfluenceImport({ adapter, library, koService, dryRun: false, actor: "admin" });
+    expect(await library.listImportCandidates()).toHaveLength(1);
+    // Zweiter Lauf, gleiche Version → Kandidat bereits offen → skip.
+    const s2 = await runConfluenceImport({
+      adapter,
+      library,
+      koService,
+      dryRun: false,
+      actor: "admin",
+    });
+    expect(s2.imported).toBe(0);
+    expect(s2.skipped).toBe(1);
+    expect(await library.listImportCandidates()).toHaveLength(1); // keine Dublette
+  });
+
+  it("Idempotenz: bereits als KO (Version N) importiert → Version N übersprungen, höhere Version neu", async () => {
+    const { koService, library } = setup();
+    // Ein KO mit Herkunftsanker P9@2 existiert bereits.
+    await koService.create({
+      title: "Bestand",
+      statement: "Alt.",
+      type: "best_practice",
+      category: "K",
+      author: "a",
+      sources: [
+        {
+          id: "s1",
+          label: "P9",
+          url: null,
+          excerpt: null,
+          kind: "external",
+          peerValidated: false,
+          externalId: "P9",
+          sourceVersion: 2,
+          author: "a",
+          at: "2026-01-01",
+        },
+      ],
+    });
+    const s = await runConfluenceImport({
+      adapter: fakeAdapter({
+        items: [
+          item({ externalId: "P9", sourceVersion: 2 }),
+          item({ externalId: "P9", sourceVersion: 3, title: "Neu" }),
+        ],
+        failed: [],
+      }),
+      library,
+      koService,
+      dryRun: false,
+      actor: "admin",
+    });
+    // v2 (== Bestand) skip; v3 (> Bestand) neu.
+    expect(s.skipped).toBe(1);
+    expect(s.imported).toBe(1);
+  });
+
+  it("per-Seite-Fehler bricht den Lauf NICHT ab (Seite → failed, weiter)", async () => {
+    const { koService, library } = setup();
+    const adapter = fakeAdapter({
+      items: [item({ externalId: "P1" })],
+      failed: [{ ref: "P2", error: "Storage-Format defekt" }],
+    });
+    const s = await runConfluenceImport({
+      adapter,
+      library,
+      koService,
+      dryRun: false,
+      actor: "admin",
+    });
+    expect(s.found).toBe(1);
+    expect(s.imported).toBe(1);
+    expect(s.failed).toBe(1);
+    expect(s.perPage.find((p) => p.ref === "P2")?.status).toBe("failed");
+    expect(await library.listImportCandidates()).toHaveLength(1); // die gute Seite wurde eingereiht
+  });
+});

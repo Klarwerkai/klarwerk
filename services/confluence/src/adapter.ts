@@ -9,10 +9,19 @@
 import type { ImportItem, SourceAdapter } from "../../library-analytics";
 import { type ConfluenceMapOptions, mapConfluencePageToImportItem } from "./mapper";
 import {
+  type ConfluencePage,
   ConfluenceRestClient,
   type ConfluenceRestConfig,
   confluenceClientFromEnv,
 } from "./rest-client";
+
+// SCRUM-510 WP2: Ergebnis eines vollständigen (paginierten) Space-Einlesens — normalisierte Items PLUS
+// pro-Seite-Fehler (eine fehlerhafte Seite bricht den Lauf NICHT ab). `ref` ist die Herkunft (pageId
+// oder Titel) zur ehrlichen Fehlerzuordnung, ohne Interna zu lecken.
+export interface CollectResult {
+  items: ImportItem[];
+  failed: { ref: string; error: string }[];
+}
 
 export class ConfluenceSourceAdapter implements SourceAdapter {
   readonly source = "Confluence";
@@ -25,6 +34,25 @@ export class ConfluenceSourceAdapter implements SourceAdapter {
   async collect(): Promise<ImportItem[]> {
     const pages = await this.client.listPages();
     return pages.map((page) => mapConfluencePageToImportItem(page, this.mapOpts));
+  }
+
+  // SCRUM-510 WP2: liest den GESAMTEN Space (Cursor-Pagination) und mappt jede Seite EINZELN. Scheitert
+  // das Mapping einer Seite, wird sie als `failed` verbucht und der Lauf läuft weiter (never block).
+  async collectAll(): Promise<CollectResult> {
+    const pages: ConfluencePage[] = await this.client.listAllPages();
+    const items: ImportItem[] = [];
+    const failed: CollectResult["failed"] = [];
+    for (const page of pages) {
+      try {
+        items.push(mapConfluencePageToImportItem(page, this.mapOpts));
+      } catch (err) {
+        failed.push({
+          ref: page.id || page.title || "(unbekannt)",
+          error: err instanceof Error ? err.message : "Mapping fehlgeschlagen",
+        });
+      }
+    }
+    return { items, failed };
   }
 }
 

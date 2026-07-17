@@ -142,6 +142,7 @@ import { auditRoutes } from "./routes/audit-routes";
 import { captureRoutes } from "./routes/capture-routes";
 import { checkTextRoutes } from "./routes/check-text-routes";
 import { conflictRoutes } from "./routes/conflicts-routes";
+import { confluenceImportRoutes } from "./routes/confluence-import-routes";
 import { externalRoutes } from "./routes/external-routes";
 import { helpRoutes } from "./routes/help-routes";
 import { i18nRoutes } from "./routes/i18n-routes";
@@ -731,6 +732,16 @@ export function buildApp(
   app.register(mediaRoutes(services.media, guards));
   app.register(i18nRoutes(services.i18n));
   app.register(adminRoutes(services, guards, opts.factoryReset)); // SCRUM-181: Demo-Seed; Pedi 05.07.: Werksreset
+  // SCRUM-510 WP2: Admin-Trigger für den Confluence-Space-Import — NUR bei aktivem Import-Flag registriert
+  // (Flag OFF → Route existiert nicht). Echte Admin-Auth; alles landet nur als Review-Kandidat.
+  const confluenceImportEnabled =
+    process.env.KLARWERK_CONFLUENCE_IMPORT === "1" ||
+    process.env.KLARWERK_CONFLUENCE_IMPORT === "true";
+  if (confluenceImportEnabled) {
+    app.register(
+      confluenceImportRoutes({ library: services.library, koService: services.ko, guards }),
+    );
+  }
 
   // FR-ANA-02: Wirkungs-Dashboard (orchestriert KO-Bestand + Ask-Telemetrie aus dem Audit).
   app.get("/api/analytics/impact", async (request, reply) => {

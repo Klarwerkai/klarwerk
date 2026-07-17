@@ -186,6 +186,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "public",
     reason: "Add-in-Basis/Bundle-Serving (nur bei KLARWERK_ADDON_API); öffentlich, keine Daten.",
   },
+  // SCRUM-510 WP2: Admin-Trigger Confluence-Space-Import (Source-Datei immer gescannt; Route nur bei
+  // KLARWERK_CONFLUENCE_IMPORT registriert). Echte Admin-Auth via requirePermission("users.manage").
+  "POST /api/admin/import/confluence": { protection: "users.manage" },
   "GET /api/analytics/impact": { protection: "ko.read" },
 
   // --- KO (ko-routes.ts) ---

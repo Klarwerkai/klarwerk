@@ -186,3 +186,67 @@ describe("SCRUM-510-R3 (WP1): Token-Redaction + Tenant-Origin", () => {
     expect((seenInit?.headers as Record<string, string>).authorization).toBe(`Basic ${secretB64}`);
   });
 });
+
+// SCRUM-510 WP2: Cursor-Pagination — listAllPages folgt _links.next (mit gepinnter Origin), redirect:error.
+describe("SCRUM-510 WP2: ConfluenceRestClient.listAllPages (Pagination)", () => {
+  it("folgt _links.next über Seitengrenzen; jeder Hop nur an die gepinnte Origin, redirect:error", async () => {
+    const urls: string[] = [];
+    const inits: RequestInit[] = [];
+    const fetchFn = (async (u: string, i: RequestInit) => {
+      urls.push(String(u));
+      inits.push(i);
+      // Erste Antwort: 2 Seiten + next; zweite Antwort: 1 Seite, kein next.
+      const body =
+        urls.length === 1
+          ? {
+              results: [
+                { id: "1", title: "A" },
+                { id: "2", title: "B" },
+              ],
+              _links: { next: "/wiki/rest/api/content?start=2" },
+            }
+          : { results: [{ id: "3", title: "C" }], _links: {} };
+      return { ok: true, status: 200, json: async () => body } as unknown as Response;
+    }) as unknown as typeof fetch;
+
+    const client = new ConfluenceRestClient({
+      baseUrl: "https://acme.atlassian.net/wiki",
+      email: "svc@acme.example",
+      apiToken: "tok",
+      spaceKey: "K",
+      fetchFn,
+    });
+    const pages = await client.listAllPages();
+    expect(pages.map((p) => p.id)).toEqual(["1", "2", "3"]); // beide Ergebnisseiten
+    expect(urls).toHaveLength(2);
+    // Hop 2 = Origin + relativer next-Pfad; beide auf der gepinnten Origin.
+    expect(urls[1]).toBe("https://acme.atlassian.net/wiki/rest/api/content?start=2");
+    for (const u of urls) {
+      expect(u.startsWith("https://acme.atlassian.net")).toBe(true);
+    }
+    for (const i of inits) {
+      expect(i.redirect).toBe("error");
+    }
+  });
+
+  it("harte Iterations-Obergrenze bricht einen fehlerhaften next-Zyklus ab (kein Endlos)", async () => {
+    const fetchFn = (async () =>
+      ({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          results: [{ id: "x", title: "x" }],
+          _links: { next: "/wiki/rest/api/content?start=0" },
+        }),
+      }) as unknown as Response) as unknown as typeof fetch;
+    const client = new ConfluenceRestClient({
+      baseUrl: "https://acme.atlassian.net/wiki",
+      email: "e",
+      apiToken: "t",
+      spaceKey: "K",
+      fetchFn,
+    });
+    const pages = await client.listAllPages(3); // Obergrenze 3
+    expect(pages).toHaveLength(3); // genau 3 Hops, dann Stopp
+  });
+});

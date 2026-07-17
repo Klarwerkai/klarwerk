@@ -81,21 +81,44 @@ export class ConfluenceRestClient {
     return this.config.spaceKey;
   }
 
-  // Liest die aktuellen Seiten des konfigurierten Space (read-only GET). Erste Ausbaustufe: eine
-  // Ergebnisseite bis `pageLimit` (Default 50); Cursor-Pagination ist bewusst Folgearbeit.
-  async listPages(): Promise<ConfluencePage[]> {
-    const fetchFn = this.config.fetchFn ?? fetch;
-    // R2a: Origin aus der konfigurierten baseUrl pinnen; nicht-https/ungültig ⇒ Abbruch vor jedem Call.
-    let allowedOrigin: string;
+  // R2a: die gepinnte Origin aus der konfigurierten baseUrl. Nicht-https/ungültig ⇒ Abbruch VOR jedem
+  // Netzcall (kein Token an einen unverschlüsselten/fremden Host).
+  private allowedOrigin(): string {
     try {
       const u = new URL(this.baseUrl);
-      allowedOrigin = u.origin;
       if (u.protocol !== "https:") {
         throw new Error("plain-http");
       }
+      return u.origin;
     } catch {
       throw new Error("Confluence: baseUrl ist nicht https — Abbruch, kein Request.");
     }
+  }
+
+  // Zentraler Request-Bauer (WP1/R2a): EIN Ort, an dem Origin-Pin (https + exakte Origin), redirect:error
+  // und Basic-Auth erzwungen werden. Jede Confluence-URL läuft hierdurch — kein verstreuter fetch.
+  private async getContent(
+    url: string,
+    allowedOrigin: string,
+  ): Promise<{ results: ConfluencePage[]; next: string | null }> {
+    assertAllowedConfluenceUrl(url, allowedOrigin); // vor JEDEM Netzcall
+    const fetchFn = this.config.fetchFn ?? fetch;
+    const res = await fetchFn(url, {
+      method: "GET",
+      headers: { authorization: this.authHeader(), accept: "application/json" },
+      redirect: "error", // kein Folgen auf fremde Hosts
+    });
+    if (!res.ok) {
+      throw new Error(`Confluence-API antwortete mit ${res.status}`);
+    }
+    const data = (await res.json()) as {
+      results?: ConfluencePage[];
+      _links?: { next?: string };
+    };
+    return { results: data.results ?? [], next: data._links?.next ?? null };
+  }
+
+  private firstUrl(): string {
     const params = new URLSearchParams({
       spaceKey: this.config.spaceKey,
       type: "page",
@@ -103,19 +126,31 @@ export class ConfluenceRestClient {
       limit: String(this.config.pageLimit ?? 50),
       expand: EXPAND,
     });
-    const url = `${this.baseUrl}/rest/api/content?${params.toString()}`;
-    assertAllowedConfluenceUrl(url, allowedOrigin); // https + Origin-Pin, bevor irgendein Netzcall läuft
-    const res = await fetchFn(url, {
-      method: "GET",
-      headers: { authorization: this.authHeader(), accept: "application/json" },
-      // R2a: keinem Redirect auf einen fremden Host folgen (kein Token an ein Redirect-Ziel).
-      redirect: "error",
-    });
-    if (!res.ok) {
-      throw new Error(`Confluence-API antwortete mit ${res.status}`);
+    return `${this.baseUrl}/rest/api/content?${params.toString()}`;
+  }
+
+  // Liest die ERSTE Ergebnisseite des konfigurierten Space (read-only GET).
+  async listPages(): Promise<ConfluencePage[]> {
+    return (await this.getContent(this.firstUrl(), this.allowedOrigin())).results;
+  }
+
+  // SCRUM-510 WP2: liest den GESAMTEN Space über Cursor-Pagination (folgt _links.next). Jeder Folge-
+  // Request geht ausschließlich an die gepinnte Origin (der relative next-Pfad wird mit der Origin
+  // präfixiert und erneut assert-geprüft). Harte Iterations-Obergrenze als Sicherheitsnetz gegen
+  // fehlerhafte next-Zyklen. redirect:error auf jedem Hop.
+  async listAllPages(maxPages = 500): Promise<ConfluencePage[]> {
+    const allowedOrigin = this.allowedOrigin();
+    const out: ConfluencePage[] = [];
+    let url: string | null = this.firstUrl();
+    for (let i = 0; url && i < maxPages; i++) {
+      const { results, next }: { results: ConfluencePage[]; next: string | null } =
+        await this.getContent(url, allowedOrigin);
+      out.push(...results);
+      // next ist ein RELATIVER Confluence-Pfad (z. B. /wiki/rest/api/content?...&start=25) → mit der
+      // gepinnten Origin zusammensetzen; getContent assert-prüft die Origin erneut.
+      url = next ? `${allowedOrigin}${next.startsWith("/") ? next : `/${next}`}` : null;
     }
-    const data = (await res.json()) as { results?: ConfluencePage[] };
-    return data.results ?? [];
+    return out;
   }
 }
 
