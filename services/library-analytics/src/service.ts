@@ -32,10 +32,12 @@ export interface LibraryServiceDeps {
   candidates?: CandidateRepo;
   genId?: () => string;
   now?: () => number;
-  // SCRUM-470 (ben-Review #7, Flag-Scope): schaltet den GESAMTEN Confluence-Import-Strang. Aus (Default)
-  // = exakt heutiges Bestandsverhalten (title|statement-Dedup, kein pageId-Pfad, kein Herkunfts-Anker).
-  // An = pageId-Dedup + pageId-Upsert. Der Wert kommt aus KLARWERK_CONFLUENCE_IMPORT (build-app liest ihn).
-  confluenceImport?: boolean;
+  // SCRUM-510 R2b (quellneutrales Enablement): schaltet den externalId-Upsert-/Re-Sync-Strang. Aus
+  // (Default) = exakt heutiges Bestandsverhalten (title|statement-Dedup, kein Anker). An = externalId-
+  // Dedup + externalId-Upsert — QUELLNEUTRAL (kein Confluence-Begriff). build-app leitet den Wert aus dem
+  // generischen Import-Enable ab (aktuell durch KLARWERK_CONFLUENCE_IMPORT gesetzt; ein Adapter #2/Jira
+  // schaltet denselben Strang über sein eigenes Flag, ohne Confluence-Symbole).
+  externalUpsert?: boolean;
 }
 
 function increment(map: Record<string, number>, key: string): void {
@@ -61,8 +63,8 @@ export class LibraryService {
   private readonly now: () => number;
   // SCRUM-116/157: Import-/Source-Review-Queue über ein Repo (persistent via Pg, sonst In-Memory).
   private readonly candidates: CandidateRepo;
-  // SCRUM-470 (ben-Review #7): Confluence-Import-Strang aktiv? Aus = heutiges Bestandsverhalten.
-  private readonly confluenceImport: boolean;
+  // SCRUM-510 R2b: quellneutraler externalId-Upsert-Strang aktiv? Aus = heutiges Bestandsverhalten.
+  private readonly externalUpsert: boolean;
 
   constructor(deps: LibraryServiceDeps) {
     this.koService = deps.koService;
@@ -70,7 +72,7 @@ export class LibraryService {
     this.candidates = deps.candidates ?? new InMemoryCandidateRepo();
     this.genId = deps.genId ?? (() => randomUUID());
     this.now = deps.now ?? (() => Date.now());
-    this.confluenceImport = deps.confluenceImport ?? false;
+    this.externalUpsert = deps.externalUpsert ?? false;
   }
 
   // SCRUM-515: die eine Stelle, an der eine rohe (untrusted) confidentiality in den Import-Kern eintritt.
@@ -90,16 +92,16 @@ export class LibraryService {
     const existing = await this.koService.list();
     const seen = new Set(existing.map((ko) => `${ko.title}|${ko.statement}`));
     const at = new Date(this.now()).toISOString();
-    // SCRUM-470: Seiten mit pageId werden per pageId dedupliziert — aber NUR innerhalb dieses Imports
-    // (mehrfach dieselbe Seite in einer Scheibe). Eine Kollision mit dem BESTAND ist keine zu
-    // überspringende Dublette, sondern ein Re-Sync/Update (wird beim Annehmen als Upsert behandelt).
-    const batchPageIds = new Set<string>();
+    // SCRUM-510 R2b: Items mit externalId werden per externalId dedupliziert — aber NUR innerhalb dieses
+    // Imports (mehrfach dasselbe Quell-Objekt in einer Scheibe). Eine Kollision mit dem BESTAND ist keine
+    // zu überspringende Dublette, sondern ein Re-Sync/Update (wird beim Annehmen als Upsert behandelt).
+    const batchExternalIds = new Set<string>();
     const created = items.map<ImportCandidate>((item) => {
       let duplicate: boolean;
-      // ben-Review #7: pageId-Dedup nur bei aktivem Strang. Aus → title|statement-Dedup für ALLE Items.
-      if (this.confluenceImport && item.pageId) {
-        duplicate = batchPageIds.has(item.pageId);
-        batchPageIds.add(item.pageId);
+      // externalId-Dedup nur bei aktivem Upsert-Strang. Aus → title|statement-Dedup für ALLE Items.
+      if (this.externalUpsert && item.externalId) {
+        duplicate = batchExternalIds.has(item.externalId);
+        batchExternalIds.add(item.externalId);
       } else {
         duplicate = seen.has(`${item.title}|${item.statement}`);
       }
@@ -170,16 +172,16 @@ export class LibraryService {
   // Bekannte pageId (Anker im Bestand) → Re-Sync via revise() (nur bei höherer sourceVersion),
   // sonst neues KO. Gibt die KO-Id zurück (für die nachgelagerte Erkennung im Route-Layer).
   private async acceptToKo(item: ImportItem, actor: string): Promise<string> {
-    // ben-Review #7: pageId-Upsert/Anker nur bei aktivem Strang. Aus → pageId ignorieren, immer neu
-    // anlegen ohne Herkunfts-Anker (exakt heutiges Bestandsverhalten).
-    const pageId = this.confluenceImport ? item.pageId : undefined;
-    const existing = pageId
+    // SCRUM-510 R2b: externalId-Upsert/Anker nur bei aktivem Strang. Aus → externalId ignorieren, immer
+    // neu anlegen ohne Herkunfts-Anker (exakt heutiges Bestandsverhalten). Quellneutral.
+    const externalId = this.externalUpsert ? item.externalId : undefined;
+    const existing = externalId
       ? (await this.koService.list()).find((ko) =>
-          (ko.sources ?? []).some((s) => s.externalId === pageId),
+          (ko.sources ?? []).some((s) => s.externalId === externalId),
         )
       : undefined;
 
-    if (existing && pageId) {
+    if (existing && externalId) {
       // SCRUM-509 R4: Re-Sync eines bestehenden KO aus externer Quelle darf die Vertraulichkeit nur
       // ANHEBEN, nie still niedrig halten. Fail-safe wie der Create-Import (R3): fehlt das Governance-
       // Signal (ImportItem.confidentiality, s. 511), gilt „vertraulich"; eine explizit HÖHERE
@@ -196,14 +198,14 @@ export class LibraryService {
         await this.koService.setConfidentiality(existing.id, target, item.author ?? actor);
       }
 
-      const current = existing.sources.find((s) => s.externalId === pageId)?.sourceVersion ?? 0;
+      const current = existing.sources.find((s) => s.externalId === externalId)?.sourceVersion ?? 0;
       // ben-Review #3: Ohne explizite Version NICHT hochzählen (früher `current + 1` → jeder versions-
       // lose Re-Import revidierte endlos). `?? current` heißt: „gleiche Version wie zuletzt" → No-op.
       // Nur eine tatsächlich höhere (explizite) Version schreibt monoton fort — kein Downgrade.
       const incoming = item.sourceVersion ?? current;
       if (incoming > current) {
         const nextSources = [
-          ...existing.sources.filter((s) => s.externalId !== pageId),
+          ...existing.sources.filter((s) => s.externalId !== externalId),
           this.buildSource(item, actor, incoming),
         ];
         await this.koService.revise(
@@ -236,7 +238,7 @@ export class LibraryService {
       // Freigabe aus Cloud/Export heraus.
       confidentiality: item.confidentiality ?? "vertraulich",
       ...(item.bodyHtml ? { bodyHtml: item.bodyHtml } : {}),
-      ...(pageId ? { sources: [this.buildSource(item, actor, firstVersion)] } : {}),
+      ...(externalId ? { sources: [this.buildSource(item, actor, firstVersion)] } : {}),
     });
     return ko.id;
   }
@@ -254,8 +256,10 @@ export class LibraryService {
       kind: "external",
       peerValidated: false,
       provider: item.provider ?? null,
-      ...(item.pageId ? { externalId: item.pageId } : {}),
-      ...(item.spaceKey ? { spaceKey: item.spaceKey } : {}),
+      // SCRUM-510 R2b: quellneutraler Anker. externalId = Re-Sync-Schlüssel; sourceScope landet als
+      // (KO-seitig weiterhin so genanntes) spaceKey-Container-Label — der Match läuft NUR über externalId.
+      ...(item.externalId ? { externalId: item.externalId } : {}),
+      ...(item.sourceScope ? { spaceKey: item.sourceScope } : {}),
       sourceVersion: effectiveVersion,
       author: item.author ?? actor,
       at: new Date(this.now()).toISOString(),

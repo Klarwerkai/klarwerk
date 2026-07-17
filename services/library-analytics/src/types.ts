@@ -10,10 +10,12 @@ export interface ImportItem {
   // SCRUM-509 R3: optionale Vertraulichkeit aus einem Quell-Governance-Signal (SCRUM-511). FEHLT sie,
   // stuft der Import-Pfad KONSERVATIV auf „vertraulich" ein (kein stiller intern-Default auf Bulk-Pfaden).
   confidentiality?: Confidentiality;
-  // SCRUM-470 (Confluence-Import): Herkunfts-Anker. pageId = Idempotenz-Schlüssel (Re-Sync per Seite).
-  // Generisch gehalten (library-analytics kennt Confluence nicht) — die Import-Route füllt sie.
-  pageId?: string;
-  spaceKey?: string;
+  // SCRUM-510 R2b: QUELLNEUTRALE Provenienz/Herkunfts-Anker. externalId = Idempotenz-/Re-Sync-Schlüssel
+  // je Quell-Objekt (Confluence-pageId, Jira-Issue-Key, …); sourceScope = Quell-Container (Confluence-
+  // Space, Jira-Projekt, …). Der Import-Kern kennt keine quell-spezifischen Begriffe — ein Adapter #2
+  // (Jira) füllt dieselben Felder ohne Confluence-Symbole.
+  externalId?: string;
+  sourceScope?: string;
   sourceVersion?: number;
   url?: string;
   provider?: string;

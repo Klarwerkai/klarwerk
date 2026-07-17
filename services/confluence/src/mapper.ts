@@ -58,9 +58,10 @@ export function mapConfluencePageToImportItem(
     // SCRUM-511: nur setzen, wenn ein Governance-Signal vorliegt (restringiert). Sonst undefined →
     // fail-safe „vertraulich" im Import-Kern (kein stiller intern-Default).
     ...(governance ? { confidentiality: governance } : {}),
-    // Provenienz/Ursprung — pageId ist der Idempotenz-/Re-Sync-Anker (SCRUM-509 R4).
-    pageId: page.id,
-    spaceKey: opts.spaceKey,
+    // SCRUM-510 R2b: quellneutrale Provenienz — externalId = Confluence-pageId (Re-Sync-Anker),
+    // sourceScope = Confluence-Space. Der Import-Kern kennt nur diese neutralen Begriffe.
+    externalId: page.id,
+    sourceScope: opts.spaceKey,
     ...(typeof page.version?.number === "number" ? { sourceVersion: page.version.number } : {}),
     ...(url ? { url } : {}),
     provider: "Confluence",

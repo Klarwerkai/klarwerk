@@ -45,14 +45,14 @@ describe("SCRUM-510: ConfluenceSourceAdapter", () => {
     const adapter = adapterFromConfig(config(fetchReturning([restrictedPage, openPage])));
     expect(adapter.source).toBe("Confluence");
     const items = await adapter.collect();
-    expect(items.map((i) => i.pageId)).toEqual(["P-100", "P-200"]);
+    expect(items.map((i) => i.externalId)).toEqual(["P-100", "P-200"]);
     expect(items[0]?.confidentiality).toBe("vertraulich"); // restringiert → Governance-Signal
     expect(items[1]?.confidentiality).toBeUndefined(); // offen → kein Signal (fail-safe später)
   });
 
   it("end-to-end: gemappte Items → KOs; restringiert = vertraulich, offen = fail-safe vertraulich", async () => {
     const koService = new KoService({ repo: new InMemoryKoRepo() });
-    const library = new LibraryService({ koService, confluenceImport: true });
+    const library = new LibraryService({ koService, externalUpsert: true });
     const items = await adapterFromConfig(
       config(fetchReturning([restrictedPage, openPage])),
     ).collect();
@@ -70,7 +70,7 @@ describe("SCRUM-510: ConfluenceSourceAdapter", () => {
 
   it("Re-Sync desselben pageId: nur Anheben, kein Downgrade; Inhalt aktualisiert", async () => {
     const koService = new KoService({ repo: new InMemoryKoRepo() });
-    const library = new LibraryService({ koService, confluenceImport: true });
+    const library = new LibraryService({ koService, externalUpsert: true });
 
     // Erst-Import der offenen Seite (v1) → KO vertraulich (fail-safe).
     const first = await adapterFromConfig(config(fetchReturning([openPage]))).collect();

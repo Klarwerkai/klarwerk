@@ -41,8 +41,8 @@ describe("SCRUM-510: mapConfluencePageToImportItem", () => {
     expect(item.statement).toContain("Ventil X"); // Plaintext-Kernaussage aus dem Body
     expect(item.bodyHtml).toContain("<strong>X</strong>"); // Rich-Body reist mit
     expect(item.tags).toEqual(["wartung", "sicherheit"]); // Labels → Tags
-    expect(item.pageId).toBe("1001"); // Ursprung/Idempotenz-Anker
-    expect(item.spaceKey).toBe("K");
+    expect(item.externalId).toBe("1001"); // quellneutraler Ursprung/Idempotenz-Anker (R2b)
+    expect(item.sourceScope).toBe("K");
     expect(item.category).toBe("K");
     expect(item.sourceVersion).toBe(4);
     expect(item.url).toBe("https://acme.atlassian.net/wiki/spaces/K/pages/1001/Notfallplan");

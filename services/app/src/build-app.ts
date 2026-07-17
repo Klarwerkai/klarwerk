@@ -267,16 +267,19 @@ export function assembleServices(repos: AppRepos): AppServices {
   const conflicts = new ConflictService({ repo: repos.conflictsRepo, audit });
   // Berater-Konzept Duplikate 04.07. (Stufe D3): eigener Dienst für Überschneidungen (teilt Audit).
   const overlaps = new OverlapService({ repo: repos.overlapRepo, audit });
-  // SCRUM-470 (ben-Review #7): der gesamte Confluence-Import-Strang (pageId-Dedup + -Upsert) hängt am
-  // selben Flag wie die S6-Erkennung. Aus (Default) = heutiges Bestandsverhalten.
-  const confluenceImport =
+  // SCRUM-510 R2b: GENERISCHES Import-Enable (quellneutral). Der externalId-Upsert-/Re-Sync-Strang ist an,
+  // sobald IRGENDEINE Quelle aktiv ist; der Confluence-Flag KLARWERK_CONFLUENCE_IMPORT schaltet nur die
+  // EINE Quelle Confluence. Ein Adapter #2 (Jira-TEST) OR-t später sein eigenes Flag ein — ohne dass der
+  // Import-Kern Confluence-Begriffe kennt. Aus (Default) = heutiges Bestandsverhalten.
+  const confluenceEnabled =
     process.env.KLARWERK_CONFLUENCE_IMPORT === "1" ||
     process.env.KLARWERK_CONFLUENCE_IMPORT === "true";
+  const externalImportEnabled = confluenceEnabled; // künftig: || jiraEnabled || …
   const library = new LibraryService({
     koService: ko,
     audit,
     candidates: repos.candidates,
-    confluenceImport,
+    externalUpsert: externalImportEnabled,
   });
   const lifecycle = new LifecycleService({ koService: ko, repo: repos.lifecycleRepo });
 

@@ -297,8 +297,9 @@ export function corpusImportItems(locale: DemoLocale): ImportItem[] {
       type: page.type,
       category: page.category,
       tags: page.tags,
-      pageId: page.pageId,
-      spaceKey: DEMO_SPACE_KEY,
+      // SCRUM-510 R2b: quellneutrale Provenienz (externalId/sourceScope statt pageId/spaceKey).
+      externalId: page.pageId,
+      sourceScope: DEMO_SPACE_KEY,
       sourceVersion: page.sourceVersion,
       provider: "Confluence",
       bodyHtml: `<p>${t.body}</p>`,

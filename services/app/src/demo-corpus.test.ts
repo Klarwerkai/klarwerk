@@ -39,7 +39,7 @@ describe("SCRUM-487: Confluence-Demo-Korpus — Vollständigkeit je Sprache", ()
     expect(new Set(ids).size).toBe(ids.length);
     for (const locale of LOCALES) {
       const items = corpusImportItems(locale);
-      expect(items.map((i) => i.pageId)).toEqual(ids);
+      expect(items.map((i) => i.externalId)).toEqual(ids);
     }
   });
 
@@ -51,7 +51,7 @@ describe("SCRUM-487: Confluence-Demo-Korpus — Vollständigkeit je Sprache", ()
         expect(item.title.trim().length).toBeGreaterThan(0);
         expect(item.statement.trim().length).toBeGreaterThan(0);
         expect(item.category.trim().length).toBeGreaterThan(0);
-        expect(item.spaceKey).toBe(DEMO_SPACE_KEY);
+        expect(item.sourceScope).toBe(DEMO_SPACE_KEY);
         expect(item.provider).toBe("Confluence");
         expect(item.bodyHtml).toContain("<p>");
       }
@@ -137,7 +137,7 @@ describe("SCRUM-487: unbelegte Claims tragen keine Quelle", () => {
     it(`[${locale}] unbacked → kein url, als bauchgefuehl markiert; belegte Seiten haben url`, () => {
       const items = corpusImportItems(locale);
       for (const page of DEMO_CORPUS) {
-        const item = items.find((i) => i.pageId === page.pageId);
+        const item = items.find((i) => i.externalId === page.pageId);
         expect(item).toBeDefined();
         if (page.effect === "unbacked") {
           expect(item?.url).toBeUndefined();
@@ -150,13 +150,13 @@ describe("SCRUM-487: unbelegte Claims tragen keine Quelle", () => {
   }
 });
 
-// End-to-End über den echten Kandidaten-Accept-Pfad (KLARWERK_CONFLUENCE_IMPORT=1 → confluenceImport:
+// End-to-End über den echten Kandidaten-Accept-Pfad (KLARWERK_CONFLUENCE_IMPORT=1 → externalUpsert:
 // true). KEIN Modell-Lauf — nur: aus dem Korpus werden echte KOs mit lokalisierten Aussagen.
 describe("SCRUM-487: Korpus läuft durch den Kandidaten-Accept-Pfad", () => {
   for (const locale of LOCALES) {
     it(`[${locale}] createImportCandidates + accept erzeugt 8 KOs mit wörtlichen Streitwerten`, async () => {
       const koService = new KoService({ repo: new InMemoryKoRepo() });
-      const library = new LibraryService({ koService, confluenceImport: true });
+      const library = new LibraryService({ koService, externalUpsert: true });
 
       const cands = await library.createImportCandidates(corpusImportItems(locale));
       expect(cands).toHaveLength(DEMO_CORPUS_PAGE_COUNT);

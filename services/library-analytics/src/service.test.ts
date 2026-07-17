@@ -5,7 +5,7 @@ import { InMemoryKoRepo, KoService } from "../../knowledge-object";
 import { InMemoryCandidateRepo } from "./repo";
 import { PgCandidateRepo } from "./repo-pg";
 import { LibraryService, sanitizeImportConfidentiality } from "./service";
-import type { ImportItem } from "./types";
+import type { ImportItem, SourceAdapter } from "./types";
 
 function confItem(over: Partial<ImportItem> = {}): ImportItem {
   return {
@@ -14,8 +14,8 @@ function confItem(over: Partial<ImportItem> = {}): ImportItem {
     type: "best_practice",
     category: "Wartung",
     author: "anna",
-    pageId: "P1",
-    spaceKey: "WART",
+    externalId: "P1",
+    sourceScope: "WART",
     sourceVersion: 1,
     provider: "Confluence",
     ...over,
@@ -42,7 +42,7 @@ async function setup() {
   });
   // Der Confluence-Import-Strang (pageId-Dedup/-Upsert) wird für diese Suite aktiviert — sie testet
   // genau dieses Verhalten. Der Flag-AUS-Fall (Bestandsverhalten) hat einen eigenen Test unten.
-  return { koService, library: new LibraryService({ koService, confluenceImport: true }) };
+  return { koService, library: new LibraryService({ koService, externalUpsert: true }) };
 }
 
 // SCRUM-506: der Export ist Validiert-only — Test-KOs vor Export-Assertions auf „validiert" heben.
@@ -217,7 +217,7 @@ describe("LibraryService", () => {
   });
 
   it("SCRUM-509 R3: Confluence-Accept ohne Stufe → vertraulich", async () => {
-    const [cand] = await ctx.library.createImportCandidates([confItem({ pageId: "PX" })]);
+    const [cand] = await ctx.library.createImportCandidates([confItem({ externalId: "PX" })]);
     await ctx.library.reviewImportCandidate(cand!.id, "accept", "controller");
     const imported = (await ctx.koService.list()).find((k) =>
       (k.sources ?? []).some((s) => s.externalId === "PX"),
@@ -227,16 +227,16 @@ describe("LibraryService", () => {
 
   it("SCRUM-470: pageId-Dedup nur innerhalb des Imports (zwei gleiche pageId → eine Dublette)", async () => {
     const cands = await ctx.library.createImportCandidates([
-      confItem({ pageId: "P1" }),
-      confItem({ pageId: "P1", title: "Pumpe (Kopie)" }),
-      confItem({ pageId: "P2", title: "Ventil" }),
+      confItem({ externalId: "P1" }),
+      confItem({ externalId: "P1", title: "Pumpe (Kopie)" }),
+      confItem({ externalId: "P2", title: "Ventil" }),
     ]);
     expect(cands.map((c) => c.duplicate)).toEqual([false, true, false]);
   });
 
   it("SCRUM-470: Accept einer pageId legt KO mit Herkunfts-Anker an", async () => {
     const [cand] = await ctx.library.createImportCandidates([
-      confItem({ pageId: "P9", sourceVersion: 2 }),
+      confItem({ externalId: "P9", sourceVersion: 2 }),
     ]);
     const res = await ctx.library.reviewImportCandidate(cand!.id, "accept");
     const ko = (await ctx.koService.list()).find((k) => k.id === res.koId)!;
@@ -248,11 +248,11 @@ describe("LibraryService", () => {
 
   it("SCRUM-470: Re-Sync gleicher pageId mit höherer Version → Update (revise), keine Dublette", async () => {
     const [c1] = await ctx.library.createImportCandidates([
-      confItem({ pageId: "P5", sourceVersion: 1, statement: "Alte Anleitung." }),
+      confItem({ externalId: "P5", sourceVersion: 1, statement: "Alte Anleitung." }),
     ]);
     const r1 = await ctx.library.reviewImportCandidate(c1!.id, "accept");
     const [c2] = await ctx.library.createImportCandidates([
-      confItem({ pageId: "P5", sourceVersion: 2, statement: "Neu entlüften." }),
+      confItem({ externalId: "P5", sourceVersion: 2, statement: "Neu entlüften." }),
     ]);
     const r2 = await ctx.library.reviewImportCandidate(c2!.id, "accept");
 
@@ -269,11 +269,11 @@ describe("LibraryService", () => {
 
   it("SCRUM-470: Re-Sync mit gleicher/niedrigerer Version → No-op (idempotent)", async () => {
     const [c1] = await ctx.library.createImportCandidates([
-      confItem({ pageId: "P7", sourceVersion: 3, statement: "Stand V3." }),
+      confItem({ externalId: "P7", sourceVersion: 3, statement: "Stand V3." }),
     ]);
     const r1 = await ctx.library.reviewImportCandidate(c1!.id, "accept");
     const [c2] = await ctx.library.createImportCandidates([
-      confItem({ pageId: "P7", sourceVersion: 3, statement: "nochmal V3." }),
+      confItem({ externalId: "P7", sourceVersion: 3, statement: "nochmal V3." }),
     ]);
     const r2 = await ctx.library.reviewImportCandidate(c2!.id, "accept");
 
@@ -285,7 +285,10 @@ describe("LibraryService", () => {
 
   it("SCRUM-470 (ben #3): Re-Sync OHNE Version bleibt idempotent (kein Dublett, kein Endlos-Revise)", async () => {
     // Item ohne sourceVersion (confItem setzt sonst 1) — der Kern des Befunds.
-    const { sourceVersion: _v1, ...noVer1 } = confItem({ pageId: "PNV", statement: "Erststand." });
+    const { sourceVersion: _v1, ...noVer1 } = confItem({
+      externalId: "PNV",
+      statement: "Erststand.",
+    });
     const [c1] = await ctx.library.createImportCandidates([noVer1]);
     const r1 = await ctx.library.reviewImportCandidate(c1!.id, "accept");
     const ko1 = (await ctx.koService.list()).find((k) => k.id === r1.koId)!;
@@ -294,7 +297,10 @@ describe("LibraryService", () => {
     expect(ko1.version).toBe(1);
 
     // Zweiter Accept derselben pageId, wieder OHNE Version → selbes KO, KEINE Revision (No-op).
-    const { sourceVersion: _v2, ...noVer2 } = confItem({ pageId: "PNV", statement: "nochmal." });
+    const { sourceVersion: _v2, ...noVer2 } = confItem({
+      externalId: "PNV",
+      statement: "nochmal.",
+    });
     const [c2] = await ctx.library.createImportCandidates([noVer2]);
     const r2 = await ctx.library.reviewImportCandidate(c2!.id, "accept");
     expect(r2.koId).toBe(r1.koId);
@@ -313,7 +319,7 @@ describe("LibraryService", () => {
   it("SCRUM-509 R4: Re-Sync eines internen KO mit neuem externem Inhalt → mind. vertraulich (nur Anheben)", async () => {
     const [c1] = await ctx.library.createImportCandidates([
       confItem({
-        pageId: "R4a",
+        externalId: "R4a",
         sourceVersion: 1,
         statement: "Stand 1.",
         confidentiality: "intern",
@@ -326,7 +332,7 @@ describe("LibraryService", () => {
 
     // Re-Sync mit NEUEM externem Inhalt, OHNE explizite Stufe → konservativer Boden „vertraulich" hebt an.
     const [c2] = await ctx.library.createImportCandidates([
-      confItem({ pageId: "R4a", sourceVersion: 2, statement: "Neuer externer Stand." }),
+      confItem({ externalId: "R4a", sourceVersion: 2, statement: "Neuer externer Stand." }),
     ]);
     const r2 = await ctx.library.reviewImportCandidate(c2!.id, "accept");
     expect(r2.koId).toBe(r1.koId);
@@ -337,12 +343,12 @@ describe("LibraryService", () => {
 
   it("SCRUM-509 R4: explizit höhere Importstufe beim Re-Sync wird respektiert (nie ignoriert)", async () => {
     const [c1] = await ctx.library.createImportCandidates([
-      confItem({ pageId: "R4b", sourceVersion: 1, confidentiality: "intern" }),
+      confItem({ externalId: "R4b", sourceVersion: 1, confidentiality: "intern" }),
     ]);
     const r1 = await ctx.library.reviewImportCandidate(c1!.id, "accept");
     const [c2] = await ctx.library.createImportCandidates([
       confItem({
-        pageId: "R4b",
+        externalId: "R4b",
         sourceVersion: 2,
         confidentiality: "streng_vertraulich",
         statement: "Sensibler Stand.",
@@ -356,7 +362,7 @@ describe("LibraryService", () => {
 
   it("SCRUM-509 R4: Re-Sync kann NICHT herabstufen (explizit niedrigere Stufe wird nicht angewandt)", async () => {
     const [c1] = await ctx.library.createImportCandidates([
-      confItem({ pageId: "R4c", sourceVersion: 1, confidentiality: "streng_vertraulich" }),
+      confItem({ externalId: "R4c", sourceVersion: 1, confidentiality: "streng_vertraulich" }),
     ]);
     const r1 = await ctx.library.reviewImportCandidate(c1!.id, "accept");
     const ko1 = (await ctx.koService.list()).find((k) => k.id === r1.koId)!;
@@ -366,7 +372,7 @@ describe("LibraryService", () => {
     // Stufe bleibt streng_vertraulich — kein Downgrade über Re-Sync.
     const [c2] = await ctx.library.createImportCandidates([
       confItem({
-        pageId: "R4c",
+        externalId: "R4c",
         sourceVersion: 2,
         confidentiality: "intern",
         statement: "angeblich harmlos.",
@@ -382,13 +388,13 @@ describe("LibraryService", () => {
   it("SCRUM-470 (ben #7): Flag AUS → kein pageId-Pfad (kein pageId-Dedup, kein Upsert, kein Anker)", async () => {
     // Eigener Service mit AUSGESCHALTETEM Strang = heutiges Bestandsverhalten.
     const koService = new KoService({ repo: new InMemoryKoRepo() });
-    const library = new LibraryService({ koService, confluenceImport: false });
+    const library = new LibraryService({ koService, externalUpsert: false });
 
     // Zwei Items mit GLEICHER pageId, aber unterschiedlichem title|statement. Bei Flag AN wäre das
     // zweite eine (intra-Batch) pageId-Dublette — bei Flag AUS greift NUR title|statement (→ keine Dublette).
     const cands = await library.createImportCandidates([
-      confItem({ pageId: "PX", title: "A", statement: "Aussage A." }),
-      confItem({ pageId: "PX", title: "B", statement: "Aussage B." }),
+      confItem({ externalId: "PX", title: "A", statement: "Aussage A." }),
+      confItem({ externalId: "PX", title: "B", statement: "Aussage B." }),
     ]);
     expect(cands.map((c) => c.duplicate)).toEqual([false, false]); // pageId-Dedup greift NICHT
 
@@ -399,7 +405,7 @@ describe("LibraryService", () => {
 
     // Re-Accept desselben pageId-Items → NEUES KO (kein Upsert/Re-Sync), da pageId ignoriert wird.
     const [again] = await library.createImportCandidates([
-      confItem({ pageId: "PX", title: "C", statement: "Aussage C." }),
+      confItem({ externalId: "PX", title: "C", statement: "Aussage C." }),
     ]);
     const r2 = await library.reviewImportCandidate(again!.id, "accept");
     expect(r2.koId).not.toBe(r.koId);
@@ -642,5 +648,61 @@ describe("SCRUM-515: Import-Vertraulichkeit runtime-validiert (nie intern aus Fr
     expect(res.imported).toBe(1);
     const ko = (await koService.list()).find((k) => k.title === "Fremd B")!;
     expect(ko.confidentiality).toBe("vertraulich");
+  });
+});
+
+// SCRUM-510 R2b: der Upsert-/Re-Sync-Kern ist QUELLNEUTRAL. Ein fiktiver zweiter Adapter (z. B.
+// Jira-TEST) dockt allein über den neutralen Vertrag (externalId/sourceScope) an — ohne Confluence-
+// Symbole und ohne den Confluence-Flag. Das generische Enablement (externalUpsert) schaltet den Strang.
+describe("SCRUM-510 R2b: quellneutraler Upsert (Fake-2.-Adapter, keine Confluence-Symbole)", () => {
+  const fakeAdapter: SourceAdapter = {
+    source: "FakeSource",
+    collect: async () => [
+      {
+        title: "Ticket 42",
+        statement: "Stand 1.",
+        type: "technik",
+        category: "Ops",
+        externalId: "JIRA-42",
+        sourceScope: "PROJ",
+        sourceVersion: 1,
+      },
+    ],
+  };
+
+  it("Nicht-Confluence-Adapter kann upserten + re-syncen (nur Anheben, kein Downgrade)", async () => {
+    const koService = new KoService({ repo: new InMemoryKoRepo() });
+    const library = new LibraryService({ koService, externalUpsert: true });
+
+    const first = await fakeAdapter.collect();
+    const [c1] = await library.createImportCandidates(first, "importer");
+    const r1 = await library.reviewImportCandidate(c1!.id, "accept", "importer");
+    const ko1 = (await koService.list()).find((k) => k.id === r1.koId)!;
+    expect(ko1.sources.some((s) => s.externalId === "JIRA-42")).toBe(true); // Anker über externalId
+    expect(ko1.confidentiality).toBe("vertraulich"); // fail-safe (kein Governance-Signal)
+
+    // Re-Sync über externalId (höhere Version) → dasselbe KO, Inhalt aktualisiert, Stufe NICHT gesenkt.
+    const [c2] = await library.createImportCandidates(
+      [
+        {
+          title: "Ticket 42",
+          statement: "Stand 2.",
+          type: "technik",
+          category: "Ops",
+          externalId: "JIRA-42",
+          sourceScope: "PROJ",
+          sourceVersion: 2,
+        },
+      ],
+      "importer",
+    );
+    const r2 = await library.reviewImportCandidate(c2!.id, "accept", "importer");
+    expect(r2.koId).toBe(r1.koId); // Re-Sync über externalId, quellneutral — keine Dublette
+    const kos = (await koService.list()).filter((k) =>
+      k.sources.some((s) => s.externalId === "JIRA-42"),
+    );
+    expect(kos).toHaveLength(1);
+    expect(kos[0]?.statement).toBe("Stand 2."); // Inhalt aktualisiert
+    expect(kos[0]?.confidentiality).toBe("vertraulich"); // kein Downgrade über Re-Sync
   });
 });
