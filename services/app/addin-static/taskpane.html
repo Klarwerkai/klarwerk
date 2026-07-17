@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Klarwerk Companion</title>
+    <title>Klara — geprüftes Wissen</title>
     <!-- Office.js aus dem offiziellen CDN (HTTPS, CSP-konform). -->
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <link rel="stylesheet" href="taskpane.css" />
@@ -11,8 +11,8 @@
   <body>
     <main class="pane">
       <header class="head">
-        <div class="brand">Klarwerk <span class="brand-2">Companion</span></div>
-        <p class="purpose">Validiertes Firmenwissen, während du schreibst.</p>
+        <div class="brand">Klara <span class="brand-2">— geprüftes Wissen</span></div>
+        <p class="purpose">Geprüftes Firmenwissen zu Ihrer Auswahl — mit Quelle und Konfidenz.</p>
       </header>
 
       <section class="config">
@@ -23,8 +23,8 @@
           <button type="button" class="chip" data-url="https://localhost:3001">localhost:3001 (HTTPS)</button>
         </div>
         <label class="lbl" for="apiKey">Add-in-Schlüssel (optional)</label>
-        <input id="apiKey" class="inp" type="password" placeholder="x-klarwerk-addon-key" spellcheck="false" autocomplete="off" />
-        <p class="hint">Schlüssel für den schmalen ko.read-Zugang (nur wenn das Backend <code>KLARWERK_ADDON_API</code> aktiviert hat). Ohne gültigen Schlüssel bleibt der Live-Call zu; das Panel zeigt dann den klar gekennzeichneten Mock.</p>
+        <input id="apiKey" class="inp" type="password" placeholder="Zugangsschlüssel" spellcheck="false" autocomplete="off" />
+        <p class="hint">Der Schlüssel schaltet den nur-lesenden Zugang frei (sofern das Backend ihn erwartet). Ohne gültigen Schlüssel bleibt die Prüfung deaktiviert — es werden dann keine Beispiel- oder Ersatztreffer angezeigt.</p>
       </section>
 
       <button id="checkBtn" class="primary" type="button">Aktuellen Text prüfen</button>

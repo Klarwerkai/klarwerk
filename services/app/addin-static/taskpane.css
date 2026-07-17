@@ -13,8 +13,8 @@
   --warn-bg: #fbf1e5;
   --crit: #b23b34;
   --crit-bg: #fbeceb;
-  --mock: #7a5aa8;
-  --mock-bg: #f2edf9;
+  --status: #7a5aa8;
+  --status-bg: #f2edf9;
 }
 
 * {
@@ -197,16 +197,16 @@ body {
   color: var(--warn);
 }
 
-.mock-banner {
-  background: var(--mock-bg);
-  color: var(--mock);
-  border: 1px dashed var(--mock);
+.status-banner {
+  background: var(--status-bg);
+  color: var(--status);
+  border: 1px dashed var(--status);
   border-radius: 9px;
   padding: 9px 10px;
   font-size: 12px;
   line-height: 1.45;
 }
-.mock-banner strong {
+.status-banner strong {
   font-weight: 700;
 }
 

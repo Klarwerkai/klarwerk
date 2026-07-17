@@ -139,6 +139,40 @@ describe("SCRUM-490 H: /addin/* Bundle-Serving", () => {
     expect(isAddinNamespacePath(undefined)).toBe(false);
   });
 
+  it("WP3: Icons sind echte PNGs > 1x1 (Dimension aus dem IHDR gepinnt)", async () => {
+    process.env.KLARWERK_ADDON_API = "1";
+    const app = buildApp(buildServices());
+    for (const [url, expected] of [
+      ["/addin/assets/icon-32.png", 32],
+      ["/addin/assets/icon-80.png", 80],
+    ] as const) {
+      const res = await app.inject({ method: "GET", url });
+      expect(res.statusCode).toBe(200);
+      expect(res.headers["content-type"]).toContain("image/png");
+      const png = res.rawPayload; // IHDR: Bytes 16..19 = Breite, 20..23 = Höhe (Big-Endian).
+      const width = png.readUInt32BE(16);
+      const height = png.readUInt32BE(20);
+      expect(width).toBe(expected);
+      expect(height).toBe(expected);
+      expect(width).toBeGreaterThan(1); // kein 1x1-Platzhalter mehr
+    }
+  });
+
+  it("WP3: das servierte Bundle enthält weder 'Mock' noch 'ko.read'", async () => {
+    process.env.KLARWERK_ADDON_API = "1";
+    const app = buildApp(buildServices());
+    for (const url of [
+      "/addin/taskpane.html",
+      "/addin/taskpane.css",
+      "/addin/taskpane.js",
+      "/addin/klarwerk-client.js",
+    ]) {
+      const body = (await app.inject({ method: "GET", url })).body.toLowerCase();
+      expect(body).not.toContain("mock");
+      expect(body).not.toContain("ko.read");
+    }
+  });
+
   it("H2: 200-Bundle-Treffer unverändert (Content-Type/nosniff/Bytes wie H)", async () => {
     process.env.KLARWERK_ADDON_API = "1";
     const app = buildApp(buildServices());

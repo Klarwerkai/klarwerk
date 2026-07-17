@@ -31,5 +31,11 @@ perl -pe 's{^//# sourceMappingURL=.*$}{}' "$ADDIN/public/klarwerk-client.js" > "
 ```
 
 Danach `KLARWERK_SKIP_KEYCHAIN=1 bash tools/check` (Root-Gate) laufen lassen — der Serving-Test prüft die
-Erreichbarkeit + Content-Types. Neue Bundle-Datei? → zusätzlich in die `BUNDLE`-Map in
-`addin-static-routes.ts` eintragen (sonst 404).
+Erreichbarkeit + Content-Types + Icon-Dimensionen (>1x1) + „kein Mock/ko.read im Bundle". Neue
+Bundle-Datei? → zusätzlich in die `BUNDLE`-Map in `addin-static-routes.ts` eintragen (sonst 404).
+
+## Icons (SCRUM-490 WP3)
+Die Icons `assets/icon-32.png` + `assets/icon-80.png` (weißes „K"-Monogramm auf Klarwerk-Teal) werden im
+Add-in-Repo per Zero-Dependency-Skript erzeugt: `cd "$ADDIN" && npm run icons` (bzw.
+`node scripts/make-icons.mjs`, eigener PNG-Encoder, nur node:zlib). Danach wie oben nach `$DST/assets/`
+kopieren. Dateinamen + Manifest-URLs bleiben unverändert.

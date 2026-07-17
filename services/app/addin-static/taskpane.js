@@ -4,9 +4,9 @@
  *
  * Ehrlichkeitslinie: Ergebnisse sind KI-gestützt und quellengebunden — nichts wird erfunden. Wenn der
  * Live-Call (noch) blockiert ist (CORS/Auth/Mixed-Content/Flag AUS), zeigt das Panel eine KLAR als
- * „Mock" gekennzeichnete Beispielantwort, damit die End-to-End-UX sichtbar ist — nichts wird gefälscht.
+ * ehrlichen „nicht verfügbar"-Status mit leerer Liste (kein erfundenes Wissen).
  *
- * Die Sicherheits-/Fallback-Logik (Allowlist, Live-Call, Mock) lebt DOM-frei in ./klarwerk-client.ts
+ * Die Sicherheits-/Fallback-Logik (Allowlist, Live-Call, Inaktiv-Zustand) lebt DOM-frei in ./klarwerk-client.ts
  * (dort getestet). Diese Datei ist nur die Office/DOM-Verdrahtung.
  */
 import { ALLOWED_BASES, check } from "./klarwerk-client.js";
@@ -28,7 +28,7 @@ function allowedBaseUrl() {
         return null;
     }
 }
-/** Optionaler Add-in-Schlüssel (x-klarwerk-addon-key). Leer → kein Header → Session-/Mock-Weg. */
+/** Optionaler Add-in-Schlüssel (x-klarwerk-addon-key). Leer → kein Header → Session-Weg. */
 function apiKey() {
     return el("apiKey").value.trim();
 }
@@ -80,22 +80,21 @@ function renderBlock(title, items, emptyText) {
 function render(outcome) {
     const results = el("results");
     const parts = [];
-    // SCRUM-490 R2 (A1): kein Mock/Fake mehr — bei „unavailable" nur ein ehrlicher Status + LEERE Listen.
+    // SCRUM-490 R2/WP3 (A1): keine erfundenen Treffer — bei „unavailable" nur ein ehrlicher Status + LEERE
+    // Listen (kein Beispiel-/Ersatzwissen).
     if (outcome.mode === "unavailable") {
-        parts.push(`<div class="mock-banner"><strong>Klarwerk-Prüfung nicht verfügbar.</strong>
-       Kein Ergebnis (${escapeHtml(outcome.reason ?? "unbekannt")}) — Backend nicht erreichbar,
-       Add-in-Schlüssel fehlt/ungültig oder <code>KLARWERK_ADDON_API</code> ist aus. Es werden KEINE
-       Beispiel-/Ersatztreffer angezeigt. Basis-URL + Schlüssel prüfen (siehe README).</div>`);
+        parts.push(`<div class="status-banner"><strong>Prüfung derzeit nicht verfügbar.</strong>
+       Kein Ergebnis (${escapeHtml(outcome.reason ?? "unbekannt")}) — Backend nicht erreichbar oder
+       Zugangsschlüssel fehlt/ungültig. Es werden keine Beispiel- oder Ersatztreffer angezeigt.
+       Bitte Basis-URL und Schlüssel prüfen.</div>`);
     }
-    const unavailableEmpty = "Nicht verfügbar (kein Live-Ergebnis).";
-    parts.push(renderBlock("Passendes validiertes Wissen", outcome.knowledge, outcome.mode === "live"
-        ? "Kein passendes validiertes Wissen gefunden (ehrliche Wissenslücke)."
-        : unavailableEmpty));
+    const unavailableEmpty = "Derzeit nicht verfügbar.";
+    parts.push(renderBlock("Passendes geprüftes Wissen", outcome.knowledge, outcome.mode === "live" ? "Dazu gibt es kein belegtes Wissen." : unavailableEmpty));
     parts.push(renderBlock("Erkannte Widersprüche", outcome.conflicts, outcome.mode === "live"
-        ? "Freitext-Konfliktprüfung ist noch nicht verdrahtet (kein Endpoint) — siehe README."
+        ? "Keine Freitext-Widerspruchsprüfung in dieser Ausbaustufe."
         : unavailableEmpty));
     parts.push(renderBlock("Parallelen / mögliche Duplikate", outcome.parallels, outcome.mode === "live"
-        ? "Freitext-Duplikatprüfung ist noch nicht verdrahtet (kein Endpoint) — siehe README."
+        ? "Keine Freitext-Duplikatprüfung in dieser Ausbaustufe."
         : unavailableEmpty));
     results.innerHTML = parts.join("");
     results.hidden = false;

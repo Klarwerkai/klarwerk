@@ -1,7 +1,7 @@
 /*
  * Klarwerk Companion — reiner (DOM-/Office-freier) Client-Kern für den Live-Call gegen Klarwerks
  * /api/ask. Ausgelagert aus taskpane.ts, damit die Sicherheits-/Ehrlichkeitslogik OHNE Browser/Office
- * deterministisch (gemockter fetch) getestet werden kann. Enthält KEINE DOM-Zugriffe.
+ * deterministisch (injizierter fetch) getestet werden kann. Enthält KEINE DOM-Zugriffe.
  *
  * Ehrlichkeitslinie (SCRUM-490 R2, A1/A2): gelingt der Live-Call nicht (Flag AUS/CORS/Auth/Netz/nicht-ok/
  * ungültige Antwortform), gibt `check` NUR einen klaren „nicht verfügbar"-Status mit LEERER Liste zurück
