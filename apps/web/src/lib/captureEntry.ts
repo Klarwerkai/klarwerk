@@ -19,29 +19,12 @@ export function isExpertMode(mode: CaptureMode): boolean {
   return mode === EXPERT_MODE;
 }
 
-// SCRUM-458 (Nullschulung): Progressive Disclosure der Erfassungs-Modi. Im Erstzustand ist nur der
-// Standardweg Freitext sichtbar; die übrigen Modi (Diktat · Interview · Aus Datei) UND der
-// Expertenformular-Umschalter erscheinen erst nach Klick auf „weitere Optionen". Defensiv: ist bereits
-// ein Nicht-Freitext-Modus aktiv (z. B. per Deep-Link/Gap-Kontext), gilt die Leiste als aufgeklappt,
-// damit der aktive Modus nie verdeckt wird. Reine Sichtbarkeit — kein Funktionsverlust.
-export function areModesExpanded(showMore: boolean, mode: CaptureMode): boolean {
-  return showMore || mode !== "freitext";
-}
-
-// Welche Erzähl-Modi im aktuellen Zustand in der Leiste erscheinen (Freitext immer; der Rest nur
-// aufgeklappt). Der Expertenformular-Umschalter folgt derselben Regel (siehe areModesExpanded).
-export function visibleNarrateModes(showMore: boolean, mode: CaptureMode): readonly CaptureMode[] {
-  return areModesExpanded(showMore, mode)
-    ? NARRATE_MODES
-    : NARRATE_MODES.filter((m) => m === "freitext");
-}
-
 // SCRUM-458 (Nullschulung): Der klassische Erfassungs-Arbeitsraum (Schritt-Leiste · Erzähl-Modi ·
 // Formular) startet EINGEKLAPPT — beim Betreten zeigt Schritt 1 nur einen ruhigen Aufklapp-Einstieg
 // statt eines vollen Formulars. Defensiv AUFGEKLAPPT, wenn schon ein aktiver Kontext vorliegt, der sonst
 // verdeckt wäre: ein Lücken-Kontext (?gap=) oder ein Deep-Link/fortgesetzter Entwurf mit vorbefülltem
-// Rohtext. Reine Sichtbarkeit — kein Funktionsverlust, alle Wege bleiben einen Klick entfernt (analog
-// areModesExpanded, das einen aktiven Nicht-Freitext-Modus nie verdeckt).
+// Rohtext. Reine Sichtbarkeit — kein Funktionsverlust, alle Wege bleiben einen Klick entfernt. Ist der
+// Arbeitsraum aufgeklappt, zeigt die Modus-Leiste ALLE Erzähl-Modi direkt (keine zweite Ebene mehr).
 export function initialCaptureWorkspaceOpen(context: {
   hasGapContext: boolean;
   hasPrefilledRaw: boolean;
@@ -55,16 +38,12 @@ export function initialCaptureWorkspaceOpen(context: {
 // - expertHint: ehrliche Einordnung des Expertenpfads (gleiche Felder, kein Extra-Feature).
 // - expertActive: Hinweis IM Expertenmodus + Rückweg auf den geführten Standardweg.
 // - backToGuided: Rückweg-Button zurück zum Erzähl-Einstieg.
-// - moreOptions/fewerOptions: SCRUM-458 (Nullschulung) — dezenter Aufklapper, hinter dem die vier
-//   Nicht-Standard-Modi (Diktat, Interview, Aus Datei, Expertenformular) anfangs verdeckt sind.
 export const CAPTURE_ENTRY_TEXT = {
   narrateKicker: "capture.entry.narrateKicker",
   expertToggle: "capture.entry.expertToggle",
   expertHint: "capture.entry.expertHint",
   expertActive: "capture.entry.expertActive",
   backToGuided: "capture.entry.backToGuided",
-  moreOptions: "capture.entry.moreOptions",
-  fewerOptions: "capture.entry.fewerOptions",
 } as const;
 
 // ---- Erstnutzer-Führung (pro Browser) -------------------------------------------------------
