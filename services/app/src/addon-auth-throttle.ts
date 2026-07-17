@@ -7,6 +7,7 @@
 // ausgenommen → der normale Session-Pfad wird NICHT gedrosselt. In-Memory Sliding-Window je IP; flag-
 // gegated in build-app (nur bei KLARWERK_ADDON_API). `now` ist injizierbar → deterministische Tests.
 
+import net from "node:net";
 import { ADDON_ASK_PATH, ADDON_CHECK_TEXT_PATH } from "./addon-api";
 
 export interface AddonAuthThrottleConfig {
@@ -101,20 +102,50 @@ export function resolveTrustProxy(
   if (Number.isInteger(n) && n > 0) {
     return n; // fester Hop-Count
   }
-  // Liste von IPs/Subnetzen — Catch-all-Einträge werden verworfen (nie ein All-umfassendes Subnetz
-  // vertrauen). Bleibt danach nichts Explizites übrig → fail-safe KEIN Vertrauen.
+  // Liste von IPs/Subnetzen. R6: jeder Eintrag wird zuerst STRIKT validiert (isValidTrustEntry: node:net
+  // .isIP + Zone-ID-/Präfix-Prüfung) — ungültige/malformte Einträge werden verworfen (KEIN Fastify-
+  // Startcrash). Danach fallen Catch-all-Einträge (Containment gegen den IPv4-mapped-Raum) weg. Bleibt
+  // nichts Gültig-Explizites übrig → fail-safe KEIN Vertrauen.
   const list = raw
     .split(",")
     .map((s) => s.trim())
-    .filter((s) => s.length > 0 && !isCatchAllTrustEntry(s));
+    .filter((s) => s.length > 0 && isValidTrustEntry(s) && !isCatchAllTrustEntry(s));
   return list.length > 0 ? list : false;
+}
+
+// R6 (Validierungs-Gate): akzeptiert nur syntaktisch gültige IP-/CIDR-Einträge, die Fastify/proxy-addr
+// gefahrlos verarbeiten kann. Ablehnung → Eintrag verworfen (kein Startcrash). Zone-IDs (%eth0) werden
+// IMMER verworfen — node:net.isIP akzeptiert sie auf aktuellen Node-Versionen fälschlich als gültig.
+export function isValidTrustEntry(entry: string): boolean {
+  const e = entry.trim();
+  if (e === "" || e.includes("%")) {
+    return false; // Zone-ID / leer → nie vertrauen
+  }
+  const slash = e.indexOf("/");
+  const addr = slash >= 0 ? e.slice(0, slash) : e;
+  const family = net.isIP(addr); // 0 = ungültig/malformed (z. B. ::ffff:gggg, abc)
+  if (family === 0) {
+    return false;
+  }
+  if (slash >= 0) {
+    const prefixStr = e.slice(slash + 1).trim();
+    if (!/^\d+$/.test(prefixStr)) {
+      return false; // Präfix nicht ganzzahlig (z. B. "10.0.0.0/8/x")
+    }
+    const prefix = Number(prefixStr);
+    const max = family === 4 ? 32 : 128;
+    if (prefix > max) {
+      return false; // Präfix außerhalb des Bereichs
+    }
+  }
+  return true;
 }
 
 // Catch-all / All-umfassende Vertrauensangabe? /0-Präfix (0 Maskenbits = ALLES, z. B. 0.0.0.0/0, ::/0,
 // 2000::/0; auch mit führenden Nullen) ODER eine unspecified-/Wildcard-Basisadresse (0.0.0.0, ::, *)
-// ODER (SCRUM-490 R5) ein IPv4-mapped-Netz, das den GESAMTEN IPv4-Raum überdeckt (::ffff:0:0/N mit
-// N<=96 — die IPv4-Bits sind dann komplett Wildcard). Solche Einträge würden JEDE Quell-IP als
-// vertrauenswürdigen Proxy behandeln → X-Forwarded-For spoofbar. Fail-safe abgelehnt.
+// ODER (SCRUM-490 R6) ein Netz, das den gesamten IPv4-mapped-Raum ::ffff:0:0/96 ENTHÄLT (Containment,
+// s. containsMappedIpv4Space). Solche Einträge würden JEDE (IPv4-)Quell-IP als vertrauenswürdigen Proxy
+// behandeln → X-Forwarded-For spoofbar. Fail-safe abgelehnt.
 export function isCatchAllTrustEntry(entry: string): boolean {
   const e = entry.trim().toLowerCase();
   if (e === "" || e === "*") {
@@ -130,19 +161,21 @@ export function isCatchAllTrustEntry(entry: string): boolean {
   if (base === "0.0.0.0" || base === "::" || base === "*") {
     return true;
   }
-  return isIpv4MappedCatchAll(e);
+  return containsMappedIpv4Space(e);
 }
 
-// SCRUM-490 R5: überdeckt der Eintrag den vollen IPv4-Raum via IPv4-mapped IPv6 (::ffff:0:0/N, N<=96)?
-// SEMANTISCH geprüft (nicht rein textuell): die Adresse wird zu 16 Bytes expandiert; ihre ersten 96 Bit
-// müssen der Mapped-Präfix ::ffff: sein (80 Null-Bits + 0xffff) UND das Präfix <=96 (dann sind die 32
-// IPv4-Bits komplett Wildcard → ganzer IPv4-Raum). Enge Mapped-Netze mit N>96 (z. B. ::ffff:10.0.0.0/104
-// = ein /8) bleiben gültig. Fängt äquivalente Schreibweisen (führende Nullen im Präfix, dotted-IPv4-Form,
-// Whitespace, Case) über die Byte-Expansion mit.
-export function isIpv4MappedCatchAll(entry: string): boolean {
+// Die 16 Bytes von ::ffff:0:0 (Netz-Basis des IPv4-mapped-Raums /96): 80 Null-Bits + 0xffff + 32 Null.
+const MAPPED_IPV4_BASE: readonly number[] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 0, 0, 0, 0];
+
+// SCRUM-490 R6 (Containment statt Basis-Gleichheit): ENTHÄLT das Netz `entry` den gesamten IPv4-mapped-
+// Raum ::ffff:0:0/96? Für aligned CIDR-Blöcke gilt exakt: enthält ::ffff:0:0/96 ⇔ Präfix N<=96 UND die
+// ersten N Bits der Basis == den ersten N Bits von ::ffff:0:0. Das fängt automatisch ::fffe:0:0/95,
+// ::fffc:0:0/94, 0:0:0:0:0:1:0:0/80 und jede weitere Überdeckung — ohne Spezialfall-Liste. (Auch ::/1
+// fällt so als Catch-all — bewusst konservativ.) Einzeladressen (ohne Präfix) sind kein umfassendes Netz.
+export function containsMappedIpv4Space(entry: string): boolean {
   const slash = entry.indexOf("/");
   if (slash < 0) {
-    return false; // ohne Präfix kein Netz → kein Catch-all
+    return false;
   }
   const addr = entry.slice(0, slash).trim();
   const prefixStr = entry.slice(slash + 1).trim();
@@ -150,17 +183,29 @@ export function isIpv4MappedCatchAll(entry: string): boolean {
     return false;
   }
   const prefix = Number(prefixStr);
-  if (prefix > 128) {
-    return false;
+  if (prefix > 96) {
+    return false; // ein /N mit N>96 kann /96 nie voll enthalten
   }
-  const bytes = ipv6ToBytes(addr);
-  if (!bytes) {
-    return false;
+  const bytes = ipv6ToBytes(addr); // nur für valide IPv6 sinnvoll (reine IPv4/garbage → null)
+  return bytes !== null && firstNBitsEqual(bytes, MAPPED_IPV4_BASE, prefix);
+}
+
+// Sind die ersten `n` Bits zweier 16-Byte-Adressen gleich? (n aus 0..128)
+function firstNBitsEqual(a: readonly number[], b: readonly number[], n: number): boolean {
+  const fullBytes = Math.floor(n / 8);
+  for (let i = 0; i < fullBytes; i++) {
+    if (a[i] !== b[i]) {
+      return false;
+    }
   }
-  // Mapped-Präfix ::ffff: = Bytes 0..9 == 0 und Bytes 10,11 == 0xff.
-  const isMapped =
-    bytes.slice(0, 10).every((b) => b === 0) && bytes[10] === 0xff && bytes[11] === 0xff;
-  return isMapped && prefix <= 96;
+  const rem = n % 8;
+  if (rem > 0) {
+    const mask = (0xff << (8 - rem)) & 0xff;
+    if (((a[fullBytes] ?? 0) & mask) !== ((b[fullBytes] ?? 0) & mask)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 // Expandiert eine IPv6-Adresse (mit optionalem "::" und optionaler dotted-IPv4-Endung) zu 16 Bytes.

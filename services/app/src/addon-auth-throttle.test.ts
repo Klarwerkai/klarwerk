@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   AddonAuthAttemptThrottle,
   addonAuthThrottleConfigFromEnv,
+  containsMappedIpv4Space,
   isAddonEndpointPath,
   isCatchAllTrustEntry,
-  isIpv4MappedCatchAll,
+  isValidTrustEntry,
   resolveTrustProxy,
 } from "./addon-auth-throttle";
 
@@ -133,7 +134,7 @@ describe("SCRUM-490 R4 (B2): resolveTrustProxy lehnt Catch-all ab", () => {
 // SCRUM-490 R5 (B2, Fix): IPv4-mapped-Catch-all (::ffff:0:0/N mit N<=96) überdeckt den vollen IPv4-Raum
 // und wird SEMANTISCH als Blanket abgelehnt; enge Mapped-Netze (N>96) bleiben gültig.
 describe("SCRUM-490 R5 (B2): IPv4-mapped-Catch-all im trustProxy", () => {
-  it("isIpv4MappedCatchAll: /N<=96 auf ::ffff:-Basis (inkl. Schreibvarianten) → catch-all", () => {
+  it("containsMappedIpv4Space: /N<=96 auf ::ffff:-Basis (inkl. Schreibvarianten) → catch-all", () => {
     for (const e of [
       "::ffff:0:0/96",
       "::ffff:0:0/096", // führende Null
@@ -144,11 +145,11 @@ describe("SCRUM-490 R5 (B2): IPv4-mapped-Catch-all im trustProxy", () => {
       "::FFFF:0:0/96", // Case
       "::ffff:10.0.0.0/96", // Host durch /96 maskiert → ganzer IPv4-Raum
     ]) {
-      expect(isIpv4MappedCatchAll(e)).toBe(true);
+      expect(containsMappedIpv4Space(e)).toBe(true);
     }
   });
 
-  it("isIpv4MappedCatchAll: enge Mapped-Netze (N>96) und Nicht-Mapped → KEIN catch-all", () => {
+  it("containsMappedIpv4Space: enge Mapped-Netze (N>96) und Nicht-Mapped → KEIN catch-all", () => {
     for (const e of [
       "::ffff:10.0.0.0/104", // echtes /8
       "::ffff:10.0.0.0/128",
@@ -157,7 +158,7 @@ describe("SCRUM-490 R5 (B2): IPv4-mapped-Catch-all im trustProxy", () => {
       "10.0.0.0/8", // kein IPv6
       "::1", // ohne Präfix
     ]) {
-      expect(isIpv4MappedCatchAll(e)).toBe(false);
+      expect(containsMappedIpv4Space(e)).toBe(false);
     }
   });
 
@@ -183,5 +184,75 @@ describe("SCRUM-490 R5 (B2): IPv4-mapped-Catch-all im trustProxy", () => {
     for (const e of ["172.16.0.0/12", "10.0.0.1", "::ffff:10.0.0.0/104"]) {
       expect(isCatchAllTrustEntry(e)).toBe(false);
     }
+  });
+});
+
+// SCRUM-490 R6 (B2): trustProxy STRUKTURELL — Containment gegen ::ffff:0:0/96 statt Basis-Gleichheit,
+// plus Validierungs-Gate (node:net.isIP + Zone-ID/Präfix). Kein Spezialfall-Katalog mehr.
+describe("SCRUM-490 R6 (B2): trustProxy Containment + Validierung", () => {
+  it("ben-Durchrutscher werden per Containment als Catch-all erkannt", () => {
+    for (const e of ["::fffe:0:0/95", "::fffc:0:0/94", "0:0:0:0:0:1:0:0/80", "::/1"]) {
+      expect(containsMappedIpv4Space(e)).toBe(true);
+      expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: e })).toBe(false);
+    }
+  });
+
+  it("Validierungs-Gate: Zone-IDs (%) werden IMMER verworfen", () => {
+    expect(isValidTrustEntry("fd00::1%eth0/64")).toBe(false);
+    expect(isValidTrustEntry("::ffff:0:0%eth0/96")).toBe(false);
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "fd00::1%eth0/64" })).toBe(false);
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "::ffff:0:0%eth0/96" })).toBe(false);
+  });
+
+  it("Validierungs-Gate: Malformed am Rand verworfen → false/gefilterte Liste, KEIN Crashpfad", () => {
+    for (const e of ["::ffff:gggg/96", "abc/8", "10.0.0.0/8/x", "10.0.0.0/33", "::1/129"]) {
+      expect(isValidTrustEntry(e)).toBe(false);
+      expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: e })).toBe(false);
+    }
+    // Malformed in einer Liste → nur der Eintrag fällt, Gültiges bleibt.
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "::ffff:gggg/96, 10.0.0.0/8" })).toEqual([
+      "10.0.0.0/8",
+    ]);
+  });
+
+  it("isValidTrustEntry: gültige IPs/CIDRs bestehen", () => {
+    for (const e of [
+      "10.0.0.0/8",
+      "172.16.0.0/12",
+      "10.0.0.1",
+      "fd00::/8",
+      "2001:db8::/32",
+      "::1",
+    ]) {
+      expect(isValidTrustEntry(e)).toBe(true);
+    }
+  });
+
+  it("enge Netze + Hop-Count bleiben gültig (kein Regress)", () => {
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "::ffff:10.0.0.0/104" })).toEqual([
+      "::ffff:10.0.0.0/104",
+    ]);
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "::ffff:10.0.0.0/128" })).toEqual([
+      "::ffff:10.0.0.0/128",
+    ]);
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "fd00::/8" })).toEqual(["fd00::/8"]);
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "2001:db8::/32" })).toEqual(["2001:db8::/32"]);
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "172.16.0.0/12" })).toEqual(["172.16.0.0/12"]);
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "2" })).toBe(2);
+  });
+
+  it("gemischt: ben-Durchrutscher verworfen, explizites Subnetz bleibt", () => {
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "::fffe:0:0/95, 10.0.0.0/8" })).toEqual([
+      "10.0.0.0/8",
+    ]);
+  });
+
+  it("R5/R4-Fälle unverändert (kein Regress)", () => {
+    for (const e of ["::ffff:0:0/96", "0.0.0.0/0", "::/0", "2000::/0"]) {
+      expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: e })).toBe(false);
+    }
+    expect(isCatchAllTrustEntry("0.0.0.0")).toBe(true);
+    expect(isCatchAllTrustEntry("::")).toBe(true);
+    expect(isCatchAllTrustEntry("*")).toBe(true);
   });
 });
