@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import type { ConflictService, OverlapService, OverlapSettingsRepo } from "../../../conflicts";
 import type { KoFilter, KoService } from "../../../knowledge-object";
 import type { ImportItem, LibraryService, ReviewAction } from "../../../library-analytics";
+import { can } from "../../../rbac";
 import type { Reasoner } from "../../../reasoner";
 import { detectConflictsForKo } from "../conflict-detection";
 import { type SemanticPrefilter, detectDuplicatesForKo } from "../duplicate-detection";
@@ -67,18 +68,23 @@ export function libraryRoutes(
       if (!user) {
         return;
       }
+      // SCRUM-506: der Export durchsetzt Validiert-only + Vertraulichkeit wie die übrigen Egress-
+      // Pfade. Vertrauliche KOs nur für Berechtigte — hier an ko.validate gebunden (Controller/
+      // Admin, die den Bestand ohnehin kuratieren). Alle anderen Rollen (viewer/experte) bekommen
+      // nur die validierten, nicht-vertraulichen KOs.
+      const opts = { includeConfidential: can(user.role, "ko.validate") };
       if (request.query.format === "markdown") {
         reply
           .header("content-type", "text/markdown; charset=utf-8")
           .code(200)
-          .send(await library.exportMarkdown());
+          .send(await library.exportMarkdown(opts));
         return;
       }
       if (request.query.format === "mediawiki") {
         reply
           .header("content-type", "text/plain; charset=utf-8")
           .code(200)
-          .send(await library.exportMediaWiki());
+          .send(await library.exportMediaWiki(opts));
         return;
       }
       if (request.query.format === "html") {
@@ -86,10 +92,10 @@ export function libraryRoutes(
         reply
           .header("content-type", "text/html; charset=utf-8")
           .code(200)
-          .send(await library.exportHtml());
+          .send(await library.exportHtml(opts));
         return;
       }
-      reply.code(200).send(await library.exportJson());
+      reply.code(200).send(await library.exportJson(opts));
     });
 
     app.post<{ Body: { items: ImportItem[] } }>("/api/library/import", async (request, reply) => {

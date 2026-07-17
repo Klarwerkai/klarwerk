@@ -45,6 +45,13 @@ async function setup() {
   return { koService, library: new LibraryService({ koService, confluenceImport: true }) };
 }
 
+// SCRUM-506: der Export ist Validiert-only — Test-KOs vor Export-Assertions auf „validiert" heben.
+async function validateAll(koService: KoService): Promise<void> {
+  for (const ko of await koService.list()) {
+    await koService.setValidationState(ko.id, { trust: 80, status: "validiert" });
+  }
+}
+
 describe("LibraryService", () => {
   let ctx: Awaited<ReturnType<typeof setup>>;
 
@@ -59,6 +66,7 @@ describe("LibraryService", () => {
   });
 
   it("FR-LIB-02: Export als JSON und MediaWiki", async () => {
+    await validateAll(ctx.koService); // SCRUM-506: Export = validiert-only
     const json = await ctx.library.exportJson();
     expect(json).toHaveLength(2);
     const wiki = await ctx.library.exportMediaWiki();
@@ -66,6 +74,49 @@ describe("LibraryService", () => {
     const html = await ctx.library.exportHtml();
     expect(html).toContain("<!doctype html>");
     expect(html).toContain("<h2>Ventil schließen</h2>");
+  });
+
+  // SCRUM-506: der Export durchsetzt Validiert-only + Vertraulichkeit (Egress-Grenze).
+  it("Export enthält KEINE nicht-validierten KOs (regulärer Export = validiert)", async () => {
+    await validateAll(ctx.koService); // die zwei Seed-KOs sind validiert …
+    // … ein frisches, NICHT validiertes KO (Status „offen") darf im Export nicht auftauchen.
+    await ctx.koService.create({
+      title: "Roher Entwurf",
+      statement: "Noch nicht geprüft.",
+      type: "best_practice",
+      category: "Anlage 3",
+      author: "carla",
+      tags: [],
+    });
+    const json = await ctx.library.exportJson();
+    expect(json).toHaveLength(2); // weiterhin nur die zwei validierten
+    expect(json.some((ko) => ko.title === "Roher Entwurf")).toBe(false);
+  });
+
+  it("Export lässt vertrauliche KOs weg — außer includeConfidential (Berechtigte)", async () => {
+    await validateAll(ctx.koService); // die zwei Seed-KOs (nicht vertraulich) sind validiert
+    const created = await ctx.koService.create({
+      title: "Geheime Prozedur",
+      statement: "Vertraulicher Kerntext.",
+      type: "best_practice",
+      category: "Anlage 3",
+      author: "carla",
+      tags: [],
+    });
+    await ctx.koService.setValidationState(created.id, { trust: 80, status: "validiert" });
+    await ctx.koService.setConfidentiality(created.id, "vertraulich", "carla");
+
+    // Standard (viewer/experte): validiert, aber NICHT vertraulich.
+    const forEveryone = await ctx.library.exportJson();
+    expect(forEveryone.some((ko) => ko.title === "Geheime Prozedur")).toBe(false);
+    expect(forEveryone).toHaveLength(2);
+
+    // Berechtigt (Controller/Admin): vertrauliche validierte KOs inklusive.
+    const forAuthorized = await ctx.library.exportJson({ includeConfidential: true });
+    expect(forAuthorized.some((ko) => ko.title === "Geheime Prozedur")).toBe(true);
+    expect(forAuthorized).toHaveLength(3);
+    // Aber selbst Berechtigte bekommen keine nicht-validierten (Validiert-only bleibt).
+    expect(forAuthorized.every((ko) => ko.status === "validiert")).toBe(true);
   });
 
   it("SCRUM-116: Re-Import erzeugt Review-Kandidaten, markiert Dubletten", async () => {
@@ -127,6 +178,7 @@ describe("LibraryService", () => {
   });
 
   it("FR-LIB-02: Export als Text-Markdown", async () => {
+    await validateAll(ctx.koService); // SCRUM-506: Export = validiert-only
     const md = await ctx.library.exportMarkdown();
     expect(md).toContain("# Ventil schließen");
     // Trennlinie zwischen Objekten + Herkunfts-Fußzeile.

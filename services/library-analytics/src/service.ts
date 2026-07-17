@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
-import type { KnowledgeObject, KoFilter, KoService, KoSource } from "../../knowledge-object";
+import {
+  type KnowledgeObject,
+  type KoFilter,
+  type KoService,
+  type KoSource,
+  isConfidential,
+} from "../../knowledge-object";
 import { type CandidateRepo, InMemoryCandidateRepo } from "./repo";
 import {
   type Analytics,
@@ -224,19 +230,34 @@ export class LibraryService {
   }
 
   // FR-LIB-02: Export als JSON / MediaWiki.
-  async exportJson(ids?: readonly string[]): Promise<KnowledgeObject[]> {
-    const list = await this.koService.list();
-    return ids ? list.filter((ko) => ids.includes(ko.id)) : list;
+  // SCRUM-506 (ben-Review): der Export ist ein Egress-Kanal und durchsetzt dieselben Grenzen wie
+  // die Output Factory (services/output): NUR validierte KOs (nicht-validierte nie im regulären
+  // Export) und KEINE vertraulichen KOs — außer der Aufrufer ist berechtigt (includeConfidential,
+  // in der Route an ko.validate gebunden: Controller/Admin). Fail-closed by default.
+  async exportJson(
+    opts: { ids?: readonly string[]; includeConfidential?: boolean } = {},
+  ): Promise<KnowledgeObject[]> {
+    const list = await this.koService.list({ status: "validiert" });
+    const scoped = opts.ids ? list.filter((ko) => opts.ids?.includes(ko.id)) : list;
+    return opts.includeConfidential
+      ? scoped
+      : scoped.filter((ko) => !isConfidential(ko.confidentiality));
   }
 
-  async exportMediaWiki(ids?: readonly string[]): Promise<string> {
-    const items = await this.exportJson(ids);
+  async exportMediaWiki(opts?: {
+    ids?: readonly string[];
+    includeConfidential?: boolean;
+  }): Promise<string> {
+    const items = await this.exportJson(opts);
     return items.map((ko) => `== ${ko.title} ==\n${ko.statement}`).join("\n\n");
   }
 
   // FR-LIB-02: echtes Text-Markdown (Überschrift, Listen, Herkunfts-Fußzeile).
-  async exportMarkdown(ids?: readonly string[]): Promise<string> {
-    const items = await this.exportJson(ids);
+  async exportMarkdown(opts?: {
+    ids?: readonly string[];
+    includeConfidential?: boolean;
+  }): Promise<string> {
+    const items = await this.exportJson(opts);
     return items
       .map((ko) => {
         const lines: string[] = [`# ${ko.title}`, "", ko.statement];
@@ -260,8 +281,11 @@ export class LibraryService {
   }
 
   // FR-LIB-02: druckfertiges HTML — der Browser erzeugt daraus per „Als PDF sichern" das PDF.
-  async exportHtml(ids?: readonly string[]): Promise<string> {
-    const items = await this.exportJson(ids);
+  async exportHtml(opts?: {
+    ids?: readonly string[];
+    includeConfidential?: boolean;
+  }): Promise<string> {
+    const items = await this.exportJson(opts);
     const esc = (s: string): string =>
       s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const li = (xs: readonly string[]): string => xs.map((x) => `<li>${esc(x)}</li>`).join("");
