@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { AuditService, InMemoryAuditRepo } from "../../services/audit";
 import { InMemoryKoRepo, KoService, TRASH_RETENTION_DAYS } from "../../services/knowledge-object";
 
 // SCRUM-422 (Pedi 03.07.): Papierkorb — gelöschte Artikel sind wiederherstellbar (Admin),
@@ -162,7 +163,10 @@ describe("SCRUM-422: Papierkorb für gelöschte Wissensobjekte", () => {
     expect(gone.statusCode).toBe(404);
   });
 
-  it("nach Ablauf der Frist wird automatisch endgültig gelöscht (Selbstheilung beim Lesen)", async () => {
+  // SCRUM-523 P.3 (WP2): Die Endlöschung abgelaufener Einträge ist jetzt eine EXPLIZITE Operation
+  // (runTrashSweep) — Lesen (trashed()/list()) löscht NIE mehr. So bleibt jeder Lesepfad (inkl.
+  // Import-Dry-Run) schreibfrei. Der Sweep wird beim Serverstart (und ggf. per Scheduler) angestoßen.
+  it("nach Ablauf der Frist entfernt der explizite Sweep endgültig — Lesen löscht nie", async () => {
     // Deterministisch über die injizierbare Uhr des KoService — kein Cron, kein Warten.
     let clock = Date.parse("2026-07-03T12:00:00.000Z");
     const service = new KoService({ repo: new InMemoryKoRepo(), now: () => clock });
@@ -176,13 +180,104 @@ describe("SCRUM-422: Papierkorb für gelöschte Wissensobjekte", () => {
     await service.delete(ko.id, "erik");
     expect(await service.trashed()).toHaveLength(1);
 
-    // Einen Tag VOR Ablauf: bleibt erhalten.
+    // Einen Tag VOR Ablauf: bleibt erhalten; ein Sweep löscht nichts.
     clock += (TRASH_RETENTION_DAYS - 1) * 86_400_000;
+    expect(await service.runTrashSweep()).toBe(0);
     expect(await service.trashed()).toHaveLength(1);
 
-    // Nach Ablauf: beim nächsten Lesen endgültig entfernt — auch aus dem Papierkorb.
+    // Nach Ablauf: Lesen allein entfernt NICHT (schreibfrei) — der Eintrag ist weiter sichtbar.
     clock += 2 * 86_400_000;
+    expect(await service.trashed()).toHaveLength(1);
+    expect(await service.list()).toHaveLength(0); // aus dem normalen Bestand ausgeblendet (deletedAt)
+
+    // Erst der EXPLIZITE Sweep löscht endgültig — auch aus dem Papierkorb.
+    expect(await service.runTrashSweep()).toBe(1);
     expect(await service.trashed()).toHaveLength(0);
     await expect(service.restore(ko.id, "admin")).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  // SCRUM-523 P.3 (WP2): Read-only-Garantie. Selbst mit einem ABGELAUFENEN Papierkorb-Eintrag schreibt
+  // KEIN Lesepfad (list()/trashed()) — kein Delete, kein Audit. Das ist die Grundlage für den
+  // schreibfreien Import-Dry-Run (der über koService.list() geht). Ohne den Fix (Sweep beim Lesen) würde
+  // list()/trashed() den abgelaufenen Eintrag löschen + ein ko.purged-Audit schreiben → Test scheitert.
+  it("Read-Pfad ist schreibfrei — trotz abgelaufenem Papierkorb kein Delete/Audit beim Lesen", async () => {
+    let clock = Date.parse("2026-07-03T12:00:00.000Z");
+    const repo = new InMemoryKoRepo();
+    const auditRepo = new InMemoryAuditRepo();
+    const audit = new AuditService({ repo: auditRepo });
+    let purgeHookCalls = 0;
+    const service = new KoService({
+      repo,
+      audit,
+      now: () => clock,
+      onPurge: async () => {
+        purgeHookCalls++;
+      },
+    });
+    const ko = await service.create({
+      title: "Abgelaufen",
+      statement: "im Papierkorb, Frist vorbei",
+      type: "best_practice",
+      category: "Anlage 1",
+      author: "erik",
+    });
+    await service.delete(ko.id, "erik");
+    // Frist überschreiten.
+    clock += (TRASH_RETENTION_DAYS + 5) * 86_400_000;
+    const auditCountBefore = (await auditRepo.all()).length;
+
+    // Mehrfach lesen — inkl. der Pfade, die der Dry-Run nutzt.
+    await service.list();
+    await service.list();
+    await service.trashed();
+    await service.findCandidates({ terms: ["abgelaufen"], limit: 10 });
+
+    // Nichts geschrieben: kein neues Audit, kein Purge-Hook, der Eintrag existiert noch.
+    expect((await auditRepo.all()).length).toBe(auditCountBefore);
+    expect(purgeHookCalls).toBe(0);
+    expect(await service.trashed()).toHaveLength(1);
+    expect(await repo.findById(ko.id)).toBeDefined();
+  });
+
+  // SCRUM-523 P.3 (WP2): der zentrale Purge-Vertrag ruft den injizierten Aufräum-Hook — für den
+  // AUTOMATISCHEN (abgelaufenen) UND den MANUELLEN Purge, genau einmal je gelöschtem KO. Ohne den Fix
+  // (repo.delete direkt im Sweep) liefe der Hook beim automatischen Pfad NIE → Konflikt/Overlap/Embedding
+  // verwaisten. Dieser Test scheitert ohne die zentrale Verdrahtung.
+  it("zentraler Purge ruft den Aufräum-Hook — automatisch (Ablauf) UND manuell", async () => {
+    let clock = Date.parse("2026-07-03T12:00:00.000Z");
+    const purged: Array<{ id: string; actor: string }> = [];
+    const service = new KoService({
+      repo: new InMemoryKoRepo(),
+      now: () => clock,
+      onPurge: async (id, actor) => {
+        purged.push({ id, actor });
+      },
+    });
+    const auto = await service.create({
+      title: "Auto",
+      statement: "läuft ab",
+      type: "best_practice",
+      category: "Anlage 1",
+      author: "erik",
+    });
+    const manual = await service.create({
+      title: "Manuell",
+      statement: "wird sofort gelöscht",
+      type: "best_practice",
+      category: "Anlage 1",
+      author: "erik",
+    });
+    await service.delete(auto.id, "erik");
+    await service.delete(manual.id, "erik");
+
+    // Manueller Purge → Hook mit Actor.
+    await service.purgeTrashed(manual.id, "admin");
+    expect(purged).toContainEqual({ id: manual.id, actor: "admin" });
+
+    // Automatischer Purge nach Ablauf über den expliziten Sweep → Hook mit system-Actor.
+    clock += (TRASH_RETENTION_DAYS + 1) * 86_400_000;
+    await service.runTrashSweep();
+    expect(purged).toContainEqual({ id: auto.id, actor: "system" });
+    expect(purged).toHaveLength(2);
   });
 });

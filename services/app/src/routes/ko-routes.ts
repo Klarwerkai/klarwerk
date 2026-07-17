@@ -25,7 +25,6 @@ import {
   type SemanticPrefilter,
   detectDuplicatesForKo,
   indexKoForDuplicatePrefilter,
-  removeKoFromDuplicatePrefilter,
 } from "../duplicate-detection";
 import { type Guards, sendError } from "../http";
 import type { AssignmentNotifier } from "../notify";
@@ -284,14 +283,11 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         return;
       }
       try {
+        // SCRUM-523 P.3 (WP2): die HARTE Endlöschung läuft über den zentralen purgeKo-Vertrag im
+        // KoService — er schließt offene Konflikte/Überschneidungen geordnet (kein Geist) und entfernt
+        // den Embedding-Vektor (GDPR Art. 17, Kaskadenlöschung) über den verdrahteten Aufräum-Hook.
+        // Kein separater Cleanup-Aufruf mehr hier: exakt EINE Löschmechanik, kein Bypass.
         await ko.purgeTrashed(request.params.id, user.id);
-        // Konzept 04.07. (Stufe 1): offene Konflikte dieses KO geordnet beenden (kein Geist).
-        await conflicts.onKoRemoved(request.params.id, user.id);
-        // Pedi 04.07.: dasselbe für offene Überschneidungen (kein Duplikat-Geist nach Löschen).
-        await overlaps.onKoRemoved(request.params.id, user.id);
-        // GDPR Art. 17 (Kaskadenlöschung): harter Delete → evtl. abgelegten Embedding-Vektor mitlöschen.
-        // Best-effort — ein Store-Fehler darf die (bereits erfolgte) Löschung nicht kippen.
-        await removeKoFromDuplicatePrefilter(request.params.id, semanticPrefilter);
         reply.code(204).send();
       } catch (error) {
         sendError(reply, error);

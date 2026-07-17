@@ -58,6 +58,11 @@ export interface KoServiceDeps {
   // Validierungs-Modul). Als injizierte Funktion — KEIN Import über die Modulgrenze.
   // null/undefined → fester Modul-Default (DEFAULT_NEEDED_VALIDATIONS).
   defaultNeededValidations?: () => Promise<number | null | undefined>;
+  // SCRUM-523 P.3 (WP2): zentraler Purge-Aufräum-Hook. Wird beim HARTEN Endlöschen eines KO (manuell
+  // ODER automatisch abgelaufen) genau EINMAL aufgerufen, damit Folgeartefakte (offene Konflikte/
+  // Überschneidungen, Embedding-Vektor) nicht verwaisen. Als injizierte Funktion — KEIN Import über die
+  // Modulgrenze; die App (Composition-Root) verdrahtet conflicts/overlaps/Embedding-Cleanup dahinter.
+  onPurge?: (koId: string, actor: string) => Promise<void>;
 }
 
 export interface CreateKoInput {
@@ -110,6 +115,9 @@ export class KoService {
   private readonly now: () => number;
   private readonly genId: () => string;
   private readonly defaultNeededValidations: (() => Promise<number | null | undefined>) | undefined;
+  // SCRUM-523 P.3 (WP2): Purge-Aufräum-Hook. Spät bindbar (setPurgeCleanup), da die Composition-Root
+  // conflicts/overlaps/Embedding-Cleanup erst NACH dem KoService erstellt (Reihenfolge in assembleServices).
+  private onPurge: ((koId: string, actor: string) => Promise<void>) | undefined;
   // SCRUM-509 R2 / 507 R2: EIN per-KO Schreib-Lock serialisiert die zueinander wettlaufenden KO-
   // Mutationen (Vertraulichkeit setzen, Validierungsstatus setzen, Revision). So gibt es kein Inter-
   // leave zwischen Lesen und Schreiben (kein TOCTOU, kein Lost-Update, keine fälschlich gültige
@@ -122,8 +130,15 @@ export class KoService {
     this.versions = deps.versions;
     this.evidence = deps.evidence;
     this.defaultNeededValidations = deps.defaultNeededValidations;
+    this.onPurge = deps.onPurge;
     this.now = deps.now ?? (() => Date.now());
     this.genId = deps.genId ?? (() => randomUUID());
+  }
+
+  // SCRUM-523 P.3 (WP2): den Purge-Aufräum-Hook spät verdrahten (die App erstellt conflicts/overlaps/
+  // Embedding-Cleanup erst nach dem KoService). Nur EIN Hook — er ist die zentrale Aufräum-Kaskade.
+  setPurgeCleanup(hook: (koId: string, actor: string) => Promise<void>): void {
+    this.onPurge = hook;
   }
 
   // SCRUM-509 R2 / 507 R2: serialisiert fn per-KO (Lesen+Schreiben ohne Interleave). Fehler eines
@@ -493,8 +508,10 @@ export class KoService {
     return ko && !ko.deletedAt ? ko : undefined;
   }
 
+  // SCRUM-523 P.3 (WP2): Der Read-Pfad löscht/auditiert NICHT mehr. Früher rief list() den Trash-Sweep
+  // (Endlöschung + Audit) auf — damit war kein Lesen (und kein Import-Dry-Run) schreibfrei. Die
+  // Endlöschung ist jetzt eine EXPLIZITE Operation (runTrashSweep), die reine Leseoperationen nie auslöst.
   async list(filter: KoFilter = {}): Promise<KnowledgeObject[]> {
-    await this.sweepTrash();
     return (await this.repo.list(filter)).filter((k) => !k.deletedAt);
   }
 
@@ -512,32 +529,48 @@ export class KoService {
     return Date.parse(deletedAt) + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
   }
 
-  // Automatische Endlöschung abgelaufener Papierkorb-Einträge — lazy beim Lesen
-  // (Selbstheilungs-Muster wie SCRUM-420, kein Cron). Höchstens einmal pro Stunde,
-  // damit list() nicht bei jedem Aufruf den Vollbestand scannt; force = Papierkorb-Ansicht.
-  private lastTrashSweep = 0;
-  private async sweepTrash(force = false): Promise<void> {
+  // SCRUM-523 P.3 (WP2): DER zentrale Purge-Vertrag. Jede HARTE Endlöschung eines KO — automatisch
+  // (abgelaufen) wie manuell — läuft ausschließlich hierüber: Bestand löschen, Audit schreiben UND die
+  // injizierte Aufräum-Kaskade (offene Konflikte/Überschneidungen schließen, Embedding-Vektor entfernen)
+  // anstoßen. So kann kein Löschpfad die Folgeartefakte mehr umgehen (keine „Geister"). Der onPurge-Hook
+  // läuft NACH dem Bestands-Delete (das KO ist dann wirklich weg), best-effort: ein Cleanup-Fehler darf
+  // die bereits erfolgte Löschung nicht rückabwickeln — er wird geworfen und vom Aufrufer behandelt.
+  private async purgeKo(
+    id: string,
+    actor: string,
+    reason: "trash-expired" | "manual",
+    extraPayload: Record<string, unknown> = {},
+  ): Promise<void> {
+    await this.repo.delete(id);
+    await this.audit?.record({
+      actor,
+      action: "ko.purged",
+      target: id,
+      payload: { reason, ...extraPayload },
+    });
+    await this.onPurge?.(id, actor);
+  }
+
+  // SCRUM-523 P.3 (WP2): Endlöschung abgelaufener Papierkorb-Einträge — jetzt eine EXPLIZITE Operation
+  // (kein Lazy-Sweep beim Lesen mehr). Der Aufrufer (Server-Start / Admin / Scheduler) triggert sie;
+  // reine Leseoperationen tun das NIE. Läuft über den zentralen purgeKo-Vertrag (inkl. Aufräum-Kaskade).
+  // Gibt die Zahl der endgültig gelöschten KOs zurück.
+  async runTrashSweep(actor = "system"): Promise<number> {
     const nowMs = this.now();
-    if (!force && nowMs - this.lastTrashSweep < 60 * 60 * 1000) {
-      return;
-    }
-    this.lastTrashSweep = nowMs;
+    let purged = 0;
     for (const ko of await this.repo.list({})) {
       if (ko.deletedAt && this.trashExpiry(ko.deletedAt) <= nowMs) {
-        await this.repo.delete(ko.id);
-        await this.audit?.record({
-          actor: "system",
-          action: "ko.purged",
-          target: ko.id,
-          payload: { reason: "trash-expired", deletedAt: ko.deletedAt },
-        });
+        await this.purgeKo(ko.id, actor, "trash-expired", { deletedAt: ko.deletedAt });
+        purged++;
       }
     }
+    return purged;
   }
 
   // Papierkorb-Ansicht (Admin): nur Metadaten, jüngste Löschung zuerst.
+  // SCRUM-523 P.3 (WP2): reine Leseansicht — löst KEINE Endlöschung mehr aus. Abgelaufene Einträge sind
+  // an ihrem `expiresAt` (Vergangenheit) ehrlich erkennbar, bis ein expliziter runTrashSweep sie entfernt.
   async trashed(): Promise<TrashedKo[]> {
-    await this.sweepTrash(true);
     const all = await this.repo.list({});
     return all
       .filter((k): k is KnowledgeObject & { deletedAt: string } => Boolean(k.deletedAt))
@@ -565,13 +598,14 @@ export class KoService {
   }
 
   // Sofortige Endlöschung EINES Papierkorb-Eintrags (Admin-Entscheidung).
+  // SCRUM-523 P.3 (WP2): läuft über den zentralen purgeKo-Vertrag — dieselbe Aufräum-Kaskade wie der
+  // automatische Sweep (keine getrennte Löschmechanik mehr, kein Cleanup-Bypass).
   async purgeTrashed(id: string, actor = "system"): Promise<void> {
     const ko = await this.repo.findById(id);
     if (!ko?.deletedAt) {
       throw new KoError("NOT_FOUND", "Wissensobjekt nicht im Papierkorb.");
     }
-    await this.repo.delete(id);
-    await this.audit?.record({ actor, action: "ko.purged", target: id, payload: { manual: true } });
+    await this.purgeKo(id, actor, "manual", { manual: true });
   }
 
   // SCRUM-161: read-only Zugriff auf die in SCRUM-159 persistierten Voll-Snapshots.

@@ -129,7 +129,7 @@ import {
   resolveTrustProxy,
 } from "./addon-auth-throttle";
 import { matchAddonRoute, principalHasCapability, resolveAddonAuth } from "./addon-principal";
-import type { SemanticPrefilter } from "./duplicate-detection";
+import { type SemanticPrefilter, removeKoFromDuplicatePrefilter } from "./duplicate-detection";
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
 import { makeGuards, tokenFromRequest } from "./http";
@@ -629,6 +629,17 @@ export function buildApp(
   // Weg 3: semantischer Vorfilter der Duplikat-Erkennung. Standard AUS → beide Routen bekommen
   // undefined → heutiges „jeder gegen jeden". Erst KLARWERK_DUP_PREFILTER=1 schaltet ihn scharf.
   const semanticPrefilter = createSemanticPrefilterFromEnv();
+  // SCRUM-523 P.3 (WP2): den zentralen Purge-Aufräum-Hook verdrahten. JEDE harte KO-Endlöschung (manuell
+  // ODER automatisch abgelaufen) räumt jetzt über EINEN Vertrag die Folgeartefakte auf: offene Konflikte/
+  // Überschneidungen geordnet schließen + Embedding-Vektor entfernen. Damit umgeht auch der automatische
+  // Trash-Sweep die Aufräum-Kaskade nicht mehr (früher: repo.delete direkt → verwaiste „Geister").
+  // conflicts/overlaps sind idempotent (schließen nur noch offene Einträge) — der Aufruf im Löschpfad der
+  // Routen bleibt für den SOFT-Delete (Papierkorb) zuständig; hier greift der HARTE Purge.
+  services.ko.setPurgeCleanup(async (koId, actor) => {
+    await services.conflicts.onKoRemoved(koId, actor);
+    await services.overlaps.onKoRemoved(koId, actor);
+    await removeKoFromDuplicatePrefilter(koId, semanticPrefilter);
+  });
   app.register(
     koRoutes(
       {
