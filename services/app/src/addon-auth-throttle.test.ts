@@ -4,6 +4,7 @@ import {
   addonAuthThrottleConfigFromEnv,
   isAddonEndpointPath,
   isCatchAllTrustEntry,
+  isIpv4MappedCatchAll,
   resolveTrustProxy,
 } from "./addon-auth-throttle";
 
@@ -126,5 +127,61 @@ describe("SCRUM-490 R4 (B2): resolveTrustProxy lehnt Catch-all ab", () => {
   it("explizites Subnetz + Hop-Count bleiben weiter gültig (kein Regress)", () => {
     expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "172.16.0.0/12" })).toEqual(["172.16.0.0/12"]);
     expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "2" })).toBe(2);
+  });
+});
+
+// SCRUM-490 R5 (B2, Fix): IPv4-mapped-Catch-all (::ffff:0:0/N mit N<=96) überdeckt den vollen IPv4-Raum
+// und wird SEMANTISCH als Blanket abgelehnt; enge Mapped-Netze (N>96) bleiben gültig.
+describe("SCRUM-490 R5 (B2): IPv4-mapped-Catch-all im trustProxy", () => {
+  it("isIpv4MappedCatchAll: /N<=96 auf ::ffff:-Basis (inkl. Schreibvarianten) → catch-all", () => {
+    for (const e of [
+      "::ffff:0:0/96",
+      "::ffff:0:0/096", // führende Null
+      "::ffff:0:0/95",
+      "::ffff:0:0/64",
+      "::ffff:0:0/0",
+      "::ffff:0.0.0.0/96", // dotted-Form
+      "::FFFF:0:0/96", // Case
+      "::ffff:10.0.0.0/96", // Host durch /96 maskiert → ganzer IPv4-Raum
+    ]) {
+      expect(isIpv4MappedCatchAll(e)).toBe(true);
+    }
+  });
+
+  it("isIpv4MappedCatchAll: enge Mapped-Netze (N>96) und Nicht-Mapped → KEIN catch-all", () => {
+    for (const e of [
+      "::ffff:10.0.0.0/104", // echtes /8
+      "::ffff:10.0.0.0/128",
+      "fd00::/8",
+      "2001:db8::/32",
+      "10.0.0.0/8", // kein IPv6
+      "::1", // ohne Präfix
+    ]) {
+      expect(isIpv4MappedCatchAll(e)).toBe(false);
+    }
+  });
+
+  it("resolveTrustProxy: mapped-Catch-all → kein Vertrauen; enges mapped-Netz bleibt gültig", () => {
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "::ffff:0:0/96" })).toBe(false);
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "::ffff:0:0/096" })).toBe(false);
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "::ffff:0:0/0" })).toBe(false);
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "::ffff:10.0.0.0/104" })).toEqual([
+      "::ffff:10.0.0.0/104",
+    ]);
+  });
+
+  it("gemischt: mapped-Catch-all-Anteil verworfen, explizites Subnetz bleibt", () => {
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "::ffff:0:0/96, 10.0.0.0/8" })).toEqual([
+      "10.0.0.0/8",
+    ]);
+  });
+
+  it("isCatchAllTrustEntry deckt R4-Fälle weiter ab (kein Regress)", () => {
+    for (const e of ["0.0.0.0/0", "::/0", "2000::/0", "0.0.0.0", "::", "*", ""]) {
+      expect(isCatchAllTrustEntry(e)).toBe(true);
+    }
+    for (const e of ["172.16.0.0/12", "10.0.0.1", "::ffff:10.0.0.0/104"]) {
+      expect(isCatchAllTrustEntry(e)).toBe(false);
+    }
   });
 });

@@ -111,17 +111,105 @@ export function resolveTrustProxy(
 }
 
 // Catch-all / All-umfassende Vertrauensangabe? /0-Präfix (0 Maskenbits = ALLES, z. B. 0.0.0.0/0, ::/0,
-// 2000::/0) ODER eine unspecified-/Wildcard-Basisadresse (0.0.0.0, ::, *). Solche Einträge würden JEDE
-// Quell-IP als vertrauenswürdigen Proxy behandeln → X-Forwarded-For spoofbar. Fail-safe abgelehnt.
+// 2000::/0; auch mit führenden Nullen) ODER eine unspecified-/Wildcard-Basisadresse (0.0.0.0, ::, *)
+// ODER (SCRUM-490 R5) ein IPv4-mapped-Netz, das den GESAMTEN IPv4-Raum überdeckt (::ffff:0:0/N mit
+// N<=96 — die IPv4-Bits sind dann komplett Wildcard). Solche Einträge würden JEDE Quell-IP als
+// vertrauenswürdigen Proxy behandeln → X-Forwarded-For spoofbar. Fail-safe abgelehnt.
 export function isCatchAllTrustEntry(entry: string): boolean {
   const e = entry.trim().toLowerCase();
   if (e === "" || e === "*") {
     return true;
   }
   const slash = e.indexOf("/");
-  if (slash >= 0 && e.slice(slash + 1).trim() === "0") {
-    return true; // /0 = keine Maskenbits = alles
+  const base = (slash >= 0 ? e.slice(0, slash) : e).trim();
+  const prefixStr = slash >= 0 ? e.slice(slash + 1).trim() : null;
+  // /0 (auch führende Nullen: /00, /000) = keine Maskenbits = alles.
+  if (prefixStr !== null && /^\d+$/.test(prefixStr) && Number(prefixStr) === 0) {
+    return true;
   }
-  const base = slash >= 0 ? e.slice(0, slash).trim() : e;
-  return base === "0.0.0.0" || base === "::" || base === "*";
+  if (base === "0.0.0.0" || base === "::" || base === "*") {
+    return true;
+  }
+  return isIpv4MappedCatchAll(e);
+}
+
+// SCRUM-490 R5: überdeckt der Eintrag den vollen IPv4-Raum via IPv4-mapped IPv6 (::ffff:0:0/N, N<=96)?
+// SEMANTISCH geprüft (nicht rein textuell): die Adresse wird zu 16 Bytes expandiert; ihre ersten 96 Bit
+// müssen der Mapped-Präfix ::ffff: sein (80 Null-Bits + 0xffff) UND das Präfix <=96 (dann sind die 32
+// IPv4-Bits komplett Wildcard → ganzer IPv4-Raum). Enge Mapped-Netze mit N>96 (z. B. ::ffff:10.0.0.0/104
+// = ein /8) bleiben gültig. Fängt äquivalente Schreibweisen (führende Nullen im Präfix, dotted-IPv4-Form,
+// Whitespace, Case) über die Byte-Expansion mit.
+export function isIpv4MappedCatchAll(entry: string): boolean {
+  const slash = entry.indexOf("/");
+  if (slash < 0) {
+    return false; // ohne Präfix kein Netz → kein Catch-all
+  }
+  const addr = entry.slice(0, slash).trim();
+  const prefixStr = entry.slice(slash + 1).trim();
+  if (!/^\d+$/.test(prefixStr)) {
+    return false;
+  }
+  const prefix = Number(prefixStr);
+  if (prefix > 128) {
+    return false;
+  }
+  const bytes = ipv6ToBytes(addr);
+  if (!bytes) {
+    return false;
+  }
+  // Mapped-Präfix ::ffff: = Bytes 0..9 == 0 und Bytes 10,11 == 0xff.
+  const isMapped =
+    bytes.slice(0, 10).every((b) => b === 0) && bytes[10] === 0xff && bytes[11] === 0xff;
+  return isMapped && prefix <= 96;
+}
+
+// Expandiert eine IPv6-Adresse (mit optionalem "::" und optionaler dotted-IPv4-Endung) zu 16 Bytes.
+// Ungültig/kein IPv6 → null. Bewusst schlank (nur für die Catch-all-Erkennung), kein neues Dependency.
+function ipv6ToBytes(input: string): number[] | null {
+  let a = input.trim().toLowerCase();
+  if (a === "" || !a.includes(":")) {
+    return null; // reine IPv4/leer → hier nicht als IPv6 behandeln
+  }
+  // Trailing dotted-IPv4 (z. B. ::ffff:10.0.0.0) → zwei Hextets.
+  let v4: string[] = [];
+  const dotted = /(\d{1,3}(?:\.\d{1,3}){3})$/.exec(a);
+  if (dotted?.[1]) {
+    const parts = dotted[1].split(".").map(Number);
+    if (parts.some((p) => !Number.isInteger(p) || p < 0 || p > 255)) {
+      return null;
+    }
+    v4 = [
+      (((parts[0] ?? 0) << 8) | (parts[1] ?? 0)).toString(16),
+      (((parts[2] ?? 0) << 8) | (parts[3] ?? 0)).toString(16),
+    ];
+    a = a.slice(0, a.length - dotted[1].length).replace(/:$/, "");
+  }
+  const halves = a.split("::");
+  if (halves.length > 2) {
+    return null;
+  }
+  const head = halves[0] ? halves[0].split(":").filter((s) => s !== "") : [];
+  let hextets: string[];
+  if (halves.length === 2) {
+    const tail = [...(halves[1] ? halves[1].split(":").filter((s) => s !== "") : []), ...v4];
+    const missing = 8 - head.length - tail.length;
+    if (missing < 0) {
+      return null;
+    }
+    hextets = [...head, ...Array<string>(missing).fill("0"), ...tail];
+  } else {
+    hextets = [...head, ...v4];
+    if (hextets.length !== 8) {
+      return null;
+    }
+  }
+  const bytes: number[] = [];
+  for (const h of hextets) {
+    if (!/^[0-9a-f]{1,4}$/.test(h)) {
+      return null;
+    }
+    const v = Number.parseInt(h, 16);
+    bytes.push((v >> 8) & 0xff, v & 0xff);
+  }
+  return bytes.length === 16 ? bytes : null;
 }
