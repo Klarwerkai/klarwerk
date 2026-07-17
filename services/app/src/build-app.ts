@@ -239,6 +239,10 @@ export function assembleServices(repos: AppRepos): AppServices {
     // SCRUM-395: Standard-Prüferanzahl aus der Admin-Einstellung — als injizierte
     // Funktion (keine Modulgrenzen-Verletzung); null → Modul-Default 3.
     defaultNeededValidations: () => repos.validationSettings.getDefaultNeeded(),
+    // SCRUM-507: inhaltliche Revision verwirft die Bewertungen des KOs (Freigaben galten dem alten
+    // Inhalt). Injiziert auf das Rating-Repo — keine Modulgrenzen-Verletzung, greift für BEIDE
+    // revise-Aufrufer (ko-routes + Import-Kandidaten-Accept).
+    onContentRevised: (koId) => repos.ratings.deleteByKo(koId),
   });
   // FR-RSN-02/06: echtes Cloud-Modell, wenn der Cloud-Key per Env/Keychain verfügbar ist.
   const modelClient = createModelClientFromEnv(

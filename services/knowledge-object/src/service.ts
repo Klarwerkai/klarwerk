@@ -53,6 +53,11 @@ export interface KoServiceDeps {
   // Validierungs-Modul). Als injizierte Funktion — KEIN Import über die Modulgrenze.
   // null/undefined → fester Modul-Default (DEFAULT_NEEDED_VALIDATIONS).
   defaultNeededValidations?: () => Promise<number | null | undefined>;
+  // SCRUM-507: revisions-gebundene Kopplung an die Validierung. Bei einer INHALTLICHEN Revision
+  // (revise) werden die gespeicherten Bewertungen des KOs verworfen — sonst bliebe der geänderte
+  // Inhalt mit den alten Freigaben „validiert". Als injizierte Funktion (KEIN Import über die
+  // Modulgrenze, analog defaultNeededValidations). Ohne Hook: reines KO-Reset wie bisher.
+  onContentRevised?: (koId: string) => Promise<void>;
 }
 
 export interface CreateKoInput {
@@ -105,6 +110,7 @@ export class KoService {
   private readonly now: () => number;
   private readonly genId: () => string;
   private readonly defaultNeededValidations: (() => Promise<number | null | undefined>) | undefined;
+  private readonly onContentRevised: ((koId: string) => Promise<void>) | undefined;
 
   constructor(deps: KoServiceDeps) {
     this.repo = deps.repo;
@@ -112,6 +118,7 @@ export class KoService {
     this.versions = deps.versions;
     this.evidence = deps.evidence;
     this.defaultNeededValidations = deps.defaultNeededValidations;
+    this.onContentRevised = deps.onContentRevised;
     this.now = deps.now ?? (() => Date.now());
     this.genId = deps.genId ?? (() => randomUUID());
   }
@@ -493,6 +500,11 @@ export class KoService {
     await this.repo.update(revised);
     // SCRUM-159: neuen Versions-Snapshot persistieren; frühere Versionen bleiben unverändert.
     await this.snapshot(revised, author, "überarbeitet");
+    // SCRUM-507: die Bewertungen galten dem ALTEN Inhalt — revisions-gebunden verwerfen, damit die
+    // neue Version nicht mit fremden/alten Freigaben „validiert" wird. Der Status ist bereits „offen"
+    // und Trust 0 (oben); ohne dieses Verwerfen würde ein einzelner Recompute die alten Up-Stimmen
+    // erneut zählen und das KO sofort wieder freigeben. Hook ist best-effort injiziert (Modulgrenze).
+    await this.onContentRevised?.(id);
     await this.audit?.record({
       actor: author,
       action: "ko.revised",

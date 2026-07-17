@@ -38,6 +38,11 @@ export class PgRatingRepo implements RatingRepo {
     const res = await this.pool.query<RatingRow>("SELECT data FROM ratings WHERE ko_id=$1", [koId]);
     return res.rows.map((row) => row.data);
   }
+
+  // SCRUM-507: alle Bewertungen eines KOs verwerfen (inhaltliche Revision → neue Version neu prüfen).
+  async deleteByKo(koId: string): Promise<void> {
+    await this.pool.query("DELETE FROM ratings WHERE ko_id=$1", [koId]);
+  }
 }
 
 export class PgAssignmentRepo implements AssignmentRepo {

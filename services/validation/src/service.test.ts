@@ -236,3 +236,55 @@ describe("ValidationService", () => {
     });
   });
 });
+
+// SCRUM-507: inhaltliche Revision invalidiert die Bewertungen — der geänderte Inhalt darf nicht mit
+// den alten Freigaben „validiert" bleiben. Getestet über die revisions-gebundene Kopplung
+// (KoService.onContentRevised → ratings.deleteByKo), wie sie build-app verdrahtet.
+describe("SCRUM-507: Revision invalidiert Bewertungen", () => {
+  function wired() {
+    const ratings = new InMemoryRatingRepo();
+    const koService = new KoService({
+      repo: new InMemoryKoRepo(),
+      onContentRevised: (koId) => ratings.deleteByKo(koId),
+    });
+    const service = new ValidationService({
+      koService,
+      ratings,
+      assignments: new InMemoryAssignmentRepo(),
+    });
+    return { ratings, koService, service };
+  }
+
+  it("validiertes KO revidieren → alte Freigaben zählen nicht mehr, Trust zurück, Neu-Validierung nötig", async () => {
+    const { ratings, koService, service } = wired();
+    const ko = await koService.create(koInput({ neededValidations: 2 }));
+    await service.rate(ko.id, "u1", "up");
+    expect((await service.rate(ko.id, "u2", "up")).status).toBe("validiert");
+    expect(await ratings.listByKo(ko.id)).toHaveLength(2);
+
+    const revised = await koService.revise(ko.id, { statement: "Geänderter Inhalt." }, "anna");
+    expect(revised.status).toBe("offen");
+    expect(revised.trust).toBe(0);
+    // Die alten Bewertungen sind verworfen.
+    expect(await ratings.listByKo(ko.id)).toHaveLength(0);
+
+    // Eine EINZELNE neue Grün-Stimme re-validiert NICHT (ohne den Fix zählten die 2 alten weiter mit).
+    const after = await service.rate(ko.id, "u3", "up");
+    expect(after.status).toBe("offen"); // erst 1 von 2
+    expect((await koService.get(ko.id))?.status).toBe("offen");
+  });
+
+  it("Metadaten-Änderung ohne Inhaltsrevision behält die Freigabe (updateCategory)", async () => {
+    // Begründung: nur `revise` (inhaltliche Revision, Versions-Bump) verwirft Bewertungen. Reine
+    // Metadaten-Änderungen (Kategorie/Tags/Vertraulichkeit) laufen NICHT über revise → Freigabe bleibt.
+    const { ratings, koService, service } = wired();
+    const ko = await koService.create(koInput({ neededValidations: 2 }));
+    await service.rate(ko.id, "u1", "up");
+    await service.rate(ko.id, "u2", "up");
+
+    await koService.updateCategory(ko.id, "Anlage 9", "anna");
+
+    expect((await koService.get(ko.id))?.status).toBe("validiert");
+    expect(await ratings.listByKo(ko.id)).toHaveLength(2); // Freigaben unverändert
+  });
+});
