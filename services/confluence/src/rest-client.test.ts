@@ -135,15 +135,20 @@ describe("SCRUM-510-R3 (WP1): Token-Redaction + Tenant-Origin", () => {
       assertNoTokenLeak(String((e as Error).message));
       return true;
     });
-    // (b) fetch wirft (Netz/TLS)
+    // (b) SCRUM-510-R3 (WP4): fetch wirft (Netz/TLS) — und der Fetch-Fehler TRÄGT den Token in seiner
+    // Message. Der Client muss ihn REDIGIERT propagieren; ohne den zentralen Redaction-Wrapper landete
+    // der Roh-Token im propagierten Fehlertext → dieser Test scheitert.
     const boom = (async () => {
-      throw new Error(`network down while calling ${SECRET}?? nein — sollte nie den Token tragen`);
+      throw new Error(`network down while calling https://acme.atlassian.net?token=${SECRET}`);
     }) as unknown as typeof fetch;
-    // Der Client reicht den Fetch-Fehler durch; SEINE eigenen Fehlertexte tragen den Token nie. Wir
-    // prüfen die vom CLIENT erzeugten Meldungen (assertAllowed/Status), nicht einen künstlichen Fetch-Text.
     await expect(
       new ConfluenceRestClient(cfg(boom, { apiToken: SECRET })).listPages(),
-    ).rejects.toBeInstanceOf(Error);
+    ).rejects.toSatisfy((e: unknown) => {
+      const err = e as Error;
+      assertNoTokenLeak(String(err.message));
+      assertNoTokenLeak(String(err.stack ?? "")); // auch der Stack ist leck-frei (neuer, eigener Stack)
+      return true;
+    });
     // (c) plain-http baseUrl → Abbruch VOR fetch; Fehlertext ohne Token
     const spy = (async () => okJson({ results: [] })) as unknown as typeof fetch;
     await expect(
@@ -154,6 +159,58 @@ describe("SCRUM-510-R3 (WP1): Token-Redaction + Tenant-Origin", () => {
       assertNoTokenLeak(String((e as Error).message));
       return true;
     });
+  });
+
+  // SCRUM-510-R3 (WP4): Timeout/AbortError beim fetch → der (token-tragende) Fehler wird redigiert
+  // propagiert. Der Client bricht nie mit dem Roh-Token in Message/Stack ab.
+  it("WP4: fetch-Timeout mit Token im Fehler → redigiert propagiert (Message+Stack leck-frei)", async () => {
+    const timeout = (async () => {
+      const e = new Error(`fetch timed out for https://acme.atlassian.net/rest?auth=${SECRET}`);
+      e.name = "TimeoutError";
+      throw e;
+    }) as unknown as typeof fetch;
+    await expect(
+      new ConfluenceRestClient(cfg(timeout, { apiToken: SECRET })).listPages(),
+    ).rejects.toSatisfy((e: unknown) => {
+      const err = e as Error;
+      assertNoTokenLeak(String(err.message));
+      assertNoTokenLeak(String(err.stack ?? ""));
+      return true;
+    });
+  });
+
+  // SCRUM-510-R3 (WP4): auch ein Parse-Fehler (res.json wirft) mit Token im Text wird redigiert.
+  it("WP4: Parse-Fehler mit Token → redigiert propagiert", async () => {
+    const badJson = (async () =>
+      ({
+        ok: true,
+        status: 200,
+        json: async () => {
+          throw new Error(`invalid json near token ${SECRET}`);
+        },
+      }) as unknown as Response) as unknown as typeof fetch;
+    await expect(
+      new ConfluenceRestClient(cfg(badJson, { apiToken: SECRET })).listPages(),
+    ).rejects.toSatisfy((e: unknown) => {
+      assertNoTokenLeak(String((e as Error).message));
+      return true;
+    });
+  });
+
+  // SCRUM-510-R3 (WP4): ein credential-tragender URL-Anteil (user:pass@host) im Fehlertext wird generisch
+  // entschärft — auch wenn es nicht der eigene Token ist (defensiv gegen fremde/unerwartete Credentials).
+  it("WP4: credentialed URL (user:pass@host) im Fehler → userinfo entfernt", async () => {
+    const leak = (async () => {
+      throw new Error("connect failed to https://svc:hunter2@acme.atlassian.net/rest/api/content");
+    }) as unknown as typeof fetch;
+    await expect(new ConfluenceRestClient(cfg(leak)).listPages()).rejects.toSatisfy(
+      (e: unknown) => {
+        const msg = String((e as Error).message);
+        expect(msg).not.toContain("hunter2");
+        expect(msg).not.toContain("svc:hunter2");
+        return true;
+      },
+    );
   });
 
   it("jeder Request geht NUR an die konfigurierte Origin; fremde Origin/Protokoll → Abbruch", () => {

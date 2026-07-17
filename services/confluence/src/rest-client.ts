@@ -73,6 +73,36 @@ export class ConfluenceRestClient {
     return `Basic ${Buffer.from(raw, "utf8").toString("base64")}`;
   }
 
+  // SCRUM-510-R3 (WP4): zentrale Redaction für JEDEN Fehlertext, der aus dem Request-Bauer propagiert/
+  // geloggt werden könnte. Ein fetch-Reject/Timeout/Parse-Fehler kann in Message ODER Stack die
+  // Ziel-URL, einen credential-tragenden URL-Teil oder (theoretisch) den Token/Basic-Auth-Wert führen —
+  // hier wird all das entfernt, BEVOR es diese Klasse verlässt. Wir kennen unsere eigenen Geheimnisse
+  // (Token + Basic-Auth-Base64) und ersetzen sie hart; zusätzlich wird jeder `user:pass@host`-Anteil
+  // generisch entschärft. Idempotent auf bereits sauberem Text.
+  private redactSecrets(text: string): string {
+    let out = text;
+    const token = this.config.apiToken;
+    if (token) {
+      out = out.split(token).join("[redacted-token]");
+    }
+    const auth = this.authHeader(); // "Basic <base64(email:token)>"
+    const b64 = auth.slice("Basic ".length);
+    if (b64) {
+      out = out.split(auth).join("[redacted]").split(b64).join("[redacted]");
+    }
+    // Credential-tragende URLs (userinfo@host) generisch entschärfen — auch für fremde/unerwartete Werte.
+    out = out.replace(/(https?:\/\/)[^/\s@]*@/gi, "$1[redacted]@");
+    return out;
+  }
+
+  // SCRUM-510-R3 (WP4): erzeugt aus einem beliebigen gefangenen Fehler eine NEUE, redigierte Fehlermeldung
+  // — mit eigenem, sauberem Stack (der Original-Fehler wird NICHT als `cause` angehängt, dessen Message/
+  // Stack könnten das Geheimnis noch tragen). So ist der propagierte Fehler garantiert leck-frei.
+  private redactedError(prefix: string, err: unknown): Error {
+    const raw = err instanceof Error ? err.message : String(err);
+    return new Error(`${prefix}: ${this.redactSecrets(raw)}`);
+  }
+
   // Nicht-geheime Config nach außen (für den Mapper: Provenienz-URL + Kategorie). KEIN Token-Getter.
   get baseUrl(): string {
     return this.config.baseUrl.replace(/\/+$/, "");
@@ -103,18 +133,30 @@ export class ConfluenceRestClient {
   ): Promise<{ results: ConfluencePage[]; next: string | null }> {
     assertAllowedConfluenceUrl(url, allowedOrigin); // vor JEDEM Netzcall
     const fetchFn = this.config.fetchFn ?? fetch;
-    const res = await fetchFn(url, {
-      method: "GET",
-      headers: { authorization: this.authHeader(), accept: "application/json" },
-      redirect: "error", // kein Folgen auf fremde Hosts
-    });
+    // SCRUM-510-R3 (WP4): fetch-Reject/Timeout redigiert propagieren — der rohe Fetch-Fehler (dessen
+    // Message/Stack die URL/Credentials tragen könnte) verlässt den Request-Bauer NIE unredigiert.
+    let res: Response;
+    try {
+      res = await fetchFn(url, {
+        method: "GET",
+        headers: { authorization: this.authHeader(), accept: "application/json" },
+        redirect: "error", // kein Folgen auf fremde Hosts
+      });
+    } catch (err) {
+      throw this.redactedError("Confluence-Request fehlgeschlagen", err);
+    }
     if (!res.ok) {
+      // Nur der Status (eine Zahl) — strukturell token-frei.
       throw new Error(`Confluence-API antwortete mit ${res.status}`);
     }
-    const data = (await res.json()) as {
-      results?: ConfluencePage[];
-      _links?: { next?: string };
-    };
+    // SCRUM-510-R3 (WP4): auch ein Parse-Fehler wird redigiert (der JSON-Body/Fehlertext könnte Reste
+    // tragen). EIN Ausgang, EIN Redaction-Kontrakt für alle Fehlerklassen dieses Bauers.
+    let data: { results?: ConfluencePage[]; _links?: { next?: string } };
+    try {
+      data = (await res.json()) as { results?: ConfluencePage[]; _links?: { next?: string } };
+    } catch (err) {
+      throw this.redactedError("Confluence-Antwort nicht lesbar", err);
+    }
     return { results: data.results ?? [], next: data._links?.next ?? null };
   }
 
