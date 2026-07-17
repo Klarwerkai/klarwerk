@@ -1,11 +1,14 @@
 import { randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
 import {
+  type Confidentiality,
   type KnowledgeObject,
   type KoFilter,
   type KoService,
   type KoSource,
+  confidentialityRank,
   isConfidential,
+  normalizeConfidentiality,
 } from "../../knowledge-object";
 import { type CandidateRepo, InMemoryCandidateRepo } from "./repo";
 import {
@@ -155,6 +158,22 @@ export class LibraryService {
       : undefined;
 
     if (existing && pageId) {
+      // SCRUM-509 R4: Re-Sync eines bestehenden KO aus externer Quelle darf die Vertraulichkeit nur
+      // ANHEBEN, nie still niedrig halten. Fail-safe wie der Create-Import (R3): fehlt das Governance-
+      // Signal (ImportItem.confidentiality, s. 511), gilt „vertraulich"; eine explizit HÖHERE
+      // Importstufe wird respektiert. Ziel = die höhere aus (aktueller Stufe, Import-Boden) → nie ein
+      // Downgrade über Re-Sync. Der Upgrade läuft durch setConfidentiality (transaktional: Lock + CAS +
+      // Audit) und wird von der nachfolgenden revise() nicht angetastet.
+      const currentConf = normalizeConfidentiality(existing.confidentiality);
+      const importFloor: Confidentiality = item.confidentiality ?? "vertraulich";
+      const target =
+        confidentialityRank(importFloor) > confidentialityRank(currentConf)
+          ? importFloor
+          : currentConf;
+      if (target !== currentConf) {
+        await this.koService.setConfidentiality(existing.id, target, item.author ?? actor);
+      }
+
       const current = existing.sources.find((s) => s.externalId === pageId)?.sourceVersion ?? 0;
       // ben-Review #3: Ohne explizite Version NICHT hochzählen (früher `current + 1` → jeder versions-
       // lose Re-Import revidierte endlos). `?? current` heißt: „gleiche Version wie zuletzt" → No-op.
