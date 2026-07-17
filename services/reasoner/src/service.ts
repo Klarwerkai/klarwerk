@@ -102,7 +102,10 @@ export class Reasoner {
       ) {
         chain.push(this.primary);
       }
-      if ((choice === "auto" || choice === "local") && this.usingSecondary()) {
+      // SCRUM-502 Round 4 (P1): vertraulich schließt die Cloud aus, ABER der lokale LLM (on-prem, kein
+      // externer Egress) darf einspringen — auch bei expliziter cloud/model-Wahl. So degradiert
+      // vertraulicher Text nicht unnötig auf „deterministisch", wenn ein lokales Modell verdrahtet ist.
+      if ((choice === "auto" || choice === "local" || confidential) && this.usingSecondary()) {
         chain.push(this.secondary);
       }
     }

@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { OverlapService } from "../../../conflicts";
-import type { KoService } from "../../../knowledge-object";
+import type { Confidentiality, KoService } from "../../../knowledge-object";
 import type { Reasoner } from "../../../reasoner";
 import { authorizesCheckText } from "../addon-principal";
 import { addonRateLimit } from "../addon-rate-limit";
@@ -76,23 +76,24 @@ function toResponse(result: CheckTextResult, note: string | null = null) {
   };
 }
 
-// SCRUM-502 Schicht 2 (Round 3): fail-safe Herkunfts-Auflösung des geprüften Textes. source:"ko"
-// lädt die gespeicherte Stufe autoritativ (unbekannte koId → vertraulich); draft trägt sie explizit;
-// jedes fehlende/ungültige Signal → vertraulich. Wiederverwendet dieselbe reine Regel wie der Reasoner.
+// SCRUM-502 Round 4: der GEPRÜFTE Text ist immer transient (Paste/Upload). Die Stufe kommt aus der
+// aktuellen draft/transient-document-Deklaration; eine koId ist NUR ein hebender Backstop, nie ein
+// Freigabe-Anker für frei gelieferten Text. Fehlt/ungültig → fail-safe vertraulich. Gleiche reine
+// Regel wie der Reasoner.
 async function resolveCheckedTextConfidential(
   body: { source?: string; koId?: string; confidentiality?: string },
   ko: KoService,
 ): Promise<boolean> {
-  if (body.source === "ko" && typeof body.koId === "string" && body.koId.length > 0) {
+  let backstop = { found: false } as { found: boolean; level?: Confidentiality | null };
+  if (
+    (body.source === "draft" || body.source === "transient-document") &&
+    typeof body.koId === "string" &&
+    body.koId.length > 0
+  ) {
     const stored = await ko.get(body.koId);
-    return classifyProvenanceConfidential(body.source, body.koId, body.confidentiality, {
-      found: stored !== undefined,
-      level: stored?.confidentiality ?? null,
-    });
+    backstop = { found: stored !== undefined, level: stored?.confidentiality ?? null };
   }
-  return classifyProvenanceConfidential(body.source, body.koId, body.confidentiality, {
-    found: false,
-  });
+  return classifyProvenanceConfidential(body.source, body.confidentiality, backstop);
 }
 
 export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): FastifyPluginAsync {

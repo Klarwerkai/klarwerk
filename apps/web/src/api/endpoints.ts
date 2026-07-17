@@ -70,19 +70,25 @@ function qs(params?: Record<string, string | undefined>): string {
 
 export type KoFilter = { type?: string; status?: string; category?: string; tag?: string };
 
-// SCRUM-502 Schicht 2 (Round 3): verbindlicher Herkunftsvertrag an die Modell-Aktions-Endpunkte.
-// Der Client MUSS die Herkunft deklarieren — ein diskriminierter Typ erzwingt das zur Compile-Zeit:
-//  - source "ko":    Aktion an einem GESPEICHERTEN KO → koId Pflicht (Server lädt Stufe autoritativ).
-//  - source "draft": noch nicht gespeicherter Draft → explizite confidentiality Pflicht (auch "intern").
-// Fehlt/ungültig serverseitig → fail-safe vertraulich (kein Cloud-Egress).
-export type ReasonerProvenance =
-  | { source: "ko"; koId: string }
-  | { source: "draft"; confidentiality: Confidentiality };
+// SCRUM-502 Round 4: die Einstufung ist an den VERARBEITETEN Text gebunden. Da die Reasoner-Aktionen
+// immer client-gelieferten Text bearbeiten (Editor/Upload, nie den gespeicherten KO-Body), deklariert
+// der Client die AKTUELLE Stufe des Textes selbst:
+//  - source "draft":              getippter/bearbeiteter Text (Capture, Studio, KnowledgeDetail-Editor).
+//  - source "transient-document": hochgeladener Dokumenttext (BodyExtractPanel/„Aus Datei").
+// `confidentiality` ist Pflicht (inkl. "intern"). Optionale `koId` ist NUR ein hebender Backstop
+// (Downgrade-Schutz eines gespeichert-vertraulichen KOs), NIE ein Freigabe-Anker.
+export type ReasonerProvenance = {
+  source: "draft" | "transient-document";
+  confidentiality: Confidentiality;
+  koId?: string;
+};
 
 function provenanceFields(p: ReasonerProvenance): Record<string, string> {
-  return p.source === "ko"
-    ? { source: "ko", koId: p.koId }
-    : { source: "draft", confidentiality: p.confidentiality };
+  return {
+    source: p.source,
+    confidentiality: p.confidentiality,
+    ...(p.koId ? { koId: p.koId } : {}),
+  };
 }
 
 // PUT /api/kos/:id — ein Mutations-Endpunkt, per {action} verzweigt.

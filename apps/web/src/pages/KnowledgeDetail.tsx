@@ -166,19 +166,24 @@ const USABILITY_TONE: Record<KoUsability, string> = {
 export function KnowledgeDetail(): JSX.Element {
   const { t, i18n } = useTranslation();
   const { id = "" } = useParams();
-  // SCRUM-313: KI-Nachbearbeitung der Aussage im Edit-Modus (Vorschau + bewusste Übernahme, kein
-  // Auto-Submit). Nutzt den vorhandenen reasoner.assist-Endpunkt mit optionaler Instruktion.
-  const runAssist = (input: string, instruction?: string): Promise<string> =>
-    endpoints.reasoner
-      // SCRUM-502 Schicht 2 (Round 3): Herkunft source:"ko" + koId → der Server lädt die gespeicherte
-      // Stufe autoritativ; ein vertrauliches KO nutzt nie die Cloud, ohne dass der Client sie deklariert.
-      .assist(input, toReasonerLocale(i18n.language), instruction, { source: "ko", koId: id })
-      .then((r) => r.text);
   // SCRUM-294: Demo-Kontext der Zielseite (über Library erreicht) — nur Anzeige/Link-Kontext.
   const [params] = useSearchParams();
   const reviewReworkContext = isReviewReworkContext(params);
   const { role } = useRole();
   const query = useKo(id);
+  // SCRUM-313: KI-Nachbearbeitung der Aussage im Edit-Modus (Vorschau + bewusste Übernahme, kein
+  // Auto-Submit). Nutzt den vorhandenen reasoner.assist-Endpunkt mit optionaler Instruktion.
+  // SCRUM-502 Round 4: der bearbeitete EDITOR-Text ist client-geliefert → source:"draft" mit der
+  // AKTUELLEN Stufe des KOs (nicht source:"ko"+lose id). Die koId dient nur als hebender Backstop:
+  // ein gespeichert-vertrauliches KO bleibt vertraulich, auch wenn die Deklaration das verfehlt.
+  const runAssist = (input: string, instruction?: string): Promise<string> =>
+    endpoints.reasoner
+      .assist(input, toReasonerLocale(i18n.language), instruction, {
+        source: "draft",
+        confidentiality: confidentialityOf(query.data?.confidentiality),
+        koId: id,
+      })
+      .then((r) => r.text);
   const evidence = useKoEvidence(id);
   const versions = useKoVersions(id);
   const koList = useKos();
@@ -983,7 +988,11 @@ export function KnowledgeDetail(): JSX.Element {
                             Punkte (G-2: nur mit Belegstelle) werden ANGEHÄNGT, nichts ersetzt;
                             die Quelle je Punkt wird sofort am KO vermerkt (add-source, Stufe 2). */}
                         <BodyExtractPanel
-                          provenance={{ source: "ko", koId: id }}
+                          provenance={{
+                            source: "transient-document",
+                            confidentiality: confidentialityOf(query.data?.confidentiality),
+                            koId: id,
+                          }}
                           onAppend={(pts, name) => {
                             setEdit((prev) =>
                               prev

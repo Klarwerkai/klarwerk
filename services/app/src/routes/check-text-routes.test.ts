@@ -289,7 +289,7 @@ describe("SCRUM-491 Slice 5 (ben-Review): kontrollierter 400 statt 500 bei fehle
 const TEXT_IDENTISCH = "Nach dem Anfahren 10 Sekunden warten, dann die Pumpe entlüften und prüfen.";
 const TEXT_MITTEL = "Nach dem Anfahren zehn Sekunden warten.";
 
-function mkKo(id: string, statement: string): KnowledgeObject {
+function mkKo(id: string, statement: string, confidentiality?: string): KnowledgeObject {
   return {
     id,
     title: "Pumpe entlüften",
@@ -300,6 +300,7 @@ function mkKo(id: string, statement: string): KnowledgeObject {
     tags: [],
     category: "Wartung",
     asset: null,
+    ...(confidentiality ? { confidentiality } : {}),
   } as unknown as KnowledgeObject;
 }
 
@@ -345,10 +346,12 @@ const fakeGuards = {
   requirePermission: async () => ({ id: "u1" }),
 } as unknown as Guards;
 
-async function stage2App() {
+async function stage2App(
+  seed: KnowledgeObject[] = [mkKo("v2", TEXT_MITTEL), mkKo("noise", "völlig anderer inhalt hier")],
+) {
   const repo = new InMemoryOverlapRepo();
   const { prefilter, embed } = spyPrefilter([{ id: "v2" }]);
-  const { ko } = fakeKo([mkKo("v2", TEXT_MITTEL), mkKo("noise", "völlig anderer inhalt hier")]);
+  const { ko } = fakeKo(seed);
   const judgeDuplicate = vi.fn(async () => teilweiseVerdict);
   const reasoner = {
     judgeDuplicate,
@@ -453,6 +456,44 @@ describe("SCRUM-491 Slice 6: Stufe 2 (want:'deep') mit injiziertem Fake-Judge", 
     expect(judgeDuplicate).toHaveBeenCalled();
     expect(embed).toHaveBeenCalled();
     expect(res.json().note).toBeNull();
+  });
+
+  // SCRUM-502 Round 4 (Sicherheits-Kern): eine lose koId darf frei gelieferten Text NIE freigeben.
+  it("want:'deep' + source:'ko' + koId (loser Anker) → KEIN Judge, KEIN embed (fail-safe)", async () => {
+    const { app, embed, judgeDuplicate } = await stage2App();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/check-text",
+      // Genau der R4-Exploit: fremder/interner KO-Anker für frei gelieferten Text.
+      payload: { text: TEXT_IDENTISCH, want: "deep", source: "ko", koId: "v2" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(judgeDuplicate).not.toHaveBeenCalled();
+    expect(embed).not.toHaveBeenCalled();
+    expect(res.json().note).toBeTruthy();
+  });
+
+  // koId-Backstop HEBT: intern deklariert, aber das referenzierte KO ist gespeichert-vertraulich.
+  it("want:'deep' + source:draft intern + koId eines vertraulichen KOs → KEIN Judge/embed (Backstop hebt)", async () => {
+    const { app, embed, judgeDuplicate } = await stage2App([
+      mkKo("v2", TEXT_MITTEL, "vertraulich"),
+      mkKo("noise", "völlig anderer inhalt hier"),
+    ]);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/check-text",
+      payload: {
+        text: TEXT_IDENTISCH,
+        want: "deep",
+        source: "draft",
+        confidentiality: "intern",
+        koId: "v2",
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(judgeDuplicate).not.toHaveBeenCalled();
+    expect(embed).not.toHaveBeenCalled();
+    expect(res.json().note).toBeTruthy();
   });
 });
 

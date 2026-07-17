@@ -764,4 +764,19 @@ describe("SCRUM-502 Schicht 2: Vertraulichkeit routet an der Cloud vorbei", () =
 
     expect(calls).toEqual(["cloud:assist", "cloud:interview", "cloud:extract"]);
   });
+
+  // SCRUM-502 Round 4 (P1): vertraulich + EXPLIZITE cloud/model-Wahl → der lokale LLM springt ein,
+  // statt unnötig auf „deterministisch" zu degradieren (nur die Cloud ist gesperrt, nicht on-prem).
+  it("vertraulich + explizite cloud-Wahl + lokal verdrahtet → lokal statt deterministisch", async () => {
+    const calls: string[] = [];
+    const cloud = recordingProvider("cloud", calls);
+    const local = recordingProvider("local", calls);
+    const reasoner = new Reasoner(cloud, new DeterministicProvider(), undefined, undefined, local);
+    reasoner.setTaskConfig({ global: "cloud", perTask: {} }); // explizit NICHT auto
+
+    const res = await reasoner.structure("Geheimer Rohtext.", "de", true);
+
+    expect(calls).toEqual(["local:structure"]); // Cloud gesperrt, lokal übernimmt (kein deterministisch)
+    expect(res.demo).toBe(false);
+  });
 });

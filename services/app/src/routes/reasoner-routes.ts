@@ -16,40 +16,38 @@ function normalizeLocale(value: unknown): ReasonerLocale {
   return value === "en" ? "en" : "de";
 }
 
-// SCRUM-502 Schicht 2 (Round 3, ben-Review): verbindlicher Herkunftsvertrag, FAIL-SAFE. Die frühere
-// Regel war fail-OPEN — fehlte jedes Signal, ging der Text an die Cloud. Jetzt MUSS der Client die
-// Herkunft des Modell-Aktions-Textes über `source` deklarieren; im Zweifel gilt „vertraulich"
-// (kein Cloud-Egress). Reine, testbare Kern-Regel:
-//   source "ko"    → koId Pflicht + gültig; der Server lädt die GESPEICHERTE Stufe autoritativ.
-//                    Fehlende/UNBEKANNTE koId → vertraulich (NIE false — Downgrade unmöglich).
-//   source "draft" → explizite confidentiality-Stufe (inkl. "intern") Pflicht; fehlt/ungültig → vertraulich.
-//   alles andere (plain / fehlend / ungültig) für einen KO-/Draft-Task → vertraulich.
-// `stored` ist das Ergebnis des koId-Loads (found=false, wenn keine oder unbekannte koId).
+// SCRUM-502 Round 4 (ben-Review): die Einstufung ist an den VERARBEITETEN TEXT gebunden, nicht an
+// eine lose koId. Round 3 ehrte `source:"ko"` und stufte nach der GESPEICHERTEN KO-Stufe ein —
+// verarbeitete aber frei gelieferten Text. Damit konnte ein fremdes/internes KO als Freigabe-Anker
+// für beliebigen (vertraulichen) Text dienen (Editor-Text, Upload). Round 4:
+//   - Gültige Quellen für client-gelieferten Text: "draft" (Editor/getippt) und "transient-document"
+//     (Upload). Beide tragen die AKTUELLE Stufe EXPLIZIT (inkl. "intern"); fehlt/ungültig → fail-safe.
+//   - Eine mitgelieferte koId ist NUR ein Backstop, der die Stufe HEBEN darf (Schutz vor Downgrade
+//     eines gespeichert-vertraulichen KOs), NIEMALS senken → sie kann nie als falscher Freigabe-Anker
+//     dienen (ein internes/fremdes KO hebt nichts).
+//   - Eine bloße `source:"ko"` (loser Anker für frei gelieferten Text) wird NICHT mehr geehrt →
+//     fail-safe vertraulich. (Ein künftiger digest-/versionsgebundener Pfad könnte sie re-aktivieren.)
+// `backstop` ist das Ergebnis eines optionalen koId-Loads (found=false → kein Backstop).
 export type StoredLookup = { found: boolean; level?: Confidentiality | null };
+
+const CLIENT_TEXT_SOURCES = new Set(["draft", "transient-document"]);
 
 export function classifyProvenanceConfidential(
   source: unknown,
-  koId: unknown,
   declared: unknown,
-  stored: StoredLookup,
+  backstop: StoredLookup,
 ): boolean {
-  if (source === "ko") {
-    if (typeof koId !== "string" || koId.length === 0) {
-      return true; // fail-safe: KO-Quelle ohne koId
-    }
-    if (!stored.found) {
-      return true; // fail-safe: unbekannte koId (nie stillschweigend false)
-    }
-    return isConfidential(stored.level ?? null);
-  }
-  if (source === "draft") {
-    // Explizite, gültige Stufe (auch "intern") ist Pflicht — fehlt/ungültig → fail-safe.
+  if (typeof source === "string" && CLIENT_TEXT_SOURCES.has(source)) {
+    // Explizite, gültige AKTUELLE Stufe des Textes ist Pflicht — fehlt/ungültig → fail-safe.
     if (declared !== "intern" && declared !== "vertraulich" && declared !== "streng_vertraulich") {
       return true;
     }
-    return isConfidential(declared);
+    // Backstop hebt nur: ein gespeichert-vertrauliches KO (via koId) macht auch als "intern"
+    // deklarierten Text vertraulich; ein internes/unbekanntes KO senkt nie eine Deklaration.
+    return isConfidential(declared) || isConfidential(backstop.level ?? null);
   }
-  return true; // plain/fehlend/ungültig für einen KO-/Draft-Task → fail-safe vertraulich
+  // source:"ko"/plain/fehlend/ungültig → loser/kein Anker → fail-safe vertraulich.
+  return true;
 }
 
 // Reasoner (§2.5): ein einheitlicher, modellagnostischer Endpunkt. 'structure' formt Rohtext
@@ -66,21 +64,25 @@ export interface ReasonerRoutesDeps {
 export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): FastifyPluginAsync {
   const { reasoner, ask, externalKnowledge, ko } = deps;
 
-  // SCRUM-502 Schicht 2 (Round 3): fail-safe Herkunftsvertrag. Lädt die gespeicherte Stufe NUR für
-  // eine gültige source:"ko" + koId; alle anderen Fälle klassifiziert die reine Regel (fail-safe).
+  // SCRUM-502 Round 4: die Stufe kommt aus der AKTUELLEN Text-Deklaration (draft/transient-document).
+  // Eine koId wird — falls mitgeliefert — NUR als hebender Backstop geladen (Downgrade-Schutz), nie
+  // als Freigabe-Anker. Die reine Regel entscheidet fail-safe.
   const resolveConfidential = async (
     source: unknown,
     koId: unknown,
     declared: unknown,
   ): Promise<boolean> => {
-    if (source === "ko" && typeof koId === "string" && koId.length > 0) {
+    let backstop: StoredLookup = { found: false };
+    if (
+      typeof source === "string" &&
+      CLIENT_TEXT_SOURCES.has(source) &&
+      typeof koId === "string" &&
+      koId.length > 0
+    ) {
       const stored = await ko.get(koId);
-      return classifyProvenanceConfidential(source, koId, declared, {
-        found: stored !== undefined,
-        level: stored?.confidentiality ?? null,
-      });
+      backstop = { found: stored !== undefined, level: stored?.confidentiality ?? null };
     }
-    return classifyProvenanceConfidential(source, koId, declared, { found: false });
+    return classifyProvenanceConfidential(source, declared, backstop);
   };
 
   return async (app) => {
@@ -97,11 +99,12 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         // SCRUM-451: Ergebnis-Sprache für 'extract' — "system" (Default, UI-Sprache) oder
         // "source" (Sprache des Dokuments, nichts übersetzen).
         outputLanguage?: "system" | "source";
-        // SCRUM-502 Schicht 2 (Round 3): verbindlicher Herkunfts-Discriminator. `source:"ko"` =
-        // Aktion an einem GESPEICHERTEN KO (koId Pflicht, Server lädt Stufe autoritativ);
-        // `source:"draft"` = noch nicht gespeicherter Draft (confidentiality Pflicht, inkl. "intern");
-        // fehlt/ungültig → fail-safe vertraulich (kein Cloud-Egress).
-        source?: "ko" | "draft" | "plain";
+        // SCRUM-502 Round 4: Herkunft des VERARBEITETEN Textes. Da die Reasoner-Aktionen immer
+        // client-gelieferten Text bearbeiten, sind nur die Text-Quellen gültig: `draft` (Editor/
+        // getippt) und `transient-document` (Upload) — beide mit AKTUELLER `confidentiality` (Pflicht,
+        // inkl. "intern"). Optionale `koId` ist NUR ein hebender Backstop (Downgrade-Schutz), nie ein
+        // Freigabe-Anker. Fehlt/ungültig → fail-safe vertraulich.
+        source?: "draft" | "transient-document";
         koId?: string;
         confidentiality?: Confidentiality;
       };
