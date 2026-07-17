@@ -83,11 +83,14 @@ export function askRoutes(ask: AskService, guards: Guards): FastifyPluginAsync {
         const locale: "de" | "en" = request.body.locale === "en" ? "en" : "de";
         const auth = request.authContext;
         if (auth?.authKind === "addon") {
-          // SCRUM-490 D1/D2: validated-only + count_only für den Nur-Lese-Add-on-Key (unverändert).
+          // SCRUM-490 D1/D2: validated-only + count_only für den Nur-Lese-Add-on-Key. R2 (B1):
+          // retrievalOnly → der vertrauliche Dokumenttext wird NIE ans Modell/den Embedder gegeben; die
+          // Antwort ist rein Retrieval gegen validierte, nicht-vertrauliche KOs (kein Egress).
           reply.code(200).send(
             await ask.ask(question, auth.principal.id, locale, {
               validatedOnly: true,
               gapPolicy: "count_only",
+              retrievalOnly: true,
             }),
           );
           return;

@@ -122,11 +122,12 @@ import {
   addonApiEnabled,
   resolveAddonOrigin,
 } from "./addon-api";
+import { AddonAuthAttemptThrottle, addonAuthThrottleConfigFromEnv } from "./addon-auth-throttle";
 import { matchAddonRoute, principalHasCapability, resolveAddonAuth } from "./addon-principal";
 import type { SemanticPrefilter } from "./duplicate-detection";
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
-import { makeGuards } from "./http";
+import { makeGuards, tokenFromRequest } from "./http";
 import { impactReport } from "./impact";
 import { makeAssignmentNotifier } from "./notify";
 import { adminRoutes } from "./routes/admin-routes";
@@ -498,8 +499,29 @@ export function buildApp(
     //  - Key vorhanden + ungültig → 401 (kein Fallback auf Session mit falschem Key).
     //  - kein Key                → Session-Kontext (Live-App unverändert).
     app.decorateRequest("authContext", null);
+    // SCRUM-490 R2 (B2): IP-Drossel für fehlgeschlagene Add-on-Auth-Versuche (falscher/fehlender Key)
+    // gegen die Add-on-Endpunkte. Ein gültiger Key läuft über addonRateLimit; eine gültige Session ist
+    // ausgenommen (Session-Pfad ungedrosselt).
+    const authAttemptThrottle = new AddonAuthAttemptThrottle(addonAuthThrottleConfigFromEnv());
     app.addHook("onRequest", async (request, reply) => {
       const auth = resolveAddonAuth(request);
+      // B2: fehlgeschlagener Zugang GEGEN einen Add-on-Endpunkt? = ungültiger Key ODER (kein gültiger Key
+      // UND keine Session). Nur solche Versuche werden je IP gezählt; gültiger Key/gültige Session nie.
+      const rawPath = (request.raw.url ?? "").split("?")[0];
+      const isAddonPath = rawPath === ADDON_ASK_PATH || rawPath === ADDON_CHECK_TEXT_PATH;
+      if (auth.kind !== "valid" && isAddonPath) {
+        const failed = auth.kind === "invalid" || tokenFromRequest(request) === undefined;
+        if (failed && !authAttemptThrottle.registerFailure(request.ip, Date.now())) {
+          reply
+            .code(429)
+            .header("retry-after", String(authAttemptThrottle.retryAfterSeconds()))
+            .send({
+              error: "RATE_LIMITED",
+              message: "Zu viele Zugangsversuche — bitte später erneut.",
+            });
+          return reply;
+        }
+      }
       if (auth.kind === "invalid") {
         reply.code(401).send({ error: "UNAUTHENTICATED", message: "Ungültiger Add-in-Zugang." });
         return reply;

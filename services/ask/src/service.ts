@@ -72,7 +72,15 @@ export class AskService {
     // (Session-Pfad) unverändert: Gap anlegen (actor="system"). "count_only" (addon-Pfad) legt KEINE
     // Wissenslücke an — die Zählung liefert stattdessen das metadata-only ask.query-Audit. Der Service
     // bleibt generisch: er kennt keine addon-ID, nur die explizit übergebene Policy.
-    opts?: { demoSeed?: boolean; validatedOnly?: boolean; gapPolicy?: "create" | "count_only" },
+    // SCRUM-490 R2 (B1): retrievalOnly (Add-on-Pfad) → der (vertrauliche) Dokumenttext wird NICHT ans
+    // Modell synthetisiert. Die Antwort entsteht rein aus dem Retrieval gegen die bereits gefilterten
+    // (validiert, nicht-vertraulich) Kandidaten — kein Cloud-/Local-LLM, kein Embedder, kein Egress.
+    opts?: {
+      demoSeed?: boolean;
+      validatedOnly?: boolean;
+      gapPolicy?: "create" | "count_only";
+      retrievalOnly?: boolean;
+    },
   ): Promise<AskResult> {
     // SCRUM-361 / AG-03 / FR-ASK-02 / NFR-PERF-03: Ask nutzt NICHT mehr `koService.list()` (Laden des
     // gesamten Pools) als Kernpfad, sondern eine datenquellennahe, begrenzte Kandidaten-Vorauswahl
@@ -106,7 +114,17 @@ export class AskService {
     // Gate dominiert, validierte/ready bevorzugt). Idempotent zur Vorauswahl: Top-K der vorgefilterten
     // Menge = Top-K, da jeder relevante KO (Token-Überschneidung) bereits im Prefilter enthalten ist.
     const candidates = selectCandidates(question, refs, DEFAULT_TOP_K);
-    const result = await this.reasoner.answer(question, candidates, locale);
+    // SCRUM-490 R2 (B1): Add-on-Pfad → RETRIEVAL-ONLY (kein Modell-/Embedder-Egress des Dokumenttexts).
+    // Sonst der übliche Reasoner-Weg (Session-Pfad unverändert).
+    const rawResult = opts?.retrievalOnly
+      ? await this.reasoner.answerRetrievalOnly(question, candidates, locale)
+      : await this.reasoner.answer(question, candidates, locale);
+    // SCRUM-490 R2 (A2): Quellenpflicht — ein „Treffer" ohne echte Quelle ist KEIN belegter Treffer.
+    // answered=true mit leeren sources → als ehrliche Leer-Antwort behandeln (nie eine Quelle vortäuschen).
+    const result =
+      rawResult.answered && rawResult.sources.length === 0
+        ? { ...rawResult, answered: false, answer: null }
+        : rawResult;
     // FR-ANA-02 / SCRUM-361: Telemetrie nachvollziehbar + ehrlich — Prefilter-/Kandidatengröße,
     // Top-K und der Retrieval-Modus (kein Inhaltstext, keine Frage im Audit).
     await this.audit?.record({

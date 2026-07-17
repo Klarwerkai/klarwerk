@@ -388,6 +388,20 @@ export class Reasoner {
     return this.runTask("answer", locale, (p) => p.answer(question, context, locale));
   }
 
+  // SCRUM-490 R2 (B1): RETRIEVAL-ONLY-Antwort für den Add-on-Pfad (Klara). Der Eingabetext ist der
+  // (vertrauliche) Dokumenttext → er darf NIE synthetisiert/egress werden. Deshalb NICHT über die
+  // Provider-Kette (Cloud/Local könnten den Text ans Modell geben), sondern AUSSCHLIESSLICH über den
+  // deterministischen (lexikalischen) Fallback gegen den bereits gefilterten (validiert, nicht-
+  // vertraulich) Kontext. Es findet KEIN Modell-/Embedder-Call statt (kein Egress). Kein Treffer →
+  // answered:false, sources:[] (ehrlich leer, koppelt A2). Die Quelle ist immer die genutzte KO-ID.
+  async answerRetrievalOnly(
+    question: string,
+    context: readonly KnowledgeRef[],
+    locale: ReasonerLocale = "de",
+  ): Promise<AnswerResult> {
+    return this.fallback.answer(question, context, locale);
+  }
+
   // FR-RSN-03: Text präzisieren; Modellfehler → deterministischer Fallback.
   async assistText(
     text: string,

@@ -228,3 +228,99 @@ describe("SCRUM-502: Ask schließt vertrauliche KOs aus", () => {
     expect(result.sources).toContain(open.id);
   });
 });
+
+// SCRUM-490 R2 (B1/A2): Add-on-Pfad = RETRIEVAL-ONLY. Der (vertrauliche) Dokumenttext darf NIE ans
+// Modell synthetisiert werden; die Antwort entsteht rein aus Retrieval gegen validierte, nicht-
+// vertrauliche KOs. Und ein „Treffer" ohne echte Quelle ist kein belegter Treffer (A2).
+describe("SCRUM-490 R2: Add-on Retrieval-only + Quellenpflicht", () => {
+  const ANSWER = (over: Partial<AnswerResult> = {}): AnswerResult => ({
+    answered: true,
+    answer: "Aus Retrieval.",
+    knowledgeClass: "gesichert",
+    trust: 80,
+    sources: ["KO-1"],
+    steps: [{ description: "Q", sourceId: "KO-1", snippet: "s" }],
+    demo: true,
+    ...over,
+  });
+
+  async function askWith(reasoner: Reasoner) {
+    const koService = new KoService({ repo: new InMemoryKoRepo() });
+    await koService.create({
+      title: "Ventil bei Überdruck",
+      statement: "Bei Überdruck Ventil X schließen.",
+      type: "best_practice",
+      category: "Anlage 1",
+      author: "anna",
+    });
+    const created = (await koService.list())[0];
+    if (created) {
+      await koService.setValidationState(created.id, { trust: 80, status: "validiert" });
+    }
+    return new AskService({ reasoner, koService, gaps: new InMemoryGapRepo() });
+  }
+
+  it("B1: retrievalOnly ruft answerRetrievalOnly — der Synthese-/Egress-Pfad (answer) wird NIE betreten", async () => {
+    const calls = { synth: 0, retrieval: 0 };
+    const fake = {
+      answer: async () => {
+        calls.synth += 1;
+        return ANSWER();
+      },
+      answerRetrievalOnly: async () => {
+        calls.retrieval += 1;
+        return ANSWER();
+      },
+    } as unknown as Reasoner;
+    const ask = await askWith(fake);
+
+    await ask.ask("Überdruck Ventil", "addon:klara", "de", {
+      retrievalOnly: true,
+      validatedOnly: true,
+      gapPolicy: "count_only",
+    });
+    expect(calls.retrieval).toBe(1);
+    expect(calls.synth).toBe(0); // KEIN Modell-Synthese-Call des Dokumenttexts
+
+    // Session-Pfad (ohne retrievalOnly) nutzt weiterhin den normalen answer().
+    await ask.ask("Überdruck Ventil");
+    expect(calls.synth).toBe(1);
+    expect(calls.retrieval).toBe(1);
+  });
+
+  it("B1: echte Retrieval-Antwort aus validiertem KO (Quelle=KO-ID); kein Treffer → ehrlich leer", async () => {
+    const ask = await askWith(new Reasoner()); // Default = deterministischer (lexikalischer) Provider
+    const hit = await ask.ask("Was tun bei Überdruck am Ventil?", "addon:klara", "de", {
+      retrievalOnly: true,
+      validatedOnly: true,
+      gapPolicy: "count_only",
+    });
+    expect(hit.result.answered).toBe(true);
+    expect(hit.result.sources.length).toBeGreaterThan(0); // echte Quelle vorhanden (A2)
+    expect(hit.gap).toBeNull(); // count_only: keine Wissenslücke
+
+    const miss = await ask.ask("Wie hoch ist der Wechselkurs heute?", "addon:klara", "de", {
+      retrievalOnly: true,
+      validatedOnly: true,
+      gapPolicy: "count_only",
+    });
+    expect(miss.result.answered).toBe(false);
+    expect(miss.result.sources).toEqual([]);
+  });
+
+  it("A2: answered=true mit LEEREN sources → als Nicht-Treffer behandelt (nie eine Quelle vortäuschen)", async () => {
+    const sourceless = {
+      answer: async () => ANSWER({ sources: [] }),
+      answerRetrievalOnly: async () => ANSWER({ sources: [] }),
+    } as unknown as Reasoner;
+    const ask = await askWith(sourceless);
+    const { result } = await ask.ask("Überdruck Ventil", "addon:klara", "de", {
+      retrievalOnly: true,
+      validatedOnly: true,
+      gapPolicy: "count_only",
+    });
+    expect(result.answered).toBe(false);
+    expect(result.answer).toBeNull();
+    expect(result.sources).toEqual([]);
+  });
+});

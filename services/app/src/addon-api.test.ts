@@ -13,7 +13,13 @@ const ORIGIN = "https://localhost:3000";
 // Sichert & restauriert die vom Add-on-Pfad gelesenen Env-Variablen um jeden Test herum, damit ein
 // Test das Flag nie an einen anderen leaked.
 const SAVED: Record<string, string | undefined> = {};
-const KEYS = ["KLARWERK_ADDON_API", "KLARWERK_ADDON_API_KEY", "KLARWERK_ADDON_ORIGIN"];
+const KEYS = [
+  "KLARWERK_ADDON_API",
+  "KLARWERK_ADDON_API_KEY",
+  "KLARWERK_ADDON_ORIGIN",
+  "KLARWERK_ADDON_AUTH_MAX",
+  "KLARWERK_ADDON_AUTH_WINDOW",
+];
 beforeEach(() => {
   for (const k of KEYS) {
     SAVED[k] = process.env[k];
@@ -301,5 +307,68 @@ describe("KLARWERK_ADDON_API — Flag AN", () => {
       payload: { question: "Hallo?" },
     });
     expect(res.statusCode).toBe(401);
+  });
+
+  // SCRUM-490 R2 (B2): falsche UND fehlende-Key-Versuche gegen den Add-on-Endpunkt werden je IP
+  // gedrosselt (Brute-Force-/Lastfläche), ohne den Session-Pfad zu drosseln.
+  it("B2: viele FALSCHE Key-Versuche → gedrosselt (429 mit Retry-After)", async () => {
+    process.env.KLARWERK_ADDON_AUTH_MAX = "2";
+    const app = buildApp(buildServices());
+    const bad = () =>
+      app.inject({
+        method: "POST",
+        url: "/api/ask",
+        headers: { [ADDON_KEY_HEADER]: "falsch" },
+        payload: { question: "x" },
+      });
+    expect((await bad()).statusCode).toBe(401);
+    expect((await bad()).statusCode).toBe(401);
+    const throttled = await bad();
+    expect(throttled.statusCode).toBe(429);
+    expect(throttled.headers["retry-after"]).toBeDefined();
+  });
+
+  it("B2: viele FEHLENDE-Key-Versuche ohne Session → ebenfalls gedrosselt (429)", async () => {
+    process.env.KLARWERK_ADDON_AUTH_MAX = "2";
+    const app = buildApp(buildServices());
+    const noAuth = () =>
+      app.inject({ method: "POST", url: "/api/ask", payload: { question: "x" } });
+    await noAuth();
+    await noAuth();
+    expect((await noAuth()).statusCode).toBe(429);
+  });
+
+  it("B2: eine GÜLTIGE Session wird NIE gedrosselt (Session-Pfad unbeeinträchtigt)", async () => {
+    process.env.KLARWERK_ADDON_AUTH_MAX = "1"; // sehr streng — würde bei Zählung sofort greifen
+    const { app, headers } = await appWithValidatedKo();
+    for (let i = 0; i < 4; i++) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/ask",
+        headers,
+        payload: { question: "Wie wird die Zylinderkopfdichtung XQ42 gewechselt?" },
+      });
+      expect(res.statusCode).toBe(200); // nie 429 (Session zählt nicht als Fehlversuch)
+    }
+  });
+
+  // SCRUM-490 R2 (Punkt 6): produktive HTTPS-Taskpane-Origin via KLARWERK_ADDON_ORIGIN, in CORS erzwungen.
+  it("Punkt 6: KLARWERK_ADDON_ORIGIN setzt die Prod-Origin; nur sie wird freigegeben (sonst fail-closed)", async () => {
+    process.env.KLARWERK_ADDON_ORIGIN = "https://app.klarwerk.ai";
+    const app = buildApp(buildServices());
+    const prod = await app.inject({
+      method: "OPTIONS",
+      url: "/api/ask",
+      headers: { origin: "https://app.klarwerk.ai", "access-control-request-method": "POST" },
+    });
+    expect(prod.headers["access-control-allow-origin"]).toBe("https://app.klarwerk.ai");
+    // Eine andere Origin (auch die Dev-Origin) bekommt NIE ihre eigene gespiegelt — nur die konfigurierte.
+    const dev = await app.inject({
+      method: "OPTIONS",
+      url: "/api/ask",
+      headers: { origin: "https://localhost:3000", "access-control-request-method": "POST" },
+    });
+    expect(dev.headers["access-control-allow-origin"]).toBe("https://app.klarwerk.ai");
+    expect(dev.headers["access-control-allow-origin"]).not.toBe("https://localhost:3000");
   });
 });
