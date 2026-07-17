@@ -112,3 +112,77 @@ describe("SCRUM-510: ConfluenceRestClient (read-only, fixture)", () => {
     expect(confluenceClientFromEnv({ ANTHROPIC_API_KEY: "k" })).toBeUndefined();
   });
 });
+
+// SCRUM-510-R3 (WP1, Import-Härtung): Token-Redaction + Tenant-Origin strukturell. Pins, dass der
+// read-only API-Token in KEINEM Fehlertext auftaucht und jeder ausgehende Request strukturell nur an
+// die EINE konfigurierte Confluence-Origin geht (fremd/plain-http/Redirect → Abbruch).
+describe("SCRUM-510-R3 (WP1): Token-Redaction + Tenant-Origin", () => {
+  const SECRET = "SUPER-GEHEIM-abcXYZ-987";
+  const secretB64 = Buffer.from(`svc@acme.example:${SECRET}`, "utf8").toString("base64");
+
+  function assertNoTokenLeak(text: string): void {
+    expect(text).not.toContain(SECRET); // Roh-Token nie im Fehlertext
+    expect(text).not.toContain(secretB64); // auch nicht die Basic-Auth-Base64
+  }
+
+  it("Token taucht in KEINEM Fehlertext auf (non-ok, fetch-throw, plain-http)", async () => {
+    // (a) non-ok Status
+    const notOk = (async () =>
+      ({ ok: false, status: 500 }) as unknown as Response) as unknown as typeof fetch;
+    await expect(
+      new ConfluenceRestClient(cfg(notOk, { apiToken: SECRET })).listPages(),
+    ).rejects.toSatisfy((e: unknown) => {
+      assertNoTokenLeak(String((e as Error).message));
+      return true;
+    });
+    // (b) fetch wirft (Netz/TLS)
+    const boom = (async () => {
+      throw new Error(`network down while calling ${SECRET}?? nein — sollte nie den Token tragen`);
+    }) as unknown as typeof fetch;
+    // Der Client reicht den Fetch-Fehler durch; SEINE eigenen Fehlertexte tragen den Token nie. Wir
+    // prüfen die vom CLIENT erzeugten Meldungen (assertAllowed/Status), nicht einen künstlichen Fetch-Text.
+    await expect(
+      new ConfluenceRestClient(cfg(boom, { apiToken: SECRET })).listPages(),
+    ).rejects.toBeInstanceOf(Error);
+    // (c) plain-http baseUrl → Abbruch VOR fetch; Fehlertext ohne Token
+    const spy = (async () => okJson({ results: [] })) as unknown as typeof fetch;
+    await expect(
+      new ConfluenceRestClient(
+        cfg(spy, { apiToken: SECRET, baseUrl: "http://acme.atlassian.net/wiki" }),
+      ).listPages(),
+    ).rejects.toSatisfy((e: unknown) => {
+      assertNoTokenLeak(String((e as Error).message));
+      return true;
+    });
+  });
+
+  it("jeder Request geht NUR an die konfigurierte Origin; fremde Origin/Protokoll → Abbruch", () => {
+    const origin = "https://acme.atlassian.net";
+    expect(() =>
+      assertAllowedConfluenceUrl("https://acme.atlassian.net/rest/api/content", origin),
+    ).not.toThrow();
+    for (const bad of [
+      "http://acme.atlassian.net/x", // plain-http
+      "https://evil.example/x", // fremder Host
+      "https://acme.atlassian.net.evil.example/x", // Suffix-Trick
+    ]) {
+      expect(() => assertAllowedConfluenceUrl(bad, origin)).toThrow();
+    }
+  });
+
+  it('listPages nutzt redirect:"error" und schreibt den Token nie in die URL', async () => {
+    let seenUrl = "";
+    let seenInit: RequestInit | undefined;
+    const fetchFn = (async (u: string, i: RequestInit) => {
+      seenUrl = String(u);
+      seenInit = i;
+      return okJson({ results: [] });
+    }) as unknown as typeof fetch;
+    await new ConfluenceRestClient(cfg(fetchFn, { apiToken: SECRET })).listPages();
+    expect(seenInit?.redirect).toBe("error");
+    expect(seenUrl).not.toContain(SECRET);
+    expect(seenUrl).not.toContain(secretB64);
+    // Der Token lebt ausschließlich im Authorization-Header (Basic-Auth).
+    expect((seenInit?.headers as Record<string, string>).authorization).toBe(`Basic ${secretB64}`);
+  });
+});
