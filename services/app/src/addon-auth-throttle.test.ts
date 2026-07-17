@@ -3,6 +3,7 @@ import {
   AddonAuthAttemptThrottle,
   addonAuthThrottleConfigFromEnv,
   isAddonEndpointPath,
+  isCatchAllTrustEntry,
   resolveTrustProxy,
 } from "./addon-auth-throttle";
 
@@ -94,5 +95,36 @@ describe("SCRUM-490 R3 (B2): resolveTrustProxy", () => {
       "10.0.0.1",
       "172.16.0.0/12",
     ]);
+  });
+});
+
+// SCRUM-490 R4 (B2, Fix 2): Catch-all-CIDRs werden als Blanket abgelehnt (nie „vertraue alle").
+describe("SCRUM-490 R4 (B2): resolveTrustProxy lehnt Catch-all ab", () => {
+  it("isCatchAllTrustEntry erkennt /0-Masken, unspecified-Adressen und Wildcards", () => {
+    for (const e of ["0.0.0.0/0", "::/0", "2000::/0", "0/0", "0.0.0.0", "::", "*", ""]) {
+      expect(isCatchAllTrustEntry(e)).toBe(true);
+    }
+    for (const e of ["10.0.0.0/8", "172.16.0.0/12", "10.0.0.1", "::1", "fd00::/8"]) {
+      expect(isCatchAllTrustEntry(e)).toBe(false);
+    }
+  });
+
+  it("0.0.0.0/0 und ::/0 → KEIN Vertrauen (wie unset)", () => {
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "0.0.0.0/0" })).toBe(false);
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "::/0" })).toBe(false);
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "2000::/0" })).toBe(false);
+  });
+
+  it("gemischt: Catch-all-Anteil verworfen, explizite Subnetze bleiben", () => {
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "0.0.0.0/0, 10.0.0.0/8" })).toEqual([
+      "10.0.0.0/8",
+    ]);
+    // NUR Catch-all → nichts Explizites übrig → false (fail-safe).
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "0.0.0.0/0, ::/0" })).toBe(false);
+  });
+
+  it("explizites Subnetz + Hop-Count bleiben weiter gültig (kein Regress)", () => {
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "172.16.0.0/12" })).toEqual(["172.16.0.0/12"]);
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "2" })).toBe(2);
   });
 });

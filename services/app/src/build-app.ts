@@ -513,16 +513,25 @@ export function buildApp(
     const authAttemptThrottle = new AddonAuthAttemptThrottle(addonAuthThrottleConfigFromEnv());
     app.addHook("onRequest", async (request, reply) => {
       const auth = resolveAddonAuth(request);
-      // SCRUM-490 R3 (B2): Throttle für fehlgeschlagene Add-on-Auth-Versuche — VOR dem 401/Principal.
-      //  Fix 1: CORS-Preflight (OPTIONS) zählt NIE als Versuch (vor der Zählung raus).
+      // SCRUM-490 R3/R4 (B2): Throttle für fehlgeschlagene Add-on-Auth-Versuche — VOR dem 401/Principal.
       //  Fix 3: ein UNGÜLTIGER Key zählt auf JEDER Route (kein 401/403-Gültigkeitsorakel, keine
       //         ungedrosselte Fremdroute); fehlende Auth zählt gegen die NORMALISIERTEN Add-on-Endpunkte
       //         (Trailing-Slash/%-Enkodierung/Case/Dot-Segmente, isAddonEndpointPath).
       //  Fix 2: eine „gültige Session" wird ECHT authentifiziert (auth.authenticate) — ein gefälschter
       //         Bearer/erfundenes kw_session-Cookie umgeht die Zählung NICHT (nicht nur Token-Präsenz).
-      if (request.method !== "OPTIONS") {
+      //  R4/Fix 1: NUR ein ECHTER Preflight (OPTIONS OHNE Key-Header) ist ausgenommen. OPTIONS MIT
+      //         gesetztem x-klarwerk-addon-key ist KEIN legitimer Preflight (Browser senden auf dem
+      //         Preflight nie den Key), sondern ein Auth-Versuch → wird gezählt (schließt das 401/403-
+      //         Orakel via OPTIONS). Key-Präsenz = auth.kind ist „valid"/„invalid" (nicht „none").
+      const hasKey = auth.kind === "valid" || auth.kind === "invalid";
+      const isRealPreflight = request.method === "OPTIONS" && !hasKey;
+      if (!isRealPreflight) {
         let failed: boolean;
-        if (auth.kind === "invalid") {
+        if (request.method === "OPTIONS") {
+          // OPTIONS MIT Key → immer Versuch (unabhängig von der Key-Gültigkeit, damit weder 401 noch 403
+          // via Preflight ein ungedrosseltes Gültigkeitsorakel bleibt).
+          failed = true;
+        } else if (auth.kind === "invalid") {
           failed = true;
         } else if (auth.kind === "valid") {
           failed = false;

@@ -84,6 +84,8 @@ export function isAddonEndpointPath(rawUrl: string | undefined): boolean {
 //  - IP/Subnetz(e) → vertraue NUR diesen Adressen (komma-separiert), z. B. dem Traefik-/Coolify-Hop.
 //  - unset / "true"/"false"/"*" → KEIN Vertrauen (konservativ; request.ip = Socket-Peer). Blanket-Werte
 //    werden BEWUSST als „kein Vertrauen" behandelt — XFF wird nie blind geglaubt.
+// SCRUM-490 R4 (B2, Fix 2): auch Catch-all-CIDRs (0.0.0.0/0, ::/0, jede /0-Maske, unspecified-Adressen)
+// werden als Blanket abgelehnt — ein „vertraue alle Adressen"-Subnetz ist genauso spoofbar wie true.
 export function resolveTrustProxy(
   env: Record<string, string | undefined> = process.env,
 ): boolean | number | string[] {
@@ -99,9 +101,27 @@ export function resolveTrustProxy(
   if (Number.isInteger(n) && n > 0) {
     return n; // fester Hop-Count
   }
+  // Liste von IPs/Subnetzen — Catch-all-Einträge werden verworfen (nie ein All-umfassendes Subnetz
+  // vertrauen). Bleibt danach nichts Explizites übrig → fail-safe KEIN Vertrauen.
   const list = raw
     .split(",")
     .map((s) => s.trim())
-    .filter((s) => s.length > 0);
+    .filter((s) => s.length > 0 && !isCatchAllTrustEntry(s));
   return list.length > 0 ? list : false;
+}
+
+// Catch-all / All-umfassende Vertrauensangabe? /0-Präfix (0 Maskenbits = ALLES, z. B. 0.0.0.0/0, ::/0,
+// 2000::/0) ODER eine unspecified-/Wildcard-Basisadresse (0.0.0.0, ::, *). Solche Einträge würden JEDE
+// Quell-IP als vertrauenswürdigen Proxy behandeln → X-Forwarded-For spoofbar. Fail-safe abgelehnt.
+export function isCatchAllTrustEntry(entry: string): boolean {
+  const e = entry.trim().toLowerCase();
+  if (e === "" || e === "*") {
+    return true;
+  }
+  const slash = e.indexOf("/");
+  if (slash >= 0 && e.slice(slash + 1).trim() === "0") {
+    return true; // /0 = keine Maskenbits = alles
+  }
+  const base = slash >= 0 ? e.slice(0, slash).trim() : e;
+  return base === "0.0.0.0" || base === "::" || base === "*";
 }

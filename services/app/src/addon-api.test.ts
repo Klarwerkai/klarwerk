@@ -418,7 +418,7 @@ describe("KLARWERK_ADDON_API — Flag AN", () => {
     expect((await probe()).statusCode).toBe(429);
   });
 
-  it("R3/Fix1: OPTIONS-Preflight zählt NIE als Versuch (viele OPTIONS → kein 429)", async () => {
+  it("R3/Fix1: echter Preflight (OPTIONS OHNE Key) zählt NIE als Versuch (viele OPTIONS → kein 429)", async () => {
     process.env.KLARWERK_ADDON_AUTH_MAX = "2";
     const app = buildApp(buildServices());
     for (let i = 0; i < 20; i++) {
@@ -427,8 +427,44 @@ describe("KLARWERK_ADDON_API — Flag AN", () => {
         url: "/api/ask",
         headers: { origin: ORIGIN, "access-control-request-method": "POST" },
       });
-      expect(res.statusCode).not.toBe(429); // Preflight normal beantwortet, nie gedrosselt
+      expect(res.statusCode).not.toBe(429); // legitimer Preflight (nie mit Key) — nie gedrosselt
     }
+  });
+
+  it("R4/Fix1: OPTIONS MIT falschem Key → gezählt → gedrosselt (kein 401-Orakel via Preflight)", async () => {
+    process.env.KLARWERK_ADDON_AUTH_MAX = "2";
+    const app = buildApp(buildServices());
+    const badPreflight = () =>
+      app.inject({
+        method: "OPTIONS",
+        url: "/api/ask",
+        headers: {
+          origin: ORIGIN,
+          "access-control-request-method": "POST",
+          [ADDON_KEY_HEADER]: "falsch",
+        },
+      });
+    await badPreflight();
+    await badPreflight();
+    expect((await badPreflight()).statusCode).toBe(429);
+  });
+
+  it("R4/Fix1: OPTIONS MIT richtigem Key wird ebenfalls als Versuch gezählt (kein 403-Orakel)", async () => {
+    process.env.KLARWERK_ADDON_AUTH_MAX = "2";
+    const app = buildApp(buildServices());
+    const keyPreflight = () =>
+      app.inject({
+        method: "OPTIONS",
+        url: "/api/ask",
+        headers: {
+          origin: ORIGIN,
+          "access-control-request-method": "POST",
+          [ADDON_KEY_HEADER]: KEY,
+        },
+      });
+    await keyPreflight(); // gezählt
+    await keyPreflight(); // gezählt
+    expect((await keyPreflight()).statusCode).toBe(429); // dritter → gedrosselt ⇒ die ersten zählten
   });
 
   it("R3/Fix4: gültiger Key bleibt beim normalen addonRateLimit (Throttle zählt ihn nicht)", async () => {
