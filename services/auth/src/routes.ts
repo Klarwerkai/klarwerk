@@ -433,11 +433,47 @@ export function authRoutes(
         if (!admin) {
           return;
         }
+        // SCRUM-463 (WP4): ehrliche Eingabe-Validierung an der Route, BEVOR register/changeRole laufen.
+        // Vorher führte ein fehlendes password zu `input.password.length` auf undefined → TypeError →
+        // opakes 500 („Unerwarteter Fehler"); und eine ungültige role wurde still übernommen. Jetzt:
+        // klarer 400 mit nutzerlesbarer Meldung (kein Auth-/Rollenmodell-Umbau, nur Route-Guard).
+        const body = (request.body ?? {}) as {
+          name?: unknown;
+          email?: unknown;
+          password?: unknown;
+          role?: unknown;
+        };
+        const roles: Role[] = ["viewer", "experte", "controller", "admin"];
+        if (typeof body.name !== "string" || body.name.trim().length === 0) {
+          reply.code(400).send({ error: "BAD_REQUEST", message: "Name ist erforderlich." });
+          return;
+        }
+        if (typeof body.email !== "string" || !/.+@.+\..+/.test(body.email.trim())) {
+          reply
+            .code(400)
+            .send({ error: "BAD_REQUEST", message: "Gültige E-Mail ist erforderlich." });
+          return;
+        }
+        if (typeof body.password !== "string" || body.password.length < 8) {
+          reply
+            .code(400)
+            .send({ error: "WEAK_PASSWORD", message: "Passwort muss mindestens 8 Zeichen haben." });
+          return;
+        }
+        if (body.role !== undefined && !roles.includes(body.role as Role)) {
+          reply.code(400).send({ error: "BAD_REQUEST", message: "Unbekannte Rolle." });
+          return;
+        }
         try {
-          const created = await service.register(request.body);
+          const created = await service.register({
+            name: body.name.trim(),
+            email: body.email.trim(),
+            password: body.password,
+          });
           let user = await service.approveUser(created.id, admin.id);
-          if (request.body.role && request.body.role !== user.role) {
-            user = await service.changeRole(created.id, request.body.role, admin.id);
+          const role = body.role as Role | undefined;
+          if (role && role !== user.role) {
+            user = await service.changeRole(created.id, role, admin.id);
           }
           reply.code(201).send(user);
         } catch (error) {
