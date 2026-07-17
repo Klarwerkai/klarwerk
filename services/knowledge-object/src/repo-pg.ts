@@ -220,6 +220,11 @@ export class PgKoVersionRepo implements KoVersionRepo {
       note: row.note,
     }));
   }
+
+  // SCRUM-507 R3: kompensierender Rollback eines noch nicht committeten Snapshots (s. KoVersionRepo).
+  async remove(koId: string, version: number): Promise<void> {
+    await this.pool.query("DELETE FROM ko_versions WHERE ko_id=$1 AND version=$2", [koId, version]);
+  }
 }
 
 interface EvidenceRow {

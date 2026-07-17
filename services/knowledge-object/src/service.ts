@@ -165,6 +165,57 @@ export class KoService {
     });
   }
 
+  // SCRUM-507 R3: transaktionaler MEHRSCHRITT-Mutationspfad (persist + Snapshot + Audit + Status als EINE
+  // Einheit). Anders als mutateKo (Single-Step, Audit-vor-Write) braucht die Revision einen Versions-
+  // Snapshot NACH der Persistenz — schlägt danach ein Schritt (Snapshot/Audit) fehl, wird die KO-
+  // Persistenz KOMPENSIEREND zurückgerollt und ein bereits geschriebener Snapshot entfernt: kein
+  // Teilzustand, keine unauditierte Änderung (ben-ROT 507). Per-KO serialisiert (withKoLock) +
+  // rowVersion-CAS (repo.update). Für den Single-Instance-/Journal-Betrieb ist das die vollständige
+  // Transaktion; die Kompensation deckt die in 509 R3 als Folgearbeit markierte cross-Modul-TX ab.
+  private async mutateKoTx<T>(
+    id: string,
+    build: (ko: KnowledgeObject) => {
+      updated: KnowledgeObject;
+      value: T;
+      snapshot?: { author: string; note: string };
+      audit?: () => Promise<void>;
+    },
+  ): Promise<T> {
+    return this.withKoLock(id, async () => {
+      const before = await this.require(id);
+      const { updated, value, snapshot, audit } = build(before);
+      // 1) KO persistieren (Compare-and-Set auf rowVersion).
+      await this.repo.update(updated);
+      let snapshotWritten = false;
+      try {
+        // 2) Nachgelagert: erst Snapshot, dann Audit. Ein Fehler in EINEM Schritt rollt ALLES zurück.
+        if (snapshot) {
+          await this.snapshot(updated, snapshot.author, snapshot.note);
+          snapshotWritten = this.versions !== undefined;
+        }
+        await audit?.();
+        return value;
+      } catch (err) {
+        // Kompensation (vollständiger Rollback): Snapshot entfernen (falls geschrieben) + KO auf den
+        // Vorzustand zurücksetzen. Kompensationsfehler werden geschluckt — der Ursachen-Fehler wird
+        // geworfen; der Zustand ist bestmöglich wiederhergestellt (kein „wirksam, aber unbelegt").
+        if (snapshotWritten) {
+          await this.versions?.remove(updated.id, updated.version).catch(() => undefined);
+        }
+        await this.rollbackKo(before).catch(() => undefined);
+        throw err;
+      }
+    });
+  }
+
+  // SCRUM-507 R3: setzt den KO-Inhalt auf `before` zurück. Der vorangegangene Persist hat rowVersion um
+  // 1 erhöht; um den INHALT wiederherzustellen, wird mit der jetzt gültigen rowVersion (before+1)
+  // geschrieben (CAS passt) → Inhalt = before. rowVersion ist nur ein Concurrency-Token (klettert),
+  // die semantischen Felder (version/status/trust/…) sind vollständig auf den Vorzustand zurückgesetzt.
+  private async rollbackKo(before: KnowledgeObject): Promise<void> {
+    await this.repo.update({ ...before, rowVersion: (before.rowVersion ?? 0) + 1 });
+  }
+
   // SCRUM-159: vollständigen, unveränderlichen Voll-Snapshot ablegen (JSON-Deep-Copy, damit
   // spätere Änderungen am Live-KO frühere Versionen nicht berühren). No-op ohne Versions-Repo.
   private async snapshot(ko: KnowledgeObject, author: string, note: string): Promise<void> {
@@ -547,13 +598,13 @@ export class KoService {
     if (changes.type && !KNOWLEDGE_TYPES.includes(changes.type)) {
       throw new KoError("INVALID_TYPE", "Unbekannte Wissensart.");
     }
-    // SCRUM-507 R2: die Revision läuft per-KO serialisiert (withKoLock) — der Versions-Bump und der
-    // Reset auf „offen"/Trust 0 sind EIN atomarer Schritt gegenüber einer nebenläufigen Bewertung
-    // (setValidationState nutzt denselben Lock + Compare-and-Set). Scheitert ein Teilschritt, wirft die
-    // Methode und der KO bleibt unverändert (kein Teilzustand). Die Bewertungen werden NICHT gelöscht:
-    // sie tragen ihre koVersion und sind ab der neuen Version implizit „stale" (Historie bleibt, R2).
-    return this.withKoLock(id, async () => {
-      const ko = await this.require(id);
+    // SCRUM-507 R2/R3: die Revision läuft transaktional über mutateKoTx — per-KO serialisiert
+    // (withKoLock, atomar gegen eine nebenläufige Bewertung, die denselben Lock + CAS nutzt) UND mit
+    // vollständigem Rollback: schlägt der Versions-Snapshot ODER der Audit NACH der Persistenz fehl, wird
+    // der KO (inkl. Versions-Bump/Reset auf „offen"/Trust 0) kompensierend zurückgerollt und ein bereits
+    // geschriebener Snapshot entfernt — kein Teilzustand, keine unauditierte Änderung. Die Bewertungen
+    // werden NICHT gelöscht: sie tragen ihre koVersion und sind ab der neuen Version implizit „stale".
+    return this.mutateKoTx(id, (ko) => {
       const version = ko.version + 1;
       const at = new Date(this.now()).toISOString();
       // KW-STR: neuer Body wird sanitisiert; statement ggf. daraus abgeleitet.
@@ -577,16 +628,20 @@ export class KoService {
         // SCRUM-129: Quellen über Revisionen erhalten; SCRUM-470: optional fortschreiben (Re-Sync-Anker).
         sources: changes.sources ?? ko.sources ?? [],
       };
-      await this.repo.update(revised);
-      // SCRUM-159: neuen Versions-Snapshot persistieren; frühere Versionen bleiben unverändert.
-      await this.snapshot(revised, author, "überarbeitet");
-      await this.audit?.record({
-        actor: author,
-        action: "ko.revised",
-        target: id,
-        payload: { version },
-      });
-      return revised;
+      return {
+        updated: revised,
+        value: revised,
+        // SCRUM-159: neuen Versions-Snapshot persistieren; frühere Versionen bleiben unverändert.
+        snapshot: { author, note: "überarbeitet" },
+        audit: async () => {
+          await this.audit?.record({
+            actor: author,
+            action: "ko.revised",
+            target: id,
+            payload: { version },
+          });
+        },
+      };
     });
   }
 

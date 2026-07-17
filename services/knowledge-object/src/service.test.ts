@@ -1,7 +1,12 @@
 import type { Pool } from "pg";
 import { beforeEach, describe, expect, it } from "vitest";
 import { AuditService, InMemoryAuditRepo } from "../../audit";
-import { InMemoryEvidenceRepo, InMemoryKoRepo, InMemoryKoVersionRepo } from "./repo";
+import {
+  InMemoryEvidenceRepo,
+  InMemoryKoRepo,
+  InMemoryKoVersionRepo,
+  type KoVersionRepo,
+} from "./repo";
 import { PgEvidenceRepo, PgKoVersionRepo } from "./repo-pg";
 import {
   type CreateKoInput,
@@ -11,7 +16,7 @@ import {
   TRUTH_CONFLICT_TRUST_PENALTY,
   normalizeEvidenceLimit,
 } from "./service";
-import type { EvidenceRecord } from "./types";
+import type { EvidenceRecord, KoVersionSnapshot } from "./types";
 
 function base(overrides: Partial<CreateKoInput> = {}): CreateKoInput {
   return {
@@ -355,6 +360,81 @@ describe("SCRUM-159: KO-Version-Snapshots", () => {
     expect(list.map((v) => v.version)).toEqual([1, 2]);
     expect(list[0]?.snapshot.title).toBe("PG-Original");
     expect(list[1]?.snapshot.title).toBe("PG-Revidiert");
+  });
+});
+
+// SCRUM-507 R3: die Revision ist ein Mehrschritt-Mutation (persist + Snapshot + Audit + Status). Schlägt
+// ein NACHGELAGERTER Schritt fehl, muss ALLES zurückgerollt werden — kein Teilzustand, keine unauditierte
+// Änderung. Versions-Repo, das den Snapshot einer bestimmten Version ablehnt (Downstream-Fehler nach Persist).
+function versionsFailingAppendAt(version: number): KoVersionRepo {
+  const inner = new InMemoryKoVersionRepo();
+  return {
+    append: (s: KoVersionSnapshot) =>
+      s.version === version ? Promise.reject(new Error("snapshot down")) : inner.append(s),
+    listByKo: (id: string) => inner.listByKo(id),
+    remove: (id: string, v: number) => inner.remove(id, v),
+  };
+}
+
+describe("SCRUM-507 R3: transaktionale Revision mit vollständigem Rollback", () => {
+  it("Snapshot-Fehler nach Persist → KO (inkl. Status/Trust/Version) vollständig zurückgerollt", async () => {
+    const versions = versionsFailingAppendAt(2); // create-Snapshot (v1) ok, Revise-Snapshot (v2) fällt
+    const audit = new AuditService({ repo: new InMemoryAuditRepo() });
+    const svc = new KoService({ repo: new InMemoryKoRepo(), versions, audit });
+    const ko = await svc.create(base({ title: "Original", statement: "Stand 1." }));
+    await svc.setValidationState(ko.id, { trust: 90, status: "validiert" });
+
+    await expect(
+      svc.revise(ko.id, { title: "Neu", statement: "Stand 2." }, "carla"),
+    ).rejects.toThrow("snapshot down");
+
+    const after = await svc.get(ko.id);
+    expect(after?.version).toBe(1); // kein Versions-Bump
+    expect(after?.title).toBe("Original"); // Inhalt zurückgerollt
+    expect(after?.statement).toBe("Stand 1.");
+    expect(after?.status).toBe("validiert"); // Status NICHT auf „offen" hängengeblieben
+    expect(after?.trust).toBe(90); // Trust NICHT auf 0 hängengeblieben
+    // Kein Revise-Audit hinterlassen; nur V1 in der Historie (V2-Snapshot nie committet).
+    expect(await audit.list({ action: "ko.revised" })).toHaveLength(0);
+    expect((await versions.listByKo(ko.id)).map((v) => v.version)).toEqual([1]);
+  });
+
+  it("Audit-Fehler nach Persist+Snapshot → KO zurückgerollt UND V2-Snapshot entfernt", async () => {
+    const versions = new InMemoryKoVersionRepo();
+    // Wirft NUR beim Revise-Audit; create-Audit (andere Action) bleibt funktionsfähig.
+    const throwingAudit = {
+      record: async (entry: { action: string }) => {
+        if (entry.action === "ko.revised") {
+          throw new Error("audit down");
+        }
+      },
+    } as unknown as AuditService;
+    const svc = new KoService({ repo: new InMemoryKoRepo(), versions, audit: throwingAudit });
+    const ko = await svc.create(base({ title: "Original", statement: "Stand 1." }));
+
+    await expect(
+      svc.revise(ko.id, { title: "Neu", statement: "Stand 2." }, "carla"),
+    ).rejects.toThrow("audit down");
+
+    const after = await svc.get(ko.id);
+    expect(after?.version).toBe(1);
+    expect(after?.title).toBe("Original");
+    expect(after?.statement).toBe("Stand 1.");
+    // V2-Snapshot war geschrieben, wurde beim Rollback ENTFERNT → nur V1 bleibt (keine Geister-Version).
+    expect((await versions.listByKo(ko.id)).map((v) => v.version)).toEqual([1]);
+  });
+
+  it("Erfolgspfad unverändert: Revise wirkt, Snapshot + Audit vorhanden", async () => {
+    const versions = new InMemoryKoVersionRepo();
+    const audit = new AuditService({ repo: new InMemoryAuditRepo() });
+    const svc = new KoService({ repo: new InMemoryKoRepo(), versions, audit });
+    const ko = await svc.create(base({ title: "Original" }));
+
+    const rev = await svc.revise(ko.id, { title: "Neu", statement: "Stand 2." }, "carla");
+    expect(rev.version).toBe(2);
+    expect(rev.title).toBe("Neu");
+    expect((await versions.listByKo(ko.id)).map((v) => v.version)).toEqual([1, 2]);
+    expect(await audit.list({ action: "ko.revised" })).toHaveLength(1);
   });
 });
 

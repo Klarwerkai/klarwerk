@@ -146,6 +146,10 @@ export class InMemoryKoRepo implements KoRepo {
 export interface KoVersionRepo {
   append(snapshot: KoVersionSnapshot): Promise<void>;
   listByKo(koId: string): Promise<KoVersionSnapshot[]>;
+  // SCRUM-507 R3: entfernt einen (koId, version)-Snapshot — AUSSCHLIESSLICH für den kompensierenden
+  // Rollback eines noch nicht committeten Mehrschritt-Mutations (mutateKoTx). Im Normalbetrieb bleibt
+  // die Versionshistorie append-only; kein Live-Pfad ruft remove für eine committete Version auf.
+  remove(koId: string, version: number): Promise<void>;
 }
 
 export class InMemoryKoVersionRepo implements KoVersionRepo {
@@ -165,6 +169,12 @@ export class InMemoryKoVersionRepo implements KoVersionRepo {
     const byVersion = this.items.get(koId);
     const list = byVersion ? [...byVersion.values()] : [];
     return Promise.resolve(list.sort((a, b) => a.version - b.version));
+  }
+
+  // SCRUM-507 R3: Kompensation eines Rollback (s. Interface). No-op, wenn (koId, version) fehlt.
+  remove(koId: string, version: number): Promise<void> {
+    this.items.get(koId)?.delete(version);
+    return Promise.resolve();
   }
 }
 
