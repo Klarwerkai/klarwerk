@@ -99,10 +99,14 @@ export function RichTextEditor({
 
   // Editor-Inhalt nur setzen, wenn er abweicht und der Editor nicht fokussiert ist
   // (verhindert Cursor-Sprünge während des Tippens). Verlustfrei über Mode-Wechsel.
+  // SCRUM-524 P.1 (WP5): DEFENSIVE Grenze am DOM. Server sanitisiert bodyHtml bereits an der Persistenz-
+  // Grenze; hier wird `value` VOR dem innerHTML-Setzen zusätzlich durch denselben Allowlist-Sanitizer
+  // geführt — kein innerHTML mit ungeprüftem Inhalt, egal woher `value` stammt (belt & suspenders).
   useEffect(() => {
     const el = ref.current;
-    if (mode === "edit" && el && el.innerHTML !== value && document.activeElement !== el) {
-      el.innerHTML = value;
+    const safe = sanitizeHtml(value);
+    if (mode === "edit" && el && el.innerHTML !== safe && document.activeElement !== el) {
+      el.innerHTML = safe;
     }
   }, [value, mode]);
 

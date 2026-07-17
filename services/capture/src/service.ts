@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { CreateKoInput } from "../../knowledge-object";
+import { sanitizeHtml } from "../../structure";
 import type { DraftRepo } from "./repo";
 import { CaptureError, type Draft, type DraftPayload } from "./types";
 
@@ -7,6 +8,19 @@ export interface CaptureServiceDeps {
   repo: DraftRepo;
   now?: () => number;
   genId?: () => string;
+}
+
+// SCRUM-524 P.1 (WP5): Entwürfe sind ein GETEILTER Pool (FR-CAP-06) und ihr bodyHtml wird beim Fortsetzen
+// im Editor gerendert. Der bodyHtml wurde bisher ROH persistiert und erst beim Promote zum KO sanitisiert
+// → ein gespeicherter <script>/onerror/javascript:-Payload konnte bei einem fremden Resume ausgeführt
+// werden (Stored XSS). Fix: an der PERSISTENZ-Grenze (jedes Speichern) serverseitig mit dem etablierten
+// Allowlist-Sanitizer säubern — dieselbe harte Grenze wie beim KO (NFR-SEC-04). Gültige Formatierung
+// (fett/kursiv/Listen/Links) übersteht das; aktives Markup nicht. Leerer/kein Body bleibt unverändert.
+function sanitizeDraftPayload(payload: DraftPayload): DraftPayload {
+  if (typeof payload.bodyHtml !== "string" || !payload.bodyHtml.trim()) {
+    return payload;
+  }
+  return { ...payload, bodyHtml: sanitizeHtml(payload.bodyHtml) };
 }
 
 function validateMetadata(payload: DraftPayload): void {
@@ -33,8 +47,10 @@ export class CaptureService {
     this.genId = deps.genId ?? (() => randomUUID());
   }
 
-  async createDraft(payload: DraftPayload, author: string): Promise<Draft> {
-    validateMetadata(payload);
+  async createDraft(rawPayload: DraftPayload, author: string): Promise<Draft> {
+    validateMetadata(rawPayload);
+    // SCRUM-524 P.1 (WP5): bodyHtml an der Persistenz-Grenze säubern, BEVOR er in den geteilten Pool geht.
+    const payload = sanitizeDraftPayload(rawPayload);
     const at = new Date(this.now()).toISOString();
     const draft: Draft = {
       id: this.genId(),
@@ -62,9 +78,10 @@ export class CaptureService {
     const draft = await this.require(id);
     const merged: DraftPayload = { ...draft.payload, ...changes };
     validateMetadata(merged);
+    // SCRUM-524 P.1 (WP5): auch beim Fortsetzen an der Persistenz-Grenze säubern (neuer/geänderter bodyHtml).
     const updated: Draft = {
       ...draft,
-      payload: merged,
+      payload: sanitizeDraftPayload(merged),
       lastEditor: editor,
       updatedAt: new Date(this.now()).toISOString(),
     };

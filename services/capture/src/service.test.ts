@@ -60,6 +60,53 @@ describe("CaptureService", () => {
     expect(koInput.confidentiality).toBe("vertraulich");
   });
 
+  // SCRUM-524 P.1 (WP5): bodyHtml wird an der PERSISTENZ-Grenze serverseitig sanitisiert. Entwürfe sind
+  // ein geteilter Pool und werden beim Fortsetzen im Editor gerendert → aktives Markup darf NIE persistiert
+  // werden. Ohne die Sanitisierung in createDraft/continueDraft landete der Roh-Payload im Bestand.
+  it("WP5: <script>/onerror/javascript:/<iframe> werden beim createDraft entfernt", async () => {
+    const draft = await service.createDraft(
+      {
+        title: "XSS",
+        bodyHtml:
+          "<p>ok <b>fett</b></p><script>alert(1)</script>" +
+          '<img src=x onerror="alert(2)">' +
+          '<a href="javascript:alert(3)">klick</a>' +
+          '<iframe src="https://evil.example"></iframe>',
+      },
+      "anna",
+    );
+    const stored = (await service.getDraft(draft.id))!.payload.bodyHtml ?? "";
+    // Aktives Markup weg:
+    expect(stored).not.toContain("<script");
+    expect(stored).not.toContain("onerror");
+    expect(stored).not.toContain("javascript:");
+    expect(stored).not.toContain("<iframe");
+    // Harmlose Formatierung überlebt (der Sanitizer normalisiert <b> → <strong>):
+    expect(stored).toContain("<strong>fett</strong>");
+    expect(stored).toContain("ok");
+  });
+
+  it("WP5: auch continueDraft sanitisiert einen neu gesetzten bodyHtml", async () => {
+    const draft = await service.createDraft({ title: "Roh" }, "anna");
+    const continued = await service.continueDraft(
+      draft.id,
+      { bodyHtml: "<p>hallo</p><script>steal()</script>" },
+      "bob",
+    );
+    expect(continued.payload.bodyHtml ?? "").not.toContain("<script");
+    expect(continued.payload.bodyHtml ?? "").toContain("hallo");
+    // Und wirklich SO persistiert (nicht nur im Rückgabewert):
+    const stored = (await service.getDraft(draft.id))!.payload.bodyHtml ?? "";
+    expect(stored).not.toContain("<script");
+  });
+
+  it("WP5: leerer/kein bodyHtml bleibt unverändert (kein Zwang)", async () => {
+    const a = await service.createDraft({ title: "A" }, "anna");
+    expect((await service.getDraft(a.id))!.payload.bodyHtml).toBeUndefined();
+    const b = await service.createDraft({ title: "B", bodyHtml: "" }, "anna");
+    expect((await service.getDraft(b.id))!.payload.bodyHtml).toBe("");
+  });
+
   it("SCRUM-395: eine im Entwurf gesetzte Prüferanzahl wandert unverändert in die KO-Eingabe", async () => {
     const draft = await service.createDraft(
       {
