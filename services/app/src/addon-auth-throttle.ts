@@ -104,13 +104,29 @@ export function resolveTrustProxy(
   }
   // Liste von IPs/Subnetzen. R6: jeder Eintrag wird zuerst STRIKT validiert (isValidTrustEntry: node:net
   // .isIP + Zone-ID-/Präfix-Prüfung) — ungültige/malformte Einträge werden verworfen (KEIN Fastify-
-  // Startcrash). Danach fallen Catch-all-Einträge (Containment gegen den IPv4-mapped-Raum) weg. Bleibt
-  // nichts Gültig-Explizites übrig → fail-safe KEIN Vertrauen.
+  // Startcrash). Danach fallen Catch-all-Einträge (Containment gegen den IPv4-mapped-Raum) weg.
+  // R7: die überlebenden Einträge werden KANONISCH neu zusammengesetzt (addr/Number(prefix)) — der
+  // Originalstring (mit evtl. internem Whitespace / führenden Nullen im Präfix) geht NIE an Fastify/
+  // proxy-addr (dessen compile() sonst beim Start wirft). Bleibt nichts Gültig-Explizites → fail-safe
+  // KEIN Vertrauen.
   const list = raw
     .split(",")
     .map((s) => s.trim())
-    .filter((s) => s.length > 0 && isValidTrustEntry(s) && !isCatchAllTrustEntry(s));
+    .filter((s) => s.length > 0 && isValidTrustEntry(s) && !isCatchAllTrustEntry(s))
+    .map(canonicalizeTrustEntry);
   return list.length > 0 ? list : false;
+}
+
+// R7: kanonische Neuzusammensetzung eines bereits validierten Eintrags — reine Adresse ODER
+// addr/Number(prefix). Entfernt internen Whitespace im Präfix, führende Nullen und jede weitere
+// Nicht-Kanonik-Variante, sodass nur eine von proxy-addr.compile() sicher verarbeitbare Form entsteht.
+export function canonicalizeTrustEntry(entry: string): string {
+  const e = entry.trim();
+  const slash = e.indexOf("/");
+  if (slash < 0) {
+    return e;
+  }
+  return `${e.slice(0, slash).trim()}/${Number(e.slice(slash + 1).trim())}`;
 }
 
 // R6 (Validierungs-Gate): akzeptiert nur syntaktisch gültige IP-/CIDR-Einträge, die Fastify/proxy-addr
@@ -118,8 +134,11 @@ export function resolveTrustProxy(
 // IMMER verworfen — node:net.isIP akzeptiert sie auf aktuellen Node-Versionen fälschlich als gültig.
 export function isValidTrustEntry(entry: string): boolean {
   const e = entry.trim();
-  if (e === "" || e.includes("%")) {
-    return false; // Zone-ID / leer → nie vertrauen
+  // R7 (Gürtel): jeglicher INTERNER Whitespace (Space/Tab/Unicode, z. B. "10.0.0.0/ 8", "/<TAB>8") →
+  // ungültig. \s deckt auch Unicode-Whitespace ab. (Zusätzlich kanonisiert resolveTrustProxy die
+  // überlebenden Einträge — Hosenträger.)
+  if (e === "" || e.includes("%") || /\s/.test(e)) {
+    return false; // Zone-ID / interner Whitespace / leer → nie vertrauen
   }
   const slash = e.indexOf("/");
   const addr = slash >= 0 ? e.slice(0, slash) : e;

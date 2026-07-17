@@ -1,7 +1,9 @@
+import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 import {
   AddonAuthAttemptThrottle,
   addonAuthThrottleConfigFromEnv,
+  canonicalizeTrustEntry,
   containsMappedIpv4Space,
   isAddonEndpointPath,
   isCatchAllTrustEntry,
@@ -254,5 +256,91 @@ describe("SCRUM-490 R6 (B2): trustProxy Containment + Validierung", () => {
     expect(isCatchAllTrustEntry("0.0.0.0")).toBe(true);
     expect(isCatchAllTrustEntry("::")).toBe(true);
     expect(isCatchAllTrustEntry("*")).toBe(true);
+  });
+});
+
+// SCRUM-490 R7 (B2): whitespace-behaftete / nicht-kanonische Präfixe crashfrei abfangen. Der Test läuft
+// DIREKT gegen @fastify/proxy-addr.compile (die Funktion, die Fastify beim trustProxy-Setup aufruft),
+// damit der Startcrash real ausgeschlossen ist. Import via createRequire → keine Typ-Deklaration nötig.
+const requireCjs = createRequire(import.meta.url);
+const proxyAddr = requireCjs("@fastify/proxy-addr") as { compile: (val: string[]) => unknown };
+
+function compilesWithoutThrow(result: boolean | number | string[]): boolean {
+  if (!Array.isArray(result)) {
+    return true; // false/Hop-Count: Fastify kompiliert keine Adressliste
+  }
+  try {
+    proxyAddr.compile(result);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+describe("SCRUM-490 R7 (B2): whitespace/nicht-kanonische Präfixe crashfrei", () => {
+  const WS = [
+    "10.0.0.0/ 8", // Space vor Präfix
+    "10.0.0.0/\t8", // Tab
+    "10.0.0.0/ 8", // Unicode-Whitespace (NBSP)
+    "fd00::/ 8",
+  ];
+
+  it("Beleg: der ROH-String würde proxy-addr.compile zum Werfen bringen", () => {
+    for (const w of WS) {
+      expect(() => proxyAddr.compile([w])).toThrow();
+    }
+  });
+
+  it("whitespace-Präfixe werden verworfen; das Ergebnis kompiliert crashfrei", () => {
+    for (const w of WS) {
+      const result = resolveTrustProxy({ KLARWERK_TRUST_PROXY: w });
+      expect(result).toBe(false); // Gürtel: interner Whitespace → ungültig → verworfen
+      expect(compilesWithoutThrow(result)).toBe(true);
+    }
+  });
+
+  it("gemischt: whitespace-Eintrag fällt, gültiger bleibt KANONISCH → compile crashfrei", () => {
+    const result = resolveTrustProxy({ KLARWERK_TRUST_PROXY: "10.0.0.0/ 8, 10.0.0.0/8" });
+    expect(result).toEqual(["10.0.0.0/8"]);
+    expect(compilesWithoutThrow(result)).toBe(true);
+    expect(() => proxyAddr.compile(result as string[])).not.toThrow();
+  });
+
+  it("führende-Null-Präfix wird kanonisiert (10.0.0.0/08 → 10.0.0.0/8) → compile crashfrei", () => {
+    const result = resolveTrustProxy({ KLARWERK_TRUST_PROXY: "10.0.0.0/08" });
+    expect(result).toEqual(["10.0.0.0/8"]);
+    expect(compilesWithoutThrow(result)).toBe(true);
+  });
+
+  it("canonicalizeTrustEntry: Präfix-Whitespace/Nullen weg; reine Adresse unverändert", () => {
+    expect(canonicalizeTrustEntry("10.0.0.0/08")).toBe("10.0.0.0/8");
+    expect(canonicalizeTrustEntry("172.16.0.0/12")).toBe("172.16.0.0/12");
+    expect(canonicalizeTrustEntry("10.0.0.1")).toBe("10.0.0.1");
+    expect(canonicalizeTrustEntry("fd00::/8")).toBe("fd00::/8");
+  });
+
+  it("isValidTrustEntry lehnt internen Whitespace ab (Space/Tab/Unicode)", () => {
+    for (const w of ["10.0.0.0/ 8", "10.0.0.0/\t8", "10.0.0.0/ 8", "fd00::/ 8"]) {
+      expect(isValidTrustEntry(w)).toBe(false);
+    }
+    expect(isValidTrustEntry("10.0.0.0/8")).toBe(true); // ohne Whitespace weiter gültig
+  });
+
+  it("kein Regress: R6-gültige Ergebnisse kompilieren crashfrei", () => {
+    for (const v of [
+      "::ffff:10.0.0.0/104",
+      "fd00::/8",
+      "2001:db8::/32",
+      "172.16.0.0/12",
+      "10.0.0.1",
+    ]) {
+      const result = resolveTrustProxy({ KLARWERK_TRUST_PROXY: v });
+      expect(Array.isArray(result)).toBe(true);
+      expect(compilesWithoutThrow(result)).toBe(true);
+    }
+    // Containment-/Catch-all-Ablehnungen bleiben false.
+    for (const c of ["::fffe:0:0/95", "0.0.0.0/0", "::/0", "fd00::1%eth0/64"]) {
+      expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: c })).toBe(false);
+    }
   });
 });
