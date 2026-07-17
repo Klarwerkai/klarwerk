@@ -1475,7 +1475,9 @@ export function Capture(): JSX.Element {
         data: d.data,
         kind: "video",
       });
-      const res = await endpoints.media.analyze(ref.id, locale);
+      // SCRUM-502 R7: die Vertraulichkeit des Entwurfs mitführen → vertrauliches Medium wird nicht
+      // extern transkribiert (fail-safe serverseitig, falls die Stufe fehlt).
+      const res = await endpoints.media.analyze(ref.id, locale, confidentiality);
       if (res.engineActive && res.transcript && res.transcript.length > 0) {
         setRaw((prev) =>
           prev

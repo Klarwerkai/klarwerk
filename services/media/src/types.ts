@@ -14,9 +14,26 @@ export interface MediaAnalysis {
 }
 
 // Austauschbarer Transkriptions-Client (modellagnostisch wie der Reasoner).
+// SCRUM-502 R7: `confidential` ist PFLICHT (kein Default) — dieselbe Vertraulichkeits-Vertragspflicht
+// wie ModelClient.complete. Der Cloud-Wrapper (cappedTranscriber mit rejectsConfidential) wirft bei
+// true, sodass vertrauliche Medien-Rohbytes NIE an eine externe Transkriptions-API gehen.
 export interface Transcriber {
   name: string;
-  transcribe(bytes: Buffer, mime: string, locale: "de" | "en"): Promise<string>;
+  transcribe(
+    bytes: Buffer,
+    mime: string,
+    locale: "de" | "en",
+    confidential: boolean,
+  ): Promise<string>;
+}
+
+// SCRUM-502 R7: Egress-Wächter für den Transkriptions-Chokepoint (analog ConfidentialEgressError des
+// Reasoners). Der Cloud-Transkriber verweigert vertrauliche Medien per Konstruktion.
+export class TranscriberConfidentialError extends Error {
+  constructor() {
+    super("Vertrauliche Medien dürfen nicht extern transkribiert werden.");
+    this.name = "TranscriberConfidentialError";
+  }
 }
 
 export type MediaError = "NOT_FOUND" | "UNSUPPORTED_KIND" | "ENGINE_FAILED";

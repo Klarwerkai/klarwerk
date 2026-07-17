@@ -42,11 +42,39 @@ describe("SCRUM-382: /api/media/analyze (HTTP end-to-end)", () => {
       method: "POST",
       url: "/api/media/analyze",
       headers,
-      payload: { objectId: put.json().id, locale: "de" },
+      // SCRUM-502 R7: bewusst intern → dieser Fall prüft den „kein Dienst konfiguriert"-Zustand
+      // (nicht den Vertraulichkeits-Block). Ohne Stufe wäre es fail-safe vertraulich (eigener Test unten).
+      payload: { objectId: put.json().id, locale: "de", confidentiality: "intern" },
     });
     expect(analyzed.statusCode).toBe(200);
     expect(analyzed.json().engineActive).toBe(false);
     expect(analyzed.json().transcript).toBeNull();
+    expect(analyzed.json().note).toContain("nicht aktiv");
+  });
+
+  it("SCRUM-502 R7: ohne Vertraulichkeits-Stufe → fail-safe vertraulich, kein Transkriptions-Egress", async () => {
+    const { app, headers } = await setup();
+    const put = await app.inject({
+      method: "POST",
+      url: "/api/objects",
+      headers,
+      payload: {
+        name: "geheim.mp4",
+        mime: "video/mp4",
+        data: `data:video/mp4;base64,${Buffer.from("fake").toString("base64")}`,
+        kind: "video",
+      },
+    });
+    const analyzed = await app.inject({
+      method: "POST",
+      url: "/api/media/analyze",
+      headers,
+      payload: { objectId: put.json().id, locale: "de" }, // KEINE Stufe → fail-safe vertraulich
+    });
+    expect(analyzed.statusCode).toBe(200);
+    expect(analyzed.json().engineActive).toBe(false);
+    expect(analyzed.json().transcript).toBeNull();
+    expect(analyzed.json().note).toContain("Vertrauliche");
   });
 
   it("Nicht-Video wird mit 400 abgewiesen, Unbekanntes mit 404", async () => {

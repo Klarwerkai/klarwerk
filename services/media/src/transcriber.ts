@@ -1,4 +1,23 @@
-import type { Transcriber } from "./types";
+import { type Transcriber, TranscriberConfidentialError } from "./types";
+
+// SCRUM-502 R7: der Transkriptions-Chokepoint. NUR der Cloud-Transkriber (build-app) wird mit
+// rejectsConfidential umschlossen und wirft bei confidential=true, BEVOR die Rohbytes gesendet
+// werden — fail-safe by construction, analog cappedModelClient des Reasoners. Ein späterer lokaler
+// (on-prem) Transkriber würde OHNE diesen Wächter umschlossen und dürfte vertrauliche Medien.
+export function cappedTranscriber(
+  inner: Transcriber,
+  opts: { rejectsConfidential?: boolean } = {},
+): Transcriber {
+  return {
+    name: inner.name,
+    transcribe: (bytes, mime, locale, confidential) => {
+      if (opts.rejectsConfidential && confidential) {
+        return Promise.reject(new TranscriberConfidentialError());
+      }
+      return inner.transcribe(bytes, mime, locale, confidential);
+    },
+  };
+}
 
 // Anbieter-Client für Sprache→Text. Der Schlüssel bleibt ausschließlich serverseitig
 // (G-7) und wird nie geloggt oder an den Client gegeben. `fetchFn` injizierbar → testbar ohne Netz.
@@ -15,7 +34,15 @@ export function whisperClient(config: WhisperConfig): Transcriber {
   const model = config.model ?? "whisper-1";
   return {
     name: `openai:${model}`,
-    async transcribe(bytes: Buffer, mime: string, locale: "de" | "en"): Promise<string> {
+    // SCRUM-502 R7: `confidential` ist Interface-Pflicht; der Egress-Wächter sitzt im Cloud-Wrapper
+    // (cappedTranscriber). Der rohe Client reicht den Aufruf nur durch (kein externer Egress bei
+    // confidential, weil der Wrapper vorher wirft).
+    async transcribe(
+      bytes: Buffer,
+      mime: string,
+      locale: "de" | "en",
+      _confidential: boolean,
+    ): Promise<string> {
       const form = new FormData();
       form.append("model", model);
       form.append("language", locale);

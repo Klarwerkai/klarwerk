@@ -74,7 +74,7 @@ import {
   PgLifecycleRepo,
 } from "../../lifecycle";
 import { ManagementService } from "../../management";
-import { MediaAnalysisService, createTranscriberFromEnv } from "../../media";
+import { MediaAnalysisService, cappedTranscriber, createTranscriberFromEnv } from "../../media";
 import {
   InMemoryModelRunRepo,
   type ModelRunRepo,
@@ -333,7 +333,12 @@ export function assembleServices(repos: AppRepos): AppServices {
     objects: new ObjectStore({ repo: repos.objects }),
     media: new MediaAnalysisService({
       objects: new ObjectStore({ repo: repos.objects }),
-      transcriber: createTranscriberFromEnv(),
+      // SCRUM-502 R7: der (Cloud-)Whisper-Transkriber durch den Egress-Chokepoint — verweigert
+      // vertrauliche Medien per Konstruktion (rejectsConfidential), analog cappedCloud beim Reasoner.
+      transcriber: (() => {
+        const t = createTranscriberFromEnv();
+        return t ? cappedTranscriber(t, { rejectsConfidential: true }) : undefined;
+      })(),
     }),
     // SCRUM-165: read-only ModelRun-Sicht über dasselbe Protokoll-Repo wie der Reasoner.
     modelRuns: new ModelRunService({ repo: repos.modelRuns }),

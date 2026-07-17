@@ -316,8 +316,14 @@ export const endpoints = {
   // SCRUM-382: Video-/Audio-Analyse — Transkript serverseitig (Schlüssel bleibt im Backend).
   media: {
     status: () => api.get<{ active: boolean; engine: string | null }>("/media/status"),
-    analyze: (objectId: string, locale: "de" | "en") =>
-      api.post<MediaAnalysis>("/media/analyze", { objectId, locale }),
+    // SCRUM-502 R7: die Vertraulichkeit des Mediums mitsenden (Upload = transient-document).
+    // Fehlt/ungültig → serverseitig fail-safe vertraulich → kein externer Transkriptions-Egress.
+    analyze: (objectId: string, locale: "de" | "en", confidentiality?: Confidentiality) =>
+      api.post<MediaAnalysis>("/media/analyze", {
+        objectId,
+        locale,
+        ...(confidentiality ? { confidentiality } : {}),
+      }),
   },
   lifecycle: {
     pending: () => api.get<string[]>("/lifecycle/pending"),
