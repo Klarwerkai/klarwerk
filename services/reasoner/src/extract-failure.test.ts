@@ -46,7 +46,7 @@ describe("SCRUM-411: Extract-Fehler ehrlich benennen + Antwort-Limit", () => {
 
   it("bewusst Deterministisch gestellt → weiterhin kein-Modell-Meldung (kein Fehler-Text)", async () => {
     const reasoner = new Reasoner(new ModelProvider(failingClient("egal")));
-    reasoner.setTaskConfig({ global: "auto", perTask: { extract: "deterministic" } });
+    await reasoner.setTaskConfig({ global: "auto", perTask: { extract: "deterministic" } });
     const result = await reasoner.extract(DOC, "de");
     expect(result.note).toContain("Ohne KI-Modell");
   });

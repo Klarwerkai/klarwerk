@@ -1,5 +1,5 @@
 // Öffentliche API des Moduls reasoner.
-export { Reasoner } from "./src/service";
+export { Reasoner, DEFAULT_REASONER_POLICY } from "./src/service";
 export {
   DeterministicProvider,
   keywordSelect,
@@ -62,6 +62,13 @@ export {
   normalizeAssistPresets,
   PgAssistPresetRepo,
 } from "./src/presets";
+// SCRUM-525 P.5 (WP6): persistente KI-Zuordnung (Policy) — überlebt Neustart/Deploy.
+export {
+  InMemoryReasonerPolicyRepo,
+  PgReasonerPolicyRepo,
+  REASONER_POLICY_SCHEMA,
+  type ReasonerPolicyRepo,
+} from "./src/reasoner-policy";
 export type {
   KnowledgeRef,
   KnowledgeClass,

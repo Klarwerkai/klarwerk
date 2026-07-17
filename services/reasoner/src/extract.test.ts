@@ -194,19 +194,22 @@ describe("PMO-FEA-0006: ModelRun-Protokoll + KI-Verwaltung", () => {
     expect(records[0]?.locale).toBe("en");
   });
 
-  it("KI-Verwaltung: 'extract' ist konfigurierbar und in configStatus sichtbar", () => {
+  it("KI-Verwaltung: 'extract' ist konfigurierbar und in configStatus sichtbar", async () => {
     const reasoner = new Reasoner();
     const status = reasoner.configStatus();
     expect(status.tasks).toContain("extract");
     expect(status.effective.extract).toBe("deterministic");
-    const next = reasoner.setTaskConfig({ global: "auto", perTask: { extract: "deterministic" } });
+    const next = await reasoner.setTaskConfig({
+      global: "auto",
+      perTask: { extract: "deterministic" },
+    });
     expect(next.perTask.extract).toBe("deterministic");
-    expect(() =>
+    await expect(
       reasoner.setTaskConfig({
         global: "auto",
         // @ts-expect-error: ungültiger Wert wird zur Laufzeit abgewiesen
         perTask: { extract: "quatsch" },
       }),
-    ).toThrow();
+    ).rejects.toThrow();
   });
 });

@@ -69,7 +69,7 @@ describe("SCRUM-424: zwei KI-Backends (Cloud + lokaler LLM)", () => {
       undefined,
       new ModelProvider(local("LOCAL")),
     );
-    r.setTaskConfig({ global: "auto", perTask: { assist: "local" } });
+    await r.setTaskConfig({ global: "auto", perTask: { assist: "local" } });
     expect((await r.assistText("roh", "de")).text).toBe("LOCAL");
     expect(r.configStatus().effectiveProvider.assist).toBe("local");
   });
@@ -93,10 +93,10 @@ describe("SCRUM-424: zwei KI-Backends (Cloud + lokaler LLM)", () => {
     expect(cloudOnly.localConfigured).toBe(false);
   });
 
-  it("ungültige Zuordnung 'local' bei Bedarf bleibt gültig; Unsinn wird weiterhin abgewiesen", () => {
+  it("ungültige Zuordnung 'local' bei Bedarf bleibt gültig; Unsinn wird weiterhin abgewiesen", async () => {
     const r = new Reasoner(new ModelProvider(cloud("C")));
-    expect(() => r.setTaskConfig({ global: "local", perTask: {} })).not.toThrow();
-    expect(() => r.setTaskConfig({ global: "quantum" as never, perTask: {} })).toThrow();
+    await expect(r.setTaskConfig({ global: "local", perTask: {} })).resolves.toBeDefined();
+    await expect(r.setTaskConfig({ global: "quantum" as never, perTask: {} })).rejects.toThrow();
   });
 });
 

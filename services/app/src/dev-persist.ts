@@ -56,13 +56,17 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   overlapSettings: ["set"],
   lifecycleRepo: ["addCoupling", "markPending", "clearPending", "savePath", "setProgress"],
   objects: ["insert"],
-  candidates: ["insert", "update"],
+  // SCRUM-510 (WP3): der atomar-idempotente Insert ist ebenfalls eine Mutation → muss journaliert werden,
+  // sonst überleben so eingereihte Import-Kandidaten den Dev-Neustart nicht.
+  candidates: ["insert", "insertIfAbsent", "update"],
   modelRuns: ["append"],
   // Audit-P3 (SCRUM-397): Gelesen-Status überlebt den Neustart (Dev-Journal).
   notificationSeen: ["markSeen"],
   // SCRUM-386: kundeneigene KI-Assist-Presets überleben den Neustart (Replace-Semantik,
   // args tragen die komplette Liste inkl. fertiger ids → Replay exakt).
   assistPresets: ["replaceAll"],
+  // SCRUM-525 P.5 (WP6): die KI-Zuordnung (Policy) überlebt den Neustart (letzter Set gewinnt).
+  reasonerPolicy: ["set"],
   // SCRUM-395: Standard-Prüferanzahl überlebt den Neustart (letzter Set gewinnt).
   validationSettings: ["setDefaultNeeded"],
   // SCRUM-414: Regler „externe Wissensabfrage" überlebt den Neustart (letzter Set gewinnt).

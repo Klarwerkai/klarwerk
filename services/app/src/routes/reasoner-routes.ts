@@ -249,7 +249,8 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         }
         try {
           // Laufzeit-Validierung übernimmt setTaskConfig (wirft bei ungültigen Werten).
-          reasoner.setTaskConfig({
+          // SCRUM-525 P.5 (WP6): setTaskConfig persistiert jetzt → die Zuordnung überlebt Neustart/Deploy.
+          await reasoner.setTaskConfig({
             global: request.body.global ?? "auto",
             perTask: request.body.perTask ?? {},
           } as Parameters<typeof reasoner.setTaskConfig>[0]);

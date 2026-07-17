@@ -9,6 +9,7 @@ import {
   normalizeAssistPresets,
 } from "./presets";
 import { DeterministicProvider, type ReasonerProvider, honestExtractModelFailed } from "./provider";
+import { InMemoryReasonerPolicyRepo, type ReasonerPolicyRepo } from "./reasoner-policy";
 
 import type {
   AnswerResult,
@@ -28,6 +29,14 @@ import type {
   StructureResult,
 } from "./types";
 
+// SCRUM-525 P.5 (WP6): der DEFINIERTE Default der KI-Zuordnung, wenn nichts persistiert ist. Exportiert,
+// damit Aufrufer/Tests den Default benennen können (kein magisches, verstecktes "auto").
+export const DEFAULT_REASONER_POLICY: ReasonerTaskConfig = { global: "auto", perTask: {} };
+
+function clone(config: ReasonerTaskConfig): ReasonerTaskConfig {
+  return { global: config.global, perTask: { ...config.perTask } };
+}
+
 // FR-RSN-01: gebündelte Aufgaben über die Reasoner-Schicht.
 // FR-RSN-06: der KI-Schlüssel lebt ausschließlich im Provider (serverseitig),
 // der Reasoner reicht ihn nie nach außen — Status/Ergebnisse enthalten keinen Schlüssel.
@@ -41,6 +50,8 @@ export class Reasoner {
   private readonly modelRuns: ModelRunRepo | undefined;
   // SCRUM-386: kundeneigene Assist-Presets — echtes Repo (Pg/Dev-Journal); ohne Repo In-Memory.
   private readonly presetRepo: AssistPresetRepo;
+  // SCRUM-525 P.5 (WP6): persistente KI-Zuordnung (Policy). Ohne Repo In-Memory (Tests/Dev).
+  private readonly policyRepo: ReasonerPolicyRepo;
 
   constructor(
     primary?: ReasonerProvider,
@@ -50,12 +61,16 @@ export class Reasoner {
     // SCRUM-424: optionaler zweiter Provider (eigener lokaler LLM). Als LETZTER Parameter,
     // damit bestehende (positionale) Aufrufe unverändert bleiben.
     secondary?: ReasonerProvider,
+    // SCRUM-525 P.5 (WP6): optionales Policy-Repo. Als LETZTER Parameter — bestehende positionale
+    // Aufrufe bleiben unverändert. Ohne Repo → In-Memory (Policy lebt nur für die Prozesslaufzeit).
+    policyRepo?: ReasonerPolicyRepo,
   ) {
     this.primary = primary ?? fallback;
     this.secondary = secondary ?? fallback;
     this.fallback = fallback;
     this.modelRuns = modelRuns;
     this.presetRepo = assistPresets ?? new InMemoryAssistPresetRepo();
+    this.policyRepo = policyRepo ?? new InMemoryReasonerPolicyRepo();
   }
 
   // ---- SCRUM-386: kundeneigene KI-Assist-Funktionen (Presets) ----
@@ -196,13 +211,17 @@ export class Reasoner {
   // ---- KI-Verwaltung v1 (Teil-Slice, 02.07.2026): Zuordnung global + je Aufgabe ----
   // Bewusst OHNE Persistenz (gilt bis Neustart): kein neuer Speicherpfad kurz vor dem
   // Beta-RC; der Voll-Ausbau (PMO-Eintrag "KI-Management-Seite") bringt Repo+Persistenz.
-  private taskConfig: ReasonerTaskConfig = { global: "auto", perTask: {} };
+  // SCRUM-525 P.5 (WP6): der DEFINIERTE Default, wenn NICHTS persistiert ist. "auto" bleibt die
+  // fachlich gewollte Standard-Kette (Cloud → lokal → deterministisch) — aber beim Start wird bewusst
+  // GELOGGT, dass er greift, weil keine Policy konfiguriert ist (kein STILLER Auto-Fallback).
+  private taskConfig: ReasonerTaskConfig = clone(DEFAULT_REASONER_POLICY);
 
   getTaskConfig(): ReasonerTaskConfig {
     return { global: this.taskConfig.global, perTask: { ...this.taskConfig.perTask } };
   }
 
-  setTaskConfig(next: ReasonerTaskConfig): ReasonerTaskConfig {
+  // Validiert eine Policy und normalisiert sie (nur bekannte Tasks/Choices). Wirft bei Ungültigem.
+  private normalizeTaskConfig(next: ReasonerTaskConfig): ReasonerTaskConfig {
     const valid: ReasonerTaskChoice[] = ["auto", "model", "cloud", "local", "deterministic"];
     const tasks = ["structure", "assist", "interview", "answer", "select", "extract"] as const;
     if (!valid.includes(next.global)) {
@@ -217,8 +236,32 @@ export class Reasoner {
       }
       perTask[task] = c;
     }
-    this.taskConfig = { global: next.global, perTask };
+    return { global: next.global, perTask };
+  }
+
+  // SCRUM-525 P.5 (WP6): setzt die Policy UND PERSISTIERT sie — sie überlebt jetzt Neustart/Deploy.
+  async setTaskConfig(next: ReasonerTaskConfig): Promise<ReasonerTaskConfig> {
+    this.taskConfig = this.normalizeTaskConfig(next);
+    await this.policyRepo.set(this.taskConfig);
     return this.getTaskConfig();
+  }
+
+  // SCRUM-525 P.5 (WP6): beim Start die persistierte Policy laden. Ist eine gespeichert → sie greift
+  // (die Admin-Entscheidung überlebt den Deploy). Ist KEINE gespeichert → der DEFINIERTE Default greift
+  // und der Aufrufer bekommt `source: "default"` gemeldet, um es EHRLICH zu loggen (kein stiller Auto-
+  // Fallback). Persistiert dabei NICHTS (ein Boot schreibt nicht; erst eine echte Admin-Setzung tut das).
+  async loadPersistedPolicy(): Promise<{
+    source: "persisted" | "default";
+    config: ReasonerTaskConfig;
+  }> {
+    const stored = await this.policyRepo.get();
+    if (stored) {
+      // Defensive Normalisierung: auch ein (theoretisch) fremd-manipulierter Datensatz wird geprüft.
+      this.taskConfig = this.normalizeTaskConfig(stored);
+      return { source: "persisted", config: this.getTaskConfig() };
+    }
+    this.taskConfig = clone(DEFAULT_REASONER_POLICY);
+    return { source: "default", config: this.getTaskConfig() };
   }
 
   private choiceFor(task: ModelRunTask): ReasonerTaskChoice {

@@ -96,10 +96,13 @@ import { canChangeRole } from "../../rbac";
 import {
   type AssistPresetRepo,
   InMemoryAssistPresetRepo,
+  InMemoryReasonerPolicyRepo,
   ModelCapacityError,
   ModelProvider,
   PgAssistPresetRepo,
+  PgReasonerPolicyRepo,
   Reasoner,
+  type ReasonerPolicyRepo,
   createCappedCloudClientFromEnv,
   createCappedLocalClientFromEnv,
 } from "../../reasoner";
@@ -225,6 +228,8 @@ export interface AppRepos {
   notificationSeen: NotificationSeenRepo;
   // SCRUM-386: kundeneigene KI-Assist-Presets (Admin pflegt; Palette zeigt sie allen Rollen).
   assistPresets: AssistPresetRepo;
+  // SCRUM-525 P.5 (WP6): persistente KI-Zuordnung (Policy) — überlebt Neustart/Deploy.
+  reasonerPolicy: ReasonerPolicyRepo;
   // SCRUM-395: Standard-Prüferanzahl (Admin-Einstellung, gilt für neue Einreichungen).
   validationSettings: ValidationSettingsRepo;
   // SCRUM-414: Admin-Regler „externe Wissensabfrage" (4 Stufen, persistiert).
@@ -268,6 +273,9 @@ export function assembleServices(repos: AppRepos): AppServices {
     repos.assistPresets,
     // SCRUM-424: zweites Backend (lokaler LLM) als optionaler Provider.
     cappedLocal ? new ModelProvider(cappedLocal) : undefined,
+    // SCRUM-525 P.5 (WP6): persistente KI-Zuordnung (Policy) über das Repo — die Admin-Entscheidung
+    // überlebt Neustart/Deploy (kein stiller Auto-Fallback). Geladen wird sie beim Serverstart.
+    repos.reasonerPolicy,
   );
 
   // Vorab erstellt, da das Management-Modul (SCRUM-120) deren Live-Daten aggregiert.
@@ -379,6 +387,7 @@ export function inMemoryRepos(): AppRepos {
     modelRuns: new InMemoryModelRunRepo(),
     notificationSeen: new InMemoryNotificationSeenRepo(),
     assistPresets: new InMemoryAssistPresetRepo(),
+    reasonerPolicy: new InMemoryReasonerPolicyRepo(),
     validationSettings: new InMemoryValidationSettingsRepo(),
     externalKnowledge: new InMemoryExternalKnowledgePolicyRepo(),
     uploadLimits: new InMemoryUploadLimitsRepo(),
@@ -420,6 +429,8 @@ export function buildPgServices(pool: Pool): AppServices {
     notificationSeen: new PgNotificationSeenRepo(pool),
     // SCRUM-386: kundeneigene KI-Assist-Presets persistent.
     assistPresets: new PgAssistPresetRepo(pool),
+    // SCRUM-525 P.5 (WP6): KI-Zuordnung (Policy) persistent — überlebt Neustart/Deploy.
+    reasonerPolicy: new PgReasonerPolicyRepo(pool),
     // SCRUM-395: Standard-Prüferanzahl persistent.
     validationSettings: new PgValidationSettingsRepo(pool),
     // SCRUM-414: externe-Wissensabfrage-Regler persistent.

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { InMemoryModelRunRepo } from "../../model-runs";
 import { DeterministicProvider, INTERVIEW_QUESTIONS, type ReasonerProvider } from "./provider";
-import { Reasoner } from "./service";
+import { InMemoryReasonerPolicyRepo } from "./reasoner-policy";
+import { DEFAULT_REASONER_POLICY, Reasoner } from "./service";
 import type {
   AnswerResult,
   AssistResult,
@@ -518,7 +519,7 @@ describe("SCRUM-164: ModelRun-Protokoll", () => {
 describe("KI-Verwaltung v1: Task-Zuordnung (02.07.2026)", () => {
   it("deterministic je Aufgabe erzwingt den Fallback trotz verfügbarem Modell", async () => {
     const r = new Reasoner(okModel());
-    r.setTaskConfig({ global: "auto", perTask: { structure: "deterministic" } });
+    await r.setTaskConfig({ global: "auto", perTask: { structure: "deterministic" } });
     const cfg = r.configStatus();
     expect(cfg.effective.structure).toBe("deterministic");
     expect(cfg.effective.assist).toBe("model");
@@ -526,27 +527,94 @@ describe("KI-Verwaltung v1: Task-Zuordnung (02.07.2026)", () => {
     expect(draft.demo).toBe(true); // deterministischer Entwurf, ehrlich gekennzeichnet
   });
 
-  it("global deterministic gilt für alle Aufgaben ohne Override", () => {
+  it("global deterministic gilt für alle Aufgaben ohne Override", async () => {
     const r = new Reasoner(okModel());
-    r.setTaskConfig({ global: "deterministic", perTask: {} });
+    await r.setTaskConfig({ global: "deterministic", perTask: {} });
     for (const v of Object.values(r.configStatus().effective)) {
       expect(v).toBe("deterministic");
     }
   });
 
-  it("'model' verlangt ohne verfügbares Modell bleibt ehrlich deterministisch", () => {
+  it("'model' verlangt ohne verfügbares Modell bleibt ehrlich deterministisch", async () => {
     const r = new Reasoner(); // kein Primary
-    r.setTaskConfig({ global: "model", perTask: {} });
+    await r.setTaskConfig({ global: "model", perTask: {} });
     expect(r.configStatus().effective.structure).toBe("deterministic");
   });
 
-  it("weist ungültige Zuordnungen ab und behält den alten Stand", () => {
+  it("weist ungültige Zuordnungen ab und behält den alten Stand", async () => {
     const r = new Reasoner();
-    expect(() => r.setTaskConfig({ global: "quantum" as never, perTask: {} })).toThrow();
-    expect(() =>
+    // SCRUM-525 P.5 (WP6): setTaskConfig ist jetzt async (persistiert) → ungültige Werte werden zu einer
+    // Rejection (die Validierung läuft vor dem Persist; der alte In-Memory-Stand bleibt unverändert).
+    await expect(r.setTaskConfig({ global: "quantum" as never, perTask: {} })).rejects.toThrow();
+    await expect(
       r.setTaskConfig({ global: "auto", perTask: { structure: "magie" as never } }),
-    ).toThrow();
+    ).rejects.toThrow();
     expect(r.getTaskConfig()).toEqual({ global: "auto", perTask: {} });
+  });
+});
+
+// SCRUM-525 P.5 (WP6): die KI-Zuordnung (Policy) ist PERSISTENT — sie überlebt Neustart/Deploy und fällt
+// nicht mehr still auf "auto" zurück. Fehlt eine Policy, greift ein DEFINIERTER Default (ehrlich meldbar).
+describe("SCRUM-525 P.5 (WP6): persistente Reasoner-Policy", () => {
+  it("gesetzte Policy überlebt einen simulierten Neustart (gemeinsames Repo, neue Instanz)", async () => {
+    const policyRepo = new InMemoryReasonerPolicyRepo();
+    // Instanz 1: Admin setzt eine Nicht-Default-Policy.
+    const before = new Reasoner(
+      undefined,
+      new DeterministicProvider(),
+      undefined,
+      undefined,
+      undefined,
+      policyRepo,
+    );
+    await before.setTaskConfig({ global: "deterministic", perTask: { structure: "cloud" } });
+
+    // Instanz 2 = „nach dem Neustart": frische Reasoner-Instanz, DASSELBE persistente Repo.
+    const after = new Reasoner(
+      undefined,
+      new DeterministicProvider(),
+      undefined,
+      undefined,
+      undefined,
+      policyRepo,
+    );
+    // Vor dem Laden steht der Default; erst loadPersistedPolicy holt die gespeicherte Wahl zurück.
+    const loaded = await after.loadPersistedPolicy();
+    expect(loaded.source).toBe("persisted");
+    expect(after.getTaskConfig()).toEqual({
+      global: "deterministic",
+      perTask: { structure: "cloud" },
+    });
+  });
+
+  it("ohne konfigurierte Policy → DEFINIERTER Default + source 'default' (kein stiller Auto-Fallback)", async () => {
+    const r = new Reasoner(
+      undefined,
+      new DeterministicProvider(),
+      undefined,
+      undefined,
+      undefined,
+      new InMemoryReasonerPolicyRepo(),
+    );
+    const loaded = await r.loadPersistedPolicy();
+    expect(loaded.source).toBe("default");
+    expect(loaded.config).toEqual(DEFAULT_REASONER_POLICY);
+    expect(r.getTaskConfig()).toEqual(DEFAULT_REASONER_POLICY);
+  });
+
+  it("setTaskConfig persistiert wirklich (Repo hält die Wahl)", async () => {
+    const policyRepo = new InMemoryReasonerPolicyRepo();
+    const r = new Reasoner(
+      undefined,
+      new DeterministicProvider(),
+      undefined,
+      undefined,
+      undefined,
+      policyRepo,
+    );
+    expect(await policyRepo.get()).toBeNull(); // vorher nie konfiguriert
+    await r.setTaskConfig({ global: "local", perTask: {} });
+    expect(await policyRepo.get()).toEqual({ global: "local", perTask: {} });
   });
 });
 
@@ -772,7 +840,7 @@ describe("SCRUM-502 Schicht 2: Vertraulichkeit routet an der Cloud vorbei", () =
     const cloud = recordingProvider("cloud", calls);
     const local = recordingProvider("local", calls);
     const reasoner = new Reasoner(cloud, new DeterministicProvider(), undefined, undefined, local);
-    reasoner.setTaskConfig({ global: "cloud", perTask: {} }); // explizit NICHT auto
+    await reasoner.setTaskConfig({ global: "cloud", perTask: {} }); // explizit NICHT auto
 
     const res = await reasoner.structure("Geheimer Rohtext.", "de", true);
 

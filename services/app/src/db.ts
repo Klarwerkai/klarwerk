@@ -17,7 +17,8 @@ import { MODEL_RUNS_SCHEMA } from "../../model-runs";
 import { NOTIFICATION_SEEN_SCHEMA } from "../../notifications";
 import { OBJECTSTORE_SCHEMA } from "../../object-store";
 // SCRUM-386: kundeneigene KI-Assist-Presets (eigene Tabelle, Datenhoheit beim reasoner-Modul).
-import { ASSIST_PRESETS_SCHEMA } from "../../reasoner";
+// SCRUM-525 P.5 (WP6): persistente KI-Zuordnung (Policy) — eigene Tabelle im reasoner-Modul.
+import { ASSIST_PRESETS_SCHEMA, REASONER_POLICY_SCHEMA } from "../../reasoner";
 import { VALIDATION_SCHEMA, VALIDATION_SETTINGS_SCHEMA } from "../../validation";
 
 // Querschnitt-Infrastruktur: ein Pool, geteilt von allen Modul-Adaptern.
@@ -48,6 +49,8 @@ export async function migrate(pool: Pool): Promise<void> {
     MODEL_RUNS_SCHEMA,
     NOTIFICATION_SEEN_SCHEMA,
     ASSIST_PRESETS_SCHEMA,
+    // SCRUM-525 P.5 (WP6): KI-Zuordnung (Policy) persistent.
+    REASONER_POLICY_SCHEMA,
     // SCRUM-395: Standard-Prüferanzahl (Validierungs-Einstellungen).
     VALIDATION_SETTINGS_SCHEMA,
     // SCRUM-414: Regler „externe Wissensabfrage".

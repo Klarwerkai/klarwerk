@@ -130,6 +130,23 @@ async function start(): Promise<void> {
   // Ehrlicher Betriebsmodus im Log — hilft bei „warum sind meine Daten weg?"-Diagnosen.
   const mode = databaseUrl ? "Postgres" : journal ? "Dev-Persistenz (Journal)" : "In-Memory";
   app.log.info(`KLARWERK läuft auf :${port} — Datenhaltung: ${mode}`);
+  // SCRUM-525 P.5 (WP6): die persistierte KI-Zuordnung (Policy) beim Start laden — die Admin-Entscheidung
+  // überlebt so Neustart/Deploy. Ist KEINE Policy konfiguriert, greift der DEFINIERTE Default und wir
+  // loggen das EHRLICH (kein stiller Auto-Fallback). Best-effort: ein Fehler darf den Start nicht kippen.
+  services.reasoner
+    .loadPersistedPolicy()
+    .then(({ source, config }) => {
+      if (source === "persisted") {
+        app.log.info(`KI-Zuordnung aus der Persistenz geladen (global=${config.global}).`);
+      } else {
+        app.log.info(
+          `Keine KI-Zuordnung konfiguriert — es gilt der Standard (global=${config.global}). Unter KI-Verwaltung setzbar; die Wahl wird dann persistiert.`,
+        );
+      }
+    })
+    .catch((error) => {
+      app.log.warn(`KI-Zuordnung konnte nicht geladen werden: ${String(error)}`);
+    });
   // SCRUM-523 P.3 (WP2): die abgelaufene-Papierkorb-Endlöschung ist jetzt eine EXPLIZITE Operation
   // (nicht mehr lazy beim Lesen — Lesen/Import-Dry-Run bleiben schreibfrei). Einmal beim Start anstoßen,
   // damit die 28-Tage-Frist ohne Cron weiter greift; best-effort, ein Fehler darf den Start nicht kippen.
