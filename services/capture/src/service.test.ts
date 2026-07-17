@@ -43,6 +43,23 @@ describe("CaptureService", () => {
     expect(koInput.neededValidations).toBeUndefined();
   });
 
+  // SCRUM-509 R2: die im Entwurf gewählte Vertraulichkeit übersteht das Promote (kein Verlust →
+  // sonst würde ein vertraulicher Entwurf als intern zum KO = fail-open).
+  it("SCRUM-509 R2: die Vertraulichkeitsstufe des Entwurfs wandert in die KO-Eingabe (kein Verlust)", async () => {
+    const draft = await service.createDraft(
+      {
+        title: "Geheim",
+        statement: "Vertraulicher Kerntext.",
+        type: "best_practice",
+        category: "Anlage 1",
+        confidentiality: "vertraulich",
+      },
+      "anna",
+    );
+    const koInput = await service.toKoInput(draft.id);
+    expect(koInput.confidentiality).toBe("vertraulich");
+  });
+
   it("SCRUM-395: eine im Entwurf gesetzte Prüferanzahl wandert unverändert in die KO-Eingabe", async () => {
     const draft = await service.createDraft(
       {

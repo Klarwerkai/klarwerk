@@ -116,6 +116,10 @@ export class KoService {
   private readonly genId: () => string;
   private readonly defaultNeededValidations: (() => Promise<number | null | undefined>) | undefined;
   private readonly onContentRevised: ((koId: string) => Promise<void>) | undefined;
+  // SCRUM-509 R2: per-KO-Serialisierung der Vertraulichkeits-Änderung — Lesen der aktuellen Stufe,
+  // Downgrade-Autorisierung und Schreiben laufen ohne Interleave (kein TOCTOU zwischen Rollenprüfung
+  // und Änderung, auch bei nebenläufigem Upgrade vs. Downgrade auf demselben KO).
+  private readonly confidentialityLocks = new Map<string, Promise<unknown>>();
 
   constructor(deps: KoServiceDeps) {
     this.repo = deps.repo;
@@ -158,6 +162,13 @@ export class KoService {
   async create(input: CreateKoInput): Promise<KnowledgeObject> {
     if (!KNOWLEDGE_TYPES.includes(input.type)) {
       throw new KoError("INVALID_TYPE", "Unbekannte Wissensart.");
+    }
+    // SCRUM-509 R2: eine EXPLIZIT gelieferte, aber ungültige Vertraulichkeitsstufe wird abgelehnt
+    // (kein stilles Normalisieren auf „intern" = fail-open, konsistent mit setConfidentiality). Fehlt
+    // die Stufe ganz, gilt der dokumentierte Standard „intern" (bewusster Optional-Feld-Default, keine
+    // fail-open-Normalisierung eines ungültigen Werts).
+    if (input.confidentiality !== undefined && !isValidConfidentiality(input.confidentiality)) {
+      throw new KoError("INVALID_CONFIDENTIALITY", "Ungültige Vertraulichkeitsstufe.");
     }
     // SCRUM-395: ohne explizite Angabe gilt die Admin-Einstellung (Standard-Prüferanzahl),
     // ohne diese der feste Modul-Default. Explizite Angaben gewinnen immer.
@@ -214,28 +225,62 @@ export class KoService {
 
   // SCRUM-415: Vertraulichkeitsstufe eines KO setzen/ändern. Jede Änderung landet im Audit
   // (nachvollziehbar, wer wann welche Stufe gesetzt hat). Rechte prüft die Route (wie „category").
+  // SCRUM-509 R2: `opts.mayDowngrade` (aus der Rolle abgeleitet) wird HIER geprüft — atomar gegen die
+  // frisch gelesene aktuelle Stufe, nicht in der Route (kein TOCTOU). Per-KO serialisiert.
   async setConfidentiality(
     id: string,
-    level: Confidentiality,
+    // SCRUM-509 R2: `unknown` — der Wert wird HIER defensiv geprüft (isValidConfidentiality), statt
+    // sich auf einen Aufrufer-Cast zu verlassen. Ungültig → INVALID_CONFIDENTIALITY (→ 400).
+    level: unknown,
     actor: string,
+    opts: { mayDowngrade?: boolean } = {},
   ): Promise<KnowledgeObject> {
-    // SCRUM-509: ungültige/fehlende Stufe wird NICHT still auf „intern" normalisiert (das wäre ein
-    // fail-open Downgrade) — sie wird abgelehnt. Fail-safe an der Datenschicht (Belt zur Route).
+    const prev = this.confidentialityLocks.get(id) ?? Promise.resolve();
+    const run = prev
+      .catch(() => undefined)
+      .then(() => this.doSetConfidentiality(id, level, actor, opts));
+    this.confidentialityLocks.set(id, run);
+    try {
+      return await run;
+    } finally {
+      if (this.confidentialityLocks.get(id) === run) {
+        this.confidentialityLocks.delete(id);
+      }
+    }
+  }
+
+  private async doSetConfidentiality(
+    id: string,
+    level: unknown,
+    actor: string,
+    opts: { mayDowngrade?: boolean },
+  ): Promise<KnowledgeObject> {
+    // SCRUM-509: ungültige/fehlende Stufe wird NICHT still auf „intern" normalisiert (fail-open) —
+    // sie wird abgelehnt. Fail-safe an der Datenschicht (Belt zur Route).
     if (!isValidConfidentiality(level)) {
       throw new KoError("INVALID_CONFIDENTIALITY", "Ungültige Vertraulichkeitsstufe.");
     }
     const ko = await this.require(id);
     const previous = normalizeConfidentiality(ko.confidentiality);
+    const downgrade = isConfidentialityDowngrade(previous, level);
+    // SCRUM-509 R2: die Downgrade-Autorisierung wird gegen die GERADE gelesene Stufe geprüft (atomar,
+    // per-KO serialisiert) — ein nebenläufiges Upgrade kann die Prüfung nicht mehr unterlaufen.
+    if (downgrade && opts.mayDowngrade === false) {
+      throw new KoError(
+        "DOWNGRADE_FORBIDDEN",
+        "Das Herabstufen der Vertraulichkeit erfordert eine Prüfer-/Admin-Rolle.",
+      );
+    }
     const updated: KnowledgeObject = { ...ko, confidentiality: level };
-    await this.repo.update(updated);
-    // Herabstufungen (weniger vertraulich) ändern die Sichtbarkeits-/Egress-Semantik → im Audit klar
-    // als downgrade markiert, mit Vorher/Nachher (nachvollziehbar, wer wann freigegeben hat).
+    // SCRUM-509 R2: ZUERST auditieren, DANN schreiben — schlägt das Audit fehl, unterbleibt die
+    // Änderung (nie „wirksam, aber unbelegt"). Herabstufungen sind mit Vorher/Nachher + Flag belegt.
     await this.audit?.record({
       actor,
       action: "ko.confidentiality",
       target: id,
-      payload: { level, previous, downgrade: isConfidentialityDowngrade(previous, level) },
+      payload: { level, previous, downgrade },
     });
+    await this.repo.update(updated);
     return updated;
   }
 

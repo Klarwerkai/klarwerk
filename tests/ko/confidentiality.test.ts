@@ -79,6 +79,49 @@ describe("SCRUM-415: KoService", () => {
     expect(last.payload?.previous).toBe("vertraulich");
     expect(last.payload?.downgrade).toBe(true);
   });
+
+  // SCRUM-509 R2: create mit EXPLIZIT ungültiger Stufe → abgelehnt (kein stilles Intern).
+  it("create lehnt eine explizit ungültige Stufe ab (fail-safe, kein Intern-Default)", async () => {
+    const ko = new KoService({ repo: new InMemoryKoRepo() });
+    await expect(ko.create(koInput({ confidentiality: "quatsch" as never }))).rejects.toThrow();
+    // Fehlt die Stufe ganz, gilt der dokumentierte Standard „intern" (nicht gespeichert).
+    const normal = await ko.create(koInput());
+    expect(normal.confidentiality).toBeUndefined();
+  });
+
+  // SCRUM-509 R2: Audit atomar mit der Änderung — schlägt das Audit fehl, unterbleibt die Änderung.
+  it("Audit-Fehler bei setConfidentiality → Rollback (Stufe bleibt unverändert)", async () => {
+    // Wirft NUR bei der Vertraulichkeits-Aktion (create/andere Audits bleiben funktionsfähig).
+    const throwingAudit = {
+      record: async (entry: { action: string }) => {
+        if (entry.action === "ko.confidentiality") {
+          throw new Error("audit down");
+        }
+      },
+    } as unknown as AuditService;
+    const ko = new KoService({ repo: new InMemoryKoRepo(), audit: throwingAudit });
+    const created = await ko.create(koInput({ confidentiality: "vertraulich" }));
+    await expect(ko.setConfidentiality(created.id, "streng_vertraulich", "chef")).rejects.toThrow(
+      "audit down",
+    );
+    // Die Änderung ist NICHT wirksam geworden (nie „wirksam, aber unbelegt").
+    expect((await ko.get(created.id))?.confidentiality).toBe("vertraulich");
+  });
+
+  // SCRUM-509 R2: nebenläufiges verbotenes Downgrade + erlaubtes Upgrade — kein unberechtigtes
+  // Überschreiben (per-KO serialisiert, Downgrade-Prüfung gegen die gerade gültige Stufe).
+  it("parallel: verbotenes Downgrade wird abgelehnt, erlaubtes Upgrade greift (kein Lost-Update)", async () => {
+    const ko = new KoService({ repo: new InMemoryKoRepo() });
+    const created = await ko.create(koInput({ confidentiality: "vertraulich" }));
+    const [downgrade, upgrade] = await Promise.allSettled([
+      ko.setConfidentiality(created.id, "intern", "experte", { mayDowngrade: false }),
+      ko.setConfidentiality(created.id, "streng_vertraulich", "controller", { mayDowngrade: true }),
+    ]);
+    expect(downgrade.status).toBe("rejected"); // Herabstufung ohne Recht → immer verweigert
+    expect(upgrade.status).toBe("fulfilled");
+    // Endzustand ist die berechtigte Höherstufung — NIE das unberechtigte „intern".
+    expect((await ko.get(created.id))?.confidentiality).toBe("streng_vertraulich");
+  });
 });
 
 describe("SCRUM-415: Output Factory schließt vertrauliche KOs aus (nie in externe Kontexte)", () => {

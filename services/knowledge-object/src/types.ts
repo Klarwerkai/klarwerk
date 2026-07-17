@@ -173,7 +173,9 @@ export type KoErrorCode =
   // SCRUM-421: ungültige Upload-Grenzen (Admin-Einstellung).
   | "INVALID_UPLOAD_LIMITS"
   // SCRUM-509: ungültige Vertraulichkeitsstufe (kein stilles Normalisieren auf „intern").
-  | "INVALID_CONFIDENTIALITY";
+  | "INVALID_CONFIDENTIALITY"
+  // SCRUM-509 R2: Herabstufung ohne Prüfer-/Admin-Rolle (atomar an der Datenschicht geprüft).
+  | "DOWNGRADE_FORBIDDEN";
 
 export class KoError extends Error {
   readonly code: KoErrorCode;

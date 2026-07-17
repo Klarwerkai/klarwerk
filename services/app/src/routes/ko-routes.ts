@@ -14,8 +14,6 @@ import {
   type KoStatus,
   type ReviseKoInput,
   type UploadLimitsRepo,
-  isConfidentialityDowngrade,
-  isValidConfidentiality,
   normalizeUploadLimits,
 } from "../../../knowledge-object";
 import type { LifecycleService } from "../../../lifecycle";
@@ -514,30 +512,18 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!user) {
               return;
             }
-            // SCRUM-509: ungültige/fehlende Stufe → 400 (KEIN stilles Normalisieren auf „intern" —
-            // das wäre ein fail-open Downgrade eines vertraulichen KOs).
-            if (!isValidConfidentiality(body.level)) {
-              reply
-                .code(400)
-                .send({ error: "BAD_REQUEST", message: "Ungültige Vertraulichkeitsstufe." });
-              return;
-            }
-            // SCRUM-509: ein Downgrade (weniger vertraulich) ändert die Sichtbarkeits-/Egress-Semantik
-            // (validiertes vertrauliches KO → intern → über den Export/an die Cloud). Nur eine
-            // Prüfer-/Admin-Rolle (ko.validate) darf herabstufen; ein Upgrade bleibt für ko.create frei.
-            const target = await ko.get(id);
-            if (
-              target &&
-              isConfidentialityDowngrade(target.confidentiality, body.level) &&
-              !can(user.role, "ko.validate")
-            ) {
-              reply.code(403).send({
-                error: "FORBIDDEN",
-                message: "Das Herabstufen der Vertraulichkeit erfordert eine Prüfer-/Admin-Rolle.",
+            // SCRUM-509 R2: die Prüfung (ungültige Stufe → 400) UND die Downgrade-Autorisierung laufen
+            // ATOMAR in der Datenschicht (setConfidentiality, per-KO serialisiert) — kein TOCTOU
+            // zwischen Rollenprüfung und Änderung. Die Route reicht nur die Downgrade-Berechtigung
+            // (ko.validate = Prüfer/Admin) durch; Fehler werden zu 400/403/404 gemappt (sendError).
+            try {
+              const updated = await ko.setConfidentiality(id, body.level, user.id, {
+                mayDowngrade: can(user.role, "ko.validate"),
               });
-              return;
+              reply.code(200).send(updated);
+            } catch (error) {
+              sendError(reply, error);
             }
-            reply.code(200).send(await ko.setConfidentiality(id, body.level, user.id));
             return;
           }
           case "conflict": {

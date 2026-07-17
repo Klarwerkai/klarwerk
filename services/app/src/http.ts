@@ -44,6 +44,8 @@ const STATUS_BY_CODE: Record<string, number> = {
   NOT_FOUND: 404,
   FORBIDDEN: 403,
   NOT_APPROVED: 403,
+  // SCRUM-509 R2: Herabstufung der Vertraulichkeit ohne Prüfer-/Admin-Rolle → 403.
+  DOWNGRADE_FORBIDDEN: 403,
   INVALID_CREDENTIALS: 401,
   EMAIL_TAKEN: 409,
 };

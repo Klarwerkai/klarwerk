@@ -1,4 +1,4 @@
-import type { KnowledgeType } from "../../knowledge-object";
+import type { Confidentiality, KnowledgeType } from "../../knowledge-object";
 
 // Roh-Inhalt eines Entwurfs (wird später zu einem KO strukturiert/eingereicht).
 export interface DraftPayload {
@@ -12,6 +12,9 @@ export interface DraftPayload {
   neededValidations?: number;
   asset?: string | null;
   bodyHtml?: string | null; // KW-STR: WYSIWYG-Body übersteht Entwurf/Resume/Promote
+  // SCRUM-509 R2: die im Erfassen gewählte Vertraulichkeit übersteht Entwurf/Resume/Promote —
+  // sonst ginge die Stufe beim Promote verloren (fail-open). toKoInput reicht sie ans KO durch.
+  confidentiality?: Confidentiality;
   // UI-Herkunft fuer Resume-Routing; keine Persistenzlogik, nur Payload-Metadatum.
   origin?: "tell" | "studio" | "expert" | "frontdoor";
 }

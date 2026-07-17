@@ -101,6 +101,9 @@ export class CaptureService {
       ...(p.neededValidations !== undefined ? { neededValidations: p.neededValidations } : {}),
       asset: p.asset ?? null,
       bodyHtml: p.bodyHtml ?? null, // KW-STR: Body in den KO übernehmen (wird dort sanitisiert)
+      // SCRUM-509 R2: die Vertraulichkeitsstufe des Entwurfs ans KO durchreichen (kein Verlust beim
+      // Promote). ko.create prüft/lehnt ungültige Werte ab — keine stille Intern-Normalisierung.
+      ...(p.confidentiality !== undefined ? { confidentiality: p.confidentiality } : {}),
     };
   }
 
