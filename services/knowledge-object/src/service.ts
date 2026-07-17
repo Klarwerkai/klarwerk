@@ -58,11 +58,6 @@ export interface KoServiceDeps {
   // Validierungs-Modul). Als injizierte Funktion — KEIN Import über die Modulgrenze.
   // null/undefined → fester Modul-Default (DEFAULT_NEEDED_VALIDATIONS).
   defaultNeededValidations?: () => Promise<number | null | undefined>;
-  // SCRUM-507: revisions-gebundene Kopplung an die Validierung. Bei einer INHALTLICHEN Revision
-  // (revise) werden die gespeicherten Bewertungen des KOs verworfen — sonst bliebe der geänderte
-  // Inhalt mit den alten Freigaben „validiert". Als injizierte Funktion (KEIN Import über die
-  // Modulgrenze, analog defaultNeededValidations). Ohne Hook: reines KO-Reset wie bisher.
-  onContentRevised?: (koId: string) => Promise<void>;
 }
 
 export interface CreateKoInput {
@@ -115,11 +110,11 @@ export class KoService {
   private readonly now: () => number;
   private readonly genId: () => string;
   private readonly defaultNeededValidations: (() => Promise<number | null | undefined>) | undefined;
-  private readonly onContentRevised: ((koId: string) => Promise<void>) | undefined;
-  // SCRUM-509 R2: per-KO-Serialisierung der Vertraulichkeits-Änderung — Lesen der aktuellen Stufe,
-  // Downgrade-Autorisierung und Schreiben laufen ohne Interleave (kein TOCTOU zwischen Rollenprüfung
-  // und Änderung, auch bei nebenläufigem Upgrade vs. Downgrade auf demselben KO).
-  private readonly confidentialityLocks = new Map<string, Promise<unknown>>();
+  // SCRUM-509 R2 / 507 R2: EIN per-KO Schreib-Lock serialisiert die zueinander wettlaufenden KO-
+  // Mutationen (Vertraulichkeit setzen, Validierungsstatus setzen, Revision). So gibt es kein Inter-
+  // leave zwischen Lesen und Schreiben (kein TOCTOU, kein Lost-Update, keine fälschlich gültige
+  // Alt-Bewertung, wenn ein Revise nebenläufig zur Bewertung läuft).
+  private readonly koWriteLocks = new Map<string, Promise<unknown>>();
 
   constructor(deps: KoServiceDeps) {
     this.repo = deps.repo;
@@ -127,9 +122,23 @@ export class KoService {
     this.versions = deps.versions;
     this.evidence = deps.evidence;
     this.defaultNeededValidations = deps.defaultNeededValidations;
-    this.onContentRevised = deps.onContentRevised;
     this.now = deps.now ?? (() => Date.now());
     this.genId = deps.genId ?? (() => randomUUID());
+  }
+
+  // SCRUM-509 R2 / 507 R2: serialisiert fn per-KO (Lesen+Schreiben ohne Interleave). Fehler eines
+  // Vorgängers blockiert den nächsten nicht (catch); jeder Aufrufer sieht seinen eigenen Fehler.
+  private async withKoLock<T>(id: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.koWriteLocks.get(id) ?? Promise.resolve();
+    const run = prev.catch(() => undefined).then(fn);
+    this.koWriteLocks.set(id, run);
+    try {
+      return await run;
+    } finally {
+      if (this.koWriteLocks.get(id) === run) {
+        this.koWriteLocks.delete(id);
+      }
+    }
   }
 
   // SCRUM-159: vollständigen, unveränderlichen Voll-Snapshot ablegen (JSON-Deep-Copy, damit
@@ -235,18 +244,7 @@ export class KoService {
     actor: string,
     opts: { mayDowngrade?: boolean } = {},
   ): Promise<KnowledgeObject> {
-    const prev = this.confidentialityLocks.get(id) ?? Promise.resolve();
-    const run = prev
-      .catch(() => undefined)
-      .then(() => this.doSetConfidentiality(id, level, actor, opts));
-    this.confidentialityLocks.set(id, run);
-    try {
-      return await run;
-    } finally {
-      if (this.confidentialityLocks.get(id) === run) {
-        this.confidentialityLocks.delete(id);
-      }
-    }
+    return this.withKoLock(id, () => this.doSetConfidentiality(id, level, actor, opts));
   }
 
   private async doSetConfidentiality(
@@ -527,48 +525,50 @@ export class KoService {
 
   // FR-KO-04: Überarbeiten erhöht Version, setzt Bewertungen zurück, erzeugt History-Eintrag.
   async revise(id: string, changes: ReviseKoInput, author: string): Promise<KnowledgeObject> {
-    const ko = await this.require(id);
     if (changes.type && !KNOWLEDGE_TYPES.includes(changes.type)) {
       throw new KoError("INVALID_TYPE", "Unbekannte Wissensart.");
     }
-    const version = ko.version + 1;
-    const at = new Date(this.now()).toISOString();
-    // KW-STR: neuer Body wird sanitisiert; statement ggf. daraus abgeleitet.
-    const nextBody =
-      changes.bodyHtml !== undefined ? cleanBody(changes.bodyHtml) : (ko.bodyHtml ?? null);
-    const nextStatement =
-      changes.statement ??
-      (changes.bodyHtml !== undefined && nextBody ? htmlToPlainText(nextBody) : ko.statement);
-    const revised: KnowledgeObject = {
-      ...ko,
-      title: changes.title ?? ko.title,
-      statement: nextStatement,
-      bodyHtml: nextBody,
-      type: changes.type ?? ko.type,
-      conditions: changes.conditions ?? ko.conditions,
-      measures: changes.measures ?? ko.measures,
-      version,
-      trust: 0, // Bewertungen zurückgesetzt
-      status: "offen", // muss neu validiert werden
-      history: [...ko.history, { version, at, author, note: "überarbeitet" }],
-      // SCRUM-129: Quellen über Revisionen erhalten; SCRUM-470: optional fortschreiben (Re-Sync-Anker).
-      sources: changes.sources ?? ko.sources ?? [],
-    };
-    await this.repo.update(revised);
-    // SCRUM-159: neuen Versions-Snapshot persistieren; frühere Versionen bleiben unverändert.
-    await this.snapshot(revised, author, "überarbeitet");
-    // SCRUM-507: die Bewertungen galten dem ALTEN Inhalt — revisions-gebunden verwerfen, damit die
-    // neue Version nicht mit fremden/alten Freigaben „validiert" wird. Der Status ist bereits „offen"
-    // und Trust 0 (oben); ohne dieses Verwerfen würde ein einzelner Recompute die alten Up-Stimmen
-    // erneut zählen und das KO sofort wieder freigeben. Hook ist best-effort injiziert (Modulgrenze).
-    await this.onContentRevised?.(id);
-    await this.audit?.record({
-      actor: author,
-      action: "ko.revised",
-      target: id,
-      payload: { version },
+    // SCRUM-507 R2: die Revision läuft per-KO serialisiert (withKoLock) — der Versions-Bump und der
+    // Reset auf „offen"/Trust 0 sind EIN atomarer Schritt gegenüber einer nebenläufigen Bewertung
+    // (setValidationState nutzt denselben Lock + Compare-and-Set). Scheitert ein Teilschritt, wirft die
+    // Methode und der KO bleibt unverändert (kein Teilzustand). Die Bewertungen werden NICHT gelöscht:
+    // sie tragen ihre koVersion und sind ab der neuen Version implizit „stale" (Historie bleibt, R2).
+    return this.withKoLock(id, async () => {
+      const ko = await this.require(id);
+      const version = ko.version + 1;
+      const at = new Date(this.now()).toISOString();
+      // KW-STR: neuer Body wird sanitisiert; statement ggf. daraus abgeleitet.
+      const nextBody =
+        changes.bodyHtml !== undefined ? cleanBody(changes.bodyHtml) : (ko.bodyHtml ?? null);
+      const nextStatement =
+        changes.statement ??
+        (changes.bodyHtml !== undefined && nextBody ? htmlToPlainText(nextBody) : ko.statement);
+      const revised: KnowledgeObject = {
+        ...ko,
+        title: changes.title ?? ko.title,
+        statement: nextStatement,
+        bodyHtml: nextBody,
+        type: changes.type ?? ko.type,
+        conditions: changes.conditions ?? ko.conditions,
+        measures: changes.measures ?? ko.measures,
+        version,
+        trust: 0, // Bewertungen der Vorversion zählen nicht mehr (versionsgebunden, R2)
+        status: "offen", // muss neu validiert werden
+        history: [...ko.history, { version, at, author, note: "überarbeitet" }],
+        // SCRUM-129: Quellen über Revisionen erhalten; SCRUM-470: optional fortschreiben (Re-Sync-Anker).
+        sources: changes.sources ?? ko.sources ?? [],
+      };
+      await this.repo.update(revised);
+      // SCRUM-159: neuen Versions-Snapshot persistieren; frühere Versionen bleiben unverändert.
+      await this.snapshot(revised, author, "überarbeitet");
+      await this.audit?.record({
+        actor: author,
+        action: "ko.revised",
+        target: id,
+        payload: { version },
+      });
+      return revised;
     });
-    return revised;
   }
 
   // FR-KO-03: Kategorie/Tags nachträglich änderbar (Metadaten, ohne Versions-Bump).
@@ -622,14 +622,24 @@ export class KoService {
   }
 
   // Von der Validierung gesetzt (FR-VAL-01/02): Trust + Status nach Bewertungslage.
+  // SCRUM-507 R2: per-KO serialisiert + optionaler Compare-and-Set gegen die Version. `expectedVersion`
+  // schützt vor der Wettlaufsituation „Bewertung schreibt den Validierungsstatus, nachdem ein Revise
+  // die Version erhöht und auf offen zurückgesetzt hat": stimmt die Version nicht mehr, unterbleibt das
+  // Schreiben (No-op) → keine fälschlich gültige Alt-Bewertung.
   async setValidationState(
     id: string,
     state: { trust: number; status: KoStatus },
+    opts: { expectedVersion?: number } = {},
   ): Promise<KnowledgeObject> {
-    const ko = await this.require(id);
-    const updated = { ...ko, trust: state.trust, status: state.status };
-    await this.repo.update(updated);
-    return updated;
+    return this.withKoLock(id, async () => {
+      const ko = await this.require(id);
+      if (opts.expectedVersion !== undefined && ko.version !== opts.expectedVersion) {
+        return ko; // Version hat sich geändert (Revise) → Bewertung galt der Vorversion, nicht schreiben.
+      }
+      const updated = { ...ko, trust: state.trust, status: state.status };
+      await this.repo.update(updated);
+      return updated;
+    });
   }
 
   // FR-LIF-02: Autor-Übergabe — current author ändert sich, originalAuthor bleibt erhalten.

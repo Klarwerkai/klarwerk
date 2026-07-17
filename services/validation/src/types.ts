@@ -6,6 +6,11 @@ export interface Rating {
   userId: string;
   verdict: Verdict;
   createdAt: string;
+  // SCRUM-507 R2: die KO-Version, die DIESE Bewertung bewertet hat. Wird beim Bewerten gestempelt.
+  // Nur Bewertungen der AKTUELLEN KO-Version zählen für Trust/Status; frühere sind „stale" (bleiben
+  // aber als Historie erhalten). Additiv in der JSONB-Ablage — keine DDL-Migration nötig. Alt-
+  // Bewertungen ohne Feld gelten als Version 1 (häufigster Fall; auf revidierten KOs damit stale).
+  koVersion?: number;
 }
 
 export interface Assignment {

@@ -11,6 +11,12 @@ import { ValidationError, type Verdict } from "./types";
 
 export type BoardFilter = Omit<KoFilter, "status">;
 
+// SCRUM-507 R2: die von einer Bewertung bewertete KO-Version. Alt-Bewertungen ohne Feld gelten als
+// Version 1 (häufigster Fall: nie revidiert; auf revidierten KOs sind sie damit stale — fail-safe).
+function ratingVersion(r: { koVersion?: number }): number {
+  return r.koVersion ?? 1;
+}
+
 export interface AssignmentSummary {
   userId: string;
   open: number;
@@ -86,21 +92,28 @@ export class ValidationService {
     if (!ko) {
       throw new ValidationError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
     }
+    // SCRUM-507 R2: die Bewertung wird an die bewertete KO-VERSION gebunden. Ein nebenläufiges Revise
+    // (Version+1) macht sie damit implizit stale — keine separate Invalidierung, kein Desync.
+    const ratedVersion = ko.version;
     await this.ratings.upsert({
       koId,
       userId,
       verdict,
       createdAt: new Date(this.now()).toISOString(),
+      koVersion: ratedVersion,
     });
     const all = await this.ratings.listByKo(koId);
-    const outcome = computeOutcome(
-      all.map((r) => r.verdict),
-      ko.neededValidations,
+    // Nur Bewertungen der aktuell bewerteten Version zählen (stale Vorversions-Bewertungen ausgeschlossen).
+    const currentVotes = all.filter((r) => ratingVersion(r) === ratedVersion).map((r) => r.verdict);
+    const outcome = computeOutcome(currentVotes, ko.neededValidations);
+    // SCRUM-507 R2: Compare-and-Set gegen die bewertete Version. Hat ein Revise die Version
+    // zwischenzeitlich erhöht, unterbleibt das Schreiben (der Revise-Reset auf „offen" bleibt gültig)
+    // → keine fälschlich gültige Alt-Bewertung. setValidationState ist per-KO serialisiert.
+    await this.koService.setValidationState(
+      koId,
+      { trust: outcome.trust, status: outcome.status },
+      { expectedVersion: ratedVersion },
     );
-    await this.koService.setValidationState(koId, {
-      trust: outcome.trust,
-      status: outcome.status,
-    });
     await this.audit?.record({
       actor: userId,
       action: "ko.rated",
@@ -184,13 +197,20 @@ export class ValidationService {
     // read-only Anreicherung mitgeben. Reine Lese-Sicht auf das Rating-Repo, kein neues Datenmodell.
     return Promise.all(
       kos.map(async (ko) => {
+        // SCRUM-507 R2: nur Bewertungen der AKTUELLEN Version zählen für die Anzeige; frühere werden
+        // als „veraltet (vor Revision)" separat gezählt (staleVotes), nicht in up/warn/down gemischt.
         const votes: { up: number; warn: number; down: number } = { up: 0, warn: 0, down: 0 };
+        let staleVotes = 0;
         for (const r of await this.ratings.listByKo(ko.id)) {
-          votes[r.verdict] += 1;
+          if (ratingVersion(r) === ko.version) {
+            votes[r.verdict] += 1;
+          } else {
+            staleVotes += 1;
+          }
         }
         const assigned = openByKo.get(ko.id);
         const base = assigned ? { ...ko, assignments: assigned } : ko;
-        return { ...base, reviewVotes: votes };
+        return { ...base, reviewVotes: votes, staleVotes };
       }),
     );
   }

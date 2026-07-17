@@ -31,6 +31,8 @@ export interface ReviewSignals {
   // (blockiert die Freigabe). Für die Anzeige „X von Y grün". Ohne Anreicherung 0.
   greenVotes: number;
   redVotes: number;
+  // SCRUM-507 R2: Stimmen aus einer FRÜHEREN Revision — veraltet, zählen nicht mehr zum Ziel.
+  staleVotes: number;
   assigned: boolean; // bereits jemandem zur Prüfung zugewiesen
   authorTransferred: boolean; // Autor ≠ Originalautor → extra Prüfblick
 }
@@ -51,6 +53,7 @@ export function reviewSignals(ko: KnowledgeObject): ReviewSignals {
     needed: ko.neededValidations,
     greenVotes: ko.reviewVotes?.up ?? 0,
     redVotes: ko.reviewVotes?.down ?? 0,
+    staleVotes: ko.staleVotes ?? 0,
     assigned: (ko.assignments?.length ?? 0) > 0,
     authorTransferred: ko.author !== ko.originalAuthor,
   };

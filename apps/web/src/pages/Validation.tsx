@@ -694,6 +694,16 @@ export function Validation(): JSX.Element {
                                 {t("val.votesBlocked", { count: sig.redVotes })}
                               </span>
                             ) : null}
+                            {/* SCRUM-507 R2: Bewertungen aus einer frueheren Revision sind veraltet und
+                                zaehlen nicht mehr — ehrlich sichtbar, damit „X von Y gruen" nicht taeuscht. */}
+                            {sig.staleVotes > 0 ? (
+                              <span
+                                title={t("val.staleVotesHint", { version: sig.version })}
+                                className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted-2"
+                              >
+                                {t("val.staleVotes", { count: sig.staleVotes })}
+                              </span>
+                            ) : null}
                             <span className="font-mono text-[11px] text-muted-2">{k.category}</span>
                           </div>
                           {/* SCRUM-416 (Pedi 03.07.): Karten-Dichte — Signale, Kontext, Autor,

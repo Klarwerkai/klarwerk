@@ -45,9 +45,9 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   resetTokens: ["create", "delete"],
   drafts: ["insert", "update", "delete"],
   gaps: ["insert", "update", "delete"],
-  // SCRUM-507: deleteByKo (Bewertungs-Invalidierung bei Revision) MUSS journaled werden, sonst
-  // kämen verworfene Bewertungen nach einem Dev-Neustart zurück und trügen die alte Version.
-  ratings: ["upsert", "deleteByKo"],
+  // SCRUM-507 R2: die Bewertung (inkl. koVersion) wird per upsert journaled; die Invalidierung ist
+  // versionsgebunden (keine separate Löschung), daher kein weiterer Mutator nötig.
+  ratings: ["upsert"],
   assignments: ["create", "update"],
   conflictsRepo: ["insert", "update"],
   // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-Einträge überleben den Neustart.

@@ -1583,6 +1583,9 @@ const de = {
   "val.votesHint":
     "So viele grüne (positive) Bewertungen sind erfasst — von {{need}} nötigen bis zur Validierung. Ab genug grünen und 0 roten gilt das Objekt als validiert; rote Bewertungen blockieren die Freigabe.",
   "val.votesBlocked": "{{count}}× rot",
+  "val.staleVotes": "{{count}}× veraltet",
+  "val.staleVotesHint":
+    "Diese Bewertungen stammen aus einer früheren Revision (vor v{{version}}) und zählen nicht mehr. Das Objekt braucht frische Bewertungen der aktuellen Version.",
   "val.markTrue": "Als wahr kennzeichnen",
   "val.markTrueConfirm": "Als wahr kennzeichnen und komplett validieren?",
   "val.markTrueCancel": "Abbrechen",
@@ -4470,6 +4473,9 @@ const en: typeof de = {
   "val.votesHint":
     "This many green (positive) ratings are recorded — out of {{need}} needed to validate. With enough green and 0 red, the object counts as validated; red ratings block approval.",
   "val.votesBlocked": "{{count}}× red",
+  "val.staleVotes": "{{count}}× outdated",
+  "val.staleVotesHint":
+    "These ratings are from an earlier revision (before v{{version}}) and no longer count. The object needs fresh ratings of the current version.",
   "val.markTrue": "Mark as true",
   "val.markTrueConfirm": "Mark as true and fully validate?",
   "val.markTrueCancel": "Cancel",
@@ -7325,6 +7331,9 @@ const nl: typeof de = {
   "val.votesHint":
     "Zo veel groene (positieve) beoordelingen zijn er vastgelegd — van de {{need}} die nodig zijn tot aan de validatie. Vanaf voldoende groene en 0 rode geldt het object als gevalideerd; rode beoordelingen blokkeren de goedkeuring.",
   "val.votesBlocked": "{{count}}× rood",
+  "val.staleVotes": "{{count}}× verouderd",
+  "val.staleVotesHint":
+    "Deze beoordelingen komen uit een eerdere revisie (vóór v{{version}}) en tellen niet meer mee. Het object heeft nieuwe beoordelingen van de huidige versie nodig.",
   "val.markTrue": "Als waar markeren",
   "val.markTrueConfirm": "Als waar markeren en volledig valideren?",
   "val.markTrueCancel": "Annuleren",

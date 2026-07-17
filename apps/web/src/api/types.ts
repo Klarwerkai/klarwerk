@@ -158,6 +158,8 @@ export interface KnowledgeObject {
   confidentiality?: Confidentiality;
   // Pedi 05.07.: read-only Board-Anreicherung — Peer-Stimmen-Zähler (grün/gelb/rot) für „X von Y grün".
   reviewVotes?: { up: number; warn: number; down: number };
+  // SCRUM-507 R2: Anzahl Bewertungen aus einer FRÜHEREN Revision — veraltet, zählen nicht mehr.
+  staleVotes?: number;
   asset: string | null;
   createdAt: string;
   history: HistoryEntry[];

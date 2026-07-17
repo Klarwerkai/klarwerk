@@ -237,16 +237,24 @@ describe("ValidationService", () => {
   });
 });
 
-// SCRUM-507: inhaltliche Revision invalidiert die Bewertungen — der geänderte Inhalt darf nicht mit
-// den alten Freigaben „validiert" bleiben. Getestet über die revisions-gebundene Kopplung
-// (KoService.onContentRevised → ratings.deleteByKo), wie sie build-app verdrahtet.
-describe("SCRUM-507: Revision invalidiert Bewertungen", () => {
-  function wired() {
+// SCRUM-507 R2: inhaltliche Revision invalidiert die Bewertungen VERSIONSGEBUNDEN — Vorversions-
+// Bewertungen werden NICHT gelöscht (Historie), zählen aber nicht mehr (stale). Atomar (per-KO-Lock +
+// Compare-and-Set) gegen nebenläufige Bewertungen; Fehler → Rollback (kein Teilzustand).
+describe("SCRUM-507 R2: versionsgebundene, atomare Bewertungs-Invalidierung", () => {
+  // Repo, dessen update bei „armed" wirft — für den Rollback-Test (kein Teilzustand bei Fehler).
+  class FlakyKoRepo extends InMemoryKoRepo {
+    armed = false;
+    override async update(ko: Parameters<InMemoryKoRepo["update"]>[0]): Promise<void> {
+      if (this.armed) {
+        throw new Error("update kaputt");
+      }
+      return super.update(ko);
+    }
+  }
+
+  function wired(repo = new InMemoryKoRepo()) {
     const ratings = new InMemoryRatingRepo();
-    const koService = new KoService({
-      repo: new InMemoryKoRepo(),
-      onContentRevised: (koId) => ratings.deleteByKo(koId),
-    });
+    const koService = new KoService({ repo });
     const service = new ValidationService({
       koService,
       ratings,
@@ -255,36 +263,71 @@ describe("SCRUM-507: Revision invalidiert Bewertungen", () => {
     return { ratings, koService, service };
   }
 
-  it("validiertes KO revidieren → alte Freigaben zählen nicht mehr, Trust zurück, Neu-Validierung nötig", async () => {
+  it("Revision → Alt-Bewertungen bleiben (Historie), sind aber stale; aktuelle Version ohne gültige", async () => {
     const { ratings, koService, service } = wired();
     const ko = await koService.create(koInput({ neededValidations: 2 }));
     await service.rate(ko.id, "u1", "up");
     expect((await service.rate(ko.id, "u2", "up")).status).toBe("validiert");
-    expect(await ratings.listByKo(ko.id)).toHaveLength(2);
 
     const revised = await koService.revise(ko.id, { statement: "Geänderter Inhalt." }, "anna");
     expect(revised.status).toBe("offen");
     expect(revised.trust).toBe(0);
-    // Die alten Bewertungen sind verworfen.
-    expect(await ratings.listByKo(ko.id)).toHaveLength(0);
 
-    // Eine EINZELNE neue Grün-Stimme re-validiert NICHT (ohne den Fix zählten die 2 alten weiter mit).
+    // Historie erhalten (NICHT gelöscht) …
+    expect(await ratings.listByKo(ko.id)).toHaveLength(2);
+    // … aber als „veraltet (vor Revision)" gezählt, nicht in up/warn/down.
+    const entry = (await service.board()).find((k) => k.id === ko.id);
+    expect(entry?.reviewVotes).toEqual({ up: 0, warn: 0, down: 0 });
+    expect((entry as { staleVotes?: number })?.staleVotes).toBe(2);
+
+    // Eine EINZELNE neue Grün-Stimme (neue Version) re-validiert NICHT — alte zählen nicht mit.
     const after = await service.rate(ko.id, "u3", "up");
-    expect(after.status).toBe("offen"); // erst 1 von 2
+    expect(after.status).toBe("offen"); // erst 1 von 2 in der neuen Version
     expect((await koService.get(ko.id))?.status).toBe("offen");
   });
 
-  it("Metadaten-Änderung ohne Inhaltsrevision behält die Freigabe (updateCategory)", async () => {
-    // Begründung: nur `revise` (inhaltliche Revision, Versions-Bump) verwirft Bewertungen. Reine
-    // Metadaten-Änderungen (Kategorie/Tags/Vertraulichkeit) laufen NICHT über revise → Freigabe bleibt.
-    const { ratings, koService, service } = wired();
+  it("Metadaten-Änderung (kein Versions-Bump) behält die Freigabe", async () => {
+    const { koService, service } = wired();
     const ko = await koService.create(koInput({ neededValidations: 2 }));
     await service.rate(ko.id, "u1", "up");
     await service.rate(ko.id, "u2", "up");
-
     await koService.updateCategory(ko.id, "Anlage 9", "anna");
+    expect((await koService.get(ko.id))?.status).toBe("validiert"); // Version unverändert → gültig
+  });
 
-    expect((await koService.get(ko.id))?.status).toBe("validiert");
-    expect(await ratings.listByKo(ko.id)).toHaveLength(2); // Freigaben unverändert
+  it("parallele Bewertung WÄHREND Revision → keine fälschlich gültige Alt-Bewertung", async () => {
+    const { koService, service } = wired();
+    const ko = await koService.create(koInput({ neededValidations: 2 }));
+    await service.rate(ko.id, "u1", "up");
+    await service.rate(ko.id, "u2", "up"); // validiert (v1)
+
+    await Promise.allSettled([
+      koService.revise(ko.id, { statement: "Neuer Inhalt." }, "anna"),
+      service.rate(ko.id, "u3", "up"),
+    ]);
+
+    const final = await koService.get(ko.id);
+    expect(final?.version).toBe(2);
+    // Egal in welcher Reihenfolge: die Revision setzt offen; die u3-Stimme zählt höchstens als 1 von 2
+    // der NEUEN Version → nie fälschlich „validiert" durch die 2 alten Stimmen.
+    expect(final?.status).toBe("offen");
+  });
+
+  it("Fehler bei Revision → Rollback (kein Versions-Bump, Bewertungen bleiben gültig)", async () => {
+    const repo = new FlakyKoRepo();
+    const { koService, service } = wired(repo);
+    const ko = await koService.create(koInput({ neededValidations: 2 }));
+    await service.rate(ko.id, "u1", "up");
+    await service.rate(ko.id, "u2", "up"); // validiert (v1)
+
+    repo.armed = true;
+    await expect(koService.revise(ko.id, { statement: "X" }, "anna")).rejects.toThrow(
+      "update kaputt",
+    );
+    repo.armed = false;
+
+    const after = await koService.get(ko.id);
+    expect(after?.version).toBe(1); // kein Teilzustand: Version NICHT erhöht
+    expect(after?.status).toBe("validiert"); // Bewertungen weiter gültig (Vorversion nicht verworfen)
   });
 });

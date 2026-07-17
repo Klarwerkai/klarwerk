@@ -3,9 +3,6 @@ import type { Assignment, Rating } from "./types";
 export interface RatingRepo {
   upsert(rating: Rating): Promise<void>; // eine Bewertung je (KO, Nutzer)
   listByKo(koId: string): Promise<Rating[]>;
-  // SCRUM-507: bei einer inhaltlichen Revision werden ALLE Bewertungen des KOs verworfen — sie galten
-  // dem alten Inhalt und dürfen die neue Version nicht mehr als „validiert" tragen.
-  deleteByKo(koId: string): Promise<void>;
 }
 
 export interface AssignmentRepo {
@@ -25,15 +22,6 @@ export class InMemoryRatingRepo implements RatingRepo {
 
   listByKo(koId: string): Promise<Rating[]> {
     return Promise.resolve([...this.ratings.values()].filter((r) => r.koId === koId));
-  }
-
-  deleteByKo(koId: string): Promise<void> {
-    for (const [key, r] of this.ratings) {
-      if (r.koId === koId) {
-        this.ratings.delete(key);
-      }
-    }
-    return Promise.resolve();
   }
 }
 
