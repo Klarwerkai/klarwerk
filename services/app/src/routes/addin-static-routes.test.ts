@@ -1,3 +1,4 @@
+import net from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../build-app";
 import { isAddinNamespacePath } from "./addin-static-routes";
@@ -6,7 +7,12 @@ import { isAddinNamespacePath } from "./addin-static-routes";
 // traversal-sicher (explizite Datei-Map), kein Directory-Listing.
 
 const SAVED: Record<string, string | undefined> = {};
-const KEYS = ["KLARWERK_ADDON_API", "KLARWERK_ADDON_ORIGIN"];
+const KEYS = [
+  "KLARWERK_ADDON_API",
+  "KLARWERK_ADDON_ORIGIN",
+  "KLARWERK_ADDON_API_KEY",
+  "KLARWERK_ADDON_AUTH_MAX",
+];
 beforeEach(() => {
   for (const k of KEYS) {
     SAVED[k] = process.env[k];
@@ -154,5 +160,158 @@ describe("SCRUM-490 H: /addin/* Bundle-Serving", () => {
     const health = await on.inject({ method: "GET", url: "/health" });
     expect(health.statusCode).toBe(200);
     expect(health.json()).toEqual({ status: "ok" });
+  });
+});
+
+// SCRUM-490 H3 (bens Punkt 5): ROHSOCKET-Tests — inject() normalisiert URLs clientseitig zu früh; nur
+// ein echter Socket transportiert die unveränderten Trick-Pfade (Malformed, doppelt-encoded, Backslash,
+// Semikolon) bis zum Server. Der Server lauscht auf 127.0.0.1:0 (ephemeral).
+describe("SCRUM-490 H3: Rohsocket — negative /addin-Antwortfläche vollständig statisch", () => {
+  const STATIC_404 = JSON.stringify({ error: "NOT_FOUND", message: "Nicht gefunden." });
+
+  async function withListeningApp(
+    fn: (rawGet: (pathLine: string, method?: string) => Promise<string>) => Promise<void>,
+  ): Promise<void> {
+    process.env.KLARWERK_ADDON_API = "1";
+    const app = buildApp(buildServices());
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const address = app.server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    const rawGet = (pathLine: string, method = "GET"): Promise<string> =>
+      new Promise((resolve, reject) => {
+        const sock = net.connect(port, "127.0.0.1", () => {
+          sock.write(`${method} ${pathLine} HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n`);
+        });
+        let buf = "";
+        sock.on("data", (d) => {
+          buf += d.toString();
+        });
+        sock.on("end", () => resolve(buf));
+        sock.on("error", reject);
+      });
+    try {
+      await fn(rawGet);
+    } finally {
+      await app.close();
+    }
+  }
+
+  it("Malformed/encoded/Backslash/Semikolon → nosniff + statischer Body, kein Echo, nie global (7 Pfade)", async () => {
+    await withListeningApp(async (rawGet) => {
+      const cases = [
+        "/addin/%c0%ae%c0%ae/x", // overlong-encoded dots → FST_ERR_BAD_URL-Kandidat
+        "/addin/%E0%A4%A", // truncated UTF-8-Sequenz → nicht dekodierbar
+        "/%2561ddin/taskpane.html", // doppelt encoded "a"
+        "/%2541DDIN/x", // doppelt encoded "A" + Case
+        "/addin%252Ftaskpane.html", // doppelt encodeter Slash
+        "/addin\\foo", // Backslash-Variante
+        "/addin;v=1/taskpane.html", // Semikolon-Segment-Parameter
+      ];
+      for (const p of cases) {
+        const res = await rawGet(p);
+        const statusLine = res.split("\r\n")[0] ?? "";
+        const body = res.split("\r\n\r\n")[1] ?? "";
+        expect(statusLine).toContain("404"); // konsistent 404 (dokumentierter Entscheid, auch für Malformed)
+        expect(res.toLowerCase()).toContain("x-content-type-options: nosniff");
+        expect(body).toBe(STATIC_404); // exakt statisch …
+        expect(body).not.toContain("Route "); // … nie der globale Fastify-Body
+        expect(body).not.toContain("Bad Request"); // … nie das FST_ERR_BAD_URL-Echo
+        expect(body).not.toContain("taskpane"); // … kein Pfad-Echo
+      }
+    });
+  });
+
+  it("Rohsocket-Gegenprobe: GET Map-Treffer → 200 + nosniff (200-Pfad unverändert)", async () => {
+    await withListeningApp(async (rawGet) => {
+      const res = await rawGet("/addin/taskpane.html");
+      expect(res.split("\r\n")[0]).toContain("200");
+      expect(res.toLowerCase()).toContain("x-content-type-options: nosniff");
+      expect(res).toContain("taskpane.js"); // echtes Bundle-HTML
+    });
+  });
+
+  it("Rohsocket: Nicht-Namensraum-Malformed (/%E0%A4%A ohne /addin) bleibt globale Fläche (unberührt)", async () => {
+    await withListeningApp(async (rawGet) => {
+      const res = await rawGet("/%E0%A4%A");
+      // Kein /addin-Namensraum → NICHT unsere Fläche; Fastifys globales Verhalten bleibt bit-identisch.
+      expect(res.split("\r\n")[0]).toContain("400");
+    });
+  });
+});
+
+describe("SCRUM-490 H3: Methoden + Auth auf der /addin-Fläche", () => {
+  const STATIC_404 = JSON.stringify({ error: "NOT_FOUND", message: "Nicht gefunden." });
+
+  it("Nicht-GET/HEAD (POST/PUT/DELETE/PATCH/OPTIONS) → statischer 404 + nosniff, kein Methoden-Echo", async () => {
+    process.env.KLARWERK_ADDON_API = "1";
+    const app = buildApp(buildServices());
+    for (const method of ["POST", "PUT", "DELETE", "PATCH", "OPTIONS"] as const) {
+      for (const url of ["/addin/taskpane.html", "/addin/unbekannt.js"]) {
+        const res = await app.inject({ method, url });
+        expect(res.statusCode).toBe(404); // 404 statt 405: Einheitlichkeit > HTTP-Purismus (kein Orakel)
+        expect(res.headers["x-content-type-options"]).toBe("nosniff");
+        expect(res.body).toBe(STATIC_404);
+        expect(res.body).not.toContain(method); // kein Methoden-Echo
+      }
+    }
+    // GET/HEAD auf Map-Treffer bleiben 200 (Bytes/Header wie H).
+    const get = await app.inject({ method: "GET", url: "/addin/taskpane.css" });
+    expect(get.statusCode).toBe(200);
+    expect(get.headers["content-type"]).toContain("text/css");
+    const head = await app.inject({ method: "HEAD", url: "/addin/taskpane.css" });
+    expect(head.statusCode).toBe(200);
+  });
+
+  it("Auth: falscher Key auf GET /addin → 401 (Body/Semantik unverändert) + nosniff; 429 ebenso; keyloser GET danach 200", async () => {
+    process.env.KLARWERK_ADDON_API = "1";
+    process.env.KLARWERK_ADDON_API_KEY = "s3cr3t";
+    process.env.KLARWERK_ADDON_AUTH_MAX = "1";
+    const app = buildApp(buildServices());
+    // 1. falscher Key → 401, Body wie bisher (UNAUTHENTICATED), plus nosniff (H3-Punkt 4).
+    const unauth = await app.inject({
+      method: "GET",
+      url: "/addin/taskpane.html",
+      headers: { "x-klarwerk-addon-key": "falsch" },
+    });
+    expect(unauth.statusCode).toBe(401);
+    expect(unauth.json().error).toBe("UNAUTHENTICATED"); // Semantik/Body unverändert
+    expect(unauth.headers["x-content-type-options"]).toBe("nosniff");
+    // 2. weiterer falscher Key → 429 (Throttle heilig: Verhalten unverändert) + nosniff.
+    const throttled = await app.inject({
+      method: "GET",
+      url: "/addin/taskpane.html",
+      headers: { "x-klarwerk-addon-key": "falsch" },
+    });
+    expect(throttled.statusCode).toBe(429);
+    expect(throttled.headers["retry-after"]).toBeDefined();
+    expect(throttled.headers["x-content-type-options"]).toBe("nosniff");
+    // 3. keyloser GET (anderer, unauffälliger Client-Pfad) → weiterhin 200.
+    const ok = await app.inject({ method: "GET", url: "/addin/taskpane.html" });
+    expect(ok.statusCode).toBe(200);
+  });
+});
+
+describe("SCRUM-490 H3: Klassifizierer-Pins (gehärtet)", () => {
+  it("erkennt doppelt-encoded, Backslash, Semikolon, Decode-Fehler-Rohpräfix", () => {
+    for (const p of [
+      "/%2561ddin/taskpane.html",
+      "/%2541DDIN/x",
+      "/addin%252Ftaskpane.html",
+      "/addin\\foo",
+      "/addin;v=1/taskpane.html",
+      "/addin/%c0%ae",
+      "/addin/%E0%A4%A",
+      "/ADDIN/%2e%2e/x",
+      "/addin",
+      "/addin/",
+    ]) {
+      expect(isAddinNamespacePath(p)).toBe(true);
+    }
+  });
+
+  it("Negativ-Pins: /addinfoo, /addin-x, /api/ask, /health, / → NIEMALS Namensraum", () => {
+    for (const p of ["/addinfoo", "/addin-x", "/api/ask", "/health", "/", "", undefined]) {
+      expect(isAddinNamespacePath(p)).toBe(false);
+    }
   });
 });
