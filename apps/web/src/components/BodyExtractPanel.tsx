@@ -11,8 +11,7 @@ import type { ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import type { ReasonerProvenance } from "../api/endpoints";
-import type { ExtractedPoint } from "../api/types";
+import type { Confidentiality, ExtractedPoint } from "../api/types";
 import { BODY_EXTRACT_TEXT } from "../lib/bodyExtract";
 import {
   CAPTURE_FILE_TEXT,
@@ -21,6 +20,7 @@ import {
   selectedCount,
   togglePoint,
 } from "../lib/captureFromFile";
+import { CONFIDENTIALITY_LEVELS } from "../lib/confidentiality";
 import {
   isImage,
   isPdfDocument,
@@ -39,19 +39,22 @@ import { Button, SectionLabel, TextInput } from "./ui";
 
 export function BodyExtractPanel({
   onAppend,
-  provenance,
+  koId,
 }: {
   // Ausgewählte Punkte + Dateiname — der Aufrufer hängt an und vermerkt die Quellen.
   onAppend: (points: ExtractedPoint[], fileName: string) => void;
-  // SCRUM-502 Schicht 2 (Round 3): Herkunft des Kontexts (Saved-KO → source:"ko"+koId, Draft →
-  // source:"draft"+confidentiality). Wird an den extract-Endpunkt gereicht → vertraulicher
-  // Dokumenttext nie Cloud. Pflicht — der Aufrufer kennt die Herkunft immer.
-  provenance: ReasonerProvenance;
+  // SCRUM-502 R5: OPTIONAL die Ziel-KO-ID — dient serverseitig NUR als hebender Backstop
+  // (Downgrade-Schutz), NIE als Freigabe-Anker. Die Vertraulichkeit des HOCHGELADENEN Dokuments
+  // erbt NICHT den Behälter, sondern hat eine eigene, fail-safe Stufe (unten, Default vertraulich).
+  koId?: string;
 }): JSX.Element {
   const { t, i18n } = useTranslation();
   const [open, setOpen] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
   const [fileText, setFileText] = useState("");
+  // SCRUM-502 R5: ein Upload ist NEUER Inhalt, kein Erbe des Ziel-KOs. Bis zur bewussten Einstufung
+  // gilt fail-safe „vertraulich" (kein Cloud-Egress); der Nutzer kann bewusst herabsetzen.
+  const [docConfidentiality, setDocConfidentiality] = useState<Confidentiality>("vertraulich");
   const [imageUrl, setImageUrl] = useState<string | null>(null); // OCR-Kandidat (nur auf Klick)
   const [busy, setBusy] = useState(false);
   const [ocrBusy, setOcrBusy] = useState(false);
@@ -67,7 +70,12 @@ export function BodyExtractPanel({
   // Gleicher extract-Task wie der Erzähl-Modus „Aus Datei" (PMO-FEA-0006/SCRUM-390);
   // ohne Modell kommt eine ehrliche note vom Server — KEINE Fake-Punkte.
   const extract = useMutation({
-    mutationFn: () => endpoints.reasoner.extract(fileText, locale, query, undefined, provenance),
+    mutationFn: () =>
+      endpoints.reasoner.extract(fileText, locale, query, undefined, {
+        source: "transient-document",
+        confidentiality: docConfidentiality,
+        ...(koId ? { koId } : {}),
+      }),
     onSuccess: (r) => {
       setErr(null);
       setAppendedNote(null);
@@ -248,6 +256,25 @@ export function BodyExtractPanel({
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={t(CAPTURE_FILE_TEXT.queryPlaceholder)}
               />
+              {/* SCRUM-502 R5: eigene Vertraulichkeit fürs Dokument (Default vertraulich, fail-safe).
+                  Ein Upload ist neuer Inhalt — er erbt NICHT die Stufe des Ziel-KOs. Vertraulich →
+                  keine Cloud-KI (nur lokal/deterministisch). */}
+              <div className="mt-3 flex items-center gap-1.5">
+                <span className="text-[12.5px] font-medium text-muted">{t("conf.field")}</span>
+                <HelpTip title={t("conf.field")} body={t("conf.help")} />
+                <select
+                  value={docConfidentiality}
+                  onChange={(e) => setDocConfidentiality(e.target.value as Confidentiality)}
+                  aria-label={t("conf.field")}
+                  className="h-8 rounded-input border border-hairline bg-surface px-2 text-[12.5px] text-text"
+                >
+                  {CONFIDENTIALITY_LEVELS.map((lvl) => (
+                    <option key={lvl} value={lvl}>
+                      {t(`conf.level.${lvl}`)}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="mt-3 flex items-center gap-1.5">
                 <Button
                   variant="primary"

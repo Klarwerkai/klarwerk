@@ -152,11 +152,12 @@ export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): Fasti
         // Stufe-1-Deps: OHNE Judge/Prefilter → rein deterministisch (kein Modell, kein embed). Für
         // want fehlend / != "deep" bleibt das byte-identisch zu Slice 5.
         const stage1Deps = { ko: deps.ko, overlaps: deps.overlaps };
-        // SCRUM-502 Schicht 2 (Round 3): Herkunft/Stufe des GEPRÜFTEN Textes bestimmen (fail-safe).
-        // Bei source:"ko" die gespeicherte Stufe autoritativ laden; Draft trägt sie explizit; fehlt
-        // das Signal (z. B. Alt-Add-in) → vertraulich. Vertraulich sperrt Embedder UND Cloud-Judge:
-        // die Deep-Prüfung fällt auf den DETERMINISTISCHEN Pfad zurück (findet weiter Textduplikate —
-        // NICHT „fest false"), plus ehrlicher Hinweis. Der Text verlässt den Prozess nie extern.
+        // SCRUM-502 R4/R5: Herkunft/Stufe des GEPRÜFTEN Textes bestimmen (fail-safe). Der Text ist
+        // immer transient (Paste/Upload) → seine Stufe kommt aus der draft/transient-document-
+        // Deklaration; eine koId ist nur hebender Backstop, nie Freigabe-Anker. Fehlt das Signal
+        // (z. B. Alt-Add-in) → vertraulich. Vertraulich sperrt Embedder UND Cloud-Judge: die Deep-
+        // Prüfung fällt auf den DETERMINISTISCHEN Pfad zurück (findet weiter Textduplikate — NICHT
+        // „fest false"), plus ehrlicher Hinweis. Der Text verlässt den Prozess nie extern.
         const wantDeep = request.body.want === "deep";
         const confidential = await resolveCheckedTextConfidential(request.body, deps.ko);
         const deepAllowed = wantDeep && !confidential;

@@ -495,6 +495,55 @@ describe("SCRUM-491 Slice 6: Stufe 2 (want:'deep') mit injiziertem Fake-Judge", 
     expect(embed).not.toHaveBeenCalled();
     expect(res.json().note).toBeTruthy();
   });
+
+  // SCRUM-502 R5: ein Upload (transient-document) OHNE bewusste Stufe ist fail-safe vertraulich —
+  // Judge UND Embedder (echte Spies) werden NIE aufgerufen. Der Upload erbt keine Container-Stufe.
+  it("want:'deep' + source:'transient-document' OHNE Stufe → KEIN Judge, KEIN embed (fail-safe)", async () => {
+    const { app, embed, judgeDuplicate } = await stage2App();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/check-text",
+      payload: { text: TEXT_IDENTISCH, want: "deep", source: "transient-document" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(judgeDuplicate).not.toHaveBeenCalled();
+    expect(embed).not.toHaveBeenCalled();
+    expect(res.json().note).toBeTruthy();
+  });
+
+  // SCRUM-502 R5 Kern: Upload in ein INTERNES Ziel-KO OHNE bewusste Stufe → der Upload erbt NICHT
+  // die intern-Stufe des Behälters (koId ist nur Backstop, hebt hier nichts) → fail-safe → kein Egress.
+  it("want:'deep' + transient-document + koId eines INTERNEN KOs OHNE Stufe → KEIN Judge/embed", async () => {
+    const { app, embed, judgeDuplicate } = await stage2App(); // v2 ist intern
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/check-text",
+      payload: { text: TEXT_IDENTISCH, want: "deep", source: "transient-document", koId: "v2" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(judgeDuplicate).not.toHaveBeenCalled(); // kein Erben der intern-Container-Stufe
+    expect(embed).not.toHaveBeenCalled();
+    expect(res.json().note).toBeTruthy();
+  });
+
+  // Positiv: ein bewusst als intern eingestufter Upload läuft den Modell-Pfad (Judge + Embed).
+  it("want:'deep' + source:'transient-document' + bewusst intern → Judge + embed laufen", async () => {
+    const { app, embed, judgeDuplicate } = await stage2App();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/check-text",
+      payload: {
+        text: TEXT_IDENTISCH,
+        want: "deep",
+        source: "transient-document",
+        confidentiality: "intern",
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(judgeDuplicate).toHaveBeenCalled();
+    expect(embed).toHaveBeenCalled();
+    expect(res.json().note).toBeNull();
+  });
 });
 
 describe("SCRUM-491 Slice 5: Rate-Limit auf /api/check-text", () => {

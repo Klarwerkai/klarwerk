@@ -3501,7 +3501,6 @@ export function Capture(): JSX.Element {
                   (G-2: nur mit Belegstelle) werden ANGEHÄNGT, nichts ersetzt; die Quelle je Punkt
                   wandert in die Quellen-Warteliste (SCRUM-408) und beim Einreichen ans KO. */}
               <BodyExtractPanel
-                provenance={{ source: "transient-document", confidentiality }}
                 onAppend={(pts, name) => {
                   setBodyHtml((prev) =>
                     appendExtractSections(prev, pts, name, normalizeExtractLocale(i18n.language)),

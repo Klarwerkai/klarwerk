@@ -988,11 +988,7 @@ export function KnowledgeDetail(): JSX.Element {
                             Punkte (G-2: nur mit Belegstelle) werden ANGEHÄNGT, nichts ersetzt;
                             die Quelle je Punkt wird sofort am KO vermerkt (add-source, Stufe 2). */}
                         <BodyExtractPanel
-                          provenance={{
-                            source: "transient-document",
-                            confidentiality: confidentialityOf(query.data?.confidentiality),
-                            koId: id,
-                          }}
+                          koId={id}
                           onAppend={(pts, name) => {
                             setEdit((prev) =>
                               prev
