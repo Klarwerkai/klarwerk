@@ -5,7 +5,7 @@ import { InMemoryKoRepo, KoService } from "../../knowledge-object";
 import { InMemoryCandidateRepo } from "./repo";
 import { PgCandidateRepo } from "./repo-pg";
 import { LibraryService, sanitizeImportConfidentiality } from "./service";
-import type { ImportItem, SourceAdapter } from "./types";
+import type { ImportCandidate, ImportItem, SourceAdapter } from "./types";
 
 function confItem(over: Partial<ImportItem> = {}): ImportItem {
   return {
@@ -704,5 +704,43 @@ describe("SCRUM-510 R2b: quellneutraler Upsert (Fake-2.-Adapter, keine Confluenc
     expect(kos).toHaveLength(1);
     expect(kos[0]?.statement).toBe("Stand 2."); // Inhalt aktualisiert
     expect(kos[0]?.confidentiality).toBe("vertraulich"); // kein Downgrade über Re-Sync
+  });
+});
+
+// SCRUM-515-Vervollständigung: ein PERSISTIERTER Alt-Kandidat (vor 515 eingereiht) wurde nie durch die
+// Ingest-Sanitisierung von createImportCandidates geführt. reviewImportCandidate muss unmittelbar vor
+// acceptToKo erneut sanitisieren — sonst würde ein ungültiger Altwert restriktiv-fail-open behandelt.
+describe("SCRUM-515: persistierte Alt-Kandidaten werden beim Accept erneut sanitisiert", () => {
+  it("Legacy-Queue-Kandidat mit ungültiger confidentiality → Accept restriktiv (vertraulich, nie intern), bereinigt persistiert", async () => {
+    const koService = new KoService({ repo: new InMemoryKoRepo() });
+    const candidates = new InMemoryCandidateRepo();
+    const library = new LibraryService({ koService, candidates, externalUpsert: true });
+
+    // Direkt in die Queue geschrieben (wie ein Repo VOR 515 es geliefert hätte) — NICHT über
+    // createImportCandidates, das bereits an der Ingest-Grenze sanitisieren würde.
+    const legacy: ImportCandidate = {
+      id: "cand-legacy",
+      item: {
+        title: "Alt-Kandidat",
+        statement: "Alt-Inhalt.",
+        type: "best_practice",
+        category: "X",
+        confidentiality: "public",
+      } as unknown as ImportItem,
+      status: "neu",
+      duplicate: false,
+      note: null,
+      koId: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+    await candidates.insert(legacy);
+
+    const r = await library.reviewImportCandidate("cand-legacy", "accept", "importer");
+    const ko = (await koService.list()).find((k) => k.id === r.koId)!;
+    expect(ko.confidentiality).toBe("vertraulich"); // restriktiv gezogen, NIE intern (und kein Hart-Fehler)
+
+    // Der bereinigte Wert wurde PERSISTIERT (nicht nur transient verwendet).
+    const persisted = await candidates.findById("cand-legacy");
+    expect(persisted?.item.confidentiality).toBe("vertraulich");
   });
 });

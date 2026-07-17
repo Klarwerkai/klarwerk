@@ -154,10 +154,16 @@ export class LibraryService {
       // accept: nicht-Dublette → echtes KO im normalen Wissensobjekt-/Validierungsfluss.
       candidate.status = "angenommen";
       if (!candidate.duplicate) {
+        // SCRUM-515-Vervollständigung: ein PERSISTIERTER Alt-Kandidat (vor 515 eingereiht; PgCandidateRepo
+        // liefert das JSONB unverändert) wurde bei createImportCandidates evtl. nie sanitisiert. Unmittelbar
+        // VOR acceptToKo erneut sanitisieren — sonst würde ein ungültiger Altwert im Re-Sync-Ranking auf
+        // „intern" normalisiert (fail-open) bzw. bei der Erstanlage hart abgelehnt. Das bereinigte Item wird
+        // MIT persistiert (nicht nur transient), damit die Queue keinen ungültigen Wert behält.
+        candidate.item = this.withSanitizedConfidentiality(candidate.item);
         candidate.koId = await this.acceptToKo(candidate.item, actor);
       }
     }
-    // SCRUM-157: geänderten Status/koId/Note persistieren (kein stiller Verlust).
+    // SCRUM-157: geänderten Status/koId/Note (+ bereinigtes Item, 515) persistieren (kein stiller Verlust).
     await this.candidates.update(candidate);
     await this.audit?.record({
       actor,
