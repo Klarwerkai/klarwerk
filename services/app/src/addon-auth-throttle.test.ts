@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { AddonAuthAttemptThrottle, addonAuthThrottleConfigFromEnv } from "./addon-auth-throttle";
+import {
+  AddonAuthAttemptThrottle,
+  addonAuthThrottleConfigFromEnv,
+  isAddonEndpointPath,
+  resolveTrustProxy,
+} from "./addon-auth-throttle";
 
 // SCRUM-490 R2 (B2): IP-Drossel für fehlgeschlagene Add-on-Auth-Versuche. Reiner Sliding-Window-Kern,
 // deterministisch mit injizierter Zeit getestet.
@@ -39,5 +44,55 @@ describe("SCRUM-490 R2 (B2): AddonAuthAttemptThrottle", () => {
     // ungültig → Default
     expect(addonAuthThrottleConfigFromEnv({ KLARWERK_ADDON_AUTH_MAX: "0" }).max).toBe(10);
     expect(addonAuthThrottleConfigFromEnv({ KLARWERK_ADDON_AUTH_MAX: "abc" }).max).toBe(10);
+  });
+});
+
+// SCRUM-490 R3 (B2, Fix 3): Pfad-Normalisierung — kein Trick-Pfad umgeht die Zählung.
+describe("SCRUM-490 R3 (B2): isAddonEndpointPath (normalisiert)", () => {
+  it("trifft die Add-on-Endpunkte auch bei Trailing-Slash, %-Enkodierung, Case und Dot-Segmenten", () => {
+    for (const p of [
+      "/api/ask",
+      "/api/ask/",
+      "/api/ask?x=1",
+      "/API/ASK",
+      "/api/%61sk", // %61 = 'a'
+      "/x/../api/ask",
+      "/api/check-text",
+      "/api/check-text/",
+    ]) {
+      expect(isAddonEndpointPath(p)).toBe(true);
+    }
+  });
+
+  it("trifft NICHT bei anderen/erweiterten Pfaden", () => {
+    for (const p of ["/health", "/api/askx", "/api/ask/extra", "/api", "", undefined]) {
+      expect(isAddonEndpointPath(p)).toBe(false);
+    }
+  });
+});
+
+// SCRUM-490 R3 (B2, Fix 4): trustProxy nur gezielt — NIE blanket (spoofbar).
+describe("SCRUM-490 R3 (B2): resolveTrustProxy", () => {
+  it("unset → false (konservativ, Socket-Peer)", () => {
+    expect(resolveTrustProxy({})).toBe(false);
+  });
+
+  it("Blanket-Werte (true/false/*) → false (kein XFF-Blindvertrauen)", () => {
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "true" })).toBe(false);
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "false" })).toBe(false);
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "*" })).toBe(false);
+  });
+
+  it("Zahl → Hop-Count", () => {
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "1" })).toBe(1);
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "2" })).toBe(2);
+  });
+
+  it("IP/Subnetz(e) → Liste (nur diese Adressen vertrauen)", () => {
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "10.0.0.0/8" })).toEqual(["10.0.0.0/8"]);
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "10.0.0.1, 172.16.0.0/12" })).toEqual([
+      "10.0.0.1",
+      "172.16.0.0/12",
+    ]);
   });
 });

@@ -122,7 +122,12 @@ import {
   addonApiEnabled,
   resolveAddonOrigin,
 } from "./addon-api";
-import { AddonAuthAttemptThrottle, addonAuthThrottleConfigFromEnv } from "./addon-auth-throttle";
+import {
+  AddonAuthAttemptThrottle,
+  addonAuthThrottleConfigFromEnv,
+  isAddonEndpointPath,
+  resolveTrustProxy,
+} from "./addon-auth-throttle";
 import { matchAddonRoute, principalHasCapability, resolveAddonAuth } from "./addon-principal";
 import type { SemanticPrefilter } from "./duplicate-detection";
 import { cappedEmbeddingProvider } from "./embed-concurrency";
@@ -470,7 +475,10 @@ export function buildApp(
   // nur der Desktop/Dev-Journal-Betrieb (server.ts) reicht eine echte Fähigkeit durch.
   opts: { factoryReset?: FactoryReset } = {},
 ): FastifyInstance {
-  const app = Fastify();
+  // SCRUM-490 R3 (B2, Fix 4): trustProxy gezielt aus env (KLARWERK_TRUST_PROXY) — request.ip = echte
+  // Client-IP hinter dem bekannten Proxy-Hop; Default (unset) = false = Socket-Peer (heutiges Verhalten).
+  // NIE blanket (spoofbar). Siehe resolveTrustProxy.
+  const app = Fastify({ trustProxy: resolveTrustProxy() });
   // SCRUM-498 B2: einheitliche Backpressure-Antwort. Ein Modell-Cap-Überlauf (ModelCapacityError) wird
   // von der Reasoner-Kette bis hierher durchgereicht → 503 + Retry-After (kein 500/Crash). Jeder andere
   // Fehler wird formtreu an Fastifys Standard-Fehlerbehandlung weitergereicht (Validierungs-400 etc.
@@ -505,12 +513,26 @@ export function buildApp(
     const authAttemptThrottle = new AddonAuthAttemptThrottle(addonAuthThrottleConfigFromEnv());
     app.addHook("onRequest", async (request, reply) => {
       const auth = resolveAddonAuth(request);
-      // B2: fehlgeschlagener Zugang GEGEN einen Add-on-Endpunkt? = ungültiger Key ODER (kein gültiger Key
-      // UND keine Session). Nur solche Versuche werden je IP gezählt; gültiger Key/gültige Session nie.
-      const rawPath = (request.raw.url ?? "").split("?")[0];
-      const isAddonPath = rawPath === ADDON_ASK_PATH || rawPath === ADDON_CHECK_TEXT_PATH;
-      if (auth.kind !== "valid" && isAddonPath) {
-        const failed = auth.kind === "invalid" || tokenFromRequest(request) === undefined;
+      // SCRUM-490 R3 (B2): Throttle für fehlgeschlagene Add-on-Auth-Versuche — VOR dem 401/Principal.
+      //  Fix 1: CORS-Preflight (OPTIONS) zählt NIE als Versuch (vor der Zählung raus).
+      //  Fix 3: ein UNGÜLTIGER Key zählt auf JEDER Route (kein 401/403-Gültigkeitsorakel, keine
+      //         ungedrosselte Fremdroute); fehlende Auth zählt gegen die NORMALISIERTEN Add-on-Endpunkte
+      //         (Trailing-Slash/%-Enkodierung/Case/Dot-Segmente, isAddonEndpointPath).
+      //  Fix 2: eine „gültige Session" wird ECHT authentifiziert (auth.authenticate) — ein gefälschter
+      //         Bearer/erfundenes kw_session-Cookie umgeht die Zählung NICHT (nicht nur Token-Präsenz).
+      if (request.method !== "OPTIONS") {
+        let failed: boolean;
+        if (auth.kind === "invalid") {
+          failed = true;
+        } else if (auth.kind === "valid") {
+          failed = false;
+        } else if (isAddonEndpointPath(request.raw.url)) {
+          const token = tokenFromRequest(request);
+          const validSession = token ? Boolean(await services.auth.authenticate(token)) : false;
+          failed = !validSession;
+        } else {
+          failed = false;
+        }
         if (failed && !authAttemptThrottle.registerFailure(request.ip, Date.now())) {
           reply
             .code(429)

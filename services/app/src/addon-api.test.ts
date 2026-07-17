@@ -352,6 +352,100 @@ describe("KLARWERK_ADDON_API — Flag AN", () => {
     }
   });
 
+  // SCRUM-490 R3 (B2-Härtung): Gegenbeispiele gepinnt.
+  it("R3/Fix2: gefälschter Bearer umgeht die Zählung NICHT (echte Session-Auth) → 429", async () => {
+    process.env.KLARWERK_ADDON_AUTH_MAX = "2";
+    const app = buildApp(buildServices());
+    const forged = () =>
+      app.inject({
+        method: "POST",
+        url: "/api/ask",
+        headers: { authorization: "Bearer gefaelscht-kein-echtes-token" },
+        payload: { question: "x" },
+      });
+    await forged();
+    await forged();
+    expect((await forged()).statusCode).toBe(429); // Token-Präsenz allein reicht NICHT als „Session"
+  });
+
+  it("R3/Fix2: erfundenes kw_session-Cookie umgeht die Zählung NICHT → 429", async () => {
+    process.env.KLARWERK_ADDON_AUTH_MAX = "2";
+    const app = buildApp(buildServices());
+    const forged = () =>
+      app.inject({
+        method: "POST",
+        url: "/api/ask",
+        headers: { cookie: "kw_session=erfunden" },
+        payload: { question: "x" },
+      });
+    await forged();
+    await forged();
+    expect((await forged()).statusCode).toBe(429);
+  });
+
+  it("R3/Fix3: falscher Key auf /health → gedrosselt (kein Fremdrouten-Gültigkeitsorakel)", async () => {
+    process.env.KLARWERK_ADDON_AUTH_MAX = "2";
+    const app = buildApp(buildServices());
+    const bad = () =>
+      app.inject({ method: "GET", url: "/health", headers: { [ADDON_KEY_HEADER]: "falsch" } });
+    await bad();
+    await bad();
+    expect((await bad()).statusCode).toBe(429);
+  });
+
+  it("R3/Fix3: falscher Key auf /api/ask/ (trailing) → gedrosselt", async () => {
+    process.env.KLARWERK_ADDON_AUTH_MAX = "2";
+    const app = buildApp(buildServices());
+    const bad = () =>
+      app.inject({
+        method: "POST",
+        url: "/api/ask/",
+        headers: { [ADDON_KEY_HEADER]: "falsch" },
+        payload: { question: "x" },
+      });
+    await bad();
+    await bad();
+    expect((await bad()).statusCode).toBe(429);
+  });
+
+  it("R3/Fix3: NO-Key-Probe gegen normalisierten Add-on-Endpunkt (/api/ask/ trailing) → gedrosselt", async () => {
+    process.env.KLARWERK_ADDON_AUTH_MAX = "2";
+    const app = buildApp(buildServices());
+    const probe = () =>
+      app.inject({ method: "POST", url: "/api/ask/", payload: { question: "x" } });
+    await probe();
+    await probe();
+    expect((await probe()).statusCode).toBe(429);
+  });
+
+  it("R3/Fix1: OPTIONS-Preflight zählt NIE als Versuch (viele OPTIONS → kein 429)", async () => {
+    process.env.KLARWERK_ADDON_AUTH_MAX = "2";
+    const app = buildApp(buildServices());
+    for (let i = 0; i < 20; i++) {
+      const res = await app.inject({
+        method: "OPTIONS",
+        url: "/api/ask",
+        headers: { origin: ORIGIN, "access-control-request-method": "POST" },
+      });
+      expect(res.statusCode).not.toBe(429); // Preflight normal beantwortet, nie gedrosselt
+    }
+  });
+
+  it("R3/Fix4: gültiger Key bleibt beim normalen addonRateLimit (Throttle zählt ihn nicht)", async () => {
+    // Ein gültiger Key ist KEIN Fehlversuch → der Failed-Auth-Throttle greift nie; die reguläre
+    // addonRateLimit-Bremse (D3) bleibt zuständig. Mit strengem Failed-Auth-Max bleibt der Key nutzbar.
+    process.env.KLARWERK_ADDON_AUTH_MAX = "1";
+    const { app, koId } = await appWithValidatedKo();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: { [ADDON_KEY_HEADER]: KEY, origin: ORIGIN },
+      payload: { question: "Wie wird die Zylinderkopfdichtung XQ42 gewechselt?" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().result.sources).toContain(koId);
+  });
+
   // SCRUM-490 R2 (Punkt 6): produktive HTTPS-Taskpane-Origin via KLARWERK_ADDON_ORIGIN, in CORS erzwungen.
   it("Punkt 6: KLARWERK_ADDON_ORIGIN setzt die Prod-Origin; nur sie wird freigegeben (sonst fail-closed)", async () => {
     process.env.KLARWERK_ADDON_ORIGIN = "https://app.klarwerk.ai";
