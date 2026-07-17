@@ -25,6 +25,15 @@ export interface ImportResult {
   skipped: number;
 }
 
+// SCRUM-510: quell-agnostischer Import-Vertrag. Ein Adapter (Confluence = #1, Jira-TEST später = #2)
+// liest seine Quelle und liefert NORMALISIERTE ImportItems; der Import-Kern (createImportCandidates →
+// acceptToKo) kennt die Quelle nicht. Neue Quelle = neuer Adapter, KEIN Umbau des Import-Kerns.
+export interface SourceAdapter {
+  // Menschlicher Quell-Name (z. B. "Confluence") — Provenienz/Diagnose.
+  readonly source: string;
+  collect(): Promise<ImportItem[]>;
+}
+
 // SCRUM-116: Import-/Source-Review-Kandidaten (JSON-Re-Import mit Review-Queue).
 export type ReviewStatus = "neu" | "angenommen" | "abgelehnt" | "info-angefragt";
 export type ReviewAction = "accept" | "reject" | "info";

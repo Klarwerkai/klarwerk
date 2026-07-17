@@ -7,6 +7,7 @@ export type {
   ImportItem,
   ImportResult,
   ImportCandidate,
+  SourceAdapter,
   ReviewStatus,
   ReviewAction,
   BusFactorEntry,
