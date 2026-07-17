@@ -58,7 +58,7 @@ import {
 } from "../components/ui";
 import { applyBodyAssist, applyBodyAssistBlock, bodyTextForAssist } from "../lib/bodyAiAssist";
 import { appendExtractSections, normalizeExtractLocale } from "../lib/bodyExtract";
-import { editorFilesFromAttachments } from "../lib/bodyFileLink";
+import { editorFilesFromAttachments, objectRawHref } from "../lib/bodyFileLink";
 import {
   BODY_READ_BLOCKS_KEY,
   BODY_READ_NOTE_KEY,
@@ -439,18 +439,20 @@ export function KnowledgeDetail(): JSX.Element {
   };
 
   // SCRUM-121: Original öffnen — neue Anhänge via Objekt-Store, Alt-Anhänge via dataUrl.
-  const openAttachment = async (a: { dataUrl?: string; objectId?: string }): Promise<void> => {
-    if (a.dataUrl) {
-      window.open(a.dataUrl, "_blank", "noopener");
+  // SCRUM-503 R2: neue (objectId-)Anhänge über den GEHÄRTETEN /raw-Pfad öffnen statt über die volle
+  // Data-URL aus GET /:id — so gelten Content-Disposition (attachment) + nosniff + MIME-Neutralisierung
+  // auch beim Öffnen (kein Umgehen der /raw-Härtung). Der /raw-GET ist per Session-Cookie autorisiert
+  // (wie die <img src>/<a href> im gerenderten Body).
+  const openAttachment = (a: { dataUrl?: string; objectId?: string }): void => {
+    if (a.objectId) {
+      const href = objectRawHref(a.objectId);
+      if (href) {
+        window.open(href, "_blank", "noopener");
+      }
       return;
     }
-    if (a.objectId) {
-      try {
-        const obj = await endpoints.objects.read(a.objectId);
-        window.open(obj.data, "_blank", "noopener");
-      } catch (e) {
-        setErr(e instanceof ApiError ? e.message : t("state.error"));
-      }
+    if (a.dataUrl) {
+      window.open(a.dataUrl, "_blank", "noopener");
     }
   };
 
