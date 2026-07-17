@@ -4,7 +4,7 @@ import { AuditService, InMemoryAuditRepo } from "../../audit";
 import { InMemoryKoRepo, KoService } from "../../knowledge-object";
 import { InMemoryCandidateRepo } from "./repo";
 import { PgCandidateRepo } from "./repo-pg";
-import { LibraryService } from "./service";
+import { LibraryService, sanitizeImportConfidentiality } from "./service";
 import type { ImportItem } from "./types";
 
 function confItem(over: Partial<ImportItem> = {}): ImportItem {
@@ -592,5 +592,55 @@ describe("SCRUM-157: Import-Kandidaten persistent (CandidateRepo)", () => {
     expect(listed).toHaveLength(1);
     expect(listed[0]?.id).toBe(c?.id);
     expect(listed[0]?.status).toBe("abgelehnt");
+  });
+});
+
+// SCRUM-515: die Vertraulichkeit im Import-Payload (HTTP-Body ODER Quell-Adapter) ist untrusted und wird
+// an der Ingest-Grenze runtime-validiert: ungültig/unbekannt → restriktiv „vertraulich", NIE „intern".
+describe("SCRUM-515: Import-Vertraulichkeit runtime-validiert (nie intern aus Fremd-Payload)", () => {
+  it("sanitizeImportConfidentiality: gültig bleibt · ungültig/unbekannt → vertraulich · fehlend → undefined", () => {
+    expect(sanitizeImportConfidentiality("intern")).toBe("intern");
+    expect(sanitizeImportConfidentiality("vertraulich")).toBe("vertraulich");
+    expect(sanitizeImportConfidentiality("streng_vertraulich")).toBe("streng_vertraulich");
+    // ungültig/unbekannt → RESTRIKTIV vertraulich (NIE intern):
+    expect(sanitizeImportConfidentiality("public")).toBe("vertraulich");
+    expect(sanitizeImportConfidentiality("geheim")).toBe("vertraulich");
+    expect(sanitizeImportConfidentiality(42)).toBe("vertraulich");
+    expect(sanitizeImportConfidentiality({})).toBe("vertraulich");
+    // fehlend → undefined (downstream fail-safe stuft dann auf vertraulich):
+    expect(sanitizeImportConfidentiality(undefined)).toBeUndefined();
+    expect(sanitizeImportConfidentiality(null)).toBeUndefined();
+  });
+
+  it("createImportCandidates+accept: ungültige confidentiality im Payload → KO vertraulich (nie intern)", async () => {
+    const koService = new KoService({ repo: new InMemoryKoRepo() });
+    const library = new LibraryService({ koService });
+    const poisoned = {
+      title: "Fremd A",
+      statement: "Inhalt A.",
+      type: "best_practice",
+      category: "X",
+      confidentiality: "public",
+    } as unknown as ImportItem;
+    const [c] = await library.createImportCandidates([poisoned], "importer");
+    const r = await library.reviewImportCandidate(c!.id, "accept", "importer");
+    const ko = (await koService.list()).find((k) => k.id === r.koId)!;
+    expect(ko.confidentiality).toBe("vertraulich"); // restriktiv gezogen, NIE intern
+  });
+
+  it("importJson: unbekannter confidentiality-Typ im Payload → KO vertraulich (nie intern)", async () => {
+    const koService = new KoService({ repo: new InMemoryKoRepo() });
+    const library = new LibraryService({ koService });
+    const poisoned = {
+      title: "Fremd B",
+      statement: "Inhalt B.",
+      type: "best_practice",
+      category: "X",
+      confidentiality: 999,
+    } as unknown as ImportItem;
+    const res = await library.importJson([poisoned], "importer");
+    expect(res.imported).toBe(1);
+    const ko = (await koService.list()).find((k) => k.title === "Fremd B")!;
+    expect(ko.confidentiality).toBe("vertraulich");
   });
 });

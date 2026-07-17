@@ -8,6 +8,7 @@ import {
   type KoSource,
   confidentialityRank,
   isConfidential,
+  isValidConfidentiality,
   normalizeConfidentiality,
 } from "../../knowledge-object";
 import { type CandidateRepo, InMemoryCandidateRepo } from "./repo";
@@ -41,6 +42,18 @@ function increment(map: Record<string, number>, key: string): void {
   map[key] = (map[key] ?? 0) + 1;
 }
 
+// SCRUM-515: Runtime-Validierung der Vertraulichkeit an der Import-Ingest-Grenze. Fremd-Payload (HTTP-
+// Body ODER Quell-Adapter) ist untrusted: ein GESETZTER, aber ungültiger/unbekannter Wert wird
+// RESTRIKTIV auf „vertraulich" gezogen (NIE intern) — der Import scheitert weder hart noch stuft er
+// still herab. FEHLT der Wert ganz, bleibt er undefined (acceptToKo/importJson stufen dann fail-safe auf
+// „vertraulich", R3/R4). Der einzige Ort, an dem eine rohe confidentiality in den Import-Kern eintritt.
+export function sanitizeImportConfidentiality(raw: unknown): Confidentiality | undefined {
+  if (raw === undefined || raw === null) {
+    return undefined;
+  }
+  return isValidConfidentiality(raw) ? raw : "vertraulich";
+}
+
 export class LibraryService {
   private readonly koService: KoService;
   private readonly audit: AuditService | undefined;
@@ -60,11 +73,20 @@ export class LibraryService {
     this.confluenceImport = deps.confluenceImport ?? false;
   }
 
+  // SCRUM-515: die eine Stelle, an der eine rohe (untrusted) confidentiality in den Import-Kern eintritt.
+  // Ungültig/unbekannt → restriktiv „vertraulich"; fehlend → unverändert (downstream fail-safe).
+  private withSanitizedConfidentiality(item: ImportItem): ImportItem {
+    const confidentiality = sanitizeImportConfidentiality(item.confidentiality);
+    return confidentiality === undefined ? item : { ...item, confidentiality };
+  }
+
   // SCRUM-116: JSON-Re-Import erzeugt Review-Kandidaten (keine stille Bulk-Anlage).
   async createImportCandidates(
-    items: readonly ImportItem[],
+    rawItems: readonly ImportItem[],
     actor = "system",
   ): Promise<ImportCandidate[]> {
+    // SCRUM-515: an der Ingest-Grenze runtime-validieren, BEVOR das Item in die Queue/den Bestand geht.
+    const items = rawItems.map((item) => this.withSanitizedConfidentiality(item));
     const existing = await this.koService.list();
     const seen = new Set(existing.map((ko) => `${ko.title}|${ko.statement}`));
     const at = new Date(this.now()).toISOString();
@@ -336,7 +358,12 @@ export class LibraryService {
   }
 
   // FR-LIB-02: Import per JSON ohne Duplikate.
-  async importJson(items: readonly ImportItem[], defaultAuthor = "import"): Promise<ImportResult> {
+  async importJson(
+    rawItems: readonly ImportItem[],
+    defaultAuthor = "import",
+  ): Promise<ImportResult> {
+    // SCRUM-515: an der Ingest-Grenze runtime-validieren (ungültig/unbekannt → vertraulich, nie intern).
+    const items = rawItems.map((item) => this.withSanitizedConfidentiality(item));
     const existing = await this.koService.list();
     const seen = new Set(existing.map((ko) => `${ko.title}|${ko.statement}`));
     let imported = 0;
