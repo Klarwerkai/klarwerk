@@ -183,7 +183,10 @@ describe("KW-W2-01: Ganzdokument-Import als bewusster Entwurf", () => {
     expect(captureSource).toContain("CAPTURE_FILE_TEXT.importModeLabel");
     expect(captureSource).toContain('fileImportMode === "points"');
     expect(captureSource).toContain('fileImportMode === "points" && filePoints');
-    expect(captureSource).toContain("endpoints.reasoner.extract(fileText");
+    // SCRUM-502 R6: der extract-Aufruf kann mehrzeilig formatiert sein (documentProvenance-Arg) —
+    // format-robust auf den Aufruf + das fileText-Argument prüfen, nicht auf die exakte Zeile.
+    expect(captureSource).toContain("endpoints.reasoner.extract(");
+    expect(captureSource).toMatch(/endpoints\.reasoner\.extract\(\s*fileText/);
     expect(captureSource).toContain("createWholeDocumentDraft(");
     expect(captureSource.indexOf("CAPTURE_FILE_TEXT.importModeLabel")).toBeLessThan(
       captureSource.indexOf("onChange={(e) => void onExtractFile(e)}"),

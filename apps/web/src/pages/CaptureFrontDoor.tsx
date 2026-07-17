@@ -36,6 +36,7 @@ import {
 import { type CaptureHelpId, captureHelp } from "../lib/captureHelp";
 import { CONFIDENTIALITY_LEVELS } from "../lib/confidentiality";
 import { toReasonerLocale } from "../lib/reasonerLocale";
+import { draftProvenance } from "../lib/reasonerProvenance";
 import { isEmptyHtml } from "../lib/richText";
 
 function errorMessage(err: unknown, fallback: string): string {
@@ -222,7 +223,7 @@ export function CaptureFrontDoor(): JSX.Element {
 
   const structure = useMutation({
     mutationFn: () =>
-      endpoints.reasoner.structure(structureInput, locale, { source: "draft", confidentiality }),
+      endpoints.reasoner.structure(structureInput, locale, draftProvenance(confidentiality)),
     onMutate: () => {
       setErr(null);
       setStructureErr(null);
@@ -243,10 +244,12 @@ export function CaptureFrontDoor(): JSX.Element {
 
   const assist = useMutation({
     mutationFn: (action: AssistAction) =>
-      endpoints.reasoner.assist(assistInput, locale, t(assistActionInstructionKey(action)), {
-        source: "draft",
-        confidentiality,
-      }),
+      endpoints.reasoner.assist(
+        assistInput,
+        locale,
+        t(assistActionInstructionKey(action)),
+        draftProvenance(confidentiality),
+      ),
     onMutate: () => {
       setErr(null);
       setAssistErr(null);

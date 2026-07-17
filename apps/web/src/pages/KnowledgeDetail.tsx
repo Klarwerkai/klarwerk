@@ -100,6 +100,7 @@ import {
 import { diffForVersion } from "../lib/koVersionDiff";
 import { koVersionRows } from "../lib/koVersionSnapshots";
 import { toReasonerLocale } from "../lib/reasonerLocale";
+import { draftProvenance } from "../lib/reasonerProvenance";
 import { type ReviewHelpId, reviewHelp } from "../lib/reviewHelp";
 import {
   isReviewReworkContext,
@@ -173,16 +174,14 @@ export function KnowledgeDetail(): JSX.Element {
   const query = useKo(id);
   // SCRUM-313: KI-Nachbearbeitung der Aussage im Edit-Modus (Vorschau + bewusste Übernahme, kein
   // Auto-Submit). Nutzt den vorhandenen reasoner.assist-Endpunkt mit optionaler Instruktion.
-  // SCRUM-502 Round 4: der bearbeitete EDITOR-Text ist client-geliefert → source:"draft" mit der
-  // AKTUELLEN Stufe des KOs (nicht source:"ko"+lose id). Die koId dient nur als hebender Backstop:
-  // ein gespeichert-vertrauliches KO bleibt vertraulich, auch wenn die Deklaration das verfehlt.
+  // SCRUM-502 R6: der bearbeitete EDITOR-Text ist neuer/geänderter Inhalt und erbt NICHT die
+  // Ziel-KO-Stufe (die frühere Übernahme von ko.confidentiality war Container-Erbe + stiller
+  // Intern-Default). Er bekommt eine EIGENE, fail-safe Stufe (vertraulich, da es hier kein
+  // getrenntes Editier-Stufen-Feld gibt) über den gemeinsamen Helfer; die koId ist nur hebender
+  // Backstop (ein gespeichert-vertrauliches KO bleibt vertraulich).
   const runAssist = (input: string, instruction?: string): Promise<string> =>
     endpoints.reasoner
-      .assist(input, toReasonerLocale(i18n.language), instruction, {
-        source: "draft",
-        confidentiality: confidentialityOf(query.data?.confidentiality),
-        koId: id,
-      })
+      .assist(input, toReasonerLocale(i18n.language), instruction, draftProvenance(undefined, id))
       .then((r) => r.text);
   const evidence = useKoEvidence(id);
   const versions = useKoVersions(id);

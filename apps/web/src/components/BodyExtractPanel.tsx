@@ -33,6 +33,7 @@ import {
   runImageOcr,
 } from "../lib/files";
 import { toReasonerLocale } from "../lib/reasonerLocale";
+import { documentProvenance } from "../lib/reasonerProvenance";
 import { AiModelInfo } from "./AiModelInfo";
 import { HelpTip } from "./HelpTip";
 import { Button, SectionLabel, TextInput } from "./ui";
@@ -71,11 +72,13 @@ export function BodyExtractPanel({
   // ohne Modell kommt eine ehrliche note vom Server — KEINE Fake-Punkte.
   const extract = useMutation({
     mutationFn: () =>
-      endpoints.reasoner.extract(fileText, locale, query, undefined, {
-        source: "transient-document",
-        confidentiality: docConfidentiality,
-        ...(koId ? { koId } : {}),
-      }),
+      endpoints.reasoner.extract(
+        fileText,
+        locale,
+        query,
+        undefined,
+        documentProvenance(docConfidentiality, koId),
+      ),
     onSuccess: (r) => {
       setErr(null);
       setAppendedNote(null);
@@ -98,6 +101,9 @@ export function BodyExtractPanel({
     setFileText("");
     setErr(null);
     setAppendedNote(null);
+    // SCRUM-502 R6: JEDER Dateiwechsel setzt die Dokumentstufe fail-safe zurück (vertraulich) — eine
+    // bewusst herabgesetzte Stufe der VORIGEN Datei darf nicht auf die neue Datei überschwappen.
+    setDocConfidentiality("vertraulich");
     setFileName(f.name);
     setBusy(true);
     setStatus(t(CAPTURE_FILE_TEXT.extracting, { name: f.name }));
@@ -172,6 +178,8 @@ export function BodyExtractPanel({
     setStatus(null);
     setErr(null);
     setAppendedNote(null);
+    // SCRUM-502 R6: auch beim Entfernen die Stufe fail-safe zurücksetzen (kein Rest der vorigen Datei).
+    setDocConfidentiality("vertraulich");
   };
 
   // Übernahme: NUR die angekreuzten Punkte gehen an den Aufrufer; die Liste wird danach

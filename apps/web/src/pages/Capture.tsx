@@ -142,6 +142,7 @@ import {
 import { appendAnswer, interviewSourceKey, isInterviewDone } from "../lib/interviewFlow";
 import { EMPTY_SOURCE_FORM, type SourceFormInput, isSourceFormValid } from "../lib/koSource";
 import { toReasonerLocale } from "../lib/reasonerLocale";
+import { documentProvenance, draftProvenance } from "../lib/reasonerProvenance";
 import { hasSpeechRecognition } from "../lib/speechSupport";
 
 type Mode = CaptureMode;
@@ -435,8 +436,7 @@ export function Capture(): JSX.Element {
 
   const structure = useMutation({
     // SCRUM-502 Schicht 2: die Draft-Vertraulichkeit mitsenden → vertrauliche Drafts nutzen nie die Cloud.
-    mutationFn: () =>
-      endpoints.reasoner.structure(raw, locale, { source: "draft", confidentiality }),
+    mutationFn: () => endpoints.reasoner.structure(raw, locale, draftProvenance(confidentiality)),
     onSuccess: (r) => {
       setDraft(r);
       setTags((prev) => (prev.length > 0 ? prev : r.tags));
@@ -454,7 +454,7 @@ export function Capture(): JSX.Element {
   // SCRUM-132: ein Interview-Turn — Antworten rein, nächste Frage + Draft raus.
   const interview = useMutation({
     mutationFn: (answers: string[]) =>
-      endpoints.reasoner.interview(answers, locale, { source: "draft", confidentiality }),
+      endpoints.reasoner.interview(answers, locale, draftProvenance(confidentiality)),
     onSuccess: (res) => {
       setIvResult(res);
       setErr(null);
@@ -477,7 +477,7 @@ export function Capture(): JSX.Element {
   // die frühere stille Direkt-Mutation (setRaw/setDraft) wurde durch den Vorschau-Flow ersetzt.
   const runAssist = (input: string, instruction?: string): Promise<string> =>
     endpoints.reasoner
-      .assist(input, locale, instruction, { source: "draft", confidentiality })
+      .assist(input, locale, instruction, draftProvenance(confidentiality))
       .then((r) => r.text);
 
   // PMO-FEA-0006: Wissenssuche im Dokument — Ergebnis ist die Punkteliste ODER (ohne Modell)
@@ -494,10 +494,13 @@ export function Capture(): JSX.Element {
 
   const extract = useMutation({
     mutationFn: () =>
-      endpoints.reasoner.extract(fileText, locale, fileQuery, fileLang, {
-        source: "transient-document",
-        confidentiality,
-      }),
+      endpoints.reasoner.extract(
+        fileText,
+        locale,
+        fileQuery,
+        fileLang,
+        documentProvenance(confidentiality),
+      ),
     onSuccess: (r) => {
       setErr(null);
       setNotice(null);
