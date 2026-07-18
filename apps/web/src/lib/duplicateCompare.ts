@@ -69,15 +69,25 @@ function tokenSimilarity(left: string, right: string): number {
   return union === 0 ? 0 : intersection / union;
 }
 
-function compareText(leftValue: string, rightValue: string, label: string): CompareSection {
+// SCRUM-513/487 (WP5-i18n): DOM-freie Übersetzerfunktion (dieselbe Signatur wie i18next-t). So kann die
+// Lib die angezeigten Werte lokalisieren, ohne selbst react-i18next zu importieren; der Aufrufer reicht t.
+type Translate = (key: string, opts?: Record<string, unknown>) => string;
+
+function compareText(
+  leftValue: string,
+  rightValue: string,
+  label: string,
+  t: Translate,
+): CompareSection {
   const left = compact(leftValue);
   const right = compact(rightValue);
+  const noValue = t("dcmp.noValue");
   if (!left && !right) {
     return {
       key: label,
       label,
-      leftValue: "Kein Wert vorhanden",
-      rightValue: "Kein Wert vorhanden",
+      leftValue: noValue,
+      rightValue: noValue,
       metrics: {
         match: 0,
         conflict: 0,
@@ -93,8 +103,8 @@ function compareText(leftValue: string, rightValue: string, label: string): Comp
     return {
       key: label,
       label,
-      leftValue: left || "Kein Wert vorhanden",
-      rightValue: right || "Kein Wert vorhanden",
+      leftValue: left || noValue,
+      rightValue: right || noValue,
       metrics: {
         match: 100,
         conflict: 0,
@@ -110,8 +120,8 @@ function compareText(leftValue: string, rightValue: string, label: string): Comp
     return {
       key: label,
       label,
-      leftValue: left || "Kein Wert vorhanden",
-      rightValue: right || "Kein Wert vorhanden",
+      leftValue: left || noValue,
+      rightValue: right || noValue,
       metrics: {
         match: 0,
         conflict: 0,
@@ -159,51 +169,48 @@ function hintsText(ko: KnowledgeObject): string {
   return (ko.comments ?? []).map((comment) => comment.text).join("; ");
 }
 
-// SCRUM-486 C: keine Roh-Enums in der Nutzersicht — Status/Wissensart als Klartext-Label. Deutsche
-// Inline-Labels (DOM-frei, testbar), passend zur bereits deutschsprachigen Vergleichsseite.
-const STATUS_LABEL: Record<string, string> = {
-  offen: "Offen",
-  validiert: "Validiert",
-};
-const TYPE_LABEL: Record<string, string> = {
-  bauchgefuehl: "Intuition",
-  best_practice: "Best Practice",
-  lernkurve: "Lernkurve",
-  technik: "Technik",
-  negativwissen: "Negativwissen",
-};
-
-function trustStatusText(ko: KnowledgeObject): string {
-  const status = STATUS_LABEL[ko.status] ?? ko.status;
-  return `Trust ${ko.trust}; Status ${status}; benötigte Prüfungen ${ko.neededValidations}`;
+// SCRUM-513/487 (WP5-i18n): Status/Wissensart als LOKALISIERTES Klartext-Label über die bestehenden
+// status.*/ktype.*-Keys (keine deutschen Inline-Labels mehr → EN/NL sauber). Der Aufrufer reicht t.
+function trustStatusText(ko: KnowledgeObject, t: Translate): string {
+  return t("dcmp.trustStatus", {
+    trust: ko.trust,
+    status: t(`status.${ko.status}`),
+    needed: ko.neededValidations,
+  });
 }
 
-function tagsCategoryText(ko: KnowledgeObject): string {
-  const type = TYPE_LABEL[ko.type] ?? ko.type;
-  return [
-    `Kategorie ${ko.category || "keine"}`,
-    `Wissensart ${type}`,
-    `Tags ${(ko.tags ?? []).join(", ") || "keine"}`,
-  ].join("; ");
+function tagsCategoryText(ko: KnowledgeObject, t: Translate): string {
+  return t("dcmp.tagsCategory", {
+    category: ko.category || t("dcmp.none"),
+    type: t(`ktype.${ko.type}`),
+    tags: (ko.tags ?? []).join(", ") || t("dcmp.none"),
+  });
 }
 
 export function buildDuplicateCompareSections(
   left: KnowledgeObject,
   right: KnowledgeObject,
+  t: Translate,
 ): CompareSection[] {
   return [
-    compareText(left.title, right.title, "Titel"),
+    compareText(left.title, right.title, "Titel", t),
     compareText(
       [left.statement, stripHtml(left.bodyHtml)].filter(Boolean).join(" "),
       [right.statement, stripHtml(right.bodyHtml)].filter(Boolean).join(" "),
       "Kernaussage / Inhalt",
+      t,
     ),
-    compareText(joinList(left.conditions), joinList(right.conditions), "Bedingungen"),
-    compareText(joinList(left.measures), joinList(right.measures), "Massnahmen"),
-    compareText(hintsText(left), hintsText(right), "Hinweise"),
-    compareText(sourceText(left), sourceText(right), "Quellen / Evidence"),
-    compareText(tagsCategoryText(left), tagsCategoryText(right), "Tags / Kategorie"),
-    compareText(trustStatusText(left), trustStatusText(right), "Trust / Validierungsstatus"),
+    compareText(joinList(left.conditions), joinList(right.conditions), "Bedingungen", t),
+    compareText(joinList(left.measures), joinList(right.measures), "Massnahmen", t),
+    compareText(hintsText(left), hintsText(right), "Hinweise", t),
+    compareText(sourceText(left), sourceText(right), "Quellen / Evidence", t),
+    compareText(tagsCategoryText(left, t), tagsCategoryText(right, t), "Tags / Kategorie", t),
+    compareText(
+      trustStatusText(left, t),
+      trustStatusText(right, t),
+      "Trust / Validierungsstatus",
+      t,
+    ),
   ];
 }
 

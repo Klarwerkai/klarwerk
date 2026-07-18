@@ -266,7 +266,7 @@ export function DuplicateCompare({ kind }: { kind: DuplicateCompareKind }): JSX.
 
   const left = findKo(kos.data, entry.koA);
   const right = findKo(kos.data, entry.koB);
-  const sections = left && right ? buildDuplicateCompareSections(left, right) : [];
+  const sections = left && right ? buildDuplicateCompareSections(left, right, t) : [];
   const overall =
     left && right
       ? isDuplicate
@@ -277,7 +277,8 @@ export function DuplicateCompare({ kind }: { kind: DuplicateCompareKind }): JSX.
           conflict: 0,
           uncertainty: 100,
           source: "heuristic" as const,
-          note: "Score nicht vorhanden: mindestens ein Wissensobjekt fehlt.",
+          // SCRUM-513/487 (WP5): i18n-Key statt roher deutscher Note (EN/NL sauber).
+          note: "dcmp.note.koMissing",
         };
 
   // SCRUM-486 C / SCRUM-487: Beziehung/Konfliktart als übersetztes Klartext-Label (Fallback: Rohwert).

@@ -50,6 +50,7 @@ import {
   SectionLabel,
   TextInput,
 } from "../components/ui";
+import { auditActionLabel } from "../lib/auditAction";
 import { applyBodyAssist, applyBodyAssistBlock, bodyTextForAssist } from "../lib/bodyAiAssist";
 import { appendExtractSections, normalizeExtractLocale } from "../lib/bodyExtract";
 import { editorFilesFromAttachments, objectRawHref } from "../lib/bodyFileLink";
@@ -1726,7 +1727,10 @@ export function KnowledgeDetail(): JSX.Element {
                                     <span className="font-mono text-muted-2">
                                       {new Date(e.at).toLocaleDateString()}
                                     </span>
-                                    <span className="font-semibold text-text">{e.action}</span>
+                                    {/* SCRUM-513/487 (WP5): Audit-Aktion lokalisiert statt roher Code. */}
+                                    <span className="font-semibold text-text">
+                                      {auditActionLabel(e.action, t)}
+                                    </span>
                                     <span className="ml-auto font-mono text-muted-2">
                                       {nameOf(e.actor)}
                                     </span>
@@ -2018,7 +2022,8 @@ export function KnowledgeDetail(): JSX.Element {
                                 </div>
                               </div>
                               <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai">
-                                {v.status}
+                                {/* SCRUM-513/487 (WP5): Snapshot-Status lokalisiert statt roher API-Wert. */}
+                                {t(`status.${v.status}`)}
                               </span>
                             </div>
                             <p className="mt-2 text-[12.5px] text-muted">{v.excerpt}</p>

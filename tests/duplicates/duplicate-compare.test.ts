@@ -36,6 +36,32 @@ const ko = (id: string, overrides: Partial<KnowledgeObject> = {}): KnowledgeObje
     ...overrides,
   }) as KnowledgeObject;
 
+// SCRUM-513/487 (WP5): die Lib lokalisiert die Werte jetzt über eine injizierte t-Funktion (DOM-frei,
+// ohne react-i18next). Dieser Fake spiegelt die realen DE-Strings der genutzten Keys, sodass die
+// bestehenden DE-Erwartungen unverändert gelten und die Interpolation mitgeprüft wird.
+const t = (key: string, opts?: Record<string, unknown>): string => {
+  const de: Record<string, string> = {
+    "dcmp.noValue": "Kein Wert vorhanden",
+    "dcmp.none": "keine",
+    "dcmp.trustStatus": "Trust {{trust}}; Status {{status}}; benötigte Prüfungen {{needed}}",
+    "dcmp.tagsCategory": "Kategorie {{category}}; Wissensart {{type}}; Tags {{tags}}",
+    "status.offen": "Offen",
+    "status.validiert": "Validiert",
+    "ktype.technik": "Technik",
+    "ktype.bauchgefuehl": "Intuition",
+    "ktype.best_practice": "Best Practice",
+    "ktype.lernkurve": "Lernkurve",
+    "ktype.negativwissen": "Negativwissen",
+  };
+  let out = de[key] ?? key;
+  if (opts) {
+    for (const [k, v] of Object.entries(opts)) {
+      out = out.replace(new RegExp(`{{${k}}}`, "g"), String(v));
+    }
+  }
+  return out;
+};
+
 const overlap = (overrides: Partial<OverlapEntry> = {}): OverlapEntry => ({
   id: "dup-1",
   koA: "a",
@@ -57,6 +83,7 @@ describe("KW-DUP-02: read-only duplicate comparison", () => {
     const sections = buildDuplicateCompareSections(
       ko("a"),
       ko("b", { conditions: ["Sicherheitspruefung fehlt"], tags: ["betrieb"] }),
+      t,
     );
     expect(sections.map((section) => section.label)).toEqual([
       "Titel",
@@ -74,7 +101,7 @@ describe("KW-DUP-02: read-only duplicate comparison", () => {
   });
 
   it("nutzt vorhandene Detector-Textdeckung, markiert Konflikt/Unsicherheit aber als vorlaeufig", () => {
-    const sections = buildDuplicateCompareSections(ko("a"), ko("b"));
+    const sections = buildDuplicateCompareSections(ko("a"), ko("b"), t);
     const overall = overallFromOverlap(
       overlap({ detector: { trigger: "validation", method: "deterministic", lexicalScore: 0.91 } }),
       sections,
@@ -86,7 +113,7 @@ describe("KW-DUP-02: read-only duplicate comparison", () => {
   });
 
   it("zeigt fehlende echte Scores ehrlich als vorlaeufige Feldheuristik", () => {
-    const sections = buildDuplicateCompareSections(ko("a"), ko("b"));
+    const sections = buildDuplicateCompareSections(ko("a"), ko("b"), t);
     const overall = overallFromOverlap(overlap(), sections);
     expect(overall.source).toBe("heuristic");
     expect(overall.note).toBe("dcmp.note.noScore");
@@ -100,6 +127,7 @@ describe("KW-DUP-02: read-only duplicate comparison", () => {
         conditions: ["Sicherheitspruefung fehlt"],
         statement: "Ganz anderer Inhalt hier.",
       }),
+      t,
     );
     for (const section of sections) {
       expect(section.reason).toMatch(/^dcmp\.reason\./);
@@ -150,7 +178,7 @@ describe("KW-DUP-02: read-only duplicate comparison", () => {
 
   // SCRUM-486 C: Status/Wissensart als Klartext-Label in den Vergleichsabschnitten, kein Roh-Enum.
   it("nutzt Klartext-Label fuer Status und Wissensart (kein Roh-Enum)", () => {
-    const sections = buildDuplicateCompareSections(ko("a"), ko("b"));
+    const sections = buildDuplicateCompareSections(ko("a"), ko("b"), t);
     const trustSection = sections.find((s) => s.label === "Trust / Validierungsstatus");
     expect(trustSection?.leftValue).toContain("Status Offen");
     expect(trustSection?.leftValue).toContain("benötigte Prüfungen");
