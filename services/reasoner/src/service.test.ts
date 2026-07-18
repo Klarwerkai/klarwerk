@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { InMemoryModelRunRepo } from "../../model-runs";
 import { DeterministicProvider, INTERVIEW_QUESTIONS, type ReasonerProvider } from "./provider";
-import { InMemoryReasonerPolicyRepo } from "./reasoner-policy";
-import { DEFAULT_REASONER_POLICY, Reasoner } from "./service";
+import { InMemoryReasonerPolicyRepo, type ReasonerPolicyRepo } from "./reasoner-policy";
+import { DEFAULT_REASONER_POLICY, LOAD_FAILURE_FALLBACK_POLICY, Reasoner } from "./service";
+import type { ReasonerTaskConfig } from "./types";
 import type {
   AnswerResult,
   AssistResult,
@@ -615,6 +616,105 @@ describe("SCRUM-525 P.5 (WP6): persistente Reasoner-Policy", () => {
     expect(await policyRepo.get()).toBeNull(); // vorher nie konfiguriert
     await r.setTaskConfig({ global: "local", perTask: {} });
     expect(await policyRepo.get()).toEqual({ global: "local", perTask: {} });
+  });
+});
+
+// SCRUM-525 P.5 (WP3-Batch3): korrektes Wiring — write-then-runtime, fail-closed bei Ladefehler, ENV-
+// Präzedenz. Ein steuerbares Fake-Repo simuliert DB-Lese-/Schreibfehler.
+describe("SCRUM-525 P.5 (WP3): Policy-Wiring (write-then-runtime, fail-closed, ENV)", () => {
+  class ControllableRepo implements ReasonerPolicyRepo {
+    stored: ReasonerTaskConfig | null = null;
+    failGet = false;
+    failSet = false;
+    async get(): Promise<ReasonerTaskConfig | null> {
+      if (this.failGet) {
+        throw new Error("db read down");
+      }
+      return this.stored;
+    }
+    async set(config: ReasonerTaskConfig): Promise<void> {
+      if (this.failSet) {
+        throw new Error("db write down");
+      }
+      this.stored = { global: config.global, perTask: { ...config.perTask } };
+    }
+  }
+
+  function makeReasoner(repo: ReasonerPolicyRepo): Reasoner {
+    return new Reasoner(
+      undefined,
+      new DeterministicProvider(),
+      undefined,
+      undefined,
+      undefined,
+      repo,
+    );
+  }
+
+  // (b) WRITE-THEN-RUNTIME: schlägt der DB-Write fehl, bleibt die Laufzeit-Policy UNVERÄNDERT (kein Drift).
+  it("setTaskConfig: DB-Write-Fehler → Laufzeit unverändert, Fehler propagiert", async () => {
+    const repo = new ControllableRepo();
+    const r = makeReasoner(repo);
+    await r.setTaskConfig({ global: "local", perTask: {} }); // etabliert einen bekannten Stand
+    repo.failSet = true;
+    await expect(r.setTaskConfig({ global: "cloud", perTask: {} })).rejects.toThrow(
+      "db write down",
+    );
+    expect(r.getTaskConfig().global).toBe("local"); // NICHT auf cloud gedriftet
+  });
+
+  // (c) LOAD-FEHLER EHRLICH: DB-Lesefehler → NICHT still auto, sondern fail-closed deterministic.
+  it("loadPersistedPolicy: DB-Lesefehler → fail-closed deterministic, source 'load-error'", async () => {
+    const repo = new ControllableRepo();
+    repo.failGet = true;
+    const r = makeReasoner(repo);
+    const res = await r.loadPersistedPolicy();
+    expect(res.source).toBe("load-error");
+    expect(res.config).toEqual(LOAD_FAILURE_FALLBACK_POLICY);
+    expect(res.config.global).toBe("deterministic"); // NICHT auto
+    expect(r.getTaskConfig().global).toBe("deterministic");
+    expect(res.detail).toContain("db read down"); // laut meldbar
+  });
+
+  // (d) ENV-Präzedenz: ENV-Override gewinnt über die persistierte Wahl, wird aber NICHT persistiert.
+  it("loadPersistedPolicy: ENV-Override > persistierte Wahl (transient, nicht persistiert)", async () => {
+    const repo = new ControllableRepo();
+    repo.stored = { global: "cloud", perTask: {} }; // Admin hatte cloud gewählt
+    const r = makeReasoner(repo);
+    const res = await r.loadPersistedPolicy({ envGlobal: "deterministic" });
+    expect(res.source).toBe("env");
+    expect(r.getTaskConfig().global).toBe("deterministic"); // ENV gewinnt zur Laufzeit
+    expect(repo.stored).toEqual({ global: "cloud", perTask: {} }); // Persistenz UNVERÄNDERT
+  });
+
+  it("loadPersistedPolicy: ohne ENV → persistierte Wahl gilt", async () => {
+    const repo = new ControllableRepo();
+    repo.stored = { global: "local", perTask: {} };
+    const r = makeReasoner(repo);
+    const res = await r.loadPersistedPolicy({ envGlobal: undefined });
+    expect(res.source).toBe("persisted");
+    expect(r.getTaskConfig().global).toBe("local");
+  });
+
+  it("loadPersistedPolicy: ungültiger ENV-Wert → ignoriert, fällt auf persistiert zurück (mit Hinweis)", async () => {
+    const repo = new ControllableRepo();
+    repo.stored = { global: "cloud", perTask: {} };
+    const r = makeReasoner(repo);
+    const res = await r.loadPersistedPolicy({ envGlobal: "quatsch" });
+    expect(res.source).toBe("persisted");
+    expect(r.getTaskConfig().global).toBe("cloud");
+    expect(res.detail).toContain("quatsch"); // ehrlich gemeldet
+  });
+
+  // (a) STARTREIHENFOLGE (Reasoner-Anteil): nach dem await von loadPersistedPolicy steht die wirksame
+  // Policy fest — kein Auto-Fenster. Der Server ruft dieses await VOR app.listen (siehe server.ts).
+  it("nach await loadPersistedPolicy steht die Policy fest (kein Default-Fenster)", async () => {
+    const repo = new ControllableRepo();
+    repo.stored = { global: "deterministic", perTask: {} };
+    const r = makeReasoner(repo);
+    expect(r.getTaskConfig().global).toBe("auto"); // vor dem Laden noch Default
+    await r.loadPersistedPolicy();
+    expect(r.getTaskConfig().global).toBe("deterministic"); // danach steht die Wahl
   });
 });
 

@@ -1,5 +1,10 @@
 // Öffentliche API des Moduls reasoner.
-export { Reasoner, DEFAULT_REASONER_POLICY } from "./src/service";
+export {
+  Reasoner,
+  DEFAULT_REASONER_POLICY,
+  LOAD_FAILURE_FALLBACK_POLICY,
+  isValidReasonerChoice,
+} from "./src/service";
 export {
   DeterministicProvider,
   keywordSelect,

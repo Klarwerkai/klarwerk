@@ -33,6 +33,27 @@ import type {
 // damit Aufrufer/Tests den Default benennen können (kein magisches, verstecktes "auto").
 export const DEFAULT_REASONER_POLICY: ReasonerTaskConfig = { global: "auto", perTask: {} };
 
+// SCRUM-525 P.5 (WP3-Batch3): FAIL-CLOSED-Default, wenn die persistierte Policy beim Start NICHT gelesen
+// werden kann (DB-Fehler). Bewusst "deterministic" (kein externer Modell-Egress, antwortet immer) statt
+// still "auto": lieber KI-Features degradieren als unter UNBEKANNTER Policy ungewollt an die Cloud gehen.
+// Der Ladefehler wird zusätzlich LAUT geloggt; sobald die DB wieder erreichbar ist, greift die Admin-Wahl.
+export const LOAD_FAILURE_FALLBACK_POLICY: ReasonerTaskConfig = {
+  global: "deterministic",
+  perTask: {},
+};
+
+const VALID_CHOICES: readonly ReasonerTaskChoice[] = [
+  "auto",
+  "model",
+  "cloud",
+  "local",
+  "deterministic",
+];
+
+export function isValidReasonerChoice(value: string): value is ReasonerTaskChoice {
+  return (VALID_CHOICES as readonly string[]).includes(value);
+}
+
 function clone(config: ReasonerTaskConfig): ReasonerTaskConfig {
   return { global: config.global, perTask: { ...config.perTask } };
 }
@@ -239,22 +260,64 @@ export class Reasoner {
     return { global: next.global, perTask };
   }
 
-  // SCRUM-525 P.5 (WP6): setzt die Policy UND PERSISTIERT sie — sie überlebt jetzt Neustart/Deploy.
+  // SCRUM-525 P.5 (WP6 + WP3-Batch3): setzt die Policy UND PERSISTIERT sie. WRITE-THEN-RUNTIME: erst
+  // validieren, dann in die DB schreiben, und NUR bei Erfolg den Laufzeitwert aktualisieren. Schlägt der
+  // DB-Write fehl, bleibt die Laufzeit-Policy unverändert (kein Drift „Laufzeit gesetzt, DB nicht") und der
+  // Fehler wird ehrlich geworfen — der Aufrufer meldet ihn, die alte Zuordnung gilt weiter.
   async setTaskConfig(next: ReasonerTaskConfig): Promise<ReasonerTaskConfig> {
-    this.taskConfig = this.normalizeTaskConfig(next);
-    await this.policyRepo.set(this.taskConfig);
+    const normalized = this.normalizeTaskConfig(next); // wirft bei Ungültigem, bevor irgendetwas passiert
+    await this.policyRepo.set(normalized); // ZUERST persistieren …
+    this.taskConfig = normalized; // … Laufzeit erst nach erfolgreichem Write
     return this.getTaskConfig();
   }
 
-  // SCRUM-525 P.5 (WP6): beim Start die persistierte Policy laden. Ist eine gespeichert → sie greift
-  // (die Admin-Entscheidung überlebt den Deploy). Ist KEINE gespeichert → der DEFINIERTE Default greift
-  // und der Aufrufer bekommt `source: "default"` gemeldet, um es EHRLICH zu loggen (kein stiller Auto-
-  // Fallback). Persistiert dabei NICHTS (ein Boot schreibt nicht; erst eine echte Admin-Setzung tut das).
-  async loadPersistedPolicy(): Promise<{
-    source: "persisted" | "default";
+  // SCRUM-525 P.5 (WP6 + WP3-Batch3): beim Start die wirksame Policy bestimmen. PRÄZEDENZ (dokumentiert):
+  //   1. ENV-Override KLARWERK_REASONER_POLICY (deklarativ pro Deploy) — TRANSIENT, wird NICHT persistiert;
+  //      die persistierte Admin-Wahl bleibt erhalten und greift wieder, sobald die ENV entfernt wird.
+  //   2. persistierte Admin-Wahl (überlebt Deploy).
+  //   3. definierter Default (auto).
+  // Kann die persistierte Wahl NICHT gelesen werden (DB-Fehler), wird NICHT still auf auto gefallen,
+  // sondern fail-closed auf LOAD_FAILURE_FALLBACK_POLICY (deterministic) — der Aufrufer meldet
+  // `source: "load-error"` und loggt LAUT. Boot schreibt nie in die DB (nur eine echte Admin-Setzung tut das).
+  async loadPersistedPolicy(opts?: { envGlobal?: string | undefined }): Promise<{
+    source: "env" | "persisted" | "default" | "load-error";
     config: ReasonerTaskConfig;
+    detail?: string;
   }> {
-    const stored = await this.policyRepo.get();
+    // 1) ENV-Override — deterministisch pro Deploy. Gültig → greift; ungültig → ignorieren + melden.
+    const envRaw = opts?.envGlobal?.trim();
+    if (envRaw) {
+      if (isValidReasonerChoice(envRaw)) {
+        this.taskConfig = { global: envRaw, perTask: {} };
+        return { source: "env", config: this.getTaskConfig() };
+      }
+      // Ungültiger ENV-Wert: nicht anwenden, aber ehrlich weiterreichen (Fall-through zu 2/3).
+      const detail = `Ungültige KLARWERK_REASONER_POLICY='${envRaw}' — ignoriert.`;
+      const fallthrough = await this.loadFromRepoOrFailClosed();
+      return { ...fallthrough, detail };
+    }
+    // 2)/3) persistierte Wahl bzw. Default — inkl. fail-closed bei Lesefehler.
+    return this.loadFromRepoOrFailClosed();
+  }
+
+  // Liest die persistierte Policy; setzt sie als Laufzeitwert. Fehlt sie → Default (auto). Ein LESEFEHLER
+  // (DB) fällt NICHT still auf auto, sondern fail-closed auf deterministic (source "load-error").
+  private async loadFromRepoOrFailClosed(): Promise<{
+    source: "persisted" | "default" | "load-error";
+    config: ReasonerTaskConfig;
+    detail?: string;
+  }> {
+    let stored: ReasonerTaskConfig | null;
+    try {
+      stored = await this.policyRepo.get();
+    } catch (err) {
+      this.taskConfig = clone(LOAD_FAILURE_FALLBACK_POLICY);
+      return {
+        source: "load-error",
+        config: this.getTaskConfig(),
+        detail: err instanceof Error ? err.message : String(err),
+      };
+    }
     if (stored) {
       // Defensive Normalisierung: auch ein (theoretisch) fremd-manipulierter Datensatz wird geprüft.
       this.taskConfig = this.normalizeTaskConfig(stored);
