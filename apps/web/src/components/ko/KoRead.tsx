@@ -15,49 +15,57 @@ import { SectionLabel } from "../ui";
 // Darstellung sind identisch zur vorherigen Inline-Version; die Extraktion senkt nur das Layout-Risiko und
 // schafft wiederverwendbare Bausteine für die Zonen-Leseansicht (WP3).
 
-// Zone-1-Kern: Titel + Konfidenz (mit sichtbarer %-Sprache über die ConfidenceBar).
+// Zone-1-Kern: Titel + Konfidenz. SCRUM-513 (WP3): die Konfidenz zeigt lesbare %-Sprache („84 % sicher"),
+// nie nur die Rohzahl (G-2/A-4).
 export function KoReadHeader({ ko }: { ko: KnowledgeObject }): JSX.Element {
   return (
     <>
       <h2 className="mt-3 text-xl font-semibold text-ink">{ko.title}</h2>
       <div className="mt-2">
-        <ConfidenceBar value={ko.confidence} />
+        <ConfidenceBar value={ko.confidence} percentPhrase />
       </div>
     </>
   );
 }
 
-// Hauptaussage (sanitisiertes Body-HTML mit Fallback auf statement) + Bedingungen + Maßnahmen + Tags.
-export function KoReadBody({ ko }: { ko: KnowledgeObject }): JSX.Element {
+// Die Hauptaussage: sanitisiertes Body-HTML (Fallback auf statement). Das „WAS gilt" der Zone 1.
+export function KoReadStatement({ ko }: { ko: KnowledgeObject }): JSX.Element {
   const { t } = useTranslation();
   return (
-    <div className="mt-5 space-y-4">
-      <div>
-        <SectionLabel>{t("ko.statement")}</SectionLabel>
-        {ko.bodyHtml ? (
-          // KW-STR / FR-STR-05: sanitisierter WYSIWYG-Body; Fallback auf statement.
-          // SCRUM-318: lesbare Knowledge-Seiten-Rahmung mit kurzer Orientierung.
-          <div className="rounded-card border border-hairline bg-surface p-3">
-            <div className="mb-2 flex flex-wrap items-center gap-1.5 border-b border-hairline pb-2">
-              <span className="text-[11.5px] font-semibold text-ink">{t(BODY_READ_TITLE_KEY)}</span>
-              {bodyReadMode(ko.bodyHtml).hasBlocks ? (
-                <span className="rounded-pill bg-page px-2 py-0.5 text-[10.5px] font-semibold text-muted">
-                  {t(BODY_READ_BLOCKS_KEY)}
-                </span>
-              ) : null}
-            </div>
-            <SanitizedHtml
-              html={ko.bodyHtml}
-              className="prose-kw text-[14.5px] leading-relaxed text-text"
-            />
-            <p className="mt-2 border-t border-hairline pt-2 text-[11px] leading-relaxed text-muted">
-              {t(BODY_READ_NOTE_KEY)}
-            </p>
+    <div>
+      <SectionLabel>{t("ko.statement")}</SectionLabel>
+      {ko.bodyHtml ? (
+        // KW-STR / FR-STR-05: sanitisierter WYSIWYG-Body; Fallback auf statement.
+        // SCRUM-318: lesbare Knowledge-Seiten-Rahmung mit kurzer Orientierung.
+        <div className="rounded-card border border-hairline bg-surface p-3">
+          <div className="mb-2 flex flex-wrap items-center gap-1.5 border-b border-hairline pb-2">
+            <span className="text-[11.5px] font-semibold text-ink">{t(BODY_READ_TITLE_KEY)}</span>
+            {bodyReadMode(ko.bodyHtml).hasBlocks ? (
+              <span className="rounded-pill bg-page px-2 py-0.5 text-[10.5px] font-semibold text-muted">
+                {t(BODY_READ_BLOCKS_KEY)}
+              </span>
+            ) : null}
           </div>
-        ) : (
-          <p className="text-[14.5px] leading-relaxed text-text">{ko.statement}</p>
-        )}
-      </div>
+          <SanitizedHtml
+            html={ko.bodyHtml}
+            className="prose-kw text-[14.5px] leading-relaxed text-text"
+          />
+          <p className="mt-2 border-t border-hairline pt-2 text-[11px] leading-relaxed text-muted">
+            {t(BODY_READ_NOTE_KEY)}
+          </p>
+        </div>
+      ) : (
+        <p className="text-[14.5px] leading-relaxed text-text">{ko.statement}</p>
+      )}
+    </div>
+  );
+}
+
+// Sekundäre Detailfelder: Bedingungen + Maßnahmen + Tags. In der Zonen-Leseansicht (WP3) eingeklappt.
+export function KoReadDetails({ ko }: { ko: KnowledgeObject }): JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <div className="space-y-4">
       {ko.conditions.length > 0 ? (
         <div>
           <SectionLabel>{t("ko.conditions")}</SectionLabel>
@@ -90,6 +98,17 @@ export function KoReadBody({ ko }: { ko: KnowledgeObject }): JSX.Element {
           ))}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+// Hauptaussage + Detailfelder zusammengesetzt (Aussage, Bedingungen, Maßnahmen, Tags). Bleibt als
+// Baustein erhalten; die Zonen-Leseansicht (KoReadView) setzt die Teile getrennt in Zonen zusammen.
+export function KoReadBody({ ko }: { ko: KnowledgeObject }): JSX.Element {
+  return (
+    <div className="mt-5 space-y-4">
+      <KoReadStatement ko={ko} />
+      <KoReadDetails ko={ko} />
     </div>
   );
 }

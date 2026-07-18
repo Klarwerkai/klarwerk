@@ -39,7 +39,7 @@ import { KnowledgeInputStudio } from "../components/KnowledgeInputStudio";
 import { KoRevisionSummary } from "../components/KoRevisionSummary";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { ListEditor, TagEditor } from "../components/editors";
-import { KoReadBody, KoReadHeader } from "../components/ko/KoRead";
+import { KoReadView } from "../components/ko/KoReadView";
 import { KNOWLEDGE_TYPES, KnowledgeTypeTag, ProvenanceLine, StatusPill } from "../components/trust";
 import {
   Button,
@@ -1075,9 +1075,9 @@ export function KnowledgeDetail(): JSX.Element {
                     </div>
                   ) : (
                     <>
-                      {/* SCRUM-513 (WP1): reine Lese-Präsentation aus KoRead extrahiert (visuell identisch). */}
-                      <KoReadHeader ko={ko} />
-                      <KoReadBody ko={ko} />
+                      {/* SCRUM-513 (WP3): Zonen-Leseansicht (Hero · sichtbarer Beleg · Sekundär · eingeklappt).
+                          Die bestehenden Aktionen/Feedback folgen unverändert direkt darunter (nachgeordnet). */}
+                      <KoReadView ko={ko} responsibleName={nameOf(ko.author)} />
 
                       <div className="mt-5 flex flex-wrap gap-2 border-t border-hairline pt-4">
                         {role === "controller" || role === "admin" ? (
