@@ -222,4 +222,45 @@ describe("SCRUM-510 WP2: runConfluenceImport", () => {
     });
     expect(s.truncated).toBe(false);
   });
+
+  // SCRUM-510 (WP2-Batch3): EHRLICHE ZÄHLUNG bei Parallelkonflikt. createImportCandidates persistiert
+  // (ON CONFLICT DO NOTHING) evtl. WENIGER als eingereiht. `imported` muss die ECHTEN Inserts zählen,
+  // nie blind toQueue.length. Ohne den Fix stünde imported auf 3 → dieser Test scheitert.
+  it("WP2: Parallelkonflikt → imported == echte Inserts, Seite als skipped/Parallelkonflikt", async () => {
+    const koService = new KoService({ repo: new InMemoryKoRepo() });
+    // Fake-Library: reiht 3 Items ein, persistiert aber nur die ersten 2 (das dritte kollidiert atomar).
+    const fakeLibrary = {
+      listImportCandidates: async () => [],
+      createImportCandidates: async (batch: readonly ImportItem[]) =>
+        batch.slice(0, batch.length - 1).map((it, i) => ({
+          id: `c-${i}`,
+          item: it,
+          status: "neu" as const,
+          duplicate: false,
+          note: null,
+          koId: null,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        })),
+    } as unknown as LibraryService;
+    const adapter = fakeAdapter({
+      items: [
+        item({ externalId: "P1" }),
+        item({ externalId: "P2", title: "Zwei" }),
+        item({ externalId: "P3", title: "Drei" }),
+      ],
+      failed: [],
+    });
+    const s = await runConfluenceImport({
+      adapter,
+      library: fakeLibrary,
+      koService,
+      dryRun: false,
+      actor: "admin",
+    });
+    expect(s.imported).toBe(2); // NICHT 3 (toQueue.length)
+    expect(s.skipped).toBe(1); // die nicht-persistierte Seite
+    const p3 = s.perPage.find((p) => p.ref === "P3");
+    expect(p3?.status).toBe("skipped");
+    expect(p3?.note).toContain("Parallelkonflikt");
+  });
 });

@@ -10,9 +10,16 @@ import type { ImportCandidate } from "./types";
 // so kann pro (externalId, sourceVersion) höchstens EIN offener Kandidat existieren — auch bei nebenläufigen
 // Läufen/Retries. Nach dem Review (status ≠ "neu") verlässt der Kandidat den Index → ein späterer Re-Sync
 // derselben Version ist wieder möglich (Semantik deckungsgleich mit dem pending-Check des Orchestrators).
-// Rein ADDITIV (ADD COLUMN/INDEX IF NOT EXISTS). Betriebs-Hinweis: existieren aus der Zeit VOR diesem Fix
-// bereits zwei offene Kandidaten derselben (externalId, sourceVersion), schlägt die Index-Erstellung beim
-// Start EHRLICH fehl (statt still) — die Dublette ist dann vor dem Deploy einmalig zu bereinigen.
+//
+// SCRUM-510 (WP2-Batch3): Härtung der Migration.
+//  (b) CAST-SICHER: source_version wird nur bei einer reinen Ziffernfolge gecastet, sonst Fallback 1
+//      (deckungsgleich mit sourceVersion ?? 1 in App/InMemory). Eine ungültige historische sourceVersion
+//      (z. B. "v3", "1.5", null) bricht so weder die STORED-Backfill-ALTER noch spätere INSERT/UPDATE.
+//  (a) SELBSTHEILEND: VOR der Index-Erstellung werden Alt-Dubletten deterministisch bereinigt — pro
+//      (external_id, source_version) bleibt der JÜNGSTE offene Kandidat (nach createdAt, Tiebreak id)
+//      zum Review, ältere werden entfernt. So SCHEITERT der Start nie mehr an vorhandenen Dubletten;
+//      der „laut statt still"-Gedanke bleibt als PG-RAISE-NOTICE erhalten. Rein additiv + idempotent
+//      (Re-Run: keine Dubletten mehr → 0 Löschungen, Index existiert bereits → No-op).
 export const IMPORT_CANDIDATES_SCHEMA = `
 CREATE TABLE IF NOT EXISTS import_candidates (
   id text PRIMARY KEY,
@@ -23,10 +30,33 @@ ALTER TABLE import_candidates
   GENERATED ALWAYS AS (data->'item'->>'externalId') STORED;
 ALTER TABLE import_candidates
   ADD COLUMN IF NOT EXISTS source_version integer
-  GENERATED ALWAYS AS (COALESCE((data->'item'->>'sourceVersion')::int, 1)) STORED;
+  GENERATED ALWAYS AS (
+    CASE WHEN (data->'item'->>'sourceVersion') ~ '^[0-9]+$'
+         THEN (data->'item'->>'sourceVersion')::int
+         ELSE 1 END
+  ) STORED;
 ALTER TABLE import_candidates
   ADD COLUMN IF NOT EXISTS review_status text
   GENERATED ALWAYS AS (data->>'status') STORED;
+DO $$
+DECLARE removed integer;
+BEGIN
+  WITH ranked AS (
+    SELECT id, row_number() OVER (
+      PARTITION BY external_id, source_version
+      ORDER BY (data->>'createdAt') DESC, id DESC
+    ) AS rn
+    FROM import_candidates
+    WHERE external_id IS NOT NULL AND review_status = 'neu'
+  )
+  DELETE FROM import_candidates c
+  USING ranked r
+  WHERE c.id = r.id AND r.rn > 1;
+  GET DIAGNOSTICS removed = ROW_COUNT;
+  IF removed > 0 THEN
+    RAISE NOTICE 'import_candidates: % Alt-Dublette(n) vor Unique-Index entfernt (SCRUM-510 WP2)', removed;
+  END IF;
+END $$;
 CREATE UNIQUE INDEX IF NOT EXISTS import_candidates_open_external_uq
   ON import_candidates (external_id, source_version)
   WHERE external_id IS NOT NULL AND review_status = 'neu';

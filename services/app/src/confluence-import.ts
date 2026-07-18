@@ -63,6 +63,9 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
 
   const perPage: ImportRunSummary["perPage"] = [];
   const toQueue: ImportItem[] = [];
+  // Parallel zu toQueue: der perPage-Index jedes eingereihten Items — für die ehrliche Nachkorrektur,
+  // falls createImportCandidates (Parallelkonflikt / ON CONFLICT) weniger persistiert als eingereiht.
+  const toQueuePerPageIdx: number[] = [];
   // SCRUM-510 (WP3): IN-RUN-Dedup. Dieselbe (externalId@version) darf innerhalb EINES Laufs nicht zweimal
   // eingereiht werden (die Quelle kann dieselbe Seite doppelt liefern; seen/pending kennen die gerade erst
   // in diesem Lauf eingereihten Items noch nicht). Der DB-UNIQUE-Index ist der atomare Backstop dahinter.
@@ -87,6 +90,7 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
     if (runKey) {
       queuedKeys.add(runKey);
     }
+    toQueuePerPageIdx.push(perPage.length);
     perPage.push({ ref, status: "imported" });
     toQueue.push(item);
   }
@@ -94,19 +98,43 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
     perPage.push({ ref: f.ref, status: "failed", note: f.error });
   }
 
-  // dryRun: NICHTS schreiben (nur zählen/listen). Sonst: die neuen Items als Kandidaten einreihen.
-  // Der createImportCandidates-Insert ist zusätzlich atomar idempotent (ON CONFLICT) — doppelter Backstop.
+  // SCRUM-510 (WP2-Batch3): EHRLICHE ZÄHLUNG. dryRun schreibt nichts → „würde einreihen" = toQueue.
+  // Sonst zählt NUR, was createImportCandidates TATSÄCHLICH persistiert hat (insertIfAbsent liefert die
+  // eingereihten Kandidaten zurück). Bei einem Parallelkonflikt (ON CONFLICT DO NOTHING) wird eine
+  // eingereihte Seite NICHT persistiert → sie zählt NICHT als importiert (nie mehr toQueue.length blind).
+  let imported = toQueue.length;
   if (!deps.dryRun && toQueue.length > 0) {
-    await deps.library.createImportCandidates(toQueue, deps.actor);
+    const persisted = await deps.library.createImportCandidates(toQueue, deps.actor);
+    imported = persisted.length;
+    // perPage ehrlich nachziehen: eingereihte, aber nicht persistierte Seiten → skipped (Parallelkonflikt).
+    const persistedKeys = new Set(persisted.map((c) => candidateKey(c.item)));
+    for (let i = 0; i < toQueue.length; i++) {
+      const candItem = toQueue[i];
+      if (candItem && !persistedKeys.has(candidateKey(candItem))) {
+        const idx = toQueuePerPageIdx[i];
+        const entry = idx !== undefined ? perPage[idx] : undefined;
+        if (entry) {
+          entry.status = "skipped";
+          entry.note = "Parallelkonflikt (bereits eingereiht)";
+        }
+      }
+    }
   }
 
   return {
     dryRun: deps.dryRun,
     found: items.length,
-    imported: toQueue.length,
-    skipped: items.length - toQueue.length,
+    imported,
+    // Alles Gesehene, das NICHT (real) importiert wurde: In-Run-/Idempotenz-Skips + Parallelkonflikte.
+    skipped: items.length - imported,
     failed: collectFailed.length,
     truncated,
     perPage,
   };
+}
+
+// Der Dedup-/Vergleichsschlüssel eines Items: externalId@version (Anker) bzw. Titel (ankerlos). Muss zur
+// In-Run-Dedup passen, damit die Persist-Nachkorrektur die richtigen perPage-Einträge trifft.
+function candidateKey(item: ImportItem): string {
+  return item.externalId ? `${item.externalId}@${item.sourceVersion ?? 1}` : `title:${item.title}`;
 }
