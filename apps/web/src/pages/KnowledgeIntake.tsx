@@ -12,8 +12,9 @@ import { LiveReactionZone } from "../components/capture/intake/LiveReactionZone"
 import { StructureSuggestionChips } from "../components/capture/intake/StructureSuggestionChips";
 import { useLiveKnowledgeCheck } from "../components/capture/intake/useLiveKnowledgeCheck";
 import { Button } from "../components/ui";
-import { pickExampleKo } from "../lib/intakeExample";
+import { dominantCategory, pickExampleKo } from "../lib/intakeExample";
 import { INTAKE_MIN_LENGTH } from "../lib/intakeSimilarity";
+import type { IntakeStarter } from "../lib/intakeStarters";
 import { type IntakeSuggestion, deriveIntakeSuggestion } from "../lib/intakeSuggestion";
 
 // SCRUM-527 (Design-Batch B): der zusammengesetzte „Wissen erfassen"-Fluss als zuhörendes System —
@@ -28,13 +29,23 @@ export function KnowledgeIntake(): JSX.Element {
   const qc = useQueryClient();
 
   const [text, setText] = useState("");
+  const [starter, setStarter] = useState<IntakeStarter | null>(null);
   const [suggestion, setSuggestion] = useState<IntakeSuggestion | null>(null);
   const [created, setCreated] = useState<KnowledgeObject | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
 
   const verdict = useLiveKnowledgeCheck(text);
-  const example = useMemo(() => pickExampleKo(kos.data), [kos.data]);
+  // SCRUM-527 (Iteration 1): domänennahes Beispiel — bevorzugte Kategorie aus den EIGENEN KOs des
+  // Nutzers; hat er keine, undefined → pickExampleKo nimmt Org-Bestand, nie ein fachfremdes Muster.
+  const preferCategory = useMemo(() => {
+    const mine = (kos.data ?? []).filter((k) => user?.id && k.author === user.id);
+    return dominantCategory(mine.length > 0 ? mine : undefined);
+  }, [kos.data, user?.id]);
+  const example = useMemo(
+    () => pickExampleKo(kos.data, preferCategory),
+    [kos.data, preferCategory],
+  );
   const enough = text.trim().length >= INTAKE_MIN_LENGTH;
 
   // Der Struktur-Vorschlag: Platzhalter aus dem Text abgeleitet (WP3). Sobald ein KI-Endpoint verdrahtet
@@ -68,24 +79,48 @@ export function KnowledgeIntake(): JSX.Element {
     );
   }
 
-  const start = (prefill: string): void => {
-    setText(prefill);
+  // SCRUM-527 (Iteration 1): ein Starter-Chip füllt das Feld NICHT vor. Er merkt sich die gewählte
+  // Wissensart (als entfernbares Label über dem Feld) und fokussiert das LEERE Feld. Der „passende
+  // Anfang" erscheint nur als HTML-placeholder (verschwindet beim Tippen), nie als value/defaultValue.
+  const start = (chosen: IntakeStarter): void => {
+    setStarter(chosen);
     setTimeout(() => textRef.current?.focus(), 0);
   };
 
+  const showEmptyState = starter === null && text.length === 0;
+  // Feld-Placeholder: mit gewählter Wissensart deren „passender Anfang" als Ghost-Hinweis, sonst neutral.
+  const placeholder = starter ? t(starter.prefillKey) : t("intake.fieldPlaceholder");
+
   return (
     <div className="mx-auto max-w-2xl">
-      {text.length === 0 ? (
+      {showEmptyState ? (
         <IntakeEmptyState example={example} onStart={start} />
       ) : (
         <div className="space-y-4">
           <h1 className="text-2xl font-semibold leading-snug text-ink">{t("intake.question")}</h1>
+
+          {/* Gewählte Wissensart als ENTFERNBARES Label über dem Feld (kein Text im Feld). */}
+          {starter ? (
+            <span className="inline-flex items-center gap-1.5 rounded-pill border border-hairline bg-page px-2.5 py-1 text-[12.5px] font-medium text-text">
+              {t(starter.labelKey)}
+              <button
+                type="button"
+                aria-label={t("intake.removeStarter")}
+                onClick={() => setStarter(null)}
+                className="text-muted-2 hover:text-text"
+              >
+                ✕
+              </button>
+            </span>
+          ) : null}
+
           <textarea
             ref={textRef}
             value={text}
             onChange={(e) => setText(e.target.value)}
             rows={6}
-            className="w-full rounded-card border border-hairline bg-surface p-3 text-[15px] leading-relaxed text-text outline-none focus:border-ink/30"
+            placeholder={placeholder}
+            className="w-full rounded-card border border-hairline bg-surface p-3 text-[15px] leading-relaxed text-text outline-none placeholder:text-muted-2 focus:border-ink/30"
             aria-label={t("intake.question")}
           />
 

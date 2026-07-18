@@ -37,6 +37,9 @@ describe("LiveReactionZone", () => {
     expect(html).toContain("Ähnliches existiert schon");
     expect(html).toContain("Not-Aus vor Wartung");
     expect(html).toContain('href="/wissen/k1"');
+    // SCRUM-527 (Iteration 1): neuer Tab → Entwurf bleibt erhalten, /wissen/:id rendert regulär.
+    expect(html).toContain('target="_blank"');
+    expect(html).toContain('rel="noreferrer"');
     expect(html).toContain("Ergänzen oder neu?");
   });
 

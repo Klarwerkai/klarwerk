@@ -1,25 +1,48 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { pickExampleKo } from "../../../lib/intakeExample";
+import { dominantCategory, pickExampleKo } from "../../../lib/intakeExample";
 import { makeKo, makeSource, renderMarkup, setLanguage } from "../../../test/render";
 import { IntakeEmptyState } from "./IntakeEmptyState";
 
-// SCRUM-527 (WP1): der Leerzustand zeigt Frage + fertiges Beispiel + 4 Starter-Chips + Beruhigungssatz.
+// SCRUM-527 (Iteration 1): Leerzustand — Frage + (nur bei Signal) domänennahes Beispiel + 4 Starter +
+// Beruhigungssatz. Nie ein fachfremdes Muster aufdrängen.
 
 afterEach(async () => {
   await setLanguage("de");
 });
 
-describe("pickExampleKo", () => {
-  it("bevorzugt ein validiertes KO mit Quelle", () => {
+describe("dominantCategory", () => {
+  it("liefert die häufigste Kategorie", () => {
     const kos = [
-      makeKo({ id: "a", status: "offen" }),
-      makeKo({ id: "b", status: "validiert", sources: [] }),
-      makeKo({ id: "c", status: "validiert", sources: [makeSource()] }),
+      makeKo({ id: "a", category: "Wartung" }),
+      makeKo({ id: "b", category: "Wartung" }),
+      makeKo({ id: "c", category: "Sicherheit" }),
     ];
-    expect(pickExampleKo(kos)?.id).toBe("c");
+    expect(dominantCategory(kos)).toBe("Wartung");
+  });
+  it("leer → undefined (kein Signal)", () => {
+    expect(dominantCategory([])).toBeUndefined();
+    expect(dominantCategory(undefined)).toBeUndefined();
+  });
+});
+
+describe("pickExampleKo", () => {
+  it("bevorzugt validiertes KO mit Quelle in der Domäne (preferCategory)", () => {
+    const kos = [
+      makeKo({ id: "a", status: "validiert", category: "Sicherheit", sources: [makeSource()] }),
+      makeKo({ id: "b", status: "validiert", category: "Wartung", sources: [makeSource()] }),
+    ];
+    expect(pickExampleKo(kos, "Wartung")?.id).toBe("b"); // Domäne gewinnt
   });
 
-  it("leerer Bestand → null (Aufrufer zeigt Muster-KO)", () => {
+  it("ohne Domänen-Treffer → irgendein validiertes KO mit Quelle", () => {
+    const kos = [
+      makeKo({ id: "a", status: "offen" }),
+      makeKo({ id: "b", status: "validiert", sources: [makeSource()] }),
+    ];
+    expect(pickExampleKo(kos, "GibtsNicht")?.id).toBe("b");
+  });
+
+  it("leerer Bestand → null (kein aufgedrängtes Beispiel)", () => {
     expect(pickExampleKo([])).toBeNull();
     expect(pickExampleKo(undefined)).toBeNull();
   });
@@ -33,7 +56,7 @@ describe("IntakeEmptyState", () => {
     expect(html).toContain("Schreib einfach drauf los");
   });
 
-  it("mit echtem KO → dessen Titel + Belegzeile (kein Beispiel-Badge)", () => {
+  it("mit echtem KO → dessen Titel + Belegzeile", () => {
     const ko = makeKo({
       title: "Pumpe entlüften",
       confidence: 84,
@@ -41,15 +64,16 @@ describe("IntakeEmptyState", () => {
     });
     const html = renderMarkup(<IntakeEmptyState example={ko} onStart={() => {}} />);
     expect(html).toContain("Pumpe entlüften");
-    expect(html).toContain('href="https://ex.com/q"'); // echte Belegzeile
+    expect(html).toContain('href="https://ex.com/q"');
     expect(html).toContain("84 % sicher");
-    expect(html).not.toContain("Beispiel"); // kein Muster-Badge bei echtem KO
   });
 
-  it("ohne KO → klar markierter Muster-KO (Beispiel-Badge, kein Fake-Bestand)", () => {
+  it("ohne Beispiel (null) → KEIN aufgedrängtes Muster, nur Frage + Chips", () => {
     const html = renderMarkup(<IntakeEmptyState example={null} onStart={() => {}} />);
-    expect(html).toContain("Beispiel"); // Muster klar gekennzeichnet
-    expect(html).toContain("Not-Aus"); // i18n-Muster-Inhalt
+    expect(html).not.toContain("So etwas — aber deins."); // keine Beispiel-Karte
+    expect(html).not.toContain("Not-Aus"); // kein fachfremdes Muster
+    expect(html).toContain("Was weißt du"); // Frage bleibt
+    expect(html).toContain("Eine Entscheidung, die wir getroffen haben"); // Chips bleiben
   });
 
   it("rendert genau vier Starter-Chips mit der ART Wissen", () => {
@@ -58,8 +82,7 @@ describe("IntakeEmptyState", () => {
     expect(html).toContain("Ein Fehler, den man leicht macht");
     expect(html).toContain("Wie etwas bei uns wirklich läuft");
     expect(html).toContain("Etwas, das sich geändert hat");
-    const buttons = html.match(/<button/g) ?? [];
-    expect(buttons).toHaveLength(4);
+    expect((html.match(/<button/g) ?? []).length).toBe(4);
   });
 
   it("i18n: Frage + Chips folgen der Sprache (DE → EN → NL)", async () => {

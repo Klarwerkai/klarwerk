@@ -35,8 +35,12 @@ export function LiveReactionZone({ verdict }: { verdict: LiveVerdict }): JSX.Ele
     return (
       <div className="rounded-card border border-hairline bg-surface px-4 py-3 text-[13px] text-text">
         <span className="text-muted">{t("intake.live.similarLead")}</span>{" "}
+        {/* SCRUM-527 (Iteration 1): das bestehende KO in einem NEUEN TAB öffnen — der Entwurf im
+            Erfassungsfeld geht so NICHT verloren, und /wissen/:id rendert regulär. */}
         <Link
           to={`/wissen/${verdict.match.koId}`}
+          target="_blank"
+          rel="noreferrer"
           className="font-semibold text-ai hover:underline"
         >
           {verdict.match.title}
@@ -52,6 +56,8 @@ export function LiveReactionZone({ verdict }: { verdict: LiveVerdict }): JSX.Ele
         <span>{t("intake.live.conflictLead")}</span>{" "}
         <Link
           to={`/wissen/${verdict.match.koId}`}
+          target="_blank"
+          rel="noreferrer"
           className="font-semibold underline hover:opacity-80"
         >
           {verdict.match.title}
