@@ -4,6 +4,7 @@ import { type FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
+import { ExternalUrlText } from "../components/ExternalUrlText";
 import { HelpTip } from "../components/HelpTip";
 import { Button, Card, PageHeader, SectionLabel, TextInput } from "../components/ui";
 import { buildExternalSearchView } from "../lib/externalKnowledge";
@@ -105,15 +106,11 @@ export function ExternalKnowledge(): JSX.Element {
                   {r.snippet ? (
                     <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{r.snippet}</p>
                   ) : null}
-                  <a
-                    href={r.url}
-                    target="_blank"
-                    rel="noreferrer"
+                  <ExternalUrlText
+                    url={r.url}
+                    leading={<ExternalLink size={11} />}
                     className="mt-1.5 inline-flex items-center gap-1 truncate font-mono text-[10.5px] text-ai hover:underline"
-                  >
-                    <ExternalLink size={11} />
-                    {r.url}
-                  </a>
+                  />
                 </li>
               ))}
             </ul>

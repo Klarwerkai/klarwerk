@@ -45,6 +45,7 @@ import { DemoBanner } from "../components/DemoBanner";
 import { EditorAttachmentContext } from "../components/EditorAttachmentContext";
 import { EditorContentQuality } from "../components/EditorContentQuality";
 import { EditorGuidance } from "../components/EditorGuidance";
+import { ExternalUrlText } from "../components/ExternalUrlText";
 import { HelpTip } from "../components/HelpTip";
 import { KnowledgeInputStudio } from "../components/KnowledgeInputStudio";
 import { KnowledgeRescueIntro } from "../components/KnowledgeRescueIntro";
@@ -3015,14 +3016,10 @@ export function Capture(): JSX.Element {
                                     {r.snippet ? (
                                       <p className="mt-0.5 text-[11.5px] text-muted">{r.snippet}</p>
                                     ) : null}
-                                    <a
-                                      href={r.url}
-                                      target="_blank"
-                                      rel="noreferrer"
+                                    <ExternalUrlText
+                                      url={r.url}
                                       className="block truncate font-mono text-[10.5px] text-ai hover:underline"
-                                    >
-                                      {r.url}
-                                    </a>
+                                    />
                                   </div>
                                   <Button
                                     variant="ghost"
