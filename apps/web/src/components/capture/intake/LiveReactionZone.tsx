@@ -66,6 +66,25 @@ export function LiveReactionZone({ verdict }: { verdict: LiveVerdict }): JSX.Ele
     );
   }
 
+  // G-2-EHRLICHKEIT (SCRUM-527): „pending" = nichts Ähnliches, aber Widerspruch NICHT geprüft. Neutral
+  // (nicht das positive „neu"-Grün), damit nichts Unbelegtes behauptet wird.
+  if (verdict.status === "pending") {
+    return (
+      <div className="rounded-card border border-hairline bg-surface px-4 py-3 text-[13px] text-muted">
+        {t("intake.live.pending")}
+      </div>
+    );
+  }
+
+  // „unavailable" = die Prüfung ist fehlgeschlagen/nicht erreichbar — ehrlich sichtbar, nicht als „neu".
+  if (verdict.status === "unavailable") {
+    return (
+      <div className="rounded-card border border-hairline bg-surface px-4 py-3 text-[13px] text-muted">
+        {t("intake.live.unavailable")}
+      </div>
+    );
+  }
+
   // idle — ruhiges „hört zu", damit die Zone nie tot wirkt.
   return <div className="px-1 py-2 text-[12.5px] italic text-muted-2">{t("intake.live.idle")}</div>;
 }

@@ -25,7 +25,9 @@ export function ConflictKoSide({
     );
   }
 
-  const evidenceDate = ko.sources?.[0]?.at ?? ko.createdAt;
+  // G-2-EHRLICHKEIT (SCRUM-527): Quelldatum nur aus einer ECHTEN Quelle — kein createdAt-Fallback
+  // (Erfassungsdatum ist kein Quelldatum). Ohne Quelle zeigt SourceEvidence „kein Quelldatum".
+  const evidenceDate = ko.sources?.[0]?.at ?? null;
   return (
     <div className="rounded-card border border-trust-crit-fill/30 bg-page p-3">
       <p className="text-[13px] font-semibold leading-snug text-text">{ko.title}</p>

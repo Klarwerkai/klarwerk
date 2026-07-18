@@ -33,8 +33,10 @@ export function KoReadView({
   actions?: ReactNode;
 }): JSX.Element {
   const { t } = useTranslation();
-  // Quelldatum der Belegzeile: das Datum der ersten Quelle, sonst das KO-Erfassungsdatum.
-  const evidenceDate = ko.sources?.[0]?.at ?? ko.createdAt;
+  // G-2-EHRLICHKEIT (SCRUM-527): das Quelldatum der Belegzeile ist NUR das Datum einer ECHTEN Quelle.
+  // KEIN Fallback auf ko.createdAt — das Erfassungsdatum ist kein Quell-/Freigabedatum. Ohne echte Quelle
+  // zeigt SourceEvidence ehrlich „kein Quelldatum". createdAt erscheint ausschließlich als „Erfasst am".
+  const evidenceDate = ko.sources?.[0]?.at ?? null;
   const captured = new Date(ko.createdAt);
   const capturedText = Number.isNaN(captured.getTime())
     ? null
@@ -66,8 +68,9 @@ export function KoReadView({
           <span className="font-mono text-micro uppercase tracking-wider text-muted-2">
             {t("ko.read.released")}
           </span>
+          {/* G-2-EHRLICHKEIT: nur der Freigabe-STATUS — KEIN Datum. createdAt ist kein Freigabedatum
+              und darf hier nicht als solches erscheinen (es steht ehrlich als „Erfasst am" in Zone 3). */}
           <StatusPill status={deriveStatus(ko)} />
-          {capturedText ? <span>· {capturedText}</span> : null}
         </div>
       </div>
 

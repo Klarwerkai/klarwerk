@@ -73,6 +73,19 @@ describe("KoReadView — VIP-Sichtvertrag", () => {
     expect(html).toContain("keine Quelle hinterlegt");
   });
 
+  it("G-2-EHRLICHKEIT: KO ohne Quelle labelt createdAt NICHT als Quell-/Freigabedatum", () => {
+    const createdAt = "2026-05-01T12:00:00.000Z";
+    const html = renderMarkup(<KoReadView ko={makeKo({ sources: [], createdAt })} />);
+    // Ohne echte Quelle: ehrliches „kein Quelldatum" statt „Quelle vom <createdAt>".
+    expect(html).toContain("kein Quelldatum");
+    expect(html).not.toContain("Quelle vom");
+    // createdAt erscheint ehrlich als Erfassungsdatum …
+    expect(html).toContain("Erfasst am");
+    // … und GENAU EINMAL: nicht zusätzlich als Freigabedatum in der Freigabe-Zeile.
+    const dateText = new Date(createdAt).toLocaleDateString("de");
+    expect(html.split(dateText).length - 1).toBe(1);
+  });
+
   it("responsive Zone 3 nutzt flex-wrap (schmal umbruchfähig)", () => {
     const html = renderMarkup(<KoReadView ko={fullKo()} />);
     expect(html).toContain("flex-wrap");

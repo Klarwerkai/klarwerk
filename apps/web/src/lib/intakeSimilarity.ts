@@ -9,7 +9,13 @@ import type { KnowledgeObject } from "../api/types";
 export type LiveVerdict =
   | { status: "idle" }
   | { status: "checking" }
+  // "new" = ehrlich geprüft (status "done") UND nichts Ähnliches/Widersprüchliches gefunden.
   | { status: "new" }
+  // G-2-EHRLICHKEIT (SCRUM-527): der Server hat NICHT auf Widerspruch geprüft (kein Modell/Cloud, weil
+  // der Freitext unklassifiziert/vertraulich ist). Das ist NICHT „neu" — es ist „noch nicht geprüft".
+  | { status: "pending" }
+  // Die Prüfung ist fehlgeschlagen/nicht erreichbar — ehrlich sichtbar, nie als „neu" getarnt.
+  | { status: "unavailable" }
   | { status: "similar"; match: { koId: string; title: string; score: number } }
   | { status: "conflict"; match: { koId: string; title: string; score: number } };
 

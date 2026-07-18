@@ -2,11 +2,14 @@ import { CheckCircle2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
-// SCRUM-527 (WP4-Design): der Abschluss zeigt nicht „gespeichert", sondern die KONSEQUENZ — auf
-// Aktualität geprüft, der Name der Person als Quelle hinterlegt, und dass das Wissen künftig gefunden
-// wird (nicht die Person). Warm, mit Namensnennung (Experten-Name aus der Session). Reine Präsentation.
-// Der optionale Nachfrage-Bezug (SCRUM-499) erscheint NUR, wenn er verfügbar ist (followUpAvailable) —
-// kein Fake-Haken ohne Datenbasis.
+// SCRUM-527 (WP4-Design): der Abschluss zeigt nicht „gespeichert", sondern die KONSEQUENZ — das Wissen
+// ist in den gemeinsamen Bestand aufgenommen, der Name der Person als AUTOR (nicht als Quelle) hinterlegt,
+// und künftig wird das Wissen gefunden (nicht die Person). Warm, mit Namensnennung (Experten-Name aus der
+// Session). Reine Präsentation.
+// G-2-EHRLICHKEIT (SCRUM-527): KEINE unbelegte „auf Aktualität geprüft"-Behauptung (im Erfassungs-Flow
+// läuft keine echte Aktualitätsprüfung) und der Name ist AUTOR/Erfasser, nicht „Quelle" (eine echte
+// KoSource entsteht hier nicht). Der optionale Nachfrage-Bezug (SCRUM-499) erscheint NUR, wenn verfügbar
+// (followUpAvailable) — kein Fake-Haken ohne Datenbasis.
 export function IntakeCompletion({
   authorName,
   koId,

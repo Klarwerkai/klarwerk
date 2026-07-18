@@ -16,11 +16,15 @@ afterEach(async () => {
 });
 
 describe("IntakeCompletion", () => {
-  it("zeigt Aktualitätsprüfung, Namensnennung und Auffindbarkeit", () => {
+  it("G-2-EHRLICHKEIT: Aufnahme + Autor-Nennung + Auffindbarkeit, KEINE Prüf-/Quelle-Behauptung", () => {
     const html = render(<IntakeCompletion authorName="Anna Muster" koId="k1" />);
-    expect(html).toContain("Auf Aktualität geprüft.");
-    expect(html).toContain("Anna Muster"); // Name als Quelle hinterlegt
+    expect(html).toContain("In euren gemeinsamen Wissensstand aufgenommen.");
+    expect(html).toContain("Anna Muster"); // Name als AUTOR hinterlegt
+    expect(html).toContain("als Autor hinterlegt");
     expect(html).toContain("findet es — nicht dich");
+    // Keine unbelegten Behauptungen: weder „geprüft" (keine echte Prüfung) noch „als Quelle".
+    expect(html).not.toContain("geprüft");
+    expect(html).not.toContain("als Quelle");
   });
 
   it("mit koId → Link zum Wissensobjekt", () => {
@@ -45,9 +49,9 @@ describe("IntakeCompletion", () => {
   it("i18n: Namensnennung interpoliert + Sprache (DE → EN → NL)", async () => {
     await setLanguage("en");
     let html = render(<IntakeCompletion authorName="Anna" koId="k1" />);
-    expect(html).toContain("Your name (Anna) is on file as the source.");
+    expect(html).toContain("Your name (Anna) is recorded as the author.");
     await setLanguage("nl");
     html = render(<IntakeCompletion authorName="Anna" koId="k1" />);
-    expect(html).toContain("Je naam (Anna) staat als bron vermeld.");
+    expect(html).toContain("Je naam (Anna) staat als auteur vermeld.");
   });
 });

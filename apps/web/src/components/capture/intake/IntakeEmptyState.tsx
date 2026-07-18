@@ -39,7 +39,7 @@ export function IntakeEmptyState({
             <SourceEvidence
               sources={example.sources ?? []}
               confidence={example.confidence}
-              date={example.sources?.[0]?.at ?? example.createdAt}
+              date={example.sources?.[0]?.at ?? null}
               variant="compact"
             />
           </div>
