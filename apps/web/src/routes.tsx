@@ -16,6 +16,7 @@ import { Duplicates } from "./pages/Duplicates";
 import { ExternalKnowledge } from "./pages/ExternalKnowledge";
 import { Help } from "./pages/Help";
 import { KnowledgeDetail } from "./pages/KnowledgeDetail";
+import { KnowledgeIntake } from "./pages/KnowledgeIntake";
 import { Library } from "./pages/Library";
 import { Lifecycle } from "./pages/Lifecycle";
 import { Mobile } from "./pages/Mobile";
@@ -122,6 +123,9 @@ export function AppRoutes(): JSX.Element {
       />
       <Route path={CONFLICT_COMPARE_ITEM.path} element={<Guarded item={CONFLICT_COMPARE_ITEM} />} />
       <Route path="/wissen/:id" element={<KnowledgeDetail />} />
+      {/* SCRUM-527 (Design-Batch B): zuhörende „Wissen erfassen"-Erstversion — Deep-Link zum Browser-
+          Check durch Pedi (noch nicht in der Navigation, um die bestehende Erfassung nicht zu berühren). */}
+      <Route path="/erfassen/neu" element={<KnowledgeIntake />} />
       <Route path="/mobile" element={<Mobile />} />
       <Route path="/ui-kit" element={<UiKit />} />
       <Route path="*" element={<Navigate to={HOME_ROUTE} replace />} />
