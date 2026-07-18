@@ -280,4 +280,182 @@ describe("SCRUM-422: Papierkorb für gelöschte Wissensobjekte", () => {
     expect(purged).toContainEqual({ id: auto.id, actor: "system" });
     expect(purged).toHaveLength(2);
   });
+
+  // SCRUM-523 P.3 (WP1-Batch3): AUCH die HARTEN Direktlöschwege laufen über purgeKo (den einzigen
+  // Chokepoint) → der Aufräum-Hook greift auch bei delete({hard}) UND beim Demo-Purge (demoSeed). Ohne
+  // die Umleitung (früher: repo.delete direkt in delete()) liefe der Hook hier NIE → Test scheitert.
+  it("WP1: delete({hard}) UND demoSeed-Löschung rufen den Aufräum-Hook (Chokepoint)", async () => {
+    const purged: string[] = [];
+    const service = new KoService({
+      repo: new InMemoryKoRepo(),
+      onPurge: async (id) => {
+        purged.push(id);
+      },
+    });
+    const hard = await service.create({
+      title: "Hart",
+      statement: "hart weg",
+      type: "best_practice",
+      category: "A",
+      author: "erik",
+    });
+    const demo = await service.create({
+      title: "Demo",
+      statement: "demo weg",
+      type: "best_practice",
+      category: "A",
+      author: "erik",
+      demoSeed: true,
+    });
+    await service.delete(hard.id, "admin", { hard: true });
+    await service.delete(demo.id, "system"); // demoSeed → hart, ohne opts.hard
+    expect(purged).toContain(hard.id);
+    expect(purged).toContain(demo.id);
+    // Beide sind wirklich weg (harte Löschung, kein Papierkorb).
+    expect(await service.get(hard.id)).toBeUndefined();
+    expect(await service.get(demo.id)).toBeUndefined();
+  });
+
+  // SCRUM-523 P.3 (WP1-Batch3): CLEANUP-FIRST + Rollback. Schlägt der Aufräum-Hook fehl, wird das KO
+  // NICHT gelöscht (Bestand bleibt), es entsteht KEIN ko.purged-Audit — kein Zwischenstand „KO weg,
+  // Folgeartefakte leben". Ohne den Reorder (früher: delete ZUERST) wäre das KO schon weg, wenn der Hook
+  // wirft → dieser Test scheitert.
+  it("WP1: Cleanup-Fehler → KO bleibt bestehen, kein ko.purged-Audit (Rollback)", async () => {
+    const auditRepo = new InMemoryAuditRepo();
+    const audit = new AuditService({ repo: auditRepo });
+    const service = new KoService({
+      repo: new InMemoryKoRepo(),
+      audit,
+      onPurge: async () => {
+        throw new Error("conflicts-cleanup down");
+      },
+    });
+    const ko = await service.create({
+      title: "Bleibt",
+      statement: "cleanup scheitert",
+      type: "best_practice",
+      category: "A",
+      author: "erik",
+    });
+    // Harter Löschversuch scheitert am Cleanup → wirft.
+    await expect(service.delete(ko.id, "admin", { hard: true })).rejects.toThrow("cleanup down");
+    // KO ist NICHT gelöscht (Rollback-Äquivalent).
+    expect(await service.get(ko.id)).toBeDefined();
+    // Und KEIN ko.purged-Audit (nichts wurde endgültig gelöscht).
+    const purgedAudits = (await auditRepo.all()).filter((e) => e.action === "ko.purged");
+    expect(purgedAudits).toHaveLength(0);
+  });
+
+  // SCRUM-523 P.3 (WP1-Batch3): der Hook läuft VOR dem Bestands-Delete (cleanup-first). Zum Hook-
+  // Zeitpunkt existiert das KO noch → so ist garantiert nie „KO weg, Artefakte leben".
+  it("WP1: Aufräum-Hook läuft VOR dem KO-Delete (cleanup-first)", async () => {
+    let koPresentDuringHook: boolean | null = null;
+    const repo = new InMemoryKoRepo();
+    const service = new KoService({
+      repo,
+      onPurge: async (id) => {
+        koPresentDuringHook = (await repo.findById(id)) !== undefined;
+      },
+    });
+    const ko = await service.create({
+      title: "Reihenfolge",
+      statement: "hook vor delete",
+      type: "best_practice",
+      category: "A",
+      author: "erik",
+    });
+    await service.delete(ko.id, "admin", { hard: true });
+    expect(koPresentDuringHook).toBe(true); // beim Cleanup existierte das KO noch
+    expect(await repo.findById(ko.id)).toBeUndefined(); // danach ist es weg
+  });
+
+  // SCRUM-523 P.3 (WP1-Batch3): ein Cleanup-Fehler an EINEM KO bricht den periodischen Sweep NICHT ab —
+  // das fehlerhafte KO bleibt (Rollback), die übrigen abgelaufenen werden weiter gelöscht; der Fehler
+  // geht an onSweepError (ehrlich), nicht still verloren.
+  it("WP1: Sweep überspringt ein KO mit Cleanup-Fehler und räumt den Rest auf", async () => {
+    let clock = Date.parse("2026-07-03T12:00:00.000Z");
+    let failFor = "";
+    const service = new KoService({
+      repo: new InMemoryKoRepo(),
+      now: () => clock,
+      onPurge: async (id) => {
+        if (id === failFor) {
+          throw new Error("cleanup boom");
+        }
+      },
+    });
+    const bad = await service.create({
+      title: "Bad",
+      statement: "cleanup scheitert",
+      type: "best_practice",
+      category: "A",
+      author: "erik",
+    });
+    const good = await service.create({
+      title: "Good",
+      statement: "geht durch",
+      type: "best_practice",
+      category: "A",
+      author: "erik",
+    });
+    failFor = bad.id;
+    await service.delete(bad.id, "erik");
+    await service.delete(good.id, "erik");
+    clock += (TRASH_RETENTION_DAYS + 1) * 86_400_000;
+
+    const errors: string[] = [];
+    const purged = await service.runTrashSweep("system", (id) => errors.push(id));
+    expect(purged).toBe(1); // nur good
+    expect(errors).toEqual([bad.id]); // bad ehrlich gemeldet
+    expect(await service.get(good.id)).toBeUndefined(); // good weg
+    // bad bleibt im Papierkorb (Rollback), nicht endgültig gelöscht.
+    expect((await service.trashed()).some((t) => t.id === bad.id)).toBe(true);
+  });
+});
+
+// SCRUM-523 P.3 (WP1-Batch3): End-to-End über die ECHTE Verdrahtung (buildServices → onPurge wired):
+// eine harte KO-Löschung räumt die Folgeartefakte (hier: eine offene Überschneidung) über den zentralen
+// Purge-Vertrag wirklich mit auf. Beweist, dass der Chokepoint + die App-Verdrahtung zusammenspielen.
+describe("SCRUM-523 P.3 (WP1-Batch3): Purge-Kaskade end-to-end (echte Verdrahtung)", () => {
+  it("delete({hard}) schließt offene Überschneidungen des KO (participant_deleted)", async () => {
+    const services = buildServices();
+    // buildApp verdrahtet den Purge-Aufräum-Hook (setPurgeCleanup) auf services.ko — genau wie im
+    // Produktions-Bootstrap. Ohne diesen Schritt liefe die Kaskade nicht (Wiring lebt in buildApp).
+    buildApp(services);
+    const a = await services.ko.create({
+      title: "KO A",
+      statement: "Pumpe entlüften alle 200h.",
+      type: "best_practice",
+      category: "Wartung",
+      author: "anna",
+    });
+    const b = await services.ko.create({
+      title: "KO B",
+      statement: "Pumpe alle 200 Stunden entlüften.",
+      type: "best_practice",
+      category: "Wartung",
+      author: "bob",
+    });
+    // Eine offene Überschneidung zwischen A und B anlegen (deterministischer Eintrag, kein Modell).
+    await services.overlaps.createAuto(
+      {
+        koA: a.id,
+        koB: b.id,
+        relation: "identisch",
+        aspects: [{ beschreibung: "gleiche Anweisung", zitatA: "entlüften", zitatB: "entlüften" }],
+        eigenanteilA: "",
+        eigenanteilB: "",
+        recommendation: "zusammenfuehren",
+      },
+      { trigger: "manual", method: "deterministic", lexicalScore: 0.95 },
+      "system",
+    );
+    expect(await services.overlaps.unresolved()).toHaveLength(1);
+
+    // KO A hart löschen → über purgeKo → onPurge → overlaps.onKoRemoved schließt den Eintrag.
+    await services.ko.delete(a.id, "admin", { hard: true });
+
+    expect(await services.overlaps.unresolved()).toHaveLength(0); // Überschneidung geschlossen (kein Geist)
+    expect(await services.ko.get(a.id)).toBeUndefined(); // KO wirklich weg
+  });
 });

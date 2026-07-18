@@ -8,6 +8,7 @@ import { createPool, migrate } from "./db";
 import { buildDevPersistServices } from "./dev-persist";
 import { type FactoryReset, factoryResetUnavailable } from "./factory-reset";
 import { assertPersistentStore, normalizeEnv } from "./storage-guard";
+import { resolveTrashSweepIntervalMs, startTrashSweepScheduler } from "./trash-sweep-scheduler";
 import { registerWebStatic } from "./web-static";
 
 // Kanonische Domain (klarwerk.ai). app.<domain> wird dauerhaft hierher umgeleitet.
@@ -147,11 +148,13 @@ async function start(): Promise<void> {
     .catch((error) => {
       app.log.warn(`KI-Zuordnung konnte nicht geladen werden: ${String(error)}`);
     });
-  // SCRUM-523 P.3 (WP2): die abgelaufene-Papierkorb-Endlöschung ist jetzt eine EXPLIZITE Operation
-  // (nicht mehr lazy beim Lesen — Lesen/Import-Dry-Run bleiben schreibfrei). Einmal beim Start anstoßen,
-  // damit die 28-Tage-Frist ohne Cron weiter greift; best-effort, ein Fehler darf den Start nicht kippen.
+  // SCRUM-523 P.3 (WP2): die abgelaufene-Papierkorb-Endlöschung ist eine EXPLIZITE Operation (nicht mehr
+  // lazy beim Lesen — Lesen/Import-Dry-Run bleiben schreibfrei). Einmal beim Start anstoßen, damit die
+  // 28-Tage-Frist ohne Cron greift; ein KO-Fehler bricht den Lauf nicht ab (per-KO onSweepError-Log).
   services.ko
-    .runTrashSweep()
+    .runTrashSweep("system", (id, error) =>
+      app.log.warn(`Papierkorb-Endlöschung von ${id} fehlgeschlagen: ${String(error)}`),
+    )
     .then((purged) => {
       if (purged > 0) {
         app.log.info(`Papierkorb-Endlöschung beim Start: ${purged} abgelaufene KO(s) entfernt.`);
@@ -160,6 +163,22 @@ async function start(): Promise<void> {
     .catch((error) => {
       app.log.warn(`Papierkorb-Endlöschung beim Start übersprungen: ${String(error)}`);
     });
+  // SCRUM-523 P.3 (WP1-Batch3): zusätzlich PERIODISCH sweepen (nicht nur beim Start), damit abgelaufene
+  // Einträge auch in langlaufenden Prozessen ohne Neustart endgültig verschwinden. Intervall aus der
+  // Umgebung (Default 6 h). Reads bleiben schreibfrei; der Sweep ist idempotent (nur abgelaufene Einträge).
+  const sweepInterval = resolveTrashSweepIntervalMs(process.env.KLARWERK_TRASH_SWEEP_INTERVAL_MS);
+  startTrashSweepScheduler({
+    intervalMs: sweepInterval,
+    runSweep: () =>
+      services.ko.runTrashSweep("system", (id, error) =>
+        app.log.warn(`Papierkorb-Endlöschung von ${id} fehlgeschlagen: ${String(error)}`),
+      ),
+    onSwept: (purged) =>
+      app.log.info(`Papierkorb-Endlöschung (periodisch): ${purged} abgelaufene KO(s) entfernt.`),
+    onError: (error) =>
+      app.log.warn(`Periodischer Papierkorb-Sweep übersprungen: ${String(error)}`),
+  });
+  app.log.info(`Papierkorb-Sweep aktiv — Intervall ${Math.round(sweepInterval / 60000)} min.`);
 }
 
 start().catch((error) => {

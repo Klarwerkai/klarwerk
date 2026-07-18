@@ -529,18 +529,29 @@ export class KoService {
     return Date.parse(deletedAt) + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
   }
 
-  // SCRUM-523 P.3 (WP2): DER zentrale Purge-Vertrag. Jede HARTE Endlöschung eines KO — automatisch
-  // (abgelaufen) wie manuell — läuft ausschließlich hierüber: Bestand löschen, Audit schreiben UND die
-  // injizierte Aufräum-Kaskade (offene Konflikte/Überschneidungen schließen, Embedding-Vektor entfernen)
-  // anstoßen. So kann kein Löschpfad die Folgeartefakte mehr umgehen (keine „Geister"). Der onPurge-Hook
-  // läuft NACH dem Bestands-Delete (das KO ist dann wirklich weg), best-effort: ein Cleanup-Fehler darf
-  // die bereits erfolgte Löschung nicht rückabwickeln — er wird geworfen und vom Aufrufer behandelt.
+  // SCRUM-523 P.3 (WP1-Batch3): DER EINZIGE harte Löschpunkt eines KO. JEDER harte Löschweg —
+  // Trash-Sweep (abgelaufen), manueller Papierkorb-Purge, delete({hard}) und der Demo-Purge — läuft
+  // AUSSCHLIESSLICH hierüber. `this.repo.delete` wird im ganzen Modul nur an DIESER Stelle gerufen (Grep-
+  // Beleg im Bericht) → kein Aufrufer kann die Aufräum-Kaskade mehr umgehen.
+  //
+  // REIHENFOLGE = Atomaritäts-Ersatz ohne modulübergreifende DB-Transaktion (die würde einen Tx-Handle
+  // durch conflicts/overlaps/embedding fädeln = Architektur-Umbau außerhalb der Guardrail): das Cleanup
+  // (Konflikte/Überschneidungen schließen, Embedding-Vektor entfernen) läuft ZUERST; ERST wenn es
+  // vollständig gelingt, wird das KO gelöscht. Damit gibt es NIE einen Zwischenstand „KO weg, Folge-
+  // artefakte leben" (kein Geist). Scheitert das Cleanup, wird das KO NICHT gelöscht (Rollback-Äquivalent:
+  // der Bestand bleibt unangetastet), kein ko.purged-Audit, der Fehler wird ehrlich geworfen — der
+  // Aufrufer (Sweep/Route) meldet einen Fehlerstatus, kein stiller Teil-Purge. Restrisiko: gelingt das
+  // Cleanup, aber der finale Einzel-Delete scheitert, bleibt ein (getrashtes) KO mit bereits geschlossenen
+  // Folgeartefakten zurück — kein Geist, und ein erneuter Purge ist idempotent (siehe Bericht).
   private async purgeKo(
     id: string,
     actor: string,
-    reason: "trash-expired" | "manual",
+    reason: "trash-expired" | "manual" | "hard",
     extraPayload: Record<string, unknown> = {},
   ): Promise<void> {
+    // 1) Cleanup ZUERST — schlägt es fehl, bleibt das KO bestehen (kein Delete, kein Audit).
+    await this.onPurge?.(id, actor);
+    // 2) Erst nach erfolgreichem Cleanup: der EINZIGE harte Bestands-Delete + Audit.
     await this.repo.delete(id);
     await this.audit?.record({
       actor,
@@ -548,20 +559,30 @@ export class KoService {
       target: id,
       payload: { reason, ...extraPayload },
     });
-    await this.onPurge?.(id, actor);
   }
 
   // SCRUM-523 P.3 (WP2): Endlöschung abgelaufener Papierkorb-Einträge — jetzt eine EXPLIZITE Operation
   // (kein Lazy-Sweep beim Lesen mehr). Der Aufrufer (Server-Start / Admin / Scheduler) triggert sie;
   // reine Leseoperationen tun das NIE. Läuft über den zentralen purgeKo-Vertrag (inkl. Aufräum-Kaskade).
   // Gibt die Zahl der endgültig gelöschten KOs zurück.
-  async runTrashSweep(actor = "system"): Promise<number> {
+  // SCRUM-523 P.3 (WP1-Batch3): idempotent — verarbeitet NUR wirklich abgelaufene Trash-Einträge, sodass
+  // ein (auch periodischer) Lauf keine laufende Anzeige inkonsistent macht. Ein Cleanup-/Purge-Fehler an
+  // EINEM KO bricht den Lauf NICHT ab (never block): das KO bleibt bestehen (Rollback), der Rest wird
+  // weiter aufgeräumt; der Fehler geht an den optionalen onSweepError-Callback (ehrliches Log statt still).
+  async runTrashSweep(
+    actor = "system",
+    onSweepError?: (id: string, error: unknown) => void,
+  ): Promise<number> {
     const nowMs = this.now();
     let purged = 0;
     for (const ko of await this.repo.list({})) {
       if (ko.deletedAt && this.trashExpiry(ko.deletedAt) <= nowMs) {
-        await this.purgeKo(ko.id, actor, "trash-expired", { deletedAt: ko.deletedAt });
-        purged++;
+        try {
+          await this.purgeKo(ko.id, actor, "trash-expired", { deletedAt: ko.deletedAt });
+          purged++;
+        } catch (err) {
+          onSweepError?.(ko.id, err);
+        }
       }
     }
     return purged;
@@ -783,12 +804,12 @@ export class KoService {
   async delete(id: string, actor = "system", opts?: { hard?: boolean }): Promise<void> {
     const ko = await this.require(id);
     if (opts?.hard || ko.demoSeed) {
-      await this.repo.delete(id);
-      await this.audit?.record({
-        actor,
-        action: "ko.deleted",
-        target: id,
-        payload: { hard: true },
+      // SCRUM-523 P.3 (WP1-Batch3): harte Löschung NICHT mehr am Chokepoint vorbei — über purgeKo
+      // (inkl. Cleanup-Kaskade, cleanup-first). So räumen delete({hard}) UND der Demo-Purge (demoSeed)
+      // die Folgeartefakte zwingend auf; scheitert das Cleanup, bleibt das KO bestehen (Rollback).
+      await this.purgeKo(id, actor, "hard", {
+        hard: true,
+        ...(ko.demoSeed ? { demoSeed: true } : {}),
       });
       return;
     }
