@@ -97,7 +97,10 @@ export async function checkKnowledge(
 ): Promise<KnowledgeCheckResult> {
   const clean = text.trim();
   if (clean.length < 12) {
-    return { status: "done", similar: [], conflicts: [] };
+    // G-2-EHRLICHKEIT (ben-Check V2): zu kurzer Text wurde NICHT auf Widerspruch geprüft → ehrlich
+    // "pending" (die UI zeigt „noch nicht geprüft"), NICHT "done" (das die UI fälschlich als „neu"
+    // deutet). Kein Egress-Aspekt — es lief nur kein Judge.
+    return { status: "pending", similar: [], conflicts: [] };
   }
   try {
     // 1) Kandidaten lexikalisch vorfiltern (begrenzt) — kein Voll-Pool-Scan. dropConfidential hält

@@ -59,9 +59,12 @@ function spyJudge(verdict: ConflictVerdict | null): {
 const conflicts = () => new ConflictService({ repo: new InMemoryConflictRepo() });
 
 describe("checkKnowledge", () => {
-  it("zu kurzer Text → done, leer", async () => {
+  it("G-2 (ben-V2): zu kurzer Text → status 'pending' (nicht 'done', UI nicht 'neu')", async () => {
     const res = await checkKnowledge("kurz", { ko: fakeKo([]), conflicts: conflicts() });
-    expect(res).toEqual({ status: "done", similar: [], conflicts: [] });
+    // Kurztext wurde nicht auf Widerspruch geprüft → ehrlich pending, NICHT done.
+    expect(res.status).toBe("pending");
+    expect(res.status).not.toBe("done");
+    expect(res.conflicts).toEqual([]);
   });
 
   it("similar: findet lexikalisch ähnliche KOs (deterministisch, kein Judge)", async () => {
