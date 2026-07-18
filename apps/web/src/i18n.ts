@@ -1742,6 +1742,9 @@ const de = {
   "con.sources": "Quellen",
   "con.openKo": "Objekt öffnen",
   "con.compareOpen": "Beide gegenüberstellen",
+  "con.readonlyCompare": "Read-only-Vergleich",
+  "con.detectedOn": "Erkannt am {{date}}",
+  "con.evidenceSideLabel": "Beleg dieser Seite",
   "con.compareTitle": "Gegenüberstellung",
   "con.koMissing": "Beitrag wurde entfernt.",
   "con.resolveEffect":
@@ -4641,6 +4644,9 @@ const en: typeof de = {
   "con.sources": "Sources",
   "con.openKo": "Open object",
   "con.compareOpen": "Compare both",
+  "con.readonlyCompare": "Read-only comparison",
+  "con.detectedOn": "Detected on {{date}}",
+  "con.evidenceSideLabel": "Evidence for this side",
   "con.compareTitle": "Side-by-side comparison",
   "con.koMissing": "Contribution was removed.",
   "con.resolveEffect":
@@ -7504,6 +7510,9 @@ const nl: typeof de = {
   "con.sources": "Bronnen",
   "con.openKo": "Object openen",
   "con.compareOpen": "Beide naast elkaar zetten",
+  "con.readonlyCompare": "Alleen-lezen vergelijking",
+  "con.detectedOn": "Herkend op {{date}}",
+  "con.evidenceSideLabel": "Bewijs van deze kant",
   "con.compareTitle": "Vergelijking",
   "con.koMissing": "Bijdrage is verwijderd.",
   "con.resolveEffect":

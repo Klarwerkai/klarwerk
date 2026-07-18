@@ -9,6 +9,7 @@ import type { Conflict, ConflictStatus, KnowledgeObject } from "../api/types";
 import { HelpTip } from "../components/HelpTip";
 import { KoView } from "../components/KoView";
 import { Modal } from "../components/Modal";
+import { ConflictKoSide } from "../components/conflicts/ConflictKoSide";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
 import { type Participant, conflictLead } from "../lib/boardCard";
 import { CONFLICT_BOARD_TEXT, canDismiss, conflictOriginInfo } from "../lib/conflictBoard";
@@ -173,7 +174,7 @@ function ConflictOriginBadge({ conflict }: { conflict: Conflict }): JSX.Element 
 }
 
 export function Conflicts(): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   // SCRUM-406: einheitlicher ?-HelpTip aus der zentralen Hilfe-Karte des Prüfbereichs.
   const vhelp = (helpId: ReviewHelpId): JSX.Element => {
     const topic = reviewHelp(helpId);
@@ -288,6 +289,41 @@ export function Conflicts(): JSX.Element {
                   return collision ? <CollisionTiles collision={collision} /> : null;
                 })()}
 
+                {/* SCRUM-486 (WP4): der KERN-BELEG je Seite SICHTBAR auf der Karte — klickbare Quelle +
+                    Quelldatum + KO-Konfidenz. Nicht mehr im zugeklappten details. Plus Konfliktdatum +
+                    Erkennungssicherheit. A/B-Zuordnung strikt über conflictKoPair (koA→a, koB→b). */}
+                {(() => {
+                  const pair = conflictKoPair(c, kos.data ?? []);
+                  const origin = conflictOriginInfo(c);
+                  const detected = new Date(c.createdAt);
+                  const detectedText = Number.isNaN(detected.getTime())
+                    ? null
+                    : detected.toLocaleDateString(i18n.language);
+                  return (
+                    <div className="mt-3">
+                      <div className="grid grid-cols-1 items-stretch gap-2 sm:grid-cols-2">
+                        <ConflictKoSide ko={pair.a} fallbackId={c.koA} />
+                        <ConflictKoSide ko={pair.b} fallbackId={c.koB} />
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10.5px] text-muted-2">
+                        {detectedText ? (
+                          <span>{t("con.detectedOn", { date: detectedText })}</span>
+                        ) : null}
+                        {origin.confidencePercent !== undefined ? (
+                          <>
+                            <span aria-hidden="true">·</span>
+                            <span>
+                              {t(CONFLICT_BOARD_TEXT.confidence, {
+                                percent: origin.confidencePercent,
+                              })}
+                            </span>
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* SCRUM-486: Herkunft/Belege, KO-Panels und Eskalationspfad hinter einer ruhigen
                     Aufklappung (Progressive Disclosure wie SCRUM-416). Nichts entfernt, nur verlagert. */}
                 <details className="mt-3">
@@ -322,7 +358,7 @@ export function Conflicts(): JSX.Element {
                             to={`/konflikte/${c.id}/vergleich`}
                             className="inline-flex items-center justify-center rounded-btn border border-hairline px-3.5 py-2 text-[13px] font-semibold text-text hover:bg-hairline-soft"
                           >
-                            Read-only Vergleich →
+                            {t("con.readonlyCompare")} <span aria-hidden="true">→</span>
                           </Link>
                         </div>
                       ) : null;
