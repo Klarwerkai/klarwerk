@@ -5,8 +5,9 @@ import type { KnowledgeObject, KoService } from "../../knowledge-object";
 import type { Reasoner } from "../../reasoner";
 import { checkKnowledge } from "./knowledge-check";
 
-// SCRUM-527 (Live-Check): der Endpoint-Kern. similar = lexikalisch (deterministisch, kein Egress);
-// conflicts = Dry-Run über den Modell-Judge, NUR echte Verdachte; ohne Modell ehrlich „pending".
+// SCRUM-527 (Live-Check): der Endpoint-Kern. similar = lexikalisch (deterministisch, kein Egress).
+// SOFORT-HOTFIX P0: der Modell-Judge ist deaktiviert → KEIN Reasoner-/Cloud-Call mit Freitext; conflicts
+// bleibt [] mit status "pending".
 
 function ko(over: Partial<KnowledgeObject>): KnowledgeObject {
   return {
@@ -41,16 +42,19 @@ function fakeKo(candidates: KnowledgeObject[]): KoService {
   return { findCandidates: async () => candidates } as unknown as KoService;
 }
 
-// Fake-Reasoner: nur die zwei vom Check genutzten Methoden.
-function fakeReasoner(active: boolean, verdict: ConflictVerdict | null): Reasoner {
-  return {
-    status: () => ({
-      active,
-      provider: active ? "cloud" : "deterministic",
-      mode: active ? "model" : "deterministic",
-    }),
-    judgeConflict: async () => verdict,
+// Spy-Reasoner: zählt JEDEN Modell-Aufruf (judgeConflict = Cloud-Egress-Pfad). Nach dem P0-Hotfix MUSS
+// der Zähler 0 bleiben — der Check ruft den Judge nicht mehr.
+function spyReasoner(verdict: ConflictVerdict | null): { reasoner: Reasoner; calls: () => number } {
+  let n = 0;
+  const reasoner = {
+    // status() ist kein Egress; es wird nach dem Hotfix ohnehin nicht mehr gerufen.
+    status: () => ({ active: true, provider: "cloud", mode: "model" }),
+    judgeConflict: async () => {
+      n += 1; // Modell-/Cloud-Aufruf mit Freitext — DARF nicht passieren.
+      return verdict;
+    },
   } as unknown as Reasoner;
+  return { reasoner, calls: () => n };
 }
 
 const conflicts = () => new ConflictService({ repo: new InMemoryConflictRepo() });
@@ -60,12 +64,12 @@ describe("checkKnowledge", () => {
     const res = await checkKnowledge("kurz", {
       ko: fakeKo([]),
       conflicts: conflicts(),
-      reasoner: fakeReasoner(false, null),
+      reasoner: spyReasoner(null).reasoner,
     });
     expect(res).toEqual({ status: "done", similar: [], conflicts: [] });
   });
 
-  it("similar: findet lexikalisch ähnliche KOs (deterministisch, auch ohne Modell)", async () => {
+  it("similar: findet lexikalisch ähnliche KOs (deterministisch, kein Modell)", async () => {
     const match = ko({
       id: "k1",
       title: "Vorwärmung bei Kaltstart",
@@ -75,33 +79,25 @@ describe("checkKnowledge", () => {
     const res = await checkKnowledge("Bei Kaltstart die Vorwärmung aktivieren nicht vergessen.", {
       ko: fakeKo([match, unrelated]),
       conflicts: conflicts(),
-      reasoner: fakeReasoner(false, null), // Modell offline
+      reasoner: spyReasoner(null).reasoner,
     });
-    // similar wird auch ohne Modell geliefert; das ähnliche KO ist dabei, das fremde nicht.
     expect(res.similar.map((s) => s.id)).toContain("k1");
     expect(res.similar.map((s) => s.id)).not.toContain("k2");
     expect(res.similar[0]?.score).toBeGreaterThan(0);
   });
 
-  it("ohne Modell → status 'pending', conflicts leer (kein Fake-Widerspruch)", async () => {
-    const match = ko({ id: "k1", title: "Kaltstart", statement: "Vorwärmung aktivieren." });
-    const res = await checkKnowledge("Bei Kaltstart die Vorwärmung aktivieren.", {
-      ko: fakeKo([match]),
-      conflicts: conflicts(),
-      reasoner: fakeReasoner(false, null),
-    });
-    expect(res.status).toBe("pending");
-    expect(res.conflicts).toEqual([]);
-  });
-
-  it("mit Modell + echtem Judge-Verdacht → conflicts enthält den Kandidaten (Dry-Run, kein Persist)", async () => {
+  // SOFORT-HOTFIX P0 (ben-Befund 1c): der Freitext-Check darf KEINEN Modell-/Cloud-Aufruf auslösen —
+  // sonst könnte unklassifizierter (evtl. vertraulicher) Freitext in die Cloud egressen. Selbst mit
+  // einem „scharfen" Verdikt-liefernden Reasoner bleibt der judgeConflict-Spy bei 0, conflicts=[] und
+  // status="pending". Ohne den Hotfix (Judge aktiv) würde der Spy zählen und status "done" liefern →
+  // dieser Test schlägt fehl.
+  it("P0: KEIN Reasoner-/Cloud-Call mit Freitext; similar bleibt, status 'pending'", async () => {
     const cand = ko({
       id: "kc",
       title: "Kaltstart Vorwärmung",
       statement: "Bei Kaltstart zuerst die Vorwärmung aktivieren.",
     });
-    const text = "Bei Kaltstart keine Vorwärmung aktivieren.";
-    // Verdikt mit wörtlichen, in den Kerntexten VORHANDENEN Zitaten (G-2-Prüfung greift).
+    // Ein Verdikt, das der (deaktivierte) Judge liefern WÜRDE — es darf nie abgefragt werden.
     const verdict: ConflictVerdict = {
       relation: "widerspruch",
       older: null,
@@ -110,17 +106,16 @@ describe("checkKnowledge", () => {
       zitat_a: "keine Vorwärmung aktivieren",
       zitat_b: "zuerst die Vorwärmung aktivieren",
     };
-    const cs = conflicts();
-    const res = await checkKnowledge(text, {
+    const spy = spyReasoner(verdict);
+    const res = await checkKnowledge("Bei Kaltstart keine Vorwärmung aktivieren und sichern.", {
       ko: fakeKo([cand]),
-      conflicts: cs,
-      reasoner: fakeReasoner(true, verdict),
+      conflicts: conflicts(),
+      reasoner: spy.reasoner,
     });
-    expect(res.status).toBe("done");
-    expect(res.conflicts.map((c) => c.id)).toContain("kc");
-    expect(res.conflicts[0]?.reason).toContain("Vorwärmung");
-    // Dry-Run: NICHTS persistiert.
-    expect(await cs.unresolved()).toHaveLength(0);
+    expect(spy.calls()).toBe(0); // KEIN Modell-/Cloud-Aufruf mit Freitext
+    expect(res.status).toBe("pending"); // Widerspruch ehrlich „nicht geprüft"
+    expect(res.conflicts).toEqual([]);
+    expect(res.similar.map((s) => s.id)).toContain("kc"); // similar bleibt voll funktional
   });
 
   it("never block: ein Fehler in der Kandidatensuche → status 'failed', leer", async () => {
@@ -132,7 +127,7 @@ describe("checkKnowledge", () => {
     const res = await checkKnowledge("Bei Kaltstart die Vorwärmung aktivieren.", {
       ko: brokenKo,
       conflicts: conflicts(),
-      reasoner: fakeReasoner(true, null),
+      reasoner: spyReasoner(null).reasoner,
     });
     expect(res).toEqual({ status: "failed", similar: [], conflicts: [] });
   });
