@@ -1,19 +1,13 @@
 import { useEffect, useState } from "react";
-import { useKos } from "../../../api/hooks";
-import { INTAKE_MIN_LENGTH, type LiveVerdict, classifyIntake } from "../../../lib/intakeSimilarity";
+import { endpoints } from "../../../api/endpoints";
+import { INTAKE_MIN_LENGTH, type LiveVerdict } from "../../../lib/intakeSimilarity";
 
-// SCRUM-527 (WP2-Design): der GEKAPSELTE Client-Hook der Live-Reaktion. Stand 0b-Kartierung gibt es
-// KEINEN dedizierten Pro-Text-Ähnlichkeits-/Widerspruchs-Endpoint → dieser Hook nutzt als ehrliche
-// Quelle den ECHTEN Bestand (useKos → GET /api/kos) und klassifiziert token-basiert (classifyIntake):
-// idle · checking · new · similar. Der WIDERSPRUCH-Fall wird NICHT erfunden (kein Fake-Alarm); er ist
-// im Verdict-Typ vorgesehen und ANDOCKBEREIT: sobald ein serverseitiger Widerspruchs-/Ähnlichkeits-
-// Check existiert (z. B. POST /api/reasoner conflict-check oder ein neuer /api/knowledge/check-Endpoint
-// mit pending/done/failed), wird hier nur die Quelle getauscht — die Zone/Verträge bleiben gleich.
-//
-// Debounced: erst „checking" (ehrlicher Lauf-Zustand), nach Ruhe die Klassifikation. Bewusst als Hook
-// isoliert, damit die Anbindung an den echten Endpoint später eine EINZIGE Stelle ist.
+// SCRUM-527 (Live-Check, jetzt am ECHTEN Endpoint): der Hook ruft debounced POST /api/knowledge/check
+// (Ähnlichkeit lexikalisch, Widerspruch als 502-gecappter Modell-Dry-Run) und bildet das ehrliche
+// Ergebnis auf den Anzeige-Verdict ab. Reihenfolge der Anzeige: Widerspruch > Ähnlich > Neu. Ein
+// Fehler blockt nie (zurück auf „hört zu"). Der frühere client-seitige Heuristik-Pfad (classifyIntake)
+// bleibt als reine, getestete Fallback-Logik erhalten, wird hier aber nicht mehr gebraucht.
 export function useLiveKnowledgeCheck(text: string, debounceMs = 500): LiveVerdict {
-  const kos = useKos();
   const [verdict, setVerdict] = useState<LiveVerdict>({ status: "idle" });
 
   useEffect(() => {
@@ -21,17 +15,48 @@ export function useLiveKnowledgeCheck(text: string, debounceMs = 500): LiveVerdi
       setVerdict({ status: "idle" });
       return;
     }
-    // Sofort sichtbar/lebendig: die Zone läuft, während wir gegen den Bestand prüfen.
+    // Sofort sichtbar/lebendig: die Zone läuft, während geprüft wird.
     setVerdict({ status: "checking" });
-    const handle = setTimeout(() => {
-      // Solange der Bestand noch lädt, ehrlich weiter „checking" zeigen (kein voreiliges „neu").
-      if (kos.isLoading) {
-        return;
+    let cancelled = false;
+    const handle = setTimeout(async () => {
+      try {
+        const r = await endpoints.knowledge.check(text.trim());
+        if (cancelled) {
+          return;
+        }
+        // Widerspruch hat Vorrang (der wichtigste Hinweis), dann Ähnlichkeit, sonst neu.
+        if (r.conflicts.length > 0) {
+          const c = r.conflicts[0];
+          if (c) {
+            setVerdict({ status: "conflict", match: { koId: c.id, title: c.title, score: 1 } });
+            return;
+          }
+        }
+        if (r.similar.length > 0) {
+          const s = r.similar[0];
+          if (s) {
+            setVerdict({
+              status: "similar",
+              match: { koId: s.id, title: s.title, score: s.score },
+            });
+            return;
+          }
+        }
+        // Nichts Ähnliches/Widersprüchliches. (Bei status "pending" wurde der Widerspruch mangels
+        // Modell nicht geprüft — für die Anzeige bleibt es „neu": nichts Ähnliches gefunden.)
+        setVerdict({ status: "new" });
+      } catch {
+        // never block: ehrlich zurück auf „hört zu", kein Fehlerschreck in der Live-Zone.
+        if (!cancelled) {
+          setVerdict({ status: "idle" });
+        }
       }
-      setVerdict(classifyIntake(text, kos.data));
     }, debounceMs);
-    return () => clearTimeout(handle);
-  }, [text, debounceMs, kos.data, kos.isLoading]);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [text, debounceMs]);
 
   return verdict;
 }

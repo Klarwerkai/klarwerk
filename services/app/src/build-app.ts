@@ -149,6 +149,7 @@ import { confluenceImportRoutes } from "./routes/confluence-import-routes";
 import { externalRoutes } from "./routes/external-routes";
 import { helpRoutes } from "./routes/help-routes";
 import { i18nRoutes } from "./routes/i18n-routes";
+import { knowledgeCheckRoutes } from "./routes/knowledge-check-routes";
 import { koRoutes } from "./routes/ko-routes";
 import { libraryRoutes } from "./routes/library-routes";
 import { lifecycleRoutes } from "./routes/lifecycle-routes";
@@ -686,6 +687,15 @@ export function buildApp(
   );
   app.register(captureRoutes({ ...services, notifyAssignment, semanticPrefilter }, guards));
   app.register(askRoutes(services.ask, guards));
+  // SCRUM-527: Live-Check (Ähnlichkeit/Widerspruch eines Entwurfstextes gegen den Bestand).
+  app.register(
+    knowledgeCheckRoutes({
+      ko: services.ko,
+      conflicts: services.conflicts,
+      reasoner: services.reasoner,
+      guards,
+    }),
+  );
   // SCRUM-491 Slice 5: /api/check-text existiert NUR bei aktivem Add-on-Flag — sonst gar nicht
   // registriert → Endpunkt existiert nicht → bit-identisch zum heutigen Verhalten. Deterministische
   // Stufe-1-Dry-Run-Prüfung (validated-only, kein Modell, keine Persistenz).

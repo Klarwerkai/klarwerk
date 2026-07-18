@@ -68,6 +68,14 @@ export interface KoAttachment {
 
 // SCRUM-121: Objekt-Referenz (nur Metadaten) aus dem Object-Store.
 // SCRUM-382: Ergebnis der Video-/Audio-Analyse (Transkript) — ehrlicher Engine-Status.
+// SCRUM-527: Ergebnis des Live-Checks (POST /api/knowledge/check). status ist ehrlich: „pending" =
+// die Widerspruchsprüfung konnte (mangels Modell) nicht laufen; similar bleibt dennoch gefüllt.
+export interface KnowledgeCheckResult {
+  status: "done" | "pending" | "failed";
+  similar: { id: string; title: string; score: number }[];
+  conflicts: { id: string; title: string; reason: string }[];
+}
+
 export interface MediaAnalysis {
   objectId: string;
   transcript: string | null;

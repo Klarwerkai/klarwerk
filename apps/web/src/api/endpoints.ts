@@ -29,6 +29,7 @@ import type {
   ImportCandidate,
   ImportItemInput,
   InterviewResult,
+  KnowledgeCheckResult,
   KnowledgeObject,
   KoVersionSnapshot,
   LearningPath,
@@ -202,6 +203,10 @@ export const endpoints = {
     ask: (question: string, locale?: "de" | "en") =>
       api.post<AskResponse>("/ask", { question, ...(locale ? { locale } : {}) }),
     helpful: (koId: string) => api.post<void>("/ask/helpful", { koId }),
+  },
+  // SCRUM-527: Live-Check eines Entwurfstextes (Ähnlichkeit/Widerspruch gegen den Bestand).
+  knowledge: {
+    check: (text: string) => api.post<KnowledgeCheckResult>("/knowledge/check", { text }),
   },
   // Klara Stufe 2: KI-Antwort NUR aus mitgesandten Hilfe-Schnipseln (ehrliche Luecke sonst).
   help: {

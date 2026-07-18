@@ -21,6 +21,10 @@ export type { DetectSubject, ConflictVerdict } from "./src/detect";
 // vergleicht. Wird für die semantische Vorfilterung eingebettet, damit Prefilter und Urteil denselben
 // Gegenstand sehen.
 export { coreText } from "./src/detect";
+// SCRUM-527 (Live-Check): deterministische, DOM-freie Trigramm-Ähnlichkeit (0..1) — dieselbe Kennzahl,
+// mit der die Kandidatenauswahl arbeitet. Für die lexikalische Ähnlichkeitssuche des Live-Checks
+// (Freitext gegen Bestand) ohne Modell/Embedding-Egress.
+export { trigramSimilarity } from "./src/detect";
 
 // Berater-Konzept Duplikate 04.07. (Stufe D3): Überschneidungs-Erkennung (eigene Entität,
 // schlanker Lebenszyklus). Teilt Ledger/Muster mit Konflikten, produktseitig getrennt.
