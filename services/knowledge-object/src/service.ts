@@ -8,6 +8,8 @@ import {
   normalizeConfidentiality,
 } from "./confidentiality";
 import type { EvidenceRepo, KoCandidateQuery, KoFilter, KoRepo, KoVersionRepo } from "./repo";
+// SCRUM-527 (WP2): Quell-URL-Allowlist an der Persistenzgrenze (nur absolute http/https).
+import { safeSourceUrl, sanitizeSources } from "./source-url";
 import {
   type Confidentiality,
   type EvidenceRecord,
@@ -313,7 +315,8 @@ export class KoService {
       comments: [],
       attachments: [],
       // SCRUM-470: Herkunftsquellen (Import) übernehmen; ohne Eingabe wie bisher leer.
-      sources: input.sources ?? [],
+      // SCRUM-527 (WP2): jede übernommene Quell-URL durch die Allowlist (nur absolute http/https).
+      sources: sanitizeSources(input.sources ?? []),
     };
     await this.repo.insert(ko);
     // SCRUM-159: Version-1-Snapshot persistieren (Foundation; aktuelles KO bleibt canonical).
@@ -465,7 +468,9 @@ export class KoService {
     const source: KoSource = {
       id: this.genId(),
       label,
-      url: input.url?.trim() ? input.url.trim() : null,
+      // SCRUM-527 (WP2): nur absolute http/https-URLs speichern; alles andere (javascript:/data:/
+      // vbscript:/relativ/…) → null. Schützt den Klick-Pfad (ko.read) vor gespeicherten aktiven URLs.
+      url: safeSourceUrl(input.url),
       excerpt: input.excerpt?.trim() ? input.excerpt.trim() : null,
       kind: "external",
       peerValidated: false,
@@ -681,7 +686,8 @@ export class KoService {
         status: "offen", // muss neu validiert werden
         history: [...ko.history, { version, at, author, note: "überarbeitet" }],
         // SCRUM-129: Quellen über Revisionen erhalten; SCRUM-470: optional fortschreiben (Re-Sync-Anker).
-        sources: changes.sources ?? ko.sources ?? [],
+        // SCRUM-527 (WP2): Allowlist auf jede Quell-URL — säubert auch Altbestand beim nächsten Revise.
+        sources: sanitizeSources(changes.sources ?? ko.sources ?? []),
       };
       return {
         updated: revised,

@@ -161,6 +161,80 @@ describe("KoService", () => {
     expect(removed.sources).toHaveLength(0);
   });
 
+  it("SCRUM-527 (WP2): addSource verwirft aktive/relative URLs an der Persistenzgrenze (inkl. Evidence)", async () => {
+    const evidence = new InMemoryEvidenceRepo();
+    const svc = new KoService({ repo: new InMemoryKoRepo(), evidence });
+    const ko = await svc.create(base());
+
+    // javascript:-URL → weder in der Quelle noch im Evidence-Record persistiert.
+    const withBad = await svc.addSource(ko.id, "experte", {
+      label: "Manipulierte Quelle",
+      url: "javascript:alert(document.cookie)",
+    });
+    expect(withBad.sources[0]?.url).toBeNull();
+    const records = await evidence.listByKo(ko.id);
+    expect(records[0]?.url).toBeNull();
+
+    // gültige https-URL bleibt erhalten.
+    const withGood = await svc.addSource(ko.id, "experte", {
+      label: "Echte Quelle",
+      url: "https://wiki.example/p2",
+    });
+    expect(withGood.sources[1]?.url).toBe("https://wiki.example/p2");
+  });
+
+  it("SCRUM-527 (WP2): create & revise säubern übernommene Quell-URLs (Import-Pfad)", async () => {
+    const ko = await service.create(
+      base({
+        sources: [
+          {
+            id: "s1",
+            label: "Import böse",
+            url: "javascript:alert(1)",
+            excerpt: null,
+            kind: "external",
+            peerValidated: false,
+            author: "sys",
+            at: "2026-01-01T00:00:00.000Z",
+          },
+          {
+            id: "s2",
+            label: "Import gut",
+            url: "https://intranet.example/doc",
+            excerpt: null,
+            kind: "external",
+            peerValidated: false,
+            author: "sys",
+            at: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+      }),
+    );
+    expect(ko.sources[0]?.url).toBeNull(); // javascript: verworfen
+    expect(ko.sources[1]?.url).toBe("https://intranet.example/doc"); // https erhalten
+
+    // Auch beim Revise wird eine untergeschobene aktive URL neutralisiert.
+    const revised = await service.revise(
+      ko.id,
+      {
+        sources: [
+          {
+            id: "s3",
+            label: "Revise böse",
+            url: "vbscript:msgbox(1)",
+            excerpt: null,
+            kind: "external",
+            peerValidated: false,
+            author: "sys",
+            at: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+      },
+      "experte",
+    );
+    expect(revised.sources[0]?.url).toBeNull();
+  });
+
   it("FR-CAP-05: Anhänge anfügen und entfernen", async () => {
     const ko = await service.create(base());
     expect(ko.attachments).toEqual([]);

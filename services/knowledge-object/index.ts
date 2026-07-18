@@ -42,6 +42,8 @@ export {
   UPLOAD_LIMITS_SCHEMA,
 } from "./src/upload-limits";
 export { displayStatus, type DisplayStatus } from "./src/display-status";
+// SCRUM-527 (WP2): zentrale Quell-URL-Allowlist (nur absolute http/https) an der Persistenzgrenze.
+export { safeSourceUrl, sanitizeSources } from "./src/source-url";
 // SCRUM-415: Vertraulichkeitsstufen (Helfer + Konstante) — auch von anderen Modulen (Output) nutzbar.
 export {
   CONFIDENTIALITY_LEVELS,

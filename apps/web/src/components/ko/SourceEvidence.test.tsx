@@ -31,6 +31,17 @@ describe("SourceLink", () => {
     const html = renderMarkup(<SourceLink source={makeSource({ provider: "Confluence" })} />);
     expect(html).toContain("Confluence");
   });
+
+  it("WP2: Legacy-URL mit aktivem Schema wird beim Rendern NICHT zum Link", () => {
+    // Bereits in der DB gespeicherte gefährliche URL (vor der Härtung) darf kein href erzeugen.
+    for (const evil of ["javascript:alert(1)", "data:text/html,<script>", "//evil.com/x"]) {
+      const html = renderMarkup(<SourceLink source={makeSource({ label: "Alt", url: evil })} />);
+      expect(html).not.toContain("<a "); // kein aktiver Link
+      expect(html).not.toContain("javascript:");
+      expect(html).not.toContain("href=");
+      expect(html).toContain("interne Quelle"); // fällt ehrlich auf Text zurück
+    }
+  });
 });
 
 describe("SourceEvidence", () => {

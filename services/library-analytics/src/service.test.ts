@@ -253,6 +253,22 @@ describe("LibraryService", () => {
     expect(ko.sources[0]?.peerValidated).toBe(false);
   });
 
+  it("SCRUM-527 (WP2): importierte javascript:-URL wird verworfen, https bleibt (Persistenzgrenze)", async () => {
+    const [bad] = await ctx.library.createImportCandidates([
+      confItem({ externalId: "PX", url: "javascript:alert(document.cookie)" }),
+    ]);
+    const badRes = await ctx.library.reviewImportCandidate(bad!.id, "accept");
+    const badKo = (await ctx.koService.list()).find((k) => k.id === badRes.koId)!;
+    expect(badKo.sources[0]?.url).toBeNull(); // aktives Schema neutralisiert
+
+    const [good] = await ctx.library.createImportCandidates([
+      confItem({ externalId: "PY", url: "https://confluence.example/pages/1" }),
+    ]);
+    const goodRes = await ctx.library.reviewImportCandidate(good!.id, "accept");
+    const goodKo = (await ctx.koService.list()).find((k) => k.id === goodRes.koId)!;
+    expect(goodKo.sources[0]?.url).toBe("https://confluence.example/pages/1");
+  });
+
   it("SCRUM-470: Re-Sync gleicher pageId mit höherer Version → Update (revise), keine Dublette", async () => {
     const [c1] = await ctx.library.createImportCandidates([
       confItem({ externalId: "P5", sourceVersion: 1, statement: "Alte Anleitung." }),

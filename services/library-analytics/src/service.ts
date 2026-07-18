@@ -10,6 +10,8 @@ import {
   isConfidential,
   isValidConfidentiality,
   normalizeConfidentiality,
+  // SCRUM-527 (WP2): importierte/re-synchronisierte Quell-URLs durch dieselbe Allowlist.
+  safeSourceUrl,
 } from "../../knowledge-object";
 import { type CandidateRepo, InMemoryCandidateRepo } from "./repo";
 import {
@@ -269,7 +271,9 @@ export class LibraryService {
     return {
       id: this.genId(),
       label: item.title,
-      url: item.url ?? null,
+      // SCRUM-527 (WP2): importierte URL nur, wenn absolute http/https — sonst verworfen (kein Egress
+      // eines aktiven Schemas aus einer manipulierten Import-/Confluence-Quelle in den Klick-Pfad).
+      url: safeSourceUrl(item.url),
       excerpt: null,
       kind: "external",
       peerValidated: false,

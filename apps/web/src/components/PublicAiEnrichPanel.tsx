@@ -5,6 +5,8 @@ import { Link } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import type { EnrichResult, ExternalKnowledgeStage, ExternalResult } from "../api/types";
+import { safeHttpUrl } from "../lib/safeUrl";
+import { ExternalUrlText } from "./ExternalUrlText";
 import { HelpTip } from "./HelpTip";
 import { Button, SectionLabel, TextInput } from "./ui";
 
@@ -108,9 +110,15 @@ export function PublicAiEnrichPanel({
     );
   };
   const takeWeb = (r: ExternalResult): void => {
+    // SCRUM-527 (WP2): nur eine sichere absolute http/https-URL wird zum Anker im übernommenen HTML;
+    // sonst (javascript:/data:/relativ) erscheint die URL als reiner Text — escapeHtml allein prüft
+    // KEIN Schema. Zusätzlich greift die Body-Sanitisierung, dies ist die Egress-seitige Absicherung.
+    const href = safeHttpUrl(r.url);
+    const linkHtml = href
+      ? `<a href="${escapeHtml(href)}">${escapeHtml(r.url)}</a>`
+      : escapeHtml(r.url);
     onAppendHtml(
-      `<div class="panel panel-external"><p><strong>[${externLabel}]</strong> ${escapeHtml(r.title)} — ` +
-        `<a href="${escapeHtml(r.url)}">${escapeHtml(r.url)}</a></p></div>`,
+      `<div class="panel panel-external"><p><strong>[${externLabel}]</strong> ${escapeHtml(r.title)} — ${linkHtml}</p></div>`,
     );
   };
 
@@ -199,14 +207,10 @@ export function PublicAiEnrichPanel({
                   {r.snippet ? (
                     <p className="mt-0.5 text-[11.5px] text-muted">{r.snippet}</p>
                   ) : null}
-                  <a
-                    href={r.url}
-                    target="_blank"
-                    rel="noreferrer"
+                  <ExternalUrlText
+                    url={r.url}
                     className="block truncate font-mono text-[10.5px] text-ai hover:underline"
-                  >
-                    {r.url}
-                  </a>
+                  />
                 </div>
                 <Button variant="ghost" onClick={() => takeWeb(r)}>
                   {t("enrich.take")}

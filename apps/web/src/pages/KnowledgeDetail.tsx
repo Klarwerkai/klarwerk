@@ -34,6 +34,7 @@ import { DemoBanner } from "../components/DemoBanner";
 import { EditorAttachmentContext } from "../components/EditorAttachmentContext";
 import { EditorContentQuality } from "../components/EditorContentQuality";
 import { EditorGuidance } from "../components/EditorGuidance";
+import { ExternalUrlText } from "../components/ExternalUrlText";
 import { HelpTip } from "../components/HelpTip";
 import { KnowledgeInputStudio } from "../components/KnowledgeInputStudio";
 import { KoRevisionSummary } from "../components/KoRevisionSummary";
@@ -1328,16 +1329,10 @@ export function KnowledgeDetail(): JSX.Element {
                                     </span>
                                   ) : null}
                                 </div>
-                                {s.url ? (
-                                  <a
-                                    href={s.url}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="block truncate font-mono text-[11px] text-ai hover:underline"
-                                  >
-                                    {s.url}
-                                  </a>
-                                ) : null}
+                                <ExternalUrlText
+                                  url={s.url}
+                                  className="block truncate font-mono text-[11px] text-ai hover:underline"
+                                />
                                 {s.excerpt ? (
                                   <p className="mt-1 text-[12px] text-muted">{s.excerpt}</p>
                                 ) : null}
@@ -1444,14 +1439,10 @@ export function KnowledgeDetail(): JSX.Element {
                                     {r.snippet ? (
                                       <p className="mt-0.5 text-[11.5px] text-muted">{r.snippet}</p>
                                     ) : null}
-                                    <a
-                                      href={r.url}
-                                      target="_blank"
-                                      rel="noreferrer"
+                                    <ExternalUrlText
+                                      url={r.url}
                                       className="block truncate font-mono text-[10.5px] text-ai hover:underline"
-                                    >
-                                      {r.url}
-                                    </a>
+                                    />
                                   </div>
                                   <Button
                                     variant="ghost"

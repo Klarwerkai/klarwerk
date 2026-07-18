@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import type { KoSource } from "../../api/types";
 import i18n from "../../i18n";
 import { sourceBadgeKey } from "../../lib/koSource";
+import { safeHttpUrl } from "../../lib/safeUrl";
 import { ConfidenceBar } from "../trust";
 
 // SCRUM-513/486 (WP2-Design): gemeinsamer, wiederverwendbarer Belegschicht-Baustein — die eine Quelle
@@ -28,12 +29,15 @@ export function SourceLink({
   showExcerpt?: boolean;
 }): JSX.Element {
   const { t } = useTranslation();
+  // G-2/WP2: defensiv gegen Altdaten — eine gespeicherte javascript:/data:/relative URL wird NICHT zum
+  // aktiven Link, sondern fällt auf die „interne Quelle"-Textdarstellung zurück.
+  const href = safeHttpUrl(source.url);
   return (
     <span className="inline-flex flex-col gap-0.5">
       <span className="flex flex-wrap items-center gap-1.5">
-        {source.url ? (
+        {href ? (
           <a
-            href={source.url}
+            href={href}
             target="_blank"
             rel="noreferrer"
             className="text-[12.5px] font-medium text-ai hover:underline"
