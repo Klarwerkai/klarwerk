@@ -9,6 +9,7 @@ import {
   normalizeAssistPresets,
 } from "./presets";
 import { DeterministicProvider, type ReasonerProvider, honestExtractModelFailed } from "./provider";
+import { ModelProvider } from "./provider-model";
 import { InMemoryReasonerPolicyRepo, type ReasonerPolicyRepo } from "./reasoner-policy";
 
 import type {
@@ -73,6 +74,57 @@ export function isValidReasonerChoice(value: string): value is ReasonerTaskChoic
 
 function clone(config: ReasonerTaskConfig): ReasonerTaskConfig {
   return { global: config.global, perTask: { ...config.perTask } };
+}
+
+// IC-3: eng geschnittener, JSON-liefernder System-Prompt für die Import-Auswahl. Das Modell soll aus
+// dem Freitext NUR die belegbaren Filter ableiten und AUSSCHLIESSLICH JSON zurückgeben — nichts erfinden.
+function importSelectSystem(locale: ReasonerLocale): string {
+  const contract =
+    '{"themes": string[], "keywords": string[], "authors": string[], ' +
+    '"yearFrom": number|null, "yearTo": number|null}';
+  return locale === "en"
+    ? `You turn a user's free-text import request into selection filters. Respond ONLY with JSON: ${contract}. themes = topic labels, keywords = words to match in title/text, authors = person names, yearFrom/yearTo = time range. Use only what the text clearly states; leave a field empty if unsure. Invent nothing.`
+    : `Du wandelst einen Freitext-Importwunsch in Auswahl-Filter um. Antworte AUSSCHLIESSLICH mit JSON: ${contract}. themes = Themen-Labels, keywords = Wörter für Titel/Text-Treffer, authors = Personennamen, yearFrom/yearTo = Zeitraum. Nutze nur, was der Text klar hergibt; lass ein Feld leer, wenn unsicher. Erfinde nichts.`;
+}
+
+// IC-3: erstes JSON-Objekt aus einer Modell-Antwort robust herausschneiden (geschwätzige Prosa/Code-
+// Fences toleriert). Kein Treffer/kein gültiges JSON → null (der Aufrufer nutzt dann leere Kriterien).
+function parseFirstJsonObject(raw: string): unknown | null {
+  const start = raw.indexOf("{");
+  if (start < 0) {
+    return null;
+  }
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < raw.length; i++) {
+    const ch = raw[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+    } else if (ch === "{") {
+      depth += 1;
+    } else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        try {
+          return JSON.parse(raw.slice(start, i + 1));
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
 }
 
 // FR-RSN-01: gebündelte Aufgaben über die Reasoner-Schicht.
@@ -627,6 +679,34 @@ export class Reasoner {
       },
       confidential,
     );
+  }
+
+  // IC-3 (Import-Cockpit): leitet aus einem FREITEXT-Prompt strukturierte Auswahl-Kriterien ab
+  // (JSON: themes/keywords/authors/yearFrom/yearTo). NUR über ein echtes Modell — der Auswahl-Task
+  // folgt der bestehenden „select"-Zuordnung. Ist kein Modell aktiv/verfügbar (deterministisch), gibt
+  // es NICHTS zurück (null) → der Aufrufer nutzt leere Kriterien (nur Klick-Filter). Jeder Modell-/
+  // Parse-Fehler → null. NIE raten, NIE erfinden; das Sanitisieren macht der library-analytics-Kern.
+  async deriveImportCriteria(
+    prompt: string,
+    locale: ReasonerLocale = "de",
+  ): Promise<unknown | null> {
+    if (prompt.trim().length === 0) {
+      return null;
+    }
+    // Der Auswahl-Task nutzt die „select"-Zuordnung; nur ein echtes Modell darf ableiten.
+    const model = this.providerChain("select").find(
+      (p): p is ModelProvider =>
+        p !== this.fallback && p instanceof ModelProvider && p.isAvailable(),
+    );
+    if (!model) {
+      return null;
+    }
+    try {
+      const raw = await model.completeRaw(importSelectSystem(locale), prompt.trim());
+      return parseFirstJsonObject(raw);
+    } catch {
+      return null;
+    }
   }
 
   // Klara Stufe 2 (Pedi 05.07.): generierende Hilfe-Antwort aus der Hilfe-Wissensdatenbank.

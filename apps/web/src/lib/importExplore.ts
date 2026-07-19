@@ -3,7 +3,7 @@
 // Autoren-/Themen-Listen mit ehrlichem „+N weitere". Deterministisch, DOM-frei, ohne i18n-Abhängigkeit
 // (die Komponente übersetzt Labels/Fallbacks) — reine Daten-zu-Anzeige-Logik, unit-testbar.
 
-import type { ImportExploreSummary } from "../api/types";
+import type { ImportExploreSummary, ImportSelectCriteria } from "../api/types";
 
 export const EXPLORE_TOP_AUTHORS = 8;
 export const EXPLORE_TOP_THEMES = 12;
@@ -57,6 +57,42 @@ export function formatPeriod(dateRange: { earliest: string; latest: string } | n
     return EMPTY_PERIOD;
   }
   return from === to ? from : `${from}–${to}`;
+}
+
+// IC-3: die EFFEKTIV benutzten Auswahl-Kriterien als lesbare Zeilen — macht transparent, wie ein
+// Freitext-Prompt verstanden wurde. Leere Kriterien → leere Liste (die Komponente zeigt „alles").
+// Reine Formatierung; die Übersetzung der Feld-Bezeichner macht der Aufrufer via labels-Parameter.
+export interface CriteriaLabels {
+  themes: string;
+  authors: string;
+  keywords: string;
+  years: string;
+  limit: string;
+}
+
+export function summarizeSelectCriteria(
+  criteria: ImportSelectCriteria,
+  labels: CriteriaLabels,
+): string[] {
+  const lines: string[] = [];
+  if (criteria.themes && criteria.themes.length > 0) {
+    lines.push(`${labels.themes}: ${criteria.themes.join(", ")}`);
+  }
+  if (criteria.authors && criteria.authors.length > 0) {
+    lines.push(`${labels.authors}: ${criteria.authors.join(", ")}`);
+  }
+  if (criteria.keywords && criteria.keywords.length > 0) {
+    lines.push(`${labels.keywords}: ${criteria.keywords.join(", ")}`);
+  }
+  if (criteria.yearFrom !== undefined || criteria.yearTo !== undefined) {
+    const from = criteria.yearFrom ?? "…";
+    const to = criteria.yearTo ?? "…";
+    lines.push(`${labels.years}: ${from}–${to}`);
+  }
+  if (criteria.limit !== undefined) {
+    lines.push(`${labels.limit}: ${criteria.limit}`);
+  }
+  return lines;
 }
 
 export function toExploreView(summary: ImportExploreSummary): ExploreView {

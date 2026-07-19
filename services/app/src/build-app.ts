@@ -790,7 +790,13 @@ export function buildApp(
     process.env.KLARWERK_CONFLUENCE_IMPORT === "true";
   if (confluenceImportEnabled) {
     app.register(
-      confluenceImportRoutes({ library: services.library, koService: services.ko, guards }),
+      confluenceImportRoutes({
+        library: services.library,
+        koService: services.ko,
+        guards,
+        // IC-3: Reasoner für die optionale Prompt→Kriterien-Ableitung der Auswahl-Vorschau.
+        reasoner: services.reasoner,
+      }),
     );
   }
 

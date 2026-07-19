@@ -192,6 +192,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // IC-1 (Import-Cockpit): READ-ONLY Erkundung — zählt/aggregiert nur, schreibt nichts. Gleiche
   // Admin-Auth wie der Import-Trigger; ebenfalls nur bei aktivem Confluence-Flag registriert.
   "POST /api/admin/import/confluence/explore": { protection: "users.manage" },
+  // IC-3 (Import-Cockpit): READ-ONLY Auswahl-VORSCHAU (Prompt/Filter → gefilterte Vorschau). Schreibt
+  // nichts (keine Kandidaten); gleiche Admin-Auth, nur bei aktivem Confluence-Flag registriert.
+  "POST /api/admin/import/confluence/select": { protection: "users.manage" },
   "GET /api/analytics/impact": { protection: "ko.read" },
 
   // --- KO (ko-routes.ts) ---

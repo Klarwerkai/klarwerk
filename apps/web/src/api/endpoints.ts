@@ -29,6 +29,8 @@ import type {
   ImportCandidate,
   ImportExploreResponse,
   ImportItemInput,
+  ImportSelectCriteria,
+  ImportSelectResponse,
   InterviewResult,
   KnowledgeCheckResult,
   KnowledgeObject,
@@ -425,6 +427,9 @@ export const endpoints = {
     // liefert nur die aggregierte Landkarte (Mengen/Autoren/Themen/Zeitraum) + truncated.
     import: {
       explore: () => api.post<ImportExploreResponse>("/admin/import/confluence/explore", {}),
+      // IC-3: READ-ONLY Auswahl-Vorschau (Prompt und/oder Klick-Kriterien). Schreibt nichts.
+      select: (body: { prompt?: string; criteria?: ImportSelectCriteria }) =>
+        api.post<ImportSelectResponse>("/admin/import/confluence/select", body),
     },
   },
   users: {

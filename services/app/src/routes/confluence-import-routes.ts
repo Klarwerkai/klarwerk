@@ -1,7 +1,16 @@
 import type { FastifyPluginAsync } from "fastify";
 import { type ConfluenceSourceAdapter, createConfluenceAdapterFromEnv } from "../../../confluence";
 import type { KoService } from "../../../knowledge-object";
-import { type LibraryService, summarizeImportItems } from "../../../library-analytics";
+import {
+  type LibraryService,
+  type SelectCriteria,
+  deriveCriteriaFromPrompt,
+  filterImportItems,
+  sanitizeCriteria,
+  summarizeImportItems,
+  toPreviewEntry,
+} from "../../../library-analytics";
+import type { Reasoner } from "../../../reasoner";
 import { type ImportRunSummary, runConfluenceImport } from "../confluence-import";
 import type { Guards } from "../http";
 import { sanitizeLogText } from "../log-sanitize";
@@ -17,6 +26,9 @@ export interface ConfluenceImportRouteDeps {
   guards: Guards;
   // Injizierbar für Tests (Fixture-Adapter); Standard = env-basierte, gecappte Adapter-Factory.
   makeAdapter?: () => ConfluenceSourceAdapter | undefined;
+  // IC-3: Reasoner für die optionale Prompt→Kriterien-Ableitung (READ-ONLY Auswahl-Vorschau). Ohne
+  // Reasoner (oder ohne aktives Modell) greift nur der deterministische Klick-Filter.
+  reasoner?: Reasoner;
 }
 
 export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): FastifyPluginAsync {
@@ -107,5 +119,61 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
         return reply;
       }
     });
+
+    // IC-3 (Import-Cockpit): READ-ONLY Auswahl-VORSCHAU. Der Nutzer grenzt per Freitext-Prompt UND/ODER
+    // Klick-Kriterien ein; wir leiten aus dem Prompt (falls gesetzt) über den Reasoner Kriterien ab
+    // (KI aus/unsicher → leer, nur Klick-Filter), verbinden sie mit den gelieferten Kriterien, filtern
+    // deterministisch und geben eine VORSCHAU zurück — inkl. der EFFEKTIV benutzten Kriterien
+    // (Transparenz: wie hat die KI den Satz verstanden?). SCHREIBT NICHTS (keine Kandidaten, keine KOs).
+    // Gleiche Admin-Auth + Fehler-/Flag-Disziplin wie explore. WP-E: JEDER Sende-Pfad endet mit `return reply`.
+    app.post<{ Body: { prompt?: string; criteria?: unknown } }>(
+      "/api/admin/import/confluence/select",
+      async (request, reply) => {
+        const user = await deps.guards.requirePermission("users.manage", request, reply);
+        if (!user) {
+          return reply;
+        }
+        const adapter = makeAdapter();
+        if (!adapter) {
+          reply.code(503).send({
+            error: "IMPORT_UNAVAILABLE",
+            message: "Confluence-Import nicht konfiguriert.",
+          });
+          return reply;
+        }
+        try {
+          const prompt = typeof request.body?.prompt === "string" ? request.body.prompt : "";
+          // Klick-Kriterien immer sanitisieren; aus dem Prompt zusätzlich KI-Kriterien ableiten.
+          const clickCriteria = sanitizeCriteria(request.body?.criteria);
+          const reasoner = deps.reasoner;
+          const promptCriteria =
+            prompt.trim().length > 0 && reasoner
+              ? await deriveCriteriaFromPrompt(prompt, (p) => reasoner.deriveImportCriteria(p))
+              : {};
+          // Effektiv genutzte Kriterien: Klick-Kriterien haben Vorrang, KI ergänzt nur Fehlendes.
+          const criteria: SelectCriteria = { ...promptCriteria, ...clickCriteria };
+          // READ-ONLY: nur lesen + filtern. collectAll/filterImportItems schreiben nichts.
+          const { items, truncated } = await adapter.collectAll();
+          const { selected, matched, limited } = filterImportItems(items, criteria);
+          reply.code(200).send({
+            matched,
+            limited,
+            truncated,
+            criteria,
+            preview: selected.map(toPreviewEntry),
+          });
+          return reply;
+        } catch (err) {
+          console.warn(
+            "[confluence-select] fehlgeschlagen:",
+            sanitizeLogText(err instanceof Error ? err.message : String(err)),
+          );
+          reply
+            .code(502)
+            .send({ error: "SELECT_FAILED", message: "Confluence-Auswahl fehlgeschlagen." });
+          return reply;
+        }
+      },
+    );
   };
 }

@@ -498,6 +498,30 @@ export interface ImportExploreResponse {
   truncated: boolean;
 }
 
+// IC-3 (Import-Cockpit): Auswahl-Kriterien (Klick/KI) + READ-ONLY Vorschau. Nichts wird importiert.
+export interface ImportSelectCriteria {
+  themes?: string[];
+  authors?: string[];
+  keywords?: string[];
+  yearFrom?: number;
+  yearTo?: number;
+  limit?: number;
+}
+export interface ImportPreviewEntry {
+  title: string;
+  author?: string;
+  updatedAt?: string;
+  hasImage: boolean;
+  themes: string[];
+}
+export interface ImportSelectResponse {
+  matched: number;
+  limited: boolean;
+  truncated: boolean;
+  criteria: ImportSelectCriteria; // die EFFEKTIV benutzten Kriterien (Transparenz)
+  preview: ImportPreviewEntry[];
+}
+
 export type KnowledgeClass =
   | "gesichert"
   | "ungeprueft"

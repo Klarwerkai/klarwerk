@@ -14,6 +14,7 @@ import {
   NO_THEME_LABEL,
   toExploreView,
 } from "../lib/importExplore";
+import { ImportSelect } from "./ImportSelect";
 import { Button, Card, SectionLabel } from "./ui";
 
 // Die Kern-Platzhalter kommen sprach-neutral aus IC-1 („(ohne Autor)"/„(ohne Label)"); hier auf die
@@ -102,6 +103,10 @@ function ExploreMap({ view, truncated }: { view: ExploreView; truncated: boolean
       {view.totalCount === 0 ? (
         <p className="mt-3 text-[12.5px] text-muted-2">{t("imp.explore.empty")}</p>
       ) : null}
+
+      {/* IC-3: prompt-/filtergesteuerte Auswahl-Vorschau — die Themen-Chips der Landkarte dienen als
+          Klick-Filter. READ-ONLY (kein Übernahme-Button; das ist IC-4). */}
+      {view.totalCount > 0 ? <ImportSelect themes={view.themes.map((th) => th.label)} /> : null}
     </div>
   );
 }

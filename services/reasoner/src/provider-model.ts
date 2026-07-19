@@ -552,6 +552,15 @@ export class ModelProvider implements ReasonerProvider {
     return selectCandidates(question, candidates);
   }
 
+  // IC-3 (Import-Cockpit): schmaler Roh-Aufruf für eine JSON-liefernde Auswahl-Anweisung. Der Eingabe-
+  // text ist die kurze Nutzer-Instruktion (kein KO/Dokument) → confidential=false. Rückgabe ist die
+  // Roh-Antwort; das Parsen/Sanitisieren übernimmt der Aufrufer (nie raten). Kein deterministischer
+  // Ersatz — ohne Client gibt es hier nichts (der Aufrufer fällt dann auf leere Kriterien zurück).
+  async completeRaw(system: string, user: string, maxTokens = 512): Promise<string> {
+    const client = this.requireClient();
+    return client.complete(system, user, false, maxTokens);
+  }
+
   async structure(
     rawText: string,
     locale: ReasonerLocale = "de",

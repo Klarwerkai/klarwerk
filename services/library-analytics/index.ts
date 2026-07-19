@@ -31,3 +31,16 @@ export type {
   ThemeEntry,
   SummarizeOptions,
 } from "./src/explore";
+// IC-3 (Import-Cockpit): PURE Auswahl-/Filterlogik (deterministisch; KI-Ableitung über injizierte Fn).
+export {
+  filterImportItems,
+  sanitizeCriteria,
+  toPreviewEntry,
+  deriveCriteriaFromPrompt,
+} from "./src/select";
+export type {
+  SelectCriteria,
+  SelectResult,
+  ImportPreviewEntry,
+  CriteriaInference,
+} from "./src/select";
