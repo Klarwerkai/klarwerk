@@ -11046,3 +11046,17 @@ Backend-/PMO-Bündel SCRUM-439/438/436/442 sowie der reguläre Backlog 435/431/4
 **Git-Status:** f65a2dd (+ dieser Doku-Commit); Baum sauber; kein Push.
 **Jira-Kommentar-Vorschlag:** nach ben-Re-Check auf SCRUM-469.
 **Nächster Schritt:** Patches an Pedi, dann ben.
+
+---
+
+**Datum:** 2026-07-19 (nachts)
+**Ticket:** Dokumententreue Upload — WP-D1/D4 (Commit) + WP-D2 (SCRUM-470/121, Pedi-Anforderung „Original ist heilig")
+**Änderung WP-D1/D4:** DOCX-Import strukturerhaltend (mammoth convertToHtml → sanitisierte bodyHtml mit H/Listen/Tabellen/strong/em + eingebettete Bilder als herunterskalierte data-URLs, Klartext bleibt für KI-Punkte); ehrliche Verlust-Hinweise am Ergebnis DE/EN/NL; Scan-PDF-Meldung ohne falsche OCR-Hoffnung.
+**Änderung WP-D2:** „Aus Datei"-Fluss (beide Modi) + BodyExtractPanel führen die Quelldatei IMMER als Anhang mit (Object-Store, ein Upload/mehrfach-attach via Ref-Cache); Route-bodyLimit OBJECTS_BODY_LIMIT 30 MiB für POST /api/objects; MAX_OBJECT_BYTES 5→30 MB, DEFAULT_UPLOAD_LIMITS.maxAttachmentBytes 700 KB→20 MB; spezifische „Anhang zu groß"-Meldung (413-Klassifikation) DE/EN/NL, Text-Import bleibt bei Anhang-Fehler erhalten.
+**Gebaut:** Hand — WP-D1/D2 auf Account A (fable-5, vor Modellwechsel); D2-Testnachzug (Fixture MAX_OBJECT_BYTES+1, Capture-Source-Assertion auf wholeDocumentDraftPayload/fileWholeDraft) erstmals über Opus 4.8 analysiert, vom Kopf mechanisch angewandt.
+**Getestet:** tools/check GRÜN — 318 Testdateien / 2241 Tests (neu u. a. docx-rich-import, capture-attachments, Object-Route-Limit).
+**Nicht ausführbare Checks:** test:integration (Docker nur auf Pedis Mac).
+**Offen:** Pedi git am patches8+9 + test:integration → ben-Review D1/D2 → bei GRÜN Push. WP-D3 (PDF-Absatzrekonstruktion) folgt auf Opus 4.8. PPTX vorgezogen (Pedi 19.07.) — nach D3.
+**Risiko:** Limit-Anhebung erhöht max. Request-Größe auf 30 MiB (nur POST /api/objects, Admin-Auth) — bewusst, dokumententauglich; alle anderen Routen unverändert (globaler 1-MiB-Default bleibt). Bild-Downscale auf 1280px kann Detailschärfe reduzieren — Original bleibt als Anhang unangetastet.
+**Git-Status:** 8e78bbe (+ WP-D1 e-Commit + dieser Doku-Commit); Baum sauber; kein Push.
+**Nächster Schritt:** Patches an Pedi, dann ben; WP-D3 + Import-Cockpit-Konzept auf Opus.
