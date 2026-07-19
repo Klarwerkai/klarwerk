@@ -27,6 +27,7 @@ import type {
   Graph,
   ImpactReport,
   ImportCandidate,
+  ImportExploreResponse,
   ImportItemInput,
   InterviewResult,
   KnowledgeCheckResult,
@@ -420,6 +421,11 @@ export const endpoints = {
     // SCRUM-450: Werksreset erst nach Passwort-Bestätigung des Admins (Re-Authentifizierung).
     factoryReset: (password: string) =>
       api.post<{ ok: boolean }>("/admin/factory-reset", { password }),
+    // IC-2 (Import-Cockpit): READ-ONLY Erkundung „was ist da" VOR jedem Import. Schreibt nichts —
+    // liefert nur die aggregierte Landkarte (Mengen/Autoren/Themen/Zeitraum) + truncated.
+    import: {
+      explore: () => api.post<ImportExploreResponse>("/admin/import/confluence/explore", {}),
+    },
   },
   users: {
     list: () => api.get<PublicUser[]>("/users"),

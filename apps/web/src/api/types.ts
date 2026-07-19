@@ -474,6 +474,30 @@ export interface ImportCandidate {
   createdAt: string;
 }
 
+// IC-1/IC-2 (Import-Cockpit): READ-ONLY Erkundungs-Zusammenfassung „was ist da" (spiegelt
+// services/library-analytics ImportExploreSummary). Reine Anzeige — nichts wird importiert.
+export interface ExploreCountEntry {
+  name: string;
+  count: number;
+}
+export interface ExploreThemeEntry {
+  label: string;
+  count: number;
+}
+export interface ImportExploreSummary {
+  totalCount: number;
+  distinctSources: number;
+  authors: ExploreCountEntry[];
+  themes: ExploreThemeEntry[];
+  dateRange: { earliest: string; latest: string } | null;
+  withImagesHint: number;
+}
+// Antwort der Explore-Route: Summary + truncated (Space am Seiten-Cap abgeschnitten).
+export interface ImportExploreResponse {
+  summary: ImportExploreSummary;
+  truncated: boolean;
+}
+
 export type KnowledgeClass =
   | "gesichert"
   | "ungeprueft"

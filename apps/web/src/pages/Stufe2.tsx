@@ -38,6 +38,7 @@ import type {
 } from "../api/types";
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
+import { ImportExplore } from "../components/ImportExplore";
 import { Button, Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import { CAPITAL_SECTIONS, sectionAnchor, sectionHref } from "../lib/capitalSections";
 import { deriveStatus } from "../lib/displayStatus";
@@ -371,6 +372,10 @@ export function ImportReview(): JSX.Element {
   return (
     <div className="mx-auto max-w-3xl">
       <Stufe2Header titleKey="nav.import" ticket="SCRUM-116" />
+
+      {/* IC-2 (Import-Cockpit): READ-ONLY Erkundung „was ist da" ganz oben — die Kandidatenliste
+          darunter bleibt (Ersatz durch das volle Cockpit erst in IC-4). */}
+      <ImportExplore />
 
       <Card className="mb-5">
         <SectionLabel>{t("imp.uploadTitle")}</SectionLabel>

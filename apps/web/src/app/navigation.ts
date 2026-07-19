@@ -229,6 +229,11 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       {
         id: "import",
+        // IC-2 (Discoverability, B4): OFFEN. Das Import-Cockpit soll für Admins nicht mehr hinter dem
+        // Stufe-2-Schalter versteckt sein. Das Item allein zu entsperren genügt NICHT — die Gruppe
+        // „erweitert" trägt selbst stufe2:true; echte Sichtbarkeit erfordert ein Verschieben in eine
+        // Admin-Gruppe ohne Stufe-2-Gate (Reihenfolge/nav-Tests/Screenshots betroffen) → bewusst
+        // separater Slice, hier NICHT erzwungen.
         path: "/import",
         labelKey: "nav.import",
         icon: Inbox,
