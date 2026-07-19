@@ -952,6 +952,10 @@ const de = {
   "capture.file.pdfTruncated": "Nur die ersten {{count}} Seiten importiert.",
   "capture.file.imagesDropped":
     "{{count}} Bilder wurden wegen Größe nicht in den Text übernommen — das vollständige Original liegt im Anhang.",
+  "capture.file.imagesCompressed":
+    "Bilder wurden für die Textansicht komprimiert; das unveränderte Original liegt im Anhang.",
+  "capture.file.imagesNoOriginal":
+    "Bilder wurden für die Textansicht komprimiert; das Original konnte nicht als Anhang gesichert werden.",
   "capture.file.importNote.docx":
     "Struktur und Bilder übernommen (Best-Effort) — exaktes Layout kann abweichen.",
   "capture.file.importNote.pdf":
@@ -3982,6 +3986,10 @@ const en: typeof de = {
   "capture.file.pdfTruncated": "Only the first {{count}} pages were imported.",
   "capture.file.imagesDropped":
     "{{count}} images were not carried into the text due to size — the full original is in the attachment.",
+  "capture.file.imagesCompressed":
+    "Images were compressed for the text view; the unchanged original is in the attachment.",
+  "capture.file.imagesNoOriginal":
+    "Images were compressed for the text view; the original could not be saved as an attachment.",
   "capture.file.importNote.docx":
     "Structure and images imported (best effort) — exact layout may differ.",
   "capture.file.importNote.pdf":
@@ -6969,6 +6977,10 @@ const nl: typeof de = {
   "capture.file.pdfTruncated": "Alleen de eerste {{count}} pagina's geïmporteerd.",
   "capture.file.imagesDropped":
     "{{count}} afbeeldingen zijn vanwege de grootte niet in de tekst overgenomen — het volledige origineel zit in de bijlage.",
+  "capture.file.imagesCompressed":
+    "Afbeeldingen zijn voor de tekstweergave gecomprimeerd; het ongewijzigde origineel zit in de bijlage.",
+  "capture.file.imagesNoOriginal":
+    "Afbeeldingen zijn voor de tekstweergave gecomprimeerd; het origineel kon niet als bijlage worden veiliggesteld.",
   "capture.file.importNote.docx":
     "Structuur en afbeeldingen overgenomen (best effort) — de exacte layout kan afwijken.",
   "capture.file.importNote.pdf":

@@ -41,6 +41,14 @@ async function requireVisibleDraft(
   return draft;
 }
 
+// WP-D1c („viele Bilder BEHALTEN, nicht wegwerfen"): expliziter, dokument-tauglicher bodyLimit für die
+// Draft-schreibenden Routen (POST/PUT /api/drafts) — statt des globalen 1-MiB-Fastify-Defaults (Muster
+// OBJECTS_BODY_LIMIT, object-routes.ts). Beide Routen sind auth-geschützt (ko.create). Großzügig, weil
+// der Dokument-Import mit VIELEN eingebetteten Bildern der Kern-Use-Case ist (technische Handbücher);
+// die Bilder werden clientseitig AGGRESSIV komprimiert (files.ts) — dieser Cap ist der Deckel, NICHT das
+// Ziel. Über dem Cap gibt es ein kontrolliertes 413 statt des viel zu engen 1-MiB-Defaults.
+export const DRAFTS_BODY_LIMIT = 25 * 1024 * 1024; // 25 MiB
+
 // Entwürfe (§2.4 / FR-CAP). Admin sieht den gemeinsamen Pool; normale Nutzer nur eigene Entwürfe.
 // Autor bleibt erhalten; Promote → KO.
 export interface CaptureRoutesDeps {
@@ -82,17 +90,21 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
       reply.code(200).send(visibleDraftsFor(user, await capture.listDrafts()));
     });
 
-    app.post<{ Body: DraftPayload }>("/api/drafts", async (request, reply) => {
-      const user = await guards.requirePermission("ko.create", request, reply);
-      if (!user) {
-        return;
-      }
-      try {
-        reply.code(201).send(await capture.createDraft(request.body, user.id));
-      } catch (error) {
-        sendError(reply, error);
-      }
-    });
+    app.post<{ Body: DraftPayload }>(
+      "/api/drafts",
+      { bodyLimit: DRAFTS_BODY_LIMIT },
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.create", request, reply);
+        if (!user) {
+          return;
+        }
+        try {
+          reply.code(201).send(await capture.createDraft(request.body, user.id));
+        } catch (error) {
+          sendError(reply, error);
+        }
+      },
+    );
 
     app.get<{ Params: { id: string } }>("/api/drafts/:id", async (request, reply) => {
       const user = await guards.requirePermission("ko.create", request, reply);
@@ -108,6 +120,9 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
 
     app.put<{ Params: { id: string }; Body: DraftPayload }>(
       "/api/drafts/:id",
+      // WP-D1c: derselbe dokument-taugliche Cap wie POST — ein bildreicher Entwurf wird auch beim
+      // Weiterbearbeiten/Speichern gesendet.
+      { bodyLimit: DRAFTS_BODY_LIMIT },
       async (request, reply) => {
         const user = await guards.requirePermission("ko.create", request, reply);
         if (!user) {

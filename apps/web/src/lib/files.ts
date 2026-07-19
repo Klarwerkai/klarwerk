@@ -1,7 +1,13 @@
 // Datei-Helfer für die Erfassung — alles client-seitig, ohne Server-/Objektspeicher.
 // DOM-Modul (nutzt File/Image/document/FileReader). Der DOM-freie DOCX-Kern liegt
 // in `./docx` und wird hier nur als Browser-Wrapper umhüllt.
-import { type DocxRichResult, extractDocxRich, extractDocxText, isDocxDocumentLike } from "./docx";
+import {
+  type DocxRichResult,
+  MAX_INLINE_BODY_HTML_BYTES,
+  extractDocxRich,
+  extractDocxText,
+  isDocxDocumentLike,
+} from "./docx";
 import { detectFileKind } from "./extract";
 import { type OcrResult, recognizeImage } from "./ocr";
 import { type PdfDocumentText, type PdfEngine, extractPdfDocument } from "./pdf";
@@ -77,24 +83,29 @@ export async function readDocxFile(file: File): Promise<string> {
   return extractDocxText(await file.arrayBuffer());
 }
 
-// WP-D1b (Fix d): GESAMT-Byte-Budget der eingebetteten Inline-Bilder im bodyHtml. So bleibt das gesamte
-// bodyHtml (Bilder + Struktur + Quelle-Blockquote) sicher unter dem 1-MiB-Fastify-Draft-Limit — 700 KB
-// lässt komfortablen Puffer für Text/Envelope. Überzählige Bilder werden weggelassen (Original im Anhang).
-export const MAX_INLINE_IMAGES_BYTES = 700_000;
-// WP-D1b: pro-Bild-Byte-Zielgröße — auch ein klein-dimensioniertes, aber byte-schweres Bild (z. B. ein
-// unkomprimiertes PNG) wird progressiv nach JPEG re-encodiert, bis es darunter liegt.
-const PER_IMAGE_TARGET_BYTES = 120_000;
-const JPEG_QUALITY_STEPS: readonly number[] = [0.8, 0.6, 0.45, 0.3];
+// WP-D1c (bens ROT-Fix): das GESAMT-Byte-Budget des bodyHtml (Struktur + Text + Bilder), in ECHTEN
+// UTF-8-Bytes, leitet sich vom SERVER-Ceiling ab, NICHT mehr von einer harten 700-KB-Grenze. Der
+// Server-Cap für POST/PUT /api/drafts ist 25 MiB (DRAFTS_BODY_LIMIT, capture-routes.ts). Bewusst
+// KONSERVATIV auf 12 MiB gesetzt: lässt der JSON-Serialisierung (Escaping von `"`/`\`) und dem
+// Envelope (Titel/Statement/Felder) reichlich Puffer, sodass das finale JSON garantiert weit unter dem
+// Ceiling landet. Kern-Use-Case ist „viele Bilder BEHALTEN" → das Budget ist großzügig, nicht knapp.
+// Die Konstante MAX_INLINE_BODY_HTML_BYTES lebt jetzt im DOM-freien ./docx (Node-Test-Import) und wird
+// hier aus demselben Modul bezogen.
+// WP-D1c: aggressive, aber diagramm-lesbare Kompression. 1600 px lange Kante hält technische Zeichnungen
+// lesbar; JPEG ~0.75 drückt die Bytes stark. Für extrem schwere Bilder greifen fallende Qualitätsstufen.
+const IMAGE_MAX_EDGE_PX = 1600;
+const JPEG_QUALITY_STEPS: readonly number[] = [0.75, 0.6, 0.45, 0.3];
+// Pro-Bild-Byte-Ziel: klein genug, dass viele Bilder ins Gesamtbudget passen; groß genug für Lesbarkeit.
+const PER_IMAGE_TARGET_BYTES = 180_000;
 
-// WP-D1/WP-D1b: eingebettetes data:image-Bild dimensions- UND byte-getrieben re-encodieren (Canvas →
-// JPEG). Anders als zuvor wird ein Bild NICHT mehr allein wegen kleiner Kantenlänge unverändert
-// durchgelassen: ist es byte-schwer, wird es mit fallender Qualität neu kodiert, bis es das Pro-Bild-
-// Ziel unterschreitet (oder die Qualitätsstufen erschöpft sind). Ist es bereits klein UND leicht,
-// bleibt es unverändert (kein unnötiger Qualitätsverlust). Jeder Fehler → Original zurück (Backstop:
-// das Gesamt-Budget in applyInlineImageBudget lässt es dann ggf. weg statt zu sprengen).
+// WP-D1/WP-D1c: eingebettetes data:image-Bild AGGRESSIV re-encodieren (Canvas → JPEG), dimensions- UND
+// byte-getrieben — Bilder werden komprimiert und BEHALTEN, nicht weggeworfen. Große Kanten werden auf
+// IMAGE_MAX_EDGE_PX gedeckelt; danach fällt die JPEG-Qualität, bis das Pro-Bild-Ziel erreicht ist. Ein
+// bereits kleines UND leichtes Bild bleibt unverändert (kein unnötiger Qualitätsverlust). Jeder Fehler
+// → Original zurück (das Gesamtbudget in applyInlineImageBudget ist der Backstop).
 export function downscaleImageDataUrl(
   dataUrl: string,
-  maxPx = 1280,
+  maxPx = IMAGE_MAX_EDGE_PX,
   targetBytes = PER_IMAGE_TARGET_BYTES,
 ): Promise<string> {
   return new Promise((resolve) => {
@@ -139,13 +150,14 @@ export function downscaleImageDataUrl(
   });
 }
 
-// WP-D1/WP-D1b: strukturerhaltendes DOCX-Lesen (HTML + Klartext); eingebettete Bilder werden
-// clientseitig re-encodiert und über ein hartes GESAMT-Byte-Budget geführt — überzählige Bilder
-// werden weggelassen (droppedImages), damit ein bildreiches DOCX das Draft-Speichern nie sprengt.
+// WP-D1/WP-D1c: strukturerhaltendes DOCX-Lesen (HTML + Klartext); eingebettete Bilder werden
+// clientseitig aggressiv komprimiert und über ein hartes GESAMT-Byte-Budget (echte UTF-8-Bytes)
+// geführt — komprimiert BEHALTEN, solange sie passen; nur als Notbremse weggelassen. So sprengt ein
+// bildreiches DOCX das Draft-Speichern nie (totalImages/droppedImages melden ehrlich).
 export async function readDocxRich(file: File): Promise<DocxRichResult> {
   return extractDocxRich(await file.arrayBuffer(), {
     mapImage: (src) => downscaleImageDataUrl(src),
-    imageBudgetBytes: MAX_INLINE_IMAGES_BYTES,
+    imageBudgetBytes: MAX_INLINE_BODY_HTML_BYTES,
   });
 }
 

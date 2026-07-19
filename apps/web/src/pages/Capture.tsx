@@ -424,6 +424,12 @@ export function Capture(): JSX.Element {
   // nur EINMAL hochlädt und danach dieselbe objectId referenziert.
   const [fileOriginal, setFileOriginal] = useState<OriginalDocument | null>(null);
   const fileOriginalRef = useRef<OriginalRefCache>({ ref: null });
+  // WP-D1c: Bild-Bilanz des DOCX-Imports (gesamt/komprimiert-behalten/als Notbremse weggelassen). Wird
+  // beim Lesen gesetzt und ERST beim Speichern — gekoppelt an den echten Anhang-Erfolg — ehrlich gemeldet
+  // (nur dann „Original im Anhang", wenn der Anhang wirklich gesichert wurde).
+  const [fileImageInfo, setFileImageInfo] = useState<{ total: number; dropped: number } | null>(
+    null,
+  );
   const [fileImageUrl, setFileImageUrl] = useState<string | null>(null); // OCR-Kandidat (nur auf Klick)
   const [fileBusy, setFileBusy] = useState(false);
   const [fileQuery, setFileQuery] = useState("");
@@ -657,11 +663,28 @@ export function Capture(): JSX.Element {
       setFileName(null);
       setFileText("");
       setFileRich(null);
+      const imageInfo = fileImageInfo;
+      setFileImageInfo(null);
       setFileOriginal(null);
       fileOriginalRef.current = { ref: null };
       setFileQuery("");
-      setNotice(t(CAPTURE_FILE_TEXT.wholeSaved, { name: input.fileName }));
-      push("success", t(CAPTURE_FILE_TEXT.wholeSaved, { name: input.fileName }));
+      const savedNote = t(CAPTURE_FILE_TEXT.wholeSaved, { name: input.fileName });
+      // WP-D1c: ehrliche Bild-Meldung — GEKOPPELT an den echten Anhang-Erfolg. „Original im Anhang" wird
+      // NUR behauptet, wenn der Anhang wirklich gesichert wurde (originalFailure === null).
+      const attachOk = originalFailure === null;
+      const hasImages = imageInfo !== null && imageInfo.total > 0;
+      let imageNote = "";
+      if (hasImages && imageInfo && attachOk) {
+        imageNote =
+          imageInfo.dropped > 0
+            ? ` ${t(CAPTURE_FILE_TEXT.imagesDropped, { count: imageInfo.dropped })}`
+            : ` ${t(CAPTURE_FILE_TEXT.imagesCompressed)}`;
+      } else if (hasImages && imageInfo && !attachOk) {
+        // Kein Anhang → KEINE „im Anhang"-Behauptung; ehrlicher Hinweis, dass das Original NICHT sicher ist.
+        imageNote = ` ${t(CAPTURE_FILE_TEXT.imagesNoOriginal)}`;
+      }
+      setNotice(`${savedNote}${imageNote}`);
+      push("success", savedNote);
       if (!savedDraftId) {
         setErr(t(CAPTURE_FILE_TEXT.wholeOpenMissing));
         push("error", t(CAPTURE_FILE_TEXT.wholeOpenMissing));
@@ -1149,6 +1172,7 @@ export function Capture(): JSX.Element {
     setFileName(null);
     setFileText("");
     setFileRich(null);
+    setFileImageInfo(null);
     setFileOriginal(null);
     fileOriginalRef.current = { ref: null };
     setFileImageUrl(null);
@@ -1468,6 +1492,7 @@ export function Capture(): JSX.Element {
     setFileImageUrl(null);
     setFileText("");
     setFileRich(null);
+    setFileImageInfo(null);
     setFileOriginal(null);
     fileOriginalRef.current = { ref: null };
     setErr(null);
@@ -1487,15 +1512,16 @@ export function Capture(): JSX.Element {
       };
       // WP-D3: Hinweis, wenn der PDF-Seiten-Cap griff (nur die ersten N Seiten gelesen).
       let pdfTruncatedPages: number | null = null;
-      // WP-D1b: Anzahl Bilder, die wegen des Byte-Budgets NICHT ins bodyHtml kamen (Original im Anhang).
-      let droppedImages = 0;
+      // WP-D1c: Bild-Bilanz des DOCX-Imports — erst beim Speichern (an den Anhang-Erfolg gekoppelt)
+      // gemeldet, NICHT hier (zur Lesezeit ist noch nichts angehängt).
+      let imageInfo: { total: number; dropped: number } | null = null;
       if (isWordDocument(f)) {
         // WP-D1: DOCX strukturerhaltend — HTML (Überschriften/Listen/Tabellen/Bilder, Best-Effort)
         // für den Ganzdokument-Modus, Klartext weiterhin für die KI-Punkte-Extraktion.
         const docx = await readDocxRich(f);
         text = docx.text;
         rich = { html: docx.html, kind: "docx" };
-        droppedImages = docx.droppedImages;
+        imageInfo = { total: docx.totalImages, dropped: docx.droppedImages };
       } else if (isTextDocument(f)) {
         text = await readTextFile(f);
       } else if (isPdfDocument(f)) {
@@ -1523,6 +1549,7 @@ export function Capture(): JSX.Element {
       }
       setFileText(text);
       setFileRich(rich);
+      setFileImageInfo(imageInfo);
       // WP-D2 („Original ist heilig"): die Quelldatei selbst merken — sie wird beim Speichern
       // (Ganzdokument-Entwurf bzw. Punkte-Queue-KOs) als Anhang in den Object-Store mitgeführt.
       setFileOriginal({
@@ -1544,14 +1571,13 @@ export function Capture(): JSX.Element {
         pdfTruncatedPages !== null
           ? ` ${t(CAPTURE_FILE_TEXT.pdfTruncated, { count: pdfTruncatedPages })}`
           : "";
-      // WP-D1b: bei weggelassenen Bildern ehrlich melden — das Original bleibt als Anhang erhalten.
-      const droppedNote =
-        droppedImages > 0 ? ` ${t(CAPTURE_FILE_TEXT.imagesDropped, { count: droppedImages })}` : "";
+      // WP-D1c: KEINE „Original im Anhang"-Behauptung zur Lesezeit (noch nichts angehängt) — die
+      // ehrliche, anhang-gekoppelte Bild-Meldung folgt beim Speichern (fileWholeDraft.onSuccess).
       setNotice(
         `${t(CAPTURE_FILE_TEXT.loadedStats, {
           name: f.name,
           chars: text.length,
-        })}${formatNote}${truncatedNote}${droppedNote}`,
+        })}${formatNote}${truncatedNote}`,
       );
     } catch {
       setFileName(null);

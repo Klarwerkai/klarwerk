@@ -83,13 +83,28 @@ const IMG_TAG_DATA_RE = /<img\b[^>]*\bsrc="(data:image\/[a-zA-Z0-9.+-]+;base64,[
 
 export interface InlineImageBudgetResult {
   html: string;
-  dropped: number; // Bilder, die wegen des Byte-Budgets NICHT ins bodyHtml übernommen wurden
+  dropped: number; // Bilder, die als Notbremse (Gesamtbudget erschöpft) NICHT ins bodyHtml kamen
+  total: number; // gesamte data:image-Bilder im Ausgangs-HTML (kept = total - dropped)
 }
 
-// WP-D1b (Fix d): hartes GESAMT-Byte-Budget für die eingebetteten data:image-Bilder. Jedes Bild wird
-// (dimensions- UND byte-getrieben) über `encode` re-encodiert und über ein laufendes Budget summiert;
-// passt es nicht mehr, wird das GANZE <img>-Element weggelassen (kein Absturz, kein 413). Verlustarm:
-// das ORIGINAL bleibt über WP-D2 als Anhang erhalten. DOM-frei (encode injiziert) → unit-testbar.
+// WP-D1c: ECHTE UTF-8-Bytes (nicht String.length, das UTF-16-Codeeinheiten misst). Zentrale Messung
+// für das Byte-Budget — Umlaute/Emoji im Text werden korrekt gezählt.
+export function utf8ByteLength(text: string): number {
+  return new TextEncoder().encode(text).length;
+}
+
+// WP-D1c: Byte-Deckel für das gesamte bodyHtml, vom Server-Ceiling (DRAFTS_BODY_LIMIT 25 MiB) mit
+// großem Puffer (JSON-Envelope/Escaping) abgeleitet. Bewusst hier im DOM-FREIEN Modul, damit Node-Tests
+// die Konstante ohne DOM-Globals importieren können; files.ts (DOM-Wrapper) re-exportiert sie.
+export const MAX_INLINE_BODY_HTML_BYTES = 12 * 1024 * 1024;
+
+// WP-D1c (bens ROT-Fix): hartes Byte-Budget für das GESAMTE bodyHtml (Struktur + Text + Bilder), in
+// ECHTEN UTF-8-Bytes gemessen. Kern-Use-Case (Pedi): viele technische Dokumente mit vielen Bildern →
+// Bilder werden über `encode` AGGRESSIV komprimiert und BEHALTEN, solange die laufende Gesamtgröße
+// unter `budgetBytes` bleibt. Erst wenn selbst nach Kompression das Gesamtbudget überschritten würde,
+// wird ein Bild als NOTBREMSE weggelassen (das ganze <img>-Element) — verlustarm, weil das ORIGINAL
+// über WP-D2 als Anhang erhalten bleibt. DOM-frei (encode injiziert) → unit-testbar; die Nicht-Bild-
+// Anteile (Text/Struktur) zählen mit, damit das FINALE bodyHtml garantiert unter dem Budget landet.
 export async function applyInlineImageBudget(
   html: string,
   encode: (src: string) => Promise<string>,
@@ -103,31 +118,38 @@ export async function applyInlineImageBudget(
     matches.push({ full: m[0], src: m[1] ?? "", start: m.index, end: IMG_TAG_DATA_RE.lastIndex });
   }
   if (matches.length === 0) {
-    return { html, dropped: 0 };
+    return { html, dropped: 0, total: 0 };
   }
   const parts: string[] = [];
   let last = 0;
-  let used = 0;
+  // usedBytes = ECHTE UTF-8-Bytes des bisher aufgebauten FINALEN Ausgabe-HTML (Struktur + gehaltene
+  // Bilder). So ist die Summe am Ende garantiert die reale bodyHtml-Größe.
+  let usedBytes = 0;
   let dropped = 0;
   for (const match of matches) {
-    parts.push(html.slice(last, match.start));
-    const encoded = await encode(match.src);
-    if (used + encoded.length <= budgetBytes) {
-      used += encoded.length;
-      parts.push(match.full.replace(match.src, encoded));
+    const literal = html.slice(last, match.start); // Text/Struktur zwischen den Bildern (nicht droppbar)
+    parts.push(literal);
+    usedBytes += utf8ByteLength(literal);
+    const encodedSrc = await encode(match.src);
+    const keptTag = match.full.replace(match.src, encodedSrc);
+    const tagBytes = utf8ByteLength(keptTag);
+    if (usedBytes + tagBytes <= budgetBytes) {
+      parts.push(keptTag);
+      usedBytes += tagBytes;
     } else {
-      dropped += 1; // Bild weglassen — Original bleibt als Anhang (WP-D2).
+      dropped += 1; // Notbremse: Bild weglassen — Original bleibt als Anhang (WP-D2).
     }
     last = match.end;
   }
   parts.push(html.slice(last));
-  return { html: parts.join(""), dropped };
+  return { html: parts.join(""), dropped, total: matches.length };
 }
 
 export interface DocxRichResult {
   html: string; // strukturerhaltendes HTML (h2/h3, Listen, Tabellen, strong/em, data:image-Bilder)
   text: string; // Klartext — weiterhin nötig für die KI-Punkte-Extraktion
-  droppedImages: number; // WP-D1b: Bilder, die wegen des Byte-Budgets NICHT ins bodyHtml kamen
+  totalImages: number; // WP-D1c: eingebettete Bilder insgesamt (komprimiert übernommen = total - dropped)
+  droppedImages: number; // WP-D1c: Bilder, die als Notbremse NICHT ins bodyHtml kamen
 }
 
 // WP-D1: strukturerhaltende Extraktion (HTML + Klartext in EINEM Durchgang über die Engine).
@@ -147,16 +169,18 @@ export async function extractDocxRich(
   const textResult = await engine.extractRawText(input);
   let html = mapDocxHeadings(htmlResult.value.trim());
   let droppedImages = 0;
+  let totalImages = 0;
   if (opts.mapImage) {
     if (opts.imageBudgetBytes !== undefined) {
       const budgeted = await applyInlineImageBudget(html, opts.mapImage, opts.imageBudgetBytes);
       html = budgeted.html;
       droppedImages = budgeted.dropped;
+      totalImages = budgeted.total;
     } else {
       html = await mapInlineImages(html, opts.mapImage);
     }
   }
-  return { html, text: textResult.value.trim(), droppedImages };
+  return { html, text: textResult.value.trim(), totalImages, droppedImages };
 }
 
 // Reiner Klartext-Extraktionskern (ArrayBuffer → Klartext) — bestehender Vertrag für die

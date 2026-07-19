@@ -327,8 +327,12 @@ export const CAPTURE_FILE_TEXT = {
   emptyPdf: "capture.file.emptyPdf",
   // WP-D3: ehrlicher Hinweis, wenn der Seiten-Cap (MAX_PDF_PAGES) griff — nur die ersten N Seiten gelesen.
   pdfTruncated: "capture.file.pdfTruncated",
-  // WP-D1b: ehrlicher Hinweis, wenn Bilder wegen des Byte-Budgets nicht ins bodyHtml kamen (Original im Anhang).
+  // WP-D1b/WP-D1c: Notbremse — Bilder, die selbst nach Kompression nicht ins bodyHtml passten (Original im Anhang).
   imagesDropped: "capture.file.imagesDropped",
+  // WP-D1c: Bilder komprimiert BEHALTEN; Original unverändert im Anhang (nur bei erfolgreichem Anhang).
+  imagesCompressed: "capture.file.imagesCompressed",
+  // WP-D1c: Bilder komprimiert, aber Anhang FEHLGESCHLAGEN → KEINE „im Anhang"-Behauptung.
+  imagesNoOriginal: "capture.file.imagesNoOriginal",
   // WP-D4: formatabhängige Import-Quittung (DOCX: Struktur+Bilder Best-Effort; PDF: nur Text).
   importNoteDocx: "capture.file.importNote.docx",
   importNotePdf: "capture.file.importNote.pdf",

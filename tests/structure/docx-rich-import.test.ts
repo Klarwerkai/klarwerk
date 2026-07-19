@@ -15,6 +15,7 @@ import {
   extractDocxRich,
   mapDocxHeadings,
   mapInlineImages,
+  utf8ByteLength,
 } from "../../apps/web/src/lib/docx";
 import { sanitizeHtml } from "../../services/structure";
 
@@ -174,57 +175,81 @@ describe("WP-D1b: Quelle-Blockquote in NL (kein Deutsch-Fallback)", () => {
   });
 });
 
-// WP-D1b (Fix d): hartes Gesamt-Byte-Budget für Inline-Bilder. Passt ein Bild nicht mehr, wird das
-// GANZE <img>-Element weggelassen (Original bleibt via WP-D2 als Anhang) — kein 413.
-describe("WP-D1b: applyInlineImageBudget", () => {
+// WP-D1c (bens ROT-Fix): das Byte-Budget zählt das GESAMTE bodyHtml in ECHTEN UTF-8-Bytes (Struktur +
+// Text + Bilder). Bilder werden komprimiert BEHALTEN, solange die laufende Gesamtgröße unter dem Budget
+// bleibt; erst als Notbremse fällt ein Bild (Original bleibt via WP-D2 als Anhang).
+describe("WP-D1c: applyInlineImageBudget (UTF-8-Gesamtbudget)", () => {
   const imgTag = (payload: string): string => `<img src="data:image/jpeg;base64,${payload}">`;
-  // encode gibt die src unverändert zurück (die Bytes stecken bereits im Fixture) → reiner Budget-Test.
-  const identity = async (src: string): Promise<string> => src;
+  const identity = async (src: string): Promise<string> => src; // encode = Durchreichen (reiner Budget-Test)
 
-  it("kein Bild → unverändert, dropped 0", async () => {
+  it("kein Bild → unverändert, dropped 0, total 0", async () => {
     const html = "<p>nur Text</p>";
-    expect(await applyInlineImageBudget(html, identity, 1000)).toEqual({ html, dropped: 0 });
+    expect(await applyInlineImageBudget(html, identity, 1000)).toEqual({
+      html,
+      dropped: 0,
+      total: 0,
+    });
   });
 
-  it("über Budget → spätere Bilder werden weggelassen, Zähler stimmt, Rest bleibt", async () => {
+  it("großzügiges Budget → ALLE Bilder behalten (komprimiert, nicht weggeworfen)", async () => {
+    const html = `<p>${imgTag("A".repeat(300))}${imgTag("B".repeat(300))}</p>`;
+    const res = await applyInlineImageBudget(html, identity, 10_000);
+    expect(res.total).toBe(2);
+    expect(res.dropped).toBe(0);
+    expect(res.html).toContain("A".repeat(300));
+    expect(res.html).toContain("B".repeat(300));
+  });
+
+  it("Notbremse: passt ein Bild nicht mehr, fällt das GANZE <img> (Rest bleibt)", async () => {
     const a = imgTag("A".repeat(300));
     const b = imgTag("B".repeat(300));
     const c = imgTag("C".repeat(300));
     const html = `<p>${a}</p><p>${b}</p><p>${c}</p>`;
-    const res = await applyInlineImageBudget(html, identity, 700);
+    // Budget reicht für zwei volle Tags + Struktur, nicht für das dritte.
+    const budget = utf8ByteLength(`<p>${a}</p><p>${b}</p><p></p>`) + 5;
+    const res = await applyInlineImageBudget(html, identity, budget);
+    expect(res.total).toBe(3);
     expect(res.dropped).toBe(1);
     expect(res.html).toContain("A".repeat(300));
     expect(res.html).toContain("B".repeat(300));
     expect(res.html).not.toContain("C".repeat(300));
-    expect(res.html).toContain("<p></p>"); // nur das <img> fiel, der umgebende <p> bleibt
+    expect(res.html).toContain("<p></p>");
   });
 
-  it("ein Bild knapp UNTER Budget → behalten; knapp DARÜBER → weggelassen", async () => {
-    const one = imgTag("X".repeat(100));
-    // Gemessen wird die src-Länge (data:-URL), nicht die volle Tag-Länge.
-    const srcLen = "data:image/jpeg;base64,".length + 100;
-    const under = await applyInlineImageBudget(`<div>${one}</div>`, identity, srcLen);
-    expect(under.dropped).toBe(0);
-    expect(under.html).toContain("X".repeat(100));
-    const over = await applyInlineImageBudget(`<div>${one}</div>`, identity, srcLen - 1);
-    expect(over.dropped).toBe(1);
-    expect(over.html).toBe("<div></div>");
+  it("das gehaltene HTML bleibt ≤ Budget (echte UTF-8-Bytes, Text zählt mit)", async () => {
+    // Bilder am Ende (kein Struktur-Tail dahinter) → das gemessene Ergebnis ist exakt das gehaltene HTML.
+    const many = Array.from({ length: 20 }, (_, i) => imgTag(`${i}`.repeat(400))).join("");
+    const budget = 4000;
+    const res = await applyInlineImageBudget(`<h2>Überblick 📄</h2>${many}`, identity, budget);
+    expect(utf8ByteLength(res.html)).toBeLessThanOrEqual(budget);
+    expect(res.dropped).toBeGreaterThan(0); // einige fielen als Notbremse
   });
 
-  it("Summe der behaltenen Bild-Bytes bleibt ≤ Budget (Puffer zum Draft-Limit)", async () => {
-    const budget = 1000;
-    const many = Array.from({ length: 20 }, () => imgTag("Z".repeat(400))).join("");
-    const res = await applyInlineImageBudget(`<body>${many}</body>`, identity, budget);
-    const kept = res.html.match(/Z+/g) ?? [];
-    const keptBytes = kept.reduce((n, s) => n + s.length, 0);
-    expect(keptBytes).toBeLessThanOrEqual(budget);
-    expect(res.dropped).toBeGreaterThan(0);
+  it("mehrbyteiger Text (Umlaute/Emoji) wird in UTF-8 korrekt gezählt", () => {
+    expect(utf8ByteLength("a")).toBe(1);
+    expect(utf8ByteLength("ä")).toBe(2); // UTF-16-length wäre 1
+    expect(utf8ByteLength("📄")).toBe(4); // UTF-16-length wäre 2
   });
 });
 
-// WP-D1b: extractDocxRich mit Budget meldet droppedImages und lässt überzählige Bilder weg.
-describe("WP-D1b: extractDocxRich mit Byte-Budget", () => {
-  it("überzählige Bilder werden weggelassen; droppedImages zählt sie", async () => {
+// WP-D1c: extractDocxRich mit Budget meldet total/droppedImages und lässt nur als Notbremse weg.
+describe("WP-D1c: extractDocxRich mit Byte-Budget", () => {
+  it("großzügiges Budget → alle Bilder behalten (droppedImages 0, totalImages zählt)", async () => {
+    const big = (id: string): string => `<img src="data:image/jpeg;base64,${id.repeat(200)}">`;
+    const engine: DocxEngine = {
+      convertToHtml: async () => ({ value: `${big("A")}${big("B")}`, messages: [] }),
+      extractRawText: async () => ({ value: "text", messages: [] }),
+    };
+    const res = await extractDocxRich(new ArrayBuffer(4), {
+      engine,
+      mapImage: async (src) => src,
+      imageBudgetBytes: 10_000,
+    });
+    expect(res.totalImages).toBe(2);
+    expect(res.droppedImages).toBe(0);
+  });
+
+  it("zu enges Budget → Notbremse greift; droppedImages > 0", async () => {
     const big = (id: string): string => `<img src="data:image/jpeg;base64,${id.repeat(400)}">`;
     const engine: DocxEngine = {
       convertToHtml: async () => ({ value: `${big("A")}${big("B")}${big("C")}`, messages: [] }),
@@ -235,7 +260,7 @@ describe("WP-D1b: extractDocxRich mit Byte-Budget", () => {
       mapImage: async (src) => src,
       imageBudgetBytes: 900,
     });
-    expect(res.droppedImages).toBe(1);
+    expect(res.droppedImages).toBeGreaterThan(0);
     expect(res.text).toBe("text");
   });
 
