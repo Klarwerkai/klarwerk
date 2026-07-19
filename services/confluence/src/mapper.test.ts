@@ -50,6 +50,18 @@ describe("SCRUM-510: mapConfluencePageToImportItem", () => {
     expect(item.author).toBe("Anna Admin");
   });
 
+  it("IC-1: version.when → updatedAt (ISO); fehlt es, bleibt updatedAt unbesetzt", () => {
+    const withWhen = {
+      ...openPage,
+      version: { number: 2, when: "2026-04-01T10:30:00.000Z" },
+    };
+    expect(mapConfluencePageToImportItem(withWhen, OPTS).updatedAt).toBe(
+      "2026-04-01T10:30:00.000Z",
+    );
+    // openPage ohne version.when → updatedAt fehlt (rein additiv, kein Pflichtfeld).
+    expect(mapConfluencePageToImportItem(openPage, OPTS).updatedAt).toBeUndefined();
+  });
+
   it("SCRUM-511: restringierte Seite ergibt Governance-Signal vertraulich (mind.)", () => {
     expect(isPageRestricted(restrictedPage)).toBe(true);
     expect(confluenceGovernanceConfidentiality(restrictedPage)).toBe("vertraulich");

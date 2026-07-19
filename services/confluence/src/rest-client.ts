@@ -30,7 +30,9 @@ export interface ConfluencePage {
   type?: string;
   status?: string;
   body?: { storage?: { value?: string } };
-  version?: { number?: number; by?: ConfluenceUser };
+  // IC-1: `when` = ISO-Zeitstempel der letzten Version (Confluence liefert es im `version`-Expand mit)
+  // → Provenienz-Datum für die Read-only-Erkundung (updatedAt am ImportItem).
+  version?: { number?: number; by?: ConfluenceUser; when?: string };
   _links?: { webui?: string };
   metadata?: { labels?: { results?: { name?: string }[] } };
   restrictions?: {

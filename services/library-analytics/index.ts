@@ -19,3 +19,15 @@ export type {
   Analytics,
 } from "./src/types";
 export { LibraryError } from "./src/types";
+// IC-1 (Import-Cockpit): READ-ONLY Erkundungs-Aggregat (pure, deterministisch).
+export {
+  summarizeImportItems,
+  NO_AUTHOR_LABEL,
+  NO_THEME_LABEL,
+} from "./src/explore";
+export type {
+  ImportExploreSummary,
+  CountEntry,
+  ThemeEntry,
+  SummarizeOptions,
+} from "./src/explore";

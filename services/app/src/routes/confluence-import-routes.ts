@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { type ConfluenceSourceAdapter, createConfluenceAdapterFromEnv } from "../../../confluence";
 import type { KoService } from "../../../knowledge-object";
-import type { LibraryService } from "../../../library-analytics";
+import { type LibraryService, summarizeImportItems } from "../../../library-analytics";
 import { type ImportRunSummary, runConfluenceImport } from "../confluence-import";
 import type { Guards } from "../http";
 import { sanitizeLogText } from "../log-sanitize";
@@ -71,5 +71,41 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
         }
       },
     );
+
+    // IC-1 (Import-Cockpit): READ-ONLY Erkundung — „was ist da" VOR jedem Import. Liest den Space
+    // (collectAll), aggregiert Mengen/Autoren/Themen/Zeitraum und gibt sie zurück. Schreibt NICHTS:
+    // keine Kandidaten, keine KOs, kein Object-Store. Gleiche Admin-Auth (users.manage), gleiche
+    // Fehler-/Flag-Disziplin wie die Import-Route (503 ohne Adapter, 502 bei Lesefehler, sanitisiertes
+    // Log). WP-E-Regel: JEDER Sende-Pfad endet mit `return reply`.
+    app.post("/api/admin/import/confluence/explore", async (request, reply) => {
+      const user = await deps.guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return reply;
+      }
+      const adapter = makeAdapter();
+      if (!adapter) {
+        reply.code(503).send({
+          error: "IMPORT_UNAVAILABLE",
+          message: "Confluence-Import nicht konfiguriert.",
+        });
+        return reply;
+      }
+      try {
+        // READ-ONLY: nur lesen + aggregieren. collectAll schreibt nichts.
+        const { items, truncated } = await adapter.collectAll();
+        reply.code(200).send({ summary: summarizeImportItems(items), truncated });
+        return reply;
+      } catch (err) {
+        // Gleiche Beobachtbarkeit/Redaction wie der Import-Pfad (WP-E/WP-E2).
+        console.warn(
+          "[confluence-explore] fehlgeschlagen:",
+          sanitizeLogText(err instanceof Error ? err.message : String(err)),
+        );
+        reply
+          .code(502)
+          .send({ error: "EXPLORE_FAILED", message: "Confluence-Erkundung fehlgeschlagen." });
+        return reply;
+      }
+    });
   };
 }

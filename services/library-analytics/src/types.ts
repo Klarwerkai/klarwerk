@@ -20,6 +20,10 @@ export interface ImportItem {
   url?: string;
   provider?: string;
   bodyHtml?: string;
+  // IC-1 (Import-Cockpit): OPTIONALER ISO-Zeitstempel der letzten Quell-Änderung (z. B. Confluence
+  // version.when). Rein additiv — nur für die Read-only-Erkundung (Zeitraum); kein Adapter MUSS es
+  // füllen, kein Import-Pfad hängt davon ab.
+  updatedAt?: string;
 }
 
 export interface ImportResult {

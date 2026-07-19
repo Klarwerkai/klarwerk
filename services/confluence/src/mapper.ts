@@ -44,6 +44,8 @@ export function mapConfluencePageToImportItem(
   const webui = page._links?.webui;
   const url = webui ? `${opts.baseUrl.replace(/\/+$/, "")}${webui}` : undefined;
   const author = page.version?.by?.displayName?.trim();
+  // IC-1: Provenienz-Datum der letzten Version (Confluence version.when, ISO) → nur wenn vorhanden.
+  const updatedAt = page.version?.when?.trim();
   const governance = confluenceGovernanceConfidentiality(page);
 
   return {
@@ -66,5 +68,7 @@ export function mapConfluencePageToImportItem(
     ...(url ? { url } : {}),
     provider: "Confluence",
     ...(bodyHtml ? { bodyHtml } : {}),
+    // IC-1: Provenienz-Datum (nur wenn die Quelle es liefert) — für die Read-only-Erkundung.
+    ...(updatedAt ? { updatedAt } : {}),
   };
 }
