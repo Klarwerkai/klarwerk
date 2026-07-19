@@ -126,7 +126,13 @@ export function BodyExtractPanel({
       }
       if (text.trim().length === 0) {
         setStatus(null);
-        setErr(t(CAPTURE_FILE_TEXT.empty, { name: f.name }));
+        // WP-D4: bei PDFs ehrlich auf die fehlende Textebene hinweisen — ohne falsche OCR-Hoffnung
+        // (eine PDF-OCR existiert nicht; die Bild-OCR gilt nur für Bilddateien).
+        setErr(
+          t(isPdfDocument(f) ? CAPTURE_FILE_TEXT.emptyPdf : CAPTURE_FILE_TEXT.empty, {
+            name: f.name,
+          }),
+        );
         return;
       }
       setFileText(text);

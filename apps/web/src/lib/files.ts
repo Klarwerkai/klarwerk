@@ -1,7 +1,7 @@
 // Datei-Helfer für die Erfassung — alles client-seitig, ohne Server-/Objektspeicher.
 // DOM-Modul (nutzt File/Image/document/FileReader). Der DOM-freie DOCX-Kern liegt
 // in `./docx` und wird hier nur als Browser-Wrapper umhüllt.
-import { extractDocxText, isDocxDocumentLike } from "./docx";
+import { type DocxRichResult, extractDocxRich, extractDocxText, isDocxDocumentLike } from "./docx";
 import { detectFileKind } from "./extract";
 import { type OcrResult, recognizeImage } from "./ocr";
 import { type PdfEngine, extractPdfText } from "./pdf";
@@ -75,6 +75,51 @@ export function isWordDocument(file: File): boolean {
 // Browser-Wrapper: liest die Datei und extrahiert den Text über den DOM-freien Kern.
 export async function readDocxFile(file: File): Promise<string> {
   return extractDocxText(await file.arrayBuffer());
+}
+
+// WP-D1: eingebettetes data:image-Bild auf max. Kantenlänge herunterskalieren (Canvas → JPEG),
+// damit ein bildreiches DOCX das Draft-/KO-Speichern (globaler 1-MiB-HTTP-Body) nicht sprengt.
+// Bild bereits klein genug → unverändert zurück (kein unnötiger Qualitätsverlust). Jeder Fehler
+// (exotisches Format, Canvas-Grenze) → Original zurück; der Server-Sanitizer bleibt der Backstop.
+export function downscaleImageDataUrl(
+  dataUrl: string,
+  maxPx = 1280,
+  quality = 0.8,
+): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
+      if (scale >= 1) {
+        resolve(dataUrl);
+        return;
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(img.width * scale));
+      canvas.height = Math.max(1, Math.round(img.height * scale));
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        resolve(dataUrl);
+        return;
+      }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      try {
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      } catch {
+        resolve(dataUrl);
+      }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl; // data:-URL → CSP-konform (img-src erlaubt data:)
+  });
+}
+
+// WP-D1: strukturerhaltendes DOCX-Lesen (HTML + Klartext); eingebettete Bilder werden
+// clientseitig herunterskaliert, bevor sie ins bodyHtml wandern.
+export async function readDocxRich(file: File): Promise<DocxRichResult> {
+  return extractDocxRich(await file.arrayBuffer(), {
+    mapImage: (src) => downscaleImageDataUrl(src),
+  });
 }
 
 export function isImage(file: File): boolean {

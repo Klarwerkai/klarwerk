@@ -141,9 +141,34 @@ export function fileSourcePayload(
 }
 
 const MAX_WHOLE_DOCUMENT_STATEMENT = 500;
-const SOURCE_LABELS: Record<"de" | "en", { source: string; whole: string; fallback: string }> = {
-  de: { source: "Quelle", whole: "gesamtes Dokument", fallback: "Unbenanntes Dokument" },
-  en: { source: "Source", whole: "whole document", fallback: "Untitled document" },
+
+// WP-D4: ehrlicher, formatabhängiger Import-Hinweis — er wird Teil des persistierten Quelle-
+// Blockquotes, damit der Entwurf NIE wie eine verlustfreie Übernahme aussieht.
+export type WholeDocumentSourceKind = "docx" | "pdf" | "text";
+
+interface WholeSourceLabels {
+  source: string;
+  whole: string;
+  fallback: string;
+  noteDocx: string;
+  notePdf: string;
+}
+
+const SOURCE_LABELS: Record<"de" | "en", WholeSourceLabels> = {
+  de: {
+    source: "Quelle",
+    whole: "gesamtes Dokument",
+    fallback: "Unbenanntes Dokument",
+    noteDocx: "Struktur und Bilder übernommen (Best-Effort) — exaktes Layout kann abweichen.",
+    notePdf: "Best-Effort-Textimport — Layout und Bilder wurden nicht übernommen.",
+  },
+  en: {
+    source: "Source",
+    whole: "whole document",
+    fallback: "Untitled document",
+    noteDocx: "Structure and images imported (best effort) — exact layout may differ.",
+    notePdf: "Best-effort text import — layout and images were not carried over.",
+  },
 };
 
 function localeKey(locale: string | null | undefined): "de" | "en" {
@@ -207,10 +232,24 @@ function renderTextBlock(block: string): string {
 export function wholeDocumentBodyHtml(input: {
   fileName: string;
   text: string;
+  // WP-D1: strukturerhaltendes HTML (DOCX via mammoth, h1→h2 bereits gemappt). Wenn gesetzt, wird es
+  // statt der Markdown-Heuristik übernommen — autoritativ sanitisiert der Server (services/structure).
+  html?: string;
+  // WP-D4: Formatkennung für den ehrlichen Import-Hinweis im Quelle-Blockquote.
+  sourceKind?: WholeDocumentSourceKind;
   locale?: string | null;
 }): string {
   const labels = SOURCE_LABELS[localeKey(input.locale)];
-  const source = `<blockquote><p>${labels.source}: ${escapeHtml(input.fileName)}, ${labels.whole}</p></blockquote>`;
+  const note =
+    input.sourceKind === "docx"
+      ? `<p>${escapeHtml(labels.noteDocx)}</p>`
+      : input.sourceKind === "pdf"
+        ? `<p>${escapeHtml(labels.notePdf)}</p>`
+        : "";
+  const source = `<blockquote><p>${labels.source}: ${escapeHtml(input.fileName)}, ${labels.whole}</p>${note}</blockquote>`;
+  if (input.html && input.html.trim().length > 0) {
+    return `${source}${input.html.trim()}`;
+  }
   const body = input.text
     .replace(/\r\n?/g, "\n")
     .split(/\n{2,}/)
@@ -224,6 +263,8 @@ export function wholeDocumentBodyHtml(input: {
 export function wholeDocumentDraftPayload(input: {
   fileName: string;
   text: string;
+  html?: string;
+  sourceKind?: WholeDocumentSourceKind;
   locale?: string | null;
 }): DraftPayload {
   const title = wholeDocumentTitle(input);
@@ -243,7 +284,13 @@ export function wholeDocumentDraftPayload(input: {
 }
 
 export async function createWholeDocumentDraft<TDraft>(
-  input: { fileName: string; text: string; locale?: string | null },
+  input: {
+    fileName: string;
+    text: string;
+    html?: string;
+    sourceKind?: WholeDocumentSourceKind;
+    locale?: string | null;
+  },
   create: (payload: DraftPayload) => Promise<TDraft>,
 ): Promise<TDraft> {
   return create(wholeDocumentDraftPayload(input));
@@ -258,6 +305,11 @@ export const CAPTURE_FILE_TEXT = {
   extracting: "capture.file.extracting",
   loaded: "capture.file.loaded",
   empty: "capture.file.empty",
+  // WP-D4: PDF-spezifische Leermeldung — ehrlich, ohne falsche OCR-Hoffnung (PDF-OCR existiert nicht).
+  emptyPdf: "capture.file.emptyPdf",
+  // WP-D4: formatabhängige Import-Quittung (DOCX: Struktur+Bilder Best-Effort; PDF: nur Text).
+  importNoteDocx: "capture.file.importNote.docx",
+  importNotePdf: "capture.file.importNote.pdf",
   parseError: "capture.file.parseError",
   unsupported: "capture.file.unsupported",
   ocrCta: "capture.file.ocrCta",

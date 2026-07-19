@@ -941,6 +941,12 @@ const de = {
   "capture.file.extracting": "Lese „{{name}}“ …",
   "capture.file.loaded": "„{{name}}“ gelesen — bereit für die Wissenssuche.",
   "capture.file.empty": "In „{{name}}“ wurde kein Text gefunden.",
+  "capture.file.emptyPdf":
+    "In „{{name}}“ wurde kein Text gefunden — ein gescanntes PDF ohne Textebene wird noch nicht unterstützt.",
+  "capture.file.importNote.docx":
+    "Struktur und Bilder übernommen (Best-Effort) — exaktes Layout kann abweichen.",
+  "capture.file.importNote.pdf":
+    "Best-Effort-Textimport — Layout und Bilder wurden nicht übernommen.",
   "capture.file.parseError": "„{{name}}“ konnte nicht gelesen werden.",
   "capture.file.unsupported":
     "„{{name}}“ wird hier nicht unterstützt — bitte als TXT/MD, DOCX oder PDF bereitstellen. Bilder gehen nur über OCR.",
@@ -982,7 +988,7 @@ const de = {
   "capture.file.wholeImportAnother": "Weiteres Dokument importieren",
   "capture.file.formatTitle": "Dateiformate & Formatierung",
   "capture.file.formatHint":
-    "TXT/MD und weitere Textdateien werden als Text übernommen. DOCX/PDF laufen im MVP als Best-Effort-Textimport; Layout, Bilder und exakte Formatierung können verloren gehen. W2-2 klärt Formatintegrität.",
+    "TXT/MD und weitere Textdateien werden als Text übernommen. DOCX: Struktur (Überschriften, Listen, Tabellen) und Bilder werden Best-Effort übernommen; exaktes Layout kann abweichen. PDF läuft als Best-Effort-Textimport; Layout und Bilder gehen verloren.",
   "capture.file.supportedTitle": "Aktiv auswählbar:",
   "capture.file.supportedFormats":
     "TXT, MD/Markdown, CSV, LOG, JSON, DOCX, PDF und Bilder für OCR.",
@@ -1126,7 +1132,8 @@ const de = {
     "Erfahrungsnotiz geladen — jetzt mit KI strukturieren und den Entwurf prüfen.",
   "capture.docAdded": "{{name}} als Kontext übernommen.",
   "capture.docExtracting": "{{name}} wird gelesen …",
-  "capture.docEmpty": "{{name}}: kein Text gefunden (evtl. gescanntes PDF — Bild-OCR nutzen).",
+  "capture.docEmpty":
+    "{{name}}: kein Text gefunden — ein gescanntes PDF ohne Textebene wird noch nicht unterstützt.",
   "capture.docParseError": "{{name}} konnte nicht gelesen werden.",
   "capture.docUnsupported":
     "{{name}}: nur txt/md/csv/json/log, docx und pdf werden als Volltext gelesen.",
@@ -3922,6 +3929,12 @@ const en: typeof de = {
   "capture.file.extracting": "Reading “{{name}}” …",
   "capture.file.loaded": "“{{name}}” read — ready for the knowledge search.",
   "capture.file.empty": "No text found in “{{name}}”.",
+  "capture.file.emptyPdf":
+    "No text found in “{{name}}” — a scanned PDF without a text layer is not supported yet.",
+  "capture.file.importNote.docx":
+    "Structure and images imported (best effort) — exact layout may differ.",
+  "capture.file.importNote.pdf":
+    "Best-effort text import — layout and images were not carried over.",
   "capture.file.parseError": "“{{name}}” could not be read.",
   "capture.file.unsupported":
     "“{{name}}” is not supported here — please provide TXT/MD, DOCX, or PDF. Images only work via OCR.",
@@ -3961,7 +3974,7 @@ const en: typeof de = {
   "capture.file.wholeImportAnother": "Import another document",
   "capture.file.formatTitle": "File formats & formatting",
   "capture.file.formatHint":
-    "TXT/MD and other text files are taken over as text. DOCX/PDF run as best-effort text imports in this MVP; layout, images, and exact formatting may be lost. W2-2 covers format integrity.",
+    "TXT/MD and other text files are taken over as text. DOCX: structure (headings, lists, tables) and images are imported best effort; exact layout may differ. PDF runs as a best-effort text import; layout and images are lost.",
   "capture.file.supportedTitle": "Actively selectable:",
   "capture.file.supportedFormats":
     "TXT, MD/Markdown, CSV, LOG, JSON, DOCX, PDF, and images for OCR.",
@@ -4099,7 +4112,8 @@ const en: typeof de = {
     "Experience note loaded — now structure it with AI and review the draft.",
   "capture.docAdded": "{{name}} added as context.",
   "capture.docExtracting": "Reading {{name}} …",
-  "capture.docEmpty": "{{name}}: no text found (maybe a scanned PDF — use image OCR).",
+  "capture.docEmpty":
+    "{{name}}: no text found — a scanned PDF without a text layer is not supported yet.",
   "capture.docParseError": "{{name}} could not be read.",
   "capture.docUnsupported":
     "{{name}}: only txt/md/csv/json/log, docx and pdf are read as full text.",
@@ -6860,6 +6874,12 @@ const nl: typeof de = {
   "capture.file.extracting": "„{{name}}“ lezen …",
   "capture.file.loaded": "„{{name}}“ gelezen — klaar voor het zoeken naar kennis.",
   "capture.file.empty": "In „{{name}}“ is geen tekst gevonden.",
+  "capture.file.emptyPdf":
+    "In „{{name}}“ is geen tekst gevonden — een gescande PDF zonder tekstlaag wordt nog niet ondersteund.",
+  "capture.file.importNote.docx":
+    "Structuur en afbeeldingen overgenomen (best effort) — de exacte layout kan afwijken.",
+  "capture.file.importNote.pdf":
+    "Best-effort tekstimport — layout en afbeeldingen zijn niet overgenomen.",
   "capture.file.parseError": "„{{name}}“ kon niet worden gelezen.",
   "capture.file.unsupported":
     "„{{name}}“ wordt hier niet ondersteund — lever het aan als TXT/MD, DOCX of PDF. Afbeeldingen gaan alleen via OCR.",
@@ -6900,7 +6920,7 @@ const nl: typeof de = {
   "capture.file.wholeImportAnother": "Nog een document importeren",
   "capture.file.formatTitle": "Bestandsformaten & opmaak",
   "capture.file.formatHint":
-    "TXT/MD en andere tekstbestanden worden als tekst overgenomen. DOCX/PDF lopen in de MVP als best-effort tekstimport; layout, afbeeldingen en exacte opmaak kunnen verloren gaan. W2-2 verheldert de formaatintegriteit.",
+    "TXT/MD en andere tekstbestanden worden als tekst overgenomen. DOCX: structuur (koppen, lijsten, tabellen) en afbeeldingen worden best effort overgenomen; de exacte layout kan afwijken. PDF loopt als best-effort tekstimport; layout en afbeeldingen gaan verloren.",
   "capture.file.supportedTitle": "Actief selecteerbaar:",
   "capture.file.supportedFormats":
     "TXT, MD/Markdown, CSV, LOG, JSON, DOCX, PDF en afbeeldingen voor OCR.",
@@ -7038,7 +7058,7 @@ const nl: typeof de = {
   "capture.docAdded": "{{name}} als context overgenomen.",
   "capture.docExtracting": "{{name}} wordt gelezen …",
   "capture.docEmpty":
-    "{{name}}: geen tekst gevonden (mogelijk een gescande PDF — gebruik afbeeldings-OCR).",
+    "{{name}}: geen tekst gevonden — een gescande PDF zonder tekstlaag wordt nog niet ondersteund.",
   "capture.docParseError": "{{name}} kon niet worden gelezen.",
   "capture.docUnsupported":
     "{{name}}: alleen txt/md/csv/json/log, docx en pdf worden als volledige tekst gelezen.",

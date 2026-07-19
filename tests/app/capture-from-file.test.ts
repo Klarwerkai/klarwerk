@@ -231,7 +231,10 @@ describe("KW-W2-01: Ganzdokument-Import als bewusster Entwurf", () => {
     expect(captureSource).not.toContain(".pptx");
     expect(captureSource).not.toContain(".rtf");
     expect(deHint).toMatch(/TXT\/MD/);
-    expect(deHint).toMatch(/DOCX\/PDF/);
+    // WP-D1/WP-D4: der Hinweis unterscheidet jetzt ehrlich nach Format (DOCX strukturerhaltend
+    // Best-Effort; PDF reiner Textimport) — beide Formate bleiben benannt.
+    expect(deHint).toMatch(/DOCX/);
+    expect(deHint).toMatch(/PDF/);
     expect(
       String(i18n.getResource("de", "translation", CAPTURE_FILE_TEXT.supportedFormats)),
     ).toMatch(/TXT.*DOCX.*PDF.*Bilder/i);

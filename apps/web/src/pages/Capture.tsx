@@ -83,6 +83,7 @@ import {
   type FileDraftQueue,
   type FileImportMode,
   type SelectableExtractPoint,
+  type WholeDocumentSourceKind,
   advanceFileQueue,
   buildFileQueue,
   createWholeDocumentDraft,
@@ -134,6 +135,7 @@ import {
   isTextDocument,
   isWordDocument,
   readDocxFile,
+  readDocxRich,
   readFileAsDataUrl,
   readPdfFile,
   readTextFile,
@@ -402,6 +404,12 @@ export function Capture(): JSX.Element {
   // sichtbare Entwurfs-Warteschlange. Nichts wird automatisch gespeichert.
   const [fileName, setFileName] = useState<string | null>(null);
   const [fileText, setFileText] = useState("");
+  // WP-D1/WP-D4: strukturerhaltendes DOCX-HTML (für den Ganzdokument-Modus) + Formatkennung für die
+  // ehrliche Import-Quittung. null = keine Datei bzw. reiner Textpfad ohne Rich-Anteil.
+  const [fileRich, setFileRich] = useState<{
+    html: string | null;
+    kind: WholeDocumentSourceKind;
+  } | null>(null);
   const [fileImageUrl, setFileImageUrl] = useState<string | null>(null); // OCR-Kandidat (nur auf Klick)
   const [fileBusy, setFileBusy] = useState(false);
   const [fileQuery, setFileQuery] = useState("");
@@ -570,6 +578,7 @@ export function Capture(): JSX.Element {
           setFilePoints(null);
           setFileName(null);
           setFileText("");
+          setFileRich(null);
           setFileQuery("");
         }
       }
@@ -580,7 +589,14 @@ export function Capture(): JSX.Element {
   // KW-W2-01: bewusstes Ganzdokument-MVP. Dieser Weg erzeugt genau EINEN Entwurf über die
   // bestehende Draft-Route; kein KO, keine Validierung, keine KI-Strukturierung.
   const fileWholeDraft = useMutation({
-    mutationFn: (input: { fileName: string; text: string }) =>
+    // WP-D1/WP-D4: bei DOCX reist das strukturerhaltende HTML mit (Server sanitisiert autoritativ);
+    // sourceKind steuert den ehrlichen Format-Hinweis im Quelle-Blockquote.
+    mutationFn: (input: {
+      fileName: string;
+      text: string;
+      html?: string;
+      sourceKind?: WholeDocumentSourceKind;
+    }) =>
       createWholeDocumentDraft({ ...input, locale: i18n.language }, (payload) =>
         endpoints.drafts.create(payload),
       ),
@@ -599,6 +615,7 @@ export function Capture(): JSX.Element {
       });
       setFileName(null);
       setFileText("");
+      setFileRich(null);
       setFileQuery("");
       setNotice(t(CAPTURE_FILE_TEXT.wholeSaved, { name: input.fileName }));
       push("success", t(CAPTURE_FILE_TEXT.wholeSaved, { name: input.fileName }));
@@ -684,6 +701,7 @@ export function Capture(): JSX.Element {
       setFilePoints(null);
       setFileName(null);
       setFileText("");
+      setFileRich(null);
       setFileQuery("");
     }
     setAppendPts(null);
@@ -864,6 +882,7 @@ export function Capture(): JSX.Element {
           setFilePoints(null);
           setFileName(null);
           setFileText("");
+          setFileRich(null);
           setFileQuery("");
         }
       }
@@ -1052,6 +1071,7 @@ export function Capture(): JSX.Element {
   const cancelFileImport = (): void => {
     setFileName(null);
     setFileText("");
+    setFileRich(null);
     setFileImageUrl(null);
     setFileBusy(false);
     setFileQuery("");
@@ -1153,6 +1173,7 @@ export function Capture(): JSX.Element {
           setFilePoints(null);
           setFileName(null);
           setFileText("");
+          setFileRich(null);
           setFileQuery("");
         }
       },
@@ -1361,6 +1382,7 @@ export function Capture(): JSX.Element {
     setFileWholeDraftSaved(null);
     setFileImageUrl(null);
     setFileText("");
+    setFileRich(null);
     setErr(null);
     setFileName(f.name);
     setFileBusy(true);
@@ -1372,10 +1394,21 @@ export function Capture(): JSX.Element {
         return;
       }
       let text = "";
-      if (isTextDocument(f) || isWordDocument(f)) {
-        text = isWordDocument(f) ? await readDocxFile(f) : await readTextFile(f);
+      let rich: { html: string | null; kind: WholeDocumentSourceKind } = {
+        html: null,
+        kind: "text",
+      };
+      if (isWordDocument(f)) {
+        // WP-D1: DOCX strukturerhaltend — HTML (Überschriften/Listen/Tabellen/Bilder, Best-Effort)
+        // für den Ganzdokument-Modus, Klartext weiterhin für die KI-Punkte-Extraktion.
+        const docx = await readDocxRich(f);
+        text = docx.text;
+        rich = { html: docx.html, kind: "docx" };
+      } else if (isTextDocument(f)) {
+        text = await readTextFile(f);
       } else if (isPdfDocument(f)) {
         text = await readPdfFile(f);
+        rich = { html: null, kind: "pdf" };
       } else {
         setFileName(null);
         setNotice(null);
@@ -1384,13 +1417,29 @@ export function Capture(): JSX.Element {
       }
       if (text.trim().length === 0) {
         setNotice(null);
-        setErr(t(CAPTURE_FILE_TEXT.empty, { name: f.name }));
+        // WP-D4: bei PDFs ehrlich auf die fehlende Textebene hinweisen — OHNE falsche OCR-Hoffnung
+        // (eine PDF-OCR existiert nicht).
+        setErr(
+          t(rich.kind === "pdf" ? CAPTURE_FILE_TEXT.emptyPdf : CAPTURE_FILE_TEXT.empty, {
+            name: f.name,
+          }),
+        );
         return;
       }
       setFileText(text);
+      setFileRich(rich);
       // SCRUM-409: ehrliche Import-Quittung — Dateiname + Umfang (Zeichen; Seiten gibt der
       // Text-Extraktor nicht her, also wird auch keine Seitenzahl behauptet).
-      setNotice(t(CAPTURE_FILE_TEXT.loadedStats, { name: f.name, chars: text.length }));
+      // WP-D4: plus formatabhängige Format-Quittung (DOCX: Struktur+Bilder Best-Effort; PDF: nur Text).
+      const formatNote =
+        rich.kind === "docx"
+          ? ` ${t(CAPTURE_FILE_TEXT.importNoteDocx)}`
+          : rich.kind === "pdf"
+            ? ` ${t(CAPTURE_FILE_TEXT.importNotePdf)}`
+            : "";
+      setNotice(
+        `${t(CAPTURE_FILE_TEXT.loadedStats, { name: f.name, chars: text.length })}${formatNote}`,
+      );
     } catch {
       setFileName(null);
       setNotice(null);
@@ -2410,7 +2459,12 @@ export function Capture(): JSX.Element {
                               if (!fileName) {
                                 return;
                               }
-                              fileWholeDraft.mutate({ fileName, text: fileText });
+                              fileWholeDraft.mutate({
+                                fileName,
+                                text: fileText,
+                                ...(fileRich?.html ? { html: fileRich.html } : {}),
+                                ...(fileRich ? { sourceKind: fileRich.kind } : {}),
+                              });
                             }}
                           >
                             {fileWholeDraft.isPending ? (
