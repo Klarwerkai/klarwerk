@@ -11018,3 +11018,17 @@ Backend-/PMO-Bündel SCRUM-439/438/436/442 sowie der reguläre Backlog 435/431/4
 **Git-Status:** d88c48e (+ dieser Doku-Commit); Baum sauber; kein Push.
 **Jira-Kommentar-Vorschlag:** auf SCRUM-469 verankern: WP-A3 gebaut, Gates grün, wartet auf Mac-Integrationslauf + ben.
 **Nächster Schritt:** Patch-Lieferung an Pedi (_relay/patches3), ein Copy-Paste-Block (git am + test:integration), dann ben-Prompt.
+
+---
+
+**Datum:** 2026-07-19 (nachmittags, II)
+**Ticket:** SCRUM-510 (Import-Aktivierung) + Addon-Live-Schaltung — Fix-Slice WP-E
+**Änderung:** (1) Prozess-Crash `ERR_HTTP_HEADERS_SENT` behoben: beide app-globalen onSend-Hooks (X-Robots in server.ts, Addin-Schicht-2 in addin-static-routes.ts) von async auf synchronen Callback-Stil — schließt das wrap-thenable-Doppel-Send-Fenster APP-WEIT (betraf jeden Handler mit `reply.send(); return;`, z. B. Auth-Login/Register, sobald KLARWERK_ADDON_API=1 den zweiten async-Hook registrierte). (2) Import-Route: alle Sende-Pfade mit `return reply`. (3) Beobachtbarkeit: `catch (err)` loggt jetzt die bereits redigierte Fehlermeldung (`[confluence-import] fehlgeschlagen: …`) — nie Stack/cause. (4) `_links.next`-Paginierung wird gegen baseUrl inkl. /wiki aufgelöst (vorher: Folgeseite traf Jira-Namensraum → 404). (5) Harness-Correction-Log-Eintrag.
+**Gebaut:** Hand (Account A, claude-fable-5) via Kopf-Automatik; Diagnose zweistufig (erste Hypothese durch eigene rote Repro-Tests falsifiziert — Tests haben die echte systemische Ursache erzwungen).
+**Getestet:** tools/check GRÜN: 314 Testdateien / 2212 Tests (+5 neue: Crash-Repro 502-Pfad, Guard-Pfad, Logging, Redaction, /wiki-Pagination).
+**Nicht ausführbare Checks + Grund:** test:integration (Docker nur auf Pedis Mac); Live-Verifikation des Import-502 erst nach Deploy (neues Log entscheidet zwischen Netz-/DNS-Kandidaten, falls 502 bleibt).
+**Offen:** Pedi: git am patches4 + test:integration; ben-Check (Direktkanal); Pedi: Push → Coolify → Import-Dry-Run-Neuversuch durch Kopf.
+**Risiko:** Hook-Umstellung ist byte-/semantikgleich, aber betrifft ALLE Antworten — durch 2212 Tests + gezielte Repro-Tests gepinnt. Bis zum Deploy crasht Prod weiterhin bei non-2xx-Antworten unter aktivem Addon-Flag (Workaround falls nötig: KLARWERK_ADDON_API=0 + Redeploy).
+**Git-Status:** 704cc7e (+ dieser Doku-Commit); Baum sauber; kein Push.
+**Jira-Kommentar-Vorschlag:** auf SCRUM-469 nach ben-Check verankern.
+**Nächster Schritt:** Patches an Pedi, ein Copy-Paste-Block, dann ben.
