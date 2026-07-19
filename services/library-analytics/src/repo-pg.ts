@@ -20,6 +20,18 @@ import type { ImportCandidate } from "./types";
 //      zum Review, ältere werden entfernt. So SCHEITERT der Start nie mehr an vorhandenen Dubletten;
 //      der „laut statt still"-Gedanke bleibt als PG-RAISE-NOTICE erhalten. Rein additiv + idempotent
 //      (Re-Run: keine Dubletten mehr → 0 Löschungen, Index existiert bereits → No-op).
+// SCRUM-510 (WP-B): Die CAST-SICHERE Expression aus (b) griff nur bei NEU angelegter Spalte — Bestands-
+// instanzen aus der Zeit VOR (b) (Commit 0901549) behielten die alte, cast-unsichere Generated-Expression
+// (COALESCE(...::int, 1)) unverändert, weil `ADD COLUMN IF NOT EXISTS` bei bereits vorhandener Spalte ein
+// No-op ist. Dort crasht ein INSERT mit nicht-numerischer sourceVersion (z. B. "v3") weiterhin am
+// Postgres-Cast. Der folgende Block erkennt das per pg_attrdef/pg_get_expr (information_schema liefert
+// Generated-Expressions nicht) und heilt EINMALIG: DROP COLUMN CASCADE reißt die alte Spalte samt allen
+// darauf gebauten Objekten (hier: der partielle Unique-Index) mit; die nachfolgenden ADD-COLUMN/
+// CREATE-INDEX-Schritte unten legen beides mit der sicheren Expression neu an. Läuft in derselben
+// impliziten Transaktion wie der Rest der Migration (Postgres' Simple-Query-Protokoll wrapped ein
+// mehrstatement-Query atomar) und ist idempotent: nach der Heilung trägt die Spalte die sichere
+// Expression, ein Re-Run erkennt "COALESCE" nicht mehr und ist ein No-op. Neuinstallationen sind
+// unberührt (source_version existiert dort noch nicht → Erkennung liefert NULL → kein Trigger).
 export const IMPORT_CANDIDATES_SCHEMA = `
 CREATE TABLE IF NOT EXISTS import_candidates (
   id text PRIMARY KEY,
@@ -28,6 +40,29 @@ CREATE TABLE IF NOT EXISTS import_candidates (
 ALTER TABLE import_candidates
   ADD COLUMN IF NOT EXISTS external_id text
   GENERATED ALWAYS AS (data->'item'->>'externalId') STORED;
+DO $$
+DECLARE
+  legacy_expr text;
+  dependent_indexes text;
+BEGIN
+  SELECT pg_get_expr(d.adbin, d.adrelid) INTO legacy_expr
+  FROM pg_attribute a
+  JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+  WHERE a.attrelid = 'import_candidates'::regclass
+    AND a.attname = 'source_version'
+    AND NOT a.attisdropped;
+
+  IF legacy_expr LIKE '%COALESCE%' THEN
+    SELECT string_agg(DISTINCT i.indexrelid::regclass::text, ', ') INTO dependent_indexes
+    FROM pg_index i
+    JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attname = 'source_version'
+    WHERE i.indrelid = 'import_candidates'::regclass
+      AND a.attnum = ANY(i.indkey);
+
+    RAISE NOTICE 'import_candidates: alte cast-unsichere source_version-Expression erkannt — Spalte wird neu aufgebaut, abhängige Indizes (%) folgen (SCRUM-510 WP-B)', COALESCE(dependent_indexes, '-');
+    ALTER TABLE import_candidates DROP COLUMN source_version CASCADE;
+  END IF;
+END $$;
 ALTER TABLE import_candidates
   ADD COLUMN IF NOT EXISTS source_version integer
   GENERATED ALWAYS AS (

@@ -32,6 +32,25 @@ ALTER TABLE import_candidates
   GENERATED ALWAYS AS (data->>'status') STORED;
 `;
 
+// SCRUM-510 (WP-B): Die DDL, wie sie in Commit 0901549 ausgeliefert wurde — VOR der cast-sicheren
+// Expression aus (b). source_version castet dort bedingungslos (nur COALESCE gegen NULL, nicht gegen
+// nicht-numerische Strings). Simuliert eine Bestandsinstanz, die noch nie über WP-B migriert wurde.
+const LEGACY_COLUMNS_ONLY_DDL = `
+CREATE TABLE IF NOT EXISTS import_candidates (
+  id text PRIMARY KEY,
+  data jsonb NOT NULL
+);
+ALTER TABLE import_candidates
+  ADD COLUMN IF NOT EXISTS external_id text
+  GENERATED ALWAYS AS (data->'item'->>'externalId') STORED;
+ALTER TABLE import_candidates
+  ADD COLUMN IF NOT EXISTS source_version integer
+  GENERATED ALWAYS AS (COALESCE((data->'item'->>'sourceVersion')::int, 1)) STORED;
+ALTER TABLE import_candidates
+  ADD COLUMN IF NOT EXISTS review_status text
+  GENERATED ALWAYS AS (data->>'status') STORED;
+`;
+
 function candidate(id: string, over: Partial<ImportItem>, createdAt: string): ImportCandidate {
   const item: ImportItem = {
     title: `T-${id}`,
@@ -167,5 +186,42 @@ describe("SCRUM-510 (WP2): Import-Migration + ON CONFLICT gegen echtes Postgres"
     await repo.update({ ...first, status: "angenommen" });
     const second = candidate("r-2", { externalId: "PR", sourceVersion: 2 }, "2026-01-02");
     expect(await repo.insertIfAbsent(second)).toBe(true);
+  });
+
+  it("SCRUM-510 (WP-B): Bestandsinstanz mit alter cast-unsicherer source_version-Expression wird beim Migrationslauf geheilt", async (ctx) => {
+    const pool = requirePool(ctx);
+    await reset(pool);
+    // Alte DDL (Commit 0901549, vor WP-B) anlegen — simuliert eine Bestandsinstanz, die die Migration
+    // noch nie mit der sicheren CASE-Regex-Expression durchlaufen hat.
+    await pool.query(LEGACY_COLUMNS_ONLY_DDL);
+
+    // Die aktuelle Migration erkennt die alte COALESCE-Expression, baut die Spalte + den davon
+    // abhängigen Unique-Index neu auf — der Lauf selbst darf nicht scheitern.
+    await expect(pool.query(IMPORT_CANDIDATES_SCHEMA)).resolves.toBeDefined();
+
+    // Ein Insert mit nicht-numerischer sourceVersion darf jetzt nicht mehr am Postgres-Cast scheitern.
+    const repo = new PgCandidateRepo(pool);
+    const bad = candidate(
+      "v3-cand",
+      { externalId: "PV3", sourceVersion: "v3" as unknown as number },
+      "2026-01-01",
+    );
+    await expect(repo.insert(bad)).resolves.toBeUndefined();
+    const row = await pool.query("SELECT source_version FROM import_candidates WHERE id='v3-cand'");
+    expect(row.rows[0].source_version).toBe(1); // Fallback statt Cast-Fehler
+
+    // Der wiederaufgebaute Unique-Index wirkt weiterhin: derselbe externalId+source_version(=1
+    // per Fallback) kollidiert über insertIfAbsent statt eine Dublette zu erzeugen.
+    const dup = candidate(
+      "v3-cand-2",
+      { externalId: "PV3", sourceVersion: "v3" as unknown as number },
+      "2026-01-02",
+    );
+    expect(await repo.insertIfAbsent(dup)).toBe(false);
+
+    // Idempotenz: ein zweiter Migrationslauf gegen die bereits geheilte Spalte ist ein No-op, kein Fehler.
+    await expect(pool.query(IMPORT_CANDIDATES_SCHEMA)).resolves.toBeDefined();
+    const count = await pool.query("SELECT count(*)::int AS n FROM import_candidates");
+    expect(count.rows[0].n).toBe(1); // "dup" wurde nicht eingefügt (kollidiert), Heilung fügte nichts hinzu
   });
 });
