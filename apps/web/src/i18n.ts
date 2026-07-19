@@ -950,12 +950,16 @@ const de = {
   "capture.file.emptyPdf":
     "In „{{name}}“ wurde kein Text gefunden — ein gescanntes PDF ohne Textebene wird noch nicht unterstützt.",
   "capture.file.pdfTruncated": "Nur die ersten {{count}} Seiten importiert.",
-  "capture.file.imagesDropped":
-    "{{count}} Bilder wurden wegen Größe nicht in den Text übernommen — das vollständige Original liegt im Anhang.",
-  "capture.file.imagesCompressed":
-    "Bilder wurden für die Textansicht komprimiert; das unveränderte Original liegt im Anhang.",
+  "capture.file.imagesKept":
+    "{{compressed}} Bilder für die Textansicht komprimiert übernommen; das unveränderte Original liegt im Anhang.",
+  "capture.file.imagesKeptDropped":
+    "{{compressed}} Bilder komprimiert übernommen, {{dropped}} wegen Größe weggelassen; das unveränderte Original liegt im Anhang.",
   "capture.file.imagesNoOriginal":
-    "Bilder wurden für die Textansicht komprimiert; das Original konnte nicht als Anhang gesichert werden.",
+    "{{compressed}} Bilder für die Textansicht komprimiert; das Original konnte NICHT als Anhang gesichert werden.",
+  "capture.file.imagesLost":
+    "{{compressed}} Bilder komprimiert, {{dropped}} weggelassen; das Original konnte NICHT gesichert werden — {{dropped}} Bilder sind verloren.",
+  "capture.file.tooLargeForImport":
+    "Das Dokument ist auch nach Bildkompression zu groß für den Textimport — bitte kleiner aufteilen. Das Original bleibt unberührt.",
   "capture.file.importNote.docx":
     "Struktur und Bilder übernommen (Best-Effort) — exaktes Layout kann abweichen.",
   "capture.file.importNote.pdf":
@@ -3984,12 +3988,16 @@ const en: typeof de = {
   "capture.file.emptyPdf":
     "No text found in “{{name}}” — a scanned PDF without a text layer is not supported yet.",
   "capture.file.pdfTruncated": "Only the first {{count}} pages were imported.",
-  "capture.file.imagesDropped":
-    "{{count}} images were not carried into the text due to size — the full original is in the attachment.",
-  "capture.file.imagesCompressed":
-    "Images were compressed for the text view; the unchanged original is in the attachment.",
+  "capture.file.imagesKept":
+    "{{compressed}} images compressed into the text view; the unchanged original is in the attachment.",
+  "capture.file.imagesKeptDropped":
+    "{{compressed}} images compressed, {{dropped}} left out due to size; the unchanged original is in the attachment.",
   "capture.file.imagesNoOriginal":
-    "Images were compressed for the text view; the original could not be saved as an attachment.",
+    "{{compressed}} images compressed for the text view; the original could NOT be saved as an attachment.",
+  "capture.file.imagesLost":
+    "{{compressed}} images compressed, {{dropped}} left out; the original could NOT be saved — {{dropped}} images are lost.",
+  "capture.file.tooLargeForImport":
+    "Even after image compression the document is too large for text import — please split it up. The original stays untouched.",
   "capture.file.importNote.docx":
     "Structure and images imported (best effort) — exact layout may differ.",
   "capture.file.importNote.pdf":
@@ -6975,12 +6983,16 @@ const nl: typeof de = {
   "capture.file.emptyPdf":
     "In „{{name}}“ is geen tekst gevonden — een gescande PDF zonder tekstlaag wordt nog niet ondersteund.",
   "capture.file.pdfTruncated": "Alleen de eerste {{count}} pagina's geïmporteerd.",
-  "capture.file.imagesDropped":
-    "{{count}} afbeeldingen zijn vanwege de grootte niet in de tekst overgenomen — het volledige origineel zit in de bijlage.",
-  "capture.file.imagesCompressed":
-    "Afbeeldingen zijn voor de tekstweergave gecomprimeerd; het ongewijzigde origineel zit in de bijlage.",
+  "capture.file.imagesKept":
+    "{{compressed}} afbeeldingen gecomprimeerd in de tekstweergave; het ongewijzigde origineel zit in de bijlage.",
+  "capture.file.imagesKeptDropped":
+    "{{compressed}} afbeeldingen gecomprimeerd, {{dropped}} weggelaten vanwege de grootte; het ongewijzigde origineel zit in de bijlage.",
   "capture.file.imagesNoOriginal":
-    "Afbeeldingen zijn voor de tekstweergave gecomprimeerd; het origineel kon niet als bijlage worden veiliggesteld.",
+    "{{compressed}} afbeeldingen gecomprimeerd voor de tekstweergave; het origineel kon NIET als bijlage worden veiliggesteld.",
+  "capture.file.imagesLost":
+    "{{compressed}} afbeeldingen gecomprimeerd, {{dropped}} weggelaten; het origineel kon NIET worden veiliggesteld — {{dropped}} afbeeldingen zijn verloren.",
+  "capture.file.tooLargeForImport":
+    "Zelfs na beeldcompressie is het document te groot voor tekstimport — splits het op. Het origineel blijft ongewijzigd.",
   "capture.file.importNote.docx":
     "Structuur en afbeeldingen overgenomen (best effort) — de exacte layout kan afwijken.",
   "capture.file.importNote.pdf":

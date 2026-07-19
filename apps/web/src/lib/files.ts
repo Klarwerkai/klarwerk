@@ -95,8 +95,9 @@ export async function readDocxFile(file: File): Promise<string> {
 // lesbar; JPEG ~0.75 drückt die Bytes stark. Für extrem schwere Bilder greifen fallende Qualitätsstufen.
 const IMAGE_MAX_EDGE_PX = 1600;
 const JPEG_QUALITY_STEPS: readonly number[] = [0.75, 0.6, 0.45, 0.3];
-// Pro-Bild-Byte-Ziel: klein genug, dass viele Bilder ins Gesamtbudget passen; groß genug für Lesbarkeit.
-const PER_IMAGE_TARGET_BYTES = 180_000;
+// WP-D1d: Pro-Bild-Byte-Ziel — mit dem 5-MiB-Ceiling kleiner gewählt (120 KB), damit viele Bilder ins
+// 3,5-MiB-Gesamtbudget passen und BEHALTEN werden; groß genug für lesbare Diagramme.
+const PER_IMAGE_TARGET_BYTES = 120_000;
 
 // WP-D1/WP-D1c: eingebettetes data:image-Bild AGGRESSIV re-encodieren (Canvas → JPEG), dimensions- UND
 // byte-getrieben — Bilder werden komprimiert und BEHALTEN, nicht weggeworfen. Große Kanten werden auf

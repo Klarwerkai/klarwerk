@@ -85,6 +85,7 @@ import { CAPTURE_FLOW_TEXT } from "../lib/captureFlowGuide";
 // PMO-FEA-0006: „Aus Datei" — Punkteliste + Entwurfs-Warteschlange (DOM-freie Logik).
 import {
   CAPTURE_FILE_TEXT,
+  DraftPayloadTooLargeError,
   type FileDraftQueue,
   type FileImportMode,
   type SelectableExtractPoint,
@@ -93,7 +94,9 @@ import {
   buildFileQueue,
   currentQueuePoint,
   draftFromPoint,
+  draftPayloadWithinLimit,
   fileSourcePayload,
+  importImageNotice,
   mergeSelectedIntoOne,
   queueProgress,
   selectablePoints,
@@ -424,12 +427,14 @@ export function Capture(): JSX.Element {
   // nur EINMAL hochlädt und danach dieselbe objectId referenziert.
   const [fileOriginal, setFileOriginal] = useState<OriginalDocument | null>(null);
   const fileOriginalRef = useRef<OriginalRefCache>({ ref: null });
-  // WP-D1c: Bild-Bilanz des DOCX-Imports (gesamt/komprimiert-behalten/als Notbremse weggelassen). Wird
-  // beim Lesen gesetzt und ERST beim Speichern — gekoppelt an den echten Anhang-Erfolg — ehrlich gemeldet
-  // (nur dann „Original im Anhang", wenn der Anhang wirklich gesichert wurde).
-  const [fileImageInfo, setFileImageInfo] = useState<{ total: number; dropped: number } | null>(
-    null,
-  );
+  // WP-D1d: Bild-Bilanz des DOCX-Imports mit EXPLIZITEN Zählern (gesamt / tatsächlich komprimiert / als
+  // Notbremse weggelassen). Beim Lesen gesetzt und ERST beim Speichern — gekoppelt an den ECHTEN
+  // Anhang-Erfolg — ehrlich gemeldet (nur dann „Original im Anhang", wenn der Upload wirklich gelang).
+  const [fileImageInfo, setFileImageInfo] = useState<{
+    total: number;
+    compressed: number;
+    dropped: number;
+  } | null>(null);
   const [fileImageUrl, setFileImageUrl] = useState<string | null>(null); // OCR-Kandidat (nur auf Klick)
   const [fileBusy, setFileBusy] = useState(false);
   const [fileQuery, setFileQuery] = useState("");
@@ -622,9 +627,16 @@ export function Capture(): JSX.Element {
       text: string;
       html?: string;
       sourceKind?: WholeDocumentSourceKind;
-    }): Promise<{ draft: Draft; originalFailure: AttachmentFailure | null }> => {
+    }): Promise<{
+      draft: Draft;
+      originalFailure: AttachmentFailure | null;
+      originalAttached: boolean;
+    }> => {
       let payload = wholeDocumentDraftPayload({ ...input, locale: i18n.language });
       let originalFailure: AttachmentFailure | null = null;
+      // WP-D1d (Fix 4): originalAttached ist NUR true, wenn der Upload WIRKLICH gelang — nicht schon,
+      // wenn es keinen Fehler gab (ohne Original bleibt es false). Beweis = erhaltene objectId.
+      let originalAttached = false;
       if (fileOriginal) {
         try {
           const ref = await endpoints.objects.upload({
@@ -634,6 +646,7 @@ export function Capture(): JSX.Element {
             kind: "document",
           });
           fileOriginalRef.current = { ref };
+          originalAttached = true;
           payload = {
             ...payload,
             bodyHtml: `${payload.bodyHtml ?? ""}${fileLinkHtml({
@@ -645,9 +658,14 @@ export function Capture(): JSX.Element {
           originalFailure = { name: fileOriginal.name, reason: classifyUploadError(error) };
         }
       }
-      return { draft: await endpoints.drafts.create(payload), originalFailure };
+      // WP-D1d (Fix 2): den FINALEN, serialisierten Payload in ECHTEN UTF-8-Bytes gegen die Client-Grenze
+      // prüfen (unter dem Server-Ceiling) — statt eines stillen 413 ein ehrlicher, früher Abbruch.
+      if (!draftPayloadWithinLimit(payload)) {
+        throw new DraftPayloadTooLargeError();
+      }
+      return { draft: await endpoints.drafts.create(payload), originalFailure, originalAttached };
     },
-    onSuccess: ({ draft, originalFailure }, input) => {
+    onSuccess: ({ draft, originalFailure, originalAttached }, input) => {
       void qc.invalidateQueries({ queryKey: ["drafts"] });
       setErr(null);
       const savedDraftId =
@@ -669,20 +687,18 @@ export function Capture(): JSX.Element {
       fileOriginalRef.current = { ref: null };
       setFileQuery("");
       const savedNote = t(CAPTURE_FILE_TEXT.wholeSaved, { name: input.fileName });
-      // WP-D1c: ehrliche Bild-Meldung — GEKOPPELT an den echten Anhang-Erfolg. „Original im Anhang" wird
-      // NUR behauptet, wenn der Anhang wirklich gesichert wurde (originalFailure === null).
-      const attachOk = originalFailure === null;
-      const hasImages = imageInfo !== null && imageInfo.total > 0;
-      let imageNote = "";
-      if (hasImages && imageInfo && attachOk) {
-        imageNote =
-          imageInfo.dropped > 0
-            ? ` ${t(CAPTURE_FILE_TEXT.imagesDropped, { count: imageInfo.dropped })}`
-            : ` ${t(CAPTURE_FILE_TEXT.imagesCompressed)}`;
-      } else if (hasImages && imageInfo && !attachOk) {
-        // Kein Anhang → KEINE „im Anhang"-Behauptung; ehrlicher Hinweis, dass das Original NICHT sicher ist.
-        imageNote = ` ${t(CAPTURE_FILE_TEXT.imagesNoOriginal)}`;
-      }
+      // WP-D1d (Fix 4): ehrliche Bild-Meldung mit EXPLIZITEN Zählern über die pure importImageNotice —
+      // „Original im Anhang" NUR bei originalAttached === true (echter Upload-Erfolg, nicht bloß „kein
+      // Fehler"); weggelassene Bilder ohne gesichertes Original werden als VERLOREN benannt.
+      const notice = imageInfo
+        ? importImageNotice({
+            total: imageInfo.total,
+            compressed: imageInfo.compressed,
+            dropped: imageInfo.dropped,
+            originalAttached,
+          })
+        : null;
+      const imageNote = notice ? ` ${t(notice.key, notice.params)}` : "";
       setNotice(`${savedNote}${imageNote}`);
       push("success", savedNote);
       if (!savedDraftId) {
@@ -700,7 +716,16 @@ export function Capture(): JSX.Element {
         push("error", t(key, { name: originalFailure.name }));
       }
     },
-    onError: fail,
+    // WP-D1d (Fix 2): der Client-Payload-Guard wirft DraftPayloadTooLargeError → ehrliche, spezifische
+    // Meldung statt eines stillen 413 (oder der generischen Fehlermeldung).
+    onError: (error: unknown) => {
+      if (error instanceof DraftPayloadTooLargeError) {
+        setErr(t(CAPTURE_FILE_TEXT.tooLargeForImport));
+        push("error", t(CAPTURE_FILE_TEXT.tooLargeForImport));
+        return;
+      }
+      fail(error);
+    },
   });
 
   // Pedi 04.07.: eigentliches Speichern; purgeUnselected bestimmt, ob nicht ausgewählte Punkte
@@ -1514,14 +1539,18 @@ export function Capture(): JSX.Element {
       let pdfTruncatedPages: number | null = null;
       // WP-D1c: Bild-Bilanz des DOCX-Imports — erst beim Speichern (an den Anhang-Erfolg gekoppelt)
       // gemeldet, NICHT hier (zur Lesezeit ist noch nichts angehängt).
-      let imageInfo: { total: number; dropped: number } | null = null;
+      let imageInfo: { total: number; compressed: number; dropped: number } | null = null;
       if (isWordDocument(f)) {
         // WP-D1: DOCX strukturerhaltend — HTML (Überschriften/Listen/Tabellen/Bilder, Best-Effort)
         // für den Ganzdokument-Modus, Klartext weiterhin für die KI-Punkte-Extraktion.
         const docx = await readDocxRich(f);
         text = docx.text;
         rich = { html: docx.html, kind: "docx" };
-        imageInfo = { total: docx.totalImages, dropped: docx.droppedImages };
+        imageInfo = {
+          total: docx.totalImages,
+          compressed: docx.compressedImages,
+          dropped: docx.droppedImages,
+        };
       } else if (isTextDocument(f)) {
         text = await readTextFile(f);
       } else if (isPdfDocument(f)) {

@@ -83,8 +83,15 @@ const IMG_TAG_DATA_RE = /<img\b[^>]*\bsrc="(data:image\/[a-zA-Z0-9.+-]+;base64,[
 
 export interface InlineImageBudgetResult {
   html: string;
-  dropped: number; // Bilder, die als Notbremse (Gesamtbudget erschöpft) NICHT ins bodyHtml kamen
-  total: number; // gesamte data:image-Bilder im Ausgangs-HTML (kept = total - dropped)
+  total: number; // gesamte data:image-Bilder im Ausgangs-HTML
+  kept: number; // im finalen HTML behaltene Bilder (kept = total - dropped)
+  compressed: number; // Bilder, die TATSÄCHLICH re-encodiert wurden (encode änderte die src)
+  dropped: number; // Bilder, die als Notbremse (Budget erschöpft) NICHT ins bodyHtml kamen
+  bytes: number; // ECHTE UTF-8-Bytes des FINALEN HTML (Struktur + Text + Tail + behaltene Bilder)
+  // WP-D1d: true, wenn schon der NICHT-BILD-Anteil (Text/Struktur/Tail) allein das Budget übersteigt —
+  // dann ist das HTML NICHT garantiert unter dem Budget (Text ist nicht droppbar); der Aufrufer muss
+  // ehrlich reagieren (Client-JSON-Guard refust den Request), kein stiller 413.
+  overflow: boolean;
 }
 
 // WP-D1c: ECHTE UTF-8-Bytes (nicht String.length, das UTF-16-Codeeinheiten misst). Zentrale Messung
@@ -93,18 +100,20 @@ export function utf8ByteLength(text: string): number {
   return new TextEncoder().encode(text).length;
 }
 
-// WP-D1c: Byte-Deckel für das gesamte bodyHtml, vom Server-Ceiling (DRAFTS_BODY_LIMIT 25 MiB) mit
-// großem Puffer (JSON-Envelope/Escaping) abgeleitet. Bewusst hier im DOM-FREIEN Modul, damit Node-Tests
-// die Konstante ohne DOM-Globals importieren können; files.ts (DOM-Wrapper) re-exportiert sie.
-export const MAX_INLINE_BODY_HTML_BYTES = 12 * 1024 * 1024;
+// WP-D1d: Byte-Deckel für das gesamte bodyHtml, vom Server-Ceiling (DRAFTS_BODY_LIMIT 5 MiB) mit Puffer
+// für JSON-Envelope/Escaping abgeleitet. 3,5 MiB lässt komfortablen Rand zum 5-MiB-Ceiling (Blockquote,
+// Titel/Statement, Quote-Escaping). DOM-frei, damit Node-Tests es ohne DOM-Globals importieren können;
+// files.ts (DOM-Wrapper) re-exportiert es.
+export const MAX_INLINE_BODY_HTML_BYTES = 3_500_000;
 
-// WP-D1c (bens ROT-Fix): hartes Byte-Budget für das GESAMTE bodyHtml (Struktur + Text + Bilder), in
-// ECHTEN UTF-8-Bytes gemessen. Kern-Use-Case (Pedi): viele technische Dokumente mit vielen Bildern →
-// Bilder werden über `encode` AGGRESSIV komprimiert und BEHALTEN, solange die laufende Gesamtgröße
-// unter `budgetBytes` bleibt. Erst wenn selbst nach Kompression das Gesamtbudget überschritten würde,
-// wird ein Bild als NOTBREMSE weggelassen (das ganze <img>-Element) — verlustarm, weil das ORIGINAL
-// über WP-D2 als Anhang erhalten bleibt. DOM-frei (encode injiziert) → unit-testbar; die Nicht-Bild-
-// Anteile (Text/Struktur) zählen mit, damit das FINALE bodyHtml garantiert unter dem Budget landet.
+// WP-D1d (bens ROT-Fix 1): hartes Byte-Budget für das GESAMTE finale bodyHtml (Struktur + Text + Tail +
+// alle behaltenen Bilder), in ECHTEN UTF-8-Bytes. Vorgehen: erst den NICHT-BILD-Anteil (alle Literale
+// inkl. Tail = das HTML OHNE die <img>-Tags) vorab messen, dann Bilder nur behalten, solange
+// nonImageBytes + Bild-Bytes ≤ Budget bleiben — so ist das FINALE HTML (Tail eingerechnet) garantiert
+// ≤ Budget. Übersteigt schon der Nicht-Bild-Anteil allein das Budget, werden ALLE Bilder als Notbremse
+// entfernt und `overflow: true` gesetzt (Text ist nicht droppbar; der Aufrufer refust ehrlich). Auch der
+// Kein-Bild-Pfad wird hart geprüft (kein ungeprüftes Rückgeben). Kern-Use-Case (Pedi): viele Bilder →
+// über `encode` AGGRESSIV komprimiert und BEHALTEN; Wegwerfen nur als letzte Notbremse.
 export async function applyInlineImageBudget(
   html: string,
   encode: (src: string) => Promise<string>,
@@ -117,39 +126,89 @@ export async function applyInlineImageBudget(
   while ((m = IMG_TAG_DATA_RE.exec(html)) !== null) {
     matches.push({ full: m[0], src: m[1] ?? "", start: m.index, end: IMG_TAG_DATA_RE.lastIndex });
   }
-  if (matches.length === 0) {
-    return { html, dropped: 0, total: 0 };
-  }
-  const parts: string[] = [];
-  let last = 0;
-  // usedBytes = ECHTE UTF-8-Bytes des bisher aufgebauten FINALEN Ausgabe-HTML (Struktur + gehaltene
-  // Bilder). So ist die Summe am Ende garantiert die reale bodyHtml-Größe.
-  let usedBytes = 0;
-  let dropped = 0;
+  // Nicht-Bild-Anteil = alle Literale zwischen/um die Bilder INKL. Tail (das HTML ohne die <img>-Tags).
+  const literals: string[] = [];
+  let cursor = 0;
   for (const match of matches) {
-    const literal = html.slice(last, match.start); // Text/Struktur zwischen den Bildern (nicht droppbar)
-    parts.push(literal);
-    usedBytes += utf8ByteLength(literal);
+    literals.push(html.slice(cursor, match.start));
+    cursor = match.end;
+  }
+  literals.push(html.slice(cursor)); // Tail nach dem letzten Bild — MUSS mitgezählt werden.
+  const nonImageBytes = literals.reduce((sum, lit) => sum + utf8ByteLength(lit), 0);
+
+  // Kein-Bild-Pfad (bens Fix 1): NICHT ungeprüft zurückgeben — hart gegen das Budget prüfen.
+  if (matches.length === 0) {
+    return {
+      html,
+      total: 0,
+      kept: 0,
+      compressed: 0,
+      dropped: 0,
+      bytes: nonImageBytes,
+      overflow: nonImageBytes > budgetBytes,
+    };
+  }
+
+  // Übersteigt schon der reine Text/Struktur-Anteil das Budget → alle Bilder weg, overflow.
+  if (nonImageBytes > budgetBytes) {
+    return {
+      html: literals.join(""),
+      total: matches.length,
+      kept: 0,
+      compressed: 0,
+      dropped: matches.length,
+      bytes: nonImageBytes,
+      overflow: true,
+    };
+  }
+
+  const parts: string[] = [];
+  let usedBytes = nonImageBytes; // der Nicht-Bild-Anteil ist gesetzt und nicht droppbar
+  let kept = 0;
+  let compressed = 0;
+  let dropped = 0;
+  for (let i = 0; i < matches.length; i += 1) {
+    const match = matches[i];
+    if (!match) {
+      continue;
+    }
+    parts.push(literals[i] ?? "");
     const encodedSrc = await encode(match.src);
     const keptTag = match.full.replace(match.src, encodedSrc);
     const tagBytes = utf8ByteLength(keptTag);
     if (usedBytes + tagBytes <= budgetBytes) {
       parts.push(keptTag);
       usedBytes += tagBytes;
+      kept += 1;
+      if (encodedSrc !== match.src) {
+        compressed += 1; // tatsächlich re-encodiert (nicht unverändert)
+      }
     } else {
       dropped += 1; // Notbremse: Bild weglassen — Original bleibt als Anhang (WP-D2).
     }
-    last = match.end;
   }
-  parts.push(html.slice(last));
-  return { html: parts.join(""), dropped, total: matches.length };
+  parts.push(literals[matches.length] ?? ""); // Tail
+  const finalHtml = parts.join("");
+  // Harte Endprüfung (bens Fix 1): die tatsächliche Byte-Größe des FINALEN HTML ist die Wahrheit.
+  const bytes = utf8ByteLength(finalHtml);
+  return {
+    html: finalHtml,
+    total: matches.length,
+    kept,
+    compressed,
+    dropped,
+    bytes,
+    overflow: bytes > budgetBytes,
+  };
 }
 
 export interface DocxRichResult {
   html: string; // strukturerhaltendes HTML (h2/h3, Listen, Tabellen, strong/em, data:image-Bilder)
   text: string; // Klartext — weiterhin nötig für die KI-Punkte-Extraktion
-  totalImages: number; // WP-D1c: eingebettete Bilder insgesamt (komprimiert übernommen = total - dropped)
-  droppedImages: number; // WP-D1c: Bilder, die als Notbremse NICHT ins bodyHtml kamen
+  totalImages: number; // eingebettete Bilder insgesamt
+  compressedImages: number; // WP-D1d: tatsächlich re-encodierte (komprimierte) Bilder
+  droppedImages: number; // Bilder, die als Notbremse NICHT ins bodyHtml kamen
+  htmlOverflow: boolean; // WP-D1d: true, wenn das bodyHtml das Budget trotz Notbremse übersteigt (Text)
 }
 
 // WP-D1: strukturerhaltende Extraktion (HTML + Klartext in EINEM Durchgang über die Engine).
@@ -170,17 +229,28 @@ export async function extractDocxRich(
   let html = mapDocxHeadings(htmlResult.value.trim());
   let droppedImages = 0;
   let totalImages = 0;
+  let compressedImages = 0;
+  let htmlOverflow = false;
   if (opts.mapImage) {
     if (opts.imageBudgetBytes !== undefined) {
       const budgeted = await applyInlineImageBudget(html, opts.mapImage, opts.imageBudgetBytes);
       html = budgeted.html;
       droppedImages = budgeted.dropped;
       totalImages = budgeted.total;
+      compressedImages = budgeted.compressed;
+      htmlOverflow = budgeted.overflow;
     } else {
       html = await mapInlineImages(html, opts.mapImage);
     }
   }
-  return { html, text: textResult.value.trim(), totalImages, droppedImages };
+  return {
+    html,
+    text: textResult.value.trim(),
+    totalImages,
+    compressedImages,
+    droppedImages,
+    htmlOverflow,
+  };
 }
 
 // Reiner Klartext-Extraktionskern (ArrayBuffer → Klartext) — bestehender Vertrag für die

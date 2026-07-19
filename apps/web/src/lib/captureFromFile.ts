@@ -278,6 +278,34 @@ export function wholeDocumentBodyHtml(input: {
   return `${source}${body}`;
 }
 
+// WP-D1d (bens ROT-Fix 2): Client-Grenze für den FINALEN, serialisierten Draft-Payload. Liegt mit
+// Puffer UNTER dem Server-Ceiling (DRAFTS_BODY_LIMIT = 5 MiB, capture-routes.ts): 4,5 MiB lässt Rand für
+// HTTP-Header/Transport, sodass ein clientseitig grün geprüfter Payload den Server-Cap nie überschreitet.
+export const DRAFT_PAYLOAD_LIMIT_BYTES = 4_500_000;
+
+// WP-D1d: dedizierter Fehler, wenn der serialisierte Payload die Client-Grenze übersteigt — der Aufrufer
+// bricht ehrlich ab (spezifische Meldung) statt in einen stillen Server-413 zu laufen.
+export class DraftPayloadTooLargeError extends Error {
+  constructor() {
+    super("DRAFT_PAYLOAD_TOO_LARGE");
+    this.name = "DraftPayloadTooLargeError";
+  }
+}
+
+// WP-D1d: ECHTE UTF-8-Bytes des serialisierten Payloads (JSON.stringify). Pure, DOM-frei, unit-testbar —
+// misst genau das, was Fastify als Body-Bytes gegen DRAFTS_BODY_LIMIT prüft (kein UTF-16-Trugschluss).
+export function draftPayloadByteLength(payload: DraftPayload): number {
+  return new TextEncoder().encode(JSON.stringify(payload)).length;
+}
+
+// WP-D1d: bleibt der serialisierte Payload unter der Client-Grenze? true → sicher sendbar.
+export function draftPayloadWithinLimit(
+  payload: DraftPayload,
+  limitBytes: number = DRAFT_PAYLOAD_LIMIT_BYTES,
+): boolean {
+  return draftPayloadByteLength(payload) <= limitBytes;
+}
+
 export function wholeDocumentDraftPayload(input: {
   fileName: string;
   text: string;
@@ -327,12 +355,16 @@ export const CAPTURE_FILE_TEXT = {
   emptyPdf: "capture.file.emptyPdf",
   // WP-D3: ehrlicher Hinweis, wenn der Seiten-Cap (MAX_PDF_PAGES) griff — nur die ersten N Seiten gelesen.
   pdfTruncated: "capture.file.pdfTruncated",
-  // WP-D1b/WP-D1c: Notbremse — Bilder, die selbst nach Kompression nicht ins bodyHtml passten (Original im Anhang).
-  imagesDropped: "capture.file.imagesDropped",
-  // WP-D1c: Bilder komprimiert BEHALTEN; Original unverändert im Anhang (nur bei erfolgreichem Anhang).
-  imagesCompressed: "capture.file.imagesCompressed",
-  // WP-D1c: Bilder komprimiert, aber Anhang FEHLGESCHLAGEN → KEINE „im Anhang"-Behauptung.
+  // WP-D1d: Bilder komprimiert BEHALTEN, Original im Anhang (Anhang WIRKLICH gelungen).
+  imagesKept: "capture.file.imagesKept",
+  // WP-D1d: einige komprimiert, einige als Notbremse weggelassen — Original im Anhang gesichert.
+  imagesKeptDropped: "capture.file.imagesKeptDropped",
+  // WP-D1d: komprimiert, aber Anhang FEHLGESCHLAGEN → KEINE „im Anhang"-Behauptung.
   imagesNoOriginal: "capture.file.imagesNoOriginal",
+  // WP-D1d: Bilder weggelassen UND Anhang fehlgeschlagen → weggelassene Bilder sind VERLOREN (Zahl nennen).
+  imagesLost: "capture.file.imagesLost",
+  // WP-D1d: Payload überschreitet die Client-Grenze → ehrlicher Abbruch statt stillem 413.
+  tooLargeForImport: "capture.file.tooLargeForImport",
   // WP-D4: formatabhängige Import-Quittung (DOCX: Struktur+Bilder Best-Effort; PDF: nur Text).
   importNoteDocx: "capture.file.importNote.docx",
   importNotePdf: "capture.file.importNote.pdf",
@@ -401,3 +433,35 @@ export const CAPTURE_FILE_TEXT = {
   purgeUnselectedYes: "capture.file.purgeUnselectedYes",
   purgeUnselectedKeep: "capture.file.purgeUnselectedKeep",
 } as const;
+
+// WP-D1d (Fix 4): PURE Auswahl der ehrlichen Bild-Meldung aus den EXPLIZITEN Zählern. „Original im
+// Anhang" wird NUR bei originalAttached === true behauptet (echter Upload-Erfolg). Ohne gesichertes
+// Original sind weggelassene Bilder VERLOREN — dann wird das klar benannt. Kein Bild → null.
+export interface ImportImageNoticeInput {
+  total: number;
+  compressed: number;
+  dropped: number;
+  originalAttached: boolean;
+}
+
+export interface ImportImageNotice {
+  key: string; // i18n-Schlüssel (aus CAPTURE_FILE_TEXT)
+  params: { compressed: number; dropped: number };
+}
+
+export function importImageNotice(input: ImportImageNoticeInput): ImportImageNotice | null {
+  if (input.total <= 0) {
+    return null;
+  }
+  const params = { compressed: input.compressed, dropped: input.dropped };
+  if (input.originalAttached) {
+    return {
+      key: input.dropped > 0 ? CAPTURE_FILE_TEXT.imagesKeptDropped : CAPTURE_FILE_TEXT.imagesKept,
+      params,
+    };
+  }
+  return {
+    key: input.dropped > 0 ? CAPTURE_FILE_TEXT.imagesLost : CAPTURE_FILE_TEXT.imagesNoOriginal,
+    params,
+  };
+}

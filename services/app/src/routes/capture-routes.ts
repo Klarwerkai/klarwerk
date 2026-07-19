@@ -41,13 +41,14 @@ async function requireVisibleDraft(
   return draft;
 }
 
-// WP-D1c („viele Bilder BEHALTEN, nicht wegwerfen"): expliziter, dokument-tauglicher bodyLimit für die
-// Draft-schreibenden Routen (POST/PUT /api/drafts) — statt des globalen 1-MiB-Fastify-Defaults (Muster
-// OBJECTS_BODY_LIMIT, object-routes.ts). Beide Routen sind auth-geschützt (ko.create). Großzügig, weil
-// der Dokument-Import mit VIELEN eingebetteten Bildern der Kern-Use-Case ist (technische Handbücher);
-// die Bilder werden clientseitig AGGRESSIV komprimiert (files.ts) — dieser Cap ist der Deckel, NICHT das
-// Ziel. Über dem Cap gibt es ein kontrolliertes 413 statt des viel zu engen 1-MiB-Defaults.
-export const DRAFTS_BODY_LIMIT = 25 * 1024 * 1024; // 25 MiB
+// WP-D1d (Pedi-Entscheid): expliziter bodyLimit für die Draft-schreibenden Routen (POST/PUT
+// /api/drafts). Ceiling = 5 MiB — bewusst KLEIN (kleine Pre-Auth-Parser-Fläche; später erhöhbar),
+// aber deutlich über dem 1-MiB-Default, damit ein Dokument-Import mit VIELEN clientseitig komprimierten
+// Bildern durchgeht. Über dem Cap: kontrolliertes 413. bens ROT-Fix 3: die vergrößerte Parser-Fläche
+// ist zusätzlich durch einen AUTH-Guard VOR dem Body-Parsing abgesichert (onRequest, s.
+// requireAuthedBeforeParse) — ein anonymer Request wird mit 401 abgewiesen, BEVOR bis zu 5 MiB Body
+// gelesen/geparst werden. 5 MiB ist ohnehin eine kleine Fläche; die Abwägung ist bewusst konservativ.
+export const DRAFTS_BODY_LIMIT = 5 * 1024 * 1024; // 5 MiB
 
 // Entwürfe (§2.4 / FR-CAP). Admin sieht den gemeinsamen Pool; normale Nutzer nur eigene Entwürfe.
 // Autor bleibt erhalten; Promote → KO.
@@ -81,6 +82,20 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
     semanticPrefilter,
   } = deps;
 
+  // WP-D1d (bens ROT-Fix 3): AUTH VOR BODY-PARSING. Fastify parst den Body (bis DRAFTS_BODY_LIMIT) in
+  // der preValidation/-Handler-Phase — VOR guards.requirePermission im Handler. Dieser onRequest-Hook
+  // läuft VOR dem Parsing: ein anonymer/ungültiger Request wird sofort mit 401 abgewiesen, sodass die
+  // vergrößerte Parser-Fläche nicht für eine anonyme Flut offensteht. Der Handler prüft danach zusätzlich
+  // die konkrete Berechtigung (ko.create) — Defense-in-Depth.
+  const requireAuthedBeforeParse = async (
+    request: Parameters<Guards["requireUser"]>[0],
+    reply: Parameters<Guards["requireUser"]>[1],
+  ): Promise<void> => {
+    // requireUser sendet bei fehlender/ungültiger Session 401. Fastify stoppt den Lifecycle dann anhand
+    // reply.sent VOR dem Body-Parsing — die 5-MiB-Parser-Fläche steht anonym nicht offen.
+    await guards.requireUser(request, reply);
+  };
+
   return async (app) => {
     app.get("/api/drafts", async (request, reply) => {
       const user = await guards.requirePermission("ko.create", request, reply);
@@ -92,7 +107,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
 
     app.post<{ Body: DraftPayload }>(
       "/api/drafts",
-      { bodyLimit: DRAFTS_BODY_LIMIT },
+      { bodyLimit: DRAFTS_BODY_LIMIT, onRequest: requireAuthedBeforeParse },
       async (request, reply) => {
         const user = await guards.requirePermission("ko.create", request, reply);
         if (!user) {
@@ -120,9 +135,9 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
 
     app.put<{ Params: { id: string }; Body: DraftPayload }>(
       "/api/drafts/:id",
-      // WP-D1c: derselbe dokument-taugliche Cap wie POST — ein bildreicher Entwurf wird auch beim
-      // Weiterbearbeiten/Speichern gesendet.
-      { bodyLimit: DRAFTS_BODY_LIMIT },
+      // WP-D1c/WP-D1d: derselbe dokument-taugliche Cap + Auth-vor-Parsing wie POST — ein bildreicher
+      // Entwurf wird auch beim Weiterbearbeiten/Speichern gesendet.
+      { bodyLimit: DRAFTS_BODY_LIMIT, onRequest: requireAuthedBeforeParse },
       async (request, reply) => {
         const user = await guards.requirePermission("ko.create", request, reply);
         if (!user) {

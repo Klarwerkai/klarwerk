@@ -27,9 +27,26 @@ function bigBodyHtml(): string {
   return `<h2>Handbuch</h2>${img.repeat(10)}`;
 }
 
-describe("WP-D1c: /api/drafts akzeptiert dokument-große Bodies", () => {
-  it("Konstante ist dokument-tauglich (deutlich über 1 MiB)", () => {
-    expect(DRAFTS_BODY_LIMIT).toBe(25 * 1024 * 1024);
+describe("WP-D1d: /api/drafts akzeptiert dokument-große Bodies (5-MiB-Ceiling)", () => {
+  it("Ceiling = 5 MiB (klein, aber deutlich über 1 MiB)", () => {
+    expect(DRAFTS_BODY_LIMIT).toBe(5 * 1024 * 1024);
+  });
+
+  it("anonymer POST mit Body → 401 (Auth VOR Body-Parsing)", async () => {
+    const app = buildApp(buildServices());
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/drafts",
+      payload: {
+        title: "Anon",
+        statement: "x",
+        type: "best_practice",
+        category: "Allgemein",
+        bodyHtml: bigBodyHtml(),
+        origin: "frontdoor",
+      },
+    });
+    expect(res.statusCode).toBe(401);
   });
 
   it("POST /api/drafts mit ~2 MiB bodyHtml → 201 (kein 413)", async () => {
