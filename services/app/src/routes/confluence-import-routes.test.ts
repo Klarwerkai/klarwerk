@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConfluenceSourceAdapter } from "../../../confluence";
 import { buildApp, buildServices } from "../build-app";
 import { makeGuards } from "../http";
+import { registerNoindexHook } from "../noindex-hook";
 import { confluenceImportRoutes } from "./confluence-import-routes";
 
 // SCRUM-510 WP2: Admin-Trigger-Route — Auth (nur Admin), Flag-Gating (OFF → Route nicht registriert).
@@ -133,22 +134,18 @@ function failingAdapter(err: Error): ConfluenceSourceAdapter {
 }
 
 // Baut die App wie in Produktion nach dem 19.07.-Redeploy: Add-on-Flag AN (→ der globale onSend-Hook
-// der Add-in-Statics ist live) PLUS der zweite globale onSend-Hook (X-Robots-Tag) in der heutigen
-// server.ts-Form — seit WP-E beide SYNCHRON (Callback-Stil). Genau diese Form ist Teil des Fixes:
-// als beide Hooks noch async waren, erzeugten bereits die Register-/Login-Requests dieses Aufbaus je
-// eine unhandled rejection (Doppel-Send) — der Spion unten pinnt das dauerhaft auf null.
-// Das Import-Flag bleibt AUS, damit buildApp die Route nicht selbst registriert; wir registrieren sie
-// mit injiziertem, scheiterndem Adapter (deterministisch) — sonst identische Verdrahtung.
+// der Add-in-Statics ist live) PLUS der Noindex-Hook über registerNoindexHook — WP-E2: die ECHTE
+// exportierte Produktionsfunktion (dieselbe, die server.ts verdrahtet), keine Test-Kopie. Seit WP-E
+// sind beide Hooks synchron (Callback-Stil); als sie async waren, erzeugten bereits die Register-/
+// Login-Requests dieses Aufbaus je eine unhandled rejection (Doppel-Send) — der Spion unten pinnt
+// das dauerhaft auf null. Das Import-Flag bleibt AUS, damit buildApp die Route nicht selbst
+// registriert; wir registrieren sie mit injiziertem, scheiterndem Adapter (deterministisch) — sonst
+// identische Verdrahtung.
 async function wpEApp(adapterErr: Error) {
   process.env.KLARWERK_ADDON_API = "1";
   const services = buildServices();
   const app = buildApp(services);
-  // Spiegelt den X-Robots-Hook aus server.ts/configureWebDelivery (dort nicht importierbar, da
-  // Laufzeit-Einstieg) — bewusst in der synchronen Callback-Form, wie in Prod seit WP-E.
-  app.addHook("onSend", (_request, reply, payload, done) => {
-    reply.header("X-Robots-Tag", "noindex, nofollow");
-    done(null, payload);
-  });
+  registerNoindexHook(app);
   app.register(
     confluenceImportRoutes({
       library: services.library,
@@ -248,6 +245,35 @@ describe("WP-E: kein Doppel-Send/Crash auf der Import-Route (KLARWERK_ADDON_API=
         "[confluence-import] fehlgeschlagen:",
         "Confluence-API antwortete mit 404",
       );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  // WP-E2 (ben-Auflage 2): Senken-Test. Selbst wenn eine Quelle die Redaction verfehlt (beliebiger
+  // Fehler mit Roh-Credentials in der Message), erreicht der Rohwert den Log NIE — sanitizeLogText
+  // sitzt direkt vor console.warn.
+  it("WP-E2: credentialhaltige Fehlermeldung erreicht den Log nie roh", async () => {
+    const SECRET = "klarwerk-super-geheimes-token-ABCdef123456";
+    const basicB64 = Buffer.from(`svc@acme.example:${SECRET}`, "utf8").toString("base64");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const { app, headers } = await wpEApp(
+        new Error(
+          `fetch failed: Basic ${basicB64} gegen https://svc:${SECRET}@acme.example/rest/api`,
+        ),
+      );
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/admin/import/confluence",
+        headers,
+        payload: { dryRun: true },
+      });
+      expect(res.statusCode).toBe(502);
+      const logged = warn.mock.calls.map((call) => call.join(" ")).join("\n");
+      expect(logged).toContain("[confluence-import] fehlgeschlagen:");
+      expect(logged).not.toContain(SECRET);
+      expect(logged).not.toContain(basicB64);
     } finally {
       warn.mockRestore();
     }

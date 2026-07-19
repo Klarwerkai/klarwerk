@@ -7,6 +7,7 @@ import { buildApp, buildPgServices, buildServices } from "./build-app";
 import { createPool, migrate } from "./db";
 import { buildDevPersistServices } from "./dev-persist";
 import { type FactoryReset, factoryResetUnavailable } from "./factory-reset";
+import { registerNoindexHook } from "./noindex-hook";
 import { assertPersistentStore, normalizeEnv } from "./storage-guard";
 import { resolveTrashSweepIntervalMs, startTrashSweepScheduler } from "./trash-sweep-scheduler";
 import { registerWebStatic } from "./web-static";
@@ -51,14 +52,9 @@ async function configureWebDelivery(app: FastifyInstance): Promise<void> {
     }
   });
 
-  // Vorab-Phase: nicht indexieren (zusätzlich zu robots.txt/Meta im Frontend).
-  // WP-E (19.07.2026): Callback-Stil (synchron), NICHT async — globale async-onSend-Hooks öffnen ab
-  // zwei Stück das wrap-thenable-Doppel-Send-Fenster (ERR_HTTP_HEADERS_SENT-Crash); Details am
-  // gleichartigen Hook in routes/addin-static-routes.ts.
-  app.addHook("onSend", (_request, reply, payload, done) => {
-    reply.header("X-Robots-Tag", "noindex, nofollow");
-    done(null, payload);
-  });
+  // WP-E/WP-E2: Noindex über die exportierte, testbare Produktionsfunktion (synchroner Callback-Stil;
+  // der Crash-Repro-Test verdrahtet exakt dieselbe Registrierung — keine Kopie, keine Drift).
+  registerNoindexHook(app);
 
   // Gebaute SPA (Single-Origin). Fehlt das Verzeichnis (reiner API-Betrieb), bleibt es aus.
   const dist = join(dirname(fileURLToPath(import.meta.url)), "../../../apps/web/dist");

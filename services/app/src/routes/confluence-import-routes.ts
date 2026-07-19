@@ -4,6 +4,7 @@ import type { KoService } from "../../../knowledge-object";
 import type { LibraryService } from "../../../library-analytics";
 import { type ImportRunSummary, runConfluenceImport } from "../confluence-import";
 import type { Guards } from "../http";
+import { sanitizeLogText } from "../log-sanitize";
 
 // SCRUM-510 WP2: Admin-Trigger für den Confluence-Space-Import. NUR bei aktivem KLARWERK_CONFLUENCE_IMPORT
 // registriert (Flag OFF → Route existiert nicht). Echte Admin-Auth (users.manage, wie die übrigen
@@ -57,9 +58,10 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
         } catch (err) {
           // WP-E: Ursache server-seitig sichtbar machen (analog importDetectionLog) — NUR die Message
           // (vom rest-client bereits via redactedError/redactSecrets redigiert), NIE Stack oder cause.
+          // WP-E2: zusätzlich senkenseitig sanitisiert (zweite Verteidigungslinie, quellen-agnostisch).
           console.warn(
             "[confluence-import] fehlgeschlagen:",
-            err instanceof Error ? err.message : String(err),
+            sanitizeLogText(err instanceof Error ? err.message : String(err)),
           );
           // Never block: ehrlicher Fehlerstatus, KEINE Interna/Token im Body.
           reply
