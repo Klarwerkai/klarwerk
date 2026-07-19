@@ -31,18 +31,17 @@ describe("SCRUM-122/123: detectFileKind", () => {
   });
 });
 
-describe("SCRUM-122: joinPdfPages", () => {
-  it("verbindet Items je Seite und Seiten mit Leerzeile, trimmt", () => {
-    const out = joinPdfPages([
-      ["Hallo", "Welt"],
-      ["Seite", "zwei"],
-    ]);
-    expect(out).toBe("Hallo Welt\n\nSeite zwei");
+// WP-D3: joinPdfPages verbindet jetzt rekonstruierte ZEILEN je Seite (Zeilen mit \n, Seiten mit \n\n),
+// statt Items einer Seite mit Leerzeichen zu EINER Zeile zu kleben.
+describe("SCRUM-122 / WP-D3: joinPdfPages (Zeilenformat)", () => {
+  it("verbindet Zeilen je Seite mit Zeilenumbruch und Seiten mit Leerzeile", () => {
+    const out = joinPdfPages([["Hallo Welt", "zweite Zeile"], ["Seite zwei"]]);
+    expect(out).toBe("Hallo Welt\nzweite Zeile\n\nSeite zwei");
   });
 
-  it("entfernt leere Items und leere Seiten", () => {
-    const out = joinPdfPages([["  ", "Text"], [], ["  "]]);
-    expect(out).toBe("Text");
+  it("erhält Absatz-Leerzeilen, glättet Rand-/Mehrfach-Leerzeilen, entfernt leere Seiten", () => {
+    const out = joinPdfPages([["", "Absatz eins", "", "Absatz zwei", ""], [], ["   "]]);
+    expect(out).toBe("Absatz eins\n\nAbsatz zwei");
   });
 
   it("leeres PDF → leerer String", () => {

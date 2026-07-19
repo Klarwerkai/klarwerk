@@ -4,7 +4,7 @@
 import { type DocxRichResult, extractDocxRich, extractDocxText, isDocxDocumentLike } from "./docx";
 import { detectFileKind } from "./extract";
 import { type OcrResult, recognizeImage } from "./ocr";
-import { type PdfEngine, extractPdfText } from "./pdf";
+import { type PdfDocumentText, type PdfEngine, extractPdfDocument } from "./pdf";
 
 // FR-CAP-05: Bild auf ein kleines Thumbnail (JPEG) verkleinern → Daten-URL.
 // WICHTIG (Pedi/VIP 06.07.): NICHT über eine blob:-URL laden. Die Server-CSP erlaubt bei img-src nur
@@ -157,10 +157,12 @@ async function pdfEngine(): Promise<PdfEngine> {
   return pdfEnginePromise;
 }
 
-// SCRUM-122: PDF client-seitig als Text-Kontext extrahieren (lazy, kein Main-Bundle).
-export async function readPdfFile(file: File): Promise<string> {
+// SCRUM-122 / WP-D3: PDF client-seitig zeilen-/absatztreu als Text-Kontext extrahieren (lazy, kein
+// Main-Bundle). Liefert zusätzlich `truncated`, wenn der Seiten-Cap (MAX_PDF_PAGES) griff — der
+// Aufrufer meldet das ehrlich statt still zu kürzen.
+export async function readPdfFile(file: File): Promise<PdfDocumentText> {
   const engine = await pdfEngine();
-  return extractPdfText(await file.arrayBuffer(), engine);
+  return extractPdfDocument(await file.arrayBuffer(), engine);
 }
 
 // SCRUM-123: OCR-Kandidat = Bild. OCR wird NIE automatisch beim Upload gestartet.

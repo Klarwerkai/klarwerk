@@ -947,6 +947,7 @@ const de = {
   "capture.file.empty": "In „{{name}}“ wurde kein Text gefunden.",
   "capture.file.emptyPdf":
     "In „{{name}}“ wurde kein Text gefunden — ein gescanntes PDF ohne Textebene wird noch nicht unterstützt.",
+  "capture.file.pdfTruncated": "Nur die ersten {{count}} Seiten importiert.",
   "capture.file.importNote.docx":
     "Struktur und Bilder übernommen (Best-Effort) — exaktes Layout kann abweichen.",
   "capture.file.importNote.pdf":
@@ -3939,6 +3940,7 @@ const en: typeof de = {
   "capture.file.empty": "No text found in “{{name}}”.",
   "capture.file.emptyPdf":
     "No text found in “{{name}}” — a scanned PDF without a text layer is not supported yet.",
+  "capture.file.pdfTruncated": "Only the first {{count}} pages were imported.",
   "capture.file.importNote.docx":
     "Structure and images imported (best effort) — exact layout may differ.",
   "capture.file.importNote.pdf":
@@ -6888,6 +6890,7 @@ const nl: typeof de = {
   "capture.file.empty": "In „{{name}}“ is geen tekst gevonden.",
   "capture.file.emptyPdf":
     "In „{{name}}“ is geen tekst gevonden — een gescande PDF zonder tekstlaag wordt nog niet ondersteund.",
+  "capture.file.pdfTruncated": "Alleen de eerste {{count}} pagina's geïmporteerd.",
   "capture.file.importNote.docx":
     "Structuur en afbeeldingen overgenomen (best effort) — de exacte layout kan afwijken.",
   "capture.file.importNote.pdf":

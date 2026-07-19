@@ -1401,14 +1401,18 @@ export function Capture(): JSX.Element {
         setErr(null);
         setNotice(t("capture.docExtracting", { name: f.name }));
         try {
-          const text = await readPdfFile(f);
+          // WP-D3: zeilen-/absatztreuer PDF-Text; truncated meldet den Seiten-Cap ehrlich.
+          const { text, truncated, pageCount } = await readPdfFile(f);
           if (text.length === 0) {
             setErr(t("capture.docEmpty", { name: f.name }));
             continue;
           }
           setRaw((prev) => (prev ? `${prev}\n\n[${f.name}]\n${text}` : `[${f.name}]\n${text}`));
           await pushDoc(f);
-          setNotice(t("capture.docAdded", { name: f.name }));
+          const truncatedNote = truncated
+            ? ` ${t(CAPTURE_FILE_TEXT.pdfTruncated, { count: pageCount })}`
+            : "";
+          setNotice(`${t("capture.docAdded", { name: f.name })}${truncatedNote}`);
         } catch {
           setErr(t("capture.docParseError", { name: f.name }));
         }
@@ -1481,6 +1485,8 @@ export function Capture(): JSX.Element {
         html: null,
         kind: "text",
       };
+      // WP-D3: Hinweis, wenn der PDF-Seiten-Cap griff (nur die ersten N Seiten gelesen).
+      let pdfTruncatedPages: number | null = null;
       if (isWordDocument(f)) {
         // WP-D1: DOCX strukturerhaltend — HTML (Überschriften/Listen/Tabellen/Bilder, Best-Effort)
         // für den Ganzdokument-Modus, Klartext weiterhin für die KI-Punkte-Extraktion.
@@ -1490,8 +1496,11 @@ export function Capture(): JSX.Element {
       } else if (isTextDocument(f)) {
         text = await readTextFile(f);
       } else if (isPdfDocument(f)) {
-        text = await readPdfFile(f);
+        // WP-D3: zeilen-/absatztreuer PDF-Text; truncated meldet den Seiten-Cap.
+        const pdf = await readPdfFile(f);
+        text = pdf.text;
         rich = { html: null, kind: "pdf" };
+        pdfTruncatedPages = pdf.truncated ? pdf.pageCount : null;
       } else {
         setFileName(null);
         setNotice(null);
@@ -1527,8 +1536,16 @@ export function Capture(): JSX.Element {
           : rich.kind === "pdf"
             ? ` ${t(CAPTURE_FILE_TEXT.importNotePdf)}`
             : "";
+      // WP-D3: bei Seiten-Cap ehrlich anhängen, wie viele Seiten importiert wurden.
+      const truncatedNote =
+        pdfTruncatedPages !== null
+          ? ` ${t(CAPTURE_FILE_TEXT.pdfTruncated, { count: pdfTruncatedPages })}`
+          : "";
       setNotice(
-        `${t(CAPTURE_FILE_TEXT.loadedStats, { name: f.name, chars: text.length })}${formatNote}`,
+        `${t(CAPTURE_FILE_TEXT.loadedStats, {
+          name: f.name,
+          chars: text.length,
+        })}${formatNote}${truncatedNote}`,
       );
     } catch {
       setFileName(null);

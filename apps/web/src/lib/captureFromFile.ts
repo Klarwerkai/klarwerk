@@ -307,6 +307,8 @@ export const CAPTURE_FILE_TEXT = {
   empty: "capture.file.empty",
   // WP-D4: PDF-spezifische Leermeldung — ehrlich, ohne falsche OCR-Hoffnung (PDF-OCR existiert nicht).
   emptyPdf: "capture.file.emptyPdf",
+  // WP-D3: ehrlicher Hinweis, wenn der Seiten-Cap (MAX_PDF_PAGES) griff — nur die ersten N Seiten gelesen.
+  pdfTruncated: "capture.file.pdfTruncated",
   // WP-D4: formatabhängige Import-Quittung (DOCX: Struktur+Bilder Best-Effort; PDF: nur Text).
   importNoteDocx: "capture.file.importNote.docx",
   importNotePdf: "capture.file.importNote.pdf",

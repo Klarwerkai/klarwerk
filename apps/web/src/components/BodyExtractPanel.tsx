@@ -126,10 +126,15 @@ export function BodyExtractPanel({
         return;
       }
       let text = "";
+      // WP-D3: Hinweis, wenn der PDF-Seiten-Cap griff (nur die ersten N Seiten gelesen).
+      let pdfTruncatedPages: number | null = null;
       if (isTextDocument(f) || isWordDocument(f)) {
         text = isWordDocument(f) ? await readDocxFile(f) : await readTextFile(f);
       } else if (isPdfDocument(f)) {
-        text = await readPdfFile(f);
+        // WP-D3: zeilen-/absatztreuer PDF-Text; truncated meldet den Seiten-Cap.
+        const pdf = await readPdfFile(f);
+        text = pdf.text;
+        pdfTruncatedPages = pdf.truncated ? pdf.pageCount : null;
       } else {
         setFileName(null);
         setStatus(null);
@@ -154,7 +159,11 @@ export function BodyExtractPanel({
         mime: f.type || "application/octet-stream",
         data: await readFileAsDataUrl(f),
       });
-      setStatus(t(CAPTURE_FILE_TEXT.loaded, { name: f.name }));
+      const truncatedNote =
+        pdfTruncatedPages !== null
+          ? ` ${t(CAPTURE_FILE_TEXT.pdfTruncated, { count: pdfTruncatedPages })}`
+          : "";
+      setStatus(`${t(CAPTURE_FILE_TEXT.loaded, { name: f.name })}${truncatedNote}`);
     } catch {
       setFileName(null);
       setStatus(null);
