@@ -33,11 +33,19 @@ describe("WP-E2: sanitizeLogText", () => {
     expect(out).not.toContain("llm-key-abcd1234");
   });
 
-  // WP-E3 (ben): auch ein KURZ konfigurierter echter Key (ab 4 Zeichen) wird redigiert.
+  // WP-E3 (ben): auch ein KURZ konfigurierter echter Key wird redigiert.
   it("WP-E3: kurzer konfigurierter Key (7 Zeichen) wird redigiert", () => {
     const env = { KLARWERK_ADDON_API_KEY: "kurz123" };
     const out = sanitizeLogText("Add-on-Key kurz123 abgelehnt", env);
     expect(out).not.toContain("kurz123");
+  });
+
+  // WP-E4 (ben, Abschlussoption 1): KEINE Mindestlänge für namens-erkannte Secrets — auch ein
+  // 3-Zeichen-Key wird redigiert ("ein schwaches Secret bleibt ein Secret").
+  it("WP-E4: 3-Zeichen-Key wird redigiert (keine Mindestlänge für Secret-Namen)", () => {
+    const env = { KLARWERK_ADDON_API_KEY: "abc" };
+    const out = sanitizeLogText("Add-on-Key abc abgelehnt", env);
+    expect(out).not.toContain("abc");
   });
 
   // WP-E3 (ben): segment-genauer Namensfilter — KEYCHAIN ist KEIN Secret-Name (KEY nur als Segment).
@@ -48,10 +56,10 @@ describe("WP-E2: sanitizeLogText", () => {
     );
   });
 
-  it("kurze Env-Werte (Flags) zerlöchern die Meldung nicht; harmlose Texte bleiben identisch", () => {
-    // WP-E3 (ben): bewusst ein NICHT-secret-benannter Flag-Name — der Test pinnt die Flag-Ausnahme,
-    // ohne eine Ausnahme für echte Secret-Namen als gewollt festzuschreiben.
-    const env = { KLARWERK_DEV_PERSIST: "1" }; // unter Mindestlänge UND kein Secret-Name
+  it("Flag-Werte nicht-secret-benannter Variablen zerlöchern die Meldung nicht", () => {
+    // WP-E3/WP-E4 (ben): der NAMENSfilter (nicht eine Längengrenze) schützt Flags — dieser Test pinnt
+    // das mit einem NICHT-secret-benannten Namen, ohne eine Secret-Ausnahme als gewollt festzuschreiben.
+    const env = { KLARWERK_DEV_PERSIST: "1" }; // kein Secret-Name → Wert wird nie ersetzt
     expect(sanitizeLogText("Confluence-API antwortete mit 404", env)).toBe(
       "Confluence-API antwortete mit 404",
     );

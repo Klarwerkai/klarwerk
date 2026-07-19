@@ -11,19 +11,18 @@
 // KEYCHAIN-artige Namen (z. B. KLARWERK_SKIP_KEYCHAIN) aber NICHT als Secret behandelt.
 const SECRET_ENV_NAME = /(?:^|_)(?:TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|KEY|CREDENTIALS?)(?:_|$)/i;
 
-// WP-E3: Mindestlänge 4 statt 8. 1-3-Zeichen-Werte ("1", "on", "off") sind Flag-Werte — ihre globale
-// Ersetzung würde jede Ziffer/Silbe in Statuscodes und Meldungen zerlöchern und schützt kein echtes
-// Geheimnis. Ein ECHTER, wenn auch kurz konfigurierter Key (ab 4 Zeichen) wird dagegen redigiert.
-const MIN_SECRET_LENGTH = 4;
-
 export function sanitizeLogText(
   text: string,
   env: Record<string, string | undefined> = process.env,
 ): string {
   let out = text;
   // (1) Werte secret-benannter Env-Variablen hart ersetzen (exakter Substring-Treffer).
+  // WP-E4 (ben, Abschlussoption 1): BEWUSST OHNE Mindestlänge — ein schwaches (auch sehr kurzes)
+  // Secret bleibt ein Secret und darf nicht geloggt werden. Mögliche Über-Redaction (ein Kurz-Wert
+  // trifft zufällig einen harmlosen Substring) wird dafür in Kauf genommen; Flag-Werte wie "1"/"on"
+  // sind bereits durch den NAMENSfilter ausgeschlossen (DEV_PERSIST & Co. sind keine Secret-Namen).
   for (const [name, value] of Object.entries(env)) {
-    if (value && value.length >= MIN_SECRET_LENGTH && SECRET_ENV_NAME.test(name)) {
+    if (value && SECRET_ENV_NAME.test(name)) {
       out = out.split(value).join("[redacted]");
     }
   }
