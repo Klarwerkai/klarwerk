@@ -1,3 +1,4 @@
+import type { TxContext } from "../../db-tx";
 import {
   type EvidenceRecord,
   type KnowledgeObject,
@@ -31,7 +32,11 @@ export interface KoRepo {
   insert(ko: KnowledgeObject): Promise<void>;
   findById(id: string): Promise<KnowledgeObject | undefined>;
   update(ko: KnowledgeObject): Promise<void>;
-  delete(id: string): Promise<void>;
+  // SCRUM-523 P.3 (WP-A2): optionaler, opaker TxContext (services/db-tx) — additiv, abwärtskompatibel.
+  // Zweck: der Purge-Chokepoint (KoService.purgeKo) kann delete() UND audit.record() in DERSELBEN
+  // echten DB-Transaktion laufen lassen (beide committen oder beide rollbacken). InMemoryKoRepo
+  // ignoriert den Parameter (dort ist Atomarität trivial, kein I/O-Fenster).
+  delete(id: string, tx?: TxContext): Promise<void>;
   list(filter: KoFilter): Promise<KnowledgeObject[]>;
   // SCRUM-361: begrenzte, vorgefilterte Kandidatenmenge für Ask (kein All-Pool-Load mehr).
   findCandidates(query: KoCandidateQuery): Promise<KnowledgeObject[]>;
@@ -100,7 +105,7 @@ export class InMemoryKoRepo implements KoRepo {
     return Promise.resolve();
   }
 
-  delete(id: string): Promise<void> {
+  delete(id: string, _tx?: TxContext): Promise<void> {
     this.items.delete(id);
     return Promise.resolve();
   }

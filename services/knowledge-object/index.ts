@@ -8,7 +8,7 @@ export {
   // SCRUM-422: Papierkorb-Aufbewahrungsfrist (Tage bis zur automatischen Endlöschung).
   TRASH_RETENTION_DAYS,
 } from "./src/service";
-export type { KoServiceDeps, CreateKoInput, ReviseKoInput } from "./src/service";
+export type { KoServiceDeps, CreateKoInput, ReviseKoInput, WithTx } from "./src/service";
 export {
   InMemoryEvidenceRepo,
   InMemoryKoRepo,

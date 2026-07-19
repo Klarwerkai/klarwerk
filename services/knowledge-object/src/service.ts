@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
+import type { TxContext } from "../../db-tx";
 import { htmlToPlainText, sanitizeHtml } from "../../structure";
 import {
   isConfidential,
@@ -45,6 +46,14 @@ export function normalizeEvidenceLimit(limit?: number): number {
   return Math.min(Math.floor(limit), MAX_EVIDENCE_LIMIT);
 }
 
+// SCRUM-523 P.3 (WP-A2): storage-neutrale Transaktions-Fähigkeit für den EINEN Chokepoint, der sie
+// wirklich braucht (purgeKo: repo.delete + audit.record ATOMAR, s. dort). Von der Kompositionswurzel
+// injiziert (build-app.ts bindet sie über withPgTx an den echten, mit PgKoRepo/PgAuditRepo geteilten
+// Pg-Pool); ohne Injektion (Tests, InMemory, Dev-Journal-Persistenz) bleibt purgeKo beim sequentiellen
+// Fallback. `fn` bekommt den opaken TxContext (services/db-tx) und reicht ihn an repo.delete/
+// audit.record durch — KEIN Pg-Typ in dieser Signatur.
+export type WithTx = <T>(fn: (tx: TxContext) => Promise<T>) => Promise<T>;
+
 export interface KoServiceDeps {
   repo: KoRepo;
   audit?: AuditService;
@@ -65,6 +74,8 @@ export interface KoServiceDeps {
   // Überschneidungen, Embedding-Vektor) nicht verwaisen. Als injizierte Funktion — KEIN Import über die
   // Modulgrenze; die App (Composition-Root) verdrahtet conflicts/overlaps/Embedding-Cleanup dahinter.
   onPurge?: (koId: string, actor: string) => Promise<void>;
+  // SCRUM-523 P.3 (WP-A2): optionale echte DB-Transaktion für purgeKo (repo.delete + audit.record).
+  withTx?: WithTx;
 }
 
 export interface CreateKoInput {
@@ -120,6 +131,8 @@ export class KoService {
   // SCRUM-523 P.3 (WP2): Purge-Aufräum-Hook. Spät bindbar (setPurgeCleanup), da die Composition-Root
   // conflicts/overlaps/Embedding-Cleanup erst NACH dem KoService erstellt (Reihenfolge in assembleServices).
   private onPurge: ((koId: string, actor: string) => Promise<void>) | undefined;
+  // SCRUM-523 P.3 (WP-A2): s. Typ-Kommentar an WithTx oben.
+  private readonly withTx: WithTx | undefined;
   // SCRUM-509 R2 / 507 R2: EIN per-KO Schreib-Lock serialisiert die zueinander wettlaufenden KO-
   // Mutationen (Vertraulichkeit setzen, Validierungsstatus setzen, Revision). So gibt es kein Inter-
   // leave zwischen Lesen und Schreiben (kein TOCTOU, kein Lost-Update, keine fälschlich gültige
@@ -133,6 +146,7 @@ export class KoService {
     this.evidence = deps.evidence;
     this.defaultNeededValidations = deps.defaultNeededValidations;
     this.onPurge = deps.onPurge;
+    this.withTx = deps.withTx;
     this.now = deps.now ?? (() => Date.now());
     this.genId = deps.genId ?? (() => randomUUID());
   }
@@ -539,48 +553,60 @@ export class KoService {
   // AUSSCHLIESSLICH hierüber. `this.repo.delete` wird im ganzen Modul nur an DIESER Stelle gerufen (Grep-
   // Beleg im Bericht) → kein Aufrufer kann die Aufräum-Kaskade mehr umgehen.
   //
-  // REIHENFOLGE = Atomaritäts-Ersatz ohne modulübergreifende DB-Transaktion (die würde einen Tx-Handle
-  // durch conflicts/overlaps/embedding fädeln = Architektur-Umbau außerhalb der Guardrail): das Cleanup
-  // (Konflikte/Überschneidungen schließen, Embedding-Vektor entfernen) läuft ZUERST; ERST wenn es
-  // vollständig gelingt, wird das KO gelöscht. Damit gibt es NIE einen Zwischenstand „KO weg, Folge-
-  // artefakte leben" (kein Geist). Scheitert das Cleanup, wird das KO NICHT gelöscht (Rollback-Äquivalent:
-  // der Bestand bleibt unangetastet), kein ko.purged-Audit, der Fehler wird ehrlich geworfen — der
-  // Aufrufer (Sweep/Route) meldet einen Fehlerstatus, kein stiller Teil-Purge. Restrisiko: gelingt das
-  // Cleanup, aber der finale Einzel-Delete scheitert, bleibt ein (getrashtes) KO mit bereits geschlossenen
-  // Folgeartefakten zurück — kein Geist, und ein erneuter Purge ist idempotent (siehe Bericht).
-  //
-  // SCRUM-523 P.3 (WP-A): AUDIT VOR DELETE (statt gemeinsamer DB-Transaktion). repo.delete (kos-Tabelle,
-  // Modul knowledge-object) und audit.record (audit-Tabelle, Modul audit) sind getrennte Pool-Queries
-  // aus getrennten Modulen; eine echte gemeinsame Transaktion müsste einen rohen PoolClient/Tx-Handle
-  // aus diesem Modul durch die öffentliche AuditService-Schnittstelle reichen — die (wie InMemoryAuditRepo
-  // zeigt) bewusst storage-agnostisch ist und nie einen Postgres-Client kennt. Das würde Pg-Interna in
-  // eine modulübergreifende, storage-neutrale API leaken und ist dieselbe Art Architektur-Umbau, die
-  // oben für Cleanup/Delete schon verworfen wurde. Stattdessen dasselbe Muster wie mutateKo (#4 oben):
-  // AUDIT ZUERST, danach der Delete. Damit gilt die geforderte Invariante streng: kein erfolgreicher
-  // Hard-Delete ohne vorher committeten ko.purged-Audit-Eintrag (FR-AUD-02 — kein Loch in der
-  // Hash-Kette). Bricht der Prozess zwischen Audit und Delete ab, bleibt ein Audit-Eintrag zu einem noch
-  // nicht wirklich gelöschten KO stehen — unschön, aber HARMLOS: repo.delete ist idempotent (DELETE auf
-  // eine ggf. noch vorhandene oder bereits gelöschte Zeile), ein erneuter Purge-Versuch (Sweep-Retry,
-  // erneuter manueller Purge) räumt zuverlässig auf; der einzige Nebeneffekt ist ein zusätzlicher
-  // ko.purged-Eintrag, der die Hash-Kette nicht bricht. Die umgekehrte Lücke (Delete ohne Audit-Spur) —
-  // das eigentlich zu schließende Fenster — ist damit ausgeschlossen.
+  // ZWEI GETRENNTE FENSTER, ZWEI GETRENNTE LÖSUNGEN:
+  //   (A) Cleanup (Konflikte/Überschneidungen, Embedding) vs. Delete+Audit — bleibt BEWUSST
+  //       sequentiell/best-effort (kein echter Tx-Handle durch conflicts/overlaps/embedding gefädelt).
+  //       Das ist UNKRITISCH, weil dieses Fenster SELBSTHEILEND ist: schlägt das Cleanup fehl, wird
+  //       NICHT gelöscht (das KO existiert unverändert weiter) — ein erneuter Purge-Versuch (Sweep-
+  //       Retry, erneuter manueller Purge) wiederholt einfach den ganzen Ablauf inkl. Cleanup, bis er
+  //       vollständig gelingt. Gelingt das Cleanup, aber der DANACH folgende Delete+Audit-Block
+  //       scheitert (s. (B)), bleibt ebenfalls nur ein unverändertes, weiterhin existierendes KO mit
+  //       bereits geschlossenen Folgeartefakten zurück — kein Geist, erneuter Purge räumt idempotent
+  //       auf. Diese Selbstheilung ist NICHT das Integritätsproblem, das dieser WP löst.
+  //   (B) repo.delete + audit.record — DAS ist das Integritätsproblem: ein KO, das WIRKLICH weg ist,
+  //       darf NIE ohne begleitenden ko.purged-Beleg sein (FR-AUD-02) — UND umgekehrt darf NIE ein
+  //       ko.purged-Beleg für ein KO existieren, das in Wahrheit (Delete danach gescheitert) noch da
+  //       ist (externe Review, SCRUM-523 P.3 WP-A2: das reine „Audit vor Delete" aus WP-A schloss nur
+  //       die ERSTE Richtung — die Umkehr-Lücke blieb ein Log, das eine Löschung behauptet, die nicht
+  //       stattfand). Diese zwei Schreiber sitzen in zwei verschiedenen Modulen (knowledge-object,
+  //       audit) mit je eigener, storage-agnostischer Schnittstelle (KoRepo, AuditRepo/AuditService)
+  //       — die auch eine InMemory-Implementierung erfüllen muss. Die Lösung ist NICHT, Pg-Wissen in
+  //       diese Schnittstellen zu tragen, sondern ein eigenes, schmales Kernel-Modul (services/db-tx),
+  //       das einen OPAKEN TxContext definiert: beide Interfaces bekommen additiv einen optionalen
+  //       `tx?: TxContext`-Parameter, den nur die Pg-Adapter (PgKoRepo, PgAuditRepo) auflösen — der
+  //       Vertrag selbst bleibt storage-neutral. `this.withTx` (von der Kompositionswurzel injiziert,
+  //       s. WithTx oben) öffnet EINE echte Postgres-Transaktion und reicht denselben tx an BEIDE
+  //       Schreiber durch: entweder committen beide, oder (bei einem Fehler in EINEM der beiden) rollen
+  //       BEIDE zurück — kein Teilzustand in IRGENDEINE Richtung. Ohne Injektion (Tests, InMemory,
+  //       Dev-Journal-Persistenz — kein echter Pg-Pool verdrahtet) bleibt der bisherige sequentielle
+  //       Bestpfad aus WP-A (Audit vor Delete): dort ist er kein Kompromiss, sondern angemessen, weil
+  //       zwei synchrone In-Process-Schritte ohne echtes I/O-Fenster praktisch nicht so „crashen"
+  //       können, dass der eine committet und der andere nicht (anders als bei zwei echten DB-Writes).
   private async purgeKo(
     id: string,
     actor: string,
     reason: "trash-expired" | "manual" | "hard",
     extraPayload: Record<string, unknown> = {},
   ): Promise<void> {
-    // 1) Cleanup ZUERST — schlägt es fehl, bleibt das KO bestehen (kein Delete, kein Audit).
+    // 1) Cleanup ZUERST — schlägt es fehl, bleibt das KO bestehen (kein Delete, kein Audit). S. (A) oben.
     await this.onPurge?.(id, actor);
-    // 2) Audit VOR Delete (s. Kommentar oben) — erst wenn der Audit-Eintrag committet ist, wird
-    //    tatsächlich hart gelöscht. Kein erfolgreicher Delete ohne vorherigen Audit-Beleg.
-    await this.audit?.record({
+    const auditInput = {
       actor,
-      action: "ko.purged",
+      action: "ko.purged" as const,
       target: id,
       payload: { reason, ...extraPayload },
-    });
-    // 3) Der EINZIGE harte Bestands-Delete — läuft nur nach committetem Audit-Eintrag.
+    };
+    const audit = this.audit;
+    // 2) Delete + Audit — s. (B) oben. MIT withTx: EINE echte DB-Transaktion, beide Schreiber
+    // committen/rollbacken gemeinsam. OHNE withTx: sequentieller Fallback (Audit vor Delete, WP-A).
+    if (this.withTx && audit) {
+      await this.withTx(async (tx) => {
+        await this.repo.delete(id, tx);
+        await audit.record(auditInput, tx);
+      });
+      return;
+    }
+    await audit?.record(auditInput);
     await this.repo.delete(id);
   }
 

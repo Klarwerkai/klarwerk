@@ -1,4 +1,5 @@
 import type { Pool } from "pg";
+import { type Queryable, type TxContext, pgQueryable, poolQueryable } from "../../db-tx";
 import type { EvidenceRepo, KoCandidateQuery, KoFilter, KoRepo, KoVersionRepo } from "./repo";
 import {
   type EvidenceRecord,
@@ -114,8 +115,12 @@ export class PgKoRepo implements KoRepo {
     }
   }
 
-  async delete(id: string): Promise<void> {
-    await this.pool.query("DELETE FROM kos WHERE id=$1", [id]);
+  // SCRUM-523 P.3 (WP-A2): ohne tx die normale Pool-Query (heutiges Verhalten); MIT tx (vom Aufrufer
+  // aus derselben withPgTx-Klammer wie z. B. PgAuditRepo.append) läuft die Query auf demselben Client
+  // — damit committen/rollbacken beide Schreiber ATOMAR zusammen (services/db-tx).
+  async delete(id: string, tx?: TxContext): Promise<void> {
+    const queryable: Queryable = tx ? pgQueryable(tx) : poolQueryable(this.pool);
+    await queryable.query("DELETE FROM kos WHERE id=$1", [id]);
   }
 
   async list(filter: KoFilter): Promise<KnowledgeObject[]> {

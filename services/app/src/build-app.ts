@@ -37,6 +37,9 @@ import {
   PgOverlapRepo,
   PgOverlapSettingsRepo,
 } from "../../conflicts";
+// SCRUM-523 P.3 (WP-A2): gemeinsamer Transaktions-Kernel — nur die Kompositionswurzel bindet withPgTx
+// an den echten, mit PgKoRepo/PgAuditRepo geteilten Pool (s. buildPgServices unten).
+import { withPgTx } from "../../db-tx";
 import { InMemoryEmbeddingStore, createEmbeddingProviderFromEnv } from "../../embedding";
 import {
   type ExternalKnowledgePolicyRepo,
@@ -60,6 +63,7 @@ import {
   PgKoVersionRepo,
   PgUploadLimitsRepo,
   type UploadLimitsRepo,
+  type WithTx,
 } from "../../knowledge-object";
 import {
   type CandidateRepo,
@@ -242,7 +246,10 @@ export interface AppRepos {
 // Verdrahtet aus den Repos die vollständige Service-Landschaft. Ein gemeinsames
 // Audit-Log und ein KO-Repository für alle Module, die auf denselben Bestand wirken.
 // SCRUM-387: exportiert für die Dev-Persistenz (identische Verdrahtung über journalierte Repos).
-export function assembleServices(repos: AppRepos): AppServices {
+// SCRUM-523 P.3 (WP-A2): `opts.withTx` ist NUR gesetzt, wenn der Aufrufer wirklich einen echten
+// Pg-Pool hat (buildPgServices unten) — Dev-Persistenz/InMemory rufen ohne opts, KoService fällt dann
+// auf den sequentiellen purgeKo-Pfad zurück (s. Kommentar dort).
+export function assembleServices(repos: AppRepos, opts: { withTx?: WithTx } = {}): AppServices {
   const audit = new AuditService({ repo: repos.auditRepo });
   const ko = new KoService({
     repo: repos.koRepo,
@@ -252,6 +259,9 @@ export function assembleServices(repos: AppRepos): AppServices {
     // SCRUM-395: Standard-Prüferanzahl aus der Admin-Einstellung — als injizierte
     // Funktion (keine Modulgrenzen-Verletzung); null → Modul-Default 3.
     defaultNeededValidations: () => repos.validationSettings.getDefaultNeeded(),
+    // exactOptionalPropertyTypes: den Key nur setzen, wenn wirklich ein withTx da ist (sonst würde
+    // `withTx: undefined` explizit gegen den optionalen KoServiceDeps.withTx?: WithTx verstoßen).
+    ...(opts.withTx ? { withTx: opts.withTx } : {}),
   });
   // FR-RSN-02/06 + SCRUM-502 R8: echtes Cloud-Modell, wenn der Cloud-Key per Env/Keychain verfügbar ist
   // — GECAPPT aus der Factory (Egress-Wächter rejectsConfidential=true + globaler In-Flight-Cap sind
@@ -402,43 +412,52 @@ export function buildServices(): AppServices {
 
 // Postgres-Komposition: dieselbe App, alle Repos gegen eine echte Datenbank.
 export function buildPgServices(pool: Pool): AppServices {
-  return assembleServices({
-    auditRepo: new PgAuditRepo(pool),
-    koRepo: new PgKoRepo(pool),
-    koVersions: new PgKoVersionRepo(pool),
-    evidence: new PgEvidenceRepo(pool),
-    users: new PgUserRepo(pool),
-    sessions: new PgSessionRepo(pool),
-    resetTokens: new PgPasswordResetRepo(pool),
-    drafts: new PgDraftRepo(pool),
-    gaps: new PgGapRepo(pool),
-    ratings: new PgRatingRepo(pool),
-    assignments: new PgAssignmentRepo(pool),
-    conflictsRepo: new PgConflictRepo(pool),
-    // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-Einträge persistent.
-    overlapRepo: new PgOverlapRepo(pool),
-    // Pedi 04.07.: Anzeige-Schwelle persistent.
-    overlapSettings: new PgOverlapSettingsRepo(pool),
-    lifecycleRepo: new PgLifecycleRepo(pool),
-    // SCRUM-155: Object-Store jetzt persistent (Attachment-/Evidence-Originale überleben Neustart).
-    objects: new PgObjectRepo(pool),
-    // SCRUM-157: Import-/Source-Review-Queue persistent (Review-Stand überlebt Neustart).
-    candidates: new PgCandidateRepo(pool),
-    // SCRUM-164: ModelRun-Protokoll persistent (KI-Aufrufe nachvollziehbar).
-    modelRuns: new PgModelRunRepo(pool),
-    // Audit-P3 (SCRUM-397): Gelesen-Status der Glocke persistent.
-    notificationSeen: new PgNotificationSeenRepo(pool),
-    // SCRUM-386: kundeneigene KI-Assist-Presets persistent.
-    assistPresets: new PgAssistPresetRepo(pool),
-    // SCRUM-525 P.5 (WP6): KI-Zuordnung (Policy) persistent — überlebt Neustart/Deploy.
-    reasonerPolicy: new PgReasonerPolicyRepo(pool),
-    // SCRUM-395: Standard-Prüferanzahl persistent.
-    validationSettings: new PgValidationSettingsRepo(pool),
-    // SCRUM-414: externe-Wissensabfrage-Regler persistent.
-    externalKnowledge: new PgExternalKnowledgePolicyRepo(pool),
-    // SCRUM-421: Upload-Grenzen persistent.
-    uploadLimits: new PgUploadLimitsRepo(pool),
-  });
+  return assembleServices(
+    {
+      auditRepo: new PgAuditRepo(pool),
+      koRepo: new PgKoRepo(pool),
+      koVersions: new PgKoVersionRepo(pool),
+      evidence: new PgEvidenceRepo(pool),
+      users: new PgUserRepo(pool),
+      sessions: new PgSessionRepo(pool),
+      resetTokens: new PgPasswordResetRepo(pool),
+      drafts: new PgDraftRepo(pool),
+      gaps: new PgGapRepo(pool),
+      ratings: new PgRatingRepo(pool),
+      assignments: new PgAssignmentRepo(pool),
+      conflictsRepo: new PgConflictRepo(pool),
+      // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-Einträge persistent.
+      overlapRepo: new PgOverlapRepo(pool),
+      // Pedi 04.07.: Anzeige-Schwelle persistent.
+      overlapSettings: new PgOverlapSettingsRepo(pool),
+      lifecycleRepo: new PgLifecycleRepo(pool),
+      // SCRUM-155: Object-Store jetzt persistent (Attachment-/Evidence-Originale überleben Neustart).
+      objects: new PgObjectRepo(pool),
+      // SCRUM-157: Import-/Source-Review-Queue persistent (Review-Stand überlebt Neustart).
+      candidates: new PgCandidateRepo(pool),
+      // SCRUM-164: ModelRun-Protokoll persistent (KI-Aufrufe nachvollziehbar).
+      modelRuns: new PgModelRunRepo(pool),
+      // Audit-P3 (SCRUM-397): Gelesen-Status der Glocke persistent.
+      notificationSeen: new PgNotificationSeenRepo(pool),
+      // SCRUM-386: kundeneigene KI-Assist-Presets persistent.
+      assistPresets: new PgAssistPresetRepo(pool),
+      // SCRUM-525 P.5 (WP6): KI-Zuordnung (Policy) persistent — überlebt Neustart/Deploy.
+      reasonerPolicy: new PgReasonerPolicyRepo(pool),
+      // SCRUM-395: Standard-Prüferanzahl persistent.
+      validationSettings: new PgValidationSettingsRepo(pool),
+      // SCRUM-414: externe-Wissensabfrage-Regler persistent.
+      externalKnowledge: new PgExternalKnowledgePolicyRepo(pool),
+      // SCRUM-421: Upload-Grenzen persistent.
+      uploadLimits: new PgUploadLimitsRepo(pool),
+    },
+    {
+      // SCRUM-523 P.3 (WP-A2): EIN echter Pg-Pool (derselbe, mit dem PgKoRepo/PgAuditRepo oben
+      // verdrahtet sind) → purgeKo kann repo.delete + audit.record in EINER echten Transaktion
+      // ausführen (services/db-tx). Ohne diesen Zweig (InMemory/Dev-Journal) bleibt der sequentielle
+      // Fallback aktiv (s. KoService.purgeKo).
+      withTx: (fn) => withPgTx(pool, fn),
+    },
+  );
 }
 
 // Weg 3: baut den semantischen Vorfilter NUR, wenn KLARWERK_DUP_PREFILTER=1|true gesetzt ist —

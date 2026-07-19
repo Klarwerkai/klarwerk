@@ -1,4 +1,5 @@
 import type { Pool } from "pg";
+import { type Queryable, type TxContext, pgQueryable, poolQueryable } from "../../db-tx";
 import type { AuditRepo } from "./repo";
 import type { AuditEntry } from "./types";
 
@@ -43,8 +44,15 @@ function toEntry(row: AuditRow): AuditEntry {
 export class PgAuditRepo implements AuditRepo {
   constructor(private readonly pool: Pool) {}
 
-  async append(entry: AuditEntry): Promise<void> {
-    await this.pool.query(
+  // SCRUM-523 P.3 (WP-A2): ohne tx die normale Pool-Query (heutiges Verhalten); MIT tx (vom Aufrufer
+  // aus derselben withPgTx-Klammer wie z. B. PgKoRepo.delete) läuft die Query auf demselben Client —
+  // damit committen/rollbacken beide Schreiber ATOMAR zusammen (services/db-tx).
+  private queryable(tx?: TxContext): Queryable {
+    return tx ? pgQueryable(tx) : poolQueryable(this.pool);
+  }
+
+  async append(entry: AuditEntry, tx?: TxContext): Promise<void> {
+    await this.queryable(tx).query(
       "INSERT INTO audit(seq,at,actor,action,target,payload,prev_hash,hash) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
       [
         entry.seq,
@@ -64,8 +72,10 @@ export class PgAuditRepo implements AuditRepo {
     return res.rows.map(toEntry);
   }
 
-  async last(): Promise<AuditEntry | undefined> {
-    const res = await this.pool.query<AuditRow>("SELECT * FROM audit ORDER BY seq DESC LIMIT 1");
+  async last(tx?: TxContext): Promise<AuditEntry | undefined> {
+    const res = await this.queryable(tx).query<AuditRow>(
+      "SELECT * FROM audit ORDER BY seq DESC LIMIT 1",
+    );
     return res.rows[0] ? toEntry(res.rows[0]) : undefined;
   }
 }

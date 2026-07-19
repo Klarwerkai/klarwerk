@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
-import { AuditService, InMemoryAuditRepo } from "../../services/audit";
+import { type AuditRepo, AuditService, InMemoryAuditRepo } from "../../services/audit";
+import type { TxContext } from "../../services/db-tx";
 import {
   InMemoryKoRepo,
   type KoRepo,
   KoService,
   TRASH_RETENTION_DAYS,
+  type WithTx,
 } from "../../services/knowledge-object";
 
 // SCRUM-422 (Pedi 03.07.): Papierkorb — gelöschte Artikel sind wiederherstellbar (Admin),
@@ -465,135 +467,301 @@ describe("SCRUM-523 P.3 (WP1-Batch3): Purge-Kaskade end-to-end (echte Verdrahtun
   });
 });
 
-// SCRUM-523 P.3 (WP-A): Befund 1 — repo.delete und audit.record liefen in purgeKo als getrennte,
-// unabhängige Schritte NACH dem Delete; ein Absturz dazwischen hätte das KO gelöscht, ohne einen
-// ko.purged-Audit-Eintrag zu hinterlassen (Lücke in der hash-verketteten Kette, FR-AUD-02). Fix: AUDIT
-// VOR DELETE (s. Kommentar an purgeKo in service.ts — eine echte modulübergreifende DB-Transaktion würde
-// einen rohen Postgres-Client durch die storage-agnostische AuditService-Schnittstelle fädeln, verworfen
-// aus denselben Architekturgründen wie beim Cleanup-vs-Delete-Fenster). Die Tests hier beweisen die
-// INVARIANTE aktiv (nicht nur die Zeilenreihenfolge im Code): ein Fake-Repo lässt delete() nur
-// durchlaufen, wenn der zugehörige ko.purged-Eintrag zum Aufrufzeitpunkt bereits im Audit-Log steht.
-describe("SCRUM-523 P.3 (WP-A): kein erfolgreicher Hard-Delete ohne vorherigen ko.purged-Audit-Eintrag", () => {
-  // Lässt repo.delete NUR zu, wenn der ko.purged-Eintrag für dieselbe id bereits committet ist —
-  // beweist damit aktiv, dass audit.record VOR repo.delete abgeschlossen ist (nicht nur im Quelltext).
-  function repoAssertingAuditFirst(inner: KoRepo, auditRepo: InMemoryAuditRepo): KoRepo {
-    return {
+// SCRUM-523 P.3 (WP-A2): externe Review-Auflage — das reine „Audit vor Delete" aus WP-A schloss nur
+// EINE Richtung der Race (Delete ohne Audit-Beleg). Die Umkehr-Richtung blieb offen: committet der
+// Audit-Schritt, scheitert der NACHFOLGENDE Delete, bleibt ein ko.purged-Beleg stehen, der eine
+// Löschung behauptet, die in Wahrheit NICHT stattfand. Fix: repo.delete + audit.record laufen jetzt
+// (wenn die Kompositionswurzel einen echten Pg-Pool hat, s. build-app.ts buildPgServices) in EINER
+// echten DB-Transaktion (services/db-tx, s. Kommentar an KoService.purgeKo) — entweder committen BEIDE,
+// oder es rollt BEIDE zurück. Die Tests hier bilden diese Commit/Rollback-Semantik am Unit-Level nach
+// (kein echtes Postgres im Standard-Testlauf verfügbar) und beweisen die Invariante AKTIV in BEIDE
+// Richtungen, für alle drei Purge-Wege (purgeTrashed, delete({hard}), runTrashSweep):
+//   (a) scheitert repo.delete INNERHALB der Transaktion → kein ko.purged-Beleg (Rollback), KO bleibt.
+//   (b) scheitert audit.record INNERHALB der Transaktion → repo.delete bleibt UNSICHTBAR (Rollback),
+//       KO bleibt — genau die Richtung, die WP-A nicht beweisen konnte.
+//   (c) Erfolgsfall: genau EIN ko.purged-Beleg + KO wirklich weg.
+// Ein zusätzlicher Integrationstest gegen ECHTES Postgres (beweist echte Transaktionsgrenzen, die eine
+// In-Memory-Fake-Transaktion strukturell nicht beweisen kann) steht separat in
+// tests/ko/trash-tx-pg.integration.test.ts — bewusst NICHT Teil dieses Laufs (braucht Docker/
+// Testcontainers, s. Kommentar dort).
+describe("SCRUM-523 P.3 (WP-A2): repo.delete + audit.record committen/rollbacken ATOMAR (services/db-tx)", () => {
+  type TxOp = () => void;
+
+  // Bildet die COMMIT/ROLLBACK-Semantik von withPgTx (services/db-tx/src/tx.ts) im Unit-Test nach, ohne
+  // echtes Postgres: bei vorhandenem TxContext puffert repo.delete/audit.append die Schreibung nur
+  // ("staged") statt sie sofort anzuwenden. withTx wendet die gepufferten Schreibungen NUR an, wenn fn
+  // (der purgeKo-Transaktionskörper) OHNE Fehler durchläuft (Commit); wirft fn — unabhängig davon,
+  // WELCHER der beiden Schreiber den Fehler auslöst — werden ALLE gepufferten Schreibungen verworfen
+  // (Rollback), genau wie bei withPgTx (BEGIN…COMMIT/ROLLBACK auf demselben Client).
+  function makeTxHarness(inner: InMemoryKoRepo, auditInner: InMemoryAuditRepo) {
+    const staging = new WeakMap<TxContext, TxOp[]>();
+
+    function stage(tx: TxContext | undefined, op: TxOp): void {
+      const ops = tx && staging.get(tx);
+      if (ops) {
+        ops.push(op);
+      } else {
+        op();
+      }
+    }
+
+    const koRepo: KoRepo = {
       insert: (ko) => inner.insert(ko),
       findById: (id) => inner.findById(id),
       update: (ko) => inner.update(ko),
       list: (filter) => inner.list(filter),
       findCandidates: (query) => inner.findCandidates(query),
-      delete: async (id) => {
-        const hasAudit = (await auditRepo.all()).some(
-          (e) => e.action === "ko.purged" && e.target === id,
-        );
-        if (!hasAudit) {
-          throw new Error(
-            `INVARIANTE VERLETZT: repo.delete(${id}) lief, bevor der ko.purged-Audit-Eintrag existierte`,
-          );
+      delete: (id, tx) => {
+        stage(tx, () => {
+          void inner.delete(id);
+        });
+        return Promise.resolve();
+      },
+    };
+
+    const auditRepo: AuditRepo = {
+      append: (entry, tx) => {
+        stage(tx, () => {
+          void auditInner.append(entry);
+        });
+        return Promise.resolve();
+      },
+      all: () => auditInner.all(),
+      last: (tx) => auditInner.last(tx),
+    };
+
+    const withTx: WithTx = async (fn) => {
+      const tx: TxContext = { brand: "TxContext" };
+      staging.set(tx, []);
+      try {
+        const result = await fn(tx);
+        for (const op of staging.get(tx) ?? []) {
+          op();
         }
-        return inner.delete(id);
+        return result;
+      } finally {
+        staging.delete(tx);
+      }
+    };
+
+    return { koRepo, auditRepo, withTx };
+  }
+
+  // Scharfschaltbarer Einmal-Fehler (danach wieder normales Verhalten) — dieselbe Bauart wie die
+  // flakyRepo-Fakes aus WP-A, nur wiederverwendbar für sowohl repo.delete als auch audit.append.
+  function failOnce(): { arm: () => void; consume: () => boolean } {
+    let armed = false;
+    return {
+      arm: () => {
+        armed = true;
+      },
+      consume: () => {
+        if (!armed) {
+          return false;
+        }
+        armed = false;
+        return true;
       },
     };
   }
 
-  it("manueller Purge, harter Direkt-Delete UND automatischer Sweep schreiben den Audit-Eintrag jeweils VOR repo.delete", async () => {
-    const auditRepo = new InMemoryAuditRepo();
-    const audit = new AuditService({ repo: auditRepo });
-    let clock = Date.parse("2026-07-03T12:00:00.000Z");
-    const inner = new InMemoryKoRepo();
-    const repo = repoAssertingAuditFirst(inner, auditRepo);
-    const service = new KoService({ repo, audit, now: () => clock });
+  function withDeleteFailure(
+    repo: KoRepo,
+    fail: { consume: () => boolean },
+    message: string,
+  ): KoRepo {
+    return {
+      ...repo,
+      delete: async (id, tx) => {
+        if (fail.consume()) {
+          throw new Error(message);
+        }
+        return repo.delete(id, tx);
+      },
+    };
+  }
 
-    // Weg 1: manueller Papierkorb-Purge (purgeTrashed).
-    const manual = await service.create({
-      title: "Manuell",
-      statement: "manueller Purge",
-      type: "best_practice",
-      category: "A",
-      author: "erik",
-    });
-    await service.delete(manual.id, "erik");
-    await expect(service.purgeTrashed(manual.id, "admin")).resolves.toBeUndefined();
+  function withAuditFailure(
+    repo: AuditRepo,
+    fail: { consume: () => boolean },
+    message: string,
+  ): AuditRepo {
+    return {
+      ...repo,
+      append: async (entry, tx) => {
+        if (fail.consume()) {
+          throw new Error(message);
+        }
+        return repo.append(entry, tx);
+      },
+    };
+  }
 
-    // Weg 2: harter Direkt-Delete (delete({hard})).
-    const hard = await service.create({
-      title: "Hart",
-      statement: "harter Delete",
-      type: "best_practice",
-      category: "A",
-      author: "erik",
-    });
-    await expect(service.delete(hard.id, "admin", { hard: true })).resolves.toBeUndefined();
+  const PURGE_PATHS = ["purgeTrashed", "delete-hard", "runTrashSweep"] as const;
+  type PurgePath = (typeof PURGE_PATHS)[number];
 
-    // Weg 3: automatischer Sweep abgelaufener Papierkorb-Einträge.
-    const auto = await service.create({
-      title: "Automatisch",
-      statement: "Sweep nach Ablauf",
-      type: "best_practice",
-      category: "A",
-      author: "erik",
-    });
-    await service.delete(auto.id, "erik");
-    clock += (TRASH_RETENTION_DAYS + 1) * 86_400_000;
-    await expect(service.runTrashSweep()).resolves.toBe(1);
+  // SCRUM-523 P.3 (WP-A2, Fehleranalyse): "in den Papierkorb legen" (service.delete(id,"erik")) und der
+  // eigentliche Purge-CHOKEPOINT (purgeTrashed/delete({hard})/runTrashSweep → purgeKo) sind ZWEI
+  // GETRENNTE Schritte — das Trashen ist NICHT wiederholbar (ein bereits getrashtes KO ist über
+  // require()/delete() nicht mehr erreichbar, s. service.ts require(): "getrashte KOs sind für alle
+  // normalen Pfade nicht vorhanden"). Ein Retry nach einem zurückgerollten Purge-Versuch ruft in der
+  // Praxis NIE erneut delete() auf ein bereits getrashtes KO — er wiederholt nur den Purge-Chokepoint
+  // selbst (das KO bleibt ja unverändert im Papierkorb, s. Kommentar an purgeKo, Fenster (A)). prepare
+  // trashed daher GENAU EINMAL; attempt ist der wiederholbare Chokepoint-Aufruf.
+  function purgeSteps(path: PurgePath) {
+    return {
+      prepare: async (service: KoService, id: string): Promise<void> => {
+        if (path !== "delete-hard") {
+          await service.delete(id, "erik");
+        }
+      },
+      // Für runTrashSweep: ein Purge-Fehler an EINEM KO bricht den Sweep-Lauf NIE ab (s. Kommentar an
+      // runTrashSweep — "never block") und wird stattdessen an onSweepError gereicht; hier zu einer
+      // regulären Exception vereinheitlicht, damit dieselbe .rejects/.resolves-Assertion für alle drei
+      // Wege gilt.
+      attempt: async (service: KoService, id: string, clock: { value: number }): Promise<void> => {
+        if (path === "purgeTrashed") {
+          await service.purgeTrashed(id, "admin");
+          return;
+        }
+        if (path === "delete-hard") {
+          await service.delete(id, "admin", { hard: true });
+          return;
+        }
+        clock.value += (TRASH_RETENTION_DAYS + 1) * 86_400_000;
+        const sweepErrors: unknown[] = [];
+        await service.runTrashSweep("system", (_id, error) => sweepErrors.push(error));
+        if (sweepErrors.length > 0) {
+          throw sweepErrors[0];
+        }
+      },
+    };
+  }
 
-    // Alle drei KOs sind wirklich weg — UND für jedes existiert der ko.purged-Beleg.
-    for (const id of [manual.id, hard.id, auto.id]) {
-      expect(await inner.findById(id)).toBeUndefined();
-      const entries = (await auditRepo.all()).filter(
-        (e) => e.action === "ko.purged" && e.target === id,
-      );
-      expect(entries).toHaveLength(1);
+  it("(c) Erfolgsfall: genau ein ko.purged-Beleg + KO wirklich weg — für alle drei Purge-Wege", async () => {
+    for (const path of PURGE_PATHS) {
+      const inner = new InMemoryKoRepo();
+      const auditInner = new InMemoryAuditRepo();
+      const { koRepo, auditRepo, withTx } = makeTxHarness(inner, auditInner);
+      const audit = new AuditService({ repo: auditRepo });
+      const clock = { value: Date.parse("2026-07-03T12:00:00.000Z") };
+      const service = new KoService({ repo: koRepo, audit, withTx, now: () => clock.value });
+
+      const ko = await service.create({
+        title: `Erfolg (${path})`,
+        statement: "transaktionaler Purge gelingt",
+        type: "best_practice",
+        category: "A",
+        author: "erik",
+      });
+
+      const steps = purgeSteps(path);
+      await steps.prepare(service, ko.id);
+      await expect(steps.attempt(service, ko.id, clock)).resolves.toBeUndefined();
+
+      expect(await inner.findById(ko.id)).toBeUndefined();
+      expect(
+        (await auditInner.all()).filter((e) => e.action === "ko.purged" && e.target === ko.id),
+      ).toHaveLength(1);
     }
   });
 
-  it("scheitert repo.delete NACH dem Audit-Eintrag: KO bleibt (kein Geister-Delete), ein erneuter Purge räumt idempotent auf", async () => {
-    const auditRepo = new InMemoryAuditRepo();
-    const audit = new AuditService({ repo: auditRepo });
-    const inner = new InMemoryKoRepo();
-    let failDeleteOnce = false;
-    const flakyRepo: KoRepo = {
-      insert: (ko) => inner.insert(ko),
-      findById: (id) => inner.findById(id),
-      update: (ko) => inner.update(ko),
-      list: (filter) => inner.list(filter),
-      findCandidates: (query) => inner.findCandidates(query),
-      delete: async (id) => {
-        if (failDeleteOnce) {
-          failDeleteOnce = false;
-          throw new Error("delete-storage down");
-        }
-        return inner.delete(id);
-      },
-    };
-    const service = new KoService({ repo: flakyRepo, audit });
-    const ko = await service.create({
-      title: "Flaky",
-      statement: "Delete scheitert einmal",
-      type: "best_practice",
-      category: "A",
-      author: "erik",
-    });
+  it("(a) scheitert repo.delete INNERHALB der Transaktion: kein ko.purged-Beleg (Rollback), KO bleibt, Retry räumt idempotent auf — für alle drei Purge-Wege", async () => {
+    for (const path of PURGE_PATHS) {
+      const inner = new InMemoryKoRepo();
+      const auditInner = new InMemoryAuditRepo();
+      const { koRepo, auditRepo, withTx } = makeTxHarness(inner, auditInner);
+      const deleteFail = failOnce();
+      const clock = { value: Date.parse("2026-07-03T12:00:00.000Z") };
+      const service = new KoService({
+        repo: withDeleteFailure(koRepo, deleteFail, "delete-storage down (in tx)"),
+        audit: new AuditService({ repo: auditRepo }),
+        withTx,
+        now: () => clock.value,
+      });
 
-    // Erster Purge-Versuch: der Audit-Schritt committet, der anschließende Delete scheitert.
-    failDeleteOnce = true;
-    await expect(service.delete(ko.id, "admin", { hard: true })).rejects.toThrow(
-      "delete-storage down",
-    );
+      const ko = await service.create({
+        title: `Delete scheitert (${path})`,
+        statement: "repo.delete scheitert in der Transaktion",
+        type: "best_practice",
+        category: "A",
+        author: "erik",
+      });
 
-    // Trotz gescheitertem Delete: der Audit-Beleg existiert bereits (audit lief zuerst) — das KO ist
-    // aber (noch) NICHT gelöscht, kein „Delete ohne Audit"-Loch, aber auch kein stiller Datenverlust.
-    const afterFailure = (await auditRepo.all()).filter((e) => e.action === "ko.purged");
-    expect(afterFailure).toHaveLength(1);
-    expect(await inner.findById(ko.id)).toBeDefined();
+      const steps = purgeSteps(path);
+      await steps.prepare(service, ko.id);
 
-    // Zweiter Versuch (Retry, z. B. erneuter Admin-Klick oder Sweep-Lauf): jetzt klappt der Delete —
-    // repo.delete ist idempotent, ein zweiter ko.purged-Eintrag ist unschädlich (bricht die Hash-Kette
-    // nicht) und dokumentiert ehrlich den zweiten Versuch.
-    await expect(service.delete(ko.id, "admin", { hard: true })).resolves.toBeUndefined();
-    expect(await inner.findById(ko.id)).toBeUndefined();
-    const afterRetry = (await auditRepo.all()).filter((e) => e.action === "ko.purged");
-    expect(afterRetry).toHaveLength(2);
+      deleteFail.arm();
+      await expect(steps.attempt(service, ko.id, clock)).rejects.toThrow(
+        "delete-storage down (in tx)",
+      );
+
+      // Rollback bewiesen: KEIN ko.purged-Beleg (obwohl audit.record im Code NACH repo.delete käme —
+      // die Transaktion als Ganzes hat nie committet), KO existiert unverändert weiter (im Papierkorb,
+      // je nach Weg — s. purgeSteps.prepare).
+      expect(
+        (await auditInner.all()).filter((e) => e.action === "ko.purged" && e.target === ko.id),
+      ).toHaveLength(0);
+      expect(await inner.findById(ko.id)).toBeDefined();
+
+      // Retry (kein erneuter Fehler): derselbe Purge-Chokepoint wird erneut versucht (das KO ist ja
+      // unverändert im selben Zustand wie vor dem gescheiterten Versuch) — jetzt committet die
+      // Transaktion, KO ist weg, genau EIN Beleg.
+      await expect(steps.attempt(service, ko.id, clock)).resolves.toBeUndefined();
+      expect(await inner.findById(ko.id)).toBeUndefined();
+      expect(
+        (await auditInner.all()).filter((e) => e.action === "ko.purged" && e.target === ko.id),
+      ).toHaveLength(1);
+    }
+  });
+
+  it("(b) scheitert audit.record INNERHALB der Transaktion: repo.delete bleibt unsichtbar (Rollback), KO bleibt — die Richtung, die WP-A nicht bewies — für alle drei Purge-Wege", async () => {
+    for (const path of PURGE_PATHS) {
+      const inner = new InMemoryKoRepo();
+      const auditInner = new InMemoryAuditRepo();
+      const { koRepo, auditRepo, withTx } = makeTxHarness(inner, auditInner);
+      const auditFail = failOnce();
+      const clock = { value: Date.parse("2026-07-03T12:00:00.000Z") };
+      const service = new KoService({
+        repo: koRepo,
+        audit: new AuditService({
+          repo: withAuditFailure(auditRepo, auditFail, "audit-storage down (in tx)"),
+        }),
+        withTx,
+        now: () => clock.value,
+      });
+
+      const ko = await service.create({
+        title: `Audit scheitert (${path})`,
+        statement: "audit.record scheitert in der Transaktion",
+        type: "best_practice",
+        category: "A",
+        author: "erik",
+      });
+
+      const steps = purgeSteps(path);
+      await steps.prepare(service, ko.id);
+
+      auditFail.arm();
+      await expect(steps.attempt(service, ko.id, clock)).rejects.toThrow(
+        "audit-storage down (in tx)",
+      );
+
+      // Rollback bewiesen: repo.delete lief im Code VOR audit.record und wurde bereits "gestaged" —
+      // weil audit.record danach scheiterte, wurde die gepufferte Löschung NIE angewendet. KO existiert
+      // unverändert weiter, KEIN Geister-Delete ohne Beleg (genau die Lücke, die WP-A offen ließ).
+      expect(await inner.findById(ko.id)).toBeDefined();
+      expect(
+        (await auditInner.all()).filter((e) => e.action === "ko.purged" && e.target === ko.id),
+      ).toHaveLength(0);
+
+      // Retry (kein erneuter Fehler): derselbe Purge-Chokepoint wird erneut versucht — jetzt committet
+      // die Transaktion, KO ist weg, genau EIN Beleg.
+      await expect(steps.attempt(service, ko.id, clock)).resolves.toBeUndefined();
+      expect(await inner.findById(ko.id)).toBeUndefined();
+      expect(
+        (await auditInner.all()).filter((e) => e.action === "ko.purged" && e.target === ko.id),
+      ).toHaveLength(1);
+    }
   });
 });

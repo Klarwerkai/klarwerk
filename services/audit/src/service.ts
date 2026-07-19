@@ -1,3 +1,4 @@
+import type { TxContext } from "../../db-tx";
 import { GENESIS, hashEntry, verifyChain } from "./chain";
 import type { AuditRepo } from "./repo";
 import type { AuditEntry, AuditFilter, AuditInput } from "./types";
@@ -17,8 +18,12 @@ export class AuditService {
   }
 
   // FR-AUD-01: jede relevante Aktion erzeugt einen Eintrag (wer/was/wann).
-  async record(input: AuditInput): Promise<AuditEntry> {
-    const last = await this.repo.last();
+  // SCRUM-523 P.3 (WP-A2): optionaler, opaker TxContext (services/db-tx) — additiv, abwärtskompatibel.
+  // Reicht ihn an last()/append() durch, damit BEIDE auf demselben Pg-Client laufen wie ein vom
+  // Aufrufer parallel geschriebener anderer Store (z. B. KoService.purgeKo: repo.delete + audit.record
+  // in EINER echten Transaktion). Ohne tx unverändertes Verhalten.
+  async record(input: AuditInput, tx?: TxContext): Promise<AuditEntry> {
+    const last = await this.repo.last(tx);
     const seq = last ? last.seq + 1 : 1;
     const prevHash = last ? last.hash : GENESIS;
     const partial: Omit<AuditEntry, "hash"> = {
@@ -31,7 +36,7 @@ export class AuditService {
       prevHash,
     };
     const entry: AuditEntry = { ...partial, hash: hashEntry(partial) };
-    await this.repo.append(entry);
+    await this.repo.append(entry, tx);
     return entry;
   }
 
