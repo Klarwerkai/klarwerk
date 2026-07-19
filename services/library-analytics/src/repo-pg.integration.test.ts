@@ -12,6 +12,11 @@ import type { ImportCandidate, ImportItem } from "./types";
 // Die Spalten-DDL OHNE den Unique-Index — Setup, um VOR dem Index Alt-Dubletten einzuschleusen (die im
 // Betrieb aus der Zeit vor dem Index stammen). Muss zu den GENERATED-Definitionen in der echten Migration
 // passen (cast-sicher).
+//
+// SCRUM-510 (WP-B2, Reviewer-Befund GELB): DIES ist zugleich die Expression, mit der die Live-Instanz
+// aktuell tatsächlich läuft — cast-sicher (b), aber OHNE Längenbegrenzung. Eine sehr lange Ziffernfolge
+// passiert den Regex-Guard trotzdem und crasht danach am `::int`-Cast (Integer-Overflow). Dient unten als
+// Ausgangspunkt sowohl für den Overflow-Nachweis als auch für den Heilungs-Upgrade-Pfad.
 const COLUMNS_ONLY_DDL = `
 CREATE TABLE IF NOT EXISTS import_candidates (
   id text PRIMARY KEY,
@@ -223,5 +228,85 @@ describe("SCRUM-510 (WP2): Import-Migration + ON CONFLICT gegen echtes Postgres"
     await expect(pool.query(IMPORT_CANDIDATES_SCHEMA)).resolves.toBeDefined();
     const count = await pool.query("SELECT count(*)::int AS n FROM import_candidates");
     expect(count.rows[0].n).toBe(1); // "dup" wurde nicht eingefügt (kollidiert), Heilung fügte nichts hinzu
+  });
+
+  // SCRUM-510 (WP-B2, Reviewer-Befund GELB): eine 20-stellige sourceVersion passiert `^[0-9]+$` (reine
+  // Ziffernfolge), scheitert dann aber am `::int`-Cast (int4-Overflow) — genau die vom Reviewer gemeldete
+  // Lücke der (b)-Expression. Die gehärtete `^[0-9]{1,9}$` lässt so lange Ziffernfolgen den Regex-Guard
+  // NICHT mehr passieren → Fallback 1 statt Crash (deckungsgleich mit dem Cast-sicheren Grundgedanken).
+  it("(a) SCRUM-510 (WP-B2): 20-stellige sourceVersion crasht nicht mehr (Overflow-Guard) — source_version=1", async (ctx) => {
+    const pool = requirePool(ctx);
+    await reset(pool);
+    // Aktuelle (gehärtete) Migration direkt auf einer Neuinstallation.
+    await pool.query(IMPORT_CANDIDATES_SCHEMA);
+    const repo = new PgCandidateRepo(pool);
+    const overflow = candidate(
+      "overflow",
+      { externalId: "POF", sourceVersion: "99999999999999999999" as unknown as number },
+      "2026-01-01",
+    );
+    await expect(repo.insert(overflow)).resolves.toBeUndefined();
+    const row = await pool.query(
+      "SELECT source_version FROM import_candidates WHERE id='overflow'",
+    );
+    expect(row.rows[0].source_version).toBe(1); // zu lang → Regex-Guard greift NICHT → Fallback, kein Crash
+  });
+
+  // SCRUM-510 (WP-B2): die Live-Instanz läuft HEUTE mit genau der (b)-Expression aus COLUMNS_ONLY_DDL —
+  // cast-sicher, aber ohne Längenbegrenzung. Beweist: die erweiterte Heilungserkennung greift auch OHNE
+  // COALESCE im Expression-Text (reine Regex-Text-Erkennung, s. Kommentar an der Migration), baut die
+  // Spalte + den Index neu mit der gehärteten Expression auf — DANACH crasht ein Overflow-Insert nicht mehr.
+  it("(b) SCRUM-510 (WP-B2): Upgrade-Pfad von der ungeschützten Live-Regex (^[0-9]+$, ohne COALESCE) wird geheilt", async (ctx) => {
+    const pool = requirePool(ctx);
+    await reset(pool);
+    // Heutige Live-DDL (b, unbegrenzte Regex, KEIN COALESCE im Text) — muss von der reinen COALESCE-
+    // Erkennung aus WP-B UNENTDECKT bleiben, aber von der WP-B2-Erweiterung erkannt werden.
+    await pool.query(COLUMNS_ONLY_DDL);
+    const before = await pool.query<{ legacy_expr: string }>(`
+      SELECT pg_get_expr(d.adbin, d.adrelid) AS legacy_expr
+      FROM pg_attribute a
+      JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+      WHERE a.attrelid = 'import_candidates'::regclass AND a.attname = 'source_version'
+    `);
+    expect(before.rows[0]?.legacy_expr).not.toContain("COALESCE"); // genau der Fall, den WP-B NICHT erkannte
+
+    // Migrationslauf: die Heilung erkennt die unbegrenzte Regex am Expression-TEXT (nicht an COALESCE)
+    // und baut Spalte + Index neu auf — der Lauf selbst darf nicht scheitern.
+    await expect(pool.query(IMPORT_CANDIDATES_SCHEMA)).resolves.toBeDefined();
+
+    const after = await pool.query<{ legacy_expr: string }>(`
+      SELECT pg_get_expr(d.adbin, d.adrelid) AS legacy_expr
+      FROM pg_attribute a
+      JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+      WHERE a.attrelid = 'import_candidates'::regclass AND a.attname = 'source_version'
+    `);
+    expect(after.rows[0]?.legacy_expr).toContain("1,9"); // gehärtete Expression jetzt aktiv
+
+    // Ein 20-stelliger Overflow-Insert crasht jetzt nicht mehr am ::int-Cast.
+    const repo = new PgCandidateRepo(pool);
+    const overflow = candidate(
+      "overflow-upgraded",
+      { externalId: "POU", sourceVersion: "99999999999999999999" as unknown as number },
+      "2026-01-01",
+    );
+    await expect(repo.insert(overflow)).resolves.toBeUndefined();
+    const row = await pool.query(
+      "SELECT source_version FROM import_candidates WHERE id='overflow-upgraded'",
+    );
+    expect(row.rows[0].source_version).toBe(1);
+
+    // (c) Idempotenz: ein zweiter Lauf gegen die bereits gehärtete Spalte erkennt weder COALESCE noch die
+    // unbegrenzte Regex mehr (die gehärtete Expression enthält "[0-9]+$" NICHT als Teilzeichenkette) —
+    // No-op, kein erneuter Spalten-/Index-Neuaufbau, keine Datenveränderung.
+    await expect(pool.query(IMPORT_CANDIDATES_SCHEMA)).resolves.toBeDefined();
+    const stillAfter = await pool.query<{ legacy_expr: string }>(`
+      SELECT pg_get_expr(d.adbin, d.adrelid) AS legacy_expr
+      FROM pg_attribute a
+      JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+      WHERE a.attrelid = 'import_candidates'::regclass AND a.attname = 'source_version'
+    `);
+    expect(stillAfter.rows[0]?.legacy_expr).toBe(after.rows[0]?.legacy_expr); // unverändert, kein Re-Trigger
+    const count = await pool.query("SELECT count(*)::int AS n FROM import_candidates");
+    expect(count.rows[0].n).toBe(1); // unverändert — kein Datenverlust durch den No-op-Re-Run
   });
 });

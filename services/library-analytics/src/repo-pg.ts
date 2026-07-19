@@ -30,8 +30,26 @@ import type { ImportCandidate } from "./types";
 // CREATE-INDEX-Schritte unten legen beides mit der sicheren Expression neu an. Läuft in derselben
 // impliziten Transaktion wie der Rest der Migration (Postgres' Simple-Query-Protokoll wrapped ein
 // mehrstatement-Query atomar) und ist idempotent: nach der Heilung trägt die Spalte die sichere
-// Expression, ein Re-Run erkennt "COALESCE" nicht mehr und ist ein No-op. Neuinstallationen sind
-// unberührt (source_version existiert dort noch nicht → Erkennung liefert NULL → kein Trigger).
+// Expression, ein Re-Run erkennt weder "COALESCE" noch die unbegrenzte Regex (s. WP-B2 unten) mehr und
+// ist ein No-op. Neuinstallationen sind unberührt (source_version existiert dort noch nicht →
+// Erkennung liefert NULL → kein Trigger).
+// SCRUM-510 (WP-B2, Reviewer-Befund GELB): die CAST-SICHERE Regex `^[0-9]+$` aus (b) prüft zwar "reine
+// Ziffernfolge", aber OHNE Längenbegrenzung — eine sehr lange Ziffernfolge (z. B. 20 Neunen) passiert den
+// Regex-Guard trotzdem und crasht danach am `::int`-Cast (Integer-Overflow, int4 max = 2^31-1 =
+// 2.147.483.647, also max. 10 Stellen, aber die 10-stelligen Zahlen >2^31-1 würden selbst noch überlaufen
+// → HART auf 9 Stellen begrenzt: 999.999.999 < 2^31-1 ist für JEDE 9-stellige Ziffernfolge sicher, auch
+// mit führenden Nullen). Fix: `^[0-9]+$` → `^[0-9]{1,9}$` (unten). Eine überlange Ziffernfolge fällt damit
+// bewusst auf denselben Fallback 1 wie eine nicht-numerische sourceVersion — deckungsgleich mit dem
+// Cast-sicheren Grundgedanken aus (b), nur zusätzlich längenbegrenzt.
+// WICHTIG: Die Heilungserkennung oben fing bisher NUR die alte COALESCE-Expression ab. Instanzen, die
+// bereits über (b)/WP-B liefen (oder als Neuinstallation direkt mit (b) starteten), tragen die
+// UNGESCHÜTZTE `^[0-9]+$`-Expression OHNE COALESCE — die o. g. Erkennung griff für sie NICHT (kein
+// "COALESCE" im Expression-Text) und sie blieben unbemerkt beim Overflow-Risiko. Die Erkennung unten prüft
+// daher zusätzlich auf die Teilzeichenkette "[0-9]+$" (die im String-Literal der Regex UNVERÄNDERT von
+// pg_get_expr zurückgegeben wird, unabhängig von Formatierungsvarianten wie Klammerung/Casts/Groß-
+// Kleinschreibung des restlichen Ausdrucks) — sie matcht NUR die alte, unbegrenzte Variante: die gehärtete
+// Ersatz-Expression `^[0-9]{1,9}$` enthält diese Teilzeichenkette NICHT (nach der `9]` folgt `{1,9}$`,
+// nicht `+$`), die Heilung bleibt also idempotent (kein erneutes Triggern nach der Härtung).
 export const IMPORT_CANDIDATES_SCHEMA = `
 CREATE TABLE IF NOT EXISTS import_candidates (
   id text PRIMARY KEY,
@@ -52,21 +70,21 @@ BEGIN
     AND a.attname = 'source_version'
     AND NOT a.attisdropped;
 
-  IF legacy_expr LIKE '%COALESCE%' THEN
+  IF legacy_expr LIKE '%COALESCE%' OR legacy_expr LIKE '%[0-9]+$%' THEN
     SELECT string_agg(DISTINCT i.indexrelid::regclass::text, ', ') INTO dependent_indexes
     FROM pg_index i
     JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attname = 'source_version'
     WHERE i.indrelid = 'import_candidates'::regclass
       AND a.attnum = ANY(i.indkey);
 
-    RAISE NOTICE 'import_candidates: alte cast-unsichere source_version-Expression erkannt — Spalte wird neu aufgebaut, abhängige Indizes (%) folgen (SCRUM-510 WP-B)', COALESCE(dependent_indexes, '-');
+    RAISE NOTICE 'import_candidates: cast-unsichere/unbegrenzte source_version-Expression erkannt — Spalte wird neu aufgebaut, abhängige Indizes (%) folgen (SCRUM-510 WP-B/WP-B2)', COALESCE(dependent_indexes, '-');
     ALTER TABLE import_candidates DROP COLUMN source_version CASCADE;
   END IF;
 END $$;
 ALTER TABLE import_candidates
   ADD COLUMN IF NOT EXISTS source_version integer
   GENERATED ALWAYS AS (
-    CASE WHEN (data->'item'->>'sourceVersion') ~ '^[0-9]+$'
+    CASE WHEN (data->'item'->>'sourceVersion') ~ '^[0-9]{1,9}$'
          THEN (data->'item'->>'sourceVersion')::int
          ELSE 1 END
   ) STORED;
