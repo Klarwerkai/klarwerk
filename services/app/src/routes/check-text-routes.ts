@@ -20,11 +20,19 @@ import { classifyProvenanceConfidential } from "./reasoner-routes";
 const MIN_TEXT = 40;
 const MAX_TEXT = 8_000;
 
-// ben-Review-Fix: Body-Schema als EINZIGE Quelle der Eingabe-Validierung. Fehlender/null/malformer
-// Body oder text außerhalb 40–8.000 → Fastify liefert einen kontrollierten 400 in der validation-Phase
-// (kein Handler-Zugriff auf undefined, KEINE interne TypeError/500 nach außen). want bleibt bewusst ein
-// freier String (kein enum), damit "deep" das Schema passiert und im Handler die klare „noch nicht"-
-// Meldung erzeugt; locale bleibt permissiv (Handler normalisiert auf de/en).
+// SCRUM-498 (WP-D): expliziter Route-bodyLimit (statt des globalen 1-MiB-Fastify-Default) — Konsistenz
+// zu /api/ask (ASK_BODY_LIMIT, ask-routes.ts). 128 KiB deckt einen 8.000-Codepoint-Text (roh bis
+// ~96 KiB bei Escape-Worst-Case) plus title + Envelope/Zusatzfelder komfortabel; Bodies darüber liegen
+// außerhalb der gültigen Hülle → kontrolliertes 413 statt des globalen 1-MiB-Defaults.
+const CHECK_TEXT_BODY_LIMIT = 128 * 1024; // 128 KiB
+
+// ben-Review-Fix: Body-Schema als Quelle der INHALTLICHEN Eingabe-Validierung (Länge/Typ der Felder).
+// Fehlender/null/malformer Body oder text außerhalb 40–8.000 → Fastify liefert einen kontrollierten 400
+// in der validation-Phase (kein Handler-Zugriff auf undefined, KEINE interne TypeError/500 nach außen).
+// SCRUM-498 (WP-D): die GRÖSSE des Bodies selbst prüft zusätzlich CHECK_TEXT_BODY_LIMIT (Transport-Cap,
+// vor der Schema-Validierung) — zusammen bilden beide die vollständige Eingabe-Härtung. want bleibt
+// bewusst ein freier String (kein enum), damit "deep" das Schema passiert und im Handler die klare
+// „noch nicht"-Meldung erzeugt; locale bleibt permissiv (Handler normalisiert auf de/en).
 const bodySchema = {
   type: "object",
   required: ["text"],
@@ -115,6 +123,7 @@ export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): Fasti
         // Dieselbe Drossel-Config wie /api/ask (Slice 1): greift nur, wenn @fastify/rate-limit
         // registriert ist (Flag AN), und dort nur auf Add-on-Principal-Requests — Session exempt.
         config: { rateLimit: addonRateLimit() },
+        bodyLimit: CHECK_TEXT_BODY_LIMIT,
         schema: { body: bodySchema },
         // Fix 2 (ben-Review): Auth VOR der Body-Validierung. Fastify-Lifecycle:
         // onRequest → preParsing → preValidation → validation → preHandler. Der Add-on-Pfad ist bereits

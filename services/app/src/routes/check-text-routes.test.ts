@@ -284,6 +284,41 @@ describe("SCRUM-491 Slice 5 (ben-Review): kontrollierter 400 statt 500 bei fehle
   });
 });
 
+// SCRUM-498 (WP-D): expliziter Route-bodyLimit (CHECK_TEXT_BODY_LIMIT, 128 KiB) — analog zu
+// /api/ask (ASK_BODY_LIMIT). Beweist: ein zu großer Body bekommt ein kontrolliertes 413 (statt des
+// globalen 1-MiB-Fastify-Default), und ein Body knapp unter dem Cap wird weiterhin inhaltlich vom
+// Schema geprüft (die Größenprüfung ersetzt die Feld-Validierung nicht).
+describe("SCRUM-498 (WP-D): POST /api/check-text bodyLimit (413)", () => {
+  beforeEach(() => {
+    process.env.KLARWERK_ADDON_API = "1";
+    process.env.KLARWERK_ADDON_API_KEY = KEY;
+  });
+
+  it("Body > 128 KiB → 413 (milder Transport-Cap, kein 500)", async () => {
+    const app = buildApp(buildServices());
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/check-text",
+      headers: { [ADDON_KEY_HEADER]: KEY },
+      payload: { text: CHECK_STMT, title: "a".repeat(200_000) },
+    });
+    expect(res.statusCode).toBe(413);
+  });
+
+  it("Body knapp unter 128 KiB mit zu langem text (> 8.000) → weiterhin 400 vom Schema", async () => {
+    const app = buildApp(buildServices());
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/check-text",
+      headers: { [ADDON_KEY_HEADER]: KEY },
+      // ~120 KiB Gesamtbody (< 128 KiB) — der Cap greift NICHT; text bleibt trotzdem > 8.000 Zeichen
+      // und muss weiterhin am Schema scheitern (400, nicht 413).
+      payload: { text: "a".repeat(8_001), title: "b".repeat(110 * 1024) },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+});
+
 // --- Stufe-2-Harness (Slice 6): der Endpunkt mit INJIZIERTEN Fakes (Reasoner-Judge + Prefilter),
 // KEIN echter Modellaufruf. Direkt-Plugin ohne den addon-Hook → Auth über einen Fake-Session-Guard.
 const TEXT_IDENTISCH = "Nach dem Anfahren 10 Sekunden warten, dann die Pumpe entlüften und prüfen.";
