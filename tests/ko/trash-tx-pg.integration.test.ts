@@ -4,7 +4,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPool, migrate } from "../../services/app";
 import { AuditService, PgAuditRepo } from "../../services/audit";
 import { withPgTx } from "../../services/db-tx";
-import { type KnowledgeObject, KoService, PgKoRepo } from "../../services/knowledge-object";
+import {
+  type KnowledgeObject,
+  type KoError,
+  KoService,
+  PgKoRepo,
+} from "../../services/knowledge-object";
 
 // SCRUM-523 P.3 (WP-A2): beweist die repo.delete+audit.record-Atomaritäts-Invariante GEGEN ECHTES
 // Postgres (Testcontainers). Die Unit-Tests in tests/ko/trash-e2e.test.ts bilden withPgTx nur über eine
@@ -128,5 +133,69 @@ describe("SCRUM-523 P.3 (WP-A2): repo.delete + audit.record — echte Pg-Transak
       (e) => e.action === "ko.purged" && e.target === ko.id,
     );
     expect(purged).toHaveLength(0);
+  });
+
+  // SCRUM-523 P.3 (WP-A3, externer Review "ben"): PgKoRepo.delete prüfte rowCount bislang NICHT — ein
+  // wiederholter/konkurrierender Purge (0 gelöschte Zeilen) konnte trotzdem committen, WEIL delete()
+  // stillschweigend erfolgreich zurückkehrte, obwohl es nichts gelöscht hat ("Audit ohne echtes
+  // Delete"). Die beiden folgenden Tests beweisen GEGEN ECHTES Postgres, dass ein 0-Zeilen-Delete jetzt
+  // NOT_FOUND wirft und (weil es INNERHALB derselben withPgTx-Klammer wie audit.record läuft) die ganze
+  // Transaktion zurückrollt — es kann also kein zweiter/geisterhafter ko.purged-Beleg mehr entstehen.
+  it("(d) wiederholter Purge desselben KO: zweiter Versuch scheitert kontrolliert (NOT_FOUND), kein zweiter ko.purged-Beleg", async () => {
+    const koRepo = new PgKoRepo(pool);
+    const auditRepo = new PgAuditRepo(pool);
+    const audit = new AuditService({ repo: auditRepo });
+    const ko = await seedKo(koRepo, audit);
+
+    // Erster Purge — gelingt, genau EIN Beleg.
+    await withPgTx(pool, async (tx) => {
+      await koRepo.delete(ko.id, tx);
+      await audit.record({ actor: "admin", action: "ko.purged", target: ko.id, payload: {} }, tx);
+    });
+    expect(await koRepo.findById(ko.id)).toBeUndefined();
+    expect(
+      (await auditRepo.all()).filter((e) => e.action === "ko.purged" && e.target === ko.id),
+    ).toHaveLength(1);
+
+    // Zweiter Versuch auf DASSELBE (bereits gelöschte) KO — z. B. ein konkurrierender oder erneut
+    // ausgelöster Purge-Chokepoint-Aufruf. Das DELETE trifft 0 Zeilen → PgKoRepo.delete wirft NOT_FOUND,
+    // BEVOR audit.record überhaupt läuft (Reihenfolge im Chokepoint: delete zuerst, s. service.ts
+    // purgeKo). Selbst wenn audit.record liefe, würde derselbe Rollback-Mechanismus greifen.
+    await expect(
+      withPgTx(pool, async (tx) => {
+        await koRepo.delete(ko.id, tx);
+        await audit.record({ actor: "admin", action: "ko.purged", target: ko.id, payload: {} }, tx);
+      }),
+    ).rejects.toMatchObject({ name: "KoError", code: "NOT_FOUND" } satisfies Partial<KoError>);
+
+    // Kein zweiter Beleg — die zweite (Rollback-)Transaktion hat NICHTS committet.
+    expect(await koRepo.findById(ko.id)).toBeUndefined();
+    expect(
+      (await auditRepo.all()).filter((e) => e.action === "ko.purged" && e.target === ko.id),
+    ).toHaveLength(1);
+  });
+
+  it("(e) delete trifft 0 Zeilen (KO existiert nicht/nicht mehr): Transaktion rollt zurück, kein Audit-Eintrag entsteht", async () => {
+    const koRepo = new PgKoRepo(pool);
+    const auditRepo = new PgAuditRepo(pool);
+    const audit = new AuditService({ repo: auditRepo });
+
+    // KEIN seedKo — die id existiert in `kos` nie. Bildet z. B. eine bereits abgeschlossene Endlöschung
+    // (Sweep) nach, gegen die ein zweiter, zeitgleich gestarteter Aufrufer antritt.
+    const ghostId = "ghost-nonexistent-ko";
+
+    await expect(
+      withPgTx(pool, async (tx) => {
+        await koRepo.delete(ghostId, tx);
+        await audit.record(
+          { actor: "system", action: "ko.purged", target: ghostId, payload: {} },
+          tx,
+        );
+      }),
+    ).rejects.toMatchObject({ name: "KoError", code: "NOT_FOUND" } satisfies Partial<KoError>);
+
+    expect(
+      (await auditRepo.all()).filter((e) => e.action === "ko.purged" && e.target === ghostId),
+    ).toHaveLength(0);
   });
 });

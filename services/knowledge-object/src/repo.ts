@@ -105,8 +105,12 @@ export class InMemoryKoRepo implements KoRepo {
     return Promise.resolve();
   }
 
+  // SCRUM-523 P.3 (WP-A3): konsistent zu PgKoRepo.delete — 0 gelöschte Zeilen (KO bereits weg,
+  // wiederholter/konkurrierender Purge) wirft NOT_FOUND statt still zu no-op'en.
   delete(id: string, _tx?: TxContext): Promise<void> {
-    this.items.delete(id);
+    if (!this.items.delete(id)) {
+      return Promise.reject(new KoError("NOT_FOUND", "Wissensobjekt nicht gefunden."));
+    }
     return Promise.resolve();
   }
 

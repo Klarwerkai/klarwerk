@@ -118,9 +118,18 @@ export class PgKoRepo implements KoRepo {
   // SCRUM-523 P.3 (WP-A2): ohne tx die normale Pool-Query (heutiges Verhalten); MIT tx (vom Aufrufer
   // aus derselben withPgTx-Klammer wie z. B. PgAuditRepo.append) läuft die Query auf demselben Client
   // — damit committen/rollbacken beide Schreiber ATOMAR zusammen (services/db-tx).
+  //
+  // SCRUM-523 P.3 (WP-A3, externer Review): rowCount MUSS geprüft werden. Ein wiederholter/
+  // konkurrierender Purge (KO bereits gelöscht) darf NIE als Erfolg durchgehen — sonst committet
+  // purgeKo (service.ts) einen ko.purged-Beleg, obwohl 0 Zeilen gelöscht wurden ("Audit ohne echtes
+  // Delete"). Bei 0 gelöschten Zeilen wirft delete() NOT_FOUND; innerhalb der withTx-Klammer von
+  // purgeKo führt das zum ROLLBACK, bevor audit.record läuft — kein Geister-Beleg.
   async delete(id: string, tx?: TxContext): Promise<void> {
     const queryable: Queryable = tx ? pgQueryable(tx) : poolQueryable(this.pool);
-    await queryable.query("DELETE FROM kos WHERE id=$1", [id]);
+    const res = await queryable.query("DELETE FROM kos WHERE id=$1", [id]);
+    if (res.rowCount === 0) {
+      throw new KoError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+    }
   }
 
   async list(filter: KoFilter): Promise<KnowledgeObject[]> {
