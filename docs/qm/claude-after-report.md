@@ -11004,3 +11004,17 @@ Backend-/PMO-Bündel SCRUM-439/438/436/442 sowie der reguläre Backlog 435/431/4
 **Git-Status:** d761867 + 5b4e58e (+ dieser Doku-Commit); Baum sauber; kein Push.
 **Jira-Kommentar-Vorschlag:** auf SCRUM-469 nach Fertigstellung verankert.
 **Nächster Schritt:** ben-Re-Recheck über die Gesamt-Range, dann Ship.
+
+---
+
+**Datum:** 2026-07-19 (nachmittags)
+**Ticket:** SCRUM-523 (WP-A3, ben-Re-Recheck ROT vom 19.07., Bericht SHA 11e38dad…)
+**Änderung:** `PgKoRepo.delete` erzwingt jetzt rowCount === 1 — bei 0 gelöschten Zeilen (wiederholter/konkurrierender Purge) wird `KoError NOT_FOUND` geworfen; innerhalb der withTx-Klammer von purgeKo führt das zum ROLLBACK, bevor `audit.record` committet ("kein Audit ohne echtes Delete"). `InMemoryKoRepo.delete` konsistent angepasst (0 gelöscht → gleicher Fehlertyp).
+**Gebaut:** Claude Code (Hand, headless über Code-Account) via Kopf-Automatik; Kopf: Gates, Format, Commit.
+**Getestet:** tools/check GRÜN (314 Testdateien / 2207 Tests, Build+Biome+depcruise+Vitest). Neu: 2 PG-Integrationstests in tests/ko/trash-tx-pg.integration.test.ts — (d) wiederholter Purge → NOT_FOUND, kein zweiter ko.purged-Beleg; (e) Geister-ID → Rollback, kein Audit-Eintrag.
+**Nicht ausführbare Checks + Grund:** npm run test:integration (Testcontainers) — kein Docker im Cloud-Container (Registries 403); läuft auf Pedis Mac.
+**Offen:** git am auf Pedis Mac → test:integration (jetzt 5 Suiten erwartet) → ben-Re-Recheck der neuen Commits → Pedi-GO → Ship-Sequenz.
+**Risiko:** Semantikänderung von delete() (vorher stilles No-Op bei 0 Zeilen) — alle 2207 Unit-/E2E-Tests grün, purgeSteps-Semantik (prepare/attempt) unverändert gültig; ben-GELB-Punkte (Cleanup-Selbstheilung, Embedding-Fehler, Dev-Journal-Fenster) bewusst NICHT angefasst → post-VIP, ben zur Bestätigung vorgelegt.
+**Git-Status:** d88c48e (+ dieser Doku-Commit); Baum sauber; kein Push.
+**Jira-Kommentar-Vorschlag:** auf SCRUM-469 verankern: WP-A3 gebaut, Gates grün, wartet auf Mac-Integrationslauf + ben.
+**Nächster Schritt:** Patch-Lieferung an Pedi (_relay/patches3), ein Copy-Paste-Block (git am + test:integration), dann ben-Prompt.
