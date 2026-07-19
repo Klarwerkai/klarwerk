@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowLeft,
   ArrowRight,
   Check,
   CloudOff,
@@ -19,6 +20,7 @@ import { endpoints } from "../api/endpoints";
 import { useDrafts, useLibrarySearch } from "../api/hooks";
 import type { AnswerResult } from "../api/types";
 import { useToast } from "../app/ToastContext";
+import { HOME_ROUTE } from "../app/navigation";
 import { type SyncResult, useOfflineQueue } from "../app/useOfflineQueue";
 import { ConfidenceBar, KnowledgeTypeTag, StatusPill } from "../components/trust";
 import { selectAnswer } from "../lib/askResponse";
@@ -169,7 +171,16 @@ export function Mobile(): JSX.Element {
     }`;
 
   return (
-    <div className="grid min-h-[520px] place-items-center rounded-card bg-page p-6">
+    <div className="flex min-h-[520px] flex-col items-center gap-3 rounded-card bg-page p-6">
+      {/* B1b: /mobile wird OHNE AppShell/Topbar gerendert — ohne diesen Ausgang gäbe es keinen Weg
+          zurück zur Vollversion. Immer sichtbar, oberhalb des Telefon-Rahmens. */}
+      <Link
+        to={HOME_ROUTE}
+        className="inline-flex items-center gap-1.5 self-start rounded-btn border border-hairline bg-surface px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text"
+      >
+        <ArrowLeft size={15} />
+        {t("topbar.toDesktop")}
+      </Link>
       <div className="w-[340px] overflow-hidden rounded-[34px] border-4 border-ink bg-surface p-5">
         <div className="mb-3 flex items-center justify-between">
           <span className="font-sans text-[15px] font-bold tracking-[2px] text-ink">KLARWERK</span>

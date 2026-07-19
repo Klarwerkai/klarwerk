@@ -174,11 +174,15 @@ describe("Pedi 05.07.: kiHeaderStatus — DSGVO immer „nein“, außer interne
     }
   });
 
-  it("Pedi-Copy: Externe KI, Beide und sichtbarer deterministischer Ersatzmodus", async () => {
+  // B2 (Pedi-UX): die sichtbaren Kurz-Labels sind jetzt sachliche Moduswahl statt „Externe KI/Beide";
+  // Land + DSGVO wandern in den Tooltip (Ehrlichkeit bleibt: der Hinweistext nennt DSGVO klar).
+  it("Pedi-Copy: KI-Modus-Labels (Cloud/Cloud+Lokal) + sichtbarer deterministischer Ersatzmodus", async () => {
     await i18n.changeLanguage("de");
-    expect(i18n.t(KI_HEADER_TEXT.external)).toBe("Externe KI");
-    expect(i18n.t(KI_HEADER_TEXT.mixed)).toBe("Beide");
+    expect(i18n.t(KI_HEADER_TEXT.external)).toBe("KI-Modus: Cloud");
+    expect(i18n.t(KI_HEADER_TEXT.mixed)).toBe("KI-Modus: Cloud + Lokal");
     expect(i18n.t(KI_HEADER_TEXT.none)).toBe("Keine KI");
     expect(i18n.t(KI_HEADER_TEXT.noneSubtitle)).toBe("deterministischer Ersatzmodus");
+    // Der DSGVO-Status bleibt als Detail (Tooltip/Hinweis) klar erhalten.
+    expect(i18n.t(KI_HEADER_TEXT.dsgvoNo)).toBe("DSGVO: nein");
   });
 });

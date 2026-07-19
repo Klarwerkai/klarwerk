@@ -213,6 +213,12 @@ function KiModePill(): JSX.Element {
   const status = kiHeaderStatus(config.data);
   const ok = status.dsgvoConfirm;
   const neutral = status.mode === "none";
+  // B2: Die Pille zeigt nur noch den MODUS (z. B. „KI-Modus: Cloud"), nicht mehr das grelle
+  // „· USA · DSGVO: nein". Herkunft + DSGVO-Status wandern in den Tooltip — die Ehrlichkeit bleibt
+  // vollständig (der Hinweistext nennt DSGVO ohnehin klar; hier zusätzlich als crisp Detail-Zeile).
+  const detailLine =
+    status.countryKey && status.dsgvoKey ? `${t(status.countryKey)} · ${t(status.dsgvoKey)}` : null;
+  const tooltip = [t(status.hintKey), status.detail, detailLine].filter(Boolean).join(" — ");
   return (
     <div
       className={`flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-[11px] font-semibold ${
@@ -222,7 +228,7 @@ function KiModePill(): JSX.Element {
             ? "bg-trust-pos-bg text-trust-pos-text"
             : "bg-trust-warn-bg text-trust-warn-text"
       }`}
-      title={`${t(status.hintKey)}${status.detail ? ` — ${status.detail}` : ""}`}
+      title={tooltip}
     >
       <span
         className={`h-1.5 w-1.5 rounded-full ${
@@ -230,12 +236,9 @@ function KiModePill(): JSX.Element {
         }`}
       />
       {t(status.labelKey)}
+      {/* Nur der neutrale „Keine KI"-Modus trägt noch einen sachlichen Untertitel (Ersatzmodus). */}
       {status.subtitleKey ? (
         <span className="font-normal opacity-80">· {t(status.subtitleKey)}</span>
-      ) : status.countryKey && status.dsgvoKey ? (
-        <span className="font-normal opacity-80">
-          · {t(status.countryKey)} · {t(status.dsgvoKey)}
-        </span>
       ) : null}
     </div>
   );
@@ -269,7 +272,7 @@ export function Topbar(): JSX.Element {
     <header className="flex h-[60px] shrink-0 items-center gap-3 border-b border-hairline bg-surface px-5">
       <form
         onSubmit={submitSearch}
-        className="flex h-9 max-w-md flex-1 items-center gap-2 rounded-input border border-hairline bg-page px-3 text-muted focus-within:border-ink/30"
+        className="flex h-9 min-w-0 max-w-md flex-1 items-center gap-2 rounded-input border border-hairline bg-page px-3 text-muted focus-within:border-ink/30"
       >
         <button
           type="submit"
@@ -295,11 +298,13 @@ export function Topbar(): JSX.Element {
         </button>
       </form>
 
-      <div className="ml-auto flex min-w-0 items-center justify-end gap-2">
+      {/* B1: shrink-0 verhindert, dass der Such-Block den rechten Button-Block ab ~1050px überlagert;
+          das Formular (min-w-0, flex-1) gibt bei Enge nach statt den Block zu überdecken. */}
+      <div className="ml-auto flex shrink-0 items-center justify-end gap-2">
         <button
           type="button"
           onClick={() => navigate("/mobile")}
-          className="flex items-center gap-1.5 rounded-btn border border-hairline px-2.5 py-1.5 text-[12px] font-medium text-muted hover:text-text"
+          className="flex shrink-0 items-center gap-1.5 rounded-btn border border-hairline px-2.5 py-1.5 text-[12px] font-medium text-muted hover:text-text"
         >
           <Smartphone size={15} />
           {t("topbar.mobile")}
