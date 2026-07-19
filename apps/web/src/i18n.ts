@@ -813,6 +813,10 @@ const de = {
     "{{count}} Anhang/Anhänge sind jetzt als sichere Objekt-Referenz gespeichert und im Editor des Wissensobjekts als Beleg verlinkbar. Belege sind Kontext — sie ersetzen die Validierung nicht.",
   // SCRUM-374 / AG-02-SESSION: ehrlicher Recovery-Hinweis, wenn das KO gespeichert wurde, aber einzelne
   // Anhänge NICHT hochgeladen/angehängt werden konnten (Teilfehler ≠ Totalfehler).
+  "capture.attachTooLarge":
+    "„{{name}}“ ist zu groß für den Anhang (Upload-Grenze überschritten) — die Datei wurde nicht gespeichert, der Text-Import bleibt erhalten.",
+  "capture.originalAttachFailed":
+    "Originaldatei „{{name}}“ konnte nicht als Anhang gesichert werden — der Text-Import bleibt erhalten.",
   "capture.attachFailedTitle": "Nicht alle Anhänge konnten gesichert werden",
   "capture.attachFailedBody":
     "Dein Wissensobjekt ist offen gespeichert. Diese Datei(en) wurden NICHT angehängt: {{names}}. Das gespeicherte Wissen ist davon unberührt — Belege ersetzen die Validierung nicht.",
@@ -3806,6 +3810,10 @@ const en: typeof de = {
     "{{count}} attachment(s) are now stored as a safe object reference and can be linked as evidence in the knowledge object's editor. Evidence is context — it does not replace validation.",
   // SCRUM-374 / AG-02-SESSION: honest recovery hint when the KO was saved but some attachments could not
   // be uploaded/attached (partial failure ≠ total failure).
+  "capture.attachTooLarge":
+    "“{{name}}” is too large for an attachment (upload limit exceeded) — the file was not saved; the text import is kept.",
+  "capture.originalAttachFailed":
+    "Original file “{{name}}” could not be saved as an attachment — the text import is kept.",
   "capture.attachFailedTitle": "Not all attachments could be saved",
   "capture.attachFailedBody":
     "Your knowledge object is saved as open. These file(s) were NOT attached: {{names}}. The saved knowledge is unaffected — evidence does not replace validation.",
@@ -6750,6 +6758,10 @@ const nl: typeof de = {
     "Je voortgezette concept is als openstaande kennis ingediend en uit je concepten verwijderd.",
   "capture.savedFilesNote":
     "{{count}} bijlage(n) zijn nu als veilige objectreferentie opgeslagen en in de editor van het kennisobject als bewijs te koppelen. Bewijs is context — het vervangt de validatie niet.",
+  "capture.attachTooLarge":
+    "„{{name}}“ is te groot voor een bijlage (uploadlimiet overschreden) — het bestand is niet opgeslagen; de tekstimport blijft behouden.",
+  "capture.originalAttachFailed":
+    "Origineel bestand „{{name}}“ kon niet als bijlage worden veiliggesteld — de tekstimport blijft behouden.",
   "capture.attachFailedTitle": "Niet alle bijlagen konden worden veiliggesteld",
   "capture.attachFailedBody":
     "Je kennisobject is open opgeslagen. Dit bestand/deze bestanden zijn NIET bijgevoegd: {{names}}. De opgeslagen kennis blijft daardoor onaangeroerd — bewijs vervangt de validatie niet.",

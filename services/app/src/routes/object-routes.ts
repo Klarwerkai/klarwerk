@@ -24,6 +24,13 @@ function safeAttachmentName(name: unknown): string {
   return cleaned.length > 0 ? cleaned.slice(0, 120) : "download";
 }
 
+// WP-D2 („Original ist heilig"): expliziter Route-bodyLimit statt des globalen 1-MiB-Fastify-Defaults
+// (Muster CHECK_TEXT_BODY_LIMIT). Der Upload reist als JSON-Data-URL (Base64 ≈ Datei × 1,37) — der
+// globale Default deckelte reale Dateien auf ~700 KB und ließ jedes normale Nutzer-PDF/DOCX mit 413
+// scheitern, BEVOR MAX_OBJECT_BYTES überhaupt greifen konnte. 30 MiB umhüllt die 30-MB-Data-URL-
+// Obergrenze des Object-Store plus JSON-Envelope; darüber → kontrolliertes 413.
+export const OBJECTS_BODY_LIMIT = 30 * 1024 * 1024; // 30 MiB
+
 // SCRUM-121: Objekt-/Attachment-Speicher. Upload liefert eine ObjectRef (nur Metadaten);
 // das KO speichert die Referenz + kleine Vorschau statt des großen Originals.
 export function objectRoutes(store: ObjectStore, guards: Guards): FastifyPluginAsync {
@@ -36,7 +43,7 @@ export function objectRoutes(store: ObjectStore, guards: Guards): FastifyPluginA
         kind?: ObjectKind;
         confidentiality?: string;
       };
-    }>("/api/objects", async (request, reply) => {
+    }>("/api/objects", { bodyLimit: OBJECTS_BODY_LIMIT }, async (request, reply) => {
       const user = await guards.requirePermission("ko.create", request, reply);
       if (!user) {
         return;

@@ -6,13 +6,18 @@
 // SCRUM-408-Warteliste). Kein Auto-Speichern, keine stille Übernahme.
 import { useMutation } from "@tanstack/react-query";
 import { ChevronDown, FileText, Loader2, Paperclip, Sparkles, X } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import type { Confidentiality, ExtractedPoint } from "../api/types";
 import { BODY_EXTRACT_TEXT } from "../lib/bodyExtract";
+import {
+  type OriginalDocument,
+  type OriginalRefCache,
+  attachOriginalDocument,
+} from "../lib/captureAttachments";
 import {
   CAPTURE_FILE_TEXT,
   type SelectableExtractPoint,
@@ -53,6 +58,11 @@ export function BodyExtractPanel({
   const [open, setOpen] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
   const [fileText, setFileText] = useState("");
+  // WP-D2 („Original ist heilig"): die Quelldatei wird beim Übernehmen als Anhang ans Ziel-KO
+  // mitgeführt (nur wenn koId vorhanden). Der Ref-Cache verhindert Doppel-Uploads bei mehrfachem
+  // Übernehmen aus derselben Datei.
+  const [original, setOriginal] = useState<OriginalDocument | null>(null);
+  const originalRef = useRef<OriginalRefCache>({ ref: null });
   // SCRUM-502 R5: ein Upload ist NEUER Inhalt, kein Erbe des Ziel-KOs. Bis zur bewussten Einstufung
   // gilt fail-safe „vertraulich" (kein Cloud-Egress); der Nutzer kann bewusst herabsetzen.
   const [docConfidentiality, setDocConfidentiality] = useState<Confidentiality>("vertraulich");
@@ -99,6 +109,8 @@ export function BodyExtractPanel({
     setNote(null);
     setImageUrl(null);
     setFileText("");
+    setOriginal(null);
+    originalRef.current = { ref: null };
     setErr(null);
     setAppendedNote(null);
     // SCRUM-502 R6: JEDER Dateiwechsel setzt die Dokumentstufe fail-safe zurück (vertraulich) — eine
@@ -136,6 +148,12 @@ export function BodyExtractPanel({
         return;
       }
       setFileText(text);
+      // WP-D2: Original merken — beim Übernehmen wird es (bei vorhandener koId) ans KO angehängt.
+      setOriginal({
+        name: f.name,
+        mime: f.type || "application/octet-stream",
+        data: await readFileAsDataUrl(f),
+      });
       setStatus(t(CAPTURE_FILE_TEXT.loaded, { name: f.name }));
     } catch {
       setFileName(null);
@@ -177,6 +195,8 @@ export function BodyExtractPanel({
   const clearFile = (): void => {
     setFileName(null);
     setFileText("");
+    setOriginal(null);
+    originalRef.current = { ref: null };
     setImageUrl(null);
     setPoints(null);
     setNote(null);
@@ -190,7 +210,10 @@ export function BodyExtractPanel({
 
   // Übernahme: NUR die angekreuzten Punkte gehen an den Aufrufer; die Liste wird danach
   // geleert (sichtbare Quittung statt Doppel-Anfügen bei erneutem Klick).
-  const apply = (): void => {
+  // WP-D2 („Original ist heilig"): zusätzlich wird die Quelldatei als Anhang ans Ziel-KO gehängt
+  // (nur mit koId möglich). Scheitert das, bleibt die Punkte-Übernahme erhalten — der Grund
+  // („zu groß" vs. Upload) wird ehrlich gemeldet.
+  const apply = async (): Promise<void> => {
     if (!points || !fileName) {
       return;
     }
@@ -203,6 +226,27 @@ export function BodyExtractPanel({
     onAppend(chosen, fileName);
     setPoints(null);
     setAppendedNote(t(BODY_EXTRACT_TEXT.appended, { count: chosen.length, name: fileName }));
+    if (koId && original) {
+      const result = await attachOriginalDocument(
+        koId,
+        original,
+        {
+          upload: (input) => endpoints.objects.upload(input),
+          attach: (id, attachment) => endpoints.ko.act(id, { action: "attach", attachment }),
+        },
+        originalRef.current,
+      );
+      if (!result.attached && result.failure) {
+        setErr(
+          t(
+            result.failure.reason === "too-large"
+              ? "capture.attachTooLarge"
+              : "capture.originalAttachFailed",
+            { name: result.failure.name },
+          ),
+        );
+      }
+    }
   };
 
   return (
@@ -366,7 +410,7 @@ export function BodyExtractPanel({
                   variant="primary"
                   className="ml-auto"
                   disabled={selectedCount(points) === 0}
-                  onClick={apply}
+                  onClick={() => void apply()}
                 >
                   {t(BODY_EXTRACT_TEXT.applyCta)} ({selectedCount(points)}) →
                 </Button>

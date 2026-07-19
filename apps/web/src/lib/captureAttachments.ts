@@ -46,7 +46,24 @@ export interface AttachmentUploadApi {
   ): Promise<unknown>;
 }
 
-export type AttachmentFailureReason = "upload" | "attach";
+// WP-D2: „too-large" gesondert — der Nutzer soll wissen, dass die DATEI zu groß war (Limit), nicht
+// dass „etwas schiefging". Der Text-Import bleibt davon unberührt.
+export type AttachmentFailureReason = "upload" | "attach" | "too-large";
+
+// WP-D2: Upload-Fehler klassifizieren — 413 (Route-bodyLimit) oder die Objekt-/Anhang-Größenmeldungen
+// des Servers gelten als „zu groß"; alles andere bleibt generisch „upload". Reines Ducktyping, damit
+// der Helfer DOM- und API-Client-frei testbar bleibt.
+export function classifyUploadError(error: unknown): "too-large" | "upload" {
+  const status =
+    error && typeof error === "object" && "status" in error
+      ? Number((error as { status: unknown }).status)
+      : Number.NaN;
+  if (status === 413) {
+    return "too-large";
+  }
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /zu groß|too large|body limit|larger than/i.test(message) ? "too-large" : "upload";
+}
 
 export interface AttachmentFailure {
   name: string;
@@ -78,9 +95,10 @@ export async function uploadAttachments(
         data: item.data,
         kind: item.kind,
       });
-    } catch {
+    } catch (error) {
       // Kein Object → NICHT attachen (keine erfundene objectId, kein Halb-Anhang).
-      failed.push({ name: item.name, reason: "upload" });
+      // WP-D2: „zu groß" wird vom generischen Upload-Fehler unterschieden (ehrliche Ursache).
+      failed.push({ name: item.name, reason: classifyUploadError(error) });
       continue;
     }
     try {
@@ -99,6 +117,56 @@ export async function uploadAttachments(
   return { attached, failed, hasFailures: failed.length > 0 };
 }
 
+// WP-D2 („Original ist heilig"): die hochgeladene QUELLDATEI selbst als Anhang mitführen. Das Original
+// wird höchstens EINMAL in den Object-Store geladen (cache — die Punkte-Queue erzeugt mehrere KOs, alle
+// referenzieren dieselbe objectId); je Ziel-KO folgt nur noch der attach. Scheitert etwas, bleibt der
+// Text-Import unberührt — der Fehler wird mit ehrlichem Grund (too-large/upload/attach) gemeldet.
+export interface OriginalDocument {
+  name: string;
+  mime: string;
+  data: string; // Original-Daten-URL
+}
+
+export interface OriginalRefCache {
+  ref: UploadedObjectRef | null;
+}
+
+export async function attachOriginalDocument(
+  koId: string,
+  original: OriginalDocument,
+  api: AttachmentUploadApi,
+  cache: OriginalRefCache,
+): Promise<{ attached: boolean; failure?: AttachmentFailure }> {
+  let ref = cache.ref;
+  if (!ref) {
+    try {
+      ref = await api.upload({
+        name: original.name,
+        mime: original.mime,
+        data: original.data,
+        kind: "document",
+      });
+      cache.ref = ref;
+    } catch (error) {
+      return {
+        attached: false,
+        failure: { name: original.name, reason: classifyUploadError(error) },
+      };
+    }
+  }
+  try {
+    await api.attach(koId, {
+      name: original.name,
+      mime: original.mime,
+      objectId: ref.id,
+      ...(ref.size != null ? { size: ref.size } : {}),
+    });
+    return { attached: true };
+  } catch {
+    return { attached: false, failure: { name: original.name, reason: "attach" } };
+  }
+}
+
 // i18n-Keys für den ehrlichen Recovery-/Status-Hinweis (Teilfehler). Zahlen/Dateinamen rendert die
 // Komponente direkt. Kernaussage: KO ist offen gespeichert; fehlende Dateien später am KO ergänzen;
 // Belege ersetzen die Validierung nicht.
@@ -106,4 +174,6 @@ export const ATTACHMENT_RECOVERY_KEYS = {
   title: "capture.attachFailedTitle",
   body: "capture.attachFailedBody",
   next: "capture.attachFailedNext",
+  // WP-D2: Zusatzzeile, wenn mindestens ein Anhang an der Größen-Grenze scheiterte.
+  tooLarge: "capture.attachTooLarge",
 } as const;

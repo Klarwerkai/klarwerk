@@ -365,7 +365,8 @@ export function Admin(): JSX.Element {
         ),
         maxAttachmentBytes: Math.round(
           Number.parseFloat(
-            maxMbDraft ?? String((uploadLimitsQ.data?.maxAttachmentBytes ?? 700_000) / 1_000_000),
+            maxMbDraft ??
+              String((uploadLimitsQ.data?.maxAttachmentBytes ?? 20_000_000) / 1_000_000),
           ) * 1_000_000,
         ),
       }),
@@ -689,7 +690,7 @@ export function Admin(): JSX.Element {
                   className="w-24"
                   value={
                     maxMbDraft ??
-                    String((uploadLimitsQ.data?.maxAttachmentBytes ?? 700_000) / 1_000_000)
+                    String((uploadLimitsQ.data?.maxAttachmentBytes ?? 20_000_000) / 1_000_000)
                   }
                   onChange={(e) => setMaxMbDraft(e.target.value)}
                   aria-label={t("adm.upload.maxMb")}

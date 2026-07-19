@@ -53,7 +53,8 @@ export interface KoAttachment {
 }
 
 // Obergrenzen für den Pilot (kleine Thumbnails, JSONB bleibt handhabbar).
-export const MAX_ATTACHMENT_BYTES = 700_000; // ~700 KB Daten-URL
+// WP-D2: konsistent zur Werksvorgabe DEFAULT_UPLOAD_LIMITS (upload-limits.ts) — dokumententauglich.
+export const MAX_ATTACHMENT_BYTES = 20_000_000; // ~20 MB Daten-URL
 export const MAX_ATTACHMENTS = 8;
 
 // SCRUM-129 / FR-KO-07: echte Quelle am Objekt. Externe Quellen sind NIE peer-validiert

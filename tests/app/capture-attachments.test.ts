@@ -4,6 +4,10 @@ import {
   ATTACHMENT_RECOVERY_KEYS,
   type AttachmentUploadApi,
   type AttachmentUploadItem,
+  type OriginalDocument,
+  type OriginalRefCache,
+  attachOriginalDocument,
+  classifyUploadError,
   uploadAttachments,
 } from "../../apps/web/src/lib/captureAttachments";
 
@@ -110,5 +114,95 @@ describe("SCRUM-374: uploadAttachments", () => {
     expect(
       String(i18n.getResource("en", "translation", ATTACHMENT_RECOVERY_KEYS.body) ?? ""),
     ).toMatch(/saved|later|review decides/i);
+  });
+});
+
+// WP-D2 („Original ist heilig"): die Quelldatei des Datei-Imports wird als Anhang mitgeführt — genau
+// EIN Upload je Datei (Cache über mehrere Ziel-KOs der Punkte-Queue), ehrliche Fehlergründe inkl.
+// „zu groß" (Route-bodyLimit 413 bzw. Server-Größenmeldung).
+describe("WP-D2: attachOriginalDocument + classifyUploadError", () => {
+  const original: OriginalDocument = {
+    name: "wartungsplan.docx",
+    mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    data: "data:application/octet-stream;base64,AAAA",
+  };
+
+  it("lädt das Original EINMAL hoch; jeder KO referenziert dieselbe objectId", async () => {
+    const upload = vi.fn(async () => ({ id: "obj-original", size: 42 }));
+    const attach = vi.fn(async () => ({}));
+    const api: AttachmentUploadApi = { upload, attach };
+    const cache: OriginalRefCache = { ref: null };
+
+    const first = await attachOriginalDocument("ko-1", original, api, cache);
+    const second = await attachOriginalDocument("ko-2", original, api, cache);
+
+    expect(first).toEqual({ attached: true });
+    expect(second).toEqual({ attached: true });
+    expect(upload).toHaveBeenCalledTimes(1); // Cache: kein Doppel-Upload
+    expect(attach).toHaveBeenCalledTimes(2);
+    expect(attach).toHaveBeenCalledWith("ko-2", {
+      name: original.name,
+      mime: original.mime,
+      objectId: "obj-original",
+      size: 42,
+    });
+  });
+
+  it("Upload-Fehler 413 → reason too-large; Cache bleibt leer", async () => {
+    const cache: OriginalRefCache = { ref: null };
+    const api: AttachmentUploadApi = {
+      upload: vi.fn(async () => {
+        throw Object.assign(new Error("Payload Too Large"), { status: 413 });
+      }),
+      attach: vi.fn(async () => ({})),
+    };
+    const res = await attachOriginalDocument("ko-1", original, api, cache);
+    expect(res.attached).toBe(false);
+    expect(res.failure).toEqual({ name: original.name, reason: "too-large" });
+    expect(cache.ref).toBeNull();
+    expect(api.attach).not.toHaveBeenCalled();
+  });
+
+  it("classifyUploadError: 413/Größenmeldungen → too-large, alles andere → upload", () => {
+    expect(classifyUploadError({ status: 413 })).toBe("too-large");
+    expect(classifyUploadError(new Error("Objekt zu groß."))).toBe("too-large");
+    expect(classifyUploadError(new Error("Request body is larger than the limit"))).toBe(
+      "too-large",
+    );
+    expect(classifyUploadError(new Error("network down"))).toBe("upload");
+    expect(classifyUploadError(undefined)).toBe("upload");
+  });
+
+  it("Attach-Fehler → reason attach; Ref-Cache wird respektiert", async () => {
+    const cache: OriginalRefCache = { ref: { id: "obj-1", size: 5 } };
+    const api: AttachmentUploadApi = {
+      upload: vi.fn(async () => ({ id: "unbenutzt" })),
+      attach: vi.fn(async () => {
+        throw new Error("attach-500");
+      }),
+    };
+    const res = await attachOriginalDocument("ko-1", original, api, cache);
+    expect(res.failure).toEqual({ name: original.name, reason: "attach" });
+    expect(api.upload).not.toHaveBeenCalled(); // Ref-Cache wird respektiert
+  });
+
+  it("„zu groß“-Copy ist DE/EN/NL vorhanden und nennt die erhaltene Text-Übernahme", () => {
+    for (const key of ["capture.attachTooLarge", "capture.originalAttachFailed"]) {
+      for (const lng of ["de", "en", "nl"]) {
+        expect(
+          String(i18n.getResource(lng, "translation", key) ?? "").length,
+          `${lng}:${key}`,
+        ).toBeGreaterThan(0);
+      }
+    }
+    expect(String(i18n.getResource("de", "translation", "capture.attachTooLarge"))).toMatch(
+      /zu groß.*Text-Import bleibt erhalten/,
+    );
+    expect(String(i18n.getResource("en", "translation", "capture.attachTooLarge"))).toMatch(
+      /too large.*text import is kept/,
+    );
+    expect(String(i18n.getResource("nl", "translation", "capture.attachTooLarge"))).toMatch(
+      /te groot.*tekstimport blijft behouden/,
+    );
   });
 });

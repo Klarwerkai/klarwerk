@@ -57,11 +57,16 @@ import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../com
 import { GAP_RESCUE_STEPS, GAP_RESCUE_TEXT } from "../lib/askGapRescue";
 import { applyBodyAssist, applyBodyAssistBlock, bodyTextForAssist } from "../lib/bodyAiAssist";
 import { appendExtractSections, normalizeExtractLocale } from "../lib/bodyExtract";
+import { fileLinkHtml } from "../lib/bodyFileLink";
 import { ADVANCED_FIELDS_KEYS, advancedFieldsSummary } from "../lib/captureAdvancedFields";
 import {
   ATTACHMENT_RECOVERY_KEYS,
   type AttachmentFailure,
   type AttachmentUploadItem,
+  type OriginalDocument,
+  type OriginalRefCache,
+  attachOriginalDocument,
+  classifyUploadError,
   uploadAttachments,
 } from "../lib/captureAttachments";
 import { applyDraftArticle, normalizeDraftArticleLocale } from "../lib/captureDraftArticle";
@@ -86,7 +91,6 @@ import {
   type WholeDocumentSourceKind,
   advanceFileQueue,
   buildFileQueue,
-  createWholeDocumentDraft,
   currentQueuePoint,
   draftFromPoint,
   fileSourcePayload,
@@ -96,6 +100,7 @@ import {
   selectedCount,
   setAllSelected,
   togglePoint,
+  wholeDocumentDraftPayload,
 } from "../lib/captureFromFile";
 import { gapContextDraft, readGapContext } from "../lib/captureFromGap";
 import { CAPTURE_FRONT_DOOR_ROUTE } from "../lib/captureFrontDoor";
@@ -314,7 +319,11 @@ export function Capture(): JSX.Element {
     queryKey: ["upload-limits"],
     queryFn: endpoints.uploadLimits.get,
   });
-  const uploadLimitsData = uploadLimitsQ.data ?? { maxAttachments: 8, maxAttachmentBytes: 700_000 };
+  // WP-D2: Fallback spiegelt DEFAULT_UPLOAD_LIMITS (Server) — dokumententauglich 20 MB je Anhang.
+  const uploadLimitsData = uploadLimitsQ.data ?? {
+    maxAttachments: 8,
+    maxAttachmentBytes: 20_000_000,
+  };
   const reviewerChoices = (directory.data ?? []).filter((p) => p.id !== user?.id);
   const toggleReviewer = (id: string): void => {
     setReviewerIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -410,6 +419,11 @@ export function Capture(): JSX.Element {
     html: string | null;
     kind: WholeDocumentSourceKind;
   } | null>(null);
+  // WP-D2 („Original ist heilig"): die Quelldatei selbst — geht beim Speichern/Übernehmen als Anhang
+  // in den Object-Store. Der Ref-Cache stellt sicher, dass die Punkte-Queue (mehrere KOs) das Original
+  // nur EINMAL hochlädt und danach dieselbe objectId referenziert.
+  const [fileOriginal, setFileOriginal] = useState<OriginalDocument | null>(null);
+  const fileOriginalRef = useRef<OriginalRefCache>({ ref: null });
   const [fileImageUrl, setFileImageUrl] = useState<string | null>(null); // OCR-Kandidat (nur auf Klick)
   const [fileBusy, setFileBusy] = useState(false);
   const [fileQuery, setFileQuery] = useState("");
@@ -579,6 +593,8 @@ export function Capture(): JSX.Element {
           setFileName(null);
           setFileText("");
           setFileRich(null);
+          setFileOriginal(null);
+          fileOriginalRef.current = { ref: null };
           setFileQuery("");
         }
       }
@@ -591,16 +607,41 @@ export function Capture(): JSX.Element {
   const fileWholeDraft = useMutation({
     // WP-D1/WP-D4: bei DOCX reist das strukturerhaltende HTML mit (Server sanitisiert autoritativ);
     // sourceKind steuert den ehrlichen Format-Hinweis im Quelle-Blockquote.
-    mutationFn: (input: {
+    // WP-D2 („Original ist heilig"): die Quelldatei wandert VOR dem Entwurf in den Object-Store und
+    // reist als sichere Body-Datei-Referenz (fileLinkHtml) im Entwurf mit — sie überlebt so auch den
+    // späteren Promote zum KO. Scheitert der Upload, bleibt der Text-Import erhalten; der Grund
+    // (zu groß vs. Upload-Fehler) wird ehrlich gemeldet.
+    mutationFn: async (input: {
       fileName: string;
       text: string;
       html?: string;
       sourceKind?: WholeDocumentSourceKind;
-    }) =>
-      createWholeDocumentDraft({ ...input, locale: i18n.language }, (payload) =>
-        endpoints.drafts.create(payload),
-      ),
-    onSuccess: (draft: Draft, input) => {
+    }): Promise<{ draft: Draft; originalFailure: AttachmentFailure | null }> => {
+      let payload = wholeDocumentDraftPayload({ ...input, locale: i18n.language });
+      let originalFailure: AttachmentFailure | null = null;
+      if (fileOriginal) {
+        try {
+          const ref = await endpoints.objects.upload({
+            name: fileOriginal.name,
+            mime: fileOriginal.mime,
+            data: fileOriginal.data,
+            kind: "document",
+          });
+          fileOriginalRef.current = { ref };
+          payload = {
+            ...payload,
+            bodyHtml: `${payload.bodyHtml ?? ""}${fileLinkHtml({
+              objectId: ref.id,
+              name: fileOriginal.name,
+            })}`,
+          };
+        } catch (error) {
+          originalFailure = { name: fileOriginal.name, reason: classifyUploadError(error) };
+        }
+      }
+      return { draft: await endpoints.drafts.create(payload), originalFailure };
+    },
+    onSuccess: ({ draft, originalFailure }, input) => {
       void qc.invalidateQueries({ queryKey: ["drafts"] });
       setErr(null);
       const savedDraftId =
@@ -616,12 +657,24 @@ export function Capture(): JSX.Element {
       setFileName(null);
       setFileText("");
       setFileRich(null);
+      setFileOriginal(null);
+      fileOriginalRef.current = { ref: null };
       setFileQuery("");
       setNotice(t(CAPTURE_FILE_TEXT.wholeSaved, { name: input.fileName }));
       push("success", t(CAPTURE_FILE_TEXT.wholeSaved, { name: input.fileName }));
       if (!savedDraftId) {
         setErr(t(CAPTURE_FILE_TEXT.wholeOpenMissing));
         push("error", t(CAPTURE_FILE_TEXT.wholeOpenMissing));
+      }
+      // WP-D2: der Text-Import ist gesichert, aber das ORIGINAL nicht — ehrlich und mit Grund melden
+      // („zu groß" gesondert), statt den Import wie eine Voll-Übernahme aussehen zu lassen.
+      if (originalFailure) {
+        const key =
+          originalFailure.reason === "too-large"
+            ? "capture.attachTooLarge"
+            : "capture.originalAttachFailed";
+        setErr(t(key, { name: originalFailure.name }));
+        push("error", t(key, { name: originalFailure.name }));
       }
     },
     onError: fail,
@@ -702,6 +755,8 @@ export function Capture(): JSX.Element {
       setFileName(null);
       setFileText("");
       setFileRich(null);
+      setFileOriginal(null);
+      fileOriginalRef.current = { ref: null };
       setFileQuery("");
     }
     setAppendPts(null);
@@ -810,6 +865,7 @@ export function Capture(): JSX.Element {
       // (Dateiname + Belegstelle) am KO vermerkt. Ein Fehler hier kippt den Save NICHT —
       // er wird ehrlich als Teilfehler gemeldet (gleiches Muster wie Anhänge, SCRUM-374).
       const failed = [...attachResult.failed];
+      let attachedCount = attachResult.attached;
       const queuePoint = currentQueuePoint(fileQueue);
       if (fileQueue && queuePoint) {
         try {
@@ -821,6 +877,25 @@ export function Capture(): JSX.Element {
           failed.push({ name: fileQueue.fileName, reason: "attach" });
         }
       }
+      // WP-D2 („Original ist heilig"): die Quelldatei des Datei-Imports als Anhang am KO mitführen.
+      // Der Ref-Cache lädt das Original nur EINMAL hoch — jeder weitere Queue-KO referenziert
+      // dieselbe objectId. Ein Fehler kippt den Save nicht (ehrlicher Teilfehler, SCRUM-374-Muster).
+      if (fileQueue && fileOriginal) {
+        const originalResult = await attachOriginalDocument(
+          ko.id,
+          fileOriginal,
+          {
+            upload: (input) => endpoints.objects.upload(input),
+            attach: (koId, attachment) => endpoints.ko.act(koId, { action: "attach", attachment }),
+          },
+          fileOriginalRef.current,
+        );
+        if (originalResult.attached) {
+          attachedCount += 1;
+        } else if (originalResult.failure) {
+          failed.push(originalResult.failure);
+        }
+      }
       // SCRUM-408: beim Erfassen gesammelte externe Quellen ans gespeicherte KO hängen —
       // gleiche add-source-Route wie im Prüfbereich (Stufe 2, nie peer-validiert). Ein
       // Teilfehler kippt den Save nicht; er wird ehrlich gemeldet (SCRUM-374-Muster).
@@ -830,7 +905,7 @@ export function Capture(): JSX.Element {
       for (const name of sourceResult.failed) {
         failed.push({ name, reason: "attach" });
       }
-      return { ko, attached: attachResult.attached, failed };
+      return { ko, attached: attachedCount, failed };
     },
     // SCRUM-276: kein stilles Weiterleiten — „gespeichert" + nächster Schritt sichtbar machen.
     // Formular zurücksetzen (kein versehentlicher Doppel-Submit); Modus bleibt erhalten.
@@ -883,6 +958,8 @@ export function Capture(): JSX.Element {
           setFileName(null);
           setFileText("");
           setFileRich(null);
+          setFileOriginal(null);
+          fileOriginalRef.current = { ref: null };
           setFileQuery("");
         }
       }
@@ -1072,6 +1149,8 @@ export function Capture(): JSX.Element {
     setFileName(null);
     setFileText("");
     setFileRich(null);
+    setFileOriginal(null);
+    fileOriginalRef.current = { ref: null };
     setFileImageUrl(null);
     setFileBusy(false);
     setFileQuery("");
@@ -1174,6 +1253,8 @@ export function Capture(): JSX.Element {
           setFileName(null);
           setFileText("");
           setFileRich(null);
+          setFileOriginal(null);
+          fileOriginalRef.current = { ref: null };
           setFileQuery("");
         }
       },
@@ -1383,6 +1464,8 @@ export function Capture(): JSX.Element {
     setFileImageUrl(null);
     setFileText("");
     setFileRich(null);
+    setFileOriginal(null);
+    fileOriginalRef.current = { ref: null };
     setErr(null);
     setFileName(f.name);
     setFileBusy(true);
@@ -1428,6 +1511,13 @@ export function Capture(): JSX.Element {
       }
       setFileText(text);
       setFileRich(rich);
+      // WP-D2 („Original ist heilig"): die Quelldatei selbst merken — sie wird beim Speichern
+      // (Ganzdokument-Entwurf bzw. Punkte-Queue-KOs) als Anhang in den Object-Store mitgeführt.
+      setFileOriginal({
+        name: f.name,
+        mime: f.type || "application/octet-stream",
+        data: await readFileAsDataUrl(f),
+      });
       // SCRUM-409: ehrliche Import-Quittung — Dateiname + Umfang (Zeichen; Seiten gibt der
       // Text-Extraktor nicht her, also wird auch keine Seitenzahl behauptet).
       // WP-D4: plus formatabhängige Format-Quittung (DOCX: Struktur+Bilder Best-Effort; PDF: nur Text).
@@ -1769,6 +1859,17 @@ export function Capture(): JSX.Element {
                   names: failedAttachments.map((f) => f.name).join(", "),
                 })}
               </p>
+              {/* WP-D2: „zu groß" wird als Grund gesondert benannt (Limit, nicht „irgendein Fehler"). */}
+              {failedAttachments.some((f) => f.reason === "too-large") ? (
+                <p className="mt-0.5 text-[11.5px] leading-relaxed text-trust-warn-text/90">
+                  {t(ATTACHMENT_RECOVERY_KEYS.tooLarge, {
+                    name: failedAttachments
+                      .filter((f) => f.reason === "too-large")
+                      .map((f) => f.name)
+                      .join(", "),
+                  })}
+                </p>
+              ) : null}
               <p className="mt-1 text-[11.5px] font-medium leading-relaxed text-trust-warn-text">
                 {t(ATTACHMENT_RECOVERY_KEYS.next)}
               </p>

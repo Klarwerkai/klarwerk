@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { InMemoryObjectRepo } from "./repo";
 import { PgObjectRepo } from "./repo-pg";
 import { ObjectStore, decodeDataUrl, inferKind } from "./service";
+import { MAX_OBJECT_BYTES } from "./types";
 
 describe("SCRUM-45/46/48: decodeDataUrl (raw-Bild-Endpoint)", () => {
   it("zerlegt base64-Data-URL in MIME + Bytes", () => {
@@ -64,7 +65,7 @@ describe("ObjectStore (SCRUM-121)", () => {
       code: "INVALID",
     });
     await expect(
-      s.put({ name: "big", mime: "image/png", data: "a".repeat(5_000_001) }),
+      s.put({ name: "big", mime: "image/png", data: "a".repeat(MAX_OBJECT_BYTES + 1) }),
     ).rejects.toMatchObject({ code: "INVALID" });
   });
 

@@ -37,4 +37,7 @@ export class ObjectError extends Error {
 }
 
 // Obergrenze fürs Original (großzügiger als das KO-Thumbnail-Limit, aber begrenzt).
-export const MAX_OBJECT_BYTES = 5_000_000; // ~5 MB
+// WP-D2 („Original ist heilig"): dokumententauglich angehoben — echte Nutzer-PDF/DOCX liegen oft bei
+// mehreren MB; gemessen wird die Data-URL-Länge (Base64 ≈ Dateigröße × 1,37). 30 MB Data-URL ≈ ~22 MB
+// Datei; der HTTP-Transport wird vom expliziten Route-bodyLimit (object-routes) gedeckelt.
+export const MAX_OBJECT_BYTES = 30_000_000; // ~30 MB Data-URL (~22 MB Datei)

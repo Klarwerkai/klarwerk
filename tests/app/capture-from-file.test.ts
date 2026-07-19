@@ -187,7 +187,14 @@ describe("KW-W2-01: Ganzdokument-Import als bewusster Entwurf", () => {
     // format-robust auf den Aufruf + das fileText-Argument prüfen, nicht auf die exakte Zeile.
     expect(captureSource).toContain("endpoints.reasoner.extract(");
     expect(captureSource).toMatch(/endpoints\.reasoner\.extract\(\s*fileText/);
-    expect(captureSource).toContain("createWholeDocumentDraft(");
+    // KW-W2-01 / WP-D2: der Ganzdokument-Modus bleibt ein BEWUSSTER, vom Extract-Pfad GETRENNTER
+    // Draft-Schritt. WP-D2 hat den Aufruf auf den Zweischritt "wholeDocumentDraftPayload(...) →
+    // endpoints.drafts.create(...)" umgestellt (damit die Originaldatei vor dem Draft in den
+    // Object-Store geht). Die Invariante wird über die tatsächlich verwendeten Symbole belegt.
+    expect(captureSource).toContain("wholeDocumentDraftPayload({");
+    expect(captureSource).toMatch(
+      /fileWholeDraft = useMutation\(\{[\s\S]*?endpoints\.drafts\.create/,
+    );
     expect(captureSource.indexOf("CAPTURE_FILE_TEXT.importModeLabel")).toBeLessThan(
       captureSource.indexOf("onChange={(e) => void onExtractFile(e)}"),
     );
@@ -212,6 +219,22 @@ describe("KW-W2-01: Ganzdokument-Import als bewusster Entwurf", () => {
     expect(captureSource).toContain("CAPTURE_FILE_TEXT.wholeOpenMissing");
     expect(captureSource).toContain("fileWholeDraftSaved.id ?");
     expect(captureSource).toContain("CAPTURE_FILE_TEXT.wholeSavedSource");
+  });
+
+  // WP-D2 („Original ist heilig"): der Datei-Import führt die Quelldatei als Anhang mit — Punkte-Queue
+  // über attachOriginalDocument (EIN Upload, objectId je KO), Ganzdokument-Entwurf über die sichere
+  // Body-Datei-Referenz (fileLinkHtml auf den Object-Store-Raw-Pfad).
+  it("Capture verdrahtet die Original-Anhang-Sicherung in beiden Datei-Import-Modi", () => {
+    const captureSource = readFileSync(
+      resolve(process.cwd(), "apps/web/src/pages/Capture.tsx"),
+      "utf8",
+    );
+    expect(captureSource).toContain("attachOriginalDocument(");
+    expect(captureSource).toContain("fileLinkHtml({");
+    expect(captureSource).toContain("setFileOriginal({");
+    // Fehlergrund „zu groß" wird gesondert gemeldet (spezifische i18n-Meldung, kein Generik-Fehler).
+    expect(captureSource).toContain('"capture.attachTooLarge"');
+    expect(captureSource).toContain('"capture.originalAttachFailed"');
   });
 
   it("Dateiimport zeigt ehrliche Formatgrenzen ohne Format-Treue-Versprechen", () => {

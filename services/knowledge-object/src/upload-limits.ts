@@ -9,16 +9,19 @@ export interface UploadLimits {
   maxAttachmentBytes: number; // Größe je Anhang (Daten-URL/Thumbnail), in Bytes
 }
 
-// Werksvorgabe = die bisherigen festen Werte (rückwärtskompatibel).
+// Werksvorgabe. WP-D2 („Original ist heilig"): maxAttachmentBytes dokumententauglich auf 20 MB
+// angehoben (vorher 700 KB — jedes normale Nutzer-PDF/DOCX fiel durch). Gemessen wird die
+// Data-URL-/Thumbnail-Länge; die Transport-Obergrenze setzt der Route-bodyLimit von POST /api/objects.
 export const DEFAULT_UPLOAD_LIMITS: UploadLimits = {
   maxAttachments: 8,
-  maxAttachmentBytes: 700_000,
+  maxAttachmentBytes: 20_000_000,
 };
 
 // Sinnvolle Ober-/Untergrenzen — schützen vor Fehlkonfiguration (kein 0, kein Riesenwert).
+// WP-D2: Obergrenze folgt dem Object-Store-Limit (MAX_OBJECT_BYTES, ~30 MB Data-URL).
 export const UPLOAD_LIMITS_BOUNDS = {
   maxAttachments: { min: 1, max: 30 },
-  maxAttachmentBytes: { min: 100_000, max: 20_000_000 },
+  maxAttachmentBytes: { min: 100_000, max: 30_000_000 },
 } as const;
 
 // Ehrliche Normalisierung: nur ganze Zahlen im erlaubten Band; sonst Bedienfehler (KoError).
