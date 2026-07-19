@@ -52,9 +52,12 @@ async function configureWebDelivery(app: FastifyInstance): Promise<void> {
   });
 
   // Vorab-Phase: nicht indexieren (zusätzlich zu robots.txt/Meta im Frontend).
-  app.addHook("onSend", async (_request, reply, payload) => {
+  // WP-E (19.07.2026): Callback-Stil (synchron), NICHT async — globale async-onSend-Hooks öffnen ab
+  // zwei Stück das wrap-thenable-Doppel-Send-Fenster (ERR_HTTP_HEADERS_SENT-Crash); Details am
+  // gleichartigen Hook in routes/addin-static-routes.ts.
+  app.addHook("onSend", (_request, reply, payload, done) => {
     reply.header("X-Robots-Tag", "noindex, nofollow");
-    return payload;
+    done(null, payload);
   });
 
   // Gebaute SPA (Single-Origin). Fehlt das Verzeichnis (reiner API-Betrieb), bleibt es aus.

@@ -21,12 +21,19 @@ export interface ConfluenceImportRouteDeps {
 export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): FastifyPluginAsync {
   const makeAdapter = deps.makeAdapter ?? (() => createConfluenceAdapterFromEnv());
   return async (app) => {
+    // WP-E (19.07.2026): JEDER Sende-Pfad endet mit `return reply`. Reply ist ein Thenable — die
+    // Handler-Promise adoptiert es und resolved erst NACH Response-Ende; Fastifys Promise-Abschluss
+    // (wrap-thenable) sieht dann sent=true und sendet nie ein zweites Mal. Resolved der Handler
+    // stattdessen mit undefined, sendet wrap-thenable erneut, sobald globale async-onSend-Hooks das
+    // writeHead über die Handler-Resolution hinaus verzögern (≥2 async-Hops) → ERR_HTTP_HEADERS_SENT
+    // als unhandled rejection → Prozess-Crash. Der systemische Schutz (globale onSend-Hooks synchron)
+    // liegt in addin-static-routes.ts/server.ts; `return reply` ist die handler-lokale Absicherung.
     app.post<{ Body: { dryRun?: boolean } }>(
       "/api/admin/import/confluence",
       async (request, reply) => {
         const user = await deps.guards.requirePermission("users.manage", request, reply);
         if (!user) {
-          return;
+          return reply;
         }
         const adapter = makeAdapter();
         if (!adapter) {
@@ -34,7 +41,7 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
             error: "IMPORT_UNAVAILABLE",
             message: "Confluence-Import nicht konfiguriert.",
           });
-          return;
+          return reply;
         }
         const dryRun = request.body?.dryRun === true;
         try {
@@ -46,11 +53,19 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
             actor: user.id,
           });
           reply.code(200).send(summary);
-        } catch {
+          return reply;
+        } catch (err) {
+          // WP-E: Ursache server-seitig sichtbar machen (analog importDetectionLog) — NUR die Message
+          // (vom rest-client bereits via redactedError/redactSecrets redigiert), NIE Stack oder cause.
+          console.warn(
+            "[confluence-import] fehlgeschlagen:",
+            err instanceof Error ? err.message : String(err),
+          );
           // Never block: ehrlicher Fehlerstatus, KEINE Interna/Token im Body.
           reply
             .code(502)
             .send({ error: "IMPORT_FAILED", message: "Confluence-Import fehlgeschlagen." });
+          return reply;
         }
       },
     );

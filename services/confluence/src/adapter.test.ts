@@ -95,6 +95,24 @@ describe("SCRUM-510: ConfluenceSourceAdapter", () => {
     expect(kos[0]?.confidentiality).toBe("vertraulich"); // NICHT auf intern herabgestuft
   });
 
+  // WP-E (19.07.2026): der Fehlertext, den die Import-Route aus einem gescheiterten collectAll fängt
+  // (und seither loggt), MUSS bereits redigiert sein — der token-tragende Roh-Fehler des fetch läuft
+  // durch redactedError/redactSecrets, bevor er den Client/Adapter verlässt.
+  it("WP-E: collectAll propagiert Netzfehler redigiert (ohne Token/Base64)", async () => {
+    const SECRET = "SUPER-GEHEIM-tok-42";
+    const secretB64 = Buffer.from(`svc@acme.example:${SECRET}`, "utf8").toString("base64");
+    const boom = (async () => {
+      throw new Error(`connect failed calling https://acme.atlassian.net?token=${SECRET}`);
+    }) as unknown as typeof fetch;
+    const adapter = adapterFromConfig({ ...config(boom), apiToken: SECRET });
+    await expect(adapter.collectAll()).rejects.toSatisfy((e: unknown) => {
+      const msg = String((e as Error).message);
+      expect(msg).not.toContain(SECRET);
+      expect(msg).not.toContain(secretB64);
+      return true;
+    });
+  });
+
   it("Flag OFF (oder fehlende Credentials) → kein Adapter, kein aktiver Import-Pfad", () => {
     const creds = {
       KLARWERK_CONFLUENCE_BASE_URL: "https://x/wiki",

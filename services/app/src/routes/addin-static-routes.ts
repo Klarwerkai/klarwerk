@@ -129,24 +129,33 @@ export function addinStaticRoutes(): FastifyPluginAsync {
 
     // Schicht 2 (Response-Phase, H3): universeller Stempel für ALLE Namensraum-Antworten, die die
     // Request-Phase passieren (Auth-401/429, CORS-/Fremd-Hook-Antworten, globale Fallbacks).
-    app.addHook("onSend", async (request, reply, payload) => {
+    // WP-E (19.07.2026): BEWUSST Callback-Stil (synchron), NICHT async. Dieser Hook wirkt per
+    // skip-override APP-GLOBAL; jeder globale ASYNC-onSend-Hook kostet einen Microtask-Hop vor
+    // writeHead. Ab ZWEI async-Hops läuft Fastifys Promise-Abschluss (wrap-thenable, Zweig
+    // "reply.send() gerufen + Handler resolved undefined + headersSent noch false") VOR dem writeHead
+    // der ersten Pipeline und startet eine ZWEITE → ERR_HTTP_HEADERS_SENT als unhandled rejection →
+    // Prozess-Crash. Synchron bleibt die Sende-Pipeline atomar — kein Fenster, für KEINE Route der App.
+    app.addHook("onSend", (request, reply, payload, done) => {
       if (!isAddinNamespacePath(request.raw.url)) {
-        return payload; // sofortiger Return: Nicht-Namensraum unverändert
+        done(null, payload); // Nicht-Namensraum unverändert
+        return;
       }
       reply.header("x-content-type-options", "nosniff"); // nosniff auf JEDER /addin-Antwort
       const status = reply.statusCode;
       if (status === 401 || status === 429) {
-        return payload; // Punkt 4: Auth-/Throttle-Antworten in Status/Semantik/Body unverändert
+        done(null, payload); // Punkt 4: Auth-/Throttle-Antworten in Status/Semantik/Body unverändert
+        return;
       }
       const method = request.raw.method ?? "";
       if (status < 400 && (method === "GET" || method === "HEAD") && isExactHit(request.raw.url)) {
-        return payload; // 200-Pfad byte-/header-identisch
+        done(null, payload); // 200-Pfad byte-/header-identisch
+        return;
       }
       // Jede andere Antwort im Namensraum → einheitlicher statischer 404 (kein Echo, keine Interna).
       reply.code(404);
       reply.header("content-type", "application/json; charset=utf-8");
       reply.header("content-length", String(Buffer.byteLength(NOT_FOUND_BODY)));
-      return NOT_FOUND_BODY;
+      done(null, NOT_FOUND_BODY);
     });
 
     // Schicht 3 (vor Fastify, H3-Punkt 3): FST_ERR_BAD_URL-Abdeckung. Nicht-dekodierbare Pfade im

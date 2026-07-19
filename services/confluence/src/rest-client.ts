@@ -192,12 +192,27 @@ export class ConfluenceRestClient {
       const { results, next }: { results: ConfluencePage[]; next: string | null } =
         await this.getContent(url, allowedOrigin);
       out.push(...results);
-      // next ist ein RELATIVER Confluence-Pfad (z. B. /wiki/rest/api/content?...&start=25) → mit der
-      // gepinnten Origin zusammensetzen; getContent assert-prüft die Origin erneut.
-      url = next ? `${allowedOrigin}${next.startsWith("/") ? next : `/${next}`}` : null;
+      // WP-E (19.07.2026): Atlassian Cloud liefert next RELATIV ZUM KONTEXTPFAD (z. B.
+      // /rest/api/content?...&start=25 — der /wiki-Anteil steckt in _links.base, nicht in next). Nur mit
+      // der Origin präfixiert landete Hop 2 auf <origin>/rest/... (Jira-Namensraum → 404/Redirect →
+      // Abbruch ab Seite 2). Daher gegen die baseUrl inkl. Kontextpfad auflösen (nextUrl); getContent
+      // assert-prüft die gepinnte Origin unverändert vor jedem Hop.
+      url = next ? this.nextUrl(next, allowedOrigin) : null;
     }
     // Cap erreicht UND es gäbe noch einen Folge-Cursor → abgeschnitten (unvollständig).
     return { pages: out, truncated: i >= maxPages && url !== null };
+  }
+
+  // Setzt den next-Cursor zu einer absoluten URL auf der gepinnten Origin zusammen. Trägt next den
+  // Kontextpfad der baseUrl bereits (Altform /wiki/rest/...), reicht die Origin — sonst entstünde
+  // /wiki/wiki/... . Sonst (Atlassian-Realform /rest/...) wird die baseUrl inkl. Kontextpfad vorangestellt.
+  private nextUrl(next: string, allowedOrigin: string): string {
+    const path = next.startsWith("/") ? next : `/${next}`;
+    const contextPath = new URL(this.baseUrl).pathname.replace(/\/+$/, "");
+    const hasContext =
+      contextPath !== "" &&
+      (path.startsWith(`${contextPath}/`) || path.startsWith(`${contextPath}?`));
+    return hasContext ? `${allowedOrigin}${path}` : `${this.baseUrl}${path}`;
   }
 }
 

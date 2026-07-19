@@ -287,6 +287,33 @@ describe("SCRUM-510 WP2: ConfluenceRestClient.listAllPages (Pagination)", () => 
     }
   });
 
+  // WP-E (19.07.2026): Atlassian Cloud liefert _links.next RELATIV ZUM KONTEXTPFAD (z. B.
+  // "/rest/api/content?…" — der "/wiki"-Anteil steckt in _links.base, NICHT in next). Nur mit der
+  // Origin präfixiert landete Hop 2 auf <origin>/rest/… (= Jira-Namensraum → 404/Redirect → Abbruch
+  // ab der zweiten Ergebnisseite). Der Folge-Hop muss gegen die baseUrl (inkl. Kontextpfad) gehen.
+  it("WP-E: next ohne Kontextpfad → Folge-Hop an baseUrl inkl. /wiki", async () => {
+    const urls: string[] = [];
+    const fetchFn = (async (u: string) => {
+      urls.push(String(u));
+      const body =
+        urls.length === 1
+          ? { results: [{ id: "1", title: "A" }], _links: { next: "/rest/api/content?start=1" } }
+          : { results: [{ id: "2", title: "B" }], _links: {} };
+      return { ok: true, status: 200, json: async () => body } as unknown as Response;
+    }) as unknown as typeof fetch;
+    const client = new ConfluenceRestClient({
+      baseUrl: "https://acme.atlassian.net/wiki",
+      email: "svc@acme.example",
+      apiToken: "tok",
+      spaceKey: "K",
+      fetchFn,
+    });
+    const { pages, truncated } = await client.listAllPages();
+    expect(pages.map((p) => p.id)).toEqual(["1", "2"]);
+    expect(truncated).toBe(false);
+    expect(urls[1]).toBe("https://acme.atlassian.net/wiki/rest/api/content?start=1");
+  });
+
   it("harte Iterations-Obergrenze bricht einen fehlerhaften next-Zyklus ab (kein Endlos)", async () => {
     const fetchFn = (async () =>
       ({
