@@ -10990,3 +10990,17 @@ Backend-/PMO-Bündel SCRUM-439/438/436/442 sowie der reguläre Backlog 435/431/4
 **Git-Status:** 15c0560 → 4 Commits (d29fd21, 9f95487, c170a13, aa33212) + dieser Doku-Commit; Baum sauber; kein Push (Sandbox hat keine Remotes-Credentials — by design).
 **Jira-Kommentar-Vorschlag:** auf SCRUM-469 verankert (siehe Kommentar vom 19.07. nach Slice-Fertigstellung).
 **Nächster Schritt:** ben-Recheck-Prompt liegt bei Pedi; nach ben-GRÜN Ship gemäß bewährter Sequenz (Migrations-Smoke → Push → Deploy-Verify → Post-Deploy-Smoke).
+
+---
+
+**Datum:** 2026-07-19 (Nachmittag)
+**Ticket:** SCRUM-523 / SCRUM-510 (Nachbesserungs-Slice nach ben-Recheck ROT, SCRUM-469 Kommentar 13956)
+**Änderung:** WP-A2: echte Atomarität für Purge — neues Modul services/db-tx (storage-neutraler opaker TxContext + withTx aus der Kompositionswurzel); repo.delete + audit.record in EINER Transaktion, beide ben-Fenster zu; Invarianten-Tests beidseitig für alle 3 Purge-Wege inkl. Rollback+Retry. WP-B2: source_version-Regex auf ^[0-9]{1,9}$ gehärtet (int4-Overflow); Heilungsschritt erkennt zusätzlich die live deployte ungeschützte Regex-Variante; Integrationstests für Overflow/Live-Upgrade/Idempotenz.
+**Gebaut:** Kopf→Hand-Relay; 2 Läufe endeten in max_turns (wörtlich dokumentiert), je mit eng geschnittenem Folgeauftrag abgeschlossen; 2 neue Atomaritäts-Tests scheiterten zunächst — Analyse ergab Testdesign-Fehler (Retry-Weg), kein Implementierungsfehler.
+**Getestet:** tools/check komplett GRÜN (314 Dateien / 2207 Tests). depcruise grün inkl. neuem db-tx-Modul.
+**Nicht ausführbare Checks + Grund:** test:integration (kein Container-Registry-Zugriff in der Sandbox) — auf Pedis Mac fahren; neue Fälle: Overflow-Insert, Live-DDL-Upgrade, Atomaritäts-Integrationstest.
+**Offen:** git am der 3 neuen Patches → lokale Gates → ben-Re-Recheck → Pedi-GO → Push.
+**Risiko:** WP-A2 ändert Signaturen additiv über Modulgrenzen (optionaler TxContext) — depcruise-geprüft; WP-B2-Heilung greift einmalig auf der Live-Instanz (Expression-Neuanlage inkl. Recompute).
+**Git-Status:** d761867 + 5b4e58e (+ dieser Doku-Commit); Baum sauber; kein Push.
+**Jira-Kommentar-Vorschlag:** auf SCRUM-469 nach Fertigstellung verankert.
+**Nächster Schritt:** ben-Re-Recheck über die Gesamt-Range, dann Ship.
