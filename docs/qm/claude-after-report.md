@@ -11032,3 +11032,17 @@ Backend-/PMO-Bündel SCRUM-439/438/436/442 sowie der reguläre Backlog 435/431/4
 **Git-Status:** 704cc7e (+ dieser Doku-Commit); Baum sauber; kein Push.
 **Jira-Kommentar-Vorschlag:** auf SCRUM-469 nach ben-Check verankern.
 **Nächster Schritt:** Patches an Pedi, ein Copy-Paste-Block, dann ben.
+
+---
+
+**Datum:** 2026-07-19 (nachmittags, III)
+**Ticket:** WP-E2 (bens GELB-Auflagen zu WP-E, Bericht SHA f4a18596…)
+**Änderung:** (1) X-Robots-Hook als exportierte Produktionsfunktion `registerNoindexHook` (neue Datei noindex-hook.ts; server.ts nutzt sie) — der Crash-Repro-Test verdrahtet jetzt die ECHTEN Hooks statt einer Kopie; (2) neuer Source-/Architekturtest sync-onsend-hooks.test.ts pinnt beide globalen onSend-Hooks auf synchronen Callback-Stil (Rückbau wird rot); (3) senkenseitige Log-Redaction `sanitizeLogText` (log-sanitize.ts) vor dem console.warn der Import-Route + Unit-Tests (Bearer/Basic/base64/userinfo-URLs/Secret-Env-Werte, Idempotenz) + Routentest mit credentialhaltiger Fehlermeldung.
+**Gebaut:** Hand (Account A, claude-fable-5); Kopf: ein Biome-Lint-Nachschliff (useTemplate), Gates, Commit.
+**Getestet:** tools/check GRÜN: 316 Testdateien / 2220 Tests.
+**Nicht ausführbare Checks + Grund:** test:integration nur auf Pedis Mac (Docker).
+**Offen:** Pedi: git am patches5 + test:integration → ben-Re-Check (Direktkanal) → bei GRÜN: Pedi-Push → Coolify → Import-Durchstich.
+**Risiko:** minimal — reine Test-/Beobachtbarkeits-Härtung; einzige Produktcode-Änderungen: server.ts-Verdrahtung (semantikgleich) + Sanitizer vor dem Log.
+**Git-Status:** f65a2dd (+ dieser Doku-Commit); Baum sauber; kein Push.
+**Jira-Kommentar-Vorschlag:** nach ben-Re-Check auf SCRUM-469.
+**Nächster Schritt:** Patches an Pedi, dann ben.
