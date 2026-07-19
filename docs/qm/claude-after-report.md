@@ -10976,3 +10976,17 @@ Backend-/PMO-Bündel SCRUM-439/438/436/442 sowie der reguläre Backlog 435/431/4
 
 **Version:** 0.9.47-beta → **1.0.0-beta.1** (Freeze).
 **Gates:** Paul-Runner v24 (gesamter Freeze-Kandidat).
+
+---
+
+**Datum:** 2026-07-19
+**Ticket:** SCRUM-510 / SCRUM-523 / SCRUM-525 / SCRUM-498 (Hotfix-Slice nach ben-Batch-3-Check, SCRUM-469 Kommentare 13949/13950)
+**Änderung:** 4 atomare Commits (WP-B/A/C/D): (1) Import-Migration heilt alte cast-unsichere source_version-Expression selbstheilend+idempotent inkl. Index-Neuaufbau + Integrations-Regressionstest; (2) purgeKo: Audit-vor-Delete schließt das Absturzfenster "KO weg ohne ko.purged" (FR-AUD-02), Invarianten-Tests für alle 3 Purge-Wege; (3) Reasoner: policySource env|db|default, Admin-PUT bei ENV-Override → 409 REASONER_POLICY_ENV_LOCKED, configStatus.policySource additiv, ehrliche Log-Meldung (keine Auto-Recovery); (4) /api/check-text: expliziter 128-KiB-bodyLimit + 413-Test.
+**Gebaut:** Kopf→Hand-Relay (claude -p headless, Sandbox-Repo-Klon auf 15c0560); Kopf hat Gates gefahren und committet.
+**Getestet:** tools/check komplett GRÜN (Build + Biome + depcruise + 314 Testdateien / 2206 Tests, +9 neue). Je WP zusätzlich gezielte Testläufe grün.
+**Nicht ausführbare Checks + Grund:** npm run test:integration (Testcontainers/PG — Sandbox hat Docker-Daemon, aber alle Container-Registries netzseitig 403-gesperrt). Muss auf Pedis Mac laufen, insbesondere für den neuen WP-B-Regressionstest (repo-pg.integration.test.ts).
+**Offen:** git am der Patches auf Pedis Mac → tools/check + test:integration dort → ben-Recheck (Range 15c0560..HEAD, 5 Commits) → Pedi-GO → Push github/main.
+**Risiko:** WP-B ändert Migrationsverhalten für Bestandsinstanzen (DROP+Neuanlage der Generated Column bei alter Expression) — genau dafür existiert der neue Integrationstest; vor Deploy zwingend test:integration fahren. WP-C ist additiv; Frontend zeigt policySource noch nicht an (nicht nötig, PUT liefert saubere 409-Meldung).
+**Git-Status:** 15c0560 → 4 Commits (d29fd21, 9f95487, c170a13, aa33212) + dieser Doku-Commit; Baum sauber; kein Push (Sandbox hat keine Remotes-Credentials — by design).
+**Jira-Kommentar-Vorschlag:** auf SCRUM-469 verankert (siehe Kommentar vom 19.07. nach Slice-Fertigstellung).
+**Nächster Schritt:** ben-Recheck-Prompt liegt bei Pedi; nach ben-GRÜN Ship gemäß bewährter Sequenz (Migrations-Smoke → Push → Deploy-Verify → Post-Deploy-Smoke).
