@@ -154,7 +154,10 @@ interface WholeSourceLabels {
   notePdf: string;
 }
 
-const SOURCE_LABELS: Record<"de" | "en", WholeSourceLabels> = {
+// WP-D1b (Fix c): NL ergänzt — bisher fiel die persistierte Verlust-Quittung für „nl" auf Deutsch
+// zurück (SOURCE_LABELS kannte nur de|en). Die Texte spiegeln die UI-i18n-Keys (importNote.docx/pdf,
+// wholeSourceNote), damit Quittung und Oberfläche in jeder Sprache konsistent sind.
+const SOURCE_LABELS: Record<"de" | "en" | "nl", WholeSourceLabels> = {
   de: {
     source: "Quelle",
     whole: "gesamtes Dokument",
@@ -169,10 +172,25 @@ const SOURCE_LABELS: Record<"de" | "en", WholeSourceLabels> = {
     noteDocx: "Structure and images imported (best effort) — exact layout may differ.",
     notePdf: "Best-effort text import — layout and images were not carried over.",
   },
+  nl: {
+    source: "Bron",
+    whole: "volledig document",
+    fallback: "Naamloos document",
+    noteDocx:
+      "Structuur en afbeeldingen overgenomen (best effort) — de exacte layout kan afwijken.",
+    notePdf: "Best-effort tekstimport — layout en afbeeldingen zijn niet overgenomen.",
+  },
 };
 
-function localeKey(locale: string | null | undefined): "de" | "en" {
-  return locale?.toLowerCase().startsWith("en") ? "en" : "de";
+function localeKey(locale: string | null | undefined): "de" | "en" | "nl" {
+  const lower = locale?.toLowerCase() ?? "";
+  if (lower.startsWith("en")) {
+    return "en";
+  }
+  if (lower.startsWith("nl")) {
+    return "nl";
+  }
+  return "de";
 }
 
 function escapeHtml(text: string): string {
@@ -309,6 +327,8 @@ export const CAPTURE_FILE_TEXT = {
   emptyPdf: "capture.file.emptyPdf",
   // WP-D3: ehrlicher Hinweis, wenn der Seiten-Cap (MAX_PDF_PAGES) griff — nur die ersten N Seiten gelesen.
   pdfTruncated: "capture.file.pdfTruncated",
+  // WP-D1b: ehrlicher Hinweis, wenn Bilder wegen des Byte-Budgets nicht ins bodyHtml kamen (Original im Anhang).
+  imagesDropped: "capture.file.imagesDropped",
   // WP-D4: formatabhängige Import-Quittung (DOCX: Struktur+Bilder Best-Effort; PDF: nur Text).
   importNoteDocx: "capture.file.importNote.docx",
   importNotePdf: "capture.file.importNote.pdf",

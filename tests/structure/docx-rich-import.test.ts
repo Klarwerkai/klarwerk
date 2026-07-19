@@ -11,6 +11,7 @@ import {
 } from "../../apps/web/src/lib/captureFromFile";
 import {
   type DocxEngine,
+  applyInlineImageBudget,
   extractDocxRich,
   mapDocxHeadings,
   mapInlineImages,
@@ -142,5 +143,112 @@ describe("WP-D4: Scan-PDF-Meldung ohne falsche OCR-Hoffnung (DE/EN/NL)", () => {
         /best.effort/i,
       );
     }
+  });
+});
+
+// WP-D1b (Fix c): NL-Quittung — bisher fiel die persistierte DOCX/PDF-Verlust-Notiz für „nl" auf
+// Deutsch zurück. Jetzt erscheint korrekter niederländischer Text (nicht Deutsch).
+describe("WP-D1b: Quelle-Blockquote in NL (kein Deutsch-Fallback)", () => {
+  it("wholeDocumentBodyHtml(locale nl) → niederländisches Quelle-Label + DOCX-Hinweis", () => {
+    const html = wholeDocumentBodyHtml({
+      fileName: "handleiding.docx",
+      text: "Inhoud.",
+      sourceKind: "docx",
+      locale: "nl",
+    });
+    expect(html).toContain("Bron: handleiding.docx, volledig document");
+    expect(html).toContain("Structuur en afbeeldingen overgenomen (best effort)");
+    expect(html).not.toContain("Quelle:");
+    expect(html).not.toContain("gesamtes Dokument");
+  });
+
+  it("wholeDocumentDraftPayload(locale nl, pdf) → niederländischer PDF-Hinweis", () => {
+    const payload = wholeDocumentDraftPayload({
+      fileName: "rapport.pdf",
+      text: "Tekst.",
+      sourceKind: "pdf",
+      locale: "nl",
+    });
+    expect(payload.bodyHtml).toContain("Best-effort tekstimport");
+    expect(payload.bodyHtml).not.toContain("Best-Effort-Textimport");
+  });
+});
+
+// WP-D1b (Fix d): hartes Gesamt-Byte-Budget für Inline-Bilder. Passt ein Bild nicht mehr, wird das
+// GANZE <img>-Element weggelassen (Original bleibt via WP-D2 als Anhang) — kein 413.
+describe("WP-D1b: applyInlineImageBudget", () => {
+  const imgTag = (payload: string): string => `<img src="data:image/jpeg;base64,${payload}">`;
+  // encode gibt die src unverändert zurück (die Bytes stecken bereits im Fixture) → reiner Budget-Test.
+  const identity = async (src: string): Promise<string> => src;
+
+  it("kein Bild → unverändert, dropped 0", async () => {
+    const html = "<p>nur Text</p>";
+    expect(await applyInlineImageBudget(html, identity, 1000)).toEqual({ html, dropped: 0 });
+  });
+
+  it("über Budget → spätere Bilder werden weggelassen, Zähler stimmt, Rest bleibt", async () => {
+    const a = imgTag("A".repeat(300));
+    const b = imgTag("B".repeat(300));
+    const c = imgTag("C".repeat(300));
+    const html = `<p>${a}</p><p>${b}</p><p>${c}</p>`;
+    const res = await applyInlineImageBudget(html, identity, 700);
+    expect(res.dropped).toBe(1);
+    expect(res.html).toContain("A".repeat(300));
+    expect(res.html).toContain("B".repeat(300));
+    expect(res.html).not.toContain("C".repeat(300));
+    expect(res.html).toContain("<p></p>"); // nur das <img> fiel, der umgebende <p> bleibt
+  });
+
+  it("ein Bild knapp UNTER Budget → behalten; knapp DARÜBER → weggelassen", async () => {
+    const one = imgTag("X".repeat(100));
+    // Gemessen wird die src-Länge (data:-URL), nicht die volle Tag-Länge.
+    const srcLen = "data:image/jpeg;base64,".length + 100;
+    const under = await applyInlineImageBudget(`<div>${one}</div>`, identity, srcLen);
+    expect(under.dropped).toBe(0);
+    expect(under.html).toContain("X".repeat(100));
+    const over = await applyInlineImageBudget(`<div>${one}</div>`, identity, srcLen - 1);
+    expect(over.dropped).toBe(1);
+    expect(over.html).toBe("<div></div>");
+  });
+
+  it("Summe der behaltenen Bild-Bytes bleibt ≤ Budget (Puffer zum Draft-Limit)", async () => {
+    const budget = 1000;
+    const many = Array.from({ length: 20 }, () => imgTag("Z".repeat(400))).join("");
+    const res = await applyInlineImageBudget(`<body>${many}</body>`, identity, budget);
+    const kept = res.html.match(/Z+/g) ?? [];
+    const keptBytes = kept.reduce((n, s) => n + s.length, 0);
+    expect(keptBytes).toBeLessThanOrEqual(budget);
+    expect(res.dropped).toBeGreaterThan(0);
+  });
+});
+
+// WP-D1b: extractDocxRich mit Budget meldet droppedImages und lässt überzählige Bilder weg.
+describe("WP-D1b: extractDocxRich mit Byte-Budget", () => {
+  it("überzählige Bilder werden weggelassen; droppedImages zählt sie", async () => {
+    const big = (id: string): string => `<img src="data:image/jpeg;base64,${id.repeat(400)}">`;
+    const engine: DocxEngine = {
+      convertToHtml: async () => ({ value: `${big("A")}${big("B")}${big("C")}`, messages: [] }),
+      extractRawText: async () => ({ value: "text", messages: [] }),
+    };
+    const res = await extractDocxRich(new ArrayBuffer(4), {
+      engine,
+      mapImage: async (src) => src,
+      imageBudgetBytes: 900,
+    });
+    expect(res.droppedImages).toBe(1);
+    expect(res.text).toBe("text");
+  });
+
+  it("ohne Budget bleibt das bestehende Verhalten (droppedImages 0)", async () => {
+    const engine: DocxEngine = {
+      convertToHtml: async () => ({
+        value: '<img src="data:image/png;base64,AAAA">',
+        messages: [],
+      }),
+      extractRawText: async () => ({ value: "t", messages: [] }),
+    };
+    const res = await extractDocxRich(new ArrayBuffer(4), { engine, mapImage: async (s) => s });
+    expect(res.droppedImages).toBe(0);
+    expect(res.html).toContain("data:image/png;base64,AAAA");
   });
 });

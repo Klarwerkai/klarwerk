@@ -76,25 +76,87 @@ export async function mapInlineImages(
   return parts.join("");
 }
 
+// WP-D1b (Fix d): das GESAMTE <img data:image>-Element (nicht nur die src) — damit ein Bild bei
+// Budget-Überschreitung KONTROLLIERT weggelassen werden kann (das ganze Tag entfällt). Nicht-data:-
+// Quellen (Object-Store-/raw) bleiben unberührt.
+const IMG_TAG_DATA_RE = /<img\b[^>]*\bsrc="(data:image\/[a-zA-Z0-9.+-]+;base64,[^"]*)"[^>]*>/gi;
+
+export interface InlineImageBudgetResult {
+  html: string;
+  dropped: number; // Bilder, die wegen des Byte-Budgets NICHT ins bodyHtml übernommen wurden
+}
+
+// WP-D1b (Fix d): hartes GESAMT-Byte-Budget für die eingebetteten data:image-Bilder. Jedes Bild wird
+// (dimensions- UND byte-getrieben) über `encode` re-encodiert und über ein laufendes Budget summiert;
+// passt es nicht mehr, wird das GANZE <img>-Element weggelassen (kein Absturz, kein 413). Verlustarm:
+// das ORIGINAL bleibt über WP-D2 als Anhang erhalten. DOM-frei (encode injiziert) → unit-testbar.
+export async function applyInlineImageBudget(
+  html: string,
+  encode: (src: string) => Promise<string>,
+  budgetBytes: number,
+): Promise<InlineImageBudgetResult> {
+  // Treffer zuerst synchron sammeln (Regex-Zustand), dann sequenziell encoden + Budget prüfen.
+  const matches: { full: string; src: string; start: number; end: number }[] = [];
+  let m: RegExpExecArray | null;
+  // biome-ignore lint/suspicious/noAssignInExpressions: Standard-Regex-Iteration.
+  while ((m = IMG_TAG_DATA_RE.exec(html)) !== null) {
+    matches.push({ full: m[0], src: m[1] ?? "", start: m.index, end: IMG_TAG_DATA_RE.lastIndex });
+  }
+  if (matches.length === 0) {
+    return { html, dropped: 0 };
+  }
+  const parts: string[] = [];
+  let last = 0;
+  let used = 0;
+  let dropped = 0;
+  for (const match of matches) {
+    parts.push(html.slice(last, match.start));
+    const encoded = await encode(match.src);
+    if (used + encoded.length <= budgetBytes) {
+      used += encoded.length;
+      parts.push(match.full.replace(match.src, encoded));
+    } else {
+      dropped += 1; // Bild weglassen — Original bleibt als Anhang (WP-D2).
+    }
+    last = match.end;
+  }
+  parts.push(html.slice(last));
+  return { html: parts.join(""), dropped };
+}
+
 export interface DocxRichResult {
   html: string; // strukturerhaltendes HTML (h2/h3, Listen, Tabellen, strong/em, data:image-Bilder)
   text: string; // Klartext — weiterhin nötig für die KI-Punkte-Extraktion
+  droppedImages: number; // WP-D1b: Bilder, die wegen des Byte-Budgets NICHT ins bodyHtml kamen
 }
 
 // WP-D1: strukturerhaltende Extraktion (HTML + Klartext in EINEM Durchgang über die Engine).
+// WP-D1b: mit `imageBudgetBytes` gilt ein hartes Gesamt-Byte-Budget für die Inline-Bilder
+// (überzählige werden weggelassen; `droppedImages` meldet ehrlich, wie viele).
 export async function extractDocxRich(
   buffer: ArrayBuffer,
-  opts: { engine?: DocxEngine; mapImage?: (src: string) => Promise<string> } = {},
+  opts: {
+    engine?: DocxEngine;
+    mapImage?: (src: string) => Promise<string>;
+    imageBudgetBytes?: number;
+  } = {},
 ): Promise<DocxRichResult> {
   const engine = opts.engine ?? (await defaultEngine());
   const input = mammothInput(buffer);
   const htmlResult = await engine.convertToHtml(input);
   const textResult = await engine.extractRawText(input);
   let html = mapDocxHeadings(htmlResult.value.trim());
+  let droppedImages = 0;
   if (opts.mapImage) {
-    html = await mapInlineImages(html, opts.mapImage);
+    if (opts.imageBudgetBytes !== undefined) {
+      const budgeted = await applyInlineImageBudget(html, opts.mapImage, opts.imageBudgetBytes);
+      html = budgeted.html;
+      droppedImages = budgeted.dropped;
+    } else {
+      html = await mapInlineImages(html, opts.mapImage);
+    }
   }
-  return { html, text: textResult.value.trim() };
+  return { html, text: textResult.value.trim(), droppedImages };
 }
 
 // Reiner Klartext-Extraktionskern (ArrayBuffer → Klartext) — bestehender Vertrag für die

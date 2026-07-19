@@ -77,20 +77,32 @@ export async function readDocxFile(file: File): Promise<string> {
   return extractDocxText(await file.arrayBuffer());
 }
 
-// WP-D1: eingebettetes data:image-Bild auf max. Kantenlänge herunterskalieren (Canvas → JPEG),
-// damit ein bildreiches DOCX das Draft-/KO-Speichern (globaler 1-MiB-HTTP-Body) nicht sprengt.
-// Bild bereits klein genug → unverändert zurück (kein unnötiger Qualitätsverlust). Jeder Fehler
-// (exotisches Format, Canvas-Grenze) → Original zurück; der Server-Sanitizer bleibt der Backstop.
+// WP-D1b (Fix d): GESAMT-Byte-Budget der eingebetteten Inline-Bilder im bodyHtml. So bleibt das gesamte
+// bodyHtml (Bilder + Struktur + Quelle-Blockquote) sicher unter dem 1-MiB-Fastify-Draft-Limit — 700 KB
+// lässt komfortablen Puffer für Text/Envelope. Überzählige Bilder werden weggelassen (Original im Anhang).
+export const MAX_INLINE_IMAGES_BYTES = 700_000;
+// WP-D1b: pro-Bild-Byte-Zielgröße — auch ein klein-dimensioniertes, aber byte-schweres Bild (z. B. ein
+// unkomprimiertes PNG) wird progressiv nach JPEG re-encodiert, bis es darunter liegt.
+const PER_IMAGE_TARGET_BYTES = 120_000;
+const JPEG_QUALITY_STEPS: readonly number[] = [0.8, 0.6, 0.45, 0.3];
+
+// WP-D1/WP-D1b: eingebettetes data:image-Bild dimensions- UND byte-getrieben re-encodieren (Canvas →
+// JPEG). Anders als zuvor wird ein Bild NICHT mehr allein wegen kleiner Kantenlänge unverändert
+// durchgelassen: ist es byte-schwer, wird es mit fallender Qualität neu kodiert, bis es das Pro-Bild-
+// Ziel unterschreitet (oder die Qualitätsstufen erschöpft sind). Ist es bereits klein UND leicht,
+// bleibt es unverändert (kein unnötiger Qualitätsverlust). Jeder Fehler → Original zurück (Backstop:
+// das Gesamt-Budget in applyInlineImageBudget lässt es dann ggf. weg statt zu sprengen).
 export function downscaleImageDataUrl(
   dataUrl: string,
   maxPx = 1280,
-  quality = 0.8,
+  targetBytes = PER_IMAGE_TARGET_BYTES,
 ): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
       const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
-      if (scale >= 1) {
+      // Bereits klein (Kantenlänge) UND leicht (Bytes) → unverändert lassen.
+      if (scale >= 1 && dataUrl.length <= targetBytes) {
         resolve(dataUrl);
         return;
       }
@@ -104,7 +116,20 @@ export function downscaleImageDataUrl(
       }
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       try {
-        resolve(canvas.toDataURL("image/jpeg", quality));
+        // Progressiv: fallende JPEG-Qualität, bis das Pro-Bild-Ziel erreicht ist. Die kleinste Variante
+        // wird genommen, selbst wenn das Ziel nicht ganz erreicht wird (das Gesamt-Budget fängt den Rest).
+        let best = canvas.toDataURL("image/jpeg", JPEG_QUALITY_STEPS[0]);
+        for (const q of JPEG_QUALITY_STEPS.slice(1)) {
+          if (best.length <= targetBytes) {
+            break;
+          }
+          const smaller = canvas.toDataURL("image/jpeg", q);
+          if (smaller.length < best.length) {
+            best = smaller;
+          }
+        }
+        // Nie größer als das Original zurückgeben.
+        resolve(best.length < dataUrl.length ? best : dataUrl);
       } catch {
         resolve(dataUrl);
       }
@@ -114,11 +139,13 @@ export function downscaleImageDataUrl(
   });
 }
 
-// WP-D1: strukturerhaltendes DOCX-Lesen (HTML + Klartext); eingebettete Bilder werden
-// clientseitig herunterskaliert, bevor sie ins bodyHtml wandern.
+// WP-D1/WP-D1b: strukturerhaltendes DOCX-Lesen (HTML + Klartext); eingebettete Bilder werden
+// clientseitig re-encodiert und über ein hartes GESAMT-Byte-Budget geführt — überzählige Bilder
+// werden weggelassen (droppedImages), damit ein bildreiches DOCX das Draft-Speichern nie sprengt.
 export async function readDocxRich(file: File): Promise<DocxRichResult> {
   return extractDocxRich(await file.arrayBuffer(), {
     mapImage: (src) => downscaleImageDataUrl(src),
+    imageBudgetBytes: MAX_INLINE_IMAGES_BYTES,
   });
 }
 

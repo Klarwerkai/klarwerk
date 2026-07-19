@@ -1487,12 +1487,15 @@ export function Capture(): JSX.Element {
       };
       // WP-D3: Hinweis, wenn der PDF-Seiten-Cap griff (nur die ersten N Seiten gelesen).
       let pdfTruncatedPages: number | null = null;
+      // WP-D1b: Anzahl Bilder, die wegen des Byte-Budgets NICHT ins bodyHtml kamen (Original im Anhang).
+      let droppedImages = 0;
       if (isWordDocument(f)) {
         // WP-D1: DOCX strukturerhaltend — HTML (Überschriften/Listen/Tabellen/Bilder, Best-Effort)
         // für den Ganzdokument-Modus, Klartext weiterhin für die KI-Punkte-Extraktion.
         const docx = await readDocxRich(f);
         text = docx.text;
         rich = { html: docx.html, kind: "docx" };
+        droppedImages = docx.droppedImages;
       } else if (isTextDocument(f)) {
         text = await readTextFile(f);
       } else if (isPdfDocument(f)) {
@@ -1541,11 +1544,14 @@ export function Capture(): JSX.Element {
         pdfTruncatedPages !== null
           ? ` ${t(CAPTURE_FILE_TEXT.pdfTruncated, { count: pdfTruncatedPages })}`
           : "";
+      // WP-D1b: bei weggelassenen Bildern ehrlich melden — das Original bleibt als Anhang erhalten.
+      const droppedNote =
+        droppedImages > 0 ? ` ${t(CAPTURE_FILE_TEXT.imagesDropped, { count: droppedImages })}` : "";
       setNotice(
         `${t(CAPTURE_FILE_TEXT.loadedStats, {
           name: f.name,
           chars: text.length,
-        })}${formatNote}${truncatedNote}`,
+        })}${formatNote}${truncatedNote}${droppedNote}`,
       );
     } catch {
       setFileName(null);
