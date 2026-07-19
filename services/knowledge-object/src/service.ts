@@ -548,6 +548,22 @@ export class KoService {
   // Aufrufer (Sweep/Route) meldet einen Fehlerstatus, kein stiller Teil-Purge. Restrisiko: gelingt das
   // Cleanup, aber der finale Einzel-Delete scheitert, bleibt ein (getrashtes) KO mit bereits geschlossenen
   // Folgeartefakten zurück — kein Geist, und ein erneuter Purge ist idempotent (siehe Bericht).
+  //
+  // SCRUM-523 P.3 (WP-A): AUDIT VOR DELETE (statt gemeinsamer DB-Transaktion). repo.delete (kos-Tabelle,
+  // Modul knowledge-object) und audit.record (audit-Tabelle, Modul audit) sind getrennte Pool-Queries
+  // aus getrennten Modulen; eine echte gemeinsame Transaktion müsste einen rohen PoolClient/Tx-Handle
+  // aus diesem Modul durch die öffentliche AuditService-Schnittstelle reichen — die (wie InMemoryAuditRepo
+  // zeigt) bewusst storage-agnostisch ist und nie einen Postgres-Client kennt. Das würde Pg-Interna in
+  // eine modulübergreifende, storage-neutrale API leaken und ist dieselbe Art Architektur-Umbau, die
+  // oben für Cleanup/Delete schon verworfen wurde. Stattdessen dasselbe Muster wie mutateKo (#4 oben):
+  // AUDIT ZUERST, danach der Delete. Damit gilt die geforderte Invariante streng: kein erfolgreicher
+  // Hard-Delete ohne vorher committeten ko.purged-Audit-Eintrag (FR-AUD-02 — kein Loch in der
+  // Hash-Kette). Bricht der Prozess zwischen Audit und Delete ab, bleibt ein Audit-Eintrag zu einem noch
+  // nicht wirklich gelöschten KO stehen — unschön, aber HARMLOS: repo.delete ist idempotent (DELETE auf
+  // eine ggf. noch vorhandene oder bereits gelöschte Zeile), ein erneuter Purge-Versuch (Sweep-Retry,
+  // erneuter manueller Purge) räumt zuverlässig auf; der einzige Nebeneffekt ist ein zusätzlicher
+  // ko.purged-Eintrag, der die Hash-Kette nicht bricht. Die umgekehrte Lücke (Delete ohne Audit-Spur) —
+  // das eigentlich zu schließende Fenster — ist damit ausgeschlossen.
   private async purgeKo(
     id: string,
     actor: string,
@@ -556,14 +572,16 @@ export class KoService {
   ): Promise<void> {
     // 1) Cleanup ZUERST — schlägt es fehl, bleibt das KO bestehen (kein Delete, kein Audit).
     await this.onPurge?.(id, actor);
-    // 2) Erst nach erfolgreichem Cleanup: der EINZIGE harte Bestands-Delete + Audit.
-    await this.repo.delete(id);
+    // 2) Audit VOR Delete (s. Kommentar oben) — erst wenn der Audit-Eintrag committet ist, wird
+    //    tatsächlich hart gelöscht. Kein erfolgreicher Delete ohne vorherigen Audit-Beleg.
     await this.audit?.record({
       actor,
       action: "ko.purged",
       target: id,
       payload: { reason, ...extraPayload },
     });
+    // 3) Der EINZIGE harte Bestands-Delete — läuft nur nach committetem Audit-Eintrag.
+    await this.repo.delete(id);
   }
 
   // SCRUM-523 P.3 (WP2): Endlöschung abgelaufener Papierkorb-Einträge — jetzt eine EXPLIZITE Operation
