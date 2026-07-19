@@ -6,10 +6,15 @@
 // sauberem Text; lieber ein falsch-positiv redigiertes Pfadstück als ein geleaktes Secret.
 
 // Env-Variablen, deren NAME nach Secret aussieht — deren Werte dürfen nie in einer Log-Zeile stehen.
-const SECRET_ENV_NAME = /TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY/i;
+// WP-E3 (ben): segment-genauer Treffer statt blankem Substring — KEY/TOKEN/… zählen nur als eigenes,
+// durch "_" oder Namensanfang/-ende begrenztes Segment. So wird KLARWERK_LOCAL_LLM_KEY erfasst,
+// KEYCHAIN-artige Namen (z. B. KLARWERK_SKIP_KEYCHAIN) aber NICHT als Secret behandelt.
+const SECRET_ENV_NAME = /(?:^|_)(?:TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|KEY|CREDENTIALS?)(?:_|$)/i;
 
-// Kürzere Werte (z. B. Flags wie "1") nie ersetzen — sonst zerlöchert die Redaction jede Meldung.
-const MIN_SECRET_LENGTH = 8;
+// WP-E3: Mindestlänge 4 statt 8. 1-3-Zeichen-Werte ("1", "on", "off") sind Flag-Werte — ihre globale
+// Ersetzung würde jede Ziffer/Silbe in Statuscodes und Meldungen zerlöchern und schützt kein echtes
+// Geheimnis. Ein ECHTER, wenn auch kurz konfigurierter Key (ab 4 Zeichen) wird dagegen redigiert.
+const MIN_SECRET_LENGTH = 4;
 
 export function sanitizeLogText(
   text: string,
