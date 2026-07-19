@@ -103,6 +103,12 @@ export type ReasonerTask = "structure" | "assist" | "interview" | "answer" | "se
 //  - "model"         Alias für "cloud" (Rückwärtskompatibilität)
 //  - "deterministic" bewusst ohne Modell
 export type ReasonerTaskChoice = "auto" | "model" | "cloud" | "local" | "deterministic";
+
+// SCRUM-525 P.5 (WP-C): Herkunft der AKTIVEN Policy — "env" (Deploy-ENV KLARWERK_REASONER_POLICY,
+// deklarativ pro Deploy, per Admin-Schreibpfad NICHT änderbar), "db" (persistierte Admin-Wahl) oder
+// "default" (nichts konfiguriert/geladen, inkl. eines fail-closed Ladefehlers — s. Reasoner.setTaskConfig).
+export type ReasonerPolicySource = "env" | "db" | "default";
+
 export interface ReasonerTaskConfig {
   global: ReasonerTaskChoice;
   perTask: Partial<
@@ -132,6 +138,9 @@ export interface ReasonerConfigStatus {
   effectiveProvider: Record<string, "cloud" | "local" | "deterministic">;
   // v1 bewusst ohne Persistenz (gilt bis Neustart) — UI zeigt das ehrlich an.
   persisted: boolean;
+  // SCRUM-525 P.5 (WP-C): Herkunft der aktiven Policy — die Admin-UI zeigt bei "env" einen Sperrhinweis
+  // (Änderung nur per Deploy/ENV), statt ein PUT zu erlauben, das serverseitig ohnehin 409 liefert.
+  policySource: ReasonerPolicySource;
 }
 
 // SCRUM-492: strukturierte Kollisionsfelder eines Widerspruchs — je Seite eine knappe Kernaussage

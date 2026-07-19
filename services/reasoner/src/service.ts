@@ -22,12 +22,29 @@ import type {
   KnowledgeRef,
   ReasonerConfigStatus,
   ReasonerLocale,
+  ReasonerPolicySource,
   ReasonerProbeResult,
   ReasonerStatus,
   ReasonerTaskChoice,
   ReasonerTaskConfig,
   StructureResult,
 } from "./types";
+
+// SCRUM-525 P.5 (WP-C): Befund 3(a) — eine per Deploy-ENV gesetzte Policy (KLARWERK_REASONER_POLICY)
+// ist eine bewusste, deklarative Vorgabe des Deploys; sie darf NICHT still von einem Admin-Schreibpfad
+// zur Laufzeit überschrieben werden (sonst wäre die Deploy-Garantie „läuft mit global=X" aushebelbar,
+// ohne dass das Deploy selbst geändert wurde). Eigener Fehlertyp (statt genericher Error), damit die
+// Route ihn gezielt auf 409 abbilden kann — mit einer ehrlichen Begründung statt eines stillen No-ops
+// oder der generischen 400-Validierungsantwort.
+export class ReasonerPolicyLockedError extends Error {
+  constructor() {
+    super(
+      "Die KI-Zuordnung ist per Deploy-Konfiguration (KLARWERK_REASONER_POLICY) festgelegt und kann " +
+        "hier nicht geändert werden. Änderungen sind nur über die Deploy-ENV möglich.",
+    );
+    this.name = "ReasonerPolicyLockedError";
+  }
+}
 
 // SCRUM-525 P.5 (WP6): der DEFINIERTE Default der KI-Zuordnung, wenn nichts persistiert ist. Exportiert,
 // damit Aufrufer/Tests den Default benennen können (kein magisches, verstecktes "auto").
@@ -236,6 +253,10 @@ export class Reasoner {
   // fachlich gewollte Standard-Kette (Cloud → lokal → deterministisch) — aber beim Start wird bewusst
   // GELOGGT, dass er greift, weil keine Policy konfiguriert ist (kein STILLER Auto-Fallback).
   private taskConfig: ReasonerTaskConfig = clone(DEFAULT_REASONER_POLICY);
+  // SCRUM-525 P.5 (WP-C): Herkunft der AKTUELL wirksamen Policy — merkt sich insbesondere, ob ein
+  // ENV-Override aktiv ist (dann lehnt setTaskConfig Schreibversuche ab, s. ReasonerPolicyLockedError).
+  // Startwert "default", bis loadPersistedPolicy() (Boot) oder ein erfolgreiches setTaskConfig sie setzt.
+  private policySource: ReasonerPolicySource = "default";
 
   getTaskConfig(): ReasonerTaskConfig {
     return { global: this.taskConfig.global, perTask: { ...this.taskConfig.perTask } };
@@ -264,10 +285,17 @@ export class Reasoner {
   // validieren, dann in die DB schreiben, und NUR bei Erfolg den Laufzeitwert aktualisieren. Schlägt der
   // DB-Write fehl, bleibt die Laufzeit-Policy unverändert (kein Drift „Laufzeit gesetzt, DB nicht") und der
   // Fehler wird ehrlich geworfen — der Aufrufer meldet ihn, die alte Zuordnung gilt weiter.
+  // SCRUM-525 P.5 (WP-C): Befund 3(a) — solange die aktive Policy aus der Deploy-ENV stammt, lehnt dieser
+  // Schreibpfad ab (ReasonerPolicyLockedError, von der Route auf 409 gemappt), STATT sie sofort im
+  // laufenden Prozess UND in der DB zu überschreiben. Kein stilles Aushebeln der ENV-Deploy-Garantie.
   async setTaskConfig(next: ReasonerTaskConfig): Promise<ReasonerTaskConfig> {
+    if (this.policySource === "env") {
+      throw new ReasonerPolicyLockedError();
+    }
     const normalized = this.normalizeTaskConfig(next); // wirft bei Ungültigem, bevor irgendetwas passiert
     await this.policyRepo.set(normalized); // ZUERST persistieren …
     this.taskConfig = normalized; // … Laufzeit erst nach erfolgreichem Write
+    this.policySource = "db"; // die Laufzeit-Policy ist jetzt die gerade persistierte Admin-Wahl.
     return this.getTaskConfig();
   }
 
@@ -289,6 +317,9 @@ export class Reasoner {
     if (envRaw) {
       if (isValidReasonerChoice(envRaw)) {
         this.taskConfig = { global: envRaw, perTask: {} };
+        // SCRUM-525 P.5 (WP-C): merkt sich den ENV-Ursprung fürs restliche Prozessleben — setTaskConfig
+        // lehnt Admin-Schreibversuche ab, solange dieser Zustand gilt (bis zum nächsten Neustart ohne ENV).
+        this.policySource = "env";
         return { source: "env", config: this.getTaskConfig() };
       }
       // Ungültiger ENV-Wert: nicht anwenden, aber ehrlich weiterreichen (Fall-through zu 2/3).
@@ -312,6 +343,10 @@ export class Reasoner {
       stored = await this.policyRepo.get();
     } catch (err) {
       this.taskConfig = clone(LOAD_FAILURE_FALLBACK_POLICY);
+      // SCRUM-525 P.5 (WP-C): ein Ladefehler ist KEIN ENV-Override — der Schreibpfad bleibt offen, damit
+      // ein Admin die Zuordnung setzen kann, sobald die DB wieder erreichbar ist (s. auch server.ts-Log,
+      // das hier bewusst KEINE automatische Wiederherstellung mehr verspricht).
+      this.policySource = "default";
       return {
         source: "load-error",
         config: this.getTaskConfig(),
@@ -321,9 +356,11 @@ export class Reasoner {
     if (stored) {
       // Defensive Normalisierung: auch ein (theoretisch) fremd-manipulierter Datensatz wird geprüft.
       this.taskConfig = this.normalizeTaskConfig(stored);
+      this.policySource = "db";
       return { source: "persisted", config: this.getTaskConfig() };
     }
     this.taskConfig = clone(DEFAULT_REASONER_POLICY);
+    this.policySource = "default";
     return { source: "default", config: this.getTaskConfig() };
   }
 
@@ -465,6 +502,9 @@ export class Reasoner {
         ),
       ),
       persisted: false,
+      // SCRUM-525 P.5 (WP-C): additive Eigenschaft — zeigt der Admin-UI, ob die Zuordnung per Deploy-ENV
+      // gesperrt ist ("env", PUT liefert 409), aus der DB stammt ("db") oder (noch) Default ist.
+      policySource: this.policySource,
     };
   }
 

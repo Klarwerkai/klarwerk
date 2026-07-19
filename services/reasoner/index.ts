@@ -4,6 +4,8 @@ export {
   DEFAULT_REASONER_POLICY,
   LOAD_FAILURE_FALLBACK_POLICY,
   isValidReasonerChoice,
+  // SCRUM-525 P.5 (WP-C): eigener Fehlertyp für den Admin-Schreibpfad, wenn ein ENV-Override aktiv ist.
+  ReasonerPolicyLockedError,
 } from "./src/service";
 export {
   DeterministicProvider,
@@ -96,4 +98,6 @@ export type {
   ReasonerConfigMode,
   ReasonerProbeResult,
   ReasonerTask,
+  // SCRUM-525 P.5 (WP-C): Herkunft der aktiven Policy (env|db|default) — Teil von ReasonerConfigStatus.
+  ReasonerPolicySource,
 } from "./src/types";

@@ -136,8 +136,14 @@ async function start(): Promise<void> {
     envGlobal: process.env.KLARWERK_REASONER_POLICY,
   });
   if (policy.source === "load-error") {
+    // SCRUM-525 P.5 (WP-C): Befund 3(b) — es gibt HIER keinen Retry/Auto-Recovery-Mechanismus (die Policy
+    // wird nur EINMAL beim Boot geladen, s. Kommentar an loadPersistedPolicy). Die persistierte Wahl greift
+    // erst wieder nach einem Prozess-Neustart, NICHT automatisch, sobald die DB wieder erreichbar ist —
+    // die Log-Meldung darf das nicht suggerieren. Bis zum Neustart bleibt fail-closed=deterministic aktiv;
+    // ein Admin kann die Zuordnung in der Zwischenzeit über die API neu setzen (setTaskConfig ist nicht
+    // ENV-gesperrt, s. ReasonerPolicyLockedError).
     app.log.error(
-      `KI-Zuordnung konnte NICHT geladen werden (${policy.detail ?? "unbekannt"}) — fail-closed auf global=${policy.config.global} (kein Cloud-Egress). Bitte DB prüfen; sobald erreichbar, gilt wieder die persistierte Wahl.`,
+      `KI-Zuordnung konnte NICHT geladen werden (${policy.detail ?? "unbekannt"}) — fail-closed auf global=${policy.config.global} (kein Cloud-Egress). Bitte DB prüfen und den Prozess NEU STARTEN, um die persistierte Wahl zu laden (keine automatische Wiederherstellung im laufenden Betrieb) — oder die Zuordnung in der Zwischenzeit unter KI-Verwaltung neu setzen.`,
     );
   } else if (policy.source === "env") {
     app.log.info(

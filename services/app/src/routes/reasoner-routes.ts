@@ -6,7 +6,7 @@ import {
   publicAiEnrichmentAllowed,
 } from "../../../external-search";
 import { type Confidentiality, type KoService, isConfidential } from "../../../knowledge-object";
-import type { Reasoner, ReasonerLocale } from "../../../reasoner";
+import { type Reasoner, type ReasonerLocale, ReasonerPolicyLockedError } from "../../../reasoner";
 import { runConflictSelfTest } from "../conflict-self-test";
 import { runDuplicateSelfTest } from "../duplicate-self-test";
 import type { Guards } from "../http";
@@ -256,6 +256,13 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
           } as Parameters<typeof reasoner.setTaskConfig>[0]);
           reply.code(200).send(reasoner.configStatus());
         } catch (error) {
+          // SCRUM-525 P.5 (WP-C): Befund 3(a) — ein aktiver ENV-Override (KLARWERK_REASONER_POLICY) lehnt
+          // den Schreibversuch ab (409, ehrliche Begründung), statt ihn wie einen 400-Validierungsfehler
+          // zu behandeln oder still zu übernehmen.
+          if (error instanceof ReasonerPolicyLockedError) {
+            reply.code(409).send({ error: "REASONER_POLICY_ENV_LOCKED", message: error.message });
+            return;
+          }
           reply.code(400).send({
             error: "BAD_REQUEST",
             message: error instanceof Error ? error.message : "Ungültige KI-Zuordnung.",

@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 import { InMemoryModelRunRepo } from "../../model-runs";
 import { DeterministicProvider, INTERVIEW_QUESTIONS, type ReasonerProvider } from "./provider";
 import { InMemoryReasonerPolicyRepo, type ReasonerPolicyRepo } from "./reasoner-policy";
-import { DEFAULT_REASONER_POLICY, LOAD_FAILURE_FALLBACK_POLICY, Reasoner } from "./service";
+import {
+  DEFAULT_REASONER_POLICY,
+  LOAD_FAILURE_FALLBACK_POLICY,
+  Reasoner,
+  ReasonerPolicyLockedError,
+} from "./service";
 import type { ReasonerTaskConfig } from "./types";
 import type {
   AnswerResult,
@@ -715,6 +720,77 @@ describe("SCRUM-525 P.5 (WP3): Policy-Wiring (write-then-runtime, fail-closed, E
     expect(r.getTaskConfig().global).toBe("auto"); // vor dem Laden noch Default
     await r.loadPersistedPolicy();
     expect(r.getTaskConfig().global).toBe("deterministic"); // danach steht die Wahl
+  });
+});
+
+// SCRUM-525 P.5 (WP-C): Befund 3(a) — ein per Deploy-ENV gesetzter Wert (KLARWERK_REASONER_POLICY)
+// wurde bisher SOFORT von einem Admin-Write überschrieben (Laufzeit + DB), obwohl die ENV als bewusste
+// Deploy-Vorgabe gedacht ist. Der Service merkt sich jetzt die Herkunft der aktiven Policy
+// (policySource: "env" | "db" | "default") und lehnt setTaskConfig ab, solange ein ENV-Override aktiv
+// ist — mit einem eigenen Fehlertyp (ReasonerPolicyLockedError), den die Route auf 409 mappt.
+describe("SCRUM-525 P.5 (WP-C): ENV-Sperre für den Admin-Schreibpfad", () => {
+  function makeReasoner(repo: ReasonerPolicyRepo): Reasoner {
+    return new Reasoner(
+      undefined,
+      new DeterministicProvider(),
+      undefined,
+      undefined,
+      undefined,
+      repo,
+    );
+  }
+
+  it("ENV-gebootet: setTaskConfig wirft ReasonerPolicyLockedError, Policy bleibt unverändert", async () => {
+    const repo = new InMemoryReasonerPolicyRepo();
+    const r = makeReasoner(repo);
+    const loaded = await r.loadPersistedPolicy({ envGlobal: "deterministic" });
+    expect(loaded.source).toBe("env");
+    expect(r.configStatus().policySource).toBe("env");
+
+    await expect(r.setTaskConfig({ global: "cloud", perTask: {} })).rejects.toBeInstanceOf(
+      ReasonerPolicyLockedError,
+    );
+    await expect(r.setTaskConfig({ global: "cloud", perTask: {} })).rejects.toThrow(
+      /Deploy-Konfiguration/,
+    );
+
+    // Weder Laufzeit noch DB haben sich verändert — die ENV-Vorgabe bleibt bestehen.
+    expect(r.getTaskConfig().global).toBe("deterministic");
+    expect(await repo.get()).toBeNull(); // nie in die DB geschrieben (der Write wurde gar nicht versucht)
+    expect(r.configStatus().policySource).toBe("env"); // weiterhin gesperrt
+  });
+
+  it("ohne ENV: setTaskConfig funktioniert wie bisher, policySource wechselt danach auf 'db'", async () => {
+    const repo = new InMemoryReasonerPolicyRepo();
+    const r = makeReasoner(repo);
+    const loaded = await r.loadPersistedPolicy();
+    expect(loaded.source).toBe("default");
+    expect(r.configStatus().policySource).toBe("default"); // noch nichts persistiert/env-gesperrt
+
+    const result = await r.setTaskConfig({ global: "cloud", perTask: {} });
+    expect(result.global).toBe("cloud"); // unverändertes Verhalten: der Write greift
+    expect(await repo.get()).toEqual({ global: "cloud", perTask: {} }); // wirklich persistiert
+    expect(r.configStatus().policySource).toBe("db"); // Quelle jetzt die gerade gesetzte Admin-Wahl
+  });
+
+  it("Ladefehler (DB nicht erreichbar): policySource bleibt 'default', der Schreibpfad ist NICHT gesperrt", async () => {
+    let stored: ReasonerTaskConfig | null = null;
+    const failingRepo: ReasonerPolicyRepo = {
+      get: () => Promise.reject(new Error("db read down")),
+      set: async (config) => {
+        stored = { global: config.global, perTask: { ...config.perTask } };
+      },
+    };
+    const r = makeReasoner(failingRepo);
+    const loaded = await r.loadPersistedPolicy();
+    expect(loaded.source).toBe("load-error");
+    expect(r.configStatus().policySource).toBe("default"); // KEIN ENV-Override → Schreibpfad bleibt offen
+
+    // Ein Admin kann die Zuordnung setzen, OBWOHL der Boot-Read fehlschlug (kein ENV-Lock).
+    const result = await r.setTaskConfig({ global: "local", perTask: {} });
+    expect(result.global).toBe("local");
+    expect(stored).toEqual({ global: "local", perTask: {} });
+    expect(r.configStatus().policySource).toBe("db");
   });
 });
 
