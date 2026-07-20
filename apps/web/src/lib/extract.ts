@@ -2,13 +2,15 @@
 // Erkennung + Status-/Join-Logik OHNE File/Image/document — in Node testbar.
 // Browser-Wrapper (echte Engines, lazy) liegt in `files.ts`.
 
-export type FileKind = "text" | "docx" | "pdf" | "image" | "unsupported";
+export type FileKind = "text" | "docx" | "pdf" | "pptx" | "image" | "unsupported";
 
 const TEXT_EXTS = [".txt", ".md", ".markdown", ".csv", ".log", ".json"];
 const WORD_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+// WP-D5: PowerPoint (OOXML-Präsentation).
+const PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
-// Reihenfolge: image → pdf → docx → text → unsupported.
-// Spiegelt die bestehende Erkennung (isTextDocument/isWordDocument), additiv um pdf erweitert.
+// Reihenfolge: image → pdf → docx → pptx → text → unsupported.
+// Spiegelt die bestehende Erkennung (isTextDocument/isWordDocument), additiv um pdf/pptx erweitert.
 export function detectFileKind(input: { name: string; type?: string }): FileKind {
   const name = input.name.toLowerCase();
   const type = input.type ?? "";
@@ -20,6 +22,9 @@ export function detectFileKind(input: { name: string; type?: string }): FileKind
   }
   if (type === WORD_MIME || name.endsWith(".docx")) {
     return "docx";
+  }
+  if (type === PPTX_MIME || name.endsWith(".pptx")) {
+    return "pptx";
   }
   if (type.startsWith("text/") || TEXT_EXTS.some((e) => name.endsWith(e))) {
     return "text";

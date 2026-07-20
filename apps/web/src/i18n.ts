@@ -949,7 +949,10 @@ const de = {
   "capture.file.empty": "In „{{name}}“ wurde kein Text gefunden.",
   "capture.file.emptyPdf":
     "In „{{name}}“ wurde kein Text gefunden — ein gescanntes PDF ohne Textebene wird noch nicht unterstützt.",
+  "capture.file.emptyPptx":
+    "In „{{name}}“ wurde kein Text gefunden — eine reine Bild-/Grafik-Präsentation ohne Text wird als Text nicht übernommen. Das Original liegt im Anhang.",
   "capture.file.pdfTruncated": "Nur die ersten {{count}} Seiten importiert.",
+  "capture.file.pptxTruncated": "Nur die ersten {{count}} Folien importiert.",
   "capture.file.imagesKept":
     "{{kept}} Bilder übernommen, davon {{compressed}} für die Textansicht komprimiert; das unveränderte Original liegt im Anhang.",
   "capture.file.imagesKeptDropped":
@@ -964,9 +967,11 @@ const de = {
     "Struktur und Bilder übernommen (Best-Effort) — exaktes Layout kann abweichen.",
   "capture.file.importNote.pdf":
     "Best-Effort-Textimport — Layout und Bilder wurden nicht übernommen.",
+  "capture.file.importNote.pptx":
+    "Best-Effort-Import aus PowerPoint — Text und Struktur je Folie übernommen; Layout, Animationen, Übergänge, Bilder und Sprechernotizen gehen verloren. Das Original liegt im Anhang.",
   "capture.file.parseError": "„{{name}}“ konnte nicht gelesen werden.",
   "capture.file.unsupported":
-    "„{{name}}“ wird hier nicht unterstützt — bitte als TXT/MD, DOCX oder PDF bereitstellen. Bilder gehen nur über OCR.",
+    "„{{name}}“ wird hier nicht unterstützt — bitte als TXT/MD, DOCX, PDF oder PPTX bereitstellen. Bilder gehen nur über OCR.",
   "capture.file.ocrCta": "Text im Bild erkennen (OCR)",
   "capture.file.ocrBusy": "Texterkennung läuft …",
   "capture.file.queryLabel": "Wonach soll die KI suchen? (optional)",
@@ -1005,12 +1010,12 @@ const de = {
   "capture.file.wholeImportAnother": "Weiteres Dokument importieren",
   "capture.file.formatTitle": "Dateiformate & Formatierung",
   "capture.file.formatHint":
-    "TXT/MD und weitere Textdateien werden als Text übernommen. DOCX: Struktur (Überschriften, Listen, Tabellen) und Bilder werden Best-Effort übernommen; exaktes Layout kann abweichen. PDF läuft als Best-Effort-Textimport; Layout und Bilder gehen verloren.",
+    "TXT/MD und weitere Textdateien werden als Text übernommen. DOCX: Struktur (Überschriften, Listen, Tabellen) und Bilder werden Best-Effort übernommen; exaktes Layout kann abweichen. PDF läuft als Best-Effort-Textimport; Layout und Bilder gehen verloren. PPTX: Text und Struktur je Folie werden Best-Effort übernommen; Layout, Animationen, Bilder und Notizen gehen verloren.",
   "capture.file.supportedTitle": "Aktiv auswählbar:",
   "capture.file.supportedFormats":
-    "TXT, MD/Markdown, CSV, LOG, JSON, DOCX, PDF und Bilder für OCR.",
+    "TXT, MD/Markdown, CSV, LOG, JSON, DOCX, PDF, PPTX und Bilder für OCR.",
   "capture.file.unsupportedFormats":
-    "RTF und PPTX werden aktuell nicht unterstützt. Bitte als TXT/MD, DOCX oder PDF bereitstellen, sofern verfügbar.",
+    "RTF wird aktuell nicht unterstützt. Bitte als TXT/MD, DOCX, PDF oder PPTX bereitstellen, sofern verfügbar.",
   "capture.file.cancel": "Abbrechen",
   "capture.file.pointsTitle": "Gefundenes Wissen — wähle aus, was übernommen wird",
   "capture.file.pointsHint":
@@ -3987,7 +3992,10 @@ const en: typeof de = {
   "capture.file.empty": "No text found in “{{name}}”.",
   "capture.file.emptyPdf":
     "No text found in “{{name}}” — a scanned PDF without a text layer is not supported yet.",
+  "capture.file.emptyPptx":
+    "No text found in “{{name}}” — an image-only presentation without text is not carried over as text. The original is in the attachment.",
   "capture.file.pdfTruncated": "Only the first {{count}} pages were imported.",
+  "capture.file.pptxTruncated": "Only the first {{count}} slides were imported.",
   "capture.file.imagesKept":
     "{{kept}} images imported, {{compressed}} of them compressed for the text view; the unchanged original is in the attachment.",
   "capture.file.imagesKeptDropped":
@@ -4002,9 +4010,11 @@ const en: typeof de = {
     "Structure and images imported (best effort) — exact layout may differ.",
   "capture.file.importNote.pdf":
     "Best-effort text import — layout and images were not carried over.",
+  "capture.file.importNote.pptx":
+    "Best-effort import from PowerPoint — text and structure per slide carried over; layout, animations, transitions, images and speaker notes are lost. The original is in the attachment.",
   "capture.file.parseError": "“{{name}}” could not be read.",
   "capture.file.unsupported":
-    "“{{name}}” is not supported here — please provide TXT/MD, DOCX, or PDF. Images only work via OCR.",
+    "“{{name}}” is not supported here — please provide TXT/MD, DOCX, PDF, or PPTX. Images only work via OCR.",
   "capture.file.ocrCta": "Recognize text in image (OCR)",
   "capture.file.ocrBusy": "Text recognition running …",
   "capture.file.queryLabel": "What should the AI look for? (optional)",
@@ -4041,12 +4051,12 @@ const en: typeof de = {
   "capture.file.wholeImportAnother": "Import another document",
   "capture.file.formatTitle": "File formats & formatting",
   "capture.file.formatHint":
-    "TXT/MD and other text files are taken over as text. DOCX: structure (headings, lists, tables) and images are imported best effort; exact layout may differ. PDF runs as a best-effort text import; layout and images are lost.",
+    "TXT/MD and other text files are taken over as text. DOCX: structure (headings, lists, tables) and images are imported best effort; exact layout may differ. PDF runs as a best-effort text import; layout and images are lost. PPTX: text and structure per slide are imported best effort; layout, animations, images and notes are lost.",
   "capture.file.supportedTitle": "Actively selectable:",
   "capture.file.supportedFormats":
-    "TXT, MD/Markdown, CSV, LOG, JSON, DOCX, PDF, and images for OCR.",
+    "TXT, MD/Markdown, CSV, LOG, JSON, DOCX, PDF, PPTX, and images for OCR.",
   "capture.file.unsupportedFormats":
-    "RTF and PPTX are not supported yet. Please provide TXT/MD, DOCX, or PDF where available.",
+    "RTF is not supported yet. Please provide TXT/MD, DOCX, PDF, or PPTX where available.",
   "capture.file.cancel": "Cancel",
   "capture.file.pointsTitle": "Knowledge found — choose what to take over",
   "capture.file.pointsHint":
@@ -6982,7 +6992,10 @@ const nl: typeof de = {
   "capture.file.empty": "In „{{name}}“ is geen tekst gevonden.",
   "capture.file.emptyPdf":
     "In „{{name}}“ is geen tekst gevonden — een gescande PDF zonder tekstlaag wordt nog niet ondersteund.",
+  "capture.file.emptyPptx":
+    "In „{{name}}“ is geen tekst gevonden — een presentatie met alleen afbeeldingen zonder tekst wordt niet als tekst overgenomen. Het origineel zit in de bijlage.",
   "capture.file.pdfTruncated": "Alleen de eerste {{count}} pagina's geïmporteerd.",
+  "capture.file.pptxTruncated": "Alleen de eerste {{count}} dia's geïmporteerd.",
   "capture.file.imagesKept":
     "{{kept}} afbeeldingen overgenomen, waarvan {{compressed}} gecomprimeerd voor de tekstweergave; het ongewijzigde origineel zit in de bijlage.",
   "capture.file.imagesKeptDropped":
@@ -6997,9 +7010,11 @@ const nl: typeof de = {
     "Structuur en afbeeldingen overgenomen (best effort) — de exacte layout kan afwijken.",
   "capture.file.importNote.pdf":
     "Best-effort tekstimport — layout en afbeeldingen zijn niet overgenomen.",
+  "capture.file.importNote.pptx":
+    "Best-effort import uit PowerPoint — tekst en structuur per dia overgenomen; layout, animaties, overgangen, afbeeldingen en notities gaan verloren. Het origineel zit in de bijlage.",
   "capture.file.parseError": "„{{name}}“ kon niet worden gelezen.",
   "capture.file.unsupported":
-    "„{{name}}“ wordt hier niet ondersteund — lever het aan als TXT/MD, DOCX of PDF. Afbeeldingen gaan alleen via OCR.",
+    "„{{name}}“ wordt hier niet ondersteund — lever het aan als TXT/MD, DOCX, PDF of PPTX. Afbeeldingen gaan alleen via OCR.",
   "capture.file.ocrCta": "Tekst in de afbeelding herkennen (OCR)",
   "capture.file.ocrBusy": "Tekstherkenning loopt …",
   "capture.file.queryLabel": "Waarnaar moet de AI zoeken? (optioneel)",
@@ -7037,12 +7052,12 @@ const nl: typeof de = {
   "capture.file.wholeImportAnother": "Nog een document importeren",
   "capture.file.formatTitle": "Bestandsformaten & opmaak",
   "capture.file.formatHint":
-    "TXT/MD en andere tekstbestanden worden als tekst overgenomen. DOCX: structuur (koppen, lijsten, tabellen) en afbeeldingen worden best effort overgenomen; de exacte layout kan afwijken. PDF loopt als best-effort tekstimport; layout en afbeeldingen gaan verloren.",
+    "TXT/MD en andere tekstbestanden worden als tekst overgenomen. DOCX: structuur (koppen, lijsten, tabellen) en afbeeldingen worden best effort overgenomen; de exacte layout kan afwijken. PDF loopt als best-effort tekstimport; layout en afbeeldingen gaan verloren. PPTX: tekst en structuur per dia worden best effort overgenomen; layout, animaties, afbeeldingen en notities gaan verloren.",
   "capture.file.supportedTitle": "Actief selecteerbaar:",
   "capture.file.supportedFormats":
-    "TXT, MD/Markdown, CSV, LOG, JSON, DOCX, PDF en afbeeldingen voor OCR.",
+    "TXT, MD/Markdown, CSV, LOG, JSON, DOCX, PDF, PPTX en afbeeldingen voor OCR.",
   "capture.file.unsupportedFormats":
-    "RTF en PPTX worden momenteel niet ondersteund. Lever ze indien mogelijk aan als TXT/MD, DOCX of PDF.",
+    "RTF wordt momenteel niet ondersteund. Lever het indien mogelijk aan als TXT/MD, DOCX, PDF of PPTX.",
   "capture.file.cancel": "Annuleren",
   "capture.file.pointsTitle": "Gevonden kennis — kies wat wordt overgenomen",
   "capture.file.pointsHint":

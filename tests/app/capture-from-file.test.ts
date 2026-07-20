@@ -251,22 +251,24 @@ describe("KW-W2-01: Ganzdokument-Import als bewusster Entwurf", () => {
     expect(captureSource).toContain("accept={FILE_IMPORT_ACCEPT}");
     expect(captureSource).toContain("CAPTURE_FILE_TEXT.supportedFormats");
     expect(captureSource).toContain("CAPTURE_FILE_TEXT.unsupportedFormats");
-    expect(captureSource).not.toContain(".pptx");
+    // WP-D5: PPTX ist jetzt aktiv auswählbar (Best-Effort-Import), RTF bleibt außen vor.
+    expect(captureSource).toContain(".pptx");
     expect(captureSource).not.toContain(".rtf");
     expect(deHint).toMatch(/TXT\/MD/);
-    // WP-D1/WP-D4: der Hinweis unterscheidet jetzt ehrlich nach Format (DOCX strukturerhaltend
-    // Best-Effort; PDF reiner Textimport) — beide Formate bleiben benannt.
+    // WP-D1/WP-D4/WP-D5: der Hinweis unterscheidet jetzt ehrlich nach Format (DOCX strukturerhaltend
+    // Best-Effort; PDF reiner Textimport; PPTX Text/Struktur je Folie) — alle Formate bleiben benannt.
     expect(deHint).toMatch(/DOCX/);
     expect(deHint).toMatch(/PDF/);
+    expect(deHint).toMatch(/PPTX/);
     expect(
       String(i18n.getResource("de", "translation", CAPTURE_FILE_TEXT.supportedFormats)),
-    ).toMatch(/TXT.*DOCX.*PDF.*Bilder/i);
+    ).toMatch(/TXT.*DOCX.*PDF.*PPTX.*Bilder/i);
     expect(
       String(i18n.getResource("de", "translation", CAPTURE_FILE_TEXT.unsupportedFormats)),
-    ).toMatch(/RTF.*PPTX.*nicht unterstützt/i);
+    ).toMatch(/RTF.*nicht unterstützt/i);
     expect(
       String(i18n.getResource("en", "translation", CAPTURE_FILE_TEXT.unsupportedFormats)),
-    ).toMatch(/RTF.*PPTX.*not supported/i);
+    ).toMatch(/RTF.*not supported/i);
     expect(`${deHint} ${enHint}`).not.toMatch(/formatgetreu|guaranteed|preserved/i);
   });
 

@@ -141,12 +141,14 @@ import {
   fileToThumbDataUrl,
   isImage,
   isPdfDocument,
+  isPptxDocument,
   isTextDocument,
   isWordDocument,
   readDocxFile,
   readDocxRich,
   readFileAsDataUrl,
   readPdfFile,
+  readPptxRich,
   readTextFile,
   runImageOcr,
 } from "../lib/files";
@@ -203,7 +205,8 @@ function speechCtor(): SpeechCtor | undefined {
 const textareaCls =
   "w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none placeholder:text-muted-2 focus:border-ink/30";
 
-const FILE_IMPORT_ACCEPT = ".txt,.md,.markdown,.csv,.log,.json,.docx,.pdf,application/pdf,image/*";
+const FILE_IMPORT_ACCEPT =
+  ".txt,.md,.markdown,.csv,.log,.json,.docx,.pdf,application/pdf,.pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation,image/*";
 
 interface FrontDoorDraftSavedState {
   id: string;
@@ -1563,6 +1566,8 @@ export function Capture(): JSX.Element {
       };
       // WP-D3: Hinweis, wenn der PDF-Seiten-Cap griff (nur die ersten N Seiten gelesen).
       let pdfTruncatedPages: number | null = null;
+      // WP-D5: Hinweis, wenn der PPTX-Folien-Cap griff (nur die ersten N Folien gelesen).
+      let pptxTruncatedSlides: number | null = null;
       // WP-D1c: Bild-Bilanz des DOCX-Imports — erst beim Speichern (an den Anhang-Erfolg gekoppelt)
       // gemeldet, NICHT hier (zur Lesezeit ist noch nichts angehängt).
       let imageInfo: {
@@ -1592,6 +1597,16 @@ export function Capture(): JSX.Element {
         text = pdf.text;
         rich = { html: null, kind: "pdf" };
         pdfTruncatedPages = pdf.truncated ? pdf.pageCount : null;
+      } else if (isPptxDocument(f)) {
+        // WP-D5: PowerPoint strukturerhaltend (Folie für Folie: Titel→h2, Text→Absätze, Bullets→Listen).
+        // Bilder werden NICHT inline übernommen (nur das Original als Anhang) — Verlust wird ehrlich
+        // gemeldet. htmlOverflow reist als total-0-Bildbilanz mit, damit der Vor-Upload-Abbruch (WP-D1e)
+        // auch für zu große Folien-HTMLs greift; truncated meldet den Folien-Cap.
+        const pptx = await readPptxRich(f);
+        text = pptx.text;
+        rich = { html: pptx.html, kind: "pptx" };
+        pptxTruncatedSlides = pptx.truncated ? pptx.slideCount : null;
+        imageInfo = { total: 0, compressed: 0, dropped: 0, htmlOverflow: pptx.htmlOverflow };
       } else {
         setFileName(null);
         setNotice(null);
@@ -1602,11 +1617,13 @@ export function Capture(): JSX.Element {
         setNotice(null);
         // WP-D4: bei PDFs ehrlich auf die fehlende Textebene hinweisen — OHNE falsche OCR-Hoffnung
         // (eine PDF-OCR existiert nicht).
-        setErr(
-          t(rich.kind === "pdf" ? CAPTURE_FILE_TEXT.emptyPdf : CAPTURE_FILE_TEXT.empty, {
-            name: f.name,
-          }),
-        );
+        const emptyKey =
+          rich.kind === "pdf"
+            ? CAPTURE_FILE_TEXT.emptyPdf
+            : rich.kind === "pptx"
+              ? CAPTURE_FILE_TEXT.emptyPptx
+              : CAPTURE_FILE_TEXT.empty;
+        setErr(t(emptyKey, { name: f.name }));
         return;
       }
       setFileText(text);
@@ -1627,12 +1644,16 @@ export function Capture(): JSX.Element {
           ? ` ${t(CAPTURE_FILE_TEXT.importNoteDocx)}`
           : rich.kind === "pdf"
             ? ` ${t(CAPTURE_FILE_TEXT.importNotePdf)}`
-            : "";
-      // WP-D3: bei Seiten-Cap ehrlich anhängen, wie viele Seiten importiert wurden.
+            : rich.kind === "pptx"
+              ? ` ${t(CAPTURE_FILE_TEXT.importNotePptx)}`
+              : "";
+      // WP-D3/WP-D5: bei Seiten-/Folien-Cap ehrlich anhängen, wie viele Seiten/Folien importiert wurden.
       const truncatedNote =
         pdfTruncatedPages !== null
           ? ` ${t(CAPTURE_FILE_TEXT.pdfTruncated, { count: pdfTruncatedPages })}`
-          : "";
+          : pptxTruncatedSlides !== null
+            ? ` ${t(CAPTURE_FILE_TEXT.pptxTruncated, { count: pptxTruncatedSlides })}`
+            : "";
       // WP-D1c: KEINE „Original im Anhang"-Behauptung zur Lesezeit (noch nichts angehängt) — die
       // ehrliche, anhang-gekoppelte Bild-Meldung folgt beim Speichern (fileWholeDraft.onSuccess).
       setNotice(

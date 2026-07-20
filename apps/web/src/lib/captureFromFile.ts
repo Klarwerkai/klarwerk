@@ -147,7 +147,7 @@ const MAX_WHOLE_DOCUMENT_STATEMENT = 500;
 
 // WP-D4: ehrlicher, formatabhängiger Import-Hinweis — er wird Teil des persistierten Quelle-
 // Blockquotes, damit der Entwurf NIE wie eine verlustfreie Übernahme aussieht.
-export type WholeDocumentSourceKind = "docx" | "pdf" | "text";
+export type WholeDocumentSourceKind = "docx" | "pdf" | "pptx" | "text";
 
 interface WholeSourceLabels {
   source: string;
@@ -155,6 +155,8 @@ interface WholeSourceLabels {
   fallback: string;
   noteDocx: string;
   notePdf: string;
+  // WP-D5: ehrlicher Verlusthinweis für den PowerPoint-Import (Layout/Animationen/Bilder/Notizen).
+  notePptx: string;
 }
 
 // WP-D1b (Fix c): NL ergänzt — bisher fiel die persistierte Verlust-Quittung für „nl" auf Deutsch
@@ -167,6 +169,8 @@ const SOURCE_LABELS: Record<"de" | "en" | "nl", WholeSourceLabels> = {
     fallback: "Unbenanntes Dokument",
     noteDocx: "Struktur und Bilder übernommen (Best-Effort) — exaktes Layout kann abweichen.",
     notePdf: "Best-Effort-Textimport — Layout und Bilder wurden nicht übernommen.",
+    notePptx:
+      "Best-Effort-Import aus PowerPoint — Text und Struktur je Folie übernommen; Layout, Animationen, Übergänge, Bilder und Sprechernotizen gehen verloren.",
   },
   en: {
     source: "Source",
@@ -174,6 +178,8 @@ const SOURCE_LABELS: Record<"de" | "en" | "nl", WholeSourceLabels> = {
     fallback: "Untitled document",
     noteDocx: "Structure and images imported (best effort) — exact layout may differ.",
     notePdf: "Best-effort text import — layout and images were not carried over.",
+    notePptx:
+      "Best-effort import from PowerPoint — text and structure per slide carried over; layout, animations, transitions, images and speaker notes are lost.",
   },
   nl: {
     source: "Bron",
@@ -182,6 +188,8 @@ const SOURCE_LABELS: Record<"de" | "en" | "nl", WholeSourceLabels> = {
     noteDocx:
       "Structuur en afbeeldingen overgenomen (best effort) — de exacte layout kan afwijken.",
     notePdf: "Best-effort tekstimport — layout en afbeeldingen zijn niet overgenomen.",
+    notePptx:
+      "Best-effort import uit PowerPoint — tekst en structuur per dia overgenomen; layout, animaties, overgangen, afbeeldingen en notities gaan verloren.",
   },
 };
 
@@ -266,7 +274,9 @@ export function wholeDocumentBodyHtml(input: {
       ? `<p>${escapeHtml(labels.noteDocx)}</p>`
       : input.sourceKind === "pdf"
         ? `<p>${escapeHtml(labels.notePdf)}</p>`
-        : "";
+        : input.sourceKind === "pptx"
+          ? `<p>${escapeHtml(labels.notePptx)}</p>`
+          : "";
   const source = `<blockquote><p>${labels.source}: ${escapeHtml(input.fileName)}, ${labels.whole}</p>${note}</blockquote>`;
   if (input.html && input.html.trim().length > 0) {
     return `${source}${input.html.trim()}`;
@@ -384,8 +394,12 @@ export const CAPTURE_FILE_TEXT = {
   empty: "capture.file.empty",
   // WP-D4: PDF-spezifische Leermeldung — ehrlich, ohne falsche OCR-Hoffnung (PDF-OCR existiert nicht).
   emptyPdf: "capture.file.emptyPdf",
+  // WP-D5: PPTX-spezifische Leermeldung — reine Bild-/Grafik-Präsentation ohne Text.
+  emptyPptx: "capture.file.emptyPptx",
   // WP-D3: ehrlicher Hinweis, wenn der Seiten-Cap (MAX_PDF_PAGES) griff — nur die ersten N Seiten gelesen.
   pdfTruncated: "capture.file.pdfTruncated",
+  // WP-D5: ehrlicher Hinweis, wenn der Folien-Cap (MAX_PPTX_SLIDES) griff — nur die ersten N Folien gelesen.
+  pptxTruncated: "capture.file.pptxTruncated",
   // WP-D1d: Bilder komprimiert BEHALTEN, Original im Anhang (Anhang WIRKLICH gelungen).
   imagesKept: "capture.file.imagesKept",
   // WP-D1d: einige komprimiert, einige als Notbremse weggelassen — Original im Anhang gesichert.
@@ -399,6 +413,8 @@ export const CAPTURE_FILE_TEXT = {
   // WP-D4: formatabhängige Import-Quittung (DOCX: Struktur+Bilder Best-Effort; PDF: nur Text).
   importNoteDocx: "capture.file.importNote.docx",
   importNotePdf: "capture.file.importNote.pdf",
+  // WP-D5: PowerPoint-Import-Quittung (Text/Struktur je Folie; Layout/Animationen/Bilder/Notizen verloren).
+  importNotePptx: "capture.file.importNote.pptx",
   parseError: "capture.file.parseError",
   unsupported: "capture.file.unsupported",
   ocrCta: "capture.file.ocrCta",

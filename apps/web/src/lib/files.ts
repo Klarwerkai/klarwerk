@@ -11,6 +11,7 @@ import {
 import { detectFileKind } from "./extract";
 import { type OcrResult, recognizeImage } from "./ocr";
 import { type PdfDocumentText, type PdfEngine, extractPdfDocument } from "./pdf";
+import { type PptxRichResult, type PptxUnzip, extractPptxRich, isPptxDocumentLike } from "./pptx";
 
 // FR-CAP-05: Bild auf ein kleines Thumbnail (JPEG) verkleinern → Daten-URL.
 // WICHTIG (Pedi/VIP 06.07.): NICHT über eine blob:-URL laden. Die Server-CSP erlaubt bei img-src nur
@@ -159,6 +160,38 @@ export async function readDocxRich(file: File): Promise<DocxRichResult> {
   return extractDocxRich(await file.arrayBuffer(), {
     mapImage: (src) => downscaleImageDataUrl(src),
     imageBudgetBytes: MAX_INLINE_BODY_HTML_BYTES,
+  });
+}
+
+// WP-D5: .pptx-Erkennung als dünner Browser-Wrapper um die DOM-freie Logik.
+export function isPptxDocument(file: File): boolean {
+  return isPptxDocumentLike({ name: file.name, type: file.type });
+}
+
+let pptxUnzipPromise: Promise<PptxUnzip> | null = null;
+
+// fflate lazy laden (synchrones unzipSync, klein/tree-shakeable) — NICHT ins Haupt-Bundle. Muster
+// mammoth/pdfjs-Engine. unzipSync liefert Pfad → Rohbytes; der DOM-freie Kern liest daraus die Folien.
+async function pptxUnzip(): Promise<PptxUnzip> {
+  if (!pptxUnzipPromise) {
+    pptxUnzipPromise = (async () => {
+      const mod = (await import("fflate")) as unknown as {
+        unzipSync: (data: Uint8Array) => Record<string, Uint8Array>;
+      };
+      return (data) => mod.unzipSync(data);
+    })();
+  }
+  return pptxUnzipPromise;
+}
+
+// WP-D5: strukturerhaltendes PPTX-Lesen (HTML + Klartext), Folie für Folie. Bilder werden in diesem
+// Slice NICHT inline übernommen (nur gezählt) — das Original reist als Anhang mit (WP-D2). Der Aufrufer
+// meldet Verluste (Layout/Animationen/Bilder/Notizen) ehrlich. Folien-Cap via MAX_PPTX_SLIDES (truncated).
+export async function readPptxRich(file: File): Promise<PptxRichResult> {
+  const unzip = await pptxUnzip();
+  return extractPptxRich(await file.arrayBuffer(), {
+    unzip,
+    budgetBytes: MAX_INLINE_BODY_HTML_BYTES,
   });
 }
 
