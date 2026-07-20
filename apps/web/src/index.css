@@ -82,6 +82,23 @@
 .prose-kw figcaption[contenteditable="true"]:focus {
   @apply border-solid border-ai/50 outline-none;
 }
+/* WP-D10: ECHTER (rein visueller) Platzhalter für die leere Bild-Fußnote im Editor. Der Text kommt aus
+   data-kw-placeholder (lokalisiert, NUR editorseitig von enhanceFiguresForEditing gesetzt und vom
+   Sanitizer beim Speichern gestrippt) — er ist ein ::before-Artefakt, nie echter figcaption-Inhalt und
+   muss daher auch nie manuell gelöscht werden. */
+.prose-kw figcaption[contenteditable="true"]:empty::before {
+  content: attr(data-kw-placeholder);
+  @apply not-italic text-muted-2;
+}
+/* Beim Fokus verschwindet die Einladung sofort — der Nutzer tippt in eine sichtbar leere Fußnote. */
+.prose-kw figcaption[contenteditable="true"]:focus::before {
+  content: none;
+}
+/* WP-D10 (Leseansicht): eine LEERE Fußnote ist kein Inhalt und wird außerhalb des Editors nicht
+   angezeigt (kein leerer gestrichelter/linierter Streifen unter dem Bild). */
+.prose-kw figcaption:empty:not([contenteditable="true"]) {
+  @apply hidden;
+}
 /* Formatierung Stufe 2: erhaltene Tabellen aus Import/Paste sauber darstellen (Ränder, Padding). */
 .prose-kw table {
   @apply my-2 w-full border-collapse text-[13.5px];

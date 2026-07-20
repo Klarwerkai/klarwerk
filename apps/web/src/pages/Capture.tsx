@@ -166,6 +166,12 @@ import { PptxTooLargeError } from "../lib/pptx";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { documentProvenance, draftProvenance } from "../lib/reasonerProvenance";
 import { hasSpeechRecognition } from "../lib/speechSupport";
+// WP-D10 (Fix 2): Dauer-Details der Einreichung — reine Sammel-/Formatierlogik (keine neuen Messpunkte).
+import {
+  type SubmitTimingEntry,
+  type SubmitTimingSpan,
+  buildSubmitTimingEntries,
+} from "../lib/submitTiming";
 
 type Mode = CaptureMode;
 
@@ -383,6 +389,9 @@ export function Capture(): JSX.Element {
   const [savedFilesCount, setSavedFilesCount] = useState(0);
   // SCRUM-374: Anhänge, die trotz gespeichertem KO NICHT hochgeladen/angehängt werden konnten (Teilfehler).
   const [failedAttachments, setFailedAttachments] = useState<AttachmentFailure[]>([]);
+  // WP-D10 (Fix 2): gemessene Submit-Phasen-Dauern (aus den VORHANDENEN performance.now-Spannen) für die
+  // aufklappbare Zeile „Details zur Dauer" in der Bestätigung — Erfolg UND Teilfehler.
+  const [submitTimings, setSubmitTimings] = useState<SubmitTimingEntry[]>([]);
   // SCRUM-123: laufende Bild-OCR (für ehrlichen Status / Button-Sperre).
   const [ocrBusy, setOcrBusy] = useState<string | null>(null);
   // SCRUM-382: laufende Video-/Audio-Transkription (Objekt-ID der Session-Datei).
@@ -892,6 +901,9 @@ export function Capture(): JSX.Element {
       // (ohne draftId) wird wie bisher direkt als KO angelegt (Autor = aktueller Nutzer).
       // WP-D7b (Rot-Fix 1): Phase 1 — Wissensobjekt anlegen/promoten (Metadaten + bodyHtml).
       setSubmitStage({ key: "capture.submitStageCreating" });
+      // WP-D10 (Fix 2): dieselben Spannen zusätzlich SAMMELN — für die sichtbaren Dauer-Details in der
+      // Bestätigung (bisher landeten sie nur im console.debug).
+      const timingSpans: SubmitTimingSpan[] = [];
       const tCreate = performance.now();
       let ko: KnowledgeObject;
       if (draftId) {
@@ -934,6 +946,7 @@ export function Capture(): JSX.Element {
         setSubmittedFromDraft(false);
       }
       logSubmitPhase("ko-create/promote", tCreate);
+      timingSpans.push({ key: "create", ms: performance.now() - tCreate });
       // SCRUM-121/373/374: Originale in den Object-Store; am KO nur Referenz + kleine Vorschau.
       //  - Bilder: kind "image" mit Thumbnail; Nicht-Bild-Session-Dateien: kind "document" (AG-02-SESSION,
       //    danach body-verlinkbar via editorFilesFromAttachments/bodyFileLink).
@@ -973,6 +986,9 @@ export function Capture(): JSX.Element {
           ? (uploadBytes / 1_000_000).toLocaleString(i18n.language, { maximumFractionDigits: 1 })
           : null;
       const tFinalize = performance.now();
+      // WP-D10 (Fix 2): der VORHANDENE onPhase-Übergang "uploading"→"linking" trennt Upload- und
+      // Verknüpfungs-Spanne — kein neuer Messpunkt im Finalizer.
+      let linkStartMs: number | null = null;
       const { attached, failed } = await finalizeCaptureSubmit({
         koId: ko.id,
         attachments: attachmentItems,
@@ -1007,22 +1023,34 @@ export function Capture(): JSX.Element {
                 : { key: "capture.submitStageLinking" },
             );
           } else {
+            linkStartMs = performance.now();
             setSubmitStage({ key: "capture.submitStageLinking" });
           }
         },
       });
       logSubmitPhase("attachments(upload parallel)+KO-writes(serial)", tFinalize);
-      return { ko, attached, failed };
+      // WP-D10 (Fix 2): Upload = tFinalize→linking-Übergang, Verknüpfen (inkl. Quellen) = Rest. Fehlt der
+      // Übergang (defensiv), bleibt es ehrlich bei der Gesamt-Spanne als Verknüpfungs-Eintrag.
+      const tDone = performance.now();
+      if (linkStartMs !== null) {
+        timingSpans.push({ key: "upload", ms: linkStartMs - tFinalize, mb: uploadMb });
+        timingSpans.push({ key: "link", ms: tDone - linkStartMs });
+      } else {
+        timingSpans.push({ key: "link", ms: tDone - tFinalize });
+      }
+      return { ko, attached, failed, timingSpans };
     },
     // SCRUM-276: kein stilles Weiterleiten — „gespeichert" + nächster Schritt sichtbar machen.
     // Formular zurücksetzen (kein versehentlicher Doppel-Submit); Modus bleibt erhalten.
-    onSuccess: ({ ko, attached, failed }) => {
+    onSuccess: ({ ko, attached, failed, timingSpans }) => {
       setSavedKoId(ko.id);
       // SCRUM-369: Rescue-Anschluss nur, wenn dieser Save aus einer Ask-Lücke gestartet wurde.
       setSavedFromGap(gapContext !== null);
       // SCRUM-373/374: nur die WIRKLICH gesicherten Anhänge zählen; Teilfehler getrennt ehrlich melden.
       setSavedFilesCount(attached);
       setFailedAttachments(failed);
+      // WP-D10 (Fix 2): gemessene Phasen-Dauern für die aufklappbaren Details (Erfolg UND Teilfehler).
+      setSubmitTimings(buildSubmitTimingEntries(timingSpans, i18n.language));
       push("success", t("capture.savedTitle"));
       void qc.invalidateQueries({ queryKey: ["validation"] });
       void qc.invalidateQueries({ queryKey: ["kos"] });
@@ -2144,6 +2172,31 @@ export function Capture(): JSX.Element {
               </p>
             </div>
           ) : null}
+          {/* WP-D10 (Fix 2): dezente, aufklappbare Dauer-Details — die ECHTEN gemessenen Phasen-Spannen
+              (Anlegen / Upload mit MB / Verknüpfen & Quellen), damit „Einreichen dauert" belegbar wird. */}
+          {submitTimings.length > 0 ? (
+            <details className="mt-2">
+              <summary className="cursor-pointer list-none text-[11.5px] font-semibold text-trust-pos-text/80 hover:text-trust-pos-text">
+                {t("capture.submitTiming.title")}
+              </summary>
+              <ul className="mt-1 space-y-0.5">
+                {submitTimings.map((entry) => (
+                  <li
+                    key={entry.key}
+                    className="flex items-center gap-2 font-mono text-[11px] text-trust-pos-text/90"
+                  >
+                    <span>{t(entry.labelKey)}</span>
+                    <span className="font-semibold">
+                      {t("capture.submitTiming.seconds", { s: entry.seconds })}
+                    </span>
+                    {entry.mb ? (
+                      <span>· {t("capture.submitTiming.mb", { mb: entry.mb })}</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {captureNextSteps(savedKoId).map((s) => (
               <Link
@@ -2165,6 +2218,7 @@ export function Capture(): JSX.Element {
                 setSavedFromGap(false);
                 setSavedFilesCount(0);
                 setFailedAttachments([]);
+                setSubmitTimings([]);
               }}
             >
               {t("capture.savedAgain")}

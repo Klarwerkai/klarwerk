@@ -115,9 +115,11 @@ export function RichTextEditor({
     if (mode === "edit" && el && el.innerHTML !== safe && !el.contains(document.activeElement)) {
       el.innerHTML = safe;
       // WP-D7 (Befund 2): Bild-Fußnoten nach jedem innerHTML-Setzen editierbar verankern.
-      enhanceFiguresForEditing(el);
+      // WP-D10: lokalisierter, rein visueller Einlade-Text für LEERE Fußnoten (data-kw-placeholder +
+      // CSS :empty::before) — wird vom Sanitizer beim Speichern gestrippt, nie echter Inhalt.
+      enhanceFiguresForEditing(el, t("editor.captionPlaceholder"));
     }
-  }, [value, mode]);
+  }, [value, mode, t]);
 
   const emit = (): void => onChange(sanitizeHtml(ref.current?.innerHTML ?? ""));
 
@@ -165,7 +167,7 @@ export function RichTextEditor({
     // WP-D7b (Gelb-Fix 2): auch nach execCommand-Einfügungen (z. B. insertHTML) Bild-Fußnoten editierbar
     // verankern — der Editor ist hier fokussiert, die useEffect-Verankerung greift dann bewusst nicht.
     if (ref.current) {
-      enhanceFiguresForEditing(ref.current);
+      enhanceFiguresForEditing(ref.current, t("editor.captionPlaceholder"));
     }
     emit();
   };
@@ -206,7 +208,7 @@ export function RichTextEditor({
       el.insertAdjacentHTML("beforeend", html);
     }
     // WP-D7b (Gelb-Fix 2): frisch eingefügte Bild-Fußnoten sofort editierbar verankern (Editor fokussiert).
-    enhanceFiguresForEditing(el);
+    enhanceFiguresForEditing(el, t("editor.captionPlaceholder"));
     emit();
   };
 

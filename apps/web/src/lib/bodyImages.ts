@@ -4,6 +4,8 @@
 // </figure>). Die Fußnote in der Galerie ist damit IMMER die aktuelle figcaption des Bodys. DOM-frei
 // (Regex auf dem bereits sanitisierten Allowlist-HTML) → im Node-Gate testbar.
 
+// WP-D10: Altlast-Platzhaltertexte gelten als „ohne Beschreibung" — zentrale Liste aus editorFigures.
+import { LEGACY_IMAGE_CAPTION_PLACEHOLDERS } from "./editorFigures";
 // WP-D9c (Galerie-Auflage 3): defensive src-Grenze — dieselbe ZENTRALE Policy wie der Sanitizer
 // (Object-Store-raw oder sichere Raster-data-URLs; kein javascript:, kein SVG, kein Remote-http).
 import { isSafeImgSrc } from "./richText";
@@ -26,10 +28,12 @@ function attrOf(tag: string, name: string): string | null {
 }
 
 // figcaption-Inhalt → Klartext: Tags raus, die Sanitizer-Entities zurückübersetzen, Whitespace glätten.
+// WP-D10: exakt einer der drei Alt-Platzhaltertexte ist KEINE Beschreibung → leerer String (die Galerie
+// behandelt das Bild dann ehrlich als „ohne Beschreibung", identisch zu einer leeren Fußnote).
 function captionText(figureInner: string): string {
   const m = /<figcaption\b[^>]*>([\s\S]*?)<\/figcaption>/i.exec(figureInner);
   const raw = m?.[1] ?? "";
-  return raw
+  const text = raw
     .replace(/<[^>]+>/g, " ")
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
@@ -38,6 +42,7 @@ function captionText(figureInner: string): string {
     .replace(/&#39;/g, "'")
     .replace(/\s+/g, " ")
     .trim();
+  return LEGACY_IMAGE_CAPTION_PLACEHOLDERS.includes(text) ? "" : text;
 }
 
 export function extractBodyImages(bodyHtml: string | null | undefined): BodyImage[] {

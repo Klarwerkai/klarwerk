@@ -1,6 +1,7 @@
 // WP-BILD-1a (Pedi 20.07.): Bild-Fußnoten-Fundament. Jedes importierte Inline-Bild bekommt beim
-// DOCX-Import eine <figure> mit <figcaption data-image-id="…"> und einem EHRLICHEN Platzhalter (keine
-// erfundene Beschreibung). Getestet: DOM-freier Kern (wrapImagesInFigures + extractDocxRich), die
+// DOCX-Import eine <figure> mit <figcaption data-image-id="…">. WP-D10: die Fußnote startet LEER —
+// ein Platzhalter ist KEIN Inhalt (Einladung nur visuell im Editor via data-kw-placeholder/CSS).
+// Getestet: DOM-freier Kern (wrapImagesInFigures + extractDocxRich), die
 // Byte-Budget-Interaktion (Notbremse droppt das GANZE figure-Element), beide Sanitizer (Client richText +
 // Server services/structure) erhalten figure/figcaption/data-image-id und strippen böse Attribute,
 // shouldPreserveRichBody wertet figure als reich, i18n-Platzhalter DE/EN/NL.
@@ -30,36 +31,37 @@ function engineOf(html: string, text = "Text"): DocxEngine {
 }
 
 describe("WP-BILD-1a: wrapImagesInFigures", () => {
-  it("hüllt jedes Bild in <figure> mit <figcaption> + kollisionsfester, fortlaufender ID", () => {
+  it("hüllt jedes Bild in <figure> mit LEERER <figcaption> + kollisionsfester, fortlaufender ID", () => {
     const out = wrapImagesInFigures(
       `<img src="${PNG}"><p>x</p><img src="${PNG}">`,
       PLACEHOLDER,
       "tok123",
     );
     expect(out).toContain("<figure>");
-    // WP-BILD-1b: kw-img-<runToken>-N, hier mit festem Token tok123.
-    expect(out).toContain(`<figcaption data-image-id="${IMAGE_ID_PREFIX}tok123-1">`);
-    expect(out).toContain(`<figcaption data-image-id="${IMAGE_ID_PREFIX}tok123-2">`);
+    // WP-D10: die Fußnote startet LEER — der Platzhalter ist ein reines Editor-Render-Artefakt und
+    // steht NIE als echter Text im Body.
+    expect(out).toContain(`<figcaption data-image-id="${IMAGE_ID_PREFIX}tok123-1"></figcaption>`);
+    expect(out).toContain(`<figcaption data-image-id="${IMAGE_ID_PREFIX}tok123-2"></figcaption>`);
     // WP-BILD-1b: beidseitige Verankerung — auch das img trägt dieselbe ID.
     expect(out).toContain(`<img data-image-id="${IMAGE_ID_PREFIX}tok123-1"`);
     expect(out).toContain(`<img data-image-id="${IMAGE_ID_PREFIX}tok123-2"`);
-    expect(out).toContain(PLACEHOLDER);
-    // Kein erfundener Text — genau der ehrliche Platzhalter.
+    expect(out).not.toContain(PLACEHOLDER);
     expect((out.match(/<figure>/g) ?? []).length).toBe(2);
   });
 
-  it("escapt den Platzhalter defensiv und lässt Bilder ohne data:image unberührt", () => {
+  it("WP-D10: der Platzhalter-Parameter landet NIE im Body; Bilder ohne data:image bleiben unberührt", () => {
     const out = wrapImagesInFigures('<img src="/api/objects/x/raw">', "<b>böse</b>");
     // Object-Store-Bild (kein data:image) wird NICHT umhüllt.
     expect(out).toBe('<img src="/api/objects/x/raw">');
-    const escaped = wrapImagesInFigures(`<img src="${PNG}">`, "<b>böse</b>");
-    expect(escaped).toContain("&lt;b&gt;böse&lt;/b&gt;");
-    expect(escaped).not.toContain("<b>böse");
+    // Auch ein bösartiger Platzhalter-Text kann nichts injizieren — er wird gar nicht geschrieben.
+    const wrapped = wrapImagesInFigures(`<img src="${PNG}">`, "<b>böse</b>");
+    expect(wrapped).not.toContain("böse");
+    expect(wrapped).toContain("></figcaption>");
   });
 });
 
 describe("WP-BILD-1a: extractDocxRich erzeugt Bild-Fußnoten", () => {
-  it("mit Platzhalter → figure/figcaption/data-image-id im bodyHtml; Zähler stimmen", async () => {
+  it("mit Platzhalter-Option → figure mit LEERER figcaption/data-image-id im bodyHtml; Zähler stimmen", async () => {
     const { html, totalImages } = await extractDocxRich(new ArrayBuffer(4), {
       engine: engineOf(`<p>Text</p><img src="${PNG}">`),
       mapImage: async (src) => src,
@@ -69,7 +71,9 @@ describe("WP-BILD-1a: extractDocxRich erzeugt Bild-Fußnoten", () => {
     });
     expect(html).toContain("<figure>");
     expect(html).toContain(`data-image-id="${IMAGE_ID_PREFIX}run001-1"`);
-    expect(html).toContain(PLACEHOLDER);
+    // WP-D10: Import erzeugt eine LEERE Fußnote — der Platzhaltertext steht nie im bodyHtml.
+    expect(html).toContain(`<figcaption data-image-id="${IMAGE_ID_PREFIX}run001-1"></figcaption>`);
+    expect(html).not.toContain(PLACEHOLDER);
     expect(html).toContain(PNG);
     expect(totalImages).toBe(1);
   });
@@ -243,8 +247,8 @@ describe("WP-BILD-1b: Save-/Reload-Roundtrip (Server-Sanitizer)", () => {
   it("figure/img/figcaption mit editierter Caption bleibt beim Speichern und erneuten Laden erhalten", () => {
     const id = `${IMAGE_ID_PREFIX}round1-1`;
     const imported = wrapImagesInFigures(`<img src="${PNG}">`, PLACEHOLDER, "round1");
-    // Nutzer editiert die Fußnote (ehrliche, echte Beschreibung statt Platzhalter).
-    const edited = imported.replace(PLACEHOLDER, "Diagramm der Quartalszahlen");
+    // WP-D10: Import liefert eine LEERE Fußnote; der Nutzer tippt die echte Beschreibung hinein.
+    const edited = imported.replace("></figcaption>", ">Diagramm der Quartalszahlen</figcaption>");
     // Speichern = durch den autoritativen Server-Sanitizer.
     const saved = serverSanitize(edited);
     // Erneutes Laden = erneut sanitisieren → byte-gleich (idempotent, kein Verlust).

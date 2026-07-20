@@ -117,14 +117,6 @@ export function newImageRunToken(): string {
 // Bare data:image-<img> (mammoth-Ausgabe) — zum Umhüllen in <figure> mit Fußnoten-Anker.
 const IMG_WRAP_RE = /<img\b[^>]*\bsrc="data:image\/[a-zA-Z0-9.+-]+;base64,[^"]*"[^>]*>/gi;
 
-function escapeCaption(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
 // WP-BILD-1a/1b: jedes eingebettete Inline-Bild bekommt eine Bild-Fußnote. Aus <img> wird
 //   <figure><img … data-image-id="kw-img-<runToken>-N"><figcaption data-image-id="kw-img-<runToken>-N">…
 // WP-BILD-1b (bens Auflage 2, beidseitige Verankerung): NICHT nur die figcaption trägt die ID, sondern auch
@@ -132,22 +124,25 @@ function escapeCaption(text: string): string {
 // WP-BILD-1b (bens Auflage 1): der runToken macht die IDs bodyweit kollisionsfest (ein frischer Token je
 // Import-Lauf). Ohne explizites Token wird pro Aufruf/Import EIN Token erzeugt → alle Bilder eines Imports
 // teilen den Token, nummeriert mit N.
-// Die Fußnote startet mit einem EHRLICHEN, injizierten Platzhalter (KEINE erfundene Beschreibung).
+// WP-D10 (Pedis Live-Befund): die Fußnote startet LEER. Ein Platzhalter ist KEIN Inhalt — der frühere
+// injizierte Text („Noch keine Bildbeschreibung") stand als ECHTER figcaption-Text im Body und musste
+// manuell gelöscht werden. Die Einlade-Affordanz ist jetzt rein visuell (Editor: data-kw-placeholder +
+// CSS :empty::before, s. editorFigures.ts/index.css) und wird NIE gespeichert. Der Parameter
+// `captionPlaceholder` bleibt als Enable-Signal/API-Stabilität erhalten, sein Text landet nicht im Body.
 // Läuft auf der ROH-mammoth-Ausgabe (noch keine <figure>) VOR dem Byte-Budget, damit das Budget die
 // zusätzlichen Tags mitzählt und bei Notbremse das GANZE figure-Element (Bild + Fußnote) droppt.
 export function wrapImagesInFigures(
   html: string,
-  captionPlaceholder: string,
+  _captionPlaceholder: string,
   runToken: string = newImageRunToken(),
 ): string {
-  const caption = escapeCaption(captionPlaceholder);
   let n = 0;
   return html.replace(IMG_WRAP_RE, (imgTag) => {
     n += 1;
     const id = `${IMAGE_ID_PREFIX}${runToken}-${n}`;
     // Dieselbe ID zusätzlich am <img> verankern (beidseitig auffindbar).
     const anchoredImg = imgTag.replace(/^<img/i, `<img data-image-id="${id}"`);
-    return `<figure>${anchoredImg}<figcaption data-image-id="${id}">${caption}</figcaption></figure>`;
+    return `<figure>${anchoredImg}<figcaption data-image-id="${id}"></figcaption></figure>`;
   });
 }
 

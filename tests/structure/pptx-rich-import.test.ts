@@ -786,7 +786,7 @@ describe("WP-D9: PPTX-Bild-Import (figures mit Fußnoten)", () => {
     return `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="${target}"/></Relationships>`;
   }
 
-  it("PNG auf der Folie → figure mit data-URL, beidseitiger ID und Platzhalter AN DER RICHTIGEN POSITION", async () => {
+  it("PNG auf der Folie → figure mit data-URL, beidseitiger ID und LEERER Fußnote AN DER RICHTIGEN POSITION", async () => {
     const files: Record<string, Uint8Array> = {
       "ppt/slides/slide1.xml": enc(pictureSlide("rId2", "Vor dem Bild", "Nach dem Bild")),
       "ppt/slides/_rels/slide1.xml.rels": enc(slideRels("rId2", "../media/image1.png")),
@@ -798,9 +798,11 @@ describe("WP-D9: PPTX-Bild-Import (figures mit Fußnoten)", () => {
       imageRunToken: "tok001",
     });
     const id = "kw-img-tok001-1";
-    // Exakter DOCX-Vertrag: figure > img[data-image-id][src=data:] + figcaption[data-image-id].
-    const figure = `<figure><img data-image-id="${id}" src="data:image/png;base64,iVBORw=="><figcaption data-image-id="${id}">${PLACEHOLDER}</figcaption></figure>`;
+    // Exakter DOCX-Vertrag: figure > img[data-image-id][src=data:] + LEERE figcaption[data-image-id]
+    // (WP-D10: ein Platzhalter ist KEIN Inhalt — er steht nie als Text im Body).
+    const figure = `<figure><img data-image-id="${id}" src="data:image/png;base64,iVBORw=="><figcaption data-image-id="${id}"></figcaption></figure>`;
     expect(res.html).toContain(figure);
+    expect(res.html).not.toContain(PLACEHOLDER);
     // Position im Folien-Fluss: zwischen den beiden Absätzen, nicht am Ende.
     expect(res.html.indexOf("Vor dem Bild")).toBeLessThan(res.html.indexOf("<figure>"));
     expect(res.html.indexOf("<figure>")).toBeLessThan(res.html.indexOf("Nach dem Bild"));
@@ -924,9 +926,9 @@ describe("WP-D9: PPTX-Bild-Import (figures mit Fußnoten)", () => {
     expect(res.embeddedImages).toBe(1);
     expect(res.html).toContain('data-image-id="kw-img-tok006-1"');
     expect(res.html).toContain("data:image/png;base64,iVBORw==");
-    expect(res.html).toContain(
-      `<figcaption data-image-id="kw-img-tok006-1">${PLACEHOLDER}</figcaption>`,
-    );
+    // WP-D10: LEERE Fußnote — kein Platzhaltertext im Body.
+    expect(res.html).toContain('<figcaption data-image-id="kw-img-tok006-1"></figcaption>');
+    expect(res.html).not.toContain(PLACEHOLDER);
   });
 
   it("BUDGET-SEMANTIK gepinnt: Media-Bytes zählen im SELBEN Ist-Byte-Budget → fail-closed (kein Bypass)", () => {

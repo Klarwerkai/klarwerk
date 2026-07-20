@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type { ModelRunRepo, ModelRunStatus, ModelRunTask } from "../../model-runs";
 import { ModelCapacityError } from "./model-concurrency";
+// WP-D10 (Fix 3): Fehlerklasse eines gescheiterten Modellaufrufs (timeout|http|network|parse) für die
+// ehrliche Fallback-Ursache und das PII-freie Diagnose-Log.
+import { classifyModelFailure } from "./model-errors";
 import {
   type AssistPreset,
   type AssistPresetInput,
@@ -590,19 +593,54 @@ export class Reasoner {
     const hadModelInChain = this.providerChain("structure", confidential).some(
       (p) => p !== this.fallback,
     );
+    // WP-D10 (Fix 3): den LETZTEN Modellfehler der Kette samt Dauer festhalten (gleiches Muster wie
+    // extract) — runTask fällt still zum nächsten Glied, aber die Diagnose braucht Klasse/Status/elapsed.
+    // Zum Timeout selbst: das Zeitlimit ist DEFAULT_MODEL_TIMEOUT_MS = 30 000 ms (Override nur bewusst
+    // per REASONER_TIMEOUT_MS) — nicht unter 30 s, wird hier NICHT blind erhöht; elapsedMs im Log zeigt
+    // den Ist-Wert je Vorfall.
+    // Box statt let-Variable: TS invalidiert die Narrowing-Analyse von Closure-Zuweisungen an lokale
+    // let-Variablen nicht — über die Objekteigenschaft bleibt der Typ nach dem await korrekt.
+    const failureBox: { current: { err: unknown; provider: string; elapsedMs: number } | null } = {
+      current: null,
+    };
     const result = await this.runTask(
       "structure",
       locale,
-      (p) => p.structure(rawText, locale, confidential),
+      async (p) => {
+        if (p === this.fallback) {
+          return p.structure(rawText, locale, confidential);
+        }
+        const startedMs = Date.now();
+        try {
+          return await p.structure(rawText, locale, confidential);
+        } catch (err) {
+          failureBox.current = { err, provider: p.name, elapsedMs: Date.now() - startedMs };
+          throw err;
+        }
+      },
       confidential,
     );
     if (!result.demo) {
       return result;
     }
-    const fallbackReason = hadModelInChain ? ("model-error" as const) : ("no-model" as const);
-    // PII-freies Diagnose-Log (nur die Ursache, NIE der Eingabetext) — damit „FALLBACK trotz Kappung"
-    // künftig serverseitig zuordenbar ist.
-    process.stderr.write(`[KLARWERK] Reasoner-Fallback (structure): reason=${fallbackReason}\n`);
+    // WP-D10 (Fix 3): Timeout als EIGENE Ursache — die UI unterscheidet Zeitüberschreitung von Fehler.
+    const modelFailure = failureBox.current;
+    const failure = modelFailure === null ? null : classifyModelFailure(modelFailure.err);
+    const fallbackReason = !hadModelInChain
+      ? ("no-model" as const)
+      : failure?.failureClass === "timeout"
+        ? ("model-timeout" as const)
+        : ("model-error" as const);
+    // PII-freies Diagnose-Log (nur Ursache/Klasse/Status/Dauer/Modell-ID + Prompt-LÄNGE als Zahl,
+    // NIE der Eingabetext) — damit „FALLBACK trotz Kappung" serverseitig zuordenbar ist.
+    const promptLength = rawText.length;
+    const detail =
+      modelFailure === null || failure === null
+        ? ""
+        : ` class=${failure.failureClass} status=${failure.status ?? "-"} elapsedMs=${modelFailure.elapsedMs} model=${modelFailure.provider}`;
+    process.stderr.write(
+      `[KLARWERK] Reasoner-Fallback (structure): reason=${fallbackReason}${detail} promptLength=${promptLength}\n`,
+    );
     return { ...result, fallbackReason };
   }
 

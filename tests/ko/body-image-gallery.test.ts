@@ -12,7 +12,7 @@ import { wrapImagesInFigures } from "../../apps/web/src/lib/docx";
 const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==";
 
 describe("WP-BILD-1d: extractBodyImages", () => {
-  it("liest DOCX-Markup (wrapImagesInFigures) — id, src und Caption", () => {
+  it("liest DOCX-Markup (wrapImagesInFigures) — id, src; WP-D10: Import-Fußnote ist LEER", () => {
     const body = wrapImagesInFigures(
       `<img src="${PNG}"><p>x</p><img src="${PNG}">`,
       "Platzhalter",
@@ -20,19 +20,23 @@ describe("WP-BILD-1d: extractBodyImages", () => {
     );
     const images = extractBodyImages(body);
     expect(images.length).toBe(2);
-    expect(images[0]).toEqual({ id: "kw-img-tok111-1", src: PNG, caption: "Platzhalter" });
+    // WP-D10: frisch importierte Bilder haben ehrlich KEINE Beschreibung (leere figcaption) —
+    // der Platzhalter-Parameter landet nie im Body.
+    expect(images[0]).toEqual({ id: "kw-img-tok111-1", src: PNG, caption: "" });
     expect(images[1]?.id).toBe("kw-img-tok111-2");
   });
 
-  it("liest PPTX-Markup (WP-D9-figure-Form, data-image-id VOR src)", () => {
+  it("liest PPTX-Markup (WP-D9-figure-Form, data-image-id VOR src); WP-D10: Alt-Platzhalter gilt als LEER", () => {
     const body =
       '<h2>Folie 1</h2><figure><img data-image-id="kw-img-abc123-1" src="data:image/jpeg;base64,QQ=="><figcaption data-image-id="kw-img-abc123-1">Noch keine Bildbeschreibung</figcaption></figure><p>Text</p>';
     const images = extractBodyImages(body);
+    // WP-D10: der Alt-Platzhaltertext ist KEINE Beschreibung — die Galerie behandelt das Bild ehrlich
+    // als „ohne Beschreibung" (caption leer), identisch zur neuen leeren Import-Fußnote.
     expect(images).toEqual([
       {
         id: "kw-img-abc123-1",
         src: "data:image/jpeg;base64,QQ==",
-        caption: "Noch keine Bildbeschreibung",
+        caption: "",
       },
     ]);
   });
@@ -52,8 +56,11 @@ describe("WP-BILD-1d: extractBodyImages", () => {
   });
 
   it("Caption-Quelle ist der AKTUELLE Body: geänderte figcaption spiegelt sich sofort", () => {
-    const before = wrapImagesInFigures(`<img src="${PNG}">`, "Alte Beschreibung", "tok222");
+    // WP-D10: der Import liefert eine LEERE Fußnote; der Nutzer tippt/ändert die Beschreibung im Editor.
+    const imported = wrapImagesInFigures(`<img src="${PNG}">`, "Platzhalter", "tok222");
+    const before = imported.replace("></figcaption>", ">Alte Beschreibung</figcaption>");
     const after = before.replace("Alte Beschreibung", "Neue, präzisere Beschreibung");
+    expect(extractBodyImages(imported)[0]?.caption).toBe("");
     expect(extractBodyImages(before)[0]?.caption).toBe("Alte Beschreibung");
     expect(extractBodyImages(after)[0]?.caption).toBe("Neue, präzisere Beschreibung");
   });

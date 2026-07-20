@@ -324,9 +324,13 @@ function blipEmbedRid(picXml: string, ns: DrawingNs): string | null {
 }
 
 // WP-D9: figure exakt im Vertrag von wrapImagesInFigures (BILD-1a/1b): beidseitige data-image-id
-// (img UND figcaption, Token-Muster [\w-] — Sanitizer-Vertrag unangetastet), ehrlicher Platzhalter.
-function imageFigureHtml(src: string, id: string, caption: string): string {
-  return `<figure><img data-image-id="${id}" src="${src}"><figcaption data-image-id="${id}">${escapeHtml(caption)}</figcaption></figure>`;
+// (img UND figcaption, Token-Muster [\w-] — Sanitizer-Vertrag unangetastet).
+// WP-D10: die figcaption startet LEER — ein Platzhalter ist KEIN Inhalt (der frühere injizierte Text
+// stand als echter Body-Text da und musste manuell gelöscht werden). Die Einlade-Affordanz ist rein
+// visuell im Editor (data-kw-placeholder + CSS :empty::before). Der caption-Parameter bleibt als
+// Enable-Signal (imageCaption gate in slideToHtml) erhalten, sein Text landet nicht im Body.
+function imageFigureHtml(src: string, id: string, _caption: string): string {
+  return `<figure><img data-image-id="${id}" src="${src}"><figcaption data-image-id="${id}"></figcaption></figure>`;
 }
 
 // WP-D5b (GELB-Fix 4): Text eines <a:p>-Absatzes. <a:t>-Runs werden zusammengefügt, <a:br/> wird als

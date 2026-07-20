@@ -1,5 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { cappedModelClient } from "./model-concurrency";
+// WP-D10 (Fix 3): typisierte Fehlerklassen (Timeout vs. HTTP-Status) — Meldungstexte unverändert.
+import { ModelHttpError, ModelTimeoutError } from "./model-errors";
 import type { ModelClient } from "./provider-model";
 
 export const CLOUD_API_KEY_ENV = "ANTHROPIC_API_KEY";
@@ -70,13 +72,16 @@ export function anthropicClient(config: HttpModelConfig): ModelClient {
           signal: controller.signal,
         });
         if (!res.ok) {
-          throw new Error(`Modell-API antwortete mit ${res.status}`);
+          throw new ModelHttpError(`Modell-API antwortete mit ${res.status}`, res.status);
         }
         const data = (await res.json()) as { content?: { text?: string }[] };
         return data.content?.[0]?.text ?? "";
       } catch (err) {
         if (timedOut) {
-          throw new Error(`Modell-API überschritt das Zeitlimit von ${timeoutMs} ms`);
+          throw new ModelTimeoutError(
+            `Modell-API überschritt das Zeitlimit von ${timeoutMs} ms`,
+            timeoutMs,
+          );
         }
         throw err;
       } finally {
@@ -216,13 +221,16 @@ export function openAiCompatibleClient(config: LocalHttpModelConfig): ModelClien
           signal: controller.signal,
         });
         if (!res.ok) {
-          throw new Error(`Lokaler LLM antwortete mit ${res.status}`);
+          throw new ModelHttpError(`Lokaler LLM antwortete mit ${res.status}`, res.status);
         }
         const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
         return data.choices?.[0]?.message?.content ?? "";
       } catch (err) {
         if (timedOut) {
-          throw new Error(`Lokaler LLM überschritt das Zeitlimit von ${timeoutMs} ms`);
+          throw new ModelTimeoutError(
+            `Lokaler LLM überschritt das Zeitlimit von ${timeoutMs} ms`,
+            timeoutMs,
+          );
         }
         throw err;
       } finally {

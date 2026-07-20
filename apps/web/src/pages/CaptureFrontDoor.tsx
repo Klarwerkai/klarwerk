@@ -682,9 +682,12 @@ export function CaptureFrontDoor(): JSX.Element {
                     WARUM der Vorschlag eine einfache Ableitung ist (kein Modell aktiv vs. Modell-Fehler). */}
                 {structureProposal.demo ? (
                   <p className="mt-2 text-[12px] leading-relaxed text-trust-warn-text">
-                    {structureProposal.fallbackReason === "model-error"
-                      ? t("fd.fallbackModelError")
-                      : t("fd.fallbackNoModel")}
+                    {/* WP-D10 (Fix 3): Zeitüberschreitung als eigene, ehrliche Ursache. */}
+                    {structureProposal.fallbackReason === "model-timeout"
+                      ? t("fd.fallbackModelTimeout")
+                      : structureProposal.fallbackReason === "model-error"
+                        ? t("fd.fallbackModelError")
+                        : t("fd.fallbackNoModel")}
                   </p>
                 ) : null}
                 <div className="mt-3 space-y-3 text-sm">

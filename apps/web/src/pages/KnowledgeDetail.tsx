@@ -77,6 +77,8 @@ import { toSourcePayload as externalToSourcePayload } from "../lib/externalSearc
 import { fileToThumbDataUrl, readFileAsDataUrl } from "../lib/files";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
 import { koCta } from "../lib/koCta";
+// WP-D10 (Fix 4): lokalisiertes Erstellungsdatum aus dem vorhandenen KO-Feld (keine neue Persistenz).
+import { formatKoTimestamp } from "../lib/koDates";
 import { evidenceRows } from "../lib/koEvidence";
 import { koAuditEvents, lineageSummary, relatedKos } from "../lib/koLineage";
 import { type KoUsability, koOverview } from "../lib/koOverview";
@@ -799,6 +801,19 @@ export function KnowledgeDetail(): JSX.Element {
                       v{ko.version}
                       {ko.asset ? ` · ${ko.asset}` : ""}
                     </span>
+                    {/* WP-D10 (Fix 4): Erstellungsdatum auch im Detail (vorhandenes Feld, lokalisiert);
+                        fehlt es bei Altdaten → ehrlich nichts (kein Platzhalter-Datum). */}
+                    {(() => {
+                      const created = formatKoTimestamp(ko.createdAt, i18n.language);
+                      return created ? (
+                        <span
+                          title={t("ko.createdAt")}
+                          className="font-mono text-[11px] text-muted-2"
+                        >
+                          {t("ko.createdAt")} {created}
+                        </span>
+                      ) : null;
+                    })()}
                     {/* SCRUM-415: Vertraulichkeit ändern (Rechte wie Bearbeiten); Änderung landet im Audit. */}
                     {canEdit ? (
                       <label className="inline-flex items-center gap-1 text-[11px] text-muted-2">

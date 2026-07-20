@@ -1286,6 +1286,9 @@ const de = {
   "editor.imageFromDisk": "Bild vom Rechner …",
   "editor.fileFromDisk": "Datei vom Rechner anhängen …",
   "editor.imageFromAttachment": "Aus Anhängen",
+  // WP-D10: rein VISUELLER Platzhalter der leeren Bild-Fußnote (data-kw-placeholder + CSS ::before) —
+  // wird nie als Inhalt gespeichert. Kein Emoji, nur das Stift-Zeichen ✎.
+  "editor.captionPlaceholder": "✎ Bildbeschreibung hinzufügen …",
   "editor.file": "Datei verlinken",
   "editor.insertFile": "Datei-Anhang als Link einfügen",
   "editor.noFiles":
@@ -1316,6 +1319,14 @@ const de = {
   "capture.submitStageCreating": "Wissensobjekt wird angelegt …",
   "capture.submitStageUploading": "Original & Anhänge werden gesichert ({{mb}} MB) …",
   "capture.submitStageLinking": "Quellen werden verknüpft …",
+  // WP-D10 Fix 2: aufklappbare Dauer-Details in der Einreich-Bestätigung — die VORHANDENEN
+  // performance.now-Spannen (Anlegen / Upload / Verknüpfen inkl. Quellen), nichts Neues gemessen.
+  "capture.submitTiming.title": "Details zur Dauer",
+  "capture.submitTiming.create": "Wissensobjekt anlegen",
+  "capture.submitTiming.upload": "Original & Anhänge hochladen",
+  "capture.submitTiming.link": "Verknüpfen & Quellen",
+  "capture.submitTiming.seconds": "{{s}} s",
+  "capture.submitTiming.mb": "{{mb}} MB",
   "capture.readyTitle": "Speicher-Check",
   "capture.ready.title": "Titel",
   "capture.ready.content": "Aussage / Inhalt",
@@ -1511,6 +1522,9 @@ const de = {
   "ko.cta.validate": "Zur Validierung",
   "ko.title": "Detail",
   "ko.statement": "Aussage",
+  // WP-D10 Fix 4: Erstellungsdatum sichtbar (Validierungs-Karten + Detail) — gleichnamige Beiträge
+  // werden unterscheidbar. Nur vorhandene KO-Felder (createdAt), kein Platzhalter-Datum bei Altdaten.
+  "ko.createdAt": "Erstellt am",
   "ko.gallery": "Bildergalerie",
   "ko.galleryCount": "Bild {{n}} von {{m}}",
   "ko.galleryClose": "Schließen",
@@ -2981,7 +2995,10 @@ const de = {
   "fd.fallbackNoModel":
     "KI ist nicht konfiguriert oder deaktiviert — dieser Vorschlag ist eine einfache automatische Ableitung, keine Modell-Antwort.",
   "fd.fallbackModelError":
-    "KI war nicht erreichbar (Fehler oder Zeitüberschreitung) — dieser Vorschlag ist eine einfache automatische Ableitung, keine Modell-Antwort.",
+    "KI meldete einen Fehler oder war nicht erreichbar — dieser Vorschlag ist eine einfache automatische Ableitung, keine Modell-Antwort.",
+  // WP-D10 Fix 3: Zeitüberschreitung als EIGENE, ehrliche Ursache (nicht mehr im Sammelbegriff Fehler).
+  "fd.fallbackModelTimeout":
+    "KI hat nicht rechtzeitig geantwortet (Zeitüberschreitung) — dieser Vorschlag ist eine einfache automatische Ableitung, keine Modell-Antwort.",
   "fd.fieldTitle": "Titel",
   "fd.fieldStatement": "Aussage / Kernaussage",
   "fd.fieldConditions": "Bedingungen",
@@ -4352,6 +4369,7 @@ const en: typeof de = {
   "editor.imageFromDisk": "Image from computer …",
   "editor.fileFromDisk": "Attach file from computer …",
   "editor.imageFromAttachment": "From attachments",
+  "editor.captionPlaceholder": "✎ Add image description …",
   "editor.file": "Link a file",
   "editor.insertFile": "Insert file attachment as a link",
   "editor.noFiles":
@@ -4380,6 +4398,12 @@ const en: typeof de = {
   "capture.submitStageCreating": "Creating knowledge object …",
   "capture.submitStageUploading": "Securing original & attachments ({{mb}} MB) …",
   "capture.submitStageLinking": "Linking sources …",
+  "capture.submitTiming.title": "Timing details",
+  "capture.submitTiming.create": "Create knowledge object",
+  "capture.submitTiming.upload": "Upload original & attachments",
+  "capture.submitTiming.link": "Linking & sources",
+  "capture.submitTiming.seconds": "{{s}} s",
+  "capture.submitTiming.mb": "{{mb}} MB",
   "capture.readyTitle": "Save check",
   "capture.ready.title": "Title",
   "capture.ready.content": "Statement / content",
@@ -4574,6 +4598,7 @@ const en: typeof de = {
   "ko.cta.validate": "Go to validation",
   "ko.title": "Detail",
   "ko.statement": "Statement",
+  "ko.createdAt": "Created on",
   "ko.gallery": "Image gallery",
   "ko.galleryCount": "Image {{n}} of {{m}}",
   "ko.galleryClose": "Close",
@@ -6030,7 +6055,9 @@ const en: typeof de = {
   "fd.fallbackNoModel":
     "AI is not configured or disabled — this suggestion is a simple automatic derivation, not a model response.",
   "fd.fallbackModelError":
-    "AI was not reachable (error or timeout) — this suggestion is a simple automatic derivation, not a model response.",
+    "AI reported an error or was not reachable — this suggestion is a simple automatic derivation, not a model response.",
+  "fd.fallbackModelTimeout":
+    "AI did not respond in time (timeout) — this suggestion is a simple automatic derivation, not a model response.",
   "fd.fieldTitle": "Title",
   "fd.fieldStatement": "Statement / core message",
   "fd.fieldConditions": "Conditions",
@@ -7385,6 +7412,7 @@ const nl: typeof de = {
   "editor.imageFromDisk": "Afbeelding van je computer …",
   "editor.fileFromDisk": "Bestand van je computer toevoegen …",
   "editor.imageFromAttachment": "Uit bijlagen",
+  "editor.captionPlaceholder": "✎ Afbeeldingsbeschrijving toevoegen …",
   "editor.file": "Bestand koppelen",
   "editor.insertFile": "Bestandsbijlage als link invoegen",
   "editor.noFiles":
@@ -7414,6 +7442,12 @@ const nl: typeof de = {
   "capture.submitStageCreating": "Kennisobject wordt aangemaakt …",
   "capture.submitStageUploading": "Origineel & bijlagen worden veiliggesteld ({{mb}} MB) …",
   "capture.submitStageLinking": "Bronnen worden gekoppeld …",
+  "capture.submitTiming.title": "Details over de duur",
+  "capture.submitTiming.create": "Kennisobject aanmaken",
+  "capture.submitTiming.upload": "Origineel & bijlagen uploaden",
+  "capture.submitTiming.link": "Koppelen & bronnen",
+  "capture.submitTiming.seconds": "{{s}} s",
+  "capture.submitTiming.mb": "{{mb}} MB",
   "capture.readyTitle": "Opslagcheck",
   "capture.ready.title": "Titel",
   "capture.ready.content": "Uitspraak / inhoud",
@@ -7602,6 +7636,7 @@ const nl: typeof de = {
   "ko.cta.validate": "Naar de validatie",
   "ko.title": "Detail",
   "ko.statement": "Uitspraak",
+  "ko.createdAt": "Aangemaakt op",
   "ko.gallery": "Afbeeldingengalerij",
   "ko.galleryCount": "Afbeelding {{n}} van {{m}}",
   "ko.galleryClose": "Sluiten",
@@ -9050,7 +9085,9 @@ const nl: typeof de = {
   "fd.fallbackNoModel":
     "KI is niet geconfigureerd of uitgeschakeld — dit voorstel is een eenvoudige automatische afleiding, geen modelantwoord.",
   "fd.fallbackModelError":
-    "KI was niet bereikbaar (fout of time-out) — dit voorstel is een eenvoudige automatische afleiding, geen modelantwoord.",
+    "KI meldde een fout of was niet bereikbaar — dit voorstel is een eenvoudige automatische afleiding, geen modelantwoord.",
+  "fd.fallbackModelTimeout":
+    "KI antwoordde niet op tijd (time-out) — dit voorstel is een eenvoudige automatische afleiding, geen modelantwoord.",
   "fd.fieldTitle": "Titel",
   "fd.fieldStatement": "Uitspraak / kernuitspraak",
   "fd.fieldConditions": "Voorwaarden",

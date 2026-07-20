@@ -23,6 +23,8 @@ import { RichTextEditor } from "../../apps/web/src/components/RichTextEditor";
 // React 18: act außerhalb eines Test-Renderers verlangt dieses Flag.
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+// WP-D10: Altlast-Fixture (Platzhalter als ECHTER Text) — der echte Editor-Mount muss ihn beim
+// Verankern leeren (Migration) und stattdessen den rein visuellen data-kw-placeholder setzen.
 const FIGURE =
   '<figure><img src="/api/objects/x/raw"><figcaption data-image-id="kw-img-abc123-1">Noch keine Bildbeschreibung</figcaption></figure><p>Absatz</p>';
 
@@ -112,18 +114,26 @@ describe("WP-D8b: gemounteter RichTextEditor — Fokus in der Bild-Fußnote", ()
     expect(document.activeElement).toBe(caption);
   });
 
-  it("(b) onChange liefert den getippten Text sanitisiert (ohne contenteditable-Attribute)", () => {
+  it("(b) onChange liefert den getippten Text sanitisiert — NIE Platzhaltertext/-attribute", () => {
     mount(FIGURE);
     const caption = findCaption();
+    // WP-D10: der echte Mount-Zyklus hat den Altlast-Platzhalter GELEERT und die visuelle Einladung
+    // als data-Attribut verankert (Text kommt nur noch aus CSS ::before, nie aus dem Inhalt).
+    expect(caption.textContent).toBe("");
+    expect(caption.getAttribute("data-kw-placeholder")).toBeTruthy();
     caption.setAttribute("tabindex", "-1");
     act(() => {
       caption.focus();
     });
-    typeIntoCaption(caption, " XYZ");
+    typeIntoCaption(caption, "XYZ");
 
     expect(emitted.length).toBeGreaterThan(0);
     const last = emitted[emitted.length - 1] ?? "";
-    expect(last).toContain("Noch keine Bildbeschreibung XYZ");
+    expect(last).toContain("XYZ");
+    // WP-D10: der Platzhalter kann unter keinen Umständen gespeichert werden — weder als Alt-Text
+    // (Migration hat geleert) noch als Attribut (Sanitizer-Allowlist).
+    expect(last).not.toContain("Noch keine Bildbeschreibung");
+    expect(last).not.toContain("data-kw-placeholder");
     expect(last).toContain('data-image-id="kw-img-abc123-1"');
     expect(last).not.toContain("contenteditable");
   });

@@ -46,6 +46,15 @@ export {
   // SCRUM-424: eigener lokaler LLM (OpenAI-kompatibel, z. B. vLLM/Qwen) — gecappt, on-prem.
   createCappedLocalClientFromEnv,
 } from "./src/model-client";
+// WP-D10 (Fix 3): typisierte Modellfehler + Klassifizierung (timeout|http|network|parse) — nur
+// Metadaten (Status/Dauer), keine Credentials, kein Prompt-/Antwortinhalt.
+export {
+  ModelHttpError,
+  ModelTimeoutError,
+  classifyModelFailure,
+  type ModelFailureClass,
+  type ModelFailureInfo,
+} from "./src/model-errors";
 // SCRUM-498 B2: prozess-globaler In-Flight-Cap für Modellaufrufe.
 export {
   ModelCapacityError,
