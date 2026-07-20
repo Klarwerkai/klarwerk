@@ -1019,9 +1019,12 @@ const de = {
   "capture.file.wholeOpenMissing":
     "Entwurf wurde gespeichert, konnte aber nicht direkt geöffnet werden.",
   "capture.file.wholeImportAnother": "Weiteres Dokument importieren",
-  "capture.file.formatTitle": "Dateiformate & Formatierung",
+  // WP-D10c: Label dient als dezente Aufklapp-Zeile (Info-Icon + Titel, zugeklappt als Start).
+  "capture.file.formatTitle": "Informationen zu Dateiformaten und Formatierung",
+  // WP-D10c (Ehrlichkeit): seit WP-D9 werden PPTX-FOTOS übernommen (figures) — Vektor-Grafiken/Formen
+  // weiterhin nicht. Konsistent zu capture.file.importNote.pptx.
   "capture.file.formatHint":
-    "TXT/MD und weitere Textdateien werden als Text übernommen. DOCX: Struktur (Überschriften, Listen, Tabellen) und Bilder werden Best-Effort übernommen; exaktes Layout kann abweichen. PDF läuft als Best-Effort-Textimport; Layout und Bilder gehen verloren. PPTX: Text und Struktur je Folie werden Best-Effort übernommen; Layout, Animationen, Bilder und Notizen gehen verloren.",
+    "TXT/MD und weitere Textdateien werden als Text übernommen. DOCX: Struktur (Überschriften, Listen, Tabellen) und Bilder werden Best-Effort übernommen; exaktes Layout kann abweichen. PDF läuft als Best-Effort-Textimport; Layout und Bilder gehen verloren. PPTX: Text, Struktur und Fotos je Folie werden Best-Effort übernommen; Layout, Animationen, Vektor-Grafiken/Formen und Notizen gehen verloren.",
   "capture.file.supportedTitle": "Aktiv auswählbar:",
   "capture.file.supportedFormats":
     "TXT, MD/Markdown, CSV, LOG, JSON, DOCX, PDF, PPTX und Bilder für OCR.",
@@ -4110,9 +4113,9 @@ const en: typeof de = {
   "capture.file.wholeOpenDraft": "Open draft",
   "capture.file.wholeOpenMissing": "Draft was saved, but could not be opened directly.",
   "capture.file.wholeImportAnother": "Import another document",
-  "capture.file.formatTitle": "File formats & formatting",
+  "capture.file.formatTitle": "Information on file formats and formatting",
   "capture.file.formatHint":
-    "TXT/MD and other text files are taken over as text. DOCX: structure (headings, lists, tables) and images are imported best effort; exact layout may differ. PDF runs as a best-effort text import; layout and images are lost. PPTX: text and structure per slide are imported best effort; layout, animations, images and notes are lost.",
+    "TXT/MD and other text files are taken over as text. DOCX: structure (headings, lists, tables) and images are imported best effort; exact layout may differ. PDF runs as a best-effort text import; layout and images are lost. PPTX: text, structure and photos per slide are imported best effort; layout, animations, vector graphics/shapes and notes are lost.",
   "capture.file.supportedTitle": "Actively selectable:",
   "capture.file.supportedFormats":
     "TXT, MD/Markdown, CSV, LOG, JSON, DOCX, PDF, PPTX, and images for OCR.",
@@ -7154,9 +7157,9 @@ const nl: typeof de = {
   "capture.file.wholeOpenMissing":
     "Het concept is opgeslagen, maar kon niet direct worden geopend.",
   "capture.file.wholeImportAnother": "Nog een document importeren",
-  "capture.file.formatTitle": "Bestandsformaten & opmaak",
+  "capture.file.formatTitle": "Informatie over bestandsformaten en opmaak",
   "capture.file.formatHint":
-    "TXT/MD en andere tekstbestanden worden als tekst overgenomen. DOCX: structuur (koppen, lijsten, tabellen) en afbeeldingen worden best effort overgenomen; de exacte layout kan afwijken. PDF loopt als best-effort tekstimport; layout en afbeeldingen gaan verloren. PPTX: tekst en structuur per dia worden best effort overgenomen; layout, animaties, afbeeldingen en notities gaan verloren.",
+    "TXT/MD en andere tekstbestanden worden als tekst overgenomen. DOCX: structuur (koppen, lijsten, tabellen) en afbeeldingen worden best effort overgenomen; de exacte layout kan afwijken. PDF loopt als best-effort tekstimport; layout en afbeeldingen gaan verloren. PPTX: tekst, structuur en foto's per dia worden best effort overgenomen; layout, animaties, vectorafbeeldingen/vormen en notities gaan verloren.",
   "capture.file.supportedTitle": "Actief selecteerbaar:",
   "capture.file.supportedFormats":
     "TXT, MD/Markdown, CSV, LOG, JSON, DOCX, PDF, PPTX en afbeeldingen voor OCR.",

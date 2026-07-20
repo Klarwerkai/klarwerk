@@ -246,13 +246,20 @@ describe("KW-W2-01: Ganzdokument-Import als bewusster Entwurf", () => {
     const deHint = String(i18n.getResource("de", "translation", CAPTURE_FILE_TEXT.formatHint));
     const enHint = String(i18n.getResource("en", "translation", CAPTURE_FILE_TEXT.formatHint));
 
-    expect(captureSource).toContain("CAPTURE_FILE_TEXT.formatTitle");
-    expect(captureSource).toContain("CAPTURE_FILE_TEXT.formatHint");
+    // WP-D10c: der Infokasten lebt jetzt als zugeklappt startende Komponente (FileFormatInfo) —
+    // Capture rendert sie, die Texte bleiben dieselben CAPTURE_FILE_TEXT-Keys in der Komponente.
+    expect(captureSource).toContain("<FileFormatInfo />");
+    const infoSource = readFileSync(
+      resolve(process.cwd(), "apps/web/src/components/FileFormatInfo.tsx"),
+      "utf8",
+    );
+    expect(infoSource).toContain("CAPTURE_FILE_TEXT.formatTitle");
+    expect(infoSource).toContain("CAPTURE_FILE_TEXT.formatHint");
+    expect(infoSource).toContain("CAPTURE_FILE_TEXT.supportedFormats");
+    expect(infoSource).toContain("CAPTURE_FILE_TEXT.unsupportedFormats");
     // WP-D7 (Befund 1): die accept-Liste lebt jetzt ZENTRAL in captureFromFile.ts (kein hartkodierter
     // Dialog mehr); Capture referenziert nur noch die Konstante.
     expect(captureSource).toContain("accept={FILE_IMPORT_ACCEPT}");
-    expect(captureSource).toContain("CAPTURE_FILE_TEXT.supportedFormats");
-    expect(captureSource).toContain("CAPTURE_FILE_TEXT.unsupportedFormats");
     // WP-D5/WP-D7: PPTX ist aktiv auswählbar (Best-Effort-Import), RTF bleibt außen vor — jetzt an der
     // zentralen Quelle gepinnt.
     const acceptSource = readFileSync(
@@ -268,6 +275,14 @@ describe("KW-W2-01: Ganzdokument-Import als bewusster Entwurf", () => {
     expect(deHint).toMatch(/DOCX/);
     expect(deHint).toMatch(/PDF/);
     expect(deHint).toMatch(/PPTX/);
+    // WP-D10c (Ehrlichkeit): seit WP-D9 werden PPTX-FOTOS übernommen — der Hinweis darf Bilder nicht
+    // mehr pauschal als Verlust nennen; Vektor-Grafiken/Formen bleiben ehrlich als Verlust benannt
+    // (konsistent zu importNote.pptx, das Bilder als übernommen führt).
+    expect(deHint).toMatch(/Fotos je Folie/);
+    expect(deHint).toMatch(/Vektor-Grafiken\/Formen/);
+    expect(deHint).not.toMatch(/Animationen, Bilder/);
+    expect(enHint).toMatch(/photos per slide/);
+    expect(enHint).toMatch(/vector graphics\/shapes/);
     expect(
       String(i18n.getResource("de", "translation", CAPTURE_FILE_TEXT.supportedFormats)),
     ).toMatch(/TXT.*DOCX.*PDF.*PPTX.*Bilder/i);

@@ -46,6 +46,8 @@ import { EditorAttachmentContext } from "../components/EditorAttachmentContext";
 import { EditorContentQuality } from "../components/EditorContentQuality";
 import { EditorGuidance } from "../components/EditorGuidance";
 import { ExternalUrlText } from "../components/ExternalUrlText";
+// WP-D10c: zugeklappt startender Dateiformate-Infokasten (button + aria-expanded).
+import { FileFormatInfo } from "../components/FileFormatInfo";
 import { HelpTip } from "../components/HelpTip";
 import { KnowledgeInputStudio } from "../components/KnowledgeInputStudio";
 import { KnowledgeRescueIntro } from "../components/KnowledgeRescueIntro";
@@ -2724,21 +2726,9 @@ export function Capture(): JSX.Element {
                     ))}
                   </div>
                 </div>
-                <div className="rounded-card border border-hairline bg-page px-3 py-2">
-                  <div className="text-[12.5px] font-semibold text-text">
-                    {t(CAPTURE_FILE_TEXT.formatTitle)}
-                  </div>
-                  <p className="mt-1 text-[11.5px] leading-relaxed text-muted">
-                    {t(CAPTURE_FILE_TEXT.formatHint)}
-                  </p>
-                  <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted">
-                    <strong>{t(CAPTURE_FILE_TEXT.supportedTitle)}</strong>{" "}
-                    {t(CAPTURE_FILE_TEXT.supportedFormats)}
-                  </p>
-                  <p className="mt-1 text-[11.5px] leading-relaxed text-muted-2">
-                    {t(CAPTURE_FILE_TEXT.unsupportedFormats)}
-                  </p>
-                </div>
+                {/* WP-D10c (Pedis Wunsch): Infokasten startet zugeklappt — Volltext erst auf Klick
+                    (FileFormatInfo: button + aria-expanded, gemountet getestet). */}
+                <FileFormatInfo />
                 <div className="flex flex-wrap items-center gap-2">
                   <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
                     <Paperclip size={14} />
