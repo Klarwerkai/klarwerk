@@ -104,6 +104,7 @@ import {
   setAllSelected,
   togglePoint,
   wholeDocumentDraftPayload,
+  wholeDraftFitsWithObjectLink,
 } from "../lib/captureFromFile";
 import { gapContextDraft, readGapContext } from "../lib/captureFromGap";
 import { CAPTURE_FRONT_DOOR_ROUTE } from "../lib/captureFrontDoor";
@@ -434,6 +435,10 @@ export function Capture(): JSX.Element {
     total: number;
     compressed: number;
     dropped: number;
+    // WP-D1e (bens Fix 3): das strukturerhaltende bodyHtml sprengte schon beim Lesen das Bild-Budget
+    // (docx.htmlOverflow). Dieses Signal wird beim Speichern ausgewertet — ehrlicher Abbruch VOR dem
+    // Upload, statt es (wie bisher) ungenutzt verpuffen zu lassen.
+    htmlOverflow: boolean;
   } | null>(null);
   const [fileImageUrl, setFileImageUrl] = useState<string | null>(null); // OCR-Kandidat (nur auf Klick)
   const [fileBusy, setFileBusy] = useState(false);
@@ -637,15 +642,35 @@ export function Capture(): JSX.Element {
       // WP-D1d (Fix 4): originalAttached ist NUR true, wenn der Upload WIRKLICH gelang — nicht schon,
       // wenn es keinen Fehler gab (ohne Original bleibt es false). Beweis = erhaltene objectId.
       let originalAttached = false;
+      // WP-D1e (bens Fix 3): htmlOverflow VERDRAHTEN. Sprengte das strukturerhaltende bodyHtml schon beim
+      // Lesen das Bild-Budget (docx.htmlOverflow), ist das Dokument zu groß für den Inline-Import — der
+      // Aufrufer verweigert JETZT ehrlich (statt das Signal ungenutzt zu lassen und ein zu großes bodyHtml
+      // erst am finalen JSON-Guard auffliegen zu lassen). Der finale Guard bleibt zusätzlich als Autorität.
+      if (fileImageInfo?.htmlOverflow) {
+        throw new DraftPayloadTooLargeError();
+      }
+      // WP-D1e (bens Fix 2): Größen-PREFLIGHT VOR dem Upload. Der Object-Upload legt das Original
+      // UNWIDERRUFLICH im Store ab; liefe er vor der Größenprüfung, entstünde bei Überlauf ein verwaistes
+      // Object (kein Entwurf referenziert es) und ein Retry lüde erneut hoch. Wir messen den Payload MIT
+      // einem reservierten Object-Link (großzügige Id-Reserve) — passt er schon so nicht, brechen wir ab,
+      // BEVOR irgendetwas hochgeladen wird.
+      if (fileOriginal && !wholeDraftFitsWithObjectLink(payload, fileOriginal.name)) {
+        throw new DraftPayloadTooLargeError();
+      }
       if (fileOriginal) {
         try {
-          const ref = await endpoints.objects.upload({
-            name: fileOriginal.name,
-            mime: fileOriginal.mime,
-            data: fileOriginal.data,
-            kind: "document",
-          });
-          fileOriginalRef.current = { ref };
+          // WP-D1e (bens Fix 2): Ref-Cache-Reuse — ein Retry (z. B. nach transientem drafts.create-Fehler)
+          // referenziert dieselbe objectId, statt das Original ein zweites Mal hochzuladen (kein Doppel-Upload).
+          let ref = fileOriginalRef.current.ref;
+          if (!ref) {
+            ref = await endpoints.objects.upload({
+              name: fileOriginal.name,
+              mime: fileOriginal.mime,
+              data: fileOriginal.data,
+              kind: "document",
+            });
+            fileOriginalRef.current = { ref };
+          }
           originalAttached = true;
           payload = {
             ...payload,
@@ -658,8 +683,9 @@ export function Capture(): JSX.Element {
           originalFailure = { name: fileOriginal.name, reason: classifyUploadError(error) };
         }
       }
-      // WP-D1d (Fix 2): den FINALEN, serialisierten Payload in ECHTEN UTF-8-Bytes gegen die Client-Grenze
-      // prüfen (unter dem Server-Ceiling) — statt eines stillen 413 ein ehrlicher, früher Abbruch.
+      // WP-D1d (Fix 2)/WP-D1e: finaler Guard nach dem realen Link-Anhängen — zweite Sicherheit. Prüft den
+      // FINALEN, serialisierten Payload in ECHTEN UTF-8-Bytes gegen die Client-Grenze (unter dem
+      // Server-Ceiling) — statt eines stillen 413 ein ehrlicher Abbruch.
       if (!draftPayloadWithinLimit(payload)) {
         throw new DraftPayloadTooLargeError();
       }
@@ -1539,7 +1565,12 @@ export function Capture(): JSX.Element {
       let pdfTruncatedPages: number | null = null;
       // WP-D1c: Bild-Bilanz des DOCX-Imports — erst beim Speichern (an den Anhang-Erfolg gekoppelt)
       // gemeldet, NICHT hier (zur Lesezeit ist noch nichts angehängt).
-      let imageInfo: { total: number; compressed: number; dropped: number } | null = null;
+      let imageInfo: {
+        total: number;
+        compressed: number;
+        dropped: number;
+        htmlOverflow: boolean;
+      } | null = null;
       if (isWordDocument(f)) {
         // WP-D1: DOCX strukturerhaltend — HTML (Überschriften/Listen/Tabellen/Bilder, Best-Effort)
         // für den Ganzdokument-Modus, Klartext weiterhin für die KI-Punkte-Extraktion.
@@ -1550,6 +1581,8 @@ export function Capture(): JSX.Element {
           total: docx.totalImages,
           compressed: docx.compressedImages,
           dropped: docx.droppedImages,
+          // WP-D1e (Fix 3): htmlOverflow bis zum Speichern mitführen — dort wird VOR dem Upload abgebrochen.
+          htmlOverflow: docx.htmlOverflow,
         };
       } else if (isTextDocument(f)) {
         text = await readTextFile(f);

@@ -3,6 +3,9 @@
 // im bestehenden Wizard prüfen/einreichen. NICHTS wird automatisch gespeichert; die Quelle
 // (Dateiname) wird beim Einreichen als Source am Wissensobjekt vermerkt.
 import type { DraftPayload, ExtractedPoint, StructureResult } from "../api/types";
+// WP-D1e (Fix 2): der Preflight misst den Payload MIT einem reservierten Object-Link — dieselbe
+// (DOM-freie) Link-Erzeugung wie im Ganzdokument-Save, damit die Reserve exakt zum realen Link passt.
+import { fileLinkHtml } from "./bodyFileLink";
 
 // Auswählbarer Punkt in der Liste (Checkbox-Zustand; Default: ausgewählt).
 export interface SelectableExtractPoint extends ExtractedPoint {
@@ -306,6 +309,34 @@ export function draftPayloadWithinLimit(
   return draftPayloadByteLength(payload) <= limitBytes;
 }
 
+// WP-D1e (bens ROT-Fix 2): großzügige Obergrenze für die Länge einer Object-Store-Id im Preflight.
+// Reale Ids sind UUIDs (36 Zeichen, s. object-store/service.ts genId → randomUUID); 128 liegt weit
+// darüber, sodass der reservierte Link nie kürzer ist als der echte — der Preflight ist damit beweisbar
+// ausreichend (ein echter Link passt garantiert, wenn der reservierte passt).
+export const OBJECT_LINK_ID_RESERVE_CHARS = 128;
+
+// WP-D1e (bens ROT-Fix 2): Größen-Preflight für den Ganzdokument-Save, der das Original als Body-Link
+// mitführt. Der Object-Upload legt die Datei UNWIDERRUFLICH im Store ab — passiert er, BEVOR die
+// Gesamtgröße feststeht, entsteht bei Überlauf ein verwaistes Object (kein Entwurf referenziert es) und
+// ein Retry lüde erneut hoch. Dieser Preflight misst den finalen Payload MIT einem reservierten Link
+// (Object-Id auf OBJECT_LINK_ID_RESERVE_CHARS gesetzt) — der reale, kürzere Link wird garantiert nicht
+// größer. false ⇒ der Payload passt auch mit Link nicht: der Aufrufer bricht VOR dem Upload ehrlich ab.
+export function wholeDraftFitsWithObjectLink(
+  payload: DraftPayload,
+  originalName: string,
+  limitBytes: number = DRAFT_PAYLOAD_LIMIT_BYTES,
+): boolean {
+  const reservedLink = fileLinkHtml({
+    objectId: "x".repeat(OBJECT_LINK_ID_RESERVE_CHARS),
+    name: originalName,
+  });
+  const withReservedLink: DraftPayload = {
+    ...payload,
+    bodyHtml: `${payload.bodyHtml ?? ""}${reservedLink}`,
+  };
+  return draftPayloadWithinLimit(withReservedLink, limitBytes);
+}
+
 export function wholeDocumentDraftPayload(input: {
   fileName: string;
   text: string;
@@ -446,14 +477,21 @@ export interface ImportImageNoticeInput {
 
 export interface ImportImageNotice {
   key: string; // i18n-Schlüssel (aus CAPTURE_FILE_TEXT)
-  params: { compressed: number; dropped: number };
+  // WP-D1e (bens Fix 1): die drei Zahlen sauber getrennt. `kept` = tatsächlich übernommene Bilder
+  // (= total − dropped); `compressed` = davon re-encodierte; `dropped` = als Notbremse weggelassene.
+  // Alle drei reisen als eigene Platzhalter in die Meldung, damit z. B. total=4/compressed=0/dropped=0
+  // NICHT irreführend als „0 Bilder komprimiert" erscheint, sondern ehrlich „4 übernommen, davon 0 …".
+  params: { kept: number; compressed: number; dropped: number };
 }
 
 export function importImageNotice(input: ImportImageNoticeInput): ImportImageNotice | null {
   if (input.total <= 0) {
     return null;
   }
-  const params = { compressed: input.compressed, dropped: input.dropped };
+  // WP-D1e (bens Fix 1): `kept` explizit führen — nicht komprimierte, aber unverändert übernommene
+  // Bilder (klein/leicht, in files.ts BEHALTEN) zählen so sichtbar mit, statt zu verschwinden.
+  const kept = input.total - input.dropped;
+  const params = { kept, compressed: input.compressed, dropped: input.dropped };
   if (input.originalAttached) {
     return {
       key: input.dropped > 0 ? CAPTURE_FILE_TEXT.imagesKeptDropped : CAPTURE_FILE_TEXT.imagesKept,
