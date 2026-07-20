@@ -12,10 +12,11 @@ import { detectFileKind } from "./extract";
 import { type OcrResult, recognizeImage } from "./ocr";
 import { type PdfDocumentText, type PdfEngine, extractPdfDocument } from "./pdf";
 import {
-  PPTX_MAX_TOTAL_DECOMPRESSED_BYTES,
+  type FflateLike,
   type PptxRichResult,
   PptxTooLargeError,
   type PptxUnzip,
+  budgetedPptxUnzip,
   extractPptxRich,
   isPptxDocumentLike,
 } from "./pptx";
@@ -177,59 +178,21 @@ export function isPptxDocument(file: File): boolean {
 
 let pptxUnzipPromise: Promise<PptxUnzip> | null = null;
 
-// WP-D5b (bens GELB-Fix 3): Archiv-/Dekompressionsbudget gegen Zip-Bomben / Riesen-Decks.
-// - Komprimierte Datei-Obergrenze VOR dem Entpacken (50 MiB — konservativ: ein reales bildreiches Deck
-//   liegt weit darunter; verhindert, dass eine gigantische Datei überhaupt in den Parser läuft).
-// - Selektives Entpacken: fflate entpackt NUR die wirklich benötigten Einträge (presentation.xml + rels,
-//   slides/slideN.xml) — Medien/Videos werden gar nicht erst dekomprimiert (kein UI-Freeze, kein OOM).
-// - Pro-Eintrag-Expansionsratio + kumuliertes Dekompressions-Budget → kontrollierter, ehrlicher
-//   Importfehler (PptxTooLargeError) statt Freeze.
+// WP-D5b/WP-D5c (bens Budget-Fixes): komprimierte Datei-Obergrenze VOR dem Entpacken (50 MiB —
+// konservativ: ein reales bildreiches Deck liegt weit darunter; verhindert, dass eine gigantische Datei
+// überhaupt in den Parser läuft). Die eigentliche selektive + VOR-Dekompression durchgesetzte
+// Budgetlogik (Entry-/Ratio-/Byte-/Slide-Caps, fail-closed) lebt namespace-frei in ./pptx
+// (budgetedPptxUnzip + createPptxUnzipBudget) und ist dort mit echten fflate-zipSync-Fixtures getestet.
 const PPTX_MAX_COMPRESSED_BYTES = 50 * 1024 * 1024; // 50 MiB Datei-Cap
-const PPTX_MAX_EXPANSION_RATIO = 200; // dekomprimiert/komprimiert je Eintrag (Zip-Bomben-Signal)
-const PPTX_NEEDED_ENTRY_RE =
-  /^ppt\/(?:presentation\.xml|_rels\/presentation\.xml\.rels|slides\/slide\d+\.xml)$/;
-
-type FflateUnzipInfo = { name: string; size: number; originalSize: number };
-type FflateModule = {
-  unzipSync: (
-    data: Uint8Array,
-    opts?: { filter?: (file: FflateUnzipInfo) => boolean },
-  ) => Record<string, Uint8Array>;
-};
 
 // fflate lazy laden (synchrones unzipSync, klein/tree-shakeable) — NICHT ins Haupt-Bundle. Muster
-// mammoth/pdfjs-Engine. Selektiv + budgetiert: der filter-Callback läuft VOR der Dekompression je
-// Eintrag und lehnt nicht benötigte Einträge ab bzw. bricht bei Budgetüberschreitung ehrlich ab.
+// mammoth/pdfjs-Engine. Das budgetierte, selektive Entpacken bringt ./pptx (fflate injiziert).
 async function pptxUnzip(): Promise<PptxUnzip> {
   if (!pptxUnzipPromise) {
     pptxUnzipPromise = (async () => {
-      const mod = (await import("fflate")) as unknown as FflateModule & { default?: FflateModule };
+      const mod = (await import("fflate")) as unknown as FflateLike & { default?: FflateLike };
       const fflate = mod.default ?? mod;
-      return (data) => {
-        let totalDecompressed = 0;
-        return fflate.unzipSync(data, {
-          filter: (entry) => {
-            if (!PPTX_NEEDED_ENTRY_RE.test(entry.name)) {
-              return false; // Medien/Layouts/Masters etc. gar nicht erst dekomprimieren.
-            }
-            const original = entry.originalSize ?? 0;
-            const compressed = entry.size ?? 0;
-            // Zip-Bomben-Signal: einzelner Eintrag expandiert extrem.
-            if (
-              compressed > 0 &&
-              original > 1_000_000 &&
-              original / compressed > PPTX_MAX_EXPANSION_RATIO
-            ) {
-              throw new PptxTooLargeError("expansion-ratio");
-            }
-            totalDecompressed += original;
-            if (totalDecompressed > PPTX_MAX_TOTAL_DECOMPRESSED_BYTES) {
-              throw new PptxTooLargeError("archive-too-large");
-            }
-            return true;
-          },
-        });
-      };
+      return budgetedPptxUnzip(fflate);
     })();
   }
   return pptxUnzipPromise;
