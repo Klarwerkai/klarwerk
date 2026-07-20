@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   type AttachmentUploadApi,
   type OriginalRefCache,
+  capAttachmentSelection,
   finalizeCaptureSubmit,
 } from "../../apps/web/src/lib/captureAttachments";
 import type { PendingSource } from "../../apps/web/src/lib/captureSources";
@@ -134,5 +135,124 @@ describe("WP-D7c: CAS-Vertrag (echtes Repo/Service)", () => {
       "orig.pdf",
     ]);
     expect(saved?.sources?.map((s) => s.label).sort()).toEqual(["Quelle: orig.pdf", "extern-1"]);
+  });
+});
+
+// WP-D7e (bens ROT-Fix): Slot-Reservierung fürs Original. Die attach-API erzwingt hier dieselbe Anzahl-
+// Grenze wie die echte Route (ko-routes.ts: attachments.length >= maxAttachments → Ablehnung) über dem
+// ECHTEN KoService — so wird der D2-Bruch (Original als neunter Anhang abgelehnt) produktnah sichtbar.
+describe("WP-D7e: Original-Slot im Auswahl-Cap (echtes Repo/Service, Route-Limit)", () => {
+  const MAX = 8;
+
+  function limitEnforcingApi(svc: KoService): AttachmentUploadApi {
+    let uploads = 0;
+    return {
+      async upload(input) {
+        uploads += 1;
+        return { id: `obj-${uploads}`, size: input.data.length };
+      },
+      async attach(koId, attachment) {
+        // Spiegel der echten Route-Prüfung (SCRUM-421): Anzahl-Grenze VOR dem Service-Write.
+        const current = await svc.get(koId);
+        if ((current?.attachments?.length ?? 0) >= MAX) {
+          throw new Error(`Maximal ${MAX} Anhänge je Objekt.`);
+        }
+        return svc.addAttachment(koId, "anna", {
+          name: attachment.name,
+          mime: attachment.mime,
+          objectId: attachment.objectId,
+          ...(attachment.size != null ? { size: attachment.size } : {}),
+        });
+      },
+    };
+  }
+
+  function pngItem(name: string) {
+    return { name, mime: "image/png", data: "data:image/png;base64,QQ==", kind: "image" as const };
+  }
+  const ORIGINAL = {
+    name: "orig.pdf",
+    mime: "application/pdf",
+    data: "data:application/pdf;base64,QQ==",
+  };
+
+  it("mit Original: 8 gewählte → 7 akzeptiert, das Original landet als achter Anhang", async () => {
+    const svc = makeService();
+    const ko = await createKo(svc);
+    const selected = Array.from({ length: 8 }, (_v, i) => pngItem(`f${i}.png`));
+    // Auswahl-Cap wie in Capture: 0 vorhandene Anhänge, Limit 8, EIN Platz fürs Original reserviert.
+    const { accepted, dropped } = capAttachmentSelection(selected, 0, MAX, 1);
+    expect(accepted.length).toBe(7);
+    expect(dropped).toBe(1);
+
+    const result = await finalizeCaptureSubmit({
+      koId: ko.id,
+      attachments: accepted,
+      api: limitEnforcingApi(svc),
+      original: { doc: ORIGINAL, cache: { ref: null } },
+    });
+    // Kein Teilfehler, kein verwaistes Object — das Original ist der achte Anhang am KO.
+    expect(result.failed).toEqual([]);
+    expect(result.attached).toBe(8);
+    const saved = await svc.get(ko.id);
+    expect(saved?.attachments?.length).toBe(8);
+    expect(saved?.attachments?.some((a) => a.name === "orig.pdf")).toBe(true);
+  });
+
+  it("Rot-Beweis: OHNE Reservierung füllen 8 Dateien alle Plätze und das Original wird abgelehnt", async () => {
+    const svc = makeService();
+    const ko = await createKo(svc);
+    const selected = Array.from({ length: 8 }, (_v, i) => pngItem(`f${i}.png`));
+    // Alte Cap-Ableitung (reservedCount 0): alle 8 kommen durch …
+    const { accepted } = capAttachmentSelection(selected, 0, MAX, 0);
+    expect(accepted.length).toBe(8);
+    const result = await finalizeCaptureSubmit({
+      koId: ko.id,
+      attachments: accepted,
+      api: limitEnforcingApi(svc),
+      original: { doc: ORIGINAL, cache: { ref: null } },
+    });
+    // … und genau dann fehlt das Original: als neunter Attach an der Route-Grenze abgelehnt (D2-Bruch).
+    expect(result.attached).toBe(8);
+    expect(result.failed).toEqual([{ name: "orig.pdf", reason: "attach" }]);
+    const saved = await svc.get(ko.id);
+    expect(saved?.attachments?.some((a) => a.name === "orig.pdf")).toBe(false);
+  });
+
+  it("Gegenprobe ohne Original: alle 8 akzeptiert und angehängt", async () => {
+    const svc = makeService();
+    const ko = await createKo(svc);
+    const selected = Array.from({ length: 8 }, (_v, i) => pngItem(`f${i}.png`));
+    // Ohne Datei-Warteschlange/Original reserviert Capture keinen Platz.
+    const { accepted, dropped } = capAttachmentSelection(selected, 0, MAX, 0);
+    expect(accepted.length).toBe(8);
+    expect(dropped).toBe(0);
+    const result = await finalizeCaptureSubmit({
+      koId: ko.id,
+      attachments: accepted,
+      api: limitEnforcingApi(svc),
+    });
+    expect(result.failed).toEqual([]);
+    expect(result.attached).toBe(8);
+  });
+
+  it("die Reservierung gilt AUCH bei Ref-Cache-Treffer (Attach je KO passiert trotzdem)", async () => {
+    const svc = makeService();
+    const ko = await createKo(svc);
+    // Original bereits hochgeladen (Cache-Treffer, z. B. zweiter Queue-KO) — der Attach kommt trotzdem.
+    const cache: OriginalRefCache = { ref: { id: "obj-cached", size: 5 } };
+    const selected = Array.from({ length: 8 }, (_v, i) => pngItem(`f${i}.png`));
+    const { accepted } = capAttachmentSelection(selected, 0, MAX, 1);
+    expect(accepted.length).toBe(7);
+    const result = await finalizeCaptureSubmit({
+      koId: ko.id,
+      attachments: accepted,
+      api: limitEnforcingApi(svc),
+      original: { doc: ORIGINAL, cache },
+    });
+    expect(result.failed).toEqual([]);
+    expect(result.attached).toBe(8);
+    const saved = await svc.get(ko.id);
+    expect(saved?.attachments?.some((a) => a.name === "orig.pdf")).toBe(true);
   });
 });

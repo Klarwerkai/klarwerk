@@ -1492,12 +1492,17 @@ export function Capture(): JSX.Element {
 
   // WP-D7d (bens Härtung 1b): die angezeigte maxAttachments-Grenze VOR dem Upload durchsetzen — die
   // Auswahl wird auf die freien Plätze (Bilder + Dateien zusammen) gedeckelt, mit ehrlicher Meldung
-  // (n von m übernommen, Limit X). Kein Server-Umbau; der Server bleibt die harte Grenze.
+  // (n von m akzeptiert, Limit X). Kein Server-Umbau; der Server bleibt die harte Grenze.
+  // WP-D7e (bens ROT-Fix): läuft eine Datei-Warteschlange mit Original, hängt DERSELBE Submit das Original
+  // ZUSÄTZLICH an → EIN Platz wird hier reserviert, damit das Original nie als überzähliger Anhang abgelehnt
+  // wird (D2-Vertrag). Gilt AUCH bei Ref-Cache-Treffer: der Attach je KO passiert trotzdem, nur der Upload
+  // entfällt. EINE Ableitung für alle drei Pfade (onDocs, attachFiles, onImages).
   const capIncomingFiles = (files: File[]): File[] => {
     const { accepted, dropped } = capAttachmentSelection(
       files,
       images.length + docs.length,
       uploadLimitsData.maxAttachments,
+      fileQueue && fileOriginal ? 1 : 0,
     );
     if (dropped > 0) {
       setErr(
@@ -1511,9 +1516,25 @@ export function Capture(): JSX.Element {
     return accepted;
   };
 
+  // WP-D7e (bens GELB-Fix): welche Dateien onDocs überhaupt verarbeiten kann — Typ-Filter VOR dem Cap,
+  // damit nicht unterstützte Dateien keine Anhang-Plätze verbrauchen (ein gültiges Element derselben
+  // Mehrfachauswahl fiele sonst am Limit unnötig heraus).
+  const isDocsSupported = (f: File): boolean =>
+    isImage(f) ||
+    isTextDocument(f) ||
+    isWordDocument(f) ||
+    isPdfDocument(f) ||
+    f.type.startsWith("video/") ||
+    f.type.startsWith("audio/");
+
   const onDocs = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
-    const files = capIncomingFiles(Array.from(e.target.files ?? []));
+    const all = Array.from(e.target.files ?? []);
     e.target.value = "";
+    // Nicht unterstützte Dateien ehrlich melden — sie zählen NICHT gegen die Anhang-Grenze.
+    for (const f of all.filter((x) => !isDocsSupported(x))) {
+      setErr(t("capture.docUnsupported", { name: f.name }));
+    }
+    const files = capIncomingFiles(all.filter(isDocsSupported));
     for (const f of files) {
       if (isImage(f)) {
         await addImage(f);
@@ -1551,9 +1572,9 @@ export function Capture(): JSX.Element {
         // Transkription NUR auf Klick, wie bei der Bild-OCR (keine stille Aktion).
         await pushDoc(f);
         setNotice(t("capture.videoAdded", { name: f.name }));
-      } else {
-        setErr(t("capture.docUnsupported", { name: f.name }));
       }
+      // WP-D7e: kein else-Zweig mehr — nicht unterstützte Dateien sind bereits VOR dem Cap
+      // aussortiert und gemeldet (isDocsSupported).
     }
   };
 

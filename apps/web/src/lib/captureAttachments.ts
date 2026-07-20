@@ -389,13 +389,18 @@ export async function finalizeCaptureSubmit(
 // WP-D7d (bens Härtung 1b): die im UI angezeigte Anhang-Grenze (Admin-Einstellung maxAttachments) wird
 // clientseitig VOR dem Upload wirklich durchgesetzt — bisher konnte die Auswahl beliebig viele Dateien
 // aufnehmen und erst der Server lehnte ab. Pure Deckelung: nimmt so viele Neuzugänge, wie noch Plätze frei
-// sind (Reihenfolge der Auswahl bleibt), und meldet ehrlich, wie viele NICHT übernommen wurden.
+// sind (Reihenfolge der Auswahl bleibt), und meldet ehrlich, wie viele NICHT akzeptiert wurden.
+// WP-D7e (bens ROT-Fix): `reservedCount` reserviert Plätze für SPÄTERE Anhänge desselben Submits — konkret
+// das Original des Datei-Imports (D2 „Original ist heilig"): ohne Reservierung füllt eine 8er-Auswahl am
+// 8er-Limit alle Plätze, und der Original-Attach wird serverseitig als neunter abgelehnt (Original fehlt am
+// KO, verwaistes Object, Teilfehler erst nach dem Submit).
 export function capAttachmentSelection<T>(
   files: readonly T[],
   currentCount: number,
   maxAttachments: number,
+  reservedCount = 0,
 ): { accepted: T[]; dropped: number } {
-  const slots = Math.max(0, maxAttachments - currentCount);
+  const slots = Math.max(0, maxAttachments - currentCount - reservedCount);
   return {
     accepted: files.slice(0, slots),
     dropped: Math.max(0, files.length - slots),

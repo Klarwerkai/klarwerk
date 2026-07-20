@@ -1120,7 +1120,7 @@ const de = {
   "capture.documentsUpload": "Dateien hochladen",
   "capture.uploadLimits": "Bis zu {{count}} Dateien, je max. {{mb}} MB.",
   "capture.attachLimitReached":
-    "{{taken}} von {{total}} Dateien übernommen — die Anhang-Grenze liegt bei {{limit}}.",
+    "{{taken}} von {{total}} Dateien zur Verarbeitung akzeptiert — die Anhang-Grenze liegt bei {{limit}}.",
   "capture.documentsHint":
     "txt, md, csv, json, log, docx, pdf → Volltext · Bilder: optional per OCR",
   "capture.images": "Bilder (Anhang)",
@@ -4174,7 +4174,7 @@ const en: typeof de = {
   "capture.documentsUpload": "Upload files",
   "capture.uploadLimits": "Up to {{count}} files, each max. {{mb}} MB.",
   "capture.attachLimitReached":
-    "{{taken}} of {{total}} files added — the attachment limit is {{limit}}.",
+    "{{taken}} of {{total}} files accepted for processing — the attachment limit is {{limit}}.",
   "capture.documentsHint": "txt, md, csv, json, log, docx, pdf → full text · images: optional OCR",
   "capture.images": "Images (attachment)",
   "capture.imagesUpload": "Attach images",
@@ -7188,7 +7188,7 @@ const nl: typeof de = {
   "capture.documentsUpload": "Bestanden uploaden",
   "capture.uploadLimits": "Tot {{count}} bestanden, elk max. {{mb}} MB.",
   "capture.attachLimitReached":
-    "{{taken}} van {{total}} bestanden overgenomen — de bijlagegrens is {{limit}}.",
+    "{{taken}} van {{total}} bestanden geaccepteerd voor verwerking — de bijlagegrens is {{limit}}.",
   "capture.documentsHint":
     "txt, md, csv, json, log, docx, pdf → volledige tekst · afbeeldingen: optioneel via OCR",
   "capture.images": "Afbeeldingen (bijlage)",

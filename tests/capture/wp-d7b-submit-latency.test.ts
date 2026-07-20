@@ -280,6 +280,75 @@ describe("WP-D7d Härtung 1b: Anhang-Grenze clientseitig", () => {
   });
 });
 
+// WP-D7e (bens zwei letzte D7d-Punkte): Original-Slot-Reservierung + ehrliche Auswahlmeldung.
+describe("WP-D7e: Original-Slot + ehrliche Auswahl", () => {
+  it("capAttachmentSelection reserviert Plätze für spätere Anhänge (Original)", () => {
+    // Limit 8, nichts vorhanden, EIN Platz fürs Original reserviert → von 8 kommen nur 7 rein.
+    expect(capAttachmentSelection(["a", "b", "c", "d", "e", "f", "g", "h"], 0, 8, 1)).toEqual({
+      accepted: ["a", "b", "c", "d", "e", "f", "g"],
+      dropped: 1,
+    });
+    // Ohne Reservierung (kein Original) bleibt das alte Verhalten: alle 8 rein.
+    expect(
+      capAttachmentSelection(["a", "b", "c", "d", "e", "f", "g", "h"], 0, 8).accepted.length,
+    ).toBe(8);
+  });
+
+  it("Typ-Filter VOR dem Cap: nicht unterstützte Dateien verbrauchen keine Plätze (Mix am Limit)", () => {
+    // 1 freier Platz, Auswahl [unterstützt, NICHT unterstützt, unterstützt].
+    const mixed = [
+      { name: "gut1.pdf", supported: true },
+      { name: "boese.exe", supported: false },
+      { name: "gut2.pdf", supported: true },
+    ];
+    // FALSCH (Cap zuerst): der .exe verbraucht den Platz mit — gut1 kommt rein, gut2 fällt raus,
+    // obwohl der .exe ohnehin nie verarbeitet würde.
+    const capFirst = capAttachmentSelection(mixed, 7, 8);
+    expect(capFirst.accepted.map((f) => f.name)).toEqual(["gut1.pdf"]);
+    // RICHTIG (WP-D7e, Filter zuerst wie onDocs): nur unterstützte Kandidaten konkurrieren um Plätze.
+    const filterFirst = capAttachmentSelection(
+      mixed.filter((f) => f.supported),
+      7,
+      8,
+    );
+    expect(filterFirst.accepted.map((f) => f.name)).toEqual(["gut1.pdf"]);
+    expect(filterFirst.dropped).toBe(1);
+    // Bei ZWEI freien Plätzen zeigt sich der Unterschied direkt: Filter-zuerst nimmt BEIDE gültigen.
+    expect(
+      capAttachmentSelection(
+        mixed.filter((f) => f.supported),
+        6,
+        8,
+      ).accepted.map((f) => f.name),
+    ).toEqual(["gut1.pdf", "gut2.pdf"]);
+    // Cap-zuerst hätte den .exe als zweiten genommen und gut2 verloren.
+    expect(capAttachmentSelection(mixed, 6, 8).accepted.map((f) => f.name)).toEqual([
+      "gut1.pdf",
+      "boese.exe",
+    ]);
+  });
+
+  it("Source-Pin: Reservierung an der EINEN Cap-Ableitung; onDocs filtert VOR dem Cap", () => {
+    const src = readSource("apps/web/src/pages/Capture.tsx");
+    // Slot-Reservierung genau an der gemeinsamen Ableitung (wirkt damit in allen drei Pfaden).
+    expect(src).toContain("fileQueue && fileOriginal ? 1 : 0");
+    // onDocs: Typ-Filter zuerst, dann Cap.
+    expect(src).toContain("capIncomingFiles(all.filter(isDocsSupported))");
+  });
+
+  it("Auswahlmeldung behauptet keinen Erfolg (akzeptiert statt übernommen/added)", () => {
+    const de = String(i18n.getResource("de", "translation", "capture.attachLimitReached"));
+    const en = String(i18n.getResource("en", "translation", "capture.attachLimitReached"));
+    const nl = String(i18n.getResource("nl", "translation", "capture.attachLimitReached"));
+    expect(de).toContain("akzeptiert");
+    expect(de).not.toContain("übernommen");
+    expect(en).toContain("accepted");
+    expect(en).not.toContain("added");
+    expect(nl).toContain("geaccepteerd");
+    expect(nl).not.toContain("overgenomen");
+  });
+});
+
 describe("WP-D7b Rot-Fix 1: estimateDataUrlBytes", () => {
   it("schätzt die reale Objektgröße aus der base64-Daten-URL (ohne Padding-Überzählung)", () => {
     // 4 base64-Zeichen = 3 Bytes; "QQ==" = 1 Byte.
