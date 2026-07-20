@@ -15,6 +15,7 @@ import {
   isInsertableImageMime,
   partitionDropMedia,
 } from "../lib/editorDropPaste";
+import { enhanceFiguresForEditing } from "../lib/editorFigures";
 import { editorFileButtonVisible } from "../lib/editorFiles";
 import { editorLinkHtml } from "../lib/editorLinks";
 import { fileToThumbDataUrl } from "../lib/files";
@@ -50,21 +51,6 @@ const IMAGE_SCALE_OPTIONS: Array<{ value: ImageScaleValue; label: string }> = [
   { value: "75", label: "Gross" },
   { value: "100", label: "Volle Breite" },
 ];
-
-// WP-D7 (Befund 2, Pedi-Live-Test): Bild-Fußnoten waren sichtbar, aber die figcaption ließ sich nicht
-// bearbeiten — Browser behandeln ein <figure> mit <img> oft als atomaren Block, sodass der Klick nicht in
-// den Fußnotentext gelangt. Im Editor daher gezielt verankern: das <img> ist NICHT editierbar (kein
-// versehentliches Zerschneiden), die <figcaption> AUSDRÜCKLICH editierbar (klick- und tippbar). Diese
-// contenteditable-Attribute sind reine Editier-UX; der Sanitizer entfernt sie beim Rausschreiben wieder
-// (nicht in der Allowlist) → sie persistieren nie im gespeicherten bodyHtml.
-function enhanceFiguresForEditing(root: HTMLElement): void {
-  for (const img of root.querySelectorAll("figure img")) {
-    img.setAttribute("contenteditable", "false");
-  }
-  for (const caption of root.querySelectorAll("figure figcaption")) {
-    caption.setAttribute("contenteditable", "true");
-  }
-}
 
 // KW-STR / SCRUM-45/46/48: minimaler nativer WYSIWYG (contentEditable, keine Editor-Lib).
 // Speichert sanitisiertes HTML; Vorschau↔Bearbeiten ohne State-Verlust.
@@ -170,6 +156,11 @@ export function RichTextEditor({
   const exec = (command: string, arg?: string): void => {
     ref.current?.focus();
     document.execCommand(command, false, arg);
+    // WP-D7b (Gelb-Fix 2): auch nach execCommand-Einfügungen (z. B. insertHTML) Bild-Fußnoten editierbar
+    // verankern — der Editor ist hier fokussiert, die useEffect-Verankerung greift dann bewusst nicht.
+    if (ref.current) {
+      enhanceFiguresForEditing(ref.current);
+    }
     emit();
   };
 
@@ -208,6 +199,8 @@ export function RichTextEditor({
       // ans Ende anhängen — unabhängig von Fokus/Auswahl. Genau hier hakte es vorher.
       el.insertAdjacentHTML("beforeend", html);
     }
+    // WP-D7b (Gelb-Fix 2): frisch eingefügte Bild-Fußnoten sofort editierbar verankern (Editor fokussiert).
+    enhanceFiguresForEditing(el);
     emit();
   };
 

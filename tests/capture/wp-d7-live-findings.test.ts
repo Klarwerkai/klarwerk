@@ -76,14 +76,15 @@ describe("WP-D7 Befund 2: Bild-Fußnote im Editor editierbar", () => {
   const rte = () => readSource("apps/web/src/components/RichTextEditor.tsx");
 
   it("verankert figcaption editierbar und img nicht editierbar (Source-Pin)", () => {
+    // WP-D7b: die DOM-Logik lebt jetzt in editorFigures.ts (DOM-lib-frei, testbar); der Editor ruft sie auf.
+    const lib = readSource("apps/web/src/lib/editorFigures.ts");
+    expect(lib).toContain('caption.setAttribute("contenteditable", "true")');
+    expect(lib).toContain('img.setAttribute("contenteditable", "false")');
+    // figcaption wird NIE auf contenteditable=false gesetzt.
+    expect(lib).not.toContain('figcaption.setAttribute("contenteditable", "false")');
+
     const src = rte();
     expect(src).toContain("enhanceFiguresForEditing");
-    // figcaption AUSDRÜCKLICH editierbar …
-    expect(src).toContain('caption.setAttribute("contenteditable", "true")');
-    // … das img NICHT editierbar.
-    expect(src).toContain('img.setAttribute("contenteditable", "false")');
-    // figcaption wird NIE auf contenteditable=false gesetzt.
-    expect(src).not.toContain('figcaption.setAttribute("contenteditable", "false")');
     // Die Editier-Verankerung läuft nach jedem innerHTML-Setzen.
     expect(src).toContain("el.innerHTML = safe");
   });
@@ -142,8 +143,10 @@ describe("WP-D7 Befund 3: KI-Vorschlag bei reichem Body nur Titel + Prompt-Kappu
 describe("WP-D7 Befund 4: ehrliches Ladefeedback beim Einreichen", () => {
   it("beide Einreichen-Knöpfe zeigen bei submit.isPending Spinner + Busy-Text (Source-Pin)", () => {
     const src = readSource("apps/web/src/pages/Capture.tsx");
-    const occurrences = (src.match(/capture\.submitBusy/g) ?? []).length;
+    // WP-D7b: beide Knöpfe nutzen den mehrstufigen submitBusyLabel (Fallback = capture.submitBusy).
+    const occurrences = (src.match(/\{submitBusyLabel\}/g) ?? []).length;
     expect(occurrences).toBeGreaterThanOrEqual(2);
+    expect(src).toContain('t("capture.submitBusy")');
     // Spinner an den Einreichen-Knöpfen (Loader2 animate-spin) beim Pending-Zustand.
     expect(src).toContain("submit.isPending ? (");
     expect(src).toContain('<Loader2 size={15} className="animate-spin" />');

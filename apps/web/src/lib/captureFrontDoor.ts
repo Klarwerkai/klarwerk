@@ -110,18 +110,31 @@ export function buildFrontDoorPayload(input: {
 // Prompt-Input hier sinnvoll gekappt (erste N Zeichen an einer Wortgrenze + ehrlicher Kürzungshinweis).
 // Das ändert NICHTS am gespeicherten Body — nur den an die KI gereichten Text (Original bleibt heilig).
 export const FRONT_DOOR_STRUCTURE_INPUT_MAX_CHARS = 12000;
+// WP-D7b (Klein-Fix 3): Der Kürzungshinweis wird ins Budget EINGERECHNET — die Rückgabe überschreitet die
+// Konstante nie. Führendes Leerzeichen + Klammer-Ellipse (ein Zeichen U+2026).
+const STRUCTURE_INPUT_TRUNCATION_SUFFIX = " […]";
 
 function capStructureInput(text: string): string {
   if (text.length <= FRONT_DOOR_STRUCTURE_INPUT_MAX_CHARS) {
     return text;
   }
-  const head = text.slice(0, FRONT_DOOR_STRUCTURE_INPUT_MAX_CHARS);
+  // WP-D7b (Klein-Fix 3): codepoint-bewusst kappen — ein einfaches slice(0, N) könnte ein Surrogatpaar
+  // (z. B. Emoji) mitten durchtrennen und einen kaputten Codepoint hinterlassen. Budget = Max ABZÜGLICH
+  // Suffixlänge, damit die Rückgabe inkl. „[…]" die Konstante nicht überschreitet. Wir füllen den Kopf
+  // codepoint-weise (for..of iteriert Codepoints) bis knapp unters Budget — nie in ein Surrogatpaar hinein.
+  const budget = FRONT_DOOR_STRUCTURE_INPUT_MAX_CHARS - STRUCTURE_INPUT_TRUNCATION_SUFFIX.length;
+  let head = "";
+  for (const codePoint of text) {
+    if (head.length + codePoint.length > budget) {
+      break;
+    }
+    head += codePoint;
+  }
+  // An der letzten Wortgrenze kappen, sofern sie nicht zu weit vorne liegt (kein zerrissenes Wort). Das
+  // Leerzeichen ist BMP → der Schnitt an lastSpace trennt garantiert kein Surrogatpaar.
   const lastSpace = head.lastIndexOf(" ");
-  // An der letzten Wortgrenze kappen, sofern sie nicht zu weit vorne liegt (kein zerrissenes Wort).
-  const trimmed = (
-    lastSpace > FRONT_DOOR_STRUCTURE_INPUT_MAX_CHARS * 0.8 ? head.slice(0, lastSpace) : head
-  ).trimEnd();
-  return `${trimmed} […]`;
+  const trimmed = (lastSpace > budget * 0.8 ? head.slice(0, lastSpace) : head).trimEnd();
+  return `${trimmed}${STRUCTURE_INPUT_TRUNCATION_SUFFIX}`;
 }
 
 export function buildFrontDoorStructureInput(input: {

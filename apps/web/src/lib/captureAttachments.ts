@@ -167,6 +167,61 @@ export async function attachOriginalDocument(
   }
 }
 
+// WP-D7b (Rot-Fix 1): ungefähre Byte-Größe einer Original-Daten-URL (data:...;base64,XXXX). base64 bläht
+// ~4/3 auf; die reale Objektgröße ist BODY.length * 3/4 minus Padding. Nur für den ehrlichen Fortschritts-
+// Text („… wird gesichert (3,2 MB) …") — keine exakte Bilanz nötig. Nicht-base64-URLs → 0 (kein Rätselraten).
+export function estimateDataUrlBytes(dataUrl: string): number {
+  const comma = dataUrl.indexOf(",");
+  if (comma < 0 || !/;base64/i.test(dataUrl.slice(0, comma))) {
+    return 0;
+  }
+  const body = dataUrl.slice(comma + 1);
+  const padding = body.endsWith("==") ? 2 : body.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((body.length * 3) / 4) - padding);
+}
+
+// WP-D7b (Rot-Fix 1): Kostentreiber-Diagnose — der Submit lud Anhänge, Original und Quellen SERIELL hoch
+// (jeder Object-Upload überträgt das Original als base64-JSON, oft mehrere MB). Wall-Clock = Summe aller
+// Uploads. Diese vier Schritte sind aber VONEINANDER UNABHÄNGIG (gleiches KO, keine Datenabhängigkeit) →
+// sie laufen jetzt PARALLEL. Reiner Orchestrierer mit injizierten Schritt-Thunks: DOM-/API-frei testbar
+// (Nebenläufigkeit, Ergebnis-Merge). Jeder Thunk kapselt seine eigenen Teilfehler (SCRUM-374-Muster).
+export interface CaptureFinalizeSteps {
+  attachments: () => Promise<AttachmentUploadResult>;
+  original?: (() => Promise<{ attached: boolean; failure?: AttachmentFailure }>) | null;
+  queueSource?: (() => Promise<AttachmentFailure | null>) | null;
+  sources: () => Promise<{ attached: number; failed: string[] }>;
+}
+
+export interface CaptureFinalizeResult {
+  attached: number;
+  failed: AttachmentFailure[];
+}
+
+export async function finalizeCaptureSubmit(
+  steps: CaptureFinalizeSteps,
+): Promise<CaptureFinalizeResult> {
+  const [attachRes, originalRes, queueRes, sourceRes] = await Promise.all([
+    steps.attachments(),
+    steps.original ? steps.original() : Promise.resolve(null),
+    steps.queueSource ? steps.queueSource() : Promise.resolve(null),
+    steps.sources(),
+  ]);
+  const failed: AttachmentFailure[] = [...attachRes.failed];
+  let attached = attachRes.attached;
+  if (originalRes?.attached) {
+    attached += 1;
+  } else if (originalRes?.failure) {
+    failed.push(originalRes.failure);
+  }
+  if (queueRes) {
+    failed.push(queueRes);
+  }
+  for (const name of sourceRes.failed) {
+    failed.push({ name, reason: "attach" });
+  }
+  return { attached, failed };
+}
+
 // i18n-Keys für den ehrlichen Recovery-/Status-Hinweis (Teilfehler). Zahlen/Dateinamen rendert die
 // Komponente direkt. Kernaussage: KO ist offen gespeichert; fehlende Dateien später am KO ergänzen;
 // Belege ersetzen die Validierung nicht.

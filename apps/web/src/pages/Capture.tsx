@@ -62,11 +62,14 @@ import { ADVANCED_FIELDS_KEYS, advancedFieldsSummary } from "../lib/captureAdvan
 import {
   ATTACHMENT_RECOVERY_KEYS,
   type AttachmentFailure,
+  type AttachmentUploadApi,
   type AttachmentUploadItem,
   type OriginalDocument,
   type OriginalRefCache,
   attachOriginalDocument,
   classifyUploadError,
+  estimateDataUrlBytes,
+  finalizeCaptureSubmit,
   uploadAttachments,
 } from "../lib/captureAttachments";
 import { applyDraftArticle, normalizeDraftArticleLocale } from "../lib/captureDraftArticle";
@@ -210,6 +213,14 @@ function speechCtor(): SpeechCtor | undefined {
 
 const textareaCls =
   "w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none placeholder:text-muted-2 focus:border-ink/30";
+
+// WP-D7b (Rot-Fix 1): schlanke Dev-Instrumentierung — je Submit-Phase eine performance.now-Spanne als
+// debug-Log (im Browser standardmäßig gefiltert, kein Produktionslärm), damit Pedi/wir die ECHTEN Zeiten
+// sehen und den Kostentreiber (Object-Uploads) belegen können.
+function logSubmitPhase(phase: string, startMs: number): void {
+  // eslint-disable-next-line no-console -- bewusstes Diagnose-Log, nur console.debug.
+  console.debug(`[KW-SUBMIT] ${phase}: ${Math.round(performance.now() - startMs)}ms`);
+}
 
 interface FrontDoorDraftSavedState {
   id: string;
@@ -360,6 +371,9 @@ export function Capture(): JSX.Element {
   );
   // SCRUM-276: nach erfolgreichem Einreichen die ID des gespeicherten KO (für die Success-Card).
   const [savedKoId, setSavedKoId] = useState<string | null>(null);
+  // WP-D7b (Rot-Fix 1): mehrstufiger, ehrlicher Fortschritt beim Einreichen — der Nutzer sieht, WAS gerade
+  // dauert (KO anlegen → Original/Anhänge sichern (mit Größe) → Quellen verknüpfen). null = kein Submit aktiv.
+  const [submitStage, setSubmitStage] = useState<{ key: string; mb?: string } | null>(null);
   // SCRUM-354: ob das eingereichte KO aus einem fortgesetzten Entwurf promotet wurde (Success-Copy).
   const [submittedFromDraft, setSubmittedFromDraft] = useState(false);
   // SCRUM-369: ob dieser Save aus einem Ask-Lücken-Kontext (?gap=…) kam → ehrlicher Rescue-Anschluss.
@@ -876,6 +890,9 @@ export function Capture(): JSX.Element {
       // ein KO (Status „offen") AUS dem gespeicherten Entwurf (Originalautor + bodyHtml bleiben erhalten,
       // FR-CAP-07) und ENTFERNT den Entwurf serverseitig aus dem gemeinsamen Pool. Ein frischer Entwurf
       // (ohne draftId) wird wie bisher direkt als KO angelegt (Autor = aktueller Nutzer).
+      // WP-D7b (Rot-Fix 1): Phase 1 — Wissensobjekt anlegen/promoten (Metadaten + bodyHtml).
+      setSubmitStage({ key: "capture.submitStageCreating" });
+      const tCreate = performance.now();
       let ko: KnowledgeObject;
       if (draftId) {
         const payload: DraftPayload = {
@@ -916,6 +933,7 @@ export function Capture(): JSX.Element {
         });
         setSubmittedFromDraft(false);
       }
+      logSubmitPhase("ko-create/promote", tCreate);
       // SCRUM-121/373/374: Originale in den Object-Store; am KO nur Referenz + kleine Vorschau.
       //  - Bilder: kind "image" mit Thumbnail; Nicht-Bild-Session-Dateien: kind "document" (AG-02-SESSION,
       //    danach body-verlinkbar via editorFilesFromAttachments/bodyFileLink).
@@ -937,55 +955,59 @@ export function Capture(): JSX.Element {
           kind: "document" as const,
         })),
       ];
-      const attachResult = await uploadAttachments(ko.id, attachmentItems, {
+      const attachApi: AttachmentUploadApi = {
         upload: (input) => endpoints.objects.upload(input),
         attach: (koId, attachment) => endpoints.ko.act(koId, { action: "attach", attachment }),
-      });
-      // PMO-FEA-0006: stammt dieser Entwurf aus der Datei-Warteschlange, wird die Quelle
-      // (Dateiname + Belegstelle) am KO vermerkt. Ein Fehler hier kippt den Save NICHT —
-      // er wird ehrlich als Teilfehler gemeldet (gleiches Muster wie Anhänge, SCRUM-374).
-      const failed = [...attachResult.failed];
-      let attachedCount = attachResult.attached;
+      };
       const queuePoint = currentQueuePoint(fileQueue);
-      if (fileQueue && queuePoint) {
-        try {
-          await endpoints.ko.act(ko.id, {
-            action: "add-source",
-            source: fileSourcePayload(fileQueue.fileName, queuePoint),
-          });
-        } catch {
-          failed.push({ name: fileQueue.fileName, reason: "attach" });
-        }
-      }
-      // WP-D2 („Original ist heilig"): die Quelldatei des Datei-Imports als Anhang am KO mitführen.
-      // Der Ref-Cache lädt das Original nur EINMAL hoch — jeder weitere Queue-KO referenziert
-      // dieselbe objectId. Ein Fehler kippt den Save nicht (ehrlicher Teilfehler, SCRUM-374-Muster).
-      if (fileQueue && fileOriginal) {
-        const originalResult = await attachOriginalDocument(
-          ko.id,
-          fileOriginal,
-          {
-            upload: (input) => endpoints.objects.upload(input),
-            attach: (koId, attachment) => endpoints.ko.act(koId, { action: "attach", attachment }),
-          },
-          fileOriginalRef.current,
-        );
-        if (originalResult.attached) {
-          attachedCount += 1;
-        } else if (originalResult.failure) {
-          failed.push(originalResult.failure);
-        }
-      }
-      // SCRUM-408: beim Erfassen gesammelte externe Quellen ans gespeicherte KO hängen —
-      // gleiche add-source-Route wie im Prüfbereich (Stufe 2, nie peer-validiert). Ein
-      // Teilfehler kippt den Save nicht; er wird ehrlich gemeldet (SCRUM-374-Muster).
-      const sourceResult = await attachPendingSources(ko.id, pendingSources, (koId, source) =>
-        endpoints.ko.act(koId, { action: "add-source", source }),
+      // WP-D7b (Rot-Fix 1): Phase 2 — der ECHTE Kostentreiber. Original, Anhänge und Quellen sind
+      // voneinander UNABHÄNGIG (gleiches KO, keine Datenabhängigkeit) und liefen bisher SERIELL: jeder
+      // Object-Upload überträgt das Original als base64-JSON (oft mehrere MB), Wall-Clock = Summe. Jetzt
+      // parallel (finalizeCaptureSubmit). Der Fortschritt weist die Gesamtgröße der Uploads ehrlich aus.
+      const uploadBytes =
+        attachmentItems.reduce((sum, item) => sum + estimateDataUrlBytes(item.data), 0) +
+        (fileQueue && fileOriginal ? estimateDataUrlBytes(fileOriginal.data) : 0);
+      setSubmitStage(
+        uploadBytes > 0
+          ? {
+              key: "capture.submitStageUploading",
+              mb: (uploadBytes / 1_000_000).toLocaleString(i18n.language, {
+                maximumFractionDigits: 1,
+              }),
+            }
+          : { key: "capture.submitStageLinking" },
       );
-      for (const name of sourceResult.failed) {
-        failed.push({ name, reason: "attach" });
-      }
-      return { ko, attached: attachedCount, failed };
+      const tFinalize = performance.now();
+      const { attached, failed } = await finalizeCaptureSubmit({
+        attachments: () => uploadAttachments(ko.id, attachmentItems, attachApi),
+        // WP-D2: Ref-Cache lädt das Original höchstens EINMAL hoch (Queue-KOs teilen die objectId).
+        original:
+          fileQueue && fileOriginal
+            ? () => attachOriginalDocument(ko.id, fileOriginal, attachApi, fileOriginalRef.current)
+            : null,
+        // PMO-FEA-0006: Quelle (Dateiname + Belegstelle) des Datei-Imports am KO vermerken.
+        queueSource:
+          fileQueue && queuePoint
+            ? async () => {
+                try {
+                  await endpoints.ko.act(ko.id, {
+                    action: "add-source",
+                    source: fileSourcePayload(fileQueue.fileName, queuePoint),
+                  });
+                  return null;
+                } catch {
+                  return { name: fileQueue.fileName, reason: "attach" as const };
+                }
+              }
+            : null,
+        // SCRUM-408: beim Erfassen gesammelte externe Quellen ans KO hängen (Stufe 2, nie peer-validiert).
+        sources: () =>
+          attachPendingSources(ko.id, pendingSources, (koId, source) =>
+            endpoints.ko.act(koId, { action: "add-source", source }),
+          ),
+      });
+      logSubmitPhase("attachments+original+sources (parallel)", tFinalize);
+      return { ko, attached, failed };
     },
     // SCRUM-276: kein stilles Weiterleiten — „gespeichert" + nächster Schritt sichtbar machen.
     // Formular zurücksetzen (kein versehentlicher Doppel-Submit); Modus bleibt erhalten.
@@ -1045,6 +1067,8 @@ export function Capture(): JSX.Element {
       }
     },
     onError: fail,
+    // WP-D7b (Rot-Fix 1): Fortschritts-Stufe nach jedem Ausgang (Erfolg/Fehler) zurücksetzen.
+    onSettled: () => setSubmitStage(null),
   });
 
   const saveDraft = useMutation({
@@ -1827,6 +1851,11 @@ export function Capture(): JSX.Element {
   };
 
   const busy = structure.isPending || saveDraft.isPending;
+  // WP-D7b (Rot-Fix 1): ehrlicher, mehrstufiger Einreichen-Text — zeigt die aktuelle Phase (mit Upload-Größe),
+  // sonst der generische Busy-Text. DE/EN/NL über die i18n-Keys.
+  const submitBusyLabel = submitStage
+    ? t(submitStage.key, submitStage.mb !== undefined ? { mb: submitStage.mb } : undefined)
+    : t("capture.submitBusy");
 
   // SCRUM-407 (Pedi 03.07.): durchgängige, ausführliche ?-Hilfen im Erfassen-Weg — Themen und
   // i18n-Schlüssel kommen aus der zentralen Karte lib/captureHelp (gleiches Muster wie SCRUM-406).
@@ -3630,12 +3659,12 @@ export function Capture(): JSX.Element {
                       disabled={submit.isPending || !readiness?.canSave}
                       onClick={() => submit.mutate()}
                     >
-                      {/* WP-D7 (Befund 4): ehrliches Ladefeedback — Einreichen kettet mehrere Netz-Aufrufe
-                          (Entwurf, Anhänge, Freigabe); ohne Spinner wirkte das wie „hängt". */}
+                      {/* WP-D7/D7b (Befund 4/Rot-Fix 1): ehrliches, mehrstufiges Ladefeedback — Einreichen
+                          kettet mehrere Netz-Aufrufe; der Text zeigt die aktuelle Phase (inkl. Upload-Größe). */}
                       {submit.isPending ? (
                         <>
                           <Loader2 size={15} className="animate-spin" />
-                          {t("capture.submitBusy")}
+                          {submitBusyLabel}
                         </>
                       ) : (
                         t("capture.submit")
@@ -3988,11 +4017,11 @@ export function Capture(): JSX.Element {
                   disabled={submit.isPending || !readiness?.canSave}
                   onClick={() => submit.mutate()}
                 >
-                  {/* WP-D7 (Befund 4): ehrliches Ladefeedback beim Einreichen (mehrere Netz-Aufrufe). */}
+                  {/* WP-D7/D7b (Befund 4/Rot-Fix 1): mehrstufiges Ladefeedback beim Einreichen. */}
                   {submit.isPending ? (
                     <>
                       <Loader2 size={15} className="animate-spin" />
-                      {t("capture.submitBusy")}
+                      {submitBusyLabel}
                     </>
                   ) : (
                     <>{t("capture.submit")} →</>
