@@ -51,3 +51,36 @@ describe("WP-D5b: pptxTooLarge ist ein ehrlicher, spezifischer Fehler (DE/EN/NL)
     expect(resource("nl", CAPTURE_FILE_TEXT.pptxTooLarge)).toMatch(/NIET gelezen/);
   });
 });
+
+// WP-D9: PPTX-Bild-Import — Ehrlichkeit der neuen Meldungen + Capture-Verdrahtung.
+describe("WP-D9: Bild-Import-Ehrlichkeit (Meldungen + Verdrahtung)", () => {
+  it("importNote.pptx nennt Bilder jetzt als ÜBERNOMMEN, weiter ehrlichen Restverlust, keinen Anhang", () => {
+    for (const lng of LANGS) {
+      const note = resource(lng, CAPTURE_FILE_TEXT.importNotePptx);
+      expect(note, lng).not.toMatch(ATTACHMENT_CLAIM);
+    }
+    const de = resource("de", CAPTURE_FILE_TEXT.importNotePptx);
+    expect(de).toMatch(/Bilder je Folie übernommen/);
+    expect(de).toMatch(/gehen verloren/); // Layout/Animationen/Notizen bleiben ehrlich benannt
+    expect(de).not.toMatch(/Bilder und Sprechernotizen gehen verloren/);
+  });
+
+  it("Teilverlust-Hinweise (Format/Budget) existieren DE/EN/NL mit Anzahl", () => {
+    for (const lng of LANGS) {
+      for (const key of [CAPTURE_FILE_TEXT.pptxImagesFormat, CAPTURE_FILE_TEXT.pptxImagesBudget]) {
+        const msg = resource(lng, key);
+        expect(msg.length, `${lng}:${key}`).toBeGreaterThan(0);
+        expect(msg, `${lng}:${key}`).toContain("{{count}}");
+      }
+    }
+  });
+
+  it("Capture reicht den DOCX-Platzhalter-Key an readPptxRich durch (kein Key-Duplikat)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const src = readFileSync(resolve(process.cwd(), "apps/web/src/pages/Capture.tsx"), "utf8");
+    expect(src).toContain("readPptxRich(f, t(CAPTURE_FILE_TEXT.imageCaptionPlaceholder))");
+    expect(src).toContain("CAPTURE_FILE_TEXT.pptxImagesFormat");
+    expect(src).toContain("CAPTURE_FILE_TEXT.pptxImagesBudget");
+  });
+});

@@ -30,6 +30,21 @@ function enc(text: string): Uint8Array {
   return new TextEncoder().encode(text);
 }
 
+// WP-D9: deterministisch „rauschende" Bytes (xorshift32) — wie echte Bilddaten kaum komprimierbar, damit
+// media-Fixtures nicht fälschlich am Expansionsratio-Cap (für Null-/Muster-Puffer korrekt!) scheitern.
+function noiseBytes(length: number): Uint8Array {
+  const out = new Uint8Array(length);
+  let s = 0x9e3779b9;
+  for (let i = 0; i < length; i += 1) {
+    s ^= s << 13;
+    s ^= s >>> 17;
+    s ^= s << 5;
+    s |= 0;
+    out[i] = s & 0xff;
+  }
+  return out;
+}
+
 // Minimaler, aber realistischer Folien-XML-Baustein (Titel-Platzhalter + Textrahmen mit Bullets).
 function slideXml(opts: {
   title?: string;
@@ -444,11 +459,15 @@ describe("WP-D5c: Budget-Gate (pure, VOR Dekompression)", () => {
     );
   });
 
-  it("akzeptiert nur benötigte Einträge; Medien/Layouts werden gar nicht angenommen", () => {
+  it("akzeptiert nur benötigte Einträge; Layouts/Notizen/Fremdes werden gar nicht angenommen", () => {
     const gate = createPptxUnzipBudget();
+    // WP-D9: media gehört jetzt zum Accept-Set (Bild-Import über denselben gebudgeteten Unzip).
     expect(gate.accept({ name: "ppt/media/image1.png", compressedSize: 5, originalSize: 9 })).toBe(
-      false,
+      true,
     );
+    expect(
+      gate.accept({ name: "ppt/slides/_rels/slide1.xml.rels", compressedSize: 5, originalSize: 9 }),
+    ).toBe(true);
     expect(
       gate.accept({
         name: "ppt/slideLayouts/slideLayout1.xml",
@@ -456,6 +475,12 @@ describe("WP-D5c: Budget-Gate (pure, VOR Dekompression)", () => {
         originalSize: 9,
       }),
     ).toBe(false);
+    expect(
+      gate.accept({ name: "ppt/notesSlides/notesSlide1.xml", compressedSize: 5, originalSize: 9 }),
+    ).toBe(false);
+    expect(gate.accept({ name: "docProps/app.xml", compressedSize: 5, originalSize: 9 })).toBe(
+      false,
+    );
     expect(gate.accept({ name: "ppt/presentation.xml", compressedSize: 5, originalSize: 9 })).toBe(
       true,
     );
@@ -465,21 +490,29 @@ describe("WP-D5c: Budget-Gate (pure, VOR Dekompression)", () => {
 describe("WP-D5c: budgetedPptxUnzip mit ECHTEM fflate (zipSync-Fixtures)", () => {
   const smallSlide = enc("<p:sld/>");
 
-  it("entpackt NUR die benötigten Einträge (Medien werden übersprungen)", () => {
+  it("entpackt NUR die benötigten Einträge (WP-D9: media/Folien-Rels dabei, Fremdes bleibt draußen)", () => {
     const zip = zipSync({
       "ppt/presentation.xml": enc("<p:presentation/>"),
       "ppt/_rels/presentation.xml.rels": enc("<Relationships/>"),
       "ppt/slides/slide1.xml": smallSlide,
-      "ppt/media/image1.png": new Uint8Array(2048),
+      "ppt/slides/_rels/slide1.xml.rels": enc("<Relationships/>"),
+      // WP-D9: media gehört jetzt zum Accept-Set (Bild-Import) — über DENSELBEN gebudgeteten Unzip.
+      // Rausch-Bytes statt Nullen: ein Null-Puffer würde (korrekt!) am Expansionsratio-Cap scheitern,
+      // der für media genauso gilt wie für XML.
+      "ppt/media/image1.png": noiseBytes(2048),
       "docProps/app.xml": enc("<Properties/>"),
+      "ppt/notesSlides/notesSlide1.xml": enc("<p:notes/>"),
     });
     const files = budgetedPptxUnzip({ Unzip, UnzipInflate, UnzipPassThrough })(zip);
     expect(Object.keys(files).sort()).toEqual([
       "ppt/_rels/presentation.xml.rels",
+      "ppt/media/image1.png",
       "ppt/presentation.xml",
+      "ppt/slides/_rels/slide1.xml.rels",
       "ppt/slides/slide1.xml",
     ]);
-    expect(files["ppt/media/image1.png"]).toBeUndefined();
+    expect(files["docProps/app.xml"]).toBeUndefined();
+    expect(files["ppt/notesSlides/notesSlide1.xml"]).toBeUndefined();
   });
 
   it("hochkomprimierter Eintrag über Ratio-Cap ⇒ PptxTooLargeError (VOR Dekompression)", () => {
@@ -726,5 +759,188 @@ describe("WP-D5e: ondata verwirft Puffer nach Abbruch (keine weitere Konkatenati
     expect(() => unzip(new Uint8Array(1))).toThrow(PptxTooLargeError);
     expect(touchedAfterFailure).toBe(false);
     expect(terminated).toBe(1);
+  });
+});
+
+// WP-D9 (Pedis Live-Befund nach Ship 3): PPTX-BILD-IMPORT. Folien-Bilder werden wie beim DOCX-Import als
+// <figure> mit Bild-Fußnote eingebettet (p:pic → a:blip r:embed → Folien-Rels → ppt/media/*), an ihrer
+// Position im Folien-Fluss. Teilverluste (Format/Bild-Budget) sind EHRLICH beziffert; das harte
+// Archiv-Budget (echte dekomprimierte Bytes inkl. Medien) bleibt fail-closed (PptxTooLargeError).
+describe("WP-D9: PPTX-Bild-Import (figures mit Fußnoten)", () => {
+  const PLACEHOLDER = "Noch keine Bildbeschreibung";
+  const PNG_BYTES = new Uint8Array([137, 80, 78, 71]); // → base64 iVBORw==
+
+  function unzipOf(files: Record<string, Uint8Array>): PptxUnzip {
+    return () => files;
+  }
+
+  // Folie mit echten OOXML-URIs: Text VOR dem Bild, p:pic, Text NACH dem Bild (spTree-Reihenfolge).
+  function pictureSlide(rid: string, before: string, after: string): string {
+    const sp = (txt: string) =>
+      `<p:sp><p:txBody><a:p><a:r><a:t>${txt}</a:t></a:r></a:p></p:txBody></p:sp>`;
+    const pic = `<p:pic><p:blipFill><a:blip r:embed="${rid}"/></p:blipFill></p:pic>`;
+    return `<p:sld xmlns:p="${URI_P}" xmlns:a="${URI_A}" xmlns:r="${URI_R}"><p:cSld><p:spTree>${sp(before)}${pic}${sp(after)}</p:spTree></p:cSld></p:sld>`;
+  }
+
+  function slideRels(rid: string, target: string): string {
+    return `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="${target}"/></Relationships>`;
+  }
+
+  it("PNG auf der Folie → figure mit data-URL, beidseitiger ID und Platzhalter AN DER RICHTIGEN POSITION", async () => {
+    const files: Record<string, Uint8Array> = {
+      "ppt/slides/slide1.xml": enc(pictureSlide("rId2", "Vor dem Bild", "Nach dem Bild")),
+      "ppt/slides/_rels/slide1.xml.rels": enc(slideRels("rId2", "../media/image1.png")),
+      "ppt/media/image1.png": PNG_BYTES,
+    };
+    const res = await extractPptxRich(new ArrayBuffer(0), {
+      unzip: unzipOf(files),
+      imageCaptionPlaceholder: PLACEHOLDER,
+      imageRunToken: "tok001",
+    });
+    const id = "kw-img-tok001-1";
+    // Exakter DOCX-Vertrag: figure > img[data-image-id][src=data:] + figcaption[data-image-id].
+    const figure = `<figure><img data-image-id="${id}" src="data:image/png;base64,iVBORw=="><figcaption data-image-id="${id}">${PLACEHOLDER}</figcaption></figure>`;
+    expect(res.html).toContain(figure);
+    // Position im Folien-Fluss: zwischen den beiden Absätzen, nicht am Ende.
+    expect(res.html.indexOf("Vor dem Bild")).toBeLessThan(res.html.indexOf("<figure>"));
+    expect(res.html.indexOf("<figure>")).toBeLessThan(res.html.indexOf("Nach dem Bild"));
+    expect(res.embeddedImages).toBe(1);
+    expect(res.imageCount).toBe(1);
+    expect(res.droppedImageFormat).toBe(0);
+    expect(res.droppedImageBudget).toBe(0);
+  });
+
+  it("zwei Folien mit Bildern → Reihenfolge korrekt, IDs eindeutig fortlaufend", async () => {
+    const files: Record<string, Uint8Array> = {
+      "ppt/slides/slide1.xml": enc(pictureSlide("rId2", "Eins vor", "Eins nach")),
+      "ppt/slides/_rels/slide1.xml.rels": enc(slideRels("rId2", "../media/image1.png")),
+      "ppt/slides/slide2.xml": enc(pictureSlide("rId7", "Zwei vor", "Zwei nach")),
+      "ppt/slides/_rels/slide2.xml.rels": enc(slideRels("rId7", "../media/image2.jpeg")),
+      "ppt/media/image1.png": PNG_BYTES,
+      "ppt/media/image2.jpeg": new Uint8Array([255, 216, 255]),
+    };
+    const res = await extractPptxRich(new ArrayBuffer(0), {
+      unzip: unzipOf(files),
+      imageCaptionPlaceholder: PLACEHOLDER,
+      imageRunToken: "tok002",
+    });
+    expect(res.embeddedImages).toBe(2);
+    const ids = [...res.html.matchAll(/data-image-id="([^"]+)"/g)].map((m) => m[1] ?? "");
+    // 2 Bilder × 2 Anker (img + figcaption) = 4 Vorkommen, 2 verschiedene IDs, in Dokumentreihenfolge.
+    expect(ids.length).toBe(4);
+    expect(new Set(ids)).toEqual(new Set(["kw-img-tok002-1", "kw-img-tok002-2"]));
+    expect(res.html.indexOf("kw-img-tok002-1")).toBeLessThan(res.html.indexOf("kw-img-tok002-2"));
+    expect(res.html).toContain("data:image/jpeg;base64,");
+    // Folie-1-Bild vor Folie-2-Bild.
+    expect(res.html.indexOf("Eins vor")).toBeLessThan(res.html.indexOf("Zwei vor"));
+  });
+
+  it("nicht unterstütztes Format (.emf) → Text bleibt, ehrlicher Format-Teilverlust, KEIN Wurf", async () => {
+    const files: Record<string, Uint8Array> = {
+      "ppt/slides/slide1.xml": enc(pictureSlide("rId2", "Text bleibt", "auch danach")),
+      "ppt/slides/_rels/slide1.xml.rels": enc(slideRels("rId2", "../media/image1.emf")),
+      "ppt/media/image1.emf": new Uint8Array(64),
+    };
+    const res = await extractPptxRich(new ArrayBuffer(0), {
+      unzip: unzipOf(files),
+      imageCaptionPlaceholder: PLACEHOLDER,
+      imageRunToken: "tok003",
+    });
+    expect(res.html).toContain("Text bleibt");
+    expect(res.html).toContain("auch danach");
+    expect(res.html).not.toContain("<figure>");
+    expect(res.embeddedImages).toBe(0);
+    expect(res.droppedImageFormat).toBe(1);
+    expect(res.droppedImageBudget).toBe(0);
+  });
+
+  it("Bild über dem Einzelbild-Budget → Teilverlust, Text UND übrige Bilder bleiben", async () => {
+    const files: Record<string, Uint8Array> = {
+      "ppt/slides/slide1.xml": enc(pictureSlide("rId2", "Grosses Bild folgt", "dazwischen")),
+      "ppt/slides/_rels/slide1.xml.rels": enc(slideRels("rId2", "../media/big.png")),
+      "ppt/slides/slide2.xml": enc(pictureSlide("rId3", "Kleines Bild folgt", "Ende")),
+      "ppt/slides/_rels/slide2.xml.rels": enc(slideRels("rId3", "../media/small.png")),
+      "ppt/media/big.png": new Uint8Array(64),
+      "ppt/media/small.png": PNG_BYTES,
+    };
+    const res = await extractPptxRich(new ArrayBuffer(0), {
+      unzip: unzipOf(files),
+      imageCaptionPlaceholder: PLACEHOLDER,
+      imageRunToken: "tok004",
+      maxImageBytes: 16, // big.png (64 B) reißt das Einzelbild-Budget, small.png (4 B) nicht
+    });
+    expect(res.droppedImageBudget).toBe(1);
+    expect(res.embeddedImages).toBe(1);
+    expect(res.html).toContain("Grosses Bild folgt"); // Text der Folie bleibt vollständig
+    expect(res.html).toContain("data:image/png;base64,iVBORw=="); // das kleine Bild ist drin
+    expect((res.html.match(/<figure>/g) ?? []).length).toBe(1);
+  });
+
+  it("Gesamt-Bild-Budget → weitere Bilder fallen ehrlich weg, Import läuft (Teilverlust-Semantik)", async () => {
+    const files: Record<string, Uint8Array> = {
+      "ppt/slides/slide1.xml": enc(pictureSlide("rId2", "A", "B")),
+      "ppt/slides/_rels/slide1.xml.rels": enc(slideRels("rId2", "../media/one.png")),
+      "ppt/slides/slide2.xml": enc(pictureSlide("rId3", "C", "D")),
+      "ppt/slides/_rels/slide2.xml.rels": enc(slideRels("rId3", "../media/two.png")),
+      "ppt/media/one.png": new Uint8Array(10),
+      "ppt/media/two.png": new Uint8Array(10),
+    };
+    const res = await extractPptxRich(new ArrayBuffer(0), {
+      unzip: unzipOf(files),
+      imageCaptionPlaceholder: PLACEHOLDER,
+      imageRunToken: "tok005",
+      maxTotalImageBytes: 15, // Platz für EIN 10-Byte-Bild, nicht für zwei
+    });
+    expect(res.embeddedImages).toBe(1);
+    expect(res.droppedImageBudget).toBe(1);
+    expect(res.html).toContain("C"); // Text der zweiten Folie bleibt trotz Bild-Verlust
+  });
+
+  it("ohne Platzhalter bleibt das Alt-Verhalten: keine figures, Bilder nur gezählt (Regression)", async () => {
+    const files: Record<string, Uint8Array> = {
+      "ppt/slides/slide1.xml": enc(pictureSlide("rId2", "Nur Text", "und Zahl")),
+      "ppt/slides/_rels/slide1.xml.rels": enc(slideRels("rId2", "../media/image1.png")),
+      "ppt/media/image1.png": PNG_BYTES,
+    };
+    const res = await extractPptxRich(new ArrayBuffer(0), { unzip: unzipOf(files) });
+    expect(res.html).not.toContain("<figure>");
+    expect(res.html).not.toContain("<img");
+    expect(res.imageCount).toBe(1);
+    expect(res.embeddedImages).toBe(0);
+  });
+
+  it("ECHTES zipSync-Archiv Ende-zu-Ende: budgetierter Unzip → figure mit Fußnote im HTML", async () => {
+    const zip = zipSync({
+      "ppt/slides/slide1.xml": enc(pictureSlide("rId2", "Vorher", "Nachher")),
+      "ppt/slides/_rels/slide1.xml.rels": enc(slideRels("rId2", "../media/image1.png")),
+      "ppt/media/image1.png": PNG_BYTES,
+    });
+    const unzip = budgetedPptxUnzip({ Unzip, UnzipInflate, UnzipPassThrough });
+    const res = await extractPptxRich(zip.buffer as ArrayBuffer, {
+      unzip: () => unzip(zip),
+      imageCaptionPlaceholder: PLACEHOLDER,
+      imageRunToken: "tok006",
+    });
+    expect(res.embeddedImages).toBe(1);
+    expect(res.html).toContain('data-image-id="kw-img-tok006-1"');
+    expect(res.html).toContain("data:image/png;base64,iVBORw==");
+    expect(res.html).toContain(
+      `<figcaption data-image-id="kw-img-tok006-1">${PLACEHOLDER}</figcaption>`,
+    );
+  });
+
+  it("BUDGET-SEMANTIK gepinnt: Media-Bytes zählen im SELBEN Ist-Byte-Budget → fail-closed (kein Bypass)", () => {
+    // Ein Deck, dessen BILD-Bytes das (im Test verkleinerte) Archiv-Gesamtbudget sprengen: der gebudgetete
+    // Streaming-Unzip wirft PptxTooLargeError — Zip-Bomben-Schutz bleibt hart, auch über media/*.
+    // Rausch-Bytes: die REALE Byte-Zählung (nicht der Ratio-Vorfilter) muss den Abbruch auslösen.
+    const zip = zipSync({
+      "ppt/slides/slide1.xml": enc("<p:sld/>"),
+      "ppt/media/huge.png": noiseBytes(200_000),
+    });
+    const unzip = budgetedPptxUnzip(
+      { Unzip, UnzipInflate, UnzipPassThrough },
+      { maxTotalDecompressedBytes: 50_000 },
+    );
+    expect(() => unzip(zip)).toThrow(PptxTooLargeError);
   });
 });

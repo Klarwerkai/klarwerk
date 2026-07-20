@@ -1645,6 +1645,9 @@ export function Capture(): JSX.Element {
       let pdfTruncatedPages: number | null = null;
       // WP-D5: Hinweis, wenn der PPTX-Folien-Cap griff (nur die ersten N Folien gelesen).
       let pptxTruncatedSlides: number | null = null;
+      // WP-D9: ehrliche Teilverlust-Hinweise für Folien-Bilder (Format nicht unterstützt / Bild-Budget).
+      let pptxImagesDroppedFormat = 0;
+      let pptxImagesDroppedBudget = 0;
       // WP-D1c: Bild-Bilanz des DOCX-Imports — erst beim Speichern (an den Anhang-Erfolg gekoppelt)
       // gemeldet, NICHT hier (zur Lesezeit ist noch nichts angehängt).
       let imageInfo: {
@@ -1679,15 +1682,24 @@ export function Capture(): JSX.Element {
         rich = { html: null, kind: "pdf" };
         pdfTruncatedPages = pdf.truncated ? pdf.pageCount : null;
       } else if (kind === "pptx") {
-        // WP-D5: PowerPoint strukturerhaltend (Folie für Folie: Titel→h2, Text→Absätze, Bullets→Listen,
-        // Tabellen→<table>). Bilder werden NICHT inline übernommen (nur das Original als Anhang) — Verlust
-        // wird ehrlich gemeldet. htmlOverflow reist als total-0-Bildbilanz mit, damit der Vor-Upload-Abbruch
-        // (WP-D1e) auch für zu große Folien-HTMLs greift; truncated meldet den Folien-Cap.
-        const pptx = await readPptxRich(f);
+        // WP-D5/WP-D9 (Pedis Live-Befund): PowerPoint strukturerhaltend (Folie für Folie: Titel→h2,
+        // Text→Absätze, Bullets→Listen, Tabellen→<table>) — und die Folien-Bilder jetzt wie beim
+        // DOCX-Import als <figure> mit Bild-Fußnote (gleicher Platzhalter-Key). Teilverluste
+        // (Format/Bild-Budget) werden ehrlich beziffert; die Bild-Bilanz reist wie beim DOCX mit
+        // (kept = total - dropped), htmlOverflow greift weiter VOR dem Upload (WP-D1e).
+        const pptx = await readPptxRich(f, t(CAPTURE_FILE_TEXT.imageCaptionPlaceholder));
         text = pptx.text;
         rich = { html: pptx.html, kind: "pptx" };
         pptxTruncatedSlides = pptx.truncated ? pptx.slideCount : null;
-        imageInfo = { total: 0, compressed: 0, dropped: 0, htmlOverflow: pptx.htmlOverflow };
+        pptxImagesDroppedFormat = pptx.droppedImageFormat;
+        pptxImagesDroppedBudget = pptx.droppedImageBudget;
+        imageInfo = {
+          total: pptx.imageCount,
+          compressed: 0,
+          // ALLES nicht Eingebettete zählt als dropped (Format/Budget/fehlendes Ziel) — kept bleibt ehrlich.
+          dropped: pptx.imageCount - pptx.embeddedImages,
+          htmlOverflow: pptx.htmlOverflow,
+        };
       } else if (kind === "text") {
         text = await readTextFile(f);
       } else {
@@ -1737,13 +1749,22 @@ export function Capture(): JSX.Element {
           : pptxTruncatedSlides !== null
             ? ` ${t(CAPTURE_FILE_TEXT.pptxTruncated, { count: pptxTruncatedSlides })}`
             : "";
+      // WP-D9: ehrliche Teilverlust-Notizen für Folien-Bilder — NUR wenn wirklich etwas verloren ging
+      // (übernommene Bilder brauchen keinen Sonderhinweis). Der Dokumenttext ist davon unberührt.
+      const imageLossNote =
+        (pptxImagesDroppedFormat > 0
+          ? ` ${t(CAPTURE_FILE_TEXT.pptxImagesFormat, { count: pptxImagesDroppedFormat })}`
+          : "") +
+        (pptxImagesDroppedBudget > 0
+          ? ` ${t(CAPTURE_FILE_TEXT.pptxImagesBudget, { count: pptxImagesDroppedBudget })}`
+          : "");
       // WP-D1c: KEINE „Original im Anhang"-Behauptung zur Lesezeit (noch nichts angehängt) — die
       // ehrliche, anhang-gekoppelte Bild-Meldung folgt beim Speichern (fileWholeDraft.onSuccess).
       setNotice(
         `${t(CAPTURE_FILE_TEXT.loadedStats, {
           name: f.name,
           chars: text.length,
-        })}${formatNote}${truncatedNote}`,
+        })}${formatNote}${truncatedNote}${imageLossNote}`,
       );
     } catch (error) {
       setFileName(null);

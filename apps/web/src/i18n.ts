@@ -955,6 +955,10 @@ const de = {
   "capture.file.pptxTruncated": "Nur die ersten {{count}} Folien importiert.",
   "capture.file.pptxTooLarge":
     "„{{name}}“ ist zu groß oder zu stark komprimiert für den sicheren Import und wurde NICHT gelesen. Bitte die Präsentation verkleinern oder aufteilen.",
+  "capture.file.pptxImagesFormat":
+    "{{count}} Bilder konnten nicht übernommen werden — Format nicht unterstützt.",
+  "capture.file.pptxImagesBudget":
+    "{{count}} Bilder konnten nicht übernommen werden — zu groß für die Einbettung.",
   "capture.file.imageCaptionPlaceholder": "Noch keine Bildbeschreibung",
   "capture.file.imagesKept":
     "{{kept}} Bilder übernommen, davon {{compressed}} für die Textansicht komprimiert; das unveränderte Original liegt im Anhang.",
@@ -971,7 +975,7 @@ const de = {
   "capture.file.importNote.pdf":
     "Best-Effort-Textimport — Layout und Bilder wurden nicht übernommen.",
   "capture.file.importNote.pptx":
-    "Best-Effort-Import aus PowerPoint — Text, Listen und Tabellen je Folie übernommen; Layout, Animationen, Übergänge, Bilder und Sprechernotizen gehen verloren.",
+    "Best-Effort-Import aus PowerPoint — Text, Listen, Tabellen und Bilder je Folie übernommen; Layout, Animationen, Übergänge und Sprechernotizen gehen verloren.",
   "capture.file.parseError": "„{{name}}“ konnte nicht gelesen werden.",
   "capture.file.unsupported":
     "„{{name}}“ wird hier nicht unterstützt — bitte als TXT/MD, DOCX, PDF oder PPTX bereitstellen. Bilder gehen nur über OCR.",
@@ -4017,6 +4021,10 @@ const en: typeof de = {
   "capture.file.pptxTruncated": "Only the first {{count}} slides were imported.",
   "capture.file.pptxTooLarge":
     "“{{name}}” is too large or too heavily compressed for a safe import and was NOT read. Please shrink or split the presentation.",
+  "capture.file.pptxImagesFormat":
+    "{{count}} images could not be carried over — format not supported.",
+  "capture.file.pptxImagesBudget":
+    "{{count}} images could not be carried over — too large to embed.",
   "capture.file.imageCaptionPlaceholder": "No image description yet",
   "capture.file.imagesKept":
     "{{kept}} images imported, {{compressed}} of them compressed for the text view; the unchanged original is in the attachment.",
@@ -4033,7 +4041,7 @@ const en: typeof de = {
   "capture.file.importNote.pdf":
     "Best-effort text import — layout and images were not carried over.",
   "capture.file.importNote.pptx":
-    "Best-effort import from PowerPoint — text, lists and tables per slide carried over; layout, animations, transitions, images and speaker notes are lost.",
+    "Best-effort import from PowerPoint — text, lists, tables and images per slide carried over; layout, animations, transitions and speaker notes are lost.",
   "capture.file.parseError": "“{{name}}” could not be read.",
   "capture.file.unsupported":
     "“{{name}}” is not supported here — please provide TXT/MD, DOCX, PDF, or PPTX. Images only work via OCR.",
@@ -7036,6 +7044,10 @@ const nl: typeof de = {
   "capture.file.pptxTruncated": "Alleen de eerste {{count}} dia's geïmporteerd.",
   "capture.file.pptxTooLarge":
     "„{{name}}“ is te groot of te sterk gecomprimeerd voor een veilige import en is NIET gelezen. Verklein of splits de presentatie.",
+  "capture.file.pptxImagesFormat":
+    "{{count}} afbeeldingen konden niet worden overgenomen — formaat niet ondersteund.",
+  "capture.file.pptxImagesBudget":
+    "{{count}} afbeeldingen konden niet worden overgenomen — te groot om in te sluiten.",
   "capture.file.imageCaptionPlaceholder": "Nog geen afbeeldingsbeschrijving",
   "capture.file.imagesKept":
     "{{kept}} afbeeldingen overgenomen, waarvan {{compressed}} gecomprimeerd voor de tekstweergave; het ongewijzigde origineel zit in de bijlage.",
@@ -7052,7 +7064,7 @@ const nl: typeof de = {
   "capture.file.importNote.pdf":
     "Best-effort tekstimport — layout en afbeeldingen zijn niet overgenomen.",
   "capture.file.importNote.pptx":
-    "Best-effort import uit PowerPoint — tekst, lijsten en tabellen per dia overgenomen; layout, animaties, overgangen, afbeeldingen en notities gaan verloren.",
+    "Best-effort import uit PowerPoint — tekst, lijsten, tabellen en afbeeldingen per dia overgenomen; layout, animaties, overgangen en notities gaan verloren.",
   "capture.file.parseError": "„{{name}}“ kon niet worden gelezen.",
   "capture.file.unsupported":
     "„{{name}}“ wordt hier niet ondersteund — lever het aan als TXT/MD, DOCX, PDF of PPTX. Afbeeldingen gaan alleen via OCR.",

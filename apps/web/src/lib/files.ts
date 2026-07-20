@@ -205,10 +205,14 @@ async function pptxUnzip(): Promise<PptxUnzip> {
   return pptxUnzipPromise;
 }
 
-// WP-D5: strukturerhaltendes PPTX-Lesen (HTML + Klartext), Folie für Folie. Bilder werden in diesem
-// Slice NICHT inline übernommen (nur gezählt) — das Original reist als Anhang mit (WP-D2). Der Aufrufer
-// meldet Verluste (Layout/Animationen/Bilder/Notizen) ehrlich. Folien-Cap via MAX_PPTX_SLIDES (truncated).
-export async function readPptxRich(file: File): Promise<PptxRichResult> {
+// WP-D5/WP-D9: strukturerhaltendes PPTX-Lesen (HTML + Klartext), Folie für Folie. Mit
+// imageCaptionPlaceholder (lokalisiert, gleicher i18n-Key wie der DOCX-Import) werden die Folien-Bilder
+// als <figure> mit Bild-Fußnote eingebettet; Teilverluste (Format/Bild-Budget) meldet der Aufrufer
+// ehrlich. Das Original reist weiter als Anhang mit (WP-D2). Folien-Cap via MAX_PPTX_SLIDES (truncated).
+export async function readPptxRich(
+  file: File,
+  imageCaptionPlaceholder?: string,
+): Promise<PptxRichResult> {
   // WP-D5b: komprimierte Datei-Obergrenze VOR dem Einlesen — ehrlicher Abbruch statt Riesen-Parse.
   if (file.size > PPTX_MAX_COMPRESSED_BYTES) {
     throw new PptxTooLargeError("file-too-large");
@@ -217,6 +221,7 @@ export async function readPptxRich(file: File): Promise<PptxRichResult> {
   return extractPptxRich(await file.arrayBuffer(), {
     unzip,
     budgetBytes: MAX_INLINE_BODY_HTML_BYTES,
+    ...(imageCaptionPlaceholder !== undefined ? { imageCaptionPlaceholder } : {}),
   });
 }
 

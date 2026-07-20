@@ -6,16 +6,23 @@
 // Best-Effort & EHRLICH: .pptx ist ein ZIP mit ppt/slides/slideN.xml (Reihenfolge über
 // ppt/presentation.xml + rels). Pro Folie: Titel-Platzhalter → h2, restliche Textrahmen → Absätze,
 // a:buChar → <ul>, a:buAutoNum → <ol>, Tabellen (p:graphicFrame → a:tbl) Best-Effort → <table>. Folien
-// werden durch die h2 sichtbar getrennt. BILDER werden in diesem Slice NICHT inline übernommen (nur
-// gezählt) — das Original bleibt als Anhang heilig (WP-D2). Layout/Animationen/Übergänge/Notizen gehen
-// verloren (im Verlusthinweis benannt).
+// werden durch die h2 sichtbar getrennt. WP-D9 (Pedis Live-Befund): BILDER werden jetzt wie beim
+// DOCX-Import als <figure> mit Bild-Fußnote übernommen (p:pic → a:blip r:embed → Folien-Rels →
+// ppt/media/*, an ihrer Position im Folien-Fluss); nicht darstellbare Formate (EMF/WMF/TIFF) und
+// Budget-Überläufe werden EHRLICH als Teilverlust gezählt. Layout/Animationen/Übergänge/Notizen gehen
+// weiterhin verloren (im Verlusthinweis benannt).
 //
 // WP-D5b (bens ROT-Fix 1): NAMESPACE-AWARE. XML-Präfixe (a:/p:/r:) sind nicht fest — sie werden aus den
 // xmlns-Deklarationen des Dokuments dynamisch aufgelöst (drawingml/presentationml/relationships-URI →
 // tatsächliches Präfix). Fällt der Namespace nicht deklariert an, greift ein präfix-tolerantes Muster.
 // Relationship-Parsing ist unabhängig von Attribut-Reihenfolge und Anführungszeichen-Art.
 
-import { MAX_INLINE_BODY_HTML_BYTES, utf8ByteLength } from "./docx";
+import {
+  IMAGE_ID_PREFIX,
+  MAX_INLINE_BODY_HTML_BYTES,
+  newImageRunToken,
+  utf8ByteLength,
+} from "./docx";
 
 const PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
@@ -61,9 +68,32 @@ export const PPTX_MAX_ENTRY_EXPANSION_RATIO = 100;
 export const PPTX_MAX_NS_PREFIXES = 32;
 export const PPTX_MAX_NS_PREFIX_LEN = 64;
 // Benötigte ZIP-Einträge (nur diese werden dekomprimiert) und die Folien-Untermenge.
+// WP-D9: zusätzlich die Folien-Rels (Bild-Auflösung rId → Target) und ppt/media/* (die Bild-Bytes) —
+// über DENSELBEN gebudgeteten Streaming-Unzip; die Ist-Byte-Zählung (pro Eintrag + kumuliert, 64 MiB)
+// gilt UNVERÄNDERT auch für Medien: kein zweiter Unzip-Pfad, kein Budget-Bypass, weiterhin fail-closed.
 export const PPTX_NEEDED_ENTRY_RE =
-  /^ppt\/(?:presentation\.xml|_rels\/presentation\.xml\.rels|slides\/slide\d+\.xml)$/;
+  /^ppt\/(?:presentation\.xml|_rels\/presentation\.xml\.rels|slides\/slide\d+\.xml|slides\/_rels\/slide\d+\.xml\.rels|media\/[^/]+)$/;
 const PPTX_SLIDE_ENTRY_RE = /^ppt\/slides\/slide\d+\.xml$/;
+
+// WP-D9: Budget für EINGEBETTETE Bilder — bewusst GETRENNT vom harten Archiv-Budget (64 MiB, fail-closed
+// gegen Zip-Bomben). Abwägung: Bilder werden als base64-data-URLs in bodyHtml eingebettet (~4/3 Aufblähung)
+// und müssen durch Editor/Sanitizer/Persistenz — 5 MiB je Bild / 20 MiB gesamt halten das handhabbar.
+// SEMANTIK: Überschreitung des BILD-Budgets ist ein EHRLICHER TEILVERLUST (Bild wird nicht eingebettet,
+// gezählt in droppedImageBudget) — der Dokumenttext bleibt IMMER erhalten, kein Abbruch des Imports.
+// NUR das Archiv-Budget (echte dekomprimierte Bytes inkl. Medien) bleibt fail-closed (PptxTooLargeError).
+export const PPTX_MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MiB je Bild (dekodiert)
+export const PPTX_MAX_TOTAL_IMAGE_BYTES = 20 * 1024 * 1024; // 20 MiB Summe eingebetteter Bilder
+
+// WP-D9: nur ECHTE, vom Sanitizer erlaubte Rasterformate (isSafeImgSrc-Allowlist: png/jpeg/gif/webp) —
+// bmp bewusst NICHT (würde vom Sanitizer wieder gestrippt), EMF/WMF/TIFF sind ohne Renderer nicht
+// konvertierbar → ehrlicher Format-Teilverlust (droppedImageFormat) statt kaputter Einbettung.
+const PPTX_IMAGE_MIME: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+};
 
 // WP-D5b: ehrlicher, kontrollierter Importfehler (statt UI-Freeze / stiller Teilimport). Der Aufrufer
 // (Capture) fängt ihn und zeigt eine spezifische DE/EN/NL-Meldung.
@@ -85,13 +115,17 @@ export class PptxTooLargeError extends Error {
 }
 
 export interface PptxRichResult {
-  html: string; // strukturerhaltendes HTML (h2 je Folie, Absätze, Listen, Tabellen)
+  html: string; // strukturerhaltendes HTML (h2 je Folie, Absätze, Listen, Tabellen, WP-D9: figures)
   text: string; // Klartext — für die KI-Punkte-Extraktion
   slideCount: number; // tatsächlich gelesene Folien (bis zum Cap)
   truncated: boolean; // true, wenn das Deck mehr Folien hat als gelesen wurden
-  imageCount: number; // gezählte eingebettete Bilder (NICHT inline übernommen — nur ehrlich beziffert)
+  imageCount: number; // ALLE erkannten eingebetteten Bilder (a:blip) — Basis der ehrlichen Bilanz
   tableCount: number; // Best-Effort übernommene Tabellen (a:tbl → <table>)
-  htmlOverflow: boolean; // true, wenn das reine Folien-HTML das Inline-Byte-Budget übersteigt
+  htmlOverflow: boolean; // true, wenn das Folien-HTML (inkl. figures) das Inline-Byte-Budget übersteigt
+  // WP-D9: ehrliche Bild-Bilanz — eingebettet vs. Teilverluste nach Ursache (Format/Bild-Budget).
+  embeddedImages: number; // als <figure> mit Fußnote übernommene Bilder
+  droppedImageFormat: number; // nicht unterstütztes Format (EMF/WMF/TIFF/BMP …)
+  droppedImageBudget: number; // Einzelbild- oder Gesamt-Bild-Budget überschritten
 }
 
 const XML_ENTITIES: Record<string, string> = {
@@ -230,11 +264,13 @@ function attrName(prefixSet: Set<string> | undefined, localName: string): string
 interface DrawingNs {
   a: Set<string> | undefined; // ALLE gebundenen Präfixe für drawingml (undefined = nicht deklariert)
   p: Set<string> | undefined; // ALLE gebundenen Präfixe für presentationml
+  // WP-D9: officeDocument-Relationships-Präfixe (r:embed am a:blip) — zentrale Auflösung wie a/p.
+  r: Set<string> | undefined;
 }
 
 function drawingNs(xml: string): DrawingNs {
   const map = collectNamespacePrefixSets(xml);
-  return { a: map.get(NS_DRAWINGML), p: map.get(NS_PRESENTATIONML) };
+  return { a: map.get(NS_DRAWINGML), p: map.get(NS_PRESENTATIONML), r: map.get(NS_OFFICE_RELS) };
 }
 
 type ListKind = "none" | "ul" | "ol";
@@ -246,7 +282,43 @@ interface SlidePara {
 
 type BodyItem =
   | { kind: "para"; text: string; list: ListKind }
-  | { kind: "table"; html: string; text: string };
+  | { kind: "table"; html: string; text: string }
+  // WP-D9: eingebettetes Bild als fertige figure (an seiner Position im Folien-Fluss).
+  | { kind: "image"; html: string };
+
+// WP-D9: DOM-freies base64 (kein btoa im Node-Typecheck/Test, kein Buffer im Browser). Einfache
+// 3-Byte-Gruppierung mit Padding — ausreichend schnell für die gedeckelten Bildgrößen (≤ 5 MiB).
+const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+function bytesToBase64(bytes: Uint8Array): string {
+  const out: string[] = [];
+  for (let i = 0; i < bytes.length; i += 3) {
+    const b0 = bytes[i] ?? 0;
+    const b1 = bytes[i + 1];
+    const b2 = bytes[i + 2];
+    out.push(BASE64_ALPHABET[b0 >> 2] ?? "");
+    out.push(BASE64_ALPHABET[((b0 & 3) << 4) | ((b1 ?? 0) >> 4)] ?? "");
+    out.push(b1 === undefined ? "=" : (BASE64_ALPHABET[((b1 & 15) << 2) | ((b2 ?? 0) >> 6)] ?? ""));
+    out.push(b2 === undefined ? "=" : (BASE64_ALPHABET[b2 & 63] ?? ""));
+  }
+  return out.join("");
+}
+
+// WP-D9: rId des Bildes im p:pic-Block — a:blip mit r:embed, namespace-aware über die zentrale
+// Auflösung (attrName über ALLE gebundenen r-Präfixe; \s vor dem Attribut wie beim sldId-Scanner).
+function blipEmbedRid(picXml: string, ns: DrawingNs): string | null {
+  const blip = tagName(ns.a, "blip");
+  const embedAttr = attrName(ns.r, "embed");
+  const re = new RegExp(`<${blip}[^>]*\\s${embedAttr}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "u");
+  const m = re.exec(picXml);
+  return m ? (m[1] ?? m[2] ?? null) : null;
+}
+
+// WP-D9: figure exakt im Vertrag von wrapImagesInFigures (BILD-1a/1b): beidseitige data-image-id
+// (img UND figcaption, Token-Muster [\w-] — Sanitizer-Vertrag unangetastet), ehrlicher Platzhalter.
+function imageFigureHtml(src: string, id: string, caption: string): string {
+  return `<figure><img data-image-id="${id}" src="${src}"><figcaption data-image-id="${id}">${escapeHtml(caption)}</figcaption></figure>`;
+}
 
 // WP-D5b (GELB-Fix 4): Text eines <a:p>-Absatzes. <a:t>-Runs werden zusammengefügt, <a:br/> wird als
 // Leerzeichen behandelt (sonst verschmelzen „Hallo"<br>„Welt" zu „HalloWelt"). Reihenfolge-treu über
@@ -361,7 +433,7 @@ function renderBodyItems(items: readonly BodyItem[]): string {
       i += 1;
       continue;
     }
-    if (item.kind === "table") {
+    if (item.kind === "table" || item.kind === "image") {
       parts.push(item.html);
       i += 1;
       continue;
@@ -392,20 +464,29 @@ function renderBodyItems(items: readonly BodyItem[]): string {
 // BEWUSSTE GRENZE: verschachtelte Gruppen (p:grpSp) werden nicht rekursiv aufgelöst (Best-Effort).
 export function slideToHtml(
   slideXml: string,
-  opts: { slideNumber: number; slideLabel: string },
+  opts: {
+    slideNumber: number;
+    slideLabel: string;
+    // WP-D9: Bild-Auflösung rId → {src (data-URL), id (kw-img-<runToken>-N)} oder null (Format/Budget/
+    // fehlendes Ziel → ehrlicher Teilverlust, zählt der Aufrufer). Ohne resolveImage/imageCaption bleibt
+    // das Alt-Verhalten (Bilder nur gezählt) — Rückwärtskompatibilität für alle bestehenden Aufrufer.
+    resolveImage?: ((rId: string) => { src: string; id: string } | null) | undefined;
+    imageCaption?: string | undefined;
+  },
 ): { html: string; text: string; imageCount: number; tableCount: number } {
   const ns = drawingNs(slideXml);
   let title = "";
   const items: BodyItem[] = [];
   let tableCount = 0;
-  // Top-level Formen/Rahmen in Dokumentreihenfolge (sp = Text, graphicFrame = Tabelle). sp und
-  // graphicFrame verschachteln sich NICHT ineinander → das erste passende Schluss-Tag beendet den Block
-  // (kein Rückverweis nötig, der mit namespace-Alternation ohnehin nicht ginge). Gruppe 1 = getroffener
-  // Tag-Name (z. B. p:sp / graphicFrame), um Text- von Tabellen-Blöcken zu unterscheiden.
+  // Top-level Formen/Rahmen in Dokumentreihenfolge (sp = Text, graphicFrame = Tabelle, WP-D9: pic =
+  // Bild). Die drei verschachteln sich NICHT ineinander → das erste passende Schluss-Tag beendet den
+  // Block (kein Rückverweis nötig, der mit namespace-Alternation ohnehin nicht ginge). Gruppe 1 =
+  // getroffener Tag-Name (z. B. p:sp / graphicFrame / p:pic), um die Block-Arten zu unterscheiden.
   const spName = tagName(ns.p, "sp");
   const gfName = tagName(ns.p, "graphicFrame");
+  const picName = tagName(ns.p, "pic");
   const blockRe = new RegExp(
-    `<(${spName}|${gfName})[^>]*>[\\s\\S]*?<\\/(?:${spName}|${gfName})>`,
+    `<(${spName}|${gfName}|${picName})[^>]*>[\\s\\S]*?<\\/(?:${spName}|${gfName}|${picName})>`,
     "gu",
   );
   let m: RegExpExecArray | null;
@@ -418,6 +499,20 @@ export function slideToHtml(
       if (table) {
         items.push({ kind: "table", html: table.html, text: table.text });
         tableCount += 1;
+      }
+      continue;
+    }
+    // WP-D9: Bild-Block an seiner Position im Folien-Fluss (nicht alle am Ende).
+    if (/(?:^|:)pic$/u.test(elementName)) {
+      if (opts.resolveImage && opts.imageCaption !== undefined) {
+        const rid = blipEmbedRid(block, ns);
+        const resolved = rid ? opts.resolveImage(rid) : null;
+        if (resolved) {
+          items.push({
+            kind: "image",
+            html: imageFigureHtml(resolved.src, resolved.id, opts.imageCaption),
+          });
+        }
       }
       continue;
     }
@@ -444,6 +539,10 @@ export function slideToHtml(
   // Überschrift — sonst zählte eine reine Grafik-Folie fälschlich als „Text vorhanden".
   const textLines: string[] = title.length > 0 ? [title] : [];
   for (const item of items) {
+    if (item.kind === "image") {
+      // WP-D9: Bilder tragen KEINEN Klartext bei (der Platzhalter ist keine echte Aussage).
+      continue;
+    }
     if (item.kind === "table") {
       if (item.text.length > 0) {
         textLines.push(item.text);
@@ -475,6 +574,45 @@ function slideNumber(path: string): number {
   return Number.parseInt(/slide(\d+)\.xml$/.exec(path)?.[1] ?? "0", 10);
 }
 
+// WP-D5c/WP-D5d/WP-D9: EIN zentraler Relationship-Scanner für ALLE .rels-Dateien (presentation.xml.rels
+// UND Folien-Rels): <Relationship Id=… Target=…> — Reihenfolge/Quote-egal; der Elementscanner läuft über
+// die zentrale Namespace-Auflösung (Package-Relationships-URI → alle Präfixe, Unicode-NCName-tauglich);
+// fehlt die Deklaration, greift der präfix-tolerante Fallback von tagName. KEINE ad-hoc-Regexe daneben.
+function relationshipTargets(relsXml: string): Map<string, string> {
+  const relMap = new Map<string, string>();
+  if (relsXml.length === 0) {
+    return relMap;
+  }
+  const relNs = collectNamespacePrefixSets(relsXml);
+  const relName = tagName(relNs.get(NS_PACKAGE_RELS), "Relationship");
+  const relRe = new RegExp(`<${relName}[^>]*>`, "gu");
+  let rb: RegExpExecArray | null;
+  // biome-ignore lint/suspicious/noAssignInExpressions: Standard-Regex-Iteration.
+  while ((rb = relRe.exec(relsXml)) !== null) {
+    const id = attributeValue(rb[0], "Id");
+    const target = attributeValue(rb[0], "Target");
+    if (id && target) {
+      relMap.set(id, target);
+    }
+  }
+  return relMap;
+}
+
+// WP-D9: Media-Target aus Folien-Rels (relativ zu ppt/slides/, typisch "../media/image1.png") auf den
+// ZIP-Pfad normalisieren.
+function normalizeMediaPath(target: string): string {
+  const clean = target.replace(/^\.\//, "").replace(/^\/+/, "");
+  if (clean.startsWith("../")) {
+    return `ppt/${clean.slice(3)}`;
+  }
+  return clean.startsWith("ppt/") ? clean : `ppt/slides/${clean}`;
+}
+
+// Pfad der Folien-Rels-Datei zu einer Folie (ppt/slides/slideN.xml → ppt/slides/_rels/slideN.xml.rels).
+function slideRelsPath(slidePath: string): string {
+  return slidePath.replace(/^ppt\/slides\//, "ppt/slides/_rels/").concat(".rels");
+}
+
 function normalizeSlidePath(target: string): string {
   const clean = target.replace(/^\.\//, "").replace(/^\/+/, "");
   return clean.startsWith("ppt/") ? clean : `ppt/${clean}`;
@@ -496,23 +634,7 @@ export function resolveSlideOrder(files: Record<string, Uint8Array>): string[] {
     return numericAll();
   }
 
-  // WP-D5c/WP-D5d: rels: <Relationship Id=… Target=…> — Reihenfolge/Quote-egal. Der Elementscanner wird
-  // über DIESELBE zentrale Namespace-Auflösung geführt (Package-Relationships-URI → alle Präfixe, Unicode-
-  // NCName-tauglich) statt eines eigenen ASCII-Musters; fehlt die Deklaration, greift der präfix-tolerante
-  // Fallback von tagName.
-  const relMap = new Map<string, string>();
-  const relNs = collectNamespacePrefixSets(rels);
-  const relName = tagName(relNs.get(NS_PACKAGE_RELS), "Relationship");
-  const relRe = new RegExp(`<${relName}[^>]*>`, "gu");
-  let rb: RegExpExecArray | null;
-  // biome-ignore lint/suspicious/noAssignInExpressions: Standard-Regex-Iteration.
-  while ((rb = relRe.exec(rels)) !== null) {
-    const id = attributeValue(rb[0], "Id");
-    const target = attributeValue(rb[0], "Target");
-    if (id && target) {
-      relMap.set(id, target);
-    }
-  }
+  const relMap = relationshipTargets(rels);
 
   // WP-D5c: namespace-aware über ALLE gebundenen Präfixe — mehrere presentationml-/relationship-Präfixe
   // (auch pro sldId unterschiedlich) lösen so alle auf; die Reihenfolge der sldIdLst bleibt erhalten.
@@ -819,8 +941,9 @@ export function budgetedPptxUnzip(
   };
 }
 
-// WP-D5: strukturerhaltende PPTX-Extraktion (HTML + Klartext) in EINEM Durchgang. Bilder werden NICHT
-// inline übernommen (nur gezählt); der Aufrufer meldet den Verlust ehrlich und hängt das Original an.
+// WP-D5/WP-D9: strukturerhaltende PPTX-Extraktion (HTML + Klartext) in EINEM Durchgang. Mit
+// imageCaptionPlaceholder werden Bilder als <figure> mit Fußnote eingebettet (DOCX-Vertrag, BILD-1a/1b);
+// ohne bleibt das Alt-Verhalten (nur gezählt). Teilverluste (Format/Bild-Budget) werden ehrlich beziffert.
 export async function extractPptxRich(
   buffer: ArrayBuffer,
   opts: {
@@ -830,6 +953,12 @@ export async function extractPptxRich(
     budgetBytes?: number;
     maxEntries?: number;
     maxTotalBytes?: number;
+    // WP-D9: gesetzt → Bilder als figure/figcaption mit diesem (lokalisierten) Platzhalter einbetten.
+    imageCaptionPlaceholder?: string;
+    // WP-D9: festes Import-Token nur für deterministische Tests; sonst frisch je Lauf (BILD-1b).
+    imageRunToken?: string;
+    maxImageBytes?: number;
+    maxTotalImageBytes?: number;
   },
 ): Promise<PptxRichResult> {
   const maxSlides = opts.maxSlides ?? MAX_PPTX_SLIDES;
@@ -844,6 +973,17 @@ export async function extractPptxRich(
   const order = resolveSlideOrder(files);
   const readCount = Math.min(order.length, maxSlides);
 
+  // WP-D9: Bild-Einbettung — ein runToken je Import-Lauf (bodyweit kollisionsfeste IDs, BILD-1b), die
+  // Nummerierung läuft fortlaufend über ALLE Folien in Dokumentreihenfolge.
+  const wantImages = opts.imageCaptionPlaceholder !== undefined;
+  const runToken = opts.imageRunToken ?? newImageRunToken();
+  const maxImageBytes = opts.maxImageBytes ?? PPTX_MAX_IMAGE_BYTES;
+  const maxTotalImageBytes = opts.maxTotalImageBytes ?? PPTX_MAX_TOTAL_IMAGE_BYTES;
+  let embeddedImages = 0;
+  let droppedImageFormat = 0;
+  let droppedImageBudget = 0;
+  let totalImageBytes = 0;
+
   const htmlParts: string[] = [];
   const textParts: string[] = [];
   let imageCount = 0;
@@ -854,7 +994,47 @@ export async function extractPptxRich(
       continue;
     }
     const xml = decodeXml(files[path]);
-    const slide = slideToHtml(xml, { slideNumber: i + 1, slideLabel });
+    // WP-D9: Bild-Auflösung je Folie über die Folien-Rels (rId → ../media/*). Fehlendes Ziel/fehlende
+    // Bytes → null ohne Zähler (pathologisches Archiv; bleibt in der imageCount-Gesamtbilanz sichtbar).
+    const relMap = wantImages ? relationshipTargets(decodeXml(files[slideRelsPath(path)])) : null;
+    const resolveImage = wantImages
+      ? (rId: string): { src: string; id: string } | null => {
+          const target = relMap?.get(rId);
+          if (!target) {
+            return null;
+          }
+          const bytes = files[normalizeMediaPath(target)];
+          if (!bytes) {
+            return null;
+          }
+          const ext = /\.([a-z0-9]+)$/i.exec(target)?.[1]?.toLowerCase() ?? "";
+          const mime = PPTX_IMAGE_MIME[ext];
+          if (!mime) {
+            droppedImageFormat += 1;
+            return null;
+          }
+          // TEILVERLUST-Semantik (s. Konstanten): Bild-Budget gerissen → Bild weglassen, Import läuft.
+          if (
+            bytes.byteLength > maxImageBytes ||
+            totalImageBytes + bytes.byteLength > maxTotalImageBytes
+          ) {
+            droppedImageBudget += 1;
+            return null;
+          }
+          totalImageBytes += bytes.byteLength;
+          embeddedImages += 1;
+          return {
+            src: `data:${mime};base64,${bytesToBase64(bytes)}`,
+            id: `${IMAGE_ID_PREFIX}${runToken}-${embeddedImages}`,
+          };
+        }
+      : undefined;
+    const slide = slideToHtml(xml, {
+      slideNumber: i + 1,
+      slideLabel,
+      resolveImage,
+      imageCaption: opts.imageCaptionPlaceholder,
+    });
     imageCount += slide.imageCount;
     tableCount += slide.tableCount;
     htmlParts.push(slide.html);
@@ -870,8 +1050,11 @@ export async function extractPptxRich(
     truncated: order.length > readCount,
     imageCount,
     tableCount,
-    // Reines Text/Struktur-HTML: übersteigt es das Budget, meldet es der Aufrufer ehrlich (wie DOCX
-    // htmlOverflow) und bricht VOR dem Upload ab; der finale JSON-Guard bleibt zusätzlich.
+    // Folien-HTML (inkl. eingebetteter figures): übersteigt es das Budget, meldet es der Aufrufer ehrlich
+    // (wie DOCX htmlOverflow) und bricht VOR dem Upload ab; der finale JSON-Guard bleibt zusätzlich.
     htmlOverflow: utf8ByteLength(html) > budgetBytes,
+    embeddedImages,
+    droppedImageFormat,
+    droppedImageBudget,
   };
 }

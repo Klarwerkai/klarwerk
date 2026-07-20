@@ -414,6 +414,9 @@ export const CAPTURE_FILE_TEXT = {
   pptxTruncated: "capture.file.pptxTruncated",
   // WP-D5b: ehrlicher Fehler, wenn die PPTX das Archiv-/Dekompressionsbudget sprengt (statt UI-Freeze).
   pptxTooLarge: "capture.file.pptxTooLarge",
+  // WP-D9: ehrliche Teilverlust-Hinweise für Folien-Bilder (Format nicht unterstützt / Bild-Budget).
+  pptxImagesFormat: "capture.file.pptxImagesFormat",
+  pptxImagesBudget: "capture.file.pptxImagesBudget",
   // WP-BILD-1a (Pedi 20.07.): ehrlicher Startwert der Bild-Fußnote — noch keine (KI-)Beschreibung.
   imageCaptionPlaceholder: "capture.file.imageCaptionPlaceholder",
   // WP-D1d: Bilder komprimiert BEHALTEN, Original im Anhang (Anhang WIRKLICH gelungen).
@@ -429,7 +432,7 @@ export const CAPTURE_FILE_TEXT = {
   // WP-D4: formatabhängige Import-Quittung (DOCX: Struktur+Bilder Best-Effort; PDF: nur Text).
   importNoteDocx: "capture.file.importNote.docx",
   importNotePdf: "capture.file.importNote.pdf",
-  // WP-D5: PowerPoint-Import-Quittung (Text/Struktur je Folie; Layout/Animationen/Bilder/Notizen verloren).
+  // WP-D5/WP-D9: PowerPoint-Import-Quittung (Text/Struktur/Bilder je Folie; Layout/Animationen/Notizen verloren).
   importNotePptx: "capture.file.importNote.pptx",
   parseError: "capture.file.parseError",
   unsupported: "capture.file.unsupported",
