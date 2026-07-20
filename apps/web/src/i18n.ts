@@ -1302,6 +1302,7 @@ const de = {
   "capture.fType": "Wissensart",
   "capture.fCategory": "Domäne / Kategorie",
   "capture.submit": "Prüfen & einreichen",
+  "capture.submitBusy": "Wird eingereicht … (Entwurf, Anhänge, Freigabe)",
   "capture.readyTitle": "Speicher-Check",
   "capture.ready.title": "Titel",
   "capture.ready.content": "Aussage / Inhalt",
@@ -2951,6 +2952,8 @@ const de = {
     "Struktur-Vorschlag: Titel übernommen. Der formatierte Inhalt mit Bildern und Formatierung bleibt unverändert erhalten.",
   "fd.structureKeptRichBodyNoTitle":
     "Der formatierte Inhalt bleibt erhalten; der Struktur-Vorschlag wurde nicht in den Inhalt übernommen.",
+  "fd.structureRichTitleOnly":
+    "Formatierter Inhalt mit Bildern bleibt erhalten — die KI schlägt nur einen Titel vor.",
   "fd.assistAccepted":
     "KI-Hilfe übernommen. Bitte prüfen; gespeichert wird erst mit deiner nächsten Aktion.",
   "fd.aiProposal": "KI-Vorschlag",
@@ -4340,6 +4343,7 @@ const en: typeof de = {
   "capture.fType": "Knowledge type",
   "capture.fCategory": "Domain / category",
   "capture.submit": "Review & submit",
+  "capture.submitBusy": "Submitting … (draft, attachments, release)",
   "capture.readyTitle": "Save check",
   "capture.ready.title": "Title",
   "capture.ready.content": "Statement / content",
@@ -5975,6 +5979,8 @@ const en: typeof de = {
     "Structure suggestion: title adopted. The formatted content with images and formatting stays unchanged.",
   "fd.structureKeptRichBodyNoTitle":
     "The formatted content stays unchanged; the structure suggestion was not applied to the content.",
+  "fd.structureRichTitleOnly":
+    "Formatted content with images stays intact — the AI only suggests a title.",
   "fd.assistAccepted": "AI help adopted. Please review; nothing is saved until your next action.",
   "fd.aiProposal": "AI suggestion",
   "fd.aiProposalCheck": "AI-generated. Please review before you adopt anything.",
@@ -7348,6 +7354,7 @@ const nl: typeof de = {
   "capture.fType": "Kennissoort",
   "capture.fCategory": "Domein / categorie",
   "capture.submit": "Controleren & indienen",
+  "capture.submitBusy": "Wordt ingediend … (concept, bijlagen, vrijgave)",
   "capture.readyTitle": "Opslagcheck",
   "capture.ready.title": "Titel",
   "capture.ready.content": "Uitspraak / inhoud",
@@ -8968,6 +8975,8 @@ const nl: typeof de = {
     "Structuurvoorstel: titel overgenomen. De opgemaakte inhoud met afbeeldingen en opmaak blijft ongewijzigd behouden.",
   "fd.structureKeptRichBodyNoTitle":
     "De opgemaakte inhoud blijft behouden; het structuurvoorstel is niet in de inhoud overgenomen.",
+  "fd.structureRichTitleOnly":
+    "Opgemaakte inhoud met afbeeldingen blijft behouden — de AI stelt alleen een titel voor.",
   "fd.assistAccepted":
     "KI-hulp overgenomen. Controleer het; opgeslagen wordt er pas bij je volgende actie.",
   "fd.aiProposal": "KI-voorstel",

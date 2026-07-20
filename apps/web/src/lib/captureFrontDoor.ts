@@ -103,16 +103,38 @@ export function buildFrontDoorPayload(input: {
   };
 }
 
+// WP-D7 (Befund 3, Latenz/FALLBACK-Diagnose): Bei großen Dokumenten (z. B. das ganze BAADER-PDF inkl.
+// Inhaltsverzeichnis) ging bisher der KOMPLETTE Klartext als Prompt an den Reasoner. Ein riesiger Prompt
+// ist langsam (→ „hängt sehr lange") und läuft ins Modell-Timeout (30 s) → deterministischer Fallback
+// (FALLBACK-Badge). Der Struktur-Vorschlag braucht für Titel/Struktur nur den Anfang. Deshalb wird der
+// Prompt-Input hier sinnvoll gekappt (erste N Zeichen an einer Wortgrenze + ehrlicher Kürzungshinweis).
+// Das ändert NICHTS am gespeicherten Body — nur den an die KI gereichten Text (Original bleibt heilig).
+export const FRONT_DOOR_STRUCTURE_INPUT_MAX_CHARS = 12000;
+
+function capStructureInput(text: string): string {
+  if (text.length <= FRONT_DOOR_STRUCTURE_INPUT_MAX_CHARS) {
+    return text;
+  }
+  const head = text.slice(0, FRONT_DOOR_STRUCTURE_INPUT_MAX_CHARS);
+  const lastSpace = head.lastIndexOf(" ");
+  // An der letzten Wortgrenze kappen, sofern sie nicht zu weit vorne liegt (kein zerrissenes Wort).
+  const trimmed = (
+    lastSpace > FRONT_DOOR_STRUCTURE_INPUT_MAX_CHARS * 0.8 ? head.slice(0, lastSpace) : head
+  ).trimEnd();
+  return `${trimmed} […]`;
+}
+
 export function buildFrontDoorStructureInput(input: {
   title: string;
   bodyHtml: string;
 }): string {
   const title = compactTitle(input.title);
   const body = htmlToPlainText(normalizePastedHtml(input.bodyHtml));
-  return [title, body]
+  const combined = [title, body]
     .filter((part) => part.length > 0)
     .join("\n\n")
     .trim();
+  return capStructureInput(combined);
 }
 
 function renderList(items: string[]): string {

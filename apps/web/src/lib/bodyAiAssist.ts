@@ -58,6 +58,16 @@ export function shouldPreserveRichBody(bodyHtml: string | null | undefined): boo
   return false;
 }
 
+// WP-D7 (Befund 3, Pedi-Live-Test): Bei einem erhaltenen reichen Body (Bilder/Struktur/Formatierung) ist
+// der Aussage-/Bedingungen-/Maßnahmen-Teil des KI-Vorschlags nur der ganze Dokument-Fließtext (inkl.
+// Inhaltsverzeichnis) — für den Nutzer wirkt das wie „geht immer noch nicht". In diesem Fall zeigt das
+// Vorschlag-Panel NUR den kompakten Titel-Vorschlag. Die Entscheidung nutzt EXAKT dieselbe autoritative
+// Logik wie die Übernahme (shouldPreserveRichBody → richText.FLAT_BODY_TAGS), damit Anzeige und Übernahme
+// nie auseinanderlaufen — keine zweite, driftanfällige Liste.
+export function structureProposalTitleOnly(bodyHtml: string | null | undefined): boolean {
+  return shouldPreserveRichBody(bodyHtml);
+}
+
 // WP-D6b (bens GELB-Fix 3): PURE Übernahme-Entscheidung für den Struktur-Vorschlag — EINE Quelle für
 // Handler UND Test (kein simulateAccept-Klon). Ergebnis:
 //  - preserved: reicher Body wird NICHT ersetzt (byte-identisch erhalten);

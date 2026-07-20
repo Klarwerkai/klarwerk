@@ -15,6 +15,7 @@ import {
 } from "../lib/bodyAiAssist";
 import type { EditorFile } from "../lib/bodyFileLink";
 import { BODY_READ_BLOCKS_KEY, BODY_READ_TITLE_KEY } from "../lib/bodyReadMode";
+import { FILE_CAPTURE_ACCEPT } from "../lib/captureFromFile";
 import { knowledgeStudioState } from "../lib/editorApplySafety";
 import type { AttachmentLike } from "../lib/editorAttachmentContext";
 import { editorContentQuality } from "../lib/editorContentQuality";
@@ -276,7 +277,7 @@ export function KnowledgeInputStudio({
                   ref={attachInputRef}
                   type="file"
                   multiple
-                  accept=".txt,.md,.markdown,.csv,.log,.json,.docx,.pdf,application/pdf,image/*,video/*,audio/*"
+                  accept={FILE_CAPTURE_ACCEPT}
                   className="hidden"
                   onChange={onPickAttach}
                 />

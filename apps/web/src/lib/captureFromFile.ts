@@ -22,6 +22,18 @@ export interface FileDraftQueue {
 
 export type FileImportMode = "points" | "whole";
 
+// WP-D7 (Befund 1, Pedi-Live-Test): .pptx war im Datei-Dialog ausgegraut, weil MEHRERE file-inputs
+// eigene, hartkodierte accept-Listen ohne .pptx trugen. EINE Quelle der Wahrheit statt Duplikate.
+// FILE_IMPORT_ACCEPT = Dokument-Import (Text-Extraktion): Text/Markdown/CSV/JSON, Word, PDF, PowerPoint,
+// Bilder. Beide PPTX-Formen (Endung UND MIME), damit der Dialog die Datei nicht ausgraut.
+export const FILE_IMPORT_ACCEPT =
+  ".txt,.md,.markdown,.csv,.log,.json,.docx,.pdf,application/pdf,.pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation,image/*";
+
+// FILE_CAPTURE_ACCEPT = allgemeiner Capture-/Anhang-Upload: wie der Dokument-Import PLUS Video/Audio
+// (die per Transkription zu Text werden). Leitet sich aus FILE_IMPORT_ACCEPT ab → pptx bleibt automatisch
+// dabei, kein Drift.
+export const FILE_CAPTURE_ACCEPT = `${FILE_IMPORT_ACCEPT},video/*,audio/*`;
+
 // Punkte aus der Extraktion in auswählbare Listeneinträge heben (alle vorausgewählt —
 // der Experte wählt AB, was nicht gebraucht wird; übernommen wird erst auf Klick).
 export function selectablePoints(points: readonly ExtractedPoint[]): SelectableExtractPoint[] {

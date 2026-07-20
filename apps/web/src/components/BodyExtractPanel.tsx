@@ -20,6 +20,7 @@ import {
 } from "../lib/captureAttachments";
 import {
   CAPTURE_FILE_TEXT,
+  FILE_IMPORT_ACCEPT,
   type SelectableExtractPoint,
   selectablePoints,
   selectedCount,
@@ -287,7 +288,7 @@ export function BodyExtractPanel({
               {fileName ? t(CAPTURE_FILE_TEXT.replace) : t(CAPTURE_FILE_TEXT.upload)}
               <input
                 type="file"
-                accept=".txt,.md,.markdown,.csv,.log,.json,.docx,.pdf,application/pdf,image/*"
+                accept={FILE_IMPORT_ACCEPT}
                 className="hidden"
                 onChange={(e) => void onFile(e)}
               />

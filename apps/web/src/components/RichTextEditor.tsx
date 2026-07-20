@@ -51,6 +51,21 @@ const IMAGE_SCALE_OPTIONS: Array<{ value: ImageScaleValue; label: string }> = [
   { value: "100", label: "Volle Breite" },
 ];
 
+// WP-D7 (Befund 2, Pedi-Live-Test): Bild-Fußnoten waren sichtbar, aber die figcaption ließ sich nicht
+// bearbeiten — Browser behandeln ein <figure> mit <img> oft als atomaren Block, sodass der Klick nicht in
+// den Fußnotentext gelangt. Im Editor daher gezielt verankern: das <img> ist NICHT editierbar (kein
+// versehentliches Zerschneiden), die <figcaption> AUSDRÜCKLICH editierbar (klick- und tippbar). Diese
+// contenteditable-Attribute sind reine Editier-UX; der Sanitizer entfernt sie beim Rausschreiben wieder
+// (nicht in der Allowlist) → sie persistieren nie im gespeicherten bodyHtml.
+function enhanceFiguresForEditing(root: HTMLElement): void {
+  for (const img of root.querySelectorAll("figure img")) {
+    img.setAttribute("contenteditable", "false");
+  }
+  for (const caption of root.querySelectorAll("figure figcaption")) {
+    caption.setAttribute("contenteditable", "true");
+  }
+}
+
 // KW-STR / SCRUM-45/46/48: minimaler nativer WYSIWYG (contentEditable, keine Editor-Lib).
 // Speichert sanitisiertes HTML; Vorschau↔Bearbeiten ohne State-Verlust.
 // SCRUM-384: Toolbar folgt dem ARGUS-Muster (H2 H3 ¶ | B I | Listen/Link | Bild/Datei |
@@ -107,6 +122,8 @@ export function RichTextEditor({
     const safe = sanitizeHtml(value);
     if (mode === "edit" && el && el.innerHTML !== safe && document.activeElement !== el) {
       el.innerHTML = safe;
+      // WP-D7 (Befund 2): Bild-Fußnoten nach jedem innerHTML-Setzen editierbar verankern.
+      enhanceFiguresForEditing(el);
     }
   }, [value, mode]);
 

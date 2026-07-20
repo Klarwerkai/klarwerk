@@ -16,6 +16,7 @@ import {
   applySpellingAssistPreservingHtml,
   applyStructureProposal,
   bodyTextForAssist,
+  structureProposalTitleOnly,
 } from "../lib/bodyAiAssist";
 import {
   ASSIST_ACTIONS,
@@ -100,6 +101,8 @@ export function CaptureFrontDoor(): JSX.Element {
   const locale = toReasonerLocale(i18n.language);
   const structureInput = buildFrontDoorStructureInput({ title, bodyHtml });
   const hasStructureInput = structureInput.length > 0;
+  // WP-D7 (Befund 3): reicher Body erhalten → Vorschlag-Panel zeigt NUR den Titel (kein Fließtext-Dump).
+  const proposalTitleOnly = structureProposalTitleOnly(bodyHtml);
   const assistInput = bodyTextForAssist(bodyHtml);
   const hasAssistInput = assistInput.trim().length > 0;
   const submitComplete = submittedKo !== null;
@@ -682,57 +685,67 @@ export function CaptureFrontDoor(): JSX.Element {
                     </div>
                     <p className="mt-0.5 text-text">{structureProposal.title}</p>
                   </div>
-                  <div>
-                    <div className="text-[12px] font-semibold uppercase text-muted-2">
-                      {t("fd.fieldStatement")}
-                    </div>
-                    <p className="mt-0.5 text-text">{structureProposal.statement}</p>
-                  </div>
-                  <div>
-                    <div className="text-[12px] font-semibold uppercase text-muted-2">
-                      {t("fd.fieldConditions")}
-                    </div>
-                    {structureProposal.conditions.length > 0 ? (
-                      <ul className="mt-1 list-disc space-y-1 pl-5 text-muted">
-                        {structureProposal.conditions.map((condition) => (
-                          <li key={condition}>{condition}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="mt-0.5 text-muted">{t("fd.noConditions")}</p>
-                    )}
-                  </div>
-                  <div>
-                    <div className="text-[12px] font-semibold uppercase text-muted-2">
-                      {t("fd.fieldMeasures")}
-                    </div>
-                    {structureProposal.measures.length > 0 ? (
-                      <ul className="mt-1 list-disc space-y-1 pl-5 text-muted">
-                        {structureProposal.measures.map((measure) => (
-                          <li key={measure}>{measure}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="mt-0.5 text-muted">{t("fd.noMeasures")}</p>
-                    )}
-                  </div>
-                  {structureProposal.tags.length > 0 ? (
-                    <div>
-                      <div className="text-[12px] font-semibold uppercase text-muted-2">
-                        {t("fd.fieldTags")}
+                  {/* WP-D7 (Befund 3): reicher Body erhalten → NUR Titel + ehrliche Kurz-Erklärung, KEIN
+                      Aussage-/Bedingungen-/Maßnahmen-Dump (der wäre nur der ganze Dokument-Fließtext). */}
+                  {proposalTitleOnly ? (
+                    <p className="text-[12.5px] leading-relaxed text-muted">
+                      {t("fd.structureRichTitleOnly")}
+                    </p>
+                  ) : (
+                    <>
+                      <div>
+                        <div className="text-[12px] font-semibold uppercase text-muted-2">
+                          {t("fd.fieldStatement")}
+                        </div>
+                        <p className="mt-0.5 text-text">{structureProposal.statement}</p>
                       </div>
-                      <div className="mt-1 flex flex-wrap gap-1.5">
-                        {structureProposal.tags.map((tag) => (
-                          <span
-                            key={tag}
-                            className="rounded-pill bg-hairline-soft px-2 py-0.5 text-[11px] text-muted"
-                          >
-                            {tag}
-                          </span>
-                        ))}
+                      <div>
+                        <div className="text-[12px] font-semibold uppercase text-muted-2">
+                          {t("fd.fieldConditions")}
+                        </div>
+                        {structureProposal.conditions.length > 0 ? (
+                          <ul className="mt-1 list-disc space-y-1 pl-5 text-muted">
+                            {structureProposal.conditions.map((condition) => (
+                              <li key={condition}>{condition}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="mt-0.5 text-muted">{t("fd.noConditions")}</p>
+                        )}
                       </div>
-                    </div>
-                  ) : null}
+                      <div>
+                        <div className="text-[12px] font-semibold uppercase text-muted-2">
+                          {t("fd.fieldMeasures")}
+                        </div>
+                        {structureProposal.measures.length > 0 ? (
+                          <ul className="mt-1 list-disc space-y-1 pl-5 text-muted">
+                            {structureProposal.measures.map((measure) => (
+                              <li key={measure}>{measure}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="mt-0.5 text-muted">{t("fd.noMeasures")}</p>
+                        )}
+                      </div>
+                      {structureProposal.tags.length > 0 ? (
+                        <div>
+                          <div className="text-[12px] font-semibold uppercase text-muted-2">
+                            {t("fd.fieldTags")}
+                          </div>
+                          <div className="mt-1 flex flex-wrap gap-1.5">
+                            {structureProposal.tags.map((tag) => (
+                              <span
+                                key={tag}
+                                className="rounded-pill bg-hairline-soft px-2 py-0.5 text-[11px] text-muted"
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                    </>
+                  )}
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2 border-t border-hairline pt-3">
                   <Button type="button" variant="primary" onClick={acceptStructureProposal}>

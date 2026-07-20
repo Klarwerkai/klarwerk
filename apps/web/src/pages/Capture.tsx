@@ -86,6 +86,8 @@ import { CAPTURE_FLOW_TEXT } from "../lib/captureFlowGuide";
 import {
   CAPTURE_FILE_TEXT,
   DraftPayloadTooLargeError,
+  FILE_CAPTURE_ACCEPT,
+  FILE_IMPORT_ACCEPT,
   type FileDraftQueue,
   type FileImportMode,
   type SelectableExtractPoint,
@@ -208,9 +210,6 @@ function speechCtor(): SpeechCtor | undefined {
 
 const textareaCls =
   "w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none placeholder:text-muted-2 focus:border-ink/30";
-
-const FILE_IMPORT_ACCEPT =
-  ".txt,.md,.markdown,.csv,.log,.json,.docx,.pdf,application/pdf,.pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation,image/*";
 
 interface FrontDoorDraftSavedState {
   id: string;
@@ -2366,7 +2365,7 @@ export function Capture(): JSX.Element {
                     <input
                       type="file"
                       multiple
-                      accept=".txt,.md,.markdown,.csv,.log,.json,.docx,.pdf,application/pdf,image/*,video/*,audio/*"
+                      accept={FILE_CAPTURE_ACCEPT}
                       className="hidden"
                       onChange={(e) => void onDocs(e)}
                     />
@@ -2378,7 +2377,7 @@ export function Capture(): JSX.Element {
                     <input
                       type="file"
                       multiple
-                      accept=".txt,.md,.markdown,.csv,.log,.json,.docx,.pdf,application/pdf,image/*,video/*,audio/*"
+                      accept={FILE_CAPTURE_ACCEPT}
                       className="hidden"
                       onChange={(e) => void onAttach(e)}
                     />
@@ -3083,7 +3082,7 @@ export function Capture(): JSX.Element {
                     <input
                       type="file"
                       multiple
-                      accept=".txt,.md,.markdown,.csv,.log,.json,.docx,.pdf,application/pdf,image/*,video/*,audio/*"
+                      accept={FILE_CAPTURE_ACCEPT}
                       className="hidden"
                       onChange={(e) => void onDocs(e)}
                     />
@@ -3631,7 +3630,16 @@ export function Capture(): JSX.Element {
                       disabled={submit.isPending || !readiness?.canSave}
                       onClick={() => submit.mutate()}
                     >
-                      {t("capture.submit")}
+                      {/* WP-D7 (Befund 4): ehrliches Ladefeedback — Einreichen kettet mehrere Netz-Aufrufe
+                          (Entwurf, Anhänge, Freigabe); ohne Spinner wirkte das wie „hängt". */}
+                      {submit.isPending ? (
+                        <>
+                          <Loader2 size={15} className="animate-spin" />
+                          {t("capture.submitBusy")}
+                        </>
+                      ) : (
+                        t("capture.submit")
+                      )}
                     </Button>
                     <HelpTip {...chelp("submitReview")} />
                   </div>
@@ -3980,7 +3988,15 @@ export function Capture(): JSX.Element {
                   disabled={submit.isPending || !readiness?.canSave}
                   onClick={() => submit.mutate()}
                 >
-                  {t("capture.submit")} →
+                  {/* WP-D7 (Befund 4): ehrliches Ladefeedback beim Einreichen (mehrere Netz-Aufrufe). */}
+                  {submit.isPending ? (
+                    <>
+                      <Loader2 size={15} className="animate-spin" />
+                      {t("capture.submitBusy")}
+                    </>
+                  ) : (
+                    <>{t("capture.submit")} →</>
+                  )}
                 </Button>
                 <HelpTip {...chelp("submitReview")} />
               </div>

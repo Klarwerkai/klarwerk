@@ -247,12 +247,19 @@ describe("KW-W2-01: Ganzdokument-Import als bewusster Entwurf", () => {
 
     expect(captureSource).toContain("CAPTURE_FILE_TEXT.formatTitle");
     expect(captureSource).toContain("CAPTURE_FILE_TEXT.formatHint");
-    expect(captureSource).toContain("const FILE_IMPORT_ACCEPT");
+    // WP-D7 (Befund 1): die accept-Liste lebt jetzt ZENTRAL in captureFromFile.ts (kein hartkodierter
+    // Dialog mehr); Capture referenziert nur noch die Konstante.
     expect(captureSource).toContain("accept={FILE_IMPORT_ACCEPT}");
     expect(captureSource).toContain("CAPTURE_FILE_TEXT.supportedFormats");
     expect(captureSource).toContain("CAPTURE_FILE_TEXT.unsupportedFormats");
-    // WP-D5: PPTX ist jetzt aktiv auswählbar (Best-Effort-Import), RTF bleibt außen vor.
-    expect(captureSource).toContain(".pptx");
+    // WP-D5/WP-D7: PPTX ist aktiv auswählbar (Best-Effort-Import), RTF bleibt außen vor — jetzt an der
+    // zentralen Quelle gepinnt.
+    const acceptSource = readFileSync(
+      resolve(process.cwd(), "apps/web/src/lib/captureFromFile.ts"),
+      "utf8",
+    );
+    expect(acceptSource).toContain("export const FILE_IMPORT_ACCEPT");
+    expect(acceptSource).toContain(".pptx");
     expect(captureSource).not.toContain(".rtf");
     expect(deHint).toMatch(/TXT\/MD/);
     // WP-D1/WP-D4/WP-D5: der Hinweis unterscheidet jetzt ehrlich nach Format (DOCX strukturerhaltend
