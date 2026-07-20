@@ -1,13 +1,13 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import fastifyHelmet from "@fastify/helmet";
 import type { FastifyInstance } from "fastify";
 import { buildApp, buildPgServices, buildServices } from "./build-app";
 import { createPool, migrate } from "./db";
 import { buildDevPersistServices } from "./dev-persist";
 import { type FactoryReset, factoryResetUnavailable } from "./factory-reset";
 import { registerNoindexHook } from "./noindex-hook";
+import { registerSecurityHeaders } from "./security-headers";
 import { assertPersistentStore, normalizeEnv } from "./storage-guard";
 import { resolveTrashSweepIntervalMs, startTrashSweepScheduler } from "./trash-sweep-scheduler";
 import { registerWebStatic } from "./web-static";
@@ -27,52 +27,11 @@ async function pgServices(databaseUrl: string) {
 // Kanonik-Redirect, noindex (Vorab-Phase) und die gebaute SPA als Fallback
 // neben der API. Bleibt aus den Tests heraus (buildApp ist rein API).
 async function configureWebDelivery(app: FastifyInstance): Promise<void> {
-  await app.register(fastifyHelmet, {
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        imgSrc: ["'self'", "data:"],
-        fontSrc: ["'self'"],
-        connectSrc: ["'self'"],
-        objectSrc: ["'none'"],
-        baseUri: ["'self'"],
-        formAction: ["'self'"],
-        frameAncestors: ["'none'"],
-      },
-    },
-    hsts: { maxAge: 31_536_000, includeSubDomains: true, preload: true },
-  });
-
-  // WP-KLARA-1: NUR /word-addin/* bekommt eine eigene CSP. Das Word-Taskpane MUSS im Office-Webview
-  // einbettbar sein (Word Online lädt es im iframe → frame-ancestors 'none' würde es blockieren) und
-  // lädt office.js von der offiziellen Microsoft-CDN + eigenes Inline-JS/CSS (bewusst selbstenthaltende
-  // statische Seite ohne Build). Die Ausnahme bleibt ENG: nur dieser Pfad, frame-ancestors nur auf
-  // Office-Host-Domains, connect-src bleibt 'self' (API-Aufrufe sind same-origin — kein CORS-Umbau).
-  // Alle übrigen Routen behalten die strikte globale CSP von oben.
-  const wordAddinCsp = [
-    "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' https://appsforoffice.microsoft.com",
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data:",
-    "connect-src 'self'",
-    "object-src 'none'",
-    "base-uri 'self'",
-    "form-action 'self'",
-    "frame-ancestors 'self' https://*.office.com https://*.officeapps.live.com https://*.live.com https://*.microsoft.com",
-  ].join("; ");
-  // WP-E-Regel: app-globale onSend-Hooks IMMER synchron im Callback-Stil (kein async — s.
-  // sync-onsend-hooks.test.ts; ein async-Hook öffnete das Doppel-Send-Fenster ERR_HTTP_HEADERS_SENT).
-  app.addHook("onSend", (request, reply, payload, done) => {
-    if (request.url.startsWith("/word-addin/")) {
-      reply.header("Content-Security-Policy", wordAddinCsp);
-      // X-Frame-Options kennt keine Domain-Liste — für diesen Pfad entfernen; die CSP-frame-ancestors
-      // oben ist die präzisere, von modernen Engines bevorzugte Grenze.
-      reply.removeHeader("X-Frame-Options");
-    }
-    done(null, payload);
-  });
+  // WP-KLARA-1b (K1/K2): globale Security-Header (helmet, frame-ancestors 'none') + die EXAKT an die
+  // kanonischen Taskpane-Pfade gebundene Word-Add-in-CSP-Ausnahme — als exportierte Produktionsfunktion
+  // (security-headers.ts), gegen die der Header-Matrix-Test per echtem HTTP-inject läuft (keine Kopie,
+  // keine Drift; gleiches Muster wie registerNoindexHook).
+  await registerSecurityHeaders(app);
 
   // Kanonik: app.<domain> → 301 auf <domain> (pfaderhaltend).
   app.addHook("onRequest", async (request, reply) => {

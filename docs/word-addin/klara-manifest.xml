@@ -31,5 +31,7 @@
   <DefaultSettings>
     <SourceLocation DefaultValue="https://app.klarwerk.ai/word-addin/taskpane.html" />
   </DefaultSettings>
-  <Permissions>ReadWriteDocument</Permissions>
+  <!-- WP-KLARA-1b (K3, Least-Privilege): das Add-in LIEST nur die Selektion (getSelectedDataAsync) und
+       mutiert das Dokument nie — ReadDocument reicht; ReadWriteDocument war unnoetig breit. -->
+  <Permissions>ReadDocument</Permissions>
 </OfficeApp>

@@ -109,6 +109,9 @@
     <h2 data-t="sendTitle"></h2>
     <p class="muted" data-t="sendHint"></p>
     <button type="button" class="primary" id="send-btn" data-t="sendCta" disabled></button>
+    <!-- WP-KLARA-1b (K5): ehrlicher Zustand, wenn Office.js fehlt/nicht bereit wird (Seite im normalen
+         Browser geoeffnet) — statt eines toten oder crashenden Senden-Knopfs. -->
+    <div id="office-hint" class="hidden"></div>
     <div id="send-status" class="status hidden"></div>
     <p id="open-block" class="hidden">
       <a id="open-link" href="https://app.klarwerk.ai/erfassen" target="_blank" rel="noopener" data-t="openLink"></a>
@@ -181,6 +184,7 @@
         sendOk: "Entwurf angelegt: {title}",
         sendAuth: "Nicht angemeldet — bitte zuerst bei KLARWERK anmelden.",
         sendError: "Senden fehlgeschlagen ({detail}). Es wurde KEIN Entwurf angelegt.",
+        noOffice: "Diese Seite laeuft als Klara-Panel in Microsoft Word. Im Browser kannst du nur den Anmelde-Status sehen — Senden ist hier deaktiviert.",
         openLink: "In KLARWERK oeffnen (Entwuerfe im Erfassen-Bereich)",
         helpTitle: "Was kann Klara hier?",
         helpCan1: "Deine Textauswahl als KLARWERK-Entwurf anlegen (nur Entwurf, kein fertiges Wissensobjekt).",
@@ -206,6 +210,7 @@
         sendOk: "Draft created: {title}",
         sendAuth: "Not signed in — please sign in to KLARWERK first.",
         sendError: "Sending failed ({detail}). NO draft was created.",
+        noOffice: "This page runs as the Klara panel inside Microsoft Word. In a browser you can only see the sign-in status — sending is disabled here.",
         openLink: "Open in KLARWERK (drafts in the capture area)",
         helpTitle: "What can Klara do here?",
         helpCan1: "Create a KLARWERK draft from your text selection (draft only, not a finished knowledge object).",
@@ -231,6 +236,7 @@
         sendOk: "Concept aangemaakt: {title}",
         sendAuth: "Niet aangemeld — meld je eerst aan bij KLARWERK.",
         sendError: "Versturen mislukt ({detail}). Er is GEEN concept aangemaakt.",
+        noOffice: "Deze pagina draait als Klara-paneel in Microsoft Word. In een browser zie je alleen de aanmeldstatus — versturen is hier uitgeschakeld.",
         openLink: "In KLARWERK openen (concepten in het vastleg-gebied)",
         helpTitle: "Wat kan Klara hier?",
         helpCan1: "Je tekstselectie als KLARWERK-concept aanmaken (alleen concept, geen afgerond kennisobject).",
@@ -242,6 +248,35 @@
 
     var lang = "de";
     var signedIn = false;
+
+    // WP-KLARA-1b (K5): Office-Verfuegbarkeit ist ein EIGENER, ehrlicher Zustand. officeChecked wird
+    // true, sobald die Erkennung abgeschlossen ist (Office.onReady ODER Frist abgelaufen); officeReady
+    // nur, wenn Office WIRKLICH bereit ist. Der Senden-Knopf ist NUR bei angemeldet UND Office-bereit
+    // aktiv — vorher/im Browser ist er mit ehrlichem Grund deaktiviert (kein toter/crashender Klick).
+    var officeChecked = false;
+    var officeReady = false;
+    var OFFICE_READY_TIMEOUT_MS = 4000;
+
+    function officeUsable() {
+      return officeReady && window.Office && Office.context && Office.context.document;
+    }
+
+    function updateSendState() {
+      var sendBtn = document.getElementById("send-btn");
+      var hint = document.getElementById("office-hint");
+      var unavailable = officeChecked && !officeUsable();
+      if (unavailable) {
+        hint.className = "status warn";
+        hint.textContent = t("noOffice");
+        sendBtn.disabled = true;
+        sendBtn.title = t("noOffice"); // ehrlicher Grund direkt am deaktivierten Knopf
+      } else {
+        hint.className = "hidden";
+        hint.textContent = "";
+        sendBtn.title = "";
+        sendBtn.disabled = !(signedIn && officeUsable());
+      }
+    }
 
     function t(key, vars) {
       var raw = (STRINGS[lang] && STRINGS[lang][key]) || STRINGS.de[key] || key;
@@ -266,6 +301,7 @@
         document.getElementById("lang-" + code).className = code === lang ? "active" : "";
       });
       renderStatics();
+      updateSendState(); // K5: Office-Hinweis/Knopf-Grund in der neuen Sprache neu aufbauen
       checkSession(); // Statuszeile in der neuen Sprache neu aufbauen
     }
 
@@ -274,7 +310,6 @@
     function checkSession() {
       var box = document.getElementById("session-status");
       var loginBlock = document.getElementById("login-block");
-      var sendBtn = document.getElementById("send-btn");
       box.className = "status warn";
       box.textContent = t("sessionChecking");
       fetch("/api/auth/me", { credentials: "include" })
@@ -289,20 +324,20 @@
             box.className = "status ok";
             box.textContent = t("sessionOk", { name: user.name || user.email || "?" });
             loginBlock.className = "hidden";
-            sendBtn.disabled = false;
           } else {
             box.className = "status warn";
             box.textContent = t("sessionOff");
             loginBlock.className = "";
-            sendBtn.disabled = true;
           }
+          // K5: der Knopf haengt an Anmeldung UND Office-Bereitschaft (eine Entscheidungsstelle).
+          updateSendState();
         })
         .catch(function () {
           signedIn = false;
           box.className = "status warn";
           box.textContent = t("sessionError");
           loginBlock.className = "";
-          sendBtn.disabled = true;
+          updateSendState();
         });
     }
 
@@ -315,6 +350,12 @@
     // (b) Kernfunktion: Word-Selektion lesen → Front-Door-ENTWURF über die bestehende Draft-API
     // (POST /api/drafts, gleicher Endpunkt wie die App; origin "frontdoor" wie der Front-Door-Save).
     function sendSelection() {
+      // K5 (Defense-in-Depth): ohne bereites Office NIE in die Word-API greifen — ehrlicher Hinweis
+      // statt ReferenceError/toter Klick (der Knopf ist dann ohnehin deaktiviert).
+      if (!officeUsable()) {
+        showSendStatus("warn", t("noOffice"));
+        return;
+      }
       var openBlock = document.getElementById("open-block");
       openBlock.className = "hidden";
       Office.context.document.getSelectedDataAsync(Office.CoercionType.Text, function (result) {
@@ -373,12 +414,27 @@
     document.getElementById("send-btn").addEventListener("click", sendSelection);
 
     renderStatics();
-    if (window.Office && Office.onReady) {
-      Office.onReady(function () { checkSession(); });
-    } else {
-      // Ausserhalb von Word (z. B. Browser-Vorschau): Session-Check laeuft trotzdem, Senden braucht Word.
-      checkSession();
+    // WP-KLARA-1b (K5): timeout-basierte Office-Erkennung. Office.onReady mit FRIST — laedt office.js
+    // nicht (Blocker/Offline/normaler Browser) oder wird Office nie bereit, kippt der Zustand nach
+    // OFFICE_READY_TIMEOUT_MS EHRLICH auf „kein Office" (Hinweis + deaktivierter Knopf mit Grund).
+    // Ein SPAETES onReady nach der Frist gewinnt trotzdem (ehrliche Erholung statt Dauer-Sperre).
+    function markOfficeChecked(ready) {
+      officeChecked = true;
+      officeReady = Boolean(ready);
+      updateSendState();
     }
+    if (window.Office && Office.onReady) {
+      var officeTimer = setTimeout(function () { markOfficeChecked(false); }, OFFICE_READY_TIMEOUT_MS);
+      Office.onReady(function () {
+        clearTimeout(officeTimer);
+        markOfficeChecked(Boolean(Office.context && Office.context.document));
+      });
+    } else {
+      // office.js gar nicht geladen (Seite im normalen Browser geoeffnet): sofort ehrlicher Zustand.
+      markOfficeChecked(false);
+    }
+    // Der Session-Check laeuft in JEDEM Fall — der Anmelde-Status ist auch im Browser sichtbar.
+    checkSession();
   </script>
 </body>
 </html>

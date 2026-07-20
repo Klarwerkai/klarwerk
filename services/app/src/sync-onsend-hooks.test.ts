@@ -15,9 +15,15 @@ function read(rel: string): string {
   return readFileSync(join(SRC, rel), "utf8");
 }
 
-// Die beiden Produktionsstellen mit app-globalen onSend-Hooks: der Noindex-Hook (von server.ts
-// verdrahtet) und Schicht 2 der Add-in-Statics (per skip-override app-global).
-const PRODUCTION_FILES = ["server.ts", "noindex-hook.ts", "routes/addin-static-routes.ts"];
+// Die Produktionsstellen mit app-globalen onSend-Hooks: der Noindex-Hook (von server.ts verdrahtet),
+// die Word-Add-in-CSP-Ausnahme (WP-KLARA-1b: aus server.ts in die exportierte Produktionsfunktion
+// security-headers.ts gezogen) und Schicht 2 der Add-in-Statics (per skip-override app-global).
+const PRODUCTION_FILES = [
+  "server.ts",
+  "noindex-hook.ts",
+  "security-headers.ts",
+  "routes/addin-static-routes.ts",
+];
 
 describe("WP-E2: globale onSend-Hooks bleiben synchron (Callback-Stil)", () => {
   it("keine async-onSend-Registrierung in den Produktionsdateien", () => {
@@ -28,16 +34,22 @@ describe("WP-E2: globale onSend-Hooks bleiben synchron (Callback-Stil)", () => {
     }
   });
 
-  it("beide Stellen registrieren onSend im 4-Parameter-Callback-Stil (done)", () => {
+  it("alle Stellen registrieren onSend im 4-Parameter-Callback-Stil (done)", () => {
     expect(read("noindex-hook.ts")).toMatch(
       /addHook\(\s*["']onSend["']\s*,\s*\(_?request,\s*reply,\s*payload,\s*done\)/,
+    );
+    expect(read("security-headers.ts")).toMatch(
+      /addHook\(\s*["']onSend["']\s*,\s*\(request,\s*reply,\s*payload,\s*done\)/,
     );
     expect(read("routes/addin-static-routes.ts")).toMatch(
       /addHook\(\s*["']onSend["']\s*,\s*\(request,\s*reply,\s*payload,\s*done\)/,
     );
   });
 
-  it("server.ts verdrahtet den Noindex-Hook über die exportierte Produktionsfunktion", () => {
+  it("server.ts verdrahtet Noindex- und Security-Header-Hooks über die exportierten Produktionsfunktionen", () => {
     expect(read("server.ts")).toMatch(/registerNoindexHook\(app\)/);
+    // WP-KLARA-1b: der Header-Matrix-Test läuft gegen registerSecurityHeaders — server.ts muss exakt
+    // dieselbe Funktion verdrahten, sonst testet die Matrix eine Kopie.
+    expect(read("server.ts")).toMatch(/registerSecurityHeaders\(app\)/);
   });
 });

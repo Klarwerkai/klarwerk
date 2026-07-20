@@ -99,7 +99,9 @@ describe("WP-KLARA-1: Manifest + Taskpane + Hosting", () => {
     expect(doc.getElementsByTagName("SourceLocation")[0]?.getAttribute("DefaultValue")).toBe(
       "https://app.klarwerk.ai/word-addin/taskpane.html",
     );
-    expect(text("Permissions")).toBe("ReadWriteDocument");
+    // WP-KLARA-1b (K3, Least-Privilege): NUR lesen (getSelectedDataAsync) — keine Dokumentmutation,
+    // also KEIN ReadWriteDocument.
+    expect(text("Permissions")).toBe("ReadDocument");
     // WordApi 1.1 reicht (Selektion lesen) — Requirement-Set bewusst niedrig.
     expect(doc.getElementsByTagName("Set")[0]?.getAttribute("Name")).toBe("WordApi");
     expect(doc.getElementsByTagName("Set")[0]?.getAttribute("MinVersion")).toBe("1.1");
@@ -140,17 +142,37 @@ describe("WP-KLARA-1: Manifest + Taskpane + Hosting", () => {
     expect(html).toContain("KEIN Entwurf angelegt");
   });
 
-  it("Server: gezielte CSP-Ausnahme NUR fuer /word-addin/* (Office-Einbettung + CDN), global bleibt strikt", () => {
-    const server = read("services/app/src/server.ts");
-    // Globale CSP unangetastet streng.
-    expect(server).toContain("frameAncestors: [\"'none'\"]");
-    // Pfad-Ausnahme: Einbettung nur für Office-Hosts, Skripte nur self + Microsoft-CDN + inline.
-    expect(server).toContain('request.url.startsWith("/word-addin/")');
-    expect(server).toContain("https://appsforoffice.microsoft.com");
-    expect(server).toContain("frame-ancestors 'self' https://*.office.com");
-    expect(server).toContain('reply.removeHeader("X-Frame-Options")');
-    // connect-src bleibt 'self' — same-origin API, KEIN CORS-Umbau.
-    expect(server).toContain("connect-src 'self'");
+  // WP-KLARA-1b (K1): der fruehere Quelltext-String-Pin der CSP-Ausnahme (der den unsicheren
+  // Prefix-Ansatz sogar festschrieb) ist ERSETZT durch die echte HTTP-Header-Matrix gegen die reale
+  // Produktionsregistrierung — s. tests/app/word-addin-csp.test.ts (inject-Matrix inkl. Negativfaelle)
+  // und services/app/src/sync-onsend-hooks.test.ts (server.ts verdrahtet registerSecurityHeaders).
+
+  // WP-KLARA-1b (K5): der Office-unavailable-Pfad ist KONTROLLIERT — kein toter/crashender Klick,
+  // wenn office.js fehlt oder Office nie bereit wird (Seite im normalen Browser geoeffnet).
+  it("Taskpane: timeout-basierte Office-Erkennung + ehrlicher Browser-Zustand (DE/EN/NL), Guard vor der Word-API", () => {
+    const html = read(TASKPANE);
+    // Erkennung: Office.onReady MIT Frist; ohne window.Office sofort ehrlicher Zustand.
+    expect(html).toContain("OFFICE_READY_TIMEOUT_MS = 4000");
+    expect(html).toContain("Office.onReady(function () {");
+    expect(html).toContain("clearTimeout(officeTimer)");
+    expect(html).toContain("markOfficeChecked(false)");
+    // Ehrlicher Hinweis in allen drei Sprachen (eigener noOffice-Text je Woerterbuch).
+    expect((html.match(/noOffice: "/g) ?? []).length).toBe(3);
+    expect(html).toContain("Diese Seite laeuft als Klara-Panel in Microsoft Word.");
+    expect(html).toContain("This page runs as the Klara panel inside Microsoft Word.");
+    expect(html).toContain("Deze pagina draait als Klara-paneel in Microsoft Word.");
+    // Der Senden-Knopf haengt an Anmeldung UND Office-Bereitschaft; deaktiviert traegt er den Grund.
+    expect(html).toContain("sendBtn.disabled = !(signedIn && officeUsable())");
+    expect(html).toContain('sendBtn.title = t("noOffice")');
+    // Defense-in-Depth: sendSelection greift NIE ohne bereites Office in die Word-API.
+    const guard = html.indexOf(
+      'if (!officeUsable()) {\n        showSendStatus("warn", t("noOffice"));',
+    );
+    const wordApi = html.indexOf("Office.context.document.getSelectedDataAsync");
+    expect(guard).toBeGreaterThan(0);
+    expect(wordApi).toBeGreaterThan(guard);
+    // Der Session-Check laeuft auch ohne Office (Anmelde-Status bleibt im Browser sichtbar).
+    expect(html).toContain("checkSession();");
   });
 
   it("Sideload-Anleitung existiert mit beiden Wegen (Hochladen + wef-Ordner)", () => {
