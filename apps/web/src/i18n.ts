@@ -955,6 +955,7 @@ const de = {
   "capture.file.pptxTruncated": "Nur die ersten {{count}} Folien importiert.",
   "capture.file.pptxTooLarge":
     "„{{name}}“ ist zu groß oder zu stark komprimiert für den sicheren Import und wurde NICHT gelesen. Bitte die Präsentation verkleinern oder aufteilen.",
+  "capture.file.imageCaptionPlaceholder": "Noch keine Bildbeschreibung",
   "capture.file.imagesKept":
     "{{kept}} Bilder übernommen, davon {{compressed}} für die Textansicht komprimiert; das unveränderte Original liegt im Anhang.",
   "capture.file.imagesKeptDropped":
@@ -4004,6 +4005,7 @@ const en: typeof de = {
   "capture.file.pptxTruncated": "Only the first {{count}} slides were imported.",
   "capture.file.pptxTooLarge":
     "“{{name}}” is too large or too heavily compressed for a safe import and was NOT read. Please shrink or split the presentation.",
+  "capture.file.imageCaptionPlaceholder": "No image description yet",
   "capture.file.imagesKept":
     "{{kept}} images imported, {{compressed}} of them compressed for the text view; the unchanged original is in the attachment.",
   "capture.file.imagesKeptDropped":
@@ -7010,6 +7012,7 @@ const nl: typeof de = {
   "capture.file.pptxTruncated": "Alleen de eerste {{count}} dia's geïmporteerd.",
   "capture.file.pptxTooLarge":
     "„{{name}}“ is te groot of te sterk gecomprimeerd voor een veilige import en is NIET gelezen. Verklein of splits de presentatie.",
+  "capture.file.imageCaptionPlaceholder": "Nog geen afbeeldingsbeschrijving",
   "capture.file.imagesKept":
     "{{kept}} afbeeldingen overgenomen, waarvan {{compressed}} gecomprimeerd voor de tekstweergave; het ongewijzigde origineel zit in de bijlage.",
   "capture.file.imagesKeptDropped":

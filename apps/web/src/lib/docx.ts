@@ -76,10 +76,42 @@ export async function mapInlineImages(
   return parts.join("");
 }
 
-// WP-D1b (Fix d): das GESAMTE <img data:image>-Element (nicht nur die src) — damit ein Bild bei
-// Budget-Überschreitung KONTROLLIERT weggelassen werden kann (das ganze Tag entfällt). Nicht-data:-
-// Quellen (Object-Store-/raw) bleiben unberührt.
-const IMG_TAG_DATA_RE = /<img\b[^>]*\bsrc="(data:image\/[a-zA-Z0-9.+-]+;base64,[^"]*)"[^>]*>/gi;
+// WP-D1b/WP-BILD-1a: die droppbare/messbare BILD-EINHEIT. Entweder ein <figure> mit data:image-<img>
+// — dann ist das GANZE figure-Element (inkl. <figcaption>-Fußnote) die Einheit, sodass bei Budget-
+// Notbremse Bild UND Fußnote zusammen entfallen — ODER (Paste-/Alt-Pfad) ein bare <img data:image>.
+// Nicht-data:-Quellen (Object-Store-/raw) bleiben unberührt.
+const IMG_TAG_DATA_RE =
+  /<figure\b[^>]*>\s*<img\b[^>]*\bsrc="(data:image\/[a-zA-Z0-9.+-]+;base64,[^"]*)"[^>]*>[\s\S]*?<\/figure>|<img\b[^>]*\bsrc="(data:image\/[a-zA-Z0-9.+-]+;base64,[^"]*)"[^>]*>/gi;
+
+// WP-BILD-1a (Pedi 20.07., Bild-Fußnoten): stabiler ID-Präfix für den Fußnoten-Anker
+// (figcaption[data-image-id]). Fortlaufend je Dokument vergeben → stabil innerhalb des Imports.
+export const IMAGE_ID_PREFIX = "kw-img-";
+
+// Bare data:image-<img> (mammoth-Ausgabe) — zum Umhüllen in <figure> mit Fußnoten-Anker.
+const IMG_WRAP_RE = /<img\b[^>]*\bsrc="data:image\/[a-zA-Z0-9.+-]+;base64,[^"]*"[^>]*>/gi;
+
+function escapeCaption(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+// WP-BILD-1a: jedes eingebettete Inline-Bild bekommt eine Bild-Fußnote. Aus <img> wird
+//   <figure><img …><figcaption data-image-id="kw-img-N">Platzhalter</figcaption></figure>
+// Die Fußnote startet mit einem EHRLICHEN, injizierten Platzhalter (KEINE erfundene Beschreibung; die
+// KI-Beschreibung folgt in BILD-1b, die Galerie in BILD-1d, die Suche in BILD-1e — bewusst NICHT hier).
+// Läuft auf der ROH-mammoth-Ausgabe (noch keine <figure>) VOR dem Byte-Budget, damit das Budget die
+// zusätzlichen Tags mitzählt und bei Notbremse das GANZE figure-Element (Bild + Fußnote) droppt.
+export function wrapImagesInFigures(html: string, captionPlaceholder: string): string {
+  const caption = escapeCaption(captionPlaceholder);
+  let n = 0;
+  return html.replace(IMG_WRAP_RE, (imgTag) => {
+    n += 1;
+    return `<figure>${imgTag}<figcaption data-image-id="${IMAGE_ID_PREFIX}${n}">${caption}</figcaption></figure>`;
+  });
+}
 
 export interface InlineImageBudgetResult {
   html: string;
@@ -124,7 +156,13 @@ export async function applyInlineImageBudget(
   let m: RegExpExecArray | null;
   // biome-ignore lint/suspicious/noAssignInExpressions: Standard-Regex-Iteration.
   while ((m = IMG_TAG_DATA_RE.exec(html)) !== null) {
-    matches.push({ full: m[0], src: m[1] ?? "", start: m.index, end: IMG_TAG_DATA_RE.lastIndex });
+    // src steht je nach Alternation in Gruppe 1 (figure-umhüllt) oder 2 (bare <img>).
+    matches.push({
+      full: m[0],
+      src: m[1] ?? m[2] ?? "",
+      start: m.index,
+      end: IMG_TAG_DATA_RE.lastIndex,
+    });
   }
   // Nicht-Bild-Anteil = alle Literale zwischen/um die Bilder INKL. Tail (das HTML ohne die <img>-Tags).
   const literals: string[] = [];
@@ -220,6 +258,9 @@ export async function extractDocxRich(
     engine?: DocxEngine;
     mapImage?: (src: string) => Promise<string>;
     imageBudgetBytes?: number;
+    // WP-BILD-1a: gesetzt → jedes Inline-Bild wird in <figure> mit leerem/Platzhalter-<figcaption>
+    // (Bild-Fußnote) gehüllt. Der lokalisierte Platzhalter-Text wird injiziert (DOM-frei, kein i18n hier).
+    imageCaptionPlaceholder?: string;
   } = {},
 ): Promise<DocxRichResult> {
   const engine = opts.engine ?? (await defaultEngine());
@@ -232,6 +273,11 @@ export async function extractDocxRich(
   let compressedImages = 0;
   let htmlOverflow = false;
   if (opts.mapImage) {
+    // WP-BILD-1a: VOR dem Budget umhüllen, damit das Budget die figure/figcaption-Bytes mitzählt und
+    // eine Notbremse das ganze figure-Element droppt (Bild + Fußnote gemeinsam).
+    if (opts.imageCaptionPlaceholder) {
+      html = wrapImagesInFigures(html, opts.imageCaptionPlaceholder);
+    }
     if (opts.imageBudgetBytes !== undefined) {
       const budgeted = await applyInlineImageBudget(html, opts.mapImage, opts.imageBudgetBytes);
       html = budgeted.html;

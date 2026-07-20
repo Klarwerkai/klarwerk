@@ -402,6 +402,8 @@ export const CAPTURE_FILE_TEXT = {
   pptxTruncated: "capture.file.pptxTruncated",
   // WP-D5b: ehrlicher Fehler, wenn die PPTX das Archiv-/Dekompressionsbudget sprengt (statt UI-Freeze).
   pptxTooLarge: "capture.file.pptxTooLarge",
+  // WP-BILD-1a (Pedi 20.07.): ehrlicher Startwert der Bild-Fußnote — noch keine (KI-)Beschreibung.
+  imageCaptionPlaceholder: "capture.file.imageCaptionPlaceholder",
   // WP-D1d: Bilder komprimiert BEHALTEN, Original im Anhang (Anhang WIRKLICH gelungen).
   imagesKept: "capture.file.imagesKept",
   // WP-D1d: einige komprimiert, einige als Notbremse weggelassen — Original im Anhang gesichert.

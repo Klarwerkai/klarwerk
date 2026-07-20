@@ -60,6 +60,17 @@
 .prose-kw blockquote {
   @apply my-2 border-l-2 border-hairline pl-3 text-muted;
 }
+/* WP-BILD-1a: Bild mit Fußnote — figure gruppiert Bild + figcaption; figcaption ist die editierbare,
+   dezente Bildbeschreibung direkt unter dem Bild (kleiner, gedämpft, leichter Links-Akzent). */
+.prose-kw figure {
+  @apply my-2;
+}
+.prose-kw figure img {
+  @apply my-0;
+}
+.prose-kw figcaption {
+  @apply mt-1 border-l-2 border-hairline pl-2 text-[12px] italic text-muted;
+}
 /* Formatierung Stufe 2: erhaltene Tabellen aus Import/Paste sauber darstellen (Ränder, Padding). */
 .prose-kw table {
   @apply my-2 w-full border-collapse text-[13.5px];

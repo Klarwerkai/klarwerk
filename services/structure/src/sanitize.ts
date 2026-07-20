@@ -27,6 +27,11 @@ const ALLOWED_TAGS = new Set([
   "th",
   "td",
   "caption",
+  // WP-BILD-1a (Pedi 20.07.): Bild-Fußnoten — <figure> umschließt <img> + editierbare <figcaption>.
+  // figcaption trägt nur data-image-id (Anker), keine Script-/Event-Attribute. Server-autoritativ, damit
+  // die Fußnote beim Speichern nicht verloren geht (Gegenstück zum Client-Sanitizer richText.ts).
+  "figure",
+  "figcaption",
 ]);
 
 // Selbstschließende/leere Elemente ohne End-Tag.
@@ -56,6 +61,8 @@ const ALLOWED_ATTRS: Record<string, Set<string>> = {
   // Formatierung Stufe 2 (Tabellen): nur numerische Zell-Spannen erhalten (Merges aus Word/HTML).
   th: new Set(["colspan", "rowspan"]),
   td: new Set(["colspan", "rowspan"]),
+  // WP-BILD-1a: Bild-Fußnoten-Anker — nur eine sichere, tokenisierte ID (keine sonstigen Attribute).
+  figcaption: new Set(["data-image-id"]),
 };
 
 const IMAGE_SCALE_VALUES = new Set(["25", "50", "75", "100"]);
@@ -156,6 +163,13 @@ function renderAttrs(tag: string, raw: string): string {
         continue;
       }
       out.push(`class="${escapeText(cls)}"`);
+      continue;
+    }
+    // WP-BILD-1a: data-image-id nur als sicheres Token (Wort-/Bindestrich-Zeichen) übernehmen.
+    if (tag === "figcaption" && name === "data-image-id") {
+      if (/^[\w-]{1,64}$/.test(value)) {
+        out.push(`${name}="${value}"`);
+      }
       continue;
     }
     // Formatierung Stufe 2 (Tabellen): Zell-Spannen nur als positive Ganzzahl (1–999) übernehmen.
@@ -317,7 +331,7 @@ export function sanitizeHtml(input: string): string {
 // Reine Plaintext-Ableitung aus HTML (für die statement-Kurzfassung).
 export function htmlToPlainText(html: string): string {
   return html
-    .replace(/<\/(p|h2|h3|li|blockquote|div|caption|th|td|tr)>/gi, " ")
+    .replace(/<\/(p|h2|h3|li|blockquote|div|caption|figcaption|th|td|tr)>/gi, " ")
     .replace(/<br\s*\/?>/gi, " ")
     .replace(/<[^>]*>/g, "")
     .replace(/&amp;/g, "&")

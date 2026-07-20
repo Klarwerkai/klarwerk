@@ -164,10 +164,15 @@ export function downscaleImageDataUrl(
 // clientseitig aggressiv komprimiert und über ein hartes GESAMT-Byte-Budget (echte UTF-8-Bytes)
 // geführt — komprimiert BEHALTEN, solange sie passen; nur als Notbremse weggelassen. So sprengt ein
 // bildreiches DOCX das Draft-Speichern nie (totalImages/droppedImages melden ehrlich).
-export async function readDocxRich(file: File): Promise<DocxRichResult> {
+// WP-BILD-1a: der lokalisierte Fußnoten-Platzhalter wird injiziert (der DOM-freie Kern kennt kein i18n).
+export async function readDocxRich(
+  file: File,
+  imageCaptionPlaceholder?: string,
+): Promise<DocxRichResult> {
   return extractDocxRich(await file.arrayBuffer(), {
     mapImage: (src) => downscaleImageDataUrl(src),
     imageBudgetBytes: MAX_INLINE_BODY_HTML_BYTES,
+    ...(imageCaptionPlaceholder ? { imageCaptionPlaceholder } : {}),
   });
 }
 

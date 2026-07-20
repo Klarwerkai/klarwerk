@@ -1587,7 +1587,9 @@ export function Capture(): JSX.Element {
       if (kind === "docx") {
         // WP-D1: DOCX strukturerhaltend — HTML (Überschriften/Listen/Tabellen/Bilder, Best-Effort)
         // für den Ganzdokument-Modus, Klartext weiterhin für die KI-Punkte-Extraktion.
-        const docx = await readDocxRich(f);
+        // WP-BILD-1a: jedes behaltene Bild bekommt eine bearbeitbare Bild-Fußnote mit ehrlichem
+        // Platzhalter (lokalisiert injiziert; KI-Beschreibung folgt in BILD-1b).
+        const docx = await readDocxRich(f, t(CAPTURE_FILE_TEXT.imageCaptionPlaceholder));
         text = docx.text;
         rich = { html: docx.html, kind: "docx" };
         imageInfo = {
