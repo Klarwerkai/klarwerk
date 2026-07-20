@@ -180,44 +180,168 @@ export function estimateDataUrlBytes(dataUrl: string): number {
   return Math.max(0, Math.floor((body.length * 3) / 4) - padding);
 }
 
-// WP-D7b (Rot-Fix 1): Kostentreiber-Diagnose — der Submit lud Anhänge, Original und Quellen SERIELL hoch
-// (jeder Object-Upload überträgt das Original als base64-JSON, oft mehrere MB). Wall-Clock = Summe aller
-// Uploads. Diese vier Schritte sind aber VONEINANDER UNABHÄNGIG (gleiches KO, keine Datenabhängigkeit) →
-// sie laufen jetzt PARALLEL. Reiner Orchestrierer mit injizierten Schritt-Thunks: DOM-/API-frei testbar
-// (Nebenläufigkeit, Ergebnis-Merge). Jeder Thunk kapselt seine eigenen Teilfehler (SCRUM-374-Muster).
-export interface CaptureFinalizeSteps {
-  attachments: () => Promise<AttachmentUploadResult>;
-  original?: (() => Promise<{ attached: boolean; failure?: AttachmentFailure }>) | null;
-  queueSource?: (() => Promise<AttachmentFailure | null>) | null;
-  sources: () => Promise<{ attached: number; failed: string[] }>;
-}
-
+// WP-D7c (bens D7b-ROT-Fix): Der Submit muss ZWEI Phasen sauber trennen. Kostentreiber-Diagnose bleibt: die
+// base64-Object-Uploads sind mehrere MB und sollen PARALLEL laufen. ABER die anschließenden KO-Mutationen
+// (attach/add-source) sind KEINE unabhängigen Operationen: der Server (KnowledgeObjectService.addAttachment/
+// addSource) liest jeweils das GANZE KO und schreibt per Compare-and-Set auf rowVersion OHNE Lock/Retry/Merge
+// (services/knowledge-object/src/repo.ts). Überlappende Writer mit derselben gelesenen rowVersion → STALE_WRITE.
+// Die D7b-Parallelisierung ALLER vier Zweige erzeugte damit SELBSTVERSCHULDETE Fehler an gültigen Teilops
+// (Objekt hochgeladen, aber Attach scheitert → verwaistes Objekt + unnötiger Teilfehler). Kleinste sichere
+// Lösung (KEIN Server-Umbau): Uploads parallel (Phase A), KO-Writes strikt seriell (Phase B).
 export interface CaptureFinalizeResult {
   attached: number;
   failed: AttachmentFailure[];
 }
 
+// Phase-A-Ergebnis je Anhang: hochgeladene Object-Ref ODER ehrlicher Teilfehler (kein halber Anhang).
+interface UploadedAttachment {
+  item: AttachmentUploadItem;
+  ref?: UploadedObjectRef;
+  failure?: AttachmentFailure;
+}
+
+// PHASE A (parallel, KEIN KO-Write): alle Anhänge gleichzeitig in den Object-Store laden. Promise.allSettled →
+// ein unerwarteter Fehler eines Uploads lässt die übrigen NICHT im undefinierten Zustand; jeder Fehler wird
+// als ehrlicher Teilfehler festgehalten (kein stilles Verschlucken).
+async function uploadAttachmentObjects(
+  items: readonly AttachmentUploadItem[],
+  api: AttachmentUploadApi,
+): Promise<UploadedAttachment[]> {
+  const settled = await Promise.allSettled(
+    items.map((item) =>
+      api.upload({ name: item.name, mime: item.mime, data: item.data, kind: item.kind }),
+    ),
+  );
+  return items.map((item, i) => {
+    const outcome = settled[i];
+    if (outcome && outcome.status === "fulfilled") {
+      return { item, ref: outcome.value };
+    }
+    return {
+      item,
+      failure: { name: item.name, reason: classifyUploadError(outcome?.reason) },
+    };
+  });
+}
+
+// Phase-A-Ergebnis fürs Original (WP-D2 „Original ist heilig"): Ref-Cache lädt HÖCHSTENS EINMAL hoch (mehrere
+// Queue-KOs teilen die objectId). `uploaded` = ob in DIESEM Aufruf real übertragen (für die ehrliche Byte-Anzeige).
+interface UploadedOriginal {
+  doc: OriginalDocument;
+  ref?: UploadedObjectRef;
+  failure?: AttachmentFailure;
+  uploaded: boolean;
+}
+
+async function uploadOriginalObject(
+  original: OriginalDocument,
+  api: AttachmentUploadApi,
+  cache: OriginalRefCache,
+): Promise<UploadedOriginal> {
+  if (cache.ref) {
+    return { doc: original, ref: cache.ref, uploaded: false };
+  }
+  try {
+    const ref = await api.upload({
+      name: original.name,
+      mime: original.mime,
+      data: original.data,
+      kind: "document",
+    });
+    cache.ref = ref;
+    return { doc: original, ref, uploaded: true };
+  } catch (error) {
+    return {
+      doc: original,
+      failure: { name: original.name, reason: classifyUploadError(error) },
+      uploaded: false,
+    };
+  }
+}
+
+export interface CaptureFinalizeInput {
+  koId: string;
+  attachments: readonly AttachmentUploadItem[];
+  api: AttachmentUploadApi;
+  // Original als Anhang mitführen (Ref-Cache über mehrere Queue-KOs).
+  original?: { doc: OriginalDocument; cache: OriginalRefCache } | null;
+  // Reiner KO-Write (add-source) des Datei-Imports; wirft → ehrlicher Teilfehler unter `name`.
+  queueSource?: { name: string; run: () => Promise<void> } | null;
+  // Gesammelte externe Quellen — INTERN seriell (attachPendingSources); läuft als EIN Phase-B-Schritt.
+  pendingSources?: (() => Promise<{ attached: number; failed: string[] }>) | null;
+  // Echte Stufen-Transition für die Fortschrittsanzeige: "uploading" (Phase A) → "linking" (Phase B).
+  onPhase?: (phase: "uploading" | "linking") => void;
+}
+
 export async function finalizeCaptureSubmit(
-  steps: CaptureFinalizeSteps,
+  input: CaptureFinalizeInput,
 ): Promise<CaptureFinalizeResult> {
-  const [attachRes, originalRes, queueRes, sourceRes] = await Promise.all([
-    steps.attachments(),
-    steps.original ? steps.original() : Promise.resolve(null),
-    steps.queueSource ? steps.queueSource() : Promise.resolve(null),
-    steps.sources(),
+  const { koId, api } = input;
+
+  // ---- PHASE A: NUR Uploads, parallel. Kein einziger KO-Write hier (sonst STALE_WRITE, s. o.). ----
+  input.onPhase?.("uploading");
+  const [uploadedAttachments, uploadedOriginal] = await Promise.all([
+    uploadAttachmentObjects(input.attachments, api),
+    input.original
+      ? uploadOriginalObject(input.original.doc, api, input.original.cache)
+      : Promise.resolve(null),
   ]);
-  const failed: AttachmentFailure[] = [...attachRes.failed];
-  let attached = attachRes.attached;
-  if (originalRes?.attached) {
-    attached += 1;
-  } else if (originalRes?.failure) {
-    failed.push(originalRes.failure);
+
+  // ---- PHASE B: KO-Mutationen STRIKT SERIELL (await nacheinander) — nie zwei attach/add-source am
+  //      selben KO gleichzeitig. So kann kein CAS-STALE_WRITE durch Selbst-Konkurrenz entstehen. ----
+  input.onPhase?.("linking");
+  const failed: AttachmentFailure[] = [];
+  let attached = 0;
+  for (const up of uploadedAttachments) {
+    if (up.failure) {
+      failed.push(up.failure);
+      continue;
+    }
+    if (!up.ref) {
+      continue;
+    }
+    try {
+      await api.attach(koId, {
+        name: up.item.name,
+        mime: up.item.mime,
+        objectId: up.ref.id,
+        ...(up.item.thumbnail ? { thumbnail: up.item.thumbnail } : {}),
+        ...(up.ref.size != null ? { size: up.ref.size } : {}),
+      });
+      attached += 1;
+    } catch {
+      failed.push({ name: up.item.name, reason: "attach" });
+    }
   }
-  if (queueRes) {
-    failed.push(queueRes);
+  if (uploadedOriginal) {
+    if (uploadedOriginal.failure) {
+      failed.push(uploadedOriginal.failure);
+    } else if (uploadedOriginal.ref) {
+      try {
+        await api.attach(koId, {
+          name: uploadedOriginal.doc.name,
+          mime: uploadedOriginal.doc.mime,
+          objectId: uploadedOriginal.ref.id,
+          ...(uploadedOriginal.ref.size != null ? { size: uploadedOriginal.ref.size } : {}),
+        });
+        attached += 1;
+      } catch {
+        failed.push({ name: uploadedOriginal.doc.name, reason: "attach" });
+      }
+    }
   }
-  for (const name of sourceRes.failed) {
-    failed.push({ name, reason: "attach" });
+  if (input.queueSource) {
+    try {
+      await input.queueSource.run();
+    } catch {
+      failed.push({ name: input.queueSource.name, reason: "attach" });
+    }
+  }
+  if (input.pendingSources) {
+    const sourceRes = await input.pendingSources();
+    for (const name of sourceRes.failed) {
+      failed.push({ name, reason: "attach" });
+    }
   }
   return { attached, failed };
 }

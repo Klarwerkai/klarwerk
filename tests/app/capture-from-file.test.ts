@@ -221,15 +221,16 @@ describe("KW-W2-01: Ganzdokument-Import als bewusster Entwurf", () => {
     expect(captureSource).toContain("CAPTURE_FILE_TEXT.wholeSavedSource");
   });
 
-  // WP-D2 („Original ist heilig"): der Datei-Import führt die Quelldatei als Anhang mit — Punkte-Queue
-  // über attachOriginalDocument (EIN Upload, objectId je KO), Ganzdokument-Entwurf über die sichere
-  // Body-Datei-Referenz (fileLinkHtml auf den Object-Store-Raw-Pfad).
+  // WP-D2 („Original ist heilig") / WP-D7c: der Datei-Import führt die Quelldatei als Anhang mit —
+  // Punkte-Queue jetzt über den serialisierten Finalizer (Ref-Cache: EIN Upload, objectId je KO),
+  // Ganzdokument-Entwurf über die sichere Body-Datei-Referenz (fileLinkHtml auf den Object-Store-Raw-Pfad).
   it("Capture verdrahtet die Original-Anhang-Sicherung in beiden Datei-Import-Modi", () => {
     const captureSource = readFileSync(
       resolve(process.cwd(), "apps/web/src/pages/Capture.tsx"),
       "utf8",
     );
-    expect(captureSource).toContain("attachOriginalDocument(");
+    // Original geht als Daten + Ref-Cache in den Finalizer (Phase A lädt höchstens einmal hoch).
+    expect(captureSource).toContain("cache: fileOriginalRef.current");
     expect(captureSource).toContain("fileLinkHtml({");
     expect(captureSource).toContain("setFileOriginal({");
     // Fehlergrund „zu groß" wird gesondert gemeldet (spezifische i18n-Meldung, kein Generik-Fehler).

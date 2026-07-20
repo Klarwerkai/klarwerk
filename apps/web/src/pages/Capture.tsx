@@ -66,11 +66,9 @@ import {
   type AttachmentUploadItem,
   type OriginalDocument,
   type OriginalRefCache,
-  attachOriginalDocument,
   classifyUploadError,
   estimateDataUrlBytes,
   finalizeCaptureSubmit,
-  uploadAttachments,
 } from "../lib/captureAttachments";
 import { applyDraftArticle, normalizeDraftArticleLocale } from "../lib/captureDraftArticle";
 import {
@@ -937,9 +935,8 @@ export function Capture(): JSX.Element {
       // SCRUM-121/373/374: Originale in den Object-Store; am KO nur Referenz + kleine Vorschau.
       //  - Bilder: kind "image" mit Thumbnail; Nicht-Bild-Session-Dateien: kind "document" (AG-02-SESSION,
       //    danach body-verlinkbar via editorFilesFromAttachments/bodyFileLink).
-      //  - SCRUM-374: Der Upload/Attach jeder Datei läuft EINZELN (uploadAttachments) — ein Teilfehler kippt
-      //    NICHT den Gesamt-Save. Das KO ist bereits (offen) gespeichert; misslungene Anhänge werden ehrlich
-      //    gemeldet, statt den ganzen Save als Fehler erscheinen zu lassen. Kein Fake-Attach ohne Upload.
+      //  - SCRUM-374: Ein Teilfehler kippt NICHT den Gesamt-Save. Das KO ist bereits (offen) gespeichert;
+      //    misslungene Anhänge werden ehrlich gemeldet. Kein Fake-Attach ohne Upload.
       const attachmentItems: AttachmentUploadItem[] = [
         ...images.map((img) => ({
           name: img.name,
@@ -960,53 +957,59 @@ export function Capture(): JSX.Element {
         attach: (koId, attachment) => endpoints.ko.act(koId, { action: "attach", attachment }),
       };
       const queuePoint = currentQueuePoint(fileQueue);
-      // WP-D7b (Rot-Fix 1): Phase 2 — der ECHTE Kostentreiber. Original, Anhänge und Quellen sind
-      // voneinander UNABHÄNGIG (gleiches KO, keine Datenabhängigkeit) und liefen bisher SERIELL: jeder
-      // Object-Upload überträgt das Original als base64-JSON (oft mehrere MB), Wall-Clock = Summe. Jetzt
-      // parallel (finalizeCaptureSubmit). Der Fortschritt weist die Gesamtgröße der Uploads ehrlich aus.
+      // WP-D7c (bens D7b-ROT-Fix): finalizeCaptureSubmit trennt jetzt sauber — Phase A lädt die Objekte
+      // PARALLEL hoch (der Byte-Kostentreiber bleibt schnell), Phase B schreibt die KO-Mutationen STRIKT
+      // SERIELL (kein CAS-STALE_WRITE durch Selbst-Konkurrenz am selben KO).
+      // GELB-Fix 2: uploadBytes zählt NUR real übertragene Bytes — greift der Original-Ref-Cache (kein
+      // erneuter Upload), wird das Original NICHT mitgezählt.
+      const originalWillUpload = Boolean(fileQueue && fileOriginal && !fileOriginalRef.current.ref);
       const uploadBytes =
         attachmentItems.reduce((sum, item) => sum + estimateDataUrlBytes(item.data), 0) +
-        (fileQueue && fileOriginal ? estimateDataUrlBytes(fileOriginal.data) : 0);
-      setSubmitStage(
+        (originalWillUpload && fileOriginal ? estimateDataUrlBytes(fileOriginal.data) : 0);
+      const uploadMb =
         uploadBytes > 0
-          ? {
-              key: "capture.submitStageUploading",
-              mb: (uploadBytes / 1_000_000).toLocaleString(i18n.language, {
-                maximumFractionDigits: 1,
-              }),
-            }
-          : { key: "capture.submitStageLinking" },
-      );
+          ? (uploadBytes / 1_000_000).toLocaleString(i18n.language, { maximumFractionDigits: 1 })
+          : null;
       const tFinalize = performance.now();
       const { attached, failed } = await finalizeCaptureSubmit({
-        attachments: () => uploadAttachments(ko.id, attachmentItems, attachApi),
+        koId: ko.id,
+        attachments: attachmentItems,
+        api: attachApi,
         // WP-D2: Ref-Cache lädt das Original höchstens EINMAL hoch (Queue-KOs teilen die objectId).
         original:
-          fileQueue && fileOriginal
-            ? () => attachOriginalDocument(ko.id, fileOriginal, attachApi, fileOriginalRef.current)
-            : null,
-        // PMO-FEA-0006: Quelle (Dateiname + Belegstelle) des Datei-Imports am KO vermerken.
+          fileQueue && fileOriginal ? { doc: fileOriginal, cache: fileOriginalRef.current } : null,
+        // PMO-FEA-0006: Quelle (Dateiname + Belegstelle) des Datei-Imports am KO vermerken (KO-Write, Phase B).
         queueSource:
           fileQueue && queuePoint
-            ? async () => {
-                try {
+            ? {
+                name: fileQueue.fileName,
+                run: async () => {
                   await endpoints.ko.act(ko.id, {
                     action: "add-source",
                     source: fileSourcePayload(fileQueue.fileName, queuePoint),
                   });
-                  return null;
-                } catch {
-                  return { name: fileQueue.fileName, reason: "attach" as const };
-                }
+                },
               }
             : null,
-        // SCRUM-408: beim Erfassen gesammelte externe Quellen ans KO hängen (Stufe 2, nie peer-validiert).
-        sources: () =>
+        // SCRUM-408: gesammelte externe Quellen ans KO hängen (Stufe 2, nie peer-validiert; Phase B).
+        pendingSources: () =>
           attachPendingSources(ko.id, pendingSources, (koId, source) =>
             endpoints.ko.act(koId, { action: "add-source", source }),
           ),
+        // WP-D7b/c (Gelb-Fix 2): echte Stufen-Transition — Phase A "uploading" (mit Bytes) → Phase B "linking".
+        onPhase: (phase) => {
+          if (phase === "uploading") {
+            setSubmitStage(
+              uploadMb !== null
+                ? { key: "capture.submitStageUploading", mb: uploadMb }
+                : { key: "capture.submitStageLinking" },
+            );
+          } else {
+            setSubmitStage({ key: "capture.submitStageLinking" });
+          }
+        },
       });
-      logSubmitPhase("attachments+original+sources (parallel)", tFinalize);
+      logSubmitPhase("attachments(upload parallel)+KO-writes(serial)", tFinalize);
       return { ko, attached, failed };
     },
     // SCRUM-276: kein stilles Weiterleiten — „gespeichert" + nächster Schritt sichtbar machen.

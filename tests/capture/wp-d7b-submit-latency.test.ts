@@ -1,7 +1,8 @@
-// WP-D7b (bens D7-Auflagen): der ECHTE Submit-Kostentreiber. (Rot-Fix 1) Original/Anhänge/Quellen laufen
-// jetzt PARALLEL statt seriell; der Object-Upload des Originals läuft höchstens EINMAL (Ref-Cache);
-// mehrstufiger, ehrlicher Fortschritts-Text (DE/EN/NL) mit Upload-Größe; Busy-Wortlaut „Einreichung" statt
-// „Freigabe". (Klein-Fix 3) codepoint-bewusste Prompt-Kappung inkl. Suffix im Budget.
+// WP-D7b/c (bens D7b-ROT-Fix): der ECHTE Submit-Kostentreiber. Uploads PARALLEL (Phase A), KO-Mutationen
+// STRIKT SERIELL (Phase B) — sonst CAS-STALE_WRITE durch Selbst-Konkurrenz am selben KO. Getestet: Uploads
+// laufen nebenläufig, attach/add-source NIE überlappend; Original-Upload höchstens EINMAL (Ref-Cache);
+// echte Stufen-Transition uploading→linking; ehrlicher Byte-Text; Busy-Wortlaut „Einreichung". Der
+// harte CAS-Vertragstest (echtes Repo/Service) liegt in wp-d7c-submit-serialization.test.ts.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -9,10 +10,8 @@ import i18n from "../../apps/web/src/i18n";
 import {
   type AttachmentUploadApi,
   type OriginalRefCache,
-  attachOriginalDocument,
   estimateDataUrlBytes,
   finalizeCaptureSubmit,
-  uploadAttachments,
 } from "../../apps/web/src/lib/captureAttachments";
 import {
   FRONT_DOOR_STRUCTURE_INPUT_MAX_CHARS,
@@ -23,95 +22,162 @@ function readSource(rel: string): string {
   return readFileSync(resolve(process.cwd(), rel), "utf8");
 }
 
-// Fake-Object-API mit Nebenläufigkeits-Zähler: misst, wie viele Uploads GLEICHZEITIG laufen.
-function trackingApi(): AttachmentUploadApi & { uploads: number; maxConcurrent: number } {
-  const state = { uploads: 0, maxConcurrent: 0, inFlight: 0 };
-  return {
+// Instrumentierte API: getrennte Nebenläufigkeits-Spitzen für UPLOADS (dürfen parallel sein) und für
+// KO-WRITES (attach/add-source — dürfen NIE überlappen). `doWrite` teilt DENSELBEN Write-Zähler, damit
+// auch Queue-/Pending-Quellen in die Serialitäts-Prüfung eingehen. `writeOrder` hält die Reihenfolge fest.
+function tracker() {
+  const s = {
     uploads: 0,
-    maxConcurrent: 0,
+    uploadInFlight: 0,
+    maxUploadConcurrent: 0,
+    writeInFlight: 0,
+    maxWriteConcurrent: 0,
+    writeOrder: [] as string[],
+  };
+  async function doWrite(label: string): Promise<void> {
+    s.writeInFlight += 1;
+    s.maxWriteConcurrent = Math.max(s.maxWriteConcurrent, s.writeInFlight);
+    s.writeOrder.push(label);
+    await new Promise((r) => setTimeout(r, 5));
+    s.writeInFlight -= 1;
+  }
+  const api: AttachmentUploadApi = {
     async upload(input) {
-      state.uploads += 1;
-      state.inFlight += 1;
-      state.maxConcurrent = Math.max(state.maxConcurrent, state.inFlight);
-      // eine Mikro-/Makro-Pause, damit echte Parallelität sichtbar wird
+      s.uploads += 1;
+      s.uploadInFlight += 1;
+      s.maxUploadConcurrent = Math.max(s.maxUploadConcurrent, s.uploadInFlight);
       await new Promise((r) => setTimeout(r, 5));
-      state.inFlight -= 1;
-      this.uploads = state.uploads;
-      this.maxConcurrent = state.maxConcurrent;
-      return { id: `obj-${state.uploads}`, size: input.data.length };
+      s.uploadInFlight -= 1;
+      return { id: `obj-${s.uploads}`, size: input.data.length };
     },
-    async attach() {
+    async attach(_koId, attachment) {
+      await doWrite(`attach:${attachment.name}`);
       return {};
     },
   };
+  return { s, api, doWrite };
 }
 
-describe("WP-D7b Rot-Fix 1: finalizeCaptureSubmit läuft parallel", () => {
-  it("führt Anhänge, Original und Quellen NEBENLÄUFIG aus (nicht seriell)", async () => {
-    const api = trackingApi();
+describe("WP-D7c Rot-Fix 1: Phase A parallel, Phase B strikt seriell", () => {
+  it("lädt Objekte NEBENLÄUFIG hoch, schreibt KO-Mutationen aber NIE überlappend", async () => {
+    const t = tracker();
     const cache: OriginalRefCache = { ref: null };
     const result = await finalizeCaptureSubmit({
-      attachments: () =>
-        uploadAttachments(
-          "ko1",
-          [
-            { name: "a.png", mime: "image/png", data: "data:image/png;base64,QQ==", kind: "image" },
-            { name: "b.png", mime: "image/png", data: "data:image/png;base64,QQ==", kind: "image" },
-          ],
-          api,
-        ),
-      original: () =>
-        attachOriginalDocument(
-          "ko1",
-          { name: "orig.pdf", mime: "application/pdf", data: "data:application/pdf;base64,QQ==" },
-          api,
-          cache,
-        ),
-      queueSource: async () => null,
-      sources: async () => ({ attached: 0, failed: [] }),
+      koId: "ko1",
+      attachments: [
+        { name: "a.png", mime: "image/png", data: "data:image/png;base64,QQ==", kind: "image" },
+        { name: "b.png", mime: "image/png", data: "data:image/png;base64,QQ==", kind: "image" },
+      ],
+      api: t.api,
+      original: {
+        doc: {
+          name: "orig.pdf",
+          mime: "application/pdf",
+          data: "data:application/pdf;base64,QQ==",
+        },
+        cache,
+      },
+      queueSource: { name: "quelle.pdf", run: () => t.doWrite("queueSource") },
+      pendingSources: async () => {
+        await t.doWrite("pendingSources");
+        return { attached: 1, failed: [] };
+      },
     });
-    // 3 Objekte (2 Anhänge + 1 Original). Liefen sie seriell, wäre maxConcurrent === 1.
-    expect(api.uploads).toBe(3);
-    expect(api.maxConcurrent).toBeGreaterThan(1);
-    // attached zählt Anhänge (2) + Original (1); keine Fehler.
+    // Phase A: 3 Objekte (2 Anhänge + 1 Original) — parallel hochgeladen.
+    expect(t.s.uploads).toBe(3);
+    expect(t.s.maxUploadConcurrent).toBeGreaterThan(1);
+    // Phase B: attach/add-source liefen NIE gleichzeitig (max. 1 Write in flight) — inkl. Quellen.
+    expect(t.s.maxWriteConcurrent).toBe(1);
+    // Kein zweiter Write startet vor Ende des ersten: 5 Writes in fester Reihenfolge, ohne Verschachtelung.
+    expect(t.s.writeOrder).toEqual([
+      "attach:a.png",
+      "attach:b.png",
+      "attach:orig.pdf",
+      "queueSource",
+      "pendingSources",
+    ]);
+    // attached zählt 2 Anhänge + Original.
     expect(result.attached).toBe(3);
     expect(result.failed).toEqual([]);
   });
 
-  it("merged Teilfehler ehrlich (Anhang-Upload-Fehler + Quellen-Fehler)", async () => {
+  it("merged Teilfehler ehrlich (Anhang-Upload-Fehler + Original-Attach-Fehler + Quellen-Fehler)", async () => {
     const api: AttachmentUploadApi = {
-      upload: async () => {
-        throw new Error("upload kaputt");
+      upload: async (input) => {
+        if (input.name === "a.png") {
+          throw new Error("upload kaputt");
+        }
+        return { id: `obj-${input.name}`, size: 1 };
       },
-      attach: async () => ({}),
+      attach: async (_koId, attachment) => {
+        if (attachment.name === "orig.pdf") {
+          throw new Error("attach kaputt");
+        }
+        return {};
+      },
     };
+    const cache: OriginalRefCache = { ref: null };
     const result = await finalizeCaptureSubmit({
-      attachments: () =>
-        uploadAttachments(
-          "ko1",
-          [{ name: "a.png", mime: "image/png", data: "data:image/png;base64,QQ==", kind: "image" }],
-          api,
-        ),
-      queueSource: async () => ({ name: "quelle.pdf", reason: "attach" }),
-      sources: async () => ({ attached: 0, failed: ["extern-1"] }),
+      koId: "ko1",
+      attachments: [
+        { name: "a.png", mime: "image/png", data: "data:image/png;base64,QQ==", kind: "image" },
+      ],
+      api,
+      original: {
+        doc: {
+          name: "orig.pdf",
+          mime: "application/pdf",
+          data: "data:application/pdf;base64,QQ==",
+        },
+        cache,
+      },
+      queueSource: {
+        name: "quelle.pdf",
+        run: async () => {
+          throw new Error("add-source kaputt");
+        },
+      },
+      pendingSources: async () => ({ attached: 0, failed: ["extern-1"] }),
     });
     expect(result.attached).toBe(0);
     const names = result.failed.map((f) => f.name).sort();
-    expect(names).toEqual(["a.png", "extern-1", "quelle.pdf"]);
+    expect(names).toEqual(["a.png", "extern-1", "orig.pdf", "quelle.pdf"]);
   });
 
-  it("das Original wird über den Ref-Cache HÖCHSTENS EINMAL hochgeladen (mehrere Queue-KOs)", async () => {
-    const api = trackingApi();
-    const cache: OriginalRefCache = { ref: null };
-    const original = {
-      name: "orig.pdf",
-      mime: "application/pdf",
-      data: "data:application/pdf;base64,QQ==",
-    };
-    // Zwei aufeinanderfolgende Submits derselben Datei-Queue teilen den Cache.
-    await attachOriginalDocument("ko1", original, api, cache);
-    await attachOriginalDocument("ko2", original, api, cache);
-    expect(api.uploads).toBe(1); // nur EIN Upload, zweiter KO referenziert dieselbe objectId
+  it("echte Stufen-Transition: onPhase feuert uploading VOR linking", async () => {
+    const t = tracker();
+    const phases: string[] = [];
+    await finalizeCaptureSubmit({
+      koId: "ko1",
+      attachments: [
+        { name: "a.png", mime: "image/png", data: "data:image/png;base64,QQ==", kind: "image" },
+      ],
+      api: t.api,
+      onPhase: (phase) => phases.push(phase),
+    });
+    expect(phases).toEqual(["uploading", "linking"]);
+  });
+
+  it("greift der Ref-Cache, wird das Original NICHT erneut hochgeladen (uploaded=false)", async () => {
+    const t = tracker();
+    const cache: OriginalRefCache = { ref: { id: "orig-cached", size: 10 } };
+    const result = await finalizeCaptureSubmit({
+      koId: "ko2",
+      attachments: [],
+      api: t.api,
+      original: {
+        doc: {
+          name: "orig.pdf",
+          mime: "application/pdf",
+          data: "data:application/pdf;base64,QQ==",
+        },
+        cache,
+      },
+    });
+    // Kein Upload (Cache-Treffer), aber der Attach am zweiten KO passiert trotzdem.
+    expect(t.s.uploads).toBe(0);
+    expect(result.attached).toBe(1);
+    expect(result.failed).toEqual([]);
   });
 });
 
@@ -128,15 +194,17 @@ describe("WP-D7b Rot-Fix 1: estimateDataUrlBytes", () => {
 describe("WP-D7b Rot-Fix 1: Source-Pins Submit-Pfad", () => {
   const capture = () => readSource("apps/web/src/pages/Capture.tsx");
 
-  it("der Submit nutzt den parallelen finalizeCaptureSubmit und instrumentiert die Phasen", () => {
+  it("der Submit nutzt finalizeCaptureSubmit (zwei Phasen) und instrumentiert die Phasen", () => {
     const src = capture();
     expect(src).toContain("finalizeCaptureSubmit({");
     expect(src).toContain("logSubmitPhase(");
     expect(src).toContain("performance.now()");
-    // Der Object-Upload des Originals läuft über den Ref-Cache (höchstens einmal) — Pin wie D1e.
+    // WP-D7c: das Original geht als Daten+Ref-Cache in den Finalizer (Upload höchstens einmal, Phase A).
     expect(src).toContain("fileOriginalRef.current");
-    // Nur EIN attachOriginalDocument-Aufruf im Submit-Pfad (kein Doppel-Upload).
-    expect((src.match(/attachOriginalDocument\(/g) ?? []).length).toBe(1);
+    expect(src).toContain("cache: fileOriginalRef.current");
+    // Die KO-Mutationen wickelt der Finalizer seriell ab (Phase B) — der Submit selbst ruft kein
+    // attach/add-source mehr parallel (kein direkter attachOriginalDocument-Aufruf im Submit-Pfad).
+    expect(src).not.toContain("attachOriginalDocument(");
   });
 
   it("mehrstufiger Fortschritts-Text existiert DE/EN/NL und trägt die Upload-Größe", () => {
