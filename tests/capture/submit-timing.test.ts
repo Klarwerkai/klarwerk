@@ -6,7 +6,11 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
-import { buildSubmitTimingEntries, formatSubmitSeconds } from "../../apps/web/src/lib/submitTiming";
+import {
+  buildSubmitTimingEntries,
+  formatSubmitSeconds,
+  submitPhaseSpans,
+} from "../../apps/web/src/lib/submitTiming";
 
 describe("WP-D10 Fix 2: formatSubmitSeconds", () => {
   it("formatiert ms als Sekunden mit EINER Nachkommastelle im Locale", () => {
@@ -51,10 +55,63 @@ describe("WP-D10 Fix 2: buildSubmitTimingEntries", () => {
     expect(entries.map((e) => e.key)).toEqual(["create"]);
     expect(buildSubmitTimingEntries([], "de")).toEqual([]);
   });
+});
 
-  it("Upload ohne MB-Angabe (kein realer Byte-Transfer) → Eintrag ohne mb", () => {
-    const entries = buildSubmitTimingEntries([{ key: "upload", ms: 900, mb: null }], "de");
-    expect(entries[0]?.mb).toBeUndefined();
+// WP-D10b (bens GELB-Auflage): Zeilen NUR für ECHTE Arbeit. Der Finalizer feuert onPhase immer —
+// die Ableitung aus den vorhandenen Arbeitszählern (Anhänge/Original/Quellen) entscheidet, welche
+// Zeilen ehrlich sind. Ersetzt den alten Pin, der die leere Upload-Zeile (ms>0, mb:null) noch als
+// erwarteten Eintrag festschrieb.
+describe("WP-D10b: submitPhaseSpans — Zeilen nur fuer echte Arbeit", () => {
+  const CREATE: Parameters<typeof buildSubmitTimingEntries>[0][number] = { key: "create", ms: 300 };
+
+  it("reiner Text-Submit (keine Anhaenge/Original/Quellen) → NUR die Anlegen-Zeile", () => {
+    // onPhase feuerte (uploadMs/linkMs gemessen), aber es gab NICHTS zu tun → keine Zeilen dafür.
+    const spans = submitPhaseSpans({
+      uploadWork: 0,
+      linkWork: 0,
+      uploadMs: 5,
+      linkMs: 8,
+      uploadMb: null,
+    });
+    expect(spans).toEqual([]);
+    const entries = buildSubmitTimingEntries([CREATE, ...spans], "de");
+    expect(entries.map((e) => e.key)).toEqual(["create"]);
+  });
+
+  it("echter Upload (Anhang) → create/upload/link, MB an der Upload-Zeile", () => {
+    const spans = submitPhaseSpans({
+      uploadWork: 1,
+      linkWork: 1,
+      uploadMs: 6_200,
+      linkMs: 800,
+      uploadMb: "4,2",
+    });
+    const entries = buildSubmitTimingEntries([CREATE, ...spans], "de");
+    expect(entries.map((e) => e.key)).toEqual(["create", "upload", "link"]);
+    expect(entries[1]?.mb).toBe("4,2");
+  });
+
+  it("reine externe Quelle (kein Upload) → create/link, KEINE Upload-Zeile", () => {
+    const spans = submitPhaseSpans({
+      uploadWork: 0,
+      linkWork: 1,
+      uploadMs: 3,
+      linkMs: 900,
+      uploadMb: null,
+    });
+    const entries = buildSubmitTimingEntries([CREATE, ...spans], "de");
+    expect(entries.map((e) => e.key)).toEqual(["create", "link"]);
+  });
+
+  it("defensiv: fehlt der Phasen-Uebergang (uploadMs null), gibt es trotz Arbeit keine erfundene Upload-Zeile", () => {
+    const spans = submitPhaseSpans({
+      uploadWork: 2,
+      linkWork: 2,
+      uploadMs: null,
+      linkMs: 950,
+      uploadMb: "1,3",
+    });
+    expect(spans.map((s) => s.key)).toEqual(["link"]);
   });
 });
 
@@ -64,6 +121,11 @@ describe("WP-D10 Fix 2: Capture-Verdrahtung + i18n", () => {
     // Spannen aus den bestehenden Messpunkten (tCreate/tFinalize/onPhase) — keine neue Messung im Finalizer.
     expect(src).toContain('timingSpans.push({ key: "create", ms: performance.now() - tCreate })');
     expect(src).toContain("buildSubmitTimingEntries(timingSpans, i18n.language)");
+    // WP-D10b: Upload-/Verknuepfen-Zeilen laufen ueber die Arbeits-Ableitung (keine Zeile ohne Arbeit).
+    expect(src).toContain("submitPhaseSpans({");
+    expect(src).toContain(
+      "const uploadWork = attachmentItems.length + (originalWillUpload ? 1 : 0)",
+    );
     // Aufklappbare Zeile in der Bestätigung (Erfolg UND Teilfehler nutzen dieselbe Karte).
     expect(src).toContain('t("capture.submitTiming.title")');
     expect(src).toContain("submitTimings.map");

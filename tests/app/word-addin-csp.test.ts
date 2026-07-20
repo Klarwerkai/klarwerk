@@ -4,10 +4,10 @@
 // inject-Requests. Ersetzt den früheren Quelltext-String-Pin („startsWith('/word-addin/')" als Text),
 // der den unsicheren Prefix-Ansatz sogar festschrieb.
 //
-// K1-Vertrag: die Ausnahme gilt NUR für die exakt ausgelieferten kanonischen Pfade (Taskpane + die
-// beiden Icons), exakter String-Vergleich auf den query-gestrippten Pfad. Präfix-/Traversal-/
-// Encoding-Varianten fallen fail-closed in die strikte globale CSP (frame-ancestors 'none' +
-// X-Frame-Options).
+// K1-Vertrag: die Ausnahme gilt NUR für den exakt ausgelieferten kanonischen Taskpane-Pfad (WP-D10b:
+// die beiden Icons brauchen als statische Bilder KEINE Ausnahme mehr), exakter String-Vergleich auf den
+// query-gestrippten Pfad. Präfix-/Traversal-/Encoding-Varianten UND die Icons fallen fail-closed in die
+// strikte globale CSP (frame-ancestors 'none' + X-Frame-Options).
 import { beforeAll, describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import {
@@ -24,15 +24,20 @@ async function buildRealApp(): Promise<App> {
   // EXAKT die Produktionsregistrierung (helmet-Global-CSP + Word-Add-in-Ausnahmen-Hook).
   await registerSecurityHeaders(app);
   // Stellvertreter für die statische Auslieferung (registerWebStatic braucht das gebaute dist):
-  // die drei kanonischen Dateien antworten 200 — die Header kommen NICHT aus diesen Routen, sondern
-  // aus helmet + dem onSend-Hook der Produktionsfunktion.
+  // Taskpane + Icons antworten 200 — die Header kommen NICHT aus diesen Routen, sondern aus helmet +
+  // dem onSend-Hook der Produktionsfunktion.
   for (const path of WORD_ADDIN_CSP_PATHS) {
-    app.get(path, async (_request, reply) =>
-      reply.type(path.endsWith(".html") ? "text/html" : "image/png").send("ok"),
-    );
+    app.get(path, async (_request, reply) => reply.type("text/html").send("ok"));
+  }
+  // WP-D10b: die Icons werden weiterhin ausgeliefert, tragen aber die GLOBALE CSP (keine Ausnahme).
+  for (const icon of ICON_PATHS) {
+    app.get(icon, async (_request, reply) => reply.type("image/png").send("ok"));
   }
   return app;
 }
+
+// WP-D10b: real ausgelieferte statische Bilder OHNE CSP-Ausnahme (bens Hinweis — keine Einbettung).
+const ICON_PATHS = ["/word-addin/icon-32.png", "/word-addin/icon-80.png"];
 
 describe("WP-KLARA-1b K1: Header-Matrix gegen die reale Registrierung (inject)", () => {
   let app: App;
@@ -40,12 +45,25 @@ describe("WP-KLARA-1b K1: Header-Matrix gegen die reale Registrierung (inject)",
     app = await buildRealApp();
   });
 
-  it("(a) kanonische Taskpane-/Icon-Pfade → Ersatz-CSP, KEIN X-Frame-Options", async () => {
+  it("(a) NUR der kanonische Taskpane-Pfad → Ersatz-CSP, KEIN X-Frame-Options", async () => {
+    // WP-D10b: die kanonische Menge ist bewusst auf das Taskpane reduziert.
+    expect(WORD_ADDIN_CSP_PATHS).toEqual(["/word-addin/taskpane.html"]);
     for (const path of WORD_ADDIN_CSP_PATHS) {
       const res = await app.inject({ method: "GET", url: path });
       expect(res.statusCode, path).toBe(200);
       expect(res.headers["content-security-policy"], path).toBe(WORD_ADDIN_CSP);
       expect(res.headers["x-frame-options"], path).toBeUndefined();
+    }
+  });
+
+  it("(a2, WP-D10b) die Icons werden ausgeliefert, aber MIT globaler CSP (keine Ausnahme noetig)", async () => {
+    for (const icon of ICON_PATHS) {
+      const res = await app.inject({ method: "GET", url: icon });
+      expect(res.statusCode, icon).toBe(200);
+      const csp = String(res.headers["content-security-policy"] ?? "");
+      expect(csp, icon).toContain("frame-ancestors 'none'");
+      expect(csp, icon).not.toContain("office.com");
+      expect(res.headers["x-frame-options"], icon).toBeDefined();
     }
   });
 
@@ -84,16 +102,17 @@ describe("WP-KLARA-1b K1: Header-Matrix gegen die reale Registrierung (inject)",
 // vorab normalisieren würde (inject/Browser lösen z. B. „..“ teils clientseitig auf; der Hook muss
 // TROTZDEM exakt bleiben, falls ein Rohsocket sie durchreicht).
 describe("WP-KLARA-1b K1: isWordAddinCspPath — exakter Vergleich, fail-closed", () => {
-  it("nur die kanonischen Pfade matchen (Query/Fragment gestrippt)", () => {
+  it("nur der kanonische Taskpane-Pfad matcht (Query/Fragment gestrippt)", () => {
     expect(isWordAddinCspPath("/word-addin/taskpane.html")).toBe(true);
     expect(isWordAddinCspPath("/word-addin/taskpane.html?x=1")).toBe(true);
     expect(isWordAddinCspPath("/word-addin/taskpane.html#frag")).toBe(true);
-    expect(isWordAddinCspPath("/word-addin/icon-32.png")).toBe(true);
-    expect(isWordAddinCspPath("/word-addin/icon-80.png")).toBe(true);
   });
 
-  it("Präfix-Tricks, Traversal, Encoding, Casing, Slashes → false (globale CSP)", () => {
+  it("Präfix-Tricks, Traversal, Encoding, Casing, Slashes, Icons → false (globale CSP)", () => {
     for (const bad of [
+      // WP-D10b: die Icons sind bewusst KEINE Ausnahme mehr (statische Bilder).
+      "/word-addin/icon-32.png",
+      "/word-addin/icon-80.png",
       "/word-addinX/taskpane.html",
       "/word-addin/../index.html",
       "/word-addin/../word-addin/taskpane.html",

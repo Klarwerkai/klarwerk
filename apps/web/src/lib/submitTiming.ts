@@ -38,6 +38,34 @@ export function formatSubmitSeconds(ms: number, locale: string): string {
   });
 }
 
+// WP-D10b (bens GELB-Auflage aus BERICHT-sammel5): Zeilen NUR für ECHTE Arbeit. finalizeCaptureSubmit
+// feuert onPhase("uploading")/("linking") IMMER — auch beim reinen Text-Submit ohne Anhänge/Original/
+// Quellen; ohne diese Ableitung erschienen dann eine Upload-Zeile ohne MB und eine leere Verknüpfen-
+// Zeile. Die Arbeitszähler stammen aus den ohnehin vorhandenen Finalizer-Eingaben (Anzahl Anhänge,
+// Original, Quellen) — nichts wird neu gemessen.
+export interface SubmitPhaseSpanInput {
+  // Anzahl real geplanter Upload-Objekte in Phase A (Anhänge + ggf. Original-Upload; ein per Ref-Cache
+  // übersprungenes Original zählt NICHT — es werden keine Bytes übertragen).
+  uploadWork: number;
+  // Anzahl Phase-B-Aufgaben (Attach je Anhang, Original-Attach, Import-Quelle, externe Quellen).
+  linkWork: number;
+  // Gemessene Spannen aus den vorhandenen Messpunkten; null = Phasen-Übergang fehlte (defensiv).
+  uploadMs: number | null;
+  linkMs: number | null;
+  uploadMb?: string | null;
+}
+
+export function submitPhaseSpans(input: SubmitPhaseSpanInput): SubmitTimingSpan[] {
+  const spans: SubmitTimingSpan[] = [];
+  if (input.uploadWork > 0 && input.uploadMs !== null) {
+    spans.push({ key: "upload", ms: input.uploadMs, mb: input.uploadMb ?? null });
+  }
+  if (input.linkWork > 0 && input.linkMs !== null) {
+    spans.push({ key: "link", ms: input.linkMs });
+  }
+  return spans;
+}
+
 // Sammelt die gemessenen Spannen zu Anzeige-Einträgen: feste Phasen-Reihenfolge (create → upload →
 // link), ungültige Spannen (negativ/NaN — z. B. wenn ein Phasen-Übergang nie feuerte) werden EHRLICH
 // weggelassen statt mit 0 erfunden.

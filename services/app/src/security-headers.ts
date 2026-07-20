@@ -7,13 +7,11 @@ import type { FastifyInstance } from "fastify";
 // keine Test-Kopie, keine Drift). Gleiches Muster wie registerNoindexHook (WP-E2).
 
 // K1: die CSP-Ausnahme fürs Word-Taskpane ist EXAKT an die real ausgelieferte kanonische Menge
-// gebunden — keine Präfixe, keine Regex. Genau diese drei Dateien liegen in apps/web/public/word-addin/
-// (Taskpane + die beiden Manifest-Icons); jede weitere Auslieferung muss hier BEWUSST eingetragen werden.
-export const WORD_ADDIN_CSP_PATHS: readonly string[] = [
-  "/word-addin/taskpane.html",
-  "/word-addin/icon-32.png",
-  "/word-addin/icon-80.png",
-];
+// gebunden — keine Präfixe, keine Regex. WP-D10b (bens Hinweis): NUR das Taskpane braucht die Ausnahme —
+// die beiden Manifest-Icons (icon-32/80.png) sind statische Bilder, die der Office-Host per <img>/HTTP
+// lädt; weder frame-ancestors noch die Skript-/CDN-Direktiven spielen dort eine Rolle → sie behalten die
+// strikte globale CSP. Jede weitere Ausnahme muss hier BEWUSST eingetragen werden.
+export const WORD_ADDIN_CSP_PATHS: readonly string[] = ["/word-addin/taskpane.html"];
 
 // K2: frame-ancestors ENG und belegt. Microsofts Add-in-Doku („Domains used by Office web add-ins" /
 // CSP-Guidance für Add-ins, learn.microsoft.com) nennt als Web-Hosts der Office-Runtime office.com und
@@ -40,16 +38,16 @@ export const WORD_ADDIN_CSP = [
 
 // K1: fällt dieser Request-Pfad in die Word-Add-in-CSP-Ausnahme? NUR Query/Fragment strippen, dann
 // EXAKTER String-Vergleich gegen die kanonische Menge. Bewusst KEINE weitere Normalisierung/Dekodierung:
-// alles, was nicht byte-genau einer der drei Strings ist — /word-addin/../x, /word-addinX/…,
-// //word-addin/…, %2e-Encoding-Varianten, Groß-/Kleinschreibung, Trailing-Slash — matcht schlicht NICHT
-// und behält fail-closed die strikte globale CSP (frame-ancestors 'none').
+// alles, was nicht byte-genau einem der kanonischen Strings entspricht — /word-addin/../x,
+// /word-addinX/…, //word-addin/…, %2e-Encoding-Varianten, Groß-/Kleinschreibung, Trailing-Slash —
+// matcht schlicht NICHT und behält fail-closed die strikte globale CSP (frame-ancestors 'none').
 export function isWordAddinCspPath(rawUrl: string | undefined): boolean {
   const path = (rawUrl ?? "").split("?")[0]?.split("#")[0] ?? "";
   return WORD_ADDIN_CSP_PATHS.includes(path);
 }
 
 // Globale Security-Header (helmet) + die exakt gebundene Word-Add-in-CSP-Ausnahme. Alle Routen außer
-// den drei kanonischen Taskpane-Pfaden behalten die strikte globale CSP inkl. frame-ancestors 'none'
+// dem kanonischen Taskpane-Pfad behalten die strikte globale CSP inkl. frame-ancestors 'none'
 // und X-Frame-Options.
 export async function registerSecurityHeaders(app: FastifyInstance): Promise<void> {
   await app.register(fastifyHelmet, {

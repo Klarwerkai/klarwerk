@@ -171,6 +171,7 @@ import {
   type SubmitTimingEntry,
   type SubmitTimingSpan,
   buildSubmitTimingEntries,
+  submitPhaseSpans,
 } from "../lib/submitTiming";
 
 type Mode = CaptureMode;
@@ -1029,15 +1030,27 @@ export function Capture(): JSX.Element {
         },
       });
       logSubmitPhase("attachments(upload parallel)+KO-writes(serial)", tFinalize);
-      // WP-D10 (Fix 2): Upload = tFinalize→linking-Übergang, Verknüpfen (inkl. Quellen) = Rest. Fehlt der
-      // Übergang (defensiv), bleibt es ehrlich bei der Gesamt-Spanne als Verknüpfungs-Eintrag.
+      // WP-D10 (Fix 2): Upload = tFinalize→linking-Übergang, Verknüpfen (inkl. Quellen) = Rest.
+      // WP-D10b (bens GELB-Auflage): Zeilen NUR für echte Arbeit — die Zähler kommen aus den ohnehin
+      // vorhandenen Finalizer-Eingaben (Anhänge/Original/Quellen), nichts wird neu gemessen. Beim
+      // reinen Text-Submit bleibt so ehrlich nur die Anlegen-Zeile.
       const tDone = performance.now();
-      if (linkStartMs !== null) {
-        timingSpans.push({ key: "upload", ms: linkStartMs - tFinalize, mb: uploadMb });
-        timingSpans.push({ key: "link", ms: tDone - linkStartMs });
-      } else {
-        timingSpans.push({ key: "link", ms: tDone - tFinalize });
-      }
+      const uploadWork = attachmentItems.length + (originalWillUpload ? 1 : 0);
+      const linkWork =
+        attachmentItems.length +
+        (fileQueue && fileOriginal ? 1 : 0) + // Original-Attach läuft auch bei Ref-Cache-Treffer
+        (fileQueue && queuePoint ? 1 : 0) + // Import-Quelle (queueSource)
+        pendingSources.length;
+      timingSpans.push(
+        ...submitPhaseSpans({
+          uploadWork,
+          linkWork,
+          uploadMs: linkStartMs !== null ? linkStartMs - tFinalize : null,
+          // Fehlt der Übergang (defensiv), bleibt ehrlich die Gesamt-Spanne als Verknüpfungs-Eintrag.
+          linkMs: linkStartMs !== null ? tDone - linkStartMs : tDone - tFinalize,
+          uploadMb,
+        }),
+      );
       return { ko, attached, failed, timingSpans };
     },
     // SCRUM-276: kein stilles Weiterleiten — „gespeichert" + nächster Schritt sichtbar machen.
