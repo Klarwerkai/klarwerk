@@ -1657,6 +1657,9 @@ export function Capture(): JSX.Element {
         dropped: number;
         htmlOverflow: boolean;
       } | null = null;
+      // WP-D9c (bens ROT-Fix): hatte die QUELLE Bilder? Entscheidet die Importierbarkeit unabhängig davon,
+      // was nach dem finalen Drop-to-fit übrig ist (All-dropped-Deck bleibt importierbar inkl. Original).
+      let sourceHadImages = false;
       // WP-D5b (bens GELB-Fix 4): Format über die zentrale detectFileKind-Reihenfolge bestimmen
       // (image→pdf→docx→pptx→text). So gewinnt die Endung .pptx gegen einen irreführenden MIME text/plain
       // — sonst landete eine .pptx im Text-Pfad (Bug: isTextDocument stand VOR der PPTX-Erkennung).
@@ -1676,6 +1679,7 @@ export function Capture(): JSX.Element {
           // WP-D1e (Fix 3): htmlOverflow bis zum Speichern mitführen — dort wird VOR dem Upload abgebrochen.
           htmlOverflow: docx.htmlOverflow,
         };
+        sourceHadImages = docx.totalImages > 0;
       } else if (kind === "pdf") {
         // WP-D3: zeilen-/absatztreuer PDF-Text; truncated meldet den Seiten-Cap.
         const pdf = await readPdfFile(f);
@@ -1701,6 +1705,7 @@ export function Capture(): JSX.Element {
           dropped: pptx.imageCount - pptx.embeddedImages,
           htmlOverflow: pptx.htmlOverflow,
         };
+        sourceHadImages = pptx.imageCount > 0;
       } else if (kind === "text") {
         text = await readTextFile(f);
       } else {
@@ -1709,10 +1714,11 @@ export function Capture(): JSX.Element {
         setErr(t(CAPTURE_FILE_TEXT.unsupported, { name: f.name }));
         return;
       }
-      // WP-D9b (bens GELB-Fix 2): leerer Klartext allein lehnt nicht mehr ab — ein bildreines Deck
-      // (verankerte figures im sicheren HTML) ist importierbar; NUR wenn weder Text noch Bilder da sind,
-      // bleibt die ehrliche Ablehnung (emptyPptx/emptyPdf/empty).
-      if (!fileImportHasContent(text, rich.html)) {
+      // WP-D9b/WP-D9c (bens GELB-Fix 2 + ROT-Fix): leerer Klartext allein lehnt nicht mehr ab — ein
+      // bildreines Deck ist importierbar, AUCH wenn der finale UTF-8-Deckel alle figures gedroppt hat
+      // (sourceHadImages: die QUELLE zählt, nicht der Rest nach dem Drop → Original-Anhang bleibt).
+      // NUR wenn weder Text noch Quell-Bilder da sind, bleibt die ehrliche Ablehnung.
+      if (!fileImportHasContent(text, rich.html, sourceHadImages)) {
         setNotice(null);
         // WP-D4: bei PDFs ehrlich auf die fehlende Textebene hinweisen — OHNE falsche OCR-Hoffnung
         // (eine PDF-OCR existiert nicht).
@@ -1753,10 +1759,17 @@ export function Capture(): JSX.Element {
           : pptxTruncatedSlides !== null
             ? ` ${t(CAPTURE_FILE_TEXT.pptxTruncated, { count: pptxTruncatedSlides })}`
             : "";
-      // WP-D9b (Gelb-Fix 2): bildreiner Import — ehrlich sagen, dass die Bilder übernommen sind, aber
-      // ohne Text keine KI-Vorschläge (Punkte-Extraktion) möglich sind.
+      // WP-D9b/WP-D9c (Gelb-Fix 2 + ROT-Fix): bildreiner Import — EHRLICHE Variante je nach Ausgang.
+      // Sind Bilder wirklich im Beitrag gelandet: „Bilder übernommen — ohne Text keine KI-Vorschläge."
+      // Wurden ALLE gedroppt (Budget/Format): NICHT „übernommen" behaupten, sondern klar sagen, dass die
+      // Bilder nicht in den Beitrag passten und das Original beim Speichern als Anhang mitgeführt wird.
+      const keptImages = imageInfo ? imageInfo.total - imageInfo.dropped : 0;
       const imagesOnlyNote =
-        text.trim().length === 0 ? ` ${t(CAPTURE_FILE_TEXT.imagesOnlyNoText)}` : "";
+        text.trim().length === 0
+          ? keptImages > 0
+            ? ` ${t(CAPTURE_FILE_TEXT.imagesOnlyNoText)}`
+            : ` ${t(CAPTURE_FILE_TEXT.imagesAllDropped)}`
+          : "";
       // WP-D9: ehrliche Teilverlust-Notizen für Folien-Bilder — NUR wenn wirklich etwas verloren ging
       // (übernommene Bilder brauchen keinen Sonderhinweis). Der Dokumenttext ist davon unberührt.
       const imageLossNote =

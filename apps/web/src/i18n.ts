@@ -961,6 +961,8 @@ const de = {
     "{{count}} Bilder konnten nicht übernommen werden — zu groß für die Einbettung.",
   "capture.file.imagesOnlyNoText":
     "Bilder übernommen — ohne Text sind keine KI-Vorschläge möglich.",
+  "capture.file.imagesAllDropped":
+    "Die Bilder konnten nicht in den Beitrag übernommen werden (zu groß oder Format nicht unterstützt) — das Original wird beim Speichern als Anhang mitgeführt.",
   "capture.file.imageCaptionPlaceholder": "Noch keine Bildbeschreibung",
   "capture.file.imagesKept":
     "{{kept}} Bilder übernommen, davon {{compressed}} für die Textansicht komprimiert; das unveränderte Original liegt im Anhang.",
@@ -4035,6 +4037,8 @@ const en: typeof de = {
     "{{count}} images could not be carried over — too large to embed.",
   "capture.file.imagesOnlyNoText":
     "Images carried over — without text, AI suggestions are not possible.",
+  "capture.file.imagesAllDropped":
+    "The images could not be carried into the article (too large or format not supported) — the original travels along as an attachment when saving.",
   "capture.file.imageCaptionPlaceholder": "No image description yet",
   "capture.file.imagesKept":
     "{{kept}} images imported, {{compressed}} of them compressed for the text view; the unchanged original is in the attachment.",
@@ -7066,6 +7070,8 @@ const nl: typeof de = {
     "{{count}} afbeeldingen konden niet worden overgenomen — te groot om in te sluiten.",
   "capture.file.imagesOnlyNoText":
     "Afbeeldingen overgenomen — zonder tekst zijn er geen KI-voorstellen mogelijk.",
+  "capture.file.imagesAllDropped":
+    "De afbeeldingen konden niet in het artikel worden overgenomen (te groot of formaat niet ondersteund) — het origineel gaat bij het opslaan mee als bijlage.",
   "capture.file.imageCaptionPlaceholder": "Nog geen afbeeldingsbeschrijving",
   "capture.file.imagesKept":
     "{{kept}} afbeeldingen overgenomen, waarvan {{compressed}} gecomprimeerd voor de tekstweergave; het ongewijzigde origineel zit in de bijlage.",

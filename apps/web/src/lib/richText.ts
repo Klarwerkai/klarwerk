@@ -87,7 +87,9 @@ function isSafeHref(value: string): boolean {
 }
 
 // img src: Object-Store-raw oder data:image für SICHERE Rastertypen (kein SVG → XSS).
-function isSafeImgSrc(value: string): boolean {
+// WP-D9c (Galerie-Auflage 3): exportiert als ZENTRALE Policy — die Galerie-Ableitung (bodyImages.ts)
+// prüft damit dieselbe Grenze wie der Sanitizer (keine Zweitkopie, kein Drift).
+export function isSafeImgSrc(value: string): boolean {
   const v = value.trim();
   return (
     /^\/api\/objects\/[\w-]+\/raw$/.test(v) || /^data:image\/(png|jpe?g|gif|webp);base64,/i.test(v)

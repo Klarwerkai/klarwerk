@@ -4,6 +4,10 @@
 // </figure>). Die Fußnote in der Galerie ist damit IMMER die aktuelle figcaption des Bodys. DOM-frei
 // (Regex auf dem bereits sanitisierten Allowlist-HTML) → im Node-Gate testbar.
 
+// WP-D9c (Galerie-Auflage 3): defensive src-Grenze — dieselbe ZENTRALE Policy wie der Sanitizer
+// (Object-Store-raw oder sichere Raster-data-URLs; kein javascript:, kein SVG, kein Remote-http).
+import { isSafeImgSrc } from "./richText";
+
 export interface BodyImage {
   id: string;
   src: string;
@@ -14,8 +18,10 @@ export interface BodyImage {
 // der Vertrag selbst bleibt unangetastet. Nur Bilder MIT gültiger data-image-id gehören in die Galerie.
 const IMAGE_ID_TOKEN_RE = /^[\w-]{1,64}$/;
 
+// Attributwert im Tag — Whitespace VOR dem Namen ist Pflicht: \b allein würde in „data-src" das innere
+// „src" treffen (Bindestrich ist Wortgrenze) und ein data-src-Attribut fälschlich als Quelle lesen.
 function attrOf(tag: string, name: string): string | null {
-  const m = new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "i").exec(tag);
+  const m = new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "i").exec(tag);
   return m ? (m[1] ?? m[2] ?? null) : null;
 }
 
@@ -52,8 +58,9 @@ export function extractBodyImages(bodyHtml: string | null | undefined): BodyImag
     const id = attrOf(imgTag, "data-image-id");
     const src = attrOf(imgTag, "src");
     // Ohne gültige data-image-id (oder ohne src) kein Galerie-Eintrag — die Galerie zeigt nur die
-    // verankerten Import-Bilder (Fußnoten-Vertrag), keine losen Alt-Bilder.
-    if (!id || !IMAGE_ID_TOKEN_RE.test(id) || !src) {
+    // verankerten Import-Bilder (Fußnoten-Vertrag), keine losen Alt-Bilder. WP-D9c: die src läuft
+    // zusätzlich durch die zentrale isSafeImgSrc-Policy (Legacy-Daten/Repo-Importe fail-closed).
+    if (!id || !IMAGE_ID_TOKEN_RE.test(id) || !src || !isSafeImgSrc(src)) {
       continue;
     }
     out.push({ id, src, caption: captionText(inner) });

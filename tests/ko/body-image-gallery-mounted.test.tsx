@@ -11,6 +11,23 @@ import { BodyImageGallery } from "../../apps/web/src/components/BodyImageGallery
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+// WP-D9c: jsdom implementiert showModal()/close() des <dialog> nicht (wirft „not implemented") —
+// MINIMALER Test-Polyfill, der nur das offene/geschlossene Verhalten + close-Ereignis nachbildet.
+// Der PRODUKTCODE nutzt die echte API (showModal → Top-Layer + native Fokusfalle im Browser).
+HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+  this.setAttribute("open", "");
+};
+HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
+  this.removeAttribute("open");
+  this.dispatchEvent(new Event("close"));
+};
+Object.defineProperty(HTMLDialogElement.prototype, "open", {
+  configurable: true,
+  get(this: HTMLDialogElement) {
+    return this.hasAttribute("open");
+  },
+});
+
 function figure(id: string, src: string, caption: string): string {
   return `<figure><img data-image-id="${id}" src="${src}"><figcaption data-image-id="${id}">${caption}</figcaption></figure>`;
 }
@@ -52,6 +69,11 @@ describe("WP-BILD-1d: gemountete Galerie", () => {
     });
     const dialog = container.querySelector("dialog");
     expect(dialog).not.toBeNull();
+    // WP-D9c: ECHTES Modal — showModal() wurde gerufen (open-Attribut via Polyfill) …
+    expect(dialog?.hasAttribute("open")).toBe(true);
+    // … und der Fokus ist in den Dialog EINGEZOGEN (Schließen-Knopf).
+    const closeBtn = dialog?.querySelector("button");
+    expect(document.activeElement).toBe(closeBtn);
     // Großansicht zeigt Bild 1 von 2 + die AKTUELLE figcaption aus dem Body (keine Kopie).
     expect(dialog?.textContent).toContain("Erstes Bild");
     expect(dialog?.textContent).toMatch(/1.*2/);
@@ -73,15 +95,18 @@ describe("WP-BILD-1d: gemountete Galerie", () => {
     expect(dialog()?.textContent).not.toContain("Erstes Bild");
   });
 
-  it("Escape schließt die Großansicht und der Fokus kehrt zum auslösenden Thumbnail zurück", () => {
+  it("Escape (nativer cancel-Pfad) schließt; Fokus kehrt zum auslösenden Thumbnail zurück", () => {
     mount(TWO_IMAGES);
     const secondThumb = container.querySelectorAll("button")[1] as HTMLButtonElement;
     act(() => {
       secondThumb.click();
     });
-    expect(container.querySelector("dialog")).not.toBeNull();
+    const dialog = container.querySelector("dialog");
+    expect(dialog).not.toBeNull();
+    // WP-D9c: Escape läuft im echten Browser nativ als cancel-Ereignis des modalen Dialogs — genau
+    // dieses Ereignis wird hier gefeuert; der Handler schließt über die native close()-API.
     act(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      dialog?.dispatchEvent(new Event("cancel"));
     });
     expect(container.querySelector("dialog")).toBeNull();
     expect(document.activeElement).toBe(secondThumb);

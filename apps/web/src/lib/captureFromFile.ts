@@ -24,14 +24,19 @@ export interface FileDraftQueue {
 
 export type FileImportMode = "points" | "whole";
 
-// WP-D9b (bens GELB-Fix 2): Importierbarkeits-Entscheidung für den Datei-Import. Bisher wurde eine Datei
-// mit leerem Klartext VOR dem Setzen von fileRich/fileOriginal verworfen — ein reines Foto-/Diagramm-Deck
-// war trotz erfolgreich extrahierter Bilder komplett unimportierbar. Jetzt: importierbar, wenn Text ODER
-// mindestens eine verankerte figure (data-image-id, DOCX-/PPTX-Vertrag) im sicheren HTML steht. Nur die
-// KI-Punkte-Extraktion bleibt ohne Text deaktiviert (ehrliche Meldung). Weder Text noch Bilder → weiterhin
-// ehrliche Ablehnung (emptyPptx/empty-Fall).
-export function fileImportHasContent(text: string, richHtml: string | null): boolean {
-  return text.trim().length > 0 || extractBodyImages(richHtml ?? "").length > 0;
+// WP-D9b/WP-D9c (bens GELB-Fix 2 + ROT-Fix Kombinationsfall): Importierbarkeits-Entscheidung für den
+// Datei-Import. Importierbar, wenn Text ODER eine verankerte figure im sicheren HTML steht — ODER die
+// QUELLE Bilder hatte (`sourceHadImages`, z. B. imageCount > 0 aus dem Extraktionsergebnis). Letzteres
+// deckt den Kombinationsfall: bildreines Deck, dessen figures ALLE am finalen UTF-8-Deckel gedroppt
+// wurden — ohne das Quell-Signal sähe das Gate weder Text noch figure und würde ablehnen, womit
+// fileOriginal (und damit der Original-Anhang, D2) verloren ginge. Nur die KI-Punkte-Extraktion bleibt
+// ohne Text deaktiviert. Weder Text noch Quell-Bilder → weiterhin ehrliche Ablehnung (emptyPptx/empty).
+export function fileImportHasContent(
+  text: string,
+  richHtml: string | null,
+  sourceHadImages = false,
+): boolean {
+  return text.trim().length > 0 || sourceHadImages || extractBodyImages(richHtml ?? "").length > 0;
 }
 
 // WP-D7 (Befund 1, Pedi-Live-Test): .pptx war im Datei-Dialog ausgegraut, weil MEHRERE file-inputs
@@ -431,6 +436,8 @@ export const CAPTURE_FILE_TEXT = {
   pptxImagesBudget: "capture.file.pptxImagesBudget",
   // WP-D9b (Gelb-Fix 2): bildreiner Import — Bilder übernommen, kein Text für KI-Vorschläge.
   imagesOnlyNoText: "capture.file.imagesOnlyNoText",
+  // WP-D9c (ROT-Fix): ALLE Bilder gedroppt (Budget/Format) — ehrlich KEIN „übernommen", Original-Hinweis.
+  imagesAllDropped: "capture.file.imagesAllDropped",
   // WP-BILD-1a (Pedi 20.07.): ehrlicher Startwert der Bild-Fußnote — noch keine (KI-)Beschreibung.
   imageCaptionPlaceholder: "capture.file.imageCaptionPlaceholder",
   // WP-D1d: Bilder komprimiert BEHALTEN, Original im Anhang (Anhang WIRKLICH gelungen).

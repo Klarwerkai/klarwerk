@@ -1056,9 +1056,11 @@ export async function extractPptxRich(
   // autoritative UTF-8-Grenze (MAX_INLINE_BODY_HTML_BYTES). Statt htmlOverflow als HARTEN Fehler zu
   // melden (der den ganzen Import inkl. Text + Original killt — Bruch der Teilverlust-Semantik), läuft
   // das finale HTML durch den BESTEHENDEN DOCX-Mechanismus applyInlineImageBudget: überzählige GANZE
-  // figure-Einheiten fallen weg (greedy in Dokumentreihenfolge → die LETZTEN zuerst — die vorderen
-  // Bilder folgen dem Lesefluss und bleiben, deterministisch wie beim DOCX-Import), gezählt als
-  // droppedImageBudget. htmlOverflow bleibt nur true, wenn der TEXT selbst nicht passt.
+  // figure-Einheiten fallen weg. WP-D9c (bens Evidenzpunkt, PRÄZISE Semantik): das ist deterministischer
+  // FIRST-FIT in DOKUMENTREIHENFOLGE — frühe figures haben Vorrang aufs Restbudget; ein SPÄTERES,
+  // kleineres Bild kann aber noch passen, nachdem ein früheres großes nicht mehr passte (also NICHT
+  // strikt „letzte zuerst"). Identisch zum DOCX-Import; gedroppte zählen als droppedImageBudget.
+  // htmlOverflow bleibt nur true, wenn der TEXT selbst nicht passt.
   const budgeted = await applyInlineImageBudget(
     htmlParts.join(""),
     async (src) => src,

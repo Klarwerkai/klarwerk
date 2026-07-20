@@ -17,22 +17,30 @@ export function BodyImageGallery({ bodyHtml }: { bodyHtml: string }): JSX.Elemen
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   // Das Thumbnail, das die Großansicht geöffnet hat — für die Fokus-Rückkehr beim Schließen.
   const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const dialogRef = useRef<HTMLDialogElement | null>(null);
+  const closeBtnRef = useRef<HTMLButtonElement | null>(null);
 
-  const close = (): void => {
-    setOpenIndex(null);
-    triggerRef.current?.focus();
-  };
+  // WP-D9c (bens Galerie-Auflage 2): ECHTE Modal-Semantik. showModal() erzwingt Top-Layer + Fokusfalle
+  // nativ (aria-modal wird nicht mehr nur behauptet); beim Öffnen wandert der Fokus auf den
+  // Schließen-Knopf. Escape läuft nativ über das cancel→close-Ereignispaar des Dialogs.
+  useEffect(() => {
+    if (openIndex === null) {
+      return;
+    }
+    const dialog = dialogRef.current;
+    if (dialog && !dialog.open) {
+      dialog.showModal();
+    }
+    closeBtnRef.current?.focus();
+  }, [openIndex]);
 
-  // Escape schließt; Pfeiltasten blättern. Listener nur, solange die Großansicht offen ist.
+  // Pfeiltasten blättern innerhalb des offenen Dialogs (Escape übernimmt der native cancel-Pfad).
   useEffect(() => {
     if (openIndex === null) {
       return;
     }
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === "Escape") {
-        setOpenIndex(null);
-        triggerRef.current?.focus();
-      } else if (e.key === "ArrowLeft") {
+      if (e.key === "ArrowLeft") {
         setOpenIndex((i) => (i !== null && i > 0 ? i - 1 : i));
       } else if (e.key === "ArrowRight") {
         setOpenIndex((i) => (i !== null && i < images.length - 1 ? i + 1 : i));
@@ -41,6 +49,21 @@ export function BodyImageGallery({ bodyHtml }: { bodyHtml: string }): JSX.Elemen
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [openIndex, images.length]);
+
+  // Schließen IMMER über die native close()-API — das close-Ereignis synchronisiert dann State + Fokus
+  // (eine Austrittsstelle für X-Knopf, Escape/cancel und programmatische Schließungen).
+  const requestClose = (): void => {
+    const dialog = dialogRef.current;
+    if (dialog?.open) {
+      dialog.close();
+    }
+  };
+
+  const onDialogClose = (): void => {
+    setOpenIndex(null);
+    // Bestehende Fokus-Rückkehr: zurück zum auslösenden Thumbnail.
+    triggerRef.current?.focus();
+  };
 
   // Kein leerer Abschnitt: ohne verankerte Bilder erscheint die Galerie gar nicht.
   if (images.length === 0) {
@@ -74,11 +97,12 @@ export function BodyImageGallery({ bodyHtml }: { bodyHtml: string }): JSX.Elemen
       </div>
 
       {open !== undefined && openIndex !== null ? (
-        // Lightbox-artige Großansicht als natives <dialog> (Biome useSemanticElements) — schließbar mit
-        // X und Escape (kein Browser-alert/confirm).
+        // Lightbox-Großansicht als ECHTES Modal (showModal → Top-Layer + native Fokusfalle); Escape läuft
+        // über onCancel→close nativ, X über requestClose — beide münden in onDialogClose (kein alert/confirm).
         <dialog
-          open
-          aria-modal="true"
+          ref={dialogRef}
+          onCancel={requestClose}
+          onClose={onDialogClose}
           aria-label={t("ko.gallery")}
           className="fixed inset-0 z-50 flex h-full w-full flex-col items-center justify-center bg-ink/80 p-4"
         >
@@ -87,9 +111,10 @@ export function BodyImageGallery({ bodyHtml }: { bodyHtml: string }): JSX.Elemen
               {t("ko.galleryCount", { n: openIndex + 1, m: images.length })}
             </span>
             <button
+              ref={closeBtnRef}
               type="button"
               aria-label={t("ko.galleryClose")}
-              onClick={close}
+              onClick={requestClose}
               className="inline-flex items-center gap-1 rounded-btn border border-white/40 px-2 py-1 text-[12px] font-semibold text-white hover:bg-white/10"
             >
               <X size={14} />

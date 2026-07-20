@@ -1,6 +1,6 @@
 // WP-D9b (bens D9-Befunde aus BERICHT-sammel1): (ROT 1) finales Body-Budget mit Drop-to-fit — die
 // Rohbyte-Caps sind nur Vorfilter, autoritativ ist MAX_INLINE_BODY_HTML_BYTES in echten UTF-8-Bytes;
-// überzählige GANZE figures fallen weg (Dokumentreihenfolge → letzte zuerst), Text bleibt IMMER.
+// überzählige GANZE figures fallen weg (deterministischer First-Fit in Dokumentreihenfolge), Text bleibt IMMER.
 // (GELB 2) bildreine Decks sind importierbar (fileImportHasContent). (GELB 3) chunked Base64 mit
 // identischer 1-/2-/3-Byte-Endsemantik (Referenz: Buffer).
 import { readFileSync } from "node:fs";
@@ -81,7 +81,7 @@ describe("WP-D9b ROT-Fix 1: finales Body-Budget mit Drop-to-fit (REALE Konstante
     expect(utf8ByteLength(res.html)).toBeLessThan(5 * 1024 * 1024);
   });
 
-  it("Drop-to-fit entfernt die LETZTEN figures zuerst (Dokumentreihenfolge bleibt vorne intakt)", async () => {
+  it("Drop-to-fit ist First-Fit in Dokumentreihenfolge (frühe figures haben Vorrang)", async () => {
     // Zwei Bilder à ~90 KB Base64; Budget lässt nur eines zu → das ERSTE bleibt, das zweite fällt.
     const files: Record<string, Uint8Array> = {
       "ppt/slides/slide1.xml": enc(pictureSlide("rId2", "Erstes", "danach")),
@@ -99,7 +99,7 @@ describe("WP-D9b ROT-Fix 1: finales Body-Budget mit Drop-to-fit (REALE Konstante
     });
     expect(res.embeddedImages).toBe(1);
     expect(res.droppedImageBudget).toBe(1);
-    // Das VORDERE Bild (Folie 1) lebt, das hintere ist gedroppt.
+    // First-Fit: das VORDERE Bild (Folie 1) hat Vorrang aufs Budget, das hintere passt nicht mehr.
     expect(res.html).toContain('data-image-id="kw-img-tok9b2-1"');
     expect(res.html).not.toContain('data-image-id="kw-img-tok9b2-2"');
     expect(res.html).toContain("Zweites"); // Text der zweiten Folie bleibt vollständig
@@ -144,7 +144,8 @@ describe("WP-D9b GELB-Fix 2: bildreine PPTX importierbar", () => {
 
   it("Capture-Verdrahtung: Gate nutzt fileImportHasContent VOR setFileOriginal; Extraktion ohne Text deaktiviert", () => {
     const src = readFileSync(resolve(process.cwd(), "apps/web/src/pages/Capture.tsx"), "utf8");
-    const gate = src.indexOf("fileImportHasContent(text, rich.html)");
+    // WP-D9c: das Gate traegt jetzt zusaetzlich das Quell-Signal (sourceHadImages).
+    const gate = src.indexOf("fileImportHasContent(text, rich.html, sourceHadImages)");
     const original = src.indexOf("setFileOriginal({");
     expect(gate).toBeGreaterThan(0);
     // Das Original wird NACH dem Gate gesetzt → ein bildreiches Deck erreicht den Original-Anhang.

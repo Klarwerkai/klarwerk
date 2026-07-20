@@ -65,6 +65,45 @@ describe("WP-BILD-1d: extractBodyImages", () => {
   });
 });
 
+// WP-D9c (bens Galerie-Auflage 3): defensive src-Grenze — extractBodyImages vertraut dem bodyHtml-String
+// nicht mehr blind (Legacy-Daten/Repo-Importe), sondern prüft die ZENTRALE isSafeImgSrc-Policy.
+describe("WP-D9c: defensive src-Prüfung (zentrale isSafeImgSrc-Policy)", () => {
+  function fig(imgAttrs: string): string {
+    return `<figure><img ${imgAttrs}><figcaption data-image-id="kw-img-z1-1">c</figcaption></figure>`;
+  }
+
+  it("weist unsichere Quellen ab: javascript:, SVG-data-URL, Remote-http(s), data-src-Attribut", () => {
+    // biome-ignore lint/a11y/noBlankTarget: reine String-Fixtures für den Negativ-Test.
+    const cases = [
+      fig('data-image-id="kw-img-z1-1" src="javascript:alert(1)"'),
+      fig('data-image-id="kw-img-z1-1" src="data:image/svg+xml;base64,PHN2Zz4="'),
+      fig('data-image-id="kw-img-z1-1" src="https://boese.example/x.png"'),
+      fig('data-image-id="kw-img-z1-1" src="http://boese.example/x.png"'),
+      // data-src darf NICHT als src gelesen werden (Attributname-Grenze) — ohne echtes src kein Eintrag.
+      fig('data-image-id="kw-img-z1-1" data-src="data:image/png;base64,QQ=="'),
+    ];
+    for (const body of cases) {
+      expect(extractBodyImages(body), body).toEqual([]);
+    }
+  });
+
+  it("nimmt sichere Quellen an: interner Object-Raw-Pfad und erlaubte Raster-data-URLs", () => {
+    const rawPath = fig('data-image-id="kw-img-z1-1" src="/api/objects/abc-123/raw"');
+    expect(extractBodyImages(rawPath)[0]?.src).toBe("/api/objects/abc-123/raw");
+    const png = fig('data-image-id="kw-img-z1-1" src="data:image/png;base64,QQ=="');
+    expect(extractBodyImages(png)[0]?.src).toBe("data:image/png;base64,QQ==");
+    const webp = fig('data-image-id="kw-img-z1-1" src="data:image/webp;base64,QQ=="');
+    expect(extractBodyImages(webp).length).toBe(1);
+  });
+
+  it("nutzt DIESELBE zentrale Policy wie der Sanitizer (kein Duplikat)", () => {
+    const lib = readFileSync(resolve(process.cwd(), "apps/web/src/lib/bodyImages.ts"), "utf8");
+    expect(lib).toContain('import { isSafeImgSrc } from "./richText"');
+    // Keine Zweitkopie der Muster in bodyImages.
+    expect(lib).not.toContain("api\\/objects");
+  });
+});
+
 describe("WP-BILD-1d: Verdrahtung + i18n", () => {
   it("KoRead rendert die Galerie unter dem Lese-Body (nur Leseansicht, keine neuen Routen)", () => {
     const src = readFileSync(
