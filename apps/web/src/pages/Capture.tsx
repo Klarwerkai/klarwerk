@@ -135,13 +135,15 @@ import { draftTitle } from "../lib/draftForm";
 import { studioSaveConfidence } from "../lib/editorApplySafety";
 import { EDITOR_BLOCKS } from "../lib/editorBlocks";
 import { editorImagesFromLocalImages } from "../lib/editorImages";
+// WP-D5b (bens GELB-Fix 4): Erkennung im Capture-Import-Pfad über die ZENTRALE detectFileKind-Reihenfolge
+// (image→pdf→docx→pptx→text) — sonst landet eine .pptx mit MIME text/plain im Text-Pfad.
+import { detectFileKind } from "../lib/extract";
 // SCRUM-409 (PMO-FEA-0008-Delta): Mehrpunkt-Entwürfe + Zusammenführen im „Aus Datei"-Weg.
 import { createPointDrafts } from "../lib/fileMultiPoint";
 import {
   fileToThumbDataUrl,
   isImage,
   isPdfDocument,
-  isPptxDocument,
   isTextDocument,
   isWordDocument,
   readDocxFile,
@@ -154,6 +156,8 @@ import {
 } from "../lib/files";
 import { appendAnswer, interviewSourceKey, isInterviewDone } from "../lib/interviewFlow";
 import { EMPTY_SOURCE_FORM, type SourceFormInput, isSourceFormValid } from "../lib/koSource";
+// WP-D5b (bens GELB-Fix 3): ehrlicher Importfehler bei Überschreitung des Archiv-/Dekompressionsbudgets.
+import { PptxTooLargeError } from "../lib/pptx";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { documentProvenance, draftProvenance } from "../lib/reasonerProvenance";
 import { hasSpeechRecognition } from "../lib/speechSupport";
@@ -1576,7 +1580,11 @@ export function Capture(): JSX.Element {
         dropped: number;
         htmlOverflow: boolean;
       } | null = null;
-      if (isWordDocument(f)) {
+      // WP-D5b (bens GELB-Fix 4): Format über die zentrale detectFileKind-Reihenfolge bestimmen
+      // (image→pdf→docx→pptx→text). So gewinnt die Endung .pptx gegen einen irreführenden MIME text/plain
+      // — sonst landete eine .pptx im Text-Pfad (Bug: isTextDocument stand VOR der PPTX-Erkennung).
+      const kind = detectFileKind({ name: f.name, type: f.type });
+      if (kind === "docx") {
         // WP-D1: DOCX strukturerhaltend — HTML (Überschriften/Listen/Tabellen/Bilder, Best-Effort)
         // für den Ganzdokument-Modus, Klartext weiterhin für die KI-Punkte-Extraktion.
         const docx = await readDocxRich(f);
@@ -1589,24 +1597,24 @@ export function Capture(): JSX.Element {
           // WP-D1e (Fix 3): htmlOverflow bis zum Speichern mitführen — dort wird VOR dem Upload abgebrochen.
           htmlOverflow: docx.htmlOverflow,
         };
-      } else if (isTextDocument(f)) {
-        text = await readTextFile(f);
-      } else if (isPdfDocument(f)) {
+      } else if (kind === "pdf") {
         // WP-D3: zeilen-/absatztreuer PDF-Text; truncated meldet den Seiten-Cap.
         const pdf = await readPdfFile(f);
         text = pdf.text;
         rich = { html: null, kind: "pdf" };
         pdfTruncatedPages = pdf.truncated ? pdf.pageCount : null;
-      } else if (isPptxDocument(f)) {
-        // WP-D5: PowerPoint strukturerhaltend (Folie für Folie: Titel→h2, Text→Absätze, Bullets→Listen).
-        // Bilder werden NICHT inline übernommen (nur das Original als Anhang) — Verlust wird ehrlich
-        // gemeldet. htmlOverflow reist als total-0-Bildbilanz mit, damit der Vor-Upload-Abbruch (WP-D1e)
-        // auch für zu große Folien-HTMLs greift; truncated meldet den Folien-Cap.
+      } else if (kind === "pptx") {
+        // WP-D5: PowerPoint strukturerhaltend (Folie für Folie: Titel→h2, Text→Absätze, Bullets→Listen,
+        // Tabellen→<table>). Bilder werden NICHT inline übernommen (nur das Original als Anhang) — Verlust
+        // wird ehrlich gemeldet. htmlOverflow reist als total-0-Bildbilanz mit, damit der Vor-Upload-Abbruch
+        // (WP-D1e) auch für zu große Folien-HTMLs greift; truncated meldet den Folien-Cap.
         const pptx = await readPptxRich(f);
         text = pptx.text;
         rich = { html: pptx.html, kind: "pptx" };
         pptxTruncatedSlides = pptx.truncated ? pptx.slideCount : null;
         imageInfo = { total: 0, compressed: 0, dropped: 0, htmlOverflow: pptx.htmlOverflow };
+      } else if (kind === "text") {
+        text = await readTextFile(f);
       } else {
         setFileName(null);
         setNotice(null);
@@ -1662,10 +1670,16 @@ export function Capture(): JSX.Element {
           chars: text.length,
         })}${formatNote}${truncatedNote}`,
       );
-    } catch {
+    } catch (error) {
       setFileName(null);
       setNotice(null);
-      setErr(t(CAPTURE_FILE_TEXT.parseError, { name: f.name }));
+      // WP-D5b (bens GELB-Fix 3): Archiv-/Dekompressionsbudget überschritten → ehrliche, spezifische
+      // Meldung statt generischem Parse-Fehler (und statt UI-Freeze).
+      if (error instanceof PptxTooLargeError) {
+        setErr(t(CAPTURE_FILE_TEXT.pptxTooLarge, { name: f.name }));
+      } else {
+        setErr(t(CAPTURE_FILE_TEXT.parseError, { name: f.name }));
+      }
     } finally {
       setFileBusy(false);
     }

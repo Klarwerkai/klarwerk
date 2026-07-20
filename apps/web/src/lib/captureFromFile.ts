@@ -400,6 +400,8 @@ export const CAPTURE_FILE_TEXT = {
   pdfTruncated: "capture.file.pdfTruncated",
   // WP-D5: ehrlicher Hinweis, wenn der Folien-Cap (MAX_PPTX_SLIDES) griff — nur die ersten N Folien gelesen.
   pptxTruncated: "capture.file.pptxTruncated",
+  // WP-D5b: ehrlicher Fehler, wenn die PPTX das Archiv-/Dekompressionsbudget sprengt (statt UI-Freeze).
+  pptxTooLarge: "capture.file.pptxTooLarge",
   // WP-D1d: Bilder komprimiert BEHALTEN, Original im Anhang (Anhang WIRKLICH gelungen).
   imagesKept: "capture.file.imagesKept",
   // WP-D1d: einige komprimiert, einige als Notbremse weggelassen — Original im Anhang gesichert.

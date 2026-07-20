@@ -6,12 +6,19 @@ import { describe, expect, it } from "vitest";
 import { MAX_INLINE_BODY_HTML_BYTES } from "../../apps/web/src/lib/docx";
 import {
   MAX_PPTX_SLIDES,
+  PptxTooLargeError,
   type PptxUnzip,
+  assertArchiveWithinBudget,
   extractPptxRich,
   isPptxDocumentLike,
   resolveSlideOrder,
   slideToHtml,
 } from "../../apps/web/src/lib/pptx";
+
+// Echte OOXML-Namespace-URIs — für die namespace-aware Tests (alternative Präfixe).
+const URI_A = "http://schemas.openxmlformats.org/drawingml/2006/main";
+const URI_P = "http://schemas.openxmlformats.org/presentationml/2006/main";
+const URI_R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
 const PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
@@ -191,5 +198,145 @@ describe("WP-D5: extractPptxRich (Orchestrierung, Bilanz, Cap)", () => {
     };
     const res = await extractPptxRich(new ArrayBuffer(0), { unzip: unzipOf(files) });
     expect(res.htmlOverflow).toBe(true);
+  });
+});
+
+// WP-D5b (bens ROT-Fix 1): Namespace-/Attribut-Robustheit — Gegenbeispiele gepinnt.
+describe("WP-D5b: namespace-aware Parsing (alternative Präfixe)", () => {
+  it("löst das drawingml-Präfix aus xmlns auf — funktioniert mit x: statt a:", () => {
+    const slide = `<p:sld xmlns:p="${URI_P}" xmlns:x="${URI_A}"><p:cSld><p:spTree><p:sp><p:nvSpPr><p:nvPr><p:ph type="title"/></p:nvPr></p:nvSpPr><p:txBody><x:p><x:r><x:t>Titel X</x:t></x:r></x:p></p:txBody></p:sp><p:sp><p:txBody><x:p><x:pPr><x:buChar char="•"/></x:pPr><x:r><x:t>Punkt X</x:t></x:r></x:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`;
+    const { html } = slideToHtml(slide, { slideNumber: 1, slideLabel: "Folie" });
+    expect(html).toBe("<h2>Titel X</h2><ul><li>Punkt X</li></ul>");
+  });
+
+  it("löst auch das presentationml-Präfix auf — Titel-Platzhalter unter q: erkannt", () => {
+    const slide = `<q:sld xmlns:q="${URI_P}" xmlns:a="${URI_A}"><q:cSld><q:spTree><q:sp><q:nvSpPr><q:nvPr><q:ph type="ctrTitle"/></q:nvPr></q:nvSpPr><q:txBody><a:p><a:r><a:t>Zentraltitel</a:t></a:r></a:p></q:txBody></q:sp></q:spTree></q:cSld></q:sld>`;
+    const { html } = slideToHtml(slide, { slideNumber: 3, slideLabel: "Folie" });
+    expect(html).toBe("<h2>Zentraltitel</h2>");
+  });
+});
+
+describe("WP-D5b: resolveSlideOrder — Relationship-Robustheit + kein stiller Folienverlust", () => {
+  it("Relationship: Target VOR Id, einfache Quotes, präfigiertes Element", () => {
+    const files: Record<string, Uint8Array> = {
+      "ppt/presentation.xml": enc(
+        `<p:presentation xmlns:p="${URI_P}" xmlns:r="${URI_R}"><p:sldIdLst><p:sldId id="256" r:id='rId1'/></p:sldIdLst></p:presentation>`,
+      ),
+      "ppt/_rels/presentation.xml.rels": enc(
+        `<pr:Relationships xmlns:pr="rel"><pr:Relationship Target='slides/slide1.xml' Id='rId1'/></pr:Relationships>`,
+      ),
+      "ppt/slides/slide1.xml": enc(slideXml({ title: "Eins" })),
+    };
+    expect(resolveSlideOrder(files)).toEqual(["ppt/slides/slide1.xml"]);
+  });
+
+  it("partielle Auflösung (10 Folien, 1 auflösbar) → ALLE 10 in deterministischer Reihenfolge", () => {
+    const files: Record<string, Uint8Array> = {
+      // presentation referenziert nur rId5; rels löst nur rId5 → slide7 auf.
+      "ppt/presentation.xml": enc(
+        `<p:presentation xmlns:p="${URI_P}" xmlns:r="${URI_R}"><p:sldIdLst><p:sldId id="300" r:id="rId5"/></p:sldIdLst></p:presentation>`,
+      ),
+      "ppt/_rels/presentation.xml.rels": enc(
+        `<Relationships><Relationship Id="rId5" Type="t" Target="slides/slide7.xml"/></Relationships>`,
+      ),
+    };
+    for (let i = 1; i <= 10; i += 1) {
+      files[`ppt/slides/slide${i}.xml`] = enc(slideXml({ title: `T${i}` }));
+    }
+    const order = resolveSlideOrder(files);
+    // Keine Folie geht verloren: alle 10 sind dabei.
+    expect(order).toHaveLength(10);
+    // Die aufgelöste Folie führt; der Rest folgt deterministisch numerisch (ohne slide7).
+    expect(order[0]).toBe("ppt/slides/slide7.xml");
+    const rest = order.slice(1);
+    const expectedRest = [1, 2, 3, 4, 5, 6, 8, 9, 10].map((n) => `ppt/slides/slide${n}.xml`);
+    expect(rest).toEqual(expectedRest);
+  });
+
+  it("nicht auflösbare rels (0 Treffer) → vollständige numerische Reihenfolge, nichts verschwindet", () => {
+    const files: Record<string, Uint8Array> = {
+      "ppt/presentation.xml": enc(
+        `<p:presentation xmlns:p="${URI_P}" xmlns:r="${URI_R}"><p:sldIdLst><p:sldId id="1" r:id="rIdX"/></p:sldIdLst></p:presentation>`,
+      ),
+      "ppt/_rels/presentation.xml.rels": enc(
+        `<Relationships><Relationship Id="rId1" Type="t" Target="slides/slide1.xml"/></Relationships>`,
+      ),
+      "ppt/slides/slide2.xml": enc(slideXml({ title: "Zwei" })),
+      "ppt/slides/slide1.xml": enc(slideXml({ title: "Eins" })),
+    };
+    expect(resolveSlideOrder(files)).toEqual(["ppt/slides/slide1.xml", "ppt/slides/slide2.xml"]);
+  });
+});
+
+describe("WP-D5b: Struktur-Lücken (br, ol, Tabellen)", () => {
+  function bodySlide(inner: string): string {
+    return `<p:sld xmlns:p="${URI_P}" xmlns:a="${URI_A}"><p:cSld><p:spTree>${inner}</p:spTree></p:cSld></p:sld>`;
+  }
+
+  it("<a:br/> wird zum Leerzeichen (kein HalloWelt-Verschmelzen)", () => {
+    const slide = bodySlide(
+      "<p:sp><p:txBody><a:p><a:r><a:t>Hallo</a:t></a:r><a:br/><a:r><a:t>Welt</a:t></a:r></a:p></p:txBody></p:sp>",
+    );
+    const { html, text } = slideToHtml(slide, { slideNumber: 1, slideLabel: "Folie" });
+    expect(html).toContain("<p>Hallo Welt</p>");
+    expect(html).not.toContain("HalloWelt");
+    expect(text).toContain("Hallo Welt");
+  });
+
+  it("buAutoNum wird eine nummerierte Liste <ol> (nicht <ul>)", () => {
+    const slide = bodySlide(
+      `<p:sp><p:txBody><a:p><a:pPr><a:buAutoNum type="arabicPeriod"/></a:pPr><a:r><a:t>Erstens</a:t></a:r></a:p><a:p><a:pPr><a:buAutoNum type="arabicPeriod"/></a:pPr><a:r><a:t>Zweitens</a:t></a:r></a:p></p:txBody></p:sp>`,
+    );
+    const { html } = slideToHtml(slide, { slideNumber: 1, slideLabel: "Folie" });
+    expect(html).toBe("<h2>Folie 1</h2><ol><li>Erstens</li><li>Zweitens</li></ol>");
+  });
+
+  it("Tabelle (p:graphicFrame → a:tbl) wird Best-Effort eine <table>; Reihenfolge bleibt", () => {
+    const table =
+      "<p:graphicFrame><a:graphic><a:graphicData><a:tbl><a:tr><a:tc><a:txBody><a:p><a:r><a:t>Zelle A</a:t></a:r></a:p></a:txBody></a:tc><a:tc><a:txBody><a:p><a:r><a:t>Zelle B</a:t></a:r></a:p></a:txBody></a:tc></a:tr></a:tbl></a:graphicData></a:graphic></p:graphicFrame>";
+    const para =
+      "<p:sp><p:txBody><a:p><a:r><a:t>Vor der Tabelle</a:t></a:r></a:p></p:txBody></p:sp>";
+    const slide = bodySlide(`${para}${table}`);
+    const { html, text, tableCount } = slideToHtml(slide, { slideNumber: 1, slideLabel: "Folie" });
+    expect(tableCount).toBe(1);
+    expect(html).toBe(
+      "<h2>Folie 1</h2><p>Vor der Tabelle</p><table><tr><td>Zelle A</td><td>Zelle B</td></tr></table>",
+    );
+    expect(text).toContain("Zelle A | Zelle B");
+  });
+});
+
+describe("WP-D5b: Archiv-/Dekompressionsbudget (kein UI-Freeze)", () => {
+  function bigBytes(n: number): Uint8Array {
+    return new Uint8Array(n);
+  }
+
+  it("assertArchiveWithinBudget wirft bei zu vielen Einträgen", () => {
+    const files: Record<string, Uint8Array> = {};
+    for (let i = 0; i < 6; i += 1) {
+      files[`ppt/slides/slide${i}.xml`] = enc("<x/>");
+    }
+    expect(() => assertArchiveWithinBudget(files, { maxEntries: 5 })).toThrow(PptxTooLargeError);
+  });
+
+  it("assertArchiveWithinBudget wirft bei zu vielen dekomprimierten Bytes", () => {
+    const files: Record<string, Uint8Array> = {
+      "ppt/slides/slide1.xml": bigBytes(1000),
+    };
+    expect(() => assertArchiveWithinBudget(files, { maxTotalBytes: 500 })).toThrow(
+      PptxTooLargeError,
+    );
+  });
+
+  it("extractPptxRich bricht bei gesprengtem Budget ehrlich ab (kein Durchlauf)", async () => {
+    const files: Record<string, Uint8Array> = {
+      "ppt/slides/slide1.xml": bigBytes(10_000),
+    };
+    await expect(
+      extractPptxRich(new ArrayBuffer(0), {
+        unzip: () => files,
+        maxTotalBytes: 1000,
+      }),
+    ).rejects.toBeInstanceOf(PptxTooLargeError);
   });
 });

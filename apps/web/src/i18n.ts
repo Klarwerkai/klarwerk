@@ -950,9 +950,11 @@ const de = {
   "capture.file.emptyPdf":
     "In „{{name}}“ wurde kein Text gefunden — ein gescanntes PDF ohne Textebene wird noch nicht unterstützt.",
   "capture.file.emptyPptx":
-    "In „{{name}}“ wurde kein Text gefunden — eine reine Bild-/Grafik-Präsentation ohne Text wird als Text nicht übernommen. Das Original liegt im Anhang.",
+    "In „{{name}}“ wurden keine übernehmbaren Texte gefunden (reine Bild-/Grafik-Präsentation). Es wurde nichts gespeichert — das Original kannst du bei Bedarf manuell als Datei anhängen.",
   "capture.file.pdfTruncated": "Nur die ersten {{count}} Seiten importiert.",
   "capture.file.pptxTruncated": "Nur die ersten {{count}} Folien importiert.",
+  "capture.file.pptxTooLarge":
+    "„{{name}}“ ist zu groß oder zu stark komprimiert für den sicheren Import und wurde NICHT gelesen. Bitte die Präsentation verkleinern oder aufteilen.",
   "capture.file.imagesKept":
     "{{kept}} Bilder übernommen, davon {{compressed}} für die Textansicht komprimiert; das unveränderte Original liegt im Anhang.",
   "capture.file.imagesKeptDropped":
@@ -968,7 +970,7 @@ const de = {
   "capture.file.importNote.pdf":
     "Best-Effort-Textimport — Layout und Bilder wurden nicht übernommen.",
   "capture.file.importNote.pptx":
-    "Best-Effort-Import aus PowerPoint — Text und Struktur je Folie übernommen; Layout, Animationen, Übergänge, Bilder und Sprechernotizen gehen verloren. Das Original liegt im Anhang.",
+    "Best-Effort-Import aus PowerPoint — Text, Listen und Tabellen je Folie übernommen; Layout, Animationen, Übergänge, Bilder und Sprechernotizen gehen verloren.",
   "capture.file.parseError": "„{{name}}“ konnte nicht gelesen werden.",
   "capture.file.unsupported":
     "„{{name}}“ wird hier nicht unterstützt — bitte als TXT/MD, DOCX, PDF oder PPTX bereitstellen. Bilder gehen nur über OCR.",
@@ -3995,9 +3997,11 @@ const en: typeof de = {
   "capture.file.emptyPdf":
     "No text found in “{{name}}” — a scanned PDF without a text layer is not supported yet.",
   "capture.file.emptyPptx":
-    "No text found in “{{name}}” — an image-only presentation without text is not carried over as text. The original is in the attachment.",
+    "No importable text found in “{{name}}” (image-only presentation). Nothing was saved — you can attach the original manually as a file if needed.",
   "capture.file.pdfTruncated": "Only the first {{count}} pages were imported.",
   "capture.file.pptxTruncated": "Only the first {{count}} slides were imported.",
+  "capture.file.pptxTooLarge":
+    "“{{name}}” is too large or too heavily compressed for a safe import and was NOT read. Please shrink or split the presentation.",
   "capture.file.imagesKept":
     "{{kept}} images imported, {{compressed}} of them compressed for the text view; the unchanged original is in the attachment.",
   "capture.file.imagesKeptDropped":
@@ -4013,7 +4017,7 @@ const en: typeof de = {
   "capture.file.importNote.pdf":
     "Best-effort text import — layout and images were not carried over.",
   "capture.file.importNote.pptx":
-    "Best-effort import from PowerPoint — text and structure per slide carried over; layout, animations, transitions, images and speaker notes are lost. The original is in the attachment.",
+    "Best-effort import from PowerPoint — text, lists and tables per slide carried over; layout, animations, transitions, images and speaker notes are lost.",
   "capture.file.parseError": "“{{name}}” could not be read.",
   "capture.file.unsupported":
     "“{{name}}” is not supported here — please provide TXT/MD, DOCX, PDF, or PPTX. Images only work via OCR.",
@@ -6997,9 +7001,11 @@ const nl: typeof de = {
   "capture.file.emptyPdf":
     "In „{{name}}“ is geen tekst gevonden — een gescande PDF zonder tekstlaag wordt nog niet ondersteund.",
   "capture.file.emptyPptx":
-    "In „{{name}}“ is geen tekst gevonden — een presentatie met alleen afbeeldingen zonder tekst wordt niet als tekst overgenomen. Het origineel zit in de bijlage.",
+    "In „{{name}}“ zijn geen overneembare teksten gevonden (presentatie met alleen afbeeldingen). Er is niets opgeslagen — je kunt het origineel indien nodig handmatig als bestand toevoegen.",
   "capture.file.pdfTruncated": "Alleen de eerste {{count}} pagina's geïmporteerd.",
   "capture.file.pptxTruncated": "Alleen de eerste {{count}} dia's geïmporteerd.",
+  "capture.file.pptxTooLarge":
+    "„{{name}}“ is te groot of te sterk gecomprimeerd voor een veilige import en is NIET gelezen. Verklein of splits de presentatie.",
   "capture.file.imagesKept":
     "{{kept}} afbeeldingen overgenomen, waarvan {{compressed}} gecomprimeerd voor de tekstweergave; het ongewijzigde origineel zit in de bijlage.",
   "capture.file.imagesKeptDropped":
@@ -7015,7 +7021,7 @@ const nl: typeof de = {
   "capture.file.importNote.pdf":
     "Best-effort tekstimport — layout en afbeeldingen zijn niet overgenomen.",
   "capture.file.importNote.pptx":
-    "Best-effort import uit PowerPoint — tekst en structuur per dia overgenomen; layout, animaties, overgangen, afbeeldingen en notities gaan verloren. Het origineel zit in de bijlage.",
+    "Best-effort import uit PowerPoint — tekst, lijsten en tabellen per dia overgenomen; layout, animaties, overgangen, afbeeldingen en notities gaan verloren.",
   "capture.file.parseError": "„{{name}}“ kon niet worden gelezen.",
   "capture.file.unsupported":
     "„{{name}}“ wordt hier niet ondersteund — lever het aan als TXT/MD, DOCX, PDF of PPTX. Afbeeldingen gaan alleen via OCR.",

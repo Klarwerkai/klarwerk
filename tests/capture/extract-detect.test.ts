@@ -29,6 +29,16 @@ describe("SCRUM-122/123: detectFileKind", () => {
     expect(detectFileKind({ name: "archiv.zip", type: "application/zip" })).toBe("unsupported");
     expect(detectFileKind({ name: "alt.doc" })).toBe("unsupported");
   });
+
+  // WP-D5b (bens GELB-Fix 4): PPTX-Erkennung über die zentrale Reihenfolge — die Endung .pptx gewinnt
+  // gegen einen irreführenden MIME text/plain (sonst landete die Präsentation im Text-Pfad).
+  it("erkennt PPTX über Endung und MIME; .pptx schlägt text/plain", () => {
+    const PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    expect(detectFileKind({ name: "deck.pptx" })).toBe("pptx");
+    expect(detectFileKind({ name: "ohne-endung", type: PPTX_MIME })).toBe("pptx");
+    // Der Kern-Bug: eine .pptx mit MIME text/plain darf NICHT als Text erkannt werden.
+    expect(detectFileKind({ name: "deck.pptx", type: "text/plain" })).toBe("pptx");
+  });
 });
 
 // WP-D3: joinPdfPages verbindet jetzt rekonstruierte ZEILEN je Seite (Zeilen mit \n, Seiten mit \n\n),
