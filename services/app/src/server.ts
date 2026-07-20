@@ -45,6 +45,35 @@ async function configureWebDelivery(app: FastifyInstance): Promise<void> {
     hsts: { maxAge: 31_536_000, includeSubDomains: true, preload: true },
   });
 
+  // WP-KLARA-1: NUR /word-addin/* bekommt eine eigene CSP. Das Word-Taskpane MUSS im Office-Webview
+  // einbettbar sein (Word Online lädt es im iframe → frame-ancestors 'none' würde es blockieren) und
+  // lädt office.js von der offiziellen Microsoft-CDN + eigenes Inline-JS/CSS (bewusst selbstenthaltende
+  // statische Seite ohne Build). Die Ausnahme bleibt ENG: nur dieser Pfad, frame-ancestors nur auf
+  // Office-Host-Domains, connect-src bleibt 'self' (API-Aufrufe sind same-origin — kein CORS-Umbau).
+  // Alle übrigen Routen behalten die strikte globale CSP von oben.
+  const wordAddinCsp = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' https://appsforoffice.microsoft.com",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data:",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'self' https://*.office.com https://*.officeapps.live.com https://*.live.com https://*.microsoft.com",
+  ].join("; ");
+  // WP-E-Regel: app-globale onSend-Hooks IMMER synchron im Callback-Stil (kein async — s.
+  // sync-onsend-hooks.test.ts; ein async-Hook öffnete das Doppel-Send-Fenster ERR_HTTP_HEADERS_SENT).
+  app.addHook("onSend", (request, reply, payload, done) => {
+    if (request.url.startsWith("/word-addin/")) {
+      reply.header("Content-Security-Policy", wordAddinCsp);
+      // X-Frame-Options kennt keine Domain-Liste — für diesen Pfad entfernen; die CSP-frame-ancestors
+      // oben ist die präzisere, von modernen Engines bevorzugte Grenze.
+      reply.removeHeader("X-Frame-Options");
+    }
+    done(null, payload);
+  });
+
   // Kanonik: app.<domain> → 301 auf <domain> (pfaderhaltend).
   app.addHook("onRequest", async (request, reply) => {
     if (request.hostname === `app.${CANONICAL_HOST}`) {

@@ -1,0 +1,384 @@
+<!doctype html>
+<!-- WP-KLARA-1: Klara in Word — selbstenthaltendes Taskpane (kein React, kein Build). Läuft auf der
+     App-Domain (public/ wird statisch mitgeliefert) → API-Aufrufe sind same-origin (Session-Cookie).
+     EHRLICH: dieser Schritt kann NUR die Word-Auswahl als KLARWERK-ENTWURF senden — keine KI, kein
+     Auto-Speichern als fertiges Wissensobjekt, keine Analyse. -->
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Klara — KLARWERK</title>
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <style>
+    :root {
+      --ink: #16151d;
+      --text: #2c2b35;
+      --muted: #6b6a76;
+      --hairline: #e4e3ea;
+      --page: #f7f7fa;
+      --surface: #ffffff;
+      --ai: #5b50c4;
+      --warn-bg: #fdf3e7;
+      --warn-text: #8a5a1e;
+      --pos-bg: #eaf6ee;
+      --pos-text: #23663b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--page);
+      color: var(--text);
+      font: 14px/1.5 -apple-system, "Segoe UI", system-ui, sans-serif;
+      padding: 14px;
+    }
+    header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .brand { font-size: 18px; font-weight: 700; color: var(--ink); }
+    .brand small { color: var(--muted); font-weight: 500; font-size: 11px; margin-left: 6px; }
+    .lang button {
+      border: 1px solid var(--hairline);
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 11px;
+      padding: 2px 7px;
+      border-radius: 999px;
+      cursor: pointer;
+    }
+    .lang button.active { color: #fff; background: var(--ai); border-color: var(--ai); }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      border-radius: 10px;
+      padding: 12px;
+      margin-top: 12px;
+    }
+    h2 { font-size: 13px; margin: 0 0 6px; color: var(--ink); }
+    p { margin: 6px 0; }
+    .muted { color: var(--muted); font-size: 12.5px; }
+    button.primary {
+      background: var(--ai);
+      color: #fff;
+      border: 0;
+      border-radius: 8px;
+      padding: 9px 14px;
+      font-weight: 600;
+      font-size: 13.5px;
+      cursor: pointer;
+      width: 100%;
+    }
+    button.primary:disabled { opacity: 0.5; cursor: default; }
+    button.ghost {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      padding: 7px 12px;
+      font-size: 12.5px;
+      cursor: pointer;
+    }
+    .status { border-radius: 8px; padding: 8px 10px; font-size: 12.5px; margin-top: 8px; }
+    .status.ok { background: var(--pos-bg); color: var(--pos-text); }
+    .status.warn { background: var(--warn-bg); color: var(--warn-text); }
+    .hidden { display: none; }
+    ul { margin: 6px 0; padding-left: 18px; }
+    a { color: var(--ai); }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">Klara<small>KLARWERK</small></div>
+    <div class="lang" role="group" aria-label="Sprache">
+      <button type="button" id="lang-de" class="active">DE</button>
+      <button type="button" id="lang-en">EN</button>
+      <button type="button" id="lang-nl">NL</button>
+    </div>
+  </header>
+
+  <div class="card" id="session-card">
+    <h2 data-t="greetTitle"></h2>
+    <p class="muted" data-t="greetBody"></p>
+    <div id="session-status" class="status warn" data-t="sessionChecking"></div>
+    <div id="login-block" class="hidden">
+      <p class="muted" data-t="loginHint"></p>
+      <button type="button" class="primary" id="login-btn" data-t="loginCta"></button>
+      <p class="muted" data-t="loginReturn"></p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 data-t="sendTitle"></h2>
+    <p class="muted" data-t="sendHint"></p>
+    <button type="button" class="primary" id="send-btn" data-t="sendCta" disabled></button>
+    <div id="send-status" class="status hidden"></div>
+    <p id="open-block" class="hidden">
+      <a id="open-link" href="https://app.klarwerk.ai/erfassen" target="_blank" rel="noopener" data-t="openLink"></a>
+    </p>
+  </div>
+
+  <div class="card">
+    <h2 data-t="helpTitle"></h2>
+    <ul class="muted">
+      <li data-t="helpCan1"></li>
+      <li data-t="helpCan2"></li>
+      <li data-t="helpNot1"></li>
+      <li data-t="helpNot2"></li>
+    </ul>
+  </div>
+
+  <script>
+    "use strict";
+
+    // KW-WORDADDIN-HELPERS-START (Spiegel von apps/web/src/lib/wordAddin.ts — Äquivalenz per Test gepinnt)
+    var WORD_ADDIN_FALLBACK_TITLE = "Wissens-Entwurf aus Word";
+    var WORD_ADDIN_TITLE_MAX = 60;
+
+    function deriveDraftTitleFromSelection(text) {
+      var firstLine = "";
+      var lines = text.split(/\r?\n/);
+      for (var i = 0; i < lines.length; i += 1) {
+        var line = lines[i].trim();
+        if (line.length > 0) { firstLine = line; break; }
+      }
+      var title = firstLine.slice(0, WORD_ADDIN_TITLE_MAX).trim();
+      return title.length > 0 ? title : WORD_ADDIN_FALLBACK_TITLE;
+    }
+
+    function selectionToBodyHtml(text) {
+      function escapeHtml(value) {
+        return value
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+      var out = [];
+      var lines = text.split(/\r?\n/);
+      for (var i = 0; i < lines.length; i += 1) {
+        var line = lines[i].trim();
+        if (line.length > 0) { out.push("<p>" + escapeHtml(line) + "</p>"); }
+      }
+      return out.join("");
+    }
+    // KW-WORDADDIN-HELPERS-END
+
+    // Alle Texte dreisprachig (App-Regel DE/EN/NL) — bewusst HIER, nicht in i18n.ts der SPA.
+    var STRINGS = {
+      de: {
+        greetTitle: "Hallo, ich bin Klara.",
+        greetBody: "Ich verbinde dieses Word-Dokument mit KLARWERK. In diesem ersten Schritt kann ich deine Textauswahl als Entwurf nach KLARWERK bringen — ehrlich, ohne Zauber.",
+        sessionChecking: "Pruefe Anmeldung bei KLARWERK ...",
+        sessionOk: "Angemeldet als {name}.",
+        sessionOff: "Du bist in diesem Fenster nicht bei KLARWERK angemeldet.",
+        sessionError: "KLARWERK ist gerade nicht erreichbar. Bitte Verbindung pruefen und erneut versuchen.",
+        loginHint: "Zum Senden brauchst du eine aktive KLARWERK-Anmeldung in diesem Fenster.",
+        loginCta: "Bei KLARWERK anmelden",
+        loginReturn: "Nach der Anmeldung: dieses Seitenfenster schliessen und Klara ueber das Menueband neu oeffnen.",
+        sendTitle: "Auswahl an KLARWERK senden",
+        sendHint: "Markiere Text im Dokument und sende ihn als neuen Wissens-ENTWURF. Nichts wird automatisch veroeffentlicht — du pruefst alles in KLARWERK.",
+        sendCta: "Auswahl als Entwurf senden",
+        sendEmpty: "Bitte erst Text im Dokument markieren.",
+        sendBusy: "Sende Auswahl ...",
+        sendOk: "Entwurf angelegt: {title}",
+        sendAuth: "Nicht angemeldet — bitte zuerst bei KLARWERK anmelden.",
+        sendError: "Senden fehlgeschlagen ({detail}). Es wurde KEIN Entwurf angelegt.",
+        openLink: "In KLARWERK oeffnen (Entwuerfe im Erfassen-Bereich)",
+        helpTitle: "Was kann Klara hier?",
+        helpCan1: "Deine Textauswahl als KLARWERK-Entwurf anlegen (nur Entwurf, kein fertiges Wissensobjekt).",
+        helpCan2: "Ehrlich sagen, ob du angemeldet bist und ob das Senden geklappt hat.",
+        helpNot1: "Noch NICHT: Fragen beantworten oder das Dokument analysieren — das kommt spaeter.",
+        helpNot2: "Noch NICHT: Bilder oder Formatierungen aus Word uebernehmen — dieser Schritt sendet reinen Text.",
+      },
+      en: {
+        greetTitle: "Hi, I am Klara.",
+        greetBody: "I connect this Word document with KLARWERK. In this first step I can bring your text selection into KLARWERK as a draft — honestly, no magic.",
+        sessionChecking: "Checking KLARWERK sign-in ...",
+        sessionOk: "Signed in as {name}.",
+        sessionOff: "You are not signed in to KLARWERK in this window.",
+        sessionError: "KLARWERK is not reachable right now. Please check the connection and try again.",
+        loginHint: "Sending requires an active KLARWERK sign-in in this window.",
+        loginCta: "Sign in to KLARWERK",
+        loginReturn: "After signing in: close this pane and reopen Klara from the ribbon.",
+        sendTitle: "Send selection to KLARWERK",
+        sendHint: "Select text in the document and send it as a new knowledge DRAFT. Nothing is published automatically — you review everything in KLARWERK.",
+        sendCta: "Send selection as draft",
+        sendEmpty: "Please select text in the document first.",
+        sendBusy: "Sending selection ...",
+        sendOk: "Draft created: {title}",
+        sendAuth: "Not signed in — please sign in to KLARWERK first.",
+        sendError: "Sending failed ({detail}). NO draft was created.",
+        openLink: "Open in KLARWERK (drafts in the capture area)",
+        helpTitle: "What can Klara do here?",
+        helpCan1: "Create a KLARWERK draft from your text selection (draft only, not a finished knowledge object).",
+        helpCan2: "Tell you honestly whether you are signed in and whether sending worked.",
+        helpNot1: "NOT yet: answering questions or analysing the document — that comes later.",
+        helpNot2: "NOT yet: carrying over images or formatting from Word — this step sends plain text.",
+      },
+      nl: {
+        greetTitle: "Hallo, ik ben Klara.",
+        greetBody: "Ik verbind dit Word-document met KLARWERK. In deze eerste stap kan ik je tekstselectie als concept naar KLARWERK brengen — eerlijk, zonder magie.",
+        sessionChecking: "Aanmelding bij KLARWERK controleren ...",
+        sessionOk: "Aangemeld als {name}.",
+        sessionOff: "Je bent in dit venster niet aangemeld bij KLARWERK.",
+        sessionError: "KLARWERK is nu niet bereikbaar. Controleer de verbinding en probeer opnieuw.",
+        loginHint: "Voor het verzenden is een actieve KLARWERK-aanmelding in dit venster nodig.",
+        loginCta: "Aanmelden bij KLARWERK",
+        loginReturn: "Na het aanmelden: dit paneel sluiten en Klara opnieuw openen via het lint.",
+        sendTitle: "Selectie naar KLARWERK sturen",
+        sendHint: "Selecteer tekst in het document en stuur die als nieuw kennis-CONCEPT. Er wordt niets automatisch gepubliceerd — je controleert alles in KLARWERK.",
+        sendCta: "Selectie als concept sturen",
+        sendEmpty: "Selecteer eerst tekst in het document.",
+        sendBusy: "Selectie versturen ...",
+        sendOk: "Concept aangemaakt: {title}",
+        sendAuth: "Niet aangemeld — meld je eerst aan bij KLARWERK.",
+        sendError: "Versturen mislukt ({detail}). Er is GEEN concept aangemaakt.",
+        openLink: "In KLARWERK openen (concepten in het vastleg-gebied)",
+        helpTitle: "Wat kan Klara hier?",
+        helpCan1: "Je tekstselectie als KLARWERK-concept aanmaken (alleen concept, geen afgerond kennisobject).",
+        helpCan2: "Eerlijk zeggen of je bent aangemeld en of het versturen is gelukt.",
+        helpNot1: "Nog NIET: vragen beantwoorden of het document analyseren — dat komt later.",
+        helpNot2: "Nog NIET: afbeeldingen of opmaak uit Word overnemen — deze stap stuurt platte tekst.",
+      },
+    };
+
+    var lang = "de";
+    var signedIn = false;
+
+    function t(key, vars) {
+      var raw = (STRINGS[lang] && STRINGS[lang][key]) || STRINGS.de[key] || key;
+      if (vars) {
+        Object.keys(vars).forEach(function (k) {
+          raw = raw.replace("{" + k + "}", vars[k]);
+        });
+      }
+      return raw;
+    }
+
+    function renderStatics() {
+      document.querySelectorAll("[data-t]").forEach(function (el) {
+        el.textContent = t(el.getAttribute("data-t"));
+      });
+      document.documentElement.lang = lang;
+    }
+
+    function setLang(next) {
+      lang = next;
+      ["de", "en", "nl"].forEach(function (code) {
+        document.getElementById("lang-" + code).className = code === lang ? "active" : "";
+      });
+      renderStatics();
+      checkSession(); // Statuszeile in der neuen Sprache neu aufbauen
+    }
+
+    // (a) Ehrlicher Anmelde-Status: GET /api/auth/me (bestehender Session-Endpunkt der App) mit
+    // credentials: "include" — same-origin, da das Taskpane AUF der App-Domain liegt.
+    function checkSession() {
+      var box = document.getElementById("session-status");
+      var loginBlock = document.getElementById("login-block");
+      var sendBtn = document.getElementById("send-btn");
+      box.className = "status warn";
+      box.textContent = t("sessionChecking");
+      fetch("/api/auth/me", { credentials: "include" })
+        .then(function (res) {
+          if (res.ok) { return res.json(); }
+          if (res.status === 401 || res.status === 403) { return null; }
+          throw new Error("HTTP " + res.status);
+        })
+        .then(function (user) {
+          signedIn = Boolean(user);
+          if (user) {
+            box.className = "status ok";
+            box.textContent = t("sessionOk", { name: user.name || user.email || "?" });
+            loginBlock.className = "hidden";
+            sendBtn.disabled = false;
+          } else {
+            box.className = "status warn";
+            box.textContent = t("sessionOff");
+            loginBlock.className = "";
+            sendBtn.disabled = true;
+          }
+        })
+        .catch(function () {
+          signedIn = false;
+          box.className = "status warn";
+          box.textContent = t("sessionError");
+          loginBlock.className = "";
+          sendBtn.disabled = true;
+        });
+    }
+
+    function showSendStatus(kind, text) {
+      var el = document.getElementById("send-status");
+      el.className = "status " + (kind === "ok" ? "ok" : "warn");
+      el.textContent = text;
+    }
+
+    // (b) Kernfunktion: Word-Selektion lesen → Front-Door-ENTWURF über die bestehende Draft-API
+    // (POST /api/drafts, gleicher Endpunkt wie die App; origin "frontdoor" wie der Front-Door-Save).
+    function sendSelection() {
+      var openBlock = document.getElementById("open-block");
+      openBlock.className = "hidden";
+      Office.context.document.getSelectedDataAsync(Office.CoercionType.Text, function (result) {
+        if (result.status !== Office.AsyncResultStatus.Succeeded) {
+          showSendStatus("warn", t("sendError", { detail: "Word-API" }));
+          return;
+        }
+        var text = String(result.value || "");
+        var bodyHtml = selectionToBodyHtml(text);
+        if (bodyHtml.length === 0) {
+          showSendStatus("warn", t("sendEmpty"));
+          return;
+        }
+        var title = deriveDraftTitleFromSelection(text);
+        showSendStatus("warn", t("sendBusy"));
+        fetch("/api/drafts", {
+          method: "POST",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            title: title,
+            statement: text.trim().slice(0, 500),
+            bodyHtml: bodyHtml,
+            origin: "frontdoor",
+          }),
+        })
+          .then(function (res) {
+            if (res.status === 401 || res.status === 403) {
+              showSendStatus("warn", t("sendAuth"));
+              checkSession();
+              return null;
+            }
+            if (!res.ok) { throw new Error("HTTP " + res.status); }
+            return res.json();
+          })
+          .then(function (draft) {
+            if (!draft) { return; }
+            showSendStatus("ok", t("sendOk", { title: title }));
+            openBlock.className = "";
+          })
+          .catch(function (err) {
+            // NIE Erfolg vortaeuschen: offline/5xx → ehrliche Fehlermeldung, kein Entwurf-Versprechen.
+            showSendStatus("warn", t("sendError", { detail: err && err.message ? err.message : "offline" }));
+          });
+      });
+    }
+
+    document.getElementById("lang-de").addEventListener("click", function () { setLang("de"); });
+    document.getElementById("lang-en").addEventListener("click", function () { setLang("en"); });
+    document.getElementById("lang-nl").addEventListener("click", function () { setLang("nl"); });
+    document.getElementById("login-btn").addEventListener("click", function () {
+      // KEINE eigene Passwort-Maske: die App zeigt ihren Login-Gate auf jeder Route — wir laden die
+      // App-Root im Taskpane; danach Add-in neu oeffnen (Hinweistext loginReturn).
+      window.location.href = "/";
+    });
+    document.getElementById("send-btn").addEventListener("click", sendSelection);
+
+    renderStatics();
+    if (window.Office && Office.onReady) {
+      Office.onReady(function () { checkSession(); });
+    } else {
+      // Ausserhalb von Word (z. B. Browser-Vorschau): Session-Check laeuft trotzdem, Senden braucht Word.
+      checkSession();
+    }
+  </script>
+</body>
+</html>
