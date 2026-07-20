@@ -6,6 +6,7 @@ import {
   BODY_READ_TITLE_KEY,
   bodyReadMode,
 } from "../../lib/bodyReadMode";
+import { BodyImageGallery } from "../BodyImageGallery";
 import { SanitizedHtml } from "../SanitizedHtml";
 import { ConfidenceBar } from "../trust";
 import { SectionLabel } from "../ui";
@@ -50,6 +51,9 @@ export function KoReadStatement({ ko }: { ko: KnowledgeObject }): JSX.Element {
             html={ko.bodyHtml}
             className="prose-kw text-[14.5px] leading-relaxed text-text"
           />
+          {/* WP-BILD-1d: Galerie der Beitrags-Bilder (aus den figures des Bodys abgeleitet; erscheint
+              nur, wenn mindestens ein verankertes Bild existiert). */}
+          <BodyImageGallery bodyHtml={ko.bodyHtml} />
           <p className="mt-2 border-t border-hairline pt-2 text-[11px] leading-relaxed text-muted">
             {t(BODY_READ_NOTE_KEY)}
           </p>
