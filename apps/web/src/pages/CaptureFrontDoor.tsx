@@ -15,6 +15,7 @@ import {
   applyBodyAssist,
   applySpellingAssistPreservingHtml,
   bodyTextForAssist,
+  shouldPreserveRichBody,
 } from "../lib/bodyAiAssist";
 import {
   ASSIST_ACTIONS,
@@ -65,6 +66,10 @@ export function CaptureFrontDoor(): JSX.Element {
   const [structureProposal, setStructureProposal] = useState<StructureResult | null>(null);
   const [structureErr, setStructureErr] = useState<string | null>(null);
   const [structureAccepted, setStructureAccepted] = useState(false);
+  // WP-D6: true, wenn beim Übernehmen des Struktur-Vorschlags der reiche Body (Bilder/Struktur) BEWUSST
+  // erhalten wurde und nur der Titel übernommen wurde — dann wird ein ehrlicher Hinweis statt der
+  // Standard-Bestätigung gezeigt (kein stiller Inhaltsverlust).
+  const [structureKeptRichBody, setStructureKeptRichBody] = useState(false);
   const [assistAction, setAssistAction] = useState<AssistAction>("clarify");
   const [assistProposal, setAssistProposal] = useState<
     (AssistResult & { action: AssistAction }) | null
@@ -110,6 +115,7 @@ export function CaptureFrontDoor(): JSX.Element {
     setStructureProposal(null);
     setStructureErr(null);
     setStructureAccepted(false);
+    setStructureKeptRichBody(false);
   }, []);
 
   const clearAssistState = useCallback((): void => {
@@ -364,8 +370,19 @@ export function CaptureFrontDoor(): JSX.Element {
     if (!structureProposal) {
       return;
     }
+    // WP-D6 (Pedi-LIVE-BEFUND): „Original ist heilig" gilt auch für den KI-Struktur-Vorschlag.
+    // Der Vorschlag ist flacher Klartext (Titel/Kernaussage/Gliederung). Enthält der aktuelle Body
+    // eingebettete Bilder oder echte Struktur (h/ul/ol/table/blockquote), würde ein Ersetzen durch den
+    // Klartext-Vorschlag ALLE Bilder und die Formatierung zerstören (der berichtete Schaden). Dann
+    // übernehmen wir NUR den Titel und lassen das reiche bodyHtml UNANGETASTET — mit ehrlichem Hinweis.
+    // Der Fallback-Pfad (structureProposal.demo) macht keinen Unterschied: die Entscheidung hängt allein
+    // am Body, nicht an der Herkunft des Vorschlags. Ein reiner Text-Body wird wie bisher strukturiert.
+    const preserveBody = shouldPreserveRichBody(bodyHtml);
     setTitle((prev) => (prev.trim() ? prev : structureProposal.title));
-    setBodyHtml(frontDoorStructuredBodyHtml(structureProposal));
+    if (!preserveBody) {
+      setBodyHtml(frontDoorStructuredBodyHtml(structureProposal));
+    }
+    setStructureKeptRichBody(preserveBody);
     setStructureProposal(null);
     setStructureErr(null);
     setStructureAccepted(true);
@@ -625,7 +642,11 @@ export function CaptureFrontDoor(): JSX.Element {
               ) : null}
               {structureAccepted ? (
                 <div className="mt-3 rounded-card border border-trust-pos-fill/40 bg-trust-pos-bg p-3 text-sm text-trust-pos-text">
-                  {t("fd.structureAccepted")}
+                  {/* WP-D6: bei erhaltenem reichem Body ehrlich sagen, dass nur der Titel übernommen wurde
+                      und Inhalt mit Bildern/Formatierung unverändert bleibt (kein stiller Verlust). */}
+                  {structureKeptRichBody
+                    ? t("fd.structureKeptRichBody")
+                    : t("fd.structureAccepted")}
                 </div>
               ) : null}
               {assistAccepted ? (

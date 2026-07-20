@@ -35,6 +35,19 @@ export function bodyTextForAssist(bodyHtml: string | null | undefined): string {
   return bodyHtml ? htmlToPlainText(bodyHtml) : "";
 }
 
+// WP-D6 (Pedi-LIVE-BEFUND): „Original ist heilig" gilt AUCH gegenüber dem KI-Vorschlag. Ein
+// Struktur-/Assist-Vorschlag liefert flachen Klartext; würde er einen Body mit eingebetteten Bildern
+// oder echter Struktur (Überschriften, Listen, Tabellen, Zitat-/Quelle-Blöcke) ERSETZEN, gingen Bilder
+// und Formatierung unwiderruflich verloren (genau der berichtete Schaden beim DOCX-Import). Diese pure
+// Entscheidung erkennt einen solchen „reichen" Body — dann darf der Body NICHT ersetzt, sondern nur
+// Titel/Aussage übernommen werden. Ein reiner <p>/Inline-Text-Body enthält nichts Reiches und darf wie
+// bisher strukturiert werden. Bewusst konservativ (lieber erhalten als zerstören).
+const RICH_BODY_RE = /<(?:img\b|h[1-6]\b|ul\b|ol\b|table\b|blockquote\b)/i;
+
+export function shouldPreserveRichBody(bodyHtml: string | null | undefined): boolean {
+  return RICH_BODY_RE.test(bodyHtml ?? "");
+}
+
 // Plaintext-Vorschlag → strukturiertes, sicheres Body-HTML: Doppel-Zeilenumbruch = Absatz, einfacher
 // Umbruch = <br>. Der Text wird selbst escaped; die einzigen erzeugten Tags sind statische <p>/<br>.
 // Leer → "".
