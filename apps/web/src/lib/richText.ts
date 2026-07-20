@@ -2,6 +2,8 @@
 // Der Server ist die autoritative Sanitizing-Instanz; dies hier ist Defense-in-Depth
 // für Preview/UX (gleiche Allowlist) plus Editor-State-Helfer. Rein/testbar ohne DOM.
 
+import { decodeHtmlEntities } from "./htmlEntities";
+
 const ALLOWED_TAGS = new Set([
   "p",
   "br",
@@ -323,17 +325,17 @@ export function sanitizeHtml(input: string): string {
   return out.join("");
 }
 
+// WP-IC-PAKET-1 (Teil 1): Entity-Dekodierung als EIN Durchlauf über den zentralen Client-Decoder
+// (htmlEntities.ts, Spiegel des Server-Originals) — die alte Ersetzungskette ließ &uuml;/&#228; roh
+// stehen und war doppel-dekodier-anfällig (&amp; zuerst). Gleiches Verhalten wie
+// services/structure htmlToPlainText (Parität per Test gepinnt).
 export function htmlToPlainText(html: string): string {
-  return html
-    .replace(/<\/(p|h2|h3|li|blockquote|div|caption|figcaption|th|td|tr)>/gi, " ")
-    .replace(/<br\s*\/?>/gi, " ")
-    .replace(/<[^>]*>/g, "")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ")
+  return decodeHtmlEntities(
+    html
+      .replace(/<\/(p|h2|h3|li|blockquote|div|caption|figcaption|th|td|tr)>/gi, " ")
+      .replace(/<br\s*\/?>/gi, " ")
+      .replace(/<[^>]*>/g, ""),
+  )
     .replace(/\s+/g, " ")
     .trim();
 }

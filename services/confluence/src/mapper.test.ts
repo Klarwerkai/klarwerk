@@ -79,4 +79,22 @@ describe("SCRUM-510: mapConfluencePageToImportItem", () => {
     const empty: ConfluencePage = { id: "9", title: "Nur Titel", body: { storage: { value: "" } } };
     expect(mapConfluencePageToImportItem(empty, OPTS).statement).toBe("Nur Titel");
   });
+
+  // WP-IC-PAKET-1 (Teil 1, Pedis Screenshot): Storage-Format-Entities (&uuml; &middot; &#228;) landen
+  // als ECHTE Zeichen im importierten statement — der Fix sitzt an der Quelle (htmlToPlainText).
+  it("HTML-Entities des Storage-Formats werden beim Import dekodiert (benannt + numerisch)", () => {
+    const page: ConfluencePage = {
+      id: "10",
+      title: "Onboarding",
+      body: {
+        storage: {
+          value: "<p>Guide f&uuml;r neue Mitarbeiter &middot; T&#228;tigkeiten &amp; Rollen</p>",
+        },
+      },
+    };
+    const item = mapConfluencePageToImportItem(page, OPTS);
+    expect(item.statement).toBe("Guide für neue Mitarbeiter · Tätigkeiten & Rollen");
+    expect(item.statement).not.toContain("&uuml;");
+    expect(item.statement).not.toContain("&#228;");
+  });
 });

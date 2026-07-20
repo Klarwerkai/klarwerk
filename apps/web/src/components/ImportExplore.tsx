@@ -2,12 +2,18 @@
 // Landkarte der Quelle (Mengen, Autoren, Themen, Zeitraum, Bild-Hinweis). READ-ONLY — der „Erkunden"-
 // Knopf ruft nur die aggregierende Explore-Route (schreibt nichts). Quellen-Kacheln: Confluence aktiv,
 // Jira „bald" (ausgegraut). Design schlicht, iPad-tauglich. Übersetzung DE/EN/NL über i18n-Keys.
+// WP-IC-PAKET-1 (Teil 3): Autoren-/Themen-/Space-Chips sind jetzt KLICKBARE Filter (aria-pressed,
+// aktiver Zustand deutlich, große Trefferfläche) — sie speisen die Auswahl-Vorschau (ImportSelect).
+// WP-IC-PAKET-1 (Teil 2): abgeleitete Themen (aus Titeln, deterministisch) sind dezent gekennzeichnet.
+// WP-IC-PAKET-1 (Teil 4): „davon bereits importiert"-Zeile aus dem Quell-Referenz-Abgleich.
 import { useMutation } from "@tanstack/react-query";
 import { Images, Loader2, Search, Users } from "lucide-react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import type { ImportExploreResponse } from "../api/types";
+import { decodeHtmlEntities } from "../lib/htmlEntities";
 import {
   type ExploreView,
   NO_AUTHOR_LABEL,
@@ -26,11 +32,71 @@ function localizeName(name: string, t: (k: string) => string): string {
   if (name === NO_THEME_LABEL) {
     return t("imp.explore.noTheme");
   }
-  return name;
+  // WP-IC-PAKET-1 (Teil 1): Altbestand-Entities nur fürs Text-Rendering dekodieren.
+  return decodeHtmlEntities(name);
 }
 
-function ExploreMap({ view, truncated }: { view: ExploreView; truncated: boolean }): JSX.Element {
+// WP-IC-PAKET-1 (Teil 3): einheitlicher Filter-Chip — echtes button, aria-pressed, iPad-große Fläche,
+// aktiver Zustand deutlich (invertiert). Platzhalter-Einträge bleiben nicht-klickbare Anzeige.
+function FilterChip({
+  label,
+  count,
+  active,
+  onToggle,
+  extra,
+  title,
+}: {
+  label: string;
+  count: number;
+  active: boolean;
+  onToggle: () => void;
+  extra?: string;
+  title?: string;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onToggle}
+      {...(title !== undefined ? { title } : {})}
+      className={`inline-flex items-center gap-1 rounded-pill border px-2.5 py-1 text-[12.5px] ${
+        active
+          ? "border-ink/30 bg-ink text-white"
+          : "border-hairline bg-page text-text hover:border-ink/20"
+      }`}
+    >
+      {label}
+      {extra !== undefined ? (
+        <span className={`text-[10px] italic ${active ? "text-white/70" : "text-muted-2"}`}>
+          {extra}
+        </span>
+      ) : null}
+      <span className={`font-mono text-[10.5px] ${active ? "text-white/80" : "text-muted-2"}`}>
+        {count}
+      </span>
+    </button>
+  );
+}
+
+function toggleValue(setter: (fn: (prev: string[]) => string[]) => void, value: string): void {
+  setter((prev) => (prev.includes(value) ? prev.filter((x) => x !== value) : [...prev, value]));
+}
+
+function ExploreMap({
+  view,
+  truncated,
+  alreadyImported,
+}: {
+  view: ExploreView;
+  truncated: boolean;
+  alreadyImported: number;
+}): JSX.Element {
   const { t } = useTranslation();
+  // WP-IC-PAKET-1 (Teil 3): Klick-Filter der Landkarte — Roh-Werte (Server-Vertrag), Anzeige dekodiert.
+  const [selAuthors, setSelAuthors] = useState<string[]>([]);
+  const [selThemes, setSelThemes] = useState<string[]>([]);
+  const [selSpaces, setSelSpaces] = useState<string[]>([]);
+
   return (
     <div className="mt-4 border-t border-hairline pt-4">
       {truncated ? (
@@ -44,23 +110,39 @@ function ExploreMap({ view, truncated }: { view: ExploreView; truncated: boolean
         <Stat label={t("imp.explore.sources")} value={String(view.distinctSources)} />
         <Stat label={t("imp.explore.period")} value={view.period} />
       </div>
+      {/* WP-IC-PAKET-1 (Teil 4, IC-6a): ehrlicher Import-Status über die Quell-Referenzen. */}
+      {alreadyImported > 0 ? (
+        <p className="mt-2 text-[12px] text-muted">
+          {t("imp.explore.alreadyImported", { n: alreadyImported })}
+        </p>
+      ) : null}
 
-      {/* Autoren */}
+      {/* Autoren — klickbare Filter (WP-IC-PAKET-1 Teil 3; vorher nur Anzeige). */}
       {view.authors.length > 0 ? (
         <div className="mt-4">
           <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-muted">
             <Users size={13} /> {t("imp.explore.authors")}
           </span>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
-            {view.authors.map((a) => (
-              <span
-                key={a.name}
-                className="inline-flex items-center gap-1 rounded-pill border border-hairline bg-page px-2 py-0.5 text-[12px] text-text"
-              >
-                {localizeName(a.name, t)}
-                <span className="font-mono text-[10.5px] text-muted-2">{a.count}</span>
-              </span>
-            ))}
+            {view.authors.map((a) =>
+              a.name === NO_AUTHOR_LABEL ? (
+                <span
+                  key={a.name}
+                  className="inline-flex items-center gap-1 rounded-pill border border-hairline bg-page px-2.5 py-1 text-[12.5px] text-muted-2"
+                >
+                  {localizeName(a.name, t)}
+                  <span className="font-mono text-[10.5px]">{a.count}</span>
+                </span>
+              ) : (
+                <FilterChip
+                  key={a.name}
+                  label={localizeName(a.name, t)}
+                  count={a.count}
+                  active={selAuthors.includes(a.name)}
+                  onToggle={() => toggleValue(setSelAuthors, a.name)}
+                />
+              ),
+            )}
             {view.authorsRest > 0 ? (
               <span className="inline-flex items-center rounded-pill px-2 py-0.5 text-[12px] text-muted-2">
                 {t("imp.explore.more", { n: view.authorsRest })}
@@ -70,25 +152,56 @@ function ExploreMap({ view, truncated }: { view: ExploreView; truncated: boolean
         </div>
       ) : null}
 
-      {/* Themen */}
+      {/* Themen — klickbare Filter; abgeleitete Themen (aus Titeln) dezent gekennzeichnet (Teil 2). */}
       {view.themes.length > 0 ? (
         <div className="mt-4">
           <span className="text-[12px] font-semibold text-muted">{t("imp.explore.themes")}</span>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
-            {view.themes.map((th) => (
-              <span
-                key={th.label}
-                className="inline-flex items-center gap-1 rounded-pill border border-hairline bg-page px-2 py-0.5 text-[12px] text-text"
-              >
-                {localizeName(th.label, t)}
-                <span className="font-mono text-[10.5px] text-muted-2">{th.count}</span>
-              </span>
-            ))}
+            {view.themes.map((th) =>
+              th.label === NO_THEME_LABEL ? (
+                <span
+                  key={th.label}
+                  className="inline-flex items-center gap-1 rounded-pill border border-hairline bg-page px-2.5 py-1 text-[12.5px] text-muted-2"
+                >
+                  {localizeName(th.label, t)}
+                  <span className="font-mono text-[10.5px]">{th.count}</span>
+                </span>
+              ) : (
+                <FilterChip
+                  key={th.label}
+                  label={localizeName(th.label, t)}
+                  count={th.count}
+                  active={selThemes.includes(th.label)}
+                  onToggle={() => toggleValue(setSelThemes, th.label)}
+                  {...(th.derived
+                    ? { extra: t("imp.explore.derivedTag"), title: t("imp.explore.derivedHint") }
+                    : {})}
+                />
+              ),
+            )}
             {view.themesRest > 0 ? (
               <span className="inline-flex items-center rounded-pill px-2 py-0.5 text-[12px] text-muted-2">
                 {t("imp.explore.more", { n: view.themesRest })}
               </span>
             ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Spaces — Filter nur, wenn es MEHRERE gibt (Teil 3; bei einem Space wäre der Chip sinnlos). */}
+      {view.spaces.length > 1 ? (
+        <div className="mt-4">
+          <span className="text-[12px] font-semibold text-muted">{t("imp.explore.spaces")}</span>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {view.spaces.map((s) => (
+              <FilterChip
+                key={s.name}
+                label={decodeHtmlEntities(s.name)}
+                count={s.count}
+                active={selSpaces.includes(s.name)}
+                onToggle={() => toggleValue(setSelSpaces, s.name)}
+              />
+            ))}
           </div>
         </div>
       ) : null}
@@ -104,9 +217,11 @@ function ExploreMap({ view, truncated }: { view: ExploreView; truncated: boolean
         <p className="mt-3 text-[12.5px] text-muted-2">{t("imp.explore.empty")}</p>
       ) : null}
 
-      {/* IC-3: prompt-/filtergesteuerte Auswahl-Vorschau — die Themen-Chips der Landkarte dienen als
-          Klick-Filter. READ-ONLY (kein Übernahme-Button; das ist IC-4). */}
-      {view.totalCount > 0 ? <ImportSelect themes={view.themes.map((th) => th.label)} /> : null}
+      {/* IC-3: prompt-/filtergesteuerte Auswahl-Vorschau — die Chips der Landkarte sind die Filter.
+          READ-ONLY (kein Übernahme-Button; das ist IC-4). */}
+      {view.totalCount > 0 ? (
+        <ImportSelect chip={{ themes: selThemes, authors: selAuthors, spaces: selSpaces }} />
+      ) : null}
     </div>
   );
 }
@@ -167,7 +282,13 @@ export function ImportExplore(): JSX.Element {
         </p>
       ) : null}
 
-      {view ? <ExploreMap view={view} truncated={explore.data?.truncated ?? false} /> : null}
+      {view ? (
+        <ExploreMap
+          view={view}
+          truncated={explore.data?.truncated ?? false}
+          alreadyImported={explore.data?.alreadyImported ?? 0}
+        />
+      ) : null}
     </Card>
   );
 }

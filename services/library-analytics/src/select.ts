@@ -4,14 +4,19 @@
 // nur den quell-agnostischen ImportItem-Vertrag). Die KI-Ableitung ist über eine INJIZIERTE Funktion
 // eingebunden (kein reasoner-Import hier); fällt sie aus, gelten leere Kriterien → nur der Klick-Filter.
 
+import { deriveTitleThemes } from "./themes";
 import type { ImportItem } from "./types";
 
 export interface SelectCriteria {
-  themes?: string[]; // Label-Filter (mind. ein Label muss passen)
+  // Themen-Filter: matcht echte Labels UND (WP-IC-PAKET-1 Teil 2/3) die deterministisch aus Titeln
+  // abgeleiteten Themen label-loser Items — die klickbaren Erkundungs-Chips filtern damit beides.
+  themes?: string[];
   authors?: string[]; // Autor-Filter (Autor muss einer sein)
   keywords?: string[]; // Stichworte → Substring-Match in Titel/Statement (mind. eines)
   yearFrom?: number; // Jahr-Untergrenze (aus updatedAt)
   yearTo?: number; // Jahr-Obergrenze (aus updatedAt)
+  // WP-IC-PAKET-1 (Teil 3): Quell-Container-Filter (Space; sourceScope, sonst category).
+  spaces?: string[];
   limit?: number; // Deckel auf die Vorschau/Auswahl
 }
 
@@ -70,6 +75,7 @@ export function sanitizeCriteria(raw: unknown): SelectCriteria {
   const themes = cleanStrings(rec.themes);
   const authors = cleanStrings(rec.authors);
   const keywords = cleanStrings(rec.keywords);
+  const spaces = cleanStrings(rec.spaces);
   const yearFrom = cleanYear(rec.yearFrom);
   const yearTo = cleanYear(rec.yearTo);
   const limit = cleanLimit(rec.limit);
@@ -77,6 +83,7 @@ export function sanitizeCriteria(raw: unknown): SelectCriteria {
     ...(themes.length > 0 ? { themes } : {}),
     ...(authors.length > 0 ? { authors } : {}),
     ...(keywords.length > 0 ? { keywords } : {}),
+    ...(spaces.length > 0 ? { spaces } : {}),
     ...(yearFrom !== undefined ? { yearFrom } : {}),
     ...(yearTo !== undefined ? { yearTo } : {}),
     ...(limit !== undefined ? { limit } : {}),
@@ -92,11 +99,29 @@ function itemYear(item: ImportItem): number | null {
   return match ? Number(match[1]) : null;
 }
 
-function matchesThemes(item: ImportItem, themes: Set<string>): boolean {
+// WP-IC-PAKET-1 (Teil 2/3): matcht echte Labels ODER das deterministisch abgeleitete Titel-Thema
+// (derivedTheme, für label-lose Items — dieselbe Ableitung wie in der Erkundung, kein Drift).
+function matchesThemes(
+  item: ImportItem,
+  themes: Set<string>,
+  derivedTheme: string | null,
+): boolean {
   if (themes.size === 0) {
     return true;
   }
-  return (item.tags ?? []).some((tag) => themes.has(tag.trim().toLowerCase()));
+  if ((item.tags ?? []).some((tag) => themes.has(tag.trim().toLowerCase()))) {
+    return true;
+  }
+  return derivedTheme !== null && themes.has(derivedTheme.toLowerCase());
+}
+
+// WP-IC-PAKET-1 (Teil 3): Quell-Container-Filter (Space) — gleicher Scope-Begriff wie die Erkundung.
+function matchesSpaces(item: ImportItem, spaces: Set<string>): boolean {
+  if (spaces.size === 0) {
+    return true;
+  }
+  const scope = (item.sourceScope ?? item.category ?? "").trim().toLowerCase();
+  return scope.length > 0 && spaces.has(scope);
 }
 
 function matchesAuthors(item: ImportItem, authors: Set<string>): boolean {
@@ -136,11 +161,25 @@ export function filterImportItems(
 ): SelectResult {
   const themes = new Set((criteria.themes ?? []).map((t) => t.toLowerCase()));
   const authors = new Set((criteria.authors ?? []).map((a) => a.toLowerCase()));
+  const spaces = new Set((criteria.spaces ?? []).map((s) => s.toLowerCase()));
   const keywords = criteria.keywords ?? [];
+  // WP-IC-PAKET-1 (Teil 2): abgeleitete Titel-Themen der label-losen Items — NUR berechnet, wenn ein
+  // Themen-Filter aktiv ist; identische Ableitung wie summarizeImportItems (deterministisch, kein Drift).
+  const derivedTheme = new Map<ImportItem, string | null>();
+  if (themes.size > 0) {
+    const untagged = items.filter(
+      (it) => (it.tags ?? []).map((tag) => tag.trim()).filter((tag) => tag.length > 0).length === 0,
+    );
+    const labels = deriveTitleThemes(untagged.map((it) => it.title));
+    untagged.forEach((it, i) => {
+      derivedTheme.set(it, labels[i] ?? null);
+    });
+  }
   const passing = items.filter(
     (item) =>
-      matchesThemes(item, themes) &&
+      matchesThemes(item, themes, derivedTheme.get(item) ?? null) &&
       matchesAuthors(item, authors) &&
+      matchesSpaces(item, spaces) &&
       matchesYears(item, criteria.yearFrom, criteria.yearTo) &&
       matchesKeywords(item, keywords),
   );
@@ -160,9 +199,20 @@ export interface ImportPreviewEntry {
   updatedAt?: string;
   hasImage: boolean;
   themes: string[];
+  // WP-IC-PAKET-1 (Teil 4, IC-6a): Import-Status — additiv, vom Aufrufer (Route) über den
+  // Quell-Referenz-Abgleich (externalId gegen KO-Sources + offene Kandidaten) gesetzt.
+  alreadyImported?: boolean;
+  // Änderungs-Signal über die Versionsnummer der Quelle (sourceVersion > importierte Version) —
+  // reine Anzeige, KEIN Update-Mechanismus (IC-6b bewusst nicht gebaut).
+  sourceNewer?: boolean;
 }
 
-export function toPreviewEntry(item: ImportItem): ImportPreviewEntry {
+export interface ImportedStatus {
+  alreadyImported: boolean;
+  sourceNewer: boolean;
+}
+
+export function toPreviewEntry(item: ImportItem, status?: ImportedStatus): ImportPreviewEntry {
   const author = item.author?.trim();
   const updatedAt = item.updatedAt?.trim();
   const themes = (item.tags ?? []).map((tag) => tag.trim()).filter((tag) => tag.length > 0);
@@ -172,6 +222,8 @@ export function toPreviewEntry(item: ImportItem): ImportPreviewEntry {
     ...(updatedAt ? { updatedAt } : {}),
     hasImage: typeof item.bodyHtml === "string" && /<img\b/i.test(item.bodyHtml),
     themes,
+    ...(status?.alreadyImported ? { alreadyImported: true } : {}),
+    ...(status?.sourceNewer ? { sourceNewer: true } : {}),
   };
 }
 

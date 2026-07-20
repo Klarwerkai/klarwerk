@@ -42,5 +42,8 @@ export type {
   SelectCriteria,
   SelectResult,
   ImportPreviewEntry,
+  ImportedStatus,
   CriteriaInference,
 } from "./src/select";
+// WP-IC-PAKET-1 (Teil 2): deterministische Themen-Ableitung aus Seitentiteln (Fallback ohne Labels).
+export { deriveTitleThemes, titleThemeTokens, MIN_THEME_GROUP_SIZE } from "./src/themes";

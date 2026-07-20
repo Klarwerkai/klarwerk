@@ -330,18 +330,102 @@ export function sanitizeHtml(input: string): string {
   return out.join("");
 }
 
+// WP-IC-PAKET-1 (Teil 1, Pedis Screenshot &uuml;/&auml;/&middot;): HTML-Entities EINMAL und vollständig
+// dekodieren. Die alte 6-Entity-Kette ließ benannte Latin-/Satzzeichen-Entities (&uuml; &middot; …) und
+// numerische (&#228; &#xE4;) roh im Text stehen — UND war doppel-dekodier-anfällig, weil &amp; ZUERST
+// ersetzt wurde (aus &amp;lt; wurde erst &lt;, dann fälschlich <). Hier: EIN einziger Regex-Durchlauf —
+// String.replace scannt die Ausgabe NICHT erneut, daher wird &amp;uuml; korrekt zu „&uuml;" (Literal),
+// nie zu ü. Unbekannte benannte Entities bleiben unverändert (ehrlich, nichts raten); ungültige
+// Codepoints (Steuerzeichen, Surrogate, > U+10FFFF) bleiben als Roh-Text stehen (fail-closed).
+// Ergebnis ist IMMER nur ein STRING für Text-Kontexte — nie HTML (XSS-neutral; wer ihn rendert,
+// rendert Text).
+const NAMED_HTML_ENTITIES: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: " ",
+  auml: "ä",
+  ouml: "ö",
+  uuml: "ü",
+  Auml: "Ä",
+  Ouml: "Ö",
+  Uuml: "Ü",
+  szlig: "ß",
+  middot: "·",
+  ndash: "–",
+  mdash: "—",
+  hellip: "…",
+  sect: "§",
+  para: "¶",
+  deg: "°",
+  plusmn: "±",
+  sup2: "²",
+  sup3: "³",
+  euro: "€",
+  copy: "©",
+  reg: "®",
+  trade: "™",
+  laquo: "«",
+  raquo: "»",
+  bdquo: "„",
+  ldquo: "“",
+  rdquo: "”",
+  lsquo: "‘",
+  rsquo: "’",
+  eacute: "é",
+  egrave: "è",
+  agrave: "à",
+  acirc: "â",
+  ecirc: "ê",
+  icirc: "î",
+  ocirc: "ô",
+  ucirc: "û",
+  ccedil: "ç",
+  ntilde: "ñ",
+  aacute: "á",
+  iacute: "í",
+  oacute: "ó",
+  uacute: "ú",
+  times: "×",
+  divide: "÷",
+};
+
+const HTML_ENTITY_RE = /&(#\d{1,7}|#[xX][0-9a-fA-F]{1,6}|[a-zA-Z][a-zA-Z0-9]{1,30});/g;
+
+export function decodeHtmlEntities(text: string): string {
+  return text.replace(HTML_ENTITY_RE, (match, body: string) => {
+    if (body.startsWith("#")) {
+      const hex = body[1] === "x" || body[1] === "X";
+      const code = Number.parseInt(hex ? body.slice(2) : body.slice(1), hex ? 16 : 10);
+      const isControl = code < 32 && code !== 9 && code !== 10 && code !== 13;
+      if (
+        !Number.isInteger(code) ||
+        isControl ||
+        (code >= 0xd800 && code <= 0xdfff) ||
+        code > 0x10ffff
+      ) {
+        return match; // ungültiger Codepoint → Roh-Text behalten (fail-closed)
+      }
+      return String.fromCodePoint(code);
+    }
+    // Benannte Entities case-SENSITIV (auml ≠ Auml); Unbekanntes bleibt unverändert.
+    return NAMED_HTML_ENTITIES[body] ?? match;
+  });
+}
+
 // Reine Plaintext-Ableitung aus HTML (für die statement-Kurzfassung).
+// WP-IC-PAKET-1 (Teil 1): Entity-Dekodierung läuft als EIN Durchlauf NACH dem Tag-Strippen (statt der
+// alten, doppel-dekodier-anfälligen Ersetzungskette) — damit landen &uuml;/&#228;/&middot; aus dem
+// Confluence-Storage-Format als echte Zeichen im importierten Text.
 export function htmlToPlainText(html: string): string {
-  return html
-    .replace(/<\/(p|h2|h3|li|blockquote|div|caption|figcaption|th|td|tr)>/gi, " ")
-    .replace(/<br\s*\/?>/gi, " ")
-    .replace(/<[^>]*>/g, "")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ")
+  return decodeHtmlEntities(
+    html
+      .replace(/<\/(p|h2|h3|li|blockquote|div|caption|figcaption|th|td|tr)>/gi, " ")
+      .replace(/<br\s*\/?>/gi, " ")
+      .replace(/<[^>]*>/g, ""),
+  )
     .replace(/\s+/g, " ")
     .trim();
 }

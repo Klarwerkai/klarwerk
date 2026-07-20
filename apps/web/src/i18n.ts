@@ -2004,6 +2004,13 @@ const de = {
   "imp.explore.noTheme": "(ohne Thema)",
   "imp.explore.empty": "In dieser Quelle wurde nichts gefunden.",
   "imp.explore.truncated": "Nur die ersten {{n}} Seiten gezählt — die Quelle ist größer.",
+  // WP-IC-PAKET-1 (Teil 2): Herkunfts-Kennzeichnung abgeleiteter Themen (deterministisch aus Titeln).
+  "imp.explore.derivedTag": "abgeleitet",
+  "imp.explore.derivedHint":
+    "Thema deterministisch aus den Seitentiteln abgeleitet — die Quelle hat für diese Seiten keine Labels.",
+  // WP-IC-PAKET-1 (Teil 3/4): Space-Filter + ehrlicher Import-Status der Erkundung.
+  "imp.explore.spaces": "Bereiche (Spaces)",
+  "imp.explore.alreadyImported": "Davon bereits importiert: {{n}}",
   "imp.select.title": "Auswahl eingrenzen",
   "imp.select.hint":
     "Beschreibe in einem Satz, was importiert werden soll, oder klicke Themen an. Die Vorschau zeigt, was passt — importiert wird noch nichts.",
@@ -2019,6 +2026,16 @@ const de = {
   "imp.select.critKeywords": "Stichworte",
   "imp.select.critYears": "Jahre",
   "imp.select.critLimit": "Limit",
+  "imp.select.critSpaces": "Bereiche",
+  "imp.select.yearFrom": "von (Jahr)",
+  "imp.select.yearTo": "bis (Jahr)",
+  // WP-IC-PAKET-1 (Teil 4, IC-6a): Import-Status + Auswahl in der Vorschau.
+  "imp.select.alreadyImported": "{{n}} bereits importiert",
+  "imp.select.selectedCount": "{{n}} angewählt",
+  "imp.select.importedDeselected":
+    "Bereits importierte Seiten sind abgewählt; bei Bedarf bewusst wieder anwählen.",
+  "imp.preview.imported": "bereits importiert",
+  "imp.preview.sourceNewer": "Quelle neuer als Import",
   "imp.select.empty": "Kein Treffer für diese Eingrenzung.",
   "imp.uploadTitle": "JSON-Re-Import",
   "imp.uploadHint":
@@ -5074,6 +5091,11 @@ const en: typeof de = {
   "imp.explore.noTheme": "(no theme)",
   "imp.explore.empty": "Nothing was found in this source.",
   "imp.explore.truncated": "Only the first {{n}} pages were counted — the source is larger.",
+  "imp.explore.derivedTag": "derived",
+  "imp.explore.derivedHint":
+    "Theme derived deterministically from the page titles — the source has no labels for these pages.",
+  "imp.explore.spaces": "Spaces",
+  "imp.explore.alreadyImported": "Of these already imported: {{n}}",
   "imp.select.title": "Narrow the selection",
   "imp.select.hint":
     "Describe in one sentence what to import, or click themes. The preview shows what matches — nothing is imported yet.",
@@ -5089,6 +5111,15 @@ const en: typeof de = {
   "imp.select.critKeywords": "Keywords",
   "imp.select.critYears": "Years",
   "imp.select.critLimit": "Limit",
+  "imp.select.critSpaces": "Spaces",
+  "imp.select.yearFrom": "from (year)",
+  "imp.select.yearTo": "to (year)",
+  "imp.select.alreadyImported": "{{n}} already imported",
+  "imp.select.selectedCount": "{{n}} selected",
+  "imp.select.importedDeselected":
+    "Already imported pages are deselected; re-select them deliberately if needed.",
+  "imp.preview.imported": "already imported",
+  "imp.preview.sourceNewer": "source newer than import",
   "imp.select.empty": "No match for this narrowing.",
   "imp.uploadTitle": "JSON re-import",
   "imp.uploadHint":
@@ -8102,6 +8133,11 @@ const nl: typeof de = {
   "imp.explore.noTheme": "(zonder thema)",
   "imp.explore.empty": "In deze bron is niets gevonden.",
   "imp.explore.truncated": "Alleen de eerste {{n}} pagina's geteld — de bron is groter.",
+  "imp.explore.derivedTag": "afgeleid",
+  "imp.explore.derivedHint":
+    "Thema deterministisch afgeleid uit de paginatitels — de bron heeft voor deze pagina's geen labels.",
+  "imp.explore.spaces": "Ruimtes (spaces)",
+  "imp.explore.alreadyImported": "Waarvan al geïmporteerd: {{n}}",
   "imp.select.title": "Selectie verfijnen",
   "imp.select.hint":
     "Beschrijf in één zin wat er geïmporteerd moet worden, of klik op thema's. De voorbeeldweergave toont wat past — er wordt nog niets geïmporteerd.",
@@ -8117,6 +8153,15 @@ const nl: typeof de = {
   "imp.select.critKeywords": "Trefwoorden",
   "imp.select.critYears": "Jaren",
   "imp.select.critLimit": "Limiet",
+  "imp.select.critSpaces": "Ruimtes",
+  "imp.select.yearFrom": "van (jaar)",
+  "imp.select.yearTo": "tot (jaar)",
+  "imp.select.alreadyImported": "{{n}} al geïmporteerd",
+  "imp.select.selectedCount": "{{n}} geselecteerd",
+  "imp.select.importedDeselected":
+    "Al geïmporteerde pagina's zijn uitgevinkt; vink ze bewust weer aan indien nodig.",
+  "imp.preview.imported": "al geïmporteerd",
+  "imp.preview.sourceNewer": "bron nieuwer dan import",
   "imp.select.empty": "Geen treffer voor deze verfijning.",
   "imp.uploadTitle": "JSON opnieuw importeren",
   "imp.uploadHint":

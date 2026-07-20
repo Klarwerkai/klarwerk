@@ -13,6 +13,8 @@ const LABELS = {
   keywords: "Stichworte",
   years: "Jahre",
   limit: "Limit",
+  // WP-IC-PAKET-1 (Teil 3): Space-Filter-Zeile.
+  spaces: "Bereiche",
 };
 
 function read(rel: string): string {
@@ -42,6 +44,12 @@ describe("IC-3: summarizeSelectCriteria", () => {
     ]);
   });
 
+  it("WP-IC-PAKET-1 (Teil 3): Space-Filter erscheint als eigene Zeile", () => {
+    expect(summarizeSelectCriteria({ spaces: ["OPS", "DOKU"] }, LABELS)).toEqual([
+      "Bereiche: OPS, DOKU",
+    ]);
+  });
+
   it("offene Jahres-Grenze wird mit … dargestellt", () => {
     expect(summarizeSelectCriteria({ yearFrom: 2024 }, LABELS)).toEqual(["Jahre: 2024–…"]);
     expect(summarizeSelectCriteria({ yearTo: 2024 }, LABELS)).toEqual(["Jahre: …–2024"]);
@@ -49,10 +57,13 @@ describe("IC-3: summarizeSelectCriteria", () => {
 });
 
 describe("IC-3: Verdrahtung im Import-Cockpit", () => {
-  it("ImportExplore rendert die Auswahl-Komponente ImportSelect", () => {
+  it("ImportExplore rendert die Auswahl-Komponente ImportSelect (Chips der Landkarte als Filter)", () => {
     const src = read("apps/web/src/components/ImportExplore.tsx");
     expect(src).toContain('import { ImportSelect } from "./ImportSelect"');
-    expect(src).toContain("<ImportSelect themes={");
+    // WP-IC-PAKET-1 (Teil 3): die Landkarten-Chips (Themen/Autoren/Spaces) speisen die Auswahl.
+    expect(src).toContain(
+      "<ImportSelect chip={{ themes: selThemes, authors: selAuthors, spaces: selSpaces }} />",
+    );
   });
 
   it("ImportSelect verdrahtet den READ-ONLY select-Client und das View-Model", () => {

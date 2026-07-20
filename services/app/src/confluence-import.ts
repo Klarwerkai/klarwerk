@@ -31,7 +31,9 @@ export interface ConfluenceImportDeps {
 }
 
 // Höchste bereits importierte sourceVersion je externalId (aus den KO-Herkunftsankern).
-async function existingVersions(koService: KoService): Promise<Map<string, number>> {
+// WP-IC-PAKET-1 (Teil 4): exportiert — der Import-Status-Abgleich der Erkundungs-/Vorschau-Routen
+// nutzt EXAKT denselben Quell-Referenz-Vertrag (KoSource.externalId/sourceVersion) wie die Idempotenz.
+export async function existingVersions(koService: KoService): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   for (const ko of await koService.list()) {
     for (const s of ko.sources ?? []) {
@@ -54,6 +56,39 @@ async function pendingKeys(library: LibraryService): Promise<Set<string>> {
     }
   }
   return out;
+}
+
+// WP-IC-PAKET-1 (Teil 4, IC-6a): externalIds ALLER offenen Kandidaten (versionsunabhängig) — für die
+// ehrliche „bereits importiert"-Markierung in Erkundung/Vorschau (eine Seite in der Queue zählt als
+// importiert, auch wenn Pedi sie noch nicht geprüft hat).
+export async function pendingImportExternalIds(library: LibraryService): Promise<Set<string>> {
+  const out = new Set<string>();
+  for (const c of await library.listImportCandidates()) {
+    if (c.status === "neu" && c.item.externalId) {
+      out.add(c.item.externalId);
+    }
+  }
+  return out;
+}
+
+// WP-IC-PAKET-1 (Teil 4): Import-Status einer Quell-Seite — PURE Ableitung aus dem Quell-Referenz-
+// Vertrag: `alreadyImported`, wenn ein KO-Herkunftsanker (KoSource.externalId) ODER ein offener
+// Kandidat dieselbe externalId trägt. `sourceNewer` über die VERSIONSNUMMER der Quelle
+// (item.sourceVersion > höchste importierte sourceVersion) — die Quell-Referenz führt kein
+// Änderungsdatum, wohl aber die Versionsnummer; reine Anzeige, kein Update-Mechanismus (IC-6b offen).
+export function importStatusFor(
+  item: ImportItem,
+  importedVersions: ReadonlyMap<string, number>,
+  pendingIds: ReadonlySet<string>,
+): { alreadyImported: boolean; sourceNewer: boolean } {
+  const id = item.externalId;
+  if (!id) {
+    return { alreadyImported: false, sourceNewer: false };
+  }
+  const importedVersion = importedVersions.get(id);
+  const alreadyImported = importedVersion !== undefined || pendingIds.has(id);
+  const sourceNewer = importedVersion !== undefined && (item.sourceVersion ?? 1) > importedVersion;
+  return { alreadyImported, sourceNewer };
 }
 
 export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<ImportRunSummary> {

@@ -11,7 +11,13 @@ import {
   toPreviewEntry,
 } from "../../../library-analytics";
 import type { Reasoner } from "../../../reasoner";
-import { type ImportRunSummary, runConfluenceImport } from "../confluence-import";
+import {
+  type ImportRunSummary,
+  existingVersions,
+  importStatusFor,
+  pendingImportExternalIds,
+  runConfluenceImport,
+} from "../confluence-import";
 import type { Guards } from "../http";
 import { sanitizeLogText } from "../log-sanitize";
 
@@ -105,7 +111,16 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
       try {
         // READ-ONLY: nur lesen + aggregieren. collectAll schreibt nichts.
         const { items, truncated } = await adapter.collectAll();
-        reply.code(200).send({ summary: summarizeImportItems(items), truncated });
+        // WP-IC-PAKET-1 (Teil 4, IC-6a): ehrlicher Import-Abgleich über die Quell-Referenzen
+        // (KoSource.externalId + offene Kandidaten) — „X Seiten, davon Y bereits importiert".
+        const [importedVersions, pendingIds] = await Promise.all([
+          existingVersions(deps.koService),
+          pendingImportExternalIds(deps.library),
+        ]);
+        const alreadyImported = items.filter(
+          (item) => importStatusFor(item, importedVersions, pendingIds).alreadyImported,
+        ).length;
+        reply.code(200).send({ summary: summarizeImportItems(items), truncated, alreadyImported });
         return reply;
       } catch (err) {
         // Gleiche Beobachtbarkeit/Redaction wie der Import-Pfad (WP-E/WP-E2).
@@ -155,12 +170,22 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
           // READ-ONLY: nur lesen + filtern. collectAll/filterImportItems schreiben nichts.
           const { items, truncated } = await adapter.collectAll();
           const { selected, matched, limited } = filterImportItems(items, criteria);
+          // WP-IC-PAKET-1 (Teil 4, IC-6a): jeden Vorschau-Eintrag ehrlich markieren (Quell-Referenz-
+          // Abgleich); `alreadyImported` zählt die markierten Einträge der Vorschau.
+          const [importedVersions, pendingIds] = await Promise.all([
+            existingVersions(deps.koService),
+            pendingImportExternalIds(deps.library),
+          ]);
+          const preview = selected.map((item) =>
+            toPreviewEntry(item, importStatusFor(item, importedVersions, pendingIds)),
+          );
           reply.code(200).send({
             matched,
             limited,
             truncated,
             criteria,
-            preview: selected.map(toPreviewEntry),
+            preview,
+            alreadyImported: preview.filter((entry) => entry.alreadyImported === true).length,
           });
           return reply;
         } catch (err) {

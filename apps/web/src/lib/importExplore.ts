@@ -22,6 +22,8 @@ export interface ExploreAuthorView {
 export interface ExploreThemeChip {
   label: string;
   count: number;
+  // WP-IC-PAKET-1 (Teil 2): true = deterministisch aus Seitentiteln abgeleitet (dezent gekennzeichnet).
+  derived: boolean;
 }
 
 export interface ExploreView {
@@ -34,6 +36,8 @@ export interface ExploreView {
   themes: ExploreThemeChip[]; // gedeckelt auf EXPLORE_TOP_THEMES
   themesRest: number;
   withImagesHint: number; // Items mit Bildern (0 → die Komponente blendet den Hinweis aus)
+  // WP-IC-PAKET-1 (Teil 3): Quell-Container (Spaces) namentlich — Filter-Chips nur bei MEHREREN.
+  spaces: ExploreAuthorView[];
 }
 
 const EMPTY_PERIOD = "—";
@@ -68,6 +72,8 @@ export interface CriteriaLabels {
   keywords: string;
   years: string;
   limit: string;
+  // WP-IC-PAKET-1 (Teil 3): Space-Filter-Zeile.
+  spaces: string;
 }
 
 export function summarizeSelectCriteria(
@@ -80,6 +86,9 @@ export function summarizeSelectCriteria(
   }
   if (criteria.authors && criteria.authors.length > 0) {
     lines.push(`${labels.authors}: ${criteria.authors.join(", ")}`);
+  }
+  if (criteria.spaces && criteria.spaces.length > 0) {
+    lines.push(`${labels.spaces}: ${criteria.spaces.join(", ")}`);
   }
   if (criteria.keywords && criteria.keywords.length > 0) {
     lines.push(`${labels.keywords}: ${criteria.keywords.join(", ")}`);
@@ -104,8 +113,15 @@ export function toExploreView(summary: ImportExploreSummary): ExploreView {
     period: formatPeriod(summary.dateRange),
     authors: authors.map((a) => ({ name: a.name, count: a.count })),
     authorsRest: Math.max(0, summary.authors.length - authors.length),
-    themes: themes.map((t) => ({ label: t.label, count: t.count })),
+    // WP-IC-PAKET-1 (Teil 2): abgeleitete Themen ehrlich gekennzeichnet weiterreichen.
+    themes: themes.map((t) => ({
+      label: t.label,
+      count: t.count,
+      derived: t.origin === "derived",
+    })),
     themesRest: Math.max(0, summary.themes.length - themes.length),
     withImagesHint: summary.withImagesHint,
+    // WP-IC-PAKET-1 (Teil 3): Spaces namentlich (Altbestand-Antworten ohne Feld → leer, kein Filter).
+    spaces: (summary.sourceNames ?? []).map((s) => ({ name: s.name, count: s.count })),
   };
 }

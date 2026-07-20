@@ -483,6 +483,9 @@ export interface ExploreCountEntry {
 export interface ExploreThemeEntry {
   label: string;
   count: number;
+  // WP-IC-PAKET-1 (Teil 2): "derived" = deterministisch aus Seitentiteln abgeleitet (Fallback ohne
+  // Labels); fehlt das Feld, stammt das Thema aus echten Quell-Labels.
+  origin?: "derived";
 }
 export interface ImportExploreSummary {
   totalCount: number;
@@ -491,11 +494,16 @@ export interface ImportExploreSummary {
   themes: ExploreThemeEntry[];
   dateRange: { earliest: string; latest: string } | null;
   withImagesHint: number;
+  // WP-IC-PAKET-1 (Teil 3): Quell-Container namentlich (Space-Filter, wenn mehrere).
+  sourceNames?: ExploreCountEntry[];
 }
 // Antwort der Explore-Route: Summary + truncated (Space am Seiten-Cap abgeschnitten).
 export interface ImportExploreResponse {
   summary: ImportExploreSummary;
   truncated: boolean;
+  // WP-IC-PAKET-1 (Teil 4, IC-6a): wie viele der gesehenen Seiten bereits importiert sind
+  // (KO-Herkunftsanker oder offener Kandidat mit derselben Quell-ID).
+  alreadyImported?: number;
 }
 
 // IC-3 (Import-Cockpit): Auswahl-Kriterien (Klick/KI) + READ-ONLY Vorschau. Nichts wird importiert.
@@ -505,6 +513,8 @@ export interface ImportSelectCriteria {
   keywords?: string[];
   yearFrom?: number;
   yearTo?: number;
+  // WP-IC-PAKET-1 (Teil 3): Quell-Container-Filter (Space).
+  spaces?: string[];
   limit?: number;
 }
 export interface ImportPreviewEntry {
@@ -513,6 +523,9 @@ export interface ImportPreviewEntry {
   updatedAt?: string;
   hasImage: boolean;
   themes: string[];
+  // WP-IC-PAKET-1 (Teil 4, IC-6a): Import-Status aus dem Quell-Referenz-Abgleich (reine Anzeige).
+  alreadyImported?: boolean;
+  sourceNewer?: boolean;
 }
 export interface ImportSelectResponse {
   matched: number;
@@ -520,6 +533,8 @@ export interface ImportSelectResponse {
   truncated: boolean;
   criteria: ImportSelectCriteria; // die EFFEKTIV benutzten Kriterien (Transparenz)
   preview: ImportPreviewEntry[];
+  // WP-IC-PAKET-1 (Teil 4): Anzahl bereits importierter Einträge INNERHALB der Vorschau-Liste.
+  alreadyImported?: number;
 }
 
 export type KnowledgeClass =
