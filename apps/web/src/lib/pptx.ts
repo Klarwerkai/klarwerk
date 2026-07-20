@@ -127,16 +127,18 @@ function reEscape(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// WP-D5d (bens ROT-Fix 1): praktisch ausreichende XML-NCName-Näherung (bewusst vereinfacht — dokumentiert):
-// Namensstart [\p{L}_], Namenszeichen [\p{L}\p{N}_.·-]. Deckt Unicode-Buchstaben-Präfixe ab (z. B.
-// xmlns:ä oder griechische Buchstaben), NICHT die vollständige NCName-Grammatik (CombiningChar/Extender-
-// Ranges) — für PPTX-Präfixe unnötig. ALLE damit gebauten Regexe tragen das u-Flag (Property-Escapes).
-const NCNAME_CHAR = "[\\p{L}\\p{N}_.\\u00B7-]";
+// WP-D5d/WP-D5e (bens ROT-Fix): praktisch ausreichende XML-NCName-Näherung (bewusst vereinfacht — dokumentiert):
+// Namensstart [\p{L}_], Namenszeichen [\p{L}\p{M}\p{N}_.·-]. \p{M} (Combining Marks) ist wichtig: ein DEKOM-
+// PONIERTES Präfix (z. B. „ä" als a + U+0308 Combining Diaeresis, NFD) ist sonst kein gültiger Name und ginge
+// verloren. Deckt Unicode-Buchstaben-Präfixe inkl. kombinierender Zeichen ab, NICHT die vollständige
+// NCName-Grammatik (Extender-Feinheiten) — für PPTX-Präfixe unnötig. ALLE damit gebauten Regexe tragen das
+// u-Flag (Property-Escapes).
+const NCNAME_CHAR = "[\\p{L}\\p{M}\\p{N}_.\\u00B7-]";
 const NCNAME = `[\\p{L}_]${NCNAME_CHAR}*`;
 
 // Tag-Namensgrenze (Unicode): der Local Name endet hier — KEIN weiteres Namenszeichen und KEIN ':' danach
 // (sonst wäre es ein Präfix). Ersetzt das alte \b und verhindert die Kollision praefixlos <p> vs. <p:sp>.
-const TAG_BOUNDARY = "(?![\\p{L}\\p{N}_.\\u00B7:-])";
+const TAG_BOUNDARY = "(?![\\p{L}\\p{M}\\p{N}_.\\u00B7:-])";
 
 // WP-D5c/WP-D5d (bens ROT-Fix 1): xmlns-Deklarationen des GESAMTEN Dokuments einsammeln — URI → Set ALLER
 // gebundenen Präfixe (auch verschachtelte/lokale Rebindings; "" = Default-Namespace), Präfixe als
@@ -701,7 +703,11 @@ export interface FflateStreaming {
 }
 
 // 16 KiB komprimiert je push — fflate dekomprimiert inkrementell, sodass die reale Ausgabe je Schritt
-// gedeckelt ist und zwischen den Schritten bei Budgetverletzung SOFORT abgebrochen werden kann.
+// gedeckelt ist. WP-D5e (bens GELB-Auflage, ehrliche Abbruchsemantik): terminate()/das failure-Flag
+// unterbrechen NICHT die synchrone Dekompression des GERADE laufenden push(); der Abbruch wirkt erst ab dem
+// NÄCHSTEN push. Die Restarbeit eines laufenden Pushs ist durch diese Chunk-Größe (16 KiB komprimiert)
+// begrenzt; zusätzlich verwirft der ondata-Callback nach erkanntem failure den bisherigen Puffer und
+// konkateniert nicht weiter.
 const PPTX_STREAM_CHUNK_BYTES = 1 << 14;
 
 function concatChunks(chunks: readonly Uint8Array[]): Uint8Array {
@@ -760,17 +766,22 @@ export function budgetedPptxUnzip(
       const chunks: Uint8Array[] = [];
       budget.beginEntry();
       file.ondata = (err, chunk, final) => {
+        // WP-D5e (GELB): failure kann während EINES laufenden Pushs mehrfach ondata auslösen. Nach erkanntem
+        // failure den bisherigen Puffer verwerfen und NICHT weiter konkatenieren → Restarbeit minimiert.
         if (failure) {
+          chunks.length = 0;
           return;
         }
         if (err) {
           failure = err;
+          chunks.length = 0;
           return;
         }
         try {
           budget.addOutputBytes(chunk.length);
         } catch (e) {
           failure = e;
+          chunks.length = 0;
           try {
             file.terminate();
           } catch {

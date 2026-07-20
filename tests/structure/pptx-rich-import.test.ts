@@ -616,3 +616,115 @@ describe("WP-D5d: Budget fail-closed + Ist-Byte-Grenze", () => {
     expect(() => unzip(zip)).toThrow(PptxTooLargeError);
   });
 });
+
+// WP-D5e (bens LETZTER PPTX-Blocker): Combining Marks in der NCName-Klasse (\p{M}). Ein DEKOMPONIERTES
+// Präfix (NFD: Basisbuchstabe + kombinierendes Zeichen, z. B. „a" + U+0308 statt „ä") ist ohne \p{M} kein
+// gültiger Name → Text/Reihenfolge gingen still verloren. Gegenbeispiele gepinnt.
+describe("WP-D5e: dekomponierte Namespace-Präfixe (Combining Marks, NFD)", () => {
+  const NFC = "ä"; // ä als EIN Codepoint (U+00E4)
+  const NFD = "ä"; // dieselbe „ä" dekomponiert: a + U+0308 (Combining Diaeresis)
+
+  function slide(inner: string, attrs: string): string {
+    return `<p:sld ${attrs}><p:cSld><p:spTree>${inner}</p:spTree></p:cSld></p:sld>`;
+  }
+
+  it("dekomponiertes DrawingML-Präfix (a+U+0308) — Text nur unter dem NFD-Präfix wird extrahiert", () => {
+    const xml = slide(
+      `<p:sp><p:txBody><${NFD}:p><${NFD}:r><${NFD}:t>Dekomponiert</${NFD}:t></${NFD}:r></${NFD}:p></p:txBody></p:sp>`,
+      `xmlns:p="${URI_P}" xmlns:${NFD}="${URI_A}"`,
+    );
+    const { html } = slideToHtml(xml, { slideNumber: 1, slideLabel: "Folie" });
+    expect(html).toBe("<h2>Folie 1</h2><p>Dekomponiert</p>");
+  });
+
+  it("dekomponiertes Relationship-Elementpräfix — Folienreihenfolge bleibt erhalten", () => {
+    const files: Record<string, Uint8Array> = {
+      "ppt/presentation.xml": enc(
+        `<p:presentation xmlns:p="${URI_P}" xmlns:r="${URI_R}"><p:sldIdLst><p:sldId id="1" r:id="rId1"/><p:sldId id="2" r:id="rId2"/></p:sldIdLst></p:presentation>`,
+      ),
+      "ppt/_rels/presentation.xml.rels": enc(
+        `<${NFD}:Relationships xmlns:${NFD}="http://schemas.openxmlformats.org/package/2006/relationships"><${NFD}:Relationship Id="rId1" Type="t" Target="slides/slide2.xml"/><${NFD}:Relationship Id="rId2" Type="t" Target="slides/slide1.xml"/></${NFD}:Relationships>`,
+      ),
+      "ppt/slides/slide1.xml": enc("<x/>"),
+      "ppt/slides/slide2.xml": enc("<x/>"),
+    };
+    expect(resolveSlideOrder(files)).toEqual(["ppt/slides/slide2.xml", "ppt/slides/slide1.xml"]);
+  });
+
+  it("NFC- und NFD-Variante desselben Präfixes (beide an dieselbe URI gebunden) — beide matchen", () => {
+    const nfcPara = `<${NFC}:p><${NFC}:r><${NFC}:t>NFC-Text</${NFC}:t></${NFC}:r></${NFC}:p>`;
+    const nfdPara = `<${NFD}:p><${NFD}:r><${NFD}:t>NFD-Text</${NFD}:t></${NFD}:r></${NFD}:p>`;
+    const xml = slide(
+      `<p:sp><p:txBody>${nfcPara}${nfdPara}</p:txBody></p:sp>`,
+      `xmlns:p="${URI_P}" xmlns:${NFC}="${URI_A}" xmlns:${NFD}="${URI_A}"`,
+    );
+    const { html } = slideToHtml(xml, { slideNumber: 1, slideLabel: "Folie" });
+    expect(html).toContain("NFC-Text");
+    expect(html).toContain("NFD-Text");
+  });
+});
+
+// WP-D5e (bens GELB-Auflage): ehrliche Abbruchsemantik. Nach erkanntem failure verwirft der ondata-Callback
+// den Puffer und konkateniert NICHT weiter. Getestet mit einem Fake-fflate, das nach dem Budget-Overflow noch
+// weitere „Poison"-Chunks liefert: würde der Puffer nach dem Abbruch noch angefasst (konkateniert), flippt der
+// Spy — er bleibt false.
+describe("WP-D5e: ondata verwirft Puffer nach Abbruch (keine weitere Konkatenation)", () => {
+  it("failure während ondata ⇒ Poison-Chunks werden nicht mehr gelesen/konkateniert", () => {
+    let terminated = 0;
+    let touchedAfterFailure = false;
+
+    // Chunk, dessen Byte-Länge nach dem Abbruch NICHT mehr gelesen werden darf (Konkatenation würde .length
+    // und .set anfassen). Wird er berührt, meldet der Spy das.
+    function poison(): Uint8Array {
+      const bytes = new Uint8Array(8);
+      return new Proxy(bytes, {
+        get(target, prop, receiver) {
+          if (prop === "length") {
+            touchedAfterFailure = true;
+          }
+          return Reflect.get(target, prop, receiver);
+        },
+      });
+    }
+
+    const fakeFflate = {
+      UnzipInflate: class {},
+      Unzip: class {
+        onfile?: (f: unknown) => void;
+        register() {}
+        push() {
+          type Cb = (err: unknown, chunk: Uint8Array, final: boolean) => void;
+          const file = {
+            name: "ppt/slides/slide1.xml",
+            size: 10,
+            originalSize: undefined as number | undefined,
+            ondata: undefined as Cb | undefined,
+            terminate() {
+              terminated += 1;
+            },
+            start() {
+              const cb = file.ondata;
+              if (!cb) {
+                return;
+              }
+              // 1) Overflow-Chunk (100 KB > 50 KB Budget) ⇒ addOutputBytes wirft ⇒ failure + Puffer verwerfen.
+              cb(null, new Uint8Array(100_000), false);
+              // 2)+3) Poison-Chunks NACH dem Abbruch — dürfen nicht mehr in den Puffer wandern.
+              cb(null, poison(), false);
+              cb(null, poison(), true);
+            },
+          };
+          this.onfile?.(file);
+        }
+      },
+    };
+
+    const unzip = budgetedPptxUnzip(
+      fakeFflate as unknown as Parameters<typeof budgetedPptxUnzip>[0],
+      { maxTotalDecompressedBytes: 50_000 },
+    );
+    expect(() => unzip(new Uint8Array(1))).toThrow(PptxTooLargeError);
+    expect(touchedAfterFailure).toBe(false);
+    expect(terminated).toBe(1);
+  });
+});
