@@ -12,7 +12,7 @@ import { detectFileKind } from "./extract";
 import { type OcrResult, recognizeImage } from "./ocr";
 import { type PdfDocumentText, type PdfEngine, extractPdfDocument } from "./pdf";
 import {
-  type FflateLike,
+  type FflateStreaming,
   type PptxRichResult,
   PptxTooLargeError,
   type PptxUnzip,
@@ -190,12 +190,14 @@ let pptxUnzipPromise: Promise<PptxUnzip> | null = null;
 // (budgetedPptxUnzip + createPptxUnzipBudget) und ist dort mit echten fflate-zipSync-Fixtures getestet.
 const PPTX_MAX_COMPRESSED_BYTES = 50 * 1024 * 1024; // 50 MiB Datei-Cap
 
-// fflate lazy laden (synchrones unzipSync, klein/tree-shakeable) — NICHT ins Haupt-Bundle. Muster
-// mammoth/pdfjs-Engine. Das budgetierte, selektive Entpacken bringt ./pptx (fflate injiziert).
+// fflate lazy laden (klein/tree-shakeable) — NICHT ins Haupt-Bundle. Muster mammoth/pdfjs-Engine. Das
+// budgetierte, selektive STREAMING-Entpacken (Ist-Byte-Zählung) bringt ./pptx (Unzip/UnzipInflate injiziert).
 async function pptxUnzip(): Promise<PptxUnzip> {
   if (!pptxUnzipPromise) {
     pptxUnzipPromise = (async () => {
-      const mod = (await import("fflate")) as unknown as FflateLike & { default?: FflateLike };
+      const mod = (await import("fflate")) as unknown as FflateStreaming & {
+        default?: FflateStreaming;
+      };
       const fflate = mod.default ?? mod;
       return budgetedPptxUnzip(fflate);
     })();

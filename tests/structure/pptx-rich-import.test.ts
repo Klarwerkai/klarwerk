@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 // numerischer Fallback), leere/rein-grafische Folie, Verlust-/Bild-Bilanz, Folien-Cap (truncated),
 // htmlOverflow bei zu großem Folien-HTML. Reine Funktions-/Fixture-Tests, kein DOM. WP-D5c ergänzt
 // namespace-aware Gegenbeispiele und Budget-Tests mit ECHTEM fflate (zipSync-Fixtures).
-import { unzipSync, zipSync } from "../../apps/web/node_modules/fflate";
+import { Unzip, UnzipInflate, UnzipPassThrough, zipSync } from "../../apps/web/node_modules/fflate";
 import { MAX_INLINE_BODY_HTML_BYTES } from "../../apps/web/src/lib/docx";
 import {
   MAX_PPTX_SLIDES,
@@ -473,7 +473,7 @@ describe("WP-D5c: budgetedPptxUnzip mit ECHTEM fflate (zipSync-Fixtures)", () =>
       "ppt/media/image1.png": new Uint8Array(2048),
       "docProps/app.xml": enc("<Properties/>"),
     });
-    const files = budgetedPptxUnzip({ unzipSync })(zip);
+    const files = budgetedPptxUnzip({ Unzip, UnzipInflate, UnzipPassThrough })(zip);
     expect(Object.keys(files).sort()).toEqual([
       "ppt/_rels/presentation.xml.rels",
       "ppt/presentation.xml",
@@ -486,7 +486,10 @@ describe("WP-D5c: budgetedPptxUnzip mit ECHTEM fflate (zipSync-Fixtures)", () =>
     // stark wiederholter Inhalt komprimiert extrem → Ratio > Cap.
     const bomb = enc("A".repeat(2_000_000));
     const zip = zipSync({ "ppt/slides/slide1.xml": bomb });
-    const unzip = budgetedPptxUnzip({ unzipSync }, { maxEntryExpansionRatio: 50 });
+    const unzip = budgetedPptxUnzip(
+      { Unzip, UnzipInflate, UnzipPassThrough },
+      { maxEntryExpansionRatio: 50 },
+    );
     expect(() => unzip(zip)).toThrow(PptxTooLargeError);
   });
 
@@ -496,7 +499,10 @@ describe("WP-D5c: budgetedPptxUnzip mit ECHTEM fflate (zipSync-Fixtures)", () =>
       entries[`docProps/file${i}.xml`] = enc("<x/>");
     }
     const zip = zipSync(entries);
-    const unzip = budgetedPptxUnzip({ unzipSync }, { maxArchiveEntries: 5 });
+    const unzip = budgetedPptxUnzip(
+      { Unzip, UnzipInflate, UnzipPassThrough },
+      { maxArchiveEntries: 5 },
+    );
     expect(() => unzip(zip)).toThrow(PptxTooLargeError);
   });
 
@@ -505,7 +511,108 @@ describe("WP-D5c: budgetedPptxUnzip mit ECHTEM fflate (zipSync-Fixtures)", () =>
       "ppt/slides/slide1.xml": enc("B".repeat(4000)),
       "ppt/slides/slide2.xml": enc("C".repeat(4000)),
     });
-    const unzip = budgetedPptxUnzip({ unzipSync }, { maxTotalDecompressedBytes: 5000 });
+    const unzip = budgetedPptxUnzip(
+      { Unzip, UnzipInflate, UnzipPassThrough },
+      { maxTotalDecompressedBytes: 5000 },
+    );
+    expect(() => unzip(zip)).toThrow(PptxTooLargeError);
+  });
+});
+
+// WP-D5d (bens ROT-Fix 1): Unicode-NCName-Fähigkeit — Gegenbeispiele gepinnt.
+describe("WP-D5d: Unicode-Namespace-Präfixe (NCName)", () => {
+  function slide(inner: string, attrs: string): string {
+    return `<p:sld ${attrs}><p:cSld><p:spTree>${inner}</p:spTree></p:cSld></p:sld>`;
+  }
+
+  it("nicht-ASCII DrawingML-Präfix (ä) — Text NUR unter dem Unicode-Präfix wird extrahiert", () => {
+    const xml = slide(
+      "<p:sp><p:txBody><ä:p><ä:r><ä:t>Ümlaut-Text</ä:t></ä:r></ä:p></p:txBody></p:sp>",
+      `xmlns:p="${URI_P}" xmlns:ä="${URI_A}"`,
+    );
+    const { html } = slideToHtml(xml, { slideNumber: 1, slideLabel: "Folie" });
+    expect(html).toBe("<h2>Folie 1</h2><p>Ümlaut-Text</p>");
+  });
+
+  it("nicht-ASCII Relationship-Elementpräfix (ω) — Reihenfolge bleibt, relMap nicht leer", () => {
+    const files: Record<string, Uint8Array> = {
+      "ppt/presentation.xml": enc(
+        `<p:presentation xmlns:p="${URI_P}" xmlns:r="${URI_R}"><p:sldIdLst><p:sldId id="1" r:id="rId1"/><p:sldId id="2" r:id="rId2"/></p:sldIdLst></p:presentation>`,
+      ),
+      "ppt/_rels/presentation.xml.rels": enc(
+        `<ω:Relationships xmlns:ω="http://schemas.openxmlformats.org/package/2006/relationships"><ω:Relationship Id="rId1" Type="t" Target="slides/slide2.xml"/><ω:Relationship Id="rId2" Type="t" Target="slides/slide1.xml"/></ω:Relationships>`,
+      ),
+      "ppt/slides/slide1.xml": enc("<x/>"),
+      "ppt/slides/slide2.xml": enc("<x/>"),
+    };
+    // rId1→slide2, rId2→slide1: die Reihenfolge der sldIdLst gewinnt trotz Unicode-Elementpräfix.
+    expect(resolveSlideOrder(files)).toEqual(["ppt/slides/slide2.xml", "ppt/slides/slide1.xml"]);
+  });
+
+  it("lokales Rebinding DESSELBEN Präfixes auf FREMDE URI — dokumentierte Näherung (Übermatch)", () => {
+    // BEWUSSTE NÄHERUNG (dokumentweit): der innere txBody bindet a auf urn:fremd; ein echter scope-aware
+    // Parser würde a:t hier NICHT als DrawingML lesen. Der dokumentweite Ansatz übermatcht und extrahiert
+    // den Text trotzdem. Verhalten gepinnt (nicht harmlos, sondern ehrlich als Grenze festgehalten).
+    const xml = slide(
+      `<p:sp><p:txBody xmlns:a="urn:fremd"><a:p><a:r><a:t>Fremd gebunden</a:t></a:r></a:p></p:txBody></p:sp>`,
+      `xmlns:p="${URI_P}" xmlns:a="${URI_A}"`,
+    );
+    const { html } = slideToHtml(xml, { slideNumber: 1, slideLabel: "Folie" });
+    expect(html).toBe("<h2>Folie 1</h2><p>Fremd gebunden</p>");
+  });
+});
+
+// WP-D5d (GELB-Härtung 3): Alternation deckeln — zu viele/zu lange Präfixe → kontrollierter Fehler.
+describe("WP-D5d: Namespace-Präfix-Deckel", () => {
+  function slide(attrs: string): string {
+    return `<p:sld ${attrs}><p:cSld><p:spTree></p:spTree></p:cSld></p:sld>`;
+  }
+
+  it("zu viele xmlns-Präfixe ⇒ PptxTooLargeError", () => {
+    const many = Array.from({ length: 40 }, (_v, i) => `xmlns:n${i}="urn:u${i}"`).join(" ");
+    expect(() => slideToHtml(slide(many), { slideNumber: 1, slideLabel: "Folie" })).toThrow(
+      PptxTooLargeError,
+    );
+  });
+
+  it("zu langes Präfix ⇒ PptxTooLargeError", () => {
+    const longPrefix = "x".repeat(70);
+    expect(() =>
+      slideToHtml(slide(`xmlns:${longPrefix}="urn:u"`), { slideNumber: 1, slideLabel: "Folie" }),
+    ).toThrow(PptxTooLargeError);
+  });
+});
+
+// WP-D5d (bens ROT-Fix 2): Budget wirklich fail-closed + echte Arbeit begrenzen.
+describe("WP-D5d: Budget fail-closed + Ist-Byte-Grenze", () => {
+  it("Null-Denominator {compressedSize:0, originalSize:1} ⇒ FAIL-CLOSED (bens Repro)", () => {
+    const gate = createPptxUnzipBudget();
+    expect(() =>
+      gate.accept({ name: "ppt/slides/slide1.xml", compressedSize: 0, originalSize: 1 }),
+    ).toThrow(PptxTooLargeError);
+  });
+
+  it("FEHLENDE (undefined) Größen sind KEIN Fehler — die Ist-Byte-Zählung greift (Streaming)", () => {
+    const gate = createPptxUnzipBudget();
+    // Streaming ohne Metadaten: accept nimmt an, addOutputBytes ist die harte Grenze.
+    expect(gate.accept({ name: "ppt/slides/slide1.xml" })).toBe(true);
+    expect(() => gate.addOutputBytes(10)).not.toThrow();
+    expect(() => gate.addOutputBytes(Number.MAX_SAFE_INTEGER)).toThrow(PptxTooLargeError);
+  });
+
+  it("UNTERTRIEBENE originalSize (klein deklariert, groß real) ⇒ Abbruch durch Ist-Byte-Zählung", () => {
+    // Ehrliches deflate-Archiv bauen, dann die DEKLARIERTE Originalgröße im LOCAL-Header künstlich klein
+    // lügen. Der Metadaten-Vorfilter würde das durchwinken — nur die Ist-Byte-Zählung stoppt es.
+    const real = 200_000;
+    const zip = zipSync({ "ppt/slides/slide1.xml": enc("Z".repeat(real)) });
+    const dv = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
+    // ZIP Local File Header: uncompressedSize an Offset 22 (LE 4 Byte). Auf 4 heruntergelogen.
+    dv.setUint32(22, 4, true);
+    const unzip = budgetedPptxUnzip(
+      { Unzip, UnzipInflate, UnzipPassThrough },
+      { maxTotalDecompressedBytes: 50_000 },
+    );
+    // Trotz winziger deklarierter Größe bricht die REALE Byte-Zählung (200 KB > 50 KB) ehrlich ab.
     expect(() => unzip(zip)).toThrow(PptxTooLargeError);
   });
 });

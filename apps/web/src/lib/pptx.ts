@@ -24,6 +24,9 @@ const PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.
 const NS_DRAWINGML = "http://schemas.openxmlformats.org/drawingml/2006/main";
 const NS_PRESENTATIONML = "http://schemas.openxmlformats.org/presentationml/2006/main";
 const NS_OFFICE_RELS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+// WP-D5d: die Package-Relationships-URI der .rels-Dateien — der <Relationship>-Elementscanner wird über
+// dieselbe zentrale Namespace-Auflösung geführt (statt eines eigenen ASCII-Musters).
+const NS_PACKAGE_RELS = "http://schemas.openxmlformats.org/package/2006/relationships";
 
 // DOM-freie Erkennung über Dateiname/MIME (ohne File-Objekt), Muster isDocxDocumentLike.
 export function isPptxDocumentLike(input: { name: string; type?: string }): boolean {
@@ -52,6 +55,11 @@ export const PPTX_MAX_TOTAL_DECOMPRESSED_BYTES = 64 * 1024 * 1024; // 64 MiB
 export const PPTX_MAX_ARCHIVE_ENTRIES = 4000;
 export const PPTX_MAX_SLIDE_ENTRIES = 2000;
 export const PPTX_MAX_ENTRY_EXPANSION_RATIO = 100;
+// WP-D5d (GELB-Härtung 3): Deckel für die Namespace-Präfix-Alternation — Anzahl gesammelter Präfixe je
+// Dokument und Länge je Präfix. Ein entartetes/böswilliges XML mit tausenden xmlns-Deklarationen soll die
+// Regex-Alternation nicht sprengen; Überschreitung → kontrollierter Importfehler.
+export const PPTX_MAX_NS_PREFIXES = 32;
+export const PPTX_MAX_NS_PREFIX_LEN = 64;
 // Benötigte ZIP-Einträge (nur diese werden dekomprimiert) und die Folien-Untermenge.
 export const PPTX_NEEDED_ENTRY_RE =
   /^ppt\/(?:presentation\.xml|_rels\/presentation\.xml\.rels|slides\/slide\d+\.xml)$/;
@@ -63,7 +71,9 @@ export type PptxImportErrorReason =
   | "file-too-large"
   | "archive-too-large"
   | "too-many-entries"
-  | "expansion-ratio";
+  | "expansion-ratio"
+  // WP-D5d (GELB-Härtung 3): zu viele/zu lange Namespace-Präfixe (entartetes XML).
+  | "too-many-namespaces";
 
 export class PptxTooLargeError extends Error {
   readonly reason: PptxImportErrorReason;
@@ -110,18 +120,35 @@ function escapeHtml(text: string): string {
     .replace(/'/g, "&#39;");
 }
 
+// WP-D5d (bens ROT-Fix 1): Escapes müssen u-flag-tauglich sein — RegExp mit u-Flag wirft bei einem
+// Backslash vor einem NICHT-Sonderzeichen. reEscape maskiert deshalb NUR echte Regex-Sonderzeichen
+// (Unicode-Buchstaben eines Präfixes bleiben unverändert und sind in u-Mode gültige Literale).
 function reEscape(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// WP-D5c (bens ROT-Fix 1): xmlns-Deklarationen des GESAMTEN Dokuments einsammeln — URI → Set ALLER
-// gebundenen Präfixe (auch verschachtelte/lokale Rebindings; "" = Default-Namespace). Dokumentweit-
-// konservativ: ALLE je gebundenen Präfixe einer URI werden akzeptiert. Das kann höchstens ZU VIEL matchen
-// (nie zu wenig) und verliert deshalb nie Text; echte per-Scope-Auflösung wäre ein größerer Umbau ohne
-// Sicherheitsgewinn (die Muster sind auf die bekannten OOXML-Local-Names beschränkt).
+// WP-D5d (bens ROT-Fix 1): praktisch ausreichende XML-NCName-Näherung (bewusst vereinfacht — dokumentiert):
+// Namensstart [\p{L}_], Namenszeichen [\p{L}\p{N}_.·-]. Deckt Unicode-Buchstaben-Präfixe ab (z. B.
+// xmlns:ä oder griechische Buchstaben), NICHT die vollständige NCName-Grammatik (CombiningChar/Extender-
+// Ranges) — für PPTX-Präfixe unnötig. ALLE damit gebauten Regexe tragen das u-Flag (Property-Escapes).
+const NCNAME_CHAR = "[\\p{L}\\p{N}_.\\u00B7-]";
+const NCNAME = `[\\p{L}_]${NCNAME_CHAR}*`;
+
+// Tag-Namensgrenze (Unicode): der Local Name endet hier — KEIN weiteres Namenszeichen und KEIN ':' danach
+// (sonst wäre es ein Präfix). Ersetzt das alte \b und verhindert die Kollision praefixlos <p> vs. <p:sp>.
+const TAG_BOUNDARY = "(?![\\p{L}\\p{N}_.\\u00B7:-])";
+
+// WP-D5c/WP-D5d (bens ROT-Fix 1): xmlns-Deklarationen des GESAMTEN Dokuments einsammeln — URI → Set ALLER
+// gebundenen Präfixe (auch verschachtelte/lokale Rebindings; "" = Default-Namespace), Präfixe als
+// Unicode-NCNames. BEWUSSTE NÄHERUNG (nicht nur „harmlos zu viel"): der dokumentweite Ansatz kann bei
+// LOKALEM Rebinding DESSELBEN Präfixes auf eine FREMDE URI übermatchen — dann würde ein Element unter dem
+// fremden Rebinding fälschlich als das erwartete erkannt. Das ist in realen PPTX praktisch irrelevant
+// (Präfixe werden konsistent gebunden); echte per-Scope-Auflösung wäre ein größerer Umbau (kein Vollausbau).
+// GELB-Härtung: Anzahl/Länge der Präfixe gedeckelt → kontrollierter Importfehler statt Alternations-Explosion.
 function collectNamespacePrefixSets(xml: string): Map<string, Set<string>> {
   const map = new Map<string, Set<string>>();
-  const re = /\bxmlns(?::([\w.-]+))?\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+  const re = new RegExp(`\\bxmlns(?::(${NCNAME}))?\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "gu");
+  let total = 0;
   let m: RegExpExecArray | null;
   // biome-ignore lint/suspicious/noAssignInExpressions: Standard-Regex-Iteration.
   while ((m = re.exec(xml)) !== null) {
@@ -130,23 +157,29 @@ function collectNamespacePrefixSets(xml: string): Map<string, Set<string>> {
     if (uri.length === 0) {
       continue;
     }
+    if (prefix.length > PPTX_MAX_NS_PREFIX_LEN) {
+      throw new PptxTooLargeError("too-many-namespaces");
+    }
     const set = map.get(uri);
     if (set) {
-      set.add(prefix);
+      if (!set.has(prefix)) {
+        total += 1;
+        set.add(prefix);
+      }
     } else {
+      total += 1;
       map.set(uri, new Set([prefix]));
+    }
+    if (total > PPTX_MAX_NS_PREFIXES) {
+      throw new PptxTooLargeError("too-many-namespaces");
     }
   }
   return map;
 }
 
-// Tag-Namensgrenze: der Local Name endet hier — KEIN weiterer Namensteil und KEIN ':' danach (sonst wäre
-// es ein Präfix). Ersetzt das alte \b und verhindert die Kollision praefixlos <p> vs. praefigiert <p:sp>.
-const TAG_BOUNDARY = "(?![\\w.:-])";
-
 // Regex-Fragment, das den TAG-NAMEN (Präfix + Local Name) einer URI matcht — Alternation über ALLE
 // gebundenen Präfixe; ist der Default-Namespace gebunden, zusätzlich die praefixlose (kollisionssichere)
-// Form. Ist die URI gar nicht deklariert: praefix-tolerant (irgendein ODER kein Präfix) — konservativ.
+// Form. Ist die URI gar nicht deklariert: praefix-tolerant (irgendein NCName-Präfix ODER kein Präfix).
 function tagName(prefixSet: Set<string> | undefined, localName: string): string {
   const ln = reEscape(localName);
   const named: string[] = [];
@@ -168,14 +201,14 @@ function tagName(prefixSet: Set<string> | undefined, localName: string): string 
     alts.push(`${ln}${TAG_BOUNDARY}`);
   }
   if (alts.length === 0) {
-    alts.push(`(?:[\\w.-]+:)?${ln}${TAG_BOUNDARY}`);
+    alts.push(`(?:${NCNAME}:)?${ln}${TAG_BOUNDARY}`);
   }
   return `(?:${alts.join("|")})`;
 }
 
 // Regex-Fragment für ein NAMESPACED ATTRIBUT (z. B. r:id): Attribute erben NIE das Default-Namespace,
 // tragen also immer ein Präfix. Alternation über ALLE gebundenen Relationship-Präfixe; Fallback verlangt
-// IRGENDEIN Präfix — nie das bare „id" (das im sldId sonst mit der numerischen Folien-Id kollidierte).
+// IRGENDEIN NCName-Präfix — nie das bare „id" (das im sldId sonst mit der numerischen Folien-Id kollidierte).
 function attrName(prefixSet: Set<string> | undefined, localName: string): string {
   const ln = reEscape(localName);
   const named: string[] = [];
@@ -189,7 +222,7 @@ function attrName(prefixSet: Set<string> | undefined, localName: string): string
   if (named.length > 0) {
     return `(?:${named.join("|")}):${ln}`;
   }
-  return `[\\w.-]+:${ln}`;
+  return `${NCNAME}:${ln}`;
 }
 
 interface DrawingNs {
@@ -219,7 +252,7 @@ type BodyItem =
 function paragraphText(paragraphXml: string, ns: DrawingNs): string {
   const t = tagName(ns.a, "t");
   const br = tagName(ns.a, "br");
-  const re = new RegExp(`<${t}[^>]*>([\\s\\S]*?)<\\/${t}>|<${br}[^>]*\\/?>`, "g");
+  const re = new RegExp(`<${t}[^>]*>([\\s\\S]*?)<\\/${t}>|<${br}[^>]*\\/?>`, "gu");
   const out: string[] = [];
   let m: RegExpExecArray | null;
   // biome-ignore lint/suspicious/noAssignInExpressions: Standard-Regex-Iteration.
@@ -241,14 +274,15 @@ function paragraphText(paragraphXml: string, ns: DrawingNs): string {
 // Slice; Best-Effort, kein stiller Datenverlust — der Text bleibt erhalten).
 function paragraphListKind(paragraphXml: string, ns: DrawingNs): ListKind {
   const pPr = tagName(ns.a, "pPr");
-  const block = new RegExp(`<${pPr}[\\s\\S]*?(?:\\/>|<\\/${pPr}>)`).exec(paragraphXml)?.[0] ?? "";
-  if (new RegExp(`<${tagName(ns.a, "buNone")}`).test(block)) {
+  const block =
+    new RegExp(`<${pPr}[\\s\\S]*?(?:\\/>|<\\/${pPr}>)`, "u").exec(paragraphXml)?.[0] ?? "";
+  if (new RegExp(`<${tagName(ns.a, "buNone")}`, "u").test(block)) {
     return "none";
   }
-  if (new RegExp(`<${tagName(ns.a, "buAutoNum")}`).test(block)) {
+  if (new RegExp(`<${tagName(ns.a, "buAutoNum")}`, "u").test(block)) {
     return "ol";
   }
-  if (new RegExp(`<${tagName(ns.a, "buChar")}`).test(block)) {
+  if (new RegExp(`<${tagName(ns.a, "buChar")}`, "u").test(block)) {
     return "ul";
   }
   return "none";
@@ -257,7 +291,7 @@ function paragraphListKind(paragraphXml: string, ns: DrawingNs): ListKind {
 function shapeParagraphs(shapeXml: string, ns: DrawingNs): SlidePara[] {
   const paras: SlidePara[] = [];
   const p = tagName(ns.a, "p");
-  const re = new RegExp(`<${p}[^>]*>([\\s\\S]*?)<\\/${p}>|<${p}[^>]*\\/>`, "g");
+  const re = new RegExp(`<${p}[^>]*>([\\s\\S]*?)<\\/${p}>|<${p}[^>]*\\/>`, "gu");
   let m: RegExpExecArray | null;
   // biome-ignore lint/suspicious/noAssignInExpressions: Standard-Regex-Iteration.
   while ((m = re.exec(shapeXml)) !== null) {
@@ -274,6 +308,7 @@ function shapeParagraphs(shapeXml: string, ns: DrawingNs): SlidePara[] {
 function shapeIsTitle(shapeXml: string, ns: DrawingNs): boolean {
   return new RegExp(
     `<${tagName(ns.p, "ph")}[^>]*\\btype\\s*=\\s*(?:"(?:title|ctrTitle)"|'(?:title|ctrTitle)')`,
+    "u",
   ).test(shapeXml);
 }
 
@@ -285,17 +320,17 @@ function tableFromGraphicFrame(
   ns: DrawingNs,
 ): { html: string; text: string } | null {
   const tblName = tagName(ns.a, "tbl");
-  const tbl = new RegExp(`<${tblName}[\\s\\S]*?<\\/${tblName}>`).exec(frameXml)?.[0];
+  const tbl = new RegExp(`<${tblName}[\\s\\S]*?<\\/${tblName}>`, "u").exec(frameXml)?.[0];
   if (!tbl) {
     return null;
   }
   const trName = tagName(ns.a, "tr");
   const tcName = tagName(ns.a, "tc");
-  const rows = tbl.match(new RegExp(`<${trName}[\\s\\S]*?<\\/${trName}>`, "g")) ?? [];
+  const rows = tbl.match(new RegExp(`<${trName}[\\s\\S]*?<\\/${trName}>`, "gu")) ?? [];
   const rowHtml: string[] = [];
   const rowText: string[] = [];
   for (const row of rows) {
-    const cells = row.match(new RegExp(`<${tcName}[\\s\\S]*?<\\/${tcName}>`, "g")) ?? [];
+    const cells = row.match(new RegExp(`<${tcName}[\\s\\S]*?<\\/${tcName}>`, "gu")) ?? [];
     const cellTexts = cells.map((cell) =>
       shapeParagraphs(cell, ns)
         .map((p) => p.text)
@@ -369,7 +404,7 @@ export function slideToHtml(
   const gfName = tagName(ns.p, "graphicFrame");
   const blockRe = new RegExp(
     `<(${spName}|${gfName})[^>]*>[\\s\\S]*?<\\/(?:${spName}|${gfName})>`,
-    "g",
+    "gu",
   );
   let m: RegExpExecArray | null;
   // biome-ignore lint/suspicious/noAssignInExpressions: Standard-Regex-Iteration.
@@ -401,7 +436,7 @@ export function slideToHtml(
   }
   const heading = title.length > 0 ? title : `${opts.slideLabel} ${opts.slideNumber}`;
   const html = `<h2>${escapeHtml(heading)}</h2>${renderBodyItems(items)}`;
-  const imageCount = (slideXml.match(new RegExp(`<${tagName(ns.a, "blip")}`, "g")) ?? []).length;
+  const imageCount = (slideXml.match(new RegExp(`<${tagName(ns.a, "blip")}`, "gu")) ?? []).length;
 
   // Klartext trägt NUR echten Inhalt (echter Titel + Textrahmen/Tabellen), NICHT die „Folie N"-Struktur-
   // Überschrift — sonst zählte eine reine Grafik-Folie fälschlich als „Text vorhanden".
@@ -459,10 +494,14 @@ export function resolveSlideOrder(files: Record<string, Uint8Array>): string[] {
     return numericAll();
   }
 
-  // rels: <Relationship Id=... Target=...> — Reihenfolge/Quote-egal, optionales Präfix, kein
-  // unpräfixiertes-Element-Zwang.
+  // WP-D5c/WP-D5d: rels: <Relationship Id=… Target=…> — Reihenfolge/Quote-egal. Der Elementscanner wird
+  // über DIESELBE zentrale Namespace-Auflösung geführt (Package-Relationships-URI → alle Präfixe, Unicode-
+  // NCName-tauglich) statt eines eigenen ASCII-Musters; fehlt die Deklaration, greift der präfix-tolerante
+  // Fallback von tagName.
   const relMap = new Map<string, string>();
-  const relRe = /<(?:[\w.-]+:)?Relationship\b[^>]*>/g;
+  const relNs = collectNamespacePrefixSets(rels);
+  const relName = tagName(relNs.get(NS_PACKAGE_RELS), "Relationship");
+  const relRe = new RegExp(`<${relName}[^>]*>`, "gu");
   let rb: RegExpExecArray | null;
   // biome-ignore lint/suspicious/noAssignInExpressions: Standard-Regex-Iteration.
   while ((rb = relRe.exec(rels)) !== null) {
@@ -480,7 +519,9 @@ export function resolveSlideOrder(files: Record<string, Uint8Array>): string[] {
   const ridAttr = attrName(map.get(NS_OFFICE_RELS), "id");
   const ordered: string[] = [];
   const seen = new Set<string>();
-  const idRe = new RegExp(`<${sldIdName}[^>]*\\b${ridAttr}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "g");
+  // \s (nicht \b) vor dem Attribut — \b ist ASCII-Wortgrenze und würde vor einem Unicode-Präfix versagen;
+  // ein Whitespace vor dem Attributnamen trennt zuverlässig (und verhindert Teiltreffer wie „xr:id").
+  const idRe = new RegExp(`<${sldIdName}[^>]*\\s${ridAttr}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "gu");
   let im: RegExpExecArray | null;
   // biome-ignore lint/suspicious/noAssignInExpressions: Standard-Regex-Iteration.
   while ((im = idRe.exec(presentation)) !== null) {
@@ -526,12 +567,13 @@ export function assertArchiveWithinBudget(
   }
 }
 
-// WP-D5c (bens ROT-Fix 2): ZIP-Eintrags-Metadaten, wie fflate sie dem Filter VOR der Dekompression gibt
-// (size = komprimiert, originalSize = dekomprimiert). Bewusst schmal — der Kern bleibt fflate-unabhängig.
+// WP-D5c/WP-D5d (bens ROT-Fix 2): ZIP-Eintrags-Metadaten. size/originalSize sind DEKLARIERTE Angaben des
+// Archivs — bei Streaming-Entpacken können sie fehlen (undefined). Sie dienen nur als billiger Vorfilter;
+// die harte Garantie ist die Ist-Byte-Zählung (addOutputBytes).
 export interface PptxZipEntryMeta {
   name: string;
-  compressedSize: number;
-  originalSize: number;
+  compressedSize?: number | undefined;
+  originalSize?: number | undefined;
 }
 
 export interface PptxUnzipBudgetLimits {
@@ -541,19 +583,36 @@ export interface PptxUnzipBudgetLimits {
   maxEntryExpansionRatio?: number;
 }
 
-// WP-D5c (bens ROT-Fix 2): zustandsbehaftetes Budget-Gate für den Entpack-Filter. `accept` läuft je
-// Eintrag VOR der Dekompression und entscheidet, ob der Eintrag entpackt wird — und wirft SOFORT
-// PptxTooLargeError, sobald eine Grenze fällt (danach wird nichts weiter dekomprimiert). Durchgesetzt:
+// undefined = unbekannt (Streaming, keine Metadaten) → NICHT fail-closed; bad = vorhanden aber korrupt
+// (NaN/negativ) → fail-closed; sonst die Zahl.
+function sizeState(v: number | undefined): "unknown" | "bad" | number {
+  if (v === undefined) {
+    return "unknown";
+  }
+  if (!Number.isFinite(v) || v < 0) {
+    return "bad";
+  }
+  return v;
+}
+
+// WP-D5c/WP-D5d (bens ROT-Fix 2): zustandsbehaftetes Budget. `accept` läuft je Eintrag VOR der
+// Dekompression (Name-Caps + billige DEKLARIERTE-Größen-Sanity); `addOutputBytes` zählt die ECHTEN
+// dekomprimierten Bytes während des Streamings und bricht ab, sobald das Budget (pro Eintrag ODER
+// kumuliert) fällt — damit ist eine MANIPULIERTE originalSize egal, die reale Arbeit ist gedeckelt.
+// Durchgesetzt:
 //  - JEDER gesehene Eintrag zählt gegen den Archiv-Iterations-Cap;
 //  - nur benötigte Einträge (PPTX_NEEDED_ENTRY_RE) werden akzeptiert;
-//  - FAIL-CLOSED: benötigte Einträge mit fehlenden/negativen/inkonsistenten Größen werden abgelehnt
-//    (kein `?? 0`), weil ohne verlässliche Metadaten das Budget nicht vorab durchsetzbar ist;
-//  - Expansionsratio-Prüfung für JEDEN nichtleeren akzeptierten Eintrag (nicht erst ab 1 MB);
-//  - kumuliertes Vorab-Dekompressions-Budget aus den ZIP-Metadaten;
-//  - harter Cap auf akzeptierte slideN.xml-Einträge → Dekompression ist echt begrenzt.
+//  - FAIL-CLOSED bei WIDERSPRÜCHLICHEN deklarierten Größen: NaN/negativ, oder Null-Denominator
+//    (originalSize>0 aber compressedSize<=0) → inkonsistente Metadaten; FEHLENDE Größen (Streaming) sind
+//    KEIN Fehler, weil die Ist-Byte-Zählung greift;
+//  - Expansionsratio-Prüfung für jeden nichtleeren Eintrag mit bekannten Größen;
+//  - deklariertes Vorab-Budget als Vorfilter; die harte Grenze ist addOutputBytes;
+//  - harter Cap auf akzeptierte slideN.xml-Einträge.
 export function createPptxUnzipBudget(limits: PptxUnzipBudgetLimits = {}): {
   accept(entry: PptxZipEntryMeta): boolean;
-  stats(): { seen: number; acceptedSlides: number; totalOriginal: number };
+  beginEntry(): void;
+  addOutputBytes(n: number): void;
+  stats(): { seen: number; acceptedSlides: number; totalOriginal: number; totalReal: number };
 } {
   const maxArchiveEntries = limits.maxArchiveEntries ?? PPTX_MAX_ARCHIVE_ENTRIES;
   const maxSlideEntries = limits.maxSlideEntries ?? PPTX_MAX_SLIDE_ENTRIES;
@@ -562,6 +621,8 @@ export function createPptxUnzipBudget(limits: PptxUnzipBudgetLimits = {}): {
   let seen = 0;
   let acceptedSlides = 0;
   let totalOriginal = 0;
+  let totalReal = 0;
+  let realEntry = 0;
   return {
     accept(entry: PptxZipEntryMeta): boolean {
       seen += 1;
@@ -571,21 +632,25 @@ export function createPptxUnzipBudget(limits: PptxUnzipBudgetLimits = {}): {
       if (!PPTX_NEEDED_ENTRY_RE.test(entry.name)) {
         return false;
       }
-      // FAIL-CLOSED: ohne verlässliche Größen kann das Budget nicht VOR der Dekompression greifen.
-      if (
-        !Number.isFinite(entry.originalSize) ||
-        !Number.isFinite(entry.compressedSize) ||
-        entry.originalSize < 0 ||
-        entry.compressedSize < 0
-      ) {
+      const cs = sizeState(entry.compressedSize);
+      const os = sizeState(entry.originalSize);
+      // Korrupte deklarierte Größe (vorhanden aber NaN/negativ) → fail-closed.
+      if (cs === "bad" || os === "bad") {
         throw new PptxTooLargeError("archive-too-large");
       }
-      if (entry.compressedSize > 0 && entry.originalSize / entry.compressedSize > maxRatio) {
+      // Null-Denominator / inkonsistente Metadaten: originalSize>0 aber compressedSize<=0.
+      if (typeof os === "number" && os > 0 && typeof cs === "number" && cs <= 0) {
+        throw new PptxTooLargeError("archive-too-large");
+      }
+      // Ratio nur bei bekannten Größen und compressed>0 (billiger Vorfilter).
+      if (typeof cs === "number" && typeof os === "number" && cs > 0 && os / cs > maxRatio) {
         throw new PptxTooLargeError("expansion-ratio");
       }
-      totalOriginal += entry.originalSize;
-      if (totalOriginal > maxTotalBytes) {
-        throw new PptxTooLargeError("archive-too-large");
+      if (typeof os === "number") {
+        totalOriginal += os;
+        if (totalOriginal > maxTotalBytes) {
+          throw new PptxTooLargeError("archive-too-large");
+        }
       }
       if (PPTX_SLIDE_ENTRY_RE.test(entry.name)) {
         acceptedSlides += 1;
@@ -595,39 +660,151 @@ export function createPptxUnzipBudget(limits: PptxUnzipBudgetLimits = {}): {
       }
       return true;
     },
+    beginEntry(): void {
+      realEntry = 0;
+    },
+    addOutputBytes(n: number): void {
+      realEntry += n;
+      totalReal += n;
+      // Ist-Byte-Garantie: pro Eintrag UND kumuliert — unabhängig von der deklarierten Größe.
+      if (realEntry > maxTotalBytes || totalReal > maxTotalBytes) {
+        throw new PptxTooLargeError("archive-too-large");
+      }
+    },
     stats() {
-      return { seen, acceptedSlides, totalOriginal };
+      return { seen, acceptedSlides, totalOriginal, totalReal };
     },
   };
 }
 
-// WP-D5c: schmaler fflate-Vertrag (nur das Genutzte). Der Filter-Callback läuft VOR der Dekompression.
-export interface FflateUnzipInfo {
+// WP-D5d (bens ROT-Fix 2): schmaler fflate-STREAMING-Vertrag (nur das Genutzte). Der Handler bekommt je
+// Datei einen Stream; `start()` beginnt die Dekompression, `ondata` liefert die ECHTEN Chunks, `terminate`
+// bricht ab. Die deklarierte originalSize ist damit irrelevant — gezählt werden die tatsächlichen Bytes.
+export interface FflateUnzipFileStream {
   name: string;
-  size: number; // komprimierte Größe
-  originalSize: number; // dekomprimierte Größe (aus den ZIP-Metadaten)
+  size?: number;
+  originalSize?: number;
+  compression: number;
+  ondata: (err: Error | null, data: Uint8Array, final: boolean) => void;
+  start(): void;
+  terminate: () => void;
 }
-export interface FflateLike {
-  unzipSync(
-    data: Uint8Array,
-    opts?: { filter?: (file: FflateUnzipInfo) => boolean },
-  ): Record<string, Uint8Array>;
+export interface FflateStreamingUnzip {
+  onfile: (file: FflateUnzipFileStream) => void;
+  register(decoder: unknown): void;
+  push(chunk: Uint8Array, final?: boolean): void;
+}
+export interface FflateStreaming {
+  Unzip: new () => FflateStreamingUnzip;
+  UnzipInflate: unknown;
+  UnzipPassThrough?: unknown; // für STORE-Einträge (Methode 0); PPTX-XML ist i. d. R. deflate.
 }
 
-// WP-D5c (bens ROT-Fix 2): budgetierter, selektiver Entpacker über ECHTES fflate (injiziert → testbar mit
-// fflate.zipSync-Fixtures). Das Budget-Gate entscheidet je Eintrag VOR der Dekompression; unbenötigte
-// Einträge (Medien/Layouts) werden gar nicht erst entpackt, Grenzverletzungen brechen sofort ehrlich ab.
-export function budgetedPptxUnzip(fflate: FflateLike, limits?: PptxUnzipBudgetLimits): PptxUnzip {
+// 16 KiB komprimiert je push — fflate dekomprimiert inkrementell, sodass die reale Ausgabe je Schritt
+// gedeckelt ist und zwischen den Schritten bei Budgetverletzung SOFORT abgebrochen werden kann.
+const PPTX_STREAM_CHUNK_BYTES = 1 << 14;
+
+function concatChunks(chunks: readonly Uint8Array[]): Uint8Array {
+  if (chunks.length === 1) {
+    return chunks[0] ?? new Uint8Array(0);
+  }
+  let len = 0;
+  for (const c of chunks) {
+    len += c.length;
+  }
+  const out = new Uint8Array(len);
+  let pos = 0;
+  for (const c of chunks) {
+    out.set(c, pos);
+    pos += c.length;
+  }
+  return out;
+}
+
+// WP-D5d (bens ROT-Fix 2): budgetierter, selektiver STREAMING-Entpacker über ECHTES fflate (injiziert →
+// testbar mit fflate.zipSync-Fixtures). Der Name-Filter läuft VOR der Dekompression (unbenötigte Einträge
+// werden gar nicht erst gestartet); für akzeptierte Einträge zählt der ondata-Callback die ECHTEN Bytes
+// und bricht bei Budgetüberschreitung sofort ab (Stream terminieren). Eine untertriebene/lügende
+// originalSize ändert daran nichts — die Ist-Arbeit ist gedeckelt.
+export function budgetedPptxUnzip(
+  fflate: FflateStreaming,
+  limits?: PptxUnzipBudgetLimits,
+): PptxUnzip {
   return (data) => {
+    const files: Record<string, Uint8Array> = {};
     const budget = createPptxUnzipBudget(limits);
-    return fflate.unzipSync(data, {
-      filter: (file) =>
-        budget.accept({
+    let failure: unknown = null;
+    const uz = new fflate.Unzip();
+    uz.register(fflate.UnzipInflate);
+    if (fflate.UnzipPassThrough) {
+      uz.register(fflate.UnzipPassThrough);
+    }
+    uz.onfile = (file) => {
+      if (failure) {
+        return;
+      }
+      let accepted = false;
+      try {
+        accepted = budget.accept({
           name: file.name,
           compressedSize: file.size,
           originalSize: file.originalSize,
-        }),
-    });
+        });
+      } catch (e) {
+        failure = e;
+        return;
+      }
+      if (!accepted) {
+        return; // nicht benötigt → start() NICHT aufrufen → keine Dekompression
+      }
+      const chunks: Uint8Array[] = [];
+      budget.beginEntry();
+      file.ondata = (err, chunk, final) => {
+        if (failure) {
+          return;
+        }
+        if (err) {
+          failure = err;
+          return;
+        }
+        try {
+          budget.addOutputBytes(chunk.length);
+        } catch (e) {
+          failure = e;
+          try {
+            file.terminate();
+          } catch {
+            // terminate ist best-effort; der Abbruch erfolgt ohnehin über das failure-Flag.
+          }
+          return;
+        }
+        chunks.push(chunk);
+        if (final) {
+          files[file.name] = concatChunks(chunks);
+        }
+      };
+      try {
+        file.start();
+      } catch (e) {
+        failure = e;
+      }
+    };
+    try {
+      for (let off = 0; off < data.length && !failure; off += PPTX_STREAM_CHUNK_BYTES) {
+        const end = Math.min(off + PPTX_STREAM_CHUNK_BYTES, data.length);
+        uz.push(data.subarray(off, end), end >= data.length);
+      }
+    } catch (e) {
+      // Ein fflate-interner Fehler (z. B. Größen-/CRC-Mismatch eines manipulierten Archivs) wird ebenso
+      // als kontrollierter Importfehler behandelt — nie als unkontrollierter Absturz durchgereicht.
+      failure = failure ?? e;
+    }
+    if (failure) {
+      throw failure instanceof PptxTooLargeError
+        ? failure
+        : new PptxTooLargeError("archive-too-large");
+    }
+    return files;
   };
 }
 
