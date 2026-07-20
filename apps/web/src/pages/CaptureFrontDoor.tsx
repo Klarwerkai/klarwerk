@@ -14,8 +14,8 @@ import { Button, Card, PageHeader, SectionLabel, TextInput } from "../components
 import {
   applyBodyAssist,
   applySpellingAssistPreservingHtml,
+  applyStructureProposal,
   bodyTextForAssist,
-  shouldPreserveRichBody,
 } from "../lib/bodyAiAssist";
 import {
   ASSIST_ACTIONS,
@@ -30,7 +30,6 @@ import {
   createFrontDoorDraft,
   deriveFrontDoorTitle,
   frontDoorBodyFromDraft,
-  frontDoorStructuredBodyHtml,
   submitFrontDoorDraft,
   withFrontDoorSaveTimeout,
 } from "../lib/captureFrontDoor";
@@ -66,10 +65,12 @@ export function CaptureFrontDoor(): JSX.Element {
   const [structureProposal, setStructureProposal] = useState<StructureResult | null>(null);
   const [structureErr, setStructureErr] = useState<string | null>(null);
   const [structureAccepted, setStructureAccepted] = useState(false);
-  // WP-D6: true, wenn beim Übernehmen des Struktur-Vorschlags der reiche Body (Bilder/Struktur) BEWUSST
-  // erhalten wurde und nur der Titel übernommen wurde — dann wird ein ehrlicher Hinweis statt der
-  // Standard-Bestätigung gezeigt (kein stiller Inhaltsverlust).
+  // WP-D6/WP-D6b: true, wenn beim Übernehmen des Struktur-Vorschlags der reiche Body (Bilder/Struktur/
+  // Formatierung) BEWUSST erhalten wurde (nicht ersetzt). structureTitleAdopted unterscheidet die ehrliche
+  // Meldung: Titel war leer und wurde gesetzt (a) vs. Titel war bereits vorhanden (b). Kernaussage wird nie
+  // in den Inhalt übernommen.
   const [structureKeptRichBody, setStructureKeptRichBody] = useState(false);
+  const [structureTitleAdopted, setStructureTitleAdopted] = useState(false);
   const [assistAction, setAssistAction] = useState<AssistAction>("clarify");
   const [assistProposal, setAssistProposal] = useState<
     (AssistResult & { action: AssistAction }) | null
@@ -116,6 +117,7 @@ export function CaptureFrontDoor(): JSX.Element {
     setStructureErr(null);
     setStructureAccepted(false);
     setStructureKeptRichBody(false);
+    setStructureTitleAdopted(false);
   }, []);
 
   const clearAssistState = useCallback((): void => {
@@ -370,19 +372,20 @@ export function CaptureFrontDoor(): JSX.Element {
     if (!structureProposal) {
       return;
     }
-    // WP-D6 (Pedi-LIVE-BEFUND): „Original ist heilig" gilt auch für den KI-Struktur-Vorschlag.
-    // Der Vorschlag ist flacher Klartext (Titel/Kernaussage/Gliederung). Enthält der aktuelle Body
-    // eingebettete Bilder oder echte Struktur (h/ul/ol/table/blockquote), würde ein Ersetzen durch den
-    // Klartext-Vorschlag ALLE Bilder und die Formatierung zerstören (der berichtete Schaden). Dann
-    // übernehmen wir NUR den Titel und lassen das reiche bodyHtml UNANGETASTET — mit ehrlichem Hinweis.
-    // Der Fallback-Pfad (structureProposal.demo) macht keinen Unterschied: die Entscheidung hängt allein
-    // am Body, nicht an der Herkunft des Vorschlags. Ein reiner Text-Body wird wie bisher strukturiert.
-    const preserveBody = shouldPreserveRichBody(bodyHtml);
-    setTitle((prev) => (prev.trim() ? prev : structureProposal.title));
-    if (!preserveBody) {
-      setBodyHtml(frontDoorStructuredBodyHtml(structureProposal));
-    }
-    setStructureKeptRichBody(preserveBody);
+    // WP-D6/WP-D6b (Pedi-LIVE-BEFUND + bens GELB-Fix 3): „Original ist heilig" gilt auch für den
+    // KI-Struktur-Vorschlag. Die gesamte Übernahme-Entscheidung liegt in der PUREN, getesteten
+    // applyStructureProposal — der Handler macht nur noch setState aus dem Ergebnis (keine Logik-Kopie).
+    // Reicher Body (Bilder/Struktur/Formatierung) bleibt byte-identisch erhalten; der Titel wird nur
+    // gesetzt, wenn er vorher leer war; die Kernaussage wird nie in den Body übernommen.
+    const result = applyStructureProposal({
+      currentTitle: title,
+      currentBodyHtml: bodyHtml,
+      proposal: structureProposal,
+    });
+    setTitle(result.title);
+    setBodyHtml(result.bodyHtml);
+    setStructureKeptRichBody(result.preserved);
+    setStructureTitleAdopted(result.titleAdopted);
     setStructureProposal(null);
     setStructureErr(null);
     setStructureAccepted(true);
@@ -642,10 +645,13 @@ export function CaptureFrontDoor(): JSX.Element {
               ) : null}
               {structureAccepted ? (
                 <div className="mt-3 rounded-card border border-trust-pos-fill/40 bg-trust-pos-bg p-3 text-sm text-trust-pos-text">
-                  {/* WP-D6: bei erhaltenem reichem Body ehrlich sagen, dass nur der Titel übernommen wurde
-                      und Inhalt mit Bildern/Formatierung unverändert bleibt (kein stiller Verlust). */}
+                  {/* WP-D6b: zustandsabhängige, ehrliche Meldung. Bei erhaltenem reichem Body zwei Varianten:
+                      (a) Titel war leer und wurde übernommen; (b) Titel war schon da → nur Inhalt bleibt.
+                      Keine Kernaussage-Behauptung. Sonst (flacher Body strukturiert) die Standard-Meldung. */}
                   {structureKeptRichBody
-                    ? t("fd.structureKeptRichBody")
+                    ? structureTitleAdopted
+                      ? t("fd.structureKeptRichBodyTitle")
+                      : t("fd.structureKeptRichBodyNoTitle")
                     : t("fd.structureAccepted")}
                 </div>
               ) : null}

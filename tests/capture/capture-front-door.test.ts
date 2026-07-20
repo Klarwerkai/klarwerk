@@ -293,7 +293,10 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     );
     expect(pageSource).toContain("fd.originalUnchanged");
     expect(pageSource).toContain("fd.optionalAiHint");
-    expect(pageSource).toContain("frontDoorStructuredBodyHtml");
+    // WP-D6b: die Übernahme des Struktur-Vorschlags läuft jetzt über die pure applyStructureProposal
+    // (nicht mehr direkt über frontDoorStructuredBodyHtml in der Ansicht) — sie schützt reiche Bodies.
+    expect(pageSource).toContain("applyStructureProposal({");
+    expect(pageSource).not.toContain("frontDoorStructuredBodyHtml");
     expect(pageSource).not.toContain("endpoints.ko.create");
     expect(pageSource).not.toContain("endpoints.validation");
     expect(pageSource).not.toContain("KnowledgeInputStudio");

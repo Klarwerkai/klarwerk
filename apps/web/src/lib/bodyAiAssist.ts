@@ -5,8 +5,10 @@
 // (sanitizeHtml ist bei Entities nicht idempotent → keine Doppel-Maskierung). Kein Auto-Speichern,
 // keine Validierung — der Mensch übernimmt den Vorschlag bewusst.
 
+import type { StructureResult } from "../api/types";
+import { frontDoorStructuredBodyHtml } from "./captureFrontDoor";
 import { EDITOR_BLOCKS, type EditorBlock, editorBlockClass } from "./editorBlocks";
-import { htmlToPlainText, isEmptyHtml, sanitizeHtml } from "./richText";
+import { FLAT_BODY_TAGS, htmlToPlainText, isEmptyHtml, sanitizeHtml } from "./richText";
 
 export type BodyAssistMode = "replace" | "append";
 
@@ -35,17 +37,55 @@ export function bodyTextForAssist(bodyHtml: string | null | undefined): string {
   return bodyHtml ? htmlToPlainText(bodyHtml) : "";
 }
 
-// WP-D6 (Pedi-LIVE-BEFUND): „Original ist heilig" gilt AUCH gegenüber dem KI-Vorschlag. Ein
-// Struktur-/Assist-Vorschlag liefert flachen Klartext; würde er einen Body mit eingebetteten Bildern
-// oder echter Struktur (Überschriften, Listen, Tabellen, Zitat-/Quelle-Blöcke) ERSETZEN, gingen Bilder
-// und Formatierung unwiderruflich verloren (genau der berichtete Schaden beim DOCX-Import). Diese pure
-// Entscheidung erkennt einen solchen „reichen" Body — dann darf der Body NICHT ersetzt, sondern nur
-// Titel/Aussage übernommen werden. Ein reiner <p>/Inline-Text-Body enthält nichts Reiches und darf wie
-// bisher strukturiert werden. Bewusst konservativ (lieber erhalten als zerstören).
-const RICH_BODY_RE = /<(?:img\b|h[1-6]\b|ul\b|ol\b|table\b|blockquote\b)/i;
-
+// WP-D6/WP-D6b (Pedi-LIVE-BEFUND + bens ROT-Fix 1): „Original ist heilig" gilt AUCH gegenüber dem
+// KI-Vorschlag. Ein Struktur-/Assist-Vorschlag liefert flachen Klartext; würde er einen Body mit
+// eingebetteten Bildern oder ECHTER Struktur/Formatierung ERSETZEN, gingen Bilder und Formatierung
+// unwiderruflich verloren (der berichtete Schaden). Die Entscheidung wird KONSERVATIV aus dem
+// autoritativen Rich-Text-Tag-Vertrag (richText.FLAT_BODY_TAGS) abgeleitet — KEINE zweite, driftanfällige
+// Liste: NUR ein wirklich flacher Body aus p/br/Text gilt als nicht-reich; JEDES andere Tag (div.panel,
+// div.attachment, a, strong/em/u, li/tr/td/thead/tbody/tfoot/caption, h*, ul/ol, img, table, blockquote —
+// und jedes unbekannte Tag) macht den Body reich → er darf NICHT ersetzt werden.
 export function shouldPreserveRichBody(bodyHtml: string | null | undefined): boolean {
-  return RICH_BODY_RE.test(bodyHtml ?? "");
+  const re = /<\/?([a-zA-Z][\w-]*)/g;
+  let m: RegExpExecArray | null;
+  // biome-ignore lint/suspicious/noAssignInExpressions: Standard-Regex-Iteration.
+  while ((m = re.exec(bodyHtml ?? "")) !== null) {
+    const tag = (m[1] ?? "").toLowerCase();
+    if (!FLAT_BODY_TAGS.has(tag)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// WP-D6b (bens GELB-Fix 3): PURE Übernahme-Entscheidung für den Struktur-Vorschlag — EINE Quelle für
+// Handler UND Test (kein simulateAccept-Klon). Ergebnis:
+//  - preserved: reicher Body wird NICHT ersetzt (byte-identisch erhalten);
+//  - titleAdopted: der Titel war leer UND der Vorschlag hat einen → er wird übernommen (sonst bleibt der
+//    vorhandene Titel unverändert). Die Kernaussage wird NIE in den Body übernommen.
+export interface StructureProposalInput {
+  currentTitle: string;
+  currentBodyHtml: string;
+  proposal: StructureResult;
+}
+
+export interface StructureProposalResult {
+  title: string;
+  bodyHtml: string;
+  preserved: boolean;
+  titleAdopted: boolean;
+}
+
+export function applyStructureProposal(input: StructureProposalInput): StructureProposalResult {
+  const preserved = shouldPreserveRichBody(input.currentBodyHtml);
+  const titleWasEmpty = input.currentTitle.trim().length === 0;
+  const proposalHasTitle = input.proposal.title.trim().length > 0;
+  const titleAdopted = titleWasEmpty && proposalHasTitle;
+  const title = titleAdopted ? input.proposal.title : input.currentTitle;
+  // preserved ⇒ Body BYTE-IDENTISCH erhalten; sonst der flache Body wird strukturiert. Das ist die EINZIGE
+  // Stelle, an der frontDoorStructuredBodyHtml den Body ersetzt (Source-Pin im Test).
+  const bodyHtml = preserved ? input.currentBodyHtml : frontDoorStructuredBodyHtml(input.proposal);
+  return { title, bodyHtml, preserved, titleAdopted };
 }
 
 // Plaintext-Vorschlag → strukturiertes, sicheres Body-HTML: Doppel-Zeilenumbruch = Absatz, einfacher

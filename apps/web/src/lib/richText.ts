@@ -29,6 +29,15 @@ const ALLOWED_TAGS = new Set([
   "caption",
 ]);
 const VOID_TAGS = new Set(["br", "img"]);
+
+// WP-D6b (bens ROT-Fix 1): der AUTORITATIVE Rich-Text-Tag-Vertrag wird exportiert, damit abgeleitete
+// Entscheidungen (z. B. shouldPreserveRichBody) NICHT eine zweite, driftanfällige Liste führen. Kommt ein
+// neues erlaubtes Struktur-/Formatier-Tag dazu, schützt der Vorschlags-Guard es automatisch mit.
+export const RICH_TEXT_ALLOWED_TAGS: ReadonlySet<string> = ALLOWED_TAGS;
+// Wirklich FLACHE Body-Tags: nur Absatz und Zeilenumbruch tragen keine erhaltenswerte Struktur/
+// Formatierung. ALLES andere aus RICH_TEXT_ALLOWED_TAGS (und jedes unbekannte Tag) gilt als reich —
+// bewusst konservativ (lieber erhalten als zerstören).
+export const FLAT_BODY_TAGS: ReadonlySet<string> = new Set(["p", "br"]);
 // SCRUM-458 (Formatierungs-Erhaltung): identische Tag-Abbildung wie der Server-Sanitizer —
 // semantische Formatier-Tags aus Word/Browser-Paste auf das erlaubte Äquivalent abbilden statt
 // verwerfen (Fett/Kursiv/Überschriften bleiben). Kein style; Tabellen werden als Struktur ERHALTEN

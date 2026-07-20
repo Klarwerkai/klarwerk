@@ -2946,8 +2946,10 @@ const de = {
   "fd.originalUnchanged": "Originaltext bleibt unverändert.",
   "fd.structureAccepted":
     "KI-Vorschlag übernommen. Bitte prüfen; gespeichert wird erst mit deiner nächsten Aktion.",
-  "fd.structureKeptRichBody":
-    "Struktur-Vorschlag: Titel/Kernaussage übernommen. Der Inhalt mit Bildern und Formatierung bleibt unverändert erhalten — der KI-Vorschlag ersetzt ihn nicht.",
+  "fd.structureKeptRichBodyTitle":
+    "Struktur-Vorschlag: Titel übernommen. Der formatierte Inhalt mit Bildern und Formatierung bleibt unverändert erhalten.",
+  "fd.structureKeptRichBodyNoTitle":
+    "Der formatierte Inhalt bleibt erhalten; der Struktur-Vorschlag wurde nicht in den Inhalt übernommen.",
   "fd.assistAccepted":
     "KI-Hilfe übernommen. Bitte prüfen; gespeichert wird erst mit deiner nächsten Aktion.",
   "fd.aiProposal": "KI-Vorschlag",
@@ -5967,8 +5969,10 @@ const en: typeof de = {
   "fd.originalUnchanged": "The original text stays unchanged.",
   "fd.structureAccepted":
     "AI suggestion adopted. Please review; nothing is saved until your next action.",
-  "fd.structureKeptRichBody":
-    "Structure suggestion: title/key statement adopted. The content with images and formatting stays unchanged — the AI suggestion does not replace it.",
+  "fd.structureKeptRichBodyTitle":
+    "Structure suggestion: title adopted. The formatted content with images and formatting stays unchanged.",
+  "fd.structureKeptRichBodyNoTitle":
+    "The formatted content stays unchanged; the structure suggestion was not applied to the content.",
   "fd.assistAccepted": "AI help adopted. Please review; nothing is saved until your next action.",
   "fd.aiProposal": "AI suggestion",
   "fd.aiProposalCheck": "AI-generated. Please review before you adopt anything.",
@@ -8957,8 +8961,10 @@ const nl: typeof de = {
   "fd.originalUnchanged": "Originele tekst blijft ongewijzigd.",
   "fd.structureAccepted":
     "KI-voorstel overgenomen. Controleer het; opgeslagen wordt er pas bij je volgende actie.",
-  "fd.structureKeptRichBody":
-    "Structuurvoorstel: titel/kernboodschap overgenomen. De inhoud met afbeeldingen en opmaak blijft ongewijzigd behouden — het KI-voorstel vervangt die niet.",
+  "fd.structureKeptRichBodyTitle":
+    "Structuurvoorstel: titel overgenomen. De opgemaakte inhoud met afbeeldingen en opmaak blijft ongewijzigd behouden.",
+  "fd.structureKeptRichBodyNoTitle":
+    "De opgemaakte inhoud blijft behouden; het structuurvoorstel is niet in de inhoud overgenomen.",
   "fd.assistAccepted":
     "KI-hulp overgenomen. Controleer het; opgeslagen wordt er pas bij je volgende actie.",
   "fd.aiProposal": "KI-voorstel",
