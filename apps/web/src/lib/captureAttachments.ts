@@ -193,6 +193,36 @@ export interface CaptureFinalizeResult {
   failed: AttachmentFailure[];
 }
 
+// WP-D7d (bens D7c-ROT-Fix): Phase A braucht eine PARALLELITÄTSGRENZE. Ohne Pool schickte ein normaler
+// Submit bis zu ~30 Anhänge à 30 MB (Admin-Limit, upload-limits.ts) GLEICHZEITIG als base64-JSON-Bodies
+// (OBJECTS_BODY_LIMIT 30 MiB je POST) — ~1 GB gleichzeitiges Body-Parsing: Browser-/Proxy-/Node-Speicher-
+// druck bis OOM-Kante. Ein kleiner fester Pool behält den Latenzgewinn (Überlappung) und deckelt die
+// gleichzeitigen Transfers. Der ORIGINAL-Upload zählt MIT in dieses Limit (gemeinsamer Pool, nicht Pool+1).
+export const UPLOAD_POOL_LIMIT = 3;
+
+// Mini-Semaphore ohne neue Dependency: max. `limit` Tasks gleichzeitig, Rest wartet in FIFO-Reihenfolge.
+// Fehler eines Tasks werden unverändert weitergereicht (die Fehlersemantik je Item bleibt beim Aufrufer).
+type PooledRun = <T>(task: () => Promise<T>) => Promise<T>;
+
+function createUploadPool(limit: number): PooledRun {
+  let active = 0;
+  const waiting: Array<() => void> = [];
+  return async function run<T>(task: () => Promise<T>): Promise<T> {
+    if (active >= limit) {
+      await new Promise<void>((resolve) => {
+        waiting.push(resolve);
+      });
+    }
+    active += 1;
+    try {
+      return await task();
+    } finally {
+      active -= 1;
+      waiting.shift()?.();
+    }
+  };
+}
+
 // Phase-A-Ergebnis je Anhang: hochgeladene Object-Ref ODER ehrlicher Teilfehler (kein halber Anhang).
 interface UploadedAttachment {
   item: AttachmentUploadItem;
@@ -200,16 +230,20 @@ interface UploadedAttachment {
   failure?: AttachmentFailure;
 }
 
-// PHASE A (parallel, KEIN KO-Write): alle Anhänge gleichzeitig in den Object-Store laden. Promise.allSettled →
-// ein unerwarteter Fehler eines Uploads lässt die übrigen NICHT im undefinierten Zustand; jeder Fehler wird
-// als ehrlicher Teilfehler festgehalten (kein stilles Verschlucken).
+// PHASE A (parallel im Pool, KEIN KO-Write): Anhänge in den Object-Store laden — max. UPLOAD_POOL_LIMIT
+// gleichzeitig. Promise.allSettled → ein unerwarteter Fehler eines Uploads lässt die übrigen NICHT im
+// undefinierten Zustand; jeder Fehler wird als ehrlicher Teilfehler festgehalten (kein stilles Verschlucken).
+// Die Ergebnis-Reihenfolge bleibt stabil zu `items` (Index-Zuordnung, unabhängig von der Pool-Reihenfolge).
 async function uploadAttachmentObjects(
   items: readonly AttachmentUploadItem[],
   api: AttachmentUploadApi,
+  pooled: PooledRun,
 ): Promise<UploadedAttachment[]> {
   const settled = await Promise.allSettled(
     items.map((item) =>
-      api.upload({ name: item.name, mime: item.mime, data: item.data, kind: item.kind }),
+      pooled(() =>
+        api.upload({ name: item.name, mime: item.mime, data: item.data, kind: item.kind }),
+      ),
     ),
   );
   return items.map((item, i) => {
@@ -237,17 +271,21 @@ async function uploadOriginalObject(
   original: OriginalDocument,
   api: AttachmentUploadApi,
   cache: OriginalRefCache,
+  pooled: PooledRun,
 ): Promise<UploadedOriginal> {
   if (cache.ref) {
     return { doc: original, ref: cache.ref, uploaded: false };
   }
   try {
-    const ref = await api.upload({
-      name: original.name,
-      mime: original.mime,
-      data: original.data,
-      kind: "document",
-    });
+    // WP-D7d: läuft im SELBEN Pool wie die Anhänge — das Original ist Pool-Teilnehmer, kein Pool+1.
+    const ref = await pooled(() =>
+      api.upload({
+        name: original.name,
+        mime: original.mime,
+        data: original.data,
+        kind: "document",
+      }),
+    );
     cache.ref = ref;
     return { doc: original, ref, uploaded: true };
   } catch (error) {
@@ -278,12 +316,14 @@ export async function finalizeCaptureSubmit(
 ): Promise<CaptureFinalizeResult> {
   const { koId, api } = input;
 
-  // ---- PHASE A: NUR Uploads, parallel. Kein einziger KO-Write hier (sonst STALE_WRITE, s. o.). ----
+  // ---- PHASE A: NUR Uploads, parallel im gemeinsamen Pool (max. UPLOAD_POOL_LIMIT gleichzeitig, Original
+  //      inklusive). Kein einziger KO-Write hier (sonst STALE_WRITE, s. o.). ----
   input.onPhase?.("uploading");
+  const pooled = createUploadPool(UPLOAD_POOL_LIMIT);
   const [uploadedAttachments, uploadedOriginal] = await Promise.all([
-    uploadAttachmentObjects(input.attachments, api),
+    uploadAttachmentObjects(input.attachments, api, pooled),
     input.original
-      ? uploadOriginalObject(input.original.doc, api, input.original.cache)
+      ? uploadOriginalObject(input.original.doc, api, input.original.cache, pooled)
       : Promise.resolve(null),
   ]);
 
@@ -344,6 +384,22 @@ export async function finalizeCaptureSubmit(
     }
   }
   return { attached, failed };
+}
+
+// WP-D7d (bens Härtung 1b): die im UI angezeigte Anhang-Grenze (Admin-Einstellung maxAttachments) wird
+// clientseitig VOR dem Upload wirklich durchgesetzt — bisher konnte die Auswahl beliebig viele Dateien
+// aufnehmen und erst der Server lehnte ab. Pure Deckelung: nimmt so viele Neuzugänge, wie noch Plätze frei
+// sind (Reihenfolge der Auswahl bleibt), und meldet ehrlich, wie viele NICHT übernommen wurden.
+export function capAttachmentSelection<T>(
+  files: readonly T[],
+  currentCount: number,
+  maxAttachments: number,
+): { accepted: T[]; dropped: number } {
+  const slots = Math.max(0, maxAttachments - currentCount);
+  return {
+    accepted: files.slice(0, slots),
+    dropped: Math.max(0, files.length - slots),
+  };
 }
 
 // i18n-Keys für den ehrlichen Recovery-/Status-Hinweis (Teilfehler). Zahlen/Dateinamen rendert die

@@ -45,13 +45,20 @@ describe("WP-D7c: CAS-Vertrag (echtes Repo/Service)", () => {
       expect(r.reason).toBeInstanceOf(KoError);
       expect((r.reason as KoError).code).toBe("STALE_WRITE");
     }
-    // Dasselbe gilt für zwei parallele add-source-Aufrufe.
+    // Dasselbe gilt für zwei parallele add-source-Aufrufe — exakt derselbe CAS-Fehler (WP-D7d, bens GELB).
     const ko2 = await createKo(svc);
     const sourceResults = await Promise.allSettled([
       svc.addSource(ko2.id, "anna", { label: "Quelle A" }),
       svc.addSource(ko2.id, "anna", { label: "Quelle B" }),
     ]);
-    expect(sourceResults.some((r) => r.status === "rejected")).toBe(true);
+    const sourceRejected = sourceResults.filter(
+      (r): r is PromiseRejectedResult => r.status === "rejected",
+    );
+    expect(sourceRejected.length).toBeGreaterThanOrEqual(1);
+    for (const r of sourceRejected) {
+      expect(r.reason).toBeInstanceOf(KoError);
+      expect((r.reason as KoError).code).toBe("STALE_WRITE");
+    }
   });
 
   it("der serialisierte Finalizer landet ALLE Mutationen ohne STALE_WRITE, Original genau einmal", async () => {

@@ -66,6 +66,7 @@ import {
   type AttachmentUploadItem,
   type OriginalDocument,
   type OriginalRefCache,
+  capAttachmentSelection,
   classifyUploadError,
   estimateDataUrlBytes,
   finalizeCaptureSubmit,
@@ -1489,8 +1490,29 @@ export function Capture(): JSX.Element {
     ]);
   };
 
+  // WP-D7d (bens Härtung 1b): die angezeigte maxAttachments-Grenze VOR dem Upload durchsetzen — die
+  // Auswahl wird auf die freien Plätze (Bilder + Dateien zusammen) gedeckelt, mit ehrlicher Meldung
+  // (n von m übernommen, Limit X). Kein Server-Umbau; der Server bleibt die harte Grenze.
+  const capIncomingFiles = (files: File[]): File[] => {
+    const { accepted, dropped } = capAttachmentSelection(
+      files,
+      images.length + docs.length,
+      uploadLimitsData.maxAttachments,
+    );
+    if (dropped > 0) {
+      setErr(
+        t("capture.attachLimitReached", {
+          taken: accepted.length,
+          total: files.length,
+          limit: uploadLimitsData.maxAttachments,
+        }),
+      );
+    }
+    return accepted;
+  };
+
   const onDocs = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
-    const files = Array.from(e.target.files ?? []);
+    const files = capIncomingFiles(Array.from(e.target.files ?? []));
     e.target.value = "";
     for (const f of files) {
       if (isImage(f)) {
@@ -1546,14 +1568,18 @@ export function Capture(): JSX.Element {
       return;
     }
     setErr(null);
-    for (const f of files) {
+    // WP-D7d (Härtung 1b): auch der Anhang-Pfad (Wizard + Studio) respektiert die Anhang-Grenze.
+    const accepted = capIncomingFiles(files);
+    for (const f of accepted) {
       if (isImage(f)) {
         await addImage(f);
       } else {
         await pushDoc(f);
       }
     }
-    setNotice(t(CAPTURE_WIZARD_TEXT.attached, { count: files.length }));
+    if (accepted.length > 0) {
+      setNotice(t(CAPTURE_WIZARD_TEXT.attached, { count: accepted.length }));
+    }
   };
   const onAttach = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
     const files = Array.from(e.target.files ?? []);
@@ -1761,7 +1787,8 @@ export function Capture(): JSX.Element {
   };
 
   const onImages = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
-    const files = Array.from(e.target.files ?? []);
+    // WP-D7d (Härtung 1b): auch der reine Bild-Upload zählt gegen die gemeinsame Anhang-Grenze.
+    const files = capIncomingFiles(Array.from(e.target.files ?? []));
     e.target.value = "";
     for (const f of files) {
       if (isImage(f)) {

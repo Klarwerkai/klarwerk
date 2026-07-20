@@ -10,6 +10,8 @@ import i18n from "../../apps/web/src/i18n";
 import {
   type AttachmentUploadApi,
   type OriginalRefCache,
+  UPLOAD_POOL_LIMIT,
+  capAttachmentSelection,
   estimateDataUrlBytes,
   finalizeCaptureSubmit,
 } from "../../apps/web/src/lib/captureAttachments";
@@ -178,6 +180,103 @@ describe("WP-D7c Rot-Fix 1: Phase A parallel, Phase B strikt seriell", () => {
     expect(t.s.uploads).toBe(0);
     expect(result.attached).toBe(1);
     expect(result.failed).toEqual([]);
+  });
+});
+
+// WP-D7d (bens D7c-ROT-Fix): Phase A läuft in einem festen Upload-Pool (max. UPLOAD_POOL_LIMIT gleichzeitig,
+// Original zählt MIT) — Latenzgewinn bleibt, aber keine ~30 gleichzeitigen 30-MB-Bodies mehr (OOM-Kante).
+describe("WP-D7d Rot-Fix 1: Upload-Pool begrenzt Phase A", () => {
+  function pngItem(name: string) {
+    return { name, mime: "image/png", data: "data:image/png;base64,QQ==", kind: "image" as const };
+  }
+
+  it("mehr Items als das Limit → maxUploadConcurrent bleibt unter dem Pool-Deckel, alle kommen an", async () => {
+    const t = tracker();
+    const items = Array.from({ length: 7 }, (_v, i) => pngItem(`f${i}.png`));
+    const result = await finalizeCaptureSubmit({ koId: "ko1", attachments: items, api: t.api });
+    // Nie mehr als UPLOAD_POOL_LIMIT Uploads gleichzeitig …
+    expect(t.s.maxUploadConcurrent).toBeLessThanOrEqual(UPLOAD_POOL_LIMIT);
+    // … aber der Pool wird auch wirklich ausgeschöpft (Parallelität bleibt erhalten).
+    expect(t.s.maxUploadConcurrent).toBe(UPLOAD_POOL_LIMIT);
+    // Alle 7 Items kommen trotz Pool an.
+    expect(t.s.uploads).toBe(7);
+    expect(result.attached).toBe(7);
+    expect(result.failed).toEqual([]);
+    // Ergebnis-/Attach-Reihenfolge bleibt stabil zur items-Reihenfolge (Phase B folgt dem Index).
+    expect(t.s.writeOrder).toEqual(items.map((it) => `attach:${it.name}`));
+  });
+
+  it("der ORIGINAL-Upload zählt MIT in den Pool (kein Pool+1 daneben)", async () => {
+    const t = tracker();
+    const cache: OriginalRefCache = { ref: null };
+    await finalizeCaptureSubmit({
+      koId: "ko1",
+      attachments: Array.from({ length: 6 }, (_v, i) => pngItem(`f${i}.png`)),
+      api: t.api,
+      original: {
+        doc: {
+          name: "orig.pdf",
+          mime: "application/pdf",
+          data: "data:application/pdf;base64,QQ==",
+        },
+        cache,
+      },
+    });
+    // 6 Anhänge + 1 Original = 7 Uploads, aber nie mehr als der gemeinsame Pool-Deckel gleichzeitig.
+    expect(t.s.uploads).toBe(7);
+    expect(t.s.maxUploadConcurrent).toBeLessThanOrEqual(UPLOAD_POOL_LIMIT);
+  });
+
+  it("Teilfehler-Semantik je Item bleibt im Pool exakt erhalten (Reihenfolge stabil)", async () => {
+    // Uploads für f1/f4 scheitern (413 → too-large bzw. generisch) — die übrigen laufen normal weiter.
+    const api: AttachmentUploadApi = {
+      upload: async (input) => {
+        if (input.name === "f1.png") {
+          throw Object.assign(new Error("Payload Too Large"), { status: 413 });
+        }
+        if (input.name === "f4.png") {
+          throw new Error("kaputt");
+        }
+        return { id: `obj-${input.name}`, size: 1 };
+      },
+      attach: async () => ({}),
+    };
+    const items = Array.from({ length: 6 }, (_v, i) => pngItem(`f${i}.png`));
+    const result = await finalizeCaptureSubmit({ koId: "ko1", attachments: items, api });
+    expect(result.attached).toBe(4);
+    // Fehler in items-Reihenfolge, mit klassifiziertem Grund (classifyUploadError unverändert).
+    expect(result.failed).toEqual([
+      { name: "f1.png", reason: "too-large" },
+      { name: "f4.png", reason: "upload" },
+    ]);
+  });
+});
+
+// WP-D7d (bens Härtung 1b): die angezeigte Anhang-Grenze wird VOR dem Upload durchgesetzt.
+describe("WP-D7d Härtung 1b: Anhang-Grenze clientseitig", () => {
+  it("capAttachmentSelection deckelt auf freie Plätze und meldet die Abgelehnten", () => {
+    // 8er-Limit, 6 vorhanden → von 5 neuen kommen 2 rein, 3 fallen ehrlich raus.
+    expect(capAttachmentSelection(["a", "b", "c", "d", "e"], 6, 8)).toEqual({
+      accepted: ["a", "b"],
+      dropped: 3,
+    });
+    // Limit erreicht → nichts mehr rein.
+    expect(capAttachmentSelection(["a"], 8, 8)).toEqual({ accepted: [], dropped: 1 });
+    // Platz genug → alles rein, nichts gemeldet.
+    expect(capAttachmentSelection(["a", "b"], 0, 8)).toEqual({ accepted: ["a", "b"], dropped: 0 });
+  });
+
+  it("Capture verdrahtet die Deckelung in onDocs/onImages/attachFiles + Meldung DE/EN/NL", () => {
+    const src = readSource("apps/web/src/pages/Capture.tsx");
+    expect(src).toContain("capIncomingFiles");
+    // Drei Aufrufstellen: onDocs, attachFiles (Wizard + Studio) und onImages.
+    expect((src.match(/capIncomingFiles\(/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    expect(src).toContain("capture.attachLimitReached");
+    for (const lng of ["de", "en", "nl"]) {
+      const msg = String(i18n.getResource(lng, "translation", "capture.attachLimitReached"));
+      expect(msg, lng).toContain("{{limit}}");
+      expect(msg, lng).toContain("{{taken}}");
+    }
   });
 });
 
