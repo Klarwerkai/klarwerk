@@ -584,12 +584,26 @@ export class Reasoner {
     locale: ReasonerLocale = "de",
     confidential = false,
   ): Promise<StructureResult> {
-    return this.runTask(
+    // WP-D8 (Pedis Live-ROT B): VOR dem Lauf festhalten, ob überhaupt ein Modell in der Kette steht —
+    // damit ein demo-Ergebnis hinterher EHRLICH begründet werden kann (kein Modell konfiguriert/aktiv
+    // vs. Modell versucht, aber gescheitert). Die UI zeigt die Ursache statt nur eines FALLBACK-Badges.
+    const hadModelInChain = this.providerChain("structure", confidential).some(
+      (p) => p !== this.fallback,
+    );
+    const result = await this.runTask(
       "structure",
       locale,
       (p) => p.structure(rawText, locale, confidential),
       confidential,
     );
+    if (!result.demo) {
+      return result;
+    }
+    const fallbackReason = hadModelInChain ? ("model-error" as const) : ("no-model" as const);
+    // PII-freies Diagnose-Log (nur die Ursache, NIE der Eingabetext) — damit „FALLBACK trotz Kappung"
+    // künftig serverseitig zuordenbar ist.
+    process.stderr.write(`[KLARWERK] Reasoner-Fallback (structure): reason=${fallbackReason}\n`);
+    return { ...result, fallbackReason };
   }
 
   // SCRUM-167: Ask-/Antwortpfad ebenfalls über runTask protokolliert (nur Metadaten).

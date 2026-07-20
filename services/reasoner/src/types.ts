@@ -44,6 +44,12 @@ export interface StructureResult {
   tags: string[];
   confidence: number;
   demo: boolean;
+  // WP-D8 (Pedis Live-ROT B): WARUM lief der deterministische Fallback? demo:true allein verschluckte
+  // drei verschiedene Ursachen — die UI konnte nur ein erklärungsloses FALLBACK-Badge zeigen.
+  //  - "no-model": kein Modell in der Kette (kein Cloud-Key konfiguriert ODER Policy deterministisch).
+  //  - "model-error": ein Modell wurde versucht, scheiterte aber (Timeout/HTTP/Quota) → Kette fiel durch.
+  // Nur bei demo:true gesetzt; PII-frei (nie Eingabetext).
+  fallbackReason?: "no-model" | "model-error";
 }
 
 // FR-RSN-03: sprachliche Präzisierung/Glättung eines Textes (ohne Inhalt zu erfinden).

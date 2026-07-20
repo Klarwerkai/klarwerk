@@ -642,6 +642,9 @@ export interface StructureResult {
   tags: string[];
   confidence: number;
   demo: boolean;
+  // WP-D8: ehrliche Fallback-Ursache (nur bei demo:true) — "no-model" = kein Modell konfiguriert/aktiv,
+  // "model-error" = Modell versucht, aber gescheitert (Timeout/HTTP/Quota). Die UI erklärt das Badge.
+  fallbackReason?: "no-model" | "model-error";
 }
 
 export interface ReasonerStatus {

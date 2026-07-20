@@ -2964,6 +2964,10 @@ const de = {
   "fd.aiProposal": "KI-Vorschlag",
   "fd.aiProposalCheck": "KI-generiert. Bitte prüfen, bevor du etwas übernimmst.",
   "fd.fallback": "Fallback",
+  "fd.fallbackNoModel":
+    "KI ist nicht konfiguriert oder deaktiviert — dieser Vorschlag ist eine einfache automatische Ableitung, keine Modell-Antwort.",
+  "fd.fallbackModelError":
+    "KI war nicht erreichbar (Fehler oder Zeitüberschreitung) — dieser Vorschlag ist eine einfache automatische Ableitung, keine Modell-Antwort.",
   "fd.fieldTitle": "Titel",
   "fd.fieldStatement": "Aussage / Kernaussage",
   "fd.fieldConditions": "Bedingungen",
@@ -5995,6 +5999,10 @@ const en: typeof de = {
   "fd.aiProposal": "AI suggestion",
   "fd.aiProposalCheck": "AI-generated. Please review before you adopt anything.",
   "fd.fallback": "Fallback",
+  "fd.fallbackNoModel":
+    "AI is not configured or disabled — this suggestion is a simple automatic derivation, not a model response.",
+  "fd.fallbackModelError":
+    "AI was not reachable (error or timeout) — this suggestion is a simple automatic derivation, not a model response.",
   "fd.fieldTitle": "Title",
   "fd.fieldStatement": "Statement / core message",
   "fd.fieldConditions": "Conditions",
@@ -8997,6 +9005,10 @@ const nl: typeof de = {
   "fd.aiProposal": "KI-voorstel",
   "fd.aiProposalCheck": "KI-gegenereerd. Controleer voordat je iets overneemt.",
   "fd.fallback": "Fallback",
+  "fd.fallbackNoModel":
+    "KI is niet geconfigureerd of uitgeschakeld — dit voorstel is een eenvoudige automatische afleiding, geen modelantwoord.",
+  "fd.fallbackModelError":
+    "KI was niet bereikbaar (fout of time-out) — dit voorstel is een eenvoudige automatische afleiding, geen modelantwoord.",
   "fd.fieldTitle": "Titel",
   "fd.fieldStatement": "Uitspraak / kernuitspraak",
   "fd.fieldConditions": "Voorwaarden",

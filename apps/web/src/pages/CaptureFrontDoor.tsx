@@ -678,6 +678,15 @@ export function CaptureFrontDoor(): JSX.Element {
                     </span>
                   ) : null}
                 </div>
+                {/* WP-D8 (Pedis Live-ROT B): das FALLBACK-Badge allein erklärte nichts. Hier steht ehrlich,
+                    WARUM der Vorschlag eine einfache Ableitung ist (kein Modell aktiv vs. Modell-Fehler). */}
+                {structureProposal.demo ? (
+                  <p className="mt-2 text-[12px] leading-relaxed text-trust-warn-text">
+                    {structureProposal.fallbackReason === "model-error"
+                      ? t("fd.fallbackModelError")
+                      : t("fd.fallbackNoModel")}
+                  </p>
+                ) : null}
                 <div className="mt-3 space-y-3 text-sm">
                   <div>
                     <div className="text-[12px] font-semibold uppercase text-muted-2">

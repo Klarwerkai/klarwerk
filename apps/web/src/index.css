@@ -71,6 +71,17 @@
 .prose-kw figcaption {
   @apply mt-1 border-l-2 border-hairline pl-2 text-[12px] italic text-muted;
 }
+/* WP-D8 (Pedis Live-ROT A, Bedienbarkeit): sichtbare Affordanz NUR im Editor — die Verankerung
+   (enhanceFiguresForEditing) setzt contenteditable="true" ausschließlich im Bearbeiten-Modus, daher
+   greift der Attribut-Selektor nie in der Lese-/Vorschau-Ansicht. Gestrichelte Umrandung + Text-Cursor
+   + Mindesthöhe: auch ein nicht-technischer Tester SIEHT, dass man hier tippen kann, und eine leere
+   Fußnote bleibt klickbar. */
+.prose-kw figcaption[contenteditable="true"] {
+  @apply min-h-[1.6em] cursor-text rounded-input border border-dashed border-hairline bg-page px-2 py-1;
+}
+.prose-kw figcaption[contenteditable="true"]:focus {
+  @apply border-solid border-ai/50 outline-none;
+}
 /* Formatierung Stufe 2: erhaltene Tabellen aus Import/Paste sauber darstellen (Ränder, Padding). */
 .prose-kw table {
   @apply my-2 w-full border-collapse text-[13.5px];

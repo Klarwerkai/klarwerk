@@ -98,15 +98,21 @@ export function RichTextEditor({
   const [selectedImage, setSelectedImage] = useState<HTMLImageElement | null>(null);
   const [selectedImageScale, setSelectedImageScale] = useState<ImageScaleValue>("100");
 
-  // Editor-Inhalt nur setzen, wenn er abweicht und der Editor nicht fokussiert ist
+  // Editor-Inhalt nur setzen, wenn er abweicht und der Fokus nicht IM Editor liegt
   // (verhindert Cursor-Sprünge während des Tippens). Verlustfrei über Mode-Wechsel.
   // SCRUM-524 P.1 (WP5): DEFENSIVE Grenze am DOM. Server sanitisiert bodyHtml bereits an der Persistenz-
   // Grenze; hier wird `value` VOR dem innerHTML-Setzen zusätzlich durch denselben Allowlist-Sanitizer
   // geführt — kein innerHTML mit ungeprüftem Inhalt, egal woher `value` stammt (belt & suspenders).
+  // WP-D8 (Pedis Live-ROT A): der Guard MUSS `contains` prüfen, nicht Identität. Die Bild-Fußnote
+  // (figcaption[contenteditable=true]) ist ein EIGENER Editing-Host — beim Klick hinein wird SIE zum
+  // document.activeElement, nicht der Editor-Container. Mit dem alten `!== el`-Guard galt der Editor
+  // dann als unfokussiert, und da el.innerHTML (mit contenteditable-Attributen der Verankerung) nie dem
+  // sanitisierten `safe` gleicht, wurde bei JEDEM Tastendruck in der Fußnote das innerHTML neu gesetzt —
+  // Caret/Fokus zerstört, die Fußnote wirkte „nicht editierbar" (genau Pedis Befund).
   useEffect(() => {
     const el = ref.current;
     const safe = sanitizeHtml(value);
-    if (mode === "edit" && el && el.innerHTML !== safe && document.activeElement !== el) {
+    if (mode === "edit" && el && el.innerHTML !== safe && !el.contains(document.activeElement)) {
       el.innerHTML = safe;
       // WP-D7 (Befund 2): Bild-Fußnoten nach jedem innerHTML-Setzen editierbar verankern.
       enhanceFiguresForEditing(el);
