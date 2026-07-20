@@ -6,6 +6,8 @@ import type { DraftPayload, ExtractedPoint, StructureResult } from "../api/types
 // WP-D1e (Fix 2): der Preflight misst den Payload MIT einem reservierten Object-Link — dieselbe
 // (DOM-freie) Link-Erzeugung wie im Ganzdokument-Save, damit die Reserve exakt zum realen Link passt.
 import { fileLinkHtml } from "./bodyFileLink";
+// WP-D9b: verankerte figures im sicheren HTML erkennen (gleiche Quelle wie die BILD-1d-Galerie).
+import { extractBodyImages } from "./bodyImages";
 
 // Auswählbarer Punkt in der Liste (Checkbox-Zustand; Default: ausgewählt).
 export interface SelectableExtractPoint extends ExtractedPoint {
@@ -21,6 +23,16 @@ export interface FileDraftQueue {
 }
 
 export type FileImportMode = "points" | "whole";
+
+// WP-D9b (bens GELB-Fix 2): Importierbarkeits-Entscheidung für den Datei-Import. Bisher wurde eine Datei
+// mit leerem Klartext VOR dem Setzen von fileRich/fileOriginal verworfen — ein reines Foto-/Diagramm-Deck
+// war trotz erfolgreich extrahierter Bilder komplett unimportierbar. Jetzt: importierbar, wenn Text ODER
+// mindestens eine verankerte figure (data-image-id, DOCX-/PPTX-Vertrag) im sicheren HTML steht. Nur die
+// KI-Punkte-Extraktion bleibt ohne Text deaktiviert (ehrliche Meldung). Weder Text noch Bilder → weiterhin
+// ehrliche Ablehnung (emptyPptx/empty-Fall).
+export function fileImportHasContent(text: string, richHtml: string | null): boolean {
+  return text.trim().length > 0 || extractBodyImages(richHtml ?? "").length > 0;
+}
 
 // WP-D7 (Befund 1, Pedi-Live-Test): .pptx war im Datei-Dialog ausgegraut, weil MEHRERE file-inputs
 // eigene, hartkodierte accept-Listen ohne .pptx trugen. EINE Quelle der Wahrheit statt Duplikate.
@@ -417,6 +429,8 @@ export const CAPTURE_FILE_TEXT = {
   // WP-D9: ehrliche Teilverlust-Hinweise für Folien-Bilder (Format nicht unterstützt / Bild-Budget).
   pptxImagesFormat: "capture.file.pptxImagesFormat",
   pptxImagesBudget: "capture.file.pptxImagesBudget",
+  // WP-D9b (Gelb-Fix 2): bildreiner Import — Bilder übernommen, kein Text für KI-Vorschläge.
+  imagesOnlyNoText: "capture.file.imagesOnlyNoText",
   // WP-BILD-1a (Pedi 20.07.): ehrlicher Startwert der Bild-Fußnote — noch keine (KI-)Beschreibung.
   imageCaptionPlaceholder: "capture.file.imageCaptionPlaceholder",
   // WP-D1d: Bilder komprimiert BEHALTEN, Original im Anhang (Anhang WIRKLICH gelungen).

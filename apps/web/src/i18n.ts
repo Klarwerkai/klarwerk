@@ -959,6 +959,8 @@ const de = {
     "{{count}} Bilder konnten nicht übernommen werden — Format nicht unterstützt.",
   "capture.file.pptxImagesBudget":
     "{{count}} Bilder konnten nicht übernommen werden — zu groß für die Einbettung.",
+  "capture.file.imagesOnlyNoText":
+    "Bilder übernommen — ohne Text sind keine KI-Vorschläge möglich.",
   "capture.file.imageCaptionPlaceholder": "Noch keine Bildbeschreibung",
   "capture.file.imagesKept":
     "{{kept}} Bilder übernommen, davon {{compressed}} für die Textansicht komprimiert; das unveränderte Original liegt im Anhang.",
@@ -4031,6 +4033,8 @@ const en: typeof de = {
     "{{count}} images could not be carried over — format not supported.",
   "capture.file.pptxImagesBudget":
     "{{count}} images could not be carried over — too large to embed.",
+  "capture.file.imagesOnlyNoText":
+    "Images carried over — without text, AI suggestions are not possible.",
   "capture.file.imageCaptionPlaceholder": "No image description yet",
   "capture.file.imagesKept":
     "{{kept}} images imported, {{compressed}} of them compressed for the text view; the unchanged original is in the attachment.",
@@ -7060,6 +7064,8 @@ const nl: typeof de = {
     "{{count}} afbeeldingen konden niet worden overgenomen — formaat niet ondersteund.",
   "capture.file.pptxImagesBudget":
     "{{count}} afbeeldingen konden niet worden overgenomen — te groot om in te sluiten.",
+  "capture.file.imagesOnlyNoText":
+    "Afbeeldingen overgenomen — zonder tekst zijn er geen KI-voorstellen mogelijk.",
   "capture.file.imageCaptionPlaceholder": "Nog geen afbeeldingsbeschrijving",
   "capture.file.imagesKept":
     "{{kept}} afbeeldingen overgenomen, waarvan {{compressed}} gecomprimeerd voor de tekstweergave; het ongewijzigde origineel zit in de bijlage.",

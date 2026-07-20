@@ -99,6 +99,7 @@ import {
   currentQueuePoint,
   draftFromPoint,
   draftPayloadWithinLimit,
+  fileImportHasContent,
   fileSourcePayload,
   importImageNotice,
   mergeSelectedIntoOne,
@@ -1708,7 +1709,10 @@ export function Capture(): JSX.Element {
         setErr(t(CAPTURE_FILE_TEXT.unsupported, { name: f.name }));
         return;
       }
-      if (text.trim().length === 0) {
+      // WP-D9b (bens GELB-Fix 2): leerer Klartext allein lehnt nicht mehr ab — ein bildreines Deck
+      // (verankerte figures im sicheren HTML) ist importierbar; NUR wenn weder Text noch Bilder da sind,
+      // bleibt die ehrliche Ablehnung (emptyPptx/emptyPdf/empty).
+      if (!fileImportHasContent(text, rich.html)) {
         setNotice(null);
         // WP-D4: bei PDFs ehrlich auf die fehlende Textebene hinweisen — OHNE falsche OCR-Hoffnung
         // (eine PDF-OCR existiert nicht).
@@ -1749,6 +1753,10 @@ export function Capture(): JSX.Element {
           : pptxTruncatedSlides !== null
             ? ` ${t(CAPTURE_FILE_TEXT.pptxTruncated, { count: pptxTruncatedSlides })}`
             : "";
+      // WP-D9b (Gelb-Fix 2): bildreiner Import — ehrlich sagen, dass die Bilder übernommen sind, aber
+      // ohne Text keine KI-Vorschläge (Punkte-Extraktion) möglich sind.
+      const imagesOnlyNote =
+        text.trim().length === 0 ? ` ${t(CAPTURE_FILE_TEXT.imagesOnlyNoText)}` : "";
       // WP-D9: ehrliche Teilverlust-Notizen für Folien-Bilder — NUR wenn wirklich etwas verloren ging
       // (übernommene Bilder brauchen keinen Sonderhinweis). Der Dokumenttext ist davon unberührt.
       const imageLossNote =
@@ -1764,7 +1772,7 @@ export function Capture(): JSX.Element {
         `${t(CAPTURE_FILE_TEXT.loadedStats, {
           name: f.name,
           chars: text.length,
-        })}${formatNote}${truncatedNote}${imageLossNote}`,
+        })}${formatNote}${truncatedNote}${imageLossNote}${imagesOnlyNote}`,
       );
     } catch (error) {
       setFileName(null);
@@ -2773,7 +2781,9 @@ export function Capture(): JSX.Element {
                         <div className="mt-3 flex items-center gap-1.5">
                           <Button
                             variant="primary"
-                            disabled={extract.isPending || fileBusy}
+                            // WP-D9b (Gelb-Fix 2): ohne Klartext (bildreines Deck) bleibt NUR die
+                            // KI-Punkte-Extraktion deaktiviert — der Ganzdokument-Import läuft.
+                            disabled={extract.isPending || fileBusy || fileText.trim().length === 0}
                             onClick={() => extract.mutate()}
                           >
                             {/* SCRUM-418: sichtbare Arbeits-Animation, solange die KI liest. */}

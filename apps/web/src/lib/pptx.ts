@@ -20,8 +20,8 @@
 import {
   IMAGE_ID_PREFIX,
   MAX_INLINE_BODY_HTML_BYTES,
+  applyInlineImageBudget,
   newImageRunToken,
-  utf8ByteLength,
 } from "./docx";
 
 const PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
@@ -286,22 +286,31 @@ type BodyItem =
   // WP-D9: eingebettetes Bild als fertige figure (an seiner Position im Folien-Fluss).
   | { kind: "image"; html: string };
 
-// WP-D9: DOM-freies base64 (kein btoa im Node-Typecheck/Test, kein Buffer im Browser). Einfache
-// 3-Byte-Gruppierung mit Padding — ausreichend schnell für die gedeckelten Bildgrößen (≤ 5 MiB).
+// WP-D9/WP-D9b (bens GELB-Fix 3): DOM-freies base64 (kein btoa im Node-Typecheck/Test, kein Buffer im
+// Browser) — CHUNKED statt 4 Einzelstrings je 3 Bytes: bei einem 5-MiB-Bild wären das ~7 Mio
+// Array-Einträge (Peak-Speicher/UI-Blockade). Jetzt entsteht je 8190-Byte-Slice EIN Teilstring
+// (8190 = 3 · 2730 → Chunk-Grenzen fallen IMMER auf 3-Byte-Gruppen, Padding entsteht nur am
+// GESAMT-Ende); die 1-/2-/3-Byte-Endsemantik bleibt identisch.
 const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const BASE64_CHUNK_BYTES = 8190;
 
 function bytesToBase64(bytes: Uint8Array): string {
-  const out: string[] = [];
-  for (let i = 0; i < bytes.length; i += 3) {
-    const b0 = bytes[i] ?? 0;
-    const b1 = bytes[i + 1];
-    const b2 = bytes[i + 2];
-    out.push(BASE64_ALPHABET[b0 >> 2] ?? "");
-    out.push(BASE64_ALPHABET[((b0 & 3) << 4) | ((b1 ?? 0) >> 4)] ?? "");
-    out.push(b1 === undefined ? "=" : (BASE64_ALPHABET[((b1 & 15) << 2) | ((b2 ?? 0) >> 6)] ?? ""));
-    out.push(b2 === undefined ? "=" : (BASE64_ALPHABET[b2 & 63] ?? ""));
+  const parts: string[] = [];
+  for (let off = 0; off < bytes.length; off += BASE64_CHUNK_BYTES) {
+    const end = Math.min(off + BASE64_CHUNK_BYTES, bytes.length);
+    let s = "";
+    for (let i = off; i < end; i += 3) {
+      const b0 = bytes[i] ?? 0;
+      const b1 = i + 1 < end ? bytes[i + 1] : undefined;
+      const b2 = i + 2 < end ? bytes[i + 2] : undefined;
+      s += BASE64_ALPHABET[b0 >> 2] ?? "";
+      s += BASE64_ALPHABET[((b0 & 3) << 4) | ((b1 ?? 0) >> 4)] ?? "";
+      s += b1 === undefined ? "=" : (BASE64_ALPHABET[((b1 & 15) << 2) | ((b2 ?? 0) >> 6)] ?? "");
+      s += b2 === undefined ? "=" : (BASE64_ALPHABET[b2 & 63] ?? "");
+    }
+    parts.push(s);
   }
-  return out.join("");
+  return parts.join("");
 }
 
 // WP-D9: rId des Bildes im p:pic-Block — a:blip mit r:embed, namespace-aware über die zentrale
@@ -1042,17 +1051,31 @@ export async function extractPptxRich(
       textParts.push(slide.text);
     }
   }
-  const html = htmlParts.join("");
+  // WP-D9b (bens ROT-Fix 1): finales Body-Budget mit DROP-TO-FIT. Die Rohbyte-Caps (5/20 MiB) sind nur
+  // ein billiger VORFILTER — Base64 bläht ~4/3 auf, ein zulässiges 2,7-MB-Rohbild sprengt bereits die
+  // autoritative UTF-8-Grenze (MAX_INLINE_BODY_HTML_BYTES). Statt htmlOverflow als HARTEN Fehler zu
+  // melden (der den ganzen Import inkl. Text + Original killt — Bruch der Teilverlust-Semantik), läuft
+  // das finale HTML durch den BESTEHENDEN DOCX-Mechanismus applyInlineImageBudget: überzählige GANZE
+  // figure-Einheiten fallen weg (greedy in Dokumentreihenfolge → die LETZTEN zuerst — die vorderen
+  // Bilder folgen dem Lesefluss und bleiben, deterministisch wie beim DOCX-Import), gezählt als
+  // droppedImageBudget. htmlOverflow bleibt nur true, wenn der TEXT selbst nicht passt.
+  const budgeted = await applyInlineImageBudget(
+    htmlParts.join(""),
+    async (src) => src,
+    budgetBytes,
+  );
+  embeddedImages -= budgeted.dropped;
+  droppedImageBudget += budgeted.dropped;
   return {
-    html,
+    html: budgeted.html,
     text: textParts.join("\n\n").trim(),
     slideCount: readCount,
     truncated: order.length > readCount,
     imageCount,
     tableCount,
-    // Folien-HTML (inkl. eingebetteter figures): übersteigt es das Budget, meldet es der Aufrufer ehrlich
-    // (wie DOCX htmlOverflow) und bricht VOR dem Upload ab; der finale JSON-Guard bleibt zusätzlich.
-    htmlOverflow: utf8ByteLength(html) > budgetBytes,
+    // true NUR, wenn der reine Text-/Strukturanteil das Budget übersteigt (Bilder sind bereits per
+    // Drop-to-fit entfernt) — dann meldet der Aufrufer ehrlich VOR dem Upload; der JSON-Guard bleibt.
+    htmlOverflow: budgeted.overflow,
     embeddedImages,
     droppedImageFormat,
     droppedImageBudget,
