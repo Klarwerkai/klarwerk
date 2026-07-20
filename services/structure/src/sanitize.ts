@@ -56,7 +56,8 @@ const TAG_MAP: Record<string, string> = {
 // Erlaubte Attribute je Tag (alles andere wird verworfen, inkl. on*-Handler/style).
 const ALLOWED_ATTRS: Record<string, Set<string>> = {
   a: new Set(["href", "title"]),
-  img: new Set(["src", "alt", "data-kw-scale"]),
+  // WP-BILD-1b: img trägt zusätzlich data-image-id (beidseitige Verankerung Bild↔Fußnote).
+  img: new Set(["src", "alt", "data-kw-scale", "data-image-id"]),
   div: new Set(["class"]),
   // Formatierung Stufe 2 (Tabellen): nur numerische Zell-Spannen erhalten (Merges aus Word/HTML).
   th: new Set(["colspan", "rowspan"]),
@@ -165,8 +166,9 @@ function renderAttrs(tag: string, raw: string): string {
       out.push(`class="${escapeText(cls)}"`);
       continue;
     }
-    // WP-BILD-1a: data-image-id nur als sicheres Token (Wort-/Bindestrich-Zeichen) übernehmen.
-    if (tag === "figcaption" && name === "data-image-id") {
+    // WP-BILD-1a/1b: data-image-id (auf figcaption UND img) nur als sicheres Token (Wort-/Bindestrich-
+    // Zeichen) übernehmen; alles andere fällt weg (Anker bleibt harmlos, Sanitizer-Vertrag gewahrt).
+    if ((tag === "figcaption" || tag === "img") && name === "data-image-id") {
       if (/^[\w-]{1,64}$/.test(value)) {
         out.push(`${name}="${value}"`);
       }

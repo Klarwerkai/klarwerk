@@ -12,6 +12,7 @@ import {
   IMAGE_ID_PREFIX,
   applyInlineImageBudget,
   extractDocxRich,
+  newImageRunToken,
   utf8ByteLength,
   wrapImagesInFigures,
 } from "../../apps/web/src/lib/docx";
@@ -29,11 +30,19 @@ function engineOf(html: string, text = "Text"): DocxEngine {
 }
 
 describe("WP-BILD-1a: wrapImagesInFigures", () => {
-  it("hüllt jedes Bild in <figure> mit <figcaption> + stabiler, fortlaufender ID", () => {
-    const out = wrapImagesInFigures(`<img src="${PNG}"><p>x</p><img src="${PNG}">`, PLACEHOLDER);
+  it("hüllt jedes Bild in <figure> mit <figcaption> + kollisionsfester, fortlaufender ID", () => {
+    const out = wrapImagesInFigures(
+      `<img src="${PNG}"><p>x</p><img src="${PNG}">`,
+      PLACEHOLDER,
+      "tok123",
+    );
     expect(out).toContain("<figure>");
-    expect(out).toContain(`<figcaption data-image-id="${IMAGE_ID_PREFIX}1">`);
-    expect(out).toContain(`<figcaption data-image-id="${IMAGE_ID_PREFIX}2">`);
+    // WP-BILD-1b: kw-img-<runToken>-N, hier mit festem Token tok123.
+    expect(out).toContain(`<figcaption data-image-id="${IMAGE_ID_PREFIX}tok123-1">`);
+    expect(out).toContain(`<figcaption data-image-id="${IMAGE_ID_PREFIX}tok123-2">`);
+    // WP-BILD-1b: beidseitige Verankerung — auch das img trägt dieselbe ID.
+    expect(out).toContain(`<img data-image-id="${IMAGE_ID_PREFIX}tok123-1"`);
+    expect(out).toContain(`<img data-image-id="${IMAGE_ID_PREFIX}tok123-2"`);
     expect(out).toContain(PLACEHOLDER);
     // Kein erfundener Text — genau der ehrliche Platzhalter.
     expect((out.match(/<figure>/g) ?? []).length).toBe(2);
@@ -56,9 +65,10 @@ describe("WP-BILD-1a: extractDocxRich erzeugt Bild-Fußnoten", () => {
       mapImage: async (src) => src,
       imageBudgetBytes: 3_500_000,
       imageCaptionPlaceholder: PLACEHOLDER,
+      imageRunToken: "run001",
     });
     expect(html).toContain("<figure>");
-    expect(html).toContain(`data-image-id="${IMAGE_ID_PREFIX}1"`);
+    expect(html).toContain(`data-image-id="${IMAGE_ID_PREFIX}run001-1"`);
     expect(html).toContain(PLACEHOLDER);
     expect(html).toContain(PNG);
     expect(totalImages).toBe(1);
@@ -159,5 +169,91 @@ describe("WP-BILD-1a: Rich-Body + i18n", () => {
     expect(
       String(i18n.getResource("de", "translation", "capture.file.imageCaptionPlaceholder")),
     ).toMatch(/Noch keine/);
+  });
+});
+
+// WP-BILD-1b (bens Auflage 1): bodyweit kollisionsfeste IDs. kw-img-N allein kollidiert, sobald zwei Importe
+// in DENSELBEN Body fließen — der runToken (kw-img-<token>-N) verhindert das.
+describe("WP-BILD-1b: kollisionsfeste Bild-IDs (runToken)", () => {
+  function idsOf(html: string): string[] {
+    return [...html.matchAll(/data-image-id="([^"]+)"/g)].map((m) => m[1] ?? "");
+  }
+
+  it("zwei Import-Läufe in EINEN Body → alle Bild-IDs eindeutig, keine Überschneidung", () => {
+    const runA = wrapImagesInFigures(`<img src="${PNG}"><img src="${PNG}">`, PLACEHOLDER, "aaaaaa");
+    const runB = wrapImagesInFigures(`<img src="${PNG}">`, PLACEHOLDER, "bbbbbb");
+    const body = `${runA}${runB}`;
+    const ids = idsOf(body);
+    // 3 Bilder × 2 Anker (img + figcaption) = 6 Vorkommen, aber nur 3 verschiedene IDs.
+    expect(ids.length).toBe(6);
+    expect(new Set(ids).size).toBe(3);
+    // Kein Lauf-Token überschneidet sich — jede ID gehört eindeutig zu genau einem Import-Lauf.
+    for (const id of new Set(ids)) {
+      const fromA = id.startsWith(`${IMAGE_ID_PREFIX}aaaaaa-`);
+      const fromB = id.startsWith(`${IMAGE_ID_PREFIX}bbbbbb-`);
+      expect(fromA !== fromB).toBe(true);
+    }
+  });
+
+  it("Einfügen in einen Body mit vorhandenen figures überschreibt bestehende IDs nie", () => {
+    // Bestehender Body (früherer Import) mit fester ID; neuer Import wird nur an die ROH-Fragmente angelegt.
+    const existing = `<figure><img data-image-id="${IMAGE_ID_PREFIX}old99-1" src="/api/objects/x/raw"><figcaption data-image-id="${IMAGE_ID_PREFIX}old99-1">alt</figcaption></figure>`;
+    const fresh = wrapImagesInFigures(`<img src="${PNG}">`, PLACEHOLDER, "new77");
+    const merged = `${existing}${fresh}`;
+    // Die bestehende ID bleibt unverändert erhalten …
+    expect(merged).toContain(`${IMAGE_ID_PREFIX}old99-1`);
+    // … und die neue ID kollidiert nicht mit ihr.
+    expect(idsOf(fresh).every((id) => id !== `${IMAGE_ID_PREFIX}old99-1`)).toBe(true);
+  });
+
+  it("newImageRunToken liefert genau 6 Zeichen aus [a-z0-9] (Sanitizer-Token-Vertrag)", () => {
+    for (let i = 0; i < 20; i += 1) {
+      expect(newImageRunToken()).toMatch(/^[a-z0-9]{6}$/);
+    }
+  });
+});
+
+// WP-BILD-1b (bens Auflage 2): beidseitige Verankerung — img UND figcaption tragen dieselbe data-image-id.
+describe("WP-BILD-1b: img und figcaption teilen dieselbe ID", () => {
+  it("pro Bild trägt sowohl <img> als auch <figcaption> exakt dieselbe data-image-id", () => {
+    const out = wrapImagesInFigures(`<img src="${PNG}">`, PLACEHOLDER, "share1");
+    const id = `${IMAGE_ID_PREFIX}share1-1`;
+    expect(out).toContain(`<img data-image-id="${id}"`);
+    expect(out).toContain(`<figcaption data-image-id="${id}">`);
+    // Genau zwei Anker mit dieser ID (Bild + Fußnote), gegenseitig auffindbar.
+    expect(out.split(`data-image-id="${id}"`).length - 1).toBe(2);
+  });
+
+  it("beide Sanitizer erhalten data-image-id auch am img (gleiches Token-Muster)", () => {
+    const markup = `<figure><img data-image-id="${IMAGE_ID_PREFIX}s2-1" src="/api/objects/x/raw"><figcaption data-image-id="${IMAGE_ID_PREFIX}s2-1">c</figcaption></figure>`;
+    for (const sanitize of [clientSanitize, serverSanitize]) {
+      const clean = sanitize(markup);
+      expect(clean.split(`data-image-id="${IMAGE_ID_PREFIX}s2-1"`).length - 1).toBe(2);
+    }
+    // Böses Token am img wird verworfen (Vertrag gewahrt).
+    const evilImg = '<img data-image-id="böse id" src="/api/objects/x/raw">';
+    for (const sanitize of [clientSanitize, serverSanitize]) {
+      expect(sanitize(evilImg)).not.toContain("data-image-id");
+    }
+  });
+});
+
+// WP-BILD-1b (bens Auflage 3): echter Save-/Reload-Roundtrip durch den SERVER-Sanitizer.
+describe("WP-BILD-1b: Save-/Reload-Roundtrip (Server-Sanitizer)", () => {
+  it("figure/img/figcaption mit editierter Caption bleibt beim Speichern und erneuten Laden erhalten", () => {
+    const id = `${IMAGE_ID_PREFIX}round1-1`;
+    const imported = wrapImagesInFigures(`<img src="${PNG}">`, PLACEHOLDER, "round1");
+    // Nutzer editiert die Fußnote (ehrliche, echte Beschreibung statt Platzhalter).
+    const edited = imported.replace(PLACEHOLDER, "Diagramm der Quartalszahlen");
+    // Speichern = durch den autoritativen Server-Sanitizer.
+    const saved = serverSanitize(edited);
+    // Erneutes Laden = erneut sanitisieren → byte-gleich (idempotent, kein Verlust).
+    const reloaded = serverSanitize(saved);
+    expect(reloaded).toBe(saved);
+    // Struktur + beide Anker + editierte Caption bleiben erhalten.
+    expect(saved).toContain("<figure>");
+    expect(saved).toContain("Diagramm der Quartalszahlen");
+    expect(saved).not.toContain(PLACEHOLDER);
+    expect(saved.split(`data-image-id="${id}"`).length - 1).toBe(2);
   });
 });

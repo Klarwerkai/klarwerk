@@ -560,6 +560,21 @@ export class Reasoner {
     };
   }
 
+  // WP-BILD-1b TODO (KI-Bildbeschreibungs-Vorschlag — bewusst NOCH NICHT gebaut): Die aktuelle
+  // ModelClient-Schnittstelle (provider-model.ts) ist rein textbasiert — `complete(system, user, …)` nimmt
+  // NUR Strings, und der Anthropic-Body (model-client.ts) sendet `content` als einfachen String. Es gibt
+  // KEINEN Vision-/Bild-Eingang (kein image/base64-Content-Block) im Reasoner. Ein ehrlicher
+  // `describeImage(dataUrl, locale)` würde daher einen Vertragsumbau erfordern und wird hier NICHT
+  // vorgetäuscht. Skizze des künftigen API-Vertrags für BILD-1b-Vision:
+  //   describeImage(dataUrl: string, locale: ReasonerLocale): Promise<string | null>
+  //   - ModelClient um multimodalen Pfad erweitern: content als Block-Array
+  //     [{type:"image", source:{type:"base64", media_type, data}}, {type:"text", text: Prompt}].
+  //   - Nur der Cloud-Client kann Vision; der lokale Client fällt sicher auf null (NIE erfinden).
+  //   - Fehler/Timeout/kein Key → null (Vorschlag-Prinzip: nichts erfinden, nichts automatisch speichern).
+  //   - Neue Reasoner-Route mit demselben RBAC-/Route-Guard wie die übrigen Reasoner-Routen; Cloud-KI-
+  //     Kennzeichnung wie üblich. UI: kleiner Knopf an der Fußnote; Ergebnis nur als editierbarer VORSCHLAG
+  //     in die figcaption, Übernahme ausschließlich über die ohnehin editierbare Caption.
+
   // FR-RSN-04/FR-I18N-01: Modellfehler dürfen den Betrieb nicht stoppen → deterministischer
   // Fallback. locale wird an primary UND fallback identisch durchgereicht (Default "de").
   // SCRUM-502 Schicht 2: `confidential` route vertrauliche Drafts/KOs an der Cloud vorbei

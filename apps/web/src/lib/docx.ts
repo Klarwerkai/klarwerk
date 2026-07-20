@@ -84,8 +84,35 @@ const IMG_TAG_DATA_RE =
   /<figure\b[^>]*>\s*<img\b[^>]*\bsrc="(data:image\/[a-zA-Z0-9.+-]+;base64,[^"]*)"[^>]*>[\s\S]*?<\/figure>|<img\b[^>]*\bsrc="(data:image\/[a-zA-Z0-9.+-]+;base64,[^"]*)"[^>]*>/gi;
 
 // WP-BILD-1a (Pedi 20.07., Bild-Fußnoten): stabiler ID-Präfix für den Fußnoten-Anker
-// (figcaption[data-image-id]). Fortlaufend je Dokument vergeben → stabil innerhalb des Imports.
+// (figcaption[data-image-id]).
 export const IMAGE_ID_PREFIX = "kw-img-";
+
+// WP-BILD-1b (bens BILD-1a-Auflage 1): kw-img-N allein ist nur PRO IMPORT eindeutig — ein zweiter
+// Import/Einfüge-Vorgang in DENSELBEN Body würde kw-img-1, kw-img-2 … kollidieren lassen. Deshalb bekommt
+// jeder Import-Lauf ein eigenes, kurzes Token: kw-img-<runToken>-N. Das Token bleibt bewusst im
+// Sanitizer-Zeichenvorrat [a-z0-9] (Teilmenge von [\w-]) → verletzt den Token-Vertrag der Sanitizer nie.
+const IMAGE_RUN_TOKEN_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
+const IMAGE_RUN_TOKEN_LEN = 6;
+
+export function newImageRunToken(): string {
+  const chars: string[] = [];
+  const cryptoObj = typeof globalThis !== "undefined" ? globalThis.crypto : undefined;
+  if (cryptoObj?.getRandomValues) {
+    const buf = new Uint8Array(IMAGE_RUN_TOKEN_LEN);
+    cryptoObj.getRandomValues(buf);
+    for (const b of buf) {
+      chars.push(IMAGE_RUN_TOKEN_ALPHABET[b % IMAGE_RUN_TOKEN_ALPHABET.length] ?? "0");
+    }
+    return chars.join("");
+  }
+  // Fallback (Browser-Code darf Date.now — hier nur Kollisions-Streuung, keine Krypto-Anforderung).
+  let seed = Date.now();
+  for (let i = 0; i < IMAGE_RUN_TOKEN_LEN; i += 1) {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    chars.push(IMAGE_RUN_TOKEN_ALPHABET[seed % IMAGE_RUN_TOKEN_ALPHABET.length] ?? "0");
+  }
+  return chars.join("");
+}
 
 // Bare data:image-<img> (mammoth-Ausgabe) — zum Umhüllen in <figure> mit Fußnoten-Anker.
 const IMG_WRAP_RE = /<img\b[^>]*\bsrc="data:image\/[a-zA-Z0-9.+-]+;base64,[^"]*"[^>]*>/gi;
@@ -98,18 +125,29 @@ function escapeCaption(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
-// WP-BILD-1a: jedes eingebettete Inline-Bild bekommt eine Bild-Fußnote. Aus <img> wird
-//   <figure><img …><figcaption data-image-id="kw-img-N">Platzhalter</figcaption></figure>
-// Die Fußnote startet mit einem EHRLICHEN, injizierten Platzhalter (KEINE erfundene Beschreibung; die
-// KI-Beschreibung folgt in BILD-1b, die Galerie in BILD-1d, die Suche in BILD-1e — bewusst NICHT hier).
+// WP-BILD-1a/1b: jedes eingebettete Inline-Bild bekommt eine Bild-Fußnote. Aus <img> wird
+//   <figure><img … data-image-id="kw-img-<runToken>-N"><figcaption data-image-id="kw-img-<runToken>-N">…
+// WP-BILD-1b (bens Auflage 2, beidseitige Verankerung): NICHT nur die figcaption trägt die ID, sondern auch
+// das <img> selbst — so sind Bild und Fußnote gegenseitig auffindbar (Galerie/Suche brauchen das später).
+// WP-BILD-1b (bens Auflage 1): der runToken macht die IDs bodyweit kollisionsfest (ein frischer Token je
+// Import-Lauf). Ohne explizites Token wird pro Aufruf/Import EIN Token erzeugt → alle Bilder eines Imports
+// teilen den Token, nummeriert mit N.
+// Die Fußnote startet mit einem EHRLICHEN, injizierten Platzhalter (KEINE erfundene Beschreibung).
 // Läuft auf der ROH-mammoth-Ausgabe (noch keine <figure>) VOR dem Byte-Budget, damit das Budget die
 // zusätzlichen Tags mitzählt und bei Notbremse das GANZE figure-Element (Bild + Fußnote) droppt.
-export function wrapImagesInFigures(html: string, captionPlaceholder: string): string {
+export function wrapImagesInFigures(
+  html: string,
+  captionPlaceholder: string,
+  runToken: string = newImageRunToken(),
+): string {
   const caption = escapeCaption(captionPlaceholder);
   let n = 0;
   return html.replace(IMG_WRAP_RE, (imgTag) => {
     n += 1;
-    return `<figure>${imgTag}<figcaption data-image-id="${IMAGE_ID_PREFIX}${n}">${caption}</figcaption></figure>`;
+    const id = `${IMAGE_ID_PREFIX}${runToken}-${n}`;
+    // Dieselbe ID zusätzlich am <img> verankern (beidseitig auffindbar).
+    const anchoredImg = imgTag.replace(/^<img/i, `<img data-image-id="${id}"`);
+    return `<figure>${anchoredImg}<figcaption data-image-id="${id}">${caption}</figcaption></figure>`;
   });
 }
 
@@ -261,6 +299,9 @@ export async function extractDocxRich(
     // WP-BILD-1a: gesetzt → jedes Inline-Bild wird in <figure> mit leerem/Platzhalter-<figcaption>
     // (Bild-Fußnote) gehüllt. Der lokalisierte Platzhalter-Text wird injiziert (DOM-frei, kein i18n hier).
     imageCaptionPlaceholder?: string;
+    // WP-BILD-1b: optionales, festes Import-Token für die Bild-IDs (kw-img-<token>-N). Ohne Angabe wird pro
+    // Import ein frisches Token erzeugt — nur Tests setzen es für deterministische IDs.
+    imageRunToken?: string;
   } = {},
 ): Promise<DocxRichResult> {
   const engine = opts.engine ?? (await defaultEngine());
@@ -276,7 +317,11 @@ export async function extractDocxRich(
     // WP-BILD-1a: VOR dem Budget umhüllen, damit das Budget die figure/figcaption-Bytes mitzählt und
     // eine Notbremse das ganze figure-Element droppt (Bild + Fußnote gemeinsam).
     if (opts.imageCaptionPlaceholder) {
-      html = wrapImagesInFigures(html, opts.imageCaptionPlaceholder);
+      html = wrapImagesInFigures(
+        html,
+        opts.imageCaptionPlaceholder,
+        opts.imageRunToken ?? newImageRunToken(),
+      );
     }
     if (opts.imageBudgetBytes !== undefined) {
       const budgeted = await applyInlineImageBudget(html, opts.mapImage, opts.imageBudgetBytes);
