@@ -140,6 +140,33 @@ export function libraryRoutes(
       reply.code(200).send(await library.listImportCandidates());
     });
 
+    // WP-D-CLEAN (Pedis Entscheid: alle Testdaten löschen, auch Confluence und Jira): ZWEISTUFIGER
+    // Admin-Aufräumweg. Ohne confirm → reine VORSCHAU (Zähler, nichts passiert); mit confirm:true →
+    // Ausführung: Review-Queue komplett leeren (harte Entfernung — Queue-Einträge kennen keinen
+    // Papierkorb) + alle KOs mit Import-Provenienz Confluence/Jira in den PAPIERKORB (bestehender
+    // Soft-Delete; KOs ohne Import-Provenienz bleiben unangetastet). Guard wie die übrigen
+    // Import-Admin-Wege (users.manage); Audit + ehrliche Bilanz kommen aus dem Service.
+    app.post<{ Body: { confirm?: boolean } }>(
+      "/api/admin/import/cleanup",
+      async (request, reply) => {
+        const user = await guards.requirePermission("users.manage", request, reply);
+        if (!user) {
+          return;
+        }
+        try {
+          if (request.body?.confirm !== true) {
+            const preview = await library.importCleanupPreview();
+            reply.code(200).send({ preview: true, ...preview });
+            return;
+          }
+          const result = await library.runImportCleanup(user.id);
+          reply.code(200).send({ preview: false, ...result });
+        } catch (error) {
+          sendError(reply, error);
+        }
+      },
+    );
+
     app.put<{ Params: { id: string }; Body: { action: ReviewAction; note?: string } }>(
       "/api/library/import/candidates/:id",
       async (request, reply) => {

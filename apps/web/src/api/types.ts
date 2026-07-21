@@ -684,6 +684,8 @@ export interface ImportGroupCandidate {
   title: string;
   textCodec?: "decoded";
   alreadyImported: boolean;
+  // WP-IC-6b: Quelle aktualisiert seit Import — wählbar als Aktualisierung (neue KO-Version im Review).
+  sourceNewer: boolean;
   hints: string[]; // "already-imported" | "stale" | "short" (deterministische Qualitätshinweise)
 }
 
@@ -707,9 +709,26 @@ export interface ImportGroupResponse {
 // zählt EHRLICH getrennt vom Import.
 export interface ImportApplyResponse {
   imported: number;
+  // WP-IC-6b: davon Aktualisierungen (Quelle war neuer als der Import — wird im Review als neue
+  // Version des bestehenden KOs angenommen). Teilmenge von imported.
+  updates: number;
   alreadyQueued: number;
   failed: { id: string; reason: string }[];
   notFound: string[];
+}
+
+// WP-D-CLEAN: zweistufiges Testdaten-Aufräumen — Vorschau (Zähler, nichts passiert) bzw. Bilanz.
+export interface ImportCleanupPreview {
+  preview: true;
+  candidates: number;
+  importedKos: number;
+}
+
+export interface ImportCleanupResult {
+  preview: false;
+  removedCandidates: number;
+  trashedKos: number;
+  skipped: { id: string; reason: string }[];
 }
 
 export interface SlideConvertResponse {

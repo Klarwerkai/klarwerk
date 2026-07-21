@@ -165,4 +165,11 @@ export class PgCandidateRepo implements CandidateRepo {
     );
     return res.rows.map((row) => row.data);
   }
+
+  // WP-D-CLEAN: harte Entfernung ALLER Queue-Einträge (Pedis Testdaten-Aufräumen) — rowCount ist
+  // die ehrliche Zählung der tatsächlich entfernten Kandidaten.
+  async removeAll(): Promise<number> {
+    const res = await this.pool.query("DELETE FROM import_candidates");
+    return res.rowCount ?? 0;
+  }
 }

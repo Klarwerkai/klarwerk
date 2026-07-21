@@ -1,5 +1,9 @@
 // Öffentliche API des Moduls library-analytics.
-export { LibraryService, SEARCH_BACKFILL_LIMIT_PER_QUERY } from "./src/service";
+export {
+  LibraryService,
+  SEARCH_BACKFILL_LIMIT_PER_QUERY,
+  IMPORT_CLEANUP_PROVIDERS,
+} from "./src/service";
 export type { LibraryServiceDeps } from "./src/service";
 export { InMemoryCandidateRepo, type CandidateRepo } from "./src/repo";
 export { PgCandidateRepo, IMPORT_CANDIDATES_SCHEMA } from "./src/repo-pg";

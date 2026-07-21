@@ -38,6 +38,7 @@ import type {
 } from "../api/types";
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
+import { ImportCleanup } from "../components/ImportCleanup";
 import { ImportExplore } from "../components/ImportExplore";
 import { Button, Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import { CAPITAL_SECTIONS, sectionAnchor, sectionHref } from "../lib/capitalSections";
@@ -550,6 +551,9 @@ export function ImportReview(): JSX.Element {
           )
         }
       </QueryState>
+
+      {/* WP-D-CLEAN (Pedis Entscheid): klar abgesetzter Aufräum-Kasten — zweistufig, nie automatisch. */}
+      <ImportCleanup />
     </div>
   );
 }

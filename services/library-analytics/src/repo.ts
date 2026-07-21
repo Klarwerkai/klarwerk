@@ -13,6 +13,10 @@ export interface CandidateRepo {
   findById(id: string): Promise<ImportCandidate | undefined>;
   update(candidate: ImportCandidate): Promise<void>;
   all(): Promise<ImportCandidate[]>;
+  // WP-D-CLEAN (Pedis Testdaten-Aufräumen): entfernt ALLE Kandidaten (jeden Status) aus der Queue
+  // und gibt die Anzahl zurück. Kandidaten sind Queue-Einträge, keine Wissensobjekte — für sie ist
+  // die harte Entfernung der vorgesehene Weg (kein Papierkorb-Vertrag wie bei KOs).
+  removeAll(): Promise<number>;
 }
 
 // SCRUM-510 (WP3): der Idempotenz-Schlüssel eines OFFENEN externalId-Kandidaten: (externalId, sourceVersion).
@@ -62,5 +66,11 @@ export class InMemoryCandidateRepo implements CandidateRepo {
 
   all(): Promise<ImportCandidate[]> {
     return Promise.resolve([...this.items.values()]);
+  }
+
+  removeAll(): Promise<number> {
+    const removed = this.items.size;
+    this.items.clear();
+    return Promise.resolve(removed);
   }
 }

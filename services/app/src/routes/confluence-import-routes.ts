@@ -329,18 +329,19 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
           ]);
           const nowMs = Date.now();
           const candidates = selected.map((item, index) => {
-            const alreadyImported = importStatusFor(
-              item,
-              anchorVersions,
-              pendingVersions,
-            ).alreadyImported;
+            const status = importStatusFor(item, anchorVersions, pendingVersions);
             return {
               id: candidateIdOf(item, index),
               title: item.title,
               ...(item.textCodec === "decoded" ? { textCodec: "decoded" as const } : {}),
-              alreadyImported,
+              alreadyImported: status.alreadyImported,
+              // WP-IC-6b (Pedis Entscheid: Versionierung): die Quelle ist NEUER als der Import —
+              // solche Kandidaten sind als „Aktualisierung importieren" wählbar (nicht vorab
+              // abgewählt); die Übernahme wird beim Review als neue Version des bestehenden KOs
+              // angenommen (bestehender acceptToKo-Re-Sync via revise).
+              sourceNewer: status.sourceNewer,
               // Rein deterministische Qualitätshinweise (Dublette/veraltet/wenig Inhalt).
-              hints: candidateHints(item, alreadyImported, nowMs),
+              hints: candidateHints(item, status.alreadyImported, nowMs),
             };
           });
           const inputs = groupingCandidates(selected);
@@ -446,7 +447,14 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
           }
           const { selected } = filterImportItems(items, criteria);
           const byId = new Map(selected.map((item, index) => [candidateIdOf(item, index), item]));
+          // WP-IC-6b: Status-Wissen VOR dem Lauf — „Aktualisierungen" (Quelle neuer als Import)
+          // zählen in der Bilanz separat (Teilmenge von imported, der Bilanz-Vertrag bleibt exakt).
+          const [applyAnchors, applyPending] = await Promise.all([
+            importedAnchorVersions(deps.koService),
+            pendingCandidateVersions(deps.library),
+          ]);
           let imported = 0;
+          let updates = 0;
           let alreadyQueued = 0;
           const failed: { id: string; reason: string }[] = [];
           const notFound: string[] = [];
@@ -465,6 +473,9 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
               const created = await deps.library.createImportCandidates([item], user.id);
               if (created.length > 0) {
                 imported += 1;
+                if (importStatusFor(item, applyAnchors, applyPending).sourceNewer) {
+                  updates += 1;
+                }
               } else {
                 alreadyQueued += 1;
               }
@@ -473,7 +484,7 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
               failed.push({ id, reason: err instanceof Error ? err.name : "unknown" });
             }
           }
-          reply.code(200).send({ imported, alreadyQueued, failed, notFound });
+          reply.code(200).send({ imported, updates, alreadyQueued, failed, notFound });
           return reply;
         } catch (err) {
           console.warn(

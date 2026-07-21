@@ -34,6 +34,9 @@ export const IMPORT_GROUPS_TEXT = {
   bilanzNotAttempted: "imp.groups.bilanzNotAttempted",
   retryRest: "imp.groups.retryRest",
   failHttp: "imp.groups.failHttp",
+  // WP-IC-6b (Versionierung): Quelle aktualisiert seit Import + separater Bilanz-Zähler.
+  hintSourceNewer: "imp.groups.hintSourceNewer",
+  bilanzUpdates: "imp.groups.bilanzUpdates",
 } as const;
 
 export interface GroupedCandidate {
@@ -41,6 +44,8 @@ export interface GroupedCandidate {
   title: string;
   textCodec?: "decoded";
   alreadyImported: boolean;
+  // WP-IC-6b: Quelle neuer als der Import — wählbar als Aktualisierung (nicht vorab abgewählt).
+  sourceNewer?: boolean;
   hints: string[]; // "already-imported" | "stale" | "short"
 }
 
@@ -51,10 +56,12 @@ export interface ImportGroup {
 }
 
 // Vorgabe: alles freigegeben AUSSER bereits Importiertem (Dedupe-Vorgabe; Override bleibt möglich).
+// WP-IC-6b: AUSNAHME — ist die Quelle seit dem Import aktualisiert (sourceNewer), ist der Kandidat
+// als „Aktualisierung importieren" WÄHLBAR und startet ausgewählt (kein unveränderte-Dublette-Fall).
 export function initialSelection(candidates: readonly GroupedCandidate[]): Record<string, boolean> {
   const selection: Record<string, boolean> = {};
   for (const candidate of candidates) {
-    selection[candidate.id] = !candidate.alreadyImported;
+    selection[candidate.id] = !candidate.alreadyImported || candidate.sourceNewer === true;
   }
   return selection;
 }
@@ -134,6 +141,7 @@ export function buildBatches(ids: readonly string[], size: number = APPLY_BATCH_
 
 export interface ApplyBatchResult {
   imported: number;
+  updates: number; // WP-IC-6b: davon Aktualisierungen (Teilmenge von imported)
   alreadyQueued: number; // idempotenter No-op des Servers (Kandidat war schon eingereiht)
   failed: { id: string; reason: string }[];
   notFound: string[];
@@ -151,6 +159,7 @@ export const EMPTY_APPLY_RUN: ApplyRunState = { results: [], attempted: [], tran
 
 export interface ImportBilanz {
   imported: number;
+  updates: number; // WP-IC-6b: davon Aktualisierungen — informative TEILMENGE von imported
   alreadyQueued: number; // WP-SHIP7-FIX: No-op des Servers — NICHT als importiert gezählt
   skippedAlreadyImported: number; // vorab abgewählt, weil bereits importiert (Dedupe-Vorgabe)
   excluded: number; // bewusst ausgeschlossen (Gruppe/Einzel)
@@ -181,9 +190,11 @@ export function aggregateBilanz(
   }
   const failed: { id: string; reason: string }[] = [];
   let imported = 0;
+  let updates = 0;
   let alreadyQueued = 0;
   for (const batch of run.results) {
     imported += batch.imported;
+    updates += batch.updates;
     alreadyQueued += batch.alreadyQueued;
     failed.push(...batch.failed);
     failed.push(...batch.notFound.map((id) => ({ id, reason: "not-found" })));
@@ -192,5 +203,13 @@ export function aggregateBilanz(
   failed.push(...run.transportFailed.map((id) => ({ id, reason: "http-error" })));
   const attempted = new Set(run.attempted);
   const notAttempted = includedIds(selection).filter((id) => !attempted.has(id));
-  return { imported, alreadyQueued, skippedAlreadyImported, excluded, failed, notAttempted };
+  return {
+    imported,
+    updates,
+    alreadyQueued,
+    skippedAlreadyImported,
+    excluded,
+    failed,
+    notAttempted,
+  };
 }

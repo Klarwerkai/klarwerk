@@ -58,7 +58,9 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   objects: ["insert"],
   // SCRUM-510 (WP3): der atomar-idempotente Insert ist ebenfalls eine Mutation → muss journaliert werden,
   // sonst überleben so eingereihte Import-Kandidaten den Dev-Neustart nicht.
-  candidates: ["insert", "insertIfAbsent", "update"],
+  // WP-D-CLEAN: removeAll (Testdaten-Aufräumen) ebenfalls — sonst wären die Kandidaten nach einem
+  // Dev-Neustart wieder da.
+  candidates: ["insert", "insertIfAbsent", "update", "removeAll"],
   modelRuns: ["append"],
   // Audit-P3 (SCRUM-397): Gelesen-Status überlebt den Neustart (Dev-Journal).
   notificationSeen: ["markSeen"],

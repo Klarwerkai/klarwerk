@@ -69,6 +69,7 @@ describe("WP-IC-4: Auswahl-Logik", () => {
       results: [
         {
           imported: 1,
+          updates: 0,
           alreadyQueued: 0,
           failed: [{ id: "x", reason: "Error" }],
           notFound: ["weg"],
@@ -78,6 +79,7 @@ describe("WP-IC-4: Auswahl-Logik", () => {
       transportFailed: [],
     });
     expect(bilanz.imported).toBe(1);
+    expect(bilanz.updates).toBe(0);
     expect(bilanz.alreadyQueued).toBe(0);
     expect(bilanz.skippedAlreadyImported).toBe(1); // b
     expect(bilanz.excluded).toBe(1); // c
@@ -101,11 +103,14 @@ describe("WP-IC-4: Auswahl-Logik", () => {
     // Lauf: Batch 1 [a,d] erfolgreich (a importiert, d bereits eingereiht); Batch 2 [e] scheitert
     // am HTTP-Aufruf → Abbruch; f wird nie versucht.
     const bilanz = aggregateBilanz(candidates, selection, {
-      results: [{ imported: 1, alreadyQueued: 1, failed: [], notFound: [] }],
+      results: [{ imported: 1, updates: 1, alreadyQueued: 1, failed: [], notFound: [] }],
       attempted: ["a", "d", "e"],
       transportFailed: ["e"],
     });
     expect(bilanz.imported).toBe(1);
+    // WP-IC-6b: Aktualisierungen sind eine informative TEILMENGE von imported — sie zählen in
+    // der Invariante NICHT zusätzlich.
+    expect(bilanz.updates).toBe(1);
     expect(bilanz.alreadyQueued).toBe(1);
     expect(bilanz.skippedAlreadyImported).toBe(1);
     expect(bilanz.excluded).toBe(1);
@@ -120,6 +125,22 @@ describe("WP-IC-4: Auswahl-Logik", () => {
       bilanz.failed.length +
       bilanz.notAttempted.length;
     expect(total).toBe(candidates.length);
+  });
+
+  it("WP-IC-6b: Auswahl-Vorgabe — Quelle-neuer-Kandidaten sind WÄHLBAR (nicht vorab abgewählt)", () => {
+    const candidates: GroupedCandidate[] = [
+      { id: "neu", title: "Neu", alreadyImported: false, hints: [] },
+      { id: "dublette", title: "Unverändert", alreadyImported: true, hints: ["already-imported"] },
+      {
+        id: "update",
+        title: "Aktualisiert",
+        alreadyImported: true,
+        sourceNewer: true,
+        hints: ["already-imported"],
+      },
+    ];
+    // Unveränderte Dublette bleibt vorab ABGEWÄHLT; die Aktualisierung startet AUSGEWÄHLT.
+    expect(initialSelection(candidates)).toEqual({ neu: true, dublette: false, update: true });
   });
 
   it("die komplette Copy existiert in DE, EN und NL", () => {

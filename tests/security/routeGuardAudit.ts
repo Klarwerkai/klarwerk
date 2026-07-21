@@ -199,6 +199,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // und Feature-Flag-Disziplin wie explore/select.
   "POST /api/admin/import/confluence/group": { protection: "users.manage" },
   "POST /api/admin/import/confluence/apply": { protection: "users.manage" },
+  // WP-D-CLEAN: zweistufiges Testdaten-Aufräumen (Vorschau/confirm) — Admin-Guard wie die
+  // übrigen Import-Admin-Wege; immer registriert (library-routes, kein Feature-Flag).
+  "POST /api/admin/import/cleanup": { protection: "users.manage" },
   "GET /api/analytics/impact": { protection: "ko.read" },
 
   // --- KO (ko-routes.ts) ---

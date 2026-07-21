@@ -29,6 +29,8 @@ import type {
   ImpactReport,
   ImportApplyResponse,
   ImportCandidate,
+  ImportCleanupPreview,
+  ImportCleanupResult,
   ImportExploreResponse,
   ImportGroupResponse,
   ImportItemInput,
@@ -461,6 +463,10 @@ export const endpoints = {
         includeIds: string[];
         snapshotToken?: number;
       }) => api.post<ImportApplyResponse>("/admin/import/confluence/apply", body),
+      // WP-D-CLEAN: zweistufiges Testdaten-Aufräumen (ohne confirm = Vorschau).
+      cleanupPreview: () => api.post<ImportCleanupPreview>("/admin/import/cleanup", {}),
+      cleanupConfirm: () =>
+        api.post<ImportCleanupResult>("/admin/import/cleanup", { confirm: true }),
     },
   },
   users: {

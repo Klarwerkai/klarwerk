@@ -135,6 +135,13 @@ export function GroupApprovalPanel({
                       <span className="min-w-0 flex-1">
                         {displayImportText(candidate.title, candidate.textCodec)}
                       </span>
+                      {/* WP-IC-6b: nüchternes Badge — Quelle wurde seit dem Import aktualisiert;
+                          der Kandidat ist als Aktualisierung wählbar (neue KO-Version im Review). */}
+                      {candidate.sourceNewer ? (
+                        <span className="shrink-0 rounded-pill bg-ai-surface-1 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai">
+                          {t(IMPORT_GROUPS_TEXT.hintSourceNewer)}
+                        </span>
+                      ) : null}
                       {candidate.hints.map((hint) => {
                         const key = hintLabelKey(hint);
                         return key ? (
@@ -300,6 +307,11 @@ export function ImportGroups({ criteria }: { criteria: ImportSelectCriteria }): 
           <p className="text-[13px] font-semibold text-text">{t(IMPORT_GROUPS_TEXT.bilanzTitle)}</p>
           <ul className="mt-1.5 space-y-0.5 text-[12.5px] text-text">
             <li>· {t(IMPORT_GROUPS_TEXT.bilanzImported, { n: bilanz.imported })}</li>
+            {bilanz.updates > 0 ? (
+              <li className="pl-3 text-muted">
+                {t(IMPORT_GROUPS_TEXT.bilanzUpdates, { n: bilanz.updates })}
+              </li>
+            ) : null}
             <li>· {t(IMPORT_GROUPS_TEXT.bilanzQueued, { n: bilanz.alreadyQueued })}</li>
             <li>· {t(IMPORT_GROUPS_TEXT.bilanzSkipped, { n: bilanz.skippedAlreadyImported })}</li>
             <li>· {t(IMPORT_GROUPS_TEXT.bilanzExcluded, { n: bilanz.excluded })}</li>

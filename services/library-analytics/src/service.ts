@@ -33,6 +33,10 @@ import {
 // weil jedes backgefüllte KO danach dauerhaft sein Feld trägt).
 export const SEARCH_BACKFILL_LIMIT_PER_QUERY = 20;
 
+// WP-D-CLEAN (Pedis Testdaten-Aufräumen): Provider, deren Import-Provenienz zum Aufräum-Umfang
+// gehört (kleingeschrieben verglichen — Adapter schreiben "Confluence"/"Jira").
+export const IMPORT_CLEANUP_PROVIDERS = ["confluence", "jira"] as const;
+
 export interface LibraryServiceDeps {
   koService: KoService;
   audit?: AuditService;
@@ -158,6 +162,64 @@ export class LibraryService {
 
   listImportCandidates(): Promise<ImportCandidate[]> {
     return this.candidates.all();
+  }
+
+  // ---- WP-D-CLEAN (Pedis Entscheid: alle Testdaten löschen, auch Confluence und Jira) ----
+  // Umfang: (a) ALLE Import-Kandidaten der Review-Queue (jeder Status, harte Entfernung — Queue-
+  // Einträge kennen keinen Papierkorb), (b) alle KOs mit Import-Provenienz eines der Cleanup-
+  // Provider (Herkunfts-Anker: kind "external" + provider). KOs OHNE solche Provenienz bleiben
+  // UNANGETASTET; die KO-Löschung läuft über den BESTEHENDEN Soft-Delete (Papierkorb — Original
+  // ist heilig, Wiederherstellung bleibt möglich). Nichts an Nutzern/Teams/Einstellungen.
+
+  private hasCleanupProvenance(
+    sources: readonly { kind?: string; provider?: string | null }[],
+  ): boolean {
+    return sources.some(
+      (s) =>
+        s.kind === "external" &&
+        typeof s.provider === "string" &&
+        (IMPORT_CLEANUP_PROVIDERS as readonly string[]).includes(s.provider.toLowerCase()),
+    );
+  }
+
+  // Vorschau: NUR zählen, nichts verändern.
+  async importCleanupPreview(): Promise<{ candidates: number; importedKos: number }> {
+    const candidates = (await this.candidates.all()).length;
+    const kos = await this.koService.list();
+    const importedKos = kos.filter((ko) => this.hasCleanupProvenance(ko.sources ?? [])).length;
+    return { candidates, importedKos };
+  }
+
+  // Ausführung: Queue leeren + Import-KOs in den Papierkorb; ehrliche Bilanz (übersprungen mit
+  // PII-freiem Grund je KO-Id). Audit-Eintrag mit Zählern (wer/wann kommt vom Audit-Service).
+  async runImportCleanup(actor: string): Promise<{
+    removedCandidates: number;
+    trashedKos: number;
+    skipped: { id: string; reason: string }[];
+  }> {
+    const removedCandidates = await this.candidates.removeAll();
+    const targets = (await this.koService.list()).filter((ko) =>
+      this.hasCleanupProvenance(ko.sources ?? []),
+    );
+    let trashedKos = 0;
+    const skipped: { id: string; reason: string }[] = [];
+    for (const ko of targets) {
+      try {
+        // BESTEHENDE Löschlogik: Soft-Delete in den Papierkorb (SCRUM-422) — kein Hard-Delete.
+        await this.koService.delete(ko.id, actor);
+        trashedKos += 1;
+      } catch (err) {
+        // PII-frei: nur Id + Fehlerklasse.
+        skipped.push({ id: ko.id, reason: err instanceof Error ? err.name : "unknown" });
+      }
+    }
+    await this.audit?.record({
+      actor,
+      action: "import.cleanup",
+      target: "library",
+      payload: { removedCandidates, trashedKos, skipped: skipped.length },
+    });
+    return { removedCandidates, trashedKos, skipped };
   }
 
   // SCRUM-116: Review-Aktion. accept → echtes KO (außer Dublette, dann übersprungen).
