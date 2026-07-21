@@ -44,12 +44,15 @@ describe("WP-BILD-1g: PgKoRepo-Suchpfad (Query-Shape, Fake-Pool)", () => {
     expect(sql).not.toContain("- 'bodyHtml'");
   });
 
-  it("setCaptionTexts ist ein schmaler jsonb_set-Write (kein Voll-Objekt, kein rowVersion-CAS)", async () => {
+  it("setCaptionTexts ist ein ATOMAR BEDINGTER jsonb_set-Write: NUR wenn das Feld fehlt (WP-BILD-1h)", async () => {
     const { pool, calls } = fakePool([]);
     const repo = new PgKoRepo(pool);
     await repo.setCaptionTexts("k1", ["Verschraubung"]);
     const { sql, params } = calls[0] as { sql: string; params: unknown[] };
     expect(sql).toContain("jsonb_set(data, '{captionTexts}', $2::jsonb)");
+    // bens sammel15-ROT 1: EIN bedingtes UPDATE … WHERE (kein Read-Modify-Write) — ein bereits
+    // gesetztes Feld (nebenläufiger revise mit frischerem Scan) wird NIE überschrieben.
+    expect(sql).toContain("AND NOT (data ? 'captionTexts')");
     expect(sql).not.toContain("rowVersion");
     expect(params).toEqual(["k1", JSON.stringify(["Verschraubung"])]);
   });

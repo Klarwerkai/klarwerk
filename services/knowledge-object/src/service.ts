@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
 import type { TxContext } from "../../db-tx";
-import { htmlToPlainText, imageCaptionTexts, sanitizeHtml } from "../../structure";
+// WP-BILD-1h: searchCaptionTexts = Scanner + kanonischer Größendeckel — der EINE Pfad für
+// create, revise und Legacy-Backfill (keine ungedeckelten captionTexts in der Persistenz).
+import { htmlToPlainText, sanitizeHtml, searchCaptionTexts } from "../../structure";
 import {
   isConfidential,
   isConfidentialityDowngrade,
@@ -306,7 +308,7 @@ export class KoService {
       ...(bodyHtml ? { bodyHtml } : {}),
       // WP-BILD-1g: abgeleitetes Suchfeld der Bild-Fußnoten IMMER an der Schreibgrenze setzen
       // (auch [] bei „keine Fußnoten" — nur Legacy-KOs von VOR dieser Regel haben kein Feld).
-      captionTexts: imageCaptionTexts(bodyHtml),
+      captionTexts: searchCaptionTexts(bodyHtml),
       conditions: input.conditions ?? [],
       measures: input.measures ?? [],
       type: input.type,
@@ -543,21 +545,35 @@ export class KoService {
     return (await this.repo.listForSearch(filter)).filter((k) => !k.deletedAt);
   }
 
-  // WP-BILD-1g: EINMALIGER Legacy-Backfill des abgeleiteten captionTexts-Suchfelds. Lädt das eine
-  // KO voll (nur für diesen Rest-Bestand), extrahiert body-sparend und persistiert das Feld über
-  // den schmalen Repo-Write (kein Versions-Bump, kein Audit — abgeleiteter Cache, idempotent).
-  // Danach trägt das KO das Feld dauerhaft: jeder Legacy-KO wird höchstens EINMAL gescannt.
+  // WP-BILD-1g/1h: EINMALIGER Legacy-Backfill des abgeleiteten captionTexts-Suchfelds. Lädt das
+  // eine KO voll (nur für diesen Rest-Bestand), extrahiert body-sparend + GEDECKELT
+  // (searchCaptionTexts) und persistiert über den schmalen Nur-wenn-fehlt-Repo-Write (kein
+  // Versions-Bump, kein Audit). WP-BILD-1h (bens sammel15-ROT 2): SINGLE-FLIGHT pro KO-Id
+  // prozessweit — parallele Suchen laden denselben Legacy-KO nicht mehrfach; der Eintrag wird
+  // IMMER (finally) abgeräumt, damit ein Fehlschlag später erneut versucht werden kann.
+  private readonly captionBackfillsInFlight = new Map<string, Promise<string[]>>();
+
   async ensureCaptionTexts(id: string): Promise<string[]> {
-    const ko = await this.repo.findById(id);
-    if (!ko || ko.deletedAt) {
-      return [];
+    const inFlight = this.captionBackfillsInFlight.get(id);
+    if (inFlight) {
+      return inFlight;
     }
-    if (ko.captionTexts) {
-      return ko.captionTexts;
-    }
-    const captionTexts = imageCaptionTexts(ko.bodyHtml);
-    await this.repo.setCaptionTexts(id, captionTexts);
-    return captionTexts;
+    const run = (async (): Promise<string[]> => {
+      const ko = await this.repo.findById(id);
+      if (!ko || ko.deletedAt) {
+        return [];
+      }
+      if (ko.captionTexts) {
+        return ko.captionTexts;
+      }
+      const captionTexts = searchCaptionTexts(ko.bodyHtml);
+      await this.repo.setCaptionTexts(id, captionTexts);
+      return captionTexts;
+    })().finally(() => {
+      this.captionBackfillsInFlight.delete(id);
+    });
+    this.captionBackfillsInFlight.set(id, run);
+    return run;
   }
 
   // SCRUM-361 / AG-03: begrenzte, datenquellennahe Kandidatenabfrage für Ask (kein All-Pool-Load).
@@ -750,7 +766,7 @@ export class KoService {
         bodyHtml: nextBody,
         // WP-BILD-1g: Fußnoten-Suchfeld beim Überarbeiten mitführen — eine Caption-Änderung im
         // Editor aktualisiert das Feld; unveränderte Bodies backfillen Legacy-KOs nebenbei.
-        captionTexts: imageCaptionTexts(nextBody),
+        captionTexts: searchCaptionTexts(nextBody),
         type: changes.type ?? ko.type,
         conditions: changes.conditions ?? ko.conditions,
         measures: changes.measures ?? ko.measures,

@@ -42,10 +42,10 @@ export interface KoRepo {
   // aber OHNE bodyHtml (Pg: SELECT data - 'bodyHtml'; InMemory: Feld weggelassen). Die Suche
   // arbeitet über title/statement/captionTexts und traversiert nie megabyte-große Body-Strings.
   listForSearch(filter: KoFilter): Promise<KnowledgeObject[]>;
-  // WP-BILD-1g: schmaler Backfill des ABGELEITETEN captionTexts-Suchfelds (Legacy-KOs von vor der
-  // Schreibregel). BEWUSST ohne rowVersion-CAS, ohne Versions-Snapshot, ohne Audit: es ist ein
-  // idempotenter Cache-Write eines abgeleiteten Felds, keine inhaltliche Änderung — ein
-  // nebenläufiger Voll-Write gewinnt harmlos (er schreibt sein eigenes, frisch extrahiertes Feld).
+  // WP-BILD-1g/1h: schmaler Backfill des ABGELEITETEN captionTexts-Suchfelds (Legacy-KOs von vor
+  // der Schreibregel). VERTRAG (bens sammel15-ROT 1): schreibt ATOMAR NUR, WENN DAS FELD FEHLT —
+  // ein bereits gesetztes Feld (nebenläufiger revise/Voll-Write mit frischerem Scan) wird nie
+  // überschrieben. Weiterhin ohne rowVersion-CAS, Versions-Snapshot oder Audit (Cache-Write).
   setCaptionTexts(id: string, captionTexts: string[]): Promise<void>;
   // SCRUM-361: begrenzte, vorgefilterte Kandidatenmenge für Ask (kein All-Pool-Load mehr).
   findCandidates(query: KoCandidateQuery): Promise<KnowledgeObject[]>;
@@ -136,10 +136,12 @@ export class InMemoryKoRepo implements KoRepo {
     );
   }
 
-  // WP-BILD-1g: idempotenter Cache-Write des abgeleiteten Suchfelds (kein Versions-/Audit-Pfad).
+  // WP-BILD-1g/1h: Cache-Write des abgeleiteten Suchfelds — ATOMAR NUR-WENN-FELD-FEHLT (analog
+  // zur bedingten Pg-Query): ein bereits gesetztes Feld (z. B. von einem nebenläufigen revise mit
+  // frischerem Scan) wird NIE überschrieben; der Voll-Write gewinnt immer. Kein Versions-/Audit-Pfad.
   setCaptionTexts(id: string, captionTexts: string[]): Promise<void> {
     const ko = this.items.get(id);
-    if (ko) {
+    if (ko && ko.captionTexts === undefined) {
       this.items.set(id, { ...ko, captionTexts: [...captionTexts] });
     }
     return Promise.resolve();

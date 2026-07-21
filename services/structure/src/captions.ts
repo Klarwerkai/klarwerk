@@ -21,6 +21,19 @@ const CLOSE_TAG = "</figcaption>";
 // kopiert (base64 kann kein „<" enthalten — ein Sprungziel liegt nie in einem src-Wert). Nur der
 // kleine Fußnoten-Ausschnitt selbst wird geslict und normalisiert (Tags raus, Whitespace
 // kollabiert); leere Fußnoten und exakte Alt-Platzhaltertexte (WP-D10) fallen weg.
+// WP-BILD-1h (bens sammel14/15-Auflage): GRÖSSENDECKEL des persistierten Suchfelds — an EINER
+// kanonischen Stelle, die create + revise + Legacy-Backfill teilen. Je Caption hart 500 Zeichen
+// (ehrlicher Schnitt, KEIN Ellipsis-Fake im Index), höchstens 50 Captions je KO (Rest fällt weg).
+// Der Scanner selbst (imageCaptionTexts, ben-GRÜN) bleibt unangetastet — der Deckel liegt darüber.
+export const MAX_CAPTION_TEXT_LENGTH = 500;
+export const MAX_CAPTIONS_PER_KO = 50;
+
+export function searchCaptionTexts(bodyHtml: string | null | undefined): string[] {
+  return imageCaptionTexts(bodyHtml)
+    .slice(0, MAX_CAPTIONS_PER_KO)
+    .map((caption) => caption.slice(0, MAX_CAPTION_TEXT_LENGTH));
+}
+
 export function imageCaptionTexts(bodyHtml: string | null | undefined): string[] {
   if (!bodyHtml) {
     return [];

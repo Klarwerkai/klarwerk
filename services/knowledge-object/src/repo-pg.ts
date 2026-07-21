@@ -174,12 +174,15 @@ export class PgKoRepo implements KoRepo {
     return res.rows.map((row) => row.data);
   }
 
-  // WP-BILD-1g: idempotenter Backfill des ABGELEITETEN captionTexts-Suchfelds (Legacy-KOs).
-  // BEWUSST ohne rowVersion-CAS/Version/Audit — reiner Cache-Write im JSONB-Dokument; ein
-  // nebenläufiger Voll-Write überschreibt harmlos mit seinem frisch extrahierten Feld.
+  // WP-BILD-1g/1h: Backfill des ABGELEITETEN captionTexts-Suchfelds (Legacy-KOs). WP-BILD-1h
+  // (bens sammel15-ROT 1): ATOMAR NUR-WENN-FELD-FEHLT — ein einziges bedingtes UPDATE, kein
+  // Read-Modify-Write. Damit kann ein spät ankommender Backfill mit ALTEM Scan die frischen
+  // captionTexts eines nebenläufigen revise (Voll-Write setzt das Feld immer) NIE clobbern:
+  // der Voll-Write gewinnt per Konstruktion. Weiterhin ohne rowVersion-CAS/Version/Audit
+  // (reiner Cache-Write eines abgeleiteten Felds).
   async setCaptionTexts(id: string, captionTexts: string[]): Promise<void> {
     await this.pool.query(
-      "UPDATE kos SET data = jsonb_set(data, '{captionTexts}', $2::jsonb) WHERE id=$1",
+      "UPDATE kos SET data = jsonb_set(data, '{captionTexts}', $2::jsonb) WHERE id=$1 AND NOT (data ? 'captionTexts')",
       [id, JSON.stringify(captionTexts)],
     );
   }

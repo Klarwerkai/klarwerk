@@ -27,6 +27,12 @@ import {
   type ReviewAction,
 } from "./types";
 
+// WP-BILD-1h (bens sammel15-ROT 2): harter Backfill-Deckel PRO SUCHANFRAGE. Eine nicht-matchende
+// Query darf nicht den nahezu gesamten Legacy-Bestand voll laden — höchstens so viele Legacy-KOs
+// werden je Suche geladen/gescannt/backgefüllt; der Rest folgt in späteren Suchen (konvergiert,
+// weil jedes backgefüllte KO danach dauerhaft sein Feld trägt).
+export const SEARCH_BACKFILL_LIMIT_PER_QUERY = 20;
+
 export interface LibraryServiceDeps {
   koService: KoService;
   audit?: AuditService;
@@ -303,7 +309,12 @@ export class LibraryService {
   // DATENQUELLEN-Ebene body-frei — geladen wird die Projektion OHNE bodyHtml, der Caption-Match
   // läuft über das beim KO-Schreiben persistierte captionTexts-Feld. Legacy-KOs ohne Feld werden
   // beim ersten Such-Kandidaten EINMALIG backgefüllt (bodyHtml nur für dieses eine KO geladen,
-  // Ergebnis persistiert) — danach nie wieder gescannt.
+  // Ergebnis persistiert). WP-BILD-1h (bens sammel15-ROT 2): der Backfill ist HART LASTBEGRENZT —
+  // höchstens SEARCH_BACKFILL_LIMIT_PER_QUERY Vollladungen PRO SUCHANFRAGE; Kandidaten über dem
+  // Deckel werden in DIESER Suche ehrlich ohne Caption-Match behandelt (title/statement-Match
+  // bleibt), die nächste Suche arbeitet den nächsten Schwung ab (konvergiert). Wirft der Backfill
+  // eines Kandidaten (Laden/Scan/Write), fällt NUR dieser Kandidat auf „kein Caption-Match"
+  // zurück — die Suche selbst scheitert NIE am Backfill (PII-freies Log: KO-Id + Fehlerklasse).
   async search(query: string, filter: KoFilter = {}): Promise<KnowledgeObject[]> {
     const list = await this.koService.listForSearch(filter);
     const q = query.trim().toLowerCase();
@@ -311,12 +322,30 @@ export class LibraryService {
       return list;
     }
     const out: KnowledgeObject[] = [];
+    let backfills = 0;
     for (const ko of list) {
       if (ko.title.toLowerCase().includes(q) || ko.statement.toLowerCase().includes(q)) {
         out.push(ko);
         continue;
       }
-      const captionTexts = ko.captionTexts ?? (await this.koService.ensureCaptionTexts(ko.id));
+      let captionTexts = ko.captionTexts;
+      if (captionTexts === undefined) {
+        if (backfills >= SEARCH_BACKFILL_LIMIT_PER_QUERY) {
+          continue; // Deckel erreicht: in DIESER Suche ehrlich ohne Caption-Match weiter.
+        }
+        backfills += 1;
+        try {
+          captionTexts = await this.koService.ensureCaptionTexts(ko.id);
+        } catch (error) {
+          // PII-frei: nur Id + Fehlerklasse — nie Inhalte. Der Kandidat bleibt ohne Caption-Match.
+          process.stderr.write(
+            `[KLARWERK] Caption-Backfill fehlgeschlagen (ko=${ko.id}, fehler=${
+              error instanceof Error ? error.name : "unknown"
+            }).\n`,
+          );
+          continue;
+        }
+      }
       if (captionTexts.some((caption) => caption.toLowerCase().includes(q))) {
         // Das (ggf. frisch backgefüllte) Feld reist im Treffer mit — der Client kennzeichnet
         // damit die Fundstelle, ohne dass bodyHtml transportiert wird.
