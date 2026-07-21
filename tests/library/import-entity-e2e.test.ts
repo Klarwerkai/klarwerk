@@ -9,7 +9,11 @@ import { displayImportText } from "../../apps/web/src/lib/htmlEntities";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { mapConfluencePageToImportItem } from "../../services/confluence/src/mapper";
 import type { ConfluencePage } from "../../services/confluence/src/rest-client";
-import { summarizeImportItems, toPreviewEntry } from "../../services/library-analytics";
+import {
+  type ImportItem,
+  summarizeImportItems,
+  toPreviewEntry,
+} from "../../services/library-analytics";
 
 const OPTS = { baseUrl: "https://acme.atlassian.net/wiki", spaceKey: "OPS" };
 
@@ -117,5 +121,68 @@ describe("WP-IC-PAKET-1c ROT-2: Decode-Marker verhindert Doppel-Dekodieren (E2E)
     );
     // Mit Marker: exakt der kanonische Wert, unangetastet.
     expect(displayImportText(LITERAL, "decoded")).toBe(LITERAL);
+  });
+});
+
+// WP-IC-PAKET-1d (bens sammel9-ROT): der Codec-Vertrag hält auch OHNE Mapper. (a) JEDE
+// Kandidaten-Erzeugung läuft durch createImportCandidates — die Ingest-Grenze stempelt autoritativ;
+// (b) das Explore-Aggregat ist mischungsfest: pro Item kanonisiert, markierte Literale bleiben
+// byte-genau, unmarkierte Altwerte werden serverseitig einmal dekodiert.
+describe("WP-IC-PAKET-1d: zentrale Codec-Erzeugungsregel + mischungsfestes Aggregat", () => {
+  it("(a) DIREKTER Kandidat ohne Mapper (JSON-/Demo-Pfad) trägt den Marker; Anzeige lässt Literale unangetastet", async () => {
+    const services = buildServices();
+    buildApp(services);
+    // Client-geliefertes Item (Route → createImportCandidates), Literal-Entity ist SEIN echter Text.
+    const raw: ImportItem = {
+      title: "Kapitel &uuml; Anhang",
+      statement: "Direkt eingereichter Kandidat ohne Mapper.",
+      type: "best_practice",
+      category: "K",
+    };
+    const [candidate] = await services.library.createImportCandidates([raw], "tester");
+    if (!candidate) {
+      throw new Error("Kandidat fehlt");
+    }
+    // Die Ingest-Grenze stempelt — es wird NICHTS nachträglich dekodiert (sein Text bleibt seiner).
+    expect(candidate.item.textCodec).toBe("decoded");
+    expect(candidate.item.title).toBe("Kapitel &uuml; Anhang");
+    // Anzeige: markiert = kanonisch → das Literal bleibt Literal (NICHT ü).
+    expect(displayImportText(candidate.item.title, candidate.item.textCodec)).toBe(
+      "Kapitel &uuml; Anhang",
+    );
+  });
+
+  it("(b) Mischaggregat: markiertes Literal bleibt unverfremdet, unmarkierter Altwert wird dekodiert — sauber getrennt", () => {
+    const marked: ImportItem = {
+      title: "Neuer Beitrag",
+      statement: "s",
+      type: "best_practice",
+      category: "K",
+      author: "J&uuml;rgen Literal",
+      tags: ["k&uuml;che-literal"],
+      textCodec: "decoded",
+    };
+    const legacy: ImportItem = {
+      title: "Alter Beitrag",
+      statement: "s",
+      type: "best_practice",
+      category: "K",
+      author: "J&uuml;rgen Alt",
+      tags: ["k&uuml;che"],
+    };
+    const summary = summarizeImportItems([marked, legacy]);
+    // Aggregat ist per Konstruktion IMMER kanonisch (Marker bedingungslos gesetzt).
+    expect(summary.textCodec).toBe("decoded");
+    const authorNames = summary.authors.map((a) => a.name);
+    // Kanonisches Literal des markierten Items: byte-genau erhalten …
+    expect(authorNames).toContain("J&uuml;rgen Literal");
+    expect(authorNames).not.toContain("Jürgen Literal");
+    // … und der unmarkierte Altwert korrekt dekodiert (nicht roh).
+    expect(authorNames).toContain("Jürgen Alt");
+    expect(authorNames).not.toContain("J&uuml;rgen Alt");
+    const themeLabels = summary.themes.map((th) => th.label);
+    expect(themeLabels).toContain("k&uuml;che-literal");
+    expect(themeLabels).toContain("küche");
+    expect(themeLabels).not.toContain("k&uuml;che");
   });
 });

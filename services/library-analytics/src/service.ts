@@ -90,7 +90,16 @@ export class LibraryService {
     actor = "system",
   ): Promise<ImportCandidate[]> {
     // SCRUM-515: an der Ingest-Grenze runtime-validieren, BEVOR das Item in die Queue/den Bestand geht.
-    const items = rawItems.map((item) => this.withSanitizedConfidentiality(item));
+    // WP-IC-PAKET-1d (bens sammel9-ROT): ZENTRALE Codec-Erzeugungsregel. Dies ist DIE eine Stelle,
+    // durch die jede Kandidaten-Erzeugung läuft (Confluence-Import, JSON-Re-Import-Route, Demo-Korpus) —
+    // jedes NEUE Item wird hier autoritativ als kanonisch gestempelt (textCodec="decoded"). Ein neuer
+    // Kandidat IST per Definition kanonischer Text: liefert ein Aufrufer rohe Entities, ist das SEIN
+    // Text — hier wird nichts nachträglich dekodiert, nur markiert. Damit gilt wieder verlässlich:
+    // Marker fehlt = echter Altbestand (gespeichert VOR dieser Regel).
+    const items = rawItems.map<ImportItem>((item) => ({
+      ...this.withSanitizedConfidentiality(item),
+      textCodec: "decoded",
+    }));
     const existing = await this.koService.list();
     const seen = new Set(existing.map((ko) => `${ko.title}|${ko.statement}`));
     const at = new Date(this.now()).toISOString();

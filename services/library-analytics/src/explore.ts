@@ -3,6 +3,9 @@
 // Zeitraum. Vollständig deterministisch: kein Netz, keine KI, kein Schreibzugriff, keine Modulgrenzen-
 // Verletzung (kennt nur den quell-agnostischen ImportItem-Vertrag, KEIN Confluence-Symbol).
 
+// WP-IC-PAKET-1d: serverseitige Einmal-Dekodierung unmarkierter Altbestands-Werte (mischungsfestes
+// Aggregat) — Cross-Modul über die öffentliche structure-API.
+import { decodeHtmlEntities } from "../../structure";
 import { deriveTitleThemes } from "./themes";
 import type { ImportItem } from "./types";
 
@@ -30,9 +33,10 @@ export interface ImportExploreSummary {
   // WP-IC-PAKET-1 (Teil 3): die Quell-Container NAMENTLICH (für den Space-Filter, wenn mehrere) —
   // additiv; distinctSources bleibt als Zahl erhalten.
   sourceNames: CountEntry[];
-  // WP-IC-PAKET-1c (bens ROT-2): "decoded", wenn ALLE aggregierten Items den Decode-Marker tragen —
-  // dann sind Autoren-/Themen-Namen kanonisch und die Anzeige dekodiert NICHT erneut. Fehlt der
-  // Marker (mindestens ein Altbestands-Item), bleibt der defensive Anzeige-Durchlauf aktiv.
+  // WP-IC-PAKET-1c/1d: das Aggregat ist per Konstruktion IMMER kanonisch — unmarkierte Altbestands-
+  // Items werden PRO ITEM vor dem Zählen einmal dekodiert, markierte Werte bleiben unverändert
+  // (mischungsfest). Der Marker steht deshalb bedingungslos; optional nur für Wire-Kompatibilität
+  // mit älteren, gecachten Antworten (Client dekodiert dann defensiv).
   textCodec?: "decoded";
 }
 
@@ -81,28 +85,39 @@ export function summarizeImportItems(
   let latest: string | null = null;
   let withImagesHint = 0;
 
+  // WP-IC-PAKET-1d (bens sammel9-ROT): MISCHUNGSFESTES Aggregat — PRO ITEM kanonisieren. Unmarkierte
+  // Items (echter Altbestand) werden VOR dem Zählen serverseitig EINMAL dekodiert; markierte Werte
+  // bleiben byte-genau unverändert (ein echtes Literal &uuml; wird nie verfremdet). Das Aggregat ist
+  // damit DURCHGEHEND kanonisch — das frühere globale alle-markiert-Bit hätte bei Mischdaten auch
+  // kanonische markierte Werte clientseitig erneut dekodiert.
+  const canonical = (item: ImportItem, text: string): string =>
+    item.textCodec === "decoded" ? text : decodeHtmlEntities(text);
+
   // WP-IC-PAKET-1 (Teil 2): Items OHNE Labels bekommen deterministisch aus den Titeln abgeleitete
   // Themen-Gruppen (Mindestgröße 2); der Rest bleibt ehrlich „(ohne Label)". Die Ableitung läuft NUR
-  // über die label-losen Items — echte Labels bleiben die unangetastete Wahrheit.
+  // über die label-losen Items — echte Labels bleiben die unangetastete Wahrheit. Titel gehen
+  // KANONISIERT in die Ableitung (1d — sonst würden Altbestands-Entities Themen-Fragmente bilden).
   const untagged = items.filter(
     (it) => (it.tags ?? []).map((tag) => tag.trim()).filter((tag) => tag.length > 0).length === 0,
   );
   const derivedByTitle = new Map<ImportItem, string | null>();
-  const derivedLabels = deriveTitleThemes(untagged.map((it) => it.title));
+  const derivedLabels = deriveTitleThemes(untagged.map((it) => canonical(it, it.title)));
   untagged.forEach((it, i) => {
     derivedByTitle.set(it, derivedLabels[i] ?? null);
   });
 
   for (const item of items) {
-    const scope = (item.sourceScope ?? item.category ?? "").trim();
+    const scope = canonical(item, (item.sourceScope ?? item.category ?? "").trim());
     if (scope.length > 0) {
       increment(sources, scope);
     }
 
-    const author = item.author?.trim();
+    const author = item.author ? canonical(item, item.author).trim() : undefined;
     increment(authors, author && author.length > 0 ? author : NO_AUTHOR_LABEL);
 
-    const labels = (item.tags ?? []).map((tag) => tag.trim()).filter((tag) => tag.length > 0);
+    const labels = (item.tags ?? [])
+      .map((tag) => canonical(item, tag).trim())
+      .filter((tag) => tag.length > 0);
     if (labels.length === 0) {
       const derived = derivedByTitle.get(item) ?? null;
       if (derived !== null) {
@@ -155,9 +170,8 @@ export function summarizeImportItems(
     dateRange: earliest !== null && latest !== null ? { earliest, latest } : null,
     withImagesHint,
     sourceNames: rankCounts(sources),
-    // WP-IC-PAKET-1c (ROT-2): nur wenn ALLE Items kanonisch dekodiert sind, gilt es fürs Aggregat.
-    ...(items.length > 0 && items.every((it) => it.textCodec === "decoded")
-      ? { textCodec: "decoded" as const }
-      : {}),
+    // WP-IC-PAKET-1d: das Aggregat ist per Konstruktion IMMER kanonisch (pro Item kanonisiert) —
+    // der Marker steht deshalb bedingungslos; der Client dekodiert Aggregat-Werte nie erneut.
+    textCodec: "decoded",
   };
 }

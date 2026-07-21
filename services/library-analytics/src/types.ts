@@ -24,10 +24,13 @@ export interface ImportItem {
   // version.when). Rein additiv — nur für die Read-only-Erkundung (Zeitraum); kein Adapter MUSS es
   // füllen, kein Import-Pfad hängt davon ab.
   updatedAt?: string;
-  // WP-IC-PAKET-1c (bens ROT-2): DECODE-MARKER. "decoded" = die textuellen Felder wurden bereits an
-  // der QUELLE (Mapper) entity-dekodiert und sind kanonisch — die Anzeige darf NICHT erneut dekodieren
-  // (sonst wird ein echtes Literal &uuml; faelschlich zu ü). FEHLT der Marker (Altbestand von vor dem
-  // Quellen-Fix), fuehrt der Client den defensiven Zweit-Durchlauf aus. Additiv, JSON-persistiert.
+  // WP-IC-PAKET-1c/1d (bens ROT-2 + sammel9): DECODE-MARKER. "decoded" = die textuellen Felder sind
+  // KANONISCH — die Anzeige darf NICHT erneut dekodieren (sonst wird ein echtes Literal &uuml;
+  // faelschlich zu ü). ZENTRALE ERZEUGUNGSREGEL (1d): createImportCandidates stempelt JEDES neue Item
+  // autoritativ an der einen Ingest-Grenze (deckt Confluence-Import, JSON-Re-Import-Route und
+  // Demo-Korpus ab); der Confluence-Mapper setzt den Marker zusaetzlich bereits bei der Erzeugung
+  // (Explore/Select laufen ohne Kandidaten-Erzeugung direkt auf Mapper-Items). FEHLT der Marker, ist
+  // es ECHTER Altbestand (gespeichert vor dieser Regel) → defensiver Anzeige-Decode. JSON-persistiert.
   textCodec?: "decoded";
 }
 
