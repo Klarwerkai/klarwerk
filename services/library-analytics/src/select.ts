@@ -126,7 +126,10 @@ function matchesSpaces(item: ImportItem, spaces: Set<string>): boolean {
   if (spaces.size === 0) {
     return true;
   }
-  const scope = canonicalImportText(item, (item.sourceScope ?? item.category ?? "").trim())
+  // WP-IC-PAKET-1f (bens sammel11 P2): Reihenfolge durchgängig KANONISIEREN → DANN trimmen/
+  // normalisieren — identisch zur Chip-Seite (Erkundung); ein Entity-gepolsterter Space (&nbsp;…)
+  // matcht so exakt seinen kanonisierten Chip.
+  const scope = canonicalImportText(item, item.sourceScope ?? item.category ?? "")
     .trim()
     .toLowerCase();
   return scope.length > 0 && spaces.has(scope);
@@ -160,7 +163,11 @@ function matchesKeywords(item: ImportItem, keywords: readonly string[]): boolean
   if (keywords.length === 0) {
     return true;
   }
-  const haystack = `${item.title} ${item.statement}`.toLowerCase();
+  // WP-IC-PAKET-1f (bens sammel11 P1): auch der Freitext-Satz-Pfad vergleicht gegen KANONISCHE Werte
+  // (geteilte Funktion) — ein Stichwort wie „Küche" findet das rohe K&uuml;che-Alt-Item; markierte
+  // Literale bleiben byte-genau und matchen nicht fälschlich.
+  const haystack =
+    `${canonicalImportText(item, item.title)} ${canonicalImportText(item, item.statement)}`.toLowerCase();
   return keywords.some((kw) => haystack.includes(kw.toLowerCase()));
 }
 
@@ -175,11 +182,15 @@ export function filterImportItems(
   const keywords = criteria.keywords ?? [];
   // WP-IC-PAKET-1 (Teil 2): abgeleitete Titel-Themen der label-losen Items — NUR berechnet, wenn ein
   // Themen-Filter aktiv ist; identische Ableitung wie summarizeImportItems (deterministisch, kein
-  // Drift): Titel gehen wie dort KANONISIERT in die Ableitung (1e).
+  // Drift): Titel gehen wie dort KANONISIERT in die Ableitung (1e), und die Klassifikation
+  // getaggt/label-los entscheidet wie dort NACH Kanonisierung+Trim (1f P3).
   const derivedTheme = new Map<ImportItem, string | null>();
   if (themes.size > 0) {
     const untagged = items.filter(
-      (it) => (it.tags ?? []).map((tag) => tag.trim()).filter((tag) => tag.length > 0).length === 0,
+      (it) =>
+        (it.tags ?? [])
+          .map((tag) => canonicalImportText(it, tag).trim())
+          .filter((tag) => tag.length > 0).length === 0,
     );
     const labels = deriveTitleThemes(untagged.map((it) => canonicalImportText(it, it.title)));
     untagged.forEach((it, i) => {

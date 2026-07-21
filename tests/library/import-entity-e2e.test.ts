@@ -13,6 +13,7 @@ import { mapConfluencePageToImportItem } from "../../services/confluence/src/map
 import type { ConfluencePage } from "../../services/confluence/src/rest-client";
 import {
   type ImportItem,
+  NO_THEME_LABEL,
   filterImportItems,
   summarizeImportItems,
   toPreviewEntry,
@@ -311,5 +312,101 @@ describe("WP-IC-PAKET-1e: Summary-Chips sind selektierbar (gemeinsame Kanonisier
     );
     expect(codecSrc).toContain("decodeHtmlEntities(text)");
     expect(codecSrc).toContain('item.textCodec === "decoded" ? text : decodeHtmlEntities(text)');
+  });
+});
+
+// WP-IC-PAKET-1f (bens sammel11): die letzten drei Lücken im Selektionsvertrag. (a) Auch der
+// FREITEXT-Satz-Pfad (keywords) vergleicht kanonisch statt roh; (b) Spaces werden durchgängig erst
+// KANONISIERT und dann getrimmt/normalisiert (identisch zur Chip-Seite); (c) die Klassifikation
+// getaggt/label-los entscheidet NACH Kanonisierung+Trim — ein kanonisiert leeres Label zählt nicht
+// als vorhandenes Label.
+describe("WP-IC-PAKET-1f: Freitext-, Space- und Untagged-Pfad sind kanonisierungsfest", () => {
+  it("(a) Freitext-Stichwort trifft das Alt-Item über den DEKODIERTEN Begriff — das markierte Literal NICHT fälschlich", () => {
+    const legacy: ImportItem = {
+      title: "K&uuml;che desinfizieren",
+      statement: "Plan f&uuml;r die Reinigung.",
+      type: "best_practice",
+      category: "K",
+    };
+    const literal: ImportItem = {
+      title: "K&uuml;che Literal-Handbuch", // markiert: das Entity IST sein kanonischer Text
+      statement: "s",
+      type: "best_practice",
+      category: "K",
+      textCodec: "decoded",
+    };
+    const items = [legacy, literal];
+    // Der dekodierte Begriff findet NUR das rohe Alt-Item (dessen kanonischer Text „Küche" enthält).
+    expect(
+      filterImportItems(items, { keywords: ["Küche"] }).selected.map((it) => it.title),
+    ).toEqual(["K&uuml;che desinfizieren"]);
+    // Auch das Statement-Feld ist kanonisch durchsuchbar (rohes f&uuml;r → für).
+    expect(filterImportItems(items, { keywords: ["für"] }).matched).toBe(1);
+    // Umgekehrt trifft das ROHE Entity-Stichwort nur das byte-genaue Literal — kein Kreuz-Match.
+    expect(
+      filterImportItems(items, { keywords: ["K&uuml;che"] }).selected.map((it) => it.title),
+    ).toEqual(["K&uuml;che Literal-Handbuch"]);
+  });
+
+  it("(b) Entity-Space wird kanonisiert-getrimmt: der Erkundungs-Chip-Wert trifft das Item", () => {
+    const legacy: ImportItem = {
+      title: "Alter Beitrag",
+      statement: "s",
+      type: "best_practice",
+      category: "K",
+      sourceScope: "&nbsp;K&uuml;che&nbsp;", // Entity-gepolstert: erst Dekodieren macht ihn trimbar
+    };
+    // Chip-Seite: kanonisieren → trimmen → sauberer Chip ohne Polster.
+    const chips = summarizeImportItems([legacy]).sourceNames.map((s) => s.name);
+    expect(chips).toEqual(["Küche"]);
+    // Filter-Seite: identische Reihenfolge → der Chip-Wert trifft das Item.
+    expect(filterImportItems([legacy], { spaces: ["Küche"] }).matched).toBe(1);
+    // Der rohe Entity-Wert ist KEIN gültiger Chip-Wert mehr (kein Doppel-Vokabular).
+    expect(filterImportItems([legacy], { spaces: ["&nbsp;K&uuml;che&nbsp;"] }).matched).toBe(0);
+  });
+
+  it("(c) Label, das nach Kanonisierung LEER ist, zählt als label-los — Titel gehen in die Ableitung", () => {
+    const base = { statement: "s", type: "best_practice", category: "K" } as const;
+    // Rohe Entity-Nur-Whitespace-Labels: kanonisiert+getrimmt bleibt NICHTS übrig.
+    const a: ImportItem = { ...base, title: "Wartung Pumpen", tags: ["&nbsp;"] };
+    const b: ImportItem = { ...base, title: "Wartung Ventile", tags: ["&nbsp;"] };
+    const summary = summarizeImportItems([a, b]);
+    const labels = summary.themes.map((th) => th.label);
+    // Kein Geister-Label aus dem leeren Konstrukt …
+    expect(labels).not.toContain("&nbsp;");
+    expect(labels).not.toContain(" "); // dekodierter, ungetrimmter Geister-Wert
+    // … die Items gelten als label-los: die Titel-Ableitung greift und liefert den echten Chip.
+    expect(summary.themes.find((th) => th.label === "Wartung")?.origin).toBe("derived");
+    // Die Selektion klassifiziert IDENTISCH: der abgeleitete Chip trifft beide Items.
+    expect(filterImportItems([a, b], { themes: ["Wartung"] }).matched).toBe(2);
+    // Ohne ableitbare Gruppe zählt so ein Item ehrlich als „(ohne Label)".
+    const solo: ImportItem = { ...base, title: "Einzelbeitrag", tags: ["&nbsp;"] };
+    expect(summarizeImportItems([solo]).themes).toEqual([{ label: NO_THEME_LABEL, count: 1 }]);
+  });
+
+  it("DRIFT-PIN (1f): auch Freitext-, Space- und Untagged-Pfad laufen über die geteilte Kanonisierung", () => {
+    const exploreSrc = readFileSync(
+      resolve(process.cwd(), "services/library-analytics/src/explore.ts"),
+      "utf8",
+    );
+    const selectSrc = readFileSync(
+      resolve(process.cwd(), "services/library-analytics/src/select.ts"),
+      "utf8",
+    );
+    // P1: der Keyword-Heuhaufen kanonisiert Titel UND Statement über die geteilte Funktion.
+    expect(selectSrc).toContain("canonicalImportText(item, item.title)");
+    expect(selectSrc).toContain("canonicalImportText(item, item.statement)");
+    // P2: Space-Reihenfolge kanonisieren → trimmen, auf BEIDEN Seiten identisch — kein Roh-Trim
+    // mehr VOR der Kanonisierung.
+    for (const src of [exploreSrc, selectSrc]) {
+      expect(src).toContain('canonicalImportText(item, item.sourceScope ?? item.category ?? "")');
+      expect(src).not.toContain('(item.sourceScope ?? item.category ?? "").trim()');
+    }
+    // P3: die Untagged-Klassifikation prüft kanonisierte+getrimmte Labels — in beiden Dateien
+    // dieselbe geteilte Funktion, weiterhin ohne Direktzugriff auf den Decoder.
+    for (const src of [exploreSrc, selectSrc]) {
+      expect(src).toContain("canonicalImportText(it, tag).trim()");
+      expect(src).not.toContain("decodeHtmlEntities");
+    }
   });
 });

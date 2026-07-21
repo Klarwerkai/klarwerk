@@ -95,8 +95,14 @@ export function summarizeImportItems(
   // Themen-Gruppen (Mindestgröße 2); der Rest bleibt ehrlich „(ohne Label)". Die Ableitung läuft NUR
   // über die label-losen Items — echte Labels bleiben die unangetastete Wahrheit. Titel gehen
   // KANONISIERT in die Ableitung (1d — sonst würden Altbestands-Entities Themen-Fragmente bilden).
+  // WP-IC-PAKET-1f (bens sammel11 P3): die Klassifikation getaggt/label-los entscheidet NACH
+  // Kanonisierung+Trim — ein Label, das kanonisiert leer ist (Entity-Nur-Whitespace), zählt NICHT
+  // als vorhandenes Label.
   const untagged = items.filter(
-    (it) => (it.tags ?? []).map((tag) => tag.trim()).filter((tag) => tag.length > 0).length === 0,
+    (it) =>
+      (it.tags ?? [])
+        .map((tag) => canonicalImportText(it, tag).trim())
+        .filter((tag) => tag.length > 0).length === 0,
   );
   const derivedByTitle = new Map<ImportItem, string | null>();
   const derivedLabels = deriveTitleThemes(untagged.map((it) => canonicalImportText(it, it.title)));
@@ -105,7 +111,9 @@ export function summarizeImportItems(
   });
 
   for (const item of items) {
-    const scope = canonicalImportText(item, (item.sourceScope ?? item.category ?? "").trim());
+    // WP-IC-PAKET-1f (bens sammel11 P2): erst KANONISIEREN, dann trimmen — ein Entity-gepolsterter
+    // Space (&nbsp;…) wird so zum sauberen Chip, den die Selektion identisch normalisiert.
+    const scope = canonicalImportText(item, item.sourceScope ?? item.category ?? "").trim();
     if (scope.length > 0) {
       increment(sources, scope);
     }
