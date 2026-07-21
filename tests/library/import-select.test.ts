@@ -132,38 +132,58 @@ describe("IC-3: toPreviewEntry", () => {
   });
 });
 
-describe("IC-3: deriveCriteriaFromPrompt (injizierte KI, nie erfinden)", () => {
-  it("leitet aus Modell-JSON sanitisierte Kriterien ab", async () => {
-    const infer = async (): Promise<unknown> => ({ themes: ["wartung"], keywords: ["e5"] });
+// WP-SAMMEL20-FIX (bens Fix 2): der Vertrag ist jetzt EHRLICH — jeder Ausfall der Inferenz endet
+// weiter in leeren Kriterien (nie raten), trägt aber die Ursache als fallbackReason nach außen,
+// statt still als „alles passt" durchzurutschen.
+describe("IC-3: deriveCriteriaFromPrompt (injizierte KI, nie erfinden — Ausfall ehrlich)", () => {
+  it("leitet aus Modell-JSON sanitisierte Kriterien ab (kein fallbackReason)", async () => {
+    const infer = async () => ({
+      criteria: { themes: ["wartung"], keywords: ["e5"] },
+      fallbackReason: null,
+    });
     expect(await deriveCriteriaFromPrompt("egal", infer)).toEqual({
-      themes: ["wartung"],
-      keywords: ["e5"],
+      criteria: { themes: ["wartung"], keywords: ["e5"] },
+      fallbackReason: null,
     });
   });
 
-  it("leerer Prompt → KI wird nicht befragt, leere Kriterien", async () => {
+  it("leerer Prompt → KI wird nicht befragt, leere Kriterien, kein Ausfall", async () => {
     let called = false;
-    const infer = async (): Promise<unknown> => {
+    const infer = async () => {
       called = true;
-      return { themes: ["x"] };
+      return { criteria: { themes: ["x"] }, fallbackReason: null };
     };
-    expect(await deriveCriteriaFromPrompt("   ", infer)).toEqual({});
+    expect(await deriveCriteriaFromPrompt("   ", infer)).toEqual({
+      criteria: {},
+      fallbackReason: null,
+    });
     expect(called).toBe(false);
   });
 
-  it("KI liefert null oder wirft → leere Kriterien (Fallback auf Klick-Filter)", async () => {
-    expect(await deriveCriteriaFromPrompt("x", async () => null)).toEqual({});
-    const boom: () => Promise<unknown> = async () => {
+  it("Ausfall der KI (no-model/model-error) → leere Kriterien + URSACHE nach außen", async () => {
+    expect(
+      await deriveCriteriaFromPrompt("x", async () => ({
+        criteria: null,
+        fallbackReason: "no-model",
+      })),
+    ).toEqual({ criteria: {}, fallbackReason: "no-model" });
+    // Ein WERFENDER Inferenz-Adapter ist ein Modellfehler — ehrlich statt still leer.
+    const boom = async (): Promise<{ criteria: unknown; fallbackReason: string | null }> => {
       throw new Error("model down");
     };
-    expect(await deriveCriteriaFromPrompt("x", boom)).toEqual({});
+    expect(await deriveCriteriaFromPrompt("x", boom)).toEqual({
+      criteria: {},
+      fallbackReason: "model-error",
+    });
   });
 
-  it("Müll-JSON vom Modell → sanitisiert zu leer (kein Raten)", async () => {
-    const criteria: SelectCriteria = await deriveCriteriaFromPrompt("x", async () => ({
-      themes: "nicht-array",
-      yearFrom: 42,
+  it("Müll-JSON vom Modell → sanitisiert zu leer (kein Raten, KI hat aber geliefert)", async () => {
+    const derived = await deriveCriteriaFromPrompt("x", async () => ({
+      criteria: { themes: "nicht-array", yearFrom: 42 },
+      fallbackReason: null,
     }));
+    const criteria: SelectCriteria = derived.criteria;
     expect(criteria).toEqual({});
+    expect(derived.fallbackReason).toBeNull();
   });
 });

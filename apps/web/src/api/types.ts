@@ -498,6 +498,10 @@ export interface ExploreThemeEntry {
 export interface ImportExploreSummary {
   totalCount: number;
   distinctSources: number;
+  // WP-SAMMEL20-FIX (bens Fix 6b): Gesamtzahlen VOR dem serverseitigen Top-N-Deckel (optional —
+  // ältere/gecachte Antworten tragen sie nicht; der Client fällt dann auf die Listenlänge zurück).
+  authorsTotal?: number;
+  topicsTotal?: number;
   authors: ExploreCountEntry[];
   themes: ExploreThemeEntry[];
   dateRange: { earliest: string; latest: string } | null;
@@ -515,6 +519,11 @@ export interface ImportExploreResponse {
   // WP-IC-PAKET-1 (Teil 4, IC-6a): wie viele der gesehenen Seiten bereits importiert sind
   // (KO-Herkunftsanker oder offener Kandidat mit derselben Quell-ID).
   alreadyImported?: number;
+  // WP-SAMMEL20-FIX (bens Fix 6a): partielle Mappingfehler werden nicht mehr verschwiegen —
+  // gelesene/nicht lesbare Seiten als ehrliche Zähler, dazu PII-freie Fehlerklassen.
+  mappedPages?: number;
+  failedPages?: number;
+  failedClasses?: string[];
 }
 
 // IC-3 (Import-Cockpit): Auswahl-Kriterien (Klick/KI) + READ-ONLY Vorschau. Nichts wird importiert.
@@ -548,6 +557,11 @@ export interface ImportSelectResponse {
   preview: ImportPreviewEntry[];
   // WP-IC-PAKET-1 (Teil 4): Anzahl bereits importierter Einträge INNERHALB der Vorschau-Liste.
   alreadyImported?: number;
+  // WP-SAMMEL20-FIX (bens Fix 2): ehrlicher KI-Status der Satz-Auswertung — nur gesetzt, wenn ein
+  // Freitext-Satz gestellt war. "unavailable" = die KI-Auswahl fiel aus (fallbackReason nennt die
+  // Ursache); es gelten dann sichtbar NUR die Klick-Filter.
+  inferenceStatus?: "ok" | "unavailable";
+  fallbackReason?: string;
 }
 
 export type KnowledgeClass =

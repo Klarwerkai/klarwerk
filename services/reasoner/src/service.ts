@@ -30,6 +30,7 @@ import type {
   ExtractResult,
   GroupCandidateInput,
   GroupCandidatesResult,
+  ImportCriteriaResult,
   InterviewResult,
   KnowledgeRef,
   ReasonerConfigStatus,
@@ -854,29 +855,45 @@ export class Reasoner {
 
   // IC-3 (Import-Cockpit): leitet aus einem FREITEXT-Prompt strukturierte Auswahl-Kriterien ab
   // (JSON: themes/keywords/authors/yearFrom/yearTo). NUR über ein echtes Modell — der Auswahl-Task
-  // folgt der bestehenden „select"-Zuordnung. Ist kein Modell aktiv/verfügbar (deterministisch), gibt
-  // es NICHTS zurück (null) → der Aufrufer nutzt leere Kriterien (nur Klick-Filter). Jeder Modell-/
-  // Parse-Fehler → null. NIE raten, NIE erfinden; das Sanitisieren macht der library-analytics-Kern.
+  // folgt der bestehenden „select"-Zuordnung. NIE raten, NIE erfinden; das Sanitisieren macht der
+  // library-analytics-Kern.
+  //
+  // WP-SAMMEL20-FIX (bens Fix 1, P0): `confidential` läuft durch DASSELBE zentrale Provider-Routing
+  // wie alle anderen Tasks (providerChain nimmt die Cloud aus der Kette; ein lokaler LLM darf
+  // weiter ableiten) — der Aufrufer klassifiziert den Batch fail-safe (groupingRequiresConfidential).
+  // WP-SAMMEL20-FIX (bens Fix 2, EHRLICHER AUSFALL): statt still null → strukturiertes Ergebnis mit
+  // fallbackReason (no-model / model-timeout / model-error, dasselbe Muster wie groupCandidates).
+  // criteria bleibt bei jedem Ausfall null — der Aufrufer meldet den Ausfall SICHTBAR, statt die
+  // ungefilterte Vollmenge als KI-Ergebnis auszugeben.
   async deriveImportCriteria(
     prompt: string,
     locale: ReasonerLocale = "de",
-  ): Promise<unknown | null> {
+    confidential = false,
+  ): Promise<ImportCriteriaResult> {
     if (prompt.trim().length === 0) {
-      return null;
+      return { criteria: null, fallbackReason: null }; // nichts gefragt — kein Ausfall
     }
     // Der Auswahl-Task nutzt die „select"-Zuordnung; nur ein echtes Modell darf ableiten.
-    const model = this.providerChain("select").find(
+    const model = this.providerChain("select", confidential).find(
       (p): p is ModelProvider =>
         p !== this.fallback && p instanceof ModelProvider && p.isAvailable(),
     );
     if (!model) {
-      return null;
+      return { criteria: null, fallbackReason: "no-model" };
     }
     try {
       const raw = await model.completeRaw(importSelectSystem(locale), prompt.trim());
-      return parseFirstJsonObject(raw);
-    } catch {
-      return null;
+      const parsed = parseFirstJsonObject(raw);
+      // Modell hat geantwortet, aber ohne verwertbares JSON → ehrlich als Modellfehler ausweisen.
+      return parsed === null
+        ? { criteria: null, fallbackReason: "model-error" }
+        : { criteria: parsed, fallbackReason: null };
+    } catch (err) {
+      const failure = classifyModelFailure(err);
+      return {
+        criteria: null,
+        fallbackReason: failure.failureClass === "timeout" ? "model-timeout" : "model-error",
+      };
     }
   }
 

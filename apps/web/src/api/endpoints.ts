@@ -462,7 +462,8 @@ export const endpoints = {
     import: {
       explore: () => api.post<ImportExploreResponse>("/admin/import/confluence/explore", {}),
       // IC-3: READ-ONLY Auswahl-Vorschau (Prompt und/oder Klick-Kriterien). Schreibt nichts.
-      select: (body: { prompt?: string; criteria?: ImportSelectCriteria }) =>
+      // WP-SAMMEL20-FIX (bens Fix 3): locale reist explizit mit (Route-Schema: de/en).
+      select: (body: { prompt?: string; criteria?: ImportSelectCriteria; locale?: "de" | "en" }) =>
         api.post<ImportSelectResponse>("/admin/import/confluence/select", body),
       // WP-IC-4 (Schritt 4): KI-Gruppierung (read-only; ehrlicher deterministischer Fallback).
       group: (body: { criteria?: ImportSelectCriteria; locale?: "de" | "en" }) =>

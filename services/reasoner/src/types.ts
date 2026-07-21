@@ -249,6 +249,16 @@ export interface GroupCandidatesResult {
   fallbackReason?: "no-model" | "model-timeout" | "model-error";
 }
 
+// WP-SAMMEL20-FIX (bens Fix 2, IC-3): EHRLICHES Ergebnis der Prompt→Kriterien-Ableitung. criteria
+// ist das rohe Modell-JSON (Sanitisieren macht library-analytics) — oder null. fallbackReason
+// unterscheidet die Ausfall-Ursache (Muster wie groupCandidates); null = das Modell hat geliefert
+// ODER es war (leerer Prompt) gar nichts gefragt. Ein Ausfall wird vom Aufrufer SICHTBAR gemeldet,
+// statt still als „alles passt" durchzurutschen.
+export interface ImportCriteriaResult {
+  criteria: unknown | null;
+  fallbackReason: "no-model" | "model-timeout" | "model-error" | null;
+}
+
 // WP-BILD-1c (Pedis Präzisierung 20.07.): KI-Bildbeschreibung als VORSCHLAG beim Bearbeiten der
 // Fußnote — nie automatisch gespeichert. Ehrlichkeit vor Vollständigkeit: ohne funktionierendes
 // Vision-Modell ist text null und fallbackReason erklärt warum (dieselben Ursachen wie beim

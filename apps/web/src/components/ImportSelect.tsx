@@ -19,6 +19,7 @@ import { displayImportText } from "../lib/htmlEntities";
 import { summarizeSelectCriteria } from "../lib/importExplore";
 // WP-IC-PAKET-1b (bens ROT-3): latest-wins — Antworten aelterer Requests werden verworfen.
 import { createLatestWins } from "../lib/latestWins";
+import { toReasonerLocale } from "../lib/reasonerLocale";
 // WP-IC-4: Schritt 4+5 (Gruppen-Freigabe + Übernahme mit Bilanz).
 import { ImportGroups } from "./ImportGroups";
 import { Button, TextInput } from "./ui";
@@ -37,7 +38,7 @@ function parsedPositiveInt(raw: string): number | undefined {
 }
 
 export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [prompt, setPrompt] = useState("");
   const [limit, setLimit] = useState("");
   const [yearFrom, setYearFrom] = useState("");
@@ -72,6 +73,8 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
       const data = await endpoints.admin.import.select({
         prompt: prompt.trim(),
         criteria: buildCriteria(),
+        // WP-SAMMEL20-FIX (bens Fix 3): locale explizit mitgeben (Route-Schema: de/en).
+        locale: toReasonerLocale(i18n.language),
       });
       return { requestId, data };
     },
@@ -212,6 +215,14 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
               ? ` · ${t("imp.select.alreadyImported", { n: alreadyImportedCount })}`
               : ""}
           </div>
+
+          {/* WP-SAMMEL20-FIX (bens Fix 2): KI-Ausfall NIE still — nüchterner Hinweis, dass nur
+              die Klick-Filter gelten (die weiterhin wirken; nichts wird erfunden). */}
+          {preview.inferenceStatus === "unavailable" ? (
+            <p className="mt-1.5 rounded-btn bg-trust-warn-bg px-3 py-2 text-[12px] text-trust-warn-text">
+              {t("imp.select.aiUnavailable")}
+            </p>
+          ) : null}
 
           {/* Effektiv benutzte Kriterien — Transparenz. Leer → „alles". */}
           {criteriaLines.length > 0 ? (

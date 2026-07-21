@@ -23,11 +23,23 @@ export interface ThemeEntry {
   origin?: "derived";
 }
 
+// WP-SAMMEL20-FIX (bens Fix 6b): serverseitiger WIRE-Deckel der Erkundungs-Listen — die UI zeigt
+// heute 8 Autoren/12 Themen (Client-Deckel), der Server liefert Top-N mit Reserve statt des
+// kompletten Space-Inventars; die GESAMTZAHLEN reisen separat (authorsTotal/topicsTotal), damit
+// der Client ehrlich „Top 20 von 134" anzeigen kann.
+export const TOP_AUTHORS = 20;
+export const TOP_TOPICS = 30;
+
 export interface ImportExploreSummary {
   totalCount: number; // gesehene Items (bei truncated: nur bis zum Cap — der Aufrufer meldet truncated)
   distinctSources: number; // verschiedene Quell-Container (sourceScope, sonst category)
   authors: CountEntry[]; // absteigend nach count, dann Name; „(ohne Autor)" als eigener Eintrag
   themes: ThemeEntry[]; // Labels/Tags absteigend nach count, dann Label; „(ohne Label)" als Zähler
+  // WP-SAMMEL20-FIX (bens Fix 6b): Gesamtzahlen VOR dem Top-N-Deckel — authorsTotal zählt alle
+  // verschiedenen Autoren-Einträge (inkl. „(ohne Autor)"), topicsTotal alle verschiedenen
+  // Themen-Einträge (inkl. des „(ohne Label)"-Zählers, falls vorhanden). Additiv.
+  authorsTotal: number;
+  topicsTotal: number;
   dateRange: { earliest: string; latest: string } | null; // aus updatedAt, null wenn keins vorhanden
   withImagesHint: number; // Items, deren bodyHtml ein <img enthält (grober Bild-Hinweis), sonst 0
   // WP-IC-PAKET-1 (Teil 3): die Quell-Container NAMENTLICH (für den Space-Filter, wenn mehrere) —
@@ -164,6 +176,8 @@ export function summarizeImportItems(
     // WP-IC-PAKET-1 (Teil 2): nur rein abgeleitete Themen tragen die Herkunft (additiv).
     ...(derivedOnly.has(e.name) ? { origin: "derived" as const } : {}),
   }));
+  // Der „(ohne Label)"-Zähler ist ein Ehrlichkeits-Eintrag, kein Thema — er bleibt auch bei
+  // gedeckelter Liste IMMER sichtbar (und zählt in topicsTotal mit).
   if (noTheme > 0) {
     themeEntries.push({ label: NO_THEME_LABEL, count: noTheme });
   }
@@ -173,6 +187,10 @@ export function summarizeImportItems(
     distinctSources: sources.size,
     authors: rankCounts(authors, options.topAuthors),
     themes: themeEntries,
+    // WP-SAMMEL20-FIX (bens Fix 6b): Gesamtzahlen VOR dem Top-N-Deckel — für die ehrliche
+    // „Top N von X"-Anzeige des Clients.
+    authorsTotal: authors.size,
+    topicsTotal: themes.size + (noTheme > 0 ? 1 : 0),
     dateRange: earliest !== null && latest !== null ? { earliest, latest } : null,
     withImagesHint,
     sourceNames: rankCounts(sources),

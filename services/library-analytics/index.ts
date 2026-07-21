@@ -31,6 +31,9 @@ export {
   summarizeImportItems,
   NO_AUTHOR_LABEL,
   NO_THEME_LABEL,
+  // WP-SAMMEL20-FIX (bens Fix 6b): serverseitiger Wire-Deckel + Gesamtzähler der Erkundung.
+  TOP_AUTHORS,
+  TOP_TOPICS,
 } from "./src/explore";
 export type {
   ImportExploreSummary,
@@ -51,6 +54,9 @@ export type {
   ImportPreviewEntry,
   ImportedStatus,
   CriteriaInference,
+  // WP-SAMMEL20-FIX (bens Fix 2): ehrlicher Ausfall-Vertrag der Prompt→Kriterien-Ableitung.
+  CriteriaInferenceOutcome,
+  DerivedCriteria,
 } from "./src/select";
 // WP-IC-PAKET-1 (Teil 2): deterministische Themen-Ableitung aus Seitentiteln (Fallback ohne Labels).
 export { deriveTitleThemes, titleThemeTokens, MIN_THEME_GROUP_SIZE } from "./src/themes";

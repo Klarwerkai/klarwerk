@@ -128,6 +128,7 @@ export type {
   GroupCandidateInput,
   CandidateGroup,
   GroupCandidatesResult,
+  ImportCriteriaResult,
   InterviewResult,
   ReasonerStatus,
   ReasonerConfigStatus,

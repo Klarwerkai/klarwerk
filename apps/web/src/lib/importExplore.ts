@@ -35,6 +35,13 @@ export interface ExploreView {
   authorsRest: number; // wie viele Autoren NICHT in der Liste sind (> 0 → „+N weitere")
   themes: ExploreThemeChip[]; // gedeckelt auf EXPLORE_TOP_THEMES
   themesRest: number;
+  // WP-SAMMEL20-FIX (bens Fix 6b): der Server liefert nur noch die Top-N (Wire-Deckel) plus
+  // GESAMTZAHLEN — für die ehrliche „Top 20 von 134"-Zeile. listed = Länge der Server-Liste;
+  // total = echte Gesamtzahl (Altbestands-Antworten ohne Zähler → Listenlänge, Anzeige entfällt).
+  authorsListed: number;
+  authorsTotal: number;
+  themesListed: number;
+  themesTotal: number;
   withImagesHint: number; // Items mit Bildern (0 → die Komponente blendet den Hinweis aus)
   // WP-IC-PAKET-1 (Teil 3): Quell-Container (Spaces) namentlich — Filter-Chips nur bei MEHREREN.
   spaces: ExploreAuthorView[];
@@ -110,19 +117,27 @@ export function summarizeSelectCriteria(
 export function toExploreView(summary: ImportExploreSummary): ExploreView {
   const authors = summary.authors.slice(0, EXPLORE_TOP_AUTHORS);
   const themes = summary.themes.slice(0, EXPLORE_TOP_THEMES);
+  // WP-SAMMEL20-FIX (bens Fix 6b): der Rest rechnet gegen die ECHTE Gesamtzahl (Server-Zähler),
+  // nicht gegen die gedeckelte Wire-Liste — sonst wäre „+N weitere" nach dem Server-Deckel gelogen.
+  const authorsTotal = summary.authorsTotal ?? summary.authors.length;
+  const themesTotal = summary.topicsTotal ?? summary.themes.length;
   return {
     totalCount: summary.totalCount,
     distinctSources: summary.distinctSources,
     period: formatPeriod(summary.dateRange),
     authors: authors.map((a) => ({ name: a.name, count: a.count })),
-    authorsRest: Math.max(0, summary.authors.length - authors.length),
+    authorsRest: Math.max(0, authorsTotal - authors.length),
     // WP-IC-PAKET-1 (Teil 2): abgeleitete Themen ehrlich gekennzeichnet weiterreichen.
     themes: themes.map((t) => ({
       label: t.label,
       count: t.count,
       derived: t.origin === "derived",
     })),
-    themesRest: Math.max(0, summary.themes.length - themes.length),
+    themesRest: Math.max(0, themesTotal - themes.length),
+    authorsListed: summary.authors.length,
+    authorsTotal,
+    themesListed: summary.themes.length,
+    themesTotal,
     withImagesHint: summary.withImagesHint,
     // WP-IC-PAKET-1 (Teil 3): Spaces namentlich (Altbestand-Antworten ohne Feld → leer, kein Filter).
     spaces: (summary.sourceNames ?? []).map((s) => ({ name: s.name, count: s.count })),

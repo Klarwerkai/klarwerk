@@ -15,17 +15,26 @@ describe("B1: Topbar-Layout robust (keine Header-Überlappung)", () => {
   it("das Such-Formular hat min-w-0 (gibt bei Enge nach statt zu überlagern)", () => {
     expect(src).toMatch(/<form[\s\S]*?className="[^"]*\bmin-w-0\b/);
   });
-  it("der rechte Button-Block ist shrink-0", () => {
-    expect(src).toContain('className="ml-auto flex shrink-0 items-center justify-end gap-2"');
+  // WP-SAMMEL20-FIX (bens Fix 5, Viewport-Kante): der rechte Block ist nicht mehr starr shrink-0 —
+  // bei SEHR schmalen Breiten darf er selbst schrumpfen (min-w-0, shrink) statt aus dem Header zu
+  // laufen; overflow-hidden kappt sauber. Die Suche gibt weiterhin ZUERST nach (min-w-0 + flex-1).
+  it("der rechte Button-Block läuft bei schmalen Breiten nicht über (min-w-0/shrink/overflow-hidden)", () => {
+    expect(src).toContain(
+      'className="ml-auto flex min-w-0 shrink items-center justify-end gap-2 overflow-hidden"',
+    );
   });
 });
 
 describe("B1b: Mobile-Ansicht hat einen Rückweg zur Vollversion", () => {
   const src = read("apps/web/src/pages/Mobile.tsx");
-  it("rendert einen Link auf HOME_ROUTE mit dem toDesktop-Label", () => {
-    expect(src).toContain("HOME_ROUTE");
-    expect(src).toContain("to={HOME_ROUTE}");
+  // WP-SAMMEL20-FIX (bens Fix 4): der Rückweg ist kein harter Link auf /start mehr — er läuft
+  // durch den NavGuard und führt zur VORHERIGEN Route (state.from) zurück; HOME_ROUTE bleibt nur
+  // der Fallback für den Direkteinstieg ohne Absprungpunkt.
+  it("rendert den toDesktop-Rückweg über den NavGuard zur vorherigen Route (HOME_ROUTE nur Fallback)", () => {
+    expect(src).toContain("guard(() => navigate(backTo))");
+    expect(src).toContain("?? HOME_ROUTE");
     expect(src).toContain("topbar.toDesktop");
+    expect(src).not.toContain("to={HOME_ROUTE}");
   });
   it("topbar.toDesktop ist in DE/EN/NL vorhanden", () => {
     for (const lng of ["de", "en", "nl"]) {

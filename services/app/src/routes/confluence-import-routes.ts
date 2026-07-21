@@ -5,6 +5,8 @@ import {
   GROUP_PROMPT_MAX_UTF8_BYTES,
   type LibraryService,
   type SelectCriteria,
+  TOP_AUTHORS,
+  TOP_TOPICS,
   candidateHints,
   candidateIdOf,
   dedupeSelectedItems,
@@ -51,6 +53,18 @@ export interface ConfluenceImportRouteDeps {
 // WP-SHIP7-FIX (bens sammel17-Fix 3): harter Deckel der Apply-Ids je Aufruf (nach Dedupe) —
 // deckungsgleich mit der Gruppierungs-Kappung (MAX_GROUP_CANDIDATES = 200). Drüber: ehrlicher 400.
 export const MAX_APPLY_IDS = 200;
+
+// WP-SAMMEL20-FIX (bens Fix 3): Route-Schema der Auswahl — der Freitext-Satz ist gedeckelt (er
+// geht als Prompt an ein Modell; ein Roman ist nie ein Auswahl-Satz) und locale ist auf die
+// unterstützten Reasoner-Sprachen festgelegt. Verstoß → ehrlicher 400, kein stilles Kappen.
+export const SELECT_PROMPT_MAX_CHARS = 500;
+const SELECT_LOCALES = ["de", "en"] as const;
+
+// WP-SAMMEL20-FIX (bens Fix 6a): PII-freie Fehlerklasse einer nicht lesbaren Quell-Seite für die
+// Erkundungs-Antwort — nie die rohe Fehlermeldung (die könnte Quell-/Infrastruktur-Details tragen).
+function failedPageClasses(failed: readonly { errorClass?: string }[]): string[] {
+  return [...new Set(failed.map((f) => f.errorClass ?? "unknown"))].sort();
+}
 
 export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): FastifyPluginAsync {
   const makeAdapter = deps.makeAdapter ?? (() => createConfluenceAdapterFromEnv());
@@ -200,7 +214,7 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
       }
       try {
         // READ-ONLY: nur lesen + aggregieren (WP-IC-PAKET-1b ROT-3: über den 60-s-Snapshot).
-        const { items, truncated } = await collectSnapshot(adapter);
+        const { items, truncated, failed } = await collectSnapshot(adapter);
         // WP-IC-PAKET-1 (Teil 4, IC-6a): ehrlicher Import-Abgleich über die Quell-Referenzen
         // (KoSource-Anker + offene Kandidaten, provider-scoped) — „X Seiten, davon Y bereits importiert".
         const [anchorVersions, pendingVersions] = await Promise.all([
@@ -210,7 +224,21 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
         const alreadyImported = items.filter(
           (item) => importStatusFor(item, anchorVersions, pendingVersions).alreadyImported,
         ).length;
-        reply.code(200).send({ summary: summarizeImportItems(items), truncated, alreadyImported });
+        reply.code(200).send({
+          // WP-SAMMEL20-FIX (bens Fix 6b): serverseitig auf die angezeigten Top-N gedeckelt —
+          // die Gesamtzahlen (authorsTotal/topicsTotal) reisen als separate Zähler mit.
+          summary: summarizeImportItems(items, {
+            topAuthors: TOP_AUTHORS,
+            topThemes: TOP_TOPICS,
+          }),
+          truncated,
+          alreadyImported,
+          // WP-SAMMEL20-FIX (bens Fix 6a): partielle Mappingfehler NICHT mehr verschweigen —
+          // ehrliche Zähler + PII-freie Fehlerklassen (nie die rohe Meldung auf dem Wire).
+          mappedPages: items.length,
+          failedPages: failed.length,
+          ...(failed.length > 0 ? { failedClasses: failedPageClasses(failed) } : {}),
+        });
         return reply;
       } catch (err) {
         // Gleiche Beobachtbarkeit/Redaction wie der Import-Pfad (WP-E/WP-E2).
@@ -231,11 +259,36 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
     // deterministisch und geben eine VORSCHAU zurück — inkl. der EFFEKTIV benutzten Kriterien
     // (Transparenz: wie hat die KI den Satz verstanden?). SCHREIBT NICHTS (keine Kandidaten, keine KOs).
     // Gleiche Admin-Auth + Fehler-/Flag-Disziplin wie explore. WP-E: JEDER Sende-Pfad endet mit `return reply`.
-    app.post<{ Body: { prompt?: string; criteria?: unknown } }>(
+    app.post<{ Body: { prompt?: string; criteria?: unknown; locale?: unknown } }>(
       "/api/admin/import/confluence/select",
       async (request, reply) => {
         const user = await deps.guards.requirePermission("users.manage", request, reply);
         if (!user) {
+          return reply;
+        }
+        // WP-SAMMEL20-FIX (bens Fix 3): Route-Schema VOR jeder Arbeit — ehrlicher 400 statt
+        // stillem Kappen/Raten.
+        const rawPrompt = request.body?.prompt;
+        if (rawPrompt !== undefined && typeof rawPrompt !== "string") {
+          reply.code(400).send({ error: "BAD_REQUEST", message: "prompt muss ein Text sein." });
+          return reply;
+        }
+        if (typeof rawPrompt === "string" && rawPrompt.length > SELECT_PROMPT_MAX_CHARS) {
+          reply.code(400).send({
+            error: "BAD_REQUEST",
+            message: `Der Auswahl-Satz ist zu lang (${rawPrompt.length} von max. ${SELECT_PROMPT_MAX_CHARS} Zeichen).`,
+          });
+          return reply;
+        }
+        const rawLocale = request.body?.locale;
+        if (
+          rawLocale !== undefined &&
+          !(SELECT_LOCALES as readonly unknown[]).includes(rawLocale)
+        ) {
+          reply.code(400).send({
+            error: "BAD_REQUEST",
+            message: "locale muss de oder en sein.",
+          });
           return reply;
         }
         const adapter = makeAdapter();
@@ -247,19 +300,37 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
           return reply;
         }
         try {
-          const prompt = typeof request.body?.prompt === "string" ? request.body.prompt : "";
+          const prompt = rawPrompt ?? "";
+          const locale = rawLocale === "en" ? ("en" as const) : ("de" as const);
           // Klick-Kriterien immer sanitisieren; aus dem Prompt zusätzlich KI-Kriterien ableiten.
           const clickCriteria = sanitizeCriteria(request.body?.criteria);
           const reasoner = deps.reasoner;
-          const promptCriteria =
-            prompt.trim().length > 0 && reasoner
-              ? await deriveCriteriaFromPrompt(prompt, (p) => reasoner.deriveImportCriteria(p))
-              : {};
-          // Effektiv genutzte Kriterien: Klick-Kriterien haben Vorrang, KI ergänzt nur Fehlendes.
-          const criteria: SelectCriteria = { ...promptCriteria, ...clickCriteria };
           // READ-ONLY: nur lesen + filtern (WP-IC-PAKET-1b ROT-3: Filterung auf dem 60-s-Snapshot —
           // jede Live-Filter-Änderung arbeitet auf DERSELBEN geladenen Datenbasis, kein Scan-Race).
+          // Der Snapshot wird VOR der KI-Ableitung geladen: er ist die Vertraulichkeits-Grundlage.
           const { items, truncated } = await collectSnapshot(adapter);
+          // WP-SAMMEL20-FIX (bens Fix 1, P0 — GLEICHES MUSTER wie der Gruppierungs-Fix aus
+          // sammel17): der Auswahl-Satz wird VOR der Item-Auswahl verarbeitet (die Kriterien
+          // ENTSCHEIDEN erst, welche Items gewählt werden) — die betroffene Item-Menge ist also
+          // der GESAMTE Snapshot. Deshalb klassifiziert derselbe fail-safe Batch-Vertrag
+          // (groupingRequiresConfidential) über ALLE Snapshot-Items: EIN vertrauliches/
+          // unklassifiziertes/ungültiges Item → der Select-Aufruf läuft confidential (die
+          // Provider-Kette nimmt die Cloud heraus; Lokal/Deterministisch bleiben). Nur eine
+          // nachweislich KOMPLETT explizit freigegebene Quelle darf den Satz zur Cloud geben —
+          // der Satz selbst ist Nutzereingabe ÜBER dieses potenziell vertrauliche Wissen.
+          const confidential = groupingRequiresConfidential(items);
+          const derived =
+            prompt.trim().length > 0
+              ? reasoner
+                ? await deriveCriteriaFromPrompt(prompt, (p) =>
+                    reasoner.deriveImportCriteria(p, locale, confidential),
+                  )
+                : // WP-SAMMEL20-FIX (bens Fix 2): auch „kein Reasoner verdrahtet" ist ein
+                  // ehrlicher Ausfall — nie still die ungefilterte Vollmenge.
+                  { criteria: {}, fallbackReason: "no-model" as string | null }
+              : { criteria: {}, fallbackReason: null as string | null };
+          // Effektiv genutzte Kriterien: Klick-Kriterien haben Vorrang, KI ergänzt nur Fehlendes.
+          const criteria: SelectCriteria = { ...derived.criteria, ...clickCriteria };
           const { selected, matched, limited } = filterImportItems(items, criteria);
           // WP-IC-PAKET-1 (Teil 4, IC-6a): jeden Vorschau-Eintrag ehrlich markieren (Quell-Referenz-
           // Abgleich, je Request frisch); `alreadyImported` zählt die markierten Einträge der Vorschau.
@@ -277,6 +348,18 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
             criteria,
             preview,
             alreadyImported: preview.filter((entry) => entry.alreadyImported === true).length,
+            // WP-SAMMEL20-FIX (bens Fix 2): EHRLICHER KI-Status der Satz-Auswertung. Nur wenn ein
+            // Satz gestellt war: "ok" = die KI hat den Satz in Kriterien übersetzt; "unavailable" =
+            // Ausfall (fallbackReason nennt die Ursache) — dann gelten sichtbar NUR die
+            // Klick-Filter, nie still die ungefilterte Vollmenge als vermeintliches KI-Ergebnis.
+            ...(prompt.trim().length > 0
+              ? {
+                  inferenceStatus: derived.fallbackReason === null ? "ok" : "unavailable",
+                  ...(derived.fallbackReason !== null
+                    ? { fallbackReason: derived.fallbackReason }
+                    : {}),
+                }
+              : {}),
           });
           return reply;
         } catch (err) {

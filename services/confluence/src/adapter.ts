@@ -19,7 +19,9 @@ import {
 // oder Titel) zur ehrlichen Fehlerzuordnung, ohne Interna zu lecken.
 export interface CollectResult {
   items: ImportItem[];
-  failed: { ref: string; error: string }[];
+  // WP-SAMMEL20-FIX (bens Fix 6a): errorClass = PII-freie Fehlerklasse (Error.name) je nicht
+  // lesbarer Seite — der Erkundungs-Wire trägt NUR sie, nie die rohe Fehlermeldung. Additiv.
+  failed: { ref: string; error: string; errorClass?: string }[];
   // SCRUM-510 (WP3): true, wenn der Space-Read am Seiten-Cap abgeschnitten wurde (nicht vollständig). Der
   // Import-Kern macht daraus einen ehrlichen „unvollständig"-Status — nie eine stille „fertig"-Meldung.
   truncated: boolean;
@@ -51,6 +53,7 @@ export class ConfluenceSourceAdapter implements SourceAdapter {
         failed.push({
           ref: page.id || page.title || "(unbekannt)",
           error: err instanceof Error ? err.message : "Mapping fehlgeschlagen",
+          errorClass: err instanceof Error ? err.name : "unknown",
         });
       }
     }

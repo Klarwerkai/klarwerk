@@ -2,9 +2,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Bell, HelpCircle, Search, Smartphone } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
 import { useNotifications, useReasonerConfig, useReasonerStatus } from "../api/hooks";
+import { useNavGuard } from "../app/NavGuardContext";
 import { kiHeaderStatus } from "../lib/kiHeaderStatus";
 import { notificationTarget } from "../lib/notificationTarget";
 import { APP_VERSION } from "../version";
@@ -259,6 +260,11 @@ function IslandMarkerPill({ marker }: { marker: string }): JSX.Element {
 export function Topbar(): JSX.Element {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
+  // WP-SAMMEL20-FIX (bens Fix 4, B1b): der Wechsel zu /mobile ist eine normale In-App-Navigation —
+  // er läuft durch den NavGuard (ungespeicherte Eingaben → Bestätigungsdialog, wie Sidebar/Palette)
+  // und merkt sich die AKTUELLE Route als Absprungpunkt, damit der Rückweg dorthin zurückführt.
+  const { guard } = useNavGuard();
   const [q, setQ] = useState("");
   const [islandMarker] = useState(() => readIslandMarker());
 
@@ -298,12 +304,21 @@ export function Topbar(): JSX.Element {
         </button>
       </form>
 
-      {/* B1: shrink-0 verhindert, dass der Such-Block den rechten Button-Block ab ~1050px überlagert;
-          das Formular (min-w-0, flex-1) gibt bei Enge nach statt den Block zu überdecken. */}
-      <div className="ml-auto flex shrink-0 items-center justify-end gap-2">
+      {/* B1: das Such-Formular (min-w-0, flex-1) gibt bei Enge ZUERST nach — es überlagert den
+          rechten Block nicht. WP-SAMMEL20-FIX (bens Fix 5, Viewport-Kante): ist die Suche am
+          Minimum, darf der rechte Block bei SEHR schmalen Breiten selbst schrumpfen (min-w-0,
+          shrink) statt aus dem Header zu laufen; overflow-hidden kappt sauber, die Pillen
+          (Island-Marker) truncaten wie üblich. */}
+      <div className="ml-auto flex min-w-0 shrink items-center justify-end gap-2 overflow-hidden">
         <button
           type="button"
-          onClick={() => navigate("/mobile")}
+          onClick={() =>
+            guard(() =>
+              navigate("/mobile", {
+                state: { from: `${location.pathname}${location.search}` },
+              }),
+            )
+          }
           className="flex shrink-0 items-center gap-1.5 rounded-btn border border-hairline px-2.5 py-1.5 text-[12px] font-medium text-muted hover:text-text"
         >
           <Smartphone size={15} />

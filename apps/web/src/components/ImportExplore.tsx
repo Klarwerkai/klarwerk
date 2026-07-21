@@ -88,10 +88,13 @@ function ExploreMap({
   view,
   truncated,
   alreadyImported,
+  failedPages,
 }: {
   view: ExploreView;
   truncated: boolean;
   alreadyImported: number;
+  // WP-SAMMEL20-FIX (bens Fix 6a): Seiten, die beim Lesen/Mappen der Quelle scheiterten.
+  failedPages: number;
 }): JSX.Element {
   const { t } = useTranslation();
   // WP-IC-PAKET-1 (Teil 3): Klick-Filter der Landkarte — Roh-Werte (Server-Vertrag), Anzeige dekodiert.
@@ -104,6 +107,12 @@ function ExploreMap({
       {truncated ? (
         <p className="mb-3 rounded-btn bg-trust-warn-bg px-3 py-2 text-[12px] text-trust-warn-text">
           {t("imp.explore.truncated", { n: view.totalCount })}
+        </p>
+      ) : null}
+      {/* WP-SAMMEL20-FIX (bens Fix 6a): partielle Lesefehler nüchtern ausweisen statt verschweigen. */}
+      {failedPages > 0 ? (
+        <p className="mb-3 rounded-btn bg-trust-warn-bg px-3 py-2 text-[12px] text-trust-warn-text">
+          {t("imp.explore.failedPages", { n: failedPages })}
         </p>
       ) : null}
       {/* Kennzahlen */}
@@ -124,6 +133,12 @@ function ExploreMap({
         <div className="mt-4">
           <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-muted">
             <Users size={13} /> {t("imp.explore.authors")}
+            {/* WP-SAMMEL20-FIX (bens Fix 6b): der Server liefert Top-N — ehrlich beziffert. */}
+            {view.authorsTotal > view.authorsListed ? (
+              <span className="font-normal text-muted-2">
+                · {t("imp.explore.topOf", { n: view.authorsListed, total: view.authorsTotal })}
+              </span>
+            ) : null}
           </span>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
             {view.authors.map((a) =>
@@ -157,7 +172,15 @@ function ExploreMap({
       {/* Themen — klickbare Filter; abgeleitete Themen (aus Titeln) dezent gekennzeichnet (Teil 2). */}
       {view.themes.length > 0 ? (
         <div className="mt-4">
-          <span className="text-[12px] font-semibold text-muted">{t("imp.explore.themes")}</span>
+          <span className="text-[12px] font-semibold text-muted">
+            {t("imp.explore.themes")}
+            {view.themesTotal > view.themesListed ? (
+              <span className="font-normal text-muted-2">
+                {" "}
+                · {t("imp.explore.topOf", { n: view.themesListed, total: view.themesTotal })}
+              </span>
+            ) : null}
+          </span>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
             {view.themes.map((th) =>
               th.label === NO_THEME_LABEL ? (
@@ -289,6 +312,7 @@ export function ImportExplore(): JSX.Element {
           view={view}
           truncated={explore.data?.truncated ?? false}
           alreadyImported={explore.data?.alreadyImported ?? 0}
+          failedPages={explore.data?.failedPages ?? 0}
         />
       ) : null}
     </Card>

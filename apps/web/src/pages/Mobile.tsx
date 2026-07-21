@@ -12,13 +12,14 @@ import {
   WifiOff,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useDrafts, useLibrarySearch } from "../api/hooks";
 import type { AnswerResult } from "../api/types";
+import { useNavGuard } from "../app/NavGuardContext";
 import { useToast } from "../app/ToastContext";
 import { HOME_ROUTE } from "../app/navigation";
 import { type SyncResult, useOfflineQueue } from "../app/useOfflineQueue";
@@ -69,6 +70,13 @@ export function Mobile(): JSX.Element {
   const { t, i18n } = useTranslation();
   const { push } = useToast();
   const qc = useQueryClient();
+  const navigate = useNavigate();
+  const location = useLocation();
+  // WP-SAMMEL20-FIX (bens Fix 4, B1b): der Rückweg führt zur VORHERIGEN Route zurück (die der
+  // Topbar-Hinweg als state.from mitgibt) — nur bei Direkteinstieg (Deep-Link/Reload ohne State)
+  // fällt er auf die Startseite zurück.
+  const backTo = (location.state as { from?: string } | null)?.from ?? HOME_ROUTE;
+  const { setGuard, guard } = useNavGuard();
   const [tab, setTab] = useState<MobileTab>("capture");
 
   const notifySync = (r: SyncResult): void => {
@@ -128,6 +136,40 @@ export function Mobile(): JSX.Element {
     save.mutate();
   };
 
+  // WP-SAMMEL20-FIX (bens Fix 4, B1b): das Mobile-Formular meldet sich am BESTEHENDEN NavGuard an
+  // (dasselbe Muster wie Capture — konsistent, kein zweiter Autosave-Mechanismus): eine befüllte
+  // Eingabe macht die Navigation „dirty", der Wächter fragt nach (Bleiben · Verwerfen · Entwurf
+  // speichern); Speichern nutzt den normalen Draft-Weg (offline: die Offline-Queue). Bewusst OHNE
+  // Dep-Array: der Wächter sieht so in jedem Render den frischen Formular-Stand (setGuard ist ein
+  // reiner Ref-Setter, kein Re-Render-Auslöser).
+  useEffect(() => {
+    setGuard({
+      isDirty: () => isDraftFormFillable(form),
+      save: async () => {
+        const payload = formToPayload(form);
+        if (!queue.online) {
+          queue.enqueue({
+            id: crypto.randomUUID(),
+            kind: editingId ? "draft.update" : "draft.create",
+            draftId: editingId,
+            payload,
+            title: formTitle(),
+            createdAt: new Date().toISOString(),
+          });
+          push("info", t("mob.queued"));
+        } else if (editingId) {
+          await endpoints.drafts.update(editingId, payload);
+          invalidateDrafts();
+        } else {
+          await endpoints.drafts.create(payload);
+          invalidateDrafts();
+        }
+        resetForm();
+      },
+    });
+    return () => setGuard(null);
+  });
+
   // SCRUM-87 / FR-MOB-03: Inline-Bestätigung statt nativem Dialog.
   const [confirm, setConfirm] = useState<ConfirmState>(NO_CONFIRM);
   const discard = useMutation({
@@ -177,14 +219,17 @@ export function Mobile(): JSX.Element {
   return (
     <div className="flex min-h-[520px] flex-col items-center gap-3 rounded-card bg-page p-6">
       {/* B1b: /mobile wird OHNE AppShell/Topbar gerendert — ohne diesen Ausgang gäbe es keinen Weg
-          zurück zur Vollversion. Immer sichtbar, oberhalb des Telefon-Rahmens. */}
-      <Link
-        to={HOME_ROUTE}
+          zurück zur Vollversion. Immer sichtbar, oberhalb des Telefon-Rahmens.
+          WP-SAMMEL20-FIX (bens Fix 4): der Rückweg läuft durch den NavGuard (ungespeicherte
+          Eingabe → Dialog) und führt zur VORHERIGEN Route zurück (backTo), nicht hart auf /start. */}
+      <button
+        type="button"
+        onClick={() => guard(() => navigate(backTo))}
         className="inline-flex items-center gap-1.5 self-start rounded-btn border border-hairline bg-surface px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text"
       >
         <ArrowLeft size={15} />
         {t("topbar.toDesktop")}
-      </Link>
+      </button>
       <div className="w-[340px] overflow-hidden rounded-[34px] border-4 border-ink bg-surface p-5">
         <div className="mb-3 flex items-center justify-between">
           <span className="font-sans text-[15px] font-bold tracking-[2px] text-ink">KLARWERK</span>

@@ -254,22 +254,45 @@ export function toPreviewEntry(item: ImportItem, status?: ImportedStatus): Impor
 }
 
 // IC-3: Freitext → Kriterien über eine INJIZIERTE Inferenz (der Aufrufer verdrahtet den Reasoner).
-// `infer` liefert das ROH-JSON des Modells (unknown) oder null. JEDER Ausgang — null, Wurf, Unbrauchbar —
-// endet in LEEREN Kriterien: nie raten, nie erfinden. Nur der deterministische sanitizeCriteria formt
-// das Ergebnis. Ein leerer/whitespace-Prompt ruft die KI gar nicht erst.
-export type CriteriaInference = (prompt: string) => Promise<unknown | null>;
+// `infer` liefert das ROH-JSON des Modells (criteria: unknown|null) plus die EHRLICHE Ausfall-
+// Ursache (fallbackReason, Muster wie überall: no-model/model-timeout/model-error; null = geliefert).
+// JEDER Ausfall endet in LEEREN Kriterien: nie raten, nie erfinden — aber seit WP-SAMMEL20-FIX
+// (bens Fix 2) NICHT mehr still: der Aufrufer bekommt die Ursache und meldet sie sichtbar, statt
+// die ungefilterte Vollmenge als KI-Ergebnis auszugeben. Nur der deterministische sanitizeCriteria
+// formt das Ergebnis. Ein leerer/whitespace-Prompt ruft die KI gar nicht erst.
+export interface CriteriaInferenceOutcome {
+  criteria: unknown | null;
+  fallbackReason: string | null;
+}
+export type CriteriaInference = (prompt: string) => Promise<CriteriaInferenceOutcome>;
+
+export interface DerivedCriteria {
+  criteria: SelectCriteria;
+  // null = KI hat geliefert oder war (leerer Prompt) gar nicht gefragt; sonst die Ausfall-Ursache.
+  fallbackReason: string | null;
+}
 
 export async function deriveCriteriaFromPrompt(
   prompt: string,
   infer: CriteriaInference,
-): Promise<SelectCriteria> {
+): Promise<DerivedCriteria> {
   if (prompt.trim().length === 0) {
-    return {};
+    return { criteria: {}, fallbackReason: null };
   }
   try {
-    const raw = await infer(prompt);
-    return raw === null || raw === undefined ? {} : sanitizeCriteria(raw);
+    const outcome = await infer(prompt);
+    if (outcome.fallbackReason !== null) {
+      return { criteria: {}, fallbackReason: outcome.fallbackReason };
+    }
+    return {
+      criteria:
+        outcome.criteria === null || outcome.criteria === undefined
+          ? {}
+          : sanitizeCriteria(outcome.criteria),
+      fallbackReason: null,
+    };
   } catch {
-    return {};
+    // Ein werfender Inferenz-Adapter ist ein Modellfehler — ehrlich statt still leer.
+    return { criteria: {}, fallbackReason: "model-error" };
   }
 }

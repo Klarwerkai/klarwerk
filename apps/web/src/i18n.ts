@@ -2042,6 +2042,8 @@ const de = {
   "imp.explore.noTheme": "(ohne Thema)",
   "imp.explore.empty": "In dieser Quelle wurde nichts gefunden.",
   "imp.explore.truncated": "Nur die ersten {{n}} Seiten gezählt — die Quelle ist größer.",
+  "imp.explore.failedPages": "{{n}} Seiten konnten nicht gelesen werden.",
+  "imp.explore.topOf": "Top {{n}} von {{total}}",
   // WP-IC-PAKET-1 (Teil 2): Herkunfts-Kennzeichnung abgeleiteter Themen (deterministisch aus Titeln).
   "imp.explore.derivedTag": "abgeleitet",
   "imp.explore.derivedHint":
@@ -2142,6 +2144,8 @@ const de = {
     "Fünf Beiträge von gut über zu kurz bis veraltet — ideal, um Review und Qualitätsbewertung zu üben.",
   "imp.preview.sourceNewer": "Quelle neuer als Import",
   "imp.select.empty": "Kein Treffer für diese Eingrenzung.",
+  "imp.select.aiUnavailable":
+    "KI-Auswahl derzeit nicht verfügbar — es gelten nur deine Klick-Filter.",
   "imp.uploadTitle": "JSON-Re-Import",
   "imp.uploadHint":
     "JSON-Datei wählen — daraus entstehen Importkandidaten zur Prüfung (keine stille Übernahme).",
@@ -5233,6 +5237,8 @@ const en: typeof de = {
   "imp.explore.noTheme": "(no theme)",
   "imp.explore.empty": "Nothing was found in this source.",
   "imp.explore.truncated": "Only the first {{n}} pages were counted — the source is larger.",
+  "imp.explore.failedPages": "{{n}} pages could not be read.",
+  "imp.explore.topOf": "top {{n}} of {{total}}",
   "imp.explore.derivedTag": "derived",
   "imp.explore.derivedHint":
     "Theme derived deterministically from the page titles — the source has no labels for these pages.",
@@ -5329,6 +5335,8 @@ const en: typeof de = {
     "Five posts ranging from good to too short to outdated — ideal for practicing review and quality assessment.",
   "imp.preview.sourceNewer": "source newer than import",
   "imp.select.empty": "No match for this narrowing.",
+  "imp.select.aiUnavailable":
+    "AI selection is currently unavailable — only your click filters apply.",
   "imp.uploadTitle": "JSON re-import",
   "imp.uploadHint":
     "Pick a JSON file — it creates import candidates for review (no silent bulk insert).",
@@ -8379,6 +8387,8 @@ const nl: typeof de = {
   "imp.explore.noTheme": "(zonder thema)",
   "imp.explore.empty": "In deze bron is niets gevonden.",
   "imp.explore.truncated": "Alleen de eerste {{n}} pagina's geteld — de bron is groter.",
+  "imp.explore.failedPages": "{{n}} pagina's konden niet worden gelezen.",
+  "imp.explore.topOf": "top {{n}} van {{total}}",
   "imp.explore.derivedTag": "afgeleid",
   "imp.explore.derivedHint":
     "Thema deterministisch afgeleid uit de paginatitels — de bron heeft voor deze pagina's geen labels.",
@@ -8476,6 +8486,8 @@ const nl: typeof de = {
     "Vijf bijdragen van goed tot te kort tot verouderd — ideaal om review en kwaliteitsbeoordeling te oefenen.",
   "imp.preview.sourceNewer": "bron nieuwer dan import",
   "imp.select.empty": "Geen treffer voor deze verfijning.",
+  "imp.select.aiUnavailable":
+    "AI-selectie is momenteel niet beschikbaar — alleen je klikfilters gelden.",
   "imp.uploadTitle": "JSON opnieuw importeren",
   "imp.uploadHint":
     "Kies een JSON-bestand — hieruit ontstaan importkandidaten ter controle (geen stille overname).",
