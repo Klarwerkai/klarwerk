@@ -297,4 +297,27 @@ describe("WP-D11b GELB a: Deadline killt die GANZE Prozessgruppe (echter Kindpro
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it("WP-SHIP7-FIX (Fix 5, Rest): auch nach NORMALEM Prozessende bleibt kein Hintergrund-Enkel zurück", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "kw-clean-"));
+    try {
+      // Der Kindprozess endet SOFORT erfolgreich (exit 0), lässt aber einen Hintergrund-Enkel in
+      // der Gruppe zurück — das Best-Effort-Aufräumen nach dem Settle muss ihn beenden.
+      await runProcess("sh", ["-c", "sleep 30 & echo $! > enkel.pid; exit 0"], {
+        timeoutMs: 5_000,
+        cwd: dir,
+        env: converterEnv(dir),
+      });
+      const pid = Number((await readFile(join(dir, "enkel.pid"), "utf8")).trim());
+      expect(Number.isInteger(pid) && pid > 0).toBe(true);
+      let lives = true;
+      for (let i = 0; i < 100 && lives; i++) {
+        await new Promise((r) => setTimeout(r, 20));
+        lives = descendantLives(pid);
+      }
+      expect(lives).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });

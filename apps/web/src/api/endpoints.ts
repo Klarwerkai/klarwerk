@@ -456,8 +456,11 @@ export const endpoints = {
       group: (body: { criteria?: ImportSelectCriteria; locale?: "de" | "en" }) =>
         api.post<ImportGroupResponse>("/admin/import/confluence/group", body),
       // WP-IC-4 (Schritt 5): Übernahme in die BESTEHENDE Review-Queue (Batch, ehrliche Teil-Bilanz).
-      apply: (body: { criteria?: ImportSelectCriteria; includeIds: string[] }) =>
-        api.post<ImportApplyResponse>("/admin/import/confluence/apply", body),
+      apply: (body: {
+        criteria?: ImportSelectCriteria;
+        includeIds: string[];
+        snapshotToken?: number;
+      }) => api.post<ImportApplyResponse>("/admin/import/confluence/apply", body),
     },
   },
   users: {

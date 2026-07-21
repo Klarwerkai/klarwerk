@@ -50,11 +50,16 @@ export { deriveTitleThemes, titleThemeTokens, MIN_THEME_GROUP_SIZE } from "./src
 // WP-IC-PAKET-1e: DIE geteilte Pro-Item-Kanonisierung (Erkundung UND Selektion — Chips selektierbar).
 export { canonicalImportText } from "./src/text-codec";
 // WP-IC-4: pure Zulieferung der KI-Gruppierung (sparsame Eingaben, deterministische Hinweise).
+// WP-SHIP7-FIX: + fail-safe Vertraulichkeits-Klassifikation des Batches und Prompt-Deckel.
 export {
   candidateIdOf,
   candidateHints,
   groupingCandidates,
+  groupingRequiresConfidential,
+  groupPromptUtf8Bytes,
   GROUP_TEXT_MAX_CHARS,
+  GROUP_TITLE_MAX_INPUT_CHARS,
+  GROUP_PROMPT_MAX_UTF8_BYTES,
   STALE_AFTER_DAYS,
   MIN_CONTENT_CHARS,
   type CandidateHint,

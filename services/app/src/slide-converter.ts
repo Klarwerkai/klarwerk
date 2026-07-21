@@ -17,8 +17,9 @@
 // BEWUSST OFFEN (Infra-Arbeit, NICHT in diesem WP): volle Prozess-Isolation (eigener Sidecar/
 // Container mit eigenem User, seccomp, cgroup-Memory/CPU-Limits) und ein Netz-Block für die
 // Konverter. Kernel-Ressourcenlimits (ulimit/cgroups) sind unter Node ohne Wrapper-Infrastruktur
-// nicht sauber setzbar. Bis dahin kann der Betrieb die Route über KLARWERK_SLIDES_ENABLED=0
-// abschalten (siehe slides-routes.ts).
+// nicht sauber setzbar. WP-SHIP7-FIX (bens Fix 4): bis diese Grenze steht, ist die Route per
+// DEFAULT AUS — nur ein explizites KLARWERK_SLIDES_ENABLED=1|true schaltet sie scharf
+// (siehe slides-routes.ts).
 //
 // Robustheit:
 //  - temporäres Arbeitsverzeichnis pro Job (mkdtemp), IMMER aufgeräumt (finally, auch im Fehlerfall)
@@ -108,6 +109,17 @@ export const runProcess: RunProcess = (command, args, opts) =>
     });
     child.once("exit", (code, signal) => {
       clearTimeout(timer);
+      // WP-SHIP7-FIX (bens Fix 5, kleiner Rest): auch nach NORMALEM Prozessende die Prozessgruppe
+      // best-effort aufräumen — ein vom Konverter zurückgelassener Hintergrund-Enkel (gleiche
+      // Gruppe) überlebt den Erfolg nicht. ESRCH/EPERM (Gruppe schon weg/fremd) werden bewusst
+      // geschluckt (child.kill auf einen beendeten Prozess ist ein No-op).
+      if (!timedOut && child.pid) {
+        try {
+          process.kill(-child.pid, "SIGKILL");
+        } catch {
+          child.kill("SIGKILL");
+        }
+      }
       if (timedOut) {
         reject(
           new Error(

@@ -3,12 +3,33 @@
 // kurzer kanonisierter Text, IC-1-Thema — NIE volle Bodies) und die rein DETERMINISTISCHEN
 // Qualitätshinweise je Kandidat. Kennt bewusst KEIN Reasoner-Symbol (das Modul bleibt unterhalb;
 // die App-Route reicht die strukturell kompatiblen Eingaben an den Reasoner weiter).
+import { isConfidential, isValidConfidentiality } from "../../knowledge-object";
 import { canonicalImportText } from "./text-codec";
 import { deriveTitleThemes } from "./themes";
 import type { ImportItem } from "./types";
 
 // Sparsamkeits-Deckel des Kurztexts je Kandidat (Modell-Eingabe, nie volle Bodies zur Cloud).
 export const GROUP_TEXT_MAX_CHARS = 240;
+
+// WP-SHIP7-FIX (bens sammel17-GELB): Titel-Deckel der Modell-Eingabe + harter UTF-8-Deckel über den
+// GESAMTEN Gruppierungs-Prompt. Über dem Budget werden ZUERST die Kurztexte ehrlich gekappt/entfernt
+// (der Flow bleibt benutzbar — Titel reichen fürs Themen-Clustern); erst wenn selbst die Minimalform
+// (Titel 80, keine Texte) das Budget sprengt (pathologisch lange Ids), lehnt die Route mit 400 ab.
+export const GROUP_TITLE_MAX_INPUT_CHARS = 160;
+export const GROUP_PROMPT_MAX_UTF8_BYTES = 60_000;
+
+// WP-SHIP7-FIX (bens P0, Fix 1): Vertraulichkeits-Klassifikation der GRUPPIERUNG — dieselbe
+// fail-safe Kette wie der Import selbst (Confluence-Mapper: restringiert → „vertraulich";
+// library-analytics beim Annehmen: fehlendes Signal → fail-safe „vertraulich", ungültige Stufe →
+// restriktiv „vertraulich"). SICHERER BATCH-VERTRAG (ganz oder gar nicht, keine Partitionierung):
+// sobald EIN Kandidat vertraulich, streng vertraulich, ungültig klassifiziert ODER ohne Signal ist,
+// läuft die GESAMTE Gruppierung vertraulich (Provider-Kette dann nie Cloud). Nur wenn ALLE
+// Kandidaten eine explizit gültige, freigegebene Stufe („intern") tragen, darf die Cloud arbeiten.
+export function groupingRequiresConfidential(items: readonly ImportItem[]): boolean {
+  return items.some(
+    (item) => !isValidConfidentiality(item.confidentiality) || isConfidential(item.confidentiality),
+  );
+}
 
 // Qualitätshinweis-Schwellen (bens Vorgaben): Veraltet nach 365 Tagen; „wenig Inhalt" unter
 // 200 kanonisierten Zeichen.
@@ -32,9 +53,23 @@ export function candidateIdOf(item: ImportItem, index: number): string {
   return external && external.length > 0 ? external : `row-${index + 1}`;
 }
 
+// Ungefähre UTF-8-Bytes des Modell-Prompts dieser Kandidaten — spiegelt das Zeilenformat des
+// Providers (`id | titel | text` + Zeilenumbruch). EINE Messgröße für Kappung UND Routen-Deckel.
+export function groupPromptUtf8Bytes(candidates: readonly GroupingCandidate[]): number {
+  const encoder = new TextEncoder();
+  let bytes = 0;
+  for (const c of candidates) {
+    bytes += encoder.encode(`${c.id} | ${c.title}${c.text ? ` | ${c.text}` : ""}`).length + 1;
+  }
+  return bytes;
+}
+
 // Kandidatenliste → sparsame, KANONISIERTE Modell-Eingaben. Das Thema je Kandidat kommt aus den
 // IC-1-Quellen: erstes echtes Label, sonst die deterministische Titel-Ableitung (deriveTitleThemes)
 // der label-losen Items — dieselbe Kanonisierung wie Erkundung/Suche (canonicalImportText).
+// WP-SHIP7-FIX (GELB): Titel hart auf GROUP_TITLE_MAX_INPUT_CHARS gekappt; liegt der Gesamtprompt
+// über GROUP_PROMPT_MAX_UTF8_BYTES, werden die Kurztexte STUFENWEISE gekürzt (240 → 120 → 60 → weg),
+// zuletzt zusätzlich die Titel auf 80 Zeichen — deterministisch, ehrlich, ohne den Flow zu brechen.
 export function groupingCandidates(items: readonly ImportItem[]): GroupingCandidate[] {
   const untagged = items.filter(
     (it) =>
@@ -46,18 +81,41 @@ export function groupingCandidates(items: readonly ImportItem[]): GroupingCandid
   untagged.forEach((it, i) => {
     derived.set(it, labels[i] ?? null);
   });
-  return items.map((item, index) => {
+  const base = items.map((item, index) => {
     const firstTag = (item.tags ?? [])
       .map((tag) => canonicalImportText(item, tag).trim())
       .find((tag) => tag.length > 0);
-    const text = canonicalImportText(item, item.statement).trim().slice(0, GROUP_TEXT_MAX_CHARS);
     return {
       id: candidateIdOf(item, index),
-      title: canonicalImportText(item, item.title),
-      ...(text.length > 0 ? { text } : {}),
+      title: canonicalImportText(item, item.title).trim().slice(0, GROUP_TITLE_MAX_INPUT_CHARS),
+      text: canonicalImportText(item, item.statement).trim().slice(0, GROUP_TEXT_MAX_CHARS),
       theme: firstTag ?? derived.get(item) ?? null,
     };
   });
+  const shaped = (textCap: number, titleCap: number): GroupingCandidate[] =>
+    base.map(({ id, title, text, theme }) => {
+      const cappedText = text.slice(0, textCap);
+      return {
+        id,
+        title: title.slice(0, titleCap),
+        ...(cappedText.length > 0 ? { text: cappedText } : {}),
+        theme,
+      };
+    });
+  // Stufenweise Kappung bis unter das Prompt-Budget; die letzte Stufe (Titel 80, keine Texte) wird
+  // IMMER zurückgegeben — ob auch sie noch zu groß ist (pathologische Ids), entscheidet die Route.
+  for (const [textCap, titleCap] of [
+    [GROUP_TEXT_MAX_CHARS, GROUP_TITLE_MAX_INPUT_CHARS],
+    [120, GROUP_TITLE_MAX_INPUT_CHARS],
+    [60, GROUP_TITLE_MAX_INPUT_CHARS],
+    [0, GROUP_TITLE_MAX_INPUT_CHARS],
+  ] as const) {
+    const shapedCandidates = shaped(textCap, titleCap);
+    if (groupPromptUtf8Bytes(shapedCandidates) <= GROUP_PROMPT_MAX_UTF8_BYTES) {
+      return shapedCandidates;
+    }
+  }
+  return shaped(0, 80);
 }
 
 // Rein deterministische Qualitätshinweise je Kandidat — KEIN Modell nötig, nüchterne Fakten:

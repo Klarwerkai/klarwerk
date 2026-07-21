@@ -28,6 +28,12 @@ export const IMPORT_GROUPS_TEXT = {
   bilanzFailed: "imp.groups.bilanzFailed",
   bilanzReview: "imp.groups.bilanzReview",
   failNotFound: "imp.groups.failNotFound",
+  // WP-SHIP7-FIX (Fix 3): ehrliche Teilbilanz — bereits eingereiht / nicht versucht / HTTP-Fehler
+  // eines Batches + Wiederholen-Knopf für den nicht versuchten Rest.
+  bilanzQueued: "imp.groups.bilanzQueued",
+  bilanzNotAttempted: "imp.groups.bilanzNotAttempted",
+  retryRest: "imp.groups.retryRest",
+  failHttp: "imp.groups.failHttp",
 } as const;
 
 export interface GroupedCandidate {
@@ -128,23 +134,39 @@ export function buildBatches(ids: readonly string[], size: number = APPLY_BATCH_
 
 export interface ApplyBatchResult {
   imported: number;
+  alreadyQueued: number; // idempotenter No-op des Servers (Kandidat war schon eingereiht)
   failed: { id: string; reason: string }[];
   notFound: string[];
 }
 
-export interface ImportBilanz {
-  imported: number;
-  skippedAlreadyImported: number; // vorab abgewählt, weil bereits importiert (Dedupe-Vorgabe)
-  excluded: number; // bewusst ausgeschlossen (Gruppe/Einzel)
-  failed: { id: string; reason: string }[]; // inkl. „nicht mehr in der Auswahl" (not-found)
+// WP-SHIP7-FIX (Fix 3): expliziter Lauf-Zustand der Übernahme — attempted/transportFailed werden
+// je Batch fortgeschrieben; daraus leitet sich die ehrliche Teilbilanz (inkl. „nicht versucht") ab.
+export interface ApplyRunState {
+  results: ApplyBatchResult[]; // Antworten der ERFOLGREICH übertragenen Batches
+  attempted: string[]; // alle Ids, deren Batch abgeschickt wurde (inkl. HTTP-Fehlschlag)
+  transportFailed: string[]; // Ids des Batches, dessen HTTP-Aufruf scheiterte (Zustand unbekannt)
 }
 
-// EHRLICHE Bilanz: übernommen kommt aus den Server-Antworten; übersprungen/ausgeschlossen aus dem
-// lokalen Auswahl-Zustand; Fehlschläge je Id mit PII-freiem Grund (not-found aus dem Server).
+export const EMPTY_APPLY_RUN: ApplyRunState = { results: [], attempted: [], transportFailed: [] };
+
+export interface ImportBilanz {
+  imported: number;
+  alreadyQueued: number; // WP-SHIP7-FIX: No-op des Servers — NICHT als importiert gezählt
+  skippedAlreadyImported: number; // vorab abgewählt, weil bereits importiert (Dedupe-Vorgabe)
+  excluded: number; // bewusst ausgeschlossen (Gruppe/Einzel)
+  failed: { id: string; reason: string }[]; // inkl. not-found und http-error (PII-frei)
+  notAttempted: string[]; // nach einem Batch-Fehler nie versucht — Wiederholen möglich
+}
+
+// EHRLICHE Bilanz: übernommen/bereits eingereiht kommen aus den Server-Antworten; übersprungen/
+// ausgeschlossen aus dem lokalen Auswahl-Zustand; Fehlschläge je Id mit PII-freiem Grund
+// (not-found vom Server, http-error für den gescheiterten Batch); der nicht versuchte Rest wird
+// explizit ausgewiesen. INVARIANTE (als Test gepinnt): alle Kandidaten der Gruppierung ==
+// importiert + bereits eingereiht + übersprungen + ausgeschlossen + fehlgeschlagen + nicht versucht.
 export function aggregateBilanz(
   candidates: readonly GroupedCandidate[],
   selection: Readonly<Record<string, boolean>>,
-  batches: readonly ApplyBatchResult[],
+  run: ApplyRunState,
 ): ImportBilanz {
   let skippedAlreadyImported = 0;
   let excluded = 0;
@@ -159,10 +181,16 @@ export function aggregateBilanz(
   }
   const failed: { id: string; reason: string }[] = [];
   let imported = 0;
-  for (const batch of batches) {
+  let alreadyQueued = 0;
+  for (const batch of run.results) {
     imported += batch.imported;
+    alreadyQueued += batch.alreadyQueued;
     failed.push(...batch.failed);
     failed.push(...batch.notFound.map((id) => ({ id, reason: "not-found" })));
   }
-  return { imported, skippedAlreadyImported, excluded, failed };
+  // HTTP-Fehler eines Batches: Zustand serverseitig unbekannt → ehrlich als fehlgeschlagen.
+  failed.push(...run.transportFailed.map((id) => ({ id, reason: "http-error" })));
+  const attempted = new Set(run.attempted);
+  const notAttempted = includedIds(selection).filter((id) => !attempted.has(id));
+  return { imported, alreadyQueued, skippedAlreadyImported, excluded, failed, notAttempted };
 }

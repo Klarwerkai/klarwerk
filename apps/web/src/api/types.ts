@@ -697,12 +697,17 @@ export interface ImportGroupResponse {
   groups: ImportGroupEntry[];
   candidates: ImportGroupCandidate[];
   demo: boolean;
+  // WP-SHIP7-FIX: Snapshot-Pin — jeder Apply-Batch desselben Laufs nutzt GENAU diese Datenbasis.
+  snapshotToken: number;
   fallbackReason?: "no-model" | "model-timeout" | "model-error";
 }
 
 // WP-IC-4 (Schritt 5): Teil-Bilanz eines Übernahme-Batches (der Client aggregiert ehrlich).
+// WP-SHIP7-FIX (Fix 3): alreadyQueued = idempotenter No-op (Kandidat war schon eingereiht) —
+// zählt EHRLICH getrennt vom Import.
 export interface ImportApplyResponse {
   imported: number;
+  alreadyQueued: number;
   failed: { id: string; reason: string }[];
   notFound: string[];
 }

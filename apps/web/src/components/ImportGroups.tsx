@@ -13,7 +13,8 @@ import { endpoints } from "../api/endpoints";
 import type { ImportApplyResponse, ImportGroupResponse, ImportSelectCriteria } from "../api/types";
 import { displayImportText } from "../lib/htmlEntities";
 import {
-  type ApplyBatchResult,
+  type ApplyRunState,
+  EMPTY_APPLY_RUN,
   type GroupedCandidate,
   IMPORT_GROUPS_TEXT,
   type ImportBilanz,
@@ -163,6 +164,7 @@ export function ImportGroups({ criteria }: { criteria: ImportSelectCriteria }): 
   const [selection, setSelection] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState<"group" | "apply" | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [runState, setRunState] = useState<ApplyRunState>(EMPTY_APPLY_RUN);
   const [bilanz, setBilanz] = useState<ImportBilanz | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -170,6 +172,7 @@ export function ImportGroups({ criteria }: { criteria: ImportSelectCriteria }): 
     setBusy("group");
     setError(null);
     setBilanz(null);
+    setRunState(EMPTY_APPLY_RUN);
     try {
       const response = await endpoints.admin.import.group({
         criteria,
@@ -186,36 +189,50 @@ export function ImportGroups({ criteria }: { criteria: ImportSelectCriteria }): 
     }
   };
 
-  const runApply = async (): Promise<void> => {
+  // WP-SHIP7-FIX (Fix 3): expliziter Lauf-Zustand (attempted/transportFailed) über Batches hinweg.
+  // Ein HTTP-Fehler bricht den Lauf ab: die Ids DIESES Batches gelten als fehlgeschlagen (Zustand
+  // unbekannt), alle noch nicht versuchten werden ehrlich als „nicht versucht" ausgewiesen — der
+  // Wiederholen-Knopf übernimmt NUR den nicht versuchten Rest (kein Doppel-Import-Risiko).
+  const runApply = async (idsOverride?: readonly string[]): Promise<void> => {
     if (!data) {
       return;
     }
-    const ids = includedIds(selection);
+    const prior = idsOverride ? runState : EMPTY_APPLY_RUN;
+    const ids = idsOverride ? [...idsOverride] : includedIds(selection);
     setBusy("apply");
     setError(null);
     setProgress({ done: 0, total: ids.length });
-    const results: ApplyBatchResult[] = [];
+    const results = [...prior.results];
+    const attempted = [...prior.attempted];
+    const transportFailed = [...prior.transportFailed];
     try {
       for (const batch of buildBatches(ids)) {
-        const result: ImportApplyResponse = await endpoints.admin.import.apply({
-          criteria,
-          includeIds: batch,
-        });
-        results.push(result);
+        attempted.push(...batch);
+        try {
+          const result: ImportApplyResponse = await endpoints.admin.import.apply({
+            criteria,
+            includeIds: batch,
+            // Snapshot-Pin: alle Batches dieses Laufs arbeiten auf der Datenbasis der Gruppierung.
+            snapshotToken: data.snapshotToken,
+          });
+          results.push(result);
+        } catch (err) {
+          transportFailed.push(...batch);
+          setError(err instanceof ApiError ? err.message : t("state.error"));
+          break; // Rest bleibt „nicht versucht" — der Wiederholen-Knopf übernimmt ihn.
+        }
         setProgress((prev) => ({
           done: Math.min((prev?.done ?? 0) + batch.length, ids.length),
           total: ids.length,
         }));
       }
-      setBilanz(aggregateBilanz(data.candidates, selection, results));
-    } catch (err) {
-      // Teil-Bilanz trotzdem zeigen — ehrlich, was bis zum Fehler passiert ist.
-      setBilanz(aggregateBilanz(data.candidates, selection, results));
-      setError(err instanceof ApiError ? err.message : t("state.error"));
     } finally {
       setBusy(null);
       setProgress(null);
     }
+    const nextRun: ApplyRunState = { results, attempted, transportFailed };
+    setRunState(nextRun);
+    setBilanz(aggregateBilanz(data.candidates, selection, nextRun));
   };
 
   const counts = selectionCounts(selection);
@@ -283,19 +300,40 @@ export function ImportGroups({ criteria }: { criteria: ImportSelectCriteria }): 
           <p className="text-[13px] font-semibold text-text">{t(IMPORT_GROUPS_TEXT.bilanzTitle)}</p>
           <ul className="mt-1.5 space-y-0.5 text-[12.5px] text-text">
             <li>· {t(IMPORT_GROUPS_TEXT.bilanzImported, { n: bilanz.imported })}</li>
+            <li>· {t(IMPORT_GROUPS_TEXT.bilanzQueued, { n: bilanz.alreadyQueued })}</li>
             <li>· {t(IMPORT_GROUPS_TEXT.bilanzSkipped, { n: bilanz.skippedAlreadyImported })}</li>
             <li>· {t(IMPORT_GROUPS_TEXT.bilanzExcluded, { n: bilanz.excluded })}</li>
             <li>· {t(IMPORT_GROUPS_TEXT.bilanzFailed, { n: bilanz.failed.length })}</li>
+            {bilanz.notAttempted.length > 0 ? (
+              <li>
+                · {t(IMPORT_GROUPS_TEXT.bilanzNotAttempted, { n: bilanz.notAttempted.length })}
+              </li>
+            ) : null}
           </ul>
           {bilanz.failed.length > 0 ? (
             <ul className="mt-1.5 space-y-0.5 text-[11.5px] text-trust-crit-text">
               {bilanz.failed.map((f) => (
                 <li key={f.id}>
                   · {f.id} —{" "}
-                  {f.reason === "not-found" ? t(IMPORT_GROUPS_TEXT.failNotFound) : f.reason}
+                  {f.reason === "not-found"
+                    ? t(IMPORT_GROUPS_TEXT.failNotFound)
+                    : f.reason === "http-error"
+                      ? t(IMPORT_GROUPS_TEXT.failHttp)
+                      : f.reason}
                 </li>
               ))}
             </ul>
+          ) : null}
+          {bilanz.notAttempted.length > 0 ? (
+            <div className="mt-2">
+              <Button
+                variant="ghost"
+                disabled={busy !== null}
+                onClick={() => void runApply(bilanz.notAttempted)}
+              >
+                {t(IMPORT_GROUPS_TEXT.retryRest, { n: bilanz.notAttempted.length })}
+              </Button>
+            </div>
           ) : null}
           <p className="mt-2 text-[12px] text-muted-2">{t(IMPORT_GROUPS_TEXT.bilanzReview)}</p>
         </div>

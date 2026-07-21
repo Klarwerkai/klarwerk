@@ -2,13 +2,16 @@ import type { FastifyPluginAsync } from "fastify";
 import { type ConfluenceSourceAdapter, createConfluenceAdapterFromEnv } from "../../../confluence";
 import type { KoService } from "../../../knowledge-object";
 import {
+  GROUP_PROMPT_MAX_UTF8_BYTES,
   type LibraryService,
   type SelectCriteria,
   candidateHints,
   candidateIdOf,
   deriveCriteriaFromPrompt,
   filterImportItems,
+  groupPromptUtf8Bytes,
   groupingCandidates,
+  groupingRequiresConfidential,
   sanitizeCriteria,
   summarizeImportItems,
   toPreviewEntry,
@@ -44,6 +47,10 @@ export interface ConfluenceImportRouteDeps {
   reasoner?: Reasoner;
 }
 
+// WP-SHIP7-FIX (bens sammel17-Fix 3): harter Deckel der Apply-Ids je Aufruf (nach Dedupe) —
+// deckungsgleich mit der Gruppierungs-Kappung (MAX_GROUP_CANDIDATES = 200). Drüber: ehrlicher 400.
+export const MAX_APPLY_IDS = 200;
+
 export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): FastifyPluginAsync {
   const makeAdapter = deps.makeAdapter ?? (() => createConfluenceAdapterFromEnv());
 
@@ -63,19 +70,46 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
   // aufbrauchen und direkt nach Abschluss einen zweiten Vollscan auslösen).
   const SNAPSHOT_TTL_MS = 60_000;
   type CollectAllResult = Awaited<ReturnType<ConfluenceSourceAdapter["collectAll"]>>;
-  let snapshot: { at: number | null; promise: Promise<CollectAllResult> } | null = null;
-  function collectSnapshot(adapter: ConfluenceSourceAdapter): Promise<CollectAllResult> {
+  let snapshot: {
+    at: number | null;
+    token: number;
+    promise: Promise<CollectAllResult>;
+  } | null = null;
+  // WP-SHIP7-FIX (bens sammel17-GELB, „EIN Snapshot je Apply-Lauf"): jeder frische Scan bekommt
+  // einen monotonen Token; die letzten ERFOLGREICHEN Snapshots bleiben (über die TTL hinaus)
+  // referenzierbar. /group gibt den Token an den Client; JEDER Apply-Batch desselben Laufs wird
+  // aus GENAU diesem festgehaltenen Snapshot bedient — kein Batch sieht eine andere Datenbasis
+  // (row-N-Ids bleiben stabil, notFound bleibt ehrlich). Unbekannter Token → ehrlicher 409.
+  let snapshotTokenCounter = 0;
+  const RETAINED_SNAPSHOTS = 2;
+  const retainedSnapshots = new Map<number, CollectAllResult>();
+  function collectSnapshotWithToken(adapter: ConfluenceSourceAdapter): {
+    token: number;
+    promise: Promise<CollectAllResult>;
+  } {
     if (snapshot !== null && (snapshot.at === null || Date.now() - snapshot.at < SNAPSHOT_TTL_MS)) {
-      return snapshot.promise;
+      return { token: snapshot.token, promise: snapshot.promise };
     }
     const promise = adapter.collectAll();
-    const entry: { at: number | null; promise: Promise<CollectAllResult> } = { at: null, promise };
+    snapshotTokenCounter += 1;
+    const entry: { at: number | null; token: number; promise: Promise<CollectAllResult> } = {
+      at: null,
+      token: snapshotTokenCounter,
+      promise,
+    };
     snapshot = entry;
     promise.then(
-      () => {
-        // Erfolg: TTL läuft AB JETZT (nicht ab Scan-Start).
+      (result) => {
+        // Erfolg: TTL läuft AB JETZT (nicht ab Scan-Start); Snapshot für Apply-Läufe festhalten.
         if (snapshot === entry) {
           entry.at = Date.now();
+        }
+        retainedSnapshots.set(entry.token, result);
+        for (const key of retainedSnapshots.keys()) {
+          if (retainedSnapshots.size <= RETAINED_SNAPSHOTS) {
+            break;
+          }
+          retainedSnapshots.delete(key);
         }
       },
       () => {
@@ -85,7 +119,10 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
         }
       },
     );
-    return promise;
+    return { token: entry.token, promise };
+  }
+  function collectSnapshot(adapter: ConfluenceSourceAdapter): Promise<CollectAllResult> {
+    return collectSnapshotWithToken(adapter).promise;
   }
 
   return async (app) => {
@@ -275,7 +312,8 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
         try {
           const locale = request.body?.locale === "en" ? ("en" as const) : ("de" as const);
           const criteria = sanitizeCriteria(request.body?.criteria);
-          const { items } = await collectSnapshot(adapter);
+          const snap = collectSnapshotWithToken(adapter);
+          const { items } = await snap.promise;
           const { selected } = filterImportItems(items, criteria);
           // Harte Server-Kappung mit EHRLICHER Meldung — kein stilles Kappen.
           if (selected.length > MAX_GROUP_CANDIDATES) {
@@ -306,9 +344,24 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
             };
           });
           const inputs = groupingCandidates(selected);
-          // Import-Quelldaten sind nicht-vertraulich (Adapter-Ebene) — Standard-Routing.
+          // WP-SHIP7-FIX (GELB): der harte UTF-8-Gesamtdeckel — groupingCandidates kappt bereits
+          // stufenweise (Texte, dann Titel); bleibt selbst die Minimalform drüber (pathologisch
+          // lange Ids), wird EHRLICH abgelehnt statt still übertragen.
+          if (groupPromptUtf8Bytes(inputs) > GROUP_PROMPT_MAX_UTF8_BYTES) {
+            reply.code(400).send({
+              error: "GROUP_TOO_LARGE",
+              message:
+                "Die Kandidatendaten sind zu umfangreich für die Gruppierung — bitte die Auswahl weiter eingrenzen.",
+            });
+            return reply;
+          }
+          // WP-SHIP7-FIX (bens P0, Fix 1): ECHTE Import-Vertraulichkeit statt pauschal false.
+          // Ganz-oder-gar-nicht-Batch-Vertrag (groupingRequiresConfidential): EIN vertraulicher/
+          // unklassifizierter/ungültiger Kandidat → die GESAMTE Gruppierung läuft vertraulich,
+          // die Provider-Kette nimmt die Cloud heraus (SCRUM-502-Routing im Reasoner).
+          const confidential = groupingRequiresConfidential(selected);
           const grouped = deps.reasoner
-            ? await deps.reasoner.groupCandidates(inputs, locale, false)
+            ? await deps.reasoner.groupCandidates(inputs, locale, confidential)
             : {
                 groups: deterministicCandidateGroups(inputs, locale),
                 demo: true,
@@ -318,6 +371,8 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
             groups: grouped.groups,
             candidates,
             demo: grouped.demo,
+            // Der Apply-Lauf bedient sich aus GENAU diesem Snapshot (Token-Pin, s. /apply).
+            snapshotToken: snap.token,
             ...(grouped.fallbackReason ? { fallbackReason: grouped.fallbackReason } : {}),
           });
           return reply;
@@ -339,7 +394,7 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
     // keine Auto-KOs). Der Client schickt die freigegebenen Ids (ggf. in Batches für ehrlichen
     // Fortschritt); die Antwort ist die ehrliche Teil-Bilanz dieses Aufrufs: übernommen,
     // fehlgeschlagen (mit PII-freiem Grund je Id), nicht mehr in der Auswahl gefunden.
-    app.post<{ Body: { criteria?: unknown; includeIds?: unknown } }>(
+    app.post<{ Body: { criteria?: unknown; includeIds?: unknown; snapshotToken?: unknown } }>(
       "/api/admin/import/confluence/apply",
       async (request, reply) => {
         const user = await deps.guards.requirePermission("users.manage", request, reply);
@@ -357,11 +412,42 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
         try {
           const criteria = sanitizeCriteria(request.body?.criteria);
           const rawIds = Array.isArray(request.body?.includeIds) ? request.body.includeIds : [];
-          const includeIds = rawIds.filter((id): id is string => typeof id === "string");
-          const { items } = await collectSnapshot(adapter);
+          // WP-SHIP7-FIX (Fix 3): serverseitig DEDUPLIZIEREN (doppelte Ids einmal verarbeiten) …
+          const includeIds = [
+            ...new Set(rawIds.filter((id): id is string => typeof id === "string")),
+          ];
+          // … und hart deckeln — drüber ehrlicher 400 statt eines unbegrenzten Schreiblaufs.
+          if (includeIds.length > MAX_APPLY_IDS) {
+            reply.code(400).send({
+              error: "APPLY_TOO_MANY",
+              message: `Zu viele Ids für die Übernahme (${includeIds.length} von max. ${MAX_APPLY_IDS}).`,
+            });
+            return reply;
+          }
+          // WP-SHIP7-FIX (GELB, „EIN Snapshot je Lauf"): der Client reicht den snapshotToken der
+          // Gruppierung mit — ALLE Batches eines Laufs werden aus GENAU diesem festgehaltenen
+          // Snapshot bedient (stabile row-N-Ids, ehrliches notFound). Unbekannter/abgelaufener
+          // Token → ehrlicher 409 (neu gruppieren). Ohne Token: frischer/gecachter Snapshot.
+          const rawToken = request.body?.snapshotToken;
+          let items: CollectAllResult["items"];
+          if (typeof rawToken === "number") {
+            const retained = retainedSnapshots.get(rawToken);
+            if (!retained) {
+              reply.code(409).send({
+                error: "SNAPSHOT_EXPIRED",
+                message:
+                  "Die Datengrundlage der Gruppierung ist abgelaufen — bitte neu gruppieren.",
+              });
+              return reply;
+            }
+            items = retained.items;
+          } else {
+            items = (await collectSnapshot(adapter)).items;
+          }
           const { selected } = filterImportItems(items, criteria);
           const byId = new Map(selected.map((item, index) => [candidateIdOf(item, index), item]));
           let imported = 0;
+          let alreadyQueued = 0;
           const failed: { id: string; reason: string }[] = [];
           const notFound: string[] = [];
           for (const id of includeIds) {
@@ -373,14 +459,21 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
             try {
               // BESTEHENDER Weg: Kandidat in die Review-Queue (stempelt textCodec, IC-6a-Dedupe-
               // Markierung läuft dort wie gehabt) — pro Item, damit Fehlschläge zuordenbar sind.
-              await deps.library.createImportCandidates([item], user.id);
-              imported += 1;
+              // WP-SHIP7-FIX (Fix 3): die Rückgabe zählt EHRLICH — nur tatsächlich eingereihte
+              // Kandidaten sind „importiert"; ein idempotenter No-op (bereits offener Kandidat
+              // derselben externalId/Version, z. B. Retry/Parallel-Lauf) wird SEPARAT ausgewiesen.
+              const created = await deps.library.createImportCandidates([item], user.id);
+              if (created.length > 0) {
+                imported += 1;
+              } else {
+                alreadyQueued += 1;
+              }
             } catch (err) {
               // PII-frei: nur Id + Fehlerklasse, nie Inhalte.
               failed.push({ id, reason: err instanceof Error ? err.name : "unknown" });
             }
           }
-          reply.code(200).send({ imported, failed, notFound });
+          reply.code(200).send({ imported, alreadyQueued, failed, notFound });
           return reply;
         } catch (err) {
           console.warn(

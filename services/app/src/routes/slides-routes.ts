@@ -7,8 +7,12 @@
 //
 // WP-D11b (bens sammel16-Blocker 3): ALLES Abweisbare läuft in einem onRequest-Hook und damit VOR
 // dem Parsen des bis zu 72-MiB-Bodys: Auth + ko.create, Betriebsschalter, Principal-Rate-Limit und
-// die Busy-VOR-Abweisung. Der Busy-Check im Hook ist nur eine Vor-Abweisung — der eigentliche
-// Slot-Claim bleibt atomar im Handler (kein TOCTOU: der Handler prüft erneut und claimt synchron).
+// der Konvertierungs-Slot.
+// WP-SHIP7-FIX (bens sammel17-Fix 5): der Slot wird bereits im Hook ATOMAR GECLAIMT (synchron,
+// kein await zwischen Prüfung und Claim) und request-lokal markiert — simultane Erstrequests
+// parsen NICHT mehr alle parallel 72 MiB; genau einer parst, der Rest bekommt 429 ohne Parse.
+// Freigabe auf ALLEN Pfaden über onResponse/onError (Parserfehler, Validierungsfehler, frühes
+// Reply, Erfolg) — kein hängender Slot.
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import type { Guards } from "../http";
 import { MAX_PPTX_BYTES, MAX_SLIDES, type SlideConverter } from "../slide-converter";
@@ -20,6 +24,9 @@ export const SLIDES_BODY_LIMIT = 72 * 1024 * 1024; // 72 MiB
 // Fenster (auch abgewiesene zählen; die Route ist teuer, bevor sie überhaupt konvertiert).
 export const SLIDES_RATE_LIMIT = 5;
 export const SLIDES_RATE_WINDOW_MS = 60_000;
+// WP-SHIP7-FIX (Fix 5): harte Kardinalitätsgrenze der Rate-Map — über der Grenze werden zuerst
+// abgelaufene, dann die am längsten unbenutzten Einträge verdrängt (TTL + LRU-Verdrängung).
+export const SLIDES_RATE_MAX_ENTRIES = 500;
 
 // Stack-sichere Base64-Grobprüfung (Zeichenklassen-Stern, keine Gruppen-Wiederholung).
 const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
@@ -28,13 +35,15 @@ const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
 // PK\x03\x04 sein. Alles andere wird abgelehnt, BEVOR der Konverter je startet.
 const PPTX_ZIP_MAGIC = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
 
-// WP-D11b (Blocker 1): Betriebsschalter. Default AN; KLARWERK_SLIDES_ENABLED=0|false schaltet die
-// Konvertierung ab (z. B. bis die Infra-Isolation der Konverter steht) — ehrlicher 503 auf dem
-// GLEICHEN Pfad wie „kein soffice installiert". Pro Anfrage gelesen, damit der Betrieb ohne
-// Neustart-Zwang reagieren kann.
+// WP-SHIP7-FIX (bens sammel17-Fix 4): Betriebsschalter mit DEFAULT AUS. Die Konverter-Fläche
+// (LibreOffice/poppler parsen Fremddateien) ist nach einem normalen Deploy NICHT aktiv — der
+// Default bleibt aus, bis der Konverter in einer echten credentialfreien, netz-/ressourcen-
+// isolierten Grenze läuft (Infra-Arbeit). Nur ein EXPLIZITES KLARWERK_SLIDES_ENABLED=1|true
+// schaltet die Route scharf; ohne/mit anderem Wert antwortet sie ehrlich 503 (gleicher Pfad wie
+// „kein soffice installiert"). Pro Anfrage gelesen — der Betrieb kann ohne Neustart reagieren.
 function slidesEnabled(): boolean {
   const flag = process.env.KLARWERK_SLIDES_ENABLED;
-  return flag !== "0" && flag !== "false";
+  return flag === "1" || flag === "true";
 }
 
 function sendUnavailable(reply: FastifyReply): void {
@@ -45,32 +54,71 @@ function sendUnavailable(reply: FastifyReply): void {
   });
 }
 
+// WP-SHIP7-FIX (Fix 5): eigenständiger, unit-testbarer Rate-Limiter mit harter Kardinalitätsgrenze.
+// hit() zählt den Aufruf (true = abgewiesen); size() ist für den Kardinalitäts-Test exportiert.
+export interface SlidesRateLimiter {
+  hit(userId: string, nowMs: number): boolean;
+  size(): number;
+}
+
+export function createSlidesRateLimiter(
+  limit: number = SLIDES_RATE_LIMIT,
+  windowMs: number = SLIDES_RATE_WINDOW_MS,
+  maxEntries: number = SLIDES_RATE_MAX_ENTRIES,
+): SlidesRateLimiter {
+  // Map bewahrt die Einfügereihenfolge; per delete+set beim Zugriff wird sie zur LRU-Ordnung.
+  const buckets = new Map<string, number[]>();
+  const evict = (nowMs: number): void => {
+    if (buckets.size < maxEntries) {
+      return;
+    }
+    // 1) TTL: abgelaufene Einträge (kein Zeitstempel mehr im Fenster) entfernen.
+    for (const [key, stamps] of buckets) {
+      if (!stamps.some((t) => t > nowMs - windowMs)) {
+        buckets.delete(key);
+      }
+    }
+    // 2) LRU: reicht das nicht, fliegen die am längsten unbenutzten Einträge — die Map wächst
+    // NIE über maxEntries (ein verdrängter Vielnutzer beginnt schlimmstenfalls frisch zu zählen).
+    for (const key of buckets.keys()) {
+      if (buckets.size < maxEntries) {
+        break;
+      }
+      buckets.delete(key);
+    }
+  };
+  return {
+    hit(userId: string, nowMs: number): boolean {
+      evict(nowMs);
+      const stamps = (buckets.get(userId) ?? []).filter((t) => t > nowMs - windowMs);
+      buckets.delete(userId); // delete+set → der Eintrag wandert ans LRU-Ende (zuletzt benutzt)
+      if (stamps.length >= limit) {
+        buckets.set(userId, stamps);
+        return true;
+      }
+      stamps.push(nowMs);
+      buckets.set(userId, stamps);
+      return false;
+    },
+    size(): number {
+      return buckets.size;
+    },
+  };
+}
+
 export function slidesRoutes(converter: SlideConverter, guards: Guards): FastifyPluginAsync {
   // Modul-Zustand der Serialisierung: max. 1 laufende Konvertierung, keine Warteschlange.
   let running = false;
-  // Rate-Limit-Zustand: Nutzer-Id → Zeitstempel der Aufrufe im Fenster (mit Aufräumen: je Zugriff
-  // wird der eigene Eintrag beschnitten/entfernt; ab 500 Nutzern zusätzlich ein voller Sweep).
-  const rateBuckets = new Map<string, number[]>();
+  // WP-SHIP7-FIX (Fix 5): welcher Request hält den Slot? Request-lokal markiert, damit die
+  // Freigabe (onResponse/onError) NUR vom Halter kommt — abgewiesene Requests geben nie frei.
+  const slotHolder = new WeakSet<FastifyRequest>();
+  const limiter = createSlidesRateLimiter();
 
-  const rateLimited = (userId: string, nowMs: number): boolean => {
-    if (rateBuckets.size > 500) {
-      for (const [key, stamps] of rateBuckets) {
-        const fresh = stamps.filter((t) => t > nowMs - SLIDES_RATE_WINDOW_MS);
-        if (fresh.length === 0) {
-          rateBuckets.delete(key);
-        } else {
-          rateBuckets.set(key, fresh);
-        }
-      }
+  const releaseSlot = (request: FastifyRequest): void => {
+    if (slotHolder.has(request)) {
+      slotHolder.delete(request);
+      running = false;
     }
-    const stamps = (rateBuckets.get(userId) ?? []).filter((t) => t > nowMs - SLIDES_RATE_WINDOW_MS);
-    if (stamps.length >= SLIDES_RATE_LIMIT) {
-      rateBuckets.set(userId, stamps);
-      return true;
-    }
-    stamps.push(nowMs);
-    rateBuckets.set(userId, stamps);
-    return false;
   };
 
   return async (app) => {
@@ -78,10 +126,12 @@ export function slidesRoutes(converter: SlideConverter, guards: Guards): Fastify
       "/api/capture/slides",
       {
         bodyLimit: SLIDES_BODY_LIMIT,
-        // Blocker 3: der komplette Abweisungs-Pfad VOR dem Body-Parsing (onRequest läuft vor jedem
-        // Content-Type-Parser). Reihenfolge: Auth/Recht → Betriebsschalter → Rate-Limit → Busy.
-        // Bewusst INLINE in den Routen-Optionen, damit der RBAC-Scanner (routeGuardAudit) die
-        // requirePermission-Verdrahtung dieser Route im Routen-Block sieht.
+        // Blocker 3 + Fix 5: der komplette Abweisungs-Pfad UND der atomare Slot-Claim laufen VOR
+        // dem Body-Parsing (onRequest läuft vor jedem Content-Type-Parser). Reihenfolge:
+        // Auth/Recht → Betriebsschalter → Rate-Limit → Slot-Claim (synchron nach dem letzten
+        // await — zwei Requests können den Slot nie beide nehmen). Bewusst INLINE in den
+        // Routen-Optionen, damit der RBAC-Scanner (routeGuardAudit) die requirePermission-
+        // Verdrahtung dieser Route im Routen-Block sieht.
         onRequest: async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
           const user = await guards.requirePermission("ko.create", request, reply);
           if (!user) {
@@ -91,7 +141,7 @@ export function slidesRoutes(converter: SlideConverter, guards: Guards): Fastify
             sendUnavailable(reply);
             return;
           }
-          if (rateLimited(user.id, Date.now())) {
+          if (limiter.hit(user.id, Date.now())) {
             reply
               .code(429)
               .header("retry-after", String(Math.ceil(SLIDES_RATE_WINDOW_MS / 1000)))
@@ -102,6 +152,8 @@ export function slidesRoutes(converter: SlideConverter, guards: Guards): Fastify
               });
             return;
           }
+          // Fix 5: ATOMARER Slot-Claim — Prüfung und Claim synchron (kein await dazwischen).
+          // Der zweite Request im Fenster bekommt 429, OHNE dass sein 72-MiB-Body geparst wird.
           if (running) {
             reply.code(429).header("retry-after", "30").send({
               error: "CONVERSION_BUSY",
@@ -110,6 +162,17 @@ export function slidesRoutes(converter: SlideConverter, guards: Guards): Fastify
             });
             return;
           }
+          running = true;
+          slotHolder.add(request);
+        },
+        // Fix 5: Freigabe auf ALLEN Pfaden — onResponse feuert nach JEDER gesendeten Antwort
+        // (Erfolg, Validierungsfehler, Parserfehler/413, 500); onError ist der Gürtel dazu.
+        // Doppel-Freigabe ist durch die request-lokale Markierung ausgeschlossen.
+        onResponse: async (request: FastifyRequest): Promise<void> => {
+          releaseSlot(request);
+        },
+        onError: async (request: FastifyRequest): Promise<void> => {
+          releaseSlot(request);
         },
       },
       async (request, reply) => {
@@ -149,16 +212,7 @@ export function slidesRoutes(converter: SlideConverter, guards: Guards): Fastify
           });
           return;
         }
-        // Atomarer Slot-Claim (der Hook war nur Vor-Abweisung — hier zählt der synchrone Re-Check).
-        if (running) {
-          reply.code(429).header("retry-after", "30").send({
-            error: "CONVERSION_BUSY",
-            message:
-              "Es läuft gerade eine andere Folien-Konvertierung — bitte in einem Moment erneut versuchen.",
-          });
-          return;
-        }
-        running = true;
+        // Der Slot gehört diesem Request (im Hook geclaimt); Freigabe übernimmt onResponse.
         const startedMs = Date.now();
         try {
           const result = await converter.convert(Buffer.from(data, "base64"));
@@ -199,8 +253,6 @@ export function slidesRoutes(converter: SlideConverter, guards: Guards): Fastify
             message:
               "Die Folien-Konvertierung ist fehlgeschlagen — der Text-Import bleibt davon unberührt.",
           });
-        } finally {
-          running = false;
         }
       },
     );

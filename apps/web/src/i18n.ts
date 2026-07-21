@@ -2093,6 +2093,10 @@ const de = {
   "imp.groups.bilanzReview":
     "Die übernommenen Beiträge liegen jetzt im Import-Review — dort entscheidet ein Mensch über jede Übernahme ins Wissen.",
   "imp.groups.failNotFound": "nicht mehr in der aktuellen Auswahl",
+  "imp.groups.bilanzQueued": "{{n}} bereits eingereiht (war schon im Review)",
+  "imp.groups.bilanzNotAttempted": "{{n}} nicht versucht (Lauf nach Fehler abgebrochen)",
+  "imp.groups.retryRest": "Rest übernehmen ({{n}})",
+  "imp.groups.failHttp": "Übertragung fehlgeschlagen",
   "imp.preview.sourceNewer": "Quelle neuer als Import",
   "imp.select.empty": "Kein Treffer für diese Eingrenzung.",
   "imp.uploadTitle": "JSON-Re-Import",
@@ -5234,6 +5238,10 @@ const en: typeof de = {
   "imp.groups.bilanzReview":
     "The imported posts are now in the import review — a person decides there about every addition to the knowledge base.",
   "imp.groups.failNotFound": "no longer in the current selection",
+  "imp.groups.bilanzQueued": "{{n}} already queued (was already in review)",
+  "imp.groups.bilanzNotAttempted": "{{n}} not attempted (run stopped after an error)",
+  "imp.groups.retryRest": "Import the rest ({{n}})",
+  "imp.groups.failHttp": "transfer failed",
   "imp.preview.sourceNewer": "source newer than import",
   "imp.select.empty": "No match for this narrowing.",
   "imp.uploadTitle": "JSON re-import",
@@ -8334,6 +8342,10 @@ const nl: typeof de = {
   "imp.groups.bilanzReview":
     "De overgenomen bijdragen staan nu in de importreview — daar beslist een mens over elke toevoeging aan de kennisbank.",
   "imp.groups.failNotFound": "niet meer in de huidige selectie",
+  "imp.groups.bilanzQueued": "{{n}} al in de wachtrij (stond al in de review)",
+  "imp.groups.bilanzNotAttempted": "{{n}} niet geprobeerd (run gestopt na een fout)",
+  "imp.groups.retryRest": "Rest overnemen ({{n}})",
+  "imp.groups.failHttp": "overdracht mislukt",
   "imp.preview.sourceNewer": "bron nieuwer dan import",
   "imp.select.empty": "Geen treffer voor deze verfijning.",
   "imp.uploadTitle": "JSON opnieuw importeren",

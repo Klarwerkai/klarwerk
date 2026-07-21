@@ -65,16 +65,61 @@ describe("WP-IC-4: Auswahl-Logik", () => {
     // b bleibt vorab abgewählt (bereits importiert), c wird bewusst ausgeschlossen, a wird
     // übernommen — der Server meldet zusätzlich einen Fehlschlag und ein not-found.
     const selection = { a: true, b: false, c: false };
-    const bilanz = aggregateBilanz(CANDIDATES, selection, [
-      { imported: 1, failed: [{ id: "x", reason: "Error" }], notFound: ["weg"] },
-    ]);
+    const bilanz = aggregateBilanz(CANDIDATES, selection, {
+      results: [
+        {
+          imported: 1,
+          alreadyQueued: 0,
+          failed: [{ id: "x", reason: "Error" }],
+          notFound: ["weg"],
+        },
+      ],
+      attempted: ["a", "x", "weg"],
+      transportFailed: [],
+    });
     expect(bilanz.imported).toBe(1);
+    expect(bilanz.alreadyQueued).toBe(0);
     expect(bilanz.skippedAlreadyImported).toBe(1); // b
     expect(bilanz.excluded).toBe(1); // c
     expect(bilanz.failed).toEqual([
       { id: "x", reason: "Error" },
       { id: "weg", reason: "not-found" },
     ]);
+    expect(bilanz.notAttempted).toEqual([]);
+  });
+
+  it("WP-SHIP7-FIX (Fix 3): BILANZ-INVARIANTE — Kandidaten == importiert + eingereiht + übersprungen + ausgeschlossen + fehlgeschlagen + nicht versucht", () => {
+    const candidates: GroupedCandidate[] = [
+      { id: "a", title: "A", alreadyImported: false, hints: [] },
+      { id: "b", title: "B", alreadyImported: true, hints: ["already-imported"] }, // übersprungen
+      { id: "c", title: "C", alreadyImported: false, hints: [] }, // ausgeschlossen
+      { id: "d", title: "D", alreadyImported: false, hints: [] }, // Server-No-op (schon eingereiht)
+      { id: "e", title: "E", alreadyImported: false, hints: [] }, // Batch scheitert (HTTP)
+      { id: "f", title: "F", alreadyImported: false, hints: [] }, // nie versucht
+    ];
+    const selection = { a: true, b: false, c: false, d: true, e: true, f: true };
+    // Lauf: Batch 1 [a,d] erfolgreich (a importiert, d bereits eingereiht); Batch 2 [e] scheitert
+    // am HTTP-Aufruf → Abbruch; f wird nie versucht.
+    const bilanz = aggregateBilanz(candidates, selection, {
+      results: [{ imported: 1, alreadyQueued: 1, failed: [], notFound: [] }],
+      attempted: ["a", "d", "e"],
+      transportFailed: ["e"],
+    });
+    expect(bilanz.imported).toBe(1);
+    expect(bilanz.alreadyQueued).toBe(1);
+    expect(bilanz.skippedAlreadyImported).toBe(1);
+    expect(bilanz.excluded).toBe(1);
+    expect(bilanz.failed).toEqual([{ id: "e", reason: "http-error" }]);
+    expect(bilanz.notAttempted).toEqual(["f"]);
+    // Die INVARIANTE: alle Kandidaten der Gruppierung sind exakt einmal verbucht.
+    const total =
+      bilanz.imported +
+      bilanz.alreadyQueued +
+      bilanz.skippedAlreadyImported +
+      bilanz.excluded +
+      bilanz.failed.length +
+      bilanz.notAttempted.length;
+    expect(total).toBe(candidates.length);
   });
 
   it("die komplette Copy existiert in DE, EN und NL", () => {

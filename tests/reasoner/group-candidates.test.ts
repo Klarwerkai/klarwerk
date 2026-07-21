@@ -47,6 +47,52 @@ describe("WP-IC-4: normalizeCandidateGroups (strikte Validierung)", () => {
     expect(enGroups[enGroups.length - 1]?.title).toBe("More posts");
   });
 
+  it("WP-SHIP7-FIX (Fix 2): leerer Gruppentitel → Ids gehen NICHT verloren, sondern in die Auffanggruppe", () => {
+    // bens Regression: die Gruppe mit leerem Titel wird verworfen — vorher waren ihre Ids da schon
+    // als „gesehen" markiert und verschwanden unsichtbar (beim Übernehmen trotzdem mitimportiert).
+    const raw = JSON.stringify({
+      groups: [
+        { title: "", ids: ["a"] },
+        { title: "B", ids: ["b"] },
+      ],
+    });
+    const groups = normalizeCandidateGroups(raw, ["a", "b"], "de");
+    expect(groups.map((g) => ({ title: g.title, ids: g.ids, kind: g.kind }))).toEqual([
+      { title: "B", ids: ["b"], kind: undefined },
+      { title: "Weitere Beiträge", ids: ["a"], kind: "catchall" },
+    ]);
+    // Auch ein reiner Whitespace-Titel ist KEIN Titel — gleiche Rettung in die Auffanggruppe.
+    const ws = JSON.stringify({
+      groups: [
+        { title: "   ", ids: ["a"] },
+        { title: "B", ids: ["b"] },
+      ],
+    });
+    const wsGroups = normalizeCandidateGroups(ws, ["a", "b"], "de");
+    expect(wsGroups[wsGroups.length - 1]).toEqual({
+      title: "Weitere Beiträge",
+      ids: ["a"],
+      kind: "catchall",
+    });
+  });
+
+  it("WP-SHIP7-FIX (Fix 2): ABSCHLUSS-INVARIANTE — flache Id-Menge aller Gruppen == eindeutige Eingabemenge", () => {
+    // Gemischtes Chaos: Duplikate (auch innerhalb einer Gruppe), Unbekanntes, verworfene Gruppe,
+    // vergessene Ids — am Ende ist JEDE bekannte Id GENAU einmal gerendert.
+    const raw = JSON.stringify({
+      groups: [
+        { title: "", ids: ["a", "b"] },
+        { title: "Wartung", ids: ["b", "b", "unbekannt"] },
+        { title: "Fehler", ids: ["c", "b"] },
+      ],
+    });
+    const known = ["a", "b", "c", "d", "d"]; // doppelte Eingabe-Id zählt einmal
+    const groups = normalizeCandidateGroups(raw, known, "de");
+    const flat = groups.flatMap((g) => g.ids);
+    expect([...flat].sort()).toEqual(["a", "b", "c", "d"]);
+    expect(new Set(flat).size).toBe(flat.length);
+  });
+
   it("strukturell unbrauchbare Antworten werfen (Kette fällt auf den Themen-Fallback)", () => {
     expect(() => normalizeCandidateGroups("kein json", ["a"], "de")).toThrow();
     expect(() => normalizeCandidateGroups(JSON.stringify({ groups: [] }), ["a"], "de")).toThrow();

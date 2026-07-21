@@ -2,10 +2,24 @@
 // injizierbare Abhängigkeit; hier Fakes): Auth, 503 ohne Konverter, Grenzen (Base64/50 MB),
 // Serialisierung (429 bei paralleler Konvertierung), Erfolgsform (data-URLs in Folienreihenfolge,
 // truncated-Durchreichung), ehrlicher 500-Fehlerpfad.
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
-import { SLIDES_RATE_LIMIT } from "../../services/app/src/routes/slides-routes";
+import {
+  SLIDES_RATE_LIMIT,
+  SLIDES_RATE_MAX_ENTRIES,
+  createSlidesRateLimiter,
+} from "../../services/app/src/routes/slides-routes";
 import type { SlideConvertResult, SlideConverter } from "../../services/app/src/slide-converter";
+
+// WP-SHIP7-FIX (bens Fix 4): der Betriebsschalter ist jetzt DEFAULT AUS — diese Suite testet das
+// Routen-Verhalten und schaltet ihn deshalb je Test EXPLIZIT ein; der Default-Fall (ohne ENV → 503)
+// hat unten seinen eigenen Test.
+beforeEach(() => {
+  process.env.KLARWERK_SLIDES_ENABLED = "1";
+});
+afterEach(() => {
+  delete process.env.KLARWERK_SLIDES_ENABLED;
+});
 
 // WP-D11b: Ergebnis-Form inkl. der ehrlichen Deckel-Zähler (Blocker 2).
 function convertResult(overrides: Partial<SlideConvertResult> = {}): SlideConvertResult {
@@ -294,7 +308,8 @@ describe("WP-D11b Blocker 1: Betriebsschalter KLARWERK_SLIDES_ENABLED", () => {
     }
   });
 
-  it("Default (Flag ungesetzt) bleibt AN", async () => {
+  it("WP-SHIP7-FIX (Fix 4): DEFAULT IST AUS — ohne ENV antwortet die Route 503 (Konverter-Fläche nach normalem Deploy inaktiv)", async () => {
+    delete process.env.KLARWERK_SLIDES_ENABLED;
     const app = appWith(fakeConverter());
     const headers = await loginHeaders(app);
     const res = await app.inject({
@@ -303,7 +318,80 @@ describe("WP-D11b Blocker 1: Betriebsschalter KLARWERK_SLIDES_ENABLED", () => {
       headers,
       payload: { data: SMALL_PPTX },
     });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(503);
+    expect((res.json() as { error: string }).error).toBe("SLIDES_UNAVAILABLE");
+  });
+
+  it("nur ein EXPLIZITES =1/true schaltet ein (beliebige andere Werte bleiben aus)", async () => {
+    process.env.KLARWERK_SLIDES_ENABLED = "yes"; // kein gültiges Enable
+    const app = appWith(fakeConverter());
+    const headers = await loginHeaders(app);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/capture/slides",
+      headers,
+      payload: { data: SMALL_PPTX },
+    });
+    expect(res.statusCode).toBe(503);
+  });
+});
+
+describe("WP-SHIP7-FIX (Fix 5): Slot-Reservierung VOR dem Parse + gedeckelte Rate-Map", () => {
+  it("GATE: simultane Erstrequests → genau EIN Body-Parse, Rest 429 ohne Parse; danach ist der Slot frei", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const app = appWith(
+      fakeConverter({
+        convert: async (): Promise<SlideConvertResult> => {
+          await gate;
+          return convertResult({ pngs: [Buffer.from("folie-1")] });
+        },
+      }),
+    );
+    // Parse-Zähler: preParsing läuft NUR, wenn der onRequest-Hook den Request nicht abgewiesen hat.
+    let parses = 0;
+    app.addHook("preParsing", async (request) => {
+      if (request.url === "/api/capture/slides") {
+        parses += 1;
+      }
+    });
+    const headers = await loginHeaders(app);
+    // Drei Requests GLEICHZEITIG starten, BEVOR irgendein Handler läuft.
+    const requests = [0, 1, 2].map(() =>
+      app.inject({
+        method: "POST",
+        url: "/api/capture/slides",
+        headers,
+        payload: { data: SMALL_PPTX },
+      }),
+    );
+    await new Promise((r) => setTimeout(r, 30));
+    expect(parses).toBe(1); // genau EINER parst — die anderen wurden VOR dem Parse abgewiesen
+    release();
+    const responses = await Promise.all(requests);
+    expect(responses.map((r) => r.statusCode).sort()).toEqual([200, 429, 429]);
+    // Freigabe nach Abschluss: der Folge-Request bekommt den Slot (und parst als zweiter).
+    const after = await app.inject({
+      method: "POST",
+      url: "/api/capture/slides",
+      headers,
+      payload: { data: SMALL_PPTX },
+    });
+    expect(after.statusCode).toBe(200);
+    expect(parses).toBe(2);
+  });
+
+  it("Rate-Map wächst nicht unbegrenzt: harte Kardinalitätsgrenze mit TTL/LRU-Verdrängung", () => {
+    const limiter = createSlidesRateLimiter();
+    for (let i = 0; i < SLIDES_RATE_MAX_ENTRIES + 200; i++) {
+      limiter.hit(`user-${i}`, 1_000_000 + i);
+    }
+    expect(limiter.size()).toBeLessThanOrEqual(SLIDES_RATE_MAX_ENTRIES);
+    // Ein frischer Nutzer passt trotz voller Map immer hinein (Verdrängung, kein Fehler).
+    expect(limiter.hit("frische-nutzerin", 2_000_000)).toBe(false);
+    expect(limiter.size()).toBeLessThanOrEqual(SLIDES_RATE_MAX_ENTRIES);
   });
 });
 

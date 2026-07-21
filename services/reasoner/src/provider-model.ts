@@ -117,6 +117,13 @@ export function catchAllGroupTitle(locale: ReasonerLocale): string {
 // Zuordnung gewinnt, Duplikate fliegen), unbekannte Ids werden verworfen, leere Gruppen fallen
 // weg, fehlende Ids landen in der markierten Auffanggruppe. Wirft bei strukturell unbrauchbarer
 // Antwort — die Reasoner-Kette fällt dann auf die deterministische Themen-Gruppierung zurück.
+//
+// WP-SHIP7-FIX (bens sammel17-Fix 2, GENAU-EINMAL-INVARIANTE): Reihenfolge ist entscheidend —
+// ZUERST wird die Gruppe validiert (Titel nicht leer nach trim, mindestens eine brauchbare Id),
+// und ERST WENN sie wirklich angenommen wird, werden ihre Ids als „gesehen" committet. Vorher
+// markierte eine VERWORFENE Gruppe (z. B. leerer Titel) ihre Ids bereits als gesehen — die Ids
+// verschwanden aus allen sichtbaren Gruppen UND aus der Auffanggruppe (unsichtbar, aber beim
+// Übernehmen mitimportierbar). Jetzt geben verworfene Gruppen ihre Ids an die Auffanggruppe.
 export function normalizeCandidateGroups(
   raw: string,
   knownIds: readonly string[],
@@ -138,26 +145,51 @@ export function normalizeCandidateGroups(
     const title = String(rec.title ?? "")
       .trim()
       .slice(0, MAX_GROUP_TITLE_LENGTH);
+    // Fix 2: Titel ZUERST — eine Gruppe ohne brauchbaren Titel wird verworfen, OHNE ihre Ids
+    // anzufassen (sie bleiben unmarkiert und landen unten in der Auffanggruppe).
+    if (title.length === 0) {
+      continue;
+    }
     const ids: string[] = [];
+    const local = new Set<string>();
     for (const rawId of Array.isArray(rec.ids) ? rec.ids : []) {
       const id = String(rawId);
-      // Unbekannte Ids verworfen; jede Id nur beim ERSTEN Vorkommen (Duplikate fliegen).
-      if (known.has(id) && !seen.has(id)) {
-        seen.add(id);
+      // Unbekannte Ids verworfen; jede Id nur beim ERSTEN Vorkommen (Duplikate fliegen) —
+      // lokal dedupliziert, global erst beim COMMIT der Gruppe markiert.
+      if (known.has(id) && !seen.has(id) && !local.has(id)) {
+        local.add(id);
         ids.push(id);
       }
     }
-    if (title.length > 0 && ids.length > 0) {
+    if (ids.length > 0) {
+      // Fix 2: seen-Commit ERST hier — die Gruppe ist jetzt wirklich angenommen.
+      for (const id of ids) {
+        seen.add(id);
+      }
       groups.push({ title, ids });
     }
   }
   if (groups.length === 0) {
     throw new Error("Modell-Antwort enthält keine verwertbare Gruppe.");
   }
-  // Vom Modell vergessene Ids: EHRLICH in die markierte Auffanggruppe (Eingabereihenfolge).
-  const missing = knownIds.filter((id) => !seen.has(id));
+  // Vom Modell vergessene ODER aus verworfenen Gruppen stammende Ids: EHRLICH in die markierte
+  // Auffanggruppe (eindeutige Eingabereihenfolge — doppelte knownIds zählen einmal).
+  const uniqueKnown = [...new Set(knownIds)];
+  const missing = uniqueKnown.filter((id) => !seen.has(id));
   if (missing.length > 0) {
     groups.push({ title: catchAllGroupTitle(locale), ids: missing, kind: "catchall" });
+  }
+  // Fix 2, ABSCHLUSS-INVARIANTE als Code: die flache Id-Menge aller gerenderten Gruppen ist EXAKT
+  // die eindeutige bekannte Eingabemenge — nichts verschwindet, nichts doppelt, nichts erfunden.
+  // Verletzung → werfen (die Kette fällt auf die deterministische Themen-Gruppierung zurück).
+  const flat = groups.flatMap((g) => g.ids);
+  if (flat.length !== uniqueKnown.length || new Set(flat).size !== flat.length) {
+    throw new Error("Genau-einmal-Invariante der Gruppierung verletzt.");
+  }
+  for (const id of flat) {
+    if (!known.has(id)) {
+      throw new Error("Genau-einmal-Invariante der Gruppierung verletzt.");
+    }
   }
   return groups;
 }
