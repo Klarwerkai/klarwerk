@@ -19,7 +19,20 @@ export interface CandidateRepo {
   removeAll(): Promise<number>;
 }
 
-// SCRUM-510 (WP3): der Idempotenz-Schlüssel eines OFFENEN externalId-Kandidaten: (externalId, sourceVersion).
+// WP-SHIP8-FIX (bens F3): kanonischer Provider-Anteil ALLER Import-Schlüssel (Queue-Idempotenz,
+// Orchestrator-Dedupe, acceptToKo-Anker-Suche). Getrimmt + kleingeschrieben (Adapter schreiben
+// "Confluence"/"Jira"). EHRLICHER Fallback: ein Item OHNE Provider zählt als "confluence" — der
+// EINZIGE Adapter, der vor Einführung des Provider-Schlüssels externalId-Items erzeugte
+// (deckungsgleich mit dem Pg-Backfill der Bestandszeilen in IMPORT_CANDIDATES_SCHEMA).
+export function importProviderKey(provider: string | null | undefined): string {
+  const p = provider?.trim().toLowerCase();
+  return p && p.length > 0 ? p : "confluence";
+}
+
+// SCRUM-510 (WP3): der Idempotenz-Schlüssel eines OFFENEN externalId-Kandidaten.
+// WP-SHIP8-FIX (bens F3): DURCHGÄNGIG provider+externalId — (provider, externalId, sourceVersion).
+// Vorher kollidierte eine Jira-externalId mit einer zufällig gleichen Confluence-pageId (ein
+// offener Confluence-Kandidat blockierte den Jira-Kandidaten als vermeintliche Dublette).
 // Fehlende sourceVersion zählt als 1 (deckungsgleich mit dem Orchestrator und dem pg-Generated-Column-COALESCE).
 // Items ohne externalId haben KEINEN Schlüssel (kein Anker → keine externalId-Idempotenz).
 export function openCandidateKey(candidate: ImportCandidate): string | null {
@@ -27,7 +40,7 @@ export function openCandidateKey(candidate: ImportCandidate): string | null {
   if (!ext || candidate.status !== "neu") {
     return null;
   }
-  return `${ext}@${candidate.item.sourceVersion ?? 1}`;
+  return `${importProviderKey(candidate.item.provider)}@${ext}@${candidate.item.sourceVersion ?? 1}`;
 }
 
 export class InMemoryCandidateRepo implements CandidateRepo {

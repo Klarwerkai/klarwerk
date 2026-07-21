@@ -142,11 +142,14 @@ export function libraryRoutes(
 
     // WP-D-CLEAN (Pedis Entscheid: alle Testdaten löschen, auch Confluence und Jira): ZWEISTUFIGER
     // Admin-Aufräumweg. Ohne confirm → reine VORSCHAU (Zähler, nichts passiert); mit confirm:true →
-    // Ausführung: Review-Queue komplett leeren (harte Entfernung — Queue-Einträge kennen keinen
-    // Papierkorb) + alle KOs mit Import-Provenienz Confluence/Jira in den PAPIERKORB (bestehender
-    // Soft-Delete; KOs ohne Import-Provenienz bleiben unangetastet). Guard wie die übrigen
-    // Import-Admin-Wege (users.manage); Audit + ehrliche Bilanz kommen aus dem Service.
-    app.post<{ Body: { confirm?: boolean } }>(
+    // Ausführung: alle KOs mit Import-Provenienz Confluence/Jira in den PAPIERKORB (bestehender
+    // Soft-Delete; KOs ohne Import-Provenienz bleiben unangetastet), DANACH die Review-Queue leeren
+    // (harte Entfernung — Queue-Einträge kennen keinen Papierkorb; bens F1: der unwiderrufliche
+    // Teil kommt ans Ende). Guard wie die übrigen Import-Admin-Wege (users.manage).
+    // WP-SHIP8-FIX (bens F2): die Bestätigung BINDET die Vorschau — confirm trägt den Digest der
+    // gesehenen Zielmenge; ohne/mit veraltetem Digest antwortet der Service CLEANUP_DRIFT → 409
+    // (die UI lädt die Vorschau neu), es wird NICHTS verändert.
+    app.post<{ Body: { confirm?: boolean; digest?: string } }>(
       "/api/admin/import/cleanup",
       async (request, reply) => {
         const user = await guards.requirePermission("users.manage", request, reply);
@@ -159,7 +162,8 @@ export function libraryRoutes(
             reply.code(200).send({ preview: true, ...preview });
             return;
           }
-          const result = await library.runImportCleanup(user.id);
+          const digest = typeof request.body?.digest === "string" ? request.body.digest : undefined;
+          const result = await library.runImportCleanup(user.id, digest);
           reply.code(200).send({ preview: false, ...result });
         } catch (error) {
           sendError(reply, error);

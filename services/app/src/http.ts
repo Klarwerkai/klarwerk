@@ -48,6 +48,8 @@ const STATUS_BY_CODE: Record<string, number> = {
   DOWNGRADE_FORBIDDEN: 403,
   INVALID_CREDENTIALS: 401,
   EMAIL_TAKEN: 409,
+  // WP-SHIP8-FIX (bens F2): Aufräum-Bestätigung passt nicht mehr zur Vorschau-Zielmenge → Konflikt.
+  CLEANUP_DRIFT: 409,
 };
 
 export function sendError(reply: FastifyReply, error: unknown): void {

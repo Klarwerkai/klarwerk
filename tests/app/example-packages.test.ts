@@ -114,7 +114,8 @@ describe("WP-B6: POST /api/admin/examples/load", () => {
     await load(app, headers, "qualitaet");
     // Import-Aufräumen (WP-D-CLEAN) sieht KEINE Import-Provenienz (Confluence/Jira) — Beispiele
     // bleiben von diesem Weg unberührt (die UI sagt das ehrlich dazu).
-    expect(await services.library.importCleanupPreview()).toEqual({
+    // (Digest reist seit WP-SHIP8-FIX F2 mit — hier zählt nur der leere Umfang.)
+    expect(await services.library.importCleanupPreview()).toMatchObject({
       candidates: 0,
       importedKos: 0,
     });

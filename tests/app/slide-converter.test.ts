@@ -298,6 +298,38 @@ describe("WP-D11b GELB a: Deadline killt die GANZE Prozessgruppe (echter Kindpro
     }
   });
 
+  it("WP-SHIP8-FIX (bens F5): ein AbortSignal killt den laufenden Prozess samt Gruppe (gleicher Weg wie die Deadline)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "kw-abort-"));
+    try {
+      const ctl = new AbortController();
+      const run = runProcess("sh", ["-c", "sleep 30"], {
+        timeoutMs: 60_000, // die Deadline ist WEIT weg — nur der Abbruch kann den Lauf beenden
+        cwd: dir,
+        env: converterEnv(dir),
+        signal: ctl.signal,
+      });
+      setTimeout(() => ctl.abort(), 100);
+      await expect(run).rejects.toThrow("Abbruch");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("WP-SHIP8-FIX (bens F5): ein BEREITS abgebrochenes Signal startet keinen weiteren Konverter-Schritt", async () => {
+    const runs: string[] = [];
+    const converter = createSofficeSlideConverter({
+      run: async (command) => {
+        runs.push(command);
+      },
+    });
+    const ctl = new AbortController();
+    ctl.abort();
+    await expect(
+      converter.convert(Buffer.from("fake"), { signal: ctl.signal }),
+    ).rejects.toBeInstanceOf(SlideConvertError);
+    expect(runs).toEqual([]); // kein soffice-, kein pdftoppm-Start unter abgebrochenem Signal
+  });
+
   it("WP-SHIP7-FIX (Fix 5, Rest): auch nach NORMALEM Prozessende bleibt kein Hintergrund-Enkel zurück", async () => {
     const dir = await mkdtemp(join(tmpdir(), "kw-clean-"));
     try {

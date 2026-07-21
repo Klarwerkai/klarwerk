@@ -475,8 +475,10 @@ export const endpoints = {
       }) => api.post<ImportApplyResponse>("/admin/import/confluence/apply", body),
       // WP-D-CLEAN: zweistufiges Testdaten-Aufräumen (ohne confirm = Vorschau).
       cleanupPreview: () => api.post<ImportCleanupPreview>("/admin/import/cleanup", {}),
-      cleanupConfirm: () =>
-        api.post<ImportCleanupResult>("/admin/import/cleanup", { confirm: true }),
+      // WP-SHIP8-FIX (bens F2): confirm sendet den Vorschau-Digest mit — der Server vergleicht
+      // gegen den aktuellen Bestand (Drift → 409 CLEANUP_DRIFT, nichts wird verändert).
+      cleanupConfirm: (digest: string) =>
+        api.post<ImportCleanupResult>("/admin/import/cleanup", { confirm: true, digest }),
       // WP-B6: EIN kuratiertes Beispielpaket laden (idempotent).
       loadExamples: (pkg: string) =>
         api.post<ExampleLoadResponse>("/admin/examples/load", { package: pkg }),

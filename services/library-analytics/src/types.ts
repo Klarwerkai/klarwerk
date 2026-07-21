@@ -64,7 +64,9 @@ export interface ImportCandidate {
   createdAt: string;
 }
 
-export type LibraryErrorCode = "NOT_FOUND" | "ALREADY_REVIEWED" | "BAD_REQUEST";
+// WP-SHIP8-FIX (bens F2): CLEANUP_DRIFT = die bestätigte Aufräum-Zielmenge (Vorschau-Digest)
+// stimmt nicht mehr mit dem Bestand überein — die Route antwortet 409, nichts wird verändert.
+export type LibraryErrorCode = "NOT_FOUND" | "ALREADY_REVIEWED" | "BAD_REQUEST" | "CLEANUP_DRIFT";
 
 export class LibraryError extends Error {
   readonly code: LibraryErrorCode;

@@ -2,8 +2,10 @@
 // den EINEN Konvertierungs-Slot nie dauerhaft belegen. Getestet mit ECHTEN Socket-Abbrüchen gegen
 // eine lauschende Instanz: (a) Abbruch mitten im Body NACH dem Claim → onRequestAbort gibt frei;
 // (b) Abbruch WÄHREND des asynchronen Auth-Await → der tote Request claimt NICHT nachträglich;
-// (c) Lease-Watchdog: ein (trotz allem) verwaister Slot wird nach SLIDES_SLOT_LEASE_MS mit
-// PII-freiem Warn-Log zwangsweise freigegeben (Fastifys Abort-Erkennung ist nicht verlässlich).
+// (c) WP-SHIP8-FIX (bens F5, ersetzt den früheren Freigabe-Test): der Lease-Watchdog löst bei
+// Ablauf einen ECHTEN Abbruch aus (AbortSignal an den Konverter) und gibt den Slot ERST frei,
+// nachdem das Job-Promise wirklich gesettelt ist — vorher bewies der Test die (falsche)
+// Sofort-Freigabe, unter der ZWEI Konverter parallel laufen konnten.
 import { connect } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
@@ -145,19 +147,26 @@ describe("WP-REST18 Fix 3: Socket-Abbrüche geben den Folien-Slot frei", () => {
     }
   });
 
-  it("(c) Lease-Watchdog: ein verwaister Slot wird nach Ablauf der Lease mit Warn-Log freigegeben", async () => {
+  it("(c) Lease mit ECHTER Cancellation: WEITER 429 solange der Job nicht abgebrochen/gesettelt ist — erst danach 200", async () => {
     const warnSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     let calls = 0;
+    let firstSignal: AbortSignal | undefined;
+    let settleFirst: ((err: Error) => void) | null = null;
     // App-Aufbau + Login mit ECHTEN Timern (Fastify/avvio nutzen setImmediate/nextTick) — erst
     // danach werden GEZIELT nur setTimeout/Date gefaked (das reicht für Lease-Timer + Rate-Fenster).
     const { app, headers } = await appWithLogin(
       fakeConverter({
-        convert: () => {
+        convert: (_pptx, opts) => {
           calls += 1;
-          // Der ERSTE Lauf hängt für immer (simuliert einen nie erkannten Abbruch/Hänger).
-          return calls === 1
-            ? new Promise<SlideConvertResult>(() => {})
-            : Promise.resolve(convertResult());
+          if (calls === 1) {
+            // Der ERSTE Lauf bleibt aktiv, bis der TEST das Settlement auslöst — das Abort-Signal
+            // wird festgehalten, um den vom Watchdog ausgelösten Abbruch nachzuweisen.
+            firstSignal = opts?.signal;
+            return new Promise<SlideConvertResult>((_resolve, reject) => {
+              settleFirst = reject;
+            });
+          }
+          return Promise.resolve(convertResult());
         },
       }),
     );
@@ -181,8 +190,28 @@ describe("WP-REST18 Fix 3: Socket-Abbrüche geben den Folien-Slot frei", () => {
         payload: { data: SMALL_PPTX },
       });
       expect(blocked.statusCode).toBe(429);
-      // Lease abgelaufen → der Watchdog gibt den Slot zwangsweise frei (PII-freies Warn-Log).
+      // Lease abgelaufen → der Watchdog löst den ABBRUCH aus …
       await vi.advanceTimersByTimeAsync(SLIDES_SLOT_LEASE_MS + 1_000);
+      expect(firstSignal?.aborted).toBe(true);
+      // … gibt den Slot aber NICHT frei, solange der Konverter-Job nicht wirklich beendet ist:
+      // ein weiterer Request bekommt WEITERHIN 429 (nie zwei Konverter parallel).
+      const stillBlocked = await app.inject({
+        method: "POST",
+        url: "/api/capture/slides",
+        headers,
+        payload: { data: SMALL_PPTX },
+      });
+      expect(stillBlocked.statusCode).toBe(429);
+      // Der Kill wirkt: das Job-Promise settelt → der hängende Request endet ehrlich mit 500 …
+      (settleFirst as unknown as (err: Error) => void)(
+        new Error("Prozessgruppe nach Abbruch beendet"),
+      );
+      const stuckRes = await stuck;
+      expect(stuckRes.statusCode).toBe(500);
+      for (let i = 0; i < 10; i++) {
+        await new Promise((r) => setImmediate(r));
+      }
+      // … und ERST JETZT ist der Slot frei: der nächste Request konvertiert.
       const after = await app.inject({
         method: "POST",
         url: "/api/capture/slides",
@@ -190,9 +219,6 @@ describe("WP-REST18 Fix 3: Socket-Abbrüche geben den Folien-Slot frei", () => {
         payload: { data: SMALL_PPTX },
       });
       expect(after.statusCode).toBe(200);
-      const warned = warnSpy.mock.calls.some((call) => String(call[0]).includes("Folien-Slot"));
-      expect(warned).toBe(true);
-      void stuck; // hängt bewusst am nie auflösenden Konverter-Fake
     } finally {
       warnSpy.mockRestore();
       vi.useRealTimers();

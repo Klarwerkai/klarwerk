@@ -1,6 +1,6 @@
 import type { ConfluenceSourceAdapter } from "../../confluence";
 import type { KoService } from "../../knowledge-object";
-import type { ImportItem, LibraryService } from "../../library-analytics";
+import { type ImportItem, type LibraryService, importProviderKey } from "../../library-analytics";
 
 // SCRUM-510 WP2: Orchestrierung des Space-Imports. Liest den GESAMTEN Space (paginiert), stellt jede
 // Seite IDEMPOTENT als Review-Kandidaten in die bestehende Import-Queue (116/157) — REVIEW-INVARIANTE:
@@ -30,29 +30,35 @@ export interface ConfluenceImportDeps {
   actor: string;
 }
 
-// Höchste bereits importierte sourceVersion je externalId (aus den KO-Herkunftsankern).
+// Höchste bereits importierte sourceVersion je provider+externalId (aus den KO-Herkunftsankern).
 // NUR für die Import-Idempotenz (runConfluenceImport) — der IC-6a-STATUS-Abgleich nutzt die
 // versions- und provider-bewussten Helfer weiter unten (WP-IC-PAKET-1b, bens ROT-2).
+// WP-SHIP8-FIX (bens F3): DURCHGÄNGIG provider+externalId (importProviderKey) — eine Jira-Id, die
+// zufällig einer Confluence-pageId gleicht, wird nie fälschlich als „bereits importiert" gewertet.
 async function existingVersions(koService: KoService): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   for (const ko of await koService.list()) {
     for (const s of ko.sources ?? []) {
       if (s.externalId) {
+        const key = `${importProviderKey(s.provider)}@${s.externalId}`;
         const v = s.sourceVersion ?? 0;
-        out.set(s.externalId, Math.max(out.get(s.externalId) ?? 0, v));
+        out.set(key, Math.max(out.get(key) ?? 0, v));
       }
     }
   }
   return out;
 }
 
-// Bereits eingereihte, noch offene Kandidaten je (externalId@version) — verhindert Doppel-Einreihung
-// bei einem Re-Run, BEVOR ein Kandidat geprüft wurde.
+// Bereits eingereihte, noch offene Kandidaten je (provider@externalId@version) — verhindert
+// Doppel-Einreihung bei einem Re-Run, BEVOR ein Kandidat geprüft wurde (bens F3: provider-scoped,
+// deckungsgleich mit openCandidateKey/dem Pg-Unique-Index).
 async function pendingKeys(library: LibraryService): Promise<Set<string>> {
   const out = new Set<string>();
   for (const c of await library.listImportCandidates()) {
     if (c.status === "neu" && c.item.externalId) {
-      out.add(`${c.item.externalId}@${c.item.sourceVersion ?? 1}`);
+      out.add(
+        `${importProviderKey(c.item.provider)}@${c.item.externalId}@${c.item.sourceVersion ?? 1}`,
+      );
     }
   }
   return out;
@@ -171,12 +177,17 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
   for (const item of items) {
     const ref = item.externalId ?? item.title;
     const version = item.sourceVersion ?? 1;
-    const runKey = item.externalId ? `${item.externalId}@${version}` : null;
+    // bens F3: In-Run-/Pending-/Bestands-Schlüssel sind provider-scoped (wie die Queue selbst).
+    const runKey = item.externalId
+      ? `${importProviderKey(item.provider)}@${item.externalId}@${version}`
+      : null;
     if (runKey && queuedKeys.has(runKey)) {
       perPage.push({ ref, status: "skipped", note: "Dublette im selben Lauf (idempotent)" });
       continue;
     }
-    const already = item.externalId ? seen.get(item.externalId) : undefined;
+    const already = item.externalId
+      ? seen.get(`${importProviderKey(item.provider)}@${item.externalId}`)
+      : undefined;
     const isPending = runKey ? pending.has(runKey) : false;
     // Idempotent überspringen, wenn diese-oder-neuere Version schon importiert wurde ODER bereits als
     // offener Kandidat für exakt diese Version eingereiht ist. Eine HÖHERE Version → erneut einreihen
@@ -231,8 +242,11 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
   };
 }
 
-// Der Dedup-/Vergleichsschlüssel eines Items: externalId@version (Anker) bzw. Titel (ankerlos). Muss zur
-// In-Run-Dedup passen, damit die Persist-Nachkorrektur die richtigen perPage-Einträge trifft.
+// Der Dedup-/Vergleichsschlüssel eines Items: provider@externalId@version (Anker, bens F3) bzw.
+// Titel (ankerlos). Muss zur In-Run-Dedup passen, damit die Persist-Nachkorrektur die richtigen
+// perPage-Einträge trifft.
 function candidateKey(item: ImportItem): string {
-  return item.externalId ? `${item.externalId}@${item.sourceVersion ?? 1}` : `title:${item.title}`;
+  return item.externalId
+    ? `${importProviderKey(item.provider)}@${item.externalId}@${item.sourceVersion ?? 1}`
+    : `title:${item.title}`;
 }

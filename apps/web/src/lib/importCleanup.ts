@@ -15,4 +15,9 @@ export const IMPORT_CLEANUP_TEXT = {
   doneCandidates: "imp.cleanup.doneCandidates",
   doneKos: "imp.cleanup.doneKos",
   doneSkipped: "imp.cleanup.doneSkipped",
+  // WP-SHIP8-FIX (bens F2): der Bestand driftete zwischen Vorschau und Bestätigung → 409, die
+  // Vorschau wird automatisch neu geladen.
+  drift: "imp.cleanup.drift",
+  // WP-SHIP8-FIX (bens F1): Aufräumen lief, nur der Abschluss-Audit-Eintrag schlug fehl.
+  auditFailed: "imp.cleanup.auditFailed",
 } as const;

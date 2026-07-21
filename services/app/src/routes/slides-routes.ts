@@ -28,10 +28,17 @@ export const SLIDES_RATE_WINDOW_MS = 60_000;
 // abgelaufene, dann die am längsten unbenutzten Einträge verdrängt (TTL + LRU-Verdrängung).
 export const SLIDES_RATE_MAX_ENTRIES = 500;
 
-// WP-REST18 (bens Fix 3): maximale Slot-Haltedauer — großzügig ÜBER der 60-s-Konverter-Deadline;
-// danach gibt der Lease-Watchdog den Slot zwangsweise frei (Fastifys Abort-Erkennung ist laut
-// eigener Doku nicht verlässlich; ohne Lease bliebe ein verwaister Slot bis zum Prozessneustart).
-export const SLIDES_SLOT_LEASE_MS = 120_000;
+// WP-REST18 (bens Fix 3): maximale Slot-Haltedauer — danach löst der Lease-Watchdog den Zwangs-
+// Abbruch aus (Fastifys Abort-Erkennung ist laut eigener Doku nicht verlässlich; ohne Lease bliebe
+// ein verwaister Slot bis zum Prozessneustart).
+// WP-SHIP8-FIX (bens F5, ZEITFENSTER ehrlich erklärt): die Lease zählt AB DEM CLAIM im onRequest-
+// Hook — sie muss also Upload + Body-Parse + Konverter-Lauf ZUSAMMEN abdecken. Der Konverter
+// selbst ist auf 60 s gedeckelt, aber ein langsamer 72-MiB-Upload kann davor mehrere Minuten
+// brauchen. Deshalb großzügige 300 s (Upload+Parse+Konverter < Lease); die Lease ist NICHT der
+// primäre Timeout (das bleiben Konverter-Deadline und Client-Timeout), sondern die letzte
+// Verteidigung gegen einen verwaisten Slot — und seit F5 gibt sie NIE mehr frei, solange der
+// zugehörige Konverter-Job noch läuft (erst Abbruch, dann Settlement, dann Freigabe).
+export const SLIDES_SLOT_LEASE_MS = 300_000;
 
 // Stack-sichere Base64-Grobprüfung (Zeichenklassen-Stern, keine Gruppen-Wiederholung).
 const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
@@ -120,11 +127,20 @@ export function slidesRoutes(converter: SlideConverter, guards: Guards): Fastify
   const slotHolder = new WeakSet<FastifyRequest>();
   const limiter = createSlidesRateLimiter();
   // WP-REST18 (bens Fix 3, Watchdog): begrenzter Slot-Lease. Fastify dokumentiert die Abort-
-  // Erkennung selbst als nicht verlässlich — hält ein Request den Slot länger als die Lease
-  // (großzügig ÜBER der 60-s-Konverter-Deadline), gibt der Timer ihn mit PII-freiem Warn-Log
-  // frei, statt bis zum Prozessneustart zu blockieren.
+  // Erkennung selbst als nicht verlässlich — hält ein Request den Slot länger als die Lease,
+  // greift der Watchdog ein, statt bis zum Prozessneustart zu blockieren.
+  // WP-SHIP8-FIX (bens F5, ECHTE CANCELLATION): der Watchdog gibt den Slot NICHT mehr einfach
+  // frei (das erlaubte zwei PARALLELE LibreOffice-Läufe — genau das, was die Serialisierung
+  // verhindern soll). Stattdessen: (1) ABBRUCH auslösen — AbortSignal an den Konverter-Lauf
+  // (Prozessgruppen-SIGKILL wie beim 60-s-Timeout) bzw. Socket-Close, wenn der Request noch im
+  // Upload/Body-Parse hängt; (2) auf das SETTLEMENT des Job-Promise WARTEN; (3) ERST DANN Slot
+  // frei + Warn-Log. Es gibt keinen Freigabepfad unter einem noch aktiven Konverter.
   let leaseTimer: NodeJS.Timeout | null = null;
   let leaseHolder: FastifyRequest | null = null;
+  // Zustand des EINEN laufenden Jobs (Single-Slot-Invariante): das Abort-Steuer des Halters und —
+  // sobald der Handler den Konverter gestartet hat — dessen Promise (null = noch im Upload/Parse).
+  let abortCtl: AbortController | null = null;
+  let activeJob: Promise<unknown> | null = null;
 
   const releaseSlot = (request: FastifyRequest): void => {
     if (slotHolder.has(request)) {
@@ -138,22 +154,49 @@ export function slidesRoutes(converter: SlideConverter, guards: Guards): Fastify
     }
   };
 
+  const expireLease = async (holder: FastifyRequest): Promise<void> => {
+    if (leaseHolder !== holder || !slotHolder.has(holder)) {
+      return;
+    }
+    // (1) ABBRUCH: einen laufenden Konverter-Job hart beenden (Signal → Prozessgruppen-SIGKILL) …
+    const job = activeJob;
+    abortCtl?.abort();
+    if (job === null) {
+      // … bzw. einen noch laufenden Upload/Body-Parse über den Socket beenden — onRequestAbort
+      // übernimmt dann die reguläre Freigabe. Ein danach doch noch startender Handler sieht das
+      // bereits abgefeuerte Signal und bricht sofort ab.
+      holder.raw.destroy();
+    }
+    // (2) auf das ECHTE Ende des Jobs warten — der Slot wird NIE unter einem aktiven Konverter frei.
+    try {
+      await job;
+    } catch {
+      // Der Abbruchfehler ist hier der erwartete Ausgang.
+    }
+    // (3) Erst jetzt freigeben — idempotent: hat der Antwort-/Abort-Pfad nach dem Settlement schon
+    // freigegeben, ist nichts mehr zu tun (kein Doppel-Release, kein Log).
+    if (slotHolder.has(holder)) {
+      slotHolder.delete(holder);
+      if (leaseHolder === holder) {
+        leaseHolder = null;
+      }
+      running = false;
+      // PII-frei: keine Nutzer-/Inhaltsdaten — nur der Fakt der Zwangsfreigabe nach Abbruch.
+      process.stderr.write(
+        `[KLARWERK] Folien-Slot nach ${SLIDES_SLOT_LEASE_MS} ms Lease abgebrochen und nach Job-Ende zwangsweise freigegeben.\n`,
+      );
+    }
+  };
+
   const claimSlot = (request: FastifyRequest): void => {
     running = true;
     slotHolder.add(request);
     leaseHolder = request;
+    abortCtl = new AbortController();
+    activeJob = null;
     leaseTimer = setTimeout(() => {
       leaseTimer = null;
-      const holder = leaseHolder;
-      if (holder !== null && slotHolder.has(holder)) {
-        slotHolder.delete(holder);
-        leaseHolder = null;
-        running = false;
-        // PII-frei: keine Nutzer-/Inhaltsdaten — nur der Fakt der Zwangsfreigabe.
-        process.stderr.write(
-          `[KLARWERK] Folien-Slot nach ${SLIDES_SLOT_LEASE_MS} ms Lease zwangsweise freigegeben (Abort nicht erkannt?).\n`,
-        );
-      }
+      void expireLease(request);
     }, SLIDES_SLOT_LEASE_MS);
     leaseTimer.unref?.();
   };
@@ -278,8 +321,14 @@ export function slidesRoutes(converter: SlideConverter, guards: Guards): Fastify
         }
         // Der Slot gehört diesem Request (im Hook geclaimt); Freigabe übernimmt onResponse.
         const startedMs = Date.now();
+        // WP-SHIP8-FIX (bens F5): das Abort-Signal des Slot-Claims begleitet den Konverter-Lauf
+        // (Lease-Ablauf → Prozessgruppen-SIGKILL), und das Job-Promise wird registriert, damit der
+        // Lease-Watchdog auf sein SETTLEMENT warten kann, bevor er den Slot je freigibt.
+        const signal = slotHolder.has(request) ? abortCtl?.signal : undefined;
+        const job = converter.convert(Buffer.from(data, "base64"), signal ? { signal } : {});
+        activeJob = job;
         try {
-          const result = await converter.convert(Buffer.from(data, "base64"));
+          const result = await job;
           // PII-frei: nur Metriken (Dauer/Folien/Bytes/Verwerfungen), nie Datei-Inhalt oder -Name.
           request.log.info(
             {
@@ -317,6 +366,11 @@ export function slidesRoutes(converter: SlideConverter, guards: Guards): Fastify
             message:
               "Die Folien-Konvertierung ist fehlgeschlagen — der Text-Import bleibt davon unberührt.",
           });
+        } finally {
+          // Nur den EIGENEN Job austragen (ein neuer Claim könnte bereits einen neuen registriert haben).
+          if (activeJob === job) {
+            activeJob = null;
+          }
         }
       },
     );

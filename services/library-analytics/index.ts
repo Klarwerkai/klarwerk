@@ -3,9 +3,12 @@ export {
   LibraryService,
   SEARCH_BACKFILL_LIMIT_PER_QUERY,
   IMPORT_CLEANUP_PROVIDERS,
+  // WP-SHIP8-FIX (bens F2): stateless Digest der bestätigten Aufräum-Zielmenge.
+  cleanupDigest,
 } from "./src/service";
 export type { LibraryServiceDeps } from "./src/service";
-export { InMemoryCandidateRepo, type CandidateRepo } from "./src/repo";
+// WP-SHIP8-FIX (bens F3): kanonischer Provider-Schlüsselteil aller Import-Schlüssel.
+export { InMemoryCandidateRepo, importProviderKey, type CandidateRepo } from "./src/repo";
 export { PgCandidateRepo, IMPORT_CANDIDATES_SCHEMA } from "./src/repo-pg";
 export type {
   ImportItem,

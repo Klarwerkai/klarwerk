@@ -2121,6 +2121,10 @@ const de = {
   "imp.cleanup.doneCandidates": "{{n}} Kandidaten entfernt",
   "imp.cleanup.doneKos": "{{n}} importierte Beiträge in den Papierkorb verschoben",
   "imp.cleanup.doneSkipped": "{{n}} übersprungen (Fehler beim Verschieben)",
+  "imp.cleanup.drift":
+    "Der Bestand hat sich seit der Vorschau geändert — die Vorschau wurde neu geladen, bitte erneut prüfen und bestätigen.",
+  "imp.cleanup.auditFailed":
+    "Hinweis: Der Abschluss-Eintrag im Audit-Log konnte nicht geschrieben werden — das Aufräumen selbst ist abgeschlossen.",
   "exp.title": "Beispielpakete",
   "exp.hint":
     "Kuratierte kleine Szenarien für Tester — jedes Paket lässt sich einzeln laden und legt klar gekennzeichnete Beispiel-Beiträge an. Das Import-Aufräumen entfernt sie NICHT; sie verschwinden über das Entfernen der Demo-Daten.",
@@ -5304,6 +5308,10 @@ const en: typeof de = {
   "imp.cleanup.doneCandidates": "{{n}} candidates removed",
   "imp.cleanup.doneKos": "{{n}} imported posts moved to the trash",
   "imp.cleanup.doneSkipped": "{{n}} skipped (error while moving)",
+  "imp.cleanup.drift":
+    "The data changed since the preview — the preview was reloaded, please review and confirm again.",
+  "imp.cleanup.auditFailed":
+    "Note: the final audit log entry could not be written — the cleanup itself is complete.",
   "exp.title": "Example packages",
   "exp.hint":
     "Curated small scenarios for testers — each package loads on its own and creates clearly marked example posts. The import cleanup does NOT remove them; they disappear via removing the demo data.",
@@ -8447,6 +8455,10 @@ const nl: typeof de = {
   "imp.cleanup.doneCandidates": "{{n}} kandidaten verwijderd",
   "imp.cleanup.doneKos": "{{n}} geïmporteerde bijdragen naar de prullenbak verplaatst",
   "imp.cleanup.doneSkipped": "{{n}} overgeslagen (fout bij het verplaatsen)",
+  "imp.cleanup.drift":
+    "De gegevens zijn sinds het voorbeeld gewijzigd — het voorbeeld is opnieuw geladen, controleer en bevestig opnieuw.",
+  "imp.cleanup.auditFailed":
+    "Let op: de afsluitende audit-logregel kon niet worden geschreven — het opruimen zelf is voltooid.",
   "exp.title": "Voorbeeldpakketten",
   "exp.hint":
     "Gecureerde kleine scenario's voor testers — elk pakket laadt afzonderlijk en maakt duidelijk gemarkeerde voorbeeldbijdragen aan. Het opruimen van de import verwijdert ze NIET; ze verdwijnen via het verwijderen van de demogegevens.",

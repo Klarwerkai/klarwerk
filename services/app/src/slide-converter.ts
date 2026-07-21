@@ -66,16 +66,21 @@ export interface SlideConvertResult {
 
 export interface SlideConverter {
   available(): Promise<boolean>;
-  convert(pptx: Buffer): Promise<SlideConvertResult>;
+  // WP-SHIP8-FIX (bens F5): optionales AbortSignal — der Lease-Watchdog der Route bricht damit
+  // einen laufenden Konverter-Lauf HART ab (Prozessgruppen-SIGKILL, wie beim 60-s-Timeout) und
+  // wartet auf das Settlement, bevor der Slot je freigegeben wird. Rein additiv: bestehende
+  // Aufrufer/Fakes ohne zweites Argument bleiben unverändert gültig.
+  convert(pptx: Buffer, opts?: { signal?: AbortSignal }): Promise<SlideConvertResult>;
 }
 
 // Dünner, injizierbarer Prozess-Runner: löst bei Exit-Code 0 auf, wirft bei Fehler/Signal/Deadline.
 // Die Tests ersetzen ihn vollständig — kein soffice/pdftoppm nötig. opts trägt die bereinigte
 // Minimal-ENV und das Job-CWD (Blocker 1) — der Default-Runner reicht BEIDES 1:1 an spawn durch.
+// bens F5: opts.signal bricht den laufenden Prozess samt Gruppe ab (gleicher Kill-Weg wie die Deadline).
 export type RunProcess = (
   command: string,
   args: string[],
-  opts: { timeoutMs: number; cwd: string; env: Record<string, string> },
+  opts: { timeoutMs: number; cwd: string; env: Record<string, string>; signal?: AbortSignal },
 ) => Promise<void>;
 
 // WP-D11b (GELB a): spawn mit detached:true → das Kind wird Gruppenleiter einer EIGENEN
@@ -91,8 +96,10 @@ export const runProcess: RunProcess = (command, args, opts) =>
       stdio: "ignore",
     });
     let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
+    // bens F5: Abbruch (Lease-Watchdog) und Deadline nutzen DENSELBEN Kill-Weg — SIGKILL an die
+    // ganze Prozessgruppe; das exit-Ereignis settelt die Promise dann mit ehrlichem Fehler.
+    let abortedByCaller = false;
+    const killGroup = (): void => {
       try {
         if (child.pid) {
           process.kill(-child.pid, "SIGKILL"); // die GANZE Prozessgruppe, nicht nur den Leader
@@ -102,13 +109,28 @@ export const runProcess: RunProcess = (command, args, opts) =>
       } catch {
         child.kill("SIGKILL"); // Gruppe schon weg → wenigstens den Leader (No-Op, wenn beendet)
       }
+    };
+    const onAbort = (): void => {
+      abortedByCaller = true;
+      killGroup();
+    };
+    if (opts.signal?.aborted) {
+      onAbort();
+    } else {
+      opts.signal?.addEventListener("abort", onAbort, { once: true });
+    }
+    const timer = setTimeout(() => {
+      timedOut = true;
+      killGroup();
     }, opts.timeoutMs);
     child.once("error", (err) => {
       clearTimeout(timer);
+      opts.signal?.removeEventListener("abort", onAbort);
       reject(err);
     });
     child.once("exit", (code, signal) => {
       clearTimeout(timer);
+      opts.signal?.removeEventListener("abort", onAbort);
       // WP-SHIP7-FIX (bens Fix 5, kleiner Rest): auch nach NORMALEM Prozessende die Prozessgruppe
       // best-effort aufräumen — ein vom Konverter zurückgelassener Hintergrund-Enkel (gleiche
       // Gruppe) überlebt den Erfolg nicht. ESRCH/EPERM (Gruppe schon weg/fremd) werden bewusst
@@ -120,7 +142,13 @@ export const runProcess: RunProcess = (command, args, opts) =>
           child.kill("SIGKILL");
         }
       }
-      if (timedOut) {
+      if (abortedByCaller) {
+        reject(
+          new SlideConvertError(
+            `Abbruch: ${command} wurde auf Anforderung samt Prozessgruppe beendet.`,
+          ),
+        );
+      } else if (timedOut) {
         reject(
           new Error(
             `Zeitlimit: ${command} wurde nach ${opts.timeoutMs} ms samt Prozessgruppe beendet.`,
@@ -181,9 +209,18 @@ export function createSofficeSlideConverter(deps: SofficeConverterDeps = {}): Sl
       return availability;
     },
 
-    async convert(pptx: Buffer): Promise<SlideConvertResult> {
+    async convert(pptx: Buffer, opts?: { signal?: AbortSignal }): Promise<SlideConvertResult> {
       const startedAt = now();
+      const signal = opts?.signal;
+      // bens F5: zwischen den Schritten auf einen bereits erfolgten Abbruch prüfen — ein
+      // laufender Prozess wird zusätzlich über das durchgereichte Signal hart beendet.
+      const ensureNotAborted = (): void => {
+        if (signal?.aborted) {
+          throw new SlideConvertError("Folien-Konvertierung abgebrochen (Anforderung der Route).");
+        }
+      };
       const remaining = (): number => {
+        ensureNotAborted();
         const left = totalTimeoutMs - (now() - startedAt);
         if (left <= 0) {
           throw new SlideConvertError("Zeitlimit der Folien-Konvertierung überschritten.");
@@ -211,7 +248,7 @@ export function createSofficeSlideConverter(deps: SofficeConverterDeps = {}): Sl
             dir,
             input,
           ],
-          { timeoutMs: remaining(), cwd: dir, env },
+          { timeoutMs: remaining(), cwd: dir, env, ...(signal ? { signal } : {}) },
         );
         const pdf = join(dir, "input.pdf");
         // Schritt 2: PDF → PNG je Seite. BEWUSST eine Seite ÜBER dem Cap (-l MAX+1): erscheint die
@@ -234,8 +271,9 @@ export function createSofficeSlideConverter(deps: SofficeConverterDeps = {}): Sl
             pdf,
             join(dir, "slide"),
           ],
-          { timeoutMs: remaining(), cwd: dir, env },
+          { timeoutMs: remaining(), cwd: dir, env, ...(signal ? { signal } : {}) },
         );
+        ensureNotAborted();
         // pdftoppm nummeriert mit führenden Nullen (slide-01.png / slide-001.png) — die
         // lexikografische Sortierung IST dann die Folienreihenfolge.
         const files = (await readdir(dir))

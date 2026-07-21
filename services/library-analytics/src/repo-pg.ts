@@ -58,6 +58,16 @@ CREATE TABLE IF NOT EXISTS import_candidates (
 ALTER TABLE import_candidates
   ADD COLUMN IF NOT EXISTS external_id text
   GENERATED ALWAYS AS (data->'item'->>'externalId') STORED;
+-- WP-SHIP8-FIX (bens F3): PROVIDER-SICHERER Import-Schlüssel. Additive Generated-Spalte provider
+-- (getrimmt + kleingeschrieben, wie importProviderKey in repo.ts). EHRLICHER BACKFILL: Bestands-
+-- zeilen OHNE provider im Item-JSONB werden auf 'confluence' gesetzt — Confluence ist der EINZIGE
+-- Adapter, der vor dieser Spalte externalId-Kandidaten erzeugte; ein anderer Ursprung ist für
+-- Altzeilen ausgeschlossen. Neue Zeilen tragen ihren echten Adapter-Provider (Jira → 'jira').
+ALTER TABLE import_candidates
+  ADD COLUMN IF NOT EXISTS provider text
+  GENERATED ALWAYS AS (
+    lower(COALESCE(NULLIF(btrim(data->'item'->>'provider'), ''), 'confluence'))
+  ) STORED;
 DO $$
 DECLARE
   legacy_expr text;
@@ -96,7 +106,7 @@ DECLARE removed integer;
 BEGIN
   WITH ranked AS (
     SELECT id, row_number() OVER (
-      PARTITION BY external_id, source_version
+      PARTITION BY provider, external_id, source_version
       ORDER BY (data->>'createdAt') DESC, id DESC
     ) AS rn
     FROM import_candidates
@@ -110,8 +120,12 @@ BEGIN
     RAISE NOTICE 'import_candidates: % Alt-Dublette(n) vor Unique-Index entfernt (SCRUM-510 WP2)', removed;
   END IF;
 END $$;
-CREATE UNIQUE INDEX IF NOT EXISTS import_candidates_open_external_uq
-  ON import_candidates (external_id, source_version)
+-- WP-SHIP8-FIX (bens F3): der alte, provider-BLINDE Index wird ERSETZT (gleiche externalId bei
+-- Confluence UND Jira sind ZWEI getrennte, gleichzeitig offene Kandidaten). Idempotent: nach dem
+-- ersten Lauf existiert nur noch der provider-bewusste Index.
+DROP INDEX IF EXISTS import_candidates_open_external_uq;
+CREATE UNIQUE INDEX IF NOT EXISTS import_candidates_open_provider_external_uq
+  ON import_candidates (provider, external_id, source_version)
   WHERE external_id IS NOT NULL AND review_status = 'neu';
 `;
 
@@ -130,12 +144,13 @@ export class PgCandidateRepo implements CandidateRepo {
   }
 
   // SCRUM-510 (WP3): idempotenter Insert über den partiellen UNIQUE-Index. ON CONFLICT DO NOTHING trifft
-  // NUR den Index (offener externalId-Kandidat mit gleicher Version) → dann wird nichts eingefügt und
-  // RETURNING liefert keine Zeile (false). Ohne externalId greift der Index nicht → immer eingefügt (true).
+  // NUR den Index (offener externalId-Kandidat gleichen Providers mit gleicher Version, bens F3) → dann
+  // wird nichts eingefügt und RETURNING liefert keine Zeile (false). Ohne externalId greift der Index
+  // nicht → immer eingefügt (true).
   async insertIfAbsent(candidate: ImportCandidate): Promise<boolean> {
     const res = await this.pool.query(
       `INSERT INTO import_candidates(id,data) VALUES($1,$2)
-       ON CONFLICT (external_id, source_version)
+       ON CONFLICT (provider, external_id, source_version)
          WHERE external_id IS NOT NULL AND review_status = 'neu'
        DO NOTHING
        RETURNING id`,

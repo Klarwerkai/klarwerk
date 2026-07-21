@@ -4,6 +4,7 @@
 // Qualitätshinweise je Kandidat. Kennt bewusst KEIN Reasoner-Symbol (das Modul bleibt unterhalb;
 // die App-Route reicht die strukturell kompatiblen Eingaben an den Reasoner weiter).
 import {
+  CONFIDENTIALITY_LEVELS,
   confidentialityRank,
   isConfidential,
   isValidConfidentiality,
@@ -66,29 +67,56 @@ function restrictionRank(item: ImportItem): number {
     : confidentialityRank("vertraulich");
 }
 
+// WP-SHIP8-FIX (bens F4): die gültige Version eines Items für den Inhalts-Entscheid der Dedupe.
+// Nur eine positive sichere Ganzzahl zählt; alles andere (fehlend, 0, negativ, gebrochen, Fremdtyp)
+// zählt wie die implizite Erstversion 1 — deckungsgleich mit `sourceVersion ?? 1` im Import-Kern.
+function contentVersion(item: ImportItem): number {
+  const v = item.sourceVersion;
+  return typeof v === "number" && Number.isSafeInteger(v) && v > 0 ? v : 1;
+}
+
 // WP-REST18 (bens Fix 1, QUELL-ID-DEDUPE AM ROUTENEINGANG): veränderliche Pagination kann dieselbe
 // externalId MEHRFACH in einen Snapshot liefern — die Genau-einmal-Invariante normalisiert aber nur
 // die Modellantwort. Deshalb wird `selected` EINMAL zentral nach stabiler Kandidaten-Id
 // dedupliziert, BEVOR Kandidatenliste, Modell-Eingabe, deterministischer Fallback und Apply-Map
-// daraus entstehen. Bei kollidierenden Einträgen bleibt der mit der RESTRIKTIVSTEN Vertraulichkeit
-// (Union-Entscheid: eine unklare/vertrauliche Variante gewinnt gegen „intern" — fail-safe bleibt
-// fail-safe, die Cloud sieht den Batch dann nie). Ankerlose Items (row-N) sind nie Duplikate.
+// daraus entstehen. Ankerlose Items (row-N) sind nie Duplikate.
+//
+// WP-SHIP8-FIX (bens F4, VERSIONSBEWUSST): bei einer Kollision entscheiden ZWEI GETRENNTE Fragen:
+//  (1) INHALT (Titel/Text/Version/sourceNewer …): es gewinnt der Eintrag mit der HÖCHSTEN gültigen
+//      sourceVersion — vorher konnte eine restriktive ALTE Fassung die neue inhaltlich verdrängen.
+//      Gleiche Version → der ERSTE Eintrag (deterministisch, reihenfolgeunabhängig pro Version).
+//  (2) VERTRAULICHKEIT: SEPARAT als die RESTRIKTIVSTE über ALLE Kollisionen gemergt (Union —
+//      fail-safe bleibt fail-safe: eine unklare/vertrauliche Variante macht auch den neuen Inhalt
+//      vertraulich, die Cloud sieht den Batch dann nie). Ein fehlendes/ungültiges Signal des
+//      GEWINNERS bleibt fehlend (downstream fail-safe), wird aber nie durch die Union GESENKT.
 export function dedupeSelectedItems(items: readonly ImportItem[]): ImportItem[] {
-  const byId = new Map<string, ImportItem>();
+  const byId = new Map<string, { content: ImportItem; maxRestriction: number }>();
   const order: string[] = [];
   items.forEach((item, index) => {
     const id = candidateIdOf(item, index);
     const existing = byId.get(id);
     if (existing === undefined) {
-      byId.set(id, item);
+      byId.set(id, { content: item, maxRestriction: restrictionRank(item) });
       order.push(id);
       return;
     }
-    if (restrictionRank(item) > restrictionRank(existing)) {
-      byId.set(id, item);
+    existing.maxRestriction = Math.max(existing.maxRestriction, restrictionRank(item));
+    if (contentVersion(item) > contentVersion(existing.content)) {
+      existing.content = item;
     }
   });
-  return order.map((id) => byId.get(id) as ImportItem);
+  return order.map((id) => {
+    const entry = byId.get(id) as { content: ImportItem; maxRestriction: number };
+    if (entry.maxRestriction <= restrictionRank(entry.content)) {
+      return entry.content;
+    }
+    // Eine Kollision war restriktiver als der inhaltliche Gewinner → Stufe explizit anheben
+    // (fail-safe Fallback „vertraulich", falls der Rang keiner bekannten Stufe entspricht).
+    return {
+      ...entry.content,
+      confidentiality: CONFIDENTIALITY_LEVELS[entry.maxRestriction] ?? "vertraulich",
+    };
+  });
 }
 
 // Ungefähre UTF-8-Bytes des Modell-Prompts dieser Kandidaten — spiegelt das Zeilenformat des

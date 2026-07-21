@@ -4,7 +4,7 @@
 // Import-Provenienz bleiben unangetastet); Audit-Eintrag mit Zählern; users.manage-Guard.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { IMPORT_CLEANUP_TEXT } from "../../apps/web/src/lib/importCleanup";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import type { KoSource } from "../../services/knowledge-object";
@@ -74,8 +74,22 @@ async function cleanupApp() {
   return { app, services, headers, ownKoId: own.id };
 }
 
+// WP-SHIP8-FIX (bens F2): die Bestätigung braucht den Vorschau-Digest — der Helfer holt ihn frisch.
+async function previewDigest(
+  app: Awaited<ReturnType<typeof cleanupApp>>["app"],
+  headers: Record<string, string>,
+): Promise<string> {
+  const res = await app.inject({
+    method: "POST",
+    url: "/api/admin/import/cleanup",
+    headers,
+    payload: {},
+  });
+  return (res.json() as { digest: string }).digest;
+}
+
 describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
-  it("VORSCHAU (ohne confirm): zählt korrekt und löscht NICHTS", async () => {
+  it("VORSCHAU (ohne confirm): zählt korrekt, liefert den bindenden Digest und löscht NICHTS", async () => {
     const { app, services, headers } = await cleanupApp();
     const res = await app.inject({
       method: "POST",
@@ -84,20 +98,27 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
       payload: {},
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ preview: true, candidates: 2, importedKos: 2 });
+    expect(res.json()).toEqual({
+      preview: true,
+      candidates: 2,
+      importedKos: 2,
+      // WP-SHIP8-FIX (bens F2): SHA-256 über die sortierte Zielmenge — bindet die Bestätigung.
+      digest: expect.stringMatching(/^[0-9a-f]{64}$/),
+    });
     // Nichts passiert: Queue und Bestand unverändert, Papierkorb leer.
     expect((await services.library.listImportCandidates()).length).toBe(2);
     expect((await services.ko.list()).length).toBe(3);
     expect(await services.ko.trashed()).toEqual([]);
   });
 
-  it("confirm:true löscht GENAU den Umfang — Queue leer, Import-KOs im Papierkorb, eigenes KO bleibt", async () => {
+  it("confirm:true (mit Vorschau-Digest) löscht GENAU den Umfang — Queue leer, Import-KOs im Papierkorb, eigenes KO bleibt", async () => {
     const { app, services, headers, ownKoId } = await cleanupApp();
+    const digest = await previewDigest(app, headers);
     const res = await app.inject({
       method: "POST",
       url: "/api/admin/import/cleanup",
       headers,
-      payload: { confirm: true },
+      payload: { confirm: true, digest },
     });
     expect(res.statusCode).toBe(200);
     // Ehrliche Bilanz.
@@ -106,6 +127,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
       removedCandidates: 2,
       trashedKos: 2,
       skipped: [],
+      auditFailed: false,
     });
     // Queue KOMPLETT leer (jeder Status).
     expect(await services.library.listImportCandidates()).toEqual([]);
@@ -148,6 +170,178 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
     expect(res.statusCode).toBe(403);
     expect((await services.library.listImportCandidates()).length).toBe(2);
     expect((await services.ko.list()).length).toBe(3);
+  });
+
+  it("WP-SHIP8-FIX (bens F2): Drift zwischen Vorschau und confirm → 409 CLEANUP_DRIFT, NICHTS wird gelöscht", async () => {
+    const { app, services, headers } = await cleanupApp();
+    const staleDigest = await previewDigest(app, headers);
+    // Zwischen Vorschau und Bestätigung kommt ein WEITERES Import-KO dazu (Drift der Zielmenge).
+    await services.ko.create({
+      title: "Nachzügler aus Confluence",
+      statement: "s",
+      type: "best_practice",
+      category: "K",
+      author: "importer",
+      sources: [importSource("Confluence", "c-neu")],
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/admin/import/cleanup",
+      headers,
+      payload: { confirm: true, digest: staleDigest },
+    });
+    expect(res.statusCode).toBe(409);
+    expect((res.json() as { error: string }).error).toBe("CLEANUP_DRIFT");
+    // NICHTS gelöscht: Queue voll, alle 4 KOs live, Papierkorb leer.
+    expect((await services.library.listImportCandidates()).length).toBe(2);
+    expect((await services.ko.list()).length).toBe(4);
+    expect(await services.ko.trashed()).toEqual([]);
+    // confirm GANZ OHNE Digest bindet nichts und wird ebenso abgelehnt.
+    const noDigest = await app.inject({
+      method: "POST",
+      url: "/api/admin/import/cleanup",
+      headers,
+      payload: { confirm: true },
+    });
+    expect(noDigest.statusCode).toBe(409);
+    expect((await services.ko.list()).length).toBe(4);
+  });
+
+  it("WP-SHIP8-FIX (bens F1): Soft-Delete wirft MITTEN im Lauf → ehrliche Bilanz, die unwiderrufliche Queue bleibt stehen", async () => {
+    const { app, services, headers } = await cleanupApp();
+    const digest = await previewDigest(app, headers);
+    // Der Soft-Delete des JIRA-KOs scheitert wirklich (nichts wird getrasht) — Injektion am Service.
+    const jiraKo = (await services.ko.list()).find((k) => k.title === "Aus Jira importiert");
+    const realDelete = services.ko.delete.bind(services.ko);
+    services.ko.delete = async (id, actor, opts) => {
+      if (id === jiraKo?.id) {
+        const err = new Error("Repo nicht erreichbar");
+        err.name = "RepoDown";
+        throw err;
+      }
+      return realDelete(id, actor, opts);
+    };
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/admin/import/cleanup",
+      headers,
+      payload: { confirm: true, digest },
+    });
+    expect(res.statusCode).toBe(200);
+    // Bilanz = echter Endzustand: 1 getrasht, 1 ehrlich übersprungen (Nachlese bestätigt: lebt noch),
+    // und die UNWIDERRUFLICHE Queue-Leerung fand NICHT statt (KO-Phase war nicht vollständig gut).
+    expect(res.json()).toEqual({
+      preview: false,
+      removedCandidates: 0,
+      trashedKos: 1,
+      skipped: [{ id: jiraKo?.id, reason: "RepoDown" }],
+      auditFailed: false,
+    });
+    expect((await services.library.listImportCandidates()).length).toBe(2);
+    expect((await services.ko.list()).map((k) => k.title).sort()).toEqual([
+      "Aus Jira importiert",
+      "Selbst erstellt",
+    ]);
+    expect((await services.ko.trashed()).length).toBe(1);
+  });
+
+  it("WP-SHIP8-FIX (bens F1, bens Fenster): KO IST im Papierkorb, aber der Audit-Schreiber warf → zählt als trashed, NIE als skipped", async () => {
+    const { app, services, headers, ownKoId } = await cleanupApp();
+    const digest = await previewDigest(app, headers);
+    // Der Audit-Schreiber des Soft-Deletes wirft NACH dem Trash-Write (genau bens Fenster);
+    // der Abschluss-Audit (import.cleanup) bleibt intakt.
+    const realRecord = services.audit.record.bind(services.audit);
+    services.audit.record = async (entry, tx) => {
+      if (entry.action === "ko.deleted") {
+        throw new Error("Audit-Senke weg");
+      }
+      return realRecord(entry, tx);
+    };
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/admin/import/cleanup",
+      headers,
+      payload: { confirm: true, digest },
+    });
+    expect(res.statusCode).toBe(200);
+    // Die Nachlese erkennt: beide KOs sind in Wahrheit im Papierkorb → trashed, skipped LEER —
+    // und weil die KO-Phase damit vollständig gut ging, wird auch die Queue geleert.
+    expect(res.json()).toEqual({
+      preview: false,
+      removedCandidates: 2,
+      trashedKos: 2,
+      skipped: [],
+      auditFailed: false,
+    });
+    expect(await services.library.listImportCandidates()).toEqual([]);
+    expect((await services.ko.trashed()).length).toBe(2);
+    expect((await services.ko.list()).map((k) => k.id)).toEqual([ownKoId]);
+  });
+
+  it("WP-SHIP8-FIX (bens F1): der ABSCHLUSS-Audit wirft → Antwort bleibt ERFOLG mit auditFailed:true (kein Retry-Provokateur)", async () => {
+    const warnSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const { app, services, headers } = await cleanupApp();
+      const digest = await previewDigest(app, headers);
+      const realRecord = services.audit.record.bind(services.audit);
+      services.audit.record = async (entry, tx) => {
+        if (entry.action === "import.cleanup") {
+          throw new Error("Audit-Senke weg");
+        }
+        return realRecord(entry, tx);
+      };
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/admin/import/cleanup",
+        headers,
+        payload: { confirm: true, digest },
+      });
+      // Die Mutationen SIND passiert — ein Fehler-Response würde nur einen sinnlosen Retry
+      // provozieren. Erfolg + ehrliches auditFailed:true + PII-freies Log.
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({
+        preview: false,
+        removedCandidates: 2,
+        trashedKos: 2,
+        skipped: [],
+        auditFailed: true,
+      });
+      expect(await services.library.listImportCandidates()).toEqual([]);
+      expect((await services.ko.trashed()).length).toBe(2);
+      const logged = warnSpy.mock.calls.some((call) =>
+        String(call[0]).includes("Cleanup-Abschluss-Audit fehlgeschlagen"),
+      );
+      expect(logged).toBe(true);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("WP-SHIP8-FIX (bens F2, demoSeed-Kante): ein demoSeed-KO mit Import-Provenienz landet im PAPIERKORB, nie in der Endlöschung", async () => {
+    const { app, services, headers } = await cleanupApp();
+    const demo = await services.ko.create({
+      title: "Demo-Seed aus Confluence",
+      statement: "s",
+      type: "best_practice",
+      category: "K",
+      author: "importer",
+      demoSeed: true,
+      sources: [importSource("Confluence", "c-demo")],
+    });
+    const digest = await previewDigest(app, headers);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/admin/import/cleanup",
+      headers,
+      payload: { confirm: true, digest },
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { trashedKos: number }).trashedKos).toBe(3);
+    // forceTrash: das demoSeed-KO ist WIEDERHERSTELLBAR im Papierkorb — nicht hart gelöscht.
+    const trashed = await services.ko.trashed();
+    expect(trashed.map((t) => t.id)).toContain(demo.id);
+    const restored = await services.ko.restore(demo.id, "admin");
+    expect(restored.id).toBe(demo.id);
   });
 
   it("die Aufräum-Copy existiert in DE, EN und NL", () => {

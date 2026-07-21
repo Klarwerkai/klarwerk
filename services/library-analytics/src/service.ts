@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
 import {
   type Confidentiality,
@@ -13,7 +13,7 @@ import {
   // SCRUM-527 (WP2): importierte/re-synchronisierte Quell-URLs durch dieselbe Allowlist.
   safeSourceUrl,
 } from "../../knowledge-object";
-import { type CandidateRepo, InMemoryCandidateRepo } from "./repo";
+import { type CandidateRepo, InMemoryCandidateRepo, importProviderKey } from "./repo";
 import {
   type Analytics,
   type BusFactorEntry,
@@ -36,6 +36,18 @@ export const SEARCH_BACKFILL_LIMIT_PER_QUERY = 20;
 // WP-D-CLEAN (Pedis Testdaten-Aufräumen): Provider, deren Import-Provenienz zum Aufräum-Umfang
 // gehört (kleingeschrieben verglichen — Adapter schreiben "Confluence"/"Jira").
 export const IMPORT_CLEANUP_PROVIDERS = ["confluence", "jira"] as const;
+
+// WP-SHIP8-FIX (bens F2): STATELESS Bindung der bestätigten Aufräum-Zielmenge. SHA-256 über die
+// SORTIERTEN Kandidaten-Ids + KO-Ids (getrennt, damit ein Id-Wechsel zwischen den Mengen nie
+// kollidiert). Die Vorschau liefert den Digest, confirm schickt ihn zurück, der Server berechnet
+// neu und vergleicht — kein Prozess-Zustand, robust über Replikas/Neustarts.
+export function cleanupDigest(candidateIds: readonly string[], koIds: readonly string[]): string {
+  const hash = createHash("sha256");
+  hash.update([...candidateIds].sort().join("\n"));
+  hash.update("\n--\n");
+  hash.update([...koIds].sort().join("\n"));
+  return hash.digest("hex");
+}
 
 export interface LibraryServiceDeps {
   koService: KoService;
@@ -116,13 +128,16 @@ export class LibraryService {
     // SCRUM-510 R2b: Items mit externalId werden per externalId dedupliziert — aber NUR innerhalb dieses
     // Imports (mehrfach dasselbe Quell-Objekt in einer Scheibe). Eine Kollision mit dem BESTAND ist keine
     // zu überspringende Dublette, sondern ein Re-Sync/Update (wird beim Annehmen als Upsert behandelt).
+    // WP-SHIP8-FIX (bens F3): der Dedup-Schlüssel ist provider+externalId — gleiche externalId aus
+    // ZWEI Quellen (Confluence-pageId vs. Jira-Key) ist KEINE Dublette.
     const batchExternalIds = new Set<string>();
     const created = items.map<ImportCandidate>((item) => {
       let duplicate: boolean;
       // externalId-Dedup nur bei aktivem Upsert-Strang. Aus → title|statement-Dedup für ALLE Items.
       if (this.externalUpsert && item.externalId) {
-        duplicate = batchExternalIds.has(item.externalId);
-        batchExternalIds.add(item.externalId);
+        const batchKey = `${importProviderKey(item.provider)}@${item.externalId}`;
+        duplicate = batchExternalIds.has(batchKey);
+        batchExternalIds.add(batchKey);
       } else {
         duplicate = seen.has(`${item.title}|${item.statement}`);
       }
@@ -182,44 +197,120 @@ export class LibraryService {
     );
   }
 
-  // Vorschau: NUR zählen, nichts verändern.
-  async importCleanupPreview(): Promise<{ candidates: number; importedKos: number }> {
-    const candidates = (await this.candidates.all()).length;
-    const kos = await this.koService.list();
-    const importedKos = kos.filter((ko) => this.hasCleanupProvenance(ko.sources ?? [])).length;
-    return { candidates, importedKos };
-  }
-
-  // Ausführung: Queue leeren + Import-KOs in den Papierkorb; ehrliche Bilanz (übersprungen mit
-  // PII-freiem Grund je KO-Id). Audit-Eintrag mit Zählern (wer/wann kommt vom Audit-Service).
-  async runImportCleanup(actor: string): Promise<{
-    removedCandidates: number;
-    trashedKos: number;
-    skipped: { id: string; reason: string }[];
+  // WP-SHIP8-FIX (bens F1): die VOLLSTÄNDIGE Zielmenge des Aufräumens — Queue-Einträge + KOs mit
+  // Cleanup-Provenienz — wird IMMER als Ganzes gelesen, BEVOR irgendein Write passiert (Vorschau
+  // UND Ausführung nutzen dieselbe Ermittlung; die Ausführung liest nie mehr „nebenbei nach").
+  private async cleanupTargets(): Promise<{
+    candidateIds: string[];
+    targets: KnowledgeObject[];
   }> {
-    const removedCandidates = await this.candidates.removeAll();
+    const candidateIds = (await this.candidates.all()).map((c) => c.id);
     const targets = (await this.koService.list()).filter((ko) =>
       this.hasCleanupProvenance(ko.sources ?? []),
     );
+    return { candidateIds, targets };
+  }
+
+  // Vorschau: NUR zählen, nichts verändern. WP-SHIP8-FIX (bens F2): zusätzlich der STATELESS
+  // Digest über die Zielmenge — die Bestätigung schickt ihn zurück, die Ausführung berechnet neu
+  // und vergleicht (robust über Replikas, kein Prozess-Zustand nötig).
+  async importCleanupPreview(): Promise<{
+    candidates: number;
+    importedKos: number;
+    digest: string;
+  }> {
+    const { candidateIds, targets } = await this.cleanupTargets();
+    return {
+      candidates: candidateIds.length,
+      importedKos: targets.length,
+      digest: cleanupDigest(
+        candidateIds,
+        targets.map((ko) => ko.id),
+      ),
+    };
+  }
+
+  // Ausführung: Import-KOs in den Papierkorb, DANN die Queue leeren; ehrliche Bilanz (übersprungen
+  // mit PII-freiem Grund je KO-Id). Audit-Eintrag mit Zählern (wer/wann kommt vom Audit-Service).
+  //
+  // WP-SHIP8-FIX (bens F1, FEHLERATOMARER ABLAUF):
+  //  (1) Zielmenge VOLLSTÄNDIG lesen + gegen den bestätigten Vorschau-Digest validieren, BEVOR
+  //      irgendein Write passiert (F2: Drift → CLEANUP_DRIFT/409, NICHTS wird verändert).
+  //  (2) KO-Soft-Deletes ZUERST — jeder ist einzeln wiederherstellbar (Papierkorb).
+  //  (3) Die Queue (UNWIDERRUFLICH — Kandidaten kennen keinen Papierkorb) kommt ans ENDE und wird
+  //      NUR geleert, wenn die KO-Phase vollständig gut ging. Bei übersprungenen KOs bleibt sie
+  //      ehrlich stehen (removedCandidates 0) — ein späterer Lauf räumt nach neuer Vorschau nach.
+  //  (4) Nach einem GEFANGENEN Soft-Delete-Fehler wird der TATSÄCHLICHE KO-Zustand erneut gelesen:
+  //      ist das KO in Wahrheit schon im Papierkorb (bens Fenster: Trash geschrieben, aber der
+  //      Audit-Schreiber warf danach), zählt es als trashed — NIE fälschlich als skipped.
+  //  (5) Ein Fehler des ABSCHLUSS-Audits macht die Antwort NICHT zum Fehler (die Mutationen sind
+  //      passiert; ein Fehler-Response würde nur einen sinnlosen Retry provozieren) — die Bilanz
+  //      trägt ehrlich auditFailed:true + PII-freies Log.
+  async runImportCleanup(
+    actor: string,
+    confirmedDigest?: string,
+  ): Promise<{
+    removedCandidates: number;
+    trashedKos: number;
+    skipped: { id: string; reason: string }[];
+    auditFailed: boolean;
+  }> {
+    const { candidateIds, targets } = await this.cleanupTargets();
+    const digest = cleanupDigest(
+      candidateIds,
+      targets.map((ko) => ko.id),
+    );
+    if (confirmedDigest !== digest) {
+      throw new LibraryError(
+        "CLEANUP_DRIFT",
+        "Der Bestand hat sich seit der Vorschau geändert — bitte die Vorschau neu laden.",
+      );
+    }
     let trashedKos = 0;
     const skipped: { id: string; reason: string }[] = [];
     for (const ko of targets) {
       try {
         // BESTEHENDE Löschlogik: Soft-Delete in den Papierkorb (SCRUM-422) — kein Hard-Delete.
-        await this.koService.delete(ko.id, actor);
+        // forceTrash (bens F2): auch ein demoSeed-KO mit Import-Provenienz landet auf DIESEM Weg
+        // im Papierkorb statt still in der Endlöschung (delete-Semantik sonst unverändert).
+        await this.koService.delete(ko.id, actor, { forceTrash: true });
         trashedKos += 1;
       } catch (err) {
-        // PII-frei: nur Id + Fehlerklasse.
-        skipped.push({ id: ko.id, reason: err instanceof Error ? err.name : "unknown" });
+        // (4) Ehrliche Bilanz: erst den ECHTEN Zustand nachlesen, dann zählen.
+        const reason = err instanceof Error ? err.name : "unknown";
+        try {
+          const stillLive = await this.koService.get(ko.id);
+          if (stillLive === undefined) {
+            trashedKos += 1; // in Wahrheit schon im Papierkorb — der Fehler kam NACH dem Trash
+          } else {
+            skipped.push({ id: ko.id, reason });
+          }
+        } catch {
+          // Auch das Nachlesen scheiterte → konservativ als übersprungen ausweisen (Original-Fehlerklasse).
+          skipped.push({ id: ko.id, reason });
+        }
       }
     }
-    await this.audit?.record({
-      actor,
-      action: "import.cleanup",
-      target: "library",
-      payload: { removedCandidates, trashedKos, skipped: skipped.length },
-    });
-    return { removedCandidates, trashedKos, skipped };
+    // (3) Der unwiderrufliche Teil kommt ZULETZT und nur bei vollständig guter KO-Phase.
+    const removedCandidates = skipped.length === 0 ? await this.candidates.removeAll() : 0;
+    let auditFailed = false;
+    try {
+      await this.audit?.record({
+        actor,
+        action: "import.cleanup",
+        target: "library",
+        payload: { removedCandidates, trashedKos, skipped: skipped.length },
+      });
+    } catch (err) {
+      auditFailed = true;
+      // PII-frei: nur die Fehlerklasse — die Antwort bleibt Erfolg (s. (5)).
+      process.stderr.write(
+        `[KLARWERK] Cleanup-Abschluss-Audit fehlgeschlagen (fehler=${
+          err instanceof Error ? err.name : "unknown"
+        }).\n`,
+      );
+    }
+    return { removedCandidates, trashedKos, skipped, auditFailed };
   }
 
   // SCRUM-116: Review-Aktion. accept → echtes KO (außer Dublette, dann übersprungen).
@@ -271,11 +362,16 @@ export class LibraryService {
   private async acceptToKo(item: ImportItem, actor: string): Promise<string> {
     // SCRUM-510 R2b: externalId-Upsert/Anker nur bei aktivem Strang. Aus → externalId ignorieren, immer
     // neu anlegen ohne Herkunfts-Anker (exakt heutiges Bestandsverhalten). Quellneutral.
+    // WP-SHIP8-FIX (bens F3): das Ziel-KO wird nach provider+externalId gesucht (der Herkunfts-
+    // Anker kennt beide) — ein Jira-Item mit zufällig gleicher externalId wie eine Confluence-
+    // pageId revidiert NIE das Confluence-KO. Anker ohne Provider (Altbestand) zählen wie
+    // importProviderKey als Confluence (der einzige Adapter vor dem Provider-Schlüssel).
     const externalId = this.externalUpsert ? item.externalId : undefined;
+    const providerKey = importProviderKey(item.provider);
+    const matchesAnchor = (s: { externalId?: string; provider?: string | null }): boolean =>
+      s.externalId === externalId && importProviderKey(s.provider) === providerKey;
     const existing = externalId
-      ? (await this.koService.list()).find((ko) =>
-          (ko.sources ?? []).some((s) => s.externalId === externalId),
-        )
+      ? (await this.koService.list()).find((ko) => (ko.sources ?? []).some(matchesAnchor))
       : undefined;
 
     if (existing && externalId) {
@@ -295,14 +391,16 @@ export class LibraryService {
         await this.koService.setConfidentiality(existing.id, target, item.author ?? actor);
       }
 
-      const current = existing.sources.find((s) => s.externalId === externalId)?.sourceVersion ?? 0;
+      const current = existing.sources.find(matchesAnchor)?.sourceVersion ?? 0;
       // ben-Review #3: Ohne explizite Version NICHT hochzählen (früher `current + 1` → jeder versions-
       // lose Re-Import revidierte endlos). `?? current` heißt: „gleiche Version wie zuletzt" → No-op.
       // Nur eine tatsächlich höhere (explizite) Version schreibt monoton fort — kein Downgrade.
       const incoming = item.sourceVersion ?? current;
       if (incoming > current) {
+        // bens F3: nur der Anker DESSELBEN Providers wird fortgeschrieben — ein gleichnamiger
+        // Anker eines anderen Providers am selben KO bliebe unangetastet.
         const nextSources = [
-          ...existing.sources.filter((s) => s.externalId !== externalId),
+          ...existing.sources.filter((s) => !matchesAnchor(s)),
           this.buildSource(item, actor, incoming),
         ];
         await this.koService.revise(

@@ -904,9 +904,18 @@ export class KoService {
   // SCRUM-422: normales Löschen = Papierkorb (Soft-Delete, wiederherstellbar, Auto-Endlöschung
   // nach TRASH_RETENTION_DAYS). HART gelöscht wird nur: Demo-Daten (immer) oder auf
   // ausdrückliche Anweisung interner Aufrufer (opts.hard, z. B. Demodaten-Purge).
-  async delete(id: string, actor = "system", opts?: { hard?: boolean }): Promise<void> {
+  // WP-SHIP8-FIX (bens F2): opts.forceTrash = EXPLIZITER Papierkorb-Zwang für Aufräum-Wege
+  // (Import-Cleanup): auch ein demoSeed-KO wandert dann in den Papierkorb statt still in die
+  // Endlöschung zu kippen. forceTrash schlägt bewusst BEIDE Hart-Auslöser (demoSeed UND hard) —
+  // wer den Papierkorb erzwingt, bekommt nie eine Endlöschung. Für alle Aufrufer ohne die neue
+  // Option bleibt die delete-Semantik EXAKT unverändert.
+  async delete(
+    id: string,
+    actor = "system",
+    opts?: { hard?: boolean; forceTrash?: boolean },
+  ): Promise<void> {
     const ko = await this.require(id);
-    if (opts?.hard || ko.demoSeed) {
+    if (!opts?.forceTrash && (opts?.hard || ko.demoSeed)) {
       // SCRUM-523 P.3 (WP1-Batch3): harte Löschung NICHT mehr am Chokepoint vorbei — über purgeKo
       // (inkl. Cleanup-Kaskade, cleanup-first). So räumen delete({hard}) UND der Demo-Purge (demoSeed)
       // die Folgeartefakte zwingend auf; scheitert das Cleanup, bleibt das KO bestehen (Rollback).

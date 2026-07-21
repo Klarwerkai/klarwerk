@@ -35,18 +35,31 @@ export function ImportCleanup(): JSX.Element {
     }
   };
 
-  const runCleanup = async (): Promise<void> => {
+  const runCleanup = async (digest: string): Promise<void> => {
     setBusy("run");
     setError(null);
     try {
-      setResult(await endpoints.admin.import.cleanupConfirm());
+      // WP-SHIP8-FIX (bens F2): die Bestätigung schickt den Vorschau-Digest mit — der Server
+      // vergleicht gegen den aktuellen Bestand und lehnt bei Drift ab (409, nichts verändert).
+      setResult(await endpoints.admin.import.cleanupConfirm(digest));
       setPreview(null);
       // Queue und Bestand haben sich geändert — alle betroffenen Ansichten frisch laden.
       void qc.invalidateQueries({ queryKey: ["import-candidates"] });
       void qc.invalidateQueries({ queryKey: ["kos"] });
       void qc.invalidateQueries({ queryKey: ["library"] });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t("state.error"));
+      if (err instanceof ApiError && err.code === "CLEANUP_DRIFT") {
+        // Drift: ehrliche Meldung + Vorschau AUTOMATISCH neu laden (die Meldung bleibt stehen,
+        // damit klar ist, warum die Zahlen gerade gewechselt haben).
+        setError(t(IMPORT_CLEANUP_TEXT.drift));
+        try {
+          setPreview(await endpoints.admin.import.cleanupPreview());
+        } catch {
+          setPreview(null);
+        }
+      } else {
+        setError(err instanceof ApiError ? err.message : t("state.error"));
+      }
     } finally {
       setBusy(null);
     }
@@ -87,7 +100,11 @@ export function ImportCleanup(): JSX.Element {
           {/* Ehrlich: KOs wandern in den Papierkorb (wiederherstellbar), die Queue wird geleert. */}
           <p className="text-[12.5px] text-muted">{t(IMPORT_CLEANUP_TEXT.confirmHint)}</p>
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="primary" disabled={busy !== null} onClick={() => void runCleanup()}>
+            <Button
+              variant="primary"
+              disabled={busy !== null}
+              onClick={() => void runCleanup(preview.digest)}
+            >
               {busy === "run" ? (
                 <Loader2 size={15} className="animate-spin" />
               ) : (
@@ -110,6 +127,9 @@ export function ImportCleanup(): JSX.Element {
             <li className="text-trust-warn-text">
               · {t(IMPORT_CLEANUP_TEXT.doneSkipped, { n: result.skipped.length })}
             </li>
+          ) : null}
+          {result.auditFailed ? (
+            <li className="text-trust-warn-text">· {t(IMPORT_CLEANUP_TEXT.auditFailed)}</li>
           ) : null}
         </ul>
       ) : null}

@@ -724,6 +724,8 @@ export interface ImportCleanupPreview {
   preview: true;
   candidates: number;
   importedKos: number;
+  // WP-SHIP8-FIX (bens F2): bindet die Bestätigung an GENAU diese Zielmenge (stateless, SHA-256).
+  digest: string;
 }
 
 export interface ImportCleanupResult {
@@ -731,6 +733,8 @@ export interface ImportCleanupResult {
   removedCandidates: number;
   trashedKos: number;
   skipped: { id: string; reason: string }[];
+  // WP-SHIP8-FIX (bens F1): die Mutationen sind passiert, nur der Abschluss-Audit schlug fehl.
+  auditFailed: boolean;
 }
 
 // WP-B6: Bilanz eines geladenen Beispielpakets (idempotent — übersprungen = schon vorhanden).

@@ -133,11 +133,16 @@ describe("SCRUM-510 (WP2): Import-Migration + ON CONFLICT gegen echtes Postgres"
     const rows = await pool.query("SELECT id FROM import_candidates ORDER BY id");
     expect(rows.rows.map((r) => r.id)).toEqual(["new"]); // nur der jüngste offene Kandidat bleibt
 
-    // Der partielle Unique-Index existiert jetzt.
+    // Der partielle Unique-Index existiert jetzt (WP-SHIP8-FIX F3: provider-bewusst; der alte,
+    // provider-blinde Index wurde ersetzt).
     const idx = await pool.query(
-      "SELECT 1 FROM pg_indexes WHERE indexname='import_candidates_open_external_uq'",
+      "SELECT 1 FROM pg_indexes WHERE indexname='import_candidates_open_provider_external_uq'",
     );
     expect(idx.rowCount).toBe(1);
+    const oldIdx = await pool.query(
+      "SELECT 1 FROM pg_indexes WHERE indexname='import_candidates_open_external_uq'",
+    );
+    expect(oldIdx.rowCount).toBe(0);
 
     // Re-Run ist idempotent (keine Dubletten mehr → 0 Löschungen, Index existiert bereits).
     await expect(pool.query(IMPORT_CANDIDATES_SCHEMA)).resolves.toBeDefined();
@@ -178,6 +183,22 @@ describe("SCRUM-510 (WP2): Import-Migration + ON CONFLICT gegen echtes Postgres"
       "SELECT count(*)::int AS n FROM import_candidates WHERE external_id='PC' AND source_version=7",
     );
     expect(rows.rows[0].n).toBe(1);
+
+    // WP-SHIP8-FIX (bens F3): dieselbe externalId+Version eines ANDEREN Providers ist KEINE
+    // Kollision — der Unique-Index ist provider-scoped (Backfill: fehlender Provider = confluence).
+    const jira = candidate(
+      "k-j",
+      { externalId: "PC", sourceVersion: 7, provider: "Jira" },
+      "2026-01-03",
+    );
+    expect(await repo.insertIfAbsent(jira)).toBe(true);
+    const both = await pool.query(
+      "SELECT provider, count(*)::int AS n FROM import_candidates WHERE external_id='PC' GROUP BY provider ORDER BY provider",
+    );
+    expect(both.rows).toEqual([
+      { provider: "confluence", n: 1 },
+      { provider: "jira", n: 1 },
+    ]);
   });
 
   it("nach Review (status ≠ neu) ist dieselbe Version wieder einreihbar (partieller Index)", async (ctx) => {
