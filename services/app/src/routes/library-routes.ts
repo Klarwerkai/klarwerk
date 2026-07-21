@@ -1,7 +1,12 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { ConflictService, OverlapService, OverlapSettingsRepo } from "../../../conflicts";
 import type { KoFilter, KoService } from "../../../knowledge-object";
-import type { ImportItem, LibraryService, ReviewAction } from "../../../library-analytics";
+import {
+  type ImportItem,
+  type LibraryService,
+  type ReviewAction,
+  imageCaptionTexts,
+} from "../../../library-analytics";
 import { can } from "../../../rbac";
 import type { Reasoner } from "../../../reasoner";
 import { detectConflictsForKo } from "../conflict-detection";
@@ -59,7 +64,17 @@ export function libraryRoutes(
           return;
         }
         const { q, ...filter } = request.query;
-        reply.code(200).send(await library.search(q ?? "", filter));
+        // WP-BILD-1f (bens P4): die Trefferliste transportiert KEINE Bilddaten — bodyHtml (mit
+        // potenziell megabyte-großen eingebetteten base64-Bildern) bleibt weg; die durchsuchbaren
+        // Bild-Fußnoten reisen stattdessen als kleines additives captionTexts-Feld mit (der Client
+        // kennzeichnet damit die Fundstelle). Detailansichten laden ihr KO weiterhin einzeln voll.
+        const hits = await library.search(q ?? "", filter);
+        reply.code(200).send(
+          hits.map(({ bodyHtml, ...rest }) => ({
+            ...rest,
+            captionTexts: imageCaptionTexts(bodyHtml),
+          })),
+        );
       },
     );
 

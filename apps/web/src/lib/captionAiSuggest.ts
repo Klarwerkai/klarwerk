@@ -24,7 +24,26 @@ export const CAPTION_AI_TEXT = {
 
 // Client-Spiegel des Server-Deckels (MAX_DESCRIBE_IMAGE_DATAURL_CHARS, services/reasoner): zu große
 // Bilder werden gar nicht erst hochgeladen — dieselbe ehrliche Meldung, nur ohne Netz-Umweg.
-export const MAX_CAPTION_IMAGE_DATAURL_CHARS = 5_000_000;
+// WP-BILD-1f (bens P3): der String-Deckel ist nur der schnelle Vorab-Check; autoritativ prüft der
+// Server die DEKODIERTE Bytegrenze (5 MB) — deshalb liegt der String-Deckel etwas darüber.
+export const MAX_CAPTION_IMAGE_DATAURL_CHARS = 7_000_000;
+
+// WP-BILD-1f (bens P1): der Vorschlag ist FEST an seine Ausgangs-Fußnote gebunden. Jeder Request
+// trägt die data-image-id + die Auswahl-Generation der Fußnote zum Startzeitpunkt; eine (späte)
+// Antwort wird NUR angewandt/angezeigt, wenn das Ziel unverändert ist — sonst STILL verworfen
+// (wechselt der Nutzer während des Requests von Fußnote A nach B, darf As Antwort weder Panel
+// noch Inhalt von B verändern).
+export interface CaptionRequestBinding {
+  imageId: string | null; // data-image-id der Ausgangs-Fußnote (null bei Altbestand ohne id)
+  generation: number; // Auswahl-Generation beim Start des Requests
+}
+
+export function captionResponseApplicable(
+  binding: CaptionRequestBinding,
+  current: CaptionRequestBinding,
+): boolean {
+  return binding.generation === current.generation && binding.imageId === current.imageId;
+}
 
 // Der Knopf erscheint NUR im Editier-Modus, NUR mit fokussierter Fußnote und NUR, wenn der
 // Eltern-Kontext den describe-Aufruf verdrahtet hat (sonst gäbe es einen toten Klick).

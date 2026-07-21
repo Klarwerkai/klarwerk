@@ -149,6 +149,11 @@ export interface KnowledgeObject {
   statement: string;
   // KW-STR / SCRUM-45/46/48: optionaler WYSIWYG-Body als sanitisiertes HTML.
   bodyHtml?: string | null;
+  // WP-BILD-1f (bens P4): die Suchroute liefert die Bild-Fußnoten als KLEINES additives Feld und
+  // lässt das bodyHtml (mit eingebetteten Bilddaten) weg — die Trefferliste transportiert nie
+  // megabyte-große base64-Blöcke. Fehlt das Feld (andere Endpunkte/Altbestand), fällt die
+  // Client-Suche auf den sparenden bodyHtml-Scan zurück.
+  captionTexts?: string[];
   conditions: string[];
   measures: string[];
   type: KnowledgeType;

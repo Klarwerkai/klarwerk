@@ -637,6 +637,10 @@ export function Validation(): JSX.Element {
                   // WP-D10 (Fix 4): Erstellungsdatum aus dem VORHANDENEN KO-Feld — gleichnamige
                   // Beiträge werden unterscheidbar. Fehlt/unparsebar (Altdaten) → ehrlich weglassen.
                   const createdLabel = formatKoTimestamp(k.createdAt, i18n.language);
+                  // WP-BILD-1f (Pedis Befund): der ERSTELLER aus dem vorhandenen KO-Vertrag
+                  // (author, über das Verzeichnis zum Namen aufgelöst) — dezent neben dem Datum.
+                  // Fehlt das Feld bei Altdaten, erscheint ehrlich nichts.
+                  const createdByName = k.author ? nameOf(k.author).trim() : "";
                   // SCRUM-365 / AG-12: kontextbezogener Prüf-Fokus aus vorhandenen Signalen
                   // (revidiert → gezielt die Änderung; Autor übertragen → extra Blick).
                   const guideFocusKey = reviewGuidanceFocusKey({
@@ -711,14 +715,22 @@ export function Validation(): JSX.Element {
                               </span>
                             ) : null}
                             <span className="font-mono text-[11px] text-muted-2">{k.category}</span>
-                            {/* WP-D10 (Fix 4): dezentes Erstellungsdatum — unterscheidet gleichnamige
-                                Beiträge; bei Altdaten ohne Feld erscheint ehrlich nichts. */}
-                            {createdLabel ? (
+                            {/* WP-D10 (Fix 4) + WP-BILD-1f (Pedi): dezentes Erstellungsdatum plus
+                                Ersteller (Erstellt am … von …) — unterscheidet gleichnamige
+                                Beiträge; fehlende Felder (Altdaten) bleiben ehrlich weg. */}
+                            {createdLabel || createdByName ? (
                               <span
                                 title={t("ko.createdAt")}
                                 className="font-mono text-[10.5px] text-muted-2"
                               >
-                                {t("ko.createdAt")} {createdLabel}
+                                {[
+                                  createdLabel ? `${t("ko.createdAt")} ${createdLabel}` : null,
+                                  createdByName
+                                    ? t("ko.createdByName", { name: createdByName })
+                                    : null,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" ")}
                               </span>
                             ) : null}
                           </div>

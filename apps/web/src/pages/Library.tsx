@@ -51,6 +51,7 @@ import {
 import { EMPTY_LIBRARY_FILTER, buildLibraryQuery } from "../lib/libraryQuery";
 import { type MatchField, searchLibrary } from "../lib/librarySearch";
 import { canRevalidate } from "../lib/revalidation";
+import { LIBRARY_SEARCH_DEBOUNCE_MS, useDebouncedValue } from "../lib/useDebouncedValue";
 import { useReadiness } from "../lib/useReadiness";
 import { categoryOptions, tagOptions } from "../lib/validationFilters";
 
@@ -103,7 +104,11 @@ export function Library(): JSX.Element {
   const conflicts = useConflicts();
 
   // Ergebnisse über den Server-Search-/Filterpfad (Volltext + KoFilter).
-  const query = useLibrarySearch(buildLibraryQuery(filter));
+  // WP-BILD-1f (bens P4): die live getippte Volltext-Query läuft DEBOUNCED zum Server (ein Request
+  // nach der Tipp-Pause statt einer pro Tastendruck); veraltete Antworten überschreiben nie das
+  // Ergebnis, weil react-query pro Parameter-Key liest (latest-wins, s. useDebouncedValue).
+  const debouncedQ = useDebouncedValue(filter.q, LIBRARY_SEARCH_DEBOUNCE_MS);
+  const query = useLibrarySearch(buildLibraryQuery({ ...filter, q: debouncedQ }));
   // SCRUM-245: aktuelle Volltext-Query für client-seitiges Re-Ranking + Match-Hinweise.
   const trimmedQ = filter.q.trim();
 

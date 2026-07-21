@@ -43,6 +43,32 @@ describe("WP-BILD-1e: Fußnoten-Extraktion (pure)", () => {
       expect(clientCaptionTexts(FIGURE(placeholder))).toEqual([]);
     }
   });
+
+  it("WP-BILD-1f (bens P4): megabyte-großes base64-src stört die Extraktion nicht — und landet nie im Ergebnis", () => {
+    const bigSrc = `data:image/png;base64,${"ABCD".repeat(500_000)}`; // 2 Mio. Zeichen Bilddaten
+    const body = `<p>Text</p><figure><img src="${bigSrc}"><figcaption data-image-id="kw-1">Verschraubung am Pumpenkopf</figcaption></figure>`;
+    for (const extract of [imageCaptionTexts, clientCaptionTexts]) {
+      const captions = extract(body);
+      expect(captions).toEqual(["Verschraubung am Pumpenkopf"]);
+      // Die Bilddaten werden NIE in ein Ergebnis materialisiert.
+      expect(captions.join(" ")).not.toContain("ABCDABCD");
+    }
+  });
+
+  it("SCAN-PIN (bens P4): beide Scanner arbeiten mit indexOf-Segment-Sprüngen — KEINE Regex über den vollen Body", () => {
+    for (const file of [
+      "services/library-analytics/src/search-captions.ts",
+      "apps/web/src/lib/librarySearch.ts",
+    ]) {
+      const src = readFileSync(resolve(process.cwd(), file), "utf8");
+      // Segment-Sprünge auf die Fußnoten-Marker …
+      expect(src).toContain("indexOf(OPEN_TAG");
+      expect(src).toContain("indexOf(CLOSE_TAG");
+      // … und keine Volltext-Regex mehr, die zeichenweise durch base64-Attributwerte läuft.
+      expect(src).not.toContain("matchAll");
+      expect(src).not.toContain("[\\s\\S]");
+    }
+  });
 });
 
 describe("WP-BILD-1e: Bibliotheks-Suche findet Bild-Fußnoten (echte Services)", () => {
@@ -114,6 +140,17 @@ describe("WP-BILD-1e: Fundstellen-Kennzeichnung in der Bildbeschreibung (Client-
 
   it("ein Fußnoten-Treffer trägt den eigenen Match-Grund caption", () => {
     const scored = scoreKo(ko(FIGURE("Verschraubung am Pumpenkopf")), "Verschraubung");
+    expect(scored.matches).toContain("caption");
+    expect(scored.score).toBeGreaterThan(0);
+  });
+
+  it("WP-BILD-1f (bens P4): captionTexts der Suchroute wird bevorzugt — GANZ OHNE bodyHtml", () => {
+    const slim = {
+      ...ko(""),
+      bodyHtml: undefined,
+      captionTexts: ["Verschraubung am Pumpenkopf"],
+    } as unknown as KnowledgeObject;
+    const scored = scoreKo(slim, "Verschraubung");
     expect(scored.matches).toContain("caption");
     expect(scored.score).toBeGreaterThan(0);
   });

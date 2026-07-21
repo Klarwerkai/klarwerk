@@ -1543,6 +1543,7 @@ const de = {
   // WP-D10 Fix 4: Erstellungsdatum sichtbar (Validierungs-Karten + Detail) — gleichnamige Beiträge
   // werden unterscheidbar. Nur vorhandene KO-Felder (createdAt), kein Platzhalter-Datum bei Altdaten.
   "ko.createdAt": "Erstellt am",
+  "ko.createdByName": "von {{name}}",
   "ko.gallery": "Bildergalerie",
   "ko.galleryCount": "Bild {{n}} von {{m}}",
   "ko.galleryClose": "Schließen",
@@ -4650,6 +4651,7 @@ const en: typeof de = {
   "ko.title": "Detail",
   "ko.statement": "Statement",
   "ko.createdAt": "Created on",
+  "ko.createdByName": "by {{name}}",
   "ko.gallery": "Image gallery",
   "ko.galleryCount": "Image {{n}} of {{m}}",
   "ko.galleryClose": "Close",
@@ -7719,6 +7721,7 @@ const nl: typeof de = {
   "ko.title": "Detail",
   "ko.statement": "Uitspraak",
   "ko.createdAt": "Aangemaakt op",
+  "ko.createdByName": "door {{name}}",
   "ko.gallery": "Afbeeldingengalerij",
   "ko.galleryCount": "Afbeelding {{n}} van {{m}}",
   "ko.galleryClose": "Sluiten",

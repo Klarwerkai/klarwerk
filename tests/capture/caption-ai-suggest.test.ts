@@ -9,6 +9,7 @@ import {
   CAPTION_AI_TEXT,
   MAX_CAPTION_IMAGE_DATAURL_CHARS,
   applyCaptionSuggestion,
+  captionResponseApplicable,
   captionSuggestOutcome,
   captionSuggestVisible,
   checkCaptionImageDataUrl,
@@ -61,6 +62,22 @@ describe("WP-BILD-1c: Fußnoten-KI-Vorschlag (pure UI-Logik)", () => {
       `data:image/png;base64,${"A".repeat(MAX_CAPTION_IMAGE_DATAURL_CHARS)}`,
     );
     expect(huge).toEqual({ ok: false, messageKey: CAPTION_AI_TEXT.tooLarge });
+  });
+
+  it("WP-BILD-1f (bens P1): eine Antwort ist NUR auf ihre unveränderte Ausgangs-Fußnote anwendbar", () => {
+    const binding = { imageId: "kw-a", generation: 3 };
+    // Ziel unverändert → anwendbar.
+    expect(captionResponseApplicable(binding, { imageId: "kw-a", generation: 3 })).toBe(true);
+    // Fußnoten-Wechsel (neue Generation) ODER andere data-image-id → still verwerfen.
+    expect(captionResponseApplicable(binding, { imageId: "kw-a", generation: 4 })).toBe(false);
+    expect(captionResponseApplicable(binding, { imageId: "kw-b", generation: 3 })).toBe(false);
+    // Altbestand ohne data-image-id: Bindung läuft über die Generation.
+    expect(
+      captionResponseApplicable({ imageId: null, generation: 1 }, { imageId: null, generation: 1 }),
+    ).toBe(true);
+    expect(
+      captionResponseApplicable({ imageId: null, generation: 1 }, { imageId: null, generation: 2 }),
+    ).toBe(false);
   });
 
   it("alle Copy-Schlüssel existieren in DE, EN und NL (inkl. Cloud-KI-Kennzeichnung)", () => {

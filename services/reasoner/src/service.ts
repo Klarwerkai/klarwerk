@@ -84,9 +84,11 @@ export const REASONER_TASKS = [
   "describe",
 ] as const;
 
-// WP-BILD-1c: Deckel für die Bild-Daten eines describe-Aufrufs (data:image-URL-Länge in Zeichen).
-// Die Route lehnt Größeres mit einer ehrlichen Meldung ab, BEVOR irgendetwas zum Modell geht.
-export const MAX_DESCRIBE_IMAGE_DATAURL_CHARS = 5_000_000;
+// WP-BILD-1c/1f: schneller String-Vorab-Deckel für die describe-Bild-Daten (data:image-URL-Länge in
+// Zeichen). AUTORITATIV ist die DEKODIERTE Bytegrenze MAX_DESCRIBE_IMAGE_BYTES (5 MB, bens P3 —
+// s. image-validation.ts); dieser Vorab-Deckel liegt deshalb bewusst darüber (~5,25 MB dekodiert)
+// und fängt nur grob Überdimensioniertes ab, bevor überhaupt geparst wird.
+export const MAX_DESCRIBE_IMAGE_DATAURL_CHARS = 7_000_000;
 
 export function isValidReasonerChoice(value: string): value is ReasonerTaskChoice {
   return (VALID_CHOICES as readonly string[]).includes(value);

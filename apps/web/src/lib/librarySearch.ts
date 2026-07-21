@@ -21,24 +21,43 @@ export const MATCH_FIELD_ORDER: readonly MatchField[] = [
   "caption",
 ];
 
-// WP-BILD-1e: Fußnoten-Texte aus dem bodyHtml (Client-Spiegel der Server-Extraktion in
+// WP-BILD-1e/1f: Fußnoten-Texte aus dem bodyHtml (Client-Spiegel der Server-Extraktion in
 // services/library-analytics/src/search-captions.ts — ein Paritäts-Test hält die Platzhalter-
-// Listen gleich). Tags raus, Whitespace kollabiert; Leeres und Alt-Platzhalter fallen weg.
-const FIGCAPTION_RE = /<figcaption\b[^>]*>([\s\S]*?)<\/figcaption>/gi;
+// Listen gleich). WP-BILD-1f (bens P4): body-sparend per indexOf-Segment-Sprüngen — megabyte-
+// große base64-src-Blöcke werden NIE materialisiert oder regex-gescannt; nur der kleine
+// Fußnoten-Ausschnitt wird geslict und normalisiert (Tags raus, Whitespace kollabiert; Leeres
+// und Alt-Platzhalter fallen weg).
+const OPEN_TAG = "<figcaption";
+const CLOSE_TAG = "</figcaption>";
 
 export function imageCaptionTexts(bodyHtml: string | null | undefined): string[] {
   if (!bodyHtml) {
     return [];
   }
   const out: string[] = [];
-  for (const match of bodyHtml.matchAll(FIGCAPTION_RE)) {
-    const text = (match[1] ?? "")
+  let cursor = 0;
+  for (;;) {
+    const start = bodyHtml.indexOf(OPEN_TAG, cursor);
+    if (start < 0) {
+      break;
+    }
+    const openEnd = bodyHtml.indexOf(">", start + OPEN_TAG.length);
+    if (openEnd < 0) {
+      break;
+    }
+    const close = bodyHtml.indexOf(CLOSE_TAG, openEnd + 1);
+    if (close < 0) {
+      break;
+    }
+    const text = bodyHtml
+      .slice(openEnd + 1, close)
       .replace(/<[^>]*>/g, " ")
       .replace(/\s+/g, " ")
       .trim();
     if (text.length > 0 && !LEGACY_IMAGE_CAPTION_PLACEHOLDERS.includes(text)) {
       out.push(text);
     }
+    cursor = close + CLOSE_TAG.length;
   }
   return out;
 }
@@ -126,8 +145,11 @@ export function scoreKo(
     matched.add("text");
   }
   // WP-BILD-1e: Bild-Fußnoten — gleiches Gewicht wie der Fließtext, aber eigener Match-Grund
-  // („in Bildbeschreibung"), damit der Nutzer die Fundstelle versteht.
-  const caption = hitField(imageCaptionTexts(ko.bodyHtml).join(" "), phrase, tokens, 2, 1);
+  // („in Bildbeschreibung"), damit der Nutzer die Fundstelle versteht. WP-BILD-1f (bens P4): die
+  // Suchroute liefert die Fußnoten als kleines captionTexts-Feld OHNE bodyHtml (keine Bilddaten
+  // im Transport); der bodyHtml-Scan bleibt nur als Fallback für Aufrufer mit vollen KOs.
+  const captionTexts = ko.captionTexts ?? imageCaptionTexts(ko.bodyHtml);
+  const caption = hitField(captionTexts.join(" "), phrase, tokens, 2, 1);
   if (caption.matched) {
     score += caption.score;
     matched.add("caption");

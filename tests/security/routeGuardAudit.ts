@@ -307,6 +307,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // SCRUM-439: aktive Integritätsprüfung der Audit-Kette — Governance-Einsicht wie /api/audit.
   "GET /api/audit/verify": { protection: "ko.validate" },
   "POST /api/reasoner": { protection: "ko.read" },
+  // WP-BILD-1c/1f: KI-Bildbeschreibungs-Vorschlag — eigene Route mit großem bodyLimit; gleicher
+  // Guard wie der Text-Dispatcher, zusätzlich Auth VOR dem Body-Parsing (onRequest requireUser).
+  "POST /api/reasoner/describe": { protection: "ko.read" },
   // SCRUM-426: Public-KI-Anreicherung — Schreibberechtigte; zusätzlich Stufen-Gate „offen".
   "POST /api/reasoner/enrich": { protection: "ko.create" },
   // SCRUM-428: Key-Test für den lokalen LLM — nur Admin (echter Mini-Aufruf).

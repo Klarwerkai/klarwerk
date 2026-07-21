@@ -10,6 +10,14 @@ export {
   REASONER_TASKS,
   MAX_DESCRIBE_IMAGE_DATAURL_CHARS,
 } from "./src/service";
+// WP-BILD-1f (bens P3): strikte, frühe Bild-Validierung der describe-Route (Format, strikte
+// Base64, dekodierte Bytegrenze, Magic-Bytes-Abgleich) — komplett VOR jedem Provider-Aufruf.
+export {
+  MAX_DESCRIBE_IMAGE_BYTES,
+  validateDescribeImageDataUrl,
+  type DescribeImageRejection,
+  type DescribeImageVerdict,
+} from "./src/image-validation";
 export {
   DeterministicProvider,
   keywordSelect,

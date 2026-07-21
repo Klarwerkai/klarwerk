@@ -255,15 +255,15 @@ export const endpoints = {
         ...(locale ? { locale } : {}),
         ...provenanceFields(provenance),
       }),
-    // WP-BILD-1c: KI-Bildbeschreibung als VORSCHLAG für die Bild-Fußnote (Vision). Die Provenienz
-    // läuft wie bei den Text-Tasks mit — vertrauliche Entwürfe erreichen die Cloud nie.
+    // WP-BILD-1c/1f: KI-Bildbeschreibung als VORSCHLAG für die Bild-Fußnote (Vision). EIGENE
+    // Route (bens P2: nur der Bild-Task trägt die große Parsergrenze); die Provenienz läuft wie
+    // bei den Text-Tasks mit — vertrauliche Entwürfe erreichen die Cloud nie.
     describeImage: (
       dataUrl: string,
       locale: "de" | "en" | undefined,
       provenance: ReasonerProvenance,
     ) =>
-      api.post<DescribeImageResult>("/reasoner", {
-        task: "describe",
+      api.post<DescribeImageResult>("/reasoner/describe", {
         dataUrl,
         ...(locale ? { locale } : {}),
         ...provenanceFields(provenance),

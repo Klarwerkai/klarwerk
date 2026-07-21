@@ -31,8 +31,11 @@ describe("WP-D10 Fix 4: Verdrahtung Karte + Detail, i18n", () => {
   it("Validierungs-Karte rendert das Datum aus dem KO-Feld (mit ehrlichem Weglassen)", () => {
     const src = readFileSync(resolve(process.cwd(), "apps/web/src/pages/Validation.tsx"), "utf8");
     expect(src).toContain("formatKoTimestamp(k.createdAt, i18n.language)");
-    // Bedingtes Rendern: ohne parsebares Datum erscheint nichts.
-    expect(src).toContain("createdLabel ? (");
+    // Bedingtes Rendern: ohne parsebares Datum erscheint der Datums-Teil nicht. WP-BILD-1f (Pedi):
+    // die Zeile trägt zusätzlich den Ersteller — sie erscheint, wenn Datum ODER Ersteller vorliegt,
+    // und lässt fehlende Teile weiterhin ehrlich weg.
+    expect(src).toContain("createdLabel || createdByName ? (");
+    expect(src).toContain('createdLabel ? `${t("ko.createdAt")} ${createdLabel}` : null');
     expect(src).toContain('t("ko.createdAt")');
   });
 

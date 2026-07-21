@@ -8,6 +8,7 @@ import { bodyReadMode } from "../lib/bodyReadMode";
 import {
   CAPTION_AI_TEXT,
   applyCaptionSuggestion,
+  captionResponseApplicable,
   captionSuggestOutcome,
   captionSuggestVisible,
   checkCaptionImageDataUrl,
@@ -113,6 +114,11 @@ export function RichTextEditor({
   // WP-BILD-1c: die aktuell fokussierte/angeklickte Bild-Fußnote (Editier-Modus) + der Zustand des
   // KI-Vorschlags-Panels. Der Vorschlag wird NIE automatisch übernommen — nur über den Knopf.
   const [selectedCaption, setSelectedCaption] = useState<HTMLElement | null>(null);
+  // WP-BILD-1f (bens P1): Bindung Request↔Fußnote. Die Generation zählt bei JEDEM Fußnoten-Wechsel
+  // hoch; ein laufender Request merkt sich (Generation + data-image-id + Element) seiner
+  // Ausgangs-Fußnote und wendet seine Antwort NUR an, wenn all das noch aktuell ist.
+  const captionGenerationRef = useRef(0);
+  const selectedCaptionRef = useRef<HTMLElement | null>(null);
   const [captionAi, setCaptionAi] = useState<
     | null
     | { status: "loading" }
@@ -175,7 +181,10 @@ export function RichTextEditor({
       cap instanceof HTMLElement && ref.current?.contains(cap) && node && ref.current.contains(node)
         ? cap
         : null;
-    if (next !== selectedCaption) {
+    // WP-BILD-1f (bens P1): jeder Fußnoten-Wechsel invalidiert laufende Requests (Generation++).
+    if (next !== selectedCaptionRef.current) {
+      captionGenerationRef.current += 1;
+      selectedCaptionRef.current = next;
       setCaptionAi(null);
     }
     setSelectedCaption(next);
@@ -217,6 +226,19 @@ export function RichTextEditor({
     if (!caption || !onDescribeImage) {
       return;
     }
+    // WP-BILD-1f (bens P1): der Request trägt die Bindung an SEINE Ausgangs-Fußnote (data-image-id
+    // + Generation). Nach jedem await wird geprüft, ob das Ziel unverändert ist — sonst wird die
+    // Antwort STILL verworfen (A→B-Wechsel: As späte Antwort berührt B nie).
+    const binding = {
+      imageId: caption.getAttribute("data-image-id"),
+      generation: captionGenerationRef.current,
+    };
+    const stillCurrent = (): boolean =>
+      selectedCaptionRef.current === caption &&
+      captionResponseApplicable(binding, {
+        imageId: selectedCaptionRef.current.getAttribute("data-image-id"),
+        generation: captionGenerationRef.current,
+      });
     const src = caption.parentElement?.querySelector("img")?.getAttribute("src") ?? "";
     if (!src) {
       setCaptionAi({ status: "fallback", messageKey: CAPTION_AI_TEXT.imageUnreadable });
@@ -227,16 +249,24 @@ export function RichTextEditor({
     try {
       dataUrl = await imageSrcAsDataUrl(src);
     } catch {
-      setCaptionAi({ status: "fallback", messageKey: CAPTION_AI_TEXT.imageUnreadable });
+      if (stillCurrent()) {
+        setCaptionAi({ status: "fallback", messageKey: CAPTION_AI_TEXT.imageUnreadable });
+      }
       return;
     }
     const checked = checkCaptionImageDataUrl(dataUrl);
     if (!checked.ok) {
-      setCaptionAi({ status: "fallback", messageKey: checked.messageKey });
+      if (stillCurrent()) {
+        setCaptionAi({ status: "fallback", messageKey: checked.messageKey });
+      }
       return;
     }
     try {
-      const outcome = captionSuggestOutcome(await onDescribeImage(checked.dataUrl));
+      const result = await onDescribeImage(checked.dataUrl);
+      if (!stillCurrent()) {
+        return; // Ziel gewechselt → Antwort still verwerfen (kein Panel, keine Inhalts-Änderung).
+      }
+      const outcome = captionSuggestOutcome(result);
       setCaptionAi(
         outcome.kind === "suggestion"
           ? { status: "suggestion", text: outcome.text }
@@ -244,7 +274,9 @@ export function RichTextEditor({
       );
     } catch {
       // Netz-/Serverfehler (inkl. 413-Größendeckel) → ehrliche Fehlermeldung, kein Pseudo-Text.
-      setCaptionAi({ status: "fallback", messageKey: CAPTION_AI_TEXT.fallbackError });
+      if (stillCurrent()) {
+        setCaptionAi({ status: "fallback", messageKey: CAPTION_AI_TEXT.fallbackError });
+      }
     }
   };
 
