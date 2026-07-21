@@ -71,6 +71,15 @@ export function importStatusKey(provider: string | null | undefined, externalId:
   return `${provider ?? ""}::${externalId}`;
 }
 
+// WP-IC-PAKET-1c (bens ROT-3): EINE gemeinsame Normalisierung für ALLE drei Versions-Eingänge des
+// Status-Abgleichs (Anker-, Kandidaten-, Quellversion). Nur eine POSITIVE SICHERE GANZZAHL gilt als
+// explizite Version; alles andere — 0, negativ, gebrochen, NaN, Infinity, undefined, null, Fremdtyp —
+// ist ehrlich "keine Version" (null) und kann damit NIE ein „Quelle neuer"-Signal erzeugen (bens
+// Fehlfall: Anker sourceVersion=0 + Quelle v1 ergab vorher fälschlich sourceNewer).
+export function normalizeSourceVersion(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : null;
+}
+
 // Merkt je Schlüssel die höchste EXPLIZITE Version — oder null, wenn (nur) versionslose Einträge
 // existieren (Legacy): null zählt für „bereits importiert", NIE für „Quelle neuer".
 function noteVersion(out: Map<string, number | null>, key: string, version: number | null): void {
@@ -90,8 +99,11 @@ export async function importedAnchorVersions(
       if (!s.externalId) {
         continue;
       }
-      const version = typeof s.sourceVersion === "number" ? s.sourceVersion : null;
-      noteVersion(out, importStatusKey(s.provider, s.externalId), version);
+      noteVersion(
+        out,
+        importStatusKey(s.provider, s.externalId),
+        normalizeSourceVersion(s.sourceVersion),
+      );
     }
   }
   return out;
@@ -107,8 +119,11 @@ export async function pendingCandidateVersions(
     if (c.status !== "neu" || !c.item.externalId) {
       continue;
     }
-    const version = typeof c.item.sourceVersion === "number" ? c.item.sourceVersion : null;
-    noteVersion(out, importStatusKey(c.item.provider, c.item.externalId), version);
+    noteVersion(
+      out,
+      importStatusKey(c.item.provider, c.item.externalId),
+      normalizeSourceVersion(c.item.sourceVersion),
+    );
   }
   return out;
 }
@@ -132,7 +147,7 @@ export function importStatusFor(
   const anchor = anchorVersions.get(key);
   const pending = pendingVersions.get(key);
   const alreadyImported = anchor !== undefined || pending !== undefined;
-  const itemVersion = typeof item.sourceVersion === "number" ? item.sourceVersion : null;
+  const itemVersion = normalizeSourceVersion(item.sourceVersion);
   const known = [anchor, pending].filter((v): v is number => typeof v === "number");
   const knownMax = known.length > 0 ? Math.max(...known) : null;
   const sourceNewer = itemVersion !== null && knownMax !== null && itemVersion > knownMax;

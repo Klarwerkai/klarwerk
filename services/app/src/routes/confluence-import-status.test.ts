@@ -6,6 +6,7 @@ import {
   importStatusFor,
   importStatusKey,
   importedAnchorVersions,
+  normalizeSourceVersion,
   pendingCandidateVersions,
 } from "../confluence-import";
 import { makeGuards } from "../http";
@@ -275,6 +276,65 @@ describe("WP-IC-PAKET-1b ROT-2: importStatusFor — versions- und quellrobust", 
     );
     expect(status.alreadyImported).toBe(true);
     expect(status.sourceNewer).toBe(false);
+  });
+
+  // WP-IC-PAKET-1c (bens ROT-3): EINE Normalisierung für alle drei Versions-Eingänge — nur positive
+  // sichere Ganzzahlen sind explizit; alles andere ist "keine Version" und erzeugt NIE sourceNewer.
+  it("ROT-3: normalizeSourceVersion — nur positive sichere Ganzzahlen sind explizit", () => {
+    expect(normalizeSourceVersion(1)).toBe(1);
+    expect(normalizeSourceVersion(42)).toBe(42);
+    for (const invalid of [
+      0,
+      -1,
+      1.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      Number.MAX_SAFE_INTEGER + 1,
+      undefined,
+      null,
+      "3",
+    ]) {
+      expect(normalizeSourceVersion(invalid), String(invalid)).toBeNull();
+    }
+  });
+
+  it("ROT-3 (bens Fehlfall): Anker sourceVersion=0 + Quelle v1 → alreadyImported, aber KEIN sourceNewer", async () => {
+    const services = await servicesWithKoSource(legacySource("p1", "Confluence", 0));
+    const anchors = await importedAnchorVersions(services.ko);
+    const status = importStatusFor(
+      baseItem({
+        title: "Wartung Pumpe",
+        externalId: "p1",
+        sourceVersion: 1,
+        provider: "Confluence",
+      }),
+      anchors,
+      new Map(),
+    );
+    // Vorher galt 0 als explizite Version → 1 > 0 → fälschlich „Quelle neuer". Jetzt: 0 ist KEINE
+    // Version → kein Vergleich möglich → ehrlich kein Badge.
+    expect(status.alreadyImported).toBe(true);
+    expect(status.sourceNewer).toBe(false);
+  });
+
+  it("ROT-3: kaputte Quell-Versionen (gebrochen/NaN) erzeugen ebenfalls NIE sourceNewer", async () => {
+    const services = await servicesWithKoSource(legacySource("p1", "Confluence", 1));
+    const anchors = await importedAnchorVersions(services.ko);
+    for (const broken of [1.5, Number.NaN, 0, -2]) {
+      const status = importStatusFor(
+        baseItem({
+          title: "Wartung Pumpe",
+          externalId: "p1",
+          sourceVersion: broken,
+          provider: "Confluence",
+        }),
+        anchors,
+        new Map(),
+      );
+      expect(status.alreadyImported, String(broken)).toBe(true);
+      expect(status.sourceNewer, String(broken)).toBe(false);
+    }
   });
 
   it("Provider-Scoping: Jira-Anker mit gleicher externalId markiert die Confluence-Seite NICHT", async () => {

@@ -38,6 +38,9 @@ export interface ExploreView {
   withImagesHint: number; // Items mit Bildern (0 → die Komponente blendet den Hinweis aus)
   // WP-IC-PAKET-1 (Teil 3): Quell-Container (Spaces) namentlich — Filter-Chips nur bei MEHREREN.
   spaces: ExploreAuthorView[];
+  // WP-IC-PAKET-1c (ROT-2): true = alle Namen kanonisch dekodiert (Decode-Marker der Summary) —
+  // die Chip-Anzeige dekodiert dann NICHT erneut (kein Doppel-Dekodieren echter Literale).
+  textDecoded: boolean;
 }
 
 const EMPTY_PERIOD = "—";
@@ -123,5 +126,7 @@ export function toExploreView(summary: ImportExploreSummary): ExploreView {
     withImagesHint: summary.withImagesHint,
     // WP-IC-PAKET-1 (Teil 3): Spaces namentlich (Altbestand-Antworten ohne Feld → leer, kein Filter).
     spaces: (summary.sourceNames ?? []).map((s) => ({ name: s.name, count: s.count })),
+    // WP-IC-PAKET-1c (ROT-2): Marker der Summary durchreichen (fehlt er → defensiver Anzeige-Decode).
+    textDecoded: summary.textCodec === "decoded",
   };
 }

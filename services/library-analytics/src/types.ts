@@ -24,6 +24,11 @@ export interface ImportItem {
   // version.when). Rein additiv — nur für die Read-only-Erkundung (Zeitraum); kein Adapter MUSS es
   // füllen, kein Import-Pfad hängt davon ab.
   updatedAt?: string;
+  // WP-IC-PAKET-1c (bens ROT-2): DECODE-MARKER. "decoded" = die textuellen Felder wurden bereits an
+  // der QUELLE (Mapper) entity-dekodiert und sind kanonisch — die Anzeige darf NICHT erneut dekodieren
+  // (sonst wird ein echtes Literal &uuml; faelschlich zu ü). FEHLT der Marker (Altbestand von vor dem
+  // Quellen-Fix), fuehrt der Client den defensiven Zweit-Durchlauf aus. Additiv, JSON-persistiert.
+  textCodec?: "decoded";
 }
 
 export interface ImportResult {

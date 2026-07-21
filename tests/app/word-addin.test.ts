@@ -12,6 +12,7 @@ import {
   WORD_ADDIN_LOGIN_POLL_MAX_MS,
   deriveDraftTitleFromSelection,
   loginPollDecision,
+  loginPollStep,
   selectionToBodyHtml,
 } from "../../apps/web/src/lib/wordAddin";
 
@@ -63,6 +64,17 @@ describe("WP-KLARA-1: Hilfslogik (DOM-freies Modul)", () => {
     expect(loginPollDecision(0, true)).toBe("done");
     expect(loginPollDecision(WORD_ADDIN_LOGIN_POLL_MAX_MS + 1, true)).toBe("done");
   });
+
+  // WP-IC-PAKET-1c (bens ROT-1d): Schritt-Entscheidung mit GENERATION-Guard — eine veraltete
+  // Generation (Abbrechen/Neustart) endet IMMER still, egal was der Fetch ergab (auch bei Erfolg:
+  // kein später Zustands-Überschreiber eines abgebrochenen Laufs).
+  it("loginPollStep: stale schlägt ALLES; sonst done/timeout/schedule", () => {
+    expect(loginPollStep(1, 2, 0, true)).toBe("stale");
+    expect(loginPollStep(1, 2, WORD_ADDIN_LOGIN_POLL_MAX_MS + 1, false)).toBe("stale");
+    expect(loginPollStep(2, 2, 0, true)).toBe("done");
+    expect(loginPollStep(2, 2, WORD_ADDIN_LOGIN_POLL_MAX_MS, false)).toBe("timeout");
+    expect(loginPollStep(2, 2, 100, false)).toBe("schedule");
+  });
 });
 
 describe("WP-KLARA-1: Inline-Kopie im Taskpane ist VERHALTENSGLEICH zum Modul", () => {
@@ -74,12 +86,18 @@ describe("WP-KLARA-1: Inline-Kopie im Taskpane ist VERHALTENSGLEICH zum Modul", 
     expect(end).toBeGreaterThan(start);
     const block = html.slice(start, end);
     const factory = new Function(
-      `${block}; return { deriveDraftTitleFromSelection: deriveDraftTitleFromSelection, selectionToBodyHtml: selectionToBodyHtml, loginPollDecision: loginPollDecision };`,
+      `${block}; return { deriveDraftTitleFromSelection: deriveDraftTitleFromSelection, selectionToBodyHtml: selectionToBodyHtml, loginPollDecision: loginPollDecision, loginPollStep: loginPollStep };`,
     );
     const inline = factory() as {
       deriveDraftTitleFromSelection: (text: string) => string;
       selectionToBodyHtml: (text: string) => string;
       loginPollDecision: (elapsedMs: number, signedIn: boolean) => string;
+      loginPollStep: (
+        generation: number,
+        currentGeneration: number,
+        elapsedMs: number,
+        signedIn: boolean,
+      ) => string;
     };
     const fixtures = [
       "",
@@ -112,6 +130,21 @@ describe("WP-KLARA-1: Inline-Kopie im Taskpane ist VERHALTENSGLEICH zum Modul", 
       expect(inline.loginPollDecision(elapsed, signedIn), `poll:${elapsed}/${signedIn}`).toBe(
         loginPollDecision(elapsed, signedIn),
       );
+    }
+    // WP-IC-PAKET-1c: auch die Generation-Schritt-Entscheidung ist verhaltensgleich gespiegelt.
+    const stepFixtures: [number, number, number, boolean][] = [
+      [1, 1, 0, false],
+      [1, 2, 0, false],
+      [1, 2, 0, true],
+      [3, 3, WORD_ADDIN_LOGIN_POLL_MAX_MS, false],
+      [3, 3, WORD_ADDIN_LOGIN_POLL_MAX_MS - 1, false],
+      [3, 3, 0, true],
+    ];
+    for (const [gen, cur, elapsed, signedIn] of stepFixtures) {
+      expect(
+        inline.loginPollStep(gen, cur, elapsed, signedIn),
+        `step:${gen}/${cur}/${elapsed}/${signedIn}`,
+      ).toBe(loginPollStep(gen, cur, elapsed, signedIn));
     }
   });
 });
@@ -213,18 +246,46 @@ describe("WP-KLARA-1: Manifest + Taskpane + Hosting", () => {
     // Eigenes Fenster: offizieller Office-Dialog zuerst, window.open als Fallback (Browser-Vorschau).
     expect(html).toContain("displayDialogAsync");
     expect(html).toContain('window.open(url, "_blank")');
-    // Polling nutzt die gespiegelte pure Entscheidung + die /api/auth/me-Route (keine neue API).
-    expect(html).toContain("loginPollDecision(Date.now() - loginPollStartedMs");
-    expect(html).toContain("setInterval(pollLoginOnce, WORD_ADDIN_LOGIN_POLL_INTERVAL_MS)");
     expect(html).toContain("WORD_ADDIN_LOGIN_POLL_MAX_MS = 300000");
     // Sichtbarer Warte-Zustand + Abbrechen; Timeout endet ehrlich.
     expect(html).toContain('id="login-cancel-btn"');
     expect((html.match(/loginWaiting: "/g) ?? []).length).toBe(3);
     expect((html.match(/loginCancel: "/g) ?? []).length).toBe(3);
     expect((html.match(/loginTimeout: "/g) ?? []).length).toBe(3);
-    // Erfolg → normale Zustands-Renderung OHNE Navigation (checkSession), Dialog wird geschlossen.
+    // Erfolg → normale Zustands-Renderung OHNE Navigation (checkSession).
     expect(html).toContain("stopLoginPolling();");
-    expect(html).toContain("loginDialog.close");
+  });
+
+  // WP-IC-PAKET-1c (bens ROT-1): Poll-Lifecycle — sequenziell, abbrechbar, generationssicher.
+  it("Poll-Lifecycle: sequenziell (kein Interval), Fetch-Frist, harte Deadline, Generation, Knopf-Sperre, Popup-/Kontext-Ehrlichkeit", () => {
+    const html = read(TASKPANE);
+    // (a) GENAU EIN Poll gleichzeitig: kein setInterval; der naechste Versuch wird NACH Abschluss
+    // rekursiv per setTimeout geplant.
+    expect(html).not.toContain("setInterval(");
+    expect(html).toContain("runLoginPoll(generation)");
+    // (b) jeder Fetch mit eigenem AbortController + eigener Frist.
+    expect(html).toContain("new AbortController()");
+    expect(html).toContain("signal: controller.signal");
+    expect(html).toContain("WORD_ADDIN_LOGIN_FETCH_TIMEOUT_MS = 5000");
+    // (c) UNABHAENGIGE harte 5-Minuten-Frist (eigener Deadline-Timer ab Start).
+    expect(html).toContain("loginDeadlineTimer = setTimeout(");
+    // (d) Generation-ID: Abbruch neutralisiert Timer + laufenden Fetch + spaete Dialog-Callbacks.
+    expect(html).toContain("loginPollGeneration += 1");
+    expect(html).toContain("loginPollStep(generation, loginPollGeneration");
+    expect(html).toContain("loginPollController.abort()");
+    expect(html).toContain("closeDialogHandle(dialog)");
+    // (e) Login-Knopf waehrend des Laufs deaktiviert.
+    expect(html).toContain('document.getElementById("login-btn").disabled = true');
+    expect(html).toContain('document.getElementById("login-btn").disabled = false');
+    // (f) displayDialogAsync in try/catch (synchroner Wurf) + window.open-Rueckgabe geprueft.
+    const dialogCallIdx = html.indexOf("ui.displayDialogAsync(");
+    const tryIdx = html.lastIndexOf("try {", dialogCallIdx);
+    expect(tryIdx).toBeGreaterThan(0);
+    expect(html).toContain("if (win === null) {");
+    expect((html.match(/loginPopupBlocked: "/g) ?? []).length).toBe(3);
+    // (g) ehrlicher Kontext-Hinweis fuer den Fallback-Fall, DE/EN/NL.
+    expect((html.match(/loginOtherContext: "/g) ?? []).length).toBe(3);
+    expect(html).toContain('id="login-context-hint"');
   });
 
   it("Sideload-Anleitung: funktionierender Mac-Weg zuerst (wef + Cache + Neustart + Home-Tab), Hochladen als Fallback", () => {

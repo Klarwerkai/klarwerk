@@ -26,7 +26,10 @@ export function deriveDraftTitleFromSelection(text: string): string {
 // fertig (Session da → angemeldeten Zustand zeigen, OHNE Navigation), Frist abgelaufen (ehrlicher
 // Timeout-Hinweis) oder weiter warten.
 export const WORD_ADDIN_LOGIN_POLL_INTERVAL_MS = 3000;
-export const WORD_ADDIN_LOGIN_POLL_MAX_MS = 300000; // 5 Minuten
+export const WORD_ADDIN_LOGIN_POLL_MAX_MS = 300000; // 5 Minuten (harte Frist ab Start)
+// WP-IC-PAKET-1c (bens ROT-1b): eigene Frist JE FETCH (AbortController) — ein hängender Request
+// blockiert die sequenzielle Schleife höchstens diese Spanne, nie die ganze 5-Minuten-Frist.
+export const WORD_ADDIN_LOGIN_FETCH_TIMEOUT_MS = 5000;
 
 export type LoginPollDecision = "done" | "timeout" | "poll";
 
@@ -38,6 +41,26 @@ export function loginPollDecision(elapsedMs: number, signedIn: boolean): LoginPo
     return "timeout";
   }
   return "poll";
+}
+
+// WP-IC-PAKET-1c (bens ROT-1d): Schritt-Entscheidung NACH Abschluss eines Poll-Versuchs, inklusive
+// GENERATION-Guard. Jeder Lauf trägt eine Generation-ID; Abbrechen/Neustart erhöht die aktuelle
+// Generation — ein Versuch einer ALTEN Generation endet IMMER still ("stale"), egal was der Fetch
+// ergab (kein später Zustands-Überschreiber). Sonst: fertig / harte Frist / nächsten Versuch planen
+// (die Planung erfolgt erst NACH Abschluss — genau EIN Poll gleichzeitig, kein Interval).
+export type LoginPollStep = "stale" | "done" | "timeout" | "schedule";
+
+export function loginPollStep(
+  generation: number,
+  currentGeneration: number,
+  elapsedMs: number,
+  signedIn: boolean,
+): LoginPollStep {
+  if (generation !== currentGeneration) {
+    return "stale";
+  }
+  const decision = loginPollDecision(elapsedMs, signedIn);
+  return decision === "poll" ? "schedule" : decision;
 }
 
 // Selektion → sicheres Body-HTML: je nicht-leere Zeile ein <p>, Text vollständig escaped (keine

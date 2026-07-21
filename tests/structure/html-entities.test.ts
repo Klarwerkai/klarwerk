@@ -181,15 +181,17 @@ describe("WP-IC-PAKET-1 Teil 1/1b: Client-Spiegel ist byte-gleich zum Server-Dec
 });
 
 describe("WP-IC-PAKET-1 Teil 1: Altbestand-ANZEIGE dekodiert — und rendert weiterhin nur TEXT", () => {
-  it("Queue-Karten (Stufe2), Vorschau (ImportSelect) und Erkundungs-Chips (ImportExplore) dekodieren", () => {
+  // WP-IC-PAKET-1c (bens ROT-2): der defensive Anzeige-Decode ist MARKER-GESTEUERT (displayImportText):
+  // nur Texte OHNE Decode-Marker (Altbestand) werden nachdekodiert; markierte sind kanonisch.
+  it("Queue-Karten (Stufe2), Vorschau (ImportSelect) und Erkundungs-Chips (ImportExplore) dekodieren marker-gesteuert", () => {
     const stufe2 = read("apps/web/src/pages/Stufe2.tsx");
-    expect(stufe2).toContain("decodeHtmlEntities(c.item.title)");
-    expect(stufe2).toContain("decodeHtmlEntities(c.item.statement)");
+    expect(stufe2).toContain("displayImportText(c.item.title, c.item.textCodec)");
+    expect(stufe2).toContain("displayImportText(c.item.statement, c.item.textCodec)");
     const select = read("apps/web/src/components/ImportSelect.tsx");
-    expect(select).toContain("decodeHtmlEntities(entry.title)");
-    expect(select).toContain("decodeHtmlEntities(entry.author)");
+    expect(select).toContain("displayImportText(entry.title, entry.textCodec)");
+    expect(select).toContain("displayImportText(entry.author, entry.textCodec)");
     const explore = read("apps/web/src/components/ImportExplore.tsx");
-    expect(explore).toContain("decodeHtmlEntities(name)");
+    expect(explore).toContain('displayImportText(name, textDecoded ? "decoded" : undefined)');
   });
 
   it("KEINE der Anzeige-Stellen rendert den dekodierten Text als HTML (kein dangerouslySetInnerHTML)", () => {

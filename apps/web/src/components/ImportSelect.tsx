@@ -15,7 +15,7 @@ import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import type { ImportSelectCriteria, ImportSelectResponse } from "../api/types";
-import { decodeHtmlEntities } from "../lib/htmlEntities";
+import { displayImportText } from "../lib/htmlEntities";
 import { summarizeSelectCriteria } from "../lib/importExplore";
 // WP-IC-PAKET-1b (bens ROT-3): latest-wins — Antworten aelterer Requests werden verworfen.
 import { createLatestWins } from "../lib/latestWins";
@@ -237,14 +237,14 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
                   >
                     <input
                       type="checkbox"
-                      aria-label={decodeHtmlEntities(entry.title)}
+                      aria-label={displayImportText(entry.title, entry.textCodec)}
                       checked={checkedRows[i] ?? false}
                       onChange={() => toggleRow(i)}
                       className="mt-0.5 h-4 w-4 shrink-0"
                     />
                     {/* WP-IC-PAKET-1 (Teil 1): Altbestand-Entities nur fürs Text-Rendering dekodieren. */}
                     <span className="min-w-0 flex-1 truncate">
-                      {decodeHtmlEntities(entry.title)}
+                      {displayImportText(entry.title, entry.textCodec)}
                     </span>
                     {entry.alreadyImported ? (
                       <span className="shrink-0 rounded-pill bg-trust-pos-bg px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-pos-text">
@@ -258,7 +258,7 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
                     ) : null}
                     {entry.author ? (
                       <span className="shrink-0 text-[11px] text-muted-2">
-                        {decodeHtmlEntities(entry.author)}
+                        {displayImportText(entry.author, entry.textCodec)}
                       </span>
                     ) : null}
                     {entry.hasImage ? (

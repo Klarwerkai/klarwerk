@@ -103,6 +103,9 @@
       <button type="button" class="primary" id="login-btn" data-t="loginCta"></button>
       <!-- WP-KLARA-1c: sichtbar nur waehrend des Anmelde-Wartens (Session-Polling laeuft). -->
       <button type="button" class="ghost hidden" id="login-cancel-btn" data-t="loginCancel"></button>
+      <!-- WP-IC-PAKET-1c (g): ehrlicher Hinweis NUR im Fallback-Fall (window.open statt Office-Dialog):
+           das Anmelde-Fenster kann in einem anderen Browser-Kontext landen. -->
+      <p class="muted hidden" id="login-context-hint" data-t="loginOtherContext"></p>
       <p class="muted" data-t="loginReturn"></p>
     </div>
   </div>
@@ -168,11 +171,20 @@
     // WP-KLARA-1c: Anmelde-Warten — pure Entscheidung je Poll-Tick (fertig / Frist abgelaufen / weiter).
     var WORD_ADDIN_LOGIN_POLL_INTERVAL_MS = 3000;
     var WORD_ADDIN_LOGIN_POLL_MAX_MS = 300000;
+    var WORD_ADDIN_LOGIN_FETCH_TIMEOUT_MS = 5000;
 
     function loginPollDecision(elapsedMs, signedIn) {
       if (signedIn) { return "done"; }
       if (elapsedMs >= WORD_ADDIN_LOGIN_POLL_MAX_MS) { return "timeout"; }
       return "poll";
+    }
+
+    // WP-IC-PAKET-1c (bens ROT-1d): Schritt-Entscheidung NACH Abschluss eines Poll-Versuchs inkl.
+    // GENERATION-Guard — ein Versuch einer alten Generation endet IMMER still ("stale").
+    function loginPollStep(generation, currentGeneration, elapsedMs, signedIn) {
+      if (generation !== currentGeneration) { return "stale"; }
+      var decision = loginPollDecision(elapsedMs, signedIn);
+      return decision === "poll" ? "schedule" : decision;
     }
     // KW-WORDADDIN-HELPERS-END
 
@@ -191,6 +203,8 @@
         loginWaiting: "Warte auf die Anmeldung im Anmelde-Fenster ...",
         loginCancel: "Warten abbrechen",
         loginTimeout: "Keine Anmeldung erkannt. Bitte erneut versuchen.",
+        loginPopupBlocked: "Das Anmelde-Fenster wurde blockiert (Popup-Blocker). Bitte Popups fuer diese Seite erlauben und erneut versuchen.",
+        loginOtherContext: "Hinweis: Das Anmelde-Fenster kann in einem anderen Browser-Kontext laufen. Wird die Anmeldung hier nicht erkannt, bitte erneut versuchen.",
         sendTitle: "Auswahl an KLARWERK senden",
         sendHint: "Markiere Text im Dokument und sende ihn als neuen Wissens-ENTWURF. Nichts wird automatisch veroeffentlicht — du pruefst alles in KLARWERK.",
         sendCta: "Auswahl als Entwurf senden",
@@ -220,6 +234,8 @@
         loginWaiting: "Waiting for the sign-in in the sign-in window ...",
         loginCancel: "Stop waiting",
         loginTimeout: "No sign-in detected. Please try again.",
+        loginPopupBlocked: "The sign-in window was blocked (popup blocker). Please allow popups for this page and try again.",
+        loginOtherContext: "Note: the sign-in window may run in a different browser context. If the sign-in is not detected here, please try again.",
         sendTitle: "Send selection to KLARWERK",
         sendHint: "Select text in the document and send it as a new knowledge DRAFT. Nothing is published automatically — you review everything in KLARWERK.",
         sendCta: "Send selection as draft",
@@ -249,6 +265,8 @@
         loginWaiting: "Wachten op de aanmelding in het aanmeldvenster ...",
         loginCancel: "Stoppen met wachten",
         loginTimeout: "Geen aanmelding herkend. Probeer het opnieuw.",
+        loginPopupBlocked: "Het aanmeldvenster is geblokkeerd (pop-upblokkering). Sta pop-ups voor deze pagina toe en probeer het opnieuw.",
+        loginOtherContext: "Let op: het aanmeldvenster kan in een andere browsercontext draaien. Wordt de aanmelding hier niet herkend, probeer het dan opnieuw.",
         sendTitle: "Selectie naar KLARWERK sturen",
         sendHint: "Selecteer tekst in het document en stuur die als nieuw kennis-CONCEPT. Er wordt niets automatisch gepubliceerd — je controleert alles in KLARWERK.",
         sendCta: "Selectie als concept sturen",
@@ -368,79 +386,149 @@
       el.textContent = text;
     }
 
-    // WP-KLARA-1c (Pedis Live-Befund): Anmelde-RUECKWEG ohne Navigation. Frueher navigierte das Panel
-    // per window.location zur App und blieb nach dem Login auf der VOLLEN Webseite haengen. Jetzt
-    // bleibt das Panel auf taskpane.html: Die Anmeldung oeffnet in einem EIGENEN Fenster, das Panel
-    // POLLT /api/auth/me (alle 3 s, max. 5 Min) und zeigt bei Erfolg direkt den angemeldeten Zustand.
+    // WP-KLARA-1c (Pedis Live-Befund): Anmelde-RUECKWEG ohne Navigation — das Panel bleibt auf
+    // taskpane.html, die Anmeldung oeffnet in einem EIGENEN Fenster, das Panel pollt /api/auth/me.
+    // WP-IC-PAKET-1c (bens ROT-1, Poll-Lifecycle):
+    //  (a) GENAU EIN Poll gleichzeitig — der naechste Versuch wird per setTimeout erst NACH Abschluss
+    //      des vorigen geplant (kein setInterval, keine ueberlappenden Fetches).
+    //  (b) jeder Fetch mit eigenem AbortController + eigener Frist (WORD_ADDIN_LOGIN_FETCH_TIMEOUT_MS).
+    //  (c) UNABHAENGIGE harte 5-Minuten-Frist: eigener Deadline-Timer ab Start (greift auch bei
+    //      haengendem Fetch); zusaetzlich prueft loginPollStep die verstrichene Zeit je Abschluss.
+    //  (d) Generation-ID je Lauf: Abbrechen/Neustart erhoeht die Generation und neutralisiert damit
+    //      Timer, laufenden Fetch (abort) UND spaete Dialog-Callbacks (altes Handle wird geschlossen).
+    //  (e) Login-Knopf ist waehrend eines Laufs deaktiviert (kein Mehrfachstart).
+    var loginPollGeneration = 0;
     var loginPollTimer = null;
+    var loginDeadlineTimer = null;
     var loginPollStartedMs = 0;
-    var loginDialog = null; // Office-Dialog-Handle (wird bei Erfolg automatisch geschlossen)
+    var loginPollController = null; // AbortController des GERADE laufenden Fetch
+    var loginDialog = null; // Office-Dialog-Handle der AKTUELLEN Generation
 
-    function clearLoginTimer() {
-      if (loginPollTimer !== null) {
-        clearInterval(loginPollTimer);
-        loginPollTimer = null;
+    function setSessionWarn(text) {
+      var box = document.getElementById("session-status");
+      box.className = "status warn";
+      box.textContent = text;
+    }
+
+    function closeDialogHandle(dialog) {
+      if (dialog && typeof dialog.close === "function") {
+        try { dialog.close(); } catch (err) { /* Dialog bereits zu — egal */ }
       }
     }
 
     function stopLoginPolling() {
-      clearLoginTimer();
-      document.getElementById("login-cancel-btn").className = "ghost hidden";
-      if (loginDialog && typeof loginDialog.close === "function") {
-        try { loginDialog.close(); } catch (err) { /* Dialog bereits zu — egal */ }
+      loginPollGeneration += 1; // (d) neutralisiert Timer-Callbacks, Fetch-Ausgaenge, Dialog-Callbacks
+      if (loginPollTimer !== null) { clearTimeout(loginPollTimer); loginPollTimer = null; }
+      if (loginDeadlineTimer !== null) { clearTimeout(loginDeadlineTimer); loginDeadlineTimer = null; }
+      if (loginPollController !== null) {
+        try { loginPollController.abort(); } catch (err) { /* bereits beendet — egal */ }
+        loginPollController = null;
       }
+      closeDialogHandle(loginDialog);
       loginDialog = null;
+      document.getElementById("login-cancel-btn").className = "ghost hidden";
+      document.getElementById("login-context-hint").className = "muted hidden";
+      document.getElementById("login-btn").disabled = false; // (e)
     }
 
-    function pollLoginOnce() {
-      fetch("/api/auth/me", { credentials: "include" })
+    function runLoginPoll(generation) {
+      if (generation !== loginPollGeneration) { return; }
+      // (b) eigener AbortController + eigene Frist je Fetch — ein haengender Request blockiert die
+      // sequenzielle Schleife hoechstens diese Spanne.
+      var controller = new AbortController();
+      loginPollController = controller;
+      var fetchTimer = setTimeout(function () {
+        try { controller.abort(); } catch (err) { /* schon fertig — egal */ }
+      }, WORD_ADDIN_LOGIN_FETCH_TIMEOUT_MS);
+      fetch("/api/auth/me", { credentials: "include", signal: controller.signal })
         .then(function (res) { return res.ok; })
         .catch(function () { return false; })
         .then(function (ok) {
-          var decision = loginPollDecision(Date.now() - loginPollStartedMs, ok);
-          if (decision === "done") {
+          clearTimeout(fetchTimer);
+          if (loginPollController === controller) { loginPollController = null; }
+          var step = loginPollStep(generation, loginPollGeneration, Date.now() - loginPollStartedMs, ok);
+          if (step === "stale") { return; } // (d) alter Lauf — nichts mehr anfassen
+          if (step === "done") {
             stopLoginPolling();
             checkSession(); // rendert den angemeldeten Zustand — OHNE Navigation
-          } else if (decision === "timeout") {
+          } else if (step === "timeout") {
             stopLoginPolling();
-            var box = document.getElementById("session-status");
-            box.className = "status warn";
-            box.textContent = t("loginTimeout");
+            setSessionWarn(t("loginTimeout"));
+          } else {
+            // (a) "schedule": der NAECHSTE Versuch wird erst jetzt geplant — nie ueberlappend.
+            loginPollTimer = setTimeout(function () {
+              loginPollTimer = null;
+              runLoginPoll(generation);
+            }, WORD_ADDIN_LOGIN_POLL_INTERVAL_MS);
           }
-          // "poll": weiter warten, das Interval laeuft.
         });
     }
 
     function startLoginPolling() {
-      clearLoginTimer();
+      stopLoginPolling(); // beendet einen etwaigen Altlauf (Generation ist danach frisch)
+      loginPollGeneration += 1;
+      var generation = loginPollGeneration;
       loginPollStartedMs = Date.now();
-      var box = document.getElementById("session-status");
-      box.className = "status warn";
-      box.textContent = t("loginWaiting");
+      setSessionWarn(t("loginWaiting"));
       document.getElementById("login-cancel-btn").className = "ghost";
-      loginPollTimer = setInterval(pollLoginOnce, WORD_ADDIN_LOGIN_POLL_INTERVAL_MS);
+      document.getElementById("login-btn").disabled = true; // (e) kein Mehrfachstart
+      // (c) UNABHAENGIGE harte Frist — feuert auch, wenn ein Fetch/Timer-Pfad haengen sollte.
+      loginDeadlineTimer = setTimeout(function () {
+        if (generation !== loginPollGeneration) { return; }
+        stopLoginPolling();
+        setSessionWarn(t("loginTimeout"));
+      }, WORD_ADDIN_LOGIN_POLL_MAX_MS);
+      loginPollTimer = setTimeout(function () {
+        loginPollTimer = null;
+        runLoginPoll(generation);
+      }, WORD_ADDIN_LOGIN_POLL_INTERVAL_MS);
+      return generation;
     }
 
-    function openLoginWindow() {
+    // (f) Fallback-Fenster (Browser-Vorschau ODER Office-Dialog nicht verfuegbar): window.open MIT
+    // Rueckgabewert-Pruefung — null heisst Popup-Blocker → ehrliche Meldung statt endlosem Warten.
+    // (g) Ehrlicher Hinweis: das Fallback-Fenster kann in einem ANDEREN Browser-Kontext landen.
+    function openLoginFallbackWindow(generation, url) {
+      if (generation !== loginPollGeneration) { return; }
+      var win = window.open(url, "_blank");
+      if (win === null) {
+        stopLoginPolling();
+        setSessionWarn(t("loginPopupBlocked"));
+        return;
+      }
+      document.getElementById("login-context-hint").className = "muted";
+    }
+
+    function openLoginWindow(generation) {
       var url = window.location.origin + "/";
       var ui = window.Office && Office.context && Office.context.ui;
       if (ui && typeof ui.displayDialogAsync === "function") {
         // Offizieller Office-Weg: eigener Dialog-Webview, TOP-LEVEL (kein iframe → kein
         // frame-ancestors-/CSP-Thema; die App-Domain steht in den Manifest-AppDomains).
-        ui.displayDialogAsync(url, { height: 75, width: 45 }, function (result) {
-          if (result && result.status === Office.AsyncResultStatus.Succeeded) {
-            loginDialog = result.value;
-          } else {
-            // Dialog abgelehnt/nicht verfuegbar → zweiter Versuch als neues Fenster; das Polling
-            // laeuft ohnehin (auch eine Anmeldung im normalen Browser desselben Webview-Profils zaehlt).
-            window.open(url, "_blank");
-          }
-        });
-      } else {
-        // Browser-Vorschau (kein Office): neues Fenster/Tab.
-        window.open(url, "_blank");
+        // (f) try/catch: displayDialogAsync kann SYNCHRON werfen (z. B. Host ohne Dialog-Support).
+        try {
+          ui.displayDialogAsync(url, { height: 75, width: 45 }, function (result) {
+            var dialog =
+              result && result.status === Office.AsyncResultStatus.Succeeded ? result.value : null;
+            if (generation !== loginPollGeneration) {
+              // (d) SPAETER Callback eines abgebrochenen Laufs: altes Handle sofort schliessen,
+              // nichts speichern — der neue Lauf bleibt unberuehrt.
+              closeDialogHandle(dialog);
+              return;
+            }
+            if (dialog) {
+              loginDialog = dialog;
+              return;
+            }
+            // Dialog abgelehnt/fehlgeschlagen → Fallback-Fenster (mit Popup-/Kontext-Behandlung).
+            openLoginFallbackWindow(generation, url);
+          });
+          return;
+        } catch (err) {
+          // synchroner Wurf → Fallback-Fenster.
+        }
       }
-      startLoginPolling();
+      openLoginFallbackWindow(generation, url);
     }
 
     // (b) Kernfunktion: Word-Selektion lesen → Front-Door-ENTWURF über die bestehende Draft-API
@@ -505,7 +593,10 @@
     document.getElementById("login-btn").addEventListener("click", function () {
       // WP-KLARA-1c: KEINE eigene Passwort-Maske und KEINE Navigation des Panels mehr — die App zeigt
       // ihren Login-Gate auf jeder Route; sie oeffnet in einem eigenen Fenster, das Panel pollt.
-      openLoginWindow();
+      // WP-IC-PAKET-1c: erst der Lauf (zieht die frische Generation), dann das Fenster DERSELBEN
+      // Generation — spaete Dialog-Callbacks eines Vorlaufs sind damit neutralisiert.
+      var generation = startLoginPolling();
+      openLoginWindow(generation);
     });
     document.getElementById("login-cancel-btn").addEventListener("click", function () {
       stopLoginPolling();

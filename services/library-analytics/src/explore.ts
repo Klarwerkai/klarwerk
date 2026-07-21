@@ -30,6 +30,10 @@ export interface ImportExploreSummary {
   // WP-IC-PAKET-1 (Teil 3): die Quell-Container NAMENTLICH (für den Space-Filter, wenn mehrere) —
   // additiv; distinctSources bleibt als Zahl erhalten.
   sourceNames: CountEntry[];
+  // WP-IC-PAKET-1c (bens ROT-2): "decoded", wenn ALLE aggregierten Items den Decode-Marker tragen —
+  // dann sind Autoren-/Themen-Namen kanonisch und die Anzeige dekodiert NICHT erneut. Fehlt der
+  // Marker (mindestens ein Altbestands-Item), bleibt der defensive Anzeige-Durchlauf aktiv.
+  textCodec?: "decoded";
 }
 
 // Stabile Platzhalter für fehlende Werte — sprach-neutral genug für die Kern-Aggregation; die UI kann
@@ -151,5 +155,9 @@ export function summarizeImportItems(
     dateRange: earliest !== null && latest !== null ? { earliest, latest } : null,
     withImagesHint,
     sourceNames: rankCounts(sources),
+    // WP-IC-PAKET-1c (ROT-2): nur wenn ALLE Items kanonisch dekodiert sind, gilt es fürs Aggregat.
+    ...(items.length > 0 && items.every((it) => it.textCodec === "decoded")
+      ? { textCodec: "decoded" as const }
+      : {}),
   };
 }

@@ -13,7 +13,7 @@ import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import type { ImportExploreResponse } from "../api/types";
-import { decodeHtmlEntities } from "../lib/htmlEntities";
+import { displayImportText } from "../lib/htmlEntities";
 import {
   type ExploreView,
   NO_AUTHOR_LABEL,
@@ -25,15 +25,17 @@ import { Button, Card, SectionLabel } from "./ui";
 
 // Die Kern-Platzhalter kommen sprach-neutral aus IC-1 („(ohne Autor)"/„(ohne Label)"); hier auf die
 // lokalisierten Anzeigetexte abbilden, damit die Landkarte in jeder UI-Sprache ehrlich lesbar ist.
-function localizeName(name: string, t: (k: string) => string): string {
+// WP-IC-PAKET-1c (ROT-2): der defensive Entity-Decode läuft NUR, wenn der Decode-Marker der Summary
+// fehlt (Altbestand) — kanonische Namen (Marker "decoded") würden sonst DOPPELT dekodiert und ein
+// echtes Literal wie „&uuml;" fälschlich zu ü.
+function localizeName(name: string, t: (k: string) => string, textDecoded: boolean): string {
   if (name === NO_AUTHOR_LABEL) {
     return t("imp.explore.noAuthor");
   }
   if (name === NO_THEME_LABEL) {
     return t("imp.explore.noTheme");
   }
-  // WP-IC-PAKET-1 (Teil 1): Altbestand-Entities nur fürs Text-Rendering dekodieren.
-  return decodeHtmlEntities(name);
+  return displayImportText(name, textDecoded ? "decoded" : undefined);
 }
 
 // WP-IC-PAKET-1 (Teil 3): einheitlicher Filter-Chip — echtes button, aria-pressed, iPad-große Fläche,
@@ -130,13 +132,13 @@ function ExploreMap({
                   key={a.name}
                   className="inline-flex items-center gap-1 rounded-pill border border-hairline bg-page px-2.5 py-1 text-[12.5px] text-muted-2"
                 >
-                  {localizeName(a.name, t)}
+                  {localizeName(a.name, t, view.textDecoded)}
                   <span className="font-mono text-[10.5px]">{a.count}</span>
                 </span>
               ) : (
                 <FilterChip
                   key={a.name}
-                  label={localizeName(a.name, t)}
+                  label={localizeName(a.name, t, view.textDecoded)}
                   count={a.count}
                   active={selAuthors.includes(a.name)}
                   onToggle={() => toggleValue(setSelAuthors, a.name)}
@@ -163,13 +165,13 @@ function ExploreMap({
                   key={th.label}
                   className="inline-flex items-center gap-1 rounded-pill border border-hairline bg-page px-2.5 py-1 text-[12.5px] text-muted-2"
                 >
-                  {localizeName(th.label, t)}
+                  {localizeName(th.label, t, view.textDecoded)}
                   <span className="font-mono text-[10.5px]">{th.count}</span>
                 </span>
               ) : (
                 <FilterChip
                   key={th.label}
-                  label={localizeName(th.label, t)}
+                  label={localizeName(th.label, t, view.textDecoded)}
                   count={th.count}
                   active={selThemes.includes(th.label)}
                   onToggle={() => toggleValue(setSelThemes, th.label)}
@@ -196,7 +198,7 @@ function ExploreMap({
             {view.spaces.map((s) => (
               <FilterChip
                 key={s.name}
-                label={decodeHtmlEntities(s.name)}
+                label={displayImportText(s.name, view.textDecoded ? "decoded" : undefined)}
                 count={s.count}
                 active={selSpaces.includes(s.name)}
                 onToggle={() => toggleValue(setSelSpaces, s.name)}

@@ -51,22 +51,33 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
   // Aufrufe denselben Scan teilen (kein Doppel-Scan); Fehler werden NICHT gecacht. Der ECHTE Import
   // (runConfluenceImport) liest weiterhin IMMER frisch; Import-Status/Markierung wird je Request
   // frisch aus den Repos gelesen — nur die Quell-Items sind gecacht.
+  // WP-IC-PAKET-1c (bens Mini-Härtung): ein LAUFENDER Scan (at === null) wird UNABHÄNGIG von der TTL
+  // geteilt — die TTL startet erst mit dem ERFOLG (sonst könnte ein langsamer Scan seine eigene TTL
+  // aufbrauchen und direkt nach Abschluss einen zweiten Vollscan auslösen).
   const SNAPSHOT_TTL_MS = 60_000;
   type CollectAllResult = Awaited<ReturnType<ConfluenceSourceAdapter["collectAll"]>>;
-  let snapshot: { at: number; promise: Promise<CollectAllResult> } | null = null;
+  let snapshot: { at: number | null; promise: Promise<CollectAllResult> } | null = null;
   function collectSnapshot(adapter: ConfluenceSourceAdapter): Promise<CollectAllResult> {
-    if (snapshot !== null && Date.now() - snapshot.at < SNAPSHOT_TTL_MS) {
+    if (snapshot !== null && (snapshot.at === null || Date.now() - snapshot.at < SNAPSHOT_TTL_MS)) {
       return snapshot.promise;
     }
     const promise = adapter.collectAll();
-    const entry = { at: Date.now(), promise };
+    const entry: { at: number | null; promise: Promise<CollectAllResult> } = { at: null, promise };
     snapshot = entry;
-    promise.catch(() => {
-      // Fehlgeschlagene Scans nicht 60 s festhalten — nächster Aufruf versucht es frisch.
-      if (snapshot === entry) {
-        snapshot = null;
-      }
-    });
+    promise.then(
+      () => {
+        // Erfolg: TTL läuft AB JETZT (nicht ab Scan-Start).
+        if (snapshot === entry) {
+          entry.at = Date.now();
+        }
+      },
+      () => {
+        // Fehlgeschlagene Scans nicht festhalten — nächster Aufruf versucht es frisch.
+        if (snapshot === entry) {
+          snapshot = null;
+        }
+      },
+    );
     return promise;
   }
 

@@ -459,6 +459,9 @@ export interface ImportItemInput {
   category: string;
   author?: string;
   tags?: string[];
+  // WP-IC-PAKET-1c (ROT-2): Decode-Marker des Server-Kandidaten — "decoded" heisst: Textfelder sind
+  // kanonisch dekodiert, die Queue-Karte dekodiert NICHT erneut; fehlt er (Altbestand), defensiv nach.
+  textCodec?: "decoded";
 }
 
 export type ReviewStatus = "neu" | "angenommen" | "abgelehnt" | "info-angefragt";
@@ -496,6 +499,9 @@ export interface ImportExploreSummary {
   withImagesHint: number;
   // WP-IC-PAKET-1 (Teil 3): Quell-Container namentlich (Space-Filter, wenn mehrere).
   sourceNames?: ExploreCountEntry[];
+  // WP-IC-PAKET-1c (ROT-2): "decoded" = ALLE aggregierten Items kanonisch dekodiert — Chips-Anzeige
+  // dekodiert dann NICHT erneut.
+  textCodec?: "decoded";
 }
 // Antwort der Explore-Route: Summary + truncated (Space am Seiten-Cap abgeschnitten).
 export interface ImportExploreResponse {
@@ -526,6 +532,8 @@ export interface ImportPreviewEntry {
   // WP-IC-PAKET-1 (Teil 4, IC-6a): Import-Status aus dem Quell-Referenz-Abgleich (reine Anzeige).
   alreadyImported?: boolean;
   sourceNewer?: boolean;
+  // WP-IC-PAKET-1c (ROT-2): "decoded" = kanonisch dekodiert — Anzeige dekodiert NICHT erneut.
+  textCodec?: "decoded";
 }
 export interface ImportSelectResponse {
   matched: number;

@@ -77,5 +77,8 @@ export function mapConfluencePageToImportItem(
     ...(bodyHtml ? { bodyHtml } : {}),
     // IC-1: Provenienz-Datum (nur wenn die Quelle es liefert) — für die Read-only-Erkundung.
     ...(updatedAt ? { updatedAt } : {}),
+    // WP-IC-PAKET-1c (bens ROT-2): Decode-Marker — die Textfelder sind hier KANONISCH dekodiert;
+    // die Anzeige darf sie nicht erneut dekodieren (Doppel-Dekodier-Kette bei Literal-Entities).
+    textCodec: "decoded",
   };
 }

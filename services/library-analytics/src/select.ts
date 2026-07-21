@@ -205,6 +205,9 @@ export interface ImportPreviewEntry {
   // Änderungs-Signal über die Versionsnummer der Quelle (sourceVersion > importierte Version) —
   // reine Anzeige, KEIN Update-Mechanismus (IC-6b bewusst nicht gebaut).
   sourceNewer?: boolean;
+  // WP-IC-PAKET-1c (bens ROT-2): Decode-Marker aus dem Item durchgereicht — die Anzeige dekodiert
+  // NUR ohne Marker (Altbestand) defensiv nach; markierte Texte sind kanonisch.
+  textCodec?: "decoded";
 }
 
 export interface ImportedStatus {
@@ -224,6 +227,7 @@ export function toPreviewEntry(item: ImportItem, status?: ImportedStatus): Impor
     themes,
     ...(status?.alreadyImported ? { alreadyImported: true } : {}),
     ...(status?.sourceNewer ? { sourceNewer: true } : {}),
+    ...(item.textCodec === "decoded" ? { textCodec: "decoded" as const } : {}),
   };
 }
 

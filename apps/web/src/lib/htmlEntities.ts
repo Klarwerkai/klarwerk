@@ -66,6 +66,14 @@ export const NAMED_HTML_ENTITIES: Record<string, string> = {
 
 const HTML_ENTITY_RE = /&(#\d{1,7}|#[xX][0-9a-fA-F]{1,6}|[a-zA-Z][a-zA-Z0-9]{1,30});/g;
 
+// WP-IC-PAKET-1c (bens ROT-2): Anzeige-Text eines Import-Kandidaten/Eintrags. Der defensive
+// Zweit-Durchlauf laeuft NUR, wenn der Decode-Marker FEHLT (echter Altbestand von vor dem
+// Quellen-Fix). Markierte Texte sind bereits kanonisch dekodiert — ein zweiter Durchlauf wuerde
+// ein ECHTES Literal wie „&uuml;" (aus Quelltext &amp;uuml;) faelschlich zu ü verfaelschen.
+export function displayImportText(text: string, textCodec?: string): string {
+  return textCodec === "decoded" ? text : decodeHtmlEntities(text);
+}
+
 export function decodeHtmlEntities(text: string): string {
   return text.replace(HTML_ENTITY_RE, (match, body: string) => {
     if (body.startsWith("#")) {

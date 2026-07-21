@@ -49,8 +49,9 @@ import { evidenceKindTone, limitEvidence, summarizeEvidence } from "../lib/evide
 import { IMPORT_PIPELINE_STEPS, candidateFindings, summarizeImportQueue } from "../lib/extConcept";
 import { layoutConflicts, layoutGraph, limitGraph } from "../lib/graphLayout";
 import { isNavigableNode, koDetailPath } from "../lib/graphNav";
-// WP-IC-PAKET-1 (Teil 1): Altbestand-Anzeige — gespeicherte rohe Entities einmal dekodieren (nur Text).
-import { decodeHtmlEntities } from "../lib/htmlEntities";
+// WP-IC-PAKET-1 (Teil 1) + 1c (ROT-2): Altbestand-Anzeige — rohe Entities NUR dekodieren, wenn der
+// Decode-Marker fehlt (markierte Kandidaten sind kanonisch; kein Doppel-Dekodieren echter Literale).
+import { displayImportText } from "../lib/htmlEntities";
 import { ImportParseError, parseImportItems } from "../lib/importReview";
 import { knowledgeHealth } from "../lib/knowledgeHealth";
 import { buildKnowledgeOsHints } from "../lib/knowledgeOsHints";
@@ -479,15 +480,18 @@ export function ImportReview(): JSX.Element {
                         </>
                       );
                     })()}
-                    {/* WP-IC-PAKET-1 (Teil 1): Altbestand-Kandidaten wurden mit rohen HTML-Entities
-                        gespeichert (&uuml; …) — fürs Rendern EINMAL dekodieren; weiterhin reiner
-                        React-TEXT-Knoten, nie HTML (XSS-neutral, keine Server-Migration). */}
+                    {/* WP-IC-PAKET-1 (Teil 1) + 1c (ROT-2): Altbestand-Kandidaten (OHNE Decode-Marker)
+                        wurden mit rohen HTML-Entities gespeichert — nur DANN fürs Rendern dekodieren;
+                        markierte Kandidaten sind kanonisch. Weiterhin reiner React-TEXT-Knoten, nie
+                        HTML (XSS-neutral, keine Server-Migration). */}
                     <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-text">
-                      {decodeHtmlEntities(c.item.title)}
+                      {displayImportText(c.item.title, c.item.textCodec)}
                     </span>
                     <span className="font-mono text-[11px] text-muted-2">{c.item.category}</span>
                   </div>
-                  <p className="text-[13px] text-muted">{decodeHtmlEntities(c.item.statement)}</p>
+                  <p className="text-[13px] text-muted">
+                    {displayImportText(c.item.statement, c.item.textCodec)}
+                  </p>
                   {c.note ? (
                     <p className="text-[12px] text-trust-warn-text">
                       {t("imp.note")}: {c.note}
