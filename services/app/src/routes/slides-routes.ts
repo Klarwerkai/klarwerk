@@ -159,6 +159,17 @@ export function slidesRoutes(converter: SlideConverter, guards: Guards): Fastify
   };
 
   return async (app) => {
+    // WP-RETEST7 R8 (Pedis Spinner-Befund): LEICHTER Verfügbarkeits-Check VOR dem großen Upload.
+    // Der Client fragt zuerst hier an und zeigt bei disabled/ohne Konverter SOFORT die ehrliche
+    // Meldung — ohne die 72-MiB-POST überhaupt zu senden. Auth wie die Konvertierungs-Route.
+    app.get("/api/capture/slides/availability", async (request, reply) => {
+      const user = await guards.requirePermission("ko.create", request, reply);
+      if (!user) {
+        return;
+      }
+      reply.code(200).send({ available: slidesEnabled() && (await converter.available()) });
+    });
+
     // WP-REST18 (bens Fix 3, ROT): bricht der Client ab, während der 72-MiB-Body geparst wird
     // (oder der Handler läuft), feuert KEIN onResponse — der Slot bliebe bis zum Prozessneustart
     // belegt. onRequestAbort gibt ihn frei (nur der Halter; abgewiesene Requests sind No-ops).

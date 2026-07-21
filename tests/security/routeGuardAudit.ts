@@ -318,6 +318,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // WP-D11: PPTX-Folien-Konvertierung — Import-Guard (ko.create) wie der Datei-/Draft-Pfad;
   // großes bodyLimit mit Auth VOR dem Body-Parsing (onRequest requireUser).
   "POST /api/capture/slides": { protection: "ko.create" },
+  // WP-RETEST7 R8: leichter Verfügbarkeits-Check vor dem großen Upload (gleicher Guard).
+  "GET /api/capture/slides/availability": { protection: "ko.create" },
   "POST /api/reasoner": { protection: "ko.read" },
   // WP-BILD-1c/1f: KI-Bildbeschreibungs-Vorschlag — eigene Route mit großem bodyLimit; gleicher
   // Guard wie der Text-Dispatcher, zusätzlich Auth VOR dem Body-Parsing (onRequest requireUser).

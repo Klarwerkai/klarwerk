@@ -55,8 +55,12 @@ export interface KoRepo {
 }
 
 // Durchsuchbarer Text eines KO für die grobe Kandidaten-Vorauswahl (kein Quelleninhalt wird verändert).
+// WP-RETEST7 R5 (Pedis Befund: Fragen findet Fußnotentext nicht): die PERSISTIERTEN Bild-Fußnoten
+// (captionTexts-Suchfeld, WP-BILD-1g) zählen additiv mit — KEIN bodyHtml-Scan; Altbestand ohne
+// Feld matcht wie bisher (konvergiert über den bestehenden Such-Backfill).
 export function koCandidateText(ko: KnowledgeObject): string {
-  return `${ko.title} ${ko.statement} ${ko.tags.join(" ")} ${ko.category}`.toLowerCase();
+  const captions = ko.captionTexts?.length ? ` ${ko.captionTexts.join(" ")}` : "";
+  return `${ko.title} ${ko.statement} ${ko.tags.join(" ")} ${ko.category}${captions}`.toLowerCase();
 }
 
 // Anzahl der (distinct) Inhalts-Terme, die als Teilstring im KO-Text vorkommen. Teilstring ist bewusst

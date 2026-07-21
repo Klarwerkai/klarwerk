@@ -17,6 +17,9 @@ const KO_CANDIDATE_SEARCH: ReadonlyArray<{ index: string; expr: string }> = [
   { index: "idx_kos_statement_trgm", expr: "data->>'statement'" },
   { index: "idx_kos_category_trgm", expr: "data->>'category'" },
   { index: "idx_kos_tags_trgm", expr: "(data->'tags')::text" },
+  // WP-RETEST7 R5: der Fragen-Prefilter matcht auch die persistierten Bild-Fußnoten
+  // (captionTexts-Suchfeld, WP-BILD-1g) — gleicher ILIKE-/GIN-Trigramm-Weg, kein bodyHtml.
+  { index: "idx_kos_captions_trgm", expr: "(data->'captionTexts')::text" },
 ];
 
 // Die reinen Such-Ausdrücke (für den Query-Builder + Tests, die Query↔Index-Deckung prüfen).

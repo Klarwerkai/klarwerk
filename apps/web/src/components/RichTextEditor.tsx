@@ -1,5 +1,12 @@
 import { Eye, Image as ImageIcon, Link as LinkIcon, Paperclip, Pencil } from "lucide-react";
-import type { ChangeEvent, ClipboardEvent, DragEvent, MouseEvent, ReactNode } from "react";
+import type {
+  ChangeEvent,
+  ClipboardEvent,
+  DragEvent,
+  MouseEvent,
+  KeyboardEvent as ReactKeyboardEvent,
+  ReactNode,
+} from "react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { DescribeImageResult } from "../api/types";
@@ -24,7 +31,11 @@ import {
   isInsertableImageMime,
   partitionDropMedia,
 } from "../lib/editorDropPaste";
-import { enhanceFiguresForEditing } from "../lib/editorFigures";
+import {
+  enhanceFiguresForEditing,
+  normalizeEmptyCaption,
+  shouldBlockCaptionDeletion,
+} from "../lib/editorFigures";
 import { editorFileButtonVisible } from "../lib/editorFiles";
 import { editorLinkHtml } from "../lib/editorLinks";
 import { fileToThumbDataUrl } from "../lib/files";
@@ -150,6 +161,53 @@ export function RichTextEditor({
   }, [value, mode, t]);
 
   const emit = (): void => onChange(sanitizeHtml(ref.current?.innerHTML ?? ""));
+
+  // WP-RETEST7 R2: die figcaption unter dem Caret finden (oder null) — für den Leeren-/Lösch-Guard.
+  const captionAtSelection = (): HTMLElement | null => {
+    const node = window.getSelection()?.anchorNode ?? null;
+    const element = node instanceof Element ? node : (node?.parentElement ?? null);
+    const cap = element?.closest("figcaption");
+    return cap instanceof HTMLElement && ref.current?.contains(cap) ? cap : null;
+  };
+
+  // WP-RETEST7 R2 (Pedis Befund): Löscht der Nutzer den gesamten Fußnotentext, lässt der Browser
+  // oft ein <br> zurück — die figcaption ist nicht :empty, der Platzhalter erscheint nicht. Nach
+  // JEDEM input wird eine leer gewordene Fußnote WIRKLICH geleert und das Caret darin gehalten.
+  const onEditorInput = (): void => {
+    const cap = captionAtSelection();
+    if (cap && normalizeEmptyCaption(cap)) {
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(cap);
+      range.collapse(true);
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    }
+    emit();
+  };
+
+  // WP-RETEST7 R2: Backspace/Delete in einer LEEREN figcaption (bzw. Backspace am Fußnoten-ANFANG)
+  // darf die figcaption nicht löschen oder mit dem Nachbarn mergen — Element und Fokus bleiben.
+  const onEditorKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>): void => {
+    if (e.key !== "Backspace" && e.key !== "Delete") {
+      return;
+    }
+    const cap = captionAtSelection();
+    if (!cap) {
+      return;
+    }
+    const selection = window.getSelection();
+    const collapsed = selection?.isCollapsed ?? false;
+    let atStart = false;
+    if (selection && selection.rangeCount > 0) {
+      const probe = selection.getRangeAt(0).cloneRange();
+      probe.setStart(cap, 0);
+      atStart = probe.toString().length === 0;
+    }
+    if (shouldBlockCaptionDeletion(cap, e.key, atStart, collapsed)) {
+      e.preventDefault();
+    }
+  };
 
   const selectImage = (img: HTMLImageElement | null): void => {
     if (!img || !ref.current?.contains(img)) {
@@ -858,9 +916,10 @@ export function RichTextEditor({
             ref={ref}
             contentEditable
             suppressContentEditableWarning
-            onInput={emit}
+            onInput={onEditorInput}
             onBlur={emit}
             onClick={onEditorClick}
+            onKeyDown={onEditorKeyDown}
             onKeyUp={updateImageSelectionFromCursor}
             onMouseUp={updateImageSelectionFromCursor}
             onDrop={onDrop}

@@ -97,17 +97,22 @@ describe("WP-D11: Folien-figures (pure)", () => {
     expect(imagesOnlyNoticeKey("Es gibt Text.", merged)).toBeNull();
   });
 
-  it("Capture-Verdrahtung: Konvertierung nur bei Toggle, Budget-Lauf, ehrliche 503/429-Meldungen", () => {
+  it("Capture-Verdrahtung: Konvertierung nur bei Toggle, Budget-Lauf, abgesicherter Guard-Lauf", () => {
     const src = readFileSync(resolve(process.cwd(), "apps/web/src/pages/Capture.tsx"), "utf8");
     expect(src).toContain("if (slidesAsImages) {");
-    expect(src).toContain("endpoints.slides.convert(");
+    // WP-RETEST7 R8: der Aufruf läuft durch den abgesicherten Guard (Verfügbarkeits-Check VOR dem
+    // Upload + Timeout + Outcome für jeden Fehlerausgang); der Spinner endet in einem finally.
+    expect(src).toContain("convertSlidesWithGuard(endpoints.slides");
+    expect(src).toContain("setSlidesProgress(null);");
     // Budget-Regeln unverändert: das kombinierte HTML läuft durch den D9-Mechanismus.
     expect(src).toContain("applyInlineImageBudget(");
     expect(src).toContain("MAX_INLINE_BODY_HTML_BYTES");
-    // Ehrliche Fehlerpfade: 503 → nicht verfügbar, 429 → belegt, sonst generisch — Text bleibt.
-    expect(src).toContain("SLIDE_IMAGES_TEXT.unavailable");
-    expect(src).toContain("SLIDE_IMAGES_TEXT.busy");
-    expect(src).toContain("SLIDE_IMAGES_TEXT.failed");
     expect(src).toContain("countKeptSlides(");
+    // Die ehrlichen Fehlerpfade (503/429/Timeout/generisch) leben jetzt ZENTRAL in der Lib.
+    const lib = readFileSync(resolve(process.cwd(), "apps/web/src/lib/slideImages.ts"), "utf8");
+    expect(lib).toContain("SLIDE_IMAGES_TEXT.unavailable");
+    expect(lib).toContain("SLIDE_IMAGES_TEXT.busy");
+    expect(lib).toContain("SLIDE_IMAGES_TEXT.timeout");
+    expect(lib).toContain("SLIDE_IMAGES_TEXT.failed");
   });
 });

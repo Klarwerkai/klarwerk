@@ -59,4 +59,23 @@ export const api = {
     return apiFetch<T>(path, init);
   },
   del: <T>(path: string): Promise<T> => apiFetch<T>(path, { method: "DELETE" }),
+  // WP-RETEST7 R8 (Pedis Spinner-Befund): POST mit hartem Client-Timeout (AbortController).
+  // Läuft die Frist ab, wird die Anfrage abgebrochen und als EHRLICHER ApiError(408, "TIMEOUT")
+  // gemeldet — kein endlos laufender Spinner mehr, egal was Netz/Server tun.
+  postWithTimeout: <T>(path: string, body: unknown, timeoutMs: number): Promise<T> => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    return apiFetch<T>(path, {
+      method: "POST",
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+      .catch((err) => {
+        if (controller.signal.aborted) {
+          throw new ApiError(408, "TIMEOUT", "Zeitüberschreitung der Anfrage.");
+        }
+        throw err;
+      })
+      .finally(() => clearTimeout(timer));
+  },
 };

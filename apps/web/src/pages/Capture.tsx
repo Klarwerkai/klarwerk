@@ -174,10 +174,13 @@ import { documentProvenance, draftProvenance } from "../lib/reasonerProvenance";
 import {
   SLIDE_IMAGES_TEXT,
   appendSlideSection,
+  convertSlidesWithGuard,
   countKeptSlides,
   mergeSlideImageInfo,
 } from "../lib/slideImages";
 import { hasSpeechRecognition } from "../lib/speechSupport";
+// WP-RETEST7 R1: ehrliche Lese-Fehler — Stale-Bundle (Chunk-404 nach Deploy) vs. echter Parse-Fehler.
+import { STALE_BUNDLE_KEY, honestParseErrorText } from "../lib/staleChunk";
 // WP-D10 (Fix 2): Dauer-Details der Einreichung — reine Sammel-/Formatierlogik (keine neuen Messpunkte).
 import {
   type SubmitTimingEntry,
@@ -1602,8 +1605,16 @@ export function Capture(): JSX.Element {
           setRaw((prev) => (prev ? `${prev}\n\n[${f.name}]\n${text}` : `[${f.name}]\n${text}`));
           await pushDoc(f);
           setNotice(t("capture.docAdded", { name: f.name }));
-        } catch {
-          setErr(t("capture.docParseError", { name: f.name }));
+        } catch (error) {
+          // WP-RETEST7 R1a: ehrliche Ursache — Stale-Bundle (alter Tab nach Deploy) heißt „App neu
+          // laden", ein echter Parse-Fehler nennt die kurze Ursache.
+          setErr(
+            honestParseErrorText(
+              error,
+              t(STALE_BUNDLE_KEY),
+              t("capture.docParseError", { name: f.name }),
+            ),
+          );
         }
       } else if (isPdfDocument(f)) {
         // SCRUM-122: PDF lazy als Text-Kontext übernehmen; Status ehrlich anzeigen.
@@ -1622,8 +1633,15 @@ export function Capture(): JSX.Element {
             ? ` ${t(CAPTURE_FILE_TEXT.pdfTruncated, { count: pageCount })}`
             : "";
           setNotice(`${t("capture.docAdded", { name: f.name })}${truncatedNote}`);
-        } catch {
-          setErr(t("capture.docParseError", { name: f.name }));
+        } catch (error) {
+          // WP-RETEST7 R1a/c: gleiche ehrliche Unterscheidung auch am PDF-Lazy-Import-Pfad.
+          setErr(
+            honestParseErrorText(
+              error,
+              t(STALE_BUNDLE_KEY),
+              t("capture.docParseError", { name: f.name }),
+            ),
+          );
         }
       } else if (f.type.startsWith("video/") || f.type.startsWith("audio/")) {
         // SCRUM-382: Video/Audio als Session-Datei merken (Attach beim Speichern) —
@@ -1772,46 +1790,52 @@ export function Capture(): JSX.Element {
         // nur Folien). Fehler/503/429 → ehrliche Meldung, der Text-Import bleibt vollständig.
         if (slidesAsImages) {
           setSlidesProgress(t(SLIDE_IMAGES_TEXT.converting, { name: f.name }));
+          // WP-RETEST7 R8 (Pedis Spinner-Befund): abgesicherter Lauf — LEICHTER Verfügbarkeits-
+          // Check VOR dem großen Upload (disabled → sofortige ehrliche Meldung, KEIN Upload),
+          // harter Client-Timeout, und JEDER Fehlerausgang endet als Outcome; der Spinner endet
+          // IMMER im finally. Der Text-Import bleibt in allen Fällen vollständig.
           try {
             const sourceDataUrl = await readFileAsDataUrl(f);
             const base64 = sourceDataUrl.slice(sourceDataUrl.indexOf(",") + 1);
-            const converted = await endpoints.slides.convert(base64);
-            const runToken = newImageRunToken();
-            const combined = appendSlideSection(
-              rich.html,
-              t(SLIDE_IMAGES_TEXT.heading),
-              converted.slides,
-              runToken,
-            );
-            const budgeted = await applyInlineImageBudget(
-              combined,
-              async (src) => src,
-              MAX_INLINE_BODY_HTML_BYTES,
-            );
-            rich = { html: budgeted.html, kind: "pptx" };
-            // WP-D11b (GELB c): die Quell-Folien zählen KOMPLETT (übernommen + serverseitig
-            // verworfen) — sie fließen in dieselbe Bild-Bilanz wie die eingebetteten Bilder.
-            const slidesTotal =
-              converted.slideCount + converted.droppedOversize + converted.droppedByBudget;
-            sourceHadImages = sourceHadImages || slidesTotal > 0;
-            const kept = countKeptSlides(budgeted.html, runToken, converted.slideCount);
-            imageInfo = mergeSlideImageInfo(imageInfo, slidesTotal, kept);
-            const truncatedPart = converted.truncated
-              ? ` ${t(SLIDE_IMAGES_TEXT.truncated, { max: converted.maxSlides })}`
-              : "";
-            const droppedPart =
-              kept < slidesTotal
-                ? ` ${t(SLIDE_IMAGES_TEXT.dropped, { count: slidesTotal - kept })}`
+            const outcome = await convertSlidesWithGuard(endpoints.slides, base64);
+            if (!outcome.ok) {
+              // 503 (Route aus/kein Konverter) kommt schon aus dem LEICHTEN Verfügbarkeits-Check
+              // — der große Upload wurde dann NIE gesendet; 429/Timeout/Netz enden hier ebenso.
+              slidesNote = ` ${t(outcome.messageKey)}`;
+            } else {
+              const converted = outcome.result;
+              const runToken = newImageRunToken();
+              const combined = appendSlideSection(
+                rich.html,
+                t(SLIDE_IMAGES_TEXT.heading),
+                converted.slides,
+                runToken,
+              );
+              const budgeted = await applyInlineImageBudget(
+                combined,
+                async (src) => src,
+                MAX_INLINE_BODY_HTML_BYTES,
+              );
+              rich = { html: budgeted.html, kind: "pptx" };
+              // WP-D11b (GELB c): die Quell-Folien zählen KOMPLETT (übernommen + serverseitig
+              // verworfen) — sie fließen in dieselbe Bild-Bilanz wie die eingebetteten Bilder.
+              const slidesTotal =
+                converted.slideCount + converted.droppedOversize + converted.droppedByBudget;
+              sourceHadImages = sourceHadImages || slidesTotal > 0;
+              const kept = countKeptSlides(budgeted.html, runToken, converted.slideCount);
+              imageInfo = mergeSlideImageInfo(imageInfo, slidesTotal, kept);
+              const truncatedPart = converted.truncated
+                ? ` ${t(SLIDE_IMAGES_TEXT.truncated, { max: converted.maxSlides })}`
                 : "";
-            slidesNote = ` ${t(SLIDE_IMAGES_TEXT.done, { count: kept })}${truncatedPart}${droppedPart}`;
-          } catch (error) {
-            const key =
-              error instanceof ApiError && error.status === 503
-                ? SLIDE_IMAGES_TEXT.unavailable
-                : error instanceof ApiError && error.status === 429
-                  ? SLIDE_IMAGES_TEXT.busy
-                  : SLIDE_IMAGES_TEXT.failed;
-            slidesNote = ` ${t(key)}`;
+              const droppedPart =
+                kept < slidesTotal
+                  ? ` ${t(SLIDE_IMAGES_TEXT.dropped, { count: slidesTotal - kept })}`
+                  : "";
+              slidesNote = ` ${t(SLIDE_IMAGES_TEXT.done, { count: kept })}${truncatedPart}${droppedPart}`;
+            }
+          } catch {
+            // Rest-Sicherheit (z. B. Dateilesen) — ehrlich generisch, der Text-Import bleibt.
+            slidesNote = ` ${t(SLIDE_IMAGES_TEXT.failed)}`;
           } finally {
             setSlidesProgress(null);
           }
@@ -1899,10 +1923,19 @@ export function Capture(): JSX.Element {
       setNotice(null);
       // WP-D5b (bens GELB-Fix 3): Archiv-/Dekompressionsbudget überschritten → ehrliche, spezifische
       // Meldung statt generischem Parse-Fehler (und statt UI-Freeze).
+      // WP-RETEST7 R1a (Pedis DOCX-Befund): davor die Stale-Bundle-Unterscheidung — ein nach dem
+      // Deploy gescheiterter mammoth-/pdfjs-Chunk-Import ist KEIN kaputtes Dokument; echte
+      // Parse-Fehler nennen die kurze Ursache (der lokale Dateiname steht ohnehin in der Meldung).
       if (error instanceof PptxTooLargeError) {
         setErr(t(CAPTURE_FILE_TEXT.pptxTooLarge, { name: f.name }));
       } else {
-        setErr(t(CAPTURE_FILE_TEXT.parseError, { name: f.name }));
+        setErr(
+          honestParseErrorText(
+            error,
+            t(STALE_BUNDLE_KEY),
+            t(CAPTURE_FILE_TEXT.parseError, { name: f.name }),
+          ),
+        );
       }
     } finally {
       setFileBusy(false);

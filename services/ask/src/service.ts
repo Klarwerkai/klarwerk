@@ -38,7 +38,9 @@ export interface AskServiceDeps {
 }
 
 export interface AskResult {
-  result: AnswerResult;
+  // WP-RETEST7 R5: + captionSources — Quellen, deren Treffer NUR über die Bild-Fußnoten zustande
+  // kam (Fundstellen-Kennzeichnung analog zur Bibliothek: Badge „Bildbeschreibung").
+  result: AnswerResult & { captionSources: string[] };
   gap: Gap | null;
 }
 
@@ -109,6 +111,10 @@ export class AskService {
       statement: ko.statement,
       status: ko.status,
       trust: ko.trust,
+      // WP-RETEST7 R5 (Pedis Befund): die persistierten Bild-Fußnoten reisen in den Match-/
+      // Kontextpfad mit (captionTexts-Suchfeld — kein bodyHtml-Vollload, kein neuer Scanner).
+      // Sichtbarkeitsregeln unverändert: dropConfidential/validatedOnly liefen bereits davor.
+      ...(ko.captionTexts?.length ? { captionTexts: ko.captionTexts } : {}),
     }));
     // SCRUM-360: präzise, status-/trust-bewusste Top-K-Auswahl auf der vorgefilterten Menge (Relevanz-
     // Gate dominiert, validierte/ready bevorzugt). Idempotent zur Vorauswahl: Top-K der vorgefilterten
@@ -121,10 +127,23 @@ export class AskService {
       : await this.reasoner.answer(question, candidates, locale);
     // SCRUM-490 R2 (A2): Quellenpflicht — ein „Treffer" ohne echte Quelle ist KEIN belegter Treffer.
     // answered=true mit leeren sources → als ehrliche Leer-Antwort behandeln (nie eine Quelle vortäuschen).
-    const result =
+    const resultCore =
       rawResult.answered && rawResult.sources.length === 0
         ? { ...rawResult, answered: false, answer: null }
         : rawResult;
+    // WP-RETEST7 R5: Fundstellen-Kennzeichnung — eine Quelle, deren Frage-Treffer AUSSCHLIESSLICH
+    // aus den Bild-Fußnoten stammt (kein Term in Titel/Aussage), wird als Caption-Fund markiert;
+    // die UI zeigt dazu das Bibliotheks-Badge „Bildbeschreibung".
+    const captionSources = resultCore.sources.filter((id) => {
+      const ko = prefiltered.find((k) => k.id === id);
+      if (!ko || !ko.captionTexts?.length) {
+        return false;
+      }
+      const core = `${ko.title} ${ko.statement}`.toLowerCase();
+      const captions = ko.captionTexts.join(" ").toLowerCase();
+      return terms.some((term) => captions.includes(term)) && !terms.some((t) => core.includes(t));
+    });
+    const result = { ...resultCore, captionSources };
     // FR-ANA-02 / SCRUM-361: Telemetrie nachvollziehbar + ehrlich — Prefilter-/Kandidatengröße,
     // Top-K und der Retrieval-Modus (kein Inhaltstext, keine Frage im Audit).
     await this.audit?.record({

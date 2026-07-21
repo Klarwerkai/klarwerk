@@ -1,3 +1,5 @@
+// WP-RETEST7 R8: Timeout-Konstante der Folien-Konvertierung (eine Quelle, lib/slideImages).
+import { SLIDES_CONVERT_TIMEOUT_MS } from "../lib/slideImages";
 import { api } from "./client";
 import type {
   Analytics,
@@ -196,8 +198,15 @@ export const endpoints = {
   },
   // WP-D11: PPTX-Folien → PNG je Folie (Server-Konvertierung; base64 konsistent zum Objekt-Upload).
   slides: {
+    // WP-RETEST7 R8: leichter Verfügbarkeits-Check VOR dem großen Upload + harter Client-Timeout
+    // der Konvertierung — kein endloser Spinner mehr (Meldung sofort, Text-Import bleibt).
+    availability: () => api.get<{ available: boolean }>("/capture/slides/availability"),
     convert: (dataBase64: string) =>
-      api.post<SlideConvertResponse>("/capture/slides", { data: dataBase64 }),
+      api.postWithTimeout<SlideConvertResponse>(
+        "/capture/slides",
+        { data: dataBase64 },
+        SLIDES_CONVERT_TIMEOUT_MS,
+      ),
   },
   drafts: {
     list: () => api.get<Draft[]>("/drafts"),

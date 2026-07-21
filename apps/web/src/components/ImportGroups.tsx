@@ -6,7 +6,7 @@
 // Import-Weg (Review-Queue; Review-Invariante bleibt) in Batches mit ehrlichem Fortschritt und
 // endet in der Bilanz (übernommen/übersprungen/ausgeschlossen/fehlgeschlagen).
 import { CheckCircle2, ChevronDown, Loader2, Sparkles } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
@@ -178,6 +178,14 @@ export function ImportGroups({ criteria }: { criteria: ImportSelectCriteria }): 
   // in diesem Zustand gibt es NUR den Weg „Neu gruppieren" (frischer /group-Aufruf, neuer Token);
   // ein Wiederholen mit dem alten Token liefe garantiert wieder in den 409.
   const [snapshotExpired, setSnapshotExpired] = useState(false);
+  // WP-RETEST7 R7 (Pedis Befund: Gruppieren nicht gefunden): nach dem Gruppieren scrollt die
+  // Ansicht sanft zum Gruppen-Bereich — der Schritt darf nicht vom Scroll-Zufall abhängen.
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (data !== null && bilanz === null) {
+      panelRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+    }
+  }, [data, bilanz]);
 
   const runGrouping = async (): Promise<void> => {
     setBusy("group");
@@ -281,11 +289,18 @@ export function ImportGroups({ criteria }: { criteria: ImportSelectCriteria }): 
       ) : null}
 
       {data === null && !snapshotExpired ? (
-        <Button variant="primary" disabled={busy === "group"} onClick={() => void runGrouping()}>
+        // WP-RETEST7 R7: UNÜBERSEHBARER Primär-CTA direkt unter der Vorschau — große Klickfläche,
+        // volle Breite; der nächste Schritt (Gruppieren & Übernehmen) ist damit explizit benannt.
+        <Button
+          variant="primary"
+          className="w-full py-3 text-[14px]"
+          disabled={busy === "group"}
+          onClick={() => void runGrouping()}
+        >
           {busy === "group" ? (
-            <Loader2 size={15} className="animate-spin" />
+            <Loader2 size={16} className="animate-spin" />
           ) : (
-            <Sparkles size={15} />
+            <Sparkles size={16} />
           )}
           {busy === "group" ? t(IMPORT_GROUPS_TEXT.grouping) : t(IMPORT_GROUPS_TEXT.cta)}
         </Button>
@@ -305,7 +320,7 @@ export function ImportGroups({ criteria }: { criteria: ImportSelectCriteria }): 
       ) : null}
 
       {data !== null && bilanz === null ? (
-        <>
+        <div ref={panelRef}>
           <GroupApprovalPanel
             groups={data.groups}
             candidates={data.candidates}
@@ -333,7 +348,7 @@ export function ImportGroups({ criteria }: { criteria: ImportSelectCriteria }): 
               </span>
             ) : null}
           </div>
-        </>
+        </div>
       ) : null}
 
       {bilanz !== null ? (

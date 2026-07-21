@@ -405,6 +405,14 @@ export function queryTokens(text: string): string[] {
   return tokenize(text);
 }
 
+// WP-RETEST7 R5: der durchsuchbare Text eines Refs — Titel + Aussage + (falls vorhanden) die
+// persistierten Bild-Fußnoten. EINE Quelle für keywordSelect UND rankCandidates, damit ein KO,
+// dessen Wissen nur in der Fußnote steht, das Relevanz-Gate passieren kann.
+export function refMatchText(ref: KnowledgeRef): string {
+  const captions = ref.captionTexts?.length ? ` ${ref.captionTexts.join(" ")}` : "";
+  return `${ref.title} ${ref.statement}${captions}`;
+}
+
 // Semantische Vorauswahl über Keyword-Überschneidung — synchron, modellunabhängig.
 // Von beiden Providern genutzt, damit Antworten immer in echten KOs verankert bleiben.
 export function keywordSelect(
@@ -413,7 +421,7 @@ export function keywordSelect(
 ): KnowledgeRef[] {
   const words = tokenize(question);
   return candidates
-    .map((c) => ({ c, score: overlap(words, tokenize(`${c.title} ${c.statement}`)) }))
+    .map((c) => ({ c, score: overlap(words, tokenize(refMatchText(c))) }))
     .filter((x) => x.score > 0)
     .sort((a, b) => b.score - a.score)
     .map((x) => x.c);
@@ -456,7 +464,8 @@ export function rankCandidates(
   const limit = Math.max(1, Math.floor(topK));
   return candidates
     .map((ref) => {
-      const keywordScore = overlap(words, tokenize(`${ref.title} ${ref.statement}`));
+      // WP-RETEST7 R5: gleiche Match-Basis wie keywordSelect — inkl. Bild-Fußnoten (captionTexts).
+      const keywordScore = overlap(words, tokenize(refMatchText(ref)));
       return { ref, keywordScore, rankScore: keywordScore + statusTrustBoost(ref) };
     })
     .filter((x) => x.keywordScore > 0)

@@ -18,6 +18,8 @@ const de = {
     "Externe Treffer sind Recherchehilfe, kein geprüftes Wissen: nichts wird automatisch importiert oder von Kolleg:innen validiert. Ist die externe Abfrage vom Admin gesperrt, bleibt der Bereich leer.",
   "app.name": "KLARWERK",
   "app.subtitle": "Reasoning System",
+  "app.staleBundle":
+    "Eine neue Version der App ist verfügbar — bitte die Seite neu laden (Cmd+R bzw. Strg+R).",
   "nav.group.workspace": "Arbeitsbereich",
   "nav.group.quality": "Qualität & Pflege",
   "nav.group.control": "Steuerung",
@@ -969,6 +971,8 @@ const de = {
     "Der Server wandelt gerade eine andere Präsentation um — bitte in einem Moment erneut importieren. Der Text-Import ist vollständig.",
   "capture.slides.unavailable":
     "Die Folien-Ansicht ist auf diesem Server derzeit nicht verfügbar. Der Text-Import ist vollständig.",
+  "capture.slides.timeout":
+    "Zeitüberschreitung bei der Folien-Konvertierung — der Text-Import bleibt vollständig erhalten.",
   "capture.slides.failed":
     "Die Folien konnten nicht in Bilder umgewandelt werden. Der Text-Import ist vollständig.",
   "capture.file.pptxTooLarge":
@@ -2047,7 +2051,7 @@ const de = {
   "imp.explore.alreadyImported": "Davon bereits importiert: {{n}}",
   "imp.select.title": "Auswahl eingrenzen",
   "imp.select.hint":
-    "Beschreibe in einem Satz, was importiert werden soll, oder klicke Themen an. Die Vorschau zeigt, was passt — importiert wird noch nichts.",
+    "Klicke Themen an ODER beschreibe in einem Satz, was importiert werden soll — beides zusammen geht auch. Die Vorschau zeigt, was passt — importiert wird noch nichts.",
   "imp.select.promptPlaceholder": "z. B. „alles zum Thema Wartung und Fehlercodes“",
   "imp.select.limit": "Höchstens",
   "imp.select.previewCta": "Vorschau",
@@ -2069,7 +2073,7 @@ const de = {
   "imp.select.importedDeselected":
     "Bereits importierte Seiten sind abgewählt; bei Bedarf bewusst wieder anwählen.",
   "imp.preview.imported": "bereits importiert",
-  "imp.groups.cta": "Gruppieren",
+  "imp.groups.cta": "Weiter: Gruppieren & Übernehmen",
   "imp.groups.grouping": "Die Beiträge werden thematisch gruppiert …",
   "imp.groups.retry": "Erneut versuchen",
   "imp.groups.noAi": "Ohne KI gruppiert",
@@ -3242,6 +3246,8 @@ const en: typeof de = {
     "External hits are research support, not verified knowledge: nothing is imported automatically or validated by colleagues. If the admin has disabled external lookup, the area stays empty.",
   "app.name": "KLARWERK",
   "app.subtitle": "Reasoning System",
+  "app.staleBundle":
+    "A new version of the app is available — please reload the page (Cmd+R or Ctrl+R).",
   "nav.group.workspace": "Workspace",
   "nav.group.quality": "Quality & Upkeep",
   "nav.group.control": "Control",
@@ -4178,6 +4184,8 @@ const en: typeof de = {
     "The server is currently converting another presentation — please import again in a moment. The text import is complete.",
   "capture.slides.unavailable":
     "The slide view is currently not available on this server. The text import is complete.",
+  "capture.slides.timeout":
+    "The slide conversion timed out — the text import remains fully intact.",
   "capture.slides.failed":
     "The slides could not be converted to images. The text import is complete.",
   "capture.file.pptxTooLarge":
@@ -5228,7 +5236,7 @@ const en: typeof de = {
   "imp.explore.alreadyImported": "Of these already imported: {{n}}",
   "imp.select.title": "Narrow the selection",
   "imp.select.hint":
-    "Describe in one sentence what to import, or click themes. The preview shows what matches — nothing is imported yet.",
+    "Click themes OR describe in one sentence what to import — combining both works too. The preview shows what matches — nothing is imported yet.",
   "imp.select.promptPlaceholder": "e.g. “everything about maintenance and error codes”",
   "imp.select.limit": "At most",
   "imp.select.previewCta": "Preview",
@@ -5249,7 +5257,7 @@ const en: typeof de = {
   "imp.select.importedDeselected":
     "Already imported pages are deselected; re-select them deliberately if needed.",
   "imp.preview.imported": "already imported",
-  "imp.groups.cta": "Group",
+  "imp.groups.cta": "Next: group & import",
   "imp.groups.grouping": "Grouping the posts by topic …",
   "imp.groups.retry": "Try again",
   "imp.groups.noAi": "Grouped without AI",
@@ -6405,6 +6413,8 @@ const nl: typeof de = {
     "Externe treffers zijn onderzoekshulp, geen geverifieerde kennis: niets wordt automatisch geïmporteerd of door collega’s gevalideerd. Heeft de beheerder externe opvraging uitgeschakeld, dan blijft het gebied leeg.",
   "app.name": "KLARWERK",
   "app.subtitle": "Reasoning System",
+  "app.staleBundle":
+    "Er is een nieuwe versie van de app beschikbaar — laad de pagina opnieuw (Cmd+R of Ctrl+R).",
   "nav.group.workspace": "Werkruimte",
   "nav.group.quality": "Kwaliteit & onderhoud",
   "nav.group.control": "Aansturing",
@@ -7330,6 +7340,8 @@ const nl: typeof de = {
     "De server zet momenteel een andere presentatie om — probeer het importeren zo dadelijk opnieuw. De tekstimport is volledig.",
   "capture.slides.unavailable":
     "De diaweergave is op deze server momenteel niet beschikbaar. De tekstimport is volledig.",
+  "capture.slides.timeout":
+    "Time-out bij het omzetten van de dia's — de tekstimport blijft volledig behouden.",
   "capture.slides.failed":
     "De dia's konden niet naar afbeeldingen worden omgezet. De tekstimport is volledig.",
   "capture.file.pptxTooLarge":
@@ -8366,7 +8378,7 @@ const nl: typeof de = {
   "imp.explore.alreadyImported": "Waarvan al geïmporteerd: {{n}}",
   "imp.select.title": "Selectie verfijnen",
   "imp.select.hint":
-    "Beschrijf in één zin wat er geïmporteerd moet worden, of klik op thema's. De voorbeeldweergave toont wat past — er wordt nog niets geïmporteerd.",
+    "Klik thema's aan OF beschrijf in één zin wat er geïmporteerd moet worden — allebei samen kan ook. De voorbeeldweergave toont wat past — er wordt nog niets geïmporteerd.",
   "imp.select.promptPlaceholder": "bijv. „alles over onderhoud en foutcodes“",
   "imp.select.limit": "Hoogstens",
   "imp.select.previewCta": "Voorbeeld",
@@ -8387,7 +8399,7 @@ const nl: typeof de = {
   "imp.select.importedDeselected":
     "Al geïmporteerde pagina's zijn uitgevinkt; vink ze bewust weer aan indien nodig.",
   "imp.preview.imported": "al geïmporteerd",
-  "imp.groups.cta": "Groeperen",
+  "imp.groups.cta": "Verder: groeperen & overnemen",
   "imp.groups.grouping": "De bijdragen worden thematisch gegroepeerd …",
   "imp.groups.retry": "Opnieuw proberen",
   "imp.groups.noAi": "Zonder AI gegroepeerd",

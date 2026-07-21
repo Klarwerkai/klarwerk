@@ -40,6 +40,8 @@ import {
 } from "../lib/files";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { documentProvenance } from "../lib/reasonerProvenance";
+// WP-RETEST7 R1: ehrliche Lese-Fehler (Stale-Bundle vs. Parse-Ursache).
+import { STALE_BUNDLE_KEY, honestParseErrorText } from "../lib/staleChunk";
 import { AiModelInfo } from "./AiModelInfo";
 import { HelpTip } from "./HelpTip";
 import { Button, SectionLabel, TextInput } from "./ui";
@@ -165,10 +167,18 @@ export function BodyExtractPanel({
           ? ` ${t(CAPTURE_FILE_TEXT.pdfTruncated, { count: pdfTruncatedPages })}`
           : "";
       setStatus(`${t(CAPTURE_FILE_TEXT.loaded, { name: f.name })}${truncatedNote}`);
-    } catch {
+    } catch (error) {
       setFileName(null);
       setStatus(null);
-      setErr(t(CAPTURE_FILE_TEXT.parseError, { name: f.name }));
+      // WP-RETEST7 R1a/c: Stale-Bundle (Chunk-Import nach Deploy gescheitert) → ehrliche
+      // Neu-laden-Meldung; echter Parse-Fehler → bestehende Meldung + kurze Ursache.
+      setErr(
+        honestParseErrorText(
+          error,
+          t(STALE_BUNDLE_KEY),
+          t(CAPTURE_FILE_TEXT.parseError, { name: f.name }),
+        ),
+      );
     } finally {
       setBusy(false);
     }

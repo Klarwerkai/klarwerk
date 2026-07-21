@@ -572,6 +572,8 @@ export interface AnswerResult {
   sources: string[];
   steps: AnswerStep[];
   demo: boolean;
+  // WP-RETEST7 R5: Quellen, deren Treffer NUR über die Bild-Fußnoten kam (Badge „Bildbeschreibung").
+  captionSources?: string[];
 }
 
 // Realer Backend-Shape von POST /api/ask: Antwort + ggf. erzeugte Wissenslücke.

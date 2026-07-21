@@ -69,3 +69,48 @@ const LEGACY_CAPTION_RE = new RegExp(
 export function blankLegacyCaptionPlaceholders(html: string): string {
   return html.replace(LEGACY_CAPTION_RE, "$1$2");
 }
+
+// ---- WP-RETEST7 R2 (Pedis Befund: Fußnote verschwindet beim Leeren des Textes) ----
+//
+// Zwei Editier-Kanten der figcaption:
+//  (a) Löscht der Nutzer den GESAMTEN Text, lassen Browser oft einen <br>-Rest zurück — die
+//      figcaption ist dann nicht :empty, der data-kw-placeholder-Platzhalter erscheint NICHT und
+//      das Element wirkt „verschwunden". normalizeEmptyCaption macht sie WIRKLICH leer (Element
+//      bleibt, der Aufrufer hält das Caret darin).
+//  (b) Backspace/Delete in einer LEEREN figcaption (bzw. Backspace am Fußnoten-ANFANG) würde das
+//      Element löschen oder mit dem Nachbarn mergen — shouldBlockCaptionDeletion sagt dem Editor,
+//      wann er preventDefault ziehen muss (die figcaption gehört strukturell zur figure).
+
+export interface CaptionNodeLike {
+  textContent: string | null;
+  childNodes: { length: number };
+}
+
+// Nur-Whitespace-/Nur-<br>-Fußnote auf WIRKLICH leer normalisieren. true = normalisiert (der
+// Aufrufer setzt das Caret zurück in die Fußnote).
+export function normalizeEmptyCaption(caption: CaptionNodeLike): boolean {
+  const empty = (caption.textContent ?? "").trim().length === 0;
+  if (empty && caption.childNodes.length > 0) {
+    caption.textContent = "";
+    return true;
+  }
+  return false;
+}
+
+// Muss der Editor diese Lösch-Taste in der Fußnote blocken? Leere Fußnote: es gibt nichts zu
+// löschen — jede Backspace/Delete würde nur das Element/die Struktur angreifen. Nicht-leere
+// Fußnote: nur der kollabierte Backspace am ANFANG (er würde nach außen mergen).
+export function shouldBlockCaptionDeletion(
+  caption: Pick<CaptionNodeLike, "textContent">,
+  key: string,
+  atStart: boolean,
+  collapsed: boolean,
+): boolean {
+  if (key !== "Backspace" && key !== "Delete") {
+    return false;
+  }
+  if ((caption.textContent ?? "").trim().length === 0) {
+    return true;
+  }
+  return key === "Backspace" && collapsed && atStart;
+}

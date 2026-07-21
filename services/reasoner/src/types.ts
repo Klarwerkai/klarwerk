@@ -9,6 +9,10 @@ export interface KnowledgeRef {
   statement: string;
   status: "offen" | "validiert";
   trust: number;
+  // WP-RETEST7 R5 (Pedis Befund: Fragen findet Fußnotentext nicht): die persistierten Bild-
+  // Fußnoten (captionTexts-Suchfeld, WP-BILD-1g) fließen ADDITIV in Matching/Ranking ein —
+  // KEIN bodyHtml, kein neuer Scanner; Altbestand ohne Feld matcht wie bisher.
+  captionTexts?: readonly string[];
 }
 
 // FR-RSN-03: Trennung gesichert / ungeprüft / Meinung / extern / Annahme / unbekannt.

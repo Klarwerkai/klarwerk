@@ -70,6 +70,23 @@ function buttonByText(part: string): HTMLButtonElement {
   return btn;
 }
 
+describe("WP-RETEST7 R7: unübersehbarer Gruppieren-CTA", () => {
+  it("der Primär-CTA ist prominent (volle Breite, klarer Nächster-Schritt-Text) und startet die Gruppierung", async () => {
+    groupMock.mockResolvedValue(GROUP_RESPONSE);
+    mount();
+    // Klarer Nächster-Schritt-Text statt eines unauffälligen „Gruppieren".
+    const cta = buttonByText("Weiter: Gruppieren & Übernehmen");
+    // Große Klickfläche: volle Breite + erhöhte Höhe (w-full/py-3).
+    expect(cta.className).toContain("w-full");
+    expect(cta.className).toContain("py-3");
+    await act(async () => {
+      cta.click();
+    });
+    expect(groupMock).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain("2 von 2 ausgewählt");
+  });
+});
+
 describe("WP-REST18 Fix 2: SNAPSHOT_EXPIRED mitten im Apply-Lauf", () => {
   it("Lauf endet kontrolliert: Meldung + Neu-gruppieren-Knopf, KEIN Retry mit altem Token; Neu gruppieren startet /group frisch", async () => {
     groupMock.mockResolvedValue(GROUP_RESPONSE);

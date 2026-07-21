@@ -187,7 +187,14 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             return;
           }
           const input = await capture.toKoInput(request.params.id);
-          const created = await ko.create(input);
+          // WP-RETEST7 R6: author IMMER aus einem echten Nutzer — normal der Originalautor des
+          // Entwurfs (FR-CAP-07); trägt ein Altbestands-Entwurf KEINEN originalAuthor (leer),
+          // wird ehrlich der EINREICHENDE Session-Nutzer gesetzt statt eines leeren author-Felds
+          // (Pedis Befund: Validierungskarte ohne „von …").
+          const created = await ko.create({
+            ...input,
+            author: input.author.trim() ? input.author : user.id,
+          });
           await capture.deleteDraft(request.params.id);
           const reviewers = [...new Set(request.body?.reviewerIds ?? [])].filter(
             (id) => id !== user.id,

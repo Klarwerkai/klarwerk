@@ -328,7 +328,8 @@ export class LibraryService {
       statement: item.statement,
       type: item.type,
       category: item.category,
-      author: item.author ?? actor,
+      // WP-RETEST7 R6: leerer Autor-String → ehrlicher Fallback auf den annehmenden Nutzer.
+      author: item.author?.trim() ? item.author : actor,
       tags: item.tags ?? [],
       // SCRUM-509 R3: Import ist ein Bulk-/Programmatik-Pfad → konservativ. Fehlt das Governance-Signal,
       // gilt „vertraulich" (NICHT still intern) — importierter Fremdinhalt bleibt bis zur bewussten
@@ -360,7 +361,8 @@ export class LibraryService {
       ...(item.externalId ? { externalId: item.externalId } : {}),
       ...(item.sourceScope ? { spaceKey: item.sourceScope } : {}),
       sourceVersion: effectiveVersion,
-      author: item.author ?? actor,
+      // WP-RETEST7 R6: leerer Autor-String → ehrlicher Fallback auf den annehmenden Nutzer.
+      author: item.author?.trim() ? item.author : actor,
       at: new Date(this.now()).toISOString(),
     };
   }
@@ -522,7 +524,9 @@ export class LibraryService {
         statement: item.statement,
         type: item.type,
         category: item.category,
-        author: item.author ?? defaultAuthor,
+        // WP-RETEST7 R6: auch ein LEERER Autor-String fällt ehrlich auf den einreichenden
+        // Session-Nutzer zurück (kein KO ohne „von …“ mehr aus dem Import).
+        author: item.author?.trim() ? item.author : defaultAuthor,
         tags: item.tags ?? [],
         // SCRUM-509 R3: JSON-Import ist ein Bulk-Pfad → konservativ „vertraulich" bei fehlendem Signal.
         confidentiality: item.confidentiality ?? "vertraulich",
