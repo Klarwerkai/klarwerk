@@ -3,7 +3,11 @@
 // kurzer kanonisierter Text, IC-1-Thema — NIE volle Bodies) und die rein DETERMINISTISCHEN
 // Qualitätshinweise je Kandidat. Kennt bewusst KEIN Reasoner-Symbol (das Modul bleibt unterhalb;
 // die App-Route reicht die strukturell kompatiblen Eingaben an den Reasoner weiter).
-import { isConfidential, isValidConfidentiality } from "../../knowledge-object";
+import {
+  confidentialityRank,
+  isConfidential,
+  isValidConfidentiality,
+} from "../../knowledge-object";
 import { canonicalImportText } from "./text-codec";
 import { deriveTitleThemes } from "./themes";
 import type { ImportItem } from "./types";
@@ -51,6 +55,40 @@ export interface GroupingCandidate {
 export function candidateIdOf(item: ImportItem, index: number): string {
   const external = item.externalId?.trim();
   return external && external.length > 0 ? external : `row-${index + 1}`;
+}
+
+// WP-REST18 (bens Fix 1): Restriktions-Rang eines Items für den Dedupe-Entscheid — fehlende/
+// ungültige Klassifikation zählt fail-safe wie „vertraulich" (dieselbe Semantik wie
+// groupingRequiresConfidential: unklar macht den Batch vertraulich).
+function restrictionRank(item: ImportItem): number {
+  return isValidConfidentiality(item.confidentiality)
+    ? confidentialityRank(item.confidentiality)
+    : confidentialityRank("vertraulich");
+}
+
+// WP-REST18 (bens Fix 1, QUELL-ID-DEDUPE AM ROUTENEINGANG): veränderliche Pagination kann dieselbe
+// externalId MEHRFACH in einen Snapshot liefern — die Genau-einmal-Invariante normalisiert aber nur
+// die Modellantwort. Deshalb wird `selected` EINMAL zentral nach stabiler Kandidaten-Id
+// dedupliziert, BEVOR Kandidatenliste, Modell-Eingabe, deterministischer Fallback und Apply-Map
+// daraus entstehen. Bei kollidierenden Einträgen bleibt der mit der RESTRIKTIVSTEN Vertraulichkeit
+// (Union-Entscheid: eine unklare/vertrauliche Variante gewinnt gegen „intern" — fail-safe bleibt
+// fail-safe, die Cloud sieht den Batch dann nie). Ankerlose Items (row-N) sind nie Duplikate.
+export function dedupeSelectedItems(items: readonly ImportItem[]): ImportItem[] {
+  const byId = new Map<string, ImportItem>();
+  const order: string[] = [];
+  items.forEach((item, index) => {
+    const id = candidateIdOf(item, index);
+    const existing = byId.get(id);
+    if (existing === undefined) {
+      byId.set(id, item);
+      order.push(id);
+      return;
+    }
+    if (restrictionRank(item) > restrictionRank(existing)) {
+      byId.set(id, item);
+    }
+  });
+  return order.map((id) => byId.get(id) as ImportItem);
 }
 
 // Ungefähre UTF-8-Bytes des Modell-Prompts dieser Kandidaten — spiegelt das Zeilenformat des

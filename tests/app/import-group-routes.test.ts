@@ -205,6 +205,84 @@ describe("WP-IC-4: POST /api/admin/import/confluence/apply (bestehender Import-W
   });
 });
 
+describe("WP-REST18 (Fix 1): Quell-Id-Dedupe am Routeneingang", () => {
+  it("doppelte externalId aus der Pagination → Kandidatenliste eindeutig, Fallback gruppiert die Id genau einmal, Apply verarbeitet sie einmal", async () => {
+    // Veränderliche Pagination liefert p1 ZWEIMAL in denselben Snapshot.
+    const items = [
+      item({ title: "Pumpe warten", externalId: "p1", tags: ["wartung"] }),
+      item({ title: "Ventil tauschen", externalId: "p2", tags: ["wartung"] }),
+      item({ title: "Pumpe warten (Doppel)", externalId: "p1", tags: ["wartung"] }),
+    ];
+    const { app, services, headers } = await importApp(items);
+    const grouped = await app.inject({
+      method: "POST",
+      url: "/api/admin/import/confluence/group",
+      headers,
+      payload: { criteria: {}, locale: "de" },
+    });
+    expect(grouped.statusCode).toBe(200);
+    const body = grouped.json() as {
+      candidates: { id: string }[];
+      groups: { ids: string[] }[];
+      snapshotToken: number;
+    };
+    // Kandidatenliste eindeutig (keine doppelten Ids/React-Keys) …
+    const candidateIds = body.candidates.map((c) => c.id);
+    expect(candidateIds.sort()).toEqual(["p1", "p2"]);
+    // … und der deterministische Fallback rendert p1 GENAU einmal (Genau-einmal auch quellseitig).
+    const flat = body.groups.flatMap((g) => g.ids);
+    expect(flat.filter((id) => id === "p1").length).toBe(1);
+    expect(new Set(flat).size).toBe(flat.length);
+    // Apply-Map: die doppelte Quell-Id wird EINMAL verarbeitet — die Bilanz-Invariante geht auf.
+    const applied = await app.inject({
+      method: "POST",
+      url: "/api/admin/import/confluence/apply",
+      headers,
+      payload: { criteria: {}, includeIds: ["p1", "p2"], snapshotToken: body.snapshotToken },
+    });
+    expect(applied.json()).toMatchObject({ imported: 2, alreadyQueued: 0, notFound: [] });
+    expect((await services.library.listImportCandidates()).length).toBe(2);
+  });
+
+  it("Kollision mit unterschiedlicher Vertraulichkeit → die RESTRIKTIVSTE Variante gewinnt (Cloud = 0 Aufrufe)", async () => {
+    const spy = cloudSpyReasoner(["p1"]);
+    // Variante A ist explizit freigegeben (intern), Variante B derselben Seite ist UNKLAR
+    // (kein Governance-Signal) — die Union bleibt fail-safe vertraulich.
+    const { app, headers } = await importApp(
+      [
+        item({ title: "Pumpe warten", externalId: "p1", confidentiality: "intern" }),
+        item({ title: "Pumpe warten (Doppel)", externalId: "p1" }),
+      ],
+      { reasoner: spy.reasoner },
+    );
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/admin/import/confluence/group",
+      headers,
+      payload: { criteria: {}, locale: "de" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(spy.cloudCalls()).toBe(0); // die unklare Variante macht den Batch vertraulich
+    // Gegenprobe: sind BEIDE Varianten explizit intern, bleibt der Cloud-Weg offen.
+    const spy2 = cloudSpyReasoner(["p1"]);
+    const both = await importApp(
+      [
+        item({ title: "Pumpe warten", externalId: "p1", confidentiality: "intern" }),
+        item({ title: "Pumpe warten (Doppel)", externalId: "p1", confidentiality: "intern" }),
+      ],
+      { reasoner: spy2.reasoner },
+    );
+    const res2 = await both.app.inject({
+      method: "POST",
+      url: "/api/admin/import/confluence/group",
+      headers: both.headers,
+      payload: { criteria: {}, locale: "de" },
+    });
+    expect(res2.statusCode).toBe(200);
+    expect(spy2.cloudCalls()).toBe(1);
+  });
+});
+
 describe("WP-SHIP7-FIX P0 (Fix 1): Vertraulichkeit der Gruppierung — Cloud nur bei explizit freigegebenen Stufen", () => {
   const groupRequest = (
     app: Awaited<ReturnType<typeof importApp>>["app"],

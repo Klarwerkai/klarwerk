@@ -37,6 +37,9 @@ export const IMPORT_GROUPS_TEXT = {
   // WP-IC-6b (Versionierung): Quelle aktualisiert seit Import + separater Bilanz-Zähler.
   hintSourceNewer: "imp.groups.hintSourceNewer",
   bilanzUpdates: "imp.groups.bilanzUpdates",
+  // WP-REST18 (bens Fix 2): handlungsfähiger SNAPSHOT_EXPIRED-Weg — klare Meldung + Neu gruppieren.
+  expired: "imp.groups.expired",
+  regroup: "imp.groups.regroup",
 } as const;
 
 export interface GroupedCandidate {

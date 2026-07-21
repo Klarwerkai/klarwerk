@@ -7,6 +7,7 @@ import {
   type SelectCriteria,
   candidateHints,
   candidateIdOf,
+  dedupeSelectedItems,
   deriveCriteriaFromPrompt,
   filterImportItems,
   groupPromptUtf8Bytes,
@@ -76,10 +77,13 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
     promise: Promise<CollectAllResult>;
   } | null = null;
   // WP-SHIP7-FIX (bens sammel17-GELB, „EIN Snapshot je Apply-Lauf"): jeder frische Scan bekommt
-  // einen monotonen Token; die letzten ERFOLGREICHEN Snapshots bleiben (über die TTL hinaus)
-  // referenzierbar. /group gibt den Token an den Client; JEDER Apply-Batch desselben Laufs wird
+  // einen monotonen Token. WP-REST18 (bens Präzisierung): das Festhalten ist KEINE Zeit-TTL —
+  // ein Snapshot bleibt referenzierbar, bis ihn RETAINED_SNAPSHOTS neuere erfolgreiche Scans
+  // VERDRÄNGEN (oder der Prozess neu startet); die 60-s-TTL oben steuert nur, wann ein NEUER
+  // Scan fällig ist. /group gibt den Token an den Client; JEDER Apply-Batch desselben Laufs wird
   // aus GENAU diesem festgehaltenen Snapshot bedient — kein Batch sieht eine andere Datenbasis
-  // (row-N-Ids bleiben stabil, notFound bleibt ehrlich). Unbekannter Token → ehrlicher 409.
+  // (row-N-Ids bleiben stabil, notFound bleibt ehrlich). Verdrängter/unbekannter Token →
+  // ehrlicher 409 (der Client bietet dann NUR „Neu gruppieren" an, nie ein Retry mit altem Token).
   let snapshotTokenCounter = 0;
   const RETAINED_SNAPSHOTS = 2;
   const retainedSnapshots = new Map<number, CollectAllResult>();
@@ -314,7 +318,10 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
           const criteria = sanitizeCriteria(request.body?.criteria);
           const snap = collectSnapshotWithToken(adapter);
           const { items } = await snap.promise;
-          const { selected } = filterImportItems(items, criteria);
+          // WP-REST18 (bens Fix 1): EINMAL zentral nach stabiler Kandidaten-Id deduplizieren —
+          // Kandidatenliste, Modell-Eingabe, deterministischer Fallback UND der Vertraulichkeits-
+          // Entscheid arbeiten alle auf DERSELBEN eindeutigen Menge (restriktivste Variante bleibt).
+          const selected = dedupeSelectedItems(filterImportItems(items, criteria).selected);
           // Harte Server-Kappung mit EHRLICHER Meldung — kein stilles Kappen.
           if (selected.length > MAX_GROUP_CANDIDATES) {
             reply.code(400).send({
@@ -445,7 +452,9 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
           } else {
             items = (await collectSnapshot(adapter)).items;
           }
-          const { selected } = filterImportItems(items, criteria);
+          // WP-REST18 (bens Fix 1): DIESELBE zentrale Quell-Id-Dedupe wie in der Gruppierung —
+          // die Apply-Map sieht exakt die Kandidatenmenge, die das Cockpit angezeigt hat.
+          const selected = dedupeSelectedItems(filterImportItems(items, criteria).selected);
           const byId = new Map(selected.map((item, index) => [candidateIdOf(item, index), item]));
           // WP-IC-6b: Status-Wissen VOR dem Lauf — „Aktualisierungen" (Quelle neuer als Import)
           // zählen in der Bilanz separat (Teilmenge von imported, der Bilanz-Vertrag bleibt exakt).

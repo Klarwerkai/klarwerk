@@ -28,6 +28,11 @@ export const SLIDES_RATE_WINDOW_MS = 60_000;
 // abgelaufene, dann die am längsten unbenutzten Einträge verdrängt (TTL + LRU-Verdrängung).
 export const SLIDES_RATE_MAX_ENTRIES = 500;
 
+// WP-REST18 (bens Fix 3): maximale Slot-Haltedauer — großzügig ÜBER der 60-s-Konverter-Deadline;
+// danach gibt der Lease-Watchdog den Slot zwangsweise frei (Fastifys Abort-Erkennung ist laut
+// eigener Doku nicht verlässlich; ohne Lease bliebe ein verwaister Slot bis zum Prozessneustart).
+export const SLIDES_SLOT_LEASE_MS = 120_000;
+
 // Stack-sichere Base64-Grobprüfung (Zeichenklassen-Stern, keine Gruppen-Wiederholung).
 const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
 
@@ -110,28 +115,68 @@ export function slidesRoutes(converter: SlideConverter, guards: Guards): Fastify
   // Modul-Zustand der Serialisierung: max. 1 laufende Konvertierung, keine Warteschlange.
   let running = false;
   // WP-SHIP7-FIX (Fix 5): welcher Request hält den Slot? Request-lokal markiert, damit die
-  // Freigabe (onResponse/onError) NUR vom Halter kommt — abgewiesene Requests geben nie frei.
+  // Freigabe (onResponse/onError/onRequestAbort) NUR vom Halter kommt — abgewiesene Requests
+  // geben nie frei.
   const slotHolder = new WeakSet<FastifyRequest>();
   const limiter = createSlidesRateLimiter();
+  // WP-REST18 (bens Fix 3, Watchdog): begrenzter Slot-Lease. Fastify dokumentiert die Abort-
+  // Erkennung selbst als nicht verlässlich — hält ein Request den Slot länger als die Lease
+  // (großzügig ÜBER der 60-s-Konverter-Deadline), gibt der Timer ihn mit PII-freiem Warn-Log
+  // frei, statt bis zum Prozessneustart zu blockieren.
+  let leaseTimer: NodeJS.Timeout | null = null;
+  let leaseHolder: FastifyRequest | null = null;
 
   const releaseSlot = (request: FastifyRequest): void => {
     if (slotHolder.has(request)) {
       slotHolder.delete(request);
       running = false;
+      if (leaseTimer !== null) {
+        clearTimeout(leaseTimer);
+        leaseTimer = null;
+      }
+      leaseHolder = null;
     }
   };
 
+  const claimSlot = (request: FastifyRequest): void => {
+    running = true;
+    slotHolder.add(request);
+    leaseHolder = request;
+    leaseTimer = setTimeout(() => {
+      leaseTimer = null;
+      const holder = leaseHolder;
+      if (holder !== null && slotHolder.has(holder)) {
+        slotHolder.delete(holder);
+        leaseHolder = null;
+        running = false;
+        // PII-frei: keine Nutzer-/Inhaltsdaten — nur der Fakt der Zwangsfreigabe.
+        process.stderr.write(
+          `[KLARWERK] Folien-Slot nach ${SLIDES_SLOT_LEASE_MS} ms Lease zwangsweise freigegeben (Abort nicht erkannt?).\n`,
+        );
+      }
+    }, SLIDES_SLOT_LEASE_MS);
+    leaseTimer.unref?.();
+  };
+
   return async (app) => {
+    // WP-REST18 (bens Fix 3, ROT): bricht der Client ab, während der 72-MiB-Body geparst wird
+    // (oder der Handler läuft), feuert KEIN onResponse — der Slot bliebe bis zum Prozessneustart
+    // belegt. onRequestAbort gibt ihn frei (nur der Halter; abgewiesene Requests sind No-ops).
+    // Plugin-Scope = nur diese Route.
+    app.addHook("onRequestAbort", async (request) => {
+      releaseSlot(request);
+    });
+
     app.post<{ Body: { data?: string } }>(
       "/api/capture/slides",
       {
         bodyLimit: SLIDES_BODY_LIMIT,
         // Blocker 3 + Fix 5: der komplette Abweisungs-Pfad UND der atomare Slot-Claim laufen VOR
         // dem Body-Parsing (onRequest läuft vor jedem Content-Type-Parser). Reihenfolge:
-        // Auth/Recht → Betriebsschalter → Rate-Limit → Slot-Claim (synchron nach dem letzten
-        // await — zwei Requests können den Slot nie beide nehmen). Bewusst INLINE in den
-        // Routen-Optionen, damit der RBAC-Scanner (routeGuardAudit) die requirePermission-
-        // Verdrahtung dieser Route im Routen-Block sieht.
+        // Auth/Recht → Betriebsschalter → Rate-Limit → Abort-Kurzschluss → Slot-Claim (synchron
+        // nach dem letzten await — zwei Requests können den Slot nie beide nehmen). Bewusst
+        // INLINE in den Routen-Optionen, damit der RBAC-Scanner (routeGuardAudit) die
+        // requirePermission-Verdrahtung dieser Route im Routen-Block sieht.
         onRequest: async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
           const user = await guards.requirePermission("ko.create", request, reply);
           if (!user) {
@@ -152,6 +197,14 @@ export function slidesRoutes(converter: SlideConverter, guards: Guards): Fastify
               });
             return;
           }
+          // WP-REST18 (Fix 3): ein Request, dessen Verbindung WÄHREND des asynchronen Auth-Await
+          // abgerissen ist, darf NICHT nachträglich claimen (das onRequestAbort-Ereignis wäre
+          // schon verpufft, bevor er Halter wurde). Kurzschluss: kein Claim, kein Parse — die
+          // Antwort verpufft bewusst am toten Socket.
+          if (request.raw.aborted || request.raw.destroyed) {
+            reply.code(408).send({ error: "CLIENT_ABORTED", message: "Verbindung abgebrochen." });
+            return;
+          }
           // Fix 5: ATOMARER Slot-Claim — Prüfung und Claim synchron (kein await dazwischen).
           // Der zweite Request im Fenster bekommt 429, OHNE dass sein 72-MiB-Body geparst wird.
           if (running) {
@@ -162,11 +215,11 @@ export function slidesRoutes(converter: SlideConverter, guards: Guards): Fastify
             });
             return;
           }
-          running = true;
-          slotHolder.add(request);
+          claimSlot(request);
         },
         // Fix 5: Freigabe auf ALLEN Pfaden — onResponse feuert nach JEDER gesendeten Antwort
-        // (Erfolg, Validierungsfehler, Parserfehler/413, 500); onError ist der Gürtel dazu.
+        // (Erfolg, Validierungsfehler, Parserfehler/413, 500); onError ist der Gürtel dazu;
+        // onRequestAbort (oben, Plugin-Scope) deckt den Client-Abbruch ohne Antwort ab.
         // Doppel-Freigabe ist durch die request-lokale Markierung ausgeschlossen.
         onResponse: async (request: FastifyRequest): Promise<void> => {
           releaseSlot(request);

@@ -2099,6 +2099,9 @@ const de = {
   "imp.groups.failHttp": "Übertragung fehlgeschlagen",
   "imp.groups.hintSourceNewer": "Quelle aktualisiert seit Import",
   "imp.groups.bilanzUpdates": "davon Aktualisierungen: {{n}}",
+  "imp.groups.expired":
+    "Die Datengrundlage der Gruppierung ist inzwischen abgelaufen — die Übernahme wurde gestoppt und die Auswahl zurückgesetzt. Bitte neu gruppieren.",
+  "imp.groups.regroup": "Neu gruppieren",
   "imp.cleanup.title": "Testdaten aufräumen",
   "imp.cleanup.desc":
     "Entfernt alle Einträge aus der Import-Warteschlange und legt alle aus Confluence oder Jira importierten Beiträge in den Papierkorb. Selbst erstellte Beiträge, Nutzer und Einstellungen bleiben unberührt.",
@@ -5261,6 +5264,9 @@ const en: typeof de = {
   "imp.groups.failHttp": "transfer failed",
   "imp.groups.hintSourceNewer": "source updated since import",
   "imp.groups.bilanzUpdates": "of which updates: {{n}}",
+  "imp.groups.expired":
+    "The data snapshot behind this grouping has expired — the import was stopped and the selection reset. Please group again.",
+  "imp.groups.regroup": "Group again",
   "imp.cleanup.title": "Clean up test data",
   "imp.cleanup.desc":
     "Removes all entries from the import queue and moves all posts imported from Confluence or Jira to the trash. Posts created by hand, users and settings remain untouched.",
@@ -8381,6 +8387,9 @@ const nl: typeof de = {
   "imp.groups.failHttp": "overdracht mislukt",
   "imp.groups.hintSourceNewer": "bron bijgewerkt sinds import",
   "imp.groups.bilanzUpdates": "waarvan actualiseringen: {{n}}",
+  "imp.groups.expired":
+    "De gegevensbasis van deze groepering is inmiddels verlopen — de overname is gestopt en de selectie teruggezet. Groepeer opnieuw.",
+  "imp.groups.regroup": "Opnieuw groeperen",
   "imp.cleanup.title": "Testgegevens opruimen",
   "imp.cleanup.desc":
     "Verwijdert alle items uit de importwachtrij en verplaatst alle uit Confluence of Jira geïmporteerde bijdragen naar de prullenbak. Zelf gemaakte bijdragen, gebruikers en instellingen blijven onaangeroerd.",

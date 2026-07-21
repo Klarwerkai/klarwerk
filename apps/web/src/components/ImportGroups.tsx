@@ -174,12 +174,17 @@ export function ImportGroups({ criteria }: { criteria: ImportSelectCriteria }): 
   const [runState, setRunState] = useState<ApplyRunState>(EMPTY_APPLY_RUN);
   const [bilanz, setBilanz] = useState<ImportBilanz | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // WP-REST18 (bens Fix 2): der Snapshot hinter data.snapshotToken wurde serverseitig verdrängt —
+  // in diesem Zustand gibt es NUR den Weg „Neu gruppieren" (frischer /group-Aufruf, neuer Token);
+  // ein Wiederholen mit dem alten Token liefe garantiert wieder in den 409.
+  const [snapshotExpired, setSnapshotExpired] = useState(false);
 
   const runGrouping = async (): Promise<void> => {
     setBusy("group");
     setError(null);
     setBilanz(null);
     setRunState(EMPTY_APPLY_RUN);
+    setSnapshotExpired(false);
     try {
       const response = await endpoints.admin.import.group({
         criteria,
@@ -224,6 +229,17 @@ export function ImportGroups({ criteria }: { criteria: ImportSelectCriteria }): 
           });
           results.push(result);
         } catch (err) {
+          // WP-REST18 (bens Fix 2): SNAPSHOT_EXPIRED ist KEIN Transportfehler — der alte Token
+          // liefe bei jedem Wiederholen wieder in den 409. Lauf kontrolliert beenden, kompletten
+          // Gruppierungs-Zustand zurücksetzen und NUR den Weg „Neu gruppieren" anbieten.
+          if (err instanceof ApiError && err.code === "SNAPSHOT_EXPIRED") {
+            setData(null);
+            setSelection({});
+            setRunState(EMPTY_APPLY_RUN);
+            setBilanz(null);
+            setSnapshotExpired(true);
+            return;
+          }
           transportFailed.push(...batch);
           setError(err instanceof ApiError ? err.message : t("state.error"));
           break; // Rest bleibt „nicht versucht" — der Wiederholen-Knopf übernimmt ihn.
@@ -246,7 +262,25 @@ export function ImportGroups({ criteria }: { criteria: ImportSelectCriteria }): 
 
   return (
     <div className="mt-3 border-t border-hairline pt-3">
-      {data === null ? (
+      {snapshotExpired ? (
+        // WP-REST18 (Fix 2): handlungsfähiger Zustand — klare Meldung + prominenter Neustart des
+        // Gruppierungs-Flows. Der alte Token existiert hier nicht mehr (data wurde zurückgesetzt).
+        <div className="space-y-2">
+          <p className="rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
+            {t(IMPORT_GROUPS_TEXT.expired)}
+          </p>
+          <Button variant="primary" disabled={busy !== null} onClick={() => void runGrouping()}>
+            {busy === "group" ? (
+              <Loader2 size={15} className="animate-spin" />
+            ) : (
+              <Sparkles size={15} />
+            )}
+            {busy === "group" ? t(IMPORT_GROUPS_TEXT.grouping) : t(IMPORT_GROUPS_TEXT.regroup)}
+          </Button>
+        </div>
+      ) : null}
+
+      {data === null && !snapshotExpired ? (
         <Button variant="primary" disabled={busy === "group"} onClick={() => void runGrouping()}>
           {busy === "group" ? (
             <Loader2 size={15} className="animate-spin" />

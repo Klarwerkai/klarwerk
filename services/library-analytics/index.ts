@@ -58,6 +58,7 @@ export { canonicalImportText } from "./src/text-codec";
 export {
   candidateIdOf,
   candidateHints,
+  dedupeSelectedItems,
   groupingCandidates,
   groupingRequiresConfidential,
   groupPromptUtf8Bytes,
