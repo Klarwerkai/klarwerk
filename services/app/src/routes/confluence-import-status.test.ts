@@ -2,6 +2,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ConfluenceSourceAdapter } from "../../../confluence";
 import type { ImportItem } from "../../../library-analytics";
 import { buildApp, buildServices } from "../build-app";
+import {
+  importStatusFor,
+  importStatusKey,
+  importedAnchorVersions,
+  pendingCandidateVersions,
+} from "../confluence-import";
 import { makeGuards } from "../http";
 import { confluenceImportRoutes } from "./confluence-import-routes";
 
@@ -43,11 +49,14 @@ const P1_V1 = baseItem({ title: "Wartung Pumpe", externalId: "p1", sourceVersion
 const P2_V1 = baseItem({ title: "Wartung Ventile", externalId: "p2", sourceVersion: 1 });
 const NO_ID = baseItem({ title: "Seite ohne Anker" });
 
-async function statusApp(itemsRef: { current: ImportItem[] }) {
+async function statusApp(itemsRef: { current: ImportItem[] }, onScan?: () => void) {
   const adapter = {
     source: "Confluence",
     collect: async () => itemsRef.current,
-    collectAll: async () => ({ items: itemsRef.current, failed: [], truncated: false }),
+    collectAll: async () => {
+      onScan?.();
+      return { items: itemsRef.current, failed: [], truncated: false };
+    },
   } as unknown as ConfluenceSourceAdapter;
   // Der Quell-Anker (KoSource.externalId) wird nur bei aktivem externem Import geschrieben
   // (externalUpsert, s. build-app) — exakt der Produktionszustand mit KLARWERK_CONFLUENCE_IMPORT=1.
@@ -175,5 +184,149 @@ describe("WP-IC-PAKET-1 Teil 4: Import-Status-Abgleich (echte Routen + Services)
     const p2Entry = preview.find((e) => e.title === "Wartung Ventile");
     expect(p2Entry?.alreadyImported).toBe(true);
     expect(p2Entry?.sourceNewer).toBeUndefined();
+  });
+
+  // WP-IC-PAKET-1b (bens ROT-2): offener Kandidat v1 + Quelle v2 → „bereits importiert" UND
+  // „Quelle neuer" (die Kandidaten-Version wird jetzt MIT ausgewertet, nicht nur der KO-Anker).
+  it("offener Kandidat v1 + Quelle in v2 → alreadyImported UND sourceNewer", async () => {
+    const itemsRef = { current: [P1_V1] };
+    const { app, headers } = await statusApp(itemsRef);
+    await app.inject({
+      method: "POST",
+      url: "/api/admin/import/confluence",
+      headers,
+      payload: { dryRun: false },
+    });
+    // Die Quelle liegt jetzt in Version 2 — der Kandidat (v1) ist noch ungeprüft in der Queue.
+    // Neue App-Instanz (frischer Snapshot-Cache), dieselben Services wären ideal — hier reicht
+    // die direkte Helfer-Prüfung unten; HTTP-seitig: itemsRef ändern und erste select-Anfrage stellen.
+    itemsRef.current = [{ ...P1_V1, sourceVersion: 2 }];
+    const select = await app.inject({
+      method: "POST",
+      url: "/api/admin/import/confluence/select",
+      headers,
+      payload: {},
+    });
+    const entry = (
+      select.json().preview as { title: string; alreadyImported?: boolean; sourceNewer?: boolean }[]
+    ).find((e) => e.title === "Wartung Pumpe");
+    expect(entry?.alreadyImported).toBe(true);
+    expect(entry?.sourceNewer).toBe(true);
+  });
+});
+
+// WP-IC-PAKET-1b (bens ROT-2): die Status-Helfer direkt gegen echte Services — Versionsanwesenheit
+// und Provider-Scoping.
+describe("WP-IC-PAKET-1b ROT-2: importStatusFor — versions- und quellrobust", () => {
+  function legacySource(externalId: string, provider: string | null, sourceVersion?: number) {
+    return {
+      id: `src-${externalId}`,
+      label: "Legacy-Anker",
+      url: null,
+      excerpt: null,
+      kind: "external" as const,
+      peerValidated: false,
+      provider,
+      externalId,
+      author: "importer",
+      at: "2026-01-01T00:00:00.000Z",
+      ...(sourceVersion !== undefined ? { sourceVersion } : {}),
+    };
+  }
+
+  async function servicesWithKoSource(source: ReturnType<typeof legacySource>) {
+    const services = buildServices();
+    await services.ko.create({
+      title: "Bestand",
+      statement: "Bestehendes importiertes Wissen.",
+      type: "best_practice",
+      category: "K",
+      author: "importer",
+      sources: [source],
+    });
+    return services;
+  }
+
+  it("Legacy-Anker OHNE Version + Quelle OHNE Version → alreadyImported, aber KEIN sourceNewer", async () => {
+    const services = await servicesWithKoSource(legacySource("p1", "Confluence"));
+    const anchors = await importedAnchorVersions(services.ko);
+    const pending = await pendingCandidateVersions(services.library);
+    const status = importStatusFor(
+      baseItem({ title: "Wartung Pumpe", externalId: "p1", provider: "Confluence" }),
+      anchors,
+      pending,
+    );
+    expect(status.alreadyImported).toBe(true);
+    expect(status.sourceNewer).toBe(false);
+  });
+
+  it("Legacy-Anker OHNE Version + Quelle MIT Version → weiterhin KEIN sourceNewer (einseitig reicht nicht)", async () => {
+    const services = await servicesWithKoSource(legacySource("p1", "Confluence"));
+    const anchors = await importedAnchorVersions(services.ko);
+    const status = importStatusFor(
+      baseItem({
+        title: "Wartung Pumpe",
+        externalId: "p1",
+        sourceVersion: 2,
+        provider: "Confluence",
+      }),
+      anchors,
+      new Map(),
+    );
+    expect(status.alreadyImported).toBe(true);
+    expect(status.sourceNewer).toBe(false);
+  });
+
+  it("Provider-Scoping: Jira-Anker mit gleicher externalId markiert die Confluence-Seite NICHT", async () => {
+    const services = await servicesWithKoSource(legacySource("p9", "Jira", 5));
+    const anchors = await importedAnchorVersions(services.ko);
+    const status = importStatusFor(
+      baseItem({
+        title: "Wartung Pumpe",
+        externalId: "p9",
+        sourceVersion: 9,
+        provider: "Confluence",
+      }),
+      anchors,
+      new Map(),
+    );
+    expect(status.alreadyImported).toBe(false);
+    expect(status.sourceNewer).toBe(false);
+    // Der explizite, getestete Vertrag: Schlüssel = provider + externalId; Anker ohne provider sind
+    // keinem Provider zuordenbar und matchen ehrlich nicht.
+    expect(importStatusKey("Confluence", "p9")).not.toBe(importStatusKey("Jira", "p9"));
+    expect(importStatusKey(null, "p9")).not.toBe(importStatusKey("Confluence", "p9"));
+  });
+});
+
+// WP-IC-PAKET-1b (bens ROT-3): Snapshot-Cache — Live-Filterung läuft auf EINER geladenen Datenbasis.
+describe("WP-IC-PAKET-1b ROT-3: 60-s-Snapshot für Erkundung/Vorschau (Import liest frisch)", () => {
+  it("mehrere Erkundungs-/Vorschau-Aufrufe innerhalb der TTL teilen EINEN Quell-Scan", async () => {
+    let scans = 0;
+    const itemsRef = { current: [P1_V1, P2_V1] };
+    const { app, headers } = await statusApp(itemsRef, () => {
+      scans += 1;
+    });
+    await app.inject({ method: "POST", url: "/api/admin/import/confluence/explore", headers });
+    expect(scans).toBe(1);
+    // Drei schnelle Live-Filter-Änderungen → KEIN weiterer Vollscan (Filter auf dem Snapshot).
+    for (const criteria of [{}, { themes: ["Wartung"] }, { yearFrom: 2020 }]) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/admin/import/confluence/select",
+        headers,
+        payload: { criteria },
+      });
+      expect(res.statusCode).toBe(200);
+    }
+    expect(scans).toBe(1);
+    // Der ECHTE Import liest IMMER frisch (kein Import auf veralteter Datenbasis).
+    await app.inject({
+      method: "POST",
+      url: "/api/admin/import/confluence",
+      headers,
+      payload: { dryRun: true },
+    });
+    expect(scans).toBe(2);
   });
 });

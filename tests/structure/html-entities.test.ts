@@ -7,12 +7,17 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { decodeHtmlEntities as clientDecode } from "../../apps/web/src/lib/htmlEntities";
+import {
+  NAMED_HTML_ENTITIES as CLIENT_NAMED,
+  decodeHtmlEntities as clientDecode,
+} from "../../apps/web/src/lib/htmlEntities";
 import { htmlToPlainText as clientHtmlToPlainText } from "../../apps/web/src/lib/richText";
 import {
   decodeHtmlEntities as serverDecode,
   htmlToPlainText as serverHtmlToPlainText,
 } from "../../services/structure";
+// White-box (wie reasoner-Tests auf src): die benannte Map fuer die GENERIERTE Paritaets-Matrix.
+import { NAMED_HTML_ENTITIES as SERVER_NAMED } from "../../services/structure/src/sanitize";
 
 function read(rel: string): string {
   return readFileSync(resolve(process.cwd(), rel), "utf8");
@@ -53,6 +58,22 @@ describe("WP-IC-PAKET-1 Teil 1: decodeHtmlEntities (Server)", () => {
     expect(serverDecode("&#1114112;")).toBe("&#1114112;");
   });
 
+  // WP-IC-PAKET-1b (bens GELB-1): auch DEL (U+007F) und die C1-Steuerzeichen (U+0080..U+009F) bleiben
+  // fail-closed roh stehen — wie die C0-Zeichen.
+  it("DEL + C1-Steuerzeichen werden NICHT dekodiert (fail-closed wie C0)", () => {
+    for (const decode of [serverDecode, clientDecode]) {
+      expect(decode("&#127;")).toBe("&#127;");
+      expect(decode("&#x7F;")).toBe("&#x7F;");
+      expect(decode("&#x80;")).toBe("&#x80;");
+      expect(decode("&#128;")).toBe("&#128;");
+      expect(decode("&#159;")).toBe("&#159;");
+      expect(decode("&#x9F;")).toBe("&#x9F;");
+      // Die Grenz-Nachbarn bleiben normal dekodierbar (U+007E Tilde, U+00A0 NBSP).
+      expect(decode("&#126;")).toBe("~");
+      expect(decode("&#160;")).toBe("\u00A0");
+    }
+  });
+
   it("XSS-neutral: dekodierte Tags sind nur ein STRING (kein HTML-Kontext in diesem Modul)", () => {
     const out = serverDecode("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(out).toBe("<script>alert(1)</script>");
@@ -78,8 +99,72 @@ describe("WP-IC-PAKET-1 Teil 1: htmlToPlainText dekodiert an der QUELLE (Import-
   });
 });
 
-describe("WP-IC-PAKET-1 Teil 1: Client-Spiegel ist byte-gleich zum Server-Decoder (Parität)", () => {
-  it("identische Ergebnisse auf allen Fixture-Klassen", () => {
+// WP-IC-PAKET-1b (bens GELB-1): Parität als GENERIERTE Matrix statt endlicher Fixture-Liste —
+// deterministisch (keine Zufallsquelle): (1) die Map-Schlüssel BEIDER Seiten sind identisch, (2) jede
+// benannte Entity läuft durch beide Decoder, (3) numerische Codepoints in festen Stichproben-Schritten
+// über den GESAMTEN Bereich 0..0x110000 (dez + hex) plus alle Kantenwerte (C0/Tab/LF/CR, DEL,
+// C1-Grenzen, Surrogat-Grenzen, BMP-/Unicode-Maximum, jenseits des Maximums).
+describe("WP-IC-PAKET-1 Teil 1/1b: Client-Spiegel ist byte-gleich zum Server-Decoder (generierte Matrix)", () => {
+  it("die benannten Maps beider Seiten sind identisch", () => {
+    expect(Object.keys(CLIENT_NAMED).sort()).toEqual(Object.keys(SERVER_NAMED).sort());
+    for (const [name, value] of Object.entries(SERVER_NAMED)) {
+      expect(CLIENT_NAMED[name], name).toBe(value);
+    }
+  });
+
+  it("JEDE benannte Entity der Map dekodiert beidseitig identisch (inkl. Kontext-Varianten)", () => {
+    for (const name of Object.keys(SERVER_NAMED)) {
+      for (const probe of [`&${name};`, `x&${name};y`, `&amp;${name};`, `&${name}`]) {
+        expect(clientDecode(probe), probe).toBe(serverDecode(probe));
+      }
+    }
+  });
+
+  it("numerische Codepoints: Stichproben-Schritte über 0..0x110000 + alle Kantenwerte, dez und hex", () => {
+    const samples: number[] = [];
+    // Fester Stichproben-Schritt über den gesamten Bereich (deterministisch, kein Zufall).
+    for (let code = 0; code <= 0x110000; code += 3557) {
+      samples.push(code);
+    }
+    // Kantenwerte: C0-Grenzen + erlaubte Whitespaces, DEL, C1-Grenzen, Surrogate, Maxima.
+    samples.push(
+      0,
+      8,
+      9,
+      10,
+      11,
+      13,
+      14,
+      31,
+      32,
+      126,
+      127,
+      128,
+      159,
+      160,
+      0xd7ff,
+      0xd800,
+      0xdfff,
+      0xe000,
+      0xfffd,
+      0xffff,
+      0x10000,
+      0x10ffff,
+      0x110000,
+      0x110001,
+    );
+    for (const code of samples) {
+      for (const probe of [
+        `&#${code};`,
+        `&#x${code.toString(16)};`,
+        `&#X${code.toString(16).toUpperCase()};`,
+      ]) {
+        expect(clientDecode(probe), probe).toBe(serverDecode(probe));
+      }
+    }
+  });
+
+  it("gemischte/kaputte Muster bleiben paritätisch (Doppel-Falle, Unbekanntes, leer)", () => {
     const fixtures = [
       "K&uuml;hlung &auml;ndern &middot; t&auml;glich",
       "&#228;&#xE4;&#XE4;",

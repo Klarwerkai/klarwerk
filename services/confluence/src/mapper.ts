@@ -5,7 +5,9 @@
 
 import type { Confidentiality, KnowledgeType } from "../../knowledge-object";
 import type { ImportItem } from "../../library-analytics";
-import { htmlToPlainText } from "../../structure";
+// WP-IC-PAKET-1b (bens ROT-1): decodeHtmlEntities auch für die NICHT-Body-Felder — Confluence liefert
+// Entities nicht nur im Storage-HTML, sondern auch in Titel/Autor/Labels.
+import { decodeHtmlEntities, htmlToPlainText } from "../../structure";
 import type { ConfluencePage } from "./rest-client";
 import { confluenceStorageToHtml } from "./storage";
 
@@ -38,21 +40,26 @@ export function mapConfluencePageToImportItem(
 ): ImportItem {
   const bodyHtml = confluenceStorageToHtml(page.body?.storage?.value ?? "");
   const plain = htmlToPlainText(bodyHtml).trim();
+  // WP-IC-PAKET-1b (bens ROT-1): ALLE textuellen Quellfelder EINMAL an der Quelle dekodieren — nicht
+  // nur das Body-Statement (htmlToPlainText). Titel (auch als Statement-Fallback), Autor und Labels
+  // tragen sonst rohe Entities in Kandidaten, Themen-Ableitung (explore/select) und angenommene KOs.
+  const title = decodeHtmlEntities(page.title);
   const tags = (page.metadata?.labels?.results ?? [])
-    .map((l) => l.name?.trim())
+    .map((l) => (l.name ? decodeHtmlEntities(l.name).trim() : undefined))
     .filter((n): n is string => !!n);
   const webui = page._links?.webui;
   const url = webui ? `${opts.baseUrl.replace(/\/+$/, "")}${webui}` : undefined;
-  const author = page.version?.by?.displayName?.trim();
+  const rawAuthor = page.version?.by?.displayName?.trim();
+  const author = rawAuthor ? decodeHtmlEntities(rawAuthor) : undefined;
   // IC-1: Provenienz-Datum der letzten Version (Confluence version.when, ISO) → nur wenn vorhanden.
   const updatedAt = page.version?.when?.trim();
   const governance = confluenceGovernanceConfidentiality(page);
 
   return {
-    title: page.title,
-    // Kernaussage: Plaintext des Body (Fallback Titel, damit statement nie leer ist); der volle Rich-
-    // Body reist als bodyHtml mit und wird serverseitig sanitisiert (KoService.create).
-    statement: plain || page.title,
+    title,
+    // Kernaussage: Plaintext des Body (Fallback dekodierter Titel, damit statement nie leer ist); der
+    // volle Rich-Body reist als bodyHtml mit und wird serverseitig sanitisiert (KoService.create).
+    statement: plain || title,
     type: opts.defaultType ?? "best_practice",
     category: opts.spaceKey,
     ...(author ? { author } : {}),

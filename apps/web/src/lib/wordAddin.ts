@@ -20,6 +20,26 @@ export function deriveDraftTitleFromSelection(text: string): string {
   return title.length > 0 ? title : WORD_ADDIN_FALLBACK_TITLE;
 }
 
+// WP-KLARA-1c (Pedis Live-Befund, Word Mac 16.111): Anmelde-RÜCKWEG. Das Panel navigiert NICHT mehr
+// zur App (dort blieb es nach dem Login auf der vollen Webseite hängen), sondern öffnet die Anmeldung
+// in einem EIGENEN Fenster und POLLT /api/auth/me. Diese pure Funktion entscheidet je Poll-Tick:
+// fertig (Session da → angemeldeten Zustand zeigen, OHNE Navigation), Frist abgelaufen (ehrlicher
+// Timeout-Hinweis) oder weiter warten.
+export const WORD_ADDIN_LOGIN_POLL_INTERVAL_MS = 3000;
+export const WORD_ADDIN_LOGIN_POLL_MAX_MS = 300000; // 5 Minuten
+
+export type LoginPollDecision = "done" | "timeout" | "poll";
+
+export function loginPollDecision(elapsedMs: number, signedIn: boolean): LoginPollDecision {
+  if (signedIn) {
+    return "done";
+  }
+  if (elapsedMs >= WORD_ADDIN_LOGIN_POLL_MAX_MS) {
+    return "timeout";
+  }
+  return "poll";
+}
+
 // Selektion → sicheres Body-HTML: je nicht-leere Zeile ein <p>, Text vollständig escaped (keine
 // Roh-HTML-Übernahme aus Word). Leere Selektion → leerer String (der Aufrufer meldet ehrlich).
 export function selectionToBodyHtml(text: string): string {

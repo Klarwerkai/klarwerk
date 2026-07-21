@@ -17,6 +17,8 @@ import { endpoints } from "../api/endpoints";
 import type { ImportSelectCriteria, ImportSelectResponse } from "../api/types";
 import { decodeHtmlEntities } from "../lib/htmlEntities";
 import { summarizeSelectCriteria } from "../lib/importExplore";
+// WP-IC-PAKET-1b (bens ROT-3): latest-wins — Antworten aelterer Requests werden verworfen.
+import { createLatestWins } from "../lib/latestWins";
 import { Button, TextInput } from "./ui";
 
 // Klick-Filter der Erkundungs-Landkarte (Roh-Werte, wie der Server sie kennt — dekodiert wird nur die
@@ -41,6 +43,11 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
   // WP-IC-PAKET-1 (Teil 4): Auswahl-Zustand je Vorschau-Zeile — Standard: alles an, AUSSER bereits
   // importierte Einträge (Doppel-Import vermeiden); bewusstes Wieder-Anwählen bleibt möglich.
   const [checkedRows, setCheckedRows] = useState<boolean[]>([]);
+  // WP-IC-PAKET-1b (bens ROT-3): die angezeigte Vorschau liegt in EIGENEM State und wird NUR vom
+  // latest-wins-Guard gesetzt — select.data (letzte SETTLED Mutation) könnte eine ältere, später
+  // fertig gewordene Antwort sein und Vorschau + checkedRows rückwärts überschreiben.
+  const [preview, setPreview] = useState<ImportSelectResponse | null>(null);
+  const latestRef = useRef(createLatestWins());
 
   const buildCriteria = (): ImportSelectCriteria => {
     const parsedLimit = parsedPositiveInt(limit);
@@ -56,10 +63,21 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
     };
   };
 
-  const select = useMutation<ImportSelectResponse>({
-    mutationFn: () =>
-      endpoints.admin.import.select({ prompt: prompt.trim(), criteria: buildCriteria() }),
-    onSuccess: (data) => {
+  const select = useMutation<{ requestId: number; data: ImportSelectResponse }>({
+    mutationFn: async () => {
+      // ROT-3: jeder Start zieht eine Request-ID; nur die zuletzt gestartete darf anwenden.
+      const requestId = latestRef.current.begin();
+      const data = await endpoints.admin.import.select({
+        prompt: prompt.trim(),
+        criteria: buildCriteria(),
+      });
+      return { requestId, data };
+    },
+    onSuccess: ({ requestId, data }) => {
+      if (!latestRef.current.isCurrent(requestId)) {
+        return; // ältere Antwort — verwerfen, die neuere Vorschau bleibt stehen
+      }
+      setPreview(data);
       setCheckedRows(data.preview.map((entry) => entry.alreadyImported !== true));
     },
   });
@@ -67,7 +85,7 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
   // WP-IC-PAKET-1 (Teil 3): LIVE-Trefferzahl — sobald eine Vorschau einmal geöffnet wurde, aktualisiert
   // jede Filter-Änderung (Chips/Jahre/Limit) sie automatisch (debounced; Prompt weiterhin per Knopf).
   const hasPreviewRef = useRef(false);
-  if (select.data !== undefined) {
+  if (preview !== null) {
     hasPreviewRef.current = true;
   }
   const criteriaKey = JSON.stringify([
@@ -92,8 +110,8 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
     return () => clearTimeout(timer);
   }, [criteriaKey]);
 
-  const criteriaLines = select.data
-    ? summarizeSelectCriteria(select.data.criteria, {
+  const criteriaLines = preview
+    ? summarizeSelectCriteria(preview.criteria, {
         themes: t("imp.select.critThemes"),
         authors: t("imp.select.critAuthors"),
         keywords: t("imp.select.critKeywords"),
@@ -104,7 +122,7 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
     : [];
 
   const errorMessage = select.error instanceof ApiError ? select.error.message : t("state.error");
-  const alreadyImportedCount = select.data?.alreadyImported ?? 0;
+  const alreadyImportedCount = preview?.alreadyImported ?? 0;
   const selectedCount = checkedRows.filter(Boolean).length;
 
   const toggleRow = (index: number): void => {
@@ -178,14 +196,15 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
         </p>
       ) : null}
 
-      {select.data ? (
+      {/* ROT-3: gerendert wird IMMER der latest-wins-Stand (preview), nie select.data direkt. */}
+      {preview ? (
         <div className="mt-3 rounded-card border border-hairline bg-page p-3">
           <div className="text-[13px] font-semibold text-text">
             {t("imp.select.matched", {
-              matched: select.data.preview.length,
-              total: select.data.matched,
+              matched: preview.preview.length,
+              total: preview.matched,
             })}
-            {select.data.limited ? ` · ${t("imp.select.limitedNote")}` : ""}
+            {preview.limited ? ` · ${t("imp.select.limitedNote")}` : ""}
             {/* WP-IC-PAKET-1 (Teil 4): ehrlicher Import-Status der Vorschau. */}
             {alreadyImportedCount > 0
               ? ` · ${t("imp.select.alreadyImported", { n: alreadyImportedCount })}`
@@ -204,14 +223,14 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
           )}
 
           {/* Vorschau-Liste mit Auswahl (Teil 4): bereits Importiertes markiert + standardmäßig abgewählt. */}
-          {select.data.preview.length > 0 ? (
+          {preview.preview.length > 0 ? (
             <>
               <p className="mt-2 text-[11.5px] text-muted-2">
                 {t("imp.select.selectedCount", { n: selectedCount })}
                 {alreadyImportedCount > 0 ? ` — ${t("imp.select.importedDeselected")}` : ""}
               </p>
               <ul className="mt-1.5 space-y-1 border-t border-hairline pt-2">
-                {select.data.preview.map((entry, i) => (
+                {preview.preview.map((entry, i) => (
                   <li
                     key={`${entry.title}-${i}`}
                     className="flex items-start gap-2 text-[12.5px] text-text"

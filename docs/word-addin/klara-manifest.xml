@@ -1,12 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- WP-KLARA-1: Word-Taskpane-Add-in "Klara" (Sideload). Das Taskpane liegt AUF der App-Domain
-     (public/word-addin/), daher same-origin API-Zugriff mit Session-Cookie. app.klarwerk.ai leitet
-     serverseitig 301 auf klarwerk.ai um — beide Domains stehen deshalb in den AppDomains. -->
 <OfficeApp
   xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
   xsi:type="TaskPaneApp">
+  <!-- WP-KLARA-1: Word-Taskpane-Add-in "Klara" (Sideload). Das Taskpane liegt AUF der App-Domain
+       (public/word-addin/), daher same-origin API-Zugriff mit Session-Cookie. app.klarwerk.ai leitet
+       serverseitig 301 auf klarwerk.ai um — beide Domains stehen deshalb in den AppDomains.
+       WP-KLARA-1c (Pedis Sideload-Befund, Word Mac 16.111): Kommentare stehen bewusst NACH dem
+       Root-Element-Start — ein Kommentar-Header VOR <OfficeApp> war vermutlich Mitursache, dass das
+       Add-in im Sideload nicht erschien. Vor dem Kopieren in den wef-Ordner nichts umbauen. -->
   <Id>7f6b1c9e-4a2d-4e8f-9b3a-2c5d8e7f1a64</Id>
   <Version>1.0.0.0</Version>
   <ProviderName>KLARWERK</ProviderName>

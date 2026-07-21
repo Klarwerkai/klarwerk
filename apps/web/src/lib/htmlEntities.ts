@@ -10,7 +10,8 @@
 // Unbekannte benannte Entities und ungültige Codepoints bleiben unverändert (fail-closed). Das Ergebnis
 // ist IMMER nur ein STRING für Text-Kontexte — die Aufrufer rendern ihn als React-Textknoten, nie als
 // Roh-HTML (XSS-neutral; der Test pinnt das an den Anzeige-Stellen).
-const NAMED_HTML_ENTITIES: Record<string, string> = {
+// WP-IC-PAKET-1b (GELB-1): exportiert für den generierten Paritäts-Test gegen das Server-Original.
+export const NAMED_HTML_ENTITIES: Record<string, string> = {
   amp: "&",
   lt: "<",
   gt: ">",
@@ -70,7 +71,11 @@ export function decodeHtmlEntities(text: string): string {
     if (body.startsWith("#")) {
       const hex = body[1] === "x" || body[1] === "X";
       const code = Number.parseInt(hex ? body.slice(2) : body.slice(1), hex ? 16 : 10);
-      const isControl = code < 32 && code !== 9 && code !== 10 && code !== 13;
+      // WP-IC-PAKET-1b (bens GELB-1): auch DEL (U+007F) und C1 (U+0080..U+009F) fail-closed roh lassen.
+      const isControl =
+        (code < 32 && code !== 9 && code !== 10 && code !== 13) ||
+        code === 0x7f ||
+        (code >= 0x80 && code <= 0x9f);
       if (
         !Number.isInteger(code) ||
         isControl ||

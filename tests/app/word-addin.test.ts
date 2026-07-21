@@ -9,7 +9,9 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   WORD_ADDIN_FALLBACK_TITLE,
+  WORD_ADDIN_LOGIN_POLL_MAX_MS,
   deriveDraftTitleFromSelection,
+  loginPollDecision,
   selectionToBodyHtml,
 } from "../../apps/web/src/lib/wordAddin";
 
@@ -51,6 +53,16 @@ describe("WP-KLARA-1: Hilfslogik (DOM-freies Modul)", () => {
     expect(selectionToBodyHtml("")).toBe("");
     expect(selectionToBodyHtml("  \n  ")).toBe("");
   });
+
+  // WP-KLARA-1c: pure Anmelde-Warte-Entscheidung — Session da → fertig; Frist (5 Min) → Timeout;
+  // sonst weiter pollen. Angemeldet gewinnt IMMER (auch nach der Frist — nie Erfolg verwerfen).
+  it("loginPollDecision: done/timeout/poll deterministisch", () => {
+    expect(loginPollDecision(0, false)).toBe("poll");
+    expect(loginPollDecision(WORD_ADDIN_LOGIN_POLL_MAX_MS - 1, false)).toBe("poll");
+    expect(loginPollDecision(WORD_ADDIN_LOGIN_POLL_MAX_MS, false)).toBe("timeout");
+    expect(loginPollDecision(0, true)).toBe("done");
+    expect(loginPollDecision(WORD_ADDIN_LOGIN_POLL_MAX_MS + 1, true)).toBe("done");
+  });
 });
 
 describe("WP-KLARA-1: Inline-Kopie im Taskpane ist VERHALTENSGLEICH zum Modul", () => {
@@ -62,11 +74,12 @@ describe("WP-KLARA-1: Inline-Kopie im Taskpane ist VERHALTENSGLEICH zum Modul", 
     expect(end).toBeGreaterThan(start);
     const block = html.slice(start, end);
     const factory = new Function(
-      `${block}; return { deriveDraftTitleFromSelection: deriveDraftTitleFromSelection, selectionToBodyHtml: selectionToBodyHtml };`,
+      `${block}; return { deriveDraftTitleFromSelection: deriveDraftTitleFromSelection, selectionToBodyHtml: selectionToBodyHtml, loginPollDecision: loginPollDecision };`,
     );
     const inline = factory() as {
       deriveDraftTitleFromSelection: (text: string) => string;
       selectionToBodyHtml: (text: string) => string;
+      loginPollDecision: (elapsedMs: number, signedIn: boolean) => string;
     };
     const fixtures = [
       "",
@@ -83,6 +96,21 @@ describe("WP-KLARA-1: Inline-Kopie im Taskpane ist VERHALTENSGLEICH zum Modul", 
       );
       expect(inline.selectionToBodyHtml(fx), `body:${fx.slice(0, 20)}`).toBe(
         selectionToBodyHtml(fx),
+      );
+    }
+    // WP-KLARA-1c: auch die Anmelde-Warte-Entscheidung ist verhaltensgleich gespiegelt.
+    const pollFixtures: [number, boolean][] = [
+      [0, false],
+      [2_999, false],
+      [WORD_ADDIN_LOGIN_POLL_MAX_MS - 1, false],
+      [WORD_ADDIN_LOGIN_POLL_MAX_MS, false],
+      [WORD_ADDIN_LOGIN_POLL_MAX_MS + 1, false],
+      [0, true],
+      [WORD_ADDIN_LOGIN_POLL_MAX_MS + 1, true],
+    ];
+    for (const [elapsed, signedIn] of pollFixtures) {
+      expect(inline.loginPollDecision(elapsed, signedIn), `poll:${elapsed}/${signedIn}`).toBe(
+        loginPollDecision(elapsed, signedIn),
       );
     }
   });
@@ -175,10 +203,48 @@ describe("WP-KLARA-1: Manifest + Taskpane + Hosting", () => {
     expect(html).toContain("checkSession();");
   });
 
-  it("Sideload-Anleitung existiert mit beiden Wegen (Hochladen + wef-Ordner)", () => {
+  // WP-KLARA-1c (Pedis Live-Befund): Der Anmelde-Knopf navigiert das Panel NICHT mehr zur App (dort
+  // blieb es nach dem Login auf der vollen Webseite haengen) — Anmeldung in EIGENEM Fenster
+  // (Office-Dialog, sonst window.open) + Session-Polling auf taskpane.html.
+  it("Login-Rueckweg: keine Panel-Navigation mehr; eigenes Fenster + Session-Polling mit Frist und Abbrechen", () => {
+    const html = read(TASKPANE);
+    // Die alte Navigation (Ursache des Haengenbleibens) ist raus.
+    expect(html).not.toContain('window.location.href = "/"');
+    // Eigenes Fenster: offizieller Office-Dialog zuerst, window.open als Fallback (Browser-Vorschau).
+    expect(html).toContain("displayDialogAsync");
+    expect(html).toContain('window.open(url, "_blank")');
+    // Polling nutzt die gespiegelte pure Entscheidung + die /api/auth/me-Route (keine neue API).
+    expect(html).toContain("loginPollDecision(Date.now() - loginPollStartedMs");
+    expect(html).toContain("setInterval(pollLoginOnce, WORD_ADDIN_LOGIN_POLL_INTERVAL_MS)");
+    expect(html).toContain("WORD_ADDIN_LOGIN_POLL_MAX_MS = 300000");
+    // Sichtbarer Warte-Zustand + Abbrechen; Timeout endet ehrlich.
+    expect(html).toContain('id="login-cancel-btn"');
+    expect((html.match(/loginWaiting: "/g) ?? []).length).toBe(3);
+    expect((html.match(/loginCancel: "/g) ?? []).length).toBe(3);
+    expect((html.match(/loginTimeout: "/g) ?? []).length).toBe(3);
+    // Erfolg → normale Zustands-Renderung OHNE Navigation (checkSession), Dialog wird geschlossen.
+    expect(html).toContain("stopLoginPolling();");
+    expect(html).toContain("loginDialog.close");
+  });
+
+  it("Sideload-Anleitung: funktionierender Mac-Weg zuerst (wef + Cache + Neustart + Home-Tab), Hochladen als Fallback", () => {
     const md = read("docs/word-addin/SIDELOAD-ANLEITUNG.md");
+    // WP-KLARA-1c: Weg A = wef-Ordner; Klara erscheint im HOME-Tab unter Add-ins.
+    expect(md).toContain("Weg A — wef-Ordner");
+    expect(md).toContain("HOME-Tab");
+    expect(md.indexOf("wef-Ordner")).toBeLessThan(md.indexOf("Mein Add-In hochladen"));
+    expect(md).toContain("Weg B — Fallback");
     expect(md).toContain("Mein Add-In hochladen");
-    expect(md).toContain("wef");
     expect(md).toContain("Troubleshooting");
+    // Kommentar-Header-Hinweis: Manifest unveraendert kopieren, kein Header vor OfficeApp.
+    expect(md).toContain("OHNE Kommentar-Header");
+  });
+
+  it("Manifest: KEIN Kommentar vor <OfficeApp> (vermutliche Mitursache des Nicht-Erscheinens)", () => {
+    const xml = read(MANIFEST);
+    const beforeRoot = xml.slice(0, xml.indexOf("<OfficeApp"));
+    expect(beforeRoot).not.toContain("<!--");
+    // Direkt nach der XML-Deklaration folgt das Root-Element.
+    expect(beforeRoot.trim()).toBe('<?xml version="1.0" encoding="UTF-8"?>');
   });
 });

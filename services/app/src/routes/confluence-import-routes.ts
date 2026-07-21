@@ -13,9 +13,9 @@ import {
 import type { Reasoner } from "../../../reasoner";
 import {
   type ImportRunSummary,
-  existingVersions,
   importStatusFor,
-  pendingImportExternalIds,
+  importedAnchorVersions,
+  pendingCandidateVersions,
   runConfluenceImport,
 } from "../confluence-import";
 import type { Guards } from "../http";
@@ -39,6 +39,37 @@ export interface ConfluenceImportRouteDeps {
 
 export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): FastifyPluginAsync {
   const makeAdapter = deps.makeAdapter ?? (() => createConfluenceAdapterFromEnv());
+
+  // WP-IC-PAKET-1b (bens ROT-3): kurzlebiger SNAPSHOT-Cache NUR für die READ-ONLY Erkundungs-/
+  // Vorschau-Routen. Die Live-Trefferzahl (debounced Filter-Änderungen) feuerte sonst je Änderung
+  // einen VOLLEN Quell-Scan (adapter.collectAll) — langsam, Rate-Limit-Risiko und racy: zwei Scans
+  // können sich überholen und liefern verschiedene Datenbasen in die Vorschau. Der Snapshot hält die
+  // Filterung auf EINER geladenen Datenbasis. TTL bewusst 60 s: lang genug für einen kompletten
+  // Filter-Klick-Zyklus, kurz genug, dass eine neue Erkundung frische Quelldaten sieht. Es gibt genau
+  // EINE konfigurierte Quelle und die Routen sind admin-only (users.manage) → ein Cache je
+  // Routen-Registrierung genügt („pro Quelle"). Als PROMISE gecacht, damit auch zeitgleiche erste
+  // Aufrufe denselben Scan teilen (kein Doppel-Scan); Fehler werden NICHT gecacht. Der ECHTE Import
+  // (runConfluenceImport) liest weiterhin IMMER frisch; Import-Status/Markierung wird je Request
+  // frisch aus den Repos gelesen — nur die Quell-Items sind gecacht.
+  const SNAPSHOT_TTL_MS = 60_000;
+  type CollectAllResult = Awaited<ReturnType<ConfluenceSourceAdapter["collectAll"]>>;
+  let snapshot: { at: number; promise: Promise<CollectAllResult> } | null = null;
+  function collectSnapshot(adapter: ConfluenceSourceAdapter): Promise<CollectAllResult> {
+    if (snapshot !== null && Date.now() - snapshot.at < SNAPSHOT_TTL_MS) {
+      return snapshot.promise;
+    }
+    const promise = adapter.collectAll();
+    const entry = { at: Date.now(), promise };
+    snapshot = entry;
+    promise.catch(() => {
+      // Fehlgeschlagene Scans nicht 60 s festhalten — nächster Aufruf versucht es frisch.
+      if (snapshot === entry) {
+        snapshot = null;
+      }
+    });
+    return promise;
+  }
+
   return async (app) => {
     // WP-E (19.07.2026): JEDER Sende-Pfad endet mit `return reply`. Reply ist ein Thenable — die
     // Handler-Promise adoptiert es und resolved erst NACH Response-Ende; Fastifys Promise-Abschluss
@@ -109,16 +140,16 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
         return reply;
       }
       try {
-        // READ-ONLY: nur lesen + aggregieren. collectAll schreibt nichts.
-        const { items, truncated } = await adapter.collectAll();
+        // READ-ONLY: nur lesen + aggregieren (WP-IC-PAKET-1b ROT-3: über den 60-s-Snapshot).
+        const { items, truncated } = await collectSnapshot(adapter);
         // WP-IC-PAKET-1 (Teil 4, IC-6a): ehrlicher Import-Abgleich über die Quell-Referenzen
-        // (KoSource.externalId + offene Kandidaten) — „X Seiten, davon Y bereits importiert".
-        const [importedVersions, pendingIds] = await Promise.all([
-          existingVersions(deps.koService),
-          pendingImportExternalIds(deps.library),
+        // (KoSource-Anker + offene Kandidaten, provider-scoped) — „X Seiten, davon Y bereits importiert".
+        const [anchorVersions, pendingVersions] = await Promise.all([
+          importedAnchorVersions(deps.koService),
+          pendingCandidateVersions(deps.library),
         ]);
         const alreadyImported = items.filter(
-          (item) => importStatusFor(item, importedVersions, pendingIds).alreadyImported,
+          (item) => importStatusFor(item, anchorVersions, pendingVersions).alreadyImported,
         ).length;
         reply.code(200).send({ summary: summarizeImportItems(items), truncated, alreadyImported });
         return reply;
@@ -167,17 +198,18 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
               : {};
           // Effektiv genutzte Kriterien: Klick-Kriterien haben Vorrang, KI ergänzt nur Fehlendes.
           const criteria: SelectCriteria = { ...promptCriteria, ...clickCriteria };
-          // READ-ONLY: nur lesen + filtern. collectAll/filterImportItems schreiben nichts.
-          const { items, truncated } = await adapter.collectAll();
+          // READ-ONLY: nur lesen + filtern (WP-IC-PAKET-1b ROT-3: Filterung auf dem 60-s-Snapshot —
+          // jede Live-Filter-Änderung arbeitet auf DERSELBEN geladenen Datenbasis, kein Scan-Race).
+          const { items, truncated } = await collectSnapshot(adapter);
           const { selected, matched, limited } = filterImportItems(items, criteria);
           // WP-IC-PAKET-1 (Teil 4, IC-6a): jeden Vorschau-Eintrag ehrlich markieren (Quell-Referenz-
-          // Abgleich); `alreadyImported` zählt die markierten Einträge der Vorschau.
-          const [importedVersions, pendingIds] = await Promise.all([
-            existingVersions(deps.koService),
-            pendingImportExternalIds(deps.library),
+          // Abgleich, je Request frisch); `alreadyImported` zählt die markierten Einträge der Vorschau.
+          const [anchorVersions, pendingVersions] = await Promise.all([
+            importedAnchorVersions(deps.koService),
+            pendingCandidateVersions(deps.library),
           ]);
           const preview = selected.map((item) =>
-            toPreviewEntry(item, importStatusFor(item, importedVersions, pendingIds)),
+            toPreviewEntry(item, importStatusFor(item, anchorVersions, pendingVersions)),
           );
           reply.code(200).send({
             matched,

@@ -31,9 +31,9 @@ export interface ConfluenceImportDeps {
 }
 
 // Höchste bereits importierte sourceVersion je externalId (aus den KO-Herkunftsankern).
-// WP-IC-PAKET-1 (Teil 4): exportiert — der Import-Status-Abgleich der Erkundungs-/Vorschau-Routen
-// nutzt EXAKT denselben Quell-Referenz-Vertrag (KoSource.externalId/sourceVersion) wie die Idempotenz.
-export async function existingVersions(koService: KoService): Promise<Map<string, number>> {
+// NUR für die Import-Idempotenz (runConfluenceImport) — der IC-6a-STATUS-Abgleich nutzt die
+// versions- und provider-bewussten Helfer weiter unten (WP-IC-PAKET-1b, bens ROT-2).
+async function existingVersions(koService: KoService): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   for (const ko of await koService.list()) {
     for (const s of ko.sources ?? []) {
@@ -58,36 +58,84 @@ async function pendingKeys(library: LibraryService): Promise<Set<string>> {
   return out;
 }
 
-// WP-IC-PAKET-1 (Teil 4, IC-6a): externalIds ALLER offenen Kandidaten (versionsunabhängig) — für die
-// ehrliche „bereits importiert"-Markierung in Erkundung/Vorschau (eine Seite in der Queue zählt als
-// importiert, auch wenn Pedi sie noch nicht geprüft hat).
-export async function pendingImportExternalIds(library: LibraryService): Promise<Set<string>> {
-  const out = new Set<string>();
-  for (const c of await library.listImportCandidates()) {
-    if (c.status === "neu" && c.item.externalId) {
-      out.add(c.item.externalId);
+// ---- WP-IC-PAKET-1b (bens ROT-2): IC-6a-Status-Abgleich, versions- und quellrobust ----
+//
+// STATUS-SCHLÜSSEL: provider + externalId. Vertragslage geprüft: KoSource trägt provider (buildSource
+// schreibt item.provider — für Confluence immer "Confluence") und der Kandidat trägt item.provider.
+// Der Quell-Scope (spaceKey/sourceScope) bleibt BEWUSST draußen: eine Confluence-Seite kann den Space
+// wechseln (gleiche pageId) — Scope im Schlüssel würde sie fälschlich als „nicht importiert" zeigen.
+// Damit gilt der explizite, getestete Vertrag: externalId ist EINDEUTIG JE PROVIDER; ein zweiter
+// Provider mit zufällig gleicher externalId erzeugt KEINEN falschen Status. Anker OHNE provider
+// (theoretische Altdaten) sind keinem Provider zuordenbar und werden ehrlich NICHT gematcht.
+export function importStatusKey(provider: string | null | undefined, externalId: string): string {
+  return `${provider ?? ""}::${externalId}`;
+}
+
+// Merkt je Schlüssel die höchste EXPLIZITE Version — oder null, wenn (nur) versionslose Einträge
+// existieren (Legacy): null zählt für „bereits importiert", NIE für „Quelle neuer".
+function noteVersion(out: Map<string, number | null>, key: string, version: number | null): void {
+  const prev = out.get(key);
+  if (prev === undefined || (version !== null && (prev === null || version > prev))) {
+    out.set(key, version);
+  }
+}
+
+// Import-Status-Basis 1: KO-Herkunftsanker (provider-scoped, explizite Version oder null).
+export async function importedAnchorVersions(
+  koService: KoService,
+): Promise<Map<string, number | null>> {
+  const out = new Map<string, number | null>();
+  for (const ko of await koService.list()) {
+    for (const s of ko.sources ?? []) {
+      if (!s.externalId) {
+        continue;
+      }
+      const version = typeof s.sourceVersion === "number" ? s.sourceVersion : null;
+      noteVersion(out, importStatusKey(s.provider, s.externalId), version);
     }
   }
   return out;
 }
 
-// WP-IC-PAKET-1 (Teil 4): Import-Status einer Quell-Seite — PURE Ableitung aus dem Quell-Referenz-
-// Vertrag: `alreadyImported`, wenn ein KO-Herkunftsanker (KoSource.externalId) ODER ein offener
-// Kandidat dieselbe externalId trägt. `sourceNewer` über die VERSIONSNUMMER der Quelle
-// (item.sourceVersion > höchste importierte sourceVersion) — die Quell-Referenz führt kein
-// Änderungsdatum, wohl aber die Versionsnummer; reine Anzeige, kein Update-Mechanismus (IC-6b offen).
+// Import-Status-Basis 2: OFFENE Kandidaten — MIT Version (bens ROT-2: offener Kandidat v1 + Quelle v2
+// muss „bereits importiert" UND „Quelle neuer" ergeben, nicht nur ersteres).
+export async function pendingCandidateVersions(
+  library: LibraryService,
+): Promise<Map<string, number | null>> {
+  const out = new Map<string, number | null>();
+  for (const c of await library.listImportCandidates()) {
+    if (c.status !== "neu" || !c.item.externalId) {
+      continue;
+    }
+    const version = typeof c.item.sourceVersion === "number" ? c.item.sourceVersion : null;
+    noteVersion(out, importStatusKey(c.item.provider, c.item.externalId), version);
+  }
+  return out;
+}
+
+// Import-Status einer Quell-Seite — PURE Ableitung. `alreadyImported`, wenn KO-Anker ODER offener
+// Kandidat denselben Status-Schlüssel tragen. `sourceNewer` NUR, wenn BEIDE Seiten eine EXPLIZITE
+// Version haben (bens ROT-2: keine erfundene ?? 1/?? 0-Version mehr — fehlt eine Seite, KEIN Badge);
+// verglichen wird gegen die höchste bekannte Version aus Anker UND offenen Kandidaten. Die
+// Quell-Referenz führt kein Änderungsdatum, wohl aber die Versionsnummer; reine Anzeige, kein
+// Update-Mechanismus (IC-6b offen).
 export function importStatusFor(
   item: ImportItem,
-  importedVersions: ReadonlyMap<string, number>,
-  pendingIds: ReadonlySet<string>,
+  anchorVersions: ReadonlyMap<string, number | null>,
+  pendingVersions: ReadonlyMap<string, number | null>,
 ): { alreadyImported: boolean; sourceNewer: boolean } {
   const id = item.externalId;
   if (!id) {
     return { alreadyImported: false, sourceNewer: false };
   }
-  const importedVersion = importedVersions.get(id);
-  const alreadyImported = importedVersion !== undefined || pendingIds.has(id);
-  const sourceNewer = importedVersion !== undefined && (item.sourceVersion ?? 1) > importedVersion;
+  const key = importStatusKey(item.provider, id);
+  const anchor = anchorVersions.get(key);
+  const pending = pendingVersions.get(key);
+  const alreadyImported = anchor !== undefined || pending !== undefined;
+  const itemVersion = typeof item.sourceVersion === "number" ? item.sourceVersion : null;
+  const known = [anchor, pending].filter((v): v is number => typeof v === "number");
+  const knownMax = known.length > 0 ? Math.max(...known) : null;
+  const sourceNewer = itemVersion !== null && knownMax !== null && itemVersion > knownMax;
   return { alreadyImported, sourceNewer };
 }
 

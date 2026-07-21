@@ -144,11 +144,12 @@ export function deriveTitleThemes(titles: readonly string[]): (string | null)[] 
       if (!isCandidate(token)) {
         continue;
       }
+      // WP-IC-PAKET-1b (bens GELB-2): Gleichstand über FESTEN Codepoint-Vergleich (a < b) — bewusst
+      // KEINE locale-/ICU-abhängige Collation, auf jeder Node-/Browser-Umgebung identisch.
       if (
         best === null ||
         (wordCounts.get(token) ?? 0) > (wordCounts.get(best) ?? 0) ||
-        ((wordCounts.get(token) ?? 0) === (wordCounts.get(best) ?? 0) &&
-          token.localeCompare(best) < 0)
+        ((wordCounts.get(token) ?? 0) === (wordCounts.get(best) ?? 0) && token < best)
       ) {
         best = token;
       }

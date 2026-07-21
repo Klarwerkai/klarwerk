@@ -3,6 +3,8 @@
 // Mindestgruppengröße 2, Determinismus, ehrliches „ohne Thema"), die Erkundungs-Integration
 // (origin-Kennzeichnung, Label-Vorrang) und die Filterbarkeit abgeleiteter Themen in der Auswahl —
 // alles OHNE Modell (der Cloud-Reasoner läuft live im Fallback; dieser Weg ist der Default).
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { ImportItem } from "../../services/library-analytics";
 import {
@@ -60,6 +62,21 @@ describe("WP-IC-PAKET-1 Teil 2: deriveTitleThemes (pure)", () => {
     expect(a).toEqual(b);
     // Beide Wörter kommen in 2 Titeln vor → alphabetisch gewinnt „Onboarding".
     expect(a[0]).toBe("Onboarding");
+  });
+
+  // WP-IC-PAKET-1b (bens GELB-2): der Gleichstand-Vergleich ist ein FESTER Codepoint-Vergleich (a < b),
+  // KEIN localeCompare — localeCompare hängt von ICU/Locale der Laufzeit ab und wäre umgebungsabhängig.
+  it("GELB-2: Codepoint-Vergleich statt localeCompare (umgebungsfester Determinismus)", () => {
+    const src = readFileSync(
+      resolve(process.cwd(), "services/library-analytics/src/themes.ts"),
+      "utf8",
+    );
+    expect(src).not.toContain("localeCompare");
+    expect(src).toContain("token < best");
+    // Verhaltens-Pin am Codepoint-Rand: „zebra" (z) verliert gegen „ähre"? Codepoint: "z" (0x7A) <
+    // "ä" (0xE4) → „zebra" gewinnt den Gleichstand — genau die feste, locale-unabhängige Ordnung.
+    const themes = deriveTitleThemes(["Zebra Ähre", "Zebra Ähre"]);
+    expect(themes[0]).toBe("Zebra");
   });
 
   it("Gruppen, die nach der Zuordnung unter die Mindestgröße fallen, werden ehrlich aufgelöst", () => {

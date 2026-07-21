@@ -339,7 +339,9 @@ export function sanitizeHtml(input: string): string {
 // Codepoints (Steuerzeichen, Surrogate, > U+10FFFF) bleiben als Roh-Text stehen (fail-closed).
 // Ergebnis ist IMMER nur ein STRING für Text-Kontexte — nie HTML (XSS-neutral; wer ihn rendert,
 // rendert Text).
-const NAMED_HTML_ENTITIES: Record<string, string> = {
+// WP-IC-PAKET-1b (GELB-1): exportiert, damit der Paritäts-Test die GENERIERTE Matrix (alle benannten
+// Entities + numerische Stichproben) gegen den Client-Spiegel fahren kann — keine endliche Fixture-Liste.
+export const NAMED_HTML_ENTITIES: Record<string, string> = {
   amp: "&",
   lt: "<",
   gt: ">",
@@ -399,7 +401,12 @@ export function decodeHtmlEntities(text: string): string {
     if (body.startsWith("#")) {
       const hex = body[1] === "x" || body[1] === "X";
       const code = Number.parseInt(hex ? body.slice(2) : body.slice(1), hex ? 16 : 10);
-      const isControl = code < 32 && code !== 9 && code !== 10 && code !== 13;
+      // WP-IC-PAKET-1b (bens GELB-1): auch DEL (U+007F) und die C1-Steuerzeichen (U+0080..U+009F)
+      // bleiben fail-closed als Roh-Text stehen — wie die C0-Zeichen (außer Tab/LF/CR).
+      const isControl =
+        (code < 32 && code !== 9 && code !== 10 && code !== 13) ||
+        code === 0x7f ||
+        (code >= 0x80 && code <= 0x9f);
       if (
         !Number.isInteger(code) ||
         isControl ||
