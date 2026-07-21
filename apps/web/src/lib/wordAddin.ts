@@ -79,3 +79,77 @@ export function selectionToBodyHtml(text: string): string {
     .map((line) => `<p>${escapeHtml(line)}</p>`)
     .join("");
 }
+
+// ---- WP-KLARA-2 (Pedis Befund 2: Formatierung erhalten) ----
+// Word liefert über getSelectedDataAsync(Html)/body.getHtml() ein KOMPLETTES, wildes HTML-Dokument
+// (head/style/mso-Attribute). Der Client schneidet nur den body-Inhalt heraus und schickt ihn als
+// bodyHtml an den BESTEHENDEN Draft-Weg — die autoritative Säuberung (Allowlist, h1→h2-Mapping,
+// Tabellen-Subset, data:image-Bilder) macht der Server-Sanitizer (services/structure) an der
+// Persistenz-Grenze (SCRUM-524 WP5). Hier passiert bewusst KEINE eigene Sanitisierung.
+
+// Spiegel von MAX_INLINE_BODY_HTML_BYTES (lib/docx.ts) — das Taskpane ist buildlos und kann das
+// Modul nicht importieren; ein Test pinnt die Gleichheit. Über dem Budget: ehrlicher
+// Klartext-Fallback statt stillem Verlust (der Server-Bodylimit läge ohnehin bei 5 MiB).
+export const WORD_ADDIN_BODY_BUDGET_BYTES = 3_500_000;
+
+// body-Inhalt aus dem Word-HTML-Dokument schneiden; ohne body-Tags bleibt der Roh-String (Word
+// im Web liefert teils nur Fragmente). Leer/Whitespace → leerer String.
+export function extractWordBodyHtml(html: string): string {
+  const match = /<body[^>]*>([\s\S]*?)<\/body>/i.exec(html);
+  return (match?.[1] ?? html).trim();
+}
+
+// EHRLICHE Bild-Bilanz: Word liefert Bilder je nach Version als data:URL — oder eben nicht
+// (leere/externe/cid:-Quellen). Gezählt wird, was der Server-Sanitizer NICHT als sicheres
+// Rasterbild übernehmen kann (dieselbe data:image-Klasse wie isSafeImgSrc) — diese Bilder gehen
+// verloren und werden dem Nutzer gemeldet. KEIN Fake, keine Platzhalterbilder.
+export function countUndeliveredWordImages(html: string): number {
+  const imgRe = /<img\b[^>]*>/gi;
+  let missing = 0;
+  let match = imgRe.exec(html);
+  while (match !== null) {
+    const srcMatch = /src\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(match[0]);
+    const src = (srcMatch?.[1] ?? srcMatch?.[2] ?? "").trim();
+    if (!/^data:image\/(png|jpe?g|gif|webp);base64,/i.test(src)) {
+      missing += 1;
+    }
+    match = imgRe.exec(html);
+  }
+  return missing;
+}
+
+// UTF-8-Bytelänge (Budget-Messgröße — identisch zur Server-/DOCX-Mechanik).
+export function wordHtmlUtf8Bytes(value: string): number {
+  return new TextEncoder().encode(value).length;
+}
+
+export interface WordDraftBody {
+  bodyHtml: string;
+  usedHtml: boolean; // false = Klartext-Fallback (kein/leeres HTML oder Budget überschritten)
+  overBudget: boolean; // true = HTML lag über dem Budget → Klartext-Fallback, ehrlich gemeldet
+  undeliveredImages: number; // Bilder, die Word nicht als übernehmbare Daten geliefert hat
+}
+
+// EINE Entscheidungsstelle für den Draft-Body: Word-HTML wenn vorhanden und im Budget, sonst der
+// Klartext-Fallback (Zeilen-Absätze) — nie stiller Verlust, die Zähler tragen die ehrliche Meldung.
+export function prepareWordDraftBody(html: string, text: string): WordDraftBody {
+  const inner = extractWordBodyHtml(html || "");
+  const undeliveredImages = countUndeliveredWordImages(inner);
+  if (inner.length === 0) {
+    return {
+      bodyHtml: selectionToBodyHtml(text),
+      usedHtml: false,
+      overBudget: false,
+      undeliveredImages: 0,
+    };
+  }
+  if (wordHtmlUtf8Bytes(inner) > WORD_ADDIN_BODY_BUDGET_BYTES) {
+    return {
+      bodyHtml: selectionToBodyHtml(text),
+      usedHtml: false,
+      overBudget: true,
+      undeliveredImages,
+    };
+  }
+  return { bodyHtml: inner, usedHtml: true, overBudget: false, undeliveredImages };
+}

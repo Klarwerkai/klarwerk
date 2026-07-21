@@ -113,6 +113,15 @@
   <div class="card">
     <h2 data-t="sendTitle"></h2>
     <p class="muted" data-t="sendHint"></p>
+    <!-- WP-KLARA-2 (Pedis Befund 3): Umfangs-Wahl. Seiten-Optionen sind EHRLICH deaktiviert —
+         Word-JS bietet im Taskpane-Kontext kein verlaessliches Seiten-API (Begruendung im Test/
+         Bericht); der Tooltip erklaert es, der Hinweis nennt den Ausweg (Bereich markieren). -->
+    <div class="scope" role="radiogroup" aria-label="Umfang" style="margin:8px 0 4px; display:grid; gap:4px; font-size:12.5px;">
+      <label><input type="radio" name="scope" id="scope-selection" checked /> <span data-t="scopeSelection"></span></label>
+      <label><input type="radio" name="scope" id="scope-document" /> <span data-t="scopeDocument"></span></label>
+      <label id="scope-pages-label" style="color: var(--muted);"><input type="radio" name="scope" id="scope-pages" disabled /> <span data-t="scopePages"></span></label>
+    </div>
+    <p class="muted" id="scope-pages-hint" data-t="scopePagesHint" style="margin-top:0;"></p>
     <button type="button" class="primary" id="send-btn" data-t="sendCta" disabled></button>
     <!-- WP-KLARA-1b (K5): ehrlicher Zustand, wenn Office.js fehlt/nicht bereit wird (Seite im normalen
          Browser geoeffnet) — statt eines toten oder crashenden Senden-Knopfs. -->
@@ -186,6 +195,45 @@
       var decision = loginPollDecision(elapsedMs, signedIn);
       return decision === "poll" ? "schedule" : decision;
     }
+    // WP-KLARA-2 (Formatierung erhalten): body-Inhalt aus dem wilden Word-HTML schneiden; die
+    // autoritative Saeuberung macht der Server-Sanitizer am bestehenden Draft-Weg.
+    var WORD_ADDIN_BODY_BUDGET_BYTES = 3500000;
+
+    function extractWordBodyHtml(html) {
+      var match = /<body[^>]*>([\s\S]*?)<\/body>/i.exec(html);
+      var inner = match && match[1] !== undefined ? match[1] : html;
+      return inner.replace(/^\s+|\s+$/g, "");
+    }
+
+    function countUndeliveredWordImages(html) {
+      var imgRe = /<img\b[^>]*>/gi;
+      var missing = 0;
+      var match = imgRe.exec(html);
+      while (match !== null) {
+        var srcMatch = /src\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(match[0]);
+        var src = srcMatch ? (srcMatch[1] !== undefined ? srcMatch[1] : srcMatch[2]) : "";
+        src = (src || "").replace(/^\s+|\s+$/g, "");
+        if (!/^data:image\/(png|jpe?g|gif|webp);base64,/i.test(src)) { missing += 1; }
+        match = imgRe.exec(html);
+      }
+      return missing;
+    }
+
+    function wordHtmlUtf8Bytes(value) {
+      return new TextEncoder().encode(value).length;
+    }
+
+    function prepareWordDraftBody(html, text) {
+      var inner = extractWordBodyHtml(html || "");
+      var undeliveredImages = countUndeliveredWordImages(inner);
+      if (inner.length === 0) {
+        return { bodyHtml: selectionToBodyHtml(text), usedHtml: false, overBudget: false, undeliveredImages: 0 };
+      }
+      if (wordHtmlUtf8Bytes(inner) > WORD_ADDIN_BODY_BUDGET_BYTES) {
+        return { bodyHtml: selectionToBodyHtml(text), usedHtml: false, overBudget: true, undeliveredImages: undeliveredImages };
+      }
+      return { bodyHtml: inner, usedHtml: true, overBudget: false, undeliveredImages: undeliveredImages };
+    }
     // KW-WORDADDIN-HELPERS-END
 
     // Alle Texte dreisprachig (App-Regel DE/EN/NL) — bewusst HIER, nicht in i18n.ts der SPA.
@@ -205,21 +253,29 @@
         loginTimeout: "Keine Anmeldung erkannt. Bitte erneut versuchen.",
         loginPopupBlocked: "Das Anmelde-Fenster wurde blockiert (Popup-Blocker). Bitte Popups fuer diese Seite erlauben und erneut versuchen.",
         loginOtherContext: "Hinweis: Das Anmelde-Fenster kann in einem anderen Browser-Kontext laufen. Wird die Anmeldung hier nicht erkannt, bitte erneut versuchen.",
-        sendTitle: "Auswahl an KLARWERK senden",
-        sendHint: "Markiere Text im Dokument und sende ihn als neuen Wissens-ENTWURF. Nichts wird automatisch veroeffentlicht — du pruefst alles in KLARWERK.",
-        sendCta: "Auswahl als Entwurf senden",
+        sendTitle: "An KLARWERK senden",
+        sendHint: "Sende den gewaehlten Umfang als neuen Wissens-ENTWURF — mit Formatierung (Ueberschriften, Listen, Tabellen, Bilder soweit Word sie hergibt). Nichts wird automatisch veroeffentlicht — du pruefst alles in KLARWERK.",
+        sendCta: "Als Entwurf senden",
         sendEmpty: "Bitte erst Text im Dokument markieren.",
+        sendEmptyDoc: "Das Dokument enthaelt keinen Text.",
+        scopeSelection: "Markierter Text",
+        scopeDocument: "Ganzes Dokument",
+        scopePages: "Aktuelle Seite / Seiten von-bis",
+        scopePagesOff: "Word gibt Seiten hier nicht her — das Taskpane-API kennt keine verlaesslichen Seitengrenzen.",
+        scopePagesHint: "Seitenweise geht hier nicht — markiere stattdessen den gewuenschten Bereich im Dokument.",
+        sendOverBudget: "Die Formatierung war zu gross fuer die Uebertragung — der Entwurf enthaelt den reinen Text (nichts ging still verloren).",
+        sendImagesMissing: "{n} Bilder konnte Word nicht uebergeben — sie fehlen im Entwurf.",
         sendBusy: "Sende Auswahl ...",
         sendOk: "Entwurf angelegt: {title}",
         sendAuth: "Nicht angemeldet — bitte zuerst bei KLARWERK anmelden.",
         sendError: "Senden fehlgeschlagen ({detail}). Es wurde KEIN Entwurf angelegt.",
         noOffice: "Diese Seite laeuft als Klara-Panel in Microsoft Word. Im Browser kannst du nur den Anmelde-Status sehen — Senden ist hier deaktiviert.",
-        openLink: "In KLARWERK oeffnen (Entwuerfe im Erfassen-Bereich)",
+        openLink: "Entwurf in KLARWERK oeffnen",
         helpTitle: "Was kann Klara hier?",
-        helpCan1: "Deine Textauswahl als KLARWERK-Entwurf anlegen (nur Entwurf, kein fertiges Wissensobjekt).",
-        helpCan2: "Ehrlich sagen, ob du angemeldet bist und ob das Senden geklappt hat.",
+        helpCan1: "Auswahl oder ganzes Dokument als KLARWERK-Entwurf anlegen — mit Formatierung, Tabellen und Bildern, soweit Word sie uebergibt (nur Entwurf, kein fertiges Wissensobjekt).",
+        helpCan2: "Ehrlich sagen, ob du angemeldet bist, ob das Senden geklappt hat und was Word NICHT uebergeben konnte.",
         helpNot1: "Noch NICHT: Fragen beantworten oder das Dokument analysieren — das kommt spaeter.",
-        helpNot2: "Noch NICHT: Bilder oder Formatierungen aus Word uebernehmen — dieser Schritt sendet reinen Text.",
+        helpNot2: "Noch NICHT: seitenweises Senden — Word gibt Seitengrenzen im Taskpane nicht her; markiere stattdessen den Bereich.",
       },
       en: {
         greetTitle: "Hi, I am Klara.",
@@ -236,21 +292,29 @@
         loginTimeout: "No sign-in detected. Please try again.",
         loginPopupBlocked: "The sign-in window was blocked (popup blocker). Please allow popups for this page and try again.",
         loginOtherContext: "Note: the sign-in window may run in a different browser context. If the sign-in is not detected here, please try again.",
-        sendTitle: "Send selection to KLARWERK",
-        sendHint: "Select text in the document and send it as a new knowledge DRAFT. Nothing is published automatically — you review everything in KLARWERK.",
-        sendCta: "Send selection as draft",
+        sendTitle: "Send to KLARWERK",
+        sendHint: "Send the chosen scope as a new knowledge DRAFT — with formatting (headings, lists, tables, images as far as Word provides them). Nothing is published automatically — you review everything in KLARWERK.",
+        sendCta: "Send as draft",
         sendEmpty: "Please select text in the document first.",
+        sendEmptyDoc: "The document contains no text.",
+        scopeSelection: "Selected text",
+        scopeDocument: "Whole document",
+        scopePages: "Current page / pages from-to",
+        scopePagesOff: "Word does not expose pages here — the taskpane API has no reliable page boundaries.",
+        scopePagesHint: "Page-based sending is not possible here — select the desired range in the document instead.",
+        sendOverBudget: "The formatting was too large to transfer — the draft contains the plain text (nothing was lost silently).",
+        sendImagesMissing: "{n} images could not be provided by Word — they are missing from the draft.",
         sendBusy: "Sending selection ...",
         sendOk: "Draft created: {title}",
         sendAuth: "Not signed in — please sign in to KLARWERK first.",
         sendError: "Sending failed ({detail}). NO draft was created.",
         noOffice: "This page runs as the Klara panel inside Microsoft Word. In a browser you can only see the sign-in status — sending is disabled here.",
-        openLink: "Open in KLARWERK (drafts in the capture area)",
+        openLink: "Open draft in KLARWERK",
         helpTitle: "What can Klara do here?",
-        helpCan1: "Create a KLARWERK draft from your text selection (draft only, not a finished knowledge object).",
-        helpCan2: "Tell you honestly whether you are signed in and whether sending worked.",
+        helpCan1: "Create a KLARWERK draft from your selection or the whole document — with formatting, tables and images as far as Word provides them (draft only, not a finished knowledge object).",
+        helpCan2: "Tell you honestly whether you are signed in, whether sending worked and what Word could NOT provide.",
         helpNot1: "NOT yet: answering questions or analysing the document — that comes later.",
-        helpNot2: "NOT yet: carrying over images or formatting from Word — this step sends plain text.",
+        helpNot2: "NOT yet: page-based sending — Word does not expose page boundaries in the taskpane; select the range instead.",
       },
       nl: {
         greetTitle: "Hallo, ik ben Klara.",
@@ -267,21 +331,29 @@
         loginTimeout: "Geen aanmelding herkend. Probeer het opnieuw.",
         loginPopupBlocked: "Het aanmeldvenster is geblokkeerd (pop-upblokkering). Sta pop-ups voor deze pagina toe en probeer het opnieuw.",
         loginOtherContext: "Let op: het aanmeldvenster kan in een andere browsercontext draaien. Wordt de aanmelding hier niet herkend, probeer het dan opnieuw.",
-        sendTitle: "Selectie naar KLARWERK sturen",
-        sendHint: "Selecteer tekst in het document en stuur die als nieuw kennis-CONCEPT. Er wordt niets automatisch gepubliceerd — je controleert alles in KLARWERK.",
-        sendCta: "Selectie als concept sturen",
+        sendTitle: "Naar KLARWERK sturen",
+        sendHint: "Stuur de gekozen omvang als nieuw kennis-CONCEPT — met opmaak (koppen, lijsten, tabellen, afbeeldingen voor zover Word ze levert). Er wordt niets automatisch gepubliceerd — je controleert alles in KLARWERK.",
+        sendCta: "Als concept sturen",
         sendEmpty: "Selecteer eerst tekst in het document.",
+        sendEmptyDoc: "Het document bevat geen tekst.",
+        scopeSelection: "Geselecteerde tekst",
+        scopeDocument: "Heel document",
+        scopePages: "Huidige pagina / pagina van-tot",
+        scopePagesOff: "Word geeft hier geen pagina's vrij — de taskpane-API kent geen betrouwbare paginagrenzen.",
+        scopePagesHint: "Per pagina versturen kan hier niet — selecteer in plaats daarvan het gewenste bereik in het document.",
+        sendOverBudget: "De opmaak was te groot voor de overdracht — het concept bevat de platte tekst (er is niets stilletjes verloren gegaan).",
+        sendImagesMissing: "{n} afbeeldingen kon Word niet leveren — ze ontbreken in het concept.",
         sendBusy: "Selectie versturen ...",
         sendOk: "Concept aangemaakt: {title}",
         sendAuth: "Niet aangemeld — meld je eerst aan bij KLARWERK.",
         sendError: "Versturen mislukt ({detail}). Er is GEEN concept aangemaakt.",
         noOffice: "Deze pagina draait als Klara-paneel in Microsoft Word. In een browser zie je alleen de aanmeldstatus — versturen is hier uitgeschakeld.",
-        openLink: "In KLARWERK openen (concepten in het vastleg-gebied)",
+        openLink: "Concept in KLARWERK openen",
         helpTitle: "Wat kan Klara hier?",
-        helpCan1: "Je tekstselectie als KLARWERK-concept aanmaken (alleen concept, geen afgerond kennisobject).",
-        helpCan2: "Eerlijk zeggen of je bent aangemeld en of het versturen is gelukt.",
+        helpCan1: "Je selectie of het hele document als KLARWERK-concept aanmaken — met opmaak, tabellen en afbeeldingen voor zover Word ze levert (alleen concept, geen afgerond kennisobject).",
+        helpCan2: "Eerlijk zeggen of je bent aangemeld, of het versturen is gelukt en wat Word NIET kon leveren.",
         helpNot1: "Nog NIET: vragen beantwoorden of het document analyseren — dat komt later.",
-        helpNot2: "Nog NIET: afbeeldingen of opmaak uit Word overnemen — deze stap stuurt platte tekst.",
+        helpNot2: "Nog NIET: per pagina versturen — Word geeft paginagrenzen in het taskpane niet vrij; selecteer in plaats daarvan het bereik.",
       },
     };
 
@@ -331,6 +403,8 @@
       document.querySelectorAll("[data-t]").forEach(function (el) {
         el.textContent = t(el.getAttribute("data-t"));
       });
+      // WP-KLARA-2: Tooltip der ehrlich deaktivierten Seiten-Option in der aktuellen Sprache.
+      document.getElementById("scope-pages-label").title = t("scopePagesOff");
       document.documentElement.lang = lang;
     }
 
@@ -531,8 +605,18 @@
       openLoginFallbackWindow(generation, url);
     }
 
-    // (b) Kernfunktion: Word-Selektion lesen → Front-Door-ENTWURF über die bestehende Draft-API
-    // (POST /api/drafts, gleicher Endpunkt wie die App; origin "frontdoor" wie der Front-Door-Save).
+    // WP-KLARA-2 (Pedis Befund 3): der gewaehlte Umfang steuert den Office-Aufruf. Seiten-Optionen
+    // sind ehrlich deaktiviert (kein verlaessliches Seiten-API im Taskpane) — es bleiben Auswahl
+    // und ganzes Dokument.
+    function selectedScope() {
+      var doc = document.getElementById("scope-document");
+      return doc && doc.checked ? "document" : "selection";
+    }
+
+    // (b) Kernfunktion: gewaehlten Umfang lesen → Front-Door-ENTWURF ueber die bestehende Draft-API
+    // (POST /api/drafts; origin "frontdoor"). WP-KLARA-2: das WORD-HTML reist als bodyHtml mit —
+    // die autoritative Saeuberung (Allowlist, h1→h2, Tabellen, data:image) macht der Server-
+    // Sanitizer am Draft-Weg; der Klartext bleibt zusaetzlich erhalten (statement, Fallback).
     function sendSelection() {
       // K5 (Defense-in-Depth): ohne bereites Office NIE in die Word-API greifen — ehrlicher Hinweis
       // statt ReferenceError/toter Klick (der Knopf ist dann ohnehin deaktiviert).
@@ -542,17 +626,12 @@
       }
       var openBlock = document.getElementById("open-block");
       openBlock.className = "hidden";
-      Office.context.document.getSelectedDataAsync(Office.CoercionType.Text, function (result) {
-        if (result.status !== Office.AsyncResultStatus.Succeeded) {
-          showSendStatus("warn", t("sendError", { detail: "Word-API" }));
+      var finish = function (text, html, emptyKey) {
+        if (text.replace(/^\s+|\s+$/g, "").length === 0) {
+          showSendStatus("warn", t(emptyKey));
           return;
         }
-        var text = String(result.value || "");
-        var bodyHtml = selectionToBodyHtml(text);
-        if (bodyHtml.length === 0) {
-          showSendStatus("warn", t("sendEmpty"));
-          return;
-        }
+        var prepared = prepareWordDraftBody(html, text);
         var title = deriveDraftTitleFromSelection(text);
         showSendStatus("warn", t("sendBusy"));
         fetch("/api/drafts", {
@@ -561,8 +640,8 @@
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             title: title,
-            statement: text.trim().slice(0, 500),
-            bodyHtml: bodyHtml,
+            statement: text.replace(/^\s+|\s+$/g, "").slice(0, 500),
+            bodyHtml: prepared.bodyHtml,
             origin: "frontdoor",
           }),
         })
@@ -577,13 +656,67 @@
           })
           .then(function (draft) {
             if (!draft) { return; }
-            showSendStatus("ok", t("sendOk", { title: title }));
+            // EHRLICHE Bilanz: Budget-Fallback und nicht uebergebene Bilder werden gemeldet.
+            var notes = [];
+            if (prepared.overBudget) { notes.push(t("sendOverBudget")); }
+            if (prepared.usedHtml && prepared.undeliveredImages > 0) {
+              notes.push(t("sendImagesMissing", { n: String(prepared.undeliveredImages) }));
+            }
+            var suffix = notes.length > 0 ? " " + notes.join(" ") : "";
+            showSendStatus(notes.length > 0 ? "warn" : "ok", t("sendOk", { title: title }) + suffix);
+            // WP-KLARA-2 (Pedis Befund 1): der Link oeffnet den ENTWURF direkt — bestehendes
+            // Deep-Link-Muster der App (/capture/frontdoor?draft=<id>, Entwurf-fortsetzen-Mechanik).
+            var link = document.getElementById("open-link");
+            link.href =
+              window.location.origin + "/capture/frontdoor?draft=" + encodeURIComponent(draft.id);
             openBlock.className = "";
           })
           .catch(function (err) {
             // NIE Erfolg vortaeuschen: offline/5xx → ehrliche Fehlermeldung, kein Entwurf-Versprechen.
             showSendStatus("warn", t("sendError", { detail: err && err.message ? err.message : "offline" }));
           });
+      };
+      if (selectedScope() === "document") {
+        readWholeDocument(finish);
+      } else {
+        readSelection(finish);
+      }
+    }
+
+    // Umfang "Markierter Text": Klartext (Titel/Kernaussage) + HTML (Formatierung) sequenziell lesen.
+    // Scheitert der HTML-Schritt (aeltere Hosts), bleibt EHRLICH der Klartext-Weg (kein Abbruch).
+    function readSelection(done) {
+      Office.context.document.getSelectedDataAsync(Office.CoercionType.Text, function (textResult) {
+        if (textResult.status !== Office.AsyncResultStatus.Succeeded) {
+          showSendStatus("warn", t("sendError", { detail: "Word-API" }));
+          return;
+        }
+        var text = String(textResult.value || "");
+        Office.context.document.getSelectedDataAsync(Office.CoercionType.Html, function (htmlResult) {
+          var html =
+            htmlResult.status === Office.AsyncResultStatus.Succeeded
+              ? String(htmlResult.value || "")
+              : "";
+          done(text, html, "sendEmpty");
+        });
+      });
+    }
+
+    // Umfang "Ganzes Dokument": Word.run — body.text (Titel/Kernaussage) + body.getHtml().
+    function readWholeDocument(done) {
+      if (!window.Word || typeof Word.run !== "function") {
+        showSendStatus("warn", t("sendError", { detail: "Word-API" }));
+        return;
+      }
+      Word.run(function (context) {
+        var body = context.document.body;
+        body.load("text");
+        var htmlResult = body.getHtml();
+        return context.sync().then(function () {
+          done(String(body.text || ""), String(htmlResult.value || ""), "sendEmptyDoc");
+        });
+      }).catch(function () {
+        showSendStatus("warn", t("sendError", { detail: "Word-API" }));
       });
     }
 

@@ -47,7 +47,9 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
 
   const value: AuthState = {
     // FE-FND-08: bei Abfragefehler (abgelaufene Session/401) kein stale User.
-    user: resolveSessionUser({ data: me.data, isError: me.isError }),
+    // WP-KLARA-2 (typ-neutral): undefined → null VOR dem Aufruf, damit der Generic sauber auf
+    // SessionUser bindet (verhaltensgleich — resolveSessionUser normalisierte ?? null ohnehin).
+    user: resolveSessionUser({ data: me.data ?? null, isError: me.isError }),
     needsSetup,
     oidcEnabled: status.data?.oidcEnabled ?? false,
     isLoading: status.isLoading || (status.isSuccess && !needsSetup && me.isLoading),

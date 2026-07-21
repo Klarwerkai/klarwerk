@@ -7,12 +7,17 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { MAX_INLINE_BODY_HTML_BYTES } from "../../apps/web/src/lib/docx";
 import {
+  WORD_ADDIN_BODY_BUDGET_BYTES,
   WORD_ADDIN_FALLBACK_TITLE,
   WORD_ADDIN_LOGIN_POLL_MAX_MS,
+  countUndeliveredWordImages,
   deriveDraftTitleFromSelection,
+  extractWordBodyHtml,
   loginPollDecision,
   loginPollStep,
+  prepareWordDraftBody,
   selectionToBodyHtml,
 } from "../../apps/web/src/lib/wordAddin";
 
@@ -77,6 +82,54 @@ describe("WP-KLARA-1: Hilfslogik (DOM-freies Modul)", () => {
   });
 });
 
+// WP-KLARA-2 (Pedis Befund 2+3): Word-HTML → Draft-Body. Der Client schneidet nur den body-Inhalt
+// heraus und entscheidet Budget/Fallback; die autoritative Säuberung macht der Server-Sanitizer.
+describe("WP-KLARA-2: Word-HTML-Aufbereitung (DOM-freies Modul)", () => {
+  const WORD_DOC =
+    '<html><head><style>p{mso-style:x}</style></head><body class="WordSection1"><h1>Titel</h1><p><span style="mso-bidi">Text</span></p></body></html>';
+
+  it("Budget-Spiegel: WORD_ADDIN_BODY_BUDGET_BYTES ist EXAKT MAX_INLINE_BODY_HTML_BYTES", () => {
+    expect(WORD_ADDIN_BODY_BUDGET_BYTES).toBe(MAX_INLINE_BODY_HTML_BYTES);
+  });
+
+  it("extractWordBodyHtml: schneidet den body-Inhalt; Fragmente ohne body bleiben roh", () => {
+    expect(extractWordBodyHtml(WORD_DOC)).toBe(
+      '<h1>Titel</h1><p><span style="mso-bidi">Text</span></p>',
+    );
+    expect(extractWordBodyHtml("<p>Fragment</p>")).toBe("<p>Fragment</p>");
+    expect(extractWordBodyHtml("   ")).toBe("");
+  });
+
+  it("countUndeliveredWordImages: zählt Bilder OHNE sichere data:image-Quelle (ehrliche Bilanz, kein Fake)", () => {
+    const html =
+      '<p><img src="data:image/png;base64,QQ=="><img src="cid:img1"><img alt="ohne src"><img src="https://extern/x.png"></p>';
+    expect(countUndeliveredWordImages(html)).toBe(3); // cid:, ohne src, extern — nur data:image zählt als geliefert
+    expect(countUndeliveredWordImages("<p>ohne Bilder</p>")).toBe(0);
+  });
+
+  it("prepareWordDraftBody: HTML im Budget → usedHtml; leeres HTML → Klartext-Fallback", () => {
+    const withHtml = prepareWordDraftBody(WORD_DOC, "Titel\nText");
+    expect(withHtml.usedHtml).toBe(true);
+    expect(withHtml.overBudget).toBe(false);
+    expect(withHtml.bodyHtml).toContain("<h1>Titel</h1>"); // roh — h1→h2 mappt der Server-Sanitizer
+    const noHtml = prepareWordDraftBody("", "Nur Text\nZweite Zeile");
+    expect(noHtml.usedHtml).toBe(false);
+    expect(noHtml.bodyHtml).toBe("<p>Nur Text</p><p>Zweite Zeile</p>");
+  });
+
+  it("Budget-Grenzfall: über MAX_INLINE_BODY_HTML_BYTES → ehrlicher Klartext-Fallback, kein stiller Verlust", () => {
+    const huge = `<body><p>${"x".repeat(WORD_ADDIN_BODY_BUDGET_BYTES + 10)}</p></body>`;
+    const prepared = prepareWordDraftBody(huge, "Kurzer Text");
+    expect(prepared.overBudget).toBe(true);
+    expect(prepared.usedHtml).toBe(false);
+    expect(prepared.bodyHtml).toBe("<p>Kurzer Text</p>"); // Klartext bleibt — nichts geht still verloren
+    // Exakt AM Budget bleibt HTML erhalten.
+    const inner = `<p>${"x".repeat(WORD_ADDIN_BODY_BUDGET_BYTES - 7)}</p>`;
+    const atLimit = prepareWordDraftBody(`<body>${inner}</body>`, "t");
+    expect(atLimit.usedHtml).toBe(true);
+  });
+});
+
 describe("WP-KLARA-1: Inline-Kopie im Taskpane ist VERHALTENSGLEICH zum Modul", () => {
   it("Marker-Block extrahieren, ausführen und auf Fixtures gegen das Modul vergleichen", () => {
     const html = read(TASKPANE);
@@ -86,7 +139,7 @@ describe("WP-KLARA-1: Inline-Kopie im Taskpane ist VERHALTENSGLEICH zum Modul", 
     expect(end).toBeGreaterThan(start);
     const block = html.slice(start, end);
     const factory = new Function(
-      `${block}; return { deriveDraftTitleFromSelection: deriveDraftTitleFromSelection, selectionToBodyHtml: selectionToBodyHtml, loginPollDecision: loginPollDecision, loginPollStep: loginPollStep };`,
+      `${block}; return { deriveDraftTitleFromSelection: deriveDraftTitleFromSelection, selectionToBodyHtml: selectionToBodyHtml, loginPollDecision: loginPollDecision, loginPollStep: loginPollStep, extractWordBodyHtml: extractWordBodyHtml, countUndeliveredWordImages: countUndeliveredWordImages, prepareWordDraftBody: prepareWordDraftBody, WORD_ADDIN_BODY_BUDGET_BYTES: WORD_ADDIN_BODY_BUDGET_BYTES };`,
     );
     const inline = factory() as {
       deriveDraftTitleFromSelection: (text: string) => string;
@@ -98,6 +151,13 @@ describe("WP-KLARA-1: Inline-Kopie im Taskpane ist VERHALTENSGLEICH zum Modul", 
         elapsedMs: number,
         signedIn: boolean,
       ) => string;
+      extractWordBodyHtml: (html: string) => string;
+      countUndeliveredWordImages: (html: string) => number;
+      prepareWordDraftBody: (
+        html: string,
+        text: string,
+      ) => { bodyHtml: string; usedHtml: boolean; overBudget: boolean; undeliveredImages: number };
+      WORD_ADDIN_BODY_BUDGET_BYTES: number;
     };
     const fixtures = [
       "",
@@ -145,6 +205,26 @@ describe("WP-KLARA-1: Inline-Kopie im Taskpane ist VERHALTENSGLEICH zum Modul", 
         inline.loginPollStep(gen, cur, elapsed, signedIn),
         `step:${gen}/${cur}/${elapsed}/${signedIn}`,
       ).toBe(loginPollStep(gen, cur, elapsed, signedIn));
+    }
+    // WP-KLARA-2: auch die Word-HTML-Aufbereitung ist verhaltensgleich gespiegelt (inkl. Budget-Wert).
+    expect(inline.WORD_ADDIN_BODY_BUDGET_BYTES).toBe(WORD_ADDIN_BODY_BUDGET_BYTES);
+    const htmlFixtures: [string, string][] = [
+      ["", "Nur Text"],
+      ["<html><head><style>x</style></head><body class=w><h1>T</h1><p>A</p></body></html>", "T\nA"],
+      ["<p>Fragment ohne body</p>", "F"],
+      ['<body><img src="data:image/png;base64,QQ=="><img src="cid:x"></body>', "Bild"],
+      [`<body><p>${"y".repeat(64)}</p></body>`, "y"],
+    ];
+    for (const [html, text] of htmlFixtures) {
+      expect(inline.extractWordBodyHtml(html), `extract:${html.slice(0, 24)}`).toBe(
+        extractWordBodyHtml(html),
+      );
+      expect(inline.countUndeliveredWordImages(html), `imgs:${html.slice(0, 24)}`).toBe(
+        countUndeliveredWordImages(html),
+      );
+      expect(inline.prepareWordDraftBody(html, text), `prepare:${html.slice(0, 24)}`).toEqual(
+        prepareWordDraftBody(html, text),
+      );
     }
   });
 });
@@ -307,5 +387,58 @@ describe("WP-KLARA-1: Manifest + Taskpane + Hosting", () => {
     expect(beforeRoot).not.toContain("<!--");
     // Direkt nach der XML-Deklaration folgt das Root-Element.
     expect(beforeRoot.trim()).toBe('<?xml version="1.0" encoding="UTF-8"?>');
+  });
+});
+
+// WP-KLARA-2 (Pedis Befunde 1-4): das Taskpane ist vom Textblock-Sender zum Werkzeug geworden —
+// Quelltext-Pins auf die Verdrahtung (die reine Logik ist oben unit-/äquivalenz-getestet).
+describe("WP-KLARA-2: Taskpane-Verdrahtung (Umfang, HTML, Deep-Link, ehrliche Grenzen)", () => {
+  const html = read(TASKPANE);
+
+  it("Befund 1: der Erfolgs-Link öffnet den ENTWURF direkt (bestehendes Deep-Link-Muster der App)", () => {
+    expect(html).toContain('"/capture/frontdoor?draft=" + encodeURIComponent(draft.id)');
+  });
+
+  it("Befund 2: die Auswahl reist als HTML (Office.CoercionType.Html) — der Server-Sanitizer bleibt autoritativ", () => {
+    expect(html).toContain("Office.CoercionType.Html");
+    expect(html).toContain("prepareWordDraftBody(html, text)");
+    // Klartext bleibt zusätzlich erhalten (statement + Fallback) — wie beim DOCX-Weg.
+    expect(html).toContain("Office.CoercionType.Text");
+    expect(html).toContain("bodyHtml: prepared.bodyHtml");
+  });
+
+  it("Befund 3: Umfangs-Wahl — Auswahl (Default) / ganzes Dokument via Word.run; Seiten ehrlich deaktiviert", () => {
+    expect(html).toContain('id="scope-selection" checked');
+    expect(html).toContain('id="scope-document"');
+    expect(html).toContain("Word.run(function (context)");
+    expect(html).toContain("body.getHtml()");
+    // Seiten-Option: sichtbar, aber EHRLICH deaktiviert (kein verlässliches Seiten-API im
+    // Taskpane) — mit Tooltip-Erklärung und Ausweg-Hinweis in allen drei Sprachen.
+    expect(html).toContain('id="scope-pages" disabled');
+    expect(html).toContain(
+      'document.getElementById("scope-pages-label").title = t("scopePagesOff")',
+    );
+    for (const key of [
+      'scopeSelection: "',
+      'scopeDocument: "',
+      'scopePages: "',
+      'scopePagesOff: "',
+      'scopePagesHint: "',
+    ]) {
+      expect(html.split(key).length - 1, key).toBe(3);
+    }
+    // KEINE wacklige Näherung: kein Seiten-API-Aufruf im Quelltext.
+    expect(html).not.toContain("getPageRange");
+    expect(html).not.toContain("WordApiDesktop");
+  });
+
+  it("Befund 4 + Budget: ehrliche Bild-Bilanz und Budget-Fallback in allen drei Sprachen", () => {
+    for (const key of ['sendImagesMissing: "', 'sendOverBudget: "', 'sendEmptyDoc: "']) {
+      expect(html.split(key).length - 1, key).toBe(3);
+    }
+    expect(html).toContain("prepared.undeliveredImages");
+    expect(html).toContain("prepared.overBudget");
+    // Budget-Spiegel im Inline-Block (Gleichheit zum Modul pinnt der Äquivalenztest).
+    expect(html).toContain("WORD_ADDIN_BODY_BUDGET_BYTES = 3500000");
   });
 });
