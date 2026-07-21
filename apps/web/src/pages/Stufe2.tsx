@@ -38,6 +38,7 @@ import type {
 } from "../api/types";
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
+import { ExamplePackages } from "../components/ExamplePackages";
 import { ImportCleanup } from "../components/ImportCleanup";
 import { ImportExplore } from "../components/ImportExplore";
 import { Button, Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
@@ -551,6 +552,9 @@ export function ImportReview(): JSX.Element {
           )
         }
       </QueryState>
+
+      {/* WP-B6: kuratierte Beispielpakete für die VIP-2-Tester — gezielte Szenarien statt Datenberg. */}
+      <ExamplePackages />
 
       {/* WP-D-CLEAN (Pedis Entscheid): klar abgesetzter Aufräum-Kasten — zweistufig, nie automatisch. */}
       <ImportCleanup />

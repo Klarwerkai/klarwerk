@@ -29,6 +29,19 @@ export interface BodyFileInput {
   name?: string | null;
 }
 
+// WP-HYG (bens P2-Hinweis aus D1e): DIE zentrale Object-Id-Längen-Reserve — sie lebt HIER, im
+// Modul, das Object-Links besitzt, statt verstreut bei den Aufrufern. Reale Ids sind UUIDs
+// (36 Zeichen, s. object-store/service.ts genId → randomUUID); 128 liegt weit darüber, sodass ein
+// mit dieser Reserve gebauter Platzhalter-Link NIE kürzer ist als ein echter — Größen-Preflights
+// mit reservedObjectLinkHtml sind damit beweisbar ausreichend.
+export const OBJECT_LINK_ID_RESERVE_CHARS = 128;
+
+// Platzhalter-Link mit reservierter Id-Länge — die EINE Quelle für alle Größen-Preflights
+// (kein Aufrufer baut mehr eine eigene x-Repeat-Id).
+export function reservedObjectLinkHtml(name: string): string {
+  return fileLinkHtml({ objectId: "x".repeat(OBJECT_LINK_ID_RESERVE_CHARS), name });
+}
+
 // Sichere Body-Datei-Referenz: div.attachment > a(href=raw, title=name) > name. Leer, wenn keine
 // gültige objectId vorliegt (kein Fake-Link). Nur sichere, vom Sanitizer erlaubte Attribute/Klassen.
 export function fileLinkHtml(input: BodyFileInput): string {

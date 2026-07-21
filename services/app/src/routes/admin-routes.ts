@@ -1,4 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
+import type { AuditService } from "../../../audit";
+import { type ExampleLoadServices, examplePackage, loadExamplePackage } from "../example-packages";
 import { type FactoryReset, factoryResetUnavailable } from "../factory-reset";
 import type { Guards } from "../http";
 import { type DemoSeedServices, purgeDemoSeed, seedDemoForAdmin } from "../seed-demo";
@@ -7,7 +9,9 @@ import { type DemoSeedServices, purgeDemoSeed, seedDemoForAdmin } from "../seed-
 // Kein Auto-Seed, kein anonymer Zugriff. Idempotent über den Empty-Guard im Seed selbst.
 // Pedi 05.07.: zusätzlich der Werksreset (Factory-Settings) — nur im Desktop/Dev-Modus verfügbar.
 export function adminRoutes(
-  services: DemoSeedServices,
+  // WP-B6: die Beispielpaket-Route braucht zusätzlich das (optionale) Audit — build-app reicht die
+  // vollen AppServices, die das strukturell erfüllen; direkte Test-Aufrufer bleiben kompatibel.
+  services: DemoSeedServices & { audit?: AuditService },
   guards: Guards,
   factoryReset: FactoryReset = factoryResetUnavailable,
 ): FastifyPluginAsync {
@@ -38,6 +42,34 @@ export function adminRoutes(
       }
       reply.code(200).send(await purgeDemoSeed(services, user.id));
     });
+
+    // WP-B6 (Pedis Wunsch für die VIP-2-Tester): EIN kuratiertes Beispielpaket laden — gezielte
+    // kleine Szenarien statt Datenberg. Läuft über die bestehenden Anlege-Wege (KoService.create,
+    // wie der Demo-Seed: Beispiel-KOs entstehen direkt als KO); idempotent über den
+    // Beispiel-Herkunfts-Anker (zweites Laden dupliziert nichts). Ehrliche Bilanz + Audit.
+    app.post<{ Body: { package?: unknown } }>(
+      "/api/admin/examples/load",
+      async (request, reply) => {
+        const user = await guards.requirePermission("users.manage", request, reply);
+        if (!user) {
+          return;
+        }
+        const pkg = examplePackage(String(request.body?.package ?? ""));
+        if (!pkg) {
+          reply.code(400).send({
+            error: "UNKNOWN_PACKAGE",
+            message: "Unbekanntes Beispielpaket.",
+          });
+          return;
+        }
+        const deps: ExampleLoadServices = {
+          ko: services.ko,
+          objects: services.objects,
+          ...(services.audit ? { audit: services.audit } : {}),
+        };
+        reply.code(200).send(await loadExamplePackage(deps, pkg, user.id));
+      },
+    );
 
     // Pedi 05.07. (Beta): Verfügbarkeit des Werksresets. Die Oberfläche blendet den Knopf nur ein,
     // wenn er im aktuellen Betriebsmodus (Desktop/Dev-Journal) überhaupt möglich ist.

@@ -731,6 +731,13 @@ export interface ImportCleanupResult {
   skipped: { id: string; reason: string }[];
 }
 
+// WP-B6: Bilanz eines geladenen Beispielpakets (idempotent — übersprungen = schon vorhanden).
+export interface ExampleLoadResponse {
+  package: "konflikte" | "bilder" | "qualitaet";
+  created: number;
+  skipped: number;
+}
+
 export interface SlideConvertResponse {
   slides: string[];
   slideCount: number;

@@ -19,6 +19,7 @@ import type {
   DuplicateSelfTestResult,
   EnrichResult,
   EvidenceRecord,
+  ExampleLoadResponse,
   ExpertiseEntry,
   ExternalKnowledgeStage,
   ExternalResult,
@@ -467,6 +468,9 @@ export const endpoints = {
       cleanupPreview: () => api.post<ImportCleanupPreview>("/admin/import/cleanup", {}),
       cleanupConfirm: () =>
         api.post<ImportCleanupResult>("/admin/import/cleanup", { confirm: true }),
+      // WP-B6: EIN kuratiertes Beispielpaket laden (idempotent).
+      loadExamples: (pkg: string) =>
+        api.post<ExampleLoadResponse>("/admin/examples/load", { package: pkg }),
     },
   },
   users: {

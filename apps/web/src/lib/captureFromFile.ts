@@ -5,7 +5,8 @@
 import type { DraftPayload, ExtractedPoint, StructureResult } from "../api/types";
 // WP-D1e (Fix 2): der Preflight misst den Payload MIT einem reservierten Object-Link — dieselbe
 // (DOM-freie) Link-Erzeugung wie im Ganzdokument-Save, damit die Reserve exakt zum realen Link passt.
-import { fileLinkHtml } from "./bodyFileLink";
+// WP-HYG: die Id-Längen-Reserve kommt ZENTRAL aus bodyFileLink (keine lokale Kopie mehr).
+import { reservedObjectLinkHtml } from "./bodyFileLink";
 // WP-D9b: verankerte figures im sicheren HTML erkennen (gleiche Quelle wie die BILD-1d-Galerie).
 import { extractBodyImages } from "./bodyImages";
 
@@ -348,30 +349,22 @@ export function draftPayloadWithinLimit(
   return draftPayloadByteLength(payload) <= limitBytes;
 }
 
-// WP-D1e (bens ROT-Fix 2): großzügige Obergrenze für die Länge einer Object-Store-Id im Preflight.
-// Reale Ids sind UUIDs (36 Zeichen, s. object-store/service.ts genId → randomUUID); 128 liegt weit
-// darüber, sodass der reservierte Link nie kürzer ist als der echte — der Preflight ist damit beweisbar
-// ausreichend (ein echter Link passt garantiert, wenn der reservierte passt).
-export const OBJECT_LINK_ID_RESERVE_CHARS = 128;
-
 // WP-D1e (bens ROT-Fix 2): Größen-Preflight für den Ganzdokument-Save, der das Original als Body-Link
 // mitführt. Der Object-Upload legt die Datei UNWIDERRUFLICH im Store ab — passiert er, BEVOR die
 // Gesamtgröße feststeht, entsteht bei Überlauf ein verwaistes Object (kein Entwurf referenziert es) und
-// ein Retry lüde erneut hoch. Dieser Preflight misst den finalen Payload MIT einem reservierten Link
-// (Object-Id auf OBJECT_LINK_ID_RESERVE_CHARS gesetzt) — der reale, kürzere Link wird garantiert nicht
-// größer. false ⇒ der Payload passt auch mit Link nicht: der Aufrufer bricht VOR dem Upload ehrlich ab.
+// ein Retry lüde erneut hoch. Dieser Preflight misst den finalen Payload MIT einem reservierten Link —
+// der reale, kürzere Link wird garantiert nicht größer. false ⇒ der Payload passt auch mit Link nicht:
+// der Aufrufer bricht VOR dem Upload ehrlich ab.
+// WP-HYG (bens P2 aus D1e): die Id-Längen-Reserve lebt ZENTRAL in bodyFileLink
+// (OBJECT_LINK_ID_RESERVE_CHARS / reservedObjectLinkHtml) — hier keine lokale Kopie mehr.
 export function wholeDraftFitsWithObjectLink(
   payload: DraftPayload,
   originalName: string,
   limitBytes: number = DRAFT_PAYLOAD_LIMIT_BYTES,
 ): boolean {
-  const reservedLink = fileLinkHtml({
-    objectId: "x".repeat(OBJECT_LINK_ID_RESERVE_CHARS),
-    name: originalName,
-  });
   const withReservedLink: DraftPayload = {
     ...payload,
-    bodyHtml: `${payload.bodyHtml ?? ""}${reservedLink}`,
+    bodyHtml: `${payload.bodyHtml ?? ""}${reservedObjectLinkHtml(originalName)}`,
   };
   return draftPayloadWithinLimit(withReservedLink, limitBytes);
 }

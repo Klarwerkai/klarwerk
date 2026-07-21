@@ -2117,6 +2117,21 @@ const de = {
   "imp.cleanup.doneCandidates": "{{n}} Kandidaten entfernt",
   "imp.cleanup.doneKos": "{{n}} importierte Beiträge in den Papierkorb verschoben",
   "imp.cleanup.doneSkipped": "{{n}} übersprungen (Fehler beim Verschieben)",
+  "exp.title": "Beispielpakete",
+  "exp.hint":
+    "Kuratierte kleine Szenarien für Tester — jedes Paket lässt sich einzeln laden und legt klar gekennzeichnete Beispiel-Beiträge an. Das Import-Aufräumen entfernt sie NICHT; sie verschwinden über das Entfernen der Demo-Daten.",
+  "exp.load": "Laden",
+  "exp.loading": "Wird geladen …",
+  "exp.result": "{{created}} angelegt, {{skipped}} übersprungen (schon vorhanden)",
+  "exp.pkg.konflikte.title": "Widersprüchliche Aussagen",
+  "exp.pkg.konflikte.desc":
+    "Sechs Beiträge in drei Paaren, die sich fachlich widersprechen — ideal, um Konfliktprüfung und Validierung auszuprobieren.",
+  "exp.pkg.bilder.title": "Wissen mit Bildern",
+  "exp.pkg.bilder.desc":
+    "Drei Beiträge mit Bildern und beschreibenden Bild-Fußnoten — ideal für Galerie und Fußnoten-Suche.",
+  "exp.pkg.qualitaet.title": "Gemischte Qualität",
+  "exp.pkg.qualitaet.desc":
+    "Fünf Beiträge von gut über zu kurz bis veraltet — ideal, um Review und Qualitätsbewertung zu üben.",
   "imp.preview.sourceNewer": "Quelle neuer als Import",
   "imp.select.empty": "Kein Treffer für diese Eingrenzung.",
   "imp.uploadTitle": "JSON-Re-Import",
@@ -5281,6 +5296,21 @@ const en: typeof de = {
   "imp.cleanup.doneCandidates": "{{n}} candidates removed",
   "imp.cleanup.doneKos": "{{n}} imported posts moved to the trash",
   "imp.cleanup.doneSkipped": "{{n}} skipped (error while moving)",
+  "exp.title": "Example packages",
+  "exp.hint":
+    "Curated small scenarios for testers — each package loads on its own and creates clearly marked example posts. The import cleanup does NOT remove them; they disappear via removing the demo data.",
+  "exp.load": "Load",
+  "exp.loading": "Loading …",
+  "exp.result": "{{created}} created, {{skipped}} skipped (already present)",
+  "exp.pkg.konflikte.title": "Contradicting statements",
+  "exp.pkg.konflikte.desc":
+    "Six posts in three pairs that contradict each other — ideal for trying conflict detection and validation.",
+  "exp.pkg.bilder.title": "Knowledge with images",
+  "exp.pkg.bilder.desc":
+    "Three posts with images and descriptive image captions — ideal for the gallery and caption search.",
+  "exp.pkg.qualitaet.title": "Mixed quality",
+  "exp.pkg.qualitaet.desc":
+    "Five posts ranging from good to too short to outdated — ideal for practicing review and quality assessment.",
   "imp.preview.sourceNewer": "source newer than import",
   "imp.select.empty": "No match for this narrowing.",
   "imp.uploadTitle": "JSON re-import",
@@ -8405,6 +8435,21 @@ const nl: typeof de = {
   "imp.cleanup.doneCandidates": "{{n}} kandidaten verwijderd",
   "imp.cleanup.doneKos": "{{n}} geïmporteerde bijdragen naar de prullenbak verplaatst",
   "imp.cleanup.doneSkipped": "{{n}} overgeslagen (fout bij het verplaatsen)",
+  "exp.title": "Voorbeeldpakketten",
+  "exp.hint":
+    "Gecureerde kleine scenario's voor testers — elk pakket laadt afzonderlijk en maakt duidelijk gemarkeerde voorbeeldbijdragen aan. Het opruimen van de import verwijdert ze NIET; ze verdwijnen via het verwijderen van de demogegevens.",
+  "exp.load": "Laden",
+  "exp.loading": "Wordt geladen …",
+  "exp.result": "{{created}} aangemaakt, {{skipped}} overgeslagen (al aanwezig)",
+  "exp.pkg.konflikte.title": "Tegenstrijdige uitspraken",
+  "exp.pkg.konflikte.desc":
+    "Zes bijdragen in drie paren die elkaar tegenspreken — ideaal om conflictdetectie en validatie uit te proberen.",
+  "exp.pkg.bilder.title": "Kennis met afbeeldingen",
+  "exp.pkg.bilder.desc":
+    "Drie bijdragen met afbeeldingen en beschrijvende bijschriften — ideaal voor de galerij en het zoeken in bijschriften.",
+  "exp.pkg.qualitaet.title": "Gemengde kwaliteit",
+  "exp.pkg.qualitaet.desc":
+    "Vijf bijdragen van goed tot te kort tot verouderd — ideaal om review en kwaliteitsbeoordeling te oefenen.",
   "imp.preview.sourceNewer": "bron nieuwer dan import",
   "imp.select.empty": "Geen treffer voor deze verfijning.",
   "imp.uploadTitle": "JSON opnieuw importeren",

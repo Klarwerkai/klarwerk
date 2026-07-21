@@ -202,6 +202,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // WP-D-CLEAN: zweistufiges Testdaten-Aufräumen (Vorschau/confirm) — Admin-Guard wie die
   // übrigen Import-Admin-Wege; immer registriert (library-routes, kein Feature-Flag).
   "POST /api/admin/import/cleanup": { protection: "users.manage" },
+  // WP-B6: kuratierte Beispielpakete für die VIP-2-Tester (admin-routes).
+  "POST /api/admin/examples/load": { protection: "users.manage" },
   "GET /api/analytics/impact": { protection: "ko.read" },
 
   // --- KO (ko-routes.ts) ---
