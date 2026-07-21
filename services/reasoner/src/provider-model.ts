@@ -8,6 +8,7 @@ import type {
   AnswerResult,
   AssistResult,
   ConflictJudgeResult,
+  DescribeImageResult,
   DuplicateAspect,
   DuplicateJudgeResult,
   EnrichResult,
@@ -32,6 +33,17 @@ export interface ModelClient {
   // Cloud geben. Interne, quell-reine Aufrufer (Judges/Probe) übergeben bewusst false.
   complete(
     system: string,
+    user: string,
+    confidential: boolean,
+    maxTokens?: number,
+  ): Promise<string>;
+  // WP-BILD-1c: OPTIONALER Bild-Eingang (Vision). Nur Clients, die WIRKLICH Bilder verarbeiten
+  // können, implementieren ihn (Anthropic-Cloud-Client: content als image/text-Block-Array).
+  // Fehlt er, behandelt der Provider einen Bildbeschreibungs-Auftrag ehrlich als Fehlschlag —
+  // es wird NIE aus dem Dateinamen oder Kontext eine Pseudo-Beschreibung erfunden.
+  completeVision?(
+    system: string,
+    imageDataUrl: string,
     user: string,
     confidential: boolean,
     maxTokens?: number,
@@ -66,6 +78,19 @@ function helpAnswerSystem(locale: ReasonerLocale): string {
     ? "You are Klara, the help assistant of the KLARWERK application. Answer the user question about using and understanding the application. Rely primarily on the numbered help entries, which are your knowledge base; you may reason, combine and infer from them. If the knowledge base clearly does not cover the question, say honestly that you are not sure — never invent features the application does not have. Keep it short and plain, no bullet lists."
     : "Du bist Klara, die Hilfe-Assistentin der Anwendung KLARWERK. Beantworte die Frage zur Bedienung und zu den Konzepten der Anwendung. Stütze dich vorrangig auf die nummerierten Hilfe-Einträge — deine Wissensdatenbank; du darfst daraus folgern und kombinieren. Deckt die Wissensdatenbank die Frage erkennbar nicht, sage ehrlich, dass du es nicht sicher weißt — erfinde niemals Funktionen, die es nicht gibt. Antworte kurz, in Du-Anrede, ohne Aufzählungslisten.";
 }
+
+// WP-BILD-1c: nüchterne, ehrliche Bildbeschreibung als VORSCHLAG für die Fußnote. Kurz (~200
+// Zeichen), nur was sichtbar ist, keine Erfindungen/Interpretationen, keine Floskeln — der Text
+// wird dem Nutzer als editierbarer Vorschlag angezeigt und nie automatisch gespeichert.
+function describeImageSystem(locale: ReasonerLocale): string {
+  return locale === "en"
+    ? "You write a short, factual image description for a knowledge-base figure caption. Describe ONLY what is visibly in the image, in at most 200 characters, one or two plain sentences. Do not invent context, names, numbers or purposes that are not visible. No preamble, no quotation marks — return ONLY the description."
+    : "Du schreibst eine kurze, nüchterne Bildbeschreibung für die Fußnote einer Wissensseite. Beschreibe NUR, was sichtbar im Bild ist, in höchstens 200 Zeichen, ein bis zwei schlichte Sätze. Erfinde keinen Kontext, keine Namen, Zahlen oder Zwecke, die nicht sichtbar sind. Keine Vorbemerkung, keine Anführungszeichen — gib AUSSCHLIESSLICH die Beschreibung zurück.";
+}
+
+// Harte Server-Obergrenze der Vorschlagslänge (der Prompt bittet um ~200 Zeichen; das Modell kann
+// überziehen — gekappt wird deterministisch, nicht verhandelt).
+export const MAX_IMAGE_DESCRIPTION_LENGTH = 300;
 
 function assistSystem(locale: ReasonerLocale): string {
   return locale === "en"
@@ -621,6 +646,32 @@ export class ModelProvider implements ReasonerProvider {
       steps: [],
       demo: false,
     };
+  }
+
+  // WP-BILD-1c: KI-Bildbeschreibung über den Vision-Pfad des Clients. Ohne Bild-Eingang
+  // (lokaler LLM, Alt-Stubs) wird EHRLICH geworfen — die Reasoner-Kette fällt dann durch und
+  // meldet den echten Grund; es entsteht NIE eine erfundene Beschreibung. Leere Modell-Antwort
+  // → text null (kein Vorschlag ist besser als ein leerer/erfundener).
+  async describeImage(
+    dataUrl: string,
+    locale: ReasonerLocale = "de",
+    confidential = false,
+  ): Promise<DescribeImageResult> {
+    const client = this.requireClient();
+    if (typeof client.completeVision !== "function") {
+      throw new Error("Dieses Modell hat keinen Bild-Eingang (Vision).");
+    }
+    const raw = await client.completeVision(
+      describeImageSystem(locale),
+      dataUrl,
+      locale === "en"
+        ? "Describe this image for the caption."
+        : "Beschreibe dieses Bild für die Fußnote.",
+      confidential,
+      256,
+    );
+    const text = raw.trim().slice(0, MAX_IMAGE_DESCRIPTION_LENGTH).trim();
+    return { text: text.length > 0 ? text : null, demo: false };
   }
 
   async assistText(

@@ -2,8 +2,16 @@ import { Eye, Image as ImageIcon, Link as LinkIcon, Paperclip, Pencil } from "lu
 import type { ChangeEvent, ClipboardEvent, DragEvent, MouseEvent, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { DescribeImageResult } from "../api/types";
 import { type EditorFile, fileLinkHtml } from "../lib/bodyFileLink";
 import { bodyReadMode } from "../lib/bodyReadMode";
+import {
+  CAPTION_AI_TEXT,
+  applyCaptionSuggestion,
+  captionSuggestOutcome,
+  captionSuggestVisible,
+  checkCaptionImageDataUrl,
+} from "../lib/captionAiSuggest";
 import {
   EDITOR_BLOCKS,
   type EditorBlock,
@@ -64,6 +72,7 @@ export function RichTextEditor({
   aiPanel,
   onAttachFiles,
   placeholder,
+  onDescribeImage,
 }: {
   value: string;
   onChange: (html: string) => void;
@@ -78,6 +87,10 @@ export function RichTextEditor({
   // Anders als „Bild" wird NICHT in den Body eingefügt. Fehlt der Callback, bleibt der Knopf aus.
   // `| undefined` explizit: erlaubt das Durchreichen eines optionalen Callbacks (exactOptionalPropertyTypes).
   onAttachFiles?: ((files: File[]) => void | Promise<void>) | undefined;
+  // WP-BILD-1c: KI-Bildbeschreibungs-Vorschlag für die fokussierte Bild-Fußnote. Der Eltern-Kontext
+  // verdrahtet den describe-Aufruf (inkl. Provenienz/Vertraulichkeit); ohne Callback bleibt der
+  // Knopf aus (kein toter Klick). Erscheint NIE in der Vorschau/Leseansicht.
+  onDescribeImage?: ((dataUrl: string) => Promise<DescribeImageResult>) | undefined;
 }): JSX.Element {
   const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
@@ -97,6 +110,15 @@ export function RichTextEditor({
   const [linkErr, setLinkErr] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<HTMLImageElement | null>(null);
   const [selectedImageScale, setSelectedImageScale] = useState<ImageScaleValue>("100");
+  // WP-BILD-1c: die aktuell fokussierte/angeklickte Bild-Fußnote (Editier-Modus) + der Zustand des
+  // KI-Vorschlags-Panels. Der Vorschlag wird NIE automatisch übernommen — nur über den Knopf.
+  const [selectedCaption, setSelectedCaption] = useState<HTMLElement | null>(null);
+  const [captionAi, setCaptionAi] = useState<
+    | null
+    | { status: "loading" }
+    | { status: "fallback"; messageKey: string }
+    | { status: "suggestion"; text: string }
+  >(null);
 
   // Editor-Inhalt nur setzen, wenn er abweicht und der Fokus nicht IM Editor liegt
   // (verhindert Cursor-Sprünge während des Tippens). Verlustfrei über Mode-Wechsel.
@@ -143,12 +165,97 @@ export function RichTextEditor({
     selectImage(img instanceof HTMLImageElement ? img : null);
   };
 
+  // WP-BILD-1c: Fußnoten-Fokus verfolgen — steht der Cursor/Klick in einer figcaption des Editors,
+  // erscheint der Vorschlags-Knopf. Wechselt die Fußnote (oder verlässt der Cursor sie), wird ein
+  // offenes Vorschlags-Panel geschlossen (der Vorschlag gehört zu SEINEM Bild).
+  const updateCaptionSelectionFromNode = (node: Node | null): void => {
+    const element = node instanceof Element ? node : (node?.parentElement ?? null);
+    const cap = element?.closest("figcaption");
+    const next =
+      cap instanceof HTMLElement && ref.current?.contains(cap) && node && ref.current.contains(node)
+        ? cap
+        : null;
+    if (next !== selectedCaption) {
+      setCaptionAi(null);
+    }
+    setSelectedCaption(next);
+  };
+
   const updateImageSelectionFromCursor = (): void => {
-    updateImageSelectionFromNode(window.getSelection()?.anchorNode ?? null);
+    const node = window.getSelection()?.anchorNode ?? null;
+    updateImageSelectionFromNode(node);
+    updateCaptionSelectionFromNode(node);
   };
 
   const onEditorClick = (e: MouseEvent<HTMLDivElement>): void => {
-    updateImageSelectionFromNode(e.target instanceof Node ? e.target : null);
+    const node = e.target instanceof Node ? e.target : null;
+    updateImageSelectionFromNode(node);
+    updateCaptionSelectionFromNode(node);
+  };
+
+  // WP-BILD-1c: Bildquelle der Fußnote → data:image-URL. Eingebettete data:-Bilder direkt;
+  // Objekt-Store-Bilder (/api/objects/…/raw) über die Cookie-Session laden und als data:-URL lesen.
+  const imageSrcAsDataUrl = async (src: string): Promise<string> => {
+    if (src.startsWith("data:")) {
+      return src;
+    }
+    const res = await fetch(src, { credentials: "include" });
+    if (!res.ok) {
+      throw new Error(`Bild nicht ladbar (${res.status})`);
+    }
+    const blob = await res.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(new Error("Bild nicht lesbar"));
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  const requestCaptionSuggestion = async (): Promise<void> => {
+    const caption = selectedCaption;
+    if (!caption || !onDescribeImage) {
+      return;
+    }
+    const src = caption.parentElement?.querySelector("img")?.getAttribute("src") ?? "";
+    if (!src) {
+      setCaptionAi({ status: "fallback", messageKey: CAPTION_AI_TEXT.imageUnreadable });
+      return;
+    }
+    setCaptionAi({ status: "loading" });
+    let dataUrl: string;
+    try {
+      dataUrl = await imageSrcAsDataUrl(src);
+    } catch {
+      setCaptionAi({ status: "fallback", messageKey: CAPTION_AI_TEXT.imageUnreadable });
+      return;
+    }
+    const checked = checkCaptionImageDataUrl(dataUrl);
+    if (!checked.ok) {
+      setCaptionAi({ status: "fallback", messageKey: checked.messageKey });
+      return;
+    }
+    try {
+      const outcome = captionSuggestOutcome(await onDescribeImage(checked.dataUrl));
+      setCaptionAi(
+        outcome.kind === "suggestion"
+          ? { status: "suggestion", text: outcome.text }
+          : { status: "fallback", messageKey: outcome.messageKey },
+      );
+    } catch {
+      // Netz-/Serverfehler (inkl. 413-Größendeckel) → ehrliche Fehlermeldung, kein Pseudo-Text.
+      setCaptionAi({ status: "fallback", messageKey: CAPTION_AI_TEXT.fallbackError });
+    }
+  };
+
+  // Übernahme über die NORMALE Editier-Mechanik der Fußnote (textContent + emit) — Sanitizer-
+  // Verträge bleiben unangetastet, gespeichert wird wie bei jeder Handeingabe.
+  const applyCaptionAi = (): void => {
+    if (selectedCaption && captionAi?.status === "suggestion") {
+      applyCaptionSuggestion(selectedCaption, captionAi.text);
+      emit();
+    }
+    setCaptionAi(null);
   };
 
   const applyImageScale = (scale: ImageScaleValue): void => {
@@ -663,6 +770,53 @@ export function RichTextEditor({
               {opt.label}
             </button>
           ))}
+        </div>
+      ) : null}
+
+      {/* WP-BILD-1c: KI-Beschreibung als VORSCHLAG an der fokussierten Fußnote — nur im
+          Editier-Modus, nur mit verdrahtetem describe-Aufruf. Kein Auto-Übernehmen. */}
+      {captionSuggestVisible(mode, selectedCaption !== null, onDescribeImage !== undefined) ? (
+        <div className="border-b border-hairline bg-ai-surface-1 px-2 py-1.5">
+          <button
+            type="button"
+            disabled={captionAi?.status === "loading"}
+            onClick={() => void requestCaptionSuggestion()}
+            className="inline-flex h-7 items-center gap-1 rounded-btn border border-ai/40 bg-surface px-2 text-[11.5px] font-semibold text-ai hover:bg-hairline-soft disabled:opacity-60"
+          >
+            ✨{" "}
+            {captionAi?.status === "loading"
+              ? t(CAPTION_AI_TEXT.loading)
+              : t(CAPTION_AI_TEXT.suggest)}
+          </button>
+          {captionAi?.status === "suggestion" ? (
+            <div className="mt-1.5 rounded-btn border border-ai/30 bg-surface p-2">
+              <p className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai">
+                {t(CAPTION_AI_TEXT.panelTitle)} · {t(CAPTION_AI_TEXT.aiBadge)}
+              </p>
+              <p className="mt-1 text-[12.5px] leading-relaxed text-text">{captionAi.text}</p>
+              <div className="mt-1.5 flex gap-2">
+                <button
+                  type="button"
+                  onClick={applyCaptionAi}
+                  className="inline-flex h-7 items-center rounded-btn border border-ai/50 bg-ai px-2 text-[11.5px] font-semibold text-white"
+                >
+                  {t(CAPTION_AI_TEXT.apply)}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCaptionAi(null)}
+                  className="inline-flex h-7 items-center rounded-btn border border-hairline bg-surface px-2 text-[11.5px] font-semibold text-muted hover:text-text"
+                >
+                  {t(CAPTION_AI_TEXT.discard)}
+                </button>
+              </div>
+            </div>
+          ) : null}
+          {captionAi?.status === "fallback" ? (
+            <p className="mt-1.5 rounded-btn bg-trust-warn-bg px-2 py-1.5 text-[11.5px] leading-relaxed text-trust-warn-text">
+              {t(captionAi.messageKey)}
+            </p>
+          ) : null}
         </div>
       ) : null}
 

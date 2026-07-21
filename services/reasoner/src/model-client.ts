@@ -33,10 +33,60 @@ export interface HttpModelConfig {
   timeoutMs?: number;
 }
 
+// WP-BILD-1c: Bild-Eingang für den Vision-Pfad. Eine data:image-URL wird in den base64-Block der
+// Anthropic Messages API zerlegt. NUR die vier sicheren Rasterformate (identisch zur Editor-
+// Einbettungs-Allowlist); alles andere → null (der Aufrufer meldet ehrlich, nichts wird geraten).
+const IMAGE_DATA_URL_RE = /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=]+)$/;
+
+export function parseImageDataUrl(dataUrl: string): { mediaType: string; base64: string } | null {
+  const match = IMAGE_DATA_URL_RE.exec(dataUrl.trim());
+  if (!match || !match[1] || !match[2]) {
+    return null;
+  }
+  return { mediaType: match[1], base64: match[2] };
+}
+
 export function anthropicClient(config: HttpModelConfig): ModelClient {
   const fetchFn = config.fetchFn ?? fetch;
   const baseUrl = config.baseUrl ?? "https://api.anthropic.com";
   const timeoutMs = config.timeoutMs ?? DEFAULT_MODEL_TIMEOUT_MS;
+  // Gemeinsamer Request-Kern für Text- und Vision-Aufrufe: gleicher Timeout, gleiche
+  // Fehlerklassen (ModelHttpError/ModelTimeoutError), gleicher Antwort-Vertrag.
+  const postMessages = async (body: Record<string, unknown>): Promise<string> => {
+    const controller = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
+    try {
+      const res = await fetchFn(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": config.apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        throw new ModelHttpError(`Modell-API antwortete mit ${res.status}`, res.status);
+      }
+      const data = (await res.json()) as { content?: { text?: string }[] };
+      return data.content?.[0]?.text ?? "";
+    } catch (err) {
+      if (timedOut) {
+        throw new ModelTimeoutError(
+          `Modell-API überschritt das Zeitlimit von ${timeoutMs} ms`,
+          timeoutMs,
+        );
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
   return {
     name: `anthropic:${config.model}`,
     // SCRUM-411: maxTokens pro Aufruf — kurze Tasks bleiben bei 1024; extract braucht mehr
@@ -49,44 +99,44 @@ export function anthropicClient(config: HttpModelConfig): ModelClient {
       _confidential: boolean,
       maxTokens = 1024,
     ): Promise<string> {
-      const controller = new AbortController();
-      let timedOut = false;
-      const timer = setTimeout(() => {
-        timedOut = true;
-        controller.abort();
-      }, timeoutMs);
-      try {
-        const res = await fetchFn(`${baseUrl}/v1/messages`, {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            "x-api-key": config.apiKey,
-            "anthropic-version": "2023-06-01",
-          },
-          body: JSON.stringify({
-            model: config.model,
-            max_tokens: maxTokens,
-            system,
-            messages: [{ role: "user", content: user }],
-          }),
-          signal: controller.signal,
-        });
-        if (!res.ok) {
-          throw new ModelHttpError(`Modell-API antwortete mit ${res.status}`, res.status);
-        }
-        const data = (await res.json()) as { content?: { text?: string }[] };
-        return data.content?.[0]?.text ?? "";
-      } catch (err) {
-        if (timedOut) {
-          throw new ModelTimeoutError(
-            `Modell-API überschritt das Zeitlimit von ${timeoutMs} ms`,
-            timeoutMs,
-          );
-        }
-        throw err;
-      } finally {
-        clearTimeout(timer);
+      return postMessages({
+        model: config.model,
+        max_tokens: maxTokens,
+        system,
+        messages: [{ role: "user", content: user }],
+      });
+    },
+    // WP-BILD-1c: Vision-Aufruf — content als Block-Array (image + text), exakt der in der
+    // WP-BILD-1b-Skizze beschriebene multimodale Pfad. Ungültige/nicht erlaubte Bild-Daten
+    // werfen VOR dem HTTP-Aufruf (ehrlicher Fehler, kein Request ins Leere).
+    async completeVision(
+      system: string,
+      imageDataUrl: string,
+      user: string,
+      _confidential: boolean,
+      maxTokens = 1024,
+    ): Promise<string> {
+      const image = parseImageDataUrl(imageDataUrl);
+      if (!image) {
+        throw new Error("Bild-Daten sind keine gültige data:image-URL (png/jpeg/gif/webp).");
       }
+      return postMessages({
+        model: config.model,
+        max_tokens: maxTokens,
+        system,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image",
+                source: { type: "base64", media_type: image.mediaType, data: image.base64 },
+              },
+              { type: "text", text: user },
+            ],
+          },
+        ],
+      });
     },
   };
 }
@@ -187,6 +237,8 @@ export function openAiCompatibleClient(config: LocalHttpModelConfig): ModelClien
   const fetchFn = config.fetchFn ?? fetch;
   const base = config.baseUrl.replace(/\/+$/, "");
   const timeoutMs = config.timeoutMs ?? DEFAULT_MODEL_TIMEOUT_MS;
+  // WP-BILD-1c: BEWUSST kein completeVision — ob ein lokaler LLM Bilder kann, ist nicht garantiert;
+  // der Reasoner behandelt fehlenden Bild-Eingang ehrlich als Fehlschlag (nie erfinden).
   return {
     name: `local:${config.model}`,
     // SCRUM-502 Schicht 2: `confidential` ist Interface-Pflicht; der Egress-Wächter sitzt im

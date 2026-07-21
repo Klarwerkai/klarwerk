@@ -49,3 +49,9 @@ export type {
 export { deriveTitleThemes, titleThemeTokens, MIN_THEME_GROUP_SIZE } from "./src/themes";
 // WP-IC-PAKET-1e: DIE geteilte Pro-Item-Kanonisierung (Erkundung UND Selektion — Chips selektierbar).
 export { canonicalImportText } from "./src/text-codec";
+// WP-BILD-1e: Bild-Fußnoten (figcaption) in der Bibliotheks-Suche — pure Extraktion + Match.
+export {
+  imageCaptionTexts,
+  captionsMatchQuery,
+  LEGACY_IMAGE_CAPTION_PLACEHOLDERS,
+} from "./src/search-captions";

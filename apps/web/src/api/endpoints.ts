@@ -13,6 +13,7 @@ import type {
   ConflictSelfTestResult,
   ConflictType,
   DemoSeedResult,
+  DescribeImageResult,
   Draft,
   DraftPayload,
   DuplicateSelfTestResult,
@@ -251,6 +252,19 @@ export const endpoints = {
       api.post<InterviewResult>("/reasoner", {
         task: "interview",
         answers,
+        ...(locale ? { locale } : {}),
+        ...provenanceFields(provenance),
+      }),
+    // WP-BILD-1c: KI-Bildbeschreibung als VORSCHLAG für die Bild-Fußnote (Vision). Die Provenienz
+    // läuft wie bei den Text-Tasks mit — vertrauliche Entwürfe erreichen die Cloud nie.
+    describeImage: (
+      dataUrl: string,
+      locale: "de" | "en" | undefined,
+      provenance: ReasonerProvenance,
+    ) =>
+      api.post<DescribeImageResult>("/reasoner", {
+        task: "describe",
+        dataUrl,
         ...(locale ? { locale } : {}),
         ...provenanceFields(provenance),
       }),

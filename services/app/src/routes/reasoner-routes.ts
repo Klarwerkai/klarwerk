@@ -6,7 +6,12 @@ import {
   publicAiEnrichmentAllowed,
 } from "../../../external-search";
 import { type Confidentiality, type KoService, isConfidential } from "../../../knowledge-object";
-import { type Reasoner, type ReasonerLocale, ReasonerPolicyLockedError } from "../../../reasoner";
+import {
+  MAX_DESCRIBE_IMAGE_DATAURL_CHARS,
+  type Reasoner,
+  type ReasonerLocale,
+  ReasonerPolicyLockedError,
+} from "../../../reasoner";
 import { runConflictSelfTest } from "../conflict-self-test";
 import { runDuplicateSelfTest } from "../duplicate-self-test";
 import type { Guards } from "../http";
@@ -61,6 +66,12 @@ export interface ReasonerRoutesDeps {
   ko: KoService;
 }
 
+// WP-BILD-1c: Body-Deckel des Reasoner-Dispatchers. 6 MiB = 5-MB-Bild-Deckel (describe) + JSON-
+// Overhead; die Text-Tasks bleiben serverseitig ohnehin enger gedeckelt (z. B. extract 60.000
+// Zeichen). Über dem Cap: kontrolliertes 413 von Fastify; der describe-Zweig meldet seinen
+// eigenen 5-MB-Deckel zusätzlich mit ehrlicher Begründung.
+export const REASONER_BODY_LIMIT = 6 * 1024 * 1024; // 6 MiB
+
 export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): FastifyPluginAsync {
   const { reasoner, ask, externalKnowledge, ko } = deps;
 
@@ -86,11 +97,25 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
   };
 
   return async (app) => {
+    // WP-BILD-1c: der describe-Task trägt eine data:image-URL (bis 5 MB Deckel) — der globale
+    // 1-MiB-Fastify-Default würde echte Fotos schon VOR der ehrlichen Routen-Prüfung abweisen.
+    // Muster WP-D1d (capture-routes): expliziter Route-bodyLimit + AUTH VOR dem Body-Parsing
+    // (onRequest), damit die vergrößerte Parser-Fläche anonym nicht offensteht; der Handler prüft
+    // danach wie bisher die konkrete Berechtigung (ko.read) — Defense-in-Depth.
+    const requireAuthedBeforeParse = async (
+      request: Parameters<Guards["requireUser"]>[0],
+      reply: Parameters<Guards["requireUser"]>[1],
+    ): Promise<void> => {
+      await guards.requireUser(request, reply);
+    };
     app.post<{
       Body: {
-        task: "structure" | "ask" | "assist" | "interview" | "extract";
+        task: "structure" | "ask" | "assist" | "interview" | "extract" | "describe";
         text?: string;
         answers?: string[];
+        // WP-BILD-1c: Bild-Daten für 'describe' (KI-Bildbeschreibungs-Vorschlag) — eine
+        // data:image-URL; Größe und Format werden VOR dem Modellaufruf geprüft.
+        dataUrl?: string;
         locale?: "de" | "en";
         // SCRUM-312: optionale Bearbeitungs-Anweisung für 'assist' (klarer/strukturieren/… oder frei).
         instruction?: string;
@@ -108,96 +133,129 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         koId?: string;
         confidentiality?: Confidentiality;
       };
-    }>("/api/reasoner", async (request, reply) => {
-      const user = await guards.requirePermission("ko.read", request, reply);
-      if (!user) {
-        return;
-      }
-      const { task, text } = request.body;
-      // FR-I18N-01: UI-Sprache steuert Prompt/Frage/Label (Quelleninhalt bleibt original).
-      const locale = normalizeLocale(request.body.locale);
-      if (task === "structure") {
-        // SCRUM-502 Schicht 2: vertraulicher Draft/KO → Cloud aus der Kette (lokal/deterministisch).
-        const confidential = await resolveConfidential(
-          request.body.source,
-          request.body.koId,
-          request.body.confidentiality,
-        );
-        reply.code(200).send(await reasoner.structure(text ?? "", locale, confidential));
-        return;
-      }
-      if (task === "ask") {
-        // Kartierung SCRUM-502 Schicht 2: 'ask' trägt eine reine Nutzerfrage (kein gespeicherter
-        // KO-Text); der Antwort-Kontext ist bereits Schicht-1-gefiltert. Keine Sensitivitäts-Route.
-        reply.code(200).send(await ask.ask(text ?? "", user.id, locale));
-        return;
-      }
-      if (task === "assist") {
-        // FR-RSN-03 / SCRUM-312: Text präzisieren/glätten, optional mit Bearbeitungs-Anweisung.
-        const confidential = await resolveConfidential(
-          request.body.source,
-          request.body.koId,
-          request.body.confidentiality,
-        );
-        reply
-          .code(200)
-          .send(
-            await reasoner.assistText(text ?? "", locale, request.body.instruction, confidential),
-          );
-        return;
-      }
-      if (task === "interview") {
-        // SCRUM-132: reasoner-getriebenes Interview, stateless (Antworten rein).
-        const confidential = await resolveConfidential(
-          request.body.source,
-          request.body.koId,
-          request.body.confidentiality,
-        );
-        reply
-          .code(200)
-          .send(await reasoner.interview(request.body.answers ?? [], locale, confidential));
-        return;
-      }
-      if (task === "extract") {
-        // SCRUM-451: Ergebnis-Sprache validieren — nur die zwei bekannten Werte, sonst 400.
-        const outputLanguage = request.body.outputLanguage;
-        if (
-          outputLanguage !== undefined &&
-          outputLanguage !== "system" &&
-          outputLanguage !== "source"
-        ) {
-          reply.code(400).send({
-            error: "BAD_REQUEST",
-            message: "outputLanguage muss 'system' oder 'source' sein.",
-          });
+    }>(
+      "/api/reasoner",
+      { bodyLimit: REASONER_BODY_LIMIT, onRequest: requireAuthedBeforeParse },
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
           return;
         }
-        // PMO-FEA-0006: Wissenspunkte aus Dokumenttext (optional mit Suchauftrag). Ohne
-        // Modell antwortet der Reasoner ehrlich mit leerer Liste + note (keine Fake-Punkte).
-        // SCRUM-502 Schicht 2: vertraulicher Dokumenttext/KO → Cloud aus der Kette.
-        const confidential = await resolveConfidential(
-          request.body.source,
-          request.body.koId,
-          request.body.confidentiality,
-        );
-        reply
-          .code(200)
-          .send(
-            await reasoner.extract(
-              text ?? "",
-              locale,
-              request.body.query,
-              outputLanguage === "source",
-              confidential,
-            ),
+        const { task, text } = request.body;
+        // FR-I18N-01: UI-Sprache steuert Prompt/Frage/Label (Quelleninhalt bleibt original).
+        const locale = normalizeLocale(request.body.locale);
+        if (task === "structure") {
+          // SCRUM-502 Schicht 2: vertraulicher Draft/KO → Cloud aus der Kette (lokal/deterministisch).
+          const confidential = await resolveConfidential(
+            request.body.source,
+            request.body.koId,
+            request.body.confidentiality,
           );
-        return;
-      }
-      reply.code(400).send({
-        error: "BAD_REQUEST",
-        message: "task muss 'structure', 'ask', 'assist', 'interview' oder 'extract' sein.",
-      });
-    });
+          reply.code(200).send(await reasoner.structure(text ?? "", locale, confidential));
+          return;
+        }
+        if (task === "ask") {
+          // Kartierung SCRUM-502 Schicht 2: 'ask' trägt eine reine Nutzerfrage (kein gespeicherter
+          // KO-Text); der Antwort-Kontext ist bereits Schicht-1-gefiltert. Keine Sensitivitäts-Route.
+          reply.code(200).send(await ask.ask(text ?? "", user.id, locale));
+          return;
+        }
+        if (task === "assist") {
+          // FR-RSN-03 / SCRUM-312: Text präzisieren/glätten, optional mit Bearbeitungs-Anweisung.
+          const confidential = await resolveConfidential(
+            request.body.source,
+            request.body.koId,
+            request.body.confidentiality,
+          );
+          reply
+            .code(200)
+            .send(
+              await reasoner.assistText(text ?? "", locale, request.body.instruction, confidential),
+            );
+          return;
+        }
+        if (task === "interview") {
+          // SCRUM-132: reasoner-getriebenes Interview, stateless (Antworten rein).
+          const confidential = await resolveConfidential(
+            request.body.source,
+            request.body.koId,
+            request.body.confidentiality,
+          );
+          reply
+            .code(200)
+            .send(await reasoner.interview(request.body.answers ?? [], locale, confidential));
+          return;
+        }
+        if (task === "extract") {
+          // SCRUM-451: Ergebnis-Sprache validieren — nur die zwei bekannten Werte, sonst 400.
+          const outputLanguage = request.body.outputLanguage;
+          if (
+            outputLanguage !== undefined &&
+            outputLanguage !== "system" &&
+            outputLanguage !== "source"
+          ) {
+            reply.code(400).send({
+              error: "BAD_REQUEST",
+              message: "outputLanguage muss 'system' oder 'source' sein.",
+            });
+            return;
+          }
+          // PMO-FEA-0006: Wissenspunkte aus Dokumenttext (optional mit Suchauftrag). Ohne
+          // Modell antwortet der Reasoner ehrlich mit leerer Liste + note (keine Fake-Punkte).
+          // SCRUM-502 Schicht 2: vertraulicher Dokumenttext/KO → Cloud aus der Kette.
+          const confidential = await resolveConfidential(
+            request.body.source,
+            request.body.koId,
+            request.body.confidentiality,
+          );
+          reply
+            .code(200)
+            .send(
+              await reasoner.extract(
+                text ?? "",
+                locale,
+                request.body.query,
+                outputLanguage === "source",
+                confidential,
+              ),
+            );
+          return;
+        }
+        if (task === "describe") {
+          // WP-BILD-1c: KI-Bildbeschreibung als VORSCHLAG. Erst die deterministischen Prüfungen
+          // (Format + Größendeckel), dann derselbe Vertraulichkeits-Pfad wie die anderen Tasks —
+          // vertrauliche Entwürfe erreichen die Cloud (den einzigen Vision-Client) nie.
+          const dataUrl = request.body.dataUrl;
+          if (typeof dataUrl !== "string" || !dataUrl.startsWith("data:image/")) {
+            reply.code(400).send({
+              error: "BAD_REQUEST",
+              message: "dataUrl fehlt oder ist keine data:image-URL.",
+            });
+            return;
+          }
+          if (dataUrl.length > MAX_DESCRIBE_IMAGE_DATAURL_CHARS) {
+            // Ehrliche Meldung statt stillem Abschneiden — der Client zeigt sie im Vorschlags-Panel.
+            reply.code(413).send({
+              error: "PAYLOAD_TOO_LARGE",
+              message: "Das Bild ist zu groß für den Beschreibungs-Vorschlag (max. 5 MB).",
+            });
+            return;
+          }
+          const confidential = await resolveConfidential(
+            request.body.source,
+            request.body.koId,
+            request.body.confidentiality,
+          );
+          reply.code(200).send(await reasoner.describeImage(dataUrl, locale, confidential));
+          return;
+        }
+        reply.code(400).send({
+          error: "BAD_REQUEST",
+          message:
+            "task muss 'structure', 'ask', 'assist', 'interview', 'extract' oder 'describe' sein.",
+        });
+      },
+    );
 
     // SCRUM-426: Public-KI-Anreicherung (Modellwissen) — bewusst NICHT quellengebunden.
     // Zwei Gates: (1) Schreibberechtigung (ko.create); (2) der Admin-Regler „externe

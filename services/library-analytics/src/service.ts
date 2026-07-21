@@ -14,6 +14,8 @@ import {
   safeSourceUrl,
 } from "../../knowledge-object";
 import { type CandidateRepo, InMemoryCandidateRepo } from "./repo";
+// WP-BILD-1e: Bild-Fußnoten (figcaption) in der Bibliotheks-Suche.
+import { captionsMatchQuery } from "./search-captions";
 import {
   type Analytics,
   type BusFactorEntry,
@@ -298,6 +300,8 @@ export class LibraryService {
   }
 
   // FR-LIB-01: Suche + Filter.
+  // WP-BILD-1e: zusätzlich zu title/statement matchen jetzt auch die Bild-Fußnoten (figcaption-
+  // Texte im bodyHtml) — Alt-Platzhaltertexte gelten als KEIN Inhalt (siehe search-captions.ts).
   async search(query: string, filter: KoFilter = {}): Promise<KnowledgeObject[]> {
     const list = await this.koService.list(filter);
     const q = query.trim().toLowerCase();
@@ -305,7 +309,10 @@ export class LibraryService {
       return list;
     }
     return list.filter(
-      (ko) => ko.title.toLowerCase().includes(q) || ko.statement.toLowerCase().includes(q),
+      (ko) =>
+        ko.title.toLowerCase().includes(q) ||
+        ko.statement.toLowerCase().includes(q) ||
+        captionsMatchQuery(ko.bodyHtml, q),
     );
   }
 

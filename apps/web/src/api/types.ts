@@ -671,6 +671,15 @@ export interface StructureResult {
   fallbackReason?: "no-model" | "model-timeout" | "model-error";
 }
 
+// WP-BILD-1c: KI-Bildbeschreibung als VORSCHLAG für die Bild-Fußnote. Ohne funktionierendes
+// Vision-Modell ehrlich text null + fallbackReason (gleiche Ursachen wie StructureResult) —
+// es gibt NIE eine Pseudo-Beschreibung, nichts wird automatisch gespeichert.
+export interface DescribeImageResult {
+  text: string | null;
+  demo: boolean;
+  fallbackReason?: "no-model" | "model-timeout" | "model-error";
+}
+
 export interface ReasonerStatus {
   active: boolean;
   provider: string;
@@ -679,7 +688,15 @@ export interface ReasonerStatus {
 
 // SCRUM-166: read-only Provider-/Model-Konfiguration (nur Metadaten, keine Secrets).
 export type ReasonerConfigMode = "model" | "fallback" | "demo";
-export type ReasonerTask = "structure" | "assist" | "interview" | "answer" | "select" | "extract";
+// WP-BILD-1c: describe (KI-Bildbeschreibungs-Vorschlag) als weitere KI-Aufgabe.
+export type ReasonerTask =
+  | "structure"
+  | "assist"
+  | "interview"
+  | "answer"
+  | "select"
+  | "extract"
+  | "describe";
 
 export interface ReasonerConfigStatus {
   provider: string;

@@ -19,6 +19,7 @@ import type {
   AnswerResult,
   AssistResult,
   ConflictJudgeResult,
+  DescribeImageResult,
   DuplicateJudgeResult,
   EnrichResult,
   ExtractResult,
@@ -70,6 +71,22 @@ const VALID_CHOICES: readonly ReasonerTaskChoice[] = [
   "local",
   "deterministic",
 ];
+
+// WP-BILD-1c: die EINE Task-Liste für Policy-Validierung und KI-Verwaltungs-Anzeige (vorher drei
+// Inline-Kopien). "describe" = KI-Bildbeschreibungs-Vorschlag (nur mit Vision-fähigem Cloud-Client).
+export const REASONER_TASKS = [
+  "structure",
+  "assist",
+  "interview",
+  "answer",
+  "select",
+  "extract",
+  "describe",
+] as const;
+
+// WP-BILD-1c: Deckel für die Bild-Daten eines describe-Aufrufs (data:image-URL-Länge in Zeichen).
+// Die Route lehnt Größeres mit einer ehrlichen Meldung ab, BEVOR irgendetwas zum Modell geht.
+export const MAX_DESCRIBE_IMAGE_DATAURL_CHARS = 5_000_000;
 
 export function isValidReasonerChoice(value: string): value is ReasonerTaskChoice {
   return (VALID_CHOICES as readonly string[]).includes(value);
@@ -320,7 +337,7 @@ export class Reasoner {
   // Validiert eine Policy und normalisiert sie (nur bekannte Tasks/Choices). Wirft bei Ungültigem.
   private normalizeTaskConfig(next: ReasonerTaskConfig): ReasonerTaskConfig {
     const valid: ReasonerTaskChoice[] = ["auto", "model", "cloud", "local", "deterministic"];
-    const tasks = ["structure", "assist", "interview", "answer", "select", "extract"] as const;
+    const tasks = REASONER_TASKS;
     if (!valid.includes(next.global)) {
       throw new Error("Ungültige globale KI-Zuordnung.");
     }
@@ -540,21 +557,15 @@ export class Reasoner {
       mode: configured ? "model" : "demo",
       fallbackAvailable: true,
       supportsLocales: ["de", "en"],
-      tasks: ["structure", "assist", "interview", "answer", "select", "extract"],
+      tasks: [...REASONER_TASKS],
       taskConfig: this.getTaskConfig(),
-      effective: Object.fromEntries(
-        (["structure", "assist", "interview", "answer", "select", "extract"] as const).map(
-          (task) => [task, this.effectiveFor(task)],
-        ),
-      ),
+      effective: Object.fromEntries(REASONER_TASKS.map((task) => [task, this.effectiveFor(task)])),
       // SCRUM-424: der eigene lokale LLM + welche KI je Aufgabe zuerst arbeitet.
       cloudConfigured: this.usingPrimary(),
       localConfigured: this.usingSecondary(),
       ...(this.usingSecondary() ? { localProvider: this.secondary.name } : {}),
       effectiveProvider: Object.fromEntries(
-        (["structure", "assist", "interview", "answer", "select", "extract"] as const).map(
-          (task) => [task, this.providerLabelFor(task)],
-        ),
+        REASONER_TASKS.map((task) => [task, this.providerLabelFor(task)]),
       ),
       persisted: false,
       // SCRUM-525 P.5 (WP-C): additive Eigenschaft — zeigt der Admin-UI, ob die Zuordnung per Deploy-ENV
@@ -563,20 +574,53 @@ export class Reasoner {
     };
   }
 
-  // WP-BILD-1b TODO (KI-Bildbeschreibungs-Vorschlag — bewusst NOCH NICHT gebaut): Die aktuelle
-  // ModelClient-Schnittstelle (provider-model.ts) ist rein textbasiert — `complete(system, user, …)` nimmt
-  // NUR Strings, und der Anthropic-Body (model-client.ts) sendet `content` als einfachen String. Es gibt
-  // KEINEN Vision-/Bild-Eingang (kein image/base64-Content-Block) im Reasoner. Ein ehrlicher
-  // `describeImage(dataUrl, locale)` würde daher einen Vertragsumbau erfordern und wird hier NICHT
-  // vorgetäuscht. Skizze des künftigen API-Vertrags für BILD-1b-Vision:
-  //   describeImage(dataUrl: string, locale: ReasonerLocale): Promise<string | null>
-  //   - ModelClient um multimodalen Pfad erweitern: content als Block-Array
-  //     [{type:"image", source:{type:"base64", media_type, data}}, {type:"text", text: Prompt}].
-  //   - Nur der Cloud-Client kann Vision; der lokale Client fällt sicher auf null (NIE erfinden).
-  //   - Fehler/Timeout/kein Key → null (Vorschlag-Prinzip: nichts erfinden, nichts automatisch speichern).
-  //   - Neue Reasoner-Route mit demselben RBAC-/Route-Guard wie die übrigen Reasoner-Routen; Cloud-KI-
-  //     Kennzeichnung wie üblich. UI: kleiner Knopf an der Fußnote; Ergebnis nur als editierbarer VORSCHLAG
-  //     in die figcaption, Übernahme ausschließlich über die ohnehin editierbare Caption.
+  // WP-BILD-1c (löst den WP-BILD-1b-TODO ein): KI-Bildbeschreibung als VORSCHLAG. Der ModelClient hat
+  // jetzt einen OPTIONALEN Vision-Pfad (completeVision, content als image/text-Block-Array — nur der
+  // Anthropic-Cloud-Client implementiert ihn); Provider ohne Bild-Eingang scheitern EHRLICH. Ohne
+  // funktionierendes Modell: text null + fallbackReason (dieselbe Ursachen-Unterscheidung wie beim
+  // structure-Task) — es entsteht NIE eine Pseudo-Beschreibung, nichts wird automatisch gespeichert.
+  async describeImage(
+    dataUrl: string,
+    locale: ReasonerLocale = "de",
+    confidential = false,
+  ): Promise<DescribeImageResult> {
+    const hadModelInChain = this.providerChain("describe", confidential).some(
+      (p) => p !== this.fallback,
+    );
+    // Box statt let (siehe structure): TS-Narrowing über Closure-Zuweisungen bleibt korrekt.
+    const failureBox: { current: { err: unknown; provider: string; elapsedMs: number } | null } = {
+      current: null,
+    };
+    const result = await this.runTask<DescribeImageResult>(
+      "describe",
+      locale,
+      async (p) => {
+        if (p === this.fallback || typeof p.describeImage !== "function") {
+          // Deterministisch gibt es KEINE Bildbeschreibung — ehrlich leer (demo), nie erfinden.
+          return { text: null, demo: true };
+        }
+        const startedMs = Date.now();
+        try {
+          return await p.describeImage(dataUrl, locale, confidential);
+        } catch (err) {
+          failureBox.current = { err, provider: p.name, elapsedMs: Date.now() - startedMs };
+          throw err;
+        }
+      },
+      confidential,
+    );
+    if (!result.demo) {
+      return result;
+    }
+    const modelFailure = failureBox.current;
+    const failure = modelFailure === null ? null : classifyModelFailure(modelFailure.err);
+    const fallbackReason = !hadModelInChain
+      ? ("no-model" as const)
+      : failure?.failureClass === "timeout"
+        ? ("model-timeout" as const)
+        : ("model-error" as const);
+    return { ...result, fallbackReason };
+  }
 
   // FR-RSN-04/FR-I18N-01: Modellfehler dürfen den Betrieb nicht stoppen → deterministischer
   // Fallback. locale wird an primary UND fallback identisch durchgereicht (Default "de").

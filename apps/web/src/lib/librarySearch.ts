@@ -3,8 +3,13 @@
 // Substring-/Token-Scoring über die bereits gelieferten Treffer. Re-RANKT die Kandidaten und
 // erklärt sie; verwirft nichts. Bei leerer Query: stabile Default-Ordnung (validiert/Trust/Titel).
 import type { KnowledgeObject } from "../api/types";
+// WP-BILD-1e: Alt-Platzhaltertexte gelten wie überall (WP-D10) als KEIN Inhalt — sie dürfen
+// keine Suchtreffer erzeugen. Gleiche Liste wie Editor/Anzeige (eine Client-Quelle).
+import { LEGACY_IMAGE_CAPTION_PLACEHOLDERS } from "./editorFigures";
 
-export type MatchField = "title" | "tag" | "category" | "type" | "text";
+// WP-BILD-1e: "caption" = Treffer in einer Bild-Fußnote (figcaption im bodyHtml) — die Fundstelle
+// wird in der Trefferliste als eigener Grund gekennzeichnet (lib.match.caption, DE/EN/NL).
+export type MatchField = "title" | "tag" | "category" | "type" | "text" | "caption";
 
 // Anzeige-/Prioritätsreihenfolge der Match-Gründe (Titel am stärksten, Text am schwächsten).
 export const MATCH_FIELD_ORDER: readonly MatchField[] = [
@@ -13,7 +18,30 @@ export const MATCH_FIELD_ORDER: readonly MatchField[] = [
   "category",
   "type",
   "text",
+  "caption",
 ];
+
+// WP-BILD-1e: Fußnoten-Texte aus dem bodyHtml (Client-Spiegel der Server-Extraktion in
+// services/library-analytics/src/search-captions.ts — ein Paritäts-Test hält die Platzhalter-
+// Listen gleich). Tags raus, Whitespace kollabiert; Leeres und Alt-Platzhalter fallen weg.
+const FIGCAPTION_RE = /<figcaption\b[^>]*>([\s\S]*?)<\/figcaption>/gi;
+
+export function imageCaptionTexts(bodyHtml: string | null | undefined): string[] {
+  if (!bodyHtml) {
+    return [];
+  }
+  const out: string[] = [];
+  for (const match of bodyHtml.matchAll(FIGCAPTION_RE)) {
+    const text = (match[1] ?? "")
+      .replace(/<[^>]*>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (text.length > 0 && !LEGACY_IMAGE_CAPTION_PLACEHOLDERS.includes(text)) {
+      out.push(text);
+    }
+  }
+  return out;
+}
 
 export interface ScoredKo {
   ko: KnowledgeObject;
@@ -96,6 +124,13 @@ export function scoreKo(
   if (text.matched) {
     score += text.score;
     matched.add("text");
+  }
+  // WP-BILD-1e: Bild-Fußnoten — gleiches Gewicht wie der Fließtext, aber eigener Match-Grund
+  // („in Bildbeschreibung"), damit der Nutzer die Fundstelle versteht.
+  const caption = hitField(imageCaptionTexts(ko.bodyHtml).join(" "), phrase, tokens, 2, 1);
+  if (caption.matched) {
+    score += caption.score;
+    matched.add("caption");
   }
 
   return { score, matches: MATCH_FIELD_ORDER.filter((f) => matched.has(f)) };

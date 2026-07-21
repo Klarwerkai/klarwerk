@@ -164,6 +164,7 @@ export function cappedModelClient(
   inner: ModelClient,
   opts: { rejectsConfidential: boolean },
 ): ModelClient {
+  const innerVision = inner.completeVision?.bind(inner);
   return {
     name: inner.name,
     complete: (system: string, user: string, confidential: boolean, maxTokens?: number) => {
@@ -172,5 +173,25 @@ export function cappedModelClient(
       }
       return withModelSlot(() => inner.complete(system, user, confidential, maxTokens));
     },
+    // WP-BILD-1c: der Vision-Pfad läuft durch DENSELBEN Chokepoint (Egress-Wächter + In-Flight-Cap)
+    // wie complete — kein Bypass über Bilder. Nur vorhanden, wenn der innere Client Vision kann.
+    ...(innerVision
+      ? {
+          completeVision: (
+            system: string,
+            imageDataUrl: string,
+            user: string,
+            confidential: boolean,
+            maxTokens?: number,
+          ) => {
+            if (opts.rejectsConfidential && confidential) {
+              return Promise.reject(new ConfidentialEgressError());
+            }
+            return withModelSlot(() =>
+              innerVision(system, imageDataUrl, user, confidential, maxTokens),
+            );
+          },
+        }
+      : {}),
   };
 }

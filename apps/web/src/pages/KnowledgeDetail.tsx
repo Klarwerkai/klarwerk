@@ -972,6 +972,13 @@ export function KnowledgeDetail(): JSX.Element {
                             .filter((a) => a.objectId && a.mime.startsWith("image/"))
                             .map((a) => ({ objectId: a.objectId as string, name: a.name }))}
                           files={editorFilesFromAttachments(ko.attachments ?? [])}
+                          onDescribeImage={(dataUrl) =>
+                            endpoints.reasoner.describeImage(
+                              dataUrl,
+                              toReasonerLocale(i18n.language),
+                              draftProvenance(undefined, id),
+                            )
+                          }
                         />
                         {/* SCRUM-315: KI-Nachbearbeitung des ausführlichen Inhalts im Edit-Modus —
                             Textbasis aus edit.bodyHtml, Übernahme als sicheres Body-HTML. ko.editNote

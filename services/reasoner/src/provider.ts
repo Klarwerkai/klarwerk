@@ -2,6 +2,7 @@ import type {
   AnswerResult,
   AssistResult,
   ConflictJudgeResult,
+  DescribeImageResult,
   DuplicateJudgeResult,
   EnrichResult,
   ExtractResult,
@@ -93,6 +94,14 @@ export interface ReasonerProvider {
   // Key-Test (Pedi 02.07.): kleinstmöglicher Echtaufruf — beweist Schlüssel + Modellzugang.
   // Optional: der deterministische Fallback hat bewusst keinen (nichts zu testen).
   probe?(): Promise<string>;
+  // WP-BILD-1c: KI-Bildbeschreibung als Vorschlag (Vision). NUR ein Modell-Provider mit echtem
+  // Bild-Eingang implementiert das; der deterministische Fallback bewusst NICHT — eine
+  // Bildbeschreibung ohne Modell wäre per Definition erfunden (Ehrlichkeit vor Optik).
+  describeImage?(
+    dataUrl: string,
+    locale?: ReasonerLocale,
+    confidential?: boolean,
+  ): Promise<DescribeImageResult>;
 }
 
 // PMO-FEA-0006: ehrliche Fallback-Meldung — ohne Modell ist keine inhaltliche Wissens-

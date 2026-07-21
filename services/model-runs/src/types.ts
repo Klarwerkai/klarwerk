@@ -2,7 +2,15 @@
 // Aufrufe nachvollziehbar, OHNE Prompt-/Antworttexte oder KO-Inhalte zu speichern. Nur Metadaten.
 // SCRUM-167: answer/select ergänzt — Ask-/Auswahlpfade ebenso nachvollziehbar.
 // PMO-FEA-0006: extract ergänzt — Wissens-Extraktion aus Dokumenten ebenso nachvollziehbar.
-export type ModelRunTask = "structure" | "assist" | "interview" | "answer" | "select" | "extract";
+// WP-BILD-1c: describe ergänzt — KI-Bildbeschreibungs-Vorschläge ebenso nachvollziehbar.
+export type ModelRunTask =
+  | "structure"
+  | "assist"
+  | "interview"
+  | "answer"
+  | "select"
+  | "extract"
+  | "describe";
 export type ModelRunStatus = "success" | "error";
 
 export interface ModelRunRecord {

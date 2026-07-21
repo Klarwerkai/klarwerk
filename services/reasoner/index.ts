@@ -6,6 +6,9 @@ export {
   isValidReasonerChoice,
   // SCRUM-525 P.5 (WP-C): eigener Fehlertyp für den Admin-Schreibpfad, wenn ein ENV-Override aktiv ist.
   ReasonerPolicyLockedError,
+  // WP-BILD-1c: die eine Task-Liste + der Bild-Daten-Deckel des describe-Aufrufs (Route/Tests).
+  REASONER_TASKS,
+  MAX_DESCRIBE_IMAGE_DATAURL_CHARS,
 } from "./src/service";
 export {
   DeterministicProvider,
@@ -35,6 +38,8 @@ export {
   MAX_EXTRACT_POINTS,
   MAX_EXCERPT_LENGTH,
   MAX_EXTRACT_DOCUMENT_LENGTH,
+  // WP-BILD-1c: harte Server-Obergrenze der Bildbeschreibungs-Vorschlagslänge.
+  MAX_IMAGE_DESCRIPTION_LENGTH,
 } from "./src/provider-model";
 // SCRUM-502 R8 (Encapsulation + Credential-Gating): nach außen NUR die GECAPPTEN Client-Factories.
 // Die rohen Clients (anthropicClient/openAiCompatibleClient), ihre Config-Typen und die
@@ -101,6 +106,8 @@ export type {
   ExtractResult,
   ExtractedPoint,
   EnrichResult,
+  // WP-BILD-1c: KI-Bildbeschreibung als Vorschlag (text null + fallbackReason ohne Modell).
+  DescribeImageResult,
   InterviewResult,
   ReasonerStatus,
   ReasonerConfigStatus,

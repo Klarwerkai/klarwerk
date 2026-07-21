@@ -102,7 +102,17 @@ export interface ReasonerStatus {
 // SCRUM-166: read-only Provider-/Model-Konfigurationssicht. Nur technische Metadaten —
 // KEINE Secrets/API-Keys, keine Prompt-/Antwortinhalte. provider/model sind Anzeige-Labels.
 export type ReasonerConfigMode = "model" | "fallback" | "demo";
-export type ReasonerTask = "structure" | "assist" | "interview" | "answer" | "select" | "extract";
+// WP-BILD-1c: describe (KI-Bildbeschreibungs-Vorschlag) als eigene, in der KI-Verwaltung sichtbare
+// Aufgabe. NUR der Cloud-Client hat einen Bild-Eingang — lokale/deterministische Glieder liefern
+// ehrlich keinen Text (nie erfinden).
+export type ReasonerTask =
+  | "structure"
+  | "assist"
+  | "interview"
+  | "answer"
+  | "select"
+  | "extract"
+  | "describe";
 
 // KI-Verwaltung (Pedi 02./03.07.): je Aufgabe bewusst wählen.
 //  - "auto"          Cloud → lokal → deterministisch (was verfügbar ist, in dieser Reihenfolge)
@@ -119,12 +129,7 @@ export type ReasonerPolicySource = "env" | "db" | "default";
 
 export interface ReasonerTaskConfig {
   global: ReasonerTaskChoice;
-  perTask: Partial<
-    Record<
-      "structure" | "assist" | "interview" | "answer" | "select" | "extract",
-      ReasonerTaskChoice
-    >
-  >;
+  perTask: Partial<Record<ReasonerTask, ReasonerTaskChoice>>;
 }
 
 export interface ReasonerConfigStatus {
@@ -208,6 +213,16 @@ export interface DuplicateJudgeResult {
     | "verwandt_verlinken";
   confidence: number;
   begruendung: string;
+}
+
+// WP-BILD-1c (Pedis Präzisierung 20.07.): KI-Bildbeschreibung als VORSCHLAG beim Bearbeiten der
+// Fußnote — nie automatisch gespeichert. Ehrlichkeit vor Vollständigkeit: ohne funktionierendes
+// Vision-Modell ist text null und fallbackReason erklärt warum (dieselben Ursachen wie beim
+// structure-Task, WP-D8/D10) — es gibt KEINE Pseudo-Beschreibung.
+export interface DescribeImageResult {
+  text: string | null; // kurzer, nüchterner Beschreibungs-Vorschlag — oder ehrlich null
+  demo: boolean; // true = kein echtes Modell hat geantwortet
+  fallbackReason?: "no-model" | "model-timeout" | "model-error";
 }
 
 // Key-Test (Pedi 02.07.): Ergebnis eines echten Mini-Aufrufs — ehrlich, keine Vermutung.

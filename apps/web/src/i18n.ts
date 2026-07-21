@@ -667,6 +667,7 @@ const de = {
   "adm.ai.task.answer": "Fragen beantworten",
   "adm.ai.task.select": "Kandidaten-Auswahl",
   "adm.ai.task.extract": "Wissen aus Datei",
+  "adm.ai.task.describe": "Bildbeschreibung (Vorschlag)",
   "adm.ai.effModel": "Modell",
   "adm.ai.effDet": "deterministisch",
   "adm.ai.eff.cloud": "extern",
@@ -1292,6 +1293,20 @@ const de = {
   // WP-D10: rein VISUELLER Platzhalter der leeren Bild-Fußnote (data-kw-placeholder + CSS ::before) —
   // wird nie als Inhalt gespeichert. Kein Emoji, nur das Stift-Zeichen ✎.
   "editor.captionPlaceholder": "✎ Bildbeschreibung hinzufügen …",
+  "editor.captionAi.suggest": "KI-Beschreibung vorschlagen",
+  "editor.captionAi.loading": "KI-Beschreibung wird erstellt …",
+  "editor.captionAi.panelTitle": "Vorschlag",
+  "editor.captionAi.aiBadge": "KI-generiert. Bitte prüfen.",
+  "editor.captionAi.apply": "Übernehmen",
+  "editor.captionAi.discard": "Verwerfen",
+  "editor.captionAi.tooLarge": "Das Bild ist zu groß für den Beschreibungs-Vorschlag (max. 5 MB).",
+  "editor.captionAi.imageUnreadable": "Das Bild dieser Fußnote konnte nicht gelesen werden.",
+  "editor.captionAi.fallbackNoModel":
+    "Kein KI-Modell konfiguriert oder freigegeben — ohne Modell gibt es keinen Beschreibungs-Vorschlag (nichts wird erfunden).",
+  "editor.captionAi.fallbackTimeout":
+    "Die Cloud-KI hat das Zeitlimit überschritten — es gibt daher keinen Vorschlag. Bitte später erneut versuchen.",
+  "editor.captionAi.fallbackError":
+    "Die Cloud-KI ist gerade nicht erreichbar oder meldet einen Fehler — es gibt daher keinen Vorschlag. Bitte später erneut versuchen.",
   "editor.file": "Datei verlinken",
   "editor.insertFile": "Datei-Anhang als Link einfügen",
   "editor.noFiles":
@@ -1975,6 +1990,7 @@ const de = {
   "lib.match.category": "Kategorie",
   "lib.match.type": "Wissensart",
   "lib.match.text": "Text",
+  "lib.match.caption": "Bildbeschreibung",
   "lib.maturity.all": "Alle",
   // SCRUM-309: Herkunftsfilter (ergänzend zu Reife/Suche; Herkunft, keine Qualitätsaussage).
   "lib.originLabel": "Herkunft",
@@ -3788,6 +3804,7 @@ const en: typeof de = {
   "adm.ai.task.answer": "Answering questions",
   "adm.ai.task.select": "Candidate selection",
   "adm.ai.task.extract": "Knowledge from file",
+  "adm.ai.task.describe": "Image description (suggestion)",
   "adm.ai.effModel": "model",
   "adm.ai.effDet": "deterministic",
   "adm.ai.eff.cloud": "external",
@@ -4390,6 +4407,20 @@ const en: typeof de = {
   "editor.fileFromDisk": "Attach file from computer …",
   "editor.imageFromAttachment": "From attachments",
   "editor.captionPlaceholder": "✎ Add image description …",
+  "editor.captionAi.suggest": "Suggest AI description",
+  "editor.captionAi.loading": "Creating AI description …",
+  "editor.captionAi.panelTitle": "Suggestion",
+  "editor.captionAi.aiBadge": "AI-generated. Please review.",
+  "editor.captionAi.apply": "Apply",
+  "editor.captionAi.discard": "Discard",
+  "editor.captionAi.tooLarge": "The image is too large for a description suggestion (max. 5 MB).",
+  "editor.captionAi.imageUnreadable": "The image of this caption could not be read.",
+  "editor.captionAi.fallbackNoModel":
+    "No AI model is configured or allowed — without a model there is no description suggestion (nothing is invented).",
+  "editor.captionAi.fallbackTimeout":
+    "The cloud AI exceeded the time limit — so there is no suggestion. Please try again later.",
+  "editor.captionAi.fallbackError":
+    "The cloud AI is currently unreachable or reports an error — so there is no suggestion. Please try again later.",
   "editor.file": "Link a file",
   "editor.insertFile": "Insert file attachment as a link",
   "editor.noFiles":
@@ -5062,6 +5093,7 @@ const en: typeof de = {
   "lib.match.category": "Category",
   "lib.match.type": "Knowledge type",
   "lib.match.text": "Text",
+  "lib.match.caption": "Image description",
   "lib.maturity.all": "All",
   // SCRUM-309: origin filter (complements maturity/search; provenance, not a quality claim).
   "lib.originLabel": "Origin",
@@ -6848,6 +6880,7 @@ const nl: typeof de = {
   "adm.ai.task.answer": "Vragen beantwoorden",
   "adm.ai.task.select": "Kandidaatselectie",
   "adm.ai.task.extract": "Kennis uit bestand",
+  "adm.ai.task.describe": "Afbeeldingsbeschrijving (voorstel)",
   "adm.ai.effModel": "Model",
   "adm.ai.effDet": "deterministisch",
   "adm.ai.eff.cloud": "extern",
@@ -7447,6 +7480,21 @@ const nl: typeof de = {
   "editor.fileFromDisk": "Bestand van je computer toevoegen …",
   "editor.imageFromAttachment": "Uit bijlagen",
   "editor.captionPlaceholder": "✎ Afbeeldingsbeschrijving toevoegen …",
+  "editor.captionAi.suggest": "AI-beschrijving voorstellen",
+  "editor.captionAi.loading": "AI-beschrijving wordt gemaakt …",
+  "editor.captionAi.panelTitle": "Voorstel",
+  "editor.captionAi.aiBadge": "AI-gegenereerd. Graag controleren.",
+  "editor.captionAi.apply": "Overnemen",
+  "editor.captionAi.discard": "Verwerpen",
+  "editor.captionAi.tooLarge":
+    "De afbeelding is te groot voor een beschrijvingsvoorstel (max. 5 MB).",
+  "editor.captionAi.imageUnreadable": "De afbeelding van dit onderschrift kon niet worden gelezen.",
+  "editor.captionAi.fallbackNoModel":
+    "Er is geen AI-model geconfigureerd of vrijgegeven — zonder model is er geen beschrijvingsvoorstel (er wordt niets verzonnen).",
+  "editor.captionAi.fallbackTimeout":
+    "De cloud-AI overschreed de tijdslimiet — er is daarom geen voorstel. Probeer het later opnieuw.",
+  "editor.captionAi.fallbackError":
+    "De cloud-AI is momenteel niet bereikbaar of meldt een fout — er is daarom geen voorstel. Probeer het later opnieuw.",
   "editor.file": "Bestand koppelen",
   "editor.insertFile": "Bestandsbijlage als link invoegen",
   "editor.noFiles":
@@ -8105,6 +8153,7 @@ const nl: typeof de = {
   "lib.match.category": "Categorie",
   "lib.match.type": "Kennissoort",
   "lib.match.text": "Tekst",
+  "lib.match.caption": "Afbeeldingsbeschrijving",
   "lib.maturity.all": "Alle",
   "lib.originLabel": "Herkomst",
   "lib.demoFilter.all": "Alle herkomsten",
