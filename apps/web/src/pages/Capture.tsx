@@ -42,6 +42,7 @@ import { AppendToArticleModal } from "../components/AppendToArticleModal";
 import { BodyExtractPanel } from "../components/BodyExtractPanel";
 import { BodyTemplateChooser } from "../components/BodyTemplateChooser";
 import { DemoBanner } from "../components/DemoBanner";
+import { DraftBodyGallery } from "../components/DraftBodyGallery";
 import { EditorAttachmentContext } from "../components/EditorAttachmentContext";
 import { EditorContentQuality } from "../components/EditorContentQuality";
 import { EditorGuidance } from "../components/EditorGuidance";
@@ -138,6 +139,8 @@ import {
 } from "../lib/captureWizard";
 import { CONFIDENTIALITY_LEVELS } from "../lib/confidentiality";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
+// WP-D11: Folien als Bilder — Server-Konvertierung + Budget-Mechanik des DOCX-/PPTX-Imports.
+import { MAX_INLINE_BODY_HTML_BYTES, applyInlineImageBudget, newImageRunToken } from "../lib/docx";
 import { draftTitle } from "../lib/draftForm";
 import { studioSaveConfidence } from "../lib/editorApplySafety";
 import { EDITOR_BLOCKS } from "../lib/editorBlocks";
@@ -167,6 +170,7 @@ import { EMPTY_SOURCE_FORM, type SourceFormInput, isSourceFormValid } from "../l
 import { PptxTooLargeError } from "../lib/pptx";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { documentProvenance, draftProvenance } from "../lib/reasonerProvenance";
+import { SLIDE_IMAGES_TEXT, appendSlideSection, countKeptSlides } from "../lib/slideImages";
 import { hasSpeechRecognition } from "../lib/speechSupport";
 // WP-D10 (Fix 2): Dauer-Details der Einreichung — reine Sammel-/Formatierlogik (keine neuen Messpunkte).
 import {
@@ -474,6 +478,10 @@ export function Capture(): JSX.Element {
   } | null>(null);
   const [fileImageUrl, setFileImageUrl] = useState<string | null>(null); // OCR-Kandidat (nur auf Klick)
   const [fileBusy, setFileBusy] = useState(false);
+  // WP-D11 (Pedis Entscheid): Folien zusätzlich als Bilder übernehmen (Server-Konvertierung).
+  // Der Toggle gilt für den NÄCHSTEN Import; der Fortschrittstext ist ehrlich (kein Fake-Prozent).
+  const [slidesAsImages, setSlidesAsImages] = useState(false);
+  const [slidesProgress, setSlidesProgress] = useState<string | null>(null);
   const [fileQuery, setFileQuery] = useState("");
   const [fileImportMode, setFileImportMode] = useState<FileImportMode>("points");
   const [fileWholeDraftSaved, setFileWholeDraftSaved] = useState<FileWholeDraftSavedState | null>(
@@ -1689,6 +1697,8 @@ export function Capture(): JSX.Element {
       let pdfTruncatedPages: number | null = null;
       // WP-D5: Hinweis, wenn der PPTX-Folien-Cap griff (nur die ersten N Folien gelesen).
       let pptxTruncatedSlides: number | null = null;
+      // WP-D11: ehrliche Bilanz der optionalen Folien-als-Bilder-Konvertierung (auch Fehlerfall).
+      let slidesNote = "";
       // WP-D9: ehrliche Teilverlust-Hinweise für Folien-Bilder (Format nicht unterstützt / Bild-Budget).
       let pptxImagesDroppedFormat = 0;
       let pptxImagesDroppedBudget = 0;
@@ -1749,6 +1759,52 @@ export function Capture(): JSX.Element {
           htmlOverflow: pptx.htmlOverflow,
         };
         sourceHadImages = pptx.imageCount > 0;
+        // WP-D11 (Pedis Entscheid): optional JEDE Folie als Bild — Server-Konvertierung, Abschnitt
+        // „Folienansicht" ANS ENDE. Die D9b/D9c-Budget-Regeln gelten unverändert: das kombinierte
+        // HTML läuft erneut durch applyInlineImageBudget (Drop-to-fit GANZER figures in Dokument-
+        // reihenfolge — die vorderen Text-/Foto-Teile sind bereits budgetiert, neu droppen können
+        // nur Folien). Fehler/503/429 → ehrliche Meldung, der Text-Import bleibt vollständig.
+        if (slidesAsImages) {
+          setSlidesProgress(t(SLIDE_IMAGES_TEXT.converting, { name: f.name }));
+          try {
+            const sourceDataUrl = await readFileAsDataUrl(f);
+            const base64 = sourceDataUrl.slice(sourceDataUrl.indexOf(",") + 1);
+            const converted = await endpoints.slides.convert(base64);
+            const runToken = newImageRunToken();
+            const combined = appendSlideSection(
+              rich.html,
+              t(SLIDE_IMAGES_TEXT.heading),
+              converted.slides,
+              runToken,
+            );
+            const budgeted = await applyInlineImageBudget(
+              combined,
+              async (src) => src,
+              MAX_INLINE_BODY_HTML_BYTES,
+            );
+            rich = { html: budgeted.html, kind: "pptx" };
+            sourceHadImages = sourceHadImages || converted.slideCount > 0;
+            const kept = countKeptSlides(budgeted.html, runToken, converted.slideCount);
+            const truncatedPart = converted.truncated
+              ? ` ${t(SLIDE_IMAGES_TEXT.truncated, { max: converted.maxSlides })}`
+              : "";
+            const droppedPart =
+              kept < converted.slideCount
+                ? ` ${t(SLIDE_IMAGES_TEXT.dropped, { count: converted.slideCount - kept })}`
+                : "";
+            slidesNote = ` ${t(SLIDE_IMAGES_TEXT.done, { count: kept })}${truncatedPart}${droppedPart}`;
+          } catch (error) {
+            const key =
+              error instanceof ApiError && error.status === 503
+                ? SLIDE_IMAGES_TEXT.unavailable
+                : error instanceof ApiError && error.status === 429
+                  ? SLIDE_IMAGES_TEXT.busy
+                  : SLIDE_IMAGES_TEXT.failed;
+            slidesNote = ` ${t(key)}`;
+          } finally {
+            setSlidesProgress(null);
+          }
+        }
       } else if (kind === "text") {
         text = await readTextFile(f);
       } else {
@@ -1828,7 +1884,7 @@ export function Capture(): JSX.Element {
         `${t(CAPTURE_FILE_TEXT.loadedStats, {
           name: f.name,
           chars: text.length,
-        })}${formatNote}${truncatedNote}${imageLossNote}${imagesOnlyNote}`,
+        })}${formatNote}${truncatedNote}${imageLossNote}${slidesNote}${imagesOnlyNote}`,
       );
     } catch (error) {
       setFileName(null);
@@ -2729,6 +2785,26 @@ export function Capture(): JSX.Element {
                 {/* WP-D10c (Pedis Wunsch): Infokasten startet zugeklappt — Volltext erst auf Klick
                     (FileFormatInfo: button + aria-expanded, gemountet getestet). */}
                 <FileFormatInfo />
+                {/* WP-D11 (Pedis Entscheid): Folien einer Präsentation zusätzlich als Bilder
+                    übernehmen — Server-Konvertierung; gilt für den nächsten PPTX-Import. */}
+                <label className="mb-1 flex cursor-pointer items-start gap-2 text-[12px] leading-relaxed text-muted">
+                  <input
+                    type="checkbox"
+                    checked={slidesAsImages}
+                    onChange={(e) => setSlidesAsImages(e.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    <span className="font-semibold text-text">{t(SLIDE_IMAGES_TEXT.toggle)}</span>{" "}
+                    {t(SLIDE_IMAGES_TEXT.toggleHint)}
+                  </span>
+                </label>
+                {slidesProgress ? (
+                  <p className="mb-1 inline-flex items-center gap-1.5 text-[12px] font-semibold text-ai">
+                    <Loader2 size={13} className="animate-spin" />
+                    {slidesProgress}
+                  </p>
+                ) : null}
                 <div className="flex flex-wrap items-center gap-2">
                   <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
                     <Paperclip size={14} />
@@ -3710,6 +3786,8 @@ export function Capture(): JSX.Element {
                         )
                       }
                     />
+                    {/* Teil B (Pedis Befund): Galerie schon im Entwurf — live aus dem Editor-HTML. */}
+                    <DraftBodyGallery bodyHtml={bodyHtml} />
                     {/* SCRUM-426: Public-KI-Anreicherung — nur bei Admin-Freigabe (Stufe „offen"),
                         Ergebnisse extern/ungeprüft, nur bewusst in den Entwurf übernehmen. */}
                     <PublicAiEnrichPanel
@@ -3950,6 +4028,8 @@ export function Capture(): JSX.Element {
                     />
                   }
                 />
+                {/* Teil B (Pedis Befund): Galerie schon im Entwurf — live aus dem Editor-HTML. */}
+                <DraftBodyGallery bodyHtml={bodyHtml} />
               </div>
 
               <KnowledgeInputStudio

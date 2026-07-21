@@ -676,6 +676,14 @@ export interface StructureResult {
   fallbackReason?: "no-model" | "model-timeout" | "model-error";
 }
 
+// WP-D11: Ergebnis der Server-Konvertierung PPTX-Folien → PNG-data-URLs (Reihenfolge = Folien).
+export interface SlideConvertResponse {
+  slides: string[];
+  slideCount: number;
+  truncated: boolean; // Präsentation hatte mehr als maxSlides Folien (harte Kappung, ehrlich)
+  maxSlides: number;
+}
+
 // WP-BILD-1c: KI-Bildbeschreibung als VORSCHLAG für die Bild-Fußnote. Ohne funktionierendes
 // Vision-Modell ehrlich text null + fallbackReason (gleiche Ursachen wie StructureResult) —
 // es gibt NIE eine Pseudo-Beschreibung, nichts wird automatisch gespeichert.

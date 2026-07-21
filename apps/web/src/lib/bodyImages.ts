@@ -22,9 +22,17 @@ const IMAGE_ID_TOKEN_RE = /^[\w-]{1,64}$/;
 
 // Attributwert im Tag — Whitespace VOR dem Namen ist Pflicht: \b allein würde in „data-src" das innere
 // „src" treffen (Bindestrich ist Wortgrenze) und ein data-src-Attribut fälschlich als Quelle lesen.
+// Teil C2 (bens P2-Nacharbeit, Parser-Härtung — Verhalten unverändert, nur robuster):
+//  - Attribut-Reihenfolge war schon immer egal (Suche im ganzen Tag), jetzt zusätzlich:
+//  - beliebiger Whitespace inkl. Zeilenumbrüche um `=` (\s deckt \n/\t ab — explizit getestet),
+//  - UNQUOTED-Werte (src=/api/…) als dritte Alternative — HTML erlaubt sie, der Wert endet am
+//    nächsten Whitespace/`>`,
+//  - der Name selbst wird escaped-frei nur mit [\w-]-Namen aufgerufen (image-id/src) und muss
+//    VOLLSTÄNDIG stehen: nach dem Namen folgt direkt `=` (ggf. mit Whitespace) — ein Attribut
+//    `srcset` kann `src` daher nicht fälschlich bedienen.
 function attrOf(tag: string, name: string): string | null {
-  const m = new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "i").exec(tag);
-  return m ? (m[1] ?? m[2] ?? null) : null;
+  const m = new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'>]+))`, "i").exec(tag);
+  return m ? (m[1] ?? m[2] ?? m[3] ?? null) : null;
 }
 
 // figcaption-Inhalt → Klartext: Tags raus, die Sanitizer-Entities zurückübersetzen, Whitespace glätten.

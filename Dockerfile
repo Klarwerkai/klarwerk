@@ -18,6 +18,17 @@ RUN cd apps/web && npx vite build
 FROM node:20-bookworm-slim AS runtime
 ENV NODE_ENV=production
 ENV PORT=3001
+# WP-D11 (Folien als Bilder): LibreOffice Impress headless (pptx→pdf) + poppler (pdf→png je Seite)
+# + Basis-Fonts für die Textdarstellung. BEWUSST --no-install-recommends und NUR die Impress-
+# Komponente (keine GUI-/Java-/Writer-/Calc-Pakete) — das Delta bleibt so bei grob ~400 MB statt
+# >1 GB für ein volles LibreOffice. Ohne diese Pakete (z. B. lokales Dev) antwortet die
+# Folien-Route ehrlich mit 503, der übrige Betrieb ist unberührt.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      libreoffice-impress \
+      poppler-utils \
+      fonts-liberation && \
+    rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev

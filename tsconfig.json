@@ -18,6 +18,7 @@
   },
   "include": ["services", "tests"],
   // WP-D8b: gemountete React-Tests (.test.tsx, jsdom) brauchen jsx+DOM-lib — die hat NUR der App-Build
-  // (apps/web/tsconfig). Der Root-Check bleibt Node-rein; Vitest transformiert die .tsx-Tests via esbuild.
-  "exclude": ["node_modules", "dist", "tests/**/*.test.tsx"]
+  // (apps/web/tsconfig). Der Root-Check bleibt Node-rein. Teil C3: die .tsx-Tests laufen jetzt durch
+  // ihren EIGENEN Typecheck (tsconfig.tests-tsx.json, im tools/build-Gate) — keine Gate-Schuld mehr.
+  "exclude": ["node_modules", "dist", "tests/**/*.test.tsx", "tests/types"]
 }

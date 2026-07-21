@@ -11,6 +11,10 @@
   },
   "overrides": [
     {
+      "include": ["tsconfig.tests-tsx.json"],
+      "json": { "parser": { "allowComments": true } }
+    },
+    {
       "include": ["**/*.test.ts"],
       "linter": {
         "rules": {

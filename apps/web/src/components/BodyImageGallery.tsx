@@ -19,10 +19,15 @@ export function BodyImageGallery({ bodyHtml }: { bodyHtml: string }): JSX.Elemen
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const dialogRef = useRef<HTMLDialogElement | null>(null);
   const closeBtnRef = useRef<HTMLButtonElement | null>(null);
+  const prevBtnRef = useRef<HTMLButtonElement | null>(null);
+  const nextBtnRef = useRef<HTMLButtonElement | null>(null);
 
   // WP-D9c (bens Galerie-Auflage 2): ECHTE Modal-Semantik. showModal() erzwingt Top-Layer + Fokusfalle
-  // nativ (aria-modal wird nicht mehr nur behauptet); beim Öffnen wandert der Fokus auf den
+  // nativ (aria-modal wird nicht mehr nur behauptet); beim ÖFFNEN wandert der Fokus auf den
   // Schließen-Knopf. Escape läuft nativ über das cancel→close-Ereignispaar des Dialogs.
+  // Teil C1 (bens P2-Nacharbeit): bei Vor/Zurück bleibt der Fokus SINNVOLL — vorher sprang er bei
+  // JEDER Navigation auf den Schließen-Knopf; und läuft ein Navigations-Knopf am Rand auf disabled
+  // (der Browser wirft den Fokus dann auf body), wandert er zum Gegenknopf statt zu verschwinden.
   useEffect(() => {
     if (openIndex === null) {
       return;
@@ -30,8 +35,27 @@ export function BodyImageGallery({ bodyHtml }: { bodyHtml: string }): JSX.Elemen
     const dialog = dialogRef.current;
     if (dialog && !dialog.open) {
       dialog.showModal();
+      closeBtnRef.current?.focus(); // nur beim ÖFFNEN — Navigation behält ihren Fokus
+      return;
     }
-    closeBtnRef.current?.focus();
+    // Navigation im offenen Dialog: nur eingreifen, wenn der Fokus verloren ging (disabled-Rand).
+    // Ein disabled gewordener, noch „fokussierter" Knopf zählt ebenfalls als verloren — Browser
+    // werfen den Fokus dann auf body, jsdom lässt ihn stehen; beide Fälle enden am Gegenknopf.
+    const active = document.activeElement;
+    const focusLost =
+      !active ||
+      active === document.body ||
+      !dialog?.contains(active) ||
+      (active instanceof HTMLButtonElement && active.disabled);
+    if (focusLost) {
+      const fallback =
+        prevBtnRef.current && !prevBtnRef.current.disabled
+          ? prevBtnRef.current
+          : nextBtnRef.current && !nextBtnRef.current.disabled
+            ? nextBtnRef.current
+            : closeBtnRef.current;
+      fallback?.focus();
+    }
   }, [openIndex]);
 
   // Pfeiltasten blättern innerhalb des offenen Dialogs (Escape übernimmt der native cancel-Pfad).
@@ -123,6 +147,7 @@ export function BodyImageGallery({ bodyHtml }: { bodyHtml: string }): JSX.Elemen
           </div>
           <div className="flex w-full max-w-3xl items-center gap-2">
             <button
+              ref={prevBtnRef}
               type="button"
               aria-label={t("ko.galleryPrev")}
               disabled={openIndex === 0}
@@ -145,6 +170,7 @@ export function BodyImageGallery({ bodyHtml }: { bodyHtml: string }): JSX.Elemen
               ) : null}
             </div>
             <button
+              ref={nextBtnRef}
               type="button"
               aria-label={t("ko.galleryNext")}
               disabled={openIndex === images.length - 1}

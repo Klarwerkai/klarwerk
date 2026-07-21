@@ -2,3 +2,6 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 npx tsc --noEmit
+# Teil C3 (bens P2-Nacharbeit): eigener Typecheck für die gemounteten .test.tsx-Dateien —
+# jsx + DOM-lib, die der Node-reine Root-Check bewusst nicht hat (tsconfig.tests-tsx.json).
+npx tsc -p tsconfig.tests-tsx.json

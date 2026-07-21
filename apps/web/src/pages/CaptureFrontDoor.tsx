@@ -8,6 +8,7 @@ import { endpoints } from "../api/endpoints";
 import type { AssistResult, Confidentiality, KnowledgeObject, StructureResult } from "../api/types";
 import { useSession } from "../app/AuthContext";
 import { useToast } from "../app/ToastContext";
+import { DraftBodyGallery } from "../components/DraftBodyGallery";
 import { HelpTip } from "../components/HelpTip";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { Button, Card, PageHeader, SectionLabel, TextInput } from "../components/ui";
@@ -569,6 +570,8 @@ export function CaptureFrontDoor(): JSX.Element {
                 onChange={changeBodyHtml}
                 placeholder={t("fd.editorPlaceholder")}
               />
+              {/* Teil B (Pedis Befund): Galerie schon im Entwurf — live aus dem Editor-HTML. */}
+              <DraftBodyGallery bodyHtml={bodyHtml} />
             </div>
 
             <div className="rounded-card border border-dashed border-ai/30 bg-ai/5 p-3">

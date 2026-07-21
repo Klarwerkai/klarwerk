@@ -166,7 +166,10 @@ import { objectRoutes } from "./routes/object-routes";
 import { outputRoutes } from "./routes/output-routes";
 import { overlapRoutes } from "./routes/overlap-routes";
 import { reasonerRoutes } from "./routes/reasoner-routes";
+import { slidesRoutes } from "./routes/slides-routes";
 import { validationRoutes } from "./routes/validation-routes";
+// WP-D11: PPTX-Folien → PNG (Route + injizierbarer Konverter).
+import { type SlideConverter, createSofficeSlideConverter } from "./slide-converter";
 
 // Composition-Root des modularen Monolithen: verdrahtet ALLE Module zu EINER App.
 // Jeder Import läuft über die öffentliche index.ts des jeweiligen Moduls.
@@ -202,6 +205,8 @@ export interface AppServices {
   externalKnowledge: ExternalKnowledgePolicyRepo;
   // SCRUM-421: einstellbare Upload-Grenzen (persistiert), direkt für die KO-Routen.
   uploadLimits: UploadLimitsRepo;
+  // WP-D11: PPTX-Folien-Konverter (injizierbar — Tests nutzen einen Fake, keine soffice-Pflicht).
+  slideConverter: SlideConverter;
 }
 
 // Alle Repositories der App. Sie sind der einzige Unterschied zwischen In-Memory und
@@ -371,6 +376,9 @@ export function assembleServices(repos: AppRepos, opts: { withTx?: WithTx } = {}
     externalKnowledge: repos.externalKnowledge,
     // SCRUM-421: Upload-Grenzen-Repo direkt durchreichen (KO-Routen nutzen es + Audit).
     uploadLimits: repos.uploadLimits,
+    // WP-D11: PPTX-Folien → PNG (LibreOffice headless). In Tests/Dev ohne soffice meldet
+    // available() ehrlich false (Route → 503); Tests injizieren einen Fake VOR buildApp.
+    slideConverter: createSofficeSlideConverter(),
   };
 }
 
@@ -705,6 +713,8 @@ export function buildApp(
     ),
   );
   app.register(captureRoutes({ ...services, notifyAssignment, semanticPrefilter }, guards));
+  // WP-D11: PPTX-Folien-Konvertierung (eigene Route mit großem bodyLimit + Auth vor dem Parse).
+  app.register(slidesRoutes(services.slideConverter, guards));
   app.register(askRoutes(services.ask, guards));
   // SCRUM-527: Live-Check (Ähnlichkeit/Widerspruch eines Entwurfstextes gegen den Bestand).
   app.register(

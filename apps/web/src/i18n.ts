@@ -954,6 +954,22 @@ const de = {
     "In „{{name}}“ wurden keine übernehmbaren Texte gefunden (reine Bild-/Grafik-Präsentation). Es wurde nichts gespeichert — das Original kannst du bei Bedarf manuell als Datei anhängen.",
   "capture.file.pdfTruncated": "Nur die ersten {{count}} Seiten importiert.",
   "capture.file.pptxTruncated": "Nur die ersten {{count}} Folien importiert.",
+  "capture.slides.toggle": "Folien als Bilder übernehmen.",
+  "capture.slides.toggleHint":
+    "Bei PowerPoint-Dateien wird zusätzlich jede Folie als Bild an den Beitrag angehängt (Abschnitt Folienansicht). Die Umwandlung läuft auf dem Server und kann einen Moment dauern.",
+  "capture.slides.heading": "Folienansicht",
+  "capture.slides.converting": "Folien von {{name}} werden auf dem Server in Bilder umgewandelt …",
+  "capture.slides.done": "{{count}} Folie(n) als Bild angehängt.",
+  "capture.slides.truncated":
+    "Es wurden nur die ersten {{max}} Folien umgewandelt (harte Obergrenze).",
+  "capture.slides.dropped":
+    "{{count}} Folienbild(er) passten nicht mehr ins Beitrags-Budget und wurden weggelassen.",
+  "capture.slides.busy":
+    "Der Server wandelt gerade eine andere Präsentation um — bitte in einem Moment erneut importieren. Der Text-Import ist vollständig.",
+  "capture.slides.unavailable":
+    "Die Folien-Ansicht ist auf diesem Server derzeit nicht verfügbar. Der Text-Import ist vollständig.",
+  "capture.slides.failed":
+    "Die Folien konnten nicht in Bilder umgewandelt werden. Der Text-Import ist vollständig.",
   "capture.file.pptxTooLarge":
     "„{{name}}“ ist zu groß oder zu stark komprimiert für den sicheren Import und wurde NICHT gelesen. Bitte die Präsentation verkleinern oder aufteilen.",
   "capture.file.pptxImagesFormat":
@@ -4084,6 +4100,21 @@ const en: typeof de = {
     "No importable text found in “{{name}}” (image-only presentation). Nothing was saved — you can attach the original manually as a file if needed.",
   "capture.file.pdfTruncated": "Only the first {{count}} pages were imported.",
   "capture.file.pptxTruncated": "Only the first {{count}} slides were imported.",
+  "capture.slides.toggle": "Import slides as images.",
+  "capture.slides.toggleHint":
+    "For PowerPoint files, every slide is additionally appended to the article as an image (slide view section). The conversion runs on the server and may take a moment.",
+  "capture.slides.heading": "Slide view",
+  "capture.slides.converting": "Converting slides of {{name}} to images on the server …",
+  "capture.slides.done": "{{count}} slide(s) attached as images.",
+  "capture.slides.truncated": "Only the first {{max}} slides were converted (hard limit).",
+  "capture.slides.dropped":
+    "{{count}} slide image(s) no longer fit the article budget and were left out.",
+  "capture.slides.busy":
+    "The server is currently converting another presentation — please import again in a moment. The text import is complete.",
+  "capture.slides.unavailable":
+    "The slide view is currently not available on this server. The text import is complete.",
+  "capture.slides.failed":
+    "The slides could not be converted to images. The text import is complete.",
   "capture.file.pptxTooLarge":
     "“{{name}}” is too large or too heavily compressed for a safe import and was NOT read. Please shrink or split the presentation.",
   "capture.file.pptxImagesFormat":
@@ -7158,6 +7189,21 @@ const nl: typeof de = {
     "In „{{name}}“ zijn geen overneembare teksten gevonden (presentatie met alleen afbeeldingen). Er is niets opgeslagen — je kunt het origineel indien nodig handmatig als bestand toevoegen.",
   "capture.file.pdfTruncated": "Alleen de eerste {{count}} pagina's geïmporteerd.",
   "capture.file.pptxTruncated": "Alleen de eerste {{count}} dia's geïmporteerd.",
+  "capture.slides.toggle": "Dia's als afbeeldingen overnemen.",
+  "capture.slides.toggleHint":
+    "Bij PowerPoint-bestanden wordt elke dia extra als afbeelding aan de bijdrage toegevoegd (sectie diaweergave). De omzetting draait op de server en kan even duren.",
+  "capture.slides.heading": "Diaweergave",
+  "capture.slides.converting": "Dia's van {{name}} worden op de server naar afbeeldingen omgezet …",
+  "capture.slides.done": "{{count}} dia('s) als afbeelding toegevoegd.",
+  "capture.slides.truncated": "Alleen de eerste {{max}} dia's zijn omgezet (harde limiet).",
+  "capture.slides.dropped":
+    "{{count}} dia-afbeelding(en) pasten niet meer in het bijdragebudget en zijn weggelaten.",
+  "capture.slides.busy":
+    "De server zet momenteel een andere presentatie om — probeer het importeren zo dadelijk opnieuw. De tekstimport is volledig.",
+  "capture.slides.unavailable":
+    "De diaweergave is op deze server momenteel niet beschikbaar. De tekstimport is volledig.",
+  "capture.slides.failed":
+    "De dia's konden niet naar afbeeldingen worden omgezet. De tekstimport is volledig.",
   "capture.file.pptxTooLarge":
     "„{{name}}“ is te groot of te sterk gecomprimeerd voor een veilige import en is NIET gelezen. Verklein of splits de presentatie.",
   "capture.file.pptxImagesFormat":

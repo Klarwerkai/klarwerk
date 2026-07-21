@@ -55,6 +55,7 @@ import type {
   ReasonerStatus,
   ReviewAction,
   Role,
+  SlideConvertResponse,
   StructureResult,
   TrashedKo,
   UploadLimits,
@@ -187,6 +188,11 @@ export const endpoints = {
     // SCRUM-115 / FE-RISK-02: Priorität der Wissenslücke setzen.
     setPriority: (id: string, priority: GapPriority) => api.put<Gap>(`/gaps/${id}`, { priority }),
     remove: (id: string) => api.del<void>(`/gaps/${id}?confirm=true`),
+  },
+  // WP-D11: PPTX-Folien → PNG je Folie (Server-Konvertierung; base64 konsistent zum Objekt-Upload).
+  slides: {
+    convert: (dataBase64: string) =>
+      api.post<SlideConvertResponse>("/capture/slides", { data: dataBase64 }),
   },
   drafts: {
     list: () => api.get<Draft[]>("/drafts"),
