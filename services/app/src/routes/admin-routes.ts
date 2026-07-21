@@ -65,6 +65,8 @@ export function adminRoutes(
         const deps: ExampleLoadServices = {
           ko: services.ko,
           objects: services.objects,
+          // WP-SAMMEL21-FIX (bens Fix 1): echte Konflikt-Anlage für das konflikte-Paket.
+          conflicts: services.conflicts,
           ...(services.audit ? { audit: services.audit } : {}),
         };
         reply.code(200).send(await loadExamplePackage(deps, pkg, user.id));

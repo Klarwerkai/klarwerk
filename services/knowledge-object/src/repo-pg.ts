@@ -223,7 +223,11 @@ export class PgKoRepo implements KoRepo {
     const limitP = `$${params.length}`;
     // ORDER BY: validierte zuerst, dann Trust absteigend (NULLS LAST schützt vor fehlendem Trust-
     // Feld); harte Begrenzung über LIMIT. Alle Werte sind Parameter, kein eingebetteter Term.
-    const sql = `SELECT data FROM kos WHERE ${ors.join(" OR ")} ORDER BY (status='validiert') DESC, (data->>'trust')::int DESC NULLS LAST LIMIT ${limitP}`;
+    // WP-SAMMEL21-FIX (bens Fix 3): DATENSPARENDE PROJEKTION wie listForSearch — bis zu 200
+    // Kandidaten je Frage würden sonst ihr volles bodyHtml (potenziell megabyte-große base64-
+    // Bilder) aus der DB ziehen. `data - 'bodyHtml'` entfernt es bereits im SELECT; Titel/
+    // Statement/captionTexts (genau die Matching-/Antwortfelder des Ask-Pfads) bleiben drin.
+    const sql = `SELECT data - 'bodyHtml' AS data FROM kos WHERE ${ors.join(" OR ")} ORDER BY (status='validiert') DESC, (data->>'trust')::int DESC NULLS LAST LIMIT ${limitP}`;
     const res = await this.pool.query<DataRow>(sql, params);
     return res.rows.map((row) => row.data);
   }

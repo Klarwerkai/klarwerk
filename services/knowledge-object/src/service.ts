@@ -99,6 +99,13 @@ export interface CreateKoInput {
   // SCRUM-470 (Confluence-Import): optionale Herkunftsquellen ab Erfassen (z. B. Confluence-Seite mit
   // pageId/spaceKey/Version). Additiv — ohne Feld bleibt es wie bisher bei []. Nur der Import-Pfad setzt es.
   sources?: KoSource[];
+  // WP-SAMMEL21-FIX (Pedis Autor-Entscheid, Fix 4): optionaler WISSENSTRÄGER abweichend vom
+  // System-Autor. Nur der Import-Accept setzt ihn (Quell-Autor aus Confluence/Jira — KEIN
+  // KLARWERK-Nutzer, KEIN Fake-User): `author` bleibt der annehmende Reviewer (RBAC/Historie),
+  // `originalAuthor` trägt den Quell-Autor — exakt das bestehende Anzeige-/Aggregationsfeld
+  // (busFactor/expertise zählen originalAuthor; die UI löst per nameOf mit Roh-Fallback auf).
+  // Ohne Feld bleibt es beim Bestandsverhalten (originalAuthor = author).
+  originalAuthor?: string;
 }
 
 export interface ReviseKoInput {
@@ -318,7 +325,8 @@ export class KoService {
       trust: 0,
       status: "offen",
       version: 1,
-      originalAuthor: input.author,
+      // WP-SAMMEL21-FIX (Fix 4): abweichender Wissensträger nur, wenn explizit gesetzt (Import).
+      originalAuthor: input.originalAuthor?.trim() ? input.originalAuthor : input.author,
       author: input.author,
       neededValidations: needed,
       assignments: [],

@@ -426,8 +426,15 @@ export class LibraryService {
       statement: item.statement,
       type: item.type,
       category: item.category,
-      // WP-RETEST7 R6: leerer Autor-String → ehrlicher Fallback auf den annehmenden Nutzer.
-      author: item.author?.trim() ? item.author : actor,
+      // WP-SAMMEL21-FIX (Pedis Autor-Entscheid, Fix 4): GEWÄHLTE ABBILDUNG — `author` ist IMMER
+      // der annehmende Reviewer (ein echter KLARWERK-Nutzer: RBAC-Checks wie „eigenes KO löschen"
+      // und die Historie funktionieren; vorher stand hier der rohe Quell-Autor-String, den das
+      // Nutzer-Verzeichnis nie auflösen kann). Der QUELL-AUTOR wandert in das BESTEHENDE
+      // originalAuthor-Feld (Wissensträger — dasselbe Modell wie der Draft-Weg): die
+      // Validierungs-/Detail-Anzeige zeigt „von <Quell-Autor>" mit Vorrang, busFactor/expertise
+      // zählen ihn als Träger. KEIN Fake-User. Fehlt der Quell-Autor, bleibt ehrlich der Reviewer.
+      author: actor,
+      ...(item.author?.trim() ? { originalAuthor: item.author } : {}),
       tags: item.tags ?? [],
       // SCRUM-509 R3: Import ist ein Bulk-/Programmatik-Pfad → konservativ. Fehlt das Governance-Signal,
       // gilt „vertraulich" (NICHT still intern) — importierter Fremdinhalt bleibt bis zur bewussten

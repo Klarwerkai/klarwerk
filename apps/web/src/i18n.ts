@@ -972,7 +972,7 @@ const de = {
   "capture.slides.unavailable":
     "Die Folien-Ansicht ist auf diesem Server derzeit nicht verfügbar. Der Text-Import ist vollständig.",
   "capture.slides.timeout":
-    "Zeitüberschreitung bei der Folien-Konvertierung — der Text-Import bleibt vollständig erhalten.",
+    "Der Server arbeitet noch oder ist nicht erreichbar — die Folien-Konvertierung wurde clientseitig abgebrochen; der Text-Import bleibt vollständig erhalten.",
   "capture.slides.failed":
     "Die Folien konnten nicht in Bilder umgewandelt werden. Der Text-Import ist vollständig.",
   "capture.file.pptxTooLarge":
@@ -4193,7 +4193,7 @@ const en: typeof de = {
   "capture.slides.unavailable":
     "The slide view is currently not available on this server. The text import is complete.",
   "capture.slides.timeout":
-    "The slide conversion timed out — the text import remains fully intact.",
+    "The server is still working or unreachable — the slide conversion was cancelled on the client side; the text import remains fully intact.",
   "capture.slides.failed":
     "The slides could not be converted to images. The text import is complete.",
   "capture.file.pptxTooLarge":
@@ -7357,7 +7357,7 @@ const nl: typeof de = {
   "capture.slides.unavailable":
     "De diaweergave is op deze server momenteel niet beschikbaar. De tekstimport is volledig.",
   "capture.slides.timeout":
-    "Time-out bij het omzetten van de dia's — de tekstimport blijft volledig behouden.",
+    "De server is nog bezig of niet bereikbaar — het omzetten van de dia's is aan de clientzijde afgebroken; de tekstimport blijft volledig behouden.",
   "capture.slides.failed":
     "De dia's konden niet naar afbeeldingen worden omgezet. De tekstimport is volledig.",
   "capture.file.pptxTooLarge":

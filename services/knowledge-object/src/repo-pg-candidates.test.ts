@@ -32,6 +32,10 @@ describe("SCRUM-361: PgKoRepo.findCandidates (Query-Shape, Fake-Pool)", () => {
 
     expect(calls).toHaveLength(1);
     const { sql, params } = calls[0] as { sql: string; params: unknown[] };
+    // WP-SAMMEL21-FIX (bens Fix 3): DATENSPARENDE Projektion wie listForSearch — bodyHtml
+    // (potenziell megabyte-große base64-Bilder) verlässt die DB im Ask-Pfad nicht mehr;
+    // Titel/Statement/captionTexts (die Matching-/Antwortfelder) bleiben in der Projektion.
+    expect(sql.startsWith("SELECT data - 'bodyHtml' AS data FROM kos")).toBe(true);
     // ODER-Treffer über die vorhandenen Felder; je Term ILIKE auf title/statement/category/tags.
     expect(sql).toContain("data->>'title' ILIKE");
     expect(sql).toContain("data->>'statement' ILIKE");
@@ -63,6 +67,25 @@ describe("SCRUM-361: PgKoRepo.findCandidates (Query-Shape, Fake-Pool)", () => {
     for (const expr of KO_CANDIDATE_SEARCH_EXPRESSIONS) {
       expect(sql).toContain(`${expr} ILIKE`);
     }
+  });
+
+  // WP-SAMMEL21-FIX (bens Fix 3, Verhaltenstest): die verengte Projektion ändert am MATCHING
+  // nichts — Titel/Statement/captionTexts stehen weiter in der Projektion (die ILIKE-Ausdrücke
+  // arbeiten ohnehin auf der Tabellen-Spalte, nicht auf der Projektion), und die vom Pool
+  // gelieferten body-freien Zeilen reisen 1:1 als Kandidaten durch.
+  it("WP-SAMMEL21 Fix 3: body-freie Kandidaten-Zeilen reisen unverändert durch; kein bodyHtml im Ergebnis", async () => {
+    const bodyless = {
+      id: "k1",
+      title: "Ventil warten",
+      statement: "Ventil quartalsweise prüfen.",
+      captionTexts: ["Verschraubung der Grundplatte"],
+    } as unknown as KnowledgeObject;
+    const { pool } = fakePool([{ data: bodyless }]);
+    const repo = new PgKoRepo(pool);
+    const [hit] = await repo.findCandidates({ terms: ["ventil"], limit: 10 });
+    expect(hit?.title).toBe("Ventil warten");
+    expect(hit?.captionTexts).toEqual(["Verschraubung der Grundplatte"]);
+    expect("bodyHtml" in (hit as unknown as Record<string, unknown>)).toBe(false);
   });
 });
 

@@ -637,10 +637,14 @@ export function Validation(): JSX.Element {
                   // WP-D10 (Fix 4): Erstellungsdatum aus dem VORHANDENEN KO-Feld — gleichnamige
                   // Beiträge werden unterscheidbar. Fehlt/unparsebar (Altdaten) → ehrlich weglassen.
                   const createdLabel = formatKoTimestamp(k.createdAt, i18n.language);
-                  // WP-BILD-1f (Pedis Befund): der ERSTELLER aus dem vorhandenen KO-Vertrag
-                  // (author, über das Verzeichnis zum Namen aufgelöst) — dezent neben dem Datum.
-                  // Fehlt das Feld bei Altdaten, erscheint ehrlich nichts.
-                  const createdByName = k.author ? nameOf(k.author).trim() : "";
+                  // WP-BILD-1f (Pedis Befund): der ERSTELLER aus dem vorhandenen KO-Vertrag —
+                  // dezent neben dem Datum. Fehlt das Feld bei Altdaten, erscheint ehrlich nichts.
+                  // WP-SAMMEL21-FIX (Pedis Autor-Entscheid, Fix 4): „von" zeigt den WISSENSTRÄGER
+                  // (originalAuthor — beim Import der Quell-Autor, sonst identisch mit author)
+                  // mit Vorrang vor dem System-Autor; nameOf fällt für Nicht-Nutzer (Quell-
+                  // Autoren sind keine KLARWERK-Nutzer) auf den Roh-Namen zurück.
+                  const vonId = k.originalAuthor?.trim() ? k.originalAuthor : k.author;
+                  const createdByName = vonId ? nameOf(vonId).trim() : "";
                   // SCRUM-365 / AG-12: kontextbezogener Prüf-Fokus aus vorhandenen Signalen
                   // (revidiert → gezielt die Änderung; Autor übertragen → extra Blick).
                   const guideFocusKey = reviewGuidanceFocusKey({

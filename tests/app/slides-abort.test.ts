@@ -147,6 +147,79 @@ describe("WP-REST18 Fix 3: Socket-Abbrüche geben den Folien-Slot frei", () => {
     }
   });
 
+  // WP-SAMMEL21-FIX (bens Fix 2, ROT): der Client-90-s-Abort feuert onRequestAbort — vorher gab
+  // der den Slot SOFORT frei, während LibreOffice weiterlief (zwei Konverter parallel möglich).
+  // Jetzt läuft JEDER Freigabepfad durch die gemeinsame Release-Routine: erst Abbruch (Signal),
+  // dann Settlement abwarten, DANN frei.
+  it("(d) Socket-Abbruch WÄHREND eines aktiven convert() → Slot bleibt bis zum Settlement belegt (429), danach frei (200)", async () => {
+    let calls = 0;
+    let firstSignal: AbortSignal | undefined;
+    let settleFirst: ((err: Error) => void) | null = null;
+    const { app, token, headers } = await appWithLogin(
+      fakeConverter({
+        convert: (_pptx, opts) => {
+          calls += 1;
+          if (calls === 1) {
+            firstSignal = opts?.signal;
+            // Bleibt aktiv, bis der TEST das Settlement auslöst (simuliert den laufenden Konverter).
+            return new Promise<SlideConvertResult>((_resolve, reject) => {
+              settleFirst = reject;
+            });
+          }
+          return Promise.resolve(convertResult());
+        },
+      }),
+    );
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    try {
+      const { port } = app.server.address() as { port: number };
+      // Vollständigen Request über einen ECHTEN Socket senden; zerstört wird er ERST, wenn der
+      // Konverter nachweislich läuft (genau bens Fenster: Abort mitten im convert()).
+      const body = JSON.stringify({ data: SMALL_PPTX });
+      const socket = connect(port, "127.0.0.1", () => {
+        const head = [
+          "POST /api/capture/slides HTTP/1.1",
+          "Host: 127.0.0.1",
+          `Authorization: Bearer ${token}`,
+          "Content-Type: application/json",
+          `Content-Length: ${Buffer.byteLength(body)}`,
+          "",
+          "",
+        ].join("\r\n");
+        socket.write(`${head}${body}`);
+      });
+      for (let i = 0; i < 200 && calls === 0; i++) {
+        await new Promise((r) => setTimeout(r, 10));
+      }
+      expect(calls).toBe(1);
+      socket.destroy();
+      await new Promise((r) => setTimeout(r, 200));
+      // Der Socket-Close-Wächter (Fastifys onRequestAbort feuert bei komplettem Body nachweislich
+      // NICHT) hat über die gemeinsame Release-Routine den ABBRUCH ausgelöst …
+      expect(firstSignal?.aborted).toBe(true);
+      // … gibt den Slot aber NICHT frei, solange der Konverter-Job nicht gesettelt ist.
+      const blocked = await app.inject({
+        method: "POST",
+        url: "/api/capture/slides",
+        headers,
+        payload: { data: SMALL_PPTX },
+      });
+      expect(blocked.statusCode).toBe(429);
+      // Settlement (der Kill wirkt) → ERST JETZT wird der Slot frei.
+      (settleFirst as unknown as (err: Error) => void)(new Error("Prozessgruppe beendet"));
+      await new Promise((r) => setTimeout(r, 100));
+      const after = await app.inject({
+        method: "POST",
+        url: "/api/capture/slides",
+        headers,
+        payload: { data: SMALL_PPTX },
+      });
+      expect(after.statusCode).toBe(200);
+    } finally {
+      await app.close();
+    }
+  });
+
   it("(c) Lease mit ECHTER Cancellation: WEITER 429 solange der Job nicht abgebrochen/gesettelt ist — erst danach 200", async () => {
     const warnSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     let calls = 0;

@@ -72,7 +72,18 @@ describe("WP-B6: POST /api/admin/examples/load", () => {
     for (const pkg of EXAMPLE_PACKAGES) {
       const res = await load(app, headers, pkg.id);
       expect(res.statusCode, pkg.id).toBe(200);
-      expect(res.json()).toEqual({ package: pkg.id, created: pkg.kos.length, skipped: 0 });
+      // WP-SAMMEL21 (Fix 1): die Bilanz trägt zusätzlich die Konflikt-Zähler (nur das
+      // konflikte-Paket erzeugt welche — drei Paare; sonst 0/0/0).
+      expect(res.json()).toEqual({
+        package: pkg.id,
+        created: pkg.kos.length,
+        skipped: 0,
+        conflicts: {
+          created: pkg.id === "konflikte" ? 3 : 0,
+          skipped: 0,
+          failed: 0,
+        },
+      });
     }
     const kos = await services.ko.list();
     expect(kos.length).toBe(EXAMPLE_PACKAGES.reduce((n, p) => n + p.kos.length, 0));
@@ -98,15 +109,94 @@ describe("WP-B6: POST /api/admin/examples/load", () => {
     const first = await load(app, headers, "konflikte");
     expect(first.json()).toMatchObject({ created: 6, skipped: 0 });
     const second = await load(app, headers, "konflikte");
-    expect(second.json()).toEqual({ package: "konflikte", created: 0, skipped: 6 });
+    expect(second.json()).toEqual({
+      package: "konflikte",
+      created: 0,
+      skipped: 6,
+      conflicts: { created: 0, skipped: 3, failed: 0 },
+    });
     expect((await services.ko.list()).length).toBe(6);
     const audit = await services.audit.list();
     const entries = audit.filter((e) => e.action === "examples.load");
     expect(entries.length).toBe(2);
     expect(entries.map((e) => e.payload)).toEqual([
-      { created: 6, skipped: 0 },
-      { created: 0, skipped: 6 },
+      { created: 6, skipped: 0, conflicts: { created: 3, skipped: 0, failed: 0 } },
+      { created: 0, skipped: 6, conflicts: { created: 0, skipped: 3, failed: 0 } },
     ]);
+  });
+
+  // WP-SAMMEL21-FIX (bens Fix 1, ROT — Pflicht-Pin in bens Formulierung): das Laden des
+  // Konflikt-Pakets ergibt EXAKT drei unresolved Konflikte mit den richtigen KO-Paaren;
+  // ein zweites Laden lässt sie unverändert bei drei (stabiler Paar-Anker, keine Duplikate).
+  it("PFLICHT-PIN: Konflikt-Paket → EXAKT drei unresolved Konflikte mit den richtigen KO-Paaren; zweites Laden → unverändert drei", async () => {
+    const { app, services, headers } = await adminApp();
+    const first = await load(app, headers, "konflikte");
+    expect(first.statusCode).toBe(200);
+    const open = await services.conflicts.unresolved();
+    expect(open.length).toBe(3);
+    // Die richtigen Paare: je Konflikt verweisen koA/koB auf die beiden Partner-KOs des Paars.
+    const kos = await services.ko.list();
+    const idByKey = new Map(
+      kos.map((k) => [k.sources?.[0]?.externalId?.replace("beispiel-konflikte-", ""), k.id]),
+    );
+    const pair = (a: string, b: string) =>
+      open.find(
+        (c) =>
+          (c.koA === idByKey.get(a) && c.koB === idByKey.get(b)) ||
+          (c.koA === idByKey.get(b) && c.koB === idByKey.get(a)),
+      );
+    expect(pair("anzug-a", "anzug-b")).toBeDefined();
+    expect(pair("kuehl-a", "kuehl-b")).toBeDefined();
+    expect(pair("schmier-a", "schmier-b")).toBeDefined();
+    // Echte Board-Konflikte: origin auto (createAuto-Muster wie der Demo-Seed), Status offen.
+    for (const c of open) {
+      expect(c.origin).toBe("auto");
+      expect(c.status).toBe("offen");
+    }
+    // Zweites Laden: weder KO- noch Konflikt-Duplikate.
+    const second = await load(app, headers, "konflikte");
+    expect(second.statusCode).toBe(200);
+    expect((await services.conflicts.unresolved()).length).toBe(3);
+    expect((await services.ko.list()).length).toBe(6);
+  });
+
+  // WP-SAMMEL21-FIX (bens GELB, Idempotenz-Atomik): check-then-create ist per catch-and-recheck
+  // gehärtet — ein werfendes createAuto kippt den Lauf nicht, die Teilbilanz bleibt ehrlich.
+  it("TEILBILANZ: wirft createAuto, zählt das Paar als failed (bzw. skipped, wenn es parallel doch entstand)", async () => {
+    const { app, services, headers } = await adminApp();
+    const realCreateAuto = services.conflicts.createAuto.bind(services.conflicts);
+    // Fall A: EIN Paar scheitert wirklich (nichts angelegt) → failed:1, die anderen laufen weiter.
+    let failNext = true;
+    services.conflicts.createAuto = async (input, detector, actor) => {
+      if (failNext) {
+        failNext = false;
+        throw new Error("Konflikt-Repo nicht erreichbar");
+      }
+      return realCreateAuto(input, detector, actor);
+    };
+    const res = await load(app, headers, "konflikte");
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { conflicts: unknown }).conflicts).toEqual({
+      created: 2,
+      skipped: 0,
+      failed: 1,
+    });
+    expect((await services.conflicts.unresolved()).length).toBe(2);
+    // Fall B (catch-and-recheck): createAuto legt an UND wirft (Parallel-Lauf-Simulation) —
+    // der Recheck findet das Paar und zählt ehrlich skipped statt failed.
+    services.conflicts.createAuto = async (input, detector, actor) => {
+      const created = await realCreateAuto(input, detector, actor);
+      void created;
+      throw new Error("Antwort ging verloren (Parallelkonflikt)");
+    };
+    const retry = await load(app, headers, "konflikte");
+    expect(retry.statusCode).toBe(200);
+    expect((retry.json() as { conflicts: unknown }).conflicts).toEqual({
+      created: 0,
+      skipped: 3,
+      failed: 0,
+    });
+    expect((await services.conflicts.unresolved()).length).toBe(3);
   });
 
   it("KONSISTENZ zum Aufräumen: D-CLEAN zählt/entfernt Beispiele NICHT — der Demo-Purge entfernt sie", async () => {

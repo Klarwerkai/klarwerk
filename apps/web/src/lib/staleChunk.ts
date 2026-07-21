@@ -8,14 +8,33 @@
 // i18n-Schlüssel der Stale-Bundle-Meldung (DE/EN/NL) — EINE Meldung für ALLE Lazy-Import-Stellen.
 export const STALE_BUNDLE_KEY = "app.staleBundle";
 
-// Robuste Erkennung eines fehlgeschlagenen dynamic imports über die bekannten Browser-/Vite-
-// Formulierungen (Chrome/Firefox/Safari + Vite-Preload + Webpack-ChunkLoadError-Name). Bewusst
-// NICHT „jeder TypeError" — ein TypeError aus echter Parse-Logik bleibt ein Parse-Fehler.
+// WP-SAMMEL21-FIX (bens Fix 5): ENGER VERANKERTE Erkennung eines fehlgeschlagenen dynamic imports
+// — Fehlername-WHITELIST statt reiner Substring-Suche über beliebige Fehler:
+//  (1) Webpack-ChunkLoadError: eindeutig am NAMEN erkennbar.
+//  (2) Browser-TypeError des import()-Pfads: NUR ein TypeError zählt, und nur mit einer der
+//      bekannten browser-spezifischen import()-Formulierungen (Chrome: Failed to fetch dynamically
+//      imported module; Firefox: error loading dynamically imported module; Safari: Importing a
+//      module script failed).
+//  (3) Vite-Preload: die eindeutige Vite-Formulierung (Unable to preload CSS/…) bzw. der von Vite
+//      geworfene preloadError.
+// Ein GENERISCHER Error aus echter Parse-Logik (mammoth/fflate/pdfjs — z. B. ZIP-Struktur kaputt)
+// erfüllt KEINES der Kriterien: er trägt weder den Chunk-Namen noch ist er ein TypeError mit
+// import()-Formulierung — er bleibt IMMER ein Parse-Fehler mit Ursache, nie „bitte neu laden".
+const IMPORT_TYPEERROR_RE =
+  /failed to fetch dynamically imported module|error loading dynamically imported module|importing a module script failed/i;
+const VITE_PRELOAD_RE = /unable to preload/i;
+
 export function isStaleChunkError(error: unknown): boolean {
-  const text = error instanceof Error ? `${error.name} ${error.message}` : String(error ?? "");
-  return /dynamically imported module|module script failed|ChunkLoadError|Unable to preload|preloadError|Loading chunk/i.test(
-    text,
-  );
+  if (!(error instanceof Error)) {
+    return false; // nur echte Fehlerobjekte — ein String/Fremdwert ist nie ein Stale-Signal
+  }
+  if (error.name === "ChunkLoadError" || error.name === "preloadError") {
+    return true;
+  }
+  if (error.name === "TypeError") {
+    return IMPORT_TYPEERROR_RE.test(error.message);
+  }
+  return VITE_PRELOAD_RE.test(error.message);
 }
 
 // Kurze, PII-unkritische Ursache für die Parse-Fehlermeldung (der lokale Dateiname wird ohnehin

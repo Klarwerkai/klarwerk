@@ -756,6 +756,8 @@ export interface ExampleLoadResponse {
   package: "konflikte" | "bilder" | "qualitaet";
   created: number;
   skipped: number;
+  // WP-SAMMEL21-FIX (bens Fix 1): ehrliche Teilbilanz der Konflikt-Anlage (konflikte-Paket).
+  conflicts?: { created: number; skipped: number; failed: number };
 }
 
 export interface SlideConvertResponse {

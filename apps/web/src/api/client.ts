@@ -72,7 +72,13 @@ export const api = {
     })
       .catch((err) => {
         if (controller.signal.aborted) {
-          throw new ApiError(408, "TIMEOUT", "Zeitüberschreitung der Anfrage.");
+          // WP-SAMMEL21-FIX (bens Fix 2): ehrliche Abbruch-Meldung — der Server kann noch
+          // arbeiten; der Abbruch ist CLIENTSEITIG (kein Doppel-Retry-Anreiz).
+          throw new ApiError(
+            408,
+            "TIMEOUT",
+            "Der Server arbeitet noch oder ist nicht erreichbar — der Vorgang wurde clientseitig abgebrochen.",
+          );
         }
         throw err;
       })

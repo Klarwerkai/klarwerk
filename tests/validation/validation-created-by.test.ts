@@ -11,8 +11,11 @@ const i18n = readFileSync(resolve(process.cwd(), "apps/web/src/i18n.ts"), "utf8"
 
 describe("WP-BILD-1f: Ersteller auf den Validierungs-Karten", () => {
   it("die Karte zeigt den Ersteller aus dem KO-Vertrag (author → Verzeichnis-Name) neben dem Datum", () => {
-    // Ersteller aus dem VORHANDENEN Feld, nie erfunden; leere Altdaten → leerer String → weggelassen.
-    expect(src).toContain('const createdByName = k.author ? nameOf(k.author).trim() : ""');
+    // WP-SAMMEL21-FIX (Pedis Autor-Entscheid, Fix 4): die von-Zeile zeigt den WISSENSTRÄGER —
+    // originalAuthor (beim Import der Quell-Autor) mit Vorrang vor dem System-Autor; nameOf
+    // fällt für Nicht-Nutzer auf den Roh-Namen zurück. Nie erfunden: leere Altdaten → weggelassen.
+    expect(src).toContain("const vonId = k.originalAuthor?.trim() ? k.originalAuthor : k.author");
+    expect(src).toContain('const createdByName = vonId ? nameOf(vonId).trim() : ""');
     // Anzeige haengt an Datum ODER Ersteller — beides fehlend (Altdaten) → ehrlich nichts.
     expect(src).toContain("createdLabel || createdByName ?");
     expect(src).toContain('t("ko.createdByName", { name: createdByName })');

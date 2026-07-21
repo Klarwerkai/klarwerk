@@ -11,6 +11,7 @@
 //    (WP-D-CLEAN): das räumt Confluence-/Jira-Provenienz auf, Beispiele sind aber Demo-Inhalt
 //    mit eigener Provenienz. Die UI sagt das ehrlich dazu.
 import type { AuditService } from "../../audit";
+import type { Conflict, ConflictService } from "../../conflicts";
 import type { KnowledgeType, KoService, KoSource } from "../../knowledge-object";
 import type { ObjectStore } from "../../object-store";
 
@@ -230,6 +231,10 @@ const TINY_PNG =
 export interface ExampleLoadServices {
   ko: KoService;
   objects: ObjectStore;
+  // WP-SAMMEL21-FIX (bens Fix 1): die Konflikt-Paare des konflikte-Pakets entstehen über den
+  // ECHTEN Konflikt-Service (createAuto — dasselbe Muster wie der Demo-Seed), damit sie am
+  // Konflikt-Board wirklich erscheinen.
+  conflicts: ConflictService;
   audit?: AuditService;
 }
 
@@ -237,6 +242,9 @@ export interface ExampleLoadResult {
   package: ExamplePackageId;
   created: number;
   skipped: number;
+  // WP-SAMMEL21-FIX (bens Fix 1): ehrliche Teilbilanz der Konflikt-Anlage (nur das
+  // konflikte-Paket erzeugt welche; sonst stehen alle Zähler auf 0).
+  conflicts: { created: number; skipped: number; failed: number };
 }
 
 // Lädt EIN Paket idempotent über die bestehenden Anlege-Wege. Bereits vorhandene Beispiel-KOs
@@ -247,19 +255,24 @@ export async function loadExamplePackage(
   pkg: ExamplePackage,
   actor: string,
 ): Promise<ExampleLoadResult> {
-  const existingAnchors = new Set<string>();
+  // Anker → KO-Id auch für BEREITS vorhandene Beispiele merken: die Konflikt-Anlage unten braucht
+  // die Paar-KO-Ids in JEDEM Lauf (auch beim idempotenten zweiten Laden).
+  const existingByAnchor = new Map<string, string>();
   for (const ko of await services.ko.list()) {
     for (const s of ko.sources ?? []) {
       if (s.provider === EXAMPLE_PROVIDER && s.externalId) {
-        existingAnchors.add(s.externalId);
+        existingByAnchor.set(s.externalId, ko.id);
       }
     }
   }
   let created = 0;
   let skipped = 0;
+  const koIdByKey = new Map<string, string>();
   for (const def of pkg.kos) {
     const externalId = exampleExternalId(pkg.id, def.key);
-    if (existingAnchors.has(externalId)) {
+    const existingId = existingByAnchor.get(externalId);
+    if (existingId !== undefined) {
+      koIdByKey.set(def.key, existingId);
       skipped += 1;
       continue;
     }
@@ -295,7 +308,7 @@ export async function loadExamplePackage(
       author: actor,
       at: new Date().toISOString(),
     };
-    await services.ko.create({
+    const ko = await services.ko.create({
       title: `${EXAMPLE_TITLE_PREFIX}${def.title}`,
       statement: def.statement,
       type: def.type,
@@ -309,13 +322,78 @@ export async function loadExamplePackage(
       // Entfernen-Weg: der bestehende Demo-Purge (demoSeed) — NICHT das Import-Aufräumen.
       demoSeed: true,
     });
+    koIdByKey.set(def.key, ko.id);
     created += 1;
   }
+  const conflicts = await createExampleConflicts(services, pkg, koIdByKey, actor);
   await services.audit?.record({
     actor,
     action: "examples.load",
     target: pkg.id,
-    payload: { created, skipped },
+    payload: { created, skipped, conflicts },
   });
-  return { package: pkg.id, created, skipped };
+  return { package: pkg.id, created, skipped, conflicts };
+}
+
+// WP-SAMMEL21-FIX (bens Fix 1, ROT): die conflictsWith-Paare als ECHTE Konflikte anlegen —
+// über conflicts.createAuto (dasselbe Muster wie der Demo-Seed), damit sie am Board erscheinen.
+// IDEMPOTENT über einen stabilen Paar-Anker: die KO-Ids der Beispiel-KOs sind über den
+// externalId-Anker laufübergreifend stabil; existiert bereits ein UNGELÖSTER Konflikt mit genau
+// diesem KO-Paar (in beliebiger Reihenfolge), wird NICHT erneut angelegt.
+// bens GELB (Idempotenz-Atomik, ohne großen Umbau): das check-then-create ist per catch-and-recheck
+// gehärtet — wirft createAuto (z. B. kollidierendes Parallel-Laden), wird der Bestand ERNEUT
+// geprüft: existiert das Paar inzwischen, zählt es ehrlich als übersprungen, sonst als
+// fehlgeschlagen (Teilbilanz statt Abbruch; die übrigen Paare laufen weiter).
+async function createExampleConflicts(
+  services: ExampleLoadServices,
+  pkg: ExamplePackage,
+  koIdByKey: ReadonlyMap<string, string>,
+  actor: string,
+): Promise<{ created: number; skipped: number; failed: number }> {
+  const balance = { created: 0, skipped: 0, failed: 0 };
+  const pairExists = (open: readonly Conflict[], idA: string, idB: string): boolean =>
+    open.some((c) => (c.koA === idA && c.koB === idB) || (c.koA === idB && c.koB === idA));
+  for (const def of pkg.kos) {
+    // Jedes Paar ist beidseitig definiert (a→b und b→a) — nur EINE Richtung verarbeitet es.
+    if (!def.conflictsWith || def.key > def.conflictsWith) {
+      continue;
+    }
+    const idA = koIdByKey.get(def.key);
+    const idB = koIdByKey.get(def.conflictsWith);
+    const partner = pkg.kos.find((k) => k.key === def.conflictsWith);
+    if (idA === undefined || idB === undefined || partner === undefined) {
+      balance.failed += 1; // Paar unvollständig (KO-Anlage scheiterte) — ehrlich ausweisen
+      continue;
+    }
+    if (pairExists(await services.conflicts.unresolved(), idA, idB)) {
+      balance.skipped += 1;
+      continue;
+    }
+    try {
+      await services.conflicts.createAuto(
+        {
+          koA: idA,
+          koB: idB,
+          type: "truth",
+          description: `Widersprüchliche Beispiel-Aussagen: ${def.title} vs. ${partner.title}`,
+        },
+        {
+          trigger: "background",
+          method: "deterministic",
+          rationale:
+            "Kuratiertes Widerspruchs-Paar aus dem Beispielpaket (kein Modell-Fund) — zum Ausprobieren des Konflikt-Boards.",
+        },
+        actor,
+      );
+      balance.created += 1;
+    } catch {
+      // catch-and-recheck: hat ein paralleler Lauf das Paar inzwischen angelegt → übersprungen.
+      if (pairExists(await services.conflicts.unresolved(), idA, idB)) {
+        balance.skipped += 1;
+      } else {
+        balance.failed += 1;
+      }
+    }
+  }
+  return balance;
 }

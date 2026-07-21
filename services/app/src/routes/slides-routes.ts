@@ -142,45 +142,64 @@ export function slidesRoutes(converter: SlideConverter, guards: Guards): Fastify
   let abortCtl: AbortController | null = null;
   let activeJob: Promise<unknown> | null = null;
 
-  const releaseSlot = (request: FastifyRequest): void => {
-    if (slotHolder.has(request)) {
-      slotHolder.delete(request);
-      running = false;
-      if (leaseTimer !== null) {
-        clearTimeout(leaseTimer);
-        leaseTimer = null;
-      }
-      leaseHolder = null;
+  // Aufräumer des Socket-Close-Wächters des AKTUELLEN Halters (Single-Slot-Invariante).
+  let socketCloseCleanup: (() => void) | null = null;
+
+  // Sofort-Freigabe OHNE Settle-Warten — NUR von releaseSlot (nach dem Settlement) gerufen.
+  const releaseNow = (request: FastifyRequest): boolean => {
+    if (!slotHolder.has(request)) {
+      return false;
     }
+    slotHolder.delete(request);
+    running = false;
+    if (leaseTimer !== null) {
+      clearTimeout(leaseTimer);
+      leaseTimer = null;
+    }
+    leaseHolder = null;
+    socketCloseCleanup?.();
+    socketCloseCleanup = null;
+    return true;
+  };
+
+  // WP-SAMMEL21-FIX (bens Fix 2, ROT): DIE EINE gemeinsame Release-Routine ALLER Freigabepfade
+  // (onRequestAbort, onResponse, onError UND Lease-Watchdog). Die Settle-Pflicht aus F5 gilt
+  // überall: läuft noch ein Konverter-Job, wird ZUERST das AbortSignal ausgelöst (Prozessgruppen-
+  // SIGKILL-Weg) und das SETTLEMENT abgewartet — KEIN Pfad setzt running=false unter einem
+  // aktiven convert(). Vorher riss der Client-90-s-Abort über onRequestAbort den Slot frei,
+  // während LibreOffice weiterlief — zwei parallele Konverter waren möglich.
+  // Rückgabe true = DIESER Aufruf hat freigegeben (für das Watchdog-Warn-Log).
+  const releaseSlot = async (request: FastifyRequest): Promise<boolean> => {
+    if (!slotHolder.has(request)) {
+      return false;
+    }
+    const job = activeJob;
+    if (job !== null) {
+      abortCtl?.abort();
+      try {
+        await job;
+      } catch {
+        // Der Abbruchfehler ist der erwartete Ausgang.
+      }
+    }
+    // Idempotent: hat ein konkurrierender Freigabepfad nach dem Settlement schon freigegeben,
+    // ist nichts mehr zu tun (kein Doppel-Release).
+    return releaseNow(request);
   };
 
   const expireLease = async (holder: FastifyRequest): Promise<void> => {
     if (leaseHolder !== holder || !slotHolder.has(holder)) {
       return;
     }
-    // (1) ABBRUCH: einen laufenden Konverter-Job hart beenden (Signal → Prozessgruppen-SIGKILL) …
-    const job = activeJob;
+    // Hängt der Request noch im Upload/Body-Parse (kein Job), beendet der Socket-Close den
+    // Parse — onRequestAbort läuft dann durch DIESELBE Release-Routine. Ein danach doch noch
+    // startender Handler sieht das abgefeuerte Signal und bricht sofort ab.
     abortCtl?.abort();
-    if (job === null) {
-      // … bzw. einen noch laufenden Upload/Body-Parse über den Socket beenden — onRequestAbort
-      // übernimmt dann die reguläre Freigabe. Ein danach doch noch startender Handler sieht das
-      // bereits abgefeuerte Signal und bricht sofort ab.
+    if (activeJob === null) {
       holder.raw.destroy();
     }
-    // (2) auf das ECHTE Ende des Jobs warten — der Slot wird NIE unter einem aktiven Konverter frei.
-    try {
-      await job;
-    } catch {
-      // Der Abbruchfehler ist hier der erwartete Ausgang.
-    }
-    // (3) Erst jetzt freigeben — idempotent: hat der Antwort-/Abort-Pfad nach dem Settlement schon
-    // freigegeben, ist nichts mehr zu tun (kein Doppel-Release, kein Log).
-    if (slotHolder.has(holder)) {
-      slotHolder.delete(holder);
-      if (leaseHolder === holder) {
-        leaseHolder = null;
-      }
-      running = false;
+    const released = await releaseSlot(holder);
+    if (released) {
       // PII-frei: keine Nutzer-/Inhaltsdaten — nur der Fakt der Zwangsfreigabe nach Abbruch.
       process.stderr.write(
         `[KLARWERK] Folien-Slot nach ${SLIDES_SLOT_LEASE_MS} ms Lease abgebrochen und nach Job-Ende zwangsweise freigegeben.\n`,
@@ -194,6 +213,23 @@ export function slidesRoutes(converter: SlideConverter, guards: Guards): Fastify
     leaseHolder = request;
     abortCtl = new AbortController();
     activeJob = null;
+    // WP-SAMMEL21-FIX (bens Fix 2): Fastifys onRequestAbort ist dokumentiert UNZUVERLÄSSIG —
+    // bei bereits komplett empfangenem Body (Client bricht WÄHREND des convert() ab, genau der
+    // 90-s-Client-Timeout) feuert es hier nachweislich NICHT; der Slot hinge dann bis zum
+    // Lease-Watchdog. Der rohe TCP-Socket-Close ist das verlässliche Signal: er läuft durch
+    // DIESELBE settle-pflichtige Release-Routine (Abbruch → Settlement → frei). Nach einer
+    // regulären Antwort ist der Slot längst frei → der Close-Wächter ist dann ein No-op;
+    // releaseNow räumt den Listener auf (keine Ansammlung auf Keep-Alive-Sockets).
+    const rawSocket = request.raw.socket;
+    if (rawSocket) {
+      const onSocketClose = (): void => {
+        void releaseSlot(request);
+      };
+      rawSocket.once("close", onSocketClose);
+      socketCloseCleanup = () => rawSocket.removeListener("close", onSocketClose);
+    } else {
+      socketCloseCleanup = null;
+    }
     leaseTimer = setTimeout(() => {
       leaseTimer = null;
       void expireLease(request);
@@ -216,9 +252,11 @@ export function slidesRoutes(converter: SlideConverter, guards: Guards): Fastify
     // WP-REST18 (bens Fix 3, ROT): bricht der Client ab, während der 72-MiB-Body geparst wird
     // (oder der Handler läuft), feuert KEIN onResponse — der Slot bliebe bis zum Prozessneustart
     // belegt. onRequestAbort gibt ihn frei (nur der Halter; abgewiesene Requests sind No-ops).
+    // WP-SAMMEL21-FIX (bens Fix 2): über die GEMEINSAME Release-Routine — bei aktivem Konverter
+    // erst Abbruch + Settlement, dann Freigabe (nie zwei Konverter parallel).
     // Plugin-Scope = nur diese Route.
     app.addHook("onRequestAbort", async (request) => {
-      releaseSlot(request);
+      await releaseSlot(request);
     });
 
     app.post<{ Body: { data?: string } }>(
@@ -276,10 +314,10 @@ export function slidesRoutes(converter: SlideConverter, guards: Guards): Fastify
         // onRequestAbort (oben, Plugin-Scope) deckt den Client-Abbruch ohne Antwort ab.
         // Doppel-Freigabe ist durch die request-lokale Markierung ausgeschlossen.
         onResponse: async (request: FastifyRequest): Promise<void> => {
-          releaseSlot(request);
+          await releaseSlot(request);
         },
         onError: async (request: FastifyRequest): Promise<void> => {
-          releaseSlot(request);
+          await releaseSlot(request);
         },
       },
       async (request, reply) => {

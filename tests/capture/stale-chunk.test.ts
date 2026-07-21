@@ -35,6 +35,36 @@ describe("WP-RETEST7 R1: Stale-Bundle-Erkennung", () => {
     expect(isStaleChunkError(null)).toBe(false);
   });
 
+  // WP-SAMMEL21-FIX (bens Fix 5): ENGER VERANKERT — Fehlername-Whitelist statt reiner Substring-
+  // Suche. Typische Engine-Parse-Fehler (mammoth/ZIP) erscheinen NIE als „bitte neu laden".
+  it("WP-SAMMEL21 Fix 5: mammoth-/ZIP-Parse-Fehler → KEINE Stale-Meldung (Fehlername-Verankerung)", () => {
+    // Typische mammoth-Fehler (generischer Error, kein TypeError):
+    expect(
+      isStaleChunkError(
+        new Error("Could not find the body element: are you sure this is a docx file?"),
+      ),
+    ).toBe(false);
+    expect(isStaleChunkError(new Error("Could not find main document part"))).toBe(false);
+    // Typische fflate-/ZIP-Fehler:
+    expect(isStaleChunkError(new Error("invalid zip data"))).toBe(false);
+    expect(
+      isStaleChunkError(new Error("End of central directory record signature not found")),
+    ).toBe(false);
+    // VERANKERUNGS-BEWEIS: selbst die import()-Formulierung in einem GENERISCHEN Error (z. B. ein
+    // Parse-Fehler, der einen Import-Text zitiert) zählt NICHT — nur ein echter TypeError bzw.
+    // ChunkLoadError/preloadError trägt sie als Stale-Signal.
+    expect(isStaleChunkError(new Error("Failed to fetch dynamically imported module: /x.js"))).toBe(
+      false,
+    );
+    // Nicht-Error-Werte (String/undefined) sind nie ein Stale-Signal.
+    expect(isStaleChunkError("Failed to fetch dynamically imported module")).toBe(false);
+    expect(isStaleChunkError(undefined)).toBe(false);
+    // Gegenprobe: der Vite-preloadError-Name bleibt erkannt.
+    const preload = new Error("irgendein Text");
+    preload.name = "preloadError";
+    expect(isStaleChunkError(preload)).toBe(true);
+  });
+
   it("Meldungswahl: Stale → Neu-laden-Text; sonst Basis-Meldung + kurze Ursache (120 Zeichen)", () => {
     const stale = new TypeError("Failed to fetch dynamically imported module: /assets/mammoth.js");
     expect(honestParseErrorText(stale, "NEU LADEN", "PARSE")).toBe("NEU LADEN");
