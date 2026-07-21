@@ -3,6 +3,7 @@
 // SCRUM-167: answer/select ergänzt — Ask-/Auswahlpfade ebenso nachvollziehbar.
 // PMO-FEA-0006: extract ergänzt — Wissens-Extraktion aus Dokumenten ebenso nachvollziehbar.
 // WP-BILD-1c: describe ergänzt — KI-Bildbeschreibungs-Vorschläge ebenso nachvollziehbar.
+// WP-IC-4: group ergänzt — KI-Gruppierung der Import-Kandidaten ebenso nachvollziehbar.
 export type ModelRunTask =
   | "structure"
   | "assist"
@@ -10,7 +11,8 @@ export type ModelRunTask =
   | "answer"
   | "select"
   | "extract"
-  | "describe";
+  | "describe"
+  | "group";
 export type ModelRunStatus = "success" | "error";
 
 export interface ModelRunRecord {

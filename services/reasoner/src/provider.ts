@@ -1,16 +1,54 @@
 import type {
   AnswerResult,
   AssistResult,
+  CandidateGroup,
   ConflictJudgeResult,
   DescribeImageResult,
   DuplicateJudgeResult,
   EnrichResult,
   ExtractResult,
+  GroupCandidateInput,
+  GroupCandidatesResult,
   InterviewResult,
   KnowledgeRef,
   ReasonerLocale,
   StructureResult,
 } from "./types";
+
+// WP-IC-4: EHRLICHE deterministische Gruppierung nach den IC-1-Themen — der Fallback ohne
+// funktionierendes Modell (und die Basis der „Ohne KI gruppiert"-Kennzeichnung). Kandidaten ohne
+// Thema landen in der markierten „Ohne Thema"-Gruppe (kind: "no-theme"; die UI lokalisiert
+// DE/EN/NL selbst — der Titel hier ist nur der DE/EN-Serverwert). Deterministisch: Gruppen nach
+// Größe absteigend, bei Gleichstand nach Titel (fester Codepoint-Vergleich, keine ICU-Collation);
+// die Ids je Gruppe behalten die Eingabereihenfolge.
+export function deterministicCandidateGroups(
+  candidates: readonly GroupCandidateInput[],
+  locale: ReasonerLocale = "de",
+): CandidateGroup[] {
+  const byTheme = new Map<string, string[]>();
+  const noTheme: string[] = [];
+  for (const candidate of candidates) {
+    const theme = candidate.theme?.trim();
+    if (theme && theme.length > 0) {
+      const ids = byTheme.get(theme) ?? [];
+      ids.push(candidate.id);
+      byTheme.set(theme, ids);
+    } else {
+      noTheme.push(candidate.id);
+    }
+  }
+  const groups: CandidateGroup[] = [...byTheme.entries()]
+    .map(([title, ids]) => ({ title, ids }))
+    .sort((a, b) => b.ids.length - a.ids.length || (a.title < b.title ? -1 : 1));
+  if (noTheme.length > 0) {
+    groups.push({
+      title: locale === "en" ? "Without topic" : "Ohne Thema",
+      ids: noTheme,
+      kind: "no-theme",
+    });
+  }
+  return groups;
+}
 
 // FR-RSN-02: anbieteragnostisch — jede Implementierung (lokales Modell, Cloud, Mock)
 // erfüllt diese Schnittstelle und ist ohne Änderung der Fachlogik austauschbar.
@@ -102,6 +140,14 @@ export interface ReasonerProvider {
     locale?: ReasonerLocale,
     confidential?: boolean,
   ): Promise<DescribeImageResult>;
+  // WP-IC-4: thematische Gruppierung der Import-Kandidaten. Der deterministische Fallback
+  // implementiert sie EHRLICH über die mitgelieferten IC-1-Themen (kein Pseudo-Modell) — der
+  // Cockpit-Flow bleibt damit IMMER benutzbar; die UI kennzeichnet „Ohne KI gruppiert".
+  groupCandidates?(
+    candidates: readonly GroupCandidateInput[],
+    locale?: ReasonerLocale,
+    confidential?: boolean,
+  ): Promise<GroupCandidatesResult>;
 }
 
 // PMO-FEA-0006: ehrliche Fallback-Meldung — ohne Modell ist keine inhaltliche Wissens-
@@ -512,6 +558,15 @@ export class DeterministicProvider implements ReasonerProvider {
       confidence: 0,
       demo: true,
     };
+  }
+
+  // WP-IC-4: ehrliche Themen-Gruppierung ohne Modell (demo:true) — der Cockpit-Flow bleibt
+  // IMMER benutzbar; die UI kennzeichnet das Ergebnis als „Ohne KI gruppiert".
+  async groupCandidates(
+    candidates: readonly GroupCandidateInput[],
+    locale: ReasonerLocale = "de",
+  ): Promise<GroupCandidatesResult> {
+    return { groups: deterministicCandidateGroups(candidates, locale), demo: true };
   }
 
   // Ohne Modell: deterministische Glättung (Whitespace, Großschreibung, Satzabschluss).

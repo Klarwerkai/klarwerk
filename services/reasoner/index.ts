@@ -9,6 +9,8 @@ export {
   // WP-BILD-1c: die eine Task-Liste + der Bild-Daten-Deckel des describe-Aufrufs (Route/Tests).
   REASONER_TASKS,
   MAX_DESCRIBE_IMAGE_DATAURL_CHARS,
+  // WP-IC-4: harte Kappung der KI-Gruppierung (Route lehnt darueber ehrlich ab).
+  MAX_GROUP_CANDIDATES,
 } from "./src/service";
 // WP-BILD-1f (bens P3): strikte, frühe Bild-Validierung der describe-Route (Format, strikte
 // Base64, dekodierte Bytegrenze, Magic-Bytes-Abgleich) — komplett VOR jedem Provider-Aufruf.
@@ -32,6 +34,8 @@ export {
   queryTokens,
   // PMO-FEA-0006: ehrlicher Extract-Fallback (keine Fake-Punkte ohne Modell).
   honestExtractUnavailable,
+  // WP-IC-4: ehrliche deterministische Themen-Gruppierung (Fallback + Tests).
+  deterministicCandidateGroups,
 } from "./src/provider";
 export {
   ModelProvider,
@@ -48,6 +52,10 @@ export {
   MAX_EXTRACT_DOCUMENT_LENGTH,
   // WP-BILD-1c: harte Server-Obergrenze der Bildbeschreibungs-Vorschlagslänge.
   MAX_IMAGE_DESCRIPTION_LENGTH,
+  // WP-IC-4: strikte Validierung der Gruppierungs-Antwort (testbar, DOM-frei).
+  normalizeCandidateGroups,
+  catchAllGroupTitle,
+  MAX_GROUP_TITLE_LENGTH,
 } from "./src/provider-model";
 // SCRUM-502 R8 (Encapsulation + Credential-Gating): nach außen NUR die GECAPPTEN Client-Factories.
 // Die rohen Clients (anthropicClient/openAiCompatibleClient), ihre Config-Typen und die
@@ -116,6 +124,10 @@ export type {
   EnrichResult,
   // WP-BILD-1c: KI-Bildbeschreibung als Vorschlag (text null + fallbackReason ohne Modell).
   DescribeImageResult,
+  // WP-IC-4: KI-Gruppierung der Import-Kandidaten (mit ehrlichem Themen-Fallback).
+  GroupCandidateInput,
+  CandidateGroup,
+  GroupCandidatesResult,
   InterviewResult,
   ReasonerStatus,
   ReasonerConfigStatus,

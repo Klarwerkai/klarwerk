@@ -677,6 +677,36 @@ export interface StructureResult {
 }
 
 // WP-D11: Ergebnis der Server-Konvertierung PPTX-Folien → PNG-data-URLs (Reihenfolge = Folien).
+// WP-IC-4 (Schritt 4): KI-Gruppierung der eingegrenzten Import-Kandidaten. demo:true = ehrliche
+// deterministische Themen-Gruppierung (Kennzeichnung „Ohne KI gruppiert" im UI).
+export interface ImportGroupCandidate {
+  id: string;
+  title: string;
+  textCodec?: "decoded";
+  alreadyImported: boolean;
+  hints: string[]; // "already-imported" | "stale" | "short" (deterministische Qualitätshinweise)
+}
+
+export interface ImportGroupEntry {
+  title: string;
+  ids: string[];
+  kind?: "catchall" | "no-theme";
+}
+
+export interface ImportGroupResponse {
+  groups: ImportGroupEntry[];
+  candidates: ImportGroupCandidate[];
+  demo: boolean;
+  fallbackReason?: "no-model" | "model-timeout" | "model-error";
+}
+
+// WP-IC-4 (Schritt 5): Teil-Bilanz eines Übernahme-Batches (der Client aggregiert ehrlich).
+export interface ImportApplyResponse {
+  imported: number;
+  failed: { id: string; reason: string }[];
+  notFound: string[];
+}
+
 export interface SlideConvertResponse {
   slides: string[];
   slideCount: number;

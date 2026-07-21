@@ -19,6 +19,8 @@ import { displayImportText } from "../lib/htmlEntities";
 import { summarizeSelectCriteria } from "../lib/importExplore";
 // WP-IC-PAKET-1b (bens ROT-3): latest-wins — Antworten aelterer Requests werden verworfen.
 import { createLatestWins } from "../lib/latestWins";
+// WP-IC-4: Schritt 4+5 (Gruppen-Freigabe + Übernahme mit Bilanz).
+import { ImportGroups } from "./ImportGroups";
 import { Button, TextInput } from "./ui";
 
 // Klick-Filter der Erkundungs-Landkarte (Roh-Werte, wie der Server sie kennt — dekodiert wird nur die
@@ -271,6 +273,13 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
           ) : (
             <p className="mt-2 text-[12px] text-muted-2">{t("imp.select.empty")}</p>
           )}
+
+          {/* WP-IC-4 (Schritt 4+5): Gruppieren → Gruppen-Freigabe → Übernahme mit ehrlicher Bilanz.
+              Key = Kriterien der AKTUELLEN Vorschau: eine geänderte Eingrenzung setzt den
+              Gruppierungs-Schritt sauber zurück (keine veralteten Gruppen zur neuen Auswahl). */}
+          {preview.preview.length > 0 ? (
+            <ImportGroups key={JSON.stringify(preview.criteria)} criteria={preview.criteria} />
+          ) : null}
         </div>
       ) : null}
     </div>

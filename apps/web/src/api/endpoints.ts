@@ -27,8 +27,10 @@ import type {
   GapPriority,
   Graph,
   ImpactReport,
+  ImportApplyResponse,
   ImportCandidate,
   ImportExploreResponse,
+  ImportGroupResponse,
   ImportItemInput,
   ImportSelectCriteria,
   ImportSelectResponse,
@@ -450,6 +452,12 @@ export const endpoints = {
       // IC-3: READ-ONLY Auswahl-Vorschau (Prompt und/oder Klick-Kriterien). Schreibt nichts.
       select: (body: { prompt?: string; criteria?: ImportSelectCriteria }) =>
         api.post<ImportSelectResponse>("/admin/import/confluence/select", body),
+      // WP-IC-4 (Schritt 4): KI-Gruppierung (read-only; ehrlicher deterministischer Fallback).
+      group: (body: { criteria?: ImportSelectCriteria; locale?: "de" | "en" }) =>
+        api.post<ImportGroupResponse>("/admin/import/confluence/group", body),
+      // WP-IC-4 (Schritt 5): Übernahme in die BESTEHENDE Review-Queue (Batch, ehrliche Teil-Bilanz).
+      apply: (body: { criteria?: ImportSelectCriteria; includeIds: string[] }) =>
+        api.post<ImportApplyResponse>("/admin/import/confluence/apply", body),
     },
   },
   users: {

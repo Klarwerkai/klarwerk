@@ -11,7 +11,12 @@ import {
   InMemoryAssistPresetRepo,
   normalizeAssistPresets,
 } from "./presets";
-import { DeterministicProvider, type ReasonerProvider, honestExtractModelFailed } from "./provider";
+import {
+  DeterministicProvider,
+  type ReasonerProvider,
+  deterministicCandidateGroups,
+  honestExtractModelFailed,
+} from "./provider";
 import { ModelProvider } from "./provider-model";
 import { InMemoryReasonerPolicyRepo, type ReasonerPolicyRepo } from "./reasoner-policy";
 
@@ -23,6 +28,8 @@ import type {
   DuplicateJudgeResult,
   EnrichResult,
   ExtractResult,
+  GroupCandidateInput,
+  GroupCandidatesResult,
   InterviewResult,
   KnowledgeRef,
   ReasonerConfigStatus,
@@ -82,7 +89,12 @@ export const REASONER_TASKS = [
   "select",
   "extract",
   "describe",
+  "group",
 ] as const;
+
+// WP-IC-4: harte Server-Kappung der KI-Gruppierung — mehr Kandidaten je Aufruf lehnt die Route
+// mit einer ehrlichen Meldung ab (weiter eingrenzen), statt still zu kappen.
+export const MAX_GROUP_CANDIDATES = 200;
 
 // WP-BILD-1c/1f: schneller String-Vorab-Deckel für die describe-Bild-Daten (data:image-URL-Länge in
 // Zeichen). AUTORITATIV ist die DEKODIERTE Bytegrenze MAX_DESCRIBE_IMAGE_BYTES (5 MB, bens P3 —
@@ -574,6 +586,52 @@ export class Reasoner {
       // gesperrt ist ("env", PUT liefert 409), aus der DB stammt ("db") oder (noch) Default ist.
       policySource: this.policySource,
     };
+  }
+
+  // WP-IC-4: KI-Gruppierung der eingegrenzten Import-Kandidaten (Schritt 4 des Cockpit-Flows).
+  // Dieselbe ehrliche Fallback-Mechanik wie structure/describe: das letzte Kettenglied ist die
+  // DETERMINISTISCHE Themen-Gruppierung (demo:true) — der Flow bleibt IMMER benutzbar, und
+  // fallbackReason unterscheidet no-model / model-timeout / model-error für die ehrliche
+  // „Ohne KI gruppiert"-Kennzeichnung. Vertraulichkeits-Routing wie gehabt (vertraulich → nie Cloud).
+  async groupCandidates(
+    candidates: readonly GroupCandidateInput[],
+    locale: ReasonerLocale = "de",
+    confidential = false,
+  ): Promise<GroupCandidatesResult> {
+    const hadModelInChain = this.providerChain("group", confidential).some(
+      (p) => p !== this.fallback,
+    );
+    const failureBox: { current: { err: unknown; provider: string; elapsedMs: number } | null } = {
+      current: null,
+    };
+    const result = await this.runTask<GroupCandidatesResult>(
+      "group",
+      locale,
+      async (p) => {
+        if (p === this.fallback || typeof p.groupCandidates !== "function") {
+          return { groups: deterministicCandidateGroups(candidates, locale), demo: true };
+        }
+        const startedMs = Date.now();
+        try {
+          return await p.groupCandidates(candidates, locale, confidential);
+        } catch (err) {
+          failureBox.current = { err, provider: p.name, elapsedMs: Date.now() - startedMs };
+          throw err;
+        }
+      },
+      confidential,
+    );
+    if (!result.demo) {
+      return result;
+    }
+    const modelFailure = failureBox.current;
+    const failure = modelFailure === null ? null : classifyModelFailure(modelFailure.err);
+    const fallbackReason = !hadModelInChain
+      ? ("no-model" as const)
+      : failure?.failureClass === "timeout"
+        ? ("model-timeout" as const)
+        : ("model-error" as const);
+    return { ...result, fallbackReason };
   }
 
   // WP-BILD-1c (löst den WP-BILD-1b-TODO ein): KI-Bildbeschreibung als VORSCHLAG. Der ModelClient hat

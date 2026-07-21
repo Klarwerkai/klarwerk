@@ -7,6 +7,7 @@ import {
 import type {
   AnswerResult,
   AssistResult,
+  CandidateGroup,
   ConflictJudgeResult,
   DescribeImageResult,
   DuplicateAspect,
@@ -14,6 +15,8 @@ import type {
   EnrichResult,
   ExtractResult,
   ExtractedPoint,
+  GroupCandidateInput,
+  GroupCandidatesResult,
   InterviewResult,
   KnowledgeRef,
   Kollision,
@@ -91,6 +94,73 @@ function describeImageSystem(locale: ReasonerLocale): string {
 // Harte Server-Obergrenze der Vorschlagslänge (der Prompt bittet um ~200 Zeichen; das Modell kann
 // überziehen — gekappt wird deterministisch, nicht verhandelt).
 export const MAX_IMAGE_DESCRIPTION_LENGTH = 300;
+
+// WP-IC-4: KI-Gruppierung der Import-Kandidaten. Strikter JSON-Vertrag; die Antwort wird
+// serverseitig HART validiert (normalizeCandidateGroups) — das Modell strukturiert nur, es
+// entscheidet nichts (jede Id genau einmal, Unbekanntes fliegt, Fehlendes in die Auffanggruppe).
+function groupSystem(locale: ReasonerLocale): string {
+  const contract = '{"groups":[{"title": string, "ids": [string]}]}';
+  return locale === "en"
+    ? `You group knowledge-import candidates into 3-8 thematic groups. Respond ONLY with JSON: ${contract}. Every candidate id MUST appear in exactly ONE group; never invent ids. Group titles: short, factual, in English. Do not invent content.`
+    : `Du gruppierst Import-Kandidaten für eine Wissensdatenbank in 3–8 thematische Gruppen. Antworte AUSSCHLIESSLICH mit JSON: ${contract}. Jede Kandidaten-Id MUSS in genau EINER Gruppe vorkommen; erfinde keine Ids. Gruppentitel: kurz, sachlich, auf Deutsch. Erfinde keine Inhalte.`;
+}
+
+// Deckel je Gruppentitel — überlange Modell-Titel werden deterministisch gekappt.
+export const MAX_GROUP_TITLE_LENGTH = 80;
+
+// Beschriftung der Auffanggruppe (DE/EN vom Server; NL lokalisiert die UI über kind:"catchall").
+export function catchAllGroupTitle(locale: ReasonerLocale): string {
+  return locale === "en" ? "More posts" : "Weitere Beiträge";
+}
+
+// STRIKTE Validierung der Modell-Antwort (bens Auflagen): jede bekannte Id GENAU einmal (erste
+// Zuordnung gewinnt, Duplikate fliegen), unbekannte Ids werden verworfen, leere Gruppen fallen
+// weg, fehlende Ids landen in der markierten Auffanggruppe. Wirft bei strukturell unbrauchbarer
+// Antwort — die Reasoner-Kette fällt dann auf die deterministische Themen-Gruppierung zurück.
+export function normalizeCandidateGroups(
+  raw: string,
+  knownIds: readonly string[],
+  locale: ReasonerLocale,
+): CandidateGroup[] {
+  const parsed = JSON.parse(extractJson(raw)) as Record<string, unknown>;
+  const rawGroups = Array.isArray(parsed.groups) ? parsed.groups : [];
+  if (rawGroups.length === 0) {
+    throw new Error("Modell-Antwort enthält keine Gruppen.");
+  }
+  const known = new Set(knownIds);
+  const seen = new Set<string>();
+  const groups: CandidateGroup[] = [];
+  for (const entry of rawGroups) {
+    if (typeof entry !== "object" || entry === null) {
+      continue;
+    }
+    const rec = entry as Record<string, unknown>;
+    const title = String(rec.title ?? "")
+      .trim()
+      .slice(0, MAX_GROUP_TITLE_LENGTH);
+    const ids: string[] = [];
+    for (const rawId of Array.isArray(rec.ids) ? rec.ids : []) {
+      const id = String(rawId);
+      // Unbekannte Ids verworfen; jede Id nur beim ERSTEN Vorkommen (Duplikate fliegen).
+      if (known.has(id) && !seen.has(id)) {
+        seen.add(id);
+        ids.push(id);
+      }
+    }
+    if (title.length > 0 && ids.length > 0) {
+      groups.push({ title, ids });
+    }
+  }
+  if (groups.length === 0) {
+    throw new Error("Modell-Antwort enthält keine verwertbare Gruppe.");
+  }
+  // Vom Modell vergessene Ids: EHRLICH in die markierte Auffanggruppe (Eingabereihenfolge).
+  const missing = knownIds.filter((id) => !seen.has(id));
+  if (missing.length > 0) {
+    groups.push({ title: catchAllGroupTitle(locale), ids: missing, kind: "catchall" });
+  }
+  return groups;
+}
 
 function assistSystem(locale: ReasonerLocale): string {
   return locale === "en"
@@ -646,6 +716,28 @@ export class ModelProvider implements ReasonerProvider {
       steps: [],
       demo: false,
     };
+  }
+
+  // WP-IC-4: KI-Gruppierung. SPARSAME Eingabe (id | Titel | Kurztext — nie volle Bodies); die
+  // Antwort läuft durch die HARTE Validierung normalizeCandidateGroups (jede Id genau einmal,
+  // Unbekanntes verworfen, Fehlendes in die Auffanggruppe). Strukturell unbrauchbar → Wurf →
+  // die Kette fällt auf die ehrliche deterministische Themen-Gruppierung zurück.
+  async groupCandidates(
+    candidates: readonly GroupCandidateInput[],
+    locale: ReasonerLocale = "de",
+    confidential = false,
+  ): Promise<GroupCandidatesResult> {
+    const client = this.requireClient();
+    const lines = candidates
+      .map((c) => `${c.id} | ${c.title}${c.text ? ` | ${c.text}` : ""}`)
+      .join("\n");
+    const raw = await client.complete(groupSystem(locale), lines, confidential, 2048);
+    const groups = normalizeCandidateGroups(
+      raw,
+      candidates.map((c) => c.id),
+      locale,
+    );
+    return { groups, demo: false };
   }
 
   // WP-BILD-1c: KI-Bildbeschreibung über den Vision-Pfad des Clients. Ohne Bild-Eingang

@@ -49,6 +49,17 @@ export type {
 export { deriveTitleThemes, titleThemeTokens, MIN_THEME_GROUP_SIZE } from "./src/themes";
 // WP-IC-PAKET-1e: DIE geteilte Pro-Item-Kanonisierung (Erkundung UND Selektion — Chips selektierbar).
 export { canonicalImportText } from "./src/text-codec";
+// WP-IC-4: pure Zulieferung der KI-Gruppierung (sparsame Eingaben, deterministische Hinweise).
+export {
+  candidateIdOf,
+  candidateHints,
+  groupingCandidates,
+  GROUP_TEXT_MAX_CHARS,
+  STALE_AFTER_DAYS,
+  MIN_CONTENT_CHARS,
+  type CandidateHint,
+  type GroupingCandidate,
+} from "./src/grouping";
 // WP-BILD-1e: Bild-Fußnoten (figcaption) in der Bibliotheks-Suche — pure Extraktion + Match.
 export {
   imageCaptionTexts,

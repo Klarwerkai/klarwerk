@@ -105,6 +105,8 @@ export type ReasonerConfigMode = "model" | "fallback" | "demo";
 // WP-BILD-1c: describe (KI-Bildbeschreibungs-Vorschlag) als eigene, in der KI-Verwaltung sichtbare
 // Aufgabe. NUR der Cloud-Client hat einen Bild-Eingang — lokale/deterministische Glieder liefern
 // ehrlich keinen Text (nie erfinden).
+// WP-IC-4: group (KI-Gruppierung der Import-Kandidaten) als weitere, in der KI-Verwaltung
+// sichtbare Aufgabe — mit ehrlichem deterministischem Themen-Fallback (der Flow bleibt benutzbar).
 export type ReasonerTask =
   | "structure"
   | "assist"
@@ -112,7 +114,8 @@ export type ReasonerTask =
   | "answer"
   | "select"
   | "extract"
-  | "describe";
+  | "describe"
+  | "group";
 
 // KI-Verwaltung (Pedi 02./03.07.): je Aufgabe bewusst wählen.
 //  - "auto"          Cloud → lokal → deterministisch (was verfügbar ist, in dieser Reihenfolge)
@@ -213,6 +216,33 @@ export interface DuplicateJudgeResult {
     | "verwandt_verlinken";
   confidence: number;
   begruendung: string;
+}
+
+// WP-IC-4 (Schritt 4 des abgenommenen Cockpit-Flows): KI-Gruppierung der eingegrenzten
+// Import-Kandidaten. Eingabe ist SPARSAM (id, kanonisierter Titel, kurzer kanonisierter Text,
+// optional IC-1-Thema — NIE volle Bodies zur Cloud); Ergebnis sind 3–8 thematische Gruppen mit
+// Zuordnung jeder Id zu GENAU einer Gruppe. `kind` markiert die deterministisch beschrifteten
+// Gruppen (Auffanggruppe/Ohne Thema) — die UI lokalisiert sie DE/EN/NL selbst.
+export interface GroupCandidateInput {
+  id: string;
+  title: string;
+  text?: string;
+  theme?: string | null; // IC-1-Thema (kanonisch) — Basis der ehrlichen deterministischen Gruppierung
+}
+
+export interface CandidateGroup {
+  title: string;
+  ids: string[];
+  kind?: "catchall" | "no-theme";
+}
+
+// Ohne funktionierendes Modell (no-model/model-timeout/model-error) kommt die EHRLICHE
+// deterministische Themen-Gruppierung (demo:true) — der Flow bleibt IMMER benutzbar; die UI
+// kennzeichnet „Ohne KI gruppiert".
+export interface GroupCandidatesResult {
+  groups: CandidateGroup[];
+  demo: boolean;
+  fallbackReason?: "no-model" | "model-timeout" | "model-error";
 }
 
 // WP-BILD-1c (Pedis Präzisierung 20.07.): KI-Bildbeschreibung als VORSCHLAG beim Bearbeiten der

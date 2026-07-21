@@ -241,6 +241,7 @@ export function Admin(): JSX.Element {
   // Aufgabe. Keys bleiben serverseitig; v1 gilt bis zum Neustart (ehrlich angezeigt).
   // PMO-FEA-0006: 'extract' (Wissen aus Datei) als weiterer KI-Einsatz konfigurierbar.
   // WP-BILD-1c: 'describe' (Bildbeschreibungs-Vorschlag) — Vision, nur mit Cloud-Modell sinnvoll.
+  // WP-IC-4: 'group' (Import-Kandidaten gruppieren) — mit ehrlichem deterministischem Fallback.
   const AI_TASKS = [
     "structure",
     "assist",
@@ -249,6 +250,7 @@ export function Admin(): JSX.Element {
     "select",
     "extract",
     "describe",
+    "group",
   ] as const;
   const aiConfig = useQuery({ queryKey: ["reasonerConfig"], queryFn: endpoints.reasoner.config });
   const [aiGlobal, setAiGlobal] = useState<string | null>(null);

@@ -4,13 +4,20 @@ import type { KoService } from "../../../knowledge-object";
 import {
   type LibraryService,
   type SelectCriteria,
+  candidateHints,
+  candidateIdOf,
   deriveCriteriaFromPrompt,
   filterImportItems,
+  groupingCandidates,
   sanitizeCriteria,
   summarizeImportItems,
   toPreviewEntry,
 } from "../../../library-analytics";
-import type { Reasoner } from "../../../reasoner";
+import {
+  MAX_GROUP_CANDIDATES,
+  type Reasoner,
+  deterministicCandidateGroups,
+} from "../../../reasoner";
 import {
   type ImportRunSummary,
   importStatusFor,
@@ -239,6 +246,150 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
           reply
             .code(502)
             .send({ error: "SELECT_FAILED", message: "Confluence-Auswahl fehlgeschlagen." });
+          return reply;
+        }
+      },
+    );
+
+    // WP-IC-4 (Schritt 4): KI-GRUPPIERUNG der eingegrenzten Kandidaten. BEWUSST eine eigene Route
+    // NEBEN dem Reasoner-Dispatcher (Begründung): sie braucht den Import-Kontext (Snapshot,
+    // IC-6a-Statusabgleich, Feature-Flag) und denselben Admin-Guard (users.manage) wie explore/
+    // select — der generische Dispatcher (ko.read) hat all das nicht. Der REASONER-TASK selbst
+    // (group) folgt trotzdem vollständig dem Task-Muster (ModelRun-Protokoll, KI-Verwaltung,
+    // Vertraulichkeits-Routing, ehrlicher deterministischer Fallback). READ-ONLY: schreibt nichts.
+    app.post<{ Body: { criteria?: unknown; locale?: string } }>(
+      "/api/admin/import/confluence/group",
+      async (request, reply) => {
+        const user = await deps.guards.requirePermission("users.manage", request, reply);
+        if (!user) {
+          return reply;
+        }
+        const adapter = makeAdapter();
+        if (!adapter) {
+          reply.code(503).send({
+            error: "IMPORT_UNAVAILABLE",
+            message: "Confluence-Import nicht konfiguriert.",
+          });
+          return reply;
+        }
+        try {
+          const locale = request.body?.locale === "en" ? ("en" as const) : ("de" as const);
+          const criteria = sanitizeCriteria(request.body?.criteria);
+          const { items } = await collectSnapshot(adapter);
+          const { selected } = filterImportItems(items, criteria);
+          // Harte Server-Kappung mit EHRLICHER Meldung — kein stilles Kappen.
+          if (selected.length > MAX_GROUP_CANDIDATES) {
+            reply.code(400).send({
+              error: "GROUP_TOO_MANY",
+              message: `Zu viele Kandidaten für die Gruppierung (${selected.length} von max. ${MAX_GROUP_CANDIDATES}) — bitte die Auswahl weiter eingrenzen.`,
+            });
+            return reply;
+          }
+          const [anchorVersions, pendingVersions] = await Promise.all([
+            importedAnchorVersions(deps.koService),
+            pendingCandidateVersions(deps.library),
+          ]);
+          const nowMs = Date.now();
+          const candidates = selected.map((item, index) => {
+            const alreadyImported = importStatusFor(
+              item,
+              anchorVersions,
+              pendingVersions,
+            ).alreadyImported;
+            return {
+              id: candidateIdOf(item, index),
+              title: item.title,
+              ...(item.textCodec === "decoded" ? { textCodec: "decoded" as const } : {}),
+              alreadyImported,
+              // Rein deterministische Qualitätshinweise (Dublette/veraltet/wenig Inhalt).
+              hints: candidateHints(item, alreadyImported, nowMs),
+            };
+          });
+          const inputs = groupingCandidates(selected);
+          // Import-Quelldaten sind nicht-vertraulich (Adapter-Ebene) — Standard-Routing.
+          const grouped = deps.reasoner
+            ? await deps.reasoner.groupCandidates(inputs, locale, false)
+            : {
+                groups: deterministicCandidateGroups(inputs, locale),
+                demo: true,
+                fallbackReason: "no-model" as const,
+              };
+          reply.code(200).send({
+            groups: grouped.groups,
+            candidates,
+            demo: grouped.demo,
+            ...(grouped.fallbackReason ? { fallbackReason: grouped.fallbackReason } : {}),
+          });
+          return reply;
+        } catch (err) {
+          console.warn(
+            "[confluence-group] fehlgeschlagen:",
+            sanitizeLogText(err instanceof Error ? err.message : String(err)),
+          );
+          reply
+            .code(502)
+            .send({ error: "GROUP_FAILED", message: "Confluence-Gruppierung fehlgeschlagen." });
+          return reply;
+        }
+      },
+    );
+
+    // WP-IC-4 (Schritt 5): AUSWAHL ÜBERNEHMEN — startet den BESTEHENDEN Import-Weg
+    // (createImportCandidates → Review-Queue; REVIEW-INVARIANTE bleibt: menschliches OK im Review,
+    // keine Auto-KOs). Der Client schickt die freigegebenen Ids (ggf. in Batches für ehrlichen
+    // Fortschritt); die Antwort ist die ehrliche Teil-Bilanz dieses Aufrufs: übernommen,
+    // fehlgeschlagen (mit PII-freiem Grund je Id), nicht mehr in der Auswahl gefunden.
+    app.post<{ Body: { criteria?: unknown; includeIds?: unknown } }>(
+      "/api/admin/import/confluence/apply",
+      async (request, reply) => {
+        const user = await deps.guards.requirePermission("users.manage", request, reply);
+        if (!user) {
+          return reply;
+        }
+        const adapter = makeAdapter();
+        if (!adapter) {
+          reply.code(503).send({
+            error: "IMPORT_UNAVAILABLE",
+            message: "Confluence-Import nicht konfiguriert.",
+          });
+          return reply;
+        }
+        try {
+          const criteria = sanitizeCriteria(request.body?.criteria);
+          const rawIds = Array.isArray(request.body?.includeIds) ? request.body.includeIds : [];
+          const includeIds = rawIds.filter((id): id is string => typeof id === "string");
+          const { items } = await collectSnapshot(adapter);
+          const { selected } = filterImportItems(items, criteria);
+          const byId = new Map(selected.map((item, index) => [candidateIdOf(item, index), item]));
+          let imported = 0;
+          const failed: { id: string; reason: string }[] = [];
+          const notFound: string[] = [];
+          for (const id of includeIds) {
+            const item = byId.get(id);
+            if (!item) {
+              notFound.push(id);
+              continue;
+            }
+            try {
+              // BESTEHENDER Weg: Kandidat in die Review-Queue (stempelt textCodec, IC-6a-Dedupe-
+              // Markierung läuft dort wie gehabt) — pro Item, damit Fehlschläge zuordenbar sind.
+              await deps.library.createImportCandidates([item], user.id);
+              imported += 1;
+            } catch (err) {
+              // PII-frei: nur Id + Fehlerklasse, nie Inhalte.
+              failed.push({ id, reason: err instanceof Error ? err.name : "unknown" });
+            }
+          }
+          reply.code(200).send({ imported, failed, notFound });
+          return reply;
+        } catch (err) {
+          console.warn(
+            "[confluence-apply] fehlgeschlagen:",
+            sanitizeLogText(err instanceof Error ? err.message : String(err)),
+          );
+          reply
+            .code(502)
+            .send({ error: "APPLY_FAILED", message: "Confluence-Übernahme fehlgeschlagen." });
           return reply;
         }
       },

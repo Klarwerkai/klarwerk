@@ -195,6 +195,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // IC-3 (Import-Cockpit): READ-ONLY Auswahl-VORSCHAU (Prompt/Filter → gefilterte Vorschau). Schreibt
   // nichts (keine Kandidaten); gleiche Admin-Auth, nur bei aktivem Confluence-Flag registriert.
   "POST /api/admin/import/confluence/select": { protection: "users.manage" },
+  // WP-IC-4: KI-Gruppierung (read-only) + Übernahme in die Review-Queue — gleiche Admin-Auth
+  // und Feature-Flag-Disziplin wie explore/select.
+  "POST /api/admin/import/confluence/group": { protection: "users.manage" },
+  "POST /api/admin/import/confluence/apply": { protection: "users.manage" },
   "GET /api/analytics/impact": { protection: "ko.read" },
 
   // --- KO (ko-routes.ts) ---
