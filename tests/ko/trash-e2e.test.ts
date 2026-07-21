@@ -513,6 +513,9 @@ describe("SCRUM-523 P.3 (WP-A2): repo.delete + audit.record committen/rollbacken
       // WP-BILD-1g: Suchpfad-Projektion + Caption-Backfill einfach durchreichen.
       listForSearch: (filter) => inner.listForSearch(filter),
       setCaptionTexts: (id, captionTexts) => inner.setCaptionTexts(id, captionTexts),
+      // WP-SUBMIT-ASYNC: neue Vertragsmethoden — reines Durchreichen.
+      setAiCheck: (id, aiCheck) => inner.setAiCheck(id, aiCheck),
+      resolveAiCheck: (id, patch) => inner.resolveAiCheck(id, patch),
       findCandidates: (query) => inner.findCandidates(query),
       delete: (id, tx) => {
         stage(tx, () => {

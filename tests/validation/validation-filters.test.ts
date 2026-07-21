@@ -101,6 +101,32 @@ describe("FE-VAL-02: Validierungsfilter", () => {
     expect(matchesValidationFilter(mine, f({ mineOnly: true }), null)).toBe(false);
   });
 
+  it("WP-SUBMIT-ASYNC: Filter „in KI-Prüfung“ zeigt NUR pending — done/failed/Altbestand fallen heraus", () => {
+    const pending = ko({ aiCheck: { status: "pending", requestedAt: "2026-07-21T06:00:00.000Z" } });
+    const done = ko({
+      aiCheck: {
+        status: "done",
+        requestedAt: "2026-07-21T06:00:00.000Z",
+        finishedAt: "2026-07-21T06:01:00.000Z",
+      },
+    });
+    const failed = ko({
+      aiCheck: {
+        status: "failed",
+        requestedAt: "2026-07-21T06:00:00.000Z",
+        fallbackReason: "no-model",
+      },
+    });
+    const legacy = ko({});
+    expect(matchesValidationFilter(pending, f({ aiPending: true }), null)).toBe(true);
+    expect(matchesValidationFilter(done, f({ aiPending: true }), null)).toBe(false);
+    expect(matchesValidationFilter(failed, f({ aiPending: true }), null)).toBe(false);
+    expect(matchesValidationFilter(legacy, f({ aiPending: true }), null)).toBe(false);
+    // Inaktiver Toggle ändert nichts (Default im leeren Filter = aus).
+    expect(EMPTY_VALIDATION_FILTER.aiPending).toBe(false);
+    expect(matchesValidationFilter(legacy, f({}), null)).toBe(true);
+  });
+
   it("SCRUM-364: ?mine=1 aktiviert die persönliche Linse, sonst aus", () => {
     expect(readMineOnlyFilter(new URLSearchParams("mine=1"))).toBe(true);
     expect(readMineOnlyFilter(new URLSearchParams(""))).toBe(false);

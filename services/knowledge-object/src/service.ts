@@ -592,6 +592,29 @@ export class KoService {
     return run;
   }
 
+  // WP-SUBMIT-ASYNC (Pedis R3 21.07.): Hintergrund-Prüf-Status. markAiCheckPending vermerkt den
+  // Job (Submit/Retry/Lazy-Re-Enqueue; requestedAt optional injizierbar — Re-Enqueue-Logik und
+  // Tests nutzen das); resolveAiCheck schließt ihn BEDINGT ab (nur solange noch pending —
+  // CAS-schonend über den Repo-Feld-Patch, ein nebenläufiger revise verliert nie Daten). Bewusst
+  // ohne Versions-/Audit-Pfad: reiner Job-Status, kein Wissensinhalt.
+  async markAiCheckPending(id: string, requestedAt?: string): Promise<boolean> {
+    return this.repo.setAiCheck(id, {
+      status: "pending",
+      requestedAt: requestedAt ?? new Date(this.now()).toISOString(),
+    });
+  }
+
+  async resolveAiCheck(
+    id: string,
+    outcome: { ok: boolean; fallbackReason?: string },
+  ): Promise<boolean> {
+    return this.repo.resolveAiCheck(id, {
+      status: outcome.ok ? "done" : "failed",
+      finishedAt: new Date(this.now()).toISOString(),
+      ...(outcome.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
+    });
+  }
+
   // SCRUM-361 / AG-03: begrenzte, datenquellennahe Kandidatenabfrage für Ask (kein All-Pool-Load).
   // Delegiert an das Repository (InMemory/Pg API-kompatibel); die Endsortierung/Top-K bleibt im Ask-/
   // Reasoner-Pfad (selectCandidates).

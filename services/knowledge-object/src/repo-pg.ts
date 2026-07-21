@@ -2,6 +2,7 @@ import type { Pool } from "pg";
 import { type Queryable, type TxContext, pgQueryable, poolQueryable } from "../../db-tx";
 import type { EvidenceRepo, KoCandidateQuery, KoFilter, KoRepo, KoVersionRepo } from "./repo";
 import {
+  type AiCheck,
   type EvidenceRecord,
   type KnowledgeObject,
   KoError,
@@ -185,6 +186,27 @@ export class PgKoRepo implements KoRepo {
   // (reiner Cache-Write eines abgeleiteten Felds).
   // WP-D11b (bens patches53-GELB): rowCount sagt ehrlich, ob DIESER Aufruf geschrieben hat —
   // 0 heißt: das Feld war schon da (nebenläufiger Voll-Write) und der Aufrufer lädt nach.
+  async setAiCheck(id: string, aiCheck: AiCheck): Promise<boolean> {
+    // WP-SUBMIT-ASYNC: schmaler Feld-Patch (nur aiCheck) auf einem existierenden, nicht
+    // getrashten KO — kein Voll-Write, kein Versions-/Audit-Pfad (reiner Job-Status).
+    const res = await this.pool.query(
+      "UPDATE kos SET data = jsonb_set(data, '{aiCheck}', $2::jsonb) WHERE id=$1 AND NOT (data ? 'deletedAt')",
+      [id, JSON.stringify(aiCheck)],
+    );
+    return (res.rowCount ?? 0) > 0;
+  }
+
+  async resolveAiCheck(id: string, patch: Omit<AiCheck, "requestedAt">): Promise<boolean> {
+    // WP-SUBMIT-ASYNC: BEDINGT (CAS-schonend wie setCaptionTexts) — EIN UPDATE, nur wenn der
+    // Status noch pending ist; der Merge (||) erhält requestedAt und patcht ausschließlich das
+    // aiCheck-Feld. Ein nebenläufiger revise (Voll-Write) verliert dadurch nie Daten.
+    const res = await this.pool.query(
+      "UPDATE kos SET data = jsonb_set(data, '{aiCheck}', (data->'aiCheck') || $2::jsonb) WHERE id=$1 AND data->'aiCheck'->>'status' = 'pending'",
+      [id, JSON.stringify(patch)],
+    );
+    return (res.rowCount ?? 0) > 0;
+  }
+
   async setCaptionTexts(id: string, captionTexts: string[]): Promise<boolean> {
     const res = await this.pool.query(
       "UPDATE kos SET data = jsonb_set(data, '{captionTexts}', $2::jsonb) WHERE id=$1 AND NOT (data ? 'captionTexts')",

@@ -11,6 +11,8 @@ import { useSession } from "../app/AuthContext";
 // SCRUM-417: Bearbeiten/Löschen vom Board — gleiche Rollenregel wie Bibliothek/KO-Detail.
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
+// WP-SUBMIT-ASYNC: Status der Hintergrund-KI-Pruefung je Karte (pending/failed + Retry).
+import { AiCheckBadge } from "../components/AiCheckBadge";
 import { DemoBanner } from "../components/DemoBanner";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
@@ -304,6 +306,17 @@ export function Validation(): JSX.Element {
     onSuccess: invalidate,
   });
 
+  // WP-SUBMIT-ASYNC: Retry am failed-Badge — reiht die Hintergrund-Pruefung serverseitig neu ein
+  // und laedt das Board nach, damit das Badge sofort auf „laeuft" wechselt.
+  const aiCheckRetry = useMutation({
+    mutationFn: (id: string) => endpoints.ko.aiCheckRetry(id),
+    onSuccess: () => {
+      invalidate();
+      push("success", t("val.aiCheck.retryStarted"));
+    },
+    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
+  });
+
   // Pedi 05.07.: Admin-Override „als wahr kennzeichnen" — schließt die Validierung komplett ab.
   // Zwei-Klick-Bestätigung im UI; danach verlässt das Objekt das Board (Status validiert).
   const [confirmTrueId, setConfirmTrueId] = useState<string | null>(null);
@@ -576,6 +589,16 @@ export function Validation(): JSX.Element {
                   {t("val.filterMine")}
                   {vhelp("mineOnly")}
                 </label>
+                {/* WP-SUBMIT-ASYNC: „in Pruefung" — nur Beitraege, deren Hintergrund-KI-Pruefung
+                    noch laeuft (aiCheck pending); trivial im bestehenden Filter-Bereich. */}
+                <label className="flex h-10 items-center gap-1.5 rounded-input border border-hairline bg-surface px-3 text-sm text-muted">
+                  <input
+                    type="checkbox"
+                    checked={filter.aiPending}
+                    onChange={(e) => setFilter((f) => ({ ...f, aiPending: e.target.checked }))}
+                  />
+                  {t("val.filterAiPending")}
+                </label>
                 {vhelp("filters")}
               </div>
               <div className="space-y-3">
@@ -679,6 +702,14 @@ export function Validation(): JSX.Element {
                           <div className="mt-1 flex flex-wrap items-center gap-1.5">
                             <KnowledgeTypeTag type={k.type} />
                             <StatusPill status={sig.status} />
+                            {/* WP-SUBMIT-ASYNC: Status der Hintergrund-KI-Pruefung — laeuft/
+                                fehlgeschlagen (Ursache im Tooltip, Retry reiht neu ein);
+                                done/Altbestand zeigt bewusst nichts. */}
+                            <AiCheckBadge
+                              aiCheck={k.aiCheck}
+                              onRetry={() => aiCheckRetry.mutate(k.id)}
+                              retryBusy={aiCheckRetry.isPending}
+                            />
                             {/* SCRUM-416: Trust bleibt sichtbar (entscheidungsrelevant) — rückt zu den Badges. */}
                             <span
                               className={`rounded-pill px-1.5 py-0.5 font-mono text-[10px] font-semibold ${TRUST_TONE[sig.trustBand]}`}

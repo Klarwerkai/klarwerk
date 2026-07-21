@@ -72,4 +72,7 @@ export type {
   KoErrorCode,
   // SCRUM-422: Papierkorb-Zeile (Admin-Ansicht).
   TrashedKo,
+  // WP-SUBMIT-ASYNC: Status der Hintergrund-KI-Prüfung (Job-Vermerk am KO).
+  AiCheck,
+  AiCheckStatus,
 } from "./src/types";

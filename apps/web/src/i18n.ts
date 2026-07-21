@@ -814,6 +814,9 @@ const de = {
     "Gespeichert als dein eigenes Wissen (kein Demo-Beispiel), aber noch nicht validiert. Erst nach ausreichender Bewertung wird es nutzbares Wissen — bitte zur Prüfung geben. Automatisch validiert wird nichts.",
   "capture.savedFromDraft":
     "Dein fortgesetzter Entwurf wurde als offenes Wissen eingereicht und aus deinen Entwürfen entfernt.",
+  // WP-SUBMIT-ASYNC (Pedi R3, 21.07.): das Einreichen wartet nicht mehr auf die KI-Prüfung.
+  "capture.aiCheckBackground":
+    "Die KI-Prüfung läuft im Hintergrund — das Ergebnis erscheint in der Validierung.",
   // SCRUM-373 / AG-02-SESSION: nach dem Speichern haben Bilder/Dateien eine sichere Objekt-Referenz.
   "capture.savedFilesNote":
     "{{count}} Anhang/Anhänge sind jetzt als sichere Objekt-Referenz gespeichert und im Editor des Wissensobjekts als Beleg verlinkbar. Belege sind Kontext — sie ersetzen die Validierung nicht.",
@@ -1745,6 +1748,18 @@ const de = {
   "val.filterAllCategories": "Alle Kategorien",
   "val.filterAllTags": "Alle Tags",
   "val.filterMine": "Mir zugewiesen",
+  // WP-SUBMIT-ASYNC: Status der Hintergrund-KI-Prüfung auf der Karte + Filter „in Prüfung".
+  "val.filterAiPending": "In KI-Prüfung",
+  "val.aiCheck.pending": "KI-Prüfung läuft",
+  "val.aiCheck.pendingHint":
+    "Die KI-Prüfung auf Konflikte und Überschneidungen läuft im Hintergrund. Das Ergebnis erscheint hier, sobald sie abgeschlossen ist.",
+  "val.aiCheck.failed": "KI-Prüfung fehlgeschlagen",
+  "val.aiCheck.retry": "Erneut prüfen",
+  "val.aiCheck.retryStarted": "KI-Prüfung neu eingereiht — sie läuft jetzt im Hintergrund.",
+  "val.aiCheck.reason.no-model":
+    "Kein KI-Modell aktiv — es wurde nichts geprüft. Modell konfigurieren und erneut prüfen.",
+  "val.aiCheck.reason.model-error":
+    "Die KI-Prüfung ist mit einem Fehler abgebrochen. Erneut prüfen startet einen neuen Lauf.",
   "val.feedback.condTitle": "Bedingt – Begründung für den Autor (Pflicht)",
   "val.feedback.rejTitle": "Ablehnung – Begründung für den Autor (Pflicht)",
   "val.feedback.placeholder": "Was muss überarbeitet werden? …",
@@ -4042,6 +4057,9 @@ const en: typeof de = {
     "Saved as your own knowledge (not a demo example), but not yet validated. It becomes usable knowledge only after sufficient review — please send it for review. Nothing is validated automatically.",
   "capture.savedFromDraft":
     "Your continued draft was submitted as open knowledge and removed from your drafts.",
+  // WP-SUBMIT-ASYNC: submitting no longer waits for the AI check.
+  "capture.aiCheckBackground":
+    "The AI check runs in the background — the result will appear in validation.",
   // SCRUM-373 / AG-02-SESSION: after saving, images/files have a safe object reference.
   "capture.savedFilesNote":
     "{{count}} attachment(s) are now stored as a safe object reference and can be linked as evidence in the knowledge object's editor. Evidence is context — it does not replace validation.",
@@ -4944,6 +4962,18 @@ const en: typeof de = {
   "val.filterAllCategories": "All categories",
   "val.filterAllTags": "All tags",
   "val.filterMine": "Assigned to me",
+  // WP-SUBMIT-ASYNC: background AI-check status on the card + "in review" filter.
+  "val.filterAiPending": "AI check running",
+  "val.aiCheck.pending": "AI check running",
+  "val.aiCheck.pendingHint":
+    "The AI check for conflicts and overlaps is running in the background. The result will appear here once it finishes.",
+  "val.aiCheck.failed": "AI check failed",
+  "val.aiCheck.retry": "Retry check",
+  "val.aiCheck.retryStarted": "AI check re-queued — it is now running in the background.",
+  "val.aiCheck.reason.no-model":
+    "No AI model active — nothing was checked. Configure a model and retry the check.",
+  "val.aiCheck.reason.model-error":
+    "The AI check stopped with an error. Retrying starts a fresh run.",
   "val.feedback.condTitle": "Conditional – reason for the author (required)",
   "val.feedback.rejTitle": "Rejection – reason for the author (required)",
   "val.feedback.placeholder": "What needs to be revised? …",
@@ -7209,6 +7239,9 @@ const nl: typeof de = {
     "Opgeslagen als je eigen kennis (geen demovoorbeeld), maar nog niet gevalideerd. Pas na voldoende beoordeling wordt het bruikbare kennis — geef het ter beoordeling. Er wordt niets automatisch gevalideerd.",
   "capture.savedFromDraft":
     "Je voortgezette concept is als openstaande kennis ingediend en uit je concepten verwijderd.",
+  // WP-SUBMIT-ASYNC: indienen wacht niet meer op de AI-controle.
+  "capture.aiCheckBackground":
+    "De AI-controle draait op de achtergrond — het resultaat verschijnt in de validatie.",
   "capture.savedFilesNote":
     "{{count}} bijlage(n) zijn nu als veilige objectreferentie opgeslagen en in de editor van het kennisobject als bewijs te koppelen. Bewijs is context — het vervangt de validatie niet.",
   "capture.attachTooLarge":
@@ -8106,6 +8139,18 @@ const nl: typeof de = {
   "val.filterAllCategories": "Alle categorieën",
   "val.filterAllTags": "Alle tags",
   "val.filterMine": "Aan mij toegewezen",
+  // WP-SUBMIT-ASYNC: status van de achtergrond-AI-controle op de kaart + filter.
+  "val.filterAiPending": "AI-controle loopt",
+  "val.aiCheck.pending": "AI-controle loopt",
+  "val.aiCheck.pendingHint":
+    "De AI-controle op conflicten en overlappingen draait op de achtergrond. Het resultaat verschijnt hier zodra deze klaar is.",
+  "val.aiCheck.failed": "AI-controle mislukt",
+  "val.aiCheck.retry": "Opnieuw controleren",
+  "val.aiCheck.retryStarted": "AI-controle opnieuw ingepland — deze draait nu op de achtergrond.",
+  "val.aiCheck.reason.no-model":
+    "Geen AI-model actief — er is niets gecontroleerd. Configureer een model en controleer opnieuw.",
+  "val.aiCheck.reason.model-error":
+    "De AI-controle is met een fout gestopt. Opnieuw controleren start een nieuwe run.",
   "val.feedback.condTitle": "Voorwaardelijk – onderbouwing voor de auteur (verplicht)",
   "val.feedback.rejTitle": "Afwijzing – onderbouwing voor de auteur (verplicht)",
   "val.feedback.placeholder": "Wat moet er worden herzien? …",

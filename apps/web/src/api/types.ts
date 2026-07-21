@@ -181,6 +181,14 @@ export interface KnowledgeObject {
   sources?: KoSource[];
   // Demodaten-Merker (Seed) — für DEMO-Badge und Komplett-Entfernung.
   demoSeed?: boolean;
+  // WP-SUBMIT-ASYNC (Pedis R3): Status der Hintergrund-KI-Prüfung nach dem Einreichen (additiv;
+  // Altbestand ohne Feld = kein Prüf-Job, nichts anzuzeigen).
+  aiCheck?: {
+    status: "pending" | "done" | "failed";
+    requestedAt: string;
+    finishedAt?: string;
+    fallbackReason?: string;
+  };
 }
 
 export type Verdict = "up" | "warn" | "down";

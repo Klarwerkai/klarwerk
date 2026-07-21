@@ -8,7 +8,11 @@ import { buildApp, buildServices } from "./build-app";
 // (lesen/setzen, Bedienfehler) und die Rechte-Absicherung ab.
 describe("Berater-Konzept Duplikate 04.07.: Duplikat-Workflow (HTTP end-to-end)", () => {
   async function adminApp() {
-    const app = buildApp(buildServices());
+    // WP-SUBMIT-ASYNC: services behalten — die Erkennung läuft jetzt NACH der Antwort im
+    // Hintergrund-Worker; createKo wartet auf idle(), damit die End-to-End-Erwartungen
+    // dieses Tests (Eintrag/Benachrichtigung direkt nach dem Anlegen) deterministisch bleiben.
+    const services = buildServices();
+    const app = buildApp(services);
     await app.inject({
       method: "POST",
       url: "/api/auth/register",
@@ -20,31 +24,32 @@ describe("Berater-Konzept Duplikate 04.07.: Duplikat-Workflow (HTTP end-to-end)"
       payload: { email: "a@x.de", password: "secret123" },
     });
     const headers = { authorization: `Bearer ${login.json().token}` };
-    return { app, headers };
+    return { app, headers, services };
   }
 
   async function createKo(
-    app: Awaited<ReturnType<typeof adminApp>>["app"],
-    headers: Record<string, string>,
+    ctx: Awaited<ReturnType<typeof adminApp>>,
     statement: string,
   ): Promise<string> {
-    const res = await app.inject({
+    const res = await ctx.app.inject({
       method: "POST",
       url: "/api/kos",
-      headers,
+      headers: ctx.headers,
       payload: { title: "Pumpe entlüften", statement, type: "best_practice", category: "Wartung" },
     });
     expect(res.statusCode).toBe(201);
+    await ctx.services.aiCheckWorker?.idle();
     return res.json().id as string;
   }
 
   it("zwei textgleiche Beiträge → automatischer Überschneidungs-Eintrag (deterministisch, ohne Modell)", async () => {
-    const { app, headers } = await adminApp();
+    const ctx = await adminApp();
+    const { app, headers } = ctx;
     const text = "Nach dem Anfahren 10 Sekunden warten, dann die Pumpe entlüften.";
     // Erster Beitrag: noch kein Kandidat im Bestand → kein Eintrag.
-    await createKo(app, headers, text);
-    // Zweiter, textgleicher Beitrag → Erkennung greift beim Einreichen.
-    await createKo(app, headers, text);
+    await createKo(ctx, text);
+    // Zweiter, textgleicher Beitrag → Erkennung greift beim Einreichen (jetzt im Hintergrund).
+    await createKo(ctx, text);
 
     const list = await app.inject({ method: "GET", url: "/api/duplicates", headers });
     expect(list.statusCode).toBe(200);
@@ -61,10 +66,11 @@ describe("Berater-Konzept Duplikate 04.07.: Duplikat-Workflow (HTTP end-to-end)"
   });
 
   it("Fehlalarm schließt den Eintrag; er fällt aus der offenen Liste", async () => {
-    const { app, headers } = await adminApp();
+    const ctx = await adminApp();
+    const { app, headers } = ctx;
     const text = "Vor dem Abschalten das Ventil vollständig schließen und sichern.";
-    await createKo(app, headers, text);
-    await createKo(app, headers, text);
+    await createKo(ctx, text);
+    await createKo(ctx, text);
 
     const id = (await app.inject({ method: "GET", url: "/api/duplicates", headers })).json()[0]
       .id as string;
@@ -84,10 +90,11 @@ describe("Berater-Konzept Duplikate 04.07.: Duplikat-Workflow (HTTP end-to-end)"
   });
 
   it("gelöschter Beitrag schließt seine offene Überschneidung (kein Geist)", async () => {
-    const { app, headers } = await adminApp();
+    const ctx = await adminApp();
+    const { app, headers } = ctx;
     const text = "Beim Anfahren zuerst die Kühlung prüfen, dann die Anlage starten.";
-    await createKo(app, headers, text);
-    const koB = await createKo(app, headers, text);
+    await createKo(ctx, text);
+    const koB = await createKo(ctx, text);
 
     // Überschneidung ist da …
     const before = await app.inject({ method: "GET", url: "/api/duplicates", headers });
@@ -131,10 +138,11 @@ describe("Berater-Konzept Duplikate 04.07.: Duplikat-Workflow (HTTP end-to-end)"
   });
 
   it("erkanntes Duplikat erscheint in der Benachrichtigungs-Glocke (kind = duplicate)", async () => {
-    const { app, headers } = await adminApp();
+    const ctx = await adminApp();
+    const { app, headers } = ctx;
     const text = "Filter monatlich prüfen und bei Bedarf wechseln.";
-    await createKo(app, headers, text);
-    await createKo(app, headers, text);
+    await createKo(ctx, text);
+    await createKo(ctx, text);
 
     const notifs = await app.inject({ method: "GET", url: "/api/notifications", headers });
     expect(notifs.statusCode).toBe(200);
@@ -145,8 +153,8 @@ describe("Berater-Konzept Duplikate 04.07.: Duplikat-Workflow (HTTP end-to-end)"
     const text = "Beim Reinigen zuerst den Hauptschalter ausschalten.";
 
     const kept = await adminApp();
-    await createKo(kept.app, kept.headers, text);
-    await createKo(kept.app, kept.headers, text);
+    await createKo(kept, text);
+    await createKo(kept, text);
     const keptId = (
       await kept.app.inject({ method: "GET", url: "/api/duplicates", headers: kept.headers })
     ).json()[0].id as string;
@@ -160,8 +168,8 @@ describe("Berater-Konzept Duplikate 04.07.: Duplikat-Workflow (HTTP end-to-end)"
     expect(keptRes.json().resolution.reason).toBe("kept_separate");
 
     const linked = await adminApp();
-    await createKo(linked.app, linked.headers, text);
-    await createKo(linked.app, linked.headers, text);
+    await createKo(linked, text);
+    await createKo(linked, text);
     const linkedId = (
       await linked.app.inject({ method: "GET", url: "/api/duplicates", headers: linked.headers })
     ).json()[0].id as string;

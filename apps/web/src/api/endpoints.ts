@@ -149,6 +149,8 @@ export const endpoints = {
       api.post<KnowledgeObject>("/kos", body),
     act: (id: string, body: KoAction) => api.put<KnowledgeObject>(`/kos/${id}`, body),
     remove: (id: string) => api.del<void>(`/kos/${id}`),
+    // WP-SUBMIT-ASYNC: reiht die Hintergrund-KI-Pruefung neu ein (Retry am failed-Badge).
+    aiCheckRetry: (id: string) => api.post<{ status: string }>(`/kos/${id}/ai-check`, {}),
     // SCRUM-422: Papierkorb (nur Admin): Liste, Wiederherstellen, sofortige Endlöschung.
     trash: () => api.get<TrashedKo[]>("/kos/trash"),
     restore: (id: string) => api.post<KnowledgeObject>(`/kos/${id}/restore`),

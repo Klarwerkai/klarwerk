@@ -2237,6 +2237,12 @@ export function Capture(): JSX.Element {
             </span>
           </div>
           <p className="mt-1 text-[12.5px] text-trust-pos-text/90">{t("capture.savedBody")}</p>
+          {/* WP-SUBMIT-ASYNC (Pedi R3, 21.07.): das Einreichen wartet nicht mehr auf die KI-Pruefung —
+              nuechterner Hinweis, dass sie im Hintergrund laeuft und das Ergebnis in der Validierung
+              erscheint. Kein Spinner, keine Blockade. */}
+          <p className="mt-1 text-[12px] text-trust-pos-text/80">
+            {t("capture.aiCheckBackground")}
+          </p>
           {/* SCRUM-354: ehrlich machen — fortgesetzter Entwurf wurde eingereicht und ist aus dem Pool. */}
           {submittedFromDraft ? (
             <p className="mt-1 text-[12px] text-trust-pos-text/80">{t("capture.savedFromDraft")}</p>

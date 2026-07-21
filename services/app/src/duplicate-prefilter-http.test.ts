@@ -30,7 +30,10 @@ afterEach(() => {
 });
 
 async function adminApp() {
-  const app = buildApp(buildServices());
+  // WP-SUBMIT-ASYNC: services behalten — die Erkennung läuft jetzt NACH der Antwort im
+  // Hintergrund-Worker; End-to-End-Erwartungen warten auf aiCheckWorker.idle().
+  const services = buildServices();
+  const app = buildApp(services);
   await app.inject({
     method: "POST",
     url: "/api/auth/register",
@@ -42,7 +45,7 @@ async function adminApp() {
     payload: { email: "a@x.de", password: "secret123" },
   });
   const headers = { authorization: `Bearer ${login.json().token}` };
-  return { app, headers };
+  return { app, headers, services };
 }
 
 async function createKo(
@@ -78,10 +81,12 @@ describe("B6 HTTP: Store-Befüllung im Einreiche-Pfad (Flag AN)", () => {
   });
 
   it("Duplikat wird end-to-end erkannt und erscheint unter /api/duplicates", async () => {
-    const { app, headers } = await adminApp();
+    const { app, headers, services } = await adminApp();
     const text = "Nach dem Anfahren 10 Sekunden warten, dann die Pumpe entlüften.";
     expect(await createKo(app, headers, text)).toBe(201);
     expect(await createKo(app, headers, text)).toBe(201);
+    // WP-SUBMIT-ASYNC: die Erkennung läuft nach dem 201 im Worker → auf den Abschluss warten.
+    await services.aiCheckWorker?.idle();
     const list = await app.inject({ method: "GET", url: "/api/duplicates", headers });
     expect(list.statusCode).toBe(200);
     expect(Array.isArray(list.json())).toBe(true);

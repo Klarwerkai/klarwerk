@@ -9,6 +9,8 @@ export interface ValidationFilterState {
   category: string; // "" = alle
   tag: string; // "" = alle
   mineOnly: boolean;
+  // WP-SUBMIT-ASYNC: nur Beiträge, deren KI-Pruefung noch laeuft (aiCheck pending).
+  aiPending: boolean;
 }
 
 export const EMPTY_VALIDATION_FILTER: ValidationFilterState = {
@@ -17,6 +19,7 @@ export const EMPTY_VALIDATION_FILTER: ValidationFilterState = {
   category: "",
   tag: "",
   mineOnly: false,
+  aiPending: false,
 };
 
 // Volltext-Heuhaufen: Titel, Aussage, Bedingungen, Maßnahmen, Kategorie, Tags.
@@ -46,6 +49,11 @@ export function matchesValidationFilter(
     return false;
   }
   if (f.mineOnly && (!userId || !k.assignments.includes(userId))) {
+    return false;
+  }
+  // WP-SUBMIT-ASYNC: „in Pruefung" zeigt nur laufende Hintergrund-Pruefungen; Altbestand ohne
+  // aiCheck-Feld und abgeschlossene/fehlgeschlagene Pruefungen fallen ehrlich heraus.
+  if (f.aiPending && k.aiCheck?.status !== "pending") {
     return false;
   }
   return true;

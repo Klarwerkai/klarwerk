@@ -34,7 +34,9 @@ export interface JournalEntry {
 // (Test „deckt alle AppRepos-Schlüssel ab" schützt vor vergessenen ganzen Repos).
 export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]>> = {
   auditRepo: ["append"],
-  koRepo: ["insert", "update", "delete"],
+  // WP-SUBMIT-ASYNC: der Prüf-Status (aiCheck) ist eine Mutation am KO-JSONB → journalieren,
+  // sonst wäre er nach einem Dev-Neustart weg (pending-Erkennung/Badges würden lügen).
+  koRepo: ["insert", "update", "delete", "setAiCheck", "resolveAiCheck"],
   koVersions: ["append"],
   evidence: ["append"],
   // SCRUM-504: der atomare Bootstrap-Claim ist eine Mutation (fügt den Admin ein) → muss journaliert

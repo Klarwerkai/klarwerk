@@ -60,6 +60,9 @@ function countingRepo(inner: InMemoryKoRepo) {
     list: (filter) => inner.list(filter),
     listForSearch: (filter) => inner.listForSearch(filter),
     setCaptionTexts: (id, captionTexts) => inner.setCaptionTexts(id, captionTexts),
+    // WP-SUBMIT-ASYNC: neue Vertragsmethoden — reines Durchreichen (hier nicht instrumentiert).
+    setAiCheck: (id, aiCheck) => inner.setAiCheck(id, aiCheck),
+    resolveAiCheck: (id, patch) => inner.resolveAiCheck(id, patch),
     findCandidates: (query) => inner.findCandidates(query),
     findById: async (id) => {
       findByIdCalls.set(id, (findByIdCalls.get(id) ?? 0) + 1);
@@ -205,6 +208,9 @@ describe("WP-D11b patches53-GELB: Race der laufenden Suchantwort (No-op-Fall lä
         await gate;
         return inner.setCaptionTexts(id, captionTexts);
       },
+      // WP-SUBMIT-ASYNC: neue Vertragsmethoden — reines Durchreichen.
+      setAiCheck: (id, aiCheck) => inner.setAiCheck(id, aiCheck),
+      resolveAiCheck: (id, patch) => inner.resolveAiCheck(id, patch),
     };
     const koService = new KoService({ repo });
     const pending = koService.ensureCaptionTexts("legacy-race");

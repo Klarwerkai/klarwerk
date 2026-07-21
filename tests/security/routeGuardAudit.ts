@@ -213,6 +213,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/kos/:id/evidence": { protection: "ko.read" },
   "GET /api/evidence": { protection: "ko.read" },
   "POST /api/kos": { protection: "ko.create" },
+  // WP-SUBMIT-ASYNC: Retry der Hintergrund-KI-Prüfung — Prüfer-Recht (Knopf auf der Board-Karte).
+  "POST /api/kos/:id/ai-check": { protection: "ko.validate" },
   "DELETE /api/kos/:id": { protection: "ko.read" }, // + Route prüft Autor-oder-Controller/Admin (Pedi 02.07.)
   "PUT /api/kos/:id": { protection: "action-dispatched" },
   // SCRUM-421: Upload-Grenzen — lesen alle Leseberechtigten (Anzeige), ändern nur Admin.

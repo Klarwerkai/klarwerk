@@ -136,6 +136,7 @@ import {
   resolveTrustProxy,
 } from "./addon-auth-throttle";
 import { matchAddonRoute, principalHasCapability, resolveAddonAuth } from "./addon-principal";
+import { type AiCheckWorker, createAiCheckRunner, createAiCheckWorker } from "./ai-check-worker";
 import { type SemanticPrefilter, removeKoFromDuplicatePrefilter } from "./duplicate-detection";
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
@@ -207,6 +208,10 @@ export interface AppServices {
   uploadLimits: UploadLimitsRepo;
   // WP-D11: PPTX-Folien-Konverter (injizierbar — Tests nutzen einen Fake, keine soffice-Pflicht).
   slideConverter: SlideConverter;
+  // WP-SUBMIT-ASYNC (Pedis R3): In-Process-Worker der Hintergrund-KI-Prüfung. Von buildApp
+  // erstellt (braucht den dort gebauten semanticPrefilter); Tests können VOR buildApp einen
+  // eigenen (Spy-)Worker setzen — wie beim slideConverter.
+  aiCheckWorker?: AiCheckWorker;
 }
 
 // Alle Repositories der App. Sie sind der einzige Unterschied zwischen In-Memory und
@@ -679,6 +684,23 @@ export function buildApp(
     await services.overlaps.onKoRemoved(koId, actor);
     await removeKoFromDuplicatePrefilter(koId, semanticPrefilter);
   });
+  // WP-SUBMIT-ASYNC (Pedis R3): der Prüf-Worker kapselt die früher synchron im Submit-Pfad
+  // laufende Erkennung (detectConflicts/detectDuplicates) — Concurrency 1, In-Process, PII-freies
+  // Log. Ein von Tests vorab gesetzter services.aiCheckWorker (Spy) hat Vorrang.
+  const aiCheckWorker =
+    services.aiCheckWorker ??
+    createAiCheckWorker({
+      ko: services.ko,
+      run: createAiCheckRunner({
+        ko: services.ko,
+        conflicts: services.conflicts,
+        overlaps: services.overlaps,
+        overlapSettings: services.overlapSettings,
+        reasoner: services.reasoner,
+        semanticPrefilter,
+      }),
+    });
+  services.aiCheckWorker = aiCheckWorker;
   app.register(
     koRoutes(
       {
@@ -698,11 +720,15 @@ export function buildApp(
         audit: services.audit,
         // Weg 3 (Feature-Flag): semantischer Vorfilter (undefined = Default „jeder gegen jeden").
         semanticPrefilter,
+        // WP-SUBMIT-ASYNC: Prüf-Job-Vermerk + Hintergrund-Worker statt synchroner Erkennung.
+        aiCheckWorker,
       },
       guards,
     ),
   );
-  app.register(validationRoutes(services.validation, guards));
+  app.register(
+    validationRoutes(services.validation, guards, { ko: services.ko, worker: aiCheckWorker }),
+  );
   app.register(conflictRoutes(services.conflicts, guards));
   // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-API (/api/duplicates) +
   // (Pedi 04.07.) einstellbare Anzeige-Schwelle.
@@ -712,7 +738,9 @@ export function buildApp(
       guards,
     ),
   );
-  app.register(captureRoutes({ ...services, notifyAssignment, semanticPrefilter }, guards));
+  app.register(
+    captureRoutes({ ...services, notifyAssignment, semanticPrefilter, aiCheckWorker }, guards),
+  );
   // WP-D11: PPTX-Folien-Konvertierung (eigene Route mit großem bodyLimit + Auth vor dem Parse).
   app.register(slidesRoutes(services.slideConverter, guards));
   app.register(askRoutes(services.ask, guards));

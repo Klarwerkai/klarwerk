@@ -20,12 +20,8 @@ import type { LifecycleService } from "../../../lifecycle";
 import { can } from "../../../rbac";
 import type { Reasoner } from "../../../reasoner";
 import type { ValidationService, Verdict } from "../../../validation";
-import { detectConflictsForKo } from "../conflict-detection";
-import {
-  type SemanticPrefilter,
-  detectDuplicatesForKo,
-  indexKoForDuplicatePrefilter,
-} from "../duplicate-detection";
+import type { AiCheckWorker } from "../ai-check-worker";
+import { type SemanticPrefilter, indexKoForDuplicatePrefilter } from "../duplicate-detection";
 import { type Guards, sendError } from "../http";
 import type { AssignmentNotifier } from "../notify";
 
@@ -49,6 +45,9 @@ export interface KoRoutesDeps {
   audit?: AuditService;
   // Weg 3 (Feature-Flag): semantischer Vorfilter der Duplikat-Erkennung. Nur gesetzt, wenn aktiviert.
   semanticPrefilter?: SemanticPrefilter | undefined;
+  // WP-SUBMIT-ASYNC (Pedis R3): In-Process-Worker der Hintergrund-KI-Prüfung. Optional (direkt
+  // konstruierte Routen-Tests ohne Worker vermerken dann ehrlich KEINEN Prüf-Job).
+  aiCheckWorker?: AiCheckWorker | undefined;
 }
 
 interface KoQuery {
@@ -91,13 +90,12 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
     validation,
     conflicts,
     overlaps,
-    overlapSettings,
     lifecycle,
-    reasoner,
     notifyAssignment,
     uploadLimits,
     audit,
     semanticPrefilter,
+    aiCheckWorker,
   } = deps;
 
   return async (app) => {
@@ -185,20 +183,20 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             await validation.assign(created.id, reviewers, user.id);
             await notifyAssignment?.(created.id, reviewers);
           }
-          // Berater-Konzept 04.07. (Stufe 3): Widerspruchs-Erkennung beim Einreichen — best-effort,
-          // blockiert das Einreichen nie (ohne Modell stiller No-op). Läuft VOR der Antwort, damit
-          // erkannte Konflikte direkt sichtbar sind (v1 synchron; asynchrone Warteschlange folgt).
-          await detectConflictsForKo(created.id, { ko, conflicts, reasoner });
-          // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-Erkennung beim Einreichen —
-          // best-effort, blockiert nie (deterministisch auch ohne Modell, sonst Modell-Profil).
-          await detectDuplicatesForKo(created.id, {
-            ko,
-            overlaps,
-            reasoner,
-            settings: overlapSettings,
-            semanticPrefilter,
-          });
-          reply.code(201).send(created);
+          // WP-SUBMIT-ASYNC (Pedis Architektur-Entscheid R3, 21.07.): die KI-Prüfung blockiert
+          // das Einreichen NICHT mehr (Messung: 1:28 min). Statt der früheren synchronen
+          // detect*-Aufrufe wird nur der Prüf-Job vermerkt (aiCheck pending, ein schmaler
+          // Feld-Patch) und im In-Process-Worker NACH der Antwort abgearbeitet — dieselben
+          // Erkennungs-Pfade, dieselben Ergebnis-Signale, nur später (Status im Board sichtbar).
+          // Die 201-Antwort trägt den Vermerk ehrlich mit (aiCheck pending) — das Nachlesen
+          // passiert VOR dem enqueue, damit die Antwort deterministisch den Job-Start zeigt.
+          let submitted = created;
+          if (aiCheckWorker) {
+            await ko.markAiCheckPending(created.id);
+            submitted = (await ko.get(created.id)) ?? created;
+            aiCheckWorker.enqueue(created.id);
+          }
+          reply.code(201).send(submitted);
           // Weg 3 (B6): Einbettung + Ablage NACH der Antwort — der Nutzer wartet nie darauf. Flag aus
           // = No-op; Fehler brechen den (bereits gesendeten) Submit nie. await nur zur deterministischen
           // Fertigstellung der Ablage, nicht zur Client-Latenz (201 ist schon raus).
@@ -208,6 +206,43 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         }
       },
     );
+
+    // WP-SUBMIT-ASYNC (Teil 3, Retry): reiht einen FEHLGESCHLAGENEN (oder festhängenden pending-)
+    // Prüf-Job neu ein. Recht ko.validate — der Knopf lebt auf den Validierungs-Karten der Prüfer.
+    // done/ohne Feld ist nicht wiederholbar (ehrlicher 409 statt stillem Doppel-Lauf).
+    app.post<{ Params: { id: string } }>("/api/kos/:id/ai-check", async (request, reply) => {
+      const user = await guards.requirePermission("ko.validate", request, reply);
+      if (!user) {
+        return;
+      }
+      try {
+        const subject = await ko.get(request.params.id);
+        if (!subject) {
+          reply.code(404).send({ error: "NOT_FOUND", message: "Wissensobjekt nicht gefunden." });
+          return;
+        }
+        if (!aiCheckWorker) {
+          reply.code(503).send({
+            error: "AI_CHECK_UNAVAILABLE",
+            message: "Die Hintergrund-Pruefung ist auf diesem Server nicht verdrahtet.",
+          });
+          return;
+        }
+        const status = subject.aiCheck?.status;
+        if (status !== "failed" && status !== "pending") {
+          reply.code(409).send({
+            error: "AI_CHECK_NOT_RETRYABLE",
+            message: "Fuer dieses Wissensobjekt steht kein wiederholbarer Pruef-Job an.",
+          });
+          return;
+        }
+        await ko.markAiCheckPending(request.params.id);
+        aiCheckWorker.enqueue(request.params.id);
+        reply.code(200).send({ status: "pending" });
+      } catch (error) {
+        sendError(reply, error);
+      }
+    });
 
     // SCRUM-421: Upload-Grenzen — lesen dürfen alle Leseberechtigten (Anzeige beim Erfassen),
     // ändern nur die Nutzerverwaltung (Admin). Änderung landet im Audit-Log.

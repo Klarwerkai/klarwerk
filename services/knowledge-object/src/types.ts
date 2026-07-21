@@ -19,6 +19,17 @@ export type KoStatus = "offen" | "validiert";
 // SCRUM-415: Vertraulichkeitsstufe je Wissensobjekt. „intern" = Öffentlich-intern (Standard, keine
 // Einschränkung); „vertraulich"/„streng_vertraulich" = vertraulich → gehen NIE in externe Kontexte
 // (Output Factory/Export). Fehlt das Feld (Alt-KOs), gilt „intern".
+// WP-SUBMIT-ASYNC: Zustand des Hintergrund-Prüf-Jobs. pending = eingereiht/laufend; done = die
+// Erkennung lief (Ergebnis-Signale liegen in conflicts/overlaps); failed = EHRLICH gescheitert
+// (fallbackReason: no-model/model-error) — nie stiller Verlust, nie erfundenes Ergebnis.
+export type AiCheckStatus = "pending" | "done" | "failed";
+export interface AiCheck {
+  status: AiCheckStatus;
+  requestedAt: string;
+  finishedAt?: string;
+  fallbackReason?: string;
+}
+
 export type Confidentiality = "intern" | "vertraulich" | "streng_vertraulich";
 
 export interface HistoryEntry {
@@ -128,6 +139,11 @@ export interface KnowledgeObject {
   // Demodaten-Merker (Pedi 02.07.): vom Seed gesetzt, überlebt Bearbeitungen/Versionen —
   // damit Demo-Bestand sichtbar bleibt und komplett entfernt werden kann.
   demoSeed?: boolean;
+  // WP-SUBMIT-ASYNC (Pedis R3 21.07.): Status der HINTERGRUND-KI-Prüfung nach dem Einreichen —
+  // additiv im JSONB, keine Migration; Altbestand ohne Feld = kein Prüf-Job. Die Ergebnis-Signale
+  // (Konflikte/Überschneidungen) entstehen unverändert in ihren Services — aiCheck trägt nur den
+  // ehrlichen Job-Status für die Validierungs-Anzeige.
+  aiCheck?: AiCheck;
   // SCRUM-422 (Papierkorb): gesetzt beim Soft-Delete. Getrashte KOs sind aus ALLEN
   // Lese-/Mutations-Pfaden ausgeblendet (wirken gelöscht) und werden nach Ablauf der
   // Frist automatisch endgültig entfernt. Demo-Daten landen NIE hier (immer hart).

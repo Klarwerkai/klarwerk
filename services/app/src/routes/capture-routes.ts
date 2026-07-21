@@ -1,15 +1,9 @@
 import type { FastifyPluginAsync, FastifyReply } from "fastify";
 import type { CaptureService, Draft, DraftPayload } from "../../../capture";
-import type { ConflictService, OverlapService, OverlapSettingsRepo } from "../../../conflicts";
 import type { KoService } from "../../../knowledge-object";
-import type { Reasoner } from "../../../reasoner";
 import type { ValidationService } from "../../../validation";
-import { detectConflictsForKo } from "../conflict-detection";
-import {
-  type SemanticPrefilter,
-  detectDuplicatesForKo,
-  indexKoForDuplicatePrefilter,
-} from "../duplicate-detection";
+import type { AiCheckWorker } from "../ai-check-worker";
+import { type SemanticPrefilter, indexKoForDuplicatePrefilter } from "../duplicate-detection";
 import { type Guards, type SessionUser, sendError } from "../http";
 import type { AssignmentNotifier } from "../notify";
 
@@ -57,30 +51,17 @@ export interface CaptureRoutesDeps {
   ko: KoService;
   // SCRUM-395: Prüfer-Vorschlag beim Promote (Zuweisung + Benachrichtigung wie im Board).
   validation: ValidationService;
-  // Berater-Konzept 04.07. (Stufe 3): automatische Widerspruchs-Erkennung auch beim Promote (Entwurf → KO).
-  conflicts: ConflictService;
-  // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-Erkennung auch beim Promote.
-  overlaps: OverlapService;
-  // Pedi 04.07.: einstellbare Anzeige-Schwelle der Duplikat-Erkennung.
-  overlapSettings: OverlapSettingsRepo;
-  reasoner: Reasoner;
   notifyAssignment?: AssignmentNotifier;
   // Weg 3 (Feature-Flag): semantischer Vorfilter der Duplikat-Erkennung. Nur gesetzt, wenn aktiviert.
   semanticPrefilter?: SemanticPrefilter | undefined;
+  // WP-SUBMIT-ASYNC (Pedis R3): die frühere synchrone Erkennung (conflicts/overlaps/reasoner-Deps)
+  // ist aus dem Promote-Pfad heraus in den Hintergrund-Worker gewandert — der Worker kapselt
+  // diese Abhängigkeiten jetzt selbst.
+  aiCheckWorker?: AiCheckWorker | undefined;
 }
 
 export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyPluginAsync {
-  const {
-    capture,
-    ko,
-    validation,
-    conflicts,
-    overlaps,
-    overlapSettings,
-    reasoner,
-    notifyAssignment,
-    semanticPrefilter,
-  } = deps;
+  const { capture, ko, validation, notifyAssignment, semanticPrefilter, aiCheckWorker } = deps;
 
   // WP-D1d (bens ROT-Fix 3): AUTH VOR BODY-PARSING. Fastify parst den Body (bis DRAFTS_BODY_LIMIT) in
   // der preValidation/-Handler-Phase — VOR guards.requirePermission im Handler. Dieser onRequest-Hook
@@ -203,17 +184,18 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             await validation.assign(created.id, reviewers, user.id);
             await notifyAssignment?.(created.id, reviewers);
           }
-          // Berater-Konzept 04.07. (Stufe 3): Widerspruchs-Erkennung auch für den promoteten Entwurf.
-          await detectConflictsForKo(created.id, { ko, conflicts, reasoner });
-          // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-Erkennung auch beim Promote.
-          await detectDuplicatesForKo(created.id, {
-            ko,
-            overlaps,
-            reasoner,
-            settings: overlapSettings,
-            semanticPrefilter,
-          });
-          reply.code(201).send(created);
+          // WP-SUBMIT-ASYNC (Pedis R3, 21.07.): wie beim direkten Einreichen — kein synchroner
+          // detect*-Lauf mehr vor der Antwort; nur der Prüf-Job wird vermerkt und der Worker
+          // arbeitet ihn danach ab (dieselben Erkennungs-Pfade, Status im Board sichtbar).
+          // Wie in ko-routes: die 201-Antwort trägt den Vermerk ehrlich mit (aiCheck pending);
+          // Nachlesen VOR dem enqueue → deterministischer Job-Start in der Antwort.
+          let submitted = created;
+          if (aiCheckWorker) {
+            await ko.markAiCheckPending(created.id);
+            submitted = (await ko.get(created.id)) ?? created;
+            aiCheckWorker.enqueue(created.id);
+          }
+          reply.code(201).send(submitted);
           // Weg 3 (B6): Einbettung + Ablage NACH der Antwort — der Nutzer wartet nie darauf. Flag aus
           // = No-op; Fehler brechen den (bereits gesendeten) Submit nie. await nur zur deterministischen
           // Fertigstellung der Ablage, nicht zur Client-Latenz (201 ist schon raus).
