@@ -749,6 +749,8 @@ export interface ImportCleanupResult {
   skipped: { id: string; reason: string }[];
   // WP-SHIP8-FIX (bens F1): die Mutationen sind passiert, nur der Abschluss-Audit schlug fehl.
   auditFailed: boolean;
+  // WP-NIGHT-FIX (bens F2-TOCTOU): seit der Vorschau neu eingereihte Kandidaten — nicht angefasst.
+  newCandidates: number;
 }
 
 // WP-B6: Bilanz eines geladenen Beispielpakets (idempotent — übersprungen = schon vorhanden).

@@ -352,10 +352,14 @@ describe("WP-IC-PAKET-1b ROT-2: importStatusFor — versions- und quellrobust", 
     );
     expect(status.alreadyImported).toBe(false);
     expect(status.sourceNewer).toBe(false);
-    // Der explizite, getestete Vertrag: Schlüssel = provider + externalId; Anker ohne provider sind
-    // keinem Provider zuordenbar und matchen ehrlich nicht.
+    // Der explizite, getestete Vertrag: Schlüssel = provider + externalId (ZENTRAL über
+    // importSourceKey normalisiert, WP-NIGHT-FIX bens F3-Rest): Jira bleibt getrennt; die
+    // Normalisierung macht Schreibvarianten gleich, und Anker OHNE Provider zählen jetzt —
+    // deckungsgleich mit Queue/acceptToKo/Pg-Backfill — als Confluence (die frühere Sonderregel
+    // „ohne Provider matcht nie" widersprach dem Backfill).
     expect(importStatusKey("Confluence", "p9")).not.toBe(importStatusKey("Jira", "p9"));
-    expect(importStatusKey(null, "p9")).not.toBe(importStatusKey("Confluence", "p9"));
+    expect(importStatusKey(" confluence ", "p9")).toBe(importStatusKey("Confluence", "p9"));
+    expect(importStatusKey(null, "p9")).toBe(importStatusKey("Confluence", "p9"));
   });
 });
 

@@ -183,8 +183,21 @@ export class PgCandidateRepo implements CandidateRepo {
 
   // WP-D-CLEAN: harte Entfernung ALLER Queue-Einträge (Pedis Testdaten-Aufräumen) — rowCount ist
   // die ehrliche Zählung der tatsächlich entfernten Kandidaten.
+  // WP-NIGHT-FIX (bens F2-TOCTOU): NICHT mehr der Cleanup-Weg (s. removeByIds) — nur Werkzeug/Test.
   async removeAll(): Promise<number> {
     const res = await this.pool.query("DELETE FROM import_candidates");
+    return res.rowCount ?? 0;
+  }
+
+  // WP-NIGHT-FIX (bens F2-TOCTOU): löscht EXAKT die bestätigten Ids in EINEM atomaren DELETE —
+  // ein nach dem Digest-Vergleich eingereihter neuer Kandidat wird nie mitgerissen.
+  async removeByIds(ids: readonly string[]): Promise<number> {
+    if (ids.length === 0) {
+      return 0;
+    }
+    const res = await this.pool.query("DELETE FROM import_candidates WHERE id = ANY($1)", [
+      [...ids],
+    ]);
     return res.rowCount ?? 0;
   }
 }

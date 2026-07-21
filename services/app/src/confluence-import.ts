@@ -1,6 +1,6 @@
 import type { ConfluenceSourceAdapter } from "../../confluence";
 import type { KoService } from "../../knowledge-object";
-import { type ImportItem, type LibraryService, importProviderKey } from "../../library-analytics";
+import { type ImportItem, type LibraryService, importSourceKey } from "../../library-analytics";
 
 // SCRUM-510 WP2: Orchestrierung des Space-Imports. Liest den GESAMTEN Space (paginiert), stellt jede
 // Seite IDEMPOTENT als Review-Kandidaten in die bestehende Import-Queue (116/157) — REVIEW-INVARIANTE:
@@ -40,7 +40,7 @@ async function existingVersions(koService: KoService): Promise<Map<string, numbe
   for (const ko of await koService.list()) {
     for (const s of ko.sources ?? []) {
       if (s.externalId) {
-        const key = `${importProviderKey(s.provider)}@${s.externalId}`;
+        const key = importSourceKey(s.provider, s.externalId);
         const v = s.sourceVersion ?? 0;
         out.set(key, Math.max(out.get(key) ?? 0, v));
       }
@@ -57,7 +57,7 @@ async function pendingKeys(library: LibraryService): Promise<Set<string>> {
   for (const c of await library.listImportCandidates()) {
     if (c.status === "neu" && c.item.externalId) {
       out.add(
-        `${importProviderKey(c.item.provider)}@${c.item.externalId}@${c.item.sourceVersion ?? 1}`,
+        `${importSourceKey(c.item.provider, c.item.externalId)}@${c.item.sourceVersion ?? 1}`,
       );
     }
   }
@@ -71,10 +71,13 @@ async function pendingKeys(library: LibraryService): Promise<Set<string>> {
 // Der Quell-Scope (spaceKey/sourceScope) bleibt BEWUSST draußen: eine Confluence-Seite kann den Space
 // wechseln (gleiche pageId) — Scope im Schlüssel würde sie fälschlich als „nicht importiert" zeigen.
 // Damit gilt der explizite, getestete Vertrag: externalId ist EINDEUTIG JE PROVIDER; ein zweiter
-// Provider mit zufällig gleicher externalId erzeugt KEINEN falschen Status. Anker OHNE provider
-// (theoretische Altdaten) sind keinem Provider zuordenbar und werden ehrlich NICHT gematcht.
+// Provider mit zufällig gleicher externalId erzeugt KEINEN falschen Status.
+// WP-NIGHT-FIX (bens F3-Rest): der Schlüssel kommt jetzt aus dem ZENTRALEN importSourceKey
+// (Normalisierung trim+lowercase am Provider — "Confluence"/" confluence " sind derselbe Schlüssel).
+// Damit zählen Anker OHNE Provider (Altdaten) wie überall sonst (Queue, acceptToKo, Pg-Backfill)
+// als Confluence — die frühere Sonderregel „ohne Provider matcht nie" widersprach dem Backfill.
 export function importStatusKey(provider: string | null | undefined, externalId: string): string {
-  return `${provider ?? ""}::${externalId}`;
+  return importSourceKey(provider, externalId);
 }
 
 // WP-IC-PAKET-1c (bens ROT-3): EINE gemeinsame Normalisierung für ALLE drei Versions-Eingänge des
@@ -179,14 +182,14 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
     const version = item.sourceVersion ?? 1;
     // bens F3: In-Run-/Pending-/Bestands-Schlüssel sind provider-scoped (wie die Queue selbst).
     const runKey = item.externalId
-      ? `${importProviderKey(item.provider)}@${item.externalId}@${version}`
+      ? `${importSourceKey(item.provider, item.externalId)}@${version}`
       : null;
     if (runKey && queuedKeys.has(runKey)) {
       perPage.push({ ref, status: "skipped", note: "Dublette im selben Lauf (idempotent)" });
       continue;
     }
     const already = item.externalId
-      ? seen.get(`${importProviderKey(item.provider)}@${item.externalId}`)
+      ? seen.get(importSourceKey(item.provider, item.externalId))
       : undefined;
     const isPending = runKey ? pending.has(runKey) : false;
     // Idempotent überspringen, wenn diese-oder-neuere Version schon importiert wurde ODER bereits als
@@ -247,6 +250,6 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
 // perPage-Einträge trifft.
 function candidateKey(item: ImportItem): string {
   return item.externalId
-    ? `${importProviderKey(item.provider)}@${item.externalId}@${item.sourceVersion ?? 1}`
+    ? `${importSourceKey(item.provider, item.externalId)}@${item.sourceVersion ?? 1}`
     : `title:${item.title}`;
 }

@@ -8,7 +8,15 @@ export {
 } from "./src/service";
 export type { LibraryServiceDeps } from "./src/service";
 // WP-SHIP8-FIX (bens F3): kanonischer Provider-Schlüsselteil aller Import-Schlüssel.
-export { InMemoryCandidateRepo, importProviderKey, type CandidateRepo } from "./src/repo";
+// WP-NIGHT-FIX (bens F3-Rest): + der zentrale zusammengesetzte Quell-Schlüssel (Status-Maps)
+// und die zentrale Kandidaten-Wire-Id (Gruppierung/Auswahl/Apply/React-Keys).
+export {
+  InMemoryCandidateRepo,
+  candidateSourceId,
+  importProviderKey,
+  importSourceKey,
+  type CandidateRepo,
+} from "./src/repo";
 export { PgCandidateRepo, IMPORT_CANDIDATES_SCHEMA } from "./src/repo-pg";
 export type {
   ImportItem,

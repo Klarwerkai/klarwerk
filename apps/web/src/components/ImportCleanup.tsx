@@ -131,6 +131,9 @@ export function ImportCleanup(): JSX.Element {
           {result.auditFailed ? (
             <li className="text-trust-warn-text">· {t(IMPORT_CLEANUP_TEXT.auditFailed)}</li>
           ) : null}
+          {result.newCandidates > 0 ? (
+            <li>· {t(IMPORT_CLEANUP_TEXT.newSince, { n: result.newCandidates })}</li>
+          ) : null}
         </ul>
       ) : null}
     </Card>

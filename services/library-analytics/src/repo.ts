@@ -16,7 +16,15 @@ export interface CandidateRepo {
   // WP-D-CLEAN (Pedis Testdaten-Aufräumen): entfernt ALLE Kandidaten (jeden Status) aus der Queue
   // und gibt die Anzahl zurück. Kandidaten sind Queue-Einträge, keine Wissensobjekte — für sie ist
   // die harte Entfernung der vorgesehene Weg (kein Papierkorb-Vertrag wie bei KOs).
+  // WP-NIGHT-FIX (bens F2-TOCTOU): der CLEANUP-Weg nutzt removeAll NICHT mehr (er würde auch
+  // Kandidaten löschen, die NACH dem Digest-Vergleich eingereiht wurden) — removeAll bleibt nur
+  // als Werkzeug-/Test-Helfer erhalten.
   removeAll(): Promise<number>;
+  // WP-NIGHT-FIX (bens F2-TOCTOU): entfernt EXAKT die übergebenen Ids (atomar je Batch — InMemory
+  // synchron, Pg als EIN DELETE) und gibt die Zahl der tatsächlich entfernten zurück. Der
+  // Cleanup-Confirm bindet die Löschung damit an die BESTÄTIGTEN Ids der Vorschau; ein parallel
+  // eingereihter neuer Kandidat überlebt und wird in der Bilanz ehrlich ausgewiesen.
+  removeByIds(ids: readonly string[]): Promise<number>;
 }
 
 // WP-SHIP8-FIX (bens F3): kanonischer Provider-Anteil ALLER Import-Schlüssel (Queue-Idempotenz,
@@ -27,6 +35,26 @@ export interface CandidateRepo {
 export function importProviderKey(provider: string | null | undefined): string {
   const p = provider?.trim().toLowerCase();
   return p && p.length > 0 ? p : "confluence";
+}
+
+// WP-NIGHT-FIX (bens F3-Rest): DER zentrale zusammengesetzte Quell-Schlüssel provider+externalId —
+// EINE Normalisierung (importProviderKey: trim+lowercase, fehlend → confluence) für ALLE Abgleiche
+// (Status-Maps/importStatusFor, Orchestrator-Dedupe, Queue-Idempotenz) statt verstreuter
+// Eigenbau-Formate. Anker/Items ohne Provider zählen dabei bewusst als Confluence — deckungsgleich
+// mit dem Pg-Backfill und acceptToKo (der einzige Adapter vor dem Provider-Schlüssel).
+export function importSourceKey(provider: string | null | undefined, externalId: string): string {
+  return `${importProviderKey(provider)}::${externalId}`;
+}
+
+// WP-NIGHT-FIX (bens F3-Rest): die WIRE-/Anzeige-Id eines Kandidaten (Gruppierungs-Kandidatenliste,
+// Modell-Eingabe, Auswahl/Apply-Map, React-Keys). Für Confluence — und provider-losen Altbestand,
+// deckungsgleich mit dem Backfill — bleibt es die NACKTE externalId (Bestandsverhalten, von den
+// Confluence-Tests gepinnt; kein Client-Umbau nötig). Jeder ANDERE Provider prefixt seinen
+// normalisierten Schlüssel: eine zufällig gleiche Jira-Id kollidiert nirgends mehr mit einer
+// Confluence-pageId.
+export function candidateSourceId(provider: string | null | undefined, externalId: string): string {
+  const key = importProviderKey(provider);
+  return key === "confluence" ? externalId : `${key}::${externalId}`;
 }
 
 // SCRUM-510 (WP3): der Idempotenz-Schlüssel eines OFFENEN externalId-Kandidaten.
@@ -84,6 +112,16 @@ export class InMemoryCandidateRepo implements CandidateRepo {
   removeAll(): Promise<number> {
     const removed = this.items.size;
     this.items.clear();
+    return Promise.resolve(removed);
+  }
+
+  removeByIds(ids: readonly string[]): Promise<number> {
+    let removed = 0;
+    for (const id of ids) {
+      if (this.items.delete(id)) {
+        removed += 1;
+      }
+    }
     return Promise.resolve(removed);
   }
 }

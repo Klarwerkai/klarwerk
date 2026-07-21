@@ -2127,6 +2127,7 @@ const de = {
     "Der Bestand hat sich seit der Vorschau geändert — die Vorschau wurde neu geladen, bitte erneut prüfen und bestätigen.",
   "imp.cleanup.auditFailed":
     "Hinweis: Der Abschluss-Eintrag im Audit-Log konnte nicht geschrieben werden — das Aufräumen selbst ist abgeschlossen.",
+  "imp.cleanup.newSince": "{{n}} neue Kandidaten seit der Vorschau — nicht angefasst.",
   "exp.title": "Beispielpakete",
   "exp.hint":
     "Kuratierte kleine Szenarien für Tester — jedes Paket lässt sich einzeln laden und legt klar gekennzeichnete Beispiel-Beiträge an. Das Import-Aufräumen entfernt sie NICHT; sie verschwinden über das Entfernen der Demo-Daten.",
@@ -5318,6 +5319,7 @@ const en: typeof de = {
     "The data changed since the preview — the preview was reloaded, please review and confirm again.",
   "imp.cleanup.auditFailed":
     "Note: the final audit log entry could not be written — the cleanup itself is complete.",
+  "imp.cleanup.newSince": "{{n}} new candidates since the preview — left untouched.",
   "exp.title": "Example packages",
   "exp.hint":
     "Curated small scenarios for testers — each package loads on its own and creates clearly marked example posts. The import cleanup does NOT remove them; they disappear via removing the demo data.",
@@ -8469,6 +8471,7 @@ const nl: typeof de = {
     "De gegevens zijn sinds het voorbeeld gewijzigd — het voorbeeld is opnieuw geladen, controleer en bevestig opnieuw.",
   "imp.cleanup.auditFailed":
     "Let op: de afsluitende audit-logregel kon niet worden geschreven — het opruimen zelf is voltooid.",
+  "imp.cleanup.newSince": "{{n}} nieuwe kandidaten sinds het voorbeeld — niet aangeraakt.",
   "exp.title": "Voorbeeldpakketten",
   "exp.hint":
     "Gecureerde kleine scenario's voor testers — elk pakket laadt afzonderlijk en maakt duidelijk gemarkeerde voorbeeldbijdragen aan. Het opruimen van de import verwijdert ze NIET; ze verdwijnen via het verwijderen van de demogegevens.",

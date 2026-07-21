@@ -9,6 +9,7 @@ import {
   isConfidential,
   isValidConfidentiality,
 } from "../../knowledge-object";
+import { candidateSourceId } from "./repo";
 import { canonicalImportText } from "./text-codec";
 import { deriveTitleThemes } from "./themes";
 import type { ImportItem } from "./types";
@@ -53,9 +54,14 @@ export interface GroupingCandidate {
 
 // Stabile Kandidaten-Id innerhalb EINER eingegrenzten Auswahl: der quellneutrale externalId-Anker
 // (IC-6a), sonst die Position in der Auswahl (Demo-/Fixture-Items ohne Anker).
+// WP-NIGHT-FIX (bens F3-Rest): über den ZENTRALEN candidateSourceId — Confluence bleibt die nackte
+// externalId (Bestandsverhalten), andere Provider prefixen ihren Schlüssel (keine Jira-Kollision
+// in Kandidatenliste/Fallback/Apply-Map/React-Keys).
 export function candidateIdOf(item: ImportItem, index: number): string {
   const external = item.externalId?.trim();
-  return external && external.length > 0 ? external : `row-${index + 1}`;
+  return external && external.length > 0
+    ? candidateSourceId(item.provider, external)
+    : `row-${index + 1}`;
 }
 
 // WP-REST18 (bens Fix 1): Restriktions-Rang eines Items für den Dedupe-Entscheid — fehlende/

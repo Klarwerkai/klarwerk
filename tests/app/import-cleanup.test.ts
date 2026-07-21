@@ -8,6 +8,8 @@ import { describe, expect, it, vi } from "vitest";
 import { IMPORT_CLEANUP_TEXT } from "../../apps/web/src/lib/importCleanup";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import type { KoSource } from "../../services/knowledge-object";
+import { InMemoryCandidateRepo } from "../../services/library-analytics";
+import { PgCandidateRepo } from "../../services/library-analytics";
 
 function importSource(provider: string, externalId: string): KoSource {
   return {
@@ -128,6 +130,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
       trashedKos: 2,
       skipped: [],
       auditFailed: false,
+      newCandidates: 0,
     });
     // Queue KOMPLETT leer (jeder Status).
     expect(await services.library.listImportCandidates()).toEqual([]);
@@ -140,7 +143,12 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
     // Audit-Eintrag mit Zählern (wer/wann kommen vom Audit-Service).
     const audit = await services.audit.list();
     const entry = audit.find((e) => e.action === "import.cleanup");
-    expect(entry?.payload).toEqual({ removedCandidates: 2, trashedKos: 2, skipped: 0 });
+    expect(entry?.payload).toEqual({
+      removedCandidates: 2,
+      trashedKos: 2,
+      skipped: 0,
+      newCandidates: 0,
+    });
   });
 
   it("GUARD: ohne users.manage → 403 (nichts passiert)", async () => {
@@ -236,6 +244,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
       trashedKos: 1,
       skipped: [{ id: jiraKo?.id, reason: "RepoDown" }],
       auditFailed: false,
+      newCandidates: 0,
     });
     expect((await services.library.listImportCandidates()).length).toBe(2);
     expect((await services.ko.list()).map((k) => k.title).sort()).toEqual([
@@ -272,6 +281,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
       trashedKos: 2,
       skipped: [],
       auditFailed: false,
+      newCandidates: 0,
     });
     expect(await services.library.listImportCandidates()).toEqual([]);
     expect((await services.ko.trashed()).length).toBe(2);
@@ -305,6 +315,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
         trashedKos: 2,
         skipped: [],
         auditFailed: true,
+        newCandidates: 0,
       });
       expect(await services.library.listImportCandidates()).toEqual([]);
       expect((await services.ko.trashed()).length).toBe(2);
@@ -342,6 +353,77 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
     expect(trashed.map((t) => t.id)).toContain(demo.id);
     const restored = await services.ko.restore(demo.id, "admin");
     expect(restored.id).toBe(demo.id);
+  });
+
+  it("WP-NIGHT-FIX (bens F2-TOCTOU): ein ZWISCHEN Digest-Vergleich und Löschung eingereihter Kandidat überlebt", async () => {
+    const { app, services, headers } = await cleanupApp();
+    const digest = await previewDigest(app, headers);
+    // Injektion GENAU im TOCTOU-Fenster: die KO-Phase läuft NACH dem Digest-Vergleich und VOR der
+    // Queue-Löschung — der erste Soft-Delete reiht nebenläufig einen NEUEN Kandidaten ein.
+    const realDelete = services.ko.delete.bind(services.ko);
+    let injected = false;
+    services.ko.delete = async (id, actor, opts) => {
+      if (!injected) {
+        injected = true;
+        await services.library.createImportCandidates(
+          [{ title: "Parallel eingereiht", statement: "s", type: "best_practice", category: "K" }],
+          "parallel",
+        );
+      }
+      return realDelete(id, actor, opts);
+    };
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/admin/import/cleanup",
+      headers,
+      payload: { confirm: true, digest },
+    });
+    expect(res.statusCode).toBe(200);
+    // Gelöscht wurden EXAKT die 2 BESTÄTIGTEN Ids; der Nachzügler überlebt und wird ehrlich beziffert.
+    expect(res.json()).toEqual({
+      preview: false,
+      removedCandidates: 2,
+      trashedKos: 2,
+      skipped: [],
+      auditFailed: false,
+      newCandidates: 1,
+    });
+    const remaining = await services.library.listImportCandidates();
+    expect(remaining.map((c) => c.item.title)).toEqual(["Parallel eingereiht"]);
+  });
+
+  it("WP-NIGHT-FIX: CandidateRepo.removeByIds — InMemory-Vertrag + Pg-Query-Pin (Fake-Pool)", async () => {
+    // InMemory: nur die genannten Ids fallen, unbekannte Ids zählen nicht.
+    const repo = new InMemoryCandidateRepo();
+    const cand = (id: string) => ({
+      id,
+      item: { title: id, statement: "s", type: "best_practice" as const, category: "K" },
+      status: "neu" as const,
+      duplicate: false,
+      note: null,
+      koId: null,
+      createdAt: "2026-07-01T00:00:00.000Z",
+    });
+    await repo.insert(cand("a"));
+    await repo.insert(cand("b"));
+    await repo.insert(cand("c"));
+    expect(await repo.removeByIds(["a", "c", "gibt-es-nicht"])).toBe(2);
+    expect((await repo.all()).map((c) => c.id)).toEqual(["b"]);
+    // Pg: EIN atomares DELETE über ANY($1) mit den bestätigten Ids; leere Liste → kein Query.
+    const calls: { sql: string; params: unknown[] }[] = [];
+    const pool = {
+      query: async (sql: string, params: unknown[] = []) => {
+        calls.push({ sql, params });
+        return { rowCount: 2, rows: [] };
+      },
+    } as unknown as import("pg").Pool;
+    const pg = new PgCandidateRepo(pool);
+    expect(await pg.removeByIds(["a", "c"])).toBe(2);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.sql).toBe("DELETE FROM import_candidates WHERE id = ANY($1)");
+    expect(calls[0]?.params).toEqual([["a", "c"]]);
+    expect(await pg.removeByIds([])).toBe(0);
+    expect(calls).toHaveLength(1); // leere Bestätigung → kein DELETE
   });
 
   it("die Aufräum-Copy existiert in DE, EN und NL", () => {

@@ -20,4 +20,6 @@ export const IMPORT_CLEANUP_TEXT = {
   drift: "imp.cleanup.drift",
   // WP-SHIP8-FIX (bens F1): Aufräumen lief, nur der Abschluss-Audit-Eintrag schlug fehl.
   auditFailed: "imp.cleanup.auditFailed",
+  // WP-NIGHT-FIX (bens F2-TOCTOU): parallel eingereihte Kandidaten überleben — ehrlich beziffert.
+  newSince: "imp.cleanup.newSince",
 } as const;

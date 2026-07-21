@@ -4,11 +4,18 @@
 // revidiert NIE das KO des anderen (acceptToKo sucht den Anker nach provider+externalId),
 // (c) alreadyQueued/insertIfAbsent-Kollision gibt es NUR bei gleichem Provider.
 import { describe, expect, it } from "vitest";
+import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { makeGuards } from "../../services/app/src/http";
+import { confluenceImportRoutes } from "../../services/app/src/routes/confluence-import-routes";
+import type { ConfluenceSourceAdapter } from "../../services/confluence";
 import { InMemoryKoRepo, KoService } from "../../services/knowledge-object";
 import {
   InMemoryCandidateRepo,
   LibraryService,
+  candidateIdOf,
+  candidateSourceId,
   importProviderKey,
+  importSourceKey,
 } from "../../services/library-analytics";
 import type { ImportItem } from "../../services/library-analytics";
 
@@ -146,5 +153,110 @@ describe("WP-SHIP8-FIX F3: Review/Re-Sync — der eine Provider revidiert NIE da
     expect(await candidates.insertIfAbsent(cand("b", { provider: "Jira" }))).toBe(true);
     expect(await candidates.insertIfAbsent(cand("c", {}))).toBe(false); // gleicher Provider → Kollision
     expect((await candidates.all()).map((c) => c.id)).toEqual(["a", "b"]);
+  });
+});
+
+// WP-NIGHT-FIX (bens F3-Rest): der zusammengesetzte Schlüssel und die Kandidaten-Wire-Id kommen
+// aus EINEM zentralen Modul — Confluence-Verhalten unverändert (nackte externalId, gepinnt),
+// Jira-Kollisionen sind in Status, Gruppierung, Auswahl und Bilanz überall getrennt.
+describe("WP-NIGHT-FIX F3-Rest: zentraler Quell-Schlüssel + Kandidaten-Id", () => {
+  it("importSourceKey: normalisiert den Provider (trim+lowercase); fehlend zählt als confluence", () => {
+    expect(importSourceKey("Confluence", "p1")).toBe("confluence::p1");
+    expect(importSourceKey(" JIRA ", "p1")).toBe("jira::p1");
+    expect(importSourceKey(null, "p1")).toBe(importSourceKey("Confluence", "p1"));
+    expect(importSourceKey("Confluence", "p1")).not.toBe(importSourceKey("Jira", "p1"));
+  });
+
+  it("candidateSourceId: Confluence (und Altbestand ohne Provider) bleibt die NACKTE externalId; andere Provider prefixen", () => {
+    expect(candidateSourceId("Confluence", "p1")).toBe("p1"); // Bestandsverhalten, gepinnt
+    expect(candidateSourceId(undefined, "p1")).toBe("p1"); // Backfill-Semantik
+    expect(candidateSourceId("Jira", "p1")).toBe("jira::p1");
+    expect(candidateSourceId("Jira", "p1")).not.toBe(candidateSourceId("Confluence", "p1"));
+  });
+
+  it("candidateIdOf: provider-scoped über die zentrale Id; ankerlos bleibt row-N", () => {
+    const conf: ImportItem = item({});
+    const jira: ImportItem = item({ provider: "Jira", title: "Issue 4711" });
+    expect(candidateIdOf(conf, 0)).toBe("4711");
+    expect(candidateIdOf(jira, 1)).toBe("jira::4711");
+    const { externalId: _x, ...noAnchor } = item({});
+    expect(candidateIdOf(noAnchor as ImportItem, 2)).toBe("row-3");
+  });
+
+  it("Gruppierung/Auswahl/Bilanz: gleiche externalId Confluence×Jira → GETRENNTE Kandidaten-Ids, beide übernehmbar", async () => {
+    const items: ImportItem[] = [
+      item({ title: "Confluence-Seite 4711", confidentiality: "intern", tags: ["wartung"] }),
+      item({
+        title: "Jira-Issue 4711",
+        provider: "Jira",
+        confidentiality: "intern",
+        tags: ["wartung"],
+      }),
+    ];
+    const adapter = {
+      source: "Confluence",
+      collect: async () => items,
+      collectAll: async () => ({ items, failed: [], truncated: false }),
+    } as unknown as ConfluenceSourceAdapter;
+    process.env.KLARWERK_CONFLUENCE_IMPORT = "1";
+    const services = buildServices();
+    delete process.env.KLARWERK_CONFLUENCE_IMPORT;
+    const app = buildApp(services);
+    app.register(
+      confluenceImportRoutes({
+        library: services.library,
+        koService: services.ko,
+        guards: makeGuards(services.auth),
+        makeAdapter: () => adapter,
+      }),
+    );
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { name: "Admin", email: "a@x.de", password: "secret123" },
+    });
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "a@x.de", password: "secret123" },
+    });
+    const headers = { authorization: `Bearer ${(login.json() as { token: string }).token}` };
+
+    const grouped = await app.inject({
+      method: "POST",
+      url: "/api/admin/import/confluence/group",
+      headers,
+      payload: { criteria: {}, locale: "de" },
+    });
+    expect(grouped.statusCode).toBe(200);
+    const body = grouped.json() as {
+      candidates: { id: string }[];
+      groups: { ids: string[] }[];
+      snapshotToken: number;
+    };
+    // GETRENNTE Kandidaten-Ids (keine Dedupe-Verschmelzung, eindeutige React-Keys) …
+    expect(body.candidates.map((c) => c.id).sort()).toEqual(["4711", "jira::4711"]);
+    // … auch im deterministischen Fallback-Clustering tauchen BEIDE genau einmal auf.
+    const flat = body.groups.flatMap((g) => g.ids).sort();
+    expect(flat).toEqual(["4711", "jira::4711"]);
+
+    // Bilanz: BEIDE Ids sind übernehmbar — zwei getrennte Queue-Einträge (provider-scoped).
+    const applied = await app.inject({
+      method: "POST",
+      url: "/api/admin/import/confluence/apply",
+      headers,
+      payload: {
+        criteria: {},
+        includeIds: ["4711", "jira::4711"],
+        snapshotToken: body.snapshotToken,
+      },
+    });
+    expect(applied.statusCode).toBe(200);
+    expect(applied.json()).toMatchObject({ imported: 2, alreadyQueued: 0, notFound: [] });
+    const queue = await services.library.listImportCandidates();
+    expect(queue.map((c) => `${c.item.provider}:${c.item.externalId}`).sort()).toEqual([
+      "Confluence:4711",
+      "Jira:4711",
+    ]);
   });
 });

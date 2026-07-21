@@ -254,6 +254,9 @@ export class LibraryService {
     trashedKos: number;
     skipped: { id: string; reason: string }[];
     auditFailed: boolean;
+    // WP-NIGHT-FIX (bens F2-TOCTOU): Kandidaten, die NACH der bestätigten Vorschau eingereiht
+    // wurden — sie werden NICHT angefasst und ehrlich ausgewiesen.
+    newCandidates: number;
   }> {
     const { candidateIds, targets } = await this.cleanupTargets();
     const digest = cleanupDigest(
@@ -292,14 +295,25 @@ export class LibraryService {
       }
     }
     // (3) Der unwiderrufliche Teil kommt ZULETZT und nur bei vollständig guter KO-Phase.
-    const removedCandidates = skipped.length === 0 ? await this.candidates.removeAll() : 0;
+    // WP-NIGHT-FIX (bens F2-TOCTOU): gelöscht werden EXAKT die BESTÄTIGTEN Ids der Vorschau
+    // (removeByIds, atomar) — NICHT die ganze Queue. Ein Kandidat, der zwischen Digest-Vergleich
+    // und Löschung eingereiht wurde, war nie Teil der Bestätigung: er überlebt und wird unten
+    // ehrlich als newCandidates ausgewiesen.
+    const removedCandidates =
+      skipped.length === 0 ? await this.candidates.removeByIds(candidateIds) : 0;
+    // Ehrliche Bilanz der Nachzügler: alles, was jetzt in der Queue steht und NICHT Teil der
+    // bestätigten Vorschau war (nach der Löschung sind das genau die Neuzugänge seither).
+    const confirmedIds = new Set(candidateIds);
+    const newCandidates = (await this.candidates.all()).filter(
+      (c) => !confirmedIds.has(c.id),
+    ).length;
     let auditFailed = false;
     try {
       await this.audit?.record({
         actor,
         action: "import.cleanup",
         target: "library",
-        payload: { removedCandidates, trashedKos, skipped: skipped.length },
+        payload: { removedCandidates, trashedKos, skipped: skipped.length, newCandidates },
       });
     } catch (err) {
       auditFailed = true;
@@ -310,7 +324,7 @@ export class LibraryService {
         }).\n`,
       );
     }
-    return { removedCandidates, trashedKos, skipped, auditFailed };
+    return { removedCandidates, trashedKos, skipped, auditFailed, newCandidates };
   }
 
   // SCRUM-116: Review-Aktion. accept → echtes KO (außer Dublette, dann übersprungen).
