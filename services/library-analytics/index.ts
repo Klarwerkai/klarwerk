@@ -47,3 +47,5 @@ export type {
 } from "./src/select";
 // WP-IC-PAKET-1 (Teil 2): deterministische Themen-Ableitung aus Seitentiteln (Fallback ohne Labels).
 export { deriveTitleThemes, titleThemeTokens, MIN_THEME_GROUP_SIZE } from "./src/themes";
+// WP-IC-PAKET-1e: DIE geteilte Pro-Item-Kanonisierung (Erkundung UND Selektion — Chips selektierbar).
+export { canonicalImportText } from "./src/text-codec";

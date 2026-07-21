@@ -4,6 +4,8 @@
 // Autor und Tags trugen rohe Entities weiter — die Titel-Themenableitung baute daraus sogar
 // Entity-Fragment-Themen („Uuml"). White-box-Import des Mappers (tests/ liegt außerhalb der
 // dependency-cruiser-Modulgrenzen; gleiches Muster wie die reasoner-src-Tests).
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { displayImportText } from "../../apps/web/src/lib/htmlEntities";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
@@ -11,6 +13,7 @@ import { mapConfluencePageToImportItem } from "../../services/confluence/src/map
 import type { ConfluencePage } from "../../services/confluence/src/rest-client";
 import {
   type ImportItem,
+  filterImportItems,
   summarizeImportItems,
   toPreviewEntry,
 } from "../../services/library-analytics";
@@ -184,5 +187,129 @@ describe("WP-IC-PAKET-1d: zentrale Codec-Erzeugungsregel + mischungsfestes Aggre
     expect(themeLabels).toContain("k&uuml;che-literal");
     expect(themeLabels).toContain("küche");
     expect(themeLabels).not.toContain("k&uuml;che");
+  });
+});
+
+// WP-IC-PAKET-1e (bens sammel10): die Marker-Kanonisierung gilt auch im SELEKTIONSVERTRAG. Jeder
+// Chip, den summarizeImportItems liefert (kanonisierter Wert), muss als Klick-Kriterium in
+// filterImportItems EXAKT die erwarteten Items treffen — auch den rohen Altbestand, dessen Chip
+// serverseitig dekodiert wurde. Vorher verglich der Filter gegen ROHE Item-Werte: der dekodierte
+// Legacy-Chip fand sein eigenes Item nicht.
+describe("WP-IC-PAKET-1e: Summary-Chips sind selektierbar (gemeinsame Kanonisierung summarize↔filter)", () => {
+  const marked: ImportItem = {
+    title: "Neuer Beitrag",
+    statement: "s",
+    type: "best_practice",
+    category: "K",
+    author: "J&uuml;rgen Literal",
+    tags: ["k&uuml;che-literal"],
+    sourceScope: "Raum &uuml;-Literal",
+    textCodec: "decoded",
+  };
+  const legacy: ImportItem = {
+    title: "Alter Beitrag",
+    statement: "s",
+    type: "best_practice",
+    category: "K",
+    author: "J&uuml;rgen Alt",
+    tags: ["k&uuml;che"],
+    sourceScope: "K&uuml;che Alt",
+  };
+  const items = [marked, legacy];
+
+  const titlesFor = (criteria: Parameters<typeof filterImportItems>[1]): string[] =>
+    filterImportItems(items, criteria).selected.map((it) => it.title);
+
+  it("Autoren-Chips: Legacy-Chip (dekodiert) trifft NUR das rohe Alt-Item, Literal-Chip NUR das Literal-Item", () => {
+    const authorChips = summarizeImportItems(items).authors.map((a) => a.name);
+    expect(authorChips).toContain("J&uuml;rgen Literal");
+    expect(authorChips).toContain("Jürgen Alt");
+    // Jeder Chip-Wert als Klick-Kriterium → exakt die erwarteten Items.
+    expect(titlesFor({ authors: ["Jürgen Alt"] })).toEqual(["Alter Beitrag"]);
+    expect(titlesFor({ authors: ["J&uuml;rgen Literal"] })).toEqual(["Neuer Beitrag"]);
+    // Kein Kreuz-Match: das Literal wird nie verfremdet, der Altwert nie roh verglichen.
+    expect(filterImportItems(items, { authors: ["Jürgen Literal"] }).matched).toBe(0);
+    expect(filterImportItems(items, { authors: ["J&uuml;rgen Alt"] }).matched).toBe(0);
+  });
+
+  it("Themen-Label-Chips: dekodierter Alt-Tag und byte-genaues Literal-Tag treffen jeweils NUR ihr Item", () => {
+    const themeChips = summarizeImportItems(items).themes.map((th) => th.label);
+    expect(themeChips).toContain("k&uuml;che-literal");
+    expect(themeChips).toContain("küche");
+    expect(titlesFor({ themes: ["küche"] })).toEqual(["Alter Beitrag"]);
+    expect(titlesFor({ themes: ["k&uuml;che-literal"] })).toEqual(["Neuer Beitrag"]);
+    expect(filterImportItems(items, { themes: ["k&uuml;che"] }).matched).toBe(0);
+  });
+
+  it("Space-Chips: dekodierter Alt-Scope und Literal-Scope treffen jeweils NUR ihr Item", () => {
+    const spaceChips = summarizeImportItems(items).sourceNames.map((s) => s.name);
+    expect(spaceChips).toContain("Raum &uuml;-Literal");
+    expect(spaceChips).toContain("Küche Alt");
+    expect(titlesFor({ spaces: ["Küche Alt"] })).toEqual(["Alter Beitrag"]);
+    expect(titlesFor({ spaces: ["Raum &uuml;-Literal"] })).toEqual(["Neuer Beitrag"]);
+    expect(filterImportItems(items, { spaces: ["K&uuml;che Alt"] }).matched).toBe(0);
+  });
+
+  it("abgeleiteter Themen-Chip: Titel gehen auch im Filter KANONISIERT in die Ableitung (kein Entity-Fragment-Drift)", () => {
+    // Label-lose Alt-Items, deren GEMEINSAMES Wort selbst eine Entity trägt — erst die Dekodierung
+    // macht „Küche" als Gruppe sichtbar; auf Roh-Titeln entstünde stattdessen das Fragment „Uuml".
+    const legacyA: ImportItem = {
+      title: "K&uuml;che putzen richtig",
+      statement: "s",
+      type: "best_practice",
+      category: "K",
+    };
+    const legacyB: ImportItem = {
+      title: "K&uuml;che desinfizieren gruendlich",
+      statement: "s",
+      type: "best_practice",
+      category: "K",
+    };
+    const markedSolo: ImportItem = {
+      title: "Kapitel &uuml; Anhang", // markiertes Literal — bleibt in der Ableitung byte-genau
+      statement: "s",
+      type: "best_practice",
+      category: "K",
+      textCodec: "decoded",
+    };
+    const mixed = [legacyA, legacyB, markedSolo];
+    const themeChips = summarizeImportItems(mixed).themes;
+    expect(themeChips.map((th) => th.label)).toContain("Küche");
+    expect(themeChips.find((th) => th.label === "Küche")?.origin).toBe("derived");
+    // Klick auf den abgeleiteten Chip → exakt die beiden Alt-Items (das Literal-Item bleibt außen vor).
+    const result = filterImportItems(mixed, { themes: ["Küche"] });
+    expect(result.selected.map((it) => it.title)).toEqual([
+      "K&uuml;che putzen richtig",
+      "K&uuml;che desinfizieren gruendlich",
+    ]);
+    expect(result.matched).toBe(2);
+    // Das Entity-Fragment ist KEIN Thema (weder als Chip noch als Filter-Treffer).
+    expect(summarizeImportItems(mixed).themes.map((th) => th.label)).not.toContain("Uuml");
+    expect(filterImportItems(mixed, { themes: ["Uuml"] }).matched).toBe(0);
+  });
+
+  it("DRIFT-PIN: Erkundung UND Selektion nutzen DIESELBE geteilte Kanonisierung (keine Zweitlogik)", () => {
+    const exploreSrc = readFileSync(
+      resolve(process.cwd(), "services/library-analytics/src/explore.ts"),
+      "utf8",
+    );
+    const selectSrc = readFileSync(
+      resolve(process.cwd(), "services/library-analytics/src/select.ts"),
+      "utf8",
+    );
+    for (const src of [exploreSrc, selectSrc]) {
+      // Beide importieren und RUFEN die eine geteilte Funktion …
+      expect(src).toContain('from "./text-codec"');
+      expect(src).toContain("canonicalImportText(");
+      // … und keine Seite greift am geteilten Modul vorbei direkt auf den Decoder zu (Zweitlogik).
+      expect(src).not.toContain("decodeHtmlEntities");
+    }
+    // Das geteilte Modul selbst ist die EINZIGE Stelle mit der Marker-Weiche auf den Decoder.
+    const codecSrc = readFileSync(
+      resolve(process.cwd(), "services/library-analytics/src/text-codec.ts"),
+      "utf8",
+    );
+    expect(codecSrc).toContain("decodeHtmlEntities(text)");
+    expect(codecSrc).toContain('item.textCodec === "decoded" ? text : decodeHtmlEntities(text)');
   });
 });

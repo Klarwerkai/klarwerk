@@ -4,6 +4,10 @@
 // nur den quell-agnostischen ImportItem-Vertrag). Die KI-Ableitung ist über eine INJIZIERTE Funktion
 // eingebunden (kein reasoner-Import hier); fällt sie aus, gelten leere Kriterien → nur der Klick-Filter.
 
+// WP-IC-PAKET-1e (bens sammel10): die Selektion vergleicht gegen dieselben KANONISCHEN Pro-Item-Werte
+// wie das Erkundungs-Aggregat (GETEILTE canonicalImportText-Funktion, keine Zweitlogik) — ein Klick
+// auf einen Summary-Chip (z. B. dekodierter Altbestands-Autor) matcht damit auch das rohe Alt-Item.
+import { canonicalImportText } from "./text-codec";
 import { deriveTitleThemes } from "./themes";
 import type { ImportItem } from "./types";
 
@@ -109,7 +113,9 @@ function matchesThemes(
   if (themes.size === 0) {
     return true;
   }
-  if ((item.tags ?? []).some((tag) => themes.has(tag.trim().toLowerCase()))) {
+  if (
+    (item.tags ?? []).some((tag) => themes.has(canonicalImportText(item, tag).trim().toLowerCase()))
+  ) {
     return true;
   }
   return derivedTheme !== null && themes.has(derivedTheme.toLowerCase());
@@ -120,7 +126,9 @@ function matchesSpaces(item: ImportItem, spaces: Set<string>): boolean {
   if (spaces.size === 0) {
     return true;
   }
-  const scope = (item.sourceScope ?? item.category ?? "").trim().toLowerCase();
+  const scope = canonicalImportText(item, (item.sourceScope ?? item.category ?? "").trim())
+    .trim()
+    .toLowerCase();
   return scope.length > 0 && spaces.has(scope);
 }
 
@@ -128,7 +136,9 @@ function matchesAuthors(item: ImportItem, authors: Set<string>): boolean {
   if (authors.size === 0) {
     return true;
   }
-  const author = item.author?.trim().toLowerCase();
+  const author = item.author
+    ? canonicalImportText(item, item.author).trim().toLowerCase()
+    : undefined;
   return author !== undefined && author.length > 0 && authors.has(author);
 }
 
@@ -164,13 +174,14 @@ export function filterImportItems(
   const spaces = new Set((criteria.spaces ?? []).map((s) => s.toLowerCase()));
   const keywords = criteria.keywords ?? [];
   // WP-IC-PAKET-1 (Teil 2): abgeleitete Titel-Themen der label-losen Items — NUR berechnet, wenn ein
-  // Themen-Filter aktiv ist; identische Ableitung wie summarizeImportItems (deterministisch, kein Drift).
+  // Themen-Filter aktiv ist; identische Ableitung wie summarizeImportItems (deterministisch, kein
+  // Drift): Titel gehen wie dort KANONISIERT in die Ableitung (1e).
   const derivedTheme = new Map<ImportItem, string | null>();
   if (themes.size > 0) {
     const untagged = items.filter(
       (it) => (it.tags ?? []).map((tag) => tag.trim()).filter((tag) => tag.length > 0).length === 0,
     );
-    const labels = deriveTitleThemes(untagged.map((it) => it.title));
+    const labels = deriveTitleThemes(untagged.map((it) => canonicalImportText(it, it.title)));
     untagged.forEach((it, i) => {
       derivedTheme.set(it, labels[i] ?? null);
     });

@@ -3,9 +3,9 @@
 // Zeitraum. Vollständig deterministisch: kein Netz, keine KI, kein Schreibzugriff, keine Modulgrenzen-
 // Verletzung (kennt nur den quell-agnostischen ImportItem-Vertrag, KEIN Confluence-Symbol).
 
-// WP-IC-PAKET-1d: serverseitige Einmal-Dekodierung unmarkierter Altbestands-Werte (mischungsfestes
-// Aggregat) — Cross-Modul über die öffentliche structure-API.
-import { decodeHtmlEntities } from "../../structure";
+// WP-IC-PAKET-1d/1e: serverseitige Einmal-Dekodierung unmarkierter Altbestands-Werte (mischungsfestes
+// Aggregat) — über die GETEILTE Kanonisierung, die auch die Selektion (select.ts) nutzt.
+import { canonicalImportText } from "./text-codec";
 import { deriveTitleThemes } from "./themes";
 import type { ImportItem } from "./types";
 
@@ -85,13 +85,11 @@ export function summarizeImportItems(
   let latest: string | null = null;
   let withImagesHint = 0;
 
-  // WP-IC-PAKET-1d (bens sammel9-ROT): MISCHUNGSFESTES Aggregat — PRO ITEM kanonisieren. Unmarkierte
-  // Items (echter Altbestand) werden VOR dem Zählen serverseitig EINMAL dekodiert; markierte Werte
-  // bleiben byte-genau unverändert (ein echtes Literal &uuml; wird nie verfremdet). Das Aggregat ist
-  // damit DURCHGEHEND kanonisch — das frühere globale alle-markiert-Bit hätte bei Mischdaten auch
-  // kanonische markierte Werte clientseitig erneut dekodiert.
-  const canonical = (item: ImportItem, text: string): string =>
-    item.textCodec === "decoded" ? text : decodeHtmlEntities(text);
+  // WP-IC-PAKET-1d/1e (bens sammel9/10): MISCHUNGSFESTES Aggregat — PRO ITEM kanonisieren, über die
+  // GETEILTE canonicalImportText-Funktion (identisch zur Selektion — Chips bleiben selektierbar).
+  // Unmarkierte Items (echter Altbestand) werden VOR dem Zählen serverseitig EINMAL dekodiert;
+  // markierte Werte bleiben byte-genau unverändert (ein echtes Literal &uuml; wird nie verfremdet).
+  // Das Aggregat ist damit DURCHGEHEND kanonisch.
 
   // WP-IC-PAKET-1 (Teil 2): Items OHNE Labels bekommen deterministisch aus den Titeln abgeleitete
   // Themen-Gruppen (Mindestgröße 2); der Rest bleibt ehrlich „(ohne Label)". Die Ableitung läuft NUR
@@ -101,22 +99,22 @@ export function summarizeImportItems(
     (it) => (it.tags ?? []).map((tag) => tag.trim()).filter((tag) => tag.length > 0).length === 0,
   );
   const derivedByTitle = new Map<ImportItem, string | null>();
-  const derivedLabels = deriveTitleThemes(untagged.map((it) => canonical(it, it.title)));
+  const derivedLabels = deriveTitleThemes(untagged.map((it) => canonicalImportText(it, it.title)));
   untagged.forEach((it, i) => {
     derivedByTitle.set(it, derivedLabels[i] ?? null);
   });
 
   for (const item of items) {
-    const scope = canonical(item, (item.sourceScope ?? item.category ?? "").trim());
+    const scope = canonicalImportText(item, (item.sourceScope ?? item.category ?? "").trim());
     if (scope.length > 0) {
       increment(sources, scope);
     }
 
-    const author = item.author ? canonical(item, item.author).trim() : undefined;
+    const author = item.author ? canonicalImportText(item, item.author).trim() : undefined;
     increment(authors, author && author.length > 0 ? author : NO_AUTHOR_LABEL);
 
     const labels = (item.tags ?? [])
-      .map((tag) => canonical(item, tag).trim())
+      .map((tag) => canonicalImportText(item, tag).trim())
       .filter((tag) => tag.length > 0);
     if (labels.length === 0) {
       const derived = derivedByTitle.get(item) ?? null;
