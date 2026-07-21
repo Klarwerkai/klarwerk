@@ -49,8 +49,11 @@ function magicMatches(mediaType: string, bytes: Buffer): boolean {
       );
     case "image/jpeg":
       return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
-    case "image/gif":
-      return bytes.length >= 6 && bytes.toString("latin1", 0, 4) === "GIF8";
+    case "image/gif": {
+      // WP-BILD-1g (bens Klein-Fix 2): EXAKTE Signatur — nur die zwei echten GIF-Versionen.
+      const sig = bytes.toString("latin1", 0, 6);
+      return bytes.length >= 6 && (sig === "GIF87a" || sig === "GIF89a");
+    }
     case "image/webp":
       return (
         bytes.length >= 12 &&

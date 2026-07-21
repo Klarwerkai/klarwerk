@@ -132,7 +132,8 @@ export class PgKoRepo implements KoRepo {
     }
   }
 
-  async list(filter: KoFilter): Promise<KnowledgeObject[]> {
+  // Gemeinsamer Filterbau für list()/listForSearch() — identische WHERE-Logik, andere Projektion.
+  private buildListFilter(filter: KoFilter): { where: string; params: unknown[] } {
     const clauses: string[] = [];
     const params: unknown[] = [];
     if (filter.type) {
@@ -152,9 +153,35 @@ export class PgKoRepo implements KoRepo {
       params.push(JSON.stringify([filter.tag]));
       clauses.push(`data->'tags' @> $${params.length}::jsonb`);
     }
-    const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
+    return { where: clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "", params };
+  }
+
+  async list(filter: KoFilter): Promise<KnowledgeObject[]> {
+    const { where, params } = this.buildListFilter(filter);
     const res = await this.pool.query<DataRow>(`SELECT data FROM kos${where}`, params);
     return res.rows.map((row) => row.data);
+  }
+
+  // WP-BILD-1g (bens sammel14-ROT): Suchpfad-Projektion AN DER DATENQUELLE — Postgres entfernt
+  // bodyHtml (mit potenziell megabyte-großen base64-Bildern) bereits im SELECT; der Riesen-String
+  // verlässt die Datenbank für die Suche gar nicht erst. Gleiche Filterlogik wie list().
+  async listForSearch(filter: KoFilter): Promise<KnowledgeObject[]> {
+    const { where, params } = this.buildListFilter(filter);
+    const res = await this.pool.query<DataRow>(
+      `SELECT data - 'bodyHtml' AS data FROM kos${where}`,
+      params,
+    );
+    return res.rows.map((row) => row.data);
+  }
+
+  // WP-BILD-1g: idempotenter Backfill des ABGELEITETEN captionTexts-Suchfelds (Legacy-KOs).
+  // BEWUSST ohne rowVersion-CAS/Version/Audit — reiner Cache-Write im JSONB-Dokument; ein
+  // nebenläufiger Voll-Write überschreibt harmlos mit seinem frisch extrahierten Feld.
+  async setCaptionTexts(id: string, captionTexts: string[]): Promise<void> {
+    await this.pool.query(
+      "UPDATE kos SET data = jsonb_set(data, '{captionTexts}', $2::jsonb) WHERE id=$1",
+      [id, JSON.stringify(captionTexts)],
+    );
   }
 
   // SCRUM-361 / AG-03 / FR-ASK-02 / NFR-PERF-03: datenquellennahe Kandidaten-Vorauswahl für Ask.

@@ -89,6 +89,13 @@ export interface KnowledgeObject {
   statement: string; // bleibt Plaintext-Kurzfassung (Output/Ask/Suche)
   // KW-STR / SCRUM-45/46/48: optionaler WYSIWYG-Body als sanitisiertes HTML (additiv).
   bodyHtml?: string | null;
+  // WP-BILD-1g (bens sammel14-ROT): ABGELEITETES Suchfeld — die Bild-Fußnoten (figcaption-Texte)
+  // des bodyHtml, beim SCHREIBEN mit dem body-sparenden Scanner extrahiert (create/revise). Die
+  // Bibliotheks-Suche liest NUR dieses kleine Feld; bodyHtml wird für die Suche nicht mehr geladen.
+  // Optional/additiv im JSONB-Dokument (keine Migration): FEHLT das Feld, ist es ein Legacy-KO von
+  // vor dieser Regel → einmaliger Backfill beim ersten Such-Kandidaten (danach immer gesetzt, auch
+  // als [] für „keine Fußnoten").
+  captionTexts?: string[];
   conditions: string[];
   measures: string[];
   type: KnowledgeType;

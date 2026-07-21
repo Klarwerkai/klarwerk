@@ -38,6 +38,15 @@ export interface KoRepo {
   // ignoriert den Parameter (dort ist Atomarität trivial, kein I/O-Fenster).
   delete(id: string, tx?: TxContext): Promise<void>;
   list(filter: KoFilter): Promise<KnowledgeObject[]>;
+  // WP-BILD-1g (bens sammel14-ROT): PROJEKTION für den Suchpfad — dieselbe Filterlogik wie list(),
+  // aber OHNE bodyHtml (Pg: SELECT data - 'bodyHtml'; InMemory: Feld weggelassen). Die Suche
+  // arbeitet über title/statement/captionTexts und traversiert nie megabyte-große Body-Strings.
+  listForSearch(filter: KoFilter): Promise<KnowledgeObject[]>;
+  // WP-BILD-1g: schmaler Backfill des ABGELEITETEN captionTexts-Suchfelds (Legacy-KOs von vor der
+  // Schreibregel). BEWUSST ohne rowVersion-CAS, ohne Versions-Snapshot, ohne Audit: es ist ein
+  // idempotenter Cache-Write eines abgeleiteten Felds, keine inhaltliche Änderung — ein
+  // nebenläufiger Voll-Write gewinnt harmlos (er schreibt sein eigenes, frisch extrahiertes Feld).
+  setCaptionTexts(id: string, captionTexts: string[]): Promise<void>;
   // SCRUM-361: begrenzte, vorgefilterte Kandidatenmenge für Ask (kein All-Pool-Load mehr).
   findCandidates(query: KoCandidateQuery): Promise<KnowledgeObject[]>;
 }
@@ -116,6 +125,24 @@ export class InMemoryKoRepo implements KoRepo {
 
   list(filter: KoFilter): Promise<KnowledgeObject[]> {
     return Promise.resolve([...this.items.values()].filter((ko) => matches(ko, filter)));
+  }
+
+  // WP-BILD-1g: Suchpfad-Projektion — bodyHtml wird weggelassen (analog zur Pg-Projektion).
+  listForSearch(filter: KoFilter): Promise<KnowledgeObject[]> {
+    return Promise.resolve(
+      [...this.items.values()]
+        .filter((ko) => matches(ko, filter))
+        .map(({ bodyHtml: _omitted, ...rest }) => rest),
+    );
+  }
+
+  // WP-BILD-1g: idempotenter Cache-Write des abgeleiteten Suchfelds (kein Versions-/Audit-Pfad).
+  setCaptionTexts(id: string, captionTexts: string[]): Promise<void> {
+    const ko = this.items.get(id);
+    if (ko) {
+      this.items.set(id, { ...ko, captionTexts: [...captionTexts] });
+    }
+    return Promise.resolve();
   }
 
   // SCRUM-361: vorgefilterte, begrenzte Kandidatenmenge. ODER-Treffer über die Inhalts-Terme,

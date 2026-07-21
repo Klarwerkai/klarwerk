@@ -510,6 +510,9 @@ describe("SCRUM-523 P.3 (WP-A2): repo.delete + audit.record committen/rollbacken
       findById: (id) => inner.findById(id),
       update: (ko) => inner.update(ko),
       list: (filter) => inner.list(filter),
+      // WP-BILD-1g: Suchpfad-Projektion + Caption-Backfill einfach durchreichen.
+      listForSearch: (filter) => inner.listForSearch(filter),
+      setCaptionTexts: (id, captionTexts) => inner.setCaptionTexts(id, captionTexts),
       findCandidates: (query) => inner.findCandidates(query),
       delete: (id, tx) => {
         stage(tx, () => {

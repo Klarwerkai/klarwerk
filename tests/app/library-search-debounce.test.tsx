@@ -83,4 +83,12 @@ describe("WP-BILD-1f P4: Debounce der Live-Suche", () => {
     const hooksSrc = readFileSync(resolve(process.cwd(), "apps/web/src/api/hooks.ts"), "utf8");
     expect(hooksSrc).toContain('queryKey: ["library", "search", params]');
   });
+
+  it("PIN (WP-BILD-1g Klein-Fix 3): die MOBILE Suche nutzt DENSELBEN Debounce-Hook (kein Duplikat)", () => {
+    const mobileSrc = readFileSync(resolve(process.cwd(), "apps/web/src/pages/Mobile.tsx"), "utf8");
+    expect(mobileSrc).toContain("useDebouncedValue(sq, LIBRARY_SEARCH_DEBOUNCE_MS)");
+    expect(mobileSrc).toContain("debouncedSq.trim()");
+    // Gleiches latest-wins-Fundament: die Mobile-Suche liest über denselben Query-Key-Hook.
+    expect(mobileSrc).toContain("useLibrarySearch(");
+  });
 });

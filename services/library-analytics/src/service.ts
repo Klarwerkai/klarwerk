@@ -14,8 +14,6 @@ import {
   safeSourceUrl,
 } from "../../knowledge-object";
 import { type CandidateRepo, InMemoryCandidateRepo } from "./repo";
-// WP-BILD-1e: Bild-Fußnoten (figcaption) in der Bibliotheks-Suche.
-import { captionsMatchQuery } from "./search-captions";
 import {
   type Analytics,
   type BusFactorEntry,
@@ -300,20 +298,32 @@ export class LibraryService {
   }
 
   // FR-LIB-01: Suche + Filter.
-  // WP-BILD-1e: zusätzlich zu title/statement matchen jetzt auch die Bild-Fußnoten (figcaption-
-  // Texte im bodyHtml) — Alt-Platzhaltertexte gelten als KEIN Inhalt (siehe search-captions.ts).
+  // WP-BILD-1e: zusätzlich zu title/statement matchen auch die Bild-Fußnoten; Alt-Platzhalter
+  // gelten als KEIN Inhalt. WP-BILD-1g (bens sammel14-ROT): der Suchpfad arbeitet auf
+  // DATENQUELLEN-Ebene body-frei — geladen wird die Projektion OHNE bodyHtml, der Caption-Match
+  // läuft über das beim KO-Schreiben persistierte captionTexts-Feld. Legacy-KOs ohne Feld werden
+  // beim ersten Such-Kandidaten EINMALIG backgefüllt (bodyHtml nur für dieses eine KO geladen,
+  // Ergebnis persistiert) — danach nie wieder gescannt.
   async search(query: string, filter: KoFilter = {}): Promise<KnowledgeObject[]> {
-    const list = await this.koService.list(filter);
+    const list = await this.koService.listForSearch(filter);
     const q = query.trim().toLowerCase();
     if (!q) {
       return list;
     }
-    return list.filter(
-      (ko) =>
-        ko.title.toLowerCase().includes(q) ||
-        ko.statement.toLowerCase().includes(q) ||
-        captionsMatchQuery(ko.bodyHtml, q),
-    );
+    const out: KnowledgeObject[] = [];
+    for (const ko of list) {
+      if (ko.title.toLowerCase().includes(q) || ko.statement.toLowerCase().includes(q)) {
+        out.push(ko);
+        continue;
+      }
+      const captionTexts = ko.captionTexts ?? (await this.koService.ensureCaptionTexts(ko.id));
+      if (captionTexts.some((caption) => caption.toLowerCase().includes(q))) {
+        // Das (ggf. frisch backgefüllte) Feld reist im Treffer mit — der Client kennzeichnet
+        // damit die Fundstelle, ohne dass bodyHtml transportiert wird.
+        out.push({ ...ko, captionTexts });
+      }
+    }
+    return out;
   }
 
   // FR-LIB-02: Export als JSON / MediaWiki.

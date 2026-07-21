@@ -56,8 +56,10 @@ describe("WP-BILD-1e: Fußnoten-Extraktion (pure)", () => {
   });
 
   it("SCAN-PIN (bens P4): beide Scanner arbeiten mit indexOf-Segment-Sprüngen — KEINE Regex über den vollen Body", () => {
+    // WP-BILD-1g: die Server-Implementierung lebt jetzt im structure-Modul (unterhalb von
+    // knowledge-object UND library-analytics — die Schreibgrenze und die Suche teilen sie).
     for (const file of [
-      "services/library-analytics/src/search-captions.ts",
+      "services/structure/src/captions.ts",
       "apps/web/src/lib/librarySearch.ts",
     ]) {
       const src = readFileSync(resolve(process.cwd(), file), "utf8");

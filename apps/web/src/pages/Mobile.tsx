@@ -44,6 +44,7 @@ import {
 } from "../lib/mobileConfirm";
 import type { QueueStatus } from "../lib/offlineQueue";
 import { toReasonerLocale } from "../lib/reasonerLocale";
+import { LIBRARY_SEARCH_DEBOUNCE_MS, useDebouncedValue } from "../lib/useDebouncedValue";
 
 type MobileTab = "capture" | "ask" | "lookup";
 
@@ -162,8 +163,11 @@ export function Mobile(): JSX.Element {
   });
 
   // --- Suchen (FE-MOB-05) ---
+  // WP-BILD-1g (bens Klein-Fix 3): live getippte Suche DEBOUNCED wie auf dem Desktop (gleicher
+  // Hook, kein Duplikat); latest-wins über den react-query-Parameter-Key (s. useDebouncedValue).
   const [sq, setSq] = useState("");
-  const search = useLibrarySearch(sq.trim() ? { q: sq.trim() } : {});
+  const debouncedSq = useDebouncedValue(sq, LIBRARY_SEARCH_DEBOUNCE_MS);
+  const search = useLibrarySearch(debouncedSq.trim() ? { q: debouncedSq.trim() } : {});
 
   const tabCls = (active: boolean): string =>
     `flex-1 rounded-btn py-1.5 text-[12px] font-semibold ${

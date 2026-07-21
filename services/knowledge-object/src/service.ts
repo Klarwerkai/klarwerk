@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
 import type { TxContext } from "../../db-tx";
-import { htmlToPlainText, sanitizeHtml } from "../../structure";
+import { htmlToPlainText, imageCaptionTexts, sanitizeHtml } from "../../structure";
 import {
   isConfidential,
   isConfidentialityDowngrade,
@@ -304,6 +304,9 @@ export class KoService {
       title: input.title,
       statement,
       ...(bodyHtml ? { bodyHtml } : {}),
+      // WP-BILD-1g: abgeleitetes Suchfeld der Bild-Fußnoten IMMER an der Schreibgrenze setzen
+      // (auch [] bei „keine Fußnoten" — nur Legacy-KOs von VOR dieser Regel haben kein Feld).
+      captionTexts: imageCaptionTexts(bodyHtml),
       conditions: input.conditions ?? [],
       measures: input.measures ?? [],
       type: input.type,
@@ -534,6 +537,29 @@ export class KoService {
     return (await this.repo.list(filter)).filter((k) => !k.deletedAt);
   }
 
+  // WP-BILD-1g (bens sammel14-ROT): Suchpfad-Sicht OHNE bodyHtml — die Bibliotheks-Suche arbeitet
+  // über title/statement/captionTexts; die Projektion passiert an der Datenquelle (Repo).
+  async listForSearch(filter: KoFilter = {}): Promise<KnowledgeObject[]> {
+    return (await this.repo.listForSearch(filter)).filter((k) => !k.deletedAt);
+  }
+
+  // WP-BILD-1g: EINMALIGER Legacy-Backfill des abgeleiteten captionTexts-Suchfelds. Lädt das eine
+  // KO voll (nur für diesen Rest-Bestand), extrahiert body-sparend und persistiert das Feld über
+  // den schmalen Repo-Write (kein Versions-Bump, kein Audit — abgeleiteter Cache, idempotent).
+  // Danach trägt das KO das Feld dauerhaft: jeder Legacy-KO wird höchstens EINMAL gescannt.
+  async ensureCaptionTexts(id: string): Promise<string[]> {
+    const ko = await this.repo.findById(id);
+    if (!ko || ko.deletedAt) {
+      return [];
+    }
+    if (ko.captionTexts) {
+      return ko.captionTexts;
+    }
+    const captionTexts = imageCaptionTexts(ko.bodyHtml);
+    await this.repo.setCaptionTexts(id, captionTexts);
+    return captionTexts;
+  }
+
   // SCRUM-361 / AG-03: begrenzte, datenquellennahe Kandidatenabfrage für Ask (kein All-Pool-Load).
   // Delegiert an das Repository (InMemory/Pg API-kompatibel); die Endsortierung/Top-K bleibt im Ask-/
   // Reasoner-Pfad (selectCandidates).
@@ -722,6 +748,9 @@ export class KoService {
         title: changes.title ?? ko.title,
         statement: nextStatement,
         bodyHtml: nextBody,
+        // WP-BILD-1g: Fußnoten-Suchfeld beim Überarbeiten mitführen — eine Caption-Änderung im
+        // Editor aktualisiert das Feld; unveränderte Bodies backfillen Legacy-KOs nebenbei.
+        captionTexts: imageCaptionTexts(nextBody),
         type: changes.type ?? ko.type,
         conditions: changes.conditions ?? ko.conditions,
         measures: changes.measures ?? ko.measures,
