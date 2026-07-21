@@ -97,11 +97,12 @@ describe("WP-BILD-1h P1: setCaptionTexts überschreibt NIE (nur-wenn-fehlt)", ()
   it("Feld fehlt → wird gesetzt; Feld vorhanden → No-Op (der Voll-Write gewinnt immer)", async () => {
     const repo = new InMemoryKoRepo();
     await repo.insert(legacyKo("legacy-1", FIGURE("Verschraubung")));
-    await repo.setCaptionTexts("legacy-1", ["Verschraubung"]);
+    // WP-D11b (patches53-GELB): der Rückgabewert sagt ehrlich, ob DIESER Aufruf geschrieben hat.
+    expect(await repo.setCaptionTexts("legacy-1", ["Verschraubung"])).toBe(true);
     expect((await repo.findById("legacy-1"))?.captionTexts).toEqual(["Verschraubung"]);
     // bens Szenario: ein nebenläufiger revise hat inzwischen FRISCHE captionTexts persistiert —
     // ein spät ankommender Backfill mit ALTEM Scan darf sie nicht clobbern.
-    await repo.setCaptionTexts("legacy-1", ["veralteter Scan"]);
+    expect(await repo.setCaptionTexts("legacy-1", ["veralteter Scan"])).toBe(false);
     expect((await repo.findById("legacy-1"))?.captionTexts).toEqual(["Verschraubung"]);
   });
 
@@ -179,6 +180,43 @@ describe("WP-BILD-1h P2: Backfill hart gedeckelt, single-flight, fehlertolerant"
     const retry = await library.search("Verschraubung");
     expect(retry.map((k) => k.id).sort()).toEqual(["legacy-kaputt", "legacy-ok"]);
     expect((await inner.findById("legacy-kaputt"))?.captionTexts).toEqual(["Verschraubung"]);
+  });
+});
+
+describe("WP-D11b patches53-GELB: Race der laufenden Suchantwort (No-op-Fall lädt nach)", () => {
+  it("setCaptionTexts no-opt (Voll-Write kam dazwischen) → ensureCaptionTexts liefert die FRISCHEN Werte, nie den alten Scan", async () => {
+    const inner = new InMemoryKoRepo();
+    await inner.insert(legacyKo("legacy-race", FIGURE("alter Scan")));
+    // Wrapper, der den bedingten Backfill-Write an einem Gate parkt — im Fenster zwischen dem
+    // Legacy-Read (ohne Feld) und dem Write landet ein nebenläufiger Voll-Write mit FRISCHEN Werten.
+    let open!: () => void;
+    const gate = new Promise<void>((r) => {
+      open = r;
+    });
+    const repo: KoRepo = {
+      insert: (ko) => inner.insert(ko),
+      update: (ko) => inner.update(ko),
+      delete: (id, tx) => inner.delete(id, tx),
+      list: (filter) => inner.list(filter),
+      listForSearch: (filter) => inner.listForSearch(filter),
+      findById: (id) => inner.findById(id),
+      findCandidates: (query) => inner.findCandidates(query),
+      setCaptionTexts: async (id, captionTexts) => {
+        await gate;
+        return inner.setCaptionTexts(id, captionTexts);
+      },
+    };
+    const koService = new KoService({ repo });
+    const pending = koService.ensureCaptionTexts("legacy-race");
+    await new Promise((r) => setTimeout(r, 10));
+    // Der nebenläufige Voll-Write (z. B. revise) persistiert FRISCHE captionTexts …
+    const current = await inner.findById("legacy-race");
+    await inner.update({ ...(current as KnowledgeObject), captionTexts: ["frische Fußnote"] });
+    open();
+    // … der bedingte Backfill-Write no-opt (inserted false) → die laufende Suche bekommt die
+    // NACHGELADENEN frischen Werte, nicht den alten Scan des Legacy-Bodys.
+    expect(await pending).toEqual(["frische Fußnote"]);
+    expect((await inner.findById("legacy-race"))?.captionTexts).toEqual(["frische Fußnote"]);
   });
 });
 

@@ -90,8 +90,15 @@ describe("WP-D9c ROT-Fix 1: All-images-dropped-Kombinationsfall", () => {
       src.indexOf("setFileOriginal({"),
     );
     // Meldungswahl: „übernommen" NUR wenn wirklich Bilder im Beitrag sind, sonst All-dropped-Variante.
-    expect(src).toContain("keptImages > 0");
-    expect(src).toContain("CAPTURE_FILE_TEXT.imagesAllDropped");
+    // WP-D11b (GELB c): die Entscheidung ist jetzt PURE in captureFromFile.imagesOnlyNoticeKey
+    // extrahiert (Folien fließen über mergeSlideImageInfo in dieselbe Bilanz) — der Pin wandert
+    // mit: die Verdrahtung ruft die pure Funktion mit der gemergten Bilanz auf, die `keptImages > 0`-
+    // Logik samt imagesAllDropped-Key lebt unverändert in der Lib (dort direkt getestet).
+    expect(src).toContain("imagesOnlyNoticeKey(text, imageInfo)");
+    expect(src).toContain("mergeSlideImageInfo(imageInfo, slidesTotal, kept)");
+    const lib = readFileSync(resolve(process.cwd(), "apps/web/src/lib/captureFromFile.ts"), "utf8");
+    expect(lib).toContain("keptImages > 0");
+    expect(lib).toContain("CAPTURE_FILE_TEXT.imagesAllDropped");
   });
 
   it("die All-dropped-Meldung existiert DE/EN/NL und behauptet keinen Uebernahme-Erfolg", () => {

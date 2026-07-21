@@ -180,11 +180,14 @@ export class PgKoRepo implements KoRepo {
   // captionTexts eines nebenläufigen revise (Voll-Write setzt das Feld immer) NIE clobbern:
   // der Voll-Write gewinnt per Konstruktion. Weiterhin ohne rowVersion-CAS/Version/Audit
   // (reiner Cache-Write eines abgeleiteten Felds).
-  async setCaptionTexts(id: string, captionTexts: string[]): Promise<void> {
-    await this.pool.query(
+  // WP-D11b (bens patches53-GELB): rowCount sagt ehrlich, ob DIESER Aufruf geschrieben hat —
+  // 0 heißt: das Feld war schon da (nebenläufiger Voll-Write) und der Aufrufer lädt nach.
+  async setCaptionTexts(id: string, captionTexts: string[]): Promise<boolean> {
+    const res = await this.pool.query(
       "UPDATE kos SET data = jsonb_set(data, '{captionTexts}', $2::jsonb) WHERE id=$1 AND NOT (data ? 'captionTexts')",
       [id, JSON.stringify(captionTexts)],
     );
+    return (res.rowCount ?? 0) > 0;
   }
 
   // SCRUM-361 / AG-03 / FR-ASK-02 / NFR-PERF-03: datenquellennahe Kandidaten-Vorauswahl für Ask.

@@ -48,6 +48,13 @@ function mount(bodyHtml: string): void {
   });
 }
 
+// WP-D11b (GELB d): denselben Baum mit GEÄNDERTEM Body neu rendern (Bildliste schrumpft/leert sich).
+function rerender(bodyHtml: string): void {
+  act(() => {
+    root.render(createElement(BodyImageGallery, { bodyHtml }));
+  });
+}
+
 afterEach(() => {
   act(() => {
     root.unmount();
@@ -129,5 +136,42 @@ describe("WP-BILD-1d: gemountete Galerie", () => {
       '<p>Nur Text</p><figure><img src="/api/objects/x/raw"><figcaption>ohne id</figcaption></figure>',
     );
     expect(container.innerHTML).toBe("");
+  });
+});
+
+describe("WP-D11b GELB d: schrumpfende Bildliste bei OFFENER Lightbox", () => {
+  it("Liste wird kleiner → openIndex wird geklemmt, der Dialog bleibt offen und zeigt das letzte Bild", () => {
+    mount(TWO_IMAGES);
+    act(() => {
+      (container.querySelectorAll("button")[1] as HTMLButtonElement).click(); // Bild 2 öffnen
+    });
+    expect(container.querySelector("dialog")?.textContent).toContain("Zweites Bild");
+    // Das geöffnete zweite Bild verschwindet aus dem Body → die Anzeige klemmt auf das letzte
+    // verbliebene Bild statt ins Leere zu greifen (kein stummes Unmount, kein Absturz).
+    rerender(`<p>Anfang</p>${figure("kw-img-t1-1", "data:image/png;base64,QQ==", "Erstes Bild")}`);
+    const dialog = container.querySelector("dialog");
+    expect(dialog?.hasAttribute("open")).toBe(true);
+    expect(dialog?.textContent).toContain("Erstes Bild");
+    expect(dialog?.textContent).not.toContain("Zweites Bild");
+  });
+
+  it("Liste wird LEER → Dialog schließt KONTROLLIERT (close-Ereignis) mit Fokus-Rückgabe", () => {
+    mount(TWO_IMAGES);
+    act(() => {
+      (container.querySelectorAll("button")[0] as HTMLButtonElement).click();
+    });
+    const dialog = container.querySelector("dialog");
+    expect(dialog?.hasAttribute("open")).toBe(true);
+    let closeEvents = 0;
+    dialog?.addEventListener("close", () => {
+      closeEvents += 1;
+    });
+    rerender("<p>Keine Bilder mehr</p>");
+    // Geschlossen über die native close()-API (Ereignis gefeuert) — NICHT stumm entfernt.
+    expect(closeEvents).toBe(1);
+    expect(container.querySelector("dialog")).toBeNull();
+    // Fokus-Rückgabe: das auslösende Thumbnail existiert nicht mehr (alle Bilder weg) — der Fokus
+    // hängt aber in KEINEM entfernten Dialog, sondern liegt wieder auf dem Dokument (body).
+    expect(document.activeElement).toBe(document.body);
   });
 });

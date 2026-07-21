@@ -104,6 +104,7 @@ import {
   draftPayloadWithinLimit,
   fileImportHasContent,
   fileSourcePayload,
+  imagesOnlyNoticeKey,
   importImageNotice,
   mergeSelectedIntoOne,
   queueProgress,
@@ -170,7 +171,12 @@ import { EMPTY_SOURCE_FORM, type SourceFormInput, isSourceFormValid } from "../l
 import { PptxTooLargeError } from "../lib/pptx";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { documentProvenance, draftProvenance } from "../lib/reasonerProvenance";
-import { SLIDE_IMAGES_TEXT, appendSlideSection, countKeptSlides } from "../lib/slideImages";
+import {
+  SLIDE_IMAGES_TEXT,
+  appendSlideSection,
+  countKeptSlides,
+  mergeSlideImageInfo,
+} from "../lib/slideImages";
 import { hasSpeechRecognition } from "../lib/speechSupport";
 // WP-D10 (Fix 2): Dauer-Details der Einreichung — reine Sammel-/Formatierlogik (keine neuen Messpunkte).
 import {
@@ -1783,14 +1789,19 @@ export function Capture(): JSX.Element {
               MAX_INLINE_BODY_HTML_BYTES,
             );
             rich = { html: budgeted.html, kind: "pptx" };
-            sourceHadImages = sourceHadImages || converted.slideCount > 0;
+            // WP-D11b (GELB c): die Quell-Folien zählen KOMPLETT (übernommen + serverseitig
+            // verworfen) — sie fließen in dieselbe Bild-Bilanz wie die eingebetteten Bilder.
+            const slidesTotal =
+              converted.slideCount + converted.droppedOversize + converted.droppedByBudget;
+            sourceHadImages = sourceHadImages || slidesTotal > 0;
             const kept = countKeptSlides(budgeted.html, runToken, converted.slideCount);
+            imageInfo = mergeSlideImageInfo(imageInfo, slidesTotal, kept);
             const truncatedPart = converted.truncated
               ? ` ${t(SLIDE_IMAGES_TEXT.truncated, { max: converted.maxSlides })}`
               : "";
             const droppedPart =
-              kept < converted.slideCount
-                ? ` ${t(SLIDE_IMAGES_TEXT.dropped, { count: converted.slideCount - kept })}`
+              kept < slidesTotal
+                ? ` ${t(SLIDE_IMAGES_TEXT.dropped, { count: slidesTotal - kept })}`
                 : "";
             slidesNote = ` ${t(SLIDE_IMAGES_TEXT.done, { count: kept })}${truncatedPart}${droppedPart}`;
           } catch (error) {
@@ -1862,13 +1873,10 @@ export function Capture(): JSX.Element {
       // Sind Bilder wirklich im Beitrag gelandet: „Bilder übernommen — ohne Text keine KI-Vorschläge."
       // Wurden ALLE gedroppt (Budget/Format): NICHT „übernommen" behaupten, sondern klar sagen, dass die
       // Bilder nicht in den Beitrag passten und das Original beim Speichern als Anhang mitgeführt wird.
-      const keptImages = imageInfo ? imageInfo.total - imageInfo.dropped : 0;
-      const imagesOnlyNote =
-        text.trim().length === 0
-          ? keptImages > 0
-            ? ` ${t(CAPTURE_FILE_TEXT.imagesOnlyNoText)}`
-            : ` ${t(CAPTURE_FILE_TEXT.imagesAllDropped)}`
-          : "";
+      // WP-D11b (GELB c): die Meldungswahl ist PURE extrahiert (imagesOnlyNoticeKey) und arbeitet
+      // auf der GEMERGTEN Bilanz — behaltene Folien verhindern die All-dropped-Meldung.
+      const imagesOnlyKey = imagesOnlyNoticeKey(text, imageInfo);
+      const imagesOnlyNote = imagesOnlyKey ? ` ${t(imagesOnlyKey)}` : "";
       // WP-D9: ehrliche Teilverlust-Notizen für Folien-Bilder — NUR wenn wirklich etwas verloren ging
       // (übernommene Bilder brauchen keinen Sonderhinweis). Der Dokumenttext ist davon unberührt.
       const imageLossNote =

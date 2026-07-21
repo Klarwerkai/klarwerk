@@ -521,6 +521,21 @@ export const CAPTURE_FILE_TEXT = {
   purgeUnselectedKeep: "capture.file.purgeUnselectedKeep",
 } as const;
 
+// WP-D11b (bens GELB c): PURE Meldungswahl des bildreinen Imports über die GEMEINSAME Bild-Bilanz —
+// eingebettete Bilder UND konvertierte Folien (der Aufrufer merged Letztere via mergeSlideImageInfo).
+// „Alle Bilder verworfen" erscheint NUR, wenn wirklich nichts im Beitrag gelandet ist; behaltene
+// Folien zählen als Bilder. Mit Text → keine Meldung (null).
+export function imagesOnlyNoticeKey(
+  text: string,
+  imageInfo: { total: number; dropped: number } | null,
+): string | null {
+  if (text.trim().length > 0) {
+    return null;
+  }
+  const keptImages = imageInfo ? imageInfo.total - imageInfo.dropped : 0;
+  return keptImages > 0 ? CAPTURE_FILE_TEXT.imagesOnlyNoText : CAPTURE_FILE_TEXT.imagesAllDropped;
+}
+
 // WP-D1d (Fix 4): PURE Auswahl der ehrlichen Bild-Meldung aus den EXPLIZITEN Zählern. „Original im
 // Anhang" wird NUR bei originalAttached === true behauptet (echter Upload-Erfolg). Ohne gesichertes
 // Original sind weggelassene Bilder VERLOREN — dann wird das klar benannt. Kein Bild → null.

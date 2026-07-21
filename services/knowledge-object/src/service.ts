@@ -567,7 +567,15 @@ export class KoService {
         return ko.captionTexts;
       }
       const captionTexts = searchCaptionTexts(ko.bodyHtml);
-      await this.repo.setCaptionTexts(id, captionTexts);
+      const inserted = await this.repo.setCaptionTexts(id, captionTexts);
+      if (!inserted) {
+        // WP-D11b (bens patches53-GELB): Race — ein nebenläufiger Voll-Write (revise/create) hat
+        // das Feld zwischen unserem Read und dem bedingten Write gesetzt. Die AKTUELLEN Werte
+        // nachladen (ein schmaler Einzel-KO-Read) und DIESE an die laufende Suche geben — nie den
+        // alten Scan, der die frischeren Fußnoten verfehlen würde.
+        const fresh = await this.repo.findById(id);
+        return fresh?.captionTexts ?? captionTexts;
+      }
       return captionTexts;
     })().finally(() => {
       this.captionBackfillsInFlight.delete(id);

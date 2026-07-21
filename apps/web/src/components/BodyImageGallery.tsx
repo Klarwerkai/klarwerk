@@ -58,6 +58,31 @@ export function BodyImageGallery({ bodyHtml }: { bodyHtml: string }): JSX.Elemen
     }
   }, [openIndex]);
 
+  // WP-D11b (bens GELB d): schrumpft die Bildliste bei OFFENER Lightbox (z. B. Body-Änderung),
+  // wird openIndex auf das letzte Bild geklemmt; wird die Liste LEER, schließt der Dialog
+  // kontrolliert über die native close()-API (→ onDialogClose → Fokus-Rückgabe) — nie ein stummes
+  // Unmount eines offenen Modals. Damit das möglich ist, bleibt der Dialog unten auch dann
+  // gerendert, solange openIndex gesetzt ist (siehe Render-Bedingungen).
+  useEffect(() => {
+    if (openIndex === null) {
+      return;
+    }
+    if (images.length === 0) {
+      const dialog = dialogRef.current;
+      if (dialog?.open) {
+        dialog.close();
+      } else {
+        // Dialog (noch) nicht offen → Zustand direkt aufräumen, Fokus-Rückgabe versuchen.
+        setOpenIndex(null);
+        triggerRef.current?.focus();
+      }
+      return;
+    }
+    if (openIndex > images.length - 1) {
+      setOpenIndex(images.length - 1);
+    }
+  }, [openIndex, images.length]);
+
   // Pfeiltasten blättern innerhalb des offenen Dialogs (Escape übernimmt der native cancel-Pfad).
   useEffect(() => {
     if (openIndex === null) {
@@ -89,11 +114,17 @@ export function BodyImageGallery({ bodyHtml }: { bodyHtml: string }): JSX.Elemen
     triggerRef.current?.focus();
   };
 
-  // Kein leerer Abschnitt: ohne verankerte Bilder erscheint die Galerie gar nicht.
-  if (images.length === 0) {
+  // Kein leerer Abschnitt: ohne verankerte Bilder erscheint die Galerie gar nicht — AUSSER die
+  // Lightbox ist gerade noch offen (GELB d): dann bleibt der Dialog einen Takt gerendert, damit
+  // der Effekt oben ihn kontrolliert schließen kann (kein stummes Unmount des offenen Modals).
+  if (images.length === 0 && openIndex === null) {
     return null;
   }
-  const open = openIndex !== null ? images[openIndex] : undefined;
+  // GELB d: Anzeige-Index defensiv klemmen — der Effekt zieht den State nach; bis dahin zeigt der
+  // offene Dialog das letzte verbliebene Bild statt ins Leere zu greifen.
+  const shownIndex =
+    openIndex === null ? null : Math.min(openIndex, Math.max(0, images.length - 1));
+  const open = shownIndex !== null ? images[shownIndex] : undefined;
 
   return (
     <div className="mt-3 border-t border-hairline pt-2">
@@ -120,9 +151,11 @@ export function BodyImageGallery({ bodyHtml }: { bodyHtml: string }): JSX.Elemen
         ))}
       </div>
 
-      {open !== undefined && openIndex !== null ? (
+      {openIndex !== null ? (
         // Lightbox-Großansicht als ECHTES Modal (showModal → Top-Layer + native Fokusfalle); Escape läuft
         // über onCancel→close nativ, X über requestClose — beide münden in onDialogClose (kein alert/confirm).
+        // GELB d: gerendert, solange openIndex gesetzt ist — auch im Leerlauf-Takt einer leeren Bildliste,
+        // damit der Effekt oben kontrolliert schließen kann; der Inhalt ist dann über `open` geguardet.
         <dialog
           ref={dialogRef}
           onCancel={requestClose}
@@ -132,7 +165,9 @@ export function BodyImageGallery({ bodyHtml }: { bodyHtml: string }): JSX.Elemen
         >
           <div className="flex w-full max-w-3xl items-center justify-between gap-2 pb-2">
             <span className="font-mono text-[12px] font-semibold text-white">
-              {t("ko.galleryCount", { n: openIndex + 1, m: images.length })}
+              {shownIndex !== null && images.length > 0
+                ? t("ko.galleryCount", { n: shownIndex + 1, m: images.length })
+                : null}
             </span>
             <button
               ref={closeBtnRef}
@@ -145,41 +180,43 @@ export function BodyImageGallery({ bodyHtml }: { bodyHtml: string }): JSX.Elemen
               {t("ko.galleryClose")}
             </button>
           </div>
-          <div className="flex w-full max-w-3xl items-center gap-2">
-            <button
-              ref={prevBtnRef}
-              type="button"
-              aria-label={t("ko.galleryPrev")}
-              disabled={openIndex === 0}
-              onClick={() => setOpenIndex(openIndex - 1)}
-              className="rounded-btn border border-white/40 p-1.5 text-white hover:bg-white/10 disabled:opacity-30"
-            >
-              <ChevronLeft size={18} />
-            </button>
-            <div className="min-w-0 flex-1">
-              <img
-                src={open.src}
-                alt={open.caption}
-                className="max-h-[70vh] w-full rounded-card bg-white object-contain"
-              />
-              {/* Die AKTUELLE Fußnote aus dem Body — reine Anzeige, bearbeitet wird im Editor. */}
-              {open.caption ? (
-                <p className="mt-2 text-center text-[12.5px] italic leading-relaxed text-white">
-                  {open.caption}
-                </p>
-              ) : null}
+          {open !== undefined && shownIndex !== null ? (
+            <div className="flex w-full max-w-3xl items-center gap-2">
+              <button
+                ref={prevBtnRef}
+                type="button"
+                aria-label={t("ko.galleryPrev")}
+                disabled={shownIndex === 0}
+                onClick={() => setOpenIndex(shownIndex - 1)}
+                className="rounded-btn border border-white/40 p-1.5 text-white hover:bg-white/10 disabled:opacity-30"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <div className="min-w-0 flex-1">
+                <img
+                  src={open.src}
+                  alt={open.caption}
+                  className="max-h-[70vh] w-full rounded-card bg-white object-contain"
+                />
+                {/* Die AKTUELLE Fußnote aus dem Body — reine Anzeige, bearbeitet wird im Editor. */}
+                {open.caption ? (
+                  <p className="mt-2 text-center text-[12.5px] italic leading-relaxed text-white">
+                    {open.caption}
+                  </p>
+                ) : null}
+              </div>
+              <button
+                ref={nextBtnRef}
+                type="button"
+                aria-label={t("ko.galleryNext")}
+                disabled={shownIndex === images.length - 1}
+                onClick={() => setOpenIndex(shownIndex + 1)}
+                className="rounded-btn border border-white/40 p-1.5 text-white hover:bg-white/10 disabled:opacity-30"
+              >
+                <ChevronRight size={18} />
+              </button>
             </div>
-            <button
-              ref={nextBtnRef}
-              type="button"
-              aria-label={t("ko.galleryNext")}
-              disabled={openIndex === images.length - 1}
-              onClick={() => setOpenIndex(openIndex + 1)}
-              className="rounded-btn border border-white/40 p-1.5 text-white hover:bg-white/10 disabled:opacity-30"
-            >
-              <ChevronRight size={18} />
-            </button>
-          </div>
+          ) : null}
         </dialog>
       ) : null}
     </div>

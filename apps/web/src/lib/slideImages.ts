@@ -57,3 +57,30 @@ export function countKeptSlides(finalHtml: string, runToken: string, total: numb
   }
   return kept;
 }
+
+// WP-D11b (bens GELB c): konvertierte/verworfene Folien fließen in DIESELBE Import-Bildbilanz wie
+// die eingebetteten Bilder — ein textloses Deck mit behaltenen Folien darf nie als „alle Bilder
+// verworfen" gemeldet werden. slidesTotal = übernommene + serverseitig verworfene Folien;
+// slidesKept = Folien-figures, die das Client-Budget überlebt haben (countKeptSlides).
+export interface ImportImageInfo {
+  total: number;
+  compressed: number;
+  dropped: number;
+  htmlOverflow: boolean;
+}
+
+export function mergeSlideImageInfo(
+  info: ImportImageInfo | null,
+  slidesTotal: number,
+  slidesKept: number,
+): ImportImageInfo | null {
+  if (slidesTotal <= 0) {
+    return info;
+  }
+  const base = info ?? { total: 0, compressed: 0, dropped: 0, htmlOverflow: false };
+  return {
+    ...base,
+    total: base.total + slidesTotal,
+    dropped: base.dropped + Math.max(0, slidesTotal - slidesKept),
+  };
+}

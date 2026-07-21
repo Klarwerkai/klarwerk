@@ -152,7 +152,10 @@ describe("WP-D9b GELB-Fix 2: bildreine PPTX importierbar", () => {
     expect(original).toBeGreaterThan(gate);
     // Nur die KI-Punkte-Extraktion bleibt ohne Text aus.
     expect(src).toContain("extract.isPending || fileBusy || fileText.trim().length === 0");
-    expect(src).toContain("CAPTURE_FILE_TEXT.imagesOnlyNoText");
+    // WP-D11b (GELB c): die Meldungswahl (imagesOnlyNoText/imagesAllDropped) ist PURE nach
+    // captureFromFile.imagesOnlyNoticeKey gewandert — die Verdrahtung ruft sie mit der um die
+    // Folien gemergten Bild-Bilanz auf; der Key selbst lebt unverändert in der Lib.
+    expect(src).toContain("imagesOnlyNoticeKey(text, imageInfo)");
   });
 
   it("die ehrliche Meldung existiert DE/EN/NL", () => {

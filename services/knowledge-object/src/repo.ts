@@ -46,7 +46,10 @@ export interface KoRepo {
   // der Schreibregel). VERTRAG (bens sammel15-ROT 1): schreibt ATOMAR NUR, WENN DAS FELD FEHLT —
   // ein bereits gesetztes Feld (nebenläufiger revise/Voll-Write mit frischerem Scan) wird nie
   // überschrieben. Weiterhin ohne rowVersion-CAS, Versions-Snapshot oder Audit (Cache-Write).
-  setCaptionTexts(id: string, captionTexts: string[]): Promise<void>;
+  // WP-D11b (bens patches53-GELB): Rückgabe inserted — true, wenn DIESER Aufruf geschrieben hat
+  // (Pg: rowCount). false heißt: das Feld war schon gesetzt (Race mit einem Voll-Write) — der
+  // Aufrufer muss dann die AKTUELLEN Werte nachladen statt seinen alten Scan weiterzuverwenden.
+  setCaptionTexts(id: string, captionTexts: string[]): Promise<boolean>;
   // SCRUM-361: begrenzte, vorgefilterte Kandidatenmenge für Ask (kein All-Pool-Load mehr).
   findCandidates(query: KoCandidateQuery): Promise<KnowledgeObject[]>;
 }
@@ -139,12 +142,14 @@ export class InMemoryKoRepo implements KoRepo {
   // WP-BILD-1g/1h: Cache-Write des abgeleiteten Suchfelds — ATOMAR NUR-WENN-FELD-FEHLT (analog
   // zur bedingten Pg-Query): ein bereits gesetztes Feld (z. B. von einem nebenläufigen revise mit
   // frischerem Scan) wird NIE überschrieben; der Voll-Write gewinnt immer. Kein Versions-/Audit-Pfad.
-  setCaptionTexts(id: string, captionTexts: string[]): Promise<void> {
+  setCaptionTexts(id: string, captionTexts: string[]): Promise<boolean> {
     const ko = this.items.get(id);
     if (ko && ko.captionTexts === undefined) {
       this.items.set(id, { ...ko, captionTexts: [...captionTexts] });
+      return Promise.resolve(true);
     }
-    return Promise.resolve();
+    // patches53-GELB: nicht geschrieben (Feld gesetzt oder KO weg) — der Aufrufer lädt nach.
+    return Promise.resolve(false);
   }
 
   // SCRUM-361: vorgefilterte, begrenzte Kandidatenmenge. ODER-Treffer über die Inhalts-Terme,

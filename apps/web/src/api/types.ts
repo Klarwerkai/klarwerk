@@ -710,7 +710,12 @@ export interface ImportApplyResponse {
 export interface SlideConvertResponse {
   slides: string[];
   slideCount: number;
+  // WP-D11b (Blocker 2): ehrliche Zähler der serverseitigen Ausgabe-Deckelung.
+  converted: number; // = slideCount (übernommene Folien)
+  droppedOversize: number; // Einzel-PNG über dem Deckel — serverseitig verworfen, nie geladen
+  droppedByBudget: number; // Gesamtgrenze aller PNGs erreicht — restliche Folien verworfen
   truncated: boolean; // Präsentation hatte mehr als maxSlides Folien (harte Kappung, ehrlich)
+  truncatedByBudget: boolean; // = droppedByBudget > 0
   maxSlides: number;
 }
 

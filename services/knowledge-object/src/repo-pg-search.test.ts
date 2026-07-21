@@ -47,7 +47,8 @@ describe("WP-BILD-1g: PgKoRepo-Suchpfad (Query-Shape, Fake-Pool)", () => {
   it("setCaptionTexts ist ein ATOMAR BEDINGTER jsonb_set-Write: NUR wenn das Feld fehlt (WP-BILD-1h)", async () => {
     const { pool, calls } = fakePool([]);
     const repo = new PgKoRepo(pool);
-    await repo.setCaptionTexts("k1", ["Verschraubung"]);
+    // WP-D11b (patches53-GELB): rowCount 0 (Feld war schon da) → inserted false.
+    expect(await repo.setCaptionTexts("k1", ["Verschraubung"])).toBe(false);
     const { sql, params } = calls[0] as { sql: string; params: unknown[] };
     expect(sql).toContain("jsonb_set(data, '{captionTexts}', $2::jsonb)");
     // bens sammel15-ROT 1: EIN bedingtes UPDATE … WHERE (kein Read-Modify-Write) — ein bereits
@@ -55,5 +56,11 @@ describe("WP-BILD-1g: PgKoRepo-Suchpfad (Query-Shape, Fake-Pool)", () => {
     expect(sql).toContain("AND NOT (data ? 'captionTexts')");
     expect(sql).not.toContain("rowVersion");
     expect(params).toEqual(["k1", JSON.stringify(["Verschraubung"])]);
+  });
+
+  it("setCaptionTexts meldet inserted true, wenn das bedingte UPDATE wirklich geschrieben hat", async () => {
+    const { pool } = fakePool([{ data: ko("k1") }]); // rowCount 1 → der Write hat gegriffen
+    const repo = new PgKoRepo(pool);
+    expect(await repo.setCaptionTexts("k1", ["Verschraubung"])).toBe(true);
   });
 });
