@@ -571,9 +571,10 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
     const digest = await previewDigest(app, headers);
     const candidates = await services.library.listImportCandidates();
     const acceptId = (candidates[0] as { id: string }).id;
-    // Gate im Fake-Repo NACH dem Re-Read-Hook: der Cleanup liest die Queue im Vorab-Beleg-Retry
-    // (all #1, WP-SHIP8-CLOSE-8), in der Zielermittlung (all #2) und als Vorab-Bilanz der
-    // Delete-Phase (all #3) — der Accept landet EXAKT nach diesem letzten Re-Read und VOR
+    // Gate im Fake-Repo NACH dem Re-Read-Hook: der Cleanup liest die Queue in der Digest-
+    // Validierung (all #1), im Vorab-Beleg-Retry (all #2, WP-SHIP8-CLOSE-9: NACH der
+    // Validierung), in der Neu-Lese-Zielermittlung (all #3) und als Vorab-Bilanz der
+    // Delete-Phase (all #4) — der Accept landet EXAKT nach diesem letzten Re-Read und VOR
     // removeByIds (bens Restfenster).
     const candidatesRepo = (
       services.library as unknown as {
@@ -586,7 +587,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
     candidatesRepo.all = async () => {
       const result = await originalAll();
       allCalls += 1;
-      if (allCalls === 3 && !injected) {
+      if (allCalls === 4 && !injected) {
         injected = true;
         await services.library.reviewImportCandidate(acceptId, "accept", "reviewer-1");
       }
@@ -748,6 +749,145 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
       const belege = await services.audit.list({ action: "import.candidate-accept" });
       expect(belege).toHaveLength(1);
       expect(belege[0]?.payload).toMatchObject({ retried: true });
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  // WP-SHIP8-CLOSE-9: gemeinsamer Aufbau der drei Pflichttests — ein angenommener Kandidat mit
+  // schwebendem Beleg (Abschluss-Audit wirft, solange auditDown true ist; heilbar).
+  async function pendingCleanupApp() {
+    const ctx = await cleanupApp();
+    const candidates = await ctx.services.library.listImportCandidates();
+    const pendingId = (candidates[0] as { id: string }).id;
+    const origRecordOnce = ctx.services.audit.recordOnce.bind(ctx.services.audit);
+    const fault = { auditDown: true };
+    (ctx.services.audit as { recordOnce: typeof ctx.services.audit.recordOnce }).recordOnce =
+      async (eventId, input, tx) => {
+        if (fault.auditDown && input.action === "import.candidate-accept") {
+          throw new Error("AuditDown");
+        }
+        return origRecordOnce(eventId, input, tx);
+      };
+    const reviewed = await ctx.services.library.reviewImportCandidate(pendingId, "accept", "rev-1");
+    expect(reviewed.auditPending).toBeTruthy();
+    return { ...ctx, pendingId, fault };
+  }
+
+  it("WP-SHIP8-CLOSE-9 (bens Pflichttest 1): Pending-Kandidat + fehlender/veralteter Digest → 409 OHNE JEDEN Write (kein Beleg, Marker unverändert, kein Delete)", async () => {
+    const warnSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const { app, services, headers, pendingId, fault } = await pendingCleanupApp();
+      // HEILUNG VOR den 409-Versuchen: ein Retry WÜRDE jetzt einen Beleg schreiben — genau so
+      // beweist der leere Audit-Bestand unten, dass vor der Digest-Validierung NIE einer lief.
+      fault.auditDown = false;
+      // (a) FEHLENDER Digest → 409 an der ersten Validierung.
+      const missing = await app.inject({
+        method: "POST",
+        url: "/api/admin/import/cleanup",
+        headers,
+        payload: { confirm: true },
+      });
+      expect(missing.statusCode).toBe(409);
+      // (b) VERALTETER Digest: Digest holen, DANN driftet der Bestand (neuer Kandidat).
+      const stale = await previewDigest(app, headers);
+      await services.library.createImportCandidates(
+        [{ title: "Nachzügler", statement: "s", type: "best_practice", category: "K" }],
+        "tester",
+      );
+      const outdated = await app.inject({
+        method: "POST",
+        url: "/api/admin/import/cleanup",
+        headers,
+        payload: { confirm: true, digest: stale },
+      });
+      expect(outdated.statusCode).toBe(409);
+      // KEIN Write passiert: kein Aktionsbeleg (der Retry lief nie), Marker unverändert,
+      // nichts gelöscht, nichts getrasht.
+      expect(await services.audit.list({ action: "import.candidate-accept" })).toHaveLength(0);
+      const queue = await services.library.listImportCandidates();
+      expect(queue).toHaveLength(3);
+      const pending = queue.find((c) => (c as { id: string }).id === pendingId);
+      expect((pending as { auditPending?: unknown })?.auditPending).toBeTruthy();
+      expect(await services.ko.trashed()).toEqual([]);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("WP-SHIP8-CLOSE-9 (bens Pflichttest 2): Pending + GÜLTIGER Digest → der Retry läuft NACH der Validierung, genau EIN Beleg, das Aufräumen ist erlaubt", async () => {
+    const warnSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const { app, services, headers, fault } = await pendingCleanupApp();
+      fault.auditDown = false; // geheilt — der Vorab-Retry des Laufs kann den Beleg nachziehen
+      const digest = await previewDigest(app, headers);
+      const run = await app.inject({
+        method: "POST",
+        url: "/api/admin/import/cleanup",
+        headers,
+        payload: { confirm: true, digest },
+      });
+      expect(run.statusCode).toBe(200);
+      const body = run.json() as {
+        removedCandidates: number;
+        auditPendingCandidates: number;
+        skipped: { id: string; reason: string }[];
+      };
+      // Beleg nachgezogen → Löschsperre frei → BEIDE Kandidaten fallen im selben Lauf.
+      expect(body.removedCandidates).toBe(2);
+      expect(body.auditPendingCandidates).toBe(0);
+      expect(body.skipped).toEqual([]);
+      expect(await services.library.listImportCandidates()).toEqual([]);
+      const belege = await services.audit.list({ action: "import.candidate-accept" });
+      expect(belege).toHaveLength(1);
+      expect(belege[0]?.payload).toMatchObject({ retried: true });
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("WP-SHIP8-CLOSE-9 (bens Pflichttest 3): paralleler Queue-Load räumt den Marker zwischen Zählung und DELETE → die Bilanz zählt ihn NICHT mehr als ausgenommen", async () => {
+    const warnSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const { app, services, headers, fault } = await pendingCleanupApp();
+      const digest = await previewDigest(app, headers);
+      // Der EIGENE Vorab-Retry des Laufs scheitert noch (auditDown) — erst ein PARALLELER
+      // Queue-Load direkt vor dem DELETE (nach Zielermittlung/Zählung) heilt und räumt den
+      // Marker: all #4 ist der Vorab-Bilanz-Read der Delete-Phase (s. Restfenster-Test oben).
+      const candidatesRepo = (
+        services.library as unknown as { candidates: { all: () => Promise<unknown[]> } }
+      ).candidates;
+      const originalAll = candidatesRepo.all.bind(candidatesRepo);
+      let allCalls = 0;
+      let injected = false;
+      candidatesRepo.all = async () => {
+        const result = await originalAll();
+        allCalls += 1;
+        if (allCalls === 4 && !injected) {
+          injected = true;
+          fault.auditDown = false;
+          await services.library.retryPendingReviewAudits();
+        }
+        return result;
+      };
+      const run = await app.inject({
+        method: "POST",
+        url: "/api/admin/import/cleanup",
+        headers,
+        payload: { confirm: true, digest },
+      });
+      expect(run.statusCode).toBe(200);
+      expect(injected).toBe(true);
+      const body = run.json() as {
+        removedCandidates: number;
+        auditPendingCandidates: number;
+      };
+      // Der Marker war zur DELETE-Zeit geräumt → der Kandidat fiel — und die Bilanz zählt ihn
+      // ehrlich NICHT mehr als ausgenommen (Restmengen-Zähler, kein Vorab-Snapshot).
+      expect(body.removedCandidates).toBe(2);
+      expect(body.auditPendingCandidates).toBe(0);
+      expect(await services.library.listImportCandidates()).toEqual([]);
+      expect(await services.audit.list({ action: "import.candidate-accept" })).toHaveLength(1);
     } finally {
       warnSpy.mockRestore();
     }

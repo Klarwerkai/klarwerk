@@ -326,18 +326,34 @@ export class LibraryService {
     // skipped-Eintrag; ein späterer Lauf räumt sie nach gelungenem Beleg-Nachzug ab).
     auditPendingCandidates: number;
   }> {
-    // WP-SHIP8-CLOSE-8 (bens ROT-1, optionaler Vorab-Retry): VOR dem Aufräumen einmal versuchen,
-    // schwebende Belege nachzuziehen — gelingt das, ist der Kandidat frei und darf fallen.
-    // Best-effort: ein FEHLGESCHLAGENER Retry hebt die Löschsperre NIE auf (die sitzt im DELETE).
-    // Läuft VOR der Zielermittlung; der Digest hängt nur an den Ids, nicht an der Markierung.
-    await this.retryPendingReviewAudits().catch(() => 0);
-    const { candidateIds, candidateStatuses, targets, claimedKos, auditPendingCandidates } =
-      await this.cleanupTargets();
+    // WP-SHIP8-CLOSE-9 (bens Korrektur 1): KEIN Write vor erfolgreicher Digest-Validierung —
+    // auch nicht der best-effort Beleg-Retry. Reihenfolge zwingend:
+    //  (1) Zielmenge/Digest lesen und gegen den bestätigten Digest validieren — bei Drift
+    //      fail-closed 409, es wurde NICHTS verändert (der Vertrag aus WP-SHIP8-FIX F1/F2).
+    const confirmed = await this.cleanupTargets();
     const digest = cleanupDigest(
-      candidateIds,
-      targets.map((ko) => ko.id),
+      confirmed.candidateIds,
+      confirmed.targets.map((ko) => ko.id),
     );
     if (confirmedDigest !== digest) {
+      throw new LibraryError(
+        "CLEANUP_DRIFT",
+        "Der Bestand hat sich seit der Vorschau geändert — bitte die Vorschau neu laden.",
+      );
+    }
+    //  (2) ERST NACH der Validierung der Vorab-Retry (WP-SHIP8-CLOSE-8: gelingt er, ist der
+    //      Kandidat frei und darf fallen; ein Fehlschlag hebt die Löschsperre im DELETE nie auf).
+    await this.retryPendingReviewAudits().catch(() => 0);
+    //  (3) Kandidatenzustand für die Delete-Versuche NEU lesen — der Retry ändert keine Ids/
+    //      Stati/KO-Ziele (der bestätigte Digest bleibt stabil); jede SONSTIGE parallele Drift
+    //      bricht auch hier fail-closed ab (die KO-Phase unten hat noch nichts geschrieben).
+    const { candidateIds, candidateStatuses, targets, claimedKos } = await this.cleanupTargets();
+    if (
+      cleanupDigest(
+        candidateIds,
+        targets.map((ko) => ko.id),
+      ) !== digest
+    ) {
       throw new LibraryError(
         "CLEANUP_DRIFT",
         "Der Bestand hat sich seit der Vorschau geändert — bitte die Vorschau neu laden.",
@@ -450,8 +466,15 @@ export class LibraryService {
     // Ehrliche Bilanz der Nachzügler: alles, was jetzt in der Queue steht und NICHT Teil der
     // bestätigten Vorschau war (nach der Löschung sind das genau die Neuzugänge seither).
     const confirmedIds = new Set(candidateIds);
-    const newCandidates = (await this.candidates.all()).filter(
-      (c) => !confirmedIds.has(c.id),
+    const afterQueue = await this.candidates.all();
+    const newCandidates = afterQueue.filter((c) => !confirmedIds.has(c.id)).length;
+    // WP-SHIP8-CLOSE-9 (bens Korrektur 2): der ERGEBNIS-Zähler zählt die NACH dem DELETE
+    // tatsächlich verbliebenen bestätigten Marker-Träger (Restmenge, KEIN Vorab-Snapshot) —
+    // räumt ein paralleler Queue-Load den Marker zwischen Zählung und DELETE, fällt der
+    // Kandidat und wird hier ehrlich NICHT mehr als ausgenommen gezählt. Die Vorschau zeigt
+    // weiterhin den Snapshot (als solcher ok).
+    const auditPendingCandidates = afterQueue.filter(
+      (c) => confirmedIds.has(c.id) && c.auditPending !== undefined,
     ).length;
     let auditFailed = false;
     try {
