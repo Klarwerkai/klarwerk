@@ -530,18 +530,48 @@ function fakePool() {
         rows.set(id, data);
         return { rows: [] };
       }
-      // WP-SHIP8-CLOSE-2 (bens F1): der atomare Status-CAS (claim) — Spiegel des bedingten
-      // UPDATE ... jsonb_set ... WHERE status=$2 RETURNING data.
-      if (sql.startsWith("UPDATE import_candidates SET data = jsonb_set")) {
-        const [id, from, to] = params as [string, string, string];
+      // WP-SHIP8-CLOSE-2/3 (bens F1/ROT-1): der atomare Claim-CAS — Spiegel des bedingten
+      // UPDATE ... data || jsonb_build_object('status','in_bearbeitung','opId',$2,'claimedAt',$3)
+      // WHERE status='neu' RETURNING data.
+      if (sql.startsWith("UPDATE import_candidates SET data = data || jsonb_build_object")) {
+        const [id, opId, claimedAt] = params as [string, string, string];
         const stored = rows.get(id);
-        const parsed = stored ? (JSON.parse(stored) as { status: string }) : undefined;
-        if (!parsed || parsed.status !== from) {
+        const parsed = stored
+          ? (JSON.parse(stored) as {
+              status: string;
+              opId?: string | undefined;
+              claimedAt?: string | undefined;
+            })
+          : undefined;
+        if (!parsed || parsed.status !== "neu") {
           return { rows: [], rowCount: 0 };
         }
-        parsed.status = to;
+        parsed.status = "in_bearbeitung";
+        parsed.opId = opId;
+        parsed.claimedAt = claimedAt;
         rows.set(id, JSON.stringify(parsed));
         return { rows: [{ data: parsed }], rowCount: 1 };
+      }
+      // WP-SHIP8-CLOSE-3 (bens ROT-1): der Abschluss-CAS (resolveClaim) — Spiegel des bedingten
+      // UPDATE ... (data - 'opId' - 'claimedAt') || $3::jsonb WHERE status='in_bearbeitung' AND opId=$2.
+      if (sql.startsWith("UPDATE import_candidates SET data = (data - 'opId' - 'claimedAt')")) {
+        const [id, opId, patchJson] = params as [string, string, string];
+        const stored = rows.get(id);
+        const parsed = stored
+          ? (JSON.parse(stored) as {
+              status: string;
+              opId?: string | undefined;
+              claimedAt?: string | undefined;
+            })
+          : undefined;
+        if (!parsed || parsed.status !== "in_bearbeitung" || parsed.opId !== opId) {
+          return { rows: [], rowCount: 0 };
+        }
+        parsed.opId = undefined;
+        parsed.claimedAt = undefined;
+        const next = { ...parsed, ...(JSON.parse(patchJson) as Record<string, unknown>) };
+        rows.set(id, JSON.stringify(next));
+        return { rows: [{ data: next }], rowCount: 1 };
       }
       if (sql.startsWith("UPDATE import_candidates")) {
         const [id, data] = params as [string, string];

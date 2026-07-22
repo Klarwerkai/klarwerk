@@ -63,7 +63,18 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   // WP-D-CLEAN: removeAll (Testdaten-Aufräumen) ebenfalls — sonst wären die Kandidaten nach einem
   // Dev-Neustart wieder da. WP-NIGHT-FIX (bens F2-TOCTOU): der Cleanup löscht jetzt gezielt per
   // removeByIds — dieselbe Journal-Pflicht.
-  candidates: ["insert", "insertIfAbsent", "update", "removeAll", "removeByIds"],
+  // WP-SHIP8-CLOSE-3 (bens ROT-1): claim/resolveClaim mutieren den Kandidaten (Status + Lease) →
+  // journalieren, sonst wäre nach einem Dev-Neustart ein Claim/Abschluss verloren (Replay ist
+  // deterministisch: beide CAS-Methoden tragen ihre Bedingung in den args).
+  candidates: [
+    "insert",
+    "insertIfAbsent",
+    "update",
+    "removeAll",
+    "removeByIds",
+    "claim",
+    "resolveClaim",
+  ],
   modelRuns: ["append"],
   // Audit-P3 (SCRUM-397): Gelesen-Status überlebt den Neustart (Dev-Journal).
   notificationSeen: ["markSeen"],

@@ -1,6 +1,11 @@
 import type { ConfluenceSourceAdapter } from "../../confluence";
 import type { KoService } from "../../knowledge-object";
-import { type ImportItem, type LibraryService, importSourceKey } from "../../library-analytics";
+import {
+  type ImportItem,
+  type LibraryService,
+  importSourceKey,
+  isOpenReviewStatus,
+} from "../../library-analytics";
 
 // SCRUM-510 WP2: Orchestrierung des Space-Imports. Liest den GESAMTEN Space (paginiert), stellt jede
 // Seite IDEMPOTENT als Review-Kandidaten in die bestehende Import-Queue (116/157) — REVIEW-INVARIANTE:
@@ -52,10 +57,12 @@ async function existingVersions(koService: KoService): Promise<Map<string, numbe
 // Bereits eingereihte, noch offene Kandidaten je (provider@externalId@version) — verhindert
 // Doppel-Einreihung bei einem Re-Run, BEVOR ein Kandidat geprüft wurde (bens F3: provider-scoped,
 // deckungsgleich mit openCandidateKey/dem Pg-Unique-Index).
+// WP-SHIP8-CLOSE-3 (bens ROT-2): OFFEN heißt 'neu' ODER 'in_bearbeitung' (isOpenReviewStatus) —
+// ein gerade geclaimter Kandidat blockiert die Doppel-Einreihung weiter.
 async function pendingKeys(library: LibraryService): Promise<Set<string>> {
   const out = new Set<string>();
   for (const c of await library.listImportCandidates()) {
-    if (c.status === "neu" && c.item.externalId) {
+    if (isOpenReviewStatus(c.status) && c.item.externalId) {
       out.add(
         `${importSourceKey(c.item.provider, c.item.externalId)}@${c.item.sourceVersion ?? 1}`,
       );
@@ -120,12 +127,14 @@ export async function importedAnchorVersions(
 
 // Import-Status-Basis 2: OFFENE Kandidaten — MIT Version (bens ROT-2: offener Kandidat v1 + Quelle v2
 // muss „bereits importiert" UND „Quelle neuer" ergeben, nicht nur ersteres).
+// WP-SHIP8-CLOSE-3 (bens ROT-2): OFFEN heißt 'neu' ODER 'in_bearbeitung' — die Statuskarte zeigt
+// eine Quelle WÄHREND der laufenden Review-Aktion weiter als „bereits importiert".
 export async function pendingCandidateVersions(
   library: LibraryService,
 ): Promise<Map<string, number | null>> {
   const out = new Map<string, number | null>();
   for (const c of await library.listImportCandidates()) {
-    if (c.status !== "neu" || !c.item.externalId) {
+    if (!isOpenReviewStatus(c.status) || !c.item.externalId) {
       continue;
     }
     noteVersion(

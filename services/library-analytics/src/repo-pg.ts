@@ -1,6 +1,6 @@
 import type { Pool } from "pg";
-import type { CandidateRepo, ImportCandidateRemoval } from "./repo";
-import { type ImportCandidate, LibraryError, type ReviewStatus } from "./types";
+import type { CandidateRepo, ClaimResolution, ImportCandidateRemoval } from "./repo";
+import { type ImportCandidate, LibraryError } from "./types";
 
 // SCRUM-157: Postgres-Adapter der Import-/Source-Review-Queue. Vollständiger Kandidat als
 // JSONB (Status/Duplicate/Note/koId/createdAt bleiben erhalten). Additive Tabelle.
@@ -110,7 +110,7 @@ BEGIN
       ORDER BY (data->>'createdAt') DESC, id DESC
     ) AS rn
     FROM import_candidates
-    WHERE external_id IS NOT NULL AND review_status = 'neu'
+    WHERE external_id IS NOT NULL AND review_status IN ('neu', 'in_bearbeitung')
   )
   DELETE FROM import_candidates c
   USING ranked r
@@ -121,12 +121,18 @@ BEGIN
   END IF;
 END $$;
 -- WP-SHIP8-FIX (bens F3): der alte, provider-BLINDE Index wird ERSETZT (gleiche externalId bei
--- Confluence UND Jira sind ZWEI getrennte, gleichzeitig offene Kandidaten). Idempotent: nach dem
--- ersten Lauf existiert nur noch der provider-bewusste Index.
+-- Confluence UND Jira sind ZWEI getrennte, gleichzeitig offene Kandidaten).
+-- WP-SHIP8-CLOSE-3 (bens ROT-2): OFFEN heißt jetzt 'neu' ODER 'in_bearbeitung' — ein geclaimter
+-- Kandidat behält seinen Idempotenz-Schlüssel; ein paralleler Importlauf kann während einer
+-- Review-Aktion keinen zweiten offenen Kandidaten derselben Quelle einreihen. Der Index mit dem
+-- ALTEN Prädikat (nur 'neu') wird WIRKLICH ERSETZT (DROP + CREATE unter neuem Namen — ein
+-- CREATE IF NOT EXISTS auf den Altnamen wäre ein stilles No-op mit altem Prädikat). Idempotent:
+-- nach dem ersten Lauf existiert nur noch der claim-bewusste Index.
 DROP INDEX IF EXISTS import_candidates_open_external_uq;
-CREATE UNIQUE INDEX IF NOT EXISTS import_candidates_open_provider_external_uq
+DROP INDEX IF EXISTS import_candidates_open_provider_external_uq;
+CREATE UNIQUE INDEX IF NOT EXISTS import_candidates_open_claim_external_uq
   ON import_candidates (provider, external_id, source_version)
-  WHERE external_id IS NOT NULL AND review_status = 'neu';
+  WHERE external_id IS NOT NULL AND review_status IN ('neu', 'in_bearbeitung');
 `;
 
 interface CandidateRow {
@@ -147,11 +153,13 @@ export class PgCandidateRepo implements CandidateRepo {
   // NUR den Index (offener externalId-Kandidat gleichen Providers mit gleicher Version, bens F3) → dann
   // wird nichts eingefügt und RETURNING liefert keine Zeile (false). Ohne externalId greift der Index
   // nicht → immer eingefügt (true).
+  // WP-SHIP8-CLOSE-3 (bens ROT-2): das Inference-Prädikat muss dem NEUEN Index-Prädikat entsprechen
+  // (offen = 'neu' ODER 'in_bearbeitung') — sonst fände Postgres den Arbiter-Index nicht mehr.
   async insertIfAbsent(candidate: ImportCandidate): Promise<boolean> {
     const res = await this.pool.query(
       `INSERT INTO import_candidates(id,data) VALUES($1,$2)
        ON CONFLICT (provider, external_id, source_version)
-         WHERE external_id IS NOT NULL AND review_status = 'neu'
+         WHERE external_id IS NOT NULL AND review_status IN ('neu', 'in_bearbeitung')
        DO NOTHING
        RETURNING id`,
       [candidate.id, JSON.stringify(candidate)],
@@ -170,14 +178,37 @@ export class PgCandidateRepo implements CandidateRepo {
   // WP-SHIP8-CLOSE-2 (bens F1): ATOMARER Status-CAS als EIN bedingtes UPDATE — kein Fenster
   // zwischen Lesen und Schreiben. RETURNING data ist der Stand NACH dem Claim; 0 Zeilen →
   // undefined (Status geändert oder Kandidat weg), der Aufrufer bricht ehrlich ab.
-  async claim(
-    id: string,
-    from: ReviewStatus,
-    to: ReviewStatus,
-  ): Promise<ImportCandidate | undefined> {
+  // WP-SHIP8-CLOSE-3 (bens ROT-1): der Claim persistiert das Lease-Protokoll (opId/claimedAt) im
+  // SELBEN Write mit — Grundlage der Crash-Recovery.
+  async claim(id: string, opId: string, claimedAt: string): Promise<ImportCandidate | undefined> {
     const res = await this.pool.query<CandidateRow>(
-      "UPDATE import_candidates SET data = jsonb_set(data, '{status}', to_jsonb($3::text)) WHERE id=$1 AND data->>'status'=$2 RETURNING data",
-      [id, from, to],
+      "UPDATE import_candidates SET data = data || jsonb_build_object('status', 'in_bearbeitung', 'opId', $2::text, 'claimedAt', $3::text) WHERE id=$1 AND data->>'status'='neu' RETURNING data",
+      [id, opId, claimedAt],
+    );
+    return res.rows[0]?.data;
+  }
+
+  // WP-SHIP8-CLOSE-3 (bens ROT-1): CAS auf (status='in_bearbeitung', opId) — EIN bedingtes UPDATE
+  // wendet den Abschluss-Patch an und räumt das Lease-Protokoll immer aus. 0 Zeilen → undefined
+  // (der Claim gehört nicht mehr dieser Operation, z. B. Recovery hat übernommen).
+  async resolveClaim(
+    id: string,
+    opId: string,
+    next: ClaimResolution,
+  ): Promise<ImportCandidate | undefined> {
+    const patch: Record<string, unknown> = { status: next.status };
+    if (next.koId !== undefined) {
+      patch.koId = next.koId;
+    }
+    if (next.note !== undefined) {
+      patch.note = next.note;
+    }
+    if (next.item !== undefined) {
+      patch.item = next.item;
+    }
+    const res = await this.pool.query<CandidateRow>(
+      "UPDATE import_candidates SET data = (data - 'opId' - 'claimedAt') || $3::jsonb WHERE id=$1 AND data->>'status'='in_bearbeitung' AND data->>'opId'=$2 RETURNING data",
+      [id, opId, JSON.stringify(patch)],
     );
     return res.rows[0]?.data;
   }

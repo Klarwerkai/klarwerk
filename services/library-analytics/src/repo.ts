@@ -1,4 +1,15 @@
-import { type ImportCandidate, LibraryError, type ReviewStatus } from "./types";
+import { type ImportCandidate, type ImportItem, LibraryError, type ReviewStatus } from "./types";
+
+// WP-SHIP8-CLOSE-3 (bens ROT-2): der OFFENE Idempotenzraum der Review-Queue. Ein geclaimter
+// Kandidat ('in_bearbeitung') ist weiterhin OFFEN — er belegt denselben (provider, externalId,
+// sourceVersion)-Schlüssel wie 'neu'. Sonst könnte ein paralleler Importlauf WÄHREND einer
+// Review-Aktion einen zweiten offenen Kandidaten derselben Quelle einreihen. EINE Definition für
+// InMemory-Dedupe, Pending-Abgleiche/Statuskarten und (gespiegelt) das Pg-Index-Prädikat.
+export const OPEN_REVIEW_STATUSES = ["neu", "in_bearbeitung"] as const;
+
+export function isOpenReviewStatus(status: ReviewStatus): boolean {
+  return status === "neu" || status === "in_bearbeitung";
+}
 
 // SCRUM-157: Persistenz-Schnittstelle der Import-/Source-Review-Queue. Einziger Unterschied
 // zwischen In-Memory (Dev/Test) und Postgres. Insertionsreihenfolge bleibt erhalten.
@@ -11,14 +22,25 @@ export interface CandidateRepo {
   // Doppel-Kandidaten an (der app-seitige seen/pending-Check ist TOCTOU-anfällig, dieser Insert nicht).
   insertIfAbsent(candidate: ImportCandidate): Promise<boolean>;
   findById(id: string): Promise<ImportCandidate | undefined>;
-  // WP-SHIP8-CLOSE-2 (bens F1): ATOMARER Status-Claim (CAS) — setzt den Status NUR, wenn er noch
-  // exakt `from` ist (Pg: EIN bedingtes UPDATE mit RETURNING; InMemory: synchron, kein await
-  // zwischen Prüfen und Setzen). Rückgabe ist der geclaimte Kandidat (Stand NACH dem CAS) oder
-  // undefined, wenn der CAS nicht griff (Status geändert/Kandidat weg) — der Aufrufer bricht
-  // dann ehrlich ab. Damit claimt jede Review-Aktion den Kandidaten, BEVOR sie arbeitet; das
-  // bedingte Cleanup-Delete (removeByIds, erwarteter Status) kann einen geclaimten Kandidaten
-  // nicht mehr treffen.
-  claim(id: string, from: ReviewStatus, to: ReviewStatus): Promise<ImportCandidate | undefined>;
+  // WP-SHIP8-CLOSE-2 (bens F1) + WP-SHIP8-CLOSE-3 (bens ROT-1): ATOMARER Claim (CAS) — setzt
+  // Status 'neu' → 'in_bearbeitung' UND persistiert das Lease-Protokoll (opId + claimedAt) in
+  // EINEM bedingten Write (Pg: UPDATE … WHERE status='neu' RETURNING; InMemory: synchron, kein
+  // await zwischen Prüfen und Setzen). Rückgabe ist der geclaimte Kandidat (Stand NACH dem CAS)
+  // oder undefined, wenn der CAS nicht griff (Status geändert/Kandidat weg) — der Aufrufer
+  // bricht dann ehrlich ab. Das bedingte Cleanup-Delete (removeByIds, erwarteter Status) kann
+  // einen geclaimten Kandidaten nicht mehr treffen.
+  claim(id: string, opId: string, claimedAt: string): Promise<ImportCandidate | undefined>;
+  // WP-SHIP8-CLOSE-3 (bens ROT-1): ATOMARER Abschluss des Claims (CAS auf status='in_bearbeitung'
+  // UND exakt DIESER opId) — wendet `next` an (Status, optional koId/note/item) und räumt das
+  // Lease-Protokoll (opId/claimedAt) IMMER aus. undefined = der Claim gehört nicht (mehr) dieser
+  // Operation (z. B. Recovery hat übernommen) — der Aufrufer darf keinen Erfolg annehmen. Der
+  // Aufruf mit { status: "neu" } ist die Claim-Rückgabe, mit einem Endstatus der Abschluss; die
+  // Recovery nutzt DENSELBEN CAS (kein zweiter Schreibweg).
+  resolveClaim(
+    id: string,
+    opId: string,
+    next: ClaimResolution,
+  ): Promise<ImportCandidate | undefined>;
   // WP-SHIP8-CLOSE-2 (bens F1): 0 getroffene Zeilen sind ein KONFLIKT (LibraryError "CONFLICT"),
   // kein stilles Ok — der Kandidat ist zwischenzeitlich verschwunden, der Aufrufer muss es sehen.
   update(candidate: ImportCandidate): Promise<void>;
@@ -44,6 +66,15 @@ export interface CandidateRepo {
 export interface ImportCandidateRemoval {
   id: string;
   status: string;
+}
+
+// WP-SHIP8-CLOSE-3 (bens ROT-1): Abschluss-Patch eines Claims. Nur explizit gesetzte Felder
+// werden geschrieben; opId/claimedAt räumt resolveClaim immer aus.
+export interface ClaimResolution {
+  status: ReviewStatus;
+  koId?: string | null;
+  note?: string | null;
+  item?: ImportItem;
 }
 
 // WP-SHIP8-FIX (bens F3): kanonischer Provider-Anteil ALLER Import-Schlüssel (Queue-Idempotenz,
@@ -82,9 +113,12 @@ export function candidateSourceId(provider: string | null | undefined, externalI
 // offener Confluence-Kandidat blockierte den Jira-Kandidaten als vermeintliche Dublette).
 // Fehlende sourceVersion zählt als 1 (deckungsgleich mit dem Orchestrator und dem pg-Generated-Column-COALESCE).
 // Items ohne externalId haben KEINEN Schlüssel (kein Anker → keine externalId-Idempotenz).
+// WP-SHIP8-CLOSE-3 (bens ROT-2): OFFEN heißt 'neu' ODER 'in_bearbeitung' (isOpenReviewStatus) —
+// ein geclaimter Kandidat gibt seinen Schlüssel NICHT frei, ein paralleler Importlauf kann
+// während der Review-Aktion keinen zweiten offenen Kandidaten derselben Quelle einreihen.
 export function openCandidateKey(candidate: ImportCandidate): string | null {
   const ext = candidate.item.externalId;
-  if (!ext || candidate.status !== "neu") {
+  if (!ext || !isOpenReviewStatus(candidate.status)) {
     return null;
   }
   return `${importProviderKey(candidate.item.provider)}@${ext}@${candidate.item.sourceVersion ?? 1}`;
@@ -121,12 +155,41 @@ export class InMemoryCandidateRepo implements CandidateRepo {
 
   // WP-SHIP8-CLOSE-2 (bens F1): synchron auf der Map — Status-Prüfung und Set ohne await
   // dazwischen (dasselbe Atomaritäts-Muster wie removeByIds).
-  claim(id: string, from: ReviewStatus, to: ReviewStatus): Promise<ImportCandidate | undefined> {
+  // WP-SHIP8-CLOSE-3 (bens ROT-1): der Claim persistiert das Lease-Protokoll (opId/claimedAt) mit.
+  claim(id: string, opId: string, claimedAt: string): Promise<ImportCandidate | undefined> {
     const candidate = this.items.get(id);
-    if (!candidate || candidate.status !== from) {
+    if (!candidate || candidate.status !== "neu") {
       return Promise.resolve(undefined);
     }
-    candidate.status = to;
+    candidate.status = "in_bearbeitung";
+    candidate.opId = opId;
+    candidate.claimedAt = claimedAt;
+    return Promise.resolve(candidate);
+  }
+
+  // WP-SHIP8-CLOSE-3 (bens ROT-1): CAS auf (status='in_bearbeitung', opId) — synchron, dann den
+  // Patch anwenden und das Lease-Protokoll IMMER ausräumen.
+  resolveClaim(
+    id: string,
+    opId: string,
+    next: ClaimResolution,
+  ): Promise<ImportCandidate | undefined> {
+    const candidate = this.items.get(id);
+    if (!candidate || candidate.status !== "in_bearbeitung" || candidate.opId !== opId) {
+      return Promise.resolve(undefined);
+    }
+    candidate.status = next.status;
+    if (next.koId !== undefined) {
+      candidate.koId = next.koId;
+    }
+    if (next.note !== undefined) {
+      candidate.note = next.note;
+    }
+    if (next.item !== undefined) {
+      candidate.item = next.item;
+    }
+    candidate.opId = undefined;
+    candidate.claimedAt = undefined;
     return Promise.resolve(candidate);
   }
 

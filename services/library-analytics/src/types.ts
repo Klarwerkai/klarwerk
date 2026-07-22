@@ -66,6 +66,15 @@ export interface ImportCandidate {
   // Bei „angenommen" und nicht-Dublette: das erzeugte Wissensobjekt.
   koId: string | null;
   createdAt: string;
+  // WP-SHIP8-CLOSE-3 (bens ROT-1): Lease-Protokoll des Claims — beide Felder existieren NUR bei
+  // status "in_bearbeitung" (resolveClaim räumt sie beim Abschluss immer aus).
+  // opId = eindeutige Operations-Id GENAU DIESER Review-Aktion; der Accept stempelt sie ans neu
+  // erzeugte KO (importOpId), BEVOR der Endstatus geschrieben wird — die Crash-Recovery erkennt
+  // daran, ob die Operation vollendet werden muss (KO existiert) oder sicher neu startbar ist.
+  opId?: string | undefined;
+  // Lease-Beginn (ISO): erst nach Ablauf von REVIEW_CLAIM_LEASE_MS greift die Recovery — ein
+  // LAUFENDER Claim wird nie angefasst.
+  claimedAt?: string | undefined;
 }
 
 // WP-SHIP8-FIX (bens F2): CLEANUP_DRIFT = die bestätigte Aufräum-Zielmenge (Vorschau-Digest)

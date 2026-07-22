@@ -133,16 +133,19 @@ describe("SCRUM-510 (WP2): Import-Migration + ON CONFLICT gegen echtes Postgres"
     const rows = await pool.query("SELECT id FROM import_candidates ORDER BY id");
     expect(rows.rows.map((r) => r.id)).toEqual(["new"]); // nur der jüngste offene Kandidat bleibt
 
-    // Der partielle Unique-Index existiert jetzt (WP-SHIP8-FIX F3: provider-bewusst; der alte,
-    // provider-blinde Index wurde ersetzt).
+    // Der partielle Unique-Index existiert jetzt (WP-SHIP8-FIX F3: provider-bewusst; WP-SHIP8-
+    // CLOSE-3 ROT-2: claim-bewusstes Prädikat 'neu'/'in_bearbeitung'; BEIDE Altnamen sind weg).
     const idx = await pool.query(
-      "SELECT 1 FROM pg_indexes WHERE indexname='import_candidates_open_provider_external_uq'",
+      "SELECT 1 FROM pg_indexes WHERE indexname='import_candidates_open_claim_external_uq'",
     );
     expect(idx.rowCount).toBe(1);
-    const oldIdx = await pool.query(
-      "SELECT 1 FROM pg_indexes WHERE indexname='import_candidates_open_external_uq'",
-    );
-    expect(oldIdx.rowCount).toBe(0);
+    for (const legacy of [
+      "import_candidates_open_external_uq",
+      "import_candidates_open_provider_external_uq",
+    ]) {
+      const oldIdx = await pool.query("SELECT 1 FROM pg_indexes WHERE indexname=$1", [legacy]);
+      expect(oldIdx.rowCount).toBe(0);
+    }
 
     // Re-Run ist idempotent (keine Dubletten mehr → 0 Löschungen, Index existiert bereits).
     await expect(pool.query(IMPORT_CANDIDATES_SCHEMA)).resolves.toBeDefined();
@@ -212,6 +215,75 @@ describe("SCRUM-510 (WP2): Import-Migration + ON CONFLICT gegen echtes Postgres"
     await repo.update({ ...first, status: "angenommen" });
     const second = candidate("r-2", { externalId: "PR", sourceVersion: 2 }, "2026-01-02");
     expect(await repo.insertIfAbsent(second)).toBe(true);
+  });
+
+  it("WP-SHIP8-CLOSE-3 (bens ROT-2): Claim A → insertIfAbsent B mit gleichem Schlüssel kollidiert am ECHTEN Index (false)", async (ctx) => {
+    const pool = requirePool(ctx);
+    await reset(pool);
+    await pool.query(IMPORT_CANDIDATES_SCHEMA);
+    const repo = new PgCandidateRepo(pool);
+    const a = candidate("c-a", { externalId: "PK", sourceVersion: 4 }, "2026-01-01");
+    expect(await repo.insertIfAbsent(a)).toBe(true);
+    // Claim (Status-CAS + Lease) — der Kandidat bleibt im offenen Idempotenzraum des Index.
+    const claimed = await repo.claim("c-a", "op-1", "2026-07-22T06:00:00.000Z");
+    expect(claimed?.status).toBe("in_bearbeitung");
+    expect(claimed?.opId).toBe("op-1");
+    // Paralleler Importlauf: derselbe (provider, externalId, sourceVersion)-Schlüssel → KEIN
+    // zweiter offener Kandidat (ON-CONFLICT-Inference trifft den claim-bewussten Arbiter-Index).
+    const b = candidate("c-b", { externalId: "PK", sourceVersion: 4 }, "2026-01-02");
+    expect(await repo.insertIfAbsent(b)).toBe(false);
+    const open = await pool.query(
+      "SELECT count(*)::int AS n FROM import_candidates WHERE external_id='PK' AND source_version=4",
+    );
+    expect(open.rows[0].n).toBe(1);
+    // Abschluss über den opId-CAS → der Schlüssel wird frei, dieselbe Version ist wieder einreihbar.
+    const done = await repo.resolveClaim("c-a", "op-1", { status: "angenommen", koId: "ko-1" });
+    expect(done?.status).toBe("angenommen");
+    expect(done?.opId).toBeUndefined();
+    expect(await repo.insertIfAbsent(b)).toBe(true);
+  });
+
+  it("WP-SHIP8-CLOSE-3 (bens ROT-2): eine Bestandsinstanz mit dem ALTEN 'neu'-Index wird WIRKLICH ersetzt (DROP+CREATE, kein stilles No-op)", async (ctx) => {
+    const pool = requirePool(ctx);
+    await reset(pool);
+    // Bestandsinstanz aus WP-SHIP8-CLOSE-2: Spalten + der alte provider-bewusste Index mit dem
+    // NUR-'neu'-Prädikat (unter dem ALTEN Namen).
+    await pool.query(COLUMNS_ONLY_DDL);
+    await pool.query(`
+      ALTER TABLE import_candidates
+        ADD COLUMN IF NOT EXISTS provider text
+        GENERATED ALWAYS AS (
+          lower(COALESCE(NULLIF(btrim(data->'item'->>'provider'), ''), 'confluence'))
+        ) STORED;
+      CREATE UNIQUE INDEX IF NOT EXISTS import_candidates_open_provider_external_uq
+        ON import_candidates (provider, external_id, source_version)
+        WHERE external_id IS NOT NULL AND review_status = 'neu';
+    `);
+    // Migrationslauf: der Altindex fällt, der claim-bewusste entsteht — ein CREATE IF NOT EXISTS
+    // auf den Altnamen hätte hier still das ALTE Prädikat behalten (bens Punkt).
+    await expect(pool.query(IMPORT_CANDIDATES_SCHEMA)).resolves.toBeDefined();
+    const oldIdx = await pool.query(
+      "SELECT 1 FROM pg_indexes WHERE indexname='import_candidates_open_provider_external_uq'",
+    );
+    expect(oldIdx.rowCount).toBe(0);
+    const newIdx = await pool.query(
+      "SELECT indexdef FROM pg_indexes WHERE indexname='import_candidates_open_claim_external_uq'",
+    );
+    expect(newIdx.rowCount).toBe(1);
+    expect(String(newIdx.rows[0].indexdef)).toContain("in_bearbeitung");
+    // Und der neue Vertrag greift sofort: Claim blockiert die Doppel-Einreihung.
+    const repo = new PgCandidateRepo(pool);
+    expect(
+      await repo.insertIfAbsent(
+        candidate("m-a", { externalId: "PM", sourceVersion: 1 }, "2026-01-01"),
+      ),
+    ).toBe(true);
+    await repo.claim("m-a", "op-m", "2026-07-22T06:00:00.000Z");
+    expect(
+      await repo.insertIfAbsent(
+        candidate("m-b", { externalId: "PM", sourceVersion: 1 }, "2026-01-02"),
+      ),
+    ).toBe(false);
   });
 
   it("SCRUM-510 (WP-B): Bestandsinstanz mit alter cast-unsicherer source_version-Expression wird beim Migrationslauf geheilt", async (ctx) => {

@@ -5,17 +5,26 @@ export {
   IMPORT_CLEANUP_PROVIDERS,
   // WP-SHIP8-FIX (bens F2): stateless Digest der bestätigten Aufräum-Zielmenge.
   cleanupDigest,
+  // WP-SHIP8-CLOSE-3 (bens ROT-1): Lease-Vertrag der Review-Claims (Recovery-Frist + Prüfung).
+  REVIEW_CLAIM_LEASE_MS,
+  reviewClaimLeaseExpired,
 } from "./src/service";
 export type { LibraryServiceDeps } from "./src/service";
 // WP-SHIP8-FIX (bens F3): kanonischer Provider-Schlüsselteil aller Import-Schlüssel.
 // WP-NIGHT-FIX (bens F3-Rest): + der zentrale zusammengesetzte Quell-Schlüssel (Status-Maps)
 // und die zentrale Kandidaten-Wire-Id (Gruppierung/Auswahl/Apply/React-Keys).
+// WP-SHIP8-CLOSE-3 (bens ROT-2): + der zentrale OFFENE Review-Statusraum ('neu'/'in_bearbeitung')
+// für alle Pending-/Idempotenz-Abgleiche.
 export {
   InMemoryCandidateRepo,
   candidateSourceId,
   importProviderKey,
   importSourceKey,
+  isOpenReviewStatus,
+  OPEN_REVIEW_STATUSES,
+  openCandidateKey,
   type CandidateRepo,
+  type ClaimResolution,
 } from "./src/repo";
 export { PgCandidateRepo, IMPORT_CANDIDATES_SCHEMA } from "./src/repo-pg";
 export type {

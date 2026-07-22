@@ -14,7 +14,12 @@ import {
   // SCRUM-527 (WP2): importierte/re-synchronisierte Quell-URLs durch dieselbe Allowlist.
   safeSourceUrl,
 } from "../../knowledge-object";
-import { type CandidateRepo, InMemoryCandidateRepo, importProviderKey } from "./repo";
+import {
+  type CandidateRepo,
+  type ClaimResolution,
+  InMemoryCandidateRepo,
+  importProviderKey,
+} from "./repo";
 import {
   type Analytics,
   type BusFactorEntry,
@@ -37,6 +42,22 @@ export const SEARCH_BACKFILL_LIMIT_PER_QUERY = 20;
 // WP-D-CLEAN (Pedis Testdaten-Aufräumen): Provider, deren Import-Provenienz zum Aufräum-Umfang
 // gehört (kleingeschrieben verglichen — Adapter schreiben "Confluence"/"Jira").
 export const IMPORT_CLEANUP_PROVIDERS = ["confluence", "jira"] as const;
+
+// WP-SHIP8-CLOSE-3 (bens ROT-1): Lease-Dauer eines Review-Claims. Eine Review-Aktion arbeitet
+// Sekunden (KO-Service-Aufrufe, kein Modell) — 10 Minuten sind weit jenseits jedes echten Laufs;
+// erst danach greift die Crash-Recovery (dieselbe Frist-Philosophie wie AI_CHECK_STALE_PENDING_MS).
+export const REVIEW_CLAIM_LEASE_MS = 10 * 60_000;
+
+// Lease abgelaufen? Ein unlesbares/fehlendes claimedAt zählt defensiv als abgelaufen (Muster
+// shouldReEnqueueAiCheck: lieber einmal zu viel recovern als still liegen lassen — die Recovery
+// selbst ist per opId-CAS gegen laufende Operationen abgesichert).
+export function reviewClaimLeaseExpired(claimedAt: string | undefined, nowMs: number): boolean {
+  if (!claimedAt) {
+    return true;
+  }
+  const started = Date.parse(claimedAt);
+  return !Number.isFinite(started) || nowMs - started > REVIEW_CLAIM_LEASE_MS;
+}
 
 // WP-SHIP8-FIX (bens F2): STATELESS Bindung der bestätigten Aufräum-Zielmenge. SHA-256 über die
 // SORTIERTEN Kandidaten-Ids + KO-Ids (getrennt, damit ein Id-Wechsel zwischen den Mengen nie
@@ -407,17 +428,29 @@ export class LibraryService {
   // (removeByIds mit dem bestätigten Status) trifft ihn nicht, KO+Audit+Queue bleiben konsistent.
   // Schlägt der CAS fehl (0 Zeilen), bricht die Aktion EHRLICH ab, BEVOR irgendetwas passiert
   // (kein KO, kein Audit): NOT_FOUND wenn der Kandidat weg ist, sonst ALREADY_REVIEWED (auch:
-  // parallel geclaimt). Scheitert die Aktion NACH dem Claim, wird der Claim best-effort auf
-  // 'neu' zurückgegeben — der Reviewer kann wiederholen (acceptToKo ist per Quell-Anker
-  // idempotent); scheitert auch das, bleibt der Kandidat sichtbar 'in_bearbeitung' statt
-  // still zu verschwinden.
+  // parallel geclaimt).
+  //
+  // WP-SHIP8-CLOSE-3 (bens ROT-1) — LEASE/OPID-PROTOKOLL (crash-sicher):
+  //  (1) Der Claim persistiert opId (eindeutige Operations-Id) + claimedAt (Lease-Beginn) im
+  //      selben CAS-Write.
+  //  (2) Der Accept stempelt die opId ans NEU ERZEUGTE KO (importOpId), BEVOR der Endstatus
+  //      geschrieben wird — der Re-Sync-/Anker-Pfad (revise/No-op) braucht keinen Stempel, er
+  //      ist per (provider, externalId, sourceVersion) monoton idempotent.
+  //  (3) Der Abschluss läuft über resolveClaim (CAS auf status+opId, räumt die Lease aus). Greift
+  //      er nicht (Recovery hat übernommen), bricht die Aktion mit CONFLICT ab — nie stiller Erfolg.
+  //  (4) Fehlerpfad: WURDE bereits ein KO erzeugt, bleibt der Claim BEWUSST stehen — die
+  //      Recovery vollendet die Operation später über den opId-Stempel (ein blindes Zurück auf
+  //      'neu' könnte beim Retry ein ZWEITES KO erzeugen, acceptToKo ist ohne Anker NICHT
+  //      idempotent). Ohne erzeugtes KO wird der Claim auf 'neu' zurückgegeben (Retry sofort
+  //      möglich). Crash-Fälle heilt recoverStaleReviewClaims nach Lease-Ablauf.
   async reviewImportCandidate(
     id: string,
     action: ReviewAction,
     actor = "system",
     note?: string,
   ): Promise<ImportCandidate> {
-    const candidate = await this.candidates.claim(id, "neu", "in_bearbeitung");
+    const opId = this.genId();
+    const candidate = await this.candidates.claim(id, opId, new Date(this.now()).toISOString());
     if (!candidate) {
       const current = await this.candidates.findById(id);
       if (!current) {
@@ -428,37 +461,53 @@ export class LibraryService {
         "Kandidat wurde bereits bearbeitet oder wird gerade bearbeitet.",
       );
     }
+    // Erst NACH erfolgreicher KO-Erzeugung gesetzt — steuert den Fehlerpfad (s. Kopfkommentar (4)).
+    let createdKoId: string | null = null;
+    let resolved: ImportCandidate | undefined;
     try {
+      let resolution: ClaimResolution;
       if (action === "reject") {
-        candidate.status = "abgelehnt";
+        resolution = { status: "abgelehnt" };
       } else if (action === "info") {
-        candidate.status = "info-angefragt";
-        candidate.note = note?.trim() ? note.trim() : null;
+        resolution = { status: "info-angefragt", note: note?.trim() ? note.trim() : null };
+      } else if (candidate.duplicate) {
+        resolution = { status: "angenommen" };
       } else {
-        // accept: nicht-Dublette → echtes KO im normalen Wissensobjekt-/Validierungsfluss.
-        if (!candidate.duplicate) {
-          // SCRUM-515-Vervollständigung: ein PERSISTIERTER Alt-Kandidat (vor 515 eingereiht; PgCandidateRepo
-          // liefert das JSONB unverändert) wurde bei createImportCandidates evtl. nie sanitisiert. Unmittelbar
-          // VOR acceptToKo erneut sanitisieren — sonst würde ein ungültiger Altwert im Re-Sync-Ranking auf
-          // „intern" normalisiert (fail-open) bzw. bei der Erstanlage hart abgelehnt. Das bereinigte Item wird
-          // MIT persistiert (nicht nur transient), damit die Queue keinen ungültigen Wert behält.
-          candidate.item = this.withSanitizedConfidentiality(candidate.item);
-          candidate.koId = await this.acceptToKo(candidate.item, actor);
-        }
-        // Endstatus erst NACH dem gelungenen KO-Schritt — ein Fehlschlag lässt den Kandidaten
-        // im Claim-Status (und die Rückgabe unten stellt 'neu' wieder her).
-        candidate.status = "angenommen";
+        // SCRUM-515-Vervollständigung: ein PERSISTIERTER Alt-Kandidat (vor 515 eingereiht; PgCandidateRepo
+        // liefert das JSONB unverändert) wurde bei createImportCandidates evtl. nie sanitisiert. Unmittelbar
+        // VOR acceptToKo erneut sanitisieren — sonst würde ein ungültiger Altwert im Re-Sync-Ranking auf
+        // „intern" normalisiert (fail-open) bzw. bei der Erstanlage hart abgelehnt. Das bereinigte Item wird
+        // MIT persistiert (nicht nur transient), damit die Queue keinen ungültigen Wert behält.
+        const item = this.withSanitizedConfidentiality(candidate.item);
+        createdKoId = await this.acceptToKo(item, actor, opId);
+        resolution = { status: "angenommen", koId: createdKoId, item };
       }
-      // SCRUM-157: geänderten Status/koId/Note (+ bereinigtes Item, 515) persistieren (kein stiller
-      // Verlust). WP-SHIP8-CLOSE-2: update wirft bei 0 Zeilen CONFLICT — nie stilles Ok.
-      await this.candidates.update(candidate);
+      // SCRUM-157: Endstatus/koId/Note (+ bereinigtes Item, 515) persistieren — atomar über den
+      // opId-CAS (kein stiller Verlust, kein Fremd-Overwrite).
+      resolved = await this.candidates.resolveClaim(id, opId, resolution);
+      if (!resolved) {
+        throw new LibraryError(
+          "CONFLICT",
+          "Der Review-Claim wurde zwischenzeitlich übernommen — Aktion nicht gespeichert.",
+        );
+      }
     } catch (err) {
-      try {
-        await this.candidates.claim(id, "in_bearbeitung", "neu");
-      } catch {
-        // PII-frei: der Kandidat bleibt sichtbar 'in_bearbeitung' — kein stiller Verlust.
+      if (createdKoId === null) {
+        // Kein KO entstanden → Claim sicher zurückgeben (CAS trifft nur die EIGENE Lease).
+        try {
+          await this.candidates.resolveClaim(id, opId, { status: "neu" });
+        } catch {
+          // PII-frei: der Kandidat bleibt sichtbar 'in_bearbeitung' — kein stiller Verlust;
+          // die Lease-Recovery gibt ihn nach Ablauf frei.
+          process.stderr.write(
+            `[KLARWERK] Review-Claim-Rueckgabe fehlgeschlagen (kandidat=${id}) — Status bleibt in_bearbeitung.\n`,
+          );
+        }
+      } else {
+        // KO existiert bereits (gestempelt mit opId): Claim NICHT zurückgeben — ein Retry würde
+        // ein zweites KO erzeugen. Die Recovery vollendet die Operation über den Stempel.
         process.stderr.write(
-          `[KLARWERK] Review-Claim-Rueckgabe fehlgeschlagen (kandidat=${id}) — Status bleibt in_bearbeitung.\n`,
+          `[KLARWERK] Review-Accept nach KO-Erzeugung unterbrochen (kandidat=${id}) — Claim bleibt stehen, Recovery vollendet per opId.\n`,
         );
       }
       throw err;
@@ -466,16 +515,82 @@ export class LibraryService {
     await this.audit?.record({
       actor,
       action: `import.candidate-${action}`,
-      target: candidate.id,
-      payload: { duplicate: candidate.duplicate, koId: candidate.koId },
+      target: resolved.id,
+      payload: { duplicate: resolved.duplicate, koId: resolved.koId },
     });
-    return { ...candidate };
+    return { ...resolved };
+  }
+
+  // WP-SHIP8-CLOSE-3 (bens ROT-1): Crash-Recovery festhängender Review-Claims — LAZY beim Laden
+  // der Review-Queue (Route GET /api/library/import/candidates; dasselbe dokumentierte Muster wie
+  // der aiCheck-Lazy-Re-Enqueue am Board-Load: kein Cron, keine neue Infrastruktur; wird die
+  // Queue nie geladen, bleibt ein verwaister Claim sichtbar 'in_bearbeitung' liegen).
+  // JE Kandidat mit status 'in_bearbeitung' und ABGELAUFENER Lease (claimedAt älter als
+  // REVIEW_CLAIM_LEASE_MS; fehlend/unlesbar = abgelaufen):
+  //  - existiert ein KO mit importOpId === opId → die KO-Erzeugung war bereits gelungen, nur der
+  //    Endstatus fehlte: Operation VOLLENDEN (angenommen + koId, Audit mit recovered:true) —
+  //    höchstens EIN KO, kein stiller Erfolg.
+  //  - existiert keines → nichts Unumkehrbares ist passiert: Claim auf 'neu' zurückgeben (der
+  //    Anker-/Re-Sync-Pfad ist idempotent, der Create-Pfad hätte einen Stempel hinterlassen).
+  //  - fehlt die opId (darf nie vorkommen — der Claim schreibt sie atomar mit): KEINE blinde
+  //    Freigabe (Doppel-KO-Risiko wäre unprüfbar) — lauter Log, Kandidat bleibt sichtbar stehen.
+  // Beide Wege laufen über den opId-CAS (resolveClaim) — eine PARALLEL noch laufende Operation
+  // oder eine zweite Replika-Recovery kann nie überschrieben werden (0 Zeilen = No-op).
+  async recoverStaleReviewClaims(): Promise<{ completed: number; released: number }> {
+    const nowMs = this.now();
+    const stale = (await this.candidates.all()).filter(
+      (c) => c.status === "in_bearbeitung" && reviewClaimLeaseExpired(c.claimedAt, nowMs),
+    );
+    let completed = 0;
+    let released = 0;
+    if (stale.length === 0) {
+      return { completed, released };
+    }
+    const kos = await this.koService.list();
+    for (const candidate of stale) {
+      const opId = candidate.opId;
+      if (!opId) {
+        process.stderr.write(
+          `[KLARWERK] Review-Claim ohne opId (kandidat=${candidate.id}) — keine sichere Recovery möglich, bleibt in_bearbeitung.\n`,
+        );
+        continue;
+      }
+      const stamped = kos.find((ko) => ko.importOpId === opId);
+      if (stamped) {
+        const resolved = await this.candidates.resolveClaim(candidate.id, opId, {
+          status: "angenommen",
+          koId: stamped.id,
+        });
+        if (resolved) {
+          completed += 1;
+          try {
+            await this.audit?.record({
+              actor: "system",
+              action: "import.candidate-accept",
+              target: candidate.id,
+              payload: { duplicate: candidate.duplicate, koId: stamped.id, recovered: true },
+            });
+          } catch {
+            // Audit best-effort — die Recovery selbst ist persistiert; PII-freies Log genügt.
+            process.stderr.write(
+              `[KLARWERK] Recovery-Audit fehlgeschlagen (kandidat=${candidate.id}).\n`,
+            );
+          }
+        }
+      } else if (await this.candidates.resolveClaim(candidate.id, opId, { status: "neu" })) {
+        released += 1;
+      }
+    }
+    return { completed, released };
   }
 
   // SCRUM-470: Baut das KO aus einem angenommenen Import-Item — idempotent per pageId.
   // Bekannte pageId (Anker im Bestand) → Re-Sync via revise() (nur bei höherer sourceVersion),
   // sonst neues KO. Gibt die KO-Id zurück (für die nachgelagerte Erkennung im Route-Layer).
-  private async acceptToKo(item: ImportItem, actor: string): Promise<string> {
+  // WP-SHIP8-CLOSE-3 (bens ROT-1): opId stempelt NUR die ERSTANLAGE (importOpId am neuen KO) —
+  // der Anker-/Re-Sync-Pfad (revise bei höherer Version, sonst No-op) ist monoton idempotent
+  // und braucht keinen Stempel; ein Crash dort ist per Claim-Freigabe sicher wiederholbar.
+  private async acceptToKo(item: ImportItem, actor: string, opId?: string): Promise<string> {
     // SCRUM-510 R2b: externalId-Upsert/Anker nur bei aktivem Strang. Aus → externalId ignorieren, immer
     // neu anlegen ohne Herkunfts-Anker (exakt heutiges Bestandsverhalten). Quellneutral.
     // WP-SHIP8-FIX (bens F3): das Ziel-KO wird nach provider+externalId gesucht (der Herkunfts-
@@ -558,6 +673,9 @@ export class LibraryService {
       confidentiality: item.confidentiality ?? "vertraulich",
       ...(item.bodyHtml ? { bodyHtml: item.bodyHtml } : {}),
       ...(externalId ? { sources: [this.buildSource(item, actor, firstVersion)] } : {}),
+      // WP-SHIP8-CLOSE-3 (bens ROT-1): Operations-Stempel VOR dem Endstatus des Kandidaten —
+      // die Crash-Recovery erkennt daran eine bereits gelungene Erstanlage (kein Doppel-KO).
+      ...(opId ? { importOpId: opId } : {}),
     });
     return ko.id;
   }

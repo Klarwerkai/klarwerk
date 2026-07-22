@@ -106,6 +106,10 @@ export interface CreateKoInput {
   // (busFactor/expertise zählen originalAuthor; die UI löst per nameOf mit Roh-Fallback auf).
   // Ohne Feld bleibt es beim Bestandsverhalten (originalAuthor = author).
   originalAuthor?: string;
+  // WP-SHIP8-CLOSE-3 (bens ROT-1): Operations-Stempel des Import-Accepts (Claim-opId). Nur der
+  // Import-Accept setzt ihn; die öffentlichen Schreibrouten verwerfen das Feld wie `sources`
+  // (sonst könnte ein Client die Crash-Recovery eines fremden Review-Claims kapern).
+  importOpId?: string;
 }
 
 export interface ReviseKoInput {
@@ -337,6 +341,8 @@ export class KoService {
         ? { confidentiality: normalizeConfidentiality(input.confidentiality) }
         : {}),
       ...(input.demoSeed ? { demoSeed: true } : {}),
+      // WP-SHIP8-CLOSE-3 (bens ROT-1): Operations-Stempel des Import-Accepts (Recovery-Anker).
+      ...(input.importOpId ? { importOpId: input.importOpId } : {}),
       createdAt: at,
       history: [{ version: 1, at, author: input.author, note: "erstellt" }],
       comments: [],

@@ -443,7 +443,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
     expect(calls).toHaveLength(1); // leere Bestätigung → kein DELETE
   });
 
-  it("WP-SHIP8-CLOSE-2 (bens F1): CandidateRepo.claim ist ein atomarer Status-CAS; update behandelt 0 Zeilen als KONFLIKT", async () => {
+  it("WP-SHIP8-CLOSE-2/3 (bens F1/ROT-1): claim ist ein atomarer Lease-CAS, resolveClaim ein opId-CAS; update behandelt 0 Zeilen als KONFLIKT", async () => {
     const repo = new InMemoryCandidateRepo();
     const cand = (id: string) => ({
       id,
@@ -455,20 +455,37 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
       createdAt: "2026-07-01T00:00:00.000Z",
     });
     await repo.insert(cand("a"));
-    // CAS greift nur bei exakt dem erwarteten Status; Rückgabe ist der Stand NACH dem Claim.
-    expect((await repo.claim("a", "neu", "in_bearbeitung"))?.status).toBe("in_bearbeitung");
-    expect(await repo.claim("a", "neu", "in_bearbeitung")).toBeUndefined(); // schon geclaimt
-    expect(await repo.claim("fehlt", "neu", "in_bearbeitung")).toBeUndefined();
+    // CAS greift nur bei Status "neu"; Rückgabe ist der Stand NACH dem Claim (inkl. Lease).
+    const claimed = await repo.claim("a", "op-1", "2026-07-22T06:00:00.000Z");
+    expect(claimed?.status).toBe("in_bearbeitung");
+    expect(claimed?.opId).toBe("op-1");
+    expect(claimed?.claimedAt).toBe("2026-07-22T06:00:00.000Z");
+    expect(await repo.claim("a", "op-2", "2026-07-22T06:00:01.000Z")).toBeUndefined(); // schon geclaimt
+    expect(await repo.claim("fehlt", "op-3", "2026-07-22T06:00:02.000Z")).toBeUndefined();
     // DER SCHUTZ: das bedingte Delete (erwarteter Status "neu") trifft den Geclaimten nicht mehr.
     expect(await repo.removeByIds([{ id: "a", status: "neu" }])).toEqual([]);
     expect((await repo.all()).map((c) => c.id)).toEqual(["a"]);
-    // Claim-Rückgabe (Fehlerpfad der Review-Aktion): CAS zurück auf "neu".
-    expect((await repo.claim("a", "in_bearbeitung", "neu"))?.status).toBe("neu");
+    // resolveClaim ist an die EIGENE opId gebunden — eine fremde Operation greift nie.
+    expect(await repo.resolveClaim("a", "op-fremd", { status: "neu" })).toBeUndefined();
+    // Claim-Rückgabe (Fehlerpfad ohne KO): CAS zurück auf "neu", Lease ausgeräumt.
+    const releasedBack = await repo.resolveClaim("a", "op-1", { status: "neu" });
+    expect(releasedBack?.status).toBe("neu");
+    expect(releasedBack?.opId).toBeUndefined();
+    expect(releasedBack?.claimedAt).toBeUndefined();
+    // Abschluss mit Endstatus + koId (Vollendungs-Pfad der Recovery).
+    await repo.claim("a", "op-4", "2026-07-22T06:01:00.000Z");
+    const done = await repo.resolveClaim("a", "op-4", { status: "angenommen", koId: "ko-9" });
+    expect(done?.status).toBe("angenommen");
+    expect(done?.koId).toBe("ko-9");
+    expect(done?.opId).toBeUndefined();
+    // Nach dem Abschluss greift der opId-CAS nicht mehr (kein Doppel-Abschluss).
+    expect(await repo.resolveClaim("a", "op-4", { status: "neu" })).toBeUndefined();
     // update auf verschwundener Zeile → CONFLICT, kein stilles Wieder-Anlegen.
     await repo.removeAll();
     await expect(repo.update(cand("a"))).rejects.toMatchObject({ code: "CONFLICT" });
 
-    // Pg-Query-Pins: der CAS ist EIN bedingtes UPDATE mit RETURNING; update prüft den rowCount.
+    // Pg-Query-Pins: Claim + Abschluss sind je EIN bedingtes UPDATE mit RETURNING (CAS auf
+    // Status bzw. Status+opId, Lease-Felder werden ausgeräumt); update prüft den rowCount.
     const calls: { sql: string; params: unknown[] }[] = [];
     let updateRowCount = 1;
     const pool = {
@@ -480,11 +497,16 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
       },
     } as unknown as import("pg").Pool;
     const pg = new PgCandidateRepo(pool);
-    await pg.claim("a", "neu", "in_bearbeitung");
+    await pg.claim("a", "op-1", "2026-07-22T06:00:00.000Z");
     expect(calls[0]?.sql).toBe(
-      "UPDATE import_candidates SET data = jsonb_set(data, '{status}', to_jsonb($3::text)) WHERE id=$1 AND data->>'status'=$2 RETURNING data",
+      "UPDATE import_candidates SET data = data || jsonb_build_object('status', 'in_bearbeitung', 'opId', $2::text, 'claimedAt', $3::text) WHERE id=$1 AND data->>'status'='neu' RETURNING data",
     );
-    expect(calls[0]?.params).toEqual(["a", "neu", "in_bearbeitung"]);
+    expect(calls[0]?.params).toEqual(["a", "op-1", "2026-07-22T06:00:00.000Z"]);
+    await pg.resolveClaim("a", "op-1", { status: "angenommen", koId: "ko-9" });
+    expect(calls[1]?.sql).toBe(
+      "UPDATE import_candidates SET data = (data - 'opId' - 'claimedAt') || $3::jsonb WHERE id=$1 AND data->>'status'='in_bearbeitung' AND data->>'opId'=$2 RETURNING data",
+    );
+    expect(calls[1]?.params).toEqual(["a", "op-1", '{"status":"angenommen","koId":"ko-9"}']);
     await pg.update(cand("a")); // 1 Zeile getroffen → ok
     updateRowCount = 0;
     await expect(pg.update(cand("a"))).rejects.toMatchObject({ code: "CONFLICT" });

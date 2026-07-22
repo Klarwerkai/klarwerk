@@ -137,6 +137,11 @@ export function libraryRoutes(
       if (!user) {
         return;
       }
+      // WP-SHIP8-CLOSE-3 (bens ROT-1): LAZY Crash-Recovery festhängender Review-Claims beim
+      // Laden der Queue — dasselbe dokumentierte Muster wie der aiCheck-Lazy-Re-Enqueue am
+      // Board-Load (kein Cron): eine abgelaufene Lease wird VOLLENDET (KO mit opId-Stempel
+      // existiert) oder sicher auf 'neu' zurückgegeben, bevor die Liste antwortet.
+      await library.recoverStaleReviewClaims();
       reply.code(200).send(await library.listImportCandidates());
     });
 

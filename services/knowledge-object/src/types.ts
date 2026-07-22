@@ -143,6 +143,11 @@ export interface KnowledgeObject {
   // Demodaten-Merker (Pedi 02.07.): vom Seed gesetzt, überlebt Bearbeitungen/Versionen —
   // damit Demo-Bestand sichtbar bleibt und komplett entfernt werden kann.
   demoSeed?: boolean;
+  // WP-SHIP8-CLOSE-3 (bens ROT-1): Operations-Stempel des Import-Accepts — die opId des Review-
+  // Claims, der dieses KO erzeugt hat. NUR der Import-Accept-Pfad setzt ihn (die öffentlichen
+  // Schreibrouten verwerfen das Feld wie `sources`); die Claim-Recovery erkennt daran nach einem
+  // Crash, dass die KO-Erzeugung bereits gelungen war (Operation vollenden statt Doppel-KO).
+  importOpId?: string;
   // WP-SUBMIT-ASYNC (Pedis R3 21.07.): Status der HINTERGRUND-KI-Prüfung nach dem Einreichen —
   // additiv im JSONB, keine Migration; Altbestand ohne Feld = kein Prüf-Job. Die Ergebnis-Signale
   // (Konflikte/Überschneidungen) entstehen unverändert in ihren Services — aiCheck trägt nur den
