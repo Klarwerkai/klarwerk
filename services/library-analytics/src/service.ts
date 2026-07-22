@@ -3,6 +3,7 @@ import type { AuditService } from "../../audit";
 import {
   type Confidentiality,
   type KnowledgeObject,
+  KoError,
   type KoFilter,
   type KoService,
   type KoSource,
@@ -202,13 +203,18 @@ export class LibraryService {
   // UND Ausführung nutzen dieselbe Ermittlung; die Ausführung liest nie mehr „nebenbei nach").
   private async cleanupTargets(): Promise<{
     candidateIds: string[];
+    // WP-SHIP8-FINAL (bens Bedingung 3): der Status je Kandidat zum Bestätigungs-Zeitpunkt —
+    // die Ausführung löscht nur Kandidaten, deren Status seitdem UNVERÄNDERT ist.
+    candidateStatuses: Map<string, string>;
     targets: KnowledgeObject[];
   }> {
-    const candidateIds = (await this.candidates.all()).map((c) => c.id);
+    const candidates = await this.candidates.all();
+    const candidateIds = candidates.map((c) => c.id);
+    const candidateStatuses = new Map(candidates.map((c) => [c.id, c.status as string]));
     const targets = (await this.koService.list()).filter((ko) =>
       this.hasCleanupProvenance(ko.sources ?? []),
     );
-    return { candidateIds, targets };
+    return { candidateIds, candidateStatuses, targets };
   }
 
   // Vorschau: NUR zählen, nichts verändern. WP-SHIP8-FIX (bens F2): zusätzlich der STATELESS
@@ -258,7 +264,7 @@ export class LibraryService {
     // wurden — sie werden NICHT angefasst und ehrlich ausgewiesen.
     newCandidates: number;
   }> {
-    const { candidateIds, targets } = await this.cleanupTargets();
+    const { candidateIds, candidateStatuses, targets } = await this.cleanupTargets();
     const digest = cleanupDigest(
       candidateIds,
       targets.map((ko) => ko.id),
@@ -269,6 +275,12 @@ export class LibraryService {
         "Der Bestand hat sich seit der Vorschau geändert — bitte die Vorschau neu laden.",
       );
     }
+    // WP-SHIP8-FINAL (bens Bedingung 3): der Confirm ist je Item FAIL-CLOSED gegen parallele
+    // Accepts/Revisionen — KEIN globales Lock nötig: jede Einzel-Entscheidung prüft unmittelbar
+    // vor ihrem Write den aktuellen Zustand (KO: Versions-CAS im delete; Kandidat: Status-
+    // Vergleich gegen den Bestätigungs-Snapshot) und weist Drift ehrlich als übersprungen aus.
+    // Ein Lock würde nur das Fenster verkleinern, nicht die Ehrlichkeit ersetzen — und der
+    // Reviewer-Accept bliebe trotzdem der gewinnende, nie verlorene Write.
     let trashedKos = 0;
     const skipped: { id: string; reason: string }[] = [];
     for (const ko of targets) {
@@ -276,11 +288,21 @@ export class LibraryService {
         // BESTEHENDE Löschlogik: Soft-Delete in den Papierkorb (SCRUM-422) — kein Hard-Delete.
         // forceTrash (bens F2): auch ein demoSeed-KO mit Import-Provenienz landet auf DIESEM Weg
         // im Papierkorb statt still in der Endlöschung (delete-Semantik sonst unverändert).
-        await this.koService.delete(ko.id, actor, { forceTrash: true });
+        // WP-SHIP8-FINAL (bens Bedingung 3): mit Versions-Erwartung des Bestätigungs-Snapshots —
+        // ein zwischenzeitlich revidiertes KO wird NICHT gelöscht (STALE_WRITE → skipped).
+        await this.koService.delete(ko.id, actor, {
+          forceTrash: true,
+          expectedVersion: ko.version,
+        });
         trashedKos += 1;
       } catch (err) {
         // (4) Ehrliche Bilanz: erst den ECHTEN Zustand nachlesen, dann zählen.
-        const reason = err instanceof Error ? err.name : "unknown";
+        const reason =
+          err instanceof KoError && err.code === "STALE_WRITE"
+            ? "zwischenzeitlich ueberarbeitet"
+            : err instanceof Error
+              ? err.name
+              : "unknown";
         try {
           const stillLive = await this.koService.get(ko.id);
           if (stillLive === undefined) {
@@ -299,8 +321,36 @@ export class LibraryService {
     // (removeByIds, atomar) — NICHT die ganze Queue. Ein Kandidat, der zwischen Digest-Vergleich
     // und Löschung eingereiht wurde, war nie Teil der Bestätigung: er überlebt und wird unten
     // ehrlich als newCandidates ausgewiesen.
-    const removedCandidates =
-      skipped.length === 0 ? await this.candidates.removeByIds(candidateIds) : 0;
+    // WP-SHIP8-FINAL (bens Bedingung 3): zusätzlich je Kandidat FAIL-CLOSED gegen parallele
+    // Reviews — gelöscht wird NUR, wessen Status seit der Bestätigung UNVERÄNDERT ist. Ein
+    // zwischenzeitlich angenommener/bearbeiteter Kandidat überlebt (sein Review-Ergebnis und
+    // ein per accept entstandenes KO gehen nie verloren) und steht ehrlich in der Bilanz.
+    let removedCandidates = 0;
+    if (skipped.length === 0) {
+      const currentStatuses = new Map(
+        (await this.candidates.all()).map((c) => [c.id, c.status as string]),
+      );
+      const deletable: string[] = [];
+      for (const id of candidateIds) {
+        const nowStatus = currentStatuses.get(id);
+        if (nowStatus === undefined) {
+          continue; // schon weg — nichts zu löschen
+        }
+        const confirmedStatus = candidateStatuses.get(id);
+        if (nowStatus !== confirmedStatus) {
+          skipped.push({
+            id,
+            reason:
+              nowStatus === "angenommen"
+                ? "zwischenzeitlich angenommen"
+                : "zwischenzeitlich bearbeitet",
+          });
+          continue;
+        }
+        deletable.push(id);
+      }
+      removedCandidates = deletable.length > 0 ? await this.candidates.removeByIds(deletable) : 0;
+    }
     // Ehrliche Bilanz der Nachzügler: alles, was jetzt in der Queue steht und NICHT Teil der
     // bestätigten Vorschau war (nach der Löschung sind das genau die Neuzugänge seither).
     const confirmedIds = new Set(candidateIds);

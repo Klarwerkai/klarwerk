@@ -28,6 +28,10 @@ export interface AiCheck {
   requestedAt: string;
   finishedAt?: string;
   fallbackReason?: string;
+  // WP-SHIP8-FINAL (bens Bedingung 2): der Prüf-Job ist an die INHALTSVERSION gebunden — der
+  // pending-Vermerk trägt die KO-Version zum Einreih-Zeitpunkt; der Abschluss schreibt nur, wenn
+  // sie noch stimmt (bedingter Write). Additiv: Altbestand ohne Feld = versionsungebundener Job.
+  koVersion?: number;
 }
 
 export type Confidentiality = "intern" | "vertraulich" | "streng_vertraulich";

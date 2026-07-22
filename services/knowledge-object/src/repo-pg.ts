@@ -196,13 +196,24 @@ export class PgKoRepo implements KoRepo {
     return (res.rowCount ?? 0) > 0;
   }
 
-  async resolveAiCheck(id: string, patch: Omit<AiCheck, "requestedAt">): Promise<boolean> {
+  async resolveAiCheck(
+    id: string,
+    patch: Omit<AiCheck, "requestedAt">,
+    expectedKoVersion?: number,
+  ): Promise<boolean> {
     // WP-SUBMIT-ASYNC: BEDINGT (CAS-schonend wie setCaptionTexts) — EIN UPDATE, nur wenn der
     // Status noch pending ist; der Merge (||) erhält requestedAt und patcht ausschließlich das
     // aiCheck-Feld. Ein nebenläufiger revise (Voll-Write) verliert dadurch nie Daten.
+    // WP-SHIP8-FINAL (bens Bedingung 2): mit expectedKoVersion zusätzlich versionsgebunden —
+    // der pending-Vermerk muss die Version tragen UND das KO muss noch auf ihr stehen ($3 NULL
+    // = Bestandsverhalten fuer Altbestand/unbedingte Aufrufe).
     const res = await this.pool.query(
-      "UPDATE kos SET data = jsonb_set(data, '{aiCheck}', (data->'aiCheck') || $2::jsonb) WHERE id=$1 AND data->'aiCheck'->>'status' = 'pending'",
-      [id, JSON.stringify(patch)],
+      `UPDATE kos SET data = jsonb_set(data, '{aiCheck}', (data->'aiCheck') || $2::jsonb)
+       WHERE id=$1 AND data->'aiCheck'->>'status' = 'pending'
+         AND ($3::int IS NULL OR (
+           (data->'aiCheck'->>'koVersion')::int = $3::int AND (data->>'version')::int = $3::int
+         ))`,
+      [id, JSON.stringify(patch), expectedKoVersion ?? null],
     );
     return (res.rowCount ?? 0) > 0;
   }

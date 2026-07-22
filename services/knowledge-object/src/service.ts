@@ -597,22 +597,34 @@ export class KoService {
   // Tests nutzen das); resolveAiCheck schließt ihn BEDINGT ab (nur solange noch pending —
   // CAS-schonend über den Repo-Feld-Patch, ein nebenläufiger revise verliert nie Daten). Bewusst
   // ohne Versions-/Audit-Pfad: reiner Job-Status, kein Wissensinhalt.
+  // WP-SHIP8-FINAL (bens Bedingung 2): der pending-Vermerk trägt die aktuelle INHALTSVERSION —
+  // der Hintergrund-Job ist damit hart an sie gebunden (der Abschluss prüft sie bedingt).
   async markAiCheckPending(id: string, requestedAt?: string): Promise<boolean> {
+    const ko = await this.repo.findById(id);
+    if (!ko || ko.deletedAt) {
+      return false;
+    }
     return this.repo.setAiCheck(id, {
       status: "pending",
       requestedAt: requestedAt ?? new Date(this.now()).toISOString(),
+      koVersion: ko.version,
     });
   }
 
   async resolveAiCheck(
     id: string,
     outcome: { ok: boolean; fallbackReason?: string },
+    expectedKoVersion?: number,
   ): Promise<boolean> {
-    return this.repo.resolveAiCheck(id, {
-      status: outcome.ok ? "done" : "failed",
-      finishedAt: new Date(this.now()).toISOString(),
-      ...(outcome.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
-    });
+    return this.repo.resolveAiCheck(
+      id,
+      {
+        status: outcome.ok ? "done" : "failed",
+        finishedAt: new Date(this.now()).toISOString(),
+        ...(outcome.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
+      },
+      expectedKoVersion,
+    );
   }
 
   // SCRUM-361 / AG-03: begrenzte, datenquellennahe Kandidatenabfrage für Ask (kein All-Pool-Load).
@@ -734,6 +746,32 @@ export class KoService {
         expiresAt: new Date(this.trashExpiry(k.deletedAt)).toISOString(),
       }))
       .sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
+  }
+
+  // WP-SHIP8-FINAL (bens Bedingung 5): die Provenienz-Anker (provider+externalId) der KOs im
+  // PAPIERKORB — schmaler Lesepfad für Idempotenz-Prüfungen (Beispiel-Loader): ein getrashtes
+  // Beispiel darf beim erneuten Laden KEIN Duplikat erzeugen, sondern wird ehrlich als
+  // „im Papierkorb" ausgewiesen. Bewusst nur Anker-Felder, keine Inhalte.
+  async trashedSourceAnchors(): Promise<
+    { koId: string; provider: string | null; externalId: string }[]
+  > {
+    const all = await this.repo.list({});
+    const anchors: { koId: string; provider: string | null; externalId: string }[] = [];
+    for (const ko of all) {
+      if (!ko.deletedAt) {
+        continue;
+      }
+      for (const source of ko.sources ?? []) {
+        if (source.externalId) {
+          anchors.push({
+            koId: ko.id,
+            provider: source.provider ?? null,
+            externalId: source.externalId,
+          });
+        }
+      }
+    }
+    return anchors;
   }
 
   // Wiederherstellen aus dem Papierkorb — Historie/Versionen/Trust bleiben unangetastet.
@@ -943,9 +981,18 @@ export class KoService {
   async delete(
     id: string,
     actor = "system",
-    opts?: { hard?: boolean; forceTrash?: boolean },
+    // WP-SHIP8-FINAL (bens Bedingung 3): expectedVersion = optimistische Versions-Erwartung des
+    // Aufrufers (Cleanup-Confirm) — ein zwischenzeitlich revidiertes KO wird NICHT geloescht
+    // (STALE_WRITE), der Aufrufer weist es ehrlich aus.
+    opts?: { hard?: boolean; forceTrash?: boolean; expectedVersion?: number },
   ): Promise<void> {
     const ko = await this.require(id);
+    if (opts?.expectedVersion !== undefined && ko.version !== opts.expectedVersion) {
+      throw new KoError(
+        "STALE_WRITE",
+        "Das Wissensobjekt wurde zwischenzeitlich überarbeitet — Löschung abgelehnt.",
+      );
+    }
     if (!opts?.forceTrash && (opts?.hard || ko.demoSeed)) {
       // SCRUM-523 P.3 (WP1-Batch3): harte Löschung NICHT mehr am Chokepoint vorbei — über purgeKo
       // (inkl. Cleanup-Kaskade, cleanup-first). So räumen delete({hard}) UND der Demo-Purge (demoSeed)

@@ -433,3 +433,83 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
     }
   });
 });
+
+// WP-SHIP8-FINAL (bens sammel23, Bedingung 3): der Cleanup-Confirm ist je Item FAIL-CLOSED gegen
+// parallele Reviews/Revisionen — ein waehrend des Confirms angenommener Kandidat und ein
+// zwischenzeitlich revidiertes KO ueberleben und stehen ehrlich in der Bilanz.
+describe("WP-SHIP8-FINAL Bedingung 3: Cleanup gegen paralleles Accept/Update", () => {
+  interface CleanupBody {
+    removedCandidates: number;
+    trashedKos: number;
+    skipped: { id: string; reason: string }[];
+  }
+
+  it("Accept PARALLEL zum Confirm (Gate am ersten KO-Delete) → Kandidat + sein KO ueberleben, Bilanz ehrlich", async () => {
+    const { app, services, headers } = await cleanupApp();
+    const digest = await previewDigest(app, headers);
+    const candidates = await services.library.listImportCandidates();
+    const acceptId = (candidates[0] as { id: string }).id;
+    // Gate: der ERSTE KO-Soft-Delete des Confirms loest den parallelen Reviewer-Accept aus —
+    // exakt bens Szenario (Accept zwischen Digest-Vergleich und Queue-Loeschung).
+    const origDelete = services.ko.delete.bind(services.ko);
+    let triggered = false;
+    (services.ko as { delete: typeof services.ko.delete }).delete = async (id, actor, opts) => {
+      if (!triggered) {
+        triggered = true;
+        await services.library.reviewImportCandidate(acceptId, "accept", "reviewer-1");
+      }
+      return origDelete(id, actor, opts);
+    };
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/admin/import/cleanup",
+      headers,
+      payload: { confirm: true, digest },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as CleanupBody;
+    // Der angenommene Kandidat wurde NICHT geloescht und steht ehrlich in der Bilanz.
+    expect(body.skipped).toContainEqual({ id: acceptId, reason: "zwischenzeitlich angenommen" });
+    expect(body.removedCandidates).toBe(1); // nur der unveraendert gebliebene zweite Kandidat
+    const remaining = await services.library.listImportCandidates();
+    expect(remaining.map((c) => (c as { id: string }).id)).toEqual([acceptId]);
+    expect((remaining[0] as { status: string }).status).toBe("angenommen");
+    // Das per Accept entstandene KO lebt (es war nie Teil der bestaetigten Zielmenge).
+    expect((await services.ko.list()).map((k) => k.title)).toContain("Kandidat 1");
+  });
+
+  it("WAEHREND des Confirms revidiertes Import-KO → Versions-CAS lehnt die Loeschung ab, Queue bleibt komplett stehen", async () => {
+    const { app, services, headers } = await cleanupApp();
+    const digest = await previewDigest(app, headers);
+    const jiraKo = (await services.ko.list()).find((k) => k.title === "Aus Jira importiert");
+    expect(jiraKo).toBeDefined();
+    const jiraId = (jiraKo as { id: string }).id;
+    // Gate: der ERSTE KO-Soft-Delete des Confirms revidiert PARALLEL das ANDERE Ziel-KO —
+    // die Revision faellt damit in das Fenster zwischen Bestaetigungs-Snapshot und Loeschung.
+    const origDelete = services.ko.delete.bind(services.ko);
+    let triggered = false;
+    (services.ko as { delete: typeof services.ko.delete }).delete = async (id, actor, opts) => {
+      if (!triggered && id !== jiraId) {
+        triggered = true;
+        await services.ko.revise(jiraId, { statement: "inzwischen ueberarbeitet" }, "pedi");
+      }
+      return origDelete(id, actor, opts);
+    };
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/admin/import/cleanup",
+      headers,
+      payload: { confirm: true, digest },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as CleanupBody;
+    expect(body.trashedKos).toBe(1); // nur das unveraenderte Confluence-KO
+    expect(body.skipped).toContainEqual({ id: jiraId, reason: "zwischenzeitlich ueberarbeitet" });
+    // Bestehende Regel (3): bei KO-Skips bleibt die unwiderrufliche Queue KOMPLETT stehen.
+    expect(body.removedCandidates).toBe(0);
+    expect((await services.library.listImportCandidates()).length).toBe(2);
+    // Das revidierte KO lebt weiter (nicht im Papierkorb) und traegt die Revision.
+    const revised = await services.ko.get(jiraId);
+    expect(revised?.statement).toBe("inzwischen ueberarbeitet");
+  });
+});

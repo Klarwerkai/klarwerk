@@ -78,6 +78,7 @@ describe("WP-B6: POST /api/admin/examples/load", () => {
         package: pkg.id,
         created: pkg.kos.length,
         skipped: 0,
+        skippedInTrash: 0,
         conflicts: {
           created: pkg.id === "konflikte" ? 3 : 0,
           skipped: 0,
@@ -113,6 +114,7 @@ describe("WP-B6: POST /api/admin/examples/load", () => {
       package: "konflikte",
       created: 0,
       skipped: 6,
+      skippedInTrash: 0,
       conflicts: { created: 0, skipped: 3, failed: 0 },
     });
     expect((await services.ko.list()).length).toBe(6);
@@ -120,8 +122,18 @@ describe("WP-B6: POST /api/admin/examples/load", () => {
     const entries = audit.filter((e) => e.action === "examples.load");
     expect(entries.length).toBe(2);
     expect(entries.map((e) => e.payload)).toEqual([
-      { created: 6, skipped: 0, conflicts: { created: 3, skipped: 0, failed: 0 } },
-      { created: 0, skipped: 6, conflicts: { created: 0, skipped: 3, failed: 0 } },
+      {
+        created: 6,
+        skipped: 0,
+        skippedInTrash: 0,
+        conflicts: { created: 3, skipped: 0, failed: 0 },
+      },
+      {
+        created: 0,
+        skipped: 6,
+        skippedInTrash: 0,
+        conflicts: { created: 0, skipped: 3, failed: 0 },
+      },
     ]);
   });
 
@@ -247,5 +259,86 @@ describe("WP-B6: POST /api/admin/examples/load", () => {
     for (const key of EXAMPLE_PACKAGES_ALL_KEYS) {
       expect(`${key}:${i18n.split(`"${key}":`).length - 1}`).toBe(`${key}:3`);
     }
+  });
+});
+
+// WP-SHIP8-FINAL (bens sammel23, Bedingung 5): der Beispiel-Anker ist ein STORAGE-SEITIGER Claim
+// (atomar im Single-Thread-Modell, frische Bestandspruefung unter gehaltenem Claim) — paralleles
+// Doppel-Laden erzeugt genau EINEN Satz KOs/Konflikte; Papierkorb-/Restore-Raender sind ehrlich.
+describe("WP-SHIP8-FINAL Bedingung 5: Anker-Claim + Trash-Raender", () => {
+  interface LoadBody {
+    created: number;
+    skipped: number;
+    skippedInTrash: number;
+    conflicts: { created: number; skipped: number; failed: number };
+  }
+
+  it("PARALLELES Doppel-Laden desselben Pakets → genau EIN Satz KOs und Konflikte, zweiter Lauf zaehlt skipped", async () => {
+    const { app, services, headers } = await adminApp();
+    const [a, b] = await Promise.all([
+      load(app, headers, "konflikte"),
+      load(app, headers, "konflikte"),
+    ]);
+    expect(a.statusCode).toBe(200);
+    expect(b.statusCode).toBe(200);
+    const bodyA = a.json() as LoadBody;
+    const bodyB = b.json() as LoadBody;
+    // Jeder Lauf verbucht alle 6 Definitionen — zusammen entsteht GENAU EIN Satz.
+    expect(bodyA.created + bodyA.skipped).toBe(6);
+    expect(bodyB.created + bodyB.skipped).toBe(6);
+    expect(bodyA.created + bodyB.created).toBe(6);
+    expect(bodyA.skipped + bodyB.skipped).toBe(6);
+    expect(bodyA.conflicts.created + bodyB.conflicts.created).toBe(3);
+    expect(bodyA.conflicts.failed + bodyB.conflicts.failed).toBe(0);
+    // Storage-Beweis: keine Duplikate — exakt 6 Beispiel-KOs und 3 offene Konflikte.
+    const kos = await services.ko.list();
+    expect(kos.filter((k) => k.title.startsWith(EXAMPLE_TITLE_PREFIX)).length).toBe(6);
+    expect((await services.conflicts.unresolved()).length).toBe(3);
+  });
+
+  it("Papierkorb-Rand: getrashtes Beispiel-KO → erneutes Laden legt KEIN Duplikat an, Bilanz sagt ehrlich skippedInTrash", async () => {
+    const { app, services, headers } = await adminApp();
+    expect((await load(app, headers, "konflikte")).statusCode).toBe(200);
+    const trashed = (await services.ko.list()).find((k) =>
+      k.title.includes("Radschrauben der Baureihe RS-40 mit 120 Nm"),
+    );
+    expect(trashed).toBeDefined();
+    // Soft-Delete in den Papierkorb (forceTrash: demoSeed wuerde sonst hart geloescht).
+    await services.ko.delete((trashed as { id: string }).id, "admin", { forceTrash: true });
+    const reload = await load(app, headers, "konflikte");
+    expect(reload.statusCode).toBe(200);
+    const body = reload.json() as LoadBody;
+    expect(body).toEqual({
+      package: "konflikte",
+      created: 0, // KEIN Duplikat — der Anker greift auch im Papierkorb
+      skipped: 5,
+      skippedInTrash: 1,
+      // Das Paar des getrashten KOs ruht ehrlich (skipped); die anderen zwei existieren bereits.
+      conflicts: { created: 0, skipped: 3, failed: 0 },
+    });
+    // Live-Bestand: 5 Beispiel-KOs; der Papierkorb haelt genau das eine.
+    const live = await services.ko.list();
+    expect(live.filter((k) => k.title.startsWith(EXAMPLE_TITLE_PREFIX)).length).toBe(5);
+    expect((await services.ko.trashed()).length).toBe(1);
+  });
+
+  it("Restore-Rand: wiederhergestelltes Beispiel-KO zaehlt wieder als vorhanden/skipped (kein Duplikat)", async () => {
+    const { app, services, headers } = await adminApp();
+    expect((await load(app, headers, "konflikte")).statusCode).toBe(200);
+    const target = (await services.ko.list()).find((k) =>
+      k.title.includes("Radschrauben der Baureihe RS-40 mit 120 Nm"),
+    );
+    await services.ko.delete((target as { id: string }).id, "admin", { forceTrash: true });
+    await services.ko.restore((target as { id: string }).id, "admin");
+    const reload = await load(app, headers, "konflikte");
+    expect(reload.statusCode).toBe(200);
+    const body = reload.json() as LoadBody;
+    expect(body.created).toBe(0);
+    expect(body.skipped).toBe(6); // wiederhergestellt = vorhanden
+    expect(body.skippedInTrash).toBe(0);
+    expect(body.conflicts).toEqual({ created: 0, skipped: 3, failed: 0 });
+    expect(
+      (await services.ko.list()).filter((k) => k.title.startsWith(EXAMPLE_TITLE_PREFIX)).length,
+    ).toBe(6);
   });
 });

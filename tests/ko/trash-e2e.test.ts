@@ -515,7 +515,8 @@ describe("SCRUM-523 P.3 (WP-A2): repo.delete + audit.record committen/rollbacken
       setCaptionTexts: (id, captionTexts) => inner.setCaptionTexts(id, captionTexts),
       // WP-SUBMIT-ASYNC: neue Vertragsmethoden — reines Durchreichen.
       setAiCheck: (id, aiCheck) => inner.setAiCheck(id, aiCheck),
-      resolveAiCheck: (id, patch) => inner.resolveAiCheck(id, patch),
+      resolveAiCheck: (id, patch, expectedKoVersion) =>
+        inner.resolveAiCheck(id, patch, expectedKoVersion),
       findCandidates: (query) => inner.findCandidates(query),
       delete: (id, tx) => {
         stage(tx, () => {

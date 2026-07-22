@@ -90,6 +90,8 @@ export function selectionToBodyHtml(text: string): string {
 // Spiegel von MAX_INLINE_BODY_HTML_BYTES (lib/docx.ts) — das Taskpane ist buildlos und kann das
 // Modul nicht importieren; ein Test pinnt die Gleichheit. Über dem Budget: ehrlicher
 // Klartext-Fallback statt stillem Verlust (der Server-Bodylimit läge ohnehin bei 5 MiB).
+// WP-SHIP8-FINAL (bens Bedingung 4): das Budget misst jetzt den FINALEN JSON.stringify-Payload
+// des Draft-POSTs (Envelope inkl. Escaping) — s. prepareWordDraftRequest.
 export const WORD_ADDIN_BODY_BUDGET_BYTES = 3_500_000;
 
 // body-Inhalt aus dem Word-HTML-Dokument schneiden; ohne body-Tags bleibt der Roh-String (Word
@@ -306,33 +308,74 @@ export function openQuestionDraftTitle(question: string): string {
   return `${WORD_ADDIN_OPEN_QUESTION_PREFIX}${trimmed}`.slice(0, WORD_ADDIN_TITLE_MAX).trim();
 }
 
-export interface WordDraftBody {
-  bodyHtml: string;
+// WP-SHIP8-FINAL (bens Bedingung 4, EIN Auswahl-Snapshot): der Klartext wird aus dem EINEN
+// HTML-Zugriff ABGELEITET statt über einen zweiten Office-Aufruf gelesen (die Auswahl kann sich
+// zwischen zwei Aufrufen ändern → inkonsistenter Titel/Statement zum Body). DOM-freier Tag-Strip
+// im bestehenden Helfer-Muster: Block-Enden → Zeilenumbruch, Tags weg, Basis-Entities dekodieren
+// (&amp; bewusst ZULETZT — sonst würde ein escaptes &amp;lt; doppelt dekodiert).
+export function wordHtmlToPlainText(html: string): string {
+  const stripped = extractWordBodyHtml(html || "")
+    .replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|h[1-6]|tr|figcaption|caption|blockquote|pre)\s*>/gi, "\n")
+    .replace(/<[^>]+>/g, "");
+  const decoded = stripped
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/gi, "&");
+  return decoded
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter((line) => line.length > 0)
+    .join("\n");
+}
+
+// WP-SHIP8-FINAL (bens Bedingung 4, Payload-Messung FINAL): der EXAKTE Draft-POST-Body — das
+// Budget misst DIESEN String (Envelope inkl. JSON-Escaping), nicht mehr die rohen HTML-Bytes.
+export function draftPostPayload(title: string, statement: string, bodyHtml: string): string {
+  return JSON.stringify({ title, statement, bodyHtml, origin: "frontdoor" });
+}
+
+export interface WordDraftRequest {
+  // Finaler, bereits serialisierter POST-Body (genau der gemessene String wird gesendet).
+  payload: string;
+  title: string;
   usedHtml: boolean; // false = Klartext-Fallback (kein/leeres HTML oder Budget überschritten)
-  overBudget: boolean; // true = HTML lag über dem Budget → Klartext-Fallback, ehrlich gemeldet
+  overBudget: boolean; // true = FINALER Payload lag über dem Budget → Klartext-Fallback, ehrlich gemeldet
   undeliveredImages: number; // Bilder, die Word nicht als übernehmbare Daten geliefert hat
 }
 
-// EINE Entscheidungsstelle für den Draft-Body: Word-HTML wenn vorhanden und im Budget, sonst der
-// Klartext-Fallback (Zeilen-Absätze) — nie stiller Verlust, die Zähler tragen die ehrliche Meldung.
-export function prepareWordDraftBody(html: string, text: string): WordDraftBody {
+// EINE Entscheidungsstelle für den Draft-Request: Word-HTML wenn vorhanden UND der finale
+// JSON-Payload im Budget liegt, sonst der Klartext-Fallback (Zeilen-Absätze) — nie stiller
+// Verlust, die Zähler tragen die ehrliche Meldung. Die Konstante WORD_ADDIN_BODY_BUDGET_BYTES
+// begrenzt jetzt den FINALEN Payload (Escaping zählt mit — ein anführungszeichenlastiges HTML
+// kann über dem Budget liegen, obwohl seine rohen Bytes darunter lägen).
+export function prepareWordDraftRequest(html: string, text: string): WordDraftRequest {
+  const title = deriveDraftTitleFromSelection(text);
+  const statement = text.trim().slice(0, 500);
   const inner = extractWordBodyHtml(html || "");
   const undeliveredImages = countUndeliveredWordImages(inner);
   if (inner.length === 0) {
     return {
-      bodyHtml: selectionToBodyHtml(text),
+      payload: draftPostPayload(title, statement, selectionToBodyHtml(text)),
+      title,
       usedHtml: false,
       overBudget: false,
       undeliveredImages: 0,
     };
   }
-  if (wordHtmlUtf8Bytes(inner) > WORD_ADDIN_BODY_BUDGET_BYTES) {
+  const htmlPayload = draftPostPayload(title, statement, inner);
+  if (wordHtmlUtf8Bytes(htmlPayload) > WORD_ADDIN_BODY_BUDGET_BYTES) {
     return {
-      bodyHtml: selectionToBodyHtml(text),
+      payload: draftPostPayload(title, statement, selectionToBodyHtml(text)),
+      title,
       usedHtml: false,
       overBudget: true,
       undeliveredImages,
     };
   }
-  return { bodyHtml: inner, usedHtml: true, overBudget: false, undeliveredImages };
+  return { payload: htmlPayload, title, usedHtml: true, overBudget: false, undeliveredImages };
 }

@@ -242,40 +242,74 @@ export interface ExampleLoadResult {
   package: ExamplePackageId;
   created: number;
   skipped: number;
+  // WP-SHIP8-FINAL (bens Bedingung 5, Trash-Rand): Beispiel-KOs, die im PAPIERKORB liegen —
+  // der Anker greift, es entsteht KEIN Duplikat, die Bilanz sagt es ehrlich.
+  skippedInTrash: number;
   // WP-SAMMEL21-FIX (bens Fix 1): ehrliche Teilbilanz der Konflikt-Anlage (nur das
   // konflikte-Paket erzeugt welche; sonst stehen alle Zähler auf 0).
   conflicts: { created: number; skipped: number; failed: number };
 }
 
+// WP-SHIP8-FINAL (bens Bedingung 5): STORAGE-SEITIGER Claim je Beispiel-Anker (und je
+// Konflikt-Paar). Der Claim ist im Single-Thread-Modell von JS ATOMAR (Prüfen+Setzen ohne
+// dazwischenliegendes await — dasselbe Argument wie tryClaimBootstrapAdmin): zwei PARALLELE
+// Lade-Läufe können denselben Anker nie beide gewinnen; der Verlierer wartet auf das Ergebnis
+// des Gewinners und zählt ehrlich skipped. Der Besitzer prüft den Storage-Bestand ERNEUT unter
+// gehaltenem Claim (frischer Anker-Scan) — damit ist auch der Fall geschlossen, dass ein Lauf
+// mit veraltetem Vor-Scan NACH Abschluss eines anderen Laufs startet. Der Claim lebt je
+// KoService-Instanz (WeakMap → testisoliert, GC-sicher) und NUR für die Dauer der Anlage
+// (danach ist der Storage-Anker selbst die Wahrheit).
+// GRENZE (ehrlich dokumentiert): über mehrere PROZESSE/Replikas hinweg greift der Claim nicht —
+// das Deployment ist der modulare Monolith (EIN Prozess, s. assertPersistentStore); ein
+// DB-Unique-Index auf Quell-Anker im KO-JSONB-Array wäre der nächste Ausbauschritt.
+const exampleClaims = new WeakMap<KoService, Map<string, Promise<string>>>();
+
+function claimsFor(ko: KoService): Map<string, Promise<string>> {
+  let map = exampleClaims.get(ko);
+  if (!map) {
+    map = new Map();
+    exampleClaims.set(ko, map);
+  }
+  return map;
+}
+
+// Frischer Anker-Scan gegen den LIVE-Bestand (unter gehaltenem Claim aufgerufen).
+async function findExampleAnchorId(ko: KoService, externalId: string): Promise<string | undefined> {
+  for (const item of await ko.list()) {
+    for (const s of item.sources ?? []) {
+      if (s.provider === EXAMPLE_PROVIDER && s.externalId === externalId) {
+        return item.id;
+      }
+    }
+  }
+  return undefined;
+}
+
 // Lädt EIN Paket idempotent über die bestehenden Anlege-Wege. Bereits vorhandene Beispiel-KOs
-// (Anker provider+externalId, nicht gelöscht) werden übersprungen — keine Duplikate, ehrliche
-// Bilanz. Bilder entstehen als echte Objekte im Store (die figure verweist auf /api/objects/…).
+// (Anker provider+externalId) werden übersprungen — auch im PAPIERKORB (kein Duplikat, eigene
+// ehrliche Zählung) und bei PARALLELEM Doppel-Laden (Anker-Claim). Bilder entstehen als echte
+// Objekte im Store (die figure verweist auf /api/objects/…).
 export async function loadExamplePackage(
   services: ExampleLoadServices,
   pkg: ExamplePackage,
   actor: string,
 ): Promise<ExampleLoadResult> {
-  // Anker → KO-Id auch für BEREITS vorhandene Beispiele merken: die Konflikt-Anlage unten braucht
-  // die Paar-KO-Ids in JEDEM Lauf (auch beim idempotenten zweiten Laden).
-  const existingByAnchor = new Map<string, string>();
-  for (const ko of await services.ko.list()) {
-    for (const s of ko.sources ?? []) {
-      if (s.provider === EXAMPLE_PROVIDER && s.externalId) {
-        existingByAnchor.set(s.externalId, ko.id);
-      }
-    }
-  }
+  const claims = claimsFor(services.ko);
+  // Papierkorb-Anker (Bedingung 5, Trash-Rand): getrashte Beispiele blockieren die Neuanlage —
+  // wiederhergestellte KOs erscheinen dagegen im Live-Scan und zählen als vorhanden/skipped.
+  const trashedAnchors = new Set(
+    (await services.ko.trashedSourceAnchors())
+      .filter((a) => a.provider === EXAMPLE_PROVIDER)
+      .map((a) => a.externalId),
+  );
   let created = 0;
   let skipped = 0;
+  let skippedInTrash = 0;
   const koIdByKey = new Map<string, string>();
-  for (const def of pkg.kos) {
-    const externalId = exampleExternalId(pkg.id, def.key);
-    const existingId = existingByAnchor.get(externalId);
-    if (existingId !== undefined) {
-      koIdByKey.set(def.key, existingId);
-      skipped += 1;
-      continue;
-    }
+  // Paar-Partner im Papierkorb: die Konflikt-Anlage lässt solche Paare ehrlich ruhen (skipped).
+  const trashedKeys = new Set<string>();
+
+  const createExampleKo = async (def: ExampleKoDef, externalId: string): Promise<string> => {
     // Bilder-Paket: echte figures im BILD-1a-Vertrag (beidseitige data-image-id) — die Fußnoten
     // landen über den bestehenden create-Pfad im captionTexts-Suchfeld (Galerie/Suche-Szenario).
     let bodyHtml: string | undefined;
@@ -322,17 +356,68 @@ export async function loadExamplePackage(
       // Entfernen-Weg: der bestehende Demo-Purge (demoSeed) — NICHT das Import-Aufräumen.
       demoSeed: true,
     });
-    koIdByKey.set(def.key, ko.id);
-    created += 1;
+    return ko.id;
+  };
+
+  for (const def of pkg.kos) {
+    const externalId = exampleExternalId(pkg.id, def.key);
+    if (trashedAnchors.has(externalId)) {
+      skippedInTrash += 1;
+      trashedKeys.add(def.key);
+      continue;
+    }
+    // Läuft GERADE ein anderer Lauf für diesen Anker? Dann sein Ergebnis übernehmen (skipped).
+    const inFlight = claims.get(externalId);
+    if (inFlight) {
+      try {
+        const id = await inFlight;
+        koIdByKey.set(def.key, id);
+        skipped += 1;
+        continue;
+      } catch {
+        // Der Claim-Besitzer scheiterte — dieser Lauf versucht die Anlage selbst (unten).
+      }
+    }
+    // Claim ATOMAR nehmen (kein await zwischen get und set).
+    let settle!: (id: string) => void;
+    let fail!: (err: unknown) => void;
+    const claim = new Promise<string>((resolve, reject) => {
+      settle = resolve;
+      fail = reject;
+    });
+    claim.catch(() => undefined); // Wartende behandeln die Ablehnung selbst — kein unhandled rejection
+    claims.set(externalId, claim);
+    try {
+      // Unter gehaltenem Claim: FRISCHER Anker-Scan (schließt den Fall stale Vor-Scan nach
+      // fertigem Fremdlauf) — vorhanden → skipped, sonst anlegen.
+      const existing = await findExampleAnchorId(services.ko, externalId);
+      if (existing !== undefined) {
+        koIdByKey.set(def.key, existing);
+        skipped += 1;
+        settle(existing);
+      } else {
+        const id = await createExampleKo(def, externalId);
+        koIdByKey.set(def.key, id);
+        created += 1;
+        settle(id);
+      }
+    } catch (err) {
+      fail(err);
+      throw err;
+    } finally {
+      // Nach Abschluss ist der STORAGE-Anker die Wahrheit — der Claim wird freigegeben (ein
+      // späterer Lauf prüft den Bestand; ein gelöschtes/purgetes Beispiel bleibt neu anlegbar).
+      claims.delete(externalId);
+    }
   }
-  const conflicts = await createExampleConflicts(services, pkg, koIdByKey, actor);
+  const conflicts = await createExampleConflicts(services, pkg, koIdByKey, trashedKeys, actor);
   await services.audit?.record({
     actor,
     action: "examples.load",
     target: pkg.id,
-    payload: { created, skipped, conflicts },
+    payload: { created, skipped, skippedInTrash, conflicts },
   });
-  return { package: pkg.id, created, skipped, conflicts };
+  return { package: pkg.id, created, skipped, skippedInTrash, conflicts };
 }
 
 // WP-SAMMEL21-FIX (bens Fix 1, ROT): die conflictsWith-Paare als ECHTE Konflikte anlegen —
@@ -344,18 +429,29 @@ export async function loadExamplePackage(
 // gehärtet — wirft createAuto (z. B. kollidierendes Parallel-Laden), wird der Bestand ERNEUT
 // geprüft: existiert das Paar inzwischen, zählt es ehrlich als übersprungen, sonst als
 // fehlgeschlagen (Teilbilanz statt Abbruch; die übrigen Paare laufen weiter).
+// WP-SHIP8-FINAL (bens Bedingung 5): auch die Paar-Anlage läuft über den atomaren Claim (Schlüssel
+// pair:<sortierte KO-Ids>) — bei parallelem Doppel-Laden legt GENAU EIN Lauf das Paar an, der
+// andere wartet und zählt skipped. Der Besitzer prüft den Bestand ERNEUT unter gehaltenem Claim.
 async function createExampleConflicts(
   services: ExampleLoadServices,
   pkg: ExamplePackage,
   koIdByKey: ReadonlyMap<string, string>,
+  trashedKeys: ReadonlySet<string>,
   actor: string,
 ): Promise<{ created: number; skipped: number; failed: number }> {
   const balance = { created: 0, skipped: 0, failed: 0 };
+  const claims = claimsFor(services.ko);
   const pairExists = (open: readonly Conflict[], idA: string, idB: string): boolean =>
     open.some((c) => (c.koA === idA && c.koB === idB) || (c.koA === idB && c.koB === idA));
   for (const def of pkg.kos) {
     // Jedes Paar ist beidseitig definiert (a→b und b→a) — nur EINE Richtung verarbeitet es.
     if (!def.conflictsWith || def.key > def.conflictsWith) {
+      continue;
+    }
+    // Trash-Rand (Bedingung 5): liegt ein Paar-Partner im Papierkorb, ruht das Paar ehrlich
+    // (skipped) — kein Konflikt gegen ein getrashtes KO, kein Fehler.
+    if (trashedKeys.has(def.key) || trashedKeys.has(def.conflictsWith)) {
+      balance.skipped += 1;
       continue;
     }
     const idA = koIdByKey.get(def.key);
@@ -365,34 +461,63 @@ async function createExampleConflicts(
       balance.failed += 1; // Paar unvollständig (KO-Anlage scheiterte) — ehrlich ausweisen
       continue;
     }
-    if (pairExists(await services.conflicts.unresolved(), idA, idB)) {
-      balance.skipped += 1;
-      continue;
-    }
-    try {
-      await services.conflicts.createAuto(
-        {
-          koA: idA,
-          koB: idB,
-          type: "truth",
-          description: `Widersprüchliche Beispiel-Aussagen: ${def.title} vs. ${partner.title}`,
-        },
-        {
-          trigger: "background",
-          method: "deterministic",
-          rationale:
-            "Kuratiertes Widerspruchs-Paar aus dem Beispielpaket (kein Modell-Fund) — zum Ausprobieren des Konflikt-Boards.",
-        },
-        actor,
-      );
-      balance.created += 1;
-    } catch {
-      // catch-and-recheck: hat ein paralleler Lauf das Paar inzwischen angelegt → übersprungen.
+    const pairKey = `pair:${[idA, idB].sort().join(":")}`;
+    const inFlight = claims.get(pairKey);
+    if (inFlight) {
+      // Ein paralleler Lauf legt das Paar gerade an — auf sein Ende warten, dann ehrlich zählen.
+      await inFlight.catch(() => undefined);
       if (pairExists(await services.conflicts.unresolved(), idA, idB)) {
         balance.skipped += 1;
       } else {
         balance.failed += 1;
       }
+      continue;
+    }
+    let settle!: (v: string) => void;
+    let fail!: (err: unknown) => void;
+    const claim = new Promise<string>((resolve, reject) => {
+      settle = resolve;
+      fail = reject;
+    });
+    claim.catch(() => undefined);
+    claims.set(pairKey, claim);
+    try {
+      // Unter gehaltenem Claim: frische Bestandsprüfung (schließt den stale-Vor-Scan-Fall).
+      if (pairExists(await services.conflicts.unresolved(), idA, idB)) {
+        balance.skipped += 1;
+        settle("exists");
+        continue;
+      }
+      try {
+        await services.conflicts.createAuto(
+          {
+            koA: idA,
+            koB: idB,
+            type: "truth",
+            description: `Widersprüchliche Beispiel-Aussagen: ${def.title} vs. ${partner.title}`,
+          },
+          {
+            trigger: "background",
+            method: "deterministic",
+            rationale:
+              "Kuratiertes Widerspruchs-Paar aus dem Beispielpaket (kein Modell-Fund) — zum Ausprobieren des Konflikt-Boards.",
+          },
+          actor,
+        );
+        balance.created += 1;
+        settle("created");
+      } catch (err) {
+        // catch-and-recheck: existiert das Paar inzwischen doch → übersprungen, sonst ehrlich failed.
+        if (pairExists(await services.conflicts.unresolved(), idA, idB)) {
+          balance.skipped += 1;
+          settle("exists");
+        } else {
+          balance.failed += 1;
+          fail(err);
+        }
+      }
+    } finally {
+      claims.delete(pairKey);
     }
   }
   return balance;

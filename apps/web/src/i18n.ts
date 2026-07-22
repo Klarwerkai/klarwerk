@@ -1763,6 +1763,11 @@ const de = {
     "Kein KI-Modell aktiv — es wurde nichts geprüft. Modell konfigurieren und erneut prüfen.",
   "val.aiCheck.reason.model-error":
     "Die KI-Prüfung ist mit einem Fehler abgebrochen. Erneut prüfen startet einen neuen Lauf.",
+  // WP-SHIP8-FINAL (bens Bedingung 2): eigene ehrliche Ursachen für Frist und Warteschlangen-Kappe.
+  "val.aiCheck.reason.timeout":
+    "Die KI-Prüfung hat die Zeitgrenze überschritten und wurde abgebrochen. Erneut prüfen startet einen neuen Lauf.",
+  "val.aiCheck.reason.queue-overflow":
+    "Die Prüf-Warteschlange war voll — dieser Job wurde verdrängt. Erneut prüfen reiht ihn neu ein.",
   "val.feedback.condTitle": "Bedingt – Begründung für den Autor (Pflicht)",
   "val.feedback.rejTitle": "Ablehnung – Begründung für den Autor (Pflicht)",
   "val.feedback.placeholder": "Was muss überarbeitet werden? …",
@@ -4979,6 +4984,10 @@ const en: typeof de = {
     "No AI model active — nothing was checked. Configure a model and retry the check.",
   "val.aiCheck.reason.model-error":
     "The AI check stopped with an error. Retrying starts a fresh run.",
+  "val.aiCheck.reason.timeout":
+    "The AI check exceeded the time limit and was aborted. Retrying starts a fresh run.",
+  "val.aiCheck.reason.queue-overflow":
+    "The check queue was full — this job was evicted. Retrying re-queues it.",
   "val.feedback.condTitle": "Conditional – reason for the author (required)",
   "val.feedback.rejTitle": "Rejection – reason for the author (required)",
   "val.feedback.placeholder": "What needs to be revised? …",
@@ -8159,6 +8168,10 @@ const nl: typeof de = {
     "Geen AI-model actief — er is niets gecontroleerd. Configureer een model en controleer opnieuw.",
   "val.aiCheck.reason.model-error":
     "De AI-controle is met een fout gestopt. Opnieuw controleren start een nieuwe run.",
+  "val.aiCheck.reason.timeout":
+    "De AI-controle heeft de tijdslimiet overschreden en is afgebroken. Opnieuw controleren start een nieuwe run.",
+  "val.aiCheck.reason.queue-overflow":
+    "De controlewachtrij was vol — deze taak is verdrongen. Opnieuw controleren plant hem opnieuw in.",
   "val.feedback.condTitle": "Voorwaardelijk – onderbouwing voor de auteur (verplicht)",
   "val.feedback.rejTitle": "Afwijzing – onderbouwing voor de auteur (verplicht)",
   "val.feedback.placeholder": "Wat moet er worden herzien? …",

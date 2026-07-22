@@ -61,7 +61,15 @@ export interface KoRepo {
   // patch NUR, wenn der aktuelle Status noch "pending" ist — und patcht dabei ausschließlich das
   // aiCheck-Feld (ein nebenläufiger revise verliert nie Daten; requestedAt bleibt erhalten).
   // false = nicht mehr pending (bereits abgeschlossen/KO weg) — der Aufrufer loggt und lässt los.
-  resolveAiCheck(id: string, patch: Omit<AiCheck, "requestedAt">): Promise<boolean>;
+  // WP-SHIP8-FINAL (bens Bedingung 2): optional zusätzlich an die INHALTSVERSION gebunden —
+  // mit expectedKoVersion schreibt der Patch NUR, wenn der pending-Vermerk diese Version trägt
+  // UND das KO noch auf ihr steht (ein zwischenzeitlicher revise macht den Lauf zum No-op;
+  // stale-done ist damit unmöglich). Ohne Parameter: Bestandsverhalten (nur-pending-Bedingung).
+  resolveAiCheck(
+    id: string,
+    patch: Omit<AiCheck, "requestedAt">,
+    expectedKoVersion?: number,
+  ): Promise<boolean>;
 }
 
 // Durchsuchbarer Text eines KO für die grobe Kandidaten-Vorauswahl (kein Quelleninhalt wird verändert).
@@ -178,9 +186,22 @@ export class InMemoryKoRepo implements KoRepo {
 
   // WP-SUBMIT-ASYNC: bedingter Abschluss — NUR wenn noch pending; merged in das bestehende aiCheck
   // (requestedAt bleibt), patcht sonst NICHTS am Objekt (revise-Änderungen bleiben unangetastet).
-  resolveAiCheck(id: string, patch: Omit<AiCheck, "requestedAt">): Promise<boolean> {
+  // WP-SHIP8-FINAL (bens Bedingung 2): mit expectedKoVersion zusätzlich versionsgebunden — der
+  // Vermerk muss die erwartete Version tragen UND das KO muss noch auf ihr stehen (revise dazwischen
+  // → false, der alte Lauf ist ein No-op; stale-done unmöglich).
+  resolveAiCheck(
+    id: string,
+    patch: Omit<AiCheck, "requestedAt">,
+    expectedKoVersion?: number,
+  ): Promise<boolean> {
     const ko = this.items.get(id);
     if (!ko || ko.deletedAt || ko.aiCheck?.status !== "pending") {
+      return Promise.resolve(false);
+    }
+    if (
+      expectedKoVersion !== undefined &&
+      (ko.aiCheck.koVersion !== expectedKoVersion || ko.version !== expectedKoVersion)
+    ) {
       return Promise.resolve(false);
     }
     this.items.set(id, { ...ko, aiCheck: { ...ko.aiCheck, ...patch } });

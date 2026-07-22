@@ -14,11 +14,14 @@ import {
   WORD_ADDIN_LOGIN_POLL_MAX_MS,
   countUndeliveredWordImages,
   deriveDraftTitleFromSelection,
+  draftPostPayload,
   extractWordBodyHtml,
   loginPollDecision,
   loginPollStep,
-  prepareWordDraftBody,
+  prepareWordDraftRequest,
   selectionToBodyHtml,
+  wordHtmlToPlainText,
+  wordHtmlUtf8Bytes,
 } from "../../apps/web/src/lib/wordAddin";
 
 function read(rel: string): string {
@@ -107,26 +110,69 @@ describe("WP-KLARA-2: Word-HTML-Aufbereitung (DOM-freies Modul)", () => {
     expect(countUndeliveredWordImages("<p>ohne Bilder</p>")).toBe(0);
   });
 
-  it("prepareWordDraftBody: HTML im Budget → usedHtml; leeres HTML → Klartext-Fallback", () => {
-    const withHtml = prepareWordDraftBody(WORD_DOC, "Titel\nText");
+  // WP-SHIP8-FINAL (bens Bedingung 4): die Entscheidungsstelle baut den FINALEN POST-Payload —
+  // das Budget misst DIESEN String (Envelope inkl. Escaping), nicht mehr die rohen HTML-Bytes.
+  it("prepareWordDraftRequest: HTML im Budget → usedHtml; leeres HTML → Klartext-Fallback (finaler Payload)", () => {
+    const withHtml = prepareWordDraftRequest(WORD_DOC, "Titel\nText");
     expect(withHtml.usedHtml).toBe(true);
     expect(withHtml.overBudget).toBe(false);
-    expect(withHtml.bodyHtml).toContain("<h1>Titel</h1>"); // roh — h1→h2 mappt der Server-Sanitizer
-    const noHtml = prepareWordDraftBody("", "Nur Text\nZweite Zeile");
+    const parsed = JSON.parse(withHtml.payload) as Record<string, string>;
+    expect(parsed.bodyHtml).toContain("<h1>Titel</h1>"); // roh — h1→h2 mappt der Server-Sanitizer
+    expect(parsed.title).toBe("Titel");
+    expect(parsed.origin).toBe("frontdoor");
+    const noHtml = prepareWordDraftRequest("", "Nur Text\nZweite Zeile");
     expect(noHtml.usedHtml).toBe(false);
-    expect(noHtml.bodyHtml).toBe("<p>Nur Text</p><p>Zweite Zeile</p>");
+    expect((JSON.parse(noHtml.payload) as Record<string, string>).bodyHtml).toBe(
+      "<p>Nur Text</p><p>Zweite Zeile</p>",
+    );
   });
 
-  it("Budget-Grenzfall: über MAX_INLINE_BODY_HTML_BYTES → ehrlicher Klartext-Fallback, kein stiller Verlust", () => {
-    const huge = `<body><p>${"x".repeat(WORD_ADDIN_BODY_BUDGET_BYTES + 10)}</p></body>`;
-    const prepared = prepareWordDraftBody(huge, "Kurzer Text");
+  it("Budget-Grenzfall EXAKT am finalen Payload: knapp drunter bleibt HTML, drueber ehrlicher Klartext-Fallback", () => {
+    // Grenze über den ECHTEN finalen Payload ansteuern: erst die Envelope-Bytes messen, dann das
+    // HTML exakt so füllen, dass der Gesamt-Payload einmal AM Budget und einmal 1 Byte darüber liegt.
+    const text = "t";
+    const envelopeBytes = wordHtmlUtf8Bytes(draftPostPayload("t", "t", "<p></p>"));
+    const fillAtLimit = WORD_ADDIN_BODY_BUDGET_BYTES - envelopeBytes;
+    const atLimit = prepareWordDraftRequest(`<body><p>${"x".repeat(fillAtLimit)}</p></body>`, text);
+    expect(wordHtmlUtf8Bytes(atLimit.payload)).toBe(WORD_ADDIN_BODY_BUDGET_BYTES);
+    expect(atLimit.usedHtml).toBe(true);
+    const over = prepareWordDraftRequest(
+      `<body><p>${"x".repeat(fillAtLimit + 1)}</p></body>`,
+      text,
+    );
+    expect(over.overBudget).toBe(true);
+    expect(over.usedHtml).toBe(false);
+    expect((JSON.parse(over.payload) as Record<string, string>).bodyHtml).toBe("<p>t</p>");
+  });
+
+  it("Escaping-Fall: anführungszeichenlastiges HTML kippt über das Budget, obwohl die ROHEN Bytes darunter lägen", () => {
+    // Jedes " kostet im JSON-Payload 2 Bytes (\") — der finale Payload ist die ehrliche Messgröße.
+    const quoteHeavy = `<p>${'"'.repeat(100)}</p>`;
+    const rawBytes = wordHtmlUtf8Bytes(quoteHeavy);
+    const payloadBytes =
+      wordHtmlUtf8Bytes(draftPostPayload("t", "t", quoteHeavy)) -
+      wordHtmlUtf8Bytes(draftPostPayload("t", "t", ""));
+    expect(payloadBytes).toBe(rawBytes + 100); // 100 × 1 Byte Escaping-Aufschlag
+    // Konstruktion: rohe HTML-Bytes ≤ Budget, finaler Payload > Budget → Fallback greift.
+    const envelopeBytes = wordHtmlUtf8Bytes(draftPostPayload("t", "t", ""));
+    const quotes = '"'.repeat(Math.ceil((WORD_ADDIN_BODY_BUDGET_BYTES - envelopeBytes) / 2) + 1);
+    const html = `<body>${quotes}</body>`;
+    expect(wordHtmlUtf8Bytes(quotes)).toBeLessThanOrEqual(WORD_ADDIN_BODY_BUDGET_BYTES);
+    const prepared = prepareWordDraftRequest(html, "t");
     expect(prepared.overBudget).toBe(true);
     expect(prepared.usedHtml).toBe(false);
-    expect(prepared.bodyHtml).toBe("<p>Kurzer Text</p>"); // Klartext bleibt — nichts geht still verloren
-    // Exakt AM Budget bleibt HTML erhalten.
-    const inner = `<p>${"x".repeat(WORD_ADDIN_BODY_BUDGET_BYTES - 7)}</p>`;
-    const atLimit = prepareWordDraftBody(`<body>${inner}</body>`, "t");
-    expect(atLimit.usedHtml).toBe(true);
+  });
+
+  // WP-SHIP8-FINAL (bens Bedingung 4, EIN Snapshot): Klartext aus dem HTML abgeleitet.
+  it("wordHtmlToPlainText: Block-Enden → Zeilen, Tags weg, Entities dekodiert (&amp; zuletzt)", () => {
+    expect(wordHtmlToPlainText(WORD_DOC)).toBe("Titel\nText");
+    expect(wordHtmlToPlainText("<p>Zeile&nbsp;1&amp;2</p><p>&lt;T&gt; &quot;x&quot;</p>")).toBe(
+      'Zeile 1&2\n<T> "x"',
+    );
+    // &amp;lt; ist die ESCAPTE Zeichenfolge &lt; — sie darf nicht doppelt dekodiert werden.
+    expect(wordHtmlToPlainText("<p>&amp;lt;</p>")).toBe("&lt;");
+    expect(wordHtmlToPlainText("a<br>b")).toBe("a\nb");
+    expect(wordHtmlToPlainText("")).toBe("");
   });
 });
 
@@ -139,7 +185,7 @@ describe("WP-KLARA-1: Inline-Kopie im Taskpane ist VERHALTENSGLEICH zum Modul", 
     expect(end).toBeGreaterThan(start);
     const block = html.slice(start, end);
     const factory = new Function(
-      `${block}; return { deriveDraftTitleFromSelection: deriveDraftTitleFromSelection, selectionToBodyHtml: selectionToBodyHtml, loginPollDecision: loginPollDecision, loginPollStep: loginPollStep, extractWordBodyHtml: extractWordBodyHtml, countUndeliveredWordImages: countUndeliveredWordImages, prepareWordDraftBody: prepareWordDraftBody, WORD_ADDIN_BODY_BUDGET_BYTES: WORD_ADDIN_BODY_BUDGET_BYTES };`,
+      `${block}; return { deriveDraftTitleFromSelection: deriveDraftTitleFromSelection, selectionToBodyHtml: selectionToBodyHtml, loginPollDecision: loginPollDecision, loginPollStep: loginPollStep, extractWordBodyHtml: extractWordBodyHtml, countUndeliveredWordImages: countUndeliveredWordImages, wordHtmlToPlainText: wordHtmlToPlainText, draftPostPayload: draftPostPayload, prepareWordDraftRequest: prepareWordDraftRequest, WORD_ADDIN_BODY_BUDGET_BYTES: WORD_ADDIN_BODY_BUDGET_BYTES };`,
     );
     const inline = factory() as {
       deriveDraftTitleFromSelection: (text: string) => string;
@@ -153,10 +199,18 @@ describe("WP-KLARA-1: Inline-Kopie im Taskpane ist VERHALTENSGLEICH zum Modul", 
       ) => string;
       extractWordBodyHtml: (html: string) => string;
       countUndeliveredWordImages: (html: string) => number;
-      prepareWordDraftBody: (
+      wordHtmlToPlainText: (html: string) => string;
+      draftPostPayload: (title: string, statement: string, bodyHtml: string) => string;
+      prepareWordDraftRequest: (
         html: string,
         text: string,
-      ) => { bodyHtml: string; usedHtml: boolean; overBudget: boolean; undeliveredImages: number };
+      ) => {
+        payload: string;
+        title: string;
+        usedHtml: boolean;
+        overBudget: boolean;
+        undeliveredImages: number;
+      };
       WORD_ADDIN_BODY_BUDGET_BYTES: number;
     };
     const fixtures = [
@@ -206,7 +260,8 @@ describe("WP-KLARA-1: Inline-Kopie im Taskpane ist VERHALTENSGLEICH zum Modul", 
         `step:${gen}/${cur}/${elapsed}/${signedIn}`,
       ).toBe(loginPollStep(gen, cur, elapsed, signedIn));
     }
-    // WP-KLARA-2: auch die Word-HTML-Aufbereitung ist verhaltensgleich gespiegelt (inkl. Budget-Wert).
+    // WP-KLARA-2/WP-SHIP8-FINAL: auch die Word-HTML-Aufbereitung (Snapshot-Klartext, finaler
+    // Payload, Budget-Wert) ist verhaltensgleich gespiegelt.
     expect(inline.WORD_ADDIN_BODY_BUDGET_BYTES).toBe(WORD_ADDIN_BODY_BUDGET_BYTES);
     const htmlFixtures: [string, string][] = [
       ["", "Nur Text"],
@@ -214,6 +269,7 @@ describe("WP-KLARA-1: Inline-Kopie im Taskpane ist VERHALTENSGLEICH zum Modul", 
       ["<p>Fragment ohne body</p>", "F"],
       ['<body><img src="data:image/png;base64,QQ=="><img src="cid:x"></body>', "Bild"],
       [`<body><p>${"y".repeat(64)}</p></body>`, "y"],
+      ['<body><p>&amp;lt; &nbsp;"Quote"&quot;</p><br><p>Ende</p></body>', "Q"],
     ];
     for (const [html, text] of htmlFixtures) {
       expect(inline.extractWordBodyHtml(html), `extract:${html.slice(0, 24)}`).toBe(
@@ -222,8 +278,14 @@ describe("WP-KLARA-1: Inline-Kopie im Taskpane ist VERHALTENSGLEICH zum Modul", 
       expect(inline.countUndeliveredWordImages(html), `imgs:${html.slice(0, 24)}`).toBe(
         countUndeliveredWordImages(html),
       );
-      expect(inline.prepareWordDraftBody(html, text), `prepare:${html.slice(0, 24)}`).toEqual(
-        prepareWordDraftBody(html, text),
+      expect(inline.wordHtmlToPlainText(html), `plain:${html.slice(0, 24)}`).toBe(
+        wordHtmlToPlainText(html),
+      );
+      expect(inline.draftPostPayload("T", "S", html), `payload:${html.slice(0, 24)}`).toBe(
+        draftPostPayload("T", "S", html),
+      );
+      expect(inline.prepareWordDraftRequest(html, text), `prepare:${html.slice(0, 24)}`).toEqual(
+        prepareWordDraftRequest(html, text),
       );
     }
   });
@@ -401,10 +463,34 @@ describe("WP-KLARA-2: Taskpane-Verdrahtung (Umfang, HTML, Deep-Link, ehrliche Gr
 
   it("Befund 2: die Auswahl reist als HTML (Office.CoercionType.Html) — der Server-Sanitizer bleibt autoritativ", () => {
     expect(html).toContain("Office.CoercionType.Html");
-    expect(html).toContain("prepareWordDraftBody(html, text)");
-    // Klartext bleibt zusätzlich erhalten (statement + Fallback) — wie beim DOCX-Weg.
+    expect(html).toContain("prepareWordDraftRequest(html, text)");
+    // Klartext bleibt erhalten (statement + Fallback) — WP-SHIP8-FINAL: aus dem EINEN
+    // HTML-Snapshot abgeleitet; der Text-Aufruf existiert nur noch als Fallback aelterer Hosts.
     expect(html).toContain("Office.CoercionType.Text");
-    expect(html).toContain("bodyHtml: prepared.bodyHtml");
+    expect(html).toContain("body: prepared.payload");
+  });
+
+  // WP-SHIP8-FINAL (bens Bedingung 4): EIN Auswahl-Snapshot — im HTML-Pfad GENAU EIN
+  // Office-Aufruf; der Klartext wird abgeleitet, der Text-Aufruf lebt NUR im Fallback-Zweig.
+  it("Bedingung 4: Snapshot-Konsistenz — HTML zuerst, Klartext daraus abgeleitet, Text-Aufruf nur im Fallback", () => {
+    const readSel = html.slice(
+      html.indexOf("function readSelection(done)"),
+      html.indexOf("function readWholeDocument(done)"),
+    );
+    // HTML-Aufruf kommt VOR dem Text-Aufruf; der Erfolgszweig leitet den Klartext ab und returned.
+    const htmlCall = readSel.indexOf("Office.CoercionType.Html");
+    const derive = readSel.indexOf("done(wordHtmlToPlainText(html), html");
+    const textCall = readSel.indexOf("Office.CoercionType.Text");
+    expect(htmlCall).toBeGreaterThan(0);
+    expect(derive).toBeGreaterThan(htmlCall);
+    expect(textCall).toBeGreaterThan(derive); // Fallback-Zweig NACH dem Erfolgs-return
+    // Genau EIN Text-Aufruf (der Fallback) und EIN HTML-Aufruf in readSelection.
+    expect(readSel.match(/getSelectedDataAsync\(Office\.CoercionType\.Html/g) ?? []).toHaveLength(
+      1,
+    );
+    expect(readSel.match(/getSelectedDataAsync\(Office\.CoercionType\.Text/g) ?? []).toHaveLength(
+      1,
+    );
   });
 
   it("Befund 3: Umfangs-Wahl — Auswahl (Default) / ganzes Dokument via Word.run; Seiten ehrlich deaktiviert", () => {
