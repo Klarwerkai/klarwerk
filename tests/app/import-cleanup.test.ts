@@ -392,13 +392,13 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
     expect(remaining.map((c) => c.item.title)).toEqual(["Parallel eingereiht"]);
   });
 
-  it("WP-NIGHT-FIX: CandidateRepo.removeByIds — InMemory-Vertrag + Pg-Query-Pin (Fake-Pool)", async () => {
-    // InMemory: nur die genannten Ids fallen, unbekannte Ids zählen nicht.
+  it("WP-SHIP8-CLOSE (bens F2): CandidateRepo.removeByIds ist BEDINGT — InMemory-Vertrag + Pg-Query-Pin", async () => {
+    // InMemory: gelöscht wird NUR bei exakt dem erwarteten Status; unbekannte Ids zählen nicht.
     const repo = new InMemoryCandidateRepo();
-    const cand = (id: string) => ({
+    const cand = (id: string, status: "neu" | "angenommen" = "neu") => ({
       id,
       item: { title: id, statement: "s", type: "best_practice" as const, category: "K" },
-      status: "neu" as const,
+      status,
       duplicate: false,
       note: null,
       koId: null,
@@ -406,24 +406,87 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
     });
     await repo.insert(cand("a"));
     await repo.insert(cand("b"));
-    await repo.insert(cand("c"));
-    expect(await repo.removeByIds(["a", "c", "gibt-es-nicht"])).toBe(2);
-    expect((await repo.all()).map((c) => c.id)).toEqual(["b"]);
-    // Pg: EIN atomares DELETE über ANY($1) mit den bestätigten Ids; leere Liste → kein Query.
+    await repo.insert(cand("c", "angenommen"));
+    expect(
+      await repo.removeByIds([
+        { id: "a", status: "neu" },
+        { id: "c", status: "neu" }, // Status hat sich geändert → überlebt
+        { id: "gibt-es-nicht", status: "neu" },
+      ]),
+    ).toEqual(["a"]);
+    expect((await repo.all()).map((c) => c.id)).toEqual(["b", "c"]);
+    // Pg: EIN bedingtes DELETE — Status-Bedingung IN der Löschung (kein Re-Read-Fenster),
+    // RETURNING id als Wahrheit für die Bilanz; leere Liste → kein Query.
     const calls: { sql: string; params: unknown[] }[] = [];
     const pool = {
       query: async (sql: string, params: unknown[] = []) => {
         calls.push({ sql, params });
-        return { rowCount: 2, rows: [] };
+        return { rowCount: 1, rows: [{ id: "a" }] };
       },
     } as unknown as import("pg").Pool;
     const pg = new PgCandidateRepo(pool);
-    expect(await pg.removeByIds(["a", "c"])).toBe(2);
+    expect(
+      await pg.removeByIds([
+        { id: "a", status: "neu" },
+        { id: "c", status: "neu" },
+      ]),
+    ).toEqual(["a"]);
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.sql).toBe("DELETE FROM import_candidates WHERE id = ANY($1)");
-    expect(calls[0]?.params).toEqual([["a", "c"]]);
-    expect(await pg.removeByIds([])).toBe(0);
+    expect(calls[0]?.sql).toBe(
+      "DELETE FROM import_candidates c USING unnest($1::text[], $2::text[]) AS erwartet(id, status) WHERE c.id = erwartet.id AND c.data->>'status' = erwartet.status RETURNING c.id",
+    );
+    expect(calls[0]?.params).toEqual([
+      ["a", "c"],
+      ["neu", "neu"],
+    ]);
+    expect(await pg.removeByIds([])).toEqual([]);
     expect(calls).toHaveLength(1); // leere Bestätigung → kein DELETE
+  });
+
+  it("WP-SHIP8-CLOSE (bens F2): Accept GENAU zwischen Re-Read und Delete → Kandidat überlebt, Bilanz ehrlich", async () => {
+    const { app, services, headers } = await cleanupApp();
+    const digest = await previewDigest(app, headers);
+    const candidates = await services.library.listImportCandidates();
+    const acceptId = (candidates[0] as { id: string }).id;
+    // Gate im Fake-Repo NACH dem Re-Read-Hook: der Cleanup liest die Queue einmal in der
+    // Zielermittlung (all #1) und einmal als Vorab-Bilanz der Delete-Phase (all #2) — der Accept
+    // landet EXAKT nach diesem zweiten Re-Read und VOR removeByIds (bens Restfenster).
+    const candidatesRepo = (
+      services.library as unknown as {
+        candidates: { all: () => Promise<unknown[]> };
+      }
+    ).candidates;
+    const originalAll = candidatesRepo.all.bind(candidatesRepo);
+    let allCalls = 0;
+    let injected = false;
+    candidatesRepo.all = async () => {
+      const result = await originalAll();
+      allCalls += 1;
+      if (allCalls === 2 && !injected) {
+        injected = true;
+        await services.library.reviewImportCandidate(acceptId, "accept", "reviewer-1");
+      }
+      return result;
+    };
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/admin/import/cleanup",
+      headers,
+      payload: { confirm: true, digest },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      removedCandidates: number;
+      skipped: { id: string; reason: string }[];
+    };
+    // Die WAHRHEIT ist das bedingte Delete: der frisch angenommene Kandidat überlebt.
+    expect(body.removedCandidates).toBe(1);
+    expect(body.skipped).toContainEqual({ id: acceptId, reason: "zwischenzeitlich angenommen" });
+    const remaining = await services.library.listImportCandidates();
+    expect(remaining.map((c) => (c as { id: string }).id)).toEqual([acceptId]);
+    expect((remaining[0] as { status: string }).status).toBe("angenommen");
+    // Das per Accept entstandene KO lebt.
+    expect((await services.ko.list()).map((k) => k.title)).toContain("Kandidat 1");
   });
 
   it("die Aufräum-Copy existiert in DE, EN und NL", () => {

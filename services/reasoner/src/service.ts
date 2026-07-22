@@ -23,8 +23,10 @@ import { InMemoryReasonerPolicyRepo, type ReasonerPolicyRepo } from "./reasoner-
 import type {
   AnswerResult,
   AssistResult,
+  ConflictJudgeOutcome,
   ConflictJudgeResult,
   DescribeImageResult,
+  DuplicateJudgeOutcome,
   DuplicateJudgeResult,
   EnrichResult,
   ExtractResult,
@@ -32,6 +34,7 @@ import type {
   GroupCandidatesResult,
   ImportCriteriaResult,
   InterviewResult,
+  JudgeFailure,
   KnowledgeRef,
   ReasonerConfigStatus,
   ReasonerLocale,
@@ -952,58 +955,107 @@ export class Reasoner {
     };
   }
 
+  // WP-SHIP8-CLOSE (bens F1): Fehlerklasse eines Judge-Versuchs — timeout wird eigenständig
+  // ausgewiesen, alles andere (HTTP/Netz/Parse) ist model-error. ModelCapacityError bleibt der
+  // EINZIGE durchgereichte Fehler (Backpressure-Vertrag → 503, unverändert).
+  private static judgeFailureOf(err: unknown): JudgeFailure {
+    return classifyModelFailure(err).failureClass === "timeout" ? "model-timeout" : "model-error";
+  }
+
   // Berater-Konzept 04.07. (Stufe 2, kon-v1): „Konfliktprüfung" — urteilt inhaltlich, ob zwei
-  // Kerntexte einander widersprechen/doppeln/überholen (Cloud → lokal). Ohne echtes Modell ehrlich
-  // null (kein regelbasierter Pseudo-Detektor). Kaputte Antworten liefert schon der Provider als null.
+  // Kerntexte einander widersprechen/doppeln/überholen (Cloud → lokal).
+  // WP-SHIP8-CLOSE (bens F1): Ergebnis-Vertrag mit unterscheidbarem AUSGANG. Vorher wurden
+  // normale Provider-/HTTP-/Netz-/Parsefehler hier still zu null — für den aiCheck-Runner
+  // ununterscheidbar von „kein Modell". Jetzt: verdict (das Urteil) ODER failure (Ursache):
+  //  - kein befragbares Modell → no-model,
+  //  - Modellaufruf warf (HTTP/Netz) → model-error, Zeitlimit → model-timeout,
+  //  - Modell antwortete, aber unverwertbar (Provider parst zu null) → model-error
+  //    (ein echtes „kein_konflikt" ist ein NICHT-null-verdict — nie eine Verwechslung).
+  // Der erste Fehler der Kette benennt die Ursache; ein späterer Provider-ERFOLG gewinnt weiter.
+  async judgeConflictOutcome(
+    coreA: string,
+    coreB: string,
+    locale: ReasonerLocale = "de",
+  ): Promise<ConflictJudgeOutcome> {
+    let failure: JudgeFailure | undefined;
+    let attempted = false;
+    for (const provider of [this.primary, this.secondary]) {
+      if (provider === this.fallback || !provider.isAvailable() || !provider.judgeConflict) {
+        continue;
+      }
+      attempted = true;
+      try {
+        const result = await provider.judgeConflict(coreA, coreB, locale);
+        if (result) {
+          return { verdict: result };
+        }
+        failure = failure ?? "model-error"; // Antwort kam, war aber unverwertbar (Parse → null)
+      } catch (err) {
+        if (err instanceof ModelCapacityError) {
+          throw err; // Backpressure durchreichen (→ 503), nicht als Modellfehler still schlucken.
+        }
+        failure = failure ?? Reasoner.judgeFailureOf(err);
+        // nächstes Modell versuchen
+      }
+    }
+    if (!attempted) {
+      return { verdict: null, failure: "no-model" };
+    }
+    return { verdict: null, failure: failure ?? "model-error" };
+  }
+
+  // Bestandsfassade (Konsole/check-text/knowledge-check binden hierüber — geprüft, unverändert):
+  // exakt das alte Verhalten, null in allen Nicht-Urteil-Fällen.
   async judgeConflict(
     coreA: string,
     coreB: string,
     locale: ReasonerLocale = "de",
   ): Promise<ConflictJudgeResult | null> {
+    return (await this.judgeConflictOutcome(coreA, coreB, locale)).verdict;
+  }
+
+  // Berater-Konzept Duplikate 04.07. (Stufe D2, dup-v1): „Duplikatprüfung" — Überschneidungs-Profil
+  // zweier Kerntexte (Cloud → lokal). WP-SHIP8-CLOSE (bens F1): derselbe Ergebnis-Vertrag wie bei
+  // judgeConflictOutcome — der Ausgang (Urteil vs. Fehlerursache vs. kein Modell) ist unterscheidbar.
+  async judgeDuplicateOutcome(
+    coreA: string,
+    coreB: string,
+    locale: ReasonerLocale = "de",
+  ): Promise<DuplicateJudgeOutcome> {
+    let failure: JudgeFailure | undefined;
+    let attempted = false;
     for (const provider of [this.primary, this.secondary]) {
-      if (provider === this.fallback || !provider.isAvailable() || !provider.judgeConflict) {
+      if (provider === this.fallback || !provider.isAvailable() || !provider.judgeDuplicate) {
         continue;
       }
+      attempted = true;
       try {
-        const result = await provider.judgeConflict(coreA, coreB, locale);
+        const result = await provider.judgeDuplicate(coreA, coreB, locale);
         if (result) {
-          return result;
+          return { verdict: result };
         }
+        failure = failure ?? "model-error"; // Antwort kam, war aber unverwertbar (Parse → null)
       } catch (err) {
         if (err instanceof ModelCapacityError) {
           throw err; // Backpressure durchreichen (→ 503), nicht als Modellfehler still schlucken.
         }
+        failure = failure ?? Reasoner.judgeFailureOf(err);
         // nächstes Modell versuchen
       }
     }
-    return null;
+    if (!attempted) {
+      return { verdict: null, failure: "no-model" };
+    }
+    return { verdict: null, failure: failure ?? "model-error" };
   }
 
-  // Berater-Konzept Duplikate 04.07. (Stufe D2, dup-v1): „Duplikatprüfung" — Überschneidungs-Profil
-  // zweier Kerntexte (Cloud → lokal). Ohne echtes Modell ehrlich null. Kaputte Antworten liefert
-  // schon der Provider als null.
+  // Bestandsfassade — exakt das alte Verhalten, null in allen Nicht-Urteil-Fällen.
   async judgeDuplicate(
     coreA: string,
     coreB: string,
     locale: ReasonerLocale = "de",
   ): Promise<DuplicateJudgeResult | null> {
-    for (const provider of [this.primary, this.secondary]) {
-      if (provider === this.fallback || !provider.isAvailable() || !provider.judgeDuplicate) {
-        continue;
-      }
-      try {
-        const result = await provider.judgeDuplicate(coreA, coreB, locale);
-        if (result) {
-          return result;
-        }
-      } catch (err) {
-        if (err instanceof ModelCapacityError) {
-          throw err; // Backpressure durchreichen (→ 503), nicht als Modellfehler still schlucken.
-        }
-        // nächstes Modell versuchen
-      }
-    }
-    return null;
+    return (await this.judgeDuplicateOutcome(coreA, coreB, locale)).verdict;
   }
 
   // SCRUM-167: select bleibt synchron (reines Keyword-Ranking, kein Modell-/Netzaufruf).

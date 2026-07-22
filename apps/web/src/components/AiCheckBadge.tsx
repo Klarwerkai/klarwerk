@@ -16,13 +16,17 @@ export interface AiCheckBadgeProps {
 
 // Ursache → i18n-Key (ehrlich benannt): ohne aktives Modell wurde nichts geprueft (no-model);
 // WP-SHIP8-FINAL (bens Bedingung 2): timeout (Job-Frist ueberschritten) und queue-overflow
-// (Warteschlangen-Kappe) sind eigene, ehrliche Ursachen. Unbekannt/fehlend → model-error.
+// (Warteschlangen-Kappe) sind eigene, ehrliche Ursachen. WP-SHIP8-CLOSE (bens F1): model-timeout
+// (das MODELL antwortete nicht rechtzeitig) eigenständig. Unbekannt/fehlend → model-error.
 export function aiCheckFailureReasonKey(fallbackReason: string | undefined): string {
   if (fallbackReason === "no-model") {
     return "val.aiCheck.reason.no-model";
   }
   if (fallbackReason === "timeout") {
     return "val.aiCheck.reason.timeout";
+  }
+  if (fallbackReason === "model-timeout") {
+    return "val.aiCheck.reason.model-timeout";
   }
   if (fallbackReason === "queue-overflow") {
     return "val.aiCheck.reason.queue-overflow";

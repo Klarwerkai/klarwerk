@@ -192,6 +192,23 @@ export interface ConflictJudgeResult {
   kollision?: Kollision;
 }
 
+// WP-SHIP8-CLOSE (bens F1): schmaler Ergebnis-Vertrag der Judge-Flächen — der AUSGANG wird
+// unterscheidbar. Vorher verschluckten die Judge-Methoden normale Provider-/HTTP-/Netz-/Parse-
+// fehler intern und lieferten null — für Aufrufer ununterscheidbar von „kein Modell" oder einem
+// echten Nicht-Treffer. failure benennt die Ursache; verdict null OHNE failure gibt es nicht
+// (ein echtes „kein_konflikt"/„verschieden" ist ein NICHT-null-verdict).
+export type JudgeFailure = "model-error" | "model-timeout" | "no-model";
+
+export interface ConflictJudgeOutcome {
+  verdict: ConflictJudgeResult | null;
+  failure?: JudgeFailure;
+}
+
+export interface DuplicateJudgeOutcome {
+  verdict: DuplicateJudgeResult | null;
+  failure?: JudgeFailure;
+}
+
 // Berater-Konzept Duplikate 04.07. (Stufe D2, dup-v1): Überschneidungs-Profil zweier Kerntexte A/B.
 // Struktur passt (namensgleich) zum OverlapVerdict der Duplikat-Kernlogik — der App-Root reicht das
 // Modellurteil direkt an die (modul-reine) Erkennung weiter, ohne Umbau. Zitate werden nachgelagert

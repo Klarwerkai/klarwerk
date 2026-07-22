@@ -69,10 +69,14 @@ describe("WP-SHIP8-FINAL (a): revise waehrend laufendem Job → alter Lauf No-op
       return null;
     };
     const { app, services, userId, headers } = await appWithUser((s) => {
+      const judgeOutcome = async (): Promise<{ verdict: null }> => ({ verdict: await judge() });
       s.reasoner = {
         status: () => ({ active: true, provider: "fake-model", mode: "model" }),
         judgeConflict: judge,
         judgeDuplicate: judge,
+        // WP-SHIP8-CLOSE (bens F1): der Runner befragt den Ergebnis-Vertrag — gleiche Gate-Logik.
+        judgeConflictOutcome: judgeOutcome,
+        judgeDuplicateOutcome: judgeOutcome,
       } as unknown as Reasoner;
     });
     await createKo(app, headers, "Bestand"); // Pool leer → laeuft ohne Judge durch
@@ -100,14 +104,18 @@ describe("WP-SHIP8-FINAL (b): bens Befund — Modellfehler wird NIE zu done", ()
     const { app, services, headers } = await appWithUser((s) => {
       // Bewusst ein GEWOEHNLICHER Error (kein ModelCapacityError): der Konflikt-Kern schluckt ihn
       // in seinem judge-catch — genau der Fall, der vorher als done durchrutschte.
+      const broken = async (): Promise<never> => {
+        throw new Error("Modell kaputt");
+      };
       s.reasoner = {
         status: () => ({ active: true, provider: "fake-model", mode: "model" }),
-        judgeConflict: async () => {
-          throw new Error("Modell kaputt");
-        },
-        judgeDuplicate: async () => {
-          throw new Error("Modell kaputt");
-        },
+        judgeConflict: broken,
+        judgeDuplicate: broken,
+        // WP-SHIP8-CLOSE (bens F1): auch ueber den Ergebnis-Vertrag wirft der Fake — der Runner
+        // faengt den geworfenen Fehler wie bisher (model-error). Der PRODUKTIONSNAHE Beweis mit
+        // echtem Reasoner + Fake-Provider steht in ship8-close-aicheck.test.ts.
+        judgeConflictOutcome: broken,
+        judgeDuplicateOutcome: broken,
       } as unknown as Reasoner;
     });
     await createKo(app, headers, "Bestand");
@@ -151,6 +159,9 @@ describe("WP-SHIP8-FINAL (c+d+e): harte Grenzen — Queue-Kappe, Job-Timeout, Re
     }
     expect(worker.queuedCount()).toBe(MAX_AI_CHECK_QUEUE + 1); // 200 wartend + 1 laufend
     worker.enqueue("job-zuviel");
+    // WP-SHIP8-CLOSE (bens F3): die Eviction schließt jetzt VERSIONSBEWUSST (async) ab —
+    // einen Tick warten, bis der bedingte Abschluss geschrieben hat.
+    await tick();
     // Der AELTESTE wartende (job-0) wurde verdraengt und ehrlich markiert.
     expect(resolved).toContainEqual({ id: "job-0", reason: "queue-overflow" });
     expect(worker.has("job-0")).toBe(false);

@@ -1766,6 +1766,8 @@ const de = {
   // WP-SHIP8-FINAL (bens Bedingung 2): eigene ehrliche Ursachen für Frist und Warteschlangen-Kappe.
   "val.aiCheck.reason.timeout":
     "Die KI-Prüfung hat die Zeitgrenze überschritten und wurde abgebrochen. Erneut prüfen startet einen neuen Lauf.",
+  "val.aiCheck.reason.model-timeout":
+    "Das KI-Modell hat nicht rechtzeitig geantwortet. Erneut prüfen startet einen neuen Lauf.",
   "val.aiCheck.reason.queue-overflow":
     "Die Prüf-Warteschlange war voll — dieser Job wurde verdrängt. Erneut prüfen reiht ihn neu ein.",
   "val.feedback.condTitle": "Bedingt – Begründung für den Autor (Pflicht)",
@@ -5033,6 +5035,8 @@ const en: typeof de = {
     "The AI check stopped with an error. Retrying starts a fresh run.",
   "val.aiCheck.reason.timeout":
     "The AI check exceeded the time limit and was aborted. Retrying starts a fresh run.",
+  "val.aiCheck.reason.model-timeout":
+    "The AI model did not respond in time. Retrying starts a fresh run.",
   "val.aiCheck.reason.queue-overflow":
     "The check queue was full — this job was evicted. Retrying re-queues it.",
   "val.feedback.condTitle": "Conditional – reason for the author (required)",
@@ -8261,6 +8265,8 @@ const nl: typeof de = {
     "De AI-controle is met een fout gestopt. Opnieuw controleren start een nieuwe run.",
   "val.aiCheck.reason.timeout":
     "De AI-controle heeft de tijdslimiet overschreden en is afgebroken. Opnieuw controleren start een nieuwe run.",
+  "val.aiCheck.reason.model-timeout":
+    "Het AI-model heeft niet op tijd geantwoord. Opnieuw controleren start een nieuwe run.",
   "val.aiCheck.reason.queue-overflow":
     "De controlewachtrij was vol — deze taak is verdrongen. Opnieuw controleren plant hem opnieuw in.",
   "val.feedback.condTitle": "Voorwaardelijk – onderbouwing voor de auteur (verplicht)",

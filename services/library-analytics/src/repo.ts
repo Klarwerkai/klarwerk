@@ -20,11 +20,20 @@ export interface CandidateRepo {
   // Kandidaten löschen, die NACH dem Digest-Vergleich eingereiht wurden) — removeAll bleibt nur
   // als Werkzeug-/Test-Helfer erhalten.
   removeAll(): Promise<number>;
-  // WP-NIGHT-FIX (bens F2-TOCTOU): entfernt EXAKT die übergebenen Ids (atomar je Batch — InMemory
-  // synchron, Pg als EIN DELETE) und gibt die Zahl der tatsächlich entfernten zurück. Der
-  // Cleanup-Confirm bindet die Löschung damit an die BESTÄTIGTEN Ids der Vorschau; ein parallel
-  // eingereihter neuer Kandidat überlebt und wird in der Bilanz ehrlich ausgewiesen.
-  removeByIds(ids: readonly string[]): Promise<number>;
+  // WP-NIGHT-FIX (bens F2-TOCTOU): die Löschung ist an die BESTÄTIGTEN Ids der Vorschau gebunden;
+  // ein parallel eingereihter neuer Kandidat überlebt und wird in der Bilanz ehrlich ausgewiesen.
+  // WP-SHIP8-CLOSE (bens F2): die Löschung ist zusätzlich BEDINGT — je Eintrag reist der zum
+  // Bestätigungs-Zeitpunkt gesehene Status mit, und gelöscht wird NUR, wessen Status noch exakt
+  // so ist (Status-Bedingung IN der Löschung: Pg als EIN Statement mit RETURNING id; InMemory
+  // atomar je Item, kein await zwischen Prüfen und Löschen). Rückgabe sind die TATSÄCHLICH
+  // entfernten Ids — die Wahrheit für die Bilanz; ein Accept im letzten Fenster verliert nie.
+  removeByIds(entries: readonly ImportCandidateRemoval[]): Promise<string[]>;
+}
+
+// WP-SHIP8-CLOSE (bens F2): ein bedingter Lösch-Auftrag — id + der erwartete (bestätigte) Status.
+export interface ImportCandidateRemoval {
+  id: string;
+  status: string;
 }
 
 // WP-SHIP8-FIX (bens F3): kanonischer Provider-Anteil ALLER Import-Schlüssel (Queue-Idempotenz,
@@ -115,11 +124,14 @@ export class InMemoryCandidateRepo implements CandidateRepo {
     return Promise.resolve(removed);
   }
 
-  removeByIds(ids: readonly string[]): Promise<number> {
-    let removed = 0;
-    for (const id of ids) {
-      if (this.items.delete(id)) {
-        removed += 1;
+  // WP-SHIP8-CLOSE (bens F2): atomar je Item — Status-Prüfung und Löschung ohne await dazwischen
+  // (synchron auf der Map); ein Eintrag mit inzwischen geändertem Status überlebt.
+  removeByIds(entries: readonly ImportCandidateRemoval[]): Promise<string[]> {
+    const removed: string[] = [];
+    for (const { id, status } of entries) {
+      const candidate = this.items.get(id);
+      if (candidate && candidate.status === status && this.items.delete(id)) {
+        removed.push(id);
       }
     }
     return Promise.resolve(removed);

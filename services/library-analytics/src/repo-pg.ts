@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import type { CandidateRepo } from "./repo";
+import type { CandidateRepo, ImportCandidateRemoval } from "./repo";
 import type { ImportCandidate } from "./types";
 
 // SCRUM-157: Postgres-Adapter der Import-/Source-Review-Queue. Vollständiger Kandidat als
@@ -191,13 +191,17 @@ export class PgCandidateRepo implements CandidateRepo {
 
   // WP-NIGHT-FIX (bens F2-TOCTOU): löscht EXAKT die bestätigten Ids in EINEM atomaren DELETE —
   // ein nach dem Digest-Vergleich eingereihter neuer Kandidat wird nie mitgerissen.
-  async removeByIds(ids: readonly string[]): Promise<number> {
-    if (ids.length === 0) {
-      return 0;
+  // WP-SHIP8-CLOSE (bens F2): die Status-Bedingung steckt IN der Löschung (kein Re-Read davor,
+  // kein Fenster): gelöscht wird je Id NUR bei exakt dem bestätigten Status; RETURNING id liefert
+  // die Wahrheit für die Bilanz. Ein Accept zwischen Bestätigung und Delete verliert nie.
+  async removeByIds(entries: readonly ImportCandidateRemoval[]): Promise<string[]> {
+    if (entries.length === 0) {
+      return [];
     }
-    const res = await this.pool.query("DELETE FROM import_candidates WHERE id = ANY($1)", [
-      [...ids],
-    ]);
-    return res.rowCount ?? 0;
+    const res = await this.pool.query<{ id: string }>(
+      "DELETE FROM import_candidates c USING unnest($1::text[], $2::text[]) AS erwartet(id, status) WHERE c.id = erwartet.id AND c.data->>'status' = erwartet.status RETURNING c.id",
+      [entries.map((e) => e.id), entries.map((e) => e.status)],
+    );
+    return res.rows.map((row) => row.id);
   }
 }

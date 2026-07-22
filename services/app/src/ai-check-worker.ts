@@ -49,7 +49,9 @@ export const MAX_AI_CHECK_AUTO_RETRIES = 2;
 
 export interface AiCheckRunOutcome {
   ok: boolean;
-  fallbackReason?: "no-model" | "model-error" | "timeout" | "queue-overflow";
+  // WP-SHIP8-CLOSE (bens F1): "model-timeout" ist eine eigene, ehrliche Ursache (Zeitlimit eines
+  // Modellaufrufs — unterschieden vom Job-"timeout", der harten Frist des GANZEN Prüf-Laufs).
+  fallbackReason?: "no-model" | "model-error" | "model-timeout" | "timeout" | "queue-overflow";
 }
 
 export type AiCheckRunner = (koId: string) => Promise<AiCheckRunOutcome>;
@@ -128,6 +130,11 @@ export function createAiCheckWorker(deps: AiCheckWorkerDeps): AiCheckWorker {
   const queue: string[] = [];
   const queuedIds = new Set<string>();
   const runningIds = new Set<string>();
+  // WP-SHIP8-CLOSE (bens F3): die beim EINREIHEN erwartete Vermerk-Version je wartendem Job —
+  // die Overflow-Eviction schließt damit BEDINGT ab (dieselbe Mechanik wie der normale Abschluss).
+  // Async erfasst (enqueue bleibt feuern-und-vergessen); Lesefehler → undefined = Altbestands-
+  // Verhalten (unbedingter Abschluss).
+  const queuedVersions = new Map<string, Promise<number | undefined>>();
   // WP-SHIP8-FINAL: Auto-Retry-Zähler je KO — zählt Re-Enqueues für GENAU EINE Zielversion;
   // eine neue Version setzt den Zähler zurück (der Deckel begrenzt den revise-Loop, nicht den
   // normalen Fluss). Nur im Speicher — wie die Queue selbst (Neustart-Grenze oben).
@@ -150,22 +157,44 @@ export function createAiCheckWorker(deps: AiCheckWorkerDeps): AiCheckWorker {
       return; // dedupliziert — derselbe Job steht nie doppelt an
     }
     // WP-SHIP8-FINAL: Queue-Kappe — der ÄLTESTE wartende Job wird ehrlich als failed/
-    // queue-overflow abgeschlossen (bedingter Write: nur solange er noch pending ist) statt
-    // die Queue still wachsen zu lassen.
+    // queue-overflow abgeschlossen statt die Queue still wachsen zu lassen.
+    // WP-SHIP8-CLOSE (bens F3): der Abschluss ist VERSIONSBEWUSST — er trägt die beim Einreihen
+    // erwartete Vermerk-Version (dieselbe Mechanik wie der normale Abschluss in runOne). Ist das
+    // KO inzwischen revidiert (neuer pending-Vermerk mit neuer Version), war der verdrängte Job
+    // ohnehin obsolet → der bedingte Write ist ein No-op und der NEUE Vermerk bleibt unangetastet.
     if (queue.length >= MAX_AI_CHECK_QUEUE) {
       const evicted = queue.shift();
       if (evicted !== undefined) {
         queuedIds.delete(evicted);
-        void deps.ko
-          .resolveAiCheck(evicted, { ok: false, fallbackReason: "queue-overflow" })
-          .catch(() => false);
-        log(
-          `[KLARWERK] KI-Pruefung ko=${evicted} status=failed grund=queue-overflow (Kappe ${MAX_AI_CHECK_QUEUE})`,
-        );
+        const expectedPromise = queuedVersions.get(evicted);
+        queuedVersions.delete(evicted);
+        void (async () => {
+          const expectedVersion = await (expectedPromise ?? Promise.resolve(undefined));
+          const written = await deps.ko
+            .resolveAiCheck(
+              evicted,
+              { ok: false, fallbackReason: "queue-overflow" },
+              expectedVersion,
+            )
+            .catch(() => false);
+          log(
+            `[KLARWERK] KI-Pruefung ko=${evicted} status=failed grund=queue-overflow (Kappe ${MAX_AI_CHECK_QUEUE}) geschrieben=${written}`,
+          );
+        })();
       }
     }
     queue.push(koId);
     queuedIds.add(koId);
+    // Erwartete Vermerk-Version des frisch eingereihten Jobs erfassen (fire-and-forget; JEDER
+    // Lesefehler — auch ein synchroner — fällt ehrlich auf undefined = versionsungebundener
+    // Abschluss zurück, das Altbestands-Verhalten).
+    queuedVersions.set(
+      koId,
+      Promise.resolve()
+        .then(() => deps.ko.get(koId))
+        .then((ko) => ko?.aiCheck?.koVersion)
+        .catch(() => undefined),
+    );
   };
 
   // true = Auto-Re-Enqueue für diese Zielversion ist noch im Deckel (und wird gezählt).
@@ -242,6 +271,7 @@ export function createAiCheckWorker(deps: AiCheckWorkerDeps): AiCheckWorker {
     while (active < AI_CHECK_CONCURRENCY && queue.length > 0) {
       const koId = queue.shift() as string;
       queuedIds.delete(koId);
+      queuedVersions.delete(koId); // der Lauf (runOne) liest seine Erwartung selbst frisch
       runningIds.add(koId);
       active += 1;
       void runOne(koId)
@@ -295,28 +325,42 @@ export interface AiCheckRunnerDeps {
 // Die Erkennung läuft IMMER — auch ohne Modell: der deterministische Duplikat-Anteil (sehr hohe
 // Textdeckung) braucht kein Modell und lief auch im alten synchronen Pfad ohne eines.
 //
-// WP-SHIP8-FINAL (bens Bedingung 2, Befund "Modellfehler als done"): der Status kommt aus dem
+// WP-SHIP8-FINAL (bens Bedingung 2) + WP-SHIP8-CLOSE (bens F1): der Status kommt aus dem
 // TATSÄCHLICHEN Ausgang der Läufe, nie aus status().active allein. Die detect*-Kerne schlucken
-// Judge-Fehler intern (conflicts: jeden; overlaps: alle außer ModelCapacityError) — deshalb
-// beobachtet der Runner die Modell-Urteile DIREKT am Judge (schmaler Wrapper, Fehler werden
-// unverändert weitergeworfen, das Kern-Verhalten bleibt exakt gleich): irgendein geworfener
-// Judge-Fehler ODER ein über den Log-Haken gemeldeter Erkennungsfehler → failed/model-error.
-// Ohne aktives Modell lief nur der deterministische Anteil → ehrlich failed/no-model. Nur ein
-// Lauf ohne jeden Fehler ist done.
+// Judge-Fehler intern — und der Reasoner selbst verschluckte VOR F1 normale Provider-/HTTP-/
+// Netz-/Parsefehler zu null (nur werfende Fehler waren beobachtbar; genau bens Befund). Deshalb
+// befragt der Runner jetzt den ERGEBNIS-VERTRAG der Judge-Flächen (judge*Outcome: verdict ODER
+// failure-Ursache): irgendein failure in irgendeinem Lauf → aiCheck failed/<Ursache>
+// (model-error bzw. model-timeout; der deterministische Anteil läuft weiter, Teilergebnisse
+// bleiben stehen — nur der Status ist ehrlich failed). Ein GEWORFENER Fehler (ModelCapacityError-
+// Backpressure, Erkennungsfehler über den Log-Haken) zählt weiter als model-error. Ohne aktives
+// Modell lief nur der deterministische Anteil → ehrlich failed/no-model. Nur ein Lauf ohne
+// jeden Fehler ist done. Die detect*-Kerne sehen unverändert die alte judge-Fläche
+// (verdict | null) — keine Kernlogik-Änderung, nur Beobachtung.
 export function createAiCheckRunner(deps: AiCheckRunnerDeps): AiCheckRunner {
   return async (koId: string): Promise<AiCheckRunOutcome> => {
     let failure: unknown = null;
+    let judgeFailure: "model-error" | "model-timeout" | null = null;
     const captureFailure = (msg: string, err: unknown): void => {
       failure = failure ?? err ?? new Error(msg);
     };
+    const noteJudgeFailure = (reported: string | undefined): void => {
+      if (reported === "model-error" || reported === "model-timeout") {
+        judgeFailure = judgeFailure ?? reported;
+      }
+      // "no-model" trägt der status().active-Check unten — kein Fehler eines Modells.
+    };
     // Schmaler Beobachtungs-Wrapper NUR über die zwei Judge-Flächen, die die detect*-Pfade
-    // nutzen — kein Reasoner-Umbau, kein verändertes Routing (der echte Reasoner urteilt).
+    // nutzen — kein Reasoner-Umbau, kein verändertes Routing (der echte Reasoner urteilt über
+    // den F1-Ergebnis-Vertrag; die Kerne bekommen weiter verdict | null).
     // Der Struktur-Cast ist bewusst: die detect*-Deps tippen `Reasoner`, brauchen aber genau
     // diese zwei Methoden.
     const observedReasoner = {
       judgeConflict: async (a: string, b: string) => {
         try {
-          return await deps.reasoner.judgeConflict(a, b);
+          const outcome = await deps.reasoner.judgeConflictOutcome(a, b);
+          noteJudgeFailure(outcome.failure);
+          return outcome.verdict;
         } catch (err) {
           failure = failure ?? err;
           throw err;
@@ -324,7 +368,9 @@ export function createAiCheckRunner(deps: AiCheckRunnerDeps): AiCheckRunner {
       },
       judgeDuplicate: async (a: string, b: string) => {
         try {
-          return await deps.reasoner.judgeDuplicate(a, b);
+          const outcome = await deps.reasoner.judgeDuplicateOutcome(a, b);
+          noteJudgeFailure(outcome.failure);
+          return outcome.verdict;
         } catch (err) {
           failure = failure ?? err;
           throw err;
@@ -347,6 +393,9 @@ export function createAiCheckRunner(deps: AiCheckRunnerDeps): AiCheckRunner {
       },
       captureFailure,
     );
+    if (judgeFailure !== null) {
+      return { ok: false, fallbackReason: judgeFailure };
+    }
     if (failure !== null) {
       return { ok: false, fallbackReason: "model-error" };
     }

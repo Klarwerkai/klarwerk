@@ -28,10 +28,16 @@ type Reasoner = AppServices["reasoner"];
 // Fake-Reasoner mit AKTIVEM Modell: nur die drei vom Pruef-Pfad genutzten Flaechen (status +
 // beide judge-Funktionen) — der uebrige Reasoner-Vertrag wird in diesen Tests nicht beruehrt.
 function fakeModelReasoner(judge: () => Promise<null>): Reasoner {
+  // WP-SHIP8-CLOSE (bens F1): der Runner befragt den Ergebnis-Vertrag (judge*Outcome) — der Fake
+  // delegiert auf denselben judge (verdict null ohne failure = sauberer Nicht-Treffer; ein
+  // geworfener Fehler wirft weiter, exakt wie der echte ModelCapacityError-Durchreich-Pfad).
+  const outcome = async (): Promise<{ verdict: null }> => ({ verdict: await judge() });
   return {
     status: () => ({ active: true, provider: "fake-model", mode: "model" }),
     judgeConflict: judge,
     judgeDuplicate: judge,
+    judgeConflictOutcome: outcome,
+    judgeDuplicateOutcome: outcome,
   } as unknown as Reasoner;
 }
 

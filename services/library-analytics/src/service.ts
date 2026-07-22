@@ -318,38 +318,53 @@ export class LibraryService {
     }
     // (3) Der unwiderrufliche Teil kommt ZULETZT und nur bei vollständig guter KO-Phase.
     // WP-NIGHT-FIX (bens F2-TOCTOU): gelöscht werden EXAKT die BESTÄTIGTEN Ids der Vorschau
-    // (removeByIds, atomar) — NICHT die ganze Queue. Ein Kandidat, der zwischen Digest-Vergleich
-    // und Löschung eingereiht wurde, war nie Teil der Bestätigung: er überlebt und wird unten
-    // ehrlich als newCandidates ausgewiesen.
-    // WP-SHIP8-FINAL (bens Bedingung 3): zusätzlich je Kandidat FAIL-CLOSED gegen parallele
-    // Reviews — gelöscht wird NUR, wessen Status seit der Bestätigung UNVERÄNDERT ist. Ein
-    // zwischenzeitlich angenommener/bearbeiteter Kandidat überlebt (sein Review-Ergebnis und
-    // ein per accept entstandenes KO gehen nie verloren) und steht ehrlich in der Bilanz.
+    // — NICHT die ganze Queue. Ein Kandidat, der zwischen Digest-Vergleich und Löschung
+    // eingereiht wurde, war nie Teil der Bestätigung: er überlebt (newCandidates unten).
+    // WP-SHIP8-FINAL (Bedingung 3) + WP-SHIP8-CLOSE (bens F2, Restfenster geschlossen): die
+    // Status-Bedingung steckt jetzt IN der Löschung selbst (removeByIds mit erwartetem Status je
+    // Id — Pg: EIN bedingtes DELETE mit RETURNING; InMemory: atomar je Item). Der Re-Read davor
+    // ist NUR noch Vorab-Bilanz („schon weg"); die WAHRHEIT ist das bedingte Delete-Ergebnis:
+    // ein Accept im letzten Fenster zwischen Re-Read und Delete verliert nie — der Kandidat
+    // überlebt und steht ehrlich in der Bilanz.
     let removedCandidates = 0;
     if (skipped.length === 0) {
-      const currentStatuses = new Map(
-        (await this.candidates.all()).map((c) => [c.id, c.status as string]),
-      );
-      const deletable: string[] = [];
+      const preRead = new Map((await this.candidates.all()).map((c) => [c.id, c.status as string]));
+      const attempts: { id: string; status: string }[] = [];
       for (const id of candidateIds) {
-        const nowStatus = currentStatuses.get(id);
-        if (nowStatus === undefined) {
+        if (!preRead.has(id)) {
           continue; // schon weg — nichts zu löschen
         }
         const confirmedStatus = candidateStatuses.get(id);
-        if (nowStatus !== confirmedStatus) {
+        if (confirmedStatus !== undefined) {
+          attempts.push({ id, status: confirmedStatus });
+        }
+      }
+      const removedIds = attempts.length > 0 ? await this.candidates.removeByIds(attempts) : [];
+      removedCandidates = removedIds.length;
+      // Ehrliche Bilanz für alles, was das BEDINGTE Delete NICHT entfernt hat: der Status hat
+      // sich seit der Bestätigung geändert. Für die Begründung den echten Zustand nachlesen
+      // (best-effort — ohne Nachlesen konservativ „zwischenzeitlich bearbeitet").
+      const removedSet = new Set(removedIds);
+      const survivors = attempts.filter((attempt) => !removedSet.has(attempt.id));
+      if (survivors.length > 0) {
+        let afterStatuses = new Map<string, string>();
+        try {
+          afterStatuses = new Map(
+            (await this.candidates.all()).map((c) => [c.id, c.status as string]),
+          );
+        } catch {
+          // Nachlesen scheiterte — die konservative Begründung unten bleibt.
+        }
+        for (const survivor of survivors) {
           skipped.push({
-            id,
+            id: survivor.id,
             reason:
-              nowStatus === "angenommen"
+              afterStatuses.get(survivor.id) === "angenommen"
                 ? "zwischenzeitlich angenommen"
                 : "zwischenzeitlich bearbeitet",
           });
-          continue;
         }
-        deletable.push(id);
       }
-      removedCandidates = deletable.length > 0 ? await this.candidates.removeByIds(deletable) : 0;
     }
     // Ehrliche Bilanz der Nachzügler: alles, was jetzt in der Queue steht und NICHT Teil der
     // bestätigten Vorschau war (nach der Löschung sind das genau die Neuzugänge seither).
