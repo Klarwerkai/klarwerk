@@ -14,6 +14,7 @@ import {
   importStepStatus,
   maxStage,
   rewindForNewGeneration,
+  rewindStage,
 } from "../lib/importStepper";
 import { Card } from "./ui";
 
@@ -21,12 +22,17 @@ interface ImportCockpitContextValue {
   stage: ImportStage;
   reach: (stage: ImportStage) => void;
   beginGeneration: (generation: string) => void;
+  // WP-SHIP8-CLOSE-2 (bens F2): Rücksprung innerhalb der AKTUELLEN Generation (nur abwärts) —
+  // für fehlgeschlagene/abgebrochene Übernahme-Läufe (kein Haken auf Schritt 5, kein hängendes
+  // „applying"). Dieselbe rewind-Mechanik wie der Generationswechsel, keine neue Statusmaschine.
+  rewind: (stage: ImportStage) => void;
 }
 
 const ImportCockpitContext = createContext<ImportCockpitContextValue>({
   stage: "start",
   reach: () => {},
   beginGeneration: () => {},
+  rewind: () => {},
 });
 
 export function ImportCockpitProvider({ children }: { children: ReactNode }): JSX.Element {
@@ -58,11 +64,25 @@ export function ImportCockpitProvider({ children }: { children: ReactNode }): JS
       }),
     [],
   );
+  const rewind = useCallback(
+    (target: ImportStage) =>
+      setState((prev) => ({
+        stage: rewindStage(prev.stage, target),
+        generation: prev.generation,
+      })),
+    [],
+  );
   const value = useMemo(
-    () => ({ stage: state.stage, reach, beginGeneration }),
-    [state.stage, reach, beginGeneration],
+    () => ({ stage: state.stage, reach, beginGeneration, rewind }),
+    [state.stage, reach, beginGeneration, rewind],
   );
   return <ImportCockpitContext.Provider value={value}>{children}</ImportCockpitContext.Provider>;
+}
+
+// WP-SHIP8-CLOSE-2 (bens F2): Rücksprung-Hook für Bausteine, deren Lauf scheitert/abbricht —
+// meldet den fachlich korrekten Schritt der aktuellen Generation zurück (nie aufwärts).
+export function useRewindImportStage(): (stage: ImportStage) => void {
+  return useContext(ImportCockpitContext).rewind;
 }
 
 export function useReportImportStage(): (stage: ImportStage) => void {

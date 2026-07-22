@@ -1,4 +1,4 @@
-import type { ImportCandidate } from "./types";
+import { type ImportCandidate, LibraryError, type ReviewStatus } from "./types";
 
 // SCRUM-157: Persistenz-Schnittstelle der Import-/Source-Review-Queue. Einziger Unterschied
 // zwischen In-Memory (Dev/Test) und Postgres. Insertionsreihenfolge bleibt erhalten.
@@ -11,6 +11,16 @@ export interface CandidateRepo {
   // Doppel-Kandidaten an (der app-seitige seen/pending-Check ist TOCTOU-anfällig, dieser Insert nicht).
   insertIfAbsent(candidate: ImportCandidate): Promise<boolean>;
   findById(id: string): Promise<ImportCandidate | undefined>;
+  // WP-SHIP8-CLOSE-2 (bens F1): ATOMARER Status-Claim (CAS) — setzt den Status NUR, wenn er noch
+  // exakt `from` ist (Pg: EIN bedingtes UPDATE mit RETURNING; InMemory: synchron, kein await
+  // zwischen Prüfen und Setzen). Rückgabe ist der geclaimte Kandidat (Stand NACH dem CAS) oder
+  // undefined, wenn der CAS nicht griff (Status geändert/Kandidat weg) — der Aufrufer bricht
+  // dann ehrlich ab. Damit claimt jede Review-Aktion den Kandidaten, BEVOR sie arbeitet; das
+  // bedingte Cleanup-Delete (removeByIds, erwarteter Status) kann einen geclaimten Kandidaten
+  // nicht mehr treffen.
+  claim(id: string, from: ReviewStatus, to: ReviewStatus): Promise<ImportCandidate | undefined>;
+  // WP-SHIP8-CLOSE-2 (bens F1): 0 getroffene Zeilen sind ein KONFLIKT (LibraryError "CONFLICT"),
+  // kein stilles Ok — der Kandidat ist zwischenzeitlich verschwunden, der Aufrufer muss es sehen.
   update(candidate: ImportCandidate): Promise<void>;
   all(): Promise<ImportCandidate[]>;
   // WP-D-CLEAN (Pedis Testdaten-Aufräumen): entfernt ALLE Kandidaten (jeden Status) aus der Queue
@@ -109,7 +119,25 @@ export class InMemoryCandidateRepo implements CandidateRepo {
     return Promise.resolve(this.items.get(id));
   }
 
+  // WP-SHIP8-CLOSE-2 (bens F1): synchron auf der Map — Status-Prüfung und Set ohne await
+  // dazwischen (dasselbe Atomaritäts-Muster wie removeByIds).
+  claim(id: string, from: ReviewStatus, to: ReviewStatus): Promise<ImportCandidate | undefined> {
+    const candidate = this.items.get(id);
+    if (!candidate || candidate.status !== from) {
+      return Promise.resolve(undefined);
+    }
+    candidate.status = to;
+    return Promise.resolve(candidate);
+  }
+
   update(candidate: ImportCandidate): Promise<void> {
+    // WP-SHIP8-CLOSE-2 (bens F1): ein verschwundener Kandidat wird NICHT still neu angelegt —
+    // derselbe ehrliche Konflikt wie beim Pg-Adapter (0 Zeilen getroffen).
+    if (!this.items.has(candidate.id)) {
+      return Promise.reject(
+        new LibraryError("CONFLICT", "Importkandidat existiert nicht mehr — nicht gespeichert."),
+      );
+    }
     this.items.set(candidate.id, candidate);
     return Promise.resolve();
   }

@@ -477,7 +477,9 @@ export interface ImportItemInput {
   textCodec?: "decoded";
 }
 
-export type ReviewStatus = "neu" | "angenommen" | "abgelehnt" | "info-angefragt";
+// WP-SHIP8-CLOSE-2 (bens F1): "in_bearbeitung" = transienter Claim einer LAUFENDEN Review-Aktion
+// (Server-CAS) — in Listen nur für Augenblicke (bzw. nach einem Absturz) sichtbar.
+export type ReviewStatus = "neu" | "in_bearbeitung" | "angenommen" | "abgelehnt" | "info-angefragt";
 export type ReviewAction = "accept" | "reject" | "info";
 
 export interface ImportCandidate {

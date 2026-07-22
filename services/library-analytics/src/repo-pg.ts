@@ -1,6 +1,6 @@
 import type { Pool } from "pg";
 import type { CandidateRepo, ImportCandidateRemoval } from "./repo";
-import type { ImportCandidate } from "./types";
+import { type ImportCandidate, LibraryError, type ReviewStatus } from "./types";
 
 // SCRUM-157: Postgres-Adapter der Import-/Source-Review-Queue. Vollständiger Kandidat als
 // JSONB (Status/Duplicate/Note/koId/createdAt bleiben erhalten). Additive Tabelle.
@@ -167,11 +167,34 @@ export class PgCandidateRepo implements CandidateRepo {
     return res.rows[0]?.data;
   }
 
+  // WP-SHIP8-CLOSE-2 (bens F1): ATOMARER Status-CAS als EIN bedingtes UPDATE — kein Fenster
+  // zwischen Lesen und Schreiben. RETURNING data ist der Stand NACH dem Claim; 0 Zeilen →
+  // undefined (Status geändert oder Kandidat weg), der Aufrufer bricht ehrlich ab.
+  async claim(
+    id: string,
+    from: ReviewStatus,
+    to: ReviewStatus,
+  ): Promise<ImportCandidate | undefined> {
+    const res = await this.pool.query<CandidateRow>(
+      "UPDATE import_candidates SET data = jsonb_set(data, '{status}', to_jsonb($3::text)) WHERE id=$1 AND data->>'status'=$2 RETURNING data",
+      [id, from, to],
+    );
+    return res.rows[0]?.data;
+  }
+
   async update(candidate: ImportCandidate): Promise<void> {
-    await this.pool.query("UPDATE import_candidates SET data=$2 WHERE id=$1", [
+    const res = await this.pool.query("UPDATE import_candidates SET data=$2 WHERE id=$1", [
       candidate.id,
       JSON.stringify(candidate),
     ]);
+    // WP-SHIP8-CLOSE-2 (bens F1): 0 Zeilen = der Kandidat ist zwischenzeitlich verschwunden —
+    // EHRLICHER Konflikt statt stillem Ok (der Aufrufer darf keinen Erfolg annehmen).
+    if ((res.rowCount ?? 0) === 0) {
+      throw new LibraryError(
+        "CONFLICT",
+        "Importkandidat existiert nicht mehr — nicht gespeichert.",
+      );
+    }
   }
 
   async all(): Promise<ImportCandidate[]> {

@@ -154,13 +154,14 @@ describe("WP-SHIP8-FINAL (c+d+e): harte Grenzen — Queue-Kappe, Job-Timeout, Re
     });
     worker.enqueue("job-running");
     await tick(); // der Job belegt jetzt den Slot
+    // WP-SHIP8-CLOSE-2 (bens F3): die Zielversion reist SYNCHRON mit jedem Job — ohne sie wäre
+    // die Eviction FAIL-CLOSED (kein Write; eigener Test in ship8-close-aicheck).
     for (let i = 0; i < MAX_AI_CHECK_QUEUE; i += 1) {
-      worker.enqueue(`job-${i}`);
+      worker.enqueue(`job-${i}`, 1);
     }
     expect(worker.queuedCount()).toBe(MAX_AI_CHECK_QUEUE + 1); // 200 wartend + 1 laufend
-    worker.enqueue("job-zuviel");
-    // WP-SHIP8-CLOSE (bens F3): die Eviction schließt jetzt VERSIONSBEWUSST (async) ab —
-    // einen Tick warten, bis der bedingte Abschluss geschrieben hat.
+    worker.enqueue("job-zuviel", 1);
+    // Der bedingte Abschluss schreibt asynchron — einen Tick warten.
     await tick();
     // Der AELTESTE wartende (job-0) wurde verdraengt und ehrlich markiert.
     expect(resolved).toContainEqual({ id: "job-0", reason: "queue-overflow" });

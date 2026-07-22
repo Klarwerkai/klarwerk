@@ -135,7 +135,12 @@ function evictionHarness() {
   const state = new Map<string, FakeKoState>();
   const resolves: { id: string; expected: number | undefined; written: boolean }[] = [];
   const fakeKo = {
-    get: async (id: string) => state.get(id),
+    // WP-SHIP8-CLOSE-2 (bens F3): get WIRFT immer — der Eviction-Pfad darf NIE (nach)lesen
+    // (die Zielversion reist synchron mit dem Job). Damit ist auch bens Szenario „blockierter
+    // Read + Revision vor Auflösung" konstruktionsbedingt weg; runOne fängt den Wurf selbst ab.
+    get: async () => {
+      throw new Error("ko.get darf im Eviction-Pfad nie laufen");
+    },
     markAiCheckPending: async () => true,
     // Spiegel der echten bedingten Mechanik (repo.resolveAiCheck): nur pending, und bei gesetzter
     // Erwartung nur, wenn Vermerk-Version UND Inhaltsversion noch exakt stimmen.
@@ -178,17 +183,18 @@ describe("WP-SHIP8-CLOSE F3: Queue-Eviction ist versionsbewusst (bedingter Absch
     });
     worker.enqueue("job-running");
     await tick(); // der Blocker belegt den Slot
-    worker.enqueue("job-alt");
-    await tick(); // die Versions-Erfassung des Einreihens (async get) ist damit abgeschlossen
+    // WP-SHIP8-CLOSE-2 (bens F3): die Zielversion des Vermerks reist SYNCHRON mit dem Job —
+    // kein async get mehr (fakeKo.get würfe); ein blockierter/verspäteter Read existiert nicht.
+    worker.enqueue("job-alt", 1);
     // ZWISCHENZEITLICH revidiert: neuer pending-Vermerk für die NEUE Inhaltsversion 2.
     state.set("job-alt", {
       version: 2,
       aiCheck: { status: "pending", requestedAt: "2026-07-22T06:01:00.000Z", koVersion: 2 },
     });
     for (let i = 0; i < MAX_AI_CHECK_QUEUE - 1; i += 1) {
-      worker.enqueue(`fuel-${i}`);
+      worker.enqueue(`fuel-${i}`, 1);
     }
-    worker.enqueue("job-zuviel"); // Überlauf → der ÄLTESTE wartende (job-alt) wird verdrängt
+    worker.enqueue("job-zuviel", 1); // Überlauf → der ÄLTESTE wartende (job-alt) wird verdrängt
     await tick();
     // Der bedingte Abschluss trug die ENQUEUE-Erwartung (Version 1) → No-op am neuen Vermerk.
     expect(resolves).toContainEqual({ id: "job-alt", expected: 1, written: false });
@@ -205,17 +211,40 @@ describe("WP-SHIP8-CLOSE F3: Queue-Eviction ist versionsbewusst (bedingter Absch
     });
     worker.enqueue("job-running");
     await tick();
-    worker.enqueue("job-treu");
-    await tick();
+    worker.enqueue("job-treu", 1);
     for (let i = 0; i < MAX_AI_CHECK_QUEUE - 1; i += 1) {
-      worker.enqueue(`fuel-${i}`);
+      worker.enqueue(`fuel-${i}`, 1);
     }
-    worker.enqueue("job-zuviel");
+    worker.enqueue("job-zuviel", 1);
     await tick();
     expect(resolves).toContainEqual({ id: "job-treu", expected: 1, written: true });
     expect(state.get("job-treu")?.aiCheck.status).toBe("failed");
     expect((state.get("job-treu")?.aiCheck as { fallbackReason?: string }).fallbackReason).toBe(
       "queue-overflow",
     );
+  });
+
+  it("WP-SHIP8-CLOSE-2 (bens F3a): OHNE bekannte Zielversion ist die Eviction FAIL-CLOSED — KEIN Status-Write, auch kein unversionierter", async () => {
+    const { state, resolves, worker } = evictionHarness();
+    state.set("job-blind", {
+      version: 2,
+      aiCheck: { status: "pending", requestedAt: "2026-07-22T06:01:00.000Z", koVersion: 2 },
+    });
+    worker.enqueue("job-running");
+    await tick();
+    // Einreihen OHNE Version (Fehler-/Altbestandskante — früher las der async-Pfad nach und
+    // fiel bei einem Lesefehler auf den UNVERSIONIERTEN Abschluss zurück; fakeKo.get wirft).
+    worker.enqueue("job-blind");
+    for (let i = 0; i < MAX_AI_CHECK_QUEUE - 1; i += 1) {
+      worker.enqueue(`fuel-${i}`, 1);
+    }
+    worker.enqueue("job-zuviel", 1); // Überlauf → job-blind wird verdrängt
+    await tick();
+    // FAIL-CLOSED: gar KEIN resolveAiCheck für den verdrängten Job — der pending-Vermerk der
+    // Revision bleibt unangetastet; der Lazy-Re-Enqueue holt den Job später ehrlich nach.
+    expect(resolves.filter((r) => r.id === "job-blind")).toEqual([]);
+    expect(state.get("job-blind")?.aiCheck.status).toBe("pending");
+    expect(state.get("job-blind")?.aiCheck.koVersion).toBe(2);
+    expect(worker.has("job-blind")).toBe(false);
   });
 });

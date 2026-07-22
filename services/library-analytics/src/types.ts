@@ -49,7 +49,11 @@ export interface SourceAdapter {
 }
 
 // SCRUM-116: Import-/Source-Review-Kandidaten (JSON-Re-Import mit Review-Queue).
-export type ReviewStatus = "neu" | "angenommen" | "abgelehnt" | "info-angefragt";
+// WP-SHIP8-CLOSE-2 (bens F1): "in_bearbeitung" ist der TRANSIENTE Claim-Status einer laufenden
+// Review-Aktion (Status-CAS 'neu' → 'in_bearbeitung' am Aktions-BEGINN). Er schützt den
+// Kandidaten vor dem bedingten Cleanup-Delete, solange der Accept noch im KO-Schritt hängt;
+// die Aktion persistiert am Ende den echten Endstatus (bzw. gibt den Claim bei Fehlern zurück).
+export type ReviewStatus = "neu" | "in_bearbeitung" | "angenommen" | "abgelehnt" | "info-angefragt";
 export type ReviewAction = "accept" | "reject" | "info";
 
 export interface ImportCandidate {
@@ -66,7 +70,14 @@ export interface ImportCandidate {
 
 // WP-SHIP8-FIX (bens F2): CLEANUP_DRIFT = die bestätigte Aufräum-Zielmenge (Vorschau-Digest)
 // stimmt nicht mehr mit dem Bestand überein — die Route antwortet 409, nichts wird verändert.
-export type LibraryErrorCode = "NOT_FOUND" | "ALREADY_REVIEWED" | "BAD_REQUEST" | "CLEANUP_DRIFT";
+// WP-SHIP8-CLOSE-2 (bens F1): CONFLICT = ein Persistenz-Write traf 0 Zeilen (der Kandidat ist
+// zwischenzeitlich verschwunden) — ehrlicher Abbruch statt stillem Ok.
+export type LibraryErrorCode =
+  | "NOT_FOUND"
+  | "ALREADY_REVIEWED"
+  | "BAD_REQUEST"
+  | "CLEANUP_DRIFT"
+  | "CONFLICT";
 
 export class LibraryError extends Error {
   readonly code: LibraryErrorCode;

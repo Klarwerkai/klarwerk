@@ -335,9 +335,17 @@ export class LibraryService {
           continue; // schon weg — nichts zu löschen
         }
         const confirmedStatus = candidateStatuses.get(id);
-        if (confirmedStatus !== undefined) {
-          attempts.push({ id, status: confirmedStatus });
+        if (confirmedStatus === undefined) {
+          continue;
         }
+        // WP-SHIP8-CLOSE-2 (bens F1): ein GECLAIMTER Kandidat (Review-Aktion läuft gerade) ist
+        // NIE löschbar — auch wenn der Claim schon zur Bestätigungszeit sichtbar war. Er steht
+        // ehrlich in der Bilanz; ein späterer Lauf räumt nach neuer Vorschau nach.
+        if (confirmedStatus === "in_bearbeitung") {
+          skipped.push({ id, reason: "in Bearbeitung" });
+          continue;
+        }
+        attempts.push({ id, status: confirmedStatus });
       }
       const removedIds = attempts.length > 0 ? await this.candidates.removeByIds(attempts) : [];
       removedCandidates = removedIds.length;
@@ -393,39 +401,68 @@ export class LibraryService {
   }
 
   // SCRUM-116: Review-Aktion. accept → echtes KO (außer Dublette, dann übersprungen).
+  // WP-SHIP8-CLOSE-2 (bens F1): die Aktion CLAIMT den Kandidaten ZUERST storage-atomar
+  // (Status-CAS 'neu' → 'in_bearbeitung'). Damit ist bens Restfenster zu: ein Accept, der noch
+  // in acceptToKo hängt, ist in der DB nicht mehr 'neu' — das bedingte Cleanup-Delete
+  // (removeByIds mit dem bestätigten Status) trifft ihn nicht, KO+Audit+Queue bleiben konsistent.
+  // Schlägt der CAS fehl (0 Zeilen), bricht die Aktion EHRLICH ab, BEVOR irgendetwas passiert
+  // (kein KO, kein Audit): NOT_FOUND wenn der Kandidat weg ist, sonst ALREADY_REVIEWED (auch:
+  // parallel geclaimt). Scheitert die Aktion NACH dem Claim, wird der Claim best-effort auf
+  // 'neu' zurückgegeben — der Reviewer kann wiederholen (acceptToKo ist per Quell-Anker
+  // idempotent); scheitert auch das, bleibt der Kandidat sichtbar 'in_bearbeitung' statt
+  // still zu verschwinden.
   async reviewImportCandidate(
     id: string,
     action: ReviewAction,
     actor = "system",
     note?: string,
   ): Promise<ImportCandidate> {
-    const candidate = await this.candidates.findById(id);
+    const candidate = await this.candidates.claim(id, "neu", "in_bearbeitung");
     if (!candidate) {
-      throw new LibraryError("NOT_FOUND", "Importkandidat nicht gefunden.");
-    }
-    if (candidate.status !== "neu") {
-      throw new LibraryError("ALREADY_REVIEWED", "Kandidat wurde bereits bearbeitet.");
-    }
-    if (action === "reject") {
-      candidate.status = "abgelehnt";
-    } else if (action === "info") {
-      candidate.status = "info-angefragt";
-      candidate.note = note?.trim() ? note.trim() : null;
-    } else {
-      // accept: nicht-Dublette → echtes KO im normalen Wissensobjekt-/Validierungsfluss.
-      candidate.status = "angenommen";
-      if (!candidate.duplicate) {
-        // SCRUM-515-Vervollständigung: ein PERSISTIERTER Alt-Kandidat (vor 515 eingereiht; PgCandidateRepo
-        // liefert das JSONB unverändert) wurde bei createImportCandidates evtl. nie sanitisiert. Unmittelbar
-        // VOR acceptToKo erneut sanitisieren — sonst würde ein ungültiger Altwert im Re-Sync-Ranking auf
-        // „intern" normalisiert (fail-open) bzw. bei der Erstanlage hart abgelehnt. Das bereinigte Item wird
-        // MIT persistiert (nicht nur transient), damit die Queue keinen ungültigen Wert behält.
-        candidate.item = this.withSanitizedConfidentiality(candidate.item);
-        candidate.koId = await this.acceptToKo(candidate.item, actor);
+      const current = await this.candidates.findById(id);
+      if (!current) {
+        throw new LibraryError("NOT_FOUND", "Importkandidat nicht gefunden.");
       }
+      throw new LibraryError(
+        "ALREADY_REVIEWED",
+        "Kandidat wurde bereits bearbeitet oder wird gerade bearbeitet.",
+      );
     }
-    // SCRUM-157: geänderten Status/koId/Note (+ bereinigtes Item, 515) persistieren (kein stiller Verlust).
-    await this.candidates.update(candidate);
+    try {
+      if (action === "reject") {
+        candidate.status = "abgelehnt";
+      } else if (action === "info") {
+        candidate.status = "info-angefragt";
+        candidate.note = note?.trim() ? note.trim() : null;
+      } else {
+        // accept: nicht-Dublette → echtes KO im normalen Wissensobjekt-/Validierungsfluss.
+        if (!candidate.duplicate) {
+          // SCRUM-515-Vervollständigung: ein PERSISTIERTER Alt-Kandidat (vor 515 eingereiht; PgCandidateRepo
+          // liefert das JSONB unverändert) wurde bei createImportCandidates evtl. nie sanitisiert. Unmittelbar
+          // VOR acceptToKo erneut sanitisieren — sonst würde ein ungültiger Altwert im Re-Sync-Ranking auf
+          // „intern" normalisiert (fail-open) bzw. bei der Erstanlage hart abgelehnt. Das bereinigte Item wird
+          // MIT persistiert (nicht nur transient), damit die Queue keinen ungültigen Wert behält.
+          candidate.item = this.withSanitizedConfidentiality(candidate.item);
+          candidate.koId = await this.acceptToKo(candidate.item, actor);
+        }
+        // Endstatus erst NACH dem gelungenen KO-Schritt — ein Fehlschlag lässt den Kandidaten
+        // im Claim-Status (und die Rückgabe unten stellt 'neu' wieder her).
+        candidate.status = "angenommen";
+      }
+      // SCRUM-157: geänderten Status/koId/Note (+ bereinigtes Item, 515) persistieren (kein stiller
+      // Verlust). WP-SHIP8-CLOSE-2: update wirft bei 0 Zeilen CONFLICT — nie stilles Ok.
+      await this.candidates.update(candidate);
+    } catch (err) {
+      try {
+        await this.candidates.claim(id, "in_bearbeitung", "neu");
+      } catch {
+        // PII-frei: der Kandidat bleibt sichtbar 'in_bearbeitung' — kein stiller Verlust.
+        process.stderr.write(
+          `[KLARWERK] Review-Claim-Rueckgabe fehlgeschlagen (kandidat=${id}) — Status bleibt in_bearbeitung.\n`,
+        );
+      }
+      throw err;
+    }
     await this.audit?.record({
       actor,
       action: `import.candidate-${action}`,

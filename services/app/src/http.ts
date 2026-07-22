@@ -50,6 +50,8 @@ const STATUS_BY_CODE: Record<string, number> = {
   EMAIL_TAKEN: 409,
   // WP-SHIP8-FIX (bens F2): Aufräum-Bestätigung passt nicht mehr zur Vorschau-Zielmenge → Konflikt.
   CLEANUP_DRIFT: 409,
+  // WP-SHIP8-CLOSE-2 (bens F1): Persistenz-Write traf 0 Zeilen (Objekt zwischenzeitlich weg).
+  CONFLICT: 409,
 };
 
 export function sendError(reply: FastifyReply, error: unknown): void {

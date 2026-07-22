@@ -56,6 +56,14 @@ export function rewindForNewGeneration(stage: ImportStage): ImportStage {
   return STAGE_RANK[stage] > STAGE_RANK.explored ? "explored" : stage;
 }
 
+// WP-SHIP8-CLOSE-2 (bens F2): ehrlicher Rücksprung INNERHALB der aktuellen Generation — ein
+// fehlgeschlagener oder abgebrochener Übernahme-Lauf darf keinen Haken hinterlassen ('applied'
+// gilt NUR für einen Lauf ohne Transportfehler und ohne Snapshot-Abbruch). Bewusst NUR abwärts:
+// aufwärts bleibt reach/maxStage der einzige Weg (keine zweite Statusmaschine).
+export function rewindStage(current: ImportStage, target: ImportStage): ImportStage {
+  return STAGE_RANK[target] < STAGE_RANK[current] ? target : current;
+}
+
 export type ImportStepStatus = "done" | "active" | "upcoming";
 
 export function importStepStatus(stage: ImportStage, step: ImportStep): ImportStepStatus {

@@ -530,10 +530,27 @@ function fakePool() {
         rows.set(id, data);
         return { rows: [] };
       }
+      // WP-SHIP8-CLOSE-2 (bens F1): der atomare Status-CAS (claim) — Spiegel des bedingten
+      // UPDATE ... jsonb_set ... WHERE status=$2 RETURNING data.
+      if (sql.startsWith("UPDATE import_candidates SET data = jsonb_set")) {
+        const [id, from, to] = params as [string, string, string];
+        const stored = rows.get(id);
+        const parsed = stored ? (JSON.parse(stored) as { status: string }) : undefined;
+        if (!parsed || parsed.status !== from) {
+          return { rows: [], rowCount: 0 };
+        }
+        parsed.status = to;
+        rows.set(id, JSON.stringify(parsed));
+        return { rows: [{ data: parsed }], rowCount: 1 };
+      }
       if (sql.startsWith("UPDATE import_candidates")) {
         const [id, data] = params as [string, string];
+        // WP-SHIP8-CLOSE-2 (bens F1): rowCount wie echtes Pg — 0 bei fehlender Zeile (CONFLICT).
+        if (!rows.has(id)) {
+          return { rows: [], rowCount: 0 };
+        }
         rows.set(id, data);
-        return { rows: [] };
+        return { rows: [], rowCount: 1 };
       }
       if (sql.startsWith("SELECT data FROM import_candidates WHERE id=")) {
         const [id] = params as [string];

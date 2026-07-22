@@ -193,7 +193,9 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           if (aiCheckWorker) {
             await ko.markAiCheckPending(created.id);
             submitted = (await ko.get(created.id)) ?? created;
-            aiCheckWorker.enqueue(created.id);
+            // WP-SHIP8-CLOSE-2 (bens F3): Zielversion des frischen Vermerks synchron mitgeben —
+            // die Overflow-Eviction schließt hart versionsgebunden ab (kein unversionierter Write).
+            aiCheckWorker.enqueue(created.id, submitted.aiCheck?.koVersion);
           }
           reply.code(201).send(submitted);
           // Weg 3 (B6): Einbettung + Ablage NACH der Antwort — der Nutzer wartet nie darauf. Flag aus

@@ -9,6 +9,7 @@ import {
   importStepStatus,
   maxStage,
   rewindForNewGeneration,
+  rewindStage,
 } from "../../apps/web/src/lib/importStepper";
 
 function statuses(stage: ImportStage): string[] {
@@ -52,6 +53,30 @@ describe("WP-COCKPIT-LINIE-b Punkt 2: rewindForNewGeneration", () => {
   it("ein Fluss vor/bei der Erkundung bleibt unberührt", () => {
     expect(rewindForNewGeneration("start")).toBe("start");
     expect(rewindForNewGeneration("explored")).toBe("explored");
+  });
+});
+
+describe("WP-SHIP8-CLOSE-2 (bens F2): rewindStage — ehrlicher Rücksprung, nur abwärts", () => {
+  it("fehlgeschlagener Apply: applying/applied → grouping (Schritt 4 aktiv, kein Haken auf 5)", () => {
+    expect(rewindStage("applying", "grouping")).toBe("grouping");
+    expect(rewindStage("applied", "grouping")).toBe("grouping");
+    expect(statuses(rewindStage("applying", "grouping"))).toEqual([
+      "done",
+      "done",
+      "done",
+      "active",
+      "upcoming",
+    ]);
+  });
+
+  it("SNAPSHOT_EXPIRED: applying → previewed (kein hängendes applying)", () => {
+    expect(rewindStage("applying", "previewed")).toBe("previewed");
+  });
+
+  it("NIE aufwärts: ein Rücksprung-Ziel über dem Stand ist ein No-op (reach bleibt der einzige Vorwärtsweg)", () => {
+    expect(rewindStage("explored", "applied")).toBe("explored");
+    expect(rewindStage("grouping", "grouping")).toBe("grouping");
+    expect(rewindStage("start", "previewed")).toBe("start");
   });
 });
 

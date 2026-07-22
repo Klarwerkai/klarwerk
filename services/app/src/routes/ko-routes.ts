@@ -194,7 +194,9 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           if (aiCheckWorker) {
             await ko.markAiCheckPending(created.id);
             submitted = (await ko.get(created.id)) ?? created;
-            aiCheckWorker.enqueue(created.id);
+            // WP-SHIP8-CLOSE-2 (bens F3): die Zielversion des frisch gesetzten pending-Vermerks
+            // reist SYNCHRON mit dem Job — die Overflow-Eviction schließt hart versionsgebunden ab.
+            aiCheckWorker.enqueue(created.id, submitted.aiCheck?.koVersion);
           }
           reply.code(201).send(submitted);
           // Weg 3 (B6): Einbettung + Ablage NACH der Antwort — der Nutzer wartet nie darauf. Flag aus
@@ -237,7 +239,10 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           return;
         }
         await ko.markAiCheckPending(request.params.id);
-        aiCheckWorker.enqueue(request.params.id);
+        // WP-SHIP8-CLOSE-2 (bens F3): Vermerk NACH dem Setzen frisch lesen — der Job trägt die
+        // Zielversion synchron (subject von oben wäre der VERALTETE Vermerk vor dem Retry).
+        const marked = await ko.get(request.params.id);
+        aiCheckWorker.enqueue(request.params.id, marked?.aiCheck?.koVersion);
         reply.code(200).send({ status: "pending" });
       } catch (error) {
         sendError(reply, error);

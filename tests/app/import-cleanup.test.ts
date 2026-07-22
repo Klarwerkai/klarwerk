@@ -443,6 +443,53 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
     expect(calls).toHaveLength(1); // leere Bestätigung → kein DELETE
   });
 
+  it("WP-SHIP8-CLOSE-2 (bens F1): CandidateRepo.claim ist ein atomarer Status-CAS; update behandelt 0 Zeilen als KONFLIKT", async () => {
+    const repo = new InMemoryCandidateRepo();
+    const cand = (id: string) => ({
+      id,
+      item: { title: id, statement: "s", type: "best_practice" as const, category: "K" },
+      status: "neu" as const,
+      duplicate: false,
+      note: null,
+      koId: null,
+      createdAt: "2026-07-01T00:00:00.000Z",
+    });
+    await repo.insert(cand("a"));
+    // CAS greift nur bei exakt dem erwarteten Status; Rückgabe ist der Stand NACH dem Claim.
+    expect((await repo.claim("a", "neu", "in_bearbeitung"))?.status).toBe("in_bearbeitung");
+    expect(await repo.claim("a", "neu", "in_bearbeitung")).toBeUndefined(); // schon geclaimt
+    expect(await repo.claim("fehlt", "neu", "in_bearbeitung")).toBeUndefined();
+    // DER SCHUTZ: das bedingte Delete (erwarteter Status "neu") trifft den Geclaimten nicht mehr.
+    expect(await repo.removeByIds([{ id: "a", status: "neu" }])).toEqual([]);
+    expect((await repo.all()).map((c) => c.id)).toEqual(["a"]);
+    // Claim-Rückgabe (Fehlerpfad der Review-Aktion): CAS zurück auf "neu".
+    expect((await repo.claim("a", "in_bearbeitung", "neu"))?.status).toBe("neu");
+    // update auf verschwundener Zeile → CONFLICT, kein stilles Wieder-Anlegen.
+    await repo.removeAll();
+    await expect(repo.update(cand("a"))).rejects.toMatchObject({ code: "CONFLICT" });
+
+    // Pg-Query-Pins: der CAS ist EIN bedingtes UPDATE mit RETURNING; update prüft den rowCount.
+    const calls: { sql: string; params: unknown[] }[] = [];
+    let updateRowCount = 1;
+    const pool = {
+      query: async (sql: string, params: unknown[] = []) => {
+        calls.push({ sql, params });
+        return sql.includes("RETURNING data")
+          ? { rowCount: 1, rows: [{ data: cand("a") }] }
+          : { rowCount: updateRowCount, rows: [] };
+      },
+    } as unknown as import("pg").Pool;
+    const pg = new PgCandidateRepo(pool);
+    await pg.claim("a", "neu", "in_bearbeitung");
+    expect(calls[0]?.sql).toBe(
+      "UPDATE import_candidates SET data = jsonb_set(data, '{status}', to_jsonb($3::text)) WHERE id=$1 AND data->>'status'=$2 RETURNING data",
+    );
+    expect(calls[0]?.params).toEqual(["a", "neu", "in_bearbeitung"]);
+    await pg.update(cand("a")); // 1 Zeile getroffen → ok
+    updateRowCount = 0;
+    await expect(pg.update(cand("a"))).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
   it("WP-SHIP8-CLOSE (bens F2): Accept GENAU zwischen Re-Read und Delete → Kandidat überlebt, Bilanz ehrlich", async () => {
     const { app, services, headers } = await cleanupApp();
     const digest = await previewDigest(app, headers);
@@ -486,6 +533,62 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
     expect(remaining.map((c) => (c as { id: string }).id)).toEqual([acceptId]);
     expect((remaining[0] as { status: string }).status).toBe("angenommen");
     // Das per Accept entstandene KO lebt.
+    expect((await services.ko.list()).map((k) => k.title)).toContain("Kandidat 1");
+  });
+
+  it("WP-SHIP8-CLOSE-2 (bens F1, Testauflage exakt): Accept HÄNGT in acceptToKo, das Cleanup-Delete läuft parallel → der Claim schützt den Kandidaten", async () => {
+    const { app, services, headers } = await cleanupApp();
+    const digest = await previewDigest(app, headers);
+    const candidates = await services.library.listImportCandidates();
+    const acceptId = (candidates[0] as { id: string }).id;
+    // Gate INNERHALB des Accept-Flusses, VOR der Endstatus-Persistenz: der KO-Create (Teil von
+    // acceptToKo) blockiert, bis der Cleanup-Confirm KOMPLETT gelaufen ist. Der Accept wird
+    // bewusst NICHT abgewartet (bens Auflage: kein Test, der den Accept erst abschließt) —
+    // genau bens Restfenster: die DB kennt den Endstatus "angenommen" noch nicht.
+    let releaseCreate: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      releaseCreate = resolve;
+    });
+    let gateReached = false;
+    const origCreate = services.ko.create.bind(services.ko);
+    (services.ko as { create: typeof services.ko.create }).create = async (input) => {
+      if (input.title === "Kandidat 1") {
+        gateReached = true;
+        await gate;
+      }
+      return origCreate(input);
+    };
+    const acceptPromise = services.library.reviewImportCandidate(acceptId, "accept", "reviewer-1");
+    await vi.waitFor(() => {
+      expect(gateReached).toBe(true);
+    });
+    // WÄHREND der Accept in acceptToKo hängt, ist der Kandidat storage-seitig geclaimt —
+    // jetzt läuft der Confirm mit dem bedingten removeByIds-Delete.
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/admin/import/cleanup",
+      headers,
+      payload: { confirm: true, digest },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      removedCandidates: number;
+      skipped: { id: string; reason: string }[];
+    };
+    // Der geclaimte Kandidat ÜBERLEBT (Claim war zur Bestätigungszeit sichtbar → nie löschbar);
+    // nur der unberührte zweite Kandidat wurde entfernt. Bilanz ehrlich.
+    expect(body.removedCandidates).toBe(1);
+    expect(body.skipped).toContainEqual({ id: acceptId, reason: "in Bearbeitung" });
+    const during = await services.library.listImportCandidates();
+    expect(during.map((c) => (c as { id: string }).id)).toEqual([acceptId]);
+    expect((during[0] as { status: string }).status).toBe("in_bearbeitung");
+    // Accept freigeben: er endet NORMAL — KO erzeugt, Endstatus+koId persistiert, nichts verloren.
+    releaseCreate();
+    const reviewed = await acceptPromise;
+    expect(reviewed.status).toBe("angenommen");
+    expect(reviewed.koId).toBeTruthy();
+    const remaining = await services.library.listImportCandidates();
+    expect((remaining[0] as { status: string }).status).toBe("angenommen");
     expect((await services.ko.list()).map((k) => k.title)).toContain("Kandidat 1");
   });
 

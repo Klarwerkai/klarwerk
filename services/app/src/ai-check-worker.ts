@@ -59,7 +59,13 @@ export type AiCheckRunner = (koId: string) => Promise<AiCheckRunOutcome>;
 export interface AiCheckWorker {
   // Reiht einen Prüf-Job ein (dedupliziert gegen Queue UND laufenden Job) und startet die
   // Abarbeitung — feuert-und-vergisst, der Aufrufer wartet nie.
-  enqueue(koId: string): void;
+  // WP-SHIP8-CLOSE-2 (bens F3): der Aufrufer übergibt die Zielversion des pending-Vermerks
+  // SYNCHRON mit (der Submit-/Retry-/Re-Enqueue-Pfad kennt sie — er hat den Vermerk gerade
+  // gesetzt/gelesen). Kein asynchrones Nachlesen mehr: ein Lesefehler konnte die Overflow-
+  // Eviction sonst auf den UNVERSIONIERTEN Altpfad kippen und den NEUEN pending-Vermerk einer
+  // Revision fälschlich als failed/queue-overflow markieren. Fehlt die Version wider Erwarten,
+  // ist die Eviction FAIL-CLOSED (kein Status-Write, s. enqueueInternal).
+  enqueue(koId: string, expectedKoVersion?: number): void;
   has(koId: string): boolean;
   queuedCount(): number;
   // Für Tests: aufgelöst, sobald Queue leer und kein Job mehr läuft.
@@ -130,11 +136,12 @@ export function createAiCheckWorker(deps: AiCheckWorkerDeps): AiCheckWorker {
   const queue: string[] = [];
   const queuedIds = new Set<string>();
   const runningIds = new Set<string>();
-  // WP-SHIP8-CLOSE (bens F3): die beim EINREIHEN erwartete Vermerk-Version je wartendem Job —
-  // die Overflow-Eviction schließt damit BEDINGT ab (dieselbe Mechanik wie der normale Abschluss).
-  // Async erfasst (enqueue bleibt feuern-und-vergessen); Lesefehler → undefined = Altbestands-
-  // Verhalten (unbedingter Abschluss).
-  const queuedVersions = new Map<string, Promise<number | undefined>>();
+  // WP-SHIP8-CLOSE (bens F3) + WP-SHIP8-CLOSE-2: die beim EINREIHEN erwartete Vermerk-Version je
+  // wartendem Job — jetzt SYNCHRON vom Aufrufer übergeben (er hat den pending-Vermerk gerade
+  // gesetzt/gelesen). Der frühere asynchrone Nachlese-Pfad ist weg: sein Lesefehler-Fallback auf
+  // undefined bedeutete einen UNVERSIONIERTEN Abschluss, der den neuen Vermerk einer Revision
+  // fälschlich überschreiben konnte. undefined heißt jetzt: Eviction FAIL-CLOSED (kein Write).
+  const queuedVersions = new Map<string, number | undefined>();
   // WP-SHIP8-FINAL: Auto-Retry-Zähler je KO — zählt Re-Enqueues für GENAU EINE Zielversion;
   // eine neue Version setzt den Zähler zurück (der Deckel begrenzt den revise-Loop, nicht den
   // normalen Fluss). Nur im Speicher — wie die Queue selbst (Neustart-Grenze oben).
@@ -152,49 +159,48 @@ export function createAiCheckWorker(deps: AiCheckWorkerDeps): AiCheckWorker {
     }
   };
 
-  const enqueueInternal = (koId: string): void => {
+  const enqueueInternal = (koId: string, expectedKoVersion?: number): void => {
     if (queuedIds.has(koId) || runningIds.has(koId)) {
       return; // dedupliziert — derselbe Job steht nie doppelt an
     }
     // WP-SHIP8-FINAL: Queue-Kappe — der ÄLTESTE wartende Job wird ehrlich als failed/
     // queue-overflow abgeschlossen statt die Queue still wachsen zu lassen.
-    // WP-SHIP8-CLOSE (bens F3): der Abschluss ist VERSIONSBEWUSST — er trägt die beim Einreihen
-    // erwartete Vermerk-Version (dieselbe Mechanik wie der normale Abschluss in runOne). Ist das
-    // KO inzwischen revidiert (neuer pending-Vermerk mit neuer Version), war der verdrängte Job
-    // ohnehin obsolet → der bedingte Write ist ein No-op und der NEUE Vermerk bleibt unangetastet.
+    // WP-SHIP8-CLOSE (bens F3) + WP-SHIP8-CLOSE-2: der Abschluss ist HART versionsgebunden — er
+    // trägt die beim Einreihen SYNCHRON übergebene Vermerk-Version (dieselbe bedingte Mechanik
+    // wie der normale Abschluss in runOne). Ist das KO inzwischen revidiert (neuer pending-
+    // Vermerk mit neuer Version), ist der bedingte Write ein No-op und der NEUE Vermerk bleibt
+    // unangetastet. OHNE bekannte Version ist die Eviction FAIL-CLOSED: KEIN unversionierter
+    // Status-Write (er könnte den falschen Vermerk treffen) — der Job wird nur verworfen und
+    // geloggt; der pending-Vermerk bleibt ehrlich stehen, der Lazy-Re-Enqueue holt ihn später.
     if (queue.length >= MAX_AI_CHECK_QUEUE) {
       const evicted = queue.shift();
       if (evicted !== undefined) {
         queuedIds.delete(evicted);
-        const expectedPromise = queuedVersions.get(evicted);
+        const expectedVersion = queuedVersions.get(evicted);
         queuedVersions.delete(evicted);
-        void (async () => {
-          const expectedVersion = await (expectedPromise ?? Promise.resolve(undefined));
-          const written = await deps.ko
-            .resolveAiCheck(
-              evicted,
-              { ok: false, fallbackReason: "queue-overflow" },
-              expectedVersion,
-            )
-            .catch(() => false);
+        if (expectedVersion === undefined) {
           log(
-            `[KLARWERK] KI-Pruefung ko=${evicted} status=failed grund=queue-overflow (Kappe ${MAX_AI_CHECK_QUEUE}) geschrieben=${written}`,
+            `[KLARWERK] KI-Pruefung ko=${evicted} verdraengt (Kappe ${MAX_AI_CHECK_QUEUE}) — keine Zielversion bekannt, FAIL-CLOSED: kein Status-Write, Lazy-Re-Enqueue holt den Job nach`,
           );
-        })();
+        } else {
+          void (async () => {
+            const written = await deps.ko
+              .resolveAiCheck(
+                evicted,
+                { ok: false, fallbackReason: "queue-overflow" },
+                expectedVersion,
+              )
+              .catch(() => false);
+            log(
+              `[KLARWERK] KI-Pruefung ko=${evicted} status=failed grund=queue-overflow (Kappe ${MAX_AI_CHECK_QUEUE}) geschrieben=${written}`,
+            );
+          })();
+        }
       }
     }
     queue.push(koId);
     queuedIds.add(koId);
-    // Erwartete Vermerk-Version des frisch eingereihten Jobs erfassen (fire-and-forget; JEDER
-    // Lesefehler — auch ein synchroner — fällt ehrlich auf undefined = versionsungebundener
-    // Abschluss zurück, das Altbestands-Verhalten).
-    queuedVersions.set(
-      koId,
-      Promise.resolve()
-        .then(() => deps.ko.get(koId))
-        .then((ko) => ko?.aiCheck?.koVersion)
-        .catch(() => undefined),
-    );
+    queuedVersions.set(koId, expectedKoVersion);
   };
 
   // true = Auto-Re-Enqueue für diese Zielversion ist noch im Deckel (und wird gezählt).
@@ -211,8 +217,9 @@ export function createAiCheckWorker(deps: AiCheckWorkerDeps): AiCheckWorker {
     return true;
   };
 
-  // Liefert true, wenn der Job für eine NEUE Version erneut eingereiht werden soll.
-  const runOne = async (koId: string): Promise<boolean> => {
+  // Liefert die Zielversion, wenn der Job für eine NEUE Version erneut eingereiht werden soll
+  // (WP-SHIP8-CLOSE-2, bens F3: der Re-Enqueue trägt sie synchron mit), sonst null.
+  const runOne = async (koId: string): Promise<number | null> => {
     const startedMs = now();
     // WP-SHIP8-FINAL: Versions-Bindung — der Job gilt für GENAU die Version des pending-Vermerks
     // (dort beim Einreihen gespeichert). Altbestand ohne Feld läuft versionsungebunden weiter.
@@ -243,7 +250,7 @@ export function createAiCheckWorker(deps: AiCheckWorkerDeps): AiCheckWorker {
       } dauer=${now() - startedMs}ms geschrieben=${resolved}`,
     );
     if (resolved || expectedVersion === undefined) {
-      return false;
+      return null;
     }
     // Bedingter Write griff nicht: prüfen, ob die INHALTSVERSION gewandert ist (revise während
     // des Laufs). Dann war dieser Lauf ein ehrlicher No-op — einmalig (gedeckelt) einen frischen
@@ -258,13 +265,13 @@ export function createAiCheckWorker(deps: AiCheckWorkerDeps): AiCheckWorker {
           log(
             `[KLARWERK] KI-Pruefung ko=${koId} version=${expectedVersion}->${current.version} — alter Lauf No-op, frischer Job eingereiht`,
           );
-          return true;
+          return current.version;
         }
       }
     } catch {
       // Nachlesen scheiterte — kein Auto-Retry; der Lazy-Re-Enqueue greift später.
     }
-    return false;
+    return null;
   };
 
   const pump = (): void => {
@@ -275,13 +282,14 @@ export function createAiCheckWorker(deps: AiCheckWorkerDeps): AiCheckWorker {
       runningIds.add(koId);
       active += 1;
       void runOne(koId)
-        .catch(() => false)
-        .then((requeue) => {
+        .catch(() => null)
+        .then((requeueVersion) => {
           runningIds.delete(koId);
           active -= 1;
-          if (requeue) {
+          if (requeueVersion !== null) {
             // NACH der runningIds-Freigabe — sonst würde die Dedupe den frischen Job schlucken.
-            enqueueInternal(koId);
+            // WP-SHIP8-CLOSE-2 (bens F3): die Zielversion des frischen Vermerks reist synchron mit.
+            enqueueInternal(koId, requeueVersion);
           }
           pump();
         });
@@ -290,8 +298,8 @@ export function createAiCheckWorker(deps: AiCheckWorkerDeps): AiCheckWorker {
   };
 
   return {
-    enqueue(koId: string): void {
-      enqueueInternal(koId);
+    enqueue(koId: string, expectedKoVersion?: number): void {
+      enqueueInternal(koId, expectedKoVersion);
       pump();
     },
     has(koId: string): boolean {

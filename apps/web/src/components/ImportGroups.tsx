@@ -32,7 +32,7 @@ import {
 import { toReasonerLocale } from "../lib/reasonerLocale";
 // WP-COCKPIT-LINIE: Schritt-Überschriften (4 Gruppen freigeben · 5 Übernehmen & Bilanz) +
 // Meilenstein-Meldungen an die Schritt-Leiste.
-import { ImportStepHeading, useReportImportStage } from "./ImportStepper";
+import { ImportStepHeading, useReportImportStage, useRewindImportStage } from "./ImportStepper";
 import { Button } from "./ui";
 
 // Präsentationsteil (kontrolliert, ohne Netz) — separat exportiert für den Mounted-Test.
@@ -190,20 +190,18 @@ export function ImportGroups({ criteria }: { criteria: ImportSelectCriteria }): 
     }
   }, [data, bilanz]);
 
-  // WP-COCKPIT-LINIE: Meilensteine an die Schritt-Leiste — Gruppen sichtbar → Schritt 4 aktiv,
-  // Bilanz da → alles erledigt. Die Leiste ist monoton; ein Reset (neue Eingrenzung, abgelaufene
-  // Datenbasis) reißt den roten Faden nicht rückwärts.
+  // WP-COCKPIT-LINIE: Meilensteine an die Schritt-Leiste — Gruppen sichtbar → Schritt 4 aktiv.
+  // WP-SHIP8-CLOSE-2 (bens F2): „applied" meldet NICHT mehr jede Bilanz, sondern nur der
+  // ERFOLGREICH abgeschlossene Lauf am Ende von runApply (definierte Bilanz + kein
+  // transportFailed-Batch). Fehlgeschlagene/abgebrochene Läufe spulen stattdessen ehrlich
+  // zurück (rewind) — kein Haken auf Schritt 5, kein hängendes „applying".
   const reach = useReportImportStage();
+  const rewind = useRewindImportStage();
   useEffect(() => {
     if (data !== null) {
       reach("grouping");
     }
   }, [data, reach]);
-  useEffect(() => {
-    if (bilanz !== null) {
-      reach("applied");
-    }
-  }, [bilanz, reach]);
 
   const runGrouping = async (): Promise<void> => {
     setBusy("group");
@@ -267,6 +265,10 @@ export function ImportGroups({ criteria }: { criteria: ImportSelectCriteria }): 
             setRunState(EMPTY_APPLY_RUN);
             setBilanz(null);
             setSnapshotExpired(true);
+            // WP-SHIP8-CLOSE-2 (bens F2): kein hängendes „applying" — die Gruppen sind weg,
+            // Eingrenzung/Vorschau stehen noch, das Neu-Gruppieren-Angebot ist der nächste
+            // Schritt → ehrlich zurück auf „previewed" (Schritt 4 aktiv, kein Haken auf 5).
+            rewind("previewed");
             return;
           }
           transportFailed.push(...batch);
@@ -285,6 +287,15 @@ export function ImportGroups({ criteria }: { criteria: ImportSelectCriteria }): 
     const nextRun: ApplyRunState = { results, attempted, transportFailed };
     setRunState(nextRun);
     setBilanz(aggregateBilanz(data.candidates, selection, nextRun));
+    // WP-SHIP8-CLOSE-2 (bens F2): der Haken auf Schritt 5 kommt NUR bei einem Lauf ohne
+    // Transportfehler (inkl. der aus Vorläufen mitgeschleppten — deren Ids bleiben ehrlich
+    // „fehlgeschlagen" in der Bilanz). Sonst zurück auf „grouping": die Gruppen sind noch da,
+    // Schritt 4 ist der fachlich korrekte aktive Schritt.
+    if (transportFailed.length === 0) {
+      reach("applied");
+    } else {
+      rewind("grouping");
+    }
   };
 
   const counts = selectionCounts(selection);

@@ -25,6 +25,9 @@ import {
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import "../../apps/web/src/i18n";
+// WP-SHIP8-CLOSE-2 (bens F2): ECHTE ApiError-Klasse (client-Modul ist NICHT gemockt) — die
+// Fehlerpfade in runApply prüfen per instanceof.
+import { ApiError } from "../../apps/web/src/api/client";
 import { endpoints } from "../../apps/web/src/api/endpoints";
 import { ImportExplore } from "../../apps/web/src/components/ImportExplore";
 import {
@@ -231,6 +234,52 @@ describe("WP-COCKPIT-LINIE: geführter Fluss — Schritt-Zustände + genau EIN P
     });
     expect(activeStepText()).toContain("Eingrenzen");
     expect(doneStepCount()).toBe(2);
+  });
+
+  // WP-SHIP8-CLOSE-2 (bens F2): gemeinsamer Anlauf bis zur sichtbaren Gruppen-Freigabe.
+  async function walkToGroups(): Promise<void> {
+    exploreMock.mockResolvedValue(EXPLORE_RESPONSE);
+    selectMock.mockResolvedValue(SELECT_RESPONSE);
+    groupMock.mockResolvedValue(GROUP_RESPONSE);
+    mount();
+    await clickAndSettle("Weiter: Erkunden");
+    await clickAndSettle("Weiter: Eingrenzen");
+    await clickAndSettle("Weiter: Gruppieren & Übernehmen");
+    expect(activeStepText()).toContain("Gruppen freigeben");
+    expect(doneStepCount()).toBe(3);
+  }
+
+  it("WP-SHIP8-CLOSE-2 (bens F2a): Apply-Promise rejected → KEIN Haken auf Schritt 5, Schritt 4 wieder aktiv", async () => {
+    await walkToGroups();
+    applyMock.mockRejectedValue(new ApiError(502, "APPLY_FAILED", "Übernahme fehlgeschlagen."));
+    await clickAndSettle("Auswahl übernehmen");
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 5));
+    });
+    // Die Bilanz ist ehrlich da (fehlgeschlagene Ids), aber die Leiste feiert NICHT:
+    // kein 5. Haken, „Gruppen freigeben" ist wieder der aktive Schritt (Gruppen sind noch da).
+    expect(applyMock).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain("Ergebnis der Übernahme");
+    expect(container.textContent).toContain("2 fehlgeschlagen");
+    expect(doneStepCount()).toBe(3);
+    expect(activeStepText()).toContain("Gruppen freigeben");
+  });
+
+  it("WP-SHIP8-CLOSE-2 (bens F2b): SNAPSHOT_EXPIRED → kein Haken, kein haengendes applying, Neu-Gruppieren steht", async () => {
+    await walkToGroups();
+    applyMock.mockRejectedValue(
+      new ApiError(409, "SNAPSHOT_EXPIRED", "Die Datenbasis der Gruppierung ist abgelaufen."),
+    );
+    await clickAndSettle("Auswahl übernehmen");
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 5));
+    });
+    // Der Gruppierungs-Zustand ist zurückgesetzt, das Neu-Gruppieren-Angebot steht — und die
+    // Leiste hängt NICHT auf „Übernehmen & Bilanz": Schritt 4 ist aktiv, kein Haken auf 4/5.
+    expect(container.textContent).toContain("Neu gruppieren");
+    expect(doneStepCount()).toBe(3);
+    expect(activeStepText()).toContain("Gruppen freigeben");
+    expect(activeStepText()).not.toContain("Übernehmen & Bilanz");
   });
 
   it("die Schritt-Leiste bricht schmal sauber um (flex-wrap) und die Einträge tragen min-w-0", () => {

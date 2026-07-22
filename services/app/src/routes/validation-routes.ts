@@ -33,7 +33,10 @@ export function validationRoutes(
         for (const item of board as { id: string; aiCheck?: AiCheck }[]) {
           if (shouldReEnqueueAiCheck(item.aiCheck, nowMs) && !aiCheck.worker.has(item.id)) {
             await aiCheck.ko.markAiCheckPending(item.id);
-            aiCheck.worker.enqueue(item.id);
+            // WP-SHIP8-CLOSE-2 (bens F3): den FRISCHEN Vermerk nachlesen — item.aiCheck ist der
+            // veraltete Stand vor dem Re-Enqueue; der Job trägt die Zielversion synchron.
+            const marked = await aiCheck.ko.get(item.id);
+            aiCheck.worker.enqueue(item.id, marked?.aiCheck?.koVersion);
           }
         }
       }
