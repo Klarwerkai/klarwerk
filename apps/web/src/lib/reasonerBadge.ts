@@ -26,7 +26,9 @@ export function reasonerBadge(input: {
   if (input.isError || !input.status) {
     return { kind: "unknown", tone: "neutral", labelKey: "ask.reasoner.unknown" };
   }
-  return input.status.mode === "model"
-    ? { kind: "model", tone: "pos", labelKey: "ask.reasoner.model" }
-    : { kind: "deterministic", tone: "warn", labelKey: "ask.reasoner.deterministic" };
+  // WP-VIP2-GATE (bens P1): der abstrahierte Status nennt die STUFE (cloud/local/deterministic).
+  // Fuer das Badge zaehlt nur: echtes Modell (cloud ODER local) vs. deterministischer Ersatz.
+  return input.status.mode === "deterministic"
+    ? { kind: "deterministic", tone: "warn", labelKey: "ask.reasoner.deterministic" }
+    : { kind: "model", tone: "pos", labelKey: "ask.reasoner.model" };
 }

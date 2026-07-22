@@ -33,7 +33,12 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
   const register = useMutation({
     mutationFn: () => authApi.register(name, email, pw),
     onSuccess: () => setMode("waiting"),
-    onError,
+    // WP-VIP2-GATE (bens P1): abgeschaltete Selbstregistrierung (Server-Schalter, 403) wird
+    // lokalisiert erklärt statt die rohe Server-Meldung zu zeigen.
+    onError: (e: unknown) =>
+      e instanceof ApiError && e.code === "REGISTRATION_DISABLED"
+        ? setErr(t("auth.registrationDisabled"))
+        : onError(e),
   });
   const setup = useMutation({
     mutationFn: () => authApi.setup(name, email, pw),

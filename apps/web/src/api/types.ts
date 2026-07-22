@@ -791,10 +791,12 @@ export interface DescribeImageResult {
   fallbackReason?: "no-model" | "model-timeout" | "model-error";
 }
 
+// WP-VIP2-GATE (bens P1): /api/reasoner/status ist abstrahiert — nur Verfügbarkeit + STUFE
+// (cloud/local/deterministic), kein Provider-/Modellname mehr (der lebt in der Admin-Sicht
+// ReasonerConfigStatus hinter Auth). Die KI-Pille braucht genau diese zwei Felder.
 export interface ReasonerStatus {
   active: boolean;
-  provider: string;
-  mode: "model" | "deterministic";
+  mode: "cloud" | "local" | "deterministic";
 }
 
 // SCRUM-166: read-only Provider-/Model-Konfiguration (nur Metadaten, keine Secrets).

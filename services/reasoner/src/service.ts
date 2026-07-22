@@ -560,6 +560,19 @@ export class Reasoner {
     };
   }
 
+  // WP-VIP2-GATE (bens P1): ABSTRAHIERTE, oeffentliche Status-Sicht — NUR {active, mode}.
+  // Der Provider-/Modellname (status().provider, z. B. der konkrete Anthropic-Modellstring) ist
+  // Infrastruktur-Detail und gehoert ausschliesslich in die authentifizierte Admin-Sicht
+  // (/api/reasoner/config, ko.read-guarded). mode nennt die STUFE (cloud/local/deterministic),
+  // nie das Produkt.
+  publicStatus(): { active: boolean; mode: "cloud" | "local" | "deterministic" } {
+    const active = this.usingAnyModel();
+    return {
+      active,
+      mode: this.usingPrimary() ? "cloud" : this.usingSecondary() ? "local" : "deterministic",
+    };
+  }
+
   // SCRUM-166: read-only Provider-/Model-Konfiguration. Nur Metadaten — keine Secrets,
   // keine Prompt-/Antwortinhalte. Ohne konfiguriertes Modell ehrlich Demo-Modus.
   configStatus(): ReasonerConfigStatus {
@@ -865,10 +878,14 @@ export class Reasoner {
   // fallbackReason (no-model / model-timeout / model-error, dasselbe Muster wie groupCandidates).
   // criteria bleibt bei jedem Ausfall null — der Aufrufer meldet den Ausfall SICHTBAR, statt die
   // ungefilterte Vollmenge als KI-Ergebnis auszugeben.
+  // WP-VIP2-GATE (bens P0-1, endgueltig): `confidential` ist PFLICHT — kein Default mehr. Der
+  // Freitext-Prompt ist Nutzereingabe ÜBER potenziell vertrauliches Wissen; jeder Aufrufer dieses
+  // completeRaw-nahen Pfads muss die Provenienz EXPLIZIT entscheiden (der Compiler erzwingt es).
+  // `locale` verliert seinen Default mit (TS erlaubt keinen Pflicht-Parameter nach einem optionalen).
   async deriveImportCriteria(
     prompt: string,
-    locale: ReasonerLocale = "de",
-    confidential = false,
+    locale: ReasonerLocale,
+    confidential: boolean,
   ): Promise<ImportCriteriaResult> {
     if (prompt.trim().length === 0) {
       return { criteria: null, fallbackReason: null }; // nichts gefragt — kein Ausfall

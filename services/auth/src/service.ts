@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
 import type { OidcClaims } from "./oidc";
 import { hashPassword, verifyPassword } from "./password";
@@ -13,6 +13,18 @@ import { AuthError, type PublicUser, type Role, type User } from "./types";
 const MIN_PASSWORD_LENGTH = 8;
 const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000; // 14 Tage
 const RESET_TTL_MS = 60 * 60 * 1000; // FR-AUTH-08: Reset-Token 1 Stunde gültig
+
+// WP-VIP2-GATE (bens P1, Token-at-Rest): Session- und Reset-Tokens werden NUR noch als
+// SHA-256-Hash gespeichert — der Klartext existiert ausschließlich beim Client (Cookie/Bearer/
+// Mail-Link). Ein DB-Leak (Dump, Backup, Log) liefert damit keine verwendbaren Sitzungen mehr.
+// Das Präfix "sha256:" ist die FORMAT-ERKENNUNG der Migration (Klartext-Tokens sind 64-Hex OHNE
+// Präfix — Länge allein würde nicht unterscheiden, da SHA-256-Hex ebenfalls 64 Zeichen hat).
+// Gehasht wird zentral HIER im Service — InMemory- und Pg-Repo speichern identisch nur den Hash.
+export const TOKEN_HASH_PREFIX = "sha256:";
+
+export function hashTokenAtRest(token: string): string {
+  return `${TOKEN_HASH_PREFIX}${createHash("sha256").update(token).digest("hex")}`;
+}
 
 // SCRUM-443 (Berater-Audit): serverseitige Rollenwechsel-Prüfung. Wird von build-app mit der
 // echten rbac.canChangeRole verdrahtet (FR-RBAC-03). auth importiert rbac NICHT direkt
@@ -96,7 +108,7 @@ export class AuthService {
     if (await this.users.findByEmail(input.email)) {
       throw new AuthError("EMAIL_TAKEN", "E-Mail ist bereits vergeben.");
     }
-    const { salt, hash } = hashPassword(input.password);
+    const { salt, hash } = await hashPassword(input.password);
     const base = {
       id: this.genId(),
       name: input.name,
@@ -123,15 +135,16 @@ export class AuthService {
   // FR-AUTH-03: Login nur mit korrekten, freigegebenen Daten; FR-AUTH-05: Hash-Prüfung.
   async login(input: LoginInput): Promise<{ token: string; user: PublicUser }> {
     const user = await this.users.findByEmail(input.email);
-    if (!user || !verifyPassword(input.password, user.passwordSalt, user.passwordHash)) {
+    if (!user || !(await verifyPassword(input.password, user.passwordSalt, user.passwordHash))) {
       throw new AuthError("INVALID_CREDENTIALS", "E-Mail oder Passwort falsch.");
     }
     if (!user.approved) {
       throw new AuthError("NOT_APPROVED", "Konto ist noch nicht freigegeben.");
     }
     const token = this.genToken();
+    // Token-at-Rest: nur der Hash wird persistiert; der Klartext geht ausschliesslich an den Client.
     await this.sessions.create({
-      token,
+      token: hashTokenAtRest(token),
       userId: user.id,
       expiresAt: this.now() + SESSION_TTL_MS,
     });
@@ -187,7 +200,7 @@ export class AuthService {
     }
     const token = this.genToken();
     await this.sessions.create({
-      token,
+      token: hashTokenAtRest(token),
       userId: account.id,
       expiresAt: this.now() + SESSION_TTL_MS,
     });
@@ -197,20 +210,23 @@ export class AuthService {
 
   // FR-AUTH-04: Logout beendet die Sitzung serverseitig.
   async logout(token: string): Promise<void> {
-    const session = await this.sessions.find(token);
-    await this.sessions.delete(token);
+    const stored = hashTokenAtRest(token);
+    const session = await this.sessions.find(stored);
+    await this.sessions.delete(stored);
     if (session) {
       await this.record(session.userId, "auth.logout", session.userId);
     }
   }
 
   async authenticate(token: string): Promise<PublicUser | undefined> {
-    const session = await this.sessions.find(token);
+    // Lookup ueber den Hash — das Repo kennt den Klartext nie.
+    const stored = hashTokenAtRest(token);
+    const session = await this.sessions.find(stored);
     if (!session) {
       return undefined;
     }
     if (session.expiresAt <= this.now()) {
-      await this.sessions.delete(token);
+      await this.sessions.delete(stored); // abgelaufen → beim Zugriff aufraeumen
       return undefined;
     }
     const user = await this.users.findById(session.userId);
@@ -268,7 +284,7 @@ export class AuthService {
       throw new AuthError("WEAK_PASSWORD", "Passwort muss mindestens 8 Zeichen haben.");
     }
     const user = await this.requireUser(userId);
-    const { salt, hash } = hashPassword(newPassword);
+    const { salt, hash } = await hashPassword(newPassword);
     user.passwordSalt = salt;
     user.passwordHash = hash;
     await this.users.update(user);
@@ -283,10 +299,10 @@ export class AuthService {
       throw new AuthError("WEAK_PASSWORD", "Passwort muss mindestens 8 Zeichen haben.");
     }
     const user = await this.requireUser(userId);
-    if (!verifyPassword(oldPassword, user.passwordSalt, user.passwordHash)) {
+    if (!(await verifyPassword(oldPassword, user.passwordSalt, user.passwordHash))) {
       throw new AuthError("INVALID_CREDENTIALS", "Aktuelles Passwort ist falsch.");
     }
-    const { salt, hash } = hashPassword(newPassword);
+    const { salt, hash } = await hashPassword(newPassword);
     user.passwordSalt = salt;
     user.passwordHash = hash;
     await this.users.update(user);
@@ -304,7 +320,12 @@ export class AuthService {
       return undefined;
     }
     const token = this.genToken();
-    await this.resetTokens.create({ token, userId: user.id, expiresAt: this.now() + RESET_TTL_MS });
+    // Auch Reset-Tokens nur als Hash at rest — der Klartext lebt allein im Mail-Link.
+    await this.resetTokens.create({
+      token: hashTokenAtRest(token),
+      userId: user.id,
+      expiresAt: this.now() + RESET_TTL_MS,
+    });
     return { token, user: toPublic(user) };
   }
 
@@ -313,17 +334,21 @@ export class AuthService {
     if (newPassword.length < MIN_PASSWORD_LENGTH) {
       throw new AuthError("WEAK_PASSWORD", "Passwort muss mindestens 8 Zeichen haben.");
     }
-    const entry = await this.resetTokens.find(token);
+    const stored = hashTokenAtRest(token);
+    const entry = await this.resetTokens.find(stored);
     if (!entry || entry.expiresAt <= this.now()) {
+      if (entry) {
+        await this.resetTokens.delete(stored); // abgelaufen → beim Zugriff aufraeumen
+      }
       throw new AuthError("INVALID_CREDENTIALS", "Reset-Token ungültig oder abgelaufen.");
     }
     const user = await this.requireUser(entry.userId);
-    const { salt, hash } = hashPassword(newPassword);
+    const { salt, hash } = await hashPassword(newPassword);
     user.passwordSalt = salt;
     user.passwordHash = hash;
     await this.users.update(user);
     await this.sessions.deleteByUser(user.id);
-    await this.resetTokens.delete(token);
+    await this.resetTokens.delete(stored);
     await this.record(user.id, "user.password-reset-email", user.id);
   }
 

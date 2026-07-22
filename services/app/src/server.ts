@@ -2,6 +2,7 @@ import { existsSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
+import { migrateAuthTokensAtRest } from "../../auth";
 import { buildApp, buildPgServices, buildServices } from "./build-app";
 import { createPool, migrate } from "./db";
 import { buildDevPersistServices } from "./dev-persist";
@@ -20,6 +21,15 @@ const CANONICAL_HOST = process.env.CANONICAL_HOST ?? "klarwerk.ai";
 async function pgServices(databaseUrl: string) {
   const pool = createPool(databaseUrl);
   await migrate(pool);
+  // WP-VIP2-GATE (bens P1, Token-at-Rest): Einmal-Migration des Klartext-Token-Bestands
+  // (Format-Erkennung via sha256:-Praefix → idempotent, zweiter Lauf findet nichts mehr);
+  // raeumt dabei abgelaufene Sessions/Reset-Tokens auf.
+  const migrated = await migrateAuthTokensAtRest(pool);
+  if (migrated.hashedSessions > 0 || migrated.hashedResets > 0) {
+    process.stderr.write(
+      `[KLARWERK] Token-at-Rest-Migration: ${migrated.hashedSessions} Session(s) und ${migrated.hashedResets} Reset-Token in-place gehasht.\n`,
+    );
+  }
   return buildPgServices(pool);
 }
 

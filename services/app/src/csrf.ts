@@ -2,7 +2,7 @@
 //
 // Befund (Ist-Zustand, unverändert): Authentifizierung läuft entweder über einen Bearer-Token
 // (Header `Authorization: Bearer …`) ODER über das Session-Cookie `kw_session`
-// (HttpOnly, Path=/, Max-Age, SameSite=Lax, optional Secure via COOKIE_SECURE=true).
+// (HttpOnly, Path=/, Max-Age, SameSite=Lax; Secure in Produktion erzwungen, sonst via COOKIE_SECURE=true).
 //
 // Diese Datei ÄNDERT das Verhalten NICHT (kein Middleware-/Auth-Umbau, kein erzwungener Token).
 // Sie macht die vorhandene Schutzlage explizit und maschinell prüfbar, damit AG-10 nicht mehr nur
@@ -17,7 +17,9 @@ export const UNSAFE_METHODS = ["POST", "PUT", "DELETE", "PATCH"] as const;
 export type UnsafeMethod = (typeof UNSAFE_METHODS)[number];
 
 // Dokumentierte Eigenschaften des Session-Cookies (Quelle der Wahrheit: services/auth/src/routes.ts).
-// `secureWhenConfigured`: das Secure-Flag wird in Produktion über COOKIE_SECURE=true gesetzt (HTTPS).
+// `secureWhenConfigured`: WP-VIP2-GATE (bens P1) — in Produktion (NODE_ENV=production) wird Secure
+// ERZWUNGEN (COOKIE_SECURE kann es dort nicht mehr abschalten; explizites =false bricht den Start ab).
+// Außerhalb von Produktion bleibt das Opt-in COOKIE_SECURE=true für HTTPS-Dev-Setups.
 export const COOKIE_STRATEGY = {
   name: SESSION_COOKIE,
   httpOnly: true,

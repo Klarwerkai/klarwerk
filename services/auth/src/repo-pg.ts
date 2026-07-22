@@ -1,5 +1,6 @@
 import type { Pool } from "pg";
 import type { PasswordResetRepo, ResetToken, SessionRepo, UserRepo } from "./repo";
+import { TOKEN_HASH_PREFIX, hashTokenAtRest } from "./service";
 import type { Role, Session, User } from "./types";
 
 // Postgres-Adapter für auth. Das Modul besitzt seine Tabellen (keine geteilten Tabellen).
@@ -32,6 +33,41 @@ CREATE TABLE IF NOT EXISTS password_resets (
   expires_at bigint NOT NULL
 );
 `;
+
+// WP-VIP2-GATE (bens P1, Token-at-Rest): ADDITIVE Einmal-Migration des Klartext-Bestands.
+// Bewusst eine Node-seitige Schleife statt pgcrypto (encode(digest(...))): die Extension ist nicht
+// auf jeder Ziel-DB verfügbar/erlaubt (Hetzner/Managed-Pg), und der Bestand ist klein (aktive
+// Sitzungen + offene Resets). IDEMPOTENT über die Format-Erkennung: gehashte Zeilen tragen das
+// Präfix "sha256:" (Klartext-Tokens sind präfixlose 64-Hex — Länge allein unterscheidet nicht,
+// da SHA-256-Hex ebenfalls 64 Zeichen hat) und werden übersprungen. Läuft bei jedem Start nach
+// migrate() — der zweite Lauf findet nichts mehr. Abgelaufene Einträge werden dabei aufgeräumt
+// (statt sie sinnlos zu hashen).
+export async function migrateAuthTokensAtRest(
+  pool: Pool,
+  nowMs: number = Date.now(),
+): Promise<{ hashedSessions: number; hashedResets: number }> {
+  await pool.query("DELETE FROM sessions WHERE expires_at <= $1", [nowMs]);
+  await pool.query("DELETE FROM password_resets WHERE expires_at <= $1", [nowMs]);
+  const counts = { hashedSessions: 0, hashedResets: 0 };
+  for (const table of ["sessions", "password_resets"] as const) {
+    const plain = await pool.query<{ token: string }>(
+      `SELECT token FROM ${table} WHERE token NOT LIKE $1`,
+      [`${TOKEN_HASH_PREFIX}%`],
+    );
+    for (const row of plain.rows) {
+      await pool.query(`UPDATE ${table} SET token=$2 WHERE token=$1`, [
+        row.token,
+        hashTokenAtRest(row.token),
+      ]);
+      if (table === "sessions") {
+        counts.hashedSessions += 1;
+      } else {
+        counts.hashedResets += 1;
+      }
+    }
+  }
+  return counts;
+}
 
 interface UserRow {
   id: string;

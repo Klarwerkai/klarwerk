@@ -18,7 +18,7 @@ describe("IC-3: Reasoner.deriveImportCriteria (ehrlicher Ausfall-Vertrag)", () =
         client('Hier ist die Auswahl: {"themes":["wartung"],"keywords":["e5"]} — fertig.'),
       ),
     );
-    expect(await r.deriveImportCriteria("alles zu Wartung und E5")).toEqual({
+    expect(await r.deriveImportCriteria("alles zu Wartung und E5", "de", false)).toEqual({
       criteria: { themes: ["wartung"], keywords: ["e5"] },
       fallbackReason: null,
     });
@@ -26,7 +26,7 @@ describe("IC-3: Reasoner.deriveImportCriteria (ehrlicher Ausfall-Vertrag)", () =
 
   it("kein Modell (deterministischer Ersatz) → criteria null + fallbackReason no-model", async () => {
     const r = new Reasoner(); // ohne Provider → nur Fallback
-    expect(await r.deriveImportCriteria("egal")).toEqual({
+    expect(await r.deriveImportCriteria("egal", "de", false)).toEqual({
       criteria: null,
       fallbackReason: "no-model",
     });
@@ -42,13 +42,16 @@ describe("IC-3: Reasoner.deriveImportCriteria (ehrlicher Ausfall-Vertrag)", () =
       },
     };
     const r = new Reasoner(new ModelProvider(counting));
-    expect(await r.deriveImportCriteria("   ")).toEqual({ criteria: null, fallbackReason: null });
+    expect(await r.deriveImportCriteria("   ", "de", false)).toEqual({
+      criteria: null,
+      fallbackReason: null,
+    });
     expect(calls).toBe(0);
   });
 
   it("Modell ohne JSON → ehrlich model-error (kein Raten)", async () => {
     const r = new Reasoner(new ModelProvider(client("Ich bin mir nicht sicher.")));
-    expect(await r.deriveImportCriteria("x")).toEqual({
+    expect(await r.deriveImportCriteria("x", "de", false)).toEqual({
       criteria: null,
       fallbackReason: "model-error",
     });
@@ -62,7 +65,7 @@ describe("IC-3: Reasoner.deriveImportCriteria (ehrlicher Ausfall-Vertrag)", () =
       },
     };
     const r = new Reasoner(new ModelProvider(boom));
-    expect(await r.deriveImportCriteria("x")).toEqual({
+    expect(await r.deriveImportCriteria("x", "de", false)).toEqual({
       criteria: null,
       fallbackReason: "model-error",
     });

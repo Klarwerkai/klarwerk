@@ -16,17 +16,39 @@ const STATUS_BY_CODE: Record<AuthErrorCode, number> = {
 
 const SESSION_COOKIE = "kw_session";
 const COOKIE_MAX_AGE = 14 * 24 * 60 * 60; // 14 Tage
-// Härtung: Secure-Flag in Produktion (HTTPS) via COOKIE_SECURE=true. Lokal aus (HTTP).
-const COOKIE_SECURE = process.env.COOKIE_SECURE === "true";
+
+// WP-VIP2-GATE (bens P1, Cookie-Härtung): in Produktion (NODE_ENV=production) wird Secure
+// ERZWUNGEN — COOKIE_SECURE kann es dort nicht mehr abschalten. Außerhalb von Produktion bleibt
+// das bisherige Opt-in (COOKIE_SECURE=true) für HTTPS-Dev-Setups. Zur Laufzeit ausgewertet
+// (keine Modul-Konstante), damit Tests beide Betriebsarten prüfen können.
+function cookieSecure(): boolean {
+  if (process.env.NODE_ENV === "production") {
+    return true;
+  }
+  return process.env.COOKIE_SECURE === "true";
+}
+
+// WP-VIP2-GATE (bens P1): fail-closed Start-Wächter. Ein EXPLIZITES COOKIE_SECURE=false in
+// Produktion ist ein Konfigurationsfehler (jemand versucht, die Härtung abzuschalten) — der
+// Start bricht mit klarer Meldung ab, statt still unsichere Cookies auszuliefern.
+export function assertCookieSecurityConfig(
+  env: Record<string, string | undefined> = process.env,
+): void {
+  if (env.NODE_ENV === "production" && env.COOKIE_SECURE === "false") {
+    throw new Error(
+      "KLARWERK-Start abgebrochen: COOKIE_SECURE=false ist in Produktion nicht erlaubt — das Secure-Flag der Session-Cookies wird dort erzwungen. Bitte COOKIE_SECURE entfernen.",
+    );
+  }
+}
 
 function sessionCookie(token: string): string {
   const base = `${SESSION_COOKIE}=${token}; HttpOnly; Path=/; Max-Age=${COOKIE_MAX_AGE}; SameSite=Lax`;
-  return COOKIE_SECURE ? `${base}; Secure` : base;
+  return cookieSecure() ? `${base}; Secure` : base;
 }
 
 function clearSessionCookie(): string {
   const base = `${SESSION_COOKIE}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax`;
-  return COOKIE_SECURE ? `${base}; Secure` : base;
+  return cookieSecure() ? `${base}; Secure` : base;
 }
 
 // FR-AUTH-07: kurzlebige OIDC-Cookies (state/nonce/PKCE-verifier) für den Code-Flow.
@@ -37,12 +59,12 @@ const OIDC_FLOW_MAX_AGE = 600; // 10 Minuten
 
 function flowCookie(name: string, value: string): string {
   const base = `${name}=${value}; HttpOnly; Path=/; Max-Age=${OIDC_FLOW_MAX_AGE}; SameSite=Lax`;
-  return COOKIE_SECURE ? `${base}; Secure` : base;
+  return cookieSecure() ? `${base}; Secure` : base;
 }
 
 function clearFlowCookie(name: string): string {
   const base = `${name}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax`;
-  return COOKIE_SECURE ? `${base}; Secure` : base;
+  return cookieSecure() ? `${base}; Secure` : base;
 }
 
 function readCookie(request: FastifyRequest, wanted: string): string | undefined {
@@ -75,6 +97,22 @@ function sendError(reply: FastifyReply, error: unknown): void {
   reply.code(500).send({ error: "INTERNAL", message: "Unerwarteter Fehler." });
 }
 
+// WP-VIP2-GATE (bens P1): Selbstregistrierung ist ein öffentlicher Schreibpfad und deshalb
+// FAIL-CLOSED hinter einem Schalter — Default AUS; nur ein explizites =1/true schaltet frei
+// (Dev-/Test-Setups setzen es bewusst, z. B. tests/setup-env.ts). Erst-Einrichtung läuft
+// unverändert über /api/auth/setup; Admin-Anlage über POST /api/users.
+export function selfRegistrationEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  const flag = env.KLARWERK_SELF_REGISTRATION;
+  return flag === "1" || flag === "true";
+}
+
+// WP-VIP2-GATE (bens P1): Registrierungs-Rate-Limit (Konstante) — 5 Versuche je Minute je IP;
+// JEDER Versuch zählt (auch erfolgreiche: Konto-Anlage ist der Abuse-Vektor, nicht der Fehlschlag).
+export const REGISTER_MAX_ATTEMPTS_PER_MINUTE = 5;
+const REGISTER_WINDOW_MS = 60 * 1000;
+
 export function authRoutes(
   service: AuthService,
   options: {
@@ -86,13 +124,26 @@ export function authRoutes(
     // SCRUM-367 / AG-06-RESET: injizierbarer Recovery-Limiter (forgot/reset). Default: eigener
     // In-Memory-Limiter. Bewusst getrennt vom Login-Limiter (andere Zähler, kein gegenseitiges Sperren).
     recoveryRateLimiter?: LoginRateLimiter | undefined;
+    // WP-VIP2-GATE: injizierbarer Registrierungs-Limiter (Tests mit eigener Uhr/Schwelle).
+    registerRateLimiter?: LoginRateLimiter | undefined;
   } = {},
 ): FastifyPluginAsync {
+  // WP-VIP2-GATE (bens P1, Cookie-Härtung): fail-closed VOR der Routen-Registrierung — ein
+  // explizit abgeschaltetes Secure-Flag in Produktion bricht den Start ab (app.ready() wirft).
+  assertCookieSecurityConfig();
   // Pro App-Instanz ein eigener Limiter (Test-Isolation; In-Memory, dep-frei).
   const loginLimiter = options.loginRateLimiter ?? new LoginRateLimiter();
   // SCRUM-367 / AG-06-RESET: Anti-Spam/Anti-Bruteforce für die Recovery-Pfade. Etwas großzügiger als
   // Login (legitime Nutzer fordern selten mehrfach an), aber begrenzt gegen Mail-Spam + Token-Raten.
   const recoveryLimiter = options.recoveryRateLimiter ?? new LoginRateLimiter({ maxAttempts: 10 });
+  // WP-VIP2-GATE: Registrierungs-Limiter — Schlüssel = nur IP (das Ziel ist Massen-Konto-Anlage,
+  // nicht ein einzelnes Konto).
+  const registerLimiter =
+    options.registerRateLimiter ??
+    new LoginRateLimiter({
+      maxAttempts: REGISTER_MAX_ATTEMPTS_PER_MINUTE,
+      windowMs: REGISTER_WINDOW_MS,
+    });
   return async (app) => {
     const requireUser = async (
       request: FastifyRequest,
@@ -123,11 +174,59 @@ export function authRoutes(
       return user;
     };
 
-    app.post<{ Body: { name: string; email: string; password: string } }>(
+    app.post<{ Body: { name?: unknown; email?: unknown; password?: unknown } }>(
       "/api/auth/register",
       async (request, reply) => {
+        // WP-VIP2-GATE (bens P1): Schalter ZUERST — bei AUS entsteht weder Konto noch Zählung,
+        // und die Antwort ist eine ehrliche, generische 403 (kein Hinweis auf Kontenbestand).
+        if (!selfRegistrationEnabled()) {
+          reply.code(403).send({
+            error: "REGISTRATION_DISABLED",
+            message: "Registrierung nur per Einladung.",
+          });
+          return;
+        }
+        // Rate-Limit je IP: JEDER Versuch zählt (Konto-Anlage ist der Abuse-Vektor).
+        const limiterKey = registerLimiter.keyFor(request.ip, "register");
+        const limit = registerLimiter.check(limiterKey);
+        if (limit.limited) {
+          reply.header("Retry-After", String(limit.retryAfterSeconds));
+          reply.code(429).send({
+            error: "RATE_LIMITED",
+            message: "Zu viele Registrierungen. Bitte später erneut versuchen.",
+          });
+          return;
+        }
+        registerLimiter.registerFailure(limiterKey);
+        // Body-Schema VOR dem Service: E-Mail-Form + Passwort-Form + Name — ehrlicher 400
+        // statt TypeError/opakem 500 (dasselbe Muster wie die Admin-Anlage POST /api/users).
+        const body = (request.body ?? {}) as {
+          name?: unknown;
+          email?: unknown;
+          password?: unknown;
+        };
+        if (typeof body.name !== "string" || body.name.trim().length === 0) {
+          reply.code(400).send({ error: "BAD_REQUEST", message: "Name ist erforderlich." });
+          return;
+        }
+        if (typeof body.email !== "string" || !/.+@.+\..+/.test(body.email.trim())) {
+          reply
+            .code(400)
+            .send({ error: "BAD_REQUEST", message: "Gültige E-Mail ist erforderlich." });
+          return;
+        }
+        if (typeof body.password !== "string" || body.password.length < 8) {
+          reply
+            .code(400)
+            .send({ error: "WEAK_PASSWORD", message: "Passwort muss mindestens 8 Zeichen haben." });
+          return;
+        }
         try {
-          const user = await service.register(request.body);
+          const user = await service.register({
+            name: body.name.trim(),
+            email: body.email.trim(),
+            password: body.password,
+          });
           reply.code(201).send(user);
         } catch (error) {
           sendError(reply, error);
@@ -156,6 +255,12 @@ export function authRoutes(
           // Erfolg → Fehlversuchszähler für diesen Schlüssel zurücksetzen (risikoarm).
           loginLimiter.reset(limiterKey);
           reply.header("set-cookie", sessionCookie(token));
+          // WP-VIP2-GATE (bens P1, Cookie-Härtung — geprüft und BEWUSST belassen): der Web-Client
+          // nutzt AUSSCHLIESSLICH das HttpOnly-Cookie (authApi.login typisiert nur {user}, der
+          // Body-Token wird im Browser nirgends gespeichert). Der Body-Token ist der DOKUMENTIERTE
+          // Vertrag für Nicht-Browser-API-Clients (Bearer-Header: Tests, Skripte, Integrationen)
+          // — cookielose Clients haben keinen anderen Weg an die Session. Kein XSS-Mehrwert durch
+          // Entfernen: ein XSS-Angreifer könnte den Login-Endpunkt ohnehin selbst aufrufen.
           reply.code(200).send({ user, token });
         } catch (error) {
           // Nur falsche Zugangsdaten zählen als Brute-Force-Versuch. NOT_APPROVED (= korrektes

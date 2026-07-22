@@ -37,6 +37,27 @@ export function groupingRequiresConfidential(items: readonly ImportItem[]): bool
   );
 }
 
+// WP-VIP2-GATE (bens P0-1, endgueltig): EIGENER Vertrag für den FREITEXT-PROMPT (Select-Pfad).
+// Der Prompt ist Nutzereingabe ÜBER das Snapshot-Wissen — sein Default ist an JEDER Kante
+// vertraulich, nie offen:
+//   - fehlender/leerer Snapshot → vertraulich (es gibt KEINE nachgewiesene Freigabe-Grundlage;
+//     der alte Batch-Vertrag lieferte auf [] fail-open false — genau diese Kante schließt das),
+//   - ein unklassifiziertes/fehlklassifiziertes/restringiertes Item → vertraulich (patches62-Logik),
+//   - wirft die Klassifikation selbst (defensiv, z. B. kaputte Items) → vertraulich.
+// Nur ein nachweislich vorhandener, KOMPLETT explizit freigegebener Snapshot gibt den Prompt frei.
+export function promptRequiresConfidential(
+  items: readonly ImportItem[] | null | undefined,
+): boolean {
+  try {
+    if (!items || items.length === 0) {
+      return true;
+    }
+    return groupingRequiresConfidential(items);
+  } catch {
+    return true;
+  }
+}
+
 // Qualitätshinweis-Schwellen (bens Vorgaben): Veraltet nach 365 Tagen; „wenig Inhalt" unter
 // 200 kanonisierten Zeichen.
 export const STALE_AFTER_DAYS = 365;

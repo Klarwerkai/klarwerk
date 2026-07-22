@@ -6,7 +6,9 @@
 // Fix 2: KI-Ausfall wird NIE still zur ungefilterten Vollmenge — die Antwort trägt
 //   inferenceStatus/fallbackReason, die Klick-Filter wirken unverändert.
 // Fix 3: Route-Schema — Prompt-Länge (max 500) und locale (de/en) mit ehrlichem 400.
-import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { makeGuards } from "../../services/app/src/http";
 import {
@@ -14,8 +16,34 @@ import {
   confluenceImportRoutes,
 } from "../../services/app/src/routes/confluence-import-routes";
 import type { ConfluenceSourceAdapter } from "../../services/confluence";
-import type { ImportItem } from "../../services/library-analytics";
+import { type ImportItem, promptRequiresConfidential } from "../../services/library-analytics";
 import { ModelProvider, Reasoner } from "../../services/reasoner";
+
+// WP-VIP2-GATE (bens P0-1, endgueltig): Spy am EMBEDDER-Chokepoint. Das Modul services/embedding
+// wird gewrappt: jeder von createEmbeddingProviderFromEnv gebaute Provider zaehlt seine embed()-
+// Aufrufe — egal, wo im App-Graph er landet (Prefilter etc.). Zusammen mit dem Cloud-Spy
+// (ModelClient.complete) beweist das bens Negativtest: ein unklassifizierter/fehlklassifizierter
+// Prompt-Lauf erzeugt exakt NULL Cloud- UND NULL Embedder-Aufrufe.
+const embedSpy = vi.hoisted(() => ({ calls: 0 }));
+vi.mock("../../services/embedding", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../../services/embedding")>();
+  return {
+    ...original,
+    createEmbeddingProviderFromEnv: (env: Record<string, string | undefined>) => {
+      const provider = original.createEmbeddingProviderFromEnv(env);
+      if (!provider) {
+        return provider;
+      }
+      return {
+        ...provider,
+        embed: async (texts: readonly string[]) => {
+          embedSpy.calls += 1;
+          return provider.embed(texts);
+        },
+      };
+    },
+  };
+});
 
 function item(overrides: Partial<ImportItem> & { title: string }): ImportItem {
   return {
@@ -156,6 +184,111 @@ describe("WP-SAMMEL20-FIX (Fix 1, P0): Select-Vertraulichkeit — fail-safe Batc
     // Die abgeleiteten Kriterien (keywords: pumpe) haben WIRKLICH gefiltert.
     expect(body.matched).toBe(1);
     expect(body.preview.map((p) => p.title)).toEqual(["Pumpe warten"]);
+  });
+});
+
+describe("WP-VIP2-GATE (bens P0-1, endgueltig): Prompt-Provenienz ohne fail-open — NULL Cloud- UND NULL Embedder-Aufrufe", () => {
+  const PROMPT = "alles zur Pumpenwartung";
+  const savedPrefilter = process.env.KLARWERK_DUP_PREFILTER;
+
+  beforeEach(() => {
+    // Prefilter AN, damit der Embedder-Chokepoint im App-Graph ueberhaupt existiert — der Spy
+    // beweist dann, dass der Select-Lauf ihn NIE beruehrt.
+    process.env.KLARWERK_DUP_PREFILTER = "1";
+    embedSpy.calls = 0;
+  });
+
+  afterEach(() => {
+    if (savedPrefilter === undefined) {
+      delete process.env.KLARWERK_DUP_PREFILTER;
+    } else {
+      process.env.KLARWERK_DUP_PREFILTER = savedPrefilter;
+    }
+  });
+
+  it("LEERER Snapshot → vertraulich (fail-closed, vorher fail-open): 0 Cloud- UND 0 Embedder-Aufrufe", async () => {
+    const spy = cloudSpyReasoner('{"keywords":["pumpe"]}');
+    const { app, headers } = await selectApp([], spy.reasoner);
+    const res = await app.inject({ ...selectBody({ prompt: PROMPT }), headers });
+    expect(res.statusCode).toBe(200);
+    expect(spy.cloudCalls()).toBe(0);
+    expect(embedSpy.calls).toBe(0);
+    const body = res.json() as { inferenceStatus?: string; fallbackReason?: string };
+    expect(body.inferenceStatus).toBe("unavailable");
+    expect(body.fallbackReason).toBe("no-model");
+  });
+
+  it("unklassifiziertes Item im Snapshot → exakt NULL Cloud- und NULL Embedder-Aufrufe (bens Formulierung)", async () => {
+    const spy = cloudSpyReasoner('{"keywords":["pumpe"]}');
+    const { app, headers } = await selectApp(
+      [item({ title: "Pumpe warten", confidentiality: "intern" }), item({ title: "Ohne Signal" })],
+      spy.reasoner,
+    );
+    const res = await app.inject({ ...selectBody({ prompt: PROMPT }), headers });
+    expect(res.statusCode).toBe(200);
+    expect(spy.cloudCalls()).toBe(0);
+    expect(embedSpy.calls).toBe(0);
+  });
+
+  it("FEHLKLASSIFIZIERT (ungueltige Stufe) → ebenfalls 0/0", async () => {
+    const spy = cloudSpyReasoner('{"keywords":["pumpe"]}');
+    const { app, headers } = await selectApp(
+      [
+        item({ title: "Frei", confidentiality: "intern" }),
+        item({
+          title: "Kaputt",
+          confidentiality: "geheim" as unknown as NonNullable<ImportItem["confidentiality"]>,
+        }),
+      ],
+      spy.reasoner,
+    );
+    const res = await app.inject({ ...selectBody({ prompt: PROMPT }), headers });
+    expect(res.statusCode).toBe(200);
+    expect(spy.cloudCalls()).toBe(0);
+    expect(embedSpy.calls).toBe(0);
+  });
+
+  it("POSITIVFALL unveraendert: komplett explizit freigegebener Snapshot → genau 1 Cloud-Call, 0 Embedder", async () => {
+    const spy = cloudSpyReasoner('{"keywords":["pumpe"]}');
+    const { app, headers } = await selectApp(
+      [
+        item({ title: "Pumpe warten", confidentiality: "intern" }),
+        item({ title: "Ventil tauschen", confidentiality: "intern" }),
+      ],
+      spy.reasoner,
+    );
+    const res = await app.inject({ ...selectBody({ prompt: PROMPT }), headers });
+    expect(res.statusCode).toBe(200);
+    expect(spy.cloudCalls()).toBe(1);
+    expect(embedSpy.calls).toBe(0);
+  });
+
+  it("promptRequiresConfidential (pure): jede unklare Kante ist vertraulich — leer, fehlend, unklar, werfend", () => {
+    expect(promptRequiresConfidential([])).toBe(true);
+    expect(promptRequiresConfidential(null)).toBe(true);
+    expect(promptRequiresConfidential(undefined)).toBe(true);
+    expect(promptRequiresConfidential([item({ title: "Ohne Signal" })])).toBe(true);
+    expect(
+      promptRequiresConfidential([item({ title: "Restringiert", confidentiality: "vertraulich" })]),
+    ).toBe(true);
+    // Wirft die Klassifikation selbst (kaputtes Item), gilt defensiv vertraulich.
+    const broken = {
+      ...item({ title: "Kaputt" }),
+      get confidentiality(): ImportItem["confidentiality"] {
+        throw new Error("Klassifikation kaputt");
+      },
+    } as ImportItem;
+    expect(promptRequiresConfidential([broken])).toBe(true);
+    // Nur die KOMPLETT explizit freigegebene Quelle bleibt offen.
+    expect(promptRequiresConfidential([item({ title: "Frei", confidentiality: "intern" })])).toBe(
+      false,
+    );
+  });
+
+  it("Signatur-Pin: deriveImportCriteria hat KEINEN confidential-Default mehr (jeder Aufrufer entscheidet explizit)", () => {
+    const src = readFileSync(resolve(process.cwd(), "services/reasoner/src/service.ts"), "utf8");
+    expect(src).not.toContain("confidential = false,\n  ): Promise<ImportCriteriaResult>");
+    expect(src).toContain("confidential: boolean,\n  ): Promise<ImportCriteriaResult>");
   });
 });
 

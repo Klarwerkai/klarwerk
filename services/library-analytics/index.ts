@@ -78,6 +78,8 @@ export {
   dedupeSelectedItems,
   groupingCandidates,
   groupingRequiresConfidential,
+  // WP-VIP2-GATE (bens P0-1): fail-closed Prompt-Provenienz (leerer Snapshot → vertraulich).
+  promptRequiresConfidential,
   groupPromptUtf8Bytes,
   GROUP_TEXT_MAX_CHARS,
   GROUP_TITLE_MAX_INPUT_CHARS,

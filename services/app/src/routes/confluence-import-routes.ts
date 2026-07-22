@@ -15,6 +15,7 @@ import {
   groupPromptUtf8Bytes,
   groupingCandidates,
   groupingRequiresConfidential,
+  promptRequiresConfidential,
   sanitizeCriteria,
   summarizeImportItems,
   toPreviewEntry,
@@ -312,13 +313,14 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
           // WP-SAMMEL20-FIX (bens Fix 1, P0 — GLEICHES MUSTER wie der Gruppierungs-Fix aus
           // sammel17): der Auswahl-Satz wird VOR der Item-Auswahl verarbeitet (die Kriterien
           // ENTSCHEIDEN erst, welche Items gewählt werden) — die betroffene Item-Menge ist also
-          // der GESAMTE Snapshot. Deshalb klassifiziert derselbe fail-safe Batch-Vertrag
-          // (groupingRequiresConfidential) über ALLE Snapshot-Items: EIN vertrauliches/
-          // unklassifiziertes/ungültiges Item → der Select-Aufruf läuft confidential (die
-          // Provider-Kette nimmt die Cloud heraus; Lokal/Deterministisch bleiben). Nur eine
-          // nachweislich KOMPLETT explizit freigegebene Quelle darf den Satz zur Cloud geben —
-          // der Satz selbst ist Nutzereingabe ÜBER dieses potenziell vertrauliche Wissen.
-          const confidential = groupingRequiresConfidential(items);
+          // der GESAMTE Snapshot. EIN vertrauliches/unklassifiziertes/ungültiges Item → der
+          // Select-Aufruf läuft confidential (die Provider-Kette nimmt die Cloud heraus;
+          // Lokal/Deterministisch bleiben). Nur eine nachweislich KOMPLETT explizit freigegebene
+          // Quelle darf den Satz zur Cloud geben.
+          // WP-VIP2-GATE (bens P0-1, endgueltig): der EIGENE Prompt-Vertrag ist an JEDER Kante
+          // fail-closed — auch ein LEERER/fehlender Snapshot oder eine werfende Klassifikation
+          // macht den Satz vertraulich (der alte Batch-Vertrag war auf [] fail-open).
+          const confidential = promptRequiresConfidential(items);
           const derived =
             prompt.trim().length > 0
               ? reasoner

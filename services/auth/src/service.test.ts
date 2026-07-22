@@ -83,7 +83,7 @@ describe("AuthService", () => {
     }
     expect(stored.passwordHash).not.toContain("secret123");
     expect(stored.passwordSalt).toBeTruthy();
-    expect(verifyPassword("secret123", stored.passwordSalt, stored.passwordHash)).toBe(true);
+    expect(await verifyPassword("secret123", stored.passwordSalt, stored.passwordHash)).toBe(true);
   });
 
   it("FR-AUTH-06: Admin-Reset macht alte Sitzungen ungültig, neues Passwort gilt", async () => {

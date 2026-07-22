@@ -655,8 +655,12 @@ export function buildApp(
   }
 
   app.get("/health", async () => ({ status: "ok" }));
-  app.get("/api/reasoner/status", async () => services.reasoner.status()); // FR-RSN-05
-  app.get("/api/ai-status", async () => ({ ai: services.reasoner.status() })); // §2.1: ist die KI verfügbar?
+  // FR-RSN-05 + WP-VIP2-GATE (bens P1): die beiden OEFFENTLICHEN Status-Flags sind ABSTRAHIERT —
+  // nur {active, mode: cloud|local|deterministic}, KEIN Provider-/Modellname mehr (der stand hier
+  // anonym lesbar). Provider-Details liefert ausschliesslich die authentifizierte Admin-Sicht
+  // GET /api/reasoner/config (ko.read). Die KI-Pille im Web braucht nur active/mode.
+  app.get("/api/reasoner/status", async () => services.reasoner.publicStatus());
+  app.get("/api/ai-status", async () => ({ ai: services.reasoner.publicStatus() })); // §2.1: ist die KI verfügbar?
 
   // HTTP-Oberfläche der Module. Auth bringt seine eigenen Routen mit; die übrigen
   // Module werden über App-Routen verdrahtet, die den gemeinsamen Guard nutzen.

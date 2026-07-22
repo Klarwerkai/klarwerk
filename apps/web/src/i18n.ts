@@ -254,6 +254,9 @@ const de = {
   "auth.password": "Passwort",
   "auth.passwordRepeat": "Passwort wiederholen",
   "auth.passwordMismatch": "Die Passwörter stimmen nicht überein.",
+  // WP-VIP2-GATE (bens P1): Selbstregistrierung serverseitig abgeschaltet (Einladungs-Betrieb).
+  "auth.registrationDisabled":
+    "Registrierung nur per Einladung — bitte wende dich an deinen Admin.",
   "auth.submit.login": "Anmelden",
   "auth.submit.register": "Registrieren",
   "auth.submit.setup": "Admin anlegen & starten",
@@ -3505,6 +3508,8 @@ const en: typeof de = {
   "auth.password": "Password",
   "auth.passwordRepeat": "Repeat password",
   "auth.passwordMismatch": "The passwords do not match.",
+  // WP-VIP2-GATE: self-registration disabled server-side (invite-only operation).
+  "auth.registrationDisabled": "Registration is invite-only — please contact your admin.",
   "auth.submit.login": "Sign in",
   "auth.submit.register": "Register",
   "auth.submit.setup": "Create admin & start",
@@ -6692,6 +6697,9 @@ const nl: typeof de = {
   "auth.password": "Wachtwoord",
   "auth.passwordRepeat": "Wachtwoord herhalen",
   "auth.passwordMismatch": "De wachtwoorden komen niet overeen.",
+  // WP-VIP2-GATE: zelfregistratie server-side uitgeschakeld (alleen op uitnodiging).
+  "auth.registrationDisabled":
+    "Registreren kan alleen op uitnodiging — neem contact op met je admin.",
   "auth.submit.login": "Aanmelden",
   "auth.submit.register": "Registreren",
   "auth.submit.setup": "Admin aanmaken & starten",
