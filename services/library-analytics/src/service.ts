@@ -222,20 +222,38 @@ export class LibraryService {
   // WP-SHIP8-FIX (bens F1): die VOLLSTÄNDIGE Zielmenge des Aufräumens — Queue-Einträge + KOs mit
   // Cleanup-Provenienz — wird IMMER als Ganzes gelesen, BEVOR irgendein Write passiert (Vorschau
   // UND Ausführung nutzen dieselbe Ermittlung; die Ausführung liest nie mehr „nebenbei nach").
+  // WP-SHIP8-CLOSE-4 (bens ROT-1C): KOs, deren Kandidaten-Anker (importCandidateId) zu einem
+  // OFFENEN Claim ('in_bearbeitung') gehört, sind NIE Teil der Zielmenge — sonst würde der
+  // Cleanup das frisch gestempelte KO einer LAUFENDEN Review-Aktion trashen und die Recovery
+  // fände den Anker nicht mehr lebend. Der Ausschluss ist über den Digest gebunden (Vorschau UND
+  // Ausführung berechnen die Zielmenge identisch; ändert sich der Claim-Zustand dazwischen,
+  // greift ehrlich CLEANUP_DRIFT) und wird als eigener Zähler ehrlich ausgewiesen.
   private async cleanupTargets(): Promise<{
     candidateIds: string[];
     // WP-SHIP8-FINAL (bens Bedingung 3): der Status je Kandidat zum Bestätigungs-Zeitpunkt —
     // die Ausführung löscht nur Kandidaten, deren Status seitdem UNVERÄNDERT ist.
     candidateStatuses: Map<string, string>;
     targets: KnowledgeObject[];
+    // KOs mit Cleanup-Provenienz, die WEGEN eines offenen Claims geschützt sind (nur Zähler).
+    claimedKos: number;
   }> {
     const candidates = await this.candidates.all();
     const candidateIds = candidates.map((c) => c.id);
     const candidateStatuses = new Map(candidates.map((c) => [c.id, c.status as string]));
-    const targets = (await this.koService.list()).filter((ko) =>
+    const openClaims = new Set(
+      candidates.filter((c) => c.status === "in_bearbeitung").map((c) => c.id),
+    );
+    const provenance = (await this.koService.list()).filter((ko) =>
       this.hasCleanupProvenance(ko.sources ?? []),
     );
-    return { candidateIds, candidateStatuses, targets };
+    const claimProtected = (ko: KnowledgeObject): boolean =>
+      ko.importCandidateId !== undefined && openClaims.has(ko.importCandidateId);
+    return {
+      candidateIds,
+      candidateStatuses,
+      targets: provenance.filter((ko) => !claimProtected(ko)),
+      claimedKos: provenance.filter(claimProtected).length,
+    };
   }
 
   // Vorschau: NUR zählen, nichts verändern. WP-SHIP8-FIX (bens F2): zusätzlich der STATELESS
@@ -245,8 +263,11 @@ export class LibraryService {
     candidates: number;
     importedKos: number;
     digest: string;
+    // WP-SHIP8-CLOSE-4 (bens ROT-1C): KOs einer LAUFENDEN Review-Aktion — ehrlich beziffert,
+    // aber NIE Teil der Zielmenge (und damit nicht im Digest).
+    claimedKos: number;
   }> {
-    const { candidateIds, targets } = await this.cleanupTargets();
+    const { candidateIds, targets, claimedKos } = await this.cleanupTargets();
     return {
       candidates: candidateIds.length,
       importedKos: targets.length,
@@ -254,6 +275,7 @@ export class LibraryService {
         candidateIds,
         targets.map((ko) => ko.id),
       ),
+      claimedKos,
     };
   }
 
@@ -284,8 +306,12 @@ export class LibraryService {
     // WP-NIGHT-FIX (bens F2-TOCTOU): Kandidaten, die NACH der bestätigten Vorschau eingereiht
     // wurden — sie werden NICHT angefasst und ehrlich ausgewiesen.
     newCandidates: number;
+    // WP-SHIP8-CLOSE-4 (bens ROT-1C): KOs einer LAUFENDEN Review-Aktion — aus der Zielmenge
+    // ausgeschlossen (nie getrasht) und in der Bilanz ehrlich beziffert. BEWUSST kein Eintrag in
+    // `skipped`: das würde die Queue-Phase blockieren (Regel 3 gilt nur für ECHTE KO-Fehlschläge).
+    claimedKos: number;
   }> {
-    const { candidateIds, candidateStatuses, targets } = await this.cleanupTargets();
+    const { candidateIds, candidateStatuses, targets, claimedKos } = await this.cleanupTargets();
     const digest = cleanupDigest(
       candidateIds,
       targets.map((ko) => ko.id),
@@ -407,7 +433,13 @@ export class LibraryService {
         actor,
         action: "import.cleanup",
         target: "library",
-        payload: { removedCandidates, trashedKos, skipped: skipped.length, newCandidates },
+        payload: {
+          removedCandidates,
+          trashedKos,
+          skipped: skipped.length,
+          newCandidates,
+          claimedKos,
+        },
       });
     } catch (err) {
       auditFailed = true;
@@ -418,7 +450,7 @@ export class LibraryService {
         }).\n`,
       );
     }
-    return { removedCandidates, trashedKos, skipped, auditFailed, newCandidates };
+    return { removedCandidates, trashedKos, skipped, auditFailed, newCandidates, claimedKos };
   }
 
   // SCRUM-116: Review-Aktion. accept → echtes KO (außer Dublette, dann übersprungen).
@@ -432,16 +464,21 @@ export class LibraryService {
   //
   // WP-SHIP8-CLOSE-3 (bens ROT-1) — LEASE/OPID-PROTOKOLL (crash-sicher):
   //  (1) Der Claim persistiert opId (eindeutige Operations-Id) + claimedAt (Lease-Beginn) im
-  //      selben CAS-Write.
-  //  (2) Der Accept stempelt die opId ans NEU ERZEUGTE KO (importOpId), BEVOR der Endstatus
-  //      geschrieben wird — der Re-Sync-/Anker-Pfad (revise/No-op) braucht keinen Stempel, er
-  //      ist per (provider, externalId, sourceVersion) monoton idempotent.
+  //      selben CAS-Write. Die opId gehört NUR dem Claim-CAS (Fencing des Kandidaten-Writes).
+  //  (2) WP-SHIP8-CLOSE-4 (bens ROT-1B): der Accept stempelt den STABILEN Kandidaten-Anker
+  //      (importCandidateId = candidate.id, DB-unique inkl. Papierkorb) ans NEU ERZEUGTE KO,
+  //      BEVOR der Endstatus geschrieben wird — je Kandidat ist damit hart höchstens EIN KO
+  //      möglich, egal wie viele (auch abgelöste) Läufe schreiben; acceptToKo adoptiert bei
+  //      Kollision. Der Re-Sync-/Anker-Pfad (revise/No-op) braucht keinen Stempel, er ist per
+  //      (provider, externalId, sourceVersion) monoton idempotent.
   //  (3) Der Abschluss läuft über resolveClaim (CAS auf status+opId, räumt die Lease aus). Greift
   //      er nicht (Recovery hat übernommen), bricht die Aktion mit CONFLICT ab — nie stiller Erfolg.
-  //  (4) Fehlerpfad: WURDE bereits ein KO erzeugt, bleibt der Claim BEWUSST stehen — die
-  //      Recovery vollendet die Operation später über den opId-Stempel (ein blindes Zurück auf
-  //      'neu' könnte beim Retry ein ZWEITES KO erzeugen, acceptToKo ist ohne Anker NICHT
-  //      idempotent). Ohne erzeugtes KO wird der Claim auf 'neu' zurückgegeben (Retry sofort
+  //  (4) Fehlerpfad (WP-SHIP8-CLOSE-4, bens ROT-1A): der ANKER entscheidet — NIE blind freigeben.
+  //      Existiert das KO (createdKoId ODER Anker-Suche inkl. Papierkorb — auch bei create-
+  //      Teilpersistenz: Insert gelungen, Snapshot/Audit warf), wird die Operation DIREKT
+  //      vollendet (resolveClaim mit eigener opId); greift der CAS nicht, bleibt der Claim für
+  //      die Recovery stehen. Schlägt die Anker-Suche selbst fehl → fail-closed (Claim bleibt).
+  //      Nur wenn sicher KEIN KO existiert, geht der Claim auf 'neu' zurück (Retry sofort
   //      möglich). Crash-Fälle heilt recoverStaleReviewClaims nach Lease-Ablauf.
   async reviewImportCandidate(
     id: string,
@@ -479,7 +516,7 @@ export class LibraryService {
         // „intern" normalisiert (fail-open) bzw. bei der Erstanlage hart abgelehnt. Das bereinigte Item wird
         // MIT persistiert (nicht nur transient), damit die Queue keinen ungültigen Wert behält.
         const item = this.withSanitizedConfidentiality(candidate.item);
-        createdKoId = await this.acceptToKo(item, actor, opId);
+        createdKoId = await this.acceptToKo(item, actor, id);
         resolution = { status: "angenommen", koId: createdKoId, item };
       }
       // SCRUM-157: Endstatus/koId/Note (+ bereinigtes Item, 515) persistieren — atomar über den
@@ -492,8 +529,49 @@ export class LibraryService {
         );
       }
     } catch (err) {
-      if (createdKoId === null) {
-        // Kein KO entstanden → Claim sicher zurückgeben (CAS trifft nur die EIGENE Lease).
+      // WP-SHIP8-CLOSE-4 (bens ROT-1A): der ANKER entscheidet über den Fehlerpfad — eine blinde
+      // Freigabe, während das gestempelte KO existiert (z. B. create-Teilpersistenz: Insert
+      // gelungen, Snapshot/Audit warf danach), wäre beim Retry ein Doppel-KO.
+      let stampedId = createdKoId;
+      let ankerUnknown = false;
+      if (stampedId === null && action === "accept" && !candidate.duplicate) {
+        try {
+          stampedId = (await this.koService.findByImportCandidateId(id))?.id ?? null;
+        } catch {
+          ankerUnknown = true; // Anker-Zustand nicht prüfbar → fail-closed (s. unten).
+        }
+      }
+      if (stampedId !== null) {
+        // Das KO existiert — die Operation DIREKT vollenden statt auf die Recovery zu warten.
+        // CAS auf die EIGENE opId: eine übernommene Lease wird nie überschrieben.
+        const completed = await this.candidates
+          .resolveClaim(id, opId, { status: "angenommen", koId: stampedId })
+          .catch(() => undefined);
+        if (completed) {
+          process.stderr.write(
+            `[KLARWERK] Review-Accept trotz Seiteneffekt-Fehler vollendet (kandidat=${id}, fehler=${
+              err instanceof Error ? err.name : "unknown"
+            }) — genau EIN KO, Endzustand angenommen.\n`,
+          );
+          resolved = completed;
+        } else {
+          // Entweder hält eine ANDERE Operation die Lease (deren Ausgang gilt; ein offener Claim
+          // wird von der Recovery per Kandidaten-Anker vollendet) — oder der Kandidat ist bereits
+          // aufgelöst (der Gewinner-Zustand steht). Nie ein Doppel-KO: der Anker ist DB-unique.
+          process.stderr.write(
+            `[KLARWERK] Review-Accept: KO existiert, aber der Claim gehört dieser Operation nicht mehr (kandidat=${id}) — Zustand des Gewinners gilt.\n`,
+          );
+          throw err;
+        }
+      } else if (ankerUnknown) {
+        // FAIL-CLOSED: ohne verlässliche Anker-Auskunft weder freigeben (Doppel-KO-Risiko) noch
+        // vollenden — der Claim bleibt stehen, die Lease-Recovery entscheidet später sicher.
+        process.stderr.write(
+          `[KLARWERK] Anker-Pruefung nach Review-Fehler fehlgeschlagen (kandidat=${id}) — Claim bleibt stehen (fail-closed).\n`,
+        );
+        throw err;
+      } else {
+        // Sicher KEIN KO entstanden → Claim zurückgeben (CAS trifft nur die EIGENE Lease).
         try {
           await this.candidates.resolveClaim(id, opId, { status: "neu" });
         } catch {
@@ -503,14 +581,12 @@ export class LibraryService {
             `[KLARWERK] Review-Claim-Rueckgabe fehlgeschlagen (kandidat=${id}) — Status bleibt in_bearbeitung.\n`,
           );
         }
-      } else {
-        // KO existiert bereits (gestempelt mit opId): Claim NICHT zurückgeben — ein Retry würde
-        // ein zweites KO erzeugen. Die Recovery vollendet die Operation über den Stempel.
-        process.stderr.write(
-          `[KLARWERK] Review-Accept nach KO-Erzeugung unterbrochen (kandidat=${id}) — Claim bleibt stehen, Recovery vollendet per opId.\n`,
-        );
+        throw err;
       }
-      throw err;
+    }
+    if (!resolved) {
+      // Defensiv unerreichbar: jeder nicht-werfende Pfad oben setzt resolved.
+      throw new LibraryError("CONFLICT", "Review-Aktion ohne Ergebnis — bitte erneut versuchen.");
     }
     await this.audit?.record({
       actor,
@@ -527,13 +603,19 @@ export class LibraryService {
   // Queue nie geladen, bleibt ein verwaister Claim sichtbar 'in_bearbeitung' liegen).
   // JE Kandidat mit status 'in_bearbeitung' und ABGELAUFENER Lease (claimedAt älter als
   // REVIEW_CLAIM_LEASE_MS; fehlend/unlesbar = abgelaufen):
-  //  - existiert ein KO mit importOpId === opId → die KO-Erzeugung war bereits gelungen, nur der
-  //    Endstatus fehlte: Operation VOLLENDEN (angenommen + koId, Audit mit recovered:true) —
-  //    höchstens EIN KO, kein stiller Erfolg.
+  //  - WP-SHIP8-CLOSE-4 (bens ROT-1C): existiert ein KO mit importCandidateId === candidate.id —
+  //    gesucht INKLUSIVE Papierkorb — war die KO-Erzeugung bereits gelungen, nur der Endstatus
+  //    fehlte: Operation VOLLENDEN (angenommen + koId, Audit mit recovered:true) — höchstens EIN
+  //    KO, kein stiller Erfolg. FESTER TRASH-VERTRAG: auch ein vom D-CLEAN getrashtes Stempel-KO
+  //    zählt als vollendet — der Kandidat erhält seinen Endstatus mit Verweis auf das (ggf.
+  //    getrashte) KO; es entsteht NIE ein neues KO, und die Trash-Entscheidung bleibt beim
+  //    Cleanup (Wiederherstellen läuft über den Papierkorb, nicht über einen Re-Accept).
   //  - existiert keines → nichts Unumkehrbares ist passiert: Claim auf 'neu' zurückgeben (der
-  //    Anker-/Re-Sync-Pfad ist idempotent, der Create-Pfad hätte einen Stempel hinterlassen).
+  //    Anker-/Re-Sync-Pfad ist idempotent; die Erstanlage hätte den Anker hinterlassen, und der
+  //    DB-Unique-Anker macht selbst einen SPÄTER noch schreibenden abgelösten Lauf unschädlich —
+  //    er kollidiert und adoptiert statt zu duplizieren).
   //  - fehlt die opId (darf nie vorkommen — der Claim schreibt sie atomar mit): KEINE blinde
-  //    Freigabe (Doppel-KO-Risiko wäre unprüfbar) — lauter Log, Kandidat bleibt sichtbar stehen.
+  //    Freigabe (der Kandidaten-CAS wäre nicht fence-bar) — lauter Log, Kandidat bleibt stehen.
   // Beide Wege laufen über den opId-CAS (resolveClaim) — eine PARALLEL noch laufende Operation
   // oder eine zweite Replika-Recovery kann nie überschrieben werden (0 Zeilen = No-op).
   async recoverStaleReviewClaims(): Promise<{ completed: number; released: number }> {
@@ -546,7 +628,6 @@ export class LibraryService {
     if (stale.length === 0) {
       return { completed, released };
     }
-    const kos = await this.koService.list();
     for (const candidate of stale) {
       const opId = candidate.opId;
       if (!opId) {
@@ -555,7 +636,8 @@ export class LibraryService {
         );
         continue;
       }
-      const stamped = kos.find((ko) => ko.importOpId === opId);
+      // Anker-Suche INKLUSIVE Papierkorb (findByImportCandidateId) — s. Trash-Vertrag oben.
+      const stamped = await this.koService.findByImportCandidateId(candidate.id);
       if (stamped) {
         const resolved = await this.candidates.resolveClaim(candidate.id, opId, {
           status: "angenommen",
@@ -587,10 +669,23 @@ export class LibraryService {
   // SCRUM-470: Baut das KO aus einem angenommenen Import-Item — idempotent per pageId.
   // Bekannte pageId (Anker im Bestand) → Re-Sync via revise() (nur bei höherer sourceVersion),
   // sonst neues KO. Gibt die KO-Id zurück (für die nachgelagerte Erkennung im Route-Layer).
-  // WP-SHIP8-CLOSE-3 (bens ROT-1): opId stempelt NUR die ERSTANLAGE (importOpId am neuen KO) —
-  // der Anker-/Re-Sync-Pfad (revise bei höherer Version, sonst No-op) ist monoton idempotent
-  // und braucht keinen Stempel; ein Crash dort ist per Claim-Freigabe sicher wiederholbar.
-  private async acceptToKo(item: ImportItem, actor: string, opId?: string): Promise<string> {
+  // WP-SHIP8-CLOSE-4 (bens ROT-1A/1B/1C): INSERT-OR-ADOPT am STABILEN Kandidaten-Anker
+  // (importCandidateId = candidate.id; DB-unique inkl. Papierkorb). Damit sind späte/wiederholte
+  // Writes ALLER Läufe desselben Kandidaten unschädlich:
+  //  - VORAB-ADOPTION: existiert bereits ein KO mit diesem Anker (auch getrasht — z. B. weil der
+  //    D-CLEAN es nach einem Crash trashte), wird ES zurückgegeben — nie ein zweites erzeugt.
+  //  - KOLLISIONS-ADOPTION: wirft create (Unique-Kollision eines parallelen/abgelösten Laufs ODER
+  //    Teilpersistenz: KO-Insert gelungen, Snapshot/Audit warf danach — bens ROT-1A), wird der
+  //    Anker nachgeschlagen; existiert das KO, ist der Accept materialisiert → adoptieren.
+  //  Der Anker-/Re-Sync-Pfad (revise bei höherer Version, sonst No-op) ist monoton idempotent
+  //  und braucht keinen Stempel; ein Crash dort ist per Claim-Freigabe sicher wiederholbar.
+  private async acceptToKo(item: ImportItem, actor: string, candidateId?: string): Promise<string> {
+    if (candidateId) {
+      const stamped = await this.koService.findByImportCandidateId(candidateId);
+      if (stamped) {
+        return stamped.id;
+      }
+    }
     // SCRUM-510 R2b: externalId-Upsert/Anker nur bei aktivem Strang. Aus → externalId ignorieren, immer
     // neu anlegen ohne Herkunfts-Anker (exakt heutiges Bestandsverhalten). Quellneutral.
     // WP-SHIP8-FIX (bens F3): das Ziel-KO wird nach provider+externalId gesucht (der Herkunfts-
@@ -652,32 +747,51 @@ export class LibraryService {
     // Erstanlage: die effektive Version wird IMMER gespeichert (auch ohne Item-Version → 1), damit ein
     // versionsloser Re-Import (current = 1, incoming = 1) sauber als No-op erkannt wird (Idempotenz).
     const firstVersion = item.sourceVersion ?? 1;
-    const ko = await this.koService.create({
-      title: item.title,
-      statement: item.statement,
-      type: item.type,
-      category: item.category,
-      // WP-SAMMEL21-FIX (Pedis Autor-Entscheid, Fix 4): GEWÄHLTE ABBILDUNG — `author` ist IMMER
-      // der annehmende Reviewer (ein echter KLARWERK-Nutzer: RBAC-Checks wie „eigenes KO löschen"
-      // und die Historie funktionieren; vorher stand hier der rohe Quell-Autor-String, den das
-      // Nutzer-Verzeichnis nie auflösen kann). Der QUELL-AUTOR wandert in das BESTEHENDE
-      // originalAuthor-Feld (Wissensträger — dasselbe Modell wie der Draft-Weg): die
-      // Validierungs-/Detail-Anzeige zeigt „von <Quell-Autor>" mit Vorrang, busFactor/expertise
-      // zählen ihn als Träger. KEIN Fake-User. Fehlt der Quell-Autor, bleibt ehrlich der Reviewer.
-      author: actor,
-      ...(item.author?.trim() ? { originalAuthor: item.author } : {}),
-      tags: item.tags ?? [],
-      // SCRUM-509 R3: Import ist ein Bulk-/Programmatik-Pfad → konservativ. Fehlt das Governance-Signal,
-      // gilt „vertraulich" (NICHT still intern) — importierter Fremdinhalt bleibt bis zur bewussten
-      // Freigabe aus Cloud/Export heraus.
-      confidentiality: item.confidentiality ?? "vertraulich",
-      ...(item.bodyHtml ? { bodyHtml: item.bodyHtml } : {}),
-      ...(externalId ? { sources: [this.buildSource(item, actor, firstVersion)] } : {}),
-      // WP-SHIP8-CLOSE-3 (bens ROT-1): Operations-Stempel VOR dem Endstatus des Kandidaten —
-      // die Crash-Recovery erkennt daran eine bereits gelungene Erstanlage (kein Doppel-KO).
-      ...(opId ? { importOpId: opId } : {}),
-    });
-    return ko.id;
+    try {
+      const ko = await this.koService.create({
+        title: item.title,
+        statement: item.statement,
+        type: item.type,
+        category: item.category,
+        // WP-SAMMEL21-FIX (Pedis Autor-Entscheid, Fix 4): GEWÄHLTE ABBILDUNG — `author` ist IMMER
+        // der annehmende Reviewer (ein echter KLARWERK-Nutzer: RBAC-Checks wie „eigenes KO löschen"
+        // und die Historie funktionieren; vorher stand hier der rohe Quell-Autor-String, den das
+        // Nutzer-Verzeichnis nie auflösen kann). Der QUELL-AUTOR wandert in das BESTEHENDE
+        // originalAuthor-Feld (Wissensträger — dasselbe Modell wie der Draft-Weg): die
+        // Validierungs-/Detail-Anzeige zeigt „von <Quell-Autor>" mit Vorrang, busFactor/expertise
+        // zählen ihn als Träger. KEIN Fake-User. Fehlt der Quell-Autor, bleibt ehrlich der Reviewer.
+        author: actor,
+        ...(item.author?.trim() ? { originalAuthor: item.author } : {}),
+        tags: item.tags ?? [],
+        // SCRUM-509 R3: Import ist ein Bulk-/Programmatik-Pfad → konservativ. Fehlt das Governance-Signal,
+        // gilt „vertraulich" (NICHT still intern) — importierter Fremdinhalt bleibt bis zur bewussten
+        // Freigabe aus Cloud/Export heraus.
+        confidentiality: item.confidentiality ?? "vertraulich",
+        ...(item.bodyHtml ? { bodyHtml: item.bodyHtml } : {}),
+        ...(externalId ? { sources: [this.buildSource(item, actor, firstVersion)] } : {}),
+        // WP-SHIP8-CLOSE-3/4 (bens ROT-1): Kandidaten-Anker VOR dem Endstatus des Kandidaten —
+        // Recovery und Insert-or-Adopt erkennen daran eine bereits gelungene Erstanlage.
+        ...(candidateId ? { importCandidateId: candidateId } : {}),
+      });
+      return ko.id;
+    } catch (err) {
+      // WP-SHIP8-CLOSE-4 (bens ROT-1A/1B): KOLLISIONS-ADOPTION — existiert das KO mit diesem
+      // Anker trotz werfendem create (Unique-Kollision ODER Insert gelungen + Snapshot/Audit
+      // warf danach), ist der Accept materialisiert: das bestehende KO gilt, der Fehler wird
+      // PII-frei geloggt statt in ein Doppel-KO oder eine falsche Claim-Freigabe zu münden.
+      if (candidateId) {
+        const raced = await this.koService.findByImportCandidateId(candidateId);
+        if (raced) {
+          process.stderr.write(
+            `[KLARWERK] Import-Accept adoptiert bestehendes KO (kandidat=${candidateId}, fehler=${
+              err instanceof Error ? err.name : "unknown"
+            }).\n`,
+          );
+          return raced.id;
+        }
+      }
+      throw err;
+    }
   }
 
   // SCRUM-470: Herkunfts-Anker aus einem Import-Item. Generisch — provider kommt vom Item

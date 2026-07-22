@@ -106,6 +106,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
       importedKos: 2,
       // WP-SHIP8-FIX (bens F2): SHA-256 über die sortierte Zielmenge — bindet die Bestätigung.
       digest: expect.stringMatching(/^[0-9a-f]{64}$/),
+      claimedKos: 0,
     });
     // Nichts passiert: Queue und Bestand unverändert, Papierkorb leer.
     expect((await services.library.listImportCandidates()).length).toBe(2);
@@ -131,6 +132,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
       skipped: [],
       auditFailed: false,
       newCandidates: 0,
+      claimedKos: 0,
     });
     // Queue KOMPLETT leer (jeder Status).
     expect(await services.library.listImportCandidates()).toEqual([]);
@@ -148,6 +150,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
       trashedKos: 2,
       skipped: 0,
       newCandidates: 0,
+      claimedKos: 0,
     });
   });
 
@@ -245,6 +248,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
       skipped: [{ id: jiraKo?.id, reason: "RepoDown" }],
       auditFailed: false,
       newCandidates: 0,
+      claimedKos: 0,
     });
     expect((await services.library.listImportCandidates()).length).toBe(2);
     expect((await services.ko.list()).map((k) => k.title).sort()).toEqual([
@@ -282,6 +286,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
       skipped: [],
       auditFailed: false,
       newCandidates: 0,
+      claimedKos: 0,
     });
     expect(await services.library.listImportCandidates()).toEqual([]);
     expect((await services.ko.trashed()).length).toBe(2);
@@ -316,6 +321,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
         skipped: [],
         auditFailed: true,
         newCandidates: 0,
+        claimedKos: 0,
       });
       expect(await services.library.listImportCandidates()).toEqual([]);
       expect((await services.ko.trashed()).length).toBe(2);
@@ -387,6 +393,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
       skipped: [],
       auditFailed: false,
       newCandidates: 1,
+      claimedKos: 0,
     });
     const remaining = await services.library.listImportCandidates();
     expect(remaining.map((c) => c.item.title)).toEqual(["Parallel eingereiht"]);

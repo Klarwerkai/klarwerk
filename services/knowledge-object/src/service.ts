@@ -106,10 +106,11 @@ export interface CreateKoInput {
   // (busFactor/expertise zählen originalAuthor; die UI löst per nameOf mit Roh-Fallback auf).
   // Ohne Feld bleibt es beim Bestandsverhalten (originalAuthor = author).
   originalAuthor?: string;
-  // WP-SHIP8-CLOSE-3 (bens ROT-1): Operations-Stempel des Import-Accepts (Claim-opId). Nur der
-  // Import-Accept setzt ihn; die öffentlichen Schreibrouten verwerfen das Feld wie `sources`
-  // (sonst könnte ein Client die Crash-Recovery eines fremden Review-Claims kapern).
-  importOpId?: string;
+  // WP-SHIP8-CLOSE-3/4 (bens ROT-1, 1A/1B/1C): STABILER Kandidaten-Anker des Import-Accepts
+  // (Id des Review-Kandidaten; DB-unique via kos_import_candidate_uq). Nur der Import-Accept
+  // setzt ihn; die öffentlichen Schreibrouten verwerfen das Feld wie `sources` (sonst könnte
+  // ein Client die Crash-Recovery eines fremden Review-Claims kapern).
+  importCandidateId?: string;
 }
 
 export interface ReviseKoInput {
@@ -341,8 +342,9 @@ export class KoService {
         ? { confidentiality: normalizeConfidentiality(input.confidentiality) }
         : {}),
       ...(input.demoSeed ? { demoSeed: true } : {}),
-      // WP-SHIP8-CLOSE-3 (bens ROT-1): Operations-Stempel des Import-Accepts (Recovery-Anker).
-      ...(input.importOpId ? { importOpId: input.importOpId } : {}),
+      // WP-SHIP8-CLOSE-3/4 (bens ROT-1): stabiler Kandidaten-Anker des Import-Accepts (DB-unique
+      // erzwungen — der Insert eines zweiten KO desselben Kandidaten scheitert am Index/Guard).
+      ...(input.importCandidateId ? { importCandidateId: input.importCandidateId } : {}),
       createdAt: at,
       history: [{ version: 1, at, author: input.author, note: "erstellt" }],
       comments: [],
@@ -551,6 +553,14 @@ export class KoService {
   // Endlöschung ist jetzt eine EXPLIZITE Operation (runTrashSweep), die reine Leseoperationen nie auslöst.
   async list(filter: KoFilter = {}): Promise<KnowledgeObject[]> {
     return (await this.repo.list(filter)).filter((k) => !k.deletedAt);
+  }
+
+  // WP-SHIP8-CLOSE-4 (bens ROT-1A/1C): Anker-Suche des Import-Accepts — BEWUSST INKLUSIVE
+  // Papierkorb (einzige Trash-durchlässige Lesefläche neben den Trash-Views): die Claim-Recovery
+  // und der Insert-or-Adopt-Pfad müssen ein bereits erzeugtes KO auch dann finden, wenn der
+  // D-CLEAN es zwischenzeitlich getrasht hat — sonst entstünde beim Retry ein Doppel-KO.
+  async findByImportCandidateId(candidateId: string): Promise<KnowledgeObject | undefined> {
+    return (await this.repo.list({})).find((k) => k.importCandidateId === candidateId);
   }
 
   // WP-BILD-1g (bens sammel14-ROT): Suchpfad-Sicht OHNE bodyHtml — die Bibliotheks-Suche arbeitet

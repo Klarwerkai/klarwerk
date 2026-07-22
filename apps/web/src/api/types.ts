@@ -750,6 +750,8 @@ export interface ImportCleanupPreview {
   importedKos: number;
   // WP-SHIP8-FIX (bens F2): bindet die Bestätigung an GENAU diese Zielmenge (stateless, SHA-256).
   digest: string;
+  // WP-SHIP8-CLOSE-4 (bens ROT-1C): KOs einer LAUFENDEN Review-Aktion — nie Teil der Zielmenge.
+  claimedKos: number;
 }
 
 export interface ImportCleanupResult {
@@ -761,6 +763,8 @@ export interface ImportCleanupResult {
   auditFailed: boolean;
   // WP-NIGHT-FIX (bens F2-TOCTOU): seit der Vorschau neu eingereihte Kandidaten — nicht angefasst.
   newCandidates: number;
+  // WP-SHIP8-CLOSE-4 (bens ROT-1C): KOs einer LAUFENDEN Review-Aktion — nie getrasht, ehrlich beziffert.
+  claimedKos: number;
 }
 
 // WP-B6: Bilanz eines geladenen Beispielpakets (idempotent — übersprungen = schon vorhanden).

@@ -143,11 +143,15 @@ export interface KnowledgeObject {
   // Demodaten-Merker (Pedi 02.07.): vom Seed gesetzt, überlebt Bearbeitungen/Versionen —
   // damit Demo-Bestand sichtbar bleibt und komplett entfernt werden kann.
   demoSeed?: boolean;
-  // WP-SHIP8-CLOSE-3 (bens ROT-1): Operations-Stempel des Import-Accepts — die opId des Review-
-  // Claims, der dieses KO erzeugt hat. NUR der Import-Accept-Pfad setzt ihn (die öffentlichen
-  // Schreibrouten verwerfen das Feld wie `sources`); die Claim-Recovery erkennt daran nach einem
-  // Crash, dass die KO-Erzeugung bereits gelungen war (Operation vollenden statt Doppel-KO).
-  importOpId?: string;
+  // WP-SHIP8-CLOSE-3/4 (bens ROT-1, 1A/1B/1C): STABILER Idempotenzanker des Import-Accepts — die
+  // Id des Review-KANDIDATEN, aus dem dieses KO entstand. Bewusst der Kandidat (stabil über alle
+  // Claim-Vorgänge/Retries hinweg), NICHT die je Claim wechselnde opId: nur so erzwingt der
+  // partielle Unique-Index (kos_import_candidate_uq, inkl. Papierkorb) „höchstens EIN KO je
+  // Kandidat" — späte Writes eines abgelösten Laufs kollidieren und werden adoptiert statt
+  // dupliziert. NUR der Import-Accept-Pfad setzt das Feld (die öffentliche Schreibroute verwirft
+  // es wie `sources`); die Claim-Recovery findet darüber ein bereits erzeugtes KO — auch im
+  // Papierkorb.
+  importCandidateId?: string;
   // WP-SUBMIT-ASYNC (Pedis R3 21.07.): Status der HINTERGRUND-KI-Prüfung nach dem Einreichen —
   // additiv im JSONB, keine Migration; Altbestand ohne Feld = kein Prüf-Job. Die Ergebnis-Signale
   // (Konflikte/Überschneidungen) entstehen unverändert in ihren Services — aiCheck trägt nur den
@@ -215,7 +219,11 @@ export type KoErrorCode =
   // SCRUM-509 R2: Herabstufung ohne Prüfer-/Admin-Rolle (atomar an der Datenschicht geprüft).
   | "DOWNGRADE_FORBIDDEN"
   // SCRUM-509 R3: optimistische Concurrency — der Voll-Objekt-Write war veraltet (rowVersion-Konflikt).
-  | "STALE_WRITE";
+  | "STALE_WRITE"
+  // WP-SHIP8-CLOSE-4 (bens ROT-1B): der Kandidaten-Anker (importCandidateId) ist bereits vergeben —
+  // ein zweites KO desselben Import-Kandidaten wird DB-seitig abgelehnt (Pg: partieller Unique-Index,
+  // InMemory: Insert-Guard). Der Import-Accept adoptiert dann das bestehende KO statt zu duplizieren.
+  | "IMPORT_ANCHOR_TAKEN";
 
 export class KoError extends Error {
   readonly code: KoErrorCode;

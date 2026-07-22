@@ -22,4 +22,7 @@ export const IMPORT_CLEANUP_TEXT = {
   auditFailed: "imp.cleanup.auditFailed",
   // WP-NIGHT-FIX (bens F2-TOCTOU): parallel eingereihte Kandidaten überleben — ehrlich beziffert.
   newSince: "imp.cleanup.newSince",
+  // WP-SHIP8-CLOSE-4 (bens ROT-1C): KOs einer LAUFENDEN Review-Aktion — nie Teil der Zielmenge,
+  // in Vorschau UND Bilanz ehrlich beziffert.
+  claimedKos: "imp.cleanup.claimedKos",
 } as const;

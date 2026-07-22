@@ -173,13 +173,14 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           // pageId, spaceKey, sourceVersion) dürfen NUR über den Import-Pfad gesetzt werden. Auf dem
           // öffentlichen Schreibpfad Client-`sources` verwerfen — sonst könnte jeder mit ko.create
           // gefälschte/peer-validierte Anker setzen und spätere pageId-Upserts kapern.
-          // WP-SHIP8-CLOSE-3 (bens ROT-1): importOpId ebenfalls verwerfen — der Operations-
-          // Stempel gehört AUSSCHLIESSLICH dem Import-Accept (sonst könnte ein Client die
-          // Crash-Recovery eines fremden Review-Claims auf sein eigenes KO umlenken).
+          // WP-SHIP8-CLOSE-3/4 (bens ROT-1): importCandidateId ebenfalls verwerfen — der
+          // Kandidaten-Anker gehört AUSSCHLIESSLICH dem Import-Accept (sonst könnte ein Client
+          // die Crash-Recovery eines fremden Review-Claims auf sein eigenes KO umlenken bzw.
+          // den DB-Unique-Anker eines Kandidaten vorab besetzen).
           const {
             reviewerIds,
             sources: _ignoredSources,
-            importOpId: _ignoredOpId,
+            importCandidateId: _ignoredAnchor,
             ...input
           } = request.body;
           const created = await ko.create({ ...input, author: user.id });

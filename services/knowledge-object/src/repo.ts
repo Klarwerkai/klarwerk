@@ -115,6 +115,22 @@ export class InMemoryKoRepo implements KoRepo {
   private readonly items = new Map<string, KnowledgeObject>();
 
   insert(ko: KnowledgeObject): Promise<void> {
+    // WP-SHIP8-CLOSE-4 (bens ROT-1B): Spiegel des partiellen Pg-Unique-Index
+    // kos_import_candidate_uq — höchstens EIN KO je Import-Kandidat, INKLUSIVE Papierkorb
+    // (getrashte KOs halten ihren Anker; der ROT-1C-Vertrag adoptiert sie statt neu anzulegen).
+    // Synchron geprüft (kein await zwischen Prüfen und Set) — atomar wie der Index.
+    if (ko.importCandidateId) {
+      for (const existing of this.items.values()) {
+        if (existing.importCandidateId === ko.importCandidateId && existing.id !== ko.id) {
+          return Promise.reject(
+            new KoError(
+              "IMPORT_ANCHOR_TAKEN",
+              "Für diesen Import-Kandidaten existiert bereits ein Wissensobjekt.",
+            ),
+          );
+        }
+      }
+    }
     this.items.set(ko.id, ko);
     return Promise.resolve();
   }

@@ -97,6 +97,12 @@ export function ImportCleanup(): JSX.Element {
               m: preview.importedKos,
             })}
           </p>
+          {/* WP-SHIP8-CLOSE-4 (bens ROT-1C): KOs laufender Review-Aktionen sind nie Zielmenge. */}
+          {preview.claimedKos > 0 ? (
+            <p className="text-[12.5px] text-trust-warn-text">
+              · {t(IMPORT_CLEANUP_TEXT.claimedKos, { n: preview.claimedKos })}
+            </p>
+          ) : null}
           {/* Ehrlich: KOs wandern in den Papierkorb (wiederherstellbar), die Queue wird geleert. */}
           <p className="text-[12.5px] text-muted">{t(IMPORT_CLEANUP_TEXT.confirmHint)}</p>
           <div className="flex flex-wrap items-center gap-2">
@@ -133,6 +139,11 @@ export function ImportCleanup(): JSX.Element {
           ) : null}
           {result.newCandidates > 0 ? (
             <li>· {t(IMPORT_CLEANUP_TEXT.newSince, { n: result.newCandidates })}</li>
+          ) : null}
+          {result.claimedKos > 0 ? (
+            <li className="text-trust-warn-text">
+              · {t(IMPORT_CLEANUP_TEXT.claimedKos, { n: result.claimedKos })}
+            </li>
           ) : null}
         </ul>
       ) : null}

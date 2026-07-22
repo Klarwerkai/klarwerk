@@ -7,6 +7,7 @@ import { CONFLICTS_SCHEMA, OVERLAP_SCHEMA, OVERLAP_SETTINGS_SCHEMA } from "../..
 import { EXTERNAL_KNOWLEDGE_SCHEMA } from "../../external-search";
 import {
   KO_EVIDENCE_SCHEMA,
+  KO_IMPORT_ANCHOR_SCHEMA,
   KO_SCHEMA,
   KO_VERSIONS_SCHEMA,
   UPLOAD_LIMITS_SCHEMA,
@@ -31,6 +32,9 @@ export async function migrate(pool: Pool): Promise<void> {
   const schemas = [
     AUTH_SCHEMA,
     KO_SCHEMA,
+    // WP-SHIP8-CLOSE-4 (bens ROT-1B): additive Anker-Migration DIREKT nach KO_SCHEMA —
+    // Generated-Spalte + partieller Unique-Index (hoechstens EIN KO je Import-Kandidat).
+    KO_IMPORT_ANCHOR_SCHEMA,
     KO_VERSIONS_SCHEMA,
     KO_EVIDENCE_SCHEMA,
     AUDIT_SCHEMA,

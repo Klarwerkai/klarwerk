@@ -27,6 +27,8 @@ export {
   PgKoVersionRepo,
   KO_EVIDENCE_SCHEMA,
   KO_SCHEMA,
+  // WP-SHIP8-CLOSE-4 (bens ROT-1B): additive Anker-Migration (nach KO_SCHEMA ausfuehren).
+  KO_IMPORT_ANCHOR_SCHEMA,
   KO_VERSIONS_SCHEMA,
 } from "./src/repo-pg";
 export { KoError, KNOWLEDGE_TYPES, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS } from "./src/types";

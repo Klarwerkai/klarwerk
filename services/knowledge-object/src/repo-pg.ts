@@ -52,6 +52,22 @@ CREATE INDEX IF NOT EXISTS idx_kos_status ON kos(status);
 ${KO_CANDIDATE_SEARCH_INDEX_DDL}
 `;
 
+// WP-SHIP8-CLOSE-4 (bens ROT-1B): DB-erzwungener Idempotenzanker des Import-Accepts — als EIGENE,
+// ADDITIVE Migrationsstufe NACH KO_SCHEMA (KO_SCHEMA selbst bleibt per Test gepinnt frei von
+// ALTER-Statements; ADD COLUMN IF NOT EXISTS ist additiv und idempotent, nichts wird entfernt).
+// Generated-Spalte + partieller UNIQUE-Index: höchstens EIN KO je Import-Kandidat — BEWUSST OHNE
+// deletedAt-Ausschluss (auch ein getrashtes KO hält seinen Anker; der Recovery-Vertrag adoptiert
+// es statt ein zweites anzulegen). Ein später Insert eines abgelösten Laufs kollidiert hier hart
+// und wird vom Accept-Pfad zur idempotenten Adoption statt zum Doppel-KO.
+export const KO_IMPORT_ANCHOR_SCHEMA = `
+ALTER TABLE kos
+  ADD COLUMN IF NOT EXISTS import_candidate_id text
+  GENERATED ALWAYS AS (data->>'importCandidateId') STORED;
+CREATE UNIQUE INDEX IF NOT EXISTS kos_import_candidate_uq
+  ON kos (import_candidate_id)
+  WHERE import_candidate_id IS NOT NULL;
+`;
+
 // SCRUM-159: unveränderliche KO-Version-Snapshots. PK (ko_id, version) + ON CONFLICT DO NOTHING
 // garantieren, dass eine einmal geschriebene Version nie überschrieben wird.
 export const KO_VERSIONS_SCHEMA = `
