@@ -88,3 +88,43 @@ export function aiTaskInfo(config: ReasonerConfigStatus | undefined, task: strin
     dsgvo: "unknown",
   };
 }
+
+// WP-VIP2-GATE-2 (bens Fix 3): OEFFENTLICHE Variante der KI-Knopf-Info — /api/reasoner/config ist
+// jetzt echte Admin-Sicht (users.manage). Nicht-Admins bekommen die ehrliche GLOBALE Stufe aus dem
+// abstrahierten Status (/api/reasoner/status: active + mode cloud/local/deterministic) — ohne
+// Modellname (Admin-Detail) und ohne per-Aufgabe-Aufloesung (die per-Task-Zuordnung ist Teil der
+// Admin-Konfiguration; die globale Stufe ist die ehrliche Aussage, die allen zusteht).
+export function aiTaskInfoPublic(
+  status: { active: boolean; mode: "cloud" | "local" | "deterministic" } | undefined,
+): AiTaskInfo {
+  if (!status) {
+    return {
+      mode: "unknown",
+      modeLabelKey: AI_TASK_INFO_TEXT.unknown,
+      bodyKey: AI_TASK_INFO_TEXT.bodyUnknown,
+      dsgvo: "unknown",
+    };
+  }
+  if (status.mode === "cloud") {
+    return {
+      mode: "cloud",
+      modeLabelKey: AI_TASK_INFO_TEXT.cloud,
+      bodyKey: AI_TASK_INFO_TEXT.bodyCloud,
+      dsgvo: "external",
+    };
+  }
+  if (status.mode === "local") {
+    return {
+      mode: "local",
+      modeLabelKey: AI_TASK_INFO_TEXT.local,
+      bodyKey: AI_TASK_INFO_TEXT.bodyLocal,
+      dsgvo: "inhouse",
+    };
+  }
+  return {
+    mode: "rule",
+    modeLabelKey: AI_TASK_INFO_TEXT.rule,
+    bodyKey: AI_TASK_INFO_TEXT.bodyRule,
+    dsgvo: "inhouse",
+  };
+}

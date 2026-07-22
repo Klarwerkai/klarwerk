@@ -1,18 +1,23 @@
 // Pedi 04.07.: „(!)"-Info an jedem KI-Knopf — zeigt beim Öffnen offen, WELCHE KI die Aufgabe
 // ausführt: Modus (Cloud / Lokal / Regelbasiert) und, falls ein Modell arbeitet, dessen Name.
-// Read-only aus der vorhandenen /reasoner/config (SCRUM-166: nur Metadaten, keine Secrets).
-// Reine Anzeige — kein Zustand, keine Aktion, keine Validierung.
+// WP-VIP2-GATE-2 (bens Fix 3): /reasoner/config ist jetzt echte ADMIN-Sicht (users.manage) —
+// Admins sehen weiter die per-Aufgabe-Zuordnung samt Modellname; alle anderen bekommen die
+// ehrliche GLOBALE Stufe aus dem oeffentlichen abstrahierten Status (/reasoner/status), ohne
+// Modellname. Reine Anzeige — kein Zustand, keine Aktion, keine Validierung.
 import { Info } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useReasonerConfig } from "../api/hooks";
-import { AI_TASK_INFO_TEXT, aiTaskInfo } from "../lib/reasonerTaskInfo";
+import { useReasonerConfig, useReasonerStatus } from "../api/hooks";
+import { useRole } from "../app/RoleContext";
+import { AI_TASK_INFO_TEXT, aiTaskInfo, aiTaskInfoPublic } from "../lib/reasonerTaskInfo";
 
 export function AiModelInfo({ task }: { task: string }): JSX.Element {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const config = useReasonerConfig();
-  const info = aiTaskInfo(config.data, task);
+  const { role } = useRole();
+  const config = useReasonerConfig(role === "admin");
+  const publicStatus = useReasonerStatus();
+  const info = config.data ? aiTaskInfo(config.data, task) : aiTaskInfoPublic(publicStatus.data);
   return (
     <span className="relative inline-flex">
       <button

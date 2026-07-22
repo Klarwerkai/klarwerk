@@ -562,8 +562,8 @@ export class Reasoner {
 
   // WP-VIP2-GATE (bens P1): ABSTRAHIERTE, oeffentliche Status-Sicht — NUR {active, mode}.
   // Der Provider-/Modellname (status().provider, z. B. der konkrete Anthropic-Modellstring) ist
-  // Infrastruktur-Detail und gehoert ausschliesslich in die authentifizierte Admin-Sicht
-  // (/api/reasoner/config, ko.read-guarded). mode nennt die STUFE (cloud/local/deterministic),
+  // Infrastruktur-Detail und gehoert ausschliesslich in die ECHTE Admin-Sicht (/api/reasoner/
+  // config, users.manage — WP-VIP2-GATE-2 Fix 3/4). mode nennt die STUFE (cloud/local/deterministic),
   // nie das Produkt.
   publicStatus(): { active: boolean; mode: "cloud" | "local" | "deterministic" } {
     const active = this.usingAnyModel();

@@ -6,7 +6,8 @@
 // 3. Cookie-Härtung: NODE_ENV=production erzwingt Secure; explizites COOKIE_SECURE=false in
 //    Produktion bricht den Start fail-closed ab.
 // 4. /api/ai-status + /api/reasoner/status sind abstrahiert: nur {active, mode} — Provider-/
-//    Modellnamen NUR in der authentifizierten Admin-Sicht (/api/reasoner/config).
+//    Modellnamen NUR in der ECHTEN Admin-Sicht (/api/reasoner/config, users.manage — Fix 3/4 in
+//    WP-VIP2-GATE-2 zog den Guard nach; vorher galt dort nur Authentifizierung).
 import { pbkdf2Sync } from "node:crypto";
 import type { Pool } from "pg";
 import { afterEach, describe, expect, it } from "vitest";
@@ -338,22 +339,128 @@ describe("WP-VIP2-GATE B4: /api/ai-status + /api/reasoner/status sind abstrahier
     expect(status.json()).toEqual({ active: false, mode: "deterministic" });
   });
 
-  it("Admin-Sicht unverändert: /api/reasoner/config nennt den Provider — aber NUR authentifiziert", async () => {
+  // WP-VIP2-GATE-2 (bens Fix 3): /api/reasoner/config ist jetzt ECHTE Admin-Sicht (users.manage) —
+  // ein normaler Leseberechtigter (experte, ko.read) bekommt 403; die KI-Pille normaler Nutzer
+  // laeuft ueber den abstrahierten oeffentlichen Status (oben getestet).
+  it("ECHTE Admin-Sicht: /api/reasoner/config nennt den Provider — 401 anonym, 403 fuer ko.read-Rollen, 200 fuer Admin", async () => {
     const app = buildApp(modelServices());
     const anonymous = await app.inject({ method: "GET", url: "/api/reasoner/config" });
     expect(anonymous.statusCode).toBe(401);
+    // Erster Registrierter = Bootstrap-Admin.
     await app.inject({ ...REGISTER, payload: payload() });
-    const login = await app.inject({
+    const adminLogin = await app.inject({
       method: "POST",
       url: "/api/auth/login",
       payload: { email: "p@x.de", password: "secret123" },
     });
+    const adminHeaders = {
+      authorization: `Bearer ${(adminLogin.json() as { token: string }).token}`,
+    };
     const config = await app.inject({
       method: "GET",
       url: "/api/reasoner/config",
-      headers: { authorization: `Bearer ${(login.json() as { token: string }).token}` },
+      headers: adminHeaders,
     });
     expect(config.statusCode).toBe(200);
     expect((config.json() as { provider: string }).provider).toContain("anthropic");
+    // Zweiter Nutzer (experte, vom Admin freigegeben — hat ko.read, aber NICHT users.manage).
+    const expert = await app.inject({
+      ...REGISTER,
+      payload: payload({ email: "e@x.de", name: "Erik" }),
+    });
+    await app.inject({
+      method: "POST",
+      url: `/api/auth/users/${(expert.json() as { id: string }).id}/approve`,
+      headers: adminHeaders,
+    });
+    const expertLogin = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "e@x.de", password: "secret123" },
+    });
+    const expertConfig = await app.inject({
+      method: "GET",
+      url: "/api/reasoner/config",
+      headers: { authorization: `Bearer ${(expertLogin.json() as { token: string }).token}` },
+    });
+    expect(expertConfig.statusCode).toBe(403);
+    // Der oeffentliche abstrahierte Status (die Quelle der KI-Pille) bleibt fuer alle nutzbar.
+    const publicStatus = await app.inject({
+      method: "GET",
+      url: "/api/reasoner/status",
+      headers: { authorization: `Bearer ${(expertLogin.json() as { token: string }).token}` },
+    });
+    expect(publicStatus.json()).toEqual({ active: true, mode: "cloud" });
+  });
+});
+
+// WP-VIP2-GATE-2 (bens Fix 2): UEBERGANGSWEISER Dual-Read der Token-Suche — ein paralleler
+// Altprozess (Rolling-Deploy) darf Klartext-Zeilen schreiben, ohne dass Nutzer ausgesperrt werden.
+describe("WP-VIP2-GATE-2 Fix 2: Dual-Read mit In-Place-Rehashing (Deploy-Uebergang)", () => {
+  it("Session: Klartext-Alt-Zeile wird via Dual-Read gefunden und SOFORT auf den Hash umgezogen", async () => {
+    const sessions = new InMemorySessionRepo();
+    const users = new InMemoryUserRepo();
+    const service = new AuthService({ users, sessions });
+    const created = await service.register(payload());
+    // Altprozess-Simulation: eine KLARTEXT-Session-Zeile (wie vor der Token-at-Rest-Umstellung).
+    const plainToken = "a".repeat(64);
+    await sessions.create({
+      token: plainToken,
+      userId: created.id,
+      expiresAt: Date.now() + 60_000,
+    });
+    // Dual-Read: der Klartext-Client-Token authentifiziert …
+    expect((await service.authenticate(plainToken))?.email).toBe("p@x.de");
+    // … und die Zeile liegt danach NUR noch unter dem Hash (kein Klartext-Neuschreiben).
+    expect(await sessions.find(plainToken)).toBeUndefined();
+    expect(await sessions.find(hashTokenAtRest(plainToken))).toBeDefined();
+    // Wiederholter Zugriff laeuft jetzt den normalen Hash-Weg.
+    expect((await service.authenticate(plainToken))?.email).toBe("p@x.de");
+  });
+
+  it("Hash-Zeile normal; ein Wert MIT sha256:-Praefix loest KEINEN Alt-Lookup aus", async () => {
+    const finds: string[] = [];
+    const inner = new InMemorySessionRepo();
+    const sessions = {
+      create: (s: Parameters<InMemorySessionRepo["create"]>[0]) => inner.create(s),
+      find: (token: string) => {
+        finds.push(token);
+        return inner.find(token);
+      },
+      delete: (token: string) => inner.delete(token),
+      deleteByUser: (userId: string) => inner.deleteByUser(userId),
+    };
+    const service = new AuthService({ users: new InMemoryUserRepo(), sessions });
+    await service.register(payload());
+    const { token } = await service.login({ email: "p@x.de", password: "secret123" });
+    // Normale (Hash-)Zeile: genau EIN Lookup, kein Legacy-Zweig.
+    finds.length = 0;
+    expect((await service.authenticate(token))?.email).toBe("p@x.de");
+    expect(finds).toEqual([hashTokenAtRest(token)]);
+    // Ein Client-Wert, der selbst wie ein Hash aussieht: Miss → KEIN zweiter (Klartext-)Lookup.
+    finds.length = 0;
+    expect(await service.authenticate(`${TOKEN_HASH_PREFIX}deadbeef`)).toBeUndefined();
+    expect(finds).toEqual([hashTokenAtRest(`${TOKEN_HASH_PREFIX}deadbeef`)]);
+  });
+
+  it("Reset-Token: Klartext-Alt-Zeile wird via Dual-Read eingeloest (mit Rehash), Fluss unveraendert", async () => {
+    const resets = new InMemoryPasswordResetRepo();
+    const users = new InMemoryUserRepo();
+    const service = new AuthService({
+      users,
+      sessions: new InMemorySessionRepo(),
+      resetTokens: resets,
+    });
+    const created = await service.register(payload());
+    // Admin-Freigabe simulieren, damit der Login nach dem Reset prueffaehig ist.
+    await service.approveUser(created.id, created.id);
+    const plainReset = "b".repeat(64);
+    await resets.create({ token: plainReset, userId: created.id, expiresAt: Date.now() + 60_000 });
+    await service.resetPasswordWithToken(plainReset, "ganzNeu123");
+    // Eingeloest und weg — weder unter Klartext noch unter Hash.
+    expect(await resets.find(plainReset)).toBeUndefined();
+    expect(await resets.find(hashTokenAtRest(plainReset))).toBeUndefined();
+    const { token } = await service.login({ email: "p@x.de", password: "ganzNeu123" });
+    expect((await service.authenticate(token))?.email).toBe("p@x.de");
   });
 });

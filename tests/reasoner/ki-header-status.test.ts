@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { ReasonerConfigStatus } from "../../apps/web/src/api/types";
 import i18n from "../../apps/web/src/i18n";
-import { KI_HEADER_TEXT, kiHeaderStatus } from "../../apps/web/src/lib/kiHeaderStatus";
+import {
+  KI_HEADER_TEXT,
+  kiHeaderStatus,
+  kiHeaderStatusFromPublic,
+} from "../../apps/web/src/lib/kiHeaderStatus";
 import { KI_ORIGIN_TEXT, kiOrigin } from "../../apps/web/src/lib/kiOrigin";
 
 // Pedi 05.07.: Header-Pille „In welcher KI bin ich?" + Herkunftsland + DSGVO-Bestätigung.
@@ -184,5 +188,27 @@ describe("Pedi 05.07.: kiHeaderStatus — DSGVO immer „nein“, außer interne
     expect(i18n.t(KI_HEADER_TEXT.noneSubtitle)).toBe("deterministischer Ersatzmodus");
     // Der DSGVO-Status bleibt als Detail (Tooltip/Hinweis) klar erhalten.
     expect(i18n.t(KI_HEADER_TEXT.dsgvoNo)).toBe("DSGVO: nein");
+  });
+});
+
+// WP-VIP2-GATE-2 (bens Fix 3): die Pille normaler Nutzer speist sich aus dem OEFFENTLICHEN
+// abstrahierten Status (config ist jetzt Admin-Sicht) — ehrlich ohne Herkunft/Modellname.
+describe("WP-VIP2-GATE-2 Fix 3: kiHeaderStatusFromPublic (Pille fuer Nicht-Admins)", () => {
+  it("cloud → extern, local → intern — beide OHNE Herkunfts-/DSGVO-Detail (fail-safe nein)", () => {
+    const cloud = kiHeaderStatusFromPublic({ active: true, mode: "cloud" });
+    expect(cloud.mode).toBe("external");
+    expect(cloud.labelKey).toBe(KI_HEADER_TEXT.external);
+    expect(cloud.countryKey).toBeNull();
+    expect(cloud.detail).toBeNull();
+    expect(cloud.dsgvoConfirm).toBe(false);
+    const local = kiHeaderStatusFromPublic({ active: true, mode: "local" });
+    expect(local.mode).toBe("internal");
+    expect(local.dsgvoConfirm).toBe(false); // ohne Herkunftsbeleg KEIN Fake-Ja
+  });
+
+  it("deterministisch/inaktiv/ungeladen → neutraler Keine-KI-Zustand", () => {
+    expect(kiHeaderStatusFromPublic({ active: false, mode: "deterministic" }).mode).toBe("none");
+    expect(kiHeaderStatusFromPublic({ active: true, mode: "deterministic" }).mode).toBe("none");
+    expect(kiHeaderStatusFromPublic(undefined).mode).toBe("none");
   });
 });

@@ -35,6 +35,12 @@ CREATE TABLE IF NOT EXISTS password_resets (
 `;
 
 // WP-VIP2-GATE (bens P1, Token-at-Rest): ADDITIVE Einmal-Migration des Klartext-Bestands.
+// WP-VIP2-GATE-2 (bens Fix 2, DEPLOY-VERTRAG): das Deployment ist Single-Instanz (Coolify, EINE
+// Instanz) — die Start-Migration laeuft also ohne parallelen Neuprozess. ZUSAETZLICH faehrt der
+// AuthService uebergangsweise Dual-Read (Hash zuerst, dann Klartext mit In-Place-Rehashing, s.
+// findSessionDualRead): selbst ein Rolling-Deploy mit kurzzeitigem Altprozess erzeugt damit KEIN
+// Lockout-Fenster (Klartext-Zeilen des Altprozesses werden beim ersten Zugriff gefunden und
+// rehasht). Der Dual-Read ist nach der VIP2-Phase entfernbar.
 // Bewusst eine Node-seitige Schleife statt pgcrypto (encode(digest(...))): die Extension ist nicht
 // auf jeder Ziel-DB verfügbar/erlaubt (Hetzner/Managed-Pg), und der Bestand ist klein (aktive
 // Sitzungen + offene Resets). IDEMPOTENT über die Format-Erkennung: gehashte Zeilen tragen das

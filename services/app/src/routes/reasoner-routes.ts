@@ -309,8 +309,11 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
     );
 
     // SCRUM-166: read-only Provider-/Model-Konfiguration (nur Metadaten, keine Secrets).
+    // WP-VIP2-GATE-2 (bens Fix 3): jetzt ECHTE Admin-Sicht — users.manage statt ko.read. Die
+    // Provider-/Modellnamen sind Infrastruktur-Details; normale Nutzer brauchen nur den
+    // abstrahierten oeffentlichen Status (/api/reasoner/status bzw. /api/ai-status: active+mode).
     app.get("/api/reasoner/config", async (request, reply) => {
-      const user = await guards.requirePermission("ko.read", request, reply);
+      const user = await guards.requirePermission("users.manage", request, reply);
       if (!user) {
         return;
       }

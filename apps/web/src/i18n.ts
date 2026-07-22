@@ -2078,6 +2078,10 @@ const de = {
   "imp.select.hint":
     "Klicke Themen an ODER beschreibe in einem Satz, was importiert werden soll — beides zusammen geht auch. Die Vorschau zeigt, was passt — importiert wird noch nichts.",
   "imp.select.promptPlaceholder": "z. B. „alles zum Thema Wartung und Fehlercodes“",
+  // WP-VIP2-GATE-2 (bens Fix 1): Pflicht-Eigeneinstufung des Auswahl-Satzes (Vorgabe: Ja/unsicher).
+  "imp.select.promptConfidentialLabel": "Enthält dieser Text Vertrauliches?",
+  "imp.select.promptConfidentialYes": "Ja/unsicher",
+  "imp.select.promptConfidentialNo": "Nein, unbedenklich",
   "imp.select.limit": "Höchstens",
   "imp.select.previewCta": "Vorschau",
   "imp.select.previewing": "Werte aus …",
@@ -5293,6 +5297,9 @@ const en: typeof de = {
   "imp.select.hint":
     "Click themes OR describe in one sentence what to import — combining both works too. The preview shows what matches — nothing is imported yet.",
   "imp.select.promptPlaceholder": "e.g. “everything about maintenance and error codes”",
+  "imp.select.promptConfidentialLabel": "Does this text contain confidential content?",
+  "imp.select.promptConfidentialYes": "Yes/unsure",
+  "imp.select.promptConfidentialNo": "No, unproblematic",
   "imp.select.limit": "At most",
   "imp.select.previewCta": "Preview",
   "imp.select.previewing": "Evaluating …",
@@ -8466,6 +8473,9 @@ const nl: typeof de = {
   "imp.select.hint":
     "Klik thema's aan OF beschrijf in één zin wat er geïmporteerd moet worden — allebei samen kan ook. De voorbeeldweergave toont wat past — er wordt nog niets geïmporteerd.",
   "imp.select.promptPlaceholder": "bijv. „alles over onderhoud en foutcodes“",
+  "imp.select.promptConfidentialLabel": "Bevat deze tekst vertrouwelijke informatie?",
+  "imp.select.promptConfidentialYes": "Ja/onzeker",
+  "imp.select.promptConfidentialNo": "Nee, onbezwaarlijk",
   "imp.select.limit": "Hoogstens",
   "imp.select.previewCta": "Voorbeeld",
   "imp.select.previewing": "Bezig …",

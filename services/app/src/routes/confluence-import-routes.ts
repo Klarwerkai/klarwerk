@@ -260,122 +260,141 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
     // deterministisch und geben eine VORSCHAU zurück — inkl. der EFFEKTIV benutzten Kriterien
     // (Transparenz: wie hat die KI den Satz verstanden?). SCHREIBT NICHTS (keine Kandidaten, keine KOs).
     // Gleiche Admin-Auth + Fehler-/Flag-Disziplin wie explore. WP-E: JEDER Sende-Pfad endet mit `return reply`.
-    app.post<{ Body: { prompt?: string; criteria?: unknown; locale?: unknown } }>(
-      "/api/admin/import/confluence/select",
-      async (request, reply) => {
-        const user = await deps.guards.requirePermission("users.manage", request, reply);
-        if (!user) {
-          return reply;
-        }
-        // WP-SAMMEL20-FIX (bens Fix 3): Route-Schema VOR jeder Arbeit — ehrlicher 400 statt
-        // stillem Kappen/Raten.
-        const rawPrompt = request.body?.prompt;
-        if (rawPrompt !== undefined && typeof rawPrompt !== "string") {
-          reply.code(400).send({ error: "BAD_REQUEST", message: "prompt muss ein Text sein." });
-          return reply;
-        }
-        if (typeof rawPrompt === "string" && rawPrompt.length > SELECT_PROMPT_MAX_CHARS) {
-          reply.code(400).send({
-            error: "BAD_REQUEST",
-            message: `Der Auswahl-Satz ist zu lang (${rawPrompt.length} von max. ${SELECT_PROMPT_MAX_CHARS} Zeichen).`,
-          });
-          return reply;
-        }
-        const rawLocale = request.body?.locale;
-        if (
-          rawLocale !== undefined &&
-          !(SELECT_LOCALES as readonly unknown[]).includes(rawLocale)
-        ) {
-          reply.code(400).send({
-            error: "BAD_REQUEST",
-            message: "locale muss de oder en sein.",
-          });
-          return reply;
-        }
-        const adapter = makeAdapter();
-        if (!adapter) {
-          reply.code(503).send({
-            error: "IMPORT_UNAVAILABLE",
-            message: "Confluence-Import nicht konfiguriert.",
-          });
-          return reply;
-        }
-        try {
-          const prompt = rawPrompt ?? "";
-          const locale = rawLocale === "en" ? ("en" as const) : ("de" as const);
-          // Klick-Kriterien immer sanitisieren; aus dem Prompt zusätzlich KI-Kriterien ableiten.
-          const clickCriteria = sanitizeCriteria(request.body?.criteria);
-          const reasoner = deps.reasoner;
-          // READ-ONLY: nur lesen + filtern (WP-IC-PAKET-1b ROT-3: Filterung auf dem 60-s-Snapshot —
-          // jede Live-Filter-Änderung arbeitet auf DERSELBEN geladenen Datenbasis, kein Scan-Race).
-          // Der Snapshot wird VOR der KI-Ableitung geladen: er ist die Vertraulichkeits-Grundlage.
-          const { items, truncated } = await collectSnapshot(adapter);
-          // WP-SAMMEL20-FIX (bens Fix 1, P0 — GLEICHES MUSTER wie der Gruppierungs-Fix aus
-          // sammel17): der Auswahl-Satz wird VOR der Item-Auswahl verarbeitet (die Kriterien
-          // ENTSCHEIDEN erst, welche Items gewählt werden) — die betroffene Item-Menge ist also
-          // der GESAMTE Snapshot. EIN vertrauliches/unklassifiziertes/ungültiges Item → der
-          // Select-Aufruf läuft confidential (die Provider-Kette nimmt die Cloud heraus;
-          // Lokal/Deterministisch bleiben). Nur eine nachweislich KOMPLETT explizit freigegebene
-          // Quelle darf den Satz zur Cloud geben.
-          // WP-VIP2-GATE (bens P0-1, endgueltig): der EIGENE Prompt-Vertrag ist an JEDER Kante
-          // fail-closed — auch ein LEERER/fehlender Snapshot oder eine werfende Klassifikation
-          // macht den Satz vertraulich (der alte Batch-Vertrag war auf [] fail-open).
-          const confidential = promptRequiresConfidential(items);
-          const derived =
-            prompt.trim().length > 0
-              ? reasoner
-                ? await deriveCriteriaFromPrompt(prompt, (p) =>
-                    reasoner.deriveImportCriteria(p, locale, confidential),
-                  )
-                : // WP-SAMMEL20-FIX (bens Fix 2): auch „kein Reasoner verdrahtet" ist ein
-                  // ehrlicher Ausfall — nie still die ungefilterte Vollmenge.
-                  { criteria: {}, fallbackReason: "no-model" as string | null }
-              : { criteria: {}, fallbackReason: null as string | null };
-          // Effektiv genutzte Kriterien: Klick-Kriterien haben Vorrang, KI ergänzt nur Fehlendes.
-          const criteria: SelectCriteria = { ...derived.criteria, ...clickCriteria };
-          const { selected, matched, limited } = filterImportItems(items, criteria);
-          // WP-IC-PAKET-1 (Teil 4, IC-6a): jeden Vorschau-Eintrag ehrlich markieren (Quell-Referenz-
-          // Abgleich, je Request frisch); `alreadyImported` zählt die markierten Einträge der Vorschau.
-          const [anchorVersions, pendingVersions] = await Promise.all([
-            importedAnchorVersions(deps.koService),
-            pendingCandidateVersions(deps.library),
-          ]);
-          const preview = selected.map((item) =>
-            toPreviewEntry(item, importStatusFor(item, anchorVersions, pendingVersions)),
-          );
-          reply.code(200).send({
-            matched,
-            limited,
-            truncated,
-            criteria,
-            preview,
-            alreadyImported: preview.filter((entry) => entry.alreadyImported === true).length,
-            // WP-SAMMEL20-FIX (bens Fix 2): EHRLICHER KI-Status der Satz-Auswertung. Nur wenn ein
-            // Satz gestellt war: "ok" = die KI hat den Satz in Kriterien übersetzt; "unavailable" =
-            // Ausfall (fallbackReason nennt die Ursache) — dann gelten sichtbar NUR die
-            // Klick-Filter, nie still die ungefilterte Vollmenge als vermeintliches KI-Ergebnis.
-            ...(prompt.trim().length > 0
-              ? {
-                  inferenceStatus: derived.fallbackReason === null ? "ok" : "unavailable",
-                  ...(derived.fallbackReason !== null
-                    ? { fallbackReason: derived.fallbackReason }
-                    : {}),
-                }
-              : {}),
-          });
-          return reply;
-        } catch (err) {
-          console.warn(
-            "[confluence-select] fehlgeschlagen:",
-            sanitizeLogText(err instanceof Error ? err.message : String(err)),
-          );
-          reply
-            .code(502)
-            .send({ error: "SELECT_FAILED", message: "Confluence-Auswahl fehlgeschlagen." });
-          return reply;
-        }
-      },
-    );
+    app.post<{
+      Body: { prompt?: string; criteria?: unknown; locale?: unknown; promptConfidential?: unknown };
+    }>("/api/admin/import/confluence/select", async (request, reply) => {
+      const user = await deps.guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return reply;
+      }
+      // WP-SAMMEL20-FIX (bens Fix 3): Route-Schema VOR jeder Arbeit — ehrlicher 400 statt
+      // stillem Kappen/Raten.
+      const rawPrompt = request.body?.prompt;
+      if (rawPrompt !== undefined && typeof rawPrompt !== "string") {
+        reply.code(400).send({ error: "BAD_REQUEST", message: "prompt muss ein Text sein." });
+        return reply;
+      }
+      if (typeof rawPrompt === "string" && rawPrompt.length > SELECT_PROMPT_MAX_CHARS) {
+        reply.code(400).send({
+          error: "BAD_REQUEST",
+          message: `Der Auswahl-Satz ist zu lang (${rawPrompt.length} von max. ${SELECT_PROMPT_MAX_CHARS} Zeichen).`,
+        });
+        return reply;
+      }
+      const rawLocale = request.body?.locale;
+      if (rawLocale !== undefined && !(SELECT_LOCALES as readonly unknown[]).includes(rawLocale)) {
+        reply.code(400).send({
+          error: "BAD_REQUEST",
+          message: "locale muss de oder en sein.",
+        });
+        return reply;
+      }
+      // WP-VIP2-GATE-2 (bens Fix 1, P0-1-Kern letzte Stufe): der Freitext-Satz braucht eine
+      // EIGENE PFLICHT-EINSTUFUNG durch den Nutzer (promptConfidential: true = enthaelt
+      // Vertrauliches/unsicher, false = explizit unbedenklich). Fehlt sie oder ist sie kein
+      // Boolean, waehrend ein Satz gestellt ist → ehrlicher 400 (API-Ehrlichkeit; der Client
+      // sendet immer — kein stiller Default). Ohne Satz gibt es nichts einzustufen.
+      const rawPromptConfidential = request.body?.promptConfidential;
+      if (
+        typeof rawPrompt === "string" &&
+        rawPrompt.trim().length > 0 &&
+        typeof rawPromptConfidential !== "boolean"
+      ) {
+        reply.code(400).send({
+          error: "BAD_REQUEST",
+          message:
+            "promptConfidential ist erforderlich: false = der Auswahl-Satz ist explizit unbedenklich, true = enthaelt Vertrauliches oder unsicher.",
+        });
+        return reply;
+      }
+      const adapter = makeAdapter();
+      if (!adapter) {
+        reply.code(503).send({
+          error: "IMPORT_UNAVAILABLE",
+          message: "Confluence-Import nicht konfiguriert.",
+        });
+        return reply;
+      }
+      try {
+        const prompt = rawPrompt ?? "";
+        const locale = rawLocale === "en" ? ("en" as const) : ("de" as const);
+        // Klick-Kriterien immer sanitisieren; aus dem Prompt zusätzlich KI-Kriterien ableiten.
+        const clickCriteria = sanitizeCriteria(request.body?.criteria);
+        const reasoner = deps.reasoner;
+        // READ-ONLY: nur lesen + filtern (WP-IC-PAKET-1b ROT-3: Filterung auf dem 60-s-Snapshot —
+        // jede Live-Filter-Änderung arbeitet auf DERSELBEN geladenen Datenbasis, kein Scan-Race).
+        // Der Snapshot wird VOR der KI-Ableitung geladen: er ist die Vertraulichkeits-Grundlage.
+        const { items, truncated } = await collectSnapshot(adapter);
+        // WP-SAMMEL20-FIX (bens Fix 1, P0 — GLEICHES MUSTER wie der Gruppierungs-Fix aus
+        // sammel17): der Auswahl-Satz wird VOR der Item-Auswahl verarbeitet (die Kriterien
+        // ENTSCHEIDEN erst, welche Items gewählt werden) — die betroffene Item-Menge ist also
+        // der GESAMTE Snapshot. EIN vertrauliches/unklassifiziertes/ungültiges Item → der
+        // Select-Aufruf läuft confidential (die Provider-Kette nimmt die Cloud heraus;
+        // Lokal/Deterministisch bleiben). Nur eine nachweislich KOMPLETT explizit freigegebene
+        // Quelle darf den Satz zur Cloud geben.
+        // WP-VIP2-GATE (bens P0-1, endgueltig): der EIGENE Prompt-Vertrag ist an JEDER Kante
+        // fail-closed — auch ein LEERER/fehlender Snapshot oder eine werfende Klassifikation
+        // macht den Satz vertraulich (der alte Batch-Vertrag war auf [] fail-open).
+        // WP-VIP2-GATE-2 (bens Fix 1, VERTRAG): Cloud NUR wenn der Nutzer den Satz EXPLIZIT als
+        // unbedenklich eingestuft hat (promptConfidential === false) UND der Snapshot komplett
+        // explizit freigegeben ist — promptRequiresConfidential bleibt monoton HEBENDER
+        // Backstop (kann nur Richtung vertraulich korrigieren, nie senken). Fehlend/ungueltig
+        // zaehlt vertraulich (oben ohnehin 400, hier defensiv).
+        const confidential = rawPromptConfidential !== false || promptRequiresConfidential(items);
+        const derived =
+          prompt.trim().length > 0
+            ? reasoner
+              ? await deriveCriteriaFromPrompt(prompt, (p) =>
+                  reasoner.deriveImportCriteria(p, locale, confidential),
+                )
+              : // WP-SAMMEL20-FIX (bens Fix 2): auch „kein Reasoner verdrahtet" ist ein
+                // ehrlicher Ausfall — nie still die ungefilterte Vollmenge.
+                { criteria: {}, fallbackReason: "no-model" as string | null }
+            : { criteria: {}, fallbackReason: null as string | null };
+        // Effektiv genutzte Kriterien: Klick-Kriterien haben Vorrang, KI ergänzt nur Fehlendes.
+        const criteria: SelectCriteria = { ...derived.criteria, ...clickCriteria };
+        const { selected, matched, limited } = filterImportItems(items, criteria);
+        // WP-IC-PAKET-1 (Teil 4, IC-6a): jeden Vorschau-Eintrag ehrlich markieren (Quell-Referenz-
+        // Abgleich, je Request frisch); `alreadyImported` zählt die markierten Einträge der Vorschau.
+        const [anchorVersions, pendingVersions] = await Promise.all([
+          importedAnchorVersions(deps.koService),
+          pendingCandidateVersions(deps.library),
+        ]);
+        const preview = selected.map((item) =>
+          toPreviewEntry(item, importStatusFor(item, anchorVersions, pendingVersions)),
+        );
+        reply.code(200).send({
+          matched,
+          limited,
+          truncated,
+          criteria,
+          preview,
+          alreadyImported: preview.filter((entry) => entry.alreadyImported === true).length,
+          // WP-SAMMEL20-FIX (bens Fix 2): EHRLICHER KI-Status der Satz-Auswertung. Nur wenn ein
+          // Satz gestellt war: "ok" = die KI hat den Satz in Kriterien übersetzt; "unavailable" =
+          // Ausfall (fallbackReason nennt die Ursache) — dann gelten sichtbar NUR die
+          // Klick-Filter, nie still die ungefilterte Vollmenge als vermeintliches KI-Ergebnis.
+          ...(prompt.trim().length > 0
+            ? {
+                inferenceStatus: derived.fallbackReason === null ? "ok" : "unavailable",
+                ...(derived.fallbackReason !== null
+                  ? { fallbackReason: derived.fallbackReason }
+                  : {}),
+              }
+            : {}),
+        });
+        return reply;
+      } catch (err) {
+        console.warn(
+          "[confluence-select] fehlgeschlagen:",
+          sanitizeLogText(err instanceof Error ? err.message : String(err)),
+        );
+        reply
+          .code(502)
+          .send({ error: "SELECT_FAILED", message: "Confluence-Auswahl fehlgeschlagen." });
+        return reply;
+      }
+    });
 
     // WP-IC-4 (Schritt 4): KI-GRUPPIERUNG der eingegrenzten Kandidaten. BEWUSST eine eigene Route
     // NEBEN dem Reasoner-Dispatcher (Begründung): sie braucht den Import-Kontext (Snapshot,

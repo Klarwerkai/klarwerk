@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { ReasonerConfigStatus } from "../../apps/web/src/api/types";
-import { AI_TASK_INFO_TEXT, aiTaskInfo } from "../../apps/web/src/lib/reasonerTaskInfo";
+import {
+  AI_TASK_INFO_TEXT,
+  aiTaskInfo,
+  aiTaskInfoPublic,
+} from "../../apps/web/src/lib/reasonerTaskInfo";
 
 function config(overrides: Partial<ReasonerConfigStatus> = {}): ReasonerConfigStatus {
   return {
@@ -81,5 +85,26 @@ describe("Pedi 04.07.: aiTaskInfo — welche KI je Aufgabe (Modus + Modellname)"
     const info = aiTaskInfo(config(), "assist");
     expect(info.mode).toBe("local");
     expect(info.modelName).toBe("anthropic:claude-sonnet-4-6");
+  });
+});
+
+// WP-VIP2-GATE-2 (bens Fix 3): KI-Knopf-Info fuer Nicht-Admins aus dem oeffentlichen Status —
+// ehrliche GLOBALE Stufe, ohne Modellname (Admin-Detail) und ohne per-Task-Aufloesung.
+describe("WP-VIP2-GATE-2 Fix 3: aiTaskInfoPublic", () => {
+  it("cloud → external/amber, local → inhouse, deterministic → rule/inhouse — nie ein Modellname", () => {
+    const cloud = aiTaskInfoPublic({ active: true, mode: "cloud" });
+    expect(cloud.mode).toBe("cloud");
+    expect(cloud.dsgvo).toBe("external");
+    expect(cloud.modelName).toBeUndefined();
+    expect(aiTaskInfoPublic({ active: true, mode: "local" }).dsgvo).toBe("inhouse");
+    const rule = aiTaskInfoPublic({ active: false, mode: "deterministic" });
+    expect(rule.mode).toBe("rule");
+    expect(rule.dsgvo).toBe("inhouse");
+  });
+
+  it("ohne geladenen Status ehrlich unbekannt (keine Aussage, kein Fake)", () => {
+    const info = aiTaskInfoPublic(undefined);
+    expect(info.mode).toBe("unknown");
+    expect(info.dsgvo).toBe("unknown");
   });
 });

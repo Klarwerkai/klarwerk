@@ -6,7 +6,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
 import { useNotifications, useReasonerConfig, useReasonerStatus } from "../api/hooks";
 import { useNavGuard } from "../app/NavGuardContext";
-import { kiHeaderStatus } from "../lib/kiHeaderStatus";
+import { useRole } from "../app/RoleContext";
+import { kiHeaderStatus, kiHeaderStatusFromPublic } from "../lib/kiHeaderStatus";
 import { notificationTarget } from "../lib/notificationTarget";
 import { APP_VERSION } from "../version";
 import { readIslandMarker } from "./islandMarker";
@@ -210,8 +211,16 @@ function ReasonerStatusPill(): JSX.Element {
 // KI-Zugangs-Steuerung. Deterministisch ist ein neutraler Ersatzmodus und keine interne KI.
 function KiModePill(): JSX.Element {
   const { t } = useTranslation();
-  const config = useReasonerConfig();
-  const status = kiHeaderStatus(config.data);
+  // WP-VIP2-GATE-2 (bens Fix 3): /api/reasoner/config ist jetzt echte Admin-Sicht (users.manage).
+  // Nicht-Admins bekommen die ehrliche Pille aus dem OEFFENTLICHEN abstrahierten Status
+  // (active+mode) — ohne Modellname/Herkunft (die bleiben Admin-Detail); die Query auf config
+  // wird fuer sie gar nicht erst gestellt (kein 403-Rauschen).
+  const { role } = useRole();
+  const config = useReasonerConfig(role === "admin");
+  const publicStatus = useReasonerStatus();
+  const status = config.data
+    ? kiHeaderStatus(config.data)
+    : kiHeaderStatusFromPublic(publicStatus.data);
   const ok = status.dsgvoConfirm;
   const neutral = status.mode === "none";
   // B2: Die Pille zeigt nur noch den MODUS (z. B. „KI-Modus: Cloud"), nicht mehr das grelle

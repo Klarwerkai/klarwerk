@@ -154,7 +154,12 @@ describe("IC-3: POST /api/admin/import/confluence/select", () => {
       method: "POST",
       url: "/api/admin/import/confluence/select",
       headers,
-      payload: { prompt: "alles zu Wartung", criteria: { limit: 5 } },
+      payload: {
+        prompt: "alles zu Wartung",
+        // WP-VIP2-GATE-2 (bens Fix 1): die Pflicht-Einstufung reist immer mit.
+        promptConfidential: false,
+        criteria: { limit: 5 },
+      },
     });
     expect(res.statusCode).toBe(200);
     // Kein Modell → prompt liefert nichts; nur die (sanitisierte) Klick-Limit-Kriterie zählt.

@@ -657,8 +657,9 @@ export function buildApp(
   app.get("/health", async () => ({ status: "ok" }));
   // FR-RSN-05 + WP-VIP2-GATE (bens P1): die beiden OEFFENTLICHEN Status-Flags sind ABSTRAHIERT —
   // nur {active, mode: cloud|local|deterministic}, KEIN Provider-/Modellname mehr (der stand hier
-  // anonym lesbar). Provider-Details liefert ausschliesslich die authentifizierte Admin-Sicht
-  // GET /api/reasoner/config (ko.read). Die KI-Pille im Web braucht nur active/mode.
+  // anonym lesbar). Provider-Details liefert ausschliesslich die ECHTE Admin-Sicht
+  // GET /api/reasoner/config (users.manage — WP-VIP2-GATE-2 Fix 3/4; vorher galt dort nur
+  // Authentifizierung, die Formulierung Admin-Sicht war zu frueh). Die KI-Pille braucht nur active/mode.
   app.get("/api/reasoner/status", async () => services.reasoner.publicStatus());
   app.get("/api/ai-status", async () => ({ ai: services.reasoner.publicStatus() })); // §2.1: ist die KI verfügbar?
 

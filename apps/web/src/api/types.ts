@@ -792,8 +792,8 @@ export interface DescribeImageResult {
 }
 
 // WP-VIP2-GATE (bens P1): /api/reasoner/status ist abstrahiert — nur Verfügbarkeit + STUFE
-// (cloud/local/deterministic), kein Provider-/Modellname mehr (der lebt in der Admin-Sicht
-// ReasonerConfigStatus hinter Auth). Die KI-Pille braucht genau diese zwei Felder.
+// (cloud/local/deterministic), kein Provider-/Modellname mehr (der lebt in der ECHTEN Admin-Sicht
+// ReasonerConfigStatus hinter users.manage — WP-VIP2-GATE-2 Fix 3). Die KI-Pille braucht genau diese zwei Felder.
 export interface ReasonerStatus {
   active: boolean;
   mode: "cloud" | "local" | "deterministic";

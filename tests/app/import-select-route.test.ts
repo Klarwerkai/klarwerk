@@ -136,7 +136,10 @@ describe("WP-SAMMEL20-FIX (Fix 1, P0): Select-Vertraulichkeit — fail-safe Batc
       ],
       spy.reasoner,
     );
-    const res = await app.inject({ ...selectBody({ prompt: PROMPT }), headers });
+    const res = await app.inject({
+      ...selectBody({ prompt: PROMPT, promptConfidential: false }),
+      headers,
+    });
     expect(res.statusCode).toBe(200);
     expect(spy.cloudCalls()).toBe(0); // der Satz hat die Maschine NIE Richtung Cloud verlassen
     const body = res.json() as { inferenceStatus?: string; fallbackReason?: string };
@@ -157,7 +160,10 @@ describe("WP-SAMMEL20-FIX (Fix 1, P0): Select-Vertraulichkeit — fail-safe Batc
         ],
         spy.reasoner,
       );
-      const res = await app.inject({ ...selectBody({ prompt: PROMPT }), headers });
+      const res = await app.inject({
+        ...selectBody({ prompt: PROMPT, promptConfidential: false }),
+        headers,
+      });
       expect(res.statusCode).toBe(200);
       expect(spy.cloudCalls(), conf).toBe(0);
     }
@@ -172,7 +178,10 @@ describe("WP-SAMMEL20-FIX (Fix 1, P0): Select-Vertraulichkeit — fail-safe Batc
       ],
       spy.reasoner,
     );
-    const res = await app.inject({ ...selectBody({ prompt: PROMPT }), headers });
+    const res = await app.inject({
+      ...selectBody({ prompt: PROMPT, promptConfidential: false }),
+      headers,
+    });
     expect(res.statusCode).toBe(200);
     expect(spy.cloudCalls()).toBe(1);
     const body = res.json() as {
@@ -209,7 +218,10 @@ describe("WP-VIP2-GATE (bens P0-1, endgueltig): Prompt-Provenienz ohne fail-open
   it("LEERER Snapshot → vertraulich (fail-closed, vorher fail-open): 0 Cloud- UND 0 Embedder-Aufrufe", async () => {
     const spy = cloudSpyReasoner('{"keywords":["pumpe"]}');
     const { app, headers } = await selectApp([], spy.reasoner);
-    const res = await app.inject({ ...selectBody({ prompt: PROMPT }), headers });
+    const res = await app.inject({
+      ...selectBody({ prompt: PROMPT, promptConfidential: false }),
+      headers,
+    });
     expect(res.statusCode).toBe(200);
     expect(spy.cloudCalls()).toBe(0);
     expect(embedSpy.calls).toBe(0);
@@ -224,7 +236,10 @@ describe("WP-VIP2-GATE (bens P0-1, endgueltig): Prompt-Provenienz ohne fail-open
       [item({ title: "Pumpe warten", confidentiality: "intern" }), item({ title: "Ohne Signal" })],
       spy.reasoner,
     );
-    const res = await app.inject({ ...selectBody({ prompt: PROMPT }), headers });
+    const res = await app.inject({
+      ...selectBody({ prompt: PROMPT, promptConfidential: false }),
+      headers,
+    });
     expect(res.statusCode).toBe(200);
     expect(spy.cloudCalls()).toBe(0);
     expect(embedSpy.calls).toBe(0);
@@ -242,7 +257,10 @@ describe("WP-VIP2-GATE (bens P0-1, endgueltig): Prompt-Provenienz ohne fail-open
       ],
       spy.reasoner,
     );
-    const res = await app.inject({ ...selectBody({ prompt: PROMPT }), headers });
+    const res = await app.inject({
+      ...selectBody({ prompt: PROMPT, promptConfidential: false }),
+      headers,
+    });
     expect(res.statusCode).toBe(200);
     expect(spy.cloudCalls()).toBe(0);
     expect(embedSpy.calls).toBe(0);
@@ -257,7 +275,10 @@ describe("WP-VIP2-GATE (bens P0-1, endgueltig): Prompt-Provenienz ohne fail-open
       ],
       spy.reasoner,
     );
-    const res = await app.inject({ ...selectBody({ prompt: PROMPT }), headers });
+    const res = await app.inject({
+      ...selectBody({ prompt: PROMPT, promptConfidential: false }),
+      headers,
+    });
     expect(res.statusCode).toBe(200);
     expect(spy.cloudCalls()).toBe(1);
     expect(embedSpy.calls).toBe(0);
@@ -302,7 +323,11 @@ describe("WP-SAMMEL20-FIX (Fix 2): KI-Ausfall NIE still — inferenceStatus + Kl
       throwingReasoner(),
     );
     const res = await app.inject({
-      ...selectBody({ prompt: "nur Wartung bitte", criteria: { themes: ["wartung"] } }),
+      ...selectBody({
+        prompt: "nur Wartung bitte",
+        promptConfidential: false,
+        criteria: { themes: ["wartung"] },
+      }),
       headers,
     });
     expect(res.statusCode).toBe(200);
@@ -337,7 +362,7 @@ describe("WP-SAMMEL20-FIX (Fix 3): Route-Schema der Auswahl", () => {
       spy.reasoner,
     );
     const res = await app.inject({
-      ...selectBody({ prompt: "x".repeat(SELECT_PROMPT_MAX_CHARS + 1) }),
+      ...selectBody({ prompt: "x".repeat(SELECT_PROMPT_MAX_CHARS + 1), promptConfidential: false }),
       headers,
     });
     expect(res.statusCode).toBe(400);
@@ -345,7 +370,7 @@ describe("WP-SAMMEL20-FIX (Fix 3): Route-Schema der Auswahl", () => {
     expect(spy.cloudCalls()).toBe(0);
     // Exakt am Deckel ist gültig.
     const ok = await app.inject({
-      ...selectBody({ prompt: "x".repeat(SELECT_PROMPT_MAX_CHARS) }),
+      ...selectBody({ prompt: "x".repeat(SELECT_PROMPT_MAX_CHARS), promptConfidential: false }),
       headers,
     });
     expect(ok.statusCode).toBe(200);
@@ -360,5 +385,117 @@ describe("WP-SAMMEL20-FIX (Fix 3): Route-Schema der Auswahl", () => {
     expect((badLocale.json() as { message: string }).message).toContain("locale");
     const okLocale = await app.inject({ ...selectBody({ locale: "en" }), headers });
     expect(okLocale.statusCode).toBe(200);
+  });
+});
+
+// WP-VIP2-GATE-2 (bens Fix 1, P0-1-Kern letzte Stufe): der Satz braucht die EIGENE PFLICHT-
+// EINSTUFUNG des Nutzers; der Snapshot bleibt monoton HEBENDER Backstop. bens Testauflage
+// woertlich: interner Snapshot + fehlende/vertrauliche Prompt-Einstufung → BEIDE Egress-Spys
+// (Cloud + Embedder) exakt 0; Positiv NUR bei explizit unbedenklichem Prompt UND komplett
+// internem Snapshot.
+describe("WP-VIP2-GATE-2 Fix 1: Prompt-Eigenprovenienz (Pflicht-Einstufung + hebender Backstop)", () => {
+  const PROMPT = "alles zur Pumpenwartung";
+  const INTERN_SNAPSHOT = () => [
+    item({ title: "Pumpe warten", confidentiality: "intern" }),
+    item({ title: "Ventil tauschen", confidentiality: "intern" }),
+  ];
+  const savedPrefilter = process.env.KLARWERK_DUP_PREFILTER;
+
+  beforeEach(() => {
+    process.env.KLARWERK_DUP_PREFILTER = "1"; // Embedder-Chokepoint existiert → Spy beweist 0
+    embedSpy.calls = 0;
+  });
+
+  afterEach(() => {
+    if (savedPrefilter === undefined) {
+      delete process.env.KLARWERK_DUP_PREFILTER;
+    } else {
+      process.env.KLARWERK_DUP_PREFILTER = savedPrefilter;
+    }
+  });
+
+  it("interner Snapshot + FEHLENDE Einstufung → ehrlicher 400 und BEIDE Egress-Spys exakt 0", async () => {
+    const spy = cloudSpyReasoner('{"keywords":["pumpe"]}');
+    const { app, headers } = await selectApp(INTERN_SNAPSHOT(), spy.reasoner);
+    const res = await app.inject({ ...selectBody({ prompt: PROMPT }), headers });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { message: string }).message).toContain("promptConfidential");
+    expect(spy.cloudCalls()).toBe(0);
+    expect(embedSpy.calls).toBe(0);
+    // Auch ein NICHT-boolescher Wert ist keine Einstufung.
+    const bad = await app.inject({
+      ...selectBody({ prompt: PROMPT, promptConfidential: "nein" }),
+      headers,
+    });
+    expect(bad.statusCode).toBe(400);
+    expect(spy.cloudCalls()).toBe(0);
+    expect(embedSpy.calls).toBe(0);
+  });
+
+  it("interner Snapshot + VERTRAULICHE Einstufung (Vorgabe Ja/unsicher) → 200, aber 0 Cloud- UND 0 Embedder-Aufrufe", async () => {
+    const spy = cloudSpyReasoner('{"keywords":["pumpe"]}');
+    const { app, headers } = await selectApp(INTERN_SNAPSHOT(), spy.reasoner);
+    const res = await app.inject({
+      ...selectBody({ prompt: PROMPT, promptConfidential: true }),
+      headers,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(spy.cloudCalls()).toBe(0);
+    expect(embedSpy.calls).toBe(0);
+    const body = res.json() as { inferenceStatus?: string; fallbackReason?: string };
+    expect(body.inferenceStatus).toBe("unavailable"); // Cloud raus, kein lokales Modell → ehrlich
+    expect(body.fallbackReason).toBe("no-model");
+  });
+
+  it("POSITIV NUR bei explizit unbedenklichem Prompt UND komplett internem Snapshot (1 Cloud, 0 Embedder)", async () => {
+    const spy = cloudSpyReasoner('{"keywords":["pumpe"]}');
+    const { app, headers } = await selectApp(INTERN_SNAPSHOT(), spy.reasoner);
+    const res = await app.inject({
+      ...selectBody({ prompt: PROMPT, promptConfidential: false }),
+      headers,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(spy.cloudCalls()).toBe(1);
+    expect(embedSpy.calls).toBe(0);
+    expect((res.json() as { inferenceStatus?: string }).inferenceStatus).toBe("ok");
+  });
+
+  it("BACKSTOP hebt monoton: unbedenklicher Prompt, aber EIN unklares Item → trotzdem 0/0", async () => {
+    const spy = cloudSpyReasoner('{"keywords":["pumpe"]}');
+    const { app, headers } = await selectApp(
+      [item({ title: "Pumpe warten", confidentiality: "intern" }), item({ title: "Ohne Signal" })],
+      spy.reasoner,
+    );
+    const res = await app.inject({
+      ...selectBody({ prompt: PROMPT, promptConfidential: false }),
+      headers,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(spy.cloudCalls()).toBe(0);
+    expect(embedSpy.calls).toBe(0);
+  });
+
+  it("OHNE Satz ist die Einstufung gegenstandslos — reine Klick-Filter laufen ohne das Feld", async () => {
+    const { app, headers } = await selectApp(INTERN_SNAPSHOT());
+    const res = await app.inject({ ...selectBody({ criteria: {} }), headers });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("UI-Verdrahtung: Pflicht-Radio direkt an der Satz-Eingabe, Vorgabe Ja/unsicher, Feld reist immer mit (i18n x3)", () => {
+    const src = readFileSync(
+      resolve(process.cwd(), "apps/web/src/components/ImportSelect.tsx"),
+      "utf8",
+    );
+    expect(src).toContain("useState(true)"); // Vorgabe: Ja/unsicher (fail-safe)
+    expect(src).toContain("promptConfidential,");
+    expect(src).toContain('t("imp.select.promptConfidentialLabel")');
+    const i18n = readFileSync(resolve(process.cwd(), "apps/web/src/i18n.ts"), "utf8");
+    for (const key of [
+      "imp.select.promptConfidentialLabel",
+      "imp.select.promptConfidentialYes",
+      "imp.select.promptConfidentialNo",
+    ]) {
+      expect(i18n.split(`"${key}"`).length - 1, key).toBe(3);
+    }
   });
 });

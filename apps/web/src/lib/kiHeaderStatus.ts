@@ -124,3 +124,19 @@ export function kiHeaderStatus(config: ReasonerConfigStatus | undefined): KiHead
   }
   return noneStatus();
 }
+
+// WP-VIP2-GATE-2 (bens Fix 3): oeffentliche Variante der Header-Pille — abgeleitet aus dem
+// ABSTRAHIERTEN Status (/api/reasoner/status: active + mode cloud/local/deterministic), den
+// JEDER angemeldete Nutzer sehen darf. Ohne Provider-Detail gibt es ehrlich KEINE Herkunfts-/
+// DSGVO-Aussage (countryKey/detail null; dsgvoConfirm bleibt fail-safe „nein"). Die volle Sicht
+// mit Modellname/Herkunft ist Admin-Sicht (users.manage, /api/reasoner/config).
+export function kiHeaderStatusFromPublic(
+  status: { active: boolean; mode: "cloud" | "local" | "deterministic" } | undefined,
+): KiHeaderStatus {
+  if (!status || !status.active || status.mode === "deterministic") {
+    return noneStatus();
+  }
+  return status.mode === "cloud"
+    ? verdict("external", KI_HEADER_TEXT.external, KI_HEADER_TEXT.hintExternal, null, false, null)
+    : verdict("internal", KI_HEADER_TEXT.internal, KI_HEADER_TEXT.hintInternal, null, false, null);
+}

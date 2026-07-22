@@ -465,8 +465,15 @@ export const endpoints = {
       explore: () => api.post<ImportExploreResponse>("/admin/import/confluence/explore", {}),
       // IC-3: READ-ONLY Auswahl-Vorschau (Prompt und/oder Klick-Kriterien). Schreibt nichts.
       // WP-SAMMEL20-FIX (bens Fix 3): locale reist explizit mit (Route-Schema: de/en).
-      select: (body: { prompt?: string; criteria?: ImportSelectCriteria; locale?: "de" | "en" }) =>
-        api.post<ImportSelectResponse>("/admin/import/confluence/select", body),
+      // WP-VIP2-GATE-2 (bens Fix 1): promptConfidential = die PFLICHT-Eigeneinstufung des Satzes
+      // (true = enthaelt Vertrauliches/unsicher — Vorgabe; false = explizit unbedenklich). Der
+      // Client sendet sie immer; der Server lehnt einen Satz ohne Einstufung mit 400 ab.
+      select: (body: {
+        prompt?: string;
+        criteria?: ImportSelectCriteria;
+        locale?: "de" | "en";
+        promptConfidential?: boolean;
+      }) => api.post<ImportSelectResponse>("/admin/import/confluence/select", body),
       // WP-IC-4 (Schritt 4): KI-Gruppierung (read-only; ehrlicher deterministischer Fallback).
       group: (body: { criteria?: ImportSelectCriteria; locale?: "de" | "en" }) =>
         api.post<ImportGroupResponse>("/admin/import/confluence/group", body),

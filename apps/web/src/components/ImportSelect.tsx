@@ -40,6 +40,10 @@ function parsedPositiveInt(raw: string): number | undefined {
 export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Element {
   const { t, i18n } = useTranslation();
   const [prompt, setPrompt] = useState("");
+  // WP-VIP2-GATE-2 (bens Fix 1): PFLICHT-Eigeneinstufung des Auswahl-Satzes — VORGABE ist
+  // fail-safe „Ja/unsicher" (vertraulich); nur die bewusste Wahl „Nein, unbedenklich" erlaubt
+  // dem Server ueberhaupt den Cloud-Weg (und auch dann nur bei komplett freigegebenem Snapshot).
+  const [promptConfidential, setPromptConfidential] = useState(true);
   const [limit, setLimit] = useState("");
   const [yearFrom, setYearFrom] = useState("");
   const [yearTo, setYearTo] = useState("");
@@ -75,6 +79,8 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
         criteria: buildCriteria(),
         // WP-SAMMEL20-FIX (bens Fix 3): locale explizit mitgeben (Route-Schema: de/en).
         locale: toReasonerLocale(i18n.language),
+        // WP-VIP2-GATE-2 (bens Fix 1): die Eigeneinstufung reist IMMER mit (Pflichtfeld).
+        promptConfidential,
       });
       return { requestId, data };
     },
@@ -149,6 +155,34 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
           onChange={(e) => setPrompt(e.target.value)}
           placeholder={t("imp.select.promptPlaceholder")}
         />
+      </div>
+      {/* WP-VIP2-GATE-2 (bens Fix 1): PFLICHT-Eigeneinstufung DIREKT an der Satz-Eingabe —
+          Vorgabe „Ja/unsicher" (fail-safe vertraulich); nur die bewusste Wahl „Nein" gibt den
+          Satz fuer den Cloud-Weg frei (der Server prueft zusaetzlich den Snapshot als Backstop). */}
+      <div
+        className="mt-1.5 flex flex-wrap items-center gap-3 text-[12px] text-muted"
+        role="radiogroup"
+        aria-label={t("imp.select.promptConfidentialLabel")}
+      >
+        <span className="font-semibold">{t("imp.select.promptConfidentialLabel")}</span>
+        <label className="inline-flex items-center gap-1">
+          <input
+            type="radio"
+            name="prompt-confidential"
+            checked={promptConfidential}
+            onChange={() => setPromptConfidential(true)}
+          />
+          {t("imp.select.promptConfidentialYes")}
+        </label>
+        <label className="inline-flex items-center gap-1">
+          <input
+            type="radio"
+            name="prompt-confidential"
+            checked={!promptConfidential}
+            onChange={() => setPromptConfidential(false)}
+          />
+          {t("imp.select.promptConfidentialNo")}
+        </label>
       </div>
 
       {/* Zeitraum + Limit + Vorschau-Button (WP-IC-PAKET-1 Teil 3: von/bis Jahr aus den Erkundungsdaten) */}

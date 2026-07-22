@@ -330,7 +330,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/reasoner/enrich": { protection: "ko.create" },
   // SCRUM-428: Key-Test für den lokalen LLM — nur Admin (echter Mini-Aufruf).
   "POST /api/reasoner/test-local": { protection: "users.manage" },
-  "GET /api/reasoner/config": { protection: "ko.read" },
+  // WP-VIP2-GATE-2 (bens Fix 3): Provider-/Modellnamen sind echte Admin-Sicht (users.manage);
+  // normale Nutzer sehen nur den abstrahierten Status (/api/reasoner/status).
+  "GET /api/reasoner/config": { protection: "users.manage" },
   "PUT /api/reasoner/config": { protection: "users.manage" },
   // SCRUM-386: kundeneigene KI-Assist-Presets — lesen alle Rollen (Palette), pflegen nur Admin.
   "GET /api/reasoner/assist-presets": { protection: "ko.read" },

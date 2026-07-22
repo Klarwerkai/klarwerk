@@ -8,7 +8,7 @@ import {
   type SessionRepo,
   type UserRepo,
 } from "./repo";
-import { AuthError, type PublicUser, type Role, type User } from "./types";
+import { AuthError, type PublicUser, type Role, type Session, type User } from "./types";
 
 const MIN_PASSWORD_LENGTH = 8;
 const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000; // 14 Tage
@@ -208,25 +208,54 @@ export class AuthService {
     return { token, user: toPublic(account) };
   }
 
+  // WP-VIP2-GATE-2 (bens Fix 2, Deploy-Vertrag): UEBERGANGSWEISER DUAL-READ der Session-Suche.
+  // Erst der Hash-Lookup; bei Miss — und NUR wenn der Client-Wert selbst KEIN sha256:-Praefix
+  // traegt (dann waere es kein Klartext-Token, sondern jemand reicht einen Hash ein) — der
+  // Alt-Lookup ueber den Klartext-Schluessel. Ein Treffer wird SOFORT in-place auf den Hash
+  // umgezogen (delete Klartext-Zeile + create Hash-Zeile) — damit ist auch ein PARALLELER
+  // Altprozess waehrend eines Rolling-Deploys harmlos (er schreibt Klartext-Zeilen, die der
+  // neue Prozess beim ersten Zugriff findet und rehasht; kein Lockout).
+  // AUSLAUF: nach der VIP2-Phase entfernbar — sobald kein Altprozess mehr laeuft und die
+  // Start-Migration (migrateAuthTokensAtRest) einmal durch ist, existieren keine
+  // Klartext-Zeilen mehr; dann bleibt allein der Hash-Lookup.
+  private async findSessionDualRead(token: string): Promise<Session | undefined> {
+    const stored = hashTokenAtRest(token);
+    const byHash = await this.sessions.find(stored);
+    if (byHash) {
+      return byHash;
+    }
+    if (token.startsWith(TOKEN_HASH_PREFIX)) {
+      return undefined; // kein Klartext-Token — kein Alt-Lookup
+    }
+    const legacy = await this.sessions.find(token);
+    if (!legacy) {
+      return undefined;
+    }
+    // In-Place-Rehashing: die Zeile zieht auf den Hash-Schluessel um (kein Klartext-Neuschreiben).
+    await this.sessions.delete(token);
+    const rehashed: Session = { ...legacy, token: stored };
+    await this.sessions.create(rehashed);
+    return rehashed;
+  }
+
   // FR-AUTH-04: Logout beendet die Sitzung serverseitig.
   async logout(token: string): Promise<void> {
-    const stored = hashTokenAtRest(token);
-    const session = await this.sessions.find(stored);
-    await this.sessions.delete(stored);
+    // Dual-Read (s. findSessionDualRead): nach dem Lookup liegt die Zeile sicher unter dem Hash.
+    const session = await this.findSessionDualRead(token);
+    await this.sessions.delete(hashTokenAtRest(token));
     if (session) {
       await this.record(session.userId, "auth.logout", session.userId);
     }
   }
 
   async authenticate(token: string): Promise<PublicUser | undefined> {
-    // Lookup ueber den Hash — das Repo kennt den Klartext nie.
-    const stored = hashTokenAtRest(token);
-    const session = await this.sessions.find(stored);
+    // Lookup ueber den Hash — das Repo kennt den Klartext nie; Dual-Read nur als Deploy-Uebergang.
+    const session = await this.findSessionDualRead(token);
     if (!session) {
       return undefined;
     }
     if (session.expiresAt <= this.now()) {
-      await this.sessions.delete(stored); // abgelaufen → beim Zugriff aufraeumen
+      await this.sessions.delete(hashTokenAtRest(token)); // abgelaufen → beim Zugriff aufraeumen
       return undefined;
     }
     const user = await this.users.findById(session.userId);
@@ -335,7 +364,19 @@ export class AuthService {
       throw new AuthError("WEAK_PASSWORD", "Passwort muss mindestens 8 Zeichen haben.");
     }
     const stored = hashTokenAtRest(token);
-    const entry = await this.resetTokens.find(stored);
+    // WP-VIP2-GATE-2 (bens Fix 2): Dual-Read auch fuer Reset-Tokens — erst der Hash, bei Miss
+    // (und nur ohne sha256:-Praefix im Client-Wert) der Alt-Lookup ueber den Klartext-Schluessel
+    // mit sofortigem In-Place-Rehashing. AUSLAUF: nach der VIP2-Phase entfernbar (s.
+    // findSessionDualRead — dieselbe Uebergangs-Begruendung).
+    let entry = await this.resetTokens.find(stored);
+    if (!entry && !token.startsWith(TOKEN_HASH_PREFIX)) {
+      const legacy = await this.resetTokens.find(token);
+      if (legacy) {
+        await this.resetTokens.delete(token);
+        entry = { ...legacy, token: stored };
+        await this.resetTokens.create(entry);
+      }
+    }
     if (!entry || entry.expiresAt <= this.now()) {
       if (entry) {
         await this.resetTokens.delete(stored); // abgelaufen → beim Zugriff aufraeumen

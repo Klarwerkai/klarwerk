@@ -104,8 +104,11 @@ export const useLiveWall = () =>
 export const useReasonerStatus = () =>
   useQuery({ queryKey: ["reasoner", "status"], queryFn: endpoints.reasoner.status });
 // SCRUM-166: read-only Reasoner-/Provider-Konfiguration.
-export const useReasonerConfig = () =>
-  useQuery({ queryKey: ["reasoner", "config"], queryFn: endpoints.reasoner.config });
+// WP-VIP2-GATE-2 (bens Fix 3): serverseitig jetzt ECHTE Admin-Sicht (users.manage). Nicht-Admin-
+// Oberflaechen deaktivieren die Query (enabled=false) und fallen auf den oeffentlichen
+// abstrahierten Status (/api/reasoner/status: active+mode) zurueck — kein 403-Rauschen.
+export const useReasonerConfig = (enabled = true) =>
+  useQuery({ queryKey: ["reasoner", "config"], queryFn: endpoints.reasoner.config, enabled });
 // SCRUM-386: kundeneigene KI-Assist-Presets für die Palette (lesen: alle Rollen).
 export const useAssistPresets = () =>
   useQuery({ queryKey: ["reasoner", "assistPresets"], queryFn: endpoints.reasoner.assistPresets });
