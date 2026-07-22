@@ -215,7 +215,10 @@ export function performAsk(
     method: "POST",
     credentials: "include",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ question, locale }),
+    // WP-KLARA-ASK-FIX (bens Fix 1, P0): das Add-in sendet IMMER den server-garantierten
+    // retrieval-only-Modus — markierter Dokumenttext darf NIE zur Cloud (nur validierte KOs,
+    // deterministisches Retrieval, keine Synthese). Es gibt clientseitig keine andere Wahl.
+    body: JSON.stringify({ question, locale, mode: "retrieval-only" }),
     signal: controller.signal,
   })
     .then((res): Promise<AskOutcome> | AskOutcome => {
@@ -228,16 +231,25 @@ export function performAsk(
       return res.json().then((body): AskOutcome => {
         const result = (body as { result?: Record<string, unknown> } | null)?.result ?? null;
         const answer = result?.answer;
+        // WP-KLARA-ASK-FIX (bens Fix 2, Quellen-Pflicht): eine Antwort OHNE mindestens eine
+        // gueltige Source-Id ist KEINE belegte Antwort — sie zaehlt ehrlich als Wissensluecke
+        // (nie eine quellenlose Aussage einfuegbar machen).
+        const sources = Array.isArray(result?.sources)
+          ? (result.sources as unknown[]).filter(
+              (id): id is string => typeof id === "string" && id.trim().length > 0,
+            )
+          : [];
         if (
           result &&
           result.answered === true &&
           typeof answer === "string" &&
-          answer.trim().length > 0
+          answer.trim().length > 0 &&
+          sources.length > 0
         ) {
           return {
             kind: "answered",
             answer,
-            sources: Array.isArray(result.sources) ? (result.sources as string[]) : [],
+            sources,
             trust: typeof result.trust === "number" ? result.trust : 0,
           };
         }
@@ -260,13 +272,16 @@ export function performAsk(
 }
 
 // Einfuege-Gating (Teil 2): NUR eine echte quellengebundene Antwort darf ins Dokument — nie die
-// Wissensluecke, nie ein Fehlerzustand.
+// Wissensluecke, nie ein Fehlerzustand. WP-KLARA-ASK-FIX (bens Fix 2): zusaetzlich PFLICHT auf
+// mindestens EINE gueltige Source-Id — ohne Quelle gibt es nichts Belegtes einzufuegen.
 export function canInsertAnswer(outcome: AskOutcome | null | undefined): boolean {
   return Boolean(
     outcome &&
       outcome.kind === "answered" &&
       typeof outcome.answer === "string" &&
-      outcome.answer.trim().length > 0,
+      outcome.answer.trim().length > 0 &&
+      Array.isArray(outcome.sources) &&
+      outcome.sources.some((id) => typeof id === "string" && id.trim().length > 0),
   );
 }
 
@@ -284,8 +299,15 @@ export function buildAskSourceLine(
 
 // Eingefuegter Text = validiertes Wissen + Quellen-Zeile (beginnt bewusst NICHT mit einem
 // KI-Etikett — es IST das geprüfte Wissen, die Quellenangabe traegt die Herkunft).
-export function buildAnswerInsertText(answer: string, sourceLine: string): string {
-  return `${answer.replace(/\s+$/g, "")}\n\n${sourceLine}`;
+// WP-KLARA-ASK-FIX (bens Fix 3): wurde die Frage gekappt (2000-Zeichen-Deckel), traegt der
+// eingefuegte Text einen EHRLICHEN Kappungs-Hinweis mit (die Antwort galt der gekappten Frage).
+export function buildAnswerInsertText(
+  answer: string,
+  sourceLine: string,
+  truncatedNote?: string,
+): string {
+  const base = `${answer.replace(/\s+$/g, "")}\n\n${sourceLine}`;
+  return truncatedNote && truncatedNote.trim().length > 0 ? `${base}\n${truncatedNote}` : base;
 }
 
 // Stand-Datum der Quellen-Zeile (dd.mm.yyyy — Dokument-Artefakt, bewusst EIN Format).
@@ -296,16 +318,35 @@ export function formatAskDateLabel(date: Date): string {
   return `${pad(day)}.${pad(month)}.${date.getFullYear()}`;
 }
 
+// WP-KLARA-ASK-FIX (bens Fix 3, ehrliche Quellen-Zeile): das NEUESTE belegte Datum aus den
+// aufgeloesten Quell-KOs (Validierungs-/Aenderungsdatum aus history, sonst createdAt) — nur ein
+// parsebares Datum zaehlt. null = kein Beleg → der Aufrufer schreibt ehrlich
+// "abgerufen am <heute>" statt eines erfundenen Standes.
+export function newestSourceDateLabel(dates: readonly (string | undefined)[]): string | null {
+  let best: number | null = null;
+  for (const raw of dates) {
+    const parsed = raw ? Date.parse(raw) : Number.NaN;
+    if (Number.isFinite(parsed) && (best === null || parsed > best)) {
+      best = parsed;
+    }
+  }
+  return best === null ? null : formatAskDateLabel(new Date(best));
+}
+
 // Wissensluecken-Weg (Teil 2): die offene Frage reist als Front-Door-ENTWURF (bestehender
 // Draft-Weg) nach KLARWERK — Titel-Konvention mit demselben 60-Zeichen-Deckel wie der Sender.
-export const WORD_ADDIN_OPEN_QUESTION_PREFIX = "Offene Frage: ";
-
-export function openQuestionDraftTitle(question: string): string {
+// WP-KLARA-ASK-FIX (bens Fix 4): Praefix/Fallback kommen LOKALISIERT vom Aufrufer (DE/EN/NL) —
+// kein fest verdrahteter deutscher Titel mehr.
+export function openQuestionDraftTitle(
+  question: string,
+  prefix: string,
+  fallbackTitle: string,
+): string {
   const trimmed = question.trim();
   if (trimmed.length === 0) {
-    return "Offene Frage aus Word";
+    return fallbackTitle;
   }
-  return `${WORD_ADDIN_OPEN_QUESTION_PREFIX}${trimmed}`.slice(0, WORD_ADDIN_TITLE_MAX).trim();
+  return `${prefix}${trimmed}`.slice(0, WORD_ADDIN_TITLE_MAX).trim();
 }
 
 // WP-SHIP8-FINAL (bens Bedingung 4, EIN Auswahl-Snapshot): der Klartext wird aus dem EINEN

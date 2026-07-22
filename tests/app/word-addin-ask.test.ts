@@ -18,13 +18,13 @@ import {
   type AskOutcome,
   WORD_ADDIN_ASK_MAX_CHARS,
   WORD_ADDIN_ASK_TIMEOUT_MS,
-  WORD_ADDIN_OPEN_QUESTION_PREFIX,
   WORD_ADDIN_TITLE_MAX,
   askLocale,
   buildAnswerInsertText,
   buildAskSourceLine,
   canInsertAnswer,
   formatAskDateLabel,
+  newestSourceDateLabel,
   openQuestionDraftTitle,
   performAsk,
   prepareAskQuestion,
@@ -102,9 +102,11 @@ describe("WP-KLARA-ASK Teil 1: performAsk — der Konsolen-Vertrag mit Fake-fetc
     const init = seenInit as unknown as AskFetchInit;
     expect(init.method).toBe("POST");
     expect(init.credentials).toBe("include");
+    // WP-KLARA-ASK-FIX (bens Fix 1): das Add-in sendet IMMER den server-garantierten Modus.
     expect(JSON.parse(init.body)).toEqual({
       question: "Wie entlaste ich das Ventil?",
       locale: "de",
+      mode: "retrieval-only",
     });
   });
 
@@ -139,6 +141,21 @@ describe("WP-KLARA-ASK Teil 1: performAsk — der Konsolen-Vertrag mit Fake-fetc
       WORD_ADDIN_ASK_TIMEOUT_MS,
     );
     expect(emptyAnswer).toEqual({ kind: "gap" });
+    // WP-KLARA-ASK-FIX (bens Fix 2, Quellen-Pflicht): answered OHNE gueltige Source-Id → gap.
+    const noSources = await performAsk(
+      "Frage",
+      "de",
+      async () => fakeRes(200, { result: { answered: true, answer: "Text", sources: [] } }),
+      WORD_ADDIN_ASK_TIMEOUT_MS,
+    );
+    expect(noSources).toEqual({ kind: "gap" });
+    const blankSources = await performAsk(
+      "Frage",
+      "de",
+      async () => fakeRes(200, { result: { answered: true, answer: "Text", sources: ["  "] } }),
+      WORD_ADDIN_ASK_TIMEOUT_MS,
+    );
+    expect(blankSources).toEqual({ kind: "gap" });
   });
 
   it("401/403 → kind auth (Login-Hinweis im Panel)", async () => {
@@ -179,8 +196,12 @@ describe("WP-KLARA-ASK Teil 1: performAsk — der Konsolen-Vertrag mit Fake-fetc
 });
 
 describe("WP-KLARA-ASK Teil 2: Einfuege-Gating + Quellen-Zeile + Offene-Frage-Weg", () => {
-  it("canInsertAnswer: NUR eine echte quellengebundene Antwort — nie Luecke/Fehler/leer", () => {
-    expect(canInsertAnswer({ kind: "answered", answer: "Text", sources: [] })).toBe(true);
+  it("canInsertAnswer: NUR eine echte quellengebundene Antwort — nie Luecke/Fehler/leer/quellenlos", () => {
+    expect(canInsertAnswer({ kind: "answered", answer: "Text", sources: ["ko-1"] })).toBe(true);
+    // WP-KLARA-ASK-FIX (bens Fix 2): ohne mindestens EINE gueltige Source-Id KEIN Einfuegen.
+    expect(canInsertAnswer({ kind: "answered", answer: "Text", sources: [] })).toBe(false);
+    expect(canInsertAnswer({ kind: "answered", answer: "Text", sources: ["  "] })).toBe(false);
+    expect(canInsertAnswer({ kind: "answered", answer: "Text" })).toBe(false);
     expect(canInsertAnswer({ kind: "answered", answer: "   " })).toBe(false);
     expect(canInsertAnswer({ kind: "gap" })).toBe(false);
     expect(canInsertAnswer({ kind: "auth" })).toBe(false);
@@ -209,14 +230,33 @@ describe("WP-KLARA-ASK Teil 2: Einfuege-Gating + Quellen-Zeile + Offene-Frage-We
     expect(text.startsWith("Ventil entlasten.")).toBe(true);
     expect(formatAskDateLabel(new Date(2026, 6, 22))).toBe("22.07.2026");
     expect(formatAskDateLabel(new Date(2026, 0, 3))).toBe("03.01.2026");
+    // WP-KLARA-ASK-FIX (bens Fix 3): gekappte Frage → der eingefuegte Text traegt den Hinweis mit.
+    const truncated = buildAnswerInsertText("Antwort", "Quelle: X", "Hinweis: gekappt auf 2000.");
+    expect(truncated).toBe("Antwort\n\nQuelle: X\nHinweis: gekappt auf 2000.");
+    expect(buildAnswerInsertText("Antwort", "Quelle: X", "")).toBe("Antwort\n\nQuelle: X");
   });
 
-  it("Offene-Frage-Titel: Konvention + 60-Zeichen-Deckel des Draft-Senders; nie leer", () => {
-    expect(openQuestionDraftTitle("Wie entlaste ich das Ventil?")).toBe(
-      `${WORD_ADDIN_OPEN_QUESTION_PREFIX}Wie entlaste ich das Ventil?`,
+  it("WP-KLARA-ASK-FIX (bens Fix 3): Stand-Datum NUR belegt — sonst null (Aufrufer schreibt abgerufen am)", () => {
+    expect(
+      newestSourceDateLabel(["2026-07-01T00:00:00.000Z", "2026-07-20T10:00:00.000Z", undefined]),
+    ).toBe("20.07.2026");
+    expect(newestSourceDateLabel([undefined, "kaputt"])).toBeNull();
+    expect(newestSourceDateLabel([])).toBeNull();
+  });
+
+  it("Offene-Frage-Titel: LOKALISIERTES Praefix + 60-Zeichen-Deckel des Draft-Senders; nie leer", () => {
+    expect(
+      openQuestionDraftTitle("Wie entlaste ich das Ventil?", "Offene Frage: ", "Fallback"),
+    ).toBe("Offene Frage: Wie entlaste ich das Ventil?");
+    expect(openQuestionDraftTitle("How?", "Open question: ", "Fallback")).toBe(
+      "Open question: How?",
     );
-    expect(openQuestionDraftTitle("x".repeat(200)).length).toBe(WORD_ADDIN_TITLE_MAX);
-    expect(openQuestionDraftTitle("   ")).toBe("Offene Frage aus Word");
+    expect(openQuestionDraftTitle("x".repeat(200), "Offene Frage: ", "F").length).toBe(
+      WORD_ADDIN_TITLE_MAX,
+    );
+    expect(openQuestionDraftTitle("   ", "Offene Frage: ", "Offene Frage aus Word")).toBe(
+      "Offene Frage aus Word",
+    );
   });
 });
 
@@ -229,7 +269,7 @@ describe("WP-KLARA-ASK Teil 3: Inline-Spiegel im buildlosen Taskpane ist VERHALT
     expect(end).toBeGreaterThan(start);
     const block = html.slice(start, end);
     const factory = new Function(
-      `${block}; return { prepareAskQuestion: prepareAskQuestion, askLocale: askLocale, performAsk: performAsk, canInsertAnswer: canInsertAnswer, buildAskSourceLine: buildAskSourceLine, buildAnswerInsertText: buildAnswerInsertText, formatAskDateLabel: formatAskDateLabel, openQuestionDraftTitle: openQuestionDraftTitle, WORD_ADDIN_ASK_MAX_CHARS: WORD_ADDIN_ASK_MAX_CHARS, WORD_ADDIN_ASK_TIMEOUT_MS: WORD_ADDIN_ASK_TIMEOUT_MS };`,
+      `${block}; return { prepareAskQuestion: prepareAskQuestion, askLocale: askLocale, performAsk: performAsk, canInsertAnswer: canInsertAnswer, buildAskSourceLine: buildAskSourceLine, buildAnswerInsertText: buildAnswerInsertText, formatAskDateLabel: formatAskDateLabel, newestSourceDateLabel: newestSourceDateLabel, openQuestionDraftTitle: openQuestionDraftTitle, WORD_ADDIN_ASK_MAX_CHARS: WORD_ADDIN_ASK_MAX_CHARS, WORD_ADDIN_ASK_TIMEOUT_MS: WORD_ADDIN_ASK_TIMEOUT_MS };`,
     );
     const inline = factory() as {
       prepareAskQuestion: typeof prepareAskQuestion;
@@ -239,6 +279,7 @@ describe("WP-KLARA-ASK Teil 3: Inline-Spiegel im buildlosen Taskpane ist VERHALT
       buildAskSourceLine: typeof buildAskSourceLine;
       buildAnswerInsertText: typeof buildAnswerInsertText;
       formatAskDateLabel: typeof formatAskDateLabel;
+      newestSourceDateLabel: typeof newestSourceDateLabel;
       openQuestionDraftTitle: typeof openQuestionDraftTitle;
       WORD_ADDIN_ASK_MAX_CHARS: number;
       WORD_ADDIN_ASK_TIMEOUT_MS: number;
@@ -288,7 +329,9 @@ describe("WP-KLARA-ASK Teil 3: Inline-Spiegel im buildlosen Taskpane ist VERHALT
     }
     // Gating + Zeilenbau + Titel-Konvention verhaltensgleich.
     const outcomes: (AskOutcome | null)[] = [
+      { kind: "answered", answer: "A", sources: ["ko-1"] },
       { kind: "answered", answer: "A", sources: [] },
+      { kind: "answered", answer: "A", sources: ["  "] },
       { kind: "answered", answer: " " },
       { kind: "gap" },
       null,
@@ -305,11 +348,23 @@ describe("WP-KLARA-ASK Teil 3: Inline-Spiegel im buildlosen Taskpane ist VERHALT
     expect(inline.buildAnswerInsertText("Antwort \n", "Zeile")).toBe(
       buildAnswerInsertText("Antwort \n", "Zeile"),
     );
+    expect(inline.buildAnswerInsertText("Antwort", "Zeile", "Hinweis")).toBe(
+      buildAnswerInsertText("Antwort", "Zeile", "Hinweis"),
+    );
     expect(inline.formatAskDateLabel(new Date(2026, 6, 22))).toBe(
       formatAskDateLabel(new Date(2026, 6, 22)),
     );
+    for (const dates of [
+      ["2026-07-01T00:00:00.000Z", "2026-07-20T10:00:00.000Z"],
+      ["kaputt", undefined],
+      [],
+    ] as (string | undefined)[][]) {
+      expect(inline.newestSourceDateLabel(dates)).toBe(newestSourceDateLabel(dates));
+    }
     for (const q of ["Frage?", "x".repeat(200), "  "]) {
-      expect(inline.openQuestionDraftTitle(q)).toBe(openQuestionDraftTitle(q));
+      expect(inline.openQuestionDraftTitle(q, "Offene Frage: ", "Fallback")).toBe(
+        openQuestionDraftTitle(q, "Offene Frage: ", "Fallback"),
+      );
     }
   });
 });
@@ -349,7 +404,7 @@ describe("WP-KLARA-ASK: Taskpane-Verdrahtung (Quelltext-Pins) + i18n x3", () => 
   it("Teil 2: Einfuegen NUR bei echter Antwort (Gating + Office), Quellen-Zeile, Luecken-Weg als Front-Door-Draft mit Deep-Link", () => {
     // Gating VOR dem Office-Schreibaufruf; setSelectedDataAsync als Text an der Cursorposition.
     const guard = html.indexOf(
-      "if (!canInsertAnswer(currentAskOutcome) || !officeUsable()) { return; }",
+      "if (!canInsertAnswer(currentAskOutcome) || !currentAskSourcesResolved || !officeUsable()) { return; }",
     );
     const write = html.indexOf("Office.context.document.setSelectedDataAsync(");
     expect(guard).toBeGreaterThan(0);
@@ -357,12 +412,27 @@ describe("WP-KLARA-ASK: Taskpane-Verdrahtung (Quelltext-Pins) + i18n x3", () => 
     expect(html).toContain("coercionType: Office.CoercionType.Text");
     // Quellen-Zeile aus aufgeloesten Titeln + Stand-Datum; der Text beginnt mit dem Wissen.
     expect(html).toContain("buildAskSourceLine(");
-    expect(html).toContain("buildAnswerInsertText(currentAskOutcome.answer, line)");
-    // Wissensluecke: BESTEHENDER Draft-Weg (origin frontdoor) + Titel-Konvention + Deep-Link.
-    expect(html).toContain("openQuestionDraftTitle(currentAskQuestion)");
-    expect(html).toContain('"/capture/frontdoor?draft=" + encodeURIComponent(draft.id)');
+    expect(html).toContain("buildAnswerInsertText(currentAskOutcome.answer, line, truncatedNote)");
+    // Wissensluecke: BESTEHENDER Draft-Weg (origin frontdoor) + lokalisierte Titel-Konvention +
+    // Deep-Link. WP-KLARA-ASK-FIX (bens Fix 4): gap-only-Gate, Knopf-Sperre, 403 als fehlendes
+    // Recht, voller Fragetext im Draft-Body (kein Verlust durch die 500-Zeichen-Statement-Kappung).
     const gapSend = html.indexOf("function sendOpenQuestion()");
-    expect(html.slice(gapSend, gapSend + 900)).toContain('origin: "frontdoor"');
+    const gapBlock = html.slice(gapSend, gapSend + 2600);
+    expect(gapBlock).toContain('currentAskOutcome.kind !== "gap"');
+    expect(gapBlock).toContain("gapBtn.disabled = true");
+    expect(gapBlock).toContain('showAskStatus("warn", t("askForbidden"))');
+    expect(gapBlock).toContain("bodyHtml: selectionToBodyHtml(currentAskQuestion)");
+    expect(gapBlock).toContain('t("askOpenQuestionPrefix")');
+    expect(gapBlock).toContain('origin: "frontdoor"');
+    expect(html).toContain('"/capture/frontdoor?draft=" + encodeURIComponent(draft.id)');
+    // Fix 2: Einfuegen erst NACH abgeschlossener Quellenaufloesung; Fix 3: ehrliche Stand-Zeile.
+    expect(html).toContain("currentAskSourcesResolved");
+    expect(html).toContain('t("askSourceLineRetrieved")');
+    expect(html).toContain(
+      't("askInsertTruncatedNote", { max: String(WORD_ADDIN_ASK_MAX_CHARS) })',
+    );
+    // Fix 1: der Spiegel sendet IMMER den server-garantierten Modus.
+    expect(html).toContain('mode: "retrieval-only"');
   });
 
   it("Teil 3: zwei Bereiche (Fragen | Wissen erfassen) als einfache Tabs — buildlos, kein Framework", () => {
@@ -402,6 +472,11 @@ describe("WP-KLARA-ASK: Taskpane-Verdrahtung (Quelltext-Pins) + i18n x3", () => 
       'askInsertOk: "',
       'askInsertFail: "',
       'askSourceLine: "',
+      'askSourceLineRetrieved: "',
+      'askInsertTruncatedNote: "',
+      'askForbidden: "',
+      'askOpenQuestionPrefix: "',
+      'askOpenQuestionFallback: "',
       'helpCan3: "',
     ]) {
       expect(html.split(key).length - 1, key).toBe(3);

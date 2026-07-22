@@ -20,6 +20,11 @@ const askBodySchema = {
   properties: {
     question: { type: "string", maxLength: 8_000 },
     locale: { type: "string" },
+    // WP-KLARA-ASK-FIX (bens Fix 1, P0): optionaler, SERVER-garantierter Modus. "retrieval-only"
+    // erzwingt serverseitig: NUR validierte KOs als Grundlage, NULL Modell- und NULL Embedder-
+    // Aufrufe (rein deterministisches Retrieval, Antwort = woertliche validierte Aussage +
+    // Quellen, keine Synthese). Anderer Wert → Schema-400. Ohne Feld: Konsolen-Bestandsverhalten.
+    mode: { type: "string", enum: ["retrieval-only"] },
   },
 } as const;
 
@@ -40,7 +45,7 @@ declare module "fastify" {
 export function askRoutes(ask: AskService, guards: Guards): FastifyPluginAsync {
   return async (app) => {
     app.decorateRequest("askSessionUser", null);
-    app.post<{ Body: { question?: string; locale?: string } }>(
+    app.post<{ Body: { question?: string; locale?: string; mode?: string } }>(
       "/api/ask",
       {
         // SCRUM-490 D3: Drossel NUR für den addon-Pfad. Bei Flag AUS ist das @fastify/rate-limit-Plugin
@@ -100,6 +105,25 @@ export function askRoutes(ask: AskService, guards: Guards): FastifyPluginAsync {
         if (!user) {
           // Defense-in-Depth: erreichbar nur, wenn preValidation nichts gesetzt hätte (soll nie sein).
           reply.code(401).send({ error: "UNAUTHENTICATED", message: "Session erforderlich." });
+          return;
+        }
+        // WP-KLARA-ASK-FIX (bens Fix 1, P0-Kern): "retrieval-only" — der Modus des Word-Add-ins
+        // (markierter DOKUMENTTEXT ist potenziell vertraulich und darf NIE zur Cloud). Bewusst ein
+        // Request-Flag statt eines eigenen Endpunkts: Auth, Body-Schema, Rate-Limits und der
+        // Add-on-Zweig dieser Route bleiben EINE Quelle der Wahrheit — server-erzwungen ist die
+        // SEMANTIK des Modus: ask.ask mit validatedOnly (nur validierte KOs als Grundlage) +
+        // retrievalOnly (answerRetrievalOnly = deterministischer Pfad; kein Modell-, kein
+        // Embedder-Aufruf erreichbar — exakt der seit SCRUM-490 R2 bestehende Add-on-Vertrag).
+        // Die Antwort ist die WOERTLICHE validierte Aussage + Quellen, keine Synthese. Die
+        // Wissensluecke wird weiter vermerkt (Session-Nutzer, bestehende gap-Semantik) — darauf
+        // baut der Offene-Frage-Weg des Panels. Konsole ohne mode: byte-identisches Verhalten.
+        if (request.body.mode === "retrieval-only") {
+          reply.code(200).send(
+            await ask.ask(question, user.id, locale, {
+              validatedOnly: true,
+              retrievalOnly: true,
+            }),
+          );
           return;
         }
         reply.code(200).send(await ask.ask(question, user.id, locale));

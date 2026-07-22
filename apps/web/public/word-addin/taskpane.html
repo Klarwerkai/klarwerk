@@ -366,11 +366,13 @@
         timedOut = true;
         try { controller.abort(); } catch (err) { /* bereits beendet — egal */ }
       }, timeoutMs);
+      // WP-KLARA-ASK-FIX (bens Fix 1): IMMER der server-garantierte retrieval-only-Modus —
+      // markierter Dokumenttext darf NIE zur Cloud; clientseitig gibt es keine andere Wahl.
       return fetchFn("/api/ask", {
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ question: question, locale: locale }),
+        body: JSON.stringify({ question: question, locale: locale, mode: "retrieval-only" }),
         signal: controller.signal,
       })
         .then(function (res) {
@@ -379,11 +381,26 @@
           return res.json().then(function (body) {
             var result = body && body.result ? body.result : null;
             var answer = result ? result.answer : null;
-            if (result && result.answered === true && typeof answer === "string" && answer.trim().length > 0) {
+            // WP-KLARA-ASK-FIX (bens Fix 2): ohne mindestens EINE gueltige Source-Id ist es keine
+            // belegte Antwort — ehrlich als Wissensluecke behandeln.
+            var sources = [];
+            if (result && Array.isArray(result.sources)) {
+              for (var i = 0; i < result.sources.length; i += 1) {
+                var id = result.sources[i];
+                if (typeof id === "string" && id.trim().length > 0) { sources.push(id); }
+              }
+            }
+            if (
+              result &&
+              result.answered === true &&
+              typeof answer === "string" &&
+              answer.trim().length > 0 &&
+              sources.length > 0
+            ) {
               return {
                 kind: "answered",
                 answer: answer,
-                sources: Array.isArray(result.sources) ? result.sources : [],
+                sources: sources,
                 trust: typeof result.trust === "number" ? result.trust : 0,
               };
             }
@@ -401,11 +418,19 @@
     }
 
     function canInsertAnswer(outcome) {
+      var hasSource = false;
+      if (outcome && Array.isArray(outcome.sources)) {
+        for (var i = 0; i < outcome.sources.length; i += 1) {
+          var id = outcome.sources[i];
+          if (typeof id === "string" && id.trim().length > 0) { hasSource = true; break; }
+        }
+      }
       return Boolean(
         outcome &&
           outcome.kind === "answered" &&
           typeof outcome.answer === "string" &&
-          outcome.answer.trim().length > 0
+          outcome.answer.trim().length > 0 &&
+          hasSource
       );
     }
 
@@ -419,8 +444,18 @@
       return template.replace("{titles}", joined).replace("{date}", dateLabel);
     }
 
-    function buildAnswerInsertText(answer, sourceLine) {
-      return answer.replace(/\s+$/g, "") + "\n\n" + sourceLine;
+    function buildAnswerInsertText(answer, sourceLine, truncatedNote) {
+      var base = answer.replace(/\s+$/g, "") + "\n\n" + sourceLine;
+      return truncatedNote && truncatedNote.trim().length > 0 ? base + "\n" + truncatedNote : base;
+    }
+
+    function newestSourceDateLabel(dates) {
+      var best = null;
+      for (var i = 0; i < dates.length; i += 1) {
+        var parsed = dates[i] ? Date.parse(dates[i]) : NaN;
+        if (isFinite(parsed) && (best === null || parsed > best)) { best = parsed; }
+      }
+      return best === null ? null : formatAskDateLabel(new Date(best));
     }
 
     function formatAskDateLabel(date) {
@@ -428,12 +463,11 @@
       return pad(date.getDate()) + "." + pad(date.getMonth() + 1) + "." + date.getFullYear();
     }
 
-    var WORD_ADDIN_OPEN_QUESTION_PREFIX = "Offene Frage: ";
-
-    function openQuestionDraftTitle(question) {
+    // WP-KLARA-ASK-FIX (bens Fix 4): Praefix/Fallback kommen LOKALISIERT vom Aufrufer.
+    function openQuestionDraftTitle(question, prefix, fallbackTitle) {
       var trimmed = question.trim();
-      if (trimmed.length === 0) { return "Offene Frage aus Word"; }
-      return (WORD_ADDIN_OPEN_QUESTION_PREFIX + trimmed).slice(0, WORD_ADDIN_TITLE_MAX).trim();
+      if (trimmed.length === 0) { return fallbackTitle; }
+      return (prefix + trimmed).slice(0, WORD_ADDIN_TITLE_MAX).trim();
     }
     // KW-WORDADDIN-HELPERS-END
 
@@ -496,6 +530,11 @@
         askInsertOk: "Antwort eingefuegt — mit Quellenangabe.",
         askInsertFail: "Einfuegen fehlgeschlagen ({detail}).",
         askSourceLine: "Quelle: {titles} (KLARWERK, geprueftes Wissen, Stand {date})",
+        askSourceLineRetrieved: "Quelle: {titles} (KLARWERK, geprueftes Wissen, abgerufen am {date})",
+        askInsertTruncatedNote: "Hinweis: Die zugrunde liegende Frage wurde auf {max} Zeichen gekappt.",
+        askForbidden: "Fehlendes Recht: Dein Konto darf keine offenen Fragen als Entwurf senden.",
+        askOpenQuestionPrefix: "Offene Frage: ",
+        askOpenQuestionFallback: "Offene Frage aus Word",
         helpTitle: "Was kann Klara hier?",
         helpCan1: "Auswahl oder ganzes Dokument als KLARWERK-Entwurf anlegen — mit Formatierung, Tabellen und Bildern, soweit Word sie uebergibt (nur Entwurf, kein fertiges Wissensobjekt).",
         helpCan2: "Ehrlich sagen, ob du angemeldet bist, ob das Senden geklappt hat und was Word NICHT uebergeben konnte.",
@@ -560,6 +599,11 @@
         askInsertOk: "Answer inserted — with source attribution.",
         askInsertFail: "Inserting failed ({detail}).",
         askSourceLine: "Source: {titles} (KLARWERK, verified knowledge, as of {date})",
+        askSourceLineRetrieved: "Source: {titles} (KLARWERK, verified knowledge, retrieved on {date})",
+        askInsertTruncatedNote: "Note: the underlying question was truncated to {max} characters.",
+        askForbidden: "Missing permission: your account may not send open questions as drafts.",
+        askOpenQuestionPrefix: "Open question: ",
+        askOpenQuestionFallback: "Open question from Word",
         helpTitle: "What can Klara do here?",
         helpCan1: "Create a KLARWERK draft from your selection or the whole document — with formatting, tables and images as far as Word provides them (draft only, not a finished knowledge object).",
         helpCan2: "Tell you honestly whether you are signed in, whether sending worked and what Word could NOT provide.",
@@ -624,6 +668,11 @@
         askInsertOk: "Antwoord ingevoegd — met bronvermelding.",
         askInsertFail: "Invoegen mislukt ({detail}).",
         askSourceLine: "Bron: {titles} (KLARWERK, gecontroleerde kennis, per {date})",
+        askSourceLineRetrieved: "Bron: {titles} (KLARWERK, gecontroleerde kennis, opgehaald op {date})",
+        askInsertTruncatedNote: "Let op: de onderliggende vraag is ingekort tot {max} tekens.",
+        askForbidden: "Ontbrekend recht: je account mag geen open vragen als concept versturen.",
+        askOpenQuestionPrefix: "Open vraag: ",
+        askOpenQuestionFallback: "Open vraag uit Word",
         helpTitle: "Wat kan Klara hier?",
         helpCan1: "Je selectie of het hele document als KLARWERK-concept aanmaken — met opmaak, tabellen en afbeeldingen voor zover Word ze levert (alleen concept, geen afgerond kennisobject).",
         helpCan2: "Eerlijk zeggen of je bent aangemeld, of het versturen is gelukt en wat Word NIET kon leveren.",
@@ -1008,6 +1057,11 @@
     // (fuer die Quellen-Zeile) und die gestellte Frage (fuer den Offene-Frage-Entwurf).
     var currentAskOutcome = null;
     var currentAskSourceTitles = [];
+    // WP-KLARA-ASK-FIX (bens Fix 3): belegte Quell-Daten (history/createdAt) fuer die ehrliche
+    // Stand-Angabe; Fix 2: Einfuegen erst NACH abgeschlossener Quellenaufloesung.
+    var currentAskSourceDates = [];
+    var currentAskSourcesResolved = false;
+    var currentAskTruncated = false;
     var currentAskQuestion = "";
 
     function showAskStatus(kind, text) {
@@ -1025,6 +1079,8 @@
     function resetAskResult() {
       currentAskOutcome = null;
       currentAskSourceTitles = [];
+      currentAskSourceDates = [];
+      currentAskSourcesResolved = false;
       document.getElementById("ask-answer-block").className = "hidden";
       document.getElementById("ask-gap-block").className = "hidden";
       document.getElementById("ask-gap-open-block").className = "hidden";
@@ -1042,7 +1098,9 @@
     // Teil 2 (Gating): Einfuegen NUR bei echter quellengebundener Antwort UND bereitem Office.
     function updateInsertState() {
       var btn = document.getElementById("ask-insert-btn");
-      var insertable = canInsertAnswer(currentAskOutcome);
+      // WP-KLARA-ASK-FIX (bens Fix 2): Einfuegen erst, wenn die Quellenaufloesung ABGESCHLOSSEN
+      // ist — die Quellen-Zeile darf nie halb geladene Titel tragen.
+      var insertable = canInsertAnswer(currentAskOutcome) && currentAskSourcesResolved;
       btn.disabled = !(insertable && officeUsable());
       btn.title = insertable && !officeUsable() ? t("noOffice") : "";
     }
@@ -1058,12 +1116,23 @@
               return res.json();
             })
             .then(function (ko) {
+              // WP-KLARA-ASK-FIX (bens Fix 3): belegtes Stand-Datum aus dem KO — die NEUESTE
+              // history-Zeile (Validierung/Aenderung), sonst createdAt; fehlt beides → null.
+              var standDate = null;
+              if (ko && Array.isArray(ko.history)) {
+                for (var h = 0; h < ko.history.length; h += 1) {
+                  var at = ko.history[h] && ko.history[h].at;
+                  if (typeof at === "string" && at.length > 0) { standDate = at; }
+                }
+              }
+              if (!standDate && ko && typeof ko.createdAt === "string") { standDate = ko.createdAt; }
               return {
                 title: ko && ko.title ? String(ko.title) : id,
                 trust: ko && typeof ko.trust === "number" ? ko.trust : null,
+                standDate: standDate,
               };
             })
-            .catch(function () { return { title: id, trust: null }; });
+            .catch(function () { return { title: id, trust: null, standDate: null }; });
         })
       );
     }
@@ -1086,13 +1155,17 @@
         ? " " + t("askTruncated", { max: String(WORD_ADDIN_ASK_MAX_CHARS) })
         : "";
       if (outcome.kind === "answered") {
+        currentAskTruncated = truncated;
         document.getElementById("ask-answer-block").className = "";
         document.getElementById("ask-answer-text").textContent = outcome.answer;
         if (truncated) { showAskStatus("warn", truncatedNote.replace(/^\s+/, "")); } else { hideAskStatus(); }
-        updateInsertState();
+        updateInsertState(); // noch gesperrt — die Quellenaufloesung laeuft (Fix 2)
         resolveAskSources(outcome.sources || []).then(function (resolved) {
           currentAskSourceTitles = resolved.map(function (r) { return r.title; });
+          currentAskSourceDates = resolved.map(function (r) { return r.standDate; });
+          currentAskSourcesResolved = true; // ab jetzt ist die Quellen-Zeile vollstaendig
           renderAskSources(resolved);
+          updateInsertState();
         });
         return;
       }
@@ -1151,13 +1224,17 @@
     // Teil 2: Antwort AN DER CURSORPOSITION einfuegen — validiertes Wissen + Quellen-Zeile
     // (setSelectedDataAsync, Text; braucht die ReadWriteDocument-Permission des Manifests).
     function insertAnswer() {
-      if (!canInsertAnswer(currentAskOutcome) || !officeUsable()) { return; }
-      var line = buildAskSourceLine(
-        currentAskSourceTitles,
-        formatAskDateLabel(new Date()),
-        t("askSourceLine")
-      );
-      var text = buildAnswerInsertText(currentAskOutcome.answer, line);
+      if (!canInsertAnswer(currentAskOutcome) || !currentAskSourcesResolved || !officeUsable()) { return; }
+      // WP-KLARA-ASK-FIX (bens Fix 3): "Stand <Datum>" NUR mit belegtem KO-Datum (Validierung/
+      // Aenderung); ohne Beleg ehrlich "abgerufen am <heute>".
+      var standLabel = newestSourceDateLabel(currentAskSourceDates);
+      var line = standLabel
+        ? buildAskSourceLine(currentAskSourceTitles, standLabel, t("askSourceLine"))
+        : buildAskSourceLine(currentAskSourceTitles, formatAskDateLabel(new Date()), t("askSourceLineRetrieved"));
+      var truncatedNote = currentAskTruncated
+        ? t("askInsertTruncatedNote", { max: String(WORD_ADDIN_ASK_MAX_CHARS) })
+        : "";
+      var text = buildAnswerInsertText(currentAskOutcome.answer, line, truncatedNote);
       Office.context.document.setSelectedDataAsync(
         text,
         { coercionType: Office.CoercionType.Text },
@@ -1175,8 +1252,18 @@
     // Teil 2 (Wissensluecke): die offene Frage als Front-Door-ENTWURF nach KLARWERK (bestehender
     // Draft-Weg, origin frontdoor) — die Luecke wird im System handelbar (Risiko-Board-Gedanke).
     function sendOpenQuestion() {
+      // WP-KLARA-ASK-FIX (bens Fix 4): NUR eine echte Wissensluecke darf als offene Frage reisen —
+      // nie ein Fehler-/Timeout-Zustand (dort ist unklar, ob es Wissen gibt).
+      if (!currentAskOutcome || currentAskOutcome.kind !== "gap") { return; }
       if (currentAskQuestion.trim().length === 0) { return; }
-      var title = openQuestionDraftTitle(currentAskQuestion);
+      var gapBtn = document.getElementById("ask-gap-send-btn");
+      if (gapBtn.disabled) { return; } // laeuft bereits — kein Doppel-POST
+      gapBtn.disabled = true;
+      var title = openQuestionDraftTitle(
+        currentAskQuestion,
+        t("askOpenQuestionPrefix"),
+        t("askOpenQuestionFallback")
+      );
       showAskStatus("warn", t("sendBusy"));
       fetch("/api/drafts", {
         method: "POST",
@@ -1185,13 +1272,23 @@
         body: JSON.stringify({
           title: title,
           statement: currentAskQuestion.slice(0, 500),
+          // WP-KLARA-ASK-FIX (bens Fix 4): der VOLLE Fragetext reist im Draft-Body mit (escaped,
+          // der Server-Sanitizer bleibt autoritativ) — die 500-Zeichen-Kappung des statements
+          // verliert damit nichts.
+          bodyHtml: selectionToBodyHtml(currentAskQuestion),
           origin: "frontdoor",
         }),
       })
         .then(function (res) {
-          if (res.status === 401 || res.status === 403) {
+          gapBtn.disabled = false;
+          if (res.status === 401) {
             showAskStatus("warn", t("askAuth"));
             checkSession();
+            return null;
+          }
+          // WP-KLARA-ASK-FIX (bens Fix 4): 403 ist FEHLENDES RECHT, keine fehlende Anmeldung.
+          if (res.status === 403) {
+            showAskStatus("warn", t("askForbidden"));
             return null;
           }
           if (!res.ok) { throw new Error("HTTP " + res.status); }
@@ -1206,6 +1303,7 @@
           document.getElementById("ask-gap-open-block").className = "";
         })
         .catch(function (err) {
+          gapBtn.disabled = false;
           // NIE Erfolg vortaeuschen — dieselbe ehrliche Fehlerlinie wie der Entwurf-Sender.
           showAskStatus("warn", t("sendError", { detail: err && err.message ? err.message : "offline" }));
         });
