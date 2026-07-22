@@ -34,7 +34,9 @@
   <DefaultSettings>
     <SourceLocation DefaultValue="https://app.klarwerk.ai/word-addin/taskpane.html" />
   </DefaultSettings>
-  <!-- WP-KLARA-1b (K3, Least-Privilege): das Add-in LIEST nur die Selektion (getSelectedDataAsync) und
-       mutiert das Dokument nie — ReadDocument reicht; ReadWriteDocument war unnoetig breit. -->
-  <Permissions>ReadDocument</Permissions>
+  <!-- WP-KLARA-1b (K3, Least-Privilege): bis KLARA-2 las das Add-in nur die Selektion — ReadDocument.
+       WP-KLARA-ASK (Teil 2, Pedis Entscheid 22.07.): "Antwort in Word einfuegen" ist eine bewusste
+       Dokument-MUTATION (setSelectedDataAsync an der Cursorposition) — ReadWriteDocument ist jetzt die
+       kleinste ausreichende Stufe (Office kennt keine feinere Schreib-Berechtigung fuers Taskpane). -->
+  <Permissions>ReadWriteDocument</Permissions>
 </OfficeApp>

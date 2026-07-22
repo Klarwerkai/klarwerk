@@ -1,8 +1,13 @@
 <!doctype html>
 <!-- WP-KLARA-1: Klara in Word — selbstenthaltendes Taskpane (kein React, kein Build). Läuft auf der
      App-Domain (public/ wird statisch mitgeliefert) → API-Aufrufe sind same-origin (Session-Cookie).
-     EHRLICH: dieser Schritt kann NUR die Word-Auswahl als KLARWERK-ENTWURF senden — keine KI, kein
-     Auto-Speichern als fertiges Wissensobjekt, keine Analyse. -->
+     WP-KLARA-ASK (Pedis Entscheid 22.07., bens Option B): zwei ehrliche Faehigkeiten — (1) Klara
+     FRAGEN: markierte Aussage (oder freie Frage) gegen den BESTEHENDEN Konsolen-Vertrag
+     POST /api/ask — Antworten kommen AUSSCHLIESSLICH aus validiertem Werkswissen mit Quellen;
+     ohne Grundlage bleibt die Frage ehrlich offen (Wissensluecke, kein Chatbot, nichts erfunden).
+     (2) Wissen ERFASSEN: Auswahl/Dokument als KLARWERK-ENTWURF senden (kein Auto-Speichern als
+     fertiges Wissensobjekt). Kein Add-in-eigener Modellaufruf — die Frage reist wie jede
+     Konsolen-Frage zum Server, dessen Routing unveraendert gilt. -->
 <html lang="de">
 <head>
   <meta charset="utf-8" />
@@ -82,6 +87,30 @@
     .hidden { display: none; }
     ul { margin: 6px 0; padding-left: 18px; }
     a { color: var(--ai); }
+    /* WP-KLARA-ASK (Teil 3): zwei klar getrennte Bereiche — iPad-einfach, kein Framework. */
+    .tabs { display: flex; gap: 6px; margin-top: 12px; }
+    .tabs button {
+      flex: 1;
+      border: 1px solid var(--hairline);
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 12.5px;
+      font-weight: 600;
+      padding: 7px 0;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .tabs button.active { color: #fff; background: var(--ink); border-color: var(--ink); }
+    textarea {
+      width: 100%;
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      padding: 8px;
+      font: inherit;
+      resize: vertical;
+      margin: 6px 0 8px;
+    }
+    .answer-text { white-space: pre-wrap; }
   </style>
 </head>
 <body>
@@ -110,6 +139,48 @@
     </div>
   </div>
 
+  <!-- WP-KLARA-ASK (Teil 3): zwei Bereiche — Fragen (das Funktionsversprechen) und Wissen erfassen
+       (der bestehende Entwurf-Sender). Einfache Segment-Knoepfe, kein Framework, buildlos. -->
+  <div class="tabs" role="tablist" aria-label="Bereiche">
+    <button type="button" id="tab-ask" class="active" data-t="tabAsk"></button>
+    <button type="button" id="tab-capture" data-t="tabCapture"></button>
+  </div>
+
+  <!-- WP-KLARA-ASK (Teil 1): Klara fragen — Auswahl als Frage, quellengebundene Antwort aus dem
+       VALIDIERTEN Werkswissen ueber den BESTEHENDEN Konsolen-Vertrag POST /api/ask (Same-Origin-
+       Session; serverseitige Permission ko.read wie in der Fragen-Konsole — kein neuer Guard). -->
+  <div id="section-ask">
+    <div class="card">
+      <h2 data-t="askTitle"></h2>
+      <p class="muted" data-t="askHint"></p>
+      <textarea id="ask-input" rows="3"></textarea>
+      <button type="button" class="primary" id="ask-btn" data-t="askCta" disabled></button>
+      <div id="ask-status" class="status hidden"></div>
+      <div id="ask-answer-block" class="hidden">
+        <h2 data-t="askAnswerTitle" style="margin-top: 12px;"></h2>
+        <p id="ask-answer-text" class="answer-text"></p>
+        <div id="ask-sources-block" class="hidden">
+          <h2 data-t="askSourcesTitle"></h2>
+          <ul class="muted" id="ask-sources"></ul>
+        </div>
+        <!-- WP-KLARA-ASK (Teil 2): NUR bei echter quellengebundener Antwort aktiv (nie bei
+             Wissensluecke); der eingefuegte Text ist das validierte Wissen mit Quellen-Zeile. -->
+        <button type="button" class="ghost" id="ask-insert-btn" data-t="askInsertCta" style="margin-top: 8px;"></button>
+      </div>
+      <div id="ask-gap-block" class="hidden">
+        <div class="status warn">
+          <strong data-t="askGapTitle"></strong>
+          <p class="muted" data-t="askGapBody" style="margin-bottom: 0;"></p>
+        </div>
+        <button type="button" class="primary" id="ask-gap-send-btn" data-t="askGapSendCta" style="margin-top: 8px;"></button>
+        <p id="ask-gap-open-block" class="hidden">
+          <a id="ask-gap-open-link" href="https://app.klarwerk.ai/erfassen" target="_blank" rel="noopener" data-t="askGapOpenLink"></a>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div id="section-capture" class="hidden">
   <div class="card">
     <h2 data-t="sendTitle"></h2>
     <p class="muted" data-t="sendHint"></p>
@@ -131,12 +202,14 @@
       <a id="open-link" href="https://app.klarwerk.ai/erfassen" target="_blank" rel="noopener" data-t="openLink"></a>
     </p>
   </div>
+  </div>
 
   <div class="card">
     <h2 data-t="helpTitle"></h2>
     <ul class="muted">
       <li data-t="helpCan1"></li>
       <li data-t="helpCan2"></li>
+      <li data-t="helpCan3"></li>
       <li data-t="helpNot1"></li>
       <li data-t="helpNot2"></li>
     </ul>
@@ -234,6 +307,103 @@
       }
       return { bodyHtml: inner, usedHtml: true, overBudget: false, undeliveredImages: undeliveredImages };
     }
+
+    // WP-KLARA-ASK: Klara fragen — Frage-Vorbereitung (Auswahl vor Eingabefeld, Deckel 2000),
+    // Ask-Lauf gegen POST /api/ask (Fetch injizierbar), Einfuege-Gating, Quellen-Zeile,
+    // Offene-Frage-Titel. Verhaltensgleich zum Modul (Aequivalenztest).
+    var WORD_ADDIN_ASK_MAX_CHARS = 2000;
+    var WORD_ADDIN_ASK_TIMEOUT_MS = 15000;
+
+    function prepareAskQuestion(selectionText, manualText) {
+      var selection = (selectionText || "").trim();
+      var manual = (manualText || "").trim();
+      var from = selection.length > 0 ? "selection" : manual.length > 0 ? "manual" : "empty";
+      var raw = from === "selection" ? selection : from === "manual" ? manual : "";
+      if (raw.length === 0) { return { question: "", from: "empty", truncated: false }; }
+      if (raw.length > WORD_ADDIN_ASK_MAX_CHARS) {
+        return { question: raw.slice(0, WORD_ADDIN_ASK_MAX_CHARS).trim(), from: from, truncated: true };
+      }
+      return { question: raw, from: from, truncated: false };
+    }
+
+    function askLocale(langCode) { return langCode === "en" ? "en" : "de"; }
+
+    function performAsk(question, locale, fetchFn, timeoutMs) {
+      var controller = new AbortController();
+      var timedOut = false;
+      var timer = setTimeout(function () {
+        timedOut = true;
+        try { controller.abort(); } catch (err) { /* bereits beendet — egal */ }
+      }, timeoutMs);
+      return fetchFn("/api/ask", {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: question, locale: locale }),
+        signal: controller.signal,
+      })
+        .then(function (res) {
+          if (res.status === 401 || res.status === 403) { return { kind: "auth" }; }
+          if (!res.ok) { return { kind: "error", detail: "HTTP " + res.status }; }
+          return res.json().then(function (body) {
+            var result = body && body.result ? body.result : null;
+            var answer = result ? result.answer : null;
+            if (result && result.answered === true && typeof answer === "string" && answer.trim().length > 0) {
+              return {
+                kind: "answered",
+                answer: answer,
+                sources: Array.isArray(result.sources) ? result.sources : [],
+                trust: typeof result.trust === "number" ? result.trust : 0,
+              };
+            }
+            return { kind: "gap" };
+          });
+        })
+        .catch(function (err) {
+          if (timedOut) { return { kind: "timeout" }; }
+          return { kind: "error", detail: err && err.message ? err.message : "offline" };
+        })
+        .then(function (outcome) {
+          clearTimeout(timer);
+          return outcome;
+        });
+    }
+
+    function canInsertAnswer(outcome) {
+      return Boolean(
+        outcome &&
+          outcome.kind === "answered" &&
+          typeof outcome.answer === "string" &&
+          outcome.answer.trim().length > 0
+      );
+    }
+
+    function buildAskSourceLine(titles, dateLabel, template) {
+      var names = [];
+      for (var i = 0; i < titles.length; i += 1) {
+        var name = (titles[i] || "").trim();
+        if (name.length > 0) { names.push(name); }
+      }
+      var joined = names.length > 0 ? names.join(", ") : "KLARWERK";
+      return template.replace("{titles}", joined).replace("{date}", dateLabel);
+    }
+
+    function buildAnswerInsertText(answer, sourceLine) {
+      return answer.replace(/\s+$/g, "") + "\n\n" + sourceLine;
+    }
+
+    function formatAskDateLabel(date) {
+      function pad(n) { return n < 10 ? "0" + n : String(n); }
+      return pad(date.getDate()) + "." + pad(date.getMonth() + 1) + "." + date.getFullYear();
+    }
+
+    var WORD_ADDIN_OPEN_QUESTION_PREFIX = "Offene Frage: ";
+
+    function openQuestionDraftTitle(question) {
+      var trimmed = question.trim();
+      if (trimmed.length === 0) { return "Offene Frage aus Word"; }
+      return (WORD_ADDIN_OPEN_QUESTION_PREFIX + trimmed).slice(0, WORD_ADDIN_TITLE_MAX).trim();
+    }
     // KW-WORDADDIN-HELPERS-END
 
     // Alle Texte dreisprachig (App-Regel DE/EN/NL) — bewusst HIER, nicht in i18n.ts der SPA.
@@ -271,10 +441,35 @@
         sendError: "Senden fehlgeschlagen ({detail}). Es wurde KEIN Entwurf angelegt.",
         noOffice: "Diese Seite laeuft als Klara-Panel in Microsoft Word. Im Browser kannst du nur den Anmelde-Status sehen — Senden ist hier deaktiviert.",
         openLink: "Entwurf in KLARWERK oeffnen",
+        tabAsk: "Fragen",
+        tabCapture: "Wissen erfassen",
+        askTitle: "Klara fragen",
+        askHint: "Markiere eine Aussage im Dokument und frage Klara. Die Antwort kommt AUSSCHLIESSLICH aus geprueftem KLARWERK-Wissen — mit Quellen. Ohne Markierung kannst du unten frei fragen.",
+        askInputPlaceholder: "Frage eingeben, wenn nichts markiert ist ...",
+        askCta: "Klara fragen",
+        askEmpty: "Bitte erst eine Aussage im Dokument markieren oder unten eine Frage eingeben.",
+        askBusy: "Klara sucht im geprueften Werkswissen ...",
+        askTruncated: "Die Markierung war laenger als {max} Zeichen — die Frage wurde ehrlich gekappt.",
+        askAuth: "Nicht angemeldet — bitte zuerst bei KLARWERK anmelden.",
+        askTimeout: "Keine Antwort vom Server (Zeitueberschreitung). Bitte erneut versuchen.",
+        askError: "Fragen fehlgeschlagen ({detail}).",
+        askAnswerTitle: "Antwort aus geprueftem Wissen",
+        askSourcesTitle: "Quellen",
+        askTrust: "Trust {n}",
+        askGapTitle: "Keine belastbare Grundlage.",
+        askGapBody: "Es gibt kein validiertes Wissen zu dieser Frage. Statt einer erfundenen Antwort wurde eine Wissensluecke vermerkt — du kannst sie zusaetzlich als offene Frage nach KLARWERK geben.",
+        askGapSendCta: "Als offene Frage an KLARWERK senden",
+        askGapSentOk: "Offene Frage gesendet: {title}",
+        askGapOpenLink: "Offene Frage in KLARWERK oeffnen",
+        askInsertCta: "Antwort in Word einfuegen",
+        askInsertOk: "Antwort eingefuegt — mit Quellenangabe.",
+        askInsertFail: "Einfuegen fehlgeschlagen ({detail}).",
+        askSourceLine: "Quelle: {titles} (KLARWERK, geprueftes Wissen, Stand {date})",
         helpTitle: "Was kann Klara hier?",
         helpCan1: "Auswahl oder ganzes Dokument als KLARWERK-Entwurf anlegen — mit Formatierung, Tabellen und Bildern, soweit Word sie uebergibt (nur Entwurf, kein fertiges Wissensobjekt).",
         helpCan2: "Ehrlich sagen, ob du angemeldet bist, ob das Senden geklappt hat und was Word NICHT uebergeben konnte.",
-        helpNot1: "Noch NICHT: Fragen beantworten oder das Dokument analysieren — das kommt spaeter.",
+        helpCan3: "Fragen quellengebunden aus dem VALIDIERTEN Werkswissen beantworten — und die Antwort mit Quellenangabe ins Dokument einfuegen.",
+        helpNot1: "Klara ist kein Chatbot: ohne belastbare Grundlage wird NICHTS erfunden — die Frage bleibt ehrlich offen (Wissensluecke).",
         helpNot2: "Noch NICHT: seitenweises Senden — Word gibt Seitengrenzen im Taskpane nicht her; markiere stattdessen den Bereich.",
       },
       en: {
@@ -310,10 +505,35 @@
         sendError: "Sending failed ({detail}). NO draft was created.",
         noOffice: "This page runs as the Klara panel inside Microsoft Word. In a browser you can only see the sign-in status — sending is disabled here.",
         openLink: "Open draft in KLARWERK",
+        tabAsk: "Ask",
+        tabCapture: "Capture knowledge",
+        askTitle: "Ask Klara",
+        askHint: "Select a statement in the document and ask Klara. The answer comes EXCLUSIVELY from verified KLARWERK knowledge — with sources. Without a selection you can ask freely below.",
+        askInputPlaceholder: "Type a question if nothing is selected ...",
+        askCta: "Ask Klara",
+        askEmpty: "Please select a statement in the document first or type a question below.",
+        askBusy: "Klara is searching the verified knowledge ...",
+        askTruncated: "The selection was longer than {max} characters — the question was honestly truncated.",
+        askAuth: "Not signed in — please sign in to KLARWERK first.",
+        askTimeout: "No answer from the server (timeout). Please try again.",
+        askError: "Asking failed ({detail}).",
+        askAnswerTitle: "Answer from verified knowledge",
+        askSourcesTitle: "Sources",
+        askTrust: "Trust {n}",
+        askGapTitle: "No reliable basis.",
+        askGapBody: "There is no validated knowledge for this question. Instead of a made-up answer a knowledge gap was recorded — you can additionally send it to KLARWERK as an open question.",
+        askGapSendCta: "Send as an open question to KLARWERK",
+        askGapSentOk: "Open question sent: {title}",
+        askGapOpenLink: "Open the question in KLARWERK",
+        askInsertCta: "Insert answer into Word",
+        askInsertOk: "Answer inserted — with source attribution.",
+        askInsertFail: "Inserting failed ({detail}).",
+        askSourceLine: "Source: {titles} (KLARWERK, verified knowledge, as of {date})",
         helpTitle: "What can Klara do here?",
         helpCan1: "Create a KLARWERK draft from your selection or the whole document — with formatting, tables and images as far as Word provides them (draft only, not a finished knowledge object).",
         helpCan2: "Tell you honestly whether you are signed in, whether sending worked and what Word could NOT provide.",
-        helpNot1: "NOT yet: answering questions or analysing the document — that comes later.",
+        helpCan3: "Answer questions source-bound from the VALIDATED knowledge base — and insert the answer with source attribution into the document.",
+        helpNot1: "Klara is not a chatbot: without a reliable basis NOTHING is invented — the question honestly stays open (knowledge gap).",
         helpNot2: "NOT yet: page-based sending — Word does not expose page boundaries in the taskpane; select the range instead.",
       },
       nl: {
@@ -349,10 +569,35 @@
         sendError: "Versturen mislukt ({detail}). Er is GEEN concept aangemaakt.",
         noOffice: "Deze pagina draait als Klara-paneel in Microsoft Word. In een browser zie je alleen de aanmeldstatus — versturen is hier uitgeschakeld.",
         openLink: "Concept in KLARWERK openen",
+        tabAsk: "Vragen",
+        tabCapture: "Kennis vastleggen",
+        askTitle: "Klara vragen",
+        askHint: "Selecteer een uitspraak in het document en vraag Klara. Het antwoord komt UITSLUITEND uit gecontroleerde KLARWERK-kennis — met bronnen. Zonder selectie kun je hieronder vrij vragen.",
+        askInputPlaceholder: "Typ een vraag als er niets is geselecteerd ...",
+        askCta: "Klara vragen",
+        askEmpty: "Selecteer eerst een uitspraak in het document of typ hieronder een vraag.",
+        askBusy: "Klara zoekt in de gecontroleerde kennis ...",
+        askTruncated: "De selectie was langer dan {max} tekens — de vraag is eerlijk ingekort.",
+        askAuth: "Niet aangemeld — meld je eerst aan bij KLARWERK.",
+        askTimeout: "Geen antwoord van de server (time-out). Probeer het opnieuw.",
+        askError: "Vragen mislukt ({detail}).",
+        askAnswerTitle: "Antwoord uit gecontroleerde kennis",
+        askSourcesTitle: "Bronnen",
+        askTrust: "Trust {n}",
+        askGapTitle: "Geen betrouwbare basis.",
+        askGapBody: "Er is geen gevalideerde kennis over deze vraag. In plaats van een verzonnen antwoord is er een kennishiaat vastgelegd — je kunt de vraag ook als open vraag naar KLARWERK sturen.",
+        askGapSendCta: "Als open vraag naar KLARWERK sturen",
+        askGapSentOk: "Open vraag verstuurd: {title}",
+        askGapOpenLink: "Vraag in KLARWERK openen",
+        askInsertCta: "Antwoord in Word invoegen",
+        askInsertOk: "Antwoord ingevoegd — met bronvermelding.",
+        askInsertFail: "Invoegen mislukt ({detail}).",
+        askSourceLine: "Bron: {titles} (KLARWERK, gecontroleerde kennis, per {date})",
         helpTitle: "Wat kan Klara hier?",
         helpCan1: "Je selectie of het hele document als KLARWERK-concept aanmaken — met opmaak, tabellen en afbeeldingen voor zover Word ze levert (alleen concept, geen afgerond kennisobject).",
         helpCan2: "Eerlijk zeggen of je bent aangemeld, of het versturen is gelukt en wat Word NIET kon leveren.",
-        helpNot1: "Nog NIET: vragen beantwoorden of het document analyseren — dat komt later.",
+        helpCan3: "Vragen bronvast beantwoorden uit de GEVALIDEERDE kennisbasis — en het antwoord met bronvermelding in het document invoegen.",
+        helpNot1: "Klara is geen chatbot: zonder betrouwbare basis wordt er NIETS verzonnen — de vraag blijft eerlijk open (kennishiaat).",
         helpNot2: "Nog NIET: per pagina versturen — Word geeft paginagrenzen in het taskpane niet vrij; selecteer in plaats daarvan het bereik.",
       },
     };
@@ -387,6 +632,9 @@
         sendBtn.title = "";
         sendBtn.disabled = !(signedIn && officeUsable());
       }
+      // WP-KLARA-ASK: der Fragen-Bereich haengt an denselben Zustaenden (Session; Office nur fuers
+      // Einfuegen) — EINE Aufruf-Kette, keine zweite Zustandsquelle.
+      updateAskState();
     }
 
     function t(key, vars) {
@@ -405,6 +653,8 @@
       });
       // WP-KLARA-2: Tooltip der ehrlich deaktivierten Seiten-Option in der aktuellen Sprache.
       document.getElementById("scope-pages-label").title = t("scopePagesOff");
+      // WP-KLARA-ASK: Platzhalter des Frage-Eingabefelds in der aktuellen Sprache.
+      document.getElementById("ask-input").placeholder = t("askInputPlaceholder");
       document.documentElement.lang = lang;
     }
 
@@ -719,6 +969,228 @@
         showSendStatus("warn", t("sendError", { detail: "Word-API" }));
       });
     }
+
+    // ---- WP-KLARA-ASK: Verdrahtung Fragen-Bereich -------------------------------------------
+    // Zustand des letzten Ask-Laufs: outcome (fuer das Einfuege-Gating), aufgeloeste Quellen-Titel
+    // (fuer die Quellen-Zeile) und die gestellte Frage (fuer den Offene-Frage-Entwurf).
+    var currentAskOutcome = null;
+    var currentAskSourceTitles = [];
+    var currentAskQuestion = "";
+
+    function showAskStatus(kind, text) {
+      var el = document.getElementById("ask-status");
+      el.className = "status " + (kind === "ok" ? "ok" : "warn");
+      el.textContent = text;
+    }
+
+    function hideAskStatus() {
+      var el = document.getElementById("ask-status");
+      el.className = "status hidden";
+      el.textContent = "";
+    }
+
+    function resetAskResult() {
+      currentAskOutcome = null;
+      currentAskSourceTitles = [];
+      document.getElementById("ask-answer-block").className = "hidden";
+      document.getElementById("ask-gap-block").className = "hidden";
+      document.getElementById("ask-gap-open-block").className = "hidden";
+      document.getElementById("ask-sources-block").className = "hidden";
+      document.getElementById("ask-sources").textContent = "";
+      document.getElementById("ask-answer-text").textContent = "";
+    }
+
+    // Fragen braucht NUR die Session (kein Office): im Browser funktioniert der Eingabefeld-Weg.
+    function updateAskState() {
+      document.getElementById("ask-btn").disabled = !signedIn;
+      updateInsertState();
+    }
+
+    // Teil 2 (Gating): Einfuegen NUR bei echter quellengebundener Antwort UND bereitem Office.
+    function updateInsertState() {
+      var btn = document.getElementById("ask-insert-btn");
+      var insertable = canInsertAnswer(currentAskOutcome);
+      btn.disabled = !(insertable && officeUsable());
+      btn.title = insertable && !officeUsable() ? t("noOffice") : "";
+    }
+
+    // Quellen-Titel + Trust je KO nachladen (GET /api/kos/:id, dieselbe ko.read-Permission wie
+    // /api/ask) — best-effort: eine nicht ladbare Quelle zeigt ehrlich ihre Id statt eines Fakes.
+    function resolveAskSources(ids) {
+      return Promise.all(
+        ids.map(function (id) {
+          return fetch("/api/kos/" + encodeURIComponent(id), { credentials: "include" })
+            .then(function (res) {
+              if (!res.ok) { throw new Error("HTTP " + res.status); }
+              return res.json();
+            })
+            .then(function (ko) {
+              return {
+                title: ko && ko.title ? String(ko.title) : id,
+                trust: ko && typeof ko.trust === "number" ? ko.trust : null,
+              };
+            })
+            .catch(function () { return { title: id, trust: null }; });
+        })
+      );
+    }
+
+    function renderAskSources(resolved) {
+      var list = document.getElementById("ask-sources");
+      list.textContent = "";
+      for (var i = 0; i < resolved.length; i += 1) {
+        var item = document.createElement("li");
+        item.textContent =
+          resolved[i].title +
+          (resolved[i].trust !== null ? " — " + t("askTrust", { n: String(resolved[i].trust) }) : "");
+        list.appendChild(item);
+      }
+      document.getElementById("ask-sources-block").className = resolved.length > 0 ? "" : "hidden";
+    }
+
+    function renderAskOutcome(outcome, truncated) {
+      var truncatedNote = truncated
+        ? " " + t("askTruncated", { max: String(WORD_ADDIN_ASK_MAX_CHARS) })
+        : "";
+      if (outcome.kind === "answered") {
+        document.getElementById("ask-answer-block").className = "";
+        document.getElementById("ask-answer-text").textContent = outcome.answer;
+        if (truncated) { showAskStatus("warn", truncatedNote.replace(/^\s+/, "")); } else { hideAskStatus(); }
+        updateInsertState();
+        resolveAskSources(outcome.sources || []).then(function (resolved) {
+          currentAskSourceTitles = resolved.map(function (r) { return r.title; });
+          renderAskSources(resolved);
+        });
+        return;
+      }
+      if (outcome.kind === "gap") {
+        // Die ehrliche Wissensluecken-Karte: KEINE erfundene Antwort; /api/ask hat die Luecke
+        // serverseitig bereits vermerkt — zusaetzlich kann sie als offene Frage (Draft) reisen.
+        document.getElementById("ask-gap-block").className = "";
+        if (truncated) { showAskStatus("warn", truncatedNote.replace(/^\s+/, "")); } else { hideAskStatus(); }
+        return;
+      }
+      if (outcome.kind === "auth") {
+        showAskStatus("warn", t("askAuth"));
+        checkSession(); // 401 → Login-Hinweis-Block erscheint wieder
+        return;
+      }
+      if (outcome.kind === "timeout") {
+        showAskStatus("warn", t("askTimeout"));
+        return;
+      }
+      showAskStatus("warn", t("askError", { detail: outcome.detail || "offline" }));
+    }
+
+    // Auswahl lesen (nur Text — die Frage ist Klartext); ohne Office ehrlich leer → Eingabefeld.
+    function readAskSelection(done) {
+      if (!officeUsable()) { done(""); return; }
+      Office.context.document.getSelectedDataAsync(Office.CoercionType.Text, function (result) {
+        done(result.status === Office.AsyncResultStatus.Succeeded ? String(result.value || "") : "");
+      });
+    }
+
+    function askKlara() {
+      readAskSelection(function (selectionText) {
+        var prep = prepareAskQuestion(selectionText, document.getElementById("ask-input").value);
+        if (prep.from === "empty") {
+          resetAskResult();
+          showAskStatus("warn", t("askEmpty"));
+          return;
+        }
+        currentAskQuestion = prep.question;
+        resetAskResult();
+        showAskStatus("warn", t("askBusy"));
+        document.getElementById("ask-btn").disabled = true;
+        performAsk(
+          prep.question,
+          askLocale(lang),
+          function (url, init) { return fetch(url, init); },
+          WORD_ADDIN_ASK_TIMEOUT_MS
+        ).then(function (outcome) {
+          currentAskOutcome = outcome;
+          updateAskState(); // Knopf wieder frei (sofern angemeldet)
+          renderAskOutcome(outcome, prep.truncated);
+        });
+      });
+    }
+
+    // Teil 2: Antwort AN DER CURSORPOSITION einfuegen — validiertes Wissen + Quellen-Zeile
+    // (setSelectedDataAsync, Text; braucht die ReadWriteDocument-Permission des Manifests).
+    function insertAnswer() {
+      if (!canInsertAnswer(currentAskOutcome) || !officeUsable()) { return; }
+      var line = buildAskSourceLine(
+        currentAskSourceTitles,
+        formatAskDateLabel(new Date()),
+        t("askSourceLine")
+      );
+      var text = buildAnswerInsertText(currentAskOutcome.answer, line);
+      Office.context.document.setSelectedDataAsync(
+        text,
+        { coercionType: Office.CoercionType.Text },
+        function (result) {
+          if (result.status === Office.AsyncResultStatus.Succeeded) {
+            showAskStatus("ok", t("askInsertOk"));
+          } else {
+            var detail = result.error && result.error.message ? result.error.message : "Word-API";
+            showAskStatus("warn", t("askInsertFail", { detail: detail }));
+          }
+        }
+      );
+    }
+
+    // Teil 2 (Wissensluecke): die offene Frage als Front-Door-ENTWURF nach KLARWERK (bestehender
+    // Draft-Weg, origin frontdoor) — die Luecke wird im System handelbar (Risiko-Board-Gedanke).
+    function sendOpenQuestion() {
+      if (currentAskQuestion.trim().length === 0) { return; }
+      var title = openQuestionDraftTitle(currentAskQuestion);
+      showAskStatus("warn", t("sendBusy"));
+      fetch("/api/drafts", {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: title,
+          statement: currentAskQuestion.slice(0, 500),
+          origin: "frontdoor",
+        }),
+      })
+        .then(function (res) {
+          if (res.status === 401 || res.status === 403) {
+            showAskStatus("warn", t("askAuth"));
+            checkSession();
+            return null;
+          }
+          if (!res.ok) { throw new Error("HTTP " + res.status); }
+          return res.json();
+        })
+        .then(function (draft) {
+          if (!draft) { return; }
+          showAskStatus("ok", t("askGapSentOk", { title: title }));
+          var link = document.getElementById("ask-gap-open-link");
+          link.href =
+            window.location.origin + "/capture/frontdoor?draft=" + encodeURIComponent(draft.id);
+          document.getElementById("ask-gap-open-block").className = "";
+        })
+        .catch(function (err) {
+          // NIE Erfolg vortaeuschen — dieselbe ehrliche Fehlerlinie wie der Entwurf-Sender.
+          showAskStatus("warn", t("sendError", { detail: err && err.message ? err.message : "offline" }));
+        });
+    }
+
+    // Teil 3: Segment-Umschaltung (Fragen | Wissen erfassen) — reine Sichtbarkeit, kein Zustand geht verloren.
+    function setTab(name) {
+      document.getElementById("section-ask").className = name === "ask" ? "" : "hidden";
+      document.getElementById("section-capture").className = name === "capture" ? "" : "hidden";
+      document.getElementById("tab-ask").className = name === "ask" ? "active" : "";
+      document.getElementById("tab-capture").className = name === "capture" ? "active" : "";
+    }
+
+    document.getElementById("tab-ask").addEventListener("click", function () { setTab("ask"); });
+    document.getElementById("tab-capture").addEventListener("click", function () { setTab("capture"); });
+    document.getElementById("ask-btn").addEventListener("click", askKlara);
+    document.getElementById("ask-insert-btn").addEventListener("click", insertAnswer);
+    document.getElementById("ask-gap-send-btn").addEventListener("click", sendOpenQuestion);
 
     document.getElementById("lang-de").addEventListener("click", function () { setLang("de"); });
     document.getElementById("lang-en").addEventListener("click", function () { setLang("en"); });

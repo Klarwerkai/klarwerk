@@ -123,6 +123,189 @@ export function wordHtmlUtf8Bytes(value: string): number {
   return new TextEncoder().encode(value).length;
 }
 
+// ---- WP-KLARA-ASK (Pedis Entscheid 22.07., bens Option B: das Klara-Funktionsversprechen) ----
+// Aussage in Word markieren → Klara fragen → quellengebundene Antwort aus dem VALIDIERTEN
+// Werkswissen. Der Kanal ist der BESTEHENDE Konsolen-Vertrag POST /api/ask (Session-Pfad,
+// Permission ko.read — kein neuer Guard, keine neue Route, kein Add-in-eigener Modellaufruf).
+
+// Frage-Deckel: Word-Auswahlen können riesig sein; der Server erlaubt 8.000 Codepoints, das
+// Panel kappt bewusst frueher (ehrliche Meldung statt stillem Server-400).
+export const WORD_ADDIN_ASK_MAX_CHARS = 2000;
+// Frist je Ask-Request (eigener AbortController — haengt der Server, endet das Panel ehrlich).
+export const WORD_ADDIN_ASK_TIMEOUT_MS = 15000;
+
+export type AskQuestionSource = "selection" | "manual" | "empty";
+
+export interface PreparedAskQuestion {
+  question: string;
+  from: AskQuestionSource;
+  truncated: boolean;
+}
+
+// EINE Entscheidungsstelle für die Frage: Word-Auswahl hat Vorrang; leere Auswahl → Eingabefeld
+// (freies Fragen); beides leer → ehrlich "empty". Über dem Deckel wird gekappt + gemeldet.
+export function prepareAskQuestion(selectionText: string, manualText: string): PreparedAskQuestion {
+  const selection = (selectionText || "").trim();
+  const manual = (manualText || "").trim();
+  const from: AskQuestionSource =
+    selection.length > 0 ? "selection" : manual.length > 0 ? "manual" : "empty";
+  const raw = from === "selection" ? selection : from === "manual" ? manual : "";
+  if (raw.length === 0) {
+    return { question: "", from: "empty", truncated: false };
+  }
+  if (raw.length > WORD_ADDIN_ASK_MAX_CHARS) {
+    return { question: raw.slice(0, WORD_ADDIN_ASK_MAX_CHARS).trim(), from, truncated: true };
+  }
+  return { question: raw, from, truncated: false };
+}
+
+// Server-Vertrag kennt de/en (FR-I18N-01); die NL-Oberflaeche fragt auf Deutsch nach.
+export function askLocale(lang: string): "de" | "en" {
+  return lang === "en" ? "en" : "de";
+}
+
+export type AskOutcomeKind = "answered" | "gap" | "auth" | "error" | "timeout";
+
+export interface AskOutcome {
+  kind: AskOutcomeKind;
+  answer?: string;
+  sources?: string[]; // KO-Ids aus AnswerResult.sources — Titel/Trust laedt das Panel je KO nach
+  trust?: number;
+  detail?: string;
+}
+
+// Der eine Ask-Lauf gegen POST /api/ask (Fetch injizierbar → testbar mit Fake-fetch, DOM-frei).
+// Ergebnis-Vertrag: answered NUR bei echter quellengebundener Antwort; alles andere ist ehrlich
+// gap/auth/timeout/error — NIE eine erfundene Antwort, NIE Erfolg vortaeuschen.
+export interface AskFetchInit {
+  method: string;
+  credentials: string;
+  headers: Record<string, string>;
+  body: string;
+  signal: AbortSignal;
+}
+
+export interface AskFetchResponseLike {
+  ok: boolean;
+  status: number;
+  json(): Promise<unknown>;
+}
+
+export type AskFetchFn = (url: string, init: AskFetchInit) => Promise<AskFetchResponseLike>;
+
+export function performAsk(
+  question: string,
+  locale: "de" | "en",
+  fetchFn: AskFetchFn,
+  timeoutMs: number,
+): Promise<AskOutcome> {
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    try {
+      controller.abort();
+    } catch {
+      // bereits beendet — egal
+    }
+  }, timeoutMs);
+  return fetchFn("/api/ask", {
+    method: "POST",
+    credentials: "include",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ question, locale }),
+    signal: controller.signal,
+  })
+    .then((res): Promise<AskOutcome> | AskOutcome => {
+      if (res.status === 401 || res.status === 403) {
+        return { kind: "auth" };
+      }
+      if (!res.ok) {
+        return { kind: "error", detail: `HTTP ${res.status}` };
+      }
+      return res.json().then((body): AskOutcome => {
+        const result = (body as { result?: Record<string, unknown> } | null)?.result ?? null;
+        const answer = result?.answer;
+        if (
+          result &&
+          result.answered === true &&
+          typeof answer === "string" &&
+          answer.trim().length > 0
+        ) {
+          return {
+            kind: "answered",
+            answer,
+            sources: Array.isArray(result.sources) ? (result.sources as string[]) : [],
+            trust: typeof result.trust === "number" ? result.trust : 0,
+          };
+        }
+        return { kind: "gap" };
+      });
+    })
+    .catch((err): AskOutcome => {
+      if (timedOut) {
+        return { kind: "timeout" };
+      }
+      return {
+        kind: "error",
+        detail: err instanceof Error && err.message ? err.message : "offline",
+      };
+    })
+    .then((outcome) => {
+      clearTimeout(timer);
+      return outcome;
+    });
+}
+
+// Einfuege-Gating (Teil 2): NUR eine echte quellengebundene Antwort darf ins Dokument — nie die
+// Wissensluecke, nie ein Fehlerzustand.
+export function canInsertAnswer(outcome: AskOutcome | null | undefined): boolean {
+  return Boolean(
+    outcome &&
+      outcome.kind === "answered" &&
+      typeof outcome.answer === "string" &&
+      outcome.answer.trim().length > 0,
+  );
+}
+
+// Quellen-Zeile des eingefuegten Texts: Template traegt die Sprache ({titles}/{date}); ohne
+// aufgeloeste Titel ehrlich der Systemname (nie leer, nie erfunden).
+export function buildAskSourceLine(
+  titles: readonly string[],
+  dateLabel: string,
+  template: string,
+): string {
+  const names = titles.map((title) => (title || "").trim()).filter((title) => title.length > 0);
+  const joined = names.length > 0 ? names.join(", ") : "KLARWERK";
+  return template.replace("{titles}", joined).replace("{date}", dateLabel);
+}
+
+// Eingefuegter Text = validiertes Wissen + Quellen-Zeile (beginnt bewusst NICHT mit einem
+// KI-Etikett — es IST das geprüfte Wissen, die Quellenangabe traegt die Herkunft).
+export function buildAnswerInsertText(answer: string, sourceLine: string): string {
+  return `${answer.replace(/\s+$/g, "")}\n\n${sourceLine}`;
+}
+
+// Stand-Datum der Quellen-Zeile (dd.mm.yyyy — Dokument-Artefakt, bewusst EIN Format).
+export function formatAskDateLabel(date: Date): string {
+  const day = date.getDate();
+  const month = date.getMonth() + 1;
+  const pad = (n: number): string => (n < 10 ? `0${n}` : String(n));
+  return `${pad(day)}.${pad(month)}.${date.getFullYear()}`;
+}
+
+// Wissensluecken-Weg (Teil 2): die offene Frage reist als Front-Door-ENTWURF (bestehender
+// Draft-Weg) nach KLARWERK — Titel-Konvention mit demselben 60-Zeichen-Deckel wie der Sender.
+export const WORD_ADDIN_OPEN_QUESTION_PREFIX = "Offene Frage: ";
+
+export function openQuestionDraftTitle(question: string): string {
+  const trimmed = question.trim();
+  if (trimmed.length === 0) {
+    return "Offene Frage aus Word";
+  }
+  return `${WORD_ADDIN_OPEN_QUESTION_PREFIX}${trimmed}`.slice(0, WORD_ADDIN_TITLE_MAX).trim();
+}
+
 export interface WordDraftBody {
   bodyHtml: string;
   usedHtml: boolean; // false = Klartext-Fallback (kein/leeres HTML oder Budget überschritten)

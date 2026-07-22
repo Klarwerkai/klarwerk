@@ -240,9 +240,10 @@ describe("WP-KLARA-1: Manifest + Taskpane + Hosting", () => {
     expect(doc.getElementsByTagName("SourceLocation")[0]?.getAttribute("DefaultValue")).toBe(
       "https://app.klarwerk.ai/word-addin/taskpane.html",
     );
-    // WP-KLARA-1b (K3, Least-Privilege): NUR lesen (getSelectedDataAsync) — keine Dokumentmutation,
-    // also KEIN ReadWriteDocument.
-    expect(text("Permissions")).toBe("ReadDocument");
+    // WP-KLARA-1b (K3): bis KLARA-2 reichte ReadDocument (nur lesen). WP-KLARA-ASK (Teil 2):
+    // „Antwort in Word einfuegen" ist eine bewusste Dokumentmutation (setSelectedDataAsync) —
+    // ReadWriteDocument ist jetzt die KLEINSTE ausreichende Stufe (Least-Privilege neu begruendet).
+    expect(text("Permissions")).toBe("ReadWriteDocument");
     // WordApi 1.1 reicht (Selektion lesen) — Requirement-Set bewusst niedrig.
     expect(doc.getElementsByTagName("Set")[0]?.getAttribute("Name")).toBe("WordApi");
     expect(doc.getElementsByTagName("Set")[0]?.getAttribute("MinVersion")).toBe("1.1");
@@ -260,7 +261,7 @@ describe("WP-KLARA-1: Manifest + Taskpane + Hosting", () => {
     expect(existsSync(resolve(process.cwd(), "apps/web/public/word-addin/icon-80.png"))).toBe(true);
   });
 
-  it("Taskpane: office.js von der offiziellen CDN, echte Endpunkte, ehrliche Grenzen, kein KI-Versprechen", () => {
+  it("Taskpane: office.js von der offiziellen CDN, echte Endpunkte, ehrliche Grenzen, kein Chatbot-Versprechen", () => {
     const html = read(TASKPANE);
     expect(html).toContain("https://appsforoffice.microsoft.com/lib/1/hosted/office.js");
     // (a) Session-Check über den BESTEHENDEN Endpunkt, (b) Entwurf über die BESTEHENDE Draft-API.
@@ -268,12 +269,11 @@ describe("WP-KLARA-1: Manifest + Taskpane + Hosting", () => {
     expect(html).toContain('fetch("/api/drafts"');
     expect(html).toContain('credentials: "include"');
     expect(html).toContain('origin: "frontdoor"');
-    // Ehrlichkeit: ENTWURF, keine KI-Behauptung — das EINZIGE Vorkommen von „KI" ist die ausdrückliche
-    // Negation im Kopf-Kommentar („keine KI"); die Nutzertexte versprechen nichts dergleichen.
-    const kiHits = html.match(/\bKI\b/g) ?? [];
-    expect(kiHits.length).toBe(1);
-    expect(html).toContain("keine KI");
-    expect(html).toContain("kommt spaeter");
+    // WP-KLARA-ASK: das Funktionsversprechen ist da — die Ehrlichkeit verschiebt sich von „keine KI"
+    // zu „NUR validiertes Wissen, kein Chatbot, nichts erfunden" (DE-Texte, Hilfe + Gap-Karte).
+    expect(html).toContain("kein Chatbot");
+    expect(html).toContain("Statt einer erfundenen Antwort");
+    expect(html).toContain("AUSSCHLIESSLICH aus geprueftem KLARWERK-Wissen");
     // DE/EN/NL-Umschalter mit vollständigen Wörterbüchern.
     for (const lng of ["de:", "en:", "nl:"]) {
       expect(html).toContain(lng);
