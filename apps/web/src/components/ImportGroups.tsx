@@ -238,6 +238,9 @@ export function ImportGroups({ criteria }: { criteria: ImportSelectCriteria }): 
     const prior = idsOverride ? runState : EMPTY_APPLY_RUN;
     const ids = idsOverride ? [...idsOverride] : includedIds(selection);
     setBusy("apply");
+    // WP-COCKPIT-LINIE-b (bens Punkt 1): WÄHREND der Übernahme ist Schritt 5 der aktive Schritt
+    // der Leiste (applying); erledigt ist er erst mit der Bilanz (applied, s. Effekt oben).
+    reach("applying");
     setError(null);
     setProgress({ done: 0, total: ids.length });
     const results = [...prior.results];

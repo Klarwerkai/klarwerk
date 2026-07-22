@@ -195,14 +195,42 @@ describe("WP-COCKPIT-LINIE: geführter Fluss — Schritt-Zustände + genau EIN P
     expect(primaryButtons().length).toBe(1);
     expect(primaryButtons()[0]?.textContent).toContain("Auswahl übernehmen (2)");
 
-    // Zustand 5 — Bilanz da: alle fünf Schritte erledigt, kein Schritt mehr aktiv, kein
-    // Primär-Knopf mehr offen (die Linie ist zu Ende, die Bilanz spricht).
+    // Zustand 5a — WP-COCKPIT-LINIE-b (bens Punkt 1): WÄHREND der Übernahme (hängende Mutation)
+    // ist Schritt 5 „Übernehmen & Bilanz" der AKTIVE Schritt (aria-current auf 5, nicht 4).
+    let releaseApply: (value: typeof APPLY_RESPONSE) => void = () => {};
+    applyMock.mockImplementation(
+      () =>
+        new Promise((resolvePromise) => {
+          releaseApply = resolvePromise;
+        }),
+    );
     await clickAndSettle("Auswahl übernehmen");
     expect(applyMock).toHaveBeenCalledTimes(1);
+    expect(activeStepText()).toContain("Übernehmen & Bilanz");
+    expect(doneStepCount()).toBe(4);
+
+    // Zustand 5b — Bilanz da: alle fünf Schritte erledigt, kein Schritt mehr aktiv, kein
+    // Primär-Knopf mehr offen (die Linie ist zu Ende, die Bilanz spricht).
+    await act(async () => {
+      releaseApply(APPLY_RESPONSE);
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 5));
+    });
     expect(container.textContent).toContain("Ergebnis der Übernahme");
     expect(doneStepCount()).toBe(5);
     expect(container.querySelector('ol li[aria-current="step"]')).toBeNull();
     expect(primaryButtons().length).toBe(0);
+
+    // WP-COCKPIT-LINIE-b (bens Punkt 2, Szenario exakt): NEUE Eingrenzung NACH der Bilanz —
+    // ein Filter-Chip der Landkarte startet eine neue Generation. Die Schritte 4+5 verlieren
+    // ihre Haken, Schritt 3 („Eingrenzen") ist wieder der aktuelle (die live nachladende
+    // Vorschau steckt noch im Debounce — genau der ehrliche Zwischenzustand).
+    await act(async () => {
+      buttonByText("Wartung").click();
+    });
+    expect(activeStepText()).toContain("Eingrenzen");
+    expect(doneStepCount()).toBe(2);
   });
 
   it("die Schritt-Leiste bricht schmal sauber um (flex-wrap) und die Einträge tragen min-w-0", () => {

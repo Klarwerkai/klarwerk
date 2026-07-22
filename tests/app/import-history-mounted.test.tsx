@@ -16,14 +16,15 @@ import i18n from "../../apps/web/src/i18n";
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 
-function mount(count: number): void {
+function mount(openCount: number, totalCount: number): void {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
   act(() => {
     root.render(
       createElement(ImportHistorySection, {
-        count,
+        openCount,
+        totalCount,
         children: createElement("p", null, "Queue-Inhalt unverändert"),
       }),
     );
@@ -38,20 +39,21 @@ afterEach(() => {
 });
 
 describe("WP-COCKPIT-LINIE Punkt 4: Verlauf-Sektion", () => {
-  it("ist standardmäßig EINGEKLAPPT und zeigt Titel + Zähler im Kopf", () => {
-    mount(4);
+  it("ist standardmäßig EINGEKLAPPT und zeigt Titel + offen/gesamt-Zähler im Kopf", () => {
+    mount(3, 7);
     const details = container.querySelector("details");
     expect(details).not.toBeNull();
     expect(details?.open).toBe(false);
     const summary = details?.querySelector("summary");
-    expect(summary?.textContent).toContain("Bereits übernommene Beiträge (Verlauf)");
-    expect(summary?.textContent).toContain("4");
+    // WP-COCKPIT-LINIE-b (bens Punkt 3): präzisierter Titel + getrennter offen/gesamt-Zähler.
+    expect(summary?.textContent).toContain("Review-Verlauf: offene und übernommene Beiträge");
+    expect(summary?.textContent).toContain("3 offen · 7 gesamt");
     // Der Inhalt (Queue) wird unverändert durchgereicht.
     expect(details?.textContent).toContain("Queue-Inhalt unverändert");
   });
 
   it("lässt sich aufklappen (open) — der Verlauf bleibt erreichbar", () => {
-    mount(0);
+    mount(0, 0);
     const details = container.querySelector("details");
     if (!details) {
       throw new Error("details fehlt");
@@ -74,7 +76,10 @@ describe("WP-COCKPIT-LINIE: Verdrahtung der /import-Seite", () => {
     expect(src).toContain("<ImportStepperBar />");
     expect(src).toContain("<ImportExplore />");
     // Verlauf-Sektion mit ehrlichem Zähler (Anzahl der Queue-Einträge).
-    expect(src).toContain("<ImportHistorySection count={query.data?.length ?? 0}>");
+    expect(src).toContain(
+      'openCount={(query.data ?? []).filter((c) => c.status === "neu").length}',
+    );
+    expect(src).toContain("totalCount={query.data?.length ?? 0}");
     expect(src).toContain("</ImportHistorySection>");
   });
 
@@ -113,6 +118,7 @@ describe("WP-COCKPIT-LINIE: neue Texte in DE/EN/NL vollständig", () => {
       "imp.select.previewAgain",
       "imp.history.title",
       "imp.history.hint",
+      "imp.history.count",
     ];
     for (const key of keys) {
       for (const lng of ["de", "en", "nl"]) {

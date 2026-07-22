@@ -409,7 +409,10 @@ export function ImportReview(): JSX.Element {
       {/* WP-COCKPIT-LINIE (Punkt 4): Pipeline-Übersicht + Prüfliste sind Verlauf/Altlast — klar
           abgegrenzt in einer standardmäßig EINGEKLAPPTEN Sektion mit Zähler, damit der geführte
           Fluss oben eine gerade Linie bleibt. Inhalt (Queue-Verhalten) unverändert. */}
-      <ImportHistorySection count={query.data?.length ?? 0}>
+      <ImportHistorySection
+        openCount={(query.data ?? []).filter((c) => c.status === "neu").length}
+        totalCount={query.data?.length ?? 0}
+      >
         {/* SCRUM-90/91: konzeptioneller Pipeline-Fluss + ehrliche Queue-Zusammenfassung. */}
         <Card className="mb-4">
           <SectionLabel>{t("ext.pipeline.title")}</SectionLabel>

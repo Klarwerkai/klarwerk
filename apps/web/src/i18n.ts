@@ -2157,7 +2157,8 @@ const de = {
   "imp.step.done": "erledigt",
   "imp.explore.ctaAgain": "Neu erkunden",
   "imp.select.previewAgain": "Vorschau aktualisieren",
-  "imp.history.title": "Bereits übernommene Beiträge (Verlauf)",
+  "imp.history.title": "Review-Verlauf: offene und übernommene Beiträge",
+  "imp.history.count": "{{open}} offen · {{total}} gesamt",
   "imp.history.hint":
     "Hier liegt der Verlauf früherer Übernahmen — zur Prüfung eingereihte, angenommene und abgelehnte Beiträge. Für den laufenden Import brauchst du diesen Bereich nicht.",
   // WP-UX-WOW-1 (Kopfs Live-UX-Befunde U1-U9): Politur für den ersten VIP2-Eindruck.
@@ -5418,7 +5419,8 @@ const en: typeof de = {
   "imp.step.done": "done",
   "imp.explore.ctaAgain": "Explore again",
   "imp.select.previewAgain": "Refresh preview",
-  "imp.history.title": "Already imported contributions (history)",
+  "imp.history.title": "Review history: open and imported contributions",
+  "imp.history.count": "{{open}} open · {{total}} total",
   "imp.history.hint":
     "This is the history of earlier imports — contributions queued for review, accepted and rejected ones. You do not need this area for the current import.",
   // WP-UX-WOW-1 (Kopf's live UX findings U1-U9): polish for the first VIP2 impression.
@@ -8637,7 +8639,8 @@ const nl: typeof de = {
   "imp.step.done": "klaar",
   "imp.explore.ctaAgain": "Opnieuw verkennen",
   "imp.select.previewAgain": "Voorbeeld verversen",
-  "imp.history.title": "Al overgenomen bijdragen (geschiedenis)",
+  "imp.history.title": "Review-geschiedenis: openstaande en overgenomen bijdragen",
+  "imp.history.count": "{{open}} open · {{total}} totaal",
   "imp.history.hint":
     "Hier staat de geschiedenis van eerdere overnames — bijdragen in de wachtrij voor controle, geaccepteerde en afgewezen bijdragen. Voor de lopende import heb je dit gedeelte niet nodig.",
   // WP-UX-WOW-1 (Kopfs live-UX-bevindingen U1-U9): polijstwerk voor de eerste VIP2-indruk.

@@ -8,6 +8,7 @@ import {
   type ImportStage,
   importStepStatus,
   maxStage,
+  rewindForNewGeneration,
 } from "../../apps/web/src/lib/importStepper";
 
 function statuses(stage: ImportStage): string[] {
@@ -31,8 +32,26 @@ describe("WP-COCKPIT-LINIE: importStepStatus", () => {
     expect(statuses("grouping")).toEqual(["done", "done", "done", "active", "upcoming"]);
   });
 
+  it("WP-COCKPIT-LINIE-b Punkt 1: Übernahme läuft (applying) → Schritt 5 ist der AKTIVE Schritt", () => {
+    expect(statuses("applying")).toEqual(["done", "done", "done", "done", "active"]);
+  });
+
   it("Bilanz da (applied): alle fünf Schritte erledigt, keiner mehr aktiv", () => {
     expect(statuses("applied")).toEqual(["done", "done", "done", "done", "done"]);
+  });
+});
+
+describe("WP-COCKPIT-LINIE-b Punkt 2: rewindForNewGeneration", () => {
+  it("Downstream-Fortschritt (Vorschau/Gruppen/Übernahme/Bilanz) fällt auf explored zurück", () => {
+    expect(rewindForNewGeneration("previewed")).toBe("explored");
+    expect(rewindForNewGeneration("grouping")).toBe("explored");
+    expect(rewindForNewGeneration("applying")).toBe("explored");
+    expect(rewindForNewGeneration("applied")).toBe("explored");
+  });
+
+  it("ein Fluss vor/bei der Erkundung bleibt unberührt", () => {
+    expect(rewindForNewGeneration("start")).toBe("start");
+    expect(rewindForNewGeneration("explored")).toBe("explored");
   });
 });
 

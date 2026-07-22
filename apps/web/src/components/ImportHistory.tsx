@@ -8,10 +8,13 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 export function ImportHistorySection({
-  count,
+  openCount,
+  totalCount,
   children,
 }: {
-  count: number;
+  // WP-COCKPIT-LINIE-b (bens Punkt 3): der Zähler zeigt offen und gesamt getrennt.
+  openCount: number;
+  totalCount: number;
   children: ReactNode;
 }): JSX.Element {
   const { t } = useTranslation();
@@ -24,7 +27,7 @@ export function ImportHistorySection({
           {t("imp.history.title")}
         </span>
         <span className="shrink-0 rounded-pill bg-page px-2 py-0.5 font-mono text-[11px] font-semibold text-muted-2">
-          {count}
+          {t("imp.history.count", { open: openCount, total: totalCount })}
         </span>
       </summary>
       <div className="border-t border-hairline p-3">

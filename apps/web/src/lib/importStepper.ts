@@ -13,32 +13,47 @@ export type ImportStep = (typeof IMPORT_STEPS)[number];
 //   explored  — die Landkarte der Quelle ist da (Erkundung gelaufen)
 //   previewed — eine Auswahl-Vorschau ist da (Eingrenzung gelaufen)
 //   grouping  — die Gruppen-Freigabe ist sichtbar
+//   applying  — die Übernahme LÄUFT (WP-COCKPIT-LINIE-b, bens Punkt 1: Schritt 5 ist dann aktiv)
 //   applied   — die Übernahme ist gelaufen, die Bilanz steht
-export type ImportStage = "start" | "explored" | "previewed" | "grouping" | "applied";
+export type ImportStage = "start" | "explored" | "previewed" | "grouping" | "applying" | "applied";
 
 const STAGE_RANK: Record<ImportStage, number> = {
   start: 0,
   explored: 1,
   previewed: 2,
   grouping: 3,
-  applied: 4,
+  applying: 4,
+  applied: 5,
 };
 
 // Aktiver Schritt (0-basiert) je Stufe. "start" hält Schritt 1 (Quelle) aktiv; nach der Landkarte
 // ist Eingrenzen dran (Quelle + Erkunden erledigt); nach der Vorschau die Gruppen-Freigabe;
-// "applied" liegt HINTER dem letzten Schritt — alles erledigt, nichts mehr aktiv.
+// WÄHREND der Übernahme (applying) ist Schritt 5 der aktive; "applied" liegt HINTER dem letzten
+// Schritt — alles erledigt, nichts mehr aktiv.
 const ACTIVE_INDEX: Record<ImportStage, number> = {
   start: 0,
   explored: 2,
   previewed: 3,
   grouping: 3,
+  applying: 4,
   applied: IMPORT_STEPS.length,
 };
 
 // Monoton: einmal Erreichtes fällt nie zurück. Remounts einzelner Bausteine (z. B. eine geänderte
 // Eingrenzung setzt die Gruppierung zurück) dürfen den roten Faden nicht rückwärts reißen.
+// WP-COCKPIT-LINIE-b (bens Punkt 2): die Monotonie gilt nur INNERHALB einer Eingrenzungs-
+// Generation — eine NEUE Generation setzt den Downstream-Fortschritt über rewindForNewGeneration
+// ehrlich zurück (der Provider führt die Generation).
 export function maxStage(a: ImportStage, b: ImportStage): ImportStage {
   return STAGE_RANK[b] > STAGE_RANK[a] ? b : a;
+}
+
+// WP-COCKPIT-LINIE-b (bens Punkt 2): eine NEUE Eingrenzungs-Generation invalidiert alle
+// Meilensteine SPÄTERER Schritte — Vorschau/Gruppen/Bilanz der alten Generation zählen nicht
+// mehr, Schritt 3 (Eingrenzen) ist wieder der aktuelle. Quelle + Erkundung (Schritte 1-2)
+// bleiben erledigt; ein Fluss, der noch nicht über die Erkundung hinaus war, bleibt unberührt.
+export function rewindForNewGeneration(stage: ImportStage): ImportStage {
+  return STAGE_RANK[stage] > STAGE_RANK.explored ? "explored" : stage;
 }
 
 export type ImportStepStatus = "done" | "active" | "upcoming";

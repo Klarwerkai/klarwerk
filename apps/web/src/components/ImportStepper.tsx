@@ -13,30 +13,66 @@ import {
   type ImportStep,
   importStepStatus,
   maxStage,
+  rewindForNewGeneration,
 } from "../lib/importStepper";
 import { Card } from "./ui";
 
 interface ImportCockpitContextValue {
   stage: ImportStage;
   reach: (stage: ImportStage) => void;
+  beginGeneration: (generation: string) => void;
 }
 
 const ImportCockpitContext = createContext<ImportCockpitContextValue>({
   stage: "start",
   reach: () => {},
+  beginGeneration: () => {},
 });
 
 export function ImportCockpitProvider({ children }: { children: ReactNode }): JSX.Element {
-  const [stage, setStage] = useState<ImportStage>("start");
-  // Monoton (maxStage): Remounts der Bausteine — etwa eine geänderte Eingrenzung, die die
-  // Gruppierung zurücksetzt — reißen den Fortschritt der Leiste nicht rückwärts.
-  const reach = useCallback((next: ImportStage) => setStage((prev) => maxStage(prev, next)), []);
-  const value = useMemo(() => ({ stage, reach }), [stage, reach]);
+  // WP-COCKPIT-LINIE-b (bens Punkt 2): der Fortschritt lebt IN einer Eingrenzungs-Generation
+  // (Schlüssel der aktuellen Eingrenzungs-Eingaben). Monotonie (maxStage) gilt nur innerhalb
+  // einer Generation; eine NEUE Generation setzt den Downstream-Fortschritt ehrlich zurück
+  // (Haken 4+5 weg, Schritt 3 wieder der aktuelle) — eine alte Bilanz zählt nicht für eine
+  // neue Eingrenzung.
+  const [state, setState] = useState<{ stage: ImportStage; generation: string | null }>({
+    stage: "start",
+    generation: null,
+  });
+  const reach = useCallback(
+    (next: ImportStage) =>
+      setState((prev) => ({ stage: maxStage(prev.stage, next), generation: prev.generation })),
+    [],
+  );
+  const beginGeneration = useCallback(
+    (generation: string) =>
+      setState((prev) => {
+        if (prev.generation === generation) {
+          return prev; // gleiche Eingrenzung — nichts passiert
+        }
+        // Erste gemeldete Generation: nur registrieren (der Fluss beginnt gerade erst).
+        if (prev.generation === null) {
+          return { stage: prev.stage, generation };
+        }
+        return { stage: rewindForNewGeneration(prev.stage), generation };
+      }),
+    [],
+  );
+  const value = useMemo(
+    () => ({ stage: state.stage, reach, beginGeneration }),
+    [state.stage, reach, beginGeneration],
+  );
   return <ImportCockpitContext.Provider value={value}>{children}</ImportCockpitContext.Provider>;
 }
 
 export function useReportImportStage(): (stage: ImportStage) => void {
   return useContext(ImportCockpitContext).reach;
+}
+
+// WP-COCKPIT-LINIE-b (bens Punkt 2): meldet die aktuelle Eingrenzungs-Generation (Schlüssel der
+// Eingrenzungs-Eingaben) — der Provider setzt bei einem Wechsel den Downstream-Fortschritt zurück.
+export function useReportImportGeneration(): (generation: string) => void {
+  return useContext(ImportCockpitContext).beginGeneration;
 }
 
 const STEP_PILL_CLASS: Record<string, string> = {

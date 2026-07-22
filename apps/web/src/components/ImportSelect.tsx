@@ -23,7 +23,11 @@ import { toReasonerLocale } from "../lib/reasonerLocale";
 // WP-IC-4: Schritt 4+5 (Gruppen-Freigabe + Übernahme mit Bilanz).
 import { ImportGroups } from "./ImportGroups";
 // WP-COCKPIT-LINIE: Schritt-Überschrift (3 Eingrenzen) + Meilenstein-Meldung an die Leiste.
-import { ImportStepHeading, useReportImportStage } from "./ImportStepper";
+import {
+  ImportStepHeading,
+  useReportImportGeneration,
+  useReportImportStage,
+} from "./ImportStepper";
 import { Button, TextInput } from "./ui";
 
 // Klick-Filter der Erkundungs-Landkarte (Roh-Werte, wie der Server sie kennt — dekodiert wird nur die
@@ -73,6 +77,24 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
       }
     }
   }, [preview, reach]);
+
+  // WP-COCKPIT-LINIE-b (bens Punkt 2): die Eingrenzungs-EINGABEN (Chips/Jahre/Limit/Satz) sind die
+  // Generation des Fortschritts. Ändert sich die Eingrenzung nach einer Bilanz, meldet dieser
+  // Effekt die neue Generation — der Provider nimmt den Schritten 4+5 ehrlich die Haken und macht
+  // Schritt 3 wieder zum aktuellen (Monotonie gilt nur innerhalb einer Generation).
+  const beginGeneration = useReportImportGeneration();
+  const generationKey = JSON.stringify([
+    chip.themes,
+    chip.authors,
+    chip.spaces,
+    yearFrom,
+    yearTo,
+    limit,
+    prompt,
+  ]);
+  useEffect(() => {
+    beginGeneration(generationKey);
+  }, [generationKey, beginGeneration]);
 
   const buildCriteria = (): ImportSelectCriteria => {
     const parsedLimit = parsedPositiveInt(limit);
