@@ -103,6 +103,13 @@ export function ImportCleanup(): JSX.Element {
               · {t(IMPORT_CLEANUP_TEXT.claimedKos, { n: preview.claimedKos })}
             </p>
           ) : null}
+          {/* WP-SHIP8-CLOSE-8 (bens ROT-1): Kandidaten mit ausstehendem Aktionsbeleg bleiben stehen. */}
+          {preview.auditPendingCandidates > 0 ? (
+            <p className="text-[12.5px] text-trust-warn-text">
+              ·{" "}
+              {t(IMPORT_CLEANUP_TEXT.auditPendingCandidates, { n: preview.auditPendingCandidates })}
+            </p>
+          ) : null}
           {/* Ehrlich: KOs wandern in den Papierkorb (wiederherstellbar), die Queue wird geleert. */}
           <p className="text-[12.5px] text-muted">{t(IMPORT_CLEANUP_TEXT.confirmHint)}</p>
           <div className="flex flex-wrap items-center gap-2">
@@ -143,6 +150,12 @@ export function ImportCleanup(): JSX.Element {
           {result.claimedKos > 0 ? (
             <li className="text-trust-warn-text">
               · {t(IMPORT_CLEANUP_TEXT.claimedKos, { n: result.claimedKos })}
+            </li>
+          ) : null}
+          {result.auditPendingCandidates > 0 ? (
+            <li className="text-trust-warn-text">
+              ·{" "}
+              {t(IMPORT_CLEANUP_TEXT.auditPendingCandidates, { n: result.auditPendingCandidates })}
             </li>
           ) : null}
         </ul>

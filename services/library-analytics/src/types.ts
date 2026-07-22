@@ -95,7 +95,17 @@ export interface ImportCandidate {
   // für den exactly-once-Nachzug (recordOnce mit dieser eventId) beim nächsten Queue-Load; die
   // API-Antwort weist den Schwebezustand über die PRÄSENZ des Felds aus (Muster Cleanup
   // auditFailed). Nach gelungenem Nachzug wird die Markierung gelöscht.
-  auditPending?: { eventId: string; action: ReviewAction; actor: string } | undefined;
+  // WP-SHIP8-CLOSE-8 (bens GELB-1): optionaler, begrenzter Beleg-Payload (z. B. recovered/
+  // recoveredBy/reviewerUnknown der Recovery-Vollendung) — der Retry übernimmt ihn UNVERÄNDERT,
+  // damit die Recovery-Kennzeichnung den Nachzug überlebt.
+  auditPending?:
+    | {
+        eventId: string;
+        action: ReviewAction;
+        actor: string;
+        payload?: Record<string, unknown> | undefined;
+      }
+    | undefined;
 }
 
 // WP-SHIP8-FIX (bens F2): CLEANUP_DRIFT = die bestätigte Aufräum-Zielmenge (Vorschau-Digest)

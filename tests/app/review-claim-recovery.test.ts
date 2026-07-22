@@ -969,6 +969,68 @@ describe("WP-SHIP8-CLOSE-7 ROT-2: der Claim kennt Akteur + Aktion — die Recove
   });
 });
 
+describe("WP-SHIP8-CLOSE-8 GELB-1: die Recovery-Kennzeichnung überlebt den Beleg-Nachzug", () => {
+  it("Recovery-Audit wirft gezielt → der später nachgezogene Beleg trägt recovered/recoveredBy (Payload reist in der Markierung mit)", async () => {
+    const warnSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const ctx = sideEffectHarness();
+      const [cand] = await ctx.library.createImportCandidates(
+        [{ title: "Zahnrad", statement: "s", type: "best_practice", category: "K" }],
+        "tester",
+      );
+      const id = (cand as { id: string }).id;
+      // Accept von xenia crasht nach KO-Erzeugung (resolveClaim hängt einmalig).
+      const origResolve = ctx.candidates.resolveClaim.bind(ctx.candidates);
+      let intercepted = false;
+      (ctx.candidates as { resolveClaim: typeof ctx.candidates.resolveClaim }).resolveClaim = (
+        rid,
+        opId,
+        next,
+      ) => {
+        if (!intercepted) {
+          intercepted = true;
+          return new Promise(() => {});
+        }
+        return origResolve(rid, opId, next);
+      };
+      ctx.library.reviewImportCandidate(id, "accept", "xenia").catch(() => {});
+      await vi.waitFor(() => {
+        expect(intercepted).toBe(true);
+      });
+      // Recovery vollendet, aber ihr Abschluss-Audit wirft → NUR die Markierung trägt den Beleg.
+      ctx.faults.auditFailAlwaysActions.add("import.candidate-accept");
+      ctx.clock.nowMs += REVIEW_CLAIM_LEASE_MS + 1;
+      expect(await ctx.library.recoverStaleReviewClaims()).toEqual({ completed: 1, released: 0 });
+      const after = await ctx.candidates.findById(id);
+      expect(after?.status).toBe("angenommen");
+      // GELB-1: die Recovery-Kennzeichnung ist IN der Markierung persistiert.
+      expect(after?.auditPending?.payload).toMatchObject({
+        recovered: true,
+        recoveredBy: "system",
+      });
+      expect(await ctx.audit.list({ action: "import.candidate-accept", target: id })).toHaveLength(
+        0,
+      );
+      // HEILUNG + Queue-Load-Nachzug: der Beleg entsteht MIT der Kennzeichnung (unverändert
+      // übernommen), plus retried als ehrliche Spur des Nachzug-Wegs.
+      ctx.faults.auditFailAlwaysActions.clear();
+      expect(await ctx.library.retryPendingReviewAudits()).toBe(1);
+      const belege = await ctx.audit.list({ action: "import.candidate-accept", target: id });
+      expect(belege).toHaveLength(1);
+      expect(belege[0]?.actor).toBe("xenia");
+      expect(belege[0]?.payload).toMatchObject({
+        recovered: true,
+        recoveredBy: "system",
+        retried: true,
+      });
+      expect(belege[0]?.payload).not.toHaveProperty("reviewerUnknown");
+      expect((await ctx.candidates.findById(id))?.auditPending).toBeUndefined();
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+});
+
 describe("WP-SHIP8-CLOSE-7 GELB: reviewedAction wird WIRKLICH persistiert", () => {
   it("auch reject trägt reviewedAction (nicht aus dem Status abgeleitet); Markierung nach gelungenem Beleg geräumt", async () => {
     const ctx = sideEffectHarness();

@@ -497,7 +497,9 @@ export interface ImportCandidate {
   reviewedAction?: ReviewAction;
   // WP-SHIP8-CLOSE-6 (bens ROT-3c): PRÄSENZ = der Aktionsbeleg schwebt noch (wird beim nächsten
   // Queue-Load exactly-once nachgezogen) — Muster Cleanup auditFailed.
-  auditPending?: { eventId: string; action: ReviewAction; actor: string };
+  // WP-SHIP8-CLOSE-8 (bens GELB-2): nur noch als BOOLEAN auf dem Draht — die Interna (eventId,
+  // actor, Payload) bleiben serverseitig (Response-DTO der Kandidaten-Ausgabe).
+  auditPending?: boolean;
 }
 
 // IC-1/IC-2 (Import-Cockpit): READ-ONLY Erkundungs-Zusammenfassung „was ist da" (spiegelt
@@ -760,6 +762,9 @@ export interface ImportCleanupPreview {
   digest: string;
   // WP-SHIP8-CLOSE-4 (bens ROT-1C): KOs einer LAUFENDEN Review-Aktion — nie Teil der Zielmenge.
   claimedKos: number;
+  // WP-SHIP8-CLOSE-8 (bens ROT-1): Kandidaten mit schwebendem Aktionsbeleg — das Löschen lässt
+  // sie fail-closed stehen (einziger Träger des Belegs).
+  auditPendingCandidates: number;
 }
 
 export interface ImportCleanupResult {
@@ -773,6 +778,9 @@ export interface ImportCleanupResult {
   newCandidates: number;
   // WP-SHIP8-CLOSE-4 (bens ROT-1C): KOs einer LAUFENDEN Review-Aktion — nie getrasht, ehrlich beziffert.
   claimedKos: number;
+  // WP-SHIP8-CLOSE-8 (bens ROT-1): Kandidaten mit schwebendem Aktionsbeleg — nicht entfernt,
+  // ehrlich beziffert; ein späterer Lauf räumt sie nach gelungenem Beleg-Nachzug ab.
+  auditPendingCandidates: number;
 }
 
 // WP-B6: Bilanz eines geladenen Beispielpakets (idempotent — übersprungen = schon vorhanden).

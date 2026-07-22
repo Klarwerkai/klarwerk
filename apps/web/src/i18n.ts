@@ -2205,6 +2205,8 @@ const de = {
   "imp.cleanup.newSince": "{{n}} neue Kandidaten seit der Vorschau — nicht angefasst.",
   "imp.cleanup.claimedKos":
     "{{n}} Beitrag/Beiträge in laufender Review-Bearbeitung — vom Aufräumen ausgenommen.",
+  "imp.cleanup.auditPendingCandidates":
+    "{{n}} Kandidat(en) mit ausstehendem Aktionsbeleg — vom Aufräumen ausgenommen, bis der Beleg nachgezogen ist.",
   "exp.title": "Beispielpakete",
   "exp.hint":
     "Kuratierte kleine Szenarien für Tester — jedes Paket lässt sich einzeln laden und legt klar gekennzeichnete Beispiel-Beiträge an. Das Import-Aufräumen entfernt sie NICHT; sie verschwinden über das Entfernen der Demo-Daten.",
@@ -5470,6 +5472,8 @@ const en: typeof de = {
   "imp.cleanup.newSince": "{{n}} new candidates since the preview — left untouched.",
   "imp.cleanup.claimedKos":
     "{{n}} post(s) in an ongoing review action — excluded from the cleanup.",
+  "imp.cleanup.auditPendingCandidates":
+    "{{n}} candidate(s) with a pending action record — excluded from the cleanup until the record is written.",
   "exp.title": "Example packages",
   "exp.hint":
     "Curated small scenarios for testers — each package loads on its own and creates clearly marked example posts. The import cleanup does NOT remove them; they disappear via removing the demo data.",
@@ -8696,6 +8700,8 @@ const nl: typeof de = {
   "imp.cleanup.newSince": "{{n}} nieuwe kandidaten sinds het voorbeeld — niet aangeraakt.",
   "imp.cleanup.claimedKos":
     "{{n}} bijdrage(n) in een lopende reviewactie — uitgesloten van het opruimen.",
+  "imp.cleanup.auditPendingCandidates":
+    "{{n}} kandidaat/kandidaten met een openstaand actiebewijs — uitgesloten van het opruimen totdat het bewijs is geschreven.",
   "exp.title": "Voorbeeldpakketten",
   "exp.hint":
     "Gecureerde kleine scenario's voor testers — elk pakket laadt afzonderlijk en maakt duidelijk gemarkeerde voorbeeldbijdragen aan. Het opruimen van de import verwijdert ze NIET; ze verdwijnen via het verwijderen van de demogegevens.",

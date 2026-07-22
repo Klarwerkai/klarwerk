@@ -236,10 +236,14 @@ export class LibraryService {
     targets: KnowledgeObject[];
     // KOs mit Cleanup-Provenienz, die WEGEN eines offenen Claims geschützt sind (nur Zähler).
     claimedKos: number;
+    // WP-SHIP8-CLOSE-8 (bens ROT-1): Kandidaten mit schwebendem Aktionsbeleg (auditPending) —
+    // das bedingte DELETE lässt sie stehen (einziger Träger des Belegs); hier ehrlich beziffert.
+    auditPendingCandidates: number;
   }> {
     const candidates = await this.candidates.all();
     const candidateIds = candidates.map((c) => c.id);
     const candidateStatuses = new Map(candidates.map((c) => [c.id, c.status as string]));
+    const auditPendingCandidates = candidates.filter((c) => c.auditPending !== undefined).length;
     const openClaims = new Set(
       candidates.filter((c) => c.status === "in_bearbeitung").map((c) => c.id),
     );
@@ -253,6 +257,7 @@ export class LibraryService {
       candidateStatuses,
       targets: provenance.filter((ko) => !claimProtected(ko)),
       claimedKos: provenance.filter(claimProtected).length,
+      auditPendingCandidates,
     };
   }
 
@@ -266,8 +271,13 @@ export class LibraryService {
     // WP-SHIP8-CLOSE-4 (bens ROT-1C): KOs einer LAUFENDEN Review-Aktion — ehrlich beziffert,
     // aber NIE Teil der Zielmenge (und damit nicht im Digest).
     claimedKos: number;
+    // WP-SHIP8-CLOSE-8 (bens ROT-1): Kandidaten mit schwebendem Aktionsbeleg — das Löschen
+    // lässt sie fail-closed stehen; hier vorab ehrlich beziffert (nicht im Digest: die Ids
+    // bleiben Teil der Zielmenge, nur das DELETE verweigert sie).
+    auditPendingCandidates: number;
   }> {
-    const { candidateIds, targets, claimedKos } = await this.cleanupTargets();
+    const { candidateIds, targets, claimedKos, auditPendingCandidates } =
+      await this.cleanupTargets();
     return {
       candidates: candidateIds.length,
       importedKos: targets.length,
@@ -276,6 +286,7 @@ export class LibraryService {
         targets.map((ko) => ko.id),
       ),
       claimedKos,
+      auditPendingCandidates,
     };
   }
 
@@ -310,8 +321,18 @@ export class LibraryService {
     // ausgeschlossen (nie getrasht) und in der Bilanz ehrlich beziffert. BEWUSST kein Eintrag in
     // `skipped`: das würde die Queue-Phase blockieren (Regel 3 gilt nur für ECHTE KO-Fehlschläge).
     claimedKos: number;
+    // WP-SHIP8-CLOSE-8 (bens ROT-1): Kandidaten mit schwebendem Aktionsbeleg — vom bedingten
+    // DELETE fail-closed verschont und hier ehrlich beziffert (wie claimedKos BEWUSST kein
+    // skipped-Eintrag; ein späterer Lauf räumt sie nach gelungenem Beleg-Nachzug ab).
+    auditPendingCandidates: number;
   }> {
-    const { candidateIds, candidateStatuses, targets, claimedKos } = await this.cleanupTargets();
+    // WP-SHIP8-CLOSE-8 (bens ROT-1, optionaler Vorab-Retry): VOR dem Aufräumen einmal versuchen,
+    // schwebende Belege nachzuziehen — gelingt das, ist der Kandidat frei und darf fallen.
+    // Best-effort: ein FEHLGESCHLAGENER Retry hebt die Löschsperre NIE auf (die sitzt im DELETE).
+    // Läuft VOR der Zielermittlung; der Digest hängt nur an den Ids, nicht an der Markierung.
+    await this.retryPendingReviewAudits().catch(() => 0);
+    const { candidateIds, candidateStatuses, targets, claimedKos, auditPendingCandidates } =
+      await this.cleanupTargets();
     const digest = cleanupDigest(
       candidateIds,
       targets.map((ko) => ko.id),
@@ -402,19 +423,24 @@ export class LibraryService {
       const removedSet = new Set(removedIds);
       const survivors = attempts.filter((attempt) => !removedSet.has(attempt.id));
       if (survivors.length > 0) {
-        let afterStatuses = new Map<string, string>();
+        let afterById = new Map<string, ImportCandidate>();
         try {
-          afterStatuses = new Map(
-            (await this.candidates.all()).map((c) => [c.id, c.status as string]),
-          );
+          afterById = new Map((await this.candidates.all()).map((c) => [c.id, c]));
         } catch {
           // Nachlesen scheiterte — die konservative Begründung unten bleibt.
         }
         for (const survivor of survivors) {
+          const after = afterById.get(survivor.id);
+          // WP-SHIP8-CLOSE-8 (bens ROT-1): vom DELETE wegen schwebendem Aktionsbeleg verschont —
+          // Träger des Belegs, KEIN skipped-Eintrag (er zählt über auditPendingCandidates; wie
+          // claimedKos blockiert er nichts und fällt nach gelungenem Nachzug im nächsten Lauf).
+          if (after?.auditPending !== undefined) {
+            continue;
+          }
           skipped.push({
             id: survivor.id,
             reason:
-              afterStatuses.get(survivor.id) === "angenommen"
+              after?.status === "angenommen"
                 ? "zwischenzeitlich angenommen"
                 : "zwischenzeitlich bearbeitet",
           });
@@ -439,6 +465,7 @@ export class LibraryService {
           skipped: skipped.length,
           newCandidates,
           claimedKos,
+          auditPendingCandidates,
         },
       });
     } catch (err) {
@@ -450,7 +477,15 @@ export class LibraryService {
         }).\n`,
       );
     }
-    return { removedCandidates, trashedKos, skipped, auditFailed, newCandidates, claimedKos };
+    return {
+      removedCandidates,
+      trashedKos,
+      skipped,
+      auditFailed,
+      newCandidates,
+      claimedKos,
+      auditPendingCandidates,
+    };
   }
 
   // SCRUM-116: Review-Aktion. accept → echtes KO (außer Dublette, dann übersprungen).
@@ -686,11 +721,19 @@ export class LibraryService {
         continue;
       }
       try {
+        // WP-SHIP8-CLOSE-8 (bens GELB-1): ein in der Markierung gespeicherter Beleg-Payload
+        // (z. B. recovered/recoveredBy/reviewerUnknown der Recovery) wird UNVERÄNDERT
+        // übernommen — die Kennzeichnung überlebt den Nachzug; retried markiert den Retry-Weg.
         await this.audit.recordOnce(pending.eventId, {
           actor: pending.actor,
           action: `import.candidate-${pending.action}`,
           target: candidate.id,
-          payload: { duplicate: candidate.duplicate, koId: candidate.koId, retried: true },
+          payload: {
+            duplicate: candidate.duplicate,
+            koId: candidate.koId,
+            ...(pending.payload ?? {}),
+            retried: true,
+          },
         });
         // WP-SHIP8-CLOSE-7 (bens ROT-1): BEDINGT räumen (nur die eigene eventId) — ein
         // paralleler Räumer oder eine inzwischen neue Markierung wird nie überschrieben.
@@ -781,13 +824,23 @@ export class LibraryService {
         // resolveClaim-CAS mit — ein Crash zwischen Vollendung und Beleg hinterlässt sie
         // automatisch für den Queue-Load-Nachzug.
         const eventId = `import.candidate-accept:${candidate.id}:${opId}`;
+        // WP-SHIP8-CLOSE-8 (bens GELB-1): der Beleg-Payload (inkl. Recovery-Kennzeichnung) wird
+        // EINMAL gebaut und reist auch in der vorbeugenden Markierung mit — ein späterer Retry
+        // schreibt den Beleg mit EXAKT dieser Kennzeichnung, nichts geht beim Nachzug verloren.
+        const recoveryPayload: Record<string, unknown> = {
+          duplicate: candidate.duplicate,
+          koId: stamped.id,
+          recovered: true,
+          recoveredBy: "system",
+          ...(reviewerUnknown ? { reviewerUnknown: true } : {}),
+        };
         const resolved = await this.candidates.resolveClaim(candidate.id, opId, {
           status: "angenommen",
           koId: stamped.id,
           reviewedBy: reviewer,
           reviewedAt: new Date(this.now()).toISOString(),
           reviewedAction: "accept",
-          auditPending: { eventId, action: "accept", actor: reviewer },
+          auditPending: { eventId, action: "accept", actor: reviewer, payload: recoveryPayload },
         });
         if (resolved) {
           completed += 1;
@@ -801,13 +854,7 @@ export class LibraryService {
               actor: reviewer,
               action: "import.candidate-accept",
               target: candidate.id,
-              payload: {
-                duplicate: candidate.duplicate,
-                koId: stamped.id,
-                recovered: true,
-                recoveredBy: "system",
-                ...(reviewerUnknown ? { reviewerUnknown: true } : {}),
-              },
+              payload: recoveryPayload,
             });
             auditRecorded = true;
           } catch {

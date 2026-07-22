@@ -107,6 +107,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
       // WP-SHIP8-FIX (bens F2): SHA-256 über die sortierte Zielmenge — bindet die Bestätigung.
       digest: expect.stringMatching(/^[0-9a-f]{64}$/),
       claimedKos: 0,
+      auditPendingCandidates: 0,
     });
     // Nichts passiert: Queue und Bestand unverändert, Papierkorb leer.
     expect((await services.library.listImportCandidates()).length).toBe(2);
@@ -133,6 +134,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
       auditFailed: false,
       newCandidates: 0,
       claimedKos: 0,
+      auditPendingCandidates: 0,
     });
     // Queue KOMPLETT leer (jeder Status).
     expect(await services.library.listImportCandidates()).toEqual([]);
@@ -151,6 +153,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
       skipped: 0,
       newCandidates: 0,
       claimedKos: 0,
+      auditPendingCandidates: 0,
     });
   });
 
@@ -249,6 +252,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
       auditFailed: false,
       newCandidates: 0,
       claimedKos: 0,
+      auditPendingCandidates: 0,
     });
     expect((await services.library.listImportCandidates()).length).toBe(2);
     expect((await services.ko.list()).map((k) => k.title).sort()).toEqual([
@@ -287,6 +291,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
       auditFailed: false,
       newCandidates: 0,
       claimedKos: 0,
+      auditPendingCandidates: 0,
     });
     expect(await services.library.listImportCandidates()).toEqual([]);
     expect((await services.ko.trashed()).length).toBe(2);
@@ -322,6 +327,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
         auditFailed: true,
         newCandidates: 0,
         claimedKos: 0,
+        auditPendingCandidates: 0,
       });
       expect(await services.library.listImportCandidates()).toEqual([]);
       expect((await services.ko.trashed()).length).toBe(2);
@@ -394,6 +400,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
       auditFailed: false,
       newCandidates: 1,
       claimedKos: 0,
+      auditPendingCandidates: 0,
     });
     const remaining = await services.library.listImportCandidates();
     expect(remaining.map((c) => c.item.title)).toEqual(["Parallel eingereiht"]);
@@ -439,8 +446,10 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
       ]),
     ).toEqual(["a"]);
     expect(calls).toHaveLength(1);
+    // WP-SHIP8-CLOSE-8 (bens ROT-1, Pg-Query-Pin): die auditPending-Löschsperre steckt IM
+    // DELETE-Statement selbst — kein Vorab-Read, kein Fenster.
     expect(calls[0]?.sql).toBe(
-      "DELETE FROM import_candidates c USING unnest($1::text[], $2::text[]) AS erwartet(id, status) WHERE c.id = erwartet.id AND c.data->>'status' = erwartet.status RETURNING c.id",
+      "DELETE FROM import_candidates c USING unnest($1::text[], $2::text[]) AS erwartet(id, status) WHERE c.id = erwartet.id AND c.data->>'status' = erwartet.status AND c.data->'auditPending' IS NULL RETURNING c.id",
     );
     expect(calls[0]?.params).toEqual([
       ["a", "c"],
@@ -448,6 +457,27 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
     ]);
     expect(await pg.removeByIds([])).toEqual([]);
     expect(calls).toHaveLength(1); // leere Bestätigung → kein DELETE
+  });
+
+  it("WP-SHIP8-CLOSE-8 (bens ROT-1): removeByIds löscht NIE einen Kandidaten mit auditPending — Sperre in der Löschbedingung, erst clearAuditPending gibt frei", async () => {
+    const repo = new InMemoryCandidateRepo();
+    await repo.insert({
+      id: "p",
+      item: { title: "P", statement: "s", type: "best_practice", category: "K" },
+      status: "angenommen",
+      duplicate: false,
+      note: null,
+      koId: "ko-p",
+      createdAt: "2026-07-01T00:00:00.000Z",
+      auditPending: { eventId: "import.candidate-accept:p:op-1", action: "accept", actor: "rev" },
+    });
+    // Status passt EXAKT — trotzdem überlebt der Kandidat (einziger Träger des Belegs).
+    expect(await repo.removeByIds([{ id: "p", status: "angenommen" }])).toEqual([]);
+    expect((await repo.findById("p"))?.auditPending).toBeTruthy();
+    // Erst der gelungene Beleg-Nachzug (bedingtes Räumen) gibt die Löschung frei.
+    expect(await repo.clearAuditPending("p", "import.candidate-accept:p:op-1")).toBe(true);
+    expect(await repo.removeByIds([{ id: "p", status: "angenommen" }])).toEqual(["p"]);
+    expect(await repo.findById("p")).toBeUndefined();
   });
 
   it("WP-SHIP8-CLOSE-2/3 (bens F1/ROT-1): claim ist ein atomarer Lease-CAS, resolveClaim ein opId-CAS; update behandelt 0 Zeilen als KONFLIKT", async () => {
@@ -541,9 +571,10 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
     const digest = await previewDigest(app, headers);
     const candidates = await services.library.listImportCandidates();
     const acceptId = (candidates[0] as { id: string }).id;
-    // Gate im Fake-Repo NACH dem Re-Read-Hook: der Cleanup liest die Queue einmal in der
-    // Zielermittlung (all #1) und einmal als Vorab-Bilanz der Delete-Phase (all #2) — der Accept
-    // landet EXAKT nach diesem zweiten Re-Read und VOR removeByIds (bens Restfenster).
+    // Gate im Fake-Repo NACH dem Re-Read-Hook: der Cleanup liest die Queue im Vorab-Beleg-Retry
+    // (all #1, WP-SHIP8-CLOSE-8), in der Zielermittlung (all #2) und als Vorab-Bilanz der
+    // Delete-Phase (all #3) — der Accept landet EXAKT nach diesem letzten Re-Read und VOR
+    // removeByIds (bens Restfenster).
     const candidatesRepo = (
       services.library as unknown as {
         candidates: { all: () => Promise<unknown[]> };
@@ -555,7 +586,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
     candidatesRepo.all = async () => {
       const result = await originalAll();
       allCalls += 1;
-      if (allCalls === 2 && !injected) {
+      if (allCalls === 3 && !injected) {
         injected = true;
         await services.library.reviewImportCandidate(acceptId, "accept", "reviewer-1");
       }
@@ -636,6 +667,152 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
     const remaining = await services.library.listImportCandidates();
     expect((remaining[0] as { status: string }).status).toBe("angenommen");
     expect((await services.ko.list()).map((k) => k.title)).toContain("Kandidat 1");
+  });
+
+  it("WP-SHIP8-CLOSE-8 (bens ROT-1, Pflichttest): Kandidat mit auditPending ÜBERLEBT den bestätigten Cleanup (Delete-Bedingung); nach gelungenem Beleg-Nachzug räumt der NÄCHSTE Lauf ihn ab", async () => {
+    const warnSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const { app, services, headers } = await cleanupApp();
+      const candidates = await services.library.listImportCandidates();
+      const pendingId = (candidates[0] as { id: string }).id;
+      // Status-CAS mit Pending: der Accept gelingt, NUR das Abschluss-Audit wirft dauerhaft →
+      // der Kandidat ist angenommen und traegt die vorbeugende Markierung aus dem Statuswrite.
+      const origRecordOnce = services.audit.recordOnce.bind(services.audit);
+      let auditDown = true;
+      (services.audit as { recordOnce: typeof services.audit.recordOnce }).recordOnce = async (
+        eventId,
+        input,
+        tx,
+      ) => {
+        if (auditDown && input.action === "import.candidate-accept") {
+          throw new Error("AuditDown");
+        }
+        return origRecordOnce(eventId, input, tx);
+      };
+      const reviewed = await services.library.reviewImportCandidate(pendingId, "accept", "rev-1");
+      expect(reviewed.status).toBe("angenommen");
+      expect(reviewed.auditPending).toBeTruthy();
+
+      // Vorschau beziffert den schwebenden Beleg ehrlich (der Vorab-Retry des Runs wirft noch).
+      const preview = await app.inject({
+        method: "POST",
+        url: "/api/admin/import/cleanup",
+        headers,
+        payload: {},
+      });
+      const previewBody = preview.json() as { digest: string; auditPendingCandidates: number };
+      expect(previewBody.auditPendingCandidates).toBe(1);
+
+      // Bestätigter Cleanup: der Pending-Kandidat ÜBERLEBT — die Sperre sitzt IM bedingten
+      // DELETE (kein Vorab-Read filtert ihn; sein Status 'angenommen' passt ja exakt).
+      const run = await app.inject({
+        method: "POST",
+        url: "/api/admin/import/cleanup",
+        headers,
+        payload: { confirm: true, digest: previewBody.digest },
+      });
+      expect(run.statusCode).toBe(200);
+      const runBody = run.json() as {
+        removedCandidates: number;
+        skipped: { id: string; reason: string }[];
+        auditPendingCandidates: number;
+      };
+      expect(runBody.removedCandidates).toBe(1); // nur Kandidat 2 fiel
+      expect(runBody.auditPendingCandidates).toBe(1);
+      // Kein skipped-Eintrag für den Träger (Muster claimedKos) — er zählt über das eigene Feld.
+      expect(runBody.skipped).toEqual([]);
+      const survived = await services.library.listImportCandidates();
+      expect(survived.map((c) => (c as { id: string }).id)).toEqual([pendingId]);
+      expect((survived[0] as { auditPending?: unknown }).auditPending).toBeTruthy();
+      expect(await services.audit.list({ action: "import.candidate-accept" })).toHaveLength(0);
+
+      // HEILUNG: der nächste Lauf zieht den Beleg im Vorab-Retry exactly-once nach — erst
+      // DANN gibt das DELETE den Kandidaten frei.
+      auditDown = false;
+      const digest2 = await previewDigest(app, headers);
+      const run2 = await app.inject({
+        method: "POST",
+        url: "/api/admin/import/cleanup",
+        headers,
+        payload: { confirm: true, digest: digest2 },
+      });
+      expect(run2.statusCode).toBe(200);
+      const run2Body = run2.json() as {
+        removedCandidates: number;
+        auditPendingCandidates: number;
+      };
+      expect(run2Body.removedCandidates).toBe(1);
+      expect(run2Body.auditPendingCandidates).toBe(0);
+      expect(await services.library.listImportCandidates()).toEqual([]);
+      // Der Beleg existiert GENAU EINMAL (recordOnce; der Kandidat durfte erst danach fallen).
+      const belege = await services.audit.list({ action: "import.candidate-accept" });
+      expect(belege).toHaveLength(1);
+      expect(belege[0]?.payload).toMatchObject({ retried: true });
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("WP-SHIP8-CLOSE-8 (bens GELB-2): Kandidaten-Ausgabe ist ein DTO — keine Lease-/Claim-Felder, keine Beleg-Interna, auditPending nur als Boolean", async () => {
+    const warnSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const { app, services, headers } = await cleanupApp();
+      const candidates = await services.library.listImportCandidates();
+      const pendingId = (candidates[0] as { id: string }).id;
+      const otherId = (candidates[1] as { id: string }).id;
+      // Ein Kandidat mit SCHWEBENDEM Beleg (Audit dauerhaft down) — der interessante Fall.
+      const origRecordOnce = services.audit.recordOnce.bind(services.audit);
+      (services.audit as { recordOnce: typeof services.audit.recordOnce }).recordOnce = async (
+        eventId,
+        input,
+        tx,
+      ) => {
+        if (input.action === "import.candidate-accept") {
+          throw new Error("AuditDown");
+        }
+        return origRecordOnce(eventId, input, tx);
+      };
+      await services.library.reviewImportCandidate(pendingId, "accept", "rev-1");
+
+      // GET-Queue: interne Felder sind NICHT auf dem Draht, der Schwebezustand nur als Boolean.
+      const list = await app.inject({
+        method: "GET",
+        url: "/api/library/import/candidates",
+        headers,
+      });
+      expect(list.statusCode).toBe(200);
+      const items = list.json() as Record<string, unknown>[];
+      const pendingItem = items.find((c) => c.id === pendingId);
+      expect(pendingItem?.auditPending).toBe(true);
+      expect(pendingItem?.reviewedBy).toBe("rev-1");
+      expect(pendingItem?.reviewedAction).toBe("accept");
+      for (const item of items) {
+        for (const internalKey of ["opId", "claimedAt", "claimedBy", "claimedAction"]) {
+          expect(Object.keys(item)).not.toContain(internalKey);
+        }
+      }
+      // Keine Beleg-Interna (eventId/actor/payload) — auditPending ist ein nacktes Boolean.
+      expect(typeof pendingItem?.auditPending).toBe("boolean");
+
+      // Auch die Antwort der Review-Aktion (PUT) läuft durchs DTO: Erfolg ohne Schwebezustand →
+      // kein auditPending-Feld, keine internen Felder.
+      const put = await app.inject({
+        method: "PUT",
+        url: `/api/library/import/candidates/${otherId}`,
+        headers,
+        payload: { action: "reject" },
+      });
+      expect(put.statusCode).toBe(200);
+      const putBody = put.json() as Record<string, unknown>;
+      expect(putBody.status).toBe("abgelehnt");
+      expect(putBody.reviewedAction).toBe("reject");
+      for (const internalKey of ["opId", "claimedAt", "claimedBy", "claimedAction"]) {
+        expect(Object.keys(putBody)).not.toContain(internalKey);
+      }
+      expect(Object.keys(putBody)).not.toContain("auditPending");
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   it("die Aufräum-Copy existiert in DE, EN und NL", () => {

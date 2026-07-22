@@ -105,7 +105,13 @@ export interface ClaimResolution {
   // Endstatus persistiert (die Event-Id ist vor dem Statuswrite bekannt). Gelingt das
   // Aktionsaudit danach, löscht clearAuditPending sie bedingt; bei Fehler ODER Crash bleibt sie
   // automatisch für den Queue-Load-Nachzug stehen — es gibt kein Fenster ohne Beleg UND Markierung.
-  auditPending?: { eventId: string; action: ReviewAction; actor: string };
+  // WP-SHIP8-CLOSE-8 (bens GELB-1): optionaler Beleg-Payload reist mit (Recovery-Kennzeichnung).
+  auditPending?: {
+    eventId: string;
+    action: ReviewAction;
+    actor: string;
+    payload?: Record<string, unknown> | undefined;
+  };
 }
 
 // WP-SHIP8-FIX (bens F3): kanonischer Provider-Anteil ALLER Import-Schlüssel (Queue-Idempotenz,
@@ -284,11 +290,19 @@ export class InMemoryCandidateRepo implements CandidateRepo {
 
   // WP-SHIP8-CLOSE (bens F2): atomar je Item — Status-Prüfung und Löschung ohne await dazwischen
   // (synchron auf der Map); ein Eintrag mit inzwischen geändertem Status überlebt.
+  // WP-SHIP8-CLOSE-8 (bens ROT-1): ein Kandidat mit auditPending ist der EINZIGE Träger des
+  // ausstehenden Aktionsbelegs — die Löschsperre steckt IN der Löschbedingung selbst (Spiegel
+  // der Pg-DELETE-Bedingung), nie in einem Vorab-Read.
   removeByIds(entries: readonly ImportCandidateRemoval[]): Promise<string[]> {
     const removed: string[] = [];
     for (const { id, status } of entries) {
       const candidate = this.items.get(id);
-      if (candidate && candidate.status === status && this.items.delete(id)) {
+      if (
+        candidate &&
+        candidate.status === status &&
+        candidate.auditPending === undefined &&
+        this.items.delete(id)
+      ) {
         removed.push(id);
       }
     }

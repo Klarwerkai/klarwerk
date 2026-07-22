@@ -25,4 +25,7 @@ export const IMPORT_CLEANUP_TEXT = {
   // WP-SHIP8-CLOSE-4 (bens ROT-1C): KOs einer LAUFENDEN Review-Aktion — nie Teil der Zielmenge,
   // in Vorschau UND Bilanz ehrlich beziffert.
   claimedKos: "imp.cleanup.claimedKos",
+  // WP-SHIP8-CLOSE-8 (bens ROT-1): Kandidaten mit ausstehendem Aktionsbeleg — das Löschen lässt
+  // sie fail-closed stehen; in Vorschau UND Bilanz ehrlich beziffert.
+  auditPendingCandidates: "imp.cleanup.auditPendingCandidates",
 } as const;

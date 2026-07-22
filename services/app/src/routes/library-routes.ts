@@ -1,7 +1,12 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { ConflictService, OverlapService, OverlapSettingsRepo } from "../../../conflicts";
 import type { KoFilter, KoService } from "../../../knowledge-object";
-import type { ImportItem, LibraryService, ReviewAction } from "../../../library-analytics";
+import type {
+  ImportCandidate,
+  ImportItem,
+  LibraryService,
+  ReviewAction,
+} from "../../../library-analytics";
 import { can } from "../../../rbac";
 import type { Reasoner } from "../../../reasoner";
 import { detectConflictsForKo } from "../conflict-detection";
@@ -25,6 +30,42 @@ function confluenceImportEnabled(): boolean {
 
 // SCRUM-470 (ben-Review #2): erlaubte Review-Aktionen — Single Source of Truth für die Route-Validierung.
 const REVIEW_ACTIONS: readonly ReviewAction[] = ["accept", "reject", "info"];
+
+// WP-SHIP8-CLOSE-8 (bens GELB-2): explizites Response-DTO der Kandidaten-Ausgabe — interne
+// Lease-/Claim-Felder (opId, claimedAt, claimedBy, claimedAction) und die auditPending-Interna
+// (eventId, actor, Payload) gehen NIE über den Draht; der Schwebezustand erscheint nur als
+// boolescher Ausweis. BEWUSST eine ALLOWLIST (kein Omit/Spread): ein künftiges internes Feld am
+// Kandidaten bleibt damit standardmäßig unter Verschluss, bis es hier ausdrücklich freigegeben wird.
+interface ImportCandidateDto {
+  id: string;
+  item: ImportItem;
+  status: ImportCandidate["status"];
+  duplicate: boolean;
+  note: string | null;
+  koId: string | null;
+  createdAt: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  reviewedAction?: ReviewAction;
+  // Schwebender Aktionsbeleg — nur als Boolean (Muster Cleanup auditFailed), keine Interna.
+  auditPending?: boolean;
+}
+
+function toImportCandidateDto(candidate: ImportCandidate): ImportCandidateDto {
+  return {
+    id: candidate.id,
+    item: candidate.item,
+    status: candidate.status,
+    duplicate: candidate.duplicate,
+    note: candidate.note,
+    koId: candidate.koId,
+    createdAt: candidate.createdAt,
+    ...(candidate.reviewedBy !== undefined ? { reviewedBy: candidate.reviewedBy } : {}),
+    ...(candidate.reviewedAt !== undefined ? { reviewedAt: candidate.reviewedAt } : {}),
+    ...(candidate.reviewedAction !== undefined ? { reviewedAction: candidate.reviewedAction } : {}),
+    ...(candidate.auditPending !== undefined ? { auditPending: true } : {}),
+  };
+}
 
 // ben-Review #6: schmale, immer sichtbare Log-Linie für best-effort-Erkennung am Import-Accept-Pfad
 // (Fastify läuft ohne eigenen Logger) — analog defaultLog des dup-prefilters. Bewusst kein Werfen.
@@ -123,9 +164,9 @@ export function libraryRoutes(
           return;
         }
         try {
-          reply
-            .code(201)
-            .send(await library.createImportCandidates(request.body.items ?? [], user.id));
+          // WP-SHIP8-CLOSE-8 (bens GELB-2): auch frisch eingereihte Kandidaten laufen durchs DTO.
+          const created = await library.createImportCandidates(request.body.items ?? [], user.id);
+          reply.code(201).send(created.map(toImportCandidateDto));
         } catch (error) {
           sendError(reply, error);
         }
@@ -145,7 +186,9 @@ export function libraryRoutes(
       // WP-SHIP8-CLOSE-6 (bens ROT-3b): schwebende Review-Aktionsbelege (auditPending) werden
       // am selben Lazy-Punkt exactly-once nachgezogen.
       await library.retryPendingReviewAudits();
-      reply.code(200).send(await library.listImportCandidates());
+      // WP-SHIP8-CLOSE-8 (bens GELB-2): NIE rohe Kandidatenobjekte auf den Draht — das DTO
+      // hält Lease-/Claim-Felder und Beleg-Interna zurück (ko.read-Nutzer sehen nur Produktdaten).
+      reply.code(200).send((await library.listImportCandidates()).map(toImportCandidateDto));
     });
 
     // WP-D-CLEAN (Pedis Entscheid: alle Testdaten löschen, auch Confluence und Jira): ZWEISTUFIGER
@@ -227,7 +270,9 @@ export function libraryRoutes(
               importDetectionLog,
             );
           }
-          reply.code(200).send(result);
+          // WP-SHIP8-CLOSE-8 (bens GELB-2): dieselbe DTO-Grenze wie am Queue-Load — die Antwort
+          // der Review-Aktion trägt keine Claim-/Beleg-Interna (auditPending nur als Boolean).
+          reply.code(200).send(toImportCandidateDto(result));
         } catch (error) {
           sendError(reply, error);
         }

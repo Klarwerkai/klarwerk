@@ -481,4 +481,32 @@ describe("SCRUM-510 (WP2): Import-Migration + ON CONFLICT gegen echtes Postgres"
     // Verschwundener Kandidat: ebenfalls false, kein Fehler (Cleanup darf gewinnen).
     expect(await repo.clearAuditPending("gibt-es-nicht", pending.eventId)).toBe(false);
   });
+
+  it("WP-SHIP8-CLOSE-8 (bens ROT-1): das bedingte DELETE verschont Kandidaten mit auditPending — erst der geräumte Beleg gibt die Löschung frei", async (ctx) => {
+    const pool = requirePool(ctx);
+    await reset(pool);
+    await pool.query(IMPORT_CANDIDATES_SCHEMA);
+    const repo = new PgCandidateRepo(pool);
+    const pending = candidate("s8-p", { externalId: "P8", sourceVersion: 1 }, "2026-01-01");
+    const free = candidate("s8-f", { externalId: "P8", sourceVersion: 2 }, "2026-01-02");
+    await repo.insert({
+      ...pending,
+      status: "angenommen",
+      auditPending: { eventId: "import.candidate-accept:s8-p:op-8", action: "accept", actor: "x" },
+    });
+    await repo.insert({ ...free, status: "angenommen" });
+    // Status passt bei BEIDEN exakt — trotzdem fällt nur der Kandidat OHNE Markierung
+    // (die Sperre sitzt in der DELETE-Bedingung, echtes Postgres-JSONB-Prädikat).
+    expect(
+      await repo.removeByIds([
+        { id: "s8-p", status: "angenommen" },
+        { id: "s8-f", status: "angenommen" },
+      ]),
+    ).toEqual(["s8-f"]);
+    expect((await repo.findById("s8-p"))?.auditPending).toBeTruthy();
+    // Nach dem bedingten Räumen des Belegs greift dieselbe Löschung.
+    expect(await repo.clearAuditPending("s8-p", "import.candidate-accept:s8-p:op-8")).toBe(true);
+    expect(await repo.removeByIds([{ id: "s8-p", status: "angenommen" }])).toEqual(["s8-p"]);
+    expect(await repo.findById("s8-p")).toBeUndefined();
+  });
 });
