@@ -1,6 +1,7 @@
 import { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { guardedLocalPgTestUrl } from "../../db-tx";
 import { IMPORT_CANDIDATES_SCHEMA, PgCandidateRepo } from "./repo-pg";
 import type { ImportCandidate, ImportItem } from "./types";
 
@@ -8,6 +9,10 @@ import type { ImportCandidate, ImportItem } from "./types";
 // ON-CONFLICT-Insert. Braucht Docker (Testcontainers); läuft NUR unter `test:integration`, nie im
 // schnellen Root-Gate (das excludet *.integration.test.ts) → ohne PG wird sauber NICHT gefälscht,
 // sondern gar nicht ausgeführt.
+// WP-SHIP8-CLOSE-7: wie die knowledge-object-/audit-Suite auch Docker-los ausführbar — eine per
+// KLARWERK_PG_TEST_URL angebotene lokale Instanz läuft durch die harte GELB-Sicherung in
+// services/db-tx (Testdatenbank-Name ODER KLARWERK_PG_TEST_ALLOW_DESTRUCTIVE=1; sonst
+// Klartext-Skip, KEIN Testcontainers-Fallback).
 
 // Die Spalten-DDL OHNE den Unique-Index — Setup, um VOR dem Index Alt-Dubletten einzuschleusen (die im
 // Betrieb aus der Zeit vor dem Index stammen). Muss zu den GENERATED-Definitionen in der echten Migration
@@ -85,6 +90,29 @@ describe("SCRUM-510 (WP2): Import-Migration + ON CONFLICT gegen echtes Postgres"
   let available = false;
 
   beforeAll(async () => {
+    // Lokale Instanz hat Vorrang (Docker-lose Evidence-Läufe) — HART abgesichert (bens GELB,
+    // CLOSE-6): nur Testdatenbanken oder ausdrückliches KLARWERK_PG_TEST_ALLOW_DESTRUCTIVE=1.
+    const localUrl = guardedLocalPgTestUrl();
+    if (localUrl) {
+      try {
+        pool = new Pool({ connectionString: localUrl });
+        await pool.query("SELECT 1");
+        available = true;
+        return;
+      } catch {
+        process.stderr.write(
+          "[KLARWERK] Import-Pg-Integrationssuite ÜBERSPRUNGEN: KLARWERK_PG_TEST_URL gesetzt, aber keine Verbindung möglich.\n",
+        );
+        available = false;
+        return;
+      }
+    }
+    if (process.env.KLARWERK_PG_TEST_URL) {
+      // URL war gesetzt, die Sicherung hat sie abgelehnt (Grund steht auf stderr) → KEIN
+      // Testcontainers-Fallback: der Aufrufer wollte ausdrücklich eine lokale Instanz.
+      available = false;
+      return;
+    }
     try {
       container = await new GenericContainer("postgres:16-alpine")
         .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk" })
@@ -401,5 +429,56 @@ describe("SCRUM-510 (WP2): Import-Migration + ON CONFLICT gegen echtes Postgres"
     expect(stillAfter.rows[0]?.legacy_expr).toBe(after.rows[0]?.legacy_expr); // unverändert, kein Re-Trigger
     const count = await pool.query("SELECT count(*)::int AS n FROM import_candidates");
     expect(count.rows[0].n).toBe(1); // unverändert — kein Datenverlust durch den No-op-Re-Run
+  });
+
+  it("WP-SHIP8-CLOSE-7 (bens ROT-1/ROT-2): Claim speichert Akteur+Aktion, resolveClaim schreibt reviewed*+Markierung in EINEM CAS und räumt die Claim-Felder; clearAuditPending ist bedingt", async (ctx) => {
+    const pool = requirePool(ctx);
+    await reset(pool);
+    await pool.query(IMPORT_CANDIDATES_SCHEMA);
+    const repo = new PgCandidateRepo(pool);
+    const a = candidate("s7-a", { externalId: "P7", sourceVersion: 1 }, "2026-01-01");
+    expect(await repo.insertIfAbsent(a)).toBe(true);
+
+    // ROT-2: der Claim-CAS persistiert Akteur + Aktion ADDITIV im selben Write.
+    const claimed = await repo.claim("s7-a", "op-7", "2026-07-22T06:00:00.000Z", "xenia", "accept");
+    expect(claimed?.status).toBe("in_bearbeitung");
+    expect(claimed?.opId).toBe("op-7");
+    expect(claimed?.claimedBy).toBe("xenia");
+    expect(claimed?.claimedAction).toBe("accept");
+
+    // ROT-1 + GELB: Endstatus, Wer/Wann/Aktion UND die vorbeugende Markierung reisen in EINEM
+    // resolveClaim-CAS; die Claim-Felder (inkl. claimedBy/claimedAction) werden ausgeräumt.
+    const pending = {
+      eventId: "import.candidate-accept:s7-a:op-7",
+      action: "accept" as const,
+      actor: "xenia",
+    };
+    const done = await repo.resolveClaim("s7-a", "op-7", {
+      status: "angenommen",
+      koId: "ko-7",
+      reviewedBy: "xenia",
+      reviewedAt: "2026-07-22T06:00:01.000Z",
+      reviewedAction: "accept",
+      auditPending: pending,
+    });
+    expect(done?.status).toBe("angenommen");
+    expect(done?.reviewedBy).toBe("xenia");
+    expect(done?.reviewedAt).toBe("2026-07-22T06:00:01.000Z");
+    expect(done?.reviewedAction).toBe("accept");
+    expect(done?.auditPending).toEqual(pending);
+    expect(done?.opId).toBeUndefined();
+    expect(done?.claimedAt).toBeUndefined();
+    expect(done?.claimedBy).toBeUndefined();
+    expect(done?.claimedAction).toBeUndefined();
+
+    // ROT-1: BEDINGTES Räumen — eine fremde Event-Id trifft nichts, die eigene räumt genau
+    // einmal, ein zweiter Versuch ist ehrlich false (kein blindes Überschreiben).
+    expect(await repo.clearAuditPending("s7-a", "fremde-event-id")).toBe(false);
+    expect((await repo.findById("s7-a"))?.auditPending).toEqual(pending);
+    expect(await repo.clearAuditPending("s7-a", pending.eventId)).toBe(true);
+    expect((await repo.findById("s7-a"))?.auditPending).toBeUndefined();
+    expect(await repo.clearAuditPending("s7-a", pending.eventId)).toBe(false);
+    // Verschwundener Kandidat: ebenfalls false, kein Fehler (Cleanup darf gewinnen).
+    expect(await repo.clearAuditPending("gibt-es-nicht", pending.eventId)).toBe(false);
   });
 });

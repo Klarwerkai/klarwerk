@@ -487,7 +487,15 @@ export class LibraryService {
     note?: string,
   ): Promise<ImportCandidate> {
     const opId = this.genId();
-    const candidate = await this.candidates.claim(id, opId, new Date(this.now()).toISOString());
+    // WP-SHIP8-CLOSE-7 (bens ROT-2): Akteur + Aktion reisen IM Claim-CAS mit — crasht die
+    // Operation, vollendet die Recovery im Namen des ECHTEN Reviewers, nicht anonym als System.
+    const candidate = await this.candidates.claim(
+      id,
+      opId,
+      new Date(this.now()).toISOString(),
+      actor,
+      action,
+    );
     if (!candidate) {
       const current = await this.candidates.findById(id);
       if (!current) {
@@ -503,7 +511,19 @@ export class LibraryService {
     let resolved: ImportCandidate | undefined;
     // WP-SHIP8-CLOSE-6 (bens ROT-3a): Wer/Wann der Entscheidung reisen IM SELBEN Statuswrite mit
     // (resolveClaim-Patch) — unverlierbar im Produktbestand, egal was das Aktionsaudit später tut.
-    const reviewedStamp = { reviewedBy: actor, reviewedAt: new Date(this.now()).toISOString() };
+    // WP-SHIP8-CLOSE-7 (bens GELB): die Aktion wird WIRKLICH mitpersistiert (reviewedAction).
+    // WP-SHIP8-CLOSE-7 (bens ROT-1): die Event-Id des Aktionsbelegs ist VOR dem Statuswrite
+    // bekannt — die auditPending-Markierung reist deshalb VORBEUGEND im selben resolveClaim-CAS
+    // mit. Gelingt das Audit danach, wird sie bedingt gelöscht; bei Audit-Fehler ODER Crash
+    // zwischen Statuswrite und Audit steht sie automatisch für den Queue-Load-Nachzug bereit —
+    // es gibt kein Fenster mehr, in dem weder Beleg noch Markierung existiert.
+    const auditEventId = `import.candidate-${action}:${id}:${opId}`;
+    const reviewedStamp = {
+      reviewedBy: actor,
+      reviewedAt: new Date(this.now()).toISOString(),
+      reviewedAction: action,
+      auditPending: { eventId: auditEventId, action, actor },
+    };
     try {
       let resolution: ClaimResolution;
       if (action === "reject") {
@@ -610,37 +630,39 @@ export class LibraryService {
     // kommt. Wirft jetzt noch das abschließende Aktions-Audit (in Produktion derselbe Auditdienst
     // wie im KoService), bleibt die Antwort ERFOLG: ein Fehler-Response würde nur einen Retry
     // provozieren, der ALREADY_REVIEWED erntet — der Client sähe einen Fehler für eine vollzogene
-    // Aktion. WP-SHIP8-CLOSE-6 (bens ROT-3b/3c): der Beleg fehlt dann aber NICHT dauerhaft —
-    // der Ausfall wird als PERSISTENTE auditPending-Markierung am Kandidaten vermerkt (mit der
-    // stabilen Event-Id für den exactly-once-Nachzug via recordOnce) und beim nächsten
-    // Queue-Load nachgezogen; die API-Antwort weist den Schwebezustand aus. Zusätzlich LAUTES,
-    // PII-freies Log (dieselbe Semantik wie Cleanup-Regel 5).
-    const auditEventId = `import.candidate-${action}:${id}:${opId}`;
+    // Aktion. WP-SHIP8-CLOSE-7 (bens ROT-1): die auditPending-Markierung steht zu diesem
+    // Zeitpunkt bereits PERSISTENT im Statuswrite (vorbeugend, s. oben) — ein Crash genau hier
+    // hinterlässt sie automatisch für den Queue-Load-Nachzug. Gelingt das Audit, wird sie
+    // BEDINGT gelöscht (clearAuditPending: nur die eigene eventId); wirft es, bleibt sie stehen
+    // und die API-Antwort weist den Schwebezustand ehrlich aus. Zusätzlich LAUTES, PII-freies
+    // Log (dieselbe Semantik wie Cleanup-Regel 5).
+    let auditRecorded = false;
     try {
+      // recordOnce false (ein paralleler Nachzug war schneller) zählt als gesichert — der Beleg
+      // existiert; ohne verdrahteten Auditdienst gibt es nichts nachzuziehen (ebenfalls räumen).
       await this.audit?.recordOnce(auditEventId, {
         actor,
         action: `import.candidate-${action}`,
         target: resolved.id,
         payload: { duplicate: resolved.duplicate, koId: resolved.koId },
       });
+      auditRecorded = true;
     } catch (auditErr) {
       process.stderr.write(
         `[KLARWERK] Abschluss-Audit der Review-Aktion fehlgeschlagen (kandidat=${resolved.id}, aktion=${action}, fehler=${
           auditErr instanceof Error ? auditErr.name : "unknown"
-        }) — die Aktion IST vollzogen (Status persistiert), der Beleg wird per auditPending nachgezogen.\n`,
+        }) — die Aktion IST vollzogen (Status persistiert), der Beleg wird über die im Statuswrite persistierte auditPending-Markierung nachgezogen.\n`,
       );
-      const marked: ImportCandidate = {
-        ...resolved,
-        auditPending: { eventId: auditEventId, action, actor },
-      };
+    }
+    if (auditRecorded) {
       try {
-        await this.candidates.update(marked);
-        resolved = marked;
+        await this.candidates.clearAuditPending(id, auditEventId);
+        resolved = { ...resolved, auditPending: undefined };
       } catch {
-        // Markierung selbst nicht persistierbar (z. B. Kandidat parallel entfernt) — dann bleibt
-        // NUR das laute Log; die Wer/Wann-Wahrheit steht weiterhin am Kandidaten/ist mit ihm weg.
+        // Markierung nicht räumbar (transienter Persistenzfehler) — unkritisch: der Beleg ist
+        // gesichert, der Queue-Load-Nachzug trifft recordOnce=false und räumt exactly-once nach.
         process.stderr.write(
-          `[KLARWERK] auditPending-Markierung fehlgeschlagen (kandidat=${resolved.id}) — Beleg-Nachzug nicht möglich.\n`,
+          `[KLARWERK] auditPending-Markierung nicht geräumt (kandidat=${resolved.id}) — der Queue-Load räumt nach, kein Doppel-Beleg möglich.\n`,
         );
       }
     }
@@ -670,7 +692,9 @@ export class LibraryService {
           target: candidate.id,
           payload: { duplicate: candidate.duplicate, koId: candidate.koId, retried: true },
         });
-        await this.candidates.update({ ...candidate, auditPending: undefined });
+        // WP-SHIP8-CLOSE-7 (bens ROT-1): BEDINGT räumen (nur die eigene eventId) — ein
+        // paralleler Räumer oder eine inzwischen neue Markierung wird nie überschrieben.
+        await this.candidates.clearAuditPending(candidate.id, pending.eventId);
         retried += 1;
       } catch {
         process.stderr.write(
@@ -737,39 +761,68 @@ export class LibraryService {
         continue;
       }
       if (stamped) {
+        // WP-SHIP8-CLOSE-7 (bens ROT-2): defensiv unerreichbare Schieflage — ein Stempel-KO
+        // existiert, aber geclaimt war NICHT accept (reject/info fassen KOs nie an; ein Alt-
+        // Accept-Crash wäre schon von der Recovery vollendet worden). Eine solche Vollendung
+        // als „angenommen" würde die tatsächlich geclaimte Entscheidung verfälschen →
+        // fail-closed stehen lassen + lautes Log statt raten.
+        if (candidate.claimedAction && candidate.claimedAction !== "accept") {
+          process.stderr.write(
+            `[KLARWERK] Recovery: Stempel-KO vorhanden, aber geclaimte Aktion ist ${candidate.claimedAction} (kandidat=${candidate.id}) — Claim bleibt stehen (fail-closed).\n`,
+          );
+          continue;
+        }
+        // WP-SHIP8-CLOSE-7 (bens ROT-2): der ECHTE Reviewer aus dem Claim (claimedBy) — nur
+        // Altclaims ohne das Feld fallen EHRLICH auf "system" zurück (Kennzeichnung im Beleg).
+        const reviewer = candidate.claimedBy ?? "system";
+        const reviewerUnknown = candidate.claimedBy === undefined;
+        // WP-SHIP8-CLOSE-6 (bens ROT-3b) + CLOSE-7 (bens ROT-1): exactly-once über die
+        // opId-stabile Event-Id; die auditPending-Markierung reist VORBEUGEND im selben
+        // resolveClaim-CAS mit — ein Crash zwischen Vollendung und Beleg hinterlässt sie
+        // automatisch für den Queue-Load-Nachzug.
+        const eventId = `import.candidate-accept:${candidate.id}:${opId}`;
         const resolved = await this.candidates.resolveClaim(candidate.id, opId, {
           status: "angenommen",
           koId: stamped.id,
-          // WP-SHIP8-CLOSE-6 (bens ROT-3a): auch die Recovery-Vollendung persistiert Wer/Wann.
-          reviewedBy: "system",
+          reviewedBy: reviewer,
           reviewedAt: new Date(this.now()).toISOString(),
+          reviewedAction: "accept",
+          auditPending: { eventId, action: "accept", actor: reviewer },
         });
         if (resolved) {
           completed += 1;
-          // WP-SHIP8-CLOSE-6 (bens ROT-3b): exactly-once über die opId-stabile Event-Id; ein
-          // Ausfall hinterlässt die persistente auditPending-Markierung für den Queue-Load-Nachzug.
-          const eventId = `import.candidate-accept:${candidate.id}:${opId}`;
+          let auditRecorded = false;
           try {
             await this.audit?.recordOnce(eventId, {
-              actor: "system",
+              // Fachliche Wahrheit: der Reviewer hat entschieden; die TECHNISCHE Vollendung
+              // weist recoveredBy:"system" im Payload aus (bens „ehrlicher Ausweis" — gewählt
+              // als Audit-Payload statt Kandidatenfeld: der Kandidat trägt die fachliche
+              // Entscheidung, der Beleg die Betriebsgeschichte).
+              actor: reviewer,
               action: "import.candidate-accept",
               target: candidate.id,
-              payload: { duplicate: candidate.duplicate, koId: stamped.id, recovered: true },
+              payload: {
+                duplicate: candidate.duplicate,
+                koId: stamped.id,
+                recovered: true,
+                recoveredBy: "system",
+                ...(reviewerUnknown ? { reviewerUnknown: true } : {}),
+              },
             });
+            auditRecorded = true;
           } catch {
-            // WP-SHIP8-CLOSE-5: dieselbe Abschluss-Audit-Semantik wie im Live-Accept — der
-            // Statuswechsel ist persistiert; der Beleg wird per Markierung nachziehbar.
+            // WP-SHIP8-CLOSE-5/7: dieselbe Abschluss-Audit-Semantik wie im Live-Accept — der
+            // Statuswechsel ist persistiert; die Markierung steht bereits aus dem Statuswrite.
             process.stderr.write(
-              `[KLARWERK] Recovery-Audit fehlgeschlagen (kandidat=${candidate.id}) — Vollendung IST persistiert, Beleg via auditPending.\n`,
+              `[KLARWERK] Recovery-Audit fehlgeschlagen (kandidat=${candidate.id}) — Vollendung IST persistiert, Beleg via auditPending nachziehbar.\n`,
             );
+          }
+          if (auditRecorded) {
             try {
-              await this.candidates.update({
-                ...resolved,
-                auditPending: { eventId, action: "accept", actor: "system" },
-              });
+              await this.candidates.clearAuditPending(candidate.id, eventId);
             } catch {
               process.stderr.write(
-                `[KLARWERK] auditPending-Markierung fehlgeschlagen (kandidat=${candidate.id}).\n`,
+                `[KLARWERK] auditPending-Markierung nicht geräumt (kandidat=${candidate.id}) — der Queue-Load räumt nach.\n`,
               );
             }
           }

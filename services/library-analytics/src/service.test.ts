@@ -530,31 +530,26 @@ function fakePool() {
         rows.set(id, data);
         return { rows: [] };
       }
-      // WP-SHIP8-CLOSE-2/3 (bens F1/ROT-1): der atomare Claim-CAS — Spiegel des bedingten
-      // UPDATE ... data || jsonb_build_object('status','in_bearbeitung','opId',$2,'claimedAt',$3)
-      // WHERE status='neu' RETURNING data.
-      if (sql.startsWith("UPDATE import_candidates SET data = data || jsonb_build_object")) {
-        const [id, opId, claimedAt] = params as [string, string, string];
+      // WP-SHIP8-CLOSE-2/3/7 (bens F1/ROT-1/ROT-2): der atomare Claim-CAS — Spiegel des
+      // bedingten UPDATE ... data || $2::jsonb WHERE status='neu' RETURNING data (der Patch
+      // trägt status/opId/claimedAt und seit CLOSE-7 optional claimedBy/claimedAction).
+      if (sql.startsWith("UPDATE import_candidates SET data = data || $2::jsonb")) {
+        const [id, patchJson] = params as [string, string];
         const stored = rows.get(id);
         const parsed = stored
-          ? (JSON.parse(stored) as {
-              status: string;
-              opId?: string | undefined;
-              claimedAt?: string | undefined;
-            })
+          ? (JSON.parse(stored) as { status: string } & Record<string, unknown>)
           : undefined;
         if (!parsed || parsed.status !== "neu") {
           return { rows: [], rowCount: 0 };
         }
-        parsed.status = "in_bearbeitung";
-        parsed.opId = opId;
-        parsed.claimedAt = claimedAt;
-        rows.set(id, JSON.stringify(parsed));
-        return { rows: [{ data: parsed }], rowCount: 1 };
+        const next = { ...parsed, ...(JSON.parse(patchJson) as Record<string, unknown>) };
+        rows.set(id, JSON.stringify(next));
+        return { rows: [{ data: next }], rowCount: 1 };
       }
-      // WP-SHIP8-CLOSE-3 (bens ROT-1): der Abschluss-CAS (resolveClaim) — Spiegel des bedingten
-      // UPDATE ... (data - 'opId' - 'claimedAt') || $3::jsonb WHERE status='in_bearbeitung' AND opId=$2.
-      if (sql.startsWith("UPDATE import_candidates SET data = (data - 'opId' - 'claimedAt')")) {
+      // WP-SHIP8-CLOSE-3/7 (bens ROT-1/ROT-2): der Abschluss-CAS (resolveClaim) — Spiegel des
+      // bedingten UPDATE ... (data - 'opId' - 'claimedAt' - 'claimedBy' - 'claimedAction') ||
+      // $3::jsonb WHERE status='in_bearbeitung' AND opId=$2.
+      if (sql.startsWith("UPDATE import_candidates SET data = (data - 'opId' - 'claimedAt'")) {
         const [id, opId, patchJson] = params as [string, string, string];
         const stored = rows.get(id);
         const parsed = stored
@@ -562,6 +557,8 @@ function fakePool() {
               status: string;
               opId?: string | undefined;
               claimedAt?: string | undefined;
+              claimedBy?: string | undefined;
+              claimedAction?: string | undefined;
             })
           : undefined;
         if (!parsed || parsed.status !== "in_bearbeitung" || parsed.opId !== opId) {
@@ -569,9 +566,28 @@ function fakePool() {
         }
         parsed.opId = undefined;
         parsed.claimedAt = undefined;
+        parsed.claimedBy = undefined;
+        parsed.claimedAction = undefined;
         const next = { ...parsed, ...(JSON.parse(patchJson) as Record<string, unknown>) };
         rows.set(id, JSON.stringify(next));
         return { rows: [{ data: next }], rowCount: 1 };
+      }
+      // WP-SHIP8-CLOSE-7 (bens ROT-1): bedingtes Räumen der Markierung — Spiegel des UPDATE
+      // ... data - 'auditPending' WHERE auditPending.eventId=$2 RETURNING id.
+      if (sql.startsWith("UPDATE import_candidates SET data = data - 'auditPending'")) {
+        const [id, eventId] = params as [string, string];
+        const stored = rows.get(id);
+        const parsed = stored
+          ? (JSON.parse(stored) as {
+              auditPending?: { eventId: string } | undefined;
+            } & Record<string, unknown>)
+          : undefined;
+        if (!parsed || parsed.auditPending?.eventId !== eventId) {
+          return { rows: [], rowCount: 0 };
+        }
+        parsed.auditPending = undefined;
+        rows.set(id, JSON.stringify(parsed));
+        return { rows: [{ id }], rowCount: 1 };
       }
       if (sql.startsWith("UPDATE import_candidates")) {
         const [id, data] = params as [string, string];

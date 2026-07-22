@@ -75,12 +75,21 @@ export interface ImportCandidate {
   // Lease-Beginn (ISO): erst nach Ablauf von REVIEW_CLAIM_LEASE_MS greift die Recovery — ein
   // LAUFENDER Claim wird nie angefasst.
   claimedAt?: string | undefined;
+  // WP-SHIP8-CLOSE-7 (bens ROT-2): WER die Aktion geclaimt hat und WELCHE — im selben Claim-CAS
+  // persistiert. Die Crash-Recovery vollendet damit im Namen des ECHTEN Reviewers (reviewedBy =
+  // claimedBy) statt anonym als System; resolveClaim räumt beide Felder wie opId/claimedAt aus.
+  // Altclaims (vor CLOSE-7) haben die Felder nicht — die Recovery fällt dann EHRLICH auf
+  // reviewedBy "system" mit Kennzeichnung zurück.
+  claimedBy?: string | undefined;
+  claimedAction?: ReviewAction | undefined;
   // WP-SHIP8-CLOSE-6 (bens ROT-3a): WER/WANN der Review-Entscheidung — IM SELBEN Statuswrite
   // persistiert (resolveClaim) und damit unverlierbar im Produktbestand, unabhängig vom
-  // Aktionsaudit. Die Aktion selbst ist aus dem Status ableitbar (angenommen/abgelehnt/
-  // info-angefragt); für den Beleg-Nachzug trägt auditPending sie explizit.
+  // Aktionsaudit.
   reviewedBy?: string | undefined;
   reviewedAt?: string | undefined;
+  // WP-SHIP8-CLOSE-7 (bens GELB): die Aktion WIRKLICH persistiert (nicht aus dem Status
+  // abgeleitet) — beim Abschluss aus der geclaimten Aktion übernommen.
+  reviewedAction?: ReviewAction | undefined;
   // WP-SHIP8-CLOSE-6 (bens ROT-3b/3c): SCHWEBENDER Aktionsbeleg — gesetzt, wenn der
   // import.candidate-<action>-Audit NACH dem persistierten Statuswechsel fehlschlug. Trägt alles
   // für den exactly-once-Nachzug (recordOnce mit dieser eventId) beim nächsten Queue-Load; die

@@ -1,6 +1,6 @@
 import type { Pool } from "pg";
 import type { CandidateRepo, ClaimResolution, ImportCandidateRemoval } from "./repo";
-import { type ImportCandidate, LibraryError } from "./types";
+import { type ImportCandidate, LibraryError, type ReviewAction } from "./types";
 
 // SCRUM-157: Postgres-Adapter der Import-/Source-Review-Queue. Vollständiger Kandidat als
 // JSONB (Status/Duplicate/Note/koId/createdAt bleiben erhalten). Additive Tabelle.
@@ -180,10 +180,25 @@ export class PgCandidateRepo implements CandidateRepo {
   // undefined (Status geändert oder Kandidat weg), der Aufrufer bricht ehrlich ab.
   // WP-SHIP8-CLOSE-3 (bens ROT-1): der Claim persistiert das Lease-Protokoll (opId/claimedAt) im
   // SELBEN Write mit — Grundlage der Crash-Recovery.
-  async claim(id: string, opId: string, claimedAt: string): Promise<ImportCandidate | undefined> {
+  // WP-SHIP8-CLOSE-7 (bens ROT-2): zusätzlich claimedBy/claimedAction im SELBEN CAS (additiv;
+  // Altaufrufer ohne die Felder schreiben wie bisher nur das Lease-Protokoll).
+  async claim(
+    id: string,
+    opId: string,
+    claimedAt: string,
+    claimedBy?: string,
+    claimedAction?: ReviewAction,
+  ): Promise<ImportCandidate | undefined> {
+    const patch: Record<string, unknown> = { status: "in_bearbeitung", opId, claimedAt };
+    if (claimedBy !== undefined) {
+      patch.claimedBy = claimedBy;
+    }
+    if (claimedAction !== undefined) {
+      patch.claimedAction = claimedAction;
+    }
     const res = await this.pool.query<CandidateRow>(
-      "UPDATE import_candidates SET data = data || jsonb_build_object('status', 'in_bearbeitung', 'opId', $2::text, 'claimedAt', $3::text) WHERE id=$1 AND data->>'status'='neu' RETURNING data",
-      [id, opId, claimedAt],
+      "UPDATE import_candidates SET data = data || $2::jsonb WHERE id=$1 AND data->>'status'='neu' RETURNING data",
+      [id, JSON.stringify(patch)],
     );
     return res.rows[0]?.data;
   }
@@ -213,11 +228,29 @@ export class PgCandidateRepo implements CandidateRepo {
     if (next.reviewedAt !== undefined) {
       patch.reviewedAt = next.reviewedAt;
     }
+    // WP-SHIP8-CLOSE-7 (bens GELB + ROT-1): Aktion + vorbeugende Beleg-Markierung im selben Patch.
+    if (next.reviewedAction !== undefined) {
+      patch.reviewedAction = next.reviewedAction;
+    }
+    if (next.auditPending !== undefined) {
+      patch.auditPending = next.auditPending;
+    }
     const res = await this.pool.query<CandidateRow>(
-      "UPDATE import_candidates SET data = (data - 'opId' - 'claimedAt') || $3::jsonb WHERE id=$1 AND data->>'status'='in_bearbeitung' AND data->>'opId'=$2 RETURNING data",
+      "UPDATE import_candidates SET data = (data - 'opId' - 'claimedAt' - 'claimedBy' - 'claimedAction') || $3::jsonb WHERE id=$1 AND data->>'status'='in_bearbeitung' AND data->>'opId'=$2 RETURNING data",
       [id, opId, JSON.stringify(patch)],
     );
     return res.rows[0]?.data;
+  }
+
+  // WP-SHIP8-CLOSE-7 (bens ROT-1): BEDINGTES Entfernen der auditPending-Markierung als EIN
+  // Statement — nur wenn sie noch exakt diese eventId trägt (nie eine fremde/neuere Markierung
+  // überschreiben). 0 Zeilen → false (weg/fremd/Kandidat entfernt) — kein Fehler.
+  async clearAuditPending(id: string, eventId: string): Promise<boolean> {
+    const res = await this.pool.query(
+      "UPDATE import_candidates SET data = data - 'auditPending' WHERE id=$1 AND data->'auditPending'->>'eventId'=$2 RETURNING id",
+      [id, eventId],
+    );
+    return (res.rowCount ?? 0) > 0;
   }
 
   async update(candidate: ImportCandidate): Promise<void> {

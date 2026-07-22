@@ -68,6 +68,7 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   // WP-SHIP8-CLOSE-3 (bens ROT-1): claim/resolveClaim mutieren den Kandidaten (Status + Lease) →
   // journalieren, sonst wäre nach einem Dev-Neustart ein Claim/Abschluss verloren (Replay ist
   // deterministisch: beide CAS-Methoden tragen ihre Bedingung in den args).
+  // WP-SHIP8-CLOSE-7 (bens ROT-1): clearAuditPending ist ebenfalls ein bedingter Kandidaten-Write.
   candidates: [
     "insert",
     "insertIfAbsent",
@@ -76,6 +77,7 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
     "removeByIds",
     "claim",
     "resolveClaim",
+    "clearAuditPending",
   ],
   modelRuns: ["append"],
   // Audit-P3 (SCRUM-397): Gelesen-Status überlebt den Neustart (Dev-Journal).

@@ -504,16 +504,33 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
       },
     } as unknown as import("pg").Pool;
     const pg = new PgCandidateRepo(pool);
+    // WP-SHIP8-CLOSE-7 (bens ROT-2): der Claim-Patch reist als EIN jsonb-Parameter — Altaufrufer
+    // (3 Argumente) schreiben nur das Lease-Protokoll, neue Aufrufer zusätzlich claimedBy/-Action.
     await pg.claim("a", "op-1", "2026-07-22T06:00:00.000Z");
     expect(calls[0]?.sql).toBe(
-      "UPDATE import_candidates SET data = data || jsonb_build_object('status', 'in_bearbeitung', 'opId', $2::text, 'claimedAt', $3::text) WHERE id=$1 AND data->>'status'='neu' RETURNING data",
+      "UPDATE import_candidates SET data = data || $2::jsonb WHERE id=$1 AND data->>'status'='neu' RETURNING data",
     );
-    expect(calls[0]?.params).toEqual(["a", "op-1", "2026-07-22T06:00:00.000Z"]);
+    expect(calls[0]?.params).toEqual([
+      "a",
+      '{"status":"in_bearbeitung","opId":"op-1","claimedAt":"2026-07-22T06:00:00.000Z"}',
+    ]);
+    await pg.claim("a", "op-1", "2026-07-22T06:00:00.000Z", "rev-x", "accept");
+    expect(calls[1]?.params).toEqual([
+      "a",
+      '{"status":"in_bearbeitung","opId":"op-1","claimedAt":"2026-07-22T06:00:00.000Z","claimedBy":"rev-x","claimedAction":"accept"}',
+    ]);
     await pg.resolveClaim("a", "op-1", { status: "angenommen", koId: "ko-9" });
-    expect(calls[1]?.sql).toBe(
-      "UPDATE import_candidates SET data = (data - 'opId' - 'claimedAt') || $3::jsonb WHERE id=$1 AND data->>'status'='in_bearbeitung' AND data->>'opId'=$2 RETURNING data",
+    expect(calls[2]?.sql).toBe(
+      "UPDATE import_candidates SET data = (data - 'opId' - 'claimedAt' - 'claimedBy' - 'claimedAction') || $3::jsonb WHERE id=$1 AND data->>'status'='in_bearbeitung' AND data->>'opId'=$2 RETURNING data",
     );
-    expect(calls[1]?.params).toEqual(["a", "op-1", '{"status":"angenommen","koId":"ko-9"}']);
+    expect(calls[2]?.params).toEqual(["a", "op-1", '{"status":"angenommen","koId":"ko-9"}']);
+    // WP-SHIP8-CLOSE-7 (bens ROT-1): das bedingte Räumen der Markierung ist EIN Statement,
+    // gebunden an die exakte eventId — nie ein fremder/neuerer Marker.
+    await pg.clearAuditPending("a", "ev-1");
+    expect(calls[3]?.sql).toBe(
+      "UPDATE import_candidates SET data = data - 'auditPending' WHERE id=$1 AND data->'auditPending'->>'eventId'=$2 RETURNING id",
+    );
+    expect(calls[3]?.params).toEqual(["a", "ev-1"]);
     await pg.update(cand("a")); // 1 Zeile getroffen → ok
     updateRowCount = 0;
     await expect(pg.update(cand("a"))).rejects.toMatchObject({ code: "CONFLICT" });

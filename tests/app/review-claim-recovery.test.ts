@@ -747,6 +747,249 @@ describe("WP-SHIP8-CLOSE-6 ROT-3: Review-Aktionsbeleg darf nicht dauerhaft fehle
   });
 });
 
+// ---- WP-SHIP8-CLOSE-7 (bens sammel34): auditPending vorbeugend im Statuswrite (ROT-1), ----
+// ---- Claim kennt Akteur+Aktion (ROT-2), reviewedAction wirklich persistiert (GELB).     ----
+
+describe("WP-SHIP8-CLOSE-7 ROT-1: auditPending reist VORBEUGEND im selben resolveClaim-CAS", () => {
+  it("bens Pflichttest: Crash DIREKT nach resolveClaim, VOR Audit/Clear → Queue-Load erzeugt EXAKT EINEN Beleg (gespeicherte Event-Id) und räumt die Markierung aus dem Statuswrite", async () => {
+    const ctx = sideEffectHarness();
+    const [cand] = await ctx.library.createImportCandidates(
+      [{ title: "Riemen", statement: "s", type: "best_practice", category: "K" }],
+      "tester",
+    );
+    const id = (cand as { id: string }).id;
+    // „Prozessabbruch": das Abschluss-Audit dieses Laufs kehrt NIE zurück — der Lauf stirbt
+    // exakt zwischen Statuswrite und recordOnce/Clear (bens Crash-Fenster, das vor CLOSE-7
+    // weder Beleg noch Markierung hinterließ).
+    const origRecordOnce = ctx.audit.recordOnce.bind(ctx.audit);
+    let crashArmed = true;
+    (ctx.audit as { recordOnce: AuditService["recordOnce"] }).recordOnce = async (
+      eventId,
+      input,
+      tx,
+    ) => {
+      if (crashArmed && input.action === "import.candidate-accept") {
+        crashArmed = false;
+        return new Promise<never>(() => {});
+      }
+      return origRecordOnce(eventId, input, tx);
+    };
+    void ctx.library.reviewImportCandidate(id, "accept", "rev-1"); // hängt für immer
+    await vi.waitFor(async () => {
+      expect((await ctx.candidates.findById(id))?.status).toBe("angenommen");
+    });
+    // Der EINE Statuswrite trägt bereits ALLES: Endstatus, Wer/Wann/Aktion UND die Markierung.
+    const during = await ctx.candidates.findById(id);
+    expect(during?.reviewedBy).toBe("rev-1");
+    expect(during?.reviewedAction).toBe("accept");
+    const marker = during?.auditPending;
+    expect(marker?.eventId.startsWith(`import.candidate-accept:${id}:`)).toBe(true);
+    expect(await ctx.audit.list({ action: "import.candidate-accept", target: id })).toHaveLength(0);
+    // „Neustart": frische Service-Instanz auf DENSELBEN Repos — der Queue-Load zieht den Beleg
+    // über die GESPEICHERTE Event-Id nach (die opId des toten Laufs ist längst ausgeräumt).
+    const restarted = new LibraryService({
+      koService: ctx.koService,
+      candidates: ctx.candidates,
+      audit: ctx.audit,
+      externalUpsert: true,
+      now: () => ctx.clock.nowMs,
+    });
+    expect(await restarted.retryPendingReviewAudits()).toBe(1);
+    const belege = await ctx.audit.list({ action: "import.candidate-accept", target: id });
+    expect(belege).toHaveLength(1);
+    expect(belege[0]?.eventId).toBe(marker?.eventId);
+    expect(belege[0]?.payload).toMatchObject({ retried: true });
+    expect((await ctx.candidates.findById(id))?.auditPending).toBeUndefined();
+    // Kein Doppel-Beleg: der nächste Load ist ein No-op.
+    expect(await restarted.retryPendingReviewAudits()).toBe(0);
+    expect(await ctx.audit.list({ action: "import.candidate-accept", target: id })).toHaveLength(1);
+    expect(await ctx.audit.verify()).toBe(true);
+  });
+
+  it("Crash NACH gelungenem Audit, VOR dem Clear → der Nachzug räumt die Markierung OHNE Doppel-Beleg (recordOnce meldet false)", async () => {
+    const ctx = sideEffectHarness();
+    const [cand] = await ctx.library.createImportCandidates(
+      [{ title: "Lager", statement: "s", type: "best_practice", category: "K" }],
+      "tester",
+    );
+    const id = (cand as { id: string }).id;
+    // Crash-Punkt diesmal HINTER recordOnce: das bedingte Räumen kehrt nie zurück.
+    const origClear = ctx.candidates.clearAuditPending.bind(ctx.candidates);
+    let crashArmed = true;
+    (
+      ctx.candidates as { clearAuditPending: typeof ctx.candidates.clearAuditPending }
+    ).clearAuditPending = (cid, eventId) => {
+      if (crashArmed) {
+        crashArmed = false;
+        return new Promise<never>(() => {});
+      }
+      return origClear(cid, eventId);
+    };
+    void ctx.library.reviewImportCandidate(id, "accept", "rev-1"); // hängt für immer
+    await vi.waitFor(async () => {
+      expect(await ctx.audit.list({ action: "import.candidate-accept", target: id })).toHaveLength(
+        1,
+      );
+    });
+    // Beleg da, Markierung noch nicht geräumt — der Queue-Load räumt exactly-once nach.
+    expect((await ctx.candidates.findById(id))?.auditPending).toBeTruthy();
+    expect(await ctx.library.retryPendingReviewAudits()).toBe(1);
+    expect((await ctx.candidates.findById(id))?.auditPending).toBeUndefined();
+    expect(await ctx.audit.list({ action: "import.candidate-accept", target: id })).toHaveLength(1);
+  });
+});
+
+describe("WP-SHIP8-CLOSE-7 ROT-2: der Claim kennt Akteur + Aktion — die Recovery verliert den Reviewer nicht", () => {
+  it("bens Pflichttest: Accept von xenia crasht nach KO-Erzeugung → Recovery vollendet mit reviewedBy=xenia (nicht system), Event-Id passt zur geclaimten Aktion", async () => {
+    const ctx = sideEffectHarness();
+    const [cand] = await ctx.library.createImportCandidates(
+      [{ title: "Kupplung", statement: "s", type: "best_practice", category: "K" }],
+      "tester",
+    );
+    const id = (cand as { id: string }).id;
+    // Crash NACH KO-Erzeugung, VOR Endstatus: resolveClaim hängt einmalig (Muster CLOSE-4).
+    const origResolve = ctx.candidates.resolveClaim.bind(ctx.candidates);
+    let intercepted = false;
+    (ctx.candidates as { resolveClaim: typeof ctx.candidates.resolveClaim }).resolveClaim = (
+      rid,
+      opId,
+      next,
+    ) => {
+      if (!intercepted) {
+        intercepted = true;
+        return new Promise(() => {});
+      }
+      return origResolve(rid, opId, next);
+    };
+    ctx.library.reviewImportCandidate(id, "accept", "xenia").catch(() => {});
+    await vi.waitFor(() => {
+      expect(intercepted).toBe(true);
+    });
+    // ROT-2: der Claim trägt den ECHTEN Akteur und die geclaimte Aktion.
+    const during = await ctx.candidates.findById(id);
+    expect(during?.status).toBe("in_bearbeitung");
+    expect(during?.claimedBy).toBe("xenia");
+    expect(during?.claimedAction).toBe("accept");
+    const opId = during?.opId as string;
+    expect(opId).toBeTruthy();
+
+    ctx.clock.nowMs += REVIEW_CLAIM_LEASE_MS + 1;
+    expect(await ctx.library.recoverStaleReviewClaims()).toEqual({ completed: 1, released: 0 });
+    const after = await ctx.candidates.findById(id);
+    expect(after?.status).toBe("angenommen");
+    // Der ECHTE Reviewer, nicht system — und die Aktion wirklich persistiert (GELB).
+    expect(after?.reviewedBy).toBe("xenia");
+    expect(after?.reviewedAction).toBe("accept");
+    // resolveClaim räumt die Claim-Felder wie bisher aus; die Markierung ist nach dem
+    // gelungenen Recovery-Beleg ebenfalls geräumt.
+    expect(after?.claimedBy).toBeUndefined();
+    expect(after?.claimedAction).toBeUndefined();
+    expect(after?.auditPending).toBeUndefined();
+    const belege = await ctx.audit.list({ action: "import.candidate-accept", target: id });
+    expect(belege).toHaveLength(1);
+    // Die Event-Id passt zur GECLAIMTEN Aktion (und zur opId des gecrashten Laufs).
+    expect(belege[0]?.eventId).toBe(`import.candidate-accept:${id}:${opId}`);
+    expect(belege[0]?.actor).toBe("xenia");
+    // Ehrlicher Ausweis der TECHNISCHEN Vollendung im Beleg-Payload.
+    expect(belege[0]?.payload).toMatchObject({ recovered: true, recoveredBy: "system" });
+    expect(belege[0]?.payload).not.toHaveProperty("reviewerUnknown");
+  });
+
+  it("Altclaim-Fallback: Claim ohne claimedBy/claimedAction → Recovery vollendet ehrlich als system MIT Kennzeichnung", async () => {
+    const ctx = sideEffectHarness();
+    const [cand] = await ctx.library.createImportCandidates(
+      [{ title: "Welle", statement: "s", type: "best_practice", category: "K" }],
+      "tester",
+    );
+    const id = (cand as { id: string }).id;
+    // Altclaim (vor CLOSE-7) direkt am Repo: NUR opId + claimedAt (3-Argumente-Form).
+    await ctx.candidates.claim(id, "op-alt", new Date(ctx.clock.nowMs).toISOString());
+    // Der Altlauf hatte sein KO bereits materialisiert (gestempelt), dann Crash.
+    await ctx.koService.create({
+      title: "Welle",
+      statement: "s",
+      type: "best_practice",
+      category: "K",
+      author: "alt-reviewer",
+      importCandidateId: id,
+    });
+    ctx.clock.nowMs += REVIEW_CLAIM_LEASE_MS + 1;
+    expect(await ctx.library.recoverStaleReviewClaims()).toEqual({ completed: 1, released: 0 });
+    const after = await ctx.candidates.findById(id);
+    expect(after?.status).toBe("angenommen");
+    expect(after?.reviewedBy).toBe("system");
+    expect(after?.reviewedAction).toBe("accept");
+    const belege = await ctx.audit.list({ action: "import.candidate-accept", target: id });
+    expect(belege).toHaveLength(1);
+    expect(belege[0]?.eventId).toBe(`import.candidate-accept:${id}:op-alt`);
+    expect(belege[0]?.actor).toBe("system");
+    // Kennzeichnung: der echte Reviewer ist bei Altclaims ehrlich unbekannt.
+    expect(belege[0]?.payload).toMatchObject({
+      recovered: true,
+      recoveredBy: "system",
+      reviewerUnknown: true,
+    });
+  });
+
+  it("defensiv: Stempel-KO vorhanden, aber geclaimt war NICHT accept → Claim bleibt fail-closed stehen (lautes Log)", async () => {
+    const warnSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const ctx = sideEffectHarness();
+      const [cand] = await ctx.library.createImportCandidates(
+        [{ title: "Bolzen", statement: "s", type: "best_practice", category: "K" }],
+        "tester",
+      );
+      const id = (cand as { id: string }).id;
+      await ctx.candidates.claim(
+        id,
+        "op-r",
+        new Date(ctx.clock.nowMs).toISOString(),
+        "rev-1",
+        "reject",
+      );
+      await ctx.koService.create({
+        title: "Bolzen",
+        statement: "s",
+        type: "best_practice",
+        category: "K",
+        author: "a",
+        importCandidateId: id,
+      });
+      ctx.clock.nowMs += REVIEW_CLAIM_LEASE_MS + 1;
+      // Eine Vollendung als „angenommen" würde die geclaimte reject-Entscheidung verfälschen.
+      expect(await ctx.library.recoverStaleReviewClaims()).toEqual({ completed: 0, released: 0 });
+      expect((await ctx.candidates.findById(id))?.status).toBe("in_bearbeitung");
+      const logged = warnSpy.mock.calls.some((call) =>
+        String(call[0]).includes("geclaimte Aktion ist reject"),
+      );
+      expect(logged).toBe(true);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+});
+
+describe("WP-SHIP8-CLOSE-7 GELB: reviewedAction wird WIRKLICH persistiert", () => {
+  it("auch reject trägt reviewedAction (nicht aus dem Status abgeleitet); Markierung nach gelungenem Beleg geräumt", async () => {
+    const ctx = sideEffectHarness();
+    const [cand] = await ctx.library.createImportCandidates(
+      [{ title: "Feder", statement: "s", type: "best_practice", category: "K" }],
+      "tester",
+    );
+    const id = (cand as { id: string }).id;
+    const reviewed = await ctx.library.reviewImportCandidate(id, "reject", "rev-r");
+    expect(reviewed.status).toBe("abgelehnt");
+    expect(reviewed.reviewedBy).toBe("rev-r");
+    expect(reviewed.reviewedAction).toBe("reject");
+    // Beleg gelungen → kein Schwebezustand in Antwort UND Bestand.
+    expect(reviewed.auditPending).toBeUndefined();
+    const persisted = await ctx.candidates.findById(id);
+    expect(persisted?.reviewedAction).toBe("reject");
+    expect(persisted?.auditPending).toBeUndefined();
+    expect(await ctx.audit.list({ action: "import.candidate-reject", target: id })).toHaveLength(1);
+  });
+});
+
 describe("WP-SHIP8-CLOSE-4 ROT-1B/1C: DB-Unique-Anker + Cleanup-Schutz + Trash-Vertrag", () => {
   // Accept bis VOR den Endstatus treiben (resolveClaim hängt einmalig) — KO existiert mit
   // Kandidaten-Anker, der Claim bleibt offen. Liefert die Kandidaten-Id.

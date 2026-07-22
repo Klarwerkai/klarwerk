@@ -1,4 +1,10 @@
-import { type ImportCandidate, type ImportItem, LibraryError, type ReviewStatus } from "./types";
+import {
+  type ImportCandidate,
+  type ImportItem,
+  LibraryError,
+  type ReviewAction,
+  type ReviewStatus,
+} from "./types";
 
 // WP-SHIP8-CLOSE-3 (bens ROT-2): der OFFENE Idempotenzraum der Review-Queue. Ein geclaimter
 // Kandidat ('in_bearbeitung') ist weiterhin OFFEN — er belegt denselben (provider, externalId,
@@ -29,7 +35,16 @@ export interface CandidateRepo {
   // oder undefined, wenn der CAS nicht griff (Status geändert/Kandidat weg) — der Aufrufer
   // bricht dann ehrlich ab. Das bedingte Cleanup-Delete (removeByIds, erwarteter Status) kann
   // einen geclaimten Kandidaten nicht mehr treffen.
-  claim(id: string, opId: string, claimedAt: string): Promise<ImportCandidate | undefined>;
+  // WP-SHIP8-CLOSE-7 (bens ROT-2): claimedBy/claimedAction reisen ADDITIV im selben CAS mit —
+  // die Recovery kennt damit den echten Reviewer und die geclaimte Aktion. Beide optional
+  // (Altaufrufer/Altclaims bleiben gültig); resolveClaim räumt sie wie opId/claimedAt aus.
+  claim(
+    id: string,
+    opId: string,
+    claimedAt: string,
+    claimedBy?: string,
+    claimedAction?: ReviewAction,
+  ): Promise<ImportCandidate | undefined>;
   // WP-SHIP8-CLOSE-3 (bens ROT-1): ATOMARER Abschluss des Claims (CAS auf status='in_bearbeitung'
   // UND exakt DIESER opId) — wendet `next` an (Status, optional koId/note/item) und räumt das
   // Lease-Protokoll (opId/claimedAt) IMMER aus. undefined = der Claim gehört nicht (mehr) dieser
@@ -60,6 +75,12 @@ export interface CandidateRepo {
   // atomar je Item, kein await zwischen Prüfen und Löschen). Rückgabe sind die TATSÄCHLICH
   // entfernten Ids — die Wahrheit für die Bilanz; ein Accept im letzten Fenster verliert nie.
   removeByIds(entries: readonly ImportCandidateRemoval[]): Promise<string[]>;
+  // WP-SHIP8-CLOSE-7 (bens ROT-1): BEDINGTES Löschen der auditPending-Markierung — nur wenn sie
+  // noch EXAKT diese eventId trägt (CAS-Semantik: eine inzwischen neu gesetzte fremde Markierung
+  // wird nie überschrieben). true = Markierung entfernt; false = nicht (mehr) vorhanden/fremd.
+  // Ein verschwundener Kandidat ist hier KEIN Fehler (Cleanup darf gewinnen) — der Beleg selbst
+  // ist zu diesem Zeitpunkt bereits über recordOnce gesichert bzw. exactly-once nachziehbar.
+  clearAuditPending(id: string, eventId: string): Promise<boolean>;
 }
 
 // WP-SHIP8-CLOSE (bens F2): ein bedingter Lösch-Auftrag — id + der erwartete (bestätigte) Status.
@@ -78,6 +99,13 @@ export interface ClaimResolution {
   // WP-SHIP8-CLOSE-6 (bens ROT-3a): Wer/Wann der Entscheidung — im SELBEN Statuswrite persistiert.
   reviewedBy?: string;
   reviewedAt?: string;
+  // WP-SHIP8-CLOSE-7 (bens GELB): die Aktion wirklich persistiert (aus der geclaimten Aktion).
+  reviewedAction?: ReviewAction;
+  // WP-SHIP8-CLOSE-7 (bens ROT-1): VORBEUGENDE Beleg-Markierung — im SELBEN CAS wie der
+  // Endstatus persistiert (die Event-Id ist vor dem Statuswrite bekannt). Gelingt das
+  // Aktionsaudit danach, löscht clearAuditPending sie bedingt; bei Fehler ODER Crash bleibt sie
+  // automatisch für den Queue-Load-Nachzug stehen — es gibt kein Fenster ohne Beleg UND Markierung.
+  auditPending?: { eventId: string; action: ReviewAction; actor: string };
 }
 
 // WP-SHIP8-FIX (bens F3): kanonischer Provider-Anteil ALLER Import-Schlüssel (Queue-Idempotenz,
@@ -159,7 +187,14 @@ export class InMemoryCandidateRepo implements CandidateRepo {
   // WP-SHIP8-CLOSE-2 (bens F1): synchron auf der Map — Status-Prüfung und Set ohne await
   // dazwischen (dasselbe Atomaritäts-Muster wie removeByIds).
   // WP-SHIP8-CLOSE-3 (bens ROT-1): der Claim persistiert das Lease-Protokoll (opId/claimedAt) mit.
-  claim(id: string, opId: string, claimedAt: string): Promise<ImportCandidate | undefined> {
+  // WP-SHIP8-CLOSE-7 (bens ROT-2): zusätzlich claimedBy/claimedAction — im selben synchronen Set.
+  claim(
+    id: string,
+    opId: string,
+    claimedAt: string,
+    claimedBy?: string,
+    claimedAction?: ReviewAction,
+  ): Promise<ImportCandidate | undefined> {
     const candidate = this.items.get(id);
     if (!candidate || candidate.status !== "neu") {
       return Promise.resolve(undefined);
@@ -167,6 +202,8 @@ export class InMemoryCandidateRepo implements CandidateRepo {
     candidate.status = "in_bearbeitung";
     candidate.opId = opId;
     candidate.claimedAt = claimedAt;
+    candidate.claimedBy = claimedBy;
+    candidate.claimedAction = claimedAction;
     return Promise.resolve(candidate);
   }
 
@@ -198,9 +235,29 @@ export class InMemoryCandidateRepo implements CandidateRepo {
     if (next.reviewedAt !== undefined) {
       candidate.reviewedAt = next.reviewedAt;
     }
+    // WP-SHIP8-CLOSE-7 (bens GELB + ROT-1): Aktion + vorbeugende Beleg-Markierung im selben Write.
+    if (next.reviewedAction !== undefined) {
+      candidate.reviewedAction = next.reviewedAction;
+    }
+    if (next.auditPending !== undefined) {
+      candidate.auditPending = next.auditPending;
+    }
     candidate.opId = undefined;
     candidate.claimedAt = undefined;
+    candidate.claimedBy = undefined;
+    candidate.claimedAction = undefined;
     return Promise.resolve(candidate);
+  }
+
+  // WP-SHIP8-CLOSE-7 (bens ROT-1): synchrones bedingtes Löschen — nur die EIGENE Markierung
+  // (exakte eventId) wird entfernt; verschwundener Kandidat oder fremde Markierung → false.
+  clearAuditPending(id: string, eventId: string): Promise<boolean> {
+    const candidate = this.items.get(id);
+    if (!candidate || candidate.auditPending?.eventId !== eventId) {
+      return Promise.resolve(false);
+    }
+    candidate.auditPending = undefined;
+    return Promise.resolve(true);
   }
 
   update(candidate: ImportCandidate): Promise<void> {

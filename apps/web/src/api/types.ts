@@ -493,6 +493,8 @@ export interface ImportCandidate {
   // WP-SHIP8-CLOSE-6 (bens ROT-3a): Wer/Wann der Review-Entscheidung — im Statuswrite persistiert.
   reviewedBy?: string;
   reviewedAt?: string;
+  // WP-SHIP8-CLOSE-7 (bens GELB): die Aktion wirklich persistiert (nicht aus dem Status abgeleitet).
+  reviewedAction?: ReviewAction;
   // WP-SHIP8-CLOSE-6 (bens ROT-3c): PRÄSENZ = der Aktionsbeleg schwebt noch (wird beim nächsten
   // Queue-Load exactly-once nachgezogen) — Muster Cleanup auditFailed.
   auditPending?: { eventId: string; action: ReviewAction; actor: string };
