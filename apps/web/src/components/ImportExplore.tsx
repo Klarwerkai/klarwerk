@@ -8,7 +8,7 @@
 // WP-IC-PAKET-1 (Teil 4): „davon bereits importiert"-Zeile aus dem Quell-Referenz-Abgleich.
 import { useMutation } from "@tanstack/react-query";
 import { Images, Loader2, Search, Users } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
@@ -21,7 +21,9 @@ import {
   toExploreView,
 } from "../lib/importExplore";
 import { ImportSelect } from "./ImportSelect";
-import { Button, Card, SectionLabel } from "./ui";
+// WP-COCKPIT-LINIE: Schritt-Überschriften (1 Quelle · 2 Erkunden) + Meilenstein-Meldung an die Leiste.
+import { ImportStepHeading, useReportImportStage } from "./ImportStepper";
+import { Button, Card } from "./ui";
 
 // Die Kern-Platzhalter kommen sprach-neutral aus IC-1 („(ohne Autor)"/„(ohne Label)"); hier auf die
 // lokalisierten Anzeigetexte abbilden, damit die Landkarte in jeder UI-Sprache ehrlich lesbar ist.
@@ -269,13 +271,25 @@ export function ImportExplore(): JSX.Element {
   const view = explore.data ? toExploreView(explore.data.summary) : null;
   const errorMessage = explore.error instanceof ApiError ? explore.error.message : t("state.error");
 
+  // WP-COCKPIT-LINIE: Landkarte da → Meilenstein "explored" an die Schritt-Leiste melden und die
+  // Ansicht zum neuen Schritt scrollen (Muster aus R7 — der Schrittwechsel darf nicht vom
+  // Scroll-Zufall abhängen).
+  const reach = useReportImportStage();
+  const mapRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (explore.data) {
+      reach("explored");
+      mapRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+    }
+  }, [explore.data, reach]);
+
   return (
     <Card className="mb-5">
-      <SectionLabel>{t("imp.explore.title")}</SectionLabel>
-      <p className="mb-3 text-[13px] text-muted">{t("imp.explore.hint")}</p>
+      {/* WP-COCKPIT-LINIE Schritt 1: Quelle wählen. */}
+      <ImportStepHeading step="source" />
 
       {/* Quellen-Kacheln: Confluence aktiv, Jira „bald". */}
-      <div className="flex flex-wrap gap-2">
+      <div className="mt-2 flex flex-wrap gap-2 pl-8">
         <div className="rounded-card border border-ink/25 bg-surface px-3 py-2 text-[13px] font-semibold text-text">
           Confluence
           <span className="ml-1.5 rounded-pill bg-trust-pos-bg px-1.5 py-0.5 text-[10px] font-medium text-trust-pos-text">
@@ -290,14 +304,28 @@ export function ImportExplore(): JSX.Element {
         </div>
       </div>
 
-      <div className="mt-3">
-        <Button variant="primary" disabled={explore.isPending} onClick={() => explore.mutate()}>
+      {/* WP-COCKPIT-LINIE Schritt 2: Erkunden. Der Knopf ist der EINE Primär-CTA des Einstiegs
+          („Weiter: …"-Muster); sobald die Landkarte da ist, tritt er zurück (outline, „Neu
+          erkunden") — der nächste Primär-Knopf gehört dann Schritt 3. */}
+      <div className="mt-4">
+        <ImportStepHeading step="explore" />
+      </div>
+      <div className="mt-2 pl-8">
+        <Button
+          variant={view ? "outline" : "primary"}
+          disabled={explore.isPending}
+          onClick={() => explore.mutate()}
+        >
           {explore.isPending ? (
             <Loader2 size={15} className="animate-spin" />
           ) : (
             <Search size={15} />
           )}
-          {explore.isPending ? t("imp.explore.exploring") : t("imp.explore.cta")}
+          {explore.isPending
+            ? t("imp.explore.exploring")
+            : view
+              ? t("imp.explore.ctaAgain")
+              : t("imp.explore.cta")}
         </Button>
       </div>
 
@@ -308,12 +336,14 @@ export function ImportExplore(): JSX.Element {
       ) : null}
 
       {view ? (
-        <ExploreMap
-          view={view}
-          truncated={explore.data?.truncated ?? false}
-          alreadyImported={explore.data?.alreadyImported ?? 0}
-          failedPages={explore.data?.failedPages ?? 0}
-        />
+        <div ref={mapRef} className="scroll-mt-4">
+          <ExploreMap
+            view={view}
+            truncated={explore.data?.truncated ?? false}
+            alreadyImported={explore.data?.alreadyImported ?? 0}
+            failedPages={explore.data?.failedPages ?? 0}
+          />
+        </div>
       ) : null}
     </Card>
   );

@@ -30,6 +30,9 @@ import {
   toggleCandidate,
 } from "../lib/importGroups";
 import { toReasonerLocale } from "../lib/reasonerLocale";
+// WP-COCKPIT-LINIE: Schritt-Überschriften (4 Gruppen freigeben · 5 Übernehmen & Bilanz) +
+// Meilenstein-Meldungen an die Schritt-Leiste.
+import { ImportStepHeading, useReportImportStage } from "./ImportStepper";
 import { Button } from "./ui";
 
 // Präsentationsteil (kontrolliert, ohne Netz) — separat exportiert für den Mounted-Test.
@@ -187,6 +190,21 @@ export function ImportGroups({ criteria }: { criteria: ImportSelectCriteria }): 
     }
   }, [data, bilanz]);
 
+  // WP-COCKPIT-LINIE: Meilensteine an die Schritt-Leiste — Gruppen sichtbar → Schritt 4 aktiv,
+  // Bilanz da → alles erledigt. Die Leiste ist monoton; ein Reset (neue Eingrenzung, abgelaufene
+  // Datenbasis) reißt den roten Faden nicht rückwärts.
+  const reach = useReportImportStage();
+  useEffect(() => {
+    if (data !== null) {
+      reach("grouping");
+    }
+  }, [data, reach]);
+  useEffect(() => {
+    if (bilanz !== null) {
+      reach("applied");
+    }
+  }, [bilanz, reach]);
+
   const runGrouping = async (): Promise<void> => {
     setBusy("group");
     setError(null);
@@ -320,7 +338,11 @@ export function ImportGroups({ criteria }: { criteria: ImportSelectCriteria }): 
       ) : null}
 
       {data !== null && bilanz === null ? (
-        <div ref={panelRef}>
+        <div ref={panelRef} className="scroll-mt-4">
+          {/* WP-COCKPIT-LINIE Schritt 4: Gruppen freigeben. */}
+          <div className="mb-2">
+            <ImportStepHeading step="groups" />
+          </div>
           <GroupApprovalPanel
             groups={data.groups}
             candidates={data.candidates}
@@ -352,51 +374,59 @@ export function ImportGroups({ criteria }: { criteria: ImportSelectCriteria }): 
       ) : null}
 
       {bilanz !== null ? (
-        <div className="mt-3 rounded-card border border-hairline bg-page p-3">
-          <p className="text-[13px] font-semibold text-text">{t(IMPORT_GROUPS_TEXT.bilanzTitle)}</p>
-          <ul className="mt-1.5 space-y-0.5 text-[12.5px] text-text">
-            <li>· {t(IMPORT_GROUPS_TEXT.bilanzImported, { n: bilanz.imported })}</li>
-            {bilanz.updates > 0 ? (
-              <li className="pl-3 text-muted">
-                {t(IMPORT_GROUPS_TEXT.bilanzUpdates, { n: bilanz.updates })}
-              </li>
-            ) : null}
-            <li>· {t(IMPORT_GROUPS_TEXT.bilanzQueued, { n: bilanz.alreadyQueued })}</li>
-            <li>· {t(IMPORT_GROUPS_TEXT.bilanzSkipped, { n: bilanz.skippedAlreadyImported })}</li>
-            <li>· {t(IMPORT_GROUPS_TEXT.bilanzExcluded, { n: bilanz.excluded })}</li>
-            <li>· {t(IMPORT_GROUPS_TEXT.bilanzFailed, { n: bilanz.failed.length })}</li>
-            {bilanz.notAttempted.length > 0 ? (
-              <li>
-                · {t(IMPORT_GROUPS_TEXT.bilanzNotAttempted, { n: bilanz.notAttempted.length })}
-              </li>
-            ) : null}
-          </ul>
-          {bilanz.failed.length > 0 ? (
-            <ul className="mt-1.5 space-y-0.5 text-[11.5px] text-trust-crit-text">
-              {bilanz.failed.map((f) => (
-                <li key={f.id}>
-                  · {f.id} —{" "}
-                  {f.reason === "not-found"
-                    ? t(IMPORT_GROUPS_TEXT.failNotFound)
-                    : f.reason === "http-error"
-                      ? t(IMPORT_GROUPS_TEXT.failHttp)
-                      : f.reason}
+        <div className="mt-3">
+          {/* WP-COCKPIT-LINIE Schritt 5: Übernehmen & Bilanz. */}
+          <div className="mb-2">
+            <ImportStepHeading step="apply" />
+          </div>
+          <div className="rounded-card border border-hairline bg-page p-3">
+            <p className="text-[13px] font-semibold text-text">
+              {t(IMPORT_GROUPS_TEXT.bilanzTitle)}
+            </p>
+            <ul className="mt-1.5 space-y-0.5 text-[12.5px] text-text">
+              <li>· {t(IMPORT_GROUPS_TEXT.bilanzImported, { n: bilanz.imported })}</li>
+              {bilanz.updates > 0 ? (
+                <li className="pl-3 text-muted">
+                  {t(IMPORT_GROUPS_TEXT.bilanzUpdates, { n: bilanz.updates })}
                 </li>
-              ))}
+              ) : null}
+              <li>· {t(IMPORT_GROUPS_TEXT.bilanzQueued, { n: bilanz.alreadyQueued })}</li>
+              <li>· {t(IMPORT_GROUPS_TEXT.bilanzSkipped, { n: bilanz.skippedAlreadyImported })}</li>
+              <li>· {t(IMPORT_GROUPS_TEXT.bilanzExcluded, { n: bilanz.excluded })}</li>
+              <li>· {t(IMPORT_GROUPS_TEXT.bilanzFailed, { n: bilanz.failed.length })}</li>
+              {bilanz.notAttempted.length > 0 ? (
+                <li>
+                  · {t(IMPORT_GROUPS_TEXT.bilanzNotAttempted, { n: bilanz.notAttempted.length })}
+                </li>
+              ) : null}
             </ul>
-          ) : null}
-          {bilanz.notAttempted.length > 0 ? (
-            <div className="mt-2">
-              <Button
-                variant="ghost"
-                disabled={busy !== null}
-                onClick={() => void runApply(bilanz.notAttempted)}
-              >
-                {t(IMPORT_GROUPS_TEXT.retryRest, { n: bilanz.notAttempted.length })}
-              </Button>
-            </div>
-          ) : null}
-          <p className="mt-2 text-[12px] text-muted-2">{t(IMPORT_GROUPS_TEXT.bilanzReview)}</p>
+            {bilanz.failed.length > 0 ? (
+              <ul className="mt-1.5 space-y-0.5 text-[11.5px] text-trust-crit-text">
+                {bilanz.failed.map((f) => (
+                  <li key={f.id}>
+                    · {f.id} —{" "}
+                    {f.reason === "not-found"
+                      ? t(IMPORT_GROUPS_TEXT.failNotFound)
+                      : f.reason === "http-error"
+                        ? t(IMPORT_GROUPS_TEXT.failHttp)
+                        : f.reason}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {bilanz.notAttempted.length > 0 ? (
+              <div className="mt-2">
+                <Button
+                  variant="ghost"
+                  disabled={busy !== null}
+                  onClick={() => void runApply(bilanz.notAttempted)}
+                >
+                  {t(IMPORT_GROUPS_TEXT.retryRest, { n: bilanz.notAttempted.length })}
+                </Button>
+              </div>
+            ) : null}
+            <p className="mt-2 text-[12px] text-muted-2">{t(IMPORT_GROUPS_TEXT.bilanzReview)}</p>
+          </div>
         </div>
       ) : null}
     </div>

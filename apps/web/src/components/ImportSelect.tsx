@@ -22,6 +22,8 @@ import { createLatestWins } from "../lib/latestWins";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 // WP-IC-4: Schritt 4+5 (Gruppen-Freigabe + Übernahme mit Bilanz).
 import { ImportGroups } from "./ImportGroups";
+// WP-COCKPIT-LINIE: Schritt-Überschrift (3 Eingrenzen) + Meilenstein-Meldung an die Leiste.
+import { ImportStepHeading, useReportImportStage } from "./ImportStepper";
 import { Button, TextInput } from "./ui";
 
 // Klick-Filter der Erkundungs-Landkarte (Roh-Werte, wie der Server sie kennt — dekodiert wird nur die
@@ -55,6 +57,22 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
   // fertig gewordene Antwort sein und Vorschau + checkedRows rückwärts überschreiben.
   const [preview, setPreview] = useState<ImportSelectResponse | null>(null);
   const latestRef = useRef(createLatestWins());
+
+  // WP-COCKPIT-LINIE: Vorschau da → Meilenstein "previewed" an die Schritt-Leiste; beim ERSTEN
+  // Erscheinen zur Vorschau scrollen (Muster aus R7) — Live-Aktualisierungen der Filter springen
+  // danach bewusst nicht mehr.
+  const reach = useReportImportStage();
+  const previewBoxRef = useRef<HTMLDivElement | null>(null);
+  const scrolledToPreviewRef = useRef(false);
+  useEffect(() => {
+    if (preview !== null) {
+      reach("previewed");
+      if (!scrolledToPreviewRef.current) {
+        scrolledToPreviewRef.current = true;
+        previewBoxRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+      }
+    }
+  }, [preview, reach]);
 
   const buildCriteria = (): ImportSelectCriteria => {
     const parsedLimit = parsedPositiveInt(limit);
@@ -145,8 +163,8 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
 
   return (
     <div className="mt-4 border-t border-hairline pt-4">
-      <span className="text-[12px] font-semibold text-muted">{t("imp.select.title")}</span>
-      <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted-2">{t("imp.select.hint")}</p>
+      {/* WP-COCKPIT-LINIE Schritt 3: Eingrenzen — Nummer + Titel + 1-Satz-Erklärung. */}
+      <ImportStepHeading step="narrow" />
 
       {/* Freitext-Prompt */}
       <div className="mt-2">
@@ -219,13 +237,24 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
             className="h-9 w-20 rounded-input border border-hairline bg-surface px-2 text-[12.5px] text-text"
           />
         </label>
-        <Button variant="primary" disabled={select.isPending} onClick={() => select.mutate()}>
+        {/* WP-COCKPIT-LINIE: der EINE Primär-CTA nach der Erkundung („Weiter: …"-Muster). Sobald
+            die Vorschau steht, tritt er zurück (outline, „Vorschau aktualisieren") — der nächste
+            Primär-Knopf gehört dann Schritt 4 (Gruppieren & Übernehmen). */}
+        <Button
+          variant={preview ? "outline" : "primary"}
+          disabled={select.isPending}
+          onClick={() => select.mutate()}
+        >
           {select.isPending ? (
             <Loader2 size={15} className="animate-spin" />
           ) : (
             <Sparkles size={15} />
           )}
-          {select.isPending ? t("imp.select.previewing") : t("imp.select.previewCta")}
+          {select.isPending
+            ? t("imp.select.previewing")
+            : preview
+              ? t("imp.select.previewAgain")
+              : t("imp.select.previewCta")}
         </Button>
       </div>
 
@@ -237,7 +266,10 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
 
       {/* ROT-3: gerendert wird IMMER der latest-wins-Stand (preview), nie select.data direkt. */}
       {preview ? (
-        <div className="mt-3 rounded-card border border-hairline bg-page p-3">
+        <div
+          ref={previewBoxRef}
+          className="mt-3 scroll-mt-4 rounded-card border border-hairline bg-page p-3"
+        >
           <div className="text-[13px] font-semibold text-text">
             {t("imp.select.matched", {
               matched: preview.preview.length,

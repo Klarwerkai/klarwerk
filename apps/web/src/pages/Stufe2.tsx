@@ -41,6 +41,10 @@ import { useToast } from "../app/ToastContext";
 import { ExamplePackages } from "../components/ExamplePackages";
 import { ImportCleanup } from "../components/ImportCleanup";
 import { ImportExplore } from "../components/ImportExplore";
+// WP-COCKPIT-LINIE: geführte Schritt-Leiste über dem Cockpit + klar abgegrenzter, eingeklappter
+// Verlauf (Pedis Stör-Befund zur Queue unter dem Cockpit).
+import { ImportHistorySection } from "../components/ImportHistory";
+import { ImportCockpitProvider, ImportStepperBar } from "../components/ImportStepper";
 import { Button, Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import { CAPITAL_SECTIONS, sectionAnchor, sectionHref } from "../lib/capitalSections";
 import { deriveStatus } from "../lib/displayStatus";
@@ -378,9 +382,13 @@ export function ImportReview(): JSX.Element {
     <div className="mx-auto max-w-3xl">
       <Stufe2Header titleKey="nav.import" ticket="SCRUM-116" />
 
-      {/* IC-2 (Import-Cockpit): READ-ONLY Erkundung „was ist da" ganz oben — die Kandidatenliste
-          darunter bleibt (Ersatz durch das volle Cockpit erst in IC-4). */}
-      <ImportExplore />
+      {/* WP-COCKPIT-LINIE: der geführte Fünf-Schritte-Fluss — Leiste oben zeigt, wo man steht;
+          die bestehenden Bausteine (Kacheln, Landkarte, Eingrenzen, Gruppen, Bilanz) melden ihre
+          Meilensteine an den Provider. IC-2: die Erkundung selbst bleibt READ-ONLY. */}
+      <ImportCockpitProvider>
+        <ImportStepperBar />
+        <ImportExplore />
+      </ImportCockpitProvider>
 
       <Card className="mb-5">
         <SectionLabel>{t("imp.uploadTitle")}</SectionLabel>
@@ -398,160 +406,165 @@ export function ImportReview(): JSX.Element {
         </label>
       </Card>
 
-      {/* SCRUM-90/91: konzeptioneller Pipeline-Fluss + ehrliche Queue-Zusammenfassung. */}
-      <Card className="mb-4">
-        <SectionLabel>{t("ext.pipeline.title")}</SectionLabel>
-        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          {IMPORT_PIPELINE_STEPS.map((step, i) => (
-            <span key={step} className="flex items-center gap-1.5">
-              <span className="rounded-pill border border-hairline bg-page px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-muted">
-                {t(`ext.pipeline.${step}`)}
+      {/* WP-COCKPIT-LINIE (Punkt 4): Pipeline-Übersicht + Prüfliste sind Verlauf/Altlast — klar
+          abgegrenzt in einer standardmäßig EINGEKLAPPTEN Sektion mit Zähler, damit der geführte
+          Fluss oben eine gerade Linie bleibt. Inhalt (Queue-Verhalten) unverändert. */}
+      <ImportHistorySection count={query.data?.length ?? 0}>
+        {/* SCRUM-90/91: konzeptioneller Pipeline-Fluss + ehrliche Queue-Zusammenfassung. */}
+        <Card className="mb-4">
+          <SectionLabel>{t("ext.pipeline.title")}</SectionLabel>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {IMPORT_PIPELINE_STEPS.map((step, i) => (
+              <span key={step} className="flex items-center gap-1.5">
+                <span className="rounded-pill border border-hairline bg-page px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-muted">
+                  {t(`ext.pipeline.${step}`)}
+                </span>
+                {i < IMPORT_PIPELINE_STEPS.length - 1 ? (
+                  <span className="text-muted-2">→</span>
+                ) : null}
               </span>
-              {i < IMPORT_PIPELINE_STEPS.length - 1 ? (
-                <span className="text-muted-2">→</span>
-              ) : null}
-            </span>
-          ))}
-        </div>
-        {query.data && query.data.length > 0
-          ? (() => {
-              const s = summarizeImportQueue(query.data);
-              return (
-                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-hairline pt-2 font-mono text-[11.5px] text-muted-2">
-                  <span>{t("ext.queue.total", { n: s.total })}</span>
-                  <span>{t("ext.queue.open", { n: s.open })}</span>
-                  <span>{t("ext.queue.accepted", { n: s.accepted })}</span>
-                  <span>{t("ext.queue.rejected", { n: s.rejected })}</span>
-                  <span>{t("ext.queue.infoRequested", { n: s.infoRequested })}</span>
-                  <span>{t("ext.queue.duplicates", { n: s.duplicates })}</span>
-                </div>
-              );
-            })()
-          : null}
-      </Card>
+            ))}
+          </div>
+          {query.data && query.data.length > 0
+            ? (() => {
+                const s = summarizeImportQueue(query.data);
+                return (
+                  <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-hairline pt-2 font-mono text-[11.5px] text-muted-2">
+                    <span>{t("ext.queue.total", { n: s.total })}</span>
+                    <span>{t("ext.queue.open", { n: s.open })}</span>
+                    <span>{t("ext.queue.accepted", { n: s.accepted })}</span>
+                    <span>{t("ext.queue.rejected", { n: s.rejected })}</span>
+                    <span>{t("ext.queue.infoRequested", { n: s.infoRequested })}</span>
+                    <span>{t("ext.queue.duplicates", { n: s.duplicates })}</span>
+                  </div>
+                );
+              })()
+            : null}
+        </Card>
 
-      <SectionLabel>{t("imp.queueTitle")}</SectionLabel>
-      <QueryState query={query} emptyText={t("imp.queueEmpty")}>
-        {(candidates) =>
-          candidates.length === 0 ? (
-            <Card className="border-dashed text-center text-sm text-muted">
-              {t("imp.queueEmpty")}
-            </Card>
-          ) : (
-            <div className="space-y-2">
-              {candidates.map((c) => (
-                <Card key={c.id} className="space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span
-                      className={`rounded-pill px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase ${
-                        REVIEW_TONE[c.status] ?? "bg-page text-muted"
-                      }`}
-                    >
-                      {t(`imp.status.${c.status}`)}
-                    </span>
-                    {(() => {
-                      // SCRUM-91: kompakte, ehrlich abgeleitete Befund-Badges.
-                      const f = candidateFindings(c);
-                      return (
-                        <>
-                          {f.duplicate ? (
-                            <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-warn-text">
-                              {t("ext.finding.duplicate")}
-                            </span>
-                          ) : null}
-                          {f.missingInfo ? (
-                            <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-warn-text">
-                              {t("ext.finding.missingInfo")}
-                            </span>
-                          ) : null}
-                          {f.infoRequested ? (
-                            <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-muted">
-                              {t("ext.finding.infoRequested")}
-                            </span>
-                          ) : null}
-                          {f.acceptedKo ? (
-                            <span className="rounded-pill bg-trust-pos-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-pos-text">
-                              {t("ext.finding.acceptedKo")}
-                            </span>
-                          ) : null}
-                          {f.rejected ? (
-                            <span className="rounded-pill bg-trust-crit-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-crit-text">
-                              {t("ext.finding.rejected")}
-                            </span>
-                          ) : null}
-                        </>
-                      );
-                    })()}
-                    {/* WP-IC-PAKET-1 (Teil 1) + 1c (ROT-2): Altbestand-Kandidaten (OHNE Decode-Marker)
+        <SectionLabel>{t("imp.queueTitle")}</SectionLabel>
+        <QueryState query={query} emptyText={t("imp.queueEmpty")}>
+          {(candidates) =>
+            candidates.length === 0 ? (
+              <Card className="border-dashed text-center text-sm text-muted">
+                {t("imp.queueEmpty")}
+              </Card>
+            ) : (
+              <div className="space-y-2">
+                {candidates.map((c) => (
+                  <Card key={c.id} className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={`rounded-pill px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase ${
+                          REVIEW_TONE[c.status] ?? "bg-page text-muted"
+                        }`}
+                      >
+                        {t(`imp.status.${c.status}`)}
+                      </span>
+                      {(() => {
+                        // SCRUM-91: kompakte, ehrlich abgeleitete Befund-Badges.
+                        const f = candidateFindings(c);
+                        return (
+                          <>
+                            {f.duplicate ? (
+                              <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-warn-text">
+                                {t("ext.finding.duplicate")}
+                              </span>
+                            ) : null}
+                            {f.missingInfo ? (
+                              <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-warn-text">
+                                {t("ext.finding.missingInfo")}
+                              </span>
+                            ) : null}
+                            {f.infoRequested ? (
+                              <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-muted">
+                                {t("ext.finding.infoRequested")}
+                              </span>
+                            ) : null}
+                            {f.acceptedKo ? (
+                              <span className="rounded-pill bg-trust-pos-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-pos-text">
+                                {t("ext.finding.acceptedKo")}
+                              </span>
+                            ) : null}
+                            {f.rejected ? (
+                              <span className="rounded-pill bg-trust-crit-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-crit-text">
+                                {t("ext.finding.rejected")}
+                              </span>
+                            ) : null}
+                          </>
+                        );
+                      })()}
+                      {/* WP-IC-PAKET-1 (Teil 1) + 1c (ROT-2): Altbestand-Kandidaten (OHNE Decode-Marker)
                         wurden mit rohen HTML-Entities gespeichert — nur DANN fürs Rendern dekodieren;
                         markierte Kandidaten sind kanonisch. Weiterhin reiner React-TEXT-Knoten, nie
                         HTML (XSS-neutral, keine Server-Migration). */}
-                    <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-text">
-                      {displayImportText(c.item.title, c.item.textCodec)}
-                    </span>
-                    <span className="font-mono text-[11px] text-muted-2">{c.item.category}</span>
-                  </div>
-                  <p className="text-[13px] text-muted">
-                    {displayImportText(c.item.statement, c.item.textCodec)}
-                  </p>
-                  {c.note ? (
-                    <p className="text-[12px] text-trust-warn-text">
-                      {t("imp.note")}: {c.note}
+                      <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-text">
+                        {displayImportText(c.item.title, c.item.textCodec)}
+                      </span>
+                      <span className="font-mono text-[11px] text-muted-2">{c.item.category}</span>
+                    </div>
+                    <p className="text-[13px] text-muted">
+                      {displayImportText(c.item.statement, c.item.textCodec)}
                     </p>
-                  ) : null}
+                    {c.note ? (
+                      <p className="text-[12px] text-trust-warn-text">
+                        {t("imp.note")}: {c.note}
+                      </p>
+                    ) : null}
 
-                  {c.status === "neu" ? (
-                    <div className="flex flex-wrap items-center gap-2 border-t border-hairline pt-2">
-                      <Button
-                        variant="primary"
-                        disabled={review.isPending}
-                        onClick={() => review.mutate({ id: c.id, action: "accept" })}
-                      >
-                        {t("imp.accept")}
-                      </Button>
-                      <Button
-                        disabled={review.isPending}
-                        onClick={() => review.mutate({ id: c.id, action: "reject" })}
-                      >
-                        {t("imp.reject")}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        onClick={() => {
-                          setNoteId((id) => (id === c.id ? null : c.id));
-                          setNote("");
-                        }}
-                      >
-                        {t("imp.info")}
-                      </Button>
-                    </div>
-                  ) : null}
+                    {c.status === "neu" ? (
+                      <div className="flex flex-wrap items-center gap-2 border-t border-hairline pt-2">
+                        <Button
+                          variant="primary"
+                          disabled={review.isPending}
+                          onClick={() => review.mutate({ id: c.id, action: "accept" })}
+                        >
+                          {t("imp.accept")}
+                        </Button>
+                        <Button
+                          disabled={review.isPending}
+                          onClick={() => review.mutate({ id: c.id, action: "reject" })}
+                        >
+                          {t("imp.reject")}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          onClick={() => {
+                            setNoteId((id) => (id === c.id ? null : c.id));
+                            setNote("");
+                          }}
+                        >
+                          {t("imp.info")}
+                        </Button>
+                      </div>
+                    ) : null}
 
-                  {noteId === c.id ? (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <input
-                        value={note}
-                        onChange={(e) => setNote(e.target.value)}
-                        placeholder={t("imp.notePlaceholder")}
-                        className="h-9 flex-1 rounded-input border border-hairline bg-surface px-3 text-sm outline-none focus:border-ink/30"
-                      />
-                      <Button
-                        variant="primary"
-                        disabled={review.isPending || note.trim().length === 0}
-                        onClick={() =>
-                          review.mutate({ id: c.id, action: "info", note: note.trim() })
-                        }
-                      >
-                        {t("imp.infoSend")}
-                      </Button>
-                    </div>
-                  ) : null}
-                </Card>
-              ))}
-            </div>
-          )
-        }
-      </QueryState>
+                    {noteId === c.id ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          value={note}
+                          onChange={(e) => setNote(e.target.value)}
+                          placeholder={t("imp.notePlaceholder")}
+                          className="h-9 flex-1 rounded-input border border-hairline bg-surface px-3 text-sm outline-none focus:border-ink/30"
+                        />
+                        <Button
+                          variant="primary"
+                          disabled={review.isPending || note.trim().length === 0}
+                          onClick={() =>
+                            review.mutate({ id: c.id, action: "info", note: note.trim() })
+                          }
+                        >
+                          {t("imp.infoSend")}
+                        </Button>
+                      </div>
+                    ) : null}
+                  </Card>
+                ))}
+              </div>
+            )
+          }
+        </QueryState>
+      </ImportHistorySection>
 
       {/* WP-B6: kuratierte Beispielpakete für die VIP-2-Tester — gezielte Szenarien statt Datenberg. */}
       <ExamplePackages />
