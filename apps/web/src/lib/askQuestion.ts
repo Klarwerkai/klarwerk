@@ -38,3 +38,18 @@ export function askAnswerHref(question: string): string {
 export function shouldAutoAskFromSearch(params: URLSearchParams): boolean {
   return params.get(ASK_PARAM) === "1" && readAskQuestion(params) !== null;
 }
+
+// WP-POLISH-CLOSE (bens Punkt 1): Deep-Link für Fragen zu VERTRAULICHEN KOs — die Frage wird nur
+// VORBEFÜLLT (bewusst OHNE ?ask=1: kein Auto-Send), und der Marker lässt die Ask-Seite den
+// nüchternen Hinweis zeigen („Vertraulicher Inhalt — prüfe die Frage vor dem Senden"). Der Nutzer
+// sendet selbst; die Frage-Fähigkeit bleibt erhalten (ehrlichere Variante als ein toter Knopf).
+const CONFIDENTIAL_PARAM = "vertraulich";
+
+export function askConfidentialQuestionHref(question: string): string {
+  return `${askQuestionHref(question)}&${CONFIDENTIAL_PARAM}=1`;
+}
+
+// true, wenn Ask mit einer vorbefüllten Frage zu einem vertraulichen KO erreicht wurde.
+export function isConfidentialAskPrefill(params: URLSearchParams): boolean {
+  return params.get(CONFIDENTIAL_PARAM) === "1" && readAskQuestion(params) !== null;
+}

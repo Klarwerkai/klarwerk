@@ -18,6 +18,16 @@ export function isConfidential(level: Confidentiality | undefined | null): boole
   return level === "vertraulich" || level === "streng_vertraulich";
 }
 
+// WP-POLISH-CLOSE (bens Punkt 1): fail-safe-Prüfung für AUTOMATISCHE Frage-/Chip-Flächen (Beispiel-
+// Chips, Auto-Send des Bibliotheks-Fragen-Knopfs). true NUR bei eindeutig nicht-vertraulicher
+// Stufe: explizit „intern" oder das FEHLENDE Feld — der Server materialisiert vertrauliche Stufen
+// IMMER und „intern" bewusst nie, ein fehlendes Feld ist damit die dokumentierte intern-Codierung
+// (kein unklarer Fall). JEDER andere/unbekannte Wert gilt fail-safe als vertraulich (anders als
+// confidentialityOf, das Unbekanntes zu „intern" glättet — für Automatik-Flächen zu lasch).
+export function isKnownNonConfidential(level: unknown): boolean {
+  return level === undefined || level === null || level === "intern";
+}
+
 // Anzeige-Metadaten je Stufe: i18n-Label-Schlüssel + Tönung. „intern" trägt kein Chip (showChip=false).
 export interface ConfidentialityChip {
   labelKey: string;

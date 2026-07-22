@@ -24,6 +24,7 @@ import { buildAskExampleChips } from "../lib/askExampleChips";
 import { type AskExpectationTone, askExpectation } from "../lib/askExamples";
 import { GAP_RESCUE_STEPS, GAP_RESCUE_TEXT } from "../lib/askGapRescue";
 import {
+  isConfidentialAskPrefill,
   isPrefilledAskQuestion,
   readAskQuestion,
   shouldAutoAskFromSearch,
@@ -266,6 +267,14 @@ export function Ask(): JSX.Element {
       {isDemoContext(params) && isPrefilledAskQuestion(params) && !result ? (
         <p className="mb-2 rounded-btn bg-page px-2.5 py-2 text-[12px] text-muted-2">
           {t("ask.demoPrefillHint")}
+        </p>
+      ) : null}
+
+      {/* WP-POLISH-CLOSE (bens Punkt 1): Frage zu einem VERTRAULICHEN KO wurde nur vorbefüllt
+          (kein Auto-Send) — nüchterner Hinweis, der Nutzer sendet bewusst selbst. */}
+      {isConfidentialAskPrefill(params) && !result ? (
+        <p className="mb-2 rounded-btn bg-trust-warn-bg px-2.5 py-2 text-[12px] text-trust-warn-text">
+          {t("ask.confidentialPrefillHint")}
         </p>
       ) : null}
 

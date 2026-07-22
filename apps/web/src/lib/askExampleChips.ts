@@ -7,6 +7,7 @@
 // DOM-frei; die Zufallsquelle ist injizierbar (Tests). Klick sendet DIREKT (U3) — verdrahtet in Ask.
 import type { KnowledgeObject } from "../api/types";
 import { ASK_EXAMPLES } from "./askExamples";
+import { isKnownNonConfidential } from "./confidentiality";
 
 export interface AskChipFromKo {
   kind: "ko";
@@ -28,7 +29,17 @@ export function buildAskExampleChips(
   kos: readonly KnowledgeObject[],
   pick: () => number = Math.random,
 ): AskExampleChip[] {
-  const validated = kos.filter((k) => k.status === "validiert" && k.title.trim().length > 0);
+  // WP-POLISH-CLOSE (bens Punkt 1, Sichtbarkeits-/Egress-Kante): vertrauliche UND streng
+  // vertrauliche KOs erscheinen NIE als Chip — ihr Titel würde sichtbar UND per Chip-Klick als
+  // Frage in den Ask-/Modellpfad wandern. Fail-safe über isKnownNonConfidential: nur die
+  // eindeutig nicht-vertrauliche Stufe (explizit „intern" oder das fehlende Feld = dokumentierte
+  // intern-Codierung des Servers) ist Chip-tauglich; jeder unbekannte Wert ist ausgeschlossen.
+  const validated = kos.filter(
+    (k) =>
+      k.status === "validiert" &&
+      k.title.trim().length > 0 &&
+      isKnownNonConfidential(k.confidentiality),
+  );
   const pool = [...validated];
   const chosen: AskChipFromKo[] = [];
   while (pool.length > 0 && chosen.length < ASK_CHIP_MAX_KOS) {

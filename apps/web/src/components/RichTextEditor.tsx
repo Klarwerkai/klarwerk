@@ -165,9 +165,19 @@ export function RichTextEditor({
   }, [mode]);
   useEffect(() => {
     const el = ref.current;
-    if (mode !== "edit" || !el || value === lastEmittedRef.current) {
+    if (mode !== "edit" || !el) {
       return;
     }
+    // WP-POLISH-CLOSE (bens Punkt 2): der Emissionsmarker ist eine EINMALIGE Bestätigung. Kam der
+    // emittierte Wert als value-Prop zurück, wird er hier VERBRAUCHT (kein Rückschreiben, Marker
+    // weg); jeder EXTERNE Set löscht ihn ebenfalls. Ohne das Löschen würde eine echte
+    // A→B→A-Rückkehr (extern B gesetzt, dann extern zurück auf das früher emittierte A) am alten
+    // Marker hängen bleiben und der Editor zeigte weiter B — genau bens Kante.
+    if (value === lastEmittedRef.current) {
+      lastEmittedRef.current = null;
+      return;
+    }
+    lastEmittedRef.current = null;
     const safe = sanitizeHtml(value);
     if (el.innerHTML !== safe && !el.contains(document.activeElement)) {
       el.innerHTML = safe;

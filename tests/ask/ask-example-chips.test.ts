@@ -6,7 +6,11 @@ import type { KnowledgeObject } from "../../apps/web/src/api/types";
 import { ASK_CHIP_MAX_KOS, buildAskExampleChips } from "../../apps/web/src/lib/askExampleChips";
 import { ASK_EXAMPLES } from "../../apps/web/src/lib/askExamples";
 
-function ko(title: string, status: "offen" | "validiert"): KnowledgeObject {
+function ko(
+  title: string,
+  status: "offen" | "validiert",
+  confidentiality?: string,
+): KnowledgeObject {
   return {
     id: title,
     title,
@@ -25,6 +29,7 @@ function ko(title: string, status: "offen" | "validiert"): KnowledgeObject {
     neededValidations: 0,
     assignments: [],
     asset: null,
+    ...(confidentiality !== undefined ? { confidentiality } : {}),
   } as unknown as KnowledgeObject;
 }
 
@@ -38,6 +43,39 @@ describe("WP-UX-WOW-1 U2: buildAskExampleChips", () => {
       { kind: "ko", title: "Ventil entlasten" },
       { kind: "example", questionKey: "ask.example.dosing", expectation: "gap" },
     ]);
+  });
+
+  // WP-POLISH-CLOSE (bens Punkt 1): vertrauliche Titel erscheinen NIE als Chip (Sichtbarkeits-/
+  // Egress-Kante — der Chip-Klick würde den Titel als Frage in den Ask-/Modellpfad geben).
+  it("vertrauliche und streng vertrauliche validierte KOs erscheinen NIE als Chip", () => {
+    const chips = buildAskExampleChips(
+      [
+        ko("Geheimrezeptur X", "validiert", "vertraulich"),
+        ko("Kundenliste Y", "validiert", "streng_vertraulich"),
+        ko("Ventil entlasten", "validiert"),
+      ],
+      () => 0,
+    );
+    expect(chips).toEqual([
+      { kind: "ko", title: "Ventil entlasten" },
+      { kind: "example", questionKey: "ask.example.dosing", expectation: "gap" },
+    ]);
+  });
+
+  it("fail-safe: eine UNBEKANNTE Stufe gilt wie vertraulich (nie als Chip)", () => {
+    const chips = buildAskExampleChips([ko("Unklare Stufe", "validiert", "geheim")], () => 0);
+    // Kein Chip-tauglicher Bestand übrig → neutrale statische Beispiele.
+    expect(chips.every((chip) => chip.kind === "example")).toBe(true);
+  });
+
+  it("das FEHLENDE Feld ist die dokumentierte intern-Codierung des Servers (Chip-tauglich) — nur explizit „intern“ und fehlend gelten als eindeutig nicht-vertraulich", () => {
+    // Der Server materialisiert vertrauliche Stufen IMMER und „intern“ bewusst nie — fehlend ist
+    // damit KEINE unklare Stufe, sondern der dokumentierte intern-Fall (s. confidentialityOf).
+    const chips = buildAskExampleChips(
+      [ko("Ohne Feld", "validiert"), ko("Explizit intern", "validiert", "intern")],
+      () => 0,
+    );
+    expect(chips.filter((chip) => chip.kind === "ko").length).toBe(2);
   });
 
   it("wählt höchstens ASK_CHIP_MAX_KOS validierte KOs (ohne Duplikate)", () => {

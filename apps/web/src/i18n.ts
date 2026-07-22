@@ -2163,6 +2163,8 @@ const de = {
     "Hier liegt der Verlauf früherer Übernahmen — zur Prüfung eingereihte, angenommene und abgelehnte Beiträge. Für den laufenden Import brauchst du diesen Bereich nicht.",
   // WP-UX-WOW-1 (Kopfs Live-UX-Befunde U1-U9): Politur für den ersten VIP2-Eindruck.
   "ask.koQuestion": "Was gilt zu: {{title}}?",
+  "ask.confidentialPrefillHint":
+    "Vertraulicher Inhalt — prüfe die Frage vor dem Senden. Sie wurde nur vorbefüllt und nicht automatisch gesendet.",
   "ask.expect.neutral": "Beispiel ausprobieren",
   "lib.trustNone": "Noch keine Nutzungs-Bewertungen",
   "lib.trustNoneHint":
@@ -5425,6 +5427,8 @@ const en: typeof de = {
     "This is the history of earlier imports — contributions queued for review, accepted and rejected ones. You do not need this area for the current import.",
   // WP-UX-WOW-1 (Kopf's live UX findings U1-U9): polish for the first VIP2 impression.
   "ask.koQuestion": "What applies to: {{title}}?",
+  "ask.confidentialPrefillHint":
+    "Confidential content — review the question before sending. It was only prefilled, not sent automatically.",
   "ask.expect.neutral": "Try an example",
   "lib.trustNone": "No usage ratings yet",
   "lib.trustNoneHint":
@@ -8645,6 +8649,8 @@ const nl: typeof de = {
     "Hier staat de geschiedenis van eerdere overnames — bijdragen in de wachtrij voor controle, geaccepteerde en afgewezen bijdragen. Voor de lopende import heb je dit gedeelte niet nodig.",
   // WP-UX-WOW-1 (Kopfs live-UX-bevindingen U1-U9): polijstwerk voor de eerste VIP2-indruk.
   "ask.koQuestion": "Wat geldt voor: {{title}}?",
+  "ask.confidentialPrefillHint":
+    "Vertrouwelijke inhoud — controleer de vraag voor het verzenden. Ze is alleen vooraf ingevuld, niet automatisch verzonden.",
   "ask.expect.neutral": "Voorbeeld proberen",
   "lib.trustNone": "Nog geen gebruiksbeoordelingen",
   "lib.trustNoneHint":

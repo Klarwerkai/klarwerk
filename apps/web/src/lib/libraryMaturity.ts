@@ -3,7 +3,8 @@
 // übersetzt sie in eine ehrliche Klartext-Aussage: nutzbar (validiert) · in Prüfung · zu prüfen.
 // Offene KOs erscheinen damit NIE als „nutzbar". Keine neue Suche, keine Mutation, kein Backend.
 import type { KnowledgeObject } from "../api/types";
-import { askAnswerHref } from "./askQuestion";
+import { askAnswerHref, askConfidentialQuestionHref } from "./askQuestion";
+import { isKnownNonConfidential } from "./confidentiality";
 import { type KoUsability, koOverview } from "./koOverview";
 import { useReadiness } from "./useReadiness";
 
@@ -48,10 +49,18 @@ export function libraryMaturity(ko: KnowledgeObject): LibraryMaturity {
 // Aufrufer reicht sie via i18n-Muster „Was gilt zu: <Titel>?" herein) und sendet DIREKT (ein
 // Klick → Antwort, über den bestehenden ?ask=1-Auto-Antwort-Weg der Suche). Ohne question-Parameter
 // bleibt der Titel die Startfrage (Alt-Verhalten der übrigen Aufrufer).
+// WP-POLISH-CLOSE (bens Punkt 1): für VERTRAULICHE/streng vertrauliche KOs (fail-safe: alles, was
+// nicht eindeutig nicht-vertraulich ist) KEIN Auto-Send — Variante (a), die ehrlichere: der Knopf
+// bleibt und befüllt die Frage, aber der Nutzer sendet bewusst selbst; die Ask-Seite zeigt den
+// nüchternen Vertraulichkeits-Hinweis. Ein ganz entfernter Auto-Send-Knopf würde die legitime
+// Frage-Fähigkeit kappen, ohne die Kante ehrlicher zu machen.
 export function libraryUseCta(ko: KnowledgeObject, question?: string): LibraryUseCta {
   const maturity = libraryMaturity(ko);
   if (maturity.usability === "ready") {
-    return { labelKey: "lib.ask", href: askAnswerHref(question ?? ko.title), kind: "ask" };
+    const startQuestion = question ?? ko.title;
+    return isKnownNonConfidential(ko.confidentiality)
+      ? { labelKey: "lib.ask", href: askAnswerHref(startQuestion), kind: "ask" }
+      : { labelKey: "lib.ask", href: askConfidentialQuestionHref(startQuestion), kind: "ask" };
   }
   return { labelKey: "lib.review", href: "/validierung", kind: "review" };
 }
