@@ -68,7 +68,7 @@ const BLOCK_BTN_CLASS: Record<EditorBlock, string> = {
 const IMAGE_SCALE_OPTIONS: Array<{ value: ImageScaleValue; label: string }> = [
   { value: "25", label: "Klein" },
   { value: "50", label: "Mittel" },
-  { value: "75", label: "Gross" },
+  { value: "75", label: "Groß" },
   { value: "100", label: "Volle Breite" },
 ];
 
@@ -148,10 +148,28 @@ export function RichTextEditor({
   // dann als unfokussiert, und da el.innerHTML (mit contenteditable-Attributen der Verankerung) nie dem
   // sanitisierten `safe` gleicht, wurde bei JEDEM Tastendruck in der Fußnote das innerHTML neu gesetzt —
   // Caret/Fokus zerstört, die Fußnote wirkte „nicht editierbar" (genau Pedis Befund).
+  // WP-UX-WOW-1 U8: Werte, die aus DIESEM Editor-DOM emittiert wurden, werden NIE zurückgeschrieben.
+  // Vorher konnte jeder Blur (z. B. der Klick auf „Vorschlag verwerfen" im fokussierten Zustand) ein
+  // Ping-Pong anstoßen: emit → neuer value (sanitize kanonisiert anders als die DOM-Serialisierung) →
+  // Effekt setzt das KOMPLETTE innerHTML neu (bei großen Dokumenten mit eingebetteten Bildern ein
+  // teurer synchroner Voll-Neuaufbau samt Figure-Verankerung) → nächster Blur wieder von vorn. Mit dem
+  // lastEmitted-Guard bleibt der DOM die Quelle seiner eigenen Emissionen; geschrieben wird nur bei
+  // ECHTEN Fremd-Änderungen (Vorschlag übernehmen, Entwurf laden, Reset).
+  const lastEmittedRef = useRef<string | null>(null);
+  // Beim Wechsel zurück in den Bearbeiten-Modus ist der contentEditable-Knoten FRISCH gemountet
+  // (leer) — der Emissions-Guard darf dann nicht greifen, sonst bliebe der Editor leer.
+  useEffect(() => {
+    if (mode === "edit") {
+      lastEmittedRef.current = null;
+    }
+  }, [mode]);
   useEffect(() => {
     const el = ref.current;
+    if (mode !== "edit" || !el || value === lastEmittedRef.current) {
+      return;
+    }
     const safe = sanitizeHtml(value);
-    if (mode === "edit" && el && el.innerHTML !== safe && !el.contains(document.activeElement)) {
+    if (el.innerHTML !== safe && !el.contains(document.activeElement)) {
       el.innerHTML = safe;
       // WP-D7 (Befund 2): Bild-Fußnoten nach jedem innerHTML-Setzen editierbar verankern.
       // WP-D10: lokalisierter, rein visueller Einlade-Text für LEERE Fußnoten (data-kw-placeholder +
@@ -160,7 +178,14 @@ export function RichTextEditor({
     }
   }, [value, mode, t]);
 
-  const emit = (): void => onChange(sanitizeHtml(ref.current?.innerHTML ?? ""));
+  const emit = (): void => {
+    const next = sanitizeHtml(ref.current?.innerHTML ?? "");
+    lastEmittedRef.current = next;
+    // U8: ein No-op-Blur (nichts geändert) löst keinen Parent-Renderzyklus mehr aus.
+    if (next !== value) {
+      onChange(next);
+    }
+  };
 
   // WP-RETEST7 R2: die figcaption unter dem Caret finden (oder null) — für den Leeren-/Lösch-Guard.
   const captionAtSelection = (): HTMLElement | null => {
@@ -844,7 +869,7 @@ export function RichTextEditor({
 
       {mode === "edit" && selectedImage ? (
         <div className="flex flex-wrap items-center gap-1 border-b border-hairline bg-ai-surface-1 px-2 py-1.5">
-          <span className="mr-1 text-[11.5px] font-semibold text-muted">Bildgroesse</span>
+          <span className="mr-1 text-[11.5px] font-semibold text-muted">Bildgröße</span>
           {IMAGE_SCALE_OPTIONS.map((opt) => (
             <button
               key={opt.value}

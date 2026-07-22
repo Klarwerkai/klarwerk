@@ -6,6 +6,8 @@ import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useConflicts, useKos } from "../api/hooks";
 import type { Conflict, ConflictStatus, KnowledgeObject } from "../api/types";
+// WP-UX-WOW-1 U6: der Leerzustand erklärt Konflikte; Admins sehen den Beispielpaket-Einstieg.
+import { useRole } from "../app/RoleContext";
 import { HelpTip } from "../components/HelpTip";
 import { KoView } from "../components/KoView";
 import { Modal } from "../components/Modal";
@@ -175,6 +177,8 @@ function ConflictOriginBadge({ conflict }: { conflict: Conflict }): JSX.Element 
 
 export function Conflicts(): JSX.Element {
   const { t, i18n } = useTranslation();
+  // WP-UX-WOW-1 U6: Rolle nur für den Admin-Hinweis im Leerzustand (Beispielpaket laden).
+  const { role } = useRole();
   // SCRUM-406: einheitlicher ?-HelpTip aus der zentralen Hilfe-Karte des Prüfbereichs.
   const vhelp = (helpId: ReviewHelpId): JSX.Element => {
     const topic = reviewHelp(helpId);
@@ -243,7 +247,29 @@ export function Conflicts(): JSX.Element {
     <div className="mx-auto max-w-3xl">
       <PageHeader kicker={t("con.kicker")} title={t("con.title")} />
       <p className="-mt-3 mb-4 text-sm text-muted">{t("con.intro")}</p>
-      <QueryState query={query} emptyText={t("con.empty")}>
+      <QueryState
+        query={query}
+        emptyText={t("con.empty")}
+        emptyExtra={
+          // WP-UX-WOW-1 U6: hilfreicher Leerzustand — was ein Konflikt ist, wie er entsteht,
+          // und für Admins der direkte Weg zum Beispielpaket „Widersprüchliche Aussagen".
+          <div className="mx-auto mt-2 max-w-md text-left">
+            <p className="text-[12.5px] leading-relaxed text-muted">{t("con.emptyWhat")}</p>
+            <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{t("con.emptyHow")}</p>
+            {role === "admin" ? (
+              <p className="mt-2 text-[12.5px] leading-relaxed text-muted">
+                {t("con.emptyExamplesHint")}{" "}
+                <Link
+                  to="/import#beispielpakete"
+                  className="font-semibold text-brand hover:underline"
+                >
+                  {t("con.emptyExamplesCta")}
+                </Link>
+              </p>
+            ) : null}
+          </div>
+        }
+      >
         {(items) => (
           <div className="space-y-4">
             {items.map((c) => (

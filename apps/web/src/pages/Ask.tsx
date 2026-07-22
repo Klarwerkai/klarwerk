@@ -1,12 +1,14 @@
 import { useMutation } from "@tanstack/react-query";
 import { ArrowRight, Copy, FileDown, Printer, ThumbsUp } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
 import { useConflicts, useKos, useReasonerStatus } from "../api/hooks";
 import type { AnswerResult } from "../api/types";
 import { useToast } from "../app/ToastContext";
+// WP-UX-WOW-1 U1: sichere Markdown-Darstellung der Antwort (React-Elemente, kein HTML-Sink).
+import { AnswerMarkdown } from "../components/AnswerMarkdown";
 import { DemoBanner } from "../components/DemoBanner";
 import { HelpTip } from "../components/HelpTip";
 import { ConfidenceBar } from "../components/trust";
@@ -17,7 +19,9 @@ import {
   answerContract,
   answerSourceSummary,
 } from "../lib/askAnswerContract";
-import { ASK_EXAMPLES, type AskExpectationTone, askExpectation } from "../lib/askExamples";
+// WP-UX-WOW-1 U2/U3: ehrliche Beispiel-Chips aus dem ECHTEN validierten Bestand (+ Lücken-Frage).
+import { buildAskExampleChips } from "../lib/askExampleChips";
+import { type AskExpectationTone, askExpectation } from "../lib/askExamples";
 import { GAP_RESCUE_STEPS, GAP_RESCUE_TEXT } from "../lib/askGapRescue";
 import {
   isPrefilledAskQuestion,
@@ -105,12 +109,24 @@ export function Ask(): JSX.Element {
     : null;
   const sourceSummary = result?.answered ? answerSourceSummary(answerSources) : null;
 
+  // WP-UX-WOW-1 U3/U5: die Frage reist als Mutations-PARAMETER — Chips/Direkt-Sender rufen
+  // ask.mutate(frage) im selben Handler wie setQ auf, ohne auf den nächsten Render zu warten
+  // (der alte q-Closure hätte sonst die VORHERIGE Eingabe gesendet).
   const ask = useMutation({
-    mutationFn: () => endpoints.ask.ask(q, toReasonerLocale(i18n.language)),
+    mutationFn: (question: string) => endpoints.ask.ask(question, toReasonerLocale(i18n.language)),
     // SCRUM-138: Backend liefert { result, gap } — Antwort sauber entpacken.
     onSuccess: (r) => setResult(selectAnswer(r)),
   });
   const helpful = useMutation({ mutationFn: (koId: string) => endpoints.ask.helpful(koId) });
+
+  // WP-UX-WOW-1 U2/U3: Beispiel-Chip → Frage setzen UND direkt senden (ein Klick → Antwort).
+  const askExample = (question: string): void => {
+    setQ(question);
+    setAsked(question);
+    ask.mutate(question);
+  };
+  // Chips stabil je Bestand memoisiert (die Zufallswahl würfelt sonst bei jedem Render neu).
+  const exampleChips = useMemo(() => buildAskExampleChips(kos.data ?? []), [kos.data]);
 
   // SCRUM-460: Kommt der Nutzer aus der Bibliothek-Suche mit ausdrücklichem Antwort-Wunsch
   // (?ask=1), wird die vorbefüllte Frage EINMAL automatisch beantwortet — so liefert die Suche
@@ -122,7 +138,9 @@ export function Ask(): JSX.Element {
     }
     if (shouldAutoAskFromSearch(params) && q.trim().length > 0) {
       autoAsked.current = true;
-      ask.mutate();
+      // WP-UX-WOW-1 U5: die Startfrage auch als Lücken-/Capture-Kontext festhalten (wie Submit).
+      setAsked(q.trim());
+      ask.mutate(q.trim());
     }
   }, [params, q, ask]);
 
@@ -257,7 +275,7 @@ export function Ask(): JSX.Element {
           e.preventDefault();
           if (q.trim()) {
             setAsked(q.trim());
-            ask.mutate();
+            ask.mutate(q.trim());
           }
         }}
       >
@@ -273,27 +291,43 @@ export function Ask(): JSX.Element {
         </Button>
       </form>
 
-      {/* SCRUM-265: produktnahe Beispiel-Fragen — Klick setzt nur das Eingabefeld (kein Auto-Ask). */}
+      {/* WP-UX-WOW-1 U2/U3 (statt SCRUM-265-Statik): ehrliche Beispiel-Chips. Antwort-Beispiele
+          kommen aus dem ECHTEN validierten Bestand (Badge damit ehrlich korrekt), dazu EINE bewusste
+          Lücken-Frage; ohne validierten Bestand neutrale statische Beispiele ohne Behauptung.
+          Klick sendet DIREKT — kein zweiter Klick nötig. */}
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <span className="font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
           {t("ask.examplesLabel")}
         </span>
-        {ASK_EXAMPLES.map((ex) => {
-          // SCRUM-266: knappe Ergebnis-Erwartung je Beispiel (dezent getönt); Klick unverändert.
-          const expect = askExpectation(ex.kind);
+        {exampleChips.map((chip) => {
+          const question =
+            chip.kind === "ko" ? t("ask.koQuestion", { title: chip.title }) : t(chip.questionKey);
+          const expect =
+            chip.kind === "ko"
+              ? askExpectation("answerable")
+              : chip.expectation === "gap"
+                ? askExpectation("gap")
+                : null;
           return (
             <button
-              key={ex.id}
+              key={question}
               type="button"
-              onClick={() => setQ(t(ex.questionKey))}
-              className="inline-flex items-center gap-1.5 rounded-pill border border-hairline px-2.5 py-1 text-[12px] text-muted hover:border-ink/30 hover:text-text"
+              disabled={ask.isPending}
+              onClick={() => askExample(question)}
+              className="inline-flex min-w-0 items-center gap-1.5 rounded-pill border border-hairline px-2.5 py-1 text-[12px] text-muted hover:border-ink/30 hover:text-text disabled:opacity-50"
             >
-              <span>{t(ex.questionKey)}</span>
-              <span
-                className={`rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${EXPECT_TONE[expect.tone]}`}
-              >
-                {t(expect.labelKey)}
-              </span>
+              <span className="min-w-0 max-w-[16rem] truncate">{question}</span>
+              {expect ? (
+                <span
+                  className={`shrink-0 rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${EXPECT_TONE[expect.tone]}`}
+                >
+                  {t(expect.labelKey)}
+                </span>
+              ) : (
+                <span className="shrink-0 rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-muted-2">
+                  {t("ask.expect.neutral")}
+                </span>
+              )}
             </button>
           );
         })}
@@ -385,7 +419,12 @@ export function Ask(): JSX.Element {
                   {t("ask.export.print")}
                 </Button>
               </div>
-              <p className="text-[15px] leading-relaxed text-text">{result.answer}</p>
+              {/* WP-UX-WOW-1 U1: Markdown der Antwort SICHER gerendert (Subset via React-Elemente);
+                  Kopieren/Download/Druck nutzen weiter den ROHEN Text (buildExport unverändert). */}
+              <AnswerMarkdown
+                text={result.answer ?? ""}
+                className="text-[15px] leading-relaxed text-text"
+              />
               {reviewGuard ? (
                 <div className="mt-3 rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
                   <div className="font-semibold">{t(reviewGuard.labelKey)}</div>

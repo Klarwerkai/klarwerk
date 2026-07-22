@@ -9,7 +9,7 @@ export const CAPTURE_FRONT_DOOR_ROUTE = "/capture/frontdoor";
 export const CAPTURE_FRONT_DOOR_FALLBACK_TITLE = "Unbenanntes Wissensobjekt";
 export const FRONT_DOOR_SAVE_TIMEOUT_MS = 30000;
 export const FRONT_DOOR_SAVE_TIMEOUT_MESSAGE =
-  "Speichern dauert zu lange. Bitte pruefe Bibliothek oder Entwuerfe, bevor du erneut speicherst.";
+  "Speichern dauert zu lange. Bitte prüfe Bibliothek oder Entwürfe, bevor du erneut speicherst.";
 // SCRUM-487 (i18n): reine Anzeigemeldung → stabiler i18n-Key; die Ansicht macht t(...).
 export const FRONT_DOOR_STRUCTURING_UNAVAILABLE_KEY = "cfd.structuringUnavailable";
 

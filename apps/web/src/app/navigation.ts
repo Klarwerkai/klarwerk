@@ -290,11 +290,18 @@ export const FOOT_ITEMS: NavItem[] = [
 
 export const ALL_ITEMS: NavItem[] = [...NAV_GROUPS.flatMap((g) => g.items), ...FOOT_ITEMS];
 
+// WP-UX-WOW-1 U9: das Rollen-Gate separat prüfbar — der Routen-Guard unterscheidet damit ehrlich
+// „Rolle reicht nicht" (harte Umleitung, RB-2 unverändert) von „nur Stufe 2 ist aus" (erklärende
+// Karte statt stiller Umleitung). Die Navigation (canSee) blendet weiterhin beides aus.
+export function roleAllows(item: NavItem, role: Role): boolean {
+  return ROLE_RANK[role] >= ROLE_RANK[item.minRole];
+}
+
 export function canSee(item: NavItem, role: Role, stufe2: boolean): boolean {
   if (item.stufe2 && !stufe2) {
     return false;
   }
-  return ROLE_RANK[role] >= ROLE_RANK[item.minRole];
+  return roleAllows(item, role);
 }
 
 // Topbar-Icons hier mit re-exportieren, damit die Shell eine Quelle hat.

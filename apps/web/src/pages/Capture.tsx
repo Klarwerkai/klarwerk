@@ -288,7 +288,7 @@ export function Capture(): JSX.Element {
   const { push } = useToast();
   const authorName = user?.name ?? user?.email ?? "—";
   const draftScopeLabel =
-    user?.role === "admin" ? "Admin-Ansicht: alle Entwuerfe" : "Meine Entwuerfe";
+    user?.role === "admin" ? "Admin-Ansicht: alle Entwürfe" : "Meine Entwürfe";
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -2152,14 +2152,14 @@ export function Capture(): JSX.Element {
             <div className="text-[12px] font-semibold uppercase text-ai">Standardweg</div>
             <h2 className="mt-1 text-lg font-semibold text-ink">Neues Wissensobjekt erfassen</h2>
             <p className="mt-1 text-sm leading-relaxed text-muted">
-              Dokument-Canvas fuer Titel, Inhalt, Formatierung, Bilder und Entwurf-Fortsetzen.
+              Dokument-Canvas für Titel, Inhalt, Formatierung, Bilder und Entwurf-Fortsetzen.
             </p>
           </div>
           <Link
             to={CAPTURE_FRONT_DOOR_ROUTE}
             className="inline-flex items-center justify-center rounded-btn bg-ink px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
           >
-            Dokument-Canvas oeffnen <span aria-hidden="true">→</span>
+            Dokument-Canvas öffnen <span aria-hidden="true">→</span>
           </Link>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-hairline pt-3 text-[12.5px] text-muted">
@@ -2199,9 +2199,9 @@ export function Capture(): JSX.Element {
             </span>
           </div>
           <p className="mt-1 text-[12.5px] leading-relaxed text-trust-pos-text/90">
-            <strong>{frontDoorDraftSaved.title}</strong> ist unter Entwuerfe fortsetzen sichtbar.
-            Der gespeicherte Entwurf ist in der Liste hervorgehoben; der Dokument-Canvas startet
-            beim naechsten Oeffnen wieder leer.
+            <strong>{frontDoorDraftSaved.title}</strong> ist unter Entwürfe fortsetzen sichtbar. Der
+            gespeicherte Entwurf ist in der Liste hervorgehoben; der Dokument-Canvas startet beim
+            nächsten Öffnen wieder leer.
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <Link

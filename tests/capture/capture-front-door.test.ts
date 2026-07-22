@@ -433,7 +433,7 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
 
     expect(captureSource).toContain("KW-PROD-15");
     expect(captureSource).toContain("Neues Wissensobjekt erfassen");
-    expect(captureSource).toContain("Dokument-Canvas oeffnen");
+    expect(captureSource).toContain("Dokument-Canvas öffnen");
     expect(captureSource).toContain("Weitere Wege");
     // SCRUM-458: die redundante zweite Aufklapp-Ebene („weitere Optionen") ist entfernt — sobald
     // „Weitere Wege" offen ist, rendert die Leiste ALLE Erzähl-Modi direkt (NARRATE_MODES.map) plus den

@@ -6,7 +6,7 @@
 // Demo-Daten-entfernen-Weg.
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, PackagePlus } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
@@ -37,8 +37,20 @@ export function ExamplePackages(): JSX.Element {
     }
   };
 
+  // WP-UX-WOW-1 U6: der Konflikte-Leerzustand verlinkt hierher (/import#beispielpakete) — der
+  // Anker existiert am Kasten, und beim Deep-Link scrollt die Ansicht einmal sanft zu ihm
+  // (React-Router scrollt Hashes nicht von selbst).
+  useEffect(() => {
+    if (window.location.hash === "#beispielpakete") {
+      document.getElementById("beispielpakete")?.scrollIntoView?.({
+        behavior: "smooth",
+        block: "start",
+      });
+    }
+  }, []);
+
   return (
-    <Card className="mt-5">
+    <Card id="beispielpakete" className="mt-5 scroll-mt-4">
       <SectionLabel>{t(EXAMPLE_PACKAGES_TEXT.title)}</SectionLabel>
       <p className="mb-3 text-[13px] text-muted">{t(EXAMPLE_PACKAGES_TEXT.hint)}</p>
 

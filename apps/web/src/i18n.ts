@@ -2158,6 +2158,26 @@ const de = {
   "imp.history.title": "Bereits übernommene Beiträge (Verlauf)",
   "imp.history.hint":
     "Hier liegt der Verlauf früherer Übernahmen — zur Prüfung eingereihte, angenommene und abgelehnte Beiträge. Für den laufenden Import brauchst du diesen Bereich nicht.",
+  // WP-UX-WOW-1 (Kopfs Live-UX-Befunde U1-U9): Politur für den ersten VIP2-Eindruck.
+  "ask.koQuestion": "Was gilt zu: {{title}}?",
+  "ask.expect.neutral": "Beispiel ausprobieren",
+  "lib.trustNone": "Noch keine Nutzungs-Bewertungen",
+  "lib.trustNoneHint":
+    "Trust wächst durch Nutzung und Bewertungen. 0 heißt nur: noch keine Rückmeldungen — nicht, dass der Inhalt schlecht ist.",
+  "con.emptyWhat":
+    "Ein Konflikt entsteht, wenn zwei Beiträge sich fachlich widersprechen — zum Beispiel zwei verschiedene Grenzwerte für dieselbe Anlage.",
+  "con.emptyHow":
+    "Klarwerk erkennt solche Widersprüche beim Prüfen und Vergleichen; hier entscheidet dann ein Mensch, welche Aussage gilt.",
+  "con.emptyExamplesHint":
+    "Zum Ausprobieren gibt es das Beispielpaket „Widersprüchliche Aussagen“ im Import-Bereich.",
+  "con.emptyExamplesCta": "Beispielpakete öffnen",
+  "stage2.gate.title": "Erweiterte Funktionen (Stufe 2)",
+  "stage2.gate.body":
+    "Dieses Modul gehört zu den Erweiterten Funktionen (Stufe 2). Sie sind gerade ausgeschaltet — deshalb ist dieser Bereich noch nicht sichtbar.",
+  "stage2.gate.enable": "Stufe 2 jetzt einschalten",
+  "stage2.gate.adminOnly":
+    "Stufe 2 kann eine Admin-Person über den Schalter in der Seitenleiste einschalten.",
+  "stage2.gate.back": "Zurück zum Start",
   "imp.cleanup.title": "Testdaten aufräumen",
   "imp.cleanup.desc":
     "Entfernt alle Einträge aus der Import-Warteschlange und legt alle aus Confluence oder Jira importierten Beiträge in den Papierkorb. Selbst erstellte Beiträge, Nutzer und Einstellungen bleiben unberührt.",
@@ -5397,6 +5417,25 @@ const en: typeof de = {
   "imp.history.title": "Already imported contributions (history)",
   "imp.history.hint":
     "This is the history of earlier imports — contributions queued for review, accepted and rejected ones. You do not need this area for the current import.",
+  // WP-UX-WOW-1 (Kopf's live UX findings U1-U9): polish for the first VIP2 impression.
+  "ask.koQuestion": "What applies to: {{title}}?",
+  "ask.expect.neutral": "Try an example",
+  "lib.trustNone": "No usage ratings yet",
+  "lib.trustNoneHint":
+    "Trust grows through usage and ratings. 0 only means: no feedback yet — not that the content is bad.",
+  "con.emptyWhat":
+    "A conflict arises when two contributions contradict each other — for example two different limit values for the same equipment.",
+  "con.emptyHow":
+    "Klarwerk detects such contradictions during review and comparison; a human then decides here which statement holds.",
+  "con.emptyExamplesHint":
+    "To try it out, load the example package “Contradicting statements” in the import area.",
+  "con.emptyExamplesCta": "Open example packages",
+  "stage2.gate.title": "Advanced features (stage 2)",
+  "stage2.gate.body":
+    "This module belongs to the advanced features (stage 2). They are currently switched off — that is why this area is not visible yet.",
+  "stage2.gate.enable": "Turn on stage 2 now",
+  "stage2.gate.adminOnly": "An admin can turn on stage 2 via the switch in the sidebar.",
+  "stage2.gate.back": "Back to start",
   "imp.cleanup.title": "Clean up test data",
   "imp.cleanup.desc":
     "Removes all entries from the import queue and moves all posts imported from Confluence or Jira to the trash. Posts created by hand, users and settings remain untouched.",
@@ -8595,6 +8634,25 @@ const nl: typeof de = {
   "imp.history.title": "Al overgenomen bijdragen (geschiedenis)",
   "imp.history.hint":
     "Hier staat de geschiedenis van eerdere overnames — bijdragen in de wachtrij voor controle, geaccepteerde en afgewezen bijdragen. Voor de lopende import heb je dit gedeelte niet nodig.",
+  // WP-UX-WOW-1 (Kopfs live-UX-bevindingen U1-U9): polijstwerk voor de eerste VIP2-indruk.
+  "ask.koQuestion": "Wat geldt voor: {{title}}?",
+  "ask.expect.neutral": "Voorbeeld proberen",
+  "lib.trustNone": "Nog geen gebruiksbeoordelingen",
+  "lib.trustNoneHint":
+    "Trust groeit door gebruik en beoordelingen. 0 betekent alleen: nog geen terugkoppeling — niet dat de inhoud slecht is.",
+  "con.emptyWhat":
+    "Een conflict ontstaat wanneer twee bijdragen elkaar inhoudelijk tegenspreken — bijvoorbeeld twee verschillende grenswaarden voor dezelfde installatie.",
+  "con.emptyHow":
+    "Klarwerk herkent zulke tegenstrijdigheden bij het controleren en vergelijken; een mens beslist hier vervolgens welke uitspraak geldt.",
+  "con.emptyExamplesHint":
+    "Om het uit te proberen is er het voorbeeldpakket „Tegenstrijdige uitspraken“ in het importgedeelte.",
+  "con.emptyExamplesCta": "Voorbeeldpakketten openen",
+  "stage2.gate.title": "Uitgebreide functies (fase 2)",
+  "stage2.gate.body":
+    "Deze module hoort bij de uitgebreide functies (fase 2). Die staan nu uit — daarom is dit gedeelte nog niet zichtbaar.",
+  "stage2.gate.enable": "Fase 2 nu inschakelen",
+  "stage2.gate.adminOnly": "Een admin kan fase 2 inschakelen via de schakelaar in de zijbalk.",
+  "stage2.gate.back": "Terug naar start",
   "imp.cleanup.title": "Testgegevens opruimen",
   "imp.cleanup.desc":
     "Verwijdert alle items uit de importwachtrij en verplaatst alle uit Confluence of Jira geïmporteerde bijdragen naar de prullenbak. Zelf gemaakte bijdragen, gebruikers en instellingen blijven onaangeroerd.",

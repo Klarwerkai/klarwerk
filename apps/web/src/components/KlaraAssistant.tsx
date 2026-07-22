@@ -21,6 +21,8 @@ import {
   searchKlara,
 } from "../lib/klaraRegistry";
 import { AiModelInfo } from "./AiModelInfo";
+// WP-UX-WOW-1 U1: Antwort-Markdown sicher rendern (React-Subset, kein HTML-Sink).
+import { AnswerMarkdown } from "./AnswerMarkdown";
 
 // Pedi 05.07. („die Voice ist furchtbar"): Die Browser-Standardstimme ist oft die schlechteste.
 // Wir wählen die beste installierte Stimme je Sprache: Premium/Enhanced/Neural-Stimmen zuerst,
@@ -499,7 +501,11 @@ export function KlaraAssistant(): JSX.Element {
                     </div>
                     {aiAsk.data.answered && aiAsk.data.answer ? (
                       <>
-                        <p className="text-[12px] leading-relaxed text-text">{aiAsk.data.answer}</p>
+                        {/* WP-UX-WOW-1 U1: Antwort-Markdown sicher rendern (React-Subset). */}
+                        <AnswerMarkdown
+                          text={aiAsk.data.answer ?? ""}
+                          className="text-[12px] leading-relaxed text-text"
+                        />
                         {/* Pedi 05.07.: führt die Antwort zu einem Bereich, steht der Link direkt dabei. */}
                         {aiTargetEntry ? (
                           <Link

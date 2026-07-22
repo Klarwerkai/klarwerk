@@ -223,12 +223,24 @@ export function CaptureFrontDoor(): JSX.Element {
     };
   }, [resumeDraftId, clearStructureState, clearAssistState, t]);
 
+  // WP-UX-WOW-1 U8 (Kopfs Freeze-Befund, gehärteter Verwerfen-Pfad): der Scroll läuft NUR beim
+  // ERSCHEINEN eines Vorschlags (Übergang kein-Panel → Panel), nie bei Folge-Renders oder beim
+  // Verwerfen — und scrollIntoView wird wie im R7-Muster per ?.() aufgerufen: der alte, ungeschützte
+  // Aufruf warf in Umgebungen ohne die API eine UNBEHANDELTE asynchrone Exception aus dem
+  // setTimeout (nachgewiesen im Mounted-Test), an jedem ErrorBoundary vorbei.
+  const proposalVisibleRef = useRef(false);
   useEffect(() => {
-    if (!structureProposal && !assistProposal) {
+    const visible = structureProposal !== null || assistProposal !== null;
+    if (!visible) {
+      proposalVisibleRef.current = false;
       return;
     }
+    if (proposalVisibleRef.current) {
+      return;
+    }
+    proposalVisibleRef.current = true;
     const timeout = window.setTimeout(() => {
-      proposalRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      proposalRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
     }, 0);
     return () => window.clearTimeout(timeout);
   }, [structureProposal, assistProposal]);

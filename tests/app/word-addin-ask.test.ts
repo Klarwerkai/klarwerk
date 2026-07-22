@@ -28,6 +28,7 @@ import {
   openQuestionDraftTitle,
   performAsk,
   prepareAskQuestion,
+  stripAskAnswerMarkdown,
 } from "../../apps/web/src/lib/wordAddin";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
@@ -123,6 +124,36 @@ describe("WP-KLARA-ASK Teil 1: performAsk — der Konsolen-Vertrag mit Fake-fetc
       sources: ["ko-1", "ko-2"],
       trust: 62,
     });
+  });
+
+  // WP-UX-WOW-1 U1 (Word): das Taskpane zeigt KLARTEXT — Markdown-Zeichen der Antwort werden mit
+  // der Subset-Logik ENTFERNT (Ueberschriften-/Fett-/Kursiv-Marker raus, Listen als "- "-Zeilen).
+  it("Markdown in der Antwort wird fuers Panel/Einfuegen gestrippt (Klartext, kein Rendern)", async () => {
+    const body = {
+      result: {
+        answered: true,
+        answer: "## Antwort\n**Ventil** vor der Wartung *entlasten*.\n\n### Fazit\n* Druck pruefen",
+        sources: ["ko-1"],
+        trust: 40,
+      },
+      gap: null,
+    };
+    const outcome = await performAsk(
+      "Frage",
+      "de",
+      async () => fakeRes(200, body),
+      WORD_ADDIN_ASK_TIMEOUT_MS,
+    );
+    expect(outcome.kind).toBe("answered");
+    expect(outcome.answer).toBe(
+      "Antwort\nVentil vor der Wartung entlasten.\n\nFazit\n- Druck pruefen",
+    );
+  });
+
+  it("stripAskAnswerMarkdown: nummerierte Listen bleiben nummeriert, unpaarige Marker bleiben Text", () => {
+    expect(stripAskAnswerMarkdown("1. Erst A\n2. Dann B")).toBe("1. Erst A\n2. Dann B");
+    expect(stripAskAnswerMarkdown("**unpaarig bleibt stehen")).toBe("**unpaarig bleibt stehen");
+    expect(stripAskAnswerMarkdown("Kein Markdown.")).toBe("Kein Markdown.");
   });
 
   it("Wissensluecke (answered=false) → kind gap — NIE eine erfundene Antwort", async () => {
@@ -269,7 +300,7 @@ describe("WP-KLARA-ASK Teil 3: Inline-Spiegel im buildlosen Taskpane ist VERHALT
     expect(end).toBeGreaterThan(start);
     const block = html.slice(start, end);
     const factory = new Function(
-      `${block}; return { prepareAskQuestion: prepareAskQuestion, askLocale: askLocale, performAsk: performAsk, canInsertAnswer: canInsertAnswer, buildAskSourceLine: buildAskSourceLine, buildAnswerInsertText: buildAnswerInsertText, formatAskDateLabel: formatAskDateLabel, newestSourceDateLabel: newestSourceDateLabel, openQuestionDraftTitle: openQuestionDraftTitle, WORD_ADDIN_ASK_MAX_CHARS: WORD_ADDIN_ASK_MAX_CHARS, WORD_ADDIN_ASK_TIMEOUT_MS: WORD_ADDIN_ASK_TIMEOUT_MS };`,
+      `${block}; return { prepareAskQuestion: prepareAskQuestion, askLocale: askLocale, performAsk: performAsk, canInsertAnswer: canInsertAnswer, buildAskSourceLine: buildAskSourceLine, buildAnswerInsertText: buildAnswerInsertText, formatAskDateLabel: formatAskDateLabel, newestSourceDateLabel: newestSourceDateLabel, openQuestionDraftTitle: openQuestionDraftTitle, stripAskAnswerMarkdown: stripAskAnswerMarkdown, WORD_ADDIN_ASK_MAX_CHARS: WORD_ADDIN_ASK_MAX_CHARS, WORD_ADDIN_ASK_TIMEOUT_MS: WORD_ADDIN_ASK_TIMEOUT_MS };`,
     );
     const inline = factory() as {
       prepareAskQuestion: typeof prepareAskQuestion;
@@ -281,6 +312,7 @@ describe("WP-KLARA-ASK Teil 3: Inline-Spiegel im buildlosen Taskpane ist VERHALT
       formatAskDateLabel: typeof formatAskDateLabel;
       newestSourceDateLabel: typeof newestSourceDateLabel;
       openQuestionDraftTitle: typeof openQuestionDraftTitle;
+      stripAskAnswerMarkdown: typeof stripAskAnswerMarkdown;
       WORD_ADDIN_ASK_MAX_CHARS: number;
       WORD_ADDIN_ASK_TIMEOUT_MS: number;
     };
@@ -300,6 +332,16 @@ describe("WP-KLARA-ASK Teil 3: Inline-Spiegel im buildlosen Taskpane ist VERHALT
     }
     for (const lng of ["de", "en", "nl", "fr"]) {
       expect(inline.askLocale(lng)).toBe(askLocale(lng));
+    }
+    // WP-UX-WOW-1 U1: der Markdown-Strip ist in beiden Fassungen verhaltensgleich.
+    const stripFixtures = [
+      "## Antwort\n**Ventil** vor der Wartung *entlasten*.\n\n### Fazit\n- Druck pruefen\n- Ventil schliessen",
+      "1. Erst A\n2. Dann B",
+      "Kein Markdown, nur Text.",
+      "**unpaarig bleibt stehen",
+    ];
+    for (const fixture of stripFixtures) {
+      expect(inline.stripAskAnswerMarkdown(fixture)).toBe(stripAskAnswerMarkdown(fixture));
     }
     // Ask-Fluss: beide Fassungen liefern auf denselben Fake-fetch-Faellen dasselbe Ergebnis.
     const flows: [string, AskFetchFn][] = [

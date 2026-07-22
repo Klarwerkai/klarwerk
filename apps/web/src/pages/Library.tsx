@@ -393,7 +393,9 @@ export function Library(): JSX.Element {
                           href: "/konflikte",
                           kind: "review" as const,
                         }
-                      : libraryUseCta(k);
+                      : // WP-UX-WOW-1 U5: echte Frage statt roher Aussage/Titel — und via ?ask=1
+                        // DIREKT beantwortet (ein Klick → Antwort).
+                        libraryUseCta(k, t("ask.koQuestion", { title: k.title }));
                     return (
                       <div
                         key={k.id}
@@ -408,7 +410,12 @@ export function Library(): JSX.Element {
                               Badge-Kette davor machte die Überschrift unauffindbar. Badges
                               rücken in eine ruhige Zeile UNTER den Titel; nichts entfernt. */}
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[15px] font-semibold leading-snug text-text underline-offset-4 group-hover:underline">
+                            {/* WP-UX-WOW-1 U4: Titel nicht mehr hart kappen — volle Breite,
+                                zweizeilig mit line-clamp; der Volltext liegt im title-Attribut. */}
+                            <span
+                              title={k.title}
+                              className="block line-clamp-2 text-[15px] font-semibold leading-snug text-text underline-offset-4 group-hover:underline"
+                            >
                               {k.title}
                             </span>
                             <span className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -459,9 +466,21 @@ export function Library(): JSX.Element {
                           <span className="hidden font-mono text-[11px] text-muted-2 sm:block">
                             {k.category}
                           </span>
-                          <div className="hidden sm:block">
-                            <ConfidenceBar value={k.confidence} showLabel={false} />
-                          </div>
+                          {/* WP-UX-WOW-1 U4: „Validiert" neben einer 0-Leiste verwirrt Laien —
+                              validiert + Trust 0 bekommt statt der leeren Leiste den nüchternen
+                              Hinweis (Tooltip erklärt Trust); die Leiste erst ab Trust > 0. */}
+                          {deriveStatus(k) === "validiert" && k.trust === 0 ? (
+                            <span
+                              title={t("lib.trustNoneHint")}
+                              className="hidden text-[11px] text-muted-2 sm:block"
+                            >
+                              {t("lib.trustNone")}
+                            </span>
+                          ) : (
+                            <div className="hidden sm:block">
+                              <ConfidenceBar value={k.confidence} showLabel={false} />
+                            </div>
+                          )}
                         </Link>
                         {/* SCRUM-288: nur nutzbares/validiertes Wissen direkt in Ask; offene KOs → Review.
                             SCRUM-294: im Demo-Kontext den Use-Fluss-Kontext weitertragen. */}

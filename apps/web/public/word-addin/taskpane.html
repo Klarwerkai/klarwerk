@@ -359,6 +359,22 @@
 
     function askLocale(langCode) { return langCode === "en" ? "en" : "de"; }
 
+    // WP-UX-WOW-1 U1 (Word): Klartext statt Markdown — dieselbe Subset-Logik wie die Konsole,
+    // aber als STRIP (Ueberschriften-/Fett-/Kursiv-Marker raus, Listenpunkte als "- "-Zeilen).
+    function stripAskAnswerMarkdown(answer) {
+      var lines = answer.replace(/\r\n?/g, "\n").split("\n");
+      var out = [];
+      for (var i = 0; i < lines.length; i += 1) {
+        var line = lines[i].trim();
+        var heading = /^#{1,6}\s+(.*)$/.exec(line);
+        if (heading && heading[1] !== undefined) { line = heading[1].trim(); }
+        var bullet = /^[-*]\s+(.*)$/.exec(line);
+        if (bullet && bullet[1] !== undefined) { line = "- " + bullet[1]; }
+        out.push(line.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*\n]+)\*/g, "$1"));
+      }
+      return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+    }
+
     function performAsk(question, locale, fetchFn, timeoutMs) {
       var controller = new AbortController();
       var timedOut = false;
@@ -399,7 +415,8 @@
             ) {
               return {
                 kind: "answered",
-                answer: answer,
+                // WP-UX-WOW-1 U1: Klartext im Panel UND im eingefuegten Text.
+                answer: stripAskAnswerMarkdown(answer),
                 sources: sources,
                 trust: typeof result.trust === "number" ? result.trust : 0,
               };

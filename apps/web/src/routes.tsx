@@ -2,8 +2,10 @@ import { Plus } from "lucide-react";
 import type { ComponentType } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useRole } from "./app/RoleContext";
-import { ALL_ITEMS, HOME_ROUTE, type NavItem, canSee } from "./app/navigation";
+import { ALL_ITEMS, HOME_ROUTE, type NavItem, roleAllows } from "./app/navigation";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+// WP-UX-WOW-1 U9: erklärende Karte statt stiller Stufe-2-Umleitung.
+import { Stage2Notice } from "./components/Stage2Notice";
 import { CAPTURE_FRONT_DOOR_ROUTE } from "./lib/captureFrontDoor";
 import { Admin } from "./pages/Admin";
 import { Analytics } from "./pages/Analytics";
@@ -95,8 +97,13 @@ const CONFLICT_COMPARE_ITEM: NavItem = {
 // Rollen-Gate (RB-2): Deep-Link auf Unerlaubtes → zurück auf Start.
 function Guarded({ item }: { item: NavItem }): JSX.Element {
   const { role, stufe2 } = useRole();
-  if (!canSee(item, role, stufe2)) {
+  if (!roleAllows(item, role)) {
     return <Navigate to={HOME_ROUTE} replace />;
+  }
+  // WP-UX-WOW-1 U9: die Rolle würde reichen, nur Stufe 2 ist aus → KEINE stille Umleitung mehr,
+  // sondern die erklärende Karte mit Einschalt-Knopf (Admin) bzw. ehrlichem Hinweis + Zurück.
+  if (item.stufe2 && !stufe2) {
+    return <Stage2Notice />;
   }
   const Page = PAGES[item.id];
   // Bug (Pedi 04.07.): Fehler in EINER Seite dürfen nicht die ganze App weiß ausblenden.

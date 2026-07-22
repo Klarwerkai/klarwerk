@@ -42,7 +42,8 @@ describe("KW-PROD-29: Frontdoor Save/Submit State", () => {
     expect(source).toContain("Neuer leerer Eintrag");
     expect(source).toContain("useLocation");
     expect(source).toContain('navigate("/erfassen", { replace: true, state: null })');
-    expect(source).toContain("Der gespeicherte Entwurf ist in der Liste hervorgehoben");
+    // Formatiererfester Pin (der Satz bricht je nach Zeilenlänge um).
+    expect(source).toContain("gespeicherte Entwurf ist in der Liste hervorgehoben");
     expect(source).toContain("frontDoorDraftSaved?.id === d.id");
   });
 
@@ -67,8 +68,8 @@ describe("KW-PROD-29: Frontdoor Save/Submit State", () => {
     expect(source).toContain("formatDraftTimestamp");
     expect(source).toContain("draftAuthorName");
     expect(source).toContain("draftScopeLabel");
-    expect(source).toContain("Admin-Ansicht: alle Entwuerfe");
-    expect(source).toContain("Meine Entwuerfe");
+    expect(source).toContain("Admin-Ansicht: alle Entwürfe");
+    expect(source).toContain("Meine Entwürfe");
     expect(source).toContain("Ersteller:");
     expect(source).toContain("Gespeichert:");
     expect(source).toContain("Status: Entwurf");

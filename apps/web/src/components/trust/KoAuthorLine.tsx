@@ -12,5 +12,11 @@ export function KoAuthorLine({ author, originalAuthor }: KoAuthorLineProps): JSX
   const text = originalAuthor
     ? `${t("ko.author")}: ${author} · ${t("ko.originalAuthor")}: ${originalAuthor}`
     : `${t("ko.author")}: ${author}`;
-  return <div className="truncate font-mono text-[11px] text-muted-2">{text}</div>;
+  // WP-UX-WOW-1 U4: die Zeile darf weiter kürzen (eine Zeile bleibt ruhig), aber der VOLLE Text
+  // liegt im title-Attribut — kein mitten im Namen gekappter Autor ohne Auflösung.
+  return (
+    <div title={text} className="truncate font-mono text-[11px] text-muted-2">
+      {text}
+    </div>
+  );
 }

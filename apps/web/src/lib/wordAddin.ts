@@ -195,6 +195,29 @@ export interface AskFetchResponseLike {
 
 export type AskFetchFn = (url: string, init: AskFetchInit) => Promise<AskFetchResponseLike>;
 
+// WP-UX-WOW-1 U1 (Word): das Taskpane zeigt und fuegt KLARTEXT ein — Markdown-Zeichen der Antwort
+// werden mit derselben Subset-Logik wie in der Konsole ENTFERNT statt gerendert (Ueberschriften-,
+// Fett-/Kursiv-Marker weg; Listenpunkte als "- "-Zeilen normalisiert). Nur Zeichen-Strip, nie HTML.
+export function stripAskAnswerMarkdown(answer: string): string {
+  const out: string[] = [];
+  for (const raw of answer.replace(/\r\n?/g, "\n").split("\n")) {
+    let line = raw.trim();
+    const heading = /^#{1,6}\s+(.*)$/.exec(line);
+    if (heading?.[1] !== undefined) {
+      line = heading[1].trim();
+    }
+    const bullet = /^[-*]\s+(.*)$/.exec(line);
+    if (bullet?.[1] !== undefined) {
+      line = `- ${bullet[1]}`;
+    }
+    out.push(line.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*\n]+)\*/g, "$1"));
+  }
+  return out
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export function performAsk(
   question: string,
   locale: "de" | "en",
@@ -248,7 +271,8 @@ export function performAsk(
         ) {
           return {
             kind: "answered",
-            answer,
+            // WP-UX-WOW-1 U1: Klartext im Panel UND im eingefuegten Text — Markdown-Zeichen raus.
+            answer: stripAskAnswerMarkdown(answer),
             sources,
             trust: typeof result.trust === "number" ? result.trust : 0,
           };

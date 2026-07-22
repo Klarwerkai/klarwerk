@@ -23,6 +23,8 @@ import { useNavGuard } from "../app/NavGuardContext";
 import { useToast } from "../app/ToastContext";
 import { HOME_ROUTE } from "../app/navigation";
 import { type SyncResult, useOfflineQueue } from "../app/useOfflineQueue";
+// WP-UX-WOW-1 U1: Antwort-Markdown sicher rendern (React-Subset, kein HTML-Sink).
+import { AnswerMarkdown } from "../components/AnswerMarkdown";
 import { ConfidenceBar, KnowledgeTypeTag, StatusPill } from "../components/trust";
 import { selectAnswer } from "../lib/askResponse";
 import { deriveStatus } from "../lib/displayStatus";
@@ -468,7 +470,11 @@ export function Mobile(): JSX.Element {
                               <ConfidenceBar value={s.trust} showLabel={false} />
                             </span>
                           </div>
-                          <p className="text-[14px] leading-relaxed text-text">{s.text}</p>
+                          {/* WP-UX-WOW-1 U1: Antwort-Markdown sicher rendern (React-Subset). */}
+                          <AnswerMarkdown
+                            text={s.text ?? ""}
+                            className="text-[14px] leading-relaxed text-text"
+                          />
                           {s.sources.length > 0 ? (
                             <div className="mt-2 flex flex-wrap items-center gap-2">
                               <span className="font-mono text-[10px] uppercase text-muted-2">

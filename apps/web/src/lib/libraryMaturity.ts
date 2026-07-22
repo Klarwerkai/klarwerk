@@ -3,7 +3,7 @@
 // übersetzt sie in eine ehrliche Klartext-Aussage: nutzbar (validiert) · in Prüfung · zu prüfen.
 // Offene KOs erscheinen damit NIE als „nutzbar". Keine neue Suche, keine Mutation, kein Backend.
 import type { KnowledgeObject } from "../api/types";
-import { askQuestionHref } from "./askQuestion";
+import { askAnswerHref } from "./askQuestion";
 import { type KoUsability, koOverview } from "./koOverview";
 import { useReadiness } from "./useReadiness";
 
@@ -44,10 +44,14 @@ export function libraryMaturity(ko: KnowledgeObject): LibraryMaturity {
 // SCRUM-288: In der Bibliothek führt nur nutzbares/validiertes Wissen in den Ask-Flow. Alles,
 // was noch offen oder in Prüfung ist, wird ehrlich Richtung Validierung geführt — keine neue
 // Suche, keine Mutation, nur sichere CTA-Wahl aus der vorhandenen Reife.
-export function libraryUseCta(ko: KnowledgeObject): LibraryUseCta {
+// WP-UX-WOW-1 U5 (Kopfs Befund): der Fragen-Knopf stellt eine ECHTE, lokalisierte Frage (der
+// Aufrufer reicht sie via i18n-Muster „Was gilt zu: <Titel>?" herein) und sendet DIREKT (ein
+// Klick → Antwort, über den bestehenden ?ask=1-Auto-Antwort-Weg der Suche). Ohne question-Parameter
+// bleibt der Titel die Startfrage (Alt-Verhalten der übrigen Aufrufer).
+export function libraryUseCta(ko: KnowledgeObject, question?: string): LibraryUseCta {
   const maturity = libraryMaturity(ko);
   if (maturity.usability === "ready") {
-    return { labelKey: "lib.ask", href: askQuestionHref(ko.title), kind: "ask" };
+    return { labelKey: "lib.ask", href: askAnswerHref(question ?? ko.title), kind: "ask" };
   }
   return { labelKey: "lib.review", href: "/validierung", kind: "review" };
 }
