@@ -532,13 +532,21 @@ export class LibraryService {
       // WP-SHIP8-CLOSE-4 (bens ROT-1A): der ANKER entscheidet über den Fehlerpfad — eine blinde
       // Freigabe, während das gestempelte KO existiert (z. B. create-Teilpersistenz: Insert
       // gelungen, Snapshot/Audit warf danach), wäre beim Retry ein Doppel-KO.
+      // WP-SHIP8-CLOSE-5 (bens ROT-1A, kein halber Zustand): VOR jeder Vollendung werden die
+      // create-Belege idempotent nachgezogen (ensureCreatedSideEffects: v1-Snapshot + ko.created).
+      // Scheitert Anker-Suche ODER Beleg-Nachzug, bleibt der Claim fail-closed stehen — es gibt
+      // nie ein „angenommen" ohne vollständige Belege.
       let stampedId = createdKoId;
-      let ankerUnknown = false;
+      let ankerUnsettled = false;
       if (stampedId === null && action === "accept" && !candidate.duplicate) {
         try {
-          stampedId = (await this.koService.findByImportCandidateId(id))?.id ?? null;
+          const stamped = await this.koService.findByImportCandidateId(id);
+          if (stamped) {
+            await this.koService.ensureCreatedSideEffects(stamped);
+            stampedId = stamped.id;
+          }
         } catch {
-          ankerUnknown = true; // Anker-Zustand nicht prüfbar → fail-closed (s. unten).
+          ankerUnsettled = true; // Anker/Belege nicht gesichert → fail-closed (s. unten).
         }
       }
       if (stampedId !== null) {
@@ -563,11 +571,12 @@ export class LibraryService {
           );
           throw err;
         }
-      } else if (ankerUnknown) {
-        // FAIL-CLOSED: ohne verlässliche Anker-Auskunft weder freigeben (Doppel-KO-Risiko) noch
-        // vollenden — der Claim bleibt stehen, die Lease-Recovery entscheidet später sicher.
+      } else if (ankerUnsettled) {
+        // FAIL-CLOSED: ohne verlässliche Anker-Auskunft bzw. ohne vollständige Belege weder
+        // freigeben (Doppel-KO-Risiko) noch vollenden (halber Zustand) — der Claim bleibt
+        // stehen, die Lease-Recovery entscheidet später sicher.
         process.stderr.write(
-          `[KLARWERK] Anker-Pruefung nach Review-Fehler fehlgeschlagen (kandidat=${id}) — Claim bleibt stehen (fail-closed).\n`,
+          `[KLARWERK] Anker-Pruefung/Beleg-Nachzug nach Review-Fehler fehlgeschlagen (kandidat=${id}) — Claim bleibt stehen (fail-closed).\n`,
         );
         throw err;
       } else {
@@ -588,12 +597,27 @@ export class LibraryService {
       // Defensiv unerreichbar: jeder nicht-werfende Pfad oben setzt resolved.
       throw new LibraryError("CONFLICT", "Review-Aktion ohne Ergebnis — bitte erneut versuchen.");
     }
-    await this.audit?.record({
-      actor,
-      action: `import.candidate-${action}`,
-      target: resolved.id,
-      payload: { duplicate: resolved.duplicate, koId: resolved.koId },
-    });
+    // WP-SHIP8-CLOSE-5 (bens Konsistenz-Punkt, GEWÄHLTE SEMANTIK): der Statuswechsel IST zu
+    // diesem Zeitpunkt persistiert (resolveClaim) und die HARTEN Belege (KO, v1-Snapshot,
+    // ko.created) sind fail-closed gesichert, BEVOR es überhaupt hierher kommt. Wirft jetzt noch
+    // das abschließende Aktions-Audit (in Produktion derselbe Auditdienst wie im KoService),
+    // bleibt die Antwort ERFOLG: ein Fehler-Response würde nur einen Retry provozieren, der
+    // ALREADY_REVIEWED erntet — der Client sähe einen Fehler für eine vollzogene Aktion.
+    // Der Ausfall wird LAUT und PII-frei geloggt (dieselbe Semantik wie Cleanup-Regel 5).
+    try {
+      await this.audit?.record({
+        actor,
+        action: `import.candidate-${action}`,
+        target: resolved.id,
+        payload: { duplicate: resolved.duplicate, koId: resolved.koId },
+      });
+    } catch (auditErr) {
+      process.stderr.write(
+        `[KLARWERK] Abschluss-Audit der Review-Aktion fehlgeschlagen (kandidat=${resolved.id}, aktion=${action}, fehler=${
+          auditErr instanceof Error ? auditErr.name : "unknown"
+        }) — die Aktion IST vollzogen (Status persistiert), der Aktions-Beleg fehlt.\n`,
+      );
+    }
     return { ...resolved };
   }
 
@@ -636,8 +660,22 @@ export class LibraryService {
         );
         continue;
       }
-      // Anker-Suche INKLUSIVE Papierkorb (findByImportCandidateId) — s. Trash-Vertrag oben.
-      const stamped = await this.koService.findByImportCandidateId(candidate.id);
+      // WP-SHIP8-CLOSE-5 (bens ROT-1A): Anker-Suche (inkl. Papierkorb, s. Trash-Vertrag oben) UND
+      // Beleg-Nachzug laufen fail-closed JE Kandidat: wirft eine der beiden Flächen, bleibt DIESER
+      // Claim stehen (nächster Recovery-Lauf versucht es erneut) und der Queue-Load bricht nicht.
+      let stamped: KnowledgeObject | undefined;
+      try {
+        stamped = await this.koService.findByImportCandidateId(candidate.id);
+        if (stamped) {
+          // Kein Abschluss ohne vollständige Belege (v1-Snapshot + ko.created) — idempotent.
+          await this.koService.ensureCreatedSideEffects(stamped);
+        }
+      } catch {
+        process.stderr.write(
+          `[KLARWERK] Recovery: Anker-Pruefung/Beleg-Nachzug fehlgeschlagen (kandidat=${candidate.id}) — Claim bleibt stehen (fail-closed).\n`,
+        );
+        continue;
+      }
       if (stamped) {
         const resolved = await this.candidates.resolveClaim(candidate.id, opId, {
           status: "angenommen",
@@ -653,9 +691,11 @@ export class LibraryService {
               payload: { duplicate: candidate.duplicate, koId: stamped.id, recovered: true },
             });
           } catch {
-            // Audit best-effort — die Recovery selbst ist persistiert; PII-freies Log genügt.
+            // WP-SHIP8-CLOSE-5: dieselbe Abschluss-Audit-Semantik wie im Live-Accept — der
+            // Statuswechsel ist persistiert, die harten Belege sind gesichert; nur das
+            // Aktionsprotokoll fehlt und wird LAUT gemeldet.
             process.stderr.write(
-              `[KLARWERK] Recovery-Audit fehlgeschlagen (kandidat=${candidate.id}).\n`,
+              `[KLARWERK] Recovery-Audit fehlgeschlagen (kandidat=${candidate.id}) — Vollendung IST persistiert.\n`,
             );
           }
         }
@@ -683,6 +723,10 @@ export class LibraryService {
     if (candidateId) {
       const stamped = await this.koService.findByImportCandidateId(candidateId);
       if (stamped) {
+        // WP-SHIP8-CLOSE-5 (bens ROT-1A): Adoption NUR mit vollständigen Belegen — fehlende
+        // create-Seiteneffekte (v1-Snapshot/ko.created) werden idempotent nachgezogen; wirft der
+        // Nachzug, wirft die Adoption (fail-closed, kein halber Zustand wird vollendet).
+        await this.koService.ensureCreatedSideEffects(stamped);
         return stamped.id;
       }
     }
@@ -779,9 +823,13 @@ export class LibraryService {
       // Anker trotz werfendem create (Unique-Kollision ODER Insert gelungen + Snapshot/Audit
       // warf danach), ist der Accept materialisiert: das bestehende KO gilt, der Fehler wird
       // PII-frei geloggt statt in ein Doppel-KO oder eine falsche Claim-Freigabe zu münden.
+      // WP-SHIP8-CLOSE-5 (bens ROT-1A): VOR der Adoption werden die create-Belege idempotent
+      // nachgezogen (genau der Teilpersistenz-Fall: Insert durch, Snapshot/Audit fehlt) — wirft
+      // der Nachzug, wirft die Adoption (fail-closed; der äußere Fehlerpfad lässt den Claim stehen).
       if (candidateId) {
         const raced = await this.koService.findByImportCandidateId(candidateId);
         if (raced) {
+          await this.koService.ensureCreatedSideEffects(raced);
           process.stderr.write(
             `[KLARWERK] Import-Accept adoptiert bestehendes KO (kandidat=${candidateId}, fehler=${
               err instanceof Error ? err.name : "unknown"

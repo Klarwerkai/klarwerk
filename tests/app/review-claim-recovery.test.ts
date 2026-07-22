@@ -22,6 +22,7 @@ import {
 import { AuditService, InMemoryAuditRepo } from "../../services/audit";
 import {
   InMemoryKoRepo,
+  InMemoryKoVersionRepo,
   KO_IMPORT_ANCHOR_SCHEMA,
   KoService,
   type KoVersionRepo,
@@ -340,61 +341,193 @@ describe("WP-SHIP8-CLOSE-3 ROT-2: 'in_bearbeitung' bleibt im offenen Idempotenzr
 
 // ---- WP-SHIP8-CLOSE-4 (bens ROT-1A/1C): KO-Seiteneffekt-Kanten am Kandidaten-Anker ----
 
-describe("WP-SHIP8-CLOSE-4 ROT-1A: create-Teilpersistenz (Insert gelungen, Seiteneffekt wirft)", () => {
-  function partialCreateHarness(failing: "audit" | "snapshot") {
+describe("WP-SHIP8-CLOSE-5 ROT-1A: kein halber KO-Zustand — Belege werden fail-closed nachgezogen", () => {
+  // PRODUKTIONSVERDRAHTUNG (wie build-app): EIN gemeinsamer Auditdienst für KoService UND
+  // LibraryService + echtes Versions-Repo. Fehler werden gezielt injiziert und können HEILEN —
+  // damit prüfen die Tests den BESTAND (v1-Snapshot, ko.created), nicht nur den Fehlerwurf.
+  function sideEffectHarness() {
     const clock = { nowMs: T0 };
-    // Snapshot/Audit laufen NACH repo.insert — genau eine der beiden Flächen wirft.
-    const koAudit = {
-      record: async (entry: { action: string }) => {
-        if (failing === "audit" && entry.action === "ko.created") {
-          throw new Error("AuditDown");
-        }
-      },
-    } as unknown as AuditService;
-    const throwingVersions: KoVersionRepo = {
-      append: async () => {
-        throw new Error("SnapshotDown");
-      },
-      listByKo: async () => [],
-      remove: async () => {},
+    const faults = {
+      snapshotFailOnce: false,
+      auditFailOnceActions: new Set<string>(),
+      // "*" = jede Aktion (Auditdienst komplett ausgefallen); heilbar per clear().
+      auditFailAlwaysActions: new Set<string>(),
     };
-    const koService = new KoService({
-      repo: new InMemoryKoRepo(),
-      audit: koAudit,
-      ...(failing === "snapshot" ? { versions: throwingVersions } : {}),
-    });
+    const versionsRepo = new InMemoryKoVersionRepo();
+    const versions: KoVersionRepo = {
+      append: async (snapshot) => {
+        if (faults.snapshotFailOnce) {
+          faults.snapshotFailOnce = false;
+          throw new Error("SnapshotDown");
+        }
+        return versionsRepo.append(snapshot);
+      },
+      listByKo: (koId) => versionsRepo.listByKo(koId),
+      remove: (koId, version) => versionsRepo.remove(koId, version),
+    };
+    const audit = new AuditService({ repo: new InMemoryAuditRepo() });
+    const origRecord = audit.record.bind(audit);
+    (audit as { record: AuditService["record"] }).record = async (entry, tx) => {
+      if (
+        faults.auditFailAlwaysActions.has("*") ||
+        faults.auditFailAlwaysActions.has(entry.action) ||
+        faults.auditFailOnceActions.delete(entry.action)
+      ) {
+        throw new Error("AuditDown");
+      }
+      return origRecord(entry, tx);
+    };
+    const koService = new KoService({ repo: new InMemoryKoRepo(), versions, audit });
     const candidates = new InMemoryCandidateRepo();
     const library = new LibraryService({
       koService,
       candidates,
+      audit,
       externalUpsert: true,
       now: () => clock.nowMs,
     });
-    return { koService, candidates, library };
+    return { clock, faults, versionsRepo, audit, koService, candidates, library };
   }
 
-  for (const failing of ["audit", "snapshot"] as const) {
-    it(`KO-Insert gelingt, ${failing} wirft → Accept adoptiert das Insert: GENAU EIN KO, Endzustand angenommen (kein Crash nötig)`, async () => {
-      const ctx = partialCreateHarness(failing);
+  it("Snapshot wirft (transient) → Adoption zieht nach: v1-Snapshot + ko.created NACHWEISLICH da, genau EIN KO", async () => {
+    const ctx = sideEffectHarness();
+    const [cand] = await ctx.library.createImportCandidates(
+      [{ title: "Filter", statement: "s", type: "best_practice", category: "K" }],
+      "tester",
+    );
+    const id = (cand as { id: string }).id;
+    ctx.faults.snapshotFailOnce = true; // create: Insert ok → Snapshot wirft → Audit läuft nie
+    const reviewed = await ctx.library.reviewImportCandidate(id, "accept", "rev-1");
+    expect(reviewed.status).toBe("angenommen");
+    const koId = reviewed.koId as string;
+    // BESTAND, nicht nur Behauptung: der Version-1-Snapshot existiert (als Nachzug markiert) …
+    const snapshots = await ctx.versionsRepo.listByKo(koId);
+    expect(snapshots.filter((s) => s.version === 1)).toHaveLength(1);
+    expect(snapshots[0]?.note).toBe("erstellt (nachgezogen)");
+    expect(snapshots[0]?.snapshot.title).toBe("Filter");
+    // … und ko.created + der Abschluss-Audit sind da.
+    expect(await ctx.audit.list({ action: "ko.created", target: koId })).toHaveLength(1);
+    expect(await ctx.audit.list({ action: "import.candidate-accept", target: id })).toHaveLength(1);
+    // Eindeutiger Kandidat, genau EIN KO.
+    expect((await ctx.candidates.findById(id))?.status).toBe("angenommen");
+    expect((await ctx.koService.list()).filter((k) => k.title === "Filter")).toHaveLength(1);
+  });
+
+  it("ko.created wirft (transient) → Adoption zieht nach: Snapshot aus create bleibt, ko.created nachweislich da", async () => {
+    const ctx = sideEffectHarness();
+    const [cand] = await ctx.library.createImportCandidates(
+      [{ title: "Ventil", statement: "s", type: "best_practice", category: "K" }],
+      "tester",
+    );
+    const id = (cand as { id: string }).id;
+    ctx.faults.auditFailOnceActions.add("ko.created"); // create: Insert + Snapshot ok → Audit wirft
+    const reviewed = await ctx.library.reviewImportCandidate(id, "accept", "rev-1");
+    expect(reviewed.status).toBe("angenommen");
+    const koId = reviewed.koId as string;
+    // Der ORIGINAL-Snapshot aus create steht (kein Nachzug nötig) …
+    const snapshots = await ctx.versionsRepo.listByKo(koId);
+    expect(snapshots.filter((s) => s.version === 1)).toHaveLength(1);
+    expect(snapshots[0]?.note).toBe("erstellt");
+    // … ko.created wurde nachgezogen, der Abschluss-Audit steht, genau EIN KO.
+    expect(await ctx.audit.list({ action: "ko.created", target: koId })).toHaveLength(1);
+    expect(await ctx.audit.list({ action: "import.candidate-accept", target: id })).toHaveLength(1);
+    expect((await ctx.candidates.findById(id))?.status).toBe("angenommen");
+    expect((await ctx.koService.list()).filter((k) => k.title === "Ventil")).toHaveLength(1);
+  });
+
+  it("Auditdienst KOMPLETT ausgefallen → FAIL-CLOSED (kein angenommen ohne Belege); nach Heilung vollendet die Recovery MIT Belegen", async () => {
+    const ctx = sideEffectHarness();
+    const [cand] = await ctx.library.createImportCandidates(
+      [{ title: "Pumpe", statement: "s", type: "best_practice", category: "K" }],
+      "tester",
+    );
+    const id = (cand as { id: string }).id;
+    ctx.faults.auditFailAlwaysActions.add("*");
+    // Accept scheitert EHRLICH: KO + Snapshot existieren, aber ko.created ist nicht belegbar —
+    // der Claim bleibt fail-closed stehen (kein halber, als angenommen deklarierter Zustand).
+    await expect(ctx.library.reviewImportCandidate(id, "accept", "rev-1")).rejects.toBeDefined();
+    const during = await ctx.candidates.findById(id);
+    expect(during?.status).toBe("in_bearbeitung");
+    expect(during?.opId).toBeTruthy();
+    const stamped = await ctx.koService.findByImportCandidateId(id);
+    expect(stamped).toBeDefined();
+    expect(
+      await ctx.audit.list({ action: "ko.created", target: (stamped as { id: string }).id }),
+    ).toHaveLength(0);
+    // HEILUNG + Lease-Ablauf: die Recovery zieht die Belege nach und vollendet erst dann.
+    ctx.faults.auditFailAlwaysActions.clear();
+    ctx.clock.nowMs += REVIEW_CLAIM_LEASE_MS + 1;
+    expect(await ctx.library.recoverStaleReviewClaims()).toEqual({ completed: 1, released: 0 });
+    const after = await ctx.candidates.findById(id);
+    expect(after?.status).toBe("angenommen");
+    expect(after?.koId).toBe((stamped as { id: string }).id);
+    // Belege VOLLSTÄNDIG: v1-Snapshot (aus create), ko.created (nachgezogen), Recovery-Audit.
+    const koId = (stamped as { id: string }).id;
+    expect((await ctx.versionsRepo.listByKo(koId)).filter((s) => s.version === 1)).toHaveLength(1);
+    expect(await ctx.audit.list({ action: "ko.created", target: koId })).toHaveLength(1);
+    const accepts = await ctx.audit.list({ action: "import.candidate-accept", target: id });
+    expect(accepts).toHaveLength(1);
+    expect(accepts[0]?.payload).toMatchObject({ koId, recovered: true });
+    expect((await ctx.koService.list()).filter((k) => k.title === "Pumpe")).toHaveLength(1);
+  });
+
+  it("bens Konsistenz-Punkt: NUR der äußere import.candidate-accept-Audit wirft → Antwort bleibt ERFOLG + lauter Log", async () => {
+    const warnSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const ctx = sideEffectHarness();
       const [cand] = await ctx.library.createImportCandidates(
-        [{ title: "Filter", statement: "s", type: "best_practice", category: "K" }],
+        [{ title: "Dichtung", statement: "s", type: "best_practice", category: "K" }],
         "tester",
       );
       const id = (cand as { id: string }).id;
-      // KEIN Fehler nach außen: create warf zwar (nach dem Insert), aber der Anker-Lookup in
-      // acceptToKo findet das persistierte KO und adoptiert es — der Accept ist materialisiert.
+      ctx.faults.auditFailAlwaysActions.add("import.candidate-accept");
+      // KEIN Fehler nach außen: Statuswechsel + harte Belege sind persistiert; nur das
+      // Aktionsprotokoll fehlt — laut geloggt statt angenommen-aber-Fehlerantwort.
       const reviewed = await ctx.library.reviewImportCandidate(id, "accept", "rev-1");
       expect(reviewed.status).toBe("angenommen");
-      expect(reviewed.koId).toBeTruthy();
-      // GENAU EIN KO, eindeutiger Kandidaten-Endzustand — ein Retry wäre ehrlich abgewiesen.
-      expect((await ctx.koService.list()).filter((k) => k.title === "Filter")).toHaveLength(1);
+      const koId = reviewed.koId as string;
       expect((await ctx.candidates.findById(id))?.status).toBe("angenommen");
-      await expect(ctx.library.reviewImportCandidate(id, "accept", "rev-1")).rejects.toMatchObject({
-        code: "ALREADY_REVIEWED",
-      });
-      expect((await ctx.koService.list()).filter((k) => k.title === "Filter")).toHaveLength(1);
-    });
-  }
+      expect(await ctx.audit.list({ action: "ko.created", target: koId })).toHaveLength(1);
+      expect((await ctx.versionsRepo.listByKo(koId)).filter((s) => s.version === 1)).toHaveLength(
+        1,
+      );
+      expect(await ctx.audit.list({ action: "import.candidate-accept", target: id })).toHaveLength(
+        0,
+      );
+      const logged = warnSpy.mock.calls.some((call) =>
+        String(call[0]).includes("Abschluss-Audit der Review-Aktion fehlgeschlagen"),
+      );
+      expect(logged).toBe(true);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("bens Negativtest: Anker-Lookup wirft ZWEIMAL (acceptToKo + äußerer Catch) → Claim bleibt in_bearbeitung, Fehler nach außen", async () => {
+    const ctx = sideEffectHarness();
+    const [cand] = await ctx.library.createImportCandidates(
+      [{ title: "Sensor", statement: "s", type: "best_practice", category: "K" }],
+      "tester",
+    );
+    const id = (cand as { id: string }).id;
+    let lookupCalls = 0;
+    (
+      ctx.koService as { findByImportCandidateId: KoService["findByImportCandidateId"] }
+    ).findByImportCandidateId = async () => {
+      lookupCalls += 1;
+      throw new Error("LookupDown");
+    };
+    await expect(ctx.library.reviewImportCandidate(id, "accept", "rev-1")).rejects.toThrow(
+      "LookupDown",
+    );
+    // BEIDE Lookup-Stellen liefen (Vorab-Adoption in acceptToKo + äußerer Catch) und scheiterten.
+    expect(lookupCalls).toBe(2);
+    // FAIL-CLOSED: kein Reset auf 'neu', der Claim steht sichtbar; kein KO entstanden.
+    const after = await ctx.candidates.findById(id);
+    expect(after?.status).toBe("in_bearbeitung");
+    expect(after?.opId).toBeTruthy();
+    expect((await ctx.koService.list()).filter((k) => k.title === "Sensor")).toHaveLength(0);
+  });
 });
 
 describe("WP-SHIP8-CLOSE-4 ROT-1B/1C: DB-Unique-Anker + Cleanup-Schutz + Trash-Vertrag", () => {

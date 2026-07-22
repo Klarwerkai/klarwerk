@@ -355,9 +355,48 @@ export class KoService {
     };
     await this.repo.insert(ko);
     // SCRUM-159: Version-1-Snapshot persistieren (Foundation; aktuelles KO bleibt canonical).
+    // WP-SHIP8-CLOSE-5 (bens ROT-1A): wirft Snapshot ODER Audit NACH dem Insert, lehnt create ab,
+    // obwohl das KO existiert (Teilpersistenz). Der Adoptions-/Recovery-Pfad des Import-Accepts
+    // zieht die fehlenden Belege dann IDEMPOTENT nach (ensureCreatedSideEffects) und ist ohne
+    // vollständige Belege fail-closed — hier bleibt der Ablauf bewusst untransaktional schlank.
     await this.snapshot(ko, input.author, "erstellt");
     await this.audit?.record({ actor: input.author, action: "ko.created", target: ko.id });
     return ko;
+  }
+
+  // WP-SHIP8-CLOSE-5 (bens ROT-1A, gewählter Weg b): IDEMPOTENTER Nachzieh-Pfad der create-
+  // Seiteneffekte für ein bereits PERSISTIERTES KO (Adoption/Recovery des Import-Accepts).
+  // Prüft und ergänzt fehlende Belege, BEVOR der Aufrufer den Kandidaten abschließt:
+  //  - Version-1-Snapshot (nur wenn er fehlt; Pg-Versions-PK + ON CONFLICT bzw. InMemory-„nie
+  //    ersetzen" machen auch einen Doppel-Nachzug harmlos). Note „erstellt (nachgezogen)" macht
+  //    den Nachzug ehrlich sichtbar; im (praktisch nicht auftretenden) Fall einer Revision vor
+  //    dem Nachzug trägt der v1-Snapshot den adoptierten Stand — die Note weist ihn aus.
+  //  - ko.created-Audit (nur wenn für dieses KO keiner existiert; Query-then-Write — ein Race
+  //    erzeugt schlimmstens einen doppelten Audit-Eintrag, nie einen fehlenden).
+  // Ohne verdrahtetes Versions-/Audit-Repo existiert der jeweilige Seiteneffekt in dieser
+  // Konfiguration nicht — dann ist nichts nachzuziehen (kein künstlicher Fehler). WIRFT eine
+  // Fläche, wirft die Methode: der Aufrufer bleibt fail-closed (kein Abschluss ohne Belege).
+  async ensureCreatedSideEffects(ko: KnowledgeObject): Promise<void> {
+    if (this.versions) {
+      const existing = await this.versions.listByKo(ko.id);
+      if (!existing.some((v) => v.version === 1)) {
+        const copy = JSON.parse(JSON.stringify(ko)) as KnowledgeObject;
+        await this.versions.append({
+          koId: ko.id,
+          version: 1,
+          snapshot: { ...copy, version: 1 },
+          at: new Date(this.now()).toISOString(),
+          author: ko.author,
+          note: "erstellt (nachgezogen)",
+        });
+      }
+    }
+    if (this.audit) {
+      const created = await this.audit.list({ action: "ko.created", target: ko.id });
+      if (created.length === 0) {
+        await this.audit.record({ actor: ko.author, action: "ko.created", target: ko.id });
+      }
+    }
   }
 
   // SCRUM-415: Vertraulichkeitsstufe eines KO setzen/ändern. Jede Änderung landet im Audit
