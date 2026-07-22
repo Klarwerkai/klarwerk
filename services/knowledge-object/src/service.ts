@@ -360,7 +360,14 @@ export class KoService {
     // zieht die fehlenden Belege dann IDEMPOTENT nach (ensureCreatedSideEffects) und ist ohne
     // vollständige Belege fail-closed — hier bleibt der Ablauf bewusst untransaktional schlank.
     await this.snapshot(ko, input.author, "erstellt");
-    await this.audit?.record({ actor: input.author, action: "ko.created", target: ko.id });
+    // WP-SHIP8-CLOSE-6 (bens ROT-1): auch die ERSTANLAGE schreibt ihren Beleg exactly-once über
+    // dieselbe stabile Event-Id wie der Nachzieh-Pfad — ein Race zwischen create und einem
+    // parallelen Nachzug kann nie zwei ko.created-Einträge erzeugen.
+    await this.audit?.recordOnce(`ko.created:${ko.id}`, {
+      actor: input.author,
+      action: "ko.created",
+      target: ko.id,
+    });
     return ko;
   }
 
@@ -371,8 +378,8 @@ export class KoService {
   //    ersetzen" machen auch einen Doppel-Nachzug harmlos). Note „erstellt (nachgezogen)" macht
   //    den Nachzug ehrlich sichtbar; im (praktisch nicht auftretenden) Fall einer Revision vor
   //    dem Nachzug trägt der v1-Snapshot den adoptierten Stand — die Note weist ihn aus.
-  //  - ko.created-Audit (nur wenn für dieses KO keiner existiert; Query-then-Write — ein Race
-  //    erzeugt schlimmstens einen doppelten Audit-Eintrag, nie einen fehlenden).
+  //  - ko.created-Audit exactly-once via recordOnce mit stabiler Event-Id (WP-SHIP8-CLOSE-6,
+  //    bens ROT-1) — auch zwei parallele Nachzüge nach leerem Read erzeugen genau EINEN Eintrag.
   // Ohne verdrahtetes Versions-/Audit-Repo existiert der jeweilige Seiteneffekt in dieser
   // Konfiguration nicht — dann ist nichts nachzuziehen (kein künstlicher Fehler). WIRFT eine
   // Fläche, wirft die Methode: der Aufrufer bleibt fail-closed (kein Abschluss ohne Belege).
@@ -392,9 +399,16 @@ export class KoService {
       }
     }
     if (this.audit) {
+      // Vorab-Read nur als ABKÜRZUNG (spart den Chain-Aufbau); die Exactly-once-Garantie kommt
+      // aus recordOnce (WP-SHIP8-CLOSE-6, bens ROT-1: persistenzgestützter Idempotenzvertrag —
+      // zwei parallele Nachzüge nach leerem Read erzeugen exakt EINEN ko.created-Eintrag).
       const created = await this.audit.list({ action: "ko.created", target: ko.id });
       if (created.length === 0) {
-        await this.audit.record({ actor: ko.author, action: "ko.created", target: ko.id });
+        await this.audit.recordOnce(`ko.created:${ko.id}`, {
+          actor: ko.author,
+          action: "ko.created",
+          target: ko.id,
+        });
       }
     }
   }

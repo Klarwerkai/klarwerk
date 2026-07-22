@@ -75,6 +75,9 @@ export interface ClaimResolution {
   koId?: string | null;
   note?: string | null;
   item?: ImportItem;
+  // WP-SHIP8-CLOSE-6 (bens ROT-3a): Wer/Wann der Entscheidung — im SELBEN Statuswrite persistiert.
+  reviewedBy?: string;
+  reviewedAt?: string;
 }
 
 // WP-SHIP8-FIX (bens F3): kanonischer Provider-Anteil ALLER Import-Schlüssel (Queue-Idempotenz,
@@ -187,6 +190,13 @@ export class InMemoryCandidateRepo implements CandidateRepo {
     }
     if (next.item !== undefined) {
       candidate.item = next.item;
+    }
+    // WP-SHIP8-CLOSE-6 (bens ROT-3a): Wer/Wann im selben Write (Spiegel des Pg-jsonb-Patches).
+    if (next.reviewedBy !== undefined) {
+      candidate.reviewedBy = next.reviewedBy;
+    }
+    if (next.reviewedAt !== undefined) {
+      candidate.reviewedAt = next.reviewedAt;
     }
     candidate.opId = undefined;
     candidate.claimedAt = undefined;

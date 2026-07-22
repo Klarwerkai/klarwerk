@@ -206,6 +206,13 @@ export class PgCandidateRepo implements CandidateRepo {
     if (next.item !== undefined) {
       patch.item = next.item;
     }
+    // WP-SHIP8-CLOSE-6 (bens ROT-3a): Wer/Wann der Entscheidung reist im selben jsonb-Patch.
+    if (next.reviewedBy !== undefined) {
+      patch.reviewedBy = next.reviewedBy;
+    }
+    if (next.reviewedAt !== undefined) {
+      patch.reviewedAt = next.reviewedAt;
+    }
     const res = await this.pool.query<CandidateRow>(
       "UPDATE import_candidates SET data = (data - 'opId' - 'claimedAt') || $3::jsonb WHERE id=$1 AND data->>'status'='in_bearbeitung' AND data->>'opId'=$2 RETURNING data",
       [id, opId, JSON.stringify(patch)],

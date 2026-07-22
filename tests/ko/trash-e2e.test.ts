@@ -535,6 +535,8 @@ describe("SCRUM-523 P.3 (WP-A2): repo.delete + audit.record committen/rollbacken
       },
       all: () => auditInner.all(),
       last: (tx) => auditInner.last(tx),
+      // WP-SHIP8-CLOSE-6: reines Durchreichen — der Trash-Pfad nutzt keine Einmal-Belege.
+      appendOnce: (entry) => auditInner.appendOnce(entry),
     };
 
     const withTx: WithTx = async (fn) => {

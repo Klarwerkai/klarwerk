@@ -501,14 +501,21 @@ export class LibraryService {
     // Erst NACH erfolgreicher KO-Erzeugung gesetzt — steuert den Fehlerpfad (s. Kopfkommentar (4)).
     let createdKoId: string | null = null;
     let resolved: ImportCandidate | undefined;
+    // WP-SHIP8-CLOSE-6 (bens ROT-3a): Wer/Wann der Entscheidung reisen IM SELBEN Statuswrite mit
+    // (resolveClaim-Patch) — unverlierbar im Produktbestand, egal was das Aktionsaudit später tut.
+    const reviewedStamp = { reviewedBy: actor, reviewedAt: new Date(this.now()).toISOString() };
     try {
       let resolution: ClaimResolution;
       if (action === "reject") {
-        resolution = { status: "abgelehnt" };
+        resolution = { status: "abgelehnt", ...reviewedStamp };
       } else if (action === "info") {
-        resolution = { status: "info-angefragt", note: note?.trim() ? note.trim() : null };
+        resolution = {
+          status: "info-angefragt",
+          note: note?.trim() ? note.trim() : null,
+          ...reviewedStamp,
+        };
       } else if (candidate.duplicate) {
-        resolution = { status: "angenommen" };
+        resolution = { status: "angenommen", ...reviewedStamp };
       } else {
         // SCRUM-515-Vervollständigung: ein PERSISTIERTER Alt-Kandidat (vor 515 eingereiht; PgCandidateRepo
         // liefert das JSONB unverändert) wurde bei createImportCandidates evtl. nie sanitisiert. Unmittelbar
@@ -517,7 +524,7 @@ export class LibraryService {
         // MIT persistiert (nicht nur transient), damit die Queue keinen ungültigen Wert behält.
         const item = this.withSanitizedConfidentiality(candidate.item);
         createdKoId = await this.acceptToKo(item, actor, id);
-        resolution = { status: "angenommen", koId: createdKoId, item };
+        resolution = { status: "angenommen", koId: createdKoId, item, ...reviewedStamp };
       }
       // SCRUM-157: Endstatus/koId/Note (+ bereinigtes Item, 515) persistieren — atomar über den
       // opId-CAS (kein stiller Verlust, kein Fremd-Overwrite).
@@ -553,7 +560,7 @@ export class LibraryService {
         // Das KO existiert — die Operation DIREKT vollenden statt auf die Recovery zu warten.
         // CAS auf die EIGENE opId: eine übernommene Lease wird nie überschrieben.
         const completed = await this.candidates
-          .resolveClaim(id, opId, { status: "angenommen", koId: stampedId })
+          .resolveClaim(id, opId, { status: "angenommen", koId: stampedId, ...reviewedStamp })
           .catch(() => undefined);
         if (completed) {
           process.stderr.write(
@@ -598,14 +605,19 @@ export class LibraryService {
       throw new LibraryError("CONFLICT", "Review-Aktion ohne Ergebnis — bitte erneut versuchen.");
     }
     // WP-SHIP8-CLOSE-5 (bens Konsistenz-Punkt, GEWÄHLTE SEMANTIK): der Statuswechsel IST zu
-    // diesem Zeitpunkt persistiert (resolveClaim) und die HARTEN Belege (KO, v1-Snapshot,
-    // ko.created) sind fail-closed gesichert, BEVOR es überhaupt hierher kommt. Wirft jetzt noch
-    // das abschließende Aktions-Audit (in Produktion derselbe Auditdienst wie im KoService),
-    // bleibt die Antwort ERFOLG: ein Fehler-Response würde nur einen Retry provozieren, der
-    // ALREADY_REVIEWED erntet — der Client sähe einen Fehler für eine vollzogene Aktion.
-    // Der Ausfall wird LAUT und PII-frei geloggt (dieselbe Semantik wie Cleanup-Regel 5).
+    // diesem Zeitpunkt persistiert (resolveClaim, inkl. reviewedBy/reviewedAt) und die HARTEN
+    // Belege (KO, v1-Snapshot, ko.created) sind fail-closed gesichert, BEVOR es überhaupt hierher
+    // kommt. Wirft jetzt noch das abschließende Aktions-Audit (in Produktion derselbe Auditdienst
+    // wie im KoService), bleibt die Antwort ERFOLG: ein Fehler-Response würde nur einen Retry
+    // provozieren, der ALREADY_REVIEWED erntet — der Client sähe einen Fehler für eine vollzogene
+    // Aktion. WP-SHIP8-CLOSE-6 (bens ROT-3b/3c): der Beleg fehlt dann aber NICHT dauerhaft —
+    // der Ausfall wird als PERSISTENTE auditPending-Markierung am Kandidaten vermerkt (mit der
+    // stabilen Event-Id für den exactly-once-Nachzug via recordOnce) und beim nächsten
+    // Queue-Load nachgezogen; die API-Antwort weist den Schwebezustand aus. Zusätzlich LAUTES,
+    // PII-freies Log (dieselbe Semantik wie Cleanup-Regel 5).
+    const auditEventId = `import.candidate-${action}:${id}:${opId}`;
     try {
-      await this.audit?.record({
+      await this.audit?.recordOnce(auditEventId, {
         actor,
         action: `import.candidate-${action}`,
         target: resolved.id,
@@ -615,10 +627,58 @@ export class LibraryService {
       process.stderr.write(
         `[KLARWERK] Abschluss-Audit der Review-Aktion fehlgeschlagen (kandidat=${resolved.id}, aktion=${action}, fehler=${
           auditErr instanceof Error ? auditErr.name : "unknown"
-        }) — die Aktion IST vollzogen (Status persistiert), der Aktions-Beleg fehlt.\n`,
+        }) — die Aktion IST vollzogen (Status persistiert), der Beleg wird per auditPending nachgezogen.\n`,
       );
+      const marked: ImportCandidate = {
+        ...resolved,
+        auditPending: { eventId: auditEventId, action, actor },
+      };
+      try {
+        await this.candidates.update(marked);
+        resolved = marked;
+      } catch {
+        // Markierung selbst nicht persistierbar (z. B. Kandidat parallel entfernt) — dann bleibt
+        // NUR das laute Log; die Wer/Wann-Wahrheit steht weiterhin am Kandidaten/ist mit ihm weg.
+        process.stderr.write(
+          `[KLARWERK] auditPending-Markierung fehlgeschlagen (kandidat=${resolved.id}) — Beleg-Nachzug nicht möglich.\n`,
+        );
+      }
     }
     return { ...resolved };
+  }
+
+  // WP-SHIP8-CLOSE-6 (bens ROT-3b): Nachzug-Retry schwebender Review-Aktionsbelege — LAZY beim
+  // Queue-Load (dasselbe Muster wie recoverStaleReviewClaims, direkt daneben verdrahtet). JE
+  // Kandidat mit auditPending: recordOnce mit der GESPEICHERTEN Event-Id erzeugt exactly-once
+  // GENAU EINEN Aktionsbeleg (auch bei parallelen Retries — der Unique-/Set-Guard entscheidet),
+  // danach wird die Markierung gelöscht. Wirft der Nachzug, bleibt die Markierung stehen und der
+  // nächste Load versucht es erneut (fail-closed für den Beleg, nie für die Antwort).
+  async retryPendingReviewAudits(): Promise<number> {
+    if (!this.audit) {
+      return 0;
+    }
+    let retried = 0;
+    for (const candidate of await this.candidates.all()) {
+      const pending = candidate.auditPending;
+      if (!pending) {
+        continue;
+      }
+      try {
+        await this.audit.recordOnce(pending.eventId, {
+          actor: pending.actor,
+          action: `import.candidate-${pending.action}`,
+          target: candidate.id,
+          payload: { duplicate: candidate.duplicate, koId: candidate.koId, retried: true },
+        });
+        await this.candidates.update({ ...candidate, auditPending: undefined });
+        retried += 1;
+      } catch {
+        process.stderr.write(
+          `[KLARWERK] Beleg-Nachzug fehlgeschlagen (kandidat=${candidate.id}) — Markierung bleibt, naechster Queue-Load versucht erneut.\n`,
+        );
+      }
+    }
+    return retried;
   }
 
   // WP-SHIP8-CLOSE-3 (bens ROT-1): Crash-Recovery festhängender Review-Claims — LAZY beim Laden
@@ -680,11 +740,17 @@ export class LibraryService {
         const resolved = await this.candidates.resolveClaim(candidate.id, opId, {
           status: "angenommen",
           koId: stamped.id,
+          // WP-SHIP8-CLOSE-6 (bens ROT-3a): auch die Recovery-Vollendung persistiert Wer/Wann.
+          reviewedBy: "system",
+          reviewedAt: new Date(this.now()).toISOString(),
         });
         if (resolved) {
           completed += 1;
+          // WP-SHIP8-CLOSE-6 (bens ROT-3b): exactly-once über die opId-stabile Event-Id; ein
+          // Ausfall hinterlässt die persistente auditPending-Markierung für den Queue-Load-Nachzug.
+          const eventId = `import.candidate-accept:${candidate.id}:${opId}`;
           try {
-            await this.audit?.record({
+            await this.audit?.recordOnce(eventId, {
               actor: "system",
               action: "import.candidate-accept",
               target: candidate.id,
@@ -692,11 +758,20 @@ export class LibraryService {
             });
           } catch {
             // WP-SHIP8-CLOSE-5: dieselbe Abschluss-Audit-Semantik wie im Live-Accept — der
-            // Statuswechsel ist persistiert, die harten Belege sind gesichert; nur das
-            // Aktionsprotokoll fehlt und wird LAUT gemeldet.
+            // Statuswechsel ist persistiert; der Beleg wird per Markierung nachziehbar.
             process.stderr.write(
-              `[KLARWERK] Recovery-Audit fehlgeschlagen (kandidat=${candidate.id}) — Vollendung IST persistiert.\n`,
+              `[KLARWERK] Recovery-Audit fehlgeschlagen (kandidat=${candidate.id}) — Vollendung IST persistiert, Beleg via auditPending.\n`,
             );
+            try {
+              await this.candidates.update({
+                ...resolved,
+                auditPending: { eventId, action: "accept", actor: "system" },
+              });
+            } catch {
+              process.stderr.write(
+                `[KLARWERK] auditPending-Markierung fehlgeschlagen (kandidat=${candidate.id}).\n`,
+              );
+            }
           }
         }
       } else if (await this.candidates.resolveClaim(candidate.id, opId, { status: "neu" })) {
@@ -745,6 +820,16 @@ export class LibraryService {
       : undefined;
 
     if (existing && externalId) {
+      // WP-SHIP8-CLOSE-6 (bens ROT-2): der Re-Sync ist eine VOLLENDUNGSSTELLE — trägt das
+      // bestehende KO einen Kandidaten-Anker (Stempel eines Import-Accepts), werden dessen
+      // create-Belege HIER fail-closed nachgezogen, ZWINGEND VOR Upgrade/Revision/Rückgabe:
+      // nur so entsteht der v1-Snapshot aus dem TATSÄCHLICHEN Erstanlagezustand (nicht aus der
+      // gleich folgenden Revision), und Kandidat B kann As teilpersistiertes KO nie mit dauerhaft
+      // fehlenden Belegen übernehmen. Wirft der Nachzug, wirft der Accept (Muster der anderen
+      // Vollendungsstellen); KOs ohne Stempel (vor der Anker-Ära) haben nichts nachzuziehen.
+      if (existing.importCandidateId) {
+        await this.koService.ensureCreatedSideEffects(existing);
+      }
       // SCRUM-509 R4: Re-Sync eines bestehenden KO aus externer Quelle darf die Vertraulichkeit nur
       // ANHEBEN, nie still niedrig halten. Fail-safe wie der Create-Import (R3): fehlt das Governance-
       // Signal (ImportItem.confidentiality, s. 511), gilt „vertraulich"; eine explizit HÖHERE

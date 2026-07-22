@@ -75,6 +75,18 @@ export interface ImportCandidate {
   // Lease-Beginn (ISO): erst nach Ablauf von REVIEW_CLAIM_LEASE_MS greift die Recovery — ein
   // LAUFENDER Claim wird nie angefasst.
   claimedAt?: string | undefined;
+  // WP-SHIP8-CLOSE-6 (bens ROT-3a): WER/WANN der Review-Entscheidung — IM SELBEN Statuswrite
+  // persistiert (resolveClaim) und damit unverlierbar im Produktbestand, unabhängig vom
+  // Aktionsaudit. Die Aktion selbst ist aus dem Status ableitbar (angenommen/abgelehnt/
+  // info-angefragt); für den Beleg-Nachzug trägt auditPending sie explizit.
+  reviewedBy?: string | undefined;
+  reviewedAt?: string | undefined;
+  // WP-SHIP8-CLOSE-6 (bens ROT-3b/3c): SCHWEBENDER Aktionsbeleg — gesetzt, wenn der
+  // import.candidate-<action>-Audit NACH dem persistierten Statuswechsel fehlschlug. Trägt alles
+  // für den exactly-once-Nachzug (recordOnce mit dieser eventId) beim nächsten Queue-Load; die
+  // API-Antwort weist den Schwebezustand über die PRÄSENZ des Felds aus (Muster Cleanup
+  // auditFailed). Nach gelungenem Nachzug wird die Markierung gelöscht.
+  auditPending?: { eventId: string; action: ReviewAction; actor: string } | undefined;
 }
 
 // WP-SHIP8-FIX (bens F2): CLEANUP_DRIFT = die bestätigte Aufräum-Zielmenge (Vorschau-Digest)

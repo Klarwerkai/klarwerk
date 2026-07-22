@@ -40,6 +40,30 @@ export class AuditService {
     return entry;
   }
 
+  // WP-SHIP8-CLOSE-6 (bens ROT-1): EXACTLY-ONCE-Beleg über eine stabile Event-Id (z. B.
+  // "ko.created:<koId>"). Baut den Ketten-Eintrag wie record(), hängt aber über den
+  // persistenzgestützten Idempotenzvertrag an (Pg: partieller Unique-Index + ON CONFLICT DO
+  // NOTHING; InMemory: synchroner Set-Guard) — zwei parallele Nachzüge, die beide einen leeren
+  // Read sahen, erzeugen exakt EINEN Eintrag. true = DIESER Aufruf hat geschrieben; false =
+  // der Beleg existierte bereits (kein Fehler). Wird nicht geschrieben, bleibt die berechnete
+  // seq unbenutzt — der nächste record() liest last() frisch, die Kette bleibt lückenlos.
+  async recordOnce(eventId: string, input: AuditInput, tx?: TxContext): Promise<boolean> {
+    const last = await this.repo.last(tx);
+    const seq = last ? last.seq + 1 : 1;
+    const prevHash = last ? last.hash : GENESIS;
+    const partial: Omit<AuditEntry, "hash"> = {
+      seq,
+      at: new Date(this.now()).toISOString(),
+      actor: input.actor,
+      action: input.action,
+      target: input.target,
+      payload: input.payload ?? {},
+      prevHash,
+      eventId,
+    };
+    return this.repo.appendOnce({ ...partial, hash: hashEntry(partial) }, tx);
+  }
+
   async list(filter: AuditFilter = {}): Promise<AuditEntry[]> {
     const all = await this.repo.all();
     return all.filter(

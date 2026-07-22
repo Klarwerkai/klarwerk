@@ -130,13 +130,15 @@ describe("SCRUM-415: KoService", () => {
 
   // SCRUM-509 R2: Audit atomar mit der Änderung — schlägt das Audit fehl, unterbleibt die Änderung.
   it("Audit-Fehler bei setConfidentiality → Rollback (Stufe bleibt unverändert)", async () => {
-    // Wirft NUR bei der Vertraulichkeits-Aktion (create/andere Audits bleiben funktionsfähig).
+    // Wirft NUR bei der Vertraulichkeits-Aktion (create — seit CLOSE-6 via recordOnce — und
+    // andere Audits bleiben funktionsfähig).
     const throwingAudit = {
       record: async (entry: { action: string }) => {
         if (entry.action === "ko.confidentiality") {
           throw new Error("audit down");
         }
       },
+      recordOnce: async () => true,
     } as unknown as AuditService;
     const ko = new KoService({ repo: new InMemoryKoRepo(), audit: throwingAudit });
     const created = await ko.create(koInput({ confidentiality: "vertraulich" }));

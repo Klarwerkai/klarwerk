@@ -13,6 +13,8 @@
 // (provider, externalId, sourceVersion)-Schlüssel — ein paralleler Importlauf kann während einer
 // Review-Aktion keinen zweiten offenen Kandidaten einreihen, und die Import-Statuskarte zeigt die
 // Quelle während des Claims weiter als „bereits importiert".
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   importStatusFor,
@@ -341,54 +343,69 @@ describe("WP-SHIP8-CLOSE-3 ROT-2: 'in_bearbeitung' bleibt im offenen Idempotenzr
 
 // ---- WP-SHIP8-CLOSE-4 (bens ROT-1A/1C): KO-Seiteneffekt-Kanten am Kandidaten-Anker ----
 
-describe("WP-SHIP8-CLOSE-5 ROT-1A: kein halber KO-Zustand — Belege werden fail-closed nachgezogen", () => {
-  // PRODUKTIONSVERDRAHTUNG (wie build-app): EIN gemeinsamer Auditdienst für KoService UND
-  // LibraryService + echtes Versions-Repo. Fehler werden gezielt injiziert und können HEILEN —
-  // damit prüfen die Tests den BESTAND (v1-Snapshot, ko.created), nicht nur den Fehlerwurf.
-  function sideEffectHarness() {
-    const clock = { nowMs: T0 };
-    const faults = {
-      snapshotFailOnce: false,
-      auditFailOnceActions: new Set<string>(),
-      // "*" = jede Aktion (Auditdienst komplett ausgefallen); heilbar per clear().
-      auditFailAlwaysActions: new Set<string>(),
-    };
-    const versionsRepo = new InMemoryKoVersionRepo();
-    const versions: KoVersionRepo = {
-      append: async (snapshot) => {
-        if (faults.snapshotFailOnce) {
-          faults.snapshotFailOnce = false;
-          throw new Error("SnapshotDown");
-        }
-        return versionsRepo.append(snapshot);
-      },
-      listByKo: (koId) => versionsRepo.listByKo(koId),
-      remove: (koId, version) => versionsRepo.remove(koId, version),
-    };
-    const audit = new AuditService({ repo: new InMemoryAuditRepo() });
-    const origRecord = audit.record.bind(audit);
-    (audit as { record: AuditService["record"] }).record = async (entry, tx) => {
-      if (
-        faults.auditFailAlwaysActions.has("*") ||
-        faults.auditFailAlwaysActions.has(entry.action) ||
-        faults.auditFailOnceActions.delete(entry.action)
-      ) {
-        throw new Error("AuditDown");
+// PRODUKTIONSVERDRAHTUNG (wie build-app): EIN gemeinsamer Auditdienst für KoService UND
+// LibraryService + echtes Versions-Repo. Fehler werden gezielt injiziert und können HEILEN —
+// damit prüfen die Tests den BESTAND (v1-Snapshot, ko.created), nicht nur den Fehlerwurf.
+// (Modulweit: CLOSE-5 UND CLOSE-6 testen auf derselben Harness.)
+function sideEffectHarness() {
+  const clock = { nowMs: T0 };
+  const faults = {
+    snapshotFailOnce: false,
+    // WP-SHIP8-CLOSE-6 (ROT-2): dauerhaft werfender Snapshot-Store — heilbar per false.
+    snapshotFailAlways: false,
+    auditFailOnceActions: new Set<string>(),
+    // "*" = jede Aktion (Auditdienst komplett ausgefallen); heilbar per clear().
+    auditFailAlwaysActions: new Set<string>(),
+  };
+  const versionsRepo = new InMemoryKoVersionRepo();
+  const versions: KoVersionRepo = {
+    append: async (snapshot) => {
+      if (faults.snapshotFailAlways) {
+        throw new Error("SnapshotDown");
       }
-      return origRecord(entry, tx);
-    };
-    const koService = new KoService({ repo: new InMemoryKoRepo(), versions, audit });
-    const candidates = new InMemoryCandidateRepo();
-    const library = new LibraryService({
-      koService,
-      candidates,
-      audit,
-      externalUpsert: true,
-      now: () => clock.nowMs,
-    });
-    return { clock, faults, versionsRepo, audit, koService, candidates, library };
-  }
+      if (faults.snapshotFailOnce) {
+        faults.snapshotFailOnce = false;
+        throw new Error("SnapshotDown");
+      }
+      return versionsRepo.append(snapshot);
+    },
+    listByKo: (koId) => versionsRepo.listByKo(koId),
+    remove: (koId, version) => versionsRepo.remove(koId, version),
+  };
+  const audit = new AuditService({ repo: new InMemoryAuditRepo() });
+  const auditFaultArmed = (action: string): boolean =>
+    faults.auditFailAlwaysActions.has("*") ||
+    faults.auditFailAlwaysActions.has(action) ||
+    faults.auditFailOnceActions.delete(action);
+  const origRecord = audit.record.bind(audit);
+  (audit as { record: AuditService["record"] }).record = async (entry, tx) => {
+    if (auditFaultArmed(entry.action)) {
+      throw new Error("AuditDown");
+    }
+    return origRecord(entry, tx);
+  };
+  // WP-SHIP8-CLOSE-6: create/ensure/Abschluss-Audit laufen jetzt über recordOnce — die
+  // Fehlerinjektion MUSS auch diese Fläche treffen, sonst wären die Fault-Tests vakuos.
+  const origRecordOnce = audit.recordOnce.bind(audit);
+  (audit as { recordOnce: AuditService["recordOnce"] }).recordOnce = async (eventId, input, tx) => {
+    if (auditFaultArmed(input.action)) {
+      throw new Error("AuditDown");
+    }
+    return origRecordOnce(eventId, input, tx);
+  };
+  const koService = new KoService({ repo: new InMemoryKoRepo(), versions, audit });
+  const candidates = new InMemoryCandidateRepo();
+  const library = new LibraryService({
+    koService,
+    candidates,
+    audit,
+    externalUpsert: true,
+    now: () => clock.nowMs,
+  });
+  return { clock, faults, versionsRepo, audit, koService, candidates, library };
+}
 
+describe("WP-SHIP8-CLOSE-5 ROT-1A: kein halber KO-Zustand — Belege werden fail-closed nachgezogen", () => {
   it("Snapshot wirft (transient) → Adoption zieht nach: v1-Snapshot + ko.created NACHWEISLICH da, genau EIN KO", async () => {
     const ctx = sideEffectHarness();
     const [cand] = await ctx.library.createImportCandidates(
@@ -527,6 +544,206 @@ describe("WP-SHIP8-CLOSE-5 ROT-1A: kein halber KO-Zustand — Belege werden fail
     expect(after?.status).toBe("in_bearbeitung");
     expect(after?.opId).toBeTruthy();
     expect((await ctx.koService.list()).filter((k) => k.title === "Sensor")).toHaveLength(0);
+  });
+});
+
+// ---- WP-SHIP8-CLOSE-6 (bens sammel33): Beleg-Kanten — exactly-once, Re-Sync-Vollendung, ----
+// ---- unverlierbarer Review-Aktionsbeleg. Alles auf der PRODUKTIONS-Harness von CLOSE-5.  ----
+
+describe("WP-SHIP8-CLOSE-6 ROT-1: ko.created atomar GENAU EINMAL (paralleler Nachzug)", () => {
+  it("bens Pflichttest: zwei Nachzüge passieren eine Barriere NACH leerem Read und schreiben parallel → exakt EIN ko.created-Eintrag", async () => {
+    const ctx = sideEffectHarness();
+    // Teilpersistenz herstellen: create legt KO + v1-Snapshot an, der ko.created-Beleg wirft.
+    ctx.faults.auditFailOnceActions.add("ko.created");
+    await expect(
+      ctx.koService.create({
+        title: "Kompressor",
+        statement: "s",
+        type: "best_practice",
+        category: "K",
+        author: "a",
+      }),
+    ).rejects.toBeDefined();
+    const [ko] = await ctx.koService.list();
+    if (!ko) {
+      throw new Error("Testaufbau: teilpersistiertes KO fehlt");
+    }
+    expect(await ctx.audit.list({ action: "ko.created", target: ko.id })).toHaveLength(0);
+    // BARRIERE hinter dem Vorab-Read: BEIDE Nachzüge sehen den leeren Bestand, bevor einer
+    // schreibt — genau das Query-then-Write-Race, das früher doppelte Belege erzeugte.
+    const origList = ctx.audit.list.bind(ctx.audit);
+    let reads = 0;
+    let releaseBoth: () => void = () => {};
+    const bothRead = new Promise<void>((r) => {
+      releaseBoth = r;
+    });
+    (ctx.audit as { list: AuditService["list"] }).list = async (filter = {}) => {
+      const result = await origList(filter);
+      if (filter.action === "ko.created" && reads < 2) {
+        reads += 1;
+        if (reads === 2) {
+          releaseBoth();
+        }
+        await bothRead;
+      }
+      return result;
+    };
+    await Promise.all([
+      ctx.koService.ensureCreatedSideEffects(ko),
+      ctx.koService.ensureCreatedSideEffects(ko),
+    ]);
+    expect(reads).toBe(2);
+    // Exactly-once: der persistenzgestützte Guard (recordOnce) entscheidet, nicht der Read.
+    expect(await ctx.audit.list({ action: "ko.created", target: ko.id })).toHaveLength(1);
+    expect(await ctx.audit.verify()).toBe(true);
+    // Der v1-Snapshot aus create blieb einmalig (kein Doppel-Nachzug).
+    expect((await ctx.versionsRepo.listByKo(ko.id)).filter((s) => s.version === 1)).toHaveLength(1);
+  });
+});
+
+describe("WP-SHIP8-CLOSE-6 ROT-2: der Re-Sync ist eine Vollendungsstelle", () => {
+  it("bens Pflichttest: A bleibt nach Teilpersistenz offen, B (höhere Source-Version) schließt erst mit vollständigen Belegen ab — v1 = Erstanlagezustand, nicht Bs Revision", async () => {
+    const warnSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const ctx = sideEffectHarness();
+      // A: Snapshot-Store dauerhaft kaputt → create-Teilpersistenz (KO da, v1/ko.created fehlen),
+      // der Accept bleibt fail-closed stehen (Claim in_bearbeitung).
+      const [candA] = await ctx.library.createImportCandidates([anchorItem()], "tester");
+      const idA = (candA as { id: string }).id;
+      ctx.faults.snapshotFailAlways = true;
+      await expect(ctx.library.reviewImportCandidate(idA, "accept", "rev-A")).rejects.toBeDefined();
+      expect((await ctx.candidates.findById(idA))?.status).toBe("in_bearbeitung");
+      const stamped = await ctx.koService.findByImportCandidateId(idA);
+      if (!stamped) {
+        throw new Error("Testaufbau: teilpersistiertes KO fehlt");
+      }
+      const koId = stamped.id;
+      expect(await ctx.versionsRepo.listByKo(koId)).toHaveLength(0);
+      expect(await ctx.audit.list({ action: "ko.created", target: koId })).toHaveLength(0);
+
+      // B: gleicher Anker (provider+externalId), HÖHERE Source-Version → Re-Sync-Zweig.
+      const [candB] = await ctx.library.createImportCandidates(
+        [anchorItem({ sourceVersion: 4, statement: "Pumpe alle 100h entlüften (überarbeitet)." })],
+        "tester",
+      );
+      const idB = (candB as { id: string }).id;
+      // Solange die Belege NICHT herstellbar sind, schließt B NICHT ab — und weil der Nachzug
+      // ZWINGEND VOR der Revision läuft, wurde auch nichts revidiert (Reihenfolge-Beweis).
+      await expect(ctx.library.reviewImportCandidate(idB, "accept", "rev-B")).rejects.toBeDefined();
+      expect((await ctx.koService.get(koId))?.statement).toBe("Pumpe alle 200h entlüften.");
+      expect(await ctx.versionsRepo.listByKo(koId)).toHaveLength(0);
+      // Sicher kein neues KO entstanden → Bs Claim wurde ehrlich freigegeben (Retry möglich).
+      expect((await ctx.candidates.findById(idB))?.status).toBe("neu");
+
+      // HEILUNG: Bs Accept vollendet — Nachzug (v1 aus dem Erstanlagezustand) VOR der Revision.
+      ctx.faults.snapshotFailAlways = false;
+      const reviewedB = await ctx.library.reviewImportCandidate(idB, "accept", "rev-B");
+      expect(reviewedB.status).toBe("angenommen");
+      expect(reviewedB.koId).toBe(koId);
+      const v1 = (await ctx.versionsRepo.listByKo(koId)).filter((s) => s.version === 1);
+      expect(v1).toHaveLength(1);
+      expect(v1[0]?.note).toBe("erstellt (nachgezogen)");
+      // v1 trägt As TATSÄCHLICHEN Erstanlagezustand — NICHT Bs Revision.
+      expect(v1[0]?.snapshot.statement).toBe("Pumpe alle 200h entlüften.");
+      // Die Revision selbst ist danach gelaufen: das Live-KO trägt Bs Stand.
+      expect((await ctx.koService.get(koId))?.statement).toBe(
+        "Pumpe alle 100h entlüften (überarbeitet).",
+      );
+      // Belege VOLLSTÄNDIG, genau EIN KO; As offener Claim bleibt unangetastet.
+      expect(await ctx.audit.list({ action: "ko.created", target: koId })).toHaveLength(1);
+      expect(await ctx.audit.list({ action: "import.candidate-accept", target: idB })).toHaveLength(
+        1,
+      );
+      expect((await ctx.candidates.findById(idA))?.status).toBe("in_bearbeitung");
+      expect(await ctx.koService.list()).toHaveLength(1);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+});
+
+describe("WP-SHIP8-CLOSE-6 ROT-3: Review-Aktionsbeleg darf nicht dauerhaft fehlen", () => {
+  // Aufbau: Accept gelingt, NUR das Abschluss-Audit wirft dauerhaft → der Kandidat trägt die
+  // persistente auditPending-Markierung. Liefert Kandidaten-Id + Antwort für die Nachzug-Tests.
+  async function acceptWithPendingAudit(ctx: ReturnType<typeof sideEffectHarness>) {
+    const [cand] = await ctx.library.createImportCandidates(
+      [{ title: "Dichtung", statement: "s", type: "best_practice", category: "K" }],
+      "tester",
+    );
+    const id = (cand as { id: string }).id;
+    ctx.faults.auditFailAlwaysActions.add("import.candidate-accept");
+    const reviewed = await ctx.library.reviewImportCandidate(id, "accept", "rev-1");
+    ctx.faults.auditFailAlwaysActions.clear();
+    return { id, reviewed };
+  }
+
+  it("bens Pflichttest: nur das Abschluss-Audit wirft → Erfolg MIT reviewedBy/reviewedAt + auditPending; der Retry erzeugt EXAKT EINEN Beleg und löscht die Markierung", async () => {
+    const warnSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const ctx = sideEffectHarness();
+      const { id, reviewed } = await acceptWithPendingAudit(ctx);
+      // (a) Wer/Wann reiste IM Statuswrite mit — unverlierbar, auch in der Antwort.
+      expect(reviewed.status).toBe("angenommen");
+      expect(reviewed.reviewedBy).toBe("rev-1");
+      expect(reviewed.reviewedAt).toBe(new Date(T0).toISOString());
+      // (c) die Antwort weist den schwebenden Beleg aus (Muster Cleanup auditFailed).
+      expect(reviewed.auditPending?.eventId.startsWith(`import.candidate-accept:${id}:`)).toBe(
+        true,
+      );
+      // (b) die Markierung ist PERSISTENT am Kandidaten (nicht nur in der Antwort) …
+      const persisted = await ctx.candidates.findById(id);
+      expect(persisted?.reviewedBy).toBe("rev-1");
+      expect(persisted?.reviewedAt).toBe(new Date(T0).toISOString());
+      expect(persisted?.auditPending).toEqual(reviewed.auditPending);
+      expect(await ctx.audit.list({ action: "import.candidate-accept", target: id })).toHaveLength(
+        0,
+      );
+      // … und der Nachzug (lazy am Queue-Load verdrahtet) erzeugt EXAKT EINEN Beleg.
+      expect(await ctx.library.retryPendingReviewAudits()).toBe(1);
+      const after = await ctx.candidates.findById(id);
+      expect(after?.status).toBe("angenommen");
+      expect(after?.auditPending).toBeUndefined();
+      const belege = await ctx.audit.list({ action: "import.candidate-accept", target: id });
+      expect(belege).toHaveLength(1);
+      expect(belege[0]?.payload).toMatchObject({ koId: reviewed.koId, retried: true });
+      expect(belege[0]?.eventId).toBe(reviewed.auditPending?.eventId);
+      // Ohne Markierung ist der nächste Lauf ein No-op (kein zweiter Beleg).
+      expect(await ctx.library.retryPendingReviewAudits()).toBe(0);
+      expect(await ctx.audit.list({ action: "import.candidate-accept", target: id })).toHaveLength(
+        1,
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("kein Doppel-Beleg bei PARALLELEM Retry — recordOnce entscheidet, die Markierung endet gelöscht", async () => {
+    const warnSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const ctx = sideEffectHarness();
+      const { id } = await acceptWithPendingAudit(ctx);
+      // Zwei Queue-Loads gleichzeitig: beide sehen die Markierung, beide versuchen den Nachzug.
+      const [r1, r2] = await Promise.all([
+        ctx.library.retryPendingReviewAudits(),
+        ctx.library.retryPendingReviewAudits(),
+      ]);
+      expect(r1 + r2).toBeGreaterThanOrEqual(1);
+      expect(await ctx.audit.list({ action: "import.candidate-accept", target: id })).toHaveLength(
+        1,
+      );
+      expect((await ctx.candidates.findById(id))?.auditPending).toBeUndefined();
+      expect(await ctx.audit.verify()).toBe(true);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("Verdrahtungs-Pin: der Queue-Load (GET /api/library/import/candidates) ruft den Beleg-Nachzug auf", () => {
+    const routeSource = readFileSync(
+      resolve(process.cwd(), "services/app/src/routes/library-routes.ts"),
+      "utf8",
+    );
+    expect(routeSource).toContain("retryPendingReviewAudits");
   });
 });
 

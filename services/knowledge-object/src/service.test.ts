@@ -475,13 +475,15 @@ describe("SCRUM-507 R3: transaktionale Revision mit vollständigem Rollback", ()
 
   it("Audit-Fehler nach Persist+Snapshot → KO zurückgerollt UND V2-Snapshot entfernt", async () => {
     const versions = new InMemoryKoVersionRepo();
-    // Wirft NUR beim Revise-Audit; create-Audit (andere Action) bleibt funktionsfähig.
+    // Wirft NUR beim Revise-Audit; create-Audit (andere Action, seit CLOSE-6 via recordOnce)
+    // bleibt funktionsfähig.
     const throwingAudit = {
       record: async (entry: { action: string }) => {
         if (entry.action === "ko.revised") {
           throw new Error("audit down");
         }
       },
+      recordOnce: async () => true,
     } as unknown as AuditService;
     const svc = new KoService({ repo: new InMemoryKoRepo(), versions, audit: throwingAudit });
     const ko = await svc.create(base({ title: "Original", statement: "Stand 1." }));

@@ -33,7 +33,9 @@ export interface JournalEntry {
 // Lesemethoden werden NICHT journaliert. Neue Mutationsmethoden müssen hier ergänzt werden
 // (Test „deckt alle AppRepos-Schlüssel ab" schützt vor vergessenen ganzen Repos).
 export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]>> = {
-  auditRepo: ["append"],
+  // WP-SHIP8-CLOSE-6 (bens ROT-1): appendOnce ist eine Mutation (exactly-once-Beleg) — das
+  // Replay ist deterministisch (der Set-/Index-Guard macht Doppel-Zeilen im Journal harmlos).
+  auditRepo: ["append", "appendOnce"],
   // WP-SUBMIT-ASYNC: der Prüf-Status (aiCheck) ist eine Mutation am KO-JSONB → journalieren,
   // sonst wäre er nach einem Dev-Neustart weg (pending-Erkennung/Badges würden lügen).
   koRepo: ["insert", "update", "delete", "setAiCheck", "resolveAiCheck"],

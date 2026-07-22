@@ -1,6 +1,6 @@
 import { Pool } from "pg";
 import { ASK_SCHEMA } from "../../ask";
-import { AUDIT_SCHEMA } from "../../audit";
+import { AUDIT_EVENT_ID_SCHEMA, AUDIT_SCHEMA } from "../../audit";
 import { AUTH_SCHEMA } from "../../auth";
 import { CAPTURE_SCHEMA } from "../../capture";
 import { CONFLICTS_SCHEMA, OVERLAP_SCHEMA, OVERLAP_SETTINGS_SCHEMA } from "../../conflicts";
@@ -38,6 +38,9 @@ export async function migrate(pool: Pool): Promise<void> {
     KO_VERSIONS_SCHEMA,
     KO_EVIDENCE_SCHEMA,
     AUDIT_SCHEMA,
+    // WP-SHIP8-CLOSE-6 (bens ROT-1): additive Event-Id-Stufe DIREKT nach AUDIT_SCHEMA
+    // (exactly-once-Belege via partiellem Unique-Index auf event_id).
+    AUDIT_EVENT_ID_SCHEMA,
     CAPTURE_SCHEMA,
     ASK_SCHEMA,
     VALIDATION_SCHEMA,

@@ -9,16 +9,39 @@ import type { AuditEntry } from "./types";
 // FR-AUD-02: nur Anhängen — bewusst KEINE update/delete-Methoden.
 export interface AuditRepo {
   append(entry: AuditEntry, tx?: TxContext): Promise<void>;
+  // WP-SHIP8-CLOSE-6 (bens ROT-1): PERSISTENZGESTÜTZTES exactly-once-Anhängen über die stabile
+  // entry.eventId — Pg: partieller Unique-Index + ON CONFLICT DO NOTHING; InMemory: synchroner
+  // Set-Guard (kein await zwischen Prüfen und Anhängen). Rückgabe true = DIESER Aufruf hat
+  // geschrieben; false = der Beleg existierte bereits (idempotenter No-op, kein Fehler).
+  appendOnce(entry: AuditEntry, tx?: TxContext): Promise<boolean>;
   all(): Promise<AuditEntry[]>;
   last(tx?: TxContext): Promise<AuditEntry | undefined>;
 }
 
 export class InMemoryAuditRepo implements AuditRepo {
   private readonly entries: AuditEntry[] = [];
+  // WP-SHIP8-CLOSE-6 (bens ROT-1): Spiegel des partiellen Pg-Unique-Index audit_event_id_uq.
+  private readonly eventIds = new Set<string>();
 
   append(entry: AuditEntry, _tx?: TxContext): Promise<void> {
+    if (entry.eventId) {
+      this.eventIds.add(entry.eventId);
+    }
     this.entries.push(Object.freeze(entry));
     return Promise.resolve();
+  }
+
+  // Synchron geprüft UND vermerkt — zwei parallele Nachzüge, die beide einen leeren Read sahen,
+  // schreiben trotzdem exakt EINEN Eintrag (der zweite Aufruf ist ein ehrlicher No-op).
+  appendOnce(entry: AuditEntry, _tx?: TxContext): Promise<boolean> {
+    if (entry.eventId && this.eventIds.has(entry.eventId)) {
+      return Promise.resolve(false);
+    }
+    if (entry.eventId) {
+      this.eventIds.add(entry.eventId);
+    }
+    this.entries.push(Object.freeze(entry));
+    return Promise.resolve(true);
   }
 
   all(): Promise<AuditEntry[]> {

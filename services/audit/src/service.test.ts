@@ -54,6 +54,53 @@ describe("AuditService", () => {
   });
 });
 
+describe("WP-SHIP8-CLOSE-6 (bens ROT-1): recordOnce — exactly-once je Event-Id", () => {
+  it("gleiche Event-Id zweimal sequenziell → genau EIN Eintrag, zweiter Aufruf meldet false", async () => {
+    const service = new AuditService({ repo: new InMemoryAuditRepo() });
+    const first = await service.recordOnce("ko.created:ko-1", {
+      actor: "a",
+      action: "ko.created",
+      target: "ko-1",
+    });
+    const second = await service.recordOnce("ko.created:ko-1", {
+      actor: "b",
+      action: "ko.created",
+      target: "ko-1",
+    });
+    expect(first).toBe(true);
+    expect(second).toBe(false);
+    const entries = await service.list({ action: "ko.created", target: "ko-1" });
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.actor).toBe("a");
+    expect(entries[0]?.eventId).toBe("ko.created:ko-1");
+  });
+
+  it("bens Pflichttest: zwei PARALLELE Schreiber derselben Event-Id → exakt EIN Eintrag, Kette intakt", async () => {
+    const service = new AuditService({ repo: new InMemoryAuditRepo() });
+    // Beide bauen ihren Ketten-Eintrag aus demselben (leeren) last()-Stand — der synchrone
+    // Set-Guard des Repos entscheidet, die verworfene seq hinterlässt keine Lücke.
+    const results = await Promise.all([
+      service.recordOnce("ko.created:ko-1", { actor: "a", action: "ko.created", target: "ko-1" }),
+      service.recordOnce("ko.created:ko-1", { actor: "b", action: "ko.created", target: "ko-1" }),
+    ]);
+    expect(results.filter(Boolean)).toHaveLength(1);
+    expect(await service.list({ action: "ko.created", target: "ko-1" })).toHaveLength(1);
+    expect(await service.verify()).toBe(true);
+  });
+
+  it("verschiedene Event-Ids schreiben unabhängig; record() bleibt unverändert nutzbar", async () => {
+    const service = new AuditService({ repo: new InMemoryAuditRepo() });
+    expect(
+      await service.recordOnce("ko.created:a", { actor: "x", action: "ko.created", target: "a" }),
+    ).toBe(true);
+    expect(
+      await service.recordOnce("ko.created:b", { actor: "x", action: "ko.created", target: "b" }),
+    ).toBe(true);
+    await service.record({ actor: "x", action: "ko.updated", target: "a" });
+    expect(await service.verifyReport()).toEqual({ ok: true, count: 3 });
+  });
+});
+
 describe("verifyChain (Manipulationserkennung)", () => {
   it("FR-AUD-02: nachträglich geänderter Eintrag bricht die Kette", async () => {
     const service = new AuditService({ repo: new InMemoryAuditRepo() });

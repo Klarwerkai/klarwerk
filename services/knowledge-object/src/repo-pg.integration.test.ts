@@ -1,6 +1,7 @@
 import { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { guardedLocalPgTestUrl } from "../../db-tx";
 import { KO_IMPORT_ANCHOR_SCHEMA, KO_SCHEMA, PgKoRepo } from "./repo-pg";
 import { KoService } from "./service";
 import type { KnowledgeObject } from "./types";
@@ -11,8 +12,12 @@ import type { KnowledgeObject } from "./types";
 // library-analytics-Suite: braucht Docker (Testcontainers), läuft NUR unter `test:integration`,
 // nie im schnellen Root-Gate; ohne Container-Runtime wird sauber übersprungen, nie gefälscht.
 // ZUSÄTZLICH (bens Evidence-Auflage „gegen lokal aufgesetztes Postgres laufen lassen"): ist
-// KLARWERK_PG_URL gesetzt, läuft DERSELBE Testinhalt gegen diese bestehende Instanz statt
+// KLARWERK_PG_TEST_URL gesetzt, läuft DERSELBE Testinhalt gegen diese bestehende Instanz statt
 // Testcontainers — so ist die Suite auch ohne Docker real ausführbar.
+// WP-SHIP8-CLOSE-6 (bens GELB): diese Suite DROPPT Tabellen — sie darf NIE eine echte DB
+// treffen. Die lokale URL läuft deshalb durch die harte Sicherung in pg-test-guard.ts
+// (Testdatenbank-Name ODER KLARWERK_PG_TEST_ALLOW_DESTRUCTIVE=1; sonst Klartext-Skip); die
+// Sicherungslogik selbst ist im schnellen Gate getestet (pg-test-guard.test.ts).
 
 function ko(id: string, over: Partial<KnowledgeObject> = {}): KnowledgeObject {
   return {
@@ -49,7 +54,8 @@ describe("WP-SHIP8-CLOSE-5 (bens GELB): kos_import_candidate_uq gegen echtes Pos
 
   beforeAll(async () => {
     // Lokale Instanz hat Vorrang (Docker-lose Evidence-Läufe); sonst Testcontainers; sonst Skip.
-    const localUrl = process.env.KLARWERK_PG_URL;
+    // Die lokale URL läuft durch die GELB-Sicherung — eine Nicht-Testdatenbank wird NIE berührt.
+    const localUrl = guardedLocalPgTestUrl();
     if (localUrl) {
       try {
         pool = new Pool({ connectionString: localUrl });
@@ -57,9 +63,18 @@ describe("WP-SHIP8-CLOSE-5 (bens GELB): kos_import_candidate_uq gegen echtes Pos
         available = true;
         return;
       } catch {
+        process.stderr.write(
+          "[KLARWERK] Pg-Integrationssuite ÜBERSPRUNGEN: KLARWERK_PG_TEST_URL gesetzt, aber keine Verbindung möglich.\n",
+        );
         available = false;
         return;
       }
+    }
+    if (process.env.KLARWERK_PG_TEST_URL) {
+      // URL war gesetzt, die Sicherung hat sie abgelehnt (Grund steht auf stderr) → KEIN
+      // Testcontainers-Fallback: der Aufrufer wollte ausdrücklich eine lokale Instanz.
+      available = false;
+      return;
     }
     try {
       container = await new GenericContainer("postgres:16-alpine")
