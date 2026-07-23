@@ -6,15 +6,21 @@ import i18n from "../../apps/web/src/i18n";
 import { summarizeSelectCriteria } from "../../apps/web/src/lib/importExplore";
 // WP-SHIP9-S2 Paket 2 (D2–D7): reines Auswahl-/Filter-/Gruppen-View-Modell der Trefferliste.
 import {
+  COLLAPSE_GROUPS_THRESHOLD,
   bulkSelectableRows,
   chipMatches,
   clearAllSelected,
+  effectiveGroupMode,
+  groupCheckboxState,
+  groupModeOptions,
   groupRows,
+  groupsCollapsedByDefault,
   isBulkSelectable,
   previewLanguage,
   rowsAllChecked,
   selectionSummary,
   setRowsSelected,
+  statusChipCounts,
   visibleRows,
 } from "../../apps/web/src/lib/importSelectView";
 
@@ -348,8 +354,11 @@ describe("Paket 2 · F1/F2/F3: Verdrahtung in ImportSelect/ImportGroups", () => 
     // „Alle abwählen" leert global; „Alle wählen" wirkt auf die bulk-wählbare sichtbare Menge.
     expect(src).toContain("clearAllSelected(prev)");
     expect(src).toContain("setRowsSelected(prev, bulkRows, true)");
-    // Der Gruppen-Haken spiegelt die bulk-wählbare Teilmenge der Gruppe.
-    expect(src).toContain("bulkSelectableRows(group.rows)");
+    // WP-BILD-1f RT5b: der Gruppen-Haken spiegelt den Tri-State über die Gruppe; ANWÄHLEN nutzt die
+    // bulk-wählbare Teilmenge (F1), ABWÄHLEN wirkt auf ALLE Zeilen der Gruppe.
+    expect(src).toContain("groupCheckboxState(checkedRows, group.rows)");
+    expect(src).toContain("setRowsSelected(prev, bulkSelectableRows(groupRowsArg), true)");
+    expect(src).toContain("setRowsSelected(prev, groupRowsArg, false)");
   });
 
   it("ImportSelect reicht die gewählten Kandidaten-IDs an ImportGroups weiter (F3)", () => {
@@ -383,6 +392,12 @@ describe("Paket 2 · Verdrahtung ImportSelect", () => {
     expect(src).toContain('t("imp.select.searchPlaceholder")');
     expect(src).toContain('t("imp.select.selectAll")');
     expect(src).toContain('t("imp.select.summary"');
+    // WP-BILD-1f RT5a–c: dynamische Chips/Modi, Tri-State-Haken und Auf/Zu-Ordner sind verdrahtet.
+    expect(src).toContain("statusChipCounts(");
+    expect(src).toContain("groupModeOptions(");
+    expect(src).toContain("groupCheckboxState(");
+    expect(src).toContain("groupsCollapsedByDefault(");
+    expect(src).toContain("indeterminate");
   });
 
   it("die neuen Paket-2-Texte sind in DE/EN/NL vorhanden", () => {
@@ -406,5 +421,97 @@ describe("Paket 2 · Verdrahtung ImportSelect", () => {
     expect(String(i18n.getResource("en", "translation", "imp.select.summary"))).toContain(
       "{{selected}}",
     );
+  });
+});
+
+// WP-BILD-1f RT5c: dynamische Filter-Chips (Status) — nur vorkommende Werte, jeweils mit Zähler.
+describe("RT5c · statusChipCounts", () => {
+  it("leitet Chips + Zähler aus den tatsächlichen Treffern ab (all immer, sonst nur vorkommend)", () => {
+    // ROWS: 2 neu, 1 importiert, 1 vorgemerkt → alle vier Chips mit korrekten Zählern.
+    expect(statusChipCounts(ROWS)).toEqual([
+      { chip: "all", count: 4 },
+      { chip: "new", count: 2 },
+      { chip: "imported", count: 1 },
+      { chip: "queued", count: 1 },
+    ]);
+  });
+
+  it("verschwindet ein Wert aus dem Bestand, verschwindet sein Chip", () => {
+    const onlyNew = [entry({ title: "A" }), entry({ title: "B" })];
+    expect(statusChipCounts(onlyNew)).toEqual([
+      { chip: "all", count: 2 },
+      { chip: "new", count: 2 },
+    ]);
+    // Kein imported/queued-Chip, solange kein solcher Treffer existiert.
+    expect(statusChipCounts(onlyNew).some((c) => c.chip === "imported")).toBe(false);
+    expect(statusChipCounts(onlyNew).some((c) => c.chip === "queued")).toBe(false);
+  });
+});
+
+// WP-BILD-1f RT5c: dynamische Gruppier-Modi — nur, wenn der Bestand ≥2 Gruppen hergibt.
+describe("RT5c · groupModeOptions / effectiveGroupMode", () => {
+  it("bietet Sprache/Thema nur bei ≥2 Gruppen an, none immer", () => {
+    // ROWS: 4 Sprachen (de/en/nl/other), 3 Themen (wartung/safety/ohne) → beide angeboten.
+    expect(groupModeOptions(ROWS)).toEqual([
+      { mode: "none", count: 4 },
+      { mode: "language", count: 4 },
+      { mode: "theme", count: 3 },
+    ]);
+  });
+
+  it("einheitlicher Bestand (eine Sprache, ein Thema) → nur none", () => {
+    const uniform = [
+      entry({ title: "DE: Eins", themes: ["a"] }),
+      entry({ title: "DE: Zwei", themes: ["a"] }),
+    ];
+    expect(groupModeOptions(uniform)).toEqual([{ mode: "none", count: 2 }]);
+  });
+
+  it("effectiveGroupMode fällt auf none zurück, wenn der Modus nicht angeboten wird", () => {
+    const uniform = [entry({ title: "DE: Eins", themes: ["a"] })];
+    expect(effectiveGroupMode(uniform, "language")).toBe("none");
+    expect(effectiveGroupMode(ROWS, "theme")).toBe("theme");
+  });
+});
+
+// WP-BILD-1f RT5a: Auf/Zu-Standard bei vielen Gruppen (Schwelle).
+describe("RT5a · groupsCollapsedByDefault", () => {
+  it(`klappt erst MEHR als ${COLLAPSE_GROUPS_THRESHOLD} Gruppen ein`, () => {
+    expect(COLLAPSE_GROUPS_THRESHOLD).toBe(4);
+    expect(groupsCollapsedByDefault(4)).toBe(false);
+    expect(groupsCollapsedByDefault(5)).toBe(true);
+    expect(groupsCollapsedByDefault(0)).toBe(false);
+  });
+});
+
+// WP-BILD-1f RT5b: Gruppen-Haken (an/aus/gemischt) + Schutzregel bei Anwählen/Abwählen.
+describe("RT5b · groupCheckboxState + Bulk-Reichweite", () => {
+  // Gruppe: A(0)/B(1) bulk-wählbar, C(2) bereits importiert (bulk-geschützt).
+  const groupEntries: ImportPreviewEntry[] = [
+    entry({ title: "A" }),
+    entry({ title: "B" }),
+    entry({ title: "C", alreadyImported: true }),
+  ];
+  const groupRowsList = groupEntries.map((e, index) => ({ entry: e, index }));
+
+  it("off / on / mixed korrekt", () => {
+    expect(groupCheckboxState([false, false, false], groupRowsList)).toBe("off");
+    // A+B (alle bulk-wählbaren) an → on, obwohl C aus ist (C ist bulk-geschützt).
+    expect(groupCheckboxState([true, true, false], groupRowsList)).toBe("on");
+    // Nur A an → gemischt.
+    expect(groupCheckboxState([true, false, false], groupRowsList)).toBe("mixed");
+    // Nur das bekannte C an (manuell) → gemischt (nicht off, nicht on).
+    expect(groupCheckboxState([false, false, true], groupRowsList)).toBe("mixed");
+  });
+
+  it("Bulk-ANWÄHLEN lässt importierte/vorgemerkte aus (F1)", () => {
+    const next = setRowsSelected([false, false, false], bulkSelectableRows(groupRowsList), true);
+    expect(next).toEqual([true, true, false]); // C bleibt aus
+  });
+
+  it("Bulk-ABWÄHLEN wirkt auf ALLE Zeilen der Gruppe (auch bewusst wieder-angewählte bekannte)", () => {
+    // C wurde bewusst manuell wieder angewählt; das Gruppen-Abwählen räumt sie mit ab.
+    const next = setRowsSelected([true, true, true], groupRowsList, false);
+    expect(next).toEqual([false, false, false]);
   });
 });

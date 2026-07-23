@@ -1328,6 +1328,8 @@ const de = {
   "editor.captionAi.loading": "KI-Beschreibung wird erstellt …",
   "editor.captionAi.panelTitle": "Vorschlag",
   "editor.captionAi.aiBadge": "KI-generiert. Bitte prüfen.",
+  "editor.captionAi.withContext":
+    "Mit Dokument-Kontext erzeugt (Titel, Überschrift und umgebender Text).",
   "editor.captionAi.apply": "Übernehmen",
   "editor.captionAi.discard": "Verwerfen",
   "editor.captionAi.tooLarge": "Das Bild ist zu groß für den Beschreibungs-Vorschlag (max. 5 MB).",
@@ -4660,6 +4662,8 @@ const en: typeof de = {
   "editor.captionAi.loading": "Creating AI description …",
   "editor.captionAi.panelTitle": "Suggestion",
   "editor.captionAi.aiBadge": "AI-generated. Please review.",
+  "editor.captionAi.withContext":
+    "Generated with document context (title, heading and surrounding text).",
   "editor.captionAi.apply": "Apply",
   "editor.captionAi.discard": "Discard",
   "editor.captionAi.tooLarge": "The image is too large for a description suggestion (max. 5 MB).",
@@ -7946,6 +7950,7 @@ const nl: typeof de = {
   "editor.captionAi.loading": "AI-beschrijving wordt gemaakt …",
   "editor.captionAi.panelTitle": "Voorstel",
   "editor.captionAi.aiBadge": "AI-gegenereerd. Graag controleren.",
+  "editor.captionAi.withContext": "Gemaakt met documentcontext (titel, kop en omringende tekst).",
   "editor.captionAi.apply": "Overnemen",
   "editor.captionAi.discard": "Verwerpen",
   "editor.captionAi.tooLarge":

@@ -284,10 +284,14 @@ export const endpoints = {
       dataUrl: string,
       locale: "de" | "en" | undefined,
       provenance: ReasonerProvenance,
+      // WP-BILD-1f: optionaler umgebender Dokument-Kontext (Klartext, bereits budgetgekürzt). Reist im
+      // selben describe-Request wie das Bild und damit über DIESELBE Vertraulichkeits-/Egress-Stelle.
+      context?: string,
     ) =>
       api.post<DescribeImageResult>("/reasoner/describe", {
         dataUrl,
         ...(locale ? { locale } : {}),
+        ...(context?.trim() ? { context: context.trim() } : {}),
         ...provenanceFields(provenance),
       }),
     // PMO-FEA-0006: Wissenspunkte aus Dokumenttext extrahieren (optional mit Suchauftrag).

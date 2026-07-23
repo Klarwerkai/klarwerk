@@ -11,7 +11,7 @@
 // vorgemerkt" (eigene Farbe/eigener Text, gleiche Vorab-Abwahl) — nie mehr „bereits importiert".
 // WP-IC-PAKET-1 (Teil 1): Altbestand-Anzeige dekodiert HTML-Entities (nur Text-Rendering, nie HTML).
 import { useMutation } from "@tanstack/react-query";
-import { Images, Loader2, Sparkles } from "lucide-react";
+import { ChevronDown, Images, Loader2, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
@@ -28,10 +28,15 @@ import {
   type PreviewRow,
   bulkSelectableRows,
   clearAllSelected,
+  effectiveGroupMode,
+  groupCheckboxState,
+  groupModeOptions,
   groupRows,
+  groupsCollapsedByDefault,
   rowsAllChecked,
   selectionSummary,
   setRowsSelected,
+  statusChipCounts,
   visibleRows,
 } from "../lib/importSelectView";
 // WP-IC-PAKET-1b (bens ROT-3): latest-wins — Antworten aelterer Requests werden verworfen.
@@ -81,6 +86,10 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
   // WP-SHIP9-S2 Paket 2 (D3–D7): Ansichts-Zustand der Trefferliste (Suche/Filter-Chip/Ausblenden/
   // Gruppierung). Rein für die DARSTELLUNG — die Auswahl selbst bleibt in checkedRows (Originalindex).
   const [view, setView] = useState(DEFAULT_PREVIEW_VIEW);
+  // WP-BILD-1f RT5a: expliziter Auf-/Zu-Zustand je Gruppe (Baugruppen-Ordner). Nur EXPLIZITE
+  // Nutzer-Klicks landen hier; ohne Eintrag gilt der Standard (offen, bzw. eingeklappt bei vielen
+  // Gruppen). Der Key ist group.key (stabil über Sprach-/Themen-Wert).
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   // WP-COCKPIT-LINIE: Vorschau da → Meilenstein "previewed" an die Schritt-Leiste; beim ERSTEN
   // Erscheinen zur Vorschau scrollen (Muster aus R7) — Live-Aktualisierungen der Filter springen
@@ -206,8 +215,19 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
   // WP-SHIP9-S2 Paket 2: abgeleitete Ansicht — gefilterte/durchsuchte Zeilen (D4/D7), optional
   // gruppiert (D3/D5). Die AUSWAHL bleibt in checkedRows (Originalindex); dies steuert nur, was
   // sichtbar ist und welche Zeilen „Alle wählen"/Gruppen-Checkbox erfassen.
-  const rows = preview ? visibleRows(preview.preview, view) : [];
-  const groups = groupRows(rows, view.groupMode);
+  // WP-BILD-1f RT5c: der aktive Filter-Chip gilt nur, solange sein Wert im Bestand vorkommt — sonst
+  // ehrlicher Rückfall auf „Alle" (ein verschwundener Chip darf die Liste nicht leer filtern).
+  const activeChip: PreviewChip =
+    preview && statusChipCounts(preview.preview).some((c) => c.chip === view.chip)
+      ? view.chip
+      : "all";
+  // WP-BILD-1f RT5c: der angeforderte Gruppier-Modus gilt nur, wenn er im aktuellen Bestand überhaupt
+  // angeboten wird (≥2 Gruppen) — sonst ehrlicher Rückfall auf die flache Liste (kein toter Modus).
+  const groupMode = preview
+    ? effectiveGroupMode(preview.preview, view.groupMode)
+    : ("none" as PreviewGroupMode);
+  const rows = preview ? visibleRows(preview.preview, { ...view, chip: activeChip }) : [];
+  const groups = groupRows(rows, groupMode);
   const summary = selectionSummary(checkedRows);
   // F1: Bulk-Aktionen (Alle wählen, Gruppen-Checkbox) UND die Haken-Anzeige arbeiten auf DERSELBEN
   // bulk-wählbaren Teilmenge — bereits importierte/vorgemerkte Zeilen fasst kein Bulk-Setzer an.
@@ -222,8 +242,28 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
       setCheckedRows((prev) => setRowsSelected(prev, bulkRows, true));
     }
   };
+  // WP-BILD-1f RT5b: Gruppen-Checkbox setzt die GANZE Gruppe. ANWÄHLEN erfasst nur bulk-wählbare
+  // Zeilen (F1: importierte/vorgemerkte bleiben aus); ABWÄHLEN wirkt auf ALLE Zeilen der Gruppe (auch
+  // bewusst wieder-angewählte bekannte Einträge).
   const setGroupSelected = (groupRowsArg: readonly PreviewRow[], value: boolean): void => {
-    setCheckedRows((prev) => setRowsSelected(prev, bulkSelectableRows(groupRowsArg), value));
+    setCheckedRows((prev) =>
+      value
+        ? setRowsSelected(prev, bulkSelectableRows(groupRowsArg), true)
+        : setRowsSelected(prev, groupRowsArg, false),
+    );
+  };
+  // RT5b: Klick auf den Gruppen-Haken — "on" → ganze Gruppe abwählen; sonst anwählen (bulk-wählbare).
+  // Gibt es nichts anzuwählen (nur bekannte Zeilen), aber ist etwas gewählt, wirkt der Klick als Abwahl.
+  const toggleGroup = (groupRowsArg: readonly PreviewRow[]): void => {
+    const state = groupCheckboxState(checkedRows, groupRowsArg);
+    const canSelect = bulkSelectableRows(groupRowsArg).length > 0;
+    setGroupSelected(groupRowsArg, state !== "on" && canSelect);
+  };
+  // RT5a: eingeklappt-Standard bei vielen Gruppen; explizite Klicks (openGroups) haben Vorrang.
+  const groupsDefaultOpen = !groupsCollapsedByDefault(groups.length);
+  const isGroupOpen = (key: string): boolean => openGroups[key] ?? groupsDefaultOpen;
+  const setGroupOpen = (key: string, value: boolean): void => {
+    setOpenGroups((prev) => (prev[key] === value ? prev : { ...prev, [key]: value }));
   };
   // F3: die in der Vorschau gewählten, ZULÄSSIGEN Kandidaten-IDs (Originalindex → checkedRows) —
   // sie steuern serverseitig Gruppierung UND Übernahme (nicht nur die Kriterien).
@@ -240,19 +280,27 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
         : lang === "nl"
           ? t("imp.select.langNl")
           : t("imp.select.langOther");
-  // D7: Filter-Chips (aktiver Chip wechselt nur die Sicht, nie die Auswahl).
-  const chips: { id: PreviewChip; label: string }[] = [
-    { id: "all", label: t("imp.select.chipAll") },
-    { id: "new", label: t("imp.select.chipNew") },
-    { id: "imported", label: t("imp.select.chipImported") },
-    { id: "queued", label: t("imp.select.chipQueued") },
-  ];
-  // D3/D5: Gruppier-Modi.
-  const groupModes: { id: PreviewGroupMode; label: string }[] = [
-    { id: "none", label: t("imp.select.groupNone") },
-    { id: "theme", label: t("imp.select.groupTheme") },
-    { id: "language", label: t("imp.select.groupLanguage") },
-  ];
+  // WP-BILD-1f RT5c: Filter-Chips DYNAMISCH aus den tatsächlichen Treffern — nur vorkommende Werte,
+  // jeweils mit Zähler (verschwindet ein Wert aus dem Bestand, verschwindet der Chip). Der aktive Chip
+  // wechselt nur die Sicht, nie die Auswahl.
+  const chipLabel = (chip: PreviewChip): string =>
+    chip === "new"
+      ? t("imp.select.chipNew")
+      : chip === "imported"
+        ? t("imp.select.chipImported")
+        : chip === "queued"
+          ? t("imp.select.chipQueued")
+          : t("imp.select.chipAll");
+  const chips = preview ? statusChipCounts(preview.preview) : [];
+  // WP-BILD-1f RT5c: Gruppier-Modi ebenfalls dynamisch — „nach Sprache"/„nach Thema" nur, wenn der
+  // Bestand dafür ≥2 Gruppen hergibt. „none" (flache Liste) ist immer dabei.
+  const groupModeName = (mode: PreviewGroupMode): string =>
+    mode === "theme"
+      ? t("imp.select.groupTheme")
+      : mode === "language"
+        ? t("imp.select.groupLanguage")
+        : t("imp.select.groupNone");
+  const groupModes = preview ? groupModeOptions(preview.preview) : [];
 
   // Eine Vorschau-Zeile (Checkbox + Titel + Kennzeichen) — geteilt zwischen flacher und Gruppen-Ansicht.
   const renderRow = ({ entry, index }: PreviewRow): JSX.Element => (
@@ -459,21 +507,21 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
                 aria-label={t("imp.select.searchPlaceholder")}
               />
 
-              {/* D7: Filter-Chips (Neu / Bereits importiert / Vorgemerkt / Alle). */}
+              {/* WP-BILD-1f RT5c: dynamische Filter-Chips (nur vorkommende Werte, mit Zähler). */}
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {chips.map((c) => (
                   <button
-                    key={c.id}
+                    key={c.chip}
                     type="button"
-                    aria-pressed={view.chip === c.id}
-                    onClick={() => setView((v) => ({ ...v, chip: c.id }))}
+                    aria-pressed={activeChip === c.chip}
+                    onClick={() => setView((v) => ({ ...v, chip: c.chip }))}
                     className={`rounded-pill border px-2.5 py-1 text-[11.5px] font-semibold ${
-                      view.chip === c.id
+                      activeChip === c.chip
                         ? "border-ai/50 bg-ai-surface-1 text-ai"
                         : "border-hairline bg-surface text-muted hover:text-text"
                     }`}
                   >
-                    {c.label}
+                    {chipLabel(c.chip)} · {c.count}
                   </button>
                 ))}
               </div>
@@ -500,17 +548,18 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
                   <span>{t("imp.select.groupBy")}</span>
                   {groupModes.map((m) => (
                     <button
-                      key={m.id}
+                      key={m.mode}
                       type="button"
-                      aria-pressed={view.groupMode === m.id}
-                      onClick={() => setView((v) => ({ ...v, groupMode: m.id }))}
+                      aria-pressed={groupMode === m.mode}
+                      onClick={() => setView((v) => ({ ...v, groupMode: m.mode }))}
                       className={`rounded-btn border px-2 py-0.5 font-semibold ${
-                        view.groupMode === m.id
+                        groupMode === m.mode
                           ? "border-ai/50 bg-ai-surface-1 text-ai"
                           : "border-hairline bg-surface text-muted hover:text-text"
                       }`}
                     >
-                      {m.label}
+                      {groupModeName(m.mode)}
+                      {m.mode === "none" ? "" : ` · ${m.count}`}
                     </button>
                   ))}
                 </span>
@@ -526,40 +575,55 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
               {rows.length === 0 ? (
                 // D4/D7: nach Ausblenden/Suche/Filter keine Zeile mehr sichtbar — ehrlich benannt.
                 <p className="mt-2 text-[12px] text-muted-2">{t("imp.select.emptyFiltered")}</p>
-              ) : view.groupMode === "none" ? (
+              ) : groupMode === "none" ? (
                 <ul className="mt-1.5 space-y-1 border-t border-hairline pt-2">
                   {rows.map(renderRow)}
                 </ul>
               ) : (
-                // D3/D5: auf-/zuklappbare Gruppen mit Gruppen-Checkbox (ganze Gruppe an/abwählen).
+                // WP-BILD-1f RT5a/RT5b: echte auf-/zuklappbare Baugruppen-Ordner. Kopf = Aufklapp-
+                // Chevron + Gruppen-Haken (Tri-State) + Trefferzahl. Auf/Zu je Gruppe lokal; bei vielen
+                // Gruppen standardmäßig eingeklappt.
                 <div className="mt-1.5 space-y-1.5 border-t border-hairline pt-2">
                   {groups.map((group) => {
-                    // F1: der Gruppen-Haken spiegelt NUR die bulk-wählbaren Zeilen — bekannte
-                    // Einträge zählen weder für die Anzeige noch für das Bulk-Setzen.
-                    const groupAllChecked = rowsAllChecked(
-                      checkedRows,
-                      bulkSelectableRows(group.rows),
-                    );
+                    // RT5b/F1: der Gruppen-Haken zeigt an/aus/gemischt über den bulk-wählbaren Zeilen.
+                    const checkState = groupCheckboxState(checkedRows, group.rows);
                     const label =
                       group.kind === "language"
                         ? languageLabel(group.language)
                         : group.value === ""
                           ? t("imp.select.noTheme")
                           : displayImportText(group.value);
+                    const open = isGroupOpen(group.key);
                     return (
                       <details
                         key={group.key}
-                        open
+                        open={open}
+                        // RT5a: nativer Auf/Zu (Maus + Tastatur bleiben erhalten); der Zustand wird
+                        // je Gruppe in openGroups gespiegelt (bei vielen Gruppen Standard eingeklappt).
+                        onToggle={(e) => setGroupOpen(group.key, e.currentTarget.open)}
                         className="rounded-card border border-hairline bg-surface"
                       >
                         <summary className="flex cursor-pointer list-none items-center gap-2 p-2">
-                          {/* Gruppen-Checkbox: an/abwählen der ganzen Gruppe (D3). */}
+                          <ChevronDown
+                            size={14}
+                            aria-hidden
+                            className={`shrink-0 text-muted-2 transition-transform ${
+                              open ? "" : "-rotate-90"
+                            }`}
+                          />
+                          {/* RT5b: Gruppen-Checkbox — ganze Gruppe an/abwählen; indeterminiert bei
+                              Teilauswahl. stopPropagation, damit der Klick nicht auf-/zuklappt. */}
                           <input
                             type="checkbox"
                             aria-label={label}
-                            checked={groupAllChecked}
+                            checked={checkState === "on"}
+                            ref={(el) => {
+                              if (el) {
+                                el.indeterminate = checkState === "mixed";
+                              }
+                            }}
                             onClick={(e) => e.stopPropagation()}
-                            onChange={(e) => setGroupSelected(group.rows, e.target.checked)}
+                            onChange={() => toggleGroup(group.rows)}
                             className="h-4 w-4 shrink-0"
                           />
                           <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-text">

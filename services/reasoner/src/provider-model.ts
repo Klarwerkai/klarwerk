@@ -95,6 +95,28 @@ function describeImageSystem(locale: ReasonerLocale): string {
 // überziehen — gekappt wird deterministisch, nicht verhandelt).
 export const MAX_IMAGE_DESCRIPTION_LENGTH = 300;
 
+// WP-BILD-1f (Pedi 22.07.): HARTES Größenbudget für den mitgereichten Dokument-Kontext. Der Client
+// kürzt schon bei der Extraktion (MAX_IMAGE_CONTEXT_CHARS, apps/web/src/lib/captionContext.ts) — der
+// Server kappt hier AUTORITATIV und deterministisch nach, egal woher der Kontext stammt. Überschuss
+// wird ehrlich abgeschnitten (kein Fehler, nur weniger Kontext).
+export const MAX_IMAGE_CONTEXT_LENGTH = 1500;
+
+// WP-BILD-1f: der Dokument-Kontext wird NUR für die Fachsprache mitgegeben — die harte
+// Anti-Halluzinations-Regel (nur Sichtbares beschreiben) bleibt in describeImageSystem unangetastet;
+// die Kontext-Nutzung ist bewusst auf „richtige Benennung des Sichtbaren" begrenzt.
+function describeImageUserPrompt(locale: ReasonerLocale, context: string): string {
+  const base =
+    locale === "en"
+      ? "Describe this image for the caption."
+      : "Beschreibe dieses Bild für die Fußnote.";
+  if (!context) {
+    return base;
+  }
+  return locale === "en"
+    ? `${base}\n\nSurrounding document context (use ONLY to pick the correct technical terminology for what is visible — do NOT add anything that is not visible in the image):\n${context}`
+    : `${base}\n\nUmgebender Dokument-Kontext (NUR zur richtigen Fachbenennung des Sichtbaren nutzen — ergänze NICHTS, was nicht im Bild sichtbar ist):\n${context}`;
+}
+
 // WP-IC-4: KI-Gruppierung der Import-Kandidaten. Strikter JSON-Vertrag; die Antwort wird
 // serverseitig HART validiert (normalizeCandidateGroups) — das Modell strukturiert nur, es
 // entscheidet nichts (jede Id genau einmal, Unbekanntes fliegt, Fehlendes in die Auffanggruppe).
@@ -780,22 +802,29 @@ export class ModelProvider implements ReasonerProvider {
     dataUrl: string,
     locale: ReasonerLocale = "de",
     confidential = false,
+    context?: string,
   ): Promise<DescribeImageResult> {
     const client = this.requireClient();
     if (typeof client.completeVision !== "function") {
       throw new Error("Dieses Modell hat keinen Bild-Eingang (Vision).");
     }
+    // WP-BILD-1f: Kontext deterministisch auf das harte Budget kürzen; er reist als Teil des
+    // Vision-USER-Prompts mit — also durch DENSELBEN Egress-Wächter wie das Bild. Bei vertraulichem
+    // Bild wirft cappedModelClient BEVOR dieser Aufruf läuft; Kontext geht dann NIE an die Cloud.
+    const trimmedContext = (context ?? "").trim().slice(0, MAX_IMAGE_CONTEXT_LENGTH).trim();
     const raw = await client.completeVision(
       describeImageSystem(locale),
       dataUrl,
-      locale === "en"
-        ? "Describe this image for the caption."
-        : "Beschreibe dieses Bild für die Fußnote.",
+      describeImageUserPrompt(locale, trimmedContext),
       confidential,
       256,
     );
     const text = raw.trim().slice(0, MAX_IMAGE_DESCRIPTION_LENGTH).trim();
-    return { text: text.length > 0 ? text : null, demo: false };
+    return {
+      text: text.length > 0 ? text : null,
+      demo: false,
+      ...(trimmedContext.length > 0 ? { withContext: true } : {}),
+    };
   }
 
   async assistText(

@@ -20,6 +20,7 @@ import {
   captionSuggestVisible,
   checkCaptionImageDataUrl,
 } from "../lib/captionAiSuggest";
+import { collectImageContext } from "../lib/captionContext";
 import {
   EDITOR_BLOCKS,
   type EditorBlock,
@@ -85,6 +86,7 @@ export function RichTextEditor({
   onAttachFiles,
   placeholder,
   onDescribeImage,
+  documentTitle,
 }: {
   value: string;
   onChange: (html: string) => void;
@@ -102,7 +104,14 @@ export function RichTextEditor({
   // WP-BILD-1c: KI-Bildbeschreibungs-Vorschlag für die fokussierte Bild-Fußnote. Der Eltern-Kontext
   // verdrahtet den describe-Aufruf (inkl. Provenienz/Vertraulichkeit); ohne Callback bleibt der
   // Knopf aus (kein toter Klick). Erscheint NIE in der Vorschau/Leseansicht.
-  onDescribeImage?: ((dataUrl: string) => Promise<DescribeImageResult>) | undefined;
+  // WP-BILD-1f (Pedi 22.07.): der Editor reicht als zweites Argument den umgebenden Klartext-Kontext
+  // (Titel + Überschrift + Absätze) mit — er reist im selben describe-Request und damit über
+  // DIESELBE Vertraulichkeits-/Egress-Stelle wie das Bild.
+  onDescribeImage?:
+    | ((dataUrl: string, context?: string) => Promise<DescribeImageResult>)
+    | undefined;
+  // WP-BILD-1f: Dokument-Titel für den Kontext (Formularfeld, kein HTML). Optional.
+  documentTitle?: string | undefined;
 }): JSX.Element {
   const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
@@ -134,7 +143,8 @@ export function RichTextEditor({
     | null
     | { status: "loading" }
     | { status: "fallback"; messageKey: string }
-    | { status: "suggestion"; text: string }
+    // WP-BILD-1f: withContext = der Vorschlag wurde mit umgebendem Dokument-Kontext erzeugt.
+    | { status: "suggestion"; text: string; withContext: boolean }
   >(null);
 
   // Editor-Inhalt nur setzen, wenn er abweicht und der Fokus nicht IM Editor liegt
@@ -354,15 +364,21 @@ export function RichTextEditor({
       }
       return;
     }
+    // WP-BILD-1f: umgebenden Dokument-Kontext AM AKTUELLEN DOM sammeln (Titel + nächste Überschrift +
+    // Absätze), budgetgekürzt. Reist im selben describe-Request wie das Bild → dieselbe Egress-Stelle.
+    const editorRoot = ref.current;
+    const figure = caption.parentElement;
+    const context =
+      editorRoot && figure ? collectImageContext(editorRoot, figure, documentTitle) : "";
     try {
-      const result = await onDescribeImage(checked.dataUrl);
+      const result = await onDescribeImage(checked.dataUrl, context || undefined);
       if (!stillCurrent()) {
         return; // Ziel gewechselt → Antwort still verwerfen (kein Panel, keine Inhalts-Änderung).
       }
       const outcome = captionSuggestOutcome(result);
       setCaptionAi(
         outcome.kind === "suggestion"
-          ? { status: "suggestion", text: outcome.text }
+          ? { status: "suggestion", text: outcome.text, withContext: result.withContext === true }
           : { status: "fallback", messageKey: outcome.messageKey },
       );
     } catch {
@@ -918,6 +934,12 @@ export function RichTextEditor({
               <p className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai">
                 {t(CAPTION_AI_TEXT.panelTitle)} · {t(CAPTION_AI_TEXT.aiBadge)}
               </p>
+              {/* WP-BILD-1f: ehrliche Kennzeichnung, wenn der Vorschlag mit Dokument-Kontext entstand. */}
+              {captionAi.withContext ? (
+                <p className="mt-0.5 text-[10.5px] leading-snug text-muted">
+                  {t(CAPTION_AI_TEXT.withContext)}
+                </p>
+              ) : null}
               <p className="mt-1 text-[12.5px] leading-relaxed text-text">{captionAi.text}</p>
               <div className="mt-1.5 flex gap-2">
                 <button

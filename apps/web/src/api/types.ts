@@ -830,6 +830,9 @@ export interface DescribeImageResult {
   demo: boolean;
   // WP-SHIP9-S2: "confidential" additiv — Cloud-Vision wegen vertraulichem Bild ausgeschlossen.
   fallbackReason?: "no-model" | "model-timeout" | "model-error" | "confidential";
+  // WP-BILD-1f (Pedi 22.07.): true, wenn der Vorschlag mit umgebendem Dokument-Kontext erzeugt wurde
+  // (die UI kennzeichnet ihn dann als „mit Dokument-Kontext erzeugt").
+  withContext?: boolean;
 }
 
 // WP-VIP2-GATE (bens P1): /api/reasoner/status ist abstrahiert — nur Verfügbarkeit + STUFE

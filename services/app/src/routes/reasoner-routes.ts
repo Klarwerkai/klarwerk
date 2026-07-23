@@ -235,6 +235,10 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         source?: "draft" | "transient-document";
         koId?: string;
         confidentiality?: Confidentiality;
+        // WP-BILD-1f (Pedi 22.07.): optionaler umgebender Dokument-Kontext (Klartext). Er läuft durch
+        // DIESELBE resolveConfidential-/providerChain-Stelle wie das Bild — bei vertraulichem Beitrag
+        // erreicht weder Bild noch Kontext die Cloud. Der Reasoner kappt den Kontext autoritativ.
+        context?: string;
       };
     }>(
       "/api/reasoner/describe",
@@ -274,7 +278,12 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
           request.body.koId,
           request.body.confidentiality,
         );
-        reply.code(200).send(await reasoner.describeImage(dataUrl as string, locale, confidential));
+        // WP-BILD-1f: Kontext nur weiterreichen, wenn String; der Reasoner kappt ihn autoritativ auf
+        // MAX_IMAGE_CONTEXT_LENGTH und schickt ihn NUR über den (vertraulichkeitsgefilterten) Vision-Weg.
+        const context = typeof request.body.context === "string" ? request.body.context : undefined;
+        reply
+          .code(200)
+          .send(await reasoner.describeImage(dataUrl as string, locale, confidential, context));
       },
     );
 

@@ -52,6 +52,8 @@ export {
   MAX_EXTRACT_DOCUMENT_LENGTH,
   // WP-BILD-1c: harte Server-Obergrenze der Bildbeschreibungs-Vorschlagslänge.
   MAX_IMAGE_DESCRIPTION_LENGTH,
+  // WP-BILD-1f: hartes Server-Budget für den mitgereichten Dokument-Kontext.
+  MAX_IMAGE_CONTEXT_LENGTH,
   // WP-IC-4: strikte Validierung der Gruppierungs-Antwort (testbar, DOM-frei).
   normalizeCandidateGroups,
   catchAllGroupTitle,

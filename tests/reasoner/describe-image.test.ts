@@ -5,12 +5,14 @@
 import { describe, expect, it } from "vitest";
 import type { ModelRunRecord } from "../../services/model-runs";
 import {
+  MAX_IMAGE_CONTEXT_LENGTH,
   MAX_IMAGE_DESCRIPTION_LENGTH,
   ModelProvider,
   ModelTimeoutError,
   Reasoner,
   cappedModelClient,
 } from "../../services/reasoner";
+import type { ModelClient } from "../../services/reasoner";
 import { parseImageDataUrl } from "../../services/reasoner/src/model-client";
 
 const PNG_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==";
@@ -127,6 +129,75 @@ describe("WP-BILD-1c: describeImage — ehrlicher Vorschlag, ehrlicher Fallback"
       perTask: { describe: "deterministic" },
     });
     expect(updated.perTask.describe).toBe("deterministic");
+  });
+});
+
+describe("WP-BILD-1f: Dokument-Kontext beim Vorschlag (Egress folgt dem Bild)", () => {
+  // Vision-Spy, der den USER-Prompt (inkl. Kontext) und die Aufrufzahl festhält.
+  function visionSpy(): {
+    client: ModelClient;
+    userPrompts: string[];
+    calls: () => number;
+  } {
+    const userPrompts: string[] = [];
+    const client: ModelClient = {
+      name: "anthropic:test",
+      complete: async () => "",
+      completeVision: async (_system, _img, user) => {
+        userPrompts.push(user);
+        return "Eine Kreiselpumpe.";
+      },
+    };
+    return { client, userPrompts, calls: () => userPrompts.length };
+  }
+
+  it("öffentlicher Beitrag: der Kontext geht IM Vision-User-Prompt mit; withContext=true", async () => {
+    const spy = visionSpy();
+    const res = await new Reasoner(new ModelProvider(spy.client)).describeImage(
+      PNG_URL,
+      "de",
+      false,
+      "Titel: Pumpenwartung\nAbschnitt: Dichtungen\nDie Gleitringdichtung wird geprüft.",
+    );
+    expect(res.withContext).toBe(true);
+    expect(spy.userPrompts[0]).toContain("Gleitringdichtung");
+    expect(spy.userPrompts[0]).toContain("Pumpenwartung");
+  });
+
+  it("ohne Kontext bleibt der Prompt unverändert und withContext ist NICHT gesetzt", async () => {
+    const spy = visionSpy();
+    const res = await new Reasoner(new ModelProvider(spy.client)).describeImage(
+      PNG_URL,
+      "de",
+      false,
+    );
+    expect(res.withContext).toBeUndefined();
+    expect(spy.userPrompts[0]).toBe("Beschreibe dieses Bild für die Fußnote.");
+  });
+
+  it("überlanger Kontext wird HART auf das Budget gekürzt (Überschuss ehrlich abgeschnitten)", async () => {
+    const spy = visionSpy();
+    // Ziffer als Füllzeichen: kommt im Base-/Trenn-Prompt nicht vor, deshalb zählt sie NUR den Kontext.
+    const huge = "9".repeat(MAX_IMAGE_CONTEXT_LENGTH + 500);
+    await new Reasoner(new ModelProvider(spy.client)).describeImage(PNG_URL, "de", false, huge);
+    const contextChars = (spy.userPrompts[0]?.match(/9/g) ?? []).length;
+    expect(contextChars).toBe(MAX_IMAGE_CONTEXT_LENGTH);
+  });
+
+  it("vertraulicher Beitrag: KEIN Kontext-Egress — Cloud-Vision-Spy zählt 0 (Kontext geht NIE mit)", async () => {
+    const spy = visionSpy();
+    const capped = cappedModelClient(spy.client, { rejectsConfidential: true });
+    const reasoner = new Reasoner(new ModelProvider(capped));
+    const res = await reasoner.describeImage(
+      PNG_URL,
+      "de",
+      true,
+      "Titel: Geheimprojekt\nInterner, vertraulicher Absatz mit Bauteilnamen.",
+    );
+    expect(res.demo).toBe(true);
+    expect(res.fallbackReason).toBe("confidential");
+    expect(res.text).toBeNull();
+    expect(spy.calls()).toBe(0); // weder Bild NOCH Kontext haben den Vision-Client erreicht
   });
 });
 

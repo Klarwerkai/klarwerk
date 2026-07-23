@@ -972,11 +972,13 @@ export function KnowledgeDetail(): JSX.Element {
                             .filter((a) => a.objectId && a.mime.startsWith("image/"))
                             .map((a) => ({ objectId: a.objectId as string, name: a.name }))}
                           files={editorFilesFromAttachments(ko.attachments ?? [])}
-                          onDescribeImage={(dataUrl) =>
+                          documentTitle={edit.title}
+                          onDescribeImage={(dataUrl, context) =>
                             endpoints.reasoner.describeImage(
                               dataUrl,
                               toReasonerLocale(i18n.language),
                               draftProvenance(undefined, id),
+                              context,
                             )
                           }
                         />

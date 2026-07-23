@@ -3878,11 +3878,13 @@ export function Capture(): JSX.Element {
                       onChange={setBodyHtml}
                       images={editorImagesFromLocalImages(images)}
                       onAttachFiles={attachFiles}
-                      onDescribeImage={(dataUrl) =>
+                      documentTitle={draft.title}
+                      onDescribeImage={(dataUrl, context) =>
                         endpoints.reasoner.describeImage(
                           dataUrl,
                           locale,
                           draftProvenance(confidentiality),
+                          context,
                         )
                       }
                     />
@@ -4103,11 +4105,13 @@ export function Capture(): JSX.Element {
                   onChange={setBodyHtml}
                   images={editorImagesFromLocalImages(images)}
                   onAttachFiles={attachFiles}
-                  onDescribeImage={(dataUrl) =>
+                  documentTitle={draft.title}
+                  onDescribeImage={(dataUrl, context) =>
                     endpoints.reasoner.describeImage(
                       dataUrl,
                       locale,
                       draftProvenance(confidentiality),
+                      context,
                     )
                   }
                   aiPanel={

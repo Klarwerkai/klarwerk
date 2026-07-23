@@ -680,6 +680,10 @@ export class Reasoner {
     dataUrl: string,
     locale: ReasonerLocale = "de",
     confidential = false,
+    // WP-BILD-1f (Pedi 22.07.): optionaler umgebender Dokument-Kontext (Klartext). Reist NUR mit,
+    // wenn der Beitrag ohnehin den Cloud-Weg nehmen darf — durch DIESELBE providerChain-/Egress-Stelle
+    // wie das Bild selbst. Vertraulich → Cloud aus der Kette → weder Bild noch Kontext egress.
+    context?: string,
   ): Promise<DescribeImageResult> {
     const hadModelInChain = this.providerChain("describe", confidential).some(
       (p) => p !== this.fallback,
@@ -698,7 +702,7 @@ export class Reasoner {
         }
         const startedMs = Date.now();
         try {
-          return await p.describeImage(dataUrl, locale, confidential);
+          return await p.describeImage(dataUrl, locale, confidential, context);
         } catch (err) {
           failureBox.current = { err, provider: p.name, elapsedMs: Date.now() - startedMs };
           throw err;

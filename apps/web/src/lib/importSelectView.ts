@@ -221,6 +221,82 @@ export function rowsAnyChecked(checked: readonly boolean[], rows: readonly Previ
   return rows.some(({ index }) => checked[index] === true);
 }
 
+// WP-BILD-1f RT5b: Dreizustand des Gruppen-Hakens (Baugruppen-Verhalten). "on" = alle bulk-wählbaren
+// Zeilen an (mehr kann eine Bulk-Aktion nicht erreichen); "off" = keine Zeile der Gruppe an; sonst
+// "mixed" (teilgewählt → indeterminierter Haken). Bekannte (importierte/vorgemerkte) Zeilen zählen für
+// "any/off" mit, aber ein Bulk-ANWÄHLEN erfasst sie nie (F1) — deshalb entscheidet für "on" die
+// bulk-wählbare Teilmenge.
+export type GroupCheckState = "on" | "off" | "mixed";
+export function groupCheckboxState(
+  checked: readonly boolean[],
+  rows: readonly PreviewRow[],
+): GroupCheckState {
+  if (!rowsAnyChecked(checked, rows)) {
+    return "off";
+  }
+  const selectable = bulkSelectableRows(rows);
+  if (selectable.length > 0 && rowsAllChecked(checked, selectable)) {
+    return "on";
+  }
+  return "mixed";
+}
+
+// WP-BILD-1f RT5a: eingeklappt-Standard, sobald „viele" Gruppen entstehen. Schwelle: MEHR als
+// COLLAPSE_GROUPS_THRESHOLD (=4) Gruppen → Ordner starten zugeklappt (der Nutzer klappt gezielt auf).
+// Bis einschließlich 4 Gruppen bleiben sie offen (schneller Überblick ohne Klick).
+export const COLLAPSE_GROUPS_THRESHOLD = 4;
+export function groupsCollapsedByDefault(groupCount: number): boolean {
+  return groupCount > COLLAPSE_GROUPS_THRESHOLD;
+}
+
+// WP-BILD-1f RT5c: Status-Filter-Chips DYNAMISCH aus den tatsächlichen Treffern — nur vorkommende
+// Werte, jeweils mit Zähler. "all" ist immer dabei (Gesamtzahl); "new"/"imported"/"queued" nur, wenn
+// wenigstens ein Treffer sie erfüllt. Verschwindet ein Wert aus dem Bestand, verschwindet sein Chip.
+export interface StatusChipCount {
+  chip: PreviewChip;
+  count: number;
+}
+export function statusChipCounts(entries: readonly ImportPreviewEntry[]): StatusChipCount[] {
+  const out: StatusChipCount[] = [{ chip: "all", count: entries.length }];
+  for (const chip of ["new", "imported", "queued"] as const) {
+    const count = entries.reduce((n, entry) => (chipMatches(entry, chip) ? n + 1 : n), 0);
+    if (count > 0) {
+      out.push({ chip, count });
+    }
+  }
+  return out;
+}
+
+// WP-BILD-1f RT5c: Gruppier-Modi DYNAMISCH — „nach Sprache"/„nach Thema" werden nur angeboten, wenn
+// sie im Bestand mindestens ZWEI Gruppen ergäben (sonst ist die Gruppierung sinnlos). "none" (flache
+// Liste) ist immer dabei. count = Anzahl Gruppen, die der Modus erzeugt (bei "none": Trefferzahl).
+export interface GroupModeOption {
+  mode: PreviewGroupMode;
+  count: number;
+}
+export function groupModeOptions(entries: readonly ImportPreviewEntry[]): GroupModeOption[] {
+  const rows: PreviewRow[] = entries.map((entry, index) => ({ entry, index }));
+  const out: GroupModeOption[] = [{ mode: "none", count: entries.length }];
+  const languageCount = groupRows(rows, "language").length;
+  if (languageCount >= 2) {
+    out.push({ mode: "language", count: languageCount });
+  }
+  const themeCount = groupRows(rows, "theme").length;
+  if (themeCount >= 2) {
+    out.push({ mode: "theme", count: themeCount });
+  }
+  return out;
+}
+
+// WP-BILD-1f RT5c: der angeforderte Gruppier-Modus, sofern er im aktuellen Bestand überhaupt
+// angeboten wird — sonst fällt er ehrlich auf „none" zurück (kein toter, unsichtbarer Modus).
+export function effectiveGroupMode(
+  entries: readonly ImportPreviewEntry[],
+  requested: PreviewGroupMode,
+): PreviewGroupMode {
+  return groupModeOptions(entries).some((option) => option.mode === requested) ? requested : "none";
+}
+
 // D7: dauerhaft sichtbare Auswahl-Zusammenfassung „X von Y gewählt".
 export interface SelectionSummary {
   selected: number;

@@ -135,10 +135,14 @@ export interface ReasonerProvider {
   // WP-BILD-1c: KI-Bildbeschreibung als Vorschlag (Vision). NUR ein Modell-Provider mit echtem
   // Bild-Eingang implementiert das; der deterministische Fallback bewusst NICHT — eine
   // Bildbeschreibung ohne Modell wäre per Definition erfunden (Ehrlichkeit vor Optik).
+  // WP-BILD-1f (Pedi 22.07.): OPTIONALER Dokument-Kontext (Klartext) — reist AUSSCHLIESSLICH im
+  // selben Vision-Aufruf mit wie das Bild und damit durch DENSELBEN Egress-Wächter. Kein neuer
+  // Egress-Pfad; vertraulich = kein Bild UND kein Kontext an die Cloud.
   describeImage?(
     dataUrl: string,
     locale?: ReasonerLocale,
     confidential?: boolean,
+    context?: string,
   ): Promise<DescribeImageResult>;
   // WP-IC-4: thematische Gruppierung der Import-Kandidaten. Der deterministische Fallback
   // implementiert sie EHRLICH über die mitgelieferten IC-1-Themen (kein Pseudo-Modell) — der

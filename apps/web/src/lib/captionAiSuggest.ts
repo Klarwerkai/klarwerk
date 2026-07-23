@@ -13,6 +13,9 @@ export const CAPTION_AI_TEXT = {
   loading: "editor.captionAi.loading",
   panelTitle: "editor.captionAi.panelTitle",
   aiBadge: "editor.captionAi.aiBadge",
+  // WP-BILD-1f (Pedi 22.07.): Kennzeichnung, dass der Vorschlag mit umgebendem Dokument-Kontext
+  // erzeugt wurde (Titel/Überschrift/Absätze) — für die fachsprachlich passende Benennung.
+  withContext: "editor.captionAi.withContext",
   apply: "editor.captionAi.apply",
   discard: "editor.captionAi.discard",
   tooLarge: "editor.captionAi.tooLarge",

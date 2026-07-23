@@ -295,6 +295,11 @@ export interface DescribeImageResult {
   // WP-SHIP9-S2 (bens Folgeschnitt B4): "confidential" additiv — Cloud-Vision konfiguriert, aber wegen
   // vertraulichem Bild ausgeschlossen (kein lokales Modell sprang ein); vorher irreführend „no-model".
   fallbackReason?: "no-model" | "model-timeout" | "model-error" | "confidential";
+  // WP-BILD-1f (Pedi 22.07.): true, wenn der Vorschlag WIRKLICH mit dem umgebenden Dokument-Kontext
+  // erzeugt wurde (Kontext lag vor UND ging über denselben Cloud-Weg wie das Bild mit). Die UI
+  // kennzeichnet den Vorschlag dann als „mit Dokument-Kontext erzeugt". Bei vertraulichem Bild
+  // (Cloud ausgeschlossen) gibt es KEINEN Vorschlag und damit auch kein withContext.
+  withContext?: boolean;
 }
 
 // Key-Test (Pedi 02.07.): Ergebnis eines echten Mini-Aufrufs — ehrlich, keine Vermutung.
