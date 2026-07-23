@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Minus, Pencil, Trash2, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
@@ -20,6 +20,9 @@ import { KoSummaryDisclosure } from "../components/KoSummaryDisclosure";
 import { ValidationReviewContext } from "../components/ValidationReviewContext";
 import { ConfidenceBar, KnowledgeTypeTag, KoAuthorLine, StatusPill } from "../components/trust";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
+// WP-SHIP9-B3FIX: Poll-Intervall (geteilt mit Capture) + ehrliches Ausgrauen/Sperren, solange die
+// KI-Prüfung eines Eintrags noch läuft — die Liste bekommt den Übergang pending → done selbst mit.
+import { AI_CHECK_POLL_MS } from "../lib/aiCheckStatusCard";
 import {
   DEMO_KNOWLEDGE_FILTERS,
   type DemoKnowledgeFilter,
@@ -55,6 +58,8 @@ import {
   reviewWorkView,
   sortByReviewPriority,
 } from "../lib/reviewSignals";
+// WP-SHIP9-B3FIX: pending-Gate (ausgrauen + Aktionen sperren) und Board-weites pending-Prädikat (Polling).
+import { boardHasPendingAiCheck, validationAiGate } from "../lib/validationAiGate";
 import {
   applyBoardFocusParams,
   boardEmptyKind,
@@ -163,6 +168,20 @@ export function Validation(): JSX.Element {
   const users = useDirectory();
   const { user } = useSession();
   const qc = useQueryClient();
+  // WP-SHIP9-B3FIX (Pedi 23.07.): Solange mindestens ein Eintrag noch in KI-Prüfung ist (aiCheck
+  // pending), das Board im Hintergrund nachladen — ein ausgegrauter Eintrag wird ohne manuelles
+  // Neuladen frei, sobald das Ergebnis (done/failed) vorliegt. Kein pending mehr → Polling stoppt.
+  // Reine Anzeige-Aktualisierung (gleiches Muster wie die Live-Status-Karte auf /erfassen).
+  const boardPending = boardHasPendingAiCheck(query.data);
+  useEffect(() => {
+    if (!boardPending) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void qc.invalidateQueries({ queryKey: ["validation", "board"] });
+    }, AI_CHECK_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [boardPending, qc]);
   // SCRUM-416: Flächen-Klick der Board-Karte führt ins KO-Detail (Tastatur-Weg bleibt der Titel-Link).
   const navigate = useNavigate();
   // SCRUM-417: Bearbeiten/Löschen direkt vom Board (Autor/Controller/Admin) — der Server
@@ -675,6 +694,10 @@ export function Validation(): JSX.Element {
                     kind: validationReviewContext(k).kind,
                     authorTransferred: sig.authorTransferred,
                   });
+                  // WP-SHIP9-B3FIX (Pedi 23.07.): läuft die KI-Prüfung noch (aiCheck pending), ist die
+                  // Karte reine Anzeige — ausgegraut, Prüf-Aktionen gesperrt, ehrlicher Hinweis. Sie
+                  // bleibt sichtbar und zum KO-Detail (Lesen) klickbar; done/failed → normal bedienbar.
+                  const gate = validationAiGate(k.aiCheck);
                   return (
                     <div key={k.id} className="space-y-2">
                       {/* SCRUM-416: ganze Karte klickbar (freie Fläche → KO-Detail, sichtbarer
@@ -685,7 +708,9 @@ export function Validation(): JSX.Element {
                             navigate(`/wissen/${k.id}`);
                           }
                         }}
-                        className="flex cursor-pointer flex-col gap-3 transition-colors hover:border-ink/30 sm:flex-row sm:items-center"
+                        className={`flex cursor-pointer flex-col gap-3 transition-colors hover:border-ink/30 sm:flex-row sm:items-center ${
+                          gate.locked ? "opacity-60" : ""
+                        }`}
                       >
                         <div className="min-w-0 flex-1">
                           {/* SCRUM-396: Titel zuerst und deutlich — er ging zwischen Badges und
@@ -892,6 +917,13 @@ export function Validation(): JSX.Element {
                           </Link>
                         </div>
                         <div className="flex shrink-0 flex-col items-stretch gap-1.5 sm:items-end">
+                          {/* WP-SHIP9-B3FIX (Pedi 23.07.): ehrlicher Sperr-Hinweis, solange die
+                              KI-Prüfung läuft — die Aktionen darunter sind bis zum Ergebnis deaktiviert. */}
+                          {gate.locked ? (
+                            <p className="max-w-[16rem] text-[11px] font-semibold text-muted sm:text-right">
+                              {t(gate.noteKey)}
+                            </p>
+                          ) : null}
                           {/* SCRUM-258: Review-Entscheidung textlich geführt — gleiche Mutationen
                               (up/warn/down), Rückfrage/Ablehnen öffnen weiterhin das Pflicht-Feedback. */}
                           <div className="flex flex-wrap gap-1.5 sm:justify-end">
@@ -905,9 +937,11 @@ export function Validation(): JSX.Element {
                                     // SCRUM-365: Hover/Touch zeigt direkt die ehrliche Wirkung der Entscheidung.
                                     title={t(decisionImpact(d.verdict).bodyKey)}
                                     disabled={
-                                      d.verdict === "up"
+                                      // WP-SHIP9-B3FIX: gesperrt, solange die KI-Prüfung noch läuft.
+                                      gate.locked ||
+                                      (d.verdict === "up"
                                         ? rate.isPending || reviewWithFeedback.isPending
-                                        : reviewWithFeedback.isPending
+                                        : reviewWithFeedback.isPending)
                                     }
                                     onClick={() =>
                                       d.verdict === "up"
@@ -954,7 +988,11 @@ export function Validation(): JSX.Element {
                                 </button>
                                 <button
                                   type="button"
-                                  disabled={adminValidate.isPending}
+                                  // WP-SHIP9-B3FIX2 (bens F1): auch die BEREITS GEÖFFNETE Admin-
+                                  // Bestätigung sperren, sobald die KI-Prüfung (wieder) läuft —
+                                  // sonst überlebt der Ja-Knopf den Lock (failed/done → Retry →
+                                  // pending, confirmTrueId bleibt) und könnte weiter mutieren.
+                                  disabled={gate.locked || adminValidate.isPending}
                                   className="text-[11.5px] font-semibold text-trust-pos-text disabled:opacity-50"
                                   onClick={() => adminValidate.mutate(k.id)}
                                 >
@@ -965,8 +1003,10 @@ export function Validation(): JSX.Element {
                               <span className="inline-flex items-center gap-1 sm:justify-end">
                                 <button
                                   type="button"
+                                  // WP-SHIP9-B3FIX: kein „als wahr" vor Abschluss der KI-Prüfung.
+                                  disabled={gate.locked}
                                   onClick={() => setConfirmTrueId(k.id)}
-                                  className="inline-flex items-center gap-1 rounded-btn px-2 py-1 text-[11.5px] font-semibold text-trust-pos-text hover:bg-trust-pos-bg"
+                                  className="inline-flex items-center gap-1 rounded-btn px-2 py-1 text-[11.5px] font-semibold text-trust-pos-text hover:bg-trust-pos-bg disabled:opacity-50 disabled:hover:bg-transparent"
                                 >
                                   <Check size={13} />
                                   {t("val.markTrue")}
@@ -978,13 +1018,14 @@ export function Validation(): JSX.Element {
                           <div className="flex items-center gap-1">
                             <select
                               value=""
-                              disabled={assign.isPending}
+                              // WP-SHIP9-B3FIX: kein Zuweisen, solange die KI-Prüfung noch läuft.
+                              disabled={gate.locked || assign.isPending}
                               onChange={(e) => {
                                 if (e.target.value) {
                                   assign.mutate({ id: k.id, userId: e.target.value });
                                 }
                               }}
-                              className="h-8 w-40 rounded-input border border-hairline bg-surface px-2 text-[12px] text-muted"
+                              className="h-8 w-40 rounded-input border border-hairline bg-surface px-2 text-[12px] text-muted disabled:opacity-50"
                             >
                               <option value="">{t("val.assign")}</option>
                               {(users.data ?? []).map((u) => (
@@ -1077,7 +1118,13 @@ export function Validation(): JSX.Element {
                             <Button
                               variant="primary"
                               disabled={
-                                reviewWithFeedback.isPending || !isFeedbackSubmittable(feedbackText)
+                                // WP-SHIP9-B3FIX2 (bens F1): auch das BEREITS GEÖFFNETE Feedback-
+                                // Formular sperren, sobald die KI-Prüfung (wieder) läuft — sonst
+                                // überlebt der Absenden-Knopf den Lock (failed → Retry → pending,
+                                // feedback bleibt) und könnte weiter reviewWithFeedback auslösen.
+                                gate.locked ||
+                                reviewWithFeedback.isPending ||
+                                !isFeedbackSubmittable(feedbackText)
                               }
                               onClick={() =>
                                 reviewWithFeedback.mutate({

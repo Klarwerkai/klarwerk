@@ -1771,6 +1771,10 @@ const de = {
   "val.aiCheck.failed": "KI-Prüfung fehlgeschlagen",
   "val.aiCheck.retry": "Erneut prüfen",
   "val.aiCheck.retryStarted": "KI-Prüfung neu eingereiht — sie läuft jetzt im Hintergrund.",
+  // WP-SHIP9-B3FIX (Pedi 23.07.): Sperr-Hinweis am ausgegrauten Eintrag, solange die KI-Prüfung läuft
+  // (aiCheck pending). Prüf-Aktionen sind bis zum Ergebnis gesperrt — kein Schein-Aktiv vor der Freigabe.
+  "val.aiCheck.locked":
+    "KI-Prüfung läuft … Prüf-Aktionen sind gesperrt, bis das Ergebnis vorliegt.",
   "val.aiCheck.reason.no-model":
     "Kein KI-Modell aktiv — es wurde nichts geprüft. Modell konfigurieren und erneut prüfen.",
   "val.aiCheck.reason.model-error":
@@ -5097,6 +5101,7 @@ const en: typeof de = {
   "val.aiCheck.failed": "AI check failed",
   "val.aiCheck.retry": "Retry check",
   "val.aiCheck.retryStarted": "AI check re-queued — it is now running in the background.",
+  "val.aiCheck.locked": "AI check running … review actions are locked until the result is in.",
   "val.aiCheck.reason.no-model":
     "No AI model active — nothing was checked. Configure a model and retry the check.",
   "val.aiCheck.reason.model-error":
@@ -8381,6 +8386,8 @@ const nl: typeof de = {
   "val.aiCheck.failed": "AI-controle mislukt",
   "val.aiCheck.retry": "Opnieuw controleren",
   "val.aiCheck.retryStarted": "AI-controle opnieuw ingepland — deze draait nu op de achtergrond.",
+  "val.aiCheck.locked":
+    "AI-controle loopt … beoordelingsacties zijn geblokkeerd totdat het resultaat er is.",
   "val.aiCheck.reason.no-model":
     "Geen AI-model actief — er is niets gecontroleerd. Configureer een model en controleer opnieuw.",
   "val.aiCheck.reason.model-error":
