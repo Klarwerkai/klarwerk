@@ -20,6 +20,9 @@ export const CAPTION_AI_TEXT = {
   fallbackNoModel: "editor.captionAi.fallbackNoModel",
   fallbackTimeout: "editor.captionAi.fallbackTimeout",
   fallbackError: "editor.captionAi.fallbackError",
+  // WP-SHIP9-S2 (bens Folgeschnitt B4): spezifischer, wahrer Grund, wenn die Cloud-Vision wegen
+  // vertraulichem Bild ausgeschlossen war (vorher als generischer Modellfehler dargestellt).
+  fallbackConfidential: "editor.captionAi.fallbackConfidential",
 } as const;
 
 // Client-Spiegel des Server-Deckels (MAX_DESCRIBE_IMAGE_DATAURL_CHARS, services/reasoner): zu große
@@ -71,7 +74,11 @@ export function captionSuggestOutcome(result: DescribeImageResult): CaptionSugge
       ? CAPTION_AI_TEXT.fallbackNoModel
       : result.fallbackReason === "model-timeout"
         ? CAPTION_AI_TEXT.fallbackTimeout
-        : CAPTION_AI_TEXT.fallbackError;
+        : // WP-SHIP9-S2: vertraulichkeitsbedingter Cloud-Ausschluss wird als eigener, wahrer Grund
+          // gezeigt — nicht mehr als generischer Modellfehler.
+          result.fallbackReason === "confidential"
+          ? CAPTION_AI_TEXT.fallbackConfidential
+          : CAPTION_AI_TEXT.fallbackError;
   return { kind: "fallback", messageKey };
 }
 

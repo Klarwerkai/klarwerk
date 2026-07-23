@@ -54,8 +54,10 @@ export interface StructureResult {
   //  - "model-timeout": ein Modell wurde versucht, überschritt aber das Zeitlimit (WP-D10 Fix 3 —
   //    vorher im Sammelbegriff "model-error" verschluckt).
   //  - "model-error": ein Modell wurde versucht, scheiterte aber (HTTP/Quota/Netz/Parse) → Kette fiel durch.
+  //  - "confidential": WP-SHIP9-S2 — Cloud-KI konfiguriert und Policy cloud-geeignet, aber die Cloud-Kante
+  //    wurde wegen vertraulichem Text ausgeschlossen (kein lokales Modell sprang ein); vorher „no-model".
   // Nur bei demo:true gesetzt; PII-frei (nie Eingabetext).
-  fallbackReason?: "no-model" | "model-timeout" | "model-error";
+  fallbackReason?: "no-model" | "model-timeout" | "model-error" | "confidential";
 }
 
 // FR-RSN-03: sprachliche Präzisierung/Glättung eines Textes (ohne Inhalt zu erfinden).
@@ -277,7 +279,10 @@ export interface GroupCandidatesResult {
 // statt still als „alles passt" durchzurutschen.
 export interface ImportCriteriaResult {
   criteria: unknown | null;
-  fallbackReason: "no-model" | "model-timeout" | "model-error" | null;
+  // WP-SHIP9-S2 (bens Folgeschnitt B4): "confidential" additiv — Cloud-KI konfiguriert und select-Policy
+  // cloud-geeignet, aber die Cloud-Kante wegen vertraulicher Kandidaten ausgeschlossen (kein lokales
+  // Modell sprang ein); vorher irreführend „no-model".
+  fallbackReason: "no-model" | "model-timeout" | "model-error" | "confidential" | null;
 }
 
 // WP-BILD-1c (Pedis Präzisierung 20.07.): KI-Bildbeschreibung als VORSCHLAG beim Bearbeiten der
@@ -287,7 +292,9 @@ export interface ImportCriteriaResult {
 export interface DescribeImageResult {
   text: string | null; // kurzer, nüchterner Beschreibungs-Vorschlag — oder ehrlich null
   demo: boolean; // true = kein echtes Modell hat geantwortet
-  fallbackReason?: "no-model" | "model-timeout" | "model-error";
+  // WP-SHIP9-S2 (bens Folgeschnitt B4): "confidential" additiv — Cloud-Vision konfiguriert, aber wegen
+  // vertraulichem Bild ausgeschlossen (kein lokales Modell sprang ein); vorher irreführend „no-model".
+  fallbackReason?: "no-model" | "model-timeout" | "model-error" | "confidential";
 }
 
 // Key-Test (Pedi 02.07.): Ergebnis eines echten Mini-Aufrufs — ehrlich, keine Vermutung.

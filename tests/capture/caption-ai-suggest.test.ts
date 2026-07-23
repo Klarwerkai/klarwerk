@@ -47,6 +47,12 @@ describe("WP-BILD-1c: Fußnoten-KI-Vorschlag (pure UI-Logik)", () => {
     expect(
       captionSuggestOutcome({ text: null, demo: true, fallbackReason: "model-error" }),
     ).toEqual({ kind: "fallback", messageKey: CAPTION_AI_TEXT.fallbackError });
+    // WP-SHIP9-S2 (bens Folgeschnitt B4): vertraulichkeitsbedingter Cloud-Ausschluss bekommt seinen
+    // EIGENEN, wahren Text — nicht mehr den generischen Modellfehler.
+    expect(
+      captionSuggestOutcome({ text: null, demo: true, fallbackReason: "confidential" }),
+    ).toEqual({ kind: "fallback", messageKey: CAPTION_AI_TEXT.fallbackConfidential });
+    expect(CAPTION_AI_TEXT.fallbackConfidential).not.toBe(CAPTION_AI_TEXT.fallbackError);
     // Leere/Demo-Antworten werden NIE als Vorschlag angezeigt (kein Pseudo-Text).
     expect(captionSuggestOutcome({ text: null, demo: false }).kind).toBe("fallback");
     expect(captionSuggestOutcome({ text: "   ", demo: false }).kind).toBe("fallback");

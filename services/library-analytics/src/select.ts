@@ -216,6 +216,9 @@ export function filterImportItems(
 
 // IC-3: kompakter Vorschau-Eintrag (READ-ONLY Anzeige — kein Import). Pure Projektion eines ImportItems.
 export interface ImportPreviewEntry {
+  // WP-SHIP9-S2c (F3): stabile Kandidaten-Id (deckungsgleich mit candidateIdOf der Gruppierung/
+  // Übernahme) — die Route setzt sie, damit die Vorschau-Auswahl die nächsten Schritte steuern kann.
+  id?: string;
   title: string;
   author?: string;
   updatedAt?: string;
@@ -242,11 +245,18 @@ export interface ImportedStatus {
   sourceNewer: boolean;
 }
 
-export function toPreviewEntry(item: ImportItem, status?: ImportedStatus): ImportPreviewEntry {
+export function toPreviewEntry(
+  item: ImportItem,
+  status?: ImportedStatus,
+  // WP-SHIP9-S2c (F3): die stabile Kandidaten-Id — der Aufrufer (Route) berechnet sie über
+  // candidateIdOf, damit Vorschau-Id und Gruppierungs-/Übernahme-Id deckungsgleich sind.
+  id?: string,
+): ImportPreviewEntry {
   const author = item.author?.trim();
   const updatedAt = item.updatedAt?.trim();
   const themes = (item.tags ?? []).map((tag) => tag.trim()).filter((tag) => tag.length > 0);
   return {
+    ...(id ? { id } : {}),
     title: item.title,
     ...(author ? { author } : {}),
     ...(updatedAt ? { updatedAt } : {}),

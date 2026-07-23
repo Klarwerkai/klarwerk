@@ -19,6 +19,21 @@ import { endpoints } from "../api/endpoints";
 import type { ImportSelectCriteria, ImportSelectResponse } from "../api/types";
 import { displayImportText } from "../lib/htmlEntities";
 import { summarizeSelectCriteria } from "../lib/importExplore";
+// WP-SHIP9-S2 Paket 2 (D2–D7): reines View-Modell für Suche/Filter/Alle/Gruppen der Trefferliste.
+import {
+  DEFAULT_PREVIEW_VIEW,
+  type PreviewChip,
+  type PreviewGroupMode,
+  type PreviewLanguage,
+  type PreviewRow,
+  bulkSelectableRows,
+  clearAllSelected,
+  groupRows,
+  rowsAllChecked,
+  selectionSummary,
+  setRowsSelected,
+  visibleRows,
+} from "../lib/importSelectView";
 // WP-IC-PAKET-1b (bens ROT-3): latest-wins — Antworten aelterer Requests werden verworfen.
 import { createLatestWins } from "../lib/latestWins";
 import { toReasonerLocale } from "../lib/reasonerLocale";
@@ -63,6 +78,9 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
   // fertig gewordene Antwort sein und Vorschau + checkedRows rückwärts überschreiben.
   const [preview, setPreview] = useState<ImportSelectResponse | null>(null);
   const latestRef = useRef(createLatestWins());
+  // WP-SHIP9-S2 Paket 2 (D3–D7): Ansichts-Zustand der Trefferliste (Suche/Filter-Chip/Ausblenden/
+  // Gruppierung). Rein für die DARSTELLUNG — die Auswahl selbst bleibt in checkedRows (Originalindex).
+  const [view, setView] = useState(DEFAULT_PREVIEW_VIEW);
 
   // WP-COCKPIT-LINIE: Vorschau da → Meilenstein "previewed" an die Schritt-Leiste; beim ERSTEN
   // Erscheinen zur Vorschau scrollen (Muster aus R7) — Live-Aktualisierungen der Filter springen
@@ -180,11 +198,101 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
   const errorMessage = select.error instanceof ApiError ? select.error.message : t("state.error");
   const alreadyImportedCount = preview?.alreadyImported ?? 0;
   const alreadyQueuedCount = preview?.alreadyQueued ?? 0;
-  const selectedCount = checkedRows.filter(Boolean).length;
 
   const toggleRow = (index: number): void => {
     setCheckedRows((prev) => prev.map((on, i) => (i === index ? !on : on)));
   };
+
+  // WP-SHIP9-S2 Paket 2: abgeleitete Ansicht — gefilterte/durchsuchte Zeilen (D4/D7), optional
+  // gruppiert (D3/D5). Die AUSWAHL bleibt in checkedRows (Originalindex); dies steuert nur, was
+  // sichtbar ist und welche Zeilen „Alle wählen"/Gruppen-Checkbox erfassen.
+  const rows = preview ? visibleRows(preview.preview, view) : [];
+  const groups = groupRows(rows, view.groupMode);
+  const summary = selectionSummary(checkedRows);
+  // F1: Bulk-Aktionen (Alle wählen, Gruppen-Checkbox) UND die Haken-Anzeige arbeiten auf DERSELBEN
+  // bulk-wählbaren Teilmenge — bereits importierte/vorgemerkte Zeilen fasst kein Bulk-Setzer an.
+  const bulkRows = bulkSelectableRows(rows);
+  const allVisibleChecked = rowsAllChecked(checkedRows, bulkRows);
+  // F2: „Alle wählen" wirkt nur auf bulk-wählbare sichtbare Zeilen; „Alle abwählen" leert GLOBAL
+  // (auch weggefilterte, aber gewählte Treffer) — Beschriftung und Wirkung fallen nie auseinander.
+  const toggleAll = (): void => {
+    if (allVisibleChecked) {
+      setCheckedRows((prev) => clearAllSelected(prev));
+    } else {
+      setCheckedRows((prev) => setRowsSelected(prev, bulkRows, true));
+    }
+  };
+  const setGroupSelected = (groupRowsArg: readonly PreviewRow[], value: boolean): void => {
+    setCheckedRows((prev) => setRowsSelected(prev, bulkSelectableRows(groupRowsArg), value));
+  };
+  // F3: die in der Vorschau gewählten, ZULÄSSIGEN Kandidaten-IDs (Originalindex → checkedRows) —
+  // sie steuern serverseitig Gruppierung UND Übernahme (nicht nur die Kriterien).
+  const selectedCandidateIds = preview
+    ? preview.preview.flatMap((entry, index) =>
+        checkedRows[index] === true && entry.id ? [entry.id] : [],
+      )
+    : [];
+  const languageLabel = (lang: PreviewLanguage | undefined): string =>
+    lang === "de"
+      ? t("imp.select.langDe")
+      : lang === "en"
+        ? t("imp.select.langEn")
+        : lang === "nl"
+          ? t("imp.select.langNl")
+          : t("imp.select.langOther");
+  // D7: Filter-Chips (aktiver Chip wechselt nur die Sicht, nie die Auswahl).
+  const chips: { id: PreviewChip; label: string }[] = [
+    { id: "all", label: t("imp.select.chipAll") },
+    { id: "new", label: t("imp.select.chipNew") },
+    { id: "imported", label: t("imp.select.chipImported") },
+    { id: "queued", label: t("imp.select.chipQueued") },
+  ];
+  // D3/D5: Gruppier-Modi.
+  const groupModes: { id: PreviewGroupMode; label: string }[] = [
+    { id: "none", label: t("imp.select.groupNone") },
+    { id: "theme", label: t("imp.select.groupTheme") },
+    { id: "language", label: t("imp.select.groupLanguage") },
+  ];
+
+  // Eine Vorschau-Zeile (Checkbox + Titel + Kennzeichen) — geteilt zwischen flacher und Gruppen-Ansicht.
+  const renderRow = ({ entry, index }: PreviewRow): JSX.Element => (
+    <li key={`${entry.title}-${index}`} className="flex items-start gap-2 text-[12.5px] text-text">
+      <input
+        type="checkbox"
+        aria-label={displayImportText(entry.title, entry.textCodec)}
+        checked={checkedRows[index] ?? false}
+        onChange={() => toggleRow(index)}
+        className="mt-0.5 h-4 w-4 shrink-0"
+      />
+      {/* WP-IC-PAKET-1 (Teil 1): Altbestand-Entities nur fürs Text-Rendering dekodieren. */}
+      <span className="min-w-0 flex-1 truncate">
+        {displayImportText(entry.title, entry.textCodec)}
+      </span>
+      {entry.alreadyImported ? (
+        <span className="shrink-0 rounded-pill bg-trust-pos-bg px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-pos-text">
+          {t("imp.preview.imported")}
+        </span>
+      ) : null}
+      {/* WP-SHIP9-S1b: eigener Zustand in EIGENER Farbe — offener Kandidat ist
+          „bereits zur Prüfung vorgemerkt", nicht „bereits importiert". */}
+      {entry.alreadyQueued ? (
+        <span className="shrink-0 rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
+          {t("imp.preview.queued")}
+        </span>
+      ) : null}
+      {entry.sourceNewer ? (
+        <span className="shrink-0 rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
+          {t("imp.preview.sourceNewer")}
+        </span>
+      ) : null}
+      {entry.author ? (
+        <span className="shrink-0 text-[11px] text-muted-2">
+          {displayImportText(entry.author, entry.textCodec)}
+        </span>
+      ) : null}
+      {entry.hasImage ? <Images size={12} className="mt-0.5 shrink-0 text-muted-2" /> : null}
+    </li>
+  );
 
   const yearInputCls =
     "h-9 w-24 rounded-input border border-hairline bg-surface px-2 text-[12.5px] text-text";
@@ -315,10 +423,14 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
           </div>
 
           {/* WP-SAMMEL20-FIX (bens Fix 2): KI-Ausfall NIE still — nüchterner Hinweis, dass nur
-              die Klick-Filter gelten (die weiterhin wirken; nichts wird erfunden). */}
+              die Klick-Filter gelten (die weiterhin wirken; nichts wird erfunden).
+              WP-SHIP9-S2 (bens Folgeschnitt B4): den WAHREN Grund zeigen — vertraulichkeitsbedingter
+              Cloud-Ausschluss ist etwas anderes als „KI nicht erreichbar". */}
           {preview.inferenceStatus === "unavailable" ? (
             <p className="mt-1.5 rounded-btn bg-trust-warn-bg px-3 py-2 text-[12px] text-trust-warn-text">
-              {t("imp.select.aiUnavailable")}
+              {preview.fallbackReason === "confidential"
+                ? t("imp.select.aiConfidential")
+                : t("imp.select.aiUnavailable")}
             </p>
           ) : null}
 
@@ -333,69 +445,157 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
             <p className="mt-1.5 text-[11.5px] text-muted-2">{t("imp.select.critAll")}</p>
           )}
 
-          {/* Vorschau-Liste mit Auswahl (Teil 4): bereits Importiertes markiert + standardmäßig abgewählt. */}
+          {/* Vorschau-Liste mit Auswahl (Teil 4): bereits Importiertes markiert + standardmäßig abgewählt.
+              WP-SHIP9-S2 Paket 2: darüber die Trefferlisten-Steuerung — Suche (D7), Filter-Chips (D7),
+              „Alle wählen/abwählen" (D2), „Bereits Bekanntes ausblenden" (D4), Gruppierung (D3/D5) und
+              die dauerhaft sichtbare Auswahl-Zusammenfassung (D7). */}
           {preview.preview.length > 0 ? (
-            <>
+            <div className="mt-2 border-t border-hairline pt-2">
+              {/* D7: Suchfeld über der Trefferliste. */}
+              <TextInput
+                value={view.query}
+                onChange={(e) => setView((v) => ({ ...v, query: e.target.value }))}
+                placeholder={t("imp.select.searchPlaceholder")}
+                aria-label={t("imp.select.searchPlaceholder")}
+              />
+
+              {/* D7: Filter-Chips (Neu / Bereits importiert / Vorgemerkt / Alle). */}
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {chips.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    aria-pressed={view.chip === c.id}
+                    onClick={() => setView((v) => ({ ...v, chip: c.id }))}
+                    className={`rounded-pill border px-2.5 py-1 text-[11.5px] font-semibold ${
+                      view.chip === c.id
+                        ? "border-ai/50 bg-ai-surface-1 text-ai"
+                        : "border-hairline bg-surface text-muted hover:text-text"
+                    }`}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* D2 Alle wählen/abwählen · D4 Ausblenden-Schalter · D5/D3 Gruppierung. */}
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11.5px] text-muted">
+                <button
+                  type="button"
+                  onClick={toggleAll}
+                  className="rounded-btn border border-hairline bg-surface px-2.5 py-1 font-semibold text-text hover:bg-hairline-soft"
+                >
+                  {allVisibleChecked ? t("imp.select.deselectAll") : t("imp.select.selectAll")}
+                </button>
+                <label className="inline-flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={view.hideImported}
+                    onChange={(e) => setView((v) => ({ ...v, hideImported: e.target.checked }))}
+                    className="h-4 w-4"
+                  />
+                  {t("imp.select.hideImported")}
+                </label>
+                <span className="inline-flex items-center gap-1.5">
+                  <span>{t("imp.select.groupBy")}</span>
+                  {groupModes.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      aria-pressed={view.groupMode === m.id}
+                      onClick={() => setView((v) => ({ ...v, groupMode: m.id }))}
+                      className={`rounded-btn border px-2 py-0.5 font-semibold ${
+                        view.groupMode === m.id
+                          ? "border-ai/50 bg-ai-surface-1 text-ai"
+                          : "border-hairline bg-surface text-muted hover:text-text"
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </span>
+              </div>
+
+              {/* D7: dauerhaft sichtbare Auswahl-Zusammenfassung „X von Y gewählt". */}
               <p className="mt-2 text-[11.5px] text-muted-2">
-                {t("imp.select.selectedCount", { n: selectedCount })}
+                {t("imp.select.summary", { selected: summary.selected, total: summary.total })}
                 {alreadyImportedCount > 0 ? ` — ${t("imp.select.importedDeselected")}` : ""}
                 {alreadyQueuedCount > 0 ? ` — ${t("imp.select.queuedDeselected")}` : ""}
               </p>
-              <ul className="mt-1.5 space-y-1 border-t border-hairline pt-2">
-                {preview.preview.map((entry, i) => (
-                  <li
-                    key={`${entry.title}-${i}`}
-                    className="flex items-start gap-2 text-[12.5px] text-text"
-                  >
-                    <input
-                      type="checkbox"
-                      aria-label={displayImportText(entry.title, entry.textCodec)}
-                      checked={checkedRows[i] ?? false}
-                      onChange={() => toggleRow(i)}
-                      className="mt-0.5 h-4 w-4 shrink-0"
-                    />
-                    {/* WP-IC-PAKET-1 (Teil 1): Altbestand-Entities nur fürs Text-Rendering dekodieren. */}
-                    <span className="min-w-0 flex-1 truncate">
-                      {displayImportText(entry.title, entry.textCodec)}
-                    </span>
-                    {entry.alreadyImported ? (
-                      <span className="shrink-0 rounded-pill bg-trust-pos-bg px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-pos-text">
-                        {t("imp.preview.imported")}
-                      </span>
-                    ) : null}
-                    {/* WP-SHIP9-S1b: eigener Zustand in EIGENER Farbe — offener Kandidat ist
-                        „bereits zur Prüfung vorgemerkt", nicht „bereits importiert". */}
-                    {entry.alreadyQueued ? (
-                      <span className="shrink-0 rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
-                        {t("imp.preview.queued")}
-                      </span>
-                    ) : null}
-                    {entry.sourceNewer ? (
-                      <span className="shrink-0 rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
-                        {t("imp.preview.sourceNewer")}
-                      </span>
-                    ) : null}
-                    {entry.author ? (
-                      <span className="shrink-0 text-[11px] text-muted-2">
-                        {displayImportText(entry.author, entry.textCodec)}
-                      </span>
-                    ) : null}
-                    {entry.hasImage ? (
-                      <Images size={12} className="mt-0.5 shrink-0 text-muted-2" />
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            </>
+
+              {rows.length === 0 ? (
+                // D4/D7: nach Ausblenden/Suche/Filter keine Zeile mehr sichtbar — ehrlich benannt.
+                <p className="mt-2 text-[12px] text-muted-2">{t("imp.select.emptyFiltered")}</p>
+              ) : view.groupMode === "none" ? (
+                <ul className="mt-1.5 space-y-1 border-t border-hairline pt-2">
+                  {rows.map(renderRow)}
+                </ul>
+              ) : (
+                // D3/D5: auf-/zuklappbare Gruppen mit Gruppen-Checkbox (ganze Gruppe an/abwählen).
+                <div className="mt-1.5 space-y-1.5 border-t border-hairline pt-2">
+                  {groups.map((group) => {
+                    // F1: der Gruppen-Haken spiegelt NUR die bulk-wählbaren Zeilen — bekannte
+                    // Einträge zählen weder für die Anzeige noch für das Bulk-Setzen.
+                    const groupAllChecked = rowsAllChecked(
+                      checkedRows,
+                      bulkSelectableRows(group.rows),
+                    );
+                    const label =
+                      group.kind === "language"
+                        ? languageLabel(group.language)
+                        : group.value === ""
+                          ? t("imp.select.noTheme")
+                          : displayImportText(group.value);
+                    return (
+                      <details
+                        key={group.key}
+                        open
+                        className="rounded-card border border-hairline bg-surface"
+                      >
+                        <summary className="flex cursor-pointer list-none items-center gap-2 p-2">
+                          {/* Gruppen-Checkbox: an/abwählen der ganzen Gruppe (D3). */}
+                          <input
+                            type="checkbox"
+                            aria-label={label}
+                            checked={groupAllChecked}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => setGroupSelected(group.rows, e.target.checked)}
+                            className="h-4 w-4 shrink-0"
+                          />
+                          <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-text">
+                            {label}
+                          </span>
+                          <span className="shrink-0 text-[11px] text-muted-2">
+                            {t("imp.select.groupCount", { n: group.rows.length })}
+                          </span>
+                        </summary>
+                        <ul className="space-y-1 border-t border-hairline p-2">
+                          {group.rows.map(renderRow)}
+                        </ul>
+                      </details>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           ) : (
             <p className="mt-2 text-[12px] text-muted-2">{t("imp.select.empty")}</p>
           )}
 
           {/* WP-IC-4 (Schritt 4+5): Gruppieren → Gruppen-Freigabe → Übernahme mit ehrlicher Bilanz.
               Key = Kriterien der AKTUELLEN Vorschau: eine geänderte Eingrenzung setzt den
-              Gruppierungs-Schritt sauber zurück (keine veralteten Gruppen zur neuen Auswahl). */}
+              Gruppierungs-Schritt sauber zurück (keine veralteten Gruppen zur neuen Auswahl).
+              WP-SHIP9-S2d (F3, bens GELB): die stabil sortierte Vorschau-Auswahl gehört ZUSÄTZLICH
+              in den Key — ändert sich selectedCandidateIds NACH dem Gruppieren, verwirft der
+              Neu-Mount den kompletten aufgebauten Zustand (Gruppen/Zweit-Auswahl/Bilanz), sodass
+              die sichtbaren Gruppen NIE von der aktuellen Auswahl abweichen (und ein in-flight
+              /group der alten Auswahl auf der abgemeldeten Instanz ins Leere läuft). */}
           {preview.preview.length > 0 ? (
-            <ImportGroups key={JSON.stringify(preview.criteria)} criteria={preview.criteria} />
+            <ImportGroups
+              key={`${JSON.stringify(preview.criteria)}|${JSON.stringify([...selectedCandidateIds].sort())}`}
+              criteria={preview.criteria}
+              selectedCandidateIds={selectedCandidateIds}
+            />
           ) : null}
         </div>
       ) : null}

@@ -1,5 +1,7 @@
-import { type ReactNode, createContext, useContext, useMemo, useState } from "react";
+import { type ReactNode, createContext, useCallback, useContext, useMemo, useState } from "react";
 import { effectiveRole, effectiveStufe2 } from "../lib/effectiveRole";
+// WP-SHIP9-S2 Paket 4 (W1): persistierter Stufe-2-Umschalter (localStorage, SSR-sicher).
+import { readStufe2, writeStufe2 } from "../lib/stufe2Storage";
 import { useSession } from "./AuthContext";
 import type { Role } from "./navigation";
 
@@ -30,7 +32,13 @@ export function RoleProvider({ children }: { children: ReactNode }): JSX.Element
   const [viewAs, setViewAs] = useState<Role | null>(null);
   // Lokaler Preview-/Dev-Zustand — nur wirksam ohne echten Session-User.
   const [previewRole, setPreviewRole] = useState<Role>("experte");
-  const [stufe2Toggle, setStufe2Toggle] = useState(false);
+  // WP-SHIP9-S2 Paket 4 (W1): Startwert aus localStorage — im Initializer (synchron, vor der ersten
+  // Routen-Entscheidung), damit die Stufe-2-Gate-Karte nach Reload/Direktaufruf nicht aufblitzt.
+  const [stufe2Toggle, setStufe2ToggleState] = useState<boolean>(() => readStufe2());
+  const setStufe2Toggle = useCallback((on: boolean): void => {
+    writeStufe2(on);
+    setStufe2ToggleState(on);
+  }, []);
 
   // Bug (Pedi 04.07.): Ein eingeloggter Admin sieht die UI wahlweise als jede Rolle — die echte
   // Session (Backend-RBAC) bleibt Admin. Nicht-Admins: echte Session; ohne Session: Dev-Preview.
@@ -46,7 +54,7 @@ export function RoleProvider({ children }: { children: ReactNode }): JSX.Element
       canPreview: isAdminSession || !user,
       previewActive: isAdminSession && role !== "admin",
     }),
-    [role, stufe2Toggle, user, isAdminSession],
+    [role, stufe2Toggle, setStufe2Toggle, user, isAdminSession],
   );
 
   return <RoleCtx.Provider value={value}>{children}</RoleCtx.Provider>;

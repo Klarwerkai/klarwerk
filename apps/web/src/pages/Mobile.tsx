@@ -17,7 +17,7 @@ import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import { useDrafts, useLibrarySearch } from "../api/hooks";
+import { useDrafts, useKos, useLibrarySearch } from "../api/hooks";
 import type { AnswerResult } from "../api/types";
 import { useNavGuard } from "../app/NavGuardContext";
 import { useToast } from "../app/ToastContext";
@@ -27,6 +27,8 @@ import { type SyncResult, useOfflineQueue } from "../app/useOfflineQueue";
 import { AnswerMarkdown } from "../components/AnswerMarkdown";
 import { ConfidenceBar, KnowledgeTypeTag, StatusPill } from "../components/trust";
 import { selectAnswer } from "../lib/askResponse";
+// WP-SHIP9-S2 Paket 4 (W4): Quellen-IDs zu KO-Titeln auflösen (gleiche Ableitung wie die Konsole).
+import { sourceRefs } from "../lib/askView";
 import { deriveStatus } from "../lib/displayStatus";
 import {
   type DraftFormState,
@@ -197,6 +199,9 @@ export function Mobile(): JSX.Element {
   // --- Fragen (FE-MOB-03) ---
   const [q, setQ] = useState("");
   const [answer, setAnswer] = useState<AnswerResult | null>(null);
+  // WP-SHIP9-S2 Paket 4 (W4): geteilter KO-Bestand (react-query, i. d. R. bereits geladen/gecacht) für
+  // die Titel-Auflösung der Quellen — KEIN neuer Ask-Roundtrip, die Ask-Antwort liefert nur IDs.
+  const kos = useKos();
   const ask = useMutation({
     mutationFn: (question: string) => endpoints.ask.ask(question, toReasonerLocale(i18n.language)),
     onSuccess: (res) => setAnswer(selectAnswer(res)),
@@ -480,13 +485,17 @@ export function Mobile(): JSX.Element {
                               <span className="font-mono text-[10px] uppercase text-muted-2">
                                 {t("ask.sources")}
                               </span>
-                              {s.sources.map((id) => (
+                              {/* WP-SHIP9-S2 Paket 4 (W4): KO-Titel statt roher UUID (Titel aus dem
+                                  vorhandenen Bestand — nie eine ID zeigen, wenn ein KO bekannt ist);
+                                  line-clamp gegen Überlauf, Volltitel im Tooltip. */}
+                              {sourceRefs(s.sources, kos.data ?? []).map((ref) => (
                                 <Link
-                                  key={id}
-                                  to={`/wissen/${id}`}
-                                  className="font-mono text-[11px] text-brand"
+                                  key={ref.id}
+                                  to={`/wissen/${ref.id}`}
+                                  title={ref.label}
+                                  className="line-clamp-1 max-w-[220px] text-[12px] font-semibold text-brand hover:underline"
                                 >
-                                  {id}
+                                  {ref.label}
                                 </Link>
                               ))}
                             </div>

@@ -560,6 +560,10 @@ export interface ImportSelectCriteria {
   limit?: number;
 }
 export interface ImportPreviewEntry {
+  // WP-SHIP9-S2c (F3): stabile Kandidaten-Id der Auswahl (deckungsgleich mit der Gruppierungs-/
+  // Übernahme-Id, candidateIdOf). Trägt die in der Vorschau getroffene Auswahl in die nächsten
+  // Schritte. Optional für Altbestand/andere Aufrufer, die keine Id setzen.
+  id?: string;
   title: string;
   author?: string;
   updatedAt?: string;
@@ -715,8 +719,9 @@ export interface StructureResult {
   demo: boolean;
   // WP-D8: ehrliche Fallback-Ursache (nur bei demo:true) — "no-model" = kein Modell konfiguriert/aktiv,
   // "model-error" = Modell versucht, aber gescheitert (HTTP/Quota/Netz/Parse). WP-D10 (Fix 3):
-  // "model-timeout" = Modell versucht, aber Zeitlimit überschritten. Die UI erklärt das Badge.
-  fallbackReason?: "no-model" | "model-timeout" | "model-error";
+  // "model-timeout" = Modell versucht, aber Zeitlimit überschritten. WP-SHIP9-S2: "confidential" =
+  // Cloud-KI wegen vertraulichem Text ausgeschlossen (kein lokales Modell sprang ein). Die UI erklärt das Badge.
+  fallbackReason?: "no-model" | "model-timeout" | "model-error" | "confidential";
 }
 
 // WP-D11: Ergebnis der Server-Konvertierung PPTX-Folien → PNG-data-URLs (Reihenfolge = Folien).
@@ -823,7 +828,8 @@ export interface SlideConvertResponse {
 export interface DescribeImageResult {
   text: string | null;
   demo: boolean;
-  fallbackReason?: "no-model" | "model-timeout" | "model-error";
+  // WP-SHIP9-S2: "confidential" additiv — Cloud-Vision wegen vertraulichem Bild ausgeschlossen.
+  fallbackReason?: "no-model" | "model-timeout" | "model-error" | "confidential";
 }
 
 // WP-VIP2-GATE (bens P1): /api/reasoner/status ist abstrahiert — nur Verfügbarkeit + STUFE

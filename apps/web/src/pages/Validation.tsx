@@ -16,6 +16,7 @@ import { AiCheckBadge } from "../components/AiCheckBadge";
 import { DemoBanner } from "../components/DemoBanner";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
+import { KoSummaryDisclosure } from "../components/KoSummaryDisclosure";
 import { ValidationReviewContext } from "../components/ValidationReviewContext";
 import { ConfidenceBar, KnowledgeTypeTag, KoAuthorLine, StatusPill } from "../components/trust";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
@@ -769,6 +770,9 @@ export function Validation(): JSX.Element {
                               </span>
                             ) : null}
                           </div>
+                          {/* WP-SHIP9-S2 Paket 3 (E2): Kurzvorschau-Aufklapper — die vorhandene
+                              Kernaussage auf einen Blick, ohne das KO zu öffnen (kein Roundtrip). */}
+                          <KoSummaryDisclosure source={k} className="mt-2" />
                           {/* SCRUM-416 (Pedi 03.07.): Karten-Dichte — Signale, Kontext, Autor,
                               Entscheidungs-Hinweis und Prüf-Führung wandern hinter EINE ruhige
                               Aufklappung. Nichts entfernt, nur verlagert; alles Weitere im KO-Detail. */}

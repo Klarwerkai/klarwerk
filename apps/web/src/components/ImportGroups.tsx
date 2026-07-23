@@ -5,7 +5,7 @@
 // bleiben; „bereits importiert" ist vorab abgewählt. „Auswahl übernehmen" startet den BESTEHENDEN
 // Import-Weg (Review-Queue; Review-Invariante bleibt) in Batches mit ehrlichem Fortschritt und
 // endet in der Bilanz (übernommen/übersprungen/ausgeschlossen/fehlgeschlagen).
-import { CheckCircle2, ChevronDown, Loader2, Sparkles } from "lucide-react";
+import { ArrowRight, CheckCircle2, ChevronDown, Loader2, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
@@ -185,8 +185,18 @@ export function GroupApprovalPanel({
   );
 }
 
-export function ImportGroups({ criteria }: { criteria: ImportSelectCriteria }): JSX.Element {
+export function ImportGroups({
+  criteria,
+  selectedCandidateIds,
+}: {
+  criteria: ImportSelectCriteria;
+  // F3 (bens ROT): die in der Vorschau gewählten, zulässigen Kandidaten-IDs. Sie steuern (zusätzlich
+  // zu den Kriterien) SERVERSEITIG, welche Kandidaten gruppiert und übernommen werden — nicht mehr
+  // „alle passenden". Leere Menge → der Weiter-Knopf ist deaktiviert (kein Lauf über alles).
+  selectedCandidateIds: readonly string[];
+}): JSX.Element {
   const { i18n, t } = useTranslation();
+  const hasSelection = selectedCandidateIds.length > 0;
   const [data, setData] = useState<ImportGroupResponse | null>(null);
   const [selection, setSelection] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState<"group" | "apply" | null>(null);
@@ -220,6 +230,18 @@ export function ImportGroups({ criteria }: { criteria: ImportSelectCriteria }): 
     }
   }, [data, reach]);
 
+  // WP-SHIP9-S2 (D6): Sprung zur Review-Queue (klappt die standardmäßig eingeklappte Verlaufs-Sektion
+  // auf). Der Zähler kommt ehrlich aus der gerade abgeschlossenen Bilanz (dieser Lauf), nicht aus einem
+  // zusätzlichen Query — so bleibt ImportGroups ohne react-query-Abhängigkeit.
+  const jumpToReview = (): void => {
+    const el =
+      typeof document !== "undefined" ? document.getElementById("import-review-queue") : null;
+    if (el instanceof HTMLDetailsElement) {
+      el.open = true; // die standardmäßig eingeklappte Verlaufs-Sektion aufklappen
+    }
+    el?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  };
+
   const runGrouping = async (): Promise<void> => {
     setBusy("group");
     setError(null);
@@ -230,6 +252,10 @@ export function ImportGroups({ criteria }: { criteria: ImportSelectCriteria }): 
       const response = await endpoints.admin.import.group({
         criteria,
         locale: toReasonerLocale(i18n.language),
+        // F3: NUR die in der Vorschau gewählten IDs gruppieren (serverseitig gegen den aktuellen
+        // Snapshot validiert). Die von der Gruppen-Ansicht initialisierte Zweit-Auswahl startet
+        // dadurch aus genau diesen IDs (der Server liefert nur sie zurück).
+        selectedCandidateIds: [...selectedCandidateIds],
       });
       setData(response);
       setSelection(initialSelection(response.candidates));
@@ -270,6 +296,9 @@ export function ImportGroups({ criteria }: { criteria: ImportSelectCriteria }): 
             includeIds: batch,
             // Snapshot-Pin: alle Batches dieses Laufs arbeiten auf der Datenbasis der Gruppierung.
             snapshotToken: data.snapshotToken,
+            // F3: die Übernahme ist zusätzlich auf die in der Vorschau gewählten IDs beschränkt —
+            // eine IncludeId außerhalb dieser Menge lehnt der Server ehrlich ab (Bilanz-notFound).
+            selectedCandidateIds: [...selectedCandidateIds],
           });
           results.push(result);
         } catch (err) {
@@ -340,19 +369,25 @@ export function ImportGroups({ criteria }: { criteria: ImportSelectCriteria }): 
       {data === null && !snapshotExpired ? (
         // WP-RETEST7 R7: UNÜBERSEHBARER Primär-CTA direkt unter der Vorschau — große Klickfläche,
         // volle Breite; der nächste Schritt (Gruppieren & Übernehmen) ist damit explizit benannt.
-        <Button
-          variant="primary"
-          className="w-full py-3 text-[14px]"
-          disabled={busy === "group"}
-          onClick={() => void runGrouping()}
-        >
-          {busy === "group" ? (
-            <Loader2 size={16} className="animate-spin" />
-          ) : (
-            <Sparkles size={16} />
-          )}
-          {busy === "group" ? t(IMPORT_GROUPS_TEXT.grouping) : t(IMPORT_GROUPS_TEXT.cta)}
-        </Button>
+        // F3: leere Vorschau-Auswahl → deaktiviert mit ehrlichem Hinweis (kein Lauf über alles).
+        <>
+          <Button
+            variant="primary"
+            className="w-full py-3 text-[14px]"
+            disabled={busy === "group" || !hasSelection}
+            onClick={() => void runGrouping()}
+          >
+            {busy === "group" ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <Sparkles size={16} />
+            )}
+            {busy === "group" ? t(IMPORT_GROUPS_TEXT.grouping) : t(IMPORT_GROUPS_TEXT.cta)}
+          </Button>
+          {!hasSelection ? (
+            <p className="mt-1.5 text-[12px] text-muted-2">{t(IMPORT_GROUPS_TEXT.needSelection)}</p>
+          ) : null}
+        </>
       ) : null}
 
       {error ? (
@@ -464,6 +499,17 @@ export function ImportGroups({ criteria }: { criteria: ImportSelectCriteria }): 
               </div>
             ) : null}
             <p className="mt-2 text-[12px] text-muted-2">{t(IMPORT_GROUPS_TEXT.bilanzReview)}</p>
+            {/* WP-SHIP9-S2 (D6): direkter Sprung ins Import-Review mit echtem Zähler (die in DIESEM Lauf
+                zur Prüfung offenen Fälle: neu eingereiht + bereits vorgemerkt). Sekundär (outline), damit
+                der geführte Fluss weiter genau EINEN Primär-CTA je Zustand hat. */}
+            <div className="mt-2">
+              <Button variant="outline" onClick={jumpToReview}>
+                <ArrowRight size={15} />
+                {t(IMPORT_GROUPS_TEXT.toReview, {
+                  n: bilanz.imported + bilanz.alreadyQueued,
+                })}
+              </Button>
+            </div>
           </div>
         </div>
       ) : null}

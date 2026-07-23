@@ -457,6 +457,94 @@ describe("WP-SHIP7-FIX (GELB): Prompt-Deckel der Gruppierungs-Eingabe", () => {
   });
 });
 
+// WP-SHIP9-S2c (bens ROT F3): die in der Vorschau gewählten, ZULÄSSIGEN Kandidaten-IDs steuern
+// Gruppierung UND Übernahme — nicht mehr „alle passenden". Der Server validiert die IDs gegen den
+// aktuellen Snapshot: nicht gewählte Kandidaten tauchen nicht auf, unzulässige IDs werden ehrlich
+// abgelehnt bzw. in der Bilanz ausgewiesen (kein stilles Verwerfen).
+describe("WP-SHIP9-S2c (F3): Vorschau-Auswahl steuert Gruppieren & Übernehmen", () => {
+  it("group: NUR die gewählten IDs werden gruppiert; nicht gewählte Kandidaten tauchen nicht auf", async () => {
+    const items = [
+      item({ title: "Pumpe warten", externalId: "p1", tags: ["wartung"] }),
+      item({ title: "Ventil tauschen", externalId: "p2", tags: ["wartung"] }),
+      item({ title: "Filter reinigen", externalId: "p3", tags: ["wartung"] }),
+    ];
+    const { app, headers } = await importApp(items);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/admin/import/confluence/group",
+      headers,
+      // p2 ist in der Vorschau bewusst ABGEWÄHLT.
+      payload: { criteria: {}, locale: "de", selectedCandidateIds: ["p1", "p3"] },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { candidates: { id: string }[]; groups: { ids: string[] }[] };
+    expect(body.candidates.map((c) => c.id).sort()).toEqual(["p1", "p3"]);
+    const flat = body.groups.flatMap((g) => g.ids).sort();
+    expect(flat).toEqual(["p1", "p3"]);
+    expect(flat).not.toContain("p2");
+  });
+
+  it("group: leere/nur-unbekannte Auswahl → ehrlicher 400 (kein stiller Lauf über alles)", async () => {
+    const items = [item({ title: "Pumpe warten", externalId: "p1", tags: ["wartung"] })];
+    const { app, headers } = await importApp(items);
+    const unknown = await app.inject({
+      method: "POST",
+      url: "/api/admin/import/confluence/group",
+      headers,
+      payload: { criteria: {}, locale: "de", selectedCandidateIds: ["gibt-es-nicht"] },
+    });
+    expect(unknown.statusCode).toBe(400);
+    expect((unknown.json() as { error: string }).error).toBe("GROUP_EMPTY_SELECTION");
+    const empty = await app.inject({
+      method: "POST",
+      url: "/api/admin/import/confluence/group",
+      headers,
+      payload: { criteria: {}, locale: "de", selectedCandidateIds: [] },
+    });
+    expect(empty.statusCode).toBe(400);
+    expect((empty.json() as { error: string }).error).toBe("GROUP_EMPTY_SELECTION");
+  });
+
+  it("apply: eine IncludeId außerhalb der Vorschau-Auswahl wird EHRLICH als notFound ausgewiesen, nicht importiert", async () => {
+    const items = [
+      item({ title: "Pumpe warten", externalId: "p1" }),
+      item({ title: "Ventil tauschen", externalId: "p2" }),
+    ];
+    const { app, services, headers } = await importApp(items);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/admin/import/confluence/apply",
+      headers,
+      // p2 existiert als Kandidat, ist aber NICHT in der Auswahl → darf nicht importiert werden.
+      payload: { criteria: {}, includeIds: ["p1", "p2"], selectedCandidateIds: ["p1"] },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { imported: number; notFound: string[] };
+    expect(body.imported).toBe(1);
+    expect(body.notFound).toEqual(["p2"]);
+    // REVIEW-INVARIANTE + Auswahl-Steuerung: nur p1 landet in der Queue.
+    const queue = await services.library.listImportCandidates();
+    expect(queue.map((c) => c.item.externalId)).toEqual(["p1"]);
+  });
+
+  it("Bestandsverhalten: OHNE selectedCandidateIds bleibt der Vertrag unverändert (alle passenden)", async () => {
+    const items = [
+      item({ title: "Pumpe warten", externalId: "p1", tags: ["wartung"] }),
+      item({ title: "Ventil tauschen", externalId: "p2", tags: ["wartung"] }),
+    ];
+    const { app, headers } = await importApp(items);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/admin/import/confluence/group",
+      headers,
+      payload: { criteria: {}, locale: "de" },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { candidates: { id: string }[] };
+    expect(body.candidates.map((c) => c.id).sort()).toEqual(["p1", "p2"]);
+  });
+});
+
 describe("WP-SHIP7-FIX (Fix 3): /apply — Dedupe, Deckel, ehrliche No-op-Zählung, Snapshot-Pin", () => {
   it("doppelte Ids werden EINMAL verarbeitet; über MAX_APPLY_IDS → ehrlicher 400", async () => {
     const { app, services, headers } = await importApp([

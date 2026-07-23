@@ -697,12 +697,16 @@ export function CaptureFrontDoor(): JSX.Element {
                     WARUM der Vorschlag eine einfache Ableitung ist (kein Modell aktiv vs. Modell-Fehler). */}
                 {structureProposal.demo ? (
                   <p className="mt-2 text-[12px] leading-relaxed text-trust-warn-text">
-                    {/* WP-D10 (Fix 3): Zeitüberschreitung als eigene, ehrliche Ursache. */}
+                    {/* WP-D10 (Fix 3): Zeitüberschreitung als eigene, ehrliche Ursache.
+                        WP-SHIP9-S2 (bens Folgeschnitt B4): vertraulichkeitsbedingter Cloud-Ausschluss
+                        als eigener, wahrer Grund — vorher als „no-model" dargestellt. */}
                     {structureProposal.fallbackReason === "model-timeout"
                       ? t("fd.fallbackModelTimeout")
                       : structureProposal.fallbackReason === "model-error"
                         ? t("fd.fallbackModelError")
-                        : t("fd.fallbackNoModel")}
+                        : structureProposal.fallbackReason === "confidential"
+                          ? t("fd.fallbackConfidential")
+                          : t("fd.fallbackNoModel")}
                   </p>
                 ) : null}
                 <div className="mt-3 space-y-3 text-sm">

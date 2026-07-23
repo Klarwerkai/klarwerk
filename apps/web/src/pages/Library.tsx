@@ -12,6 +12,7 @@ import { useToast } from "../app/ToastContext";
 import { DemoBanner } from "../components/DemoBanner";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
+import { KoSummaryDisclosure } from "../components/KoSummaryDisclosure";
 import {
   ConfidenceBar,
   KNOWLEDGE_TYPES,
@@ -289,7 +290,13 @@ export function Library(): JSX.Element {
       <QueryState
         query={query}
         emptyText={trimmedQ ? t("lib.emptyQuery", { q: trimmedQ }) : t("lib.empty")}
-        emptyExtra={<EmptyStateCtas context="library" />}
+        // WP-SHIP9-S2 Paket 4 (W3): der generische Erststart-Block erscheint NUR bei wirklich leerem
+        // Bestand (kein einziges KO). Bei 0 Treffern mit aktiver Suche/Filtern (Bestand > 0) bleibt es
+        // bei der ehrlichen Treffer-Meldung — kein „Erfasse den ersten Beitrag" trotz vorhandener KOs.
+        // all.data noch undefiniert (lädt) ⇒ nicht als leer werten (kein Erststart-Aufblitzen).
+        emptyExtra={
+          (all.data?.length ?? -1) === 0 ? <EmptyStateCtas context="library" /> : undefined
+        }
       >
         {(items) => {
           // SCRUM-245: client-seitig nach nachvollziehbarer Relevanz re-ranken (verwirft nichts).
@@ -539,6 +546,9 @@ export function Library(): JSX.Element {
                             </button>
                           )
                         ) : null}
+                        {/* WP-SHIP9-S2 Paket 3 (E2): Kurzvorschau-Aufklapper — eigene volle Zeile
+                            (flex-wrap), nutzt die bereits vorliegende Kernaussage (kein Roundtrip). */}
+                        <KoSummaryDisclosure source={k} className="w-full basis-full" />
                       </div>
                     );
                   })}

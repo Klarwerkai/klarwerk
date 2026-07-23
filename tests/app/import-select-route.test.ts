@@ -144,7 +144,9 @@ describe("WP-SAMMEL20-FIX (Fix 1, P0): Select-Vertraulichkeit — fail-safe Batc
     expect(spy.cloudCalls()).toBe(0); // der Satz hat die Maschine NIE Richtung Cloud verlassen
     const body = res.json() as { inferenceStatus?: string; fallbackReason?: string };
     expect(body.inferenceStatus).toBe("unavailable");
-    expect(body.fallbackReason).toBe("no-model"); // Cloud raus, kein lokales Modell verdrahtet
+    // WP-SHIP9-S2 (bens Folgeschnitt B4): 0-Cloud-Call-Vertrag unverändert; die Ursache wird nur
+    // ehrlicher — die Cloud fiel GENAU wegen der Vertraulichkeit weg (kein lokales Modell) → "confidential".
+    expect(body.fallbackReason).toBe("confidential");
   });
 
   it("restringierte UND ungültige Stufe im Snapshot → ebenfalls 0 Cloud-Calls", async () => {
@@ -227,7 +229,8 @@ describe("WP-VIP2-GATE (bens P0-1, endgueltig): Prompt-Provenienz ohne fail-open
     expect(embedSpy.calls).toBe(0);
     const body = res.json() as { inferenceStatus?: string; fallbackReason?: string };
     expect(body.inferenceStatus).toBe("unavailable");
-    expect(body.fallbackReason).toBe("no-model");
+    // WP-SHIP9-S2: die Cloud fiel wegen der Vertraulichkeit weg → ehrlicher Grund "confidential".
+    expect(body.fallbackReason).toBe("confidential");
   });
 
   it("unklassifiziertes Item im Snapshot → exakt NULL Cloud- und NULL Embedder-Aufrufe (bens Formulierung)", async () => {
@@ -444,7 +447,8 @@ describe("WP-VIP2-GATE-2 Fix 1: Prompt-Eigenprovenienz (Pflicht-Einstufung + heb
     expect(embedSpy.calls).toBe(0);
     const body = res.json() as { inferenceStatus?: string; fallbackReason?: string };
     expect(body.inferenceStatus).toBe("unavailable"); // Cloud raus, kein lokales Modell → ehrlich
-    expect(body.fallbackReason).toBe("no-model");
+    // WP-SHIP9-S2: ehrlicher Grund "confidential" (Cloud wegen Vertraulichkeit ausgeschlossen).
+    expect(body.fallbackReason).toBe("confidential");
   });
 
   it("POSITIV NUR bei explizit unbedenklichem Prompt UND komplett internem Snapshot (1 Cloud, 0 Embedder)", async () => {
@@ -497,5 +501,21 @@ describe("WP-VIP2-GATE-2 Fix 1: Prompt-Eigenprovenienz (Pflicht-Einstufung + heb
     ]) {
       expect(i18n.split(`"${key}"`).length - 1, key).toBe(3);
     }
+  });
+});
+
+// WP-SHIP9-S2c (bens ROT F3): jede Vorschau-Zeile traegt ihre stabile Kandidaten-Id (candidateIdOf,
+// bei Anker-Items = externalId) — deckungsgleich mit der Gruppierungs-/Uebernahme-Id. Erst damit kann
+// die in der Vorschau getroffene Auswahl die naechsten Schritte steuern.
+describe("WP-SHIP9-S2c (F3): Vorschau-Eintraege tragen ihre Kandidaten-Id", () => {
+  it("select liefert je Vorschau-Zeile die id (= externalId der Anker-Items)", async () => {
+    const { app, headers } = await selectApp([
+      item({ title: "Pumpe warten", externalId: "p1" }),
+      item({ title: "Ventil tauschen", externalId: "p2" }),
+    ]);
+    const res = await app.inject({ ...selectBody({ criteria: {} }), headers });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { preview: { id?: string; title: string }[] };
+    expect(body.preview.map((p) => p.id)).toEqual(["p1", "p2"]);
   });
 });

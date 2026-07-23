@@ -48,7 +48,9 @@ function mount(): void {
   document.body.appendChild(container);
   root = createRoot(container);
   act(() => {
-    root.render(createElement(ImportGroups, { criteria: {} }));
+    // WP-SHIP9-S2c (F3): die Vorschau-Auswahl steuert nun Gruppieren/Übernehmen — hier sind beide
+    // Kandidaten gewählt, damit der Weiter-Knopf aktiv ist (leere Auswahl deaktiviert ihn bewusst).
+    root.render(createElement(ImportGroups, { criteria: {}, selectedCandidateIds: ["a", "b"] }));
   });
 }
 

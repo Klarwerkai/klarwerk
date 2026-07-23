@@ -475,13 +475,21 @@ export const endpoints = {
         promptConfidential?: boolean;
       }) => api.post<ImportSelectResponse>("/admin/import/confluence/select", body),
       // WP-IC-4 (Schritt 4): KI-Gruppierung (read-only; ehrlicher deterministischer Fallback).
-      group: (body: { criteria?: ImportSelectCriteria; locale?: "de" | "en" }) =>
-        api.post<ImportGroupResponse>("/admin/import/confluence/group", body),
+      // WP-SHIP9-S2c (F3): selectedCandidateIds = die in der Vorschau gewählten, zulässigen IDs —
+      // der Server gruppiert NUR sie (serverseitig gegen den aktuellen Snapshot validiert).
+      group: (body: {
+        criteria?: ImportSelectCriteria;
+        locale?: "de" | "en";
+        selectedCandidateIds?: string[];
+      }) => api.post<ImportGroupResponse>("/admin/import/confluence/group", body),
       // WP-IC-4 (Schritt 5): Übernahme in die BESTEHENDE Review-Queue (Batch, ehrliche Teil-Bilanz).
+      // WP-SHIP9-S2c (F3): selectedCandidateIds beschränkt die Übernahme zusätzlich auf die in der
+      // Vorschau gewählten IDs — eine IncludeId außerhalb wird ehrlich als notFound ausgewiesen.
       apply: (body: {
         criteria?: ImportSelectCriteria;
         includeIds: string[];
         snapshotToken?: number;
+        selectedCandidateIds?: string[];
       }) => api.post<ImportApplyResponse>("/admin/import/confluence/apply", body),
       // WP-D-CLEAN: zweistufiges Testdaten-Aufräumen (ohne confirm = Vorschau).
       cleanupPreview: () => api.post<ImportCleanupPreview>("/admin/import/cleanup", {}),

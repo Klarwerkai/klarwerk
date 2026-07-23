@@ -1,0 +1,235 @@
+// WP-SHIP9-S2 Paket 2 (Import-UX D2–D7): reines View-Modell der Auswahl-Trefferliste.
+// Keine React-/Netz-Abhängigkeit — die UI (ImportSelect.tsx) hält nur den State und rendert; die
+// gesamte Auswahl-, Filter-, Such- und Gruppierungs-Logik lebt hier und ist als pure Logik getestet.
+// Der Auswahl-Zustand bleibt `checkedRows: boolean[]`, indexiert nach dem ORIGINAL-Index in
+// `preview[]` (Bindeglied, das durch Filtern/Gruppieren stabil bleibt).
+import type { ImportPreviewEntry } from "../api/types";
+import { displayImportText } from "./htmlEntities";
+
+// D7: Filter-Chips über der Trefferliste. "all" = keine Einschränkung.
+export type PreviewChip = "all" | "new" | "imported" | "queued";
+// D3/D5: Ordner-/Gruppen-Ansicht. "none" = flache Liste (Standard).
+export type PreviewGroupMode = "none" | "theme" | "language";
+export type PreviewLanguage = "de" | "en" | "nl" | "other";
+
+export interface PreviewViewState {
+  // D7: Freitext-Suche über der Trefferliste (Titel + Autor, dekodiert).
+  query: string;
+  // D7: aktiver Filter-Chip.
+  chip: PreviewChip;
+  // D4: „Bereits importierte/vorgemerkte ausblenden".
+  hideImported: boolean;
+  // D3/D5: Gruppierung.
+  groupMode: PreviewGroupMode;
+}
+
+export const DEFAULT_PREVIEW_VIEW: PreviewViewState = {
+  query: "",
+  chip: "all",
+  hideImported: false,
+  groupMode: "none",
+};
+
+export interface PreviewRow {
+  entry: ImportPreviewEntry;
+  // Original-Index in preview[] — die Verbindung zu checkedRows bleibt über Filter/Gruppen erhalten.
+  index: number;
+}
+
+export interface PreviewGroup {
+  key: string;
+  kind: "theme" | "language";
+  // Rohwert der Gruppe (Theme-Text bzw. Sprach-Schlüssel) — die Anzeige dekodiert der Aufrufer.
+  value: string;
+  language?: PreviewLanguage;
+  rows: PreviewRow[];
+}
+
+// D5: führendes Sprach-Präfix des Titels → DE/EN/NL, sonst "other". Robust gegen die üblichen
+// Trenner/Klammern in Altbestand-Titeln (z. B. „[DE] …", „EN – …", „NL:  …").
+const LANG_PREFIX = /^[\s\-–—·|>[\](){}]*(?:\[|\()?\s*(de|deu|ger|en|eng|nl|nld|ned)\b/i;
+const LANG_CANON: Record<string, PreviewLanguage> = {
+  de: "de",
+  deu: "de",
+  ger: "de",
+  en: "en",
+  eng: "en",
+  nl: "nl",
+  nld: "nl",
+  ned: "nl",
+};
+
+export function previewLanguage(entry: ImportPreviewEntry): PreviewLanguage {
+  const decoded = displayImportText(entry.title, entry.textCodec);
+  const match = LANG_PREFIX.exec(decoded);
+  const tag = match?.[1]?.toLowerCase();
+  if (tag) {
+    return LANG_CANON[tag] ?? "other";
+  }
+  return "other";
+}
+
+// D7: welchem Filter-Chip genügt ein Eintrag?
+export function chipMatches(entry: ImportPreviewEntry, chip: PreviewChip): boolean {
+  switch (chip) {
+    case "new":
+      return entry.alreadyImported !== true && entry.alreadyQueued !== true;
+    case "imported":
+      return entry.alreadyImported === true;
+    case "queued":
+      return entry.alreadyQueued === true;
+    default:
+      return true;
+  }
+}
+
+// D7: Freitext-Suche — dekodierter Titel + Autor, case-insensitiv (Teilstring).
+export function searchMatches(entry: ImportPreviewEntry, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (q.length === 0) {
+    return true;
+  }
+  const author = entry.author ? displayImportText(entry.author, entry.textCodec) : "";
+  const hay = `${displayImportText(entry.title, entry.textCodec)} ${author}`.toLowerCase();
+  return hay.includes(q);
+}
+
+// D4: „bereits importiert" ODER „bereits vorgemerkt" = ausblendbarer Bestand.
+function isKnown(entry: ImportPreviewEntry): boolean {
+  return entry.alreadyImported === true || entry.alreadyQueued === true;
+}
+
+// F1 (bens ROT): ZENTRALE Regel, welche Zeilen eine BULK-Aktion (Alle wählen, Themen-/Sprach-
+// Gruppen-Checkbox) überhaupt anfassen darf — bereits importierte oder vorgemerkte Einträge NIE.
+// (Ein einzelnes bewusstes Wieder-Anwählen bleibt über die Zeilen-Checkbox möglich; nur Bulk darf
+// es nicht auslösen.) Dieselbe Regel steuert auch den Gruppen-/Alle-Haken (rowsAllChecked).
+export function isBulkSelectable(entry: ImportPreviewEntry): boolean {
+  return !isKnown(entry);
+}
+
+// F1: aus einer sichtbaren Zeilenmenge die bulk-wählbare Teilmenge — die EINE Reichweite, die alle
+// Bulk-Setzer UND die Haken-Anzeige gemeinsam verwenden (Text und Wirkung fallen so nie auseinander).
+export function bulkSelectableRows(rows: readonly PreviewRow[]): PreviewRow[] {
+  return rows.filter((row) => isBulkSelectable(row.entry));
+}
+
+// Sichtbare Zeilen nach Filter-Chip (D7) + Suche (D7) + Ausblenden-Schalter (D4). Reihenfolge = Original.
+export function visibleRows(
+  entries: readonly ImportPreviewEntry[],
+  state: PreviewViewState,
+): PreviewRow[] {
+  const rows: PreviewRow[] = [];
+  entries.forEach((entry, index) => {
+    if (state.hideImported && isKnown(entry)) {
+      return;
+    }
+    if (!chipMatches(entry, state.chip)) {
+      return;
+    }
+    if (!searchMatches(entry, state.query)) {
+      return;
+    }
+    rows.push({ entry, index });
+  });
+  return rows;
+}
+
+const LANGUAGE_ORDER: PreviewLanguage[] = ["de", "en", "nl", "other"];
+
+// D3/D5: sichtbare Zeilen in auf-/zuklappbare Gruppen bündeln. Reihenfolge innerhalb einer Gruppe
+// bleibt die Original-Reihenfolge; Sprachen in fester Ordnung (DE/EN/NL/übrige), Themen alphabetisch
+// mit „ohne Thema" ganz am Ende.
+export function groupRows(rows: readonly PreviewRow[], mode: PreviewGroupMode): PreviewGroup[] {
+  if (mode === "none") {
+    return [];
+  }
+  if (mode === "language") {
+    const buckets = new Map<PreviewLanguage, PreviewRow[]>();
+    for (const row of rows) {
+      const lang = previewLanguage(row.entry);
+      const bucket = buckets.get(lang);
+      if (bucket) {
+        bucket.push(row);
+      } else {
+        buckets.set(lang, [row]);
+      }
+    }
+    return LANGUAGE_ORDER.filter((lang) => buckets.has(lang)).map((lang) => ({
+      key: `lang:${lang}`,
+      kind: "language",
+      value: lang,
+      language: lang,
+      rows: buckets.get(lang) as PreviewRow[],
+    }));
+  }
+  // mode === "theme"
+  const NO_THEME = "";
+  const buckets = new Map<string, PreviewRow[]>();
+  for (const row of rows) {
+    const theme = row.entry.themes[0] ?? NO_THEME;
+    const bucket = buckets.get(theme);
+    if (bucket) {
+      bucket.push(row);
+    } else {
+      buckets.set(theme, [row]);
+    }
+  }
+  const keys = [...buckets.keys()].sort((a, b) => {
+    if (a === NO_THEME) {
+      return 1;
+    }
+    if (b === NO_THEME) {
+      return -1;
+    }
+    return displayImportText(a).localeCompare(displayImportText(b));
+  });
+  return keys.map((theme) => ({
+    key: `theme:${theme}`,
+    kind: "theme",
+    value: theme,
+    rows: buckets.get(theme) as PreviewRow[],
+  }));
+}
+
+// D2/D3: alle übergebenen Zeilen auf einen Wert setzen (Alle wählen/abwählen bzw. Gruppen-Checkbox).
+export function setRowsSelected(
+  checked: readonly boolean[],
+  rows: readonly PreviewRow[],
+  value: boolean,
+): boolean[] {
+  const next = [...checked];
+  for (const { index } of rows) {
+    next[index] = value;
+  }
+  return next;
+}
+
+// F2 (bens ROT): „Alle abwählen" leert die GESAMTE Auswahl — unabhängig von Suche, Chip-Filter und
+// Ausblenden-Schalter (der Text verspricht ALLE, also gilt ALLE). Auch weggefilterte, aber gewählte
+// Treffer werden dadurch abgewählt.
+export function clearAllSelected(checked: readonly boolean[]): boolean[] {
+  return checked.map(() => false);
+}
+
+// Sind ALLE (nicht-leeren) Zeilen angehakt? (Zustand der Alle-/Gruppen-Checkbox.)
+export function rowsAllChecked(checked: readonly boolean[], rows: readonly PreviewRow[]): boolean {
+  return rows.length > 0 && rows.every(({ index }) => checked[index] === true);
+}
+
+// Ist mindestens eine Zeile angehakt? (Für den indeterminierten/teil-gewählten Zustand.)
+export function rowsAnyChecked(checked: readonly boolean[], rows: readonly PreviewRow[]): boolean {
+  return rows.some(({ index }) => checked[index] === true);
+}
+
+// D7: dauerhaft sichtbare Auswahl-Zusammenfassung „X von Y gewählt".
+export interface SelectionSummary {
+  selected: number;
+  total: number;
+}
+
+export function selectionSummary(checked: readonly boolean[]): SelectionSummary {
+  return {
+    selected: checked.reduce((n, on) => (on ? n + 1 : n), 0),
+    total: checked.length,
+  };
+}

@@ -71,7 +71,10 @@ describe("IC-3: Reasoner.deriveImportCriteria (ehrlicher Ausfall-Vertrag)", () =
     });
   });
 
-  it("WP-SAMMEL20-FIX (bens Fix 1, P0): confidential=true nimmt die CLOUD aus der Kette — 0 Cloud-Calls, ehrlich no-model", async () => {
+  it("WP-SAMMEL20-FIX (bens Fix 1, P0): confidential=true nimmt die CLOUD aus der Kette — 0 Cloud-Calls, ehrlich confidential", async () => {
+    // WP-SHIP9-S2 (bens Folgeschnitt B4): der 0-Cloud-Call-Vertrag ist UNVERÄNDERT; die Ursache wird
+    // nur ehrlicher — fiel die Cloud-Kante genau durch die Vertraulichkeit weg (Cloud konfiguriert,
+    // select-Policy cloud-geeignet, kein lokales Modell), ist der Grund "confidential" statt "no-model".
     let cloudCalls = 0;
     const spy: ModelClient = {
       name: "anthropic:test",
@@ -83,10 +86,28 @@ describe("IC-3: Reasoner.deriveImportCriteria (ehrlicher Ausfall-Vertrag)", () =
     const r = new Reasoner(new ModelProvider(spy));
     const result = await r.deriveImportCriteria("alles Vertrauliche", "de", true);
     expect(cloudCalls).toBe(0); // der Satz verlässt die Maschine NIE Richtung Cloud
-    expect(result).toEqual({ criteria: null, fallbackReason: "no-model" });
+    expect(result).toEqual({ criteria: null, fallbackReason: "confidential" });
     // Gegenprobe: ohne confidential darf dasselbe Modell arbeiten.
     const open = await r.deriveImportCriteria("alles Freigegebene", "de", false);
     expect(cloudCalls).toBe(1);
     expect(open.fallbackReason).toBeNull();
+  });
+
+  it("WP-SHIP9-S2: deterministisch gestellt + confidential → no-model, NICHT confidential", async () => {
+    // Ist select bewusst deterministisch (oder local ohne lokales Modell), fällt die Cloud NICHT
+    // „wegen Vertraulichkeit" weg — sie war ohnehin nie im Spiel. Dann bleibt es ehrlich no-model.
+    let cloudCalls = 0;
+    const spy: ModelClient = {
+      name: "anthropic:test",
+      complete: async () => {
+        cloudCalls += 1;
+        return '{"themes":["x"]}';
+      },
+    };
+    const r = new Reasoner(new ModelProvider(spy));
+    await r.setTaskConfig({ global: "auto", perTask: { select: "deterministic" } });
+    const result = await r.deriveImportCriteria("egal", "de", true);
+    expect(cloudCalls).toBe(0);
+    expect(result.fallbackReason).toBe("no-model");
   });
 });

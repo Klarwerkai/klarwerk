@@ -6,6 +6,8 @@
 // Flache Copy-Schlüssel — EINE Quelle für Komponente + Test (Muster CAPTURE_FILE_TEXT).
 export const IMPORT_GROUPS_TEXT = {
   cta: "imp.groups.cta",
+  // F3 (bens ROT): Hinweis unter dem deaktivierten Weiter-Knopf, wenn in der Vorschau nichts gewählt ist.
+  needSelection: "imp.groups.needSelection",
   grouping: "imp.groups.grouping",
   retry: "imp.groups.retry",
   noAi: "imp.groups.noAi",
@@ -27,6 +29,8 @@ export const IMPORT_GROUPS_TEXT = {
   bilanzExcluded: "imp.groups.bilanzExcluded",
   bilanzFailed: "imp.groups.bilanzFailed",
   bilanzReview: "imp.groups.bilanzReview",
+  // WP-SHIP9-S2 (D6): direkter Sprung ins Import-Review mit echtem Zähler offener Fälle.
+  toReview: "imp.groups.toReview",
   failNotFound: "imp.groups.failNotFound",
   // WP-SHIP7-FIX (Fix 3): ehrliche Teilbilanz — bereits eingereiht / nicht versucht / HTTP-Fehler
   // eines Batches + Wiederholen-Knopf für den nicht versuchten Rest.

@@ -59,9 +59,11 @@ const SELECT_RESPONSE = {
   limited: false,
   truncated: false,
   criteria: { themes: ["Wartung"] },
+  // WP-SHIP9-S2c (F3): Vorschau-Einträge tragen ihre Kandidaten-Id — die (standardmäßig gewählte)
+  // Vorschau-Auswahl steuert Gruppieren/Übernehmen; ohne Auswahl bliebe der Weiter-Knopf deaktiviert.
   preview: [
-    { title: "Pumpe warten", hasImage: false, themes: ["Wartung"] },
-    { title: "Ventil tauschen", hasImage: false, themes: ["Wartung"] },
+    { id: "a", title: "Pumpe warten", hasImage: false, themes: ["Wartung"] },
+    { id: "b", title: "Ventil tauschen", hasImage: false, themes: ["Wartung"] },
   ],
 };
 

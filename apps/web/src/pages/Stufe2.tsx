@@ -45,6 +45,7 @@ import { ImportExplore } from "../components/ImportExplore";
 // Verlauf (Pedis Stör-Befund zur Queue unter dem Cockpit).
 import { ImportHistorySection } from "../components/ImportHistory";
 import { ImportCockpitProvider, ImportStepperBar } from "../components/ImportStepper";
+import { KoSummaryDisclosure } from "../components/KoSummaryDisclosure";
 import { Button, Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import { CAPITAL_SECTIONS, sectionAnchor, sectionHref } from "../lib/capitalSections";
 import { deriveStatus } from "../lib/displayStatus";
@@ -506,9 +507,15 @@ export function ImportReview(): JSX.Element {
                       </span>
                       <span className="font-mono text-[11px] text-muted-2">{c.item.category}</span>
                     </div>
-                    <p className="text-[13px] text-muted">
-                      {displayImportText(c.item.statement, c.item.textCodec)}
-                    </p>
+                    {/* WP-SHIP9-S2 Paket 3 (E2): die Kernaussage sitzt hinter dem Kurzvorschau-
+                        Aufklapper (konsistent mit Bibliothek/Validierung). Bei aktiven Fällen
+                        („neu") standardmäßig offen — der Prüfer verliert keinen Klick; der ehrliche
+                        Volltext (dekodiert) wird durchgereicht, nicht die gedeckelte Vorschau. */}
+                    <KoSummaryDisclosure
+                      source={c.item}
+                      text={displayImportText(c.item.statement, c.item.textCodec)}
+                      defaultOpen={c.status === "neu"}
+                    />
                     {c.note ? (
                       <p className="text-[12px] text-trust-warn-text">
                         {t("imp.note")}: {c.note}

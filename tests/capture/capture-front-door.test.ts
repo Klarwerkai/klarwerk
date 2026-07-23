@@ -459,4 +459,27 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(editorSource).toContain("applyImageScale");
     expect(editorSource).toContain("data-kw-scale");
   });
+
+  // WP-SHIP9-S2 (bens Folgeschnitt B4): der Struktur-Vorschlag erklärt einen vertraulichkeitsbedingten
+  // Cloud-Ausschluss mit EIGENEM, wahrem Grund — vorher landete er (unbekannter Grund) im no-model-Text.
+  it("zeigt bei fallbackReason confidential den spezifischen Grund (nicht no-model)", () => {
+    const pageSource = readFileSync(
+      resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
+      "utf8",
+    );
+    expect(pageSource).toContain('structureProposal.fallbackReason === "confidential"');
+    expect(pageSource).toContain('t("fd.fallbackConfidential")');
+    // Die alten Zweige bleiben unverändert erhalten.
+    expect(pageSource).toContain('t("fd.fallbackModelTimeout")');
+    expect(pageSource).toContain('t("fd.fallbackModelError")');
+    expect(pageSource).toContain('t("fd.fallbackNoModel")');
+
+    // Der neue Grund-Text existiert in DE/EN/NL (3×) und benennt die Vertraulichkeit im DE.
+    const i18nSource = readFileSync(resolve(process.cwd(), "apps/web/src/i18n.ts"), "utf8");
+    expect(i18nSource.split('"fd.fallbackConfidential":').length - 1).toBe(3);
+    const deLine = i18nSource
+      .split("\n")
+      .find((l) => l.includes("Der Text ist als vertraulich eingestuft"));
+    expect(deLine, "DE fd.fallbackConfidential").toBeTruthy();
+  });
 });

@@ -711,8 +711,14 @@ export class Reasoner {
     }
     const modelFailure = failureBox.current;
     const failure = modelFailure === null ? null : classifyModelFailure(modelFailure.err);
+    // WP-SHIP9-S2 (bens Folgeschnitt B4): dieselbe Ursachen-Harmonisierung wie groupCandidates —
+    // fiel die Cloud-Kante genau durch die Vertraulichkeit weg (kein lokales Modell sprang ein), ist
+    // die ehrliche Ursache "confidential" statt des irreführenden "no-model". Ein versuchtes, aber
+    // gescheitertes (lokales) Modell behält model-timeout/model-error.
     const fallbackReason = !hadModelInChain
-      ? ("no-model" as const)
+      ? this.cloudExcludedByConfidentiality("describe", confidential)
+        ? ("confidential" as const)
+        : ("no-model" as const)
       : failure?.failureClass === "timeout"
         ? ("model-timeout" as const)
         : ("model-error" as const);
@@ -767,8 +773,13 @@ export class Reasoner {
     // WP-D10 (Fix 3): Timeout als EIGENE Ursache — die UI unterscheidet Zeitüberschreitung von Fehler.
     const modelFailure = failureBox.current;
     const failure = modelFailure === null ? null : classifyModelFailure(modelFailure.err);
+    // WP-SHIP9-S2 (bens Folgeschnitt B4): Ursachen-Harmonisierung wie groupCandidates — die Cloud-
+    // Kante fiel genau durch die Vertraulichkeit weg (kein lokales Modell sprang ein) → ehrliche
+    // Ursache "confidential" statt "no-model"; ein versuchtes, aber gescheitertes Modell behält seine Klasse.
     const fallbackReason = !hadModelInChain
-      ? ("no-model" as const)
+      ? this.cloudExcludedByConfidentiality("structure", confidential)
+        ? ("confidential" as const)
+        : ("no-model" as const)
       : failure?.failureClass === "timeout"
         ? ("model-timeout" as const)
         : ("model-error" as const);
@@ -919,7 +930,15 @@ export class Reasoner {
         p !== this.fallback && p instanceof ModelProvider && p.isAvailable(),
     );
     if (!model) {
-      return { criteria: null, fallbackReason: "no-model" };
+      // WP-SHIP9-S2 (bens Folgeschnitt B4): war ein Cloud-Modell konfiguriert und die select-Policy
+      // cloud-geeignet, aber die Cloud-Kante fiel wegen vertraulicher Kandidaten weg (kein lokales
+      // Modell sprang ein), ist die ehrliche Ursache "confidential" statt des irreführenden "no-model".
+      return {
+        criteria: null,
+        fallbackReason: this.cloudExcludedByConfidentiality("select", confidential)
+          ? "confidential"
+          : "no-model",
+      };
     }
     try {
       const raw = await model.completeRaw(importSelectSystem(locale), prompt.trim());

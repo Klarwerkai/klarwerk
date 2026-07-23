@@ -67,6 +67,20 @@ function failedPageClasses(failed: readonly { errorClass?: string }[]): string[]
   return [...new Set(failed.map((f) => f.errorClass ?? "unknown"))].sort();
 }
 
+// WP-SHIP9-S2c (bens ROT F3): die in der Vorschau gewählten Kandidaten-IDs aus dem Body lesen.
+// null = Feld nicht gesetzt (Bestandsverhalten: alle durch die Kriterien passenden Kandidaten).
+// Ein gesetztes, aber leeres/ungültiges Array bleibt ein leeres Array — der Aufrufer lehnt eine
+// leere Auswahl ehrlich ab (kein stiller Lauf über alles).
+function readSelectedCandidateIds(raw: unknown): string[] | null {
+  if (raw === undefined || raw === null) {
+    return null;
+  }
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw.filter((id): id is string => typeof id === "string");
+}
+
 export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): FastifyPluginAsync {
   const makeAdapter = deps.makeAdapter ?? (() => createConfluenceAdapterFromEnv());
 
@@ -372,8 +386,16 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
           importedAnchorVersions(deps.koService),
           pendingCandidateVersions(deps.library),
         ]);
-        const preview = selected.map((item) =>
-          toPreviewEntry(item, importStatusFor(item, anchorVersions, pendingVersions)),
+        // WP-SHIP9-S2c (F3): jede Vorschau-Zeile trägt ihre stabile Kandidaten-Id (candidateIdOf) —
+        // deckungsgleich mit der Gruppierungs-/Übernahme-Id (dort anchor-basiert, index-unabhängig).
+        // So kann die in der Vorschau getroffene Auswahl die nächsten Schritte steuern (der Server
+        // validiert die IDs erneut gegen den aktuellen Snapshot).
+        const preview = selected.map((item, index) =>
+          toPreviewEntry(
+            item,
+            importStatusFor(item, anchorVersions, pendingVersions),
+            candidateIdOf(item, index),
+          ),
         );
         reply.code(200).send({
           matched,
@@ -415,7 +437,7 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
     // select — der generische Dispatcher (ko.read) hat all das nicht. Der REASONER-TASK selbst
     // (group) folgt trotzdem vollständig dem Task-Muster (ModelRun-Protokoll, KI-Verwaltung,
     // Vertraulichkeits-Routing, ehrlicher deterministischer Fallback). READ-ONLY: schreibt nichts.
-    app.post<{ Body: { criteria?: unknown; locale?: string } }>(
+    app.post<{ Body: { criteria?: unknown; locale?: string; selectedCandidateIds?: unknown } }>(
       "/api/admin/import/confluence/group",
       async (request, reply) => {
         const user = await deps.guards.requirePermission("users.manage", request, reply);
@@ -438,7 +460,26 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
           // WP-REST18 (bens Fix 1): EINMAL zentral nach stabiler Kandidaten-Id deduplizieren —
           // Kandidatenliste, Modell-Eingabe, deterministischer Fallback UND der Vertraulichkeits-
           // Entscheid arbeiten alle auf DERSELBEN eindeutigen Menge (restriktivste Variante bleibt).
-          const selected = dedupeSelectedItems(filterImportItems(items, criteria).selected);
+          const dedupedSelected = dedupeSelectedItems(filterImportItems(items, criteria).selected);
+          // WP-SHIP9-S2c (bens ROT F3): ist eine Vorschau-Auswahl mitgegeben, wird sie SERVERSEITIG
+          // gegen den aktuellen Kandidaten-Snapshot validiert — es bleibt NUR die Schnittmenge der
+          // gewählten IDs (die Kandidaten-Id ist anchor-basiert und damit index-stabil). Enthält die
+          // Auswahl keine gültige Id (leer/nur unbekannte), wird sie ehrlich mit 400 abgelehnt statt
+          // still über alle Kandidaten zu gruppieren.
+          const selectedIds = readSelectedCandidateIds(request.body?.selectedCandidateIds);
+          let selected = dedupedSelected;
+          if (selectedIds !== null) {
+            const chosen = new Set(selectedIds);
+            selected = dedupedSelected.filter((it, index) => chosen.has(candidateIdOf(it, index)));
+            if (selected.length === 0) {
+              reply.code(400).send({
+                error: "GROUP_EMPTY_SELECTION",
+                message:
+                  "Keine gültigen Kandidaten in der Auswahl — bitte in der Vorschau mindestens einen wählbaren Eintrag markieren.",
+              });
+              return reply;
+            }
+          }
           // Harte Server-Kappung mit EHRLICHER Meldung — kein stilles Kappen.
           if (selected.length > MAX_GROUP_CANDIDATES) {
             reply.code(400).send({
@@ -576,6 +617,14 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
           // die Apply-Map sieht exakt die Kandidatenmenge, die das Cockpit angezeigt hat.
           const selected = dedupeSelectedItems(filterImportItems(items, criteria).selected);
           const byId = new Map(selected.map((item, index) => [candidateIdOf(item, index), item]));
+          // WP-SHIP9-S2c (bens ROT F3): ist eine Vorschau-Auswahl mitgegeben, ist die Übernahme
+          // zusätzlich auf DIESE Menge beschränkt — eine IncludeId außerhalb wird NICHT still
+          // verarbeitet, sondern ehrlich als notFound in der Bilanz ausgewiesen. Das Feld ist additiv,
+          // deshalb hier per gezieltem Zugriff gelesen (der übrige apply-Body-Vertrag bleibt exakt).
+          const selectedIds = readSelectedCandidateIds(
+            (request.body as { selectedCandidateIds?: unknown } | undefined)?.selectedCandidateIds,
+          );
+          const allowedIds = selectedIds !== null ? new Set(selectedIds) : null;
           // WP-IC-6b: Status-Wissen VOR dem Lauf — „Aktualisierungen" (Quelle neuer als Import)
           // zählen in der Bilanz separat (Teilmenge von imported, der Bilanz-Vertrag bleibt exakt).
           const [applyAnchors, applyPending] = await Promise.all([
@@ -588,6 +637,11 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
           const failed: { id: string; reason: string }[] = [];
           const notFound: string[] = [];
           for (const id of includeIds) {
+            // F3: außerhalb der Vorschau-Auswahl → ehrlich als notFound (kein stiller Import).
+            if (allowedIds !== null && !allowedIds.has(id)) {
+              notFound.push(id);
+              continue;
+            }
             const item = byId.get(id);
             if (!item) {
               notFound.push(id);

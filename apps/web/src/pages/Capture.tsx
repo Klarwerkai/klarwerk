@@ -42,6 +42,7 @@ import { AppendToArticleModal } from "../components/AppendToArticleModal";
 // SCRUM-405: „Aus Dokument ergänzen" — extract-Punkte anhängen (nichts ersetzen).
 import { BodyExtractPanel } from "../components/BodyExtractPanel";
 import { BodyTemplateChooser } from "../components/BodyTemplateChooser";
+import { ChoiceCards } from "../components/ChoiceCards";
 import { DemoBanner } from "../components/DemoBanner";
 import { DraftBodyGallery } from "../components/DraftBodyGallery";
 import { EditorAttachmentContext } from "../components/EditorAttachmentContext";
@@ -2858,44 +2859,28 @@ export function Capture(): JSX.Element {
                 EIN Fokus je Schritt: Upload → (Suchauftrag) → Punkteliste → Warteschlange. */}
             {mode === "datei" ? (
               <div className="space-y-3">
+                {/* WP-SHIP9-S2 (B1): der Teil/Gesamt-Entscheid steht DIREKT oben (nicht weiter unten)
+                    und nutzt das wiederverwendbare ChoiceCards-Muster (klare Radio-/Kartenflächen). */}
+                <ChoiceCards
+                  label={t(CAPTURE_FILE_TEXT.importModeLabel)}
+                  value={fileImportMode}
+                  onChange={setFileImportMode}
+                  options={[
+                    {
+                      id: "points",
+                      label: t(CAPTURE_FILE_TEXT.importModePoints),
+                      description: t(CAPTURE_FILE_TEXT.importModePointsDesc),
+                    },
+                    {
+                      id: "whole",
+                      label: t(CAPTURE_FILE_TEXT.importModeWhole),
+                      description: t(CAPTURE_FILE_TEXT.importModeWholeDesc),
+                    },
+                  ]}
+                />
                 <div className="flex items-start gap-1.5 text-[12.5px] leading-relaxed text-muted">
                   <span className="flex-1">{t(CAPTURE_FILE_TEXT.hint)}</span>
                   <HelpTip {...chelp("filePoints")} />
-                </div>
-                <div>
-                  <span className="mb-1.5 block text-[12.5px] font-semibold text-muted">
-                    {t(CAPTURE_FILE_TEXT.importModeLabel)}
-                  </span>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {(["points", "whole"] as const).map((option) => (
-                      <button
-                        key={option}
-                        type="button"
-                        aria-pressed={fileImportMode === option}
-                        onClick={() => setFileImportMode(option)}
-                        className={`rounded-card border px-3 py-2 text-left transition-colors ${
-                          fileImportMode === option
-                            ? "border-ink/30 bg-surface text-text"
-                            : "border-hairline bg-page text-muted hover:text-text"
-                        }`}
-                      >
-                        <span className="block text-[12.5px] font-semibold">
-                          {t(
-                            option === "points"
-                              ? CAPTURE_FILE_TEXT.importModePoints
-                              : CAPTURE_FILE_TEXT.importModeWhole,
-                          )}
-                        </span>
-                        <span className="mt-0.5 block text-[11.5px] leading-relaxed text-muted-2">
-                          {t(
-                            option === "points"
-                              ? CAPTURE_FILE_TEXT.importModePointsDesc
-                              : CAPTURE_FILE_TEXT.importModeWholeDesc,
-                          )}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
                 </div>
                 {/* WP-D10c (Pedis Wunsch): Infokasten startet zugeklappt — Volltext erst auf Klick
                     (FileFormatInfo: button + aria-expanded, gemountet getestet). */}

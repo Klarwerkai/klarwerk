@@ -20,7 +20,12 @@ export function ImportHistorySection({
   const { t } = useTranslation();
   return (
     // Bewusst OHNE open-Attribut: Standard zu (Pedis Befund — die Altlast stört die Linie nicht mehr).
-    <details className="mb-5 rounded-card border border-hairline bg-surface">
+    // WP-SHIP9-S2 (D6): stabiler Anker — der „Weiter zum Import-Review"-Knopf der Bilanz klappt genau
+    // diese Sektion auf und springt hierher.
+    <details
+      id="import-review-queue"
+      className="mb-5 rounded-card border border-hairline bg-surface"
+    >
       <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 p-3">
         <ChevronDown size={16} className="shrink-0 text-muted-2" />
         <span className="min-w-0 flex-1 text-[13.5px] font-semibold text-text">

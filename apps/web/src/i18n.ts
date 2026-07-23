@@ -1338,6 +1338,8 @@ const de = {
     "Die Cloud-KI hat das Zeitlimit überschritten — es gibt daher keinen Vorschlag. Bitte später erneut versuchen.",
   "editor.captionAi.fallbackError":
     "Die Cloud-KI ist gerade nicht erreichbar oder meldet einen Fehler — es gibt daher keinen Vorschlag. Bitte später erneut versuchen.",
+  "editor.captionAi.fallbackConfidential":
+    "Das Bild ist als vertraulich eingestuft — die Cloud-KI ist dafür ausgeschlossen und kein lokales Vision-Modell ist verdrahtet. Es gibt daher keinen Vorschlag (nichts verlässt den Server).",
   "editor.file": "Datei verlinken",
   "editor.insertFile": "Datei-Anhang als Link einfügen",
   "editor.noFiles":
@@ -1574,6 +1576,10 @@ const de = {
   // WP-D10 Fix 4: Erstellungsdatum sichtbar (Validierungs-Karten + Detail) — gleichnamige Beiträge
   // werden unterscheidbar. Nur vorhandene KO-Felder (createdAt), kein Platzhalter-Datum bei Altdaten.
   "ko.createdAt": "Erstellt am",
+  // WP-SHIP9-S2 Paket 3 (E2): Kurz-Vorschau-Aufklapper je Wissensobjekt/Kandidat.
+  "ko.preview.show": "Kurzvorschau",
+  "ko.preview.hide": "Vorschau schließen",
+  "ko.preview.label": "Vorschau",
   "ko.createdByName": "von {{name}}",
   "ko.gallery": "Bildergalerie",
   "ko.galleryCount": "Bild {{n}} von {{m}}",
@@ -2112,9 +2118,32 @@ const de = {
     "Bereits importierte Seiten sind abgewählt; bei Bedarf bewusst wieder anwählen.",
   "imp.select.queuedDeselected":
     "Bereits zur Prüfung vorgemerkte Seiten sind abgewählt; bei Bedarf bewusst wieder anwählen.",
+  // WP-SHIP9-S2 Paket 2 (D2–D7): Steuerung der Trefferliste.
+  "imp.select.searchPlaceholder": "In den Treffern suchen (Titel, Autor) …",
+  "imp.select.selectAll": "Alle wählen",
+  "imp.select.deselectAll": "Alle abwählen",
+  "imp.select.hideImported": "Bereits importierte/vorgemerkte ausblenden",
+  "imp.select.groupBy": "Gruppieren:",
+  "imp.select.groupNone": "keine",
+  "imp.select.groupTheme": "nach Thema",
+  "imp.select.groupLanguage": "nach Sprache",
+  "imp.select.groupCount": "{{n}} Treffer",
+  "imp.select.langDe": "Deutsch",
+  "imp.select.langEn": "Englisch",
+  "imp.select.langNl": "Niederländisch",
+  "imp.select.langOther": "Ohne Sprachkennzeichen",
+  "imp.select.noTheme": "Ohne Thema",
+  "imp.select.chipAll": "Alle",
+  "imp.select.chipNew": "Neu",
+  "imp.select.chipImported": "Bereits importiert",
+  "imp.select.chipQueued": "Vorgemerkt",
+  "imp.select.summary": "{{selected}} von {{total}} gewählt",
+  "imp.select.emptyFiltered": "Kein Treffer für Suche/Filter — Suche oder Filter anpassen.",
   "imp.preview.imported": "bereits importiert",
   "imp.preview.queued": "bereits zur Prüfung vorgemerkt",
   "imp.groups.cta": "Weiter: Gruppieren & Übernehmen",
+  "imp.groups.needSelection":
+    "Wählen Sie in der Vorschau mindestens einen Eintrag aus, um fortzufahren.",
   "imp.groups.grouping": "Die Beiträge werden thematisch gruppiert …",
   "imp.groups.retry": "Erneut versuchen",
   "imp.groups.noAi": "Ohne KI gruppiert",
@@ -2141,6 +2170,7 @@ const de = {
   "imp.groups.bilanzFailed": "{{n}} fehlgeschlagen",
   "imp.groups.bilanzReview":
     "Die übernommenen Beiträge liegen jetzt im Import-Review — dort entscheidet ein Mensch über jede Übernahme ins Wissen.",
+  "imp.groups.toReview": "Weiter zum Import-Review ({{n}} offen)",
   "imp.groups.failNotFound": "nicht mehr in der aktuellen Auswahl",
   "imp.groups.bilanzQueued": "{{n}} bereits eingereiht (war schon im Review)",
   "imp.groups.bilanzNotAttempted": "{{n}} nicht versucht (Lauf nach Fehler abgebrochen)",
@@ -2240,6 +2270,8 @@ const de = {
   "imp.select.empty": "Kein Treffer für diese Eingrenzung.",
   "imp.select.aiUnavailable":
     "KI-Auswahl derzeit nicht verfügbar — es gelten nur deine Klick-Filter.",
+  "imp.select.aiConfidential":
+    "Cloud-KI wegen vertraulicher Inhalte ausgeschlossen — der Freitext-Satz wurde nicht ausgewertet; es gelten nur deine Klick-Filter.",
   "imp.uploadTitle": "JSON-Re-Import",
   "imp.uploadHint":
     "JSON-Datei wählen — die Einträge landen als Beiträge in der Prüfliste (keine stille Übernahme).",
@@ -3223,6 +3255,9 @@ const de = {
   // WP-D10 Fix 3: Zeitüberschreitung als EIGENE, ehrliche Ursache (nicht mehr im Sammelbegriff Fehler).
   "fd.fallbackModelTimeout":
     "KI hat nicht rechtzeitig geantwortet (Zeitüberschreitung) — dieser Vorschlag ist eine einfache automatische Ableitung, keine Modell-Antwort.",
+  // WP-SHIP9-S2 (bens Folgeschnitt B4): vertraulichkeitsbedingter Cloud-Ausschluss als eigener, wahrer Grund.
+  "fd.fallbackConfidential":
+    "Der Text ist als vertraulich eingestuft — die Cloud-KI ist dafür ausgeschlossen und kein lokales Modell ist verdrahtet. Dieser Vorschlag ist eine einfache automatische Ableitung, keine Modell-Antwort.",
   "fd.fieldTitle": "Titel",
   "fd.fieldStatement": "Aussage / Kernaussage",
   "fd.fieldConditions": "Bedingungen",
@@ -4635,6 +4670,8 @@ const en: typeof de = {
     "The cloud AI exceeded the time limit — so there is no suggestion. Please try again later.",
   "editor.captionAi.fallbackError":
     "The cloud AI is currently unreachable or reports an error — so there is no suggestion. Please try again later.",
+  "editor.captionAi.fallbackConfidential":
+    "This image is classified as confidential — the cloud AI is excluded for it and no local vision model is wired. So there is no suggestion (nothing leaves the server).",
   "editor.file": "Link a file",
   "editor.insertFile": "Insert file attachment as a link",
   "editor.noFiles":
@@ -4864,6 +4901,10 @@ const en: typeof de = {
   "ko.title": "Detail",
   "ko.statement": "Statement",
   "ko.createdAt": "Created on",
+  // WP-SHIP9-S2 Paket 3 (E2): short-preview disclosure per knowledge object/candidate.
+  "ko.preview.show": "Quick preview",
+  "ko.preview.hide": "Close preview",
+  "ko.preview.label": "Preview",
   "ko.createdByName": "by {{name}}",
   "ko.gallery": "Image gallery",
   "ko.galleryCount": "Image {{n}} of {{m}}",
@@ -5392,9 +5433,31 @@ const en: typeof de = {
     "Already imported pages are deselected; re-select them deliberately if needed.",
   "imp.select.queuedDeselected":
     "Pages already queued for review are deselected; re-select them deliberately if needed.",
+  // WP-SHIP9-S2 Paket 2 (D2–D7): match-list controls.
+  "imp.select.searchPlaceholder": "Search matches (title, author) …",
+  "imp.select.selectAll": "Select all",
+  "imp.select.deselectAll": "Deselect all",
+  "imp.select.hideImported": "Hide already imported/queued",
+  "imp.select.groupBy": "Group by:",
+  "imp.select.groupNone": "none",
+  "imp.select.groupTheme": "by theme",
+  "imp.select.groupLanguage": "by language",
+  "imp.select.groupCount": "{{n}} matches",
+  "imp.select.langDe": "German",
+  "imp.select.langEn": "English",
+  "imp.select.langNl": "Dutch",
+  "imp.select.langOther": "No language tag",
+  "imp.select.noTheme": "No theme",
+  "imp.select.chipAll": "All",
+  "imp.select.chipNew": "New",
+  "imp.select.chipImported": "Already imported",
+  "imp.select.chipQueued": "Queued",
+  "imp.select.summary": "{{selected}} of {{total}} selected",
+  "imp.select.emptyFiltered": "No match for search/filter — adjust the search or filter.",
   "imp.preview.imported": "already imported",
   "imp.preview.queued": "already queued for review",
   "imp.groups.cta": "Next: group & import",
+  "imp.groups.needSelection": "Select at least one entry in the preview to continue.",
   "imp.groups.grouping": "Grouping the posts by topic …",
   "imp.groups.retry": "Try again",
   "imp.groups.noAi": "Grouped without AI",
@@ -5421,6 +5484,7 @@ const en: typeof de = {
   "imp.groups.bilanzFailed": "{{n}} failed",
   "imp.groups.bilanzReview":
     "The imported posts are now in the import review — a person decides there about every addition to the knowledge base.",
+  "imp.groups.toReview": "Continue to import review ({{n}} open)",
   "imp.groups.failNotFound": "no longer in the current selection",
   "imp.groups.bilanzQueued": "{{n}} already queued (was already in review)",
   "imp.groups.bilanzNotAttempted": "{{n}} not attempted (run stopped after an error)",
@@ -5517,6 +5581,8 @@ const en: typeof de = {
   "imp.select.empty": "No match for this narrowing.",
   "imp.select.aiUnavailable":
     "AI selection is currently unavailable — only your click filters apply.",
+  "imp.select.aiConfidential":
+    "Cloud AI excluded due to confidential content — the free-text sentence was not evaluated; only your click filters apply.",
   "imp.uploadTitle": "JSON re-import",
   "imp.uploadHint":
     "Pick a JSON file — the entries land as contributions in the review list (no silent bulk insert).",
@@ -6489,6 +6555,8 @@ const en: typeof de = {
     "AI reported an error or was not reachable — this suggestion is a simple automatic derivation, not a model response.",
   "fd.fallbackModelTimeout":
     "AI did not respond in time (timeout) — this suggestion is a simple automatic derivation, not a model response.",
+  "fd.fallbackConfidential":
+    "The text is classified as confidential — the cloud AI is excluded for it and no local model is wired. This suggestion is a simple automatic derivation, not a model response.",
   "fd.fieldTitle": "Title",
   "fd.fieldStatement": "Statement / core message",
   "fd.fieldConditions": "Conditions",
@@ -7889,6 +7957,8 @@ const nl: typeof de = {
     "De cloud-AI overschreed de tijdslimiet — er is daarom geen voorstel. Probeer het later opnieuw.",
   "editor.captionAi.fallbackError":
     "De cloud-AI is momenteel niet bereikbaar of meldt een fout — er is daarom geen voorstel. Probeer het later opnieuw.",
+  "editor.captionAi.fallbackConfidential":
+    "Deze afbeelding is als vertrouwelijk aangemerkt — de cloud-AI is daarvoor uitgesloten en er is geen lokaal vision-model aangesloten. Er is daarom geen voorstel (er verlaat niets de server).",
   "editor.file": "Bestand koppelen",
   "editor.insertFile": "Bestandsbijlage als link invoegen",
   "editor.noFiles":
@@ -8113,6 +8183,10 @@ const nl: typeof de = {
   "ko.title": "Detail",
   "ko.statement": "Uitspraak",
   "ko.createdAt": "Aangemaakt op",
+  // WP-SHIP9-S2 Paket 3 (E2): korte-voorbeeld-uitklapper per kennisobject/kandidaat.
+  "ko.preview.show": "Snel voorbeeld",
+  "ko.preview.hide": "Voorbeeld sluiten",
+  "ko.preview.label": "Voorbeeld",
   "ko.createdByName": "door {{name}}",
   "ko.gallery": "Afbeeldingengalerij",
   "ko.galleryCount": "Afbeelding {{n}} van {{m}}",
@@ -8631,9 +8705,31 @@ const nl: typeof de = {
     "Al geïmporteerde pagina's zijn uitgevinkt; vink ze bewust weer aan indien nodig.",
   "imp.select.queuedDeselected":
     "Pagina's die al in de wachtrij voor beoordeling staan zijn uitgevinkt; vink ze bewust weer aan indien nodig.",
+  // WP-SHIP9-S2 Paket 2 (D2–D7): bediening van de treffer­lijst.
+  "imp.select.searchPlaceholder": "Zoek in treffers (titel, auteur) …",
+  "imp.select.selectAll": "Alles selecteren",
+  "imp.select.deselectAll": "Alles deselecteren",
+  "imp.select.hideImported": "Al geïmporteerde/voorgemerkte verbergen",
+  "imp.select.groupBy": "Groeperen:",
+  "imp.select.groupNone": "geen",
+  "imp.select.groupTheme": "op thema",
+  "imp.select.groupLanguage": "op taal",
+  "imp.select.groupCount": "{{n}} treffers",
+  "imp.select.langDe": "Duits",
+  "imp.select.langEn": "Engels",
+  "imp.select.langNl": "Nederlands",
+  "imp.select.langOther": "Zonder taalkenmerk",
+  "imp.select.noTheme": "Zonder thema",
+  "imp.select.chipAll": "Alle",
+  "imp.select.chipNew": "Nieuw",
+  "imp.select.chipImported": "Al geïmporteerd",
+  "imp.select.chipQueued": "Voorgemerkt",
+  "imp.select.summary": "{{selected}} van {{total}} geselecteerd",
+  "imp.select.emptyFiltered": "Geen treffer voor zoeken/filter — pas het zoeken of filter aan.",
   "imp.preview.imported": "al geïmporteerd",
   "imp.preview.queued": "al in de wachtrij voor beoordeling",
   "imp.groups.cta": "Verder: groeperen & overnemen",
+  "imp.groups.needSelection": "Selecteer minstens één item in het voorbeeld om verder te gaan.",
   "imp.groups.grouping": "De bijdragen worden thematisch gegroepeerd …",
   "imp.groups.retry": "Opnieuw proberen",
   "imp.groups.noAi": "Zonder AI gegroepeerd",
@@ -8660,6 +8756,7 @@ const nl: typeof de = {
   "imp.groups.bilanzFailed": "{{n}} mislukt",
   "imp.groups.bilanzReview":
     "De overgenomen bijdragen staan nu in de importreview — daar beslist een mens over elke toevoeging aan de kennisbank.",
+  "imp.groups.toReview": "Verder naar de importreview ({{n}} open)",
   "imp.groups.failNotFound": "niet meer in de huidige selectie",
   "imp.groups.bilanzQueued": "{{n}} al in de wachtrij (stond al in de review)",
   "imp.groups.bilanzNotAttempted": "{{n}} niet geprobeerd (run gestopt na een fout)",
@@ -8757,6 +8854,8 @@ const nl: typeof de = {
   "imp.select.empty": "Geen treffer voor deze verfijning.",
   "imp.select.aiUnavailable":
     "AI-selectie is momenteel niet beschikbaar — alleen je klikfilters gelden.",
+  "imp.select.aiConfidential":
+    "Cloud-AI uitgesloten vanwege vertrouwelijke inhoud — de vrije-tekstzin is niet geëvalueerd; alleen je klikfilters gelden.",
   "imp.uploadTitle": "JSON opnieuw importeren",
   "imp.uploadHint":
     "Kies een JSON-bestand — de items komen als bijdragen in de controlelijst (geen stille overname).",
@@ -9731,6 +9830,8 @@ const nl: typeof de = {
     "KI meldde een fout of was niet bereikbaar — dit voorstel is een eenvoudige automatische afleiding, geen modelantwoord.",
   "fd.fallbackModelTimeout":
     "KI antwoordde niet op tijd (time-out) — dit voorstel is een eenvoudige automatische afleiding, geen modelantwoord.",
+  "fd.fallbackConfidential":
+    "De tekst is als vertrouwelijk aangemerkt — de cloud-KI is daarvoor uitgesloten en er is geen lokaal model aangesloten. Dit voorstel is een eenvoudige automatische afleiding, geen modelantwoord.",
   "fd.fieldTitle": "Titel",
   "fd.fieldStatement": "Uitspraak / kernuitspraak",
   "fd.fieldConditions": "Voorwaarden",

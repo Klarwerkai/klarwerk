@@ -88,7 +88,8 @@ describe("WP-IC-PAKET-1 Teil 3: klickbare Filter-Chips + Zeitraum + Live-Aktuali
     expect(src).toContain('t("imp.preview.imported")');
     expect(src).toContain('t("imp.preview.sourceNewer")');
     expect(src).toContain('type="checkbox"');
-    expect(src).toContain("onChange={() => toggleRow(i)}");
+    // WP-SHIP9-S2 Paket 2: Zeilen-Rendering wanderte in renderRow (Originalindex bleibt gebunden).
+    expect(src).toContain("onChange={() => toggleRow(index)}");
     expect(src).toContain('t("imp.select.importedDeselected")');
     // Erkundung zeigt den ehrlichen Gesamt-Status.
     const explore = read("apps/web/src/components/ImportExplore.tsx");
