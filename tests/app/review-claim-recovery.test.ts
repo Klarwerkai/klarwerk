@@ -277,17 +277,21 @@ describe("WP-SHIP8-CLOSE-3 ROT-2: 'in_bearbeitung' bleibt im offenen Idempotenzr
     expect(await repo.insertIfAbsent(openCand("b2"))).toBe(true);
   });
 
-  it("Import-Status bleibt WÄHREND des Claims 'alreadyImported' (Statuskarte lügt nicht)", async () => {
+  // WP-SHIP9-S1b (bens GELB): das Kennzeichen des offenen Kandidaten heißt jetzt ehrlich
+  // alreadyQueued („bereits zur Prüfung vorgemerkt") — der Schutz vor dem „nicht markiert"-
+  // Flackern während des Claims bleibt identisch, nur die Semantik ist getrennt.
+  it("Import-Status bleibt WÄHREND des Claims 'alreadyQueued' (Statuskarte lügt nicht)", async () => {
     const ctx = harness();
     const [cand] = await ctx.library.createImportCandidates([anchorItem()], "tester");
     const id = (cand as { id: string }).id;
-    // Vor dem Claim: offener Kandidat → bereits importiert.
+    // Vor dem Claim: offener Kandidat → bereits zur Prüfung vorgemerkt (NICHT „importiert").
     const before = importStatusFor(
       anchorItem(),
       await importedAnchorVersions(ctx.koService),
       await pendingCandidateVersions(ctx.library),
     );
-    expect(before.alreadyImported).toBe(true);
+    expect(before.alreadyQueued).toBe(true);
+    expect(before.alreadyImported).toBe(false);
     // Accept hängt in der KO-Anlage → der Kandidat ist geclaimt (in_bearbeitung).
     let createStarted = false;
     (ctx.koService as { create: KoCreate }).create = () => {
@@ -299,13 +303,13 @@ describe("WP-SHIP8-CLOSE-3 ROT-2: 'in_bearbeitung' bleibt im offenen Idempotenzr
       expect(createStarted).toBe(true);
     });
     expect((await ctx.candidates.findById(id))?.status).toBe("in_bearbeitung");
-    // WÄHREND des Claims: weiterhin bereits importiert (kein „nicht importiert"-Flackern).
+    // WÄHREND des Claims: weiterhin vorgemerkt (kein „nicht markiert"-Flackern).
     const during = importStatusFor(
       anchorItem(),
       await importedAnchorVersions(ctx.koService),
       await pendingCandidateVersions(ctx.library),
     );
-    expect(during.alreadyImported).toBe(true);
+    expect(during.alreadyQueued).toBe(true);
   });
 
   it("Pg-Pins: Index-Migration ERSETZT die alten Prädikate wirklich; ON-CONFLICT-Inference passt zum neuen Index", async () => {

@@ -543,6 +543,20 @@ export class Reasoner {
     return this.usingPrimary() || this.usingSecondary();
   }
 
+  // WP-SHIP9-S1 (bens W2-Auflage aus BERICHT-w2check): taskbezogene Ursachenbestimmung — wertet
+  // GENAU die Routing-Entscheidung aus, mit der providerChain(task, confidential) die Cloud-Kante
+  // setzt (choiceFor(task) cloud-geeignet UND Cloud-Primary verdrahtet). Ein globales
+  // usingAnyModel() reicht bewusst NICHT: eine deterministische Task-Policy, eine local-Policy
+  // ohne lokales Modell und der fail-closed Policy-Ladefehler (LOAD_FAILURE_FALLBACK_POLICY →
+  // deterministic) dürfen NIE als Vertraulichkeitsblockade erscheinen.
+  private cloudExcludedByConfidentiality(task: ModelRunTask, confidential: boolean): boolean {
+    if (!confidential || !this.usingPrimary()) {
+      return false;
+    }
+    const choice = this.choiceFor(task);
+    return choice === "auto" || choice === "cloud" || choice === "model";
+  }
+
   private activeModelProvider(): ReasonerProvider {
     if (this.usingPrimary()) {
       return this.primary;
@@ -643,8 +657,14 @@ export class Reasoner {
     }
     const modelFailure = failureBox.current;
     const failure = modelFailure === null ? null : classifyModelFailure(modelFailure.err);
+    // WP-SHIP9-S1 (bens W2-Auflage): war KEIN Modell in der (vertraulichkeitsgefilterten) Kette,
+    // wird unterschieden, WARUM — fiel die Cloud-Kante genau durch die Vertraulichkeit weg, ist
+    // die ehrliche Ursache "confidential" statt des irreführenden "no-model". War ein (lokales)
+    // Modell in der Kette und scheiterte, bleiben model-timeout/model-error unangetastet.
     const fallbackReason = !hadModelInChain
-      ? ("no-model" as const)
+      ? this.cloudExcludedByConfidentiality("group", confidential)
+        ? ("confidential" as const)
+        : ("no-model" as const)
       : failure?.failureClass === "timeout"
         ? ("model-timeout" as const)
         : ("model-error" as const);

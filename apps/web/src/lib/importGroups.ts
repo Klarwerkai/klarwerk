@@ -40,6 +40,14 @@ export const IMPORT_GROUPS_TEXT = {
   // WP-REST18 (bens Fix 2): handlungsfähiger SNAPSHOT_EXPIRED-Weg — klare Meldung + Neu gruppieren.
   expired: "imp.groups.expired",
   regroup: "imp.groups.regroup",
+  // WP-SHIP9-S1 (bens W2-Auflage): spezifischer Grund am „Ohne KI gruppiert"-Badge, wenn die
+  // Cloud-KI wegen vertraulicher Kandidaten ausgeschlossen war (fallbackReason "confidential").
+  noAiReason: "imp.groups.noAiReason",
+  reasonConfidential: "imp.groups.reason.confidential",
+  // WP-SHIP9-S1b (bens GELB): eigener Zustand „bereits zur Prüfung vorgemerkt" (offener Kandidat,
+  // getrennt von „bereits importiert") — Badge am Kandidaten + eigene Bilanz-Zeile.
+  hintQueued: "imp.groups.hintQueued",
+  bilanzSkippedQueued: "imp.groups.bilanzSkippedQueued",
 } as const;
 
 export interface GroupedCandidate {
@@ -47,6 +55,9 @@ export interface GroupedCandidate {
   title: string;
   textCodec?: "decoded";
   alreadyImported: boolean;
+  // WP-SHIP9-S1b: offener Kandidat — „bereits zur Prüfung vorgemerkt" (eigener Zustand, gleiche
+  // Vorab-Abwahl wie bereits Importiertes: der Queue-Schutz bleibt, die Bezeichnung ist ehrlich).
+  alreadyQueued?: boolean;
   // WP-IC-6b: Quelle neuer als der Import — wählbar als Aktualisierung (nicht vorab abgewählt).
   sourceNewer?: boolean;
   hints: string[]; // "already-imported" | "stale" | "short"
@@ -58,13 +69,17 @@ export interface ImportGroup {
   kind?: "catchall" | "no-theme";
 }
 
-// Vorgabe: alles freigegeben AUSSER bereits Importiertem (Dedupe-Vorgabe; Override bleibt möglich).
+// Vorgabe: alles freigegeben AUSSER bereits Importiertem und bereits Vorgemerktem (Dedupe- bzw.
+// Queue-Schutz-Vorgabe; Override bleibt möglich — WP-SHIP9-S1b: der vorgemerkte Zustand ist vom
+// importierten getrennt, verhält sich in der Vorgabe aber gleich: nicht doppelt einreihen).
 // WP-IC-6b: AUSNAHME — ist die Quelle seit dem Import aktualisiert (sourceNewer), ist der Kandidat
 // als „Aktualisierung importieren" WÄHLBAR und startet ausgewählt (kein unveränderte-Dublette-Fall).
 export function initialSelection(candidates: readonly GroupedCandidate[]): Record<string, boolean> {
   const selection: Record<string, boolean> = {};
   for (const candidate of candidates) {
-    selection[candidate.id] = !candidate.alreadyImported || candidate.sourceNewer === true;
+    selection[candidate.id] =
+      (!candidate.alreadyImported && candidate.alreadyQueued !== true) ||
+      candidate.sourceNewer === true;
   }
   return selection;
 }
@@ -118,6 +133,16 @@ export function groupLabelKey(group: ImportGroup): string | null {
   return null;
 }
 
+// WP-SHIP9-S1 (bens W2-Auflage, Muster aiCheckFailureReasonKey): Ursache → i18n-Key für den
+// Grund-Zusatz am „Ohne KI gruppiert"-Badge. NUR "confidential" bekommt einen spezifischen Text;
+// no-model/model-timeout/model-error bleiben bewusst bei der bisherigen Darstellung (bens T9).
+export function noAiReasonKey(fallbackReason: string | undefined): string | null {
+  if (fallbackReason === "confidential") {
+    return IMPORT_GROUPS_TEXT.reasonConfidential;
+  }
+  return null;
+}
+
 export function hintLabelKey(hint: string): string | null {
   if (hint === "already-imported") {
     return IMPORT_GROUPS_TEXT.hintImported;
@@ -165,6 +190,9 @@ export interface ImportBilanz {
   updates: number; // WP-IC-6b: davon Aktualisierungen — informative TEILMENGE von imported
   alreadyQueued: number; // WP-SHIP7-FIX: No-op des Servers — NICHT als importiert gezählt
   skippedAlreadyImported: number; // vorab abgewählt, weil bereits importiert (Dedupe-Vorgabe)
+  // WP-SHIP9-S1b: vorab abgewählt, weil bereits zur Prüfung vorgemerkt (offener Kandidat) —
+  // ehrlich getrennt von „bereits importiert".
+  skippedAlreadyQueued: number;
   excluded: number; // bewusst ausgeschlossen (Gruppe/Einzel)
   failed: { id: string; reason: string }[]; // inkl. not-found und http-error (PII-frei)
   notAttempted: string[]; // nach einem Batch-Fehler nie versucht — Wiederholen möglich
@@ -174,18 +202,22 @@ export interface ImportBilanz {
 // ausgeschlossen aus dem lokalen Auswahl-Zustand; Fehlschläge je Id mit PII-freiem Grund
 // (not-found vom Server, http-error für den gescheiterten Batch); der nicht versuchte Rest wird
 // explizit ausgewiesen. INVARIANTE (als Test gepinnt): alle Kandidaten der Gruppierung ==
-// importiert + bereits eingereiht + übersprungen + ausgeschlossen + fehlgeschlagen + nicht versucht.
+// importiert + bereits eingereiht + übersprungen (importiert/vorgemerkt) + ausgeschlossen +
+// fehlgeschlagen + nicht versucht.
 export function aggregateBilanz(
   candidates: readonly GroupedCandidate[],
   selection: Readonly<Record<string, boolean>>,
   run: ApplyRunState,
 ): ImportBilanz {
   let skippedAlreadyImported = 0;
+  let skippedAlreadyQueued = 0;
   let excluded = 0;
   for (const candidate of candidates) {
     if (selection[candidate.id] !== true) {
       if (candidate.alreadyImported) {
         skippedAlreadyImported += 1;
+      } else if (candidate.alreadyQueued === true) {
+        skippedAlreadyQueued += 1;
       } else {
         excluded += 1;
       }
@@ -211,6 +243,7 @@ export function aggregateBilanz(
     updates,
     alreadyQueued,
     skippedAlreadyImported,
+    skippedAlreadyQueued,
     excluded,
     failed,
     notAttempted,

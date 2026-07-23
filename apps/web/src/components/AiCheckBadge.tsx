@@ -6,6 +6,7 @@
 import { Clock } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { KnowledgeObject } from "../api/types";
+import { aiCheckFailureReasonKey } from "../lib/aiCheckStatusCard";
 
 export interface AiCheckBadgeProps {
   aiCheck: KnowledgeObject["aiCheck"];
@@ -14,25 +15,10 @@ export interface AiCheckBadgeProps {
   retryBusy?: boolean;
 }
 
-// Ursache → i18n-Key (ehrlich benannt): ohne aktives Modell wurde nichts geprueft (no-model);
-// WP-SHIP8-FINAL (bens Bedingung 2): timeout (Job-Frist ueberschritten) und queue-overflow
-// (Warteschlangen-Kappe) sind eigene, ehrliche Ursachen. WP-SHIP8-CLOSE (bens F1): model-timeout
-// (das MODELL antwortete nicht rechtzeitig) eigenständig. Unbekannt/fehlend → model-error.
-export function aiCheckFailureReasonKey(fallbackReason: string | undefined): string {
-  if (fallbackReason === "no-model") {
-    return "val.aiCheck.reason.no-model";
-  }
-  if (fallbackReason === "timeout") {
-    return "val.aiCheck.reason.timeout";
-  }
-  if (fallbackReason === "model-timeout") {
-    return "val.aiCheck.reason.model-timeout";
-  }
-  if (fallbackReason === "queue-overflow") {
-    return "val.aiCheck.reason.queue-overflow";
-  }
-  return "val.aiCheck.reason.model-error";
-}
+// WP-SHIP9-S1 (Pedis B3): die Ursache→Key-Abbildung lebt jetzt in der lib (aiCheckStatusCard) —
+// EINE Quelle für dieses Badge UND die Live-Status-Karte auf /erfassen (eine .ts-lib darf keine
+// .tsx importieren, Root-Build ohne jsx). Re-Export erhält die bestehende Import-Fläche.
+export { aiCheckFailureReasonKey };
 
 export function AiCheckBadge({
   aiCheck,

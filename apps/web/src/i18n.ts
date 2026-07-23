@@ -817,9 +817,13 @@ const de = {
     "Gespeichert als dein eigenes Wissen (kein Demo-Beispiel), aber noch nicht validiert. Erst nach ausreichender Bewertung wird es nutzbares Wissen — bitte zur Prüfung geben. Automatisch validiert wird nichts.",
   "capture.savedFromDraft":
     "Dein fortgesetzter Entwurf wurde als offenes Wissen eingereicht und aus deinen Entwürfen entfernt.",
-  // WP-SUBMIT-ASYNC (Pedi R3, 21.07.): das Einreichen wartet nicht mehr auf die KI-Prüfung.
-  "capture.aiCheckBackground":
-    "Die KI-Prüfung läuft im Hintergrund — das Ergebnis erscheint in der Validierung.",
+  // WP-SHIP9-S1 (Pedis B3): der ECHTE Prüf-Status auf der Bestätigungs-Karte — „läuft" nur bis zum
+  // tatsächlichen Ergebnis, Fehlschlag ehrlich mit Ursache (val.aiCheck.reason.*), kein stilles Grün.
+  "capture.aiCheck.running":
+    "KI-Prüfung läuft … Das Ergebnis erscheint hier, sobald sie abgeschlossen ist.",
+  "capture.aiCheck.done": "KI-Prüfung abgeschlossen — Details in der Validierung.",
+  "capture.aiCheck.failed":
+    "KI-Prüfung fehlgeschlagen: {{reason}} Neu anstoßen kannst du sie in der Validierung.",
   // SCRUM-373 / AG-02-SESSION: nach dem Speichern haben Bilder/Dateien eine sichere Objekt-Referenz.
   "capture.savedFilesNote":
     "{{count}} Anhang/Anhänge sind jetzt als sichere Objekt-Referenz gespeichert und im Editor des Wissensobjekts als Beleg verlinkbar. Belege sind Kontext — sie ersetzen die Validierung nicht.",
@@ -2076,6 +2080,7 @@ const de = {
   // WP-IC-PAKET-1 (Teil 3/4): Space-Filter + ehrlicher Import-Status der Erkundung.
   "imp.explore.spaces": "Bereiche (Spaces)",
   "imp.explore.alreadyImported": "Davon bereits importiert: {{n}}",
+  "imp.explore.alreadyQueued": "Davon bereits zur Prüfung vorgemerkt: {{n}}",
   "imp.select.title": "Auswahl eingrenzen",
   "imp.select.hint":
     "Klicke Themen an ODER beschreibe in einem Satz, was importiert werden soll — beides zusammen geht auch. Die Vorschau zeigt, was passt — importiert wird noch nichts.",
@@ -2100,14 +2105,21 @@ const de = {
   "imp.select.yearTo": "bis (Jahr)",
   // WP-IC-PAKET-1 (Teil 4, IC-6a): Import-Status + Auswahl in der Vorschau.
   "imp.select.alreadyImported": "{{n}} bereits importiert",
+  // WP-SHIP9-S1b (bens GELB): eigener Zustand — offener Kandidat ist nur vorgemerkt, nicht importiert.
+  "imp.select.alreadyQueued": "{{n}} bereits zur Prüfung vorgemerkt",
   "imp.select.selectedCount": "{{n}} angewählt",
   "imp.select.importedDeselected":
     "Bereits importierte Seiten sind abgewählt; bei Bedarf bewusst wieder anwählen.",
+  "imp.select.queuedDeselected":
+    "Bereits zur Prüfung vorgemerkte Seiten sind abgewählt; bei Bedarf bewusst wieder anwählen.",
   "imp.preview.imported": "bereits importiert",
+  "imp.preview.queued": "bereits zur Prüfung vorgemerkt",
   "imp.groups.cta": "Weiter: Gruppieren & Übernehmen",
   "imp.groups.grouping": "Die Beiträge werden thematisch gruppiert …",
   "imp.groups.retry": "Erneut versuchen",
   "imp.groups.noAi": "Ohne KI gruppiert",
+  "imp.groups.noAiReason": "Ohne KI gruppiert — {{reason}}",
+  "imp.groups.reason.confidential": "vertrauliche Kandidaten — Cloud-KI ausgeschlossen",
   "imp.groups.aiGrouped": "KI-gruppiert",
   "imp.groups.groupCount": "{{n}} Beiträge",
   "imp.groups.approve": "Freigeben",
@@ -2116,6 +2128,7 @@ const de = {
   "imp.groups.catchall": "Weitere Beiträge",
   "imp.groups.noTheme": "Ohne Thema",
   "imp.groups.hintImported": "bereits importiert",
+  "imp.groups.hintQueued": "bereits zur Prüfung vorgemerkt",
   "imp.groups.hintStale": "älter als 1 Jahr",
   "imp.groups.hintShort": "wenig Inhalt",
   "imp.groups.applyCta": "Auswahl übernehmen ({{n}})",
@@ -2123,6 +2136,7 @@ const de = {
   "imp.groups.bilanzTitle": "Ergebnis der Übernahme",
   "imp.groups.bilanzImported": "{{n}} übernommen",
   "imp.groups.bilanzSkipped": "{{n}} übersprungen (bereits importiert)",
+  "imp.groups.bilanzSkippedQueued": "{{n}} übersprungen (bereits zur Prüfung vorgemerkt)",
   "imp.groups.bilanzExcluded": "{{n}} ausgeschlossen",
   "imp.groups.bilanzFailed": "{{n}} fehlgeschlagen",
   "imp.groups.bilanzReview":
@@ -4124,9 +4138,10 @@ const en: typeof de = {
     "Saved as your own knowledge (not a demo example), but not yet validated. It becomes usable knowledge only after sufficient review — please send it for review. Nothing is validated automatically.",
   "capture.savedFromDraft":
     "Your continued draft was submitted as open knowledge and removed from your drafts.",
-  // WP-SUBMIT-ASYNC: submitting no longer waits for the AI check.
-  "capture.aiCheckBackground":
-    "The AI check runs in the background — the result will appear in validation.",
+  // WP-SHIP9-S1 (Pedis B3): the REAL check status on the confirmation card.
+  "capture.aiCheck.running": "AI check running … the result will appear here once it completes.",
+  "capture.aiCheck.done": "AI check completed — details in validation.",
+  "capture.aiCheck.failed": "AI check failed: {{reason}} You can restart it in validation.",
   // SCRUM-373 / AG-02-SESSION: after saving, images/files have a safe object reference.
   "capture.savedFilesNote":
     "{{count}} attachment(s) are now stored as a safe object reference and can be linked as evidence in the knowledge object's editor. Evidence is context — it does not replace validation.",
@@ -5348,6 +5363,7 @@ const en: typeof de = {
     "Theme derived deterministically from the page titles — the source has no labels for these pages.",
   "imp.explore.spaces": "Spaces",
   "imp.explore.alreadyImported": "Of these already imported: {{n}}",
+  "imp.explore.alreadyQueued": "Of these already queued for review: {{n}}",
   "imp.select.title": "Narrow the selection",
   "imp.select.hint":
     "Click themes OR describe in one sentence what to import — combining both works too. The preview shows what matches — nothing is imported yet.",
@@ -5370,14 +5386,20 @@ const en: typeof de = {
   "imp.select.yearFrom": "from (year)",
   "imp.select.yearTo": "to (year)",
   "imp.select.alreadyImported": "{{n}} already imported",
+  "imp.select.alreadyQueued": "{{n}} already queued for review",
   "imp.select.selectedCount": "{{n}} selected",
   "imp.select.importedDeselected":
     "Already imported pages are deselected; re-select them deliberately if needed.",
+  "imp.select.queuedDeselected":
+    "Pages already queued for review are deselected; re-select them deliberately if needed.",
   "imp.preview.imported": "already imported",
+  "imp.preview.queued": "already queued for review",
   "imp.groups.cta": "Next: group & import",
   "imp.groups.grouping": "Grouping the posts by topic …",
   "imp.groups.retry": "Try again",
   "imp.groups.noAi": "Grouped without AI",
+  "imp.groups.noAiReason": "Grouped without AI — {{reason}}",
+  "imp.groups.reason.confidential": "confidential candidates — cloud AI excluded",
   "imp.groups.aiGrouped": "AI-grouped",
   "imp.groups.groupCount": "{{n}} posts",
   "imp.groups.approve": "Approve",
@@ -5386,6 +5408,7 @@ const en: typeof de = {
   "imp.groups.catchall": "More posts",
   "imp.groups.noTheme": "Without topic",
   "imp.groups.hintImported": "already imported",
+  "imp.groups.hintQueued": "already queued for review",
   "imp.groups.hintStale": "older than 1 year",
   "imp.groups.hintShort": "little content",
   "imp.groups.applyCta": "Import selection ({{n}})",
@@ -5393,6 +5416,7 @@ const en: typeof de = {
   "imp.groups.bilanzTitle": "Import result",
   "imp.groups.bilanzImported": "{{n}} imported",
   "imp.groups.bilanzSkipped": "{{n}} skipped (already imported)",
+  "imp.groups.bilanzSkippedQueued": "{{n}} skipped (already queued for review)",
   "imp.groups.bilanzExcluded": "{{n}} excluded",
   "imp.groups.bilanzFailed": "{{n}} failed",
   "imp.groups.bilanzReview":
@@ -7367,9 +7391,12 @@ const nl: typeof de = {
     "Opgeslagen als je eigen kennis (geen demovoorbeeld), maar nog niet gevalideerd. Pas na voldoende beoordeling wordt het bruikbare kennis — geef het ter beoordeling. Er wordt niets automatisch gevalideerd.",
   "capture.savedFromDraft":
     "Je voortgezette concept is als openstaande kennis ingediend en uit je concepten verwijderd.",
-  // WP-SUBMIT-ASYNC: indienen wacht niet meer op de AI-controle.
-  "capture.aiCheckBackground":
-    "De AI-controle draait op de achtergrond — het resultaat verschijnt in de validatie.",
+  // WP-SHIP9-S1 (Pedis B3): de ECHTE controlestatus op de bevestigingskaart.
+  "capture.aiCheck.running":
+    "AI-controle loopt … het resultaat verschijnt hier zodra deze is afgerond.",
+  "capture.aiCheck.done": "AI-controle afgerond — details in de validatie.",
+  "capture.aiCheck.failed":
+    "AI-controle mislukt: {{reason}} Je kunt deze in de validatie opnieuw starten.",
   "capture.savedFilesNote":
     "{{count}} bijlage(n) zijn nu als veilige objectreferentie opgeslagen en in de editor van het kennisobject als bewijs te koppelen. Bewijs is context — het vervangt de validatie niet.",
   "capture.attachTooLarge":
@@ -8575,6 +8602,7 @@ const nl: typeof de = {
     "Thema deterministisch afgeleid uit de paginatitels — de bron heeft voor deze pagina's geen labels.",
   "imp.explore.spaces": "Ruimtes (spaces)",
   "imp.explore.alreadyImported": "Waarvan al geïmporteerd: {{n}}",
+  "imp.explore.alreadyQueued": "Waarvan al in de wachtrij voor beoordeling: {{n}}",
   "imp.select.title": "Selectie verfijnen",
   "imp.select.hint":
     "Klik thema's aan OF beschrijf in één zin wat er geïmporteerd moet worden — allebei samen kan ook. De voorbeeldweergave toont wat past — er wordt nog niets geïmporteerd.",
@@ -8597,14 +8625,20 @@ const nl: typeof de = {
   "imp.select.yearFrom": "van (jaar)",
   "imp.select.yearTo": "tot (jaar)",
   "imp.select.alreadyImported": "{{n}} al geïmporteerd",
+  "imp.select.alreadyQueued": "{{n}} al in de wachtrij voor beoordeling",
   "imp.select.selectedCount": "{{n}} geselecteerd",
   "imp.select.importedDeselected":
     "Al geïmporteerde pagina's zijn uitgevinkt; vink ze bewust weer aan indien nodig.",
+  "imp.select.queuedDeselected":
+    "Pagina's die al in de wachtrij voor beoordeling staan zijn uitgevinkt; vink ze bewust weer aan indien nodig.",
   "imp.preview.imported": "al geïmporteerd",
+  "imp.preview.queued": "al in de wachtrij voor beoordeling",
   "imp.groups.cta": "Verder: groeperen & overnemen",
   "imp.groups.grouping": "De bijdragen worden thematisch gegroepeerd …",
   "imp.groups.retry": "Opnieuw proberen",
   "imp.groups.noAi": "Zonder AI gegroepeerd",
+  "imp.groups.noAiReason": "Zonder AI gegroepeerd — {{reason}}",
+  "imp.groups.reason.confidential": "vertrouwelijke kandidaten — cloud-AI uitgesloten",
   "imp.groups.aiGrouped": "AI-gegroepeerd",
   "imp.groups.groupCount": "{{n}} bijdragen",
   "imp.groups.approve": "Vrijgeven",
@@ -8613,6 +8647,7 @@ const nl: typeof de = {
   "imp.groups.catchall": "Overige bijdragen",
   "imp.groups.noTheme": "Zonder onderwerp",
   "imp.groups.hintImported": "al geïmporteerd",
+  "imp.groups.hintQueued": "al in de wachtrij voor beoordeling",
   "imp.groups.hintStale": "ouder dan 1 jaar",
   "imp.groups.hintShort": "weinig inhoud",
   "imp.groups.applyCta": "Selectie overnemen ({{n}})",
@@ -8620,6 +8655,7 @@ const nl: typeof de = {
   "imp.groups.bilanzTitle": "Resultaat van de overname",
   "imp.groups.bilanzImported": "{{n}} overgenomen",
   "imp.groups.bilanzSkipped": "{{n}} overgeslagen (al geïmporteerd)",
+  "imp.groups.bilanzSkippedQueued": "{{n}} overgeslagen (al in de wachtrij voor beoordeling)",
   "imp.groups.bilanzExcluded": "{{n}} uitgesloten",
   "imp.groups.bilanzFailed": "{{n}} mislukt",
   "imp.groups.bilanzReview":

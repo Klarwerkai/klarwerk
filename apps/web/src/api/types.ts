@@ -536,9 +536,11 @@ export interface ImportExploreSummary {
 export interface ImportExploreResponse {
   summary: ImportExploreSummary;
   truncated: boolean;
-  // WP-IC-PAKET-1 (Teil 4, IC-6a): wie viele der gesehenen Seiten bereits importiert sind
-  // (KO-Herkunftsanker oder offener Kandidat mit derselben Quell-ID).
+  // WP-IC-PAKET-1 (Teil 4, IC-6a): wie viele der gesehenen Seiten bereits importiert sind.
+  // WP-SHIP9-S1b (bens GELB): NUR noch lebende KO-Herkunftsanker — offene Kandidaten zählen
+  // getrennt als alreadyQueued („bereits zur Prüfung vorgemerkt").
   alreadyImported?: number;
+  alreadyQueued?: number;
   // WP-SAMMEL20-FIX (bens Fix 6a): partielle Mappingfehler werden nicht mehr verschwiegen —
   // gelesene/nicht lesbare Seiten als ehrliche Zähler, dazu PII-freie Fehlerklassen.
   mappedPages?: number;
@@ -564,7 +566,10 @@ export interface ImportPreviewEntry {
   hasImage: boolean;
   themes: string[];
   // WP-IC-PAKET-1 (Teil 4, IC-6a): Import-Status aus dem Quell-Referenz-Abgleich (reine Anzeige).
+  // WP-SHIP9-S1b: alreadyImported = lebender KO-Anker; alreadyQueued = offener Kandidat
+  // („bereits zur Prüfung vorgemerkt") — zwei getrennte, ehrliche Kennzeichen.
   alreadyImported?: boolean;
+  alreadyQueued?: boolean;
   sourceNewer?: boolean;
   // WP-IC-PAKET-1c (ROT-2): "decoded" = kanonisch dekodiert — Anzeige dekodiert NICHT erneut.
   textCodec?: "decoded";
@@ -576,7 +581,9 @@ export interface ImportSelectResponse {
   criteria: ImportSelectCriteria; // die EFFEKTIV benutzten Kriterien (Transparenz)
   preview: ImportPreviewEntry[];
   // WP-IC-PAKET-1 (Teil 4): Anzahl bereits importierter Einträge INNERHALB der Vorschau-Liste.
+  // WP-SHIP9-S1b: dazu getrennt die Anzahl der bereits zur Prüfung vorgemerkten Einträge.
   alreadyImported?: number;
+  alreadyQueued?: number;
   // WP-SAMMEL20-FIX (bens Fix 2): ehrlicher KI-Status der Satz-Auswertung — nur gesetzt, wenn ein
   // Freitext-Satz gestellt war. "unavailable" = die KI-Auswahl fiel aus (fallbackReason nennt die
   // Ursache); es gelten dann sichtbar NUR die Klick-Filter.
@@ -720,6 +727,9 @@ export interface ImportGroupCandidate {
   title: string;
   textCodec?: "decoded";
   alreadyImported: boolean;
+  // WP-SHIP9-S1b (bens GELB): offener Kandidat = „bereits zur Prüfung vorgemerkt" — eigener,
+  // vom Import-Kennzeichen getrennter Zustand (Vorab-Abwahl wie bisher, ehrlich benannt).
+  alreadyQueued: boolean;
   // WP-IC-6b: Quelle aktualisiert seit Import — wählbar als Aktualisierung (neue KO-Version im Review).
   sourceNewer: boolean;
   hints: string[]; // "already-imported" | "stale" | "short" (deterministische Qualitätshinweise)
@@ -737,7 +747,10 @@ export interface ImportGroupResponse {
   demo: boolean;
   // WP-SHIP7-FIX: Snapshot-Pin — jeder Apply-Batch desselben Laufs nutzt GENAU diese Datenbasis.
   snapshotToken: number;
-  fallbackReason?: "no-model" | "model-timeout" | "model-error";
+  // WP-SHIP9-S1 (bens W2-Auflage): "confidential" = Cloud-KI konfiguriert und Policy cloud-geeignet,
+  // aber wegen vertraulicher Kandidaten ausgeschlossen (kein lokales Modell sprang ein) — die UI
+  // zeigt dafür einen spezifischen Grund am „Ohne KI gruppiert"-Badge. Additive Union.
+  fallbackReason?: "no-model" | "model-timeout" | "model-error" | "confidential";
 }
 
 // WP-IC-4 (Schritt 5): Teil-Bilanz eines Übernahme-Batches (der Client aggregiert ehrlich).

@@ -162,6 +162,142 @@ describe("WP-IC-4: Reasoner.groupCandidates (Fallback-Muster + Protokoll)", () =
     expect(timeout.fallbackReason).toBe("model-timeout");
   });
 
+  it("WP-SHIP9-S1 T1: Cloud da + auto + vertraulich + kein lokal → confidential + NULL Cloud-Aufrufe", async () => {
+    let cloudCalls = 0;
+    const cloud = new ModelProvider({
+      name: "anthropic:test",
+      complete: async () => {
+        cloudCalls += 1;
+        return JSON.stringify({ groups: [{ title: "Alles", ids: ["a", "b", "c", "d"] }] });
+      },
+    });
+    const res = await new Reasoner(cloud).groupCandidates(CANDIDATES, "de", true);
+    expect(res.demo).toBe(true);
+    expect(res.fallbackReason).toBe("confidential");
+    expect(cloudCalls).toBe(0); // die Vertraulichkeits-DURCHSETZUNG bleibt unangetastet
+    // Deterministische Gruppen bleiben nutzbar (Flow benutzbar wie bisher).
+    expect(res.groups.map((g) => g.title)).toEqual(["Wartung", "Fehler", "Ohne Thema"]);
+  });
+
+  it("WP-SHIP9-S1 T2: Policy deterministic + vertraulich → NICHT confidential (bewusste Wahl)", async () => {
+    const cloud = new ModelProvider({
+      name: "anthropic:test",
+      complete: async () => JSON.stringify({ groups: [{ title: "X", ids: ["a"] }] }),
+    });
+    const reasoner = new Reasoner(cloud);
+    await reasoner.setTaskConfig({ global: "deterministic", perTask: {} });
+    const res = await reasoner.groupCandidates(CANDIDATES, "de", true);
+    expect(res.demo).toBe(true);
+    expect(res.fallbackReason).toBe("no-model");
+    // Auch als reine perTask-Wahl (global cloud-geeignet, group bewusst deterministisch).
+    const perTask = new Reasoner(cloud);
+    await perTask.setTaskConfig({ global: "auto", perTask: { group: "deterministic" } });
+    const res2 = await perTask.groupCandidates(CANDIDATES, "de", true);
+    expect(res2.fallbackReason).toBe("no-model");
+  });
+
+  it("WP-SHIP9-S1 T2b: fail-closed Policy-Ladefehler (deterministic) → NIE confidential", async () => {
+    const cloud = new ModelProvider({
+      name: "anthropic:test",
+      complete: async () => JSON.stringify({ groups: [{ title: "X", ids: ["a"] }] }),
+    });
+    const reasoner = new Reasoner(cloud, undefined, undefined, undefined, undefined, {
+      get: async () => {
+        throw new Error("DB nicht erreichbar");
+      },
+      set: async () => {},
+    });
+    const loaded = await reasoner.loadPersistedPolicy();
+    expect(loaded.source).toBe("load-error");
+    const res = await reasoner.groupCandidates(CANDIDATES, "de", true);
+    expect(res.demo).toBe(true);
+    expect(res.fallbackReason).toBe("no-model");
+  });
+
+  it("WP-SHIP9-S1 T3: Policy local ohne lokales Modell + vertraulich → NICHT confidential", async () => {
+    const cloud = new ModelProvider({
+      name: "anthropic:test",
+      complete: async () => JSON.stringify({ groups: [{ title: "X", ids: ["a"] }] }),
+    });
+    const reasoner = new Reasoner(cloud);
+    await reasoner.setTaskConfig({ global: "local", perTask: {} });
+    const res = await reasoner.groupCandidates(CANDIDATES, "de", true);
+    expect(res.demo).toBe(true);
+    // Die Cloud war per Policy NIE zulässig — Vertraulichkeit ist nicht die entscheidende Ursache.
+    expect(res.fallbackReason).toBe("no-model");
+  });
+
+  it("WP-SHIP9-S1 T4: lokales Modell + vertraulich + Erfolg → kein Demo-Fallback, Cloud unangetastet", async () => {
+    let cloudCalls = 0;
+    const cloud = new ModelProvider({
+      name: "anthropic:test",
+      complete: async () => {
+        cloudCalls += 1;
+        return JSON.stringify({ groups: [{ title: "Cloud", ids: ["a", "b", "c", "d"] }] });
+      },
+    });
+    const local = new ModelProvider({
+      name: "local:test",
+      complete: async () =>
+        JSON.stringify({
+          groups: [
+            { title: "Instandhaltung", ids: ["a", "b"] },
+            { title: "Störungen", ids: ["c", "d"] },
+          ],
+        }),
+    });
+    const res = await new Reasoner(cloud, undefined, undefined, undefined, local).groupCandidates(
+      CANDIDATES,
+      "de",
+      true,
+    );
+    expect(res.demo).toBe(false);
+    expect(res.fallbackReason).toBeUndefined();
+    expect(cloudCalls).toBe(0);
+  });
+
+  it("WP-SHIP9-S1 T5: lokales Modell + vertraulich + Timeout/Fehler → model-timeout/model-error", async () => {
+    const cloud = new ModelProvider({
+      name: "anthropic:test",
+      complete: async () => JSON.stringify({ groups: [{ title: "Cloud", ids: ["a"] }] }),
+    });
+    const timingOut = new ModelProvider({
+      name: "local:test",
+      complete: async () => {
+        throw new ModelTimeoutError("Zeitlimit", 30000);
+      },
+    });
+    const timeout = await new Reasoner(
+      cloud,
+      undefined,
+      undefined,
+      undefined,
+      timingOut,
+    ).groupCandidates(CANDIDATES, "de", true);
+    expect(timeout.demo).toBe(true);
+    expect(timeout.fallbackReason).toBe("model-timeout");
+    const failing = new ModelProvider({
+      name: "local:test",
+      complete: async () => {
+        throw new Error("Modell-API antwortete mit 529");
+      },
+    });
+    const err = await new Reasoner(cloud, undefined, undefined, undefined, failing).groupCandidates(
+      CANDIDATES,
+      "de",
+      true,
+    );
+    expect(err.demo).toBe(true);
+    expect(err.fallbackReason).toBe("model-error");
+  });
+
+  it("WP-SHIP9-S1 T9 (Server-Seite): no-model/model-timeout/model-error UNVERÄNDERT ohne Vertraulichkeit", async () => {
+    // Kein Modell, nicht vertraulich → weiterhin no-model (gepinnt oben) — hier der Kontrast:
+    // vertraulich OHNE konfigurierte Cloud bleibt ebenfalls ehrlich no-model, NICHT confidential.
+    const res = await new Reasoner().groupCandidates(CANDIDATES, "de", true);
+    expect(res.fallbackReason).toBe("no-model");
+  });
+
   it("ModelRun-Protokoll + KI-Verwaltung: group läuft wie die anderen Tasks mit", async () => {
     const runs: ModelRunRecord[] = [];
     const reasoner = new Reasoner(undefined, undefined, {

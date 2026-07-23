@@ -90,11 +90,14 @@ function ExploreMap({
   view,
   truncated,
   alreadyImported,
+  alreadyQueued,
   failedPages,
 }: {
   view: ExploreView;
   truncated: boolean;
   alreadyImported: number;
+  // WP-SHIP9-S1b (bens GELB): getrennt vom Import — offene Kandidaten sind nur „vorgemerkt".
+  alreadyQueued: number;
   // WP-SAMMEL20-FIX (bens Fix 6a): Seiten, die beim Lesen/Mappen der Quelle scheiterten.
   failedPages: number;
 }): JSX.Element {
@@ -123,10 +126,16 @@ function ExploreMap({
         <Stat label={t("imp.explore.sources")} value={String(view.distinctSources)} />
         <Stat label={t("imp.explore.period")} value={view.period} />
       </div>
-      {/* WP-IC-PAKET-1 (Teil 4, IC-6a): ehrlicher Import-Status über die Quell-Referenzen. */}
+      {/* WP-IC-PAKET-1 (Teil 4, IC-6a): ehrlicher Import-Status über die Quell-Referenzen —
+          WP-SHIP9-S1b: importiert (lebender KO-Anker) und vorgemerkt (offener Kandidat) getrennt. */}
       {alreadyImported > 0 ? (
         <p className="mt-2 text-[12px] text-muted">
           {t("imp.explore.alreadyImported", { n: alreadyImported })}
+        </p>
+      ) : null}
+      {alreadyQueued > 0 ? (
+        <p className="mt-2 text-[12px] text-muted">
+          {t("imp.explore.alreadyQueued", { n: alreadyQueued })}
         </p>
       ) : null}
 
@@ -341,6 +350,7 @@ export function ImportExplore(): JSX.Element {
             view={view}
             truncated={explore.data?.truncated ?? false}
             alreadyImported={explore.data?.alreadyImported ?? 0}
+            alreadyQueued={explore.data?.alreadyQueued ?? 0}
             failedPages={explore.data?.failedPages ?? 0}
           />
         </div>

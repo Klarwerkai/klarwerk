@@ -7,6 +7,8 @@
 // WP-IC-PAKET-1 (Teil 4, IC-6a): bereits importierte Seiten sind markiert („bereits importiert",
 // optional „Quelle neuer als Import") und standardmäßig ABGEWÄHLT — bewusst wieder anwählbar (kein
 // hartes Verbot; Review-Invariante bleibt, importiert wird hier ohnehin nichts).
+// WP-SHIP9-S1b (bens GELB): offene Kandidaten tragen ein EIGENES Kennzeichen „bereits zur Prüfung
+// vorgemerkt" (eigene Farbe/eigener Text, gleiche Vorab-Abwahl) — nie mehr „bereits importiert".
 // WP-IC-PAKET-1 (Teil 1): Altbestand-Anzeige dekodiert HTML-Entities (nur Text-Rendering, nie HTML).
 import { useMutation } from "@tanstack/react-query";
 import { Images, Loader2, Sparkles } from "lucide-react";
@@ -129,7 +131,10 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
         return; // ältere Antwort — verwerfen, die neuere Vorschau bleibt stehen
       }
       setPreview(data);
-      setCheckedRows(data.preview.map((entry) => entry.alreadyImported !== true));
+      // WP-SHIP9-S1b: auch Vorgemerktes startet abgewählt (Queue-Schutz), bleibt aber anwählbar.
+      setCheckedRows(
+        data.preview.map((entry) => entry.alreadyImported !== true && entry.alreadyQueued !== true),
+      );
     },
   });
 
@@ -174,6 +179,7 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
 
   const errorMessage = select.error instanceof ApiError ? select.error.message : t("state.error");
   const alreadyImportedCount = preview?.alreadyImported ?? 0;
+  const alreadyQueuedCount = preview?.alreadyQueued ?? 0;
   const selectedCount = checkedRows.filter(Boolean).length;
 
   const toggleRow = (index: number): void => {
@@ -298,9 +304,13 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
               total: preview.matched,
             })}
             {preview.limited ? ` · ${t("imp.select.limitedNote")}` : ""}
-            {/* WP-IC-PAKET-1 (Teil 4): ehrlicher Import-Status der Vorschau. */}
+            {/* WP-IC-PAKET-1 (Teil 4): ehrlicher Import-Status der Vorschau — WP-SHIP9-S1b:
+                importiert und vorgemerkt sind ZWEI getrennte Zähler. */}
             {alreadyImportedCount > 0
               ? ` · ${t("imp.select.alreadyImported", { n: alreadyImportedCount })}`
+              : ""}
+            {alreadyQueuedCount > 0
+              ? ` · ${t("imp.select.alreadyQueued", { n: alreadyQueuedCount })}`
               : ""}
           </div>
 
@@ -329,6 +339,7 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
               <p className="mt-2 text-[11.5px] text-muted-2">
                 {t("imp.select.selectedCount", { n: selectedCount })}
                 {alreadyImportedCount > 0 ? ` — ${t("imp.select.importedDeselected")}` : ""}
+                {alreadyQueuedCount > 0 ? ` — ${t("imp.select.queuedDeselected")}` : ""}
               </p>
               <ul className="mt-1.5 space-y-1 border-t border-hairline pt-2">
                 {preview.preview.map((entry, i) => (
@@ -350,6 +361,13 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
                     {entry.alreadyImported ? (
                       <span className="shrink-0 rounded-pill bg-trust-pos-bg px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-pos-text">
                         {t("imp.preview.imported")}
+                      </span>
+                    ) : null}
+                    {/* WP-SHIP9-S1b: eigener Zustand in EIGENER Farbe — offener Kandidat ist
+                        „bereits zur Prüfung vorgemerkt", nicht „bereits importiert". */}
+                    {entry.alreadyQueued ? (
+                      <span className="shrink-0 rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
+                        {t("imp.preview.queued")}
                       </span>
                     ) : null}
                     {entry.sourceNewer ? (

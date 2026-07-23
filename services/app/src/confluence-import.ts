@@ -126,9 +126,15 @@ export async function importedAnchorVersions(
 }
 
 // Import-Status-Basis 2: OFFENE Kandidaten — MIT Version (bens ROT-2: offener Kandidat v1 + Quelle v2
-// muss „bereits importiert" UND „Quelle neuer" ergeben, nicht nur ersteres).
+// muss ein Kennzeichen UND „Quelle neuer" ergeben, nicht nur ersteres).
 // WP-SHIP8-CLOSE-3 (bens ROT-2): OFFEN heißt 'neu' ODER 'in_bearbeitung' — die Statuskarte zeigt
-// eine Quelle WÄHREND der laufenden Review-Aktion weiter als „bereits importiert".
+// eine Quelle WÄHREND der laufenden Review-Aktion weiter als gekennzeichnet.
+// WP-SHIP9-S1b (bens GELB, Trennung der Semantik): diese Basis speist NUR noch das EIGENE
+// Kennzeichen „bereits zur Prüfung vorgemerkt" (alreadyQueued in importStatusFor), NIE mehr
+// „bereits importiert". Der S1-Filter (Skip bei getrashtem Zielobjekt) ist damit ÜBERFLÜSSIG und
+// bewusst entfernt: ein offener Kandidat ist unabhängig vom Papierkorb-/Purge-Zustand seines
+// Ziels wahrhaftig „vorgemerkt" — der Queue-Schutz (nicht doppelt einreihbar) bleibt vollständig,
+// nur die Bezeichnung ist ehrlich. Kein Tombstone nötig, der Hard-Purge-Fall löst sich von selbst.
 export async function pendingCandidateVersions(
   library: LibraryService,
 ): Promise<Map<string, number | null>> {
@@ -146,30 +152,35 @@ export async function pendingCandidateVersions(
   return out;
 }
 
-// Import-Status einer Quell-Seite — PURE Ableitung. `alreadyImported`, wenn KO-Anker ODER offener
-// Kandidat denselben Status-Schlüssel tragen. `sourceNewer` NUR, wenn BEIDE Seiten eine EXPLIZITE
-// Version haben (bens ROT-2: keine erfundene ?? 1/?? 0-Version mehr — fehlt eine Seite, KEIN Badge);
-// verglichen wird gegen die höchste bekannte Version aus Anker UND offenen Kandidaten. Die
-// Quell-Referenz führt kein Änderungsdatum, wohl aber die Versionsnummer; reine Anzeige, kein
-// Update-Mechanismus (IC-6b offen).
+// Import-Status einer Quell-Seite — PURE Ableitung. WP-SHIP9-S1b (bens GELB): die beiden Basen
+// sind jetzt ZWEI GETRENNTE Kennzeichen. `alreadyImported` kommt AUSSCHLIESSLICH aus einem
+// LEBENDEN KO-Herkunftsanker (importedAnchorVersions liest koService.list(), Papierkorb außen
+// vor) — ein offener Kandidat allein macht NIEMALS mehr „bereits importiert". `alreadyQueued`
+// heißt: ein OFFENER Kandidat (neu/in_bearbeitung) trägt denselben Status-Schlüssel — „bereits
+// zur Prüfung vorgemerkt", auch wenn sein Zielobjekt getrasht oder hart gepurgt wurde (wahr,
+// weil der Kandidat weiter in der Review-Queue liegt). `sourceNewer` NUR, wenn BEIDE Seiten eine
+// EXPLIZITE Version haben (bens ROT-2: keine erfundene ?? 1/?? 0-Version mehr — fehlt eine Seite,
+// KEIN Badge); verglichen wird gegen die höchste bekannte Version aus Anker UND offenen
+// Kandidaten. Reine Anzeige, kein Update-Mechanismus (IC-6b offen).
 export function importStatusFor(
   item: ImportItem,
   anchorVersions: ReadonlyMap<string, number | null>,
   pendingVersions: ReadonlyMap<string, number | null>,
-): { alreadyImported: boolean; sourceNewer: boolean } {
+): { alreadyImported: boolean; alreadyQueued: boolean; sourceNewer: boolean } {
   const id = item.externalId;
   if (!id) {
-    return { alreadyImported: false, sourceNewer: false };
+    return { alreadyImported: false, alreadyQueued: false, sourceNewer: false };
   }
   const key = importStatusKey(item.provider, id);
   const anchor = anchorVersions.get(key);
   const pending = pendingVersions.get(key);
-  const alreadyImported = anchor !== undefined || pending !== undefined;
+  const alreadyImported = anchor !== undefined;
+  const alreadyQueued = pending !== undefined;
   const itemVersion = normalizeSourceVersion(item.sourceVersion);
   const known = [anchor, pending].filter((v): v is number => typeof v === "number");
   const knownMax = known.length > 0 ? Math.max(...known) : null;
   const sourceNewer = itemVersion !== null && knownMax !== null && itemVersion > knownMax;
-  return { alreadyImported, sourceNewer };
+  return { alreadyImported, alreadyQueued, sourceNewer };
 }
 
 export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<ImportRunSummary> {

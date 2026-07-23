@@ -418,8 +418,12 @@ describe("WP-SUBMIT-ASYNC (h): Quelltext-Pins — Submit-Pfad ohne synchrones de
 
   it("i18n: Hinweis- und Badge-Schluessel existieren in DE, EN und NL (je genau einmal)", () => {
     const i18n = read("apps/web/src/i18n.ts");
+    // WP-SHIP9-S1 (Pedis B3): der statische capture.aiCheckBackground-Satz ist durch die drei
+    // ECHTEN Status-Texte der Bestätigungs-Karte ersetzt (läuft/abgeschlossen/fehlgeschlagen).
     for (const key of [
-      "capture.aiCheckBackground",
+      "capture.aiCheck.running",
+      "capture.aiCheck.done",
+      "capture.aiCheck.failed",
       "val.filterAiPending",
       "val.aiCheck.pending",
       "val.aiCheck.pendingHint",

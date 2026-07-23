@@ -260,10 +260,14 @@ export interface CandidateGroup {
 // Ohne funktionierendes Modell (no-model/model-timeout/model-error) kommt die EHRLICHE
 // deterministische Themen-Gruppierung (demo:true) — der Flow bleibt IMMER benutzbar; die UI
 // kennzeichnet „Ohne KI gruppiert".
+// WP-SHIP9-S1 (bens W2-Auflage): "confidential" = ein Cloud-Modell IST konfiguriert und die
+// Task-Policy wäre cloud-geeignet (auto/cloud/model), aber die Cloud-Kante wurde wegen
+// vertraulicher Kandidaten aus der Kette entfernt und kein lokales Modell konnte einspringen —
+// vorher lief das irreführend unter "no-model". Additive Union, nur der group-Task.
 export interface GroupCandidatesResult {
   groups: CandidateGroup[];
   demo: boolean;
-  fallbackReason?: "no-model" | "model-timeout" | "model-error";
+  fallbackReason?: "no-model" | "model-timeout" | "model-error" | "confidential";
 }
 
 // WP-SAMMEL20-FIX (bens Fix 2, IC-3): EHRLICHES Ergebnis der Prompt→Kriterien-Ableitung. criteria

@@ -26,6 +26,7 @@ import {
   hintLabelKey,
   includedIds,
   initialSelection,
+  noAiReasonKey,
   selectionCounts,
   toggleCandidate,
 } from "../lib/importGroups";
@@ -41,6 +42,7 @@ export function GroupApprovalPanel({
   candidates,
   selection,
   demo,
+  fallbackReason,
   onToggleGroup,
   onToggleCandidate,
 }: {
@@ -48,12 +50,17 @@ export function GroupApprovalPanel({
   candidates: GroupedCandidate[];
   selection: Record<string, boolean>;
   demo: boolean;
+  // WP-SHIP9-S1 (bens W2-Auflage): Ursache des deterministischen Laufs — "confidential" bekommt
+  // einen spezifischen Grund-Zusatz am Badge (Muster AiCheckBadge), die übrigen Ursachen bleiben
+  // bei der bisherigen Darstellung (bens T9).
+  fallbackReason?: ImportGroupResponse["fallbackReason"];
   onToggleGroup: (group: ImportGroup, on: boolean) => void;
   onToggleCandidate: (id: string) => void;
 }): JSX.Element {
   const { t } = useTranslation();
   const byId = new Map(candidates.map((c) => [c.id, c]));
   const counts = selectionCounts(selection);
+  const reasonKey = noAiReasonKey(fallbackReason);
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2">
@@ -62,7 +69,9 @@ export function GroupApprovalPanel({
         </span>
         {demo ? (
           <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
-            {t(IMPORT_GROUPS_TEXT.noAi)}
+            {reasonKey
+              ? t(IMPORT_GROUPS_TEXT.noAiReason, { reason: t(reasonKey) })
+              : t(IMPORT_GROUPS_TEXT.noAi)}
           </span>
         ) : (
           <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai">
@@ -138,6 +147,14 @@ export function GroupApprovalPanel({
                       <span className="min-w-0 flex-1">
                         {displayImportText(candidate.title, candidate.textCodec)}
                       </span>
+                      {/* WP-SHIP9-S1b (bens GELB): EIGENES Badge — offener Kandidat ist „bereits
+                          zur Prüfung vorgemerkt", bewusst in anderer Farbe und anderem Text als
+                          der neutrale „bereits importiert"-Hinweis (ehrliche Trennung). */}
+                      {candidate.alreadyQueued === true ? (
+                        <span className="shrink-0 rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
+                          {t(IMPORT_GROUPS_TEXT.hintQueued)}
+                        </span>
+                      ) : null}
                       {/* WP-IC-6b: nüchternes Badge — Quelle wurde seit dem Import aktualisiert;
                           der Kandidat ist als Aktualisierung wählbar (neue KO-Version im Review). */}
                       {candidate.sourceNewer ? (
@@ -362,6 +379,7 @@ export function ImportGroups({ criteria }: { criteria: ImportSelectCriteria }): 
             candidates={data.candidates}
             selection={selection}
             demo={data.demo}
+            fallbackReason={data.fallbackReason}
             onToggleGroup={(group, on) => setSelection((prev) => applyGroupToggle(prev, group, on))}
             onToggleCandidate={(id) => setSelection((prev) => toggleCandidate(prev, id))}
           />
@@ -406,6 +424,12 @@ export function ImportGroups({ criteria }: { criteria: ImportSelectCriteria }): 
               ) : null}
               <li>· {t(IMPORT_GROUPS_TEXT.bilanzQueued, { n: bilanz.alreadyQueued })}</li>
               <li>· {t(IMPORT_GROUPS_TEXT.bilanzSkipped, { n: bilanz.skippedAlreadyImported })}</li>
+              {/* WP-SHIP9-S1b: getrennter Zähler — übersprungen, weil bereits vorgemerkt. */}
+              {bilanz.skippedAlreadyQueued > 0 ? (
+                <li>
+                  · {t(IMPORT_GROUPS_TEXT.bilanzSkippedQueued, { n: bilanz.skippedAlreadyQueued })}
+                </li>
+              ) : null}
               <li>· {t(IMPORT_GROUPS_TEXT.bilanzExcluded, { n: bilanz.excluded })}</li>
               <li>· {t(IMPORT_GROUPS_TEXT.bilanzFailed, { n: bilanz.failed.length })}</li>
               {bilanz.notAttempted.length > 0 ? (

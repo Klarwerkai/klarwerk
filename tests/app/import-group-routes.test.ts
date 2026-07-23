@@ -11,6 +11,10 @@ import {
   confluenceImportRoutes,
 } from "../../services/app/src/routes/confluence-import-routes";
 import type { ConfluenceSourceAdapter } from "../../services/confluence";
+// WP-SHIP9-S1 (bens T6): White-box-Import des ECHTEN Mappers — tests/ liegt außerhalb der
+// dependency-cruiser-Modulgrenzen (gleiches Muster wie tests/library/import-entity-e2e.test.ts).
+import { mapConfluencePageToImportItem } from "../../services/confluence/src/mapper";
+import type { ConfluencePage } from "../../services/confluence/src/rest-client";
 import {
   GROUP_PROMPT_MAX_UTF8_BYTES,
   GROUP_TITLE_MAX_INPUT_CHARS,
@@ -27,6 +31,28 @@ function fixtureAdapter(items: ImportItem[]): ConfluenceSourceAdapter {
     collect: async () => items,
     collectAll: async () => ({ items, failed: [], truncated: false }),
   } as unknown as ConfluenceSourceAdapter;
+}
+
+// WP-SHIP9-S1 (bens T6): rohe Confluence-Seite für die echte Mapper-Kette — offen (keine
+// Restriktionen) oder restringiert (Read-Restriktion → Governance-Signal „vertraulich").
+function confluencePage(
+  id: string,
+  title: string,
+  opts: { restricted?: boolean } = {},
+): ConfluencePage {
+  return {
+    id,
+    title,
+    body: { storage: { value: "<p>Inhalt der Seite.</p>" } },
+    version: { number: 1, when: "2026-06-01T00:00:00.000Z", by: { displayName: "Autor" } },
+    ...(opts.restricted
+      ? {
+          restrictions: {
+            read: { restrictions: { user: { results: [{ accountId: "u1" }] } } },
+          },
+        }
+      : {}),
+  } as unknown as ConfluencePage;
 }
 
 function item(overrides: Partial<ImportItem> & { title: string }): ImportItem {
@@ -116,7 +142,8 @@ describe("WP-IC-4: POST /api/admin/import/confluence/group", () => {
       }),
     ];
     const { app, services, headers } = await importApp(items);
-    // p2 liegt bereits als offener Kandidat in der Queue → IC-6a meldet „bereits importiert".
+    // p2 liegt bereits als offener Kandidat in der Queue → WP-SHIP9-S1b: das meldet EHRLICH
+    // „bereits zur Prüfung vorgemerkt" (alreadyQueued), NICHT mehr „bereits importiert".
     await services.library.createImportCandidates(
       [item({ title: "Ventil tauschen", externalId: "p2" })],
       "tester",
@@ -131,7 +158,12 @@ describe("WP-IC-4: POST /api/admin/import/confluence/group", () => {
     expect(res.statusCode).toBe(200);
     const body = res.json() as {
       groups: { title: string; ids: string[]; kind?: string }[];
-      candidates: { id: string; alreadyImported: boolean; hints: string[] }[];
+      candidates: {
+        id: string;
+        alreadyImported: boolean;
+        alreadyQueued: boolean;
+        hints: string[];
+      }[];
       demo: boolean;
       fallbackReason?: string;
     };
@@ -140,11 +172,15 @@ describe("WP-IC-4: POST /api/admin/import/confluence/group", () => {
     expect(body.fallbackReason).toBe("no-model");
     const wartung = body.groups.find((g) => g.title === "wartung");
     expect(wartung?.ids.sort()).toEqual(["p1", "p2"]);
-    // Deterministische Qualitätshinweise je Kandidat.
+    // Deterministische Qualitätshinweise je Kandidat — der offene Kandidat p2 ist VORGEMERKT
+    // (eigenes Kennzeichen), nicht importiert; der already-imported-Hinweis bleibt lebenden
+    // KO-Ankern vorbehalten.
     const byId = new Map(body.candidates.map((c) => [c.id, c]));
     expect(byId.get("p1")?.hints).toEqual([]);
-    expect(byId.get("p2")?.alreadyImported).toBe(true);
-    expect(byId.get("p2")?.hints).toEqual(["already-imported", "short"]);
+    expect(byId.get("p1")?.alreadyQueued).toBe(false);
+    expect(byId.get("p2")?.alreadyImported).toBe(false);
+    expect(byId.get("p2")?.alreadyQueued).toBe(true);
+    expect(byId.get("p2")?.hints).toEqual(["short"]);
     expect(byId.get("p3")?.hints).toEqual(["stale"]);
   });
 
@@ -356,6 +392,31 @@ describe("WP-SHIP7-FIX P0 (Fix 1): Vertraulichkeit der Gruppierung — Cloud nur
     const body = res.json() as { demo: boolean; groups: { ids: string[] }[] };
     expect(body.demo).toBe(false);
     expect(body.groups.flatMap((g) => g.ids).sort()).toEqual(["p1", "p2"]);
+  });
+
+  // WP-SHIP9-S1 (bens T6, BERICHT-w2check): die REALE Mapper→Route-Kette statt synthetischer
+  // intern-Items — der echte Confluence-Mapper liefert nie `intern`, also ist JEDER nichtleere
+  // echte Batch fail-safe vertraulich; die Cloud bleibt unangetastet und die Ursache heißt
+  // ehrlich "confidential" (Cloud konfiguriert + Policy auto, aber durch Vertraulichkeit raus).
+  it("bens T6: echter Confluence-Mapper → Route: nichtleerer Batch vertraulich, Cloud-Spy null", async () => {
+    const mapped = [
+      confluencePage("p1", "Wartung Pumpe"),
+      confluencePage("p2", "Ventil tauschen", { restricted: true }),
+    ].map((p) =>
+      mapConfluencePageToImportItem(p, { baseUrl: "https://acme.example", spaceKey: "OPS" }),
+    );
+    // Der echte Mapper: offene Seite → KEINE Einstufung (fail-safe vertraulich im Kern),
+    // restringierte Seite → explizit vertraulich. NIE intern.
+    expect(mapped[0]?.confidentiality).toBeUndefined();
+    expect(mapped[1]?.confidentiality).toBe("vertraulich");
+    const spy = cloudSpyReasoner(["p1", "p2"]);
+    const { app, headers } = await importApp(mapped, { reasoner: spy.reasoner });
+    const res = await groupRequest(app, headers);
+    expect(res.statusCode).toBe(200);
+    expect(spy.cloudCalls()).toBe(0); // KEIN Kandidat verlässt die Maschine
+    const body = res.json() as { demo: boolean; fallbackReason?: string };
+    expect(body.demo).toBe(true);
+    expect(body.fallbackReason).toBe("confidential");
   });
 
   it("Batch-Vertrag als pure Regel: EIN unklarer Kandidat macht den GANZEN Batch vertraulich", () => {

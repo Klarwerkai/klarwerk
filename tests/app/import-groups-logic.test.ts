@@ -98,8 +98,10 @@ describe("WP-IC-4: Auswahl-Logik", () => {
       { id: "d", title: "D", alreadyImported: false, hints: [] }, // Server-No-op (schon eingereiht)
       { id: "e", title: "E", alreadyImported: false, hints: [] }, // Batch scheitert (HTTP)
       { id: "f", title: "F", alreadyImported: false, hints: [] }, // nie versucht
+      // WP-SHIP9-S1b: offener Kandidat, vorab abgewählt → eigener Bilanz-Posten (vorgemerkt).
+      { id: "g", title: "G", alreadyImported: false, alreadyQueued: true, hints: [] },
     ];
-    const selection = { a: true, b: false, c: false, d: true, e: true, f: true };
+    const selection = { a: true, b: false, c: false, d: true, e: true, f: true, g: false };
     // Lauf: Batch 1 [a,d] erfolgreich (a importiert, d bereits eingereiht); Batch 2 [e] scheitert
     // am HTTP-Aufruf → Abbruch; f wird nie versucht.
     const bilanz = aggregateBilanz(candidates, selection, {
@@ -113,6 +115,9 @@ describe("WP-IC-4: Auswahl-Logik", () => {
     expect(bilanz.updates).toBe(1);
     expect(bilanz.alreadyQueued).toBe(1);
     expect(bilanz.skippedAlreadyImported).toBe(1);
+    // WP-SHIP9-S1b: der vorab abgewählte VORGEMERKTE Kandidat zählt getrennt — weder als
+    // „übersprungen (importiert)" noch als bewusst ausgeschlossen.
+    expect(bilanz.skippedAlreadyQueued).toBe(1);
     expect(bilanz.excluded).toBe(1);
     expect(bilanz.failed).toEqual([{ id: "e", reason: "http-error" }]);
     expect(bilanz.notAttempted).toEqual(["f"]);
@@ -121,10 +126,34 @@ describe("WP-IC-4: Auswahl-Logik", () => {
       bilanz.imported +
       bilanz.alreadyQueued +
       bilanz.skippedAlreadyImported +
+      bilanz.skippedAlreadyQueued +
       bilanz.excluded +
       bilanz.failed.length +
       bilanz.notAttempted.length;
     expect(total).toBe(candidates.length);
+  });
+
+  // WP-SHIP9-S1b (bens GELB): Vorgemerktes startet ABGEWÄHLT (Queue-Schutz wie bisher, ehrlich
+  // benannt); eine neuere Quell-Version macht auch den vorgemerkten Kandidaten wieder wählbar
+  // (Aktualisierung — gleiches Muster wie bei Importiertem, WP-IC-6b).
+  it("S1b: Auswahl-Vorgabe — Vorgemerktes abgewählt, vorgemerkte Aktualisierung wählbar", () => {
+    const candidates: GroupedCandidate[] = [
+      { id: "neu", title: "Neu", alreadyImported: false, hints: [] },
+      { id: "queued", title: "Vorgemerkt", alreadyImported: false, alreadyQueued: true, hints: [] },
+      {
+        id: "queuedUpdate",
+        title: "Vorgemerkt, Quelle neuer",
+        alreadyImported: false,
+        alreadyQueued: true,
+        sourceNewer: true,
+        hints: [],
+      },
+    ];
+    expect(initialSelection(candidates)).toEqual({
+      neu: true,
+      queued: false,
+      queuedUpdate: true,
+    });
   });
 
   it("WP-IC-6b: Auswahl-Vorgabe — Quelle-neuer-Kandidaten sind WÄHLBAR (nicht vorab abgewählt)", () => {

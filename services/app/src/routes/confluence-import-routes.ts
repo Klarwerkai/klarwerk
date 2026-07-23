@@ -218,13 +218,23 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
         const { items, truncated, failed } = await collectSnapshot(adapter);
         // WP-IC-PAKET-1 (Teil 4, IC-6a): ehrlicher Import-Abgleich über die Quell-Referenzen
         // (KoSource-Anker + offene Kandidaten, provider-scoped) — „X Seiten, davon Y bereits importiert".
+        // WP-SHIP9-S1b (bens GELB): GETRENNT gezählt — „bereits importiert" (lebender KO-Anker)
+        // und „bereits zur Prüfung vorgemerkt" (offener Kandidat) sind zwei ehrliche Zustände.
         const [anchorVersions, pendingVersions] = await Promise.all([
           importedAnchorVersions(deps.koService),
           pendingCandidateVersions(deps.library),
         ]);
-        const alreadyImported = items.filter(
-          (item) => importStatusFor(item, anchorVersions, pendingVersions).alreadyImported,
-        ).length;
+        let alreadyImported = 0;
+        let alreadyQueued = 0;
+        for (const item of items) {
+          const status = importStatusFor(item, anchorVersions, pendingVersions);
+          if (status.alreadyImported) {
+            alreadyImported += 1;
+          }
+          if (status.alreadyQueued) {
+            alreadyQueued += 1;
+          }
+        }
         reply.code(200).send({
           // WP-SAMMEL20-FIX (bens Fix 6b): serverseitig auf die angezeigten Top-N gedeckelt —
           // die Gesamtzahlen (authorsTotal/topicsTotal) reisen als separate Zähler mit.
@@ -234,6 +244,7 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
           }),
           truncated,
           alreadyImported,
+          alreadyQueued,
           // WP-SAMMEL20-FIX (bens Fix 6a): partielle Mappingfehler NICHT mehr verschweigen —
           // ehrliche Zähler + PII-freie Fehlerklassen (nie die rohe Meldung auf dem Wire).
           mappedPages: items.length,
@@ -355,7 +366,8 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
         const criteria: SelectCriteria = { ...derived.criteria, ...clickCriteria };
         const { selected, matched, limited } = filterImportItems(items, criteria);
         // WP-IC-PAKET-1 (Teil 4, IC-6a): jeden Vorschau-Eintrag ehrlich markieren (Quell-Referenz-
-        // Abgleich, je Request frisch); `alreadyImported` zählt die markierten Einträge der Vorschau.
+        // Abgleich, je Request frisch); `alreadyImported`/`alreadyQueued` zählen die markierten
+        // Einträge der Vorschau (WP-SHIP9-S1b: zwei getrennte Kennzeichen, s. importStatusFor).
         const [anchorVersions, pendingVersions] = await Promise.all([
           importedAnchorVersions(deps.koService),
           pendingCandidateVersions(deps.library),
@@ -370,6 +382,7 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
           criteria,
           preview,
           alreadyImported: preview.filter((entry) => entry.alreadyImported === true).length,
+          alreadyQueued: preview.filter((entry) => entry.alreadyQueued === true).length,
           // WP-SAMMEL20-FIX (bens Fix 2): EHRLICHER KI-Status der Satz-Auswertung. Nur wenn ein
           // Satz gestellt war: "ok" = die KI hat den Satz in Kriterien übersetzt; "unavailable" =
           // Ausfall (fallbackReason nennt die Ursache) — dann gelten sichtbar NUR die
@@ -446,6 +459,9 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
               title: item.title,
               ...(item.textCodec === "decoded" ? { textCodec: "decoded" as const } : {}),
               alreadyImported: status.alreadyImported,
+              // WP-SHIP9-S1b (bens GELB): EIGENES Kennzeichen — offener Kandidat = „bereits zur
+              // Prüfung vorgemerkt" (abwählbar-Vorgabe wie bisher, aber ehrlich benannt).
+              alreadyQueued: status.alreadyQueued,
               // WP-IC-6b (Pedis Entscheid: Versionierung): die Quelle ist NEUER als der Import —
               // solche Kandidaten sind als „Aktualisierung importieren" wählbar (nicht vorab
               // abgewählt); die Übernahme wird beim Review als neue Version des bestehenden KOs

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronDown,
+  Clock,
   FileText,
   Globe,
   Loader2,
@@ -57,6 +58,12 @@ import { RichTextEditor } from "../components/RichTextEditor";
 import { ListEditor, TagEditor } from "../components/editors";
 import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
 import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
+import {
+  AI_CHECK_CARD_TEXT,
+  AI_CHECK_POLL_MS,
+  aiCheckCardState,
+  aiCheckPollAgain,
+} from "../lib/aiCheckStatusCard";
 import { GAP_RESCUE_STEPS, GAP_RESCUE_TEXT } from "../lib/askGapRescue";
 import { applyBodyAssist, applyBodyAssistBlock, bodyTextForAssist } from "../lib/bodyAiAssist";
 import { appendExtractSections, normalizeExtractLocale } from "../lib/bodyExtract";
@@ -393,6 +400,10 @@ export function Capture(): JSX.Element {
   );
   // SCRUM-276: nach erfolgreichem Einreichen die ID des gespeicherten KO (für die Success-Card).
   const [savedKoId, setSavedKoId] = useState<string | null>(null);
+  // WP-SHIP9-S1 (Pedis B3): der ECHTE Status der Hintergrund-KI-Prüfung des frisch eingereichten
+  // KO (aus der Submit-Antwort geseedet, dann gepollt). Die Karte zeigt „Prüfung läuft …" NUR
+  // solange kein Ergebnis vorliegt; der Wechsel kommt ausschließlich vom tatsächlichen Ergebnis.
+  const [savedAiCheck, setSavedAiCheck] = useState<KnowledgeObject["aiCheck"] | null>(null);
   // WP-D7b (Rot-Fix 1): mehrstufiger, ehrlicher Fortschritt beim Einreichen — der Nutzer sieht, WAS gerade
   // dauert (KO anlegen → Original/Anhänge sichern (mit Größe) → Quellen verknüpfen). null = kein Submit aktiv.
   const [submitStage, setSubmitStage] = useState<{ key: string; mb?: string } | null>(null);
@@ -418,6 +429,34 @@ export function Capture(): JSX.Element {
   const [confirmDiscardDraftId, setConfirmDiscardDraftId] = useState<string | null>(null);
   const qc = useQueryClient();
   const drafts = useDrafts();
+  // WP-SHIP9-S1 (Pedis B3): solange die Prüfung offen ist (pending), den ECHTEN Status nachlesen —
+  // der Kartenwechsel passiert NUR durch das tatsächliche Ergebnis (done/failed), nie durch Ablauf
+  // von Zeit. Ein transienter Lesefehler lässt den Zustand unverändert (weiter „läuft"); mit dem
+  // Ergebnis werden die Board-Daten invalidiert, damit die Validierungskarte dasselbe ehrlich zeigt.
+  useEffect(() => {
+    if (!savedKoId || !aiCheckPollAgain(savedAiCheck)) {
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      endpoints.ko.get(savedKoId).then(
+        (ko) => {
+          if (cancelled) {
+            return;
+          }
+          setSavedAiCheck(ko.aiCheck ?? null);
+          if (ko.aiCheck && ko.aiCheck.status !== "pending") {
+            void qc.invalidateQueries({ queryKey: ["validation"] });
+          }
+        },
+        () => undefined,
+      );
+    }, AI_CHECK_POLL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [savedKoId, savedAiCheck, qc]);
   const [draftsOpen, setDraftsOpen] = useState(false);
   // SCRUM-458: Der Erfassungs-Arbeitsraum startet EINGEKLAPPT (ruhiger Aufklapp-Einstieg statt vollem
   // Formular). Defensiv aufgeklappt, wenn schon ein aktiver Kontext vorliegt (Lücken-Kontext ?gap= oder
@@ -1076,6 +1115,9 @@ export function Capture(): JSX.Element {
     // Formular zurücksetzen (kein versehentlicher Doppel-Submit); Modus bleibt erhalten.
     onSuccess: ({ ko, attached, failed, timingSpans }) => {
       setSavedKoId(ko.id);
+      // WP-SHIP9-S1 (Pedis B3): der Prüf-Vermerk der 201-Antwort (aiCheck pending) seedet die
+      // Live-Anzeige — fehlt er (kein Worker vermerkt), behauptet die Karte NICHTS über die Prüfung.
+      setSavedAiCheck(ko.aiCheck ?? null);
       // SCRUM-369: Rescue-Anschluss nur, wenn dieser Save aus einer Ask-Lücke gestartet wurde.
       setSavedFromGap(gapContext !== null);
       // SCRUM-373/374: nur die WIRKLICH gesicherten Anhänge zählen; Teilfehler getrennt ehrlich melden.
@@ -2237,12 +2279,37 @@ export function Capture(): JSX.Element {
             </span>
           </div>
           <p className="mt-1 text-[12.5px] text-trust-pos-text/90">{t("capture.savedBody")}</p>
-          {/* WP-SUBMIT-ASYNC (Pedi R3, 21.07.): das Einreichen wartet nicht mehr auf die KI-Pruefung —
-              nuechterner Hinweis, dass sie im Hintergrund laeuft und das Ergebnis in der Validierung
-              erscheint. Kein Spinner, keine Blockade. */}
-          <p className="mt-1 text-[12px] text-trust-pos-text/80">
-            {t("capture.aiCheckBackground")}
-          </p>
+          {/* WP-SHIP9-S1 (Pedis B3): statt des früheren STATISCHEN „läuft im Hintergrund"-Satzes
+              zeigt die Karte den ECHTEN Prüf-Status: „läuft …" nur solange kein Ergebnis vorliegt
+              (gepollt), der Wechsel kommt ausschließlich vom tatsächlichen Ergebnis; ein Fehlschlag
+              heißt ehrlich fehlgeschlagen mit Ursache (F1) — kein stilles Grün. Ohne Prüf-Vermerk
+              (Altbestand/kein Worker) wird NICHTS behauptet. */}
+          {(() => {
+            const check = aiCheckCardState(savedAiCheck);
+            if (check.kind === "running") {
+              return (
+                <p className="mt-1 flex items-center gap-1 text-[12px] text-trust-pos-text/80">
+                  <Clock size={12} className="animate-pulse" aria-hidden="true" />
+                  {t(AI_CHECK_CARD_TEXT.running)}
+                </p>
+              );
+            }
+            if (check.kind === "done") {
+              return (
+                <p className="mt-1 text-[12px] text-trust-pos-text/80">
+                  {t(AI_CHECK_CARD_TEXT.done)}
+                </p>
+              );
+            }
+            if (check.kind === "failed") {
+              return (
+                <p className="mt-1 rounded-btn bg-trust-warn-bg px-2 py-1 text-[12px] text-trust-warn-text">
+                  {t(AI_CHECK_CARD_TEXT.failed, { reason: t(check.reasonKey) })}
+                </p>
+              );
+            }
+            return null;
+          })()}
           {/* SCRUM-354: ehrlich machen — fortgesetzter Entwurf wurde eingereicht und ist aus dem Pool. */}
           {submittedFromDraft ? (
             <p className="mt-1 text-[12px] text-trust-pos-text/80">{t("capture.savedFromDraft")}</p>
@@ -2332,6 +2399,7 @@ export function Capture(): JSX.Element {
               variant="ghost"
               onClick={() => {
                 setSavedKoId(null);
+                setSavedAiCheck(null);
                 setSubmittedFromDraft(false);
                 setSavedFromGap(false);
                 setSavedFilesCount(0);

@@ -222,8 +222,11 @@ export interface ImportPreviewEntry {
   hasImage: boolean;
   themes: string[];
   // WP-IC-PAKET-1 (Teil 4, IC-6a): Import-Status — additiv, vom Aufrufer (Route) über den
-  // Quell-Referenz-Abgleich (externalId gegen KO-Sources + offene Kandidaten) gesetzt.
+  // Quell-Referenz-Abgleich gesetzt. WP-SHIP9-S1b (bens GELB): ZWEI getrennte Kennzeichen —
+  // alreadyImported NUR aus einem lebenden KO-Herkunftsanker; alreadyQueued = offener Kandidat
+  // („bereits zur Prüfung vorgemerkt"), nie mehr als „bereits importiert" ausgegeben.
   alreadyImported?: boolean;
+  alreadyQueued?: boolean;
   // Änderungs-Signal über die Versionsnummer der Quelle (sourceVersion > importierte Version) —
   // reine Anzeige, KEIN Update-Mechanismus (IC-6b bewusst nicht gebaut).
   sourceNewer?: boolean;
@@ -234,6 +237,8 @@ export interface ImportPreviewEntry {
 
 export interface ImportedStatus {
   alreadyImported: boolean;
+  // WP-SHIP9-S1b: offener Kandidat — eigener Zustand „bereits zur Prüfung vorgemerkt".
+  alreadyQueued: boolean;
   sourceNewer: boolean;
 }
 
@@ -248,6 +253,7 @@ export function toPreviewEntry(item: ImportItem, status?: ImportedStatus): Impor
     hasImage: typeof item.bodyHtml === "string" && /<img\b/i.test(item.bodyHtml),
     themes,
     ...(status?.alreadyImported ? { alreadyImported: true } : {}),
+    ...(status?.alreadyQueued ? { alreadyQueued: true } : {}),
     ...(status?.sourceNewer ? { sourceNewer: true } : {}),
     ...(item.textCodec === "decoded" ? { textCodec: "decoded" as const } : {}),
   };
