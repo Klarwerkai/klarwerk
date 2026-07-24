@@ -60,6 +60,8 @@ import { isNavigableNode, koDetailPath } from "../lib/graphNav";
 // Decode-Marker fehlt (markierte Kandidaten sind kanonisch; kein Doppel-Dekodieren echter Literale).
 import { displayImportText } from "../lib/htmlEntities";
 import { ImportParseError, parseImportItems } from "../lib/importReview";
+// AUFTRAG-ic7-import-vision: geteilte ID des JSON-Dialogs (aktive JSON-Kachel der Quellen-Galerie).
+import { JSON_UPLOAD_INPUT_ID } from "../lib/importSourceGallery";
 import { knowledgeHealth } from "../lib/knowledgeHealth";
 import { buildKnowledgeOsHints } from "../lib/knowledgeOsHints";
 import { buildKnowledgeOsReadiness } from "../lib/knowledgeOsReadiness";
@@ -398,6 +400,9 @@ export function ImportReview(): JSX.Element {
           <Upload size={15} />
           {t("imp.upload")}
           <input
+            // AUFTRAG-ic7-import-vision: stabile ID, damit die AKTIVE JSON-Kachel der Quellen-
+            // Galerie genau diesen bestehenden Dialog oeffnet (kein neuer Import-Pfad).
+            id={JSON_UPLOAD_INPUT_ID}
             type="file"
             accept=".json,application/json"
             className="hidden"

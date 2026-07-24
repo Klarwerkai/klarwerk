@@ -20,7 +20,10 @@ import {
   NO_THEME_LABEL,
   toExploreView,
 } from "../lib/importExplore";
+import { JSON_SOURCE_IDS, JSON_UPLOAD_INPUT_ID } from "../lib/importSourceGallery";
 import { ImportSelect } from "./ImportSelect";
+// AUFTRAG-ic7-import-vision: EHRLICHE Quellen-Galerie (Systeme + Dateien) mit Zustandsbadges.
+import { ImportSourceGallery } from "./ImportSourceGallery";
 // WP-COCKPIT-LINIE: Schritt-Überschriften (1 Quelle · 2 Erkunden) + Meilenstein-Meldung an die Leiste.
 import { ImportStepHeading, useReportImportStage } from "./ImportStepper";
 import { Button, Card } from "./ui";
@@ -292,25 +295,36 @@ export function ImportExplore(): JSX.Element {
     }
   }, [explore.data, reach]);
 
+  // AUFTRAG-ic7-import-vision: Klick auf eine AKTIVE Galerie-Kachel loest den echten, bereits
+  // existierenden Fluss aus — Confluence die READ-ONLY Erkundung, JSON den bestehenden Datei-Dialog
+  // (derselbe versteckte Upload; kein neuer Egress-Pfad). „bald"/„geplant" rufen dies GAR NICHT auf
+  // (das entscheidet die Galerie selbst).
+  const handleActivate = (id: string): void => {
+    if (id === "confluence") {
+      explore.mutate();
+      return;
+    }
+    if ((JSON_SOURCE_IDS as readonly string[]).includes(id)) {
+      const input = document.getElementById(JSON_UPLOAD_INPUT_ID);
+      if (input instanceof HTMLInputElement) {
+        input.click();
+      }
+    }
+  };
+
   return (
     <Card className="mb-5">
       {/* WP-COCKPIT-LINIE Schritt 1: Quelle wählen. */}
       <ImportStepHeading step="source" />
 
-      {/* Quellen-Kacheln: Confluence aktiv, Jira „bald". */}
-      <div className="mt-2 flex flex-wrap gap-2 pl-8">
-        <div className="rounded-card border border-ink/25 bg-surface px-3 py-2 text-[13px] font-semibold text-text">
-          Confluence
-          <span className="ml-1.5 rounded-pill bg-trust-pos-bg px-1.5 py-0.5 text-[10px] font-medium text-trust-pos-text">
-            {t("imp.explore.active")}
-          </span>
-        </div>
-        <div className="rounded-card border border-hairline bg-page px-3 py-2 text-[13px] font-semibold text-muted-2">
-          Jira
-          <span className="ml-1.5 rounded-pill bg-hairline-soft px-1.5 py-0.5 text-[10px] font-medium text-muted-2">
-            {t("imp.explore.soon")}
-          </span>
-        </div>
+      {/* AUFTRAG-ic7-import-vision: EHRLICHE Quellen-Galerie „wo die Reise hingeht" — Systeme
+          (Confluence · JSON-Import aktiv; Jira · Word · PDF bald; SharePoint/Teams/Drive/… geplant)
+          + Dateien (JSON aktiv; Word/PDF bald; Excel/PowerPoint/CSV/OCR/Transkript geplant). NUR
+          aktive Kacheln loesen den echten, bestehenden Fluss aus: Confluence startet die READ-ONLY
+          Erkundung, JSON oeffnet den bestehenden Datei-Dialog. „bald"/„geplant" zeigen nur einen
+          ehrlichen Hinweis — kein Import, kein Formular, kein Fortschritt. */}
+      <div className="mt-2 pl-8">
+        <ImportSourceGallery onActivate={handleActivate} />
       </div>
 
       {/* WP-COCKPIT-LINIE Schritt 2: Erkunden. Der Knopf ist der EINE Primär-CTA des Einstiegs
