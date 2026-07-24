@@ -20,7 +20,9 @@ import {
   resolveKlaraEntries,
   searchKlara,
 } from "../lib/klaraRegistry";
+import { useAiAvailable } from "../lib/useAiAvailable";
 import { AiModelInfo } from "./AiModelInfo";
+import { AiUnavailableHint } from "./AiUnavailableHint";
 // WP-UX-WOW-1 U1: Antwort-Markdown sicher rendern (React-Subset, kein HTML-Sink).
 import { AnswerMarkdown } from "./AnswerMarkdown";
 
@@ -78,6 +80,9 @@ export function KlaraAssistant(): JSX.Element {
   const location = useLocation();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  // PAKET 1 (D-AISTATE, Pedi 23.07.): die KI-Antwort (Reasoner-Task „answer") ohne nutzbares Modell
+  // HART ausgrauen — Klaras Registry-Suche (ohne KI) bleibt davon unberührt bedienbar.
+  const answerAi = useAiAvailable("answer");
   const [fieldId, setFieldId] = useState<string | null>(null);
   const [selectionNote, setSelectionNote] = useState(false);
   // Zeige-Modus (Pedi 05.07.): beliebiges Element anklicken → erklären, ohne die Aktion auszulösen.
@@ -471,7 +476,9 @@ export function KlaraAssistant(): JSX.Element {
               <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  disabled={query.trim().length < 3 || aiAsk.isPending}
+                  // PAKET 1 (D-AISTATE): hart ausgrauen, wenn kein Modell für „answer" nutzbar ist.
+                  disabled={query.trim().length < 3 || aiAsk.isPending || !answerAi.available}
+                  title={!answerAi.available ? t("ai.unavailable.hint") : undefined}
                   onClick={askAi}
                   className="inline-flex h-8 items-center gap-1.5 rounded-btn border border-ai bg-ai-surface-2 px-2.5 text-[12px] font-semibold text-ai hover:bg-ai-surface-1 disabled:opacity-50"
                 >
@@ -479,6 +486,7 @@ export function KlaraAssistant(): JSX.Element {
                 </button>
                 <AiModelInfo task="answer" />
               </div>
+              <AiUnavailableHint show={!answerAi.available} />
               {askedFor && !aiAsk.isPending ? (
                 aiNoGrounding ? (
                   <p className="rounded-card border border-dashed border-hairline px-3 py-2.5 text-[12px] leading-relaxed text-muted">

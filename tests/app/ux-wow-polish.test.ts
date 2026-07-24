@@ -48,7 +48,9 @@ describe("WP-UX-WOW-1 U5: Fragen-Knopf stellt eine echte Frage und sendet direkt
     // Ask-Eingabe: einzeiliges input IN einem form mit type=submit → Enter sendet nativ.
     const ask = read("apps/web/src/pages/Ask.tsx");
     expect(ask).toContain("<form");
-    expect(ask).toContain('Button type="submit"');
+    // PAKET 1 (D-AISTATE): der Submit-Button ist jetzt mehrzeilig (disabled/title für Modell-Zustand) —
+    // der Submit-Typ im Form bleibt die geprüfte Wahrheit (Enter sendet nativ).
+    expect(ask).toContain('type="submit"');
   });
 });
 

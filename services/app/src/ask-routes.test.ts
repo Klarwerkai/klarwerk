@@ -94,29 +94,43 @@ describe("SCRUM-242: Ask-Workflow (HTTP end-to-end)", () => {
     expect(gaps.json().some((g: { question: string }) => g.question === question)).toBe(true);
   });
 
-  it("Helpful erhöht Trust nachvollziehbar (+2); unbekanntes KO wird abgewiesen", async () => {
+  it("Helpful erhöht Trust nachvollziehbar (+2); unbelegte KO-ID wird abgewiesen", async () => {
     const { app, headers } = await adminApp();
     const koId = await createKo(app, headers); // unbewertet → Trust 0
+
+    // FUNKE-FIX P0 (bens ROT-1): das „Danke" verlangt den Answer-Receipt aus einem echten
+    // Antwortvorgang. Wir fragen passend zum KO, damit die Antwort GENAU dieses KO ausliefert.
+    const answer = await ask(app, headers, "Wie wird die Zylinderkopfdichtung XQ42 gewechselt?");
+    expect(answer.json().result.sources).toContain(koId);
+    const receipt = answer.json().receipt as string;
 
     const helpful = await app.inject({
       method: "POST",
       url: "/api/ask/helpful",
       headers,
-      payload: { koId },
+      payload: { koId, receipt },
     });
     expect(helpful.statusCode).toBe(204);
 
     const ko = await app.inject({ method: "GET", url: `/api/kos/${koId}`, headers });
     expect(ko.json().trust).toBe(2); // FR-ASK-04: +2
 
-    // Unbekanntes KO → NOT_FOUND.
-    const unknown = await app.inject({
+    // Unbelegte/fremd gewählte KO-ID (gültiger Receipt, aber anderes KO) → 403 (nicht wirksam).
+    const unbelegt = await app.inject({
       method: "POST",
       url: "/api/ask/helpful",
       headers,
-      payload: { koId: "does-not-exist" },
+      payload: { koId: "does-not-exist", receipt },
     });
-    expect(unknown.statusCode).toBeGreaterThanOrEqual(400);
+    expect(unbelegt.statusCode).toBe(403);
+    // Auch ganz ohne Receipt → 403.
+    const noReceipt = await app.inject({
+      method: "POST",
+      url: "/api/ask/helpful",
+      headers,
+      payload: { koId },
+    });
+    expect(noReceipt.statusCode).toBe(403);
   });
 
   it("Guard: anonym darf weder fragen noch Helpful markieren noch Gaps lesen", async () => {
@@ -137,6 +151,95 @@ describe("SCRUM-242: Ask-Workflow (HTTP end-to-end)", () => {
     expect(
       (await app.inject({ method: "GET", url: "/api/gaps" })).statusCode,
     ).toBeGreaterThanOrEqual(400);
+  });
+});
+
+// FUNKE-FIX2 P0 (bens Blocker Gap-Freitext): der Wissenslücken-FREITEXT wird end-to-end
+// adressatengerecht behandelt — /api/gaps/summary liefert NUR Zahlen; /api/gaps redigiert den
+// Fragetext für Unberechtigte und zeigt ihn Ersteller/Assignee/Detail-Rolle.
+describe("FUNKE-FIX2 P0: Wissenslücken-Freitext adressatengerecht (HTTP)", () => {
+  async function loginToken(
+    app: ReturnType<typeof buildApp>,
+    email: string,
+  ): Promise<{ headers: Record<string, string>; id: string }> {
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email, password: "secret123" },
+    });
+    return { headers: { authorization: `Bearer ${login.json().token}` }, id: login.json().user.id };
+  }
+
+  // Admin (Bootstrap) legt einen experten + einen weiteren experten an; erzeugt über eine
+  // unbeantwortbare Frage als EXPERTE-1 eine Lücke (createdBy = experte-1).
+  async function setup() {
+    const app = buildApp(buildServices());
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { name: "Admin", email: "admin@x.de", password: "secret123" },
+    });
+    const admin = await loginToken(app, "admin@x.de");
+    for (const [name, email] of [
+      ["Ex1", "ex1@x.de"],
+      ["Ex2", "ex2@x.de"],
+    ]) {
+      await app.inject({
+        method: "POST",
+        url: "/api/users",
+        headers: admin.headers,
+        payload: { name, email, password: "secret123", role: "experte" },
+      });
+    }
+    const ex1 = await loginToken(app, "ex1@x.de");
+    const ex2 = await loginToken(app, "ex2@x.de");
+    const question = "Wie kalibriere ich das Quantenflux Aggregat ZZZ?";
+    const asked = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: ex1.headers,
+      payload: { question },
+    });
+    const gapId = asked.json().gap.id as string;
+    return { app, admin, ex1, ex2, question, gapId };
+  }
+
+  it("/api/gaps/summary liefert nur Zahlen, KEINEN Fragetext", async () => {
+    const { app, ex2, question } = await setup();
+    const res = await app.inject({ method: "GET", url: "/api/gaps/summary", headers: ex2.headers });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.open).toBe(1);
+    expect(body.byPriority).toEqual({ hoch: 0, mittel: 1, niedrig: 0 });
+    expect(res.payload).not.toContain(question);
+    expect(res.payload).not.toContain("Quantenflux");
+  });
+
+  it("/api/gaps: Unberechtigter (fremder Experte) → redigiert, KEIN Fragetext, kein createdBy", async () => {
+    const { app, ex2, question } = await setup();
+    const res = await app.inject({ method: "GET", url: "/api/gaps", headers: ex2.headers });
+    expect(res.statusCode).toBe(200);
+    const gaps = res.json();
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0].question).toBe("");
+    expect(gaps[0].redacted).toBe(true);
+    expect("createdBy" in gaps[0]).toBe(false);
+    expect(res.payload).not.toContain(question);
+  });
+
+  it("/api/gaps: Ersteller (createdBy) → Volltext", async () => {
+    const { app, ex1, question } = await setup();
+    const res = await app.inject({ method: "GET", url: "/api/gaps", headers: ex1.headers });
+    const gaps = res.json();
+    expect(gaps[0].question).toBe(question);
+    expect(gaps[0].redacted).toBeUndefined();
+  });
+
+  it("/api/gaps: Detail-Rolle (Admin, ko.validate) → Volltext", async () => {
+    const { app, admin, question } = await setup();
+    const res = await app.inject({ method: "GET", url: "/api/gaps", headers: admin.headers });
+    const gaps = res.json();
+    expect(gaps[0].question).toBe(question);
   });
 });
 

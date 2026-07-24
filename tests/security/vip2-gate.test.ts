@@ -325,18 +325,51 @@ describe("WP-VIP2-GATE B4: /api/ai-status + /api/reasoner/status sind abstrahier
     const app = buildApp(modelServices());
     const status = await app.inject({ method: "GET", url: "/api/reasoner/status" });
     expect(status.statusCode).toBe(200);
-    expect(status.json()).toEqual({ active: true, mode: "cloud" });
+    // PAKET 2 (D-AISTATE): zusätzlich der ehrliche Erreichbarkeits-Zustand — eine STUFE (kein Provider-/
+    // Modellname). Der genaue Wert hängt vom (feuern-und-vergessen) Probe-Timing ab; sicherheitsrelevant
+    // ist NUR, dass keine Infrastruktur-Kennung durchsickert — die Stufe ist ein Aufzählungswert.
+    const statusBody = status.json() as {
+      active: boolean;
+      mode: string;
+      reachable: string;
+      tasks: Record<string, boolean>;
+    };
+    expect(statusBody.active).toBe(true);
+    expect(statusBody.mode).toBe("cloud");
+    expect(["none", "unverified", "active", "unreachable"]).toContain(statusBody.reachable);
+    // PAKET 3 (D-AISTATE, bens V4): abstrakte per-Task-Karte — NUR Booleans, KEIN Provider-/Modellname.
+    expect(typeof statusBody.tasks).toBe("object");
+    expect(Object.values(statusBody.tasks).every((v) => typeof v === "boolean")).toBe(true);
+    expect(statusBody.tasks.answer).toBe(true); // Modell konfiguriert → Aufgaben cloud-fähig
     expect(status.body).not.toContain("anthropic");
+    expect(status.body).not.toContain("claude-geheim-modellname");
     const ai = await app.inject({ method: "GET", url: "/api/ai-status" });
     expect(ai.statusCode).toBe(200);
-    expect(ai.json()).toEqual({ ai: { active: true, mode: "cloud" } });
+    const aiBody = (ai.json() as { ai: { active: boolean; mode: string; reachable: string } }).ai;
+    expect(aiBody.active).toBe(true);
+    expect(aiBody.mode).toBe("cloud");
+    expect(["none", "unverified", "active", "unreachable"]).toContain(aiBody.reachable);
     expect(ai.body).not.toContain("anthropic");
   });
 
-  it("ohne Modell: {active:false, mode:deterministic} (Bestandsflag bleibt aussagekräftig)", async () => {
-    const app = buildApp(buildServices());
+  it("ohne Modell: {active:false, mode:deterministic} + alle Aufgaben deterministisch (false)", async () => {
+    // Explizit OHNE Modell (unabhängig davon, ob die Dev-Umgebung einen Cloud-Key im Schlüsselbund hat).
+    const services = buildServices();
+    services.reasoner = new Reasoner();
+    const app = buildApp(services);
     const status = await app.inject({ method: "GET", url: "/api/reasoner/status" });
-    expect(status.json()).toEqual({ active: false, mode: "deterministic" });
+    const body = status.json() as {
+      active: boolean;
+      mode: string;
+      reachable: string;
+      tasks: Record<string, boolean>;
+    };
+    expect(body.active).toBe(false);
+    expect(body.mode).toBe("deterministic");
+    expect(body.reachable).toBe("none");
+    // PAKET 3 (bens V4): ohne Modell ist JEDE Aufgabe deterministisch (false) — kein Fake-„KI nutzbar".
+    expect(Object.values(body.tasks).length).toBeGreaterThan(0);
+    expect(Object.values(body.tasks).every((v) => v === false)).toBe(true);
   });
 
   // WP-VIP2-GATE-2 (bens Fix 3): /api/reasoner/config ist jetzt ECHTE Admin-Sicht (users.manage) —
@@ -390,7 +423,10 @@ describe("WP-VIP2-GATE B4: /api/ai-status + /api/reasoner/status sind abstrahier
       url: "/api/reasoner/status",
       headers: { authorization: `Bearer ${(expertLogin.json() as { token: string }).token}` },
     });
-    expect(publicStatus.json()).toEqual({ active: true, mode: "cloud" });
+    const pub = publicStatus.json() as { active: boolean; mode: string; reachable: string };
+    expect(pub.active).toBe(true);
+    expect(pub.mode).toBe("cloud");
+    expect(["none", "unverified", "active", "unreachable"]).toContain(pub.reachable);
   });
 });
 

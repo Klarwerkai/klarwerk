@@ -3,8 +3,25 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { authApi } from "../api/auth";
 import { ApiError } from "../api/client";
+import { useMyImpact } from "../api/hooks";
 import { useSession } from "../app/AuthContext";
+// FUNKE F1 (nacht24 Paket 6): „Meine Wirkung" — Zahlen nur über eigene Beiträge.
+import { MyImpactNumbers } from "../components/FunkeCards";
 import { Avatar, Button, Card, Field, PageHeader, TextInput } from "../components/ui";
+
+function MyImpactCard(): JSX.Element | null {
+  const { t } = useTranslation();
+  const impact = useMyImpact();
+  if (!impact.data) {
+    return null; // lädt/Fehler → keine leere oder erfundene Kachel
+  }
+  return (
+    <Card className="space-y-3">
+      <h2 className="text-[15px] font-semibold text-ink">{t("funke.impact.title")}</h2>
+      <MyImpactNumbers impact={impact.data} />
+    </Card>
+  );
+}
 
 function PasswordChangeCard({ onChanged }: { onChanged: () => void }): JSX.Element {
   const { t } = useTranslation();
@@ -127,6 +144,9 @@ export function Profile(): JSX.Element {
           </Button>
         </div>
       </Card>
+
+      {/* FUNKE F1 (nacht24 Paket 6): persönliches Wirkung-Panel — würdevoll, keine Ranglisten. */}
+      <MyImpactCard />
 
       <PasswordChangeCard onChanged={() => void signOut()} />
     </div>

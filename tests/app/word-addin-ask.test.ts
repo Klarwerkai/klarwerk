@@ -444,15 +444,21 @@ describe("WP-KLARA-ASK: Taskpane-Verdrahtung (Quelltext-Pins) + i18n x3", () => 
   });
 
   it("Teil 2: Einfuegen NUR bei echter Antwort (Gating + Office), Quellen-Zeile, Luecken-Weg als Front-Door-Draft mit Deep-Link", () => {
-    // Gating VOR dem Office-Schreibaufruf; setSelectedDataAsync als Text an der Cursorposition.
-    const guard = html.indexOf(
-      "if (!canInsertAnswer(currentAskOutcome) || !currentAskSourcesResolved || !officeUsable()) { return; }",
-    );
+    // klara1b Teil A: robustes Einfuegen ueber performInsert — MODERNER Word.run-Weg (getSelection().
+    // insertText) zuerst, setSelectedDataAsync als Fallback; der BEARBEITETE Feldinhalt wird eingefuegt.
+    expect(html).toContain("performInsert(text, buildInsertAttempts())");
+    expect(html).toContain("var text = getEditedAnswerText();");
+    // Word.run-Versuch vor dem setSelectedDataAsync-Fallback.
+    const wordRun = html.indexOf("range.insertText(text, Word.InsertLocation.replace)");
     const write = html.indexOf("Office.context.document.setSelectedDataAsync(");
-    expect(guard).toBeGreaterThan(0);
-    expect(write).toBeGreaterThan(guard);
+    expect(wordRun).toBeGreaterThan(0);
+    expect(write).toBeGreaterThan(wordRun);
     expect(html).toContain("coercionType: Office.CoercionType.Text");
-    // Quellen-Zeile aus aufgeloesten Titeln + Stand-Datum; der Text beginnt mit dem Wissen.
+    // Gating bleibt: der Einfuegen-Knopf ist nur bei belegter, aufgeloester Antwort UND bereitem
+    // Office aktiv; insertAnswer greift ohne bereites Office nie in die Word-API (ehrlicher Hinweis).
+    expect(html).toContain("insertBtn.disabled = !(insertable && officeUsable())");
+    expect(html).toContain('if (!officeUsable()) {\n        showAskStatus("warn", t("noOffice"));');
+    // Quellen-Zeile aus aufgeloesten Titeln + Stand-Datum; die Vorbefuellung beginnt mit dem Wissen.
     expect(html).toContain("buildAskSourceLine(");
     expect(html).toContain("buildAnswerInsertText(currentAskOutcome.answer, line, truncatedNote)");
     // Wissensluecke: BESTEHENDER Draft-Weg (origin frontdoor) + lokalisierte Titel-Konvention +
@@ -513,6 +519,14 @@ describe("WP-KLARA-ASK: Taskpane-Verdrahtung (Quelltext-Pins) + i18n x3", () => 
       'askInsertCta: "',
       'askInsertOk: "',
       'askInsertFail: "',
+      // klara1b Teil A/B: neue Schluessel (editierbar, Kopieren, kompakt, Rechte-Ausweg).
+      'askInsertEmpty: "',
+      'askAnswerEditHint: "',
+      'askCopyCta: "',
+      'askCopyOk: "',
+      'askCopyFail: "',
+      'askShowMore: "',
+      'askShowLess: "',
       'askSourceLine: "',
       'askSourceLineRetrieved: "',
       'askInsertTruncatedNote: "',
@@ -527,6 +541,44 @@ describe("WP-KLARA-ASK: Taskpane-Verdrahtung (Quelltext-Pins) + i18n x3", () => 
     expect(html).toContain('askGapTitle: "Keine belastbare Grundlage."');
     expect(html).toContain('askGapTitle: "No reliable basis."');
     expect(html).toContain('askGapTitle: "Geen betrouwbare basis."');
+  });
+
+  // klara1b Teil B (Pedis Wunsch 24.07.): editierbare, kompaktere Antwort VOR dem Eintragen.
+  it("Teil B: editierbares Feld (vorbefuellt), Einfuegen nutzt den bearbeiteten Text, Kopieren-Ausweg, kompakt", () => {
+    // Editierbares Textfeld statt statischem Absatz; vorbefuellt mit der Antwort, dann Quellen-Zeile.
+    expect(html).toContain('<textarea id="ask-answer-edit"');
+    expect(html).toContain('document.getElementById("ask-answer-edit").value = outcome.answer;');
+    expect(html).toContain("var full = buildDefaultInsertText();");
+    // Einfuegen UND Kopieren nutzen den AKTUELLEN (ggf. bearbeiteten) Feldinhalt — nie die Originalantwort.
+    expect(html).toContain("function getEditedAnswerText()");
+    expect(html).toContain('return document.getElementById("ask-answer-edit").value;');
+    expect(html).toContain("performInsert(text, buildInsertAttempts())");
+    expect(html).toContain("performCopy(text, clipboard)");
+    // Kopieren-Ausweg: eigener Knopf, braucht kein Office (immer aktiv bei belegter Antwort).
+    expect(html).toContain('id="ask-copy-btn"');
+    expect(html).toContain("copyBtn.disabled = !insertable;");
+    expect(html).toContain("window.navigator.clipboard");
+    // Kompakt: „mehr anzeigen"-Schalter nur bei langer Antwort (answerIsLong), Auf-/Zuklappen.
+    expect(html).toContain("if (answerIsLong(text)) {");
+    expect(html).toContain("function toggleAnswerExpanded()");
+    expect(html).toContain('id="ask-answer-toggle"');
+    // Die Quellenliste bleibt GETRENNT vom einzufuegenden Text (nur Anzeige — wandert nie ins Dokument).
+    expect(html).toContain('id="ask-sources-block"');
+    // Neue Meldungen in allen drei Sprachen (Ausweg/Kopieren/Kompakt).
+    for (const key of [
+      'askCopyCta: "',
+      'askCopyOk: "',
+      'askCopyFail: "',
+      'askAnswerEditHint: "',
+      'askShowMore: "',
+      'askShowLess: "',
+      'askInsertEmpty: "',
+    ]) {
+      expect(html.split(key).length - 1, key).toBe(3);
+    }
+    // Die Rechte-Meldung nennt jetzt zusaetzlich den Versions-Bump und den Kopieren-Ausweg.
+    expect(html).toContain("hoehere");
+    expect(html).toContain("Kopieren");
   });
 
   it("Inline-Skript bleibt syntaktisch gueltig (node-parsebar, buildlos)", () => {

@@ -8,12 +8,12 @@ import { useConflicts, useKos } from "../api/hooks";
 import type { Conflict, ConflictStatus, KnowledgeObject } from "../api/types";
 // WP-UX-WOW-1 U6: der Leerzustand erklärt Konflikte; Admins sehen den Beispielpaket-Einstieg.
 import { useRole } from "../app/RoleContext";
+import { FindingCard, FindingGroupHeader } from "../components/FindingCard";
 import { HelpTip } from "../components/HelpTip";
 import { KoView } from "../components/KoView";
 import { Modal } from "../components/Modal";
 import { ConflictKoSide } from "../components/conflicts/ConflictKoSide";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
-import { type Participant, conflictLead } from "../lib/boardCard";
 import { CONFLICT_BOARD_TEXT, canDismiss, conflictOriginInfo } from "../lib/conflictBoard";
 import {
   CONFLICT_COLLISION_TEXT,
@@ -23,6 +23,7 @@ import {
   resolveCollision,
 } from "../lib/conflictCollision";
 import { conflictKoPair, conflictNextStep, resolutionEffect } from "../lib/conflictView";
+import { conflictFinding, groupFindingsByBeitrag, resolveKo } from "../lib/findingGroups";
 import { type ReviewHelpId, reviewHelp } from "../lib/reviewHelp";
 
 const PATH: ConflictStatus[] = ["eskaliert", "zweitmeinung", "geloest"];
@@ -271,318 +272,316 @@ export function Conflicts(): JSX.Element {
         }
       >
         {(items) => (
-          <div className="space-y-4">
-            {items.map((c) => (
-              <Card key={c.id}>
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <span className="rounded-pill bg-trust-crit-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-crit-text">
-                    {t(`con.type.${c.type}`)}
-                  </span>
-                  <span className="font-mono text-[11px] uppercase text-muted-2">
-                    {t(`con.status.${c.status}`)}
-                  </span>
-                </div>
-                {/* SCRUM-486 (Entdichtung): Führungszeile — welche zwei Beiträge, was Klarwerk als
-                    Widerspruch sieht, welche Handlung jetzt empfohlen ist. Details klappen darunter auf. */}
-                {(() => {
-                  const lead = conflictLead(c, kos.data ?? []);
-                  const name = (p: Participant): string =>
-                    p.removed ? t("board.koRemoved") : p.title;
-                  return (
-                    <p className="text-[14px] font-medium leading-snug text-text">
-                      <span className="font-mono text-[10.5px] uppercase tracking-wider text-trust-crit-text">
-                        {t("con.leadKicker")}:
-                      </span>{" "}
-                      {name(lead.a)}
-                      <span className="mx-1.5 font-mono text-[11px] uppercase text-muted-2">
-                        {t("con.versus")}
-                      </span>
-                      {name(lead.b)}
-                      <span className="mx-1.5 text-muted-2" aria-hidden="true">
-                        →
-                      </span>
-                      <span className="text-text">{t(lead.recommendedStepKey)}</span>
-                    </p>
-                  );
-                })()}
-                <p className="mt-1 text-[13px] leading-relaxed text-muted">{c.description}</p>
+          <div className="space-y-6">
+            {/* SCRUM-486 (nacht24 Paket 3): gruppiert je Beitrag, neueste zuerst — Kern-Darstellung
+                je Befund (WAS · Erkennungsweg ehrlich · beide Seiten verlinkt · Aktion) aus der
+                geteilten FindingCard; Kollision, Belege und Aktionen bleiben darunter. */}
+            {groupFindingsByBeitrag(items).map((group) => (
+              <section key={group.koId} aria-label={t("finding.groupKicker")}>
+                <FindingGroupHeader
+                  ko={resolveKo(group.koId, kos.data ?? [])}
+                  count={group.items.length}
+                />
+                <div className="space-y-4">
+                  {group.items.map((c) => (
+                    <Card key={c.id}>
+                      <FindingCard
+                        view={conflictFinding(c)}
+                        a={conflictKoPair(c, kos.data ?? []).a}
+                        b={conflictKoPair(c, kos.data ?? []).b}
+                        statusLabel={t(`con.status.${c.status}`)}
+                      >
+                        {/* Konflikt-Art (z. B. Wahrheitskonflikt) bleibt ehrlich sichtbar. */}
+                        <div className="mt-1.5">
+                          <span className="rounded-pill bg-trust-crit-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-crit-text">
+                            {t(`con.type.${c.type}`)}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-[13px] leading-relaxed text-muted">
+                          {c.description}
+                        </p>
 
-                {/* SCRUM-492: strukturierte Kollisions-Gegenüberstellung — zwei Kacheln + sichtbarer
+                        {/* SCRUM-492: strukturierte Kollisions-Gegenüberstellung — zwei Kacheln + sichtbarer
                     Kollisionspunkt, wenn die Erkennung die Felder geliefert hat. Sonst greift die
                     bestehende Zitat-/Text-Darstellung im <details> (Fallback-Kaskade). */}
-                {(() => {
-                  const collision = resolveCollision(c, kos.data ?? []);
-                  return collision ? <CollisionTiles collision={collision} /> : null;
-                })()}
+                        {(() => {
+                          const collision = resolveCollision(c, kos.data ?? []);
+                          return collision ? <CollisionTiles collision={collision} /> : null;
+                        })()}
 
-                {/* SCRUM-486 (WP4): der KERN-BELEG je Seite SICHTBAR auf der Karte — klickbare Quelle +
+                        {/* SCRUM-486 (WP4): der KERN-BELEG je Seite SICHTBAR auf der Karte — klickbare Quelle +
                     Quelldatum + KO-Konfidenz. Nicht mehr im zugeklappten details. Plus Konfliktdatum +
                     Erkennungssicherheit. A/B-Zuordnung strikt über conflictKoPair (koA→a, koB→b). */}
-                {(() => {
-                  const pair = conflictKoPair(c, kos.data ?? []);
-                  const origin = conflictOriginInfo(c);
-                  const detected = new Date(c.createdAt);
-                  const detectedText = Number.isNaN(detected.getTime())
-                    ? null
-                    : detected.toLocaleDateString(i18n.language);
-                  return (
-                    <div className="mt-3">
-                      <div className="grid grid-cols-1 items-stretch gap-2 sm:grid-cols-2">
-                        <ConflictKoSide ko={pair.a} fallbackId={c.koA} />
-                        <ConflictKoSide ko={pair.b} fallbackId={c.koB} />
-                      </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10.5px] text-muted-2">
-                        {detectedText ? (
-                          <span>{t("con.detectedOn", { date: detectedText })}</span>
-                        ) : null}
-                        {origin.confidencePercent !== undefined ? (
-                          <>
-                            <span aria-hidden="true">·</span>
-                            <span>
-                              {t(CONFLICT_BOARD_TEXT.confidence, {
-                                percent: origin.confidencePercent,
-                              })}
-                            </span>
-                          </>
-                        ) : null}
-                      </div>
-                    </div>
-                  );
-                })()}
+                        {(() => {
+                          const pair = conflictKoPair(c, kos.data ?? []);
+                          const origin = conflictOriginInfo(c);
+                          const detected = new Date(c.createdAt);
+                          const detectedText = Number.isNaN(detected.getTime())
+                            ? null
+                            : detected.toLocaleDateString(i18n.language);
+                          return (
+                            <div className="mt-3">
+                              <div className="grid grid-cols-1 items-stretch gap-2 sm:grid-cols-2">
+                                <ConflictKoSide ko={pair.a} fallbackId={c.koA} />
+                                <ConflictKoSide ko={pair.b} fallbackId={c.koB} />
+                              </div>
+                              <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10.5px] text-muted-2">
+                                {detectedText ? (
+                                  <span>{t("con.detectedOn", { date: detectedText })}</span>
+                                ) : null}
+                                {origin.confidencePercent !== undefined ? (
+                                  <>
+                                    <span aria-hidden="true">·</span>
+                                    <span>
+                                      {t(CONFLICT_BOARD_TEXT.confidence, {
+                                        percent: origin.confidencePercent,
+                                      })}
+                                    </span>
+                                  </>
+                                ) : null}
+                              </div>
+                            </div>
+                          );
+                        })()}
 
-                {/* SCRUM-486: Herkunft/Belege, KO-Panels und Eskalationspfad hinter einer ruhigen
+                        {/* SCRUM-486: Herkunft/Belege, KO-Panels und Eskalationspfad hinter einer ruhigen
                     Aufklappung (Progressive Disclosure wie SCRUM-416). Nichts entfernt, nur verlagert. */}
-                <details className="mt-3">
-                  <summary className="cursor-pointer list-none text-[12px] font-semibold text-ai hover:opacity-80">
-                    {t("board.detailsShow")}
-                  </summary>
-                  <div className="mt-2">
-                    {/* Stufe 4b: Herkunft + Begründung + wörtliche Belege bei automatisch erkannten Konflikten. */}
-                    <ConflictOriginBadge conflict={c} />
-                    {(() => {
-                      const pair = conflictKoPair(c, kos.data ?? []);
-                      return (
-                        <div className="mt-3 grid grid-cols-1 items-start gap-3 sm:grid-cols-[1fr_auto_1fr]">
-                          <KoPanel ko={pair.a} fallbackId={c.koA} />
-                          <span className="self-center text-center font-mono text-[11px] text-muted-2">
-                            {t("con.versus")}
-                          </span>
-                          <KoPanel ko={pair.b} fallbackId={c.koB} />
-                        </div>
-                      );
-                    })()}
-                    {/* Pedi 04.07.: beide Objekte komplett nebeneinander im Pop-up öffnen — direkt
+                        <details className="mt-3">
+                          <summary className="cursor-pointer list-none text-[12px] font-semibold text-ai hover:opacity-80">
+                            {t("board.detailsShow")}
+                          </summary>
+                          <div className="mt-2">
+                            {/* Stufe 4b: Herkunft + Begründung + wörtliche Belege bei automatisch erkannten Konflikten. */}
+                            <ConflictOriginBadge conflict={c} />
+                            {(() => {
+                              const pair = conflictKoPair(c, kos.data ?? []);
+                              return (
+                                <div className="mt-3 grid grid-cols-1 items-start gap-3 sm:grid-cols-[1fr_auto_1fr]">
+                                  <KoPanel ko={pair.a} fallbackId={c.koA} />
+                                  <span className="self-center text-center font-mono text-[11px] text-muted-2">
+                                    {t("con.versus")}
+                                  </span>
+                                  <KoPanel ko={pair.b} fallbackId={c.koB} />
+                                </div>
+                              );
+                            })()}
+                            {/* Pedi 04.07.: beide Objekte komplett nebeneinander im Pop-up öffnen — direkt
                         vergleichen, ohne die Seite zu verlassen. Nur wenn beide Objekte vorhanden sind. */}
-                    {(() => {
-                      const pair = conflictKoPair(c, kos.data ?? []);
-                      return pair.a && pair.b ? (
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <Button variant="ghost" onClick={() => setCompareId(c.id)}>
-                            {t("con.compareOpen")}
-                          </Button>
-                          <Link
-                            to={`/konflikte/${c.id}/vergleich`}
-                            className="inline-flex items-center justify-center rounded-btn border border-hairline px-3.5 py-2 text-[13px] font-semibold text-text hover:bg-hairline-soft"
-                          >
-                            {t("con.readonlyCompare")} <span aria-hidden="true">→</span>
-                          </Link>
-                        </div>
-                      ) : null;
-                    })()}
+                            {(() => {
+                              const pair = conflictKoPair(c, kos.data ?? []);
+                              return pair.a && pair.b ? (
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                  <Button variant="ghost" onClick={() => setCompareId(c.id)}>
+                                    {t("con.compareOpen")}
+                                  </Button>
+                                  <Link
+                                    to={`/konflikte/${c.id}/vergleich`}
+                                    className="inline-flex items-center justify-center rounded-btn border border-hairline px-3.5 py-2 text-[13px] font-semibold text-text hover:bg-hairline-soft"
+                                  >
+                                    {t("con.readonlyCompare")} <span aria-hidden="true">→</span>
+                                  </Link>
+                                </div>
+                              ) : null;
+                            })()}
 
-                    {c.type === "truth" ? (
-                      <div className="mt-4">
-                        <div className="mb-2 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
-                          {t("con.escPath")}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {PATH.map((step, i) => {
-                            const reached = PATH.indexOf(c.status) >= i || c.status === "geloest";
-                            return (
-                              <span
-                                key={step}
-                                className={`rounded-pill px-2 py-1 font-mono text-[11px] ${
-                                  reached
-                                    ? "bg-ink text-white"
-                                    : "border border-hairline text-muted-2"
-                                }`}
-                              >
-                                {i + 1} {t(`con.status.${step}`)}
+                            {c.type === "truth" ? (
+                              <div className="mt-4">
+                                <div className="mb-2 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+                                  {t("con.escPath")}
+                                </div>
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  {PATH.map((step, i) => {
+                                    const reached =
+                                      PATH.indexOf(c.status) >= i || c.status === "geloest";
+                                    return (
+                                      <span
+                                        key={step}
+                                        className={`rounded-pill px-2 py-1 font-mono text-[11px] ${
+                                          reached
+                                            ? "bg-ink text-white"
+                                            : "border border-hairline text-muted-2"
+                                        }`}
+                                      >
+                                        {i + 1} {t(`con.status.${step}`)}
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+                        </details>
+
+                        {c.secondOpinion ? (
+                          <div className="mt-4 rounded-card bg-page p-3 text-[13px] text-text">
+                            <span className="font-semibold">{t("con.secondOpinion")}:</span>{" "}
+                            {c.secondOpinion}
+                          </div>
+                        ) : null}
+
+                        {c.status !== "geloest" ? (
+                          <div className="mt-4 border-t border-hairline pt-3">
+                            {/* SCRUM-252: genau eine empfohlene nächste Handlung, abgeleitet aus Art+Status. */}
+                            <p className="mb-2 text-[12.5px] text-muted">
+                              <span className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+                                {t("con.nextLabel")}:
+                              </span>{" "}
+                              <span className="font-medium text-text">
+                                {t(`con.next.${conflictNextStep(c)}`)}
                               </span>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                </details>
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {c.type === "truth" && c.status === "offen" ? (
+                                <span className="inline-flex items-center gap-0.5">
+                                  <Button
+                                    disabled={escalate.isPending}
+                                    onClick={() => escalate.mutate(c.id)}
+                                  >
+                                    {t("con.escalate")}
+                                  </Button>
+                                  {vhelp("conflictEscalate")}
+                                </span>
+                              ) : null}
+                              {c.status !== "zweitmeinung" ? (
+                                <span className="inline-flex items-center gap-0.5">
+                                  <Button
+                                    onClick={() => {
+                                      setErr(null);
+                                      setOpinion("");
+                                      setOpinionId(opinionId === c.id ? null : c.id);
+                                    }}
+                                  >
+                                    {t("con.secondOpinionAdd")}
+                                  </Button>
+                                  {vhelp("conflictSecondOpinion")}
+                                </span>
+                              ) : null}
+                              <span className="inline-flex items-center gap-0.5">
+                                <Button
+                                  variant="primary"
+                                  onClick={() => {
+                                    setErr(null);
+                                    setDecision("");
+                                    setResolvingId(resolvingId === c.id ? null : c.id);
+                                  }}
+                                >
+                                  {t("con.resolve")}
+                                </Button>
+                                {vhelp("conflictResolve")}
+                              </span>
+                              {/* Stufe 4b: Ein-Klick-„Fehlalarm" nur bei automatisch erkannten Konflikten. */}
+                              {canDismiss(c) ? (
+                                <Button
+                                  variant="ghost"
+                                  disabled={dismiss.isPending}
+                                  onClick={() => dismiss.mutate(c.id)}
+                                >
+                                  {t(CONFLICT_BOARD_TEXT.dismiss)}
+                                </Button>
+                              ) : null}
+                            </div>
+                          </div>
+                        ) : c.decision ? (
+                          <div className="mt-4 rounded-card bg-trust-pos-bg p-3 text-[13px] text-trust-pos-text">
+                            <span className="font-semibold">{t("con.decision")}:</span> {c.decision}
+                          </div>
+                        ) : null}
 
-                {c.secondOpinion ? (
-                  <div className="mt-4 rounded-card bg-page p-3 text-[13px] text-text">
-                    <span className="font-semibold">{t("con.secondOpinion")}:</span>{" "}
-                    {c.secondOpinion}
-                  </div>
-                ) : null}
+                        {opinionId === c.id ? (
+                          <div className="mt-3 space-y-2">
+                            <textarea
+                              value={opinion}
+                              onChange={(e) => setOpinion(e.target.value)}
+                              rows={2}
+                              placeholder={t("con.secondOpinionPlaceholder")}
+                              className="w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none focus:border-ink/30"
+                            />
+                            {err ? (
+                              <div className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
+                                {err}
+                              </div>
+                            ) : null}
+                            <Button
+                              variant="primary"
+                              disabled={secondOpinion.isPending || opinion.trim().length === 0}
+                              onClick={() => secondOpinion.mutate(c.id)}
+                            >
+                              {t("con.secondOpinionConfirm")}
+                            </Button>
+                          </div>
+                        ) : null}
 
-                {c.status !== "geloest" ? (
-                  <div className="mt-4 border-t border-hairline pt-3">
-                    {/* SCRUM-252: genau eine empfohlene nächste Handlung, abgeleitet aus Art+Status. */}
-                    <p className="mb-2 text-[12.5px] text-muted">
-                      <span className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
-                        {t("con.nextLabel")}:
-                      </span>{" "}
-                      <span className="font-medium text-text">
-                        {t(`con.next.${conflictNextStep(c)}`)}
-                      </span>
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {c.type === "truth" && c.status === "offen" ? (
-                        <span className="inline-flex items-center gap-0.5">
-                          <Button
-                            disabled={escalate.isPending}
-                            onClick={() => escalate.mutate(c.id)}
-                          >
-                            {t("con.escalate")}
-                          </Button>
-                          {vhelp("conflictEscalate")}
-                        </span>
-                      ) : null}
-                      {c.status !== "zweitmeinung" ? (
-                        <span className="inline-flex items-center gap-0.5">
-                          <Button
-                            onClick={() => {
-                              setErr(null);
-                              setOpinion("");
-                              setOpinionId(opinionId === c.id ? null : c.id);
-                            }}
-                          >
-                            {t("con.secondOpinionAdd")}
-                          </Button>
-                          {vhelp("conflictSecondOpinion")}
-                        </span>
-                      ) : null}
-                      <span className="inline-flex items-center gap-0.5">
-                        <Button
-                          variant="primary"
-                          onClick={() => {
-                            setErr(null);
-                            setDecision("");
-                            setResolvingId(resolvingId === c.id ? null : c.id);
-                          }}
-                        >
-                          {t("con.resolve")}
-                        </Button>
-                        {vhelp("conflictResolve")}
-                      </span>
-                      {/* Stufe 4b: Ein-Klick-„Fehlalarm" nur bei automatisch erkannten Konflikten. */}
-                      {canDismiss(c) ? (
-                        <Button
-                          variant="ghost"
-                          disabled={dismiss.isPending}
-                          onClick={() => dismiss.mutate(c.id)}
-                        >
-                          {t(CONFLICT_BOARD_TEXT.dismiss)}
-                        </Button>
-                      ) : null}
-                    </div>
-                  </div>
-                ) : c.decision ? (
-                  <div className="mt-4 rounded-card bg-trust-pos-bg p-3 text-[13px] text-trust-pos-text">
-                    <span className="font-semibold">{t("con.decision")}:</span> {c.decision}
-                  </div>
-                ) : null}
+                        {resolvingId === c.id ? (
+                          <div className="mt-3 space-y-2">
+                            {/* SCRUM-128: Auflösung wirkt dokumentierend, nicht mutierend */}
+                            <div className="rounded-input bg-trust-warn-bg p-2.5 text-[12px] text-trust-warn-text">
+                              {t("con.resolveEffect")}
+                              {resolutionEffect(c).revalidationRecommended ? (
+                                <span> {t("con.resolveRevalidate")}</span>
+                              ) : null}
+                            </div>
+                            <textarea
+                              value={decision}
+                              onChange={(e) => setDecision(e.target.value)}
+                              rows={2}
+                              placeholder={t("con.decisionPlaceholder")}
+                              className="w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none focus:border-ink/30"
+                            />
+                            {err ? (
+                              <div className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
+                                {err}
+                              </div>
+                            ) : null}
+                            <Button
+                              variant="primary"
+                              disabled={resolve.isPending || decision.trim().length === 0}
+                              onClick={() => resolve.mutate({ id: c.id, koA: c.koA })}
+                            >
+                              {t("con.resolveConfirm")}
+                            </Button>
+                          </div>
+                        ) : null}
 
-                {opinionId === c.id ? (
-                  <div className="mt-3 space-y-2">
-                    <textarea
-                      value={opinion}
-                      onChange={(e) => setOpinion(e.target.value)}
-                      rows={2}
-                      placeholder={t("con.secondOpinionPlaceholder")}
-                      className="w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none focus:border-ink/30"
-                    />
-                    {err ? (
-                      <div className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
-                        {err}
-                      </div>
-                    ) : null}
-                    <Button
-                      variant="primary"
-                      disabled={secondOpinion.isPending || opinion.trim().length === 0}
-                      onClick={() => secondOpinion.mutate(c.id)}
-                    >
-                      {t("con.secondOpinionConfirm")}
-                    </Button>
-                  </div>
-                ) : null}
-
-                {resolvingId === c.id ? (
-                  <div className="mt-3 space-y-2">
-                    {/* SCRUM-128: Auflösung wirkt dokumentierend, nicht mutierend */}
-                    <div className="rounded-input bg-trust-warn-bg p-2.5 text-[12px] text-trust-warn-text">
-                      {t("con.resolveEffect")}
-                      {resolutionEffect(c).revalidationRecommended ? (
-                        <span> {t("con.resolveRevalidate")}</span>
-                      ) : null}
-                    </div>
-                    <textarea
-                      value={decision}
-                      onChange={(e) => setDecision(e.target.value)}
-                      rows={2}
-                      placeholder={t("con.decisionPlaceholder")}
-                      className="w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none focus:border-ink/30"
-                    />
-                    {err ? (
-                      <div className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
-                        {err}
-                      </div>
-                    ) : null}
-                    <Button
-                      variant="primary"
-                      disabled={resolve.isPending || decision.trim().length === 0}
-                      onClick={() => resolve.mutate({ id: c.id, koA: c.koA })}
-                    >
-                      {t("con.resolveConfirm")}
-                    </Button>
-                  </div>
-                ) : null}
-
-                {(() => {
-                  const pair = conflictKoPair(c, kos.data ?? []);
-                  if (!pair.a || !pair.b) {
-                    return null;
-                  }
-                  return (
-                    <Modal
-                      open={compareId === c.id}
-                      onClose={() => setCompareId(null)}
-                      title={t("con.compareTitle")}
-                      wide
-                    >
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <div className="rounded-card border border-hairline bg-page p-3">
-                          <KoView ko={pair.a} />
-                          <Link
-                            to={`/wissen/${pair.a.id}`}
-                            className="mt-2 inline-block text-[11.5px] font-semibold text-ai hover:underline"
-                          >
-                            {t("con.openKo")} →
-                          </Link>
-                        </div>
-                        <div className="rounded-card border border-hairline bg-page p-3">
-                          <KoView ko={pair.b} />
-                          <Link
-                            to={`/wissen/${pair.b.id}`}
-                            className="mt-2 inline-block text-[11.5px] font-semibold text-ai hover:underline"
-                          >
-                            {t("con.openKo")} →
-                          </Link>
-                        </div>
-                      </div>
-                    </Modal>
-                  );
-                })()}
-              </Card>
+                        {(() => {
+                          const pair = conflictKoPair(c, kos.data ?? []);
+                          if (!pair.a || !pair.b) {
+                            return null;
+                          }
+                          return (
+                            <Modal
+                              open={compareId === c.id}
+                              onClose={() => setCompareId(null)}
+                              title={t("con.compareTitle")}
+                              wide
+                            >
+                              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                <div className="rounded-card border border-hairline bg-page p-3">
+                                  <KoView ko={pair.a} />
+                                  <Link
+                                    to={`/wissen/${pair.a.id}`}
+                                    className="mt-2 inline-block text-[11.5px] font-semibold text-ai hover:underline"
+                                  >
+                                    {t("con.openKo")} →
+                                  </Link>
+                                </div>
+                                <div className="rounded-card border border-hairline bg-page p-3">
+                                  <KoView ko={pair.b} />
+                                  <Link
+                                    to={`/wissen/${pair.b.id}`}
+                                    className="mt-2 inline-block text-[11.5px] font-semibold text-ai hover:underline"
+                                  >
+                                    {t("con.openKo")} →
+                                  </Link>
+                                </div>
+                              </div>
+                            </Modal>
+                          );
+                        })()}
+                      </FindingCard>
+                    </Card>
+                  ))}
+                </div>
+              </section>
             ))}
           </div>
         )}

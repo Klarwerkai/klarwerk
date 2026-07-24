@@ -4,6 +4,9 @@ import { type ExampleLoadServices, examplePackage, loadExamplePackage } from "..
 import { type FactoryReset, factoryResetUnavailable } from "../factory-reset";
 import type { Guards } from "../http";
 import { type DemoSeedServices, purgeDemoSeed, seedDemoForAdmin } from "../seed-demo";
+// SCRUM-501 (nacht24): Demo-/Simulationskorpus DE/EN/NL — NICHT automatisch, nur über diesen
+// Admin-Weg (bzw. tools/seed-sim-corpus); Entfernen über den bestehenden Demo-Purge (demoSeed).
+import { loadSimCorpus } from "../sim-corpus";
 
 // SCRUM-181: admin-geschützte Aktion, um eine LEERE Instanz mit Demodaten sichtbar zu machen.
 // Kein Auto-Seed, kein anonymer Zugriff. Idempotent über den Empty-Guard im Seed selbst.
@@ -31,6 +34,17 @@ export function adminRoutes(
       const result = await seedDemoForAdmin(services, user.id, { force, locale });
       // Ehrliche Rückgabe: seeded vs. skipped (Instanz nicht leer) inkl. Kennzahlen.
       reply.code(200).send(result);
+    });
+
+    // SCRUM-501 (nacht24 Paket 7.2): Simulationskorpus DE/EN/NL laden (~30 Industrie-KOs je
+    // Sprache, inkl. gewollter Cross-Sprach-Duplikate/-Konflikte). Idempotent über das
+    // sim-korpus-Tag; alle Einträge tragen demoSeed → Entfernen über den Demo-Purge unten.
+    app.post("/api/admin/sim-corpus", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      reply.code(200).send(await loadSimCorpus(services, user.id));
     });
 
     // Pedi 02.07.: Demodaten KOMPLETT entfernen — auch wenn Tester sie verändert haben

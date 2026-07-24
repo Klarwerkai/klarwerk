@@ -26,6 +26,11 @@ export function aiCheckFailureReasonKey(fallbackReason: string | undefined): str
   if (fallbackReason === "queue-overflow") {
     return "val.aiCheck.reason.queue-overflow";
   }
+  // D-AISTATE PAKET 1 (bens V1): vertraulich → Cloud ausgeschlossen, kein lokales Modell — ehrlich
+  // „ohne KI geprüft (vertraulich)", NICHT als Modellfehler tarnen.
+  if (fallbackReason === "confidential") {
+    return "val.aiCheck.reason.confidential";
+  }
   return "val.aiCheck.reason.model-error";
 }
 
@@ -35,6 +40,23 @@ export const AI_CHECK_CARD_TEXT = {
   done: "capture.aiCheck.done",
   failed: "capture.aiCheck.failed",
 } as const;
+
+// PAKET 1.4 (D-AISTATE, Pedi 23.07.): ehrlicher Name je Modellzustand. MIT nutzbarem Modell läuft die
+// Duplikat-/Konfliktprüfung zusätzlich „(mit KI)"; OHNE Modell trägt allein die deterministische Ebene —
+// dann NICHT „KI-Prüfung", sondern schlicht „Duplikat-/Konfliktprüfung". EINE Quelle für Badge (Liste),
+// Bestätigungs-Karte (/erfassen) und Sperr-Hinweis (Validierung).
+export function aiCheckPendingLabelKey(modelActive: boolean): string {
+  return modelActive ? "val.aiCheck.pendingAi" : "val.aiCheck.pending";
+}
+export function aiCheckPendingHintKey(modelActive: boolean): string {
+  return modelActive ? "val.aiCheck.pendingHintAi" : "val.aiCheck.pendingHint";
+}
+export function aiCheckCardRunningKey(modelActive: boolean): string {
+  return modelActive ? "capture.aiCheck.runningAi" : "capture.aiCheck.running";
+}
+export function aiCheckCardDoneKey(modelActive: boolean): string {
+  return modelActive ? "capture.aiCheck.doneAi" : "capture.aiCheck.done";
+}
 
 // Poll-Intervall der Karte: schnell genug für den Kurz-Check (Sekunden bis wenige Minuten),
 // sparsam genug, um den Server nicht zu belasten.

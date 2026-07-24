@@ -11,7 +11,7 @@
 // vorgemerkt" (eigene Farbe/eigener Text, gleiche Vorab-Abwahl) — nie mehr „bereits importiert".
 // WP-IC-PAKET-1 (Teil 1): Altbestand-Anzeige dekodiert HTML-Entities (nur Text-Rendering, nie HTML).
 import { useMutation } from "@tanstack/react-query";
-import { ChevronDown, Images, Loader2, Sparkles } from "lucide-react";
+import { Images, Loader2, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
@@ -28,11 +28,13 @@ import {
   type PreviewRow,
   bulkSelectableRows,
   clearAllSelected,
+  deselectLanguage,
   effectiveGroupMode,
   groupCheckboxState,
   groupModeOptions,
-  groupRows,
+  groupRowsTree,
   groupsCollapsedByDefault,
+  languageCounts,
   rowsAllChecked,
   selectionSummary,
   setRowsSelected,
@@ -42,8 +44,11 @@ import {
 // WP-IC-PAKET-1b (bens ROT-3): latest-wins — Antworten aelterer Requests werden verworfen.
 import { createLatestWins } from "../lib/latestWins";
 import { toReasonerLocale } from "../lib/reasonerLocale";
+import { useAiAvailable } from "../lib/useAiAvailable";
 // WP-IC-4: Schritt 4+5 (Gruppen-Freigabe + Übernahme mit Bilanz).
 import { ImportGroups } from "./ImportGroups";
+// RT5a-c (nacht24): Subfolder-Baum + Sprach-Massenaktion (Darstellung; Logik in importSelectView).
+import { ImportPreviewTree, LanguageDeselectChips } from "./ImportPreviewTree";
 // WP-COCKPIT-LINIE: Schritt-Überschrift (3 Eingrenzen) + Meilenstein-Meldung an die Leiste.
 import {
   ImportStepHeading,
@@ -67,6 +72,9 @@ function parsedPositiveInt(raw: string): number | undefined {
 
 export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Element {
   const { t, i18n } = useTranslation();
+  // PAKET 1 (D-AISTATE, Pedi 23.07.): ist die KI-Gruppierung (Task „group") nutzbar? An ImportGroups
+  // durchgereicht — der deterministische Gruppierungs-Ablauf bleibt nutzbar, nur der Vor-Hinweis ehrlich.
+  const groupAi = useAiAvailable("group");
   const [prompt, setPrompt] = useState("");
   // WP-VIP2-GATE-2 (bens Fix 1): PFLICHT-Eigeneinstufung des Auswahl-Satzes — VORGABE ist
   // fail-safe „Ja/unsicher" (vertraulich); nur die bewusste Wahl „Nein, unbedenklich" erlaubt
@@ -227,7 +235,9 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
     ? effectiveGroupMode(preview.preview, view.groupMode)
     : ("none" as PreviewGroupMode);
   const rows = preview ? visibleRows(preview.preview, { ...view, chip: activeChip }) : [];
-  const groups = groupRows(rows, groupMode);
+  // RT5a (nacht24): ECHTER Subfolder-Baum — im Sprach-Modus bekommen Sprach-Ordner Themen-
+  // Unterordner (auf-/zuklappbar), sobald die Sprache ≥2 Themen hergibt; sonst wie bisher.
+  const groups = groupRowsTree(rows, groupMode);
   const summary = selectionSummary(checkedRows);
   // F1: Bulk-Aktionen (Alle wählen, Gruppen-Checkbox) UND die Haken-Anzeige arbeiten auf DERSELBEN
   // bulk-wählbaren Teilmenge — bereits importierte/vorgemerkte Zeilen fasst kein Bulk-Setzer an.
@@ -292,6 +302,8 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
           ? t("imp.select.chipQueued")
           : t("imp.select.chipAll");
   const chips = preview ? statusChipCounts(preview.preview) : [];
+  // RT5b (nacht24): Sprach-Zähler über den GESAMTEN gefundenen Bestand — Basis der Massenaktion.
+  const langCounts = preview ? languageCounts(preview.preview) : [];
   // WP-BILD-1f RT5c: Gruppier-Modi ebenfalls dynamisch — „nach Sprache"/„nach Thema" nur, wenn der
   // Bestand dafür ≥2 Gruppen hergibt. „none" (flache Liste) ist immer dabei.
   const groupModeName = (mode: PreviewGroupMode): string =>
@@ -526,6 +538,19 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
                 ))}
               </div>
 
+              {/* RT5b (nacht24): „alle <Sprache> abwählen" — EIN Klick je vorkommender Sprache,
+                  wirkt auf den GESAMTEN Bestand (unabhängig von Suche/Filter; nur Abwahl). */}
+              <LanguageDeselectChips
+                counts={langCounts}
+                label={languageLabel}
+                buttonText={(lang, n) => t("imp.select.deselectLang", { lang, n })}
+                onDeselect={(lang) => {
+                  if (preview) {
+                    setCheckedRows((prev) => deselectLanguage(prev, preview.preview, lang));
+                  }
+                }}
+              />
+
               {/* D2 Alle wählen/abwählen · D4 Ausblenden-Schalter · D5/D3 Gruppierung. */}
               <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11.5px] text-muted">
                 <button
@@ -580,66 +605,25 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
                   {rows.map(renderRow)}
                 </ul>
               ) : (
-                // WP-BILD-1f RT5a/RT5b: echte auf-/zuklappbare Baugruppen-Ordner. Kopf = Aufklapp-
-                // Chevron + Gruppen-Haken (Tri-State) + Trefferzahl. Auf/Zu je Gruppe lokal; bei vielen
-                // Gruppen standardmäßig eingeklappt.
-                <div className="mt-1.5 space-y-1.5 border-t border-hairline pt-2">
-                  {groups.map((group) => {
-                    // RT5b/F1: der Gruppen-Haken zeigt an/aus/gemischt über den bulk-wählbaren Zeilen.
-                    const checkState = groupCheckboxState(checkedRows, group.rows);
-                    const label =
-                      group.kind === "language"
-                        ? languageLabel(group.language)
-                        : group.value === ""
-                          ? t("imp.select.noTheme")
-                          : displayImportText(group.value);
-                    const open = isGroupOpen(group.key);
-                    return (
-                      <details
-                        key={group.key}
-                        open={open}
-                        // RT5a: nativer Auf/Zu (Maus + Tastatur bleiben erhalten); der Zustand wird
-                        // je Gruppe in openGroups gespiegelt (bei vielen Gruppen Standard eingeklappt).
-                        onToggle={(e) => setGroupOpen(group.key, e.currentTarget.open)}
-                        className="rounded-card border border-hairline bg-surface"
-                      >
-                        <summary className="flex cursor-pointer list-none items-center gap-2 p-2">
-                          <ChevronDown
-                            size={14}
-                            aria-hidden
-                            className={`shrink-0 text-muted-2 transition-transform ${
-                              open ? "" : "-rotate-90"
-                            }`}
-                          />
-                          {/* RT5b: Gruppen-Checkbox — ganze Gruppe an/abwählen; indeterminiert bei
-                              Teilauswahl. stopPropagation, damit der Klick nicht auf-/zuklappt. */}
-                          <input
-                            type="checkbox"
-                            aria-label={label}
-                            checked={checkState === "on"}
-                            ref={(el) => {
-                              if (el) {
-                                el.indeterminate = checkState === "mixed";
-                              }
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={() => toggleGroup(group.rows)}
-                            className="h-4 w-4 shrink-0"
-                          />
-                          <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-text">
-                            {label}
-                          </span>
-                          <span className="shrink-0 text-[11px] text-muted-2">
-                            {t("imp.select.groupCount", { n: group.rows.length })}
-                          </span>
-                        </summary>
-                        <ul className="space-y-1 border-t border-hairline p-2">
-                          {group.rows.map(renderRow)}
-                        </ul>
-                      </details>
-                    );
-                  })}
-                </div>
+                // WP-BILD-1f RT5a/RT5b + nacht24: auf-/zuklappbare Ordner mit Tri-State-Haken —
+                // im Sprach-Modus als ECHTER Subfolder-Baum (Themen-Unterordner je Sprache).
+                // Darstellung geteilt in ImportPreviewTree; Logik pure in importSelectView.
+                <ImportPreviewTree
+                  groups={groups}
+                  isOpen={isGroupOpen}
+                  setOpen={setGroupOpen}
+                  checkStateOf={(groupRowsArg) => groupCheckboxState(checkedRows, groupRowsArg)}
+                  onToggleGroup={toggleGroup}
+                  labelOf={(group) =>
+                    group.kind === "language"
+                      ? languageLabel(group.language)
+                      : group.value === ""
+                        ? t("imp.select.noTheme")
+                        : displayImportText(group.value)
+                  }
+                  countLabel={(n) => t("imp.select.groupCount", { n })}
+                  renderRow={renderRow}
+                />
               )}
             </div>
           ) : (
@@ -659,6 +643,7 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
               key={`${JSON.stringify(preview.criteria)}|${JSON.stringify([...selectedCandidateIds].sort())}`}
               criteria={preview.criteria}
               selectedCandidateIds={selectedCandidateIds}
+              aiAvailable={groupAi.available}
             />
           ) : null}
         </div>

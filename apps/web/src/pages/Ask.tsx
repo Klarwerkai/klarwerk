@@ -1,14 +1,16 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, Copy, FileDown, Printer, ThumbsUp } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
-import { useConflicts, useKos, useReasonerStatus } from "../api/hooks";
+import { useConflicts, useDirectory, useKos, useReasonerStatus } from "../api/hooks";
 import type { AnswerResult } from "../api/types";
 import { useToast } from "../app/ToastContext";
+import { AiUnavailableHint } from "../components/AiUnavailableHint";
 // WP-UX-WOW-1 U1: sichere Markdown-Darstellung der Antwort (React-Elemente, kein HTML-Sink).
 import { AnswerMarkdown } from "../components/AnswerMarkdown";
+import { AnswerSourceDetails } from "../components/AnswerSourceDetails";
 import { DemoBanner } from "../components/DemoBanner";
 import { HelpTip } from "../components/HelpTip";
 import { ConfidenceBar } from "../components/trust";
@@ -38,6 +40,7 @@ import { type EvidenceTone, knowledgeClassMeta } from "../lib/knowledgeClass";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { type ReasonerBadgeTone, reasonerBadge } from "../lib/reasonerBadge";
 import { toReasonerLocale } from "../lib/reasonerLocale";
+import { useAiAvailable } from "../lib/useAiAvailable";
 import { useReadiness } from "../lib/useReadiness";
 
 // Tone → Badge-Stil (Tailwind-Tokens), bewusst in der Komponente gehalten.
@@ -74,12 +77,22 @@ export function Ask(): JSX.Element {
   const [params] = useSearchParams();
   const [q, setQ] = useState(() => readAskQuestion(params) ?? "");
   const [result, setResult] = useState<AnswerResult | null>(null);
-  // SCRUM-264: zuletzt gestellte Frage festhalten → bei Lücke als Capture-Kontext übergeben.
+  // FUNKE-FIX P0 (bens ROT-1): der Answer-Receipt DIESES Antwortvorgangs — das „Danke" je Quelle
+  // reicht ihn zurück, damit der Server die Quellen-Bindung serverseitig belegen kann.
+  const [receipt, setReceipt] = useState("");
+  // SCRUM-264: zuletzt gestellte Frage festhalten → für die Anzeige des Rescue-Blocks.
   const [asked, setAsked] = useState("");
+  // FUNKE-FIX2 P0 (bens Erforderlich 4): die vom Server erzeugte Wissenslücke (mit ID) — der Capture-
+  // Einstieg trägt die GAP-ID (kein Fragetext in der URL); Capture lädt den Text nach Berechtigung.
+  const [gapId, setGapId] = useState<string | null>(null);
+  const qc = useQueryClient();
   const guide = knowledgeGuidance("ask");
 
   // SCRUM-233: ehrlicher Reasoner-Modus aus vorhandenem read-only Status (kein Backend-Umbau).
   const reasonerStatus = useReasonerStatus();
+  // PAKET 1 (D-AISTATE, Pedi 23.07.): die KI-Antwort (Reasoner-Task „answer") ohne nutzbares Modell
+  // HART ausgrauen — kein stiller deterministischer Fallback, der „KI antwortet" vortäuscht.
+  const answerAi = useAiAvailable("answer");
   const badge = reasonerBadge({
     status: reasonerStatus.data,
     isLoading: reasonerStatus.isLoading,
@@ -88,6 +101,11 @@ export function Ask(): JSX.Element {
 
   // SCRUM-250: KO-Bestand für lesbare Quellen-Titel (kein neuer Endpoint).
   const kos = useKos();
+  // FUNKE F1 (nacht24): Wissensträger-Namen für die Quellen-Würdigung (Directory EINMAL je Seite;
+  // Fallback bleibt ehrlich die Autor-Id).
+  const directory = useDirectory();
+  const authorNameOf = (uid: string): string =>
+    directory.data?.find((d) => d.id === uid)?.name || uid;
   // SCRUM-357 / AG-14: konfliktbewusste Quellen — ein konfliktbetroffenes Quell-KO erscheint NICHT
   // als uneingeschränkt nutzbar/gesichert (effektive, konfliktbegrenzte Nutzbarkeit + Konflikt-Chip).
   const conflicts = useConflicts();
@@ -115,16 +133,50 @@ export function Ask(): JSX.Element {
   // (der alte q-Closure hätte sonst die VORHERIGE Eingabe gesendet).
   const ask = useMutation({
     mutationFn: (question: string) => endpoints.ask.ask(question, toReasonerLocale(i18n.language)),
-    // SCRUM-138: Backend liefert { result, gap } — Antwort sauber entpacken.
-    onSuccess: (r) => setResult(selectAnswer(r)),
+    // SCRUM-138: Backend liefert { result, gap, receipt } — Antwort + Answer-Receipt entpacken.
+    onSuccess: (r) => {
+      setResult(selectAnswer(r));
+      setReceipt(r.receipt);
+      // FUNKE-FIX2 P0: die neue Lücke merken (ID für den Capture-Einstieg) und die Gap-Liste
+      // invalidieren, damit Capture die frisch erzeugte Lücke über ihre ID auflösen kann (der Ersteller
+      // ist berechtigt → Volltext). Kein Fragetext in der URL.
+      setGapId(r.gap?.id ?? null);
+      if (r.gap) {
+        void qc.invalidateQueries({ queryKey: ["gaps"] });
+      }
+    },
   });
-  const helpful = useMutation({ mutationFn: (koId: string) => endpoints.ask.helpful(koId) });
+  const helpful = useMutation({
+    mutationFn: (koId: string) => endpoints.ask.helpful(koId, receipt),
+  });
+  // FUNKE F2 (nacht24 Paket 6): „Das hat mir geholfen" je QUELLE — Ein-Klick, einmal je
+  // Nutzer+Ziel (der Server ist idempotent; die Sitzung merkt sich bedankte Quellen). FUNKE-FIX P0:
+  // der Klick reicht den Answer-Receipt zurück (Quellen-Bindung serverseitig belegt).
+  const [thankedSources, setThankedSources] = useState<ReadonlySet<string>>(new Set());
+  const thankSource = useMutation({
+    mutationFn: (koId: string) => endpoints.ask.helpful(koId, receipt),
+    onSuccess: (_data, koId) => setThankedSources((prev) => new Set(prev).add(koId)),
+  });
+
+  // D-AISTATE PAKET 3 (bens V4, aistate-fix3): der EINE zentrale Submit für Formular, Chips UND
+  // Auto-Ask — mit Availability- UND Pending-Guard. Ohne nutzbares Modell löst KEIN Weg (auch kein
+  // programmatischer) eine Mutation aus; ein laufender Ask wird nie doppelt gefeuert.
+  const submitAsk = useCallback(
+    (question: string): void => {
+      const trimmed = question.trim();
+      if (!trimmed || !answerAi.available || ask.isPending) {
+        return;
+      }
+      setAsked(trimmed);
+      ask.mutate(trimmed);
+    },
+    [answerAi.available, ask.isPending, ask.mutate],
+  );
 
   // WP-UX-WOW-1 U2/U3: Beispiel-Chip → Frage setzen UND direkt senden (ein Klick → Antwort).
   const askExample = (question: string): void => {
     setQ(question);
-    setAsked(question);
-    ask.mutate(question);
+    submitAsk(question);
   };
   // Chips stabil je Bestand memoisiert (die Zufallswahl würfelt sonst bei jedem Render neu).
   const exampleChips = useMemo(() => buildAskExampleChips(kos.data ?? []), [kos.data]);
@@ -132,18 +184,23 @@ export function Ask(): JSX.Element {
   // SCRUM-460: Kommt der Nutzer aus der Bibliothek-Suche mit ausdrücklichem Antwort-Wunsch
   // (?ask=1), wird die vorbefüllte Frage EINMAL automatisch beantwortet — so liefert die Suche
   // eine echte Antwort mit Quellen. Sonst (SCRUM-272) bleibt es beim reinen Vorbefüllen.
+  // D-AISTATE PAKET 3 (bens V4, aistate-fix3): der Auto-Ask läuft über DENSELBEN zentralen Submit
+  // wie Formular und Chips (kein ask.mutate-Direktaufruf mehr — bens Rest-Bypass 6.2). Er wartet,
+  // bis der Verfügbarkeits-Status GELADEN ist, und verbraucht seinen Ein-Schuss dann GENAU EINMAL:
+  // Modell nutzbar → automatisch fragen; kein Modell → KEINE Mutation (die Frage bleibt nur
+  // vorbefüllt, der Hinweis erklärt es).
   const autoAsked = useRef(false);
   useEffect(() => {
-    if (autoAsked.current) {
+    if (autoAsked.current || answerAi.isLoading) {
       return;
     }
     if (shouldAutoAskFromSearch(params) && q.trim().length > 0) {
       autoAsked.current = true;
-      // WP-UX-WOW-1 U5: die Startfrage auch als Lücken-/Capture-Kontext festhalten (wie Submit).
-      setAsked(q.trim());
-      ask.mutate(q.trim());
+      // WP-UX-WOW-1 U5: die Startfrage auch als Lücken-/Capture-Kontext festhalten (wie Submit) —
+      // das übernimmt submitAsk; ohne nutzbares Modell passiert bewusst NICHTS.
+      submitAsk(q);
     }
-  }, [params, q, ask]);
+  }, [params, q, answerAi.isLoading, submitAsk]);
 
   // SCRUM-430 (VIP): beantwortete Frage inkl. Quellen exportieren/teilen. Quellen bleiben klar
   // ausgewiesen (Status/Trust/Nutzbarkeit). Markdown wird erst beim Klick gebaut (frischer Zeitstempel).
@@ -282,10 +339,10 @@ export function Ask(): JSX.Element {
         className="flex gap-2"
         onSubmit={(e) => {
           e.preventDefault();
-          if (q.trim()) {
-            setAsked(q.trim());
-            ask.mutate(q.trim());
-          }
+          // PAKET 3.1 (D-AISTATE, bens V4): Enter/Formular läuft über DENSELBEN zentralen Submit wie
+          // Chips und Auto-Ask — die harte KI-Sperre (Availability + Pending) sitzt in submitAsk;
+          // kein Weg umgeht die ausgegraute Schaltfläche (bens Bypass-Befund 6.2).
+          submitAsk(q);
         }}
       >
         <input
@@ -294,11 +351,18 @@ export function Ask(): JSX.Element {
           placeholder={t("ask.placeholder")}
           className="h-11 flex-1 rounded-input border border-hairline bg-surface px-3.5 text-sm outline-none focus:border-ink/30"
         />
-        <Button type="submit" variant="primary" disabled={ask.isPending}>
+        <Button
+          type="submit"
+          variant="primary"
+          // PAKET 1 (D-AISTATE): hart ausgrauen, wenn kein Modell für „answer" nutzbar ist.
+          disabled={ask.isPending || !answerAi.available}
+          title={!answerAi.available ? t("ai.unavailable.hint") : undefined}
+        >
           {t("ask.submit")}
           <ArrowRight size={15} />
         </Button>
       </form>
+      <AiUnavailableHint show={!answerAi.available} />
 
       {/* WP-UX-WOW-1 U2/U3 (statt SCRUM-265-Statik): ehrliche Beispiel-Chips. Antwort-Beispiele
           kommen aus dem ECHTEN validierten Bestand (Badge damit ehrlich korrekt), dazu EINE bewusste
@@ -321,7 +385,7 @@ export function Ask(): JSX.Element {
             <button
               key={question}
               type="button"
-              disabled={ask.isPending}
+              disabled={ask.isPending || !answerAi.available}
               onClick={() => askExample(question)}
               className="inline-flex min-w-0 items-center gap-1.5 rounded-pill border border-hairline px-2.5 py-1 text-[12px] text-muted hover:border-ink/30 hover:text-text disabled:opacity-50"
             >
@@ -549,6 +613,29 @@ export function Ask(): JSX.Element {
                             {t("demo.badge.label")}
                           </span>
                         ) : null}
+                        {/* FUNKE F2 (nacht24): Danke je Quelle — Ein-Klick, idempotent je
+                            Nutzer+Ziel; fließt in die Wirkung des Autors + dezente Glocke. */}
+                        <button
+                          type="button"
+                          disabled={thankedSources.has(s.id) || thankSource.isPending}
+                          onClick={() => thankSource.mutate(s.id)}
+                          className="inline-flex shrink-0 items-center gap-1 rounded-pill border border-hairline px-2 py-0.5 text-[10.5px] font-semibold text-muted hover:text-text disabled:opacity-60"
+                        >
+                          <ThumbsUp size={11} />
+                          {thankedSources.has(s.id) ? t("ask.thanked") : t("ask.helpful")}
+                        </button>
+                        {/* Paket 4 (nacht24, C1/C2/E1): je Quelle Status/Trust-Badge, Pulldown-
+                            Summary (E2-Baustein) und Auszug im DOKUMENT-Format (SanitizedHtml-
+                            Kette) — nur aus bereits geladenen, berechtigten KO-Daten. */}
+                        {(() => {
+                          const sourceKo = (kos.data ?? []).find((k) => k.id === s.id);
+                          return sourceKo ? (
+                            <AnswerSourceDetails
+                              ko={sourceKo}
+                              authorName={authorNameOf(sourceKo.author)}
+                            />
+                          ) : null;
+                        })()}
                       </li>
                     ))}
                   </ul>
@@ -610,9 +697,9 @@ export function Ask(): JSX.Element {
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
                 {/* SCRUM-264: direkt Wissen erfassen — die gestellte Frage als Capture-Kontext (kein Auto-KO). */}
-                {asked ? (
+                {gapId ? (
                   <Link
-                    to={captureGapHref(asked)}
+                    to={captureGapHref(gapId)}
                     className="inline-flex items-center gap-1.5 rounded-btn bg-ink px-3 py-1.5 text-[13px] font-semibold text-white hover:opacity-90"
                   >
                     {t(GAP_RESCUE_TEXT.cta)}

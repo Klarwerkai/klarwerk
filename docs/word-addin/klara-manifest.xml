@@ -11,7 +11,11 @@
        Root-Element-Start — ein Kommentar-Header VOR <OfficeApp> war vermutlich Mitursache, dass das
        Add-in im Sideload nicht erschien. Vor dem Kopieren in den wef-Ordner nichts umbauen. -->
   <Id>7f6b1c9e-4a2d-4e8f-9b3a-2c5d8e7f1a64</Id>
-  <Version>1.0.0.0</Version>
+  <!-- klara1b (Pedis Live-Befund 24.07.): Version HOCHGEZAEHLT. Office cached das Manifest je
+       Id+Version; blieb die Version bei 1.0.0.0, griff der ReadWriteDocument-Rechtewechsel im
+       Sideload NICHT (alter Cache mit ReadDocument) → "insufficient permissions" beim Einfuegen.
+       Ein Versions-Bump erzwingt beim Re-Sideload ein frisches Manifest mit ReadWriteDocument. -->
+  <Version>1.0.0.1</Version>
   <ProviderName>KLARWERK</ProviderName>
   <DefaultLocale>de-DE</DefaultLocale>
   <DisplayName DefaultValue="Klara" />

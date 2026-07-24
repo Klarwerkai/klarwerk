@@ -117,9 +117,19 @@ export function MyTasks(): JSX.Element {
         author: authorOf(id),
       }),
     ),
+    // FUNKE-FIX2 P0 (bens Erforderlich 3): /aufgaben ist ab Rolle experte erreichbar — ohne Detail-
+    // Berechtigung liefert der Server den Fragetext redigiert (g.redacted); dann NUR eine neutrale
+    // Aufgabenbezeichnung statt des Freitextes (der Volltext erscheint nur für Berechtigte).
     ...(gaps.data ?? [])
       .filter((g) => g.status === "offen")
-      .map((g) => task({ id: g.id, label: g.question, typeKey: "task.gap", to: "/risiko" })),
+      .map((g) =>
+        task({
+          id: g.id,
+          label: g.redacted ? t("task.gapRedacted") : g.question,
+          typeKey: "task.gap",
+          to: "/risiko",
+        }),
+      ),
   ];
   const grouped = groupTasks(tasks);
 

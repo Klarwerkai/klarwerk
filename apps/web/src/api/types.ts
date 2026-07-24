@@ -191,6 +191,16 @@ export interface KnowledgeObject {
   };
 }
 
+// FUNKE F1 (nacht24 Paket 6): „Meine Wirkung" — persönliche Zähler (Spiegel von
+// services/app/src/impact.ts, nur Zahlen über EIGENE Beiträge; cited zählt ehrlich nur die
+// FÜHRENDE Antwort-Quelle, weil das ask.query-Audit nur sie trägt).
+export interface MyImpact {
+  contributions: number;
+  validated: number;
+  cited: number;
+  helpfulReceived: number;
+}
+
 export type Verdict = "up" | "warn" | "down";
 
 export interface AssignmentSummary {
@@ -348,6 +358,17 @@ export interface Gap {
   assignee: string | null;
   priority: GapPriority;
   createdAt: string;
+  // FUNKE-FIX2 P0 (bens Blocker Gap-Freitext): true → der Server hat den Fragetext für DIESEN
+  // Betrachter zurückgehalten (question ist dann ""); die UI zeigt eine Neutralbezeichnung statt
+  // Freitext. Volltext bekommen nur Ersteller/Assignee/Detail-Rolle.
+  redacted?: boolean;
+}
+
+// FUNKE-FIX2 P0 (bens Erforderlich 1): rein aggregierte Zähler der offenen Wissenslücken — KEIN
+// Fragetext. Die Startseite nutzt AUSSCHLIESSLICH diese Zahlen (GET /api/gaps/summary).
+export interface GapSummary {
+  open: number;
+  byPriority: Record<GapPriority, number>;
 }
 
 export interface DraftPayload {
@@ -621,10 +642,13 @@ export interface AnswerResult {
   captionSources?: string[];
 }
 
-// Realer Backend-Shape von POST /api/ask: Antwort + ggf. erzeugte Wissenslücke.
+// Realer Backend-Shape von POST /api/ask: Antwort + ggf. erzeugte Wissenslücke + Answer-Receipt.
 export interface AskResponse {
   result: AnswerResult;
   gap: Gap | null;
+  // FUNKE-FIX P0 (bens ROT-1): opaker Beleg über die ausgelieferten Quell-KOs. Beim „Danke"
+  // (/api/ask/helpful) zurückgereicht — der Server verifiziert die Quellen-Bindung serverseitig.
+  receipt: string;
 }
 
 // FR-EXT-03 / FE-OUT: Output Factory (SCRUM-117/109).
@@ -841,6 +865,13 @@ export interface DescribeImageResult {
 export interface ReasonerStatus {
   active: boolean;
   mode: "cloud" | "local" | "deterministic";
+  // PAKET 2 (D-AISTATE, Pedi 23.07.): ehrlicher Erreichbarkeits-Zustand — „active" nur, wenn ein
+  // Modell zuletzt WIRKLICH geantwortet hat (nicht nur konfiguriert). Optional für Rückwärtskompat
+  // mit älteren Fixtures/Antworten; fehlt es, behandeln die Badges es wie „unverified".
+  reachable?: "none" | "unverified" | "active" | "unreachable";
+  // PAKET 3 (D-AISTATE, bens V4): abstrakte per-Task-Nutzbarkeit (nur true/false je Aufgabe, KEIN
+  // Provider-/Modellname). Fehlt sie (alte Antwort), fällt der Hook auf den globalen Status zurück.
+  tasks?: Record<string, boolean>;
 }
 
 // SCRUM-166: read-only Provider-/Model-Konfiguration (nur Metadaten, keine Secrets).
@@ -989,4 +1020,7 @@ export interface Notification {
   koId?: string;
   // Audit-P3 (SCRUM-397): serverseitiger Gelesen-Status (pro Nutzer, überlebt Neustart).
   seen?: boolean;
+  // FUNKE-FIX3 P0 (bens Blocker B): true → Gap-Fragetext serverseitig zurückgehalten; die Glocke
+  // zeigt dann NUR die neutrale Bezeichnung (topbar.notifGapRedacted), nie den Fragetext.
+  redacted?: boolean;
 }

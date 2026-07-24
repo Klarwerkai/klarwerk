@@ -48,6 +48,7 @@ import {
   normalizePastedHtml,
   sanitizeHtml,
 } from "../lib/richText";
+import { AiUnavailableHint } from "./AiUnavailableHint";
 import { SanitizedHtml } from "./SanitizedHtml";
 import { Button } from "./ui";
 
@@ -87,6 +88,7 @@ export function RichTextEditor({
   placeholder,
   onDescribeImage,
   documentTitle,
+  describeAvailable = true,
 }: {
   value: string;
   onChange: (html: string) => void;
@@ -112,6 +114,10 @@ export function RichTextEditor({
     | undefined;
   // WP-BILD-1f: Dokument-Titel für den Kontext (Formularfeld, kein HTML). Optional.
   documentTitle?: string | undefined;
+  // PAKET 1 (D-AISTATE, Pedi 23.07.): ist der KI-Bildbeschreibungs-Vorschlag (Task „describe") nutzbar?
+  // Als PROP (nicht Hook), damit der Editor ohne QueryClient-Provider isoliert testbar bleibt; das
+  // Eltern-Capture reicht die echte Verfügbarkeit ein. Default true = bedienbar (kein Test-Bruch).
+  describeAvailable?: boolean;
 }): JSX.Element {
   const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
@@ -920,7 +926,9 @@ export function RichTextEditor({
         <div className="border-b border-hairline bg-ai-surface-1 px-2 py-1.5">
           <button
             type="button"
-            disabled={captionAi?.status === "loading"}
+            // PAKET 1 (D-AISTATE): hart ausgrauen, wenn kein Modell für „describe" nutzbar ist.
+            disabled={captionAi?.status === "loading" || !describeAvailable}
+            title={!describeAvailable ? t("ai.unavailable.hint") : undefined}
             onClick={() => void requestCaptionSuggestion()}
             className="inline-flex h-7 items-center gap-1 rounded-btn border border-ai/40 bg-surface px-2 text-[11.5px] font-semibold text-ai hover:bg-hairline-soft disabled:opacity-60"
           >
@@ -929,6 +937,7 @@ export function RichTextEditor({
               ? t(CAPTION_AI_TEXT.loading)
               : t(CAPTION_AI_TEXT.suggest)}
           </button>
+          {!describeAvailable ? <AiUnavailableHint show={true} /> : null}
           {captionAi?.status === "suggestion" ? (
             <div className="mt-1.5 rounded-btn border border-ai/30 bg-surface p-2">
               <p className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai">

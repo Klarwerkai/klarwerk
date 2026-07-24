@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
 import type { OverlapRepo } from "./overlap-repo";
 import type { OverlapEntry } from "./overlap-types";
+import type { IsKoVersionCurrent } from "./repo";
 
 // Berater-Konzept Duplikate 04.07. (Stufe D3b): Postgres-Persistenz der Überschneidungs-Einträge.
 // Muster PgConflictRepo — eigene JSONB-Tabelle, produktseitig getrennt von Konflikten.
@@ -27,6 +28,43 @@ export class PgOverlapRepo implements OverlapRepo {
       entry.id,
       JSON.stringify(entry),
     ]);
+  }
+
+  // D-AISTATE PAKET 4 (bens V5, aistate-fix5): VERSIONS-KONDITIONALER Insert — Vertrag, Begründung
+  // und EHRLICHE GRENZE wie PgConflictRepo.insertIfVersionsCurrent (EIN bedingtes Statement gegen
+  // einen bereits committeten neuen Stand; NICHT gegen ein gleichzeitiges Revisions-Interleaving
+  // serialisiert — die Sichtbarkeits-Garantie trägt der fail-closed Read-Pfad; rowCount 0 ⇒ kein
+  // Datensatz).
+  async insertIfVersionsCurrent(
+    entry: OverlapEntry,
+    _isCurrent: IsKoVersionCurrent,
+  ): Promise<boolean> {
+    if (entry.koAVersion === undefined || entry.koBVersion === undefined) {
+      return false;
+    }
+    const res = await this.pool.query(
+      `INSERT INTO ko_overlaps(id,data)
+       SELECT $1, $2::jsonb
+       WHERE (SELECT (data->>'version')::int FROM kos WHERE id=$3) = $4::int
+         AND (SELECT (data->>'version')::int FROM kos WHERE id=$5) = $6::int`,
+      [entry.id, JSON.stringify(entry), entry.koA, entry.koAVersion, entry.koB, entry.koBVersion],
+    );
+    return (res.rowCount ?? 0) > 0;
+  }
+
+  // D-AISTATE PAKET 4 (bens fix5-Recheck §4, aistate-fix6): STATUS-CAS für den Lese-GC — EIN
+  // bedingtes Statement, Begründung wie PgConflictRepo.supersedeIfOpen (Prädikat
+  // `data->>'status'='offen'` = Compare, jsonb-Merge = Set; Zeilensperre serialisiert parallele
+  // Läufe, rowCount 0 für den Verlierer; kein Lost Update gegen eine menschliche Entscheidung).
+  async supersedeIfOpen(id: string, patch: Partial<OverlapEntry>): Promise<boolean> {
+    const res = await this.pool.query(
+      `UPDATE ko_overlaps
+         SET data = data || $2::jsonb
+       WHERE id=$1 AND data->>'status'='offen'
+       RETURNING id`,
+      [id, JSON.stringify(patch)],
+    );
+    return (res.rowCount ?? 0) > 0;
   }
 
   async findById(id: string): Promise<OverlapEntry | undefined> {

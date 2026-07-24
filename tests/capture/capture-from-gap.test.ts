@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { Gap } from "../../apps/web/src/api/types";
 import i18n from "../../apps/web/src/i18n";
 import {
   GAP_PRIVACY_NOTICE_KEY,
@@ -7,34 +8,67 @@ import {
   gapContextDraft,
   gapPrivacyNoticeKey,
   normalizeGapContext,
-  readGapContext,
+  readGapId,
+  resolveGapQuestion,
 } from "../../apps/web/src/lib/captureFromGap";
 
-// SCRUM-263: Übergang offene Wissenslücke → Erfassung (Frage als Startkontext, kein Auto-KO).
-describe("SCRUM-263: captureFromGap", () => {
-  it("baut einen /erfassen-Link mit URL-encodierter Gap-Frage", () => {
-    const href = captureGapHref("Warum schwankt der Dosierwert an Linie L4?");
-    expect(href.startsWith("/erfassen?gap=")).toBe(true);
-    expect(href).toContain(encodeURIComponent("Warum schwankt der Dosierwert an Linie L4?"));
+function gap(over: Partial<Gap> = {}): Gap {
+  return {
+    id: "g-1",
+    question: "Warum schwankt der Dosierwert an Linie L4?",
+    status: "offen",
+    assignee: null,
+    priority: "mittel",
+    createdAt: "2026-07-24T10:00:00.000Z",
+    ...over,
+  };
+}
+
+// SCRUM-263 / FUNKE-FIX2 P0 (bens Erforderlich 4): Der Einstieg trägt die GAP-ID (kein Fragetext in
+// der URL). Der Text wird erst NACH serverseitiger Berechtigungsprüfung aus der (bereits redigierten)
+// Gap-Liste aufgelöst.
+describe("FUNKE-FIX2 P0: captureFromGap trägt Gap-ID, KEIN Fragetext in der URL", () => {
+  it("captureGapHref baut /erfassen?gap=<id> — nur die ID, kein Fragetext", () => {
+    const href = captureGapHref("g-42");
+    expect(href).toBe("/erfassen?gap=g-42");
   });
 
-  it("Round-Trip: readGapContext liest die übergebene Frage zurück", () => {
-    const question = "Warum steigt die Ausschussquote nach dem Werkzeugwechsel?";
-    const href = captureGapHref(question);
-    const params = new URLSearchParams(href.split("?")[1]);
-    expect(readGapContext(params)).toBe(question);
+  it("die URL enthält NIE den Fragetext, auch wenn ein solcher als ID käme (encodiert, aber keine Frage)", () => {
+    // Produktiv wird immer g.id übergeben; selbst ein missbräuchlicher Text landet nur exakt so, wie
+    // übergeben — der Produzent (Risk/Ask) reicht ausschließlich die Gap-ID durch.
+    const href = captureGapHref("g-7");
+    expect(href).not.toContain("Dosierwert");
   });
 
-  it("trimmt die Frage im Link", () => {
-    const href = captureGapHref("  Temperaturdrift an Linie L4?  ");
-    const params = new URLSearchParams(href.split("?")[1]);
-    expect(readGapContext(params)).toBe("Temperaturdrift an Linie L4?");
+  it("readGapId liest die Gap-ID zurück; leer/fehlend → null", () => {
+    const params = new URLSearchParams(captureGapHref("g-99").split("?")[1]);
+    expect(readGapId(params)).toBe("g-99");
+    expect(readGapId(new URLSearchParams(""))).toBeNull();
+    expect(readGapId(new URLSearchParams("gap=%20%20"))).toBeNull();
+    expect(readGapId(new URLSearchParams("other=x"))).toBeNull();
   });
 
-  it("kein/leerer Parameter → kein Kontext (null)", () => {
-    expect(readGapContext(new URLSearchParams(""))).toBeNull();
-    expect(readGapContext(new URLSearchParams("gap=%20%20"))).toBeNull();
-    expect(readGapContext(new URLSearchParams("other=x"))).toBeNull();
+  it("resolveGapQuestion: Volltext für einen berechtigten (nicht redigierten) Eintrag", () => {
+    const gaps = [gap({ id: "g-1", question: "Warum schwankt der Dosierwert an Linie L4?" })];
+    expect(resolveGapQuestion("g-1", gaps)).toBe("Warum schwankt der Dosierwert an Linie L4?");
+  });
+
+  it("resolveGapQuestion: redigierter Eintrag → null (kein Freitext ohne Berechtigung)", () => {
+    const gaps = [gap({ id: "g-1", question: "", redacted: true })];
+    expect(resolveGapQuestion("g-1", gaps)).toBeNull();
+  });
+
+  it("resolveGapQuestion: unbekannte ID / fehlende Liste → null", () => {
+    expect(resolveGapQuestion("g-x", [gap({ id: "g-1" })])).toBeNull();
+    expect(resolveGapQuestion("g-1", undefined)).toBeNull();
+    expect(resolveGapQuestion(null, [gap()])).toBeNull();
+  });
+
+  it("resolveGapQuestion normalisiert den aufgelösten Text (datensparsam begrenzt)", () => {
+    const long = `Bitte beachte: ${"lorem ipsum dolor sit amet ".repeat(40)}`;
+    const out = resolveGapQuestion("g-1", [gap({ id: "g-1", question: long })]) ?? "";
+    expect(out.length).toBeLessThanOrEqual(MAX_GAP_CONTEXT_LENGTH + 1);
+    expect(out.endsWith("…")).toBe(true);
   });
 });
 
@@ -46,7 +80,6 @@ describe("SCRUM-270: gapContextDraft", () => {
     const draft = gapContextDraft("Warum schwankt der Dosierwert an Linie L4?", labels);
     expect(draft).toContain("Offene Frage: Warum schwankt der Dosierwert an Linie L4?");
     expect(draft).toContain("Eigene Erfahrung/Beobachtung ergänzen:");
-    // Frage und Erfahrungsteil sind klar getrennt (Leerzeile), Vorlage endet offen für Eingabe.
     expect(draft).toContain("\n\n");
     expect(draft.endsWith(":\n")).toBe(true);
   });
@@ -58,8 +91,8 @@ describe("SCRUM-270: gapContextDraft", () => {
   });
 });
 
-// SCRUM-285: Gap-Startkontext auch bei Direkt-CTA / externen Links datensparsam begrenzen.
-describe("SCRUM-285: normalizeGapContext + captureGapHref/readGapContext", () => {
+// SCRUM-285: normalizeGapContext begrenzt den (aufgelösten) Fragetext datensparsam.
+describe("SCRUM-285: normalizeGapContext", () => {
   const longBlob = `Bitte beachte folgenden Kontext: ${"lorem ipsum dolor sit amet ".repeat(40)}`;
 
   it("lässt kurze, normale Fragen unverändert", () => {
@@ -79,25 +112,6 @@ describe("SCRUM-285: normalizeGapContext + captureGapHref/readGapContext", () =>
     expect(out.endsWith("…")).toBe(true);
     expect(normalizeGapContext(longBlob)).toBe(out); // deterministisch
   });
-
-  it("captureGapHref begrenzt den rohen Ask-CTA-Text (kein überlanger URL-Kontext)", () => {
-    const href = captureGapHref(longBlob);
-    const param = new URLSearchParams(href.split("?")[1]).get("gap") ?? "";
-    expect(param.length).toBeLessThanOrEqual(MAX_GAP_CONTEXT_LENGTH + 1);
-    expect(param.endsWith("…")).toBe(true);
-  });
-
-  it("readGapContext normalisiert auch externe/alte überlange Links", () => {
-    const params = new URLSearchParams(`gap=${encodeURIComponent(longBlob)}`);
-    const ctx = readGapContext(params) ?? "";
-    expect(ctx.length).toBeLessThanOrEqual(MAX_GAP_CONTEXT_LENGTH + 1);
-    expect(ctx.endsWith("…")).toBe(true);
-  });
-
-  it("Konsistenz: roher Text und gleich-normalisierter Text liefern denselben Link", () => {
-    // normalize(asked) === gap.question (gleiche Regel) → CTA-Text deckt sich mit Persistenz.
-    expect(captureGapHref(longBlob)).toBe(captureGapHref(normalizeGapContext(longBlob)));
-  });
 });
 
 // SCRUM-283: datensparsamer, ehrlicher Hinweis zur gespeicherten Wissenslücke (Ask + Risk teilen
@@ -115,8 +129,8 @@ describe("SCRUM-283: gapPrivacyNoticeKey", () => {
     const de = text("de").toLowerCase();
     expect(de.length).toBeGreaterThan(0);
     expect(de).toContain("wissenslücke");
-    expect(de).toContain("sensibl"); // datensparsam: keine sensiblen Details
-    expect(de).toContain("erfahrung"); // später geprüfte Erfahrung ergänzen
+    expect(de).toContain("sensibl");
+    expect(de).toContain("erfahrung");
   });
 
   it("ist in EN vorhanden und transportiert dieselbe ehrliche Aussage", () => {

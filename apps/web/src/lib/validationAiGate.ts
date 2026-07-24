@@ -15,14 +15,22 @@ export type ValidationAiGate =
   // done / failed / kein Prüf-Job: Eintrag normal bedienbar (failed bleibt via AiCheckBadge sichtbar).
   | { locked: false };
 
-// Der ehrliche Sperr-Hinweis an der gesperrten Karte (DE/EN/NL in i18n.ts).
+// Der ehrliche Sperr-Hinweis an der gesperrten Karte (DE/EN/NL in i18n.ts). Ohne Modell: der
+// deterministische no-KI-Text; PAKET 1.4 ergänzt den „(mit KI)"-Text bei nutzbarem Modell.
 export const VALIDATION_AI_LOCK_NOTE_KEY = "val.aiCheck.locked";
+export const VALIDATION_AI_LOCK_NOTE_KEY_AI = "val.aiCheck.lockedAi";
 
+// PAKET 1.4 (D-AISTATE, Pedi 23.07.): modelActive steuert nur den EHRLICHEN NAMEN des Sperr-Hinweises
+// (mit KI / ohne KI) — die Sperr-LOGIK (pending → locked) bleibt unverändert.
 export function validationAiGate(
   aiCheck: KnowledgeObject["aiCheck"] | null | undefined,
+  modelActive = false,
 ): ValidationAiGate {
   return aiCheckPollAgain(aiCheck)
-    ? { locked: true, noteKey: VALIDATION_AI_LOCK_NOTE_KEY }
+    ? {
+        locked: true,
+        noteKey: modelActive ? VALIDATION_AI_LOCK_NOTE_KEY_AI : VALIDATION_AI_LOCK_NOTE_KEY,
+      }
     : { locked: false };
 }
 

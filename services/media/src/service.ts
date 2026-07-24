@@ -9,12 +9,28 @@ const CONFIDENTIALITY_RANK: Record<string, number> = {
   streng_vertraulich: 2,
 };
 const CONFIDENTIAL_FLOOR = 1; // = Rang von "vertraulich"; ab hier → kein externer Egress
+// FUNKE-FIX P2 (bens Sammel-Nacht): der höchste Rang ("streng_vertraulich") — ein unbekannter/
+// korrupter/unerwarteter KO-Stufenwert wird HIERAUF angehoben (fail-closed), nie freigegeben.
+const CONFIDENTIALITY_TOP = 2;
 
 // Die EGRESS-Entscheidung für ein Medienobjekt. `stored` = die serverseitig PERSISTIERTE Vertraulichkeit
 // (Quelle der Wahrheit). `requested` = optionaler Wert aus dem Analyse-Request — darf NUR HOCHSTUFEN
 // (restriktiver), nie herabstufen. Fehlt/ungültig `stored` → fail-safe vertraulich (kein Egress); ein
 // ungültiger `requested` wird ignoriert (keine Hochstufung, aber auch keine Senkung).
-export function mediaIsConfidential(stored?: string, requested?: string): boolean {
+// SCRUM-521 (WP2, nacht24): `koLevels` = die Vertraulichkeitsstufen ALLER KOs, die das Objekt als
+// Anhang tragen (serverseitig aufgelöst). Die RESTRIKTIVSTE Stufe gewinnt — ein „intern"
+// hochgeladenes Medium an einem vertraulichen KO bleibt vertraulich. KO-Stufen können nur ANHEBEN,
+// nie senken.
+// FUNKE-FIX P2 (bens Sammel-Nacht): Ein PRÄSENTER, aber unbekannter/korrupter/unerwarteter
+// KO-Stufenwert wird jetzt auf den HÖCHSTEN Rang ANGEHOBEN (fail-closed, kein externer Egress) statt
+// wie „intern" freigegeben — echte fail-safe-Tiefe. Ein genuin FEHLENDER Wert (undefined) bleibt der
+// dokumentierte „intern"-Default (SCRUM-415) und hebt nicht an; die Kompositionswurzel reicht
+// korrupte Werte unverändert durch, sodass sie hier hart blockieren.
+export function mediaIsConfidential(
+  stored?: string,
+  requested?: string,
+  koLevels?: readonly string[],
+): boolean {
   const base =
     stored !== undefined && stored in CONFIDENTIALITY_RANK
       ? (CONFIDENTIALITY_RANK[stored] as number)
@@ -22,13 +38,24 @@ export function mediaIsConfidential(stored?: string, requested?: string): boolea
   const up =
     requested !== undefined && requested in CONFIDENTIALITY_RANK
       ? (CONFIDENTIALITY_RANK[requested] as number)
-      : -1; // ungültig/fehlend → keine Hochstufung
-  return Math.max(base, up) >= CONFIDENTIAL_FLOOR;
+      : -1; // ungültig/fehlend → keine Hochstufung (der Request kann nur restriktiver anheben)
+  const koUp = (koLevels ?? []).reduce((max, level) => {
+    // Bekannt → sein Rang; präsent aber unbekannt/korrupt → HÖCHSTER Rang (fail-closed).
+    const rank =
+      level in CONFIDENTIALITY_RANK ? (CONFIDENTIALITY_RANK[level] as number) : CONFIDENTIALITY_TOP;
+    return Math.max(max, rank);
+  }, -1);
+  return Math.max(base, up, koUp) >= CONFIDENTIAL_FLOOR;
 }
 
 export interface MediaAnalysisDeps {
   objects: ObjectStore;
   transcriber?: Transcriber | undefined;
+  // SCRUM-521 (WP2): serverseitige Auflösung des KO-Kontexts — liefert die Vertraulichkeitsstufen
+  // aller KOs, die das Objekt als Anhang tragen (leer = kein KO-Bezug). Optional injiziert, damit
+  // media von knowledge-object entkoppelt bleibt (Verdrahtung in build-app). Wirft die Auflösung,
+  // behandelt analyze() das fail-safe als vertraulich (nie „im Zweifel egressen").
+  koConfidentiality?: ((objectId: string) => Promise<readonly string[]>) | undefined;
 }
 
 // SCRUM-382: Analyse eines hochgeladenen Video-/Audio-Objekts. Bewusst schmal:
@@ -37,10 +64,14 @@ export interface MediaAnalysisDeps {
 export class MediaAnalysisService {
   private readonly objects: ObjectStore;
   private readonly transcriber: Transcriber | undefined;
+  private readonly koConfidentiality:
+    | ((objectId: string) => Promise<readonly string[]>)
+    | undefined;
 
   constructor(deps: MediaAnalysisDeps) {
     this.objects = deps.objects;
     this.transcriber = deps.transcriber;
+    this.koConfidentiality = deps.koConfidentiality;
   }
 
   engineInfo(): { active: boolean; engine: string | null } {
@@ -68,8 +99,23 @@ export class MediaAnalysisService {
         "Nur Video-/Audio-Objekte können transkribiert werden.",
       );
     }
+    // SCRUM-521 (WP2): KO-Kontext serverseitig auflösen — die restriktivste Stufe aller KOs, die
+    // das Objekt als Anhang tragen, gewinnt. Scheitert die Auflösung, gilt fail-safe vertraulich
+    // (nie „im Zweifel egressen") — ehrlicher Status statt stiller Verarbeitung.
+    let koLevels: readonly string[] = [];
+    if (this.koConfidentiality) {
+      try {
+        koLevels = await this.koConfidentiality(objectId);
+      } catch {
+        koLevels = ["streng_vertraulich"]; // Auflösung unklar → kein externer Egress
+      }
+    }
     // Quelle der Wahrheit: der PERSISTIERTE Wert am Objekt. Request nur als Hochstufung.
-    const confidential = mediaIsConfidential(stored.ref.confidentiality, requestConfidentiality);
+    const confidential = mediaIsConfidential(
+      stored.ref.confidentiality,
+      requestConfidentiality,
+      koLevels,
+    );
     if (confidential) {
       // Vertrauliches Medium → kein externer Egress. Ehrlich, wie der Inaktiv-Zustand.
       return {

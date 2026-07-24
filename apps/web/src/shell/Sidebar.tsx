@@ -15,7 +15,12 @@ function Badge({
   tone,
   active,
   label,
-}: { count: number; tone?: "neutral" | "crit"; active: boolean; label?: string }): JSX.Element {
+}: {
+  count: number;
+  tone?: "neutral" | "crit" | undefined;
+  active: boolean;
+  label?: string | undefined;
+}): JSX.Element {
   const cls = active
     ? "bg-white/20 text-white"
     : tone === "crit"
@@ -32,7 +37,7 @@ function Badge({
   );
 }
 
-function NavRow({ item, badge }: { item: NavItem; badge?: number }): JSX.Element {
+function NavRow({ item, badge }: { item: NavItem; badge?: number | undefined }): JSX.Element {
   const { t } = useTranslation();
   const badgeLabelKey = item.badgeKey ? navBadgeLabelKey(item.badgeKey) : undefined;
   const navigate = useNavigate();

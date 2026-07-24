@@ -38,6 +38,20 @@ export interface KoRepo {
   // echten DB-Transaktion laufen lassen (beide committen oder beide rollbacken). InMemoryKoRepo
   // ignoriert den Parameter (dort ist Atomarität trivial, kein I/O-Fenster).
   delete(id: string, tx?: TxContext): Promise<void>;
+  // FUNKE-FIX2 P0 (bens ROT-1, Blocker 1): ATOMARER Trust-Inkrement für das „Danke". Erhöht den Trust
+  // um `step`, gedeckelt bei `maxTrust` (LEAST) — OHNE Read-modify-write eines vorab gelesenen
+  // Absolutwerts, damit zwei gleichzeitige Danke verschiedener Nutzer BEIDE zählen (kein Lost-Update).
+  // MIT tx läuft der Inkrement auf DEMSELBEN Pg-Client wie der Audit-CAS des Aufrufers (AskService.
+  // markHelpful) → beide committen/rollbacken gemeinsam (services/db-tx). Status bleibt unberührt;
+  // rowVersion klettert mit (ein nebenläufiger Voll-Write kann den Bump nicht still überschreiben).
+  // Rückgabe: der neue Trust-Wert; undefined, wenn das KO fehlt/getrasht ist (der Aufrufer rollt dann
+  // den gekoppelten Audit-Beleg zurück — kein „Beleg ohne Trust").
+  bumpTrust(
+    id: string,
+    step: number,
+    maxTrust: number,
+    tx?: TxContext,
+  ): Promise<number | undefined>;
   list(filter: KoFilter): Promise<KnowledgeObject[]>;
   // WP-BILD-1g (bens sammel14-ROT): PROJEKTION für den Suchpfad — dieselbe Filterlogik wie list(),
   // aber OHNE bodyHtml (Pg: SELECT data - 'bodyHtml'; InMemory: Feld weggelassen). Die Suche
@@ -162,6 +176,24 @@ export class InMemoryKoRepo implements KoRepo {
       return Promise.reject(new KoError("NOT_FOUND", "Wissensobjekt nicht gefunden."));
     }
     return Promise.resolve();
+  }
+
+  // FUNKE-FIX2 P0 (bens ROT-1, Blocker 1): atomarer Trust-Inkrement (synchron — kein await zwischen
+  // Lesen und Schreiben → kein Lost-Update-Fenster). rowVersion klettert wie bei jedem Write, damit ein
+  // nebenläufiger Voll-Write (setValidationState) den Bump nicht still überschreibt. Status unberührt.
+  bumpTrust(
+    id: string,
+    step: number,
+    maxTrust: number,
+    _tx?: TxContext,
+  ): Promise<number | undefined> {
+    const ko = this.items.get(id);
+    if (!ko || ko.deletedAt) {
+      return Promise.resolve(undefined);
+    }
+    const trust = Math.min(maxTrust, (ko.trust ?? 0) + step);
+    this.items.set(id, { ...ko, trust, rowVersion: (ko.rowVersion ?? 0) + 1 });
+    return Promise.resolve(trust);
   }
 
   list(filter: KoFilter): Promise<KnowledgeObject[]> {

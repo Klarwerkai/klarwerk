@@ -20,7 +20,7 @@ import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import { useDirectory, useDrafts } from "../api/hooks";
+import { useDirectory, useDrafts, useGaps, useReasonerStatus } from "../api/hooks";
 import type {
   Confidentiality,
   Draft,
@@ -37,6 +37,7 @@ import { useNavGuard } from "../app/NavGuardContext";
 import { useToast } from "../app/ToastContext";
 import { AiAssistBox } from "../components/AiAssistBox";
 import { AiModelInfo } from "../components/AiModelInfo";
+import { AiUnavailableHint } from "../components/AiUnavailableHint";
 // SCRUM-435: extrahierte Erkenntnis(se) an einen BESTEHENDEN Artikel anhängen (Artikel-Picker).
 import { AppendToArticleModal } from "../components/AppendToArticleModal";
 // SCRUM-405: „Aus Dokument ergänzen" — extract-Punkte anhängen (nichts ersetzen).
@@ -59,9 +60,12 @@ import { RichTextEditor } from "../components/RichTextEditor";
 import { ListEditor, TagEditor } from "../components/editors";
 import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
 import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
+import { aiModelUsable } from "../lib/aiAvailability";
 import {
   AI_CHECK_CARD_TEXT,
   AI_CHECK_POLL_MS,
+  aiCheckCardDoneKey,
+  aiCheckCardRunningKey,
   aiCheckCardState,
   aiCheckPollAgain,
 } from "../lib/aiCheckStatusCard";
@@ -123,7 +127,7 @@ import {
   wholeDocumentDraftPayload,
   wholeDraftFitsWithObjectLink,
 } from "../lib/captureFromFile";
-import { gapContextDraft, readGapContext } from "../lib/captureFromGap";
+import { gapContextDraft, readGapId, resolveGapQuestion } from "../lib/captureFromGap";
 import { CAPTURE_FRONT_DOOR_ROUTE } from "../lib/captureFrontDoor";
 // SCRUM-407: zentrale ?-Hilfen-Karte des Erfassen-Wegs (chelp.*) — Gegenstück zu lib/reviewHelp.
 import { type CaptureHelpId, captureHelp } from "../lib/captureHelp";
@@ -196,6 +200,7 @@ import {
   buildSubmitTimingEntries,
   submitPhaseSpans,
 } from "../lib/submitTiming";
+import { useAiAvailable } from "../lib/useAiAvailable";
 
 type Mode = CaptureMode;
 
@@ -300,10 +305,25 @@ export function Capture(): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // SCRUM-263: optionaler Startkontext aus einer offenen Wissenslücke (?gap=…) — nur Anstoß für
-  // die Rohnotiz, kein automatisches KO. Der Mensch ergänzt die Erfahrung, die KI strukturiert nur.
+  // PAKET 1 (D-AISTATE, Pedi 23.07.): ehrliche KI-Verfügbarkeit je Aufgabe — hart ausgrauen der
+  // echten LLM-Knöpfe (Struktur, Extraktion), wenn kein Modell nutzbar ist. Die Duplikat-/
+  // Konfliktprüfung ist NICHT betroffen (Kernfunktion, läuft immer deterministisch).
+  const structureAi = useAiAvailable("structure");
+  const extractAi = useAiAvailable("extract");
+  const describeAi = useAiAvailable("describe");
+  // PAKET 1.4 + 3.4 (bens V4): ehrlicher aiCheck-Name — „(mit KI)" nur bei ECHT nutzbarem Modell
+  // (aktiv UND zuletzt erreichbar), nicht bloß konfiguriert.
+  const aiModelActive = aiModelUsable(useReasonerStatus().data);
+
+  // SCRUM-263 / FUNKE-FIX2 P0 (bens Erforderlich 4): optionaler Startkontext aus einer offenen
+  // Wissenslücke — der Einstieg trägt jetzt die GAP-ID (?gap=<id>), NICHT den Fragetext. Der Text wird
+  // erst NACH serverseitiger Berechtigungsprüfung aufgelöst: useGaps liefert die bereits redigierte
+  // Liste; resolveGapQuestion gibt den Volltext nur zurück, wenn er (für diesen berechtigten Nutzer)
+  // enthalten ist — sonst null (kein Freitext ohne Berechtigung).
   const [params] = useSearchParams();
-  const gapContext = readGapContext(params);
+  const gapId = readGapId(params);
+  const gaps = useGaps();
+  const gapContext = resolveGapQuestion(gapId, gaps.data);
 
   const [mode, setMode] = useState<Mode>("freitext");
   // SCRUM-384 / KG-UX-001/002: Erstnutzer-Führung pro Browser — beim Erstbesuch ist die geführte
@@ -313,6 +333,8 @@ export function Capture(): JSX.Element {
     markCaptureIntroSeen(window.localStorage);
   }, []);
   // SCRUM-270: Gap-Frage als OFFENE-Frage-Vorlage übernehmen (kein fertiges Wissen); ohne Gap leer.
+  // Beim SPA-Wechsel aus /risiko ist die (berechtigte) Gap-Liste bereits im Cache → gapContext steht
+  // synchron. Der Effekt unten deckt den Kaltstart-Deep-Link ab (Liste lädt erst nachträglich).
   const [raw, setRaw] = useState(() =>
     gapContext
       ? gapContextDraft(gapContext, {
@@ -321,6 +343,23 @@ export function Capture(): JSX.Element {
         })
       : "",
   );
+  // FUNKE-FIX2 P0: Kaltstart-Deep-Link — sobald der (berechtigte) Fragetext nachträglich eintrifft und
+  // noch nichts getippt wurde, die Rohnotiz-Vorlage EINMAL nachsäen (nie getippten Text überschreiben).
+  const gapSeededRef = useRef(false);
+  useEffect(() => {
+    if (gapSeededRef.current || !gapContext) {
+      return;
+    }
+    gapSeededRef.current = true;
+    setRaw((prev) =>
+      prev.trim().length > 0
+        ? prev
+        : gapContextDraft(gapContext, {
+            question: t("capture.gapDraftQuestion"),
+            experience: t("capture.gapDraftExperience"),
+          }),
+    );
+  }, [gapContext, t]);
   const [draft, setDraft] = useState<StructureResult | null>(null);
   // SCRUM-384 (Pedi-Review): Wizard-Schritt — EIN Fokus je Schritt; Expertenmodus bleibt
   // außerhalb des Wizards (klassische Zwei-Spalten-Ansicht, bewusst gewählt).
@@ -2291,14 +2330,14 @@ export function Capture(): JSX.Element {
               return (
                 <p className="mt-1 flex items-center gap-1 text-[12px] text-trust-pos-text/80">
                   <Clock size={12} className="animate-pulse" aria-hidden="true" />
-                  {t(AI_CHECK_CARD_TEXT.running)}
+                  {t(aiCheckCardRunningKey(aiModelActive))}
                 </p>
               );
             }
             if (check.kind === "done") {
               return (
                 <p className="mt-1 text-[12px] text-trust-pos-text/80">
-                  {t(AI_CHECK_CARD_TEXT.done)}
+                  {t(aiCheckCardDoneKey(aiModelActive))}
                 </p>
               );
             }
@@ -2758,20 +2797,27 @@ export function Capture(): JSX.Element {
                 {expertView ? (
                   <AiAssistBox text={raw} runAssist={runAssist} onApply={setRaw} />
                 ) : null}
-                <div className="mt-3 flex items-center gap-1">
-                  <Button
-                    variant="primary"
-                    disabled={raw.trim().length === 0 || structure.isPending}
-                    onClick={() => structure.mutate()}
-                  >
-                    <Sparkles size={15} />
-                    {structure.isPending
-                      ? t(CAPTURE_WIZARD_TEXT.structuring)
-                      : t("capture.structure")}
-                  </Button>
-                  {/* Pedi 04.07.: (!)-Info — welche KI das Strukturieren ausführt. */}
-                  <AiModelInfo task="structure" />
-                  <HelpTip {...chelp("structureNow")} />
+                <div className="mt-3">
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="primary"
+                      // PAKET 1 (D-AISTATE): hart ausgrauen, wenn kein Modell für „structure" nutzbar ist.
+                      disabled={
+                        raw.trim().length === 0 || structure.isPending || !structureAi.available
+                      }
+                      title={!structureAi.available ? t("ai.unavailable.hint") : undefined}
+                      onClick={() => structure.mutate()}
+                    >
+                      <Sparkles size={15} />
+                      {structure.isPending
+                        ? t(CAPTURE_WIZARD_TEXT.structuring)
+                        : t("capture.structure")}
+                    </Button>
+                    {/* Pedi 04.07.: (!)-Info — welche KI das Strukturieren ausführt. */}
+                    <AiModelInfo task="structure" />
+                    <HelpTip {...chelp("structureNow")} />
+                  </div>
+                  <AiUnavailableHint show={!structureAi.available} />
                 </div>
               </div>
             ) : null}
@@ -3024,26 +3070,36 @@ export function Capture(): JSX.Element {
                             ))}
                           </div>
                         </div>
-                        <div className="mt-3 flex items-center gap-1.5">
-                          <Button
-                            variant="primary"
-                            // WP-D9b (Gelb-Fix 2): ohne Klartext (bildreines Deck) bleibt NUR die
-                            // KI-Punkte-Extraktion deaktiviert — der Ganzdokument-Import läuft.
-                            disabled={extract.isPending || fileBusy || fileText.trim().length === 0}
-                            onClick={() => extract.mutate()}
-                          >
-                            {/* SCRUM-418: sichtbare Arbeits-Animation, solange die KI liest. */}
-                            {extract.isPending ? (
-                              <Loader2 size={15} className="animate-spin" />
-                            ) : (
-                              <Sparkles size={15} />
-                            )}
-                            {extract.isPending
-                              ? t(CAPTURE_FILE_TEXT.searching)
-                              : t(CAPTURE_FILE_TEXT.searchCta)}
-                          </Button>
-                          {/* Pedi 04.07.: (!)-Info — welche KI die Extraktion ausführt. */}
-                          <AiModelInfo task="extract" />
+                        <div className="mt-3">
+                          <div className="flex items-center gap-1.5">
+                            <Button
+                              variant="primary"
+                              // WP-D9b (Gelb-Fix 2): ohne Klartext (bildreines Deck) bleibt NUR die
+                              // KI-Punkte-Extraktion deaktiviert — der Ganzdokument-Import läuft.
+                              // PAKET 1 (D-AISTATE): zusätzlich hart ausgrauen, wenn kein Modell nutzbar ist.
+                              disabled={
+                                extract.isPending ||
+                                fileBusy ||
+                                fileText.trim().length === 0 ||
+                                !extractAi.available
+                              }
+                              title={!extractAi.available ? t("ai.unavailable.hint") : undefined}
+                              onClick={() => extract.mutate()}
+                            >
+                              {/* SCRUM-418: sichtbare Arbeits-Animation, solange die KI liest. */}
+                              {extract.isPending ? (
+                                <Loader2 size={15} className="animate-spin" />
+                              ) : (
+                                <Sparkles size={15} />
+                              )}
+                              {extract.isPending
+                                ? t(CAPTURE_FILE_TEXT.searching)
+                                : t(CAPTURE_FILE_TEXT.searchCta)}
+                            </Button>
+                            {/* Pedi 04.07.: (!)-Info — welche KI die Extraktion ausführt. */}
+                            <AiModelInfo task="extract" />
+                          </div>
+                          <AiUnavailableHint show={!extractAi.available} />
                         </div>
                       </div>
                     ) : (
@@ -3879,6 +3935,7 @@ export function Capture(): JSX.Element {
                       images={editorImagesFromLocalImages(images)}
                       onAttachFiles={attachFiles}
                       documentTitle={draft.title}
+                      describeAvailable={describeAi.available}
                       onDescribeImage={(dataUrl, context) =>
                         endpoints.reasoner.describeImage(
                           dataUrl,
@@ -4106,6 +4163,7 @@ export function Capture(): JSX.Element {
                   images={editorImagesFromLocalImages(images)}
                   onAttachFiles={attachFiles}
                   documentTitle={draft.title}
+                  describeAvailable={describeAi.available}
                   onDescribeImage={(dataUrl, context) =>
                     endpoints.reasoner.describeImage(
                       dataUrl,

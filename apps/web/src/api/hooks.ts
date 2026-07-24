@@ -10,6 +10,9 @@ export const useLibrarySearch = (params: KoFilter & { q?: string }) =>
     queryKey: ["library", "search", params],
     queryFn: () => endpoints.library.search(params),
   });
+// FUNKE F1 (nacht24 Paket 6): persönliche Wirkungs-Zähler.
+export const useMyImpact = () =>
+  useQuery({ queryKey: ["me", "impact"], queryFn: () => endpoints.me.impact() });
 export const useImportCandidates = () =>
   useQuery({
     queryKey: ["import-candidates"],
@@ -60,6 +63,9 @@ export const useConflicts = () =>
 export const useDuplicates = () =>
   useQuery({ queryKey: ["duplicates"], queryFn: endpoints.duplicates.list });
 export const useGaps = () => useQuery({ queryKey: ["gaps"], queryFn: endpoints.gaps.list });
+// FUNKE-FIX2 P0 (bens Erforderlich 1): nur aggregierte Zähler für die Startseite (kein Volltext-Fetch).
+export const useGapsSummary = () =>
+  useQuery({ queryKey: ["gaps", "summary"], queryFn: endpoints.gaps.summary });
 export const useDrafts = () => useQuery({ queryKey: ["drafts"], queryFn: endpoints.drafts.list });
 export const useAnalytics = () =>
   useQuery({ queryKey: ["analytics"], queryFn: endpoints.analytics.overview });
@@ -112,3 +118,7 @@ export const useReasonerConfig = (enabled = true) =>
 // SCRUM-386: kundeneigene KI-Assist-Presets für die Palette (lesen: alle Rollen).
 export const useAssistPresets = () =>
   useQuery({ queryKey: ["reasoner", "assistPresets"], queryFn: endpoints.reasoner.assistPresets });
+// PAKET 2 (D-AISTATE, Pedi 23.07.): Achse 1 (externe Wissensabfrage) als eigene Header-Anzeige —
+// die Policy-Stufe ist für alle Leseberechtigten lesbar (GET /external/policy), getrennt vom Reasoner.
+export const useExternalPolicy = () =>
+  useQuery({ queryKey: ["external", "policy"], queryFn: endpoints.external.policy });

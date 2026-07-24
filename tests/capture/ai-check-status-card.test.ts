@@ -76,15 +76,18 @@ describe("WP-SHIP9-S1 B3: Karten-Texte lösen in DE, EN und NL auf", () => {
 
   it("DE-Wortlaut: läuft … / abgeschlossen / fehlgeschlagen (ehrlich, kein „freigegeben“)", async () => {
     await i18n.changeLanguage("de");
+    // PAKET 1.4 + 2.3 (D-AISTATE, bens V3): der no-KI-Wortlaut nennt NUR die deterministische Duplikat-/
+    // ÜBERSCHNEIDUNGSprüfung — es gibt keine deterministische Konfliktprüfung. „Konflikt" erscheint erst
+    // in der „(mit KI)"-Variante (*Ai-Keys).
     expect(i18n.t(AI_CHECK_CARD_TEXT.running)).toBe(
-      "KI-Prüfung läuft … Das Ergebnis erscheint hier, sobald sie abgeschlossen ist.",
+      "Duplikat-/Überschneidungsprüfung läuft … Das Ergebnis erscheint hier, sobald sie abgeschlossen ist.",
     );
     expect(i18n.t(AI_CHECK_CARD_TEXT.done)).toBe(
-      "KI-Prüfung abgeschlossen — Details in der Validierung.",
+      "Duplikat-/Überschneidungsprüfung abgeschlossen (ohne KI) — Details in der Validierung.",
     );
-    expect(i18n.t(AI_CHECK_CARD_TEXT.failed, { reason: "X" })).toContain(
-      "KI-Prüfung fehlgeschlagen",
-    );
+    // Ehrlich (bens V3): der no-KI-Text behauptet KEINE Konfliktprüfung.
+    expect(i18n.t(AI_CHECK_CARD_TEXT.running)).not.toContain("Konflikt");
+    expect(i18n.t(AI_CHECK_CARD_TEXT.failed, { reason: "X" })).toContain("Prüfung fehlgeschlagen");
   });
 });
 
@@ -100,8 +103,9 @@ describe("WP-SHIP9-S1 B3: Capture-Karte nutzt den ECHTEN Status (Source-Pins)", 
 
   it("rendert die drei ehrlichen Zustände und hat den statischen Hintergrund-Satz ersetzt", () => {
     expect(source).toContain("aiCheckCardState(savedAiCheck)");
-    expect(source).toContain("AI_CHECK_CARD_TEXT.running");
-    expect(source).toContain("AI_CHECK_CARD_TEXT.done");
+    // PAKET 1.4 (D-AISTATE): running/done sind jetzt modellbewusst (mit KI / ohne KI); failed bleibt fix.
+    expect(source).toContain("aiCheckCardRunningKey(aiModelActive)");
+    expect(source).toContain("aiCheckCardDoneKey(aiModelActive)");
     expect(source).toContain("AI_CHECK_CARD_TEXT.failed");
     // Der frühere statische „läuft im Hintergrund"-Satz (behauptete Prüfung ohne Nachlesen) ist raus.
     expect(source).not.toContain("capture.aiCheckBackground");

@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# SCRUM-501 (nacht24): Demo-/Simulationskorpus DE/EN/NL in eine LAUFENDE lokale Instanz laden.
+# NICHT automatisch — dieses Skript ist der einzige Weg neben dem Admin-Endpunkt selbst.
+# Voraussetzungen: Backend läuft (tools/localhost start), Admin-Konto existiert.
+# Nutzung:  KLARWERK_ADMIN_EMAIL=... KLARWERK_ADMIN_PASSWORD=... tools/seed-sim-corpus
+# Optional: KLARWERK_BACKEND_URL (Default http://127.0.0.1:3001)
+# Entfernen: DELETE /api/admin/demo-seed (bestehender Demo-Purge — der Korpus trägt demoSeed).
+set -euo pipefail
+
+BACKEND_URL="${KLARWERK_BACKEND_URL:-http://127.0.0.1:3001}"
+EMAIL="${KLARWERK_ADMIN_EMAIL:?KLARWERK_ADMIN_EMAIL setzen (Admin-Konto)}"
+PASSWORD="${KLARWERK_ADMIN_PASSWORD:?KLARWERK_ADMIN_PASSWORD setzen}"
+
+echo "▶ Anmeldung als ${EMAIL} an ${BACKEND_URL}"
+TOKEN=$(curl -fsS -X POST "${BACKEND_URL}/api/auth/login" \
+  -H 'content-type: application/json' \
+  -d "{\"email\":\"${EMAIL}\",\"password\":\"${PASSWORD}\"}" |
+  python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+
+echo "▶ Lade Simulationskorpus (idempotent — zweiter Lauf dupliziert nichts)"
+curl -fsS -X POST "${BACKEND_URL}/api/admin/sim-corpus" \
+  -H "authorization: Bearer ${TOKEN}" | python3 -m json.tool
+
+echo "✓ fertig — Details: docs/demo/SIM-KORPUS.md"

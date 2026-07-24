@@ -7,7 +7,13 @@ import Fastify, {
   type FastifyRequest,
 } from "fastify";
 import type { Pool } from "pg";
-import { AskService, type GapRepo, InMemoryGapRepo, PgGapRepo } from "../../ask";
+import {
+  AskService,
+  type GapRepo,
+  InMemoryGapRepo,
+  PgGapRepo,
+  parseConfiguredReceiptSecret,
+} from "../../ask";
 import { type AuditRepo, AuditService, InMemoryAuditRepo, PgAuditRepo } from "../../audit";
 import {
   AuthService,
@@ -154,6 +160,7 @@ import { confluenceImportRoutes } from "./routes/confluence-import-routes";
 import { externalRoutes } from "./routes/external-routes";
 import { helpRoutes } from "./routes/help-routes";
 import { i18nRoutes } from "./routes/i18n-routes";
+import { impactRoutes } from "./routes/impact-routes";
 import { knowledgeCheckRoutes } from "./routes/knowledge-check-routes";
 import { koRoutes } from "./routes/ko-routes";
 import { libraryRoutes } from "./routes/library-routes";
@@ -300,10 +307,37 @@ export function assembleServices(repos: AppRepos, opts: { withTx?: WithTx } = {}
   );
 
   // Vorab erstellt, da das Management-Modul (SCRUM-120) deren Live-Daten aggregiert.
-  const ask = new AskService({ reasoner, koService: ko, gaps: repos.gaps, audit });
-  const conflicts = new ConflictService({ repo: repos.conflictsRepo, audit });
+  // FUNKE-FIX P0 (bens ROT-1): optionales Answer-Receipt-Secret aus ENV — gesetzt für
+  // Mehr-Instanz-/reproduzierbare Deployments, sonst prozess-lokal zufällig (Belege sind kurzlebig).
+  const ask = new AskService({
+    reasoner,
+    koService: ko,
+    gaps: repos.gaps,
+    audit,
+    ...(process.env.KLARWERK_ASK_RECEIPT_SECRET
+      ? { receiptSecret: parseConfiguredReceiptSecret(process.env.KLARWERK_ASK_RECEIPT_SECRET) }
+      : {}),
+    // FUNKE-FIX2 P0 (bens ROT-1, Blocker 1): dieselbe echte DB-Transaktion wie KoService — Audit-CAS
+    // und Trust-Inkrement des „Danke" committen/rollbacken gemeinsam. Nur mit echtem Pg-Pool gesetzt.
+    ...(opts.withTx ? { withTx: opts.withTx } : {}),
+  });
+  // D-AISTATE PAKET 4 (bens V5, aistate-fix5): Versions-Autorität für die fail-closed Lesepfade
+  // beider Befund-Dienste (unresolved() UND get()/Detail-Routen, gemeinsamer version-guard) — die
+  // aktuelle KO-Version kommt IMMER frisch aus dem KO-Store; ein offener Befund mit abweichender
+  // (oder nicht ermittelbarer) gebundener Version wird nie ausgeliefert.
+  const koVersion = async (koId: string): Promise<number | undefined> =>
+    (await ko.get(koId))?.version;
+  const conflicts = new ConflictService({
+    repo: repos.conflictsRepo,
+    audit,
+    currentVersion: koVersion,
+  });
   // Berater-Konzept Duplikate 04.07. (Stufe D3): eigener Dienst für Überschneidungen (teilt Audit).
-  const overlaps = new OverlapService({ repo: repos.overlapRepo, audit });
+  const overlaps = new OverlapService({
+    repo: repos.overlapRepo,
+    audit,
+    currentVersion: koVersion,
+  });
   // SCRUM-510 R2b: GENERISCHES Import-Enable (quellneutral). Der externalId-Upsert-/Re-Sync-Strang ist an,
   // sobald IRGENDEINE Quelle aktiv ist; der Confluence-Flag KLARWERK_CONFLUENCE_IMPORT schaltet nur die
   // EINE Quelle Confluence. Ein Adapter #2 (Jira-TEST) OR-t später sein eigenes Flag ein — ohne dass der
@@ -370,6 +404,18 @@ export function assembleServices(repos: AppRepos, opts: { withTx?: WithTx } = {}
       // SCRUM-502 R8: gecappter Cloud-Transkriber aus der Factory (Egress-Wächter zwingend; roher
       // Client + Credential modul-intern, hier nicht erreichbar). Ohne Schlüssel → undefined (inaktiv).
       transcriber: createCappedTranscriberFromEnv(),
+      // SCRUM-521 (WP2, nacht24): KO-Kontext für die Egress-Entscheidung — die Stufen ALLER KOs,
+      // die das Objekt als Anhang tragen (restriktivste gewinnt im Service; ein „intern"
+      // hochgeladenes Medium an einem vertraulichen KO bleibt vertraulich). Injizierte Auflösung,
+      // damit media von knowledge-object entkoppelt bleibt; Fehler behandelt der Service fail-safe.
+      // FUNKE-FIX P2 (bens Sammel-Nacht): Ein genuin FEHLENDES Feld ist der dokumentierte
+      // „intern"-Default (SCRUM-415). Ein PRÄSENTER, aber korrupter/unerwarteter Wert wird bewusst
+      // UNVERÄNDERT durchgereicht — mediaIsConfidential hebt ihn dann fail-closed auf den höchsten
+      // Rang an (kein externer Egress), statt ihn hier still zu „intern" zu glätten.
+      koConfidentiality: async (objectId) =>
+        (await ko.list({}))
+          .filter((k) => (k.attachments ?? []).some((a) => a.objectId === objectId))
+          .map((k) => k.confidentiality ?? "intern"),
     }),
     // SCRUM-165: read-only ModelRun-Sicht über dasselbe Protokoll-Repo wie der Reasoner.
     modelRuns: new ModelRunService({ repo: repos.modelRuns }),
@@ -660,8 +706,17 @@ export function buildApp(
   // anonym lesbar). Provider-Details liefert ausschliesslich die ECHTE Admin-Sicht
   // GET /api/reasoner/config (users.manage — WP-VIP2-GATE-2 Fix 3/4; vorher galt dort nur
   // Authentifizierung, die Formulierung Admin-Sicht war zu frueh). Die KI-Pille braucht nur active/mode.
-  app.get("/api/reasoner/status", async () => services.reasoner.publicStatus());
-  app.get("/api/ai-status", async () => ({ ai: services.reasoner.publicStatus() })); // §2.1: ist die KI verfügbar?
+  // PAKET 2 (D-AISTATE, Pedi 23.07.): der Status-Abruf stößt — HÖCHSTENS einmal je Cache-Frist (60 s)
+  // und feuern-und-vergessen — einen echten Erreichbarkeits-Probe an; die Antwort trägt sofort den
+  // aktuellen Cache-Zustand (kein Ping pro Request, Kosten/Rate geschont).
+  app.get("/api/reasoner/status", async () => {
+    services.reasoner.refreshReachabilityIfStale();
+    return services.reasoner.publicStatus();
+  });
+  app.get("/api/ai-status", async () => {
+    services.reasoner.refreshReachabilityIfStale();
+    return { ai: services.reasoner.publicStatus() }; // §2.1: ist die KI verfügbar?
+  });
 
   // HTTP-Oberfläche der Module. Auth bringt seine eigenen Routen mit; die übrigen
   // Module werden über App-Routen verdrahtet, die den gemeinsamen Guard nutzen.
@@ -818,6 +873,8 @@ export function buildApp(
   );
   // Audit-P4 (SCRUM-398): Live-Wall — read-only „frisch gesichert / hat heute geholfen".
   app.register(livewallRoutes({ ko: services.ko, audit: services.audit }, guards));
+  // FUNKE F1 (nacht24 Paket 6): „Meine Wirkung" — persönliche Zähler aus eigenen KOs + Audits.
+  app.register(impactRoutes({ ko: services.ko, audit: services.audit }, guards));
   app.register(auditRoutes(services.audit, guards));
   app.register(reasonerRoutes(services, guards));
   // Klara Stufe 2 (Pedi 05.07.): KI-gestuetzte Hilfe-Antwort aus Hilfe-Schnipseln (help-routes).

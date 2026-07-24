@@ -67,17 +67,94 @@ describe("AskService", () => {
     expect(gap?.question.endsWith("…")).toBe(true);
   });
 
-  it("FR-ASK-04: 'Hat geholfen' erhöht Trust und erzeugt Audit-Eintrag", async () => {
+  // FUNKE-FIX P0 (bens ROT-1): das „Danke" verlangt einen serverseitig ausgestellten Answer-Receipt,
+  // der GENAU dieses KO diesem Nutzer als Quelle belegt. Ein echter Antwortvorgang liefert ihn.
+  const HELPFUL_QUESTION = "Was tun bei Überdruck am Ventil?";
+  async function receiptFor(actor: string): Promise<string> {
+    const { result, receipt } = await ctx.ask.ask(HELPFUL_QUESTION, actor);
+    // Der Beleg bindet die ausgelieferten Quellen — der Test-Store hat GENAU dieses eine KO.
+    expect(result.sources.length).toBeGreaterThan(0);
+    return receipt;
+  }
+
+  it("FR-ASK-04: 'Hat geholfen' (mit gültigem Beleg) erhöht Trust und erzeugt Audit-Eintrag", async () => {
     const list = await ctx.koService.list();
     const ko = list[0];
     if (!ko) {
       throw new Error("KO fehlt.");
     }
-    await ctx.ask.markHelpful(ko.id, "viewer-1");
+    await ctx.ask.markHelpful(await receiptFor("viewer-1"), ko.id, "viewer-1");
     const after = await ctx.koService.get(ko.id);
     expect(after?.trust).toBeGreaterThan(ko.trust);
     const audit = await ctx.audit.list({ action: "answer.helpful" });
     expect(audit).toHaveLength(1);
+  });
+
+  // FUNKE-FIX P0 (bens ROT-1): eine unbelegte/fremd gewählte KO-ID ist NICHT mehr wirksam →
+  // FORBIDDEN, kein Trust, kein Audit. Weder ein leerer Beleg, noch ein gültiger Beleg für ein
+  // NICHT ausgeliefertes KO, noch der Beleg EINES ANDEREN Nutzers autorisiert das „Danke".
+  it("FUNKE-FIX P0: unbelegte/fremde KO-ID → FORBIDDEN (kein Trust, kein Audit)", async () => {
+    const ko = (await ctx.koService.list())[0];
+    if (!ko) {
+      throw new Error("KO fehlt.");
+    }
+    // (a) gar kein Beleg
+    await expect(ctx.ask.markHelpful("", ko.id, "viewer-1")).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+    const receipt = await receiptFor("viewer-1");
+    // (b) gültiger Beleg, aber für eine KO-ID, die dieser Vorgang NICHT auslieferte
+    await expect(ctx.ask.markHelpful(receipt, "fremdes-ko", "viewer-1")).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+    // (c) fremder Nutzer legt den Beleg von viewer-1 vor
+    await expect(ctx.ask.markHelpful(receipt, ko.id, "eindringling")).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+    expect(await ctx.audit.list({ action: "answer.helpful" })).toHaveLength(0);
+    expect((await ctx.koService.get(ko.id))?.trust).toBe(ko.trust);
+  });
+
+  // FUNKE F2 (nacht24 Paket 6): „Danke" ist IDEMPOTENT je Nutzer+Ziel — der zweite Klick derselben
+  // Person bewirkt nichts (kein weiterer Trust-Bump, kein Doppel-Audit, keine Doppel-Glocke).
+  // Eine ANDERE Person zählt weiterhin (eigener Beleg).
+  it("FUNKE F2: markHelpful idempotent je Nutzer+Ziel; andere Nutzer zählen weiter", async () => {
+    const ko = (await ctx.koService.list())[0];
+    if (!ko) {
+      throw new Error("KO fehlt.");
+    }
+    const r1 = await receiptFor("viewer-1");
+    await ctx.ask.markHelpful(r1, ko.id, "viewer-1");
+    const afterFirst = await ctx.koService.get(ko.id);
+    await ctx.ask.markHelpful(r1, ko.id, "viewer-1"); // zweiter Klick derselben Person → No-op
+    const afterSecond = await ctx.koService.get(ko.id);
+    expect(afterSecond?.trust).toBe(afterFirst?.trust);
+    expect(await ctx.audit.list({ action: "answer.helpful" })).toHaveLength(1);
+    // Eine andere Person darf weiterhin danken (eigener, ehrlicher Beleg).
+    await ctx.ask.markHelpful(await receiptFor("viewer-2"), ko.id, "viewer-2");
+    expect(await ctx.audit.list({ action: "answer.helpful" })).toHaveLength(2);
+    const afterOther = await ctx.koService.get(ko.id);
+    expect(afterOther?.trust).toBeGreaterThan(afterSecond?.trust ?? 0);
+  });
+
+  // FUNKE-FIX P0 (bens ROT-1): zwei GLEICHZEITIGE „Danke" desselben Nutzers auf dasselbe KO ⇒ genau
+  // EIN Audit und genau EIN Trust-Schritt (recordOnce-CAS koppelt den Bump atomar an den Schreibsieg;
+  // kein Read-then-Write-Fenster). Der In-Memory-Guard ist synchron; der echte Postgres-Paralleltest
+  // liegt in service.integration.test.ts.
+  it("FUNKE-FIX P0: zwei gleichzeitige Danke → genau EIN Audit, genau EIN Trust-Schritt (Barrier)", async () => {
+    const ko = (await ctx.koService.list())[0];
+    if (!ko) {
+      throw new Error("KO fehlt.");
+    }
+    const before = ko.trust;
+    const receipt = await receiptFor("viewer-1");
+    await Promise.all([
+      ctx.ask.markHelpful(receipt, ko.id, "viewer-1"),
+      ctx.ask.markHelpful(receipt, ko.id, "viewer-1"),
+    ]);
+    expect(await ctx.audit.list({ action: "answer.helpful", target: ko.id })).toHaveLength(1);
+    const after = await ctx.koService.get(ko.id);
+    expect(after?.trust).toBe(Math.min(99, before + 2)); // genau EIN Schritt (+2), nie doppelt
   });
 
   it("FR-ASK-05: Wissenslücke zuweisen, schließen, mit Bestätigung löschen", async () => {

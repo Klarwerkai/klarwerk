@@ -15,6 +15,14 @@ export interface DetectSubject {
   category?: string;
   tags: string[];
   asset?: string | null;
+  // D-AISTATE PAKET 1 (bens V1): Vertraulichkeits-MARKE des Beitrags (nur ein Boolean — NIE der Text
+  // oder die Stufe). Der Detection-Kern reicht die restriktivste Stufe des PAARES (subject||cand) an
+  // den judge-Callback; der Reasoner nimmt die Cloud dann aus der Kette. Fehlt das Feld → nicht
+  // vertraulich (Bestandsverhalten).
+  confidential?: boolean;
+  // D-AISTATE PAKET 4 (bens V5): Inhaltsversion des Beitrags zum Prüfzeitpunkt. Befunde werden an
+  // BEIDE beteiligten Versionen gebunden (additiv); ein Aufrufer kann darüber Stale-Läufe verwerfen.
+  version?: number;
 }
 
 // kon-v1 Modellurteil (striktes JSON aus der Reasoner-Aufgabe „Konfliktprüfung").

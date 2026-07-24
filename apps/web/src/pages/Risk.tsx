@@ -300,7 +300,11 @@ export function Risk(): JSX.Element {
                       {t(`risk.priority.${g.priority}`)}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-[13.5px] text-text">{g.question}</div>
+                      {/* FUNKE-FIX2 P0 (bens Erforderlich 4): Fragetext nur an Berechtigte — der
+                          Server redigiert für Unberechtigte (g.redacted), dann Neutralbezeichnung. */}
+                      <div className="truncate text-[13.5px] text-text">
+                        {g.redacted ? t("risk.gapRedacted") : g.question}
+                      </div>
                       {/* SCRUM-253: ehrliche nächste Handlung je offener Lücke (priorisieren/zuweisen/erfassen). */}
                       {g.status === "offen" ? (
                         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted">
@@ -322,9 +326,11 @@ export function Risk(): JSX.Element {
                     </span>
                     {g.status === "offen" ? (
                       <>
-                        {/* SCRUM-263: offene Lücke direkt als Erfassungskontext starten. */}
+                        {/* SCRUM-263 / FUNKE-FIX2 P0 (bens Erforderlich 4): offene Lücke als
+                            Erfassungskontext starten — der Einstieg trägt die GAP-ID (kein Fragetext
+                            in der URL). Capture lädt den Text erst nach serverseitiger Berechtigung. */}
                         <Link
-                          to={captureGapHref(g.question)}
+                          to={captureGapHref(g.id)}
                           className="inline-flex shrink-0 items-center rounded-btn bg-ink px-2.5 py-1 text-[12px] font-semibold text-white hover:opacity-90"
                         >
                           {t("risk.gapCapture")}

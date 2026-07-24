@@ -230,6 +230,113 @@ describe("SCRUM-382/521: MediaAnalysisService", () => {
     expect(mediaIsConfidential("intern", "quatsch")).toBe(false);
   });
 
+  // === SCRUM-521 (WP2, nacht24): KO-Kontext — restriktivste Stufe gewinnt ==========================
+
+  it("mediaIsConfidential: KO-Stufen heben an (restriktivste gewinnt), senken NIE", () => {
+    // Ein vertrauliches Bezugs-KO macht das intern gespeicherte Medium vertraulich.
+    expect(mediaIsConfidential("intern", undefined, ["vertraulich"])).toBe(true);
+    expect(mediaIsConfidential("intern", undefined, ["intern", "streng_vertraulich"])).toBe(true);
+    // Interne/leere KO-Kontexte ändern nichts.
+    expect(mediaIsConfidential("intern", undefined, ["intern"])).toBe(false);
+    expect(mediaIsConfidential("intern", undefined, [])).toBe(false);
+    // KO-Stufen können ein vertraulich gespeichertes Medium NIE senken.
+    expect(mediaIsConfidential("vertraulich", undefined, ["intern"])).toBe(true);
+    // FUNKE-FIX P2 (bens Sammel-Nacht): ein PRÄSENTER, aber unbekannter/korrupter KO-Stufenwert wird
+    // fail-closed auf den höchsten Rang angehoben (kein externer Egress) statt wie „intern" freigegeben.
+    expect(mediaIsConfidential("intern", undefined, ["quatsch"])).toBe(true);
+    expect(mediaIsConfidential("intern", undefined, ["intern", "geheim?"])).toBe(true);
+  });
+
+  // KERN der WP2-Lücke: das Objekt wurde „intern" hochgeladen, hängt aber an einem VERTRAULICHEN
+  // KO → der externe Transcriber-Spy darf NIE laufen (der KO-Kontext gewinnt serverseitig).
+  it("intern gespeichert, aber Anhang eines vertraulichen KO → Spy NIE aufgerufen", async () => {
+    const objects = makeStore();
+    const ref = await objects.put({
+      name: "anlage-intern.mp4",
+      mime: "video/mp4",
+      data: videoDataUrl,
+      confidentiality: "intern",
+    });
+    const spy = makeSpy();
+    const media = new MediaAnalysisService({
+      objects,
+      transcriber: spy.transcriber,
+      koConfidentiality: async () => ["vertraulich"],
+    });
+    const result = await media.analyze(ref.id, "de");
+    expect(spy.wasCalled()).toBe(false);
+    expect(result.transcript).toBeNull();
+    expect(result.engineActive).toBe(false);
+    expect(result.note).toContain("Vertrauliche");
+  });
+
+  // Positiv-Kontrolle: KO-Kontext intern (oder kein KO-Bezug) → öffentliches Medium unverändert.
+  it("intern gespeichert + KO-Kontext intern/leer → Transcriber läuft unverändert", async () => {
+    const objects = makeStore();
+    const ref = await objects.put({
+      name: "ok2.mp4",
+      mime: "video/mp4",
+      data: videoDataUrl,
+      confidentiality: "intern",
+    });
+    const spy = makeSpy();
+    const media = new MediaAnalysisService({
+      objects,
+      transcriber: spy.transcriber,
+      koConfidentiality: async () => ["intern"],
+    });
+    const result = await media.analyze(ref.id, "de");
+    expect(spy.wasCalled()).toBe(true);
+    expect(result.transcript).not.toBeNull();
+  });
+
+  // FUNKE-FIX P2 (bens Sammel-Nacht) Pflichttest: ein intern gespeichertes Medium an einem KO mit
+  // UNBEKANNTEM/korruptem Stufenwert wird fail-closed behandelt → der externe Transcriber-Spy wird
+  // NIE aufgerufen (Aufruf-Zahl 0). Ohne den Fix (unbekannt = intern) liefe der Spy.
+  it("intern gespeichert, aber KO mit unbekannter Stufe → Spy NIE aufgerufen (fail-closed)", async () => {
+    const objects = makeStore();
+    const ref = await objects.put({
+      name: "legacy.mp4",
+      mime: "video/mp4",
+      data: videoDataUrl,
+      confidentiality: "intern",
+    });
+    const spy = makeSpy();
+    const media = new MediaAnalysisService({
+      objects,
+      transcriber: spy.transcriber,
+      koConfidentiality: async () => ["geheim-legacy-wert"], // unerwarteter Legacy-Wert
+    });
+    const result = await media.analyze(ref.id, "de");
+    expect(spy.wasCalled()).toBe(false);
+    expect(result.transcript).toBeNull();
+    expect(result.engineActive).toBe(false);
+    expect(result.note).toContain("Vertrauliche");
+  });
+
+  // Fail-safe: scheitert die KO-Kontext-Auflösung, wird NIE egresst (ehrlicher Status).
+  it("KO-Kontext-Auflösung wirft → fail-safe vertraulich, Spy NIE aufgerufen", async () => {
+    const objects = makeStore();
+    const ref = await objects.put({
+      name: "unklar.mp4",
+      mime: "video/mp4",
+      data: videoDataUrl,
+      confidentiality: "intern",
+    });
+    const spy = makeSpy();
+    const media = new MediaAnalysisService({
+      objects,
+      transcriber: spy.transcriber,
+      koConfidentiality: async () => {
+        throw new Error("Repo nicht erreichbar");
+      },
+    });
+    const result = await media.analyze(ref.id, "de");
+    expect(spy.wasCalled()).toBe(false);
+    expect(result.engineActive).toBe(false);
+    expect(result.note).toContain("Vertrauliche");
+  });
+
   // SCRUM-502 R7: der Chokepoint-Wächter (cappedTranscriber mit rejectsConfidential) wirft bei
   // confidential=true, OHNE den inneren (echten) Transkriber zu rufen — kein Egress by construction.
   it("cappedTranscriber(rejectsConfidential) wirft bei confidential, inner nie aufgerufen", async () => {

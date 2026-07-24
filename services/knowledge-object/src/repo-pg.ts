@@ -152,6 +152,31 @@ export class PgKoRepo implements KoRepo {
     }
   }
 
+  // FUNKE-FIX2 P0 (bens ROT-1, Blocker 1): ATOMARER Trust-Inkrement direkt in der DB — LEAST deckelt
+  // bei maxTrust, rowVersion klettert mit (schützt vor stillem Clobbern durch einen nebenläufigen
+  // Voll-Write). KEIN Read-modify-write → zwei gleichzeitige Danke verschiedener Nutzer zählen BEIDE.
+  // MIT tx (vom Aufrufer aus derselben withPgTx-Klammer wie PgAuditRepo.appendOnce) läuft der Inkrement
+  // auf demselben Client → Audit-CAS und Trust committen/rollbacken ATOMAR zusammen (services/db-tx).
+  // 0 betroffene Zeilen (KO fehlt/getrasht) → undefined; der Aufrufer rollt den gekoppelten Audit zurück.
+  async bumpTrust(
+    id: string,
+    step: number,
+    maxTrust: number,
+    tx?: TxContext,
+  ): Promise<number | undefined> {
+    const queryable: Queryable = tx ? pgQueryable(tx) : poolQueryable(this.pool);
+    const res = await queryable.query<{ trust: number }>(
+      `UPDATE kos
+         SET data = jsonb_set(
+           jsonb_set(data, '{trust}', to_jsonb(LEAST($3::int, COALESCE((data->>'trust')::int, 0) + $2::int))),
+           '{rowVersion}', to_jsonb(COALESCE((data->>'rowVersion')::int, 0) + 1))
+       WHERE id = $1 AND NOT (data ? 'deletedAt')
+       RETURNING (data->>'trust')::int AS trust`,
+      [id, step, maxTrust],
+    );
+    return res.rows[0]?.trust;
+  }
+
   // Gemeinsamer Filterbau für list()/listForSearch() — identische WHERE-Logik, andere Projektion.
   private buildListFilter(filter: KoFilter): { where: string; params: unknown[] } {
     const clauses: string[] = [];

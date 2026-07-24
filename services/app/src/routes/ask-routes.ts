@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
-import { type AskService, isGapPriority } from "../../../ask";
+import { type AskService, isGapPriority, redactGapForViewer } from "../../../ask";
+import { can } from "../../../rbac";
 import { authorizesAsk } from "../addon-principal";
 import { addonRateLimit } from "../addon-rate-limit";
 import { type Guards, type SessionUser, sendError } from "../http";
@@ -131,25 +132,51 @@ export function askRoutes(ask: AskService, guards: Guards): FastifyPluginAsync {
     );
 
     // FR-ASK-04: „Hat geholfen" — Bewährung durch Nutzung.
-    app.post<{ Body: { koId: string } }>("/api/ask/helpful", async (request, reply) => {
+    // FUNKE-FIX P0 (bens ROT-1): Das „Danke" verlangt den opaken Answer-Receipt aus dem echten
+    // Antwortvorgang (POST /api/ask liefert ihn). Der Server verifiziert damit, dass GENAU dieses KO
+    // diesem Nutzer als Quelle ausgeliefert wurde — eine frei gewählte/unbelegte KO-ID ⇒ 403. Die
+    // Genau-einmal-Garantie (recordOnce-CAS) und der atomare Trust-Bump liegen im Service.
+    app.post<{ Body: { koId: string; receipt?: string } }>(
+      "/api/ask/helpful",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        try {
+          await ask.markHelpful(request.body.receipt ?? "", request.body.koId, user.id);
+          reply.code(204).send();
+        } catch (error) {
+          sendError(reply, error);
+        }
+      },
+    );
+
+    // FUNKE-FIX2 P0 (bens Erforderlich 1): rein aggregierte Zähler — KEIN Fragetext. Die Startseite
+    // nutzt AUSSCHLIESSLICH diesen Endpunkt (kein Volltext-Fetch der Lücken mehr auf /start).
+    app.get("/api/gaps/summary", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
       if (!user) {
         return;
       }
-      try {
-        await ask.markHelpful(request.body.koId, user.id);
-        reply.code(204).send();
-      } catch (error) {
-        sendError(reply, error);
-      }
+      reply.code(200).send(await ask.gapsSummary());
     });
 
+    // FUNKE-FIX2 P0 (bens Erforderlich 2): Detail-Endpunkt liefert den Fragetext ADRESSATENGERECHT.
+    // Volltext sehen nur der Ersteller/Owner, ein Assignee ODER eine Rolle mit ausdrücklicher Detail-
+    // Berechtigung (ko.validate-Ebene, d. h. Controller/Admin — die Lücken ohnehin kuratieren). Alle
+    // anderen erhalten eine REDIGIERTE Sicht (Kategorie/Neutralbezeichnung, Zähler, KEIN Fragetext).
+    // Fail-closed: im Zweifel redigiert (redactGapForViewer entscheidet zentral).
     app.get("/api/gaps", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
       if (!user) {
         return;
       }
-      reply.code(200).send(await ask.listGaps());
+      const maySeeDetail = can(user.role, "ko.validate");
+      const gaps = await ask.listGaps();
+      reply
+        .code(200)
+        .send(gaps.map((gap) => redactGapForViewer(gap, { viewerId: user.id, maySeeDetail })));
     });
 
     app.put<{

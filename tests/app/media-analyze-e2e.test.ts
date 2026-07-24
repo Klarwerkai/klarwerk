@@ -107,6 +107,84 @@ describe("SCRUM-382: /api/media/analyze (HTTP end-to-end)", () => {
     expect(analyzed.json().note).toContain("Vertrauliche");
   });
 
+  // SCRUM-521 (WP2, nacht24) am HTTP-Rand: das Objekt wurde „intern" hochgeladen — hängt es an
+  // einem VERTRAULICHEN KO, gewinnt die restriktivste Stufe (KO-Kontext, serverseitig aufgelöst).
+  // Ohne Transcriber-Schlüssel ist der Unterschied ehrlich sichtbar: vorher „nicht aktiv"
+  // (Inaktiv-Zustand), nach dem Anhängen an das vertrauliche KO „Vertrauliche…" (Egress-Block —
+  // der greift VOR der Schlüssel-Prüfung, ein konfigurierter Transcriber liefe also ebenfalls nie).
+  it("SCRUM-521 WP2: intern hochgeladen + Anhang an vertraulichem KO → KO-Kontext gewinnt", async () => {
+    const { app, headers } = await setup();
+    const put = await app.inject({
+      method: "POST",
+      url: "/api/objects",
+      headers,
+      payload: {
+        name: "rundgang.mp4",
+        mime: "video/mp4",
+        data: `data:video/mp4;base64,${Buffer.from("walk").toString("base64")}`,
+        confidentiality: "intern",
+      },
+    });
+    expect(put.statusCode).toBe(201);
+    const objectId = put.json().id as string;
+
+    // Vorher: kein KO-Bezug → die Analyse endet am ehrlichen Inaktiv-Zustand (kein Schlüssel),
+    // NICHT am Vertraulichkeits-Block.
+    const before = await app.inject({
+      method: "POST",
+      url: "/api/media/analyze",
+      headers,
+      payload: { objectId, locale: "de" },
+    });
+    expect(before.statusCode).toBe(200);
+    expect(before.json().note).toContain("nicht aktiv");
+
+    // KO anlegen, Objekt als Anhang anfügen, KO vertraulich stufen.
+    const ko = await app.inject({
+      method: "POST",
+      url: "/api/kos",
+      headers,
+      payload: {
+        title: "Anlagen-Rundgang",
+        statement: "Interner Rundgang mit sensiblen Details.",
+        type: "best_practice",
+        category: "Anlage 1",
+        tags: [],
+      },
+    });
+    expect(ko.statusCode).toBe(201);
+    const koId = ko.json().id as string;
+    const attach = await app.inject({
+      method: "PUT",
+      url: `/api/kos/${koId}`,
+      headers,
+      payload: {
+        action: "attach",
+        attachment: { name: "rundgang.mp4", mime: "video/mp4", objectId },
+      },
+    });
+    expect(attach.statusCode).toBe(200);
+    const level = await app.inject({
+      method: "PUT",
+      url: `/api/kos/${koId}`,
+      headers,
+      payload: { action: "confidentiality", level: "vertraulich" },
+    });
+    expect(level.statusCode).toBe(200);
+
+    // Nachher: der KO-Kontext gewinnt — Vertraulichkeits-Block statt Inaktiv-Zustand, kein Egress.
+    const after = await app.inject({
+      method: "POST",
+      url: "/api/media/analyze",
+      headers,
+      payload: { objectId, locale: "de" },
+    });
+    expect(after.statusCode).toBe(200);
+    expect(after.json().transcript).toBeNull();
+    expect(after.json().engineActive).toBe(false);
+    expect(after.json().note).toContain("Vertrauliche");
+  });
+
   it("Nicht-Video wird mit 400 abgewiesen, Unbekanntes mit 404", async () => {
     const { app, headers } = await setup();
     const img = await app.inject({

@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Download, RotateCw, Sparkles, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
@@ -35,10 +35,29 @@ import {
 } from "../lib/demoKnowledge";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 import { deriveStatus } from "../lib/displayStatus";
+import {
+  type FacetSelection,
+  applyFacetSelection,
+  combinableFacetCounts,
+  toggleFacetValue,
+} from "../lib/facets";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { koAuthorParts } from "../lib/koAuthor";
 import { windowList } from "../lib/libraryDisplay";
 import { EXPORT_FORMATS, type ExportFormat, exportFilename, exportUrl } from "../lib/libraryExport";
+import {
+  LIBRARY_FACET_KEYS,
+  LIBRARY_FACET_LABEL_KEYS,
+  LIBRARY_GROUP_KEYS,
+  type LibraryFacetKey,
+  type LibraryGroupKey,
+  type LibrarySavedView,
+  groupByFacet,
+  libraryFacetValues,
+  readLibraryViews,
+  removeLibraryView,
+  saveLibraryView,
+} from "../lib/libraryFacets";
 import {
   MATURITY_FILTERS,
   type MaturityFilter,
@@ -92,6 +111,9 @@ export function Library(): JSX.Element {
   const [demoFilter, setDemoFilter] = useState<DemoKnowledgeFilter>(() =>
     readDemoKnowledgeFilter(params),
   );
+  // D-BIB (nacht24 Paket 5): dynamische Facetten-Auswahl + Untergruppen-Ansicht.
+  const [facetSel, setFacetSel] = useState<FacetSelection>({});
+  const [groupBy, setGroupBy] = useState<LibraryGroupKey>("none");
   const guide = knowledgeGuidance("library");
 
   // Optionen (Domäne/Tags) aus dem ungefilterten Bestand, damit sie stabil bleiben.
@@ -113,6 +135,14 @@ export function Library(): JSX.Element {
   // SCRUM-245: aktuelle Volltext-Query für client-seitiges Re-Ranking + Match-Hinweise.
   const trimmedQ = filter.q.trim();
 
+  // D-BIB Effizienz-Vertrag (10.000+ flüssig): die TEURE Facetten-Wert-Ableitung (Regex/Datums-
+  // Parsen je KO) läuft genau EINMAL je Datenlauf (memoisiert auf query.data) — je Render bleiben
+  // nur billige Map-Lookups und Integer-Zähler.
+  const facetBase = useMemo(() => {
+    const now = Date.now();
+    return new Map((query.data ?? []).map((k) => [k.id, libraryFacetValues(k, now)]));
+  }, [query.data]);
+
   // Match-Grund → kompaktes, ehrliches Label (kein „semantisch", keine Fake-Treffer).
   const matchLabel = (field: MatchField): string => t(`lib.match.${field}`);
 
@@ -125,6 +155,66 @@ export function Library(): JSX.Element {
   const { role } = useRole();
   const { user } = useSession();
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  // D-BIB gespeicherte Sichten: benannt, LOKAL je Nutzer (localStorage-Muster wie die
+  // Board-Checkboxen — bewusst KEIN Server-Speicher; die Sicht lebt ehrlich nur in diesem Browser).
+  const viewsUserId = user?.id ?? "anon";
+  const [savedViews, setSavedViews] = useState<LibrarySavedView[]>([]);
+  const [viewName, setViewName] = useState("");
+  const [activeView, setActiveView] = useState("");
+  useEffect(() => {
+    setSavedViews(readLibraryViews(window.localStorage, viewsUserId));
+  }, [viewsUserId]);
+  const applyView = (view: LibrarySavedView): void => {
+    const s = view.state as Partial<{
+      q: string;
+      type: string;
+      status: string;
+      category: string;
+      tag: string;
+      maturity: string;
+      demoFilter: string;
+      facetSel: FacetSelection;
+      groupBy: string;
+    }>;
+    setFilter({
+      ...EMPTY_LIBRARY_FILTER,
+      q: s.q ?? "",
+      type: s.type ?? "",
+      status: s.status ?? "",
+      category: s.category ?? "",
+      tag: s.tag ?? "",
+    });
+    // Unbekannte gespeicherte Werte fallen defensiv auf den Standard zurück (kein Crash).
+    setMaturity(
+      MATURITY_FILTERS.includes(s.maturity as MaturityFilter)
+        ? (s.maturity as MaturityFilter)
+        : "all",
+    );
+    setDemoFilter(
+      DEMO_KNOWLEDGE_FILTERS.includes(s.demoFilter as DemoKnowledgeFilter)
+        ? (s.demoFilter as DemoKnowledgeFilter)
+        : "all",
+    );
+    setFacetSel(s.facetSel && typeof s.facetSel === "object" ? s.facetSel : {});
+    setGroupBy(
+      LIBRARY_GROUP_KEYS.includes(s.groupBy as LibraryGroupKey)
+        ? (s.groupBy as LibraryGroupKey)
+        : "none",
+    );
+    setActiveView(view.name);
+  };
+  const currentViewState = (): Record<string, unknown> => ({
+    q: filter.q,
+    type: filter.type,
+    status: filter.status,
+    category: filter.category,
+    tag: filter.tag,
+    maturity,
+    demoFilter,
+    facetSel,
+    groupBy,
+  });
   const removeKo = useMutation({
     mutationFn: (id: string) => endpoints.ko.remove(id),
     onSuccess: () => {
@@ -150,6 +240,27 @@ export function Library(): JSX.Element {
 
   const selectCls =
     "h-10 rounded-input border border-hairline bg-surface px-2 text-sm text-text outline-none focus:border-ink/30";
+
+  // D-BIB: Anzeige-Label je Facetten-Wert (Kategorie roh; Sprache/Status/Alter/Trust lokalisiert;
+  // Autor über das Directory — Fallback bleibt die Id, nie ein erfundener Name).
+  const facetValueLabel = (key: LibraryFacetKey, value: string): string => {
+    if (key === "language") {
+      return t(`lib.facet.lang.${value}`);
+    }
+    if (key === "status") {
+      return t(`status.${value}`);
+    }
+    if (key === "author") {
+      return nameOf(value);
+    }
+    if (key === "age") {
+      return t(`lib.facet.ageBucket.${value}`);
+    }
+    if (key === "trust") {
+      return t(`lib.facet.trustBucket.${value}`);
+    }
+    return value || t("lib.facet.none");
+  };
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -241,6 +352,69 @@ export function Library(): JSX.Element {
           ))}
         </select>
       </div>
+      {/* D-BIB (nacht24): gespeicherte Sichten — benannt, lokal je Nutzer (nur dieser Browser). */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+          {t("lib.views.label")}:
+        </span>
+        {savedViews.length > 0 ? (
+          <select
+            aria-label={t("lib.views.label")}
+            value={activeView}
+            onChange={(e) => {
+              const view = savedViews.find((v) => v.name === e.target.value);
+              if (view) {
+                applyView(view);
+              } else {
+                setActiveView("");
+              }
+            }}
+            className="h-9 rounded-input border border-hairline bg-surface px-2 text-[12.5px] text-text outline-none focus:border-ink/30"
+          >
+            <option value="">{t("lib.views.pick")}</option>
+            {savedViews.map((v) => (
+              <option key={v.name} value={v.name}>
+                {v.name}
+              </option>
+            ))}
+          </select>
+        ) : null}
+        <input
+          value={viewName}
+          onChange={(e) => setViewName(e.target.value)}
+          placeholder={t("lib.views.namePlaceholder")}
+          aria-label={t("lib.views.namePlaceholder")}
+          className="h-9 w-44 rounded-input border border-hairline bg-surface px-2 text-[12.5px] text-text outline-none placeholder:text-muted-2 focus:border-ink/30"
+        />
+        <Button
+          variant="ghost"
+          disabled={viewName.trim().length === 0}
+          onClick={() => {
+            setSavedViews(
+              saveLibraryView(window.localStorage, viewsUserId, {
+                name: viewName.trim(),
+                state: currentViewState(),
+              }),
+            );
+            setActiveView(viewName.trim());
+            setViewName("");
+          }}
+        >
+          {t("lib.views.save")}
+        </Button>
+        {activeView ? (
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setSavedViews(removeLibraryView(window.localStorage, viewsUserId, activeView));
+              setActiveView("");
+            }}
+          >
+            {t("lib.views.remove")}
+          </Button>
+        ) : null}
+        <span className="text-[10.5px] text-muted-2">{t("lib.views.localHint")}</span>
+      </div>
       {/* SCRUM-460 (VIP): Suche liefert nicht nur „dumme" Treffer — bei aktiver Suche eine echte,
           quellengebundene Antwort anbieten (nutzt die vorhandene ehrliche Ask/Reasoner-Logik). */}
       {trimmedQ ? (
@@ -308,8 +482,18 @@ export function Library(): JSX.Element {
           // SCRUM-267: Reife-Zähler über die (nach Herkunft gefilterte) Liste; dann nach Reife filtern …
           const maturityCounts = countByMaturity(byDemo);
           const filtered = filterByMaturity(byDemo, maturity);
+          // D-BIB (nacht24): dynamische Facetten AUS DEM BESTAND — Zähler kombinierbar (je Facette
+          // auf der Menge gezählt, die alle ANDEREN gewählten Facetten erfüllt). Die Werte kommen
+          // aus der je Datenlauf memoisierten Ableitung (facetBase) — nur Lookups je Render.
+          const valuesOf = (item: { ko: { id: string } }) => facetBase.get(item.ko.id) ?? {};
+          const facetCounts = combinableFacetCounts(
+            filtered.map(valuesOf),
+            LIBRARY_FACET_KEYS,
+            facetSel,
+          );
+          const faceted = applyFacetSelection(filtered, valuesOf, facetSel);
           // SCRUM-158: … erst danach fenstern + zählen (Count-Linie passt zur sichtbaren Menge).
-          const win = windowList(filtered);
+          const win = windowList(faceted);
           return (
             <>
               {/* SCRUM-309: Herkunftsfilter (Demo/Eigenes) — ergänzend, nutzt dieselbe Erkennung wie
@@ -350,6 +534,74 @@ export function Library(): JSX.Element {
                   </button>
                 ))}
               </div>
+              {/* D-BIB (nacht24): dynamische Facetten-Chips — nur vorkommende Werte, mit Zählern,
+                  kombinierbar. Facetten mit nur EINEM Wert bleiben still (sie filtern nichts). */}
+              {LIBRARY_FACET_KEYS.map((key) => {
+                const options = facetCounts[key] ?? [];
+                const selected = facetSel[key];
+                if (options.length < 2 && selected === undefined) {
+                  return null;
+                }
+                // Anzeige-Deckel: die 12 häufigsten Werte (+ der gewählte, falls außerhalb) —
+                // der Rest wird EHRLICH als „+N weitere" ausgewiesen, nichts still verschluckt.
+                const shown = options.slice(0, 12);
+                if (selected !== undefined && !shown.some((o) => o.value === selected)) {
+                  const sel = options.find((o) => o.value === selected);
+                  if (sel) {
+                    shown.push(sel);
+                  }
+                }
+                const hidden = options.length - shown.length;
+                return (
+                  <div key={key} className="mb-2 flex flex-wrap items-center gap-1.5">
+                    <span className="mr-0.5 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                      {t(LIBRARY_FACET_LABEL_KEYS[key])}:
+                    </span>
+                    {shown.map((o) => (
+                      <button
+                        key={o.value || "—"}
+                        type="button"
+                        aria-pressed={selected === o.value}
+                        onClick={() => setFacetSel((s) => toggleFacetValue(s, key, o.value))}
+                        className={`rounded-pill border px-2.5 py-1 font-mono text-[11px] font-semibold ${
+                          selected === o.value
+                            ? "border-ink bg-ink text-white"
+                            : "border-hairline text-muted hover:text-text"
+                        }`}
+                      >
+                        {facetValueLabel(key, o.value)} · {o.count}
+                      </button>
+                    ))}
+                    {hidden > 0 ? (
+                      <span className="text-[10.5px] text-muted-2">
+                        {t("lib.facet.more", { n: hidden })}
+                      </span>
+                    ) : null}
+                  </div>
+                );
+              })}
+              {/* D-BIB: Untergruppen-Ansicht — metadaten-basiert (KI-Themencluster bewusst NICHT
+                  angebunden: nicht trivial — im Bericht vermerkt). */}
+              <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                <span className="mr-0.5 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                  {t("lib.groupBy.label")}:
+                </span>
+                {LIBRARY_GROUP_KEYS.map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-pressed={groupBy === key}
+                    onClick={() => setGroupBy(key)}
+                    className={`rounded-pill border px-2.5 py-1 font-mono text-[11px] font-semibold ${
+                      groupBy === key
+                        ? "border-ink bg-ink text-white"
+                        : "border-hairline text-muted hover:text-text"
+                    }`}
+                  >
+                    {key === "none" ? t("lib.groupBy.none") : t(LIBRARY_FACET_LABEL_KEYS[key])}
+                  </button>
+                ))}
+              </div>
               {/* Beta Own-Knowledge Work Queue v0: ehrlicher Leerzustand für die „Eigenes Wissen"-Linse
                   — wenn auf eigenes/nicht-Demo-Wissen gefiltert wird, aber (noch) keins existiert, den
                   Weg zurück ins Erfassen zeigen statt einer stummen leeren Liste. */}
@@ -382,9 +634,9 @@ export function Library(): JSX.Element {
                   </span>
                 ) : null}
               </div>
-              <Card className="p-0">
-                <div className="divide-y divide-hairline">
-                  {win.visible.map(({ ko: k, matches }) => {
+              {(() => {
+                const koRows = (list: typeof win.visible): JSX.Element[] =>
+                  list.map(({ ko: k, matches }) => {
                     // SCRUM-262: ehrliche Reife/Nutzbarkeit je Treffer (DOM-freier Helper).
                     const maturity = libraryMaturity(k);
                     // SCRUM-357 / AG-14: ein offener Konflikt begrenzt die Reife ehrlich (ready → in
@@ -551,9 +803,41 @@ export function Library(): JSX.Element {
                         <KoSummaryDisclosure source={k} className="w-full basis-full" />
                       </div>
                     );
-                  })}
-                </div>
-              </Card>
+                  });
+                // D-BIB: flache Liste ODER Untergruppen (auf-/zuklappbar, Größe absteigend) —
+                // dieselben Zeilen, nur anders gebündelt (das Fenster win.visible bleibt der Deckel).
+                return groupBy === "none" ? (
+                  <Card className="p-0">
+                    <div className="divide-y divide-hairline">{koRows(win.visible)}</div>
+                  </Card>
+                ) : (
+                  <div className="space-y-2">
+                    {groupByFacet(
+                      win.visible,
+                      (item) => facetBase.get(item.ko.id) ?? {},
+                      groupBy,
+                    ).map((group) => (
+                      <details
+                        key={group.value || "—"}
+                        open
+                        className="rounded-card border border-hairline bg-surface"
+                      >
+                        <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2.5">
+                          <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-text">
+                            {facetValueLabel(groupBy, group.value)}
+                          </span>
+                          <span className="shrink-0 font-mono text-[11px] text-muted-2">
+                            {group.items.length}
+                          </span>
+                        </summary>
+                        <div className="divide-y divide-hairline border-t border-hairline">
+                          {koRows(group.items)}
+                        </div>
+                      </details>
+                    ))}
+                  </div>
+                );
+              })()}
             </>
           );
         }}

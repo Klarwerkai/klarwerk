@@ -5,7 +5,8 @@ import { Link } from "react-router-dom";
 import {
   useAnalytics,
   useConflicts,
-  useGaps,
+  useGapsSummary,
+  useKos,
   useLearningPath,
   useLearningProgress,
   useLifecyclePending,
@@ -16,9 +17,12 @@ import { useSession } from "../app/AuthContext";
 import { useRole } from "../app/RoleContext";
 import { AdminFirstRunCard } from "../components/AdminFirstRunCard";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
+// FUNKE (nacht24 Paket 6): Wissenskapital-Kachel (F5) + offene Wissenslücken (F3).
+import { KnowledgeCapitalNumbers, OpenGapsSummary } from "../components/FunkeCards";
 import { HelpTip } from "../components/HelpTip";
 import { Card, PageHeader } from "../components/ui";
 import { DEMO_PILOT_PATH, captureDemoHref } from "../lib/demoPilotPath";
+import { knowledgeCapital } from "../lib/funke";
 import { KNOWLEDGE_CYCLE } from "../lib/knowledgeCycle";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { missionsForRole } from "../lib/missions";
@@ -53,8 +57,11 @@ const GUIDE_TONE: Record<KnowledgeGuidanceTone, string> = {
   neutral: "bg-page text-muted",
 };
 
+// Garantierter Fallback (unbekannte Rolle → Viewer-Einstieg) — hält den Index-Zugriff unten
+// auch unter noUncheckedIndexedAccess ehrlich definiert.
+const CTA_VIEWER = { to: "/fragen", key: "start.ctaAsk" };
 const CTA: Record<string, { to: string; key: string }> = {
-  viewer: { to: "/fragen", key: "start.ctaAsk" },
+  viewer: CTA_VIEWER,
   experte: { to: "/erfassen", key: "start.ctaCapture" },
   controller: { to: "/validierung", key: "start.ctaValidate" },
   admin: { to: "/validierung", key: "start.ctaValidate" },
@@ -170,13 +177,19 @@ export function Start(): JSX.Element {
   const { user } = useSession();
   const analytics = useAnalytics();
   const board = useValidationBoard();
-  const gaps = useGaps();
+  // FUNKE-FIX2 P0 (bens Erforderlich 1): die Startseite lädt KEINE Gap-Volltexte mehr — nur die
+  // aggregierten Zähler (offene gesamt + je Priorität). Kein Fragetext gelangt in den Browser.
+  const gapsSummary = useGapsSummary();
+  const openGapsTotal = gapsSummary.data?.open ?? 0;
+  const criticalGapsTotal = gapsSummary.data?.byPriority.hoch ?? 0;
+  // FUNKE F5 (nacht24): Bestand für die Wissenskapital-Kachel (nur echte Zahlen).
+  const kos = useKos();
   // SCRUM-247: echte Signale für die Arbeitsübersicht (Konflikte, Revalidierung, Lernpfad).
   const conflicts = useConflicts();
   const pending = useLifecyclePending();
   const learningPath = useLearningPath(role);
   const learningProgress = useLearningProgress(learningPath.data?.id);
-  const cta = CTA[role] ?? CTA.viewer;
+  const cta = CTA[role] ?? CTA_VIEWER;
   // FE-FND-09: rollenbewusste Missionen — Deep-Links in echte Flows (keine neuen Seiten).
   const missions = missionsForRole(role, stufe2);
   // SCRUM-235: ehrlicher Stufe-2-Auffindbarkeits-Hinweis — nur für Admins mit ausgeschaltetem Schalter.
@@ -186,15 +199,18 @@ export function Start(): JSX.Element {
     .join(", ");
 
   // SCRUM-247: getrennte, datengetriebene Arbeitsübersicht (keine vermischte Todo-Liste, keine Fakes).
-  const overview = buildWorkOverview(
-    workSignalsFrom({
+  // FUNKE-FIX2 P0: die kritischen Lücken kommen aus dem aggregierten Summary (byPriority.hoch), nicht
+  // aus geladenen Gap-Volltexten — deshalb `gaps: []` an workSignalsFrom und criticalGaps überschreiben.
+  const overview = buildWorkOverview({
+    ...workSignalsFrom({
       board: board.data ?? [],
       conflicts: conflicts.data ?? [],
       revalidation: pending.data ?? [],
-      gaps: gaps.data ?? [],
+      gaps: [],
       learningOpenSteps: learningOpenSteps(learningPath.data, learningProgress.data),
     }),
-  );
+    criticalGaps: criticalGapsTotal,
+  });
   // SCRUM-271: bester nächster Einstieg aus der vorhandenen Übersicht (null bei Leerzustand).
   const focus = primaryWorkItem(overview);
   const guide = knowledgeGuidance("start");
@@ -366,6 +382,22 @@ export function Start(): JSX.Element {
       </Card>
       {/* Audit-P4 (SCRUM-398): Live-Wall — was gerade passiert (frisch gesichert / hat geholfen). */}
       <LiveWallCard />
+      {/* FUNKE (nacht24 Paket 6): Wissenskapital-Kachel (F5, ehrliche Bestandssummen — auch für
+          Begutachter) und offene Wissenslücken (F3, Direkteinstieg „in 2 Minuten beantworten"). */}
+      {(kos.data?.length ?? 0) > 0 ? (
+        <Card className="mb-5">
+          <KnowledgeCapitalNumbers
+            capital={{ ...knowledgeCapital(kos.data ?? [], []), openGaps: openGapsTotal }}
+          />
+        </Card>
+      ) : null}
+      {/* FUNKE-FIX P0 (bens Sammel-Nacht) + FUNKE-FIX2 P0 (bens Erforderlich 1): nur die anonyme
+          offene Zahl (aus dem Summary-Endpunkt, KEIN Volltext-Fetch) + Weg in Risiko & Lücken. */}
+      {openGapsTotal > 0 ? (
+        <Card className="mb-5">
+          <OpenGapsSummary total={openGapsTotal} />
+        </Card>
+      ) : null}
       {missions.length > 0 ? (
         <div className="mb-5">
           <h2 className="text-[15px] font-semibold text-ink">{t("missions.title")}</h2>
@@ -483,7 +515,7 @@ export function Start(): JSX.Element {
               label={t("start.kpiValidated")}
               value={analytics.data?.byStatus?.validiert ?? "—"}
             />
-            <Kpi label={t("start.kpiGaps")} value={gaps.data?.length ?? "—"} />
+            <Kpi label={t("start.kpiGaps")} value={gapsSummary.data ? openGapsTotal : "—"} />
           </div>
         </div>
       </div>

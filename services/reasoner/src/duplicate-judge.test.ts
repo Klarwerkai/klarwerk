@@ -49,7 +49,13 @@ describe("Berater-Konzept Duplikate 04.07. (Stufe D2, dup-v1): parseDuplicateRes
 
 describe("Berater-Konzept Duplikate 04.07. (Stufe D2): judgeDuplicate über die Provider-Kette", () => {
   it("ModelProvider.judgeDuplicate liefert das geparste Profil", async () => {
-    const res = await new ModelProvider(fakeClient(dupJson)).judgeDuplicate("A-Text", "B-Text");
+    // aistate-fix3 (bens V1): locale + confidential sind an der Provider-Fläche PFLICHT.
+    const res = await new ModelProvider(fakeClient(dupJson)).judgeDuplicate(
+      "A-Text",
+      "B-Text",
+      "de",
+      false,
+    );
     expect(res?.beziehung).toBe("teilweise");
   });
 

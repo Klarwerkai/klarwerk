@@ -75,7 +75,6 @@ import { validityProtectionView } from "../lib/extConcept";
 import { containsExternalUnchecked } from "../lib/externalProvenance";
 import { toSourcePayload as externalToSourcePayload } from "../lib/externalSearch";
 import { fileToThumbDataUrl, readFileAsDataUrl } from "../lib/files";
-import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
 import { koCta } from "../lib/koCta";
 // WP-D10 (Fix 4): lokalisiertes Erstellungsdatum aus dem vorhandenen KO-Feld (keine neue Persistenz).
 import { formatKoTimestamp } from "../lib/koDates";
@@ -105,6 +104,7 @@ import {
   isSourceContributionValid,
 } from "../lib/sourceContribution";
 import { trustExplainer } from "../lib/trustExplainer";
+import { useAiAvailable } from "../lib/useAiAvailable";
 import { useReadiness } from "../lib/useReadiness";
 import {
   type FeedbackVerdict,
@@ -158,6 +158,8 @@ const USABILITY_TONE: Record<KoUsability, string> = {
 
 export function KnowledgeDetail(): JSX.Element {
   const { t, i18n } = useTranslation();
+  // PAKET 1 (D-AISTATE, Pedi 23.07.): KI-Bildbeschreibung (Task „describe") ohne Modell hart ausgrauen.
+  const describeAi = useAiAvailable("describe");
   const { id = "" } = useParams();
   // SCRUM-294: Demo-Kontext der Zielseite (über Library erreicht) — nur Anzeige/Link-Kontext.
   const [params] = useSearchParams();
@@ -268,17 +270,10 @@ export function KnowledgeDetail(): JSX.Element {
     return <HelpTip title={t(topic.titleKey)} body={t(topic.bodyKey)} />;
   };
 
-  // FE-LCY-03 / SCRUM-111: „Hat geholfen" nutzt den bestehenden Ask-Helpful-Pfad (Trust +2, Audit).
-  const helpful = useMutation({
-    mutationFn: () => endpoints.ask.helpful(id),
-    onSuccess: () => {
-      invalidate();
-      void qc.invalidateQueries({ queryKey: ["analytics"] });
-      void qc.invalidateQueries({ queryKey: ["audit"] });
-      push("success", t("ko.helpfulThanks"));
-    },
-    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
-  });
+  // FUNKE-FIX P0 (bens ROT-1): Der „Hat geholfen"-Bump ist bewusst NICHT mehr am KO-Detail
+  // erreichbar. „Bewährung durch Nutzung" verlangt jetzt einen serverseitig belegten Antwortvorgang
+  // (Answer-Receipt): eine frei gewählte KO-ID ohne Beleg wäre der fälschbare Pfad. Das ehrliche
+  // „Danke" liegt daher im Antwort-Erlebnis (Seite „Fragen", je genutzte Quelle).
 
   // SCRUM-129 / FE-KO-07: echte externe Quelle hinzufügen/entfernen.
   const addSource = useMutation({
@@ -973,6 +968,7 @@ export function KnowledgeDetail(): JSX.Element {
                             .map((a) => ({ objectId: a.objectId as string, name: a.name }))}
                           files={editorFilesFromAttachments(ko.attachments ?? [])}
                           documentTitle={edit.title}
+                          describeAvailable={describeAi.available}
                           onDescribeImage={(dataUrl, context) =>
                             endpoints.reasoner.describeImage(
                               dataUrl,
@@ -1302,29 +1298,9 @@ export function KnowledgeDetail(): JSX.Element {
                 </Card>
 
                 <div className="min-w-0 space-y-5">
-                  {/* FE-LCY-03 / SCRUM-111: Bewährungssignal „Hat geholfen" */}
-                  <Card className="space-y-2">
-                    <div className="flex items-center gap-1.5">
-                      <SectionLabel>{t("ko.helpfulTitle")}</SectionLabel>
-                      {vhelp("helpful")}
-                    </div>
-                    <p className="text-[12.5px] text-muted">{t("ko.helpfulHint")}</p>
-                    <Button
-                      variant="primary"
-                      disabled={helpfulDisabled({
-                        pending: helpful.isPending,
-                        success: helpful.isSuccess,
-                      })}
-                      onClick={() => helpful.mutate()}
-                    >
-                      {helpfulLabel(
-                        { success: helpful.isSuccess },
-                        t("ko.helpful"),
-                        t("ko.helpfulDone"),
-                      )}
-                    </Button>
-                  </Card>
-
+                  {/* FUNKE-FIX P0 (bens ROT-1): das „Hat geholfen"-Signal ist bewusst NICHT mehr am
+                      KO-Detail — es verlangt einen serverseitig belegten Antwortvorgang (Answer-
+                      Receipt). Das ehrliche „Danke" liegt im Antwort-Erlebnis (Seite „Fragen"). */}
                   {/* SCRUM-129 / FE-KO-01+07: echte externe Quellen (nie peer-validiert) */}
                   {/* SCRUM-259: Anker-Ziel für die „Quelle ergänzen"-CTA (lokale Orientierung). */}
                   <Card id="ko-sources" className="scroll-mt-20 space-y-3">

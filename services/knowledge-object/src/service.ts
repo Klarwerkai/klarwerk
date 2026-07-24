@@ -1019,6 +1019,22 @@ export class KoService {
     });
   }
 
+  // FR-ASK-04 / FUNKE-FIX2 P0 (bens ROT-1, Blocker 1): ATOMARER „Hat geholfen"-Trust-Schritt.
+  // Delegiert an den atomaren Repo-Inkrement (LEAST(maxTrust, trust+step)) — KEIN Read-modify-write
+  // eines vorab gelesenen Absolutwerts, damit zwei gleichzeitige Danke verschiedener Nutzer BEIDE
+  // zählen (kein Lost-Update). MIT tx (vom Aufrufer geöffnet, AskService.markHelpful) läuft der
+  // Inkrement auf demselben Pg-Client wie der Audit-CAS → beide committen/rollbacken gemeinsam. Fehlt
+  // das KO (zwischenzeitlich getrasht), wirft die Methode NOT_FOUND und der Aufrufer rollt den
+  // gekoppelten Audit-Beleg zurück (kein „Beleg ohne Trust"). Bewusst OHNE withKoLock: der Inkrement
+  // ist an der Datenquelle atomar (Pg-UPDATE bzw. synchroner InMemory-Write), kein Read-then-Write.
+  async bumpTrust(id: string, step: number, maxTrust: number, tx?: TxContext): Promise<number> {
+    const trust = await this.repo.bumpTrust(id, step, maxTrust, tx);
+    if (trust === undefined) {
+      throw new KoError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+    }
+    return trust;
+  }
+
   // FR-LIF-02: Autor-Übergabe — current author ändert sich, originalAuthor bleibt erhalten.
   async setAuthor(id: string, author: string, actor = "system"): Promise<KnowledgeObject> {
     return this.mutateKo(id, (ko) => {

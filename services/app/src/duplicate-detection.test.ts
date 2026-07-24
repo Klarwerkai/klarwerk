@@ -41,11 +41,21 @@ function makeDeps(
   subject: KnowledgeObject,
   candidates: KnowledgeObject[],
   semanticPrefilter?: SemanticPrefilter,
-): { deps: DuplicateDetectionDeps; poolIds: () => string[]; detect: ReturnType<typeof vi.fn> } {
+): {
+  deps: DuplicateDetectionDeps;
+  poolIds: () => string[];
+  confidentialPoolIds: () => string[];
+  detect: ReturnType<typeof vi.fn>;
+} {
   let captured: string[] = [];
+  let capturedConfidential: string[] = [];
   const detect = vi.fn(
-    async (_subject: unknown, pool: ReadonlyArray<{ refId: string }>): Promise<unknown[]> => {
+    async (
+      _subject: unknown,
+      pool: ReadonlyArray<{ refId: string; confidential?: boolean }>,
+    ): Promise<unknown[]> => {
       captured = pool.map((p) => p.refId);
+      capturedConfidential = pool.filter((p) => p.confidential).map((p) => p.refId);
       return [];
     },
   );
@@ -59,7 +69,12 @@ function makeDeps(
     settings: { get: async () => null },
     ...(semanticPrefilter ? { semanticPrefilter } : {}),
   } as unknown as DuplicateDetectionDeps;
-  return { deps, poolIds: () => [...captured].sort(), detect };
+  return {
+    deps,
+    poolIds: () => [...captured].sort(),
+    confidentialPoolIds: () => [...capturedConfidential].sort(),
+    detect,
+  };
 }
 
 const subject = makeKo("s", "dach reparatur", "ziegel dichtung abdichtung wetter");
@@ -70,71 +85,56 @@ const far2 = makeKo("c4", "urlaub reise", "koffer flug hotel");
 const far3 = makeKo("c5", "auto werkstatt", "motor reifen öl");
 const candidates = [near1, near2, far1, far2, far3];
 
-describe("detectDuplicatesForKo — Pool-Auswahl (B4)", () => {
-  it("Flag AUS (kein Prefilter): voller Pool „jeder gegen jeden“", async () => {
+// D-AISTATE PAKET 2.2 (bens V3): der semantische Prefilter darf den Pool NIE VERENGEN — die
+// deterministische Deckungsprüfung läuft IMMER über den Voll-Pool (der Prefilter dient nur noch der
+// Indizierung, nicht der Pool-Wahl). Früher (patches91) verengte ein befüllter Store auf die Top-K.
+describe("detectDuplicatesForKo — Voll-Pool immer (bens V2.2)", () => {
+  it("kein Prefilter: voller Pool „jeder gegen jeden“", async () => {
     const { deps, poolIds, detect } = makeDeps(subject, candidates);
     await detectDuplicatesForKo("s", deps);
     expect(detect).toHaveBeenCalledTimes(1);
     expect(poolIds()).toEqual(["c1", "c2", "c3", "c4", "c5"]);
   });
 
-  it("Flag AN + befüllter Store: nur die semantischen Top-K", async () => {
+  it("Prefilter befüllt: die deterministische Ebene sieht WEITERHIN den Voll-Pool (keine Top-K-Verengung)", async () => {
     const embedder = stubEmbeddingProvider(256);
     const store = new InMemoryEmbeddingStore();
     for (const ko of candidates) {
       const { vectors, embeddingVersion } = await embedder.embed([coreOf(ko)]);
       await store.upsert(ko.id, vectors[0]!, embeddingVersion);
     }
-    const { deps, poolIds } = makeDeps(subject, candidates, { embedder, store, topK: 2 });
-    await detectDuplicatesForKo("s", deps);
-    // Die zwei nächsten (gemeinsamer Wortschatz) sind c1/c2, nicht die fremden Themen.
-    expect(poolIds()).toEqual(["c1", "c2"]);
-  });
-
-  it("Flag AN + leerer Store: Voll-Pool-Fallback (Prefilter noch nicht real wirksam)", async () => {
-    const { deps, poolIds } = makeDeps(subject, candidates, {
-      embedder: stubEmbeddingProvider(256),
-      store: new InMemoryEmbeddingStore(),
-      topK: 2,
-    });
-    await detectDuplicatesForKo("s", deps);
-    expect(poolIds()).toEqual(["c1", "c2", "c3", "c4", "c5"]);
-  });
-
-  it("Flag AN + Embedding-Fehler: Voll-Pool-Fallback (best-effort bleibt vollständig)", async () => {
-    const brokenEmbedder = {
-      name: "boom",
-      embeddingVersion: "boom@1",
-      dim: 1,
-      isAvailable: () => true,
-      embed: async () => {
-        throw new Error("kaputt");
-      },
-    };
-    const { deps, poolIds, detect } = makeDeps(subject, candidates, {
-      embedder: brokenEmbedder,
-      store: new InMemoryEmbeddingStore(),
-      topK: 2,
-    });
+    const { deps, poolIds, detect } = makeDeps(subject, candidates, { embedder, store, topK: 2 });
     await detectDuplicatesForKo("s", deps);
     expect(detect).toHaveBeenCalledTimes(1);
+    // Trotz Store mit topK:2 bekommt die Erkennung alle fünf — kein still verworfener Kandidat.
     expect(poolIds()).toEqual(["c1", "c2", "c3", "c4", "c5"]);
   });
 });
 
 describe("indexKoForDuplicatePrefilter — Store-Befüllung (B6)", () => {
-  it("nach Ablage findet ein späteres KO das frühere ÜBER DEN STORE (nicht Voll-Pool)", async () => {
+  it("legt das eingebettete KO im Store ab (auffindbar über nearest)", async () => {
     const embedder = stubEmbeddingProvider(256);
     const store = new InMemoryEmbeddingStore();
     const prefilter: SemanticPrefilter = { embedder, store, topK: 5 };
     // B6: near1 wird eingebettet + abgelegt (so wie es der Einreiche-Handler nach dem 201 täte).
     await indexKoForDuplicatePrefilter(near1, prefilter);
-    // decoy ist im Bestand (ko.list), aber NICHT im Store — z. B. angelegt, als das Flag noch aus war.
+    const { vectors, embeddingVersion } = await embedder.embed([coreOf(near1)]);
+    expect((await store.nearest(vectors[0]!, embeddingVersion, 5)).some((h) => h.id === "c1")).toBe(
+      true,
+    );
+  });
+
+  it("D-AISTATE V2.2: der Prefilter VERENGT die Erkennung NICHT mehr — Voll-Pool trotz befülltem Store", async () => {
+    const embedder = stubEmbeddingProvider(256);
+    const store = new InMemoryEmbeddingStore();
+    const prefilter: SemanticPrefilter = { embedder, store, topK: 5 };
+    await indexKoForDuplicatePrefilter(near1, prefilter);
+    // decoy ist im Bestand (ko.list), aber NICHT im Store — früher hätte der Prefilter ihn verworfen.
     const decoy = makeKo("decoy", "steuererklärung", "finanzamt frist formular");
     const { deps, poolIds } = makeDeps(subject, [near1, decoy], prefilter);
     await detectDuplicatesForKo("s", deps);
-    // Nur near1 (über den Store gefunden). decoy fehlt → es war NICHT der Voll-Pool-Fallback.
-    expect(poolIds()).toEqual(["c1"]);
+    // Jetzt sieht die deterministische Ebene BEIDE — kein still verworfener Kandidat.
+    expect(poolIds()).toEqual(["c1", "decoy"]);
   });
 
   it("Flag aus (kein Prefilter) → No-op, kein upsert", async () => {
@@ -281,35 +281,44 @@ describe("detect*ForKo — Fehler-Logging (ben #6)", () => {
   });
 });
 
-// SCRUM-502 (Sicherheit): vertrauliche KOs gehen NIE in einen externen Kontext. Der Modell-Judge (Duplikat
-// + Konflikt) und der Embedder sind externe Kontexte → vertrauliche KOs raus aus dem Pool und aus der
-// Indizierung; ein vertrauliches SUBJEKT (dessen eigener coreText an den Judge ginge) überspringt die
-// Erkennung ganz. Nicht-vertrauliche KOs laufen unverändert weiter (kein Regress).
-describe("SCRUM-502: Vertraulichkeit — kein Egress an Modell-Judge/Embedder", () => {
+// D-AISTATE PAKET 1 (bens V1, ersetzt SCRUM-502-Frühabbruch): Vertraulichkeit wird NICHT mehr durch
+// Überspringen der GESAMTEN Erkennung durchgesetzt, sondern durch die Judge-KETTE (der Reasoner nimmt
+// bei einem vertraulichen Paar die Cloud raus). Die (lokale, egress-freie) deterministische Ebene läuft
+// deshalb IMMER — auch für vertrauliche Subjekte und gemischte Paare; vertrauliche Kandidaten bleiben im
+// Pool, tragen aber die Vertraulichkeits-MARKE. Die Indizierung (Cloud-Embedder) bleibt gesperrt.
+describe("D-AISTATE V1: Vertraulichkeit — deterministische Ebene läuft, Cloud bleibt gate-geschützt", () => {
   const conf = (id: string, title: string, statement: string): KnowledgeObject =>
     ({ ...makeKo(id, title, statement), confidentiality: "vertraulich" }) as KnowledgeObject;
 
-  it("Duplikat-Pool: vertraulicher Kandidat ist NIE im Judge-Pool; interne bleiben", async () => {
+  it("Duplikat-Pool: vertraulicher Kandidat BLEIBT im Pool, aber MARKIERT (Cloud-Ausschluss trägt der Reasoner)", async () => {
     const secret = conf("c1", "dach reparatur", "ziegel dichtung undicht");
-    const { deps, poolIds, detect } = makeDeps(subject, [secret, near2, far1]);
+    const { deps, poolIds, confidentialPoolIds, detect } = makeDeps(subject, [secret, near2, far1]);
     await detectDuplicatesForKo("s", deps);
     expect(detect).toHaveBeenCalledTimes(1);
-    expect(poolIds()).toEqual(["c2", "c3"]); // secret (c1) fehlt, Rest unverändert
+    // Alle drei im Pool (gemischte Paare werden deterministisch verglichen) …
+    expect(poolIds()).toEqual(["c1", "c2", "c3"]);
+    // … der vertrauliche trägt die Marke, die die Cloud draußen hält.
+    expect(confidentialPoolIds()).toEqual(["c1"]);
   });
 
-  it("Duplikat: vertrauliches SUBJEKT → Erkennung entfällt (Judge nie aufgerufen)", async () => {
+  it("Duplikat: vertrauliches SUBJEKT → Erkennung LÄUFT (deterministische Ebene), Subjekt markiert", async () => {
     const secretSubject = conf("s", "dach reparatur", "ziegel dichtung abdichtung wetter");
     const { deps, detect } = makeDeps(secretSubject, [near1, near2]);
     await detectDuplicatesForKo("s", deps);
-    expect(detect).not.toHaveBeenCalled();
+    expect(detect).toHaveBeenCalledTimes(1);
+    // Das Subjekt selbst trägt die Vertraulichkeits-Marke (erstes Argument von detectForSubject).
+    const subjectArg = detect.mock.calls[0]?.[0] as { confidential?: boolean };
+    expect(subjectArg.confidential).toBe(true);
   });
 
-  it("Konflikt-Pool: vertraulicher Kandidat ist NIE im Judge-Pool; vertrauliches Subjekt entfällt", async () => {
+  it("Konflikt-Pool: vertraulicher Kandidat BLEIBT im Pool (markiert); vertrauliches Subjekt → Erkennung läuft", async () => {
     const secret = conf("c1", "dach reparatur", "ziegel dichtung undicht");
-    let pool: string[] = [];
-    const detect = vi.fn(async (_s: unknown, p: ReadonlyArray<{ refId: string }>) => {
-      pool = p.map((x) => x.refId);
-    });
+    let pool: { refId: string; confidential?: boolean }[] = [];
+    const detect = vi.fn(
+      async (_s: unknown, p: ReadonlyArray<{ refId: string; confidential?: boolean }>) => {
+        pool = [...p];
+      },
+    );
     const deps = {
       ko: { get: async () => subject, list: async () => [subject, secret, near2] },
       conflicts: { detectForSubject: detect },
@@ -317,9 +326,10 @@ describe("SCRUM-502: Vertraulichkeit — kein Egress an Modell-Judge/Embedder", 
     } as unknown as Parameters<typeof detectConflictsForKo>[1];
     await detectConflictsForKo("s", deps);
     expect(detect).toHaveBeenCalledTimes(1);
-    expect([...pool].sort()).toEqual(["c2"]); // secret raus
+    expect(pool.map((x) => x.refId).sort()).toEqual(["c1", "c2"]);
+    expect(pool.filter((x) => x.confidential).map((x) => x.refId)).toEqual(["c1"]);
 
-    // Vertrauliches Subjekt → Erkennung entfällt ganz.
+    // Vertrauliches Subjekt → Erkennung LÄUFT (nicht mehr übersprungen).
     const secretSubject = conf("s", "dach reparatur", "ziegel dichtung abdichtung wetter");
     const detect2 = vi.fn(async () => undefined);
     const deps2 = {
@@ -328,7 +338,7 @@ describe("SCRUM-502: Vertraulichkeit — kein Egress an Modell-Judge/Embedder", 
       reasoner: { judgeConflict: async () => null },
     } as unknown as Parameters<typeof detectConflictsForKo>[1];
     await detectConflictsForKo("s", deps2);
-    expect(detect2).not.toHaveBeenCalled();
+    expect(detect2).toHaveBeenCalledTimes(1);
   });
 
   it("Indizierung: vertrauliches KO wird NIE eingebettet (Store bleibt leer)", async () => {

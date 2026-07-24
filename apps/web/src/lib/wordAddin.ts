@@ -373,6 +373,131 @@ export function openQuestionDraftTitle(
   return `${prefix}${trimmed}`.slice(0, WORD_ADDIN_TITLE_MAX).trim();
 }
 
+// RT-KLARA1 (Pedis Live-Befund 23.07.): „Einfuegen fehlgeschlagen (You don't have sufficient
+// permissions for this action.)" — der rohe Office-Fehlertext nennt die Ursache (Manifest ohne
+// Schreibberechtigung) nicht verständlich. Diese pure Klassifikation erkennt den Berechtigungsfall
+// (Message-/Code-Muster der Office-Hosts, EN/DE/NL) und erlaubt eine ehrliche, lokalisierte
+// Erklärung samt Ausweg (Manifest mit ReadWriteDocument neu sideloaden). Alles andere bleibt
+// ehrlich „other" mit dem konkreten Detail — nie ein geratener Grund.
+export type InsertFailureKind = "permission" | "other";
+
+export function classifyInsertError(detail: string): InsertFailureKind {
+  return /permission|berechtigung|toestemming|machtiging|access\s*denied|accessdenied/i.test(
+    detail || "",
+  )
+    ? "permission"
+    : "other";
+}
+
+// AUFTRAG-klara1b (Pedis Live-Befund 24.07., Teil A): Einfuegen ROBUST. Der moderne Word-JS-Weg
+// (Word.run + getSelection().insertText) ist der PRIMAERE Versuch, setSelectedDataAsync bleibt der
+// Fallback fuer aeltere Hosts — beide brauchen ReadWriteDocument. Diese Orchestrierung ist
+// DOM-/Office-frei: die konkreten Office-Aufrufe reicht der Aufrufer als injizierte Versuche (run
+// rejectet mit einem Error, dessen message den Office-Fehlertext traegt). Getestet mit Fake-
+// Versuchen. Schlaegt ein Versuch mit Berechtigungsfehler fehl, wird der Ausgang ehrlich als
+// "permission" gemeldet (Manifest-/Cache-Ursache, Ausweg Re-Sideload + Kopieren) — nie ein
+// geratener Grund. Reihenfolge = Versuchsreihenfolge; der erste Erfolg gewinnt.
+export type InsertMethod = "word-run" | "set-selected-data";
+
+export interface InsertAttempt {
+  method: InsertMethod;
+  run: (text: string) => Promise<void>;
+}
+
+export interface InsertOutcome {
+  ok: boolean;
+  method?: InsertMethod;
+  failure?: InsertFailureKind; // nur bei ok=false
+  detail?: string;
+}
+
+export async function performInsert(
+  text: string,
+  attempts: readonly InsertAttempt[],
+): Promise<InsertOutcome> {
+  let lastDetail = "";
+  let sawPermission = false;
+  for (const attempt of attempts) {
+    try {
+      await attempt.run(text);
+      return { ok: true, method: attempt.method };
+    } catch (err) {
+      const detail = err instanceof Error && err.message ? err.message : String(err ?? "");
+      lastDetail = detail || lastDetail;
+      if (classifyInsertError(detail) === "permission") {
+        sawPermission = true;
+      }
+    }
+  }
+  return { ok: false, failure: sawPermission ? "permission" : "other", detail: lastDetail };
+}
+
+// Teil B (Ausweg „Kopieren"): der Feldinhalt reist in die Zwischenablage — der EINE verlaessliche
+// Weg, wenn der Office-Insert an Rechten scheitert (Cache/Manifest). Clipboard injiziert (testbar);
+// fehlt die API oder wirft sie (kein sicherer Kontext, Nutzer-Geste noetig), ehrlich ok=false — der
+// Aufrufer nennt dann den manuellen Ausweg (Text markieren + kopieren).
+export interface ClipboardLike {
+  writeText(text: string): Promise<void>;
+}
+
+export async function performCopy(
+  text: string,
+  clipboard: ClipboardLike | null | undefined,
+): Promise<{ ok: boolean; detail?: string }> {
+  if (!clipboard || typeof clipboard.writeText !== "function") {
+    return { ok: false, detail: "no-clipboard" };
+  }
+  try {
+    await clipboard.writeText(text);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, detail: err instanceof Error && err.message ? err.message : "clipboard" };
+  }
+}
+
+// Teil B (kompakte Antwort): ist die Antwort lang, zeigt das Panel sie NICHT sofort in voller Hoehe —
+// ein „mehr anzeigen"-Schalter klappt das editierbare Feld auf. Reine Schwellwert-Entscheidung
+// (Zeichen ODER Zeilen ueber dem Deckel) — der Aufrufer blendet den Schalter nur dann ein.
+export const WORD_ADDIN_ANSWER_COMPACT_CHARS = 320;
+export const WORD_ADDIN_ANSWER_COMPACT_LINES = 6;
+
+export function answerIsLong(text: string): boolean {
+  const trimmed = (text || "").trim();
+  if (trimmed.length > WORD_ADDIN_ANSWER_COMPACT_CHARS) {
+    return true;
+  }
+  const lines = trimmed.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  return lines.length > WORD_ADDIN_ANSWER_COMPACT_LINES;
+}
+
+// K2/K3 (AUFTRAG-klara1 Paket 2): Anzeige-Status einer Antwort-Quelle — derselbe Kern wie die
+// Bibliotheks-Ableitung deriveStatus (lib/displayStatus.ts, ohne Konflikt-/Revalidierungs-Flags):
+// validiert → validiert; offen MIT Zuweisungen → pruefung (in Validierung); offen → offen; KO
+// nicht ladbar oder fremder Status → ehrlich "unknown" — nie raten. Ein Test pinnt die Gleichheit
+// zu deriveStatus auf den auflösbaren Fällen.
+export type AskSourceDisplayStatus = "validiert" | "pruefung" | "offen" | "unknown";
+
+export function askSourceStatus(
+  ko: { status?: unknown; assignments?: unknown } | null | undefined,
+): AskSourceDisplayStatus {
+  if (!ko || typeof ko.status !== "string") {
+    return "unknown";
+  }
+  if (ko.status === "validiert") {
+    return "validiert";
+  }
+  if (ko.status === "offen") {
+    return Array.isArray(ko.assignments) && ko.assignments.length > 0 ? "pruefung" : "offen";
+  }
+  return "unknown";
+}
+
+// K2: Deep-Link einer Antwort-Quelle auf die bestehende KO-Detailroute /wissen/:id (das Add-in
+// öffnet ihn extern/im neuen Tab — dieselbe Route wie die Bibliothek, kein neuer Pfad).
+export function koDetailUrl(origin: string, koId: string): string {
+  return `${origin}/wissen/${encodeURIComponent(koId)}`;
+}
+
 // WP-SHIP8-FINAL (bens Bedingung 4, EIN Auswahl-Snapshot): der Klartext wird aus dem EINEN
 // HTML-Zugriff ABGELEITET statt über einen zweiten Office-Aufruf gelesen (die Auswahl kann sich
 // zwischen zwei Aufrufen ändern → inkonsistenter Titel/Statement zum Body). DOM-freier Tag-Strip

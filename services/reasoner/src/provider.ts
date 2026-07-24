@@ -116,19 +116,32 @@ export interface ReasonerProvider {
   // Kerntexte einander widersprechen/doppeln/überholen. NUR das echte Modell kann das; der
   // deterministische Fallback implementiert es bewusst NICHT (kein regelbasierter Pseudo-Detektor,
   // Ehrlichkeit vor Optik). Ungültige/leere Antworten → null (kein Konflikt aus kaputten Antworten).
+  // D-AISTATE PAKET 1 (bens V1, aistate-fix3): locale UND `confidential` sind PFLICHT — das echte
+  // Paar-Bit reist durch den Provider bis zum zentralen ModelClient.complete-Wächter (kein Aufrufer
+  // kann die Vertraulichkeit durch Weglassen absenken; der Compiler erzwingt die Deklaration).
   judgeConflict?(
     coreA: string,
     coreB: string,
-    locale?: ReasonerLocale,
+    locale: ReasonerLocale,
+    confidential: boolean,
   ): Promise<ConflictJudgeResult | null>;
   // Berater-Konzept Duplikate 04.07. (Stufe D2, dup-v1): „Duplikatprüfung" — beurteilt die
   // Überschneidung zweier Kerntexte (Beziehung/Grad/gemeinsame Aussagen/Empfehlung). NUR das echte
   // Modell; der deterministische Fallback bewusst NICHT. Ungültige Antworten → null.
+  // D-AISTATE PAKET 1 (bens V1): `confidential` PFLICHT bis zum Wächter (s. judgeConflict).
   judgeDuplicate?(
     coreA: string,
     coreB: string,
-    locale?: ReasonerLocale,
+    locale: ReasonerLocale,
+    confidential: boolean,
   ): Promise<DuplicateJudgeResult | null>;
+  // D-AISTATE PAKET 1 (bens V1, aistate-fix3): Egress-Politik des dahinterliegenden Clients —
+  // `true` = dieser Provider darf vertrauliche Inhalte NICHT sehen (Cloud bzw. ein „lokal"
+  // verdrahteter Endpunkt ohne bestätigte On-Prem-Origin). Der Reasoner nimmt ihn dann bei
+  // vertraulichen Paaren VOR jedem Aufruf aus der Judge-/Provider-Kette. Optional: Provider ohne
+  // Marke gelten als vertraulichkeits-tauglich (der Wächter im Client-Wrapper bleibt die harte
+  // letzte Instanz am Chokepoint).
+  rejectsConfidential?(): boolean;
   // Key-Test (Pedi 02.07.): kleinstmöglicher Echtaufruf — beweist Schlüssel + Modellzugang.
   // Optional: der deterministische Fallback hat bewusst keinen (nichts zu testen).
   probe?(): Promise<string>;

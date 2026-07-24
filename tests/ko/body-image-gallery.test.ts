@@ -80,7 +80,6 @@ describe("WP-D9c: defensive src-Prüfung (zentrale isSafeImgSrc-Policy)", () => 
   }
 
   it("weist unsichere Quellen ab: javascript:, SVG-data-URL, Remote-http(s), data-src-Attribut", () => {
-    // biome-ignore lint/a11y/noBlankTarget: reine String-Fixtures für den Negativ-Test.
     const cases = [
       fig('data-image-id="kw-img-z1-1" src="javascript:alert(1)"'),
       fig('data-image-id="kw-img-z1-1" src="data:image/svg+xml;base64,PHN2Zz4="'),

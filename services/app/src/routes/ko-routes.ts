@@ -424,7 +424,34 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             // SCRUM-470 (ben-Review #1): Client-`sources` auch beim Revise verwerfen — Anker bleiben
             // dem Import-Pfad vorbehalten. Ohne `sources` in den Changes bleiben die bestehenden erhalten.
             const { sources: _ignoredSources, ...changes } = body.changes ?? {};
-            reply.code(200).send(await ko.revise(id, changes, user.id));
+            const revised = await ko.revise(id, changes, user.id);
+            // D-AISTATE PAKET 4 (bens V5, aistate-fix3): eine Revision macht alle offenen
+            // automatischen Befunde, die eine ÄLTERE Version DIESES KOs gebunden haben, systemisch
+            // gegenstandslos (superseded) — Board/Badges/Benachrichtigungen zeigen keinen
+            // veralteten offenen Fund mehr; der frisch eingereihte Prüf-Job der neuen Version
+            // urteilt eigenständig. Zusammen mit dem CAS-Insert der Services (Nachvalidierung nach
+            // dem Insert) ist auch das Interleaving „alter Judge kehrt zwischen Revision und
+            // Freigabe zurück" abgedeckt.
+            await conflicts.onKoRevised(id, revised.version);
+            await overlaps.onKoRevised(id, revised.version);
+            // D-AISTATE PAKET 3.1 (Pedi Punkt 6, 23.07.): Eine inhaltliche Überarbeitung ENTWERTET jede
+            // frühere Prüfung — der aiCheck wird auf pending zurückgesetzt und für die NEUE Inhaltsversion
+            // neu eingereiht (statt Bearbeiten während laufender Prüfung zu sperren). Die Versions-Bindung
+            // (aiCheck.koVersion) sorgt dafür, dass ein noch laufender ALTER Lauf das frisch geänderte KO
+            // nicht fälschlich als geprüft markiert. Nur wenn je ein Prüf-Job vermerkt war (revised.aiCheck)
+            // und der Worker verdrahtet ist — sonst kein neuer Job (Altbestand ohne Prüf-Pfad unangetastet).
+            // D-AISTATE PAKET 4.3 (bens V5): die Antwort muss die FRISCH markierte Fassung zeigen (aiCheck
+            // pending), nicht das vor markAiCheckPending gelesene `revised` (das noch den alten aiCheck trägt).
+            let response = revised;
+            if (aiCheckWorker && revised.aiCheck) {
+              await ko.markAiCheckPending(id);
+              // Vermerk NACH dem Setzen frisch lesen: er trägt die NEUE Zielversion (revised bumpt version;
+              // markAiCheckPending liest sie). Mit ihr ist der Job hart an die überarbeitete Fassung gebunden.
+              const marked = await ko.get(id);
+              aiCheckWorker.enqueue(id, marked?.aiCheck?.koVersion);
+              response = marked ?? revised;
+            }
+            reply.code(200).send(response);
             return;
           }
           case "comment": {

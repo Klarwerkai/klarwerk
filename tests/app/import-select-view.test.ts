@@ -356,7 +356,9 @@ describe("Paket 2 · F1/F2/F3: Verdrahtung in ImportSelect/ImportGroups", () => 
     expect(src).toContain("setRowsSelected(prev, bulkRows, true)");
     // WP-BILD-1f RT5b: der Gruppen-Haken spiegelt den Tri-State über die Gruppe; ANWÄHLEN nutzt die
     // bulk-wählbare Teilmenge (F1), ABWÄHLEN wirkt auf ALLE Zeilen der Gruppe.
-    expect(src).toContain("groupCheckboxState(checkedRows, group.rows)");
+    // nacht24 Paket 5: die Ordner-Darstellung lebt geteilt in ImportPreviewTree — der Tri-State
+    // wird als checkStateOf-Lambda übergeben (gleiche Regel, eine Quelle).
+    expect(src).toContain("groupCheckboxState(checkedRows, groupRowsArg)");
     expect(src).toContain("setRowsSelected(prev, bulkSelectableRows(groupRowsArg), true)");
     expect(src).toContain("setRowsSelected(prev, groupRowsArg, false)");
   });
@@ -388,7 +390,8 @@ describe("Paket 2 · Verdrahtung ImportSelect", () => {
     const src = read("apps/web/src/components/ImportSelect.tsx");
     expect(src).toContain('from "../lib/importSelectView"');
     expect(src).toContain("visibleRows(");
-    expect(src).toContain("groupRows(");
+    // nacht24 Paket 5 (RT5a): Gruppierung läuft jetzt über den Subfolder-Baum (Sprache → Themen).
+    expect(src).toContain("groupRowsTree(");
     expect(src).toContain('t("imp.select.searchPlaceholder")');
     expect(src).toContain('t("imp.select.selectAll")');
     expect(src).toContain('t("imp.select.summary"');
@@ -397,7 +400,10 @@ describe("Paket 2 · Verdrahtung ImportSelect", () => {
     expect(src).toContain("groupModeOptions(");
     expect(src).toContain("groupCheckboxState(");
     expect(src).toContain("groupsCollapsedByDefault(");
-    expect(src).toContain("indeterminate");
+    // nacht24 Paket 5: der indeterminierte Tri-State-Haken lebt in der geteilten
+    // Ordner-Darstellung (ImportPreviewTree), die ImportSelect rendert.
+    expect(src).toContain("<ImportPreviewTree");
+    expect(read("apps/web/src/components/ImportPreviewTree.tsx")).toContain("indeterminate");
   });
 
   it("die neuen Paket-2-Texte sind in DE/EN/NL vorhanden", () => {

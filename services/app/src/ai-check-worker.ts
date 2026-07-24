@@ -51,7 +51,15 @@ export interface AiCheckRunOutcome {
   ok: boolean;
   // WP-SHIP8-CLOSE (bens F1): "model-timeout" ist eine eigene, ehrliche Ursache (Zeitlimit eines
   // Modellaufrufs — unterschieden vom Job-"timeout", der harten Frist des GANZEN Prüf-Laufs).
-  fallbackReason?: "no-model" | "model-error" | "model-timeout" | "timeout" | "queue-overflow";
+  // D-AISTATE PAKET 1 (bens V1): "confidential" = die KI-Ebene war für ein vertrauliches Paar blockiert
+  // (Cloud ausgeschlossen, kein lokales Modell) — geprüft wurde nur deterministisch, ehrlich kein "done".
+  fallbackReason?:
+    | "no-model"
+    | "model-error"
+    | "model-timeout"
+    | "timeout"
+    | "queue-overflow"
+    | "confidential";
 }
 
 export type AiCheckRunner = (koId: string) => Promise<AiCheckRunOutcome>;
@@ -349,12 +357,18 @@ export function createAiCheckRunner(deps: AiCheckRunnerDeps): AiCheckRunner {
   return async (koId: string): Promise<AiCheckRunOutcome> => {
     let failure: unknown = null;
     let judgeFailure: "model-error" | "model-timeout" | null = null;
+    // D-AISTATE PAKET 1 (bens V1): war die KI-Ebene für IRGENDEIN Paar wegen Vertraulichkeit blockiert
+    // (Cloud raus, kein lokales Modell)? Dann schließt der Lauf ehrlich mit fallbackReason "confidential"
+    // ab — NICHT als schlichtes "done". Ein echter Modellfehler wiegt schwerer und gewinnt (s. unten).
+    let confidentialBlocked = false;
     const captureFailure = (msg: string, err: unknown): void => {
       failure = failure ?? err ?? new Error(msg);
     };
     const noteJudgeFailure = (reported: string | undefined): void => {
       if (reported === "model-error" || reported === "model-timeout") {
         judgeFailure = judgeFailure ?? reported;
+      } else if (reported === "confidential") {
+        confidentialBlocked = true;
       }
       // "no-model" trägt der status().active-Check unten — kein Fehler eines Modells.
     };
@@ -363,10 +377,19 @@ export function createAiCheckRunner(deps: AiCheckRunnerDeps): AiCheckRunner {
     // den F1-Ergebnis-Vertrag; die Kerne bekommen weiter verdict | null).
     // Der Struktur-Cast ist bewusst: die detect*-Deps tippen `Reasoner`, brauchen aber genau
     // diese zwei Methoden.
+    // D-AISTATE PAKET 1 (bens V1): die Paar-Vertraulichkeit (vom Detection-Kern gesetzt) reicht bis in
+    // den Reasoner durch — er nimmt bei `confidential` die Cloud aus der Judge-Kette (kein Egress). Die
+    // Signatur spiegelt EXAKT die echte Facade (coreA, coreB, locale, confidential): der App-Root-
+    // Callback ruft judgeConflict(a, b, "de", confidential) — locale ist das dritte Argument.
     const observedReasoner = {
-      judgeConflict: async (a: string, b: string) => {
+      judgeConflict: async (
+        a: string,
+        b: string,
+        locale: "de" | "en" = "de",
+        confidential = false,
+      ) => {
         try {
-          const outcome = await deps.reasoner.judgeConflictOutcome(a, b);
+          const outcome = await deps.reasoner.judgeConflictOutcome(a, b, locale, confidential);
           noteJudgeFailure(outcome.failure);
           return outcome.verdict;
         } catch (err) {
@@ -374,9 +397,14 @@ export function createAiCheckRunner(deps: AiCheckRunnerDeps): AiCheckRunner {
           throw err;
         }
       },
-      judgeDuplicate: async (a: string, b: string) => {
+      judgeDuplicate: async (
+        a: string,
+        b: string,
+        locale: "de" | "en" = "de",
+        confidential = false,
+      ) => {
         try {
-          const outcome = await deps.reasoner.judgeDuplicateOutcome(a, b);
+          const outcome = await deps.reasoner.judgeDuplicateOutcome(a, b, locale, confidential);
           noteJudgeFailure(outcome.failure);
           return outcome.verdict;
         } catch (err) {
@@ -406,6 +434,11 @@ export function createAiCheckRunner(deps: AiCheckRunnerDeps): AiCheckRunner {
     }
     if (failure !== null) {
       return { ok: false, fallbackReason: "model-error" };
+    }
+    // bens V1: eine vertraulichkeitsbedingte KI-Blockade ist ehrlich "confidential" (Cloud-only), NICHT
+    // "done" — geprüft wurde nur die (lokale) deterministische Ebene, nicht per zulässigem Modell.
+    if (confidentialBlocked) {
+      return { ok: false, fallbackReason: "confidential" };
     }
     if (!deps.reasoner.status().active) {
       return { ok: false, fallbackReason: "no-model" };

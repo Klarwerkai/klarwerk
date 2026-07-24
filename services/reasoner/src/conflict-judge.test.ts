@@ -107,9 +107,12 @@ describe("SCRUM-492: parseConflictResponse — Kollisionsfelder", () => {
 
 describe("Berater-Konzept 04.07. (Stufe 2): judgeConflict über die Provider-Kette", () => {
   it("ModelProvider.judgeConflict liefert das geparste Urteil", async () => {
+    // aistate-fix3 (bens V1): locale + confidential sind an der Provider-Fläche PFLICHT.
     const res = await new ModelProvider(fakeClient(conflictJson)).judgeConflict(
       "Farbe blau",
       "Farbe rot",
+      "de",
+      false,
     );
     expect(res?.relation).toBe("widerspruch");
   });

@@ -28,6 +28,7 @@ import type {
   ExtractResult,
   Gap,
   GapPriority,
+  GapSummary,
   Graph,
   ImpactReport,
   ImportApplyResponse,
@@ -48,6 +49,7 @@ import type {
   ManagementSnapshot,
   MediaAnalysis,
   ModelRunRecord,
+  MyImpact,
   Notification,
   ObjectContent,
   ObjectRef,
@@ -191,6 +193,10 @@ export const endpoints = {
       api.put<OverlapSettings>("/duplicates/settings", { minConfidence }),
   },
   gaps: {
+    // FUNKE-FIX2 P0 (bens Erforderlich 1): nur aggregierte Zähler (kein Fragetext) — die Startseite
+    // nutzt AUSSCHLIESSLICH diesen Weg.
+    summary: () => api.get<GapSummary>("/gaps/summary"),
+    // Detail-Liste: der Server redigiert den Fragetext adressatengerecht (redacted-Marker).
     list: () => api.get<Gap[]>("/gaps"),
     close: (id: string) => api.put<Gap>(`/gaps/${id}`, { close: true }),
     assign: (id: string, expertId: string) => api.put<Gap>(`/gaps/${id}`, { expertId }),
@@ -228,7 +234,13 @@ export const endpoints = {
     // FR-I18N-01: aktuelle UI-Sprache mitsenden (Default serverseitig "de").
     ask: (question: string, locale?: "de" | "en") =>
       api.post<AskResponse>("/ask", { question, ...(locale ? { locale } : {}) }),
-    helpful: (koId: string) => api.post<void>("/ask/helpful", { koId }),
+    // FUNKE-FIX P0 (bens ROT-1): „Danke" trägt den Answer-Receipt aus dem echten Antwortvorgang
+    // zurück — ohne gültigen, dieses KO belegenden Receipt antwortet der Server 403.
+    helpful: (koId: string, receipt: string) => api.post<void>("/ask/helpful", { koId, receipt }),
+  },
+  // FUNKE F1 (nacht24 Paket 6): persönliche Wirkungs-Zähler (nur eigene Beiträge, nur Zahlen).
+  me: {
+    impact: () => api.get<MyImpact>("/me/impact"),
   },
   // SCRUM-527: Live-Check eines Entwurfstextes (Ähnlichkeit/Widerspruch gegen den Bestand).
   knowledge: {

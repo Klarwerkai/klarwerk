@@ -1,7 +1,14 @@
 // SCRUM-263: DOM-freier Übergang Wissenslücke → Erfassung. Baut den Link von einer offenen
-// Wissenslücke (/risiko) nach /erfassen und übergibt die Gap-Frage als Query-Parameter; Capture
-// liest sie als Startkontext für die Rohnotiz. KEIN automatisches KO, keine Lücken-Schließung,
-// kein Backend — der Mensch ergänzt die Erfahrung, die KI strukturiert nur. Reine, testbare Logik.
+// Wissenslücke (/risiko) nach /erfassen; Capture liest den Startkontext für die Rohnotiz. KEIN
+// automatisches KO, keine Lücken-Schließung — der Mensch ergänzt die Erfahrung, die KI strukturiert nur.
+//
+// FUNKE-FIX2 P0 (bens Erforderlich 4): Der Einstieg trägt jetzt die GAP-ID statt des Fragetextes.
+// Gap-Fragen sind Nutzer-Freitext OHNE Vertraulichkeitsstufe und dürfen NICHT in URL/Historie/Logs
+// landen. Capture löst die ID über die BEREITS serverseitig berechtigungsgefilterte Gap-Liste in den
+// Fragetext auf (resolveGapQuestion) — ein Unberechtigter bekommt dort nur die redigierte Sicht (kein
+// Freitext). So erscheint der Text erst NACH serverseitiger Berechtigungsprüfung.
+
+import type { Gap } from "../api/types";
 
 const GAP_PARAM = "gap";
 
@@ -31,14 +38,32 @@ export function normalizeGapContext(
   return `${cut.trimEnd()}${ELLIPSIS}`;
 }
 
-// Link von einer Gap-Frage zur Erfassung (normalisiert + URL-encodiert als Kontext).
-export function captureGapHref(question: string): string {
-  return `/erfassen?${GAP_PARAM}=${encodeURIComponent(normalizeGapContext(question))}`;
+// FUNKE-FIX2 P0 (bens Erforderlich 4): Link zur Erfassung mit der GAP-ID (kein Fragetext in der URL).
+export function captureGapHref(gapId: string): string {
+  return `/erfassen?${GAP_PARAM}=${encodeURIComponent(gapId)}`;
 }
 
-// Startkontext aus den Query-Parametern lesen (defensiv normalisiert; null bei leer → kein Banner).
-export function readGapContext(params: URLSearchParams): string | null {
-  const value = normalizeGapContext(params.get(GAP_PARAM) ?? "");
+// Die Gap-ID aus den Query-Parametern lesen (null bei leer).
+export function readGapId(params: URLSearchParams): string | null {
+  const value = (params.get(GAP_PARAM) ?? "").trim();
+  return value.length > 0 ? value : null;
+}
+
+// FUNKE-FIX2 P0 (bens Erforderlich 4): Startkontext über die Gap-ID auflösen — NUR aus der bereits
+// serverseitig berechtigungsgefilterten Gap-Liste. Ein redigierter oder unbekannter Eintrag liefert
+// null (kein Freitext ohne Berechtigung). Das Ergebnis ist defensiv normalisiert.
+export function resolveGapQuestion(
+  gapId: string | null,
+  gaps: readonly Gap[] | undefined,
+): string | null {
+  if (!gapId || !gaps) {
+    return null;
+  }
+  const gap = gaps.find((g) => g.id === gapId);
+  if (!gap || gap.redacted) {
+    return null;
+  }
+  const value = normalizeGapContext(gap.question);
   return value.length > 0 ? value : null;
 }
 

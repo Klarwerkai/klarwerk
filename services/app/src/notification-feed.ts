@@ -1,4 +1,4 @@
-import type { Gap } from "../../ask";
+import type { GapView } from "../../ask";
 import type { Conflict, OverlapEntry } from "../../conflicts";
 import type { AssignmentNotice } from "../../validation";
 
@@ -23,14 +23,21 @@ export interface Notification {
   at: string;
   // SCRUM-363: bei Zuweisungen das Quell-KO (für Anzeige/Verlinkung); sonst nicht gesetzt.
   koId?: string;
+  // FUNKE-FIX3 P0 (bens Blocker B): true → der Titel (Gap-Fragetext) wurde für diesen Betrachter
+  // zurückgehalten; der Client zeigt eine neutrale Bezeichnung (DE/EN/NL), NIE den Fragetext.
+  redacted?: boolean;
 }
 
 // SCRUM-363 / AG-15: persönliche offene Review-Zuweisungen kommen als eigene Kategorie in den Feed.
 // `assignments` enthält bereits NUR die Zuweisungen der aktuellen Person (Route filtert pro Nutzer) —
 // hier wird keine Ownership erfunden. Konflikt-/Gap-Benachrichtigungen bleiben unverändert.
+// FUNKE-FIX3 P0 (bens Blocker B): `gaps` sind bereits die BETRACHTERGERECHT redigierten Sichten aus
+// dem zentralen Sichtbarkeitsvertrag (gap-visibility.redactGapForViewer) — NIE rohe
+// AskService.listGaps()-Objekte. Bei redacted bleibt der Titel leer (fail-closed, selbst wenn ein
+// Aufrufer versehentlich einen Fragetext mitgibt); der Client zeigt dann die Neutralbezeichnung.
 export function buildNotifications(input: {
   conflicts: Conflict[];
-  gaps: Gap[];
+  gaps: GapView[];
   assignments?: AssignmentNotice[];
   impacts?: ImpactNotice[];
   // Pedi 04.07.: offene Überschneidungen (Duplikate) erscheinen wie Konflikte in der Glocke, damit
@@ -62,7 +69,13 @@ export function buildNotifications(input: {
   }
   for (const g of input.gaps) {
     if (g.status === "offen") {
-      items.push({ id: `gap-${g.id}`, kind: "gap", title: g.question, at: g.createdAt });
+      items.push({
+        id: `gap-${g.id}`,
+        kind: "gap",
+        title: g.redacted ? "" : g.question,
+        at: g.createdAt,
+        ...(g.redacted ? { redacted: true } : {}),
+      });
     }
   }
   for (const a of input.assignments ?? []) {

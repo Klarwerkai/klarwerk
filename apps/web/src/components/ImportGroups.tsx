@@ -188,12 +188,19 @@ export function GroupApprovalPanel({
 export function ImportGroups({
   criteria,
   selectedCandidateIds,
+  aiAvailable = true,
 }: {
   criteria: ImportSelectCriteria;
   // F3 (bens ROT): die in der Vorschau gewählten, zulässigen Kandidaten-IDs. Sie steuern (zusätzlich
   // zu den Kriterien) SERVERSEITIG, welche Kandidaten gruppiert und übernommen werden — nicht mehr
   // „alle passenden". Leere Menge → der Weiter-Knopf ist deaktiviert (kein Lauf über alles).
   selectedCandidateIds: readonly string[];
+  // PAKET 1 (D-AISTATE, Pedi 23.07.): ist die KI-Gruppierung (Task „group") nutzbar? Als PROP (nicht
+  // Hook), damit die Komponente ohne QueryClient-Provider isoliert testbar bleibt; der Eltern-Kontext
+  // reicht die echte Verfügbarkeit ein. WICHTIG: der Knopf wird NICHT ausgegraut — die deterministische
+  // Themen-Gruppierung bleibt ein voller, nutzbarer Kernablauf (Ergebnis ehrlich „Ohne KI gruppiert").
+  // Ohne Modell kündigt nur ein Vor-Hinweis an, dass ohne KI gruppiert wird. Default true (kein Test-Bruch).
+  aiAvailable?: boolean;
 }): JSX.Element {
   const { i18n, t } = useTranslation();
   const hasSelection = selectedCandidateIds.length > 0;
@@ -386,6 +393,11 @@ export function ImportGroups({
           </Button>
           {!hasSelection ? (
             <p className="mt-1.5 text-[12px] text-muted-2">{t(IMPORT_GROUPS_TEXT.needSelection)}</p>
+          ) : null}
+          {hasSelection && !aiAvailable ? (
+            <p className="mt-1.5 text-[12px] text-muted-2">
+              {t(IMPORT_GROUPS_TEXT.willGroupWithoutAi)}
+            </p>
           ) : null}
         </>
       ) : null}

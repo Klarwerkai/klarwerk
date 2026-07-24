@@ -4,11 +4,18 @@ import { type FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
-import { useNotifications, useReasonerConfig, useReasonerStatus } from "../api/hooks";
+import {
+  useExternalPolicy,
+  useNotifications,
+  useReasonerConfig,
+  useReasonerStatus,
+} from "../api/hooks";
 import { useNavGuard } from "../app/NavGuardContext";
 import { useRole } from "../app/RoleContext";
+import { externalStagePill } from "../lib/externalStagePill";
 import { kiHeaderStatus, kiHeaderStatusFromPublic } from "../lib/kiHeaderStatus";
 import { notificationTarget } from "../lib/notificationTarget";
+import { reasonerReachabilityBadge } from "../lib/reasonerReachability";
 import { APP_VERSION } from "../version";
 import { readIslandMarker } from "./islandMarker";
 
@@ -166,7 +173,11 @@ function NotificationBell(): JSX.Element {
                           {t("topbar.notifDuplicate")}:{" "}
                         </span>
                       ) : null}
-                      {n.title}
+                      {/* FUNKE-FIX3 P0 (bens Blocker B): redigierte Wissenslücke → neutrale
+                          Bezeichnung (DE/EN/NL), NIE ein Fragetext. */}
+                      {n.kind === "gap" && (n.redacted || !n.title)
+                        ? t("topbar.notifGapRedacted")
+                        : n.title}
                     </button>
                     {read ? null : (
                       <button
@@ -189,18 +200,51 @@ function NotificationBell(): JSX.Element {
   );
 }
 
+// PAKET 2 (D-AISTATE, Pedi 23.07.): „aktiv/grün" NUR bei echter Erreichbarkeit (zuletzt geantwortet),
+// nicht mehr bei bloßer Konfiguration. Zustände: aktiv (grün) · ungeprüft (gelb) · nicht erreichbar
+// (rot) · nicht verfügbar (grau) — abgeleitet aus dem gecachten Server-Erreichbarkeits-Signal.
+const REACHABILITY_TONE: Record<"pos" | "warn" | "crit" | "neutral", { box: string; dot: string }> =
+  {
+    pos: { box: "bg-trust-pos-bg text-trust-pos-text", dot: "bg-trust-pos-fill" },
+    warn: { box: "bg-trust-warn-bg text-trust-warn-text", dot: "bg-trust-warn-fill" },
+    crit: { box: "bg-trust-crit-bg text-trust-crit-text", dot: "bg-trust-crit-fill" },
+    neutral: { box: "bg-page text-muted", dot: "bg-muted-2" },
+  };
+
 function ReasonerStatusPill(): JSX.Element {
   const { t } = useTranslation();
   const { data } = useReasonerStatus();
-  const active = data?.active ?? false;
+  const badge = reasonerReachabilityBadge(data);
+  const tone = REACHABILITY_TONE[badge.tone];
   return (
     <div
-      className={`flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-[11px] font-semibold ${
-        active ? "bg-trust-pos-bg text-trust-pos-text" : "bg-page text-muted"
-      }`}
+      className={`flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-[11px] font-semibold ${tone.box}`}
+      title={t(badge.hintKey)}
     >
-      <span className={`h-1.5 w-1.5 rounded-full ${active ? "bg-trust-pos-fill" : "bg-muted-2"}`} />
-      {active ? t("topbar.reasonerActive") : t("topbar.reasonerOffline")}
+      <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
+      {t(badge.labelKey)}
+    </div>
+  );
+}
+
+// PAKET 2 (D-AISTATE, Pedi 23.07.): Achse 1 — externe Wissensabfrage (Web-Suche) als EIGENE Pille,
+// klar getrennt vom Reasoner-Badge (Achse 2, KI-Modell). Verhindert die Verwechslung „Extern aus" =
+// „KI aus". Der Tooltip erklärt den Unterschied (Web-Suche ≠ KI-Modell).
+function ExternalStagePill(): JSX.Element | null {
+  const { t } = useTranslation();
+  const { data } = useExternalPolicy();
+  if (!data) {
+    return null;
+  }
+  const pill = externalStagePill(data.stage);
+  const tone = REACHABILITY_TONE[pill.tone];
+  return (
+    <div
+      className={`flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-[11px] font-semibold ${tone.box}`}
+      title={t(pill.hintKey)}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
+      {t(pill.labelKey)}
     </div>
   );
 }
@@ -345,6 +389,7 @@ export function Topbar(): JSX.Element {
         <NotificationBell />
         <KiModePill />
         <ReasonerStatusPill />
+        <ExternalStagePill />
         {islandMarker ? <IslandMarkerPill marker={islandMarker} /> : null}
         {/* Beta-Phase: sichtbare Versionsnummer oben rechts (Pedi, 02.07.2026). */}
         <span

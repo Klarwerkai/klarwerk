@@ -11,6 +11,8 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
   endpoints: {
     ko: { list: vi.fn(async () => []) },
     conflicts: { list: vi.fn(async () => []) },
+    // FUNKE F1 (nacht24): die Ask-Seite löst Wissensträger-Namen über das Directory auf.
+    directory: { list: vi.fn(async () => []) },
     reasoner: { status: vi.fn(async () => ({ active: false, mode: "deterministic" })) },
     ask: {
       ask: vi.fn(async () => ({
@@ -104,6 +106,15 @@ describe("WP-SHIP8-CLOSE-2 (bens GELB): vertraulich vorbefüllter Bibliothekslin
   });
 
   it("GEGENPROBE: der normale Antwort-Link (?ask=1) feuert genau EINEN Auto-Ask — der Spy ist scharf", async () => {
+    // D-AISTATE PAKET 3 (bens V4, aistate-fix3): der Auto-Ask läuft jetzt über den zentralen
+    // Availability-Guard — OHNE nutzbares Modell feuert er bewusst NICHT mehr (das prüft
+    // tests/app/ask-ai-guard-mounted.test.tsx). Die Gegenprobe braucht deshalb ein nutzbares Modell.
+    (endpoints.reasoner.status as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      active: true,
+      mode: "cloud",
+      reachable: "active",
+      tasks: { answer: true },
+    });
     await mountAt(askAnswerHref(QUESTION));
     expect(askMock).toHaveBeenCalledTimes(1);
     expect(askMock).toHaveBeenCalledWith(QUESTION, "de");

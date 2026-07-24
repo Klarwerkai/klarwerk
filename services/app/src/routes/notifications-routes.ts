@@ -1,10 +1,11 @@
 import type { FastifyPluginAsync } from "fastify";
-import type { AskService } from "../../../ask";
+import { type AskService, redactGapForViewer } from "../../../ask";
 import type { AuditService } from "../../../audit";
 import type { ConflictService, OverlapService } from "../../../conflicts";
 import type { NotificationSeenRepo } from "../../../notifications";
+import { can } from "../../../rbac";
 import type { ValidationService } from "../../../validation";
-import type { Guards } from "../http";
+import type { Guards, SessionUser } from "../http";
 import { type ImpactNotice, type Notification, buildNotifications } from "../notification-feed";
 
 // In-App-Benachrichtigungen (U-3): aggregiert aus vorhandenen Signalen. Für jeden
@@ -42,9 +43,14 @@ export function deriveImpacts(
 }
 
 // Audit-P3 (SCRUM-397): Feed einmal bauen, Gelesen-Status je Item ehrlich anreichern.
+// FUNKE-FIX3 P0 (bens Blocker B): der Feed wird PRO BETRACHTER gebaut — die Gap-Ableitung läuft
+// durch denselben zentralen Sichtbarkeitsvertrag wie /api/gaps (gap-visibility.redactGapForViewer):
+// Fragetext nur für Owner/Assignee/Detail-Rolle (ko.validate); alle anderen erhalten NUR einen
+// redigierten Eintrag (leerer Titel + redacted-Marker → neutrale Bezeichnung im Client). Der
+// Betrachter stammt IMMER aus der authentifizierten Session (Route), nie aus dem Body/Client.
 async function loadFeed(
   deps: NotificationRoutesDeps,
-  userId: string,
+  user: SessionUser,
 ): Promise<Array<Notification & { seen: boolean }>> {
   // SCRUM-363: Zuweisungen werden PRO NUTZER geladen (user.id) — der Feed zeigt nur die
   // Review-Arbeit der angemeldeten Person, keine fremden Zuweisungen.
@@ -52,16 +58,20 @@ async function loadFeed(
     deps.conflicts.unresolved(),
     deps.overlaps.unresolved(),
     deps.ask.listGaps(),
-    deps.validation.openAssignmentsFor(userId),
+    deps.validation.openAssignmentsFor(user.id),
     deps.audit.list({ action: "answer.helpful" }),
-    deps.seen.seenFor(userId),
+    deps.seen.seenFor(user.id),
   ]);
-  const impacts = deriveImpacts(helpful, userId);
+  const viewer = { viewerId: user.id, maySeeDetail: can(user.role, "ko.validate") };
+  const gapViews = gaps.map((gap) => redactGapForViewer(gap, viewer));
+  const impacts = deriveImpacts(helpful, user.id);
   const seen = new Set(seenIds);
-  return buildNotifications({ conflicts, overlaps, gaps, assignments, impacts }).map((n) => ({
-    ...n,
-    seen: seen.has(n.id),
-  }));
+  return buildNotifications({ conflicts, overlaps, gaps: gapViews, assignments, impacts }).map(
+    (n) => ({
+      ...n,
+      seen: seen.has(n.id),
+    }),
+  );
 }
 
 export function notificationsRoutes(
@@ -75,7 +85,7 @@ export function notificationsRoutes(
         return;
       }
       // Rückgabe bleibt das bisherige Array (kompatibel) — neu ist NUR das seen-Feld je Item.
-      reply.code(200).send(await loadFeed(deps, user.id));
+      reply.code(200).send(await loadFeed(deps, user));
     });
 
     // Audit-P3 (SCRUM-397): bewusstes Als-gesehen-Markieren. Idempotent; nur eigene Sicht —
@@ -94,7 +104,7 @@ export function notificationsRoutes(
         return;
       }
       await deps.seen.markSeen(user.id, ids);
-      const items = await loadFeed(deps, user.id);
+      const items = await loadFeed(deps, user);
       reply.code(200).send({ unseenCount: items.filter((n) => !n.seen).length });
     });
   };

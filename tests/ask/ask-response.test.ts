@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { AnswerResult, AskResponse, Gap } from "../../apps/web/src/api/types";
 import { selectAnswer, selectGap } from "../../apps/web/src/lib/askResponse";
 
-// SCRUM-138: Backend POST /api/ask liefert { result, gap }. Der Adapter muss
+// SCRUM-138: Backend POST /api/ask liefert { result, gap, receipt }. Der Adapter muss
 // die Antwort sauber entpacken, damit die Ask-UI beantwortete Fragen anzeigt.
+// FUNKE-FIX P0 (bens ROT-1): der Answer-Receipt reist als drittes Feld mit (Beleg fürs „Danke").
+const RECEIPT = "receipt.stub";
 const answered: AnswerResult = {
   answered: true,
   answer: "Ventil V4 prüfen.",
@@ -35,7 +37,7 @@ const gap: Gap = {
 
 describe("SCRUM-138: Ask-Response-Adapter", () => {
   it("beantwortete Frage → Antwort-Anzeigedaten, keine Lücke", () => {
-    const response: AskResponse = { result: answered, gap: null };
+    const response: AskResponse = { result: answered, gap: null, receipt: RECEIPT };
     const a = selectAnswer(response);
     expect(a.answered).toBe(true);
     expect(a.answer).toBe("Ventil V4 prüfen.");
@@ -46,7 +48,7 @@ describe("SCRUM-138: Ask-Response-Adapter", () => {
   });
 
   it("unbeantwortbare Frage → No-Basis-Daten + Lücke", () => {
-    const response: AskResponse = { result: unanswered, gap };
+    const response: AskResponse = { result: unanswered, gap, receipt: RECEIPT };
     const a = selectAnswer(response);
     expect(a.answered).toBe(false);
     expect(a.answer).toBeNull();

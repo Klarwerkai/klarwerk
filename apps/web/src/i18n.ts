@@ -69,6 +69,22 @@ const de = {
   "topbar.notificationsPlaceholder": "Noch keine Benachrichtigungen. Echte Quelle folgt (#63).",
   "topbar.reasonerActive": "Reasoner aktiv",
   "topbar.reasonerOffline": "Reasoner offline",
+  // PAKET 2 (D-AISTATE, Pedi 23.07.): ehrliche Erreichbarkeit statt bloßer Konfiguration.
+  "topbar.reasonerActiveHint": "Ein KI-Modell hat zuletzt erreichbar geantwortet.",
+  "topbar.reasonerUnverified": "Reasoner ungeprüft",
+  "topbar.reasonerUnverifiedHint":
+    "Ein KI-Modell ist konfiguriert, aber die Erreichbarkeit ist noch nicht geprüft.",
+  "topbar.reasonerUnreachable": "Reasoner nicht erreichbar",
+  "topbar.reasonerUnreachableHint":
+    "Ein KI-Modell ist konfiguriert, war zuletzt aber nicht erreichbar (z. B. Schlüssel abgelaufen, Dienst aus). Aufrufe laufen deterministisch.",
+  "topbar.reasonerOfflineHint":
+    "Kein KI-Modell verfügbar — es läuft der deterministische Ersatzmodus.",
+  // PAKET 2: Achse 1 — externe Wissensabfrage (Web-Suche), getrennt vom KI-Modell.
+  "topbar.external.blocked": "Extern: Blockiert",
+  "topbar.external.search": "Extern: Suche",
+  "topbar.external.open": "Extern: Offen",
+  "topbar.external.hint":
+    "Externe Wissensabfrage (Web-Suche) — eine EIGENE Achse, nicht das KI-Modell. Steuert nur die Web-Suche/öffentliche Anreicherung, nicht den Reasoner.",
   // Pedi 05.07.: Header-Pille „In welcher KI bin ich?" + Herkunftsland + DSGVO-Bestätigung.
   // DSGVO: ja gibt es NUR bei interner KI aus Europa — alles andere ehrlich „nein".
   "topbar.kiExternal": "KI-Modus: Cloud",
@@ -100,6 +116,7 @@ const de = {
   "topbar.notifAssignment": "Review für dich",
   "topbar.notifImpact": "Dein Wissen hat geholfen",
   "topbar.notifDuplicate": "Mögliches Duplikat",
+  "topbar.notifGapRedacted": "Offene Wissenslücke",
   "cmd.open": "Schnellnavigation öffnen",
   "cmd.close": "Schließen",
   "cmd.placeholder": "Zu Seite springen … (⌘K)",
@@ -219,6 +236,9 @@ const de = {
   "reasoner.taskInfo.dsgvoExternal": "Externe Verarbeitung",
   "reasoner.taskInfo.dsgvoExternalBody":
     "Nutzt einen externen Cloud-Anbieter — die DSGVO-Konformität hängt vom Auftragsverarbeitungsvertrag (AVV) mit dem Anbieter ab.",
+  // PAKET 1 (D-AISTATE, Pedi 23.07.): ehrlicher Hinweis am HART ausgegrauten KI-Knopf, wenn für die
+  // Aufgabe kein Modell nutzbar ist — kein stiller Fallback, der „KI läuft" vortäuscht.
+  "ai.unavailable.hint": "KI nicht verfügbar — für diese Aufgabe ist kein Modell aktiv.",
   "provenance.original": "ursprünglich",
   "uikit.sampleStatement": "Druckabfall an Presse P2 sitzt meist an Ventil V4, nicht an der Pumpe.",
   "state.loading": "Lädt …",
@@ -420,6 +440,7 @@ const de = {
   "task.validation": "Validierung",
   "task.revalidation": "Re-Validierung",
   "task.gap": "Wissenslücke",
+  "task.gapRedacted": "Vertrauliche Wissenslücke",
   "task.returned": "Nacharbeit",
   "task.action.returned": "Entwurf überarbeiten",
   "task.action.conflict": "Konflikt entscheiden",
@@ -819,11 +840,19 @@ const de = {
     "Dein fortgesetzter Entwurf wurde als offenes Wissen eingereicht und aus deinen Entwürfen entfernt.",
   // WP-SHIP9-S1 (Pedis B3): der ECHTE Prüf-Status auf der Bestätigungs-Karte — „läuft" nur bis zum
   // tatsächlichen Ergebnis, Fehlschlag ehrlich mit Ursache (val.aiCheck.reason.*), kein stilles Grün.
+  // PAKET 1.4 (D-AISTATE, Pedi 23.07.): ehrlicher Name je Modellzustand. OHNE nutzbares Modell trägt
+  // allein die deterministische Duplikat-/Überschneidungsebene — dann NICHT „KI-Prüfung" und (bens V3)
+  // NICHT „Konflikt" (Konflikte erkennt nur die KI). MIT Modell läuft zusätzlich „(mit KI)" inkl. Konflikt.
   "capture.aiCheck.running":
-    "KI-Prüfung läuft … Das Ergebnis erscheint hier, sobald sie abgeschlossen ist.",
-  "capture.aiCheck.done": "KI-Prüfung abgeschlossen — Details in der Validierung.",
+    "Duplikat-/Überschneidungsprüfung läuft … Das Ergebnis erscheint hier, sobald sie abgeschlossen ist.",
+  "capture.aiCheck.runningAi":
+    "Duplikat-/Konfliktprüfung (mit KI) läuft … Das Ergebnis erscheint hier, sobald sie abgeschlossen ist.",
+  "capture.aiCheck.done":
+    "Duplikat-/Überschneidungsprüfung abgeschlossen (ohne KI) — Details in der Validierung.",
+  "capture.aiCheck.doneAi":
+    "Duplikat-/Konfliktprüfung (mit KI) abgeschlossen — Details in der Validierung.",
   "capture.aiCheck.failed":
-    "KI-Prüfung fehlgeschlagen: {{reason}} Neu anstoßen kannst du sie in der Validierung.",
+    "Prüfung fehlgeschlagen: {{reason}} Neu anstoßen kannst du sie in der Validierung.",
   // SCRUM-373 / AG-02-SESSION: nach dem Speichern haben Bilder/Dateien eine sichere Objekt-Referenz.
   "capture.savedFilesNote":
     "{{count}} Anhang/Anhänge sind jetzt als sichere Objekt-Referenz gespeichert und im Editor des Wissensobjekts als Beleg verlinkbar. Belege sind Kontext — sie ersetzen die Validierung nicht.",
@@ -1477,6 +1506,10 @@ const de = {
     "Quellengebundene Antwort aus KLARWERK · erstellt am {{date}}. Nur so belastbar wie die genutzten Quellen (Status/Trust). Kein Wahrheitsversprechen.",
   "ask.sourcesHint":
     "Diese Antwort ist quellengebunden — sie ist nur so belastbar wie die genutzte Quelle (Status, Trust, Nutzbarkeit). Zum Wissensobjekt für Details.",
+  // Paket 4 (nacht24): Quellen wie im Dokument — Status/Trust je Quelle + Auszug im Original-Format.
+  "answerSource.trust": "Trust {{n}}",
+  "answerSource.excerptShow": "Auszug im Dokument-Format anzeigen",
+  "answerSource.excerptHide": "Auszug ausblenden",
   "ask.helpful": "Hat geholfen",
   "ask.thanked": "Danke!",
   "ask.status.verified": "Gesichert",
@@ -1765,16 +1798,26 @@ const de = {
   "val.filterMine": "Mir zugewiesen",
   // WP-SUBMIT-ASYNC: Status der Hintergrund-KI-Prüfung auf der Karte + Filter „in Prüfung".
   "val.filterAiPending": "In KI-Prüfung",
-  "val.aiCheck.pending": "KI-Prüfung läuft",
+  // PAKET 1.4 (D-AISTATE, Pedi 23.07.): ehrlich je Modellzustand — OHNE Modell trägt allein die
+  // deterministische Ebene (kein „KI"), MIT Modell läuft die Prüfung zusätzlich „(mit KI)".
+  // D-AISTATE PAKET 2 (bens V3): OHNE KI läuft NUR die deterministische Duplikat-/Überschneidungs-
+  // prüfung — es gibt keine deterministische Konfliktprüfung (Konflikte erkennt nur die KI). Erst die
+  // „(mit KI)"-Varianten nennen deshalb den Konflikt.
+  "val.aiCheck.pending": "Duplikat-/Überschneidungsprüfung läuft",
+  "val.aiCheck.pendingAi": "Duplikat-/Konfliktprüfung (mit KI) läuft",
   "val.aiCheck.pendingHint":
-    "Die KI-Prüfung auf Konflikte und Überschneidungen läuft im Hintergrund. Das Ergebnis erscheint hier, sobald sie abgeschlossen ist.",
-  "val.aiCheck.failed": "KI-Prüfung fehlgeschlagen",
+    "Die deterministische Duplikat-/Überschneidungsprüfung läuft im Hintergrund. Das Ergebnis erscheint hier, sobald sie abgeschlossen ist.",
+  "val.aiCheck.pendingHintAi":
+    "Die Duplikat-/Konfliktprüfung (mit KI) auf Konflikte und Überschneidungen läuft im Hintergrund. Das Ergebnis erscheint hier, sobald sie abgeschlossen ist.",
+  "val.aiCheck.failed": "Prüfung fehlgeschlagen",
   "val.aiCheck.retry": "Erneut prüfen",
-  "val.aiCheck.retryStarted": "KI-Prüfung neu eingereiht — sie läuft jetzt im Hintergrund.",
-  // WP-SHIP9-B3FIX (Pedi 23.07.): Sperr-Hinweis am ausgegrauten Eintrag, solange die KI-Prüfung läuft
+  "val.aiCheck.retryStarted": "Prüfung neu eingereiht — sie läuft jetzt im Hintergrund.",
+  // WP-SHIP9-B3FIX (Pedi 23.07.): Sperr-Hinweis am ausgegrauten Eintrag, solange die Prüfung läuft
   // (aiCheck pending). Prüf-Aktionen sind bis zum Ergebnis gesperrt — kein Schein-Aktiv vor der Freigabe.
   "val.aiCheck.locked":
-    "KI-Prüfung läuft … Prüf-Aktionen sind gesperrt, bis das Ergebnis vorliegt.",
+    "Duplikat-/Überschneidungsprüfung läuft … Prüf-Aktionen sind gesperrt, bis das Ergebnis vorliegt.",
+  "val.aiCheck.lockedAi":
+    "Duplikat-/Konfliktprüfung (mit KI) läuft … Prüf-Aktionen sind gesperrt, bis das Ergebnis vorliegt.",
   "val.aiCheck.reason.no-model":
     "Kein KI-Modell aktiv — es wurde nichts geprüft. Modell konfigurieren und erneut prüfen.",
   "val.aiCheck.reason.model-error":
@@ -1786,6 +1829,9 @@ const de = {
     "Das KI-Modell hat nicht rechtzeitig geantwortet. Erneut prüfen startet einen neuen Lauf.",
   "val.aiCheck.reason.queue-overflow":
     "Die Prüf-Warteschlange war voll — dieser Job wurde verdrängt. Erneut prüfen reiht ihn neu ein.",
+  // D-AISTATE PAKET 1 (bens V1): vertraulich → Cloud-KI ausgeschlossen, kein lokales Modell.
+  "val.aiCheck.reason.confidential":
+    "Vertraulich — die Cloud-KI ist ausgeschlossen und kein lokales Modell verfügbar. Nur die deterministische Duplikat-/Überschneidungsprüfung lief; inhaltlich wurde nicht per KI geprüft.",
   "val.feedback.condTitle": "Bedingt – Begründung für den Autor (Pflicht)",
   "val.feedback.rejTitle": "Ablehnung – Begründung für den Autor (Pflicht)",
   "val.feedback.placeholder": "Was muss überarbeitet werden? …",
@@ -2023,6 +2069,68 @@ const de = {
   "board.detailsShow": "Details ansehen",
   "con.leadKicker": "Widerspruch",
   "dup.leadKicker": "Überschneidung",
+  // D-BIB (nacht24 Paket 5): dynamische Facetten + Untergruppen + gespeicherte Sichten (lokal).
+  "lib.facet.category": "Abteilung/Kategorie",
+  "lib.facet.language": "Sprache",
+  "lib.facet.status": "Status",
+  "lib.facet.author": "Autor",
+  "lib.facet.age": "Alter",
+  "lib.facet.trust": "Trust",
+  "lib.facet.lang.de": "Deutsch",
+  "lib.facet.lang.en": "Englisch",
+  "lib.facet.lang.nl": "Niederländisch",
+  "lib.facet.lang.other": "ohne Sprach-Kennzeichnung",
+  "lib.facet.ageBucket.d30": "≤ 30 Tage",
+  "lib.facet.ageBucket.d180": "≤ 180 Tage",
+  "lib.facet.ageBucket.y1": "≤ 1 Jahr",
+  "lib.facet.ageBucket.older": "älter als 1 Jahr",
+  "lib.facet.ageBucket.unknown": "Alter unbekannt",
+  "lib.facet.trustBucket.t0": "Trust 0",
+  "lib.facet.trustBucket.t1": "Trust 1–39",
+  "lib.facet.trustBucket.t40": "Trust 40–69",
+  "lib.facet.trustBucket.t70": "Trust 70+",
+  "lib.facet.more": "+{{n}} weitere",
+  "lib.facet.none": "ohne Wert",
+  "lib.groupBy.label": "Untergruppen",
+  "lib.groupBy.none": "keine",
+  "lib.views.label": "Sichten",
+  "lib.views.pick": "Gespeicherte Sicht laden …",
+  "lib.views.namePlaceholder": "Name der Sicht",
+  "lib.views.save": "Sicht speichern",
+  "lib.views.remove": "Sicht löschen",
+  "lib.views.localHint": "lokal in diesem Browser gespeichert",
+  "imp.select.deselectLang": "Alle {{lang}} abwählen · {{n}}",
+  // SCRUM-486 (nacht24 Paket 3): EINE ruhige Befund-Darstellung — WAS, Erkennungsweg (ehrlich),
+  // beide Seiten verlinkt, Gruppierung je Beitrag.
+  "finding.kind.konflikt": "Konflikt",
+  "finding.kind.duplikat": "Duplikat",
+  "finding.kind.ueberschneidung": "Überschneidung",
+  "finding.way.ki": "mit KI",
+  "finding.way.deterministisch": "ohne KI (deterministisch)",
+  "finding.way.manuell": "manuell angelegt",
+  "finding.versus": "vs",
+  "finding.groupKicker": "Beitrag",
+  "finding.groupCount": "{{n}} Befund(e)",
+  // FUNKE (nacht24 Paket 6): Wirkungs-Schleife — würdevoll, kein Punkte-Zirkus.
+  "funke.sourceAuthor": "aus dem Wissen von {{name}}",
+  "funke.impact.title": "Meine Wirkung",
+  "funke.impact.contributions": "Meine Beiträge",
+  "funke.impact.validated": "davon validiert",
+  "funke.impact.cited": "in Antworten zitiert",
+  "funke.impact.helpful": "als hilfreich markiert",
+  "funke.impact.hint":
+    "Ehrliche Zählung aus vorhandenen Belegen: „zitiert“ zählt die führende Antwort-Quelle — nichts wird geschätzt oder erfunden.",
+  "funke.gaps.title": "Offene Wissenslücken",
+  "funke.gaps.count": "{{n}} offen",
+  "funke.gaps.answerCta": "In 2 Minuten beantworten",
+  "funke.gaps.more": "+{{n}} weitere offene Lücken — vollständige Liste unter Risiko & Lücken.",
+  "funke.capital.title": "Wissenskapital",
+  "funke.capital.secured": "gesicherte Wissensobjekte",
+  "funke.capital.validated": "davon validiert",
+  "funke.capital.categories": "beantwortbare Themenfelder",
+  "funke.capital.authors": "aktive Wissensträger",
+  "funke.capital.gaps": "offene Wissenslücken",
+  "funke.capital.hint": "Nur echte Zahlen aus dem Bestand — keine Schätzungen.",
   "lib.kicker": "Bibliothek",
   "lib.export": "Export",
   "lib.exportFormat": "Exportformat",
@@ -2152,6 +2260,8 @@ const de = {
     "Wählen Sie in der Vorschau mindestens einen Eintrag aus, um fortzufahren.",
   "imp.groups.grouping": "Die Beiträge werden thematisch gruppiert …",
   "imp.groups.retry": "Erneut versuchen",
+  "imp.groups.willGroupWithoutAi":
+    "Kein KI-Modell aktiv — es wird ohne KI nach Themen gruppiert (deterministisch).",
   "imp.groups.noAi": "Ohne KI gruppiert",
   "imp.groups.noAiReason": "Ohne KI gruppiert — {{reason}}",
   "imp.groups.reason.confidential": "vertrauliche Kandidaten — Cloud-KI ausgeschlossen",
@@ -2410,6 +2520,7 @@ const de = {
   "risk.gapNext.capture": "Wissen erfassen, um die Lücke zu schließen.",
   "risk.gapNext.done": "Geschlossen — erledigt.",
   "risk.gapCapture": "Wissen erfassen",
+  "risk.gapRedacted": "Vertrauliche Lücke (Fragetext verborgen)",
   "lcy.kicker": "Lebenszyklus",
   "lcy.banner": "„Stimmt das noch?“ — gekoppelte Objekte nach Anlagenänderung prüfen.",
   "lcy.empty": "Nichts zur Re-Validierung.",
@@ -3440,6 +3551,19 @@ const en: typeof de = {
   "topbar.notificationsPlaceholder": "No notifications yet. Real source coming (#63).",
   "topbar.reasonerActive": "Reasoner active",
   "topbar.reasonerOffline": "Reasoner offline",
+  "topbar.reasonerActiveHint": "An AI model responded and was reachable most recently.",
+  "topbar.reasonerUnverified": "Reasoner unverified",
+  "topbar.reasonerUnverifiedHint":
+    "An AI model is configured, but reachability has not been verified yet.",
+  "topbar.reasonerUnreachable": "Reasoner unreachable",
+  "topbar.reasonerUnreachableHint":
+    "An AI model is configured but was not reachable recently (e.g. key expired, service down). Calls run deterministically.",
+  "topbar.reasonerOfflineHint": "No AI model available — the deterministic fallback is running.",
+  "topbar.external.blocked": "External: Blocked",
+  "topbar.external.search": "External: Search",
+  "topbar.external.open": "External: Open",
+  "topbar.external.hint":
+    "External knowledge lookup (web search) — a SEPARATE axis, not the AI model. It only controls web search / public enrichment, not the reasoner.",
   // Pedi 05.07.: header pill "Which AI am I in?" + country of origin + GDPR confirmation.
   // GDPR: yes ONLY for an internal AI from Europe — everything else is honestly "no".
   "topbar.kiExternal": "AI mode: Cloud",
@@ -3471,6 +3595,7 @@ const en: typeof de = {
   "topbar.notifAssignment": "Review for you",
   "topbar.notifImpact": "Your knowledge helped someone",
   "topbar.notifDuplicate": "Possible duplicate",
+  "topbar.notifGapRedacted": "Open knowledge gap",
   "cmd.open": "Open quick navigation",
   "cmd.close": "Close",
   "cmd.placeholder": "Jump to page … (⌘K)",
@@ -3590,6 +3715,7 @@ const en: typeof de = {
   "reasoner.taskInfo.dsgvoExternal": "External processing",
   "reasoner.taskInfo.dsgvoExternalBody":
     "Uses an external cloud provider — GDPR compliance depends on the data processing agreement (DPA) with the provider.",
+  "ai.unavailable.hint": "AI unavailable — no model is active for this task.",
   "provenance.original": "originally",
   "uikit.sampleStatement": "Pressure loss on press P2 usually sits at valve V4, not at the pump.",
   "state.loading": "Loading …",
@@ -3788,6 +3914,7 @@ const en: typeof de = {
   "task.validation": "Validation",
   "task.revalidation": "Re-validation",
   "task.gap": "Knowledge gap",
+  "task.gapRedacted": "Confidential knowledge gap",
   "task.returned": "Rework",
   "task.action.returned": "Revise draft",
   "task.action.conflict": "Decide conflict",
@@ -4180,9 +4307,15 @@ const en: typeof de = {
   "capture.savedFromDraft":
     "Your continued draft was submitted as open knowledge and removed from your drafts.",
   // WP-SHIP9-S1 (Pedis B3): the REAL check status on the confirmation card.
-  "capture.aiCheck.running": "AI check running … the result will appear here once it completes.",
-  "capture.aiCheck.done": "AI check completed — details in validation.",
-  "capture.aiCheck.failed": "AI check failed: {{reason}} You can restart it in validation.",
+  // D-AISTATE PAKET 2 (bens V3): without AI only the deterministic duplicate/overlap check runs — there
+  // is no deterministic conflict check (only AI finds conflicts). The "(with AI)" variants name conflicts.
+  "capture.aiCheck.running":
+    "Duplicate/overlap check running … the result will appear here once it completes.",
+  "capture.aiCheck.runningAi":
+    "Duplicate/conflict check (with AI) running … the result will appear here once it completes.",
+  "capture.aiCheck.done": "Duplicate/overlap check completed (without AI) — details in validation.",
+  "capture.aiCheck.doneAi": "Duplicate/conflict check (with AI) completed — details in validation.",
+  "capture.aiCheck.failed": "Check failed: {{reason}} You can restart it in validation.",
   // SCRUM-373 / AG-02-SESSION: after saving, images/files have a safe object reference.
   "capture.savedFilesNote":
     "{{count}} attachment(s) are now stored as a safe object reference and can be linked as evidence in the knowledge object's editor. Evidence is context — it does not replace validation.",
@@ -4812,6 +4945,10 @@ const en: typeof de = {
     "Source-bound answer from KLARWERK · generated on {{date}}. Only as reliable as the sources used (status/trust). No promise of truth.",
   "ask.sourcesHint":
     "This answer is source-bound — it is only as reliable as the source it uses (status, trust, usability). Open the knowledge object for details.",
+  // Packet 4 (nacht24): sources like the document — status/trust per source + original-format excerpt.
+  "answerSource.trust": "Trust {{n}}",
+  "answerSource.excerptShow": "Show excerpt in document format",
+  "answerSource.excerptHide": "Hide excerpt",
   "ask.helpful": "This helped",
   "ask.thanked": "Thanks!",
   "ask.status.verified": "Verified",
@@ -5095,13 +5232,19 @@ const en: typeof de = {
   "val.filterMine": "Assigned to me",
   // WP-SUBMIT-ASYNC: background AI-check status on the card + "in review" filter.
   "val.filterAiPending": "AI check running",
-  "val.aiCheck.pending": "AI check running",
+  "val.aiCheck.pending": "Duplicate/overlap check running",
+  "val.aiCheck.pendingAi": "Duplicate/conflict check (with AI) running",
   "val.aiCheck.pendingHint":
-    "The AI check for conflicts and overlaps is running in the background. The result will appear here once it finishes.",
-  "val.aiCheck.failed": "AI check failed",
+    "The deterministic duplicate/overlap check is running in the background. The result will appear here once it finishes.",
+  "val.aiCheck.pendingHintAi":
+    "The duplicate/conflict check (with AI) for conflicts and overlaps is running in the background. The result will appear here once it finishes.",
+  "val.aiCheck.failed": "Check failed",
   "val.aiCheck.retry": "Retry check",
-  "val.aiCheck.retryStarted": "AI check re-queued — it is now running in the background.",
-  "val.aiCheck.locked": "AI check running … review actions are locked until the result is in.",
+  "val.aiCheck.retryStarted": "Check re-queued — it is now running in the background.",
+  "val.aiCheck.locked":
+    "Duplicate/overlap check running … review actions are locked until the result is in.",
+  "val.aiCheck.lockedAi":
+    "Duplicate/conflict check (with AI) running … review actions are locked until the result is in.",
   "val.aiCheck.reason.no-model":
     "No AI model active — nothing was checked. Configure a model and retry the check.",
   "val.aiCheck.reason.model-error":
@@ -5112,6 +5255,9 @@ const en: typeof de = {
     "The AI model did not respond in time. Retrying starts a fresh run.",
   "val.aiCheck.reason.queue-overflow":
     "The check queue was full — this job was evicted. Retrying re-queues it.",
+  // D-AISTATE PAKET 1 (bens V1): confidential → cloud AI excluded, no local model.
+  "val.aiCheck.reason.confidential":
+    "Confidential — the cloud AI is excluded and no local model is available. Only the deterministic duplicate/overlap check ran; no AI content check was performed.",
   "val.feedback.condTitle": "Conditional – reason for the author (required)",
   "val.feedback.rejTitle": "Rejection – reason for the author (required)",
   "val.feedback.placeholder": "What needs to be revised? …",
@@ -5346,6 +5492,68 @@ const en: typeof de = {
   "board.detailsShow": "Show details",
   "con.leadKicker": "Contradiction",
   "dup.leadKicker": "Overlap",
+  // D-BIB (nacht24 packet 5): dynamic facets + subgroups + saved views (local).
+  "lib.facet.category": "Department/Category",
+  "lib.facet.language": "Language",
+  "lib.facet.status": "Status",
+  "lib.facet.author": "Author",
+  "lib.facet.age": "Age",
+  "lib.facet.trust": "Trust",
+  "lib.facet.lang.de": "German",
+  "lib.facet.lang.en": "English",
+  "lib.facet.lang.nl": "Dutch",
+  "lib.facet.lang.other": "no language tag",
+  "lib.facet.ageBucket.d30": "≤ 30 days",
+  "lib.facet.ageBucket.d180": "≤ 180 days",
+  "lib.facet.ageBucket.y1": "≤ 1 year",
+  "lib.facet.ageBucket.older": "older than 1 year",
+  "lib.facet.ageBucket.unknown": "age unknown",
+  "lib.facet.trustBucket.t0": "Trust 0",
+  "lib.facet.trustBucket.t1": "Trust 1–39",
+  "lib.facet.trustBucket.t40": "Trust 40–69",
+  "lib.facet.trustBucket.t70": "Trust 70+",
+  "lib.facet.more": "+{{n}} more",
+  "lib.facet.none": "no value",
+  "lib.groupBy.label": "Subgroups",
+  "lib.groupBy.none": "none",
+  "lib.views.label": "Views",
+  "lib.views.pick": "Load saved view …",
+  "lib.views.namePlaceholder": "View name",
+  "lib.views.save": "Save view",
+  "lib.views.remove": "Delete view",
+  "lib.views.localHint": "stored locally in this browser",
+  "imp.select.deselectLang": "Deselect all {{lang}} · {{n}}",
+  // SCRUM-486 (nacht24 packet 3): one calm finding view — what, detection path (honest),
+  // both sides linked, grouped per contribution.
+  "finding.kind.konflikt": "Conflict",
+  "finding.kind.duplikat": "Duplicate",
+  "finding.kind.ueberschneidung": "Overlap",
+  "finding.way.ki": "with AI",
+  "finding.way.deterministisch": "without AI (deterministic)",
+  "finding.way.manuell": "created manually",
+  "finding.versus": "vs",
+  "finding.groupKicker": "Contribution",
+  "finding.groupCount": "{{n}} finding(s)",
+  // FUNKE (nacht24 packet 6): impact loop — dignified, no gamification circus.
+  "funke.sourceAuthor": "from the knowledge of {{name}}",
+  "funke.impact.title": "My impact",
+  "funke.impact.contributions": "My contributions",
+  "funke.impact.validated": "of which validated",
+  "funke.impact.cited": "cited in answers",
+  "funke.impact.helpful": "marked as helpful",
+  "funke.impact.hint":
+    "Honest counting from existing evidence: “cited” counts the leading answer source — nothing is estimated or invented.",
+  "funke.gaps.title": "Open knowledge gaps",
+  "funke.gaps.count": "{{n}} open",
+  "funke.gaps.answerCta": "Answer in 2 minutes",
+  "funke.gaps.more": "+{{n}} more open gaps — full list under Risk & gaps.",
+  "funke.capital.title": "Knowledge capital",
+  "funke.capital.secured": "captured knowledge objects",
+  "funke.capital.validated": "of which validated",
+  "funke.capital.categories": "answerable topic areas",
+  "funke.capital.authors": "active knowledge holders",
+  "funke.capital.gaps": "open knowledge gaps",
+  "funke.capital.hint": "Only real numbers from the actual stock — no estimates.",
   "lib.kicker": "Library",
   "lib.export": "Export",
   "lib.exportFormat": "Export format",
@@ -5469,6 +5677,8 @@ const en: typeof de = {
   "imp.groups.needSelection": "Select at least one entry in the preview to continue.",
   "imp.groups.grouping": "Grouping the posts by topic …",
   "imp.groups.retry": "Try again",
+  "imp.groups.willGroupWithoutAi":
+    "No AI model active — grouping runs by topic without AI (deterministic).",
   "imp.groups.noAi": "Grouped without AI",
   "imp.groups.noAiReason": "Grouped without AI — {{reason}}",
   "imp.groups.reason.confidential": "confidential candidates — cloud AI excluded",
@@ -5723,6 +5933,7 @@ const en: typeof de = {
   "risk.gapNext.capture": "Capture knowledge to close the gap.",
   "risk.gapNext.done": "Closed — nothing pending.",
   "risk.gapCapture": "Capture knowledge",
+  "risk.gapRedacted": "Confidential gap (question hidden)",
   "lcy.kicker": "Lifecycle",
   "lcy.banner": "„Still correct?“ — review coupled objects after an asset change.",
   "lcy.empty": "Nothing to re-validate.",
@@ -6736,6 +6947,20 @@ const nl: typeof de = {
   "topbar.notificationsPlaceholder": "Nog geen meldingen. Echte bron volgt (#63).",
   "topbar.reasonerActive": "Reasoner actief",
   "topbar.reasonerOffline": "Reasoner offline",
+  "topbar.reasonerActiveHint": "Een AI-model heeft onlangs bereikbaar geantwoord.",
+  "topbar.reasonerUnverified": "Reasoner ongeverifieerd",
+  "topbar.reasonerUnverifiedHint":
+    "Een AI-model is geconfigureerd, maar de bereikbaarheid is nog niet gecontroleerd.",
+  "topbar.reasonerUnreachable": "Reasoner onbereikbaar",
+  "topbar.reasonerUnreachableHint":
+    "Een AI-model is geconfigureerd maar was onlangs niet bereikbaar (bijv. sleutel verlopen, dienst uit). Aanroepen draaien deterministisch.",
+  "topbar.reasonerOfflineHint":
+    "Geen AI-model beschikbaar — de deterministische reservemodus draait.",
+  "topbar.external.blocked": "Extern: Geblokkeerd",
+  "topbar.external.search": "Extern: Zoeken",
+  "topbar.external.open": "Extern: Open",
+  "topbar.external.hint":
+    "Externe kennisopvraging (webzoekopdracht) — een APARTE as, niet het AI-model. Regelt alleen webzoeken/openbare verrijking, niet de reasoner.",
   "topbar.kiExternal": "AI-modus: Cloud",
   "topbar.kiInternal": "AI-modus: Lokaal",
   "topbar.kiMixed": "AI-modus: Cloud + Lokaal",
@@ -6764,6 +6989,7 @@ const nl: typeof de = {
   "topbar.notifAssignment": "Beoordeling voor jou",
   "topbar.notifImpact": "Jouw kennis heeft geholpen",
   "topbar.notifDuplicate": "Mogelijk duplicaat",
+  "topbar.notifGapRedacted": "Openstaande kennislacune",
   "cmd.open": "Snelnavigatie openen",
   "cmd.close": "Sluiten",
   "cmd.placeholder": "Naar pagina springen … (⌘K)",
@@ -6884,6 +7110,7 @@ const nl: typeof de = {
   "reasoner.taskInfo.dsgvoExternal": "Externe verwerking",
   "reasoner.taskInfo.dsgvoExternalBody":
     "Maakt gebruik van een externe cloudaanbieder — de AVG-conformiteit hangt af van de verwerkersovereenkomst met de aanbieder.",
+  "ai.unavailable.hint": "AI niet beschikbaar — voor deze taak is geen model actief.",
   "provenance.original": "oorspronkelijk",
   "uikit.sampleStatement": "Drukverlies bij pers P2 zit meestal aan ventiel V4, niet aan de pomp.",
   "state.loading": "Laden …",
@@ -7080,6 +7307,7 @@ const nl: typeof de = {
   "task.validation": "Validatie",
   "task.revalidation": "Hervalidatie",
   "task.gap": "Kennishiaat",
+  "task.gapRedacted": "Vertrouwelijk kennishiaat",
   "task.returned": "Nawerk",
   "task.action.returned": "Concept herzien",
   "task.action.conflict": "Conflict beslissen",
@@ -7469,11 +7697,19 @@ const nl: typeof de = {
   "capture.savedFromDraft":
     "Je voortgezette concept is als openstaande kennis ingediend en uit je concepten verwijderd.",
   // WP-SHIP9-S1 (Pedis B3): de ECHTE controlestatus op de bevestigingskaart.
+  // D-AISTATE PAKET 2 (bens V3): zonder AI loopt alleen de deterministische duplicaat-/overlapcontrole —
+  // er is geen deterministische conflictcontrole (alleen AI vindt conflicten). De "(met AI)"-varianten
+  // noemen conflicten.
   "capture.aiCheck.running":
-    "AI-controle loopt … het resultaat verschijnt hier zodra deze is afgerond.",
-  "capture.aiCheck.done": "AI-controle afgerond — details in de validatie.",
+    "Duplicaat-/overlapcontrole loopt … het resultaat verschijnt hier zodra deze is afgerond.",
+  "capture.aiCheck.runningAi":
+    "Duplicaat-/conflictcontrole (met AI) loopt … het resultaat verschijnt hier zodra deze is afgerond.",
+  "capture.aiCheck.done":
+    "Duplicaat-/overlapcontrole afgerond (zonder AI) — details in de validatie.",
+  "capture.aiCheck.doneAi":
+    "Duplicaat-/conflictcontrole (met AI) afgerond — details in de validatie.",
   "capture.aiCheck.failed":
-    "AI-controle mislukt: {{reason}} Je kunt deze in de validatie opnieuw starten.",
+    "Controle mislukt: {{reason}} Je kunt deze in de validatie opnieuw starten.",
   "capture.savedFilesNote":
     "{{count}} bijlage(n) zijn nu als veilige objectreferentie opgeslagen en in de editor van het kennisobject als bewijs te koppelen. Bewijs is context — het vervangt de validatie niet.",
   "capture.attachTooLarge":
@@ -8100,6 +8336,10 @@ const nl: typeof de = {
     "Brongebonden antwoord uit KLARWERK · gemaakt op {{date}}. Alleen zo betrouwbaar als de gebruikte bronnen (status/trust). Geen belofte van waarheid.",
   "ask.sourcesHint":
     "Dit antwoord is brongebonden — het is alleen zo betrouwbaar als de gebruikte bron (status, trust, bruikbaarheid). Naar het kennisobject voor details.",
+  // Pakket 4 (nacht24): bronnen zoals in het document — status/trust per bron + fragment in origineel formaat.
+  "answerSource.trust": "Trust {{n}}",
+  "answerSource.excerptShow": "Fragment in documentformaat tonen",
+  "answerSource.excerptHide": "Fragment verbergen",
   "ask.helpful": "Heeft geholpen",
   "ask.thanked": "Bedankt!",
   "ask.status.verified": "Geborgd",
@@ -8380,14 +8620,19 @@ const nl: typeof de = {
   "val.filterMine": "Aan mij toegewezen",
   // WP-SUBMIT-ASYNC: status van de achtergrond-AI-controle op de kaart + filter.
   "val.filterAiPending": "AI-controle loopt",
-  "val.aiCheck.pending": "AI-controle loopt",
+  "val.aiCheck.pending": "Duplicaat-/overlapcontrole loopt",
+  "val.aiCheck.pendingAi": "Duplicaat-/conflictcontrole (met AI) loopt",
   "val.aiCheck.pendingHint":
-    "De AI-controle op conflicten en overlappingen draait op de achtergrond. Het resultaat verschijnt hier zodra deze klaar is.",
-  "val.aiCheck.failed": "AI-controle mislukt",
+    "De deterministische duplicaat-/overlapcontrole draait op de achtergrond. Het resultaat verschijnt hier zodra deze klaar is.",
+  "val.aiCheck.pendingHintAi":
+    "De duplicaat-/conflictcontrole (met AI) op conflicten en overlappingen draait op de achtergrond. Het resultaat verschijnt hier zodra deze klaar is.",
+  "val.aiCheck.failed": "Controle mislukt",
   "val.aiCheck.retry": "Opnieuw controleren",
-  "val.aiCheck.retryStarted": "AI-controle opnieuw ingepland — deze draait nu op de achtergrond.",
+  "val.aiCheck.retryStarted": "Controle opnieuw ingepland — deze draait nu op de achtergrond.",
   "val.aiCheck.locked":
-    "AI-controle loopt … beoordelingsacties zijn geblokkeerd totdat het resultaat er is.",
+    "Duplicaat-/overlapcontrole loopt … beoordelingsacties zijn geblokkeerd totdat het resultaat er is.",
+  "val.aiCheck.lockedAi":
+    "Duplicaat-/conflictcontrole (met AI) loopt … beoordelingsacties zijn geblokkeerd totdat het resultaat er is.",
   "val.aiCheck.reason.no-model":
     "Geen AI-model actief — er is niets gecontroleerd. Configureer een model en controleer opnieuw.",
   "val.aiCheck.reason.model-error":
@@ -8398,6 +8643,9 @@ const nl: typeof de = {
     "Het AI-model heeft niet op tijd geantwoord. Opnieuw controleren start een nieuwe run.",
   "val.aiCheck.reason.queue-overflow":
     "De controlewachtrij was vol — deze taak is verdrongen. Opnieuw controleren plant hem opnieuw in.",
+  // D-AISTATE PAKET 1 (bens V1): vertrouwelijk → cloud-AI uitgesloten, geen lokaal model.
+  "val.aiCheck.reason.confidential":
+    "Vertrouwelijk — de cloud-AI is uitgesloten en er is geen lokaal model beschikbaar. Alleen de deterministische duplicaat-/overlapcontrole liep; er is geen inhoudelijke AI-controle uitgevoerd.",
   "val.feedback.condTitle": "Voorwaardelijk – onderbouwing voor de auteur (verplicht)",
   "val.feedback.rejTitle": "Afwijzing – onderbouwing voor de auteur (verplicht)",
   "val.feedback.placeholder": "Wat moet er worden herzien? …",
@@ -8622,6 +8870,68 @@ const nl: typeof de = {
   "board.detailsShow": "Details bekijken",
   "con.leadKicker": "Tegenstrijdigheid",
   "dup.leadKicker": "Overlap",
+  // D-BIB (nacht24 pakket 5): dynamische facetten + subgroepen + opgeslagen weergaven (lokaal).
+  "lib.facet.category": "Afdeling/categorie",
+  "lib.facet.language": "Taal",
+  "lib.facet.status": "Status",
+  "lib.facet.author": "Auteur",
+  "lib.facet.age": "Leeftijd",
+  "lib.facet.trust": "Trust",
+  "lib.facet.lang.de": "Duits",
+  "lib.facet.lang.en": "Engels",
+  "lib.facet.lang.nl": "Nederlands",
+  "lib.facet.lang.other": "zonder taalmarkering",
+  "lib.facet.ageBucket.d30": "≤ 30 dagen",
+  "lib.facet.ageBucket.d180": "≤ 180 dagen",
+  "lib.facet.ageBucket.y1": "≤ 1 jaar",
+  "lib.facet.ageBucket.older": "ouder dan 1 jaar",
+  "lib.facet.ageBucket.unknown": "leeftijd onbekend",
+  "lib.facet.trustBucket.t0": "Trust 0",
+  "lib.facet.trustBucket.t1": "Trust 1–39",
+  "lib.facet.trustBucket.t40": "Trust 40–69",
+  "lib.facet.trustBucket.t70": "Trust 70+",
+  "lib.facet.more": "+{{n}} meer",
+  "lib.facet.none": "zonder waarde",
+  "lib.groupBy.label": "Subgroepen",
+  "lib.groupBy.none": "geen",
+  "lib.views.label": "Weergaven",
+  "lib.views.pick": "Opgeslagen weergave laden …",
+  "lib.views.namePlaceholder": "Naam van de weergave",
+  "lib.views.save": "Weergave opslaan",
+  "lib.views.remove": "Weergave verwijderen",
+  "lib.views.localHint": "lokaal in deze browser opgeslagen",
+  "imp.select.deselectLang": "Alle {{lang}} deselecteren · {{n}}",
+  // SCRUM-486 (nacht24 pakket 3): één rustige bevindingsweergave — wat, detectiepad (eerlijk),
+  // beide kanten gelinkt, gegroepeerd per bijdrage.
+  "finding.kind.konflikt": "Conflict",
+  "finding.kind.duplikat": "Duplicaat",
+  "finding.kind.ueberschneidung": "Overlap",
+  "finding.way.ki": "met AI",
+  "finding.way.deterministisch": "zonder AI (deterministisch)",
+  "finding.way.manuell": "handmatig aangemaakt",
+  "finding.versus": "vs",
+  "finding.groupKicker": "Bijdrage",
+  "finding.groupCount": "{{n}} bevinding(en)",
+  // FUNKE (nacht24 pakket 6): impactlus — waardig, geen puntencircus.
+  "funke.sourceAuthor": "uit de kennis van {{name}}",
+  "funke.impact.title": "Mijn impact",
+  "funke.impact.contributions": "Mijn bijdragen",
+  "funke.impact.validated": "waarvan gevalideerd",
+  "funke.impact.cited": "geciteerd in antwoorden",
+  "funke.impact.helpful": "als nuttig gemarkeerd",
+  "funke.impact.hint":
+    "Eerlijke telling uit bestaand bewijs: „geciteerd” telt de leidende antwoordbron — niets wordt geschat of verzonnen.",
+  "funke.gaps.title": "Open kennislacunes",
+  "funke.gaps.count": "{{n}} open",
+  "funke.gaps.answerCta": "In 2 minuten beantwoorden",
+  "funke.gaps.more": "+{{n}} meer open lacunes — volledige lijst onder Risico & lacunes.",
+  "funke.capital.title": "Kenniskapitaal",
+  "funke.capital.secured": "vastgelegde kennisobjecten",
+  "funke.capital.validated": "waarvan gevalideerd",
+  "funke.capital.categories": "beantwoordbare themavelden",
+  "funke.capital.authors": "actieve kennisdragers",
+  "funke.capital.gaps": "open kennislacunes",
+  "funke.capital.hint": "Alleen echte cijfers uit het bestand — geen schattingen.",
   "lib.kicker": "Bibliotheek",
   "lib.export": "Export",
   "lib.exportFormat": "Exportformaat",
@@ -8744,6 +9054,8 @@ const nl: typeof de = {
   "imp.groups.needSelection": "Selecteer minstens één item in het voorbeeld om verder te gaan.",
   "imp.groups.grouping": "De bijdragen worden thematisch gegroepeerd …",
   "imp.groups.retry": "Opnieuw proberen",
+  "imp.groups.willGroupWithoutAi":
+    "Geen AI-model actief — er wordt zonder AI op thema gegroepeerd (deterministisch).",
   "imp.groups.noAi": "Zonder AI gegroepeerd",
   "imp.groups.noAiReason": "Zonder AI gegroepeerd — {{reason}}",
   "imp.groups.reason.confidential": "vertrouwelijke kandidaten — cloud-AI uitgesloten",
@@ -8998,6 +9310,7 @@ const nl: typeof de = {
   "risk.gapNext.capture": "Kennis vastleggen om het hiaat te dichten.",
   "risk.gapNext.done": "Gesloten — afgehandeld.",
   "risk.gapCapture": "Kennis vastleggen",
+  "risk.gapRedacted": "Vertrouwelijk hiaat (vraag verborgen)",
   "lcy.kicker": "Levenscyclus",
   "lcy.banner":
     "„Klopt dit nog?“ — gekoppelde objecten na wijziging aan de installatie controleren.",

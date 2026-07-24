@@ -509,6 +509,7 @@ describe("SCRUM-523 P.3 (WP-A2): repo.delete + audit.record committen/rollbacken
       insert: (ko) => inner.insert(ko),
       findById: (id) => inner.findById(id),
       update: (ko) => inner.update(ko),
+      bumpTrust: (id, step, maxTrust, tx) => inner.bumpTrust(id, step, maxTrust, tx),
       list: (filter) => inner.list(filter),
       // WP-BILD-1g: Suchpfad-Projektion + Caption-Backfill einfach durchreichen.
       listForSearch: (filter) => inner.listForSearch(filter),

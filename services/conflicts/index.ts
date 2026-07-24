@@ -1,7 +1,9 @@
 // Öffentliche API des Moduls conflicts.
 export { ConflictService } from "./src/service";
 export type { ConflictServiceDeps, DryRunConflict } from "./src/service";
-export { InMemoryConflictRepo, type ConflictRepo } from "./src/repo";
+// D-AISTATE PAKET 4 (bens V5, aistate-fix5): IsKoVersionCurrent = Versions-Autorität des
+// versions-konditionalen Inserts (insertIfVersionsCurrent) — der App-Root bindet sie an den KO-Store.
+export { InMemoryConflictRepo, type ConflictRepo, type IsKoVersionCurrent } from "./src/repo";
 export { PgConflictRepo, CONFLICTS_SCHEMA } from "./src/repo-pg";
 export { ConflictError } from "./src/types";
 export type {

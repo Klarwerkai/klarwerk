@@ -150,8 +150,9 @@ describe("WP-D9b GELB-Fix 2: bildreine PPTX importierbar", () => {
     expect(gate).toBeGreaterThan(0);
     // Das Original wird NACH dem Gate gesetzt → ein bildreiches Deck erreicht den Original-Anhang.
     expect(original).toBeGreaterThan(gate);
-    // Nur die KI-Punkte-Extraktion bleibt ohne Text aus.
-    expect(src).toContain("extract.isPending || fileBusy || fileText.trim().length === 0");
+    // Nur die KI-Punkte-Extraktion bleibt ohne Text aus (PAKET 1 D-AISTATE: zusätzlich ohne Modell).
+    expect(src).toContain("fileText.trim().length === 0");
+    expect(src).toContain("!extractAi.available");
     // WP-D11b (GELB c): die Meldungswahl (imagesOnlyNoText/imagesAllDropped) ist PURE nach
     // captureFromFile.imagesOnlyNoticeKey gewandert — die Verdrahtung ruft sie mit der um die
     // Folien gemergten Bild-Bilanz auf; der Key selbst lebt unverändert in der Lib.

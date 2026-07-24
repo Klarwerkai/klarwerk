@@ -41,3 +41,54 @@ export async function impactReport(ko: KoService, audit: AuditService): Promise<
     answerRate: askTotal > 0 ? answeredWithoutGap / askTotal : 0,
   };
 }
+
+// ---- FUNKE F1 (nacht24 Paket 6, SCRUM-477/529): „Meine Wirkung" ------------------------------
+// Pure Ableitung der PERSÖNLICHEN Wirkungs-Zähler ausschließlich aus vorhandenen, berechtigten
+// Daten (eigene KOs + bestehende Audits ask.query / answer.helpful). DSGVO-nüchtern: NUR Zahlen
+// über EIGENE Beiträge — keine Ranglisten, keine fremden Personen, keine Inhalte im Klartext.
+
+export interface ImpactAuditEntry {
+  actor: string;
+  target: string;
+  payload?: Record<string, unknown>;
+}
+
+export interface ImpactKo {
+  id: string;
+  author: string;
+  status: string;
+}
+
+export interface MyImpact {
+  // Eigene (nicht gelöschte) Wissensobjekte und wie viele davon validiert sind.
+  contributions: number;
+  validated: number;
+  // Wie oft eine Antwort mit einem EIGENEN KO als FÜHRENDER Quelle beantwortet wurde. Ehrlich:
+  // das ask.query-Audit trägt nur die führende Quelle (sources[0]) — Mehrquellen-Zitate zählen
+  // hier konservativ EINMAL (nie zu viel, nie erfunden).
+  cited: number;
+  // Wie oft jemand ANDERES ein eigenes KO als hilfreich markiert hat (eigene Klicks zählen nicht).
+  helpfulReceived: number;
+}
+
+export function computeMyImpact(
+  userId: string,
+  kos: readonly ImpactKo[],
+  helpfulAudits: readonly ImpactAuditEntry[],
+  askAudits: readonly ImpactAuditEntry[],
+): MyImpact {
+  const mine = kos.filter((entry) => entry.author === userId);
+  const myIds = new Set(mine.map((entry) => entry.id));
+  const cited = askAudits.filter(
+    (entry) => entry.payload?.answered === true && myIds.has(entry.target),
+  ).length;
+  const helpfulReceived = helpfulAudits.filter(
+    (entry) => entry.actor !== userId && myIds.has(entry.target),
+  ).length;
+  return {
+    contributions: mine.length,
+    validated: mine.filter((entry) => entry.status === "validiert").length,
+    cited,
+    helpfulReceived,
+  };
+}

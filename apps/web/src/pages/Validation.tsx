@@ -1,11 +1,11 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Minus, Pencil, Trash2, X } from "lucide-react";
+import { Check, Lock, Minus, Pencil, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import { useDirectory, useValidationBoard } from "../api/hooks";
+import { useDirectory, useReasonerStatus, useValidationBoard } from "../api/hooks";
 import type { KnowledgeObject, Verdict } from "../api/types";
 import { useSession } from "../app/AuthContext";
 // SCRUM-417: Bearbeiten/Löschen vom Board — gleiche Rollenregel wie Bibliothek/KO-Detail.
@@ -22,6 +22,7 @@ import { ConfidenceBar, KnowledgeTypeTag, KoAuthorLine, StatusPill } from "../co
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
 // WP-SHIP9-B3FIX: Poll-Intervall (geteilt mit Capture) + ehrliches Ausgrauen/Sperren, solange die
 // KI-Prüfung eines Eintrags noch läuft — die Liste bekommt den Übergang pending → done selbst mit.
+import { aiModelUsable } from "../lib/aiAvailability";
 import { AI_CHECK_POLL_MS } from "../lib/aiCheckStatusCard";
 import {
   DEMO_KNOWLEDGE_FILTERS,
@@ -167,6 +168,9 @@ export function Validation(): JSX.Element {
   const query = useValidationBoard();
   const users = useDirectory();
   const { user } = useSession();
+  // PAKET 1.4 + 3.4 (bens V4): ehrlicher Name des Sperr-Hinweises je Modellzustand — „mit KI" nur bei
+  // ECHT nutzbarem Modell (aktiv UND zuletzt erreichbar), nicht bloß konfiguriert. Sperr-Logik unverändert.
+  const aiModelActive = aiModelUsable(useReasonerStatus().data);
   const qc = useQueryClient();
   // WP-SHIP9-B3FIX (Pedi 23.07.): Solange mindestens ein Eintrag noch in KI-Prüfung ist (aiCheck
   // pending), das Board im Hintergrund nachladen — ein ausgegrauter Eintrag wird ohne manuelles
@@ -697,7 +701,7 @@ export function Validation(): JSX.Element {
                   // WP-SHIP9-B3FIX (Pedi 23.07.): läuft die KI-Prüfung noch (aiCheck pending), ist die
                   // Karte reine Anzeige — ausgegraut, Prüf-Aktionen gesperrt, ehrlicher Hinweis. Sie
                   // bleibt sichtbar und zum KO-Detail (Lesen) klickbar; done/failed → normal bedienbar.
-                  const gate = validationAiGate(k.aiCheck);
+                  const gate = validationAiGate(k.aiCheck, aiModelActive);
                   return (
                     <div key={k.id} className="space-y-2">
                       {/* SCRUM-416: ganze Karte klickbar (freie Fläche → KO-Detail, sichtbarer
@@ -735,6 +739,7 @@ export function Validation(): JSX.Element {
                               aiCheck={k.aiCheck}
                               onRetry={() => aiCheckRetry.mutate(k.id)}
                               retryBusy={aiCheckRetry.isPending}
+                              modelActive={aiModelActive}
                             />
                             {/* SCRUM-416: Trust bleibt sichtbar (entscheidungsrelevant) — rückt zu den Badges. */}
                             <span
@@ -952,8 +957,15 @@ export function Validation(): JSX.Element {
                                       active ? "ring-2 ring-current" : ""
                                     }`}
                                   >
+                                    {/* PAKET 3.2 (Pedi 23.07.): im gesperrten Zustand trägt „Freigeben"
+                                        KEIN ✓-Häkchen (das las sich wie „schon freigegeben") — statt
+                                        dessen ein neutrales Schloss. „0 von 3 grün" bleibt die Wahrheit. */}
                                     {d.verdict === "up" ? (
-                                      <Check size={15} />
+                                      gate.locked ? (
+                                        <Lock size={15} />
+                                      ) : (
+                                        <Check size={15} />
+                                      )
                                     ) : d.verdict === "warn" ? (
                                       <Minus size={15} />
                                     ) : (

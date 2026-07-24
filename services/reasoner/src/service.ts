@@ -40,6 +40,7 @@ import type {
   ReasonerLocale,
   ReasonerPolicySource,
   ReasonerProbeResult,
+  ReasonerReachability,
   ReasonerStatus,
   ReasonerTaskChoice,
   ReasonerTaskConfig,
@@ -181,6 +182,22 @@ export class Reasoner {
   // SCRUM-525 P.5 (WP6): persistente KI-Zuordnung (Policy). Ohne Repo In-Memory (Tests/Dev).
   private readonly policyRepo: ReasonerPolicyRepo;
 
+  // PAKET 2 (D-AISTATE, Pedi 23.07.): LEICHTER, GECACHTER Erreichbarkeits-Zustand für die Top-Badges.
+  // Bewusst KEIN Ping pro Request (Kosten/Rate): der Cache lebt REACHABILITY_TTL_MS; publicStatus()
+  // liest NUR den Cache (synchron), und refreshReachabilityIfStale() stößt höchstens einmal je Frist
+  // einen echten Hintergrund-Probe an (feuern-und-vergessen). recordReachability() lässt zusätzlich
+  // echte Task-Ausgänge den Cache auffrischen (schonendste Variante — kein Extra-Netz).
+  // D-AISTATE PAKET 3 (bens V4, aistate-fix3): der Cache ist PRO PROVIDERKANTE (cloud/local) —
+  // vorher galt global „irgendein Modell erreichbar", wodurch eine cloud-gestellte Task bei
+  // unerreichbarer Cloud + erreichbarem Local fälschlich als nutzbar erschien. Die per-Task-Karte
+  // (publicStatus.tasks) wertet jetzt GENAU die Kette der Task gegen die Kanten-Zustände aus.
+  private static readonly REACHABILITY_TTL_MS = 60_000;
+  private readonly reachabilityCache: {
+    cloud: { at: number; reachable: boolean } | null;
+    local: { at: number; reachable: boolean } | null;
+  } = { cloud: null, local: null };
+  private reachabilityProbeInFlight = false;
+
   constructor(
     primary?: ReasonerProvider,
     fallback: ReasonerProvider = new DeterministicProvider(),
@@ -248,7 +265,14 @@ export class Reasoner {
       // SCRUM-502 Round 4 (P1): vertraulich schließt die Cloud aus, ABER der lokale LLM (on-prem, kein
       // externer Egress) darf einspringen — auch bei expliziter cloud/model-Wahl. So degradiert
       // vertraulicher Text nicht unnötig auf „deterministisch", wenn ein lokales Modell verdrahtet ist.
-      if ((choice === "auto" || choice === "local" || confidential) && this.usingSecondary()) {
+      // aistate-fix3 (bens V1): „lokal" nur, wenn der Secondary vertraulichkeits-tauglich ist
+      // (bestätigte On-Prem-Origin, rejectsConfidential()!==true) — ein fremd verdrahteter Endpunkt
+      // fällt bei vertraulichem Text aus der Kette (kein Egress, deterministischer Fallback trägt).
+      if (
+        (choice === "auto" || choice === "local" || confidential) &&
+        this.usingSecondary() &&
+        !(confidential && this.secondary.rejectsConfidential?.() === true)
+      ) {
         chain.push(this.secondary);
       }
     }
@@ -333,6 +357,98 @@ export class Reasoner {
         detail: error instanceof Error ? error.message : String(error),
         at,
       };
+    }
+  }
+
+  // D-AISTATE PAKET 3 (bens V4): Kanten-Zustand aus dem per-Provider-Cache (frisch → letzter echter
+  // Befund; sonst "unverified" — kein Fake-Grau beim Start).
+  private providerReachability(kind: "cloud" | "local"): "unverified" | "active" | "unreachable" {
+    const cache = this.reachabilityCache[kind];
+    if (!cache || Date.now() - cache.at > Reasoner.REACHABILITY_TTL_MS) {
+      return "unverified";
+    }
+    return cache.reachable ? "active" : "unreachable";
+  }
+
+  // PAKET 2 (D-AISTATE): synchroner GLOBALER Erreichbarkeits-Zustand für die Badges — NUR aus dem
+  // Cache, nie ein Ping pro Aufruf. Ohne Modell "none"; irgendeine Kante frisch erreichbar →
+  // "active"; alles Konfigurierte frisch unerreichbar → "unreachable"; sonst "unverified".
+  // (Die per-Task-Nutzbarkeit läuft NICHT hierüber, sondern über taskModelUsable — bens V4.)
+  reachabilityState(): ReasonerReachability {
+    if (!this.usingAnyModel()) {
+      return "none";
+    }
+    const states: ("unverified" | "active" | "unreachable")[] = [];
+    if (this.usingPrimary()) {
+      states.push(this.providerReachability("cloud"));
+    }
+    if (this.usingSecondary()) {
+      states.push(this.providerReachability("local"));
+    }
+    if (states.includes("active")) {
+      return "active";
+    }
+    if (states.includes("unverified")) {
+      return "unverified";
+    }
+    return "unreachable";
+  }
+
+  // Feuern-und-vergessen: probt HÖCHSTENS einmal je Frist echt (keine Kosten pro Request; kein Sturm
+  // bei parallelen Anfragen dank In-Flight-Flag). Der Aufrufer (Status-Route) wartet NICHT — die
+  // Antwort trägt den aktuellen Cache; der frische Befund greift ab dem nächsten Abruf.
+  refreshReachabilityIfStale(): void {
+    if (!this.usingAnyModel() || this.reachabilityProbeInFlight) {
+      return;
+    }
+    const isFresh = (kind: "cloud" | "local"): boolean => {
+      const cache = this.reachabilityCache[kind];
+      return cache !== null && Date.now() - cache.at <= Reasoner.REACHABILITY_TTL_MS;
+    };
+    const cloudStale = this.usingPrimary() && !isFresh("cloud");
+    const localStale = this.usingSecondary() && !isFresh("local");
+    if (!cloudStale && !localStale) {
+      return;
+    }
+    this.reachabilityProbeInFlight = true;
+    void this.runReachabilityProbe().finally(() => {
+      this.reachabilityProbeInFlight = false;
+    });
+  }
+
+  // Echte Mini-Aufrufe (probe/probeLocal) — D-AISTATE PAKET 3 (bens V4): JEDE konfigurierte Kante
+  // wird einzeln geprobt und einzeln gecacht (vorher: „irgendein Modell erreichbar" global).
+  private async runReachabilityProbe(): Promise<void> {
+    if (this.usingPrimary()) {
+      try {
+        this.recordReachability((await this.probe()).ok, "cloud");
+      } catch {
+        this.recordReachability(false, "cloud");
+      }
+    }
+    if (this.usingSecondary()) {
+      try {
+        this.recordReachability((await this.probeLocal()).ok, "local");
+      } catch {
+        this.recordReachability(false, "local");
+      }
+    }
+  }
+
+  // Auffrischen aus einem beliebigen echten Erreichbarkeits-Befund (Probe ODER realer Task-Ausgang).
+  // Ohne Kanten-Angabe (Bestands-Aufrufer) wird der Befund auf ALLE konfigurierten Kanten gelegt —
+  // das alte globale Verhalten bleibt für diese Aufrufer erhalten.
+  recordReachability(reachable: boolean, provider?: "cloud" | "local"): void {
+    const stamp = { at: Date.now(), reachable };
+    if (provider) {
+      this.reachabilityCache[provider] = stamp;
+      return;
+    }
+    if (this.usingPrimary()) {
+      this.reachabilityCache.cloud = stamp;
+    }
+    if (this.usingSecondary()) {
+      this.reachabilityCache.local = stamp;
     }
   }
 
@@ -582,11 +698,45 @@ export class Reasoner {
   // Infrastruktur-Detail und gehoert ausschliesslich in die ECHTE Admin-Sicht (/api/reasoner/
   // config, users.manage — WP-VIP2-GATE-2 Fix 3/4). mode nennt die STUFE (cloud/local/deterministic),
   // nie das Produkt.
-  publicStatus(): { active: boolean; mode: "cloud" | "local" | "deterministic" } {
+  // PAKET 2 (D-AISTATE, Pedi 23.07.): zusätzlich der ehrliche ERREICHBARKEITS-Zustand (reachable) —
+  // „active" nur, wenn ein Modell zuletzt WIRKLICH geantwortet hat. `active`/`mode` bleiben die
+  // Konfigurations-Wahrheit (rückwärtskompatibel); die Badges nutzen `reachable` für die Farbe.
+  // D-AISTATE PAKET 3 (bens V4, aistate-fix3): Nutzbarkeit EINER Aufgabe nach ihrer TATSÄCHLICH
+  // gewählten Providerkette UND deren Kanten-Erreichbarkeit — nicht mehr „Policy-Slot da" + global
+  // „irgendein Modell erreichbar". true nur, wenn IRGENDEIN Modell-Glied der Task-Kette nicht zuletzt
+  // unerreichbar war ("unverified" zählt als nutzbar — kein Fake-Grau beim Start; die Kette fällt zur
+  // Laufzeit ohnehin durch erreichbare Glieder). Cloud-unerreichbar + Local-erreichbar + Task=cloud ⇒
+  // false (die Kette dieser Task enthält NUR die Cloud). Bewusst nur ein Boolean — kein Provider-/
+  // Modellname (Sicherheitsvertrag vip2-gate).
+  private taskModelUsable(task: ModelRunTask): boolean {
+    const chainModels = this.providerChain(task).filter((p) => p !== this.fallback);
+    if (chainModels.length === 0) {
+      return false; // Aufgabe bewusst deterministisch gestellt bzw. kein Modell verdrahtet
+    }
+    return chainModels.some(
+      (p) => this.providerReachability(p === this.primary ? "cloud" : "local") !== "unreachable",
+    );
+  }
+
+  // D-AISTATE PAKET 3 (bens V4, 23.07.): zusätzlich eine ABSTRAKTE per-Task-Nutzbarkeitskarte
+  // `tasks: { [task]: boolean }` — NUR true/false je Aufgabe, KEIN Provider-/Modellname (die bleiben
+  // der Admin-Sicht vorbehalten, vip2-gate). true = für die Aufgabe ist ein echtes Modell (cloud|local)
+  // in der Kette UND dessen Kante ist nicht zuletzt unerreichbar (bens V4: Erreichbarkeit PRO TASK
+  // nach der echten Providerkette, s. taskModelUsable); false = deterministisch bzw. die für die
+  // Aufgabe zulässigen Provider sind unerreichbar. So kann der öffentliche Hook die LLM-Knöpfe je
+  // Aufgabe ehrlich ausgrauen, ohne die admin-only Config zu ziehen.
+  publicStatus(): {
+    active: boolean;
+    mode: "cloud" | "local" | "deterministic";
+    reachable: ReasonerReachability;
+    tasks: Record<string, boolean>;
+  } {
     const active = this.usingAnyModel();
     return {
       active,
       mode: this.usingPrimary() ? "cloud" : this.usingSecondary() ? "local" : "deterministic",
+      reachable: this.reachabilityState(),
+      tasks: Object.fromEntries(REASONER_TASKS.map((task) => [task, this.taskModelUsable(task)])),
     };
   }
 
@@ -1005,6 +1155,50 @@ export class Reasoner {
     return classifyModelFailure(err).failureClass === "timeout" ? "model-timeout" : "model-error";
   }
 
+  // D-AISTATE PAKET 1 (bens V1, 23.07.): vertraulichkeitsbewusste Provider-Auswahl der Judge-Kette.
+  // Ersetzt die frühere direkte, GATE-LOSE Schleife über [primary, secondary] (bens Befund 3.3). Die
+  // Regel ist EXAKT die des zentralen `providerChain`-Chokepoints (SCRUM-502): vertraulich ⇒ die Cloud
+  // (primary, externer Egress) fällt aus der Kette. aistate-fix3 (bens V1, Sicherheitsblocker):
+  // auch der Secondary ist bei vertraulichen Paaren nur zulässig, wenn er vertraulichkeits-tauglich
+  // ist (rejectsConfidential()!==true ⇔ bestätigte On-Prem-Origin, s. createCappedLocalClientFromEnv)
+  // — ein fremd verdrahteter „lokaler" Endpunkt fällt VOR jedem Aufruf/Fetch aus der Kette.
+  // `confidentialExcluded` hält fest, ob ein vorhandenes Modell GENAU an der Vertraulichkeit
+  // scheiterte — dann ist der ehrliche Ausgang "confidential", nicht "no-model". Der deterministische
+  // Fallback ist KEIN Judge (er urteilt nicht inhaltlich), daher taucht er hier nicht auf.
+  // `confidential` ist die restriktivste Stufe des PAARES — vom Aufrufer gesetzt, hier nicht absenkbar.
+  private judgeProviders(confidential: boolean): {
+    providers: ReasonerProvider[];
+    confidentialExcluded: boolean;
+  } {
+    const providers: ReasonerProvider[] = [];
+    let confidentialExcluded = false;
+    if (this.usingPrimary()) {
+      if (confidential) {
+        confidentialExcluded = true;
+      } else {
+        providers.push(this.primary);
+      }
+    }
+    if (this.usingSecondary()) {
+      if (confidential && this.secondary.rejectsConfidential?.() === true) {
+        confidentialExcluded = true;
+      } else {
+        providers.push(this.secondary);
+      }
+    }
+    return { providers, confidentialExcluded };
+  }
+
+  // Ehrlicher Ausgang, wenn KEIN Judge-Provider befragt werden konnte: existiert ein Modell und
+  // wurde es NUR wegen der Vertraulichkeit ausgeschlossen (Cloud ODER nicht-bestätigter Secondary),
+  // ist das "confidential" — NICHT "no-model" (das Modell existiert, es darf den Text nur nicht sehen).
+  private static noJudgeFailure(
+    confidential: boolean,
+    confidentialExcluded: boolean,
+  ): JudgeFailure {
+    return confidential && confidentialExcluded ? "confidential" : "no-model";
+  }
+
   // Berater-Konzept 04.07. (Stufe 2, kon-v1): „Konfliktprüfung" — urteilt inhaltlich, ob zwei
   // Kerntexte einander widersprechen/doppeln/überholen (Cloud → lokal).
   // WP-SHIP8-CLOSE (bens F1): Ergebnis-Vertrag mit unterscheidbarem AUSGANG. Vorher wurden
@@ -1015,20 +1209,25 @@ export class Reasoner {
   //  - Modell antwortete, aber unverwertbar (Provider parst zu null) → model-error
   //    (ein echtes „kein_konflikt" ist ein NICHT-null-verdict — nie eine Verwechslung).
   // Der erste Fehler der Kette benennt die Ursache; ein späterer Provider-ERFOLG gewinnt weiter.
+  // D-AISTATE PAKET 1 (bens V1): `confidential` = restriktivste Stufe des Paares. Vertraulich ⇒ die
+  // Cloud fällt über judgeProviders aus der Kette (kein Egress); nur ein lokales Modell darf urteilen.
   async judgeConflictOutcome(
     coreA: string,
     coreB: string,
     locale: ReasonerLocale = "de",
+    confidential = false,
   ): Promise<ConflictJudgeOutcome> {
     let failure: JudgeFailure | undefined;
     let attempted = false;
-    for (const provider of [this.primary, this.secondary]) {
-      if (provider === this.fallback || !provider.isAvailable() || !provider.judgeConflict) {
+    const { providers, confidentialExcluded } = this.judgeProviders(confidential);
+    for (const provider of providers) {
+      if (!provider.judgeConflict) {
         continue;
       }
       attempted = true;
       try {
-        const result = await provider.judgeConflict(coreA, coreB, locale);
+        // aistate-fix3 (bens V1): das ECHTE Paar-Bit reist bis zum ModelClient.complete-Wächter.
+        const result = await provider.judgeConflict(coreA, coreB, locale, confidential);
         if (result) {
           return { verdict: result };
         }
@@ -1037,43 +1236,59 @@ export class Reasoner {
         if (err instanceof ModelCapacityError) {
           throw err; // Backpressure durchreichen (→ 503), nicht als Modellfehler still schlucken.
         }
+        // aistate-fix3 (bens V1, Fail-safe): der zentrale Egress-Wächter hat vertraulich+nicht-lokal
+        // VOR dem Fetch abgelehnt — das ist KEIN Modellfehler, sondern der ehrliche Ausgang
+        // "confidential" (kein Egress, kein done).
+        if (err instanceof Error && err.name === "ConfidentialEgressError") {
+          failure = failure ?? "confidential";
+          continue;
+        }
         failure = failure ?? Reasoner.judgeFailureOf(err);
         // nächstes Modell versuchen
       }
     }
     if (!attempted) {
-      return { verdict: null, failure: "no-model" };
+      return {
+        verdict: null,
+        failure: Reasoner.noJudgeFailure(confidential, confidentialExcluded),
+      };
     }
     return { verdict: null, failure: failure ?? "model-error" };
   }
 
   // Bestandsfassade (Konsole/check-text/knowledge-check binden hierüber — geprüft, unverändert):
-  // exakt das alte Verhalten, null in allen Nicht-Urteil-Fällen.
+  // exakt das alte Verhalten, null in allen Nicht-Urteil-Fällen. `confidential` optional (Default
+  // false = Bestandsverhalten); die Detection reicht die Paar-Vertraulichkeit durch.
   async judgeConflict(
     coreA: string,
     coreB: string,
     locale: ReasonerLocale = "de",
+    confidential = false,
   ): Promise<ConflictJudgeResult | null> {
-    return (await this.judgeConflictOutcome(coreA, coreB, locale)).verdict;
+    return (await this.judgeConflictOutcome(coreA, coreB, locale, confidential)).verdict;
   }
 
   // Berater-Konzept Duplikate 04.07. (Stufe D2, dup-v1): „Duplikatprüfung" — Überschneidungs-Profil
   // zweier Kerntexte (Cloud → lokal). WP-SHIP8-CLOSE (bens F1): derselbe Ergebnis-Vertrag wie bei
   // judgeConflictOutcome — der Ausgang (Urteil vs. Fehlerursache vs. kein Modell) ist unterscheidbar.
+  // D-AISTATE PAKET 1 (bens V1): vertraulichkeitsbewusst wie judgeConflictOutcome.
   async judgeDuplicateOutcome(
     coreA: string,
     coreB: string,
     locale: ReasonerLocale = "de",
+    confidential = false,
   ): Promise<DuplicateJudgeOutcome> {
     let failure: JudgeFailure | undefined;
     let attempted = false;
-    for (const provider of [this.primary, this.secondary]) {
-      if (provider === this.fallback || !provider.isAvailable() || !provider.judgeDuplicate) {
+    const { providers, confidentialExcluded } = this.judgeProviders(confidential);
+    for (const provider of providers) {
+      if (!provider.judgeDuplicate) {
         continue;
       }
       attempted = true;
       try {
-        const result = await provider.judgeDuplicate(coreA, coreB, locale);
+        // aistate-fix3 (bens V1): das ECHTE Paar-Bit reist bis zum ModelClient.complete-Wächter.
+        const result = await provider.judgeDuplicate(coreA, coreB, locale, confidential);
         if (result) {
           return { verdict: result };
         }
@@ -1082,12 +1297,20 @@ export class Reasoner {
         if (err instanceof ModelCapacityError) {
           throw err; // Backpressure durchreichen (→ 503), nicht als Modellfehler still schlucken.
         }
+        // aistate-fix3 (bens V1, Fail-safe): Egress-Wächter-Ablehnung ⇒ ehrlich "confidential".
+        if (err instanceof Error && err.name === "ConfidentialEgressError") {
+          failure = failure ?? "confidential";
+          continue;
+        }
         failure = failure ?? Reasoner.judgeFailureOf(err);
         // nächstes Modell versuchen
       }
     }
     if (!attempted) {
-      return { verdict: null, failure: "no-model" };
+      return {
+        verdict: null,
+        failure: Reasoner.noJudgeFailure(confidential, confidentialExcluded),
+      };
     }
     return { verdict: null, failure: failure ?? "model-error" };
   }
@@ -1097,8 +1320,9 @@ export class Reasoner {
     coreA: string,
     coreB: string,
     locale: ReasonerLocale = "de",
+    confidential = false,
   ): Promise<DuplicateJudgeResult | null> {
-    return (await this.judgeDuplicateOutcome(coreA, coreB, locale)).verdict;
+    return (await this.judgeDuplicateOutcome(coreA, coreB, locale, confidential)).verdict;
   }
 
   // SCRUM-167: select bleibt synchron (reines Keyword-Ranking, kein Modell-/Netzaufruf).

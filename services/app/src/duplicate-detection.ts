@@ -12,15 +12,11 @@ import {
   coreText,
 } from "../../conflicts";
 import type { EmbeddingProvider, EmbeddingStore } from "../../embedding";
-import {
-  type KnowledgeObject,
-  type KoService,
-  dropConfidential,
-  isConfidential,
-} from "../../knowledge-object";
+import { type KnowledgeObject, type KoService, isConfidential } from "../../knowledge-object";
 import type { Reasoner } from "../../reasoner";
 
 // K0-2: Erkennungs-Gegenstand ist der Kerntext (title+statement+conditions+measures), nicht bodyHtml.
+// D-AISTATE PAKET 1 (bens V1): Vertraulichkeits-MARKE (Boolean) + Inhaltsversion (PAKET 4/V5) reisen mit.
 function toDetectSubject(ko: KnowledgeObject): DetectSubject {
   return {
     refId: ko.id,
@@ -31,11 +27,15 @@ function toDetectSubject(ko: KnowledgeObject): DetectSubject {
     category: ko.category,
     tags: ko.tags,
     asset: ko.asset,
+    confidential: isConfidential(ko.confidentiality),
+    ...(ko.version !== undefined ? { version: ko.version } : {}),
   };
 }
 
-// Weg 3 (Prefilter, hinter Feature-Flag): ersetzt den „jeder-gegen-jeden"-Pool durch die semantisch
-// nächsten Top-K aus dem Vektor-Store. Optional — fehlt es, gilt das heutige Verhalten (Voll-Pool).
+// Weg 3 (Prefilter, hinter Feature-Flag): Vektor-Store der Duplikat-Indizierung. Die Erzeugung/Ablage
+// (indexKoForDuplicatePrefilter) bleibt bestehen; das VERENGEN des Erkennungs-Pools durch den Prefilter
+// ist mit bens V2.2 (D-AISTATE) ENTFALLEN — die deterministische Deckungsprüfung darf nie beschnitten
+// werden und ein Cloud-Embedder darf vertraulichen Subjekt-Text nie berühren.
 export interface SemanticPrefilter {
   embedder: EmbeddingProvider;
   store: EmbeddingStore;
@@ -48,44 +48,9 @@ export interface DuplicateDetectionDeps {
   reasoner: Reasoner;
   // Pedi 04.07.: einstellbare Anzeige-Schwelle (Admin). Ohne gesetzten Wert gilt der Startwert 0,5.
   settings: OverlapSettingsRepo;
-  // Weg 3: nur gesetzt, wenn KLARWERK_DUP_PREFILTER aktiv ist. Sonst undefined → Voll-Pool (Default).
+  // Weg 3: nur für die Indizierung (indexKoForDuplicatePrefilter) relevant; die Erkennung nutzt IMMER
+  // den Voll-Pool (bens V2.2). Feld bleibt für Rückwärtskompatibilität der Verdrahtung.
   semanticPrefilter?: SemanticPrefilter | undefined;
-}
-
-// Wählt den Kandidaten-Pool. Default (kein Prefilter) = heutiges „jeder gegen jeden". Mit Prefilter:
-// die semantisch nächsten Top-K aus dem Store. Voll-Pool-Fallback bei JEDEM Zweifel — leerer Store
-// (noch nicht befüllt), leeres Ergebnis oder Fehler → voller Pool. So schwächt der Prefilter die
-// Erkennung nie, er verengt sie nur, wenn er verlässlich engere Kandidaten liefert.
-async function selectPool(
-  subject: DetectSubject,
-  candidates: DetectSubject[],
-  excludeId: string,
-  prefilter: SemanticPrefilter | undefined,
-): Promise<DetectSubject[]> {
-  if (!prefilter) {
-    return candidates;
-  }
-  try {
-    const { vectors, embeddingVersion } = await prefilter.embedder.embed([coreText(subject)]);
-    const query = vectors[0];
-    if (!query) {
-      return candidates;
-    }
-    const hits = await prefilter.store.nearest(query, embeddingVersion, prefilter.topK, excludeId);
-    const ids = new Set(hits.map((h) => h.id));
-    const narrowed = candidates.filter((c) => ids.has(c.refId));
-    // Leerer semantischer Pool (Store in dieser Ausbaustufe noch nicht befüllt) → Voll-Pool-Fallback.
-    return narrowed.length > 0 ? narrowed : candidates;
-  } catch (err) {
-    // SCRUM-498 B2: Embed-Backpressure durchreichen (nicht als Voll-Pool-Fallback verschleiern). Der
-    // Aufrufer detectDuplicatesForKo ist best-effort und fängt ihn in seinem EIGENEN catch → kein 503
-    // dort, aber auch keine still degradierte Erkennung unter Last. Namensbasiert (gleiche Präzedenz).
-    if (err instanceof Error && err.name === "ModelCapacityError") {
-      throw err;
-    }
-    // Echte Embedding-/Store-Fehler → Voll-Pool-Fallback (Erkennung bleibt best-effort und vollständig).
-    return candidates;
-  }
 }
 
 // Prüft den frisch eingereichten Beitrag gegen den vorhandenen Bestand und legt erkannte
@@ -101,24 +66,22 @@ export async function detectDuplicatesForKo(
 ): Promise<void> {
   try {
     const subject = await deps.ko.get(koId);
-    // SCRUM-502: ein vertrauliches Subjekt gibt seinen coreText nie an den Modell-Judge → Detection
-    // entfällt (wie bei Demo-Beiträgen). Der Subjekt-Text ist selbst ein externer Egress.
-    if (!subject || subject.demoSeed || isConfidential(subject.confidentiality)) {
+    // Demo-Beiträge bleiben außen vor (K0-3). Ein VERTRAULICHES Subjekt überspringt die Erkennung
+    // NICHT mehr (bens V1): die (lokale, egress-freie) deterministische Deckungsprüfung läuft IMMER,
+    // auch für vertrauliche Subjekte und gemischte Paare.
+    if (!subject || subject.demoSeed) {
       return;
     }
     const subjectSubject = toDetectSubject(subject);
-    // SCRUM-502: vertrauliche KOs raus aus dem Judge-Pool (toDetectSubject verwirft confidentiality →
-    // hier auf dem KnowledgeObject filtern, bevor die Kerntext-Subjekte entstehen).
-    const candidates = dropConfidential(await deps.ko.list())
+    // D-AISTATE PAKET 1+2 (bens V1/V2.2): der VOLLE Bestand ist der Pool — vertrauliche Kandidaten
+    // bleiben drin (gemischte Paare werden deterministisch verglichen), ihre Vertraulichkeits-MARKE
+    // hält die Cloud draußen. Der semantische Prefilter (Cloud-Embedder!) wird hier NICHT mehr zum
+    // VERENGEN des Pools genutzt: er dürfte die deterministische Deckungsprüfung nie beschneiden und
+    // für vertrauliche Subjekte nie den Embedder anfragen. Die Indizierung (indexKoForDuplicatePrefilter)
+    // bleibt für andere Pfade bestehen; die VIP-Bestandsgröße trägt die Voll-Pool-Prüfung locker.
+    const pool = (await deps.ko.list())
       .filter((k) => k.id !== koId && !k.demoSeed)
       .map(toDetectSubject);
-    if (candidates.length === 0) {
-      return;
-    }
-    // Pedi 04.07.: „jeder gegen jeden" ist der Default-Pool. Weg 3 (hinter Feature-Flag): der Prefilter
-    // verengt ihn auf die semantisch nächsten Top-K; die Admin-Schwelle entscheidet unverändert, ab
-    // welcher KI-Wahrscheinlichkeit ein Treffer angezeigt wird.
-    const pool = await selectPool(subjectSubject, candidates, koId, deps.semanticPrefilter);
     if (pool.length === 0) {
       return;
     }
@@ -127,8 +90,12 @@ export async function detectDuplicatesForKo(
     await deps.overlaps.detectForSubject(
       subjectSubject,
       pool,
-      (a, b) => deps.reasoner.judgeDuplicate(a, b),
-      { minConfidence },
+      (a, b, confidential) => deps.reasoner.judgeDuplicate(a, b, "de", confidential),
+      {
+        minConfidence,
+        // bens V5: Stale-Schreibschutz — vor dem Persistieren beide gebundenen Versionen prüfen.
+        isCurrent: async (id, version) => (await deps.ko.get(id))?.version === version,
+      },
     );
   } catch (err) {
     // Erkennung ist best-effort — Fehler werden bewusst geschluckt, das Einreichen bleibt erfolgreich.

@@ -148,3 +148,55 @@ describe("buildNotifications", () => {
     expect(items[0]?.title).toBe("Zwei Beiträge überschneiden sich stark.");
   });
 });
+
+// FUNKE-FIX3 P0 (bens Blocker B): der Feed erhält NUR redigierte Gap-Sichten aus dem zentralen
+// Sichtbarkeitsvertrag (gap-visibility) — bei redacted trägt der Eintrag NIE einen Fragetext.
+describe("FUNKE-FIX3 P0: Gap-Einträge aus redigierten Sichten (kein Fragetext bei redacted)", () => {
+  it("redigierte Sicht → leerer Titel + redacted-Marker; berechtigte Sicht → Fragetext", () => {
+    const items = buildNotifications({
+      conflicts: [],
+      gaps: [
+        {
+          id: "g1",
+          question: "",
+          status: "offen",
+          assignee: null,
+          priority: "mittel",
+          createdAt: "2026-07-02T00:00:00Z",
+          redacted: true,
+        },
+        {
+          id: "g2",
+          question: "Wie entlüfte ich Presse P2?",
+          status: "offen",
+          assignee: "vera",
+          priority: "hoch",
+          createdAt: "2026-07-01T00:00:00Z",
+        },
+      ],
+    });
+    expect(items.map((i) => i.id)).toEqual(["gap-g1", "gap-g2"]);
+    expect(items[0]).toMatchObject({ kind: "gap", title: "", redacted: true });
+    expect(items[1]).toMatchObject({ kind: "gap", title: "Wie entlüfte ich Presse P2?" });
+    expect(items[1]?.redacted).toBeUndefined();
+  });
+
+  it("fail-closed: trägt eine redigierte Sicht vertragswidrig doch einen Fragetext, wird er NICHT Titel", () => {
+    const items = buildNotifications({
+      conflicts: [],
+      gaps: [
+        {
+          id: "g3",
+          question: "Vertraulicher Entwurf?",
+          status: "offen",
+          assignee: null,
+          priority: "niedrig",
+          createdAt: "2026-07-03T00:00:00Z",
+          redacted: true,
+        },
+      ],
+    });
+    expect(items[0]?.title).toBe("");
+    expect(JSON.stringify(items)).not.toContain("Vertraulicher Entwurf?");
+  });
+});

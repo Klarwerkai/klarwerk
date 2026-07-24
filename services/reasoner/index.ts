@@ -68,6 +68,9 @@ export {
   createCappedCloudClientFromEnv,
   // SCRUM-424: eigener lokaler LLM (OpenAI-kompatibel, z. B. vLLM/Qwen) — gecappt, on-prem.
   createCappedLocalClientFromEnv,
+  // D-AISTATE PAKET 1 (bens V1, aistate-fix3): technische On-Prem-Begrenzung der „lokalen" URL —
+  // nur Loopback bzw. explizit freigegebene private Origins gelten als vertraulichkeits-tauglich.
+  isConfirmedLocalOrigin,
 } from "./src/model-client";
 // WP-D10 (Fix 3): typisierte Modellfehler + Klassifizierung (timeout|http|network|parse) — nur
 // Metadaten (Status/Dauer), keine Credentials, kein Prompt-/Antwortinhalt.

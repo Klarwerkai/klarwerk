@@ -52,6 +52,10 @@ export const IMPORT_GROUPS_TEXT = {
   // getrennt von „bereits importiert") — Badge am Kandidaten + eigene Bilanz-Zeile.
   hintQueued: "imp.groups.hintQueued",
   bilanzSkippedQueued: "imp.groups.bilanzSkippedQueued",
+  // PAKET 1 (D-AISTATE, Pedi 23.07.): ehrlicher VOR-Hinweis am Gruppieren-Knopf, wenn kein Modell
+  // nutzbar ist. Die deterministische Themen-Gruppierung bleibt bewusst NUTZBAR (Kernablauf) — der
+  // Knopf wird NICHT ausgegraut; er kündigt nur ehrlich an, dass ohne KI (nach Themen) gruppiert wird.
+  willGroupWithoutAi: "imp.groups.willGroupWithoutAi",
 } as const;
 
 export interface GroupedCandidate {

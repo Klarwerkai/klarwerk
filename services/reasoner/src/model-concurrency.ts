@@ -167,6 +167,10 @@ export function cappedModelClient(
   const innerVision = inner.completeVision?.bind(inner);
   return {
     name: inner.name,
+    // D-AISTATE PAKET 1 (bens V1, aistate-fix3): die Egress-Politik ist am gewrappten Client SICHTBAR —
+    // der Reasoner schließt darüber einen vertraulichkeits-untauglichen Provider (Cloud bzw. „lokal"
+    // ohne bestätigte On-Prem-Origin) bei vertraulichen Paaren VOR jedem Aufruf aus der Kette aus.
+    rejectsConfidential: opts.rejectsConfidential,
     complete: (system: string, user: string, confidential: boolean, maxTokens?: number) => {
       if (opts.rejectsConfidential && confidential) {
         return Promise.reject(new ConfidentialEgressError());

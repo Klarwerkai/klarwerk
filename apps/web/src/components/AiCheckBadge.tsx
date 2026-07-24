@@ -6,13 +6,21 @@
 import { Clock } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { KnowledgeObject } from "../api/types";
-import { aiCheckFailureReasonKey } from "../lib/aiCheckStatusCard";
+import {
+  aiCheckFailureReasonKey,
+  aiCheckPendingHintKey,
+  aiCheckPendingLabelKey,
+} from "../lib/aiCheckStatusCard";
 
 export interface AiCheckBadgeProps {
   aiCheck: KnowledgeObject["aiCheck"];
   // Reiht die Pruefung neu ein (POST /api/kos/:id/ai-check) — nur im failed-Zustand sichtbar.
   onRetry: () => void;
   retryBusy?: boolean;
+  // PAKET 1.4 (D-AISTATE): ehrlicher Name je Modellzustand — „(mit KI)" nur bei nutzbarem Modell.
+  // Als PROP (nicht Hook), damit das Badge ohne QueryClient-Provider isoliert testbar bleibt; der
+  // Eltern-Kontext (Validierung) reicht den globalen Modellzustand ein. Default false = no-KI-Text.
+  modelActive?: boolean;
 }
 
 // WP-SHIP9-S1 (Pedis B3): die Ursache→Key-Abbildung lebt jetzt in der lib (aiCheckStatusCard) —
@@ -24,6 +32,7 @@ export function AiCheckBadge({
   aiCheck,
   onRetry,
   retryBusy,
+  modelActive = false,
 }: AiCheckBadgeProps): JSX.Element | null {
   const { t } = useTranslation();
   if (!aiCheck || aiCheck.status === "done") {
@@ -32,11 +41,11 @@ export function AiCheckBadge({
   if (aiCheck.status === "pending") {
     return (
       <span
-        title={t("val.aiCheck.pendingHint")}
+        title={t(aiCheckPendingHintKey(modelActive))}
         className="inline-flex items-center gap-1 rounded-pill bg-page px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted"
       >
         <Clock className="h-3 w-3 animate-pulse" aria-hidden="true" />
-        {t("val.aiCheck.pending")}
+        {t(aiCheckPendingLabelKey(modelActive))}
       </span>
     );
   }

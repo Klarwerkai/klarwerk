@@ -10,6 +10,7 @@ import type { KnowledgeObject } from "../../apps/web/src/api/types";
 import i18n from "../../apps/web/src/i18n";
 import {
   VALIDATION_AI_LOCK_NOTE_KEY,
+  VALIDATION_AI_LOCK_NOTE_KEY_AI,
   boardHasPendingAiCheck,
   validationAiGate,
 } from "../../apps/web/src/lib/validationAiGate";
@@ -27,6 +28,20 @@ describe("WP-SHIP9-B3FIX: validationAiGate (pure) — pending sperrt, alles ande
       locked: true,
       noteKey: VALIDATION_AI_LOCK_NOTE_KEY,
     });
+  });
+
+  // PAKET 1.4 (D-AISTATE, Pedi 23.07.): ehrlicher Name je Modellzustand — die Sperr-LOGIK bleibt gleich.
+  it("pending OHNE Modell nutzt den no-KI-Text; pending MIT Modell den mit-KI-Text", () => {
+    expect(validationAiGate(PENDING, false)).toEqual({
+      locked: true,
+      noteKey: VALIDATION_AI_LOCK_NOTE_KEY,
+    });
+    expect(validationAiGate(PENDING, true)).toEqual({
+      locked: true,
+      noteKey: VALIDATION_AI_LOCK_NOTE_KEY_AI,
+    });
+    // done bleibt ungesperrt, unabhängig vom Modellzustand.
+    expect(validationAiGate(DONE, true)).toEqual({ locked: false });
   });
 
   it("done → NICHT gesperrt (Eintrag wird normal aktiv)", () => {
@@ -94,7 +109,8 @@ describe("WP-SHIP9-B3FIX: die Validierungs-LISTE nutzt Gate + Polling (Source-Pi
   const source = readFileSync(resolve(process.cwd(), "apps/web/src/pages/Validation.tsx"), "utf8");
 
   it("graut pending-Einträge aus und sperrt die Prüf-Aktionen", () => {
-    expect(source).toContain("validationAiGate(k.aiCheck)");
+    // PAKET 1.4: die Liste reicht den Modellzustand ein (ehrlicher Name), Sperr-Logik unverändert.
+    expect(source).toContain("validationAiGate(k.aiCheck, aiModelActive)");
     // Ausgrauen der Karte + Sperrhinweis.
     expect(source).toContain('gate.locked ? "opacity-60"');
     expect(source).toContain("t(gate.noteKey)");

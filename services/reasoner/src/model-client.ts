@@ -327,12 +327,59 @@ export function createCappedCloudClientFromEnv(
   return raw ? cappedModelClient(raw, { rejectsConfidential: true }) : undefined;
 }
 
+// D-AISTATE PAKET 1 (bens V1, aistate-fix3): „lokal" ist TECHNISCH begrenzt, nicht nur eine
+// ENV-Konvention. Als On-Prem bestätigt gilt eine KLARWERK_LOCAL_LLM_URL nur, wenn ihr Ziel
+//  (a) eine Loopback-Adresse ist (localhost, 127.0.0.0/8, ::1) ODER
+//  (b) ihre Origin EXPLIZIT über KLARWERK_LOCAL_LLM_ALLOWED_ORIGINS (kommagetrennte Origins,
+//      z. B. "http://10.0.0.5:8000") als private On-Prem-Origin freigegeben wurde.
+// Alles andere (z. B. https://fremder-host.example/v1) wird wie ein externer Endpunkt behandelt:
+// der Wrapper unten bekommt rejectsConfidential=true — vertraulicher Paartext wird VOR jedem Fetch
+// am zentralen Wächter (cappedModelClient) abgelehnt. Nicht parsebare URLs gelten fail-safe als
+// NICHT lokal.
+export function isConfirmedLocalOrigin(baseUrl: string, allowedOrigins?: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    return false;
+  }
+  const host = url.hostname.toLowerCase();
+  const loopback =
+    host === "localhost" ||
+    host === "::1" ||
+    host === "[::1]" ||
+    /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
+  if (loopback) {
+    return true;
+  }
+  return (allowedOrigins ?? "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+    .some((entry) => {
+      try {
+        return new URL(entry).origin === url.origin;
+      } catch {
+        return false;
+      }
+    });
+}
+
 // SCRUM-502 R8: analog für den eigenen lokalen LLM (on-prem, kein externer Egress). Gecappt (globaler
-// In-Flight-Cap), aber rejectsConfidential=false — vertrauliche Inhalte bleiben bedient. Der rohe
-// openAiCompatibleClient bleibt modul-intern.
+// In-Flight-Cap). D-AISTATE PAKET 1 (bens V1, aistate-fix3): rejectsConfidential ist NICHT mehr blind
+// false — nur eine als On-Prem BESTÄTIGTE Origin (Loopback bzw. explizit freigegeben, s.
+// isConfirmedLocalOrigin) darf vertrauliche Inhalte bedienen. Ein fremd verdrahteter „lokaler"
+// Endpunkt wird am zentralen Wächter fail-safe abgelehnt (kein Egress vertraulichen Paartexts).
 export function createCappedLocalClientFromEnv(
   env: Record<string, string | undefined> = process.env,
 ): ModelClient | undefined {
   const raw = createLocalClientFromEnv(env);
-  return raw ? cappedModelClient(raw, { rejectsConfidential: false }) : undefined;
+  if (!raw) {
+    return undefined;
+  }
+  const confirmedLocal = isConfirmedLocalOrigin(
+    env.KLARWERK_LOCAL_LLM_URL ?? "",
+    env.KLARWERK_LOCAL_LLM_ALLOWED_ORIGINS,
+  );
+  return cappedModelClient(raw, { rejectsConfidential: !confirmedLocal });
 }

@@ -17,6 +17,8 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
         apply: vi.fn(),
       },
     },
+    // PAKET 1 (D-AISTATE): ImportSelect fragt jetzt die globale KI-Verfügbarkeit ab (Task „group").
+    reasoner: { status: vi.fn().mockResolvedValue({ active: false, mode: "deterministic" }) },
   },
 }));
 

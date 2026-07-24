@@ -1,6 +1,6 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
-import { type KoService, dropConfidential } from "../../knowledge-object";
+import { type KoService, type WithTx, dropConfidential } from "../../knowledge-object";
 import {
   type AnswerResult,
   DEFAULT_TOP_K,
@@ -12,6 +12,8 @@ import {
 } from "../../reasoner";
 import { TRUST_MAX } from "../../validation";
 import { normalizeGapQuestion } from "./gap-text";
+import { type GapSummary, summarizeGaps } from "./gap-visibility";
+import { signAnswerReceipt, verifyAnswerReceipt } from "./receipt";
 import type { GapRepo } from "./repo";
 import { AskError, type Gap, type GapPriority, isGapPriority } from "./types";
 
@@ -35,6 +37,15 @@ export interface AskServiceDeps {
   audit?: AuditService;
   now?: () => number;
   genId?: () => string;
+  // FUNKE-FIX P0 (bens ROT-1): HMAC-Secret für den opaken Answer-Receipt. Fehlt es, wird ein
+  // prozess-lokales Zufalls-Secret erzeugt (single-process Monolith; Belege sind kurzlebig). Für
+  // Mehr-Instanz-/deterministische Testläufe kann es injiziert werden (build-app: optional aus ENV).
+  receiptSecret?: Buffer;
+  // FUNKE-FIX2 P0 (bens ROT-1, Blocker 1): echte DB-Transaktion für das gekoppelte „Danke" (Audit-CAS
+  // + Trust-Inkrement in EINER Transaktion). Nur die Kompositionswurzel mit echtem Pg-Pool bindet
+  // withPgTx (build-app); ohne Injektion (InMemory/Dev-Journal) läuft der serialisierte, synchron-
+  // atomare Fallback (kein echtes I/O-Fenster, Analogie zum purgeKo-Fallback).
+  withTx?: WithTx;
 }
 
 export interface AskResult {
@@ -42,6 +53,9 @@ export interface AskResult {
   // kam (Fundstellen-Kennzeichnung analog zur Bibliothek: Badge „Bildbeschreibung").
   result: AnswerResult & { captionSources: string[] };
   gap: Gap | null;
+  // FUNKE-FIX P0 (bens ROT-1): opaker Beleg über (Nutzer + ausgelieferte Quell-KOs). Der Client
+  // reicht ihn beim „Danke" (/api/ask/helpful) zurück; der Server verifiziert die Quellen-Bindung.
+  receipt: string;
 }
 
 export class AskService {
@@ -51,6 +65,15 @@ export class AskService {
   private readonly audit: AuditService | undefined;
   private readonly now: () => number;
   private readonly genId: () => string;
+  private readonly receiptSecret: Buffer;
+  private readonly withTx: WithTx | undefined;
+  // FUNKE-FIX2 P0 (bens ROT-1, Blocker 1): serialisiert die gekoppelten „Danke"-Schreibvorgänge (die
+  // Audit-Kette ist per Konstruktion ein Single-Writer — ihre seq/prevHash bilden eine Totalordnung).
+  // Ohne diese Serialisierung würden zwei gleichzeitige Danke VERSCHIEDENER Nutzer (verschiedene
+  // Event-Ids) mit derselben berechneten seq am PRIMARY KEY kollidieren; MIT ihr zieht jeder seinen
+  // eigenen Audit + eigenen atomaren Trust-Schritt (kein Lost-Update). Monolith = ein Prozess, daher
+  // ist ein prozess-globaler Promise-Ketten-Mutex die ehrliche, minimale Serialisierung.
+  private helpfulChain: Promise<unknown> = Promise.resolve();
 
   constructor(deps: AskServiceDeps) {
     this.reasoner = deps.reasoner;
@@ -59,6 +82,19 @@ export class AskService {
     this.audit = deps.audit;
     this.now = deps.now ?? (() => Date.now());
     this.genId = deps.genId ?? (() => randomUUID());
+    // FUNKE-FIX P0: ohne injiziertes Secret ein prozess-lokales Zufalls-Secret — Belege sind
+    // kurzlebig, das Secret verlässt den Server nie.
+    this.receiptSecret = deps.receiptSecret ?? randomBytes(32);
+    this.withTx = deps.withTx;
+  }
+
+  // FUNKE-FIX2 P0 (bens ROT-1, Blocker 1): serialisiert fn hinter der `helpfulChain` (ein Vorgänger-
+  // Fehler blockiert den nächsten nicht — catch). So laufen die gekoppelten Danke-Transaktionen nie
+  // echt nebenläufig gegen die Single-Writer-Audit-Kette.
+  private serializeHelpful<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.helpfulChain.catch(() => undefined).then(fn);
+    this.helpfulChain = run.catch(() => undefined);
+    return run;
   }
 
   // FR-ASK-01/02/03: begründete Antwort über den Reasoner; ehrliche Verweigerung → Wissenslücke.
@@ -144,6 +180,10 @@ export class AskService {
       return terms.some((term) => captions.includes(term)) && !terms.some((t) => core.includes(t));
     });
     const result = { ...resultCore, captionSources };
+    // FUNKE-FIX P0 (bens ROT-1): opaker Answer-Receipt über (Nutzer + ausgelieferte Quell-KOs) —
+    // die serverseitige Grundlage für ein NICHT fälschbares „Danke". Bindet exakt result.sources,
+    // die dieser actor in diesem Vorgang bekam (leer, wenn keine Quelle → späteres „Danke" scheitert).
+    const receipt = signAnswerReceipt(this.receiptSecret, actor, result.sources, this.now());
     // FR-ANA-02 / SCRUM-361: Telemetrie nachvollziehbar + ehrlich — Prefilter-/Kandidatengröße,
     // Top-K und der Retrieval-Modus (kein Inhaltstext, keine Frage im Audit).
     await this.audit?.record({
@@ -164,32 +204,92 @@ export class AskService {
       // liefert das oben emittierte metadata-only ask.query-Audit (trägt Actor + answered=false, keinen
       // Text). Ohne die Option bleibt der Pfad byte-identisch: Gap anlegen.
       if (opts?.gapPolicy === "count_only") {
-        return { result, gap: null };
+        return { result, gap: null, receipt };
       }
-      const gap = await this.createGap(question, opts?.demoSeed);
-      return { result, gap };
+      const gap = await this.createGap(question, actor, opts?.demoSeed);
+      return { result, gap, receipt };
     }
-    return { result, gap: null };
+    return { result, gap: null, receipt };
   }
 
   // FR-ASK-04: „Hat geholfen" erhöht Trust leicht und erzeugt einen Audit-Eintrag.
-  async markHelpful(koId: string, actor: string): Promise<void> {
+  // FUNKE-FIX P0 (bens ROT-1): Das „Danke" ist an einen echten Antwortvorgang GEBUNDEN und
+  // genau-einmal-persistiert:
+  //  (1) `receipt` ist der serverseitig ausgestellte Answer-Receipt; er muss GENAU DIESES koId
+  //      als Quelle für GENAU DIESEN actor belegen — sonst 403 (unbelegte/fremd gewählte KO-ID ist
+  //      nicht mehr wirksam; fremde Wirkung/Glocke/Trust nicht mehr fälschbar).
+  //  (2) recordOnce (partieller Unique-Index / synchroner Set-Guard) koppelt den Trust-Bump ATOMAR
+  //      an den CAS-Gewinn: zwei gleichzeitige Requests ⇒ genau EIN Audit, genau EIN Trust-Schritt;
+  //      der zweite Klick ist ein ehrlicher No-op. Kein Read-then-Write-Fenster mehr.
+  // FUNKE F2 (nacht24 Paket 6): weiterhin idempotent je Nutzer+Ziel — der Idempotenzschlüssel ist
+  // bewusst (actor+koId), nicht (actor+koId+Beleg): so bleibt ein Zweitklick aus JEDEM Antwortvorgang
+  // ein No-op (strikt stärker als eine beleggebundene Zählung).
+  // FUNKE-FIX2 P0 (bens ROT-1, Blocker 1): Audit-CAS und Trust-Schritt sind jetzt ATOMAR gekoppelt
+  // (gemeinsame Transaktion bzw. serialisierter synchron-atomarer Fallback) — kein Zustand „Beleg ja,
+  // Trust nie" mehr, und der Trust ist ein ATOMARER Inkrement (kein Lost-Update bei zwei Nutzern).
+  async markHelpful(receipt: string, koId: string, actor: string): Promise<void> {
+    const bound = verifyAnswerReceipt(this.receiptSecret, receipt, this.now());
+    if (!bound || bound.userId !== actor || !bound.sources.includes(koId)) {
+      throw new AskError("FORBIDDEN", "Kein gültiger Antwort-Beleg für dieses Wissensobjekt.");
+    }
     const ko = await this.koService.get(koId);
     if (!ko) {
       throw new AskError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
     }
-    // SCRUM-359/PI-K2: Trust-Deckel zentral (TRUST_MAX=99) — auch der „Hat geholfen"-Bump
-    // darf nie auf 100 („100 % wahr") springen.
-    const trust = Math.min(TRUST_MAX, ko.trust + HELPFUL_TRUST_STEP);
-    await this.koService.setValidationState(koId, { trust, status: ko.status });
-    // PMO-FEA-0002: Payload trägt Autor+Titel, damit der Feed die Wirkungs-Rückmeldung
-    // an den Originalautor ohne weitere Lookups ableiten kann (ehrlich: nur echte Klicks).
-    await this.audit?.record({
+    // Serialisiert gegen die Single-Writer-Audit-Kette (s. serializeHelpful); der gekoppelte Schreib-
+    // block committet Event-Beleg UND Trust-Schritt gemeinsam oder gar nicht.
+    await this.serializeHelpful(() =>
+      this.recordHelpful(koId, actor, { koTitle: ko.title, koAuthor: ko.author }),
+    );
+  }
+
+  // FUNKE-FIX2 P0 (bens ROT-1, Blocker 1): der gekoppelte Kern des „Danke". recordOnce (Event-CAS) und
+  // der atomare Trust-Inkrement liegen in DERSELBEN Persistenz-Transaktion (gemeinsamer TxContext), so
+  // dass entweder BEIDE oder KEINE wirksam werden. Fail-forward: schlägt der Trust-Schritt fehl, rollt
+  // die Transaktion den bereits geschriebenen Event-Beleg zurück — ein Retry zieht sauber nach (kein
+  // „Beleg ohne Trust", nach dem jeder Retry ein No-op wäre).
+  private async recordHelpful(
+    koId: string,
+    actor: string,
+    payload: { koTitle: string; koAuthor: string },
+  ): Promise<void> {
+    const audit = this.audit;
+    // SCRUM-359/PI-K2: Trust-Deckel zentral (TRUST_MAX=99) — auch der „Hat geholfen"-Bump darf nie auf
+    // 100 („100 % wahr") springen.
+    if (!audit) {
+      // Degenerationsfall ohne Audit (Dev/Tests): kein Exactly-once-Vertrag möglich → nur der atomare
+      // Trust-Schritt (best-effort). In Produktion ist der Audit immer verdrahtet.
+      await this.koService.bumpTrust(koId, HELPFUL_TRUST_STEP, TRUST_MAX);
+      return;
+    }
+    const eventId = `answer.helpful:${actor}:${koId}`;
+    // PMO-FEA-0002: Payload trägt Autor+Titel, damit der Feed die Wirkungs-Rückmeldung an den
+    // Originalautor ohne weitere Lookups ableiten kann (ehrlich: nur echte Klicks).
+    const auditInput = {
       actor,
-      action: "answer.helpful",
+      action: "answer.helpful" as const,
       target: koId,
-      payload: { koTitle: ko.title, koAuthor: ko.author },
-    });
+      payload,
+    };
+    if (this.withTx) {
+      // Pg: Event-CAS UND Trust-Inkrement auf DEMSELBEN Client (gemeinsamer tx). Wirft der Trust-
+      // Schritt (z. B. KO zwischenzeitlich getrasht), rollt der Event-Beleg mit zurück.
+      await this.withTx(async (tx) => {
+        const won = await audit.recordOnce(eventId, auditInput, tx);
+        if (!won) {
+          return; // bereits gedankt → idempotenter No-op (kein zweiter Bump)
+        }
+        await this.koService.bumpTrust(koId, HELPFUL_TRUST_STEP, TRUST_MAX, tx);
+      });
+      return;
+    }
+    // Fallback ohne echten Pg-Pool (InMemory/Dev-Journal): serialisiert (serializeHelpful) + gate-first/
+    // effect-second. Zwei synchrone In-Process-Schritte ohne echtes I/O-Fenster (Analogie purgeKo-A).
+    const won = await audit.recordOnce(eventId, auditInput);
+    if (!won) {
+      return;
+    }
+    await this.koService.bumpTrust(koId, HELPFUL_TRUST_STEP, TRUST_MAX);
   }
 
   // FR-ASK-05: Wissenslücken verwalten.
@@ -227,7 +327,13 @@ export class AskService {
     return gaps.map(withPriority);
   }
 
-  private async createGap(question: string, demoSeed?: boolean): Promise<Gap> {
+  // SCRUM-115 / FE-RISK: aggregierte Zähler der offenen Lücken — NUR Zahlen, KEIN Fragetext. Die
+  // Startseite nutzt AUSSCHLIESSLICH diesen Weg (kein Volltext-Fetch mehr, s. gap-visibility).
+  async gapsSummary(): Promise<GapSummary> {
+    return summarizeGaps(await this.listGaps());
+  }
+
+  private async createGap(question: string, createdBy: string, demoSeed?: boolean): Promise<Gap> {
     const gap: Gap = {
       id: this.genId(),
       // SCRUM-284: datensparsam + lesbar — gespeicherte Gap-Frage normalisieren/begrenzen.
@@ -236,6 +342,9 @@ export class AskService {
       assignee: null,
       priority: "mittel",
       createdAt: new Date(this.now()).toISOString(),
+      // FUNKE-FIX2 P0 (bens Blocker Gap-Freitext): den fragenden Actor als Owner vermerken (nur echte
+      // Nutzer, nie "system") — Grundlage, dass der Ersteller „seinen" Fragetext wiedersehen darf.
+      ...(createdBy && createdBy !== "system" ? { createdBy } : {}),
       ...(demoSeed ? { demoSeed: true } : {}),
     };
     await this.gaps.insert(gap);

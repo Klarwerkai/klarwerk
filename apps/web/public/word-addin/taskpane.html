@@ -111,6 +111,22 @@
       margin: 6px 0 8px;
     }
     .answer-text { white-space: pre-wrap; }
+    /* K3: Status-Badge je Antwort-Quelle — gleiche Ampel-Semantik wie die Bibliothek
+       (validiert=gruen, in Pruefung=warn, offen/unbekannt=neutral). */
+    .src-badge {
+      display: inline-block;
+      margin-left: 6px;
+      padding: 1px 7px;
+      border-radius: 999px;
+      font-size: 10.5px;
+      font-weight: 600;
+      border: 1px solid var(--hairline);
+      background: var(--surface);
+      color: var(--muted);
+      vertical-align: middle;
+    }
+    .src-badge-validiert { background: var(--pos-bg); color: var(--pos-text); border-color: transparent; }
+    .src-badge-pruefung { background: var(--warn-bg); color: var(--warn-text); border-color: transparent; }
   </style>
 </head>
 <body>
@@ -158,14 +174,24 @@
       <div id="ask-status" class="status hidden"></div>
       <div id="ask-answer-block" class="hidden">
         <h2 data-t="askAnswerTitle" style="margin-top: 12px;"></h2>
-        <p id="ask-answer-text" class="answer-text"></p>
+        <!-- klara1b Teil B: editierbares, kompaktes Feld VOR dem Eintragen. Der Anwender kann die
+             Antwort kuerzen/anpassen; nur DIESER Feldinhalt wird eingefuegt/kopiert (nicht die
+             Quellen-UI). Ist die Antwort lang, klappt „mehr anzeigen" das Feld auf. -->
+        <p class="muted" id="ask-answer-edit-hint" data-t="askAnswerEditHint" style="margin-bottom: 4px;"></p>
+        <textarea id="ask-answer-edit" class="answer-text" rows="4"></textarea>
+        <button type="button" class="ghost hidden" id="ask-answer-toggle" style="margin: 0 0 8px;"></button>
+        <div style="display: flex; gap: 6px;">
+          <!-- Teil 2 (Gating): NUR bei echter quellengebundener Antwort UND bereitem Office aktiv. -->
+          <button type="button" class="primary" id="ask-insert-btn" data-t="askInsertCta"></button>
+          <!-- klara1b Teil B: Ausweg „Kopieren" — braucht kein Office, greift auch bei Rechte-Fehler. -->
+          <button type="button" class="ghost" id="ask-copy-btn" data-t="askCopyCta"></button>
+        </div>
+        <!-- klara1b Teil B: die Quellenliste bleibt (Titel-Link, Status/Trust-Badge) — aber
+             GETRENNT vom einzufuegenden Antworttext (nur Anzeige, wandert nie ins Dokument). -->
         <div id="ask-sources-block" class="hidden">
           <h2 data-t="askSourcesTitle"></h2>
           <ul class="muted" id="ask-sources"></ul>
         </div>
-        <!-- WP-KLARA-ASK (Teil 2): NUR bei echter quellengebundener Antwort aktiv (nie bei
-             Wissensluecke); der eingefuegte Text ist das validierte Wissen mit Quellen-Zeile. -->
-        <button type="button" class="ghost" id="ask-insert-btn" data-t="askInsertCta" style="margin-top: 8px;"></button>
       </div>
       <div id="ask-gap-block" class="hidden">
         <div class="status warn">
@@ -486,6 +512,79 @@
       if (trimmed.length === 0) { return fallbackTitle; }
       return (prefix + trimmed).slice(0, WORD_ADDIN_TITLE_MAX).trim();
     }
+
+    // RT-KLARA1: Einfuege-Fehler ehrlich klassifizieren — der Berechtigungsfall (Manifest ohne
+    // Schreibrecht) bekommt eine verstaendliche Erklaerung statt des rohen Office-Fehlertexts.
+    function classifyInsertError(detail) {
+      return /permission|berechtigung|toestemming|machtiging|access\s*denied|accessdenied/i.test(detail || "")
+        ? "permission"
+        : "other";
+    }
+
+    // AUFTRAG-klara1b (Teil A): Einfuegen ROBUST — moderner Word.run-Weg zuerst, setSelectedDataAsync
+    // als Fallback; Berechtigungsfehler wird ehrlich als "permission" gemeldet (Ausweg Kopieren).
+    // DOM-/Office-frei: die konkreten Aufrufe reicht der Aufrufer als injizierte Versuche (Spiegel des
+    // Moduls performInsert — sequenziell, erster Erfolg gewinnt).
+    function performInsert(text, attempts) {
+      var index = 0;
+      var lastDetail = "";
+      var sawPermission = false;
+      function tryNext() {
+        if (index >= attempts.length) {
+          return Promise.resolve({ ok: false, failure: sawPermission ? "permission" : "other", detail: lastDetail });
+        }
+        var attempt = attempts[index];
+        index += 1;
+        return Promise.resolve()
+          .then(function () { return attempt.run(text); })
+          .then(function () { return { ok: true, method: attempt.method }; })
+          .catch(function (err) {
+            var detail = err && err.message ? err.message : String(err == null ? "" : err);
+            lastDetail = detail || lastDetail;
+            if (classifyInsertError(detail) === "permission") { sawPermission = true; }
+            return tryNext();
+          });
+      }
+      return tryNext();
+    }
+
+    // Teil B (Ausweg): Feldinhalt in die Zwischenablage — funktioniert auch, wenn der Office-Insert an
+    // Rechten scheitert. Clipboard injiziert (testbar); fehlt/wirft sie → ehrlich ok=false.
+    function performCopy(text, clipboard) {
+      if (!clipboard || typeof clipboard.writeText !== "function") {
+        return Promise.resolve({ ok: false, detail: "no-clipboard" });
+      }
+      return Promise.resolve()
+        .then(function () { return clipboard.writeText(text); })
+        .then(function () { return { ok: true }; })
+        .catch(function (err) { return { ok: false, detail: err && err.message ? err.message : "clipboard" }; });
+    }
+
+    // Teil B (kompakte Antwort): ist die Antwort lang, klappt „mehr anzeigen" das Feld auf.
+    var WORD_ADDIN_ANSWER_COMPACT_CHARS = 320;
+    var WORD_ADDIN_ANSWER_COMPACT_LINES = 6;
+    function answerIsLong(text) {
+      var trimmed = (text || "").replace(/^\s+|\s+$/g, "");
+      if (trimmed.length > WORD_ADDIN_ANSWER_COMPACT_CHARS) { return true; }
+      var lines = trimmed.split(/\r?\n/).filter(function (line) { return line.replace(/^\s+|\s+$/g, "").length > 0; });
+      return lines.length > WORD_ADDIN_ANSWER_COMPACT_LINES;
+    }
+
+    // K2/K3: Anzeige-Status einer Antwort-Quelle — Kern der Bibliotheks-Ableitung (deriveStatus):
+    // validiert / offen+Zuweisungen=pruefung / offen; nicht ladbar oder fremd → ehrlich "unknown".
+    function askSourceStatus(ko) {
+      if (!ko || typeof ko.status !== "string") { return "unknown"; }
+      if (ko.status === "validiert") { return "validiert"; }
+      if (ko.status === "offen") {
+        return Array.isArray(ko.assignments) && ko.assignments.length > 0 ? "pruefung" : "offen";
+      }
+      return "unknown";
+    }
+
+    // K2: Deep-Link auf die bestehende KO-Detailroute /wissen/:id.
+    function koDetailUrl(origin, koId) {
+      return origin + "/wissen/" + encodeURIComponent(koId);
+    }
     // KW-WORDADDIN-HELPERS-END
 
     // Alle Texte dreisprachig (App-Regel DE/EN/NL) — bewusst HIER, nicht in i18n.ts der SPA.
@@ -543,9 +642,21 @@
         askGapSendCta: "Als offene Frage an KLARWERK senden",
         askGapSentOk: "Offene Frage gesendet: {title}",
         askGapOpenLink: "Offene Frage in KLARWERK oeffnen",
-        askInsertCta: "Antwort in Word einfuegen",
-        askInsertOk: "Antwort eingefuegt — mit Quellenangabe.",
-        askInsertFail: "Einfuegen fehlgeschlagen ({detail}).",
+        askInsertCta: "In Word einfuegen",
+        askInsertOk: "Antwort eingefuegt.",
+        askInsertFail: "Einfuegen fehlgeschlagen ({detail}). Du kannst den Text ueber „Kopieren\" uebernehmen.",
+        askInsertNoPermission: "Einfuegen nicht moeglich: Das Add-in hat keine Schreibberechtigung fuer dieses Dokument. Das Klara-Manifest muss neu geladen werden (Sideload) — mit der Berechtigung ReadWriteDocument UND einer hoeheren Versionsnummer (Office merkt sich das alte Manifest sonst im Cache). Bitte an die KLARWERK-Administration wenden. Solange kannst du den Text ueber „Kopieren\" uebernehmen.",
+        askInsertEmpty: "Das Antwortfeld ist leer — bitte Text eingeben oder die Frage erneut stellen.",
+        askAnswerEditHint: "Du kannst die Antwort vor dem Einfuegen kuerzen oder anpassen. Nur der Feldinhalt wird eingefuegt — die Quellen unten bleiben getrennt.",
+        askCopyCta: "Kopieren",
+        askCopyOk: "In die Zwischenablage kopiert.",
+        askCopyFail: "Kopieren nicht moeglich — bitte den Text im Feld markieren und manuell kopieren.",
+        askShowMore: "Mehr anzeigen",
+        askShowLess: "Weniger anzeigen",
+        askStatusValidiert: "Validiert",
+        askStatusPruefung: "In Prüfung",
+        askStatusOffen: "Offen",
+        askStatusUnknown: "Status unbekannt",
         askSourceLine: "Quelle: {titles} (KLARWERK, geprueftes Wissen, Stand {date})",
         askSourceLineRetrieved: "Quelle: {titles} (KLARWERK, geprueftes Wissen, abgerufen am {date})",
         askInsertTruncatedNote: "Hinweis: Die zugrunde liegende Frage wurde auf {max} Zeichen gekappt.",
@@ -612,9 +723,21 @@
         askGapSendCta: "Send as an open question to KLARWERK",
         askGapSentOk: "Open question sent: {title}",
         askGapOpenLink: "Open the question in KLARWERK",
-        askInsertCta: "Insert answer into Word",
-        askInsertOk: "Answer inserted — with source attribution.",
-        askInsertFail: "Inserting failed ({detail}).",
+        askInsertCta: "Insert into Word",
+        askInsertOk: "Answer inserted.",
+        askInsertFail: "Inserting failed ({detail}). You can use \"Copy\" to take the text.",
+        askInsertNoPermission: "Cannot insert: the add-in has no write permission for this document. The Klara manifest must be reloaded (sideload) with the ReadWriteDocument permission AND a higher version number (otherwise Office keeps the old manifest cached) — please contact your KLARWERK administrator. In the meantime you can use \"Copy\" to take the text.",
+        askInsertEmpty: "The answer field is empty — please enter text or ask again.",
+        askAnswerEditHint: "You can shorten or adjust the answer before inserting. Only the field content is inserted — the sources below stay separate.",
+        askCopyCta: "Copy",
+        askCopyOk: "Copied to the clipboard.",
+        askCopyFail: "Copy not possible — please select the text in the field and copy it manually.",
+        askShowMore: "Show more",
+        askShowLess: "Show less",
+        askStatusValidiert: "Validated",
+        askStatusPruefung: "In review",
+        askStatusOffen: "Open",
+        askStatusUnknown: "Status unknown",
         askSourceLine: "Source: {titles} (KLARWERK, verified knowledge, as of {date})",
         askSourceLineRetrieved: "Source: {titles} (KLARWERK, verified knowledge, retrieved on {date})",
         askInsertTruncatedNote: "Note: the underlying question was truncated to {max} characters.",
@@ -681,9 +804,21 @@
         askGapSendCta: "Als open vraag naar KLARWERK sturen",
         askGapSentOk: "Open vraag verstuurd: {title}",
         askGapOpenLink: "Vraag in KLARWERK openen",
-        askInsertCta: "Antwoord in Word invoegen",
-        askInsertOk: "Antwoord ingevoegd — met bronvermelding.",
-        askInsertFail: "Invoegen mislukt ({detail}).",
+        askInsertCta: "In Word invoegen",
+        askInsertOk: "Antwoord ingevoegd.",
+        askInsertFail: "Invoegen mislukt ({detail}). Je kunt de tekst via „Kopiëren\" overnemen.",
+        askInsertNoPermission: "Invoegen niet mogelijk: de add-in heeft geen schrijfrechten voor dit document. Het Klara-manifest moet opnieuw worden geladen (sideload) met de machtiging ReadWriteDocument ÉN een hoger versienummer (anders houdt Office het oude manifest in de cache) — neem contact op met de KLARWERK-beheerder. Ondertussen kun je de tekst via „Kopiëren\" overnemen.",
+        askInsertEmpty: "Het antwoordveld is leeg — voer tekst in of stel de vraag opnieuw.",
+        askAnswerEditHint: "Je kunt het antwoord vóór het invoegen inkorten of aanpassen. Alleen de veldinhoud wordt ingevoegd — de bronnen hieronder blijven gescheiden.",
+        askCopyCta: "Kopiëren",
+        askCopyOk: "Naar het klembord gekopieerd.",
+        askCopyFail: "Kopiëren niet mogelijk — selecteer de tekst in het veld en kopieer deze handmatig.",
+        askShowMore: "Meer tonen",
+        askShowLess: "Minder tonen",
+        askStatusValidiert: "Gevalideerd",
+        askStatusPruefung: "In beoordeling",
+        askStatusOffen: "Open",
+        askStatusUnknown: "Status onbekend",
         askSourceLine: "Bron: {titles} (KLARWERK, gecontroleerde kennis, per {date})",
         askSourceLineRetrieved: "Bron: {titles} (KLARWERK, gecontroleerde kennis, opgehaald op {date})",
         askInsertTruncatedNote: "Let op: de onderliggende vraag is ingekort tot {max} tekens.",
@@ -761,6 +896,7 @@
         document.getElementById("lang-" + code).className = code === lang ? "active" : "";
       });
       renderStatics();
+      refreshAnswerToggleLabel(); // klara1b: „mehr/weniger anzeigen" in der neuen Sprache
       updateSendState(); // K5: Office-Hinweis/Knopf-Grund in der neuen Sprache neu aufbauen
       checkSession(); // Statuszeile in der neuen Sprache neu aufbauen
     }
@@ -1080,6 +1216,10 @@
     var currentAskSourcesResolved = false;
     var currentAskTruncated = false;
     var currentAskQuestion = "";
+    // klara1b Teil B: Vorbefuellung des editierbaren Felds (zum Erkennen, ob der Nutzer schon
+    // editiert hat, bevor die Quellen-Zeile nachtraegt) und Auf-/Zuklapp-Zustand von „mehr anzeigen".
+    var askAnswerPrefill = "";
+    var askAnswerExpanded = false;
 
     function showAskStatus(kind, text) {
       var el = document.getElementById("ask-status");
@@ -1098,12 +1238,18 @@
       currentAskSourceTitles = [];
       currentAskSourceDates = [];
       currentAskSourcesResolved = false;
+      askAnswerPrefill = "";
+      askAnswerExpanded = false;
       document.getElementById("ask-answer-block").className = "hidden";
       document.getElementById("ask-gap-block").className = "hidden";
       document.getElementById("ask-gap-open-block").className = "hidden";
       document.getElementById("ask-sources-block").className = "hidden";
       document.getElementById("ask-sources").textContent = "";
-      document.getElementById("ask-answer-text").textContent = "";
+      // klara1b Teil B: editierbares Feld statt statischem Absatz.
+      var edit = document.getElementById("ask-answer-edit");
+      edit.value = "";
+      edit.rows = 4;
+      document.getElementById("ask-answer-toggle").className = "ghost hidden";
     }
 
     // Fragen braucht NUR die Session (kein Office): im Browser funktioniert der Eingabefeld-Weg.
@@ -1113,13 +1259,52 @@
     }
 
     // Teil 2 (Gating): Einfuegen NUR bei echter quellengebundener Antwort UND bereitem Office.
+    // klara1b Teil B: „Kopieren" ist der Ausweg — es braucht KEIN Office und ist immer aktiv,
+    // sobald eine belegte, aufgeloeste Antwort vorliegt (greift auch bei Rechte-Fehlern).
     function updateInsertState() {
-      var btn = document.getElementById("ask-insert-btn");
+      var insertBtn = document.getElementById("ask-insert-btn");
+      var copyBtn = document.getElementById("ask-copy-btn");
       // WP-KLARA-ASK-FIX (bens Fix 2): Einfuegen erst, wenn die Quellenaufloesung ABGESCHLOSSEN
       // ist — die Quellen-Zeile darf nie halb geladene Titel tragen.
       var insertable = canInsertAnswer(currentAskOutcome) && currentAskSourcesResolved;
-      btn.disabled = !(insertable && officeUsable());
-      btn.title = insertable && !officeUsable() ? t("noOffice") : "";
+      insertBtn.disabled = !(insertable && officeUsable());
+      insertBtn.title = insertable && !officeUsable() ? t("noOffice") : "";
+      copyBtn.disabled = !insertable;
+    }
+
+    // klara1b Teil B: „mehr anzeigen" klappt das editierbare Feld auf/zu. Der Schalter erscheint nur
+    // bei langer Antwort (answerIsLong) — sonst zeigt das Feld die kompakte Antwort direkt.
+    function applyAnswerCompaction(text) {
+      askAnswerExpanded = false;
+      var edit = document.getElementById("ask-answer-edit");
+      edit.rows = 4;
+      var toggle = document.getElementById("ask-answer-toggle");
+      if (answerIsLong(text)) {
+        toggle.className = "ghost";
+        toggle.textContent = t("askShowMore");
+      } else {
+        toggle.className = "ghost hidden";
+      }
+    }
+
+    function toggleAnswerExpanded() {
+      askAnswerExpanded = !askAnswerExpanded;
+      document.getElementById("ask-answer-edit").rows = askAnswerExpanded ? 16 : 4;
+      document.getElementById("ask-answer-toggle").textContent = askAnswerExpanded
+        ? t("askShowLess")
+        : t("askShowMore");
+    }
+
+    // Sprachwechsel bei sichtbarer Antwort: den (data-t-losen) Umschalter-Text neu setzen.
+    function refreshAnswerToggleLabel() {
+      var toggle = document.getElementById("ask-answer-toggle");
+      if (toggle.className.indexOf("hidden") === -1) {
+        toggle.textContent = askAnswerExpanded ? t("askShowLess") : t("askShowMore");
+      }
+    }
+
+    function getEditedAnswerText() {
+      return document.getElementById("ask-answer-edit").value;
     }
 
     // Quellen-Titel + Trust je KO nachladen (GET /api/kos/:id, dieselbe ko.read-Permission wie
@@ -1144,24 +1329,50 @@
               }
               if (!standDate && ko && typeof ko.createdAt === "string") { standDate = ko.createdAt; }
               return {
+                id: id,
                 title: ko && ko.title ? String(ko.title) : id,
                 trust: ko && typeof ko.trust === "number" ? ko.trust : null,
                 standDate: standDate,
+                // K3: Bearbeitungsstatus aus dem KO ableiten (Bibliotheks-Logik) — nie raten.
+                status: askSourceStatus(ko),
               };
             })
-            .catch(function () { return { title: id, trust: null, standDate: null }; });
+            .catch(function () { return { id: id, title: id, trust: null, standDate: null, status: "unknown" }; });
         })
       );
     }
+
+    // K2/K3 (AUFTRAG-klara1 Paket 2): jede Quelle ist ein klickbarer Deep-Link auf die
+    // KO-Detailseite (/wissen/:id, oeffnet extern/neuer Tab) mit Status-Badge (Bibliotheks-
+    // Logik: Validiert / In Pruefung / Offen / Status unbekannt) und dem bestehenden Trust-Wert.
+    // Aufbau ueber DOM-APIs (textContent) — kein HTML-Sink, Titel bleiben escaped.
+    var ASK_STATUS_KEYS = {
+      validiert: "askStatusValidiert",
+      pruefung: "askStatusPruefung",
+      offen: "askStatusOffen",
+      unknown: "askStatusUnknown",
+    };
 
     function renderAskSources(resolved) {
       var list = document.getElementById("ask-sources");
       list.textContent = "";
       for (var i = 0; i < resolved.length; i += 1) {
         var item = document.createElement("li");
-        item.textContent =
-          resolved[i].title +
-          (resolved[i].trust !== null ? " — " + t("askTrust", { n: String(resolved[i].trust) }) : "");
+        var link = document.createElement("a");
+        link.href = koDetailUrl(window.location.origin, resolved[i].id);
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = resolved[i].title;
+        item.appendChild(link);
+        var badge = document.createElement("span");
+        badge.className = "src-badge src-badge-" + resolved[i].status;
+        badge.textContent = t(ASK_STATUS_KEYS[resolved[i].status] || "askStatusUnknown");
+        item.appendChild(badge);
+        if (resolved[i].trust !== null) {
+          item.appendChild(
+            document.createTextNode(" — " + t("askTrust", { n: String(resolved[i].trust) }))
+          );
+        }
         list.appendChild(item);
       }
       document.getElementById("ask-sources-block").className = resolved.length > 0 ? "" : "hidden";
@@ -1174,7 +1385,12 @@
       if (outcome.kind === "answered") {
         currentAskTruncated = truncated;
         document.getElementById("ask-answer-block").className = "";
-        document.getElementById("ask-answer-text").textContent = outcome.answer;
+        // klara1b Teil B: das editierbare Feld VORBEFUELLEN — zuerst mit der reinen Antwort; sobald
+        // die Quellen aufgeloest sind, traegt die Vorbefuellung die Quellen-Zeile nach (nur solange
+        // der Nutzer noch nicht selbst editiert hat). Kompakt-Darstellung + „mehr anzeigen".
+        askAnswerPrefill = outcome.answer;
+        document.getElementById("ask-answer-edit").value = outcome.answer;
+        applyAnswerCompaction(outcome.answer);
         if (truncated) { showAskStatus("warn", truncatedNote.replace(/^\s+/, "")); } else { hideAskStatus(); }
         updateInsertState(); // noch gesperrt — die Quellenaufloesung laeuft (Fix 2)
         resolveAskSources(outcome.sources || []).then(function (resolved) {
@@ -1182,6 +1398,14 @@
           currentAskSourceDates = resolved.map(function (r) { return r.standDate; });
           currentAskSourcesResolved = true; // ab jetzt ist die Quellen-Zeile vollstaendig
           renderAskSources(resolved);
+          // Vorbefuellung um die Quellen-Zeile ergaenzen — NUR wenn der Nutzer noch nicht editiert hat.
+          var edit = document.getElementById("ask-answer-edit");
+          if (edit.value === askAnswerPrefill) {
+            var full = buildDefaultInsertText();
+            edit.value = full;
+            askAnswerPrefill = full;
+            applyAnswerCompaction(full);
+          }
           updateInsertState();
         });
         return;
@@ -1238,12 +1462,10 @@
       });
     }
 
-    // Teil 2: Antwort AN DER CURSORPOSITION einfuegen — validiertes Wissen + Quellen-Zeile
-    // (setSelectedDataAsync, Text; braucht die ReadWriteDocument-Permission des Manifests).
-    function insertAnswer() {
-      if (!canInsertAnswer(currentAskOutcome) || !currentAskSourcesResolved || !officeUsable()) { return; }
-      // WP-KLARA-ASK-FIX (bens Fix 3): "Stand <Datum>" NUR mit belegtem KO-Datum (Validierung/
-      // Aenderung); ohne Beleg ehrlich "abgerufen am <heute>".
+    // klara1b Teil B: die STANDARD-Vorbefuellung des editierbaren Felds — validiertes Wissen +
+    // Quellen-Zeile. WP-KLARA-ASK-FIX (bens Fix 3): "Stand <Datum>" NUR mit belegtem KO-Datum
+    // (Validierung/Aenderung); ohne Beleg ehrlich "abgerufen am <heute>".
+    function buildDefaultInsertText() {
       var standLabel = newestSourceDateLabel(currentAskSourceDates);
       var line = standLabel
         ? buildAskSourceLine(currentAskSourceTitles, standLabel, t("askSourceLine"))
@@ -1251,19 +1473,92 @@
       var truncatedNote = currentAskTruncated
         ? t("askInsertTruncatedNote", { max: String(WORD_ADDIN_ASK_MAX_CHARS) })
         : "";
-      var text = buildAnswerInsertText(currentAskOutcome.answer, line, truncatedNote);
-      Office.context.document.setSelectedDataAsync(
-        text,
-        { coercionType: Office.CoercionType.Text },
-        function (result) {
-          if (result.status === Office.AsyncResultStatus.Succeeded) {
-            showAskStatus("ok", t("askInsertOk"));
-          } else {
-            var detail = result.error && result.error.message ? result.error.message : "Word-API";
-            showAskStatus("warn", t("askInsertFail", { detail: detail }));
-          }
+      return buildAnswerInsertText(currentAskOutcome.answer, line, truncatedNote);
+    }
+
+    // Teil A (klara1b): die konkreten Office-Einfuege-Versuche — MODERNER Word.run-Weg zuerst
+    // (getSelection().insertText an der Cursorposition/Auswahl), setSelectedDataAsync als Fallback
+    // fuer aeltere Hosts. Beide brauchen ReadWriteDocument; performInsert waehlt/faellt zurueck und
+    // klassifiziert den Fehler ehrlich. setSelectedDataAsync rejectet mit Error(name + message),
+    // damit classifyInsertError den Berechtigungsfall (Pedis Live-Fehler) erkennt.
+    function buildInsertAttempts() {
+      var attempts = [];
+      if (window.Word && typeof Word.run === "function") {
+        attempts.push({
+          method: "word-run",
+          run: function (text) {
+            return Word.run(function (context) {
+              var range = context.document.getSelection();
+              range.insertText(text, Word.InsertLocation.replace);
+              return context.sync();
+            });
+          },
+        });
+      }
+      attempts.push({
+        method: "set-selected-data",
+        run: function (text) {
+          return new Promise(function (resolve, reject) {
+            Office.context.document.setSelectedDataAsync(
+              text,
+              { coercionType: Office.CoercionType.Text },
+              function (result) {
+                if (result.status === Office.AsyncResultStatus.Succeeded) {
+                  resolve();
+                  return;
+                }
+                var msg = result.error && result.error.message ? result.error.message : "Word-API";
+                var errName = result.error && result.error.name ? String(result.error.name) : "";
+                reject(new Error((errName + " " + msg).replace(/^\s+|\s+$/g, "")));
+              }
+            );
+          });
+        },
+      });
+      return attempts;
+    }
+
+    // Teil 2 + klara1b Teil B: den BEARBEITETEN Feldinhalt an der Cursorposition einfuegen (nicht die
+    // Originalantwort). Gating bleibt: nur bei bereitem Office. Ohne Office ehrlicher Hinweis +
+    // Ausweg „Kopieren". Fehler ehrlich (Berechtigung → Re-Sideload/Kopieren) statt rohem Office-Text.
+    function insertAnswer() {
+      var text = getEditedAnswerText();
+      if (text.replace(/^\s+|\s+$/g, "").length === 0) {
+        showAskStatus("warn", t("askInsertEmpty"));
+        return;
+      }
+      if (!officeUsable()) {
+        showAskStatus("warn", t("noOffice"));
+        return;
+      }
+      performInsert(text, buildInsertAttempts()).then(function (outcome) {
+        if (outcome.ok) {
+          showAskStatus("ok", t("askInsertOk"));
+        } else if (outcome.failure === "permission") {
+          // RT-KLARA1: der Berechtigungsfall bekommt die ehrliche Erklaerung samt Ausweg.
+          showAskStatus("warn", t("askInsertNoPermission"));
+        } else {
+          showAskStatus("warn", t("askInsertFail", { detail: outcome.detail || "Word-API" }));
         }
-      );
+      });
+    }
+
+    // klara1b Teil B (Ausweg): den bearbeiteten Feldinhalt in die Zwischenablage — greift auch, wenn
+    // der Office-Insert an Rechten scheitert (Cache/Manifest). Braucht kein Office.
+    function copyAnswer() {
+      var text = getEditedAnswerText();
+      if (text.replace(/^\s+|\s+$/g, "").length === 0) {
+        showAskStatus("warn", t("askInsertEmpty"));
+        return;
+      }
+      var clipboard = window.navigator && window.navigator.clipboard ? window.navigator.clipboard : null;
+      performCopy(text, clipboard).then(function (outcome) {
+        if (outcome.ok) {
+          showAskStatus("ok", t("askCopyOk"));
+        } else {
+          showAskStatus("warn", t("askCopyFail"));
+        }
+      });
     }
 
     // Teil 2 (Wissensluecke): die offene Frage als Front-Door-ENTWURF nach KLARWERK (bestehender
@@ -1338,6 +1633,8 @@
     document.getElementById("tab-capture").addEventListener("click", function () { setTab("capture"); });
     document.getElementById("ask-btn").addEventListener("click", askKlara);
     document.getElementById("ask-insert-btn").addEventListener("click", insertAnswer);
+    document.getElementById("ask-copy-btn").addEventListener("click", copyAnswer);
+    document.getElementById("ask-answer-toggle").addEventListener("click", toggleAnswerExpanded);
     document.getElementById("ask-gap-send-btn").addEventListener("click", sendOpenQuestion);
 
     document.getElementById("lang-de").addEventListener("click", function () { setLang("de"); });

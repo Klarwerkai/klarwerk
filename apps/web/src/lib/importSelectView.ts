@@ -4,6 +4,7 @@
 // Der Auswahl-Zustand bleibt `checkedRows: boolean[]`, indexiert nach dem ORIGINAL-Index in
 // `preview[]` (Bindeglied, das durch Filtern/Gruppieren stabil bleibt).
 import type { ImportPreviewEntry } from "../api/types";
+import { languageFromTitle } from "./facets";
 import { displayImportText } from "./htmlEntities";
 
 // D7: Filter-Chips über der Trefferliste. "all" = keine Einschränkung.
@@ -45,28 +46,11 @@ export interface PreviewGroup {
   rows: PreviewRow[];
 }
 
-// D5: führendes Sprach-Präfix des Titels → DE/EN/NL, sonst "other". Robust gegen die üblichen
-// Trenner/Klammern in Altbestand-Titeln (z. B. „[DE] …", „EN – …", „NL:  …").
-const LANG_PREFIX = /^[\s\-–—·|>[\](){}]*(?:\[|\()?\s*(de|deu|ger|en|eng|nl|nld|ned)\b/i;
-const LANG_CANON: Record<string, PreviewLanguage> = {
-  de: "de",
-  deu: "de",
-  ger: "de",
-  en: "en",
-  eng: "en",
-  nl: "nl",
-  nld: "nl",
-  ned: "nl",
-};
-
+// D5: führendes Sprach-Präfix des Titels → DE/EN/NL, sonst "other".
+// RT5c (nacht24 Paket 5, „Code teilen"): dieselbe Erkennung wie die Bibliotheks-Facetten —
+// die Präfix-Logik lebt jetzt EINMAL in lib/facets.languageFromTitle.
 export function previewLanguage(entry: ImportPreviewEntry): PreviewLanguage {
-  const decoded = displayImportText(entry.title, entry.textCodec);
-  const match = LANG_PREFIX.exec(decoded);
-  const tag = match?.[1]?.toLowerCase();
-  if (tag) {
-    return LANG_CANON[tag] ?? "other";
-  }
-  return "other";
+  return languageFromTitle(displayImportText(entry.title, entry.textCodec));
 }
 
 // D7: welchem Filter-Chip genügt ein Eintrag?
@@ -295,6 +279,65 @@ export function effectiveGroupMode(
   requested: PreviewGroupMode,
 ): PreviewGroupMode {
   return groupModeOptions(entries).some((option) => option.mode === requested) ? requested : "none";
+}
+
+// ---- RT5a-c (nacht24 Paket 5): Sprach-Massenaktion + echter Subfolder-Baum ----
+
+// Sprach-Zähler über den GESAMTEN gefundenen Bestand (nicht nur die sichtbaren Zeilen) — Basis der
+// „alle <Sprache> abwählen"-Massenaktion. Nur vorkommende Sprachen, feste Ordnung DE/EN/NL/übrige.
+export interface LanguageCount {
+  language: PreviewLanguage;
+  count: number;
+}
+
+export function languageCounts(entries: readonly ImportPreviewEntry[]): LanguageCount[] {
+  const counts = new Map<PreviewLanguage, number>();
+  for (const entry of entries) {
+    const lang = previewLanguage(entry);
+    counts.set(lang, (counts.get(lang) ?? 0) + 1);
+  }
+  return (["de", "en", "nl", "other"] as const)
+    .filter((lang) => (counts.get(lang) ?? 0) > 0)
+    .map((lang) => ({ language: lang, count: counts.get(lang) as number }));
+}
+
+// „Alle <Sprache> abwählen" mit EINEM Klick: wirkt auf ALLE Einträge dieser Sprache — unabhängig
+// von Suche/Filter/Sichtbarkeit (der Text verspricht ALLE, also gilt ALLE; dieselbe Ehrlichkeitsregel
+// wie clearAllSelected/F2). Nur Abwahl — nie eine versteckte Anwahl.
+export function deselectLanguage(
+  checked: readonly boolean[],
+  entries: readonly ImportPreviewEntry[],
+  language: PreviewLanguage,
+): boolean[] {
+  const next = [...checked];
+  entries.forEach((entry, index) => {
+    if (previewLanguage(entry) === language) {
+      next[index] = false;
+    }
+  });
+  return next;
+}
+
+// RT5a (nacht24): ECHTER Subfolder-Baum — im Sprach-Modus bekommt jeder Sprach-Ordner
+// Themen-UNTERORDNER (auf-/zuklappbar), sobald in der Sprache mindestens ZWEI Themen-Gruppen
+// entstehen (sonst bleibt der Ordner ehrlich flach — ein einzelner Unterordner wäre nur Klickweg).
+// Der Themen-Modus bleibt bewusst einstufig (Themen sind im Bestand nicht hierarchisch).
+export interface PreviewTreeGroup extends PreviewGroup {
+  children?: PreviewGroup[];
+}
+
+export function groupRowsTree(
+  rows: readonly PreviewRow[],
+  mode: PreviewGroupMode,
+): PreviewTreeGroup[] {
+  const top = groupRows(rows, mode);
+  if (mode !== "language") {
+    return top;
+  }
+  return top.map((group) => {
+    const children = groupRows(group.rows, "theme");
+    return children.length >= 2 ? { ...group, children } : group;
+  });
 }
 
 // D7: dauerhaft sichtbare Auswahl-Zusammenfassung „X von Y gewählt".

@@ -38,6 +38,23 @@ describe("PMO-FEA-0002: Wirkungs-Rückmeldung an den Autor", () => {
       .inject({ method: "GET", url: "/api/notifications", headers })
       .then((r) => r.json() as Array<{ id: string; kind: string; koId?: string; title: string }>);
 
+  // FUNKE-FIX P0 (bens ROT-1): das „Danke" verlangt einen Answer-Receipt aus einem echten
+  // Antwortvorgang. Wir fragen passend zum KO-Titel, damit die Antwort GENAU dieses KO als Quelle
+  // ausliefert, und reichen den Receipt zurück.
+  async function receiptFor(
+    app: App,
+    headers: Record<string, string>,
+    question: string,
+  ): Promise<string> {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers,
+      payload: { question },
+    });
+    return res.json().receipt as string;
+  }
+
   it("fremder Hat-geholfen-Klick erscheint beim Autor im Feed — nicht beim Klickenden", async () => {
     const { app, admin, erik } = await setup();
     const created = await app.inject({
@@ -53,12 +70,15 @@ describe("PMO-FEA-0002: Wirkungs-Rückmeldung an den Autor", () => {
     expect(created.statusCode).toBe(201);
     const koId = created.json().id as string;
 
-    // Erik (nicht Autor) meldet: hat geholfen.
+    // Erik (nicht Autor) meldet: hat geholfen — mit Beleg aus einem echten Antwortvorgang.
     const helpful = await app.inject({
       method: "POST",
       url: "/api/ask/helpful",
       headers: erik.headers,
-      payload: { koId },
+      payload: {
+        koId,
+        receipt: await receiptFor(app, erik.headers, "Spindel SP-7 nur im Stillstand schmieren"),
+      },
     });
     expect([200, 204]).toContain(helpful.statusCode);
 
@@ -85,7 +105,7 @@ describe("PMO-FEA-0002: Wirkungs-Rückmeldung an den Autor", () => {
       method: "POST",
       url: "/api/ask/helpful",
       headers: admin.headers,
-      payload: { koId },
+      payload: { koId, receipt: await receiptFor(app, admin.headers, "Eigenes Wissen") },
     });
     const adminFeed = await feed(app, admin.headers);
     expect(adminFeed.some((n) => n.kind === "impact" && n.koId === koId)).toBe(false);

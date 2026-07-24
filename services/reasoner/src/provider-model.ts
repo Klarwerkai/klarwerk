@@ -29,11 +29,19 @@ import type {
 // FR-RSN-02/06: anbieteragnostisch; der Schlüssel lebt nur im Client (serverseitig).
 export interface ModelClient {
   readonly name: string;
+  // D-AISTATE PAKET 1 (bens V1, aistate-fix3): sichtbare Egress-Politik des Clients. `true` = dieser
+  // Client verweigert vertrauliche Inhalte per Konstruktion (Cloud ODER ein als „lokal" verdrahteter
+  // Endpunkt, dessen Origin NICHT als On-Prem bestätigt ist — s. isConfirmedLocalOrigin). Der Reasoner
+  // liest die Marke, um einen unzulässigen Judge-Provider VOR jedem Aufruf/Fetch auszuschließen und
+  // den Lauf ehrlich als "confidential" zu schließen. Optional (Bestands-Fakes ohne Marke gelten als
+  // vertraulichkeits-tauglich — der Wächter im Wrapper bleibt die harte letzte Instanz).
+  readonly rejectsConfidential?: boolean;
   // SCRUM-411: optionales Antwort-Limit je Aufruf (Default beim Client: 1024).
   // SCRUM-502 Schicht 2: `confidential` ist PFLICHT (kein Default) — jeder Aufrufer MUSS die
   // Vertraulichkeit des Textes deklarieren. Der Cloud-Wrapper (cappedModelClient mit
   // rejectsConfidential) wirft bei true; so kann kein Pfad vertraulichen Text unbemerkt an die
-  // Cloud geben. Interne, quell-reine Aufrufer (Judges/Probe) übergeben bewusst false.
+  // Cloud geben. Interne, quell-reine Aufrufer (Probe/Weltwissen) übergeben bewusst false; die
+  // Judges reichen seit D-AISTATE PAKET 1 (bens V1) das ECHTE Paar-Bit durch.
   complete(
     system: string,
     user: string,
@@ -687,6 +695,13 @@ export class ModelProvider implements ReasonerProvider {
     return this.client !== undefined;
   }
 
+  // D-AISTATE PAKET 1 (bens V1, aistate-fix3): reicht die Egress-Politik des Clients nach oben —
+  // der Reasoner schließt einen Provider, der vertrauliche Inhalte verweigert, bei einem
+  // vertraulichen Paar VOR jedem Aufruf aus der Judge-Kette aus (kein Fetch, Ausgang "confidential").
+  rejectsConfidential(): boolean {
+    return this.client?.rejectsConfidential === true;
+  }
+
   // Key-Test (Pedi 02.07.): kleinstmöglicher Echtaufruf. Beweist Schlüssel + Modellzugang;
   // Fehler (z. B. 401 = Schlüssel ungültig) laufen unverändert nach oben — nichts wird geraten.
   async probe(): Promise<string> {
@@ -1019,29 +1034,33 @@ export class ModelProvider implements ReasonerProvider {
 
   // Berater-Konzept 04.07. (Stufe 2, kon-v1): „Konfliktprüfung" über das echte Modell. Neutrale
   // A/B-Labels (kein Autor/Trust), striktes JSON; kaputte/ungültige Antworten → null (kein Konflikt).
+  // D-AISTATE PAKET 1 (bens V1, aistate-fix3): `confidential` ist PFLICHT und reist als ECHTES
+  // Paar-Bit bis in den zentralen ModelClient.complete-Wächter (cappedModelClient) — kein hartes
+  // `false` mehr. Ein falsch verdrahteter Cloud-/Fremd-Secondary wird dort VOR dem Fetch gestoppt.
   async judgeConflict(
     coreA: string,
     coreB: string,
-    locale: ReasonerLocale = "de",
+    locale: ReasonerLocale,
+    confidential: boolean,
   ): Promise<ConflictJudgeResult | null> {
     const client = this.requireClient();
     const user = `A:\n${coreA}\n\nB:\n${coreB}`;
     // SCRUM-492: etwas mehr Spielraum für den optionalen kollision-Block (vorher 512).
-    // SCRUM-502 Schicht 2: der Judge-Pool ist bereits Schicht-1-gefiltert (keine vertraulichen KOs).
-    const raw = await client.complete(conflictSystem(locale), user, false, 640);
+    const raw = await client.complete(conflictSystem(locale), user, confidential, 640);
     return parseConflictResponse(raw);
   }
 
   // Berater-Konzept Duplikate 04.07. (Stufe D2, dup-v1): „Duplikatprüfung" über das echte Modell.
+  // D-AISTATE PAKET 1 (bens V1, aistate-fix3): `confidential` PFLICHT bis zum Wächter (s. judgeConflict).
   async judgeDuplicate(
     coreA: string,
     coreB: string,
-    locale: ReasonerLocale = "de",
+    locale: ReasonerLocale,
+    confidential: boolean,
   ): Promise<DuplicateJudgeResult | null> {
     const client = this.requireClient();
     const user = `A:\n${coreA}\n\nB:\n${coreB}`;
-    // SCRUM-502 Schicht 2: der Judge-Pool ist bereits Schicht-1-gefiltert (keine vertraulichen KOs).
-    const raw = await client.complete(duplicateSystem(locale), user, false, 768);
+    const raw = await client.complete(duplicateSystem(locale), user, confidential, 768);
     return parseDuplicateResponse(raw);
   }
 

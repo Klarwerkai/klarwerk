@@ -18,7 +18,9 @@ import {
   assistActionLabelKey,
 } from "../lib/captureAiAssist";
 import { shouldWarnBeforeReplace } from "../lib/editorApplySafety";
+import { useAiAvailable } from "../lib/useAiAvailable";
 import { AiModelInfo } from "./AiModelInfo";
+import { AiUnavailableHint } from "./AiUnavailableHint";
 import { HelpTip } from "./HelpTip";
 import { Button } from "./ui";
 
@@ -60,7 +62,10 @@ export function AiAssistBox({
   const [pending, setPending] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [boxErr, setBoxErr] = useState<string | null>(null);
-  const disabled = pending || text.trim().length === 0;
+  // PAKET 1 (D-AISTATE, Pedi 23.07.): echte LLM-Nachbearbeitung — ohne nutzbares Modell HART
+  // ausgrauen statt still in den wirkungslosen Fallback zu laufen.
+  const assistAi = useAiAvailable("assist");
+  const disabled = pending || text.trim().length === 0 || !assistAi.available;
   const warnBeforeReplace = shouldWarnBeforeReplace(text);
 
   const run = async (instruction?: string): Promise<void> => {
@@ -135,6 +140,7 @@ export function AiAssistBox({
           </span>
         ))}
       </div>
+      <AiUnavailableHint show={!assistAi.available} />
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <input
           value={free}

@@ -199,7 +199,11 @@ export interface ConflictJudgeResult {
 // fehler intern und lieferten null — für Aufrufer ununterscheidbar von „kein Modell" oder einem
 // echten Nicht-Treffer. failure benennt die Ursache; verdict null OHNE failure gibt es nicht
 // (ein echtes „kein_konflikt"/„verschieden" ist ein NICHT-null-verdict).
-export type JudgeFailure = "model-error" | "model-timeout" | "no-model";
+// D-AISTATE PAKET 1 (bens V1, 23.07.): "confidential" = das Paar ist vertraulich, die Cloud-Kante
+// wurde deshalb aus der Judge-Kette entfernt UND kein lokales Modell konnte einspringen. Ein
+// unterscheidbarer, EHRLICHER Ausgang — NICHT "no-model" (ein Cloud-Modell IST konfiguriert, es
+// darf nur vertraulichen Text nicht sehen) und NICHT "done".
+export type JudgeFailure = "model-error" | "model-timeout" | "no-model" | "confidential";
 
 export interface ConflictJudgeOutcome {
   verdict: ConflictJudgeResult | null;
@@ -310,3 +314,11 @@ export interface ReasonerProbeResult {
   detail: string; // ehrliche Begründung (z. B. "Modell-API antwortete mit 401")
   at: string; // Zeitstempel des Tests (ISO)
 }
+
+// PAKET 2 (D-AISTATE, Pedi 23.07.): ehrlicher Erreichbarkeits-Zustand für die Top-Badges — „aktiv"
+// heißt zuletzt WIRKLICH erreichbar, nicht nur konfiguriert (isAvailable = client !== undefined).
+//  - "none":        kein Modell konfiguriert.
+//  - "unverified":  konfiguriert, aber (noch) keine frische Erreichbarkeits-Antwort (Cache leer/abgelaufen).
+//  - "active":      zuletzt erreichbar (echte probe/Task-Antwort innerhalb der Cache-Frist).
+//  - "unreachable": konfiguriert, aber zuletzt NICHT erreichbar (Key abgelaufen, Tunnel aus, Ausfall).
+export type ReasonerReachability = "none" | "unverified" | "active" | "unreachable";

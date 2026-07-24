@@ -7,17 +7,27 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { deriveStatus } from "../../apps/web/src/lib/displayStatus";
 import { MAX_INLINE_BODY_HTML_BYTES } from "../../apps/web/src/lib/docx";
 import {
+  type InsertAttempt,
+  WORD_ADDIN_ANSWER_COMPACT_CHARS,
+  WORD_ADDIN_ANSWER_COMPACT_LINES,
   WORD_ADDIN_BODY_BUDGET_BYTES,
   WORD_ADDIN_FALLBACK_TITLE,
   WORD_ADDIN_LOGIN_POLL_MAX_MS,
+  answerIsLong,
+  askSourceStatus,
+  classifyInsertError,
   countUndeliveredWordImages,
   deriveDraftTitleFromSelection,
   draftPostPayload,
   extractWordBodyHtml,
+  koDetailUrl,
   loginPollDecision,
   loginPollStep,
+  performCopy,
+  performInsert,
   prepareWordDraftRequest,
   selectionToBodyHtml,
   wordHtmlToPlainText,
@@ -176,8 +186,150 @@ describe("WP-KLARA-2: Word-HTML-Aufbereitung (DOM-freies Modul)", () => {
   });
 });
 
+// RT-KLARA1 + K2/K3 (AUFTRAG-klara1): ehrliche Einfuege-Fehler-Klassifikation und
+// Quellen-Status/-Deep-Link — pure Logik, DOM-frei.
+describe("RT-KLARA1/K2/K3: Einfuege-Fehler + Quellen-Status (DOM-freies Modul)", () => {
+  it("classifyInsertError: erkennt den Berechtigungsfall (Pedis Live-Fehlertext, DE/EN/NL-Varianten), sonst other", () => {
+    // Der exakte Fehlertext aus Pedis Live-Test 23.07.
+    expect(classifyInsertError("You don't have sufficient permissions for this action.")).toBe(
+      "permission",
+    );
+    expect(classifyInsertError("AccessDenied Word-API")).toBe("permission");
+    expect(classifyInsertError("Keine Berechtigung für diese Aktion.")).toBe("permission");
+    expect(classifyInsertError("Geen toestemming voor deze actie.")).toBe("permission");
+    // Alles andere bleibt ehrlich "other" — nie ein geratener Grund.
+    expect(classifyInsertError("GeneralException")).toBe("other");
+    expect(classifyInsertError("")).toBe("other");
+  });
+
+  it("askSourceStatus: Bibliotheks-Kern (validiert/pruefung/offen), nicht ladbar → unknown", () => {
+    expect(askSourceStatus({ status: "validiert" })).toBe("validiert");
+    expect(askSourceStatus({ status: "offen", assignments: ["u1"] })).toBe("pruefung");
+    expect(askSourceStatus({ status: "offen", assignments: [] })).toBe("offen");
+    expect(askSourceStatus({ status: "offen" })).toBe("offen");
+    // Ehrlich "unknown": KO nicht ladbar oder fremder Status — nie raten.
+    expect(askSourceStatus(null)).toBe("unknown");
+    expect(askSourceStatus({})).toBe("unknown");
+    expect(askSourceStatus({ status: "irgendwas" })).toBe("unknown");
+  });
+
+  it("askSourceStatus ist auf den aufloesbaren Faellen GLEICH der Bibliotheks-Ableitung deriveStatus", () => {
+    const fixtures: { status: "offen" | "validiert"; assignments: string[] }[] = [
+      { status: "validiert", assignments: [] },
+      { status: "validiert", assignments: ["u1"] },
+      { status: "offen", assignments: [] },
+      { status: "offen", assignments: ["u1", "u2"] },
+    ];
+    for (const ko of fixtures) {
+      expect(askSourceStatus(ko), `${ko.status}/${ko.assignments.length}`).toBe(deriveStatus(ko));
+    }
+  });
+
+  it("koDetailUrl: bestehende Route /wissen/:id, Id URL-encodiert", () => {
+    expect(koDetailUrl("https://app.klarwerk.ai", "ko-1")).toBe(
+      "https://app.klarwerk.ai/wissen/ko-1",
+    );
+    expect(koDetailUrl("https://app.klarwerk.ai", "a b/c")).toBe(
+      "https://app.klarwerk.ai/wissen/a%20b%2Fc",
+    );
+  });
+});
+
+// klara1b (Pedis Live-Befund 24.07.): Teil A (robustes Einfuegen) + Teil B (editierbar, Kopieren,
+// kompakt) — reine, DOM-/Office-freie Logik. Die konkreten Office-/Clipboard-Aufrufe reicht der
+// Aufrufer als injizierte Funktionen (wie performAsk mit fetchFn) → hier mit Fakes gepinnt.
+describe("klara1b Teil A/B: robustes Einfuegen + Kopieren + kompakte Antwort (DOM-freies Modul)", () => {
+  it("performInsert: erster Erfolg gewinnt, uebergibt den (bearbeiteten) Text, meldet die Methode", async () => {
+    const seen: string[] = [];
+    const ok: InsertAttempt = {
+      method: "word-run",
+      run: async (text) => {
+        seen.push(text);
+      },
+    };
+    const outcome = await performInsert("BEARBEITETER Text", [ok]);
+    expect(outcome).toEqual({ ok: true, method: "word-run" });
+    // Der Spy bekommt GENAU den (bearbeiteten) Feldinhalt.
+    expect(seen).toEqual(["BEARBEITETER Text"]);
+  });
+
+  it("performInsert: Word.run-Fehler → Fallback setSelectedDataAsync (beide bekommen den Text)", async () => {
+    const seen: string[] = [];
+    const wordRun: InsertAttempt = {
+      method: "word-run",
+      run: async () => {
+        throw new Error("GeneralException");
+      },
+    };
+    const setData: InsertAttempt = {
+      method: "set-selected-data",
+      run: async (text) => {
+        seen.push(text);
+      },
+    };
+    const outcome = await performInsert("Antwort", [wordRun, setData]);
+    expect(outcome).toEqual({ ok: true, method: "set-selected-data" });
+    expect(seen).toEqual(["Antwort"]);
+  });
+
+  it("performInsert: alle Versuche scheitern am Recht → failure permission (Pedis Live-Fehlertext)", async () => {
+    const permFail = (method: InsertAttempt["method"]): InsertAttempt => ({
+      method,
+      run: async () => {
+        throw new Error("You don't have sufficient permissions for this action.");
+      },
+    });
+    const outcome = await performInsert("Antwort", [
+      permFail("word-run"),
+      permFail("set-selected-data"),
+    ]);
+    expect(outcome.ok).toBe(false);
+    expect(outcome.failure).toBe("permission");
+    expect(outcome.detail).toContain("sufficient permissions");
+  });
+
+  it("performInsert: nicht-berechtigungs-Fehler → failure other mit konkretem Detail (nie geraten)", async () => {
+    const outcome = await performInsert("Antwort", [
+      {
+        method: "word-run",
+        run: async () => {
+          throw new Error("GeneralException 5001");
+        },
+      },
+    ]);
+    expect(outcome.ok).toBe(false);
+    expect(outcome.failure).toBe("other");
+    expect(outcome.detail).toBe("GeneralException 5001");
+  });
+
+  it("performCopy: legt den Feldinhalt in die (gemockte) Zwischenablage; ohne API ehrlich ok=false", async () => {
+    const written: string[] = [];
+    const clip = { writeText: async (t: string) => void written.push(t) };
+    expect(await performCopy("Kopier mich", clip)).toEqual({ ok: true });
+    expect(written).toEqual(["Kopier mich"]);
+    // Kein Clipboard (unsicherer Kontext) → ehrlich ok=false, der Aufrufer nennt den manuellen Ausweg.
+    expect(await performCopy("x", null)).toEqual({ ok: false, detail: "no-clipboard" });
+    const rejecting = { writeText: async () => Promise.reject(new Error("NotAllowedError")) };
+    expect(await performCopy("x", rejecting)).toEqual({ ok: false, detail: "NotAllowedError" });
+  });
+
+  it("answerIsLong: kompakt bei kurzer Antwort, lang ab Zeichen- ODER Zeilen-Deckel", () => {
+    expect(WORD_ADDIN_ANSWER_COMPACT_CHARS).toBe(320);
+    expect(WORD_ADDIN_ANSWER_COMPACT_LINES).toBe(6);
+    expect(answerIsLong("Eine knappe Kernaussage.")).toBe(false);
+    expect(answerIsLong("x".repeat(WORD_ADDIN_ANSWER_COMPACT_CHARS))).toBe(false);
+    expect(answerIsLong("x".repeat(WORD_ADDIN_ANSWER_COMPACT_CHARS + 1))).toBe(true);
+    // 7 nicht-leere Zeilen (> 6) → lang; 6 → kompakt.
+    const sixLines = Array.from({ length: 6 }, (_v, i) => `Zeile ${i}`).join("\n");
+    const sevenLines = Array.from({ length: 7 }, (_v, i) => `Zeile ${i}`).join("\n");
+    expect(answerIsLong(sixLines)).toBe(false);
+    expect(answerIsLong(sevenLines)).toBe(true);
+    expect(answerIsLong("")).toBe(false);
+  });
+});
+
 describe("WP-KLARA-1: Inline-Kopie im Taskpane ist VERHALTENSGLEICH zum Modul", () => {
-  it("Marker-Block extrahieren, ausführen und auf Fixtures gegen das Modul vergleichen", () => {
+  it("Marker-Block extrahieren, ausführen und auf Fixtures gegen das Modul vergleichen", async () => {
     const html = read(TASKPANE);
     const start = html.indexOf("// KW-WORDADDIN-HELPERS-START");
     const end = html.indexOf("// KW-WORDADDIN-HELPERS-END");
@@ -185,7 +337,7 @@ describe("WP-KLARA-1: Inline-Kopie im Taskpane ist VERHALTENSGLEICH zum Modul", 
     expect(end).toBeGreaterThan(start);
     const block = html.slice(start, end);
     const factory = new Function(
-      `${block}; return { deriveDraftTitleFromSelection: deriveDraftTitleFromSelection, selectionToBodyHtml: selectionToBodyHtml, loginPollDecision: loginPollDecision, loginPollStep: loginPollStep, extractWordBodyHtml: extractWordBodyHtml, countUndeliveredWordImages: countUndeliveredWordImages, wordHtmlToPlainText: wordHtmlToPlainText, draftPostPayload: draftPostPayload, prepareWordDraftRequest: prepareWordDraftRequest, WORD_ADDIN_BODY_BUDGET_BYTES: WORD_ADDIN_BODY_BUDGET_BYTES };`,
+      `${block}; return { deriveDraftTitleFromSelection: deriveDraftTitleFromSelection, selectionToBodyHtml: selectionToBodyHtml, loginPollDecision: loginPollDecision, loginPollStep: loginPollStep, extractWordBodyHtml: extractWordBodyHtml, countUndeliveredWordImages: countUndeliveredWordImages, wordHtmlToPlainText: wordHtmlToPlainText, draftPostPayload: draftPostPayload, prepareWordDraftRequest: prepareWordDraftRequest, WORD_ADDIN_BODY_BUDGET_BYTES: WORD_ADDIN_BODY_BUDGET_BYTES, classifyInsertError: classifyInsertError, askSourceStatus: askSourceStatus, koDetailUrl: koDetailUrl, performInsert: performInsert, performCopy: performCopy, answerIsLong: answerIsLong, WORD_ADDIN_ANSWER_COMPACT_CHARS: WORD_ADDIN_ANSWER_COMPACT_CHARS };`,
     );
     const inline = factory() as {
       deriveDraftTitleFromSelection: (text: string) => string;
@@ -212,6 +364,13 @@ describe("WP-KLARA-1: Inline-Kopie im Taskpane ist VERHALTENSGLEICH zum Modul", 
         undeliveredImages: number;
       };
       WORD_ADDIN_BODY_BUDGET_BYTES: number;
+      classifyInsertError: (detail: string) => string;
+      askSourceStatus: (ko: unknown) => string;
+      koDetailUrl: (origin: string, koId: string) => string;
+      performInsert: typeof performInsert;
+      performCopy: typeof performCopy;
+      answerIsLong: (text: string) => boolean;
+      WORD_ADDIN_ANSWER_COMPACT_CHARS: number;
     };
     const fixtures = [
       "",
@@ -288,6 +447,72 @@ describe("WP-KLARA-1: Inline-Kopie im Taskpane ist VERHALTENSGLEICH zum Modul", 
         prepareWordDraftRequest(html, text),
       );
     }
+    // RT-KLARA1 + K2/K3: auch Fehler-Klassifikation, Quellen-Status und Deep-Link sind
+    // verhaltensgleich gespiegelt.
+    for (const detail of [
+      "You don't have sufficient permissions for this action.",
+      "AccessDenied",
+      "Keine Berechtigung",
+      "Geen toestemming",
+      "GeneralException",
+      "",
+    ]) {
+      expect(inline.classifyInsertError(detail), `err:${detail.slice(0, 20)}`).toBe(
+        classifyInsertError(detail),
+      );
+    }
+    for (const ko of [
+      { status: "validiert" },
+      { status: "offen", assignments: ["u1"] },
+      { status: "offen", assignments: [] },
+      { status: "offen" },
+      {},
+      null,
+      { status: "irgendwas" },
+    ]) {
+      expect(inline.askSourceStatus(ko), `status:${JSON.stringify(ko)}`).toBe(
+        askSourceStatus(ko as Parameters<typeof askSourceStatus>[0]),
+      );
+    }
+    for (const [origin, id] of [
+      ["https://app.klarwerk.ai", "ko-1"],
+      ["https://klarwerk.ai", "a b/c"],
+    ] as const) {
+      expect(inline.koDetailUrl(origin, id), `url:${id}`).toBe(koDetailUrl(origin, id));
+    }
+    // klara1b Teil A/B: auch robustes Einfuegen, Kopieren und die Kompakt-Schwelle sind
+    // verhaltensgleich gespiegelt (Fakes fuer die injizierten Office-/Clipboard-Aufrufe).
+    expect(inline.WORD_ADDIN_ANSWER_COMPACT_CHARS).toBe(WORD_ADDIN_ANSWER_COMPACT_CHARS);
+    for (const fx of ["kurz", "x".repeat(400), "a\nb\nc\nd\ne\nf\ng", ""]) {
+      expect(inline.answerIsLong(fx), `long:${fx.slice(0, 10)}`).toBe(answerIsLong(fx));
+    }
+    // performInsert: derselbe Ausgang bei Erfolg, Fallback und Berechtigungs-/anderem Fehler.
+    const makeAttempts = (kinds: ("ok" | "perm" | "other")[]): InsertAttempt[] =>
+      kinds.map((kind, i) => ({
+        method: i === 0 ? "word-run" : "set-selected-data",
+        run: async () => {
+          if (kind === "ok") {
+            return;
+          }
+          throw new Error(kind === "perm" ? "insufficient permissions" : "GeneralException");
+        },
+      }));
+    for (const kinds of [["ok"], ["other", "ok"], ["perm", "perm"], ["other"]] as (
+      | "ok"
+      | "perm"
+      | "other"
+    )[][]) {
+      expect(
+        await inline.performInsert("T", makeAttempts(kinds)),
+        `insert:${kinds.join("/")}`,
+      ).toEqual(await performInsert("T", makeAttempts(kinds)));
+    }
+    // performCopy: ok, kein-Clipboard und Wurf sind verhaltensgleich.
+    const okClip = { writeText: async () => undefined };
+    const rejClip = { writeText: async () => Promise.reject(new Error("NotAllowedError")) };
+    expect(await inline.performCopy("x", okClip)).toEqual(await performCopy("x", okClip));
+    expect(await inline.performCopy("x", null)).toEqual(await performCopy("x", null));
+    expect(await inline.performCopy("x", rejClip)).toEqual(await performCopy("x", rejClip));
   });
 });
 
@@ -526,5 +751,50 @@ describe("WP-KLARA-2: Taskpane-Verdrahtung (Umfang, HTML, Deep-Link, ehrliche Gr
     expect(html).toContain("prepared.overBudget");
     // Budget-Spiegel im Inline-Block (Gleichheit zum Modul pinnt der Äquivalenztest).
     expect(html).toContain("WORD_ADDIN_BODY_BUDGET_BYTES = 3500000");
+  });
+
+  // RT-KLARA1 + klara1b Teil A (Pedis Live-Befunde 23./24.07.): der Einfuege-Berechtigungsfall wird
+  // EHRLICH erklaert (Manifest ohne Schreibrecht → Re-Sideload mit ReadWriteDocument + Versions-Bump)
+  // statt roher Office-Fehlertext. Der robuste Insert laeuft ueber performInsert (Word.run zuerst,
+  // setSelectedDataAsync als Fallback) — die Fehler-Klassifikation liegt jetzt IM performInsert.
+  it("RT-KLARA1: Einfuege-Fehler — Berechtigungsfall (performInsert.failure) + ehrliche Meldung DE/EN/NL", () => {
+    expect(html).toContain('outcome.failure === "permission"');
+    expect(html).toContain('showAskStatus("warn", t("askInsertNoPermission"))');
+    // Ehrliche Meldung in allen drei Sprachen, mit dem konkreten Ausweg (ReadWriteDocument).
+    expect((html.match(/askInsertNoPermission: "/g) ?? []).length).toBe(3);
+    expect(html).toContain("Schreibberechtigung");
+    expect(html).toContain("write permission");
+    expect(html).toContain("schrijfrechten");
+    expect((html.match(/ReadWriteDocument/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    // Der Nicht-Berechtigungsfall behaelt den konkreten Detail-Text (nie ein geratener Grund).
+    expect(html).toContain('t("askInsertFail", { detail: outcome.detail || "Word-API" })');
+  });
+
+  // K2/K3 (AUFTRAG-klara1 Paket 2): Quellen sind klickbare Deep-Links auf die KO-Detailseite
+  // mit Status-Badge (Bibliotheks-Logik) und weiterhin sichtbarem Trust-Wert.
+  it("K2/K3: Quelle = Deep-Link (/wissen/:id, extern) + Status-Badge + Trust, DE/EN/NL", () => {
+    // Deep-Link ueber den gespiegelten Helfer, extern geoeffnet, ohne Opener-Zugriff.
+    expect(html).toContain("link.href = koDetailUrl(window.location.origin, resolved[i].id)");
+    expect(html).toContain('link.target = "_blank"');
+    expect(html).toContain('link.rel = "noopener noreferrer"');
+    // Aufbau ueber DOM-APIs (textContent) — kein HTML-Sink fuer KO-Titel.
+    expect(html).toContain("link.textContent = resolved[i].title");
+    // Status-Badge aus der Bibliotheks-Ableitung; unbekannt wird NIE geraten.
+    expect(html).toContain('badge.className = "src-badge src-badge-" + resolved[i].status');
+    expect(html).toContain('t(ASK_STATUS_KEYS[resolved[i].status] || "askStatusUnknown")');
+    for (const key of [
+      'askStatusValidiert: "',
+      'askStatusPruefung: "',
+      'askStatusOffen: "',
+      'askStatusUnknown: "',
+    ]) {
+      expect(html.split(key).length - 1, key).toBe(3);
+    }
+    // Trust bleibt sichtbar; die Quellen-Aufloesung traegt jetzt Id + Status (unknown im Fehlerfall).
+    expect(html).toContain('t("askTrust", { n: String(resolved[i].trust) })');
+    expect(html).toContain("status: askSourceStatus(ko)");
+    expect(html).toContain(
+      '{ id: id, title: id, trust: null, standDate: null, status: "unknown" }',
+    );
   });
 });
