@@ -43,6 +43,8 @@ import { AppendToArticleModal } from "../components/AppendToArticleModal";
 // SCRUM-405: „Aus Dokument ergänzen" — extract-Punkte anhängen (nichts ersetzen).
 import { BodyExtractPanel } from "../components/BodyExtractPanel";
 import { BodyTemplateChooser } from "../components/BodyTemplateChooser";
+// AUFTRAG-uxpol1 (PAKET 2): geteiltes, poliertes Dateityp-Kachel-Bauteil + IC-7-Wahrheitsquelle.
+import { CaptureFileImport } from "../components/CaptureFileImport";
 import { ChoiceCards } from "../components/ChoiceCards";
 import { DemoBanner } from "../components/DemoBanner";
 import { DraftBodyGallery } from "../components/DraftBodyGallery";
@@ -104,7 +106,6 @@ import {
   CAPTURE_FILE_TEXT,
   DraftPayloadTooLargeError,
   FILE_CAPTURE_ACCEPT,
-  FILE_IMPORT_ACCEPT,
   type FileDraftQueue,
   type FileImportMode,
   type SelectableExtractPoint,
@@ -2951,17 +2952,14 @@ export function Capture(): JSX.Element {
                     {slidesProgress}
                   </p>
                 ) : null}
+                {/* AUFTRAG-uxpol3 (bens Restfund 4.1): die GESAMTE Dateityp-Verdrahtung (versteckter
+                    <input> + FileTypePicker + typgerechtes openCaptureFileDialog) lebt jetzt in EINER
+                    exportierten Produktionskomponente CaptureFileImport — real gemountet testbar, statt
+                    inline und nur per Quelltext-Pin prüfbar. Ehrlichkeit unverändert: nur aktive Kacheln
+                    öffnen den bestehenden Import typgerecht; kein neuer Egress. onExtractFile bleibt der
+                    reale Extraktions-Pfad des Erfassens. */}
+                <CaptureFileImport onExtractFile={(e) => void onExtractFile(e)} />
                 <div className="flex flex-wrap items-center gap-2">
-                  <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
-                    <Paperclip size={14} />
-                    {fileName ? t(CAPTURE_FILE_TEXT.replace) : t(CAPTURE_FILE_TEXT.upload)}
-                    <input
-                      type="file"
-                      accept={FILE_IMPORT_ACCEPT}
-                      className="hidden"
-                      onChange={(e) => void onExtractFile(e)}
-                    />
-                  </label>
                   <Button
                     variant="ghost"
                     disabled={

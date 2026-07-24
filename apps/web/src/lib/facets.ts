@@ -8,8 +8,43 @@
 // für dieses Element unbekannt → es fällt bei einer aktiven Auswahl dieser Facette heraus.
 export type FacetValues = Record<string, readonly string[]>;
 
-// Aktive Auswahl: je Facette höchstens EIN gewählter Wert (undefined = Facette offen).
-export type FacetSelection = Record<string, string | undefined>;
+// AUFTRAG-uxpol2 (bens Blocker 1.1): Aktive Auswahl je Facette ist eine WERTEMENGE (kein Einzelwert
+// mehr). Innerhalb einer Gruppe gilt ODER (mind. ein gewählter Wert muss vorkommen), ZWISCHEN Gruppen
+// UND (jede aktive Gruppe muss erfüllt sein). undefined/leere Menge = Facette offen.
+//
+// AUFTRAG-uxpol4 (bens ROT 3.1): Der Auswahlzustand je Gruppe ist ENTWEDER eine echte Wertemenge ODER
+// der STRUKTURELLE No-Match-Zustand — ein eigenes, NICHT string-basiertes Feld (`{ noMatch: true }`),
+// herausgezogen aus dem Namensraum echter Facettenwerte. „bewusst leer ⇒ 0 Treffer" ist damit KEIN
+// reservierter Magic-String mehr, sondern ein Typ-Fall, den kein echter Wert (aus Bestand, URL/Query
+// oder localStorage) je erzeugen oder aufheben kann. undefined/leere Menge = Facette offen (kein Filter).
+export interface FacetNoMatch {
+  readonly noMatch: true;
+}
+export const FACET_NO_MATCH_SELECTION: FacetNoMatch = Object.freeze({ noMatch: true });
+
+export type FacetGroupSelection = readonly string[] | FacetNoMatch;
+export type FacetSelection = Record<string, FacetGroupSelection | undefined>;
+
+// Strukturelle Erkennung des No-Match-Zustands — bewusst für UNBEKANNTE (deserialisierte) Werte robust,
+// damit die Parser-/Persistenz-Grenze echte Strings NIE als No-Match interpretiert und umgekehrt.
+export function isFacetNoMatch(sel: unknown): sel is FacetNoMatch {
+  return (
+    typeof sel === "object" &&
+    sel !== null &&
+    !Array.isArray(sel) &&
+    (sel as { noMatch?: unknown }).noMatch === true
+  );
+}
+
+// Echte (String-)Werte einer Gruppenauswahl; No-Match/undefined ⇒ leere Menge (kein echter Wert).
+export function facetSelectedValues(sel: FacetGroupSelection | undefined): readonly string[] {
+  return Array.isArray(sel) ? sel : [];
+}
+
+// Ist für DIESE Gruppe ein Filter aktiv — echte Werte ODER strukturelles No-Match?
+export function isFacetGroupActive(sel: FacetGroupSelection | undefined): boolean {
+  return isFacetNoMatch(sel) || facetSelectedValues(sel).length > 0;
+}
 
 export interface FacetCount {
   value: string;
@@ -17,16 +52,27 @@ export interface FacetCount {
 }
 
 // Erfüllt ein Element die Auswahl? `except` klammert EINE Facette aus (für kombinierbare Zähler).
+// ODER innerhalb der Gruppe (mind. ein gewählter Wert trifft), UND zwischen den Gruppen.
 export function matchesFacets(
   values: FacetValues,
   selection: FacetSelection,
   except?: string,
 ): boolean {
   for (const [key, selected] of Object.entries(selection)) {
-    if (selected === undefined || key === except) {
+    if (key === except || selected === undefined) {
       continue;
     }
-    if (!(values[key] ?? []).includes(selected)) {
+    // AUFTRAG-uxpol4 (bens ROT 3.1): der strukturelle No-Match-Zustand einer Gruppe wird BEDINGUNGSLOS
+    // als „kein Treffer" behandelt — BEVOR irgendein echter Wert verglichen wird. Kein Bestands-/URL-/
+    // Sichtenwert kann diesen Zustand erzeugen oder aufheben (er ist keine Zeichenkette).
+    if (isFacetNoMatch(selected)) {
+      return false;
+    }
+    if (selected.length === 0) {
+      continue;
+    }
+    const itemValues = values[key] ?? [];
+    if (!selected.some((v) => itemValues.includes(v))) {
       return false;
     }
   }
@@ -48,7 +94,9 @@ export function combinableFacetCounts(
       if (!matchesFacets(item, selection, key)) {
         continue;
       }
-      for (const value of item[key] ?? []) {
+      // AUFTRAG-uxpol2 (bens Nebenfund): je Element pro Wert nur EINMAL zählen — ein doppelter Tag
+      // am selben Objekt ist trotzdem nur ein Treffer (Set dedupliziert vor dem Inkrement).
+      for (const value of new Set(item[key] ?? [])) {
         counts.set(value, (counts.get(value) ?? 0) + 1);
       }
     }
@@ -65,20 +113,25 @@ export function applyFacetSelection<T>(
   valuesOf: (item: T) => FacetValues,
   selection: FacetSelection,
 ): T[] {
-  const active = Object.values(selection).some((v) => v !== undefined);
+  const active = Object.values(selection).some(isFacetGroupActive);
   if (!active) {
     return [...items];
   }
   return items.filter((item) => matchesFacets(valuesOf(item), selection));
 }
 
-// Chip-Klick: gleicher Wert erneut → Facette wieder offen; sonst Wert wählen.
+// Chip-Klick (Mengensemantik): gewählter Wert erneut → aus der Gruppe entfernen; sonst ERGÄNZEN
+// (ODER innerhalb der Gruppe). Leere Menge → Facette wieder offen (undefined).
 export function toggleFacetValue(
   selection: FacetSelection,
   key: string,
   value: string,
 ): FacetSelection {
-  return { ...selection, [key]: selection[key] === value ? undefined : value };
+  // Nur echte Bestandswerte; ein etwaiger No-Match-Zustand der Gruppe wird durch die echte Wahl
+  // ersetzt (facetSelectedValues liefert dafür die leere Menge) — ein echter Wert setzt No-Match nie fort.
+  const current = facetSelectedValues(selection[key]);
+  const next = current.includes(value) ? current.filter((v) => v !== value) : [...current, value];
+  return { ...selection, [key]: next.length > 0 ? next : undefined };
 }
 
 // ---- Sprache aus dem Titel-Präfix (geteilt Bibliothek + Import; RT5c „Code teilen") ----

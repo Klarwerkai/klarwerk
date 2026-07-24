@@ -1,0 +1,163 @@
+// AUFTRAG-uxpol1 (PAKET 2): gemeinsames, poliertes Dateityp-Kachel-Bauteil für Erfassen UND Import.
+// EINE Wahrheitsquelle: das IC-7-Datenmodell importSourceGallery.ts (Zustände/Reihenfolge). Kacheln
+// statt grauer Pillen — dezentes Datei-Icon je Typ, Name, Zustands-Badge (aktiv/bald/geplant), klare
+// Hierarchie (aktiv hervorgehoben, bald leicht, geplant gedämpft), Hover/Fokus sauber.
+//
+// Ehrlichkeit (aus IC-7, unangetastet): NUR „active"-Kacheln lösen über onActivate den echten,
+// bereits existierenden Fluss aus. „soon"/„planned" starten NIE einen Import/Dialog — sie blenden
+// nur einen ruhigen, nicht-modalen, ehrlichen Hinweis ein (aria-live). Badges tragen TEXT (nicht nur
+// Farbe); jede Kachel ist ein <button> (tastaturfokussierbar). Kein neuer Egress/Upload-Pfad.
+import {
+  Boxes,
+  File,
+  FileAudio,
+  FileJson,
+  FileSpreadsheet,
+  FileText,
+  FileType,
+  Presentation,
+  ScanLine,
+} from "lucide-react";
+import { type ReactNode, useState } from "react";
+import { useTranslation } from "react-i18next";
+import {
+  type GallerySource,
+  STATE_BADGE_KEY,
+  type SourceState,
+  hintKeyFor,
+} from "../lib/importSourceGallery";
+
+// Kachel-Optik je Zustand. WICHTIG: nie „bg-ink" (ohne aria-pressed) — der geführte Fluss zählt
+// solche Buttons als seinen EINEN Primär-CTA. Die Kacheln sind informativ/aktivierend, nicht der CTA.
+const TILE_CLASS: Record<SourceState, string> = {
+  active: "border-ink/30 bg-surface text-text hover:border-ink/50 hover:bg-hairline-soft",
+  soon: "border-hairline bg-page text-muted hover:border-ink/25",
+  planned: "border-hairline-soft bg-page text-muted-2 hover:border-ink/20",
+};
+
+const BADGE_CLASS: Record<SourceState, string> = {
+  active: "bg-trust-pos-bg text-trust-pos-text",
+  soon: "bg-trust-warn-bg text-trust-warn-text",
+  planned: "bg-hairline-soft text-muted-2",
+};
+
+// Icon je Datei-/System-Typ (dezent). Fallback: allgemeines Datei-Icon. Systeme (Import-Galerie)
+// tragen ein neutrales Boxes-Icon — die Datei-Gruppe je Format ein passendes Datei-Icon.
+const FILE_ICONS: Record<string, ReactNode> = {
+  "json-file": <FileJson size={16} />,
+  json: <FileJson size={16} />,
+  docx: <FileType size={16} />,
+  "word-sys": <FileType size={16} />,
+  pdf: <FileText size={16} />,
+  "pdf-sys": <FileText size={16} />,
+  xlsx: <FileSpreadsheet size={16} />,
+  pptx: <Presentation size={16} />,
+  csv: <FileText size={16} />,
+  ocr: <ScanLine size={16} />,
+  avtranscript: <FileAudio size={16} />,
+};
+
+function defaultIconFor(source: GallerySource): ReactNode {
+  return FILE_ICONS[source.id] ?? <File size={16} />;
+}
+
+function Tile({
+  source,
+  icon,
+  onClick,
+}: {
+  source: GallerySource;
+  icon: ReactNode;
+  onClick: () => void;
+}): JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <button
+      type="button"
+      data-id={source.id}
+      data-state={source.state}
+      onClick={onClick}
+      className={`flex items-center gap-2 rounded-card border px-3 py-2.5 text-left text-[13px] font-semibold transition-colors focus:outline-none focus-visible:border-ink/50 ${TILE_CLASS[source.state]}`}
+    >
+      <span aria-hidden className="shrink-0 text-muted-2">
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1 truncate">{t(source.labelKey)}</span>
+      {/* Zustand als TEXT im Badge (nicht nur Farbe) — barrierearm. */}
+      <span
+        className={`shrink-0 rounded-pill px-1.5 py-0.5 text-[10px] font-medium ${BADGE_CLASS[source.state]}`}
+      >
+        {t(STATE_BADGE_KEY[source.state])}
+      </span>
+    </button>
+  );
+}
+
+export interface FileTypePickerProps {
+  sources: readonly GallerySource[];
+  // Wird AUSSCHLIESSLICH für aktive Kacheln aufgerufen (echter, bestehender Fluss). Für bald/geplant
+  // bleibt dieser Callback bewusst unberührt — kein Import, kein Dialog, kein Konnektor-Call.
+  onActivate: (id: string) => void;
+  // Optionaler Icon-Wähler; Default: Datei-Icon je Typ. Systeme reichen z. B. Boxes herein.
+  iconFor?: (source: GallerySource) => ReactNode;
+  // Optionale Gruppen-Überschrift (i18n-Text).
+  title?: string;
+}
+
+export function FileTypePicker({
+  sources,
+  onActivate,
+  iconFor = defaultIconFor,
+  title,
+}: FileTypePickerProps): JSX.Element {
+  const { t } = useTranslation();
+  // Ehrlicher Klick-Zustand: die zuletzt angeklickte NICHT-aktive Kachel (rein informativ). Erneuter
+  // Klick auf dieselbe Kachel schließt den Hinweis wieder.
+  const [hint, setHint] = useState<GallerySource | null>(null);
+
+  const clickTile = (source: GallerySource): void => {
+    if (source.state === "active") {
+      setHint(null);
+      onActivate(source.id);
+      return;
+    }
+    setHint((prev) => (prev?.id === source.id ? null : source));
+  };
+
+  const hintKey = hint ? hintKeyFor(hint.state) : null;
+
+  return (
+    <div>
+      {title ? (
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-2">
+          {title}
+        </span>
+      ) : null}
+      <div className={`grid grid-cols-2 gap-2 sm:grid-cols-3 ${title ? "mt-1.5" : ""}`}>
+        {sources.map((source) => (
+          <Tile
+            key={source.id}
+            source={source}
+            icon={iconFor(source)}
+            onClick={() => clickTile(source)}
+          />
+        ))}
+      </div>
+      {/* Ehrlicher, nicht-modaler Hinweis — nur für bald/geplant, nie ein Import. <output> trägt
+          implizit role="status" (aria-live ergänzt es explizit), also kein blockierender Dialog. */}
+      {hintKey ? (
+        <output
+          aria-live="polite"
+          className="mt-2 block rounded-btn bg-trust-warn-bg px-3 py-2 text-[12px] text-trust-warn-text"
+        >
+          {t(hintKey)}
+        </output>
+      ) : null}
+    </div>
+  );
+}
+
+// Neutrales System-Icon (Import-Galerie „Systeme"): einheitlicher Boxes-Marker.
+export function systemIcon(): ReactNode {
+  return <Boxes size={16} />;
+}

@@ -9,6 +9,8 @@
 // einen ruhigen, nicht-modalen Hinweis. Kein neuer Egress-Pfad, kein Konnektor-Aufruf an geplante
 // Systeme — das steckt bewusst NICHT in diesem Modell.
 
+import { type FileKind, detectFileKind } from "./extract";
+
 export type SourceState = "active" | "soon" | "planned";
 
 export interface GallerySource {
@@ -78,15 +80,132 @@ export const SYSTEM_SOURCES: readonly GallerySource[] = orderByState([
   { id: "email", labelKey: "imp.gallery.src.email", state: "planned" },
 ]);
 
-// PAKET 2 — Dateien (der „Underdog"-Punkt). aktiv: JSON. bald: Word (.docx) · PDF.
-// geplant: Excel (.xlsx) · PowerPoint (.pptx) · Text/CSV · OCR (Scan/Bild) · Audio/Video-Transkript.
-export const FILE_SOURCES: readonly GallerySource[] = orderByState([
-  { id: "json-file", labelKey: "imp.gallery.file.json", state: "active" },
-  { id: "docx", labelKey: "imp.gallery.file.docx", state: "soon" },
-  { id: "pdf", labelKey: "imp.gallery.file.pdf", state: "soon" },
-  { id: "xlsx", labelKey: "imp.gallery.file.xlsx", state: "planned" },
-  { id: "pptx", labelKey: "imp.gallery.file.pptx", state: "planned" },
-  { id: "csv", labelKey: "imp.gallery.file.csv", state: "planned" },
-  { id: "ocr", labelKey: "imp.gallery.file.ocr", state: "planned" },
-  { id: "avtranscript", labelKey: "imp.gallery.file.avtranscript", state: "planned" },
-]);
+// AUFTRAG-uxpol2 (bens Blocker 2.1/2.2): EINE belastbare, pro Oberfläche ableitbare Dateityp-
+// Capability. Je Datei-Kachel ein TYPGERECHTES `accept` (die Union der aktiven ist genau der reale
+// Dokument-Import-Dialog) und ein REPRÄSENTATIVES Sample, dessen Fähigkeit die ECHTE Importweiche
+// `detectFileKind` (Erfassen: onExtractFile) bestimmt — kein blindes Hartkodieren des Zustands.
+// `accept: null` = kein echter Importweg (die Kachel öffnet nie einen Dialog).
+interface FileSourceDef {
+  readonly id: string;
+  readonly labelKey: string;
+  readonly accept: string | null;
+  // Repräsentative Datei, an der detectFileKind die reale Erfassen-Fähigkeit misst.
+  readonly sample: { name: string; type?: string };
+}
+
+// Typgerechte accept-Fragmente — je Fragment genau EIN Format-Cluster. Die Union der aktiven Kacheln
+// deckt exakt die von detectFileKind unterstützten Formate ab (JSON/Text/DOCX/PDF/PPTX/Bild) — so ist
+// kein als „geplant" markiertes Format über einen breiten Dialog erreichbar (JSON-Seam geschlossen).
+const ACCEPT_JSON = ".json,application/json";
+const ACCEPT_TEXT = ".txt,.md,.markdown,.csv,.log";
+const ACCEPT_DOCX = ".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const ACCEPT_PDF = ".pdf,application/pdf";
+const ACCEPT_PPTX =
+  ".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation";
+const ACCEPT_IMAGE = "image/*";
+
+const FILE_SOURCE_DEFS: readonly FileSourceDef[] = [
+  {
+    id: "json-file",
+    labelKey: "imp.gallery.file.json",
+    accept: ACCEPT_JSON,
+    sample: { name: "a.json" },
+  },
+  { id: "csv", labelKey: "imp.gallery.file.csv", accept: ACCEPT_TEXT, sample: { name: "a.csv" } },
+  {
+    id: "docx",
+    labelKey: "imp.gallery.file.docx",
+    accept: ACCEPT_DOCX,
+    sample: { name: "a.docx" },
+  },
+  { id: "pdf", labelKey: "imp.gallery.file.pdf", accept: ACCEPT_PDF, sample: { name: "a.pdf" } },
+  {
+    id: "pptx",
+    labelKey: "imp.gallery.file.pptx",
+    accept: ACCEPT_PPTX,
+    sample: { name: "a.pptx" },
+  },
+  {
+    id: "ocr",
+    labelKey: "imp.gallery.file.ocr",
+    accept: ACCEPT_IMAGE,
+    sample: { name: "a.png", type: "image/png" },
+  },
+  // Wirklich (noch) fehlend: Excel und Audio/Video — kein Extraktionsweg → kein Dialog, ehrlich geplant.
+  { id: "xlsx", labelKey: "imp.gallery.file.xlsx", accept: null, sample: { name: "a.xlsx" } },
+  {
+    id: "avtranscript",
+    labelKey: "imp.gallery.file.avtranscript",
+    accept: null,
+    sample: { name: "a.mp4", type: "video/mp4" },
+  },
+];
+
+export type ImportSurface = "capture" | "import";
+
+// IC-7 Import-Review (live): ENGERE, ausdrücklich deklarierte Fähigkeit — nur JSON aktiv, Word/PDF
+// bald, der Rest geplant. Unangetastet gegenüber uxpol1 (bens IC-7-Zustände bleiben).
+const IMPORT_FILE_STATE: Record<string, SourceState> = {
+  "json-file": "active",
+  docx: "soon",
+  pdf: "soon",
+  xlsx: "planned",
+  pptx: "planned",
+  csv: "planned",
+  ocr: "planned",
+  avtranscript: "planned",
+};
+
+// Erfassen: eine Kachel ist AKTIV, wenn ihr Sample über die ECHTE Weiche detectFileKind (die
+// onExtractFile nutzt) auf einen unterstützten FileKind fällt UND ein Importweg (accept) existiert.
+function captureSupports(def: FileSourceDef): boolean {
+  if (def.accept === null) {
+    return false;
+  }
+  const kind: FileKind = detectFileKind(def.sample);
+  return kind !== "unsupported";
+}
+
+// Die Datei-Galerie EINER Oberfläche — Zustand pro Oberfläche abgeleitet (Erfassen aus der realen
+// Fähigkeit, Import-Review aus der engeren IC-7-Deklaration), Reihenfolge aktiv→bald→geplant.
+export function fileSourcesForSurface(surface: ImportSurface): GallerySource[] {
+  return orderByState(
+    FILE_SOURCE_DEFS.map((def) => ({
+      id: def.id,
+      labelKey: def.labelKey,
+      state:
+        surface === "capture"
+          ? captureSupports(def)
+            ? ("active" as const)
+            : ("planned" as const)
+          : (IMPORT_FILE_STATE[def.id] ?? "planned"),
+    })),
+  );
+}
+
+// Typgerechtes accept einer Datei-Kachel (null = kein echter Importweg → kein Dialog).
+export function acceptForFileSource(id: string): string | null {
+  return FILE_SOURCE_DEFS.find((def) => def.id === id)?.accept ?? null;
+}
+
+// Öffnet den BESTEHENDEN Datei-Dialog des Erfassen-Imports für eine aktive Kachel — mit einem
+// `accept`, das GENAU zum angeklickten Typ passt (JSON-Seam geschlossen: nie ein Dialog, der ein als
+// inaktiv markiertes Format zulässt). Kacheln ohne echten Importweg (accept === null) tun nichts.
+// Rückgabe: true, wenn ein Dialog geöffnet wurde. Kein neuer Egress — es klickt nur den vorhandenen
+// versteckten <input>.
+export function openCaptureFileDialog(
+  id: string,
+  input: { accept: string; click: () => void } | null,
+): boolean {
+  const accept = acceptForFileSource(id);
+  if (!accept || !input) {
+    return false;
+  }
+  input.accept = accept;
+  input.click();
+  return true;
+}
+
+// PAKET 2 — Dateien der IC-7 Import-Review (bestehende, engere Fähigkeit). Unverändert: JSON aktiv;
+// Word/PDF bald; Excel/PowerPoint/CSV/OCR/Transkript geplant.
+export const FILE_SOURCES: readonly GallerySource[] = fileSourcesForSurface("import");

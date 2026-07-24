@@ -8,7 +8,13 @@
 // bewusst KEIN Server-Speicher — ehrlich dokumentiert: die Sicht lebt nur in diesem Browser).
 import type { KnowledgeObject } from "../api/types";
 import { deriveStatus } from "./displayStatus";
-import { type FacetValues, languageFromTitle } from "./facets";
+import {
+  FACET_NO_MATCH_SELECTION,
+  type FacetSelection,
+  type FacetValues,
+  isFacetNoMatch,
+  languageFromTitle,
+} from "./facets";
 
 export const LIBRARY_FACET_KEYS = [
   "category",
@@ -109,6 +115,98 @@ export function groupByFacet<T>(
   return [...buckets.entries()]
     .map(([value, groupItems]) => ({ value, items: groupItems }))
     .sort((a, b) => b.items.length - a.items.length || a.value.localeCompare(b.value));
+}
+
+// AUFTRAG-uxpol2 (bens Blocker 1.2): SEMANTIKTREUE Migration alter gespeicherter Status-Sichten.
+// Die neue Statusfacette filtert den ABGELEITETEN Anzeigestatus (deriveStatus), nicht den rohen
+// Backend-Enum. Eine Altsicht `status:"offen"` meinte ALLE offenen KOs — nach der Ableitung sind das
+// die Anzeigestatus `offen` (unzugewiesen) UND `pruefung` (offen + Zuweisung). Eine 1:1-Übernahme
+// ließe offene KOs MIT Zuweisung aus der Sicht fallen (Treffermenge still verändert). Darum bildet
+// die Migration den Legacy-Backendstatus auf die passende Anzeigestatus-MENGE ab. `validiert` bleibt
+// `validiert` (die Library-Ableitung ohne Flags erzeugt für Backend-`validiert` genau diesen Wert).
+export const LEGACY_STATUS_MIGRATION: Record<string, readonly string[]> = {
+  offen: ["offen", "pruefung"],
+  validiert: ["validiert"],
+};
+
+// Koerziert einen (evtl. alten Einzelwert-)Facettenwert defensiv in die Wertemenge; wirft nichts weg.
+function toFacetValueSet(raw: unknown): string[] | undefined {
+  if (Array.isArray(raw)) {
+    const values = raw.filter((v): v is string => typeof v === "string");
+    return values.length > 0 ? values : undefined;
+  }
+  if (typeof raw === "string" && raw.length > 0) {
+    return [raw];
+  }
+  return undefined;
+}
+
+// Baut die neue Facetten-Auswahl (Mengen je Gruppe) aus einem gespeicherten Sicht-Zustand.
+// Neue Sichten tragen `facetSel` bereits als Mengen (nur defensiv normalisiert). Alte Sichten trugen
+// Einzelfelder (type/status/category/tag/maturity/demoFilter); die werden in `facetSel` gehoben —
+// `status` semantiktreu über LEGACY_STATUS_MIGRATION, damit die Treffermenge exakt erhalten bleibt.
+//
+// AUFTRAG-uxpol3 (bens Restfund 3.1): Der Baseline-Stand speicherte die obere ROHFILTERUNG UND die
+// dynamische `facetSel` DERSELBEN Dimension gleichzeitig; im alten UI wirkten beide unabhängig und
+// GLEICHZEITIG. Treffermengentreu ist das die SCHNITTMENGE, nicht ein Vorrang von `facetSel`. Trägt
+// eine Altsicht für eine Dimension beides, wird der (für `status` erst via LEGACY_STATUS_MIGRATION auf
+// die Anzeigestatus-Menge abgebildete) Rohfilter mit der Facettenmenge geschnitten. Einfache/
+// gleichgerichtete Sichten bleiben dabei unverändert. Eine WIDERSPRÜCHLICHE Altkombi (leere
+// Schnittmenge, z. B. roh „validiert" + Facette „offen") ist „bewusst leer ⇒ 0 Treffer" und wird als
+// STRUKTURELLES No-Match (FACET_NO_MATCH_SELECTION) getragen — NICHT als leere (= filterlose) Auswahl
+// und NICHT als reservierter String-Wert.
+//
+// AUFTRAG-uxpol4 (bens ROT 3.1): Dies ist die PARSER-/PERSISTENZ-GRENZE. Aus der `facetSel` einer neu
+// gespeicherten (migrierten) Sicht wird der No-Match-Zustand STRUKTURELL wiedererkannt (`isFacetNoMatch`)
+// und als solcher restauriert — der Zyklus Migration → Sicht speichern → Sicht laden bewahrt so die leere
+// Treffermenge, ohne den Marker je als echten Wert zu interpretieren. Echte Strings (auch der frühere
+// Sentinel-String) bleiben echte Werte und können den No-Match-Zustand weder erzeugen noch aufheben.
+export function migrateSavedFacetSelection(state: Record<string, unknown>): FacetSelection {
+  const out: FacetSelection = {};
+  const rawFacetSel = state.facetSel;
+  if (rawFacetSel && typeof rawFacetSel === "object" && !Array.isArray(rawFacetSel)) {
+    for (const [key, value] of Object.entries(rawFacetSel as Record<string, unknown>)) {
+      if (isFacetNoMatch(value)) {
+        out[key] = FACET_NO_MATCH_SELECTION; // strukturelles No-Match round-trip (gespeicherte Sicht)
+        continue;
+      }
+      const set = toFacetValueSet(value);
+      if (set) {
+        out[key] = set;
+      }
+    }
+  }
+  const legacy = (key: string, raw: unknown, map?: (value: string) => readonly string[]): void => {
+    const rawSet = toFacetValueSet(raw);
+    if (!rawSet) {
+      return;
+    }
+    const legacySet = map ? rawSet.flatMap((v) => [...map(v)]) : rawSet;
+    const existing = out[key];
+    if (existing === undefined) {
+      out[key] = legacySet; // nur der alte Rohfilter → unverändert übernehmen (einfache Sicht)
+      return;
+    }
+    if (isFacetNoMatch(existing)) {
+      return; // bereits strukturell 0 Treffer → bleibt 0, kein echter Wert hebt das auf
+    }
+    // Beide Alt-Filter derselben Dimension waren aktiv → SCHNITTMENGE (nicht Vorrang). Leere
+    // Schnittmenge = widersprüchliche Altkombi → strukturelles No-Match, das nichts matcht (0 sichtbar).
+    const legacyValues = new Set(legacySet);
+    const intersection = existing.filter((v) => legacyValues.has(v));
+    out[key] = intersection.length > 0 ? intersection : FACET_NO_MATCH_SELECTION;
+  };
+  legacy("type", state.type);
+  legacy("status", state.status, (v) => LEGACY_STATUS_MIGRATION[v] ?? [v]);
+  legacy("category", state.category);
+  legacy("tag", state.tag);
+  if (state.maturity !== "all") {
+    legacy("maturity", state.maturity);
+  }
+  if (state.demoFilter !== "all") {
+    legacy("origin", state.demoFilter);
+  }
+  return out;
 }
 
 // ---- Gespeicherte Sichten (lokal je Nutzer, localStorage-Muster wie Board-Checkboxen) ----

@@ -77,7 +77,9 @@ describe("WP-BILD-1f P4: Debounce der Live-Suche", () => {
       resolve(process.cwd(), "apps/web/src/pages/Library.tsx"),
       "utf8",
     );
-    expect(librarySrc).toContain("useDebouncedValue(filter.q, LIBRARY_SEARCH_DEBOUNCE_MS)");
+    // AUFTRAG-uxpol1: der Volltext-State heißt jetzt schlicht `q` (die Dimensionen sind Facetten) —
+    // der Debounce-Weg bleibt identisch (ein Request nach der Tipp-Pause, latest-wins am Query-Key).
+    expect(librarySrc).toContain("useDebouncedValue(q, LIBRARY_SEARCH_DEBOUNCE_MS)");
     expect(librarySrc).toContain("q: debouncedQ");
     // Latest-wins: jede Antwort landet unter IHREM Parameter-Key; die UI liest nur den aktuellen.
     const hooksSrc = readFileSync(resolve(process.cwd(), "apps/web/src/api/hooks.ts"), "utf8");

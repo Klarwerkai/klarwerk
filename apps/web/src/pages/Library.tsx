@@ -6,39 +6,33 @@ import { Link, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useConflicts, useDirectory, useKos, useLibrarySearch } from "../api/hooks";
+import type { KnowledgeObject } from "../api/types";
 import { useSession } from "../app/AuthContext";
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
 import { DemoBanner } from "../components/DemoBanner";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
+import { FacetFilter } from "../components/FacetFilter";
 import { HelpTip } from "../components/HelpTip";
 import { KoSummaryDisclosure } from "../components/KoSummaryDisclosure";
-import {
-  ConfidenceBar,
-  KNOWLEDGE_TYPES,
-  KnowledgeTypeTag,
-  KoAuthorLine,
-  StatusPill,
-} from "../components/trust";
+import { ConfidenceBar, KnowledgeTypeTag, KoAuthorLine, StatusPill } from "../components/trust";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
 import { askAnswerHref } from "../lib/askQuestion";
 import { conflictImpact, conflictLimitedUsability } from "../lib/conflictImpact";
 import {
-  DEMO_KNOWLEDGE_FILTERS,
-  type DemoKnowledgeFilter,
   countByDemoKnowledge,
-  demoKnowledgeFilterLabelKey,
-  filterByDemoKnowledge,
   isDemoKnowledge,
   ownKnowledgeEmptyHint,
   readDemoKnowledgeFilter,
 } from "../lib/demoKnowledge";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 import { deriveStatus } from "../lib/displayStatus";
+import { type FacetGroupConfig, buildFacetGroups, clearFacetSelection } from "../lib/facetFilter";
 import {
   type FacetSelection,
+  type FacetValues,
   applyFacetSelection,
-  combinableFacetCounts,
+  facetSelectedValues,
   toggleFacetValue,
 } from "../lib/facets";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
@@ -46,36 +40,53 @@ import { koAuthorParts } from "../lib/koAuthor";
 import { windowList } from "../lib/libraryDisplay";
 import { EXPORT_FORMATS, type ExportFormat, exportFilename, exportUrl } from "../lib/libraryExport";
 import {
-  LIBRARY_FACET_KEYS,
   LIBRARY_FACET_LABEL_KEYS,
   LIBRARY_GROUP_KEYS,
-  type LibraryFacetKey,
   type LibraryGroupKey,
   type LibrarySavedView,
   groupByFacet,
   libraryFacetValues,
+  migrateSavedFacetSelection,
   readLibraryViews,
   removeLibraryView,
   saveLibraryView,
 } from "../lib/libraryFacets";
-import {
-  MATURITY_FILTERS,
-  type MaturityFilter,
-  type MaturityTone,
-  countByMaturity,
-  filterByMaturity,
-  libraryMaturity,
-  libraryUseCta,
-  maturityFilterLabelKey,
-} from "../lib/libraryMaturity";
+import { type MaturityTone, libraryMaturity, libraryUseCta } from "../lib/libraryMaturity";
 import { EMPTY_LIBRARY_FILTER, buildLibraryQuery } from "../lib/libraryQuery";
 import { type MatchField, searchLibrary } from "../lib/librarySearch";
 import { canRevalidate } from "../lib/revalidation";
 import { LIBRARY_SEARCH_DEBOUNCE_MS, useDebouncedValue } from "../lib/useDebouncedValue";
 import { useReadiness } from "../lib/useReadiness";
-import { categoryOptions, tagOptions } from "../lib/validationFilters";
 
-const KO_STATUSES = ["offen", "validiert"] as const;
+// AUFTRAG-uxpol1 (PAKET 1): EINE Facetten-Config für die Bibliothek — jede Dimension GENAU EINMAL
+// (kein Dropdown OBEN + Chip UNTEN mehr). Reihenfolge = Anzeigereihenfolge der Filterleiste. Die
+// Werte je Facette leitet libraryFilterValues (unten) rein aus dem KO ab (dieselbe Ableitung wie die
+// Validierungs-Badges/Reife-Plakette — keine zweite Wahrheit). Reife + Herkunft werden so ebenfalls
+// vollwertige, dynamisch gezählte Facetten (vorher eigene Chip-Reihen).
+const LIBRARY_FILTER_CONFIGS: readonly FacetGroupConfig[] = [
+  { key: "maturity", labelKey: "lib.facet.maturity" },
+  { key: "status", labelKey: LIBRARY_FACET_LABEL_KEYS.status },
+  { key: "origin", labelKey: "lib.facet.origin" },
+  { key: "category", labelKey: LIBRARY_FACET_LABEL_KEYS.category },
+  { key: "type", labelKey: "lib.facet.type" },
+  { key: "language", labelKey: LIBRARY_FACET_LABEL_KEYS.language },
+  { key: "tag", labelKey: "lib.facet.tag" },
+  { key: "author", labelKey: LIBRARY_FACET_LABEL_KEYS.author },
+  { key: "age", labelKey: LIBRARY_FACET_LABEL_KEYS.age },
+  { key: "trust", labelKey: LIBRARY_FACET_LABEL_KEYS.trust },
+];
+
+// Vollständige Facetten-Werte eines KOs: die sechs Bestands-Facetten (libraryFacetValues) PLUS
+// Reife, Herkunft, Wissensart und Tags — alles rein aus dem KO abgeleitet (keine zweite Logik).
+function libraryFilterValues(ko: KnowledgeObject, nowMs: number): FacetValues {
+  return {
+    ...libraryFacetValues(ko, nowMs),
+    type: [ko.type],
+    tag: ko.tags ?? [],
+    origin: [isDemoKnowledge(ko) ? "demo" : "non-demo"],
+    maturity: [libraryMaturity(ko).usability],
+  };
+}
 
 // SCRUM-262: Tönung der Reife-/Nutzbarkeits-Plakette (nutzbar/in Prüfung/zu prüfen).
 const MATURITY_TONE: Record<MaturityTone, string> = {
@@ -97,29 +108,31 @@ export function Library(): JSX.Element {
   // Pedi 05.07.: zusätzlich ?category=… vorbelegen — Verweise aus Risiko & Lücken landen so
   // direkt auf den Objekten der betroffenen Domäne.
   const [params] = useSearchParams();
-  const [filter, setFilter] = useState({
-    ...EMPTY_LIBRARY_FILTER,
-    q: params.get("q") ?? "",
-    category: params.get("category") ?? "",
-  });
+  // Volltext-Startwert aus der URL (?q=…), gesetzt von der globalen Topbar-Suche.
+  const [q, setQ] = useState(params.get("q") ?? "");
   const [exportFormat, setExportFormat] = useState<ExportFormat>("json");
-  // SCRUM-267: einfacher Reife-Filter (Alle/Nutzbar/In Prüfung/Zu prüfen) auf der gerankten Liste.
-  const [maturity, setMaturity] = useState<MaturityFilter>("all");
-  // SCRUM-309: Herkunftsfilter (Demo/Eigenes) — ergänzend zu Reife/Suche, nicht als Ersatz.
-  // SCRUM-310: lazy aus dem Query-Param (?origin=…) vorbelegen — z. B. Capture-Success → eigenes
-  // Wissen; fehlend/ungültig → „all". Die Chips überschreiben den State weiterhin frei.
-  const [demoFilter, setDemoFilter] = useState<DemoKnowledgeFilter>(() =>
-    readDemoKnowledgeFilter(params),
-  );
-  // D-BIB (nacht24 Paket 5): dynamische Facetten-Auswahl + Untergruppen-Ansicht.
-  const [facetSel, setFacetSel] = useState<FacetSelection>({});
+  // AUFTRAG-uxpol1 (PAKET 1): EINE Facetten-Auswahl für ALLE Dimensionen (Reife/Status/Herkunft/
+  // Kategorie/Art/…). Vorbelegung aus der URL: ?category=… (Verweise aus Risiko & Lücken) und
+  // ?origin=… (Deep-Link „eigenes Wissen"). Frühere getrennte Reife-/Herkunfts-States sind Teil davon.
+  const [facetSel, setFacetSel] = useState<FacetSelection>(() => {
+    // AUFTRAG-uxpol2: Facetten-Auswahl ist eine Wertemenge je Gruppe — die URL-Vorbelegung startet
+    // also als einelementige Menge (ODER innerhalb der Gruppe, weitere Werte kommen per Klick dazu).
+    const initial: FacetSelection = {};
+    const cat = params.get("category");
+    if (cat) {
+      initial.category = [cat];
+    }
+    const origin = readDemoKnowledgeFilter(params);
+    if (origin !== "all") {
+      initial.origin = [origin];
+    }
+    return initial;
+  });
   const [groupBy, setGroupBy] = useState<LibraryGroupKey>("none");
   const guide = knowledgeGuidance("library");
 
-  // Optionen (Domäne/Tags) aus dem ungefilterten Bestand, damit sie stabil bleiben.
+  // Bestand (für den Erststart-Leerzustand: kein einziges KO).
   const all = useKos();
-  const cats = categoryOptions(all.data ?? []);
-  const tags = tagOptions(all.data ?? []);
   // FR-LIF-04: Autor in jeder KO-Zeile sichtbar (Namen via Directory, Fallback ID).
   const dir = useDirectory();
   const nameOf = (uid: string): string => dir.data?.find((d) => d.id === uid)?.name || uid;
@@ -130,17 +143,20 @@ export function Library(): JSX.Element {
   // WP-BILD-1f (bens P4): die live getippte Volltext-Query läuft DEBOUNCED zum Server (ein Request
   // nach der Tipp-Pause statt einer pro Tastendruck); veraltete Antworten überschreiben nie das
   // Ergebnis, weil react-query pro Parameter-Key liest (latest-wins, s. useDebouncedValue).
-  const debouncedQ = useDebouncedValue(filter.q, LIBRARY_SEARCH_DEBOUNCE_MS);
-  const query = useLibrarySearch(buildLibraryQuery({ ...filter, q: debouncedQ }));
+  const debouncedQ = useDebouncedValue(q, LIBRARY_SEARCH_DEBOUNCE_MS);
+  // AUFTRAG-uxpol1: Dimensionen (Art/Status/Kategorie/Tag/…) filtern jetzt EINHEITLICH client-seitig
+  // über Facetten — der Server bekommt nur den Volltext. Ergebnis identisch (er lieferte die q-Treffer
+  // ohnehin voll), aber die Facetten sehen den unbeschnittenen Kontext → korrekte dynamische Zähler.
+  const query = useLibrarySearch(buildLibraryQuery({ ...EMPTY_LIBRARY_FILTER, q: debouncedQ }));
   // SCRUM-245: aktuelle Volltext-Query für client-seitiges Re-Ranking + Match-Hinweise.
-  const trimmedQ = filter.q.trim();
+  const trimmedQ = q.trim();
 
   // D-BIB Effizienz-Vertrag (10.000+ flüssig): die TEURE Facetten-Wert-Ableitung (Regex/Datums-
   // Parsen je KO) läuft genau EINMAL je Datenlauf (memoisiert auf query.data) — je Render bleiben
-  // nur billige Map-Lookups und Integer-Zähler.
+  // nur billige Map-Lookups und Integer-Zähler. Enthält jetzt ALLE Facetten (inkl. Reife/Herkunft/Art).
   const facetBase = useMemo(() => {
     const now = Date.now();
-    return new Map((query.data ?? []).map((k) => [k.id, libraryFacetValues(k, now)]));
+    return new Map((query.data ?? []).map((k) => [k.id, libraryFilterValues(k, now)]));
   }, [query.data]);
 
   // Match-Grund → kompaktes, ehrliches Label (kein „semantisch", keine Fake-Treffer).
@@ -166,37 +182,13 @@ export function Library(): JSX.Element {
     setSavedViews(readLibraryViews(window.localStorage, viewsUserId));
   }, [viewsUserId]);
   const applyView = (view: LibrarySavedView): void => {
-    const s = view.state as Partial<{
-      q: string;
-      type: string;
-      status: string;
-      category: string;
-      tag: string;
-      maturity: string;
-      demoFilter: string;
-      facetSel: FacetSelection;
-      groupBy: string;
-    }>;
-    setFilter({
-      ...EMPTY_LIBRARY_FILTER,
-      q: s.q ?? "",
-      type: s.type ?? "",
-      status: s.status ?? "",
-      category: s.category ?? "",
-      tag: s.tag ?? "",
-    });
-    // Unbekannte gespeicherte Werte fallen defensiv auf den Standard zurück (kein Crash).
-    setMaturity(
-      MATURITY_FILTERS.includes(s.maturity as MaturityFilter)
-        ? (s.maturity as MaturityFilter)
-        : "all",
-    );
-    setDemoFilter(
-      DEMO_KNOWLEDGE_FILTERS.includes(s.demoFilter as DemoKnowledgeFilter)
-        ? (s.demoFilter as DemoKnowledgeFilter)
-        : "all",
-    );
-    setFacetSel(s.facetSel && typeof s.facetSel === "object" ? s.facetSel : {});
+    const s = view.state as { q?: string; groupBy?: string };
+    setQ(s.q ?? "");
+    // AUFTRAG-uxpol2 (bens Blocker 1.2): Legacy-Felder SEMANTIKTREU in die neue Mehrfachauswahl
+    // heben — insbesondere `status:"offen"` → {offen, pruefung}, damit offene KOs MIT Zuweisung
+    // (Anzeigestatus „pruefung") nicht still aus der Sicht fallen. Die reine Migrationslogik lebt
+    // testbar in libraryFacets (migrateSavedFacetSelection).
+    setFacetSel(migrateSavedFacetSelection(view.state));
     setGroupBy(
       LIBRARY_GROUP_KEYS.includes(s.groupBy as LibraryGroupKey)
         ? (s.groupBy as LibraryGroupKey)
@@ -205,13 +197,7 @@ export function Library(): JSX.Element {
     setActiveView(view.name);
   };
   const currentViewState = (): Record<string, unknown> => ({
-    q: filter.q,
-    type: filter.type,
-    status: filter.status,
-    category: filter.category,
-    tag: filter.tag,
-    maturity,
-    demoFilter,
+    q,
     facetSel,
     groupBy,
   });
@@ -238,28 +224,36 @@ export function Library(): JSX.Element {
     onError: () => push("error", t("state.error")),
   });
 
-  const selectCls =
-    "h-10 rounded-input border border-hairline bg-surface px-2 text-sm text-text outline-none focus:border-ink/30";
-
-  // D-BIB: Anzeige-Label je Facetten-Wert (Kategorie roh; Sprache/Status/Alter/Trust lokalisiert;
-  // Autor über das Directory — Fallback bleibt die Id, nie ein erfundener Name).
-  const facetValueLabel = (key: LibraryFacetKey, value: string): string => {
-    if (key === "language") {
-      return t(`lib.facet.lang.${value}`);
+  // AUFTRAG-uxpol1: Anzeige-Label je Facetten-Wert — ALLE Dimensionen (Kategorie/Tag roh; Sprache/
+  // Status/Alter/Trust/Art/Herkunft/Reife lokalisiert; Autor über das Directory — Fallback bleibt die
+  // Id, nie ein erfundener Name). Reife nutzt dieselbe Use-Readiness-Sprache wie die Plakette.
+  const facetValueLabel = (key: string, value: string): string => {
+    switch (key) {
+      case "language":
+        return t(`lib.facet.lang.${value}`);
+      case "status":
+        return t(`status.${value}`);
+      case "author":
+        return nameOf(value);
+      case "age":
+        return t(`lib.facet.ageBucket.${value}`);
+      case "trust":
+        return t(`lib.facet.trustBucket.${value}`);
+      case "type":
+        return t(`ktype.${value}`);
+      case "maturity":
+        return t(useReadiness(value as Parameters<typeof useReadiness>[0]).labelKey);
+      case "origin":
+        return t(
+          value === "demo"
+            ? "lib.demoFilter.demo"
+            : value === "non-demo"
+              ? "lib.demoFilter.nonDemo"
+              : "lib.demoFilter.all",
+        );
+      default:
+        return value || t("lib.facet.none");
     }
-    if (key === "status") {
-      return t(`status.${value}`);
-    }
-    if (key === "author") {
-      return nameOf(value);
-    }
-    if (key === "age") {
-      return t(`lib.facet.ageBucket.${value}`);
-    }
-    if (key === "trust") {
-      return t(`lib.facet.trustBucket.${value}`);
-    }
-    return value || t("lib.facet.none");
   };
 
   return (
@@ -296,61 +290,16 @@ export function Library(): JSX.Element {
       />
       {/* SCRUM-291: Demo-/Pilotpfad auf der Zielseite wiedererkennbar (nur bei ?demo=stage1). */}
       {isDemoContext(params) ? <DemoBanner surface="library" /> : null}
+      {/* AUFTRAG-uxpol1 (PAKET 1): NUR noch die Volltextsuche steht oben — alle Dimensionen (Art/
+          Status/Kategorie/Tag/Reife/Herkunft/…) erscheinen GENAU EINMAL als dynamische Facetten in
+          der Filterleiste unten (kein Dropdown-oben/Chip-unten-Doppel mehr). */}
       <div className="mb-4 flex flex-wrap gap-2">
         <input
-          value={filter.q}
-          onChange={(e) => setFilter((f) => ({ ...f, q: e.target.value }))}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
           placeholder={t("lib.search")}
           className="h-10 min-w-[12rem] flex-1 rounded-input border border-hairline bg-surface px-3 text-sm outline-none focus:border-ink/30"
         />
-        <select
-          value={filter.type}
-          onChange={(e) => setFilter((f) => ({ ...f, type: e.target.value }))}
-          className={selectCls}
-        >
-          <option value="">{t("lib.allTypes")}</option>
-          {KNOWLEDGE_TYPES.map((tp) => (
-            <option key={tp} value={tp}>
-              {t(`ktype.${tp}`)}
-            </option>
-          ))}
-        </select>
-        <select
-          value={filter.status}
-          onChange={(e) => setFilter((f) => ({ ...f, status: e.target.value }))}
-          className={selectCls}
-        >
-          <option value="">{t("lib.allStatus")}</option>
-          {KO_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {t(`status.${s}`)}
-            </option>
-          ))}
-        </select>
-        <select
-          value={filter.category}
-          onChange={(e) => setFilter((f) => ({ ...f, category: e.target.value }))}
-          className={selectCls}
-        >
-          <option value="">{t("lib.allCategories")}</option>
-          {cats.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-        <select
-          value={filter.tag}
-          onChange={(e) => setFilter((f) => ({ ...f, tag: e.target.value }))}
-          className={selectCls}
-        >
-          <option value="">{t("lib.allTags")}</option>
-          {tags.map((tg) => (
-            <option key={tg} value={tg}>
-              {tg}
-            </option>
-          ))}
-        </select>
       </div>
       {/* D-BIB (nacht24): gespeicherte Sichten — benannt, lokal je Nutzer (nur dieser Browser). */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -475,111 +424,50 @@ export function Library(): JSX.Element {
         {(items) => {
           // SCRUM-245: client-seitig nach nachvollziehbarer Relevanz re-ranken (verwirft nichts).
           const ranked = searchLibrary(items, trimmedQ);
-          // SCRUM-309: Herkunfts-Zähler über die volle gerankte Liste; dann ergänzend nach Herkunft
-          // (Demo/Eigenes) filtern — VOR der Reife, damit beide Filter sauber komponieren.
-          const demoCounts = countByDemoKnowledge(ranked);
-          const byDemo = filterByDemoKnowledge(ranked, demoFilter);
-          // SCRUM-267: Reife-Zähler über die (nach Herkunft gefilterte) Liste; dann nach Reife filtern …
-          const maturityCounts = countByMaturity(byDemo);
-          const filtered = filterByMaturity(byDemo, maturity);
-          // D-BIB (nacht24): dynamische Facetten AUS DEM BESTAND — Zähler kombinierbar (je Facette
-          // auf der Menge gezählt, die alle ANDEREN gewählten Facetten erfüllt). Die Werte kommen
-          // aus der je Datenlauf memoisierten Ableitung (facetBase) — nur Lookups je Render.
+          // AUFTRAG-uxpol1 (PAKET 1): EINE dynamische Facetten-Leiste über ALLE Dimensionen. Die
+          // Werte je KO kommen aus der je Datenlauf memoisierten Ableitung (facetBase) — nur Lookups
+          // je Render. buildFacetGroups rechnet die Kontext-Zähler + graut 0-Optionen aus.
           const valuesOf = (item: { ko: { id: string } }) => facetBase.get(item.ko.id) ?? {};
-          const facetCounts = combinableFacetCounts(
-            filtered.map(valuesOf),
-            LIBRARY_FACET_KEYS,
-            facetSel,
-          );
-          const faceted = applyFacetSelection(filtered, valuesOf, facetSel);
-          // SCRUM-158: … erst danach fenstern + zählen (Count-Linie passt zur sichtbaren Menge).
+          const groups = buildFacetGroups(ranked.map(valuesOf), LIBRARY_FILTER_CONFIGS, facetSel);
+          const faceted = applyFacetSelection(ranked, valuesOf, facetSel);
+          // SCRUM-158: erst danach fenstern + zählen (Count-Linie passt zur sichtbaren Menge).
           const win = windowList(faceted);
+          // Beta Own-Knowledge Work Queue v0: Zahl der eigenen (nicht-Demo) Treffer im vollen Bestand
+          // — für den ehrlichen Leerzustand der „Eigenes Wissen"-Linse (facetSel.origin === non-demo).
+          const nonDemoCount = countByDemoKnowledge(ranked)["non-demo"];
+          // AUFTRAG-uxpol2: Herkunft ist jetzt eine Wertemenge — der „Eigenes Wissen"-Leerzustand
+          // greift nur bei einer EINDEUTIGEN Demo/Nicht-Demo-Linse (gemischte Auswahl → „all").
+          const originValues = facetSelectedValues(facetSel.origin);
+          const originSel =
+            originValues.length === 1 &&
+            (originValues[0] === "demo" || originValues[0] === "non-demo")
+              ? originValues[0]
+              : "all";
           return (
             <>
-              {/* SCRUM-309: Herkunftsfilter (Demo/Eigenes) — ergänzend, nutzt dieselbe Erkennung wie
-                  das Demo-Badge; ersetzt NICHT Status/Trust/Nutzbarkeit/Reife/Suche. */}
-              <div className="mb-2 flex flex-wrap items-center gap-1.5">
-                <span className="mr-0.5 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
-                  {t("lib.originLabel")}:
-                </span>
-                {DEMO_KNOWLEDGE_FILTERS.map((f) => (
-                  <button
-                    key={f}
-                    type="button"
-                    onClick={() => setDemoFilter(f)}
-                    className={`rounded-pill border px-2.5 py-1 font-mono text-[11px] font-semibold ${
-                      demoFilter === f
-                        ? "border-ink bg-ink text-white"
-                        : "border-hairline text-muted hover:text-text"
-                    }`}
-                  >
-                    {t(demoKnowledgeFilterLabelKey(f))} · {demoCounts[f]}
-                  </button>
-                ))}
-              </div>
-              {/* SCRUM-267: Reife-Filter — dieselbe Logik wie die Plakette (libraryMaturity). */}
-              <div className="mb-2 flex flex-wrap gap-1.5">
-                {MATURITY_FILTERS.map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() => setMaturity(m)}
-                    className={`rounded-pill border px-2.5 py-1 font-mono text-[11px] font-semibold ${
-                      maturity === m
-                        ? "border-ink bg-ink text-white"
-                        : "border-hairline text-muted hover:text-text"
-                    }`}
-                  >
-                    {t(maturityFilterLabelKey(m))} · {maturityCounts[m]}
-                  </button>
-                ))}
-              </div>
-              {/* D-BIB (nacht24): dynamische Facetten-Chips — nur vorkommende Werte, mit Zählern,
-                  kombinierbar. Facetten mit nur EINEM Wert bleiben still (sie filtern nichts). */}
-              {LIBRARY_FACET_KEYS.map((key) => {
-                const options = facetCounts[key] ?? [];
-                const selected = facetSel[key];
-                if (options.length < 2 && selected === undefined) {
-                  return null;
+              {/* AUFTRAG-uxpol1 (PAKET 1): EINE dynamische Filterleiste für ALLE Dimensionen —
+                  Aktive-Filter-Pillen + Reset, Kontext-Zähler je Option, 0-Optionen ausgegraut,
+                  Trefferzeile „N von GESAMT". Reife/Herkunft/Status/Kategorie/Art/… sind hier je
+                  GENAU EINMAL vertreten (keine Dropdown-oben/Chip-unten-Dopplung mehr). */}
+              <FacetFilter
+                configs={LIBRARY_FILTER_CONFIGS}
+                groups={groups}
+                selection={facetSel}
+                total={ranked.length}
+                shown={faceted.length}
+                onToggle={(key, value) => setFacetSel((s) => toggleFacetValue(s, key, value))}
+                onReset={() => setFacetSel(clearFacetSelection())}
+                onClearGroup={(key) =>
+                  setFacetSel((s) => {
+                    // AUFTRAG-uxpol4: eine No-Match-Pille abwählen ⇒ die ganze Dimension lösen
+                    // (strukturell, ohne echten Wert) — kein Marker verbleibt in der Auswahl.
+                    const next = { ...s };
+                    delete next[key];
+                    return next;
+                  })
                 }
-                // Anzeige-Deckel: die 12 häufigsten Werte (+ der gewählte, falls außerhalb) —
-                // der Rest wird EHRLICH als „+N weitere" ausgewiesen, nichts still verschluckt.
-                const shown = options.slice(0, 12);
-                if (selected !== undefined && !shown.some((o) => o.value === selected)) {
-                  const sel = options.find((o) => o.value === selected);
-                  if (sel) {
-                    shown.push(sel);
-                  }
-                }
-                const hidden = options.length - shown.length;
-                return (
-                  <div key={key} className="mb-2 flex flex-wrap items-center gap-1.5">
-                    <span className="mr-0.5 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
-                      {t(LIBRARY_FACET_LABEL_KEYS[key])}:
-                    </span>
-                    {shown.map((o) => (
-                      <button
-                        key={o.value || "—"}
-                        type="button"
-                        aria-pressed={selected === o.value}
-                        onClick={() => setFacetSel((s) => toggleFacetValue(s, key, o.value))}
-                        className={`rounded-pill border px-2.5 py-1 font-mono text-[11px] font-semibold ${
-                          selected === o.value
-                            ? "border-ink bg-ink text-white"
-                            : "border-hairline text-muted hover:text-text"
-                        }`}
-                      >
-                        {facetValueLabel(key, o.value)} · {o.count}
-                      </button>
-                    ))}
-                    {hidden > 0 ? (
-                      <span className="text-[10.5px] text-muted-2">
-                        {t("lib.facet.more", { n: hidden })}
-                      </span>
-                    ) : null}
-                  </div>
-                );
-              })}
+                labelForValue={facetValueLabel}
+              />
               {/* D-BIB: Untergruppen-Ansicht — metadaten-basiert (KI-Themencluster bewusst NICHT
                   angebunden: nicht trivial — im Bericht vermerkt). */}
               <div className="mb-2 flex flex-wrap items-center gap-1.5">
@@ -607,8 +495,8 @@ export function Library(): JSX.Element {
                   Weg zurück ins Erfassen zeigen statt einer stummen leeren Liste. */}
               {(() => {
                 const ownEmpty = ownKnowledgeEmptyHint({
-                  filter: demoFilter,
-                  count: demoCounts["non-demo"],
+                  filter: originSel,
+                  count: nonDemoCount,
                 });
                 if (!ownEmpty) {
                   return null;
@@ -626,14 +514,13 @@ export function Library(): JSX.Element {
                   </Card>
                 );
               })()}
-              <div className="mb-2 flex items-center justify-between gap-2 font-mono text-[11px] text-muted-2">
-                <span>{t("lib.resultCount", { n: win.total })}</span>
-                {win.limited ? (
-                  <span className="text-trust-warn-text">
-                    {t("lib.showingFirst", { shown: win.shown, total: win.total })}
-                  </span>
-                ) : null}
-              </div>
+              {/* AUFTRAG-uxpol1: die Trefferzeile („N von GESAMT") liefert jetzt die FacetFilter-Leiste.
+                  Hier bleibt NUR der ehrliche Fenster-Deckel-Hinweis (Anzeige der ersten N von vielen). */}
+              {win.limited ? (
+                <div className="mb-2 font-mono text-[11px] text-trust-warn-text">
+                  {t("lib.showingFirst", { shown: win.shown, total: win.total })}
+                </div>
+              ) : null}
               {(() => {
                 const koRows = (list: typeof win.visible): JSX.Element[] =>
                   list.map(({ ko: k, matches }) => {

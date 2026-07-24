@@ -195,8 +195,11 @@ describe("KW-W2-01: Ganzdokument-Import als bewusster Entwurf", () => {
     expect(captureSource).toMatch(
       /fileWholeDraft = useMutation\(\{[\s\S]*?endpoints\.drafts\.create/,
     );
+    // AUFTRAG-uxpol3 (bens Restfund 4.1): der versteckte Datei-Input + onChange leben jetzt in der
+    // Produktionskomponente CaptureFileImport; die Reihenfolge-Invariante (Importart-Toggle VOR dem
+    // Datei-Picker) prüft weiter denselben Fluss über deren Render-Marker in Capture.tsx.
     expect(captureSource.indexOf("CAPTURE_FILE_TEXT.importModeLabel")).toBeLessThan(
-      captureSource.indexOf("onChange={(e) => void onExtractFile(e)}"),
+      captureSource.indexOf("<CaptureFileImport onExtractFile={(e) => void onExtractFile(e)} />"),
     );
     expect(captureSource).not.toContain(
       "fileWholeDraft = useMutation({\n    mutationFn: () => endpoints.ko.create",
@@ -258,8 +261,11 @@ describe("KW-W2-01: Ganzdokument-Import als bewusster Entwurf", () => {
     expect(infoSource).toContain("CAPTURE_FILE_TEXT.supportedFormats");
     expect(infoSource).toContain("CAPTURE_FILE_TEXT.unsupportedFormats");
     // WP-D7 (Befund 1): die accept-Liste lebt jetzt ZENTRAL in captureFromFile.ts (kein hartkodierter
-    // Dialog mehr); Capture referenziert nur noch die Konstante.
-    expect(captureSource).toContain("accept={FILE_IMPORT_ACCEPT}");
+    // Dialog mehr); der Dokument-Input referenziert nur die Konstante — jetzt in CaptureFileImport
+    // (AUFTRAG-uxpol3 / bens Restfund 4.1: Verdrahtung in eine real gemountete Produktionskomponente).
+    expect(
+      readFileSync(resolve(process.cwd(), "apps/web/src/components/CaptureFileImport.tsx"), "utf8"),
+    ).toContain("accept={FILE_IMPORT_ACCEPT}");
     // WP-D5/WP-D7: PPTX ist aktiv auswählbar (Best-Effort-Import), RTF bleibt außen vor — jetzt an der
     // zentralen Quelle gepinnt.
     const acceptSource = readFileSync(

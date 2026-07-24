@@ -24,6 +24,9 @@ function readSource(rel: string): string {
 const PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 const DOC_INPUT_FILES = [
   "apps/web/src/pages/Capture.tsx",
+  // AUFTRAG-uxpol3 (bens Restfund 4.1): der versteckte Dokument-Input des Erfassens lebt jetzt in der
+  // exportierten Produktionskomponente CaptureFileImport (real gemountet testbar) — hier mitgeprüft.
+  "apps/web/src/components/CaptureFileImport.tsx",
   "apps/web/src/components/BodyExtractPanel.tsx",
   "apps/web/src/components/KnowledgeInputStudio.tsx",
 ];
@@ -54,7 +57,10 @@ describe("WP-D7 Befund 1: zentrale accept-Konstante inkl. .pptx", () => {
     // Stattdessen referenzieren sie die zentrale Konstante.
     const capture = readSource("apps/web/src/pages/Capture.tsx");
     expect(capture).toContain("accept={FILE_CAPTURE_ACCEPT}");
-    expect(capture).toContain("accept={FILE_IMPORT_ACCEPT}");
+    // Der Dokument-Import-Input (accept={FILE_IMPORT_ACCEPT}) wohnt jetzt in CaptureFileImport.
+    expect(readSource("apps/web/src/components/CaptureFileImport.tsx")).toContain(
+      "accept={FILE_IMPORT_ACCEPT}",
+    );
     expect(readSource("apps/web/src/components/BodyExtractPanel.tsx")).toContain(
       "accept={FILE_IMPORT_ACCEPT}",
     );
