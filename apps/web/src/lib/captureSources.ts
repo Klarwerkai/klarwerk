@@ -15,6 +15,37 @@ export interface PendingSource {
   provider?: string;
 }
 
+// AUFTRAG-mega5 Block C (bens Vorschlag): im PERSISTIERTEN Draft-Vertrag heißt das Feld
+// `sourceProvider` — auf einen Blick die Such-/Herkunftsquelle des Treffers, nicht ein KI-Anbieter.
+// Der KO-add-source-Vertrag (`provider`, bestehendes KO-Datenmodell) bleibt unverändert; diese
+// beiden reinen Mapper übersetzen an der Draft-Grenze in beide Richtungen.
+export interface DraftPendingSource {
+  label: string;
+  url?: string;
+  excerpt?: string;
+  sourceProvider?: string;
+}
+
+export function toDraftSources(list: readonly PendingSource[]): DraftPendingSource[] {
+  return list.map((s) => ({
+    label: s.label,
+    ...(s.url !== undefined ? { url: s.url } : {}),
+    ...(s.excerpt !== undefined ? { excerpt: s.excerpt } : {}),
+    ...(s.provider !== undefined ? { sourceProvider: s.provider } : {}),
+  }));
+}
+
+export function fromDraftSources(list: readonly DraftPendingSource[]): PendingSource[] {
+  return list
+    .filter((s) => typeof s?.label === "string" && s.label.length > 0)
+    .map((s) => ({
+      label: s.label,
+      ...(typeof s.url === "string" ? { url: s.url } : {}),
+      ...(typeof s.excerpt === "string" ? { excerpt: s.excerpt } : {}),
+      ...(typeof s.sourceProvider === "string" ? { provider: s.sourceProvider } : {}),
+    }));
+}
+
 // Gleiche Guard-Logik wie im Prüfbereich (KnowledgeDetail: canEdit = role !== "viewer").
 export function canAttachCaptureSources(role: string | undefined): boolean {
   return role !== "viewer";

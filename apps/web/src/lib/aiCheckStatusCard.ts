@@ -31,6 +31,21 @@ export function aiCheckFailureReasonKey(fallbackReason: string | undefined): str
   if (fallbackReason === "confidential") {
     return "val.aiCheck.reason.confidential";
   }
+  // RT-001 (Pedi): ehrliche Feinunterscheidung echter Providerfehler — der classifyAiCheckFailure-
+  // Klassifizierer im ai-check-worker leitet diese Ursachen aus Status/Meldung ab. NIE ein
+  // Anbietername/Key/Endpunkt/roher Fehlertext — nur die nutzerverständliche Ursache je Key.
+  if (fallbackReason === "auth") {
+    return "val.aiCheck.reason.auth";
+  }
+  if (fallbackReason === "rate-limit") {
+    return "val.aiCheck.reason.rate-limit";
+  }
+  if (fallbackReason === "unreachable") {
+    return "val.aiCheck.reason.unreachable";
+  }
+  if (fallbackReason === "bad-response") {
+    return "val.aiCheck.reason.bad-response";
+  }
   return "val.aiCheck.reason.model-error";
 }
 

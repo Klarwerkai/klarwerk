@@ -35,6 +35,14 @@ const de = {
   "nav.duplicates": "Duplikate",
   // SCRUM-486 E: Sidebar-Badges mit Bedeutung — Zahl + Art (Tooltip/aria-label).
   "nav.badge.tasks": "{{count}} offene Aufgaben",
+  "nav.badge.loading": "Zähler wird geladen …",
+  // AUFTRAG-mega3 Block B: ehrliche dritte Ladephase „Fehler" (nicht endlos „lädt", keine erfundene 0).
+  "nav.badge.error": "Zähler konnte nicht geladen werden – erneut versuchen",
+  // AUFTRAG-mega4 Block B: Refetch der vorhandenen Zahl scheiterte — Zahl bleibt sichtbar, gilt aber als veraltet.
+  "nav.badge.stale": "Zähler veraltet – Aktualisierung fehlgeschlagen, erneut versuchen",
+  "loadstate.error.title": "Konnte nicht geladen werden.",
+  "loadstate.error.retry": "Erneut versuchen",
+  "loadstate.stale": "Veraltet – Aktualisierung fehlgeschlagen",
   "nav.badge.validation": "{{count}} warten auf Prüfung",
   "nav.badge.conflicts": "{{count}} offene Widersprüche",
   "nav.badge.duplicates": "{{count}} mögliche Dubletten",
@@ -63,6 +71,9 @@ const de = {
   "action.logout": "Abmelden",
   "topbar.search": "Wissen, Funktionen oder Anlagen suchen…",
   "topbar.mobile": "Mobil",
+  "topbar.openMenu": "Menü öffnen",
+  "topbar.closeMenu": "Menü schließen",
+  "topbar.menuLabel": "Navigationsmenü",
   // B1b: Rückweg aus der schalenlosen /mobile-Ansicht zur Vollversion.
   "topbar.toDesktop": "Zur Vollversion",
   "topbar.notifications": "Benachrichtigungen",
@@ -249,6 +260,11 @@ const de = {
   "nav.guard.stay": "Hier bleiben",
   "nav.guard.discard": "Verwerfen und wechseln",
   "nav.guard.save": "Entwurf speichern und wechseln",
+  "nav.guard.unsavableTitle": "Nicht alles kann gesichert werden",
+  "nav.guard.unsavableLead":
+    "Diese Inhalte kann der Entwurf nicht sichern — beim Wechsel gehen sie verloren:",
+  "nav.guard.unsavableHint":
+    "Bleib hier, um sie zu verwenden oder zu entfernen; „Verwerfen und wechseln“ gibt sie bewusst auf. Ein Speichern, das diese Inhalte mitnimmt, gibt es nicht.",
   // Bug (Pedi 04.07.): Fehlergrenze statt weißer Seite.
   "error.title": "Diese Ansicht konnte nicht geladen werden.",
   "error.body":
@@ -417,6 +433,7 @@ const de = {
   "work.learning": "Offene Lernpfad-Schritte",
   "start.allTasks": "Alle Aufgaben →",
   "start.todoEmpty": "Nichts offen. Gut gemacht.",
+  "start.todoLoading": "Arbeitsübersicht wird geladen …",
   "start.stufe2.title": "Erweiterte Funktionen (Stufe 2)",
   "start.stufe2.body":
     "Als Admin stehen dir erweiterte Funktionen zur Verfügung: {{features}}. Schalte dazu „{{toggle}}' unten in der Seitenleiste ein.",
@@ -610,8 +627,9 @@ const de = {
   "adm.ready.openReviews": "Offene Prüfungen",
   "adm.ready.count": "{{n}}",
   "adm.ready.upload": "Upload-Grenzen",
-  "adm.ready.upload.val": "{{n}} Anhänge · {{kb}} KB",
+  "adm.ready.upload.val": "{{n}} Anhänge · {{mb}} MB",
   "adm.ready.unknown": "unbekannt",
+  "adm.ready.loading": "wird geladen …",
   "adm.ready.external": "Externe Wissensabfrage",
   "adm.ready.ext.blocked": "Blockiert",
   "adm.ready.ext.searchOnClick": "Suche auf Klick",
@@ -704,6 +722,8 @@ const de = {
   "adm.ai.detail": "Feinabstimmung je Einsatz",
   "adm.ai.detailHint": "optional — Standard genügt meist",
   "adm.ai.saved": "KI-Zuordnung übernommen.",
+  "adm.ai.dirtyHint": "Noch nicht übernommen — „Zuordnung übernehmen“ klicken.",
+  "adm.ai.applied": "Übernommen ✓",
   "adm.ai.persistNote":
     "Gilt bis zum nächsten Neustart der App — dauerhafte Speicherung und lokale Modelle kommen mit dem Voll-Ausbau (PMO-Eintrag).",
   // SCRUM-386: kundeneigene KI-Assist-Funktionen (Presets) — Admin pflegt, Palette zeigt allen.
@@ -725,6 +745,7 @@ const de = {
     "So viele Prüf-Bestätigungen braucht ein neuer Beitrag standardmäßig, bis er als validiert gilt.",
   "adm.val.label": "Standard-Prüferanzahl (1–5)",
   "adm.val.save": "Speichern",
+  "adm.val.invalid": "Bitte eine ganze Zahl zwischen 1 und 5 angeben.",
   "adm.val.saved": "Standard-Prüferanzahl gespeichert.",
   "adm.upload.title": "Upload-Grenzen",
   "adm.upload.help":
@@ -987,6 +1008,10 @@ const de = {
   "capture.file.upload": "Dokument auswählen",
   "capture.file.replace": "Anderes Dokument wählen",
   "capture.file.remove": "Dokument entfernen",
+  "capture.file.dropHint": "Datei hierher ziehen und ablegen — oder unten auswählen.",
+  "capture.file.dropActive": "Datei hier ablegen …",
+  "capture.file.dropReject":
+    "„{{name}}“ wird hier noch nicht unterstützt — bitte eine Text-, Word-, PDF-, PPTX- oder Bilddatei ablegen.",
   "capture.file.extracting": "Lese „{{name}}“ …",
   "capture.file.loaded": "„{{name}}“ gelesen — bereit für die Wissenssuche.",
   "capture.file.empty": "In „{{name}}“ wurde kein Text gefunden.",
@@ -1223,6 +1248,19 @@ const de = {
     "{{count}} Entwürfe sind eingeklappt, damit die Erfassungswege darunter erreichbar bleiben.",
   "capture.resume": "Fortsetzen",
   "capture.discardDraft": "Verwerfen",
+  // AUFTRAG-sortfilter · Punkt 2: Filter + Sortierung der Entwurfsliste.
+  "capture.draftSearch": "Entwürfe durchsuchen",
+  "capture.draftSortLabel": "Sortieren",
+  "capture.draftSort.recent": "Zuletzt gespeichert (neu→alt)",
+  "capture.draftSort.oldest": "Zuletzt gespeichert (alt→neu)",
+  "capture.draftSort.title": "Titel A→Z",
+  "capture.draftAuthorLabel": "Ersteller",
+  "capture.draftAuthorAll": "Alle Ersteller",
+  "capture.draftEmptyFiltered": "Keine Entwürfe passen zum Filter.",
+  "capture.draftJustSaved": "gerade gespeichert",
+  "capture.draftCreatorMeta": "Ersteller: {{name}}",
+  "capture.draftSavedMeta": "Gespeichert: {{date}}",
+  "capture.draftStatusMeta": "Status: Entwurf",
   "capture.editingDraft": "Entwurf geladen — Änderungen werden im selben Entwurf gespeichert.",
   "capture.editingBadge": "in Bearbeitung",
   "capture.fileImportJump": "Datei importieren",
@@ -1261,6 +1299,7 @@ const de = {
   "capture.fStatement": "Aussage",
   "capture.fBody": "Ausführlicher Inhalt (optional)",
   "editor.bold": "Fett",
+  "editor.bodyLabel": "Wissensseite — Fließtext",
   "editor.italic": "Kursiv",
   "editor.h2": "Überschrift",
   "editor.h3": "Unterüberschrift",
@@ -1447,8 +1486,43 @@ const de = {
   "capture.ivNext": "Weiter",
   "capture.ivFinish": "Entwurf erstellen",
   "capture.ivDone": "Interview abgeschlossen — prüfe den Entwurf rechts und reiche ihn ein.",
+  "capture.ivStart": "Interview starten",
+  "capture.ivStartLead":
+    "Das geführte Interview nutzt die KI, um Rückfragen zu stellen. Erst mit „Interview starten“ geht die erste Frage an das Modell — vorher wird nichts gesendet. Provider und Region siehst du über das (!)-Symbol.",
   "capture.ivTurn": "Frage {{n}}",
   "capture.ivThinking": "Die KI formuliert die nächste Frage …",
+  "capture.ivResumeLead":
+    "Dein Interviewfortschritt ist wiederhergestellt. Die nächste Frage wird erst auf deinen Klick geladen.",
+  "capture.ivResumeLoad": "Nächste Frage laden",
+  "capture.unsavable.images_one": "{{count}} eingefügtes Bild",
+  "capture.unsavable.images_other": "{{count}} eingefügte Bilder",
+  "capture.unsavable.docs_one": "{{count}} angehängte Datei (Dokument/Video/Audio)",
+  "capture.unsavable.docs_other": "{{count}} angehängte Dateien (Dokumente/Video/Audio)",
+  "capture.unsavable.file":
+    "die hochgeladene Datei „{{name}}“ — ihre Auswertung ist noch nicht abgeschlossen",
+  "capture.unsavable.fileQueue":
+    "die laufende Datei-Verarbeitung aus „{{name}}“ (Punkt {{current}} von {{total}})",
+  "capture.unsavable.extResults":
+    "die geladene Trefferliste der externen Suche — die Suchanfrage selbst bleibt im Entwurf erhalten",
+  // AUFTRAG-mega6 Block A: die http/https-Allowlist der Persistenz wird benannt, statt still zu wirken.
+  "capture.unsavable.sourceUrl":
+    "die angefangene Web-Adresse „{{urls}}“ — der Entwurf sichert nur vollständige Adressen, die mit https:// oder http:// beginnen; Bezeichnung und Auszug der Quelle bleiben erhalten",
+  "capture.sourceUrlLimit":
+    "Diese Adresse kann der Entwurf nicht mitsichern. Ergänze https:// oder http:// davor — oder leere das Feld, wenn du sie nicht brauchst.",
+  // AUFTRAG-mega6 Block D: sichtbare Entsprechung der serverseitigen Mengen- und Längengrenzen.
+  "capture.limit.chars":
+    "Maximale Länge erreicht ({{max}} Zeichen) — weiterer Text wird nicht gesichert.",
+  "capture.limit.reviewers":
+    "Mehr als {{max}} Prüfer kann der Entwurf nicht sichern — wähle jemanden ab, um zu tauschen.",
+  "capture.limit.sources":
+    "Mehr als {{max}} Quellen kann der Entwurf nicht sichern — entferne eine, um Platz zu machen.",
+  "capture.limit.interviewAnswers":
+    "Mehr als {{max}} Antworten kann der Entwurf nicht sichern — schließe das Interview ab oder speichere den Entwurf.",
+  "capture.saveLimit.title": "Der Entwurf sichert nicht alles",
+  "capture.saveLimit.lead":
+    "Text, Metadaten und Quellen werden gespeichert. Diese Inhalte kann der Entwurf jedoch nicht sichern — beim Speichern werden sie verworfen:",
+  "capture.saveLimit.cancel": "Abbrechen — Inhalte behalten",
+  "capture.saveLimit.confirm": "Trotzdem speichern und diese Inhalte verwerfen",
   "capture.ivAnswerHint": "Deine Antwort …",
   "capture.ivSend": "Antwort senden",
   "capture.ivReadAloud": "Vorlesen",
@@ -1471,6 +1545,7 @@ const de = {
   "ask.intro":
     "Antworten kommen ausschließlich aus validiertem Wissen — mit Quellen und Vertrauen. Gibt es keine Grundlage, wird die Lücke offen benannt.",
   "ask.placeholder": "z. B. Wann muss Ventil X bei Überdruck geschlossen werden?",
+  "ask.emptyHint": "Bitte gib zuerst eine Frage ein.",
   "ask.submit": "Fragen",
   // SCRUM-295: Hinweis bei vorbefüllter Startfrage (aus KO-Detail „Wissen nutzen") im Demo-Kontext.
   "ask.demoPrefillHint":
@@ -1705,6 +1780,8 @@ const de = {
   "ext.search": "Suchen",
   "ext.attach": "Als Quelle anhängen",
   "ext.unavailable": "Externe Suche ist nicht verfügbar.",
+  "ext.resumeHint":
+    "Die Trefferliste wird im Entwurf nicht mitgespeichert. Deine Suchanfrage ist wieder da — führe die Suche erneut aus, um die Treffer neu zu laden.",
   "extpage.kicker": "Recherche",
   "extpage.title": "Externes Wissen",
   "extpage.intro": "Externe Quellen durchsuchen — ganz ohne vorher ein Wissensobjekt zu öffnen.",
@@ -1832,6 +1909,16 @@ const de = {
   // D-AISTATE PAKET 1 (bens V1): vertraulich → Cloud-KI ausgeschlossen, kein lokales Modell.
   "val.aiCheck.reason.confidential":
     "Vertraulich — die Cloud-KI ist ausgeschlossen und kein lokales Modell verfügbar. Nur die deterministische Duplikat-/Überschneidungsprüfung lief; inhaltlich wurde nicht per KI geprüft.",
+  // RT-001 (Pedi): ehrliche Feinunterscheidung echter Providerfehler — nie Anbietername/Schlüssel/
+  // Endpunkt/roher Fehlertext, nur nutzerverständliche Ursache + was der Nutzer tun kann.
+  "val.aiCheck.reason.auth":
+    "Die KI konnte sich nicht anmelden — die Zugangsdaten fehlen oder wurden abgelehnt. Bitte die Modell-Zugangsdaten in den Einstellungen prüfen und erneut prüfen.",
+  "val.aiCheck.reason.rate-limit":
+    "Der KI-Anbieter hat die Anfrage wegen einer Ratenbegrenzung abgewiesen. Kurz warten und erneut prüfen.",
+  "val.aiCheck.reason.unreachable":
+    "Der KI-Anbieter war nicht erreichbar — vermutlich ein Netzwerk- oder Verbindungsproblem. Verbindung prüfen und erneut prüfen.",
+  "val.aiCheck.reason.bad-response":
+    "Das KI-Modell hat eine unverständliche Antwort geliefert, die sich nicht auswerten ließ. Erneut prüfen startet einen neuen Lauf.",
   "val.feedback.condTitle": "Bedingt – Begründung für den Autor (Pflicht)",
   "val.feedback.rejTitle": "Ablehnung – Begründung für den Autor (Pflicht)",
   "val.feedback.placeholder": "Was muss überarbeitet werden? …",
@@ -2086,6 +2173,7 @@ const de = {
   "facet.result": "Treffer: {{shown}} von {{total}}",
   "facet.filtered": "gefiltert",
   "facet.more": "+{{n}} weitere",
+  "facet.moreFilters": "Weitere Filter",
   "facet.noMatch": "keine Treffer (widersprüchliche gespeicherte Sicht)",
   "lib.facet.lang.de": "Deutsch",
   "lib.facet.lang.en": "Englisch",
@@ -2102,6 +2190,12 @@ const de = {
   "lib.facet.trustBucket.t70": "Trust 70+",
   "lib.facet.more": "+{{n}} weitere",
   "lib.facet.none": "ohne Wert",
+  // AUFTRAG-sortfilter · Punkt 1: Sortierung der Trefferliste.
+  "lib.sort.label": "Sortieren",
+  "lib.sort.relevance": "Relevanz",
+  "lib.sort.title": "Titel A→Z",
+  "lib.sort.trust": "Trust (hoch→niedrig)",
+  "lib.sort.recent": "Zuletzt geändert (neu→alt)",
   "lib.groupBy.label": "Untergruppen",
   "lib.groupBy.none": "keine",
   "lib.views.label": "Sichten",
@@ -2431,6 +2525,11 @@ const de = {
   "imp.uploadTitle": "JSON-Re-Import",
   "imp.uploadHint":
     "JSON-Datei wählen — die Einträge landen als Beiträge in der Prüfliste (keine stille Übernahme).",
+  "imp.jsonOnlyReason":
+    "Import derzeit nur als JSON. Office-Dateien (DOCX, PDF, PPTX) bitte über „Wissen erfassen → aus Datei“ aufnehmen — dort werden sie real gelesen.",
+  "imp.dropHint": "JSON-Datei hierher ziehen und ablegen — oder unten auswählen.",
+  "imp.dropActive": "JSON-Datei hier ablegen …",
+  "imp.dropReject": "„{{name}}“ ist keine JSON-Datei — Import derzeit nur als JSON möglich.",
   "imp.upload": "JSON-Datei wählen",
   "imp.parsed": "{{n}} Beiträge zur Prüfung eingereiht.",
   "imp.parseError": "Ungültige JSON-Datei.",
@@ -3558,6 +3657,12 @@ const en: typeof de = {
   "nav.duplicates": "Duplicates",
   // SCRUM-486 E: sidebar badges with meaning — count + kind (tooltip/aria-label).
   "nav.badge.tasks": "{{count}} open tasks",
+  "nav.badge.loading": "Loading count …",
+  "nav.badge.error": "Count failed to load – try again",
+  "nav.badge.stale": "Count outdated – refresh failed, try again",
+  "loadstate.error.title": "Couldn’t load.",
+  "loadstate.error.retry": "Try again",
+  "loadstate.stale": "Outdated – refresh failed",
   "nav.badge.validation": "{{count}} awaiting review",
   "nav.badge.conflicts": "{{count}} open contradictions",
   "nav.badge.duplicates": "{{count}} possible duplicates",
@@ -3586,6 +3691,9 @@ const en: typeof de = {
   "action.logout": "Sign out",
   "topbar.search": "Search knowledge, features or assets…",
   "topbar.mobile": "Mobile",
+  "topbar.openMenu": "Open menu",
+  "topbar.closeMenu": "Close menu",
+  "topbar.menuLabel": "Navigation menu",
   "topbar.toDesktop": "To full version",
   "topbar.notifications": "Notifications",
   "topbar.notificationsPlaceholder": "No notifications yet. Real source coming (#63).",
@@ -3766,6 +3874,10 @@ const en: typeof de = {
   "nav.guard.stay": "Stay here",
   "nav.guard.discard": "Discard and leave",
   "nav.guard.save": "Save draft and leave",
+  "nav.guard.unsavableTitle": "Not everything can be saved",
+  "nav.guard.unsavableLead": "The draft cannot save this content — it will be lost if you leave:",
+  "nav.guard.unsavableHint":
+    "Stay here to use or remove it; “Discard and leave” gives it up deliberately. There is no save that takes this content along.",
   // Bug (Pedi 04.07.): error boundary instead of a blank page.
   "error.title": "This view could not be loaded.",
   "error.body":
@@ -3931,6 +4043,7 @@ const en: typeof de = {
   "work.learning": "Open learning-path steps",
   "start.allTasks": "All tasks →",
   "start.todoEmpty": "Nothing open. Well done.",
+  "start.todoLoading": "Loading work overview …",
   "start.stufe2.title": "Advanced features (Stage 2)",
   "start.stufe2.body":
     "As an admin you have advanced features available: {{features}}. Turn on '{{toggle}}' in the sidebar to show them.",
@@ -4122,8 +4235,9 @@ const en: typeof de = {
   "adm.ready.openReviews": "Open reviews",
   "adm.ready.count": "{{n}}",
   "adm.ready.upload": "Upload limits",
-  "adm.ready.upload.val": "{{n}} attachments · {{kb}} KB",
+  "adm.ready.upload.val": "{{n}} attachments · {{mb}} MB",
   "adm.ready.unknown": "unknown",
+  "adm.ready.loading": "loading …",
   "adm.ready.external": "External knowledge lookup",
   "adm.ready.ext.blocked": "Blocked",
   "adm.ready.ext.searchOnClick": "Search on click",
@@ -4215,6 +4329,8 @@ const en: typeof de = {
   "adm.ai.detail": "Fine-tune per use",
   "adm.ai.detailHint": "optional — the default is usually enough",
   "adm.ai.saved": "AI mapping applied.",
+  "adm.ai.dirtyHint": "Not applied yet — click “Apply mapping”.",
+  "adm.ai.applied": "Applied ✓",
   "adm.ai.persistNote":
     "Applies until the next app restart — persistent storage and local models arrive with the full build-out (PMO entry).",
   // SCRUM-386: customer-defined AI assist functions (presets) — admin manages, palette shows all.
@@ -4236,6 +4352,7 @@ const en: typeof de = {
     "This is how many review confirmations a new entry needs by default before it counts as validated.",
   "adm.val.label": "Default reviewer count (1–5)",
   "adm.val.save": "Save",
+  "adm.val.invalid": "Please enter a whole number between 1 and 5.",
   "adm.val.saved": "Default reviewer count saved.",
   "adm.upload.title": "Upload limits",
   "adm.upload.help":
@@ -4485,6 +4602,10 @@ const en: typeof de = {
   "capture.file.upload": "Choose document",
   "capture.file.replace": "Choose another document",
   "capture.file.remove": "Remove document",
+  "capture.file.dropHint": "Drag and drop a file here — or choose one below.",
+  "capture.file.dropActive": "Drop the file here …",
+  "capture.file.dropReject":
+    "“{{name}}” is not supported here yet — please drop a text, Word, PDF, PPTX or image file.",
   "capture.file.extracting": "Reading “{{name}}” …",
   "capture.file.loaded": "“{{name}}” read — ready for the knowledge search.",
   "capture.file.empty": "No text found in “{{name}}”.",
@@ -4709,6 +4830,19 @@ const en: typeof de = {
     "{{count}} drafts are collapsed so the capture paths below stay reachable.",
   "capture.resume": "Resume",
   "capture.discardDraft": "Discard",
+  // AUFTRAG-sortfilter · Punkt 2: draft list filter + sort.
+  "capture.draftSearch": "Search drafts",
+  "capture.draftSortLabel": "Sort",
+  "capture.draftSort.recent": "Last saved (new→old)",
+  "capture.draftSort.oldest": "Last saved (old→new)",
+  "capture.draftSort.title": "Title A→Z",
+  "capture.draftAuthorLabel": "Creator",
+  "capture.draftAuthorAll": "All creators",
+  "capture.draftEmptyFiltered": "No drafts match the filter.",
+  "capture.draftJustSaved": "just saved",
+  "capture.draftCreatorMeta": "Creator: {{name}}",
+  "capture.draftSavedMeta": "Saved: {{date}}",
+  "capture.draftStatusMeta": "Status: draft",
   "capture.editingDraft": "Draft loaded — changes are saved to the same draft.",
   "capture.editingBadge": "editing",
   "capture.fileImportJump": "Import file",
@@ -4747,6 +4881,7 @@ const en: typeof de = {
   "capture.fStatement": "Statement",
   "capture.fBody": "Detailed content (optional)",
   "editor.bold": "Bold",
+  "editor.bodyLabel": "Knowledge page — body text",
   "editor.italic": "Italic",
   "editor.h2": "Heading",
   "editor.h3": "Subheading",
@@ -4925,8 +5060,41 @@ const en: typeof de = {
   "capture.ivNext": "Next",
   "capture.ivFinish": "Create draft",
   "capture.ivDone": "Interview complete — review the draft on the right and submit it.",
+  "capture.ivStart": "Start interview",
+  "capture.ivStartLead":
+    "The guided interview uses AI to ask follow-up questions. Only when you click “Start interview” does the first question go to the model — nothing is sent before that. Provider and region are shown via the (!) icon.",
   "capture.ivTurn": "Question {{n}}",
   "capture.ivThinking": "The AI is forming the next question …",
+  "capture.ivResumeLead":
+    "Your interview progress has been restored. The next question loads only when you click.",
+  "capture.ivResumeLoad": "Load next question",
+  "capture.unsavable.images_one": "{{count}} inserted image",
+  "capture.unsavable.images_other": "{{count}} inserted images",
+  "capture.unsavable.docs_one": "{{count}} attached file (document/video/audio)",
+  "capture.unsavable.docs_other": "{{count}} attached files (documents/video/audio)",
+  "capture.unsavable.file": "the uploaded file “{{name}}” — its processing has not finished yet",
+  "capture.unsavable.fileQueue":
+    "the running file processing from “{{name}}” (point {{current}} of {{total}})",
+  "capture.unsavable.extResults":
+    "the loaded external search results — the search query itself stays in the draft",
+  // AUFTRAG-mega6 Block A
+  "capture.unsavable.sourceUrl":
+    "the partial web address “{{urls}}” — the draft only saves complete addresses starting with https:// or http://; the source label and excerpt are kept",
+  "capture.sourceUrlLimit":
+    "The draft cannot save this address. Add https:// or http:// in front — or clear the field if you do not need it.",
+  // AUFTRAG-mega6 Block D
+  "capture.limit.chars": "Maximum length reached ({{max}} characters) — further text is not saved.",
+  "capture.limit.reviewers":
+    "The draft cannot save more than {{max}} reviewers — deselect someone to swap.",
+  "capture.limit.sources":
+    "The draft cannot save more than {{max}} sources — remove one to make room.",
+  "capture.limit.interviewAnswers":
+    "The draft cannot save more than {{max}} answers — finish the interview or save the draft.",
+  "capture.saveLimit.title": "The draft cannot save everything",
+  "capture.saveLimit.lead":
+    "Text, metadata and sources will be saved. However, the draft cannot save the following content — saving will discard it:",
+  "capture.saveLimit.cancel": "Cancel — keep the content",
+  "capture.saveLimit.confirm": "Save anyway and discard this content",
   "capture.ivAnswerHint": "Your answer …",
   "capture.ivSend": "Send answer",
   "capture.ivReadAloud": "Read aloud",
@@ -4949,6 +5117,7 @@ const en: typeof de = {
   "ask.intro":
     "Answers come only from validated knowledge — with sources and trust. If there is no basis, the gap is named openly.",
   "ask.placeholder": "e.g. When must valve X be closed on overpressure?",
+  "ask.emptyHint": "Please enter a question first.",
   // SCRUM-295: hint for a prefilled start question (from KO detail “Use knowledge”) in demo context.
   "ask.demoPrefillHint":
     "Start question taken from the knowledge object — click “Ask”. The answer stays source-bound; status and trust decide, nothing is secured automatically.",
@@ -5179,6 +5348,8 @@ const en: typeof de = {
   "ext.search": "Search",
   "ext.attach": "Attach as source",
   "ext.unavailable": "External search is not available.",
+  "ext.resumeHint":
+    "The results list is not stored with the draft. Your search query is back — run the search again to reload the results.",
   "extpage.kicker": "Research",
   "extpage.title": "External knowledge",
   "extpage.intro": "Search external sources — without opening a knowledge object first.",
@@ -5298,6 +5469,16 @@ const en: typeof de = {
   // D-AISTATE PAKET 1 (bens V1): confidential → cloud AI excluded, no local model.
   "val.aiCheck.reason.confidential":
     "Confidential — the cloud AI is excluded and no local model is available. Only the deterministic duplicate/overlap check ran; no AI content check was performed.",
+  // RT-001 (Pedi): honest classification of real provider errors — never a provider name/key/
+  // endpoint/raw error text, only a user-understandable cause plus what the user can do.
+  "val.aiCheck.reason.auth":
+    "The AI could not sign in — the credentials are missing or were rejected. Please check the model credentials in settings and retry the check.",
+  "val.aiCheck.reason.rate-limit":
+    "The AI provider rejected the request due to a rate limit. Wait a moment and retry the check.",
+  "val.aiCheck.reason.unreachable":
+    "The AI provider was unreachable — likely a network or connection issue. Check the connection and retry the check.",
+  "val.aiCheck.reason.bad-response":
+    "The AI model returned an unintelligible response that could not be evaluated. Retrying starts a fresh run.",
   "val.feedback.condTitle": "Conditional – reason for the author (required)",
   "val.feedback.rejTitle": "Rejection – reason for the author (required)",
   "val.feedback.placeholder": "What needs to be revised? …",
@@ -5549,6 +5730,7 @@ const en: typeof de = {
   "facet.result": "Results: {{shown}} of {{total}}",
   "facet.filtered": "filtered",
   "facet.more": "+{{n}} more",
+  "facet.moreFilters": "More filters",
   "facet.noMatch": "no matches (conflicting saved view)",
   "lib.facet.lang.de": "German",
   "lib.facet.lang.en": "English",
@@ -5565,6 +5747,12 @@ const en: typeof de = {
   "lib.facet.trustBucket.t70": "Trust 70+",
   "lib.facet.more": "+{{n}} more",
   "lib.facet.none": "no value",
+  // AUFTRAG-sortfilter · Punkt 1: hit list sorting.
+  "lib.sort.label": "Sort",
+  "lib.sort.relevance": "Relevance",
+  "lib.sort.title": "Title A→Z",
+  "lib.sort.trust": "Trust (high→low)",
+  "lib.sort.recent": "Last changed (new→old)",
   "lib.groupBy.label": "Subgroups",
   "lib.groupBy.none": "none",
   "lib.views.label": "Views",
@@ -5885,6 +6073,11 @@ const en: typeof de = {
   "imp.uploadTitle": "JSON re-import",
   "imp.uploadHint":
     "Pick a JSON file — the entries land as contributions in the review list (no silent bulk insert).",
+  "imp.jsonOnlyReason":
+    "Import currently accepts JSON only. For Office files (DOCX, PDF, PPTX) use “Capture knowledge → from file” — they are read for real there.",
+  "imp.dropHint": "Drag and drop a JSON file here — or choose one below.",
+  "imp.dropActive": "Drop the JSON file here …",
+  "imp.dropReject": "“{{name}}” is not a JSON file — import currently accepts JSON only.",
   "imp.upload": "Choose JSON file",
   "imp.parsed": "{{n}} contributions queued for review.",
   "imp.parseError": "Invalid JSON file.",
@@ -6994,6 +7187,12 @@ const nl: typeof de = {
   "nav.conflicts": "Conflicten",
   "nav.duplicates": "Duplicaten",
   "nav.badge.tasks": "{{count}} openstaande taken",
+  "nav.badge.loading": "Teller wordt geladen …",
+  "nav.badge.error": "Teller kon niet worden geladen – opnieuw proberen",
+  "nav.badge.stale": "Teller verouderd – verversen mislukt, opnieuw proberen",
+  "loadstate.error.title": "Kon niet worden geladen.",
+  "loadstate.error.retry": "Opnieuw proberen",
+  "loadstate.stale": "Verouderd – verversen mislukt",
   "nav.badge.validation": "{{count}} wachten op beoordeling",
   "nav.badge.conflicts": "{{count}} openstaande tegenstrijdigheden",
   "nav.badge.duplicates": "{{count}} mogelijke duplicaten",
@@ -7022,6 +7221,9 @@ const nl: typeof de = {
   "action.logout": "Afmelden",
   "topbar.search": "Zoek naar kennis, functies of bijlagen…",
   "topbar.mobile": "Mobiel",
+  "topbar.openMenu": "Menu openen",
+  "topbar.closeMenu": "Menu sluiten",
+  "topbar.menuLabel": "Navigatiemenu",
   "topbar.toDesktop": "Naar volledige versie",
   "topbar.notifications": "Meldingen",
   "topbar.notificationsPlaceholder": "Nog geen meldingen. Echte bron volgt (#63).",
@@ -7201,6 +7403,11 @@ const nl: typeof de = {
   "nav.guard.stay": "Hier blijven",
   "nav.guard.discard": "Verwerpen en wisselen",
   "nav.guard.save": "Concept opslaan en wisselen",
+  "nav.guard.unsavableTitle": "Niet alles kan worden opgeslagen",
+  "nav.guard.unsavableLead":
+    "Deze inhoud kan het concept niet opslaan — bij wisselen gaat die verloren:",
+  "nav.guard.unsavableHint":
+    "Blijf hier om die te gebruiken of te verwijderen; „Verwerpen en wisselen” geeft die bewust op. Een opslaan dat deze inhoud meeneemt, bestaat niet.",
   "error.title": "Deze weergave kon niet worden geladen.",
   "error.body":
     "Dit is een weergavefout, geen gegevensverlies. Laad de pagina opnieuw. Treedt het opnieuw op, dan helpt de detailtekst hieronder bij het melden.",
@@ -7364,6 +7571,7 @@ const nl: typeof de = {
   "work.learning": "Open leerpad-stappen",
   "start.allTasks": "Alle taken →",
   "start.todoEmpty": "Niets open. Goed gedaan.",
+  "start.todoLoading": "Werkoverzicht wordt geladen …",
   "start.stufe2.title": "Uitgebreide functies (Fase 2)",
   "start.stufe2.body":
     "Als admin heb je uitgebreide functies tot je beschikking: {{features}}. Zet daarvoor „{{toggle}}' onderaan in de zijbalk aan.",
@@ -7554,8 +7762,9 @@ const nl: typeof de = {
   "adm.ready.openReviews": "Openstaande beoordelingen",
   "adm.ready.count": "{{n}}",
   "adm.ready.upload": "Uploadlimieten",
-  "adm.ready.upload.val": "{{n}} bijlagen · {{kb}} KB",
+  "adm.ready.upload.val": "{{n}} bijlagen · {{mb}} MB",
   "adm.ready.unknown": "onbekend",
+  "adm.ready.loading": "wordt geladen …",
   "adm.ready.external": "Externe kennisopvraag",
   "adm.ready.ext.blocked": "Geblokkeerd",
   "adm.ready.ext.searchOnClick": "Zoeken op klik",
@@ -7646,6 +7855,8 @@ const nl: typeof de = {
   "adm.ai.detail": "Fijnafstemming per taak",
   "adm.ai.detailHint": "optioneel — standaard volstaat meestal",
   "adm.ai.saved": "AI-toewijzing toegepast.",
+  "adm.ai.dirtyHint": "Nog niet toegepast — klik op ‘Toewijzing toepassen’.",
+  "adm.ai.applied": "Toegepast ✓",
   "adm.ai.persistNote":
     "Geldt tot de volgende herstart van de app — permanente opslag en lokale modellen komen met de volledige uitbouw (PMO-vermelding).",
   "adm.presets.title": "Eigen AI-functies",
@@ -7666,6 +7877,7 @@ const nl: typeof de = {
     "Zoveel beoordelingsbevestigingen heeft een nieuwe bijdrage standaard nodig totdat die als gevalideerd geldt.",
   "adm.val.label": "Standaardaantal beoordelaars (1–5)",
   "adm.val.save": "Opslaan",
+  "adm.val.invalid": "Voer een geheel getal tussen 1 en 5 in.",
   "adm.val.saved": "Standaardaantal beoordelaars opgeslagen.",
   "adm.upload.title": "Uploadlimieten",
   "adm.upload.help":
@@ -7917,6 +8129,10 @@ const nl: typeof de = {
   "capture.file.upload": "Document selecteren",
   "capture.file.replace": "Ander document kiezen",
   "capture.file.remove": "Document verwijderen",
+  "capture.file.dropHint": "Sleep een bestand hierheen — of kies er hieronder een.",
+  "capture.file.dropActive": "Laat het bestand hier los …",
+  "capture.file.dropReject":
+    "„{{name}}“ wordt hier nog niet ondersteund — sleep een tekst-, Word-, PDF-, PPTX- of afbeeldingsbestand.",
   "capture.file.extracting": "„{{name}}“ lezen …",
   "capture.file.loaded": "„{{name}}“ gelezen — klaar voor het zoeken naar kennis.",
   "capture.file.empty": "In „{{name}}“ is geen tekst gevonden.",
@@ -8141,6 +8357,19 @@ const nl: typeof de = {
     "{{count}} concepten zijn ingeklapt, zodat de vastlegwegen daaronder bereikbaar blijven.",
   "capture.resume": "Hervatten",
   "capture.discardDraft": "Verwerpen",
+  // AUFTRAG-sortfilter · Punt 2: filter + sortering van de conceptenlijst.
+  "capture.draftSearch": "Concepten doorzoeken",
+  "capture.draftSortLabel": "Sorteren",
+  "capture.draftSort.recent": "Laatst opgeslagen (nieuw→oud)",
+  "capture.draftSort.oldest": "Laatst opgeslagen (oud→nieuw)",
+  "capture.draftSort.title": "Titel A→Z",
+  "capture.draftAuthorLabel": "Maker",
+  "capture.draftAuthorAll": "Alle makers",
+  "capture.draftEmptyFiltered": "Geen concepten passen bij het filter.",
+  "capture.draftJustSaved": "zojuist opgeslagen",
+  "capture.draftCreatorMeta": "Maker: {{name}}",
+  "capture.draftSavedMeta": "Opgeslagen: {{date}}",
+  "capture.draftStatusMeta": "Status: concept",
   "capture.editingDraft": "Concept geladen — wijzigingen worden in hetzelfde concept opgeslagen.",
   "capture.editingBadge": "in bewerking",
   "capture.fileImportJump": "Bestand importeren",
@@ -8179,6 +8408,7 @@ const nl: typeof de = {
   "capture.fStatement": "Uitspraak",
   "capture.fBody": "Uitgebreide inhoud (optioneel)",
   "editor.bold": "Vet",
+  "editor.bodyLabel": "Kennispagina — bodytekst",
   "editor.italic": "Cursief",
   "editor.h2": "Kop",
   "editor.h3": "Subkop",
@@ -8358,8 +8588,42 @@ const nl: typeof de = {
   "capture.ivNext": "Volgende",
   "capture.ivFinish": "Concept aanmaken",
   "capture.ivDone": "Interview afgerond — controleer het concept rechts en dien het in.",
+  "capture.ivStart": "Interview starten",
+  "capture.ivStartLead":
+    "Het geleide interview gebruikt AI om vervolgvragen te stellen. Pas als je op „Interview starten“ klikt, gaat de eerste vraag naar het model — daarvoor wordt niets verzonden. Provider en regio zie je via het (!)-symbool.",
   "capture.ivTurn": "Vraag {{n}}",
   "capture.ivThinking": "De AI formuleert de volgende vraag …",
+  "capture.ivResumeLead":
+    "Je interviewvoortgang is hersteld. De volgende vraag wordt pas na jouw klik geladen.",
+  "capture.ivResumeLoad": "Volgende vraag laden",
+  "capture.unsavable.images_one": "{{count}} ingevoegde afbeelding",
+  "capture.unsavable.images_other": "{{count}} ingevoegde afbeeldingen",
+  "capture.unsavable.docs_one": "{{count}} bijgevoegd bestand (document/video/audio)",
+  "capture.unsavable.docs_other": "{{count}} bijgevoegde bestanden (documenten/video/audio)",
+  "capture.unsavable.file": "het geüploade bestand „{{name}}” — de verwerking is nog niet afgerond",
+  "capture.unsavable.fileQueue":
+    "de lopende bestandsverwerking uit „{{name}}” (punt {{current}} van {{total}})",
+  "capture.unsavable.extResults":
+    "de geladen trefferlijst van de externe zoekopdracht — de zoekopdracht zelf blijft in het concept bewaard",
+  // AUFTRAG-mega6 Block A
+  "capture.unsavable.sourceUrl":
+    "het onvolledige webadres „{{urls}}” — het concept bewaart alleen volledige adressen die met https:// of http:// beginnen; de naam en het fragment van de bron blijven behouden",
+  "capture.sourceUrlLimit":
+    "Dit adres kan het concept niet meenemen. Zet er https:// of http:// voor — of maak het veld leeg als je het niet nodig hebt.",
+  // AUFTRAG-mega6 Block D
+  "capture.limit.chars":
+    "Maximale lengte bereikt ({{max}} tekens) — verdere tekst wordt niet bewaard.",
+  "capture.limit.reviewers":
+    "Het concept kan niet meer dan {{max}} beoordelaars bewaren — deselecteer iemand om te wisselen.",
+  "capture.limit.sources":
+    "Het concept kan niet meer dan {{max}} bronnen bewaren — verwijder er een om ruimte te maken.",
+  "capture.limit.interviewAnswers":
+    "Het concept kan niet meer dan {{max}} antwoorden bewaren — rond het interview af of sla het concept op.",
+  "capture.saveLimit.title": "Het concept kan niet alles opslaan",
+  "capture.saveLimit.lead":
+    "Tekst, metadata en bronnen worden opgeslagen. Deze inhoud kan het concept echter niet opslaan — bij het opslaan wordt die verworpen:",
+  "capture.saveLimit.cancel": "Annuleren — inhoud behouden",
+  "capture.saveLimit.confirm": "Toch opslaan en deze inhoud verwerpen",
   "capture.ivAnswerHint": "Jouw antwoord …",
   "capture.ivSend": "Antwoord versturen",
   "capture.ivReadAloud": "Voorlezen",
@@ -8382,6 +8646,7 @@ const nl: typeof de = {
   "ask.intro":
     "Antwoorden komen uitsluitend uit gevalideerde kennis — met bronnen en vertrouwen. Is er geen basis, dan wordt het hiaat open benoemd.",
   "ask.placeholder": "bijv. Wanneer moet klep X bij overdruk gesloten worden?",
+  "ask.emptyHint": "Voer eerst een vraag in.",
   "ask.submit": "Vragen",
   "ask.demoPrefillHint":
     "Startvraag overgenomen uit het kennisobject — klik op „Vragen”. Het antwoord blijft brongebonden; status en trust beslissen, er wordt niets automatisch opgeslagen.",
@@ -8607,6 +8872,8 @@ const nl: typeof de = {
   "ext.search": "Zoeken",
   "ext.attach": "Als bron toevoegen",
   "ext.unavailable": "Externe zoekopdracht is niet beschikbaar.",
+  "ext.resumeHint":
+    "De trefferlijst wordt niet met het concept opgeslagen. Je zoekopdracht is terug — voer de zoekopdracht opnieuw uit om de treffers opnieuw te laden.",
   "extpage.kicker": "Onderzoek",
   "extpage.title": "Externe kennis",
   "extpage.intro": "Externe bronnen doorzoeken — zonder eerst een kennisobject te openen.",
@@ -8726,6 +8993,16 @@ const nl: typeof de = {
   // D-AISTATE PAKET 1 (bens V1): vertrouwelijk → cloud-AI uitgesloten, geen lokaal model.
   "val.aiCheck.reason.confidential":
     "Vertrouwelijk — de cloud-AI is uitgesloten en er is geen lokaal model beschikbaar. Alleen de deterministische duplicaat-/overlapcontrole liep; er is geen inhoudelijke AI-controle uitgevoerd.",
+  // RT-001 (Pedi): eerlijke classificatie van echte providerfouten — nooit een providernaam/sleutel/
+  // endpoint/ruwe fouttekst, alleen een begrijpelijke oorzaak plus wat de gebruiker kan doen.
+  "val.aiCheck.reason.auth":
+    "De AI kon niet inloggen — de inloggegevens ontbreken of zijn geweigerd. Controleer de modelinloggegevens in de instellingen en controleer opnieuw.",
+  "val.aiCheck.reason.rate-limit":
+    "De AI-aanbieder heeft het verzoek geweigerd vanwege een snelheidslimiet. Wacht even en controleer opnieuw.",
+  "val.aiCheck.reason.unreachable":
+    "De AI-aanbieder was niet bereikbaar — waarschijnlijk een netwerk- of verbindingsprobleem. Controleer de verbinding en controleer opnieuw.",
+  "val.aiCheck.reason.bad-response":
+    "Het AI-model gaf een onbegrijpelijk antwoord dat niet kon worden verwerkt. Opnieuw controleren start een nieuwe run.",
   "val.feedback.condTitle": "Voorwaardelijk – onderbouwing voor de auteur (verplicht)",
   "val.feedback.rejTitle": "Afwijzing – onderbouwing voor de auteur (verplicht)",
   "val.feedback.placeholder": "Wat moet er worden herzien? …",
@@ -8967,6 +9244,7 @@ const nl: typeof de = {
   "facet.result": "Treffers: {{shown}} van {{total}}",
   "facet.filtered": "gefilterd",
   "facet.more": "+{{n}} meer",
+  "facet.moreFilters": "Meer filters",
   "facet.noMatch": "geen treffers (tegenstrijdige opgeslagen weergave)",
   "lib.facet.lang.de": "Duits",
   "lib.facet.lang.en": "Engels",
@@ -8983,6 +9261,12 @@ const nl: typeof de = {
   "lib.facet.trustBucket.t70": "Trust 70+",
   "lib.facet.more": "+{{n}} meer",
   "lib.facet.none": "zonder waarde",
+  // AUFTRAG-sortfilter · Punt 1: sortering van de resultatenlijst.
+  "lib.sort.label": "Sorteren",
+  "lib.sort.relevance": "Relevantie",
+  "lib.sort.title": "Titel A→Z",
+  "lib.sort.trust": "Trust (hoog→laag)",
+  "lib.sort.recent": "Laatst gewijzigd (nieuw→oud)",
   "lib.groupBy.label": "Subgroepen",
   "lib.groupBy.none": "geen",
   "lib.views.label": "Weergaven",
@@ -9303,6 +9587,11 @@ const nl: typeof de = {
   "imp.uploadTitle": "JSON opnieuw importeren",
   "imp.uploadHint":
     "Kies een JSON-bestand — de items komen als bijdragen in de controlelijst (geen stille overname).",
+  "imp.jsonOnlyReason":
+    "Import accepteert momenteel alleen JSON. Office-bestanden (DOCX, PDF, PPTX) graag via „Kennis vastleggen → uit bestand“ — daar worden ze echt gelezen.",
+  "imp.dropHint": "Sleep een JSON-bestand hierheen — of kies er hieronder een.",
+  "imp.dropActive": "Laat het JSON-bestand hier los …",
+  "imp.dropReject": "„{{name}}“ is geen JSON-bestand — import accepteert momenteel alleen JSON.",
   "imp.upload": "JSON-bestand kiezen",
   "imp.parsed": "{{n}} bijdragen ter controle in de wachtrij gezet.",
   "imp.parseError": "Ongeldig JSON-bestand.",

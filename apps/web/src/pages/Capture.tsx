@@ -7,14 +7,12 @@ import {
   Loader2,
   Mic,
   Paperclip,
-  RotateCcw,
   Save,
   Sparkles,
-  Trash2,
   Volume2,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -44,6 +42,7 @@ import { AppendToArticleModal } from "../components/AppendToArticleModal";
 import { BodyExtractPanel } from "../components/BodyExtractPanel";
 import { BodyTemplateChooser } from "../components/BodyTemplateChooser";
 // AUFTRAG-uxpol1 (PAKET 2): geteiltes, poliertes Dateityp-Kachel-Bauteil + IC-7-Wahrheitsquelle.
+import { CaptureDraftList } from "../components/CaptureDraftList";
 import { CaptureFileImport } from "../components/CaptureFileImport";
 import { ChoiceCards } from "../components/ChoiceCards";
 import { DemoBanner } from "../components/DemoBanner";
@@ -57,6 +56,7 @@ import { FileFormatInfo } from "../components/FileFormatInfo";
 import { HelpTip } from "../components/HelpTip";
 import { KnowledgeInputStudio } from "../components/KnowledgeInputStudio";
 import { KnowledgeRescueIntro } from "../components/KnowledgeRescueIntro";
+import { Modal } from "../components/Modal";
 import { PublicAiEnrichPanel } from "../components/PublicAiEnrichPanel";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { ListEditor, TagEditor } from "../components/editors";
@@ -140,9 +140,11 @@ import {
   addPendingSource,
   attachPendingSources,
   canAttachCaptureSources,
+  fromDraftSources,
   pendingFromForm,
   pendingFromResult,
   removePendingSource,
+  toDraftSources,
 } from "../lib/captureSources";
 import { captureNextSteps, captureSavedStatus } from "../lib/captureSuccess";
 import {
@@ -155,7 +157,11 @@ import { CONFIDENTIALITY_LEVELS } from "../lib/confidentiality";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 // WP-D11: Folien als Bilder — Server-Konvertierung + Budget-Mechanik des DOCX-/PPTX-Imports.
 import { MAX_INLINE_BODY_HTML_BYTES, applyInlineImageBudget, newImageRunToken } from "../lib/docx";
+// AUFTRAG-mega7 Block A: eindeutige Leerwert-Semantik für den Body (Löschmarker beim Aktualisieren).
+import { draftBodyPatch } from "../lib/draftBody";
 import { draftTitle } from "../lib/draftForm";
+// AUFTRAG-mega6 Block D: sichtbare Eingabegrenzen aus DERSELBEN Quelle wie die Servernormalisierung.
+import { DRAFT_LIMITS } from "../lib/draftLimits";
 import { studioSaveConfidence } from "../lib/editorApplySafety";
 import { EDITOR_BLOCKS } from "../lib/editorBlocks";
 import { editorImagesFromLocalImages } from "../lib/editorImages";
@@ -178,8 +184,21 @@ import {
   readTextFile,
   runImageOcr,
 } from "../lib/files";
-import { appendAnswer, interviewSourceKey, isInterviewDone } from "../lib/interviewFlow";
-import { EMPTY_SOURCE_FORM, type SourceFormInput, isSourceFormValid } from "../lib/koSource";
+import {
+  CLEARED_DRAFT_INTERVIEW,
+  appendAnswer,
+  interviewForDraft,
+  interviewFromDraft,
+  interviewSourceKey,
+  isInterviewDone,
+} from "../lib/interviewFlow";
+import {
+  EMPTY_SOURCE_FORM,
+  type SourceFormInput,
+  isSourceFormDirty,
+  isSourceFormValid,
+  unsavableSourceUrls,
+} from "../lib/koSource";
 // WP-D5b (bens GELB-Fix 3): ehrlicher Importfehler bei Überschreitung des Archiv-/Dekompressionsbudgets.
 import { PptxTooLargeError } from "../lib/pptx";
 import { toReasonerLocale } from "../lib/reasonerLocale";
@@ -213,6 +232,20 @@ const EMPTY_DRAFT: StructureResult = {
   tags: [],
   confidence: 0,
   demo: false,
+};
+
+// AUFTRAG-mega3 Block A (bens Sammel-Review 3, Auflage C): die FRISCHEN Ausgangswerte der
+// nutzerseitig änderbaren Skalar-Metadaten an GENAU EINER Stelle. useState-Init, resetCaptureForm UND
+// das kanonische Dirty-Prädikat lesen dieselben Konstanten — so können Reset und „schmutzig?" nicht
+// auseinanderlaufen. (Die übrigen Defaults sind Sammlungen/Objekte: [] bzw. EMPTY_SOURCE_FORM.)
+const CAPTURE_FIELD_DEFAULTS: {
+  type: KnowledgeType;
+  confidentiality: Confidentiality;
+  neededValidations: string;
+} = {
+  type: "best_practice",
+  confidentiality: "intern",
+  neededValidations: "",
 };
 
 interface LocalImage {
@@ -279,21 +312,6 @@ function frontDoorDraftSavedFromState(state: unknown): FrontDoorDraftSavedState 
     id: draft.id,
     title: typeof draft.title === "string" && draft.title.trim() ? draft.title : "Entwurf",
   };
-}
-
-function formatDraftTimestamp(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value || "unbekannt";
-  }
-  return new Intl.DateTimeFormat("de-DE", {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(date);
-}
-
-function draftAuthorName(draft: Draft, directory: readonly { id: string; name: string }[]): string {
-  return directory.find((entry) => entry.id === draft.originalAuthor)?.name ?? draft.originalAuthor;
 }
 
 export function Capture(): JSX.Element {
@@ -368,6 +386,10 @@ export function Capture(): JSX.Element {
   const [showCondMeasures, setShowCondMeasures] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [confirmTellReset, setConfirmTellReset] = useState(false);
+  // AUFTRAG-mega5 Block A: auch der MANUELLE „Als Entwurf speichern"-Knopf darf nicht sicherbare
+  // Inhalte (Bilder, Dateien, laufende Verarbeitung, geladene Treffer) nicht still fallen lassen —
+  // bens Verlustpfad 3 lief genau über diesen erfolgreichen Save. true = Bestätigung offen.
+  const [confirmSaveLimit, setConfirmSaveLimit] = useState(false);
   const [showHelpers, setShowHelpers] = useState(false);
   // KW-STR / SCRUM-45/46/48: WYSIWYG-Body (sanitisiertes HTML), separat vom Reasoner-Draft.
   const [bodyHtml, setBodyHtml] = useState("");
@@ -380,13 +402,17 @@ export function Capture(): JSX.Element {
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Metadaten (vorab erfassbar, FR-CAP-08)
-  const [type, setType] = useState<KnowledgeType>("best_practice");
+  const [type, setType] = useState<KnowledgeType>(CAPTURE_FIELD_DEFAULTS.type);
   const [category, setCategory] = useState("");
   const [asset, setAsset] = useState("");
   // SCRUM-415: Vertraulichkeitsstufe ab Erfassen (Standard „intern"). Vertrauliche KOs gehen nie in
   // externe Kontexte (Output/Export).
-  const [confidentiality, setConfidentiality] = useState<Confidentiality>("intern");
-  const [neededValidations, setNeededValidations] = useState("");
+  const [confidentiality, setConfidentiality] = useState<Confidentiality>(
+    CAPTURE_FIELD_DEFAULTS.confidentiality,
+  );
+  const [neededValidations, setNeededValidations] = useState(
+    CAPTURE_FIELD_DEFAULTS.neededValidations,
+  );
   const [tags, setTags] = useState<string[]>([]);
   // SCRUM-395: optionaler Prüfer-Vorschlag beim Einreichen (Server: assign + Benachrichtigung).
   const [reviewerIds, setReviewerIds] = useState<string[]>([]);
@@ -416,8 +442,18 @@ export function Capture(): JSX.Element {
     maxAttachmentBytes: 20_000_000,
   };
   const reviewerChoices = (directory.data ?? []).filter((p) => p.id !== user?.id);
+  // AUFTRAG-mega6 Block D (bens Ehrlichkeitskante): die Persistenzgrenze speichert höchstens
+  // DRAFT_LIMITS.reviewers Prüfer. Die Auswahl war ein unbeschränktes Toggle — der Server kappte
+  // still und der Save-Erfolg räumte danach den lokalen Zustand. Jetzt greift die Grenze SICHTBAR
+  // schon in der Oberfläche: über dem Limit wird nichts mehr angenommen (Abwählen bleibt immer
+  // möglich) und die Karte sagt, dass das Limit erreicht ist.
   const toggleReviewer = (id: string): void => {
-    setReviewerIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    setReviewerIds((prev) => {
+      if (prev.includes(id)) {
+        return prev.filter((x) => x !== id);
+      }
+      return prev.length >= DRAFT_LIMITS.reviewers ? prev : [...prev, id];
+    });
   };
 
   // Anhänge (FR-CAP-05/06)
@@ -433,6 +469,10 @@ export function Capture(): JSX.Element {
   const [sourceForm, setSourceForm] = useState<SourceFormInput>({ ...EMPTY_SOURCE_FORM });
   const [extQuery, setExtQuery] = useState("");
   const [extResults, setExtResults] = useState<ExternalResult[]>([]);
+  // AUFTRAG-mega5 Block C (Pedis Datenminimierungs-Entscheid): die Trefferliste wird NICHT im Entwurf
+  // persistiert. Nach dem Fortsetzen ist sie deshalb bewusst leer — dieser Zustand zeigt den ehrlichen
+  // Hinweis dazu an (Suchanfrage ist wieder da, Treffer per Klick neu laden), bis eine Suche läuft.
+  const [extListDropped, setExtListDropped] = useState(false);
 
   const [err, setErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -537,6 +577,16 @@ export function Capture(): JSX.Element {
   const [ivAnswers, setIvAnswers] = useState<string[]>([]);
   const [ivAnswer, setIvAnswer] = useState("");
   const [ivResult, setIvResult] = useState<InterviewResult | null>(null);
+  // E2E-008: der Cloud-Lauf des geführten Interviews startet ERST nach einer bewussten Aktion
+  // („Interview starten"). Solange false, wird KEIN ModelRun/Fetch ausgelöst — der Tabwechsel allein
+  // sendet nichts an das Modell.
+  const [ivStarted, setIvStarted] = useState(false);
+  // AUFTRAG-mega6 Block C (bens ROT 3, zweiter Teil): laufende Nummer des aktuell GÜLTIGEN
+  // Interview-Turns. Jeder Start erhöht sie, jedes Räumen (Save-Erfolg, Verwerfen) ebenfalls. Die
+  // Mutation trägt ihre Nummer als Variable mit und schreibt ihr Ergebnis nur zurück, wenn sie noch
+  // die aktuelle ist — eine SPÄTE Antwort eines vor dem Speichern gestarteten Requests kann den
+  // danach geltenden Zustand damit nicht wieder einschreiben.
+  const ivRunRef = useRef(0);
 
   // PMO-FEA-0006: „Aus Datei" — Dokumenttext, optionaler Suchauftrag, KI-Punkteliste,
   // sichtbare Entwurfs-Warteschlange. Nichts wird automatisch gespeichert.
@@ -614,10 +664,15 @@ export function Capture(): JSX.Element {
   });
 
   // SCRUM-132: ein Interview-Turn — Antworten rein, nächste Frage + Draft raus.
+  // AUFTRAG-mega6 Block C: der Turn reist mit seiner Laufnummer (`run`); veraltete Läufe werden im
+  // Erfolgs- UND im Fehlerpfad verworfen, statt den inzwischen gültigen Zustand zu überschreiben.
   const interview = useMutation({
-    mutationFn: (answers: string[]) =>
-      endpoints.reasoner.interview(answers, locale, draftProvenance(confidentiality)),
-    onSuccess: (res) => {
+    mutationFn: (v: { answers: string[]; run: number }) =>
+      endpoints.reasoner.interview(v.answers, locale, draftProvenance(confidentiality)),
+    onSuccess: (res, v) => {
+      if (v.run !== ivRunRef.current) {
+        return; // späte Antwort eines vor Save/Verwerfen gestarteten Turns — nichts zurückschreiben
+      }
       setIvResult(res);
       setErr(null);
       if (isInterviewDone(res)) {
@@ -632,8 +687,21 @@ export function Capture(): JSX.Element {
         setWizStep("refine");
       }
     },
-    onError: fail,
+    onError: (e, v) => {
+      if (v.run !== ivRunRef.current) {
+        return; // veralteter Turn — auch sein Fehler gehört nicht mehr in die aktuelle Ansicht
+      }
+      fail(e);
+    },
   });
+
+  // AUFTRAG-mega6 Block C: EINZIGER Einstieg in einen Interview-Turn. Vergibt die neue Laufnummer
+  // und macht damit jeden vorher gestarteten Turn ungültig — es gibt keinen zweiten Weg, der die
+  // Mutation ohne gültige Nummer auslösen könnte.
+  const runInterview = (answers: string[]): void => {
+    ivRunRef.current += 1;
+    interview.mutate({ answers, run: ivRunRef.current });
+  };
 
   // SCRUM-312: KI-Nachbearbeitung über die sichtbare AiAssistBox (Vorschau + bewusste Übernahme);
   // die frühere stille Direkt-Mutation (setRaw/setDraft) wurde durch den Vorschau-Flow ersetzt.
@@ -649,6 +717,8 @@ export function Capture(): JSX.Element {
     mutationFn: (q: string) => endpoints.external.search(q),
     onSuccess: (r) => {
       setExtResults(r);
+      // AUFTRAG-mega5 Block C: eine frische Suche ersetzt den „Trefferliste nicht mitgesichert"-Hinweis.
+      setExtListDropped(false);
       setErr(null);
     },
     onError: fail,
@@ -1015,8 +1085,12 @@ export function Capture(): JSX.Element {
           tags: tags.filter((x) => x.trim()),
           conditions: draft.conditions.filter((x) => x.trim()),
           measures: draft.measures.filter((x) => x.trim()),
-          asset: asset.trim() ? asset.trim() : undefined,
-          ...(bodyHtml.trim() ? { bodyHtml } : {}),
+          asset: asset.trim() ? asset.trim() : null,
+          // AUFTRAG-mega7 Block A (bens Ship-Blocker): dieser PUT AKTUALISIERT einen bestehenden
+          // Entwurf (draftId), also reist ein bewusst geleerter Body als ausdrücklicher Leerwert mit.
+          // Ohne ihn holte der partielle Merge den alten Body zurück — und der Promote direkt danach
+          // trüge ihn ins Wissensobjekt.
+          ...draftBodyPatch(bodyHtml, true),
           ...(n ? { neededValidations: n } : {}),
           ...(confidentiality !== "intern" ? { confidentiality } : {}),
         };
@@ -1222,18 +1296,56 @@ export function Capture(): JSX.Element {
   const saveDraft = useMutation({
     mutationFn: () => {
       const n = parsedValidations();
+      // AUFTRAG-mega5 Block A (bens Verlustpfade 1+2): Interviewfortschritt (Antworten, getippte
+      // Antwort, aktuelle Frage) reist als reine Textstruktur im Entwurf mit — null, wenn kein
+      // Interview begonnen wurde (Feld bleibt dann ganz aus der Payload).
+      const ivProgress = interviewForDraft({
+        started: ivStarted,
+        answers: ivAnswers,
+        answer: ivAnswer,
+        result: ivResult,
+      });
+      // AUFTRAG-mega6 Block B: „wird aktualisiert" entscheidet, ob Leerwerte als Löschmarker mitgehen.
+      const isDraftUpdate = Boolean(draftId);
       const payload: DraftPayload = {
         title: draft?.title || raw.split("\n")[0]?.slice(0, 80) || t("capture.draftFallbackTitle"),
         statement: draft?.statement || raw,
         type,
-        category: category.trim() || undefined,
         tags: tags.filter((x) => x.trim()),
-        conditions: draft?.conditions.filter((x) => x.trim()),
-        measures: draft?.measures.filter((x) => x.trim()),
-        asset: asset.trim() ? asset.trim() : undefined,
-        ...(bodyHtml.trim() ? { bodyHtml } : {}),
+        conditions: draft?.conditions.filter((x) => x.trim()) ?? [],
+        measures: draft?.measures.filter((x) => x.trim()) ?? [],
+        asset: asset.trim() ? asset.trim() : null,
+        ...(category.trim() ? { category: category.trim() } : {}),
+        // AUFTRAG-mega7 Block A: dieselbe Leerwert-Semantik wie unten für die fünf mega6-Felder —
+        // beim AKTUALISIEREN geht ein bewusst geleerter Body als ausdrücklicher Leerwert mit,
+        // beim ANLEGEN bleibt das Feld weg.
+        ...draftBodyPatch(bodyHtml, isDraftUpdate),
         ...(n ? { neededValidations: n } : {}),
         ...(confidentiality !== "intern" ? { confidentiality } : {}),
+        // AUFTRAG-mega4/mega5 Block A (bens Auflage A): ALLE inhaltlichen, textuell sicherbaren
+        // Dirty-Felder mitsichern — sonst behauptet „Entwurf speichern" eine Vollsicherung und verliert
+        // Prüferauswahl, offene/teilweise Quelle, externe Suchanfrage oder den Interviewfortschritt
+        // still. Nur gesetzte Felder wandern in die Payload (leere weglassen,
+        // exactOptionalPropertyTypes). Der Resume-Pfad (loadDraft) stellt sie 1:1 wieder her.
+        // extResults werden nach Pedis Entscheid (mega5 Block C) bewusst NICHT persistiert; im
+        // Draft-Vertrag heißt die Trefferquelle sourceProvider (toDraftSources mappt).
+        // AUFTRAG-mega6 Block B (bens ROT 2, Weg zwei): Beim AKTUALISIEREN eines bestehenden Entwurfs
+        // reisen diese fünf Felder IMMER mit — auch leer. Der Server merged PUT über den Bestand
+        // (das müssen fünf andere Aufrufer so haben, s. mergeDraftPayload); ein weggelassenes Feld
+        // holte den Altwert zurück. Wer alle Prüfer abwählt, alle Quellen entfernt, das
+        // Quellenformular oder die Suchanfrage leert, sendet damit einen ausdrücklichen LEERWERT,
+        // und der entfernt den Altwert wirklich (Datenminimierung: eine bewusst gelöschte
+        // Suchanfrage bleibt gelöscht). Beim ANLEGEN gibt es keinen Altwert zu löschen — dort
+        // bleiben leere Felder wie bisher ganz aus der Payload.
+        ...(isDraftUpdate || reviewerIds.length > 0 ? { reviewerIds } : {}),
+        ...(isDraftUpdate || pendingSources.length > 0
+          ? { pendingSources: toDraftSources(pendingSources) }
+          : {}),
+        ...(isDraftUpdate || isSourceFormDirty(sourceForm) ? { sourceForm } : {}),
+        ...(isDraftUpdate || extQuery.trim() ? { extQuery } : {}),
+        ...(isDraftUpdate || ivProgress
+          ? { interview: ivProgress ?? CLEARED_DRAFT_INTERVIEW }
+          : {}),
         // SCRUM-457: Herkunft mitspeichern → „Fortsetzen" öffnet genau hier wieder.
         origin: originForSave({ expert: isExpertMode(mode), wizStep: wizStepRaw }),
       };
@@ -1250,6 +1362,10 @@ export function Capture(): JSX.Element {
       setDraft(null);
       setBodyHtml("");
       setTags([]);
+      // AUFTRAG-mega5 Block A: Bilder/Dokumente sind hier NICHT mehr „stiller Verlust hinter einer
+      // erfolgreichen Speicheraktion" (bens Verlustpfad 3) — der Save läuft nur noch an, wenn keine
+      // nicht sicherbaren Inhalte vorliegen ODER der Nutzer deren Verwerfen ausdrücklich und
+      // namentlich bestätigt hat (confirmSaveLimit / Navigationswache ohne Speichern-Knopf).
       setImages([]);
       setDocs([]);
       setCategory("");
@@ -1258,6 +1374,16 @@ export function Capture(): JSX.Element {
       setConfidentiality("intern");
       setReviewerIds([]);
       setPendingSources([]);
+      // AUFTRAG-mega4 Block A: der Erfolgspfad räumt jetzt AUCH Quellenformular und externe Suche —
+      // diese Felder wurden gerade mitgespeichert; sie stehen zu lassen hielte den Dirty-State fälschlich
+      // aktiv und wäre inkonsistent zum vollständigen resetCaptureForm.
+      setSourceForm({ ...EMPTY_SOURCE_FORM });
+      setExtQuery("");
+      setExtResults([]);
+      setExtListDropped(false);
+      // AUFTRAG-mega5 Block A: der Interviewfortschritt wurde gerade mitgespeichert → Laufzeitzustand
+      // räumen (inkl. Diktat/Vorlesen), sonst bliebe der Dirty-State fälschlich aktiv.
+      clearInterviewState();
       setShowAdvanced(false);
       setWizStep("tell");
       setDraftId(null);
@@ -1294,6 +1420,19 @@ export function Capture(): JSX.Element {
     setBodyHtml(p.bodyHtml ?? "");
     // SCRUM-415: Vertraulichkeitsstufe aus dem Entwurf wiederherstellen.
     setConfidentiality(p.confidentiality ?? "intern");
+    // AUFTRAG-mega4/mega5 Block A: die mitgesicherten inhaltlichen Dirty-Felder 1:1 wiederherstellen —
+    // Prüferauswahl, offene Quellen (sourceProvider → provider, s. fromDraftSources), teilweise
+    // ausgefülltes Quellenformular und die externe SUCHANFRAGE. Die Trefferliste selbst wird nach
+    // Pedis Entscheid (mega5 Block C) nicht persistiert: sie startet leer, der Hinweis darunter sagt
+    // das ehrlich, und EIN Klick auf „Suchen" lädt sie neu (bewusster Nutzer-Klick, kein Auto-Fetch).
+    setReviewerIds(p.reviewerIds ?? []);
+    setPendingSources(fromDraftSources(p.pendingSources ?? []));
+    setSourceForm(
+      p.sourceForm ? { ...EMPTY_SOURCE_FORM, ...p.sourceForm } : { ...EMPTY_SOURCE_FORM },
+    );
+    setExtQuery(p.extQuery ?? "");
+    setExtResults([]);
+    setExtListDropped(Boolean(p.extQuery?.trim()));
     setDraftId(d.id);
     // SCRUM-375: geladener Entwurf bringt erweiterte Felder mit → aufklappen, nichts verstecken.
     setShowAdvanced(true);
@@ -1321,6 +1460,22 @@ export function Capture(): JSX.Element {
       setDraft(structuredDraft);
       setWizStep("refine");
     }
+    // AUFTRAG-mega5 Block A (bens Verlustpfade 1+2): mitgesicherten Interviewfortschritt
+    // wiederherstellen — Antworten, getippte Antwort und die aktuelle Frage kommen zurück, OHNE
+    // dass ein Modelllauf startet (interviewFromDraft synthetisiert das Frage-Objekt aus dem
+    // gespeicherten Text). Ein noch LAUFENDES Interview öffnet direkt wieder den Interview-Tab;
+    // ein abgeschlossenes lässt den Herkunfts-Modus (Studio/Formular) in Ruhe — sein Inhalt steckt
+    // bereits in Titel/Aussage/Wissensseite.
+    if (p.interview) {
+      const iv = interviewFromDraft(p.interview, structuredDraft);
+      setIvAnswers(iv.answers);
+      setIvAnswer(iv.answer);
+      setIvResult(iv.result);
+      setIvStarted(iv.started);
+      if (!iv.result || !isInterviewDone(iv.result)) {
+        setMode("interview");
+      }
+    }
     setNotice(t("capture.editingDraft"));
     window.setTimeout(() => {
       workAreaRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1339,6 +1494,95 @@ export function Capture(): JSX.Element {
     },
     onError: fail,
   });
+
+  // E2E-003 (bens Auflage C): EINE kanonische Räum-Funktion für den gesamten Datei-Import-Zustand.
+  // Reine Zustandsleerung OHNE Seiteneffekte (Navigation/Scroll/Modus bleiben im jeweiligen Aufrufer).
+  // Geteilt von cancelFileImport (bewusster Abbruch) und resetCaptureForm (Verwerfen), damit es keine
+  // zweite, unvollständige Kopie der Datei-Felder mehr gibt. Deckt bewusst AUCH die Felder ab, die der
+  // frühere cancelFileImport übersah (fileLang, slidesAsImages/Progress, appendPts, confirmSaveDrafts,
+  // purgeUnselectedRef) — für den Abbruch ist das strikt korrekter, für das Verwerfen zwingend.
+  const clearFileImportState = (): void => {
+    setFileName(null);
+    setFileText("");
+    setFileRich(null);
+    setFileImageInfo(null);
+    setFileOriginal(null);
+    fileOriginalRef.current = { ref: null };
+    setFileImageUrl(null);
+    setFileBusy(false);
+    setSlidesAsImages(false);
+    setSlidesProgress(null);
+    setFileQuery("");
+    setFileImportMode("points");
+    setFileLang("system");
+    setFilePoints(null);
+    setAppendPts(null);
+    setConfirmSaveDrafts(false);
+    purgeUnselectedRef.current = false;
+    setFileNote(null);
+    setFileQueue(null);
+    setFileWholeDraftSaved(null);
+  };
+
+  // E2E-003/E2E-008 (bens Auflage C): kanonische Räum-Funktion für den gesamten Interview-Zustand samt
+  // Diktat und Vorlesen. Stoppt laufende Recorder/TTS, damit nach dem Verwerfen kein Rest-Audio in die
+  // nächste Erfassung diktiert. Reine Zustandsleerung ohne Navigation.
+  const clearInterviewState = (): void => {
+    // AUFTRAG-mega6 Block C: jeder noch laufende Turn wird hier ungültig. Trifft seine Antwort
+    // später ein, verwirft sie der Laufnummern-Vergleich in der Mutation — ein nach dem Speichern
+    // oder Verwerfen bereits geräumtes Interview kann sich nicht selbst wieder einschreiben.
+    ivRunRef.current += 1;
+    // …und die Mutation vergisst ihren Lauf: ohne reset() bliebe die Ansicht nach dem Speichern auf
+    // „denkt nach" stehen, obwohl kein gültiger Turn mehr existiert — genau die Art unehrlicher
+    // Zustandsanzeige, die der Resume mit „Nächste Frage laden" ersetzen soll.
+    interview.reset();
+    recRef.current?.stop();
+    ivRecRef.current?.stop();
+    if (ttsSupported) {
+      window.speechSynthesis.cancel();
+    }
+    setListening(false);
+    setIvListening(false);
+    setIvReading(false);
+    setIvAnswers([]);
+    setIvAnswer("");
+    setIvResult(null);
+    setIvStarted(false);
+  };
+
+  // E2E-003: „Verwerfen" muss das GESAMTE Erfassungsmodell auf Leerzustand bringen — nicht nur die
+  // Aussage/den Rohtext. Zuvor blieben Kategorie, Anlage, Tags, Wissensart, Vertraulichkeit und die
+  // abgeleiteten Felder (draft) stehen und wurden vom nächsten Wissensobjekt unbemerkt geerbt; zusätzlich
+  // überlebten der komplette Interview- und Datei-Import-Zustand (bens Sammel-Review 2, Block C). Jetzt
+  // löscht der Reset ALLE inhaltstragenden Modi, Ref-Caches, Queues und abgeleiteten Resultate über die
+  // beiden kanonischen Räum-Funktionen. Eine Quelle für den Leerzustand, geteilt von beiden Verwerfen-Wegen.
+  const resetCaptureForm = (): void => {
+    setRaw("");
+    setDraft(null);
+    setBodyHtml("");
+    setStudioApplied(false);
+    setType(CAPTURE_FIELD_DEFAULTS.type);
+    setCategory("");
+    setAsset("");
+    setConfidentiality(CAPTURE_FIELD_DEFAULTS.confidentiality);
+    setNeededValidations(CAPTURE_FIELD_DEFAULTS.neededValidations);
+    setTags([]);
+    setReviewerIds([]);
+    setImages([]);
+    setDocs([]);
+    setPendingSources([]);
+    setSourceForm({ ...EMPTY_SOURCE_FORM });
+    setExtQuery("");
+    setExtResults([]);
+    setExtListDropped(false);
+    setShowAdvanced(false);
+    setShowCondMeasures(false);
+    setShowHelpers(false);
+    setDraftId(null);
+    setWizStep("tell");
+    clearInterviewState();
+    clearFileImportState();
+  };
 
   const switchMode = (m: Mode): void => {
     setErr(null);
@@ -1366,11 +1610,12 @@ export function Capture(): JSX.Element {
     }
     setMode(m);
     if (m === "interview") {
-      // SCRUM-132: Interview startet mit der ersten reasoner-getriebenen Frage.
+      // E2E-008: NUR zurücksetzen — der erste reasoner-getriebene Turn wird bewusst über den
+      // „Interview starten"-Knopf ausgelöst (startInterview), nicht schon beim Tabwechsel.
       setIvAnswers([]);
       setIvAnswer("");
       setIvResult(null);
-      interview.mutate([]);
+      setIvStarted(false);
     }
   };
 
@@ -1398,20 +1643,9 @@ export function Capture(): JSX.Element {
   };
 
   const cancelFileImport = (): void => {
-    setFileName(null);
-    setFileText("");
-    setFileRich(null);
-    setFileImageInfo(null);
-    setFileOriginal(null);
-    fileOriginalRef.current = { ref: null };
-    setFileImageUrl(null);
-    setFileBusy(false);
-    setFileQuery("");
-    setFilePoints(null);
-    setFileNote(null);
-    setFileQueue(null);
-    setFileWholeDraftSaved(null);
-    setFileImportMode("points");
+    // E2E-003: dieselbe kanonische Räumung wie „Verwerfen"; hier zusätzlich die bewussten
+    // Abbruch-Seiteneffekte (Modus zurück, Arbeitsraum zu, Navigation, Scroll).
+    clearFileImportState();
     setErr(null);
     setNotice(null);
     setCaptureWorkspaceOpen(false);
@@ -1457,8 +1691,74 @@ export function Capture(): JSX.Element {
   // In „Aus Datei" ausgewertete Funde (filePoints) — die ganze Tabelle darf nicht still verloren gehen.
   const hasUnsavedFilePoints = Boolean(filePoints && filePoints.length > 0);
   const hasUnsaved = hasUnsavedEntry || hasUnsavedFilePoints;
+  // AUFTRAG-mega3 Block A (bens Sammel-Review 3, Auflage C): der zuvor FEHLENDE Anteil des kanonischen
+  // Dirty-Prädikats — genau die von resetCaptureForm() geräumten, nutzerseitig änderbaren Metadaten-/
+  // Quellen-/Externsuche-Felder, gebildet gegen die FRISCHEN Defaults (CAPTURE_FIELD_DEFAULTS /
+  // EMPTY_SOURCE_FORM), NICHT gegen „ist gesetzt". Ein Feld auf Default ist NICHT dirty; jede Abweichung
+  // IST dirty (auch ein vom Default auf einen anderen Nicht-Default-Wert gestelltes Feld). Ohne diese
+  // Felder blieb der Verwerfen-Knopf bei nur geänderter Wissensart/Vertraulichkeit/Prüferwahl/Quelle
+  // deaktiviert und der Wert lebte ins nächste Wissensobjekt fort (bens Reproduktion).
+  const hasUnsavedMeta =
+    type !== CAPTURE_FIELD_DEFAULTS.type ||
+    confidentiality !== CAPTURE_FIELD_DEFAULTS.confidentiality ||
+    neededValidations !== CAPTURE_FIELD_DEFAULTS.neededValidations ||
+    reviewerIds.length > 0 ||
+    isSourceFormDirty(sourceForm) ||
+    extQuery.trim().length > 0 ||
+    extResults.length > 0;
+  // EIN kanonisches Dirty-Prädikat, das ALLE inhaltstragenden/geräumten Zustände abdeckt und BEIDES
+  // steuert: den Verwerfen-Knopf UND die Navigationswache (inkl. beforeunload). Zwei getrennte Begriffe
+  // von „dirty" sind ausgeschlossen. Deckt zusätzlich den gestarteten, aber noch unbeantworteten
+  // Interview-Turn, ein Interview-Ergebnis und eine laufende Datei-Queue ab.
+  // AUFTRAG-mega5 Block A: fileWholeDraftSaved ist NICHT mehr dirty — der Zustand ist nur der
+  // Bestätigungs-Hinweis auf einen bereits PERSISTIERTEN Entwurf (id/title/fileName); beim Wechsel
+  // geht nichts Ungesichertes verloren, der Entwurf steht in „Entwürfe fortsetzen". Ihn als
+  // ungesichert zu melden, wäre genau der Widerspruch zwischen Dirty- und Speicher-Vertrag,
+  // den bens Auflage A verbietet.
+  const isCaptureDirty =
+    hasUnsaved || hasUnsavedMeta || ivStarted || Boolean(ivResult) || Boolean(fileQueue);
+  // AUFTRAG-mega5 Block A (bens Ship-Gate 1): die EHRLICHE GRENZE des Speicher-Vertrags. Für jeden
+  // Dirty-Zustand gilt genau eines von beidem: saveDraft sichert ihn vollständig (Text, Metadaten,
+  // Prüfer, Quellenformular, pendingSources, extQuery, Interviewfortschritt — Resume stellt sie
+  // wieder her), ODER er steht hier NAMENTLICH als nicht sicherbar: echte Binärdaten (Bilder,
+  // Dokumente) und flüchtige Laufzeitzustände (Datei vor Extraktionsabschluss, laufende Queue,
+  // geladene Trefferliste). Nicht leer ⇒ Navigationswache ohne „Speichern und wechseln" und der
+  // manuelle Save-Knopf verlangt eine ausdrückliche Bestätigung. Einen dritten Weg gibt es nicht.
+  const hasPendingFileImport =
+    (Boolean(fileName) || fileText.trim().length > 0) && !hasUnsavedFilePoints && !fileQueue;
+  // AUFTRAG-mega6 Block A (bens ROT 1): eine nicht leere, aber nicht speicherbare Web-Adresse im
+  // Quellenformular oder an einer wartenden Quelle. Die serverseitige http/https-Allowlist bleibt
+  // unverändert — sie ist richtig; nur ihr STILLES Wirken war falsch. Als eigener Grund gehört sie
+  // damit in denselben Vertrag wie Bilder und Dokumente: vor der Navigation benannt, vor dem
+  // manuellen Save ausdrücklich zu bestätigen.
+  const unsavableUrls = useMemo(
+    () => unsavableSourceUrls(sourceForm, pendingSources),
+    [sourceForm, pendingSources],
+  );
+  // useMemo: stabile Referenz — die Liste hängt als Abhängigkeit am Navigationswache-Effekt.
+  const unsavableDirtyReasons = useMemo<string[]>(
+    () => [
+      ...(images.length > 0 ? [t("capture.unsavable.images", { count: images.length })] : []),
+      ...(docs.length > 0 ? [t("capture.unsavable.docs", { count: docs.length })] : []),
+      ...(hasPendingFileImport ? [t("capture.unsavable.file", { name: fileName ?? "" })] : []),
+      ...(fileQueue
+        ? [
+            t("capture.unsavable.fileQueue", {
+              name: fileQueue.fileName,
+              current: queueProgress(fileQueue).current,
+              total: queueProgress(fileQueue).total,
+            }),
+          ]
+        : []),
+      ...(extResults.length > 0 ? [t("capture.unsavable.extResults")] : []),
+      ...(unsavableUrls.length > 0
+        ? [t("capture.unsavable.sourceUrl", { urls: unsavableUrls.join(" · ") })]
+        : []),
+    ],
+    [images, docs, hasPendingFileImport, fileName, fileQueue, extResults, unsavableUrls, t],
+  );
   useEffect(() => {
-    if (!hasUnsaved) {
+    if (!isCaptureDirty) {
       return;
     }
     const onBeforeUnload = (e: BeforeUnloadEvent): void => {
@@ -1467,7 +1767,7 @@ export function Capture(): JSX.Element {
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [hasUnsaved]);
+  }, [isCaptureDirty]);
 
   // Bug (Pedi 04.07./05.07.): In-App-Seitenwechsel (Menü, Command-Palette) fängt jetzt der Navigations-
   // Wächter ab — Nachfrage „Bleiben · Verwerfen · Entwurf speichern", bevor Inhalt verloren geht.
@@ -1475,9 +1775,18 @@ export function Capture(): JSX.Element {
   // als separate Entwürfe (nichts geht verloren). Teilfehler halten den Dialog offen (kein Wechsel).
   useEffect(() => {
     setGuard({
-      isDirty: () => hasUnsaved,
+      // Dasselbe kanonische Prädikat wie der Verwerfen-Knopf — kein Auseinanderlaufen.
+      isDirty: () => isCaptureDirty,
+      // AUFTRAG-mega5 Block A (bens Ship-Gate 1): nicht sicherbare Inhalte werden der Wache gemeldet —
+      // sie benennt sie dann einzeln und bietet KEIN „Speichern und wechseln" an.
+      unsavableDirtyReasons: () => unsavableDirtyReasons,
       save: async () => {
-        if (hasUnsavedEntry) {
+        // AUFTRAG-mega4/mega5 Block A (bens Blocker + Verlustpfad 1): der Save-Zweig deckt jetzt JEDEN
+        // sicherbaren Dirty-Zustand ab — auch das gestartete Interview ohne Antwort (ivStarted) und
+        // ein vorliegendes Interview-Ergebnis (ivResult) lösen die Persistenz aus; vorher endete der
+        // Callback hier ohne saveDraft und die Navigation lief trotzdem weiter. saveDraft persistiert
+        // diese Felder vollständig (s. DraftPayload/interviewForDraft oben).
+        if (hasUnsavedEntry || hasUnsavedMeta || ivStarted || ivResult) {
           await saveDraft.mutateAsync();
         }
         if (filePoints && filePoints.length > 0 && fileName) {
@@ -1514,8 +1823,12 @@ export function Capture(): JSX.Element {
     });
     return () => setGuard(null);
   }, [
-    hasUnsaved,
+    isCaptureDirty,
     hasUnsavedEntry,
+    hasUnsavedMeta,
+    ivStarted,
+    ivResult,
+    unsavableDirtyReasons,
     filePoints,
     fileName,
     saveDraft,
@@ -1539,7 +1852,7 @@ export function Capture(): JSX.Element {
     rec.onresult = (e) => {
       let text = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
-        text += e.results[i][0].transcript;
+        text += e.results[i]?.[0]?.transcript ?? "";
       }
       append(text);
     };
@@ -2146,12 +2459,28 @@ export function Capture(): JSX.Element {
     }
   };
 
+  // E2E-008: bewusster Start des geführten Interviews — erst hier (nicht beim Tabwechsel) geht der
+  // erste Turn an das Modell. Vorher wurde nichts gesendet und kein ModelRun ausgelöst.
+  const startInterview = (): void => {
+    setIvAnswers([]);
+    setIvAnswer("");
+    setIvResult(null);
+    setIvStarted(true);
+    runInterview([]);
+  };
+
   // SCRUM-132: Antwort senden → nächster reasoner-getriebener Turn.
+  // AUFTRAG-mega6 Block C (bens ROT 3): mit dem Start des NÄCHSTEN Turns ist die bisherige Frage
+  // nicht mehr die aktuelle Frage — sie wurde soeben beantwortet. Ohne dieses Leeren persistierte
+  // ein Speichern/Navigieren in diesem Fenster die neue Antwortliste ZUSAMMEN MIT der alten Frage,
+  // und das Fortsetzen zeigte sie fälschlich als offene Frage. Jetzt sichert der Pending-Zustand
+  // Antworten und Turn, aber keine überholte Frage — der Resume bietet ehrlich „Nächste Frage laden".
   const ivSend = (): void => {
     const answers = appendAnswer(ivAnswers, ivAnswer);
     setIvAnswers(answers);
     setIvAnswer("");
-    interview.mutate(answers);
+    setIvResult(null);
+    runInterview(answers);
   };
 
   // SCRUM-257: produktnaher Beispielpfad — lädt eine industrielle Erfahrungsnotiz (Linie L4 /
@@ -2167,10 +2496,40 @@ export function Capture(): JSX.Element {
   };
 
   const busy = structure.isPending || saveDraft.isPending;
+  // E2E-004: „Als Entwurf speichern" verlangt mind. Aussage ODER Titel — leere/Whitespace-only
+  // Entwürfe werden gesperrt (der Server lehnt sie zusätzlich ab). Titel/Aussage stammen aus dem
+  // Struktur-Entwurf oder dem Rohtext.
+  const canSaveDraft =
+    raw.trim().length > 0 ||
+    (draft?.statement.trim().length ?? 0) > 0 ||
+    (draft?.title.trim().length ?? 0) > 0;
+  // AUFTRAG-mega5 Block A (bens Verlustpfad 3): der MANUELLE „Als Entwurf speichern"-Knopf leerte
+  // Bilder/Dokumente nach dem Erfolg still (:1274-1275 im geprüften Stand). Jetzt verlangt er bei
+  // nicht sicherbaren Inhalten erst die ausdrückliche, namentliche Bestätigung — gespeichert wird
+  // ohne sie nicht.
+  const requestManualSave = (): void => {
+    if (unsavableDirtyReasons.length > 0) {
+      setConfirmSaveLimit(true);
+      return;
+    }
+    saveDraft.mutate();
+  };
+  const saveDespiteLimits = (): void => {
+    setConfirmSaveLimit(false);
+    // Bewusst bestätigt: die benannten, nicht sicherbaren Inhalte werden verworfen. Bilder, Dokumente
+    // und Trefferliste räumt der Save-Erfolgspfad; den Datei-Import-/Queue-Zustand räumen wir hier
+    // explizit, denn er hängt nicht am saveDraft-Erfolg.
+    if (hasPendingFileImport || fileQueue) {
+      clearFileImportState();
+    }
+    saveDraft.mutate();
+  };
   // WP-D7b (Rot-Fix 1): ehrlicher, mehrstufiger Einreichen-Text — zeigt die aktuelle Phase (mit Upload-Größe),
   // sonst der generische Busy-Text. DE/EN/NL über die i18n-Keys.
   const submitBusyLabel = submitStage
-    ? t(submitStage.key, submitStage.mb !== undefined ? { mb: submitStage.mb } : undefined)
+    ? submitStage.mb !== undefined
+      ? t(submitStage.key, { mb: submitStage.mb })
+      : t(submitStage.key)
     : t("capture.submitBusy");
 
   // SCRUM-407 (Pedi 03.07.): durchgängige, ausführliche ?-Hilfen im Erfassen-Weg — Themen und
@@ -2182,6 +2541,19 @@ export function Capture(): JSX.Element {
 
   // SCRUM-408: gleiche Guard-Logik wie im Prüfbereich (viewer darf keine Quellen anhängen).
   const canSources = canAttachCaptureSources(user?.role);
+
+  // AUFTRAG-mega6 Block D: sichtbare Rückmeldung AM Limit. Das maxLength des Feldes verhindert das
+  // stille Weiterkürzen; dieser Hinweis sagt zusätzlich, dass die Grenze erreicht ist — sonst wäre
+  // auch ein eingefügter, vom Browser gekappter Text ein unbemerkter Teilverlust. aria-live, damit
+  // Screenreader die Grenze mitbekommen.
+  const charLimitHint = (value: string, max: number): JSX.Element | null =>
+    value.length >= max ? (
+      <p aria-live="polite" className="text-[11.5px] font-medium text-trust-crit-text">
+        {t("capture.limit.chars", { max })}
+      </p>
+    ) : null;
+  const reviewerLimitReached = reviewerIds.length >= DRAFT_LIMITS.reviewers;
+  const sourceLimitReached = pendingSources.length >= DRAFT_LIMITS.sources;
 
   // SCRUM-375: wie viele erweiterte Felder schon Inhalt tragen — für das „X ausgefüllt"-Badge.
   const advancedSummary = advancedFieldsSummary({
@@ -2209,8 +2581,6 @@ export function Capture(): JSX.Element {
   const expertView = isExpertMode(mode);
   const wizStep = resolveWizardStep(wizStepRaw, draft !== null);
   const chips = wizardChips(wizStepRaw, draft !== null);
-  const draftCount = drafts.data?.length ?? 0;
-
   return (
     <div className="mx-auto max-w-5xl">
       <PageHeader
@@ -2486,112 +2856,24 @@ export function Capture(): JSX.Element {
         </Card>
       ) : null}
 
-      {/* SCRUM-113 / FE-CAP-07: Entwürfe fortsetzen (gemeinsamer Pool mit Mobile) */}
-      {draftCount > 0 ? (
-        <Card className="mb-4 space-y-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <SectionLabel>{t("capture.resumeTitle")}</SectionLabel>
-              <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2">
-                {draftScopeLabel}
-              </span>
-              <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2">
-                {draftCount}
-              </span>
-            </div>
-            <button
-              type="button"
-              aria-expanded={draftsOpen}
-              onClick={() => setDraftsOpen((open) => !open)}
-              className="inline-flex items-center gap-1 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
-            >
-              {draftsOpen
-                ? t("capture.resumeCollapse")
-                : t("capture.resumeExpand", { count: draftCount })}
-              <ChevronDown
-                size={14}
-                className={`transition-transform ${draftsOpen ? "rotate-180" : ""}`}
-              />
-            </button>
-          </div>
-          {draftsOpen ? (
-            <ul className="divide-y divide-hairline">
-              {(drafts.data ?? []).map((d) => (
-                <li
-                  key={d.id}
-                  className={`flex flex-col gap-2 py-2 sm:flex-row sm:items-center ${
-                    frontDoorDraftSaved?.id === d.id
-                      ? "rounded-card border border-trust-pos-fill/40 bg-trust-pos-bg px-2"
-                      : ""
-                  }`}
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[13px] font-semibold text-text">
-                      {draftTitle(d, t("capture.draftFallbackTitle"))}
-                      {draftId === d.id ? (
-                        <span className="ml-2 font-mono text-[10px] uppercase text-ai">
-                          {t("capture.editingBadge")}
-                        </span>
-                      ) : null}
-                      {frontDoorDraftSaved?.id === d.id ? (
-                        <span className="ml-2 font-mono text-[10px] uppercase text-trust-pos-text">
-                          gerade gespeichert
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11.5px] text-muted">
-                      <span>Ersteller: {draftAuthorName(d, directory.data ?? [])}</span>
-                      <span>Gespeichert: {formatDraftTimestamp(d.updatedAt || d.createdAt)}</span>
-                      <span>Status: Entwurf</span>
-                    </div>
-                  </div>
-                  {/* Bugfix (Pedi 04.07.): Löschen erst nach Inline-Nachfrage — kein stiller Verlust. */}
-                  {confirmDiscardDraftId === d.id ? (
-                    <span className="inline-flex items-center gap-1.5">
-                      <span className="text-[11.5px] font-semibold text-text">
-                        {t("capture.discardDraftQ")}
-                      </span>
-                      <Button variant="ghost" onClick={() => setConfirmDiscardDraftId(null)}>
-                        {t("capture.discardDraftKeep")}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        disabled={discardDraft.isPending}
-                        onClick={() => discardDraft.mutate(d.id)}
-                      >
-                        {t("capture.discardDraftYes")}
-                      </Button>
-                    </span>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => loadDraft(d)}
-                        className="inline-flex items-center gap-1 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
-                      >
-                        <RotateCcw size={13} />
-                        {t("capture.resume")}
-                      </button>
-                      <button
-                        type="button"
-                        title={t("capture.discardDraft")}
-                        onClick={() => setConfirmDiscardDraftId(d.id)}
-                        className="grid h-7 w-7 place-items-center rounded-btn text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </>
-                  )}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="rounded-btn bg-page px-3 py-2 text-[12px] leading-relaxed text-muted">
-              {t("capture.resumeCollapsedHint", { count: draftCount })}
-            </p>
-          )}
-        </Card>
-      ) : null}
+      {/* SCRUM-113 / FE-CAP-07: Entwürfe fortsetzen (gemeinsamer Pool mit Mobile). AUFTRAG-sortfilter ·
+          Punkt 2: die Liste ist in CaptureDraftList gekapselt — Filter (Volltext + Admin-Ersteller) und
+          Sortierung leben dort (pro Browser gemerkt). Rendert sich selbst nur bei ≥ 1 Entwurf. */}
+      <CaptureDraftList
+        drafts={drafts.data ?? []}
+        isAdmin={user?.role === "admin"}
+        directory={directory.data ?? []}
+        open={draftsOpen}
+        onToggleOpen={() => setDraftsOpen((open) => !open)}
+        scopeLabel={draftScopeLabel}
+        highlightId={frontDoorDraftSaved?.id ?? null}
+        editingId={draftId}
+        confirmDiscardId={confirmDiscardDraftId}
+        onConfirmDiscard={setConfirmDiscardDraftId}
+        discardPending={discardDraft.isPending}
+        onDiscard={(id) => discardDraft.mutate(id)}
+        onResume={loadDraft}
+      />
 
       {/* SCRUM-384: Die frühere Weg-Leiste (SCRUM-370) entfiel — die „Wissen retten“-
           Einführung oben erklärt denselben Dreischritt; Doppel-Blöcke erschlagen (Pedi-Review). */}
@@ -2831,7 +3113,19 @@ export function Capture(): JSX.Element {
             ) : null}
 
             {mode === "interview" ? (
-              ivResult && isInterviewDone(ivResult) ? (
+              !ivStarted ? (
+                // E2E-008: bewusster Start VOR jedem Cloud-Lauf. Provider-/Region-/Kostenhinweis
+                // (AiModelInfo) steht am Knopf; erst der Klick löst den ersten ModelRun aus.
+                <div data-help="cap:interview" className="space-y-3">
+                  <p className="text-[13px] text-muted">{t("capture.ivStartLead")}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button variant="primary" onClick={startInterview}>
+                      {t("capture.ivStart")}
+                    </Button>
+                    <AiModelInfo task="interview" />
+                  </div>
+                </div>
+              ) : ivResult && isInterviewDone(ivResult) ? (
                 <p className="rounded-card border border-dashed border-hairline p-3 text-[13px] text-trust-pos-text">
                   {t("capture.ivDone")}
                 </p>
@@ -2850,12 +3144,25 @@ export function Capture(): JSX.Element {
                   </div>
                   {/* SCRUM-403 (Pedi 03.07.): Frage vorlesen + Antwort diktieren — Sprache in
                       beide Richtungen; Knöpfe nur, wenn der Browser es ehrlich kann. */}
+                  {/* AUFTRAG-mega5 Block A: liegt (nach Fortsetzen eines Entwurfs ohne gesicherte
+                      Frage oder nach einem Fehlversuch) KEINE Frage vor, zeigen wir statt eines
+                      ewigen „denkt nach" einen bewussten Nachlade-Klick — erst DER löst den
+                      Modelllauf aus (derselbe Interview-Endpunkt, kein Auto-Fetch beim Resume). */}
+                  {!interview.isPending && !ivResult ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-[13px] text-muted">{t("capture.ivResumeLead")}</p>
+                      <Button variant="primary" onClick={() => runInterview(ivAnswers)}>
+                        {t("capture.ivResumeLoad")}
+                      </Button>
+                      <AiModelInfo task="interview" />
+                    </div>
+                  ) : null}
                   <div className="flex items-start gap-2">
-                    <p className="flex-1 text-[14px] font-medium text-text">
-                      {interview.isPending
-                        ? t("capture.ivThinking")
-                        : (ivResult?.question ?? t("capture.ivThinking"))}
-                    </p>
+                    {interview.isPending || ivResult ? (
+                      <p className="flex-1 text-[14px] font-medium text-text">
+                        {interview.isPending ? t("capture.ivThinking") : ivResult?.question}
+                      </p>
+                    ) : null}
                     {ttsSupported && ivResult && !interview.isPending ? (
                       <Button
                         variant={ivReading ? "primary" : "ghost"}
@@ -2867,17 +3174,37 @@ export function Capture(): JSX.Element {
                       </Button>
                     ) : null}
                   </div>
+                  {/* AUFTRAG-mega6 Block D: die Antwort wird beim Speichern auf
+                      DRAFT_LIMITS.interviewText gekürzt — das steht jetzt am Feld, statt still zu
+                      geschehen. */}
                   <textarea
                     value={ivAnswer}
                     onChange={(e) => setIvAnswer(e.target.value)}
                     rows={2}
                     placeholder={t("capture.ivAnswerHint")}
                     className={textareaCls}
+                    maxLength={DRAFT_LIMITS.interviewText}
                   />
+                  {charLimitHint(ivAnswer, DRAFT_LIMITS.interviewText)}
+                  {ivAnswers.length >= DRAFT_LIMITS.interviewAnswers ? (
+                    <p
+                      aria-live="polite"
+                      className="text-[11.5px] font-medium text-trust-crit-text"
+                    >
+                      {t("capture.limit.interviewAnswers", { max: DRAFT_LIMITS.interviewAnswers })}
+                    </p>
+                  ) : null}
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
                       variant="primary"
-                      disabled={interview.isPending || ivAnswer.trim().length === 0 || !ivResult}
+                      // AUFTRAG-mega6 Block D: über der Antwort-Obergrenze würde der Entwurf die
+                      // weiteren Turns nicht mehr sichern — dann lieber sichtbar gesperrt.
+                      disabled={
+                        interview.isPending ||
+                        ivAnswer.trim().length === 0 ||
+                        !ivResult ||
+                        ivAnswers.length >= DRAFT_LIMITS.interviewAnswers
+                      }
                       onClick={ivSend}
                     >
                       {t("capture.ivSend")}
@@ -3462,6 +3789,9 @@ export function Capture(): JSX.Element {
                             type="button"
                             onClick={() => toggleReviewer(p.id)}
                             aria-pressed={active}
+                            // AUFTRAG-mega6 Block D: am Limit nimmt die Auswahl nichts Neues mehr an —
+                            // sichtbar gesperrt statt serverseitig still gekappt. Abwählen bleibt frei.
+                            disabled={!active && reviewerLimitReached}
                             className={
                               active
                                 ? "rounded-btn border border-ink bg-ink px-2.5 py-1 text-[12px] font-semibold text-white"
@@ -3477,6 +3807,14 @@ export function Capture(): JSX.Element {
                   {reviewerIds.length > 0 ? (
                     <div className="mt-1.5 text-[11.5px] text-muted-2">
                       {t("capture.reviewers.selected", { n: reviewerIds.length })}
+                    </div>
+                  ) : null}
+                  {reviewerLimitReached ? (
+                    <div
+                      aria-live="polite"
+                      className="mt-1.5 text-[11.5px] font-medium text-trust-crit-text"
+                    >
+                      {t("capture.limit.reviewers", { max: DRAFT_LIMITS.reviewers })}
                     </div>
                   ) : null}
                 </div>
@@ -3650,26 +3988,45 @@ export function Capture(): JSX.Element {
                         ))}
                       </ul>
                     ) : null}
+                    {/* AUFTRAG-mega6 Block D: maxLength je Feld aus DRAFT_LIMITS — derselben Quelle,
+                        aus der die Servernormalisierung ihre Grenzen zieht. Darunter der sichtbare
+                        „am Limit"-Hinweis, damit auch eingefügter Text nicht unbemerkt endet. */}
                     <div className="space-y-2">
                       <TextInput
                         value={sourceForm.label}
                         onChange={(e) => setSourceForm((s) => ({ ...s, label: e.target.value }))}
                         placeholder={t("ko.sourceLabel")}
+                        maxLength={DRAFT_LIMITS.sourceLabel}
                       />
+                      {charLimitHint(sourceForm.label, DRAFT_LIMITS.sourceLabel)}
                       <TextInput
                         value={sourceForm.url}
                         onChange={(e) => setSourceForm((s) => ({ ...s, url: e.target.value }))}
                         placeholder={t("ko.sourceUrl")}
+                        maxLength={DRAFT_LIMITS.sourceUrl}
                       />
+                      {charLimitHint(sourceForm.url, DRAFT_LIMITS.sourceUrl)}
+                      {/* AUFTRAG-mega6 Block A: die Speichergrenze der Adresse steht direkt am Feld —
+                          nicht erst im Grenzen-Dialog. Sie sagt auch, wie die Adresse gültig würde. */}
+                      {unsavableUrls.length > 0 ? (
+                        <p
+                          aria-live="polite"
+                          className="text-[11.5px] font-medium text-trust-crit-text"
+                        >
+                          {t("capture.sourceUrlLimit")}
+                        </p>
+                      ) : null}
                       <TextInput
                         value={sourceForm.excerpt}
                         onChange={(e) => setSourceForm((s) => ({ ...s, excerpt: e.target.value }))}
                         placeholder={t("ko.sourceExcerpt")}
+                        maxLength={DRAFT_LIMITS.sourceExcerpt}
                       />
+                      {charLimitHint(sourceForm.excerpt, DRAFT_LIMITS.sourceExcerpt)}
                       <p className="text-[11.5px] text-muted-2">{t("ko.sourcesHint")}</p>
                       <Button
                         variant="ghost"
-                        disabled={!isSourceFormValid(sourceForm)}
+                        disabled={!isSourceFormValid(sourceForm) || sourceLimitReached}
                         onClick={() => {
                           setPendingSources((list) =>
                             addPendingSource(list, pendingFromForm(sourceForm)),
@@ -3679,6 +4036,14 @@ export function Capture(): JSX.Element {
                       >
                         {t("ko.sourceAdd")}
                       </Button>
+                      {sourceLimitReached ? (
+                        <p
+                          aria-live="polite"
+                          className="text-[11.5px] font-medium text-trust-crit-text"
+                        >
+                          {t("capture.limit.sources", { max: DRAFT_LIMITS.sources })}
+                        </p>
+                      ) : null}
                     </div>
                     {/* SCRUM-118 / FR-EXT-02: externe Quellensuche (Server-Proxy) — wie im Prüfbereich.
                         SCRUM-414: nur sichtbar, wenn der Admin-Regler die externe Wissensabfrage
@@ -3700,6 +4065,7 @@ export function Capture(): JSX.Element {
                             value={extQuery}
                             onChange={(e) => setExtQuery(e.target.value)}
                             placeholder={t("ext.placeholder")}
+                            maxLength={DRAFT_LIMITS.extQuery}
                           />
                           <Button
                             type="submit"
@@ -3709,6 +4075,15 @@ export function Capture(): JSX.Element {
                             {t("ext.search")}
                           </Button>
                         </form>
+                        {charLimitHint(extQuery, DRAFT_LIMITS.extQuery)}
+                        {/* AUFTRAG-mega5 Block C: nach dem Fortsetzen ist die Trefferliste bewusst
+                            leer (nicht persistiert) — das steht hier ehrlich dran, bis der Nutzer
+                            die Suche mit einem Klick neu ausführt. */}
+                        {extListDropped && extResults.length === 0 ? (
+                          <p aria-live="polite" className="text-[11.5px] text-muted-2">
+                            {t("ext.resumeHint")}
+                          </p>
+                        ) : null}
                         {extResults.length > 0 ? (
                           <ul className="space-y-1.5">
                             {extResults.map((r) => (
@@ -3736,6 +4111,9 @@ export function Capture(): JSX.Element {
                                   </div>
                                   <Button
                                     variant="ghost"
+                                    // AUFTRAG-mega6 Block D: dieselbe sichtbare Mengengrenze wie im
+                                    // Quellenformular — der Entwurf sichert nicht mehr Quellen.
+                                    disabled={sourceLimitReached}
                                     onClick={() =>
                                       setPendingSources((list) =>
                                         addPendingSource(list, pendingFromResult(r)),
@@ -3768,7 +4146,7 @@ export function Capture(): JSX.Element {
             ) : null}
 
             <div className="flex flex-wrap items-center gap-2 border-t border-hairline pt-4">
-              <Button variant="ghost" disabled={busy} onClick={() => saveDraft.mutate()}>
+              <Button variant="ghost" disabled={busy || !canSaveDraft} onClick={requestManualSave}>
                 <Save size={15} />
                 {t("capture.saveDraft")}
               </Button>
@@ -3796,9 +4174,9 @@ export function Capture(): JSX.Element {
                     type="button"
                     className="text-[12px] font-semibold text-trust-crit-text"
                     onClick={() => {
-                      setRaw("");
-                      setDocs([]);
-                      setImages([]);
+                      // E2E-003: gesamtes Formularmodell leeren (nicht nur Text/Anhänge), damit das
+                      // nächste Wissensobjekt keine Metadaten aus dem verworfenen erbt.
+                      resetCaptureForm();
                       setNotice(null);
                       setErr(null);
                       setConfirmTellReset(false);
@@ -3811,7 +4189,7 @@ export function Capture(): JSX.Element {
                 <button
                   type="button"
                   onClick={() => setConfirmTellReset(true)}
-                  disabled={!raw.trim() && images.length + docs.length === 0}
+                  disabled={!isCaptureDirty}
                   className="rounded-btn px-3 py-2 text-[12.5px] font-semibold text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {t(CAPTURE_WIZARD_TEXT.discard)}
@@ -4389,13 +4767,10 @@ export function Capture(): JSX.Element {
                   <Button
                     variant="outline"
                     onClick={() => {
-                      setDraft(null);
-                      setBodyHtml("");
-                      setStudioApplied(false);
+                      // E2E-003: der ganze Erfassungszustand (inkl. Kategorie, Anlage, Tags,
+                      // Wissensart, Vertraulichkeit, abgeleitete Felder) geht — eine Quelle.
+                      resetCaptureForm();
                       setConfirmDiscard(false);
-                      setShowCondMeasures(false);
-                      setShowHelpers(false);
-                      setWizStep("tell");
                       setNotice(t(CAPTURE_WIZARD_TEXT.discardDone));
                     }}
                   >
@@ -4404,7 +4779,11 @@ export function Capture(): JSX.Element {
                 </div>
               ) : null}
               <div className="flex flex-wrap items-center gap-2">
-                <Button variant="ghost" disabled={busy} onClick={() => saveDraft.mutate()}>
+                <Button
+                  variant="ghost"
+                  disabled={busy || !canSaveDraft}
+                  onClick={requestManualSave}
+                >
                   <Save size={15} />
                   {t("capture.saveDraft")}
                 </Button>
@@ -4447,6 +4826,29 @@ export function Capture(): JSX.Element {
         onClose={() => setAppendPts(null)}
         onDone={onAppendedToArticle}
       />
+      {/* AUFTRAG-mega5 Block A (bens Verlustpfad 3): der manuelle Save benennt nicht sicherbare
+          Inhalte EINZELN und speichert erst nach ausdrücklicher Bestätigung ihres Verwerfens —
+          kein stiller Verlust hinter einer erfolgreichen Speicheraktion mehr. */}
+      <Modal
+        open={confirmSaveLimit}
+        onClose={() => setConfirmSaveLimit(false)}
+        title={t("capture.saveLimit.title")}
+      >
+        <p className="text-[13px] leading-relaxed text-text">{t("capture.saveLimit.lead")}</p>
+        <ul className="mt-2 list-disc space-y-1 pl-5 text-[13px] leading-relaxed text-text">
+          {unsavableDirtyReasons.map((reason) => (
+            <li key={reason}>{reason}</li>
+          ))}
+        </ul>
+        <div className="mt-4 flex flex-wrap justify-end gap-2">
+          <Button variant="primary" onClick={() => setConfirmSaveLimit(false)}>
+            {t("capture.saveLimit.cancel")}
+          </Button>
+          <Button variant="ghost" onClick={saveDespiteLimits}>
+            {t("capture.saveLimit.confirm")}
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -39,9 +39,11 @@ describe("SCRUM-437: VIP-Bereitschaft", () => {
     expect(n.upload).toBe("warn");
   });
 
-  it("Upload-Grenzen werden in KB umgerechnet; ohne Grenzen 'unbekannt'", () => {
+  // E2E-020: EINHEITLICH in MB (nicht mehr KB), damit Admin/Erfassen/Bereitschaft dieselbe Einheit
+  // zeigen. 700_000 Bytes → gerundet 1 MB.
+  it("Upload-Grenzen werden in MB umgerechnet; ohne Grenzen 'unbekannt'", () => {
     const withLimits = readinessRows(ready).find((r) => r.id === "upload");
-    expect(withLimits?.params).toEqual({ n: 8, kb: 700 });
+    expect(withLimits?.params).toEqual({ n: 8, mb: 1 });
     const without = readinessRows(notReady).find((r) => r.id === "upload");
     expect(without?.valueKey).toBe("adm.ready.unknown");
     expect(without?.params).toBeUndefined();

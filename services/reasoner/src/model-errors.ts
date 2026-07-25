@@ -5,7 +5,11 @@
 // generische Errors mit den etablierten Meldungen werfen — dann greifen Meldungs-Heuristiken.
 // Es wird NIE Prompt-/Antwortinhalt transportiert: nur Klasse, optionaler HTTP-Status, Meldung.
 
-export type ModelFailureClass = "timeout" | "http" | "network" | "parse";
+// AUFTRAG-mega4 Block D (bens Sammel-Review 4): „unknown" ist der ehrliche Rückfall für einen
+// uneingeordneten geworfenen Fehler. Er darf NICHT als „network" verkleidet werden — sonst meldet die
+// nutzerseitige Ableitung (reasonFromModelFailure: network → unreachable) „Anbieter nicht erreichbar",
+// obwohl dafür kein Netzbeleg existiert. „unknown" bleibt beim generischen „model-error".
+export type ModelFailureClass = "timeout" | "http" | "network" | "parse" | "unknown";
 
 // Zeitlimit überschritten (AbortController im Client). Meldung bleibt identisch zur bisherigen
 // generischen Error-Meldung — bestehende Aufrufer/Anzeigen (z. B. extract-Fallback-Note) unverändert.
@@ -45,7 +49,7 @@ export function classifyModelFailure(err: unknown): ModelFailureInfo {
     return { failureClass: "parse" };
   }
   // Heuristik für generische Errors (injizierte Test-Clients, fremde Provider) — Meldungsmuster der
-  // etablierten Client-Fehlertexte; alles Übrige (fetch-TypeError, DNS, Abbruch) ist "network".
+  // etablierten Client-Fehlertexte.
   const message = err instanceof Error ? err.message : String(err);
   if (/Zeitlimit|timed?\s*-?\s*out|timeout/i.test(message)) {
     return { failureClass: "timeout" };
@@ -57,5 +61,18 @@ export function classifyModelFailure(err: unknown): ModelFailureInfo {
   if (/JSON/i.test(message)) {
     return { failureClass: "parse" };
   }
-  return { failureClass: "network" };
+  // AUFTRAG-mega4 Block D (bens Blocker): NUR eng benannte Netz-/DNS-Signale (bzw. ein typisierter
+  // Netzfehler) dürfen „network" ergeben — sie tragen es später ehrlich als „unreachable". Ein
+  // fetch-TypeError bringt in Node „fetch failed"/„getaddrinfo …"; nur solche BELEGTEN Signale
+  // rechtfertigen „Anbieter nicht erreichbar".
+  if (
+    /ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|EPIPE|getaddrinfo|fetch\s*failed|socket\s*hang\s*up|connection\s*(refused|reset)|network\s*error|nicht\s*erreichbar/i.test(
+      message,
+    )
+  ) {
+    return { failureClass: "network" };
+  }
+  // Ein beliebiger, uneingeordneter geworfener Fehler ist NICHT belegt ein Netzfehler — ehrlicher
+  // Rückfall „unknown" (der Runner bildet daraus generisch „model-error", nicht „unreachable").
+  return { failureClass: "unknown" };
 }

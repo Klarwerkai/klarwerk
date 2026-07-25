@@ -10,7 +10,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { type ChangeEvent, useState } from "react";
+import { type ChangeEvent, type DragEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
@@ -342,6 +342,7 @@ export function ImportReview(): JSX.Element {
   const query = useImportCandidates();
   const [noteId, setNoteId] = useState<string | null>(null);
   const [note, setNote] = useState("");
+  const [importDragOver, setImportDragOver] = useState(false);
 
   const createCandidates = useMutation({
     mutationFn: (items: ImportItemInput[]) => endpoints.library.importCandidates.create(items),
@@ -367,18 +368,40 @@ export function ImportReview(): JSX.Element {
     onError: () => push("error", t("state.error")),
   });
 
-  const onFile = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) {
-      return;
-    }
+  // AUFTRAG-mega1 Block A: der EINE Import-Weg (Dialog UND Drop teilen ihn). Nicht-JSON wird ehrlich
+  // abgelehnt (parseImportItems wirft ImportParseError) — kein zweiter Pfad, kein neuer Egress.
+  const processImportFile = async (file: File): Promise<void> => {
     try {
       const items = parseImportItems(await file.text());
       createCandidates.mutate(items);
     } catch (err) {
       push("error", err instanceof ImportParseError ? t("imp.parseError") : t("state.error"));
     }
+  };
+
+  const onFile = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) {
+      return;
+    }
+    await processImportFile(file);
+  };
+
+  // Block A: JSON-Drop. Nicht-JSON (per Endung/MIME) wird gar nicht erst gelesen — ehrlicher Hinweis.
+  const onImportDrop = (e: DragEvent<HTMLDivElement>): void => {
+    e.preventDefault();
+    setImportDragOver(false);
+    const file = e.dataTransfer?.files?.[0];
+    if (!file) {
+      return;
+    }
+    const isJson = file.name.toLowerCase().endsWith(".json") || file.type === "application/json";
+    if (!isJson) {
+      push("error", t("imp.dropReject", { name: file.name }));
+      return;
+    }
+    void processImportFile(file);
   };
 
   return (
@@ -396,6 +419,26 @@ export function ImportReview(): JSX.Element {
       <Card className="mb-5">
         <SectionLabel>{t("imp.uploadTitle")}</SectionLabel>
         <p className="mb-3 text-[13px] text-muted">{t("imp.uploadHint")}</p>
+        {/* E2E-010 (KEIN Bug — nur UI): ehrlich WARUM hier nur JSON geht, mit Verweis auf den Weg für
+            Office-Dateien. Kein Capability-Umbau. */}
+        <p className="mb-3 rounded-btn bg-page px-3 py-2 text-[12.5px] text-muted">
+          {t("imp.jsonOnlyReason")}
+        </p>
+        {/* Block A: Drop-Zone ZUSÄTZLICH zum Dialog. Der Knopf bleibt (Tastatur-/A11y-Weg). */}
+        <div
+          data-testid="import-dropzone"
+          onDragOver={(e) => {
+            e.preventDefault();
+            setImportDragOver(true);
+          }}
+          onDragLeave={() => setImportDragOver(false)}
+          onDrop={onImportDrop}
+          className={`mb-3 rounded-card border border-dashed p-4 text-center text-[12.5px] transition-colors ${
+            importDragOver ? "border-brand bg-brand/5 text-text" : "border-hairline text-muted"
+          }`}
+        >
+          {importDragOver ? t("imp.dropActive") : t("imp.dropHint")}
+        </div>
         <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-2 text-[13px] font-semibold text-text hover:bg-hairline-soft">
           <Upload size={15} />
           {t("imp.upload")}

@@ -334,11 +334,17 @@ describe("KW-W2-01: Ganzdokument-Import als bewusster Entwurf", () => {
     const cancelEnd = captureSource.indexOf("// Bug (Pedi 04.07.", cancelStart);
     const cancelSource = captureSource.slice(cancelStart, cancelEnd);
 
-    expect(cancelSource).toContain("setFileName(null)");
-    expect(cancelSource).toContain('setFileText("")');
-    expect(cancelSource).toContain("setFilePoints(null)");
-    expect(cancelSource).toContain("setFileWholeDraftSaved(null)");
-    expect(cancelSource).toContain('setFileImportMode("points")');
+    // AUFTRAG-mega2 Block A: die eigentliche Feldräumung liegt jetzt in der gemeinsamen
+    // clearFileImportState()-Funktion (EINE kanonische Räumstelle), die Abbruch UND Verwerfen nutzen.
+    expect(cancelSource).toContain("clearFileImportState()");
+    const clearStart = captureSource.indexOf("const clearFileImportState = (): void =>");
+    const clearEnd = captureSource.indexOf("const clearInterviewState", clearStart);
+    const clearSource = captureSource.slice(clearStart, clearEnd);
+    expect(clearSource).toContain("setFileName(null)");
+    expect(clearSource).toContain('setFileText("")');
+    expect(clearSource).toContain("setFilePoints(null)");
+    expect(clearSource).toContain("setFileWholeDraftSaved(null)");
+    expect(clearSource).toContain('setFileImportMode("points")');
     expect(cancelSource).toContain("setCaptureWorkspaceOpen(false)");
     expect(cancelSource).toContain('navigate("/erfassen", { replace: true, state: null })');
     expect(cancelSource).toContain('window.scrollTo({ top: 0, behavior: "smooth" })');

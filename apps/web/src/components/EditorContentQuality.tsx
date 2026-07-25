@@ -14,7 +14,7 @@ export function EditorContentQuality({
   attachments?: readonly AttachmentLike[];
 }): JSX.Element {
   const { t } = useTranslation();
-  const q = editorContentQuality({ bodyHtml, attachments });
+  const q = editorContentQuality({ bodyHtml: bodyHtml ?? null, attachments });
 
   const positives: string[] = [];
   if (q.hasHeadings) positives.push(t("editor.quality.headings"));

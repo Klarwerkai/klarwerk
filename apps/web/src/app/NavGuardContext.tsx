@@ -13,6 +13,11 @@ import { Button } from "../components/ui";
 export interface DirtyGuard {
   isDirty: () => boolean;
   save: () => Promise<void>;
+  // AUFTRAG-mega5 Block A (bens Ship-Gate 1): Inhalte, die der Entwurf NICHT sichern kann, werden vor
+  // dem Wechsel einzeln und verständlich benannt. Liefert die Liste dieser Inhalte (leer/fehlend =
+  // alles sicherbar). Nicht leer ⇒ der Dialog bietet KEIN „Entwurf speichern und wechseln" an —
+  // ein Speichern, das erfolgreich wegnavigiert und dabei Benanntes verliert, wäre eine Lüge.
+  unsavableDirtyReasons?: () => string[];
 }
 
 interface NavGuardValue {
@@ -37,6 +42,9 @@ export function NavGuardProvider({ children }: { children: ReactNode }): JSX.Ele
   const guardRef = useRef<DirtyGuard | null>(null);
   const [pending, setPending] = useState<(() => void) | null>(null);
   const [saving, setSaving] = useState(false);
+  // AUFTRAG-mega5 Block A: beim Öffnen des Dialogs EINMAL eingefroren — die Liste ändert sich nicht
+  // mitten im offenen Dialog (kein Knopf, der unter dem Zeiger erscheint/verschwindet).
+  const [unsavable, setUnsavable] = useState<string[]>([]);
 
   const setGuard = useCallback((guard: DirtyGuard | null): void => {
     guardRef.current = guard;
@@ -44,6 +52,7 @@ export function NavGuardProvider({ children }: { children: ReactNode }): JSX.Ele
 
   const guard = useCallback((proceed: () => void): void => {
     if (guardRef.current?.isDirty()) {
+      setUnsavable(guardRef.current.unsavableDirtyReasons?.() ?? []);
       setPending(() => proceed);
     } else {
       proceed();
@@ -79,19 +88,51 @@ export function NavGuardProvider({ children }: { children: ReactNode }): JSX.Ele
   return (
     <NavGuardCtx.Provider value={{ setGuard, guard }}>
       {children}
-      <Modal open={pending !== null} onClose={close} title={t("nav.guard.title")}>
-        <p className="text-[13px] leading-relaxed text-text">{t("nav.guard.body")}</p>
-        <div className="mt-4 flex flex-wrap justify-end gap-2">
-          <Button variant="ghost" onClick={close}>
-            {t("nav.guard.stay")}
-          </Button>
-          <Button variant="ghost" onClick={runPending}>
-            {t("nav.guard.discard")}
-          </Button>
-          <Button variant="primary" disabled={saving} onClick={() => void saveAndGo()}>
-            {t("nav.guard.save")}
-          </Button>
-        </div>
+      <Modal
+        open={pending !== null}
+        onClose={close}
+        title={unsavable.length > 0 ? t("nav.guard.unsavableTitle") : t("nav.guard.title")}
+      >
+        {/* AUFTRAG-mega5 Block A (bens Ship-Gate 1): sind nicht sicherbare Inhalte im Spiel, sagt der
+            Dialog VOR dem Wechsel ausdrücklich und einzeln, WAS verloren ginge — und bietet nur
+            „Hier bleiben" oder bewusstes Verwerfen an. Ein „Speichern", das erfolgreich wegnavigiert
+            und die benannten Inhalte dabei still fallen lässt, gibt es hier nicht. */}
+        {unsavable.length > 0 ? (
+          <>
+            <p className="text-[13px] leading-relaxed text-text">{t("nav.guard.unsavableLead")}</p>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-[13px] leading-relaxed text-text">
+              {unsavable.map((reason) => (
+                <li key={reason}>{reason}</li>
+              ))}
+            </ul>
+            <p className="mt-2 text-[12px] leading-relaxed text-muted">
+              {t("nav.guard.unsavableHint")}
+            </p>
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <Button variant="primary" onClick={close}>
+                {t("nav.guard.stay")}
+              </Button>
+              <Button variant="ghost" onClick={runPending}>
+                {t("nav.guard.discard")}
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-[13px] leading-relaxed text-text">{t("nav.guard.body")}</p>
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <Button variant="ghost" onClick={close}>
+                {t("nav.guard.stay")}
+              </Button>
+              <Button variant="ghost" onClick={runPending}>
+                {t("nav.guard.discard")}
+              </Button>
+              <Button variant="primary" disabled={saving} onClick={() => void saveAndGo()}>
+                {t("nav.guard.save")}
+              </Button>
+            </div>
+          </>
+        )}
       </Modal>
     </NavGuardCtx.Provider>
   );

@@ -191,7 +191,7 @@ export function Risk(): JSX.Element {
                       {/* Verweis auf die konkreten Objekte dieser Domäne (das „was"). */}
                       <Link
                         to={`/bibliothek?category=${encodeURIComponent(r.category)}`}
-                        className="inline-flex items-center gap-1 text-[12px] font-semibold text-brand hover:underline"
+                        className="inline-flex items-center gap-1 text-[12px] font-semibold text-brand-text hover:underline"
                       >
                         {t("risk.viewObjects")} <span aria-hidden="true">→</span>
                       </Link>

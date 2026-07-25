@@ -40,6 +40,7 @@ export function Card({
   className,
   id,
   onClick,
+  interactive = true,
 }: {
   children: ReactNode;
   className?: string;
@@ -48,17 +49,23 @@ export function Card({
   // SCRUM-416: optionaler Flächen-Klick (Board-Karten öffnen das KO). Rein additiv;
   // die Tastatur-Bedienung läuft weiterhin über die enthaltenen Links/Buttons.
   onClick?: MouseEventHandler<HTMLDivElement>;
+  // E2E-012/013: enthält die Karte selbst interaktive Elemente (Links/Buttons/Selects), darf sie
+  // NICHT role="button"/tabIndex tragen (verschachtelte Buttons + falscher Sammel-Accessible-Name).
+  // `interactive={false}` macht sie zum reinen Container mit Maus-Komfortklick — Tastatur/AT bedienen
+  // die enthaltenen Steuerelemente (z. B. den Titel-Link). Standard bleibt unverändert (Button-Karte).
+  interactive?: boolean;
 }): JSX.Element {
+  const asButton = Boolean(onClick) && interactive;
   // Lint a11y (useKeyWithClickEvents, Runner-Befund 03.07. 14:09): Klick-Karten bekommen
   // ein echtes Tastatur-Pendant — fokussierbar (tabIndex) mit Button-Rolle, Enter/Leertaste
   // lösen die Karten-Aktion aus. Nur auf der Karte SELBST: Tastendrücke in enthaltenen
   // Bedienelementen bleiben unberührt (target === currentTarget-Prüfung). Karten ohne
   // onClick bleiben exakt wie bisher (keine Rolle, kein Fokus).
-  const handleKeyDown = onClick
+  const handleKeyDown = asButton
     ? (event: KeyboardEvent<HTMLDivElement>) => {
         if ((event.key === "Enter" || event.key === " ") && event.target === event.currentTarget) {
           event.preventDefault(); // Leertaste soll die Seite nicht scrollen
-          onClick(event as unknown as Parameters<MouseEventHandler<HTMLDivElement>>[0]);
+          onClick?.(event as unknown as Parameters<MouseEventHandler<HTMLDivElement>>[0]);
         }
       }
     : undefined;
@@ -67,8 +74,8 @@ export function Card({
       id={id}
       onClick={onClick}
       onKeyDown={handleKeyDown}
-      role={onClick ? "button" : undefined}
-      tabIndex={onClick ? 0 : undefined}
+      role={asButton ? "button" : undefined}
+      tabIndex={asButton ? 0 : undefined}
       className={cx("rounded-card border border-hairline bg-surface p-5", className)}
     >
       {children}

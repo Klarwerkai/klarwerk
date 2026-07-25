@@ -141,4 +141,45 @@ describe("WP-SHIP8-CLOSE-6 (bens ROT-1): audit_event_id_uq gegen echtes Postgres
     expect(rows.rows[0].n).toBe(1);
     expect(await service.verify()).toBe(true);
   });
+
+  // AUFTRAG-mega2 Block F / bens Auflage 5: MEHRSCHLÜSSELIGE, VERSCHACHTELTE Payload über
+  // Schreiben → Zurücklesen → Verifizieren. Der bestehende Bestand schreibt nur LEERE Payloads und
+  // kann den vermuteten jsonb-Reihenfolge-Fehler NICHT sehen. Die Payload-Schlüssel stehen bewusst
+  // NICHT in jsonb-Kanonordnung (jsonb sortiert Objekt-Schlüssel nach Länge, dann bytweise), damit
+  // das Zurücklesen eine ANDERE JSON.stringify-Form ergibt als beim Schreiben — genau der Bruch, den
+  // hashEntry über JSON.stringify(payload) sichtbar macht.
+  //
+  // ERWARTET FEHLSCHLAGEND (it.fails): Solange chain.ts über die nicht-kanonische Serialisierung
+  // hasht, ist verify() nach dem jsonb-Roundtrip false — DIESER Test ist damit GRÜN (dokumentiert
+  // den Live-Bug). Wird die Kette später kanonisch/serialisierungsstabil gemacht, kippt der Test auf
+  // ROT und erinnert daran, diese Markierung zu entfernen. Die Kette wird hier NICHT repariert.
+  it.fails(
+    "AUFTRAG-mega2 Block F / bens Auflage 5: verschachtelte Multi-Key-Payload überlebt den jsonb-Roundtrip NICHT (erwartet-rot)",
+    async (ctx) => {
+      const pool = requirePool(ctx);
+      await reset(pool);
+      await pool.query(AUDIT_SCHEMA);
+      await pool.query(AUDIT_EVENT_ID_SCHEMA);
+      const service = new AuditService({ repo: new PgAuditRepo(pool) });
+
+      // Schlüsselreihenfolge bewusst gegen die jsonb-Kanonordnung gewählt (Länge, dann Bytes).
+      const payload = {
+        zulu: "z",
+        alpha: 1,
+        mike: { yankee: true, bravo: [3, 2, 1], "kilo-2": null },
+        nummer: 42,
+        liste: [{ b: 1, a: 2 }, "x"],
+      };
+      await service.record({ actor: "a", action: "ko.updated", target: "nested-1", payload });
+
+      // Inhalt bleibt über den jsonb-Roundtrip erhalten (deep-equal ignoriert Schlüsselreihenfolge) —
+      // der Bruch liegt AUSSCHLIESSLICH in der Serialisierungsreihenfolge, nicht im Inhalt.
+      const [stored] = await service.list({ target: "nested-1" });
+      expect(stored?.payload).toEqual(payload);
+
+      // Diese Zusicherung ist die eigentliche Falle: verify() ist unter dem jsonb-Reihenfolge-Fehler
+      // false → toBe(true) wirft → it.fails wertet den Test als ERWARTET fehlschlagend (grün).
+      expect(await service.verify()).toBe(true);
+    },
+  );
 });

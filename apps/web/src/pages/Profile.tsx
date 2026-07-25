@@ -115,7 +115,8 @@ export function Profile(): JSX.Element {
 
         <Field label={t("prof.language")}>
           <div className="flex gap-1.5">
-            {(["de", "en"] as const).map((l) => (
+            {/* E2E-020: Profil-Sprachwahl auf DE/EN/NL wie im Header — NL war hier zuvor nicht wählbar. */}
+            {(["de", "en", "nl"] as const).map((l) => (
               <button
                 key={l}
                 type="button"

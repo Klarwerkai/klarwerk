@@ -39,7 +39,7 @@ export function HelpTip({ title, body }: { title: string; body: string }): JSX.E
         aria-label={t("help.open")}
         onClick={() => setOpen((v) => !v)}
         className={`grid h-4 w-4 place-items-center rounded-full text-[11px] ${
-          open ? "text-brand" : "text-muted-2 hover:text-text"
+          open ? "text-brand-text" : "text-muted-2 hover:text-text"
         }`}
       >
         <HelpCircle size={14} />
@@ -64,7 +64,7 @@ export function HelpTip({ title, body }: { title: string; body: string }): JSX.E
             <Link
               to="/hilfe"
               onClick={() => setOpen(false)}
-              className="mt-2 inline-block text-[12.5px] font-semibold text-brand hover:opacity-80"
+              className="mt-2 inline-block text-[12.5px] font-semibold text-brand-text hover:opacity-80"
             >
               {t("help.openCenter")} ›
             </Link>

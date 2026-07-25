@@ -387,6 +387,27 @@ export interface DraftPayload {
   // SCRUM-457 (Pedi 06.07.): wo der Entwurf gespeichert wurde, damit „Fortsetzen" GENAU dort
   // wieder öffnet — statt den Ort aus dem Inhalt zu raten. Alt-Entwürfe ohne Marker: Heuristik.
   origin?: "tell" | "studio" | "expert" | "frontdoor";
+  // AUFTRAG-mega4/mega5 Block A (bens Auflage A): „Entwurf speichern" sicherte bisher nur Text + drei
+  // Skalar-Metadaten. Der Entwurf trägt jetzt ALLE inhaltlichen, textuell sicherbaren Dirty-Felder —
+  // Prüferauswahl, offene/teilweise Quelle, externe Suchanfrage und den Interviewfortschritt — und der
+  // Resume stellt sie wieder her. `sourceProvider` benennt die SUCHquelle des Treffers (bens Vorschlag;
+  // kein KI-Anbieter). extResults (voller Treffer-Cache) werden nach Pedis Datenminimierungs-Entscheid
+  // (mega5 Block C) bewusst NICHT persistiert: die Suchanfrage bleibt, die Treffer lädt der Nutzer nach
+  // dem Fortsetzen mit einem Klick neu — kein Retention-Risiko, kleinere Angriffsfläche.
+  reviewerIds?: string[];
+  pendingSources?: { label: string; url?: string; excerpt?: string; sourceProvider?: string }[];
+  sourceForm?: { label: string; url: string; excerpt: string };
+  extQuery?: string;
+  // AUFTRAG-mega5 Block A: Interviewfortschritt als reine Textstruktur (keine Modell-Nutzlast) —
+  // gegebene Antworten, gerade getippte Antwort, aktuelle Frage, Abschluss-/Quellen-Flag.
+  interview?: {
+    started: boolean;
+    answers: string[];
+    answer?: string;
+    question?: string;
+    done?: boolean;
+    demo?: boolean;
+  };
 }
 
 export interface Draft {

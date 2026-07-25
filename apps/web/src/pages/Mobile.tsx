@@ -493,7 +493,7 @@ export function Mobile(): JSX.Element {
                                   key={ref.id}
                                   to={`/wissen/${ref.id}`}
                                   title={ref.label}
-                                  className="line-clamp-1 max-w-[220px] text-[12px] font-semibold text-brand hover:underline"
+                                  className="line-clamp-1 max-w-[220px] text-[12px] font-semibold text-brand-text hover:underline"
                                 >
                                   {ref.label}
                                 </Link>
@@ -509,7 +509,7 @@ export function Mobile(): JSX.Element {
                           <p className="mt-1 text-[12.5px] text-muted">{t("ask.noBasisBody")}</p>
                           <Link
                             to="/risiko"
-                            className="mt-2 inline-flex items-center gap-1 text-[12.5px] font-semibold text-brand"
+                            className="mt-2 inline-flex items-center gap-1 text-[12.5px] font-semibold text-brand-text"
                           >
                             {t("ask.toGaps")}
                             <ArrowRight size={14} />

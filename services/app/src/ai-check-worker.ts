@@ -30,7 +30,8 @@ import type { ConflictService } from "../../conflicts";
 //    gegen revise-Loops); danach hilft nur der manuelle Retry-Knopf (bzw. der Lazy-Re-Enqueue
 //    nach der Stale-Frist, der einen FRISCHEN Vermerk mit neuer Version setzt).
 import type { AiCheck, KoService } from "../../knowledge-object";
-import type { Reasoner } from "../../reasoner";
+import type { ModelFailureInfo, Reasoner } from "../../reasoner";
+import type { ConflictJudgeOutcome, DuplicateJudgeOutcome } from "../../reasoner";
 import { detectConflictsForKo } from "./conflict-detection";
 import { type SemanticPrefilter, detectDuplicatesForKo } from "./duplicate-detection";
 
@@ -47,19 +48,145 @@ export const MAX_AI_CHECK_QUEUE = 200;
 export const AI_CHECK_JOB_TIMEOUT_MS = 120_000;
 export const MAX_AI_CHECK_AUTO_RETRIES = 2;
 
+// RT-001 (Pedi, Live-Befund): „Prüfung fehlgeschlagen" nannte pauschal „model-error", obwohl sich
+// die Fehlerklasse eines gefangenen Providerfehlers ZUVERLÄSSIG aus Status/Meldung ableiten lässt.
+// Diese ehrlichen Ursachen sind der Nutzer-Klasse zugeordnet (was ist passiert + was tun):
+//  - "auth"         → Zugangsdaten fehlen/abgelehnt (401/403/invalid api key)
+//  - "rate-limit"   → Anbieter-Ratenbegrenzung (429/quota)
+//  - "unreachable"  → Anbieter nicht erreichbar (Netzwerk/DNS/ECONNREFUSED/fetch failed/5xx)
+//  - "bad-response" → unverständliche/unparsebare Modellantwort (JSON-Parse/Schema)
+// „model-error" bleibt der Rückfall NUR, wenn wirklich keine Ursache erkennbar ist.
+export type AiCheckFailureReason =
+  | "no-model"
+  | "model-error"
+  | "model-timeout"
+  | "timeout"
+  | "queue-overflow"
+  | "confidential"
+  | "auth"
+  | "rate-limit"
+  | "unreachable"
+  | "bad-response";
+
 export interface AiCheckRunOutcome {
   ok: boolean;
   // WP-SHIP8-CLOSE (bens F1): "model-timeout" ist eine eigene, ehrliche Ursache (Zeitlimit eines
   // Modellaufrufs — unterschieden vom Job-"timeout", der harten Frist des GANZEN Prüf-Laufs).
   // D-AISTATE PAKET 1 (bens V1): "confidential" = die KI-Ebene war für ein vertrauliches Paar blockiert
   // (Cloud ausgeschlossen, kein lokales Modell) — geprüft wurde nur deterministisch, ehrlich kein "done".
-  fallbackReason?:
-    | "no-model"
-    | "model-error"
-    | "model-timeout"
-    | "timeout"
-    | "queue-overflow"
-    | "confidential";
+  // RT-001: auth/rate-limit/unreachable/bad-response = ehrliche Feinunterscheidung echter Providerfehler.
+  fallbackReason?: AiCheckFailureReason;
+}
+
+// RT-001 (bens Sammel-Review 3): die STRUKTURIERTE, anbieterneutrale Reasoner-Fehlerklasse
+// (ModelFailureInfo: {failureClass, status?}) → ehrliche, nutzerverständliche Ursache. Das ist der
+// PRIMÄRE Weg im normalen Providerpfad (der Reasoner-Ausgang trägt providerFailure); die Regex unten
+// ist nur noch ENG BEGRENZTER Fallback für geworfene, uneingeordnete Fehler. Es wird nie Rohtext/
+// Anbietername/Status in die Anzeige geführt — nur die Klasse entscheidet den reason-Key.
+export function reasonFromModelFailure(info: ModelFailureInfo): AiCheckFailureReason {
+  switch (info.failureClass) {
+    case "timeout":
+      return "model-timeout";
+    case "parse":
+      return "bad-response";
+    case "network":
+      return "unreachable";
+    case "http": {
+      const s = info.status;
+      if (s === 401 || s === 403) {
+        return "auth";
+      }
+      if (s === 429) {
+        return "rate-limit";
+      }
+      if (typeof s === "number" && s >= 500 && s <= 599) {
+        return "unreachable";
+      }
+      // Sonstiger HTTP-Status (z. B. 4xx ohne bekannte Bedeutung) → ehrlich generisch.
+      return "model-error";
+    }
+    default:
+      return "model-error";
+  }
+}
+
+// RT-001: reine, anbieter-AGNOSTISCHE Klassifizierung eines gefangenen Providerfehlers → ehrliche
+// Ursache. ENG BEGRENZTER Fallback (bens Sammel-Review 3): Wo der strukturierte Reasoner-Weg greift
+// (providerFailure, s. createAiCheckRunner), wird diese Regex GAR NICHT befragt. Deshalb sind die
+// Muster bewusst eng gezogen — eine beiläufig im Text vorkommende Zahl (z. B. „500"), das bloße Wort
+// „JSON"/„network" oder ein isoliertes „api key" lösen KEINE Klasse mehr aus. Ein HTTP-Status wird
+// nur aus einer typisierten Eigenschaft ODER einem EINDEUTIG präfixierten Muster gelesen. Die Meldung
+// wird NUR zum Erkennen der Klasse gelesen — sie wandert NIE in die Anzeige (die Karte nimmt allein
+// den reason-Key, s. aiCheckStatusCard.ts). Bekannte Ursache → eigener Key; sonst Rückfall „model-error".
+export function classifyAiCheckFailure(err: unknown): AiCheckFailureReason {
+  const message =
+    err instanceof Error ? err.message : typeof err === "string" ? err : String(err ?? "");
+  // ModelCapacityError ist die INTERNE Rückstau-/Kapazitätsbremse (SCRUM-498 B2), KEIN Provider-
+  // Fehler mit Auth/Rate/Netz/Parse-Signal — sie bleibt ehrlich der Sammelfall „model-error".
+  if (err && typeof err === "object" && (err as { name?: unknown }).name === "ModelCapacityError") {
+    return "model-error";
+  }
+  // Status-Code NUR aus einer typisierten Eigenschaft (ModelHttpError u. Ä. tragen `status`) oder aus
+  // einem EINDEUTIG präfixierten Muster („… antwortete mit 401" / „status: 401" / „HTTP 401") — nie aus
+  // einer beliebigen freistehenden Zahl im Text.
+  let status: number | undefined;
+  if (err && typeof err === "object") {
+    const raw =
+      (err as { status?: unknown; statusCode?: unknown }).status ??
+      (err as { statusCode?: unknown }).statusCode;
+    if (typeof raw === "number" && Number.isFinite(raw)) {
+      status = raw;
+    }
+  }
+  if (status === undefined) {
+    const httpMatch = /(?:antwortete mit|status[^0-9]{0,4}|HTTP[^0-9]{0,4})(\d{3})\b/i.exec(
+      message,
+    );
+    if (httpMatch?.[1]) {
+      status = Number(httpMatch[1]);
+    }
+  }
+
+  // 1) Zugangsdaten fehlen/abgelehnt — Status ODER SPEZIFISCHE Zugangs-Formulierungen (kein bloßes
+  //    „api key", keine freistehende 401/403-Zahl).
+  if (
+    status === 401 ||
+    status === 403 ||
+    /unauthori[sz]ed|forbidden|invalid[\s_-]*api[\s_-]*key|invalid[\s_-]*key|authenticat|credential|nicht[\s_-]*autorisiert|zugangsdaten/i.test(
+      message,
+    )
+  ) {
+    return "auth";
+  }
+  // 2) Ratenbegrenzung / Kontingent — Status ODER spezifische Formulierung (keine freistehende 429).
+  if (
+    status === 429 ||
+    /rate[\s_-]*limit|too[\s_-]*many[\s_-]*requests|quota|ratenbegrenz/i.test(message)
+  ) {
+    return "rate-limit";
+  }
+  // 3) Anbieter nicht erreichbar — Status 5xx ODER KONKRETE Netz-/DNS-Fehlertoken (kein bloßes
+  //    „network"/„dns", keine freistehende 5xx-Zahl).
+  if (
+    (typeof status === "number" && status >= 500 && status <= 599) ||
+    /ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|EPIPE|getaddrinfo|fetch[\s_-]*failed|socket[\s_-]*hang[\s_-]*up|connection[\s_-]*(refused|reset)|unreachable|nicht[\s_-]*erreichbar|netzwerk/i.test(
+      message,
+    )
+  ) {
+    return "unreachable";
+  }
+  // 4) Unverständliche/unparsebare Antwort — SyntaxError ODER SPEZIFISCHE Parse-Formulierungen (kein
+  //    bloßes „JSON"/„parse"/„schema", das auch in gültigem Text vorkommt).
+  if (
+    err instanceof SyntaxError ||
+    /unexpected[\s_-]*(end|token)|kein[\s_-]*(gültiges|gueltiges)[\s_-]*JSON|nicht[\s_-]*verwertbar|ungültige[\s_-]*antwort/i.test(
+      message,
+    )
+  ) {
+    return "bad-response";
+  }
+  // 5) Keine Ursache erkennbar → ehrlicher Rückfall.
+  return "model-error";
 }
 
 export type AiCheckRunner = (koId: string) => Promise<AiCheckRunOutcome>;
@@ -123,11 +250,13 @@ function runWithTimeout(
           resolve(outcome);
         }
       })
-      .catch(() => {
+      .catch((err) => {
         if (!settled) {
           settled = true;
           clearTimeout(timer);
-          resolve({ ok: false, fallbackReason: "model-error" });
+          // RT-001: ein geworfener Providerfehler bekommt seine ehrliche Ursache statt pauschal
+          // „model-error" (Rückfall nur, wenn nichts erkennbar ist).
+          resolve({ ok: false, fallbackReason: classifyAiCheckFailure(err) });
         }
       });
   });
@@ -356,7 +485,12 @@ export interface AiCheckRunnerDeps {
 export function createAiCheckRunner(deps: AiCheckRunnerDeps): AiCheckRunner {
   return async (koId: string): Promise<AiCheckRunOutcome> => {
     let failure: unknown = null;
-    let judgeFailure: "model-error" | "model-timeout" | null = null;
+    // RT-001 (bens Sammel-Review 3): die FEINE, strukturierte Providerfehler-Klasse (aus dem
+    // Reasoner-Ausgang providerFailure → reasonFromModelFailure) — auth/rate-limit/unreachable/
+    // bad-response/model-timeout. Sie GEWINNT vor der groben Judge-Ursache und wird NICHT wieder auf
+    // „model-error" reduziert. Der grobe Rückfall greift nur, wenn nichts Feineres vorliegt.
+    let structuredReason: AiCheckFailureReason | null = null;
+    let coarseJudge: "model-error" | "model-timeout" | null = null;
     // D-AISTATE PAKET 1 (bens V1): war die KI-Ebene für IRGENDEIN Paar wegen Vertraulichkeit blockiert
     // (Cloud raus, kein lokales Modell)? Dann schließt der Lauf ehrlich mit fallbackReason "confidential"
     // ab — NICHT als schlichtes "done". Ein echter Modellfehler wiegt schwerer und gewinnt (s. unten).
@@ -364,9 +498,15 @@ export function createAiCheckRunner(deps: AiCheckRunnerDeps): AiCheckRunner {
     const captureFailure = (msg: string, err: unknown): void => {
       failure = failure ?? err ?? new Error(msg);
     };
-    const noteJudgeFailure = (reported: string | undefined): void => {
+    // RT-001: den GANZEN Judge-Ausgang lesen — die strukturierte providerFailure hat Vorrang, die grobe
+    // failure ist nur Rückfall. So bleibt die feine Ursache des normalen Providerpfads erhalten.
+    const noteJudgeOutcome = (outcome: ConflictJudgeOutcome | DuplicateJudgeOutcome): void => {
+      if (outcome.providerFailure) {
+        structuredReason = structuredReason ?? reasonFromModelFailure(outcome.providerFailure);
+      }
+      const reported = outcome.failure;
       if (reported === "model-error" || reported === "model-timeout") {
-        judgeFailure = judgeFailure ?? reported;
+        coarseJudge = coarseJudge ?? reported;
       } else if (reported === "confidential") {
         confidentialBlocked = true;
       }
@@ -390,7 +530,7 @@ export function createAiCheckRunner(deps: AiCheckRunnerDeps): AiCheckRunner {
       ) => {
         try {
           const outcome = await deps.reasoner.judgeConflictOutcome(a, b, locale, confidential);
-          noteJudgeFailure(outcome.failure);
+          noteJudgeOutcome(outcome);
           return outcome.verdict;
         } catch (err) {
           failure = failure ?? err;
@@ -405,7 +545,7 @@ export function createAiCheckRunner(deps: AiCheckRunnerDeps): AiCheckRunner {
       ) => {
         try {
           const outcome = await deps.reasoner.judgeDuplicateOutcome(a, b, locale, confidential);
-          noteJudgeFailure(outcome.failure);
+          noteJudgeOutcome(outcome);
           return outcome.verdict;
         } catch (err) {
           failure = failure ?? err;
@@ -429,11 +569,18 @@ export function createAiCheckRunner(deps: AiCheckRunnerDeps): AiCheckRunner {
       },
       captureFailure,
     );
-    if (judgeFailure !== null) {
-      return { ok: false, fallbackReason: judgeFailure };
+    // RT-001: die feinere strukturierte Klasse gewinnt vor der groben Judge-Ursache; die grobe greift
+    // nur, wenn nichts Feineres vorliegt. So bleibt der normale Providerpfad (401/429/5xx/Parse) ehrlich
+    // fein statt pauschal „model-error".
+    const judgeReason = structuredReason ?? coarseJudge;
+    if (judgeReason !== null) {
+      return { ok: false, fallbackReason: judgeReason };
     }
     if (failure !== null) {
-      return { ok: false, fallbackReason: "model-error" };
+      // RT-001: ENG BEGRENZTER Regex-Fallback NUR für geworfene, uneingeordnete Fehler (z. B.
+      // ModelCapacityError → model-error; Detection-/Backpressurefehler über den Log-Haken). Der
+      // strukturierte Weg oben hat hier bereits Vorrang gehabt.
+      return { ok: false, fallbackReason: classifyAiCheckFailure(failure) };
     }
     // bens V1: eine vertraulichkeitsbedingte KI-Blockade ist ehrlich "confidential" (Cloud-only), NICHT
     // "done" — geprüft wurde nur die (lokale) deterministische Ebene, nicht per zulässigem Modell.

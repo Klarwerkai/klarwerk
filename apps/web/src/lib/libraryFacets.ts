@@ -12,6 +12,7 @@ import {
   FACET_NO_MATCH_SELECTION,
   type FacetSelection,
   type FacetValues,
+  facetSelectedValues,
   isFacetNoMatch,
   languageFromTitle,
 } from "./facets";
@@ -207,6 +208,60 @@ export function migrateSavedFacetSelection(state: Record<string, unknown>): Face
     legacy("origin", state.demoFilter);
   }
   return out;
+}
+
+// AUFTRAG-uxpol5 · Punkt 1 (Pedis Reife/Status-Doppelung): Die rohe „Status"-Facette (offen/pruefung/
+// validiert) ist ein REINES RELABELING der „Reife" (needs-work/in-review/ready): beide leiten aus
+// DEMSELBEN deriveStatus(ko) OHNE Flags ab (Bibliothek: libraryFacetValues.status; Reife: koOverview →
+// usabilityOf(reviewSignals.status)), und usabilityOf ist auf den drei erreichbaren Statuswerten eine
+// BIJEKTION (offen↔needs-work, pruefung↔in-review, validiert↔ready). Die Status-Filterzeile hat also
+// KEINE eigene Treffermenge und ist entfernt. Diese Abbildung faltet eine (alte, gespeicherte)
+// Status-Auswahl treffermengentreu auf die sichtbare Reife-Dimension.
+export const STATUS_TO_MATURITY: Record<string, string> = {
+  offen: "needs-work",
+  pruefung: "in-review",
+  revalidierung: "in-review",
+  validiert: "ready",
+  konflikt: "needs-work",
+  abgelehnt: "needs-work",
+};
+
+// Faltet eine `status`-Auswahl in die `maturity`-Auswahl (Punkt 1). Damit filtert eine migrierte
+// Altsicht mit Status-Wahl NICHT „versteckt aktiv" (ohne sichtbare Pille), sondern über die sichtbare
+// Reife-Facette. Da Status und Reife früher UND-verknüpfte, bijektive Facetten waren, ist die Faltung
+// bei zugleich gesetzter Reife-Wahl die SCHNITTMENGE; leere Schnittmenge/No-Match bleibt strukturelles
+// No-Match (bedingungslos 0 Treffer). Ohne `status`-Schlüssel bleibt die Auswahl unverändert.
+export function foldStatusIntoMaturity(selection: FacetSelection): FacetSelection {
+  const status = selection.status;
+  if (status === undefined) {
+    return selection;
+  }
+  // Die (entfernte) Status-Dimension NICHT als Schlüssel behalten — sonst filterte sie „versteckt aktiv".
+  const rest: FacetSelection = {};
+  for (const [k, v] of Object.entries(selection)) {
+    if (k !== "status") {
+      rest[k] = v;
+    }
+  }
+  const existing = rest.maturity;
+  // No-Match auf EINER der beiden Seiten ⇒ die gefaltete Reife-Auswahl ist No-Match.
+  if (isFacetNoMatch(status) || isFacetNoMatch(existing)) {
+    rest.maturity = FACET_NO_MATCH_SELECTION;
+    return rest;
+  }
+  const mapped = [...new Set(facetSelectedValues(status).map((v) => STATUS_TO_MATURITY[v] ?? v))];
+  if (mapped.length === 0) {
+    return rest; // keine echte Status-Auswahl → nur den (leeren) Schlüssel entfernen
+  }
+  const existingValues = facetSelectedValues(existing);
+  if (existingValues.length === 0) {
+    rest.maturity = mapped;
+    return rest;
+  }
+  const mappedSet = new Set(mapped);
+  const intersection = existingValues.filter((v) => mappedSet.has(v));
+  rest.maturity = intersection.length > 0 ? intersection : FACET_NO_MATCH_SELECTION;
+  return rest;
 }
 
 // ---- Gespeicherte Sichten (lokal je Nutzer, localStorage-Muster wie Board-Checkboxen) ----

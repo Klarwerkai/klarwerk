@@ -1,4 +1,6 @@
 import type { Confidentiality, DraftPayload, StructureResult } from "../api/types";
+// AUFTRAG-mega7 Block A: gemeinsame Leerwert-Semantik für den Body (dieselbe wie im Erfassen-Weg).
+import { draftBodyPatch } from "./draftBody";
 import { htmlToPlainText, normalizePastedHtml } from "./richText";
 
 export const CAPTURE_FRONT_DOOR_ROUTE = "/capture/frontdoor";
@@ -84,6 +86,11 @@ export function buildFrontDoorPayload(input: {
   // SCRUM-502 Schicht 2 (Round 3): die im Front-Door gewählte Vertraulichkeit fließt in den Entwurf
   // (und damit ins spätere KO), damit Anzeige/Egress konsistent zur Erfassung sind. Standard „intern".
   confidentiality?: Confidentiality;
+  // AUFTRAG-mega7 Block A (bens Ship-Blocker): liegt ein bestehender Entwurf vor, ist dieser Payload
+  // ein PUT über den Bestand — dann muss ein bewusst geleerter Body als ausdrücklicher Leerwert
+  // mitreisen, sonst holt der partielle Server-Merge den alten Body zurück (und der Promote trägt
+  // ihn ins Wissensobjekt). Ohne Entwurfs-Id ist es ein Neuanlegen: kein Altwert, kein Löschmarker.
+  activeDraftId?: string | null;
 }): DraftPayload {
   const bodyHtml = normalizePastedHtml(input.bodyHtml);
   const title = deriveFrontDoorTitle(input.title, bodyHtml, input.fallbackTitle);
@@ -95,7 +102,7 @@ export function buildFrontDoorPayload(input: {
     tags: [],
     conditions: [],
     measures: [],
-    ...(bodyHtml.trim() ? { bodyHtml } : {}),
+    ...draftBodyPatch(bodyHtml, Boolean(input.activeDraftId)),
     ...(input.confidentiality && input.confidentiality !== "intern"
       ? { confidentiality: input.confidentiality }
       : {}),
@@ -237,6 +244,8 @@ export async function submitFrontDoorDraft<TDraft extends FrontDoorDraftRef, TKo
   client: FrontDoorSubmitClient<TDraft, TKo>,
   timeoutMs = FRONT_DOOR_SAVE_TIMEOUT_MS,
 ): Promise<TKo> {
+  // AUFTRAG-mega7 Block A: `input` trägt die activeDraftId bereits — der Payload weiß damit selbst,
+  // ob er ein Update (Löschmarker für einen geleerten Body) oder ein Neuanlegen ist.
   const payload = buildFrontDoorPayload(input);
   const draft = await withFrontDoorSaveTimeout(
     input.activeDraftId

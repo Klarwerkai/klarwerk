@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Download, RotateCw, Sparkles, Trash2 } from "lucide-react";
+import { ChevronDown, Download, RotateCw, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
@@ -16,7 +16,7 @@ import { FacetFilter } from "../components/FacetFilter";
 import { HelpTip } from "../components/HelpTip";
 import { KoSummaryDisclosure } from "../components/KoSummaryDisclosure";
 import { ConfidenceBar, KnowledgeTypeTag, KoAuthorLine, StatusPill } from "../components/trust";
-import { Button, Card, PageHeader, QueryState } from "../components/ui";
+import { Button, Card, PageHeader, QueryState, cx } from "../components/ui";
 import { askAnswerHref } from "../lib/askQuestion";
 import { conflictImpact, conflictLimitedUsability } from "../lib/conflictImpact";
 import {
@@ -44,6 +44,7 @@ import {
   LIBRARY_GROUP_KEYS,
   type LibraryGroupKey,
   type LibrarySavedView,
+  foldStatusIntoMaturity,
   groupByFacet,
   libraryFacetValues,
   migrateSavedFacetSelection,
@@ -54,8 +55,17 @@ import {
 import { type MaturityTone, libraryMaturity, libraryUseCta } from "../lib/libraryMaturity";
 import { EMPTY_LIBRARY_FILTER, buildLibraryQuery } from "../lib/libraryQuery";
 import { type MatchField, searchLibrary } from "../lib/librarySearch";
+import {
+  DEFAULT_LIBRARY_SORT,
+  LIBRARY_SORT_KEYS,
+  LIBRARY_SORT_LABEL_KEYS,
+  LIBRARY_SORT_STORAGE_KEY,
+  sortLibrary,
+} from "../lib/librarySort";
 import { canRevalidate } from "../lib/revalidation";
 import { LIBRARY_SEARCH_DEBOUNCE_MS, useDebouncedValue } from "../lib/useDebouncedValue";
+import { usePersistentDisclosure } from "../lib/usePersistentDisclosure";
+import { usePersistentEnum } from "../lib/usePersistentValue";
 import { useReadiness } from "../lib/useReadiness";
 
 // AUFTRAG-uxpol1 (PAKET 1): EINE Facetten-Config für die Bibliothek — jede Dimension GENAU EINMAL
@@ -63,18 +73,30 @@ import { useReadiness } from "../lib/useReadiness";
 // Werte je Facette leitet libraryFilterValues (unten) rein aus dem KO ab (dieselbe Ableitung wie die
 // Validierungs-Badges/Reife-Plakette — keine zweite Wahrheit). Reife + Herkunft werden so ebenfalls
 // vollwertige, dynamisch gezählte Facetten (vorher eigene Chip-Reihen).
+// AUFTRAG-uxpol5 · Punkt 1: die rohe „Status"-Facette (offen/pruefung/validiert) ist ein reines
+// Relabeling der „Reife" (needs-work/in-review/ready) — beide aus DEMSELBEN deriveStatus(ko) ohne Flags,
+// über eine Bijektion (s. foldStatusIntoMaturity). Sie hatte keine eigene Treffermenge und ist als
+// Filterzeile ENTFERNT (der rohe Status bleibt anderswo — Trefferzeilen-Pille, Gruppierung — erhalten).
+// Punkt 2: primäre Facetten zuerst (immer sichtbar), danach die selteneren hinter „Weitere Filter".
 const LIBRARY_FILTER_CONFIGS: readonly FacetGroupConfig[] = [
   { key: "maturity", labelKey: "lib.facet.maturity" },
-  { key: "status", labelKey: LIBRARY_FACET_LABEL_KEYS.status },
-  { key: "origin", labelKey: "lib.facet.origin" },
   { key: "category", labelKey: LIBRARY_FACET_LABEL_KEYS.category },
+  { key: "author", labelKey: LIBRARY_FACET_LABEL_KEYS.author },
+  { key: "origin", labelKey: "lib.facet.origin" },
   { key: "type", labelKey: "lib.facet.type" },
   { key: "language", labelKey: LIBRARY_FACET_LABEL_KEYS.language },
   { key: "tag", labelKey: "lib.facet.tag" },
-  { key: "author", labelKey: LIBRARY_FACET_LABEL_KEYS.author },
   { key: "age", labelKey: LIBRARY_FACET_LABEL_KEYS.age },
   { key: "trust", labelKey: LIBRARY_FACET_LABEL_KEYS.trust },
 ];
+
+// Punkt 2: „primär = immer sichtbar" sind Reife, Abteilung/Kategorie, Autor; alles Übrige wandert
+// hinter „Weitere Filter" (eingeklappt als Standard, Zustand pro Browser gemerkt).
+const LIBRARY_SECONDARY_FACET_KEYS = ["origin", "type", "language", "tag", "age", "trust"] as const;
+const LIBRARY_MORE_FILTERS_STORAGE_KEY = "klarwerk.library.filters.moreOpen";
+const LIBRARY_GUIDE_STORAGE_KEY = "klarwerk.library.guideOpen";
+// AUFTRAG-uxpol6 (bens GELB 3.1): stabile ID des kontrollierten Erklärbox-Inhalts für aria-controls.
+const LIBRARY_GUIDE_PANEL_ID = "library-maturity-guide";
 
 // Vollständige Facetten-Werte eines KOs: die sechs Bestands-Facetten (libraryFacetValues) PLUS
 // Reife, Herkunft, Wissensart und Tags — alles rein aus dem KO abgeleitet (keine zweite Logik).
@@ -129,7 +151,21 @@ export function Library(): JSX.Element {
     return initial;
   });
   const [groupBy, setGroupBy] = useState<LibraryGroupKey>("none");
+  // AUFTRAG-sortfilter · Punkt 1: Sortier-Wahl der Trefferliste — pro Browser gemerkt (localStorage
+  // über die fehlertolerante safeLocalStorage-Grenze); ein gespeicherter Fremd-/Altwert fällt sicher
+  // auf den Standard „Relevanz" (= bisherige Reihenfolge) zurück.
+  const [sortKey, setSortKey] = usePersistentEnum(
+    LIBRARY_SORT_STORAGE_KEY,
+    LIBRARY_SORT_KEYS,
+    DEFAULT_LIBRARY_SORT,
+  );
   const guide = knowledgeGuidance("library");
+  // AUFTRAG-uxpol5 · Punkt 3: die Reife-Erklärbox ist einklappbar — beim ERSTEN Besuch offen, danach
+  // standardmäßig eingeklappt; der Zustand wird pro Browser gemerkt (localStorage).
+  const [guideOpen, toggleGuide] = usePersistentDisclosure(LIBRARY_GUIDE_STORAGE_KEY, {
+    defaultOpen: false,
+    openOnFirstVisit: true,
+  });
 
   // Bestand (für den Erststart-Leerzustand: kein einziges KO).
   const all = useKos();
@@ -188,7 +224,9 @@ export function Library(): JSX.Element {
     // heben — insbesondere `status:"offen"` → {offen, pruefung}, damit offene KOs MIT Zuweisung
     // (Anzeigestatus „pruefung") nicht still aus der Sicht fallen. Die reine Migrationslogik lebt
     // testbar in libraryFacets (migrateSavedFacetSelection).
-    setFacetSel(migrateSavedFacetSelection(view.state));
+    // AUFTRAG-uxpol5 · Punkt 1: die (entfernte) Status-Facette treffermengentreu auf die sichtbare
+    // Reife-Dimension falten — sonst filterte eine alte Status-Sicht „versteckt aktiv" (ohne Pille).
+    setFacetSel(foldStatusIntoMaturity(migrateSavedFacetSelection(view.state)));
     setGroupBy(
       LIBRARY_GROUP_KEYS.includes(s.groupBy as LibraryGroupKey)
         ? (s.groupBy as LibraryGroupKey)
@@ -384,30 +422,52 @@ export function Library(): JSX.Element {
           </div>
         </Card>
       ) : null}
-      {/* SCRUM-289: Reife-Plaketten/Filter kurz erklären — kein neues Statusmodell. */}
+      {/* SCRUM-289: Reife-Plaketten/Filter kurz erklären — kein neues Statusmodell.
+          AUFTRAG-uxpol5 · Punkt 3: einklappbar — Titel + Toggle bleiben, Erklärung/Plaketten klappen weg
+          (Standard nach dem ersten Besuch: zu; Zustand pro Browser gemerkt). */}
       <Card className="mb-4 border-dashed">
-        <div className="mb-2">
-          <h2 className="text-[14px] font-semibold text-ink">{t(guide.titleKey)}</h2>
-          <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{t(guide.bodyKey)}</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {guide.items.map((item) => (
-            <Link
-              key={item.id}
-              to={item.to}
-              className="inline-flex items-start gap-2 rounded-btn border border-hairline bg-surface px-2.5 py-2 hover:border-ink/30"
-            >
-              <span
-                className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${GUIDE_TONE[item.tone]}`}
-              >
-                {t(item.labelKey)}
-              </span>
-              <span className="max-w-[18rem] text-[12px] leading-relaxed text-muted">
-                {t(item.bodyKey)}
-              </span>
-            </Link>
-          ))}
-        </div>
+        {/* AUFTRAG-uxpol6 (bens GELB 3.1): gültiges Disclosure-Muster — der Button steckt IM h2
+            (Button erlaubt nur phrasing content, kein block-level h2 als Kind); aria-controls
+            verbindet ihn über eine stabile ID mit dem kontrollierten Inhalt. */}
+        <h2>
+          <button
+            type="button"
+            aria-expanded={guideOpen}
+            aria-controls={LIBRARY_GUIDE_PANEL_ID}
+            onClick={toggleGuide}
+            className="flex w-full items-center gap-2 text-left"
+          >
+            <span className="flex-1 text-[14px] font-semibold text-ink">{t(guide.titleKey)}</span>
+            <ChevronDown
+              size={15}
+              aria-hidden
+              className={cx("shrink-0 text-muted transition-transform", guideOpen && "rotate-180")}
+            />
+          </button>
+        </h2>
+        {guideOpen ? (
+          <div id={LIBRARY_GUIDE_PANEL_ID} className="mt-2">
+            <p className="mb-2 text-[12.5px] leading-relaxed text-muted">{t(guide.bodyKey)}</p>
+            <div className="flex flex-wrap gap-2">
+              {guide.items.map((item) => (
+                <Link
+                  key={item.id}
+                  to={item.to}
+                  className="inline-flex items-start gap-2 rounded-btn border border-hairline bg-surface px-2.5 py-2 hover:border-ink/30"
+                >
+                  <span
+                    className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${GUIDE_TONE[item.tone]}`}
+                  >
+                    {t(item.labelKey)}
+                  </span>
+                  <span className="max-w-[18rem] text-[12px] leading-relaxed text-muted">
+                    {t(item.bodyKey)}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </Card>
 
       <QueryState
@@ -430,8 +490,12 @@ export function Library(): JSX.Element {
           const valuesOf = (item: { ko: { id: string } }) => facetBase.get(item.ko.id) ?? {};
           const groups = buildFacetGroups(ranked.map(valuesOf), LIBRARY_FILTER_CONFIGS, facetSel);
           const faceted = applyFacetSelection(ranked, valuesOf, facetSel);
+          // AUFTRAG-sortfilter · Punkt 1: die gefilterte Treffermenge sortieren (komponiert mit den
+          // Facetten). Bei aktiven Untergruppen wirkt die stabile Ordnung INNERHALB jeder Gruppe, weil
+          // groupByFacet die Reihenfolge in die Buckets mitnimmt (Gruppen-Reihenfolge bleibt nach Größe).
+          const sorted = sortLibrary(faceted, sortKey, (item) => item.ko);
           // SCRUM-158: erst danach fenstern + zählen (Count-Linie passt zur sichtbaren Menge).
-          const win = windowList(faceted);
+          const win = windowList(sorted);
           // Beta Own-Knowledge Work Queue v0: Zahl der eigenen (nicht-Demo) Treffer im vollen Bestand
           // — für den ehrlichen Leerzustand der „Eigenes Wissen"-Linse (facetSel.origin === non-demo).
           const nonDemoCount = countByDemoKnowledge(ranked)["non-demo"];
@@ -453,6 +517,8 @@ export function Library(): JSX.Element {
                 configs={LIBRARY_FILTER_CONFIGS}
                 groups={groups}
                 selection={facetSel}
+                secondaryKeys={LIBRARY_SECONDARY_FACET_KEYS}
+                moreStorageKey={LIBRARY_MORE_FILTERS_STORAGE_KEY}
                 total={ranked.length}
                 shown={faceted.length}
                 onToggle={(key, value) => setFacetSel((s) => toggleFacetValue(s, key, value))}
@@ -468,6 +534,29 @@ export function Library(): JSX.Element {
                 }
                 labelForValue={facetValueLabel}
               />
+              {/* AUFTRAG-sortfilter · Punkt 1: Sortier-Steuerung nahe der Trefferzeile, gleiche
+                  Design-Sprache wie die übrigen Selects. Wirkt auf die aktuell gefilterte Treffermenge
+                  (oben) und — bei aktiven Untergruppen — innerhalb jeder Gruppe. */}
+              <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                <label
+                  htmlFor="library-sort"
+                  className="mr-0.5 font-mono text-[9.5px] uppercase tracking-wider text-muted-2"
+                >
+                  {t("lib.sort.label")}:
+                </label>
+                <select
+                  id="library-sort"
+                  value={sortKey}
+                  onChange={(e) => setSortKey(e.target.value as (typeof LIBRARY_SORT_KEYS)[number])}
+                  className="h-8 rounded-input border border-hairline bg-surface px-2 text-[12.5px] text-text outline-none focus:border-ink/30"
+                >
+                  {LIBRARY_SORT_KEYS.map((key) => (
+                    <option key={key} value={key}>
+                      {t(LIBRARY_SORT_LABEL_KEYS[key])}
+                    </option>
+                  ))}
+                </select>
+              </div>
               {/* D-BIB: Untergruppen-Ansicht — metadaten-basiert (KI-Themencluster bewusst NICHT
                   angebunden: nicht trivial — im Bericht vermerkt). */}
               <div className="mb-2 flex flex-wrap items-center gap-1.5">

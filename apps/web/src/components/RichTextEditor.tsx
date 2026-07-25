@@ -982,6 +982,12 @@ export function RichTextEditor({
             ref={ref}
             contentEditable
             suppressContentEditableWarning
+            // E2E-012/013: das contenteditable braucht einen zugänglichen Namen + Textbox-Semantik,
+            // sonst kündigt der Screenreader nur „bearbeitbar" ohne Rolle/Mehrzeiligkeit an.
+            role="textbox"
+            aria-multiline="true"
+            aria-label={t("editor.bodyLabel")}
+            tabIndex={0}
             onInput={onEditorInput}
             onBlur={emit}
             onClick={onEditorClick}

@@ -67,7 +67,7 @@ function KlaraResult({
       <Link
         to={entry.route}
         onClick={onNavigate}
-        className="mt-1 inline-flex items-center gap-1 text-[11.5px] font-semibold text-brand hover:underline"
+        className="mt-1 inline-flex items-center gap-1 text-[11.5px] font-semibold text-brand-text hover:underline"
       >
         {t("help.openRoute")} <span aria-hidden="true">→</span>
       </Link>
@@ -579,7 +579,7 @@ export function KlaraAssistant(): JSX.Element {
             <Link
               to="/hilfe"
               onClick={() => setOpen(false)}
-              className="inline-flex items-center gap-1 text-[12px] font-semibold text-brand hover:underline"
+              className="inline-flex items-center gap-1 text-[12px] font-semibold text-brand-text hover:underline"
             >
               {t("klara.moreHelp")} <span aria-hidden="true">→</span>
             </Link>

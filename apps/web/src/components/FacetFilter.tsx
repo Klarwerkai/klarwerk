@@ -7,7 +7,7 @@
 //  4. Aktive-Filter-Leiste: je aktiver Auswahl eine entfernbare Pille + „Alle zurücksetzen".
 //  5. Trefferzeile „Treffer: N von GESAMT" + dezenter „gefiltert"-Hinweis, wenn Filter aktiv.
 // Barrierearm: echte <button>, aria-pressed für Chip-Zustand, Zustand als TEXT (Zähler/Label), nicht nur Farbe.
-import { X } from "lucide-react";
+import { ChevronDown, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   type FacetGroupConfig,
@@ -16,6 +16,8 @@ import {
   isAnyFacetActive,
 } from "../lib/facetFilter";
 import { type FacetSelection, isFacetGroupActive } from "../lib/facets";
+import { usePersistentDisclosure } from "../lib/usePersistentDisclosure";
+import { cx } from "./ui";
 
 export interface FacetFilterProps {
   configs: readonly FacetGroupConfig[];
@@ -33,6 +35,23 @@ export interface FacetFilterProps {
   labelForValue: (key: string, value: string) => string;
   // Gruppen mit weniger als so vielen Optionen (und ohne aktive Wahl) bleiben still — sie filtern nichts.
   minGroupOptions?: number;
+  // AUFTRAG-uxpol5 · Punkt 2 (Pedis Höhe/Priorisierung): Keys der SELTENEREN Dimensionen — sie wandern
+  // hinter einen aufklappbaren Bereich „Weitere Filter" (primäre Facetten bleiben immer sichtbar).
+  // Aktive Auswahlen aus dem eingeklappten Bereich bleiben trotzdem als Pille oben sichtbar (nichts
+  // „versteckt aktiv"). Leer ⇒ keine Aufteilung (alle Gruppen primär) — Rückwärtskompatibilität.
+  secondaryKeys?: readonly string[];
+  // localStorage-Schlüssel für den Auf-/Zu-Zustand von „Weitere Filter" (pro Browser gemerkt).
+  moreStorageKey?: string;
+}
+
+// Eine Gruppe filtert nur, wenn sie genug Optionen hat ODER bereits eine Wahl trägt (dann sichtbar
+// halten, damit das Abwählen möglich bleibt) — dieselbe Regel primär wie hinter „Weitere Filter".
+function isGroupVisible(
+  group: FacetGroupView,
+  selection: FacetSelection,
+  minGroupOptions: number,
+): boolean {
+  return group.options.length >= minGroupOptions || isFacetGroupActive(selection[group.key]);
 }
 
 const CHIP_BASE =
@@ -49,6 +68,8 @@ export function FacetFilter({
   onClearGroup,
   labelForValue,
   minGroupOptions = 2,
+  secondaryKeys,
+  moreStorageKey,
 }: FacetFilterProps): JSX.Element {
   const { t } = useTranslation();
   const active = isAnyFacetActive(selection);
@@ -57,6 +78,49 @@ export function FacetFilter({
     const cfg = configs.find((c) => c.key === key);
     return cfg ? t(cfg.labelKey) : key;
   };
+
+  // Punkt 2: sichtbare Gruppen in primär / sekundär teilen. Sekundäre (seltenere) Facetten kommen
+  // hinter „Weitere Filter" — nur gebaut, wenn dort tatsächlich etwas filterbar ist.
+  const secondarySet = new Set(secondaryKeys ?? []);
+  const visibleGroups = groups.filter((g) => isGroupVisible(g, selection, minGroupOptions));
+  const primaryGroups = visibleGroups.filter((g) => !secondarySet.has(g.key));
+  const secondaryGroups = visibleGroups.filter((g) => secondarySet.has(g.key));
+  // AUFTRAG-uxpol6 (bens GELB 2.1): den STABILEN Speicherschlüssel IMMER übergeben — unabhängig davon,
+  // ob gerade Sekundärgruppen sichtbar sind. Der Hook liest den gespeicherten Wert nur im
+  // useState-Initializer; ein erst später (Query-/Datenwechsel in derselben Instanz) erscheinender
+  // Bereich würde sonst ein gespeichertes „offen" fälschlich als „zu" zeigen.
+  const [moreOpen, toggleMore] = usePersistentDisclosure(moreStorageKey, { defaultOpen: false });
+
+  const renderGroup = (group: FacetGroupView): JSX.Element => (
+    <div key={group.key} className="flex flex-wrap items-center gap-1.5">
+      <span className="mr-0.5 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+        {t(group.labelKey)}:
+      </span>
+      {group.options.map((o) => (
+        <button
+          key={o.value || "—"}
+          type="button"
+          aria-pressed={o.selected}
+          disabled={o.disabled}
+          onClick={() => onToggle(group.key, o.value)}
+          className={`${CHIP_BASE} ${
+            o.selected
+              ? "border-ink bg-ink text-white"
+              : o.disabled
+                ? "cursor-not-allowed border-hairline-soft text-muted-2 opacity-50"
+                : "border-hairline text-muted hover:text-text"
+          }`}
+        >
+          {labelForValue(group.key, o.value)} · {o.count}
+        </button>
+      ))}
+      {group.hiddenCount > 0 ? (
+        <span className="text-[10.5px] text-muted-2">
+          {t("facet.more", { n: group.hiddenCount })}
+        </span>
+      ) : null}
+    </div>
+  );
 
   return (
     <div className="mb-3 space-y-2">
@@ -97,46 +161,30 @@ export function FacetFilter({
         </div>
       ) : null}
 
-      {/* (1)(2)(3) Facetten-Gruppen — genau eine Darstellung je Dimension, dynamische Zähler,
-          0-Optionen ausgegraut. Gruppen mit nur einem Wert (die nichts filtern) bleiben still. */}
-      {groups.map((group) => {
-        // Mengensemantik: eine Gruppe bleibt still, solange sie zu wenige Optionen hat UND kein Wert
-        // gewählt ist (ein gewählter Wert hält sie sichtbar, damit das Abwählen möglich bleibt).
-        const hasSelection = isFacetGroupActive(selection[group.key]);
-        if (group.options.length < minGroupOptions && !hasSelection) {
-          return null;
-        }
-        return (
-          <div key={group.key} className="flex flex-wrap items-center gap-1.5">
-            <span className="mr-0.5 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
-              {t(group.labelKey)}:
-            </span>
-            {group.options.map((o) => (
-              <button
-                key={o.value || "—"}
-                type="button"
-                aria-pressed={o.selected}
-                disabled={o.disabled}
-                onClick={() => onToggle(group.key, o.value)}
-                className={`${CHIP_BASE} ${
-                  o.selected
-                    ? "border-ink bg-ink text-white"
-                    : o.disabled
-                      ? "cursor-not-allowed border-hairline-soft text-muted-2 opacity-50"
-                      : "border-hairline text-muted hover:text-text"
-                }`}
-              >
-                {labelForValue(group.key, o.value)} · {o.count}
-              </button>
-            ))}
-            {group.hiddenCount > 0 ? (
-              <span className="text-[10.5px] text-muted-2">
-                {t("facet.more", { n: group.hiddenCount })}
-              </span>
-            ) : null}
-          </div>
-        );
-      })}
+      {/* (1)(2)(3) Primäre Facetten — immer sichtbar (Reife/Kategorie/Autor). Genau eine Darstellung
+          je Dimension, dynamische Zähler, 0-Optionen ausgegraut. */}
+      {primaryGroups.map(renderGroup)}
+
+      {/* Punkt 2: seltenere Facetten hinter einem aufklappbaren „Weitere Filter" (Standard: zu; Zustand
+          pro Browser gemerkt). Aktive Auswahlen daraus bleiben oben als Pille sichtbar — nichts versteckt. */}
+      {secondaryGroups.length > 0 ? (
+        <div className="space-y-2">
+          <button
+            type="button"
+            aria-expanded={moreOpen}
+            onClick={toggleMore}
+            className="inline-flex items-center gap-1 font-mono text-[10px] font-semibold uppercase tracking-wider text-muted hover:text-text"
+          >
+            <ChevronDown
+              size={13}
+              aria-hidden
+              className={cx("transition-transform", moreOpen && "rotate-180")}
+            />
+            {t("facet.moreFilters")}
+          </button>
+          {moreOpen ? <div className="space-y-2">{secondaryGroups.map(renderGroup)}</div> : null}
+        </div>
+      ) : null}
 
       {/* (5) Trefferzeile — „Treffer: N von GESAMT" + dezenter „gefiltert"-Hinweis bei aktivem Filter. */}
       <div className="flex items-center gap-2 font-mono text-[11px] text-muted-2">

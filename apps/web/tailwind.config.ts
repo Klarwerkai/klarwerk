@@ -11,9 +11,13 @@ export default {
         surface: "#ffffff",
         ink: "#16222c",
         text: { DEFAULT: "#1b1e21", soft: "#23272b" },
-        muted: { DEFAULT: "#687078", 2: "#8a929a" },
+        // E2E-014: sekundäres Muted war mit #8a929a nur ~3:1 (fällt WCAG AA für Text). Abgedunkelt auf
+        // #616a72 → ≥4,5:1 auf Weiß UND auf der Seiten-Fläche (#f3f4f6). Betrifft 10–11px-Metadaten.
+        muted: { DEFAULT: "#687078", 2: "#616a72" },
         hairline: { DEFAULT: "#e4e7ea", soft: "#f0f1f3" },
-        brand: { DEFAULT: "#ED7D0E", 300: "#f5a04a" },
+        // brand.DEFAULT (#ED7D0E) bleibt Marke/Fläche (Knöpfe); als TEXT nur ~2,8:1 → eigenes,
+        // abgedunkeltes Text-Token brand.text (#a8560a, ≥4,5:1) für Link-/Metatexte („Alle Aufgaben →").
+        brand: { DEFAULT: "#ED7D0E", 300: "#f5a04a", text: "#a8560a" },
         trust: {
           "pos-text": "#256b46",
           "pos-fill": "#3aa06a",

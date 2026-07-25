@@ -5,7 +5,7 @@ import { useSession } from "../app/AuthContext";
 import { useNavGuard } from "../app/NavGuardContext";
 import { useRole } from "../app/RoleContext";
 import { FOOT_ITEMS, NAV_GROUPS, type NavItem, ROLES, type Role, canSee } from "../app/navigation";
-import { navBadgeLabelKey, useNavBadges } from "../app/useNavBadges";
+import { type NavBadge, navBadgeLabelKey, useNavBadges } from "../app/useNavBadges";
 import { Logo } from "./Logo";
 
 // SCRUM-486 E: Badge trägt neben der Zahl ihre Bedeutung — `label` wird zu title + aria-label, damit
@@ -37,7 +37,110 @@ function Badge({
   );
 }
 
-function NavRow({ item, badge }: { item: NavItem; badge?: number | undefined }): JSX.Element {
+// AUFTRAG-mega2 Block C (bens D9): Ladepunkt für ein noch nicht geladenes Badge — SICHTBAR anders als
+// ein echter Zähler (Zahl) und als ein echtes Nullergebnis (gar kein Badge). Screenreader hören „lädt".
+function BadgeLoading({ active, label }: { active: boolean; label: string }): JSX.Element {
+  return (
+    <span
+      className={`ml-auto grid h-[17px] w-[17px] place-items-center rounded-pill ${
+        active ? "bg-white/20" : "bg-hairline"
+      }`}
+      title={label}
+      aria-label={label}
+    >
+      <span
+        className={`h-1.5 w-1.5 animate-pulse rounded-full ${active ? "bg-white/70" : "bg-muted"}`}
+      />
+    </span>
+  );
+}
+
+// AUFTRAG-mega3 Block B (bens D9): ein Badge, dessen Quelle dauerhaft scheiterte (ohne Daten), zeigt
+// einen SICHTBAREN Fehler-Marker („!") mit Wiederholen — nicht die stillschweigend fehlende Zahl und
+// erst recht keine erfundene 0. Der Marker ist ein Button (Klick = refetch); der übersetzte aria-label/
+// title sagt, was los ist. Bewusst als eigenständiges Element neben dem Nav-Link (kein Auto-Reload).
+function BadgeError({
+  active,
+  label,
+  onRetry,
+}: { active: boolean; label: string; onRetry: () => void }): JSX.Element {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      onClick={(e) => {
+        // Nicht die Navigation auslösen — nur den erneuten Abruf.
+        e.preventDefault();
+        e.stopPropagation();
+        onRetry();
+      }}
+      className={`ml-auto grid h-[17px] w-[17px] place-items-center rounded-pill font-semibold text-[11px] ${
+        active ? "bg-white/20 text-white" : "bg-trust-crit-bg text-trust-crit-text"
+      }`}
+    >
+      !
+    </button>
+  );
+}
+
+// AUFTRAG-mega4 Block B (bens Sammel-Review 4): ein Refetch der bereits geladenen Zahl scheiterte —
+// die alte Zahl bleibt WEITER sichtbar (nicht verschwiegen, nicht auf 0 erfunden), daneben ein SICHTBARER,
+// übersetzter Störungshinweis („!") mit Wiederholen (Klick = refetch). Weder ein Initialfehler (die Zahl
+// steht ja) noch ein stilles „loaded". Die Zahl trägt weiter ihre bedeutungstragende aria-Beschriftung;
+// der Marker seine eigene, damit Screenreader BEIDES hören: die Zahl UND „veraltet, erneut versuchen".
+function BadgeStale({
+  count,
+  tone,
+  active,
+  label,
+  staleLabel,
+  onRetry,
+}: {
+  count: number;
+  tone?: "neutral" | "crit" | undefined;
+  active: boolean;
+  label?: string | undefined;
+  staleLabel: string;
+  onRetry: () => void;
+}): JSX.Element {
+  const numCls = active
+    ? "bg-white/20 text-white"
+    : tone === "crit"
+      ? "bg-trust-crit-bg text-trust-crit-text"
+      : "bg-hairline text-muted";
+  return (
+    <span className="ml-auto inline-flex items-center gap-1">
+      {count > 0 ? (
+        <span
+          className={`rounded-pill px-1.5 py-0.5 font-mono text-[10.5px] font-semibold ${numCls}`}
+          title={label}
+          aria-label={label}
+        >
+          {count}
+        </span>
+      ) : null}
+      <button
+        type="button"
+        title={staleLabel}
+        aria-label={staleLabel}
+        onClick={(e) => {
+          // Nicht navigieren — nur den erneuten Abruf auslösen.
+          e.preventDefault();
+          e.stopPropagation();
+          onRetry();
+        }}
+        className={`grid h-[17px] w-[17px] place-items-center rounded-pill text-[11px] font-semibold ${
+          active ? "bg-white/20 text-white" : "bg-trust-warn-bg text-trust-warn-text"
+        }`}
+      >
+        !
+      </button>
+    </span>
+  );
+}
+
+function NavRow({ item, badge }: { item: NavItem; badge?: NavBadge | undefined }): JSX.Element {
   const { t } = useTranslation();
   const badgeLabelKey = item.badgeKey ? navBadgeLabelKey(item.badgeKey) : undefined;
   const navigate = useNavigate();
@@ -73,12 +176,28 @@ function NavRow({ item, badge }: { item: NavItem; badge?: number | undefined }):
             <Icon size={16} strokeWidth={2} />
           </span>
           <span className="truncate">{t(item.labelKey)}</span>
-          {item.badgeKey && badge ? (
-            <Badge
-              count={badge}
+          {item.badgeKey && badge && badge.state === "error" ? (
+            // Dauerhaft gescheitert → sichtbarer Fehler-Marker mit Wiederholen (kein stilles Fehlen, keine 0).
+            <BadgeError active={isActive} label={t("nav.badge.error")} onRetry={badge.refetch} />
+          ) : item.badgeKey && badge && badge.state === "loading" ? (
+            // Noch nicht geladen → neutraler Ladepunkt statt einer erfundenen Zahl/0.
+            <BadgeLoading active={isActive} label={t("nav.badge.loading")} />
+          ) : item.badgeKey && badge && badge.stale ? (
+            // Refetch der vorhandenen Zahl scheiterte → alte Zahl WEITER zeigen + Störungshinweis/Retry.
+            <BadgeStale
+              count={badge.count}
               tone={item.badgeTone}
               active={isActive}
-              label={badgeLabelKey ? t(badgeLabelKey, { count: badge }) : undefined}
+              label={badgeLabelKey ? t(badgeLabelKey, { count: badge.count }) : undefined}
+              staleLabel={t("nav.badge.stale")}
+              onRetry={badge.refetch}
+            />
+          ) : item.badgeKey && badge && badge.count > 0 ? (
+            <Badge
+              count={badge.count}
+              tone={item.badgeTone}
+              active={isActive}
+              label={badgeLabelKey ? t(badgeLabelKey, { count: badge.count }) : undefined}
             />
           ) : null}
         </>
@@ -175,7 +294,7 @@ export function Sidebar(): JSX.Element {
             <div key={group.id}>
               <div className="mb-1.5 px-2 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
                 {t(group.titleKey)}
-                {group.stufe2 ? <span className="ml-1 text-brand">·2</span> : null}
+                {group.stufe2 ? <span className="ml-1 text-brand-text">·2</span> : null}
               </div>
               <div className="space-y-0.5">
                 {items.map((item) => (

@@ -44,7 +44,15 @@ describe("KW-PROD-29: Frontdoor Save/Submit State", () => {
     expect(source).toContain('navigate("/erfassen", { replace: true, state: null })');
     // Formatiererfester Pin (der Satz bricht je nach Zeilenlänge um).
     expect(source).toContain("gespeicherte Entwurf ist in der Liste hervorgehoben");
-    expect(source).toContain("frontDoorDraftSaved?.id === d.id");
+    // AUFTRAG-sortfilter: die Entwurfsliste (inkl. Hervorhebung) ist nach CaptureDraftList
+    // herausgelöst; Capture reicht die gerade gespeicherte Id als highlightId durch, die Komponente
+    // hebt genau diesen Entwurf hervor (Verhalten unverändert, nur gekapselt).
+    expect(source).toContain("highlightId={frontDoorDraftSaved?.id ?? null}");
+    const listSource = readFileSync(
+      resolve(process.cwd(), "apps/web/src/components/CaptureDraftList.tsx"),
+      "utf8",
+    );
+    expect(listSource).toContain("highlightId === d.id");
   });
 
   it("sperrt wiederholte Frontdoor-Save- und Submit-Ausloesungen lokal", () => {
@@ -64,14 +72,25 @@ describe("KW-PROD-29: Frontdoor Save/Submit State", () => {
 
   it("zeigt Entwurfsmetadaten und macht die Draft-Sichtbarkeit explizit", () => {
     const source = readFileSync(resolve(process.cwd(), "apps/web/src/pages/Capture.tsx"), "utf8");
+    // AUFTRAG-sortfilter: die je-Entwurf-Metadaten sind nach CaptureDraftList herausgelöst und dabei
+    // lokalisiert worden. Das Scope-Label bleibt in Capture und wird durchgereicht.
+    const listSource = readFileSync(
+      resolve(process.cwd(), "apps/web/src/components/CaptureDraftList.tsx"),
+      "utf8",
+    );
+    const i18nSource = readFileSync(resolve(process.cwd(), "apps/web/src/i18n.ts"), "utf8");
 
-    expect(source).toContain("formatDraftTimestamp");
-    expect(source).toContain("draftAuthorName");
     expect(source).toContain("draftScopeLabel");
     expect(source).toContain("Admin-Ansicht: alle Entwürfe");
     expect(source).toContain("Meine Entwürfe");
-    expect(source).toContain("Ersteller:");
-    expect(source).toContain("Gespeichert:");
-    expect(source).toContain("Status: Entwurf");
+    expect(listSource).toContain("formatDraftTimestamp");
+    expect(listSource).toContain("draftAuthorName");
+    // Ersteller/Gespeichert/Status je Entwurf — jetzt über i18n-Keys (echte Umlaute in i18n.ts).
+    expect(listSource).toContain("capture.draftCreatorMeta");
+    expect(listSource).toContain("capture.draftSavedMeta");
+    expect(listSource).toContain("capture.draftStatusMeta");
+    expect(i18nSource).toContain('"capture.draftCreatorMeta": "Ersteller: {{name}}"');
+    expect(i18nSource).toContain('"capture.draftSavedMeta": "Gespeichert: {{date}}"');
+    expect(i18nSource).toContain('"capture.draftStatusMeta": "Status: Entwurf"');
   });
 });

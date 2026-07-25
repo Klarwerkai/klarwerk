@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Bell, HelpCircle, Search, Smartphone } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { Bell, HelpCircle, Menu, Search, Smartphone } from "lucide-react";
+import { type FormEvent, type Ref, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
@@ -310,7 +310,17 @@ function IslandMarkerPill({ marker }: { marker: string }): JSX.Element {
   );
 }
 
-export function Topbar(): JSX.Element {
+export function Topbar({
+  narrow = false,
+  onOpenMenu,
+  menuButtonRef,
+}: {
+  narrow?: boolean;
+  onOpenMenu?: () => void;
+  // E2E-017 (bens Block F/Drawer): Referenz auf den Hamburger, damit der Drawer den Fokus beim
+  // Schließen genau hierher zurückgibt.
+  menuButtonRef?: Ref<HTMLButtonElement>;
+} = {}): JSX.Element {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
@@ -329,9 +339,25 @@ export function Topbar(): JSX.Element {
 
   return (
     <header className="flex h-[60px] shrink-0 items-center gap-3 border-b border-hairline bg-surface px-5">
+      {/* E2E-017: schmaler Header bekommt einen Hamburger, der die Sidebar als Drawer öffnet. */}
+      {narrow ? (
+        <button
+          type="button"
+          ref={menuButtonRef}
+          aria-label={t("topbar.openMenu")}
+          onClick={() => onOpenMenu?.()}
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-btn text-muted hover:bg-hairline-soft hover:text-text"
+        >
+          <Menu size={20} />
+        </button>
+      ) : null}
+      {/* E2E-017: auf schmalen Breiten wird der Header vereinfacht — die Volltextsuche entfällt
+          (Platz für Hamburger + Kernpillen); die Suche bleibt über die Bibliothek erreichbar. */}
       <form
         onSubmit={submitSearch}
-        className="flex h-9 min-w-0 max-w-md flex-1 items-center gap-2 rounded-input border border-hairline bg-page px-3 text-muted focus-within:border-ink/30"
+        className={`h-9 min-w-0 max-w-md flex-1 items-center gap-2 rounded-input border border-hairline bg-page px-3 text-muted focus-within:border-ink/30 ${
+          narrow ? "hidden" : "flex"
+        }`}
       >
         <button
           type="submit"
@@ -363,41 +389,54 @@ export function Topbar(): JSX.Element {
           shrink) statt aus dem Header zu laufen; overflow-hidden kappt sauber, die Pillen
           (Island-Marker) truncaten wie üblich. */}
       <div className="ml-auto flex min-w-0 shrink items-center justify-end gap-2 overflow-hidden">
-        <button
-          type="button"
-          onClick={() =>
-            guard(() =>
-              navigate("/mobile", {
-                state: { from: `${location.pathname}${location.search}` },
-              }),
-            )
-          }
-          className="flex shrink-0 items-center gap-1.5 rounded-btn border border-hairline px-2.5 py-1.5 text-[12px] font-medium text-muted hover:text-text"
-        >
-          <Smartphone size={15} />
-          {t("topbar.mobile")}
-        </button>
-        <button
-          type="button"
-          onClick={() => navigate("/hilfe")}
-          className="grid h-9 w-9 place-items-center rounded-btn text-muted hover:bg-hairline-soft hover:text-text"
-          aria-label={t("nav.help")}
-        >
-          <HelpCircle size={18} />
-        </button>
+        {/* E2E-017 (bens Block F): im schmalen Modus (≤899px, u. a. 768px) räumt die Topbar die
+            rechte Leiste auf, damit nichts horizontal abgeschnitten wird. Ausgeblendet werden die
+            platzhungrigen Sekundär-Elemente, die im Drawer/Profil ohnehin erreichbar bleiben:
+            der „Mobil"-Umschalter (Sinn nur auf Desktop), der Hilfe-Schnellknopf (Nav-Eintrag
+            „Hilfe" liegt im Drawer), der Insel-Marker (Test-/Dev-Kennung) und die Versions-Pille.
+            Erhalten bleiben die für den Betrieb wichtigen Statuspillen (KI-Modus/Erreichbarkeit/
+            Extern), Benachrichtigungen und die Sprachumschaltung. */}
+        {!narrow ? (
+          <button
+            type="button"
+            onClick={() =>
+              guard(() =>
+                navigate("/mobile", {
+                  state: { from: `${location.pathname}${location.search}` },
+                }),
+              )
+            }
+            className="flex shrink-0 items-center gap-1.5 rounded-btn border border-hairline px-2.5 py-1.5 text-[12px] font-medium text-muted hover:text-text"
+          >
+            <Smartphone size={15} />
+            {t("topbar.mobile")}
+          </button>
+        ) : null}
+        {!narrow ? (
+          <button
+            type="button"
+            onClick={() => navigate("/hilfe")}
+            className="grid h-9 w-9 place-items-center rounded-btn text-muted hover:bg-hairline-soft hover:text-text"
+            aria-label={t("nav.help")}
+          >
+            <HelpCircle size={18} />
+          </button>
+        ) : null}
         <LangPill />
         <NotificationBell />
         <KiModePill />
         <ReasonerStatusPill />
         <ExternalStagePill />
-        {islandMarker ? <IslandMarkerPill marker={islandMarker} /> : null}
-        {/* Beta-Phase: sichtbare Versionsnummer oben rechts (Pedi, 02.07.2026). */}
-        <span
-          className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-[10.5px] text-muted-2"
-          title="App-Version (Beta-Phase)"
-        >
-          v{APP_VERSION}
-        </span>
+        {!narrow && islandMarker ? <IslandMarkerPill marker={islandMarker} /> : null}
+        {/* Beta-Phase: sichtbare Versionsnummer oben rechts (Pedi, 02.07.2026) — nur im breiten Modus. */}
+        {!narrow ? (
+          <span
+            className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-[10.5px] text-muted-2"
+            title="App-Version (Beta-Phase)"
+          >
+            v{APP_VERSION}
+          </span>
+        ) : null}
       </div>
     </header>
   );

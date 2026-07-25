@@ -19,7 +19,21 @@ export interface ReadinessInput {
   openReviews: number;
   uploadLimits: { maxAttachments: number; maxAttachmentBytes: number } | null;
   externalStage: ExternalKnowledgeStage | null;
+  // AUFTRAG-mega2 Block C (bens D9): solange die tragenden Quellen (KI-Konfig, Analytics, Board,
+  // Upload-Grenzen, Externe-Policy) NICHT alle geladen sind, ist die ganze Bereitschafts-Gruppe
+  // atomar „lädt". Vor `loaded` darf keine Zeile „keine KI" (crit), „0 validiert" (warn) oder eine
+  // sonstige Negativaussage aus fehlenden Daten behaupten. Default false = geladen (Abwärtskompat.).
+  loading?: boolean;
 }
+
+// Feste Reihenfolge + Beschriftung der Bereitschaftszeilen — Quelle für den ehrlichen Ladezustand.
+const READINESS_ROW_META: readonly { id: string; labelKey: string }[] = [
+  { id: "ki", labelKey: "adm.ready.ki" },
+  { id: "validated", labelKey: "adm.ready.validated" },
+  { id: "openReviews", labelKey: "adm.ready.openReviews" },
+  { id: "upload", labelKey: "adm.ready.upload" },
+  { id: "external", labelKey: "adm.ready.external" },
+];
 
 const STAGE_VALUE_KEY: Record<ExternalKnowledgeStage, string> = {
   blocked: "adm.ready.ext.blocked",
@@ -31,6 +45,16 @@ const STAGE_VALUE_KEY: Record<ExternalKnowledgeStage, string> = {
 // Reihen in fester Reihenfolge; params NUR gesetzt, wenn vorhanden (exactOptionalPropertyTypes:
 // kein explizites undefined zuweisen).
 export function readinessRows(i: ReadinessInput): ReadinessRow[] {
+  // Block C: im Ladezustand jede Zeile neutral („wird geladen …", tone info) — keine crit/warn/0.
+  if (i.loading) {
+    return READINESS_ROW_META.map(({ id, labelKey }) => ({
+      id,
+      labelKey,
+      valueKey: "adm.ready.loading",
+      tone: "info" as const,
+    }));
+  }
+
   const rows: ReadinessRow[] = [];
 
   rows.push({
@@ -68,7 +92,8 @@ export function readinessRows(i: ReadinessInput): ReadinessRow[] {
           valueKey: "adm.ready.upload.val",
           params: {
             n: i.uploadLimits.maxAttachments,
-            kb: Math.round(i.uploadLimits.maxAttachmentBytes / 1000),
+            // E2E-020: EINHEITLICH in MB (wie Admin „20 MB" und Erfassen), nicht mehr „20000 KB".
+            mb: Math.round(i.uploadLimits.maxAttachmentBytes / 1_000_000),
           },
           tone: "ok",
         }

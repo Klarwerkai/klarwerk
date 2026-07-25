@@ -4,6 +4,7 @@ import { ModelCapacityError } from "./model-concurrency";
 // WP-D10 (Fix 3): Fehlerklasse eines gescheiterten Modellaufrufs (timeout|http|network|parse) für die
 // ehrliche Fallback-Ursache und das PII-freie Diagnose-Log.
 import { classifyModelFailure } from "./model-errors";
+import type { ModelFailureInfo } from "./model-errors";
 import {
   type AssistPreset,
   type AssistPresetInput,
@@ -1218,6 +1219,11 @@ export class Reasoner {
     confidential = false,
   ): Promise<ConflictJudgeOutcome> {
     let failure: JudgeFailure | undefined;
+    // RT-001 (bens Sammel-Review 3): die ANBIETERNEUTRALE, strukturierte Fehlerklasse des ERSTEN
+    // gefangenen Providerfehlers — reist zusätzlich zur groben `failure` bis zum Runner, damit dieser
+    // die feine Ursache (auth/rate-limit/unreachable/bad-response) bilden kann, statt hier vorab auf
+    // model-error zu verdichten. Trägt NIE Rohmeldung/Secret/Provider-Detail (nur {failureClass,status?}).
+    let providerFailure: ModelFailureInfo | undefined;
     let attempted = false;
     const { providers, confidentialExcluded } = this.judgeProviders(confidential);
     for (const provider of providers) {
@@ -1244,6 +1250,7 @@ export class Reasoner {
           continue;
         }
         failure = failure ?? Reasoner.judgeFailureOf(err);
+        providerFailure = providerFailure ?? classifyModelFailure(err);
         // nächstes Modell versuchen
       }
     }
@@ -1253,7 +1260,11 @@ export class Reasoner {
         failure: Reasoner.noJudgeFailure(confidential, confidentialExcluded),
       };
     }
-    return { verdict: null, failure: failure ?? "model-error" };
+    return {
+      verdict: null,
+      failure: failure ?? "model-error",
+      ...(providerFailure ? { providerFailure } : {}),
+    };
   }
 
   // Bestandsfassade (Konsole/check-text/knowledge-check binden hierüber — geprüft, unverändert):
@@ -1279,6 +1290,9 @@ export class Reasoner {
     confidential = false,
   ): Promise<DuplicateJudgeOutcome> {
     let failure: JudgeFailure | undefined;
+    // RT-001: strukturierte, anbieterneutrale Fehlerklasse des ersten gefangenen Providerfehlers (wie
+    // judgeConflictOutcome) — reist bis zum Runner, keine Verdichtung auf model-error an dieser Stelle.
+    let providerFailure: ModelFailureInfo | undefined;
     let attempted = false;
     const { providers, confidentialExcluded } = this.judgeProviders(confidential);
     for (const provider of providers) {
@@ -1303,6 +1317,7 @@ export class Reasoner {
           continue;
         }
         failure = failure ?? Reasoner.judgeFailureOf(err);
+        providerFailure = providerFailure ?? classifyModelFailure(err);
         // nächstes Modell versuchen
       }
     }
@@ -1312,7 +1327,11 @@ export class Reasoner {
         failure: Reasoner.noJudgeFailure(confidential, confidentialExcluded),
       };
     }
-    return { verdict: null, failure: failure ?? "model-error" };
+    return {
+      verdict: null,
+      failure: failure ?? "model-error",
+      ...(providerFailure ? { providerFailure } : {}),
+    };
   }
 
   // Bestandsfassade — exakt das alte Verhalten, null in allen Nicht-Urteil-Fällen.

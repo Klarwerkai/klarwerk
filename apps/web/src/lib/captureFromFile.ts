@@ -411,6 +411,11 @@ export const CAPTURE_FILE_TEXT = {
   upload: "capture.file.upload",
   replace: "capture.file.replace",
   remove: "capture.file.remove",
+  // AUFTRAG-mega1 Block A: Drag&Drop-Zone (zusätzlich zum Dialog). dropReject nennt die abgelehnte
+  // Datei ehrlich beim Namen; verarbeitet wird nur, was detectFileKind unterstützt.
+  dropHint: "capture.file.dropHint",
+  dropActive: "capture.file.dropActive",
+  dropReject: "capture.file.dropReject",
   extracting: "capture.file.extracting",
   loaded: "capture.file.loaded",
   empty: "capture.file.empty",

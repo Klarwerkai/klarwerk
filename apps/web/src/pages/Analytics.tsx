@@ -14,6 +14,7 @@ import {
 } from "../api/hooks";
 import type { AuditFilter } from "../api/types";
 import { HelpTip } from "../components/HelpTip";
+import { LoadErrorState, StaleMarker } from "../components/LoadState";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import {
   auditActions,
@@ -28,6 +29,7 @@ import {
 import { ANALYTICS_AUDIT_ANCHOR, hashToElementId } from "../lib/analyticsSections";
 import { executiveKpis } from "../lib/executiveKpis";
 import { type HealthBand, knowledgeHealth } from "../lib/knowledgeHealth";
+import { isGroupError, isGroupLoading, isGroupStale } from "../lib/loadingState";
 
 const BAND_TONE: Record<HealthBand, string> = {
   gut: "bg-trust-pos-bg text-trust-pos-text",
@@ -45,15 +47,17 @@ function Kpi({ label, value }: { label: string; value: string | number }): JSX.E
 }
 
 // SCRUM-431: Executive-Kachel mit kurzer Erklärung darunter — jede Zahl ist selbsterklärend.
+// E2E-016: solange die Quelle noch lädt, zeigt die Kachel „—" statt einer echten 0 (unbekannt ≠ 0).
 function ExecKpi({
   label,
   value,
   hint,
-}: { label: string; value: number; hint: string }): JSX.Element {
+  loading = false,
+}: { label: string; value: number; hint: string; loading?: boolean }): JSX.Element {
   return (
     <div className="rounded-card bg-page p-4">
       <div className="font-mono text-micro uppercase tracking-wider text-muted-2">{label}</div>
-      <div className="mt-1 text-2xl font-semibold text-ink">{value}</div>
+      <div className="mt-1 text-2xl font-semibold text-ink">{loading ? "—" : value}</div>
       <div className="mt-0.5 text-[11px] leading-snug text-muted-2">{hint}</div>
     </div>
   );
@@ -81,6 +85,19 @@ export function Analytics(): JSX.Element {
     gaps: gaps.data ?? [],
     busFactor: busFactor.data ?? [],
   });
+  // E2E-016: die vier Exec-Kennzahlen sind EINE zusammengehörige Gruppe — bis ALLE Quellen geladen
+  // sind, wird die Gruppe atomar als „lädt" behandelt (kein Mischbild aus echter Zahl und 0). Seit
+  // bens D9-Auflage über den gemeinsamen Ladezustand-Helfer (dasselbe Muster wie Start/Nav/Bereitschaft).
+  const execSources = [kos, gaps, busFactor];
+  const execLoading = isGroupLoading(execSources);
+  // AUFTRAG-mega3 Block B (bens D9): dritte Phase „error"/„stale" für die Exec-KPI-Gruppe.
+  const execError = isGroupError(execSources);
+  const execStale = isGroupStale(execSources);
+  const retryExec = (): void => {
+    void kos.refetch();
+    void gaps.refetch();
+    void busFactor.refetch();
+  };
 
   // SCRUM-141: erklärbarer Knowledge-Health-Score aus echten Signalen.
   const health = knowledgeHealth({
@@ -93,6 +110,18 @@ export function Analytics(): JSX.Element {
 
   // SCRUM-143: Audit-Filter über echte Daten (clientseitig, ohne Chain-Umbau).
   const [filter, setFilter] = useState<AuditFilter>({});
+  // Ein leeres Feld wird ENTFERNT statt auf undefined gesetzt (exactOptionalPropertyTypes: kein
+  // explizites undefined in einem optionalen Feld).
+  const setAuditField = (key: keyof AuditFilter, value: string): void =>
+    setFilter((f) => {
+      const next = { ...f };
+      if (value) {
+        next[key] = value;
+      } else {
+        delete next[key];
+      }
+      return next;
+    });
   const allEntries = audit.data ?? [];
 
   // SCRUM-229: Deep-Link auf einen Abschnitt (z. B. /analytics#analytics-audit) zuverlässig
@@ -121,28 +150,42 @@ export function Analytics(): JSX.Element {
           <HelpTip title={t("ana.exec.title")} body={t("ana.help.exec")} />
         </div>
         <Card>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <ExecKpi
-              label={t("ana.exec.validated")}
-              value={exec.validated}
-              hint={t("ana.exec.validatedHint")}
-            />
-            <ExecKpi
-              label={t("ana.exec.openReviews")}
-              value={exec.openReviews}
-              hint={t("ana.exec.openReviewsHint")}
-            />
-            <ExecKpi
-              label={t("ana.exec.busFactor")}
-              value={exec.singleSourceCategories}
-              hint={t("ana.exec.busFactorHint")}
-            />
-            <ExecKpi
-              label={t("ana.exec.rescued")}
-              value={exec.rescuedGaps}
-              hint={t("ana.exec.rescuedHint")}
-            />
-          </div>
+          {execStale ? (
+            <div className="mb-3">
+              <StaleMarker onRetry={retryExec} />
+            </div>
+          ) : null}
+          {execError ? (
+            // Block B: dauerhaft gescheitert → ehrlicher Fehlerzustand mit Wiederholen (kein „lädt", keine 0).
+            <LoadErrorState onRetry={retryExec} />
+          ) : (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <ExecKpi
+                label={t("ana.exec.validated")}
+                value={exec.validated}
+                hint={t("ana.exec.validatedHint")}
+                loading={execLoading}
+              />
+              <ExecKpi
+                label={t("ana.exec.openReviews")}
+                value={exec.openReviews}
+                hint={t("ana.exec.openReviewsHint")}
+                loading={execLoading}
+              />
+              <ExecKpi
+                label={t("ana.exec.busFactor")}
+                value={exec.singleSourceCategories}
+                hint={t("ana.exec.busFactorHint")}
+                loading={execLoading}
+              />
+              <ExecKpi
+                label={t("ana.exec.rescued")}
+                value={exec.rescuedGaps}
+                hint={t("ana.exec.rescuedHint")}
+                loading={execLoading}
+              />
+            </div>
+          )}
         </Card>
       </div>
 
@@ -287,7 +330,7 @@ export function Analytics(): JSX.Element {
           <select
             aria-label={t("ana.filterActor")}
             value={filter.actor ?? ""}
-            onChange={(e) => setFilter((f) => ({ ...f, actor: e.target.value || undefined }))}
+            onChange={(e) => setAuditField("actor", e.target.value)}
             className="h-9 rounded-input border border-hairline bg-surface px-2 text-[13px] text-text outline-none focus:border-ink/30"
           >
             <option value="">
@@ -302,7 +345,7 @@ export function Analytics(): JSX.Element {
           <select
             aria-label={t("ana.filterAction")}
             value={filter.action ?? ""}
-            onChange={(e) => setFilter((f) => ({ ...f, action: e.target.value || undefined }))}
+            onChange={(e) => setAuditField("action", e.target.value)}
             className="h-9 rounded-input border border-hairline bg-surface px-2 text-[13px] text-text outline-none focus:border-ink/30"
           >
             <option value="">
@@ -316,7 +359,7 @@ export function Analytics(): JSX.Element {
           </select>
           <input
             value={filter.target ?? ""}
-            onChange={(e) => setFilter((f) => ({ ...f, target: e.target.value || undefined }))}
+            onChange={(e) => setAuditField("target", e.target.value)}
             placeholder={t("ana.filterTarget")}
             className="h-9 min-w-[10rem] flex-1 rounded-input border border-hairline bg-surface px-3 text-[13px] outline-none focus:border-ink/30"
           />

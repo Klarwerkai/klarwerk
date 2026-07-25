@@ -569,6 +569,7 @@ export function Validation(): JSX.Element {
                   value={filter.type}
                   onChange={(e) => setFilter((f) => ({ ...f, type: e.target.value }))}
                   className={selectCls}
+                  aria-label={t("val.filterAllTypes")}
                 >
                   <option value="">{t("val.filterAllTypes")}</option>
                   {types.map((tp) => (
@@ -581,6 +582,7 @@ export function Validation(): JSX.Element {
                   value={filter.category}
                   onChange={(e) => setFilter((f) => ({ ...f, category: e.target.value }))}
                   className={selectCls}
+                  aria-label={t("val.filterAllCategories")}
                 >
                   <option value="">{t("val.filterAllCategories")}</option>
                   {cats.map((c) => (
@@ -593,6 +595,7 @@ export function Validation(): JSX.Element {
                   value={filter.tag}
                   onChange={(e) => setFilter((f) => ({ ...f, tag: e.target.value }))}
                   className={selectCls}
+                  aria-label={t("val.filterAllTags")}
                 >
                   <option value="">{t("val.filterAllTags")}</option>
                   {tags.map((tg) => (
@@ -707,6 +710,11 @@ export function Validation(): JSX.Element {
                       {/* SCRUM-416: ganze Karte klickbar (freie Fläche → KO-Detail, sichtbarer
                           Hover); Entscheidungs-Knöpfe/Aufklapper/Links bleiben sauber getrennt. */}
                       <Card
+                        // E2E-012/013: die Karte enthält Links, Buttons und ein Zuweisungs-Select —
+                        // daher NICHT selbst role="button" (kein verschachtelter Button, kein
+                        // Sammel-Accessible-Name). Container mit Maus-Komfortklick; Tastatur/AT nutzen
+                        // den Titel-Link und die inneren Steuerelemente.
+                        interactive={false}
                         onClick={(e) => {
                           if (cardClickOpens(e.target as Element)) {
                             navigate(`/wissen/${k.id}`);
@@ -1038,6 +1046,7 @@ export function Validation(): JSX.Element {
                                 }
                               }}
                               className="h-8 w-40 rounded-input border border-hairline bg-surface px-2 text-[12px] text-muted disabled:opacity-50"
+                              aria-label={t("val.assign")}
                             >
                               <option value="">{t("val.assign")}</option>
                               {(users.data ?? []).map((u) => (

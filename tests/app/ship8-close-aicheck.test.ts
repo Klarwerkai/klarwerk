@@ -3,9 +3,10 @@
 // F1 (PRODUKTIONSNAH, bens Testauflage): ECHTER Reasoner (kein Fake-Reasoner) + echter
 // ModelProvider mit Fake-CLIENT — genau der reale Fehlerfluss, in dem der Reasoner vor F1
 // normale Provider-/HTTP-/Netz-/Parsefehler intern zu null verschluckte (der aiCheck-Wrapper sah
-// nur werfende Fehler und meldete done). Gepinnt: (a) HTTP-Fehler → failed/model-error,
-// (b) Modell-Timeout → failed/model-timeout, (c) unparsebarer Output → failed/model-error —
-// NIE done; Gegenprobe (d): sauberer Provider → done.
+// nur werfende Fehler und meldete done). Gepinnt: (a) HTTP-5xx → failed/unreachable (RT-001: feinere,
+// anbieterneutrale Klasse statt des früheren pauschalen model-error), (b) Modell-Timeout →
+// failed/model-timeout, (c) unparsebarer Output (Provider parst zu null, kein Wurf) → failed/model-error
+// — NIE done; Gegenprobe (d): sauberer Provider → done.
 //
 // F3: die Queue-Overflow-Eviction schließt VERSIONSBEWUSST ab (resolveAiCheck mit der beim
 // Einreihen erwarteten Vermerk-Version) — ein zwischenzeitlich revidiertes KO behält seinen
@@ -78,7 +79,10 @@ async function runCheckAgainstBestand(client: ModelClient) {
 }
 
 describe("WP-SHIP8-CLOSE F1: echte Providerfehler werden failed, NIE done (echter Reasoner, Fake-Client)", () => {
-  it("(a) HTTP-Fehler des Modells (500) → failed/model-error", async () => {
+  // AUFTRAG-mega3 RT-001: der 5xx-Fall trägt jetzt die FEINERE, anbieterneutrale Klasse „unreachable"
+  // (Anbieter nicht erreichbar) statt des pauschalen „model-error" — der Reasoner-Ausgang transportiert
+  // die strukturierte Fehlerklasse (HTTP 5xx) bis zum Runner. failed statt done bleibt der Kernpunkt.
+  it("(a) HTTP-5xx des Modells (500) → failed/unreachable (RT-001: feinere, ehrliche Klasse)", async () => {
     const { services, created } = await runCheckAgainstBestand(
       fakeClient(async () => {
         throw new ModelHttpError("Modell-API antwortete mit 500", 500);
@@ -86,7 +90,7 @@ describe("WP-SHIP8-CLOSE F1: echte Providerfehler werden failed, NIE done (echte
     );
     const stored = await services.ko.get(created.id);
     expect(stored?.aiCheck?.status).toBe("failed");
-    expect(stored?.aiCheck?.fallbackReason).toBe("model-error");
+    expect(stored?.aiCheck?.fallbackReason).toBe("unreachable");
   });
 
   it("(b) Modell-Timeout → failed/model-timeout", async () => {

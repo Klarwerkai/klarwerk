@@ -349,19 +349,32 @@ export function Ask(): JSX.Element {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder={t("ask.placeholder")}
+          // E2E-018: leere/Whitespace-Frage ist ungültig — für Screenreader auszeichnen.
+          aria-invalid={q.trim().length === 0}
+          aria-describedby="ask-empty-hint"
           className="h-11 flex-1 rounded-input border border-hairline bg-surface px-3.5 text-sm outline-none focus:border-ink/30"
         />
         <Button
           type="submit"
           variant="primary"
           // PAKET 1 (D-AISTATE): hart ausgrauen, wenn kein Modell für „answer" nutzbar ist.
-          disabled={ask.isPending || !answerAi.available}
+          // E2E-018: zusätzlich sperren, solange die Frage leer/Whitespace-only ist.
+          disabled={ask.isPending || !answerAi.available || q.trim().length === 0}
           title={!answerAi.available ? t("ai.unavailable.hint") : undefined}
         >
           {t("ask.submit")}
           <ArrowRight size={15} />
         </Button>
       </form>
+      {/* E2E-018: zugängliche Inline-Meldung — nur wenn ein Modell da ist (sonst greift der
+          Unavailable-Hinweis), damit klar ist, warum der Knopf gesperrt ist. */}
+      <output
+        id="ask-empty-hint"
+        aria-live="polite"
+        className="mt-1.5 block text-[12px] text-muted"
+      >
+        {answerAi.available && q.trim().length === 0 ? t("ask.emptyHint") : ""}
+      </output>
       <AiUnavailableHint show={!answerAi.available} />
 
       {/* WP-UX-WOW-1 U2/U3 (statt SCRUM-265-Statik): ehrliche Beispiel-Chips. Antwort-Beispiele
@@ -525,7 +538,7 @@ export function Ask(): JSX.Element {
                         {s.sourceId ? (
                           <Link
                             to={demoHref(`/wissen/${s.sourceId}`, params)}
-                            className="inline-flex items-center gap-1 font-medium text-brand hover:underline"
+                            className="inline-flex items-center gap-1 font-medium text-brand-text hover:underline"
                           >
                             <span className="text-text">{s.description}</span>
                             <ArrowRight size={12} className="shrink-0 text-muted-2" />
@@ -575,7 +588,7 @@ export function Ask(): JSX.Element {
                       <li key={s.id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
                         <Link
                           to={demoHref(`/wissen/${s.id}`, params)}
-                          className="inline-flex items-center gap-1.5 text-[13px] text-brand hover:underline"
+                          className="inline-flex items-center gap-1.5 text-[13px] text-brand-text hover:underline"
                         >
                           <ArrowRight size={12} className="shrink-0 text-muted-2" />
                           <span className="text-text">{s.label}</span>
@@ -708,7 +721,7 @@ export function Ask(): JSX.Element {
                 ) : null}
                 <Link
                   to="/risiko"
-                  className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-brand"
+                  className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-brand-text"
                 >
                   {t("ask.toGaps")}
                   <ArrowRight size={15} />

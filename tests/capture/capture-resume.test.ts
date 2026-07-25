@@ -65,8 +65,15 @@ describe("SCRUM-457: resumeTargetForDraft — gespeicherter Marker gilt exakt", 
 
     expect(captureSource).toContain("draftsOpen");
     expect(captureSource).toContain("setDraftsOpen");
-    expect(captureSource).toContain("capture.resumeExpand");
-    expect(captureSource).toContain("capture.resumeCollapsedHint");
+    // AUFTRAG-sortfilter: die Entwurfsliste (inkl. Auf-/Zuklappen) ist nach CaptureDraftList
+    // herausgelöst; Capture reicht den Auf-/Zu-Zustand als open/onToggleOpen durch.
+    expect(captureSource).toContain("open={draftsOpen}");
+    const listSource = readFileSync(
+      resolve(process.cwd(), "apps/web/src/components/CaptureDraftList.tsx"),
+      "utf8",
+    );
+    expect(listSource).toContain("capture.resumeExpand");
+    expect(listSource).toContain("capture.resumeCollapsedHint");
     expect(captureSource).toContain("openFileImport");
     expect(captureSource).toContain('switchMode("datei")');
     expect(captureSource).toContain("capture.fileImportJump");

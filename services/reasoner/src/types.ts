@@ -1,3 +1,7 @@
+// RT-001 (bens Sammel-Review 3): anbieterneutrale, strukturierte Fehlerklasse eines Judge-Versuchs
+// (nur Klasse + optionaler HTTP-Status — nie Rohmeldung/Secret/Provider-Detail) reist bis zum Runner.
+import type { ModelFailureInfo } from "./model-errors";
+
 // SCRUM-88 / FR-I18N-01: sprachbewusste Reasoner-Steuerung. Nur DE/EN; Default "de".
 // Steuert Prompting, Interview-Fragen und Step-Labels — NICHT den Quelleninhalt.
 export type ReasonerLocale = "de" | "en";
@@ -205,14 +209,22 @@ export interface ConflictJudgeResult {
 // darf nur vertraulichen Text nicht sehen) und NICHT "done".
 export type JudgeFailure = "model-error" | "model-timeout" | "no-model" | "confidential";
 
+// RT-001 (bens Sammel-Review 3): NEBEN der groben `failure` reist bei einem GEFANGENEN Providerfehler
+// zusätzlich die ANBIETERNEUTRALE, strukturierte Fehlerklasse mit (HTTP-Status-/Fehlertyp-Kategorie).
+// Der Runner leitet daraus die feine, ehrliche Ursache (auth/rate-limit/unreachable/bad-response) ab,
+// OHNE die grobe Klasse vorher zu verdichten. Es wird NIE Rohmeldung/Secret/Provider-Detail geführt —
+// providerFailure trägt ausschließlich {failureClass, status?}. Fehlt es (z. B. Antwort kam, war aber
+// unverwertbar → null), bleibt der ehrliche grobe Rückfall.
 export interface ConflictJudgeOutcome {
   verdict: ConflictJudgeResult | null;
   failure?: JudgeFailure;
+  providerFailure?: ModelFailureInfo;
 }
 
 export interface DuplicateJudgeOutcome {
   verdict: DuplicateJudgeResult | null;
   failure?: JudgeFailure;
+  providerFailure?: ModelFailureInfo;
 }
 
 // Berater-Konzept Duplikate 04.07. (Stufe D2, dup-v1): Überschneidungs-Profil zweier Kerntexte A/B.

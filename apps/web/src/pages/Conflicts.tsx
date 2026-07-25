@@ -262,7 +262,7 @@ export function Conflicts(): JSX.Element {
                 {t("con.emptyExamplesHint")}{" "}
                 <Link
                   to="/import#beispielpakete"
-                  className="font-semibold text-brand hover:underline"
+                  className="font-semibold text-brand-text hover:underline"
                 >
                   {t("con.emptyExamplesCta")}
                 </Link>

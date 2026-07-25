@@ -151,18 +151,20 @@ describe("uxpol2: gemountete Library — Sicht-Migration + ODER-Filter (echter S
     expect(container.textContent).toContain("Offen Zugewiesen"); // würde bei naiver Migration fehlen
   });
 
-  it("(b) ODER innerhalb der Status-Gruppe: einen Status abwählen blendet nur dessen KOs aus", () => {
+  it("(b) ODER innerhalb der Reife-Gruppe: eine Reife abwählen blendet nur deren KOs aus", () => {
+    // AUFTRAG-uxpol5 · Punkt 1: die redundante Status-Facette ist entfernt; dasselbe ODER-Verhalten
+    // wird jetzt über die primäre Reife-Facette gepinnt (der Kontext-Zähler „ · 1" macht die Chips
+    // eindeutig gegenüber der Reife-Plakette/Erklärbox, die dieselben Wörter tragen).
     mount();
-    // Zähler machen die Status-Chips eindeutig (die Reife-Gruppe trägt dasselbe Wort „In Prüfung").
-    // Nur „offen" (Status · 1) wählen → das zugewiesene (pruefung) KO fällt raus.
+    // Nur „Zu prüfen" (Reife · 1) wählen → das zugewiesene (In Prüfung) KO fällt raus.
     act(() => {
-      chip(`${res("status.offen")} · 1`).click();
+      chip(`${res("use.open.label")} · 1`).click();
     });
     expect(container.textContent).toContain("Offen Unzugewiesen");
     expect(container.textContent).not.toContain("Offen Zugewiesen");
-    // Status „In Prüfung" (Kontext-Zähler · 1) ergänzen → ODER-Vereinigung, beide wieder sichtbar.
+    // Reife „In Prüfung" (Kontext-Zähler · 1) ergänzen → ODER-Vereinigung, beide wieder sichtbar.
     act(() => {
-      chip(`${res("status.pruefung")} · 1`).click();
+      chip(`${res("use.review.label")} · 1`).click();
     });
     expect(container.textContent).toContain("Offen Unzugewiesen");
     expect(container.textContent).toContain("Offen Zugewiesen");

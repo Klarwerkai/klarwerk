@@ -20,11 +20,13 @@ import { EmptyStateCtas } from "../components/EmptyStateCtas";
 // FUNKE (nacht24 Paket 6): Wissenskapital-Kachel (F5) + offene Wissenslücken (F3).
 import { KnowledgeCapitalNumbers, OpenGapsSummary } from "../components/FunkeCards";
 import { HelpTip } from "../components/HelpTip";
+import { LoadErrorState, StaleMarker } from "../components/LoadState";
 import { Card, PageHeader } from "../components/ui";
 import { DEMO_PILOT_PATH, captureDemoHref } from "../lib/demoPilotPath";
 import { knowledgeCapital } from "../lib/funke";
 import { KNOWLEDGE_CYCLE } from "../lib/knowledgeCycle";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
+import { isGroupError, isGroupLoading, isGroupStale } from "../lib/loadingState";
 import { missionsForRole } from "../lib/missions";
 import { PROOF_CHAIN } from "../lib/proofChain";
 import { type StartHelpId, startHelp } from "../lib/startHelp";
@@ -211,6 +213,23 @@ export function Start(): JSX.Element {
     }),
     criticalGaps: criticalGapsTotal,
   });
+  // AUFTRAG-mega2 Block C (bens D9): Arbeitsübersicht und Gap-Signale sind EINE zusammengehörige
+  // Gruppe. Solange die tragenden Quellen (Board, Konflikte, Revalidierung, Gap-Summary) nicht geladen
+  // sind, darf die Startseite KEINE echte 0 und kein „nichts zu tun" behaupten — das wäre eine
+  // Negativaussage aus fehlenden Daten. Vor `loaded` zeigt die Übersicht einen ehrlichen Ladezustand.
+  const workSources = [board, conflicts, pending, gapsSummary];
+  const workLoading = isGroupLoading(workSources);
+  // AUFTRAG-mega3 Block B (bens D9): dritte Phase „error" — eine dauerhaft gescheiterte tragende Quelle
+  // (ohne nutzbare Daten) zeigt einen ehrlichen Fehlerzustand mit Wiederholen, statt endlos „lädt".
+  const workError = isGroupError(workSources);
+  // Stale: brauchbare Daten liegen vor, ein Refetch scheiterte — Daten bleiben sichtbar, aber markiert.
+  const workStale = isGroupStale(workSources);
+  const retryWork = (): void => {
+    void board.refetch();
+    void conflicts.refetch();
+    void pending.refetch();
+    void gapsSummary.refetch();
+  };
   // SCRUM-271: bester nächster Einstieg aus der vorhandenen Übersicht (null bei Leerzustand).
   const focus = primaryWorkItem(overview);
   const guide = knowledgeGuidance("start");
@@ -372,7 +391,7 @@ export function Start(): JSX.Element {
               {/* SCRUM-296: aktiver Erfassungsfluss als Einstieg — Capture → Validation → Use. */}
               <Link
                 to={captureDemoHref()}
-                className="mt-3 inline-flex items-center gap-1 text-[12.5px] font-semibold text-brand hover:underline"
+                className="mt-3 inline-flex items-center gap-1 text-[12.5px] font-semibold text-brand-text hover:underline"
               >
                 {t("demo.captureEntry")} <ArrowRight size={13} />
               </Link>
@@ -437,7 +456,7 @@ export function Start(): JSX.Element {
               <h2 className="text-[15px] font-semibold text-ink">{t("start.workTitle")}</h2>
               {shelp("work")}
             </div>
-            <Link to="/aufgaben" className="text-[12.5px] font-semibold text-brand">
+            <Link to="/aufgaben" className="text-[12.5px] font-semibold text-brand-text">
               {t("start.allTasks")}
             </Link>
           </div>
@@ -451,8 +470,9 @@ export function Start(): JSX.Element {
             ))}
             {shelp("severity")}
           </div>
-          {/* SCRUM-271: bester nächster Einstieg hervorgehoben (kein Auto-Handeln, nur Führung). */}
-          {focus ? (
+          {/* SCRUM-271: bester nächster Einstieg hervorgehoben (kein Auto-Handeln, nur Führung).
+              Block C: im Ladezustand NICHT anzeigen (kein erfundener „bester nächster Schritt"). */}
+          {!workLoading && !workError && focus ? (
             <Link
               to={focus.to}
               className="mb-3 flex items-center gap-3 rounded-card bg-page p-3 hover:opacity-90"
@@ -476,8 +496,25 @@ export function Start(): JSX.Element {
               <ArrowRight size={15} className="shrink-0 text-muted-2" />
             </Link>
           ) : null}
+          {/* Block B: Stale-Fall — Daten sind da, ein Refetch scheiterte → sichtbar veraltet markiert. */}
+          {workStale ? (
+            <div className="mb-3">
+              <StaleMarker onRetry={retryWork} />
+            </div>
+          ) : null}
           <div className="divide-y divide-hairline">
-            {overview.length === 0 ? (
+            {workError ? (
+              // Block B: dauerhaft gescheitert → ehrlicher Fehlerzustand mit Wiederholen (kein „lädt", keine 0).
+              <div className="py-4">
+                <LoadErrorState onRetry={retryWork} />
+              </div>
+            ) : workLoading ? (
+              // Block C: ehrlicher Ladezustand statt vorschnellem „nichts zu tun" (echte 0) aus
+              // noch fehlenden Daten.
+              <div className="py-4">
+                <p className="text-sm text-muted">{t("start.todoLoading")}</p>
+              </div>
+            ) : overview.length === 0 ? (
               <div className="py-4">
                 <p className="text-sm text-muted">{t("start.todoEmpty")}</p>
                 <EmptyStateCtas context="start" />

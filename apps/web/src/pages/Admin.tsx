@@ -21,6 +21,7 @@ import type { DemoSeedResult, ExternalKnowledgeStage } from "../api/types";
 import { useToast } from "../app/ToastContext";
 import { ROLES, type Role } from "../app/navigation";
 import { HelpTip } from "../components/HelpTip";
+import { LoadErrorState, StaleMarker } from "../components/LoadState";
 import {
   Button,
   Card,
@@ -39,7 +40,11 @@ import {
 import { ADMIN_SECTIONS, type AdminSectionId, DEFAULT_ADMIN_SECTION } from "../lib/adminSections";
 // SCRUM-413: „Verfügbare KIs" — DOM-freie Zeilen aus dem echten configStatus.
 import { type AiAccessState, aiAccessRows } from "../lib/aiOverview";
+// AUFTRAG kimodus-live: Topbar-/Status-Queries nach dem Übernehmen live invalidieren.
+import { invalidateAiState } from "../lib/aiStateInvalidate";
+import { isGroupError, isGroupLoading, isGroupStale } from "../lib/loadingState";
 import { PILOT_NEXT_STEPS } from "../lib/pilotNextSteps";
+import { parseNeededValidations } from "../lib/reviewerMinimum";
 import { SECURITY_POINTS } from "../lib/securityStatements";
 import { type ReadinessTone, readinessRows } from "../lib/vipReadiness";
 
@@ -264,6 +269,11 @@ export function Admin(): JSX.Element {
     mutationFn: () => endpoints.reasoner.updateConfig({ global: effGlobal, perTask: effPerTask }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["reasonerConfig"] });
+      // AUFTRAG kimodus-live (Nachtlauf-Bug): Die Topbar-Badges (KiModePill/ReasonerStatusPill)
+      // beziehen ihren Zustand aus SEPARATEN Queries (["reasoner","config"]/["reasoner","status"]).
+      // Ohne deren Invalidierung springt die Topbar erst nach Hard-Reload auf den neuen effektiven
+      // Modus und „lügt" im Fenster dazwischen. invalidateAiState() ist die EINE Quelle dafür.
+      invalidateAiState(qc);
       setAiGlobal(null);
       setAiPerTask(null);
       push("success", t("adm.ai.saved"));
@@ -323,7 +333,7 @@ export function Admin(): JSX.Element {
   const [defaultNeededDraft, setDefaultNeededDraft] = useState<string | null>(null);
   const saveDefaultNeeded = useMutation({
     mutationFn: () =>
-      endpoints.validation.saveSettings(Number.parseInt(defaultNeededDraft ?? "", 10)),
+      endpoints.validation.saveSettings(parseNeededValidations(defaultNeededDraft ?? "")),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["validation", "settings"] });
       setDefaultNeededDraft(null);
@@ -331,6 +341,17 @@ export function Admin(): JSX.Element {
     },
     onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
   });
+
+  // E2E-005 / bens Auflage D4: erforderliche Reviewer haben ein hartes Minimum von 1 (Max 5). Der
+  // Client setzt EXAKT denselben Vertrag durch wie der Server (services/validation/src/settings.ts,
+  // normalizeDefaultNeeded): eine ECHTE ganze Zahl 1–5. Das frühere Number.parseInt akzeptierte „1.5"
+  // oder „1x" fälschlich als 1 (parseInt bricht am ersten Nicht-Ziffer-Zeichen ab und speicherte 1);
+  // <input type="number"> verhindert das nicht zuverlässig. Deshalb Number(...) + Number.isInteger(...)
+  // — für die Freigabe des Knopfes UND den Wert im Request (eine Quelle: parseNeededValidations).
+  const neededEffective =
+    defaultNeededDraft ?? String(valSettings.data?.defaultNeededValidations ?? "");
+  const neededParsed = parseNeededValidations(neededEffective);
+  const neededValid = Number.isInteger(neededParsed) && neededParsed >= 1 && neededParsed <= 5;
 
   // SCRUM-422: Papierkorb — Liste + Wiederherstellen + bewusste Endlöschung (Inline-Rückfrage).
   const trash = useQuery({ queryKey: ["kos", "trash"], queryFn: endpoints.ko.trash });
@@ -657,21 +678,31 @@ export function Admin(): JSX.Element {
                   min={1}
                   max={5}
                   className="w-24"
-                  value={
-                    defaultNeededDraft ?? String(valSettings.data?.defaultNeededValidations ?? "")
-                  }
+                  value={neededEffective}
                   onChange={(e) => setDefaultNeededDraft(e.target.value)}
                   aria-label={t("adm.val.label")}
+                  aria-invalid={!neededValid}
+                  aria-describedby="adm-val-error"
                 />
               </Field>
               <Button
                 variant="primary"
-                disabled={saveDefaultNeeded.isPending || defaultNeededDraft === null}
+                disabled={
+                  saveDefaultNeeded.isPending || defaultNeededDraft === null || !neededValid
+                }
                 onClick={() => saveDefaultNeeded.mutate()}
               >
                 {t("adm.val.save")}
               </Button>
             </div>
+            {/* E2E-005: zugängliche, deutsche Fehlermeldung, sobald der Wert ungültig ist (z. B. 0). */}
+            <output
+              id="adm-val-error"
+              aria-live="polite"
+              className="block text-[12px] text-trust-crit-text"
+            >
+              {neededValid ? "" : t("adm.val.invalid")}
+            </output>
           </Card>
 
           {/* SCRUM-421: Upload-Grenzen sichtbar + einstellbar (Anzahl + Größe je Anhang). */}
@@ -967,6 +998,21 @@ export function Admin(): JSX.Element {
                     </select>
                   </label>
                 </div>
+                {/* AUFTRAG kimodus-live (Variante b): kein doppeldeutiger Zustand mehr. Solange eine
+                    Auswahl geändert, aber noch nicht übernommen ist, steht direkt an der Auswahl ein
+                    klarer Hinweis; nach dem Übernehmen ein „Übernommen ✓"-Feedback. Passt zum
+                    bestehenden Draft-Muster (global + je Einsatz werden GEMEINSAM in EINER Mutation
+                    gespeichert) — Auto-Übernahme je Tastendruck (Variante a) würde dieses
+                    Batch-Speichern brechen und pro Änderung eine Server-Runde/Probe auslösen. */}
+                {aiGlobal !== null || aiPerTask !== null ? (
+                  <output className="block rounded-btn bg-trust-warn-bg px-2.5 py-1.5 text-[12px] font-semibold text-trust-warn-text">
+                    {t("adm.ai.dirtyHint")}
+                  </output>
+                ) : aiSave.isSuccess ? (
+                  <output className="block rounded-btn bg-trust-pos-bg px-2.5 py-1.5 text-[12px] font-semibold text-trust-pos-text">
+                    {t("adm.ai.applied")}
+                  </output>
+                ) : null}
                 <button
                   type="button"
                   aria-expanded={showAiDetail || Object.keys(effPerTask).length > 0}
@@ -1620,32 +1666,71 @@ export function Admin(): JSX.Element {
               </Button>
             </div>
             <p className="mt-1 text-[12px] leading-relaxed text-muted">{t("adm.ready.intro")}</p>
-            <ul className="mt-3 divide-y divide-hairline">
-              {readinessRows({
-                kiBoth:
-                  (aiConfig.data?.cloudConfigured ?? false) &&
-                  (aiConfig.data?.localConfigured ?? false),
-                kiAny:
-                  (aiConfig.data?.cloudConfigured ?? false) ||
-                  (aiConfig.data?.localConfigured ?? false),
-                validated: analytics.data?.byStatus.validiert ?? 0,
-                openReviews: board.data?.length ?? 0,
-                uploadLimits: uploadLimitsQ.data ?? null,
-                externalStage: extPolicy.data?.stage ?? null,
-              }).map((row) => (
-                <li key={row.id} className="flex items-center gap-3 py-2.5 text-[13px]">
-                  <span className="font-semibold text-text">{t(row.labelKey)}</span>
-                  <span
-                    className={`ml-auto rounded-pill px-2.5 py-0.5 text-[11.5px] font-semibold ${
-                      READY_TONE_CLASS[row.tone]
-                    }`}
-                  >
-                    {t(row.valueKey, row.params)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <p className="mt-3 text-[11px] leading-relaxed text-muted-2">{t("adm.ready.note")}</p>
+            {/* AUFTRAG-mega3 Block B (bens D9): dritte Phase — dauerhaft gescheiterte tragende Quelle ⇒
+                ehrlicher Fehlerzustand mit Wiederholen; Stale-Daten bleiben sichtbar, aber markiert. */}
+            {(() => {
+              const readySources = [aiConfig, analytics, board, uploadLimitsQ, extPolicy];
+              const retryReady = (): void => {
+                void aiConfig.refetch();
+                void analytics.refetch();
+                void board.refetch();
+                void uploadLimitsQ.refetch();
+                void extPolicy.refetch();
+              };
+              if (isGroupError(readySources)) {
+                return (
+                  <div className="mt-3">
+                    <LoadErrorState onRetry={retryReady} />
+                  </div>
+                );
+              }
+              return (
+                <>
+                  {isGroupStale(readySources) ? (
+                    <div className="mt-3">
+                      <StaleMarker onRetry={retryReady} />
+                    </div>
+                  ) : null}
+                  <ul className="mt-3 divide-y divide-hairline">
+                    {readinessRows({
+                      kiBoth:
+                        (aiConfig.data?.cloudConfigured ?? false) &&
+                        (aiConfig.data?.localConfigured ?? false),
+                      kiAny:
+                        (aiConfig.data?.cloudConfigured ?? false) ||
+                        (aiConfig.data?.localConfigured ?? false),
+                      validated: analytics.data?.byStatus.validiert ?? 0,
+                      openReviews: board.data?.length ?? 0,
+                      uploadLimits: uploadLimitsQ.data ?? null,
+                      externalStage: extPolicy.data?.stage ?? null,
+                      // Block C: atomar erst „geladen", wenn ALLE tragenden Quellen Daten haben — sonst
+                      // behauptet die Karte vor der Datenladung „keine KI"/„0 validiert".
+                      loading: isGroupLoading([
+                        aiConfig,
+                        analytics,
+                        board,
+                        uploadLimitsQ,
+                        extPolicy,
+                      ]),
+                    }).map((row) => (
+                      <li key={row.id} className="flex items-center gap-3 py-2.5 text-[13px]">
+                        <span className="font-semibold text-text">{t(row.labelKey)}</span>
+                        <span
+                          className={`ml-auto rounded-pill px-2.5 py-0.5 text-[11.5px] font-semibold ${
+                            READY_TONE_CLASS[row.tone]
+                          }`}
+                        >
+                          {row.params ? t(row.valueKey, row.params) : t(row.valueKey)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-3 text-[11px] leading-relaxed text-muted-2">
+                    {t("adm.ready.note")}
+                  </p>
+                </>
+              );
+            })()}
           </Card>
         </div>
       ) : null}

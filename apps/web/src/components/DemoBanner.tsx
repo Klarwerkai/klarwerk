@@ -25,7 +25,7 @@ export function DemoBanner({ surface }: { surface: DemoSurface }): JSX.Element {
       {banner.next ? (
         <Link
           to={banner.next.to}
-          className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-semibold text-brand hover:underline"
+          className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-semibold text-brand-text hover:underline"
         >
           {t(banner.next.labelKey)} <ArrowRight size={13} />
         </Link>

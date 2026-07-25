@@ -100,7 +100,7 @@ describe("WP-D10: classifyModelFailure (timeout|http|network|parse)", () => {
     });
   });
 
-  it("generische Fehler → Meldungs-Heuristik; Unbekanntes ist network, kaputtes JSON ist parse", () => {
+  it("generische Fehler → Meldungs-Heuristik; benanntes Netzsignal ist network, Unbekanntes ist unknown, kaputtes JSON ist parse", () => {
     expect(classifyModelFailure(new Error("Modell-API antwortete mit 500"))).toEqual({
       failureClass: "http",
       status: 500,
@@ -109,7 +109,12 @@ describe("WP-D10: classifyModelFailure (timeout|http|network|parse)", () => {
       classifyModelFailure(new Error("Modell-API überschritt das Zeitlimit von 30000 ms"))
         .failureClass,
     ).toBe("timeout");
+    // Ein BENANNTES Netz-/DNS-Signal (fetch failed) rechtfertigt „network" → später „unreachable".
     expect(classifyModelFailure(new TypeError("fetch failed")).failureClass).toBe("network");
+    // AUFTRAG-mega4 Block D (bens Blocker): ein beliebiger, uneingeordneter geworfener Fehler ist NICHT
+    // belegt ein Netzfehler — er bleibt „unknown" (der Runner macht daraus „model-error", NICHT
+    // „unreachable"). Vorher fiel jeder Unbekannte pauschal auf „network".
+    expect(classifyModelFailure(new Error("interner Providerfehler")).failureClass).toBe("unknown");
     // JSON.parse einer kaputten Modellantwort wirft SyntaxError → parse.
     let parseErr: unknown = null;
     try {

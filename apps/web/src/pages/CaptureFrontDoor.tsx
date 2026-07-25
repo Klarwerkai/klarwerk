@@ -298,7 +298,16 @@ export function CaptureFrontDoor(): JSX.Element {
         return withFrontDoorSaveTimeout(
           endpoints.drafts.update(
             activeDraftId,
-            buildFrontDoorPayload({ title, bodyHtml, fallbackTitle, confidentiality }),
+            // AUFTRAG-mega7 Block A: Speichern auf einen BESTEHENDEN Entwurf ist ein PUT über den
+            // Bestand — die Entwurfs-Id mitgeben, damit ein bewusst geleerter Body als Löschmarker
+            // reist statt vom partiellen Merge durch den Altwert ersetzt zu werden.
+            buildFrontDoorPayload({
+              title,
+              bodyHtml,
+              fallbackTitle,
+              confidentiality,
+              activeDraftId,
+            }),
           ),
         );
       }
