@@ -5,3 +5,13 @@ npx tsc --noEmit
 # Teil C3 (bens P2-Nacharbeit): eigener Typecheck für die gemounteten .test.tsx-Dateien —
 # jsx + DOM-lib, die der Node-reine Root-Check bewusst nicht hat (tsconfig.tests-tsx.json).
 npx tsc -p tsconfig.tests-tsx.json
+
+# AUFTRAG-mega8 Block B: echter Produktions-Build der Oberfläche — derselbe Befehl, den der
+# webbuild-Stage im Dockerfile fährt. Vorher lief im Gate NUR tsc; ein Bündel-Fehler von rollup
+# (fehlendes Modul, kaputtes Plugin, Syntax, die tsc passieren lässt) fiel erst im Coolify-Deploy
+# auf. Kosten: rund 4 Sekunden. Das Ergebnis landet in apps/web/dist (gitignored, verschmutzt den
+# Baum also nicht).
+# EINSCHRÄNKUNG, bewusst benannt: hier liegt das ganze Repo, im Container nur apps/web. Ein Import
+# über die Modulgrenze nach services/ löst deshalb LOKAL auf und würde hier NICHT auffallen — genau
+# diese Klasse fängt der Scan in tests/capture/draft-limits-shared.test.ts ab.
+(cd apps/web && npx vite build)
