@@ -65,13 +65,46 @@ export function unsavableSourceUrls(
   );
 }
 
-// Payload für die add-source-Aktion (leere Optionalfelder weglassen).
-export function toSourcePayload(input: SourceFormInput): {
+// AUFTRAG-mega15 Block B (bens SB-4): DER Vertrag der add-source-Aktion, wie ihn
+// `apps/web/src/api/endpoints.ts` (KoAction) deklariert und der Server erwartet — Label, Adresse,
+// Auszug. KEIN Herkunftsfeld: die Herkunft leitet der Server aus der Adresse ab
+// (services/external-search/src/provenance.ts). Bis mega14 schickten zwei Aufrufstellen trotzdem
+// ein `provider` mit; der deklarierte Typ kannte es nicht (Strukturtypisierung greift bei
+// Variablen nicht) und der Server richtete seine Sperre danach aus — genau die Vertragsdrift,
+// die bens SB-4 benennt. `toAddSourceRequest` ist die eine Stelle, die das abschneidet.
+//
+// AUFTRAG-mega16 Block A: dazu kommt `objectId` — der ANKER einer adresslosen Belegstelle. Er ist
+// KEIN Herkunftsfeld: der Server liest ihn nicht als Behauptung, sondern schlägt ihn in der
+// Anhangsliste DIESES Wissensobjekts nach. Ein erfundener Wert findet dort nichts.
+export interface AddSourceRequest {
   label: string;
   url?: string;
   excerpt?: string;
-} {
-  const payload: { label: string; url?: string; excerpt?: string } = { label: input.label.trim() };
+  objectId?: string;
+}
+
+export function toAddSourceRequest(source: {
+  label: string;
+  url?: string | null;
+  excerpt?: string | null;
+  objectId?: string | null;
+}): AddSourceRequest {
+  const request: AddSourceRequest = { label: source.label };
+  if (source.url) {
+    request.url = source.url;
+  }
+  if (source.excerpt) {
+    request.excerpt = source.excerpt;
+  }
+  if (source.objectId) {
+    request.objectId = source.objectId;
+  }
+  return request;
+}
+
+// Payload für die add-source-Aktion (leere Optionalfelder weglassen).
+export function toSourcePayload(input: SourceFormInput): AddSourceRequest {
+  const payload: AddSourceRequest = { label: input.label.trim() };
   if (input.url.trim()) {
     payload.url = input.url.trim();
   }

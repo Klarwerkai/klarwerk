@@ -122,3 +122,8 @@ export const useAssistPresets = () =>
 // die Policy-Stufe ist für alle Leseberechtigten lesbar (GET /external/policy), getrennt vom Reasoner.
 export const useExternalPolicy = () =>
   useQuery({ queryKey: ["external", "policy"], queryFn: endpoints.external.policy });
+
+// AUFTRAG-mega14 Block E (SCRUM-421): EINE Quelle für die geltenden Upload-Grenzen — dieselbe, die
+// der Server erzwingt. Jede Auswahlstelle liest hierüber; React Query bündelt die Abfrage.
+export const useUploadLimits = () =>
+  useQuery({ queryKey: ["upload-limits"], queryFn: endpoints.uploadLimits.get });

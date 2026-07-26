@@ -14,7 +14,12 @@ import { type EditorFile, fileLinkHtml } from "../lib/bodyFileLink";
 import { bodyReadMode } from "../lib/bodyReadMode";
 import {
   CAPTION_AI_TEXT,
+  type CaptionFormCurrent,
+  MAX_CAPTION_TEXT_CHARS,
   applyCaptionSuggestion,
+  applyCaptionSuggestionToText,
+  captionFormResponseApplicable,
+  captionFormTargetIntact,
   captionResponseApplicable,
   captionSuggestOutcome,
   captionSuggestVisible,
@@ -49,7 +54,11 @@ import {
   sanitizeHtml,
 } from "../lib/richText";
 import { AiUnavailableHint } from "./AiUnavailableHint";
+// AUFTRAG-mega9 Block F: dieselbe Dialog-Vorrichtung wie überall sonst (Fokusfalle, Escape,
+// Rückgabe des Fokus) — kein eigener Dialog für das Bildbeschreibungs-Formular.
+import { Modal } from "./Modal";
 import { SanitizedHtml } from "./SanitizedHtml";
+import { UploadLimitsHint } from "./UploadLimitsHint";
 import { Button } from "./ui";
 
 export interface EditorImage {
@@ -66,6 +75,16 @@ const BLOCK_BTN_CLASS: Record<EditorBlock, string> = {
   warning: "border-trust-warn-fill/50 text-trust-warn-text",
   success: "border-trust-pos-fill/50 text-trust-pos-text",
 };
+
+// AUFTRAG-mega9 Block F: der Zustand eines Vorschlags-Laufs — geteilt von Inline-Panel und
+// Eingabeformular, damit beide dieselben vier ehrlichen Ausgänge kennen (kein Modell,
+// Zeitüberschreitung, Vertraulichkeit, Fehler) und keiner davon je eine Pseudo-Beschreibung zeigt.
+type CaptionAiState =
+  | null
+  | { status: "loading" }
+  | { status: "fallback"; messageKey: string }
+  // WP-BILD-1f: withContext = der Vorschlag wurde mit umgebendem Dokument-Kontext erzeugt.
+  | { status: "suggestion"; text: string; withContext: boolean };
 
 const IMAGE_SCALE_OPTIONS: Array<{ value: ImageScaleValue; label: string }> = [
   { value: "25", label: "Klein" },
@@ -145,13 +164,37 @@ export function RichTextEditor({
   // Ausgangs-Fußnote und wendet seine Antwort NUR an, wenn all das noch aktuell ist.
   const captionGenerationRef = useRef(0);
   const selectedCaptionRef = useRef<HTMLElement | null>(null);
-  const [captionAi, setCaptionAi] = useState<
-    | null
-    | { status: "loading" }
-    | { status: "fallback"; messageKey: string }
-    // WP-BILD-1f: withContext = der Vorschlag wurde mit umgebendem Dokument-Kontext erzeugt.
-    | { status: "suggestion"; text: string; withContext: boolean }
-  >(null);
+  const [captionAi, setCaptionAi] = useState<CaptionAiState>(null);
+  // AUFTRAG-mega9 Block F (Pedi: „immer noch kein richtiges Eingabeformular mit einem KI-generierten
+  // Vorschlag, den ich einfügen kann"). Der bisherige Weg war Inline-Editieren: in die figcaption
+  // HINEINKLICKEN, dann erschien ein kleiner Knopf und ein schwebendes Panel. Das ist kein Formular.
+  // Hier der Zustand des echten Formulars: die Ziel-Fußnote, das Bild dazu und der BEARBEITETE Text
+  // (das Formular schreibt erst beim Speichern in die Fußnote — Abbrechen verwirft wirklich).
+  //
+  // AUFTRAG-mega11 Block D (bens SB-4): Beim Öffnen werden die Kennung des Bildes und seine Quelle
+  // MIT eingefroren — nicht nur der Fußnoten-Knoten. Sie sind die Grundlage jeder Geltungsprüfung.
+  const [captionForm, setCaptionForm] = useState<{
+    caption: HTMLElement;
+    imageId: string | null;
+    src: string;
+    run: number;
+    draft: string;
+  } | null>(null);
+  // Lauf-Nummer des Formulars: hoch bei Öffnen, Schließen, Speichern und bei jedem EXTERNEN
+  // Wertwechsel (der den Editor-DOM neu aufbaut). Sie schließt den Fall, den Knoten-Identität und
+  // Attribute allein nicht erwischen: Formular schließen und auf demselben Bild neu öffnen, während
+  // die erste Anfrage noch unterwegs ist.
+  const captionFormRunRef = useRef(0);
+  // AUFTRAG-mega11 Block D: Das Ziel ist unter dem offenen Formular weggezogen worden. Dann wird
+  // NICHT geschrieben, und das steht sichtbar am Formular — der getippte Text bleibt erhalten.
+  const [captionFormStale, setCaptionFormStale] = useState(false);
+  // Eigener Vorschlags-Zustand des Formulars — bewusst getrennt vom Inline-Panel, damit sich die
+  // beiden Oberflächen nicht gegenseitig Zustände überschreiben.
+  const [captionFormAi, setCaptionFormAi] = useState<CaptionAiState>(null);
+  // Spiegel des Formular-Zustands für die Gültigkeitsprüfung einer späten Antwort (kein Re-Render
+  // nötig, und der Callback sieht immer den aktuellen Stand statt eines eingefrorenen).
+  const captionFormRef = useRef<typeof captionForm>(null);
+  captionFormRef.current = captionForm;
 
   // Editor-Inhalt nur setzen, wenn er abweicht und der Fokus nicht IM Editor liegt
   // (verhindert Cursor-Sprünge während des Tippens). Verlustfrei über Mode-Wechsel.
@@ -197,6 +240,10 @@ export function RichTextEditor({
     const safe = sanitizeHtml(value);
     if (el.innerHTML !== safe && !el.contains(document.activeElement)) {
       el.innerHTML = safe;
+      // AUFTRAG-mega11 Block D (bens SB-4): der KOMPLETTE Editor-Inhalt wurde von außen ersetzt —
+      // jede Fußnote, auf die ein offenes Formular oder ein laufender Request zeigt, ist ab jetzt
+      // ein abgelöster Knoten. Die Lauf-Nummer macht beides ungültig.
+      captionFormRunRef.current += 1;
       // WP-D7 (Befund 2): Bild-Fußnoten nach jedem innerHTML-Setzen editierbar verankern.
       // WP-D10: lokalisierter, rein visueller Einlade-Text für LEERE Fußnoten (data-kw-placeholder +
       // CSS :empty::before) — wird vom Sanitizer beim Speichern gestrippt, nie echter Inhalt.
@@ -330,43 +377,42 @@ export function RichTextEditor({
     });
   };
 
-  const requestCaptionSuggestion = async (): Promise<void> => {
-    const caption = selectedCaption;
-    if (!caption || !onDescribeImage) {
+  // AUFTRAG-mega9 Block F: der GEMEINSAME Kern des Vorschlags-Laufs. Er lag vorher fest im
+  // Inline-Weg (fokussierte Fußnote); das neue Eingabeformular braucht denselben Lauf für eine
+  // FESTE Fußnote, unabhängig vom Fokus. Deshalb sind die zwei Dinge, die sich zwischen beiden
+  // Wegen unterscheiden, zu Parametern geworden:
+  //   `caption`     — für welche Fußnote wird beschrieben,
+  //   `stillCurrent`— wann ist eine (späte) Antwort noch gültig,
+  //   `report`      — wohin geht das Ergebnis (Inline-Panel oder Formular).
+  // Die Logik dazwischen — Bindungsprüfung, Deckel, Kontext-Sammlung, Fallback-Gründe — bleibt
+  // BYTE-GLEICH dieselbe. Es gibt weiterhin genau einen describe-Aufruf und genau eine Egress-Stelle.
+  const runCaptionSuggestion = async (
+    caption: HTMLElement,
+    stillCurrent: () => boolean,
+    report: (state: CaptionAiState) => void,
+  ): Promise<void> => {
+    if (!onDescribeImage) {
       return;
     }
-    // WP-BILD-1f (bens P1): der Request trägt die Bindung an SEINE Ausgangs-Fußnote (data-image-id
-    // + Generation). Nach jedem await wird geprüft, ob das Ziel unverändert ist — sonst wird die
-    // Antwort STILL verworfen (A→B-Wechsel: As späte Antwort berührt B nie).
-    const binding = {
-      imageId: caption.getAttribute("data-image-id"),
-      generation: captionGenerationRef.current,
-    };
-    const stillCurrent = (): boolean =>
-      selectedCaptionRef.current === caption &&
-      captionResponseApplicable(binding, {
-        imageId: selectedCaptionRef.current.getAttribute("data-image-id"),
-        generation: captionGenerationRef.current,
-      });
     const src = caption.parentElement?.querySelector("img")?.getAttribute("src") ?? "";
     if (!src) {
-      setCaptionAi({ status: "fallback", messageKey: CAPTION_AI_TEXT.imageUnreadable });
+      report({ status: "fallback", messageKey: CAPTION_AI_TEXT.imageUnreadable });
       return;
     }
-    setCaptionAi({ status: "loading" });
+    report({ status: "loading" });
     let dataUrl: string;
     try {
       dataUrl = await imageSrcAsDataUrl(src);
     } catch {
       if (stillCurrent()) {
-        setCaptionAi({ status: "fallback", messageKey: CAPTION_AI_TEXT.imageUnreadable });
+        report({ status: "fallback", messageKey: CAPTION_AI_TEXT.imageUnreadable });
       }
       return;
     }
     const checked = checkCaptionImageDataUrl(dataUrl);
     if (!checked.ok) {
       if (stillCurrent()) {
-        setCaptionAi({ status: "fallback", messageKey: checked.messageKey });
+        report({ status: "fallback", messageKey: checked.messageKey });
       }
       return;
     }
@@ -382,7 +428,7 @@ export function RichTextEditor({
         return; // Ziel gewechselt → Antwort still verwerfen (kein Panel, keine Inhalts-Änderung).
       }
       const outcome = captionSuggestOutcome(result);
-      setCaptionAi(
+      report(
         outcome.kind === "suggestion"
           ? { status: "suggestion", text: outcome.text, withContext: result.withContext === true }
           : { status: "fallback", messageKey: outcome.messageKey },
@@ -390,9 +436,35 @@ export function RichTextEditor({
     } catch {
       // Netz-/Serverfehler (inkl. 413-Größendeckel) → ehrliche Fehlermeldung, kein Pseudo-Text.
       if (stillCurrent()) {
-        setCaptionAi({ status: "fallback", messageKey: CAPTION_AI_TEXT.fallbackError });
+        report({ status: "fallback", messageKey: CAPTION_AI_TEXT.fallbackError });
       }
     }
+  };
+
+  // Inline-Weg (unverändert im Verhalten): beschreibt die gerade FOKUSSIERTE Fußnote und schließt
+  // eine späte Antwort per Generations-/Id-Bindung aus (WP-BILD-1f, bens P1).
+  //
+  // Warum dieser Weg BLEIBT, obwohl es jetzt ein Formular gibt: er ist die schnelle Hilfe WÄHREND
+  // des Tippens in der Fußnote, das Formular der ruhige, vollständige Weg über eine sichtbare Aktion
+  // am Bild. Beide schreiben über DIESELBE Mechanik (applyCaptionSuggestion → textContent + emit)
+  // und benutzen denselben Lauf — sie können sich also nicht widersprechen. Ein Entfernen hätte nur
+  // eine eingeführte, von ben abgenommene Bequemlichkeit gestrichen, ohne etwas wahrer zu machen.
+  const requestCaptionSuggestion = async (): Promise<void> => {
+    const caption = selectedCaption;
+    if (!caption) {
+      return;
+    }
+    const binding = {
+      imageId: caption.getAttribute("data-image-id"),
+      generation: captionGenerationRef.current,
+    };
+    const stillCurrent = (): boolean =>
+      selectedCaptionRef.current === caption &&
+      captionResponseApplicable(binding, {
+        imageId: selectedCaptionRef.current.getAttribute("data-image-id"),
+        generation: captionGenerationRef.current,
+      });
+    await runCaptionSuggestion(caption, stillCurrent, setCaptionAi);
   };
 
   // Übernahme über die NORMALE Editier-Mechanik der Fußnote (textContent + emit) — Sanitizer-
@@ -403,6 +475,133 @@ export function RichTextEditor({
       emit();
     }
     setCaptionAi(null);
+  };
+
+  // AUFTRAG-mega9 Block F: Das Formular öffnet sich über eine SICHTBARE Aktion am Bild — nicht mehr
+  // nur, indem man in die Fußnote hineinklickt. Es lädt den aktuellen Fußnotentext als Ausgangswert.
+  const openCaptionForm = (): void => {
+    const image = selectedImage;
+    if (!image || !ref.current?.contains(image)) {
+      return;
+    }
+    // Die Fußnote gehört zur figure des Bildes; fehlt sie (Altbestand), legt die bestehende
+    // Verankerung sie beim nächsten enhanceFiguresForEditing an — dann gibt es hier nichts zu tun.
+    const caption = image.closest("figure")?.querySelector("figcaption");
+    if (!(caption instanceof HTMLElement)) {
+      return;
+    }
+    setCaptionFormAi(null);
+    // AUFTRAG-mega11 Block D: jedes Öffnen ist ein neuer Lauf — eine Antwort auf den vorigen kann
+    // hier nicht mehr landen, auch wenn es dieselbe Fußnote und dasselbe Bild ist.
+    captionFormRunRef.current += 1;
+    setCaptionFormStale(false);
+    setCaptionForm({
+      caption,
+      imageId: caption.getAttribute("data-image-id"),
+      src: image.getAttribute("src") ?? "",
+      run: captionFormRunRef.current,
+      // Der Platzhaltertext der leeren Fußnote ist KEIN Inhalt — er darf nicht als Entwurf erscheinen.
+      draft: (caption.textContent ?? "").trim().slice(0, MAX_CAPTION_TEXT_CHARS),
+    });
+  };
+
+  // AUFTRAG-mega11 Block D (bens SB-4): der JETZIGE Stand des Formularziels, direkt am DOM abgelesen.
+  // Eine Quelle für die Anzeige einer späten Antwort UND für das Speichern — genau die Trennung,
+  // die mega9 hatte (geteilter Egress-Kern, ungeteilte Geltungsprüfung), gibt es damit nicht mehr.
+  const captionFormCurrent = (): CaptionFormCurrent & {
+    generation: number;
+    caption: HTMLElement | null;
+  } => {
+    const form = captionFormRef.current;
+    const caption = form?.caption ?? null;
+    const img = caption?.parentElement?.querySelector("img") ?? null;
+    return {
+      open: form !== null,
+      sameCaption: true, // vom Aufrufer gegen SEIN Ziel überschrieben
+      inDom: caption !== null && ref.current?.contains(caption) === true,
+      imageId: caption?.getAttribute("data-image-id") ?? null,
+      src: img?.getAttribute("src") ?? "",
+      generation: captionGenerationRef.current,
+      run: captionFormRunRef.current,
+      caption,
+    };
+  };
+
+  // Vorschlag IM FORMULAR: derselbe Lauf wie inline — und ab mega11 auch dieselbe Strenge. Eine
+  // späte Antwort wird nur angezeigt, wenn das Formular noch offen ist, dieselbe Fußnote zeigt, die
+  // Fußnote noch im Editor-DOM hängt, `captionResponseApplicable` (Generation + Bild-Kennung) hält
+  // UND die Bildquelle unverändert ist.
+  const requestCaptionFormSuggestion = async (): Promise<void> => {
+    const form = captionForm;
+    if (!form) {
+      return;
+    }
+    const target = form.caption;
+    const opened = {
+      imageId: form.imageId,
+      src: form.src,
+      run: form.run,
+      generation: captionGenerationRef.current,
+    };
+    const stillCurrent = (): boolean => {
+      const now = captionFormCurrent();
+      return captionFormResponseApplicable(opened, {
+        ...now,
+        sameCaption: now.caption === target,
+      });
+    };
+    await runCaptionSuggestion(target, stillCurrent, setCaptionFormAi);
+  };
+
+  // Übernehmen/Anhängen setzt den Vorschlag ins FELD — nicht in die Fußnote. Erst „Speichern"
+  // schreibt, und zwar über dieselbe Mechanik wie jede Handeingabe (applyCaptionSuggestion →
+  // textContent + emit): die Sanitizer-Verträge bleiben unangetastet.
+  const adoptCaptionSuggestion = (strategy: "replace" | "append"): void => {
+    if (captionFormAi?.status !== "suggestion") {
+      return;
+    }
+    const text = captionFormAi.text;
+    setCaptionForm((prev) =>
+      prev ? { ...prev, draft: applyCaptionSuggestionToText(prev.draft, text, strategy) } : prev,
+    );
+  };
+
+  const saveCaptionForm = (): void => {
+    const form = captionForm;
+    if (!form) {
+      return;
+    }
+    // AUFTRAG-mega11 Block D (bens SB-4): VOR dem Schreiben prüfen, ob das Ziel überhaupt noch das
+    // ist, das beim Öffnen eingefroren wurde. Ohne diese Prüfung konnte der Text auf eine abgelöste
+    // oder auf eine zu einem ANDEREN Bild gehörende Fußnote geschrieben werden — genau die falsche
+    // Inhaltszuordnung, gegen die captionResponseApplicable in WP-BILD-1f gebaut wurde.
+    const now = captionFormCurrent();
+    if (
+      !captionFormTargetIntact(
+        { imageId: form.imageId, src: form.src, run: form.run },
+        { ...now, sameCaption: now.caption === form.caption },
+      )
+    ) {
+      // Nicht schreiben, nicht schließen: der getippte Text bleibt sichtbar, der Grund steht dabei.
+      setCaptionFormStale(true);
+      setCaptionFormAi(null);
+      return;
+    }
+    applyCaptionSuggestion(form.caption, form.draft.trim());
+    emit();
+    captionFormRunRef.current += 1;
+    setCaptionForm(null);
+    setCaptionFormAi(null);
+    setCaptionFormStale(false);
+  };
+
+  const closeCaptionForm = (): void => {
+    // Abbrechen verwirft wirklich: in die Fußnote wurde bis hierher nichts geschrieben.
+    // AUFTRAG-mega11 Block D: das Schließen macht einen noch laufenden Vorschlags-Request ungültig.
+    captionFormRunRef.current += 1;
+    setCaptionForm(null);
+    setCaptionFormAi(null);
+    setCaptionFormStale(false);
   };
 
   const applyImageScale = (scale: ImageScaleValue): void => {
@@ -730,6 +929,10 @@ export function RichTextEditor({
                     <ImageIcon size={13} />
                     {t("editor.imageFromDisk")}
                   </button>
+                  {/* AUFTRAG-mega14 Block E (SCRUM-421): geltende Grenzen an der Auswahlstelle, Serverquelle.
+                        Der Editor ist zugleich Ablege- und Einfügefeld — die Grenze steht dort, wo
+                        die Datei gewählt wird. */}
+                  <UploadLimitsHint className="mb-1 px-2 text-[11px] text-muted-2" />
                   {images.length === 0 ? (
                     <p className="border-hairline border-t px-2 pb-1 pt-1.5 text-[11.5px] text-muted-2">
                       {t("editor.noImages")}
@@ -780,6 +983,9 @@ export function RichTextEditor({
                         <Paperclip size={13} />
                         {t("editor.fileFromDisk")}
                       </button>
+                    ) : null}
+                    {onAttachFiles ? (
+                      <UploadLimitsHint className="mb-1 px-2 text-[11px] text-muted-2" />
                     ) : null}
                     <p className="border-hairline px-2 pb-1 pt-0.5 text-[11px] text-muted-2">
                       {t("editor.insertFile")}
@@ -917,8 +1123,202 @@ export function RichTextEditor({
               {opt.label}
             </button>
           ))}
+          {/* AUFTRAG-mega9 Block F (Pedi): die SICHTBARE Aktion am Bild, die das echte
+              Eingabeformular öffnet. Bisher war die Bildbeschreibung nur erreichbar, indem man in
+              die Fußnote hineinklickte — eine Aktion, die man kennen musste. */}
+          {onDescribeImage ? (
+            <button
+              type="button"
+              data-testid="caption-form-open"
+              onClick={openCaptionForm}
+              className="ml-2 inline-flex h-7 items-center gap-1 rounded-btn border border-ai/40 bg-surface px-2 text-[11.5px] font-semibold text-ai hover:bg-hairline-soft"
+            >
+              <ImageIcon size={13} aria-hidden="true" />
+              {t(CAPTION_AI_TEXT.formOpen)}
+            </button>
+          ) : null}
         </div>
       ) : null}
+
+      {/* AUFTRAG-mega9 Block F: das ECHTE, benannte Eingabeformular für die Bildbeschreibung.
+          Reihenfolge wie im Auftrag: Bild → beschriftetes Feld mit sichtbarem Maximum →
+          KI-Vorschlag erzeugen → abgesetzter Vorschlagsblock mit Übernehmen → Speichern/Abbrechen.
+          Die Vorschlags-Logik (captionAiSuggest) bleibt unverändert die eine Quelle; das hier ist
+          nur die Oberfläche davor. Kein neuer Endpunkt, kein neuer Egress: derselbe describe-Aufruf. */}
+      <Modal
+        open={captionForm !== null}
+        onClose={closeCaptionForm}
+        title={t(CAPTION_AI_TEXT.formTitle)}
+      >
+        {captionForm ? (
+          <div className="space-y-3">
+            {/* 1. Das Bild — groß genug zum Erkennen, worum es geht. */}
+            {captionForm.src ? (
+              <img
+                src={captionForm.src}
+                alt={t(CAPTION_AI_TEXT.formImageAlt)}
+                className="max-h-64 w-full rounded-card border border-hairline bg-page object-contain"
+              />
+            ) : null}
+
+            {/* 2. Beschriftetes Feld mit SICHTBAREM Maximum. */}
+            <div>
+              <label
+                htmlFor="caption-form-text"
+                className="mb-1 block text-[12.5px] font-medium text-muted"
+              >
+                {t(CAPTION_AI_TEXT.formLabel)}
+              </label>
+              <textarea
+                id="caption-form-text"
+                value={captionForm.draft}
+                onChange={(e) =>
+                  setCaptionForm((prev) => (prev ? { ...prev, draft: e.target.value } : prev))
+                }
+                rows={3}
+                maxLength={MAX_CAPTION_TEXT_CHARS}
+                placeholder={t(CAPTION_AI_TEXT.formPlaceholder)}
+                className="w-full rounded-input border border-hairline bg-surface px-2 py-1.5 text-[13px] text-text"
+              />
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[11.5px] text-muted-2">
+                  {t(CAPTION_AI_TEXT.formLimit, {
+                    n: captionForm.draft.length,
+                    max: MAX_CAPTION_TEXT_CHARS,
+                  })}
+                </span>
+                {/* Grenze ERREICHT wird zusätzlich benannt — sonst wäre ein vom Feld gekappter
+                    Einfüge-Text ein unbemerkter Teilverlust (Muster aus mega6 Block D). */}
+                {captionForm.draft.length >= MAX_CAPTION_TEXT_CHARS ? (
+                  <span
+                    aria-live="polite"
+                    className="text-[11.5px] font-medium text-trust-crit-text"
+                  >
+                    {t(CAPTION_AI_TEXT.formLimitReached, { max: MAX_CAPTION_TEXT_CHARS })}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+
+            {/* 3. Der KI-Vorschlag wird BEWUSST erzeugt, mit ehrlichem Ladezustand. */}
+            <div className="rounded-card border border-dashed border-ai/30 bg-ai/5 p-2.5">
+              <button
+                type="button"
+                data-testid="caption-form-suggest"
+                disabled={captionFormAi?.status === "loading" || !describeAvailable}
+                title={!describeAvailable ? t("ai.unavailable.hint") : undefined}
+                onClick={() => void requestCaptionFormSuggestion()}
+                className="inline-flex h-8 items-center gap-1 rounded-btn border border-ai/40 bg-surface px-2.5 text-[12px] font-semibold text-ai hover:bg-hairline-soft disabled:opacity-60"
+              >
+                ✨{" "}
+                {captionFormAi?.status === "loading"
+                  ? t(CAPTION_AI_TEXT.loading)
+                  : t(CAPTION_AI_TEXT.suggest)}
+              </button>
+              {!describeAvailable ? <AiUnavailableHint show={true} /> : null}
+
+              {/* 4. Der Vorschlag als EIGENER, sichtbar abgesetzter Block — als KI-Vorschlag
+                  gekennzeichnet und NICHT mit der Nutzereingabe vermischt. */}
+              {captionFormAi?.status === "suggestion" ? (
+                <div
+                  data-testid="caption-form-suggestion"
+                  className="mt-2 rounded-card border border-ai/30 bg-surface p-2"
+                >
+                  <p className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai">
+                    {t(CAPTION_AI_TEXT.panelTitle)} · {t(CAPTION_AI_TEXT.aiBadge)}
+                  </p>
+                  {captionFormAi.withContext ? (
+                    <p className="mt-0.5 text-[10.5px] leading-snug text-muted">
+                      {t(CAPTION_AI_TEXT.withContext)}
+                    </p>
+                  ) : null}
+                  <p className="mt-1 text-[12.5px] leading-relaxed text-text">
+                    {captionFormAi.text}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      data-testid="caption-form-adopt"
+                      onClick={() => adoptCaptionSuggestion("replace")}
+                      className="inline-flex h-7 items-center rounded-btn border border-ai/50 bg-ai px-2 text-[11.5px] font-semibold text-white"
+                    >
+                      {t(CAPTION_AI_TEXT.apply)}
+                    </button>
+                    {/* „Anhängen" nur, wenn schon Text im Feld steht: bei leerem Feld wäre es
+                        dasselbe wie Übernehmen — zwei Knöpfe für dieselbe Wirkung wären eine
+                        Scheinwahl. So ist die Entscheidung echt. */}
+                    {captionForm.draft.trim().length > 0 ? (
+                      <button
+                        type="button"
+                        data-testid="caption-form-append"
+                        onClick={() => adoptCaptionSuggestion("append")}
+                        className="inline-flex h-7 items-center rounded-btn border border-ai/50 bg-surface px-2 text-[11.5px] font-semibold text-ai"
+                      >
+                        {t(CAPTION_AI_TEXT.formAppend)}
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => setCaptionFormAi(null)}
+                      className="inline-flex h-7 items-center rounded-btn border border-hairline bg-surface px-2 text-[11.5px] font-semibold text-muted hover:text-text"
+                    >
+                      {t(CAPTION_AI_TEXT.discard)}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* 5. Bleibt der Vorschlag aus, steht hier der WAHRE Grund — nie eine
+                  Pseudo-Beschreibung. Die vier Fälle stammen unverändert aus captionSuggestOutcome. */}
+              {captionFormAi?.status === "fallback" ? (
+                <p
+                  data-testid="caption-form-fallback"
+                  className="mt-2 rounded-btn bg-trust-warn-bg px-2 py-1.5 text-[11.5px] leading-relaxed text-trust-warn-text"
+                >
+                  {t(captionFormAi.messageKey)}
+                </p>
+              ) : null}
+              {captionFormAi === null ? (
+                <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted-2">
+                  {t(CAPTION_AI_TEXT.formNoSuggestionYet)}
+                </p>
+              ) : null}
+            </div>
+
+            {/* AUFTRAG-mega11 Block D (bens SB-4): Das Ziel ist unter dem offenen Formular
+                weggezogen worden (Bild getauscht, Quelle gewechselt, Bildblock entfernt, Inhalt von
+                außen ersetzt). Dann wird NICHT geschrieben — und das steht hier, statt still auf ein
+                abgelöstes oder fremdes Ziel zu schreiben. Der getippte Text bleibt stehen. */}
+            {captionFormStale ? (
+              <p
+                data-testid="caption-form-stale"
+                className="mt-2 rounded-btn bg-trust-crit-bg px-2 py-1.5 text-[11.5px] leading-relaxed text-trust-crit-text"
+              >
+                {t(CAPTION_AI_TEXT.formStale)}
+              </p>
+            ) : null}
+
+            {/* 6. Speichern schreibt in die Fußnote, Abbrechen verwirft. */}
+            <div className="flex flex-wrap justify-end gap-2 border-t border-hairline pt-3">
+              <button
+                type="button"
+                onClick={closeCaptionForm}
+                className="inline-flex h-8 items-center rounded-btn border border-hairline bg-surface px-3 text-[12px] font-semibold text-muted hover:text-text"
+              >
+                {t(CAPTION_AI_TEXT.formCancel)}
+              </button>
+              <button
+                type="button"
+                data-testid="caption-form-save"
+                onClick={saveCaptionForm}
+                className="inline-flex h-8 items-center rounded-btn border border-ink bg-ink px-3 text-[12px] font-semibold text-white hover:opacity-90"
+              >
+                {t(CAPTION_AI_TEXT.formSave)}
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
 
       {/* WP-BILD-1c: KI-Beschreibung als VORSCHLAG an der fokussierten Fußnote — nur im
           Editier-Modus, nur mit verdrahtetem describe-Aufruf. Kein Auto-Übernehmen. */}

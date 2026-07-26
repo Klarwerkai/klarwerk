@@ -189,6 +189,9 @@ export function ImportGroups({
   criteria,
   selectedCandidateIds,
   aiAvailable = true,
+  groupingStale = false,
+  onGrouped,
+  onApplied,
 }: {
   criteria: ImportSelectCriteria;
   // F3 (bens ROT): die in der Vorschau gewählten, zulässigen Kandidaten-IDs. Sie steuern (zusätzlich
@@ -201,6 +204,22 @@ export function ImportGroups({
   // Themen-Gruppierung bleibt ein voller, nutzbarer Kernablauf (Ergebnis ehrlich „Ohne KI gruppiert").
   // Ohne Modell kündigt nur ein Vor-Hinweis an, dass ohne KI gruppiert wird. Default true (kein Test-Bruch).
   aiAvailable?: boolean;
+  // AUFTRAG-mega9 Block E-4 (KW-E2E-008): In dieser Sitzung wurde SCHON gruppiert, aber zu einer
+  // ANDEREN Auswahl — die damals aufgebauten Gruppen hat der Neu-Mount (React-Key) korrekt verworfen.
+  // Dieses Wissen überlebt den Remount nur im Eltern-Kontext, deshalb kommt es als Prop herein: der
+  // Knopf heißt dann ehrlich „Gruppierung aktualisieren" statt weiterhin „Weiter: Gruppieren".
+  //
+  // Warum NICHT automatisch neu gruppieren (die andere vom Prüfer angebotene Variante): Gruppieren
+  // kostet einen Modelllauf. Ihn bei jedem Häkchen selbsttätig auszulösen wäre teuer und für den
+  // Nutzer überraschend — ein ehrlich benannter Knopf ist hier die bessere Antwort.
+  groupingStale?: boolean;
+  // Eine Gruppierung ist erfolgreich durchgelaufen — der Eltern-Kontext merkt sich, ZU WELCHER
+  // Auswahl, um `groupingStale` bilden zu können.
+  onGrouped?: () => void;
+  // AUFTRAG-mega9 Block E-5 (KW-E2E-009): Die Übernahme ist durch. Der Eltern-Kontext frischt die
+  // Review-/Bilanz-Abfragen GEMEINSAM auf. Bewusst als Callback: diese Komponente bleibt ohne
+  // react-query-Abhängigkeit (dokumentierte Entscheidung an jumpToReview).
+  onApplied?: () => void;
 }): JSX.Element {
   const { i18n, t } = useTranslation();
   const hasSelection = selectedCandidateIds.length > 0;
@@ -266,6 +285,8 @@ export function ImportGroups({
       });
       setData(response);
       setSelection(initialSelection(response.candidates));
+      // AUFTRAG-mega9 Block E-4: dem Eltern-Kontext melden, ZU WELCHER Auswahl gruppiert wurde.
+      onGrouped?.();
     } catch (err) {
       // Ehrliche Meldung; der erneute Versuch nutzt serverseitig automatisch die deterministische
       // Fallback-Gruppierung, falls das Modell weiter ausfällt.
@@ -349,6 +370,13 @@ export function ImportGroups({
     } else {
       rewind("grouping");
     }
+    // AUFTRAG-mega9 Block E-5 (KW-E2E-009): Bilanz UND Review-Abfrage gehören zusammen aufgefrischt.
+    // Vorher blieb ["import-candidates"] nach der Übernahme stale: der Knopf zeigte „1 offen" (aus der
+    // frischen Bilanz dieses Laufs), der Review-Verlauf daneben noch „0 offen · 4 gesamt" (aus dem
+    // alten Cache) — und jumpToReview sprang den Nutzer genau auf diesen widersprüchlichen Zähler.
+    // Auch bei Transportfehlern melden: die TEILWEISE übernommenen Kandidaten sind echt und stehen
+    // schon in der Queue; ein stale Zähler wäre dann genauso falsch.
+    onApplied?.();
   };
 
   const counts = selectionCounts(selection);
@@ -389,7 +417,11 @@ export function ImportGroups({
             ) : (
               <Sparkles size={16} />
             )}
-            {busy === "group" ? t(IMPORT_GROUPS_TEXT.grouping) : t(IMPORT_GROUPS_TEXT.cta)}
+            {busy === "group"
+              ? t(IMPORT_GROUPS_TEXT.grouping)
+              : // AUFTRAG-mega9 Block E-4 (KW-E2E-008): nach einer Auswahländerung heißt derselbe
+                // Knopf, was er wirklich tut — die verworfene Gruppierung neu aufbauen.
+                t(groupingStale ? IMPORT_GROUPS_TEXT.refreshGrouping : IMPORT_GROUPS_TEXT.cta)}
           </Button>
           {!hasSelection ? (
             <p className="mt-1.5 text-[12px] text-muted-2">{t(IMPORT_GROUPS_TEXT.needSelection)}</p>

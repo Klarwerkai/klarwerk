@@ -15,7 +15,13 @@ describe("KW-LOGO-HOME-01: logo home route", () => {
   });
 
   it("rendert das Markenlogo als Router-Link zur Startseite", () => {
-    expect(logoSource).toContain('import { Link } from "react-router-dom";');
+    // AUFTRAG-mega11 Block B-2 (bens SB-2): Das Logo war ein ROHER `Link` und damit einer der fünf
+    // Shell-Ausgänge, die am Ungespeichert-Wächter vorbeigingen. Es ist weiterhin ein Router-Link
+    // (kein Vollbild-Neuladen), aber der geschützte: `GuardedLink` aus app/NavGuardContext.
+    // Der gemountete Beleg steht in tests/capture/frontdoor-navguard-exits-mounted.test.tsx.
+    expect(logoSource).toContain('import { GuardedLink } from "../app/NavGuardContext";');
+    expect(logoSource).toContain("<GuardedLink");
+    expect(logoSource).not.toContain('import { Link } from "react-router-dom";');
     expect(logoSource).toContain("to={HOME_ROUTE}");
     expect(logoSource).toContain('aria-label="Klarwerk - zur Startseite"');
   });

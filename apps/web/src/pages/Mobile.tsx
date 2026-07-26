@@ -14,12 +14,12 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useDrafts, useKos, useLibrarySearch } from "../api/hooks";
 import type { AnswerResult } from "../api/types";
-import { useNavGuard } from "../app/NavGuardContext";
+import { GuardedLink, useNavGuard, useUnloadGuard } from "../app/NavGuardContext";
 import { useToast } from "../app/ToastContext";
 import { HOME_ROUTE } from "../app/navigation";
 import { type SyncResult, useOfflineQueue } from "../app/useOfflineQueue";
@@ -173,6 +173,15 @@ export function Mobile(): JSX.Element {
     });
     return () => setGuard(null);
   });
+
+  // AUFTRAG-mega14 Block B (bens SB-2, mein O-3 aus mega13): der In-App-Wächter oben fängt nur
+  // SPA-Navigation. Neuladen, Tab-Schließen und ein Dokumentwechsel liefen hier bis eben still an
+  // ihm vorbei — derselbe Datenverlusttyp, den der History-Wächter gerade schließt. Es ist DIESELBE
+  // Vorrichtung wie in Erfassen (`Capture.tsx:1790`) und Vordertür (`CaptureFrontDoor.tsx:591`),
+  // keine zweite Autorität: `useUnloadGuard` hängt genau einen `beforeunload`-Handler ans Fenster
+  // und nimmt ihn wieder ab. Dasselbe Dirty-Prädikat wie der In-App-Wächter — beide können nicht
+  // auseinanderlaufen.
+  useUnloadGuard(isDraftFormFillable(form));
 
   // SCRUM-87 / FR-MOB-03: Inline-Bestätigung statt nativem Dialog.
   const [confirm, setConfirm] = useState<ConfirmState>(NO_CONFIRM);
@@ -489,14 +498,21 @@ export function Mobile(): JSX.Element {
                                   vorhandenen Bestand — nie eine ID zeigen, wenn ein KO bekannt ist);
                                   line-clamp gegen Überlauf, Volltitel im Tooltip. */}
                               {sourceRefs(s.sources, kos.data ?? []).map((ref) => (
-                                <Link
+                                // AUFTRAG-mega12 Block C (echter Treffer, gefunden beim Bauen der
+                                // Architekturprüfung): Mobile MELDET einen Wächter an
+                                // (isDraftFormFillable), hatte hier aber rohe <Link>. Die Erfassungs-
+                                // Karteikarte und diese Quellen-Verweise leben in DERSELBEN
+                                // Komponente — ein getippter Entwurf überlebt den Tab-Wechsel und
+                                // ging bei einem Tipp auf diesen Verweis still verloren. Dieselbe
+                                // Fehlerklasse wie bens SB-2-Befund in Capture.tsx.
+                                <GuardedLink
                                   key={ref.id}
                                   to={`/wissen/${ref.id}`}
                                   title={ref.label}
                                   className="line-clamp-1 max-w-[220px] text-[12px] font-semibold text-brand-text hover:underline"
                                 >
                                   {ref.label}
-                                </Link>
+                                </GuardedLink>
                               ))}
                             </div>
                           ) : null}
@@ -507,13 +523,14 @@ export function Mobile(): JSX.Element {
                             {t("ask.noBasisTitle")}
                           </p>
                           <p className="mt-1 text-[12.5px] text-muted">{t("ask.noBasisBody")}</p>
-                          <Link
+                          {/* AUFTRAG-mega12 Block C: derselbe Befund, zweiter Ausgang. */}
+                          <GuardedLink
                             to="/risiko"
                             className="mt-2 inline-flex items-center gap-1 text-[12.5px] font-semibold text-brand-text"
                           >
                             {t("ask.toGaps")}
                             <ArrowRight size={14} />
-                          </Link>
+                          </GuardedLink>
                         </div>
                       );
                     })()
@@ -551,7 +568,9 @@ export function Mobile(): JSX.Element {
                     <ul className="space-y-1.5">
                       {(search.data ?? []).slice(0, 20).map((k) => (
                         <li key={k.id}>
-                          <Link
+                          {/* AUFTRAG-mega12 Block C: derselbe Befund, dritter Ausgang — der
+                              Trefferliste-Tipp im Nachschlagen-Tab. */}
+                          <GuardedLink
                             to={`/wissen/${k.id}`}
                             className="block rounded-input border border-hairline p-2.5 hover:bg-hairline-soft"
                           >
@@ -563,7 +582,7 @@ export function Mobile(): JSX.Element {
                               </span>
                             </div>
                             <div className="truncate text-[13px] text-text">{k.title}</div>
-                          </Link>
+                          </GuardedLink>
                         </li>
                       ))}
                     </ul>

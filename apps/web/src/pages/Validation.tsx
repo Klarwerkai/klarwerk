@@ -748,6 +748,10 @@ export function Validation(): JSX.Element {
                               onRetry={() => aiCheckRetry.mutate(k.id)}
                               retryBusy={aiCheckRetry.isPending}
                               modelActive={aiModelActive}
+                              // AUFTRAG-mega9 Block E-3 (KW-E2E-007): die ECHTE Stufe dieses Objekts —
+                              // sonst behauptet der Grund „Vertraulich", obwohl nur der VERGLEICHS-
+                              // partner vertraulich war (Paar-Eigenschaft, s. aiCheckStatusCard).
+                              subjectConfidentiality={k.confidentiality}
                             />
                             {/* SCRUM-416: Trust bleibt sichtbar (entscheidungsrelevant) — rückt zu den Badges. */}
                             <span

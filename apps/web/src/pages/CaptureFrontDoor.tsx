@@ -1,12 +1,15 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CheckCircle2, Loader2, Save, Send, Sparkles } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import type { AssistResult, Confidentiality, KnowledgeObject, StructureResult } from "../api/types";
 import { useSession } from "../app/AuthContext";
+// AUFTRAG-mega9 Block B (KW-E2E-002): DERSELBE Navigations-Wächter, den /erfassen schon nutzt —
+// kein zweiter Wächter, keine kopierte Logik, nur ein weiterer Anmelder an derselben Vorrichtung.
+import { GuardedLink, useNavGuard, useUnloadGuard } from "../app/NavGuardContext";
 import { useToast } from "../app/ToastContext";
 import { DraftBodyGallery } from "../components/DraftBodyGallery";
 import { HelpTip } from "../components/HelpTip";
@@ -37,6 +40,14 @@ import {
 } from "../lib/captureFrontDoor";
 import { type CaptureHelpId, captureHelp } from "../lib/captureHelp";
 import { CONFIDENTIALITY_LEVELS } from "../lib/confidentiality";
+// AUFTRAG-mega23 Block A: DIESELBE Quelle wie der Erfassen-Weg — Erzeugung des Schlüssels, wann er
+// fällt, und welcher 409 einen neuen Vorgang rechtfertigt. Kein zweiter Mechanismus, keine eigene
+// Auslegung an dieser Tür.
+import {
+  createConflictOffersRestart,
+  createOperationIsSettled,
+  newCreateOperationId,
+} from "../lib/createOperation";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { draftProvenance } from "../lib/reasonerProvenance";
 import { isEmptyHtml } from "../lib/richText";
@@ -54,6 +65,9 @@ export function CaptureFrontDoor(): JSX.Element {
   const { push } = useToast();
   const qc = useQueryClient();
   const navigate = useNavigate();
+  // AUFTRAG-mega12 Block A: `guard` wird hier nicht mehr von Hand gerufen — der eine verbliebene
+  // geschützte Ausgang läuft über `GuardedLink`. Die Anmeldung (`setGuard`) bleibt unverändert.
+  const { setGuard } = useNavGuard();
   const [searchParams, setSearchParams] = useSearchParams();
   const resumeDraftId = searchParams.get("draft");
   const [title, setTitle] = useState("");
@@ -82,9 +96,41 @@ export function CaptureFrontDoor(): JSX.Element {
   const [submittedKo, setSubmittedKo] = useState<Pick<KnowledgeObject, "id" | "title"> | null>(
     null,
   );
+  // AUFTRAG-mega9 Block A (KW-E2E-001): true, sobald ein Einreichversuch an einer Inhaltsbedingung
+  // gescheitert ist — dann steht die Begründung SICHTBAR am Feld statt nur im grauen Knopf.
+  const [submitValidation, setSubmitValidation] = useState(false);
   const proposalRef = useRef<HTMLDivElement | null>(null);
+  // AUFTRAG-mega9 Block A: Anker der sichtbaren Feldvalidierung. scrollIntoView wird wie im R7-Muster
+  // per ?.() aufgerufen — Umgebungen ohne die API dürfen keine Exception werfen.
+  const validationRef = useRef<HTMLDivElement | null>(null);
+  // AUFTRAG-mega9 Block B (KW-E2E-002): der GESICHERTE Stand, gegen den „ungespeichert" gemessen wird.
+  // Ein Vergleich gegen „ist gesetzt" (wie hasDiscardRisk) wäre hier falsch: das bloße ÖFFNEN eines
+  // gespeicherten Entwurfs ist keine ungespeicherte Änderung und darf keine Warnung auslösen. Der
+  // Bezugspunkt wird beim Laden, Speichern und Einreichen fortgeschrieben — dasselbe „gegen frische
+  // Defaults, nicht gegen ist-gesetzt"-Prinzip wie hasUnsavedMeta im Erfassen-Weg (mega3).
+  const savedStateRef = useRef<{
+    title: string;
+    bodyHtml: string;
+    confidentiality: Confidentiality;
+  }>({ title: "", bodyHtml: "", confidentiality: "intern" });
   const saveRequestedRef = useRef(false);
   const submitRequestedRef = useRef(false);
+  // AUFTRAG-mega9 Block B: true, während der Wächter-Dialog das Speichern angestoßen hat — dann
+  // navigiert der Wächter, nicht die Seite (siehe save.onSuccess).
+  const guardSaveRef = useRef(false);
+  // ============================================================================================
+  // AUFTRAG-mega23 Block A — DER VORGANG DIESER VORDERTÜR.
+  // ============================================================================================
+  // Beide Refs gehören zusammen und beide leben AUSSERHALB der Mutationsfunktion, damit sie die
+  // Wiederholung überleben: der Schlüssel sagt dem Server „derselbe Vorgang", der gemerkte Entwurf
+  // sorgt dafür, dass der Serverabdruck (er enthält die Entwurfskennung) über die Wiederholung
+  // hinweg gleich bleibt. Die Begründung im Ganzen steht in lib/captureFrontDoor.ts.
+  const submitOperationRef = useRef<string | null>(null);
+  const submitDraftRef = useRef<string | null>(null);
+  // Steht hier eine Meldung, hat der Server einen 409 mit einem Code geliefert, für den ein NEUER
+  // Vorgang der richtige Ausweg ist. Die Oberfläche BIETET die Handlung sichtbar an — sie führt sie
+  // nicht hinter dem Rücken des Nutzers aus (mega22 Block E, dieselbe Regel).
+  const [restartOffer, setRestartOffer] = useState<string | null>(null);
 
   // SCRUM-474 P1: ausführliche ?-Hilfen aus der zentralen Erfassen-Hilfekarte (lib/captureHelp),
   // gleiches Muster wie im Prüfbereich (reviewHelp) und im geführten Erfassen (Capture.tsx).
@@ -99,6 +145,12 @@ export function CaptureFrontDoor(): JSX.Element {
   const fallbackTitle = t("cfd.fallbackTitle");
   const derivedTitle = deriveFrontDoorTitle(title, bodyHtml, fallbackTitle);
   const hasBody = !isEmptyHtml(bodyHtml);
+  // AUFTRAG-mega9 Block A (KW-E2E-001): „wird ein BESTEHENDER Entwurf aktualisiert" ist die Kante,
+  // an der sich Speicherbarkeit und Leerwert-Semantik entscheiden — dieselbe Unterscheidung, die
+  // buildFrontDoorPayload/draftBodyPatch (mega7) für den Transportweg treffen. Hier oben einmal
+  // benannt, damit Knopf und Payload nicht auseinanderlaufen können.
+  const isDraftUpdate = activeDraftId !== null;
+  const hasTitle = title.trim().length > 0;
   const locale = toReasonerLocale(i18n.language);
   const structureInput = buildFrontDoorStructureInput({ title, bodyHtml });
   const hasStructureInput = structureInput.length > 0;
@@ -148,6 +200,9 @@ export function CaptureFrontDoor(): JSX.Element {
     }
     setBodyHtml(next);
     setSubmittedKo(null);
+    // AUFTRAG-mega9 Block A: der Nutzer hat auf die Begründung reagiert — die Validierungsmeldung
+    // gehört weg, sobald wieder am Inhalt gearbeitet wird (kein stehender roter Rest).
+    setSubmitValidation(false);
     saveRequestedRef.current = false;
     submitRequestedRef.current = false;
     clearStructureState();
@@ -157,8 +212,11 @@ export function CaptureFrontDoor(): JSX.Element {
   const resetForNewEntry = (): void => {
     setTitle("");
     setBodyHtml("");
+    // AUFTRAG-mega9 Block B: bewusst geleertes Formular = neuer, sauberer Bezugspunkt.
+    savedStateRef.current = { title: "", bodyHtml: "", confidentiality };
     setSubmittedKo(null);
     setActiveDraftId(null);
+    setSubmitValidation(false);
     saveRequestedRef.current = false;
     submitRequestedRef.current = false;
     setSearchParams({}, { replace: true });
@@ -167,6 +225,11 @@ export function CaptureFrontDoor(): JSX.Element {
     setErr(null);
   };
 
+  // AUFTRAG-mega12 Block A: beide `navigate` hier bleiben BEWUSST roh.
+  //  · Erster Zweig: `!hasDiscardRisk` — es gibt nichts zu verlieren, der Wächter würde durchlaufen.
+  //  · Zweiter Zweig: der Nutzer hat das Verwerfen GERADE ausdrücklich bestätigt und der Zustand ist
+  //    eine Zeile darüber geräumt. Ein Wächter würde direkt nach dem Bestätigen ein ZWEITES Mal
+  //    fragen — zwei Dialoge hintereinander sind für den Nutzer ein Fehlerbild, nicht mehr Sicherheit.
   const discardInputAndReturn = (): void => {
     if (!hasDiscardRisk) {
       navigate("/erfassen");
@@ -195,10 +258,21 @@ export function CaptureFrontDoor(): JSX.Element {
         if (cancelled) {
           return;
         }
+        const loadedTitle = draft.payload.title ?? "";
+        const loadedBody = frontDoorBodyFromDraft(draft.payload);
+        const loadedConfidentiality = draft.payload.confidentiality ?? "intern";
         setActiveDraftId(draft.id);
-        setTitle(draft.payload.title ?? "");
-        setBodyHtml(frontDoorBodyFromDraft(draft.payload));
-        setConfidentiality(draft.payload.confidentiality ?? "intern");
+        setTitle(loadedTitle);
+        setBodyHtml(loadedBody);
+        setConfidentiality(loadedConfidentiality);
+        // AUFTRAG-mega9 Block B: der geladene Stand IST der gesicherte Stand — ein gerade geöffneter
+        // Entwurf ist nicht „ungespeichert" und löst keine Warnung aus.
+        savedStateRef.current = {
+          title: loadedTitle,
+          bodyHtml: loadedBody,
+          confidentiality: loadedConfidentiality,
+        };
+        setSubmitValidation(false);
         setSubmittedKo(null);
         saveRequestedRef.current = false;
         submitRequestedRef.current = false;
@@ -323,8 +397,23 @@ export function CaptureFrontDoor(): JSX.Element {
       const savedTitle = draft.payload.title ?? derivedTitle;
       setActiveDraftId(draft.id);
       setErr(null);
+      // AUFTRAG-mega9 Block B: der eben gespeicherte Stand ist der neue Bezugspunkt — die Seite ist
+      // ab hier sauber und der Wächter fragt beim Wechsel nicht mehr nach.
+      savedStateRef.current = { title, bodyHtml, confidentiality };
+      setSubmitValidation(false);
       push("success", t("fd.toastSaved"));
       void qc.invalidateQueries({ queryKey: ["drafts"] });
+      // AUFTRAG-mega9 Block B: Läuft das Speichern AUS DEM Wächter-Dialog („Entwurf speichern und
+      // wechseln"), navigiert der Wächter anschließend selbst an das vom Nutzer gewählte Ziel. Ohne
+      // diese Unterdrückung liefen zwei Navigationen gegeneinander und /erfassen hätte das
+      // eigentliche Ziel überschrieben.
+      if (guardSaveRef.current) {
+        guardSaveRef.current = false;
+        return;
+      }
+      // AUFTRAG-mega12 Block A: bleibt BEWUSST roh. Das läuft im `onSuccess` eines ERFOLGREICHEN
+      // Speicherns — der Entwurf ist persistiert, es kann nichts verloren gehen. Ein Wächter hier wäre
+      // zudem gefährlich: er könnte den Nutzer nach dem Speichern auf der Vordertür festhalten.
       navigate("/erfassen", {
         replace: true,
         state: {
@@ -342,24 +431,44 @@ export function CaptureFrontDoor(): JSX.Element {
   });
 
   const submit = useMutation({
-    mutationFn: () =>
-      submitFrontDoorDraft(
+    mutationFn: () => {
+      // AUFTRAG-mega23 Block A: EIN Vorgang, EIN Schlüssel — über alle Wiederholungen hinweg, bis er
+      // eindeutig erledigt ist. Er entsteht HIER, vor dem ersten Aufruf, und nicht in
+      // `submitFrontDoorDraft`: entstünde er dort, bekäme jeder Klick einen neuen, der Server sähe
+      // zwei Vorgänge statt einer Wiederholung, und die Dublette entstünde trotzdem.
+      if (!submitOperationRef.current) {
+        submitOperationRef.current = newCreateOperationId();
+      }
+      return submitFrontDoorDraft(
         { title, bodyHtml, activeDraftId, fallbackTitle, confidentiality },
         {
           createDraft: (payload) => endpoints.drafts.create(payload),
-          updateDraft: (id, payload) => endpoints.drafts.update(id, payload),
-          promoteDraft: (id) => endpoints.drafts.promote(id),
+          // Kein vorgeschaltetes `endpoints.drafts.update` mehr: der Stand reist IM Promote, also
+          // HINTER dem serverseitigen Nachschlag. Ein Wiederholversuch fasst damit keinen Entwurf
+          // an, den der eigene erste Lauf gerade gelöscht hat (sonst 404 auf einen GELUNGENEN
+          // Vorgang — derselbe Mangel wie mega21 Block B / mega22 Block H).
+          promoteDraft: (id, vorgang) => endpoints.drafts.promote(id, vorgang),
         },
-      ),
+        { id: submitOperationRef.current, draftRef: submitDraftRef },
+      );
+    },
     onMutate: () => {
       setErr(null);
       setSubmittedKo(null);
     },
     onSuccess: (ko) => {
+      // Der Vorgang ist abgeschlossen — das nächste Einreichen ist ein anderes.
+      submitOperationRef.current = null;
+      submitDraftRef.current = null;
+      setRestartOffer(null);
       setSubmittedKo({ id: ko.id, title: ko.title });
       setTitle("");
       setBodyHtml("");
       setActiveDraftId(null);
+      // AUFTRAG-mega9 Block B: eingereicht = nichts Ungesichertes mehr. Bezugspunkt auf den
+      // geleerten Zustand, damit die Erfolgsansicht ohne Warnung verlassen werden kann.
+      savedStateRef.current = { title: "", bodyHtml: "", confidentiality };
+      setSubmitValidation(false);
       setSearchParams({}, { replace: true });
       clearStructureState();
       clearAssistState();
@@ -371,27 +480,53 @@ export function CaptureFrontDoor(): JSX.Element {
     },
     onError: (e) => {
       submitRequestedRef.current = false;
+      // AUFTRAG-mega23 Block A: den Schlüssel NUR fallen lassen, wenn der Server EINDEUTIG
+      // geantwortet hat, dass nichts entstanden ist. Bei Netzabbruch, Zeitüberschreitung oder 5xx
+      // bleibt er stehen — genau dann ist der nächste Klick eine WIEDERHOLUNG und keine zweite
+      // Anlage. Dieselben Regeln wie im Erfassen-Weg, dieselbe Quelle (lib/createOperation.ts).
+      // Mit dem Schlüssel fällt auch der gemerkte Entwurf: er gehörte zu genau diesem Vorgang.
+      if (createOperationIsSettled(e instanceof ApiError ? e.status : undefined)) {
+        submitOperationRef.current = null;
+        submitDraftRef.current = null;
+      }
+      // AUFTRAG-mega23 Block A: der Rückweg aus dem 409 — dieselbe Unterscheidung nach Fehlercode
+      // wie in mega22 Block E. Ändert der Nutzer seinen Text NACH einem Antwortverlust, ist sein
+      // neuer Inhalt ein NEUER Vorgang; ohne dieses Angebot wiederholte jeder weitere Klick
+      // denselben 409. `CREATE_REPAIR_REQUIRED` ist ausdrücklich NICHT dabei (fail-closed) —
+      // dort wartet ein Objekt auf Prüfung, das ein neuer Vorgang zurückliesse.
+      setRestartOffer(
+        e instanceof ApiError && createConflictOffersRestart(e.status, e.code) ? e.message : null,
+      );
       setErr(errorMessage(e, t("fd.errSaveFailed")));
     },
   });
 
-  const canSave = hasBody && !save.isPending && !submit.isPending && !loadingDraft && !submittedKo;
-  const canSubmit =
-    hasBody && !save.isPending && !submit.isPending && !loadingDraft && !submittedKo;
-  const canStructure =
-    hasStructureInput &&
-    !structure.isPending &&
-    !loadingDraft &&
-    !save.isPending &&
-    !submit.isPending &&
-    !submittedKo;
-  const canAssist =
-    hasAssistInput &&
-    !assist.isPending &&
-    !loadingDraft &&
-    !save.isPending &&
-    !submit.isPending &&
-    !submittedKo;
+  // AUFTRAG-mega9 Block A (KW-E2E-001): laufende Vorgänge — der Anteil der Knopfsperre, der NICHTS
+  // mit Inhalt zu tun hat und deshalb für Speichern und Einreichen gleich gilt.
+  const busy = save.isPending || submit.isPending || loadingDraft || submittedKo !== null;
+  // AUFTRAG-mega9 Block A (KW-E2E-001): Der Speichern-Knopf hing an `hasBody` und sperrte damit
+  // ausgerechnet die bewusste Löschung, für die mega7 den Transportweg gebaut hat: draftBodyPatch
+  // erzeugt für einen geleerten Body eines FORTGESETZTEN Entwurfs den ausdrücklichen Leerwert —
+  // erreicht wurde er nie, weil der Knopf vorher sperrte. Der Fix war da, nur unerreichbar.
+  //
+  // Bei einem fortgesetzten Entwurf IST der geleerte Body die Änderung → immer speicherbar.
+  // Beim ANLEGEN bleibt die Sperre richtig, mit derselben Regel wie im geführten Erfassen
+  // (Capture.tsx: Rohtext ODER Aussage ODER Titel): Titel ohne Body ist speicherbar, ein
+  // vollständig leeres Formular nicht.
+  const hasSavableContent = isDraftUpdate || hasBody || hasTitle;
+  const canSave = hasSavableContent && !busy;
+  // AUFTRAG-mega9 Block A (KW-E2E-001, zweiter Teil): Einreichen ohne Inhalt ist nicht falsch, sondern
+  // war STUMM — ein grauer Knopf ohne Begründung. Die Inhaltsbedingung wird deshalb zu einem
+  // BENANNTEN Grund, den die Oberfläche am Feld zeigt (dasselbe Muster wie unsavableDirtyReasons im
+  // Erfassen-Weg). Der Knopf bleibt erreichbar und löst die Validierung aus; gesperrt ist er nur,
+  // solange ein Vorgang läuft.
+  const submitBlockReasons = hasBody ? [] : [t("fd.validate.needBody")];
+  // AUFTRAG-mega9 Block A: Die KI-Knöpfe bleiben BEWUSST an ihrer Inhaltsbedingung (hasStructureInput /
+  // hasAssistInput) — ein Struktur- oder Hilfe-Vorschlag über einen leeren Text hat keinen Gegenstand,
+  // hier ist die Sperre die Wahrheit und nicht eine verdeckte Blockade. Sie ist zudem am Feld erklärt
+  // (fd.needContentFirst). Nur die doppelte Vorgangs-Bedingung wandert in das gemeinsame `busy`.
+  const canStructure = hasStructureInput && !structure.isPending && !busy;
+  const canAssist = hasAssistInput && !assist.isPending && !busy;
 
   const acceptStructureProposal = (): void => {
     if (!structureProposal) {
@@ -449,6 +584,36 @@ export function CaptureFrontDoor(): JSX.Element {
     setAssistAccepted(false);
   };
 
+  // AUFTRAG-mega9 Block B (KW-E2E-002): das ehrliche Dirty-Prädikat der Vordertür — Abweichung des
+  // TATSÄCHLICHEN Formularinhalts (Titel, Body, Vertraulichkeit) vom gesicherten Stand, plus ein
+  // offener KI-Vorschlag. Bewusst NICHT hasDiscardRisk: das enthält `activeDraftId !== null` und
+  // hielte damit jeden nur GEÖFFNETEN Entwurf für ungespeichert (Warnung ohne Verlust).
+  //
+  // Wechselwirkung mit Block A, ausdrücklich geprüft: ein geleerter Body weicht vom gesicherten
+  // (nicht leeren) Stand ab ⇒ dirty. Genau die Löschung, die Block A speicherbar macht, ist damit
+  // auch die Löschung, die der Wächter schützt — sonst hätten wir sie speicherbar gemacht und
+  // gleichzeitig weiter still verlieren lassen.
+  const isFrontDoorDirty =
+    title !== savedStateRef.current.title ||
+    bodyHtml !== savedStateRef.current.bodyHtml ||
+    confidentiality !== savedStateRef.current.confidentiality ||
+    hasPendingProposal;
+  // AUFTRAG-mega9 Block B: die EHRLICHE GRENZE des Speicher-Vertrags, gleiche Bauart wie
+  // unsavableDirtyReasons im Erfassen-Weg (mega5). Für jeden Dirty-Zustand gilt genau eines von
+  // beidem: der Entwurf sichert ihn vollständig, ODER er steht hier namentlich.
+  const frontDoorUnsavableReasons = useMemo<string[]>(
+    () => [
+      // Ein angezeigter, noch nicht übernommener KI-Vorschlag reist in keinem Entwurf mit.
+      ...(hasPendingProposal ? [t("fd.unsavable.proposal")] : []),
+      // Nur die Vertraulichkeit umgestellt, ohne Titel/Body und ohne bestehenden Entwurf: es gibt
+      // nichts, woran der Entwurf diese Wahl festmachen könnte (Block A sperrt hier bewusst).
+      ...(!hasSavableContent && confidentiality !== savedStateRef.current.confidentiality
+        ? [t("fd.unsavable.confidentialityOnly")]
+        : []),
+    ],
+    [hasPendingProposal, hasSavableContent, confidentiality, t],
+  );
+
   const requestSave = (): void => {
     if (!canSave || saveRequestedRef.current) {
       return;
@@ -458,14 +623,64 @@ export function CaptureFrontDoor(): JSX.Element {
   };
 
   const requestSubmit = (): void => {
-    if (!canSubmit || submitRequestedRef.current) {
+    if (busy || submitRequestedRef.current) {
+      return;
+    }
+    // AUFTRAG-mega9 Block A (KW-E2E-001): fehlt Inhalt, wird der Versuch nicht still verschluckt —
+    // die benannte Begründung erscheint am Inhaltsfeld und der Fokus geht dorthin.
+    if (submitBlockReasons.length > 0) {
+      setSubmitValidation(true);
+      validationRef.current?.scrollIntoView?.({ behavior: "smooth", block: "center" });
       return;
     }
     submitRequestedRef.current = true;
     submit.mutate();
   };
 
+  // AUFTRAG-mega11 Block B-1 (bens SB-2): Der In-App-Wächter unten fängt nur den clientseitigen
+  // Seitenwechsel. Neuladen und Tab-Schließen gehen an ihm vorbei — `/erfassen` hatte dafür seit je
+  // einen beforeunload-Handler, die Vordertür nicht. Dieselbe Vorrichtung (useUnloadGuard, EINE
+  // Mechanik für beide Seiten), gebunden an dasselbe Dirty-Prädikat wie der Wächter: was hier warnt,
+  // warnt auch dort — kein zweiter Begriff von „ungespeichert".
+  useUnloadGuard(isFrontDoorDirty);
+
+  // AUFTRAG-mega9 Block B (KW-E2E-002): Der Prüfer hat den Wächter auf /erfassen ausdrücklich als
+  // vorbildlich bestätigt — die Vordertür war schlicht nie angemeldet. Ein Wechsel über „Alle
+  // Erfassungs-Modi", Sidebar oder Command-Palette ging deshalb ohne jede Warnung und nahm die
+  // Änderung mit. Hier meldet sich dieselbe Vorrichtung an, mit den Feldern DIESER Seite.
+  useEffect(() => {
+    setGuard({
+      isDirty: () => isFrontDoorDirty,
+      unsavableDirtyReasons: () => frontDoorUnsavableReasons,
+      save: async () => {
+        // Nichts Sicherbares (leeres Formular, nur Vertraulichkeit gewählt): dann gibt es hier auch
+        // nichts zu speichern — der Dialog bietet in diesem Fall über die Gründe oben ohnehin kein
+        // „Speichern und wechseln" an.
+        if (!hasSavableContent) {
+          return;
+        }
+        guardSaveRef.current = true;
+        try {
+          await save.mutateAsync();
+        } catch (e) {
+          // Fehlgeschlagen: Dialog bleibt offen (der Wächter wechselt nicht), die Seite zeigt den
+          // Fehler aus save.onError. Die Unterdrückung zurücknehmen, sonst verschluckte ein späterer
+          // Knopf-Save seine Navigation.
+          guardSaveRef.current = false;
+          throw e;
+        }
+      },
+    });
+    return () => setGuard(null);
+  }, [setGuard, isFrontDoorDirty, frontDoorUnsavableReasons, hasSavableContent, save]);
+
   if (submittedKo) {
+    // AUFTRAG-mega12 Block A: die drei Links dieser Erfolgsansicht bleiben BEWUSST rohe <Link>.
+    // Begründung nachgerechnet, nicht angenommen: `submit.onSuccess` leert Titel und Body und setzt
+    // `savedStateRef.current` auf genau diesen geleerten Stand (siehe dort, mega9). Damit ist
+    // `isFrontDoorDirty` in diesem Zweig beweisbar false und der Wächter würde nie auslösen. Ein
+    // GuardedLink wäre hier eine Vorrichtung ohne Wirkung — und würde vortäuschen, dass es an dieser
+    // Stelle etwas zu verlieren gäbe.
     return (
       <div className="mx-auto max-w-5xl">
         <PageHeader
@@ -514,9 +729,14 @@ export function CaptureFrontDoor(): JSX.Element {
         kicker={t("fd.kicker")}
         title={t("fd.title")}
         actions={
-          <Link className="text-sm font-semibold text-muted hover:text-ink" to="/erfassen">
+          // AUFTRAG-mega9 Block B (KW-E2E-002): GENAU der Weg aus dem Prüferbefund — der Wächter greift
+          // nur, wenn die Navigationsquelle guard() aufruft; ein blanker <Link> tut das nicht.
+          // AUFTRAG-mega12 Block A: UMGESTELLT auf `GuardedLink`. Die Wirkung ist unverändert (auch die
+          // Modifikator-Ausnahme steckt dort), aber die von Hand abgeschriebene Klick-Behandlung
+          // entfällt — genau die Doppelung, die mega11 mit den gemeinsamen Bauteilen beenden wollte.
+          <GuardedLink className="text-sm font-semibold text-muted hover:text-ink" to="/erfassen">
             {t("fd.allModes")}
-          </Link>
+          </GuardedLink>
         }
       />
 
@@ -528,9 +748,10 @@ export function CaptureFrontDoor(): JSX.Element {
               event.preventDefault();
               // SCRUM-474 P0: Der Primär-Pfad (Enter/Form-Submit + prominenter Button) REICHT EIN
               // (promote → KO), nicht nur Entwurf speichern.
-              if (canSubmit) {
-                requestSubmit();
-              }
+              // AUFTRAG-mega9 Block A: ohne Vorbedingung aufrufen — requestSubmit entscheidet selbst
+              // zwischen Einreichen und sichtbarer Feldvalidierung. Ein stiller Abbruch wie vorher
+              // (`if (canSubmit)`) ließ den Nutzer ohne jede Rückmeldung zurück.
+              requestSubmit();
             }}
           >
             <div>
@@ -593,6 +814,28 @@ export function CaptureFrontDoor(): JSX.Element {
               />
               {/* Teil B (Pedis Befund): Galerie schon im Entwurf — live aus dem Editor-HTML. */}
               <DraftBodyGallery bodyHtml={bodyHtml} />
+              {/* AUFTRAG-mega9 Block A (KW-E2E-001): die sichtbare Feldvalidierung AM Inhaltsfeld.
+                  Der Prüfer hat den wunden Punkt benannt: „eine etwaige Einreichsperre braucht eine
+                  sichtbare Feldvalidierung statt still deaktivierter Aktionen." Gleiches Listen-Muster
+                  wie unsavableDirtyReasons im Erfassen-Weg — kein zweites erfunden. */}
+              {submitValidation && submitBlockReasons.length > 0 ? (
+                <div
+                  ref={validationRef}
+                  role="alert"
+                  aria-live="polite"
+                  data-testid="frontdoor-submit-validation"
+                  className="rounded-card border border-trust-crit-fill/40 bg-trust-crit-bg p-3 text-sm text-trust-crit-text"
+                >
+                  <p className="font-semibold">{t("fd.validate.lead")}</p>
+                  <ul className="mt-1 list-disc space-y-1 pl-5 leading-relaxed">
+                    {submitBlockReasons.map((reason) => (
+                      <li key={reason}>{reason}</li>
+                    ))}
+                  </ul>
+                  {/* Ehrlicher Ausweg: was der Nutzer stattdessen tun kann. */}
+                  <p className="mt-1.5 text-[12px] leading-relaxed">{t("fd.validate.hint")}</p>
+                </div>
+              ) : null}
             </div>
 
             <div className="rounded-card border border-dashed border-ai/30 bg-ai/5 p-3">
@@ -835,10 +1078,60 @@ export function CaptureFrontDoor(): JSX.Element {
               </div>
             ) : null}
 
+            {/* ====================================================================================
+                AUFTRAG-mega23 Block A — DER RÜCKWEG AUS DEM ABDRUCKKONFLIKT.
+                ====================================================================================
+                Ohne ihn wäre der neue Schlüssel eine Sackgasse: geht die Antwort verloren und
+                ÄNDERT der Nutzer danach seinen Text, antwortet der Server zu Recht
+                IDEMPOTENCY_PAYLOAD_MISMATCH — und jeder weitere Klick wiederholte denselben 409.
+                Derselbe Knopf, dieselbe Entscheidungsregel und dieselben Texte wie im
+                Erfassen-Weg (mega22 Block E); die Meldung des Servers steht wörtlich dabei, weil
+                sie genauer ist als jeder Text, den diese Seite raten könnte. */}
+            {restartOffer ? (
+              <div className="rounded-card border border-trust-warn-fill/40 bg-trust-warn-bg p-3">
+                <p className="text-[13px] font-semibold text-trust-warn-text">
+                  {t("capture.restartOfferTitle")}
+                </p>
+                <p className="mt-1 text-[12.5px] leading-relaxed text-trust-warn-text/90">
+                  {restartOffer}
+                </p>
+                <p className="mt-1 text-[12.5px] leading-relaxed text-trust-warn-text">
+                  {t("capture.restartOfferBody")}
+                </p>
+                <div className="mt-2">
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      // DIE HANDLUNG, DIE WIRKT: der nächste Einreich-Versuch trägt einen ANDEREN
+                      // Vorgangsschlüssel — und einen frisch angelegten Entwurf, weil der gemerkte
+                      // zum alten Vorgang gehörte.
+                      //
+                      // AUCH DER FORTGESETZTE ENTWURF WIRD GELÖST, und das ist kein Beifang: einen
+                      // Abdruckkonflikt kann es nur geben, wenn der erste Vorgang serverseitig
+                      // GELUNGEN ist — dann ist genau dieser Entwurf bereits verbraucht und
+                      // gelöscht. Bliebe er stehen, liefe der neue Vorgang in ein 404 auf einen
+                      // Entwurf, den es nicht mehr gibt, statt in die gewollte zweite Anlage.
+                      submitOperationRef.current = null;
+                      submitDraftRef.current = null;
+                      setActiveDraftId(null);
+                      setSearchParams({}, { replace: true });
+                      setRestartOffer(null);
+                      setErr(null);
+                    }}
+                  >
+                    {t("capture.restartOfferAction")}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
             {/* SCRUM-474 P0: „Prüfen / Einreichen" ist der prominente Haupt-CTA (type=submit). */}
             <div className="flex flex-wrap items-center gap-3">
               <span className="inline-flex items-center gap-1">
-                <Button type="submit" variant="primary" disabled={!canSubmit}>
+                {/* AUFTRAG-mega9 Block A (KW-E2E-001): NICHT `!canSubmit` — der Knopf bleibt bei
+                    fehlendem Inhalt erreichbar und löst die sichtbare Feldvalidierung aus. Gesperrt
+                    ist er nur, solange ein Vorgang läuft (`busy`). Kein grauer Knopf ohne Begründung. */}
+                <Button type="submit" variant="primary" disabled={busy}>
                   {submit.isPending ? (
                     <Loader2 size={15} className="animate-spin" />
                   ) : (

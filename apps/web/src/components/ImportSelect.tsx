@@ -10,7 +10,7 @@
 // WP-SHIP9-S1b (bens GELB): offene Kandidaten tragen ein EIGENES Kennzeichen „bereits zur Prüfung
 // vorgemerkt" (eigene Farbe/eigener Text, gleiche Vorab-Abwahl) — nie mehr „bereits importiert".
 // WP-IC-PAKET-1 (Teil 1): Altbestand-Anzeige dekodiert HTML-Entities (nur Text-Rendering, nie HTML).
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Images, Loader2, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -72,6 +72,10 @@ function parsedPositiveInt(raw: string): number | undefined {
 
 export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Element {
   const { t, i18n } = useTranslation();
+  // AUFTRAG-mega9 Block E-5 (KW-E2E-009): Bilanz und Review-Abfrage nach der Übernahme GEMEINSAM
+  // auffrischen. ImportGroups bleibt bewusst ohne react-query-Abhängigkeit (dokumentiert an
+  // jumpToReview) — die Invalidierung sitzt deshalb hier, im Eltern-Kontext.
+  const qc = useQueryClient();
   // PAKET 1 (D-AISTATE, Pedi 23.07.): ist die KI-Gruppierung (Task „group") nutzbar? An ImportGroups
   // durchgereicht — der deterministische Gruppierungs-Ablauf bleibt nutzbar, nur der Vor-Hinweis ehrlich.
   const groupAi = useAiAvailable("group");
@@ -282,6 +286,12 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
         checkedRows[index] === true && entry.id ? [entry.id] : [],
       )
     : [];
+
+  // AUFTRAG-mega9 Block E-4 (KW-E2E-008): Der Neu-Mount über den React-Key verwirft die aufgebaute
+  // Gruppierung korrekt — aber damit auch das Wissen, DASS schon gruppiert wurde. Genau deshalb stand
+  // dort weiterhin „Weiter: Gruppieren & Übernehmen", als der Nutzer nach dem Gruppieren einen
+  // Kandidaten abwählte. Dieses Wissen lebt hier, oberhalb des Keys, und überlebt den Remount.
+  const [lastGroupedKey, setLastGroupedKey] = useState<string | null>(null);
   const languageLabel = (lang: PreviewLanguage | undefined): string =>
     lang === "de"
       ? t("imp.select.langDe")
@@ -638,14 +648,38 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
               Neu-Mount den kompletten aufgebauten Zustand (Gruppen/Zweit-Auswahl/Bilanz), sodass
               die sichtbaren Gruppen NIE von der aktuellen Auswahl abweichen (und ein in-flight
               /group der alten Auswahl auf der abgemeldeten Instanz ins Leere läuft). */}
-          {preview.preview.length > 0 ? (
-            <ImportGroups
-              key={`${JSON.stringify(preview.criteria)}|${JSON.stringify([...selectedCandidateIds].sort())}`}
-              criteria={preview.criteria}
-              selectedCandidateIds={selectedCandidateIds}
-              aiAvailable={groupAi.available}
-            />
-          ) : null}
+          {preview.preview.length > 0
+            ? (() => {
+                // Derselbe Wert wie der React-Key — EINE Quelle, damit „was wurde gruppiert" und
+                // „was setzt den Schritt zurück" nicht auseinanderlaufen können.
+                const groupKey = `${JSON.stringify(preview.criteria)}|${JSON.stringify(
+                  [...selectedCandidateIds].sort(),
+                )}`;
+                return (
+                  <ImportGroups
+                    key={groupKey}
+                    criteria={preview.criteria}
+                    selectedCandidateIds={selectedCandidateIds}
+                    aiAvailable={groupAi.available}
+                    // AUFTRAG-mega9 Block E-4 (KW-E2E-008): schon gruppiert, aber zu einer ANDEREN
+                    // Auswahl ⇒ der Knopf heißt „Gruppierung aktualisieren".
+                    groupingStale={lastGroupedKey !== null && lastGroupedKey !== groupKey}
+                    onGrouped={() => setLastGroupedKey(groupKey)}
+                    // AUFTRAG-mega9 Block E-5 (KW-E2E-009): Review-Queue und Bilanz GEMEINSAM
+                    // auffrischen — sonst zeigt der Verlauf neben dem frischen „1 offen" noch die
+                    // Zahlen von vor der Übernahme.
+                    onApplied={() => {
+                      void qc.invalidateQueries({ queryKey: ["import-candidates"] });
+                      // Übernommene Kandidaten werden zu Wissensobjekten — dieselben Begleiter, die
+                      // auch die Review-Entscheidung in Stufe2 auffrischt.
+                      void qc.invalidateQueries({ queryKey: ["kos"] });
+                      void qc.invalidateQueries({ queryKey: ["library"] });
+                      void qc.invalidateQueries({ queryKey: ["validation"] });
+                    }}
+                  />
+                );
+              })()
+            : null}
         </div>
       ) : null}
     </div>

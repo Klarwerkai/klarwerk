@@ -25,7 +25,16 @@ const d = vi.hoisted(() => {
       reject: (e: unknown) => state.reject(e),
     };
   };
-  return { aiConfig: mk(), analytics: mk(), board: mk(), upload: mk(), extPolicy: mk() };
+  // AUFTRAG-mega14 Block H (SCRUM-437): die Demodaten-Zeile ist eine SECHSTE tragende Quelle —
+  // sie gehört in dieselbe atomare Ladegruppe wie die anderen fünf.
+  return {
+    aiConfig: mk(),
+    analytics: mk(),
+    board: mk(),
+    upload: mk(),
+    extPolicy: mk(),
+    demo: mk(),
+  };
 });
 
 vi.mock("../../apps/web/src/api/auth", () => ({
@@ -40,7 +49,7 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
   const ok = <T,>(v: T) => vi.fn(async () => v);
   return {
     endpoints: {
-      admin: { factoryResetStatus: ok({ pending: false }) },
+      admin: { factoryResetStatus: ok({ pending: false }), demoStatus: d.demo.fn },
       users: { list: ok([]) },
       analytics: { overview: d.analytics.fn },
       audit: { list: ok([]), verify: ok({ ok: true }) },
@@ -160,6 +169,7 @@ describe("Block B: Bereitschaft — gescheiterter Refetch bleibt sichtbar als St
       d.board.resolve([]);
       d.upload.resolve({ maxAttachments: 10, maxAttachmentBytes: 20_000_000 });
       d.extPolicy.resolve({ enabled: false, stage: "blocked" });
+      d.demo.resolve({ present: false, count: 0 });
       await flush();
     });
     expect(container.textContent).not.toContain(i18n.t("adm.ready.loading"));

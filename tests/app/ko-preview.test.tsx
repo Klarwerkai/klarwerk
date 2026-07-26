@@ -101,7 +101,8 @@ describe("Paket 3 · Verdrahtung an den drei Flächen", () => {
     expect(read("apps/web/src/pages/Validation.tsx")).toContain("<KoSummaryDisclosure source={k}");
     const stufe2 = read("apps/web/src/pages/Stufe2.tsx");
     expect(stufe2).toContain("<KoSummaryDisclosure");
-    expect(stufe2).toContain('defaultOpen={c.status === "neu"}');
+    // AUFTRAG-mega9 Block E-1: derselbe Sachverhalt, jetzt aus der zentralen Statusquelle.
+    expect(stufe2).toContain("defaultOpen={isOpenImportCandidate(c.status)}");
   });
 
   it("ko.preview-Texte sind in DE/EN/NL vorhanden", () => {

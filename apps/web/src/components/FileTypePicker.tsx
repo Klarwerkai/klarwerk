@@ -31,12 +31,16 @@ import {
 // solche Buttons als seinen EINEN Primär-CTA. Die Kacheln sind informativ/aktivierend, nicht der CTA.
 const TILE_CLASS: Record<SourceState, string> = {
   active: "border-ink/30 bg-surface text-text hover:border-ink/50 hover:bg-hairline-soft",
+  // AUFTRAG-mega15 Block D (SCRUM-382): vorhanden, aber ohne hinterlegten Dienst nicht nutzbar —
+  // optisch naeher an „bald" als an „geplant", denn gebaut IST es. Aktivierbar ist es trotzdem nicht.
+  unconfigured: "border-hairline bg-page text-muted hover:border-ink/25",
   soon: "border-hairline bg-page text-muted hover:border-ink/25",
   planned: "border-hairline-soft bg-page text-muted-2 hover:border-ink/20",
 };
 
 const BADGE_CLASS: Record<SourceState, string> = {
   active: "bg-trust-pos-bg text-trust-pos-text",
+  unconfigured: "bg-trust-warn-bg text-trust-warn-text",
   soon: "bg-trust-warn-bg text-trust-warn-text",
   planned: "bg-hairline-soft text-muted-2",
 };

@@ -28,6 +28,31 @@ echo ""
 # 0) Stale Lock der Bridge entfernen (sonst hakt Git beim Committen).
 rm -f "$REPO/.git/index.lock"
 
+# 0a) AUFTRAG-mega25 Block C — DAS ZUGANGSDATUM DES SHIP-SMOKES, EINMAL UND DEKLARIERT.
+#
+# Schritt 3/4 des Runners fährt `npm run smoke:ui` (drei Engines, MIT Modell — befristete
+# Ship-Voraussetzung, SCRUM-552). Bis mega24 zog der Smoke-Server sein Zugangsdatum still aus Pedis
+# persönlichem macOS-Schlüsselbund. Das ist in keiner Variante der Endzustand (ben, sammel24): ein
+# automatisiertes Tor greift ohne ausdrückliche Freigabe nicht auf das persönliche Zugangsdatum eines
+# Menschen zu. Der Schlüsselbund wird deshalb auf KEINEM Testweg mehr gelesen
+# (`playwright.smoke.config.ts` setzt KLARWERK_SKIP_KEYCHAIN=1 am Smoke-Server), und das Zugangsdatum
+# kommt allein aus der Variablen unten.
+#
+# HIER wird der Weg von Pedis Terminal bis zum Smoke-Server geschlossen: geprüft und exportiert, BEVOR
+# irgendetwas Teures läuft. Ohne die Variable bricht sonst erst der Runner nach Minuten ab.
+# Es wird NIE ein Wert ausgegeben — nur der Name.
+if [ -z "${KLARWERK_SHIP_SMOKE_API_KEY:-}" ]; then
+  echo "✗ KLARWERK_SHIP_SMOKE_API_KEY ist nicht gesetzt — der volle UI-Smoke (Schritt 3/4 des Runners) braucht ein Modell."
+  echo "  So setzen (verdeckte Eingabe, nichts landet in der Befehlshistorie):"
+  echo "    read -rs -p \"Schluessel: \" KLARWERK_SHIP_SMOKE_API_KEY && export KLARWERK_SHIP_SMOKE_API_KEY"
+  echo "  Danach dieses Skript im SELBEN Terminal erneut starten."
+  echo "  Kein Rueckfall auf den Schluesselbund: der Smoke liest ihn bewusst nicht mehr."
+  exit 1
+fi
+export KLARWERK_SHIP_SMOKE_API_KEY
+echo "✓ 0/5  Zugangsdatum fuer den Ship-Smoke liegt vor (KLARWERK_SHIP_SMOKE_API_KEY, Wert wird nirgends ausgegeben)."
+echo ""
+
 # 1) Runner-Gate — das harte Tor. WICHTIG: paul-runner.sh beendet sich mit Exit 0, AUCH wenn Gates
 # ROT sind (er druckt nur „Mindestens ein Gate ROT"). Deshalb NICHT am Exit-Code prüfen, sondern am
 # eindeutigen Erfolgs-Marker „ALLE GATES GRÜN" in der Runner-Ausgabe. (Fix 06.07.: vorher lief das

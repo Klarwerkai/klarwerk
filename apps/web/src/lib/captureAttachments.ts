@@ -18,6 +18,12 @@ export interface AttachmentUploadItem {
   data: string; // Original-Daten-URL (geht in den Object-Store, NICHT in den KO-Body)
   kind: AttachmentKind;
   thumbnail?: string; // kleine Vorschau (nur Bilder)
+  // AUFTRAG-mega17 Block A-2: LOKALER Schlüssel dieses Anhangs. Er reist NICHT zum Server. Er ist
+  // die Brücke zwischen „das Dokument, aus dem der Inhalt übernommen wurde" (beim Erfassen bekannt,
+  // lange bevor ein Wissensobjekt existiert) und der ECHTEN objectId, die erst der Attach in Phase B
+  // liefert. Quellenvermerke, die auf diesen Schlüssel zeigen, bekommen genau diese objectId als
+  // ANKER — nicht mehr `undefined`, an dem sie auf der Vorgabestufe stumm scheiterten.
+  anchorKey?: string;
 }
 
 // Vom Object-Store zurückgegebene Referenz (nur die hier benötigten Felder).
@@ -33,6 +39,8 @@ export interface AttachmentUploadApi {
     mime: string;
     data: string;
     kind: AttachmentKind;
+    // AUFTRAG-mega20 Block C: WOZU wird hochgeladen (s. services/object-store/src/types.ts).
+    purpose?: "anchor" | "attachment" | "media" | "example";
   }): Promise<UploadedObjectRef>;
   attach(
     koId: string,
@@ -48,7 +56,14 @@ export interface AttachmentUploadApi {
 
 // WP-D2: „too-large" gesondert — der Nutzer soll wissen, dass die DATEI zu groß war (Limit), nicht
 // dass „etwas schiefging". Der Text-Import bleibt davon unberührt.
-export type AttachmentFailureReason = "upload" | "attach" | "too-large";
+// AUFTRAG-mega17 Block A-2: „provenance" gesondert — das ist KEIN Anhangsfehler. Der Inhalt ist im
+// Wissensobjekt, der zugehörige HERKUNFTSVERMERK fehlt. Ein Produkt mit dem Satz „Beweispflicht statt
+// Plausibilität" darf diesen Fall nicht als allgemeines „Anhang fehlgeschlagen" verkleiden.
+// AUFTRAG-mega18 Block A-3: „unclear" gesondert — der dritte, bis mega17 gar nicht darstellbare
+// Ausgang. Er bedeutet NICHT „fehlgeschlagen", sondern „der Server hat nicht geantwortet, es kann
+// vollzogen sein oder nicht". Ihn als Fehler zu verkaufen wäre dieselbe Unwahrheit wie ihn als
+// Erfolg zu verkaufen; beides hat mega17 an dieser Stelle getan.
+export type AttachmentFailureReason = "upload" | "attach" | "too-large" | "provenance" | "unclear";
 
 // WP-D2: Upload-Fehler klassifizieren — 413 (Route-bodyLimit) oder die Objekt-/Anhang-Größenmeldungen
 // des Servers gelten als „zu groß"; alles andere bleibt generisch „upload". Reines Ducktyping, damit
@@ -131,41 +146,13 @@ export interface OriginalRefCache {
   ref: UploadedObjectRef | null;
 }
 
-export async function attachOriginalDocument(
-  koId: string,
-  original: OriginalDocument,
-  api: AttachmentUploadApi,
-  cache: OriginalRefCache,
-): Promise<{ attached: boolean; failure?: AttachmentFailure }> {
-  let ref = cache.ref;
-  if (!ref) {
-    try {
-      ref = await api.upload({
-        name: original.name,
-        mime: original.mime,
-        data: original.data,
-        kind: "document",
-      });
-      cache.ref = ref;
-    } catch (error) {
-      return {
-        attached: false,
-        failure: { name: original.name, reason: classifyUploadError(error) },
-      };
-    }
-  }
-  try {
-    await api.attach(koId, {
-      name: original.name,
-      mime: original.mime,
-      objectId: ref.id,
-      ...(ref.size != null ? { size: ref.size } : {}),
-    });
-    return { attached: true };
-  } catch {
-    return { attached: false, failure: { name: original.name, reason: "attach" } };
-  }
-}
+// AUFTRAG-mega18 Block A-3: `attachOriginalDocument` ist ENTFALLEN. Sie war der Griff „Original
+// hochladen UND ans KO hängen" und wurde von BodyExtractPanel und AppendToArticleModal genutzt, um
+// den Anker VOR den Belegen zu erzeugen — zwei Schreibvorgänge, zwischen denen ein Fehlschlag einen
+// Teilzustand hinterließ, und mit einem Rückgabewert (`attached: false`), den beide Aufrufer
+// ignorieren KONNTEN und im Fall von BodyExtractPanel auch ignoriert haben. Beide Wege laden das
+// Original jetzt nur noch hoch (`endpoints.objects.upload`); das BINDEN ans Wissensobjekt macht die
+// Verbund-Operation, gemeinsam mit Belegen und Inhalt, in EINEM Schreibvorgang.
 
 // WP-D7b (Rot-Fix 1): ungefähre Byte-Größe einer Original-Daten-URL (data:...;base64,XXXX). base64 bläht
 // ~4/3 auf; die reale Objektgröße ist BODY.length * 3/4 minus Padding. Nur für den ehrlichen Fortschritts-
@@ -242,7 +229,16 @@ async function uploadAttachmentObjects(
   const settled = await Promise.allSettled(
     items.map((item) =>
       pooled(() =>
-        api.upload({ name: item.name, mime: item.mime, data: item.data, kind: item.kind }),
+        api.upload({
+          name: item.name,
+          mime: item.mime,
+          data: item.data,
+          kind: item.kind,
+          // AUFTRAG-mega20 Block C: reine Anhänge — Bilder und mitgebrachte Dateien OHNE
+          // übernommenen Inhalt. Ankerdokumente laufen nicht hier durch (sie sind bereits
+          // gesichert und werden von der Verbund-Operation gebunden).
+          purpose: "attachment",
+        }),
       ),
     ),
   );
@@ -284,6 +280,8 @@ async function uploadOriginalObject(
         mime: original.mime,
         data: original.data,
         kind: "document",
+        // AUFTRAG-mega20 Block C: das Original der Datei-Warteschlange wird Beleg-Anker.
+        purpose: "anchor",
       }),
     );
     cache.ref = ref;
@@ -297,16 +295,48 @@ async function uploadOriginalObject(
   }
 }
 
+// AUFTRAG-mega18 Block A-3: EIN Übernahme-Vorgang je Ankerdokument. Der Finalizer führt sie in
+// Phase B SERIELL aus und wertet ihr Urteil aus — er kennt weder Endpunkte noch die Kennung, damit
+// dieser Helfer DOM- und API-Client-frei testbar bleibt.
+//
+// Warum das nicht mehr in `pendingSources` mitläuft: eine Belegstelle aus einem DOKUMENT ist etwas
+// anderes als eine externe Quelle aus dem Suchfeld. Sie gehört zu übernommenem Inhalt und untersteht
+// deshalb der internen Belegpflicht (services/knowledge-object/src/document-append.ts), die die
+// externe Stufenregel NICHT ersetzt und nicht ersetzen kann. Zwei Regeln, zwei Wege, zwei Meldungen.
+export interface DocumentAppendJob {
+  /** Name des Ankerdokuments — trägt die ehrliche Fehlermeldung. */
+  name: string;
+  /**
+   * Vollzieht die Verbund-Operation. WIRFT NICHT: sie liefert ihr Urteil, damit der Finalizer
+   * zwischen „abgelehnt (nichts geschrieben)" und „unklar (nichts anfassen)" unterscheiden kann.
+   */
+  run: () => Promise<{ committed: boolean; unclear: boolean }>;
+}
+
 export interface CaptureFinalizeInput {
   koId: string;
   attachments: readonly AttachmentUploadItem[];
   api: AttachmentUploadApi;
+  /**
+   * AUFTRAG-mega18 Block A-3: die Übernahme-Vorgänge des Dokumentinhalts. Sie laufen in Phase B
+   * VOR den restlichen Quellen und STRIKT SERIELL — jeder ist selbst ein einziger Serveraufruf mit
+   * einem einzigen Compare-and-Set, also kann hier auch nichts mehr gegen sich selbst verlieren.
+   */
+  documentAppends?: readonly DocumentAppendJob[] | null;
   // Original als Anhang mitführen (Ref-Cache über mehrere Queue-KOs).
   original?: { doc: OriginalDocument; cache: OriginalRefCache } | null;
   // Reiner KO-Write (add-source) des Datei-Imports; wirft → ehrlicher Teilfehler unter `name`.
   queueSource?: { name: string; run: () => Promise<void> } | null;
   // Gesammelte externe Quellen — INTERN seriell (attachPendingSources); läuft als EIN Phase-B-Schritt.
-  pendingSources?: (() => Promise<{ attached: number; failed: string[] }>) | null;
+  // AUFTRAG-mega17 Block A-2: der Rückruf bekommt die in Phase B ENTSTANDENEN Anker (lokaler
+  // anchorKey → echte objectId des am KO liegenden Anhangs). Er läuft NACH den Anhängen, also ist
+  // die Karte zu diesem Zeitpunkt vollständig — genau die Reihenfolge, die der Haupt-Dateiimport
+  // schon einhält („erst das Original ans Ziel-KO, dann die Quelle mit dessen echter objectId").
+  pendingSources?:
+    | ((
+        anchors: ReadonlyMap<string, string>,
+      ) => Promise<{ attached: number; failed: string[]; unanchored: string[] }>)
+    | null;
   // Echte Stufen-Transition für die Fortschrittsanzeige: "uploading" (Phase A) → "linking" (Phase B).
   onPhase?: (phase: "uploading" | "linking") => void;
 }
@@ -331,6 +361,10 @@ export async function finalizeCaptureSubmit(
   //      selben KO gleichzeitig. So kann kein CAS-STALE_WRITE durch Selbst-Konkurrenz entstehen. ----
   input.onPhase?.("linking");
   const failed: AttachmentFailure[] = [];
+  // AUFTRAG-mega17 Block A-2: lokaler anchorKey → ECHTE objectId. Ein Eintrag entsteht NUR nach
+  // erfolgreichem Attach — ein hochgeladenes, aber nicht am KO hängendes Objekt ist kein Anker
+  // (genau das prüft die Route gegen die eigene Anhangsliste, ko-routes.ts:622-627).
+  const anchors = new Map<string, string>();
   let attached = 0;
   for (const up of uploadedAttachments) {
     if (up.failure) {
@@ -349,6 +383,9 @@ export async function finalizeCaptureSubmit(
         ...(up.ref.size != null ? { size: up.ref.size } : {}),
       });
       attached += 1;
+      if (up.item.anchorKey) {
+        anchors.set(up.item.anchorKey, up.ref.id);
+      }
     } catch {
       failed.push({ name: up.item.name, reason: "attach" });
     }
@@ -370,6 +407,20 @@ export async function finalizeCaptureSubmit(
       }
     }
   }
+  // AUFTRAG-mega18 Block A-3: die Übernahme-Vorgänge. Ein Fehlschlag ist ein HERKUNFTS-Befund
+  // („provenance"), kein Anhangsfehler — der Nutzer muss wissen, dass es um den Beleg zum
+  // übernommenen Inhalt geht. Ein UNKLARER Ausgang wird ebenso gemeldet und NICHTS zurückgenommen:
+  // blindes Kompensieren nach unklarem Ausgang ist abgeschafft (bens Auflage).
+  for (const job of input.documentAppends ?? []) {
+    try {
+      const verdict = await job.run();
+      if (!verdict.committed) {
+        failed.push({ name: job.name, reason: verdict.unclear ? "unclear" : "provenance" });
+      }
+    } catch {
+      failed.push({ name: job.name, reason: "provenance" });
+    }
+  }
   if (input.queueSource) {
     try {
       await input.queueSource.run();
@@ -378,9 +429,14 @@ export async function finalizeCaptureSubmit(
     }
   }
   if (input.pendingSources) {
-    const sourceRes = await input.pendingSources();
+    const sourceRes = await input.pendingSources(anchors);
     for (const name of sourceRes.failed) {
       failed.push({ name, reason: "attach" });
+    }
+    // AUFTRAG-mega17 Block A-2: getrennt gemeldet, weil es etwas anderes bedeutet — der Inhalt steht
+    // im Wissensobjekt, sein Beleg nicht. Der Nutzer muss das WISSEN, nicht raten.
+    for (const name of sourceRes.unanchored) {
+      failed.push({ name, reason: "provenance" });
     }
   }
   return { attached, failed };
@@ -416,4 +472,12 @@ export const ATTACHMENT_RECOVERY_KEYS = {
   next: "capture.attachFailedNext",
   // WP-D2: Zusatzzeile, wenn mindestens ein Anhang an der Größen-Grenze scheiterte.
   tooLarge: "capture.attachTooLarge",
+  // AUFTRAG-mega17 Block A-2: Zusatzzeile, wenn ein HERKUNFTSVERMERK nicht gesetzt werden konnte.
+  // Sie benennt, was wirklich fehlt (der Beleg zum übernommenen Inhalt), nicht „ein Anhang".
+  provenance: "capture.sourceMissingBody",
+  provenanceNext: "capture.sourceMissingNext",
+  // AUFTRAG-mega18 Block A-3: Zusatzzeile für den UNKLAREN Ausgang eines Übernahme-Vorgangs. Sie
+  // behauptet NICHTS über den Bestand und fordert zum Nachsehen auf — die einzige ehrliche Auskunft,
+  // wenn der Server nicht geantwortet hat.
+  unclear: "capture.appendUnclearBody",
 } as const;

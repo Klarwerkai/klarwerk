@@ -104,10 +104,29 @@ describe("SCRUM-243: Capture/KO/Attachment/Evidence (HTTP end-to-end)", () => {
     expect(record.label).toBe("skizze.png");
   });
 
-  it("add-source erzeugt Source-Evidence (kind source) mit Label/URL/Provider", async () => {
+  it("add-source erzeugt Source-Evidence (kind source) mit Label/URL", async () => {
     const { app, headers } = await adminApp();
     const koId = (await createKo(app, headers)).json().id as string;
 
+    // AUFTRAG-mega15 Block B (bens SB-4): dieser Test pinnte bis mega14, dass ein vom CLIENT
+    // geliefertes `provider` bis in die Evidenz durchschlägt — genau die Vertrauensbeziehung, die
+    // SB-4 aufgehoben hat. Der Server liest das Feld nicht mehr; die Herkunft leitet er aus der
+    // Adresse ab (services/external-search/src/provenance.ts). Eine eigene Unterlage auf
+    // example.org ist kein Provider-Treffer und bekommt deshalb KEINEN Herkunftsvermerk — auch
+    // dann nicht, wenn der Client einen behauptet. Die Stufen-Sperre selbst liegt in
+    // tests/app/external-attach-gate-e2e.test.ts.
+    //
+    // AUFTRAG-mega16 Block A: seit die Stufe eine echte, fail-closed Grenze ist, wird JEDE Quelle
+    // mit öffentlicher Web-Adresse auf der VORGABE-Stufe (search_on_click) abgewiesen — auch diese
+    // hier, die mit dem Gate gar nichts zu tun hat. Dieser Test handelt von der EVIDENZ, also wird
+    // die Stufe ausdrücklich auf „anhängen erlaubt" gestellt, statt den Vertrag aufzuweichen.
+    const stage = await app.inject({
+      method: "PUT",
+      url: "/api/external/policy",
+      headers,
+      payload: { stage: "search_attach" },
+    });
+    expect(stage.statusCode).toBe(200);
     const add = await app.inject({
       method: "PUT",
       url: `/api/kos/${koId}`,
@@ -129,13 +148,46 @@ describe("SCRUM-243: Capture/KO/Attachment/Evidence (HTTP end-to-end)", () => {
     expect(source).toBeTruthy();
     expect(source.kind).toBe("external");
     expect(source.peerValidated).toBe(false);
+    expect(source.provider ?? null).toBeNull();
 
     const ev = await app.inject({ method: "GET", url: `/api/kos/${koId}/evidence`, headers });
     const record = ev.json().find((e: { kind: string }) => e.kind === "source");
     expect(record).toBeTruthy();
     expect(record.label).toBe("Wartungshandbuch S. 12");
     expect(record.url).toBe("https://example.org/handbuch");
-    expect(record.provider).toBe("Intern");
+    expect(record.provider).toBeNull();
+  });
+
+  it("die Herkunft in der Evidenz stammt vom Server, nicht aus der Nutzlast (SB-4)", async () => {
+    const { app, headers } = await adminApp();
+    const koId = (await createKo(app, headers)).json().id as string;
+    const stage = await app.inject({
+      method: "PUT",
+      url: "/api/external/policy",
+      headers,
+      payload: { stage: "search_attach" },
+    });
+    expect(stage.statusCode).toBe(200);
+
+    const add = await app.inject({
+      method: "PUT",
+      url: `/api/kos/${koId}`,
+      headers,
+      payload: {
+        action: "add-source",
+        source: {
+          label: "Dichtung (Technik)",
+          url: "https://de.wikipedia.org/wiki/Dichtung_(Technik)",
+          excerpt: "Eine Dichtung verhindert …",
+          // Bewusst FALSCH behauptet — der Server überschreibt es mit dem, was er ableiten kann.
+          provider: "Werksarchiv",
+        },
+      },
+    });
+    expect(add.statusCode).toBe(200);
+    const ev = await app.inject({ method: "GET", url: `/api/kos/${koId}/evidence`, headers });
+    const record = ev.json().find((e: { kind: string }) => e.kind === "source");
+    expect(record.provider).toBe("Wikipedia");
   });
 
   it("Guards/Fehler: anonym abgewiesen; add-source ohne Label und unbekanntes Objekt scheitern", async () => {

@@ -22,7 +22,7 @@
 | Admin | `adm.dup.title` | Duplikat-Erkennung | ✅ |
 | Admin | `adm.createTitle` | Nutzer anlegen | ❌ |
 | Admin | `adm.auditTitle` | Letzte Nutzer-/Auth-Aktivitäten (Audit) | ❌ |
-| Admin | `adm.sich.auditTitle` | Prüfprotokoll — manipulationssicher | ✅ |
+| Admin | `adm.sich.auditTitle` | Prüfprotokoll — hash-verkettet, Abweichungen prüfbar | ✅ |
 | Admin | `adm.sich.dataTitle` | Datenschutz & Sicherheit | ✅ |
 | Admin | `adm.ready.title` | VIP-Bereitschaft | ✅ |
 | Analytics | `ana.exec.title` | Executive-Blick | ✅ |
@@ -30,7 +30,7 @@
 | Analytics | `ana.byType` | Verteilung nach Wissensart | ❌ |
 | Analytics | `ana.impact` | Wirkung | ✅ |
 | Analytics | `ana.weekly` | Validiert je Woche | ❌ |
-| Analytics | `ana.audit` | Audit-Log (unveränderlich) | ✅ |
+| Analytics | `ana.audit` | Audit-Log (hash-verkettet) | ✅ |
 | Ask | `ask.steps` | Argumentationsschritte | ❌ |
 | Ask | `ask.sources` | Quellen | ❌ |
 | Capture | `capture.resumeTitle` | Entwürfe fortsetzen | ❌ |
@@ -108,7 +108,7 @@
 | `adm.trash.help` | Admin | Gelöschte Beiträge landen hier und bleiben 28 Tage wiederherstellbar. Danach werden sie automatisch endgültig gelöscht. Demo-Daten erscheinen hier nie — sie werden immer sofort endgültig gelöscht. |
 | `adm.upload.help` | Admin | Legt fest, wie viele Anhänge ein Objekt haben darf und wie groß ein einzelner Anhang sein darf. Gilt für neue Anhänge; bestehende bleiben. Änderungen landen im Audit-Log. |
 | `adm.val.help` | Admin | Die Standard-Prüferanzahl gilt für neue Einreichungen ohne eigene Angabe. Erlaubt sind 1 bis 5. Bestehende Beiträge bleiben unverändert; Änderungen landen im Audit-Log. |
-| `ana.help.audit` | Analytics | Das Audit-Log protokolliert unveränderlich jede relevante Aktion — wer (Actor), was (Aktion) und woran (Ziel). Über die Filter grenzen Sie schnell auf eine Person, eine Aktionsart oder ein Objekt ein; nachträglich lässt sich nichts ändern. |
+| `ana.help.audit` | Analytics | Das Audit-Log hält jede relevante Aktion fest — wer (Actor), was (Aktion) und woran (Ziel). Einträge werden nur angefügt und hash-verkettet; eine nachträgliche Abweichung ist rechnerisch prüfbar. Über die Filter grenzen Sie schnell auf eine Person, eine Aktionsart oder ein Objekt ein. |
 | `ana.help.exec` | Analytics | Vier Kern-Kennzahlen aus Live-Daten: validiertes Wissen, offene Prüfungen, Bus-Faktor-Risiko und gerettete Lücken. Ein ruhiger Überblick für Entscheider — je höher der Validierungsgrad und je niedriger das Risiko, desto gesünder die Wissensbasis. |
 | `ana.help.health` | Analytics | Der Health-Score (0–100) fasst Validierungsgrad, Aktualität und Quellenbreite zusammen. Das Band (z. B. gut oder kritisch) zeigt den Zustand auf einen Blick; darunter sehen Sie, welche Faktoren den Wert heben oder senken. |
 | `ana.help.impact` | Analytics | Wirkung zeigt, was das System real leistet: validierte Objekte gesamt, gestellte Fragen, ohne Lücke beantwortete Fragen und die daraus errechnete Antwortquote. Der Wochenverlauf macht sichtbar, ob validiertes Wissen wächst. |
@@ -220,7 +220,7 @@
 | `klara.noResults` | Klara-Panel | Dazu habe ich noch keinen Eintrag — eine ehrliche Hilfe-Lücke. Die Bibliothek wächst gerade; auf der Hilfeseite findest du die geführten Einstiege. |
 | `klara.open` | Klara-Panel | Klara öffnen — Hilfe zu dieser Seite |
 | `klara.page.admin` | Klara-Panel | Konten, KI-Zuordnung, Daten und Sicherheit an einem Ort. Nur für Admins sichtbar. |
-| `klara.page.analytics` | Klara-Panel | Kennzahlen aus echten Daten plus das unveränderliche Audit-Log — wer hat was wann getan. |
+| `klara.page.analytics` | Klara-Panel | Kennzahlen aus echten Daten plus das hash-verkettete Audit-Log — wer hat was wann getan. |
 | `klara.page.ask` | Klara-Panel | Stell eine Frage. Die Antwort kommt ausschließlich aus validiertem Wissen mit Quellen — gibt es keins, entsteht eine ehrliche Wissenslücke. |
 | `klara.page.capture` | Klara-Panel | Hier sicherst du Erfahrungswissen: erzählen, diktieren, im Interview oder aus einer Datei. Die KI strukturiert nur — du prüfst und reichst ein. |
 | `klara.page.conflicts` | Klara-Panel | Widersprüche zwischen Wissensobjekten: sichten, zweite Meinung holen, auflösen — damit die Bibliothek eindeutig bleibt. |

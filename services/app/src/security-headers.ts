@@ -1,5 +1,5 @@
 import fastifyHelmet from "@fastify/helmet";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 
 // WP-KLARA-1b (bens Sicherheits-Befunde K1/K2): Security-Header als EXPORTIERTE Produktionsfunktion —
 // server.ts verdrahtet exakt diese Registrierung, und der Header-Matrix-Test (tests/app/
@@ -36,6 +36,45 @@ export const WORD_ADDIN_CSP = [
   "frame-ancestors 'self' https://*.office.com https://*.officeapps.live.com",
 ].join("; ");
 
+// AUFTRAG-mega15 Block C (bens SB-3) — `upgrade-insecure-requests` NUR auf echten HTTPS-Antworten.
+//
+// Der Befund: die Direktive stammt aus den helmet-Vorgaben (useDefaults) und stand deshalb auf
+// JEDER Antwort, auch auf plain HTTP. Chromium und Firefox nehmen 127.0.0.1 davon aus, WebKit nicht:
+// es zieht jede gleich-origin Unterressource auf https hoch, ein ohne TLS ausgelieferter Server
+// antwortet darauf nicht, alle Ressourcen scheitern — die Seite bleibt WEISS. Das trifft jede
+// lokale oder interne plain-HTTP-Installation, die jemand mit Safari öffnet.
+//
+// bens Einordnung, die den Fix trägt: „Auf einer HTTP-Antwort kann die Direktive kein fehlendes TLS
+// erzeugen; dort schafft sie in WebKit nur die weisse Seite." Sie hat also auf HTTP keinen
+// Sicherheitsnutzen, den man abwägen müsste — sie ist dort schlicht falsch am Platz.
+//
+// Pedis Entscheidung: der Fix steckt IM PRODUKT, nicht in einer Reverse-Proxy-Anleitung. Er wirkt
+// deshalb auch dort, wo niemand einen Proxy einrichtet.
+export const UPGRADE_INSECURE_REQUESTS = "upgrade-insecure-requests";
+
+// Ist DIESE Antwort wirklich über HTTPS unterwegs?
+//
+// `request.protocol` ist Fastifys eigene Auskunft. Ohne Proxy liest sie den TLS-Zustand des Sockets
+// (`raw.socket.encrypted`). MIT Proxy wertet sie `X-Forwarded-Proto` aus — aber AUSSCHLIESSLICH,
+// wenn die Gegenstelle laut `trustProxy` vertrauenswürdig ist. Genau das ist bens Auflage: die
+// Proxy-Signale laufen über die bereits gehärtete Trust-Proxy-Konfiguration (`resolveTrustProxy`,
+// addon-auth-throttle.ts; verdrahtet in build-app.ts:573) und über NICHTS sonst. Ein beliebiger
+// Client, der `X-Forwarded-Proto: https` mitschickt, bewirkt damit nichts — belegt im Header-Test.
+//
+// Eine Sonderregel am `Host`-Header hat ben ausdrücklich verworfen; sie steht hier bewusst nicht.
+export function isHttpsRequest(request: FastifyRequest): boolean {
+  return request.protocol === "https";
+}
+
+// Hängt die Direktive an eine bestehende CSP — genau einmal, und nur wenn es überhaupt eine CSP gibt.
+export function withUpgradeInsecureRequests(csp: string): string {
+  const value = csp.trim().replace(/;$/, "");
+  if (value.length === 0 || value.split(";").some((d) => d.trim() === UPGRADE_INSECURE_REQUESTS)) {
+    return csp;
+  }
+  return `${value}; ${UPGRADE_INSECURE_REQUESTS}`;
+}
+
 // K1: fällt dieser Request-Pfad in die Word-Add-in-CSP-Ausnahme? NUR Query/Fragment strippen, dann
 // EXAKTER String-Vergleich gegen die kanonische Menge. Bewusst KEINE weitere Normalisierung/Dekodierung:
 // alles, was nicht byte-genau einem der kanonischen Strings entspricht — /word-addin/../x,
@@ -63,6 +102,10 @@ export async function registerSecurityHeaders(app: FastifyInstance): Promise<voi
         baseUri: ["'self'"],
         formAction: ["'self'"],
         frameAncestors: ["'none'"],
+        // AUFTRAG-mega15 Block C (bens SB-3): helmets Vorgabe setzt `upgrade-insecure-requests`
+        // global. `null` nimmt sie aus der Vorgabemenge heraus; der onSend-Hook unten setzt sie
+        // stattdessen NUR auf Antworten, die wirklich über HTTPS gehen.
+        upgradeInsecureRequests: null,
       },
     },
     hsts: { maxAge: 31_536_000, includeSubDomains: true, preload: true },
@@ -75,7 +118,8 @@ export async function registerSecurityHeaders(app: FastifyInstance): Promise<voi
   // WP-E-Regel: app-globale onSend-Hooks IMMER synchron im Callback-Stil (kein async — s.
   // sync-onsend-hooks.test.ts; ein async-Hook öffnete das Doppel-Send-Fenster ERR_HTTP_HEADERS_SENT).
   app.addHook("onSend", (request, reply, payload, done) => {
-    if (isWordAddinCspPath(request.url)) {
+    const wordAddin = isWordAddinCspPath(request.url);
+    if (wordAddin) {
       reply.header("Content-Security-Policy", WORD_ADDIN_CSP);
       // X-Frame-Options kennt keine Domain-Liste — für diese exakten Pfade entfernen; die
       // CSP-frame-ancestors oben ist die präzisere, von modernen Engines bevorzugte Grenze.
@@ -85,6 +129,22 @@ export async function registerSecurityHeaders(app: FastifyInstance): Promise<voi
       // Office-Einbettung trotz korrekter CSP.
       reply.removeHeader("X-Frame-Options");
       reply.raw.removeHeader("X-Frame-Options");
+    }
+    // AUFTRAG-mega15 Block C: die Direktive kommt erst HIER dazu, und nur auf echtem HTTPS.
+    // Gelesen wird die RAW-Response, weil helmet seine Header dort ablegt (derselbe Befund wie bei
+    // X-Frame-Options oben); geschrieben wird über `reply.header`, das beim Senden gewinnt.
+    if (isHttpsRequest(request)) {
+      const current = wordAddin
+        ? WORD_ADDIN_CSP
+        : String(
+            reply.getHeader("Content-Security-Policy") ??
+              reply.raw.getHeader("content-security-policy") ??
+              "",
+          );
+      const next = withUpgradeInsecureRequests(current);
+      if (next !== current) {
+        reply.header("Content-Security-Policy", next);
+      }
     }
     done(null, payload);
   });

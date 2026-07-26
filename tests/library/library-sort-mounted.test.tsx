@@ -120,14 +120,17 @@ function pos(title: string): number {
   return (container.textContent ?? "").indexOf(title);
 }
 
-function chip(text: string): HTMLButtonElement {
-  const btn = [...container.querySelectorAll("button")].find((b) =>
-    (b.textContent ?? "").replace(/\s+/g, " ").includes(text),
+// AUFTRAG-mega10 Block B: Facetten-Optionen sind in der Schiene echte Checkboxen im <label>
+// (erster <span> = Wert, zweiter = Kontext-Zähler) statt aria-pressed-Chips.
+function option(value: string): HTMLInputElement {
+  const row = [...container.querySelectorAll("label")].find(
+    (l) => l.querySelectorAll("span")[0]?.textContent === value,
   );
-  if (!(btn instanceof HTMLButtonElement)) {
-    throw new Error(`Chip „${text}" fehlt; DOM: ${container.textContent}`);
+  const box = row?.querySelector("input[type=checkbox]");
+  if (!(box instanceof HTMLInputElement)) {
+    throw new Error(`Option „${value}“ fehlt; DOM: ${container.textContent}`);
   }
-  return btn;
+  return box;
 }
 
 beforeEach(async () => {
@@ -161,7 +164,7 @@ describe("AUFTRAG-sortfilter: gemountete Library-Sortierung (echter Seam)", () =
     mount();
     // Kategorie „Anlage 1" wählen (nur Alpha + Mittel) …
     act(() => {
-      chip("Anlage 1 · 2").click();
+      option("Anlage 1").click();
     });
     // … dann Titel A→Z: nur die gefilterte Menge, in alphabetischer Ordnung.
     setSort("title");

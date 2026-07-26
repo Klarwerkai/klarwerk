@@ -87,6 +87,98 @@ guard_port_free_or_ours() {
   die "${name}-Port ${port} ist durch einen fremden Prozess belegt. Stoppe ihn bewusst oder waehle einen anderen Port."
 }
 
+# AUFTRAG-mega18 Block D: `env -i` unten ist RICHTIG (bewusste Kapselung: kein heimliches .env, keine
+# Zufalls-Umgebung aus der aufrufenden Shell) — es war nur zu eng. Die Variablen der LOKALEN KI wurden
+# schweigend verworfen: wer sie vorher per source/export gesetzt hatte, bekam eine Instanz OHNE lokale
+# KI und suchte den Fehler anschliessend beim Modell statt beim Starter. Ein Starter, der etwas
+# stillschweigend wegwirft, versteckt den Fehler an genau der falschen Stelle. Darum: exakt die
+# Variablennamen durchreichen, die der Code WIRKLICH liest — Belege:
+#   services/reasoner/src/model-client.ts:300  KLARWERK_LOCAL_LLM_URL
+#   services/reasoner/src/model-client.ts:301  KLARWERK_LOCAL_LLM_MODEL
+#   services/reasoner/src/model-client.ts:305  KLARWERK_LOCAL_LLM_TIMEOUT_MS
+#   services/reasoner/src/model-client.ts:309  KLARWERK_LOCAL_LLM_KEY
+#   services/reasoner/src/model-client.ts:382  KLARWERK_LOCAL_LLM_MAX_TOKENS
+#   services/reasoner/src/model-client.ts:398  KLARWERK_LOCAL_LLM_ALLOWED_ORIGINS
+# Keine Sammel-Weitergabe per Praefix-Schleife: nur real gelesene Namen, sonst wandert wieder
+# unkontrollierte Umgebung in den Prozess.
+#
+# AUFTRAG-mega19 Block F-1: KLARWERK_LOCAL_LLM_MAX_TOKENS wurde in mega18 im Code eingefuehrt und
+# hier VERGESSEN — `env -i` verwarf sie also weiterhin. Das ist mehr als kosmetisch: ohne
+# Untergrenze fuer die Antwortlaenge kann ein Denkmodell genau den Reasoning-only-/Truncated-Fall
+# provozieren, den die Leerantwort-Pruefung (requireChatContent) abfedern soll. Regel fuer das
+# naechste Mal: eine neue KLARWERK_LOCAL_LLM_*-Variable gehoert im SELBEN Lauf in beide Listen —
+# den Leser im Code UND diese Durchreichung.
+LOCAL_LLM_VARS=(
+  KLARWERK_LOCAL_LLM_URL
+  KLARWERK_LOCAL_LLM_MODEL
+  KLARWERK_LOCAL_LLM_KEY
+  KLARWERK_LOCAL_LLM_TIMEOUT_MS
+  KLARWERK_LOCAL_LLM_MAX_TOKENS
+  KLARWERK_LOCAL_LLM_ALLOWED_ORIGINS
+)
+
+# Sammelt die gesetzten UND nicht-leeren Werte als NAME=WERT-Paare. Leere Werte werden bewusst NICHT
+# durchgereicht: ein leeres KLARWERK_LOCAL_LLM_TIMEOUT_MS wuerde eine Vorgabe im Code ueberschreiben,
+# und "gesetzt, aber leer" ist keine Verdrahtung, sondern ein Versehen.
+LOCAL_LLM_PASSTHROUGH=()
+collect_local_llm_env() {
+  LOCAL_LLM_PASSTHROUGH=()
+  local name value
+  for name in "${LOCAL_LLM_VARS[@]}"; do
+    value="${!name-}"
+    [ -n "$value" ] || continue
+    LOCAL_LLM_PASSTHROUGH+=("${name}=${value}")
+  done
+}
+
+# AUFTRAG-mega18 Block D: sichtbar sagen, WAS verdrahtet ist. Der Reasoner braucht URL UND Modell
+# (services/reasoner/src/model-client.ts:302) — nur eines von beiden ist keine lokale KI, also wird das
+# auch so benannt statt halb-gruen gemeldet. Kein Schluessel, kein Netzzugriff in dieser Ausgabe.
+#
+# AUFTRAG-mega19 Block F-2: die ROHE URL wird NICHT mehr ausgegeben. Eine Adresse kann Userinfo
+# (https://benutzer:geheim@host/...) oder eine sensitive Query tragen; beides stuende sonst im
+# Terminal UND im Startlog, wo es niemand vermutet und niemand rotiert. Ausgegeben wird nur der
+# ORIGIN (Schema + Host + Port) — genug, um „ist die richtige Maschine verdrahtet?" zu beantworten,
+# und nichts darueber hinaus. Laesst sich der Origin nicht sicher herausloesen, wird schlicht
+# „verdrahtet" gemeldet statt geraten.
+sanitize_llm_origin() {
+  local raw="$1"
+  # Schema + Host[:Port], ohne Userinfo, ohne Pfad, ohne Query, ohne Fragment.
+  local rest="${raw#*://}"
+  local scheme="${raw%%://*}"
+  case "$scheme" in
+    http|https) ;;
+    *) echo ""; return 0 ;;
+  esac
+  rest="${rest%%/*}"
+  rest="${rest%%\?*}"
+  rest="${rest%%#*}"
+  # Userinfo vor dem @ faellt weg — genau der Teil, der ein Geheimnis tragen kann.
+  rest="${rest##*@}"
+  [ -n "$rest" ] || { echo ""; return 0; }
+  echo "${scheme}://${rest}"
+}
+
+report_local_llm() {
+  local url="${KLARWERK_LOCAL_LLM_URL-}"
+  local model="${KLARWERK_LOCAL_LLM_MODEL-}"
+  if [ -n "$url" ] && [ -n "$model" ]; then
+    local origin
+    origin="$(sanitize_llm_origin "$url")"
+    if [ -n "$origin" ]; then
+      echo "Lokale KI: ${origin} (Modell: ${model})"
+    else
+      echo "Lokale KI: verdrahtet (Modell: ${model})"
+    fi
+  elif [ -n "$url" ]; then
+    echo "Lokale KI: nicht verdrahtet (KLARWERK_LOCAL_LLM_MODEL nicht gesetzt; URL allein genuegt nicht)"
+  elif [ -n "$model" ]; then
+    echo "Lokale KI: nicht verdrahtet (KLARWERK_LOCAL_LLM_URL nicht gesetzt; Modell allein genuegt nicht)"
+  else
+    echo "Lokale KI: nicht verdrahtet (KLARWERK_LOCAL_LLM_URL nicht gesetzt)"
+  fi
+}
+
 start_backend() {
   if pid_alive "$BACKEND_PID"; then
     echo "Backend laeuft bereits (PID $(pid_value "$BACKEND_PID"))."
@@ -94,8 +186,12 @@ start_backend() {
   fi
   guard_port_free_or_ours "Backend" "$BACKEND_PORT" "$BACKEND_PID"
   echo "Starte Backend auf ${BACKEND_URL} ..."
+  collect_local_llm_env
+  report_local_llm
   (
     cd "$ROOT"
+    # AUFTRAG-mega18 Block D: `${LOCAL_LLM_PASSTHROUGH[@]+...}` haelt die Zeile bei leerem Array auch
+    # unter `set -u` sauber (bash 3.2 auf macOS) — ohne gesetzte Variablen aendert sich nichts.
     nohup env -i \
       HOME="$HOME" \
       PATH="$PATH" \
@@ -103,6 +199,7 @@ start_backend() {
       NODE_ENV=development \
       PORT="$BACKEND_PORT" \
       KLARWERK_DEV_PERSIST=1 \
+      ${LOCAL_LLM_PASSTHROUGH[@]+"${LOCAL_LLM_PASSTHROUGH[@]}"} \
       npm start >"$LOG_DIR/backend.log" 2>&1 &
     echo "$!" >"$BACKEND_PID"
   )
@@ -121,6 +218,12 @@ start_frontend() {
   echo "Starte Frontend auf ${FRONTEND_URL} ..."
   (
     cd "$ROOT"
+    # AUFTRAG-mega18 Block D: hier BEWUSST kein KLARWERK_LOCAL_LLM_* — apps/web liest keine dieser
+    # Variablen (Grep ueber apps/: null Treffer); das Frontend spricht ausschliesslich ueber
+    # VITE_API_TARGET mit dem Backend, das die lokale KI verdrahtet. Zusaetzlich waere es falsch, den
+    # KLARWERK_LOCAL_LLM_KEY in die Umgebung eines Vite-Dev-Servers zu heben, der Env-Werte ins Bundle
+    # spiegeln kann. Wer die Variablen im Frontend braeuchte, muesste sie ohnehin VITE_-praefixiert und
+    # bewusst freigeben — nicht per Starter durchsickern lassen.
     nohup env -i \
       HOME="$HOME" \
       PATH="$PATH" \

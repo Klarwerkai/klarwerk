@@ -630,21 +630,46 @@ const de = {
   "adm.ready.upload.val": "{{n}} Anhänge · {{mb}} MB",
   "adm.ready.unknown": "unbekannt",
   "adm.ready.loading": "wird geladen …",
+  // AUFTRAG-mega14 Block H (SCRUM-437): die fehlende Zeile. Sie ZEIGT nur — Laden/Entfernen bleibt
+  // im Datenbereich, es gibt genau eine Autorität.
+  "adm.ready.demo": "Demodaten",
+  "adm.ready.demo.loaded": "{{n}} geladen — im Bereich Daten entfernbar",
+  "adm.ready.demo.none": "keine geladen",
+  "adm.ready.demo.goto": "Zum Datenbereich",
   "adm.ready.external": "Externe Wissensabfrage",
   "adm.ready.ext.blocked": "Blockiert",
   "adm.ready.ext.searchOnClick": "Suche auf Klick",
   "adm.ready.ext.searchAttach": "Suchen & anhängen",
   "adm.ready.ext.open": "Offen",
   // SCRUM-432 (Pedi 03.07., VIP-Investor): Vertrauen & Sicherheit.
-  "adm.sich.auditTitle": "Prüfprotokoll — manipulationssicher",
+  // AUFTRAG-mega15 Block A (bens SB-1, zweiter Durchgang): „manipulationssicher" ist eine STÄRKERE
+  // Aussage als „Abweichung erkannt" — sie behauptet, es KÖNNE nichts passieren. Die Kette hat
+  // keinen extern verankerten Kopf (s. lib/auditVerifyState.ts:14-16); wer die Datenbank beherrscht,
+  // kann einen Eintrag samt aller Folgehashes neu bilden. Belegbar ist deshalb genau eines: die
+  // Kette macht eine nachträgliche Änderung rechnerisch auffällig. Das ist stark — nur eben nicht
+  // „sicher". Alle Texte dieser Fläche sagen ab hier genau das, in DE/EN/NL.
+  "adm.sich.auditTitle": "Prüfprotokoll — hash-verkettet, Abweichungen prüfbar",
   "adm.sich.auditHelp":
-    "Jede sicherheitsrelevante Aktion wird nur angefügt und über eine Hash-Kette verkettet. Nachträglich lässt sich kein Eintrag ändern oder löschen, ohne dass die Kette bricht — das macht das Protokoll überprüfbar (tamper-evident).",
+    "Jede sicherheitsrelevante Aktion wird nur angefügt und über eine Hash-Kette mit dem vorherigen Eintrag verbunden. Wird ein Eintrag nachträglich geändert oder entfernt, passt sein Hash nicht mehr — die Abweichung ist rechnerisch feststellbar und wird beim Integritätslauf mit Nummer, Datum und Aktion benannt. Die Kette hat dabei keinen extern verankerten Kopf: wer vollen Schreibzugriff auf die Datenbank hat, kann einen Eintrag samt aller Folgehashes neu bilden. Das Protokoll ist also prüfbar (tamper-evident) — die Kette hält eine Änderung nicht auf, sie macht sie auffällig.",
   "adm.sich.auditIntro":
-    "Append-only, hash-verkettet: eine überprüfbare Spur aller sicherheitsrelevanten Aktionen. Nichts wird rückwirkend verändert.",
+    "Append-only, hash-verkettet: eine prüfbare Spur aller sicherheitsrelevanten Aktionen. Eine nachträgliche Abweichung an einem Eintrag lässt sich rechnerisch feststellen.",
   "adm.sich.auditCount": "{{count}} Einträge in der Kette",
   "adm.sich.verify.button": "Integrität prüfen",
   "adm.sich.verify.ok": "Integrität geprüft ✓ — {{count}} Einträge, Kette lückenlos",
-  "adm.sich.verify.fail": "Kette verletzt ✗ — Manipulation erkannt",
+  // AUFTRAG-mega14 Block A-2 (bens SB-1): drei Zustände statt zwei. Das Wort „Manipulation" ist hier
+  // bewusst getilgt — in BEIDE Richtungen: die Anzeige behauptet weder, Manipulation sei erkannt,
+  // noch, sie sei ausgeschlossen. Die Kette hat keinen extern verankerten Kettenkopf; beide Aussagen
+  // wären unbelegt. Gelb sagt „die VORLIEGENDEN Werte passen zum gespeicherten Hash" — eine Aussage
+  // über den Befund, nicht über die Vergangenheit.
+  "adm.sich.verify.serialisation":
+    "Verkettung lückenlos — {{count}} Einträge, kein Bruch. Bei {{n}} Einträgen lässt sich die Nutzdaten-Prüfsumme nicht nachrechnen, weil die Datenbank die Reihenfolge der Nutzdatenfelder normiert. Die vorliegenden Werte passen zum gespeicherten Hash; keine Abweichung bleibt unaufgelöst.",
+  "adm.sich.verify.unconfirmed":
+    "Kette nicht bestätigt — erste Abweichung bei Eintrag {{seq}} vom {{at}} ({{action}}). Art: {{kind}}. Die Ursache muss geprüft werden.",
+  "adm.sich.verify.unconfirmedPlain": "Kette nicht bestätigt — die Ursache muss geprüft werden.",
+  "adm.sich.verify.kind.linkage": "Verkettung gebrochen",
+  "adm.sich.verify.kind.serialisation": "Feldreihenfolge der Datenbank",
+  "adm.sich.verify.kind.unresolved": "Nutzdaten-Prüfsumme nicht auflösbar",
+  "adm.sich.verify.kind.unchecked": "Nutzdaten-Prüfsumme nicht geprüft (zu viele Feldreihenfolgen)",
   "adm.sich.dataTitle": "Datenschutz & Sicherheit",
   "adm.sich.dataHelp":
     "Ein ehrlicher Auszug der Systemeigenschaften — keine Versprechen, sondern wie KLARWERK gebaut ist.",
@@ -657,9 +682,9 @@ const de = {
   "adm.sich.external.t": "Externe Wissensabfrage standardmäßig eingeschränkt",
   "adm.sich.external.b":
     "Public-KI und Web-Suche sind admin-gesteuert und standardmäßig nicht offen. Nichts verlässt unkontrolliert das System.",
-  "adm.sich.audit.t": "Manipulationssicheres Protokoll",
+  "adm.sich.audit.t": "Hash-verkettetes Prüfprotokoll",
   "adm.sich.audit.b":
-    "Alle sicherheitsrelevanten Aktionen werden append-only und hash-verkettet festgehalten — überprüfbar und fälschungssicher.",
+    "Alle sicherheitsrelevanten Aktionen werden append-only und hash-verkettet festgehalten. Eine nachträgliche Abweichung an einem Eintrag ist rechnerisch prüfbar und wird beim Integritätslauf benannt (tamper-evident).",
   "adm.sich.trash.t": "Löschen mit Papierkorb",
   "adm.sich.trash.b":
     "Gelöschtes geht zuerst in den Papierkorb (wiederherstellbar); die endgültige Löschung erfolgt erst nach vier Wochen. Kein stiller Datenverlust.",
@@ -750,9 +775,21 @@ const de = {
   "adm.upload.title": "Upload-Grenzen",
   "adm.upload.help":
     "Legt fest, wie viele Anhänge ein Objekt haben darf und wie groß ein einzelner Anhang sein darf. Gilt für neue Anhänge; bestehende bleiben. Änderungen landen im Audit-Log.",
-  "adm.upload.hint": "Diese Grenzen werden beim Erfassen angezeigt und serverseitig durchgesetzt.",
+  // AUFTRAG-mega14 Block E (SCRUM-421): der alte Satz behauptete, die Grenzen würden beim Erfassen
+  // angezeigt — tatsächlich stand die Zahl an genau EINER von zwölf Auswahlstellen. Das war eine
+  // zweite Falschaussage der Oberfläche und wog schwerer als die fehlende Anzeige selbst. Jetzt
+  // stimmt der Satz: der Hinweis steht an jeder Auswahlstelle (UploadLimitsHint), und die Anzahl
+  // wie die GESPEICHERTE Größe werden beim Anhängen serverseitig geprüft.
+  // Die Größe misst die übertragene Daten-URL (Base64) — das steht hier ausdrücklich, statt eine
+  // Dateigröße vorzugaukeln.
+  // AUFTRAG-mega15 Block E: der Faktor stand selbst falsch da. Base64 belegt 4 Zeichen je 3 Bytes,
+  // also das 1,34-Fache; die verbreitete 1,37 gilt für die MIME-Variante mit Zeilenumbrüchen, die
+  // eine Daten-URL nicht hat. Zusätzlich nennt `adm.upload.rawHint` jetzt die konkrete Zahl.
+  "adm.upload.hint":
+    "Diese Grenzen erscheinen an jeder Stelle, an der eine Datei gewählt werden kann, und werden beim Anhängen serverseitig durchgesetzt. Die Größe misst die übertragene Datei einschließlich Transportkodierung (rund das 1,34-Fache der reinen Dateigröße).",
   "adm.upload.maxAttachments": "Anhänge je Objekt (max.)",
   "adm.upload.maxMb": "Größe je Anhang (MB, max.)",
+  "adm.upload.rawHint": "entspricht rund {{raw}} MB reiner Dateigröße",
   "adm.upload.save": "Speichern",
   "adm.upload.saved": "Upload-Grenzen gespeichert.",
   "adm.ext.title": "Externe Wissensabfrage",
@@ -888,6 +925,68 @@ const de = {
     "Dein Wissensobjekt ist offen gespeichert. Diese Datei(en) wurden NICHT angehängt: {{names}}. Das gespeicherte Wissen ist davon unberührt — Belege ersetzen die Validierung nicht.",
   "capture.attachFailedNext":
     "Nächster Schritt: Wissensobjekt öffnen und die Datei(en) dort erneut anhängen.",
+  // AUFTRAG-mega17 Block A-2: fehlende HERKUNFT beim Namen nennen. Nicht „Anhang fehlgeschlagen“,
+  // sondern: der Inhalt ist da, sein Beleg nicht — und wie du das nachholst.
+  "capture.sourceMissingTitle": "Übernommener Inhalt ohne Herkunftsvermerk",
+  "capture.sourceMissingBody":
+    "Dein Wissensobjekt ist gespeichert und enthält den aus dem Dokument übernommenen Text. Der zugehörige Herkunftsvermerk konnte NICHT gesetzt werden ({{count}}): {{names}}. Damit steht dort Inhalt ohne Beleg — genau das, was dieses Produkt nicht stillschweigend hinnimmt.",
+  "capture.sourceMissingNext":
+    "Nächster Schritt: Wissensobjekt öffnen, das Quelldokument dort anhängen und die Quelle erneut vermerken. Erlaubt die eingestellte Stufe „Externes Wissen“ das nicht, kann ein Administrator sie unter Verwaltung → Externes Wissen ändern.",
+  // AUFTRAG-mega18 Block A-3: der DRITTE Ausgang. Er behauptet NICHTS über den Bestand — weder
+  // „gespeichert" noch „fehlgeschlagen" —, weil beides eine Lüge wäre, solange der Server nicht
+  // geantwortet hat. Die einzige ehrliche Auskunft ist: nachsehen.
+  // ============================================================================================
+  // AUFTRAG-mega21 Block C-1 — die nach dem Commit gescheiterten Nacharbeiten, beim Namen genannt.
+  // ============================================================================================
+  // Der erste Satz ist der wichtigste und steht deshalb zuerst: das Wissensobjekt IST gespeichert.
+  // Aus einem Eintrag hier darf nie geschlossen werden, der Inhalt sei verloren — das war die
+  // Fehlerklasse, die in mega18 zu echtem Datenverlust geführt hat.
+  "capture.followUpsFailedTitle": "Gespeichert — aber eine Nacharbeit lief nicht",
+  "capture.followUpsFailedBody":
+    "Dein Wissensobjekt ist vollständig gespeichert und belegt. NACH dem Speichern ist Folgendes nicht durchgelaufen: {{steps}}. Das ändert nichts am gespeicherten Wissen — es bleibt aber etwas offen, und niemand erfährt es sonst.",
+  "capture.followUp.draftDiscard": "Entwurf entfernen",
+  "capture.followUp.draftDiscardNext":
+    "Der Entwurf steht noch in deiner Entwurfsliste. Du kannst ihn dort löschen — das eingereichte Wissensobjekt ist davon unberührt.",
+  "capture.followUp.validationAssign": "Prüfer zuweisen",
+  "capture.followUp.validationAssignNext":
+    "Es wartet niemand auf dieses Wissensobjekt. Öffne die Validierung und weise die Prüfer dort erneut zu.",
+  "capture.followUp.notifyAssignment": "Prüfer benachrichtigen",
+  "capture.followUp.notifyAssignmentNext":
+    "Die Zuweisung steht, nur die Nachricht ging nicht raus. Sag den zugewiesenen Prüfern kurz Bescheid.",
+  "capture.followUp.aiCheck": "Duplikat-/Konfliktprüfung anstoßen",
+  "capture.followUp.aiCheckNext":
+    "Die Prüfung ist als fehlgeschlagen vermerkt und lässt sich auf der Validierungsseite neu anstoßen.",
+  // AUFTRAG-mega23 Block B (bens SB-G): der Satz darüber setzt einen GESCHRIEBENEN Vermerk voraus.
+  // Fehlt der Nachweis, gilt dieser hier — er verspricht KEINE Wiederholung, die der Endpunkt
+  // ablehnen würde, und benennt die eine Handlung, die dann wirklich hilft.
+  "capture.followUp.aiCheckUnrecordedNext":
+    "Auch der Fehlschlag-Vermerk selbst konnte nicht gespeichert werden — für dieses Wissensobjekt steht deshalb KEIN wiederholbarer Prüf-Job bereit. Bitte das Objekt in der Validierung von Hand auf Duplikate und Widersprüche ansehen.",
+  "capture.followUp.unknown": "ein Schritt, den diese Oberfläche noch nicht kennt",
+  "capture.followUp.unknownNext":
+    "Diese Fassung der Oberfläche kennt den Schritt nicht beim Namen. Er steht im Prüfprotokoll des Wissensobjekts — bitte dort nachsehen.",
+  // ============================================================================================
+  // AUFTRAG-mega21 Block C-2 — fehlende Originale beim Fortsetzen eines Entwurfs.
+  // ============================================================================================
+  // Der Server hat den Entwurf bereits ausgedünnt (übernommener Text und verwaiste Belegstellen
+  // kommen nicht zurück). Diese Texte erklären den GRUND — bis mega20 sah der Nutzer nur die Lücke.
+  "capture.anchorsMissingTitle":
+    "Ein gesichertes Original fehlt — übernommener Text wurde nicht geladen",
+  "capture.anchorsMissingBody":
+    "Zu diesem Entwurf gehören {{count}} gesicherte Originaldokument(e), die es nicht mehr gibt. Der daraus übernommene Text und die zugehörigen Belegstellen wurden deshalb NICHT geladen: sie wären Inhalt ohne Herkunft, und das speichert dieses Produkt nicht stillschweigend. Deine eigene Arbeit — Titel, Aussage, Bedingungen, Maßnahmen, Prüferauswahl — ist vollständig da.",
+  "capture.anchorsMissingNext":
+    "Solange dieser Hinweis steht, ist „Als Entwurf speichern“ gesperrt: ein Speichern jetzt würde den ausgedünnten Stand über den gespeicherten schreiben.",
+  "capture.anchorsMissingReselect": "Original erneut auswählen",
+  "capture.anchorsMissingAck": "Ohne das Original weiterarbeiten",
+  // AUFTRAG-mega22 Block E: der Rückweg aus einem 409. Er wird NUR angeboten, wenn ein neuer
+  // Vorgang der richtige Ausweg ist (Abdruckkonflikt, belegte Kennung) — nie bei
+  // CREATE_REPAIR_REQUIRED, wo ein Objekt auf Prüfung wartet (s. lib/createOperation.ts).
+  "capture.restartOfferTitle": "Dieser Vorgang lässt sich nicht wiederholen",
+  "capture.restartOfferBody":
+    "Der Vorgangsschlüssel dieses Einreichens gehört bereits zu einem abgeschlossenen Vorgang mit anderem Inhalt. Dein aktueller Text ist unverändert da und geht nicht verloren. Um ihn zu speichern, braucht es einen NEUEN Vorgang — das entscheidest du, nicht die Oberfläche.",
+  "capture.restartOfferAction": "Neuen Vorgang beginnen",
+  "capture.appendUnclearTitle": "Übernahme mit unklarem Ausgang",
+  "capture.appendUnclearBody":
+    "Dein Wissensobjekt ist gespeichert. Bei der Übernahme aus {{names}} brach die Verbindung ab, bevor der Server geantwortet hat: sie kann vollzogen sein oder nicht. Es wurde NICHTS zurückgenommen — ein blindes Aufräumen hätte hier den Schaden erst angerichtet. Bitte das Wissensobjekt öffnen und nachsehen, ob der übernommene Inhalt samt Herkunft dort steht.",
   "own.empty.title": "Noch kein eigenes Wissen hier",
   "own.empty.hint":
     "Du filterst auf eigenes Wissen (keine Demo-Beispiele). Selbst erfasstes Wissen erscheint hier nach dem Speichern und wartet dann auf die Prüfung.",
@@ -1215,7 +1314,8 @@ const de = {
   "capture.author": "Autor",
   "capture.documents": "Dokumente (Kontext / Anhang)",
   "capture.documentsUpload": "Dateien hochladen",
-  "capture.uploadLimits": "Bis zu {{count}} Dateien, je max. {{mb}} MB.",
+  "capture.uploadLimits":
+    "Bis zu {{count}} Dateien, je max. {{mb}} MB Übertragungsgröße (rund {{raw}} MB Rohdatei).",
   "capture.attachLimitReached":
     "{{taken}} von {{total}} Dateien zur Verarbeitung akzeptiert — die Anhang-Grenze liegt bei {{limit}}.",
   "capture.documentsHint":
@@ -1410,6 +1510,22 @@ const de = {
     "Die Cloud-KI ist gerade nicht erreichbar oder meldet einen Fehler — es gibt daher keinen Vorschlag. Bitte später erneut versuchen.",
   "editor.captionAi.fallbackConfidential":
     "Das Bild ist als vertraulich eingestuft — die Cloud-KI ist dafür ausgeschlossen und kein lokales Vision-Modell ist verdrahtet. Es gibt daher keinen Vorschlag (nichts verlässt den Server).",
+  // AUFTRAG-mega9 Block F (Pedi): Texte des ECHTEN Eingabeformulars für die Bildbeschreibung.
+  "editor.captionForm.open": "Bildbeschreibung bearbeiten",
+  "editor.captionForm.title": "Bildbeschreibung",
+  "editor.captionForm.label": "Beschreibung des Bildes",
+  "editor.captionForm.placeholder": "Was ist auf dem Bild zu sehen, und warum steht es hier?",
+  "editor.captionForm.limit": "{{n}} von {{max}} Zeichen",
+  "editor.captionForm.limitReached": "Maximale Länge erreicht ({{max}} Zeichen).",
+  "editor.captionForm.append": "An den Text anhängen",
+  "editor.captionForm.save": "Beschreibung speichern",
+  "editor.captionForm.cancel": "Abbrechen",
+  "editor.captionForm.imageAlt": "Bild, das beschrieben wird",
+  "editor.captionForm.noSuggestionYet":
+    "Noch kein Vorschlag angefordert. Der Text bleibt deiner — ein Vorschlag wird nie automatisch übernommen.",
+  // AUFTRAG-mega11 Block D (bens SB-4): das Ziel des Formulars hat sich unter ihm verändert.
+  "editor.captionForm.stale":
+    "Dieses Bild hat sich inzwischen geändert — die Beschreibung wurde NICHT gespeichert, damit sie nicht beim falschen Bild landet. Bitte den Text kopieren, das Formular schließen und am aktuellen Bild erneut öffnen.",
   "editor.file": "Datei verlinken",
   "editor.insertFile": "Datei-Anhang als Link einfügen",
   "editor.noFiles":
@@ -1779,6 +1895,18 @@ const de = {
   "ext.placeholder": "Suchbegriff …",
   "ext.search": "Suchen",
   "ext.attach": "Als Quelle anhängen",
+  // AUFTRAG-mega14 Block D (SCRUM-414): der Knopf ist auf gesperrter Stufe nicht anwählbar — und
+  // sagt WARUM. Ein ausgegrauter Knopf ohne Grund ist eine Sackgasse, keine Erklärung.
+  "ext.attachBlocked":
+    "Auf der eingestellten Stufe darf gesucht, aber nicht angehängt werden. Ein Administrator kann das unter Verwaltung → Externes Wissen ändern.",
+  // AUFTRAG-mega16 Block A (bens SB-4): die Stufe ist jetzt eine echte Grenze — sie gilt für JEDE
+  // öffentliche Web-Adresse, nicht nur für erkannte Anbieter. Der Nutzer muss das VOR dem Absenden
+  // wissen, mit Grund und mit dem Weg zur Änderung.
+  "ext.gate.publicUrl":
+    "Auf der eingestellten Stufe kann keine Quelle mit öffentlicher Web-Adresse angehängt werden — das gilt für jede Adresse aus dem Netz, nicht nur für Treffer der Suche.",
+  "ext.gate.unanchored":
+    "Auf der eingestellten Stufe kann eine Quelle ohne Adresse nur angehängt werden, wenn sie eine Belegstelle aus einem Dokument ist, das an diesem Wissensobjekt hinterlegt ist. Ohne Adresse und ohne hinterlegtes Dokument ist für den Server nicht unterscheidbar, ob es sich um einen externen Treffer handelt.",
+  "ext.gate.how": "Ein Administrator kann die Stufe unter Verwaltung → Externes Wissen ändern.",
   "ext.unavailable": "Externe Suche ist nicht verfügbar.",
   "ext.resumeHint":
     "Die Trefferliste wird im Entwurf nicht mitgespeichert. Deine Suchanfrage ist wieder da — führe die Suche erneut aus, um die Treffer neu zu laden.",
@@ -1909,6 +2037,14 @@ const de = {
   // D-AISTATE PAKET 1 (bens V1): vertraulich → Cloud-KI ausgeschlossen, kein lokales Modell.
   "val.aiCheck.reason.confidential":
     "Vertraulich — die Cloud-KI ist ausgeschlossen und kein lokales Modell verfügbar. Nur die deterministische Duplikat-/Überschneidungsprüfung lief; inhaltlich wurde nicht per KI geprüft.",
+  // AUFTRAG-mega11 Block A (bens SB-1, sicherheitsrelevant): der mega9-Text hieß „Am Vergleich war
+  // vertrauliches Wissen beteiligt …". Er war wahr, verriet aber Existenz UND thematische Relevanz
+  // eines vertraulichen Vergleichspartners — an ein Board, das serverseitig schon mit `ko.read`
+  // abrufbar ist. Dieser Text nennt nur noch die Wirkung (Cloud gesperrt, nur deterministisch
+  // geprüft) und KEINE Aussage über geschützten Bestand: kein „vertraulich", kein
+  // „Vergleichspartner", nichts über dessen Existenz oder Relevanz.
+  "val.aiCheck.reason.privacy-no-cloud":
+    "Für diese Prüfung ist die Cloud-KI aus Datenschutzgründen nicht verfügbar, und es steht kein lokales Modell bereit. Es lief nur die deterministische Duplikat-/Überschneidungsprüfung; inhaltlich wurde nicht per KI geprüft.",
   // RT-001 (Pedi): ehrliche Feinunterscheidung echter Providerfehler — nie Anbietername/Schlüssel/
   // Endpunkt/roher Fehlertext, nur nutzerverständliche Ursache + was der Nutzer tun kann.
   "val.aiCheck.reason.auth":
@@ -1919,6 +2055,10 @@ const de = {
     "Der KI-Anbieter war nicht erreichbar — vermutlich ein Netzwerk- oder Verbindungsproblem. Verbindung prüfen und erneut prüfen.",
   "val.aiCheck.reason.bad-response":
     "Das KI-Modell hat eine unverständliche Antwort geliefert, die sich nicht auswerten ließ. Erneut prüfen startet einen neuen Lauf.",
+  // AUFTRAG-mega23 Block B: TECHNISCHE Einreihung fehlgeschlagen — das Modell wurde nie gefragt und
+  // hat nichts beanstandet. Der Text sagt genau das und tarnt sich nicht als Modellfehler.
+  "val.aiCheck.reason.submit-followup-failed":
+    "Die Prüfung konnte beim Einreichen technisch nicht eingereiht werden — das KI-Modell wurde dabei nicht gefragt und hat nichts beanstandet. Erneut prüfen reiht sie neu ein.",
   "val.feedback.condTitle": "Bedingt – Begründung für den Autor (Pflicht)",
   "val.feedback.rejTitle": "Ablehnung – Begründung für den Autor (Pflicht)",
   "val.feedback.placeholder": "Was muss überarbeitet werden? …",
@@ -2190,6 +2330,33 @@ const de = {
   "lib.facet.trustBucket.t70": "Trust 70+",
   "lib.facet.more": "+{{n}} weitere",
   "lib.facet.none": "ohne Wert",
+  // AUFTRAG-mega10 Block B: aus der Pillenwand wird eine Suchmaske (Schiene, Suche je
+  // Dimension, aufmachbarer Deckel, klebender Zaehler, Bereichsfilter, Filterblatt).
+  "facet.searchLabel": "In {{label}} suchen",
+  "facet.searchPlaceholder": "{{label}} suchen …",
+  "facet.searchNoHit": "Kein Wert passt zu „{{query}}“.",
+  "facet.showAll": "Alle {{n}} zeigen",
+  "facet.showLess": "Weniger zeigen",
+  "facet.restricted": "nur Werte aus der gewählten Kategorie",
+  "facet.showResults": "{{n}} Treffer anzeigen",
+  "facet.countFiltered": "von {{total}} gefiltert",
+  "facet.countAll": "gesamter Bestand",
+  "facet.openFilters": "Filter",
+  "facet.closeFilters": "Filter schließen",
+  "facet.sheetTitle": "Filter",
+  "facet.rangeLabel": "Zeitraum",
+  "facet.rangeFrom": "von",
+  "facet.rangeTo": "bis",
+  "facet.rangeFromPill": "ab {{date}}",
+  "facet.rangeToPill": "bis {{date}}",
+  "facet.rangeContradictory":
+    "Das Anfangsdatum liegt nach dem Enddatum — diese Kombination trifft nichts.",
+  "lib.facet.confidentiality": "Vertraulichkeit",
+  "lib.facet.showResults": "{{n}} Beiträge anzeigen",
+  "lib.facet.rangeLabel": "Zuletzt geändert",
+  "lib.loadMore": "Weitere {{n}} laden",
+  "lib.views.remember": "Diese Suche merken",
+  "lib.views.savedLabel": "Gemerkte Suchen",
   // AUFTRAG-sortfilter · Punkt 1: Sortierung der Trefferliste.
   "lib.sort.label": "Sortieren",
   "lib.sort.relevance": "Relevanz",
@@ -2312,6 +2479,11 @@ const de = {
   "imp.gallery.filesTitle": "Dateien",
   "imp.gallery.hintSoon": "In Arbeit — diese Quelle kommt bald.",
   "imp.gallery.hintPlanned": "Geplant — kommt später.",
+  // AUFTRAG-mega15 Block D (SCRUM-382): „vorhanden, aber kein Dienst hinterlegt" ist etwas anderes
+  // als „geplant". Die Kachel sagt jetzt, was zutrifft.
+  "imp.gallery.unconfigured": "nicht konfiguriert",
+  "imp.gallery.hintUnconfigured":
+    "Vorhanden, aber nicht nutzbar: für die Transkription ist kein Dienst hinterlegt. Ein Administrator kann ihn in der Verwaltung einrichten.",
   "imp.gallery.src.confluence": "Confluence",
   "imp.gallery.src.jsonImport": "JSON-Import",
   "imp.gallery.src.jira": "Jira",
@@ -2431,6 +2603,8 @@ const de = {
   "imp.groups.expired":
     "Die Datengrundlage der Gruppierung ist inzwischen abgelaufen — die Übernahme wurde gestoppt und die Auswahl zurückgesetzt. Bitte neu gruppieren.",
   "imp.groups.regroup": "Neu gruppieren",
+  // AUFTRAG-mega9 Block E-4 (KW-E2E-008): ehrlicher Name nach einer Auswahländerung.
+  "imp.groups.refreshGrouping": "Gruppierung aktualisieren",
   // WP-COCKPIT-LINIE: geführte Fünf-Schritte-Leiste + eingeklappter Verlauf (einfache Sprache).
   "imp.step.barLabel": "Import in fünf Schritten",
   "imp.step.source": "Quelle",
@@ -2580,11 +2754,16 @@ const de = {
   "imp.infoSend": "Senden",
   "imp.notePlaceholder": "Welche Information fehlt?",
   "imp.reviewed": "Beitrag aktualisiert.",
-  "imp.status.neu": "Neu",
+  // AUFTRAG-mega9 Block E-1 (KW-E2E-005): „Neu" beschrieb den Anlagezustand, nicht die Bedeutung
+  // für den Nutzer. Der Kandidat wartet auf eine Entscheidung — dieselbe Sprache wie
+  // imp.preview.queued / imp.groups.hintQueued.
+  "imp.status.neu": "Zur Prüfung vorgemerkt",
   "imp.status.in_bearbeitung": "In Bearbeitung",
   "imp.status.angenommen": "Angenommen",
   "imp.status.abgelehnt": "Abgelehnt",
   "imp.status.info-angefragt": "Info angefragt",
+  // Unbekannter/neuer Serverzustand: ehrlich benannt statt roher i18n-Schlüssel in der Oberfläche.
+  "imp.status.unknown": "Status unbekannt",
   "risk.kicker": "Risiko & Lücken",
   "risk.summary": "Cockpit-Übersicht",
   "risk.kpiOpenGaps": "Offene Lücken",
@@ -2703,11 +2882,11 @@ const de = {
   "ana.help.impact":
     "Wirkung zeigt, was das System real leistet: validierte Objekte gesamt, gestellte Fragen, ohne Lücke beantwortete Fragen und die daraus errechnete Antwortquote. Der Wochenverlauf macht sichtbar, ob validiertes Wissen wächst.",
   "ana.help.audit":
-    "Das Audit-Log protokolliert unveränderlich jede relevante Aktion — wer (Actor), was (Aktion) und woran (Ziel). Über die Filter grenzen Sie schnell auf eine Person, eine Aktionsart oder ein Objekt ein; nachträglich lässt sich nichts ändern.",
+    "Das Audit-Log hält jede relevante Aktion fest — wer (Actor), was (Aktion) und woran (Ziel). Einträge werden nur angefügt und hash-verkettet; eine nachträgliche Abweichung ist rechnerisch prüfbar. Über die Filter grenzen Sie schnell auf eine Person, eine Aktionsart oder ein Objekt ein.",
   "ana.total": "Gesamt",
   "ana.categories": "Kategorien",
   "ana.byType": "Verteilung nach Wissensart",
-  "ana.audit": "Audit-Log (unveränderlich)",
+  "ana.audit": "Audit-Log (hash-verkettet)",
   "ana.auditEmpty": "Keine Einträge.",
   "ana.avgTrust": "Ø Vertrauen",
   "ana.validationRate": "Validierungsquote",
@@ -2844,7 +3023,7 @@ const de = {
   "klara.page.lifecycle":
     "Wissen altert: Hier siehst du fällige Re-Validierungen und Lernpfade, damit Geprüftes geprüft bleibt.",
   "klara.page.analytics":
-    "Kennzahlen aus echten Daten plus das unveränderliche Audit-Log — wer hat was wann getan.",
+    "Kennzahlen aus echten Daten plus das hash-verkettete Audit-Log — wer hat was wann getan.",
   "klara.page.admin":
     "Konten, KI-Zuordnung, Daten und Sicherheit an einem Ort. Nur für Admins sichtbar.",
   "klara.page.help":
@@ -2858,7 +3037,7 @@ const de = {
   "shelp.adm.createTitle":
     "In diesem Abschnitt legst du ein neues Nutzerkonto an und gibst ihm eine Rolle. Betrachter lesen, Experten erfassen Wissen, Controller prüfen es, und Admins verwalten alles. Die Rolle bestimmt also, welche Knöpfe die Person später sieht. Jede Kontoänderung wird im Prüfprotokoll festgehalten.",
   "shelp.adm.auditTitle":
-    "Dieses Protokoll zeigt die letzten Anmeldungen und Nutzeraktionen. Es ist unveränderlich, denn jede Zeile ist mit der vorherigen verkettet — nachträglich lässt sich nichts unbemerkt ändern oder löschen. Mit dem Prüfknopf kannst du die Kette jederzeit kontrollieren lassen, und das Ergebnis sagt dir ehrlich, ob alles unversehrt ist.",
+    "Dieses Protokoll zeigt die letzten Anmeldungen und Nutzeraktionen. Jede Zeile ist per Hash mit der vorherigen verkettet: wird nachträglich etwas geändert oder entfernt, passt der Hash nicht mehr. Mit dem Prüfknopf kannst du die Kette jederzeit nachrechnen lassen; das Ergebnis sagt dir ehrlich, ob eine Abweichung gefunden wurde — und, falls ja, an welchem Eintrag.",
   "shelp.ana.byType":
     "Die Balken zeigen, wie sich euer Wissen auf die fünf Wissensarten verteilt — vom Bauchgefühl über bewährte Vorgehensweisen bis zum Negativwissen, also dem Wissen darüber, was man nicht tun darf. Fehlt eine Art fast ganz, ist das ein Hinweis: Dort wird bisher wenig festgehalten. Nutze das Bild, um gezielt nachzufragen, nicht um Personen zu bewerten.",
   "shelp.ana.weekly":
@@ -3452,8 +3631,11 @@ const de = {
   "xtr.hint":
     "Lade ein weiteres Dokument hoch — die KI liest es und schlägt Wissenspunkte MIT Belegstelle vor. Nur was du ankreuzt, wird als Abschnitt ans Ende deines Artikels angefügt; nichts wird ersetzt.",
   "xtr.applyCta": "Ausgewählte anfügen",
+  // AUFTRAG-mega18 Block A-3: die Übernahme ist EIN serverseitiger Vorgang — der Text sagt, was er
+  // gemeinsam committet (Inhalt UND Herkunft), damit niemand „angefügt" für „gespeichert" hält.
+  "xtr.applying": "{{count}} Punkt(e) werden übernommen — Inhalt und Herkunft zusammen …",
   "xtr.appended":
-    "{{count}} Punkt(e) aus „{{name}}“ angefügt — bestehender Inhalt blieb unverändert. Die Quelle wurde je Punkt vermerkt.",
+    "{{count}} Punkt(e) aus „{{name}}“ übernommen — Inhalt UND Herkunft sind gemeinsam gespeichert; bestehender Inhalt blieb unverändert.",
   "xtr.append.button": "An bestehenden Artikel anhängen",
   "xtr.append.title": "An bestehenden Artikel anhängen",
   "xtr.append.intro":
@@ -3463,6 +3645,26 @@ const de = {
   "xtr.append.busy": "Wird angehängt …",
   "xtr.append.done":
     "{{count}} Erkenntnis(se) an „{{title}}“ angehängt — der Artikel ist jetzt neu zu prüfen.",
+  // AUFTRAG-mega18 Block A: die Übernahme ist EINE serverseitige Operation. Es gibt genau drei
+  // Ausgänge und für jeden einen eigenen, ehrlichen Text — kein „Fehler", aus dem der Nutzer raten
+  // muss, was jetzt im Artikel steht.
+  // (1) Die INTERNE BELEGPFLICHT hat abgelehnt: ohne gesichertes Original wird nichts übernommen —
+  //     auf JEDER Stufe, nicht nur auf den restriktiven.
+  "xtr.append.missingAnchor":
+    "Ohne das Originaldokument als Beleg wird der Inhalt nicht übernommen. Der Artikel wurde NICHT verändert. Das gilt unabhängig von der Einstellung „Externes Wissen“: übernommener Dokumentinhalt muss an seinem Original hängen.",
+  // (2) Die EXTERNE STUFENREGEL hat abgelehnt (eigene Regel, eigener Grund).
+  "xtr.append.blockedByStage":
+    "Auf der eingestellten Stufe „Externes Wissen“ darf diese Quelle nicht an ein Wissensobjekt angehängt werden. Der Artikel wurde NICHT verändert. Ein Administrator kann die Stufe unter Verwaltung → Externes Wissen ändern.",
+  // (3) Der Ausgang ist UNKLAR. Hier stand früher die Kompensation — sie hat den Schaden erst
+  //     angerichtet. Jetzt wird nichts angefasst und ehrlich zum Nachsehen aufgefordert.
+  "xtr.append.unclear":
+    "Der Ausgang ist unklar — die Verbindung brach ab, bevor der Server geantwortet hat. Es wurde NICHTS zurückgenommen: die Übernahme kann vollzogen sein oder nicht. Bitte den Artikel öffnen und nachsehen; ein erneuter Versuch mit demselben Vorgang legt nichts doppelt an.",
+  "xtr.append.stateUnchanged":
+    "Der Artikel wurde NICHT verändert — es wurde kein Inhalt ohne Herkunft gespeichert. Du kannst die Übernahme unverändert erneut versuchen.",
+  // Folgeschritte NACH dem Commit (Konflikt-/Überschneidungs-Entwertung, KI-Prüfung) sind nicht
+  // gelaufen. Die Übernahme GILT trotzdem — das ist die entscheidende Aussage, und sie steht zuerst.
+  "xtr.append.followUpsFailed":
+    "Die Übernahme ist gespeichert (Inhalt und Herkunft). Ein nachgelagerter Schritt lief nicht: {{steps}}. Die erneute KI-Prüfung kann dadurch fehlen — sie lässt sich auf der Validierungsseite neu anstoßen.",
   "xtr.help.title": "Aus Dokument ergänzen",
   "xtr.help.body":
     "Die KI liest ein von dir hochgeladenes Dokument und schlägt Wissenspunkte vor — jeder Punkt trägt seine Belegstelle aus dem Dokument (ohne Beleg keine Übernahme). Du wählst per Häkchen aus; Ausgewähltes wird als Abschnitt an deinen Artikel ANGEHÄNGT, nichts wird ersetzt oder überschrieben. Die Herkunft (Dateiname + Belegstelle) wird als Stufe-2-Quelle am Wissensobjekt vermerkt — sie gilt nicht als peer-validiert und ersetzt keine Prüfung.",
@@ -3530,6 +3732,18 @@ const de = {
   "fd.discardInput": "Eingabe verwerfen",
   "fd.back": "Zurück",
   "fd.writeToSubmit": "Schreibe oder füge Inhalt ein, dann kannst du prüfen und einreichen.",
+  // AUFTRAG-mega9 Block A (KW-E2E-001): sichtbare Feldvalidierung beim Einreichversuch — statt eines
+  // still deaktivierten Knopfes wird die Bedingung benannt und ein Weg genannt.
+  "fd.validate.lead": "Einreichen ist so noch nicht möglich:",
+  "fd.validate.needBody": "Der Inhalt ist leer. Zum Einreichen braucht das Wissensobjekt Text.",
+  "fd.validate.hint":
+    "Du kannst den leeren Stand weiterhin als Entwurf speichern und später fortsetzen.",
+  // AUFTRAG-mega9 Block B (KW-E2E-002): was ein Vordertür-Entwurf NICHT sichern kann — beim Wechsel
+  // namentlich benannt, damit kein „Speichern" etwas still fallen lässt.
+  "fd.unsavable.proposal":
+    "Der angezeigte KI-Vorschlag ist noch nicht übernommen und wird nicht mitgespeichert.",
+  "fd.unsavable.confidentialityOnly":
+    "Die gewählte Vertraulichkeit ohne Titel und ohne Inhalt — dazu gibt es noch keinen Entwurf, der sie halten könnte.",
   "fd.statusLabel": "Status",
   "fd.titleOnSave": "Titel beim Speichern",
   "fd.author": "Autor",
@@ -4238,21 +4452,33 @@ const en: typeof de = {
   "adm.ready.upload.val": "{{n}} attachments · {{mb}} MB",
   "adm.ready.unknown": "unknown",
   "adm.ready.loading": "loading …",
+  "adm.ready.demo": "Demo data",
+  "adm.ready.demo.loaded": "{{n}} loaded — removable under Data",
+  "adm.ready.demo.none": "none loaded",
+  "adm.ready.demo.goto": "Go to Data",
   "adm.ready.external": "External knowledge lookup",
   "adm.ready.ext.blocked": "Blocked",
   "adm.ready.ext.searchOnClick": "Search on click",
   "adm.ready.ext.searchAttach": "Search & attach",
   "adm.ready.ext.open": "Open",
   // SCRUM-432 (Pedi 03.07., VIP investor): Trust & Security.
-  "adm.sich.auditTitle": "Audit trail — tamper-evident",
+  "adm.sich.auditTitle": "Audit trail — hash-chained, deviations verifiable",
   "adm.sich.auditHelp":
-    "Every security-relevant action is only appended and chained via a hash chain. No entry can be changed or deleted afterwards without breaking the chain — which makes the trail verifiable (tamper-evident).",
+    "Every security-relevant action is only appended and linked to the previous entry via a hash chain. If an entry is changed or removed afterwards, its hash no longer matches — the deviation is computationally detectable and the integrity run names it with number, date and action. The chain has no externally anchored head: anyone with full write access to the database can recompute an entry together with every following hash. So the trail is verifiable (tamper-evident) — the chain does not stop a change, it makes it conspicuous.",
   "adm.sich.auditIntro":
-    "Append-only, hash-chained: a verifiable trail of all security-relevant actions. Nothing is changed retroactively.",
+    "Append-only, hash-chained: a verifiable trail of all security-relevant actions. A later deviation on an entry can be detected by recomputation.",
   "adm.sich.auditCount": "{{count}} entries in the chain",
   "adm.sich.verify.button": "Verify integrity",
   "adm.sich.verify.ok": "Integrity verified ✓ — {{count}} entries, chain intact",
-  "adm.sich.verify.fail": "Chain broken ✗ — tampering detected",
+  "adm.sich.verify.serialisation":
+    "Chain complete — {{count}} entries, no break. For {{n}} entries the payload checksum cannot be recomputed because the database normalises the order of the payload fields. The values as they stand match the stored hash; no deviation remains unresolved.",
+  "adm.sich.verify.unconfirmed":
+    "Chain not confirmed — first deviation at entry {{seq}} of {{at}} ({{action}}). Type: {{kind}}. The cause must be examined.",
+  "adm.sich.verify.unconfirmedPlain": "Chain not confirmed — the cause must be examined.",
+  "adm.sich.verify.kind.linkage": "chain link broken",
+  "adm.sich.verify.kind.serialisation": "database field order",
+  "adm.sich.verify.kind.unresolved": "payload checksum not resolvable",
+  "adm.sich.verify.kind.unchecked": "payload checksum not examined (too many field orders)",
   "adm.sich.dataTitle": "Data protection & security",
   "adm.sich.dataHelp":
     "An honest extract of the system's properties — not promises, but how KLARWERK is built.",
@@ -4265,9 +4491,9 @@ const en: typeof de = {
   "adm.sich.external.t": "External knowledge lookup restricted by default",
   "adm.sich.external.b":
     "Public AI and web search are admin-controlled and not open by default. Nothing leaves the system uncontrolled.",
-  "adm.sich.audit.t": "Tamper-evident log",
+  "adm.sich.audit.t": "Hash-chained audit trail",
   "adm.sich.audit.b":
-    "All security-relevant actions are recorded append-only and hash-chained — verifiable and forgery-proof.",
+    "All security-relevant actions are recorded append-only and hash-chained. A later deviation on an entry is detectable by recomputation and is named by the integrity run (tamper-evident).",
   "adm.sich.trash.t": "Deletion with trash",
   "adm.sich.trash.b":
     "Deleted items go to the trash first (recoverable); final deletion happens only after four weeks. No silent data loss.",
@@ -4357,9 +4583,11 @@ const en: typeof de = {
   "adm.upload.title": "Upload limits",
   "adm.upload.help":
     "Sets how many attachments an object may have and how large a single attachment may be. Applies to new attachments; existing ones stay. Changes are recorded in the audit log.",
-  "adm.upload.hint": "These limits are shown during capture and enforced on the server.",
+  "adm.upload.hint":
+    "These limits appear wherever a file can be selected and are enforced on the server when attaching. The size measures the transferred file including transport encoding (about 1.34× the plain file size).",
   "adm.upload.maxAttachments": "Attachments per object (max.)",
   "adm.upload.maxMb": "Size per attachment (MB, max.)",
+  "adm.upload.rawHint": "corresponds to roughly {{raw}} MB of plain file size",
   "adm.upload.save": "Save",
   "adm.upload.saved": "Upload limits saved.",
   "adm.ext.title": "External knowledge",
@@ -4487,6 +4715,48 @@ const en: typeof de = {
     "Your knowledge object is saved as open. These file(s) were NOT attached: {{names}}. The saved knowledge is unaffected — evidence does not replace validation.",
   "capture.attachFailedNext":
     "Next step: open the knowledge object and attach the file(s) again there.",
+  "capture.sourceMissingTitle": "Imported content without a provenance record",
+  "capture.sourceMissingBody":
+    "Your knowledge object is saved and contains the text imported from the document. The matching provenance record could NOT be created ({{count}}): {{names}}. That leaves content without evidence — exactly what this product does not accept in silence.",
+  "capture.sourceMissingNext":
+    "Next step: open the knowledge object, attach the source document there and record the source again. If the configured “External knowledge” stage does not allow this, an administrator can change it under Administration → External knowledge.",
+  // AUFTRAG-mega21 Block C-1 / C-2 — see the German block for the reasoning.
+  "capture.followUpsFailedTitle": "Saved — but one follow-up step did not run",
+  "capture.followUpsFailedBody":
+    "Your knowledge object is fully saved and evidenced. AFTER saving, the following did not complete: {{steps}}. This does not affect the stored knowledge — but something is left open, and nobody else would tell you.",
+  "capture.followUp.draftDiscard": "remove the draft",
+  "capture.followUp.draftDiscardNext":
+    "The draft is still in your draft list. You can delete it there — the submitted knowledge object is unaffected.",
+  "capture.followUp.validationAssign": "assign reviewers",
+  "capture.followUp.validationAssignNext":
+    "Nobody is waiting for this knowledge object. Open Validation and assign the reviewers again.",
+  "capture.followUp.notifyAssignment": "notify reviewers",
+  "capture.followUp.notifyAssignmentNext":
+    "The assignment stands, only the message did not go out. Let the assigned reviewers know.",
+  "capture.followUp.aiCheck": "start the duplicate/conflict check",
+  "capture.followUp.aiCheckNext":
+    "The check is recorded as failed and can be restarted from the Validation page.",
+  // AUFTRAG-mega23 Block B (ben's SB-G): the line above presumes a WRITTEN record. Without proof of
+  // it, this one applies — it promises no retry the endpoint would refuse.
+  "capture.followUp.aiCheckUnrecordedNext":
+    "The failure record itself could not be saved either — so NO repeatable check job exists for this knowledge object. Please review it manually in Validation for duplicates and contradictions.",
+  "capture.followUp.unknown": "a step this interface does not know yet",
+  "capture.followUp.unknownNext":
+    "This version of the interface does not know the step by name. It is in the knowledge object's audit trail — please look there.",
+  "capture.anchorsMissingTitle": "A secured original is gone — imported text was not loaded",
+  "capture.anchorsMissingBody":
+    "This draft refers to {{count}} secured original document(s) that no longer exist. The text imported from them and the matching source references were therefore NOT loaded: they would be content without provenance, and this product does not save that silently. Your own work — title, statement, conditions, measures, reviewer selection — is fully there.",
+  "capture.anchorsMissingNext":
+    "While this notice is showing, “Save as draft” is blocked: saving now would write the thinned-out state over the stored one.",
+  "capture.anchorsMissingReselect": "Select the original again",
+  "capture.anchorsMissingAck": "Continue without the original",
+  "capture.restartOfferTitle": "This operation cannot be repeated",
+  "capture.restartOfferBody":
+    "The operation key of this submission already belongs to a completed operation with different content. Your current text is untouched and will not be lost. Saving it needs a NEW operation — that is your decision, not the interface's.",
+  "capture.restartOfferAction": "Start a new operation",
+  "capture.appendUnclearTitle": "Import with an unclear outcome",
+  "capture.appendUnclearBody":
+    "Your knowledge object is saved. During the import from {{names}} the connection dropped before the server answered: it may or may not have gone through. NOTHING was taken back — blind cleanup is what would have caused the damage here. Please open the knowledge object and check whether the imported content and its provenance are there.",
   "own.empty.title": "No own knowledge here yet",
   "own.empty.hint":
     "You are filtering for your own knowledge (no demo examples). Knowledge you capture appears here after saving and then waits for review.",
@@ -4801,7 +5071,8 @@ const en: typeof de = {
   "capture.author": "Author",
   "capture.documents": "Documents (context / attachment)",
   "capture.documentsUpload": "Upload files",
-  "capture.uploadLimits": "Up to {{count}} files, each max. {{mb}} MB.",
+  "capture.uploadLimits":
+    "Up to {{count}} files, each max. {{mb}} MB transfer size (roughly {{raw}} MB of plain file).",
   "capture.attachLimitReached":
     "{{taken}} of {{total}} files accepted for processing — the attachment limit is {{limit}}.",
   "capture.documentsHint": "txt, md, csv, json, log, docx, pdf → full text · images: optional OCR",
@@ -4988,6 +5259,20 @@ const en: typeof de = {
     "The cloud AI is currently unreachable or reports an error — so there is no suggestion. Please try again later.",
   "editor.captionAi.fallbackConfidential":
     "This image is classified as confidential — the cloud AI is excluded for it and no local vision model is wired. So there is no suggestion (nothing leaves the server).",
+  "editor.captionForm.open": "Edit image description",
+  "editor.captionForm.title": "Image description",
+  "editor.captionForm.label": "Description of the image",
+  "editor.captionForm.placeholder": "What can be seen in the image, and why is it here?",
+  "editor.captionForm.limit": "{{n}} of {{max}} characters",
+  "editor.captionForm.limitReached": "Maximum length reached ({{max}} characters).",
+  "editor.captionForm.append": "Append to the text",
+  "editor.captionForm.save": "Save description",
+  "editor.captionForm.cancel": "Cancel",
+  "editor.captionForm.imageAlt": "Image being described",
+  "editor.captionForm.noSuggestionYet":
+    "No suggestion requested yet. The text stays yours — a suggestion is never adopted automatically.",
+  "editor.captionForm.stale":
+    "This image has changed in the meantime — the caption was NOT saved, so it cannot end up on the wrong image. Please copy the text, close the form and reopen it on the current image.",
   "editor.file": "Link a file",
   "editor.insertFile": "Insert file attachment as a link",
   "editor.noFiles":
@@ -5347,6 +5632,16 @@ const en: typeof de = {
   "ext.placeholder": "Search term …",
   "ext.search": "Search",
   "ext.attach": "Attach as source",
+  "ext.attachBlocked":
+    "At the configured stage, searching is allowed but attaching is not. An administrator can change this under Administration → External knowledge.",
+  // AUFTRAG-mega16 Block A (ben's SB-4): the stage is a real boundary now — it covers EVERY public
+  // web address, not just recognised providers.
+  "ext.gate.publicUrl":
+    "At the configured stage, no source with a public web address can be attached — this applies to every address from the internet, not only to search results.",
+  "ext.gate.unanchored":
+    "At the configured stage, a source without an address can only be attached if it is a passage from a document held with this knowledge object. Without an address and without a stored document, the server cannot tell it apart from an external search result.",
+  "ext.gate.how":
+    "An administrator can change the stage under Administration → External knowledge.",
   "ext.unavailable": "External search is not available.",
   "ext.resumeHint":
     "The results list is not stored with the draft. Your search query is back — run the search again to reload the results.",
@@ -5469,6 +5764,9 @@ const en: typeof de = {
   // D-AISTATE PAKET 1 (bens V1): confidential → cloud AI excluded, no local model.
   "val.aiCheck.reason.confidential":
     "Confidential — the cloud AI is excluded and no local model is available. Only the deterministic duplicate/overlap check ran; no AI content check was performed.",
+  // AUFTRAG-mega11 Block A (bens SB-1): neutral — no statement about protected holdings.
+  "val.aiCheck.reason.privacy-no-cloud":
+    "For this check the cloud AI is unavailable for data protection reasons, and no local model is ready. Only the deterministic duplicate/overlap check ran; no AI content check was performed.",
   // RT-001 (Pedi): honest classification of real provider errors — never a provider name/key/
   // endpoint/raw error text, only a user-understandable cause plus what the user can do.
   "val.aiCheck.reason.auth":
@@ -5479,6 +5777,10 @@ const en: typeof de = {
     "The AI provider was unreachable — likely a network or connection issue. Check the connection and retry the check.",
   "val.aiCheck.reason.bad-response":
     "The AI model returned an unintelligible response that could not be evaluated. Retrying starts a fresh run.",
+  // AUFTRAG-mega23 Block B: TECHNICAL queueing failure — the model was never asked and raised
+  // nothing. The text says exactly that and does not disguise itself as a model error.
+  "val.aiCheck.reason.submit-followup-failed":
+    "The check could not be queued for technical reasons while submitting — the AI model was not asked and raised nothing. Retrying queues it again.",
   "val.feedback.condTitle": "Conditional – reason for the author (required)",
   "val.feedback.rejTitle": "Rejection – reason for the author (required)",
   "val.feedback.placeholder": "What needs to be revised? …",
@@ -5747,6 +6049,33 @@ const en: typeof de = {
   "lib.facet.trustBucket.t70": "Trust 70+",
   "lib.facet.more": "+{{n}} more",
   "lib.facet.none": "no value",
+  // AUFTRAG-mega10 block B: the chip wall becomes a search mask (rail, per-dimension search,
+  // openable cap, sticky counter, range filter, filter sheet).
+  "facet.searchLabel": "Search in {{label}}",
+  "facet.searchPlaceholder": "Search {{label}} …",
+  "facet.searchNoHit": "No value matches “{{query}}”.",
+  "facet.showAll": "Show all {{n}}",
+  "facet.showLess": "Show fewer",
+  "facet.restricted": "only values from the selected category",
+  "facet.showResults": "Show {{n}} results",
+  "facet.countFiltered": "filtered from {{total}}",
+  "facet.countAll": "entire stock",
+  "facet.openFilters": "Filters",
+  "facet.closeFilters": "Close filters",
+  "facet.sheetTitle": "Filters",
+  "facet.rangeLabel": "Period",
+  "facet.rangeFrom": "from",
+  "facet.rangeTo": "to",
+  "facet.rangeFromPill": "from {{date}}",
+  "facet.rangeToPill": "until {{date}}",
+  "facet.rangeContradictory":
+    "The start date is after the end date — this combination matches nothing.",
+  "lib.facet.confidentiality": "Confidentiality",
+  "lib.facet.showResults": "Show {{n}} entries",
+  "lib.facet.rangeLabel": "Last changed",
+  "lib.loadMore": "Load {{n}} more",
+  "lib.views.remember": "Remember this search",
+  "lib.views.savedLabel": "Saved searches",
   // AUFTRAG-sortfilter · Punkt 1: hit list sorting.
   "lib.sort.label": "Sort",
   "lib.sort.relevance": "Relevance",
@@ -5867,6 +6196,9 @@ const en: typeof de = {
   "imp.gallery.filesTitle": "Files",
   "imp.gallery.hintSoon": "In progress — this source is coming soon.",
   "imp.gallery.hintPlanned": "Planned — coming later.",
+  "imp.gallery.unconfigured": "not configured",
+  "imp.gallery.hintUnconfigured":
+    "Present, but not usable: no service is configured for transcription. An administrator can set one up in the admin area.",
   "imp.gallery.src.confluence": "Confluence",
   "imp.gallery.src.jsonImport": "JSON import",
   "imp.gallery.src.jira": "Jira",
@@ -5982,6 +6314,7 @@ const en: typeof de = {
   "imp.groups.expired":
     "The data behind this grouping has expired — the import was stopped and the selection reset. Please group again.",
   "imp.groups.regroup": "Group again",
+  "imp.groups.refreshGrouping": "Refresh grouping",
   // WP-COCKPIT-LINIE: guided five-step bar + collapsed history (plain language).
   "imp.step.barLabel": "Import in five steps",
   "imp.step.source": "Source",
@@ -6128,11 +6461,12 @@ const en: typeof de = {
   "imp.infoSend": "Send",
   "imp.notePlaceholder": "What information is missing?",
   "imp.reviewed": "Contribution updated.",
-  "imp.status.neu": "New",
+  "imp.status.neu": "Marked for review",
   "imp.status.in_bearbeitung": "In progress",
   "imp.status.angenommen": "Accepted",
   "imp.status.abgelehnt": "Rejected",
   "imp.status.info-angefragt": "Info requested",
+  "imp.status.unknown": "Status unknown",
   "risk.kicker": "Risk & gaps",
   "risk.summary": "Cockpit overview",
   "risk.kpiOpenGaps": "Open gaps",
@@ -6250,11 +6584,11 @@ const en: typeof de = {
   "ana.help.impact":
     "Impact shows what the system actually delivers: total validated objects, questions asked, questions answered without a gap, and the resulting answer rate. The weekly trend reveals whether validated knowledge is growing.",
   "ana.help.audit":
-    "The audit log records every relevant action immutably — who (actor), what (action) and on what target. Use the filters to narrow down to a person, an action type or an object; nothing can be changed after the fact.",
+    "The audit log records every relevant action — who (actor), what (action) and on what target. Entries are only appended and hash-chained; a later deviation is detectable by recomputation. Use the filters to narrow down to a person, an action type or an object.",
   "ana.total": "Total",
   "ana.categories": "Categories",
   "ana.byType": "Distribution by knowledge type",
-  "ana.audit": "Audit log (immutable)",
+  "ana.audit": "Audit log (hash-chained)",
   "ana.auditEmpty": "No entries.",
   "ana.avgTrust": "Avg trust",
   "ana.validationRate": "Validation rate",
@@ -6390,7 +6724,7 @@ const en: typeof de = {
   "klara.page.lifecycle":
     "Knowledge ages: here you see due re-validations and learning paths, so reviewed stays reviewed.",
   "klara.page.analytics":
-    "Metrics from real data plus the immutable audit log — who did what and when.",
+    "Metrics from real data plus the hash-chained audit log — who did what and when.",
   "klara.page.admin":
     "Accounts, AI assignment, data and security in one place. Visible to admins only.",
   "klara.page.help":
@@ -6404,7 +6738,7 @@ const en: typeof de = {
   "shelp.adm.createTitle":
     "In this section you create a new user account and assign a role. Viewers read, experts capture knowledge, controllers review it, and admins manage everything. The role decides which buttons the person will see. Every account change is recorded in the audit log.",
   "shelp.adm.auditTitle":
-    "This log shows recent sign-ins and user actions. It is immutable: every line is chained to the previous one — nothing can be changed or deleted unnoticed afterwards. With the verify button you can check the chain at any time, and the result honestly tells you whether everything is intact.",
+    "This log shows recent sign-ins and user actions. Every line is hash-chained to the previous one: if something is changed or removed afterwards, the hash no longer matches. With the verify button you can have the chain recomputed at any time; the result honestly tells you whether a deviation was found — and if so, at which entry.",
   "shelp.ana.byType":
     "The bars show how your knowledge is spread across the five knowledge types — from gut feeling to proven practices to negative knowledge, meaning what must not be done. If one type is almost missing, that is a hint: little is being captured there so far. Use the picture to ask targeted questions, not to rate people.",
   "shelp.ana.weekly":
@@ -6991,8 +7325,9 @@ const en: typeof de = {
   "xtr.hint":
     "Upload another document — the AI reads it and suggests knowledge points WITH their supporting excerpt. Only what you tick is appended as a section at the end of your article; nothing is replaced.",
   "xtr.applyCta": "Append selected",
+  "xtr.applying": "Adopting {{count}} point(s) — content and provenance together …",
   "xtr.appended":
-    "{{count}} point(s) from „{{name}}“ appended — existing content was left unchanged. The source was noted per point.",
+    "{{count}} point(s) from „{{name}}“ adopted — content AND provenance were saved together; existing content was left unchanged.",
   "xtr.append.button": "Append to existing article",
   "xtr.append.title": "Append to existing article",
   "xtr.append.intro":
@@ -7002,6 +7337,16 @@ const en: typeof de = {
   "xtr.append.busy": "Appending …",
   "xtr.append.done":
     "{{count}} insight(s) appended to „{{title}}“ — the article now needs re-review.",
+  "xtr.append.missingAnchor":
+    "Without the original document as evidence the content is not adopted. The article was NOT changed. This holds regardless of the “External knowledge” setting: adopted document content must stay attached to its original.",
+  "xtr.append.blockedByStage":
+    "At the configured “External knowledge” stage this source may not be attached to a knowledge object. The article was NOT changed. An administrator can change the stage under Administration → External knowledge.",
+  "xtr.append.unclear":
+    "The outcome is unclear — the connection dropped before the server answered. NOTHING was taken back: the adoption may or may not have gone through. Please open the article and check; retrying the same operation will not create anything twice.",
+  "xtr.append.stateUnchanged":
+    "The article was NOT changed — no content was saved without its provenance. You can simply try the import again.",
+  "xtr.append.followUpsFailed":
+    "The adoption is saved (content and provenance). A downstream step did not run: {{steps}}. The renewed AI check may therefore be missing — it can be restarted on the validation page.",
   "xtr.help.title": "Add from document",
   "xtr.help.body":
     "The AI reads a document you upload and suggests knowledge points — each point carries its supporting excerpt from the document (no excerpt, no adoption). You choose via checkboxes; the selection is APPENDED to your article as sections, nothing is replaced or overwritten. The origin (file name + excerpt) is noted on the knowledge object as a level-2 source — it does not count as peer-validated and does not replace review.",
@@ -7066,6 +7411,13 @@ const en: typeof de = {
   "fd.discardInput": "Discard input",
   "fd.back": "Back",
   "fd.writeToSubmit": "Write or paste content, then you can review and submit.",
+  "fd.validate.lead": "Submitting is not possible yet:",
+  "fd.validate.needBody": "The content is empty. To submit, the knowledge object needs text.",
+  "fd.validate.hint": "You can still save the empty state as a draft and continue later.",
+  "fd.unsavable.proposal":
+    "The AI proposal on screen has not been adopted and will not be saved along with the draft.",
+  "fd.unsavable.confidentialityOnly":
+    "The chosen confidentiality without a title and without content — there is no draft yet that could hold it.",
   "fd.statusLabel": "Status",
   "fd.titleOnSave": "Title on save",
   "fd.author": "Author",
@@ -7765,20 +8117,32 @@ const nl: typeof de = {
   "adm.ready.upload.val": "{{n}} bijlagen · {{mb}} MB",
   "adm.ready.unknown": "onbekend",
   "adm.ready.loading": "wordt geladen …",
+  "adm.ready.demo": "Demogegevens",
+  "adm.ready.demo.loaded": "{{n}} geladen — te verwijderen onder Gegevens",
+  "adm.ready.demo.none": "geen geladen",
+  "adm.ready.demo.goto": "Naar Gegevens",
   "adm.ready.external": "Externe kennisopvraag",
   "adm.ready.ext.blocked": "Geblokkeerd",
   "adm.ready.ext.searchOnClick": "Zoeken op klik",
   "adm.ready.ext.searchAttach": "Zoeken & bijvoegen",
   "adm.ready.ext.open": "Open",
-  "adm.sich.auditTitle": "Auditlog — manipulatiebestendig",
+  "adm.sich.auditTitle": "Auditlog — hash-geschakeld, afwijkingen aantoonbaar",
   "adm.sich.auditHelp":
-    "Elke beveiligingsrelevante actie wordt alleen toegevoegd en via een hashketen aan elkaar geschakeld. Achteraf is geen enkele vermelding te wijzigen of te verwijderen zonder dat de keten breekt — dat maakt het log verifieerbaar (tamper-evident).",
+    "Elke beveiligingsrelevante actie wordt alleen toegevoegd en via een hashketen aan de vorige vermelding gekoppeld. Wordt een vermelding achteraf gewijzigd of verwijderd, dan klopt de hash niet meer — de afwijking is rekenkundig vast te stellen en wordt bij de integriteitscontrole met nummer, datum en actie benoemd. De keten heeft daarbij geen extern verankerd begin: wie volledige schrijftoegang tot de database heeft, kan een vermelding samen met alle volgende hashes opnieuw opbouwen. Het log is dus verifieerbaar (tamper-evident) — de keten houdt een wijziging niet tegen, ze maakt die opvallend.",
   "adm.sich.auditIntro":
-    "Append-only, hash-geschakeld: een verifieerbaar spoor van alle beveiligingsrelevante acties. Niets wordt met terugwerkende kracht gewijzigd.",
+    "Append-only, hash-geschakeld: een verifieerbaar spoor van alle beveiligingsrelevante acties. Een latere afwijking op een vermelding is rekenkundig vast te stellen.",
   "adm.sich.auditCount": "{{count}} vermeldingen in de keten",
   "adm.sich.verify.button": "Integriteit controleren",
   "adm.sich.verify.ok": "Integriteit gecontroleerd ✓ — {{count}} vermeldingen, keten sluitend",
-  "adm.sich.verify.fail": "Keten geschonden ✗ — manipulatie gedetecteerd",
+  "adm.sich.verify.serialisation":
+    "Keten sluitend — {{count}} vermeldingen, geen breuk. Bij {{n}} vermeldingen is de controlesom van de gegevensvelden niet na te rekenen, omdat de database de volgorde van die velden normaliseert. De aanwezige waarden passen bij de opgeslagen hash; geen enkele afwijking blijft onopgelost.",
+  "adm.sich.verify.unconfirmed":
+    "Keten niet bevestigd — eerste afwijking bij vermelding {{seq}} van {{at}} ({{action}}). Soort: {{kind}}. De oorzaak moet worden onderzocht.",
+  "adm.sich.verify.unconfirmedPlain": "Keten niet bevestigd — de oorzaak moet worden onderzocht.",
+  "adm.sich.verify.kind.linkage": "keten verbroken",
+  "adm.sich.verify.kind.serialisation": "veldvolgorde van de database",
+  "adm.sich.verify.kind.unresolved": "controlesom niet op te lossen",
+  "adm.sich.verify.kind.unchecked": "controlesom niet onderzocht (te veel veldvolgordes)",
   "adm.sich.dataTitle": "Privacy & beveiliging",
   "adm.sich.dataHelp":
     "Een eerlijk overzicht van de systeemeigenschappen — geen beloftes, maar hoe KLARWERK is gebouwd.",
@@ -7791,9 +8155,9 @@ const nl: typeof de = {
   "adm.sich.external.t": "Externe kennisopvraag standaard beperkt",
   "adm.sich.external.b":
     "Public-AI en webzoekopdrachten worden door de admin aangestuurd en zijn standaard niet open. Niets verlaat ongecontroleerd het systeem.",
-  "adm.sich.audit.t": "Manipulatiebestendig log",
+  "adm.sich.audit.t": "Hash-geschakeld auditlog",
   "adm.sich.audit.b":
-    "Alle beveiligingsrelevante acties worden append-only en hash-geschakeld vastgelegd — verifieerbaar en vervalsingsbestendig.",
+    "Alle beveiligingsrelevante acties worden append-only en hash-geschakeld vastgelegd. Een latere afwijking op een vermelding is rekenkundig aantoonbaar en wordt bij de integriteitscontrole benoemd (tamper-evident).",
   "adm.sich.trash.t": "Verwijderen met prullenbak",
   "adm.sich.trash.b":
     "Verwijderde items gaan eerst naar de prullenbak (te herstellen); de definitieve verwijdering gebeurt pas na vier weken. Geen stil gegevensverlies.",
@@ -7883,9 +8247,10 @@ const nl: typeof de = {
   "adm.upload.help":
     "Bepaalt hoeveel bijlagen een object mag hebben en hoe groot een afzonderlijke bijlage mag zijn. Geldt voor nieuwe bijlagen; bestaande blijven. Wijzigingen komen in het auditlog.",
   "adm.upload.hint":
-    "Deze limieten worden bij het vastleggen getoond en aan de serverkant afgedwongen.",
+    "Deze limieten verschijnen overal waar een bestand kan worden gekozen en worden bij het toevoegen aan de serverkant afgedwongen. De grootte meet het overgedragen bestand inclusief transportcodering (ongeveer 1,34× de zuivere bestandsgrootte).",
   "adm.upload.maxAttachments": "Bijlagen per object (max.)",
   "adm.upload.maxMb": "Grootte per bijlage (MB, max.)",
+  "adm.upload.rawHint": "komt overeen met ongeveer {{raw}} MB zuivere bestandsgrootte",
   "adm.upload.save": "Opslaan",
   "adm.upload.saved": "Uploadlimieten opgeslagen.",
   "adm.ext.title": "Externe kennisopvraag",
@@ -8013,6 +8378,49 @@ const nl: typeof de = {
     "Je kennisobject is open opgeslagen. Dit bestand/deze bestanden zijn NIET bijgevoegd: {{names}}. De opgeslagen kennis blijft daardoor onaangeroerd — bewijs vervangt de validatie niet.",
   "capture.attachFailedNext":
     "Volgende stap: kennisobject openen en het bestand/de bestanden daar opnieuw bijvoegen.",
+  "capture.sourceMissingTitle": "Overgenomen inhoud zonder herkomstvermelding",
+  "capture.sourceMissingBody":
+    "Je kennisobject is opgeslagen en bevat de uit het document overgenomen tekst. De bijbehorende herkomstvermelding kon NIET worden vastgelegd ({{count}}): {{names}}. Daarmee staat er inhoud zonder bewijs — precies wat dit product niet stilzwijgend accepteert.",
+  "capture.sourceMissingNext":
+    "Volgende stap: kennisobject openen, het brondocument daar bijvoegen en de bron opnieuw vermelden. Staat het ingestelde niveau „Externe kennis“ dat niet toe, dan kan een beheerder het wijzigen onder Beheer → Externe kennis.",
+  // AUFTRAG-mega21 Block C-1 / C-2 — zie het Duitse blok voor de onderbouwing.
+  "capture.followUpsFailedTitle": "Opgeslagen — maar een vervolgstap liep niet",
+  "capture.followUpsFailedBody":
+    "Je kennisobject is volledig opgeslagen en onderbouwd. NA het opslaan is het volgende niet doorlopen: {{steps}}. Dat verandert niets aan de opgeslagen kennis — er blijft wel iets openstaan, en niemand anders vertelt het je.",
+  "capture.followUp.draftDiscard": "concept verwijderen",
+  "capture.followUp.draftDiscardNext":
+    "Het concept staat nog in je conceptenlijst. Je kunt het daar verwijderen — het ingediende kennisobject blijft ongemoeid.",
+  "capture.followUp.validationAssign": "beoordelaars toewijzen",
+  "capture.followUp.validationAssignNext":
+    "Er wacht niemand op dit kennisobject. Open Validatie en wijs de beoordelaars daar opnieuw toe.",
+  "capture.followUp.notifyAssignment": "beoordelaars informeren",
+  "capture.followUp.notifyAssignmentNext":
+    "De toewijzing staat, alleen het bericht ging niet uit. Laat het de toegewezen beoordelaars weten.",
+  "capture.followUp.aiCheck": "duplicaat-/conflictcontrole starten",
+  "capture.followUp.aiCheckNext":
+    "De controle staat als mislukt genoteerd en kan op de validatiepagina opnieuw worden gestart.",
+  // AUFTRAG-mega23 Block B (bens SB-G): de regel hierboven veronderstelt een GESCHREVEN notitie.
+  // Ontbreekt het bewijs, dan geldt deze — hij belooft geen herhaling die het endpoint zou weigeren.
+  "capture.followUp.aiCheckUnrecordedNext":
+    "Ook de mislukking-notitie zelf kon niet worden opgeslagen — er staat voor dit kennisobject dus GEEN herhaalbare controletaak klaar. Bekijk het object in Validatie handmatig op duplicaten en tegenstrijdigheden.",
+  "capture.followUp.unknown": "een stap die deze interface nog niet kent",
+  "capture.followUp.unknownNext":
+    "Deze versie van de interface kent de stap niet bij naam. Hij staat in het auditspoor van het kennisobject — kijk daar.",
+  "capture.anchorsMissingTitle":
+    "Een beveiligd origineel ontbreekt — overgenomen tekst is niet geladen",
+  "capture.anchorsMissingBody":
+    "Bij dit concept horen {{count}} beveiligde originele document(en) die er niet meer zijn. De daaruit overgenomen tekst en de bijbehorende bronvermeldingen zijn daarom NIET geladen: dat zou inhoud zonder herkomst zijn, en dat slaat dit product niet stilzwijgend op. Je eigen werk — titel, uitspraak, voorwaarden, maatregelen, beoordelaarskeuze — is volledig aanwezig.",
+  "capture.anchorsMissingNext":
+    "Zolang deze melding staat, is „Als concept opslaan“ geblokkeerd: opslaan zou nu de uitgedunde stand over de opgeslagen stand schrijven.",
+  "capture.anchorsMissingReselect": "Origineel opnieuw kiezen",
+  "capture.anchorsMissingAck": "Zonder het origineel verdergaan",
+  "capture.restartOfferTitle": "Deze bewerking kan niet worden herhaald",
+  "capture.restartOfferBody":
+    "De bewerkingssleutel van deze indiening hoort al bij een afgeronde bewerking met andere inhoud. Je huidige tekst staat er onveranderd en gaat niet verloren. Om hem op te slaan is een NIEUWE bewerking nodig — dat beslis jij, niet de interface.",
+  "capture.restartOfferAction": "Nieuwe bewerking beginnen",
+  "capture.appendUnclearTitle": "Overname met onduidelijke uitkomst",
+  "capture.appendUnclearBody":
+    "Je kennisobject is opgeslagen. Bij de overname uit {{names}} brak de verbinding af voordat de server antwoordde: die kan wel of niet zijn voltooid. Er is NIETS teruggenomen — blind opruimen zou hier de schade juist hebben aangericht. Open het kennisobject en kijk na of de overgenomen inhoud met herkomst er staat.",
   "own.empty.title": "Nog geen eigen kennis hier",
   "own.empty.hint":
     "Je filtert op eigen kennis (geen demovoorbeelden). Zelf vastgelegde kennis verschijnt hier na het opslaan en wacht dan op de beoordeling.",
@@ -8327,7 +8735,8 @@ const nl: typeof de = {
   "capture.author": "Auteur",
   "capture.documents": "Documenten (context / bijlage)",
   "capture.documentsUpload": "Bestanden uploaden",
-  "capture.uploadLimits": "Tot {{count}} bestanden, elk max. {{mb}} MB.",
+  "capture.uploadLimits":
+    "Tot {{count}} bestanden, elk max. {{mb}} MB overdrachtsgrootte (ongeveer {{raw}} MB zuiver bestand).",
   "capture.attachLimitReached":
     "{{taken}} van {{total}} bestanden geaccepteerd voor verwerking — de bijlagegrens is {{limit}}.",
   "capture.documentsHint":
@@ -8515,6 +8924,20 @@ const nl: typeof de = {
     "De cloud-AI is momenteel niet bereikbaar of meldt een fout — er is daarom geen voorstel. Probeer het later opnieuw.",
   "editor.captionAi.fallbackConfidential":
     "Deze afbeelding is als vertrouwelijk aangemerkt — de cloud-AI is daarvoor uitgesloten en er is geen lokaal vision-model aangesloten. Er is daarom geen voorstel (er verlaat niets de server).",
+  "editor.captionForm.open": "Afbeeldingsbeschrijving bewerken",
+  "editor.captionForm.title": "Afbeeldingsbeschrijving",
+  "editor.captionForm.label": "Beschrijving van de afbeelding",
+  "editor.captionForm.placeholder": "Wat is er op de afbeelding te zien, en waarom staat die hier?",
+  "editor.captionForm.limit": "{{n}} van {{max}} tekens",
+  "editor.captionForm.limitReached": "Maximale lengte bereikt ({{max}} tekens).",
+  "editor.captionForm.append": "Aan de tekst toevoegen",
+  "editor.captionForm.save": "Beschrijving opslaan",
+  "editor.captionForm.cancel": "Annuleren",
+  "editor.captionForm.imageAlt": "Afbeelding die wordt beschreven",
+  "editor.captionForm.noSuggestionYet":
+    "Nog geen voorstel aangevraagd. De tekst blijft van jou — een voorstel wordt nooit automatisch overgenomen.",
+  "editor.captionForm.stale":
+    "Deze afbeelding is intussen gewijzigd — het bijschrift is NIET opgeslagen, zodat het niet bij de verkeerde afbeelding terechtkomt. Kopieer de tekst, sluit het formulier en open het opnieuw bij de huidige afbeelding.",
   "editor.file": "Bestand koppelen",
   "editor.insertFile": "Bestandsbijlage als link invoegen",
   "editor.noFiles":
@@ -8871,6 +9294,15 @@ const nl: typeof de = {
   "ext.placeholder": "Zoekterm …",
   "ext.search": "Zoeken",
   "ext.attach": "Als bron toevoegen",
+  "ext.attachBlocked":
+    "Op het ingestelde niveau mag wel worden gezocht, maar niet worden toegevoegd. Een beheerder kan dit wijzigen onder Beheer → Externe kennis.",
+  // AUFTRAG-mega16 Block A (bens SB-4): het niveau is nu een echte grens — het geldt voor ELK
+  // openbaar webadres, niet alleen voor herkende aanbieders.
+  "ext.gate.publicUrl":
+    "Op het ingestelde niveau kan geen bron met een openbaar webadres worden toegevoegd — dat geldt voor elk adres van het internet, niet alleen voor zoekresultaten.",
+  "ext.gate.unanchored":
+    "Op het ingestelde niveau kan een bron zonder adres alleen worden toegevoegd als het een passage is uit een document dat bij dit kennisobject is opgeslagen. Zonder adres en zonder opgeslagen document kan de server niet vaststellen of het om een extern zoekresultaat gaat.",
+  "ext.gate.how": "Een beheerder kan het niveau wijzigen onder Beheer → Externe kennis.",
   "ext.unavailable": "Externe zoekopdracht is niet beschikbaar.",
   "ext.resumeHint":
     "De trefferlijst wordt niet met het concept opgeslagen. Je zoekopdracht is terug — voer de zoekopdracht opnieuw uit om de treffers opnieuw te laden.",
@@ -8993,6 +9425,9 @@ const nl: typeof de = {
   // D-AISTATE PAKET 1 (bens V1): vertrouwelijk → cloud-AI uitgesloten, geen lokaal model.
   "val.aiCheck.reason.confidential":
     "Vertrouwelijk — de cloud-AI is uitgesloten en er is geen lokaal model beschikbaar. Alleen de deterministische duplicaat-/overlapcontrole liep; er is geen inhoudelijke AI-controle uitgevoerd.",
+  // AUFTRAG-mega11 Block A (bens SB-1): neutraal — geen uitspraak over beschermde inhoud.
+  "val.aiCheck.reason.privacy-no-cloud":
+    "Voor deze controle is de cloud-AI om privacyredenen niet beschikbaar en er is geen lokaal model gereed. Alleen de deterministische duplicaat-/overlapcontrole liep; er is geen inhoudelijke AI-controle uitgevoerd.",
   // RT-001 (Pedi): eerlijke classificatie van echte providerfouten — nooit een providernaam/sleutel/
   // endpoint/ruwe fouttekst, alleen een begrijpelijke oorzaak plus wat de gebruiker kan doen.
   "val.aiCheck.reason.auth":
@@ -9003,6 +9438,10 @@ const nl: typeof de = {
     "De AI-aanbieder was niet bereikbaar — waarschijnlijk een netwerk- of verbindingsprobleem. Controleer de verbinding en controleer opnieuw.",
   "val.aiCheck.reason.bad-response":
     "Het AI-model gaf een onbegrijpelijk antwoord dat niet kon worden verwerkt. Opnieuw controleren start een nieuwe run.",
+  // AUFTRAG-mega23 Block B: TECHNISCHE inplanning mislukt — het model is nooit geraadpleegd en heeft
+  // niets aangemerkt. De tekst zegt precies dat en doet zich niet voor als een modelfout.
+  "val.aiCheck.reason.submit-followup-failed":
+    "De controle kon bij het indienen om technische redenen niet worden ingepland — het AI-model is daarbij niet geraadpleegd en heeft niets aangemerkt. Opnieuw controleren plant hem opnieuw in.",
   "val.feedback.condTitle": "Voorwaardelijk – onderbouwing voor de auteur (verplicht)",
   "val.feedback.rejTitle": "Afwijzing – onderbouwing voor de auteur (verplicht)",
   "val.feedback.placeholder": "Wat moet er worden herzien? …",
@@ -9261,6 +9700,33 @@ const nl: typeof de = {
   "lib.facet.trustBucket.t70": "Trust 70+",
   "lib.facet.more": "+{{n}} meer",
   "lib.facet.none": "zonder waarde",
+  // AUFTRAG-mega10 blok B: de chipmuur wordt een zoekmasker (rail, zoeken per dimensie,
+  // opengaande limiet, plakkende teller, bereikfilter, filterblad).
+  "facet.searchLabel": "Zoeken in {{label}}",
+  "facet.searchPlaceholder": "{{label}} zoeken …",
+  "facet.searchNoHit": "Geen waarde past bij „{{query}}”.",
+  "facet.showAll": "Alle {{n}} tonen",
+  "facet.showLess": "Minder tonen",
+  "facet.restricted": "alleen waarden uit de gekozen categorie",
+  "facet.showResults": "{{n}} treffers tonen",
+  "facet.countFiltered": "van {{total}} gefilterd",
+  "facet.countAll": "volledige voorraad",
+  "facet.openFilters": "Filters",
+  "facet.closeFilters": "Filters sluiten",
+  "facet.sheetTitle": "Filters",
+  "facet.rangeLabel": "Periode",
+  "facet.rangeFrom": "van",
+  "facet.rangeTo": "tot",
+  "facet.rangeFromPill": "vanaf {{date}}",
+  "facet.rangeToPill": "tot {{date}}",
+  "facet.rangeContradictory":
+    "De begindatum ligt na de einddatum — deze combinatie levert niets op.",
+  "lib.facet.confidentiality": "Vertrouwelijkheid",
+  "lib.facet.showResults": "{{n}} bijdragen tonen",
+  "lib.facet.rangeLabel": "Laatst gewijzigd",
+  "lib.loadMore": "Nog {{n}} laden",
+  "lib.views.remember": "Deze zoekopdracht onthouden",
+  "lib.views.savedLabel": "Opgeslagen zoekopdrachten",
   // AUFTRAG-sortfilter · Punt 1: sortering van de resultatenlijst.
   "lib.sort.label": "Sorteren",
   "lib.sort.relevance": "Relevantie",
@@ -9380,6 +9846,9 @@ const nl: typeof de = {
   "imp.gallery.filesTitle": "Bestanden",
   "imp.gallery.hintSoon": "In ontwikkeling — deze bron komt binnenkort.",
   "imp.gallery.hintPlanned": "Gepland — komt later.",
+  "imp.gallery.unconfigured": "niet geconfigureerd",
+  "imp.gallery.hintUnconfigured":
+    "Aanwezig, maar niet bruikbaar: er is geen dienst ingesteld voor transcriptie. Een beheerder kan die in het beheer inrichten.",
   "imp.gallery.src.confluence": "Confluence",
   "imp.gallery.src.jsonImport": "JSON-import",
   "imp.gallery.src.jira": "Jira",
@@ -9495,6 +9964,7 @@ const nl: typeof de = {
   "imp.groups.expired":
     "De gegevensbasis van deze groepering is inmiddels verlopen — de overname is gestopt en de selectie teruggezet. Groepeer opnieuw.",
   "imp.groups.regroup": "Opnieuw groeperen",
+  "imp.groups.refreshGrouping": "Groepering bijwerken",
   // WP-COCKPIT-LINIE: begeleide vijf-stappen-balk + ingeklapte geschiedenis (eenvoudige taal).
   "imp.step.barLabel": "Import in vijf stappen",
   "imp.step.source": "Bron",
@@ -9642,11 +10112,12 @@ const nl: typeof de = {
   "imp.infoSend": "Verzenden",
   "imp.notePlaceholder": "Welke informatie ontbreekt?",
   "imp.reviewed": "Bijdrage bijgewerkt.",
-  "imp.status.neu": "Nieuw",
+  "imp.status.neu": "Voorgemerkt voor controle",
   "imp.status.in_bearbeitung": "In behandeling",
   "imp.status.angenommen": "Aangenomen",
   "imp.status.abgelehnt": "Afgewezen",
   "imp.status.info-angefragt": "Info opgevraagd",
+  "imp.status.unknown": "Status onbekend",
   "risk.kicker": "Risico & hiaten",
   "risk.summary": "Cockpit-overzicht",
   "risk.kpiOpenGaps": "Open hiaten",
@@ -9765,11 +10236,11 @@ const nl: typeof de = {
   "ana.help.impact":
     "Impact toont wat het systeem echt oplevert: gevalideerde objecten totaal, gestelde vragen, zonder hiaat beantwoorde vragen en het daaruit berekende antwoordpercentage. Het weekverloop maakt zichtbaar of gevalideerde kennis groeit.",
   "ana.help.audit":
-    "Het auditlog registreert onveranderlijk elke relevante actie — wie (actor), wat (actie) en waaraan (doel). Met de filters beperk je snel tot een persoon, een soort actie of een object; achteraf is er niets te wijzigen.",
+    "Het auditlog legt elke relevante actie vast — wie (actor), wat (actie) en waaraan (doel). Vermeldingen worden alleen toegevoegd en hash-geschakeld; een latere afwijking is rekenkundig aantoonbaar. Met de filters beperk je snel tot een persoon, een soort actie of een object.",
   "ana.total": "Totaal",
   "ana.categories": "Categorieën",
   "ana.byType": "Verdeling per kennissoort",
-  "ana.audit": "Auditlog (onveranderlijk)",
+  "ana.audit": "Auditlog (hash-geschakeld)",
   "ana.auditEmpty": "Geen vermeldingen.",
   "ana.avgTrust": "Ø vertrouwen",
   "ana.validationRate": "Validatiepercentage",
@@ -9905,7 +10376,7 @@ const nl: typeof de = {
   "klara.page.lifecycle":
     "Kennis veroudert: hier zie je verlopen hervalidaties en leerpaden, zodat gecontroleerde kennis gecontroleerd blijft.",
   "klara.page.analytics":
-    "Kengetallen uit echte data plus het onveranderlijke audit-log — wie heeft wat wanneer gedaan.",
+    "Kengetallen uit echte data plus het hash-geschakelde auditlog — wie heeft wat wanneer gedaan.",
   "klara.page.admin":
     "Accounts, KI-toewijzing, data en beveiliging op één plek. Alleen zichtbaar voor admins.",
   "klara.page.help":
@@ -9918,7 +10389,7 @@ const nl: typeof de = {
   "shelp.adm.createTitle":
     "In dit gedeelte maak je een nieuw gebruikersaccount aan en geef je het een rol. Kijkers lezen, experts leggen kennis vast, controllers controleren die, en admins beheren alles. De rol bepaalt dus welke knoppen de persoon later ziet. Elke accountwijziging wordt in het auditprotocol vastgelegd.",
   "shelp.adm.auditTitle":
-    "Dit protocol toont de laatste aanmeldingen en gebruikersacties. Het is onveranderlijk, want elke regel is aan de vorige gekoppeld — achteraf laat zich niets ongemerkt wijzigen of verwijderen. Met de controleknop kun je de keten op elk moment laten controleren, en het resultaat vertelt je eerlijk of alles ongeschonden is.",
+    "Dit protocol toont de laatste aanmeldingen en gebruikersacties. Elke regel is via een hash aan de vorige gekoppeld: wordt er achteraf iets gewijzigd of verwijderd, dan klopt de hash niet meer. Met de controleknop kun je de keten op elk moment laten narekenen; het resultaat vertelt je eerlijk of er een afwijking is gevonden — en zo ja, bij welke vermelding.",
   "shelp.ana.byType":
     "De balken tonen hoe jullie kennis over de vijf kennissoorten verdeeld is — van onderbuikgevoel via beproefde werkwijzen tot negatieve kennis, oftewel de kennis over wat je niet mag doen. Ontbreekt een soort bijna helemaal, dan is dat een signaal: daar wordt tot nu toe weinig vastgelegd. Gebruik het beeld om gericht door te vragen, niet om personen te beoordelen.",
   "shelp.ana.weekly":
@@ -10506,8 +10977,9 @@ const nl: typeof de = {
   "xtr.hint":
     "Upload nog een document — de KI leest het en stelt kennispunten MET bewijsplaats voor. Alleen wat je aankruist, wordt als sectie aan het einde van je artikel toegevoegd; niets wordt vervangen.",
   "xtr.applyCta": "Geselecteerde toevoegen",
+  "xtr.applying": "{{count}} punt(en) worden overgenomen — inhoud en herkomst samen …",
   "xtr.appended":
-    '{{count}} punt(en) uit „{{name}}" toegevoegd — bestaande inhoud bleef ongewijzigd. De bron is per punt vermeld.',
+    '{{count}} punt(en) uit „{{name}}" overgenomen — inhoud EN herkomst zijn samen opgeslagen; bestaande inhoud bleef ongewijzigd.',
   "xtr.append.button": "Aan bestaand artikel toevoegen",
   "xtr.append.title": "Aan bestaand artikel toevoegen",
   "xtr.append.intro":
@@ -10517,6 +10989,16 @@ const nl: typeof de = {
   "xtr.append.busy": "Wordt toegevoegd …",
   "xtr.append.done":
     '{{count}} inzicht(en) aan „{{title}}" toegevoegd — het artikel is nu opnieuw te beoordelen.',
+  "xtr.append.missingAnchor":
+    "Zonder het originele document als bewijs wordt de inhoud niet overgenomen. Het artikel is NIET gewijzigd. Dat geldt ongeacht de instelling „Externe kennis“: overgenomen documentinhoud moet aan zijn origineel hangen.",
+  "xtr.append.blockedByStage":
+    "Op het ingestelde niveau „Externe kennis“ mag deze bron niet aan een kennisobject worden gehangen. Het artikel is NIET gewijzigd. Een beheerder kan het niveau wijzigen onder Beheer → Externe kennis.",
+  "xtr.append.unclear":
+    "De uitkomst is onduidelijk — de verbinding brak af voordat de server antwoordde. Er is NIETS teruggenomen: de overname kan wel of niet zijn voltooid. Open het artikel en kijk na; opnieuw proberen met dezelfde bewerking legt niets dubbel aan.",
+  "xtr.append.stateUnchanged":
+    "Het artikel is NIET gewijzigd — er is geen inhoud zonder herkomst opgeslagen. Je kunt het overnemen gewoon opnieuw proberen.",
+  "xtr.append.followUpsFailed":
+    "De overname is opgeslagen (inhoud en herkomst). Een vervolgstap liep niet: {{steps}}. De nieuwe KI-controle kan daardoor ontbreken — die kan op de validatiepagina opnieuw worden gestart.",
   "xtr.help.title": "Uit document aanvullen",
   "xtr.help.body":
     "De KI leest een door jou geüpload document en stelt kennispunten voor — elk punt draagt zijn bewijsplaats uit het document (zonder bewijs geen overname). Je kiest met vinkjes; het geselecteerde wordt als sectie aan je artikel TOEGEVOEGD, niets wordt vervangen of overschreven. De herkomst (bestandsnaam + bewijsplaats) wordt als niveau-2-bron bij het kennisobject vermeld — het geldt niet als peer-gevalideerd en vervangt geen controle.",
@@ -10582,6 +11064,13 @@ const nl: typeof de = {
   "fd.discardInput": "Invoer verwerpen",
   "fd.back": "Terug",
   "fd.writeToSubmit": "Schrijf of plak inhoud, dan kun je controleren en indienen.",
+  "fd.validate.lead": "Indienen is zo nog niet mogelijk:",
+  "fd.validate.needBody": "De inhoud is leeg. Om in te dienen heeft het kennisobject tekst nodig.",
+  "fd.validate.hint": "Je kunt de lege stand nog steeds als concept opslaan en later voortzetten.",
+  "fd.unsavable.proposal":
+    "Het weergegeven KI-voorstel is nog niet overgenomen en wordt niet meegeslagen.",
+  "fd.unsavable.confidentialityOnly":
+    "De gekozen vertrouwelijkheid zonder titel en zonder inhoud — daarvoor bestaat nog geen concept dat die kan vasthouden.",
   "fd.statusLabel": "Status",
   "fd.titleOnSave": "Titel bij het opslaan",
   "fd.author": "Auteur",

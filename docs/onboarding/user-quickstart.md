@@ -60,9 +60,9 @@ Unter **`/hilfe`** findest du durchsuchbare Kapitel u. a. zu: Erststart/Demodate
 
 ## Datenschutz & Nachvollziehbarkeit (Hinweis, keine Rechtsberatung)
 
-- **Lückenloses Audit-Log:** Jede relevante Aktion (wer/wann/Aktion/Ziel) wird in einem **append-only, manipulationssicheren** Log (Hash-Kette) protokolliert. Einsicht haben Controller/Admin (Bereich Analytics/Audit).
+- **Lückenloses Audit-Log:** Jede relevante Aktion (wer/wann/Aktion/Ziel) wird in einem **append-only, hash-verketteten** Log protokolliert; eine nachträgliche Abweichung ist rechnerisch prüfbar (tamper-evident), nicht technisch verhindert — die Kette hat keinen extern verankerten Kopf. Einsicht haben Controller/Admin (Bereich Analytics/Audit).
 - **Zugriffsschutz:** Rollen-/Rechtekonzept (RBAC) wird serverseitig erzwungen; keine Geheimnisse/Schlüssel im Browser.
-- **Offene Betreiber-Pflichten:** DSGVO-Betroffenenrechte (Auskunft, Löschung, Verarbeitungsverzeichnis) sind **organisatorisch beim Betreiber** umzusetzen und (noch) nicht als Selbstbedienungs-Funktion im Produkt enthalten — siehe Restlücken. Das Audit-Log ist bewusst unveränderlich (Manipulationsschutz).
+- **Offene Betreiber-Pflichten:** DSGVO-Betroffenenrechte (Auskunft, Löschung, Verarbeitungsverzeichnis) sind **organisatorisch beim Betreiber** umzusetzen und (noch) nicht als Selbstbedienungs-Funktion im Produkt enthalten — siehe Restlücken. Das Audit-Log ist bewusst append-only und hash-verkettet: nachträgliche Abweichungen sind rechnerisch prüfbar (tamper-evident), aber nicht verhindert — die Kette hat keinen extern verankerten Kopf.
 
 ---
 

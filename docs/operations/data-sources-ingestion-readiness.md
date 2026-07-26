@@ -27,6 +27,35 @@ Klarwerk **sammelt und verwaltet** Werkswissen heute über mehrere echte Fläche
 
 > **Wichtig:** Diese Flächen **sammeln und verwalten** Wissen — sie sind **keine** RAG-Ingestion (kein Chunking/Embedding). Die Dokument-/OCR-Extraktion läuft **clientseitig** in der Capture-UI; es gibt **keine** serverseitige OCR-/PDF-/DOCX-Pipeline.
 
+### 1a. Welche Wege durch den Anhäng-Vertrag laufen — und welche nicht
+
+Der Admin-Regler **Externes Wissen** (`blocked | search_on_click | search_attach | open`, Vorgabe `search_on_click`) begrenzt, welche Quelle an ein Wissensobjekt gehängt werden darf. Auf den beiden restriktiven Stufen gilt **fail-closed**: eine Quelle mit öffentlicher Web-Adresse wird abgewiesen, eine Quelle **ohne** Adresse nur dann angenommen, wenn sie auf ein Dokument zeigt, das der Server an **diesem** Wissensobjekt selbst als Anhang hält. „Intern" belegt allein die konfigurierte Allowlist `KLARWERK_INTERNAL_SOURCE_ORIGINS`; ohne Konfiguration ist sie leer, und damit ist jede Adresse öffentlich. Die Entscheidung steht als reine Funktion in `services/external-search/src/attach-policy.ts`, durchgesetzt wird sie in `services/app/src/routes/ko-routes.ts` (Aktion `add-source`).
+
+**Dieser Vertrag gilt für den Client-Weg, nicht für jeden Schreibvorgang im Bestand.** Das ist kein Widerspruch, aber es muss ein Betreiber wissen, bevor er die Zusage weiter liest, als sie ist:
+
+| Weg | Läuft durch die Prüfung? | Warum |
+| --- | --- | --- |
+| `PUT /api/kos/:id` mit `action: "add-source"` (Prüfbereich, manuelles Quellenformular, externe Treffer) | **Ja** — Stufe, Reichweite und Anker werden serverseitig ermittelt | Der ursprüngliche Client-Weg, eine einzelne Quelle anzulegen |
+| `PUT /api/kos/:id` mit `action: "append-document"` (Verbund-Operation „Dokumentinhalt übernehmen") | **Ja** — dieselbe Stufenentscheidung je Belegstelle, zusätzlich die stufenblinde interne Belegpflicht | Bindet Anker, Belegstellen und überarbeiteten Inhalt in **einem** Schreibvorgang an ein **bestehendes** Wissensobjekt |
+| `POST /api/kos/from-document` → `ko.createWithDocuments` (Erfassen, „Aus Dokument ergänzen") | **Ja** — dieselbe Stufenentscheidung je Belegstelle, zusätzlich die stufenblinde interne Belegpflicht | Erzeugt ein **neues** Wissensobjekt samt Ankern und Belegstellen im **selben** Insert |
+| `PUT /api/library/import/candidates/:id` mit `accept` → `acceptToKo` → `ko.create(…sources)` (`services/app/src/routes/library-routes.ts`, `services/library-analytics/src/service.ts`) | **Nein** | Schreibt Quellen als Teil einer **privilegierten internen Komposition** direkt über den Service |
+| Import / Confluence-Re-Sync (`services/library-analytics`) | **Nein** | Wie oben — `ko.create` / `ko.revise` unter Betriebsrechten |
+| `POST /api/admin/examples/load` → `loadExamplePackage` → `ko.create(…sources)` (`services/app/src/routes/admin-routes.ts`, `services/app/src/example-packages.ts`) | **Nein** | Legt einen Beispielbestand als Ganzes an; die Quellen sind Bestandteil des ausgelieferten Beispiels |
+| `POST /api/admin/demo-seed` (intern über `ko.addSource`) und Demo-Seed (`services/app/src/seed-demo.ts`) | **Nein** | Aufsetz-/Demopfad, keine Nutzereingabe |
+
+Der Unterschied ist **Zugänglichkeit, nicht Nachlässigkeit**: die Zeilen ohne Prüfung sind keine vom Client manipulierbaren Umgehungen. Kein HTTP-Endpunkt lässt einen Aufrufer beliebige Quellen an ihnen vorbeischleusen; sie laufen unter Admin-/Betriebsrechten oder beim Aufsetzen einer Instanz. Wer sie erweitert — ein neuer Importer, ein neues Beispielpaket, ein Seed für einen Kunden — **umgeht damit die Stufe** und trägt die Verantwortung für die Herkunft der eingespielten Quellen selbst.
+
+**Korrektur (Stand mega20).** Eine frühere Fassung dieses Abschnitts las sich als Sicherheitsinventur mit **einem** quellenschreibenden Client-Weg. Das war zu eng. Zur Vollständigkeit gehören zwei Unterscheidungen, die die Tabelle oben jetzt trägt:
+
+- **Wo ein Wissensobjekt bereits IM INSERT mit Quellen entsteht** (nicht nachträglich): `POST /api/kos/from-document` → `createWithDocuments` · `PUT /api/library/import/candidates/:id` mit `accept` → `acceptToKo` → `ko.create(…sources)` · `POST /api/admin/examples/load` → `loadExamplePackage` → `ko.create(…sources)`.
+- **Wo ein bestehendes Wissensobjekt Quellen BEKOMMEN kann:** `PUT /api/kos/:id` mit `add-source` · `PUT /api/kos/:id` mit `append-document` · `POST /api/admin/demo-seed` intern über `ko.addSource`.
+
+**Ohne Client-Quellen, aber der Vollständigkeit halber in dieser Liste:** `POST /api/kos` und `POST /api/drafts/:id/promote` erzeugen Wissensobjekte, nehmen aber **keine** Quellen aus dem Request an — `POST /api/kos` verwirft ein mitgeschicktes `sources`-Feld ausdrücklich (SCRUM-470), und der Promote-Weg kennt es gar nicht.
+
+Diese Aufzählung ist **erklärend, nicht erzwungen**: ein Test, der sie gegen den Code pinnt, existiert (noch) nicht. Eine zentrale, gepinnte Inventur der quellenschreibenden Wege ist als eigener Vorgang nach VIP-2 vorgesehen; bis dahin muss, wer einen neuen Weg baut, diesen Abschnitt von Hand nachziehen.
+
+**Was der Anker belegt und was nicht:** er belegt, dass eine adresslose Belegstelle an ein im Haus liegendes Dokument gebunden ist. Er belegt **nicht**, dass der Auszug wirklich aus diesem Dokument stammt — dafür bräuchte es eine serverseitige Auszugsprüfung gegen den Dokumententext (eigener Vorgang, heute nicht vorhanden).
+
 ---
 
 ## 2. Belegte Formate

@@ -76,8 +76,10 @@ describe("WP-COCKPIT-LINIE: Verdrahtung der /import-Seite", () => {
     expect(src).toContain("<ImportStepperBar />");
     expect(src).toContain("<ImportExplore />");
     // Verlauf-Sektion mit ehrlichem Zähler (Anzahl der Queue-Einträge).
+    // AUFTRAG-mega9 Block E-1 (KW-E2E-005): „ist offen" kommt aus der zentralen Statusquelle
+    // (lib/importCandidateStatus) statt aus einem an vier Stellen wiederholten String-Vergleich.
     expect(src).toContain(
-      'openCount={(query.data ?? []).filter((c) => c.status === "neu").length}',
+      "openCount={(query.data ?? []).filter((c) => isOpenImportCandidate(c.status)).length}",
     );
     expect(src).toContain("totalCount={query.data?.length ?? 0}");
     expect(src).toContain("</ImportHistorySection>");

@@ -318,6 +318,8 @@ export async function loadExamplePackage(
       for (let i = 0; i < def.images.length; i++) {
         const image = def.images[i] as ExampleImageDef;
         const ref = await services.objects.put({
+          // AUFTRAG-mega20 Block C: Demobestand, nicht Nutzerbestand — ausdrücklich deklariert.
+          purpose: "example" as const,
           name: `${externalId}-${i + 1}.png`,
           mime: "image/png",
           data: TINY_PNG,

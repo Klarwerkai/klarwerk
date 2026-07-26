@@ -168,13 +168,18 @@ describe("WP-SHIP9-S2d (F3): Auswahlwechsel nach dem Gruppieren verwirft die alt
     expect(groupMock).toHaveBeenCalledTimes(1);
     expect(container.textContent).not.toContain("2 von 2 ausgewählt");
     expect(container.textContent).not.toContain("Auswahl übernehmen");
-    expect(container.textContent).toContain("Weiter: Gruppieren & Übernehmen");
+    // AUFTRAG-mega9 Block E-4 (KW-E2E-008): Der Knopf ist wieder da — heißt aber jetzt ehrlich, was er
+    // tut. „Weiter: Gruppieren & Übernehmen" verschwieg, dass eine schon erzeugte Gruppierung durch
+    // die Auswahländerung verworfen wurde und neu aufgebaut werden muss (genau der Prüferbefund:
+    // „der Nutzer muss erneut drücken", ohne dass die Oberfläche das benennt).
+    expect(container.textContent).toContain("Gruppierung aktualisieren");
+    expect(container.textContent).not.toContain("Weiter: Gruppieren & Übernehmen");
 
     // PIN 3: Neu gruppieren auf der jetzt sichtbaren Auswahl [a, b, c]; apply beschränkt sich auf
     // GENAU diese Auswahl — deckungsgleich mit der Auswahl, auf der die sichtbaren Gruppen beruhen.
     groupMock.mockResolvedValue(groupResponseFor(["a", "b", "c"], 12));
     applyMock.mockResolvedValue(APPLY_RESPONSE);
-    await clickAndSettle("Weiter: Gruppieren & Übernehmen");
+    await clickAndSettle("Gruppierung aktualisieren");
     expect(groupMock).toHaveBeenCalledTimes(2);
     expect(lastSelectedIds(groupMock)).toEqual(["a", "b", "c"]);
     expect(container.textContent).toContain("3 von 3 ausgewählt");

@@ -70,10 +70,24 @@ export function frontDoorStatement(bodyHtml: string, title: string): string {
   return text || title;
 }
 
+// AUFTRAG-mega9 Block A (KW-E2E-001): Beim FORTSETZEN gilt dieselbe Unterscheidung, die
+// draftBodyPatch beim Speichern trifft — sonst repariert die eine Richtung, was die andere
+// wieder einsammelt:
+//
+//   bodyHtml FEHLT (undefined) ⇒ es gab nie einen Body → Aussage als Einstieg zeigen.
+//   bodyHtml VORHANDEN, aber leer ("" oder null) ⇒ AUSDRÜCKLICH geleert → leer bleiben.
+//
+// `null` zählt dabei zum zweiten Fall — das ist die Leerwert-Konvention dieser Payloads (vgl.
+// `asset: … : null`). Nur das WEGLASSEN des Schlüssels heißt „kein Wert vorhanden"; genau so
+// behandeln es auch die Payloads, die bodyHtml wegen der Bilddaten bewusst auslassen (api/types.ts).
+//
+// Vorher fiel auch der ausdrücklich geleerte Body auf die Aussage zurück. Da der Vordertür-Payload
+// die Aussage aus dem Body ableitet (frontDoorStatement: leerer Body → Titel), erschien nach dem
+// Leeren und Fortsetzen der TITEL als Fließtext im Editor — bewusst entfernter Inhalt kehrte über
+// einen zweiten Weg zurück, genau der Effekt, den mega7 für das Studio beseitigt hat.
 export function frontDoorBodyFromDraft(payload: DraftPayload): string {
-  const bodyHtml = payload.bodyHtml?.trim();
-  if (bodyHtml) {
-    return bodyHtml;
+  if (payload.bodyHtml !== undefined) {
+    return payload.bodyHtml?.trim() ? payload.bodyHtml : "";
   }
   const statement = payload.statement?.trim();
   return statement ? `<p>${escapeHtml(statement)}</p>` : "";
@@ -227,10 +241,62 @@ export interface FrontDoorDraftRef {
   id: string;
 }
 
+// ================================================================================================
+// AUFTRAG-mega23 Block A — DIE VORDERTÜR BEKOMMT EINEN VORGANG, DER DIE WIEDERHOLUNG ÜBERLEBT.
+// ================================================================================================
+//
+// DER BEFUND (ben, sammel22). Der Server bietet Idempotenz nur an, wenn `operationId` mitkommt.
+// Die Vordertür schickte ihn NICHT — sie verdrahtete `promoteDraft: (id) => promote(id)`. Der
+// Kommentar in `capture-routes.ts` behauptete das Gegenteil („Capture.tsx, CaptureFrontDoor.tsx
+// schicken ihn ausnahmslos"); für diese Tür war er objektiv falsch.
+//
+// DIE TEURE GESTALT — und sie steht auf dem Weg, den ein neuer Nutzer als ERSTEN geht: frische
+// Eingabe, Entwurf wird angelegt, Promote gelingt serverseitig, die ANTWORT geht verloren. Der
+// Browser kannte die erzeugte Entwurfskennung nirgends ausserhalb dieses Helfers. Der nächste
+// Klick legte einen NEUEN Entwurf an und promotete ihn — ZWEI Wissensobjekte für EINE Eingabe.
+// Das ist kein Anzeigefehler, sondern eine stille Dublette im Bestand.
+//
+// DIE ZWEITE GESTALT: ein fortgesetzter Entwurf. Das Promote gelingt und LÖSCHT den Entwurf; der
+// Wiederholversuch lief zuerst in `updateDraft` und endete mit 404, bevor irgendein Nachschlag
+// erreicht war — derselbe Mangel, den mega21 Block B für den Dokumentweg und mega22 Block H für
+// den Erfassen-Promote geschlossen haben, zwei Türen weiter.
+//
+// ZWEI EIGENSCHAFTEN SCHLIESSEN BEIDE, und beide sind DIESELBE Bauart wie im Erfassen-Weg — kein
+// zweiter Mechanismus:
+//
+//   1. DER SCHLÜSSEL LEBT IN EINER REF DER SEITE, nicht in der Mutationsfunktion, und er entsteht
+//      VOR dem ersten Aufruf. Wann er bleibt und wann er fällt, steht ausgeschrieben in
+//      lib/createOperation.ts — hier gelten dieselben Regeln, ohne eigene Auslegung.
+//
+//   2. DER ENTWURF DIESES VORGANGS WIRD FESTGEHALTEN (`draftRef`). Ohne ihn wäre der Schlüssel
+//      wertlos: der Serverabdruck bindet den Vorgang an die ENTWURFSKENNUNG
+//      (capture-routes.ts, `createOperationFingerprint({draftId, …})`). Ein Wiederholversuch, der
+//      einen ZWEITEN Entwurf anlegte, trüge einen anderen Abdruck und wäre für den Server ein
+//      anderer Vorgang — der Nachschlag liefe ins Leere und die Dublette entstünde trotzdem.
+//
+// UND DIE REIHENFOLGE: KEIN `updateDraft` MEHR VOR DEM PROMOTE. Der Stand reist als `draftPayload`
+// IM Promote-Request, also HINTER dem serverseitigen Nachschlag. Ein Wiederholversuch fasst damit
+// keinen Entwurf mehr an, den der eigene erste Lauf gerade gelöscht hat.
+
+/** Der Vorgang EINES Einreichens der Vordertür — er überlebt jede Wiederholung. */
+export interface FrontDoorSubmitOperation {
+  /** Der Wiederholschlüssel. Entsteht VOR dem ersten Aufruf (s. `newCreateOperationId`). */
+  id: string;
+  /**
+   * Der Entwurf DIESES Vorgangs. Wird ein Entwurf frisch angelegt, steht er danach hier — damit
+   * die Wiederholung DENSELBEN adressiert und nicht einen zweiten anlegt. Eine Ref und kein
+   * Rückgabewert, weil der Vorgang genau dann weiterlebt, wenn der Aufruf NICHT zurückkam.
+   */
+  draftRef: { current: string | null };
+}
+
 export interface FrontDoorSubmitClient<TDraft extends FrontDoorDraftRef, TKo> {
   createDraft: (payload: DraftPayload) => Promise<TDraft>;
-  updateDraft: (id: string, payload: DraftPayload) => Promise<TDraft>;
-  promoteDraft: (id: string) => Promise<TKo>;
+  /** Derselbe Vertrag wie im Erfassen-Weg: Schlüssel und Stand reisen MIT dem Promote. */
+  promoteDraft: (
+    id: string,
+    vorgang: { operationId: string; draftPayload: DraftPayload },
+  ) => Promise<TKo>;
 }
 
 export async function submitFrontDoorDraft<TDraft extends FrontDoorDraftRef, TKo>(
@@ -242,16 +308,28 @@ export async function submitFrontDoorDraft<TDraft extends FrontDoorDraftRef, TKo
     confidentiality?: Confidentiality;
   },
   client: FrontDoorSubmitClient<TDraft, TKo>,
+  operation: FrontDoorSubmitOperation,
   timeoutMs = FRONT_DOOR_SAVE_TIMEOUT_MS,
 ): Promise<TKo> {
   // AUFTRAG-mega7 Block A: `input` trägt die activeDraftId bereits — der Payload weiß damit selbst,
   // ob er ein Update (Löschmarker für einen geleerten Body) oder ein Neuanlegen ist.
+  //
+  // AUFTRAG-mega23 Block A: der Payload wird AUS DEM UNVERÄNDERTEN `input` gebaut und NICHT aus dem
+  // inzwischen gemerkten Entwurf. Das ist keine Feinheit: der Serverabdruck enthält diesen Payload.
+  // Würde die Wiederholung ihn wegen des gemerkten Entwurfs anders bauen (Löschmarker), wäre der
+  // Abdruck ein anderer — und der Server antwortete IDEMPOTENCY_PAYLOAD_MISMATCH auf eine
+  // Wiederholung, die inhaltlich dieselbe ist.
   const payload = buildFrontDoorPayload(input);
-  const draft = await withFrontDoorSaveTimeout(
-    input.activeDraftId
-      ? client.updateDraft(input.activeDraftId, payload)
-      : client.createDraft(payload),
-    timeoutMs,
-  );
-  return client.promoteDraft(draft.id);
+  // Der Entwurf dieses Vorgangs: der bereits angelegte (Wiederholung), der fortgesetzte, oder ein
+  // frisch anzulegender.
+  let draftId = operation.draftRef.current ?? input.activeDraftId ?? null;
+  if (!draftId) {
+    const draft = await withFrontDoorSaveTimeout(client.createDraft(payload), timeoutMs);
+    draftId = draft.id;
+    operation.draftRef.current = draft.id;
+  }
+  return client.promoteDraft(draftId, {
+    operationId: operation.id,
+    draftPayload: payload,
+  });
 }

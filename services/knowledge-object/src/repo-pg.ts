@@ -68,6 +68,60 @@ CREATE UNIQUE INDEX IF NOT EXISTS kos_import_candidate_uq
   WHERE import_candidate_id IS NOT NULL;
 `;
 
+// AUFTRAG-mega20 Block A: DB-erzwungener Idempotenzanker der ERSTANLAGE aus Dokumenten — dieselbe
+// Form wie KO_IMPORT_ANCHOR_SCHEMA und aus demselben Grund: eine eigene, ADDITIVE Migrationsstufe
+// nach KO_SCHEMA (das selbst per Test gepinnt frei von ALTER-Statements bleibt), Generated-Spalte +
+// partieller UNIQUE-Index. BEWUSST OHNE deletedAt-Ausschluss: auch ein getrashtes Objekt hält
+// seinen Vorgang, sonst erzeugte eine Wiederholung nach dem Löschen ein zweites.
+// ============================================================================================
+// AUFTRAG-mega22 Block G — DIE EINDEUTIGKEIT WIRD ACTOR-GEBUNDEN.
+// ============================================================================================
+//
+// DER BEFUND (ben, gegen meine Einschätzung aus mega21, und er trägt): die DB-WEITE Eindeutigkeit
+// der Vorgangskennung ist keine Unbequemlichkeit, sondern eine gezielte DENIAL-KANTE. Ein Nutzer
+// mit `ko.create` und einem gültigen Dokument kann vorhersehbare Kennungen reservieren und einen
+// anderen Client dauerhaft aus seinem Vorgang drängen. Ein flächiges Ausschöpfen des Kennungsraums
+// ist unrealistisch — gezieltes Belegen VORHERSEHBARER Kennungen ist es nicht.
+//
+// DIE ÄNDERUNG: die Eindeutigkeit gilt je (VORGANGSKENNUNG, EIGENTÜMER) statt DB-weit. Damit ist
+// der Kennungsraum PRO ANFRAGENDEM privat, und die Belegung verliert ihre Grundlage, statt nur
+// erschwert zu werden. Die Zusage „höchstens EIN Objekt je Vorgang" bleibt DB-erzwungen — sie
+// lautet jetzt nur genauer: höchstens eines je Vorgang DIESES Anfragenden, und das ist die Zusage,
+// die überhaupt gemeint war.
+//
+// DIE MIGRATION IST ADDITIV, mit EINER Ausnahme, die benannt gehört: der alte Index
+// `kos_create_operation_uq` wird GELÖSCHT. Ihn stehen zu lassen hiesse, die Denial-Kante zu
+// behalten — er würde weiterhin DB-weit abweisen und die neue Regel wäre wirkungslos. `DROP INDEX
+// IF EXISTS` ist idempotent; es entfernt eine Einschränkung und keine Daten.
+//
+// ALTZEILEN (Vorgangskennung ohne Vorgangs-Datensatz, also ohne `actor`) bekommen im Index den
+// leeren String als Eigentümer (COALESCE). Zwei Wirkungen, beide gewollt:
+//   · Zwei Altzeilen derselben Kennung kollidieren weiterhin — die alte Zusage bleibt für sie.
+//   · Eine Altzeile blockiert einen NEUEN, actor-gebundenen Vorgang derselben Kennung nicht am
+//     Index. Sie wird aber vom Nachschlag GEFUNDEN (findByCreateOperation), und der Adoptionspfad
+//     entscheidet über den alten `author`-Vergleich — es kann also trotzdem kein zweites Objekt zu
+//     einem Altvorgang entstehen. Der Index ist hier nicht die einzige Verteidigungslinie.
+//
+// BEWUSST WEITERHIN OHNE deletedAt-Ausschluss, aus demselben Grund wie zuvor: gäbe Soft Delete die
+// Kennung frei, könnte ein Wiederholversuch ein zweites Objekt erzeugen.
+export const KO_CREATE_OPERATION_SCHEMA = `
+ALTER TABLE kos
+  ADD COLUMN IF NOT EXISTS create_operation_id text
+  GENERATED ALWAYS AS (data->>'createOperationId') STORED;
+ALTER TABLE kos
+  ADD COLUMN IF NOT EXISTS create_operation_actor text
+  GENERATED ALWAYS AS (data->'createOperation'->>'actor') STORED;
+DROP INDEX IF EXISTS kos_create_operation_uq;
+CREATE UNIQUE INDEX IF NOT EXISTS kos_create_operation_owner_uq
+  ON kos (create_operation_id, COALESCE(create_operation_actor, ''))
+  WHERE create_operation_id IS NOT NULL;
+`;
+
+// Der Constraint-Name, den Postgres bei der Kollision meldet — als EINE Quelle der Wahrheit für DDL
+// und Fehlerübersetzung (insert unten). Zwei Kopien wären zwei Gelegenheiten, sie auseinanderlaufen
+// zu lassen, und die Übersetzung fiele dann still auf „unerwarteter Fehler" zurück.
+const KO_CREATE_OPERATION_CONSTRAINT = "kos_create_operation_owner_uq";
+
 // SCRUM-159: unveränderliche KO-Version-Snapshots. PK (ko_id, version) + ON CONFLICT DO NOTHING
 // garantieren, dass eine einmal geschriebene Version nie überschrieben wird.
 export const KO_VERSIONS_SCHEMA = `
@@ -100,21 +154,68 @@ interface DataRow {
   data: KnowledgeObject;
 }
 
+// AUFTRAG-mega20 Block A: erkennt GENAU eine Unique-Verletzung an GENAU einem Constraint.
+// SQLSTATE 23505 allein reicht nicht — an derselben Tabelle hängt auch kos_import_candidate_uq,
+// und dessen Kollision bedeutet etwas anderes (Import-Adoption, WP-SHIP8-CLOSE-4). Der Constraint-
+// Name entscheidet, nicht der Fehlercode.
+function isUniqueViolation(err: unknown, constraint: string): boolean {
+  if (!err || typeof err !== "object") {
+    return false;
+  }
+  const candidate = err as { code?: unknown; constraint?: unknown };
+  return String(candidate.code) === "23505" && String(candidate.constraint) === constraint;
+}
+
 export class PgKoRepo implements KoRepo {
   constructor(private readonly pool: Pool) {}
 
   async insert(ko: KnowledgeObject): Promise<void> {
-    await this.pool.query("INSERT INTO kos(id,type,status,category,data) VALUES($1,$2,$3,$4,$5)", [
-      ko.id,
-      ko.type,
-      ko.status,
-      ko.category,
-      JSON.stringify(ko),
-    ]);
+    try {
+      await this.pool.query(
+        "INSERT INTO kos(id,type,status,category,data) VALUES($1,$2,$3,$4,$5)",
+        [ko.id, ko.type, ko.status, ko.category, JSON.stringify(ko)],
+      );
+    } catch (err) {
+      // AUFTRAG-mega20 Block A: die Unique-Kollision des ERZEUGUNGS-Ankers wird in einen
+      // Domänenfehler übersetzt — und NUR sie. Ohne diese Übersetzung käme beim Aufrufer ein roher
+      // Postgres-Fehler (SQLSTATE 23505) an, den der Adoptionspfad nicht von einem beliebigen
+      // Infrastrukturfehler unterscheiden könnte; er müsste dann entweder blind adoptieren (falsch)
+      // oder gar nicht (das Duplikat entstünde wieder). Jeder andere Fehler fliegt unverändert
+      // weiter — insbesondere wird hier NICHTS geschluckt und nichts umetikettiert.
+      if (isUniqueViolation(err, KO_CREATE_OPERATION_CONSTRAINT)) {
+        throw new KoError(
+          "CREATE_ANCHOR_TAKEN",
+          "Für diesen Erzeugungs-Vorgang existiert bereits ein Wissensobjekt.",
+        );
+      }
+      throw err;
+    }
   }
 
   async findById(id: string): Promise<KnowledgeObject | undefined> {
     const res = await this.pool.query<DataRow>("SELECT data FROM kos WHERE id=$1", [id]);
+    return res.rows[0]?.data;
+  }
+
+  // AUFTRAG-mega20 Block A: indexgestützter Nachschlag über die Generated-Spalte (kein Full-Scan,
+  // kein JSONB-Ausdruck zur Laufzeit). Getrashte Objekte zählen mit — der Index kennt keinen
+  // deletedAt-Ausschluss, und diese Abfrage darf keinen erfinden.
+  // AUFTRAG-mega22 Block G: actor-gebunden. Gefunden wird der EIGENE Vorgang ODER eine Altzeile
+  // ohne Eigentümer (s. KO_CREATE_OPERATION_SCHEMA); die exakte Übereinstimmung gewinnt, damit eine
+  // Altzeile den eigenen, neuen Vorgang nicht verdeckt. Beide Zweige laufen über denselben
+  // partiellen Unique-Index — der führende Spaltenausdruck ist `create_operation_id`.
+  async findByCreateOperation(
+    operationId: string,
+    actor: string,
+  ): Promise<KnowledgeObject | undefined> {
+    const res = await this.pool.query<DataRow>(
+      `SELECT data FROM kos
+        WHERE create_operation_id=$1
+          AND (create_operation_actor = $2 OR create_operation_actor IS NULL)
+        ORDER BY (create_operation_actor IS NULL)
+        LIMIT 1`,
+      [operationId, actor],
+    );
     return res.rows[0]?.data;
   }
 

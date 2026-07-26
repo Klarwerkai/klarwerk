@@ -36,6 +36,8 @@ describe("Block D: Oberfläche und Persistenzgrenze halten dieselben Grenzen", (
       sourceUrl: 2048,
       sourceExcerpt: 500,
       sourceProvider: 100,
+      // AUFTRAG-mega20 Block D: persistierte Original-Referenz je Belegstelle.
+      sourceRef: 128,
       extQuery: 300,
       interviewAnswers: 50,
       interviewText: 4000,

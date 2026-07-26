@@ -7,6 +7,8 @@
 // Dazu: GESPEICHERTE SICHTEN — benannt, LOKAL je Nutzer (localStorage, wie die Board-Checkboxen;
 // bewusst KEIN Server-Speicher — ehrlich dokumentiert: die Sicht lebt nur in diesem Browser).
 import type { KnowledgeObject } from "../api/types";
+import { confidentialityOf } from "./confidentiality";
+import { isDemoKnowledge } from "./demoKnowledge";
 import { deriveStatus } from "./displayStatus";
 import {
   FACET_NO_MATCH_SELECTION,
@@ -16,6 +18,7 @@ import {
   isFacetNoMatch,
   languageFromTitle,
 } from "./facets";
+import { libraryMaturity } from "./libraryMaturity";
 
 export const LIBRARY_FACET_KEYS = [
   "category",
@@ -86,6 +89,23 @@ export function libraryFacetValues(ko: KnowledgeObject, nowMs: number): FacetVal
   };
 }
 
+// AUFTRAG-mega10 Block A: die VOLLSTÄNDIGE Facetten-Wert-Ableitung eines KOs — bisher als lokale
+// Funktion `libraryFilterValues` in Library.tsx. Sie zieht hierher, weil Block A sie MESSEN muss:
+// eine Kopie im Messrahmen hätte eine andere Laufzeit gemessen als die Seite tatsächlich hat.
+// Inhaltlich unverändert (die sechs Bestands-Facetten PLUS Art/Tags/Herkunft/Reife) — ergänzt um
+// `confidentiality` (Block C stellt die Vertraulichkeit in die Schiene; das Feld liegt am KO,
+// `confidentialityOf` glättet den fehlenden Wert ehrlich auf „intern“).
+export function libraryFilterValues(ko: KnowledgeObject, nowMs: number): FacetValues {
+  return {
+    ...libraryFacetValues(ko, nowMs),
+    type: [ko.type],
+    tag: ko.tags ?? [],
+    origin: [isDemoKnowledge(ko) ? "demo" : "non-demo"],
+    maturity: [libraryMaturity(ko).usability],
+    confidentiality: [confidentialityOf(ko.confidentiality)],
+  };
+}
+
 // Untergruppen-Ansicht: nach welchen Facetten gruppiert werden kann (metadaten-basiert;
 // KI-Themencluster bewusst NICHT — kein trivial anzubindender Bestandteil, im Bericht vermerkt).
 export const LIBRARY_GROUP_KEYS = ["none", "category", "language", "status", "author"] as const;
@@ -153,7 +173,7 @@ function toFacetValueSet(raw: unknown): string[] | undefined {
 // eine Altsicht für eine Dimension beides, wird der (für `status` erst via LEGACY_STATUS_MIGRATION auf
 // die Anzeigestatus-Menge abgebildete) Rohfilter mit der Facettenmenge geschnitten. Einfache/
 // gleichgerichtete Sichten bleiben dabei unverändert. Eine WIDERSPRÜCHLICHE Altkombi (leere
-// Schnittmenge, z. B. roh „validiert" + Facette „offen") ist „bewusst leer ⇒ 0 Treffer" und wird als
+// Schnittmenge, z. B. roh „validiert“ + Facette „offen“) ist „bewusst leer ⇒ 0 Treffer“ und wird als
 // STRUKTURELLES No-Match (FACET_NO_MATCH_SELECTION) getragen — NICHT als leere (= filterlose) Auswahl
 // und NICHT als reservierter String-Wert.
 //
@@ -210,8 +230,8 @@ export function migrateSavedFacetSelection(state: Record<string, unknown>): Face
   return out;
 }
 
-// AUFTRAG-uxpol5 · Punkt 1 (Pedis Reife/Status-Doppelung): Die rohe „Status"-Facette (offen/pruefung/
-// validiert) ist ein REINES RELABELING der „Reife" (needs-work/in-review/ready): beide leiten aus
+// AUFTRAG-uxpol5 · Punkt 1 (Pedis Reife/Status-Doppelung): Die rohe „Status“-Facette (offen/pruefung/
+// validiert) ist ein REINES RELABELING der „Reife“ (needs-work/in-review/ready): beide leiten aus
 // DEMSELBEN deriveStatus(ko) OHNE Flags ab (Bibliothek: libraryFacetValues.status; Reife: koOverview →
 // usabilityOf(reviewSignals.status)), und usabilityOf ist auf den drei erreichbaren Statuswerten eine
 // BIJEKTION (offen↔needs-work, pruefung↔in-review, validiert↔ready). Die Status-Filterzeile hat also
@@ -227,7 +247,7 @@ export const STATUS_TO_MATURITY: Record<string, string> = {
 };
 
 // Faltet eine `status`-Auswahl in die `maturity`-Auswahl (Punkt 1). Damit filtert eine migrierte
-// Altsicht mit Status-Wahl NICHT „versteckt aktiv" (ohne sichtbare Pille), sondern über die sichtbare
+// Altsicht mit Status-Wahl NICHT „versteckt aktiv“ (ohne sichtbare Pille), sondern über die sichtbare
 // Reife-Facette. Da Status und Reife früher UND-verknüpfte, bijektive Facetten waren, ist die Faltung
 // bei zugleich gesetzter Reife-Wahl die SCHNITTMENGE; leere Schnittmenge/No-Match bleibt strukturelles
 // No-Match (bedingungslos 0 Treffer). Ohne `status`-Schlüssel bleibt die Auswahl unverändert.
@@ -236,7 +256,7 @@ export function foldStatusIntoMaturity(selection: FacetSelection): FacetSelectio
   if (status === undefined) {
     return selection;
   }
-  // Die (entfernte) Status-Dimension NICHT als Schlüssel behalten — sonst filterte sie „versteckt aktiv".
+  // Die (entfernte) Status-Dimension NICHT als Schlüssel behalten — sonst filterte sie „versteckt aktiv“.
   const rest: FacetSelection = {};
   for (const [k, v] of Object.entries(selection)) {
     if (k !== "status") {

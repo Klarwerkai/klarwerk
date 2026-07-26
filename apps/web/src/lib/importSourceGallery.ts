@@ -2,16 +2,24 @@
 // (DOM-frei, deterministisch) fuer die Systeme- und Datei-Galerie der Import-Ansicht.
 //
 // GRUNDSATZ (Ehrlichkeit vor Optik): jede Quelle traegt einen EHRLICHEN Zustand.
-//  - "active"  → real nutzbar; loest ueber onActivate den echten, bereits existierenden Fluss aus.
-//  - "soon"    → in Arbeit; darf NIE einen Import starten (nur ein ehrlicher Hinweis).
-//  - "planned" → Vision, noch nicht begonnen; ebenfalls kein Import, nur Aufklaerung.
+//  - "active"       → real nutzbar; loest ueber onActivate den echten, bereits existierenden Fluss aus.
+//  - "unconfigured" → GEBAUT, aber ohne hinterlegten Dienst nicht nutzbar. Kein Import.
+//  - "soon"         → in Arbeit; darf NIE einen Import starten (nur ein ehrlicher Hinweis).
+//  - "planned"      → Vision, noch nicht begonnen; ebenfalls kein Import, nur Aufklaerung.
+//
+// AUFTRAG-mega15 Block D (SCRUM-382, Pedis Entscheidung): „unconfigured" ist wegen des
+// Audio-/Video-Transkripts dazugekommen. Die Kachel sagte „geplant" — das war schlicht falsch: das
+// Transkriptionsmodul ist gebaut und verdrahtet (`services/media/`, `POST /api/media/analyze`),
+// nur der Dienst ist nicht konfiguriert. „Geplant" und „nicht konfiguriert" sind zwei verschiedene
+// Wahrheiten, und die Kachel muss die zutreffende sagen. Kein eigener Einstieg jetzt: die
+// VERDRAHTUNG bleibt unveraendert (accept === null, kein Handler, kein neuer Fluss).
 // Die Galerie-Komponente ruft onActivate AUSSCHLIESSLICH fuer "active"; "soon"/"planned" zeigen
 // einen ruhigen, nicht-modalen Hinweis. Kein neuer Egress-Pfad, kein Konnektor-Aufruf an geplante
 // Systeme — das steckt bewusst NICHT in diesem Modell.
 
 import { type FileKind, detectFileKind } from "./extract";
 
-export type SourceState = "active" | "soon" | "planned";
+export type SourceState = "active" | "unconfigured" | "soon" | "planned";
 
 export interface GallerySource {
   /** Stabile ID — steuert bei "active" den echten Fluss (Argument von onActivate). */
@@ -21,8 +29,13 @@ export interface GallerySource {
   readonly state: SourceState;
 }
 
-// Reihenfolge der Zustaende: aktiv zuerst, dann bald, dann geplant.
-const STATE_RANK: Record<SourceState, number> = { active: 0, soon: 1, planned: 2 };
+// Reihenfolge der Zustaende: aktiv zuerst, dann vorhanden-aber-unkonfiguriert, dann bald, dann geplant.
+const STATE_RANK: Record<SourceState, number> = {
+  active: 0,
+  unconfigured: 1,
+  soon: 2,
+  planned: 3,
+};
 
 /**
  * Stabile Sortierung aktiv→bald→geplant. Innerhalb eines Zustands bleibt die Eingabereihenfolge
@@ -38,12 +51,14 @@ export function orderByState(sources: readonly GallerySource[]): GallerySource[]
 /** Badge-Text je Zustand — IMMER Text (nicht nur Farbe), fuer Barrierefreiheit. */
 export const STATE_BADGE_KEY: Record<SourceState, string> = {
   active: "imp.explore.active",
+  unconfigured: "imp.gallery.unconfigured",
   soon: "imp.explore.soon",
   planned: "imp.gallery.planned",
 };
 
 /** Ehrlicher Klick-Hinweis je nicht-aktivem Zustand (kein Import, nur Aufklaerung). */
 export const STATE_HINT_KEY: Record<Exclude<SourceState, "active">, string> = {
+  unconfigured: "imp.gallery.hintUnconfigured",
   soon: "imp.gallery.hintSoon",
   planned: "imp.gallery.hintPlanned",
 };
@@ -91,6 +106,12 @@ interface FileSourceDef {
   readonly accept: string | null;
   // Repräsentative Datei, an der detectFileKind die reale Erfassen-Fähigkeit misst.
   readonly sample: { name: string; type?: string };
+  // AUFTRAG-mega15 Block D (SCRUM-382): fester, auf BEIDEN Oberflächen geltender Zustand für
+  // Kacheln, deren Wahrheit die Text-Extraktionsweiche gar nicht messen kann. Die Weiche kennt nur
+  // „extrahiert diese Oberfläche Text daraus" — sie kann nicht zwischen „nie gebaut" und „gebaut,
+  // aber kein Dienst hinterlegt" unterscheiden. Ohne diese Ausnahme müsste die Kachel weiter eine
+  // der beiden Wahrheiten falsch behaupten.
+  readonly fixedState?: SourceState;
 }
 
 // Typgerechte accept-Fragmente — je Fragment genau EIN Format-Cluster. Die Union der aktiven Kacheln
@@ -131,13 +152,29 @@ const FILE_SOURCE_DEFS: readonly FileSourceDef[] = [
     accept: ACCEPT_IMAGE,
     sample: { name: "a.png", type: "image/png" },
   },
-  // Wirklich (noch) fehlend: Excel und Audio/Video — kein Extraktionsweg → kein Dialog, ehrlich geplant.
+  // Wirklich (noch) fehlend: Excel — kein Extraktionsweg → kein Dialog, ehrlich geplant.
+  //
+  // AUFTRAG-mega14 Block G / mega15 Block D (SCRUM-382) — der Befund und Pedis Entscheidung:
+  // Für Audio/Video stimmt „kein Extraktionsweg" NICHT. Das Transkriptionsmodul (`services/media/`)
+  // ist gebaut, verdrahtet (`build-app.ts`, `POST /api/media/analyze`) und im Erfassen über einen
+  // echten „Transkribieren"-Knopf erreichbar (`Capture.tsx`, Karte „Dokumente" unter „Erweiterte
+  // Details"). Die Kachel sagte trotzdem „geplant" — genau der Satz aus dem Live-Test, und falsch.
+  //
+  // Entschieden (Pedi): KEIN eigener Einstieg jetzt, aber die Falschaussage verschwindet. Die
+  // Kachel traegt den Zustand `unconfigured` — vorhanden, aber ohne hinterlegten Dienst nicht
+  // nutzbar. Kein Umhaengen auf ein anderes Eingabefeld, kein neuer Handler: `accept` bleibt null,
+  // die Galerie oeffnet fuer diese Kachel weiterhin keinen Dialog.
+  //
+  // Excel bleibt „geplant": dort gibt es wirklich keinen Extraktionsweg.
   { id: "xlsx", labelKey: "imp.gallery.file.xlsx", accept: null, sample: { name: "a.xlsx" } },
   {
     id: "avtranscript",
     labelKey: "imp.gallery.file.avtranscript",
+    // Unveraendert null: diese Kachel oeffnet KEINEN Dialog und haengt an KEINEM Handler. Nur die
+    // Aussage wird richtig — der Weg bleibt genau, wie er ist (Pedis Entscheidung zu SCRUM-382).
     accept: null,
     sample: { name: "a.mp4", type: "video/mp4" },
+    fixedState: "unconfigured",
   },
 ];
 
@@ -153,7 +190,8 @@ const IMPORT_FILE_STATE: Record<string, SourceState> = {
   pptx: "planned",
   csv: "planned",
   ocr: "planned",
-  avtranscript: "planned",
+  // avtranscript steht bewusst NICHT hier: sein Zustand ist auf beiden Oberflaechen derselbe und
+  // kommt aus `fixedState` (SCRUM-382).
 };
 
 // Erfassen: eine Kachel ist AKTIV, wenn ihr Sample über die ECHTE Weiche detectFileKind (die
@@ -174,11 +212,12 @@ export function fileSourcesForSurface(surface: ImportSurface): GallerySource[] {
       id: def.id,
       labelKey: def.labelKey,
       state:
-        surface === "capture"
+        def.fixedState ??
+        (surface === "capture"
           ? captureSupports(def)
             ? ("active" as const)
             : ("planned" as const)
-          : (IMPORT_FILE_STATE[def.id] ?? "planned"),
+          : (IMPORT_FILE_STATE[def.id] ?? "planned")),
     })),
   );
 }

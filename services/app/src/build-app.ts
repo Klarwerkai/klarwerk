@@ -29,7 +29,14 @@ import {
   authRoutes,
   createOidcProviderFromEnv,
 } from "../../auth";
-import { CaptureService, type DraftRepo, InMemoryDraftRepo, PgDraftRepo } from "../../capture";
+import {
+  CaptureError,
+  CaptureService,
+  type DraftRepo,
+  InMemoryDraftRepo,
+  PgDraftRepo,
+  validateDraftPayloadShape,
+} from "../../capture";
 import {
   type ConflictRepo,
   ConflictService,
@@ -53,6 +60,7 @@ import {
   InMemoryExternalKnowledgePolicyRepo,
   PgExternalKnowledgePolicyRepo,
   createExternalSearchFromEnv,
+  parseInternalSourceOrigins,
 } from "../../external-search";
 import { I18nService } from "../../i18n";
 import {
@@ -146,14 +154,16 @@ import { type AiCheckWorker, createAiCheckRunner, createAiCheckWorker } from "./
 import { type SemanticPrefilter, removeKoFromDuplicatePrefilter } from "./duplicate-detection";
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
-import { makeGuards, tokenFromRequest } from "./http";
+import { type SessionUser, makeGuards, tokenFromRequest } from "./http";
 import { impactReport } from "./impact";
 import { makeAssignmentNotifier } from "./notify";
+// AUFTRAG-mega20 Block C: die modulübergreifende Referenzprüfung lebt in services/app (s. Datei).
+import type { ObjectReferenceSources } from "./object-references";
 import { addinStaticRoutes } from "./routes/addin-static-routes";
 import { adminRoutes } from "./routes/admin-routes";
 import { askRoutes } from "./routes/ask-routes";
 import { auditRoutes } from "./routes/audit-routes";
-import { captureRoutes } from "./routes/capture-routes";
+import { canSeeDraft, captureRoutes } from "./routes/capture-routes";
 import { checkTextRoutes } from "./routes/check-text-routes";
 import { conflictRoutes } from "./routes/conflicts-routes";
 import { confluenceImportRoutes } from "./routes/confluence-import-routes";
@@ -202,6 +212,12 @@ export interface AppServices {
   lifecycle: LifecycleService;
   i18n: I18nService;
   objects: ObjectStore;
+  // AUFTRAG-mega20 Block C: die MODULÜBERGREIFENDE Referenzprüfung — verdrahtet mit den echten
+  // Beständen (Wissensobjekte inkl. Papierkorb, Versions-Snapshots, Belegkette, Entwürfe). Sie
+  // gehört in die Composition-Root, weil nur sie alle Module kennen darf; die ausgeschriebene
+  // Begründung und die fünf Fundorte stehen in object-references.ts. Sie ENTSCHEIDET nichts und
+  // löscht nichts — der Waisen-Sweep ist ausdrücklich nicht Teil dieses Blocks.
+  objectReferences: ObjectReferenceSources;
   media: MediaAnalysisService;
   // SCRUM-165: read-only Einsicht in das ModelRun-Protokoll.
   modelRuns: ModelRunService;
@@ -353,6 +369,12 @@ export function assembleServices(repos: AppRepos, opts: { withTx?: WithTx } = {}
     externalUpsert: externalImportEnabled,
   });
   const lifecycle = new LifecycleService({ koService: ko, repo: repos.lifecycleRepo });
+  // AUFTRAG-mega20 Block C/D: EINE ObjectStore-Instanz für die Composition-Root. Bis mega19 wurde
+  // sie zweimal gebaut (einmal für die Routen, einmal für die Medien-Analyse); solange der Store
+  // nur las und schrieb, war das folgenlos. Mit `list`/`delete` und der Lebenszyklus-Zuordnung ist
+  // es das nicht mehr — zwei Instanzen wären zwei Orte, an denen jemand künftig einen Cache oder
+  // eine Sperre einbaut, ohne die andere zu kennen. Ein Repo, ein Store.
+  const objects = new ObjectStore({ repo: repos.objects });
 
   return {
     audit,
@@ -366,7 +388,13 @@ export function assembleServices(repos: AppRepos, opts: { withTx?: WithTx } = {}
       // SCRUM-443: FR-RBAC-03 serverseitig durchsetzen (kein Selbst-Entzug der Admin-Rolle).
       canChangeRole,
     }),
-    capture: new CaptureService({ repo: repos.drafts }),
+    // AUFTRAG-mega20 Block D: die Ankerprüfung des Entwurfs bekommt ihre Auflösung HIER — capture
+    // kennt den Objektspeicher nicht (Modulgrenze), die Composition-Root kennt beide. Dieselbe
+    // Bewegung wie bei `koConfidentiality` für die Medien-Analyse.
+    capture: new CaptureService({
+      repo: repos.drafts,
+      objectExists: async (objectId) => (await objects.metadata(objectId)) !== undefined,
+    }),
     ask,
     validation: new ValidationService({
       koService: ko,
@@ -396,9 +424,19 @@ export function assembleServices(repos: AppRepos, opts: { withTx?: WithTx } = {}
     lifecycle,
     i18n: new I18nService(),
     // SCRUM-121: interner Objekt-/Attachment-Speicher (In-Memory; Pg/Disk = Folge-Ticket).
-    objects: new ObjectStore({ repo: repos.objects }),
+    objects,
+    // AUFTRAG-mega20 Block C: die Quellen der Referenzprüfung, direkt an den REPOS — nicht an den
+    // Diensten. Der Unterschied ist tragend: `ko.list()` blendet getrashte Wissensobjekte aus
+    // (SCRUM-422), und ein Aufräumlauf, der den Papierkorb übersieht, macht aus „gelöscht"
+    // ein „unwiederbringlich". Hier wird deshalb bewusst der ROHE Bestand befragt.
+    objectReferences: {
+      kos: () => repos.koRepo.list({}),
+      drafts: () => repos.drafts.list(),
+      versions: (koId) => repos.koVersions.listByKo(koId),
+      evidence: (koId) => repos.evidence.listByKo(koId),
+    },
     media: new MediaAnalysisService({
-      objects: new ObjectStore({ repo: repos.objects }),
+      objects,
       // SCRUM-502 R7: der (Cloud-)Whisper-Transkriber durch den Egress-Chokepoint — verweigert
       // vertrauliche Medien per Konstruktion (rejectsConfidential), analog cappedCloud beim Reasoner.
       // SCRUM-502 R8: gecappter Cloud-Transkriber aus der Factory (Egress-Wächter zwingend; roher
@@ -777,11 +815,101 @@ export function buildApp(
         notifyAssignment,
         // SCRUM-421: einstellbare Upload-Grenzen + Audit für Änderungen.
         uploadLimits: services.uploadLimits,
+        // AUFTRAG-mega14 Block E (SCRUM-421): DERSELBE Object-Store, in den der Upload schreibt —
+        // die Größenprüfung liest die gespeicherte Größe, nicht die Client-Angabe.
+        objects: services.objects,
+        // AUFTRAG-mega14 Block D (SCRUM-414): DIESELBE Stufen-Quelle, die auch external-routes und
+        // reasoner-routes lesen — eine Autorität, kein zweiter Speicher.
+        externalPolicy: services.externalKnowledge,
+        // AUFTRAG-mega16 Block A (bens SB-4): die Allowlist interner Origins — die EINZIGE Stelle,
+        // an der sie herkommt. Kein Host steht im Code; ohne Konfiguration ist sie leer, und dann
+        // ist jede Adresse öffentlich. Genau das ist der fail-closed Auslieferungszustand.
+        internalSourceOrigins: parseInternalSourceOrigins(
+          process.env.KLARWERK_INTERNAL_SOURCE_ORIGINS,
+        ),
         audit: services.audit,
         // Weg 3 (Feature-Flag): semantischer Vorfilter (undefined = Default „jeder gegen jeden").
         semanticPrefilter,
         // WP-SUBMIT-ASYNC: Prüf-Job-Vermerk + Hintergrund-Worker statt synchroner Erkennung.
         aiCheckWorker,
+        // AUFTRAG-mega19 Block B: der Entwurfs-Zugang der Dokumentübernahme. HIER, in der
+        // Composition-Root, treffen sich Capture und Knowledge-Object — ko-routes importiert das
+        // Capture-Modul nicht. Die Sichtbarkeitsregel ist DIESELBE Funktion wie auf den
+        // Entwurfs-Routen (canSeeDraft), nicht eine zweite Auffassung davon.
+        draftPromotion: {
+          load: async (draftId, user) => {
+            const draft = await services.capture.getDraft(draftId);
+            if (!draft) {
+              return { ok: false, reason: "not-found" as const };
+            }
+            if (!canSeeDraft({ id: user.id, role: user.role as SessionUser["role"] }, draft)) {
+              return { ok: false, reason: "forbidden" as const };
+            }
+            const input = await services.capture.toKoInput(draftId);
+            // WP-RETEST7 R6: author IMMER aus einem echten Nutzer — normal der Originalautor des
+            // Entwurfs (FR-CAP-07); trägt ein Altbestands-Entwurf keinen, wird ehrlich der
+            // einreichende Session-Nutzer gesetzt. Gleiche Regel wie im Promote-Pfad.
+            return {
+              ok: true as const,
+              input: { ...input, author: input.author.trim() ? input.author : user.id },
+            };
+          },
+          discard: (draftId) => services.capture.deleteDraft(draftId),
+          // AUFTRAG-mega21 Block B: Entwurfsaktualisierung UND Erstanlage in EINEM Vorgang. Die
+          // Sichtbarkeitsregel ist DIESELBE Funktion wie oben (canSeeDraft) und dieselbe wie auf
+          // `PUT /api/drafts/:id` — es entsteht keine zweite Auffassung davon, wer einen Entwurf
+          // schreiben darf. `continueDraft` ist derselbe Aufruf, den auch die Entwurfsroute
+          // benutzt, samt seiner Merge- und Löschsemantik (mergeDraftPayload) und seiner
+          // Formprüfung; deren Fehler wird als `invalid` durchgereicht statt als 500 verschluckt.
+          applyAndLoad: async (draftId, payload, user) => {
+            const draft = await services.capture.getDraft(draftId);
+            if (!draft) {
+              return { ok: false, reason: "not-found" as const };
+            }
+            if (!canSeeDraft({ id: user.id, role: user.role as SessionUser["role"] }, draft)) {
+              return { ok: false, reason: "forbidden" as const };
+            }
+            // ==================================================================================
+            // AUFTRAG-mega22 Block D — FORMFEHLER AM RAND, STÖRUNGEN DURCH DEN ZENTRALEN PFAD.
+            // ==================================================================================
+            //
+            // (1) DIE GESTALT ZUERST. Was hier abgewiesen wird, kann `continueDraft` danach nicht
+            //     mehr werfen — insbesondere nicht mehr der TypeError aus `Object.entries(null)`,
+            //     dessen Rohtext bis mega21 als 400-Meldung nach aussen ging.
+            const gestalt = validateDraftPayloadShape(payload);
+            if (!gestalt.ok) {
+              return { ok: false as const, reason: "invalid" as const, message: gestalt.message };
+            }
+            try {
+              await services.capture.continueDraft(draftId, gestalt.payload, user.id);
+            } catch (error) {
+              // (2) NUR BEKANNTE FORMFEHLER WERDEN 400. `CaptureError` ist die benannte Klasse der
+              //     Fachprüfungen dieses Moduls; ihre Meldungen sind für Menschen geschrieben und
+              //     dürfen nach aussen. `NOT_FOUND` ist ausgenommen — der Entwurf war oben noch da,
+              //     ein Verschwinden dazwischen ist keine Form-, sondern eine Bestandsfrage.
+              if (error instanceof CaptureError && error.code !== "NOT_FOUND") {
+                return {
+                  ok: false as const,
+                  reason: "invalid" as const,
+                  message: error.message,
+                };
+              }
+              // (3) ALLES ANDERE IST EINE STÖRUNG und wird ERNEUT GEWORFEN. Sie läuft dann durch
+              //     den zentralen, redigierten Fehlerpfad der Route (sendError) und wird zu 500
+              //     OHNE Rohmeldung — statt als 400 den Vorgangsschlüssel des Clients zu töten
+              //     (lib/createOperation.ts: 4xx gilt als eindeutige Ablehnung).
+              throw error;
+            }
+            const input = await services.capture.toKoInput(draftId);
+            // Dieselbe Autorregel wie in `load` (WP-RETEST7 R6) — der Entwurfsautor bleibt der
+            // Autor des Wissensobjekts, auch wenn ein Admin einreicht. Der EIGENTÜMER des
+            // Vorgangs ist davon getrennt und ist der einreichende Nutzer (mega21 Block A).
+            return {
+              ok: true as const,
+              input: { ...input, author: input.author.trim() ? input.author : user.id },
+            };
+          },
+        },
       },
       guards,
     ),

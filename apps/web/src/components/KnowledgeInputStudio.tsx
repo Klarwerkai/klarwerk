@@ -39,6 +39,7 @@ import type { EditorImage } from "./RichTextEditor";
 import { RichTextEditor } from "./RichTextEditor";
 import { SanitizedHtml } from "./SanitizedHtml";
 import { StudioContributionPanel } from "./StudioContributionPanel";
+import { UploadLimitsHint } from "./UploadLimitsHint";
 import { Button } from "./ui";
 
 export function KnowledgeInputStudio({
@@ -157,13 +158,18 @@ export function KnowledgeInputStudio({
             // SCRUM-458 Stufe 1: Rückfrage DIREKT oben, wo geklickt wurde — nicht nur unten
             // im Vollbild (das war die Sackgasse: „Schließen" wirkte reaktionslos).
             <>
-              <span className="text-[12px] font-semibold text-trust-warn-text">
+              {/* AUFTRAG-mega14 Block F (SCRUM-412): MISSBRAUCH entfernt. Die neutrale FRAGE trug
+                  die Warnfarbe (rgb(154,106,18)), der zerstörende Knopf daneben nicht — genau
+                  verkehrt herum. Die Fußzeilen-Fassung derselben Komponente (unten) macht es seit
+                  jeher richtig: Frage in Textfarbe. */}
+              <span className="text-[12px] font-semibold text-text">
                 {t("studio.confirmDiscard.q")}
               </span>
               <Button variant="ghost" onClick={() => setConfirmDiscard(false)}>
                 {t("studio.confirmDiscard.keep")}
               </Button>
-              <Button variant="outline" onClick={onClose}>
+              {/* AUFTRAG-mega14 Block F: Warnfarbe an den zerstörenden Knopf. */}
+              <Button variant="danger" onClick={onClose}>
                 {t("studio.confirmDiscard.discard")}
               </Button>
             </>
@@ -288,6 +294,8 @@ export function KnowledgeInputStudio({
                 >
                   {t("studio.attachFromDisk")}
                 </button>
+                {/* AUFTRAG-mega14 Block E (SCRUM-421): geltende Grenzen an der Auswahlstelle, Serverquelle. */}
+                <UploadLimitsHint />
               </div>
             ) : null}
             <EditorContentQuality bodyHtml={draft} attachments={attachments} />
@@ -403,7 +411,8 @@ export function KnowledgeInputStudio({
             <Button variant="ghost" onClick={() => setConfirmDiscard(false)}>
               {t("studio.confirmDiscard.keep")}
             </Button>
-            <Button variant="outline" onClick={onClose}>
+            {/* AUFTRAG-mega14 Block F: Warnfarbe an den zerstörenden Knopf. */}
+            <Button variant="danger" onClick={onClose}>
               {t("studio.confirmDiscard.discard")}
             </Button>
           </div>

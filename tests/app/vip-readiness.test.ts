@@ -11,6 +11,8 @@ describe("SCRUM-437: VIP-Bereitschaft", () => {
     openReviews: 2,
     uploadLimits: { maxAttachments: 8, maxAttachmentBytes: 700_000 },
     externalStage: "open",
+    // AUFTRAG-mega14 Block H (SCRUM-437): Demodaten-Stand.
+    demo: { present: false, count: 0 },
   };
   const notReady: ReadinessInput = {
     kiBoth: false,
@@ -19,11 +21,33 @@ describe("SCRUM-437: VIP-Bereitschaft", () => {
     openReviews: 0,
     uploadLimits: null,
     externalStage: null,
+    demo: null,
   };
 
-  it("liefert fünf Zeilen in fester Reihenfolge", () => {
+  it("liefert sechs Zeilen in fester Reihenfolge", () => {
+    // AUFTRAG-mega14 Block H (SCRUM-437): die Demodaten-Zeile ist dazugekommen — sie fehlte, obwohl
+    // Laden/Entfernen längst im Datenbereich lag. Reihenfolge bleibt fest.
     const ids = readinessRows(ready).map((r) => r.id);
-    expect(ids).toEqual(["ki", "validated", "openReviews", "upload", "external"]);
+    expect(ids).toEqual(["ki", "validated", "openReviews", "upload", "external", "demo"]);
+  });
+
+  it("Block H: die Demodaten-Zeile sagt ehrlich, was sie weiß", () => {
+    const geladen = readinessRows({ ...ready, demo: { present: true, count: 22 } }).find(
+      (r) => r.id === "demo",
+    );
+    expect(geladen?.valueKey).toBe("adm.ready.demo.loaded");
+    expect(geladen?.params?.n).toBe(22);
+    // Demodaten sind ein ZUSTAND, kein Mangel — kein warn/crit, wie bei der Externe-Stufe.
+    expect(geladen?.tone).toBe("info");
+
+    const keine = readinessRows(ready).find((r) => r.id === "demo");
+    expect(keine?.valueKey).toBe("adm.ready.demo.none");
+    expect(keine?.tone).toBe("ok");
+
+    // Noch nicht geladen → „unbekannt", NICHT „keine". Eine fehlende Antwort ist kein Nein.
+    const unbekannt = readinessRows({ ...ready, demo: null }).find((r) => r.id === "demo");
+    expect(unbekannt?.valueKey).toBe("adm.ready.unknown");
+    expect(unbekannt?.tone).toBe("warn");
   });
 
   it("Ampel ehrlich: bereit=ok, fehlend=warn/crit", () => {

@@ -109,6 +109,17 @@ describe("SCRUM-350: Evidence & Attachments → Review → Use E2E (HTTP + Objec
     });
 
     // 4) Externe Quelle anfügen — Quelle ist KONTEXT/Beleg, nie peer-validiert.
+    // AUFTRAG-mega16 Block A: die Admin-Stufe ist seither eine echte, fail-closed Grenze — auf der
+    // VORGABE-Stufe (search_on_click) wird jede Quelle mit öffentlicher Web-Adresse abgewiesen.
+    // Dieser Test handelt von Evidenz und Nutzbarkeit, nicht von der Stufe; er stellt sie deshalb
+    // ausdrücklich auf „anhängen erlaubt". Die Stufe selbst belegt external-attach-gate-e2e.
+    const stage = await app.inject({
+      method: "PUT",
+      url: "/api/external/policy",
+      headers: admin,
+      payload: { stage: "search_attach" },
+    });
+    expect(stage.statusCode).toBe(200);
     await app.inject({
       method: "PUT",
       url: `/api/kos/${id}`,

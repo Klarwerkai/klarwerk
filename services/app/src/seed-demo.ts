@@ -668,7 +668,13 @@ async function buildDemoContent(
   }
 
   // --- Anhang/Quelle: kleines Bild in den (jetzt persistenten) Object-Store + Referenz am KO ---
-  const ref = await objects.put({ name: "skizze.png", mime: "image/png", data: TINY_PNG });
+  // AUFTRAG-mega20 Block C: Seed-Bestand — als Beispielobjekt deklariert, nicht als Nutzeranhang.
+  const ref = await objects.put({
+    name: "skizze.png",
+    mime: "image/png",
+    data: TINY_PNG,
+    purpose: "example",
+  });
   await ko.addAttachment(koValid.id, erikId, {
     name: "skizze.png",
     mime: "image/png",

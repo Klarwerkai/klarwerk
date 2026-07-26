@@ -469,7 +469,7 @@ export const FAQ_CONTENT: readonly FaqItem[] = [
     route: "/admin",
     question: "Ist KLARWERK DSGVO-konform?",
     answer:
-      "Die ehrliche Antwort hat zwei Teile. Technisch sichert KLARWERK viel zu: lokale Verarbeitung im „Im Haus“-Modus, Schlüssel nur serverseitig, ein manipulationssicheres Protokoll mit Prüfkette, Vertraulichkeitsstufen gegen Abfluss nach außen und rückstandslos entfernbare Demodaten. Aber DSGVO-Konformität ist immer auch Betreibersache: Der Vertrag mit einem Cloud-Anbieter und die Abläufe für Betroffenenrechte liegen bei eurer Organisation. Darum sagt die App es je Aufgabe konkret — im Haus heißt: Daten bleiben hier; extern heißt: Es kommt auf euren Auftragsverarbeitungsvertrag an.",
+      "Die ehrliche Antwort hat zwei Teile. Technisch sichert KLARWERK viel zu: lokale Verarbeitung im „Im Haus“-Modus, Schlüssel nur serverseitig, ein hash-verkettetes Prüfprotokoll, in dem eine nachträgliche Abweichung rechnerisch feststellbar ist, Vertraulichkeitsstufen gegen Abfluss nach außen und rückstandslos entfernbare Demodaten. Aber DSGVO-Konformität ist immer auch Betreibersache: Der Vertrag mit einem Cloud-Anbieter und die Abläufe für Betroffenenrechte liegen bei eurer Organisation. Darum sagt die App es je Aufgabe konkret — im Haus heißt: Daten bleiben hier; extern heißt: Es kommt auf euren Auftragsverarbeitungsvertrag an.",
   },
   // ---- Verwaltung ----
   {

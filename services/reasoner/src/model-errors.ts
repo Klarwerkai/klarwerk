@@ -32,6 +32,41 @@ export class ModelHttpError extends Error {
   }
 }
 
+// AUFTRAG-mega18 Block E (SCRUM-544): WARUM eine Modellantwort ohne Antwortinhalt ankam. Drei
+// unterscheidbare Wege, die vorher alle im selben stillen "" endeten:
+//  - "reasoning-only": das Modell hat GEDACHT (eigenes Feld reasoning/reasoning_content/thinking),
+//    aber keinen Antwortinhalt geliefert (Denkmodelle wie qwen3 verbrauchen ihr Budget im Denken).
+//    Der Denk-TEXT ist KEIN Antwortinhalt und wird nie als Ergebnis weitergegeben — nur der Zustand.
+//  - "truncated": die Antwort brach am Token-Limit ab (finish_reason "length"), bevor Inhalt entstand.
+//  - "empty": Inhalt fehlt/ist leer bzw. die Antwortform weicht ab (kein choices/message/content).
+export type ModelEmptyReason = "reasoning-only" | "truncated" | "empty";
+
+// AUFTRAG-mega18 Block E (SCRUM-544): eine leere Modellantwort darf NIE stillschweigend als Ergebnis
+// gelten. Der Client wirft stattdessen diesen typisierten Fehler; er trägt ausschließlich METADATEN
+// (Grund, finish_reason, ob eine Denkphase da war, Token-Budget) — NIE Antwort-, Denk- oder Prompttext.
+export class ModelEmptyResponseError extends Error {
+  readonly reason: ModelEmptyReason;
+  readonly finishReason: string | undefined;
+  readonly sawReasoning: boolean;
+  readonly maxTokens: number | undefined;
+  constructor(
+    message: string,
+    detail: {
+      reason: ModelEmptyReason;
+      finishReason?: string | undefined;
+      sawReasoning?: boolean;
+      maxTokens?: number | undefined;
+    },
+  ) {
+    super(message);
+    this.name = "ModelEmptyResponseError";
+    this.reason = detail.reason;
+    this.finishReason = detail.finishReason;
+    this.sawReasoning = detail.sawReasoning === true;
+    this.maxTokens = detail.maxTokens;
+  }
+}
+
 export interface ModelFailureInfo {
   failureClass: ModelFailureClass;
   status?: number;
@@ -46,6 +81,12 @@ export function classifyModelFailure(err: unknown): ModelFailureInfo {
   }
   // Modellantwort war kein gültiges JSON (JSON.parse im Provider) → parse.
   if (err instanceof SyntaxError) {
+    return { failureClass: "parse" };
+  }
+  // AUFTRAG-mega18 Block E (SCRUM-544): Antwort kam an, trug aber keinen Antwortinhalt (leer,
+  // abgeschnitten oder nur Denkphase) → "parse" = unbrauchbare Antwortform. Nutzerseitig wird daraus
+  // ehrlich "bad-response" ("Antwort unbrauchbar") statt des irreführenden generischen "model-error".
+  if (err instanceof ModelEmptyResponseError) {
     return { failureClass: "parse" };
   }
   // Heuristik für generische Errors (injizierte Test-Clients, fremde Provider) — Meldungsmuster der

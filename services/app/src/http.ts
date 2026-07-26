@@ -52,6 +52,21 @@ const STATUS_BY_CODE: Record<string, number> = {
   CLEANUP_DRIFT: 409,
   // WP-SHIP8-CLOSE-2 (bens F1): Persistenz-Write traf 0 Zeilen (Objekt zwischenzeitlich weg).
   CONFLICT: 409,
+  // AUFTRAG-mega20 Block A: die Erzeugungs-Kennung gehört zu einem fremden Vorgang — Konflikt,
+  // nicht „ungültige Eingabe": die Anfrage ist wohlgeformt, der Schlüssel ist nur belegt.
+  CREATE_ANCHOR_TAKEN: 409,
+  // AUFTRAG-mega20 Block A: Anlage UND Rücknahme sind gescheitert — ein serverseitiger Restzustand,
+  // der eine Reparatur braucht. Ein 400 würde dem Aufrufer suggerieren, er habe etwas falsch
+  // gemacht und könne es besser machen; genau das kann er hier nicht.
+  CREATE_ROLLBACK_FAILED: 500,
+  // AUFTRAG-mega21 Block A: derselbe Vorgangsschlüssel, ABWEICHENDER Inhalt. 409 und nicht 400:
+  // die Anfrage ist wohlgeformt und der Aufrufer hat nichts falsch gemacht — es ist ein Konflikt
+  // mit einem bereits abgeschlossenen Vorgang, und der Weg zurück ist ein NEUER Vorgang.
+  IDEMPOTENCY_PAYLOAD_MISMATCH: 409,
+  // AUFTRAG-mega21 Block A: der Vorgang steht auf `repair_required`. Auch das ist ein Konflikt mit
+  // einem Zustand, nicht ein Serverfehler dieser Anfrage — der Aufrufer bekommt eine wahre
+  // Auskunft samt Objektkennung und keinen nichtssagenden 500.
+  CREATE_REPAIR_REQUIRED: 409,
 };
 
 export function sendError(reply: FastifyReply, error: unknown): void {

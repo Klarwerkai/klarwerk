@@ -9,6 +9,7 @@ import type {
   AssistPreset,
   AssistResult,
   AuditEntry,
+  AuditVerifyReport,
   BusFactorEntry,
   Confidentiality,
   Conflict,
@@ -136,9 +137,153 @@ export type KoAction =
     }
   | { action: "resolve-conflict"; conflictId: string; decision: string }
   | { action: "transfer-author"; newAuthor: string }
-  | { action: "add-source"; source: { label: string; url?: string; excerpt?: string } }
+  // AUFTRAG-mega15 Block B (bens SB-4): dieser Vertrag war schon richtig — falsch war der
+  // Laufzeitpfad, der zusätzlich ein `provider` mitschickte, und der Server, der seine Stufen-
+  // Sperre nach diesem Client-Feld ausrichtete. Beides ist jetzt aufgeräumt: die Herkunft leitet
+  // der Server aus der Adresse ab. Der Weg zu dieser Aktion führt über `toAddSourceRequest`
+  // (lib/koSource.ts).
+  // AUFTRAG-mega16 Block A (bens SB-4, dritter Durchgang): `objectId` ist der ANKER einer
+  // adresslosen Belegstelle — die Referenz auf ein Dokument, das DIESES Wissensobjekt bereits als
+  // Anhang trägt. Der Server glaubt das Feld nicht, er prüft es gegen die eigene Anhangsliste; ein
+  // erfundener Wert belegt nichts und hebt keine Sperre auf.
+  | {
+      action: "add-source";
+      source: { label: string; url?: string; excerpt?: string; objectId?: string };
+    }
   | { action: "remove-source"; sourceId: string }
+  // AUFTRAG-mega18 Block A-1: die VERBUND-OPERATION „Dokumentinhalt übernehmen". Sie ersetzt die
+  // Dreier-Kette attach → n× add-source → revise auf ALLEN Wegen (Artikel-Anhängen, KO-Detail,
+  // Capture-Finalizer). Der Aufruf läuft NICHT über `ko.act`, weil die Antwort kein
+  // KnowledgeObject ist, sondern ein COMMIT-ERGEBNIS: sie sagt, was tatsächlich gilt (Version,
+  // Anker, Belegstellen) — s. `endpoints.ko.appendDocument`.
+  | { action: "append-document"; appendDocument: DocumentAppendRequest }
   | { action: "revalidate" };
+
+/**
+ * AUFTRAG-mega18 Block A-1 — Nutzlast der Verbund-Operation.
+ *
+ * `operationId` ist der WIEDERHOLSCHLÜSSEL. Derselbe Aufruf mit derselben Kennung führt zu EINEM
+ * Ergebnis, nicht zu doppelten Quellen oder einer zweiten Revision — deshalb darf der Client nach
+ * einem Netzfehler gefahrlos wiederholen, statt blind zu kompensieren. Das Feld trägt keine
+ * Autorität; die Abgrenzung zum `provider`-Fehler aus mega15 steht in
+ * services/knowledge-object/src/document-append.ts.
+ *
+ * `anchor` ist das Originaldokument, das die Operation als ANKER an dasselbe Objekt bindet. Der
+ * Server glaubt die `objectId` nicht — er schlägt sie im eigenen Objektspeicher nach und prüft die
+ * gespeicherte Größe gegen die Admin-Grenze. Ohne Anker bricht die Übernahme ab, auf JEDER Stufe
+ * (interne Belegpflicht, unabhängig von der externen Stufenregel).
+ */
+export interface DocumentAppendRequest {
+  operationId: string;
+  anchor: { objectId: string; name: string; mime: string; thumbnail?: string };
+  /** Eine Belegstelle je übernommenem Punkt. Leer ist ein Fehler, keine leere Übernahme. */
+  points: { label: string; excerpt?: string; url?: string }[];
+  /**
+   * Der überarbeitete Inhalt. FEHLT das Feld, bindet die Operation nur Anker + Belege ohne
+   * Versions-Bump — der Fall des Erfassens, wo `create` den Inhalt schon committet hat.
+   */
+  changes?: { bodyHtml: string; statement?: string; title?: string };
+}
+
+/** Das eindeutige Commit-Ergebnis der Verbund-Operation (s. lib/appendToArticle.ts). */
+export interface DocumentAppendResponse {
+  committed: true;
+  operationId: string;
+  replayed: boolean;
+  koVersion: number;
+  attachmentId: string;
+  sourceIds: string[];
+  /** Folgeschritte, die NACH dem Commit nicht liefen. Die Revision gilt trotzdem. */
+  followUpsFailed?: string[];
+  ko: KnowledgeObject;
+}
+
+/**
+ * AUFTRAG-mega19 Block B — DIE ERSTANLAGE AUS DOKUMENTEN, in EINEM fachlichen Vorgang.
+ *
+ * Bis mega18 committete das frische Erfassen zuerst den vollständigen Body (`create`/`promote`) und
+ * band die Herkunft erst danach mit je einem `append-document` je Ankerdokument. Zwischen beiden
+ * Schritten stand Dokumentinhalt OHNE Herkunft im Bestand — und bei zwei Ankerdokumenten konnte
+ * eines gebunden sein und das andere nicht.
+ *
+ * Dieser Aufruf erzeugt Inhalt, ALLE Ankerdokumente und ALLE Belegstellen gemeinsam — oder gar
+ * nichts. Die allgemeine Route `POST /api/kos` bleibt dabei unverändert streng (sie verwirft
+ * Client-`sources`, SCRUM-470); dies ist eine zweite, ENGERE Tür daneben.
+ *
+ * `draftId` setzt einen gespeicherten Entwurf fort (Originalautor bleibt, FR-CAP-07); dann kommen
+ * die Inhaltsfelder AUS DEM ENTWURF und `create` entfällt. Der Entwurf wird erst entfernt, wenn das
+ * Wissensobjekt vollständig steht.
+ */
+export interface CreateFromDocumentRequest {
+  /**
+   * AUFTRAG-mega20 Block A: der WIEDERHOLSCHLÜSSEL. PFLICHT. Derselbe Schlüssel liefert denselben
+   * Vorgang: entweder wird das Wissensobjekt jetzt angelegt (201) oder das bereits angelegte
+   * zurückgegeben (200). Ohne ihn erzeugte jeder Antwortverlust ein zweites vollständiges Objekt.
+   * Er muss über Wiederholungen hinweg STABIL bleiben — s. lib/createOperation.ts.
+   */
+  operationId: string;
+  draftId?: string;
+  create?: DraftPayload;
+  /**
+   * AUFTRAG-mega21 Block B: der AKTUELLE Entwurfsstand reist MIT der Erstanlage statt in einem
+   * vorgeschalteten `PUT /api/drafts/:id`. Der frühere PUT war es, der jeden Wiederholversuch nach
+   * Antwortverlust mit 404 abfing, bevor der serverseitige Idempotenz-Nachschlag überhaupt lief —
+   * der Entwurf ist nach dem ersten (gelungenen) POST ja schon verworfen. Die ausgeschriebene
+   * Begründung, warum es der atomare Vertrag geworden ist und nicht das Überspringen des PUT,
+   * steht an `DraftPromotionSource.applyAndLoad` in services/app/src/routes/ko-routes.ts.
+   *
+   * AUFTRAG-mega22 Block C: bei gesetztem `draftId` ist das Feld PFLICHT — der Server antwortet
+   * sonst mit 400. Ohne es trüge der Abdruck weder Entwurfs-Kennung noch Entwurfsinhalt, und ein
+   * Wiederholversuch mit ANDEREM Entwurf würde als identisch adoptiert. Der Typ bildet das ab: die
+   * beiden Wege sind eine Vereinigung, keine Sammlung optionaler Felder.
+   */
+  draftPayload?: DraftPayload;
+  documents: {
+    /**
+     * AUFTRAG-mega22 Block B: `thumbnail` ist ENTFALLEN. Es wurde nie in den Inhaltsabdruck
+     * genommen, aber sehr wohl am Wissensobjekt persistiert — zwei parallele Anfragen mit
+     * demselben Schlüssel und verschiedener Vorschau erzeugten damit gewinnerabhängig
+     * verschiedenen gespeicherten Anzeigeinhalt. Der Server liest das Feld nicht mehr; die
+     * Vorschau ist aus der `objectId` ableitbar.
+     */
+    anchor: { objectId: string; name: string; mime: string };
+    points: { label: string; excerpt?: string; url?: string }[];
+  }[];
+  reviewerIds?: string[];
+}
+
+/**
+ * AUFTRAG-mega20 Block A: die Antwort ist das Wissensobjekt — plus, wenn nötig, die ehrliche Liste
+ * der NACHARBEITEN, die nach dem Commit nicht liefen (Entwurfs-Rücknahme, Prüfer-Zuweisung,
+ * Benachrichtigung, KI-Prüf-Vermerk). Sie sind KEIN Teil der Erfolgsdefinition: das Objekt steht
+ * und ist vollständig belegt. Aus einem Eintrag hier darf NIE geschlossen werden, der Inhalt sei
+ * nicht gespeichert — das war die Fehlerklasse, die in mega18 zu Datenverlust geführt hat.
+ */
+/**
+ * AUFTRAG-mega23 Block B — WAS VON DER BUCHFÜHRUNG TATSÄCHLICH GESCHRIEBEN WURDE.
+ *
+ * Beide Vermerke sind Best Effort und stehen NACH der Erfolgsdefinition (die 201 kippt nicht, wenn
+ * sie ausfallen). Ob sie gelangen, ist trotzdem eine Tatsache, die der Client kennen MUSS:
+ *
+ *   · `aiCheckFailed` — steht der `failed`-Vermerk am Prüf-Job? NUR dann ist der vorhandene
+ *     Wiederhol-Endpunkt (`POST /api/kos/:id/ai-check`) nutzbar; er verlangt `failed` oder
+ *     `pending`. Ohne diesen Nachweis darf die Oberfläche den Wiederholweg NICHT versprechen —
+ *     genau diese ungedeckte Zusage war bens SB-G.
+ *   · `failures` — steht die Liste der gescheiterten Nacharbeiten dauerhaft am Objekt? Nur dann
+ *     ist der Fehlschlag nach dem Schließen des Tabs überhaupt noch auffindbar.
+ *
+ * FEHLT DAS FELD GANZ, ist NICHTS nachgewiesen. Die Oberfläche behandelt das wie „nicht
+ * geschrieben" (fail-closed) — eine Zusage ohne Beleg ist der Fehler, den dieses Feld beendet.
+ */
+export interface FollowUpsRecorded {
+  aiCheckFailed: boolean;
+  failures: boolean;
+}
+
+export type CreateFromDocumentResponse = KnowledgeObject & {
+  followUpsFailed?: string[];
+  followUpsRecorded?: FollowUpsRecorded;
+};
 
 export const endpoints = {
   ko: {
@@ -149,7 +294,14 @@ export const endpoints = {
     // SCRUM-395: optionaler Prüfer-Vorschlag direkt beim Einreichen (reviewerIds).
     create: (body: DraftPayload & { reviewerIds?: string[] }) =>
       api.post<KnowledgeObject>("/kos", body),
+    // AUFTRAG-mega19 Block B: Erstanlage/Promote MIT Ankerdokumenten — ein Vorgang, oder keiner.
+    createFromDocument: (body: CreateFromDocumentRequest) =>
+      api.post<CreateFromDocumentResponse>("/kos/from-document", body),
     act: (id: string, body: KoAction) => api.put<KnowledgeObject>(`/kos/${id}`, body),
+    // AUFTRAG-mega18 Block A-1: eigener Aufruf, weil die Antwort ein COMMIT-ERGEBNIS ist und kein
+    // KnowledgeObject — der Aufrufer erfährt daraus ohne Rückfrage, was gilt.
+    appendDocument: (id: string, appendDocument: DocumentAppendRequest) =>
+      api.put<DocumentAppendResponse>(`/kos/${id}`, { action: "append-document", appendDocument }),
     remove: (id: string) => api.del<void>(`/kos/${id}`),
     // WP-SUBMIT-ASYNC: reiht die Hintergrund-KI-Pruefung neu ein (Retry am failed-Badge).
     aiCheckRetry: (id: string) => api.post<{ status: string }>(`/kos/${id}/ai-check`, {}),
@@ -227,8 +379,14 @@ export const endpoints = {
     update: (id: string, payload: DraftPayload) => api.put<Draft>(`/drafts/${id}`, payload),
     remove: (id: string) => api.del<void>(`/drafts/${id}`),
     // SCRUM-395: optionaler Prüfer-Vorschlag auch auf dem Entwurfs-Weg.
-    promote: (id: string, body?: { reviewerIds: string[] }) =>
-      api.post<KnowledgeObject>(`/drafts/${id}/promote`, body),
+    // AUFTRAG-mega22 Block H: `operationId` macht den Promote WIEDERHOLBAR (derselbe Vertrag wie
+    // `createFromDocument`, s. services/app/src/routes/capture-routes.ts) und `draftPayload` lässt
+    // den aktuellen Stand MIT dem Promote reisen, statt in einem vorgeschalteten PUT — der nach
+    // einem gelungenen ersten Lauf mit 404 abfinge, weil der Entwurf dann bereits gelöscht ist.
+    promote: (
+      id: string,
+      body?: { reviewerIds?: string[]; operationId?: string; draftPayload?: DraftPayload },
+    ) => api.post<KnowledgeObject>(`/drafts/${id}/promote`, body),
   },
   ask: {
     // FR-I18N-01: aktuelle UI-Sprache mitsenden (Default serverseitig "de").
@@ -365,7 +523,8 @@ export const endpoints = {
   audit: {
     list: () => api.get<AuditEntry[]>("/audit"),
     // SCRUM-439: aktive Integritätsprüfung der Audit-Kette (Admin-Knopf „Integrität geprüft").
-    verify: () => api.get<{ ok: boolean; count: number }>("/audit/verify"),
+    // AUFTRAG-mega14 Block A: der Bericht nennt jetzt auch die URSACHE einer Abweichung.
+    verify: () => api.get<AuditVerifyReport>("/audit/verify"),
   },
   // SCRUM-121: Objekt-/Attachment-Speicher — Original via Referenz statt Inline im KO.
   objects: {
@@ -378,6 +537,11 @@ export const endpoints = {
       data: string;
       kind?: ObjectRef["kind"];
       confidentiality?: Confidentiality;
+      // AUFTRAG-mega20 Block C: WOZU wird hochgeladen. Der Server prüft den Wert gegen seine
+      // Liste und stuft einen unbekannten auf „unknown" — also konservativ, nicht wohlwollend.
+      // `owner` fehlt hier bewusst: er kommt serverseitig aus der Anmeldung, nie aus dem Body.
+      purpose?: "anchor" | "attachment" | "media" | "example";
+      draftId?: string;
     }) => api.post<ObjectRef>("/objects", input),
     read: (id: string) => api.get<ObjectContent>(`/objects/${id}`),
   },
@@ -461,6 +625,9 @@ export const endpoints = {
   admin: {
     // Pedi 05.07. (Beta): `force` lädt das Demo-Set auch bei bereits erfassten Daten.
     // SCRUM-487: `locale` (UI-Sprache) steuert die Sprache der Demo-Inhalte (Server-Default "de").
+    // AUFTRAG-mega14 Block H (SCRUM-437): LESENDER Stand für die Bereitschafts-Zeile — kein
+    // zweiter Lade-/Entfernen-Weg.
+    demoStatus: () => api.get<{ present: boolean; count: number }>("/admin/demo-seed"),
     demoSeed: (force = false, locale?: string) =>
       api.post<DemoSeedResult>("/admin/demo-seed", { force, ...(locale ? { locale } : {}) }),
     // Pedi 02.07./05.07.: Demodaten komplett entfernen (inkl. Demo-Anwender); Merker überlebt

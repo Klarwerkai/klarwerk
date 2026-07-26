@@ -28,7 +28,7 @@ Mindest-Verarbeitungen und Datenkategorien im aktuellen Stand (Betreiber ergänz
 | **Wissensobjekte (KO)** | Titel, Aussage, Inhalt, Tags, **Autor/Original-Autor (User-ID)**, Quellen, Anhänge, Historie | KO-Store | i. d. R. Fachwissen; **Autorenbezug** = personenbezogen; Freitext kann unbeabsichtigt PII enthalten |
 | **Kommentare/Validierungsfeedback** | Freitext + Autorbezug | am KO | personenbezogen (Autor), Freitext-PII möglich |
 | **Fragen/Wissenslücken** | Fragetext + Steller, Priorität/Zuweisung | Ask/Gap-Store | personenbezogen (Steller), Freitext-PII möglich |
-| **Audit-Log** | wer (User-ID), wann, Aktion, Ziel, Payload | Audit (append-only Hash-Kette) | personenbezogen; **bewusst unveränderlich** |
+| **Audit-Log** | wer (User-ID), wann, Aktion, Ziel, Payload | Audit (append-only Hash-Kette) | personenbezogen; **bewusst append-only** |
 | **Auth-Events / Server-Logs** | Login/Logout, ggf. IP über Reverse-Proxy | Audit + Proxy/Server-Logs | Proxy-Logs separat vom Betreiber zu erfassen |
 
 **To-do Betreiber:** je Zeile Zweck, Rechtsgrundlage (Art. 6), Empfänger/Subprozessoren (Hosting, ggf. KI-Modellanbieter bei aktivem Modellmodus), Löschfristen und TOMs ergänzen. Vorlage: Standard-VVT-Muster der zuständigen Aufsichtsbehörde.
@@ -44,7 +44,7 @@ Eine **DSFA ist zu prüfen**, wenn eine oder mehrere Fragen mit „ja" beantwort
 - [ ] Wird der **Modellmodus** mit externem KI-Anbieter genutzt (Datenfluss an Dritte/Drittland)?
 - [ ] Werden Inhalte aus **vielen Quellen** zu Personen zusammengeführt?
 
-**Einordnung aktueller Stand (Hinweis, keine Bewertung):** Klarwerk verarbeitet primär *betriebliches Fachwissen* + minimale Konto-/Audit-Daten; im **deterministischen Default** verlassen keine Daten das System. Bei **aktivem Modellmodus** (externer API-Key) ist der Datenfluss an den Modellanbieter Teil der DSFA-Prüfung. Der Audit dient der **Manipulationssicherheit/Nachvollziehbarkeit**, nicht der Mitarbeiterüberwachung — diese Zweckbindung sollte in einer Betriebsvereinbarung festgehalten werden.
+**Einordnung aktueller Stand (Hinweis, keine Bewertung):** Klarwerk verarbeitet primär *betriebliches Fachwissen* + minimale Konto-/Audit-Daten; im **deterministischen Default** verlassen keine Daten das System. Bei **aktivem Modellmodus** (externer API-Key) ist der Datenfluss an den Modellanbieter Teil der DSFA-Prüfung. Der Audit dient der **Nachvollziehbarkeit/Integritätsprüfung** (append-only, hash-verkettet; Abweichungen rechnerisch prüfbar, nicht verhindert), nicht der Mitarbeiterüberwachung — diese Zweckbindung sollte in einer Betriebsvereinbarung festgehalten werden.
 
 ---
 
@@ -54,7 +54,7 @@ Eine **DSFA ist zu prüfen**, wenn eine oder mehrere Fragen mit „ja" beantwort
 | --- | --- | --- |
 | **Auskunft** (Art. 15) | Admin sieht Nutzer (`/admin`); KOs/Kommentare/Audit über UI/`GET /api/audit` (RBAC-geschützt) einsehbar | **kein Self-Service-Auskunftsexport** → manuelle Zusammenstellung durch Admin/DSB |
 | **Berichtigung** (Art. 16) | Profil-Selbstbedienung (Name/Passwort); Admin-Korrektur; KO-Inline-Bearbeitung (neue Version, Historie) | Prozess für Korrekturanträge festlegen |
-| **Löschung** (Art. 17) | Admin kann **Nutzer löschen** (`user.delete`) und **KOs löschen** (`ko.deleted`); Passwort-Reset | **Audit-Einträge bleiben unveränderlich** (append-only, Manipulationsschutz) → Löschung im Audit nicht vorgesehen; Abwägung Recht auf Löschung ↔ Nachweispflicht dokumentieren |
+| **Löschung** (Art. 17) | Admin kann **Nutzer löschen** (`user.delete`) und **KOs löschen** (`ko.deleted`); Passwort-Reset | **Audit-Einträge werden nicht gelöscht** (append-only, hash-verkettet) → Löschung im Audit nicht vorgesehen; Abwägung Recht auf Löschung ↔ Nachweispflicht dokumentieren |
 | **Einschränkung** (Art. 18) | über Rollen/Rechte (Zugriff einschränken) | manueller Prozess |
 | **Datenübertragbarkeit/Export** (Art. 20) | KO-/Bibliotheks-**Export** (JSON/Markdown/MediaWiki/HTML) vorhanden — fachbezogen, **nicht** als personenbezogener Komplettexport | personenbezogener Export = manuell |
 | **Widerspruch** (Art. 21) | — | organisatorischer Prozess |
@@ -66,7 +66,7 @@ Eine **DSFA ist zu prüfen**, wenn eine oder mehrere Fragen mit „ja" beantwort
 ## 4. Technische Schutznachweise (Stand belegt)
 
 - **Zugriffsschutz/RBAC** (SCRUM-212): Rollen viewer/experte/controller/admin; serverseitige Guards (`requirePermission`, 401/403) auf allen Routen; UI-Gating konsistent; Auth via Passwort + OIDC (PKCE), Freigabe-Workflow.
-- **Nachvollziehbarkeit/Integrität** (SCRUM-214): lückenloses **append-only Audit-Log** mit Hash-Kette + Manipulationserkennung; Einsicht Controller/Admin (Analytics-Audit + `GET /api/audit`).
+- **Nachvollziehbarkeit/Integrität** (SCRUM-214): lückenloses **append-only Audit-Log** mit Hash-Kette + Abweichungserkennung (tamper-evident; kein extern verankerter Kettenkopf); Einsicht Controller/Admin (Analytics-Audit + `GET /api/audit`).
 - **Keine Geheimnisse im Client** (G-7): keine Secrets/Schlüssel im Browser-Bundle.
 - **Vorab-Schutz** (`docs/operations/pre-launch-protection.md`): noindex + Basic-Auth-Gate am Reverse-Proxy; TLS/HTTPS und Backups über die Hosting-Schicht (`docs/operations/deploy-hetzner.md`).
 - **Demo-/Default-Credentials:** vor Produktivnutzung **zwingend ändern** (Demo-Seed ist produktionsgeschützt/idempotent).
@@ -106,9 +106,9 @@ Kurz-Richtlinie für Endnutzer (in Betriebsvereinbarung/AUP übernehmen):
 ## 7. Offene Betreiberpflichten / Restlücken (ehrlich)
 
 - **Rechtliche Bewertung** (Rechtsgrundlagen, AVV/Subprozessoren, DSFA-Pflicht, Aufbewahrungs-/Löschfristen) — durch DSB/Anwalt, **nicht** durch dieses Dokument.
-- **Self-Service DSGVO-Workflows** (personenbezogener Auskunfts-/Komplettexport, Löschung im unveränderlichen Audit) — **nicht** als Produktfeature umgesetzt (NFR-PRV-04); bis dahin manuell durch Admin/DSB. Mögliches künftiges Produkt-Item, **kein** Teil dieses Runbooks.
+- **Self-Service DSGVO-Workflows** (personenbezogener Auskunfts-/Komplettexport, Löschung im append-only Audit) — **nicht** als Produktfeature umgesetzt (NFR-PRV-04); bis dahin manuell durch Admin/DSB. Mögliches künftiges Produkt-Item, **kein** Teil dieses Runbooks.
 - **Server-/Proxy-Logs & IP-Adressen** außerhalb des App-Audits — Betreiber-Logging-Policy.
-- **Betriebsvereinbarung** zur Audit-Zweckbindung (Manipulationssicherheit, nicht Leistungskontrolle) — organisatorisch.
+- **Betriebsvereinbarung** zur Audit-Zweckbindung (Nachvollziehbarkeit/Integritätsprüfung, nicht Leistungskontrolle) — organisatorisch.
 
 ---
 

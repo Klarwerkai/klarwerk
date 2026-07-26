@@ -48,22 +48,24 @@ describe("mega7 Block A: Leerwert-Semantik des Bodys", () => {
     expect("bodyHtml" in create).toBe(false);
   });
 
-  it("Vordertür: submitFrontDoorDraft schickt den Löschmarker vor dem Promote mit", async () => {
-    const updated: DraftPayload[] = [];
+  it("Vordertür: submitFrontDoorDraft schickt den Löschmarker IM Promote mit", async () => {
+    // AUFTRAG-mega23 Block A: der Löschmarker reist unverändert mit — nur nicht mehr in einem
+    // vorgeschalteten PUT, sondern als `draftPayload` im Promote, hinter dem Nachschlag.
+    const mitgereicht: DraftPayload[] = [];
     await submitFrontDoorDraft(
       { title: "Dichtung", bodyHtml: "", activeDraftId: "d1" },
       {
         createDraft: async () => ({ id: "neu" }),
-        updateDraft: async (id, payload) => {
-          updated.push(payload);
+        promoteDraft: async (id, vorgang) => {
+          mitgereicht.push(vorgang.draftPayload);
           return { id };
         },
-        promoteDraft: async (id) => ({ id }),
       },
+      { id: "create-d1", draftRef: { current: null } },
     );
-    expect(updated).toHaveLength(1);
-    expect(updated[0]).toHaveProperty("bodyHtml");
-    expect(updated[0]?.bodyHtml).toBe("");
+    expect(mitgereicht).toHaveLength(1);
+    expect(mitgereicht[0]).toHaveProperty("bodyHtml");
+    expect(mitgereicht[0]?.bodyHtml).toBe("");
   });
 
   it("Server: ein ausdrücklicher Leerwert entfernt den alten Body — auch für das spätere KO", async () => {

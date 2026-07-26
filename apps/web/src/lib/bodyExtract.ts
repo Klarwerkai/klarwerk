@@ -61,6 +61,9 @@ export const BODY_EXTRACT_TEXT = {
   title: "xtr.title",
   hint: "xtr.hint",
   applyCta: "xtr.applyCta",
+  // AUFTRAG-mega18 Block A-3: die Übernahme ist ein Serveraufruf, der Inhalt UND Herkunft
+  // gemeinsam committet — das dauert sichtbar, und es soll ehrlich dranstehen, was passiert.
+  applying: "xtr.applying",
   appended: "xtr.appended",
   helpTitle: "xtr.help.title",
   helpBody: "xtr.help.body",

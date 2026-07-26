@@ -19,6 +19,7 @@ import { CAPTURE_FILE_TEXT, FILE_IMPORT_ACCEPT } from "../lib/captureFromFile";
 import { detectFileKind } from "../lib/extract";
 import { fileSourcesForSurface, openCaptureFileDialog } from "../lib/importSourceGallery";
 import { FileTypePicker } from "./FileTypePicker";
+import { UploadLimitsHint } from "./UploadLimitsHint";
 
 export interface CaptureFileImportProps {
   // Der ECHTE Extraktions-Pfad des Erfassens (Capture.onExtractFile). Wird ausgelöst, wenn der
@@ -65,6 +66,9 @@ export function CaptureFileImport({ onExtractFile }: CaptureFileImportProps): JS
         className="hidden"
         onChange={onExtractFile}
       />
+      {/* AUFTRAG-mega14 Block E (SCRUM-421): die geltenden Grenzen AN der Auswahlstelle,
+          aus derselben Quelle, die der Server erzwingt. */}
+      <UploadLimitsHint className="mb-2 text-[11px] text-muted-2" />
       {/* Sichtbare Drop-Zone — ZUSÄTZLICH zum Dialog/Picker, nicht als Ersatz. Der Tastatur-/A11y-Weg
           bleibt der Picker unten. */}
       <div

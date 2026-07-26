@@ -6,18 +6,14 @@
 // SCRUM-408-Warteliste). Kein Auto-Speichern, keine stille Übernahme.
 import { useMutation } from "@tanstack/react-query";
 import { ChevronDown, FileText, Loader2, Paperclip, Sparkles, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import type { Confidentiality, ExtractedPoint } from "../api/types";
 import { BODY_EXTRACT_TEXT } from "../lib/bodyExtract";
-import {
-  type OriginalDocument,
-  type OriginalRefCache,
-  attachOriginalDocument,
-} from "../lib/captureAttachments";
+import type { OriginalDocument } from "../lib/captureAttachments";
 import {
   CAPTURE_FILE_TEXT,
   FILE_IMPORT_ACCEPT,
@@ -44,28 +40,69 @@ import { documentProvenance } from "../lib/reasonerProvenance";
 import { STALE_BUNDLE_KEY, honestParseErrorText } from "../lib/staleChunk";
 import { AiModelInfo } from "./AiModelInfo";
 import { HelpTip } from "./HelpTip";
+import { UploadLimitsHint } from "./UploadLimitsHint";
 import { Button, SectionLabel, TextInput } from "./ui";
 
 export function BodyExtractPanel({
   onAppend,
   koId,
+  requestOpen = 0,
 }: {
-  // Ausgewählte Punkte + Dateiname — der Aufrufer hängt an und vermerkt die Quellen.
-  onAppend: (points: ExtractedPoint[], fileName: string) => void;
+  // AUFTRAG-mega18 Block A-3 — DAS PANEL HÄNGT NICHTS MEHR AN.
+  //
+  // Bis mega17 versuchte `apply()` selbst den Anker zu erzeugen (upload + attach) und rief
+  // `onAppend` ANSCHLIESSEND AUCH DANN AUF, WENN DAS MISSLANG — nur eben ohne `objectId`. Der
+  // Aufrufer bekam also einen Übernahme-Auftrag, dem der Beleg fehlte, und lief damit in eine
+  // Sperre (restriktive Stufe) oder, schlimmer, durch sie hindurch (`search_attach`/`open`).
+  //
+  // Jetzt reicht das Panel das DOKUMENT nach oben und sonst nichts. Anker, Belege und Inhalt
+  // entstehen gemeinsam in EINER serverseitigen Operation (`endpoints.ko.appendDocument`), die der
+  // Aufrufer vollzieht. Es gibt keinen Weg mehr, auf dem eine Übernahme ohne ihren Beleg beginnt.
+  //
+  // `onAppend` ist deshalb ASYNCHRON und liefert ein Urteil: `true` heißt „committet — Inhalt UND
+  // Herkunft stehen". Nur dann leert das Panel die Liste und quittiert. Bei `false` bleibt die
+  // Auswahl erhalten (der Nutzer kann erneut übernehmen), und den ehrlichen Grund nennt der
+  // Aufrufer, der ihn kennt.
+  onAppend: (
+    points: ExtractedPoint[],
+    fileName: string,
+    original: OriginalDocument | null,
+  ) => Promise<boolean>;
   // SCRUM-502 R5: OPTIONAL die Ziel-KO-ID — dient serverseitig NUR als hebender Backstop
   // (Downgrade-Schutz), NIE als Freigabe-Anker. Die Vertraulichkeit des HOCHGELADENEN Dokuments
   // erbt NICHT den Behälter, sondern hat eine eigene, fail-safe Stufe (unten, Default vertraulich).
   koId?: string;
+  /**
+   * AUFTRAG-mega21 Block C-2 — DIE HANDLUNG, DIE DIE WARNUNG ANBIETET, MUSS WIRKEN.
+   *
+   * Fehlt beim Fortsetzen eines Entwurfs das gesicherte Original, sagt die Erfassungsseite das
+   * jetzt ausdrücklich — und bietet als konkrete Handlung an, das Original erneut auszuwählen. Ohne
+   * diesen Zugang wäre der Knopf eine Behauptung: das Panel klappt sich selbst auf und aus, und von
+   * aussen gab es keinen Weg hinein.
+   *
+   * BEWUSST EIN ZÄHLER und kein `boolean`: der Aufrufer will das Panel WIEDERHOLT öffnen können,
+   * auch wenn es der Nutzer zwischendurch selbst zugeklappt hat. Ein Wahrheitswert müsste dafür
+   * jedes Mal zurückgesetzt werden — ein Zustand mehr, den zwei Komponenten synchron halten müssten.
+   * Der Anfangswert 0 löst NICHTS aus; nur eine ÄNDERUNG öffnet.
+   */
+  requestOpen?: number;
 }): JSX.Element {
   const { t, i18n } = useTranslation();
   const [open, setOpen] = useState(false);
+  // AUFTRAG-mega21 Block C-2: s. `requestOpen`. Nur eine ÄNDERUNG öffnet; das Zuklappen bleibt
+  // jederzeit dem Nutzer überlassen (kein erzwungenes Offenhalten).
+  useEffect(() => {
+    if (requestOpen > 0) {
+      setOpen(true);
+    }
+  }, [requestOpen]);
   const [fileName, setFileName] = useState<string | null>(null);
   const [fileText, setFileText] = useState("");
-  // WP-D2 („Original ist heilig"): die Quelldatei wird beim Übernehmen als Anhang ans Ziel-KO
-  // mitgeführt (nur wenn koId vorhanden). Der Ref-Cache verhindert Doppel-Uploads bei mehrfachem
-  // Übernehmen aus derselben Datei.
+  // WP-D2 („Original ist heilig"): die Quelldatei wird mitgeführt und beim Übernehmen NACH OBEN
+  // gereicht. AUFTRAG-mega18 Block A-3: das Panel lädt sie nicht mehr hoch und hängt sie nicht mehr
+  // an — Anker, Belege und Inhalt entstehen gemeinsam in der Verbund-Operation. Der frühere
+  // Ref-Cache (Doppel-Upload-Schutz) wohnt deshalb jetzt beim Aufrufer, der den Upload macht.
   const [original, setOriginal] = useState<OriginalDocument | null>(null);
-  const originalRef = useRef<OriginalRefCache>({ ref: null });
   // SCRUM-502 R5: ein Upload ist NEUER Inhalt, kein Erbe des Ziel-KOs. Bis zur bewussten Einstufung
   // gilt fail-safe „vertraulich" (kein Cloud-Egress); der Nutzer kann bewusst herabsetzen.
   const [docConfidentiality, setDocConfidentiality] = useState<Confidentiality>("vertraulich");
@@ -113,7 +150,6 @@ export function BodyExtractPanel({
     setImageUrl(null);
     setFileText("");
     setOriginal(null);
-    originalRef.current = { ref: null };
     setErr(null);
     setAppendedNote(null);
     // SCRUM-502 R6: JEDER Dateiwechsel setzt die Dokumentstufe fail-safe zurück (vertraulich) — eine
@@ -216,7 +252,6 @@ export function BodyExtractPanel({
     setFileName(null);
     setFileText("");
     setOriginal(null);
-    originalRef.current = { ref: null };
     setImageUrl(null);
     setPoints(null);
     setNote(null);
@@ -228,11 +263,10 @@ export function BodyExtractPanel({
     setDocConfidentiality("vertraulich");
   };
 
-  // Übernahme: NUR die angekreuzten Punkte gehen an den Aufrufer; die Liste wird danach
-  // geleert (sichtbare Quittung statt Doppel-Anfügen bei erneutem Klick).
-  // WP-D2 („Original ist heilig"): zusätzlich wird die Quelldatei als Anhang ans Ziel-KO gehängt
-  // (nur mit koId möglich). Scheitert das, bleibt die Punkte-Übernahme erhalten — der Grund
-  // („zu groß" vs. Upload) wird ehrlich gemeldet.
+  // AUFTRAG-mega18 Block A-3: Übernahme = EIN Auftrag nach oben, und das Panel wartet auf das
+  // Urteil. Es lädt nichts hoch, hängt nichts an und quittiert nichts, was nicht committet ist.
+  // Die Liste wird NUR bei `true` geleert — bei einem Fehlschlag bleibt die Auswahl stehen, damit
+  // der Nutzer sie nach behobener Ursache erneut übernehmen kann, statt sie neu zu erzeugen.
   const apply = async (): Promise<void> => {
     if (!points || !fileName) {
       return;
@@ -243,29 +277,23 @@ export function BodyExtractPanel({
     if (chosen.length === 0) {
       return;
     }
-    onAppend(chosen, fileName);
-    setPoints(null);
-    setAppendedNote(t(BODY_EXTRACT_TEXT.appended, { count: chosen.length, name: fileName }));
-    if (koId && original) {
-      const result = await attachOriginalDocument(
-        koId,
-        original,
-        {
-          upload: (input) => endpoints.objects.upload(input),
-          attach: (id, attachment) => endpoints.ko.act(id, { action: "attach", attachment }),
-        },
-        originalRef.current,
-      );
-      if (!result.attached && result.failure) {
-        setErr(
-          t(
-            result.failure.reason === "too-large"
-              ? "capture.attachTooLarge"
-              : "capture.originalAttachFailed",
-            { name: result.failure.name },
-          ),
-        );
+    setErr(null);
+    setAppendedNote(null);
+    setBusy(true);
+    setStatus(t(BODY_EXTRACT_TEXT.applying, { count: chosen.length }));
+    try {
+      const committed = await onAppend(chosen, fileName, original);
+      setStatus(null);
+      if (!committed) {
+        // Kein eigener Fehlertext: der Aufrufer kennt den Grund (Belegpflicht, Stufe, unklarer
+        // Ausgang) und hat ihn gemeldet. Hier eine zweite, allgemeinere Meldung daneben zu setzen
+        // würde die genaue Ursache verdecken.
+        return;
       }
+      setPoints(null);
+      setAppendedNote(t(BODY_EXTRACT_TEXT.appended, { count: chosen.length, name: fileName }));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -303,6 +331,8 @@ export function BodyExtractPanel({
                 onChange={(e) => void onFile(e)}
               />
             </label>
+            {/* AUFTRAG-mega14 Block E (SCRUM-421): geltende Grenzen an der Auswahlstelle, Serverquelle. */}
+            <UploadLimitsHint className="basis-full text-[11px] text-muted-2" />
             {fileName ? (
               <span className="inline-flex items-center gap-1.5 text-[12.5px] text-text">
                 <FileText size={13} className="text-muted-2" />
@@ -426,12 +456,16 @@ export function BodyExtractPanel({
                     total: points.length,
                   })}
                 </span>
+                {/* AUFTRAG-mega18 Block A-3: die Übernahme ist jetzt EIN Serveraufruf, der Inhalt
+                    UND Herkunft committet — solange er läuft, darf er nicht doppelt ausgelöst
+                    werden (`busy`), sonst entstünde ein zweiter Vorgang mit eigener Kennung. */}
                 <Button
                   variant="primary"
                   className="ml-auto"
-                  disabled={selectedCount(points) === 0}
+                  disabled={selectedCount(points) === 0 || busy}
                   onClick={() => void apply()}
                 >
+                  {busy ? <Loader2 size={15} className="animate-spin" /> : null}
                   {t(BODY_EXTRACT_TEXT.applyCta)} ({selectedCount(points)}) →
                 </Button>
               </div>

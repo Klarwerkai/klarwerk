@@ -32,6 +32,26 @@ export interface KoCandidateQuery {
 export interface KoRepo {
   insert(ko: KnowledgeObject): Promise<void>;
   findById(id: string): Promise<KnowledgeObject | undefined>;
+  // AUFTRAG-mega20 Block A: GEZIELTER Nachschlag der Erzeugungs-Operationskennung. Bewusst eine
+  // eigene Repo-Methode und kein `list({}).find(...)` wie beim Kandidaten-Anker: dieser Nachschlag
+  // liegt auf dem HEISSEN Weg jeder Erstanlage aus Dokumenten (er läuft VOR den Toren, bei JEDEM
+  // Aufruf), und ein Full-Scan des gesamten Bestands je Anlage wäre der teurere Fehler. Pg löst
+  // ihn über den partiellen Unique-Index kos_create_operation_uq auf.
+  // FINDET AUCH GETRASHTE Objekte — wie der Kandidaten-Anker: ein Objekt im Papierkorb hält seinen
+  // Vorgang, sonst würde eine Wiederholung nach dem Löschen ein zweites erzeugen.
+  //
+  // AUFTRAG-mega22 Block G: der Nachschlag fragt jetzt mit KENNUNG UND EIGENTÜMER. Die Eindeutigkeit
+  // ist nicht mehr DB-weit, sondern actor-gebunden — die ausgeschriebene Begründung steht in
+  // document-create.ts, Abschnitt (4). Kurz: eine DB-weite Kennung ist eine Denial-Kante, weil ein
+  // beliebiger Nutzer mit `ko.create` vorhersehbare Kennungen besetzen und einen anderen dauerhaft
+  // aus seinem Vorgang drängen kann.
+  //
+  // ALTBESTAND: eine Zeile aus der Zeit VOR mega21 trägt `createOperationId`, aber KEINEN
+  // `createOperation.actor`. Sie wird von JEDEM Anfragenden gefunden (der Adoptionspfad entscheidet
+  // dann über den alten `author`-Vergleich, s. adoptCreatedKo Tor 1). Genau so bleibt das Verhalten
+  // für Altzeilen exakt das von mega21 — und es kann kein zweites Objekt zu ihrem Vorgang entstehen.
+  // Eine EXAKTE Eigentümer-Übereinstimmung hat Vorrang vor der Altzeile.
+  findByCreateOperation(operationId: string, actor: string): Promise<KnowledgeObject | undefined>;
   update(ko: KnowledgeObject): Promise<void>;
   // SCRUM-523 P.3 (WP-A2): optionaler, opaker TxContext (services/db-tx) — additiv, abwärtskompatibel.
   // Zweck: der Purge-Chokepoint (KoService.purgeKo) kann delete() UND audit.record() in DERSELBEN
@@ -145,12 +165,58 @@ export class InMemoryKoRepo implements KoRepo {
         }
       }
     }
+    // AUFTRAG-mega20 Block A: Spiegel des partiellen Pg-Unique-Index kos_create_operation_uq —
+    // höchstens EIN KO je Erzeugungs-Vorgang, INKLUSIVE Papierkorb. Synchron geprüft (kein await
+    // zwischen Prüfen und Set) — atomar wie der Index. Ohne diesen Spiegel wäre die
+    // Adoptions-Zusage nur auf Postgres wahr und in jedem In-Memory-Test eine Illusion.
+    // AUFTRAG-mega22 Block G: der Spiegel folgt dem Index — die Eindeutigkeit gilt je
+    // (Vorgangskennung, EIGENTÜMER), nicht mehr DB-weit. Der Eigentümer einer Altzeile ohne
+    // Vorgangs-Datensatz ist der leere String; damit kollidiert eine Altzeile weiterhin mit einer
+    // zweiten Altzeile derselben Kennung und NICHT mit einem neuen, actor-gebundenen Vorgang.
+    if (ko.createOperationId) {
+      const eigner = ko.createOperation?.actor ?? "";
+      for (const existing of this.items.values()) {
+        if (
+          existing.createOperationId === ko.createOperationId &&
+          (existing.createOperation?.actor ?? "") === eigner &&
+          existing.id !== ko.id
+        ) {
+          return Promise.reject(
+            new KoError(
+              "CREATE_ANCHOR_TAKEN",
+              "Für diesen Erzeugungs-Vorgang existiert bereits ein Wissensobjekt.",
+            ),
+          );
+        }
+      }
+    }
     this.items.set(ko.id, ko);
     return Promise.resolve();
   }
 
   findById(id: string): Promise<KnowledgeObject | undefined> {
     return Promise.resolve(this.items.get(id));
+  }
+
+  // AUFTRAG-mega20 Block A: s. Interface. Getrashte Objekte zählen mit (sie halten ihren Vorgang).
+  // AUFTRAG-mega22 Block G: actor-gebunden, mit Vorrang für die EXAKTE Übereinstimmung. Die
+  // Altzeile (Eigentümer unbekannt) ist der Rückfall — sie darf einen neuen, eigenen Vorgang
+  // desselben Anfragenden nicht verdecken.
+  findByCreateOperation(operationId: string, actor: string): Promise<KnowledgeObject | undefined> {
+    let altbestand: KnowledgeObject | undefined;
+    for (const ko of this.items.values()) {
+      if (ko.createOperationId !== operationId) {
+        continue;
+      }
+      const eigner = ko.createOperation?.actor;
+      if (eigner === actor) {
+        return Promise.resolve(ko);
+      }
+      if (eigner === undefined) {
+        altbestand = ko;
+      }
+    }
+    return Promise.resolve(altbestand);
   }
 
   // SCRUM-509 R3: optimistische Concurrency (Compare-and-Set auf rowVersion). Der Aufrufer übergibt das

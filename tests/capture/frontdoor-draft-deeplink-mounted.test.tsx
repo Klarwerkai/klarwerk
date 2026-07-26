@@ -40,6 +40,10 @@ import "../../apps/web/src/i18n";
 import { ApiError } from "../../apps/web/src/api/client";
 import { endpoints } from "../../apps/web/src/api/endpoints";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
+// AUFTRAG-mega9 Block B: Die Vordertür meldet sich jetzt am Navigations-Wächter an (KW-E2E-002) und
+// braucht ihn damit — wie /erfassen und die Mobil-Seite — als echten Kontext. Dieselbe Vorrichtung,
+// kein Test-Ersatz.
+import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import { CaptureFrontDoor } from "../../apps/web/src/pages/CaptureFrontDoor";
 
@@ -70,12 +74,16 @@ function mount(url: string): void {
               MemoryRouter,
               { initialEntries: [url] },
               createElement(
-                Routes,
+                NavGuardProvider,
                 null,
-                createElement(Route, {
-                  path: "/capture/frontdoor",
-                  element: createElement(CaptureFrontDoor),
-                }),
+                createElement(
+                  Routes,
+                  null,
+                  createElement(Route, {
+                    path: "/capture/frontdoor",
+                    element: createElement(CaptureFrontDoor),
+                  }),
+                ),
               ),
             ),
           ),

@@ -34,4 +34,18 @@ export class PgObjectRepo implements ObjectRepo {
     const row = res.rows[0];
     return row ? { ref: row.ref, data: row.data } : undefined;
   }
+
+  // AUFTRAG-mega20 Block C: NUR die ref-Spalte. `SELECT *` würde hier jede Originaldatei des
+  // Bestands in den Prozessspeicher holen — die teure Fehlerklasse, die man erst in Produktion
+  // sieht. Sortiert nach id, damit ein Lauf über den Bestand reproduzierbar ist.
+  async list(): Promise<ObjectRef[]> {
+    const res = await this.pool.query<{ ref: ObjectRef }>("SELECT ref FROM objects ORDER BY id");
+    return res.rows.map((row) => row.ref);
+  }
+
+  // AUFTRAG-mega20 Block C: endgültiges Entfernen; rowCount sagt ehrlich, ob es etwas zu löschen gab.
+  async delete(id: string): Promise<boolean> {
+    const res = await this.pool.query("DELETE FROM objects WHERE id=$1", [id]);
+    return (res.rowCount ?? 0) > 0;
+  }
 }

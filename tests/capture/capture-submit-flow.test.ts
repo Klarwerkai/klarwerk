@@ -3,13 +3,32 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("KW-PROD-27: Capture Submit Flow", () => {
-  it("aktualisiert fortgesetzte Studio-Drafts vor dem Promote", () => {
+  it("schickt den fortgesetzten Studio-Draft MIT dem Promote — ohne vorgeschalteten PUT", () => {
     const source = readFileSync(resolve(process.cwd(), "apps/web/src/pages/Capture.tsx"), "utf8");
-    const updateIndex = source.indexOf("await endpoints.drafts.update(draftId, payload)");
-    const promoteIndex = source.indexOf("endpoints.drafts.promote(");
-
-    expect(updateIndex).toBeGreaterThan(0);
-    expect(promoteIndex).toBeGreaterThan(updateIndex);
+    // ==========================================================================================
+    // AUFTRAG-mega22 Block H — UMGEDREHTE ZUSICHERUNG.
+    // ==========================================================================================
+    //
+    // Bis mega21 pinnte dieser Fall „erst update, dann promote":
+    //     const updateIndex = source.indexOf("await endpoints.drafts.update(draftId, draftPayload)");
+    //     expect(updateIndex).toBeGreaterThan(0);
+    //     expect(promoteIndex).toBeGreaterThan(updateIndex);
+    //
+    // Genau diese Reihenfolge WAR der Mangel, und zwar derselbe, den mega21 Block B auf dem
+    // Dokumentweg beseitigt hat: nach einem serverseitig gelungenen ersten Promote ist der Entwurf
+    // gelöscht. Ging nur die ANTWORT verloren, scheiterte der zweite Klick am vorgeschalteten PUT
+    // mit 404 — und der Idempotenz-Nachschlag des Promote wurde NIE erreicht.
+    //
+    // Der Pin steht jetzt auf der Gegenrichtung: der Entwurfsstand reist IM Promote-Request, und
+    // ein vorgeschalteter Entwurfs-PUT existiert auf diesem Weg nicht mehr.
+    expect(source).not.toContain("await endpoints.drafts.update(draftId, draftPayload)");
+    const promoteIndex = source.indexOf("endpoints.drafts.promote(draftId, {");
+    expect(promoteIndex).toBeGreaterThan(0);
+    // Der Vorgangsschlüssel und der Stand reisen gemeinsam mit — beides ist der Vertrag aus
+    // mega21 Block B, eine Tür weiter (services/app/src/routes/capture-routes.ts).
+    const promoteAufruf = source.slice(promoteIndex, promoteIndex + 220);
+    expect(promoteAufruf).toContain("operationId");
+    expect(promoteAufruf).toContain("draftPayload");
     expect(source).toContain("setSavedKoId(ko.id)");
     expect(source).toContain('qc.invalidateQueries({ queryKey: ["validation"] })');
   });
@@ -64,10 +83,14 @@ describe("KW-PROD-29: Frontdoor Save/Submit State", () => {
     expect(source).toContain("saveRequestedRef");
     expect(source).toContain("submitRequestedRef");
     expect(source).toContain("if (!canSave || saveRequestedRef.current)");
-    expect(source).toContain("if (!canSubmit || submitRequestedRef.current)");
+    // AUFTRAG-mega9 Block A (KW-E2E-001): Die Doppelklick-Sperre ist unverändert — nur die
+    // VORBEDINGUNG des Einreichens ist keine stille Knopfsperre mehr: `busy` deckt die laufenden
+    // Vorgänge ab, die Inhaltsbedingung wird zur sichtbaren Feldvalidierung (submitBlockReasons).
+    expect(source).toContain("if (busy || submitRequestedRef.current)");
     expect(source).toContain("saveRequestedRef.current = true");
     expect(source).toContain("submitRequestedRef.current = true");
-    expect(source).toContain("!submittedKo");
+    // Nach dem Einreichen sperren Speichern UND Einreichen weiterhin — jetzt über das gemeinsame `busy`.
+    expect(source).toMatch(/const busy =[\s\S]{0,160}submittedKo !== null/);
   });
 
   it("zeigt Entwurfsmetadaten und macht die Draft-Sichtbarkeit explizit", () => {

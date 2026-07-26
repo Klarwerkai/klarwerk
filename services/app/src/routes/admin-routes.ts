@@ -36,6 +36,24 @@ export function adminRoutes(
       reply.code(200).send(result);
     });
 
+    // AUFTRAG-mega14 Block H (SCRUM-437): LESENDER Status der Demodaten für die Bereitschafts-
+    // Checkliste. Bis mega14 gab es zu Demodaten nur POST (laden) und DELETE (entfernen) — die
+    // Oberfläche konnte gar nicht wissen, ob gerade welche geladen sind, und die Checkliste hatte
+    // deshalb keine Zeile dafür.
+    //
+    // Dieselbe Wahrheit, die `seedDemoForAdmin` selbst benutzt (`seed-demo.ts:150`): der
+    // `demoSeed`-Merker am Wissensobjekt. Kein zweiter Zähler, keine zweite Definition — und
+    // ausdrücklich KEIN zweiter Lade-/Entfernen-Weg.
+    app.get("/api/admin/demo-seed", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      const kos = await services.ko.list();
+      const count = kos.filter((k) => k.demoSeed === true).length;
+      reply.code(200).send({ present: count > 0, count });
+    });
+
     // SCRUM-501 (nacht24 Paket 7.2): Simulationskorpus DE/EN/NL laden (~30 Industrie-KOs je
     // Sprache, inkl. gewollter Cross-Sprach-Duplikate/-Konflikte). Idempotent über das
     // sim-korpus-Tag; alle Einträge tragen demoSeed → Entfernen über den Demo-Purge unten.

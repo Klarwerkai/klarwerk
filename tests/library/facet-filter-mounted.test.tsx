@@ -1,15 +1,24 @@
 // @vitest-environment jsdom
-// AUFTRAG-uxpol1 (PAKET 1): gemounteter Bibliothek-Träger-Test der dynamischen Filterleiste. Echter
-// React-Mount (Muster wie file-format-info-mounted): eine kleine Harness spiegelt die Bibliothek-
-// Verdrahtung (buildFacetGroups + FacetFilter + Auswahl-State). Gepinnt: (a) Klick auf eine Facette
-// aktualisiert die Kontext-Zähler, (b) eine Aktive-Filter-Pille erscheint, (c) eine 0-Treffer-Option
-// wird ausgegraut/deaktiviert, (d) Pille entfernen und (e) „Alle zurücksetzen" wirken, (f) i18n DE/EN/NL.
+// AUFTRAG-uxpol1 (PAKET 1) · fortgeschrieben in AUFTRAG-mega10 Block B: gemounteter Träger-Test der
+// dynamischen Filterfläche. Echter React-Mount; eine kleine Harness spiegelt die Bibliothek-
+// Verdrahtung (facetRailGroups + FacetFilter + FacetActiveBar + Auswahl-State).
+//
+// WAS SICH GEGENÜBER uxpol1 GEÄNDERT HAT — und was ausdrücklich NICHT:
+// Geändert ist nur die DARSTELLUNG, die Pedi abgenommen hat: aus der Pillenwand wurde eine Schiene,
+// die Optionen sind jetzt echte Checkboxen statt aria-pressed-Chips, die aktiven Pillen stehen im
+// eigenen Bauteil FacetActiveBar über der Trefferliste, und die Trefferzeile ist der klebende
+// Zähler am Fuß der Schiene. JEDE fachliche Zusicherung von uxpol1 steht unverändert hier drin und
+// wird weiter geprüft: (a) Kontext-Zähler rechnen bei jeder Wahl neu, (b) aktive Auswahl erscheint
+// als entfernbare Pille, (c) 0-Treffer-Optionen sind ausgegraut/deaktiviert (nicht verschwiegen),
+// (d) Pille entfernen, (e) „Alle zurücksetzen“, (f) i18n DE/EN/NL, (g) Mehrfachauswahl = ODER.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { act, createElement, useState } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { FacetFilter } from "../../apps/web/src/components/FacetFilter";
+import { FacetActiveBar } from "../../apps/web/src/components/facets/FacetActiveBar";
 import i18n from "../../apps/web/src/i18n";
-import { type FacetGroupConfig, buildFacetGroups } from "../../apps/web/src/lib/facetFilter";
+import type { FacetGroupConfig } from "../../apps/web/src/lib/facetFilter";
+import { EMPTY_RAIL_UI, facetRailGroups } from "../../apps/web/src/lib/facetRail";
 import type { FacetSelection, FacetValues } from "../../apps/web/src/lib/facets";
 import { applyFacetSelection, toggleFacetValue } from "../../apps/web/src/lib/facets";
 
@@ -24,22 +33,36 @@ const ITEMS: FacetValues[] = [
   { category: ["A"], language: ["en"] },
   { category: ["B"], language: ["de"] },
 ];
+const labelForValue = (_k: string, v: string): string => v;
 
 // Harness: identische Verdrahtung wie die Bibliothek (kontrollierte Auswahl → neu berechnete Gruppen).
 function Harness() {
   const [sel, setSel] = useState<FacetSelection>({});
-  const groups = buildFacetGroups(ITEMS, CONFIGS, sel);
+  const groups = facetRailGroups(ITEMS, CONFIGS, sel, EMPTY_RAIL_UI, labelForValue);
   const faceted = applyFacetSelection(ITEMS, (v) => v, sel);
-  return createElement(FacetFilter, {
-    configs: CONFIGS,
-    groups,
-    selection: sel,
-    total: ITEMS.length,
-    shown: faceted.length,
-    onToggle: (k: string, v: string) => setSel((s) => toggleFacetValue(s, k, v)),
-    onReset: () => setSel({}),
-    labelForValue: (_k: string, v: string) => v,
-  });
+  const onToggle = (k: string, v: string): void => setSel((s) => toggleFacetValue(s, k, v));
+  const onReset = (): void => setSel({});
+  return createElement(
+    "div",
+    null,
+    createElement(FacetActiveBar, {
+      configs: CONFIGS,
+      selection: sel,
+      onToggle,
+      onReset,
+      labelForValue,
+    }),
+    createElement(FacetFilter, {
+      configs: CONFIGS,
+      groups,
+      selection: sel,
+      total: ITEMS.length,
+      shown: faceted.length,
+      onToggle,
+      onReset,
+      labelForValue,
+    }),
+  );
 }
 
 let container: HTMLDivElement;
@@ -63,108 +86,136 @@ afterEach(async () => {
   await i18n.changeLanguage("de");
 });
 
-// Alle Facetten-Chips (echte <button> mit „ · N"), ohne Aktive-Leiste/Reset.
-function chip(text: string): HTMLButtonElement {
+// Eine Facetten-Option ist jetzt eine echte Checkbox in ihrem <label>: erster <span> = Wert,
+// zweiter <span> = Kontext-Zähler. Der Zustand steht als `checked`/`disabled` UND als Text.
+function optionRow(value: string): HTMLLabelElement {
+  const row = [...container.querySelectorAll("label")].find(
+    (l) => l.querySelectorAll("span")[0]?.textContent === value,
+  );
+  if (!(row instanceof HTMLLabelElement)) {
+    throw new Error(`Option „${value}“ nicht gefunden; DOM: ${container.textContent}`);
+  }
+  return row;
+}
+
+function option(value: string): HTMLInputElement {
+  const box = optionRow(value).querySelector("input[type=checkbox]");
+  if (!(box instanceof HTMLInputElement)) {
+    throw new Error(`Checkbox zu „${value}“ fehlt`);
+  }
+  return box;
+}
+
+// Der Kontext-Zähler dieser Option, als Text gelesen (nicht aus dem Modell).
+function optionCount(value: string): string {
+  return optionRow(value).querySelectorAll("span")[1]?.textContent ?? "";
+}
+
+// Ein Knopf (aktive Pille, Reset) über seinen sichtbaren Text.
+function button(text: string): HTMLButtonElement {
   const btn = [...container.querySelectorAll("button")].find((b) =>
     (b.textContent ?? "").replace(/\s+/g, " ").includes(text),
   );
   if (!(btn instanceof HTMLButtonElement)) {
-    throw new Error(`Chip „${text}" nicht gefunden; DOM: ${container.textContent}`);
+    throw new Error(`Knopf „${text}“ nicht gefunden; DOM: ${container.textContent}`);
   }
   return btn;
 }
 
-describe("FacetFilter — dynamische Bibliotheks-Filterleiste (gemountet)", () => {
-  it("(a)(c) startet ohne Aktive-Leiste; Zähler stehen, nichts ausgegraut; Trefferzeile zeigt N von GESAMT", () => {
+describe("FacetFilter — dynamische Filterschiene (gemountet)", () => {
+  it("(a)(c) startet ohne Aktive-Leiste; Zähler stehen, nichts ausgegraut; Zähler zeigt N von GESAMT", () => {
     expect(container.textContent).not.toContain("Aktive Filter");
-    expect(chip("A · 2")).toBeTruthy();
-    expect(chip("de · 2")).toBeTruthy();
-    // Trefferzeile steht als Text (eigener Span, kein Button).
-    expect(container.textContent).toContain("Treffer: 3 von 3");
+    expect(option("A").checked).toBe(false);
+    expect(option("A").disabled).toBe(false);
+    expect(optionCount("A")).toBe("2");
+    expect(optionCount("de")).toBe("2");
+    // Der klebende Zähler nennt Treffer UND Bezug — ohne Filter ist das der gesamte Bestand.
+    expect(container.textContent).toContain("3 Treffer anzeigen");
+    expect(container.textContent).toContain("gesamter Bestand");
   });
 
-  it("(a) Klick auf Kategorie B aktualisiert die Kontext-Zähler (de 2→1) und die Trefferzeile", () => {
+  it("(a) Wahl von Kategorie B aktualisiert die Kontext-Zähler (de 2→1) und den Trefferzähler", () => {
     act(() => {
-      chip("B · 1").click();
+      option("B").click();
     });
     // Sprach-Zähler rechnet sich im Kontext neu: nur B/de bleibt → de 1.
-    expect(chip("de · 1")).toBeTruthy();
-    expect(container.textContent).toContain("Treffer: 1 von 3");
-    expect(container.textContent).toContain("gefiltert");
+    expect(optionCount("de")).toBe("1");
+    expect(container.textContent).toContain("1 Treffer anzeigen");
+    expect(container.textContent).toContain("von 3 gefiltert");
   });
 
   it("(b) eine Aktive-Filter-Pille erscheint nach der Auswahl (Gruppen-Label: Wert)", () => {
     act(() => {
-      chip("A · 2").click();
+      option("A").click();
     });
     expect(container.textContent).toContain("Aktive Filter");
-    // Pille trägt das lokalisierte Gruppen-Label + Wert.
     const catLabel = String(i18n.getResource("de", "translation", "lib.facet.category"));
     expect(container.textContent).toContain(`${catLabel}: A`);
+    // Der Zustand steht zusätzlich an der Option selbst (nicht nur in der Pille).
+    expect(option("A").checked).toBe(true);
   });
 
-  it("(c) eine 0-Treffer-Option ist ausgegraut/deaktiviert (nicht klickbar)", () => {
+  it("(c) eine 0-Treffer-Option ist ausgegraut/deaktiviert (nicht klickbar, nicht verschwiegen)", () => {
     act(() => {
-      chip("B · 1").click();
+      option("B").click();
     });
-    const en = chip("en · 0");
-    expect(en.disabled).toBe(true);
+    expect(option("en").disabled).toBe(true);
+    expect(optionCount("en")).toBe("0");
+    // Sie bleibt SICHTBAR — das ist der uxpol-Vertrag „ausgegraut statt verschwiegen“.
+    expect(container.textContent).toContain("en");
   });
 
   it("(g) MEHRFACHAUSWAHL (bens Blocker 1.1): zwei Werte EINER Gruppe → ODER (Vereinigung), zwei Pillen", () => {
-    // Kategorie A wählen, dann B ergänzen — die eigene Facette bleibt beim Zählen ausgeklammert,
-    // also steht „B · 1" weiter zur Verfügung. Ergebnis: Vereinigung A∪B = alle 3 Items.
     act(() => {
-      chip("A · 2").click();
+      option("A").click();
     });
     act(() => {
-      chip("B · 1").click();
+      option("B").click();
     });
     const catLabel = String(i18n.getResource("de", "translation", "lib.facet.category"));
-    // Zwei aktive Pillen (je gewähltem Wert eine), Treffer = Vereinigung (3 von 3).
     expect(container.textContent).toContain(`${catLabel}: A`);
     expect(container.textContent).toContain(`${catLabel}: B`);
-    expect(container.textContent).toContain("Treffer: 3 von 3");
+    expect(container.textContent).toContain("3 Treffer anzeigen");
   });
 
   it("(d) Pille entfernen setzt genau diese Auswahl zurück (Aktive-Leiste verschwindet)", () => {
     act(() => {
-      chip("A · 2").click();
+      option("A").click();
     });
     const catLabel = String(i18n.getResource("de", "translation", "lib.facet.category"));
     act(() => {
-      chip(`${catLabel}: A`).click();
+      button(`${catLabel}: A`).click();
     });
     expect(container.textContent).not.toContain("Aktive Filter");
-    expect(container.textContent).toContain("Treffer: 3 von 3");
+    expect(container.textContent).toContain("3 Treffer anzeigen");
   });
 
   it("(e) „Alle zurücksetzen“ leert die gesamte Auswahl", () => {
     act(() => {
-      chip("A · 2").click();
+      option("A").click();
     });
     const resetLabel = String(i18n.getResource("de", "translation", "facet.reset"));
     act(() => {
-      chip(resetLabel).click();
+      button(resetLabel).click();
     });
     expect(container.textContent).not.toContain("Aktive Filter");
-    expect(container.textContent).toContain("Treffer: 3 von 3");
+    expect(container.textContent).toContain("3 Treffer anzeigen");
   });
 
-  it("(f) i18n DE/EN/NL: Aktive-Leiste + Trefferzeile folgen der Sprache", async () => {
+  it("(f) i18n DE/EN/NL: Aktive-Leiste + Trefferzähler folgen der Sprache", async () => {
     act(() => {
-      chip("A · 2").click();
+      option("A").click();
     });
-    for (const [lng, active, result] of [
-      ["en", "Active filters", "Results: 2 of 3"],
-      ["nl", "Actieve filters", "Treffers: 2 van 3"],
+    for (const [lng, active, result, bezug] of [
+      ["en", "Active filters", "Show 2 results", "filtered from 3"],
+      ["nl", "Actieve filters", "2 treffers tonen", "van 3 gefilterd"],
     ] as const) {
-      // eslint-disable-next-line no-await-in-loop
       await act(async () => {
         await i18n.changeLanguage(lng);
       });
       expect(container.textContent).toContain(active);
       expect(container.textContent).toContain(result);
+      expect(container.textContent).toContain(bezug);
     }
   });
 });

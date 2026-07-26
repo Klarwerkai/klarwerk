@@ -17,6 +17,7 @@ describe("Block D7: MB/KB einheitlich + Sprachumfang", () => {
       openReviews: 0,
       uploadLimits: { maxAttachments: 10, maxAttachmentBytes: 20_000_000 },
       externalStage: null,
+      demo: null,
     });
     const upload = rows.find((r) => r.id === "upload");
     expect(upload?.params?.mb).toBe(20);

@@ -1,5 +1,5 @@
 import type { TxContext } from "../../db-tx";
-import { GENESIS, hashEntry, verifyChain } from "./chain";
+import { type ChainInspection, GENESIS, hashEntry, inspectChain, verifyChain } from "./chain";
 import type { AuditRepo } from "./repo";
 import type { AuditEntry, AuditFilter, AuditInput } from "./types";
 
@@ -81,8 +81,12 @@ export class AuditService {
 
   // SCRUM-439: aktive Integritätsprüfung mit Zähler — Grundlage des Admin-Knopfs „Integrität geprüft".
   // Ehrliches Signal: ok = Kette lückenlos/unverändert; count = geprüfte Einträge (EIN Durchlauf).
-  async verifyReport(): Promise<{ ok: boolean; count: number }> {
-    const all = await this.repo.all();
-    return { ok: verifyChain(all), count: all.length };
+  //
+  // AUFTRAG-mega14 Block A (bens SB-1): der Bericht nennt jetzt zusätzlich die URSACHE. Vorher konnte
+  // die Oberfläche einen echten `prevHash`-Bruch nicht von einer durch jsonb-Schlüsselreihenfolge
+  // erklärbaren Hashabweichung unterscheiden — und behauptete trotzdem „Manipulation erkannt".
+  // `verify()` (und damit jeder Altaufrufer) bleibt unverändert.
+  async verifyReport(): Promise<ChainInspection> {
+    return inspectChain(await this.repo.all());
   }
 }

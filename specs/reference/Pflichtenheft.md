@@ -125,7 +125,7 @@ Referenz-Implementierung definiert; technische Umsetzung ist frei.
 | FR-ANA-01 | Analytics: Bestände nach Status/Art, Validierungs-Aufgaben pro Person, Kategorie-Verteilung. | MUSS | Kennzahlen korrekt aggregiert. |
 | FR-ANA-02 | **Wirkungs-Dashboard**: validierte Objekte/Woche, Antwortquote ohne Lücke. | SOLL | Zwei Kernmetriken über Zeit sichtbar. |
 | FR-AUD-01 | Lückenloses Audit-Log aller relevanten Aktionen (wer/was/wann). | MUSS | Jede in §12.3 (Funktionsbeschr.) genannte Aktion erzeugt Eintrag. |
-| FR-AUD-02 | Audit **append-only**, nicht änder-/löschbar. | MUSS | Manipulationsversuch nicht möglich. |
+| FR-AUD-02 | Audit **append-only**, hash-verkettet; über die API nicht änder-/löschbar. | MUSS | Nachträgliche Abweichung ist rechnerisch prüfbar (tamper-evident); kein extern verankerter Kettenkopf. |
 
 ### 3.10 Lebenszyklus & Governance (LIF)
 

@@ -102,7 +102,11 @@ describe("WP-SHIP9-S1 B3: Capture-Karte nutzt den ECHTEN Status (Source-Pins)", 
   });
 
   it("rendert die drei ehrlichen Zustände und hat den statischen Hintergrund-Satz ersetzt", () => {
-    expect(source).toContain("aiCheckCardState(savedAiCheck)");
+    // AUFTRAG-mega9 Block E-3 (KW-E2E-007): die Karte reicht die TATSÄCHLICHE Vertraulichkeitsstufe
+    // des gespeicherten Objekts mit — ohne sie behauptete der Grund „Vertraulich", obwohl die
+    // Cloud-Sperre auch greift, wenn nur der VERGLEICHSPARTNER vertraulich ist (Paar-Eigenschaft).
+    expect(source).toContain("aiCheckCardState(savedAiCheck, savedConfidentiality)");
+    expect(source).toContain("setSavedConfidentiality(ko.confidentiality ?? null)");
     // PAKET 1.4 (D-AISTATE): running/done sind jetzt modellbewusst (mit KI / ohne KI); failed bleibt fix.
     expect(source).toContain("aiCheckCardRunningKey(aiModelActive)");
     expect(source).toContain("aiCheckCardDoneKey(aiModelActive)");

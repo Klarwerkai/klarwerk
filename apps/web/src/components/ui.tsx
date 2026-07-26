@@ -92,7 +92,7 @@ export function SectionLabel({ children }: { children: ReactNode }): JSX.Element
 }
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "primary" | "ghost" | "outline";
+  variant?: "primary" | "ghost" | "outline" | "danger";
 };
 
 export function Button({ variant = "outline", className, ...props }: ButtonProps): JSX.Element {
@@ -100,6 +100,16 @@ export function Button({ variant = "outline", className, ...props }: ButtonProps
     primary: "bg-ink text-white hover:opacity-90",
     ghost: "text-muted hover:bg-hairline-soft hover:text-text",
     outline: "border border-hairline text-text hover:bg-hairline-soft",
+    // AUFTRAG-mega14 Block F (SCRUM-412): der ZERSTÖRENDE Knopf eines Bestätigungsdialogs.
+    //
+    // Gemessen im echten Browser (nicht gelesen): vorher trug „Ja, löschen"/„Verwerfen und wechseln"
+    // exakt dieselbe Farbe wie „Behalten"/„Hier bleiben" — rgb(104,112,120) bzw. rgb(27,30,33). Die
+    // beiden Knöpfe waren allein am Text unterscheidbar. Genau das hat der Live-Test gesehen und
+    // mein Klassennamen-Lesen übersehen.
+    //
+    // Bewusst dieselben Trust-Marken wie der bereits richtige Mobile-Knopf (bg-trust-crit-bg /
+    // text-trust-crit-text) — keine neue Farbe, keine zweite Warn-Sprache.
+    danger: "bg-trust-crit-bg text-trust-crit-text hover:opacity-90",
   }[variant];
   return (
     <button

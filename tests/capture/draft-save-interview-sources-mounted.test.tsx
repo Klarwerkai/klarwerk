@@ -56,7 +56,11 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
     endpoints: {
       validation: { settings: ok({ defaultNeededValidations: 3 }) },
       external: {
-        policy: ok({ stage: "search_on_click" }),
+        // AUFTRAG-mega14 Block D (SCRUM-414): auf der VORGABE-Stufe „search_on_click" ist das
+        // Anhängen externer Treffer jetzt gesperrt (Knopf inaktiv, Server 403). Dieser Test prüft
+        // den DRAFT-Vertrag, nicht die Stufe — er läuft deshalb auf einer Stufe, die Anhängen
+        // erlaubt. Die Sperre selbst ist in tests/app/external-attach-gate-e2e.test.ts belegt.
+        policy: ok({ stage: "search_attach" }),
         search: vi.fn(async () => [
           {
             title: "Dichtungsnorm 4711",

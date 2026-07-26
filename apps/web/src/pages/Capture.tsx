@@ -15,9 +15,9 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
-import { endpoints } from "../api/endpoints";
+import { type FollowUpsRecorded, endpoints } from "../api/endpoints";
 import { useDirectory, useDrafts, useGaps, useReasonerStatus } from "../api/hooks";
 import type {
   Confidentiality,
@@ -31,7 +31,12 @@ import type {
   StructureResult,
 } from "../api/types";
 import { useSession } from "../app/AuthContext";
-import { useNavGuard } from "../app/NavGuardContext";
+import {
+  GuardedLink,
+  useGuardedNavigate,
+  useNavGuard,
+  useUnloadGuard,
+} from "../app/NavGuardContext";
 import { useToast } from "../app/ToastContext";
 import { AiAssistBox } from "../components/AiAssistBox";
 import { AiModelInfo } from "../components/AiModelInfo";
@@ -59,6 +64,7 @@ import { KnowledgeRescueIntro } from "../components/KnowledgeRescueIntro";
 import { Modal } from "../components/Modal";
 import { PublicAiEnrichPanel } from "../components/PublicAiEnrichPanel";
 import { RichTextEditor } from "../components/RichTextEditor";
+import { UploadLimitsHint } from "../components/UploadLimitsHint";
 import { ListEditor, TagEditor } from "../components/editors";
 import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
 import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
@@ -71,6 +77,11 @@ import {
   aiCheckCardState,
   aiCheckPollAgain,
 } from "../lib/aiCheckStatusCard";
+// AUFTRAG-mega19 Block B: `commitDocumentAppend`/`newAppendOperationId` sind hier nicht mehr nötig.
+// Das frische Erfassen reicht die Herkunft nicht mehr nach — Inhalt, Anker und Belegstellen
+// entstehen in EINEM serverseitigen Vorgang (endpoints.ko.createFromDocument). Die Verbund-Operation
+// (und mit ihr der dreiwertige Ausgang) bleibt der Weg für ein BESTEHENDES Wissensobjekt: KO-Detail
+// und „An Artikel anfügen" — s. lib/appendToArticle.ts.
 import { GAP_RESCUE_STEPS, GAP_RESCUE_TEXT } from "../lib/askGapRescue";
 import { applyBodyAssist, applyBodyAssistBlock, bodyTextForAssist } from "../lib/bodyAiAssist";
 import { appendExtractSections, normalizeExtractLocale } from "../lib/bodyExtract";
@@ -81,6 +92,8 @@ import {
   type AttachmentFailure,
   type AttachmentUploadApi,
   type AttachmentUploadItem,
+  // AUFTRAG-mega18 Block A-3: EIN Übernahme-Vorgang je Ankerdokument (Phase B, seriell).
+  type DocumentAppendJob,
   type OriginalDocument,
   type OriginalRefCache,
   capAttachmentSelection,
@@ -101,6 +114,8 @@ import {
 } from "../lib/captureEntry";
 import { CAPTURE_EXAMPLE } from "../lib/captureExample";
 import { CAPTURE_FLOW_TEXT } from "../lib/captureFlowGuide";
+// AUFTRAG-mega21 Block C-1: die Schrittnamen des Servers, für Menschen lesbar (mit nächstem Schritt).
+import { captureFollowUpNextKey, captureFollowUpStepKey } from "../lib/captureFollowUps";
 // PMO-FEA-0006: „Aus Datei" — Punkteliste + Entwurfs-Warteschlange (DOM-freie Logik).
 import {
   CAPTURE_FILE_TEXT,
@@ -154,6 +169,12 @@ import {
   wizardChips,
 } from "../lib/captureWizard";
 import { CONFIDENTIALITY_LEVELS } from "../lib/confidentiality";
+// AUFTRAG-mega20 Block A: der Wiederholschlüssel der Erstanlage (stabil über Wiederholungen).
+import {
+  createConflictOffersRestart,
+  createOperationIsSettled,
+  newCreateOperationId,
+} from "../lib/createOperation";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 // WP-D11: Folien als Bilder — Server-Konvertierung + Budget-Mechanik des DOCX-/PPTX-Imports.
 import { MAX_INLINE_BODY_HTML_BYTES, applyInlineImageBudget, newImageRunToken } from "../lib/docx";
@@ -165,6 +186,13 @@ import { DRAFT_LIMITS } from "../lib/draftLimits";
 import { studioSaveConfidence } from "../lib/editorApplySafety";
 import { EDITOR_BLOCKS } from "../lib/editorBlocks";
 import { editorImagesFromLocalImages } from "../lib/editorImages";
+// AUFTRAG-mega14 Block D (SCRUM-414): dieselbe Anhängen-Regel wie Prüfbereich und Server.
+import {
+  SOURCE_ATTACH_HINT_KEYS,
+  canAttachExternalResult,
+  canSearchExternal,
+  sourceAttachHint,
+} from "../lib/externalAttachGate";
 // WP-D5b (bens GELB-Fix 4): Erkennung im Capture-Import-Pfad über die ZENTRALE detectFileKind-Reihenfolge
 // (image→pdf→docx→pptx→text) — sonst landet eine .pptx mit MIME text/plain im Text-Pfad.
 import { detectFileKind } from "../lib/extract";
@@ -197,6 +225,7 @@ import {
   type SourceFormInput,
   isSourceFormDirty,
   isSourceFormValid,
+  toAddSourceRequest,
   unsavableSourceUrls,
 } from "../lib/koSource";
 // WP-D5b (bens GELB-Fix 3): ehrlicher Importfehler bei Überschreitung des Archiv-/Dekompressionsbudgets.
@@ -321,7 +350,12 @@ export function Capture(): JSX.Element {
   const authorName = user?.name ?? user?.email ?? "—";
   const draftScopeLabel =
     user?.role === "admin" ? "Admin-Ansicht: alle Entwürfe" : "Meine Entwürfe";
+  // AUFTRAG-mega12 Block A (bens SB-2): `navigate` bleibt für die beiden ZUSTANDS-Räumungen auf
+  // derselben Route (`/erfassen` mit `state: null`) — die verlassen die Seite nicht und dürfen NICHT
+  // fragen. Jeder Weg, der die Erfassungsseite wirklich VERLÄSST, läuft über `guardedNavigate` bzw.
+  // `GuardedLink`. Begründung je Fundstelle steht am jeweiligen Aufruf.
   const navigate = useNavigate();
+  const guardedNavigate = useGuardedNavigate();
   const location = useLocation();
 
   // PAKET 1 (D-AISTATE, Pedi 23.07.): ehrliche KI-Verfügbarkeit je Aufgabe — hart ausgrauen der
@@ -461,7 +495,14 @@ export function Capture(): JSX.Element {
   // SCRUM-373 / AG-02-SESSION: Nicht-Bild-Session-Dateien behalten jetzt ihre Originalbytes (data), damit
   // sie beim Speichern in den Object-Store gelegt und danach im KO-Editor als sichere Body-Referenz nutzbar
   // sind. Der extrahierte Text geht weiterhin als Kontext in die Rohnotiz.
-  const [docs, setDocs] = useState<{ id: string; name: string; mime: string; data: string }[]>([]);
+  // AUFTRAG-mega18 Block A-3: `objectId` = die ECHTE Kennung im Objektspeicher, gesetzt in dem
+  // Moment, in dem Inhalt aus diesem Dokument übernommen wird. Damit ist der Anker GESICHERT, bevor
+  // irgendein Inhalt in den Entwurf wandert — und nicht erst beim Einreichen (mega17: „deferred").
+  // Ein Dokument mit `objectId` ist Anker einer Übernahme; sein Anhängen ans neue Wissensobjekt
+  // vollzieht die Verbund-Operation, nicht die allgemeine Anhang-Schleife (sonst hinge es zweimal).
+  const [docs, setDocs] = useState<
+    { id: string; name: string; mime: string; data: string; objectId?: string }[]
+  >([]);
 
   // SCRUM-408: Quellen-Warteliste beim Erfassen (angehängt wird erst beim Einreichen) +
   // dasselbe Formular/Such-Muster wie im Prüfbereich (SCRUM-118/129, eine Regel-Quelle).
@@ -485,6 +526,12 @@ export function Capture(): JSX.Element {
   // KO (aus der Submit-Antwort geseedet, dann gepollt). Die Karte zeigt „Prüfung läuft …" NUR
   // solange kein Ergebnis vorliegt; der Wechsel kommt ausschließlich vom tatsächlichen Ergebnis.
   const [savedAiCheck, setSavedAiCheck] = useState<KnowledgeObject["aiCheck"] | null>(null);
+  // AUFTRAG-mega9 Block E-3 (KW-E2E-007): die TATSÄCHLICHE Stufe des gerade eingereichten Objekts.
+  // Der Grund „confidential" ist eine PAAR-Eigenschaft (subject ODER Vergleichskandidat vertraulich);
+  // ohne diese Stufe behauptete die Karte, der eigene Beitrag sei vertraulich. Bewusst NICHT die
+  // Formular-Auswahl `confidentiality` — die wird nach dem Einreichen zurückgesetzt und gehört dann
+  // zum NÄCHSTEN Beitrag; hier zählt, was am gespeicherten Objekt steht.
+  const [savedConfidentiality, setSavedConfidentiality] = useState<Confidentiality | null>(null);
   // WP-D7b (Rot-Fix 1): mehrstufiger, ehrlicher Fortschritt beim Einreichen — der Nutzer sieht, WAS gerade
   // dauert (KO anlegen → Original/Anhänge sichern (mit Größe) → Quellen verknüpfen). null = kein Submit aktiv.
   const [submitStage, setSubmitStage] = useState<{ key: string; mb?: string } | null>(null);
@@ -497,6 +544,34 @@ export function Capture(): JSX.Element {
   const [savedFilesCount, setSavedFilesCount] = useState(0);
   // SCRUM-374: Anhänge, die trotz gespeichertem KO NICHT hochgeladen/angehängt werden konnten (Teilfehler).
   const [failedAttachments, setFailedAttachments] = useState<AttachmentFailure[]>([]);
+  // AUFTRAG-mega21 Block C-1: die Schrittnamen, die der Server in `followUpsFailed` gemeldet hat.
+  const [savedFollowUpsFailed, setSavedFollowUpsFailed] = useState<string[]>([]);
+  // AUFTRAG-mega23 Block B: und was von der BUCHFÜHRUNG darüber tatsächlich geschrieben wurde. Ohne
+  // diese Tatsache behauptete die Warnung, die Prüfung sei vermerkt und neu startbar — auch dann,
+  // wenn der Vermerk gar nicht zustande kam und der Wiederhol-Endpunkt ablehnte. `null` heißt
+  // „nichts nachgewiesen" und wird wie „nicht geschrieben" behandelt (fail-closed).
+  const [savedFollowUpsRecorded, setSavedFollowUpsRecorded] = useState<FollowUpsRecorded | null>(
+    null,
+  );
+  // AUFTRAG-mega21 Block C-2: die Kennungen der Originale, die beim Fortsetzen FEHLTEN. Der Server
+  // ermittelt sie (`anchorsMissing`) und dünnt den Entwurf entsprechend aus; bis mega20 hat die
+  // Oberfläche das Feld nicht einmal gelesen — der Nutzer sah einen geleerten Entwurf ohne Grund.
+  const [resumeAnchorsMissing, setResumeAnchorsMissing] = useState<string[]>([]);
+  // AUFTRAG-mega21 Block C-2: der Öffnungs-Zähler des Übernahme-Panels (s. BodyExtractPanel).
+  const [extractPanelOpenSignal, setExtractPanelOpenSignal] = useState(0);
+  // AUFTRAG-mega17 Block A-2: die Teilfehler werden GETRENNT gelesen. „Herkunft fehlt" (der Inhalt
+  // ist im Wissensobjekt, sein Beleg nicht) ist eine andere und schwerere Aussage als „eine Datei
+  // konnte nicht gesichert werden" — beides in EINEN Hinweis zu werfen hieß, den Nutzer über das
+  // eigentliche Problem im Unklaren zu lassen.
+  const missingProvenance = failedAttachments.filter((f) => f.reason === "provenance");
+  // AUFTRAG-mega18 Block A-3: der DRITTE Ausgang — unklar. Er ist weder ein Fehler noch ein Erfolg,
+  // und er darf in keinen der beiden Töpfe fallen. „Die Herkunft fehlt" wäre falsch (sie kann
+  // vollzogen sein), „eine Datei konnte nicht gesichert werden" wäre falsch (es ging nicht um die
+  // Datei). Er bekommt seinen eigenen Hinweis mit seinem eigenen nächsten Schritt: nachsehen.
+  const unclearAppends = failedAttachments.filter((f) => f.reason === "unclear");
+  const otherAttachFailures = failedAttachments.filter(
+    (f) => f.reason !== "provenance" && f.reason !== "unclear",
+  );
   // WP-D10 (Fix 2): gemessene Submit-Phasen-Dauern (aus den VORHANDENEN performance.now-Spannen) für die
   // aufklappbare Zeile „Details zur Dauer" in der Bestätigung — Erfolg UND Teilfehler.
   const [submitTimings, setSubmitTimings] = useState<SubmitTimingEntry[]>([]);
@@ -526,6 +601,7 @@ export function Capture(): JSX.Element {
             return;
           }
           setSavedAiCheck(ko.aiCheck ?? null);
+          setSavedConfidentiality(ko.confidentiality ?? null);
           if (ko.aiCheck && ko.aiCheck.status !== "pending") {
             void qc.invalidateQueries({ queryKey: ["validation"] });
           }
@@ -558,6 +634,10 @@ export function Capture(): JSX.Element {
     setFrontDoorDraftSaved(saved);
     setNotice(`Entwurf gespeichert: ${saved.title}`);
     void qc.invalidateQueries({ queryKey: ["drafts"] });
+    // AUFTRAG-mega12 Block A: NICHT umgestellt, mit Absicht. Das ist kein Seitenwechsel, sondern das
+    // Abräumen des `location.state` auf DERSELBEN Route (`replace`) direkt nach einem ERFOLGREICHEN
+    // Speichern in der Vordertür. Ein Wächter hier würde beim Betreten der Seite fragen — eine
+    // Warnung ohne Verlust, und er würde den Effekt bei „Hier bleiben" in einer Endlosschleife halten.
     navigate("/erfassen", { replace: true, state: null });
   }, [location.state, navigate, qc]);
 
@@ -867,6 +947,8 @@ export function Capture(): JSX.Element {
               mime: fileOriginal.mime,
               data: fileOriginal.data,
               kind: "document",
+              // AUFTRAG-mega20 Block C: Original einer Datei-Warteschlange — es wird Anker.
+              purpose: "anchor",
             });
             fileOriginalRef.current = { ref };
           }
@@ -1057,11 +1139,53 @@ export function Capture(): JSX.Element {
     return Number.isFinite(n) && n > 0 ? n : undefined;
   };
 
+  // AUFTRAG-mega20 Block D: die gesicherten Originale, wie der Entwurf sie trägt.
+  //
+  // Aufgenommen wird NUR ein Dokument, das (a) eine echte, serverseitig vergebene `objectId` hat und
+  // (b) tatsächlich Anker mindestens einer wartenden Belegstelle ist. Ein mitgeführter reiner
+  // Anhang gehört nicht hierher — er ist kein Beleg und würde beim Fortsetzen fälschlich als
+  // Ankerdokument zurückkommen.
+  const anchorDocumentsForDraft = (): {
+    key: string;
+    objectId: string;
+    name: string;
+    mime: string;
+  }[] =>
+    docs
+      .filter(
+        (doc) =>
+          doc.objectId &&
+          pendingSources.some((src) => src.anchorKey === doc.id && src.objectId === doc.objectId),
+      )
+      .map((doc) => ({
+        key: doc.id,
+        objectId: doc.objectId as string,
+        name: doc.name,
+        mime: doc.mime,
+      }));
+
+  // AUFTRAG-mega20 Block A: DER WIEDERHOLSCHLÜSSEL DES EINREICHENS. Er lebt in einer Ref und NICHT
+  // in der Mutationsfunktion — sonst bekäme jeder Klick einen neuen, der Server sähe zwei Vorgänge
+  // statt einer Wiederholung, und nach einem Antwortverlust entstünde ein zweites vollständiges
+  // Wissensobjekt. Wann er fällt und wann er bleibt, steht in lib/createOperation.ts.
+  const submitOperationRef = useRef<string | null>(null);
+
+  // AUFTRAG-mega22 Block E: steht hier eine Meldung, hat der Server einen 409 mit einem Code
+  // geliefert, für den ein NEUER Vorgang der richtige Ausweg ist. Die Oberfläche bietet die
+  // Handlung dann SICHTBAR an — sie führt sie nicht hinter dem Rücken des Nutzers aus.
+  // `null` heisst: kein Angebot. Insbesondere bei `CREATE_REPAIR_REQUIRED` bleibt es `null`.
+  const [restartOffer, setRestartOffer] = useState<string | null>(null);
+
   const submit = useMutation({
     mutationFn: async () => {
       if (!draft) {
         throw new Error("no draft");
       }
+      // Ein Vorgang, ein Schlüssel — über alle Wiederholungen hinweg, bis er eindeutig erledigt ist.
+      if (!submitOperationRef.current) {
+        submitOperationRef.current = newCreateOperationId();
+      }
+      const operationId = submitOperationRef.current;
       const n = parsedValidations();
       // SCRUM-354 / FR-STR-06 / G-P1-2: Ein FORTGESETZTER Entwurf (draftId vorhanden) wird sauber
       // über die vorhandene Promote-Route abgeschlossen — NICHT nur lokal vergessen. Dazu zuerst den
@@ -1075,45 +1199,144 @@ export function Capture(): JSX.Element {
       // Bestätigung (bisher landeten sie nur im console.debug).
       const timingSpans: SubmitTimingSpan[] = [];
       const tCreate = performance.now();
+      // ==========================================================================================
+      // AUFTRAG-mega19 Block B — DIE HERKUNFT WIRD NICHT NACHGEREICHT.
+      // ==========================================================================================
+      //
+      // WAS HIER VORGEZOGEN IST und warum. Bis mega18 wurden die Ankerdokumente ERST NACH dem
+      // Anlegen ermittelt — weil sie erst danach gebraucht wurden. Genau das war der Fehler: der
+      // Body ging als erstes raus, die Herkunft folgte in eigenen Aufrufen. Lehnte der erste ab
+      // oder blieb er unklar, stand der Dokumentinhalt schon im neuen Wissensobjekt; bei zwei
+      // Ankerdokumenten konnte eines gebunden sein und das andere nicht, obwohl der Body Inhalt aus
+      // BEIDEN trug.
+      //
+      // Jetzt entscheidet die Frage „gibt es übernommenen Dokumentinhalt?" den WEG:
+      //   · JA  → EIN Vorgang (`createFromDocument`): Inhalt, alle Anker, alle Belegstellen
+      //           gemeinsam — oder nichts. Kein Wissensobjekt bleibt halb belegt zurück.
+      //   · NEIN → der unveränderte Weg (`create`/`promote`), ohne jede Änderung.
+      //
+      // ZWEI SORTEN DOKUMENT, ZWEI WEGE (unverändert aus mega18): Ankerdokumente sind bereits im
+      // Objektspeicher gesichert (secureAnchorDocument) und gehören in die Komposition. Reine
+      // Anhänge — mitgebrachte Dateien OHNE übernommenen Inhalt — laufen weiter über Upload +
+      // `attach` in Phase A/B.
+      const anchoredSources = pendingSources.filter((src) => src.anchorKey && src.objectId);
+      const anchorDocs = docs.filter(
+        (doc) => doc.objectId && anchoredSources.some((src) => src.anchorKey === doc.id),
+      );
+      const plainDocs = docs.filter((doc) => !anchorDocs.includes(doc));
+      // Je Ankerdokument seine Belegstellen. Der Server prüft jedes Original im eigenen
+      // Objektspeicher nach und leitet die Herkunft aus der Adresse ab — nichts davon wird geglaubt.
+      const anchorDocuments = anchorDocs.map((doc) => ({
+        anchor: { objectId: doc.objectId as string, name: doc.name, mime: doc.mime },
+        points: anchoredSources
+          .filter((src) => src.anchorKey === doc.id)
+          .map((src) => ({
+            label: src.label,
+            ...(src.excerpt !== undefined ? { excerpt: src.excerpt } : {}),
+          })),
+      }));
+      const draftPayload: DraftPayload = {
+        title: draft.title,
+        statement: draft.statement,
+        type,
+        category: category.trim() || "Allgemein",
+        tags: tags.filter((x) => x.trim()),
+        conditions: draft.conditions.filter((x) => x.trim()),
+        measures: draft.measures.filter((x) => x.trim()),
+        asset: asset.trim() ? asset.trim() : null,
+        // AUFTRAG-mega7 Block A (bens Ship-Blocker): dieser PUT AKTUALISIERT einen bestehenden
+        // Entwurf (draftId), also reist ein bewusst geleerter Body als ausdrücklicher Leerwert mit.
+        // Ohne ihn holte der partielle Merge den alten Body zurück — und der Promote direkt danach
+        // trüge ihn ins Wissensobjekt.
+        ...draftBodyPatch(bodyHtml, true),
+        ...(n ? { neededValidations: n } : {}),
+        ...(confidentiality !== "intern" ? { confidentiality } : {}),
+        // AUFTRAG-mega20 Block D: der Entwurf wird unmittelbar vor der Anlage auf den AKTUELLEN
+        // Stand gebracht — inklusive Belegstellen und gesicherter Originale. Ohne sie prüfte der
+        // Server beim Einreichen noch die Anker eines überholten Zwischenstands; ein inzwischen
+        // entfernter Anker hätte die Anlage abgelehnt, obwohl ihn niemand mehr braucht.
+        pendingSources: toDraftSources(pendingSources),
+        anchorDocuments: anchorDocumentsForDraft(),
+      };
+      const createPayload: DraftPayload = {
+        title: draft.title,
+        statement: draft.statement,
+        conditions: draft.conditions.filter((x) => x.trim()),
+        measures: draft.measures.filter((x) => x.trim()),
+        tags: tags.filter((x) => x.trim()),
+        type,
+        category: category.trim() || "Allgemein",
+        asset: asset.trim() ? asset.trim() : null,
+        ...(bodyHtml.trim() ? { bodyHtml } : {}),
+        ...(n ? { neededValidations: n } : {}),
+        ...(confidentiality !== "intern" ? { confidentiality } : {}),
+      };
       let ko: KnowledgeObject;
-      if (draftId) {
-        const payload: DraftPayload = {
-          title: draft.title,
-          statement: draft.statement,
-          type,
-          category: category.trim() || "Allgemein",
-          tags: tags.filter((x) => x.trim()),
-          conditions: draft.conditions.filter((x) => x.trim()),
-          measures: draft.measures.filter((x) => x.trim()),
-          asset: asset.trim() ? asset.trim() : null,
-          // AUFTRAG-mega7 Block A (bens Ship-Blocker): dieser PUT AKTUALISIERT einen bestehenden
-          // Entwurf (draftId), also reist ein bewusst geleerter Body als ausdrücklicher Leerwert mit.
-          // Ohne ihn holte der partielle Merge den alten Body zurück — und der Promote direkt danach
-          // trüge ihn ins Wissensobjekt.
-          ...draftBodyPatch(bodyHtml, true),
-          ...(n ? { neededValidations: n } : {}),
-          ...(confidentiality !== "intern" ? { confidentiality } : {}),
-        };
-        await endpoints.drafts.update(draftId, payload);
+      // AUFTRAG-mega21 Block C-1: die nach dem Commit GESCHEITERTEN Nacharbeiten. Der Server sammelt
+      // sie und schickt sie mit; bis mega20 hat die Oberfläche sie schlicht nicht angesehen. Genau
+      // dasselbe Muster wie die Audit-Anzeige, die „Manipulation erkannt" behauptete, wie der leere
+      // String aus dem lokalen Modell und wie der Inhalt ohne Herkunft: das Produkt weiß etwas und
+      // sagt es nicht. Hier hört das auf.
+      let followUpsFailed: string[] = [];
+      // AUFTRAG-mega23 Block B: und die Tatsache, ob die Buchführung darüber geschrieben wurde.
+      // `null` bleibt es, solange der Server nichts nachgewiesen hat — die Warnung verspricht dann
+      // keine Wiederholung (fail-closed, s. lib/captureFollowUps.ts).
+      let followUpsRecorded: FollowUpsRecorded | null = null;
+      if (anchorDocuments.length > 0) {
+        // DER VERBUND-WEG. Ein Fehlschlag hier lässt KEIN Wissensobjekt zurück — der Submit
+        // scheitert ehrlich als Ganzes (onError), statt „gespeichert" mit fehlender Herkunft zu
+        // melden. Der Entwurf wird serverseitig erst entfernt, wenn das Objekt vollständig steht.
+        if (draftId) {
+          // AUFTRAG-mega21 Block B: KEIN vorgeschaltetes `drafts.update` mehr. Bis mega20 lief bei
+          // JEDEM Einreichversuch zuerst ein `PUT /api/drafts/:id` — und nach einem serverseitig
+          // gelungenen ersten POST ist der Entwurf verworfen. Ging nur die ANTWORT verloren,
+          // scheiterte der zweite Klick an genau diesem PUT mit 404, und der Idempotenz-Nachschlag
+          // wurde nie erreicht: die ganze Adoptionsmechanik lief im echten Klickpfad ins Leere.
+          //
+          // Jetzt reist der Entwurfsstand IM Anlage-Request. Ein Wiederholversuch trifft damit
+          // zuerst den Nachschlag; ist der Vorgang schon gelungen, wird der Entwurf gar nicht mehr
+          // angefasst. Die Oberfläche braucht dafür keine Zustandsmaschine („habe ich schon
+          // geputtet?") — die Wiederholbarkeit liegt vollständig auf der Serverseite.
+          const antwort = await endpoints.ko.createFromDocument({
+            operationId,
+            draftId,
+            draftPayload,
+            documents: anchorDocuments,
+            ...(reviewerIds.length > 0 ? { reviewerIds } : {}),
+          });
+          ko = antwort;
+          followUpsFailed = antwort.followUpsFailed ?? [];
+          followUpsRecorded = antwort.followUpsRecorded ?? null;
+          setSubmittedFromDraft(true);
+        } else {
+          const antwort = await endpoints.ko.createFromDocument({
+            operationId,
+            create: createPayload,
+            documents: anchorDocuments,
+            ...(reviewerIds.length > 0 ? { reviewerIds } : {}),
+          });
+          ko = antwort;
+          followUpsFailed = antwort.followUpsFailed ?? [];
+          followUpsRecorded = antwort.followUpsRecorded ?? null;
+          setSubmittedFromDraft(false);
+        }
+      } else if (draftId) {
+        // AUFTRAG-mega22 Block H: KEIN vorgeschaltetes `drafts.update` mehr — aus DEMSELBEN Grund
+        // wie auf dem Dokumentweg seit mega21 Block B. Nach einem serverseitig gelungenen ersten
+        // Promote ist der Entwurf verworfen; ging nur die ANTWORT verloren, scheiterte der zweite
+        // Klick an genau diesem PUT mit 404, und der Idempotenz-Nachschlag wurde nie erreicht.
+        // Jetzt reist der Entwurfsstand IM Promote-Request, hinter dem Nachschlag.
+        //
         // SCRUM-395: gewählte Prüfer wandern mit dem Promote zum Server (assign + Meldung).
-        ko = await endpoints.drafts.promote(
-          draftId,
-          reviewerIds.length > 0 ? { reviewerIds } : undefined,
-        );
+        ko = await endpoints.drafts.promote(draftId, {
+          operationId,
+          draftPayload,
+          ...(reviewerIds.length > 0 ? { reviewerIds } : {}),
+        });
         setSubmittedFromDraft(true);
       } else {
         ko = await endpoints.ko.create({
-          title: draft.title,
-          statement: draft.statement,
-          conditions: draft.conditions.filter((x) => x.trim()),
-          measures: draft.measures.filter((x) => x.trim()),
-          tags: tags.filter((x) => x.trim()),
-          type,
-          category: category.trim() || "Allgemein",
-          asset: asset.trim() ? asset.trim() : null,
-          ...(bodyHtml.trim() ? { bodyHtml } : {}),
-          ...(n ? { neededValidations: n } : {}),
-          ...(confidentiality !== "intern" ? { confidentiality } : {}),
+          ...createPayload,
           // SCRUM-395: Prüfer-Vorschlag beim direkten Einreichen.
           ...(reviewerIds.length > 0 ? { reviewerIds } : {}),
         });
@@ -1126,6 +1349,9 @@ export function Capture(): JSX.Element {
       //    danach body-verlinkbar via editorFilesFromAttachments/bodyFileLink).
       //  - SCRUM-374: Ein Teilfehler kippt NICHT den Gesamt-Save. Das KO ist bereits (offen) gespeichert;
       //    misslungene Anhänge werden ehrlich gemeldet. Kein Fake-Attach ohne Upload.
+      // AUFTRAG-mega19 Block B: die Ankerdokumente sind OBEN, in der Komposition, bereits gebunden —
+      // sie gehören deshalb NICHT in die allgemeine Anhang-Schleife (sonst hingen sie zweimal).
+      // Hier laufen nur die REINEN ANHÄNGE: mitgebrachte Dateien ohne übernommenen Inhalt.
       const attachmentItems: AttachmentUploadItem[] = [
         ...images.map((img) => ({
           name: img.name,
@@ -1134,13 +1360,20 @@ export function Capture(): JSX.Element {
           kind: "image" as const,
           thumbnail: img.dataUrl,
         })),
-        ...docs.map((doc) => ({
+        ...plainDocs.map((doc) => ({
           name: doc.name,
           mime: doc.mime,
           data: doc.data,
           kind: "document" as const,
         })),
       ];
+      // AUFTRAG-mega19 Block B: HIER STEHT ABSICHTLICH KEINE ÜBERNAHME MEHR. Bis mega18 wurde je
+      // Ankerdokument ein eigener `append-document`-Job gebildet und in Phase B seriell abgearbeitet
+      // — NACH dem Commit des Body. Diese Nachreichung ist ersatzlos entfallen: die Anker und ihre
+      // Belegstellen entstehen jetzt gemeinsam mit dem Inhalt (`createFromDocument`, oben). Phase B
+      // trägt damit nur noch, was auch früher schon nachgelagert war und es sein darf: reine
+      // Anhänge, das Original der Datei-Warteschlange und ankerlose Quellen.
+      const documentAppends: DocumentAppendJob[] = [];
       const attachApi: AttachmentUploadApi = {
         upload: (input) => endpoints.objects.upload(input),
         attach: (koId, attachment) => endpoints.ko.act(koId, { action: "attach", attachment }),
@@ -1178,15 +1411,38 @@ export function Capture(): JSX.Element {
                 run: async () => {
                   await endpoints.ko.act(ko.id, {
                     action: "add-source",
-                    source: fileSourcePayload(fileQueue.fileName, queuePoint),
+                    // AUFTRAG-mega16 Block A: der ANKER ist die objectId des Originals, das
+                    // Phase B unmittelbar VOR diesem Schritt an dasselbe KO gehängt hat
+                    // (finalizeCaptureSubmit, captureAttachments.ts). Deshalb wird der Ref hier
+                    // im Closure gelesen, nicht beim Bauen des Aufrufs — beim Bauen ist er leer.
+                    source: fileSourcePayload(
+                      fileQueue.fileName,
+                      queuePoint,
+                      fileOriginalRef.current.ref?.id,
+                    ),
                   });
                 },
               }
             : null,
         // SCRUM-408: gesammelte externe Quellen ans KO hängen (Stufe 2, nie peer-validiert; Phase B).
-        pendingSources: () =>
-          attachPendingSources(ko.id, pendingSources, (koId, source) =>
-            endpoints.ko.act(koId, { action: "add-source", source }),
+        // AUFTRAG-mega17 Block A-2: die in Phase B entstandenen Anker kommen HIER an — die
+        // Warteliste hängt danach mit der ECHTEN objectId des mitgeführten Dokuments an, nicht
+        // mehr adresslos und ankerlos.
+        // AUFTRAG-mega18 Block A-3: die Übernahme-Vorgänge laufen in Phase B, seriell, VOR den
+        // restlichen Quellen.
+        documentAppends,
+        // Nur die Quellen OHNE Anker — die anderen sind Teil ihres Übernahme-Vorgangs. Eine
+        // Belegstelle aus einem Dokument untersteht der internen Belegpflicht, eine externe Quelle
+        // aus dem Suchfeld der externen Stufenregel; zwei Regeln, zwei Wege.
+        pendingSources: (anchors) =>
+          attachPendingSources(
+            ko.id,
+            pendingSources.filter((src) => !(src.anchorKey && src.objectId)),
+            (koId, source) =>
+              // mega15 Block B: der Herkunftsname der Warteliste ist Anzeigewert und geht NICHT mit;
+              // der Server leitet die Herkunft aus der Adresse ab.
+              endpoints.ko.act(koId, { action: "add-source", source: toAddSourceRequest(source) }),
+            anchors,
           ),
         // WP-D7b/c (Gelb-Fix 2): echte Stufen-Transition — Phase A "uploading" (mit Bytes) → Phase B "linking".
         onPhase: (phase) => {
@@ -1224,20 +1480,33 @@ export function Capture(): JSX.Element {
           uploadMb,
         }),
       );
-      return { ko, attached, failed, timingSpans };
+      return { ko, attached, failed, timingSpans, followUpsFailed, followUpsRecorded };
     },
     // SCRUM-276: kein stilles Weiterleiten — „gespeichert" + nächster Schritt sichtbar machen.
     // Formular zurücksetzen (kein versehentlicher Doppel-Submit); Modus bleibt erhalten.
-    onSuccess: ({ ko, attached, failed, timingSpans }) => {
+    onSuccess: ({ ko, attached, failed, timingSpans, followUpsFailed, followUpsRecorded }) => {
+      // AUFTRAG-mega20 Block A: der Vorgang ist abgeschlossen — das nächste Erfassen ist ein anderes.
+      submitOperationRef.current = null;
+      // AUFTRAG-mega22 Block E: mit dem Erfolg ist auch das Neustart-Angebot gegenstandslos.
+      setRestartOffer(null);
       setSavedKoId(ko.id);
       // WP-SHIP9-S1 (Pedis B3): der Prüf-Vermerk der 201-Antwort (aiCheck pending) seedet die
       // Live-Anzeige — fehlt er (kein Worker vermerkt), behauptet die Karte NICHTS über die Prüfung.
       setSavedAiCheck(ko.aiCheck ?? null);
+      setSavedConfidentiality(ko.confidentiality ?? null);
       // SCRUM-369: Rescue-Anschluss nur, wenn dieser Save aus einer Ask-Lücke gestartet wurde.
       setSavedFromGap(gapContext !== null);
       // SCRUM-373/374: nur die WIRKLICH gesicherten Anhänge zählen; Teilfehler getrennt ehrlich melden.
       setSavedFilesCount(attached);
       setFailedAttachments(failed);
+      // AUFTRAG-mega21 Block C-1: die Kehrseite der richtigen Entscheidung, diese Schritte aus der
+      // Erfolgsdefinition zu nehmen. Ein Wissensobjekt, dessen Prüferzuweisung fehlschlug, wartet
+      // auf niemanden: es existiert, ist belegt, gilt als erfolgreich — und liegt still herum. Die
+      // Erfolgskarte sagt es jetzt, mit Namen und mit einer Handlung.
+      setSavedFollowUpsFailed(followUpsFailed);
+      // AUFTRAG-mega23 Block B: und die Tatsache dazu — sie entscheidet, ob die Karte den
+      // Wiederholweg VERSPRECHEN darf oder ehrlich sagt, dass der Status nicht gespeichert wurde.
+      setSavedFollowUpsRecorded(followUpsRecorded);
       // WP-D10 (Fix 2): gemessene Phasen-Dauern für die aufklappbaren Details (Erfolg UND Teilfehler).
       setSubmitTimings(buildSubmitTimingEntries(timingSpans, i18n.language));
       push("success", t("capture.savedTitle"));
@@ -1288,7 +1557,31 @@ export function Capture(): JSX.Element {
         }
       }
     },
-    onError: fail,
+    onError: (e: unknown) => {
+      // AUFTRAG-mega20 Block A: den Schlüssel NUR fallen lassen, wenn der Server eindeutig
+      // geantwortet hat, dass nichts entstanden ist. Bei Netzabbruch, Zeitüberschreitung oder 5xx
+      // bleibt er stehen — genau dann ist der nächste Klick eine WIEDERHOLUNG und keine zweite
+      // Anlage. Die Begründung beider Richtungen steht in lib/createOperation.ts.
+      if (createOperationIsSettled(e instanceof ApiError ? e.status : undefined)) {
+        submitOperationRef.current = null;
+      }
+      // ========================================================================================
+      // AUFTRAG-mega22 Block E — DER 409 BEKOMMT EINEN RÜCKWEG, UND ZWAR NACH FEHLERCODE.
+      // ========================================================================================
+      //
+      // Bis mega21 hielt der Client JEDEN 409-Schlüssel fest und unterschied den Code nicht. Folge:
+      // nach einem Abdruckkonflikt wiederholte jeder weitere Klick denselben 409 — der Nutzer sass
+      // fest, und nur ein Neuladen half. Meine Aussage in mega21, die Oberfläche biete einen neuen
+      // Vorgang an, war im Code nicht belegt; ben hat sie widerlegt.
+      //
+      // Welche Codes einen Neustart rechtfertigen und warum `CREATE_REPAIR_REQUIRED` es AUSDRÜCKLICH
+      // NICHT tut, steht ausgeschrieben in lib/createOperation.ts. Kurz: dort wartet ein Objekt auf
+      // Prüfung, und ein neuer Vorgang würde es zurücklassen.
+      setRestartOffer(
+        e instanceof ApiError && createConflictOffersRestart(e.status, e.code) ? e.message : null,
+      );
+      fail(e);
+    },
     // WP-D7b (Rot-Fix 1): Fortschritts-Stufe nach jedem Ausgang (Erfolg/Fehler) zurücksetzen.
     onSettled: () => setSubmitStage(null),
   });
@@ -1340,6 +1633,12 @@ export function Capture(): JSX.Element {
         ...(isDraftUpdate || reviewerIds.length > 0 ? { reviewerIds } : {}),
         ...(isDraftUpdate || pendingSources.length > 0
           ? { pendingSources: toDraftSources(pendingSources) }
+          : {}),
+        // AUFTRAG-mega20 Block D: die GESICHERTEN ORIGINALE reisen mit. Dieselbe Leerwert-Semantik
+        // wie oben — beim Aktualisieren geht auch eine leere Liste als ausdrücklicher Löschmarker
+        // mit, sonst holte der serverseitige Merge entfernte Anker zurück.
+        ...(isDraftUpdate || anchorDocumentsForDraft().length > 0
+          ? { anchorDocuments: anchorDocumentsForDraft() }
           : {}),
         ...(isDraftUpdate || isSourceFormDirty(sourceForm) ? { sourceForm } : {}),
         ...(isDraftUpdate || extQuery.trim() ? { extQuery } : {}),
@@ -1403,12 +1702,27 @@ export function Capture(): JSX.Element {
   const loadDraft = (d: Draft): void => {
     setErr(null);
     setCaptureWorkspaceOpen(true);
+    // AUFTRAG-mega21 Block C-2: DER SERVER WEISS ES — JETZT SAGT ES AUCH DIE OBERFLÄCHE.
+    //
+    // `listDraftsForResume` prüft für jeden Entwurf, ob seine gesicherten Originale noch im
+    // Objektspeicher liegen, und liefert die fehlenden in `anchorsMissing`. Fehlt eines, dünnt der
+    // Server den Entwurf aus: der übernommene Body kommt NICHT zurück (er wäre Dokumentinhalt ohne
+    // Herkunft) und die verwaisten Belegstellen ebenfalls nicht. Diese Entscheidung ist richtig.
+    //
+    // Falsch war nur, was danach geschah: die Oberfläche las das Feld nicht und lud den bereits
+    // bereinigten Inhalt kommentarlos. Der Nutzer sah einen Entwurf, aus dem sein Text verschwunden
+    // war, ohne einen Grund zu bekommen — und konnte ihn in diesem Zustand überschreiben. Das ist
+    // dasselbe Muster wie `followUpsFailed`: das Produkt weiß etwas und sagt es nicht.
+    setResumeAnchorsMissing(d.anchorsMissing ?? []);
     const p = d.payload;
     // SCRUM-457: nicht mehr aus dem Inhalt raten — der gespeicherte Herkunfts-Marker entscheidet
     // (Alt-Entwürfe ohne Marker: Rückfall-Heuristik in resumeTargetForDraft).
     const target = resumeTargetForDraft(p);
     if (target === "frontdoor") {
-      navigate(`${CAPTURE_FRONT_DOOR_ROUTE}?draft=${encodeURIComponent(d.id)}`);
+      // AUFTRAG-mega12 Block A: UMGESTELLT. Das Öffnen eines FREMDEN Entwurfs verlässt `/erfassen`
+      // und würde die laufende, ungespeicherte Eingabe still überschreiben — genau der Verlustpfad
+      // aus SB-2. Der Wächter fragt vorher; ist nichts offen, läuft es unverändert durch.
+      guardedNavigate(`${CAPTURE_FRONT_DOOR_ROUTE}?draft=${encodeURIComponent(d.id)}`);
       return;
     }
     // gemeinsame Metadaten (erweiterte Felder)
@@ -1427,6 +1741,27 @@ export function Capture(): JSX.Element {
     // das ehrlich, und EIN Klick auf „Suchen" lädt sie neu (bewusster Nutzer-Klick, kein Auto-Fetch).
     setReviewerIds(p.reviewerIds ?? []);
     setPendingSources(fromDraftSources(p.pendingSources ?? []));
+    // AUFTRAG-mega20 Block D: die gesicherten ORIGINALE kehren als Ankerdokumente zurück. Ohne sie
+    // hätten die wiederhergestellten Belegstellen zwar ihren Schlüssel, aber kein Dokument, auf das
+    // er zeigt — der Einreich-Weg fände keine verankerten Quellen und liefe wieder in den einfachen
+    // Promote-Pfad. Genau dieser Umweg erzeugte bis mega19 ein Wissensobjekt mit Dokumentinhalt
+    // ohne Herkunft.
+    //
+    // `data` bleibt leer: die BYTES trägt der Entwurf nicht (und soll er nicht). Für den Anker
+    // braucht es sie auch nicht — er reist als geprüfte `objectId`, nicht als Inhalt. Die Folge ist
+    // benannt: wird dieselbe Datei nach dem Fortsetzen erneut übernommen, erkennt
+    // `secureAnchorDocument` sie nicht wieder und lädt sie ein zweites Mal hoch. Ein doppeltes
+    // Original ist der harmlose Preis; die Alternative (Bytes im Entwurf) wäre ein Vielfaches an
+    // Datenhaltung für einen Randfall.
+    setDocs(
+      (p.anchorDocuments ?? []).map((a) => ({
+        id: a.key,
+        name: a.name,
+        mime: a.mime,
+        data: "",
+        objectId: a.objectId,
+      })),
+    );
     setSourceForm(
       p.sourceForm ? { ...EMPTY_SOURCE_FORM, ...p.sourceForm } : { ...EMPTY_SOURCE_FORM },
     );
@@ -1651,6 +1986,9 @@ export function Capture(): JSX.Element {
     setCaptureWorkspaceOpen(false);
     setMode("freitext");
     setWizStep("tell");
+    // AUFTRAG-mega12 Block A: NICHT umgestellt, mit Absicht. `cancelFileImport` IST das bewusste
+    // Verwerfen: der Zustand ist eine Zeile darüber schon geräumt, es kann nichts mehr verloren gehen,
+    // und die Route bleibt `/erfassen`. Ein Wächter würde nach dem Verwerfen ein zweites Mal fragen.
     navigate("/erfassen", { replace: true, state: null });
     window.setTimeout(() => {
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1735,11 +2073,38 @@ export function Capture(): JSX.Element {
     () => unsavableSourceUrls(sourceForm, pendingSources),
     [sourceForm, pendingSources],
   );
+  // AUFTRAG-mega20 Block D: die Dokumente, die der Entwurf WIRKLICH nicht sichern kann — also alle
+  // AUSSER den Ankerdokumenten (deren gesicherte Referenz reist im Entwurf mit, s. unten).
+  const unsavableDocs = useMemo(
+    () =>
+      docs.filter(
+        (doc) =>
+          !(
+            doc.objectId &&
+            pendingSources.some((src) => src.anchorKey === doc.id && src.objectId === doc.objectId)
+          ),
+      ),
+    [docs, pendingSources],
+  );
   // useMemo: stabile Referenz — die Liste hängt als Abhängigkeit am Navigationswache-Effekt.
   const unsavableDirtyReasons = useMemo<string[]>(
     () => [
       ...(images.length > 0 ? [t("capture.unsavable.images", { count: images.length })] : []),
-      ...(docs.length > 0 ? [t("capture.unsavable.docs", { count: docs.length })] : []),
+      // AUFTRAG-mega20 Block D: ANKERDOKUMENTE ZÄHLEN HIER NICHT MEHR MIT.
+      //
+      // Diese Liste ist die EHRLICHE GRENZE des Speicher-Vertrags — sie darf weder zu wenig noch
+      // zu VIEL behaupten. Bis mega19 galt jedes mitgeführte Dokument als nicht sicherbar, und das
+      // stimmte auch: der Entwurf trug weder Bytes noch Referenz. Seit Block D trägt er die
+      // REFERENZ (objectId + Zuordnung), das Original liegt bereits im Objektspeicher, und der
+      // Server prüft beides beim Fortsetzen. Ein Ankerdokument als „wird beim Speichern verworfen"
+      // zu melden, wäre ab jetzt schlicht falsch — und zwar in der teuren Richtung: der Nutzer
+      // müsste einen Verlust bestätigen, den es nicht gibt, oder bräche das Speichern ab.
+      //
+      // Reine Anhänge (Bilder, mitgebrachte Dateien OHNE übernommenen Inhalt) bleiben unverändert
+      // in der Liste: für sie gilt der alte Satz weiterhin unverändert.
+      ...(unsavableDocs.length > 0
+        ? [t("capture.unsavable.docs", { count: unsavableDocs.length })]
+        : []),
       ...(hasPendingFileImport ? [t("capture.unsavable.file", { name: fileName ?? "" })] : []),
       ...(fileQueue
         ? [
@@ -1755,19 +2120,68 @@ export function Capture(): JSX.Element {
         ? [t("capture.unsavable.sourceUrl", { urls: unsavableUrls.join(" · ") })]
         : []),
     ],
-    [images, docs, hasPendingFileImport, fileName, fileQueue, extResults, unsavableUrls, t],
+    [
+      images,
+      unsavableDocs,
+      hasPendingFileImport,
+      fileName,
+      fileQueue,
+      extResults,
+      unsavableUrls,
+      t,
+    ],
   );
-  useEffect(() => {
-    if (!isCaptureDirty) {
-      return;
+  // AUFTRAG-mega11 Block B-1: der hier bewährte beforeunload-Effekt steht jetzt EINMAL in
+  // app/NavGuardContext (useUnloadGuard) — die Vordertür benutzt denselben, statt ihn abzuschreiben.
+  useUnloadGuard(isCaptureDirty);
+
+  // ============================================================================================
+  // AUFTRAG-mega22 Block F — DIE EINE SPEICHER-TORFUNKTION.
+  // ============================================================================================
+  //
+  // DER BEFUND (bens SB-F). Der sichtbare Speichern-Knopf band korrekt an `canSaveDraft`, das
+  // `resumeAnchorsMissing.length === 0` verlangte. Die In-App-NAVIGATIONSWACHE rief dagegen direkt
+  // `saveDraft.mutateAsync()` und prüfte WEDER `canSaveDraft` NOCH `resumeAnchorsMissing`.
+  // „Speichern und wechseln" schrieb den ausgedünnten Stand also über den gespeicherten — TROTZ
+  // sichtbarer Sperre.
+  //
+  // WARUM DAS SCHLIMMER IST ALS GAR KEINE SPERRE. Eine Sperre, die man umgehen kann, erzeugt
+  // Vertrauen, das nicht gedeckt ist. Der Nutzer sieht einen grauen Knopf, schliesst daraus „hier
+  // kann nichts passieren" — und verliert seinen Body über einen Menüklick. Für ein Produkt, dessen
+  // Anspruch Beweispflicht statt Plausibilität ist, ist eine ungedeckte Zusage der teuerste Fehler.
+  //
+  // DIE REGEL AB HIER: es gibt GENAU EINEN Ort, an dem entschieden wird, ob gespeichert werden darf.
+  // Knopf, Navigationswache und jeder Tastaturweg fragen DIESE Funktion. Ein zweiter Ort wäre eine
+  // zweite Gelegenheit, sie auseinanderlaufen zu lassen — und die zweite hätte niemand geprüft.
+  //
+  // WAS DAS TOR BEANTWORTET UND WAS NICHT — die Trennung ist tragend und wurde beim Bau dieses
+  // Blocks EINMAL falsch gemacht, deshalb steht sie hier ausgeschrieben:
+  //
+  //   · DARF gespeichert werden? — DAS ist die Frage des Tors, und sie gilt für JEDEN Aufrufer
+  //     gleich. Sie hat genau einen Grund, Nein zu sagen: es fehlen Originale.
+  //   · GIBT ES etwas zu speichern? — das ist NICHT dieselbe Frage, und sie wird je nach Aufrufer
+  //     verschieden beantwortet. Der KNOPF verlangt getippten Inhalt (er soll ein leeres Formular
+  //     nicht zum Speichern anbieten). Die WACHE hat ihr eigenes, WEITERES Dirty-Prädikat
+  //     (`hasUnsavedEntry || hasUnsavedMeta || ivStarted || ivResult`) — sie muss auch einen Stand
+  //     sichern, in dem NUR Prüferauswahl, Vertraulichkeit oder eine halbe Quelle geändert wurden,
+  //     ohne dass je ein Titel getippt wurde (`saveDraft` setzt dafür einen Ersatztitel).
+  //
+  // Beide Fragen in ein Prädikat zu ziehen, wäre die bequeme Vereinheitlichung — und sie wäre
+  // falsch: die Wache verlöre genau die Zustände, für die sie gebaut wurde. Das Tor beantwortet
+  // deshalb NUR die erste Frage. Das ist kein zweiter Entscheidungsort: „darf" steht hier, einmal,
+  // für alle; „lohnt sich" ist eine Angebotsfrage der jeweiligen Oberfläche.
+  //
+  // `grund` ist nicht Zierrat: die Wache muss dem Nutzer sagen KÖNNEN, warum sie nicht speichert,
+  // sonst steht er vor einem Dialog, der nichts tut.
+  const speicherTor = useMemo<{ erlaubt: boolean; grund: string | null }>(() => {
+    // FEHLENDE ORIGINALE. Der Server hat den Entwurf ausgedünnt (Body raus, verwaiste
+    // Belegstellen raus); ein Speichern jetzt schriebe genau diesen ausgedünnten Stand über den
+    // gespeicherten — endgültig, ohne dass der Nutzer je erfahren hätte, WAS und WARUM fehlte.
+    if (resumeAnchorsMissing.length > 0) {
+      return { erlaubt: false, grund: t("capture.anchorsMissingNext") };
     }
-    const onBeforeUnload = (e: BeforeUnloadEvent): void => {
-      e.preventDefault();
-      e.returnValue = "";
-    };
-    window.addEventListener("beforeunload", onBeforeUnload);
-    return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [isCaptureDirty]);
+    return { erlaubt: true, grund: null };
+  }, [resumeAnchorsMissing, t]);
 
   // Bug (Pedi 04.07./05.07.): In-App-Seitenwechsel (Menü, Command-Palette) fängt jetzt der Navigations-
   // Wächter ab — Nachfrage „Bleiben · Verwerfen · Entwurf speichern", bevor Inhalt verloren geht.
@@ -1787,6 +2201,17 @@ export function Capture(): JSX.Element {
         // Callback hier ohne saveDraft und die Navigation lief trotzdem weiter. saveDraft persistiert
         // diese Felder vollständig (s. DraftPayload/interviewForDraft oben).
         if (hasUnsavedEntry || hasUnsavedMeta || ivStarted || ivResult) {
+          // AUFTRAG-mega22 Block F: DASSELBE Tor wie der sichtbare Knopf. Bis mega21 rief dieser
+          // Zweig `saveDraft.mutateAsync()` DIREKT und umging damit die Sperre, die daneben sichtbar
+          // stand. Ist das Tor zu, wird NICHT gespeichert und NICHT gewechselt: der Dialog bleibt
+          // offen (der throw hält ihn), und die Seite nennt den Grund. Ein stiller Wechsel wäre
+          // hier das Schlimmste — er liesse den Nutzer glauben, sein Stand sei gesichert.
+          if (!speicherTor.erlaubt) {
+            if (speicherTor.grund) {
+              setErr(speicherTor.grund);
+            }
+            throw new Error("speicherTorGeschlossen");
+          }
           await saveDraft.mutateAsync();
         }
         if (filePoints && filePoints.length > 0 && fileName) {
@@ -1837,6 +2262,9 @@ export function Capture(): JSX.Element {
     i18n.language,
     t,
     push,
+    // AUFTRAG-mega22 Block F: die Wache hängt jetzt AM Tor — ändert sich seine Entscheidung
+    // (z. B. weil ein Original neu gebunden wurde), wird sie mit dem neuen Stand neu gesetzt.
+    speicherTor,
   ]);
 
   // SCRUM-403: gemeinsame Rekorder-Fabrik für beide Diktat-Ziele (Freitext + Interview-Antwort).
@@ -1945,6 +2373,138 @@ export function Capture(): JSX.Element {
       ...d,
       { id: crypto.randomUUID(), name: f.name, mime: f.type || "application/octet-stream", data },
     ]);
+  };
+
+  // AUFTRAG-mega17 Block A-2: das Dokument, aus dem gerade Inhalt übernommen wurde, als ANHANG
+  // mitführen — und seinen lokalen Schlüssel zurückgeben. Beim Einreichen hängt derselbe Submit es
+  // an das neu entstandene Wissensobjekt (Phase B) und macht damit aus dem Schlüssel eine echte
+  // objectId, die die Belegstellen als Anker tragen. Bewusst KEIN eigener Anhangsweg: es ist ein
+  // ganz normaler Dokumentanhang und zählt mit gegen dieselbe Grenze.
+  // Dieselbe Datei zweimal übernehmen ⇒ derselbe Anhang (Vergleich über Name, Typ und Inhalt).
+  // Kein freier Platz mehr ⇒ leerer Schlüssel: dann entsteht KEIN Anker, und das Fehlen der
+  // Herkunft wird nach dem Einreichen ausdrücklich benannt statt still hingenommen.
+  // AUFTRAG-mega18 Block A/B: DER ANKER WIRD GESICHERT, BEVOR INHALT ÜBERNOMMEN WIRD.
+  //
+  // Bis mega17 hieß diese Funktion `rememberAnchorDocument` und tat genau das: sie MERKTE sich das
+  // Dokument und gab einen LOKALEN Schlüssel zurück. Die echte objectId entstand erst beim
+  // Einreichen. Der Kommentar in lib/captureSources.ts beschrieb die Folge richtig — „ein
+  // wiederhergestellter Anker ohne Anhang wäre eine Behauptung ohne Deckung" — und zog daraus den
+  // falschen Schluss, den Anker weglassen zu müssen. Die Antwort ist nicht, den Anker wegzulassen,
+  // sondern dafür zu sorgen, dass der Anhang existiert: das Original wandert JETZT in den
+  // Objektspeicher, und ab da hat die Referenz Deckung.
+  //
+  // Scheitert der Upload, gibt es KEINEN Anker — und dann wird auch kein Inhalt übernommen
+  // (`runDocumentAppend` unten bricht ab). Das ist kein stiller Verlust, sondern ein Abbruch mit
+  // Grund; genau die Richtung, die dieser Auftrag verlangt.
+  const secureAnchorDocument = async (
+    doc: OriginalDocument,
+  ): Promise<{ key: string; objectId: string } | null> => {
+    const known = docs.find(
+      (d) => d.name === doc.name && d.mime === doc.mime && d.data === doc.data && d.objectId,
+    );
+    if (known?.objectId) {
+      // Dieselbe Datei zweimal übernehmen ⇒ dasselbe gesicherte Original, kein zweiter Upload.
+      return { key: known.id, objectId: known.objectId };
+    }
+    if (images.length + docs.length >= uploadLimitsData.maxAttachments) {
+      // Kein freier Platz: der Anker könnte serverseitig nicht als Anhang entstehen. Ehrlich
+      // abbrechen, statt Inhalt ohne Beleg zu übernehmen.
+      setErr(
+        t("capture.attachLimitReached", {
+          taken: 0,
+          total: 1,
+          limit: uploadLimitsData.maxAttachments,
+        }),
+      );
+      return null;
+    }
+    let ref: { id: string };
+    try {
+      ref = await endpoints.objects.upload({
+        name: doc.name,
+        mime: doc.mime,
+        data: doc.data,
+        kind: "document",
+        // AUFTRAG-mega20 Block C: der Zweck wird DEKLARIERT, nicht geraten. Dieses Original wird
+        // Anker eines Wissensobjekts und ist damit Teil der Belegkette — das am strengsten
+        // aufzubewahrende Objekt, das dieser Weg erzeugt.
+        purpose: "anchor",
+        ...(draftId ? { draftId } : {}),
+      });
+    } catch (error) {
+      setErr(
+        t(
+          classifyUploadError(error) === "too-large"
+            ? "capture.attachTooLarge"
+            : "capture.originalAttachFailed",
+          { name: doc.name },
+        ),
+      );
+      return null;
+    }
+    const key = crypto.randomUUID();
+    setDocs((d) => [
+      ...d,
+      { id: key, name: doc.name, mime: doc.mime, data: doc.data, objectId: ref.id },
+    ]);
+    return { key, objectId: ref.id };
+  };
+
+  // AUFTRAG-mega18 Block A-3: der EINE Weg, auf dem Dokumentinhalt in den Entwurf kommt.
+  //
+  // Reihenfolge, und sie ist tragend: (1) das Original im Objektspeicher SICHERN, (2) erst dann den
+  // Inhalt in den Entwurf übernehmen und die Belegstellen mit ihrem echten Anker in die Warteliste
+  // legen. Ohne (1) passiert (2) NICHT — kein Inhalt ohne gesicherten Beleg, und der Abbruch nennt
+  // seinen Grund.
+  //
+  // AUFTRAG-mega19 Block B: gebunden werden Anker und Belege beim Einreichen — und zwar GEMEINSAM
+  // MIT DEM INHALT, in EINEM serverseitigen Vorgang (endpoints.ko.createFromDocument). Bis mega18
+  // ging der Body zuerst raus und die Herkunft folgte in eigenen Aufrufen; genau dieses Fenster ist
+  // geschlossen.
+  //
+  // EHRLICHE GRENZE, die hier stehen bleiben soll: bis zum Einreichen lebt die gesicherte
+  // Originalreferenz nur im flüchtigen `docs`-Zustand. Ein gespeicherter Entwurf trägt sie NICHT
+  // (toDraftSources entfernt `anchorKey`/`objectId`) — nach „Fortsetzen" steht der übernommene
+  // Dokumenttext also ohne seine Referenz im Body. Das ist Block D dieses Auftrags und hier nicht
+  // behoben; der Vermerk steht, damit es niemand für erledigt hält.
+  const runDocumentAppend = async (
+    pts: ExtractedPoint[],
+    name: string,
+    original: OriginalDocument | null,
+  ): Promise<boolean> => {
+    if (!original) {
+      // Ohne Dokument kann kein Anker entstehen — dieselbe Regel wie serverseitig, nur früher.
+      setErr(t("xtr.append.missingAnchor"));
+      return false;
+    }
+    const secured = await secureAnchorDocument(original);
+    if (!secured) {
+      // `secureAnchorDocument` hat den ehrlichen Grund schon gesetzt (Grenze bzw. Upload).
+      return false;
+    }
+    setBodyHtml((prev) =>
+      appendExtractSections(prev, pts, name, normalizeExtractLocale(i18n.language)),
+    );
+    setPendingSources((list) =>
+      pts.reduce(
+        (acc, p) =>
+          addPendingSource(acc, {
+            ...fileSourcePayload(name, p),
+            // Der lokale Schlüssel bleibt die Brücke zum Ankerdokument; die ECHTE objectId reist
+            // ebenfalls mit, weil sie ab jetzt existiert und Deckung hat.
+            anchorKey: secured.key,
+            objectId: secured.objectId,
+          }),
+        list,
+      ),
+    );
+    // AUFTRAG-mega22 Block F: HIER fällt die Speichersperre — nach ERFOLGREICHER Ankerbindung, nicht
+    // beim blossen Öffnen des Panels. Ab dieser Zeile trägt der Entwurf wieder ein gesichertes
+    // Original mit echter `objectId`; der Zustand, den die Warnung meldete, ist geheilt und nicht
+    // nur weggeklickt.
+    setResumeAnchorsMissing([]);
+    setErr(null);
+    return true;
   };
 
   // WP-D7d (bens Härtung 1b): die angezeigte maxAttachments-Grenze VOR dem Upload durchsetzen — die
@@ -2413,6 +2973,10 @@ export function Capture(): JSX.Element {
         data: d.data,
         kind: "video",
         confidentiality,
+        // AUFTRAG-mega20 Block C: TRANSIENTES MEDIUM — nur hochgeladen, damit die Transkription
+        // darauf laufen kann. Es ist nicht dafür gedacht, dauerhaft referenziert zu werden; ohne
+        // diesen Marker sähe es später aus wie ein verwaister Anhang.
+        purpose: "media",
       });
       // Die Analyse reicht die Stufe nur noch als optionale HOCHSTUFUNG durch — herabstufen kann sie nicht.
       const res = await endpoints.media.analyze(ref.id, locale, confidentiality);
@@ -2424,10 +2988,19 @@ export function Capture(): JSX.Element {
         );
         setNotice(t("capture.videoDone", { name: d.name }));
       } else {
-        setNotice(null);
-        setErr(res.note);
+        // AUFTRAG-mega14 Block G (SCRUM-382): der ehrliche Rückfall ist KEIN Fehler.
+        //
+        // `services/media/src/service.ts:131-142` liefert bewusst kein erfundenes Transkript,
+        // sondern einen Klartext-Hinweis („kein Dienst-Schlüssel hinterlegt" bzw. „vertrauliche
+        // Inhalte werden nicht an eine externe KI gesendet"). Der stand hier bis mega14 in
+        // `setErr` — also in Warnrot, wie ein Absturz. Genau daraus liest ein Prüfer „die Funktion
+        // ist kaputt/nicht da", obwohl sie da und nur nicht konfiguriert ist. Der Hinweis gehört in
+        // die Hinweiszeile, nicht in die Fehlerzeile.
+        setErr(null);
+        setNotice(res.note);
       }
     } catch (e) {
+      // Ein ECHTER Fehler (Netz, Berechtigung, Serverabbruch) bleibt ein Fehler.
       setNotice(null);
       setErr(e instanceof ApiError ? e.message : t("state.error"));
     } finally {
@@ -2499,15 +3072,52 @@ export function Capture(): JSX.Element {
   // E2E-004: „Als Entwurf speichern" verlangt mind. Aussage ODER Titel — leere/Whitespace-only
   // Entwürfe werden gesperrt (der Server lehnt sie zusätzlich ab). Titel/Aussage stammen aus dem
   // Struktur-Entwurf oder dem Rohtext.
+  // AUFTRAG-mega9 Block C (KW-E2E-003): Im INTERVIEWWEG tippt der Nutzer keinen Rohtext, und es
+  // entsteht kein Struktur-Entwurf — er beantwortet Fragen. Genau diese Antworten kamen in der
+  // Bedingung nicht vor, deshalb blieb „Als Entwurf speichern" grau, egal wie viel schon erzählt
+  // war: der sichere Abbruch mitten im Interview war unmöglich, wer das Fenster schloss, verlor
+  // seine Antworten.
+  //
+  // Beantwortete Turns SIND sicherbarer Inhalt — interviewForDraft persistiert sie samt der gerade
+  // getippten Antwort (mega5), und hasUnsavedEntry zählt sie längst als „dirty". Ohne sie hier war
+  // die Seite in genau dem Widerspruch, den der Speicher-Vertrag verbietet: als ungespeichert
+  // gemeldet, aber nicht speicherbar.
+  //
+  // Bewusst NICHT an interview.isPending gebunden: dass gerade die NÄCHSTE Frage geladen wird, ist
+  // ein Zustand des laufenden Turns und darf den bereits GESICHERTEN Stand nicht blockieren (der
+  // Prüfer: „nextQuestionPending getrennt vom gespeicherten Interviewstand modellieren"). `busy`
+  // oben enthält interview.isPending deshalb weiterhin nicht.
+  const hasSavableInterviewProgress =
+    ivAnswers.some((a) => a.trim().length > 0) || ivAnswer.trim().length > 0;
+  // AUFTRAG-mega22 Block F: die SPERRE steht nicht mehr hier, sondern in `speicherTor` (oben, mit
+  // ihrer Begründung) — daran hängen Knopf, Navigationswache und der Bestätigungsweg gemeinsam.
+  // Bis mega21 stand sie HIER, und die Navigationswache hatte ihre eigene, schwächere Auffassung
+  // davon; genau das war bens SB-F.
+  //
+  // Was HIER bleibt, ist die ANGEBOTSFRAGE des Knopfes: E2E-004 verlangt mindestens Titel ODER
+  // Aussage (der Server lehnt Leeres zusätzlich ab). Im INTERVIEWWEG zählen beantwortete Turns mit
+  // (mega9 Block C / KW-E2E-003) — sie SIND sicherbarer Inhalt, und ohne sie war der sichere
+  // Abbruch mitten im Interview unmöglich.
   const canSaveDraft =
-    raw.trim().length > 0 ||
-    (draft?.statement.trim().length ?? 0) > 0 ||
-    (draft?.title.trim().length ?? 0) > 0;
+    speicherTor.erlaubt &&
+    (raw.trim().length > 0 ||
+      (draft?.statement.trim().length ?? 0) > 0 ||
+      (draft?.title.trim().length ?? 0) > 0 ||
+      hasSavableInterviewProgress);
   // AUFTRAG-mega5 Block A (bens Verlustpfad 3): der MANUELLE „Als Entwurf speichern"-Knopf leerte
   // Bilder/Dokumente nach dem Erfolg still (:1274-1275 im geprüften Stand). Jetzt verlangt er bei
   // nicht sicherbaren Inhalten erst die ausdrückliche, namentliche Bestätigung — gespeichert wird
   // ohne sie nicht.
   const requestManualSave = (): void => {
+    // AUFTRAG-mega22 Block F: auch der Knopfweg fragt das Tor, nicht nur das `disabled`-Attribut.
+    // Ein `disabled` ist eine Anzeige, keine Regel — ein Tastaturweg oder ein programmatischer
+    // Klick käme daran vorbei, und dann schriebe der Knopf, was der graue Knopf zu verbieten scheint.
+    if (!speicherTor.erlaubt) {
+      if (speicherTor.grund) {
+        setErr(speicherTor.grund);
+      }
+      return;
+    }
     if (unsavableDirtyReasons.length > 0) {
       setConfirmSaveLimit(true);
       return;
@@ -2516,6 +3126,15 @@ export function Capture(): JSX.Element {
   };
   const saveDespiteLimits = (): void => {
     setConfirmSaveLimit(false);
+    // Auch hier: die Bestätigung gilt den benannten, nicht sicherbaren Inhalten — sie hebt das
+    // Speicher-Tor NICHT auf. Wer „trotzdem speichern" wählt, während ein Original fehlt, bekäme
+    // sonst genau den ausgedünnten Überschreibvorgang, den Block F verhindert.
+    if (!speicherTor.erlaubt) {
+      if (speicherTor.grund) {
+        setErr(speicherTor.grund);
+      }
+      return;
+    }
     // Bewusst bestätigt: die benannten, nicht sicherbaren Inhalte werden verworfen. Bilder, Dokumente
     // und Trefferliste räumt der Save-Erfolgspfad; den Datei-Import-/Queue-Zustand räumen wir hier
     // explizit, denn er hängt nicht am saveDraft-Erfolg.
@@ -2554,6 +3173,11 @@ export function Capture(): JSX.Element {
     ) : null;
   const reviewerLimitReached = reviewerIds.length >= DRAFT_LIMITS.reviewers;
   const sourceLimitReached = pendingSources.length >= DRAFT_LIMITS.sources;
+  // AUFTRAG-mega17 Block A: der Hinweis am manuellen Quellenformular — VOR dem Einreichen, nicht
+  // danach. Dieselbe reine Funktion und dieselben i18n-Schlüssel wie im Prüfbereich; kein zweiter
+  // Hinweismechanismus. Er hängt an dem, was im Adressfeld steht: eine öffentliche Adresse und eine
+  // Quelle ganz ohne Adresse scheitern an verschiedenen Stellen des Vertrags.
+  const sourceGateHint = sourceAttachHint(extPolicyStage, sourceForm.url);
 
   // SCRUM-375: wie viele erweiterte Felder schon Inhalt tragen — für das „X ausgefüllt"-Badge.
   const advancedSummary = advancedFieldsSummary({
@@ -2587,12 +3211,14 @@ export function Capture(): JSX.Element {
         kicker={t("capture.kicker")}
         title={t("capture.title")}
         actions={
-          <Link
+          // AUFTRAG-mega12 Block A (bens Fundstelle 1): UMGESTELLT. Verlässt `/erfassen` zur
+          // Vordertür — ein Ein-Klick-Ausgang aus einer Eingabeseite.
+          <GuardedLink
             className="text-sm font-semibold text-muted hover:text-ink"
             to={CAPTURE_FRONT_DOOR_ROUTE}
           >
             Dokument-Canvas
-          </Link>
+          </GuardedLink>
         }
       />
       {/* SCRUM-296: Demo-/Pilotpfad auf der Erfassungsseite wiedererkennbar (nur bei ?demo=stage1). */}
@@ -2608,12 +3234,14 @@ export function Capture(): JSX.Element {
               Dokument-Canvas für Titel, Inhalt, Formatierung, Bilder und Entwurf-Fortsetzen.
             </p>
           </div>
-          <Link
+          {/* AUFTRAG-mega12 Block A (bens Fundstelle 2): UMGESTELLT. Der prominenteste Ausgang der
+              Seite ("Standardweg") — verlässt `/erfassen` zur Vordertür. */}
+          <GuardedLink
             to={CAPTURE_FRONT_DOOR_ROUTE}
             className="inline-flex items-center justify-center rounded-btn bg-ink px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
           >
             Dokument-Canvas öffnen <span aria-hidden="true">→</span>
-          </Link>
+          </GuardedLink>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-hairline pt-3 text-[12.5px] text-muted">
           <span className="flex-1">
@@ -2657,20 +3285,114 @@ export function Capture(): JSX.Element {
             nächsten Öffnen wieder leer.
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <Link
+            {/* AUFTRAG-mega12 Block A (bens Fundstelle 3, erster Link): UMGESTELLT. Der Hinweis auf den
+                gespeicherten Vordertür-Entwurf steht auf der Erfassungsseite; der Nutzer kann in der
+                Zwischenzeit hier weitergeschrieben haben. Dieser Ausgang würde das still verlieren. */}
+            <GuardedLink
               to={`${CAPTURE_FRONT_DOOR_ROUTE}?draft=${encodeURIComponent(frontDoorDraftSaved.id)}`}
               className="inline-flex items-center gap-1 rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
             >
               Entwurf fortsetzen <span aria-hidden="true">→</span>
-            </Link>
-            <Link
+            </GuardedLink>
+            {/* AUFTRAG-mega12 Block A (bens Fundstelle 3, zweiter Link): UMGESTELLT, gleiche Begründung. */}
+            <GuardedLink
               to={CAPTURE_FRONT_DOOR_ROUTE}
               className="inline-flex items-center gap-1 rounded-btn border border-hairline bg-page px-3 py-1.5 text-[12.5px] font-semibold text-text hover:bg-hairline-soft"
             >
               Neuer leerer Eintrag <span aria-hidden="true">→</span>
-            </Link>
+            </GuardedLink>
             <Button variant="ghost" onClick={() => setFrontDoorDraftSaved(null)}>
               Hinweis ausblenden
+            </Button>
+          </div>
+        </Card>
+      ) : null}
+
+      {/* ==========================================================================================
+          AUFTRAG-mega22 Block E — DER RÜCKWEG AUS DEM 409.
+          ==========================================================================================
+          Sie steht auf SEITENEBENE, aus demselben Grund wie die Ankerwarnung darunter: der Nutzer
+          hat gerade auf „Einreichen" geklickt und sieht hierher. Ohne diese Karte wiederholte jeder
+          weitere Klick denselben 409 — eine Sackgasse, aus der nur ein Neuladen half.
+
+          DER KNOPF ERSETZT DEN SCHLÜSSEL BEWUSST: der Nutzer tut es, nicht die Oberfläche hinter
+          seinem Rücken. Deshalb wird der Schlüssel bei 409 weiterhin NICHT automatisch fallen
+          gelassen (lib/createOperation.ts) — ein stiller Ersatz verwandelte einen erkannten
+          Konflikt in eine zweite Anlage, ohne dass jemand zugestimmt hätte.
+
+          UND ES GIBT IHN NICHT IMMER: bei `CREATE_REPAIR_REQUIRED` bleibt `restartOffer` null, die
+          Karte erscheint nicht, und der Schlüssel bleibt stehen. Dort wartet ein Wissensobjekt auf
+          Prüfung; ein neuer Vorgang legte ein zweites an und liesse das erste zurück. */}
+      {restartOffer ? (
+        <Card className="mb-4 border-trust-warn-fill/40 bg-trust-warn-bg">
+          <p className="text-[13px] font-semibold text-trust-warn-text">
+            {t("capture.restartOfferTitle")}
+          </p>
+          {/* Die Meldung des SERVERS, wörtlich — sie ist genauer als jeder Text, den die
+              Oberfläche raten könnte. */}
+          <p className="mt-1 text-[12.5px] leading-relaxed text-trust-warn-text/90">
+            {restartOffer}
+          </p>
+          <p className="mt-1 text-[12.5px] leading-relaxed text-trust-warn-text">
+            {t("capture.restartOfferBody")}
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Button
+              onClick={() => {
+                // DIE HANDLUNG, DIE WIRKT: der nächste Anlage-Request trägt einen ANDEREN
+                // Vorgangsschlüssel. `submit.mutate()` erzeugt ihn frisch, weil die Ref leer ist.
+                submitOperationRef.current = null;
+                setRestartOffer(null);
+                setErr(null);
+              }}
+            >
+              {t("capture.restartOfferAction")}
+            </Button>
+          </div>
+        </Card>
+      ) : null}
+
+      {/* ==========================================================================================
+          AUFTRAG-mega21 Block C-2 — FEHLENDE ORIGINALE WERDEN AUSDRÜCKLICH ANGEZEIGT.
+          ==========================================================================================
+          Sie steht auf SEITENEBENE und nicht im Arbeitsbereich: der Grund für den fehlenden Text
+          muss dort stehen, wo der Nutzer nach dem Fortsetzen zuerst hinsieht, nicht drei
+          Ausklapper tief. Zwei Handlungen, beide wirksam: das Original erneut auswählen (öffnet das
+          Übernahme-Panel) oder ausdrücklich ohne es weiterarbeiten. Bis eine von beiden gewählt
+          ist, bleibt „Als Entwurf speichern" gesperrt (s. canSaveDraft). */}
+      {resumeAnchorsMissing.length > 0 ? (
+        <Card className="mb-4 border-trust-crit-fill/40 bg-trust-crit-bg">
+          <p className="text-[13px] font-semibold text-trust-crit-text">
+            {t("capture.anchorsMissingTitle")}
+          </p>
+          <p className="mt-1 text-[12.5px] leading-relaxed text-trust-crit-text/90">
+            {t("capture.anchorsMissingBody", { count: resumeAnchorsMissing.length })}
+          </p>
+          <p className="mt-1 text-[12.5px] font-medium leading-relaxed text-trust-crit-text">
+            {t("capture.anchorsMissingNext")}
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Button
+              onClick={() => {
+                // AUFTRAG-mega22 Block F: DAS ÖFFNEN ALLEIN ENTSPERRT NICHT MEHR.
+                //
+                // Bis mega21 stand hier zusätzlich `setResumeAnchorsMissing([])` — die Warnung war
+                // weg und der Speichern-Knopf wieder aktiv, BEVOR eine Datei gewählt oder ein Anker
+                // gesichert war. Der Kommentar behauptete „erst danach fällt die Speichersperre",
+                // der Code tat das Gegenteil, und der gemountete Test pinnte genau diese verfrühte
+                // Entsperrung fest (mega21-capture-mounted.test.tsx). Er ist umgedreht.
+                //
+                // Die Sperre fällt jetzt in `runDocumentAppend`, also nach ERFOLGREICHER neuer
+                // Ankerbindung — dort, wo der Zustand tatsächlich geheilt ist. Dieser Knopf tut,
+                // was sein Text sagt: er öffnet das Panel.
+                setExtractPanelOpenSignal((n) => n + 1);
+                setCaptureWorkspaceOpen(true);
+              }}
+            >
+              {t("capture.anchorsMissingReselect")}
+            </Button>
+            <Button variant="ghost" onClick={() => setResumeAnchorsMissing([])}>
+              {t("capture.anchorsMissingAck")}
             </Button>
           </div>
         </Card>
@@ -2696,7 +3418,7 @@ export function Capture(): JSX.Element {
               heißt ehrlich fehlgeschlagen mit Ursache (F1) — kein stilles Grün. Ohne Prüf-Vermerk
               (Altbestand/kein Worker) wird NICHTS behauptet. */}
           {(() => {
-            const check = aiCheckCardState(savedAiCheck);
+            const check = aiCheckCardState(savedAiCheck, savedConfidentiality);
             if (check.kind === "running") {
               return (
                 <p className="mt-1 flex items-center gap-1 text-[12px] text-trust-pos-text/80">
@@ -2742,21 +3464,58 @@ export function Capture(): JSX.Element {
           {/* SCRUM-374 / AG-02-SESSION: ehrlicher Teilfehler-Hinweis — das KO ist gespeichert, aber
               einzelne Anhänge nicht. Getrennt vom „gespeichert"-Erfolg, mit klarem nächstem Schritt.
               Kein „alles erfolgreich"-Gefühl bei fehlenden Anhängen. Kein Fake-Link. */}
-          {failedAttachments.length > 0 ? (
+          {/* AUFTRAG-mega17 Block A-2: fehlende HERKUNFT ist kein Anhangsfehler und bekommt einen
+              eigenen Hinweis mit eigenem Namen. Bis mega16 lief dieser Fall unter „Anhang
+              fehlgeschlagen" mit — der Nutzer erfuhr also nicht, was wirklich fehlte: der Beleg zu
+              einem Inhalt, den er aus einem Dokument übernommen hat. Der Kernvertrag heißt
+              „Beweispflicht statt Plausibilität"; dann muss auch benannt werden, wenn der Beweis
+              fehlt. Steht zuerst, weil es schwerer wiegt als eine nicht gesicherte Datei. */}
+          {missingProvenance.length > 0 ? (
+            <div className="mt-2 rounded-card border border-trust-crit-fill/40 bg-trust-crit-bg p-2.5">
+              <p className="text-[12.5px] font-semibold text-trust-crit-text">
+                {t("capture.sourceMissingTitle")}
+              </p>
+              <p className="mt-0.5 text-[11.5px] leading-relaxed text-trust-crit-text/90">
+                {t(ATTACHMENT_RECOVERY_KEYS.provenance, {
+                  count: missingProvenance.length,
+                  names: missingProvenance.map((f) => f.name).join(", "),
+                })}
+              </p>
+              <p className="mt-1 text-[11.5px] font-medium leading-relaxed text-trust-crit-text">
+                {t(ATTACHMENT_RECOVERY_KEYS.provenanceNext)}
+              </p>
+            </div>
+          ) : null}
+          {/* AUFTRAG-mega18 Block A-3: UNKLARER Ausgang. Es wurde NICHTS zurückgenommen, und es wird
+              nichts behauptet — die einzige ehrliche Auskunft ist „bitte nachsehen". Genau hier
+              stand bis mega17 die Kompensation, die den Schaden erst anrichtete. */}
+          {unclearAppends.length > 0 ? (
+            <div className="mt-2 rounded-card border border-trust-warn-fill/40 bg-trust-warn-bg p-2.5">
+              <p className="text-[12.5px] font-semibold text-trust-warn-text">
+                {t("capture.appendUnclearTitle")}
+              </p>
+              <p className="mt-0.5 text-[11.5px] leading-relaxed text-trust-warn-text/90">
+                {t(ATTACHMENT_RECOVERY_KEYS.unclear, {
+                  names: unclearAppends.map((f) => f.name).join(", "),
+                })}
+              </p>
+            </div>
+          ) : null}
+          {otherAttachFailures.length > 0 ? (
             <div className="mt-2 rounded-card border border-trust-warn-fill/40 bg-trust-warn-bg p-2.5">
               <p className="text-[12.5px] font-semibold text-trust-warn-text">
                 {t(ATTACHMENT_RECOVERY_KEYS.title)}
               </p>
               <p className="mt-0.5 text-[11.5px] leading-relaxed text-trust-warn-text/90">
                 {t(ATTACHMENT_RECOVERY_KEYS.body, {
-                  names: failedAttachments.map((f) => f.name).join(", "),
+                  names: otherAttachFailures.map((f) => f.name).join(", "),
                 })}
               </p>
               {/* WP-D2: „zu groß" wird als Grund gesondert benannt (Limit, nicht „irgendein Fehler"). */}
-              {failedAttachments.some((f) => f.reason === "too-large") ? (
+              {otherAttachFailures.some((f) => f.reason === "too-large") ? (
                 <p className="mt-0.5 text-[11.5px] leading-relaxed text-trust-warn-text/90">
                   {t(ATTACHMENT_RECOVERY_KEYS.tooLarge, {
-                    name: failedAttachments
+                    name: otherAttachFailures
                       .filter((f) => f.reason === "too-large")
                       .map((f) => f.name)
                       .join(", "),
@@ -2766,6 +3525,51 @@ export function Capture(): JSX.Element {
               <p className="mt-1 text-[11.5px] font-medium leading-relaxed text-trust-warn-text">
                 {t(ATTACHMENT_RECOVERY_KEYS.next)}
               </p>
+            </div>
+          ) : null}
+          {/* ========================================================================================
+              AUFTRAG-mega21 Block C-1 — DIE SICHTBARE TEILFEHLER-WARNUNG.
+              ========================================================================================
+              Der Server sammelt die gescheiterten Nacharbeiten und schickt sie in `followUpsFailed`
+              mit; bis mega20 wurden sie hier nicht ausgewertet. Folge: eine fehlgeschlagene
+              Prüferzuweisung und ein gescheiterter KI-Status erreichten den Ersteller nie — das
+              Wissensobjekt existierte, galt als erfolgreich und wartete auf niemanden.
+
+              Die Warnung nennt die betroffenen Schritte BEIM NAMEN (nicht „ein Schritt lief nicht")
+              und dazu die konkrete Handlung je Schritt. Sie ist keine Sackgasse: der Prüf-Job trägt
+              serverseitig jetzt einen `failed`-Vermerk, damit der vorhandene Wiederhol-Knopf auf der
+              Validierungsseite ihn auch annimmt, und die gescheiterten Schritte stehen dauerhaft am
+              Objekt (`createFollowUpsFailed`) statt nur in dieser einen Antwort.
+
+              AUFTRAG-mega23 Block B — UND SIE BEHAUPTET DIESEN VERMERK NICHT MEHR UNGEDECKT.
+              Beide Schreibvorgänge sind Best Effort; bis mega22 verschluckte der Server ihren
+              Fehlschlag, und dieser Text versprach trotzdem, die Prüfung sei vermerkt und neu
+              startbar. Jetzt trägt die Antwort die Tatsache (`followUpsRecorded`), und der zweite
+              Satz je Schritt richtet sich danach. Fehlt der Nachweis, sagt die Karte ehrlich, dass
+              der Status NICHT gespeichert werden konnte — und verspricht keine Wiederholung, die
+              der Endpunkt ablehnen würde. */}
+          {savedFollowUpsFailed.length > 0 ? (
+            <div className="mt-2 rounded-card border border-trust-warn-fill/40 bg-trust-warn-bg p-2.5">
+              <p className="text-[12.5px] font-semibold text-trust-warn-text">
+                {t("capture.followUpsFailedTitle")}
+              </p>
+              <p className="mt-0.5 text-[11.5px] leading-relaxed text-trust-warn-text/90">
+                {t("capture.followUpsFailedBody", {
+                  steps: savedFollowUpsFailed
+                    .map((step) => t(captureFollowUpStepKey(step)))
+                    .join(", "),
+                })}
+              </p>
+              <ul className="mt-1 space-y-0.5">
+                {savedFollowUpsFailed.map((step) => (
+                  <li key={step} className="text-[11.5px] leading-relaxed text-trust-warn-text">
+                    ·{" "}
+                    {t(
+                      captureFollowUpNextKey(step, savedFollowUpsRecorded?.aiCheckFailed === true),
+                    )}
+                  </li>
+                ))}
+              </ul>
             </div>
           ) : null}
           {/* WP-D10 (Fix 2): dezente, aufklappbare Dauer-Details — die ECHTEN gemessenen Phasen-Spannen
@@ -2795,7 +3599,13 @@ export function Capture(): JSX.Element {
           ) : null}
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {captureNextSteps(savedKoId).map((s) => (
-              <Link
+              // AUFTRAG-mega12 Block A (über bens drei Fundstellen hinaus): UMGESTELLT. Auf den ersten
+              // Blick harmlos — die Karte erscheint NACH erfolgreichem Einreichen, das Formular ist
+              // geräumt. Läuft aber eine DATEI-WARTESCHLANGE, lädt derselbe onSuccess-Zweig sofort den
+              // nächsten Punkt nach (`advanceFileQueue` + `loadQueuePoint`): dann ist die Seite wieder
+              // schmutzig, während diese „nächster Schritt"-Links sichtbar sind. Ohne Wächter verliert
+              // ein Klick hier den nachgeladenen Punkt und die restliche Warteschlange.
+              <GuardedLink
                 key={s.to}
                 // SCRUM-296: im Demo-Kontext den Capture→Validation→Use-Fluss weitertragen.
                 to={demoHref(s.to, params)}
@@ -2804,17 +3614,20 @@ export function Capture(): JSX.Element {
                 }`}
               >
                 {t(s.labelKey)} <span aria-hidden="true">→</span>
-              </Link>
+              </GuardedLink>
             ))}
             <Button
               variant="ghost"
               onClick={() => {
                 setSavedKoId(null);
                 setSavedAiCheck(null);
+                setSavedConfidentiality(null);
                 setSubmittedFromDraft(false);
                 setSavedFromGap(false);
                 setSavedFilesCount(0);
                 setFailedAttachments([]);
+                setSavedFollowUpsFailed([]);
+                setSavedFollowUpsRecorded(null);
                 setSubmitTimings([]);
               }}
             >
@@ -3073,6 +3886,8 @@ export function Capture(): JSX.Element {
                       {t(CAPTURE_WIZARD_TEXT.uploadCount, { count: images.length + docs.length })}
                     </span>
                   ) : null}
+                  {/* AUFTRAG-mega14 Block E: die Grenze steht AN der Auswahlstelle, nicht im Admin. */}
+                  <UploadLimitsHint className="w-full text-[11px] text-muted-2" />
                 </div>
                 {/* SCRUM-312: sichtbare KI-Nachbearbeitung mit Vorschau + bewusster Übernahme.
                   SCRUM-384: im Wizard erst auf der Wissensseite (EINE KI-Palette je Schritt);
@@ -3332,12 +4147,18 @@ export function Capture(): JSX.Element {
                     </p>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       {fileWholeDraftSaved.id ? (
-                        <Link
+                        // AUFTRAG-mega12 Block A (über bens drei Fundstellen hinaus): UMGESTELLT. Der
+                        // Datei-Zustand ist beim Speichern geräumt und `fileWholeDraftSaved` ist per
+                        // mega5-Entscheidung bewusst NICHT dirty. Das Erzähl-/Experten-Formular und der
+                        // Interview-Fortschritt sind davon aber UNBERÜHRT und können offen sein — dieser
+                        // Ausgang verlässt `/erfassen` trotzdem. Deshalb Wächter; ist nichts offen,
+                        // läuft er unverändert durch.
+                        <GuardedLink
                           to={`${CAPTURE_FRONT_DOOR_ROUTE}?draft=${encodeURIComponent(fileWholeDraftSaved.id)}`}
                           className="inline-flex items-center gap-1 rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
                         >
                           {t(CAPTURE_FILE_TEXT.wholeOpenDraft)} <span aria-hidden="true">→</span>
-                        </Link>
+                        </GuardedLink>
                       ) : (
                         <p className="rounded-btn bg-trust-warn-bg px-3 py-1.5 text-[12.5px] font-semibold text-trust-warn-text">
                           {t(CAPTURE_FILE_TEXT.wholeOpenMissing)}
@@ -3839,13 +4660,9 @@ export function Capture(): JSX.Element {
                   <span className="ml-2 text-[11.5px] text-muted-2">
                     {t("capture.documentsHint")}
                   </span>
-                  {/* SCRUM-421: geltende Upload-Grenzen ehrlich anzeigen (aus der Admin-Einstellung). */}
-                  <p className="mt-1 text-[11px] text-muted-2">
-                    {t("capture.uploadLimits", {
-                      count: uploadLimitsData.maxAttachments,
-                      mb: Math.round((uploadLimitsData.maxAttachmentBytes / 1_000_000) * 10) / 10,
-                    })}
-                  </p>
+                  {/* SCRUM-421 / AUFTRAG-mega14 Block E: dieselbe Anzeige wie an allen anderen
+                      Auswahlstellen — eine Komponente, eine Serverquelle. */}
+                  <UploadLimitsHint />
                   {docs.length > 0 ? (
                     <ul className="mt-2 space-y-1">
                       {docs.map((d) => (
@@ -3896,6 +4713,8 @@ export function Capture(): JSX.Element {
                     />
                   </label>
                   <span className="ml-2 text-[11.5px] text-muted-2">{t("capture.imagesHint")}</span>
+                  {/* AUFTRAG-mega14 Block E: auch hier gilt die Grenze — auch hier steht sie. */}
+                  <UploadLimitsHint />
                   {images.length > 0 ? (
                     <div className="mt-2 grid grid-cols-4 gap-2">
                       {images.map((img) => (
@@ -4024,6 +4843,19 @@ export function Capture(): JSX.Element {
                       />
                       {charLimitHint(sourceForm.excerpt, DRAFT_LIMITS.sourceExcerpt)}
                       <p className="text-[11.5px] text-muted-2">{t("ko.sourcesHint")}</p>
+                      {/* AUFTRAG-mega17 Block A: derselbe Hinweis wie im Prüfbereich
+                          (KnowledgeDetail.tsx:1407-1418) — DASSELBE Bauteil, kein zweiter
+                          Mechanismus. Er stand bisher nur dort; beim Erfassen erfuhr der Nutzer erst
+                          NACH dem Einreichen, dass sein Vermerk an der Stufe scheitert. Das
+                          manuelle Formular kann keinen Anker mitbringen (es zeigt auf kein
+                          hinterlegtes Dokument), also ist `anchored` hier bewusst false.
+                          <output> trägt implizit role="status" (biome useSemanticElements). */}
+                      {sourceGateHint ? (
+                        <output className="block rounded-btn border border-hairline bg-surface-2 px-2.5 py-2 text-[11.5px] leading-relaxed text-muted">
+                          {t(SOURCE_ATTACH_HINT_KEYS[sourceGateHint].body)}{" "}
+                          {t(SOURCE_ATTACH_HINT_KEYS[sourceGateHint].how)}
+                        </output>
+                      ) : null}
                       <Button
                         variant="ghost"
                         disabled={!isSourceFormValid(sourceForm) || sourceLimitReached}
@@ -4048,10 +4880,22 @@ export function Capture(): JSX.Element {
                     {/* SCRUM-118 / FR-EXT-02: externe Quellensuche (Server-Proxy) — wie im Prüfbereich.
                         SCRUM-414: nur sichtbar, wenn der Admin-Regler die externe Wissensabfrage
                         nicht komplett blockiert (der Server setzt die Sperre zusätzlich durch). */}
-                    {extPolicyStage !== "blocked" ? (
+                    {canSearchExternal(extPolicyStage) ? (
                       <div className="mt-3 space-y-2 border-t border-hairline pt-3">
                         <SectionLabel>{t("ext.title")}</SectionLabel>
                         <p className="text-[11.5px] text-muted-2">{t("ext.hint")}</p>
+                        {/* AUFTRAG-mega14 Block D (SCRUM-414): bis mega14 erschien der Anhängen-Knopf
+                            auf JEDER Stufe außer „blocked" — auch auf „suchen, aber nicht anhängen",
+                            und der Server nahm ihn an. Jetzt dieselbe Regel wie im Prüfbereich und
+                            wie der Server, mit sichtbarem Grund. */}
+                        {canAttachExternalResult(extPolicyStage) ? null : (
+                          <p
+                            data-testid="ext-attach-blocked"
+                            className="rounded-input bg-trust-warn-bg px-2.5 py-1.5 text-[11.5px] text-trust-warn-text"
+                          >
+                            {t("ext.attachBlocked")}
+                          </p>
+                        )}
                         <form
                           className="flex gap-2"
                           onSubmit={(e) => {
@@ -4113,7 +4957,15 @@ export function Capture(): JSX.Element {
                                     variant="ghost"
                                     // AUFTRAG-mega6 Block D: dieselbe sichtbare Mengengrenze wie im
                                     // Quellenformular — der Entwurf sichert nicht mehr Quellen.
-                                    disabled={sourceLimitReached}
+                                    // AUFTRAG-mega14 Block D: zusätzlich die Admin-Stufe.
+                                    disabled={
+                                      sourceLimitReached || !canAttachExternalResult(extPolicyStage)
+                                    }
+                                    title={
+                                      canAttachExternalResult(extPolicyStage)
+                                        ? undefined
+                                        : t("ext.attachBlocked")
+                                    }
                                     onClick={() =>
                                       setPendingSources((list) =>
                                         addPendingSource(list, pendingFromResult(r)),
@@ -4596,16 +5448,11 @@ export function Capture(): JSX.Element {
               {/* SCRUM-405: Fakten aus weiteren Dokumenten per KI ergänzen — ausgewählte Punkte
                   (G-2: nur mit Belegstelle) werden ANGEHÄNGT, nichts ersetzt; die Quelle je Punkt
                   wandert in die Quellen-Warteliste (SCRUM-408) und beim Einreichen ans KO. */}
-              <BodyExtractPanel
-                onAppend={(pts, name) => {
-                  setBodyHtml((prev) =>
-                    appendExtractSections(prev, pts, name, normalizeExtractLocale(i18n.language)),
-                  );
-                  setPendingSources((list) =>
-                    pts.reduce((acc, p) => addPendingSource(acc, fileSourcePayload(name, p)), list),
-                  );
-                }}
-              />
+              {/* AUFTRAG-mega18 Block A-3: KEIN Inhalt vor seinem gesicherten Anker. Das Panel
+                  reicht nur das Dokument nach oben; `runDocumentAppend` sichert erst das Original
+                  im Objektspeicher und übernimmt den Inhalt NUR dann. Beim Einreichen bindet die
+                  Verbund-Operation Anker und Belege in EINEM Schreibvorgang an das neue Objekt. */}
+              <BodyExtractPanel onAppend={runDocumentAppend} requestOpen={extractPanelOpenSignal} />
 
               {/* Struktur-Daten (Kernaussage/Aussage/Bedingungen/Maßnahmen) — eingeklappt; der
                   Inhalt steht sichtbar im Dokument, hier nur die strukturierte Bearbeitung. */}
@@ -4764,8 +5611,11 @@ export function Capture(): JSX.Element {
                   <Button variant="ghost" onClick={() => setConfirmDiscard(false)}>
                     {t(CAPTURE_WIZARD_TEXT.discardKeep)}
                   </Button>
+                  {/* AUFTRAG-mega14 Block F (SCRUM-412): im echten Browser gemessen — dieser Knopf
+                      trug rgb(27,30,33), die neutrale Textfarbe, obwohl dahinter der gesamte
+                      Erfassungszustand verloren geht. */}
                   <Button
-                    variant="outline"
+                    variant="danger"
                     onClick={() => {
                       // E2E-003: der ganze Erfassungszustand (inkl. Kategorie, Anlage, Tags,
                       // Wissensart, Vertraulichkeit, abgeleitete Felder) geht — eine Quelle.
@@ -4823,6 +5673,11 @@ export function Capture(): JSX.Element {
         open={appendPts !== null}
         points={appendPts?.points ?? []}
         fileName={appendPts?.fileName ?? ""}
+        // AUFTRAG-mega17 Block A-1: die Quelldatei reist mit. Sie wird an den ZIEL-Artikel gehängt
+        // und ist damit der Anker, ohne den die adresslosen Belegstellen auf der Vorgabestufe
+        // abgewiesen würden — bis mega16 erst NACH der bereits persistierten Revision.
+        original={fileOriginal}
+        originalCache={fileOriginalRef.current}
         onClose={() => setAppendPts(null)}
         onDone={onAppendedToArticle}
       />

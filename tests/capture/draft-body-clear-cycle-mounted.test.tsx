@@ -60,13 +60,27 @@ vi.mock("../../apps/web/src/api/endpoints", async () => {
         }),
         remove: vi.fn(async (id: string) => svc.deleteDraft(id)),
         // Nachbau der echten Promote-Route: Entwurf → KO-Eingabe → KO anlegen → Entwurf entfernen.
-        promote: vi.fn(async (id: string) => {
-          const input = await svc.toKoInput(id);
-          const created = await koSvc.create(input);
-          await svc.deleteDraft(id);
-          box.createdKos.push(created as unknown as P);
-          return created;
-        }),
+        // AUFTRAG-mega22 Block H: der Nachbau zieht mit — die echte Route nimmt jetzt den
+        // AKTUELLEN Entwurfsstand ENTGEGEN (`draftPayload`) und schreibt ihn im selben Vorgang, statt
+        // sich auf ein vorgeschaltetes `PUT /api/drafts/:id` zu verlassen. Genau darum geht es in
+        // diesem Test: der bewusst geleerte Body muss den Weg ins Wissensobjekt überstehen, und er
+        // reist jetzt MIT dem Promote. Bliebe der Nachbau beim alten Verhalten, bewiese er etwas
+        // über eine Route, die es nicht mehr gibt.
+        promote: vi.fn(
+          async (
+            id: string,
+            body?: { draftPayload?: P; operationId?: string; reviewerIds?: string[] },
+          ) => {
+            if (body?.draftPayload !== undefined) {
+              await svc.continueDraft(id, body.draftPayload, "u1");
+            }
+            const input = await svc.toKoInput(id);
+            const created = await koSvc.create(input);
+            await svc.deleteDraft(id);
+            box.createdKos.push(created as unknown as P);
+            return created;
+          },
+        ),
       },
       reasoner: {
         status: ok({ active: true, mode: "cloud", reachable: "active" }),
@@ -265,8 +279,17 @@ describe("Block A: ein bewusst geleerter Body bleibt geleert", () => {
     // Zusicherung zuerst, damit die Gegenprobe ohne Fix genau hier sichtbar bricht.
     expect(JSON.stringify(ko)).not.toContain("Alter Absatz");
     expect(ko.bodyHtml ?? "").toBe("");
-    expect(box.updates).toHaveLength(1);
-    expect(box.updates[0]?.bodyHtml).toBe("");
+    // AUFTRAG-mega22 Block H — UMGEDREHTE ZUSICHERUNG. Bis mega21 stand hier
+    // `expect(box.updates).toHaveLength(1)`: das Einreichen schickte ZUERST ein
+    // `PUT /api/drafts/:id` und promotete danach. Genau dieser vorgeschaltete PUT war der Mangel —
+    // nach einem serverseitig gelungenen ersten Promote ist der Entwurf gelöscht, und der zweite
+    // Klick scheiterte an ihm mit 404, bevor der Idempotenz-Nachschlag überhaupt lief.
+    //
+    // Jetzt reist der Stand IM Promote-Request. Es gibt also KEINEN separaten Entwurfs-PUT mehr —
+    // und die eigentliche Zusicherung dieses Tests (der geleerte Body kommt nicht zurück) steht
+    // unverändert oben und ist damit STÄRKER als vorher: sie hängt nicht mehr an einem zweiten
+    // Aufruf, der verloren gehen kann.
+    expect(box.updates).toHaveLength(0);
     // Titel/Aussage sind unberührt — es wurde gelöscht, nicht kaputtgemacht.
     expect(ko.title).toBe("Dichtungswechsel L4");
   });

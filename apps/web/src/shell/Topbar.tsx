@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Bell, HelpCircle, Menu, Search, Smartphone } from "lucide-react";
 import { type FormEvent, type Ref, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
 import {
   useExternalPolicy,
@@ -10,7 +10,10 @@ import {
   useReasonerConfig,
   useReasonerStatus,
 } from "../api/hooks";
-import { useNavGuard } from "../app/NavGuardContext";
+// AUFTRAG-mega11 Block B-2 (bens SB-2): die Topbar hatte DREI ungeschützte Ausgänge
+// (Benachrichtigungsziel, Suche, Hilfe) neben einem geschützten (Mobil-Umschalter). Alle vier laufen
+// jetzt über dasselbe `useGuardedNavigate` — der Unterschied ist damit nicht mehr merkbar.
+import { useGuardedNavigate } from "../app/NavGuardContext";
 import { useRole } from "../app/RoleContext";
 import { externalStagePill } from "../lib/externalStagePill";
 import { kiHeaderStatus, kiHeaderStatusFromPublic } from "../lib/kiHeaderStatus";
@@ -42,7 +45,7 @@ function LangPill(): JSX.Element {
 
 function NotificationBell(): JSX.Element {
   const { t } = useTranslation();
-  const navigate = useNavigate();
+  const navigate = useGuardedNavigate();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   // SCRUM-220 → Audit-P3 (SCRUM-397): Gelesen-Status jetzt serverseitig (POST
@@ -322,12 +325,12 @@ export function Topbar({
   menuButtonRef?: Ref<HTMLButtonElement>;
 } = {}): JSX.Element {
   const { t } = useTranslation();
-  const navigate = useNavigate();
-  const location = useLocation();
   // WP-SAMMEL20-FIX (bens Fix 4, B1b): der Wechsel zu /mobile ist eine normale In-App-Navigation —
   // er läuft durch den NavGuard (ungespeicherte Eingaben → Bestätigungsdialog, wie Sidebar/Palette)
   // und merkt sich die AKTUELLE Route als Absprungpunkt, damit der Rückweg dorthin zurückführt.
-  const { guard } = useNavGuard();
+  // AUFTRAG-mega11 Block B-2: das gilt jetzt für JEDE Navigation dieser Leiste, nicht nur für diese.
+  const navigate = useGuardedNavigate();
+  const location = useLocation();
   const [q, setQ] = useState("");
   const [islandMarker] = useState(() => readIslandMarker());
 
@@ -400,11 +403,9 @@ export function Topbar({
           <button
             type="button"
             onClick={() =>
-              guard(() =>
-                navigate("/mobile", {
-                  state: { from: `${location.pathname}${location.search}` },
-                }),
-              )
+              navigate("/mobile", {
+                state: { from: `${location.pathname}${location.search}` },
+              })
             }
             className="flex shrink-0 items-center gap-1.5 rounded-btn border border-hairline px-2.5 py-1.5 text-[12px] font-medium text-muted hover:text-text"
           >

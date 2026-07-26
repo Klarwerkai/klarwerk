@@ -10,6 +10,18 @@ import {
   isValidConfidentiality,
   normalizeConfidentiality,
 } from "./confidentiality";
+// AUFTRAG-mega18 Block A: die reine interne Belegpflicht + das Vorgangsgedächtnis der
+// Verbund-Operation. Die Trennung „externe Stufenregel vs. interne Belegpflicht" ist dort
+// ausgeschrieben — sie ist der eigentliche Befund dieses Auftrags.
+import {
+  normalizeAppendOperationId,
+  rememberAppendOp,
+  requireDocumentEvidence,
+} from "./document-append";
+// AUFTRAG-mega20 Block A: der Vorgangsschlüssel der ERSTANLAGE. Warum er vom Aufrufer kommt, warum
+// er trotzdem keine Autorität trägt und warum er DB-weit eindeutig sein muss statt im Objekt zu
+// liegen — alles ausgeschrieben in document-create.ts.
+import { normalizeCreateOperationId } from "./document-create";
 import type { EvidenceRepo, KoCandidateQuery, KoFilter, KoRepo, KoVersionRepo } from "./repo";
 // SCRUM-527 (WP2): Quell-URL-Allowlist an der Persistenzgrenze (nur absolute http/https).
 import { safeSourceUrl, sanitizeSources } from "./source-url";
@@ -19,13 +31,30 @@ import {
   KNOWLEDGE_TYPES,
   type KnowledgeObject,
   type KnowledgeType,
+  type KoAppendOp,
   type KoAttachment,
   type KoComment,
+  type KoCreateOperation,
   KoError,
+  type KoRepairNote,
   type KoSource,
   type KoStatus,
   type TrashedKo,
 } from "./types";
+
+/**
+ * AUFTRAG-mega21 Block A — WER FRAGT, UND MIT WELCHEM INHALT.
+ *
+ * Die zwei Angaben, die der Nachschlag der Erstanlage braucht und die mega20 beide fehlten. Sie
+ * stehen zusammen in EINEM Typ, weil sie zusammen geprüft werden und weil zwei lose Parameter
+ * (`author`, `fingerprint`) an einer Aufrufstelle vertauschbar wären.
+ */
+export interface CreateOperationRequester {
+  /** Der AUTHENTIFIZIERTE Anfragende — nie `input.author`, s. document-create.ts. */
+  actor: string;
+  /** Der kanonische Inhaltsabdruck der Anfrage (createOperationFingerprint). */
+  fingerprint: string;
+}
 
 const DEFAULT_NEEDED_VALIDATIONS = 3; // FR-CAP-08: 1–5, Standard 3.
 
@@ -125,6 +154,135 @@ export interface ReviseKoInput {
   sources?: KoSource[];
 }
 
+// ==============================================================================================
+// AUFTRAG-mega18 Block A-1 — DIE VERBUND-OPERATION „DOKUMENTINHALT ÜBERNEHMEN"
+// ==============================================================================================
+//
+// WARUM SIE HIER STEHT UND NICHT IM BROWSER. Dreimal haben wir Aufrufreihenfolgen im Client
+// sortiert (mega15, mega16, mega17) und dreimal blieb eine verteilte Fehlerkante übrig, weil die
+// Reihenfolge das Problem nicht ist: DREI getrennte Schreibvorgänge sind das Problem. Jede Grenze
+// zwischen ihnen ist ein Zustand, in dem etwas gilt und etwas anderes nicht — und ein Client, der
+// über das Netz zuschaut, kann nach einem Abbruch nicht wissen, welcher es ist.
+//
+// WAS SIE UNMÖGLICH MACHT — die vier von ben belegten Ist-Zustände, jeder mit seinem Mechanismus:
+//
+//  (1) DER UNKLARE REVISIONSAUSGANG. Die Route persistierte `ko.revise` und lief danach weiter
+//      (conflicts/overlaps/aiCheck/Antwortzustellung). Wirft dort etwas — oder reißt die
+//      Verbindung —, lehnte der Fetch ab, OBWOHL der Body gespeichert war; der Client deutete das
+//      als „nicht committed" und nahm die Quellen zurück. Ergebnis: neuer Inhalt, Quellen weg,
+//      Nutzer falsch informiert.
+//      → GELÖST DURCH IDEMPOTENZ, nicht durch eine bessere Reihenfolge. Der Ausgang darf unklar
+//        bleiben; der Aufrufer muss ihn nur GEFAHRLOS ERFRAGEN können. Derselbe Aufruf mit
+//        derselben `operationId` liefert dasselbe Ergebnis, ohne ein zweites Mal zu schreiben.
+//        Blindes Kompensieren nach unklarem Ausgang ist damit nicht nur verboten, sondern
+//        unnötig — es gibt einen ehrlichen Weg, die Wahrheit zu erfahren.
+//
+//  (2) DER SPEICHERBARE ZWISCHENSTAND. Im KO-Detail wanderte der Dokumentinhalt sofort in den
+//      lokalen Edit-Body, während die Punktquellen als nicht abgewartete Einzelmutationen liefen.
+//      Ein Quellenfehler setzte nur einen Toast — der Speichern-Knopf wusste davon nichts.
+//      → GELÖST DURCH DIE ZUSAGE DIESER OPERATION: sie committet Inhalt UND Herkunft gemeinsam.
+//        Damit gibt es keinen „übernommenen, aber unbelegten" Zwischenstand mehr, den ein
+//        Speichern-Knopf versehentlich festschreiben könnte (Client-Seite: KnowledgeDetail.tsx).
+//
+//  (3) DER PARALLELE COMPARE-AND-SET. Mehrere Punktquellen liefen gleichzeitig gegen einen
+//      Vollobjekt-CAS; bei gleicher gelesener `rowVersion` verlor einer mit STALE_WRITE.
+//      → STRUKTURELL GELÖST: diese Operation macht GENAU EINEN `repo.update`. Nicht „seriell
+//        statt parallel" — EINEN. Zwei Punkte, zwanzig Punkte, ein Schreibvorgang. Es gibt keine
+//        zweite gelesene rowVersion, gegen die etwas verlieren könnte.
+//
+//  (4) DIE GESCHLUCKTE ANKERLÜCKE. `composeAppendToArticle` fing jeden Fehler des Anker-Schritts
+//      und machte mit `anchor = undefined` weiter; auf zwei von vier Stufen nahm die Policy die
+//      ankerlose Quelle an.
+//      → GELÖST DURCH DIE EIGENE REGEL (A-2, document-append.ts): `requireDocumentEvidence` WIRFT.
+//        Sie liefert kein „false", das jemand ignorieren könnte, und sie kennt die Stufe nicht.
+//
+// DIE REIHENFOLGE IM INNEREN. Der Auftrag verlangt „Anker sichern, Quellen seriell und
+// vollständig, erst danach die Revision". Genau das steht unten — aber als AUFBAU EINES OBJEKTS,
+// das dann in einem Zug persistiert wird. Das ist die stärkere Erfüllung derselben Absicht: eine
+// Reihenfolge schützt davor, dass ein Teilzustand SCHÄDLICH ist; ein einziger Schreibvorgang
+// schützt davor, dass er ENTSTEHT. Der verbotene Zustand „Inhalt ohne aktive Herkunft" ist danach
+// nicht mehr unwahrscheinlich, sondern unerreichbar.
+//
+// WAS ENTFALLEN IST. Die Kompensation per `remove-source`. ben hat sie auseinandergenommen: sie
+// kann selbst scheitern, der zuvor angelegte append-only EvidenceRecord bleibt ohnehin stehen
+// (unten, `appendEvidence`), die Oberfläche erkennt das als `evidence-without-source`, und bei
+// unklarem Revisionsausgang macht sie den Schaden erst. Sie ist restlos ersetzt.
+export interface DocumentAppendAnchorInput {
+  /** Kennung des Objekts im Objektspeicher. Der Aufrufer hat sie dort NACHGESCHLAGEN. */
+  objectId: string;
+  name: string;
+  mime: string;
+  thumbnail?: string;
+  /** Die GESPEICHERTE Größe (vom Aufrufer aus dem Objektspeicher gelesen, nie vom Client). */
+  size?: number;
+}
+
+export interface DocumentAppendSourceInput {
+  label: string;
+  url?: string | null;
+  excerpt?: string | null;
+  /** Serverseitig abgeleitet (der Aufrufer nutzt `attributeExternalSource`), nie übernommen. */
+  provider?: string | null;
+}
+
+/**
+ * AUFTRAG-mega19 Block B — EIN ANKERDOKUMENT MIT SEINEN BELEGSTELLEN.
+ *
+ * Der Baustein der Erstanlage aus Dokumenten (`createWithDocuments`). Bewusst DIESELBEN Feldtypen
+ * wie die Verbund-Operation: ein Anker ist ein Anker, eine Belegstelle ist eine Belegstelle — auch
+ * wenn das Wissensobjekt in dem einen Fall schon existiert und im anderen gerade entsteht.
+ *
+ * KEINE `operationId`. Der Grund ist nicht Nachlässigkeit: die Erstanlage hat keinen wiederholbaren
+ * Vorgangsschlüssel, weil sie kein bestehendes Objekt hat, an dem sie ihn erinnern könnte. Eine
+ * Wiederholung der Erstanlage ist deshalb ein NEUES Wissensobjekt — sichtbar, auffindbar und über
+ * die Duplikat-Erkennung behandelbar, statt still verschluckt. Das ist die ehrliche Grenze dieses
+ * Blocks; sie steht hier, damit sie niemand für eine Zusage hält.
+ */
+export interface DocumentBundleInput {
+  anchor: DocumentAppendAnchorInput;
+  /** Die Belegstellen aus GENAU diesem Dokument. Leer ist ein Fehler, keine leere Übernahme. */
+  sources: readonly DocumentAppendSourceInput[];
+}
+
+export interface DocumentAppendInput {
+  /** Wiederholbarer Vorgangsschlüssel des Aufrufers (Idempotenz, s. document-append.ts). */
+  operationId: string;
+  /**
+   * Das Originaldokument, das zum ANKER wird. `null` ist erlaubt und führt zum ehrlichen Abbruch
+   * (MISSING_DOCUMENT_ANCHOR) — bewusst kein Pflichtfeld im Typ, damit der Aufrufer den Fall nicht
+   * per `!` wegcastet, sondern die Regel ihn WERFEN sieht.
+   */
+  anchor: DocumentAppendAnchorInput | null;
+  /** Die Belegstellen — eine je übernommenem Punkt. Leer ist ein Fehler, keine leere Übernahme. */
+  sources: readonly DocumentAppendSourceInput[];
+  /**
+   * Der überarbeitete Inhalt. FEHLT das Feld, bindet die Operation NUR Anker + Belege ohne
+   * Versions-Bump — der Fall des Erfassens, wo `create` den Inhalt im selben Vorgang schon
+   * committet hat (die öffentliche create-Route verwirft Client-`sources` bewusst, SCRUM-470).
+   */
+  changes?: { bodyHtml: string; statement?: string; title?: string };
+}
+
+/**
+ * DAS EINDEUTIGE COMMIT-ERGEBNIS. Es sagt, was TATSÄCHLICH gilt — nicht „Fehler", aus dem ein
+ * Client raten müsste. `committed` ist absichtlich das Literal `true`: es gibt kein Ergebnis dieser
+ * Operation, das „vielleicht" bedeutet. Entweder sie liefert dieses Objekt (dann gilt genau das,
+ * was drinsteht), oder sie WIRFT (dann ist nichts geschrieben — der Rollback unten sorgt dafür).
+ */
+export interface DocumentAppendCommit {
+  committed: true;
+  operationId: string;
+  /** War das die Wiederholung eines bereits abgeschlossenen Vorgangs? Ehrlich ausgewiesen. */
+  replayed: boolean;
+  /** Die Inhaltsversion, die jetzt gilt. */
+  koVersion: number;
+  /** Der Anker am Objekt. */
+  attachmentId: string;
+  /** Die angelegten Belegstellen — vollständig, oder die Operation hätte geworfen. */
+  sourceIds: string[];
+  ko: KnowledgeObject;
+}
+
 // KW-STR / NFR-SEC-04: bodyHtml IMMER serverseitig sanitisieren; statement aus dem
 // HTML ableiten, falls leer (statement bleibt führende Plaintext-Kurzfassung).
 function cleanBody(bodyHtml: string | null | undefined): string | null {
@@ -132,6 +290,25 @@ function cleanBody(bodyHtml: string | null | undefined): string | null {
     return null;
   }
   return sanitizeHtml(bodyHtml);
+}
+
+/**
+ * AUFTRAG-mega20 Block A: PII-FREIE Kurzbeschreibung eines Fehlers für Vermerk und Audit.
+ *
+ * Bewusst OHNE `message`: die Meldung eines Infrastrukturfehlers kann Verbindungsdaten,
+ * Tabellennamen oder Nutzereingaben enthalten, und `needsRepair` landet im persistierten Objekt,
+ * der Audit-Payload in einem Beleg, den auch Prüfer lesen. Der Fehlerklassenname (bei
+ * Domänenfehlern zusätzlich der Code) reicht, um zu sagen, WAS gebrochen ist — mehr braucht der
+ * Reparaturpfad nicht, und mehr darf hier nicht stehen (SCRUM-496, log-sanitize).
+ */
+function describeFailure(err: unknown): string {
+  if (err instanceof KoError) {
+    return `KoError:${err.code}`;
+  }
+  if (err instanceof Error) {
+    return err.name;
+  }
+  return "unknown";
 }
 
 export class KoService {
@@ -287,8 +464,35 @@ export class KoService {
     await this.evidence.append({ id: this.genId(), ...record });
   }
 
-  // FR-KO-01: vollständiges Datenmodell; FR-KO-02: Wissensart gesetzt.
-  async create(input: CreateKoInput): Promise<KnowledgeObject> {
+  /**
+   * AUFTRAG-mega19 Block B — DIE GESTALT EINES NEUEN WISSENSOBJEKTS, an EINER Stelle.
+   *
+   * Herausgezogen aus `create`, weil es jetzt ZWEI Wege in die Erstanlage gibt: den allgemeinen
+   * (`create`, ohne Anhänge und ohne Client-Quellen) und die Dokumentübernahme
+   * (`createWithDocuments`, mit Anker und Belegstellen im SELBEN Insert). Zwei Kopien dieser
+   * Feldliste wären zwei Gelegenheiten, sie auseinanderlaufen zu lassen — und die zweite hätte
+   * niemand geprüft.
+   *
+   * `extras` trägt NUR, was die Dokumentübernahme zusätzlich mitbringt. Es gibt keinen Weg,
+   * hierüber eine Regel zu umgehen: Anhänge und Quellen sind Daten, keine Entscheidungen, und der
+   * Aufrufer hat beide bereits serverseitig hergestellt.
+   */
+  private async buildCreatedKo(
+    input: CreateKoInput,
+    extras?: {
+      attachments?: KoAttachment[];
+      sources?: KoSource[];
+      // AUFTRAG-mega20 Block A: der Erzeugungs-Anker. Er steht bewusst in `extras` und NICHT in
+      // `CreateKoInput` — sonst könnte ihn die öffentliche Schreibroute durchreichen, und ein
+      // Client könnte sich mit einer erratenen Kennung an einen fremden Vorgang hängen. So kann
+      // ihn nur setzen, wer diese Methode aufruft, und das ist genau `createWithDocuments`.
+      createOperationId?: string;
+      // AUFTRAG-mega21 Block A: der VORGANGS-DATENSATZ, aus demselben Grund hier und nicht in
+      // `CreateKoInput`. Er entsteht mit dem Objekt, im SELBEN Insert — es gibt keinen Augenblick,
+      // in dem der Schlüssel ohne seinen Eigentümer im Bestand steht.
+      createOperation?: KoCreateOperation;
+    },
+  ): Promise<KnowledgeObject> {
     if (!KNOWLEDGE_TYPES.includes(input.type)) {
       throw new KoError("INVALID_TYPE", "Unbekannte Wissensart.");
     }
@@ -345,30 +549,654 @@ export class KoService {
       // WP-SHIP8-CLOSE-3/4 (bens ROT-1): stabiler Kandidaten-Anker des Import-Accepts (DB-unique
       // erzwungen — der Insert eines zweiten KO desselben Kandidaten scheitert am Index/Guard).
       ...(input.importCandidateId ? { importCandidateId: input.importCandidateId } : {}),
+      // AUFTRAG-mega20 Block A: DB-unique erzwungen (kos_create_operation_uq) — der Insert eines
+      // zweiten KO desselben Erzeugungs-Vorgangs scheitert am Index/Guard und wird adoptiert.
+      ...(extras?.createOperationId ? { createOperationId: extras.createOperationId } : {}),
+      // AUFTRAG-mega21 Block A: Eigentümer, Inhaltsabdruck und Zustand — s. document-create.ts.
+      ...(extras?.createOperation ? { createOperation: extras.createOperation } : {}),
       createdAt: at,
       history: [{ version: 1, at, author: input.author, note: "erstellt" }],
       comments: [],
-      attachments: [],
+      // mega19 Block B: die Ankerdokumente der Übernahme stehen von Anfang an im Objekt — kein
+      // späteres `attach`, das scheitern könnte, während der Inhalt schon steht.
+      attachments: extras?.attachments ?? [],
       // SCRUM-470: Herkunftsquellen (Import) übernehmen; ohne Eingabe wie bisher leer.
       // SCRUM-527 (WP2): jede übernommene Quell-URL durch die Allowlist (nur absolute http/https).
-      sources: sanitizeSources(input.sources ?? []),
+      sources: sanitizeSources([...(input.sources ?? []), ...(extras?.sources ?? [])]),
     };
+    return ko;
+  }
+
+  // ============================================================================================
+  // AUFTRAG-mega22 Block H — DERSELBE VORGANGSVERTRAG, EINE TÜR WEITER.
+  // ============================================================================================
+  //
+  // `POST /api/drafts/:id/promote` hatte denselben Mangel, den mega21 Block B für den Dokumentweg
+  // geschlossen hat: geht die ANTWORT verloren, ist der Entwurf bereits weg und das Wissensobjekt
+  // steht — der Nutzer sieht aber 404 für einen GELUNGENEN Vorgang. Kein Duplikat, kein
+  // Inhaltsverlust, nur eine Unwahrheit. Für einen manuellen Entwurfs-Promote, der zum VIP-2-
+  // Rundgang gehört, ist das die falsche Auskunft.
+  //
+  // ES WIRD KEIN ZWEITER VERTRAG ERFUNDEN. `operation` trägt dieselben drei Angaben wie bei
+  // `createWithDocuments` (Kennung, Eigentümer, Inhaltsabdruck), läuft über DENSELBEN Vorgangs-Lock,
+  // DENSELBEN Nachschlag (`adoptCreatedKo` mit seinen drei Toren), DIESELBE Kollisions-Adoption und
+  // liefert DIESELBEN Fehlercodes. Was hier NICHT übertragbar war, steht am Aufrufer
+  // (capture-routes.ts) und ist dort einzeln benannt statt stillschweigend weggelassen.
+  //
+  // `operation` ist ein EIGENER Parameter und kein Feld in `CreateKoInput` — aus demselben Grund
+  // wie bei `buildCreatedKo`: sonst könnte die öffentliche Schreibroute `POST /api/kos` ihn aus dem
+  // Body durchreichen, und ein Client könnte sich an einen fremden Vorgang hängen. Ohne `operation`
+  // ist `create` unverändert das, was es war.
+  //
+  // FR-KO-01: vollständiges Datenmodell; FR-KO-02: Wissensart gesetzt.
+  async create(
+    input: CreateKoInput,
+    operation?: { id: string; actor: string; fingerprint: string },
+  ): Promise<KnowledgeObject> {
+    if (operation) {
+      const createOperationId = normalizeCreateOperationId(operation.id);
+      const actor = operation.actor.trim();
+      if (!actor) {
+        throw new KoError(
+          "INVALID_OPERATION_ID",
+          "Vorgang ohne Eigentümer — die Erstanlage braucht den authentifizierten Anfragenden.",
+        );
+      }
+      return this.withKoLock(`create-op:${createOperationId}`, () =>
+        this.createLocked(input, createOperationId, {
+          actor,
+          fingerprint: operation.fingerprint,
+        }),
+      );
+    }
+    return this.createPlain(input);
+  }
+
+  /**
+   * AUFTRAG-mega22 Block H — der Vollzug unter dem Vorgangs-Lock. Getrennt aus demselben Grund wie
+   * `createWithDocumentsLocked`: alles, was den BESTAND befragt, steht hier drin.
+   */
+  private async createLocked(
+    input: CreateKoInput,
+    createOperationId: string,
+    requester: CreateOperationRequester,
+  ): Promise<KnowledgeObject> {
+    // DER NACHSCHLAG VOR ALLEM VERÄNDERLICHEN — er SCHREIBT NICHTS. Eine unbekannte Kennung liefert
+    // `undefined`, und der volle, ungekürzte Weg läuft weiter.
+    const adopted = await this.adoptCreatedKo(createOperationId, requester);
+    if (adopted) {
+      return adopted;
+    }
+    const ko = await this.buildCreatedKo(input, {
+      createOperationId,
+      createOperation: {
+        actor: requester.actor,
+        fingerprint: requester.fingerprint,
+        state: "committed",
+        at: new Date(this.now()).toISOString(),
+      },
+    });
+    try {
+      await this.repo.insert(ko);
+    } catch (err) {
+      // KOLLISIONS-ADOPTION, wortgleich zur Dokumentübernahme: der Nachschlag war leer, der Insert
+      // kollidiert trotzdem — zwei Prozesse im Rennen um denselben Vorgang. Die DB entscheidet, der
+      // Verlierer übernimmt das materialisierte Objekt statt ein zweites anzulegen.
+      if (err instanceof KoError && err.code === "CREATE_ANCHOR_TAKEN") {
+        const raced = await this.adoptCreatedKo(createOperationId, requester);
+        if (raced) {
+          return raced;
+        }
+      }
+      throw err;
+    }
+    await this.finishCreated(ko, input.author);
+    return ko;
+  }
+
+  private async createPlain(input: CreateKoInput): Promise<KnowledgeObject> {
+    const ko = await this.buildCreatedKo(input);
     await this.repo.insert(ko);
+    await this.finishCreated(ko, input.author);
+    return ko;
+  }
+
+  /**
+   * Die BELEGE der Erstanlage, an EINER Stelle — Snapshot und `ko.created`.
+   *
+   * AUFTRAG-mega22 Block H: herausgezogen, weil es jetzt zwei Wege in `create` gibt (mit und ohne
+   * Vorgang). Zwei Kopien dieser Folge wären zwei Gelegenheiten, sie auseinanderlaufen zu lassen —
+   * und die zweite hätte niemand geprüft.
+   */
+  private async finishCreated(ko: KnowledgeObject, author: string): Promise<void> {
     // SCRUM-159: Version-1-Snapshot persistieren (Foundation; aktuelles KO bleibt canonical).
     // WP-SHIP8-CLOSE-5 (bens ROT-1A): wirft Snapshot ODER Audit NACH dem Insert, lehnt create ab,
     // obwohl das KO existiert (Teilpersistenz). Der Adoptions-/Recovery-Pfad des Import-Accepts
     // zieht die fehlenden Belege dann IDEMPOTENT nach (ensureCreatedSideEffects) und ist ohne
     // vollständige Belege fail-closed — hier bleibt der Ablauf bewusst untransaktional schlank.
-    await this.snapshot(ko, input.author, "erstellt");
+    await this.snapshot(ko, author, "erstellt");
     // WP-SHIP8-CLOSE-6 (bens ROT-1): auch die ERSTANLAGE schreibt ihren Beleg exactly-once über
     // dieselbe stabile Event-Id wie der Nachzieh-Pfad — ein Race zwischen create und einem
     // parallelen Nachzug kann nie zwei ko.created-Einträge erzeugen.
     await this.audit?.recordOnce(`ko.created:${ko.id}`, {
-      actor: input.author,
+      actor: author,
       action: "ko.created",
       target: ko.id,
     });
-    return ko;
+  }
+
+  /**
+   * AUFTRAG-mega19 Block B — DIE ERSTANLAGE AUS DOKUMENTEN. EIN VORGANG, ODER KEINER.
+   *
+   * ============================================================================================
+   * DER BEFUND
+   * ============================================================================================
+   *
+   * Das frische Erfassen committete bisher ZUERST den vollständigen Body (`create`/`promote`) und
+   * band die Herkunft ERST DANACH, je Ankerdokument mit einem eigenen `append-document`-Aufruf.
+   * Drei reale Brüche:
+   *
+   *   · lehnt die erste Verbundoperation ab (oder bleibt sie unklar), steht der Dokumentinhalt
+   *     bereits im neuen Wissensobjekt — Inhalt ohne Herkunft, genau der verbotene Zustand;
+   *   · bei MEHREREN Ankerdokumenten kann Job 1 gelingen und Job 2 scheitern, obwohl der Body
+   *     Inhalt aus BEIDEN trägt — derselbe Fehler in klein;
+   *   · der Erfolgs-Handler behandelte den Submit weiterhin als gespeichert und zeigte die
+   *     fehlende Herkunft nur als Teilfehler.
+   *
+   * ============================================================================================
+   * WARUM NICHT DIE EINFACHERE REPARATUR
+   * ============================================================================================
+   *
+   * Die billige Variante wäre, `POST /api/kos` wieder für Client-`sources` zu öffnen. Das ist die
+   * SCRUM-470-Grenze, und sie fällt nicht: über sie könnte jeder mit `ko.create` gefälschte,
+   * peer-validierte Herkunftsanker setzen und spätere Import-Upserts kapern. Die Grenze bleibt,
+   * WEIL sie richtig ist — aber das Restfenster hinzunehmen war falsch. Deshalb dieser Weg: die
+   * allgemeine Route bleibt streng, die FACHOPERATION kommt DANEBEN, nicht hinein. Dieselbe
+   * Bewegung wie bei `appendDocumentExtract` in mega18.
+   *
+   * Der Unterschied zur allgemeinen Route ist kein Vertrauensvorschuss, sondern ein anderer
+   * Beweisstand: hier stammt JEDE Quelle aus einem Dokument, das der Server im selben Vorgang als
+   * Anhang DIESES Objekts bindet, und der Aufrufer hat dieses Dokument vorher im eigenen
+   * Objektspeicher nachgeschlagen. `peerValidated` ist hart `false`, `provider` kommt aus der
+   * serverseitigen Ableitung, `importCandidateId`/`externalId` gibt es hier gar nicht.
+   *
+   * ============================================================================================
+   * DIE ZUSAGE
+   * ============================================================================================
+   *
+   * ALLE Ankerdokumente und ALLE Belegstellen entstehen GEMEINSAM mit dem Inhalt — oder es
+   * entsteht NICHTS. Ein Body aus zwei Dokumenten, von denen nur eines gebunden ist, ist nicht
+   * darstellbar:
+   *
+   *   1. Erst wird ALLES geprüft (Belegpflicht je Bündel, Belegstellen vorhanden, Labels) —
+   *      VOR dem ersten Schreibvorgang. Ein Fehler hier hinterlässt kein Wissensobjekt.
+   *   2. Dann GENAU EIN `repo.insert` mit Inhalt, Ankern und Belegstellen im selben Objekt.
+   *   3. Was danach kommt (Snapshot, Evidence, Audit), ist BELEG der Anlage. Schlägt einer fehl,
+   *      wird das Wissensobjekt KOMPENSIEREND ENTFERNT — nicht „wirksam, aber unbelegt", und
+   *      erst recht kein Inhalt ohne Herkunft.
+   *
+   * Das ist strenger als `create`, das nach dem Insert bewusst untransaktional bleibt
+   * (WP-SHIP8-CLOSE-5). Der Unterschied ist gewollt: dort ist der Nachzieh-Pfad des Import-
+   * Accepts der Auffang, hier gibt es keinen — ein halb belegtes Übernahme-KO könnte niemand
+   * später richtigstellen, weil niemand mehr wüsste, WORAUS der Inhalt stammte.
+   */
+  async createWithDocuments(
+    input: CreateKoInput,
+    documents: readonly DocumentBundleInput[],
+    // AUFTRAG-mega21 Block A: statt der nackten Kennung reist jetzt DER VORGANG. `actor` ist der
+    // AUTHENTIFIZIERTE Anfragende (nicht `input.author` — beim Entwurfsweg sind das zwei
+    // verschiedene Menschen), `fingerprint` der kanonische Inhaltsabdruck. Beide sind Pflicht: ein
+    // optionaler Eigentümer wäre genau der Zustand, den dieser Block schliesst.
+    operation: { id: string; actor: string; fingerprint: string },
+  ): Promise<KnowledgeObject> {
+    // ---- DER VORGANGSSCHLÜSSEL ZUERST --------------------------------------------------------
+    // Vor jeder anderen Prüfung und mit demselben Vertrag wie beim Append: ohne wiederholbaren
+    // Schlüssel ist dieser Aufruf nicht sicher ausführbar, weil sein Erfolg nicht wiederholbar
+    // ist. Ungültig ⇒ ehrlicher Formfehler, nie ein erfundener Ersatzwert (document-create.ts).
+    const createOperationId = normalizeCreateOperationId(operation.id);
+    const actor = operation.actor.trim();
+    if (!actor) {
+      // Ein Vorgang ohne Eigentümer ist kein Vorgang. Das kann nur ein programmatischer Aufrufer
+      // auslösen (die Route hat den authentifizierten Nutzer immer), und für den ist ein harter
+      // Fehler die richtige Antwort — nicht ein stiller Rückfall auf `input.author`.
+      throw new KoError(
+        "INVALID_OPERATION_ID",
+        "Vorgang ohne Eigentümer — die Erstanlage braucht den authentifizierten Anfragenden.",
+      );
+    }
+    const requester: CreateOperationRequester = { actor, fingerprint: operation.fingerprint };
+    // ---- ALLES PRÜFEN, BEVOR IRGENDETWAS ENTSTEHT ------------------------------------------
+    if (documents.length === 0) {
+      throw new KoError(
+        "MISSING_DOCUMENT_ANCHOR",
+        "Übernahme ohne Originaldokument — kein Inhalt ohne Herkunft.",
+      );
+    }
+    // Die INTERNE BELEGPFLICHT je Bündel, stufenblind wie überall (document-append.ts). Sie WIRFT;
+    // es gibt kein „false", das hier jemand übersehen könnte.
+    const anchorIds = documents.map((doc) =>
+      requireDocumentEvidence({ anchorObjectId: doc.anchor?.objectId }),
+    );
+    for (const doc of documents) {
+      if (doc.sources.length === 0) {
+        throw new KoError(
+          "INVALID_SOURCE",
+          "Übernahme ohne Belegstelle — kein Inhalt ohne Herkunft.",
+        );
+      }
+      if (doc.sources.some((s) => !(typeof s.label === "string" && s.label.trim()))) {
+        throw new KoError("INVALID_SOURCE", "Quellen-Label fehlt.");
+      }
+    }
+
+    // ---- AB HIER SERIALISIERT: NACHSCHLAG UND VOLLZUG DESSELBEN VORGANGS ---------------------
+    // Derselbe Lock-Mechanismus wie bei den KO-Mutationen, nur mit dem VORGANG als Schlüssel (das
+    // Objekt hat ja noch keine Kennung). Damit können zwei gleichzeitige Wiederholungen im selben
+    // Prozess nicht beide „noch nicht da" lesen und beide inserten. Prozessübergreifend fängt das
+    // der Unique-Index — der zweite Insert kollidiert und wird unten ADOPTIERT statt dupliziert;
+    // die prozessübergreifende SERIALISIERUNG selbst bleibt Nach-VIP-2 und ist hier nicht nötig.
+    return this.withKoLock(`create-op:${createOperationId}`, () =>
+      this.createWithDocumentsLocked(input, documents, anchorIds, createOperationId, requester),
+    );
+  }
+
+  /**
+   * Der Vollzug der Erstanlage unter dem Vorgangs-Lock. Getrennt, damit die REIHENFOLGE oben
+   * lesbar bleibt: unveränderliche Prüfungen (Formen, Belegpflicht) VOR dem Lock und vor dem
+   * Nachschlag — eine Wiederholung trägt denselben Body, fällt dort also entweder beide Male oder
+   * keinmal. Alles, was den BESTAND befragt, steht hier drin.
+   */
+  private async createWithDocumentsLocked(
+    input: CreateKoInput,
+    documents: readonly DocumentBundleInput[],
+    /** Die von `requireDocumentEvidence` bereits BESTÄTIGTEN Anker — je Bündel einer, in Reihenfolge. */
+    anchorIds: readonly string[],
+    createOperationId: string,
+    requester: CreateOperationRequester,
+  ): Promise<KnowledgeObject> {
+    // ---- DER NACHSCHLAG: LIEFERT EINE WIEDERHOLUNG DAS VORHANDENE OBJEKT? -------------------
+    // Er SCHREIBT NICHTS. Findet er nichts, läuft der volle, ungekürzte Weg weiter — es gibt
+    // keinen Zustand, in dem etwas NEUES entsteht, ohne dass alle Prüfungen gelaufen sind.
+    const adopted = await this.adoptCreatedKo(createOperationId, requester);
+    if (adopted) {
+      return adopted;
+    }
+
+    const at = new Date(this.now()).toISOString();
+    // Anker und Belegstellen VOLLSTÄNDIG aufbauen — ein Teilbestand ist nicht darstellbar.
+    const attachments: KoAttachment[] = [];
+    const sources: KoSource[] = [];
+    // Welche Belegstellen zu welchem Anker gehören, wird für die Evidence-Records gebraucht.
+    const bySource = new Map<string, string>();
+    documents.forEach((doc, index) => {
+      const anchorObjectId = anchorIds[index] as string;
+      const attachment: KoAttachment = {
+        id: this.genId(),
+        name: doc.anchor.name,
+        mime: doc.anchor.mime,
+        author: input.author,
+        at,
+        objectId: anchorObjectId,
+        ...(doc.anchor.thumbnail ? { thumbnail: doc.anchor.thumbnail } : {}),
+        ...(doc.anchor.size !== undefined ? { size: doc.anchor.size } : {}),
+      };
+      attachments.push(attachment);
+      for (const source of doc.sources) {
+        const provider = source.provider?.trim() ? source.provider.trim() : null;
+        const built: KoSource = {
+          id: this.genId(),
+          label: (source.label as string).trim(),
+          url: safeSourceUrl(source.url),
+          excerpt: source.excerpt?.trim() ? source.excerpt.trim() : null,
+          kind: "external",
+          peerValidated: false,
+          ...(provider ? { provider } : {}),
+          author: input.author,
+          at,
+        };
+        sources.push(built);
+        bySource.set(built.id, attachment.id);
+      }
+    });
+
+    // ---- GENAU EIN SCHREIBVORGANG ------------------------------------------------------------
+    // Inhalt, Anker und Belegstellen stehen in DEMSELBEN Objekt. Es gibt keinen Zeitpunkt, zu dem
+    // der Body ohne seine Herkunft im Bestand liegt — auch nicht für einen Augenblick.
+    const ko = await this.buildCreatedKo(input, {
+      attachments,
+      sources,
+      createOperationId,
+      // AUFTRAG-mega21 Block A: der Vorgangs-Datensatz entsteht MIT dem Objekt. `committed` ist der
+      // Normalzustand; nur eine gescheiterte Rücknahme setzt ihn später auf `repair_required`.
+      createOperation: {
+        actor: requester.actor,
+        fingerprint: requester.fingerprint,
+        state: "committed",
+        at,
+      },
+    });
+    try {
+      await this.repo.insert(ko);
+    } catch (err) {
+      // KOLLISIONS-ADOPTION. Der Nachschlag oben war leer, der Insert kollidiert trotzdem: genau
+      // das Rennen zweier Prozesse um DENSELBEN Vorgang. Die DB hat entschieden, wer gewinnt; der
+      // Verlierer erzeugt kein zweites Objekt, sondern übernimmt das materialisierte.
+      if (err instanceof KoError && err.code === "CREATE_ANCHOR_TAKEN") {
+        const raced = await this.adoptCreatedKo(createOperationId, requester);
+        if (raced) {
+          return raced;
+        }
+      }
+      throw err;
+    }
+
+    let snapshotWritten = false;
+    try {
+      await this.snapshot(ko, input.author, "erstellt (Dokumentinhalt übernommen)");
+      snapshotWritten = this.versions !== undefined;
+      for (const attachment of attachments) {
+        await this.appendEvidence({
+          koId: ko.id,
+          koVersion: ko.version,
+          kind: "attachment",
+          attachmentId: attachment.id,
+          objectId: attachment.objectId as string,
+          label: attachment.name,
+          mime: attachment.mime,
+          createdBy: input.author,
+          createdAt: at,
+        });
+      }
+      for (const source of ko.sources) {
+        const attachmentId = bySource.get(source.id);
+        await this.appendEvidence({
+          koId: ko.id,
+          koVersion: ko.version,
+          kind: "source",
+          sourceId: source.id,
+          ...(attachmentId ? { attachmentId } : {}),
+          label: source.label,
+          ...(source.url ? { url: source.url } : {}),
+          createdBy: input.author,
+          createdAt: at,
+        });
+      }
+      await this.audit?.recordOnce(`ko.created:${ko.id}`, {
+        actor: input.author,
+        action: "ko.created",
+        target: ko.id,
+      });
+      await this.audit?.record({
+        actor: input.author,
+        action: "ko.document-appended",
+        target: ko.id,
+        payload: {
+          created: true,
+          version: ko.version,
+          documents: documents.length,
+          sources: sources.length,
+        },
+      });
+      return ko;
+    } catch (err) {
+      // VOLLSTÄNDIGE RÜCKNAHME. Anders als bei `revise` gibt es hier keinen Vorzustand, auf den
+      // zurückgesetzt werden könnte — es gibt nur „existiert" und „existiert nicht". Also wird das
+      // Wissensobjekt ENTFERNT. Damit bleibt bei jedem Fehlschlag KEIN Wissensobjekt mit
+      // Dokumentinhalt zurück, was die Zusage dieses Blocks ist.
+      //
+      // EHRLICHE GRENZE, dieselbe wie in `appendDocumentExtract`: bereits geschriebene
+      // EvidenceRecords sind append-only und bleiben stehen. Sie zeigen dann auf ein
+      // Wissensobjekt, das es nicht gibt — der HARMLOSE Spiegel, nicht der verbotene Zustand.
+      //
+      // AUFTRAG-mega20 Block A: die Rücknahme VERSCHLUCKT IHREN EIGENEN FEHLER NICHT MEHR. Bis
+      // mega19 stand hier `.catch(() => undefined)` — scheiterte `delete`, blieb ein vollständiges
+      // Wissensobjekt im kanonischen Bestand (Body, Anker, Belegstellen), je nach vorherigem
+      // Fehler ohne Snapshot, ohne Evidence, ohne Audit, und der Aufrufer erfuhr davon NICHTS.
+      await this.rollbackCreatedKo(ko, snapshotWritten, input.author, err);
+      throw err;
+    }
+  }
+
+  /**
+   * AUFTRAG-mega20 Block A — DIE ADOPTION. Schreibfrei, und sie gibt nichts Fremdes preis.
+   *
+   * WARUM DIE AUTORSCHAFT GEPRÜFT WIRD. Die Erzeugungskennung ist DB-weit eindeutig — anders als
+   * die Append-Kennung, die nur innerhalb EINES Objekts dedupliziert. Ohne diese Prüfung könnte
+   * jemand mit `ko.create` durch Raten einer fremden Kennung ein fremdes Wissensobjekt vollständig
+   * ausgeliefert bekommen, ohne je `ko.read` auf ihm gehabt zu haben. Die Kennung soll den EIGENEN
+   * Vorgang wiederholbar machen, nicht als Nachschlagewerk für fremde dienen.
+   *
+   * Ein Treffer mit fremder Autorschaft ist deshalb ein ehrlicher KONFLIKT, kein `null`: `null`
+   * hieße „unbekannt", und der Aufrufer liefe daraufhin in einen Insert, der am Unique-Index
+   * scheitert — er bekäme also ohnehin einen Fehler, nur einen unverständlichen. Die Kollision
+   * bestätigt dabei lediglich, dass die Kennung vergeben ist; sie verrät kein Objekt und keinen
+   * Inhalt.
+   *
+   * GETRASHTE OBJEKTE ZÄHLEN MIT (kein `require`, das sie ausblendet). Der Vorgang IST gelungen —
+   * dass jemand das Ergebnis danach in den Papierkorb gelegt hat, ist eine spätere Tatsache und
+   * kein Grund, ein zweites Objekt anzulegen.
+   *
+   * ==========================================================================================
+   * AUFTRAG-mega21 Block A — DREI TORE STATT EINEM, in dieser Reihenfolge
+   * ==========================================================================================
+   *
+   *   1. EIGENTÜMER (bens SB-1). Geprüft wird `createOperation.actor` gegen den ANFRAGENDEN, nicht
+   *      `author` gegen `author`. Damit funktioniert der rechtmäßige Wiederholversuch eines Admins,
+   *      der einen fremden Entwurf eingereicht hat, und ein späteres `setAuthor` verschiebt die
+   *      Bindung nicht. Die Begründung beider Punkte steht in document-create.ts.
+   *
+   *   2. ZUSTAND (bens SB-4). Ein Reparaturrest wird NIE als normaler Erfolg geliefert. Geprüft
+   *      werden BEIDE Spuren desselben Zustands — `createOperation.state` und `needsRepair` —,
+   *      weil beide best effort geschrieben werden und in derselben Störung einzeln ausfallen
+   *      können. Zwei Spuren, ein Urteil: liegt EINE von beiden vor, ist es ein Rest.
+   *
+   *   3. INHALTSABDRUCK (bens SB-3). Gleicher Schlüssel + abweichender Abdruck ist KEINE
+   *      Wiederholung, sondern ein anderer Inhalt unter altem Namen. Der Aufrufer bekommt das
+   *      ausdrücklich gesagt statt still den alten Stand.
+   *
+   * DIE REIHENFOLGE IST EINE ENTSCHEIDUNG. Der Eigentümer zuerst, weil ein Fremder über die
+   * folgenden Tore sonst erführe, in welchem Zustand ein fremder Vorgang ist und ob sein eigener
+   * Inhalt zufällig passt — beides geht ihn nichts an. Der Zustand vor dem Abdruck, weil „dieses
+   * Objekt muss geprüft werden" schwerer wiegt und die richtigere Auskunft ist als „dein Text hat
+   * sich geändert".
+   *
+   * ALTBESTAND (Objekte aus mega20, `createOperationId` ohne Datensatz): Tor 1 fällt auf den alten
+   * `author`-Vergleich zurück, Tor 3 entfällt mangels Vergleichswert, Tor 2 greift über
+   * `needsRepair` weiterhin. Das ist schlechter als der neue Weg und ausdrücklich so benannt — es
+   * ist der beste erreichbare Umgang mit Daten, die vor der Regel entstanden sind.
+   */
+  private async adoptCreatedKo(
+    createOperationId: string,
+    requester: CreateOperationRequester,
+  ): Promise<KnowledgeObject | undefined> {
+    // AUFTRAG-mega22 Block G: der Nachschlag ist actor-gebunden. Ein FREMDER, actor-gebundener
+    // Vorgang derselben Kennung wird hier gar nicht mehr gefunden — er geht den Anfragenden nichts
+    // an, und sein blosses Vorhandensein darf ihn nicht aus seinem eigenen Vorgang drängen. Was
+    // noch gefunden wird, ist der EIGENE Vorgang oder eine Altzeile ohne Eigentümer; für die
+    // zweite bleibt Tor 1 unten in Kraft.
+    const known = await this.repo.findByCreateOperation(createOperationId, requester.actor);
+    if (!known) {
+      return undefined;
+    }
+    const operation = known.createOperation;
+    // ---- TOR 1: DER EIGENTÜMER ---------------------------------------------------------------
+    // Nach Block G kann dieses Tor nur noch für ALTZEILEN greifen (Vorgangskennung ohne
+    // Vorgangs-Datensatz). Es bleibt genau dafür stehen: dort ist der `author`-Vergleich die
+    // einzige verfügbare Information, und ein blindes „gehört niemandem" machte jeden Altvorgang
+    // entweder zum Konflikt oder zum fremden Objekt.
+    const owner = operation?.actor ?? known.author;
+    if (owner !== requester.actor) {
+      throw new KoError(
+        "CREATE_ANCHOR_TAKEN",
+        "Diese Operations-Kennung gehört zu einem anderen Vorgang — bitte eine neue verwenden.",
+      );
+    }
+    // ---- TOR 2: DER ZUSTAND ------------------------------------------------------------------
+    if (operation?.state === "repair_required" || known.needsRepair) {
+      throw new KoError(
+        "CREATE_REPAIR_REQUIRED",
+        `Dieser Vorgang ist unvollständig abgeschlossen — das Wissensobjekt ${known.id} steht im Bestand, seine Belege können aber fehlen. Es muss geprüft werden; ein Wiederholversuch würde den Zustand nicht heilen.`,
+        { koId: known.id },
+      );
+    }
+    // ---- TOR 3: DER INHALTSABDRUCK -----------------------------------------------------------
+    if (operation && operation.fingerprint !== requester.fingerprint) {
+      throw new KoError(
+        "IDEMPOTENCY_PAYLOAD_MISMATCH",
+        "Unter diesem Vorgang wurde bereits ein anderer Inhalt gespeichert. Der Vorgangsschlüssel benennt den Vorgang, nicht den Text — geänderter Inhalt braucht einen neuen Vorgang.",
+        { koId: known.id },
+      );
+    }
+    return known;
+  }
+
+  /**
+   * AUFTRAG-mega20 Block A — DIE RÜCKNAHME, DIE IHREN EIGENEN FEHLSCHLAG BENENNT.
+   *
+   * Gelingt sie, ist der Fall wie bisher: nichts bleibt, der ursprüngliche Fehler fliegt weiter.
+   * Gelingt sie NICHT, steht das Wissensobjekt im Bestand — und genau dann tut diese Methode drei
+   * Dinge, in dieser Reihenfolge und unabhängig voneinander:
+   *
+   *   1. sie MARKIERT das Objekt (`needsRepair`) — best effort, s. document-create.ts;
+   *   2. sie schreibt einen AUDIT-Beleg, der auch festhält, ob (1) durchkam;
+   *   3. sie WIRFT `CREATE_ROLLBACK_FAILED` mit der Kennung des zurückgebliebenen Objekts.
+   *
+   * Punkt 3 ersetzt den ursprünglichen Fehler bewusst NICHT — er trägt ihn als `cause` mit. Für
+   * den Aufrufer ist die wichtigere Nachricht die neue: „es ist etwas übrig, und zwar dieses hier".
+   */
+  private async rollbackCreatedKo(
+    ko: KnowledgeObject,
+    snapshotWritten: boolean,
+    author: string,
+    failed: unknown,
+  ): Promise<void> {
+    if (snapshotWritten) {
+      await this.versions?.remove(ko.id, ko.version).catch(() => undefined);
+    }
+    let rollbackFailure: unknown;
+    try {
+      await this.repo.delete(ko.id);
+      return; // sauber zurückgenommen — es bleibt nichts, der Aufrufer sieht nur den Urfehler.
+    } catch (err) {
+      rollbackFailure = err;
+    }
+    const note: KoRepairNote = {
+      at: new Date(this.now()).toISOString(),
+      failedStep: describeFailure(failed),
+      rollbackFailure: describeFailure(rollbackFailure),
+    };
+    let marked = false;
+    try {
+      // AUFTRAG-mega21 Block A: Vermerk UND Vorgangszustand im SELBEN Write. Zwei getrennte
+      // Updates wären zwei Gelegenheiten, nur eine Hälfte zu schreiben — und ein Rest mit Vermerk,
+      // aber ohne Zustand (oder umgekehrt) wäre genau die halbe Wahrheit, die adoptCreatedKo
+      // deshalb aus BEIDEN Spuren liest.
+      await this.repo.update({
+        ...ko,
+        needsRepair: note,
+        ...(ko.createOperation
+          ? { createOperation: { ...ko.createOperation, state: "repair_required" as const } }
+          : {}),
+      });
+      marked = true;
+    } catch {
+      // Der Vermerk ist nicht der einzige Kanal (s. document-create.ts) — hier wird deshalb
+      // weitergemacht statt abgebrochen. Dass er fehlt, steht unten im Audit.
+    }
+    await this.audit
+      ?.record({
+        actor: author,
+        action: "ko.create-rollback-failed",
+        target: ko.id,
+        payload: { ...note, marked },
+      })
+      .catch(() => undefined);
+    throw new KoError(
+      "CREATE_ROLLBACK_FAILED",
+      `Die Anlage ist gescheitert, die Rücknahme ebenfalls — das Wissensobjekt ${ko.id} steht unvollständig belegt im Bestand und muss geprüft werden.`,
+      { koId: ko.id, cause: failed },
+    );
+  }
+
+  /**
+   * AUFTRAG-mega20 Block A — SCHREIBFREIER NACHSCHLAG DER ERSTANLAGE, für die Route.
+   *
+   * Dieselbe Form und derselbe Grund wie `lookupDocumentAppend` (mega19 Block A): der Nachschlag
+   * muss VOR den veränderlichen Toren der Route liegen, weil deren Antwort sich zwischen erstem
+   * Aufruf und Wiederholung ändert — bei der Erstanlage sogar dramatischer als beim Append, denn
+   * der erste Aufruf LÖSCHT den Entwurf, den die Wiederholung dann nicht mehr findet.
+   *
+   * Sie SCHREIBT NICHTS. Eine unbekannte Kennung ist schlicht `null`, und der Aufrufer läuft
+   * daraufhin den vollen, ungekürzten Weg durch ALLE Tore.
+   */
+  async lookupDocumentCreate(
+    operationId: string,
+    // AUFTRAG-mega21 Block A: derselbe Vorgang wie beim Vollzug — Eigentümer UND Inhaltsabdruck.
+    // Der Abdruck kommt aus dem REQUEST-BODY und ist deshalb hier, VOR jeder Entwurfs-Ladung,
+    // bereits berechenbar. Genau darum darf der Nachschlag weiterhin ganz vorne stehen.
+    requester: CreateOperationRequester,
+  ): Promise<KnowledgeObject | null> {
+    const createOperationId = normalizeCreateOperationId(operationId);
+    return this.withKoLock(
+      `create-op:${createOperationId}`,
+      async () => (await this.adoptCreatedKo(createOperationId, requester)) ?? null,
+    );
+  }
+
+  /**
+   * AUFTRAG-mega21 Block C-1 — DIE GESCHEITERTEN NACHARBEITEN, DAUERHAFT AM OBJEKT.
+   *
+   * Die Route fängt jeden Post-Commit-Schritt einzeln auf und meldet ihn in `followUpsFailed`. Das
+   * war bis mega20 die EINZIGE dauerhafte Spur ausserhalb des Audits — und eine Antwort ist keine
+   * Spur: sobald der Browser sie gelesen (oder verloren) hat, ist sie weg. Ein Wissensobjekt, dessen
+   * Prüferzuweisung fehlschlug, „wartet auf niemanden" und war von einem, das keine Prüfer brauchte,
+   * nicht zu unterscheiden.
+   *
+   * Dieses Feld macht es AUFFINDBAR: es steht am Objekt, jede Abfrage sieht es, ein Neustart
+   * überlebt es. Es REPARIERT nichts (die Wiederaufnahme-Warteschlange ist Nach-VIP-2) — es ist die
+   * Voraussetzung jeder Wiederaufnahme, genau wie `needsRepair` es für den Reparaturrest ist.
+   *
+   * BEST EFFORT und bewusst OHNE Version/Audit: der Vorgang ist gelungen, dies ist ein Vermerk über
+   * eine Nacharbeit und kein Wissensinhalt. Ein Fehlschlag hier darf die 201 nicht kippen.
+   */
+  async recordCreateFollowUpFailures(id: string, steps: readonly string[]): Promise<boolean> {
+    const clean = [...new Set(steps.map((s) => s.trim()).filter((s) => s.length > 0))].sort();
+    if (clean.length === 0) {
+      return false;
+    }
+    const ko = await this.repo.findById(id);
+    if (!ko || ko.deletedAt) {
+      return false;
+    }
+    await this.repo.update({ ...ko, createFollowUpsFailed: clean });
+    return true;
+  }
+
+  /**
+   * AUFTRAG-mega21 Block C-1 — DER PRÜF-JOB, DER SICH SELBST ALS GESCHEITERT VERMERKT.
+   *
+   * bens Fundstelle: scheitert `markAiCheckPending`, gibt es GAR KEINEN Vermerk — und der
+   * vorhandene Wiederhol-Endpunkt (`POST /api/kos/:id/ai-check`) lehnt genau dann mit
+   * `AI_CHECK_NOT_RETRYABLE` ab, weil er `failed` oder `pending` verlangt. Die Warnung in der
+   * Oberfläche wäre eine Sackgasse: sie sagte „nicht gelaufen", und der Knopf daneben antwortete
+   * „dafür steht kein wiederholbarer Job an".
+   *
+   * Der `failed`-Vermerk schliesst den Kreis: er ist der Zustand, den der bestehende
+   * Wiederholmechanismus ohnehin kennt und bedient. Kein zweiter Mechanismus, kein neuer Endpunkt.
+   */
+  async markAiCheckFailed(id: string, fallbackReason: string): Promise<boolean> {
+    const ko = await this.repo.findById(id);
+    if (!ko || ko.deletedAt) {
+      return false;
+    }
+    const at = new Date(this.now()).toISOString();
+    return this.repo.setAiCheck(id, {
+      status: "failed",
+      requestedAt: at,
+      finishedAt: at,
+      fallbackReason,
+      koVersion: ko.version,
+    });
   }
 
   // WP-SHIP8-CLOSE-5 (bens ROT-1A, gewählter Weg b): IDEMPOTENTER Nachzieh-Pfad der create-
@@ -938,6 +1766,280 @@ export class KoService {
           });
         },
       };
+    });
+  }
+
+  /**
+   * AUFTRAG-mega19 Block A — DER REPLAY-NACHSCHLAG ALS EIGENE, SCHREIBFREIE ABFRAGE.
+   *
+   * WARUM ES DIESE METHODE GIBT. `appendDocumentExtract` ist idempotent, aber sein Nachschlag
+   * liegt am ENDE einer Kette: die Route prüft davor Kapazität (Anhangzahl, Objektgröße) und die
+   * externe Stufe. Beides sind VERÄNDERLICHE Tatsachen. Genau daran ist die Wiederholbarkeit
+   * zerbrochen: der erste Aufruf füllt den letzten Anhangplatz und committet, seine Antwort geht
+   * verloren, und der identische Retry scheitert an „Maximal N Anhänge" — BEVOR irgendwer die
+   * bekannte Kennung gesehen hat. Der Client las den 400 als eindeutige Ablehnung und hielt
+   * seinen lokalen Stand für den gültigen; ein anschließendes Speichern überschrieb den bereits
+   * committeten Inhalt. Die Idempotenz-Zusage war also nicht falsch, sondern unerreichbar.
+   *
+   * DIE FORM DER LÖSUNG. Der Nachschlag wird VORGEZOGEN, nicht die Gates gelockert. Diese Methode
+   * antwortet auf genau eine Frage — „ist dieser Vorgang an diesem Objekt schon abgeschlossen?" —
+   * und sie SCHREIBT NICHTS. Findet sie nichts, liefert sie `null` und der Aufrufer läuft den
+   * vollen, ungekürzten Weg durch ALLE Tore. Damit ist keine Ausführung ohne Prüfung erreichbar:
+   * es gibt keinen Zustand, in dem ein Aufrufer die Kapazitäts- oder Stufenprüfung überspringt und
+   * trotzdem etwas Neues entsteht.
+   *
+   * WARUM UNTER DEM LOCK. Derselbe per-KO-Lock wie der Vollzug: ein Nachschlag, der neben einem
+   * laufenden Commit desselben Vorgangs liest, würde sonst ein „noch nicht da" melden, das im
+   * nächsten Moment falsch ist — und der Aufrufer liefe in eine zweite Ausführung. Prozess-
+   * übergreifende Gleichzeitigkeit bleibt (wie in mega18 benannt) Nach-VIP-2; innerhalb des
+   * Prozesses ist die Antwort hier exakt.
+   *
+   * WAS SIE NICHT PREISGIBT. Nur das AUFGEZEICHNETE Ergebnis des eigenen Vorgangs plus das Objekt,
+   * das der Aufrufer ohnehin gerade gelesen hat. Kein Bestand fremder Vorgänge, keine Liste, keine
+   * Existenzaussage über andere Kennungen (eine unbekannte Kennung ist schlicht `null`).
+   */
+  async lookupDocumentAppend(
+    id: string,
+    operationId: string,
+  ): Promise<DocumentAppendCommit | null> {
+    // Formprüfung der Kennung ZUERST und mit demselben Vertrag wie der Vollzug: eine ungültige
+    // Kennung ist ein ehrlicher Formfehler, kein „nicht gefunden".
+    const key = normalizeAppendOperationId(operationId);
+    return this.withKoLock(id, async () => {
+      const current = await this.require(id);
+      const known = (current.appendOps ?? []).find((op) => op.id === key);
+      if (!known) {
+        return null;
+      }
+      return {
+        committed: true,
+        operationId: key,
+        replayed: true,
+        koVersion: known.koVersion,
+        attachmentId: known.attachmentId,
+        sourceIds: [...known.sourceIds],
+        ko: current,
+      } satisfies DocumentAppendCommit;
+    });
+  }
+
+  /**
+   * AUFTRAG-mega18 Block A-1 — die Verbund-Operation. Vertrag und Begründung stehen oben bei
+   * `DocumentAppendInput`; hier ist nur noch der Vollzug.
+   *
+   * Der Aufrufer (services/app/src/routes/ko-routes.ts) hat VORHER entschieden: Rechte geprüft,
+   * die externe Stufe durchgesetzt (attach-policy.ts, unverändert) und das Ankerobjekt im
+   * Objektspeicher nachgeschlagen. Diese Methode bekommt GEPRÜFTE FAKTEN und trifft keine
+   * Policy-Entscheidung nach — mit der einen Ausnahme, die ihre eigene ist: die interne
+   * Belegpflicht (A-2). Genau die Aufteilung, die ben beschrieben hat, und der Grund, warum die
+   * Sicherheitsgrenze dafür nicht gelockert werden muss.
+   */
+  async appendDocumentExtract(
+    id: string,
+    author: string,
+    input: DocumentAppendInput,
+  ): Promise<DocumentAppendCommit> {
+    // Alle Eingangsprüfungen VOR dem Lock — sie brauchen das Objekt nicht und sollen es nicht
+    // blockieren. Reihenfolge mit Absicht: der Vorgangsschlüssel zuerst (ohne ihn ist der Aufruf
+    // nicht wiederholbar und damit nicht sicher ausführbar), dann die Belegpflicht.
+    const operationId = normalizeAppendOperationId(input.operationId);
+    // A-2: WIRFT ohne echten Anker — auf jeder Stufe, ohne die Stufe zu kennen.
+    const anchorObjectId = requireDocumentEvidence({ anchorObjectId: input.anchor?.objectId });
+    const anchor = input.anchor;
+    if (!anchor) {
+      // Unerreichbar (requireDocumentEvidence hat schon geworfen); steht hier für die Verengung
+      // des Typs, damit unten kein `!` nötig ist.
+      throw new KoError("MISSING_DOCUMENT_ANCHOR", "Kein Originaldokument als Beleg.");
+    }
+    if (input.sources.length === 0) {
+      // Eine Übernahme OHNE Belegstelle wäre genau der Zustand, den dieser Auftrag verbietet —
+      // Inhalt ohne Herkunft, nur eben mit leerer Liste statt fehlgeschlagener Schreibvorgänge.
+      throw new KoError(
+        "INVALID_SOURCE",
+        "Übernahme ohne Belegstelle — kein Inhalt ohne Herkunft.",
+      );
+    }
+    const labels = input.sources.map((s) => (typeof s.label === "string" ? s.label.trim() : ""));
+    if (labels.some((label) => label.length === 0)) {
+      throw new KoError("INVALID_SOURCE", "Quellen-Label fehlt.");
+    }
+
+    return this.withKoLock(id, async () => {
+      const before = await this.require(id);
+
+      // ---- IDEMPOTENZ ----------------------------------------------------------------------
+      // Der Nachschlag liegt INNERHALB des Locks und arbeitet auf dem FRISCH gelesenen Objekt:
+      // damit kann zwischen „ist dieser Vorgang schon durch?" und dem Vollzug nichts dazwischen
+      // geraten. Ein bereits abgeschlossener Vorgang liefert sein AUFGEZEICHNETES Ergebnis
+      // zurück — kein zweiter Anhang, keine doppelten Quellen, keine zweite Revision.
+      const known = (before.appendOps ?? []).find((op) => op.id === operationId);
+      if (known) {
+        return {
+          committed: true,
+          operationId,
+          replayed: true,
+          koVersion: known.koVersion,
+          attachmentId: known.attachmentId,
+          sourceIds: [...known.sourceIds],
+          ko: before,
+        } satisfies DocumentAppendCommit;
+      }
+
+      const at = new Date(this.now()).toISOString();
+
+      // ---- 1. ANKER SICHERN ----------------------------------------------------------------
+      // Das Originaldokument wird Anhang DIESES Objekts. Ab hier ist der Anker keine Behauptung
+      // mehr: dieselbe Operation, die den Inhalt schreibt, bindet auch das Dokument.
+      const attachment: KoAttachment = {
+        id: this.genId(),
+        name: anchor.name,
+        mime: anchor.mime,
+        author,
+        at,
+        objectId: anchorObjectId,
+        ...(anchor.thumbnail ? { thumbnail: anchor.thumbnail } : {}),
+        ...(anchor.size !== undefined ? { size: anchor.size } : {}),
+      };
+
+      // ---- 2. BELEGE VOLLSTÄNDIG ------------------------------------------------------------
+      // „Seriell und vollständig" heißt hier: alle Belegstellen entstehen gemeinsam, bevor
+      // irgendetwas persistiert wird. Ein Teilbestand ist nicht darstellbar. Dieselben Regeln wie
+      // `addSource`: Stufe 2, nie peer-validiert, URL durch die Persistenz-Allowlist.
+      const sources: KoSource[] = input.sources.map((source, index) => {
+        const provider = source.provider?.trim() ? source.provider.trim() : null;
+        return {
+          id: this.genId(),
+          label: labels[index] as string,
+          url: safeSourceUrl(source.url),
+          excerpt: source.excerpt?.trim() ? source.excerpt.trim() : null,
+          kind: "external",
+          peerValidated: false,
+          ...(provider ? { provider } : {}),
+          author,
+          at,
+        };
+      });
+
+      // ---- 3. ERST DANACH DER INHALT --------------------------------------------------------
+      // Ohne `changes` (Erfassen): kein Versions-Bump, kein Status-Reset, kein Snapshot — der
+      // Inhalt kam mit `create` und ist bereits committet; diese Operation bindet nur die Herkunft.
+      const revises = input.changes !== undefined;
+      const version = revises ? before.version + 1 : before.version;
+      const op: KoAppendOp = {
+        id: operationId,
+        at,
+        koVersion: version,
+        attachmentId: attachment.id,
+        sourceIds: sources.map((s) => s.id),
+      };
+      let committed: KnowledgeObject = {
+        ...before,
+        attachments: [...(before.attachments ?? []), attachment],
+        // SCRUM-527: dieselbe Allowlist über die ganze Liste wie in `revise` — säubert nebenbei
+        // Altbestand, ohne Label/Auszug/Provider anzutasten.
+        sources: sanitizeSources([...(before.sources ?? []), ...sources]),
+        appendOps: rememberAppendOp(before.appendOps, op),
+      };
+      if (input.changes) {
+        const nextBody = cleanBody(input.changes.bodyHtml);
+        committed = {
+          ...committed,
+          title: input.changes.title ?? before.title,
+          statement:
+            input.changes.statement ?? (nextBody ? htmlToPlainText(nextBody) : before.statement),
+          bodyHtml: nextBody,
+          captionTexts: searchCaptionTexts(nextBody),
+          version,
+          trust: 0, // Revisions-Semantik unverändert: Bewertungen der Vorversion zählen nicht mehr.
+          status: "offen", // muss neu validiert werden
+          history: [
+            ...before.history,
+            // Die Historie benennt den Vorgang, nicht bloß „überarbeitet" — wer später fragt,
+            // warum diese Version entstand, findet hier die Antwort statt sie zu rekonstruieren.
+            { version, at, author, note: "überarbeitet (Dokumentinhalt übernommen)" },
+          ],
+        };
+      }
+
+      // ---- DER COMMIT: GENAU EIN SCHREIBVORGANG ---------------------------------------------
+      // Compare-and-Set auf rowVersion (repo.update). Es gibt keinen zweiten Write in dieser
+      // Operation, gegen den ein erster verlieren könnte — das ist die strukturelle Antwort auf
+      // den parallelen CAS. Ab der nächsten Zeile GILT das Ergebnis.
+      await this.repo.update(committed);
+
+      let snapshotWritten = false;
+      try {
+        // Nachgelagerte BELEGE der Änderung (Versions-Snapshot, Evidence-Records, Audit) — genau
+        // das Muster aus `mutateKoTx`: schlägt einer fehl, wird der Commit KOMPENSIEREND
+        // zurückgenommen, damit nie „wirksam, aber unbelegt" entsteht.
+        if (revises) {
+          await this.snapshot(committed, author, "überarbeitet (Dokumentinhalt übernommen)");
+          snapshotWritten = this.versions !== undefined;
+        }
+        // Die Evidence-Records tragen die JETZT gültige Inhaltsversion: Anker und Belegstellen
+        // gehören zu der Fassung, die diese Operation hinterlässt — nicht zur Vorversion.
+        await this.appendEvidence({
+          koId: id,
+          koVersion: version,
+          kind: "attachment",
+          attachmentId: attachment.id,
+          objectId: anchorObjectId,
+          label: attachment.name,
+          mime: attachment.mime,
+          createdBy: author,
+          createdAt: at,
+        });
+        for (const source of sources) {
+          await this.appendEvidence({
+            koId: id,
+            koVersion: version,
+            kind: "source",
+            sourceId: source.id,
+            label: source.label,
+            url: safeSourceUrl(source.url),
+            provider: source.provider ?? null,
+            createdBy: author,
+            createdAt: at,
+          });
+        }
+        await this.audit?.record({
+          actor: author,
+          action: "ko.document-appended",
+          target: id,
+          payload: {
+            operationId,
+            version,
+            revised: revises,
+            objectId: anchorObjectId,
+            sources: sources.length,
+          },
+        });
+        return {
+          committed: true,
+          operationId,
+          replayed: false,
+          koVersion: version,
+          attachmentId: attachment.id,
+          sourceIds: sources.map((s) => s.id),
+          ko: committed,
+        } satisfies DocumentAppendCommit;
+      } catch (err) {
+        // Vollständige Rücknahme: Snapshot entfernen (falls geschrieben) und den Inhalt auf den
+        // Vorzustand zurücksetzen — inklusive `appendOps`, sodass eine Wiederholung den Vorgang
+        // WIRKLICH neu ausführt und nicht ein Ergebnis quittiert, das es nicht gibt.
+        //
+        // EHRLICHE GRENZE: bereits geschriebene EvidenceRecords sind append-only und bleiben
+        // stehen. Das ist der HARMLOSE Spiegel (`evidence-without-source`, von
+        // apps/web/src/lib/evidenceConsistency.ts erkannt und benannt) — nicht der verbotene
+        // Zustand. Der verbotene wäre Inhalt ohne aktive Herkunft, und der ist hier nicht
+        // erreichbar: Inhalt und Quellen stehen in DEMSELBEN Schreibvorgang, der gerade
+        // zurückgenommen wird.
+        if (snapshotWritten) {
+          await this.versions?.remove(id, version).catch(() => undefined);
+        }
+        await this.rollbackKo(before).catch(() => undefined);
+        throw err;
+      }
     });
   }
 

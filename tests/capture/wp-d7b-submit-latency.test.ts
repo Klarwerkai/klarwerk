@@ -82,7 +82,7 @@ describe("WP-D7c Rot-Fix 1: Phase A parallel, Phase B strikt seriell", () => {
       queueSource: { name: "quelle.pdf", run: () => t.doWrite("queueSource") },
       pendingSources: async () => {
         await t.doWrite("pendingSources");
-        return { attached: 1, failed: [] };
+        return { attached: 1, failed: [], unanchored: [] };
       },
     });
     // Phase A: 3 Objekte (2 Anhänge + 1 Original) — parallel hochgeladen.
@@ -139,7 +139,7 @@ describe("WP-D7c Rot-Fix 1: Phase A parallel, Phase B strikt seriell", () => {
           throw new Error("add-source kaputt");
         },
       },
-      pendingSources: async () => ({ attached: 0, failed: ["extern-1"] }),
+      pendingSources: async () => ({ attached: 0, failed: ["extern-1"], unanchored: [] }),
     });
     expect(result.attached).toBe(0);
     const names = result.failed.map((f) => f.name).sort();

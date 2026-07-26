@@ -34,7 +34,7 @@
 
 ## 3. Audit vs. technische Logs
 
-- **Audit-Log (fachlich):** lückenlos, **append-only Hash-Kette**, manipulationssicher; jede relevante Aktion. Zweck: Nachvollziehbarkeit/Integrität — **nicht** Leistungs-/Verhaltenskontrolle (Betriebsvereinbarung empfohlen, `gdpr-compliance-runbook.md`). Zugriff: Controller/Admin.
+- **Audit-Log (fachlich):** lückenlos, **append-only Hash-Kette**; nachträgliche Abweichungen sind rechnerisch prüfbar (tamper-evident), nicht verhindert — die Kette hat keinen extern verankerten Kopf. Jede relevante Aktion. Zweck: Nachvollziehbarkeit/Integrität — **nicht** Leistungs-/Verhaltenskontrolle (Betriebsvereinbarung empfohlen, `gdpr-compliance-runbook.md`). Zugriff: Controller/Admin.
 - **ModelRun-Protokoll (KI-Betrieb):** technische Metadaten je Reasoner-Lauf (Provider-Modus, Fallback, Fehler, Timing) — read-only, **ohne Inhalte**.
 - **Technische/Runtime-Logs:** das App-Framework (Fastify) läuft **ohne aktivierten Request-Logger**; technische/Access-Logs entstehen auf der **Coolify-/Traefik-/Container-Ebene** (stdout, Proxy-Logs). → Betreiber zentralisiert diese (s. §11).
 
@@ -87,7 +87,7 @@
 
 ## 8. Aufbewahrungsfristen (Status + Empfehlung)
 
-- **Audit-Log:** bewusst **unveränderlich/append-only** (Manipulationsschutz) — keine automatische Löschung (`gdpr-compliance-runbook.md`).
+- **Audit-Log:** bewusst **append-only und hash-verkettet** — nachträgliche Abweichungen sind rechnerisch prüfbar (tamper-evident), nicht verhindert (kein extern verankerter Kettenkopf); keine automatische Löschung (`gdpr-compliance-runbook.md`).
 - **ModelRun-Protokoll:** nur Metadaten; Aufbewahrung vom Betreiber festzulegen (z. B. 90 Tage), keine Inhalte.
 - **Sessions:** TTL 14 Tage; **Reset-Token:** 1 Stunde (technisch gesetzt).
 - **Proxy-/Server-Logs:** Aufbewahrung = Betreiber-Logging-Policy (DSGVO-konforme Frist).

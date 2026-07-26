@@ -59,6 +59,12 @@ import { isNavigableNode, koDetailPath } from "../lib/graphNav";
 // WP-IC-PAKET-1 (Teil 1) + 1c (ROT-2): Altbestand-Anzeige — rohe Entities NUR dekodieren, wenn der
 // Decode-Marker fehlt (markierte Kandidaten sind kanonisch; kein Doppel-Dekodieren echter Literale).
 import { displayImportText } from "../lib/htmlEntities";
+// AUFTRAG-mega9 Block E-1 (KW-E2E-005): eine Quelle für Statustext, Farbton und „ist offen".
+import {
+  importCandidateStatusKey,
+  importCandidateStatusTone,
+  isOpenImportCandidate,
+} from "../lib/importCandidateStatus";
 import { ImportParseError, parseImportItems } from "../lib/importReview";
 // AUFTRAG-ic7-import-vision: geteilte ID des JSON-Dialogs (aktive JSON-Kachel der Quellen-Galerie).
 import { JSON_UPLOAD_INPUT_ID } from "../lib/importSourceGallery";
@@ -327,12 +333,8 @@ export function Output(): JSX.Element {
   );
 }
 
-const REVIEW_TONE: Record<string, string> = {
-  neu: "bg-page text-muted",
-  angenommen: "bg-trust-pos-bg text-trust-pos-text",
-  abgelehnt: "bg-trust-crit-bg text-trust-crit-text",
-  "info-angefragt": "bg-trust-warn-bg text-trust-warn-text",
-};
+// AUFTRAG-mega9 Block E-1 (KW-E2E-005): Statustext UND Farbton kommen jetzt aus der einen Quelle
+// lib/importCandidateStatus — die lokale Ton-Map und der inline gebaute i18n-Schlüssel sind entfallen.
 
 // SCRUM-108/116/FE-LIB-04: JSON-Re-Import mit echter Source-Review-Queue.
 export function ImportReview(): JSX.Element {
@@ -459,7 +461,7 @@ export function ImportReview(): JSX.Element {
           abgegrenzt in einer standardmäßig EINGEKLAPPTEN Sektion mit Zähler, damit der geführte
           Fluss oben eine gerade Linie bleibt. Inhalt (Queue-Verhalten) unverändert. */}
       <ImportHistorySection
-        openCount={(query.data ?? []).filter((c) => c.status === "neu").length}
+        openCount={(query.data ?? []).filter((c) => isOpenImportCandidate(c.status)).length}
         totalCount={query.data?.length ?? 0}
       >
         {/* SCRUM-90/91: konzeptioneller Pipeline-Fluss + ehrliche Queue-Zusammenfassung. */}
@@ -507,11 +509,11 @@ export function ImportReview(): JSX.Element {
                   <Card key={c.id} className="space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
                       <span
-                        className={`rounded-pill px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase ${
-                          REVIEW_TONE[c.status] ?? "bg-page text-muted"
-                        }`}
+                        className={`rounded-pill px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase ${importCandidateStatusTone(
+                          c.status,
+                        )}`}
                       >
-                        {t(`imp.status.${c.status}`)}
+                        {t(importCandidateStatusKey(c.status))}
                       </span>
                       {(() => {
                         // SCRUM-91: kompakte, ehrlich abgeleitete Befund-Badges.
@@ -562,7 +564,7 @@ export function ImportReview(): JSX.Element {
                     <KoSummaryDisclosure
                       source={c.item}
                       text={displayImportText(c.item.statement, c.item.textCodec)}
-                      defaultOpen={c.status === "neu"}
+                      defaultOpen={isOpenImportCandidate(c.status)}
                     />
                     {c.note ? (
                       <p className="text-[12px] text-trust-warn-text">
@@ -570,7 +572,7 @@ export function ImportReview(): JSX.Element {
                       </p>
                     ) : null}
 
-                    {c.status === "neu" ? (
+                    {isOpenImportCandidate(c.status) ? (
                       <div className="flex flex-wrap items-center gap-2 border-t border-hairline pt-2">
                         <Button
                           variant="primary"

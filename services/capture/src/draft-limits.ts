@@ -29,6 +29,12 @@ export const DRAFT_LIMITS = {
   sourceExcerpt: 500,
   /** Zeichen für die Such-/Herkunftsquelle eines Treffers (kein KI-Anbieter). */
   sourceProvider: 100,
+  /**
+   * AUFTRAG-mega20 Block D: Zeichen je Referenzfeld einer wartenden Belegstelle (`anchorKey`,
+   * `objectId`). Technische Kennungen, keine Nutzereingabe — echte Werte sind UUIDs (36 Zeichen);
+   * 128 liegt weit darüber und deckelt trotzdem einen aufgeblähten fremden Payload.
+   */
+  sourceRef: 128,
   /** Zeichen für die externe Suchanfrage. */
   extQuery: 300,
   /** Gesicherte Interview-Antworten. */

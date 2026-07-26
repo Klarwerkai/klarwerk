@@ -96,6 +96,23 @@ export interface KoSource {
   at: string;
 }
 
+// AUFTRAG-mega18 Block A-1: Vermerk eines ABGESCHLOSSENEN Übernahme-Vorgangs (Verbund-Operation
+// „Dokumentinhalt übernehmen"). Er trägt das Commit-Ergebnis, nicht nur die Kennung: eine
+// Wiederholung desselben Vorgangs kann damit EXAKT dieselbe Antwort liefern, ohne ein zweites Mal
+// zu schreiben. Die Begründung (warum der Aufrufer die Kennung bildet, warum sie am Objekt liegt,
+// warum sie gedeckelt ist) steht in document-append.ts.
+export interface KoAppendOp {
+  /** Die Operations-Kennung des Aufrufers — reiner Deduplizierungs-Schlüssel, ohne Autorität. */
+  id: string;
+  at: string;
+  /** Die Inhaltsversion, die dieser Vorgang hinterlassen hat. */
+  koVersion: number;
+  /** Der Anhang, der als Anker entstand (das Originaldokument am Objekt). */
+  attachmentId: string;
+  /** Die Belegstellen, die dieser Vorgang angelegt hat. */
+  sourceIds: string[];
+}
+
 // FR-KO-01: Datenmodell inkl. version/history/originalAuthor/needed/assignments/asset
 // (Pflichtenheft §3.5, Technischer Anhang §1).
 export interface KnowledgeObject {
@@ -157,6 +174,41 @@ export interface KnowledgeObject {
   // (Konflikte/Überschneidungen) entstehen unverändert in ihren Services — aiCheck trägt nur den
   // ehrlichen Job-Status für die Validierungs-Anzeige.
   aiCheck?: AiCheck;
+  // AUFTRAG-mega18 Block A-1: Vorgangsgedächtnis der VERBUND-OPERATION „Dokumentinhalt übernehmen"
+  // (KoService.appendDocumentExtract). Additiv im JSONB, keine Migration; Altbestand ohne Feld hat
+  // schlicht noch keinen Vorgang erinnert. Es liegt AM OBJEKT und nicht in einem Prozessspeicher,
+  // damit die Idempotenz-Prüfung Teil desselben Read-Modify-Write ist wie der Vollzug (kein TOCTOU),
+  // einen Neustart übersteht und prozessübergreifend gilt. Gedeckelt (DOCUMENT_APPEND_OP_MEMORY) —
+  // die Grenze und ihr Preis stehen ausgeschrieben in document-append.ts.
+  appendOps?: KoAppendOp[];
+  // AUFTRAG-mega20 Block A: STABILER Idempotenzanker der ERSTANLAGE aus Dokumenten
+  // (KoService.createWithDocuments). Anders als `appendOps` kann er nicht im Vorgangsgedächtnis
+  // eines bestehenden Objekts liegen — das Objekt entsteht ja gerade erst. Er liegt deshalb AM
+  // Objekt und ist DB-weit eindeutig (partieller Unique-Index kos_create_operation_uq, inkl.
+  // Papierkorb): ein zweiter Insert desselben Vorgangs kollidiert hart und wird ADOPTIERT statt
+  // dupliziert. Additiv im JSONB; Altbestand ohne Feld ist vor dieser Regel entstanden.
+  // NUR die Dokumentübernahme setzt das Feld — die öffentliche Schreibroute verwirft es wie
+  // `sources` und `importCandidateId`. Die Begründung steht in document-create.ts.
+  createOperationId?: string;
+  // AUFTRAG-mega20 Block A: REPARATURVERMERK. Gesetzt, wenn die kompensierende Rücknahme einer
+  // gescheiterten Erstanlage selbst gescheitert ist — dann steht dieses Objekt im Bestand, obwohl
+  // seine Belege (Snapshot/Evidence/Audit) unvollständig sein können. Bis mega19 wurde der
+  // Rollback-Fehler verschluckt und dieser Zustand war unsichtbar. Der Vermerk repariert nichts;
+  // er macht das Objekt AUFFINDBAR und den Grund BENENNBAR (s. document-create.ts, KoRepairNote).
+  needsRepair?: KoRepairNote;
+  // AUFTRAG-mega21 Block A: DER VORGANGS-DATENSATZ. `createOperationId` allein ist nur ein
+  // SCHLÜSSEL — er weiß nicht, WEM der Vorgang gehört, WAS er war und WIE er ausging. Genau diese
+  // drei Lücken waren bens SB-1, SB-3 und SB-4. Der Datensatz liegt AM Objekt (wie der Schlüssel
+  // selbst) und wird im SELBEN `repo.insert` geschrieben — es gibt keinen Augenblick, in dem der
+  // Schlüssel ohne seinen Eigentümer im Bestand steht. Additiv im JSONB, keine Migration; Altbestand
+  // ohne Datensatz ist vor dieser Regel entstanden und wird in adoptCreatedKo eigens behandelt.
+  createOperation?: KoCreateOperation;
+  // AUFTRAG-mega21 Block C-1: die nach dem Commit GESCHEITERTEN Nacharbeiten, DAUERHAFT am Objekt.
+  // Bis mega20 standen sie nur in der Antwort (`followUpsFailed`) und im Audit — die Antwort ist
+  // weg, sobald der Browser sie gelesen hat, und im Audit sucht niemand. Ein Wissensobjekt, dessen
+  // Prüferzuweisung fehlschlug, war damit ununterscheidbar von einem, das gar keine brauchte. Hier
+  // ist es AUFFINDBAR: ein Feld am Objekt, das jede Abfrage sieht und das einen Neustart übersteht.
+  createFollowUpsFailed?: string[];
   // SCRUM-422 (Papierkorb): gesetzt beim Soft-Delete. Getrashte KOs sind aus ALLEN
   // Lese-/Mutations-Pfaden ausgeblendet (wirken gelöscht) und werden nach Ablauf der
   // Frist automatisch endgültig entfernt. Demo-Daten landen NIE hier (immer hart).
@@ -207,6 +259,50 @@ export interface EvidenceRecord {
   createdAt: string;
 }
 
+/**
+ * AUFTRAG-mega20 Block A — der Reparaturvermerk am Wissensobjekt. Die ausgeschriebene Begründung
+ * (warum ein verschluckter Rollback-Fehler der teurere Zustand ist, und warum dieser Vermerk best
+ * effort bleiben MUSS) steht in document-create.ts.
+ */
+export interface KoRepairNote {
+  /** Zeitpunkt des gescheiterten Rollbacks (ISO). */
+  at: string;
+  /** Der Beleg-Schritt, der die Anlage zu Fall gebracht hat (Fehlername, PII-frei). */
+  failedStep: string;
+  /** Warum die Rücknahme selbst nicht ging (Fehlername, PII-frei). */
+  rollbackFailure: string;
+}
+
+/**
+ * AUFTRAG-mega21 Block A — DAS GEDÄCHTNIS DES VORGANGS.
+ *
+ * Drei Felder, drei Fragen, die `createOperationId` allein nicht beantworten konnte. Die
+ * ausgeschriebene Begründung je Feld steht in document-create.ts; hier nur die Kurzform:
+ *
+ *   · `actor`       — WEM gehört der Vorgang? Der AUTHENTIFIZIERTE Anfragende der Erstanlage,
+ *                     unveränderlich. NICHT `author`: der stammt beim Entwurfsweg vom ursprünglichen
+ *                     Verfasser (FR-CAP-07) und ist über `setAuthor` später änderbar. Ein
+ *                     veränderliches Feld taugt nicht als Eigentümerbindung.
+ *   · `fingerprint` — WAS war der Vorgang? Der kanonische Abdruck der Anfrage. Ohne ihn liefert
+ *                     derselbe Schlüssel nach einer Inhaltsänderung still das alte Objekt.
+ *   · `state`       — WIE ging er aus? `committed` = normal gelungen. `repair_required` = die
+ *                     Anlage scheiterte NACH dem Insert und die Rücknahme ebenfalls; das Objekt
+ *                     steht mit möglicherweise unvollständigen Belegen im Bestand und darf NIE als
+ *                     normaler Erfolg adoptiert werden.
+ */
+export interface KoCreateOperation {
+  /** Der unveränderliche Eigentümer: die Kennung des authentifizierten Anfragenden. */
+  actor: string;
+  /** Kanonischer Inhaltsabdruck der Anfrage (SHA-256, hex) — s. createOperationFingerprint. */
+  fingerprint: string;
+  /** Der Zustand des Vorgangs. Ein Reparaturrest wird nie als Erfolg ausgeliefert. */
+  state: KoCreateOperationState;
+  /** Zeitpunkt der Anlage (ISO). */
+  at: string;
+}
+
+export type KoCreateOperationState = "committed" | "repair_required";
+
 export type KoErrorCode =
   | "NOT_FOUND"
   | "INVALID_TYPE"
@@ -223,14 +319,54 @@ export type KoErrorCode =
   // WP-SHIP8-CLOSE-4 (bens ROT-1B): der Kandidaten-Anker (importCandidateId) ist bereits vergeben —
   // ein zweites KO desselben Import-Kandidaten wird DB-seitig abgelehnt (Pg: partieller Unique-Index,
   // InMemory: Insert-Guard). Der Import-Accept adoptiert dann das bestehende KO statt zu duplizieren.
-  | "IMPORT_ANCHOR_TAKEN";
+  | "IMPORT_ANCHOR_TAKEN"
+  // AUFTRAG-mega18 Block A-2: die INTERNE BELEGPFLICHT hat gegriffen — übernommener Dokumentinhalt
+  // ohne echten Original-Anker. Eine eigene Regel, unabhängig von der externen Stufe; die
+  // Begründung der Trennung steht in document-append.ts.
+  | "MISSING_DOCUMENT_ANCHOR"
+  // AUFTRAG-mega18 Block A-1: die Verbund-Operation braucht einen wiederholbaren Vorgangsschlüssel
+  // (Idempotenz). Fehlt er oder ist er unbrauchbar, wird ehrlich abgelehnt statt einer erfundenen
+  // Kennung — die würde die Wiederholbarkeit lautlos aufheben.
+  | "INVALID_OPERATION_ID"
+  // AUFTRAG-mega20 Block A: die Erzeugungs-Kennung der Dokumentübernahme ist bereits vergeben —
+  // ein zweites Wissensobjekt DESSELBEN Vorgangs wird DB-seitig abgelehnt (Pg: partieller
+  // Unique-Index kos_create_operation_uq, InMemory: Insert-Guard). Der Service adoptiert daraufhin
+  // das bestehende Objekt statt zu duplizieren; nach außen wird dieser Code nur sichtbar, wenn die
+  // Adoption NICHT zulässig ist (fremde Autorschaft) — dann ehrlich als Konflikt.
+  | "CREATE_ANCHOR_TAKEN"
+  // AUFTRAG-mega20 Block A: die kompensierende RÜCKNAHME einer gescheiterten Erstanlage ist selbst
+  // gescheitert. Das Wissensobjekt steht im Bestand und ist möglicherweise unvollständig belegt.
+  // Bis mega19 wurde dieser Fall verschluckt (`.catch(() => undefined)`) und der Aufrufer sah nur
+  // den ursprünglichen Fehler. Jetzt ist er ein EIGENER Fehler mit der Kennung des Objekts.
+  | "CREATE_ROLLBACK_FAILED"
+  // AUFTRAG-mega21 Block A: DERSELBE Vorgangsschlüssel, ABWEICHENDER Inhalt. Bis mega20 wurde in
+  // diesem Fall still das alte Objekt geliefert — der Nutzer hatte gerade Text geändert und bekam
+  // den vorherigen Stand zurück, ohne es zu erfahren. Jetzt ist es ein ausdrücklicher Fehler mit
+  // einem Weg zurück (die Oberfläche bietet an, den Vorgang neu zu beginnen).
+  | "IDEMPOTENCY_PAYLOAD_MISMATCH"
+  // AUFTRAG-mega21 Block A: der Vorgang steht auf `repair_required` — Anlage UND Rücknahme sind
+  // gescheitert, das Objekt ist möglicherweise unvollständig belegt. Ein Wiederholversuch bekommt
+  // diesen Rest NIE als Erfolg (das war bens SB-4), sondern eine ehrliche Auskunft.
+  | "CREATE_REPAIR_REQUIRED";
 
 export class KoError extends Error {
   readonly code: KoErrorCode;
+  /**
+   * AUFTRAG-mega20 Block A: ADDITIVE Zusatzangaben für Fehler, bei denen der Aufrufer mehr braucht
+   * als eine Meldung. Konkret `CREATE_ROLLBACK_FAILED`: ohne die Kennung des zurückgebliebenen
+   * Objekts ist „es ist etwas übrig" keine reparierbare Aussage, sondern nur eine beunruhigende.
+   * Optional und rein informativ — keine bestehende Fehlerstelle ändert ihr Verhalten dadurch.
+   * `cause` trägt den URSPRÜNGLICHEN Fehler; er wird bewusst NICHT in `message` gespiegelt, damit
+   * nichts über sendError nach außen leckt, was dort nicht hingehört (SCRUM-496).
+   */
+  readonly details?: { readonly koId?: string; readonly cause?: unknown };
 
-  constructor(code: KoErrorCode, message: string) {
+  constructor(code: KoErrorCode, message: string, details?: { koId?: string; cause?: unknown }) {
     super(message);
     this.code = code;
     this.name = "KoError";
+    if (details) {
+      this.details = details;
+    }
   }
 }

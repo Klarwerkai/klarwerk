@@ -1,16 +1,22 @@
 // @vitest-environment jsdom
 // AUFTRAG-uxpol5 · Punkt 2 (Pedis Höhe/Priorisierung): seltenere Facetten wandern hinter „Weitere
 // Filter" (eingeklappt als Standard, Zustand pro Browser gemerkt). Gepinnt am ECHTEN FacetFilter:
-//  (a) primäre Facetten sichtbar, sekundäre eingeklappt; „Weitere Filter" öffnet sie.
+//  (a) primäre Facetten sichtbar, sekundäre eingeklappt; „Weitere Filter“ öffnet sie.
 //  (b) eine aktive Auswahl aus dem eingeklappten Bereich bleibt OBEN als Pille sichtbar (nichts
-//      „versteckt aktiv").
-//  (c) der Auf-/Zu-Zustand überlebt einen „Reload" (frischer Mount über denselben localStorage).
+//      „versteckt aktiv“).
+//  (c) der Auf-/Zu-Zustand überlebt einen „Reload“ (frischer Mount über denselben localStorage).
+//
+// AUFTRAG-mega10 Block B: unverändert in der Sache — nur die Darstellung einer Option ist jetzt eine
+// echte Checkbox statt eines aria-pressed-Chips, und die aktiven Pillen liegen im eigenen Bauteil
+// FacetActiveBar. Die Harness rendert deshalb beide; alle vier Zusicherungen bleiben wörtlich.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { act, createElement, useState } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { FacetFilter } from "../../apps/web/src/components/FacetFilter";
+import { FacetActiveBar } from "../../apps/web/src/components/facets/FacetActiveBar";
 import i18n from "../../apps/web/src/i18n";
-import { type FacetGroupConfig, buildFacetGroups } from "../../apps/web/src/lib/facetFilter";
+import type { FacetGroupConfig } from "../../apps/web/src/lib/facetFilter";
+import { EMPTY_RAIL_UI, facetRailGroups } from "../../apps/web/src/lib/facetRail";
 import type { FacetSelection, FacetValues } from "../../apps/web/src/lib/facets";
 import { applyFacetSelection, toggleFacetValue } from "../../apps/web/src/lib/facets";
 
@@ -26,22 +32,37 @@ const ITEMS: FacetValues[] = [
   { category: ["B"], language: ["en"] },
 ];
 
+const labelForValue = (_k: string, v: string): string => v;
+
 function Harness({ items }: { items: FacetValues[] }) {
   const [sel, setSel] = useState<FacetSelection>({});
-  const groups = buildFacetGroups(items, CONFIGS, sel);
+  const groups = facetRailGroups(items, CONFIGS, sel, EMPTY_RAIL_UI, labelForValue);
   const faceted = applyFacetSelection(items, (v) => v, sel);
-  return createElement(FacetFilter, {
-    configs: CONFIGS,
-    groups,
-    selection: sel,
-    total: items.length,
-    shown: faceted.length,
-    secondaryKeys: ["language"],
-    moreStorageKey: STORAGE_KEY,
-    onToggle: (k: string, v: string) => setSel((s) => toggleFacetValue(s, k, v)),
-    onReset: () => setSel({}),
-    labelForValue: (_k: string, v: string) => v,
-  });
+  const onToggle = (k: string, v: string): void => setSel((s) => toggleFacetValue(s, k, v));
+  const onReset = (): void => setSel({});
+  return createElement(
+    "div",
+    null,
+    createElement(FacetActiveBar, {
+      configs: CONFIGS,
+      selection: sel,
+      onToggle,
+      onReset,
+      labelForValue,
+    }),
+    createElement(FacetFilter, {
+      configs: CONFIGS,
+      groups,
+      selection: sel,
+      total: items.length,
+      shown: faceted.length,
+      secondaryKeys: ["language"],
+      moreStorageKey: STORAGE_KEY,
+      onToggle,
+      onReset,
+      labelForValue,
+    }),
+  );
 }
 
 let container: HTMLDivElement;
@@ -68,9 +89,28 @@ function chip(text: string): HTMLButtonElement {
     (b.textContent ?? "").replace(/\s+/g, " ").includes(text),
   );
   if (!(btn instanceof HTMLButtonElement)) {
-    throw new Error(`Chip „${text}" nicht gefunden; DOM: ${container.textContent}`);
+    throw new Error(`Chip „${text}“ nicht gefunden; DOM: ${container.textContent}`);
   }
   return btn;
+}
+
+// Eine Facetten-Option: echte Checkbox im <label> (erster <span> = Wert, zweiter = Zähler).
+function optionRow(value: string): HTMLLabelElement | undefined {
+  return [...container.querySelectorAll("label")].find(
+    (l) => l.querySelectorAll("span")[0]?.textContent === value,
+  );
+}
+
+function option(value: string): HTMLInputElement {
+  const box = optionRow(value)?.querySelector("input[type=checkbox]");
+  if (!(box instanceof HTMLInputElement)) {
+    throw new Error(`Option „${value}“ nicht gefunden; DOM: ${container.textContent}`);
+  }
+  return box;
+}
+
+function hasOption(value: string): boolean {
+  return optionRow(value) !== undefined;
 }
 
 function res(key: string): string {
@@ -91,16 +131,16 @@ describe("uxpol5: FacetFilter — „Weitere Filter“ (primär vs. sekundär, g
   it("(a) primäre Facette sichtbar, sekundäre eingeklappt; „Weitere Filter“ öffnet sie", () => {
     mount();
     // Primär: Kategorie-Chips sofort da.
-    expect(chip("A · 1")).toBeTruthy();
+    expect(hasOption("A")).toBe(true);
     // Sekundär (Sprache) eingeklappt: der Toggle steht, aber die Sprach-Chips noch nicht.
     expect(container.textContent).toContain(res("facet.moreFilters"));
-    expect(container.textContent).not.toContain("de · 1");
-    // Öffnen → Sprach-Chips erscheinen.
+    expect(hasOption("de")).toBe(false);
+    // Öffnen → Sprach-Optionen erscheinen.
     act(() => {
       chip(res("facet.moreFilters")).click();
     });
-    expect(chip("de · 1")).toBeTruthy();
-    expect(chip("en · 1")).toBeTruthy();
+    expect(hasOption("de")).toBe(true);
+    expect(hasOption("en")).toBe(true);
   });
 
   it("(b) aktive Auswahl aus dem eingeklappten Bereich bleibt oben als Pille sichtbar", () => {
@@ -110,7 +150,7 @@ describe("uxpol5: FacetFilter — „Weitere Filter“ (primär vs. sekundär, g
       chip(res("facet.moreFilters")).click();
     });
     act(() => {
-      chip("de · 1").click();
+      option("de").click();
     });
     const langLabel = res("lib.facet.language");
     expect(container.textContent).toContain(`${langLabel}: de`);
@@ -118,26 +158,26 @@ describe("uxpol5: FacetFilter — „Weitere Filter“ (primär vs. sekundär, g
     act(() => {
       chip(res("facet.moreFilters")).click();
     });
-    expect(container.textContent).not.toContain("de · 1");
+    expect(hasOption("de")).toBe(false);
     expect(container.textContent).toContain(`${langLabel}: de`);
   });
 
   it("(c) Auf-/Zu-Zustand überlebt den „Reload“ (frischer Mount über denselben Speicher)", () => {
     mount();
-    // Standard eingeklappt → öffnen (persistiert „offen").
+    // Standard eingeklappt → öffnen (persistiert „offen“).
     act(() => {
       chip(res("facet.moreFilters")).click();
     });
-    expect(chip("de · 1")).toBeTruthy();
+    expect(hasOption("de")).toBe(true);
     unmount();
-    // „Reload": frischer Mount, derselbe localStorage → Bereich ist wieder offen (ohne Klick).
+    // „Reload“: frischer Mount, derselbe localStorage → Bereich ist wieder offen (ohne Klick).
     mount();
-    expect(chip("de · 1")).toBeTruthy();
+    expect(hasOption("de")).toBe(true);
   });
 
   // AUFTRAG-uxpol6 (bens GELB 2.1): der stabile Storage-Key wird UNABHÄNGIG von der aktuellen
   // Gruppenanzahl an den Hook gegeben — Sekundärgruppen, die erst nach einem Datenwechsel in
-  // DERSELBEN Instanz erscheinen, respektieren ein bereits gespeichertes „offen".
+  // DERSELBEN Instanz erscheinen, respektieren ein bereits gespeichertes „offen“.
   it("(d) Sekundärgruppe erscheint erst später: gespeichertes „offen“ wirkt trotzdem", () => {
     window.localStorage.setItem(STORAGE_KEY, "1");
     // Erst KEINE sichtbare Sekundärgruppe: Sprache hat nur eine Option (< minGroupOptions).
@@ -151,9 +191,9 @@ describe("uxpol5: FacetFilter — „Weitere Filter“ (primär vs. sekundär, g
     act(() => {
       root.render(createElement(Harness, { items: ITEMS }));
     });
-    // … und zwar OFFEN (gespeichertes "1", ohne Klick) — nicht fälschlich „zu".
+    // … und zwar OFFEN (gespeichertes "1", ohne Klick) — nicht fälschlich „zu“.
     expect(chip(res("facet.moreFilters")).getAttribute("aria-expanded")).toBe("true");
-    expect(chip("de · 1")).toBeTruthy();
-    expect(chip("en · 1")).toBeTruthy();
+    expect(hasOption("de")).toBe(true);
+    expect(hasOption("en")).toBe(true);
   });
 });

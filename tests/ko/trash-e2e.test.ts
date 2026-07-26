@@ -519,6 +519,8 @@ describe("SCRUM-523 P.3 (WP-A2): repo.delete + audit.record committen/rollbacken
       resolveAiCheck: (id, patch, expectedKoVersion) =>
         inner.resolveAiCheck(id, patch, expectedKoVersion),
       findCandidates: (query) => inner.findCandidates(query),
+      // AUFTRAG-mega20 Block A: neue Vertragsmethode (Erzeugungs-Anker) — reines Durchreichen.
+      findByCreateOperation: (opId, actor) => inner.findByCreateOperation(opId, actor),
       delete: (id, tx) => {
         stage(tx, () => {
           void inner.delete(id);

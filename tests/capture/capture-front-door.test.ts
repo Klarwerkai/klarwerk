@@ -118,6 +118,8 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
   it("reicht neue Vordertuer-Inhalte ueber Draft-Create und Promote zur Pruefung ein", async () => {
     const calls: string[] = [];
     const payloads: DraftPayload[] = [];
+    // AUFTRAG-mega23 Block A: der Vorgang reist mit — Schlüssel und gemerkter Entwurf.
+    const vorgang = { id: "create-1", draftRef: { current: null as string | null } };
     const ko = await submitFrontDoorDraft(
       { title: "wasser", bodyHtml: "<p>tesx fall</p>" },
       {
@@ -126,45 +128,49 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
           payloads.push(payload);
           return { id: "draft-new" };
         },
-        updateDraft: async () => {
-          throw new Error("unexpected update");
-        },
-        promoteDraft: async (id) => {
-          calls.push(`promote:${id}`);
+        promoteDraft: async (id, mitgereicht) => {
+          calls.push(`promote:${id}:${mitgereicht.operationId}`);
           return { id: "ko-1", title: "wasser" };
         },
       },
+      vorgang,
       100,
     );
 
     expect(ko.id).toBe("ko-1");
-    expect(calls).toEqual(["create", "promote:draft-new"]);
+    expect(calls).toEqual(["create", "promote:draft-new:create-1"]);
     expect(payloads[0]?.title).toBe("wasser");
     expect(payloads[0]?.statement).toBe("tesx fall");
     expect(payloads[0]?.origin).toBe("frontdoor");
+    // Der frisch angelegte Entwurf ist GEMERKT — daran hängt die Wiederholbarkeit.
+    expect(vorgang.draftRef.current).toBe("draft-new");
   });
 
-  it("aktualisiert fortgesetzte Vordertuer-Drafts vor dem Promote", async () => {
+  it("promotet fortgesetzte Vordertuer-Drafts OHNE vorgeschalteten Update-Aufruf", async () => {
+    // AUFTRAG-mega23 Block A: bis mega22 lief hier zuerst ein `PUT /api/drafts/:id`. Nach einem
+    // serverseitig gelungenen Promote ist der Entwurf gelöscht — der Wiederholversuch scheiterte
+    // an genau diesem PUT mit 404, bevor der Nachschlag erreicht war. Der Stand reist jetzt IM
+    // Promote, also hinter dem Nachschlag.
     const calls: string[] = [];
+    const mitgereicht: DraftPayload[] = [];
     await submitFrontDoorDraft(
       { title: "aktualisiert", bodyHtml: "<p>inhalt</p>", activeDraftId: "draft-42" },
       {
         createDraft: async () => {
           throw new Error("unexpected create");
         },
-        updateDraft: async (id, payload) => {
-          calls.push(`update:${id}:${payload.title}`);
-          return { id };
-        },
-        promoteDraft: async (id) => {
+        promoteDraft: async (id, vorgang) => {
           calls.push(`promote:${id}`);
+          mitgereicht.push(vorgang.draftPayload);
           return { id: "ko-42", title: "aktualisiert" };
         },
       },
+      { id: "create-42", draftRef: { current: null } },
       100,
     );
 
-    expect(calls).toEqual(["update:draft-42:aktualisiert", "promote:draft-42"]);
+    expect(calls).toEqual(["promote:draft-42"]);
+    expect(mitgereicht[0]?.title).toBe("aktualisiert");
   });
 
   it("beendet einen haengenden Save mit klarer Fehlermeldung", async () => {
@@ -347,7 +353,11 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(pageSource).toContain("endpoints.drafts.promote");
     expect(pageSource).toContain("submitRequestedRef");
     expect(pageSource).toContain("requestSubmit");
-    expect(pageSource).toContain("!submittedKo");
+    // AUFTRAG-mega9 Block A: Die Doppel-Absicherung „nach dem Einreichen nicht erneut" ist unverändert,
+    // sitzt aber jetzt im gemeinsamen `busy` statt als einzelnes `!submittedKo` an jedem Knopf-Prädikat.
+    // Geprüft wird weiter die SACHE (Erfolg sperrt Speichern und Einreichen), nicht die alte Schreibweise.
+    expect(pageSource).toMatch(/const busy =[\s\S]{0,160}submittedKo !== null/);
+    expect(pageSource).toMatch(/const canSave = hasSavableContent && !busy/);
     expect(pageSource).toContain("fd.submitReview");
     expect(pageSource).toContain("fd.newEntry");
     expect(pageSource).toContain("fd.submitted");
@@ -386,8 +396,13 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     const onSubmitBlock = page.slice(onSubmitStart, onSubmitStart + 600);
     expect(onSubmitBlock).toContain("requestSubmit()");
     expect(onSubmitBlock).not.toContain("requestSave()");
-    // Der prominente Haupt-CTA ist der Einreichen-Button (type=submit, an canSubmit gebunden).
-    expect(page).toMatch(/type="submit"[\s\S]{0,80}disabled=\{!canSubmit\}/);
+    // Der prominente Haupt-CTA ist der Einreichen-Button (type=submit).
+    // AUFTRAG-mega9 Block A (KW-E2E-001): Er ist BEWUSST nicht mehr an `!canSubmit` gebunden — ein
+    // still deaktivierter Knopf ohne Begründung war der Befund. Er sperrt nur noch bei laufendem
+    // Vorgang (`busy`); die Inhaltsbedingung wird in requestSubmit zur SICHTBAREN Feldvalidierung.
+    expect(page).toMatch(/type="submit"[\s\S]{0,80}disabled=\{busy\}/);
+    expect(page).not.toMatch(/type="submit"[\s\S]{0,80}disabled=\{!canSubmit\}/);
+    expect(page).toContain("submitBlockReasons");
     // „Als Entwurf speichern" ist jetzt ein sekundaerer, expliziter Button-Klick (nicht der Form-Submit).
     expect(page).toContain("onClick={requestSave}");
   });

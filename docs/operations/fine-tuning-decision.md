@@ -57,7 +57,7 @@ Die bestehende Knowledge-OS-/Reasoner-/QA-Architektur deckt den Bedarf ab. Diese
 
 ## 7. Datenschutz / Compliance
 
-- Training auf eigenen Daten = **Datenfluss an Trainings-/Modellanbieter** + **eingebackenes** Wissen → konfligiert mit **DSGVO-Löschung** (Gewichte sind nicht selektiv „löschbar") und mit dem unveränderlichen-Audit-/Quellenprinzip.
+- Training auf eigenen Daten = **Datenfluss an Trainings-/Modellanbieter** + **eingebackenes** Wissen → konfligiert mit **DSGVO-Löschung** (Gewichte sind nicht selektiv „löschbar") und mit dem append-only-Audit-/Quellenprinzip.
 - Erfordert DSFA/Bewertung (`gdpr-compliance-runbook.md` §2), AV-Vertrag, ggf. self-hosted/kontrolliertes Modell.
 
 ## 8. Risiken (warum „nicht jetzt")

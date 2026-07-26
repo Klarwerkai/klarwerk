@@ -1,11 +1,14 @@
-import { Link } from "react-router-dom";
+// AUFTRAG-mega11 Block B-2 (bens SB-2): das Logo war ein roher `Link` — ein Klick darauf verließ eine
+// Seite mit ungespeicherter Eingabe ohne jede Nachfrage. Es läuft jetzt durch dieselbe geschützte
+// Grenze wie alle übrigen Shell-Navigationen.
+import { GuardedLink } from "../app/NavGuardContext";
 import { HOME_ROUTE } from "../app/navigation";
 
 // Markenlogo (BRIEF §3): weiße Kachel + zwei konzentrische orange Kreise,
 // Wortmarke KLARWERK + Untertitel REASONING SYSTEM.
 export function Logo(): JSX.Element {
   return (
-    <Link
+    <GuardedLink
       to={HOME_ROUTE}
       aria-label="Klarwerk - zur Startseite"
       className="flex items-center gap-2.5 rounded-[12px] outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
@@ -24,6 +27,6 @@ export function Logo(): JSX.Element {
           Reasoning System
         </span>
       </span>
-    </Link>
+    </GuardedLink>
   );
 }

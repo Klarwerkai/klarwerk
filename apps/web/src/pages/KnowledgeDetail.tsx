@@ -9,6 +9,7 @@ import {
   useAudit,
   useConflicts,
   useDirectory,
+  useExternalPolicy,
   useKo,
   useKoEvidence,
   useKoVersions,
@@ -19,6 +20,7 @@ import type {
   Confidentiality,
   ConflictType,
   ExternalResult,
+  ExtractedPoint,
   KnowledgeObject,
   KnowledgeType,
 } from "../api/types";
@@ -39,6 +41,7 @@ import { HelpTip } from "../components/HelpTip";
 import { KnowledgeInputStudio } from "../components/KnowledgeInputStudio";
 import { KoRevisionSummary } from "../components/KoRevisionSummary";
 import { RichTextEditor } from "../components/RichTextEditor";
+import { UploadLimitsHint } from "../components/UploadLimitsHint";
 import { ListEditor, TagEditor } from "../components/editors";
 import { KoReadView } from "../components/ko/KoReadView";
 import { KNOWLEDGE_TYPES, KnowledgeTypeTag, ProvenanceLine, StatusPill } from "../components/trust";
@@ -51,10 +54,18 @@ import {
   SectionLabel,
   TextInput,
 } from "../components/ui";
+// AUFTRAG-mega18 Block A-3: die Verbund-Operation und ihr dreiwertiger Ausgang (committed /
+// rejected / unknown). Blindes Kompensieren gibt es nicht mehr — s. lib/appendToArticle.ts.
+import {
+  type AppendDocumentOutcome,
+  commitDocumentAppend,
+  newAppendOperationId,
+} from "../lib/appendToArticle";
 import { auditActionLabel } from "../lib/auditAction";
 import { applyBodyAssist, applyBodyAssistBlock, bodyTextForAssist } from "../lib/bodyAiAssist";
 import { appendExtractSections, normalizeExtractLocale } from "../lib/bodyExtract";
 import { editorFilesFromAttachments, objectRawHref } from "../lib/bodyFileLink";
+import type { OriginalDocument, OriginalRefCache } from "../lib/captureAttachments";
 import { fileSourcePayload } from "../lib/captureFromFile";
 import {
   CONFIDENTIALITY_LEVELS,
@@ -72,6 +83,12 @@ import { analyzeEvidenceConsistency } from "../lib/evidenceConsistency";
 import { analyzeEvidenceFreshness } from "../lib/evidenceFreshness";
 import { evidenceFreshnessLabelKey, evidenceFreshnessTone } from "../lib/evidenceFreshnessView";
 import { validityProtectionView } from "../lib/extConcept";
+import {
+  SOURCE_ATTACH_HINT_KEYS,
+  canAttachExternalResult,
+  canSearchExternal,
+  sourceAttachHint,
+} from "../lib/externalAttachGate";
 import { containsExternalUnchecked } from "../lib/externalProvenance";
 import { toSourcePayload as externalToSourcePayload } from "../lib/externalSearch";
 import { fileToThumbDataUrl, readFileAsDataUrl } from "../lib/files";
@@ -86,6 +103,7 @@ import {
   type SourceFormInput,
   isSourceFormValid,
   sourceBadgeKey,
+  toAddSourceRequest,
   toSourcePayload,
 } from "../lib/koSource";
 import { diffForVersion } from "../lib/koVersionDiff";
@@ -292,14 +310,162 @@ export function KnowledgeDetail(): JSX.Element {
     onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
   });
 
-  // SCRUM-405: Quelle je übernommenem Extraktions-Punkt am KO vermerken — dieselbe
-  // add-source-Route wie oben (Stufe 2, nie peer-validiert); Label = Dateiname, Auszug = Beleg.
-  const extractSourceAdd = useMutation({
-    mutationFn: (source: { label: string; excerpt: string }) =>
-      endpoints.ko.act(id, { action: "add-source", source }),
-    onSuccess: invalidate,
-    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
+  // ============================================================================================
+  // AUFTRAG-mega18 Block A-3 — DER KO-DETAIL-WEG GEHT DURCH DIE VERBUND-OPERATION.
+  // ============================================================================================
+  //
+  // DER BEFUND (bens Urteil zu unserer Restliste, Eintrag #2 „falsch beurteilt"). Bis mega17 lief
+  // die Punkteübernahme so: der Dokumentinhalt wanderte SOFORT in den lokalen Edit-Body, danach
+  // liefen die Punktquellen als NICHT ABGEWARTETE Einzelmutationen (`extractSourceAdd.mutate(…)` in
+  // einer Schleife). Drei Fehler in einem:
+  //   - Ein Quellenfehler setzte nur einen Toast. Der Speichern-Knopf wusste davon NICHTS (er hing
+  //     allein an `save.isPending`) — der Nutzer konnte den Dokumenttext also festschreiben,
+  //     während sein Beleg fehlte. Unsere Verteidigung „Body geht nur in den lokalen Edit-Zustand"
+  //     war keine Grenze: dieser Zustand war unmittelbar speicherbar.
+  //   - Mehrere Punkte gleichzeitig liefen gegen einen Vollobjekt-CAS. Bei gleicher gelesener
+  //     rowVersion verlor einer mit STALE_WRITE — ein TEIL der Quellen kam an, der Nutzer
+  //     speicherte trotzdem ALLE Punkte.
+  //   - Der Anker konnte fehlen (Attach misslungen) und die Übernahme lief trotzdem weiter.
+  //
+  // JETZT: ein Upload, ein Aufruf, ein Commit. Der lokale Body bekommt den Dokumentinhalt ERST,
+  // wenn der Server ihn GEMEINSAM MIT SEINER HERKUNFT persistiert hat. Damit ist der frühere
+  // Zwischenzustand — übernommener Inhalt, unbelegt, speicherbar — nicht mehr darstellbar.
+  //
+  // `appendUnclear` ist die eine verbleibende Lage, in der der Speichern-Knopf WISSEN MUSS, dass
+  // etwas offen ist: der Ausgang war unklar (Netz weg, bevor der Server antwortete). Dann steht
+  // vielleicht eine neue Version im Bestand und vielleicht nicht — ein Speichern würde blind über
+  // eine unbekannte Grundlage revidieren. Bis der Nutzer neu gelesen hat, ist Speichern gesperrt.
+  // Genau das ist die Auflage „der Speichern-Knopf muss das kennen, nicht nur save.isPending".
+  const [appendUnclear, setAppendUnclear] = useState(false);
+  // Ref-Cache: dieselbe Datei wird über mehrere Übernahmen hinweg höchstens EINMAL in den
+  // Objektspeicher geladen. Das BINDEN an dieses KO macht die Operation, nicht der Upload.
+  const appendOriginalRef = useRef<OriginalRefCache>({ ref: null });
+
+  const appendDocument = useMutation({
+    mutationFn: async (input: {
+      points: ExtractedPoint[];
+      fileName: string;
+      original: OriginalDocument | null;
+      nextBody: string;
+    }): Promise<AppendDocumentOutcome> => {
+      // 1. Original in den Objektspeicher. Kein Anker ⇒ kein Aufruf: die interne Belegpflicht
+      //    würde ihn ohnehin ablehnen, und der ehrliche Grund ist hier schon bekannt.
+      if (!appendOriginalRef.current.ref) {
+        if (!input.original) {
+          return { kind: "rejected", reason: "MISSING_DOCUMENT_ANCHOR" };
+        }
+        appendOriginalRef.current.ref = await endpoints.objects.upload({
+          name: input.original.name,
+          mime: input.original.mime,
+          data: input.original.data,
+          kind: "document",
+          // AUFTRAG-mega20 Block C: dieses Original wird Anker einer Übernahme.
+          purpose: "anchor",
+        });
+      }
+      const anchor = appendOriginalRef.current.ref;
+      // 2. EIN Aufruf mit EINER Kennung — auch für den Wiederholversuch bei unklarem Ausgang.
+      return commitDocumentAppend(
+        {
+          append: (opId) =>
+            endpoints.ko.appendDocument(id, {
+              operationId: opId,
+              anchor: {
+                objectId: anchor.id,
+                name: input.original?.name ?? input.fileName,
+                mime: input.original?.mime ?? "application/octet-stream",
+              },
+              points: input.points.map((p) => fileSourcePayload(input.fileName, p)),
+              // Der Editor-Stand PLUS die neuen Abschnitte. `statement` bewusst erhalten, damit
+              // die Revision die Kurzfassung nicht aus dem ganzen Body neu ableitet.
+              changes: {
+                bodyHtml: input.nextBody,
+                statement: edit?.statement ?? "",
+                ...(edit?.title ? { title: edit.title } : {}),
+              },
+            }),
+        },
+        newAppendOperationId(),
+      );
+    },
+    onError: (e) => {
+      // Ein Fehler, der NICHT aus der Operation kommt (z. B. der Object-Upload) — der Ausgang der
+      // Übernahme selbst ist damit eindeutig: sie hat nie begonnen.
+      push("error", e instanceof ApiError ? e.message : t("state.error"));
+    },
   });
+
+  /**
+   * AUFTRAG-mega18 Block A-3: der EINE Weg, auf dem Dokumentinhalt in dieses Wissensobjekt kommt.
+   * Liefert `true` nur, wenn Inhalt UND Herkunft committet sind — das Panel quittiert nichts
+   * anderes. Der lokale Edit-Zustand wird erst DANACH angeglichen.
+   */
+  const runDocumentAppend = async (
+    points: ExtractedPoint[],
+    fileName: string,
+    original: OriginalDocument | null,
+  ): Promise<boolean> => {
+    if (!edit) {
+      return false;
+    }
+    const nextBody = appendExtractSections(
+      edit.bodyHtml,
+      points,
+      fileName,
+      normalizeExtractLocale(i18n.language),
+    );
+    let outcome: AppendDocumentOutcome;
+    try {
+      outcome = await appendDocument.mutateAsync({ points, fileName, original, nextBody });
+    } catch {
+      // Der Fehlertext ist in onError schon gesetzt; die Übernahme hat nicht begonnen.
+      return false;
+    }
+    if (outcome.kind === "committed") {
+      setAppendUnclear(false);
+      // Der Body ist jetzt SERVERSEITIG gültig — der lokale Editor zieht nach (nicht umgekehrt).
+      setEdit((prev) => (prev ? { ...prev, bodyHtml: nextBody } : prev));
+      invalidate();
+      const failedFollowUps = outcome.commit?.followUpsFailed ?? [];
+      push(
+        failedFollowUps.length > 0 ? "error" : "success",
+        failedFollowUps.length > 0
+          ? t("xtr.append.followUpsFailed", { steps: failedFollowUps.join(", ") })
+          : t("ko.sourceAdded"),
+      );
+      return true;
+    }
+    if (outcome.kind === "unknown") {
+      // NICHTS zurücknehmen, NICHTS behaupten — und Speichern sperren, bis neu gelesen wurde.
+      setAppendUnclear(true);
+      invalidate();
+      push("error", t("xtr.append.unclear"));
+      return false;
+    }
+    setAppendUnclear(false);
+    push(
+      "error",
+      t(
+        outcome.reason === "EXTERNAL_ATTACH_BLOCKED"
+          ? "xtr.append.blockedByStage"
+          : outcome.reason === "MISSING_DOCUMENT_ANCHOR"
+            ? "xtr.append.missingAnchor"
+            : "state.error",
+      ),
+    );
+    return false;
+  };
+
+  // AUFTRAG-mega14 Block D (SCRUM-414): der Prüfbereich kannte die Admin-Stufe bisher gar nicht.
+  // Dieselbe Quelle wie Erfassen und Kopfzeile; der Server setzt die Sperre zusätzlich durch.
+  const extPolicy = useExternalPolicy();
+  const extStage = extPolicy.data?.stage ?? null;
+  const extAttachAllowed = canAttachExternalResult(extStage);
+  // AUFTRAG-mega16 Block A: der Hinweis am MANUELLEN Quellenformular. Er hängt an dem, was im
+  // Adressfeld steht — eine öffentliche Adresse und eine Quelle ganz ohne Adresse scheitern auf
+  // restriktiver Stufe an verschiedenen Stellen des Vertrags und verdienen verschiedene Gründe.
+  // Das manuelle Formular kann keinen Anker mitbringen (es zeigt auf kein hinterlegtes Dokument).
+  const sourceGateHint = sourceAttachHint(extStage, sourceForm.url);
 
   // SCRUM-118 / FR-EXT-02: externe Quellensuche (Server-Proxy) — kein Auto-Anhängen.
   const [extQuery, setExtQuery] = useState("");
@@ -311,7 +477,12 @@ export function KnowledgeDetail(): JSX.Element {
   });
   const attachExternal = useMutation({
     mutationFn: (result: ExternalResult) =>
-      endpoints.ko.act(id, { action: "add-source", source: externalToSourcePayload(result) }),
+      // mega15 Block B: der Herkunftsname ist Anzeigewert und geht NICHT mit — der Server leitet
+      // ihn aus der Adresse ab und setzt danach auch die Admin-Stufe durch.
+      endpoints.ko.act(id, {
+        action: "add-source",
+        source: toAddSourceRequest(externalToSourcePayload(result)),
+      }),
     onSuccess: () => {
       invalidate();
       push("success", t("ko.sourceAdded"));
@@ -383,6 +554,8 @@ export function KnowledgeDetail(): JSX.Element {
         mime: input.mime,
         data: input.original,
         kind: "image",
+        // AUFTRAG-mega20 Block C: ein ganz normaler Anhang, kein Beleg-Anker.
+        purpose: "attachment",
       });
       return endpoints.ko.act(id, {
         action: "attach",
@@ -998,27 +1171,11 @@ export function KnowledgeDetail(): JSX.Element {
                         {/* SCRUM-405: Fakten aus weiteren Dokumenten per KI ergänzen — ausgewählte
                             Punkte (G-2: nur mit Belegstelle) werden ANGEHÄNGT, nichts ersetzt;
                             die Quelle je Punkt wird sofort am KO vermerkt (add-source, Stufe 2). */}
-                        <BodyExtractPanel
-                          koId={id}
-                          onAppend={(pts, name) => {
-                            setEdit((prev) =>
-                              prev
-                                ? {
-                                    ...prev,
-                                    bodyHtml: appendExtractSections(
-                                      prev.bodyHtml,
-                                      pts,
-                                      name,
-                                      normalizeExtractLocale(i18n.language),
-                                    ),
-                                  }
-                                : prev,
-                            );
-                            for (const p of pts) {
-                              extractSourceAdd.mutate(fileSourcePayload(name, p));
-                            }
-                          }}
-                        />
+                        {/* AUFTRAG-mega18 Block A-3: EIN Weg, EIN Commit. Das Panel hängt nichts
+                            mehr selbst an und der lokale Body zieht erst NACH dem Commit nach —
+                            es gibt keinen übernommenen, unbelegten, speicherbaren Zwischenstand
+                            mehr (Begründung bei `runDocumentAppend`). */}
+                        <BodyExtractPanel koId={id} onAppend={runDocumentAppend} />
                       </Field>
                       <ListEditor
                         label={t("capture.fConditions")}
@@ -1082,10 +1239,27 @@ export function KnowledgeDetail(): JSX.Element {
                           {err}
                         </div>
                       ) : null}
+                      {/* AUFTRAG-mega18 Block A-3: der Speichern-Knopf KENNT die Übernahme. Bis
+                          mega17 hing er allein an `save.isPending` — ein Quellenfehler setzte nur
+                          einen Toast, und der Dokumenttext war trotzdem speicherbar. Jetzt sperrt
+                          ihn zusätzlich (a) eine LAUFENDE Übernahme (sonst revidierte ein Speichern
+                          gegen eine Grundlage, die die Operation gerade verändert) und (b) ein
+                          UNKLARER Ausgang (dann ist unbekannt, welche Version im Bestand steht —
+                          blind darüber zu schreiben ist genau der Fehler, den mega18 abschafft). */}
+                      {appendUnclear ? (
+                        <div className="rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
+                          {t("xtr.append.unclear")}
+                        </div>
+                      ) : null}
                       <div className="flex gap-2">
                         <Button
                           variant="primary"
-                          disabled={save.isPending || edit.title.trim().length === 0}
+                          disabled={
+                            save.isPending ||
+                            appendDocument.isPending ||
+                            appendUnclear ||
+                            edit.title.trim().length === 0
+                          }
                           onClick={() => save.mutate()}
                         >
                           {t("ko.saveEdit")}
@@ -1376,6 +1550,19 @@ export function KnowledgeDetail(): JSX.Element {
                           <span>{t("ko.sourcesHint")}</span>
                           {vhelp("sourceFields")}
                         </div>
+                        {/* AUFTRAG-mega16 Block A (bens SB-4): die Stufe ist eine echte Grenze —
+                            sie greift jetzt bei JEDER öffentlichen Web-Adresse und bei jeder
+                            Quelle ohne Adresse, die an kein hinterlegtes Dokument gebunden ist.
+                            Der Nutzer erfährt das VOR dem Absenden, mit Grund und mit dem Weg zur
+                            Änderung — nicht erst als 403 nach dem Klick.
+                            <output> trägt implizit role="status" (biome useSemanticElements) —
+                            derselbe Griff wie in LoadState.tsx:33 und FileTypePicker.tsx:151. */}
+                        {sourceGateHint ? (
+                          <output className="block rounded-btn border border-hairline bg-surface-2 px-2.5 py-2 text-[11.5px] leading-relaxed text-muted">
+                            {t(SOURCE_ATTACH_HINT_KEYS[sourceGateHint].body)}{" "}
+                            {t(SOURCE_ATTACH_HINT_KEYS[sourceGateHint].how)}
+                          </output>
+                        ) : null}
                         <span className="inline-flex items-center gap-0.5">
                           <Button
                             variant="primary"
@@ -1389,14 +1576,26 @@ export function KnowledgeDetail(): JSX.Element {
                       </div>
                     ) : null}
 
-                    {/* SCRUM-118 / FR-EXT-02: externe Quellensuche (Server-Proxy) */}
-                    {canEdit ? (
+                    {/* SCRUM-118 / FR-EXT-02: externe Quellensuche (Server-Proxy)
+                        AUFTRAG-mega14 Block D (SCRUM-414): bei „blocked" ist auch das SUCHEN
+                        gesperrt — der Server antwortet dort mit 403; ein Suchfeld, das nur
+                        Fehlermeldungen erzeugt, wäre unehrlich. */}
+                    {canEdit && canSearchExternal(extStage) ? (
                       <div className="space-y-2 border-t border-hairline pt-3">
                         <div className="flex items-center gap-1.5">
                           <SectionLabel>{t("ext.title")}</SectionLabel>
                           {vhelp("sourceSearch")}
                         </div>
                         <p className="text-[11.5px] text-muted-2">{t("ext.hint")}</p>
+                        {/* Der Grund steht sichtbar da, nicht nur im Titel-Attribut. */}
+                        {extAttachAllowed ? null : (
+                          <p
+                            data-testid="ext-attach-blocked"
+                            className="rounded-input bg-trust-warn-bg px-2.5 py-1.5 text-[11.5px] text-trust-warn-text"
+                          >
+                            {t("ext.attachBlocked")}
+                          </p>
+                        )}
                         <form
                           className="flex gap-2"
                           onSubmit={(e) => {
@@ -1444,13 +1643,20 @@ export function KnowledgeDetail(): JSX.Element {
                                       className="block truncate font-mono text-[10.5px] text-ai hover:underline"
                                     />
                                   </div>
-                                  <Button
-                                    variant="ghost"
-                                    disabled={attachExternal.isPending}
-                                    onClick={() => attachExternal.mutate(r)}
-                                  >
-                                    {t("ext.attach")}
-                                  </Button>
+                                  {/* AUFTRAG-mega14 Block D (SCRUM-414): der Prüfbereich kannte die
+                                      Admin-Stufe bisher überhaupt nicht und hängte auf JEDER Stufe
+                                      an. Jetzt dieselbe Regel wie im Erfassen und wie der Server
+                                      (lib/externalAttachGate.ts) — mit sichtbarem Grund. */}
+                                  <div className="flex flex-col items-end gap-1">
+                                    <Button
+                                      variant="ghost"
+                                      disabled={attachExternal.isPending || !extAttachAllowed}
+                                      title={extAttachAllowed ? undefined : t("ext.attachBlocked")}
+                                      onClick={() => attachExternal.mutate(r)}
+                                    >
+                                      {t("ext.attach")}
+                                    </Button>
+                                  </div>
                                 </div>
                               </li>
                             ))}
@@ -1549,8 +1755,10 @@ export function KnowledgeDetail(): JSX.Element {
                           <Button variant="ghost" onClick={() => setConfirmDelete(false)}>
                             {t("ko.deleteKeep")}
                           </Button>
+                          {/* AUFTRAG-mega14 Block F (SCRUM-412): im echten Browser gemessen — dieser
+                              Knopf trug rgb(27,30,33), die neutrale Textfarbe. Jetzt Warnfarbe. */}
                           <Button
-                            variant="outline"
+                            variant="danger"
                             disabled={removeKo.isPending}
                             onClick={() => removeKo.mutate()}
                           >
@@ -2135,6 +2343,8 @@ export function KnowledgeDetail(): JSX.Element {
                         />
                       </label>
                     ) : null}
+                    {/* AUFTRAG-mega14 Block E (SCRUM-421): geltende Grenzen an der Auswahlstelle, Serverquelle. */}
+                    {canEdit ? <UploadLimitsHint /> : null}
                   </Card>
                 </div>
               </div>

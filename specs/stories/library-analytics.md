@@ -4,7 +4,8 @@
 
 ## Ziel
 Wissen durchsuchen/exportieren, Risiken und Lücken sichtbar machen, Kennzahlen aggregieren und
-ein manipulationssicheres Audit führen.
+ein append-only, hash-verkettetes Audit führen, in dem nachträgliche Abweichungen rechnerisch
+prüfbar sind (tamper-evident).
 
 ## User Stories & Akzeptanzkriterien
 
@@ -30,7 +31,11 @@ ein manipulationssicheres Audit führen.
 - [ ] **Gegeben** relevante Aktionen, **dann** lückenloser Eintrag (wer/was/wann) gemäß Funktionsbeschreibung §12.3.
 
 ### FR-AUD-02 · Append-only (MUSS)
-- [ ] **Gegeben** ein Audit-Eintrag, **dann** nicht änder-/löschbar (Manipulation unmöglich).
+- [ ] **Gegeben** ein Audit-Eintrag, **dann** wird er über die API weder geändert noch gelöscht;
+      die Kette hash-verkettet ihn mit dem Vorgänger, sodass eine nachträgliche Änderung am
+      Bestand rechnerisch auffällt (tamper-evident). **Nicht** zugesichert: Unmöglichkeit der
+      Manipulation — die Kette hat keinen extern verankerten Kopf, wer die Datenbank beherrscht,
+      kann sie samt aller Folgehashes neu bilden.
 
 ## API / Schnittstellen (Entwurf)
 `GET /api/library` (Suche/Filter) · `POST /api/export`, `POST /api/import` · `GET /api/analytics` · `GET /api/audit` (read-only). Audit zentral, append-only.

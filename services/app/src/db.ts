@@ -6,6 +6,7 @@ import { CAPTURE_SCHEMA } from "../../capture";
 import { CONFLICTS_SCHEMA, OVERLAP_SCHEMA, OVERLAP_SETTINGS_SCHEMA } from "../../conflicts";
 import { EXTERNAL_KNOWLEDGE_SCHEMA } from "../../external-search";
 import {
+  KO_CREATE_OPERATION_SCHEMA,
   KO_EVIDENCE_SCHEMA,
   KO_IMPORT_ANCHOR_SCHEMA,
   KO_SCHEMA,
@@ -35,6 +36,9 @@ export async function migrate(pool: Pool): Promise<void> {
     // WP-SHIP8-CLOSE-4 (bens ROT-1B): additive Anker-Migration DIREKT nach KO_SCHEMA —
     // Generated-Spalte + partieller Unique-Index (hoechstens EIN KO je Import-Kandidat).
     KO_IMPORT_ANCHOR_SCHEMA,
+    // AUFTRAG-mega20 Block A: additive Anker-Migration der ERSTANLAGE aus Dokumenten —
+    // Generated-Spalte + partieller Unique-Index (hoechstens EIN KO je Erzeugungs-Vorgang).
+    KO_CREATE_OPERATION_SCHEMA,
     KO_VERSIONS_SCHEMA,
     KO_EVIDENCE_SCHEMA,
     AUDIT_SCHEMA,

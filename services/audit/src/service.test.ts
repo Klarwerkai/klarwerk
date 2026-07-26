@@ -42,7 +42,17 @@ describe("AuditService", () => {
   });
 
   it("SCRUM-439: leere Kette gilt als intakt (count 0)", async () => {
-    expect(await service.verifyReport()).toEqual({ ok: true, count: 0 });
+    // AUFTRAG-mega14 Block A: die genaue Form bleibt geprüft (toEqual, kein toMatchObject) — sie ist
+    // nur um die Ursachen-Zähler gewachsen.
+    expect(await service.verifyReport()).toEqual({
+      ok: true,
+      count: 0,
+      linkageBreaks: 0,
+      payloadDeviations: 0,
+      serialisationDeviations: 0,
+      unresolvedDeviations: 0,
+      uncheckedDeviations: 0,
+    });
   });
 
   it("filtert nach Aktion", async () => {
@@ -97,7 +107,15 @@ describe("WP-SHIP8-CLOSE-6 (bens ROT-1): recordOnce — exactly-once je Event-Id
       await service.recordOnce("ko.created:b", { actor: "x", action: "ko.created", target: "b" }),
     ).toBe(true);
     await service.record({ actor: "x", action: "ko.updated", target: "a" });
-    expect(await service.verifyReport()).toEqual({ ok: true, count: 3 });
+    expect(await service.verifyReport()).toEqual({
+      ok: true,
+      count: 3,
+      linkageBreaks: 0,
+      payloadDeviations: 0,
+      serialisationDeviations: 0,
+      unresolvedDeviations: 0,
+      uncheckedDeviations: 0,
+    });
   });
 });
 

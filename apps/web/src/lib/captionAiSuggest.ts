@@ -26,7 +26,45 @@ export const CAPTION_AI_TEXT = {
   // WP-SHIP9-S2 (bens Folgeschnitt B4): spezifischer, wahrer Grund, wenn die Cloud-Vision wegen
   // vertraulichem Bild ausgeschlossen war (vorher als generischer Modellfehler dargestellt).
   fallbackConfidential: "editor.captionAi.fallbackConfidential",
+  // AUFTRAG-mega9 Block F (Pedi: „immer noch kein richtiges Eingabeformular"): Texte des ECHTEN
+  // Eingabeformulars für die Bildbeschreibung. Die Vorschlags-Logik darüber bleibt unverändert die
+  // eine Quelle — das Formular ist die Oberfläche DAVOR, kein zweiter Weg zum Ergebnis.
+  formOpen: "editor.captionForm.open",
+  formTitle: "editor.captionForm.title",
+  formLabel: "editor.captionForm.label",
+  formPlaceholder: "editor.captionForm.placeholder",
+  formLimit: "editor.captionForm.limit",
+  formLimitReached: "editor.captionForm.limitReached",
+  formAppend: "editor.captionForm.append",
+  formSave: "editor.captionForm.save",
+  formCancel: "editor.captionForm.cancel",
+  formImageAlt: "editor.captionForm.imageAlt",
+  formNoSuggestionYet: "editor.captionForm.noSuggestionYet",
+  // AUFTRAG-mega11 Block D (bens SB-4): Das Ziel des Formulars ist unter ihm weggezogen worden
+  // (Bild getauscht, Quelle gewechselt, Bildblock entfernt, Inhalt von außen ersetzt). Dann wird
+  // NICHT geschrieben — und das wird gesagt, statt still auf ein abgelöstes Ziel zu schreiben.
+  formStale: "editor.captionForm.stale",
 } as const;
+
+// AUFTRAG-mega9 Block F: sichtbares Zeichen-Maximum der Bildbeschreibung — nach dem Muster, das der
+// Prüfer für Quelle und Interviewantwort ausdrücklich gelobt hat (Grenze AM FELD sichtbar, statt
+// still zu kürzen). Eine Fußnote ist eine kurze Bildunterschrift, kein Fließtext.
+export const MAX_CAPTION_TEXT_CHARS = 300;
+
+// Die Übernahme eines Vorschlags in ein FELD (nicht in die Fußnote): ersetzen oder anhängen. Beim
+// Anhängen entsteht genau ein Trenn-Leerzeichen, und das Ergebnis wird auf das Maximum begrenzt —
+// dieselbe Grenze, die das Feld sichtbar ausweist (kein stilles Überlaufen).
+export function applyCaptionSuggestionToText(
+  current: string,
+  suggestion: string,
+  strategy: "replace" | "append",
+): string {
+  const next =
+    strategy === "replace" || current.trim().length === 0
+      ? suggestion
+      : `${current.trimEnd()} ${suggestion}`;
+  return next.slice(0, MAX_CAPTION_TEXT_CHARS);
+}
 
 // Client-Spiegel des Server-Deckels (MAX_DESCRIBE_IMAGE_DATAURL_CHARS, services/reasoner): zu große
 // Bilder werden gar nicht erst hochgeladen — dieselbe ehrliche Meldung, nur ohne Netz-Umweg.
@@ -49,6 +87,67 @@ export function captionResponseApplicable(
   current: CaptionRequestBinding,
 ): boolean {
   return binding.generation === current.generation && binding.imageId === current.imageId;
+}
+
+// ── AUFTRAG-mega11 Block D (bens SB-4): dieselbe Zielbindung für das FORMULAR ─────────────────────
+//
+// Der Inline-Weg band seinen Request an `data-image-id` UND die Auswahl-Generation und prüfte beides
+// mit `captionResponseApplicable`. Der in mega9 ergänzte Formular-Weg prüfte dagegen nur, ob die
+// Fußnote noch dieselbe ist (`captionFormRef.current?.caption === target`) — weder Generation noch
+// Bild-Kennung noch die aktuelle DOM-Zugehörigkeit noch die Bildquelle.
+//
+// bens Widerlegung der mega9-Begründung, und sie trägt: der EGRESS- und ERGEBNISKERN ist zwischen
+// beiden Wegen geteilt (`runCaptionSuggestion`, ein `onDescribeImage`), die GELTUNGSPRÜFUNG war es
+// nicht. Eine späte Antwort konnte deshalb nach einem Bildtausch, einem Quellenwechsel, dem
+// Entfernen und Neuaufbau des Bildblocks oder einem externen Wertwechsel noch im Formular erscheinen
+// — und beim Speichern auf ein abgelöstes oder fremdes Ziel geschrieben werden.
+//
+// Diese beiden Funktionen sind die eine Quelle dieser Prüfung, für die Anzeige UND für das Speichern.
+
+// Das Ziel, wie es beim ÖFFNEN des Formulars eingefroren wurde.
+export interface CaptionFormTarget {
+  imageId: string | null; // data-image-id der Fußnote
+  src: string; // Bildquelle der zugehörigen figure
+}
+
+// Der Stand, wie er JETZT am DOM abgelesen wird.
+export interface CaptionFormCurrent extends CaptionFormTarget {
+  open: boolean; // Formular noch offen?
+  sameCaption: boolean; // noch dieselbe Fußnote (Knoten-Identität)?
+  inDom: boolean; // Fußnote noch im Editor-DOM (nicht abgelöst)?
+  run: number; // Lauf-Nummer des Formulars (Öffnen/Schließen/Speichern/externer Wertwechsel)
+}
+
+// Darf überhaupt noch in dieses Ziel geschrieben werden? Gilt für das Speichern — dort gibt es
+// keinen laufenden Request, dessen Generation man vergleichen könnte, aber sehr wohl ein Ziel, das
+// sich unter dem offenen Formular verändert haben kann.
+export function captionFormTargetIntact(
+  opened: CaptionFormTarget & { run: number },
+  current: CaptionFormCurrent,
+): boolean {
+  return (
+    current.open &&
+    current.sameCaption &&
+    current.inDom &&
+    current.run === opened.run &&
+    current.imageId === opened.imageId &&
+    current.src === opened.src
+  );
+}
+
+// Darf eine (späte) Antwort im Formular ANGEZEIGT werden? Alles von oben PLUS die Generations-/
+// Kennungs-Prüfung des Inline-Wegs — die beiden Oberflächen prüfen ab jetzt gleich streng.
+export function captionFormResponseApplicable(
+  opened: CaptionFormTarget & { run: number; generation: number },
+  current: CaptionFormCurrent & { generation: number },
+): boolean {
+  return (
+    captionFormTargetIntact(opened, current) &&
+    captionResponseApplicable(
+      { imageId: opened.imageId, generation: opened.generation },
+      { imageId: current.imageId, generation: current.generation },
+    )
+  );
 }
 
 // Der Knopf erscheint NUR im Editier-Modus, NUR mit fokussierter Fußnote und NUR, wenn der

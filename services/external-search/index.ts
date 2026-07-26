@@ -21,3 +21,21 @@ export {
   PgExternalKnowledgePolicyRepo,
   EXTERNAL_KNOWLEDGE_SCHEMA,
 } from "./src/policy";
+// AUFTRAG-mega15 Block B (bens SB-4): die serverseitige Herkunftsableitung. Sie ersetzt das vom
+// Client gelieferte `provider`-Feld als Entscheidungsgrundlage der Stufen-Sperre.
+export {
+  type ExternalProviderOrigin,
+  EXTERNAL_PROVIDER_ORIGINS,
+  attributeExternalSource,
+} from "./src/provenance";
+// AUFTRAG-mega16 Block A (bens SB-4, dritter Durchgang): die Stufe als fail-closed Grenze. Nicht
+// mehr „erkannter Provider → pruefen", sondern „oeffentlich → verboten, ausser die Stufe erlaubt es".
+export {
+  type SourceReach,
+  type AttachDenial,
+  type AttachRequestFacts,
+  type AttachDecision,
+  parseInternalSourceOrigins,
+  classifySourceReach,
+  decideExternalAttach,
+} from "./src/attach-policy";

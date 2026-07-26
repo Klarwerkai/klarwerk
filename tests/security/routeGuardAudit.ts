@@ -213,6 +213,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/kos/:id/evidence": { protection: "ko.read" },
   "GET /api/evidence": { protection: "ko.read" },
   "POST /api/kos": { protection: "ko.create" },
+  // AUFTRAG-mega19 Block B: die Erstanlage AUS Dokumenten (Inhalt + Anker + Belegstellen in EINEM
+  // Vorgang). Dasselbe Basisrecht wie das gewöhnliche Einreichen — die Route ist eine ENGERE Tür
+  // neben POST /api/kos, keine zusätzliche Befugnis: sie verwirft Client-`sources` genauso, und der
+  // Entwurfsweg prüft zusätzlich dieselbe Sichtbarkeitsregel wie alle Entwurfs-Routen.
+  "POST /api/kos/from-document": { protection: "ko.create" },
   // WP-SUBMIT-ASYNC: Retry der Hintergrund-KI-Prüfung — Prüfer-Recht (Knopf auf der Board-Karte).
   "POST /api/kos/:id/ai-check": { protection: "ko.validate" },
   "DELETE /api/kos/:id": { protection: "ko.read" }, // + Route prüft Autor-oder-Controller/Admin (Pedi 02.07.)
@@ -367,6 +372,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   },
 
   // --- Admin (admin-routes.ts) ---
+  // AUFTRAG-mega14 Block H (SCRUM-437): LESENDER Demodaten-Stand für die Bereitschafts-Zeile.
+  // Bewusst dieselbe Schranke wie Laden/Entfernen — die Auskunft „hier stehen Demodaten" ist
+  // Verwaltungswissen und gehört nicht in jede Rolle.
+  "GET /api/admin/demo-seed": { protection: "users.manage" },
   "POST /api/admin/demo-seed": { protection: "users.manage" },
   "DELETE /api/admin/demo-seed": { protection: "users.manage" },
   // Pedi 05.07. (Beta): Werksreset — Verfügbarkeit lesen + ausführen, beides nur Nutzerverwaltung.

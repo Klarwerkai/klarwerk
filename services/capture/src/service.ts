@@ -9,6 +9,31 @@ export interface CaptureServiceDeps {
   repo: DraftRepo;
   now?: () => number;
   genId?: () => string;
+  /**
+   * AUFTRAG-mega20 Block D: existiert dieses Objekt im Objektspeicher?
+   *
+   * INJIZIERT und nicht importiert — capture darf den Object-Store nicht kennen (Modulgrenze,
+   * dependency-cruiser). Die Composition-Root reicht die Auflösung herein; damit bleibt die Prüfung
+   * hier ohne Persistenzkenntnis und in jedem Test ohne Objektspeicher ausführbar.
+   *
+   * FEHLT die Verdrahtung, findet KEINE Prüfung statt und die Referenzen reisen unverändert mit —
+   * bewusst kein künstlicher Fehler, aber auch keine erfundene Zusage: `verifyDraftAnchors` sagt
+   * dann ehrlich, dass es nichts geprüft hat.
+   */
+  objectExists?: (objectId: string) => Promise<boolean>;
+}
+
+/**
+ * AUFTRAG-mega20 Block D — DAS ERGEBNIS DER ANKERPRÜFUNG EINES ENTWURFS.
+ *
+ * `checked: false` heißt „konnte nicht geprüft werden" (keine Auflösung verdrahtet) und ist
+ * ausdrücklich NICHT dasselbe wie „alles in Ordnung". Der Unterschied steht hier im Typ, damit ihn
+ * niemand versehentlich einebnet.
+ */
+export interface DraftAnchorCheck {
+  checked: boolean;
+  /** Die Objektkennungen, auf die sich der Entwurf beruft, die es aber nicht (mehr) gibt. */
+  missing: string[];
 }
 
 // SCRUM-524 P.1 (WP5): Entwürfe sind ein GETEILTER Pool (FR-CAP-06) und ihr bodyHtml wird beim Fortsetzen
@@ -43,6 +68,8 @@ const MAX_SOURCE_LABEL_LEN = DRAFT_LIMITS.sourceLabel;
 const MAX_URL_LEN = DRAFT_LIMITS.sourceUrl;
 const MAX_SOURCE_EXCERPT_LEN = DRAFT_LIMITS.sourceExcerpt;
 const MAX_SOURCE_PROVIDER_LEN = DRAFT_LIMITS.sourceProvider;
+// AUFTRAG-mega20 Block D: Längendeckel der persistierten Original-Referenz (anchorKey/objectId).
+const MAX_SOURCE_REF_LEN = DRAFT_LIMITS.sourceRef;
 const MAX_EXT_QUERY_LEN = DRAFT_LIMITS.extQuery;
 const MAX_INTERVIEW_ANSWERS = DRAFT_LIMITS.interviewAnswers;
 const MAX_INTERVIEW_TEXT_LEN = DRAFT_LIMITS.interviewText;
@@ -97,14 +124,62 @@ function normalizePendingSources(value: unknown): DraftPayload["pendingSources"]
     const url = safeHttpUrl(raw.url);
     const excerpt = cappedString(raw.excerpt, MAX_SOURCE_EXCERPT_LEN);
     const sourceProvider = cappedString(raw.sourceProvider, MAX_SOURCE_PROVIDER_LEN);
+    // AUFTRAG-mega20 Block D: die neuen Referenzfelder durchlaufen DIESELBE Härtung wie alles
+    // andere an dieser Grenze — Typ, Länge, Trim. Sie sind keine Ausnahme, nur weil sie technisch
+    // aussehen: sie kommen aus demselben Client-Body wie Label und Auszug.
+    //
+    // Und sie werden hier NICHT gegen den Bestand geprüft. Das ist Absicht: capture kennt den
+    // Objektspeicher nicht (Modulgrenze), und die Prüfung gehört an die Stelle, an der etwas davon
+    // ABHÄNGT — also ans Fortsetzen und ans Einreichen (verifyDraftAnchors). Eine Prüfung beim
+    // Speichern wäre außerdem zu früh: sie würde einen Entwurf ablehnen, dessen Original in genau
+    // diesem Moment noch hochgeladen wird.
+    const anchorKey = cappedString(raw.anchorKey, MAX_SOURCE_REF_LEN)?.trim();
+    const objectId = cappedString(raw.objectId, MAX_SOURCE_REF_LEN)?.trim();
     sources.push({
       label,
       ...(url !== undefined ? { url } : {}),
       ...(excerpt !== undefined ? { excerpt } : {}),
       ...(sourceProvider !== undefined ? { sourceProvider } : {}),
+      ...(anchorKey ? { anchorKey } : {}),
+      ...(objectId ? { objectId } : {}),
     });
   }
   return sources;
+}
+
+/**
+ * AUFTRAG-mega20 Block D: die gesicherten Originale des Entwurfs, mit derselben Härte wie alles
+ * andere an dieser Grenze — Typ, Menge, Länge, Trim.
+ *
+ * VOLLSTÄNDIG ODER GAR NICHT: fehlt eine der vier Angaben, fällt der Eintrag weg. Ein halber
+ * Anker (Kennung ohne Name, Name ohne Kennung) wäre die Behauptung ohne Deckung, die dieser Block
+ * gerade beseitigt — und sie fiele erst beim Einreichen auf, wo sie am teuersten ist.
+ *
+ * Die Mengengrenze ist DRAFT_LIMITS.sources: mehr Ankerdokumente als Belegstellen kann es nicht
+ * geben, und ein fremder Payload soll den Entwurf nicht über diesen Weg aufblähen.
+ */
+function normalizeAnchorDocuments(value: unknown): DraftPayload["anchorDocuments"] {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const docs: NonNullable<DraftPayload["anchorDocuments"]> = [];
+  const gesehen = new Set<string>();
+  for (const entry of value.slice(0, MAX_SOURCES)) {
+    if (typeof entry !== "object" || entry === null) {
+      continue;
+    }
+    const raw = entry as Record<string, unknown>;
+    const key = cappedString(raw.key, MAX_SOURCE_REF_LEN)?.trim();
+    const objectId = cappedString(raw.objectId, MAX_SOURCE_REF_LEN)?.trim();
+    const name = cappedString(raw.name, MAX_SOURCE_LABEL_LEN)?.trim();
+    const mime = cappedString(raw.mime, MAX_SOURCE_PROVIDER_LEN)?.trim();
+    if (!key || !objectId || !name || !mime || gesehen.has(key)) {
+      continue;
+    }
+    gesehen.add(key);
+    docs.push({ key, objectId, name, mime });
+  }
+  return docs;
 }
 
 function normalizeSourceForm(value: unknown): DraftPayload["sourceForm"] {
@@ -156,6 +231,8 @@ function normalizeDraftPayload(payload: DraftPayload): DraftPayload {
   const {
     reviewerIds: _reviewerIds,
     pendingSources: _pendingSources,
+    // AUFTRAG-mega20 Block D: die gesicherten Originale laufen durch dieselbe Schleuse.
+    anchorDocuments: _anchorDocuments,
     sourceForm: _sourceForm,
     extQuery: _extQuery,
     interview: _interview,
@@ -171,6 +248,10 @@ function normalizeDraftPayload(payload: DraftPayload): DraftPayload {
   const pendingSources = normalizePendingSources(raw.pendingSources);
   if (pendingSources !== undefined && pendingSources.length > 0) {
     next.pendingSources = pendingSources;
+  }
+  const anchorDocuments = normalizeAnchorDocuments(raw.anchorDocuments);
+  if (anchorDocuments !== undefined && anchorDocuments.length > 0) {
+    next.anchorDocuments = anchorDocuments;
   }
   const sourceForm = normalizeSourceForm(raw.sourceForm);
   if (sourceForm !== undefined) {
@@ -230,10 +311,14 @@ export class CaptureService {
   private readonly now: () => number;
   private readonly genId: () => string;
 
+  // AUFTRAG-mega20 Block D: injizierte Existenzprüfung des Objektspeichers (s. Deps).
+  private readonly objectExists: ((objectId: string) => Promise<boolean>) | undefined;
+
   constructor(deps: CaptureServiceDeps) {
     this.repo = deps.repo;
     this.now = deps.now ?? (() => Date.now());
     this.genId = deps.genId ?? (() => randomUUID());
+    this.objectExists = deps.objectExists;
   }
 
   async createDraft(rawPayload: DraftPayload, author: string): Promise<Draft> {
@@ -274,6 +359,109 @@ export class CaptureService {
     return this.repo.findById(id);
   }
 
+  /**
+   * AUFTRAG-mega20 Block D — HÄNGEN DIE ANKER DIESES ENTWURFS NOCH?
+   *
+   * Fragt für JEDE Belegstelle mit `objectId` beim Objektspeicher nach. Der lokale `anchorKey`
+   * wird bewusst NICHT geprüft: er ist eine Behauptung der Oberfläche über ihren eigenen
+   * Formularzustand und sagt über den Bestand nichts aus.
+   */
+  async verifyDraftAnchors(draft: Draft): Promise<DraftAnchorCheck> {
+    const ids = [
+      ...new Set(
+        [
+          ...(draft.payload.pendingSources ?? []).map((src) => src.objectId),
+          // Auch die gesicherten Originale selbst: ein Ankerdokument ohne zugehörige Belegstelle
+          // wäre zwar nutzlos, aber es steht im Entwurf — und was im Entwurf steht, wird geprüft.
+          ...(draft.payload.anchorDocuments ?? []).map((doc) => doc.objectId),
+        ].filter((id): id is string => typeof id === "string" && id.length > 0),
+      ),
+    ];
+    if (!this.objectExists || ids.length === 0) {
+      // Nichts zu prüfen ODER nicht prüfbar — der Unterschied steht im Rückgabewert, nicht in
+      // einer stillen Annahme.
+      return { checked: this.objectExists !== undefined, missing: [] };
+    }
+    const missing: string[] = [];
+    for (const id of ids) {
+      if (!(await this.objectExists(id))) {
+        missing.push(id);
+      }
+    }
+    return { checked: true, missing };
+  }
+
+  /**
+   * AUFTRAG-mega20 Block D — DAS FORTSETZEN. KEIN BODY-RESUME OHNE ANKER.
+   *
+   * DIE ENTSCHEIDUNG, ausgeschrieben, weil sie unbequem ist: beruft sich ein Entwurf auf ein
+   * gesichertes Original, das es nicht mehr gibt, kommt sein BODY NICHT zurück.
+   *
+   * Warum nicht einfach alles ausliefern und warnen? Weil der Body in genau diesem Fall
+   * DOKUMENTINHALT OHNE HERKUNFT ist — der Zustand, den mega17 bis mega19 an jeder anderen Stelle
+   * geschlossen haben. Käme er zurück, stünde er im Editor, ließe sich speichern, und das
+   * entstehende Wissensobjekt trüge übernommenen Text, dessen Original niemand mehr benennen kann.
+   * Ein Warnhinweis daneben ändert daran nichts; er verlagert die Regel nur auf den Nutzer.
+   *
+   * Warum nicht den ganzen Entwurf verweigern? Weil das mehr zerstört als nötig. Titel, Aussage,
+   * Bedingungen, Maßnahmen, Prüferauswahl und Interviewfortschritt sind eigene Arbeit ohne
+   * Herkunftsproblem — sie kommen zurück. Nur der übernommene Text bleibt aus, und der Aufrufer
+   * erfährt in `anchorsMissing` ausdrücklich, WELCHE Originale fehlen.
+   *
+   * Die verwaisten Belegstellen kommen ebenfalls nicht zurück: eine Belegstelle, die auf ein
+   * nicht mehr existierendes Original zeigt, ist kein Beleg, sondern eine Behauptung.
+   */
+  async resumeDraft(id: string): Promise<{ draft: Draft; anchorsMissing: string[] } | undefined> {
+    const draft = await this.repo.findById(id);
+    if (!draft) {
+      return undefined;
+    }
+    return this.withAnchorCheck(draft);
+  }
+
+  /**
+   * AUFTRAG-mega20 Block D — DIE LISTE LÄUFT ÜBER DIESELBE PRÜFUNG.
+   *
+   * WARUM DAS NICHT OPTIONAL IST. Die Oberfläche setzt einen Entwurf NICHT über
+   * `GET /api/drafts/:id` fort, sondern aus der LISTE heraus (CaptureDraftList → `onResume`, mit
+   * dem Objekt aus `GET /api/drafts`). Prüfte nur die Einzelroute, wäre „kein Body-Resume ohne
+   * Anker" genau auf dem Weg umgehbar, den jeder Nutzer tatsächlich geht — die Regel stünde im
+   * Code und griffe in der Anwendung nie.
+   */
+  async listDraftsForResume(): Promise<{ draft: Draft; anchorsMissing: string[] }[]> {
+    const drafts = await this.repo.list();
+    const result: { draft: Draft; anchorsMissing: string[] }[] = [];
+    for (const draft of drafts) {
+      result.push(await this.withAnchorCheck(draft));
+    }
+    return result;
+  }
+
+  /** Der gemeinsame Kern von Einzel-Fortsetzung und Liste (s. `resumeDraft` für die Abwägung). */
+  private async withAnchorCheck(draft: Draft): Promise<{ draft: Draft; anchorsMissing: string[] }> {
+    const check = await this.verifyDraftAnchors(draft);
+    if (check.missing.length === 0) {
+      return { draft, anchorsMissing: [] };
+    }
+    const fehlend = new Set(check.missing);
+    return {
+      draft: {
+        ...draft,
+        payload: {
+          ...draft.payload,
+          bodyHtml: null,
+          pendingSources: (draft.payload.pendingSources ?? []).filter(
+            (src) => !(src.objectId && fehlend.has(src.objectId)),
+          ),
+          anchorDocuments: (draft.payload.anchorDocuments ?? []).filter(
+            (doc) => !fehlend.has(doc.objectId),
+          ),
+        },
+      },
+      anchorsMissing: [...fehlend],
+    };
+  }
+
   // FR-CAP-07: beim Fortsetzen bleibt der Originalautor erhalten.
   async continueDraft(id: string, changes: DraftPayload, editor: string): Promise<Draft> {
     const draft = await this.require(id);
@@ -300,6 +488,20 @@ export class CaptureService {
   // Brücke zu knowledge-object: Autor = Originalautor des Entwurfs (FR-CAP-07).
   async toKoInput(id: string): Promise<CreateKoInput> {
     const draft = await this.require(id);
+    // AUFTRAG-mega20 Block D: DIE ZWEITE PRÜFSTELLE — beim EINREICHEN, nicht nur beim Fortsetzen.
+    //
+    // Warum beides nötig ist: zwischen Fortsetzen und Einreichen liegt eine beliebig lange
+    // Bearbeitungszeit, in der das Original verschwinden kann. Und der Einreich-Weg ist auch ohne
+    // vorheriges Fortsetzen erreichbar (Promote direkt auf eine Entwurfs-Id). Hier wird deshalb
+    // NICHT ausgedünnt, sondern ABGEBROCHEN: an dieser Stelle entsteht ein Wissensobjekt, und ein
+    // Wissensobjekt mit Dokumentinhalt ohne Herkunft ist der eine Zustand, den es nicht geben darf.
+    const anker = await this.verifyDraftAnchors(draft);
+    if (anker.missing.length > 0) {
+      throw new CaptureError(
+        "MISSING_DRAFT_ANCHOR",
+        "Der Entwurf beruft sich auf ein gesichertes Originaldokument, das es nicht mehr gibt — übernommener Inhalt wird ohne seinen Beleg nicht eingereicht.",
+      );
+    }
     const p = draft.payload;
     if (!p.title || !p.statement || !p.type || !p.category) {
       throw new CaptureError(

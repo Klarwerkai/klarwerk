@@ -55,7 +55,7 @@
 | **ModelRun-Metadaten** | vom **Betreiber festzulegen** (z. B. 90 Tage, `monitoring-logging.md`); **keine** Inhalte | per Retention-Policy löschbar |
 | **Gap-Fragen (Freitext)** | so lange Lücke offen/relevant | mit KO-/Gap-Lebenszyklus; löschbar (kein Audit) |
 | **KOs/Anhänge** | fachlicher Lebenszyklus; Admin kann **löschen** (`ko.deleted`) | über UI/Admin |
-| **Audit-Log** | **append-only, unveränderlich** (Manipulationsschutz) | **bewusst nicht löschbar** → Abwägung *Recht auf Löschung ↔ Nachweispflicht* **dokumentieren** |
+| **Audit-Log** | **append-only, hash-verkettet** (Abweichungen rechnerisch prüfbar = tamper-evident; kein extern verankerter Kettenkopf) | **bewusst nicht löschbar** → Abwägung *Recht auf Löschung ↔ Nachweispflicht* **dokumentieren** |
 | **Konto** | bis Löschung; Admin `user.delete` | über Admin |
 | **Server-/Proxy-Logs** | **Betreiber-Logging-Policy** (außerhalb App) | Betreiber |
 

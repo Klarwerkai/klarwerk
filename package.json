@@ -18,7 +18,8 @@
     "seed:demo": "tsx services/app/src/seed.ts",
     "smoke:browser": "node scripts/smoke-browser.mjs",
     "smoke:browser:setup": "playwright install chromium",
-    "smoke:ui": "playwright test --config playwright.smoke.config.ts"
+    "smoke:ui": "ANTHROPIC_API_KEY=\"${KLARWERK_SHIP_SMOKE_API_KEY:-}\" playwright test --config playwright.smoke.config.ts",
+    "smoke:ui:gate": "KLARWERK_SMOKE_MODE=gate ANTHROPIC_API_KEY= playwright test --config playwright.smoke.config.ts --project=chromium --grep-invert @modell"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

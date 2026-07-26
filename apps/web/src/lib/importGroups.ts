@@ -44,6 +44,10 @@ export const IMPORT_GROUPS_TEXT = {
   // WP-REST18 (bens Fix 2): handlungsfähiger SNAPSHOT_EXPIRED-Weg — klare Meldung + Neu gruppieren.
   expired: "imp.groups.expired",
   regroup: "imp.groups.regroup",
+  // AUFTRAG-mega9 Block E-4 (KW-E2E-008): Beschriftung, nachdem eine Auswahländerung die aufgebaute
+  // Gruppierung verworfen hat. „Weiter: Gruppieren & Übernehmen" verschwieg dort, dass es um das
+  // ERNEUERN einer schon einmal erzeugten Gruppierung geht.
+  refreshGrouping: "imp.groups.refreshGrouping",
   // WP-SHIP9-S1 (bens W2-Auflage): spezifischer Grund am „Ohne KI gruppiert"-Badge, wenn die
   // Cloud-KI wegen vertraulicher Kandidaten ausgeschlossen war (fallbackReason "confidential").
   noAiReason: "imp.groups.noAiReason",

@@ -44,7 +44,8 @@
       "**/*.tsbuildinfo",
       "**/*.timestamp-*.mjs",
       "scripts",
-      "services/app/addin-static"
+      "services/app/addin-static",
+      "_relay/spikes"
     ]
   }
 }

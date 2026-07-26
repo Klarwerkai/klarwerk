@@ -66,6 +66,8 @@ function countingRepo(inner: InMemoryKoRepo) {
     resolveAiCheck: (id, patch, expectedKoVersion) =>
       inner.resolveAiCheck(id, patch, expectedKoVersion),
     findCandidates: (query) => inner.findCandidates(query),
+    // AUFTRAG-mega20 Block A: neue Vertragsmethode (Erzeugungs-Anker) — reines Durchreichen.
+    findByCreateOperation: (opId, actor) => inner.findByCreateOperation(opId, actor),
     findById: async (id) => {
       findByIdCalls.set(id, (findByIdCalls.get(id) ?? 0) + 1);
       if (failIds.has(id)) {
@@ -207,6 +209,8 @@ describe("WP-D11b patches53-GELB: Race der laufenden Suchantwort (No-op-Fall lä
       listForSearch: (filter) => inner.listForSearch(filter),
       findById: (id) => inner.findById(id),
       findCandidates: (query) => inner.findCandidates(query),
+      // AUFTRAG-mega20 Block A: neue Vertragsmethode (Erzeugungs-Anker) — reines Durchreichen.
+      findByCreateOperation: (opId, actor) => inner.findByCreateOperation(opId, actor),
       setCaptionTexts: async (id, captionTexts) => {
         await gate;
         return inner.setCaptionTexts(id, captionTexts);

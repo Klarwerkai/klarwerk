@@ -15,7 +15,8 @@ export const SECURITY_POINTS: readonly SecurityPoint[] = [
   { id: "localAi", titleKey: "adm.sich.localAi.t", bodyKey: "adm.sich.localAi.b" },
   // Externe Wissensabfrage admin-gesteuert, standardmäßig eingeschränkt.
   { id: "external", titleKey: "adm.sich.external.t", bodyKey: "adm.sich.external.b" },
-  // Prüfprotokoll append-only + hash-verkettet (manipulationssicher).
+  // Prüfprotokoll append-only + hash-verkettet — nachträgliche Abweichungen sind PRÜFBAR
+  // (tamper-evident), nicht verhindert (AUFTRAG-mega15 Block A, bens SB-1).
   { id: "audit", titleKey: "adm.sich.audit.t", bodyKey: "adm.sich.audit.b" },
   // Löschen mit Papierkorb + verzögerter Endlöschung (kein stiller Datenverlust).
   { id: "trash", titleKey: "adm.sich.trash.t", bodyKey: "adm.sich.trash.b" },

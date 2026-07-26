@@ -220,6 +220,22 @@ export interface UploadLimits {
   maxAttachmentBytes: number;
 }
 
+// AUFTRAG-mega14 Block A: Bericht der Integritätsprüfung (GET /api/audit/verify). Spiegelt
+// `ChainInspection` aus services/audit/src/chain.ts — die Oberfläche muss die URSACHE einer
+// Abweichung kennen, sonst kann sie nur raten. Siehe lib/auditVerifyState.ts.
+export type ChainDeviationKind = "linkage" | "serialisation" | "unresolved" | "unchecked";
+
+export interface AuditVerifyReport {
+  ok: boolean;
+  count: number;
+  linkageBreaks: number;
+  payloadDeviations: number;
+  serialisationDeviations: number;
+  unresolvedDeviations: number;
+  uncheckedDeviations: number;
+  firstDeviation?: { seq: number; at: string; action: string; kind: ChainDeviationKind };
+}
+
 // SCRUM-422: Papierkorb-Zeile (Admin) — nur Metadaten.
 export interface TrashedKo {
   id: string;
@@ -395,7 +411,24 @@ export interface DraftPayload {
   // (mega5 Block C) bewusst NICHT persistiert: die Suchanfrage bleibt, die Treffer lädt der Nutzer nach
   // dem Fortsetzen mit einem Klick neu — kein Retention-Risiko, kleinere Angriffsfläche.
   reviewerIds?: string[];
-  pendingSources?: { label: string; url?: string; excerpt?: string; sourceProvider?: string }[];
+  // AUFTRAG-mega20 Block D: die wartende Belegstelle trägt jetzt AUCH ihre Bindung an das
+  // Originaldokument — den lokalen Schlüssel (`anchorKey`) und die serverseitig vergebene Kennung
+  // des gesicherten Originals (`objectId`). Bis mega19 wurden beide beim Speichern abgestreift; der
+  // übernommene Text überlebte das Fortsetzen, sein Beleg nicht. Die ausgeschriebene Begründung
+  // steht in lib/captureSources.ts.
+  pendingSources?: {
+    label: string;
+    url?: string;
+    excerpt?: string;
+    sourceProvider?: string;
+    anchorKey?: string;
+    objectId?: string;
+  }[];
+  // AUFTRAG-mega20 Block D: die GESICHERTEN ORIGINALE des Entwurfs. Getrennt von den Belegstellen,
+  // weil mehrere Belegstellen dasselbe Dokument teilen — Name und Typ gehören genau einmal
+  // gespeichert. `key` ist die Brücke zu `pendingSources[].anchorKey`; geprüft wird serverseitig
+  // ausschliesslich `objectId`.
+  anchorDocuments?: { key: string; objectId: string; name: string; mime: string }[];
   sourceForm?: { label: string; url: string; excerpt: string };
   extQuery?: string;
   // AUFTRAG-mega5 Block A: Interviewfortschritt als reine Textstruktur (keine Modell-Nutzlast) —
@@ -417,6 +450,11 @@ export interface Draft {
   lastEditor: string;
   createdAt: string;
   updatedAt: string;
+  // AUFTRAG-mega20 Block D: der Server nennt beim Fortsetzen (Einzelabruf UND Liste) ausdrücklich
+  // die gesicherten Originale, die er nicht mehr findet. Steht dieses Feld, fehlt der übernommene
+  // Body — bewusst und benannt, nicht versehentlich. Es gehört an den ENTWURFS-Umschlag und nicht
+  // in die Nutzlast: es beschreibt einen Befund über den Entwurf, nichts, was jemand eingegeben hat.
+  anchorsMissing?: string[];
 }
 
 export interface BusFactorEntry {

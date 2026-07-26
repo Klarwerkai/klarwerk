@@ -19,6 +19,9 @@ export interface ReadinessInput {
   openReviews: number;
   uploadLimits: { maxAttachments: number; maxAttachmentBytes: number } | null;
   externalStage: ExternalKnowledgeStage | null;
+  // AUFTRAG-mega14 Block H (SCRUM-437): Demodaten-Stand aus GET /api/admin/demo-seed.
+  // null = noch unbekannt (dann sagt die Zeile ehrlich „unbekannt" statt „keine").
+  demo: { present: boolean; count: number } | null;
   // AUFTRAG-mega2 Block C (bens D9): solange die tragenden Quellen (KI-Konfig, Analytics, Board,
   // Upload-Grenzen, Externe-Policy) NICHT alle geladen sind, ist die ganze Bereitschafts-Gruppe
   // atomar „lädt". Vor `loaded` darf keine Zeile „keine KI" (crit), „0 validiert" (warn) oder eine
@@ -33,6 +36,9 @@ const READINESS_ROW_META: readonly { id: string; labelKey: string }[] = [
   { id: "openReviews", labelKey: "adm.ready.openReviews" },
   { id: "upload", labelKey: "adm.ready.upload" },
   { id: "external", labelKey: "adm.ready.external" },
+  // AUFTRAG-mega14 Block H (SCRUM-437): die fehlende Zeile. Laden/Entfernen liegt separat weiter
+  // oben im Admin; die Checkliste ZEIGT nur, ob gerade Demodaten geladen sind, und führt dorthin.
+  { id: "demo", labelKey: "adm.ready.demo" },
 ];
 
 const STAGE_VALUE_KEY: Record<ExternalKnowledgeStage, string> = {
@@ -106,6 +112,23 @@ export function readinessRows(i: ReadinessInput): ReadinessRow[] {
     valueKey: i.externalStage ? STAGE_VALUE_KEY[i.externalStage] : "adm.ready.unknown",
     tone: "info",
   });
+
+  // Block H: Demodaten sind kein Mangel und kein Verdienst — sie sind ein ZUSTAND, den der
+  // VIP-Vorführende kennen muss („was hier steht, ist zum Teil erfunden"). Deshalb `info`, wie die
+  // Externe-Stufe, nicht warn/crit. Geladene Demodaten nennen ihre Anzahl.
+  rows.push(
+    i.demo
+      ? i.demo.present
+        ? {
+            id: "demo",
+            labelKey: "adm.ready.demo",
+            valueKey: "adm.ready.demo.loaded",
+            params: { n: i.demo.count },
+            tone: "info",
+          }
+        : { id: "demo", labelKey: "adm.ready.demo", valueKey: "adm.ready.demo.none", tone: "ok" }
+      : { id: "demo", labelKey: "adm.ready.demo", valueKey: "adm.ready.unknown", tone: "warn" },
+  );
 
   return rows;
 }

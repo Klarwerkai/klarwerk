@@ -9,11 +9,15 @@ import {
   STATE_BADGE_KEY,
   STATE_HINT_KEY,
   SYSTEM_SOURCES,
+  acceptForFileSource,
+  fileSourcesForSurface,
   hintKeyFor,
+  openCaptureFileDialog,
   orderByState,
 } from "../../apps/web/src/lib/importSourceGallery";
 
-const RANK = { active: 0, soon: 1, planned: 2 } as const;
+// mega15 Block D: „unconfigured" (gebaut, aber kein Dienst hinterlegt) steht zwischen aktiv und bald.
+const RANK = { active: 0, unconfigured: 1, soon: 2, planned: 3 } as const;
 
 function isOrdered(sources: readonly GallerySource[]): boolean {
   for (let i = 1; i < sources.length; i++) {
@@ -86,15 +90,45 @@ describe("ic7: Datenmodell Systeme + Dateien", () => {
     }
   });
 
-  it("Dateien: JSON aktiv; Word/PDF bald; Excel/PowerPoint/CSV/OCR/Transkript geplant", () => {
+  it("Dateien: JSON aktiv; Word/PDF bald; Excel/PowerPoint/CSV/OCR geplant", () => {
     const byId = new Map(FILE_SOURCES.map((s) => [s.id, s.state]));
     expect(byId.get("json-file")).toBe("active");
     for (const id of ["docx", "pdf"]) {
       expect(byId.get(id), id).toBe("soon");
     }
-    for (const id of ["xlsx", "pptx", "csv", "ocr", "avtranscript"]) {
+    for (const id of ["xlsx", "pptx", "csv", "ocr"]) {
       expect(byId.get(id), id).toBe("planned");
     }
+  });
+
+  // AUFTRAG-mega15 Block D (SCRUM-382): das Audio-/Video-Transkript ist NICHT geplant — es ist
+  // gebaut und nur nicht konfiguriert. Genau diese Zeichenkette war die Falschaussage aus dem
+  // Live-Test; sie darf fuer diese Kachel auf KEINER Oberflaeche mehr herauskommen.
+  it("Audio-/Video-Transkript: nicht konfiguriert statt geplant — auf BEIDEN Oberflaechen", () => {
+    for (const surface of ["capture", "import"] as const) {
+      const byId = new Map(fileSourcesForSurface(surface).map((s) => [s.id, s.state]));
+      expect(byId.get("avtranscript"), surface).toBe("unconfigured");
+      expect(byId.get("avtranscript"), surface).not.toBe("planned");
+    }
+    // Der angezeigte Text sagt es in allen drei Sprachen — kein „geplant" mehr.
+    for (const lang of ["de", "en", "nl"] as const) {
+      const bundle = i18n.getResourceBundle(lang, "translation") as Record<string, string>;
+      const badge = bundle[STATE_BADGE_KEY.unconfigured];
+      const hint = bundle[STATE_HINT_KEY.unconfigured];
+      expect(badge, lang).toBeTruthy();
+      expect(hint, lang).toBeTruthy();
+      const geplant = String(bundle[STATE_BADGE_KEY.planned]).toLowerCase();
+      expect(String(badge).toLowerCase(), lang).not.toBe(geplant);
+      expect(String(hint).toLowerCase(), lang).not.toContain(geplant);
+    }
+  });
+
+  // Und die Kachel bleibt VERDRAHTET WIE SIE WAR: kein Dialog, kein Handler (Pedis Entscheidung).
+  it("Audio-/Video-Transkript oeffnet weiterhin keinen Dateidialog", () => {
+    expect(acceptForFileSource("avtranscript")).toBeNull();
+    expect(openCaptureFileDialog("avtranscript", { accept: "", click: () => undefined })).toBe(
+      false,
+    );
   });
 
   it("die aktiven JSON-Kacheln (Systeme + Dateien) sind als JSON-Fluss registriert", () => {

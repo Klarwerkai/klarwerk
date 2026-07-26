@@ -1,7 +1,8 @@
 import { execFileSync } from "node:child_process";
 import { cappedModelClient } from "./model-concurrency";
 // WP-D10 (Fix 3): typisierte Fehlerklassen (Timeout vs. HTTP-Status) — Meldungstexte unverändert.
-import { ModelHttpError, ModelTimeoutError } from "./model-errors";
+// AUFTRAG-mega18 Block E (SCRUM-544): ModelEmptyResponseError = Antwort ohne Antwortinhalt.
+import { ModelEmptyResponseError, ModelHttpError, ModelTimeoutError } from "./model-errors";
 import type { ModelClient } from "./provider-model";
 
 export const CLOUD_API_KEY_ENV = "ANTHROPIC_API_KEY";
@@ -20,6 +21,14 @@ function parseTimeoutMs(raw: string | undefined): number | undefined {
   if (raw === undefined) return undefined;
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
+// AUFTRAG-mega18 Block E (SCRUM-544): Token-Untergrenze aus einer Env; nur endliche, positive Werte
+// zählen (ganzzahlig abgeschnitten), sonst undefined → keine Untergrenze (Verhalten wie bisher).
+function parseMaxTokens(raw: string | undefined): number | undefined {
+  if (raw === undefined) return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : undefined;
 }
 
 // Anbieterspezifischer HTTP-Client (Anthropic Messages API). Der Schlüssel bleibt
@@ -231,6 +240,67 @@ export interface LocalHttpModelConfig {
   apiKey?: string;
   fetchFn?: typeof fetch;
   timeoutMs?: number;
+  // AUFTRAG-mega18 Block E (SCRUM-544): UNTERGRENZE des Antwort-Budgets für den EIGENEN lokalen LLM
+  // (Env KLARWERK_LOCAL_LLM_MAX_TOKENS). Die Aufrufer-Budgets (Default 1024, extract 16384 …) sind auf
+  // die Cloud-Ökonomie gerechnet; ein DENKMODELL verbraucht sie in seiner Denkphase und liefert dann
+  // gar keinen Antwortinhalt mehr. Auf eigener Hardware kostet Kopfraum nichts, deshalb hebt dieser
+  // Wert ein zu kleines Budget an (Math.max) — er SENKT nie ein bewusst höheres Aufrufer-Budget.
+  maxTokensFloor?: number;
+}
+
+// AUFTRAG-mega18 Block E (SCRUM-544): Antwortform von /chat/completions, so weit sie hier gelesen wird.
+// `finish_reason` wurde bisher gar nicht ausgewertet — genau deshalb war eine am Token-Limit
+// abgeschnittene Antwort von einer echten Antwort nicht unterscheidbar. `reasoning` /
+// `reasoning_content` / `thinking` sind die verbreiteten Felder, in die DENKMODELLE (qwen3,
+// DeepSeek-R1 …) ihre Denkphase legen (vLLM/llama.cpp: reasoning_content, neuere Ollama: reasoning
+// bzw. thinking). Sie werden NUR gelesen, um „hat gedacht, aber nichts geantwortet" von „hat nichts
+// geliefert" zu unterscheiden — ihr TEXT ist kein Antwortinhalt und wird NIE als Ergebnis gereicht.
+interface OpenAiChatChoice {
+  finish_reason?: string | null;
+  message?: {
+    content?: string | null;
+    reasoning?: string | null;
+    reasoning_content?: string | null;
+    thinking?: string | null;
+  } | null;
+}
+
+// AUFTRAG-mega18 Block E (SCRUM-544): der EINE Ort, an dem aus der Antwort ein Ergebnis wird.
+// Vorher: `content ?? ""` — fehlender/leerer Inhalt kam als LEERER STRING nach oben und galt still als
+// Ergebnis (kein Fehler, kein unterscheidbarer Zustand). Jetzt: nur echter Inhalt ist ein Ergebnis,
+// alles andere wirft einen typisierten, unterscheidbaren Fehler. NICHT-leerer Inhalt geht unverändert
+// durch — auch wenn finish_reason "length" ist (die extract-Rettung, salvageTruncatedExtract, lebt
+// bewusst von abgeschnittenem, aber vorhandenem JSON).
+function requireChatContent(data: unknown, maxTokens: number): string {
+  const choice = (data as { choices?: OpenAiChatChoice[] } | null | undefined)?.choices?.[0];
+  const message = choice?.message;
+  const content = typeof message?.content === "string" ? message.content : "";
+  if (content.trim().length > 0) {
+    return content;
+  }
+  const finishReason = typeof choice?.finish_reason === "string" ? choice.finish_reason : undefined;
+  const sawReasoning = [message?.reasoning, message?.reasoning_content, message?.thinking].some(
+    (field) => typeof field === "string" && field.trim().length > 0,
+  );
+  // PII-frei: die Meldung trägt nur Metadaten (Budget, finish_reason) — nie Antwort- oder Denktext.
+  const detail = `max_tokens=${maxTokens}, finish_reason=${finishReason ?? "-"}`;
+  if (sawReasoning) {
+    throw new ModelEmptyResponseError(
+      `Lokaler LLM lieferte nur eine Denkphase (reasoning) ohne Antwortinhalt (${detail}).`,
+      { reason: "reasoning-only", finishReason, sawReasoning: true, maxTokens },
+    );
+  }
+  if (finishReason === "length") {
+    throw new ModelEmptyResponseError(
+      `Lokale LLM-Antwort wurde am Token-Limit abgeschnitten, bevor Antwortinhalt entstand (${detail}).`,
+      { reason: "truncated", finishReason, maxTokens },
+    );
+  }
+  throw new ModelEmptyResponseError(`Lokaler LLM lieferte keinen Antwortinhalt (${detail}).`, {
+    reason: "empty",
+    finishReason,
+    maxTokens,
+  });
 }
 
 export function openAiCompatibleClient(config: LocalHttpModelConfig): ModelClient {
@@ -255,6 +325,9 @@ export function openAiCompatibleClient(config: LocalHttpModelConfig): ModelClien
         timedOut = true;
         controller.abort();
       }, timeoutMs);
+      // AUFTRAG-mega18 Block E (SCRUM-544): wirksames Budget = Aufrufer-Budget, mindestens die
+      // konfigurierte Untergrenze (s. maxTokensFloor). Ohne Konfiguration bleibt alles wie bisher.
+      const budget = Math.max(maxTokens, config.maxTokensFloor ?? 0);
       try {
         const res = await fetchFn(`${base}/chat/completions`, {
           method: "POST",
@@ -264,7 +337,7 @@ export function openAiCompatibleClient(config: LocalHttpModelConfig): ModelClien
           },
           body: JSON.stringify({
             model: config.model,
-            max_tokens: maxTokens,
+            max_tokens: budget,
             messages: [
               { role: "system", content: system },
               { role: "user", content: user },
@@ -275,8 +348,9 @@ export function openAiCompatibleClient(config: LocalHttpModelConfig): ModelClien
         if (!res.ok) {
           throw new ModelHttpError(`Lokaler LLM antwortete mit ${res.status}`, res.status);
         }
-        const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-        return data.choices?.[0]?.message?.content ?? "";
+        // AUFTRAG-mega18 Block E (SCRUM-544): kein stilles "" mehr — fehlender/leerer Antwortinhalt
+        // wirft einen unterscheidbaren Fehler (reasoning-only / truncated / empty).
+        return requireChatContent(await res.json(), budget);
       } catch (err) {
         if (timedOut) {
           throw new ModelTimeoutError(
@@ -303,11 +377,15 @@ export function createLocalClientFromEnv(
     return undefined;
   }
   const timeoutMs = parseTimeoutMs(env.KLARWERK_LOCAL_LLM_TIMEOUT_MS);
+  // AUFTRAG-mega18 Block E (SCRUM-544): gleiches Konfigurationsmuster wie URL/Modell/Key/Timeout —
+  // Wert kommt aus dem Launcher/der Umgebung, NIE aus dem Code. Ungültig/0/negativ → Default (aus).
+  const maxTokensFloor = parseMaxTokens(env.KLARWERK_LOCAL_LLM_MAX_TOKENS);
   return openAiCompatibleClient({
     baseUrl,
     model,
     ...(env.KLARWERK_LOCAL_LLM_KEY ? { apiKey: env.KLARWERK_LOCAL_LLM_KEY } : {}),
     ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+    ...(maxTokensFloor !== undefined ? { maxTokensFloor } : {}),
   });
 }
 

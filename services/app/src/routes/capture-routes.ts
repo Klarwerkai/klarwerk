@@ -1,13 +1,26 @@
 import type { FastifyPluginAsync, FastifyReply } from "fastify";
-import type { CaptureService, Draft, DraftPayload } from "../../../capture";
-import type { KoService } from "../../../knowledge-object";
+import {
+  type CaptureService,
+  type Draft,
+  type DraftPayload,
+  validateDraftPayloadShape,
+} from "../../../capture";
+import {
+  type KoService,
+  alsMenge,
+  alsSchreibpatch,
+  createOperationFingerprint,
+} from "../../../knowledge-object";
 import type { ValidationService } from "../../../validation";
 import type { AiCheckWorker } from "../ai-check-worker";
 import { type SemanticPrefilter, indexKoForDuplicatePrefilter } from "../duplicate-detection";
 import { type Guards, type SessionUser, sendError } from "../http";
 import type { AssignmentNotifier } from "../notify";
 
-function canSeeDraft(user: SessionUser, draft: Draft): boolean {
+// AUFTRAG-mega19 Block B: EXPORTIERT, damit die Composition-Root den Entwurfs-Zugang der
+// Dokumentübernahme (ko-routes, `DraftPromotionSource`) aus DERSELBEN Regel bildet. Zwei
+// Auffassungen davon, wer einen Entwurf sehen darf, wären eine zu viel.
+export function canSeeDraft(user: SessionUser, draft: Draft): boolean {
   return user.role === "admin" || draft.originalAuthor === user.id;
 }
 
@@ -83,7 +96,20 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
       if (!user) {
         return;
       }
-      reply.code(200).send(visibleDraftsFor(user, await capture.listDrafts()));
+      // AUFTRAG-mega20 Block D: die LISTE ist der echte Fortsetzen-Weg (CaptureDraftList →
+      // onResume arbeitet mit dem Objekt aus dieser Antwort, nicht mit einem zweiten GET). Sie
+      // läuft deshalb durch DIESELBE Ankerprüfung wie die Einzelroute — sonst stünde „kein
+      // Body-Resume ohne Anker" im Code und griffe in der Anwendung nie.
+      const geprueft = await capture.listDraftsForResume();
+      reply.code(200).send(
+        visibleDraftsFor(
+          user,
+          geprueft.map((eintrag) => eintrag.draft),
+        ).map((draft) => {
+          const fehlend = geprueft.find((e) => e.draft.id === draft.id)?.anchorsMissing ?? [];
+          return fehlend.length > 0 ? { ...draft, anchorsMissing: fehlend } : draft;
+        }),
+      );
     });
 
     app.post<{ Body: DraftPayload }>(
@@ -111,7 +137,26 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
       if (!draft) {
         return;
       }
-      reply.code(200).send(draft);
+      // AUFTRAG-mega20 Block D: DAS FORTSETZEN LÄUFT ÜBER DIE ANKERPRÜFUNG.
+      //
+      // `requireVisibleDraft` bleibt die SICHTBARKEITS-Entscheidung (404/403) und wird davon nicht
+      // berührt. Was hier dazukommt, ist die INHALTS-Entscheidung: beruft sich der Entwurf auf ein
+      // gesichertes Original, das es nicht mehr gibt, kommt sein Body NICHT zurück — sonst stünde
+      // übernommener Dokumenttext ohne Herkunft im Editor und ließe sich von dort einreichen.
+      // Der Aufrufer erfährt in `anchorsMissing` ausdrücklich, welche Originale fehlen; die
+      // ausgeschriebene Abwägung steht in capture/src/service.ts bei `resumeDraft`.
+      const fortsetzung = await capture.resumeDraft(request.params.id);
+      if (!fortsetzung) {
+        reply.code(404).send({ error: "NOT_FOUND", message: "Entwurf nicht gefunden." });
+        return;
+      }
+      reply
+        .code(200)
+        .send(
+          fortsetzung.anchorsMissing.length > 0
+            ? { ...fortsetzung.draft, anchorsMissing: fortsetzung.anchorsMissing }
+            : fortsetzung.draft,
+        );
     });
 
     app.put<{ Params: { id: string }; Body: DraftPayload }>(
@@ -156,56 +201,170 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
     // FR-CAP-07: Entwurf → Wissensobjekt; Autor = Originalautor (in toKoInput gesetzt).
     // SCRUM-395: optionaler Prüfer-Vorschlag beim Einreichen — wie bei POST /api/kos
     // (dedupliziert, ohne den Einreicher selbst; Benachrichtigung über FR-VAL-07).
-    app.post<{ Params: { id: string }; Body: { reviewerIds?: string[] } | null }>(
-      "/api/drafts/:id/promote",
-      async (request, reply) => {
-        const user = await guards.requirePermission("ko.create", request, reply);
-        if (!user) {
-          return;
-        }
-        try {
-          if (!(await requireVisibleDraft(capture, request.params.id, user, reply))) {
+    // ==============================================================================================
+    // AUFTRAG-mega22 Block H — DER PROMOTE-WEG ÜBERLEBT DEN ANTWORTVERLUST.
+    // ==============================================================================================
+    //
+    // DER BEFUND. Ein Antwortverlust erzeugt hier kein Duplikat und keinen Inhaltsverlust — der
+    // Entwurf ist weg, das Wissensobjekt steht. Der Nutzer sieht aber 404 für einen GELUNGENEN
+    // Vorgang. Das ist derselbe Mangel, den mega21 Block B für den Dokumentweg geschlossen hat, eine
+    // Tür weiter. ben stuft den Weg als Nach-VIP-2 ein, SOFERN er nicht Teil des VIP-2-Drehbuchs
+    // ist. Er ist es: der manuelle Entwurfs-Promote gehört zum Rundgang.
+    //
+    // ES IST DERSELBE VERTRAG, NICHT EIN ZWEITER: derselbe Vorgangsschlüssel (`operationId`,
+    // `OPERATION_ID_PATTERN`), derselbe Nachschlag VOR allem Veränderlichen, derselbe Eigentümer-
+    // und Abdruckvergleich (`adoptCreatedKo`, drei Tore), dieselben Fehlercodes
+    // (`CREATE_ANCHOR_TAKEN`, `CREATE_REPAIR_REQUIRED`, `IDEMPOTENCY_PAYLOAD_MISMATCH`).
+    //
+    // WAS NICHT ÜBERTRAGBAR WAR, einzeln benannt statt stillschweigend weggelassen:
+    //
+    //   1. `draftPayload` IST HIER OPTIONAL, auf dem Dokumentweg ist es Pflicht (mega22 Block C).
+    //      Der Grund ist kein Nachlassen, sondern ein Unterschied im Vertrag: der Dokumentweg hat
+    //      einen ZWEITEN Inhaltskanal (`create`) und musste deshalb erzwingen, dass der Abdruck
+    //      überhaupt Inhalt sieht. Der Promote-Weg hat gar keinen Client-Inhaltskanal — sein Inhalt
+    //      IST der adressierte Entwurf. Deshalb geht `draftId` in den Abdruck (dieselbe Antwort auf
+    //      SB-D wie dort), und mitgeliefertes `draftPayload` geht zusätzlich hinein.
+    //   2. ES GIBT KEINE KOMPENSIERENDE RÜCKNAHME und damit keinen `repair_required`, den DIESER
+    //      Weg erzeugen könnte. `create` bleibt nach dem Insert bewusst untransaktional
+    //      (WP-SHIP8-CLOSE-5); ein Zustand `repair_required` kann hier also nur von einem Objekt
+    //      stammen, das der Dokumentweg hinterlassen hat. Das Tor wird trotzdem durchlaufen — es
+    //      auszulassen hiesse, denselben Vorgang an zwei Türen verschieden zu beurteilen.
+    //   3. `operationId` IST OPTIONAL, auf dem Dokumentweg ist es Pflicht. Ohne Schlüssel verhält
+    //      sich die Route EXAKT wie vorher (kein Vorgang, kein Nachschlag, keine Adoption). Das ist
+    //      eine bewusste Abwägung: `POST /api/drafts/:id/promote` ist ein länger bestehender
+    //      öffentlicher Vertrag mit Aufrufern ausserhalb dieser Oberfläche, und ein hartes 400 für
+    //      einen fehlenden Schlüssel bräche sie ohne Not. Der Preis ist benannt: wer ohne Schlüssel
+    //      promotet, bekommt die alte Zusage — 404 nach Antwortverlust.
+    //
+    // ==============================================================================================
+    // AUFTRAG-mega23 Block A — DIE KORREKTUR EINER BEHAUPTUNG, DIE HIER STAND.
+    // ==============================================================================================
+    //
+    // AN DIESER STELLE STAND: „Die Oberfläche schickt ihn ausnahmslos (Capture.tsx,
+    // CaptureFrontDoor.tsx)." FÜR DIE VORDERTÜR WAR DAS OBJEKTIV FALSCH. `CaptureFrontDoor.tsx`
+    // verdrahtete `promoteDraft: (id) => endpoints.drafts.promote(id)`, und der Clientvertrag in
+    // `lib/captureFrontDoor.ts` kannte nur `promoteDraft(id)` — weder Schlüssel noch Stand reisten
+    // mit. Der Satz hat einen ungeprüften Zustand als geprüft aussehen lassen; das ist selbst ein
+    // Befund und nicht nur der Rahmen eines Befundes.
+    //
+    // SEIT mega23 Block A schickt die Vordertür beides. Der Satz ist damit wahr — aber er bleibt
+    // eine Behauptung ÜBER FREMDE DATEIEN, und genau daran ist er das erste Mal gescheitert. Er
+    // steht deshalb nicht mehr allein hier, sondern ist GEPINNT: `tests/capture/promote-operation-
+    // callers.test.ts` liest beide Aufrufstellen und schlägt fehl, sobald eine den Schlüssel
+    // wieder weglässt.
+    //
+    // OB DER SCHLÜSSEL PFLICHT WERDEN SOLL: NEIN, nicht in dieser Runde — und der Grund ist ein
+    // anderer als „es gibt noch einen Aufrufer". Auf DIESEM Weg kann ein fehlender Schlüssel
+    // KEINE Dublette erzeugen: der Promote verbraucht einen ADRESSIERTEN Entwurf, und nach einem
+    // gelungenen Lauf ist der weg — der Wiederholversuch scheitert an 404 statt ein zweites Objekt
+    // anzulegen. Der Preis der Optionalität ist also eine unschöne Fehlermeldung, kein
+    // Integritätsschaden. Auf dem Dokumentweg ist er Pflicht, weil `create` dort OHNE Entwurf
+    // laufen kann und ein zweiter Lauf tatsächlich ein zweites Objekt erzeugte. Ein 400 hier
+    // bräche demgegenüber jeden nicht-Oberflächen-Aufrufer dieser Route (der Bestand solcher
+    // Aufrufer ist nicht inventarisiert) — acht Tage vor VIP-2, ohne Integritätsgewinn.
+    app.post<{
+      Params: { id: string };
+      Body: {
+        reviewerIds?: string[];
+        operationId?: string;
+        draftPayload?: DraftPayload;
+      } | null;
+    }>("/api/drafts/:id/promote", async (request, reply) => {
+      const user = await guards.requirePermission("ko.create", request, reply);
+      if (!user) {
+        return;
+      }
+      try {
+        const body = request.body ?? {};
+        const operationId = typeof body.operationId === "string" ? body.operationId.trim() : "";
+        // ------------------------------------------------------------------------------
+        // DER NACHSCHLAG STEHT VOR ALLEM VERÄNDERLICHEN — und das ist hier keine Feinheit,
+        // sondern der ganze Block: `requireVisibleDraft` unten antwortet nach einem gelungenen
+        // ersten Lauf mit 404, weil der Entwurf dann GELÖSCHT ist. Stünde der Nachschlag darunter,
+        // liefe die Adoptionsmechanik im echten Klickpfad ins Leere — genau der Fehler, den
+        // mega21 Block B auf dem Dokumentweg beseitigt hat.
+        // ------------------------------------------------------------------------------
+        let fingerprint = "";
+        if (operationId) {
+          fingerprint = createOperationFingerprint({
+            // AUFTRAG-mega22 Block C, hier ebenso: der Request VERBRAUCHT diesen Entwurf. Zwei
+            // Anfragen, die verschiedene Entwürfe verbrauchen, sind nicht derselbe Vorgang.
+            draftId: request.params.id,
+            // K8 (document-create.ts): die Schreibladung semantiktreu, `fehlt` ≠ `leer`.
+            inhalt: alsSchreibpatch(body.draftPayload ?? null),
+            reviewerIds: alsMenge(body.reviewerIds),
+            weg: "promote",
+          });
+          const replay = await ko.lookupDocumentCreate(operationId, {
+            actor: user.id,
+            fingerprint,
+          });
+          if (replay) {
+            // 200 statt 201: derselbe Vorgang, aber das Objekt entsteht NICHT jetzt. Keine
+            // Folgeschritte — sie liefen beim ersten Mal.
+            reply.code(200).send(replay);
             return;
           }
-          const input = await capture.toKoInput(request.params.id);
-          // WP-RETEST7 R6: author IMMER aus einem echten Nutzer — normal der Originalautor des
-          // Entwurfs (FR-CAP-07); trägt ein Altbestands-Entwurf KEINEN originalAuthor (leer),
-          // wird ehrlich der EINREICHENDE Session-Nutzer gesetzt statt eines leeren author-Felds
-          // (Pedis Befund: Validierungskarte ohne „von …").
-          const created = await ko.create({
-            ...input,
-            author: input.author.trim() ? input.author : user.id,
-          });
-          await capture.deleteDraft(request.params.id);
-          const reviewers = [...new Set(request.body?.reviewerIds ?? [])].filter(
-            (id) => id !== user.id,
-          );
-          if (reviewers.length > 0) {
-            await validation.assign(created.id, reviewers, user.id);
-            await notifyAssignment?.(created.id, reviewers);
-          }
-          // WP-SUBMIT-ASYNC (Pedis R3, 21.07.): wie beim direkten Einreichen — kein synchroner
-          // detect*-Lauf mehr vor der Antwort; nur der Prüf-Job wird vermerkt und der Worker
-          // arbeitet ihn danach ab (dieselben Erkennungs-Pfade, Status im Board sichtbar).
-          // Wie in ko-routes: die 201-Antwort trägt den Vermerk ehrlich mit (aiCheck pending);
-          // Nachlesen VOR dem enqueue → deterministischer Job-Start in der Antwort.
-          let submitted = created;
-          if (aiCheckWorker) {
-            await ko.markAiCheckPending(created.id);
-            submitted = (await ko.get(created.id)) ?? created;
-            // WP-SHIP8-CLOSE-2 (bens F3): Zielversion des frischen Vermerks synchron mitgeben —
-            // die Overflow-Eviction schließt hart versionsgebunden ab (kein unversionierter Write).
-            aiCheckWorker.enqueue(created.id, submitted.aiCheck?.koVersion);
-          }
-          reply.code(201).send(submitted);
-          // Weg 3 (B6): Einbettung + Ablage NACH der Antwort — der Nutzer wartet nie darauf. Flag aus
-          // = No-op; Fehler brechen den (bereits gesendeten) Submit nie. await nur zur deterministischen
-          // Fertigstellung der Ablage, nicht zur Client-Latenz (201 ist schon raus).
-          await indexKoForDuplicatePrefilter(created, semanticPrefilter);
-        } catch (error) {
-          sendError(reply, error);
         }
-      },
-    );
+        if (!(await requireVisibleDraft(capture, request.params.id, user, reply))) {
+          return;
+        }
+        // AUFTRAG-mega22 Block H: liegt ein Stand bei, wird er HIER geschrieben — im selben
+        // Vorgang, hinter dem Nachschlag. Damit braucht die Oberfläche kein vorgeschaltetes
+        // `PUT /api/drafts/:id` mehr, das nach einem gelungenen ersten Lauf mit 404 abfinge.
+        // Die Gestaltprüfung läuft am RAND (mega22 Block D) — ein Formfehler wird hier 400 und
+        // entsteht nicht in der Tiefe von `continueDraft`.
+        if (body.draftPayload !== undefined) {
+          const gestalt = validateDraftPayloadShape(body.draftPayload);
+          if (!gestalt.ok) {
+            reply.code(400).send({ error: "BAD_REQUEST", message: gestalt.message });
+            return;
+          }
+          await capture.continueDraft(request.params.id, gestalt.payload, user.id);
+        }
+        const input = await capture.toKoInput(request.params.id);
+        // WP-RETEST7 R6: author IMMER aus einem echten Nutzer — normal der Originalautor des
+        // Entwurfs (FR-CAP-07); trägt ein Altbestands-Entwurf KEINEN originalAuthor (leer),
+        // wird ehrlich der EINREICHENDE Session-Nutzer gesetzt statt eines leeren author-Felds
+        // (Pedis Befund: Validierungskarte ohne „von …").
+        //
+        // AUFTRAG-mega22 Block H: der VORGANG reist mit, wenn einer mitgeschickt wurde — und der
+        // Eigentümer ist der EINREICHENDE Nutzer, nicht `input.author`. Das ist genau die Trennung
+        // aus mega21 Block A: ein Admin darf einen fremden Entwurf einreichen; das Wissensobjekt
+        // trägt dann den Originalautor, der VORGANG aber gehört dem Admin, der ihn gestartet hat.
+        const created = await ko.create(
+          { ...input, author: input.author.trim() ? input.author : user.id },
+          ...(operationId
+            ? ([{ id: operationId, actor: user.id, fingerprint }] as const)
+            : ([] as const)),
+        );
+        await capture.deleteDraft(request.params.id);
+        const reviewers = [...new Set(body.reviewerIds ?? [])].filter((id) => id !== user.id);
+        if (reviewers.length > 0) {
+          await validation.assign(created.id, reviewers, user.id);
+          await notifyAssignment?.(created.id, reviewers);
+        }
+        // WP-SUBMIT-ASYNC (Pedis R3, 21.07.): wie beim direkten Einreichen — kein synchroner
+        // detect*-Lauf mehr vor der Antwort; nur der Prüf-Job wird vermerkt und der Worker
+        // arbeitet ihn danach ab (dieselben Erkennungs-Pfade, Status im Board sichtbar).
+        // Wie in ko-routes: die 201-Antwort trägt den Vermerk ehrlich mit (aiCheck pending);
+        // Nachlesen VOR dem enqueue → deterministischer Job-Start in der Antwort.
+        let submitted = created;
+        if (aiCheckWorker) {
+          await ko.markAiCheckPending(created.id);
+          submitted = (await ko.get(created.id)) ?? created;
+          // WP-SHIP8-CLOSE-2 (bens F3): Zielversion des frischen Vermerks synchron mitgeben —
+          // die Overflow-Eviction schließt hart versionsgebunden ab (kein unversionierter Write).
+          aiCheckWorker.enqueue(created.id, submitted.aiCheck?.koVersion);
+        }
+        reply.code(201).send(submitted);
+        // Weg 3 (B6): Einbettung + Ablage NACH der Antwort — der Nutzer wartet nie darauf. Flag aus
+        // = No-op; Fehler brechen den (bereits gesendeten) Submit nie. await nur zur deterministischen
+        // Fertigstellung der Ablage, nicht zur Client-Latenz (201 ist schon raus).
+        await indexKoForDuplicatePrefilter(created, semanticPrefilter);
+      } catch (error) {
+        sendError(reply, error);
+      }
+    });
   };
 }

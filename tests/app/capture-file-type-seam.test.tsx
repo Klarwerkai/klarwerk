@@ -28,7 +28,10 @@ import {
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const CAPTURE_ACTIVE = ["json-file", "csv", "docx", "pdf", "pptx", "ocr"] as const;
-const CAPTURE_PLANNED = ["xlsx", "avtranscript"] as const;
+const CAPTURE_PLANNED = ["xlsx"] as const;
+// AUFTRAG-mega15 Block D (SCRUM-382): das Transkript ist gebaut, nur ohne hinterlegten Dienst —
+// „geplant" waere hier die Falschaussage.
+const CAPTURE_UNCONFIGURED = ["avtranscript"] as const;
 
 let container: HTMLDivElement | null = null;
 let root: ReturnType<typeof createRoot> | null = null;
@@ -89,13 +92,17 @@ function tileById(id: string): HTMLButtonElement {
 }
 
 describe("uxpol3: Capture-Dateityp-Seam (echte Produktionskomponente gemountet)", () => {
-  it("(a) Zustände: JSON/Text-CSV/DOCX/PDF/PPTX/OCR aktiv, Excel/Audio-Video geplant", () => {
+  it("(a) Zustände: JSON/Text-CSV/DOCX/PDF/PPTX/OCR aktiv, Excel geplant, Audio-Video unkonfiguriert", () => {
     const byId = new Map(fileSourcesForSurface("capture").map((s) => [s.id, s.state]));
     for (const id of CAPTURE_ACTIVE) {
       expect(byId.get(id), id).toBe("active");
     }
     for (const id of CAPTURE_PLANNED) {
       expect(byId.get(id), id).toBe("planned");
+    }
+    for (const id of CAPTURE_UNCONFIGURED) {
+      expect(byId.get(id), id).toBe("unconfigured");
+      expect(byId.get(id), id).not.toBe("planned");
     }
   });
 

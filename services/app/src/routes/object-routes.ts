@@ -1,7 +1,27 @@
 import type { FastifyPluginAsync } from "fastify";
 import { isValidConfidentiality } from "../../../knowledge-object";
-import { type ObjectKind, type ObjectStore, decodeDataUrl } from "../../../object-store";
+import {
+  type ObjectKind,
+  type ObjectPurpose,
+  type ObjectStore,
+  decodeDataUrl,
+} from "../../../object-store";
 import { type Guards, sendError } from "../http";
+
+// AUFTRAG-mega20 Block C: die erlaubten Zwecke als LAUFZEIT-Prüfung. Der Typ allein hilft an einer
+// HTTP-Grenze nichts — dort kommt eine beliebige Zeichenkette an, und sie in den Vertrag zu casten
+// hieße, dem Client den Lebenszyklus schreiben zu lassen.
+const OBJECT_PURPOSES: ReadonlySet<string> = new Set<ObjectPurpose>([
+  "anchor",
+  "attachment",
+  "media",
+  "example",
+  "unknown",
+]);
+
+function isObjectPurpose(value: string): value is ObjectPurpose {
+  return OBJECT_PURPOSES.has(value);
+}
 
 // SCRUM-503 (ben-Nacht-1): Stored XSS über nutzerbestimmtes MIME. Der Object-Store speichert das
 // beim Upload gelieferte `mime` verbatim; die /raw-Auslieferung setzte es 1:1 als Content-Type OHNE
@@ -42,6 +62,9 @@ export function objectRoutes(store: ObjectStore, guards: Guards): FastifyPluginA
         data: string;
         kind?: ObjectKind;
         confidentiality?: string;
+        // AUFTRAG-mega20 Block C: WOZU wird hochgeladen (s. object-store/src/types.ts).
+        purpose?: string;
+        draftId?: string;
       };
     }>("/api/objects", { bodyLimit: OBJECTS_BODY_LIMIT }, async (request, reply) => {
       const user = await guards.requirePermission("ko.create", request, reply);
@@ -49,7 +72,13 @@ export function objectRoutes(store: ObjectStore, guards: Guards): FastifyPluginA
         return;
       }
       try {
-        const { name, mime, data, kind, confidentiality } = request.body;
+        const { name, mime, data, kind, confidentiality, purpose, draftId } = request.body;
+        // AUFTRAG-mega20 Block C: der Zweck wird gegen die bekannte Liste geprüft und NIE geraten.
+        // Ein unbekannter Wert wird zu „unknown" — also zur KONSERVATIVSTEN Einstufung, nicht zu
+        // der, die der Client vielleicht gemeint hat. `owner` kommt aus der ANMELDUNG, nie aus dem
+        // Body: er ist eine Herkunftsangabe, und eine erfundene Herkunft wäre schlechter als keine.
+        const purposeField =
+          typeof purpose === "string" && isObjectPurpose(purpose) ? { purpose } : {};
         // SCRUM-521 (WP1): Vertraulichkeit beim Upload persistieren — nur wenn es ein bekannter Level
         // ist. Ungültig/fehlend → nicht setzen; der Medien-Egress behandelt das Objekt dann fail-safe
         // als vertraulich (kein externer Transkriptions-Egress). Der Client kann so nur beim Upload
@@ -65,6 +94,9 @@ export function objectRoutes(store: ObjectStore, guards: Guards): FastifyPluginA
             data,
             ...(kind ? { kind } : {}),
             ...confidentialityField,
+            ...purposeField,
+            owner: user.id,
+            ...(typeof draftId === "string" && draftId.trim() ? { draftId: draftId.trim() } : {}),
           }),
         );
       } catch (error) {

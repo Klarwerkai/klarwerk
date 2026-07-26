@@ -42,10 +42,12 @@ import { ADMIN_SECTIONS, type AdminSectionId, DEFAULT_ADMIN_SECTION } from "../l
 import { type AiAccessState, aiAccessRows } from "../lib/aiOverview";
 // AUFTRAG kimodus-live: Topbar-/Status-Queries nach dem Übernehmen live invalidieren.
 import { invalidateAiState } from "../lib/aiStateInvalidate";
+import { type AuditVerifyTone, auditVerifyView } from "../lib/auditVerifyState";
 import { isGroupError, isGroupLoading, isGroupStale } from "../lib/loadingState";
 import { PILOT_NEXT_STEPS } from "../lib/pilotNextSteps";
 import { parseNeededValidations } from "../lib/reviewerMinimum";
 import { SECURITY_POINTS } from "../lib/securityStatements";
+import { maxRawAttachmentMb } from "../lib/uploadLimits";
 import { type ReadinessTone, readinessRows } from "../lib/vipReadiness";
 
 const EMPTY_NEW_USER = { name: "", email: "", password: "", role: "experte" as Role };
@@ -56,6 +58,15 @@ const READY_TONE_CLASS: Record<ReadinessTone, string> = {
   warn: "bg-trust-warn-bg text-trust-warn-text",
   crit: "bg-trust-crit-bg text-trust-crit-text",
   info: "bg-page text-muted",
+};
+
+// AUFTRAG-mega14 Block A-2: Ampel der Integritätsprüfung. Gelb ist ein eigener Zustand, kein
+// abgeschwächtes Rot — „Verkettung lückenlos, Nutzdaten nicht nachrechenbar" ist eine andere
+// Aussage als „Kette nicht bestätigt".
+const AUDIT_VERIFY_TONE_CLASS: Record<AuditVerifyTone, string> = {
+  ok: "bg-trust-pos-bg text-trust-pos-text",
+  warn: "bg-trust-warn-bg text-trust-warn-text",
+  crit: "bg-trust-crit-bg text-trust-crit-text",
 };
 
 // SCRUM-440: nur den markierten Auszug drucken — eine Body-Klasse isoliert den Druck (via CSS),
@@ -412,6 +423,12 @@ export function Admin(): JSX.Element {
   });
 
   // SCRUM-414: Regler „externe Wissensabfrage" (4 Stufen) — Draft-Muster wie die Presets.
+  // AUFTRAG-mega14 Block H (SCRUM-437): LESENDER Demodaten-Stand für die Bereitschafts-Zeile.
+  // Kein zweiter Lade-/Entfernen-Weg — nur die Anzeige.
+  const demoStatus = useQuery({
+    queryKey: ["admin", "demo-status"],
+    queryFn: endpoints.admin.demoStatus,
+  });
   const extPolicy = useQuery({
     queryKey: ["external", "policy"],
     queryFn: endpoints.external.policy,
@@ -737,6 +754,25 @@ export function Admin(): JSX.Element {
                   onChange={(e) => setMaxMbDraft(e.target.value)}
                   aria-label={t("adm.upload.maxMb")}
                 />
+                {/* AUFTRAG-mega15 Block E (bens Benennungsschuld): der eingestellte Wert misst die
+                    ÜBERTRAGENE Daten-URL. Daneben steht jetzt, was das an reiner Dateigröße
+                    bedeutet — mitrechnend am gerade eingetippten Entwurfswert, nicht erst nach dem
+                    Speichern. Das Modell bleibt unverändert (eine stille Umdeutung des
+                    gespeicherten Wertes wäre migrationsriskant). */}
+                <p data-testid="upload-raw-limit" className="mt-1 text-[11px] text-muted-2">
+                  {t("adm.upload.rawHint", {
+                    raw: maxRawAttachmentMb(
+                      Math.round(
+                        Number.parseFloat(
+                          maxMbDraft ??
+                            String(
+                              (uploadLimitsQ.data?.maxAttachmentBytes ?? 20_000_000) / 1_000_000,
+                            ),
+                        ) * 1_000_000,
+                      ) || 0,
+                    ),
+                  })}
+                </p>
               </Field>
               <Button
                 variant="primary"
@@ -1543,9 +1579,11 @@ export function Admin(): JSX.Element {
         </Card>
       ) : null}
 
-      {/* SCRUM-432 (Pedi 03.07., VIP-Investor): Vertrauen & Sicherheit — manipulationssicheres
+      {/* SCRUM-432 (Pedi 03.07., VIP-Investor): Vertrauen & Sicherheit — hash-verkettetes
           Prüfprotokoll + Datenschutz-/Sicherheits-Nachweis. Ein Auszug, den man einem Investor
-          ruhig zeigt: nur echte Systemeigenschaften, keine Versprechen. */}
+          ruhig zeigt: nur echte Systemeigenschaften, keine Versprechen.
+          AUFTRAG-mega15 Block A (bens SB-1): die Texte dieser Fläche behaupten keine
+          Unveränderbarkeit mehr — belegbar ist die Prüfbarkeit, s. tests/app/chain-claims.test.ts. */}
       {section === "sicherheit" ? (
         <div className="print-area space-y-6">
           <div className="flex justify-end print-hide">
@@ -1581,17 +1619,25 @@ export function Admin(): JSX.Element {
                       >
                         <ShieldCheck size={14} /> {t("adm.sich.verify.button")}
                       </Button>
-                      {verifyAudit.data ? (
-                        verifyAudit.data.ok ? (
-                          <span className="rounded-pill bg-trust-pos-bg px-2 py-0.5 text-[11px] font-semibold text-trust-pos-text">
-                            {t("adm.sich.verify.ok", { count: verifyAudit.data.count })}
-                          </span>
-                        ) : (
-                          <span className="rounded-pill bg-trust-crit-bg px-2 py-0.5 text-[11px] font-semibold text-trust-crit-text">
-                            {t("adm.sich.verify.fail")}
-                          </span>
-                        )
-                      ) : null}
+                      {/* AUFTRAG-mega14 Block A-2 (bens SB-1): DREI Zustände. Die Einordnung liegt in
+                          lib/auditVerifyState.ts — die Oberfläche rendert nur, sie urteilt nicht. */}
+                      {verifyAudit.data
+                        ? (() => {
+                            const view = auditVerifyView(verifyAudit.data);
+                            return (
+                              <span
+                                data-testid="audit-verify-result"
+                                data-tone={view.tone}
+                                className={`rounded-pill px-2 py-0.5 text-[11px] font-semibold ${AUDIT_VERIFY_TONE_CLASS[view.tone]}`}
+                              >
+                                {t(view.key, {
+                                  ...view.params,
+                                  ...(view.kindKey ? { kind: t(view.kindKey) } : {}),
+                                })}
+                              </span>
+                            );
+                          })()
+                        : null}
                     </div>
                     {recent.length === 0 ? (
                       <p className="px-4 py-3 text-[13px] text-muted">{t("adm.auditEmpty")}</p>
@@ -1669,7 +1715,14 @@ export function Admin(): JSX.Element {
             {/* AUFTRAG-mega3 Block B (bens D9): dritte Phase — dauerhaft gescheiterte tragende Quelle ⇒
                 ehrlicher Fehlerzustand mit Wiederholen; Stale-Daten bleiben sichtbar, aber markiert. */}
             {(() => {
-              const readySources = [aiConfig, analytics, board, uploadLimitsQ, extPolicy];
+              const readySources = [
+                aiConfig,
+                analytics,
+                board,
+                uploadLimitsQ,
+                extPolicy,
+                demoStatus,
+              ];
               const retryReady = (): void => {
                 void aiConfig.refetch();
                 void analytics.refetch();
@@ -1703,6 +1756,7 @@ export function Admin(): JSX.Element {
                       openReviews: board.data?.length ?? 0,
                       uploadLimits: uploadLimitsQ.data ?? null,
                       externalStage: extPolicy.data?.stage ?? null,
+                      demo: demoStatus.data ?? null,
                       // Block C: atomar erst „geladen", wenn ALLE tragenden Quellen Daten haben — sonst
                       // behauptet die Karte vor der Datenladung „keine KI"/„0 validiert".
                       loading: isGroupLoading([
@@ -1711,10 +1765,22 @@ export function Admin(): JSX.Element {
                         board,
                         uploadLimitsQ,
                         extPolicy,
+                        demoStatus,
                       ]),
                     }).map((row) => (
                       <li key={row.id} className="flex items-center gap-3 py-2.5 text-[13px]">
                         <span className="font-semibold text-text">{t(row.labelKey)}</span>
+                        {/* AUFTRAG-mega14 Block H: die Demodaten-Zeile FÜHRT zum bestehenden
+                            Bereich, statt einen zweiten Lade-/Entfernen-Weg aufzumachen. */}
+                        {row.id === "demo" ? (
+                          <button
+                            type="button"
+                            onClick={() => setSection("daten")}
+                            className="text-[12px] font-semibold text-ai hover:underline"
+                          >
+                            {t("adm.ready.demo.goto")}
+                          </button>
+                        ) : null}
                         <span
                           className={`ml-auto rounded-pill px-2.5 py-0.5 text-[11.5px] font-semibold ${
                             READY_TONE_CLASS[row.tone]

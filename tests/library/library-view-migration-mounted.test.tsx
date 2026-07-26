@@ -135,14 +135,11 @@ describe("uxpol2: gemountete Library — Sicht-Migration + ODER-Filter (echter S
     expect(container.textContent).toContain("Offen Unzugewiesen");
     expect(container.textContent).toContain("Offen Zugewiesen");
 
-    // Die gespeicherte Sicht anwenden (echter applyView-Pfad über das Sichten-Dropdown).
-    const select = container.querySelector(
-      `select[aria-label="${res("lib.views.label")}"]`,
-    ) as HTMLSelectElement | null;
-    expect(select).not.toBeNull();
+    // Die gespeicherte Sicht anwenden — AUFTRAG-mega10 Block B Punkt 5: die Sichten stehen jetzt
+    // als anklickbare Einträge ÜBER der Trefferliste (vorher ein Dropdown). Der geprüfte Pfad ist
+    // unverändert derselbe (applyView → migrateSavedFacetSelection → foldStatusIntoMaturity).
     act(() => {
-      (select as HTMLSelectElement).value = "Alt-Offen";
-      (select as HTMLSelectElement).dispatchEvent(new Event("change", { bubbles: true }));
+      chip("Alt-Offen").click();
     });
 
     // Filter ist aktiv (Status-Facette), aber BEIDE offenen KOs bleiben sichtbar — semantiktreu.
@@ -172,16 +169,28 @@ describe("uxpol2: gemountete Library — Sicht-Migration + ODER-Filter (echter S
 });
 
 // AUFTRAG-uxpol4 (bens ROT 3.1): Die URL-/Parser-Grenze am ECHTEN Seam. Ein Deep-Link mit dem früheren
-// Sentinel-String darf den internen No-Match-Zustand NICHT einschleusen — er ist ein ganz normaler,
-// entfernbarer Kategoriewert, kein struktureller „0-Treffer"-Zustand.
+// Sentinel-String darf den internen No-Match-Zustand NICHT einschleusen.
+//
+// AUFTRAG-mega11 Block C (bens SB-3) hat diese Grenze VERSCHÄRFT, und die Erwartung zieht mit: bis
+// mega10 landete der Sentinel als ganz normaler, entfernbarer Kategoriewert in der Aktive-Filter-
+// Leiste — er war ja „nur ein Wert". Genau das war der neue Weg desselben Blockers: ein Wert aus der
+// Adresszeile, den es im Bestand nicht gibt, wurde zu einem ECHTEN Facettenwert und konnte über
+// „Diese Suche merken" in eine gespeicherte Sicht wandern. Er wird jetzt am Eingang verworfen.
+//
+// Die uxpol4-Zusicherung selbst ist unverändert und wird hier weiter gepinnt: aus dem Sentinel wird
+// unter KEINEN Umständen der strukturelle No-Match-Zustand. Er wird auch nicht dazu — er wird zu
+// gar nichts.
 describe("uxpol4: URL kann den No-Match-Zustand nicht einschleusen (echter Seam)", () => {
-  it("?category=<früherer Sentinel> wird als ECHTER Kategoriewert behandelt, nicht als „keine Treffer“", () => {
+  it("?category=<früherer Sentinel> erzeugt weder No-Match noch einen echten Facettenwert", () => {
     const former = "__klarwerk_facet_no_match__";
     mount(`/bibliothek?category=${encodeURIComponent(former)}`);
-    // Der frühere Sentinel steht als ECHTER, entfernbarer Facettenwert in der Aktive-Filter-Leiste …
-    expect(container.textContent).toContain(res("facet.active"));
-    expect(container.textContent).toContain(former);
-    // … und NICHT als struktureller No-Match-Hinweis (der ausschließlich aus migrierten Sichten stammt).
+    // Die uxpol4-Grenze: KEIN struktureller No-Match-Hinweis (der stammt allein aus migrierten Sichten).
     expect(container.textContent).not.toContain(res("facet.noMatch"));
+    // mega11 Block C: und auch kein echter Wert — kein Filter, keine Pille, kein Eintrag im Zustand.
+    expect(container.textContent).not.toContain(res("facet.active"));
+    expect(container.textContent).not.toContain(former);
+    // Ohne Filter bleibt der volle Bestand sichtbar (statt der bisherigen 0 Treffer).
+    expect(container.textContent).toContain("Offen Unzugewiesen");
+    expect(container.textContent).toContain("Offen Zugewiesen");
   });
 });

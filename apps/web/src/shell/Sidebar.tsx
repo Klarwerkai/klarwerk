@@ -1,8 +1,7 @@
 import { LogOut } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { NavLink, useNavigate } from "react-router-dom";
 import { useSession } from "../app/AuthContext";
-import { useNavGuard } from "../app/NavGuardContext";
+import { GuardedNavLink } from "../app/NavGuardContext";
 import { useRole } from "../app/RoleContext";
 import { FOOT_ITEMS, NAV_GROUPS, type NavItem, ROLES, type Role, canSee } from "../app/navigation";
 import { type NavBadge, navBadgeLabelKey, useNavBadges } from "../app/useNavBadges";
@@ -143,20 +142,13 @@ function BadgeStale({
 function NavRow({ item, badge }: { item: NavItem; badge?: NavBadge | undefined }): JSX.Element {
   const { t } = useTranslation();
   const badgeLabelKey = item.badgeKey ? navBadgeLabelKey(item.badgeKey) : undefined;
-  const navigate = useNavigate();
-  const { guard } = useNavGuard();
   const Icon = item.icon;
   return (
-    <NavLink
+    // AUFTRAG-mega11 Block B-2 (bens SB-2): die hier von Hand verdrahtete Wächter-Logik (Vorbild für
+    // alles Übrige) steckt jetzt in GuardedNavLink — dieselbe Wirkung, aber als Bauteil, das eine
+    // künftige Navigationsquelle nicht mehr vergessen kann.
+    <GuardedNavLink
       to={item.path}
-      onClick={(e) => {
-        // Modifikator-Klicks (neuer Tab/Fenster) dem Browser überlassen.
-        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
-          return;
-        }
-        e.preventDefault();
-        guard(() => navigate(item.path));
-      }}
       className={({ isActive }) =>
         [
           "group flex items-center gap-2.5 rounded-nav px-2.5 py-2 text-sm font-medium transition-colors",
@@ -202,7 +194,7 @@ function NavRow({ item, badge }: { item: NavItem; badge?: NavBadge | undefined }
           ) : null}
         </>
       )}
-    </NavLink>
+    </GuardedNavLink>
   );
 }
 
@@ -318,10 +310,12 @@ export function Sidebar(): JSX.Element {
         <span className="grid h-8 w-8 place-items-center rounded-full bg-ink text-[11px] font-semibold text-white">
           {initials}
         </span>
-        <NavLink to="/profil" className="min-w-0 flex-1 leading-tight hover:opacity-80">
+        {/* AUFTRAG-mega11 Block B-2 (bens SB-2): war ein roher NavLink — der einzige Nav-Eintrag der
+            Sidebar, der am Wächter vorbeiging. */}
+        <GuardedNavLink to="/profil" className="min-w-0 flex-1 leading-tight hover:opacity-80">
           <span className="block truncate text-[13px] font-semibold text-text">{name}</span>
           <span className="block truncate text-[11px] text-muted-2">{t(`role.name.${role}`)}</span>
-        </NavLink>
+        </GuardedNavLink>
         <button
           type="button"
           title={t("action.logout")}

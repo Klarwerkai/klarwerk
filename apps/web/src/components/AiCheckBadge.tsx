@@ -5,7 +5,7 @@
 // done ODER Altbestand ohne aiCheck-Feld → bewusst NICHTS (kein Badge-Rauschen fuer den Normalfall).
 import { Clock } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { KnowledgeObject } from "../api/types";
+import type { Confidentiality, KnowledgeObject } from "../api/types";
 import {
   aiCheckFailureReasonKey,
   aiCheckPendingHintKey,
@@ -21,6 +21,11 @@ export interface AiCheckBadgeProps {
   // Als PROP (nicht Hook), damit das Badge ohne QueryClient-Provider isoliert testbar bleibt; der
   // Eltern-Kontext (Validierung) reicht den globalen Modellzustand ein. Default false = no-KI-Text.
   modelActive?: boolean;
+  // AUFTRAG-mega9 Block E-3 (KW-E2E-007): die TATSÄCHLICHE Vertraulichkeitsstufe des Objekts. Der
+  // Grund „confidential" ist eine PAAR-Eigenschaft (subject ODER Kandidat vertraulich) — ohne die
+  // echte Stufe behauptete der Tooltip, das Objekt selbst sei vertraulich. Als Prop (nicht Hook),
+  // damit das Badge isoliert testbar bleibt — gleiches Muster wie modelActive.
+  subjectConfidentiality?: Confidentiality | null | undefined;
 }
 
 // WP-SHIP9-S1 (Pedis B3): die Ursache→Key-Abbildung lebt jetzt in der lib (aiCheckStatusCard) —
@@ -33,6 +38,7 @@ export function AiCheckBadge({
   onRetry,
   retryBusy,
   modelActive = false,
+  subjectConfidentiality,
 }: AiCheckBadgeProps): JSX.Element | null {
   const { t } = useTranslation();
   if (!aiCheck || aiCheck.status === "done") {
@@ -52,7 +58,7 @@ export function AiCheckBadge({
   return (
     <span className="inline-flex items-center gap-1">
       <span
-        title={t(aiCheckFailureReasonKey(aiCheck.fallbackReason))}
+        title={t(aiCheckFailureReasonKey(aiCheck.fallbackReason, subjectConfidentiality))}
         className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text"
       >
         {t("val.aiCheck.failed")}

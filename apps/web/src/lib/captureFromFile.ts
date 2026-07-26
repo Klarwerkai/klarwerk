@@ -163,13 +163,21 @@ export function queueProgress(queue: FileDraftQueue): { current: number; total: 
 // Quelle ein Beleg-Hinweis bleibt und kein zweiter Dokumentkörper wird).
 export const MAX_SOURCE_EXCERPT = 400;
 
+// AUFTRAG-mega16 Block A (bens SB-4): `objectId` ist der ANKER dieser Belegstelle — die Referenz
+// auf das Originaldokument, das am selben KO als Anhang liegt. Eine Datei-Belegstelle hat keine
+// Adresse; ohne Anker ist sie serverseitig nicht von einem externen Treffer zu unterscheiden, dem
+// jemand die Adresse weggenommen hat, und wird auf restriktiver Stufe abgelehnt. Der Parameter ist
+// optional, weil nicht jeder Weg das Original am ZIEL-KO liegen hat (AppendToArticleModal hängt an
+// ein FREMDES KO an) — dort ist die Ablehnung dann die ehrliche Folge, keine Panne.
 export function fileSourcePayload(
   fileName: string,
   point: ExtractedPoint,
-): { label: string; excerpt: string } {
+  objectId?: string,
+): { label: string; excerpt: string; objectId?: string } {
   return {
     label: fileName,
     excerpt: point.sourceExcerpt.slice(0, MAX_SOURCE_EXCERPT),
+    ...(objectId ? { objectId } : {}),
   };
 }
 
