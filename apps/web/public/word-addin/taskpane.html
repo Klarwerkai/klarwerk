@@ -16,53 +16,108 @@
   <title>Klara — KLARWERK</title>
   <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
   <style>
+    /* ============================================================================================
+       AUFTRAG-mega43 BLOCK A — KLARA TRAEGT DIE WERKBANK-PALETTE.
+       ============================================================================================
+       Bis mega42 fuehrte dieses Panel eine EIGENE, unverbundene Palette: Hauptakzent #5b50c4
+       (Violett) auf Knoepfen, Links und aktiver Sprache, Flaeche #f7f7fa (kaltes Blaugrau).
+       Violett ist im Web aber die KENNFARBE FUER „KI im Spiel" (--kw-ai) und keine Markenfarbe —
+       Klara benutzte also ein Signal als Marke und stand nach mega40-42 farblich allein.
+
+       Die Werte hier kommen Ziffer fuer Ziffer aus apps/web/src/styles/themes.css,
+       [data-theme="modern"] (Papier, Nacht und ein Funke). Nichts ist neu gewaehlt. Sie stehen als
+       Hex statt als Kanal-Tripel, weil das Panel buildlos ist (kein Tailwind, kein Import) — es
+       MUSS eine Kopie sein. Gegen genau diese Kopie steht ein Sammler:
+       tests/app/mega43-klara-werkbank-palette.test.ts liest beide Dateien, rechnet die Tripel nach
+       Hex um und verlangt Gleichheit; er misst ausserdem den Kontrast der texttragenden Paare.
+
+       NUR Darstellung: kein Element, kein Text, keine id/data-t, kein Verhalten hat sich geaendert. */
     :root {
-      --ink: #16151d;
-      --text: #2c2b35;
-      --muted: #6b6a76;
-      --hairline: #e4e3ea;
-      --page: #f7f7fa;
-      --surface: #ffffff;
-      --ai: #5b50c4;
-      --warn-bg: #fdf3e7;
-      --warn-text: #8a5a1e;
-      --pos-bg: #eaf6ee;
-      --pos-text: #23663b;
+      /* Flaechen und Tinte */
+      --page: #FAF8F5; /* Papier ← --kw-page */
+      --surface: #FFFFFF; /* Karte ← --kw-surface */
+      --ink: #0E1626; /* Nacht ← --kw-ink / --kw-night (Ueberschriften UND Kopfzeilen-Band) */
+      --text: #1A2233; /* Tinte ← --kw-text */
+      --muted: #525B6B; /* Tinte-2 ← --kw-muted */
+      --hairline: #E9E5DE; /* Linie ← --kw-hairline */
+
+      /* Marke: der Funke. Drei Rollen, drei Token — wie im Web, aus demselben Grund:
+         #E8630A traegt Weiss nur mit 3,38:1 (Flaeche/Strich, kein Text), #C2500A traegt Weiss mit
+         4,72:1 (Knopfflaeche), und als TEXT auf Papier liegt #C2500A bei 4,45:1 — deshalb dort
+         --kw-brand-text (#A8560A, 4,95:1 auf Papier), das der modern-Block ABSICHTLICH nicht
+         ueberschreibt (themes.css). */
+      --brand: #E8630A; /* Funke ← --kw-brand */
+      --brand-deep: #C2500A; /* Funke dunkel ← --kw-funke-deep */
+      --brand-text: #A8560A; /* Funke als Text ← --kw-brand-text (im modern-Thema wirksam) */
+
+      /* Kopfzeilen-Band ← --kw-shell-* */
+      --shell-fg: #FAF8F5; /* Papier-Inhalt auf Nacht ← --kw-shell-fg */
+      --shell-muted: #7E879A; /* Meta auf Nacht ← --kw-shell-muted-2 */
+
+      /* Trust — nur Reife/Status */
+      --pos-bg: #E0F1E7; /* ← --kw-trust-pos-bg */
+      --pos-text: #116B3C; /* ← --kw-trust-pos-text */
+      --warn-bg: #FDF1D7; /* ← --kw-trust-warn-bg */
+      --warn-text: #8A5A00; /* ← --kw-trust-warn-text */
+
+      /* Elevation: weiches Licht statt hartem Rahmen ← --kw-shadow-tile */
+      --shadow-tile: 0 1px 2px rgba(14, 22, 38, 0.05), 0 8px 24px -12px rgba(14, 22, 38, 0.12);
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       background: var(--page);
       color: var(--text);
+      /* Kein Webfont: der IBM-Plex-Stapel des Webs waere ein neuer Egress aus dem Word-Panel.
+         Der System-Stapel bleibt — die Werkbank-Anmutung traegt die Palette, nicht die Schrift. */
       font: 14px/1.5 -apple-system, "Segoe UI", system-ui, sans-serif;
       padding: 14px;
     }
-    header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-    .brand { font-size: 18px; font-weight: 700; color: var(--ink); }
-    .brand small { color: var(--muted); font-weight: 500; font-size: 11px; margin-left: 6px; }
+    /* Die Kopfzeile als durchgehendes Nachtblau-Band (wie die Topbar im Web). Die negativen
+       Aussenabstaende heben die 14px Koerper-Polsterung auf — reine Darstellung, kein DOM-Eingriff. */
+    header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      margin: -14px -14px 0;
+      padding: 12px 14px;
+      background: var(--ink);
+    }
+    .brand { font-size: 18px; font-weight: 700; color: var(--shell-fg); }
+    .brand small { color: var(--shell-muted); font-weight: 500; font-size: 11px; margin-left: 6px; }
     .lang button {
-      border: 1px solid var(--hairline);
-      background: var(--surface);
-      color: var(--muted);
+      border: 1px solid var(--shell-muted);
+      background: transparent;
+      color: var(--shell-muted);
       font-size: 11px;
       padding: 2px 7px;
       border-radius: 999px;
       cursor: pointer;
     }
-    .lang button.active { color: #fff; background: var(--ai); border-color: var(--ai); }
+    .lang button.active {
+      color: var(--surface);
+      background: var(--brand-deep);
+      border-color: var(--brand-deep);
+    }
     .card {
       background: var(--surface);
       border: 1px solid var(--hairline);
       border-radius: 10px;
       padding: 12px;
       margin-top: 12px;
+      /* weiches Licht statt hartem Rahmen: der Rahmen bleibt als hauchduenne Linie stehen,
+         die Tiefe kommt aus dem Schatten-Rezept des modern-Themas. */
+      box-shadow: var(--shadow-tile);
     }
-    h2 { font-size: 13px; margin: 0 0 6px; color: var(--ink); }
+    /* Abschnittsueberschriften: die Kicker-Token des modern-Themas (--kw-kicker-*), NICHT die
+       Mono-Versalien — die hat mega40 BLOCK C im Web ausdruecklich abgeschafft. */
+    h2 { font-size: 13px; margin: 0 0 6px; color: var(--ink); font-weight: 600; letter-spacing: 0.02em; }
     p { margin: 6px 0; }
     .muted { color: var(--muted); font-size: 12.5px; }
     button.primary {
-      background: var(--ai);
-      color: #fff;
+      background: var(--brand-deep);
+      color: var(--surface);
       border: 0;
       border-radius: 8px;
       padding: 9px 14px;
@@ -70,8 +125,9 @@
       font-size: 13.5px;
       cursor: pointer;
       width: 100%;
+      box-shadow: 0 2px 10px -2px rgba(232, 99, 10, 0.45);
     }
-    button.primary:disabled { opacity: 0.5; cursor: default; }
+    button.primary:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
     button.ghost {
       background: var(--surface);
       color: var(--text);
@@ -81,26 +137,29 @@
       font-size: 12.5px;
       cursor: pointer;
     }
+    :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
     .status { border-radius: 8px; padding: 8px 10px; font-size: 12.5px; margin-top: 8px; }
     .status.ok { background: var(--pos-bg); color: var(--pos-text); }
     .status.warn { background: var(--warn-bg); color: var(--warn-text); }
     .hidden { display: none; }
     ul { margin: 6px 0; padding-left: 18px; }
-    a { color: var(--ai); }
-    /* WP-KLARA-ASK (Teil 3): zwei klar getrennte Bereiche — iPad-einfach, kein Framework. */
-    .tabs { display: flex; gap: 6px; margin-top: 12px; }
+    a { color: var(--brand-text); }
+    /* WP-KLARA-ASK (Teil 3): zwei klar getrennte Bereiche — iPad-einfach, kein Framework.
+       mega43: Unterstreichung statt gefuellter Knoepfe. */
+    .tabs { display: flex; gap: 6px; margin-top: 12px; border-bottom: 1px solid var(--hairline); }
     .tabs button {
       flex: 1;
-      border: 1px solid var(--hairline);
-      background: var(--surface);
+      border: 0;
+      border-bottom: 2px solid transparent;
+      background: transparent;
       color: var(--muted);
       font-size: 12.5px;
       font-weight: 600;
-      padding: 7px 0;
-      border-radius: 8px;
+      padding: 8px 0 6px;
+      border-radius: 0;
       cursor: pointer;
     }
-    .tabs button.active { color: #fff; background: var(--ink); border-color: var(--ink); }
+    .tabs button.active { color: var(--brand-text); border-bottom-color: var(--brand); }
     textarea {
       width: 100%;
       border: 1px solid var(--hairline);
@@ -111,6 +170,15 @@
       margin: 6px 0 8px;
     }
     .answer-text { white-space: pre-wrap; }
+    /* Die Quellen-/Belegzeile traegt den linken Funke-Balken (Beleg-Motiv des Webs). Die weiche
+       Markenflaeche #FDEADD bleibt hier ABSICHTLICH weg: der einzige AA-faehige Marken-Textton
+       (#A8560A) misst auf ihr 4,497:1 und faellt damit unter AA — die Quellen sind Links.
+       KEIN display hier: #ask-sources-block wird per .hidden geschaltet (id schlaege die Klasse). */
+    #ask-sources-block {
+      margin-top: 10px;
+      padding: 2px 0 2px 10px;
+      border-left: 3px solid var(--brand);
+    }
     /* K3: Status-Badge je Antwort-Quelle — gleiche Ampel-Semantik wie die Bibliothek
        (validiert=gruen, in Pruefung=warn, offen/unbekannt=neutral). */
     .src-badge {
